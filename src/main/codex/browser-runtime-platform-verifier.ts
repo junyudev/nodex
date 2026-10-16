@@ -1,10 +1,11 @@
-import { spawnSync } from "node:child_process";
-import fs from "node:fs";
+import { constants } from "node:fs";
+import { open } from "node:fs/promises";
+import { readRuntimeInspectionCommand } from "../platform/node/RuntimeArtifactVerification";
 import { BROWSER_RUNTIME_PRODUCT_MINIMUM_MACOS_VERSION } from "../../shared/browser-runtime-metadata";
 import { parseMachOMinimumMacosVersion } from "../../shared/mach-o-minimum-macos";
 import type { BrowserRuntimePlatformArtifactVerifier } from "./browser-runtime-bundle";
 
-type CommandReader = (command: string, args: string[]) => string;
+type CommandReader = (command: string, args: string[], signal?: AbortSignal) => Promise<string>;
 
 const PRODUCT_MINIMUM_MACOS = BROWSER_RUNTIME_PRODUCT_MINIMUM_MACOS_VERSION;
 
@@ -42,23 +43,12 @@ const compareVersions = (left: string, right: string): number | null => {
   return 0;
 };
 
-function defaultCommandReader(command: string, args: string[]): string {
-  const result = spawnSync(command, args, {
-    encoding: "utf8",
-    stdio: ["ignore", "pipe", "pipe"],
-  });
-  if (result.error) throw result.error;
-  if (result.status !== 0) {
-    throw new Error(`${command} exited with ${String(result.status)}`);
-  }
-  return `${result.stdout ?? ""}\n${result.stderr ?? ""}`.trim();
-}
-
-function isMachO(filePath: string): boolean {
-  const descriptor = fs.openSync(filePath, "r");
+async function isMachO(filePath: string): Promise<boolean> {
+  const descriptor = await open(filePath, constants.O_RDONLY | constants.O_NOFOLLOW);
   try {
     const header = Buffer.alloc(4);
-    if (fs.readSync(descriptor, header, 0, header.length, 0) !== header.length) return false;
+    if ((await descriptor.read(header, 0, header.length, 0)).bytesRead !== header.length)
+      return false;
     const magic = header.readUInt32BE(0);
     return (
       magic === 0xfeedface ||
@@ -71,15 +61,20 @@ function isMachO(filePath: string): boolean {
       magic === 0xbfbafeca
     );
   } finally {
-    fs.closeSync(descriptor);
+    await descriptor.close();
   }
 }
 
-function readTeamIdentifier(filePath: string, run: CommandReader): string | null {
+async function readTeamIdentifier(
+  filePath: string,
+  run: CommandReader,
+  signal?: AbortSignal,
+): Promise<string | null> {
   try {
-    const output = run("/usr/bin/codesign", ["-dv", "--verbose=4", filePath]);
+    const output = await run("/usr/bin/codesign", ["-dv", "--verbose=4", filePath], signal);
     return /^TeamIdentifier=(.+)$/mu.exec(output)?.[1]?.trim() ?? null;
   } catch {
+    signal?.throwIfAborted();
     return null;
   }
 }
@@ -91,8 +86,9 @@ export function createBrowserRuntimePlatformArtifactVerifier(
   } = {},
 ): BrowserRuntimePlatformArtifactVerifier {
   const platform = options.platform ?? process.platform;
-  const run = options.runCommand ?? defaultCommandReader;
-  return ({ artifact, artifactPath, manifest }) => {
+  const run = options.runCommand ?? readRuntimeInspectionCommand;
+  return async ({ artifact, artifactPath, manifest, signal }) => {
+    signal?.throwIfAborted();
     if (platform !== manifest.targetPlatform) {
       return `runtime target ${manifest.targetPlatform} cannot be verified on ${platform}`;
     }
@@ -102,7 +98,7 @@ export function createBrowserRuntimePlatformArtifactVerifier(
     if (manifest.targetArch !== "arm64") {
       return "Browser runtime requires macOS arm64";
     }
-    if (!isMachO(artifactPath)) {
+    if (!(await isMachO(artifactPath))) {
       return artifact.architecture === "any"
         ? null
         : "architecture-specific artifact is not Mach-O";
@@ -110,8 +106,11 @@ export function createBrowserRuntimePlatformArtifactVerifier(
 
     let architectures: string[];
     try {
-      architectures = run("/usr/bin/lipo", ["-archs", artifactPath]).split(/\s+/u).filter(Boolean);
+      architectures = (await run("/usr/bin/lipo", ["-archs", artifactPath], signal))
+        .split(/\s+/u)
+        .filter(Boolean);
     } catch {
+      signal?.throwIfAborted();
       return "could not inspect Mach-O architecture";
     }
     const expectedArch = manifest.targetArch;
@@ -121,9 +120,10 @@ export function createBrowserRuntimePlatformArtifactVerifier(
     let minimumMacos: string | null;
     try {
       minimumMacos = parseMachOMinimumMacosVersion(
-        run("/usr/bin/otool", ["-arch", expectedArch, "-l", artifactPath]),
+        await run("/usr/bin/otool", ["-arch", expectedArch, "-l", artifactPath], signal),
       );
     } catch {
+      signal?.throwIfAborted();
       minimumMacos = null;
     }
     if (!minimumMacos) return "could not inspect Mach-O minimum macOS version";
@@ -141,11 +141,12 @@ export function createBrowserRuntimePlatformArtifactVerifier(
       );
     }
     try {
-      run("/usr/bin/codesign", ["--verify", "--strict", artifactPath]);
+      await run("/usr/bin/codesign", ["--verify", "--strict", artifactPath], signal);
     } catch {
+      signal?.throwIfAborted();
       return "Mach-O code signature is invalid";
     }
-    const teamIdentifier = readTeamIdentifier(artifactPath, run);
+    const teamIdentifier = await readTeamIdentifier(artifactPath, run, signal);
     const computerUse = manifest.capabilities.computerUse;
     const chrome = manifest.capabilities.browserUse?.backends.chrome;
     const expectedTeamIdentifier =

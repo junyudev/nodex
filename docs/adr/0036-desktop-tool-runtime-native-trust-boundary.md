@@ -33,7 +33,10 @@ it, the Computer Use plugin, `sky.node`, and signed helper app. The release lock
 and inner manifest bind every file, backend, capability, architecture,
 artifact and product operating-system minimum, signing-team expectation, and
 the exact sorted native-addon export set. Runtime loading requires that complete
-set, not only a compatible subset.
+set, not only a compatible subset. Verification runs asynchronously with bounded
+file and native-process concurrency; it does not reuse trust from an earlier launch.
+Startup cancellation waits for opened files and native inspectors to close before
+releasing the verification operation.
 
 Browser, Chrome, native PiP, and Computer Use remain independently gated.
 The macOS Desktop Tool runtime supports Apple Silicon. Chrome is

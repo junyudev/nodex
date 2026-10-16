@@ -29,12 +29,12 @@ function makeTestBrowserPluginReconciler(
   });
 }
 
-function makeRuntime() {
+async function makeRuntime() {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "nodex-browser-plugin-"));
   const bundleRoot = path.join(root, "browser-runtime");
   const manifest = writeBrowserRuntimeFixture(bundleRoot);
   const testedPair = makeTestedBrowserAppServerPair({ bundleRoot, manifest });
-  const browserRuntime = resolveBrowserRuntimeBundle({
+  const browserRuntime = await resolveBrowserRuntimeBundle({
     appServerIdentity: testedPair.appServer,
     runtimeRoot: root,
     targetArch: "arm64",
@@ -93,7 +93,7 @@ describe("BrowserPluginReconciler", () => {
     "leaves external and other Profile plugins intact while reconciling its own tools",
     () =>
       Effect.gen(function* () {
-        const fixture = makeRuntime();
+        const fixture = yield* Effect.promise(() => makeRuntime());
         let availableBackends: Array<"iab"> = ["iab"];
         let registered = false;
         let installed = false;
@@ -221,7 +221,7 @@ describe("BrowserPluginReconciler", () => {
 
   it.effect("reuses the exact installed bundled plugin without reinstalling", () =>
     Effect.gen(function* () {
-      const fixture = makeRuntime();
+      const fixture = yield* Effect.promise(() => makeRuntime());
       const request = vi.fn(async (method: string) => {
         if (method === "plugin/list") {
           return {
@@ -284,7 +284,7 @@ describe("BrowserPluginReconciler", () => {
 
   it.effect("coalesces concurrent reconciliation through one serialized state transition", () =>
     Effect.gen(function* () {
-      const fixture = makeRuntime();
+      const fixture = yield* Effect.promise(() => makeRuntime());
       const request = vi.fn(async (method: string) => {
         if (method === "plugin/list") {
           return {
@@ -331,7 +331,7 @@ describe("BrowserPluginReconciler", () => {
 
   it.effect("installs and verifies a missing or stale plugin", () =>
     Effect.gen(function* () {
-      const fixture = makeRuntime();
+      const fixture = yield* Effect.promise(() => makeRuntime());
       let marketplaceAdded = false;
       let installed = false;
       const request = vi.fn(async (method: string) => {
@@ -405,7 +405,7 @@ describe("BrowserPluginReconciler", () => {
 
   it.effect("installs Browser and Computer Use from the materialized marketplace", () =>
     Effect.gen(function* () {
-      const fixture = makeRuntime();
+      const fixture = yield* Effect.promise(() => makeRuntime());
       const installed = new Set<string>();
       const request = vi.fn(async (method: string, params?: unknown) => {
         if (method === "plugin/list") {
@@ -483,7 +483,7 @@ describe("BrowserPluginReconciler", () => {
 
   it.effect("replaces only the current Profile marketplace source before verification", () =>
     Effect.gen(function* () {
-      const fixture = makeRuntime();
+      const fixture = yield* Effect.promise(() => makeRuntime());
       let source = "/tmp/obsolete-openai-bundled";
       const request = vi.fn(async (method: string, params?: unknown) => {
         if (method === "plugin/list") {
@@ -549,7 +549,7 @@ describe("BrowserPluginReconciler", () => {
 
   it.effect("fails closed when installation cannot be verified", () =>
     Effect.gen(function* () {
-      const fixture = makeRuntime();
+      const fixture = yield* Effect.promise(() => makeRuntime());
       let shouldFail = true;
       try {
         const reconciler = yield* makeTestBrowserPluginReconciler({
@@ -600,7 +600,7 @@ describe("BrowserPluginReconciler", () => {
 
   it.effect("removes an installed Browser plugin when no host backend is available", () =>
     Effect.gen(function* () {
-      const fixture = makeRuntime();
+      const fixture = yield* Effect.promise(() => makeRuntime());
       let availableBackends: Array<"iab"> = [];
       let installed = true;
       const request = vi.fn(async (method: string, params?: unknown) => {
@@ -698,7 +698,7 @@ describe("BrowserPluginReconciler", () => {
     "installs Chrome only while its live backend is available and leaves Browser installed",
     () =>
       Effect.gen(function* () {
-        const fixture = makeRuntime();
+        const fixture = yield* Effect.promise(() => makeRuntime());
         let availableBackends: Array<"chrome" | "iab"> = ["iab"];
         const installed = new Set<string>();
         const request = vi.fn(async (method: string, params?: unknown) => {

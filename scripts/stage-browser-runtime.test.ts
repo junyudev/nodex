@@ -100,7 +100,7 @@ afterEach(() => {
 });
 
 describe("stageBrowserRuntime", () => {
-  test("atomically installs a source closure that passes runtime verification", () => {
+  test("atomically installs a source closure that passes runtime verification", async () => {
     const sourceRoot = makeRoot("nodex-browser-source-");
     const runtimeRoot = makeRoot("nodex-browser-destination-");
     writeBrowserRuntimeFixture(sourceRoot);
@@ -108,15 +108,15 @@ describe("stageBrowserRuntime", () => {
     fs.mkdirSync(previousRoot);
     fs.writeFileSync(path.join(previousRoot, "stale"), "stale");
 
-    stageBrowserRuntime(stageOptions(sourceRoot, runtimeRoot));
+    await stageBrowserRuntime(stageOptions(sourceRoot, runtimeRoot));
 
     expect(fs.existsSync(path.join(previousRoot, "stale"))).toBe(false);
-    expect(resolveBrowserRuntimeBundle(resolveOptions(runtimeRoot, sourceRoot)).status).toBe(
-      "available",
-    );
+    expect(
+      (await resolveBrowserRuntimeBundle(resolveOptions(runtimeRoot, sourceRoot))).status,
+    ).toBe("available");
   });
 
-  test("installs an explicitly tested Browser and App Server artifact pair", () => {
+  test("installs an explicitly tested Browser and App Server artifact pair", async () => {
     const sourceRoot = makeRoot("nodex-browser-source-");
     const runtimeRoot = makeRoot("nodex-browser-destination-");
     writeBrowserRuntimeFixture(sourceRoot, {
@@ -124,14 +124,14 @@ describe("stageBrowserRuntime", () => {
       codexCompatibilityVersion: "0.144.5",
     });
 
-    stageBrowserRuntime(stageOptions(sourceRoot, runtimeRoot));
+    await stageBrowserRuntime(stageOptions(sourceRoot, runtimeRoot));
 
-    expect(resolveBrowserRuntimeBundle(resolveOptions(runtimeRoot, sourceRoot)).status).toBe(
-      "available",
-    );
+    expect(
+      (await resolveBrowserRuntimeBundle(resolveOptions(runtimeRoot, sourceRoot))).status,
+    ).toBe("available");
   });
 
-  test.each([5, 6])("preserves a published schema-v%i manifest identity", (schemaVersion) => {
+  test.each([5, 6])("preserves a published schema-v%i manifest identity", async (schemaVersion) => {
     const sourceRoot = makeRoot("nodex-browser-source-");
     const runtimeRoot = makeRoot("nodex-browser-destination-");
     writeBrowserRuntimeFixture(sourceRoot);
@@ -166,7 +166,7 @@ describe("stageBrowserRuntime", () => {
     fs.writeFileSync(manifestPath, `${JSON.stringify(current, null, 2)}\n`);
     const sourceBytes = fs.readFileSync(manifestPath);
 
-    const staged = stageBrowserRuntime(stageOptions(sourceRoot, runtimeRoot));
+    const staged = await stageBrowserRuntime(stageOptions(sourceRoot, runtimeRoot));
     const activeBytes = fs.readFileSync(
       path.join(runtimeRoot, BROWSER_RUNTIME_BUNDLE_DIRECTORY, BROWSER_RUNTIME_MANIFEST_FILENAME),
     );
@@ -179,7 +179,7 @@ describe("stageBrowserRuntime", () => {
     });
   });
 
-  test("normalizes legacy Browser plugin module paths during staging", () => {
+  test("normalizes legacy Browser plugin module paths during staging", async () => {
     const sourceRoot = makeRoot("nodex-browser-source-");
     const runtimeRoot = makeRoot("nodex-browser-destination-");
     writeBrowserRuntimeFixture(sourceRoot);
@@ -195,7 +195,7 @@ describe("stageBrowserRuntime", () => {
     );
     fs.writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
 
-    const stagedManifest = stageBrowserRuntime(stageOptions(sourceRoot, runtimeRoot));
+    const stagedManifest = await stageBrowserRuntime(stageOptions(sourceRoot, runtimeRoot));
 
     expect(stagedManifest.browserPlugin.nodeModuleDirs).toContain(BROWSER_PLUGIN_NODE_MODULE_DIR);
     expect(stagedManifest.browserPlugin.nodeModuleDirs).not.toContain(
@@ -204,15 +204,15 @@ describe("stageBrowserRuntime", () => {
     const activeRoot = path.join(runtimeRoot, BROWSER_RUNTIME_BUNDLE_DIRECTORY);
     const activeRootInode = fs.statSync(activeRoot).ino;
 
-    stageBrowserRuntime(stageOptions(sourceRoot, runtimeRoot));
+    await stageBrowserRuntime(stageOptions(sourceRoot, runtimeRoot));
 
-    expect(resolveBrowserRuntimeBundle(resolveOptions(runtimeRoot, sourceRoot)).status).toBe(
-      "available",
-    );
+    expect(
+      (await resolveBrowserRuntimeBundle(resolveOptions(runtimeRoot, sourceRoot))).status,
+    ).toBe("available");
     expect(fs.statSync(activeRoot).ino).toBe(activeRootInode);
   });
 
-  test("preserves the previously active bundle when source verification fails", () => {
+  test("preserves the previously active bundle when source verification fails", async () => {
     const sourceRoot = makeRoot("nodex-browser-source-");
     const runtimeRoot = makeRoot("nodex-browser-destination-");
     writeBrowserRuntimeFixture(sourceRoot);
@@ -224,28 +224,28 @@ describe("stageBrowserRuntime", () => {
     fs.mkdirSync(activeRoot);
     fs.writeFileSync(path.join(activeRoot, "preserved"), "active");
 
-    expect(() => stageBrowserRuntime(stageOptions(sourceRoot, runtimeRoot))).toThrow(
+    await expect(stageBrowserRuntime(stageOptions(sourceRoot, runtimeRoot))).rejects.toThrow(
       "does not match its manifest",
     );
     expect(fs.readFileSync(path.join(activeRoot, "preserved"), "utf8")).toBe("active");
   });
 
-  test("rejects undeclared payloads instead of silently expanding trust", () => {
+  test("rejects undeclared payloads instead of silently expanding trust", async () => {
     const sourceRoot = makeRoot("nodex-browser-source-");
     writeBrowserRuntimeFixture(sourceRoot);
     fs.writeFileSync(path.join(sourceRoot, "undeclared.js"), "payload");
 
-    expect(() =>
+    await expect(
       stageBrowserRuntime(stageOptions(sourceRoot, makeRoot("nodex-browser-destination-"))),
-    ).toThrow("exactly the manifest-declared artifacts");
+    ).rejects.toThrow("exactly the manifest-declared artifacts");
   });
 
-  test("repairs an otherwise reusable active closure with an undeclared payload", () => {
+  test("repairs an otherwise reusable active closure with an undeclared payload", async () => {
     const sourceRoot = makeRoot("nodex-browser-source-");
     const runtimeRoot = makeRoot("nodex-browser-destination-");
     writeBrowserRuntimeFixture(sourceRoot);
     const options = stageOptions(sourceRoot, runtimeRoot);
-    stageBrowserRuntime(options);
+    await stageBrowserRuntime(options);
     const undeclaredPath = path.join(
       runtimeRoot,
       BROWSER_RUNTIME_BUNDLE_DIRECTORY,
@@ -253,12 +253,49 @@ describe("stageBrowserRuntime", () => {
     );
     fs.writeFileSync(undeclaredPath, "payload");
 
-    stageBrowserRuntime(options);
+    await stageBrowserRuntime(options);
 
     expect(fs.existsSync(undeclaredPath)).toBe(false);
   });
 
-  test("keeps the active bundle when platform verification rejects a staged native artifact", () => {
+  test("repairs same-size active corruption and rejects same-size source corruption on reuse", async () => {
+    const sourceRoot = makeRoot("nodex-browser-source-");
+    const runtimeRoot = makeRoot("nodex-browser-destination-");
+    const manifest = writeBrowserRuntimeFixture(sourceRoot);
+    const options = stageOptions(sourceRoot, runtimeRoot);
+    await stageBrowserRuntime(options);
+    const artifact = manifest.artifacts.find((entry) => entry.size > 0)!;
+    const sourcePath = path.join(sourceRoot, artifact.path);
+    const activePath = path.join(runtimeRoot, BROWSER_RUNTIME_BUNDLE_DIRECTORY, artifact.path);
+    const expected = fs.readFileSync(sourcePath);
+    const changed = Buffer.from(expected);
+    changed[0] ^= 1;
+    fs.writeFileSync(activePath, changed);
+    await stageBrowserRuntime(options);
+    expect(fs.readFileSync(activePath)).toEqual(expected);
+
+    fs.writeFileSync(sourcePath, changed);
+    await expect(stageBrowserRuntime(options)).rejects.toThrow("does not match its manifest");
+    expect(fs.readFileSync(activePath)).toEqual(expected);
+  });
+
+  test("repairs an active closure containing a symlink without following its target", async () => {
+    const sourceRoot = makeRoot("nodex-browser-source-");
+    const runtimeRoot = makeRoot("nodex-browser-destination-");
+    const manifest = writeBrowserRuntimeFixture(sourceRoot);
+    const options = stageOptions(sourceRoot, runtimeRoot);
+    await stageBrowserRuntime(options);
+    const artifact = manifest.artifacts[0]!;
+    const activePath = path.join(runtimeRoot, BROWSER_RUNTIME_BUNDLE_DIRECTORY, artifact.path);
+    const targetPath = path.join(sourceRoot, artifact.path);
+    fs.unlinkSync(activePath);
+    fs.symlinkSync(targetPath, activePath);
+    await stageBrowserRuntime(options);
+    expect(fs.lstatSync(activePath).isSymbolicLink()).toBe(false);
+    expect(fs.readFileSync(activePath)).toEqual(fs.readFileSync(targetPath));
+  });
+
+  test("keeps the active bundle when platform verification rejects a staged native artifact", async () => {
     const sourceRoot = makeRoot("nodex-browser-source-");
     const runtimeRoot = makeRoot("nodex-browser-destination-");
     writeBrowserRuntimeFixture(sourceRoot);
@@ -266,13 +303,13 @@ describe("stageBrowserRuntime", () => {
     fs.mkdirSync(activeRoot);
     fs.writeFileSync(path.join(activeRoot, "preserved"), "active");
 
-    expect(() =>
+    await expect(
       stageBrowserRuntime({
         ...stageOptions(sourceRoot, runtimeRoot),
-        platformArtifactVerifier: ({ artifact }) =>
+        platformArtifactVerifier: async ({ artifact }) =>
           artifact.kind === "native-addon" ? "Node-API ABI mismatch" : null,
       }),
-    ).toThrow("Node-API ABI mismatch");
+    ).rejects.toThrow("Node-API ABI mismatch");
     expect(fs.readFileSync(path.join(activeRoot, "preserved"), "utf8")).toBe("active");
   });
 });

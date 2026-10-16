@@ -658,7 +658,7 @@ const delay = (milliseconds: number): Promise<void> =>
 const measureRealPersistedHistory = async (input: {
   readonly callbacks: ScopedCallbackRuntime["Service"];
   readonly historyItemCount: (typeof REAL_HISTORY_ITEM_COUNTS)[number];
-  readonly runtime: ReturnType<typeof resolveCodexRuntime>;
+  readonly runtime: Awaited<ReturnType<typeof resolveCodexRuntime>>;
 }): Promise<RealPersistedHistoryMeasurement> => {
   const profileRoot = mkdtempSync(path.join(os.tmpdir(), "nodex-subagent-real-history-"));
   const stateHome = path.join(profileRoot, "home");
@@ -865,8 +865,8 @@ it.live(
     Effect.gen(function* () {
       assert.isTrue(existsSync(CORE_EXECUTABLE), "build the release Core before running the gate");
       const callbacks = yield* ScopedCallbackRuntime;
-      const stagedRuntime = yield* Effect.sync(() =>
-        resolveCodexRuntime({ isPackaged: false, projectRootPath: path.resolve(".") }),
+      const stagedRuntime = yield* Effect.tryPromise((signal) =>
+        resolveCodexRuntime({ isPackaged: false, projectRootPath: path.resolve("."), signal }),
       );
 
       const profileRoot = yield* Effect.sync(() =>

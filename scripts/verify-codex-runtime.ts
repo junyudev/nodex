@@ -143,12 +143,12 @@ export function verifyAgentVendorSignatures(
   }
 }
 
-export function verifyCodexRuntime(input: {
+export async function verifyCodexRuntime(input: {
   requireBrowserRuntime?: boolean;
   resourcesPath: string;
   verifyMacosSignatures: boolean;
-}): void {
-  const runtime = resolveCodexRuntime({
+}): Promise<void> {
+  const runtime = await resolveCodexRuntime({
     isPackaged: true,
     resourcesPath: input.resourcesPath,
   });
@@ -217,7 +217,7 @@ export function verifyCodexRuntime(input: {
   process.stdout.write(`Verified Codex app-server runtime ${runtime.version}\n`);
 }
 
-function main(): void {
+async function main(): Promise<void> {
   const argv = process.argv.slice(2);
   const resourcesPath = readOption(argv, "--resources-path");
   if (!resourcesPath) {
@@ -226,7 +226,7 @@ function main(): void {
         "[--verify-macos-signatures] [--require-browser-runtime]",
     );
   }
-  verifyCodexRuntime({
+  await verifyCodexRuntime({
     resourcesPath: resolve(resourcesPath),
     requireBrowserRuntime: argv.includes("--require-browser-runtime"),
     verifyMacosSignatures: argv.includes("--verify-macos-signatures"),
@@ -234,5 +234,10 @@ function main(): void {
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  main();
+  void main().catch((error: unknown) => {
+    process.stderr.write(
+      `${error instanceof Error ? (error.stack ?? error.message) : String(error)}\n`,
+    );
+    process.exitCode = 1;
+  });
 }

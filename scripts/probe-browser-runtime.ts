@@ -99,6 +99,7 @@ export type BrowserRuntimeProbeReport =
 
 export interface BrowserRuntimeProbeOptions {
   readonly resourcesPath?: string;
+  readonly signal?: AbortSignal;
   /** Explicit tooling-only artifact pair under conformance; never used for product admission. */
   readonly conformanceCandidatePair?: TestedBrowserAppServerPair;
   /** Browser-only artifact pairing must not inspect the user's desktop implicitly. */
@@ -106,9 +107,10 @@ export interface BrowserRuntimeProbeOptions {
   readonly scratchRoot?: string;
 }
 
-function resolveProbeRuntime(projectRoot: string, options: BrowserRuntimeProbeOptions) {
+async function resolveProbeRuntime(projectRoot: string, options: BrowserRuntimeProbeOptions) {
   const resourcesPath = options.resourcesPath?.trim();
-  const runtime = resolveCodexRuntime({
+  const runtime = await resolveCodexRuntime({
+    signal: options.signal,
     isPackaged: Boolean(resourcesPath),
     ...(resourcesPath
       ? { resourcesPath: path.resolve(resourcesPath) }
@@ -122,7 +124,8 @@ function resolveProbeRuntime(projectRoot: string, options: BrowserRuntimeProbeOp
   if (!metadata) throw new Error("Conformance candidate metadata is invalid");
   return {
     ...runtime,
-    browserRuntime: resolveBrowserRuntimeBundle({
+    browserRuntime: await resolveBrowserRuntimeBundle({
+      signal: options.signal,
       appServerIdentity: projectBundledAppServerRuntimeIdentity(metadata),
       runtimeRoot: runtime.rootPath,
       targetArch: metadata.targetArch as NodeJS.Architecture,
@@ -135,13 +138,13 @@ function resolveProbeRuntime(projectRoot: string, options: BrowserRuntimeProbeOp
   };
 }
 
-export function inspectBrowserRuntime(
+export async function inspectBrowserRuntime(
   projectRoot: string,
   options: BrowserRuntimeProbeOptions = {},
-): BrowserRuntimeStaticInspectionReport {
+): Promise<BrowserRuntimeStaticInspectionReport> {
   if (options.conformanceCandidatePair)
     throw new Error("Candidate runtime pairs require the live conformance probe");
-  const runtime = resolveProbeRuntime(projectRoot, options);
+  const runtime = await resolveProbeRuntime(projectRoot, options);
   if (runtime.browserRuntime.status === "unavailable") {
     throw new Error(runtime.browserRuntime.message);
   }
@@ -336,7 +339,7 @@ async function probeBrowserRuntimePromise(
   const peerAuthorizationMode: BrowserUsePeerAuthorizationMode = isPackaged
     ? "packaged"
     : "disabled";
-  const runtime = resolveProbeRuntime(projectRoot, options);
+  const runtime = await resolveProbeRuntime(projectRoot, options);
   if (runtime.browserRuntime.status === "unavailable") {
     throw new Error(runtime.browserRuntime.message);
   }
@@ -666,7 +669,7 @@ export const probeBrowserRuntimeStatic = (
   projectRoot: string,
   options: BrowserRuntimeProbeOptions = {},
 ): Effect.Effect<BrowserRuntimeStaticInspectionReport, Cause.UnknownError> =>
-  Effect.try(() => inspectBrowserRuntime(projectRoot, options));
+  Effect.tryPromise((signal) => inspectBrowserRuntime(projectRoot, { ...options, signal }));
 
 /** The ordinary probe is deliberately side-effect-free; conformance is explicit. */
 export const probeBrowserRuntime = probeBrowserRuntimeStatic;

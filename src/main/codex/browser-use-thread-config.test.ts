@@ -18,13 +18,13 @@ import { computerUseNativePipePath } from "./computer-use-runtime-config";
 
 const temporaryRoots: string[] = [];
 
-function makeVerifiedRuntime() {
+async function makeVerifiedRuntime() {
   const runtimeRoot = fs.mkdtempSync(path.join(os.tmpdir(), "nodex-browser-config-"));
   temporaryRoots.push(runtimeRoot);
   const bundleRoot = path.join(runtimeRoot, BROWSER_RUNTIME_BUNDLE_DIRECTORY);
   const manifest = writeBrowserRuntimeFixture(bundleRoot);
   const testedPair = makeTestedBrowserAppServerPair({ bundleRoot, manifest });
-  const browserRuntime = resolveBrowserRuntimeBundle({
+  const browserRuntime = await resolveBrowserRuntimeBundle({
     appServerIdentity: testedPair.appServer,
     runtimeRoot,
     targetArch: "arm64",
@@ -64,7 +64,7 @@ describe("BrowserUseThreadConfigBuilder", () => {
   });
 
   test("builds the pinned Node REPL config only from verified paths", async () => {
-    const { browserRuntime, bundleRoot } = makeVerifiedRuntime();
+    const { browserRuntime, bundleRoot } = await makeVerifiedRuntime();
     const runtimeStateHome = path.join(bundleRoot, "..", "state");
     const builder = new BrowserUseThreadConfigBuilder({
       codexHome: "/tmp/native-codex-home",
@@ -125,7 +125,7 @@ describe("BrowserUseThreadConfigBuilder", () => {
   });
 
   test("advertises Chrome only when an active backend resolver supplies it", async () => {
-    const { browserRuntime } = makeVerifiedRuntime();
+    const { browserRuntime } = await makeVerifiedRuntime();
     const builder = new BrowserUseThreadConfigBuilder({
       codexHome: "/tmp/native-codex-home",
       availableBackends: () => ["iab", "chrome"],
@@ -143,7 +143,7 @@ describe("BrowserUseThreadConfigBuilder", () => {
   });
 
   test("disables foreign desktop peers only for the current Thread", async () => {
-    const { browserRuntime } = makeVerifiedRuntime();
+    const { browserRuntime } = await makeVerifiedRuntime();
     const builder = new BrowserUseThreadConfigBuilder({
       browserRuntime,
       codexHome: "/tmp/native-codex-home",
@@ -164,7 +164,7 @@ describe("BrowserUseThreadConfigBuilder", () => {
   });
 
   test("builds Computer Use config independently of Browser backend availability", async () => {
-    const { browserRuntime, bundleRoot } = makeVerifiedRuntime();
+    const { browserRuntime, bundleRoot } = await makeVerifiedRuntime();
     const runtimeStateHome = "/tmp/nodex-agent";
     const builder = new BrowserUseThreadConfigBuilder({
       codexHome: "/tmp/native-codex-home",

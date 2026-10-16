@@ -822,7 +822,9 @@ const main = Effect.gen(function* () {
   const explicitBinaryPath = readOption(argv, "--binary");
   const binaryPath = path.resolve(
     explicitBinaryPath ??
-      resolveCodexRuntime({ isPackaged: false, projectRootPath: projectRoot }).binaryPath,
+      (yield* Effect.tryPromise((signal) =>
+        resolveCodexRuntime({ isPackaged: false, projectRootPath: projectRoot, signal }),
+      )).binaryPath,
   );
   const outputPath = path.resolve(
     readOption(argv, "--out") ??

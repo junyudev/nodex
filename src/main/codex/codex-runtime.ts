@@ -1,6 +1,12 @@
-import fs from "node:fs";
-import { createHash } from "node:crypto";
+import type { Stats } from "node:fs";
+import fs from "node:fs/promises";
+import {
+  readRuntimeArtifactSha256,
+  verifyRuntimeArtifacts,
+} from "../platform/node/RuntimeArtifactVerification";
 import path from "node:path";
+import * as Effect from "effect/Effect";
+import * as Cause from "effect/Cause";
 import {
   AGENT_RUNTIME_METADATA_FILENAME,
   parseBundledAgentRuntimeMetadata,
@@ -29,57 +35,49 @@ export type ResolvedCodexRuntime = {
   version: string | null;
 };
 
-function readSha256(filePath: string): string {
-  const hash = createHash("sha256");
-  const buffer = Buffer.allocUnsafe(1024 * 1024);
-  const fileDescriptor = fs.openSync(filePath, "r");
-  try {
-    for (;;) {
-      const bytesRead = fs.readSync(fileDescriptor, buffer, 0, buffer.length, null);
-      if (bytesRead === 0) return hash.digest("hex");
-      hash.update(buffer.subarray(0, bytesRead));
-    }
-  } finally {
-    fs.closeSync(fileDescriptor);
-  }
-}
-
-function validateRuntimeArtifacts(
+async function validateRuntimeArtifacts(
   runtimeRoot: string,
   metadata: BundledAgentRuntimeMetadata,
-): void {
-  for (const artifact of metadata.artifacts) {
-    const artifactPath = path.join(runtimeRoot, ...artifact.path.split("/"));
-    let stats: fs.Stats;
-    try {
-      stats = fs.lstatSync(artifactPath);
-    } catch {
-      throw new Error(`Agent runtime artifact is missing: ${artifact.path}`);
-    }
-    if (!stats.isFile() || stats.isSymbolicLink()) {
-      throw new Error(`Agent runtime artifact is not a regular file: ${artifact.path}`);
-    }
-    if (stats.size !== artifact.size) {
-      throw new Error(`Agent runtime artifact size does not match metadata: ${artifact.path}`);
-    }
-    if (artifact.executable && (stats.mode & 0o111) === 0) {
-      throw new Error(`Agent runtime artifact is not executable: ${artifact.path}`);
-    }
-    if (readSha256(artifactPath) !== artifact.sha256) {
-      throw new Error(`Agent runtime artifact checksum does not match metadata: ${artifact.path}`);
-    }
-  }
+  signal?: AbortSignal,
+): Promise<void> {
+  await verifyRuntimeArtifacts(
+    metadata.artifacts,
+    async (artifact) => {
+      const artifactPath = path.join(runtimeRoot, ...artifact.path.split("/"));
+      let stats: Stats;
+      try {
+        stats = await fs.lstat(artifactPath);
+      } catch {
+        throw new Error(`Agent runtime artifact is missing: ${artifact.path}`);
+      }
+      if (!stats.isFile() || stats.isSymbolicLink()) {
+        throw new Error(`Agent runtime artifact is not a regular file: ${artifact.path}`);
+      }
+      if (stats.size !== artifact.size) {
+        throw new Error(`Agent runtime artifact size does not match metadata: ${artifact.path}`);
+      }
+      if (artifact.executable && (stats.mode & 0o111) === 0) {
+        throw new Error(`Agent runtime artifact is not executable: ${artifact.path}`);
+      }
+      if ((await readRuntimeArtifactSha256(artifactPath, signal)) !== artifact.sha256) {
+        throw new Error(
+          `Agent runtime artifact checksum does not match metadata: ${artifact.path}`,
+        );
+      }
+    },
+    signal,
+  );
 }
 
-function validateRuntimeSearchPaths(
+async function validateRuntimeSearchPaths(
   runtimeRoot: string,
   metadata: BundledAgentRuntimeMetadata,
-): void {
+): Promise<void> {
   for (const searchPath of metadata.searchPaths) {
     const searchPathRoot = path.join(runtimeRoot, ...searchPath.split("/"));
-    let stats: fs.Stats;
+    let stats: Stats;
     try {
-      stats = fs.lstatSync(searchPathRoot);
+      stats = await fs.lstat(searchPathRoot);
     } catch {
       throw new Error(`Agent runtime search path is missing: ${searchPath}`);
     }
@@ -91,27 +89,31 @@ function validateRuntimeSearchPaths(
 
 type ResolveCodexRuntimeOptions = {
   browserRuntimePlatformArtifactVerifier?: BrowserRuntimePlatformArtifactVerifier;
+  signal?: AbortSignal;
   isPackaged: boolean;
   projectRootPath?: string;
   resourcesPath?: string;
 };
 
-function resolveRuntimeFromRoot(input: {
+async function resolveRuntimeFromRoot(input: {
+  signal?: AbortSignal;
   browserRuntimePlatformArtifactVerifier?: BrowserRuntimePlatformArtifactVerifier;
   missingBinaryMessage: string;
   runtimeRoot: string;
   source: CodexRuntimeSource;
-}): ResolvedCodexRuntime {
+}): Promise<ResolvedCodexRuntime> {
   const metadataPath = path.join(input.runtimeRoot, AGENT_RUNTIME_METADATA_FILENAME);
 
-  if (!fs.existsSync(metadataPath)) {
+  input.signal?.throwIfAborted();
+  if (!(await fs.lstat(metadataPath).catch(() => null))) {
     throw new Error(`Agent runtime is missing or incomplete under ${input.runtimeRoot}`);
   }
 
-  const metadata = parseBundledRuntimeMetadata(metadataPath);
-  validateRuntimeArtifacts(input.runtimeRoot, metadata);
-  validateRuntimeSearchPaths(input.runtimeRoot, metadata);
-  const browserRuntime = resolveBrowserRuntimeBundle({
+  const metadata = await parseBundledRuntimeMetadata(metadataPath);
+  await validateRuntimeArtifacts(input.runtimeRoot, metadata, input.signal);
+  await validateRuntimeSearchPaths(input.runtimeRoot, metadata);
+  const browserRuntime = await resolveBrowserRuntimeBundle({
+    signal: input.signal,
     appServerIdentity: projectBundledAppServerRuntimeIdentity(metadata),
     platformArtifactVerifier:
       input.browserRuntimePlatformArtifactVerifier ??
@@ -122,6 +124,7 @@ function resolveRuntimeFromRoot(input: {
     targetArch: metadata.targetArch as NodeJS.Architecture,
     targetPlatform: metadata.targetPlatform as NodeJS.Platform,
   });
+  input.signal?.throwIfAborted();
   const primaryBinaryPath = path.join(input.runtimeRoot, ...metadata.entrypoint.split("/"));
 
   return {
@@ -140,10 +143,12 @@ function resolveRuntimeFromRoot(input: {
   };
 }
 
-function parseBundledRuntimeMetadata(metadataPath: string): BundledAgentRuntimeMetadata {
+async function parseBundledRuntimeMetadata(
+  metadataPath: string,
+): Promise<BundledAgentRuntimeMetadata> {
   let rawMetadata: unknown;
   try {
-    rawMetadata = JSON.parse(fs.readFileSync(metadataPath, "utf8"));
+    rawMetadata = JSON.parse(await fs.readFile(metadataPath, "utf8"));
   } catch {
     throw new Error(`Invalid bundled Agent runtime metadata at ${metadataPath}`);
   }
@@ -154,7 +159,10 @@ function parseBundledRuntimeMetadata(metadataPath: string): BundledAgentRuntimeM
   return parsed;
 }
 
-export function resolveCodexRuntime(options: ResolveCodexRuntimeOptions): ResolvedCodexRuntime {
+export async function resolveCodexRuntime(
+  options: ResolveCodexRuntimeOptions,
+): Promise<ResolvedCodexRuntime> {
+  options.signal?.throwIfAborted();
   if (!options.isPackaged) {
     const projectRootPath = options.projectRootPath?.trim();
     if (!projectRootPath) {
@@ -163,6 +171,7 @@ export function resolveCodexRuntime(options: ResolveCodexRuntimeOptions): Resolv
 
     return resolveRuntimeFromRoot({
       browserRuntimePlatformArtifactVerifier: options.browserRuntimePlatformArtifactVerifier,
+      signal: options.signal,
       source: "staged",
       runtimeRoot: path.join(projectRootPath, ".generated", "codex-runtime", "agent-runtime"),
       missingBinaryMessage:
@@ -177,8 +186,27 @@ export function resolveCodexRuntime(options: ResolveCodexRuntimeOptions): Resolv
 
   return resolveRuntimeFromRoot({
     browserRuntimePlatformArtifactVerifier: options.browserRuntimePlatformArtifactVerifier,
+    signal: options.signal,
     source: "bundled",
     runtimeRoot: resourcesPath,
     missingBinaryMessage: "Bundled agent runtime is missing or corrupted. Reinstall Nodex.",
   });
 }
+
+/** Startup cancellation waits for all file handles and native inspectors to close. */
+export const resolveCodexRuntimeEffect = (
+  options: Omit<ResolveCodexRuntimeOptions, "signal">,
+): Effect.Effect<ResolvedCodexRuntime, Cause.UnknownError> =>
+  Effect.callback((resume, signal) => {
+    const pending = resolveCodexRuntime({ ...options, signal });
+    pending.then(
+      (runtime) => resume(Effect.succeed(runtime)),
+      (cause) => resume(Effect.fail(new Cause.UnknownError(cause))),
+    );
+    return Effect.promise(() =>
+      pending.then(
+        () => undefined,
+        () => undefined,
+      ),
+    );
+  });

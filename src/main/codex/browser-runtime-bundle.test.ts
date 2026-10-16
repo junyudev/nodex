@@ -75,8 +75,8 @@ afterEach(() => {
 });
 
 describe("resolveBrowserRuntimeBundle", () => {
-  test("returns an explicit unavailable state when no bundle is installed", () => {
-    const result = resolveFixture(makeRuntimeRoot());
+  test("returns an explicit unavailable state when no bundle is installed", async () => {
+    const result = await resolveFixture(makeRuntimeRoot());
 
     expect(result).toMatchObject({
       reason: "manifest-missing",
@@ -84,12 +84,12 @@ describe("resolveBrowserRuntimeBundle", () => {
     });
   });
 
-  test("exposes only verified absolute bundle paths", () => {
+  test("exposes only verified absolute bundle paths", async () => {
     const runtimeRoot = makeRuntimeRoot();
     const bundleRoot = path.join(runtimeRoot, BROWSER_RUNTIME_BUNDLE_DIRECTORY);
     const manifest = writeBrowserRuntimeFixture(bundleRoot);
 
-    const result = resolveFixture(runtimeRoot);
+    const result = await resolveFixture(runtimeRoot);
 
     expect(result.status).toBe("available");
     if (result.status !== "available") return;
@@ -139,22 +139,22 @@ describe("resolveBrowserRuntimeBundle", () => {
     );
   });
 
-  test("makes a tampered payload unavailable before it reaches thread config", () => {
+  test("makes a tampered payload unavailable before it reaches thread config", async () => {
     const runtimeRoot = makeRuntimeRoot();
     const bundleRoot = path.join(runtimeRoot, BROWSER_RUNTIME_BUNDLE_DIRECTORY);
     writeBrowserRuntimeFixture(bundleRoot);
-    fs.appendFileSync(
-      path.join(bundleRoot, "marketplace", "plugins", "browser", "client.js"),
-      "tampered",
-    );
+    const clientPath = path.join(bundleRoot, "marketplace", "plugins", "browser", "client.js");
+    const payload = fs.readFileSync(clientPath);
+    payload[0] = payload[0]! ^ 0xff;
+    fs.writeFileSync(clientPath, payload);
 
-    expect(resolveFixture(runtimeRoot)).toMatchObject({
+    expect(await resolveFixture(runtimeRoot)).toMatchObject({
       reason: "artifact-integrity",
       status: "unavailable",
     });
   });
 
-  test("rejects symlinked artifact parents even when their payload is valid", () => {
+  test("rejects symlinked artifact parents even when their payload is valid", async () => {
     const runtimeRoot = makeRuntimeRoot();
     const bundleRoot = path.join(runtimeRoot, BROWSER_RUNTIME_BUNDLE_DIRECTORY);
     writeBrowserRuntimeFixture(bundleRoot);
@@ -163,30 +163,30 @@ describe("resolveBrowserRuntimeBundle", () => {
     fs.renameSync(pluginRoot, relocatedPluginRoot);
     fs.symlinkSync(relocatedPluginRoot, pluginRoot);
 
-    expect(resolveFixture(runtimeRoot)).toMatchObject({
+    expect(await resolveFixture(runtimeRoot)).toMatchObject({
       reason: "artifact-invalid",
       status: "unavailable",
     });
   });
 
-  test("rejects a valid bundle without an exact conformance record", () => {
+  test("rejects a valid bundle without an exact conformance record", async () => {
     const runtimeRoot = makeRuntimeRoot();
     writeBrowserRuntimeFixture(path.join(runtimeRoot, BROWSER_RUNTIME_BUNDLE_DIRECTORY));
 
-    expect(resolveFixture(runtimeRoot, [])).toMatchObject({
+    expect(await resolveFixture(runtimeRoot, [])).toMatchObject({
       reason: "untested-runtime-pair",
       status: "unavailable",
     });
   });
 
-  test("accepts only the exact app-server and Browser artifact identities", () => {
+  test("accepts only the exact app-server and Browser artifact identities", async () => {
     const runtimeRoot = makeRuntimeRoot();
     writeBrowserRuntimeFixture(path.join(runtimeRoot, BROWSER_RUNTIME_BUNDLE_DIRECTORY), {
       codexCliVersion: "0.146.0-alpha.9",
       codexCompatibilityVersion: "0.144.5",
     });
 
-    expect(resolveFixture(runtimeRoot).status).toBe("available");
+    expect((await resolveFixture(runtimeRoot)).status).toBe("available");
     const pair = testedPairFor(runtimeRoot)[0];
     if (!pair) throw new Error("Expected a tested fixture pair");
     const wrongAppServerPair: TestedBrowserAppServerPair = {
@@ -194,19 +194,19 @@ describe("resolveBrowserRuntimeBundle", () => {
       appServer: { ...pair.appServer, entrypointSha256: "d".repeat(64) },
     };
 
-    expect(resolveFixture(runtimeRoot, [wrongAppServerPair])).toMatchObject({
+    expect(await resolveFixture(runtimeRoot, [wrongAppServerPair])).toMatchObject({
       reason: "untested-runtime-pair",
       status: "unavailable",
     });
   });
 
-  test("provides a platform verification seam for architecture and signing checks", () => {
+  test("provides a platform verification seam for architecture and signing checks", async () => {
     const runtimeRoot = makeRuntimeRoot();
     writeBrowserRuntimeFixture(path.join(runtimeRoot, BROWSER_RUNTIME_BUNDLE_DIRECTORY));
 
-    const result = resolveBrowserRuntimeBundle({
+    const result = await resolveBrowserRuntimeBundle({
       appServerIdentity: APP_SERVER_IDENTITY,
-      platformArtifactVerifier: ({ artifact, manifest }) =>
+      platformArtifactVerifier: async ({ artifact, manifest }) =>
         artifact.kind === "native-addon" && manifest.peerAuthorization.signingTeamId !== "REALTEAM"
           ? "unexpected signing team"
           : null,
@@ -222,13 +222,13 @@ describe("resolveBrowserRuntimeBundle", () => {
     });
   });
 
-  test("rejects an invalid manifest without reading undeclared paths", () => {
+  test("rejects an invalid manifest without reading undeclared paths", async () => {
     const runtimeRoot = makeRuntimeRoot();
     const bundleRoot = path.join(runtimeRoot, BROWSER_RUNTIME_BUNDLE_DIRECTORY);
     fs.mkdirSync(bundleRoot);
     fs.writeFileSync(path.join(bundleRoot, BROWSER_RUNTIME_MANIFEST_FILENAME), "{}");
 
-    expect(resolveFixture(runtimeRoot)).toMatchObject({
+    expect(await resolveFixture(runtimeRoot)).toMatchObject({
       reason: "invalid-manifest",
       status: "unavailable",
     });

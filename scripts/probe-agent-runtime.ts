@@ -213,7 +213,9 @@ const main = Effect.gen(function* () {
   const argv = process.argv.slice(2);
   const binaryPath = path.resolve(
     readOption(argv, "--binary") ??
-      resolveCodexRuntime({ isPackaged: false, projectRootPath: projectRoot }).binaryPath,
+      (yield* Effect.tryPromise((signal) =>
+        resolveCodexRuntime({ isPackaged: false, projectRootPath: projectRoot, signal }),
+      )).binaryPath,
   );
   const explicitStateHome = readOption(argv, "--state-home");
   const temporaryRoot = explicitStateHome

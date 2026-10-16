@@ -82,10 +82,14 @@ export function readBrowserRuntimeSourceManifest(sourceRoot: string): BrowserRun
   return manifest;
 }
 
-export function assertBrowserRuntimeSourceClosure(
+function assertBrowserRuntimeFileClosure(
   sourceRoot: string,
   manifest: BrowserRuntimeManifest,
 ): void {
+  const rootStats = fs.lstatSync(sourceRoot);
+  if (!rootStats.isDirectory() || rootStats.isSymbolicLink()) {
+    throw new Error(`Browser runtime source must be a real directory: ${sourceRoot}`);
+  }
   const expectedFiles = [
     BROWSER_RUNTIME_MANIFEST_FILENAME,
     ...manifest.artifacts.map((artifact) => artifact.path),
@@ -94,7 +98,13 @@ export function assertBrowserRuntimeSourceClosure(
   if (JSON.stringify(actualFiles) !== JSON.stringify(expectedFiles)) {
     throw new Error("Browser runtime source must contain exactly the manifest-declared artifacts");
   }
+}
 
+export function assertBrowserRuntimeSourceClosure(
+  sourceRoot: string,
+  manifest: BrowserRuntimeManifest,
+): void {
+  assertBrowserRuntimeFileClosure(sourceRoot, manifest);
   for (const artifact of manifest.artifacts) {
     const artifactPath = path.join(sourceRoot, ...artifact.path.split("/"));
     const stats = fs.lstatSync(artifactPath);
@@ -175,7 +185,9 @@ function serializedActiveManifest(sourceRoot: string, manifest: BrowserRuntimeMa
   return Buffer.from(`${JSON.stringify(manifest, null, 2)}\n`, "utf8");
 }
 
-export function stageBrowserRuntime(options: StageBrowserRuntimeOptions): BrowserRuntimeManifest {
+export async function stageBrowserRuntime(
+  options: StageBrowserRuntimeOptions,
+): Promise<BrowserRuntimeManifest> {
   const sourceRoot = path.resolve(options.sourceRoot);
   const runtimeRoot = path.resolve(options.runtimeRoot);
   const sourceStats = fs.lstatSync(sourceRoot);
@@ -205,8 +217,10 @@ export function stageBrowserRuntime(options: StageBrowserRuntimeOptions): Browse
       path.join(activeRoot, BROWSER_RUNTIME_MANIFEST_FILENAME),
     );
     if (activeManifestBytes.equals(activeManifest)) {
-      assertBrowserRuntimeSourceClosure(activeRoot, manifest);
-      const verification = resolveBrowserRuntimeBundle({
+      // Preserve exact closure checks here; the resolver owns artifact hashes,
+      // executable modes, platform verification, and the tested runtime pair.
+      assertBrowserRuntimeFileClosure(activeRoot, manifest);
+      const verification = await resolveBrowserRuntimeBundle({
         appServerIdentity: options.appServerIdentity,
         platformArtifactVerifier: options.platformArtifactVerifier,
         runtimeRoot,
@@ -247,7 +261,7 @@ export function stageBrowserRuntime(options: StageBrowserRuntimeOptions): Browse
     fs.writeFileSync(manifestPath, activeManifestBytes, { mode: REGULAR_RUNTIME_MODE });
     fs.chmodSync(manifestPath, REGULAR_RUNTIME_MODE);
 
-    const verification = resolveBrowserRuntimeBundle({
+    const verification = await resolveBrowserRuntimeBundle({
       appServerIdentity: options.appServerIdentity,
       platformArtifactVerifier: options.platformArtifactVerifier,
       runtimeRoot: temporaryParent,
@@ -321,9 +335,9 @@ function parseCliOptions(argv: string[]): StageBrowserRuntimeOptions {
   };
 }
 
-if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+async function main(): Promise<void> {
   try {
-    const manifest = stageBrowserRuntime(parseCliOptions(process.argv.slice(2)));
+    const manifest = await stageBrowserRuntime(parseCliOptions(process.argv.slice(2)));
     process.stdout.write(
       `${JSON.stringify({
         artifacts: manifest.artifacts.length,
@@ -338,4 +352,8 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
     process.stderr.write(`${message}\n`);
     process.exitCode = 1;
   }
+}
+
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  void main();
 }

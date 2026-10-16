@@ -1,12 +1,31 @@
 import { createHash } from "node:crypto";
 import fs from "node:fs";
+import asyncFs, { open as openArtifact, type FileHandle } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { describe, expect, test } from "vite-plus/test";
+import { setImmediate as nextTurn } from "node:timers/promises";
+import * as Effect from "effect/Effect";
+import * as Exit from "effect/Exit";
+import * as Fiber from "effect/Fiber";
+import { it } from "@effect/vitest";
+import { describe, expect, test, vi } from "vite-plus/test";
 import { BROWSER_RUNTIME_BUNDLE_DIRECTORY } from "../../shared/browser-runtime-metadata";
 import { AGENT_RUNTIME_LAYOUT_VERSION } from "../../shared/codex-runtime-metadata";
 import { writeBrowserRuntimeFixture } from "./browser-runtime-test-fixture";
-import { resolveCodexRuntime } from "./codex-runtime";
+import { resolveCodexRuntime, resolveCodexRuntimeEffect } from "./codex-runtime";
+
+vi.mock("node:fs/promises", async (importOriginal) => {
+  const original = await importOriginal<typeof import("node:fs/promises")>();
+  return { ...original, open: vi.fn(original.open) };
+});
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((complete) => {
+    resolve = complete;
+  });
+  return { promise, resolve };
+}
 
 function writeRuntime(rootPath: string): void {
   fs.mkdirSync(rootPath, { recursive: true });
@@ -102,10 +121,61 @@ function makeStagedRuntimeFixture(): { cleanup: () => void; projectRootPath: str
 }
 
 describe("codex-runtime", () => {
-  test("resolves the bundled Codex app-server runtime from Electron Resources", () => {
+  it.effect("startup interruption waits for an in-flight artifact handle to close", () =>
+    Effect.gen(function* () {
+      const fixture = makeBundledRuntimeFixture();
+      const artifactPath = path.join(fixture.resourcesPath, "bin", "codex");
+      const opened = deferred<FileHandle>();
+      const finishOpen = deferred<void>();
+      const originalOpen = asyncFs.open.bind(asyncFs);
+      let artifactHandle: FileHandle | undefined;
+      const open = vi.mocked(openArtifact).mockImplementation(async (...args) => {
+        const file = await originalOpen(...args);
+        if (args[0] !== artifactPath) return file;
+        artifactHandle = file;
+        opened.resolve(file);
+        await finishOpen.promise;
+        return file;
+      });
+      let settled = false;
+      const pending = yield* Effect.forkChild(
+        resolveCodexRuntimeEffect({ isPackaged: true, resourcesPath: fixture.resourcesPath }),
+      );
+
+      try {
+        const file = yield* Effect.promise(() => opened.promise);
+        const interruption = yield* Effect.forkChild(
+          Fiber.interrupt(pending).pipe(
+            Effect.tap(() =>
+              Effect.sync(() => {
+                settled = true;
+              }),
+            ),
+          ),
+        );
+        yield* Effect.promise(() => nextTurn());
+        expect(settled).toBe(false);
+        expect(file.fd).toBeGreaterThanOrEqual(0);
+
+        finishOpen.resolve();
+        yield* Fiber.join(interruption);
+        expect(Exit.hasInterrupts(yield* Fiber.await(pending))).toBe(true);
+        expect(file.fd).toBe(-1);
+      } finally {
+        finishOpen.resolve();
+        yield* Fiber.interrupt(pending);
+        if (artifactHandle)
+          yield* Effect.promise(() => vi.waitFor(() => expect(artifactHandle?.fd).toBe(-1)));
+        open.mockImplementation(originalOpen);
+        fixture.cleanup();
+      }
+    }),
+  );
+
+  test("resolves the bundled Codex app-server runtime from Electron Resources", async () => {
     const fixture = makeBundledRuntimeFixture();
     try {
-      const runtime = resolveCodexRuntime({
+      const runtime = await resolveCodexRuntime({
         isPackaged: true,
         resourcesPath: fixture.resourcesPath,
       });
@@ -130,22 +200,22 @@ describe("codex-runtime", () => {
     }
   });
 
-  test("throws before startup when the bundled runtime omits a declared artifact", () => {
+  test("throws before startup when the bundled runtime omits a declared artifact", async () => {
     const fixture = makeBundledRuntimeFixture();
     try {
       fs.rmSync(path.join(fixture.resourcesPath, "bin", "codex-code-mode-host"));
-      expect(() =>
+      await expect(
         resolveCodexRuntime({
           isPackaged: true,
           resourcesPath: fixture.resourcesPath,
         }),
-      ).toThrow("artifact is missing: bin/codex-code-mode-host");
+      ).rejects.toThrow("artifact is missing: bin/codex-code-mode-host");
     } finally {
       fixture.cleanup();
     }
   });
 
-  test("throws before startup when a staged runtime artifact was modified", () => {
+  test("throws before startup when a staged runtime artifact was modified", async () => {
     const fixture = makeStagedRuntimeFixture();
     try {
       fs.appendFileSync(
@@ -159,18 +229,18 @@ describe("codex-runtime", () => {
         ),
         "tampered",
       );
-      expect(() =>
+      await expect(
         resolveCodexRuntime({
           isPackaged: false,
           projectRootPath: fixture.projectRootPath,
         }),
-      ).toThrow("artifact size does not match metadata: bin/codex-code-mode-host");
+      ).rejects.toThrow("artifact size does not match metadata: bin/codex-code-mode-host");
     } finally {
       fixture.cleanup();
     }
   });
 
-  test("throws before startup when the staged runtime omits a search path", () => {
+  test("throws before startup when the staged runtime omits a search path", async () => {
     const fixture = makeStagedRuntimeFixture();
     try {
       fs.rmSync(
@@ -183,21 +253,21 @@ describe("codex-runtime", () => {
         ),
         { recursive: true },
       );
-      expect(() =>
+      await expect(
         resolveCodexRuntime({
           isPackaged: false,
           projectRootPath: fixture.projectRootPath,
         }),
-      ).toThrow("artifact is missing: codex-path/rg");
+      ).rejects.toThrow("artifact is missing: codex-path/rg");
     } finally {
       fixture.cleanup();
     }
   });
 
-  test("resolves the staged runtime for unpackaged runs", () => {
+  test("resolves the staged runtime for unpackaged runs", async () => {
     const fixture = makeStagedRuntimeFixture();
     try {
-      const runtime = resolveCodexRuntime({
+      const runtime = await resolveCodexRuntime({
         isPackaged: false,
         projectRootPath: fixture.projectRootPath,
       });
@@ -220,7 +290,7 @@ describe("codex-runtime", () => {
     }
   });
 
-  test("rejects a Browser artifact pair without an exact conformance record", () => {
+  test("rejects a Browser artifact pair without an exact conformance record", async () => {
     const fixture = makeStagedRuntimeFixture();
     try {
       const runtimeRoot = path.join(
@@ -232,8 +302,8 @@ describe("codex-runtime", () => {
       writeBrowserRuntimeFixture(path.join(runtimeRoot, BROWSER_RUNTIME_BUNDLE_DIRECTORY), {
         codexCompatibilityVersion: "0.152.0",
       });
-      const runtime = resolveCodexRuntime({
-        browserRuntimePlatformArtifactVerifier: () => null,
+      const runtime = await resolveCodexRuntime({
+        browserRuntimePlatformArtifactVerifier: async () => null,
         isPackaged: false,
         projectRootPath: fixture.projectRootPath,
       });
@@ -248,15 +318,15 @@ describe("codex-runtime", () => {
     }
   });
 
-  test("throws when the staged runtime is missing", () => {
+  test("throws when the staged runtime is missing", async () => {
     const fixture = fs.mkdtempSync(path.join(os.tmpdir(), "nodex-agent-project-missing-"));
     try {
-      expect(() =>
+      await expect(
         resolveCodexRuntime({
           isPackaged: false,
           projectRootPath: fixture,
         }),
-      ).toThrow("Agent runtime is missing or incomplete");
+      ).rejects.toThrow("Agent runtime is missing or incomplete");
     } finally {
       fs.rmSync(fixture, { recursive: true, force: true });
     }

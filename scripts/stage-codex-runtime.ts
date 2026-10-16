@@ -38,6 +38,7 @@ import {
 import { ensureImmutableArtifact, resolveImmutableArtifactPath } from "./immutable-artifact-cache";
 import { replaceOwnedDirectory } from "./replace-owned-directory";
 import { stageBrowserRuntime } from "./stage-browser-runtime";
+import { BROWSER_RUNTIME_BUNDLE_DIRECTORY } from "../src/shared/browser-runtime-metadata";
 import type { BrowserRuntimePlatformArtifactVerifier } from "../src/main/codex/browser-runtime-bundle";
 import { projectBundledAppServerRuntimeIdentity } from "../src/shared/browser-app-server-compatibility";
 import {
@@ -176,10 +177,22 @@ function copyRuntimeFile(sourcePath: string, destinationPath: string): void {
 function listRuntimeArtifacts(
   runtimeRoot: string,
   currentPath = runtimeRoot,
+  browserRuntimeVerifiedSeparately = false,
 ): AgentRuntimeArtifact[] {
   const artifacts: AgentRuntimeArtifact[] = [];
   for (const entry of readdirSync(currentPath, { withFileTypes: true })) {
     const artifactPath = join(currentPath, entry.name);
+    if (
+      browserRuntimeVerifiedSeparately &&
+      currentPath === runtimeRoot &&
+      entry.name === BROWSER_RUNTIME_BUNDLE_DIRECTORY
+    ) {
+      if (!entry.isDirectory()) {
+        throw new Error(`Unsupported staged agent runtime artifact: ${artifactPath}`);
+      }
+      // stageBrowserRuntime owns the complete Browser closure verification below.
+      continue;
+    }
     if (entry.isDirectory()) {
       artifacts.push(...listRuntimeArtifacts(runtimeRoot, artifactPath));
       continue;
@@ -237,6 +250,7 @@ const metadataMatchesLock = (input: {
 };
 
 function readReusableRuntime(input: {
+  browserRuntimeVerifiedSeparately: boolean;
   lock: CodexAppServerReleaseLock;
   outputPath: string;
   repositoryRoot: string;
@@ -274,7 +288,11 @@ function readReusableRuntime(input: {
 
   let actualArtifacts: AgentRuntimeArtifact[];
   try {
-    actualArtifacts = listRuntimeArtifacts(runtimeRoot).filter(
+    actualArtifacts = listRuntimeArtifacts(
+      runtimeRoot,
+      runtimeRoot,
+      input.browserRuntimeVerifiedSeparately,
+    ).filter(
       ({ path }) =>
         path !== AGENT_RUNTIME_METADATA_FILENAME && !path.startsWith("browser-runtime/"),
     );
@@ -562,6 +580,7 @@ async function stageCodexRuntimeClosure(
   mkdirSync(outputPath, { recursive: true });
   if (options.reuseExisting) {
     const reusable = readReusableRuntime({
+      browserRuntimeVerifiedSeparately: Boolean(options.browserRuntimeSourceRoot),
       lock,
       outputPath,
       repositoryRoot,
@@ -575,7 +594,7 @@ async function stageCodexRuntimeClosure(
         targetArch: target.targetArch,
       });
       if (options.browserRuntimeSourceRoot) {
-        stageBrowserRuntime({
+        await stageBrowserRuntime({
           appServerIdentity: projectBundledAppServerRuntimeIdentity(reusable),
           platformArtifactVerifier: options.browserRuntimePlatformArtifactVerifier,
           runtimeRoot: join(outputPath, "agent-runtime"),
@@ -704,7 +723,7 @@ async function stageCodexRuntimeClosure(
     writeFileSync(metadataPath, `${JSON.stringify(metadata, null, 2)}\n`, "utf8");
     chmodSync(metadataPath, REGULAR_RUNTIME_MODE);
     if (options.browserRuntimeSourceRoot) {
-      stageBrowserRuntime({
+      await stageBrowserRuntime({
         appServerIdentity: projectBundledAppServerRuntimeIdentity(metadata),
         platformArtifactVerifier: options.browserRuntimePlatformArtifactVerifier,
         runtimeRoot: tempRuntimeRoot,

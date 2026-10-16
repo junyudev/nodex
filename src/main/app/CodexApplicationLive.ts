@@ -25,7 +25,7 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import { CODEX_INTEGRATION_CAPABILITIES } from "../../shared/codex-integration-capabilities";
 import { codexCliAppServerArgs } from "../../shared/codex-app-server-launch";
-import { resolveCodexRuntime } from "../codex/codex-runtime";
+import { resolveCodexRuntimeEffect, type ResolvedCodexRuntime } from "../codex/codex-runtime";
 import { codexFeatureDefaultLaunchArgs } from "../codex/codex-feature-defaults";
 import { CodexAccount, live as codexAccountLive } from "../codex-application/CodexAccount";
 import {
@@ -106,7 +106,7 @@ import { codexRuntimeError } from "../codex-runtime/CodexRuntimeError";
 export class CodexPlatform extends Context.Service<
   CodexPlatform,
   {
-    readonly runtime: ReturnType<typeof resolveCodexRuntime>;
+    readonly runtime: ResolvedCodexRuntime;
     readonly codexHome: string;
     readonly accountHome: CodexAccountHome;
     readonly runtimeStateHome: string;
@@ -133,16 +133,20 @@ const platform: Layer.Layer<CodexPlatform, MainApplicationError, MainConfig | Ap
         config.environment.NODE_ENV === "test"
           ? config.environment.NODEX_TEST_AGENT_RUNTIME_PROJECT_ROOT?.trim()
           : undefined;
-      const runtime = yield* Effect.try({
-        try: () =>
-          resolveCodexRuntime({
-            isPackaged: config.isPackaged,
-            projectRootPath: testRuntimeProjectRoot || config.projectRootPath,
-            resourcesPath: config.resourcesPath,
-          }),
-        catch: (cause) =>
-          new MainApplicationError({ phase: "startup", operation: "resolve-codex-runtime", cause }),
-      });
+      const runtime = yield* resolveCodexRuntimeEffect({
+        isPackaged: config.isPackaged,
+        projectRootPath: testRuntimeProjectRoot || config.projectRootPath,
+        resourcesPath: config.resourcesPath,
+      }).pipe(
+        Effect.mapError(
+          (cause) =>
+            new MainApplicationError({
+              phase: "startup",
+              operation: "resolve-codex-runtime",
+              cause,
+            }),
+        ),
+      );
       const accountHome = yield* Effect.try({
         try: () =>
           inspectCodexAccountHome({

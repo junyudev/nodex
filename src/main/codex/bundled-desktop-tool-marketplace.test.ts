@@ -16,7 +16,8 @@ import {
 
 const temporaryRoots: string[] = [];
 
-function makeRuntime(targetArch: "arm64" | "x64" = "arm64") {
+async function makeRuntime() {
+  const targetArch = "arm64";
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "nodex-desktop-tools-"));
   temporaryRoots.push(root);
   const runtimeRoot = path.join(root, "runtime");
@@ -25,7 +26,7 @@ function makeRuntime(targetArch: "arm64" | "x64" = "arm64") {
     targetArch,
   });
   const testedPair = makeTestedBrowserAppServerPair({ bundleRoot, manifest });
-  const runtime = resolveBrowserRuntimeBundle({
+  const runtime = await resolveBrowserRuntimeBundle({
     appServerIdentity: testedPair.appServer,
     runtimeRoot,
     targetArch,
@@ -71,7 +72,7 @@ describe("materializeBundledDesktopToolMarketplace", () => {
   });
 
   test("atomically materializes desktop tools while preserving the verified Computer Use plugin", async () => {
-    const fixture = makeRuntime();
+    const fixture = await makeRuntime();
     const sourceSkill = path.join(
       fixture.bundle.paths.computerUsePluginRoot!,
       "skills",
@@ -154,7 +155,7 @@ describe("materializeBundledDesktopToolMarketplace", () => {
   });
 
   test("reuses a valid materialization without replacing local plugin files", async () => {
-    const fixture = makeRuntime();
+    const fixture = await makeRuntime();
     const first = await materializeBundledDesktopToolMarketplace({
       bundle: fixture.bundle,
       includeComputerUse: true,
@@ -174,7 +175,7 @@ describe("materializeBundledDesktopToolMarketplace", () => {
   });
 
   test("rebuilds when an attested Chrome closure artifact no longer matches", async () => {
-    const fixture = makeRuntime();
+    const fixture = await makeRuntime();
     const first = await materializeBundledDesktopToolMarketplace({
       bundle: fixture.bundle,
       includeComputerUse: false,
@@ -198,10 +199,20 @@ describe("materializeBundledDesktopToolMarketplace", () => {
     );
   });
 
-  test("omits Computer Use when the architecture capability is unavailable", async () => {
-    const fixture = makeRuntime("x64");
+  test("omits Computer Use when the runtime capability is unavailable", async () => {
+    const fixture = await makeRuntime();
+    const bundle = {
+      ...fixture.bundle,
+      manifest: {
+        ...fixture.bundle.manifest,
+        capabilities: {
+          ...fixture.bundle.manifest.capabilities,
+          computerUse: { status: "unavailable", reason: "architecture-unsupported" } as const,
+        },
+      },
+    };
     const result = await materializeBundledDesktopToolMarketplace({
-      bundle: fixture.bundle,
+      bundle,
       includeComputerUse: true,
       runtimeStateHome: fixture.runtimeStateHome,
     });

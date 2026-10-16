@@ -50,7 +50,7 @@ const machOFixture = (): string => {
 const verifierForMinimum = (minimum: string): BrowserRuntimePlatformArtifactVerifier =>
   createBrowserRuntimePlatformArtifactVerifier({
     platform: "darwin",
-    runCommand: (command, arguments_) => {
+    runCommand: async (command, arguments_) => {
       if (command === "/usr/bin/lipo") return "arm64";
       if (command === "/usr/bin/otool") return buildVersion(minimum);
       if (arguments_[0] === "-dv") return "TeamIdentifier=TEAM";
@@ -70,15 +70,15 @@ describe("Browser runtime macOS product contract", () => {
     ).toBe("10.13");
   });
 
-  test("allows older third-party slices and rejects slices newer than the product minimum", () => {
+  test("allows older third-party slices and rejects slices newer than the product minimum", async () => {
     const artifactPath = machOFixture();
-    expect(verifierForMinimum("13.5")(verificationInput(artifactPath))).toBeNull();
-    expect(verifierForMinimum("16.0")(verificationInput(artifactPath))).toContain(
+    expect(await verifierForMinimum("13.5")(verificationInput(artifactPath))).toBeNull();
+    expect(await verifierForMinimum("16.0")(verificationInput(artifactPath))).toContain(
       "newer than the product minimum 15.0",
     );
   });
 
-  test("distinguishes an artifact deployment target from the product minimum", () => {
+  test("distinguishes an artifact deployment target from the product minimum", async () => {
     const artifactPath = machOFixture();
     const input = verificationInput(artifactPath);
     input.artifact.path = "native/sky.node";
@@ -87,7 +87,9 @@ describe("Browser runtime macOS product contract", () => {
       artifactMinimumMacOSVersion: "13.0",
     } as never;
 
-    expect(verifierForMinimum("13.0")(input)).toBeNull();
-    expect(verifierForMinimum("14.0")(input)).toContain("does not match manifest declaration 13.0");
+    expect(await verifierForMinimum("13.0")(input)).toBeNull();
+    expect(await verifierForMinimum("14.0")(input)).toContain(
+      "does not match manifest declaration 13.0",
+    );
   });
 });

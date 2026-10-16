@@ -26,14 +26,14 @@ import { ComputerUseRuntime, testLayer } from "./ComputerUseRuntime";
 
 const temporaryRoots: string[] = [];
 
-function makeRuntimeFixture() {
+async function makeRuntimeFixture() {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "nodex-computer-use-runtime-"));
   temporaryRoots.push(root);
   const runtimeRoot = path.join(root, "runtime");
   const bundleRoot = path.join(runtimeRoot, BROWSER_RUNTIME_BUNDLE_DIRECTORY);
   const manifest = writeBrowserRuntimeFixture(bundleRoot);
   const testedPair = makeTestedBrowserAppServerPair({ bundleRoot, manifest });
-  const browserRuntime = resolveBrowserRuntimeBundle({
+  const browserRuntime = await resolveBrowserRuntimeBundle({
     appServerIdentity: testedPair.appServer,
     runtimeRoot,
     targetArch: "arm64",
@@ -123,7 +123,7 @@ function makeHost(overrides: Partial<ComputerUseHostPlatform> = {}): HostHarness
 const buildRuntime = (input: {
   readonly host: ComputerUseHostPlatform;
   readonly root: string;
-  readonly browserRuntime: ReturnType<typeof makeRuntimeFixture>["browserRuntime"];
+  readonly browserRuntime: Awaited<ReturnType<typeof makeRuntimeFixture>>["browserRuntime"];
   readonly terminateManagedServiceOnDispose?: boolean;
 }) =>
   Effect.gen(function* () {
@@ -146,7 +146,7 @@ const buildRuntime = (input: {
 
 it.effect("owns readiness, native requests, managed service, and release in one Scope", () =>
   Effect.gen(function* () {
-    const fixture = makeRuntimeFixture();
+    const fixture = yield* Effect.promise(() => makeRuntimeFixture());
     const harness = makeHost();
     const { runtime, scope } = yield* buildRuntime({ ...fixture, host: harness.host });
     assert.deepEqual(runtime.managedServiceSnapshot(), { generation: 0, status: "pending" });
@@ -195,7 +195,7 @@ it.effect("owns readiness, native requests, managed service, and release in one 
 
 it.effect("publishes generation-fenced managed-service transitions", () =>
   Effect.gen(function* () {
-    const fixture = makeRuntimeFixture();
+    const fixture = yield* Effect.promise(() => makeRuntimeFixture());
     const harness = makeHost();
     const { runtime, scope } = yield* buildRuntime({ ...fixture, host: harness.host });
     const transitions = yield* Effect.forkChild(
@@ -226,7 +226,7 @@ it.effect("publishes generation-fenced managed-service transitions", () =>
 
 it.effect("respawns an invalid exact process and fences stale loss reconciliation", () =>
   Effect.gen(function* () {
-    const fixture = makeRuntimeFixture();
+    const fixture = yield* Effect.promise(() => makeRuntimeFixture());
     const livePids = new Set([5001, 5002]);
     const pids = [5001, 5002];
     const harness = makeHost({
@@ -262,7 +262,7 @@ it.effect("respawns an invalid exact process and fences stale loss reconciliatio
 
 it.effect("uses the Effect clock while waiting for a spawned service to become valid", () =>
   Effect.gen(function* () {
-    const fixture = makeRuntimeFixture();
+    const fixture = yield* Effect.promise(() => makeRuntimeFixture());
     let valid = false;
     const harness = makeHost({
       isProcessAlive: () => valid,
@@ -286,7 +286,7 @@ it.effect("uses the Effect clock while waiting for a spawned service to become v
 
 it.effect("fences a late native-pipe start before closing the owning Scope", () =>
   Effect.gen(function* () {
-    const fixture = makeRuntimeFixture();
+    const fixture = yield* Effect.promise(() => makeRuntimeFixture());
     const releaseStart = yield* Deferred.make<void>();
     let closeCount = 0;
     const harness = makeHost({
@@ -312,7 +312,7 @@ it.effect("fences a late native-pipe start before closing the owning Scope", () 
 
 it.effect("terminates only an exact managed process when explicitly requested", () =>
   Effect.gen(function* () {
-    const fixture = makeRuntimeFixture();
+    const fixture = yield* Effect.promise(() => makeRuntimeFixture());
     const harness = makeHost();
     const { runtime, scope } = yield* buildRuntime({
       ...fixture,
@@ -330,7 +330,7 @@ it.effect("terminates only an exact managed process when explicitly requested", 
 
 it.effect("projects unsupported hosts without acquiring native resources", () =>
   Effect.gen(function* () {
-    const fixture = makeRuntimeFixture();
+    const fixture = yield* Effect.promise(() => makeRuntimeFixture());
     const harness = makeHost({ platform: "linux" });
     const { runtime, scope } = yield* buildRuntime({ ...fixture, host: harness.host });
 
@@ -347,7 +347,7 @@ it.effect("projects unsupported hosts without acquiring native resources", () =>
 
 it.effect("keeps runtime availability best-effort when config publication fails", () =>
   Effect.gen(function* () {
-    const fixture = makeRuntimeFixture();
+    const fixture = yield* Effect.promise(() => makeRuntimeFixture());
     const harness = makeHost({
       writeRuntimeConfig: () =>
         Effect.fail(
@@ -368,7 +368,7 @@ it.effect(
   "releases a late launched helper when its request is interrupted during Profile close",
   () =>
     Effect.gen(function* () {
-      const fixture = makeRuntimeFixture();
+      const fixture = yield* Effect.promise(() => makeRuntimeFixture());
       const launchStarted = yield* Deferred.make<void>();
       const finishLaunch = yield* Deferred.make<void>();
       const harness = makeHost({

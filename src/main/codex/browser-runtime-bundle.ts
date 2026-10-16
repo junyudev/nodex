@@ -1,5 +1,9 @@
-import { createHash } from "node:crypto";
-import fs from "node:fs";
+import type { Stats } from "node:fs";
+import fs from "node:fs/promises";
+import {
+  readRuntimeArtifactSha256,
+  verifyRuntimeArtifacts,
+} from "../platform/node/RuntimeArtifactVerification";
 import path from "node:path";
 import {
   BROWSER_RUNTIME_BUNDLE_DIRECTORY,
@@ -72,6 +76,7 @@ type ResolveBrowserRuntimeBundleOptions = {
   appServerIdentity: AppServerRuntimeIdentity;
   platformArtifactVerifier?: BrowserRuntimePlatformArtifactVerifier;
   runtimeRoot: string;
+  signal?: AbortSignal;
   targetArch?: NodeJS.Architecture;
   targetPlatform?: NodeJS.Platform;
   testedPairs?: readonly TestedBrowserAppServerPair[];
@@ -81,7 +86,8 @@ export type BrowserRuntimePlatformArtifactVerifier = (input: {
   artifact: BrowserRuntimeArtifact;
   artifactPath: string;
   manifest: BrowserRuntimeManifest;
-}) => string | null;
+  signal?: AbortSignal;
+}) => Promise<string | null>;
 
 function unavailable(
   reason: BrowserRuntimeUnavailableReason,
@@ -94,28 +100,13 @@ function resolveRelativePath(rootPath: string, relativePath: string): string {
   return path.join(rootPath, ...relativePath.split("/"));
 }
 
-function readSha256(filePath: string): string {
-  const hash = createHash("sha256");
-  const buffer = Buffer.allocUnsafe(1024 * 1024);
-  const fileDescriptor = fs.openSync(filePath, "r");
-  try {
-    for (;;) {
-      const bytesRead = fs.readSync(fileDescriptor, buffer, 0, buffer.length, null);
-      if (bytesRead === 0) return hash.digest("hex");
-      hash.update(buffer.subarray(0, bytesRead));
-    }
-  } finally {
-    fs.closeSync(fileDescriptor);
-  }
-}
-
-function validateDirectoryPath(rootPath: string, relativePath: string): boolean {
+async function validateDirectoryPath(rootPath: string, relativePath: string): Promise<boolean> {
   let currentPath = rootPath;
   for (const segment of relativePath.split("/")) {
     currentPath = path.join(currentPath, segment);
-    let stats: fs.Stats;
+    let stats: Stats;
     try {
-      stats = fs.lstatSync(currentPath);
+      stats = await fs.lstat(currentPath);
     } catch {
       return false;
     }
@@ -124,12 +115,17 @@ function validateDirectoryPath(rootPath: string, relativePath: string): boolean 
   return true;
 }
 
-function validateArtifact(
+async function validateArtifact(
   rootPath: string,
   artifact: BrowserRuntimeArtifact,
-): BrowserRuntimeAvailability | null {
+  signal?: AbortSignal,
+): Promise<BrowserRuntimeAvailability | null> {
+  signal?.throwIfAborted();
   const segments = artifact.path.split("/");
-  if (segments.length > 1 && !validateDirectoryPath(rootPath, segments.slice(0, -1).join("/"))) {
+  if (
+    segments.length > 1 &&
+    !(await validateDirectoryPath(rootPath, segments.slice(0, -1).join("/")))
+  ) {
     return unavailable(
       "artifact-invalid",
       `Browser runtime artifact has an invalid parent directory: ${artifact.path}`,
@@ -137,9 +133,9 @@ function validateArtifact(
   }
 
   const artifactPath = resolveRelativePath(rootPath, artifact.path);
-  let stats: fs.Stats;
+  let stats: Stats;
   try {
-    stats = fs.lstatSync(artifactPath);
+    stats = await fs.lstat(artifactPath);
   } catch {
     return unavailable("artifact-missing", `Browser runtime artifact is missing: ${artifact.path}`);
   }
@@ -155,7 +151,10 @@ function validateArtifact(
       `Browser runtime artifact is not executable: ${artifact.path}`,
     );
   }
-  if (stats.size !== artifact.size || readSha256(artifactPath) !== artifact.sha256) {
+  if (
+    stats.size !== artifact.size ||
+    (await readRuntimeArtifactSha256(artifactPath, signal)) !== artifact.sha256
+  ) {
     return unavailable(
       "artifact-integrity",
       `Browser runtime artifact does not match its manifest: ${artifact.path}`,
@@ -164,38 +163,39 @@ function validateArtifact(
   return null;
 }
 
-function readManifest(manifestPath: string): BrowserRuntimeManifest | null {
+async function readManifest(manifestPath: string): Promise<BrowserRuntimeManifest | null> {
   try {
-    return parseBrowserRuntimeManifest(JSON.parse(fs.readFileSync(manifestPath, "utf8")));
+    return parseBrowserRuntimeManifest(JSON.parse(await fs.readFile(manifestPath, "utf8")));
   } catch {
     return null;
   }
 }
 
-export function resolveBrowserRuntimeBundle(
+export async function resolveBrowserRuntimeBundle(
   options: ResolveBrowserRuntimeBundleOptions,
-): BrowserRuntimeAvailability {
+): Promise<BrowserRuntimeAvailability> {
+  options.signal?.throwIfAborted();
   const rootPath = path.join(options.runtimeRoot, BROWSER_RUNTIME_BUNDLE_DIRECTORY);
   const manifestPath = path.join(rootPath, BROWSER_RUNTIME_MANIFEST_FILENAME);
-  if (!fs.existsSync(manifestPath)) {
+  if (!(await fs.lstat(manifestPath).catch(() => null))) {
     return unavailable(
       "manifest-missing",
       `Browser runtime bundle is unavailable: ${BROWSER_RUNTIME_MANIFEST_FILENAME} is missing`,
     );
   }
 
-  let rootStats: fs.Stats;
+  let rootStats: Stats;
   try {
-    rootStats = fs.lstatSync(rootPath);
+    rootStats = await fs.lstat(rootPath);
   } catch {
     return unavailable("manifest-missing", "Browser runtime bundle directory is missing");
   }
   if (!rootStats.isDirectory() || rootStats.isSymbolicLink()) {
     return unavailable("invalid-manifest", "Browser runtime bundle directory is invalid");
   }
-  let manifestStats: fs.Stats;
+  let manifestStats: Stats;
   try {
-    manifestStats = fs.lstatSync(manifestPath);
+    manifestStats = await fs.lstat(manifestPath);
   } catch {
     return unavailable("manifest-missing", "Browser runtime bundle manifest is missing");
   }
@@ -203,7 +203,7 @@ export function resolveBrowserRuntimeBundle(
     return unavailable("invalid-manifest", "Browser runtime bundle manifest is not a regular file");
   }
 
-  const manifest = readManifest(manifestPath);
+  const manifest = await readManifest(manifestPath);
   if (!manifest) {
     return unavailable("invalid-manifest", "Browser runtime bundle manifest is invalid");
   }
@@ -219,7 +219,7 @@ export function resolveBrowserRuntimeBundle(
 
   const browserIdentity: BrowserPeerRuntimeIdentity = {
     browserPluginVersion: manifest.browserPlugin.version,
-    manifestSha256: readSha256(manifestPath),
+    manifestSha256: await readRuntimeArtifactSha256(manifestPath, options.signal),
     peerCliVersion: manifest.runtimeVersions.codexCli,
     targetArch: manifest.targetArch,
     targetPlatform: manifest.targetPlatform,
@@ -233,29 +233,38 @@ export function resolveBrowserRuntimeBundle(
     );
   }
 
-  for (const artifact of manifest.artifacts) {
-    const failure = validateArtifact(rootPath, artifact);
-    if (failure) return failure;
-    if (artifact.kind === "data" || !options.platformArtifactVerifier) continue;
-    let verificationMessage: string | null;
-    try {
-      verificationMessage = options.platformArtifactVerifier({
-        artifact,
-        artifactPath: resolveRelativePath(rootPath, artifact.path),
-        manifest,
-      });
-    } catch (error) {
-      verificationMessage = error instanceof Error ? error.message : String(error);
-    }
-    if (verificationMessage) {
-      return unavailable(
-        "platform-verification-failed",
-        `Browser runtime platform verification failed for ${artifact.path}: ${verificationMessage}`,
-      );
-    }
-  }
+  const failures = await verifyRuntimeArtifacts(
+    manifest.artifacts,
+    async (artifact) => {
+      const failure = await validateArtifact(rootPath, artifact, options.signal);
+      if (failure) return failure;
+      if (artifact.kind === "data" || !options.platformArtifactVerifier) return null;
+      let verificationMessage: string | null;
+      try {
+        verificationMessage = await options.platformArtifactVerifier({
+          signal: options.signal,
+          artifact,
+          artifactPath: resolveRelativePath(rootPath, artifact.path),
+          manifest,
+        });
+      } catch (error) {
+        options.signal?.throwIfAborted();
+        verificationMessage = error instanceof Error ? error.message : String(error);
+      }
+      if (verificationMessage) {
+        return unavailable(
+          "platform-verification-failed",
+          `Browser runtime platform verification failed for ${artifact.path}: ${verificationMessage}`,
+        );
+      }
+      return null;
+    },
+    options.signal,
+  );
+  const failure = failures.find((candidate) => candidate !== null);
+  if (failure) return failure;
   for (const nodeModuleDir of manifest.browserPlugin.nodeModuleDirs) {
-    if (!validateDirectoryPath(rootPath, nodeModuleDir)) {
+    if (!(await validateDirectoryPath(rootPath, nodeModuleDir))) {
       return unavailable(
         "module-directory-invalid",
         `Browser runtime Node module directory is invalid: ${nodeModuleDir}`,
@@ -264,7 +273,7 @@ export function resolveBrowserRuntimeBundle(
   }
   if (manifest.capabilities.computerUse.status === "available") {
     for (const nodeModuleDir of manifest.capabilities.computerUse.plugin.nodeModuleDirs) {
-      if (validateDirectoryPath(rootPath, nodeModuleDir)) continue;
+      if (await validateDirectoryPath(rootPath, nodeModuleDir)) continue;
       return unavailable(
         "module-directory-invalid",
         `Computer Use runtime Node module directory is invalid: ${nodeModuleDir}`,
@@ -272,6 +281,7 @@ export function resolveBrowserRuntimeBundle(
     }
   }
 
+  options.signal?.throwIfAborted();
   const resolve = (relativePath: string): string => resolveRelativePath(rootPath, relativePath);
   const chrome = manifest.capabilities.browserUse.backends.chrome;
   return {

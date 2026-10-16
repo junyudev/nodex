@@ -103,10 +103,13 @@ async function run(signal: AbortSignal): Promise<void> {
     };
     if (!context.ok || context.result?.project?.id !== scenarioManifest.projectId)
       throw new Error("Development CLI did not resolve the seeded Project");
-    const agentBinary = resolveCodexRuntime({
-      isPackaged: false,
-      projectRootPath: repository,
-    }).binaryPath;
+    const agentBinary = (
+      await resolveCodexRuntime({
+        signal,
+        isPackaged: false,
+        projectRootPath: repository,
+      })
+    ).binaryPath;
     const manifest = {
       schemaVersion: 3,
       executionMode: "supervised-desktop-shell",

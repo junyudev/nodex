@@ -12,6 +12,7 @@ import {
   statSync,
   symlinkSync,
   unlinkSync,
+  utimesSync,
   writeFileSync,
 } from "node:fs";
 import os from "node:os";
@@ -24,7 +25,10 @@ import {
   projectBundledAppServerRuntimeIdentity,
   type TestedBrowserAppServerPair,
 } from "../src/shared/browser-app-server-compatibility";
-import { BROWSER_RUNTIME_MANIFEST_FILENAME } from "../src/shared/browser-runtime-metadata";
+import {
+  BROWSER_RUNTIME_BUNDLE_DIRECTORY,
+  BROWSER_RUNTIME_MANIFEST_FILENAME,
+} from "../src/shared/browser-runtime-metadata";
 import { parseBundledAgentRuntimeMetadata } from "../src/shared/codex-runtime-metadata";
 import {
   stageCodexRuntime,
@@ -463,16 +467,16 @@ describe("stage-codex-runtime", () => {
 
     await stageCodexRuntime(
       stageOptions(input, {
-        browserRuntimePlatformArtifactVerifier: () => null,
+        browserRuntimePlatformArtifactVerifier: async () => null,
         browserRuntimeSourceRoot: browserSourceRoot,
       }),
     );
 
     const runtimeRoot = path.join(input.outputPath, "agent-runtime");
     expect(existsSync(path.join(runtimeRoot, "stale"))).toBe(false);
-    const resolvedBrowser = resolveBrowserRuntimeBundle({
+    const resolvedBrowser = await resolveBrowserRuntimeBundle({
       appServerIdentity: pair.appServer,
-      platformArtifactVerifier: () => null,
+      platformArtifactVerifier: async () => null,
       runtimeRoot,
       targetArch: "arm64",
       targetPlatform: "darwin",
@@ -485,6 +489,57 @@ describe("stage-codex-runtime", () => {
       );
     }
   });
+
+  test("keeps verified Agent artifacts while the Browser owner repairs its damaged closure", async () => {
+    const input = fixture();
+    const candidate = await sealFixture(input);
+    const browserSourceRoot = path.join(input.root, "browser-source");
+    const manifest = writeBrowserRuntimeFixture(browserSourceRoot);
+    browserPairState.pairs = [testedBrowserPair(candidate.metadata, browserSourceRoot)];
+    const options = stageOptions(input, {
+      reuseExisting: true,
+      browserRuntimeSourceRoot: browserSourceRoot,
+      browserRuntimePlatformArtifactVerifier: async () => null,
+    });
+    await stageCodexRuntime(options);
+    const runtimeRoot = path.join(input.outputPath, "agent-runtime");
+    const entrypoint = path.join(runtimeRoot, "bin", "codex");
+    utimesSync(entrypoint, new Date(0), new Date(0));
+    const browserRoot = path.join(runtimeRoot, BROWSER_RUNTIME_BUNDLE_DIRECTORY);
+    const artifact = manifest.artifacts[0]!;
+    const artifactPath = path.join(browserRoot, artifact.path);
+    unlinkSync(artifactPath);
+    symlinkSync(path.join(browserSourceRoot, artifact.path), artifactPath);
+    const undeclaredBrowser = path.join(browserRoot, "undeclared.js");
+    writeFileSync(undeclaredBrowser, "payload");
+
+    await stageCodexRuntime(options);
+
+    expect(statSync(entrypoint).mtimeMs).toBe(0);
+    expect(lstatSync(artifactPath).isSymbolicLink()).toBe(false);
+    expect(existsSync(undeclaredBrowser)).toBe(false);
+    const undeclaredAgent = path.join(runtimeRoot, "undeclared.js");
+    writeFileSync(undeclaredAgent, "payload");
+    await stageCodexRuntime(options);
+    expect(existsSync(undeclaredAgent)).toBe(false);
+    expect(statSync(entrypoint).mtimeMs).toBeGreaterThan(0);
+  });
+
+  test.each([undefined, ""])(
+    "still checks Browser entries when the separate Browser staging source is %j",
+    async (browserRuntimeSourceRoot) => {
+      const input = fixture();
+      await sealFixture(input);
+      const options = stageOptions(input, { reuseExisting: true, browserRuntimeSourceRoot });
+      await stageCodexRuntime(options);
+      const runtimeRoot = path.join(input.outputPath, "agent-runtime");
+      const browserRoot = path.join(runtimeRoot, BROWSER_RUNTIME_BUNDLE_DIRECTORY);
+      mkdirSync(browserRoot);
+      symlinkSync(path.join(input.sourceRoot, "bin", "codex"), path.join(browserRoot, "linked"));
+      await stageCodexRuntime(options);
+      expect(existsSync(browserRoot)).toBe(false);
+    },
+  );
 
   test("reuses a verified closure and repairs modes, bytes, and symlinks", async () => {
     const input = fixture();

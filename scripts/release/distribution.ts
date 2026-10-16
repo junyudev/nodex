@@ -167,7 +167,7 @@ const verifyApp = async (options: {
   if (appIdentity.buildVersion !== options.buildVersion) {
     throw new Error("Packaged app build version does not match the release identity.");
   }
-  verifyCodexRuntime({
+  await verifyCodexRuntime({
     requireBrowserRuntime: true,
     resourcesPath: join(options.appPath, "Contents/Resources"),
     verifyMacosSignatures: true,

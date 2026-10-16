@@ -454,7 +454,7 @@ export const live = (options: ChromeControlRuntimeOptions): Layer.Layer<ChromeCo
           runtimeStateHome: options.runtimeStateHome,
           runtimeVersion: chromeCapability.plugin.version,
           verifyNativeHost: async (candidatePath) => {
-            const failure = verifier({
+            const failure = await verifier({
               artifact: nativeHostArtifact,
               artifactPath: candidatePath,
               manifest: bundle.manifest,
