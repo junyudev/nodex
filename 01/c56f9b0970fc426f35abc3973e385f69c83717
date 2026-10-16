@@ -1,0 +1,267 @@
+src/renderer/features/local-conversation/use-agent-instances.test.tsx
+  s_8bbe4fcc53c54b::t_077b0d015d9221 94,101-122
+  s_8bbe4fcc53c54b::t_4d3eec99ee52d6 123
+src/renderer/lib/renderer-transport.ts
+  s_8bbe4fcc53c54b::t_47c935a2ac0335 24-26
+src/renderer/features/opencode-setup/opencode-setup-model.test.ts
+  s_8bbe4fcc53c54b::t_9e24d1906544e9 2,41-51,56-57
+  s_8bbe4fcc53c54b::t_9379cbb74b475d 55,84-87,105-106,146-150,172-175
+  s_8bbe4fcc53c54b::t_58a2d0cb9af997 58-59,65,101,114,192,194,202-206
+  s_8bbe4fcc53c54b::t_f2263f8fb739ac 39
+  s_8bbe4fcc53c54b::t_d69d777c490bd7 1,3-38,40,52-54,60-64,66-83,88-100,102-104,107-113,115-145,151-171,176-191,193,195-201,207-218
+src/main/platform/node/OpenCodeInstallPlatform.ts
+  s_504f7ab24abf60::t_755db0612e4243 2,198
+  s_504f7ab24abf60::t_3b1c6d29cbdd5f 14,50,52,56,209,211,213-217,219,239,241,249-251,253
+  s_504f7ab24abf60::t_daea1b0ca84cd1 108,227-230,232-233,243
+  s_504f7ab24abf60::t_3b1baf8ce21646 62-64
+  s_504f7ab24abf60::t_50eb5b3d89ac58 4,288-289
+  s_504f7ab24abf60::t_0de33db28386a1 87,221
+  s_504f7ab24abf60::t_f0274ab89438de 237-238,240
+  s_504f7ab24abf60::t_3d9547f479bc19 1,3,5-13,15-49,51,53-55,57-61,65-80,82-86,88-91,110-127,129-149,151-197,199-208,212,220,222-226,234-236,242,244-245,247-248,254-281,283-287
+  s_504f7ab24abf60::t_0b8d8274a42102 92-97,99-107,109
+  s_504f7ab24abf60::t_fb6e9f219a4444 81,98,128,150,210,218,231,246,252,282
+src/renderer/features/opencode-setup/opencode-install-dialog.test.tsx
+  s_8bbe4fcc53c54b::t_869207da528656 1-32,34,36-37,41-47,49-65,67,69-81,83-88,95-112,114-115,118-128,137-141,143-161,163-171,173-176,182-190,192-202
+  s_8bbe4fcc53c54b::t_ec042b86685195 113
+  s_8bbe4fcc53c54b::t_0e5ad04dbd8147 129,133-136
+  s_8bbe4fcc53c54b::t_9088ece528aafb 172
+  s_8bbe4fcc53c54b::t_9379cbb74b475d 177-181
+  s_8bbe4fcc53c54b::t_5be1333ba57638 33,35,38-40,68,116-117
+  s_8bbe4fcc53c54b::t_4d89477e19cc48 48,66,82,89-94,130-132,142,162,191
+src/main/host-runtime/OpenCodeSetup.node.test.ts
+  s_504f7ab24abf60::t_642ccc6a61b089 245,255
+  s_504f7ab24abf60::t_c4ebe617b5d842 10,26,47,79,101-103,107-108,110,161-162,184-185,207,298-300,302-314,316-320
+  s_504f7ab24abf60::t_4b84da2fb04202 1-9,11-25,27-34,36-46,48-49,51-54,60-71,74-78,80,82-95,97-100,104-106,111-118,120-121,141-142,152,154-157,159-160,163,174,179-182,192,204-205,208-216,218,220-221,223-224,226-230,232-242,244,246,248-251,253-254,257-259,263,265,267-274,276-278,280-285,287-291,293-297,321-326,328-333
+  s_504f7ab24abf60::t_45f14c4c943480 55-56,58-59,225,231
+  s_504f7ab24abf60::t_b32cac7a8edaa7 57,123,132,143,148-149,165-171,198,222,243,247,256,260-262,266,275,292,301,315,327
+  s_504f7ab24abf60::t_dba6ce0ee64598 35
+  s_504f7ab24abf60::t_b5afac359d28b6 50
+  s_504f7ab24abf60::t_faae2539095ca7 72-73
+  s_504f7ab24abf60::t_907572b58803fb 81
+  s_504f7ab24abf60::t_f8126c992d700e 96
+  s_504f7ab24abf60::t_42b1a1195c71a8 109
+  s_504f7ab24abf60::t_ca936ae106c9d7 119
+  s_504f7ab24abf60::t_46283e534ce73d 122
+  s_504f7ab24abf60::t_51cd8107475f1c 124-126,129-131
+  s_504f7ab24abf60::t_d64929b73ea8b8 133-135,138-140
+  s_504f7ab24abf60::t_b7b62ff4604dd9 144-147
+  s_504f7ab24abf60::t_2ee4d16409ad2b 150-151
+  s_504f7ab24abf60::t_f73bda8b3c43c7 153
+  s_504f7ab24abf60::t_5f07657171dbb5 158
+  s_504f7ab24abf60::t_229727de5b5951 164
+  s_504f7ab24abf60::t_c5a0a78e61edd4 172-173
+  s_504f7ab24abf60::t_3d46c78c5ade21 175-178
+  s_504f7ab24abf60::t_1bdaa939780c02 183
+  s_504f7ab24abf60::t_175ef79d27d55d 186-191
+  s_504f7ab24abf60::t_cb076288dd36a2 193-197
+  s_504f7ab24abf60::t_f7f5fec27effaf 199-203
+  s_504f7ab24abf60::t_7c2c0f08ec564a 206
+  s_504f7ab24abf60::t_d6ecc754c00f53 217
+  s_504f7ab24abf60::t_33b3a182509c15 219
+  s_504f7ab24abf60::t_88caaa32ce3c04 252
+  s_504f7ab24abf60::t_1d2b3f2e498f06 264
+  s_504f7ab24abf60::t_87fa1b8d6b56c0 279
+  s_504f7ab24abf60::t_e4e7b0f8ab7b00 286
+  s_504f7ab24abf60::t_ba26edff9cd555 127-128,136-137
+docs/product-specs/agent-backend-behavior.md
+  s_504f7ab24abf60::t_20496c12e67271 74
+  s_504f7ab24abf60::t_2b4bc5eb8f5753 75-76
+  s_504f7ab24abf60::t_ac62e4f9cd7e42 72-73,77,86
+  s_504f7ab24abf60::t_eca04898c7df4b 57
+  s_504f7ab24abf60::t_dec9e9bd6afa9c 78-82
+  s_504f7ab24abf60::t_8b0d57f2a7d9fa 83-85
+src/shared/ipc-endpoint-policy.ts
+  s_504f7ab24abf60::t_c309689605e57e 233,631-632
+src/renderer/lib/opencode-setup-runtime.ts
+  s_8bbe4fcc53c54b::t_482da9a90e7643 1-34
+src/renderer/features/opencode-setup/opencode-install-dialog.tsx
+  s_8bbe4fcc53c54b::t_db893bc3d615a5 268-273
+  s_8bbe4fcc53c54b::t_9bc82cf787b426 1-31,33-34,36-80,83-88,92-140,146-149,154-201,210-267,274-295
+  s_8bbe4fcc53c54b::t_b14731aba04a84 32,35
+  s_8bbe4fcc53c54b::t_caec50b559e4d6 81-82
+  s_8bbe4fcc53c54b::t_9379cbb74b475d 89-91,141-145,150-153
+  s_8bbe4fcc53c54b::t_a3e0d300ce9482 202-209
+src/main/host-runtime/OpenCodeSetup.ts
+  s_504f7ab24abf60::t_1182aa6653be86 110,126,179-182,184,186-189,191,196
+  s_504f7ab24abf60::t_0b8d8274a42102 153-161,163-171,173-175,178,192
+  s_504f7ab24abf60::t_45f14c4c943480 33-35,212,221,247
+  s_504f7ab24abf60::t_0fe73c1a9fd4a4 243
+  s_504f7ab24abf60::t_5ca10f3a65690a 1-12,14-32,36-93,95-104,107-109,111-119,121-125,127-128,130-139,141-150,152,176-177,185,194,205,207-211,213-218,220,222-231,233-238,241-242,244,246,248-252
+  s_504f7ab24abf60::t_75ffefdabd95a8 13,94,105-106,120,129,140,151,162,172,183,190,193,195,197-204,206,219,232,239-240,245
+src/shared/ipc-api.ts
+  s_504f7ab24abf60::t_c309689605e57e 1295-1301,1303-1305,2860
+  s_504f7ab24abf60::t_aab36684c5b274 1302,1306
+src/renderer/lib/electron-renderer-transport.ts
+  s_8bbe4fcc53c54b::t_3711a90f9e5f27 367-374
+src/renderer/features/opencode-setup/opencode-setup-owner.ts
+  s_8bbe4fcc53c54b::t_d5c07bc7d5cc1f 1-9,14-60,62-76,78,82-92,106-170
+  s_8bbe4fcc53c54b::t_9379cbb74b475d 10-13
+  s_8bbe4fcc53c54b::t_d08595c188dbf6 61,93-105
+  s_8bbe4fcc53c54b::t_7a16940e9cef39 77,79-81
+docs/CONFIGURATION.md
+  s_504f7ab24abf60::t_ac62e4f9cd7e42 147-149
+  s_504f7ab24abf60::t_62521022584828 161
+  s_504f7ab24abf60::t_eca04898c7df4b 157-160
+src/main/agent-backend/opencode/OpenCodeModels.ts
+  s_504f7ab24abf60::t_e0864173fa8eab 1,7-8
+packages/agent-runtime/src/nodex/OpenCodeCatalog.ts
+  s_504f7ab24abf60::t_377d4d840cebd1 97-102,105
+  s_504f7ab24abf60::t_6fb06f21d0ac54 6-7,25-32,36-39,210,228
+  s_504f7ab24abf60::t_6580d874c32c8b 17-24,33-35,94-96,106-107,110,112,119,121-155,157-176,179-189,191-203,206-208,218,224-225
+  s_504f7ab24abf60::t_97db3cc4cdb86a 9-10,75,85,93
+  s_504f7ab24abf60::t_2276d675282e3f 46-57,86-92,156,177-178,190,217,219-223,226
+  s_504f7ab24abf60::t_e0864173fa8eab 1-5,8,11-16,40-45,58-74,76-84,108-109,113-118,120,205,209,211-216,227
+  s_504f7ab24abf60::t_c23a5740983f9b 103-104,111,204
+src/renderer/components/workbench/opencode-agent-settings-control.test.tsx
+  s_8bbe4fcc53c54b::t_9379cbb74b475d 285-288
+  s_8bbe4fcc53c54b::t_1f54f3a726803a 196,217-223,226-254,256-272,274-277
+  s_8bbe4fcc53c54b::t_2f947a4303b41c 1-2,8-16,22-33,56,137,179,191,193,195,197-216,224-225,281-284,289-335,337,339-354
+  s_8bbe4fcc53c54b::t_28e86c96211af2 192,194,336,338
+  s_8bbe4fcc53c54b::t_a770fc3f96e074 255,273,278-280
+src/main/ipc/handlers/OpenCodeSetupIpc.node.test.ts
+  s_504f7ab24abf60::t_45f14c4c943480 65-67,116-118
+  s_504f7ab24abf60::t_1f60375bfc420a 102,121,153
+  s_504f7ab24abf60::t_0cccc2602d2e42 1-64,68-101,103-115,119-120,122-152,154-155
+src/main/app/RendererIngressLive.ts
+  s_504f7ab24abf60::t_c4a21afdb53ace 70
+  s_504f7ab24abf60::t_3ac81a643c9a55 7-9,69,71
+src/shared/opencode-setup.ts
+  s_504f7ab24abf60::t_c309689605e57e 1-42
+packages/agent-runtime/src/nodex/OpenCodeCatalog.test.ts
+  s_504f7ab24abf60::t_eb899a09c05ec3 51,61,72,187,225
+  s_504f7ab24abf60::t_1eff3ce15620b2 294-296,317-319,342-343,362,389
+  s_504f7ab24abf60::t_97db3cc4cdb86a 1-4,7,9-10,13-15,20,23-24,30-31,38-39,49-50,52,59,165,167,176-178,185-186,231-233,245-248,268-271,293
+  s_504f7ab24abf60::t_f7ba5515712de7 220-224
+  s_504f7ab24abf60::t_6fb06f21d0ac54 16-19,21-22,25-29,32-37,53-55,62-65,70-71,73-102,104-106,108-111,134,166,168-170,179-184,188-219,226-230,234-244,249-267,272-282
+  s_504f7ab24abf60::t_def7f83892e38e 66-69,283-292
+  s_8bbe4fcc53c54b::t_702e47d44961f6 297-316,320-336,338-341,344-361,363-388,390-414
+  s_504f7ab24abf60::t_377d4d840cebd1 337
+  s_504f7ab24abf60::t_663101076c0893 5-6,8,11-12,40-46,48,56-58,60,103,107,112-121,123-131,133,135-164,171-175
+  s_504f7ab24abf60::t_e791166142cbd6 47,122,132
+src/renderer/features/local-conversation/agent-runtime-conversation-adapter.test.tsx
+  s_8bbe4fcc53c54b::t_76a0e37c2e42d6 814-816,823
+  s_8bbe4fcc53c54b::t_9379cbb74b475d 799-801
+  s_8bbe4fcc53c54b::t_ee3e7bd6a5d367 25-27,782-798,802-813,817-822,824-857
+  s_8bbe4fcc53c54b::t_d1eb486aa7e33b 858-859
+src/renderer/features/local-conversation/agent-runtime-conversation-adapter.ts
+  s_8bbe4fcc53c54b::t_365c06e5cf86ee 62,592,611-615,1143-1146,1152
+src/renderer/features/opencode-setup/opencode-executable-status.tsx
+  s_8bbe4fcc53c54b::t_db893bc3d615a5 61,63
+  s_8bbe4fcc53c54b::t_b14731aba04a84 70
+  s_8bbe4fcc53c54b::t_c2960838081116 1-60,62,64-69,71-78
+src/renderer/components/workbench/agent-instance-settings-control.tsx
+  s_8bbe4fcc53c54b::t_8506877a68bf2e 48,67-69,71,74,108,171,241-245,247-248
+  s_8bbe4fcc53c54b::t_1aad95976339a2 63-66,70,246
+src/main/platform/node/OpenCodeExecutable.ts
+  s_504f7ab24abf60::t_eded5e289f0114 1-24
+src/renderer/features/opencode-setup/opencode-setup-owner.test.ts
+  s_8bbe4fcc53c54b::t_f6ee539eb64d24 1-135
+src/shared/opencode-install-log.ts
+  s_8bbe4fcc53c54b::t_7ff68332c7e030 16-17,31-33,50
+  s_8bbe4fcc53c54b::t_9fee337ea8d0cb 1-15,18-30,34-49,51-58
+src/renderer/features/local-conversation/use-agent-instances.ts
+  s_8bbe4fcc53c54b::t_24d94ab652d825 9,44
+docs/ARCHITECTURE.md
+  s_504f7ab24abf60::t_dec9e9bd6afa9c 768-771
+src/shared/opencode-install-log.node.test.ts
+  s_8bbe4fcc53c54b::t_7ff68332c7e030 64,68
+  s_8bbe4fcc53c54b::t_e875a1a87947e8 1-63,65-66,69,75-91
+  s_8bbe4fcc53c54b::t_fb4ce4160fe45a 67,70-74
+src/renderer/features/opencode-setup/use-opencode-setup.ts
+  s_8bbe4fcc53c54b::t_64c05ce8740427 1-94,96-100
+  s_8bbe4fcc53c54b::t_b14731aba04a84 95
+src/main/ipc/handlers/OpenCodeSetupIpc.ts
+  s_504f7ab24abf60::t_3ac81a643c9a55 1-54
+src/renderer/components/ui/dropdown.tsx
+  s_8bbe4fcc53c54b::t_bde9c00902b087 1074
+  s_8bbe4fcc53c54b::t_8ca7c03daf6a3a 968
+  s_8bbe4fcc53c54b::t_27bca8d6c15df3 775-776
+  s_8bbe4fcc53c54b::t_60b3db88a246ad 799,816
+  s_8bbe4fcc53c54b::t_6515327a94e090 985-990
+src/renderer/features/local-conversation/use-agent-model-catalog.ts
+  s_8bbe4fcc53c54b::t_24d94ab652d825 15-16
+src/renderer/components/workbench/opencode-agent-settings-control.tsx
+  s_8bbe4fcc53c54b::t_1aad95976339a2 63-65
+  s_8bbe4fcc53c54b::t_3bfaad5d76bec7 5-8,47,51,66-67,69-71
+  s_8bbe4fcc53c54b::t_59de0e6e9d81d0 68
+src/renderer/features/opencode-setup/opencode-setup.test-fixtures.ts
+  s_8bbe4fcc53c54b::t_27f1d1cb12f6d8 1-53
+src/main/platform/node/OpenCodeInstallPlatform.node.test.ts
+  s_504f7ab24abf60::t_3b1c6d29cbdd5f 8-13,273-284,286-303,305-312,314-316
+  s_504f7ab24abf60::t_755db0612e4243 4,93-94
+  s_504f7ab24abf60::t_0de33db28386a1 32,34,95-97
+  s_504f7ab24abf60::t_f0274ab89438de 102-107,110,152-154
+  s_504f7ab24abf60::t_3b1baf8ce21646 1-3,5-7,14-31,35-92,98-101,111-116,118-146,148-151,155-163,165-166,168-169,171-178,180-184,186-199,201-202,204-208,230-238,240-255,258-272,317
+  s_504f7ab24abf60::t_c4ebe617b5d842 209-219,221-222,224-229
+  s_504f7ab24abf60::t_9703003b9bea1d 33,108-109,117,147,164,167,170,179,185,200,203,220,223,239,256-257,285,304,313
+src/main/app/AgentRuntimeApplicationLive.ts
+  s_504f7ab24abf60::t_eded5e289f0114 71,330-336
+src/main/platform/node/OpenCodeExecutable.node.test.ts
+  s_504f7ab24abf60::t_04845dc88a6711 2,4-7,10-12,14-20,22,24,27,34,49,66
+  s_504f7ab24abf60::t_635bc0522a2b19 35,50,67,90-92,102,104
+  s_504f7ab24abf60::t_d93343adca8fe1 3,33,36-46,51-63,68-83,85
+  s_504f7ab24abf60::t_eded5e289f0114 1,8-9,13,21,23,25-26,28-32,47-48,64-65,84,86-89,93-101,103,105
+src/renderer/components/shared/agent-runtime/agent-model-picker.test.tsx
+  s_8bbe4fcc53c54b::t_bcdbe319973757 265-293,295-296,301-304,309-318,322-325,327,329-330,332-335,344-365
+  s_8bbe4fcc53c54b::t_163319bf078cf2 294,305-308,319-321,326,331,336-343
+  s_8bbe4fcc53c54b::t_993a8f6a54e70e 297-300
+  s_8bbe4fcc53c54b::t_a16ddb112fc49c 328
+src/renderer/components/shared/agent-runtime/agent-model-picker.tsx
+  s_8bbe4fcc53c54b::t_e94d8d20effe3f 59-74
+  s_8bbe4fcc53c54b::t_2ddf9b70e34648 1
+  s_8bbe4fcc53c54b::t_8419dd957e776a 270-275
+  s_8bbe4fcc53c54b::t_64858513a85279 90
+  s_8bbe4fcc53c54b::t_465f126ef3fe59 331-338
+  s_8bbe4fcc53c54b::t_38f23501ae5bae 316,318-330,339-342,344-352
+  s_8bbe4fcc53c54b::t_e97f5200008e93 150-151,154
+  s_8bbe4fcc53c54b::t_9f55f4cff61605 343
+src/main/agent-backend/opencode/OpenCodeModelCatalog.ts
+  s_504f7ab24abf60::t_0699b8785c079a 5-8,16-17,42,105-111
+  s_504f7ab24abf60::t_eded5e289f0114 18,86-88
+  s_504f7ab24abf60::t_896fdb54e9526d 19-21,43-49,89-95,112-116
+src/renderer/features/opencode-setup/opencode-install-dialog.browser.test.tsx
+  s_8bbe4fcc53c54b::t_cb37cdda5aad40 162
+  s_8bbe4fcc53c54b::t_993a8f6a54e70e 29-31,60-65,103-106,108-110,128-130,140-142,165-167
+  s_8bbe4fcc53c54b::t_d127948a73471a 124
+  s_8bbe4fcc53c54b::t_5cb853750dac3c 3,7,11-12,21-23,87,90-93,96-100,114-115,122,143,145-149,168
+  s_8bbe4fcc53c54b::t_f9ed16e1bb2a9b 1-2,4-6,8-10,13-20,24-28,32-59,66-86,88-89,94-95,101-102,107,111-113,116-121,123,125-127,131-139,144,150-161,163-164
+src/renderer/components/ui/option-picker.test.tsx
+  s_8bbe4fcc53c54b::t_99cb1c34bc3ec3 2,130-166
+  s_8bbe4fcc53c54b::t_ffc621295364c4 167
+src/renderer/features/opencode-setup/opencode-setup-model.ts
+  s_8bbe4fcc53c54b::t_b14731aba04a84 2,14,16-20,23,156-157,173,178,181,190,202,204,206-207
+  s_8bbe4fcc53c54b::t_f2263f8fb739ac 11-13,15,21-22
+  s_8bbe4fcc53c54b::t_cb15d5b32182e7 1,3-10,24-155,158-172,174-177,179-180,182-189,191-201,203,205,208-213
+packages/agent-runtime/package.json
+  s_504f7ab24abf60::t_e0864173fa8eab 13
+CHANGELOG.md
+  s_504f7ab24abf60::t_dec9e9bd6afa9c 17
+packages/agent-runtime/vendor/provider-opencode/src/server/OpenCodeRuntime.ts
+  s_504f7ab24abf60::t_db64a62ab6a6e8 46,50
+packages/agent-runtime/vendor/provider-opencode/src/settings.ts
+  s_504f7ab24abf60::t_1af5daf88fcfef 16-17
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "01c56f9b0970fc426f35abc3973e385f69c83717",
+  "prompts": {},
+  "sessions": {
+    "s_504f7ab24abf60": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a143b5-0054-7ff1-95f7-0d6d50cf9d8f",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_8bbe4fcc53c54b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "bed8b6ae-18bb-4f76-a13f-cf648e257dec",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
