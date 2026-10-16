@@ -86,6 +86,22 @@ export class ExecutionHost extends Context.Reference<{
   readonly prepareTurn: (
     identity: HostTurnIdentity,
   ) => Effect.Effect<{ readonly instructions?: string; readonly identity?: HostTurnIdentity }, ExecutionHostError>;
+  /**
+   * Provider configuration the host contributes whenever a native thread starts, resumes or
+   * forks, such as desktop tools that live outside the execution process.
+   */
+  readonly prepareThread?: (input: {
+    readonly threadId: ThreadId;
+    readonly providerInstanceId: ProviderInstanceId;
+    readonly nativeDriver: import("@t3tools/contracts").ProviderDriverKind;
+    readonly cwd: string | null;
+  }) => Effect.Effect<{ readonly config?: Readonly<Record<string, unknown>> }, ExecutionHostError>;
+  /** A host-owned native tool follows the provider's own Turns, which it addresses by native id. */
+  readonly observeNativeTurn?: (input: {
+    readonly identity: HostTurnIdentity;
+    readonly nativeTurnId: string;
+    readonly phase: "started" | "ended";
+  }) => Effect.Effect<void>;
 }>("@t3tools/provider-core/server/ExecutionHost", {
   defaultValue: () => ({ prepareTurn: () => Effect.succeed({}) }),
 }) {}

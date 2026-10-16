@@ -612,6 +612,14 @@ function turnItemText(item: OrchestrationV2TurnItem): string | null {
       return item.result ?? item.progress ?? item.prompt;
     case "dynamic_tool":
       return jsonText({ toolName: item.toolName, input: item.input, output: item.output });
+    case "hook_run":
+      return [`${item.eventName} hook ${item.hookStatus}`, item.statusMessage]
+        .filter((line): line is string => line !== null)
+        .join("\n");
+    case "approval_review":
+      return [`${item.actionSummary}: ${item.decision}`, item.rationale]
+        .filter((line): line is string => line !== null)
+        .join("\n");
   }
 }
 

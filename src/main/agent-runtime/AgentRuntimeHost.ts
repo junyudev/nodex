@@ -17,6 +17,7 @@ import { createHostedAppToolCaller } from "../app-tools/AppToolCaller";
 import { buildAgentRuntimeCliContext } from "../platform/node/NodexCliBootstrap";
 import type { AgentRuntimeProcessConnection } from "../platform/node/AgentRuntimeProcess";
 import { make as makeRuntimeAuthority } from "./AgentRuntimeAuthority";
+import type { AgentRuntimeDesktopTools } from "./AgentRuntimeDesktopTools";
 import type { AgentRuntimeHostToolExecutor } from "./AgentRuntimeHostTools";
 import { make as makePresentationRelease } from "./AgentRuntimePresentationRelease";
 
@@ -53,6 +54,7 @@ export const make = Effect.fn("AgentRuntimeHost.make")(function* (
     readonly providers: AgentRuntimeConfiguration["providers"];
     readonly providerDriver?: (instanceId: string) => string | undefined;
     readonly execute: AgentRuntimeHostToolExecutor;
+    readonly desktop?: Pick<AgentRuntimeDesktopTools, "threadConfig" | "observeNativeTurn">;
     readonly presentation?: Pick<
       CodexTurnPresentation["Service"],
       "observeRuntimeMessage" | "finishRuntimeSource" | "finishRuntimeLease" | "finish"
@@ -76,6 +78,12 @@ export const make = Effect.fn("AgentRuntimeHost.make")(function* (
     }),
   );
   const projectIdOf = (value: string) => (value === options.projectlessId ? null : value);
+  const isCurrentLease = (identity: {
+    readonly runtimeId: string;
+    readonly runtimeGeneration: string;
+  }) => open && identity.runtimeId === runtimeId && identity.runtimeGeneration === leaseId;
+  const driverOf = (providerInstanceId: string) =>
+    options.providerDriver?.(providerInstanceId) ?? options.providers[providerInstanceId]?.driver;
   const readProof = Effect.fn("AgentRuntimeHost.readProof")(function* (
     identity: AgentHostExecutionIdentity,
   ) {
@@ -136,10 +144,7 @@ export const make = Effect.fn("AgentRuntimeHost.make")(function* (
       if (request.operation === "provider.auth") {
         const provider = options.providers[request.identity.providerInstanceId];
         const settings = provider?.config;
-        const isActive = () =>
-          open &&
-          request.identity.runtimeId === runtimeId &&
-          request.identity.runtimeGeneration === leaseId;
+        const isActive = () => isCurrentLease(request.identity);
         if (
           !isActive() ||
           provider?.driver !== "codex" ||
@@ -157,6 +162,41 @@ export const make = Effect.fn("AgentRuntimeHost.make")(function* (
         });
       }
       if (request.operation === "turn.prepare") return yield* prepare(request.identity);
+      if (request.operation === "thread.prepare") {
+        const { identity } = request;
+        if (!isCurrentLease(identity)) return yield* unavailable("thread.prepare");
+        if (
+          !options.desktop ||
+          identity.nativeDriver !== "codex" ||
+          driverOf(identity.providerInstanceId) !== "codex"
+        )
+          return {};
+        return { config: yield* options.desktop.threadConfig(request.cwd) };
+      }
+      if (request.operation === "turn.native") {
+        const { identity } = request;
+        const nativeThreadId =
+          identity.nativeThreadRef?.driver === "codex" ? identity.nativeThreadRef.nativeId : null;
+        if (!options.desktop || identity.runId === null || !nativeThreadId) return {};
+        const turn = { nativeThreadId, nativeTurnId: request.nativeTurnId };
+        // Ending only lets go of what the Turn held, so it needs the lease, not a live Run.
+        if (request.phase === "ended") {
+          if (!isCurrentLease(identity)) return yield* unavailable("turn.native");
+          yield* options.desktop.observeNativeTurn({ ...turn, phase: "ended" });
+          return {};
+        }
+        const { proof, sessionId, context } = yield* authorize(identity);
+        if (proof.runId === null) return yield* unavailable("turn.native");
+        yield* options.desktop.observeNativeTurn({
+          ...turn,
+          threadId: proof.threadId,
+          runId: proof.runId,
+          sessionId,
+          projectId: context.actorProjectId,
+          phase: "started",
+        });
+        return {};
+      }
       const callId =
         (request.identity.nativeCallKey === undefined
           ? undefined
@@ -174,9 +214,7 @@ export const make = Effect.fn("AgentRuntimeHost.make")(function* (
             ]));
       const capture = authorize(request.identity, request.identity.nativeTurnId ?? null);
       const { proof, sessionId, context } = yield* capture;
-      const driver =
-        options.providerDriver?.(proof.providerInstanceId) ??
-        options.providers[proof.providerInstanceId]?.driver;
+      const driver = driverOf(proof.providerInstanceId);
       const backend =
         driver === "codex"
           ? "codex"

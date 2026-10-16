@@ -831,7 +831,10 @@ export function useWorkbenchSessionCommands({
             routeTab({
               selectedThreadId,
               selectedDisplayName: subagent?.displayName.trim() || inspected.thread.title,
-              selectedCanInteract: inspected.thread.archivedAt === null,
+              // A child the provider spawned itself is followed, never continued from here.
+              selectedCanInteract:
+                inspected.thread.archivedAt === null &&
+                inspected.thread.creationSource !== "provider",
               selectedHydration: {
                 status: "ready",
                 revision: 0,

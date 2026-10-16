@@ -33,6 +33,8 @@ const selectedDeleteDelayMs = Number.parseInt(
 );
 const topologyRecoveryEnabled = process.env.NODEX_FAKE_SUBAGENT_TOPOLOGY_MISSED_EDGE === "1";
 const createdThreadNavigationEnabled = process.env.NODEX_FAKE_CREATED_THREAD_NAVIGATION === "1";
+// Agent execution learns children only from the root Turn's own spawn calls and child Turns.
+const spawnedChildrenEnabled = process.env.NODEX_FAKE_SUBAGENT_SPAWN === "1";
 const scenarioThreadTimestampHex =
   process.env.NODEX_FAKE_SUBAGENT_UUID_V7_TIMESTAMP_HEX ?? Date.now().toString(16).padStart(12, "0");
 if (!/^[0-9a-f]{12}$/u.test(scenarioThreadTimestampHex)) {
@@ -516,6 +518,79 @@ const notifyModernActivity = () => {
   }
 };
 
+const rootTurnId = "turn-subagent-root";
+
+const spawnChildren = () => {
+  state = readState();
+  if (!state.rootTurnStarted) return;
+  const children = [...activeDefinitions, ...doneDefinitions];
+  for (const definition of children) {
+    const item = {
+      type: "collabAgentToolCall",
+      id: `spawn-${definition.id}`,
+      tool: "spawnAgent",
+      senderThreadId: rootThreadId,
+      receiverThreadIds: [definition.id],
+      prompt: definition.name,
+      model: "gpt-5.5",
+      reasoningEffort: "high",
+      agentsStates: {},
+    };
+    notify("item/started", {
+      threadId: rootThreadId,
+      turnId: rootTurnId,
+      startedAtMs: Date.now(),
+      item: { ...item, status: "inProgress" },
+    });
+    notify("thread/started", { thread: childThread(definition) });
+    notify("item/completed", {
+      threadId: rootThreadId,
+      turnId: rootTurnId,
+      completedAtMs: Date.now(),
+      item: { ...item, status: "completed" },
+    });
+  }
+  for (const definition of children) {
+    const turn = emptyTurn(`turn-${definition.id}`);
+    notify("turn/started", { threadId: definition.id, turn });
+    for (const item of childTurn(definition).items)
+      notify("item/completed", {
+        threadId: definition.id,
+        turnId: turn.id,
+        completedAtMs: Date.now(),
+        item,
+      });
+    if (childStatus(definition).type === "active") continue;
+    notify("item/completed", {
+      threadId: definition.id,
+      turnId: turn.id,
+      completedAtMs: Date.now(),
+      item: finalMessage(`result-${definition.id}`, definition.preview),
+    });
+    notify("turn/completed", { threadId: definition.id, turn: emptyTurn(turn.id, "completed") });
+  }
+};
+
+/** Codex ends only the Turn it is asked to; Agent execution stops each child itself. */
+const interruptSpawnedTurn = (threadId, turnId) => {
+  state = readState();
+  if (threadId === rootThreadId) state.rootTurnStarted = false;
+  else
+    state.interruptedChildIds = [
+      ...new Set([...(state.interruptedChildIds ?? []), threadId]),
+    ];
+  persist();
+  setTimeout(() => {
+    notify("turn/completed", {
+      threadId,
+      turn: emptyTurn(
+        turnId ?? (threadId === rootThreadId ? rootTurnId : `turn-${threadId}`),
+        "interrupted",
+      ),
+    });
+  }, 0);
+};
+
 const completeRootNormally = () => {
   state = readState();
   if (!state.rootTurnStarted) return;
@@ -918,9 +993,13 @@ const handle = (message) => {
             item: { ...createdRootItem(), text: "" },
           });
         }
-        notifyBootstrapSubagent();
-        setTimeout(notifyModernActivity, 75);
-        setTimeout(notifyTopologyMissedEdge, 75);
+        if (spawnedChildrenEnabled) {
+          setTimeout(spawnChildren, 25);
+        } else {
+          notifyBootstrapSubagent();
+          setTimeout(notifyModernActivity, 75);
+          setTimeout(notifyTopologyMissedEdge, 75);
+        }
       }, 0);
       if (Number.isFinite(rootAutoCompleteMs) && rootAutoCompleteMs >= 0) {
         setTimeout(completeRootNormally, rootAutoCompleteMs);
@@ -929,6 +1008,10 @@ const handle = (message) => {
     }
     case "turn/interrupt": {
       respond(id, {});
+      if (spawnedChildrenEnabled) {
+        interruptSpawnedTurn(params.threadId, params.turnId);
+        return;
+      }
       if (params.threadId === rootThreadId) {
         completeRootAndCascadedChildren();
         return;

@@ -1375,10 +1375,13 @@ export function projectCodexCanonicalVisibleTurnItemViews(
     ) {
       return [];
     }
+    // Input that declares how it entered the Turn is the delivered input itself, not an echo of
+    // a steering row the transcript already shows.
     if (
       input.preserveServerUserMessages === true ||
       !hasVisibleTurnParamsUserMessage ||
-      view.rawItemType !== "userMessage"
+      view.rawItemType !== "userMessage" ||
+      view.userInputIntent !== undefined
     ) {
       return [view];
     }

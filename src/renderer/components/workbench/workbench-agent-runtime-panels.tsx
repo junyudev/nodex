@@ -19,8 +19,11 @@ import type { FirstSubmissionIdentity } from "@/features/conversation-launch/ses
 import type { AgentSubagentOverview } from "@nodex/agent-runtime/contracts";
 import { agentRuntimeRuntime } from "@/lib/agent-runtime-runtime";
 import {
+  agentRuntimeOverviewSectionsToRefill,
+  agentRuntimeOverviewWindow,
   appendAgentRuntimeOverviewPage,
   applyAgentRuntimeOverviewTask,
+  type AgentRuntimeOverviewWindow,
   projectAgentRuntimeSubagentOverview,
   type AgentRuntimeTaskRecord,
 } from "@/features/local-conversation/agent-runtime-subagent-overview";
@@ -387,6 +390,17 @@ export function AgentRuntimeSubagentsOverviewPanel(input: {
       loadingMore.current.delete(key);
     }
   };
+  const shownWindow = useRef<AgentRuntimeOverviewWindow>({ active: 0, terminal: 0 });
+  const refill = useEffectEvent((source: AgentSubagentOverview | null) => {
+    if (!source) {
+      shownWindow.current = { active: 0, terminal: 0 };
+      return;
+    }
+    for (const section of agentRuntimeOverviewSectionsToRefill(source, shownWindow.current))
+      void loadMore(section === "active" ? "active" : "done");
+    shownWindow.current = agentRuntimeOverviewWindow(shownWindow.current, source);
+  });
+  useEffect(() => refill(state.source), [state.source]);
   const error = state.error ? (
     <div
       role="alert"

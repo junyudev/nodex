@@ -67,6 +67,7 @@ import type * as ProviderContinuationRequests from "@t3tools/provider-core/serve
 import * as CodexAdapterV2 from "./CodexAdapterV2.ts";
 import { makeReplayServerConfig, withCodexReplayChildMetadata } from "./CodexAdapterV2.testkit.ts";
 import * as CodexAdapterV2Testkit from "./CodexAdapterV2.testkit.ts";
+import { codexAsyncQuestionId } from "../../nodex/CodexConventions.ts";
 
 const encodeUnknownJson = Schema.encodeUnknownSync(Schema.fromJsonString(Schema.Unknown));
 const replayTranscriptJson = Schema.fromJsonString(CodexReplay.CodexAppServerReplayTranscript);
@@ -586,7 +587,7 @@ describe("CodexAdapterV2 runtime policy", () => {
 });
 
 describe("CodexAdapterV2 process spawning", () => {
-  it("injects cwd, model, and MCP authorization into thread-scoped params", () => {
+  it("adds host tools and the application server beside the user's own MCP servers", () => {
     const threadId = ThreadId.make("thread-codex-mcp");
     const mcpSession = {
       environmentId: EnvironmentId.make("environment-codex-mcp"),
@@ -607,18 +608,23 @@ describe("CodexAdapterV2 process spawning", () => {
           interactionMode: "default",
           cwd: "/workspace/thread-codex-mcp",
         },
+        hostConfig: {
+          "mcp_servers.node_repl": { command: "/desktop/node", args: ["repl.js"] },
+          // A host cannot take over the application server or the thread's own settings.
+          "mcp_servers.nodex_app": { url: "http://host.invalid/mcp" },
+          "tools.update_plan.enabled": false,
+        },
       }),
       {
         cwd: "/workspace/thread-codex-mcp",
         model: "gpt-5.4",
         config: {
+          "mcp_servers.node_repl": { command: "/desktop/node", args: ["repl.js"] },
           "tools.update_plan.enabled": true,
-          mcp_servers: {
-            nodex_app: {
-              url: "http://127.0.0.1:43123/mcp",
-              http_headers: {
-                Authorization: "Bearer secret-codex-token",
-              },
+          "mcp_servers.nodex_app": {
+            url: "http://127.0.0.1:43123/mcp",
+            http_headers: {
+              Authorization: "Bearer secret-codex-token",
             },
           },
         },
@@ -2558,6 +2564,113 @@ describe("CodexAdapterV2 post-settle continuation", () => {
     ),
   );
 
+  it.effect("starts threads with host tools and tells the host when root Turns start and end", () =>
+    Effect.gen(function* () {
+      const nativeThreadId = "host-tools";
+      const nativeTurnId = "host-tools-turn";
+      const prompt = "Open the page";
+      const preamble = codexReplayPreamble({ nativeThreadId, nativeTurnId, prompt });
+      const transcript = makeCodexReplayTranscript({
+        scenario: "host-tools",
+        entries: [
+          ...preamble.slice(0, 3),
+          {
+            type: "expect_outbound",
+            label: "thread/start",
+            frame: {
+              id: 2,
+              method: "thread/start",
+              params: {
+                // The thread's own settings win over a host key of the same name.
+                config: {
+                  "features.image_generation": true,
+                  ...CodexAdapterV2.CODEX_THREAD_CONFIG,
+                },
+              },
+            },
+          },
+          ...preamble.slice(4),
+          {
+            type: "emit_inbound",
+            frame: {
+              method: "turn/completed",
+              params: {
+                threadId: nativeThreadId,
+                turn: makeCodexReplayTurn({ id: nativeTurnId, status: "completed" }),
+              },
+            },
+          },
+        ],
+      });
+      const prepared: unknown[] = [];
+      const observed: unknown[] = [];
+      const harness = yield* makeCodexReplayHarness(transcript).pipe(
+        Effect.provideService(ExecutionHost.ExecutionHost, {
+          prepareTurn: () => Effect.succeed({}),
+          prepareThread: (input) =>
+            Effect.sync(() => {
+              prepared.push(input);
+              return {
+                config: {
+                  "features.image_generation": true,
+                  "tools.update_plan.enabled": false,
+                  "mcp_servers.node_repl": { command: "/desktop/node" },
+                },
+              };
+            }),
+          observeNativeTurn: (input) =>
+            Effect.sync(() => {
+              observed.push({
+                runId: input.identity.runId,
+                nativeTurnId: input.nativeTurnId,
+                phase: input.phase,
+              });
+            }),
+        }),
+      );
+      const input = makeCodexTestTurnInput({
+        threadId: harness.threadId,
+        providerThread: harness.providerThread,
+        now: DateTime.makeUnsafe(0),
+        attemptId: RunAttemptId.make("host-tools"),
+        text: prompt,
+      });
+      yield* harness.runtime.startTurn({
+        ...input,
+        hostExecutionIdentity: {
+          projectId: input.appThread.projectId,
+          threadId: input.threadId,
+          runId: input.runId,
+          attemptId: input.attemptId,
+          providerInstanceId: input.modelSelection.instanceId,
+          providerSessionId: ProviderSessionId.make("provider-session-host-tools"),
+          providerThreadId: input.providerThread.id,
+          nativeGeneration: 1,
+          nativeThreadRef: input.providerThread.nativeThreadRef,
+          cwd: input.runtimePolicy.cwd,
+        },
+      });
+      yield* harness.firstTerminal;
+      assert.deepEqual(prepared, [
+        {
+          threadId: harness.threadId,
+          providerInstanceId: CodexAdapterV2.CODEX_DEFAULT_INSTANCE_ID,
+          nativeDriver: CodexAdapterV2.CODEX_DRIVER_KIND,
+          cwd: "/workspace",
+        },
+      ]);
+      assert.deepEqual(observed, [
+        { runId: input.runId, nativeTurnId, phase: "started" },
+        { runId: input.runId, nativeTurnId, phase: "ended" },
+      ]);
+    }).pipe(
+      Effect.scoped,
+      Effect.provide(
+        Layer.mergeAll(IdAllocator.layer, McpProviderSessions.layer, NodeServices.layer),
+      ),
+    ),
+  );
+
   it.effect.each(["supported", "unsupported", "invalid"] as const)(
     "delivers native history with %s app-server protocol",
     (response) =>
@@ -3113,6 +3226,89 @@ describe("CodexAdapterV2 post-settle continuation", () => {
     ),
   );
 
+  it.effect(
+    "steers once more into the Turn Codex names when it continued under a new identity",
+    () =>
+      Effect.gen(function* () {
+        const nativeThreadId = "continued-turn-thread";
+        const nativeTurnId = "continued-turn-original";
+        const continuedTurnId = "continued-turn-current";
+        const input = [{ type: "text", text: "Use the release branch." }];
+        const transcript = makeCodexReplayTranscript({
+          scenario: "steer-expected-turn-corrected",
+          entries: [
+            ...codexReplayPreamble({
+              nativeThreadId,
+              nativeTurnId,
+              prompt: "Prepare the release.",
+            }),
+            {
+              type: "expect_outbound",
+              label: "turn/steer",
+              frame: {
+                id: 4,
+                method: "turn/steer",
+                params: { expectedTurnId: nativeTurnId, input, threadId: nativeThreadId },
+              },
+            },
+            {
+              type: "emit_inbound",
+              label: "turn/steer/mismatch",
+              frame: {
+                id: 4,
+                error: {
+                  code: -32600,
+                  message: `expected active turn id \`${nativeTurnId}\` but found \`${continuedTurnId}\``,
+                },
+              },
+            },
+            {
+              type: "expect_outbound",
+              label: "turn/steer/corrected",
+              frame: {
+                id: 5,
+                method: "turn/steer",
+                params: { expectedTurnId: continuedTurnId, input, threadId: nativeThreadId },
+              },
+            },
+            {
+              type: "emit_inbound",
+              label: "turn/steer/corrected",
+              frame: { id: 5, result: { turnId: continuedTurnId } },
+            },
+          ],
+        });
+        const harness = yield* makeCodexReplayHarness(transcript);
+        const turnInput = makeCodexTestTurnInput({
+          threadId: harness.threadId,
+          providerThread: harness.providerThread,
+          now: yield* DateTime.now,
+          attemptId: RunAttemptId.make("continued-turn-attempt"),
+          text: "Prepare the release.",
+        });
+        yield* harness.runtime.startTurn(turnInput);
+        yield* harness.runtime.steerTurn({
+          threadId: harness.threadId,
+          runId: turnInput.runId,
+          providerThread: harness.providerThread,
+          providerTurnId: (yield* IdAllocator.IdAllocatorV2).derive.providerTurn({
+            driver: CodexAdapterV2.CODEX_DRIVER_KIND,
+            nativeTurnId,
+          }),
+          message: {
+            ...turnInput.message,
+            messageId: MessageId.make("message-continued-turn-steer"),
+            text: "Use the release branch.",
+          },
+        });
+      }).pipe(
+        Effect.scoped,
+        Effect.provide(
+          Layer.mergeAll(IdAllocator.layer, McpProviderSessions.layer, NodeServices.layer),
+        ),
+      ),
+  );
+
   const assistantMessages = (events: ReadonlyArray<ProviderAdapter.ProviderAdapterV2Event>) =>
     events.filter(
       (
@@ -3126,6 +3322,199 @@ describe("CodexAdapterV2 post-settle continuation", () => {
         ? [event.turnItem]
         : [],
     );
+
+  it.effect("keeps hooks, automatic reviews, memory and command reads as Turn metadata", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const nativeThreadId = "turn-metadata-thread";
+        const nativeTurnId = "turn-metadata-turn";
+        const run = {
+          id: "hook-run",
+          eventName: "sessionStart",
+          handlerType: "command",
+          executionMode: "sync",
+          scope: "turn",
+          sourcePath: "/workspace/.codex/hooks.json",
+          source: "project",
+          displayOrder: 0,
+          status: "running",
+          statusMessage: null,
+          startedAt: 1,
+          completedAt: null,
+          durationMs: null,
+          entries: [{ kind: "context", text: "Injected for the model" }],
+        };
+        const review = {
+          threadId: nativeThreadId,
+          turnId: nativeTurnId,
+          reviewId: "review",
+          targetItemId: "read-skill",
+          startedAtMs: 1,
+          action: {
+            type: "execve",
+            source: "unifiedExec",
+            program: "touch",
+            argv: ["protected file.txt"],
+            cwd: "/workspace",
+          },
+        };
+        const transcript = makeCodexReplayTranscript({
+          scenario: "turn-metadata",
+          entries: [
+            ...codexReplayPreamble({ nativeThreadId, nativeTurnId, prompt: "Review it." }),
+            {
+              type: "emit_inbound",
+              label: "hook/started",
+              frame: {
+                method: "hook/started",
+                params: { threadId: nativeThreadId, turnId: nativeTurnId, run },
+              },
+            },
+            {
+              type: "emit_inbound",
+              label: "hook/completed",
+              frame: {
+                method: "hook/completed",
+                params: {
+                  threadId: nativeThreadId,
+                  turnId: nativeTurnId,
+                  run: { ...run, status: "completed", completedAt: 2, durationMs: 1 },
+                },
+              },
+            },
+            {
+              type: "emit_inbound",
+              label: "read-skill",
+              frame: {
+                method: "item/completed",
+                params: {
+                  threadId: nativeThreadId,
+                  turnId: nativeTurnId,
+                  item: {
+                    type: "commandExecution",
+                    id: "read-skill",
+                    command: "cat SKILL.md",
+                    cwd: "/workspace",
+                    processId: null,
+                    source: "agent",
+                    status: "completed",
+                    commandActions: [
+                      {
+                        type: "read",
+                        command: "cat SKILL.md",
+                        name: "SKILL.md",
+                        path: "/workspace/SKILL.md",
+                      },
+                    ],
+                    aggregatedOutput: "Read it.",
+                    exitCode: 0,
+                    durationMs: 1,
+                  },
+                },
+              },
+            },
+            {
+              type: "emit_inbound",
+              label: "review",
+              frame: {
+                method: "item/autoApprovalReview/completed",
+                params: {
+                  ...review,
+                  completedAtMs: 2,
+                  decisionSource: "agent",
+                  review: {
+                    status: "denied",
+                    riskLevel: "low",
+                    userAuthorization: "low",
+                    rationale: "Not requested.",
+                  },
+                },
+              },
+            },
+            {
+              type: "emit_inbound",
+              label: "reply",
+              frame: {
+                method: "item/completed",
+                params: {
+                  threadId: nativeThreadId,
+                  turnId: nativeTurnId,
+                  item: {
+                    type: "agentMessage",
+                    id: "reply",
+                    text: "Reviewed.",
+                    phase: "final_answer",
+                    delivery: null,
+                    questions: null,
+                    memoryCitation: {
+                      entries: [
+                        { path: "MEMORY.md", lineStart: 2, lineEnd: 4, note: "Convention." },
+                      ],
+                      threadIds: [],
+                    },
+                  },
+                },
+              },
+            },
+            {
+              type: "emit_inbound",
+              label: "complete",
+              frame: {
+                method: "turn/completed",
+                params: {
+                  threadId: nativeThreadId,
+                  turn: makeCodexReplayTurn({ id: nativeTurnId, status: "completed" }),
+                },
+              },
+            },
+          ],
+        });
+        const harness = yield* makeCodexReplayHarness(transcript);
+        yield* harness.runtime.startTurn(
+          makeCodexTestTurnInput({
+            threadId: harness.threadId,
+            providerThread: harness.providerThread,
+            now: yield* DateTime.now,
+            attemptId: RunAttemptId.make("turn-metadata-attempt"),
+            text: "Review it.",
+          }),
+        );
+        yield* harness.firstTerminal;
+        const latest = new Map<string, OrchestrationV2TurnItem>();
+        for (const event of harness.events)
+          if (event.type === "turn_item.updated") latest.set(event.turnItem.id, event.turnItem);
+        const items = [...latest.values()];
+        const hook = items.find((item) => item.type === "hook_run");
+        assert.deepInclude(hook, {
+          eventName: "sessionStart",
+          source: "project",
+          hookStatus: "completed",
+          entries: [{ kind: "context", text: "Injected for the model" }],
+        });
+        const reviewItem = items.find((item) => item.type === "approval_review");
+        const command = items.find((item) => item.type === "command_execution");
+        assert.deepInclude(reviewItem, {
+          actionKind: "command",
+          actionSummary: "touch 'protected file.txt'",
+          decision: "denied",
+          rationale: "Not requested.",
+          targetItemId: command?.id ?? null,
+        });
+        assert.deepEqual(command?.type === "command_execution" ? command.commandActions : null, [
+          { type: "read", command: "cat SKILL.md", name: "SKILL.md", path: "/workspace/SKILL.md" },
+        ]);
+        const reply = items.find((item) => item.type === "assistant_message");
+        assert.deepEqual(reply?.type === "assistant_message" ? reply.memoryCitation : null, {
+          entries: [{ path: "MEMORY.md", lineStart: 2, lineEnd: 4, note: "Convention." }],
+          threadIds: [],
+        });
+      }),
+    ).pipe(
+      Effect.provide(
+        Layer.mergeAll(IdAllocator.layer, McpProviderSessions.layer, NodeServices.layer),
+      ),
+    ),
+  );
 
   it.effect("keeps an asynchronous Codex question actionable after the turn completes", () =>
     Effect.scoped(
@@ -3206,7 +3595,10 @@ describe("CodexAdapterV2 post-settle continuation", () => {
         );
         assert.lengthOf(requests, 1);
         assert.equal(requests[0]?.status, "pending");
-        assert.deepEqual(requests[0]?.responseCapability, { type: "message" });
+        assert.deepEqual(requests[0]?.responseCapability, {
+          type: "message",
+          replyFormat: "codex_question_reply",
+        });
         const questionItem = harness.events.find(
           (event) =>
             event.type === "turn_item.updated" && event.turnItem.type === "user_input_request",
@@ -3220,6 +3612,12 @@ describe("CodexAdapterV2 post-settle continuation", () => {
             questionItem.turnItem.questions[0]?.options.map((option) => option.label),
             ["main", "dev"],
           );
+          // Replies name each question the way Codex's own clients do; answering is optional.
+          assert.equal(
+            questionItem.turnItem.questions[0]?.id,
+            codexAsyncQuestionId("async-question-item", 0),
+          );
+          assert.equal(questionItem.turnItem.questions[0]?.required, false);
           assert.equal(questionItem.turnItem.responseMode, "message");
         }
         const questionNode = harness.events.find(
@@ -7932,6 +8330,74 @@ describe("CodexAdapterV2 post-settle continuation", () => {
       childTurnCompleted(RESUME_CHILD_TURN_2),
     ],
   });
+
+  it.effect("names a spawned agent by the nickname Codex gives it", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const named = yield* Deferred.make<void>();
+        const entries = [...resumeSubagentTranscript.entries];
+        const spawn = entries.findIndex(
+          (entry) =>
+            entry.type === "emit_inbound" &&
+            entry.label === "item/completed/subAgentActivity-started",
+        );
+        entries.splice(spawn + 1, 0, {
+          type: "emit_inbound",
+          label: "thread/started/child",
+          frame: {
+            method: "thread/started",
+            params: {
+              thread: {
+                id: RESUME_CHILD_THREAD,
+                sessionId: RESUME_NATIVE_THREAD,
+                forkedFromId: null,
+                preview: "",
+                ephemeral: false,
+                modelProvider: "openai",
+                createdAt: 1782622441,
+                updatedAt: 1782622441,
+                status: { type: "idle" },
+                path: null,
+                cwd: "/workspace",
+                cliVersion: "0.144.0",
+                source: "vscode",
+                threadSource: "subagent",
+                agentNickname: "Ada",
+                agentRole: "explorer",
+                gitInfo: null,
+                name: null,
+                turns: [],
+              },
+            },
+          },
+        });
+        const harness = yield* makeCodexReplayHarness(
+          makeCodexReplayTranscript({ scenario: RESUME_SCENARIO, entries }),
+          (event) =>
+            event.type === "subagent.updated" && event.subagent.title === "Ada"
+              ? Deferred.succeed(named, undefined)
+              : Effect.void,
+        );
+        yield* harness.runtime.startTurn(
+          makeCodexTestTurnInput({
+            threadId: harness.threadId,
+            providerThread: harness.providerThread,
+            now: yield* DateTime.now,
+            attemptId: RunAttemptId.make("attempt-child-nickname"),
+            text: RESUME_PROMPT,
+          }),
+        );
+        yield* Deferred.await(named);
+        yield* TestClock.adjust("100 millis");
+        yield* harness.firstTerminal;
+        assert.equal(harness.subagentUpdates().at(-1)?.subagent.title, "Ada");
+      }).pipe(
+        Effect.provide(
+          Layer.mergeAll(IdAllocator.layer, McpProviderSessions.layer, NodeServices.layer),
+        ),
+      ),
+    ),
+  );
 
   it.effect.each([
     { name: "current Codex Sol", model: "gpt-6-sol" },

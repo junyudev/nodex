@@ -3,7 +3,9 @@ import type {
   OrchestrationV2SearchThreadInput,
   OrchestrationV2SearchThreadResult,
   OrchestrationV2ThreadHistoryPage,
+  OrchestrationV2UserInputQuestion,
 } from "@t3tools/contracts";
+import { encodeCodexAsyncQuestionReplies } from "../nodex/CodexConventions.ts";
 import {
   latestExecutedRun,
   latestRootProviderFailure,
@@ -7567,7 +7569,10 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
             cause: "The question for this request was not found.",
           });
         }
-        const replies: string[] = [];
+        const replies: Array<{
+          readonly question: OrchestrationV2UserInputQuestion;
+          readonly answer: string;
+        }> = [];
         for (const question of approvalTurnItem.questions) {
           const answer = command.answers?.[question.id];
           if (typeof answer !== "string" || answer.trim().length === 0) {
@@ -7578,7 +7583,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
               cause: "Answer each question before sending.",
             });
           }
-          replies.push(`${question.question}\n${answer.trim()}`);
+          replies.push({ question, answer: answer.trim() });
         }
         if (replies.length === 0) {
           return yield* new OrchestratorDispatchError({
@@ -7627,7 +7632,18 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
             commandId: command.commandId,
             threadId: command.threadId,
             messageId: MessageId.make(`async-answer:${command.requestId}`),
-            text: replies.join("\n\n"),
+            text:
+              runtimeRequest.responseCapability.replyFormat === "codex_question_reply"
+                ? encodeCodexAsyncQuestionReplies(
+                    replies.map(({ question, answer }) => ({
+                      questionItemId: question.id,
+                      question: question.question,
+                      answer,
+                    })),
+                  )
+                : replies
+                    .map(({ question, answer }) => `${question.question}\n${answer}`)
+                    .join("\n\n"),
             attachments: [],
             createdBy: "user",
             creationSource: "server",

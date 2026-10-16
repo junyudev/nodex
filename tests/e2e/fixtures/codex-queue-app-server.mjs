@@ -6,6 +6,11 @@ import path from "node:path";
 
 const statePath = process.env.NODEX_FAKE_CODEX_STATE_PATH ?? path.join(process.cwd(), "state.json");
 const logPath = process.env.NODEX_FAKE_CODEX_LOG_PATH ?? path.join(process.cwd(), "requests.jsonl");
+// Desktop and Agent execution run separate peers from different directories; files the
+// scenario reports must resolve to the same paths in both.
+const scenarioRoot = process.env.NODEX_FAKE_CODEX_STATE_PATH
+  ? path.dirname(path.dirname(path.resolve(statePath)))
+  : process.cwd();
 const automaticCompletionDelayMs = Number.parseInt(
   process.env.NODEX_FAKE_CODEX_AUTOMATIC_COMPLETION_DELAY_MS ?? "120",
   10,
@@ -247,7 +252,7 @@ const startTurn = (params, source = "turn/start") => {
       }, 600);
     }
     if (process.env.NODEX_FAKE_CODEX_FOOTER_METADATA === "1") {
-      const skillPath = path.join(process.cwd(), ".agents/skills/footer-review/SKILL.md");
+      const skillPath = path.join(scenarioRoot, ".agents/skills/footer-review/SKILL.md");
       fs.mkdirSync(path.dirname(skillPath), { recursive: true });
       fs.writeFileSync(skillPath, "---\nname: footer-review\ndescription: Review message actions\n---\nRead the message actions.\n");
       const command = {
@@ -467,7 +472,7 @@ const handle = (message) => {
         data: [{
           cwd: process.cwd(),
           errors: [],
-          skills: [...(process.env.NODEX_FAKE_CODEX_FOOTER_METADATA === "1" ? [{ name: "footer-review", description: "Review message actions", path: path.join(process.cwd(), ".agents/skills/footer-review/SKILL.md"), scope: "repo", enabled: true, pluginId: null }] : []), ...extraSkills(), ...Array.from({ length: Number(process.env.NODEX_FAKE_CODEX_SKILL_COUNT ?? 0) }, (_, index) => ({
+          skills: [...(process.env.NODEX_FAKE_CODEX_FOOTER_METADATA === "1" ? [{ name: "footer-review", description: "Review message actions", path: path.join(scenarioRoot, ".agents/skills/footer-review/SKILL.md"), scope: "repo", enabled: true, pluginId: null }] : []), ...extraSkills(), ...Array.from({ length: Number(process.env.NODEX_FAKE_CODEX_SKILL_COUNT ?? 0) }, (_, index) => ({
             name: `abc-tool-${index}`,
             description: "aaaa ".repeat(200) + "xb",
             path: `${process.cwd()}/skills/abc-tool-${index}/SKILL.md`,

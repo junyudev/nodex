@@ -762,6 +762,52 @@ describe("Agent Runtime keyed transcript reads", () => {
     expect(owner.contentSource()).toBeNull();
     owner.dispose();
   });
+  test("keeps asynchronous questions beside the Composer and routes replies to their request", async () => {
+    const { owner, wire, release } = await open(conversation([assistant()]));
+    const question = {
+      ...runtimeQuestion("async-question", "run-1"),
+      responseMode: "message" as const,
+      questions: [
+        {
+          id: "native:scope",
+          header: "Question",
+          question: "Which scope?",
+          options: [{ label: "Project", description: "Project" }],
+          required: false,
+        },
+        {
+          id: "native:name",
+          header: "Question",
+          question: "What name?",
+          options: [],
+          required: false,
+        },
+      ],
+    };
+    wire.emit(event(question));
+    // Optional questions never replace the Composer with a blocking request card.
+    expect(owner.getSnapshot().view?.requests).toEqual([]);
+    const state = owner.asyncQuestions.read(target.threadId);
+    const ids = Object.keys(state.questions);
+    expect(ids).toHaveLength(2);
+    // A live arrival opens the first question without stealing a later selection.
+    expect(state.selectedId).toBe(ids[0]);
+    expect(
+      owner.asyncQuestionAnswers([
+        { questionItemId: ids[1]!, question: "What name?", answer: "Release checklist" },
+      ]),
+    ).toEqual([
+      {
+        requestId: "async-question",
+        runId: "run-1",
+        answers: { "native:name": "Release checklist" },
+      },
+    ]);
+    wire.emit(event({ ...question, status: "completed", completedAt: at }, 3));
+    expect(owner.asyncQuestions.read(target.threadId).questions).toEqual({});
+    release();
+    owner.dispose();
+  });
   test("publishes a new continuation Run's live items without reopening history or replacing its completed parent", async () => {
     const source = conversation([assistant("Parent finished")]);
     const parentRun = { ...source.snapshot.projection.runs[0]!, status: "completed" as const };

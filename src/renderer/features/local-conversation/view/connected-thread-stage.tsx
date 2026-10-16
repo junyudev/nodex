@@ -94,6 +94,7 @@ import {
   ThreadSummaryPanelRenderBoundary,
   ThreadSummaryPanelRenderErrorFallback,
 } from "./summary-panel";
+import { usePublishThreadSummaryContent } from "./summary-panel/thread-summary-content";
 import {
   resolveChildConversationIds,
   resolveEffectiveThreadStageSettings,
@@ -1462,6 +1463,8 @@ function ConnectedThreadStageContent({
       setErrorMessage,
     ],
   );
+  const ownsAppShellHeader = presentation === "primary" && !isSideChat && !backgroundAgentDetail;
+  usePublishThreadSummaryContent(activeThreadId, summaryPanelContentProps, ownsAppShellHeader);
   useRetainedConversation(
     activeThreadId,
     threadLifecycleActive,
@@ -1604,7 +1607,6 @@ function ConnectedThreadStageContent({
     );
   }
 
-  const ownsAppShellHeader = presentation === "primary" && !isSideChat && !backgroundAgentDetail;
   const threadHeaderContent = ownsAppShellHeader ? (
     <ConnectedThreadStageHeader
       activeThreadId={activeThreadId}

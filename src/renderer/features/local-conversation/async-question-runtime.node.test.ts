@@ -4,7 +4,6 @@ import { createCodexQueuedFollowUp } from "../../../shared/codex-queued-follow-u
 import { describe, expect, test, vi } from "vite-plus/test";
 import { createAsyncQuestionRuntime } from "./async-question-runtime";
 import {
-  decodeCodexAsyncQuestionReplies,
   encodeCodexAsyncQuestionReplies,
   expandCodexAsyncQuestions,
 } from "../../../shared/codex-async-user-input";
@@ -125,11 +124,11 @@ describe("asynchronous question lifecycle", () => {
     const runtime = setup();
     runtime.setDraft("thread", ids[0]!, " Local ");
     runtime.skip("thread", ids[1]!);
-    const steer = vi.fn().mockResolvedValue({ turnId: "turn" });
-    await runtime.submit("thread", steer);
-    expect(steer).toHaveBeenCalledTimes(1);
-    expect(steer.mock.calls[0]![0]).toBe("turn");
-    expect(decodeCodexAsyncQuestionReplies(steer.mock.calls[0]![1])).toEqual([
+    const deliver = vi.fn().mockResolvedValue({ turnId: "turn" });
+    await runtime.submit("thread", deliver);
+    expect(deliver).toHaveBeenCalledTimes(1);
+    expect(deliver.mock.calls[0]![0]).toBe("turn");
+    expect(deliver.mock.calls[0]![1]).toEqual([
       { questionItemId: ids[0], question: "Which scope?", answer: "Local" },
     ]);
     expect(runtime.read("thread").selectedId).toBeNull();

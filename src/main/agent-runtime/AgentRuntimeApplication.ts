@@ -105,6 +105,8 @@ export interface AgentRuntimeApplicationOptions {
   };
   readonly prepareWorkspace?: NativeSessionWorkspace["Service"]["prepare"];
   readonly presentation?: CodexTurnPresentation["Service"];
+  /** Desktop resources an archived or deleted Session's Agents held, such as Browser pages. */
+  readonly releaseDesktopSession?: (sessionId: string) => Effect.Effect<void>;
   readonly reconcileWorkspace?: NativeSessionWorkspace["Service"]["reconcile"];
   readonly prepareImages?: (
     images: NonNullable<AgentRuntimeMessage["images"]>,
@@ -1604,6 +1606,8 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
     const result = yield* archived
       ? workspace.archiveProjectSession(command)
       : workspace.unarchiveProjectSession(command);
+    if (archived && result.value.archived)
+      yield* options.releaseDesktopSession?.(result.value.id) ?? Effect.void;
     if (!result.value.executionRef || result.value.archived !== archived) return result;
     yield* afterCommit(
       command.operationId,
@@ -1621,6 +1625,7 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
     command: ProjectSessionDeleteCommandInput,
   ) {
     const result = yield* workspace.deleteProjectSession(command);
+    yield* options.releaseDesktopSession?.(command.payload.sessionId) ?? Effect.void;
     if (!options.runtimeExists || (yield* options.runtimeExists))
       yield* afterCommit(command.operationId, "delete-session", host(cleanupDeletedSessions()));
     return result;

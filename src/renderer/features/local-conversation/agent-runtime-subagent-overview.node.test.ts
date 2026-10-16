@@ -4,6 +4,8 @@ import type {
   AgentSubagentOverviewItem,
 } from "@nodex/agent-runtime/contracts";
 import {
+  agentRuntimeOverviewSectionsToRefill,
+  agentRuntimeOverviewWindow,
   appendAgentRuntimeOverviewPage,
   applyAgentRuntimeOverviewTask,
   projectAgentRuntimeSubagent,
@@ -157,5 +159,31 @@ describe("Runtime subagent overview events", () => {
     );
     expect(newer.active.items.map((item) => item.id)).toEqual(["newer", "task"]);
     expect(newer.active.nextCursor).toBe("after-task");
+  });
+
+  it("refills a partly loaded section that settling rows left short of what was shown", () => {
+    const working = (id: string) => ({ ...task, id, childThreadId: `${id}-child` });
+    const loaded: AgentSubagentOverview = {
+      active: page([working("a"), working("b"), working("c"), working("d")], "after-d"),
+      terminal: page([]),
+    };
+    const shown = agentRuntimeOverviewWindow({ active: 0, terminal: 0 }, loaded);
+    expect(agentRuntimeOverviewSectionsToRefill(loaded, shown)).toEqual([]);
+    const settled = applyAgentRuntimeOverviewTask(
+      loaded,
+      record({
+        id: "b",
+        childThreadId: "b-child",
+        status: "completed",
+        updatedAt: "2026-10-13T21:00:00Z",
+      }),
+    );
+    expect(agentRuntimeOverviewSectionsToRefill(settled, shown)).toEqual(["active"]);
+    // With nothing left to read, a shorter section is simply complete.
+    const exhausted = {
+      ...settled,
+      active: { ...settled.active, nextCursor: null, hasMore: false },
+    };
+    expect(agentRuntimeOverviewSectionsToRefill(exhausted, shown)).toEqual([]);
   });
 });

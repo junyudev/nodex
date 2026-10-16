@@ -562,6 +562,27 @@ export type AgentHostRequest =
   | {
       readonly type: "host.request";
       readonly id: string;
+      readonly operation: "thread.prepare";
+      readonly identity: {
+        readonly runtimeId: string;
+        readonly runtimeGeneration: string;
+        readonly threadId: string;
+        readonly providerInstanceId: string;
+        readonly nativeDriver: string;
+      };
+      readonly cwd: string | null;
+    }
+  | {
+      readonly type: "host.request";
+      readonly id: string;
+      readonly operation: "turn.native";
+      readonly identity: AgentHostTurnIdentity;
+      readonly nativeTurnId: string;
+      readonly phase: "started" | "ended";
+    }
+  | {
+      readonly type: "host.request";
+      readonly id: string;
       readonly operation: "tool.call";
       readonly identity: AgentHostToolIdentity;
       readonly tool: string;

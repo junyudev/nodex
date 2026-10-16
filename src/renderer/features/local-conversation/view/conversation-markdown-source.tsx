@@ -50,19 +50,17 @@ export type ConversationMarkdownNativeSource =
 const ConversationMarkdownSourceContext = createContext<ConversationMarkdownSource | null>(null);
 export const useConversationMarkdownSource = () => useContext(ConversationMarkdownSourceContext);
 
+/**
+ * What a source's consumers are fenced on. Presentation context — navigation callbacks, skills,
+ * the image composer target — is replaced on ordinary renders and never retires a source.
+ */
 interface SourceIdentity {
-  readonly projectId: string | null;
   readonly owner: CodexTranscriptReadOwner | null;
   readonly hostId: string;
   readonly threadId: string;
-  readonly cwd: string | null;
-  readonly workspaceRoot: string | null;
   readonly manager: CodexAppServerManager;
   readonly registry: CodexAppServerManagerRegistry;
   readonly connection: CodexConnectionState;
-  readonly onOpenThread?: ThreadStageActions["onOpenThread"];
-  readonly onStartNewChatWithPrompt?: ThreadStageActions["onStartNewChatWithPrompt"];
-  readonly imageComposerTarget?: ImageEditComposerTarget;
 }
 function isResourceCurrent(source: SourceIdentity) {
   if (!source.owner || source.registry.readForHostId(source.hostId) !== source.manager)
@@ -114,16 +112,31 @@ export function ConversationMarkdownSourceProvider(props: SourceProviderProps) {
   );
 }
 
+interface RuntimeSourceIdentity {
+  readonly owner: CodexTranscriptReadOwner;
+  readonly executionSource: ConversationContentSource;
+  readonly hostId: string;
+  readonly threadId: string;
+}
+function isRuntimeResourceCurrent(runtime: ConversationRuntime, source: RuntimeSourceIdentity) {
+  return (
+    source.executionSource.isCurrent() &&
+    runtime.transcriptReadOwner?.(source.threadId) === source.owner &&
+    source.owner.key.hostId === source.hostId &&
+    source.owner.key.threadId === source.threadId
+  );
+}
 function createRuntimeSourceLease() {
-  let current: ConversationMarkdownSource | null = null;
+  let current: RuntimeSourceIdentity | null = null;
   return {
-    activate(source: ConversationMarkdownSource | null) {
+    activate(source: RuntimeSourceIdentity | null) {
       current = source;
       return () => {
         if (current === source) current = null;
       };
     },
-    matches: (source: ConversationMarkdownSource) => current === source && source.isCurrent(),
+    matches: (runtime: ConversationRuntime, source: RuntimeSourceIdentity) =>
+      current === source && isRuntimeResourceCurrent(runtime, source),
   };
 }
 
@@ -145,55 +158,51 @@ function RuntimeMarkdownSourceProvider({
     (listener) => runtime.subscribe(threadId, listener),
     () => runtime.contentSource?.(threadId) ?? null,
   );
-  const value = useMemo<ConversationMarkdownSource | null>(() => {
-    if (!threadId || !owner || !executionSource) return null;
-    const isResourceCurrent = () =>
-      executionSource.isCurrent() &&
-      runtime.transcriptReadOwner?.(threadId) === owner &&
-      owner.key.hostId === hostId &&
-      owner.key.threadId === threadId;
-    return {
+  const source = useMemo<RuntimeSourceIdentity | null>(
+    () =>
+      threadId && owner && executionSource ? { owner, executionSource, hostId, threadId } : null,
+    [owner, executionSource, hostId, threadId],
+  );
+  const [lease] = useState(createRuntimeSourceLease);
+  useLayoutEffect(() => lease.activate(source), [lease, source]);
+  const value = useMemo<ConversationMarkdownSource | null>(
+    () =>
+      source
+        ? {
+            projectId,
+            hostId,
+            threadId: source.threadId,
+            cwd,
+            workspaceRoot,
+            onOpenThread,
+            onStartNewChatWithPrompt,
+            imageComposerTarget,
+            skills,
+            sourceIdentity: source.executionSource.identity,
+            authority: source.owner,
+            nativeConnection: undefined,
+            executionSource: source.executionSource,
+            sourceRoot: { hostId, threadId: source.threadId },
+            isCurrent: () => lease.matches(runtime, source),
+            isResourceCurrent: () => isRuntimeResourceCurrent(runtime, source),
+          }
+        : null,
+    [
       projectId,
       hostId,
-      threadId,
       cwd,
       workspaceRoot,
       onOpenThread,
       onStartNewChatWithPrompt,
       imageComposerTarget,
       skills,
-      sourceIdentity: executionSource.identity,
-      authority: owner,
-      nativeConnection: undefined,
-      executionSource,
-      sourceRoot: { hostId, threadId },
-      isCurrent: isResourceCurrent,
-      isResourceCurrent,
-    };
-  }, [
-    projectId,
-    hostId,
-    threadId,
-    cwd,
-    workspaceRoot,
-    onOpenThread,
-    onStartNewChatWithPrompt,
-    imageComposerTarget,
-    skills,
-    owner,
-    executionSource,
-    runtime,
-  ]);
-  const [lease] = useState(createRuntimeSourceLease);
-  useLayoutEffect(() => lease.activate(value), [lease, value]);
-  const mounted = useMemo(
-    () => (value ? { ...value, isCurrent: () => lease.matches(value) } : null),
-    [value, lease],
+      source,
+      lease,
+      runtime,
+    ],
   );
   return (
-    <ConversationMarkdownSourceContext value={mounted}>
-      {children}
-    </ConversationMarkdownSourceContext>
+    <ConversationMarkdownSourceContext value={value}>{children}</ConversationMarkdownSourceContext>
   );
 }
 
@@ -222,35 +231,9 @@ function NativeMarkdownSourceProvider({
     () => manager.readConnection(),
   );
   const [lease] = useState(createSourceLease);
-  const source = useMemo(
-    () => ({
-      projectId,
-      owner,
-      manager,
-      registry,
-      connection,
-      hostId,
-      threadId: threadId ?? "",
-      cwd,
-      workspaceRoot,
-      onOpenThread,
-      onStartNewChatWithPrompt,
-      imageComposerTarget,
-    }),
-    [
-      projectId,
-      owner,
-      manager,
-      registry,
-      connection,
-      hostId,
-      threadId,
-      cwd,
-      workspaceRoot,
-      onOpenThread,
-      onStartNewChatWithPrompt,
-      imageComposerTarget,
-    ],
+  const source = useMemo<SourceIdentity>(
+    () => ({ owner, manager, registry, connection, hostId, threadId: threadId ?? "" }),
+    [owner, manager, registry, connection, hostId, threadId],
   );
   useLayoutEffect(() => lease.activate(source), [lease, source]);
   const value = useMemo<ConversationMarkdownSource | null>(

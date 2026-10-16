@@ -1,5 +1,8 @@
 import { expect, test } from "@playwright/test";
-import { AGENT_RUNTIME_CODEX_THREAD_SOURCE } from "@nodex/agent-runtime/contracts";
+import {
+  AGENT_RUNTIME_CODEX_THREAD_SOURCE,
+  type AgentSubagentOverview,
+} from "@nodex/agent-runtime/contracts";
 import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
@@ -15,10 +18,8 @@ import {
   withScriptedModelServer,
 } from "../../scripts/scenarios/runtime/scripted-model-server";
 import {
-  collectRecords,
   createAgentSmokeDraft,
   invokeIpc,
-  isRecord,
   sendAgentPrompt,
   setAgentExecutionProfile,
   waitForAgentThreadExecutionProfile,
@@ -28,6 +29,7 @@ import {
 } from "./support/agent-smoke-harness";
 import { startBrowserHttpFixture } from "./support/browser-http-fixture";
 import { openNewChatDraft, waitForDraftScene } from "./support/new-chat-draft";
+import { openSubagentsPanel } from "./support/subagents-panel";
 
 const repositoryRoot = process.cwd();
 
@@ -729,35 +731,25 @@ test("keeps a real collaboration subagent Active until completion, then converge
           ),
         ]);
 
+        const overview = async () =>
+          (await invokeIpc(
+            page,
+            "agent-runtime:session:overview",
+            target,
+          )) as AgentSubagentOverview;
         await expect
           .poll(
             async () => {
-              const overview = await invokeIpc(page, "codex:subagents:overview:read", {
-                rootThreadId: threadId,
-                mode: "initial",
-              });
-              if (!isRecord(overview) || !isRecord(overview.active) || !isRecord(overview.done)) {
-                return null;
-              }
-              return {
-                active: overview.active.knownCount,
-                done: overview.done.knownCount,
-              };
+              const current = await overview();
+              return { active: current.active.items.length, done: current.terminal.items.length };
             },
             { timeout: 15_000 },
           )
           .toEqual({ active: 1, done: 0 });
-
-        const liveSnapshot = await invokeIpc(page, "codex:thread:snapshot:request", threadId);
-        const liveActivity = collectRecords(liveSnapshot).find(
-          (record) => record.type === "subAgentActivity" && record.kind === "started",
-        );
-        const childThreadId = liveActivity?.agentThreadId;
+        const childThreadId = (await overview()).active.items[0]?.childThreadId;
         expect(typeof childThreadId).toBe("string");
 
-        const openSubagents = page.getByRole("button", { name: "Open subagents" }).first();
-        await expect(openSubagents).toBeVisible({ timeout: 30_000 });
-        await openSubagents.click();
+        await openSubagentsPanel(page);
         const panel = page.locator(`[data-subagents-panel-overview="${threadId}"]`);
         const active = panel.locator('[data-subagent-overview-section="active"]');
         await expect(panel).toBeVisible({ timeout: 30_000 });
@@ -771,7 +763,7 @@ test("keeps a real collaboration subagent Active until completion, then converge
           (request) => request.hasFunctionCallOutput(waitCallId),
           30_000,
         );
-        const snapshot = await waitForRuntimeCompletedAgentTurn(page, target, 30_000);
+        await waitForRuntimeCompletedAgentTurn(page, target, 30_000);
         await waitForFinalMarker(page, finalMarker);
 
         await expect(active.getByRole("heading", { name: "Active · 0" })).toBeVisible({
@@ -783,25 +775,20 @@ test("keeps a real collaboration subagent Active until completion, then converge
         });
         await expect(done.locator('[aria-label^="Open subagent "]')).toHaveCount(1);
 
+        // The root conversation records the child it created.
+        const conversation = await readRuntimeConversation(page, target);
         expect(
-          collectRecords(snapshot).some(
-            (record) =>
-              record.type === "subAgentActivity" && record.agentThreadId === childThreadId,
+          conversation.snapshot.projection.visibleTurnItems.some(
+            ({ item }) =>
+              (item.type === "subagent" && item.childThreadId === childThreadId) ||
+              (item.type === "thread_created" && item.targetThreadId === childThreadId),
           ),
         ).toBe(true);
-        const completedOverview = await invokeIpc(page, "codex:subagents:overview:read", {
-          rootThreadId: threadId,
-          mode: "expanded",
-        });
-        const doneRows =
-          isRecord(completedOverview) && isRecord(completedOverview.done)
-            ? completedOverview.done.rows
-            : null;
-        expect(doneRows).toEqual([
+        expect((await overview()).terminal.items).toEqual([
           expect.objectContaining({
-            threadId: childThreadId,
-            parentThreadId: threadId,
-            status: "done",
+            childThreadId,
+            threadId,
+            status: "completed",
           }),
         ]);
       } catch (error) {

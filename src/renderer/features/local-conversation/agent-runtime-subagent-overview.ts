@@ -151,6 +151,34 @@ export function applyAgentRuntimeOverviewTask(
   );
 }
 
+export type AgentRuntimeOverviewWindow = Readonly<Record<Section, number>>;
+
+/**
+ * How many rows each section has shown. A row that settles leaves Working and a row that
+ * reopens leaves Done; the section keeps the size the user saw by loading its next page.
+ */
+export function agentRuntimeOverviewWindow(
+  previous: AgentRuntimeOverviewWindow,
+  overview: AgentSubagentOverview,
+): AgentRuntimeOverviewWindow {
+  return {
+    active: Math.max(previous.active, overview.active.items.length),
+    terminal: Math.max(previous.terminal, overview.terminal.items.length),
+  };
+}
+
+export function agentRuntimeOverviewSectionsToRefill(
+  overview: AgentSubagentOverview,
+  window: AgentRuntimeOverviewWindow,
+): readonly Section[] {
+  return (["active", "terminal"] as const).filter(
+    (section) =>
+      overview[section].hasMore &&
+      overview[section].nextCursor !== null &&
+      overview[section].items.length < window[section],
+  );
+}
+
 /** Merges an explicitly loaded page into the current window, keeping newer task reports. */
 export function appendAgentRuntimeOverviewPage(
   current: AgentSubagentOverview,

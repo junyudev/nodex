@@ -238,9 +238,12 @@ export const layerExecutor: Layer.Layer<
                 ),
                 Effect.catch((error) =>
                   Effect.gen(function* () {
+                    // A steer that missed its Turn starts the next one; one the provider
+                    // refused while its Turn keeps running waits for that Turn to end.
+                    const turnCompleted = "turnCompleted" in error && error.turnCompleted === true;
+                    const turnRunning = "turnRunning" in error && error.turnRunning === true;
                     if (
-                      !("turnCompleted" in error) ||
-                      !error.turnCompleted ||
+                      (!turnCompleted && !turnRunning) ||
                       effect.request.type !== "provider-turn.steer"
                     ) {
                       return yield* error;
@@ -279,7 +282,7 @@ export const layerExecutor: Layer.Layer<
                           : { modelSelection: run.modelSelection }),
                         dispatchMode: {
                           type:
-                            message.delegatedCompletion === undefined
+                            message.delegatedCompletion === undefined && turnCompleted
                               ? "start_immediately"
                               : "queue_after_active",
                         },

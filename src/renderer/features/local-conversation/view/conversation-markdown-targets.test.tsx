@@ -76,6 +76,41 @@ describe("ordinary message targets keep their mounted source", () => {
       native.dispose();
     }
   });
+  test("a source stays current while the stage replaces its presentation context", async () => {
+    const native = fixture("[Read](/tmp/read.ts)");
+    const captured: ConversationMarkdownSource[] = [];
+    const probe = (
+      <SourceProbe
+        observe={(source) => {
+          if (source) captured.push(source);
+        }}
+      />
+    );
+    const view = native.mount([], probe);
+    try {
+      await act(async () => {
+        native.connect();
+        await Promise.resolve();
+      });
+      const source = captured.at(-1)!;
+      // A new navigation callback or Skill list re-renders the stage without retiring its source,
+      // so an image opened from the earlier render still presents.
+      await act(async () => {
+        view.rerender(native.rows([skill], probe, async () => {}));
+        await Promise.resolve();
+      });
+      expect(captured.at(-1)).not.toBe(source);
+      expect(source.isCurrent()).toBe(true);
+      await act(async () => {
+        native.connect(2);
+        await Promise.resolve();
+      });
+      expect(source.isCurrent()).toBe(false);
+    } finally {
+      view.unmount();
+      native.dispose();
+    }
+  });
   test("the native ordinary body sends a decoded typed path to its source host once", async () => {
     const native = fixture("[Read](/tmp/a%252520b.ts#L19C2)", "remote-ssh-discovered:win");
     const readTurn = vi.spyOn(native.owner, "readTurn");

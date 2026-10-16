@@ -3,13 +3,16 @@ import { useCodexServiceTierSettings } from "@/lib/use-codex-service-tier-settin
 import type { ThreadFooterModel } from "../../thread-stage-types";
 import { useSyncExternalStore, type ReactNode } from "react";
 import { useCodexAppServerManagerForConversationId } from "../../local-conversation-store";
+import { useConversationRuntimeOverride } from "../../conversation-runtime";
+import { encodeCodexAsyncQuestionReplies } from "../../../../../shared/codex-async-user-input";
 import { AsyncQuestionPanel } from "./async-question-panel";
 import { CodexShimmerText } from "../shared/codex-shimmer-text";
 export function useAsyncQuestions(threadId: string) {
+  const port = useConversationRuntimeOverride()?.asyncQuestions;
   const manager = useCodexAppServerManagerForConversationId(threadId);
-  const runtime = manager.asyncQuestions;
+  const runtime = port?.runtime ?? manager.asyncQuestions;
   const state = useSyncExternalStore(runtime.subscribe, () => runtime.read(threadId));
-  return { manager, runtime, state };
+  return { manager, runtime, state, deliver: port?.deliver };
 }
 
 export function AsyncQuestionComposer({
@@ -19,7 +22,7 @@ export function AsyncQuestionComposer({
   threadId: string;
   model: ThreadFooterModel;
 }) {
-  const { manager, runtime, state } = useAsyncQuestions(threadId);
+  const { manager, runtime, state, deliver } = useAsyncQuestions(threadId);
   const { serviceTierSettings } = useCodexServiceTierSettings();
   return (
     <AsyncQuestionPanel
@@ -32,22 +35,26 @@ export function AsyncQuestionComposer({
         apps: model.composerApps ?? [],
       }}
       onSend={async () => {
-        await runtime.submit(threadId, async (turnId, prompt) => {
-          const conversation = manager.readConversation(threadId);
-          if (
-            !conversation?.turns.some(
-              (turn) => turn.turnId === turnId && turn.status === "inProgress",
-            )
-          )
-            return null;
-          return await manager.steerTurn({
-            threadId,
-            expectedTurnId: turnId,
-            prompt,
-            serviceTier: serviceTierSettings.serviceTier,
-            collaborationMode: model.selectedCollaborationMode,
-          });
-        });
+        await runtime.submit(
+          threadId,
+          deliver ??
+            (async (turnId, replies) => {
+              const conversation = manager.readConversation(threadId);
+              if (
+                !conversation?.turns.some(
+                  (turn) => turn.turnId === turnId && turn.status === "inProgress",
+                )
+              )
+                return null;
+              return await manager.steerTurn({
+                threadId,
+                expectedTurnId: turnId,
+                prompt: encodeCodexAsyncQuestionReplies(replies),
+                serviceTier: serviceTierSettings.serviceTier,
+                collaborationMode: model.selectedCollaborationMode,
+              });
+            }),
+        );
       }}
     />
   );

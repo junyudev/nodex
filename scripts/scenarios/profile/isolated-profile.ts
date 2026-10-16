@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { execFile } from "node:child_process";
-import { chmod, copyFile, lstat, mkdir, mkdtemp, realpath, rm } from "node:fs/promises";
+import { chmod, copyFile, lstat, mkdir, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
@@ -124,6 +124,18 @@ const ensureOwnedRootShape = async (profile: IsolatedProfile): Promise<void> => 
   }
 };
 
+/**
+ * OpenCode needs no account to reach its hosted free models, so a scenario that fell through to
+ * the host's `opencode` would talk to a real model. Scenarios configure their own OpenCode peer.
+ */
+const SCENARIO_PROFILE_SETTINGS = `[[server.opencode_agent_instances]]
+id = "opencode-default"
+displayName = "OpenCode"
+enabled = false
+binaryPath = "opencode"
+environment = []
+`;
+
 const descriptorFrom = (
   runRoot: string,
   manifest: IsolatedProfileManifest,
@@ -166,6 +178,7 @@ export const createIsolatedProfile = async (
       mkdir(profile.initialProjectsDirectory, { recursive: true, mode: 0o700 }),
       mkdir(profile.artifactsDirectory, { recursive: true, mode: 0o700 }),
     ]);
+    await writeFile(profile.settingsPath, SCENARIO_PROFILE_SETTINGS, { mode: 0o600 });
 
     const policy = options.codex ?? "empty";
     if (policy === "copy-config" || policy === "copy-auth-and-config") {

@@ -88,6 +88,7 @@ const fixture = Effect.gen(function* () {
   bind(turn());
   let caller: AppToolCaller | undefined;
   let bound = true;
+  const desktopCalls: unknown[] = [];
   const connection: AgentRuntimeProcessConnection = {
     identity: {
       runtimeId: "runtime",
@@ -142,7 +143,17 @@ const fixture = Effect.gen(function* () {
   yield* Effect.addFinalizer(() => Scope.close(scope, Exit.void));
   const execute = yield* make(connection, {
     projectlessId: "projectless",
-    providers: { acp: { driver: "acpRegistry", config: {} } },
+    providers: {
+      acp: { driver: "acpRegistry", config: {} },
+      codex: { driver: "codex", config: {} },
+    },
+    desktop: {
+      threadConfig: (cwd) => Effect.succeed({ "mcp_servers.node_repl": { cwd } }),
+      observeNativeTurn: (turn) =>
+        Effect.sync(() => {
+          desktopCalls.push(turn);
+        }),
+    },
     execute: (captured) => {
       caller = captured;
       return Effect.succeed({ content: [] });
@@ -166,6 +177,7 @@ const fixture = Effect.gen(function* () {
   );
   return {
     execute,
+    desktopCalls,
     calls,
     coreReads,
     coreWrites,
@@ -302,4 +314,73 @@ it.effect(
       );
       assert.notEqual(f.caller().callId, first);
     }).pipe(Effect.scoped),
+);
+
+const codexTurn = (runId: string): AgentHostTurnIdentity => ({
+  ...turn(runId),
+  providerInstanceId: "codex",
+  nativeThreadRef: { driver: "codex", nativeId: "codex-thread", strength: "strong" },
+});
+const nativeTurn = (
+  identity: AgentHostTurnIdentity,
+  phase: "started" | "ended",
+): AgentHostRequest => ({
+  type: "host.request",
+  id: `native:${phase}`,
+  operation: "turn.native",
+  identity,
+  nativeTurnId: "native-turn",
+  phase,
+});
+const prepareThread = (
+  providerInstanceId: string,
+  runtimeGeneration = "lease",
+): AgentHostRequest => ({
+  type: "host.request",
+  id: "thread",
+  operation: "thread.prepare",
+  identity: {
+    runtimeId: "runtime",
+    runtimeGeneration,
+    threadId: "thread:child",
+    providerInstanceId,
+    nativeDriver: providerInstanceId === "codex" ? "codex" : "acpRegistry",
+  },
+  cwd: "/worktree",
+});
+
+it.effect("only the current lease's Codex threads receive the desktop tool config", () =>
+  Effect.gen(function* () {
+    const f = yield* fixture;
+    assert.deepEqual(yield* f.execute(prepareThread("codex")), {
+      config: { "mcp_servers.node_repl": { cwd: "/worktree" } },
+    });
+    assert.deepEqual(yield* f.execute(prepareThread("acp")), {});
+    yield* Effect.flip(f.execute(prepareThread("codex", "previous-lease")));
+  }).pipe(Effect.scoped),
+);
+
+it.effect("a starting Codex Turn names its live Run and Session; ending needs only the lease", () =>
+  Effect.gen(function* () {
+    const f = yield* fixture;
+    const live = codexTurn("run:codex");
+    f.bind(live);
+    yield* f.execute(nativeTurn(live, "started"));
+    yield* Effect.flip(f.execute(nativeTurn(codexTurn("run:unknown"), "started")));
+    f.live.delete("run:codex");
+    yield* f.execute(nativeTurn(live, "ended"));
+    yield* Effect.flip(f.execute(nativeTurn({ ...live, runtimeGeneration: "old" }, "ended")));
+    assert.deepEqual(f.desktopCalls, [
+      {
+        nativeThreadId: "codex-thread",
+        nativeTurnId: "native-turn",
+        threadId: "thread:child",
+        runId: "run:codex",
+        sessionId: "session",
+        projectId: "current-project",
+        phase: "started",
+      },
+      { nativeThreadId: "codex-thread", nativeTurnId: "native-turn", phase: "ended" },
+    ]);
+  }).pipe(Effect.scoped),
 );

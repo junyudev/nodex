@@ -154,7 +154,9 @@ retain their exact product identities and content owners.
 
 Message delivery intent resolves inside the serialized command writer, after its
 durable receipt lookup. An accepted steer or restart therefore replays after the
-Run completes. Ordinary intake reads addressed control heads and input identities;
+Run completes. A steer the Provider refuses while its Turn keeps running waits as the
+next message instead of being lost; Codex steering that names a continued Turn is retried
+once against it. Ordinary intake reads addressed control heads and input identities;
 historical prompts and tool bodies stay out of planning. Provider handoff, captured
 ancestry and queue promotion select the required control identities before reading
 history. Portable history admits intact items within its database read and delivery
@@ -189,7 +191,8 @@ mode is not offered for Runtime chats.
 
 Product surfaces call delegated children subagents. Each one appears in the parent Run that
 created it as one row: its title, the configured Agent label and model that run it, and its
-current status — running, waiting, stopping, stopped, cancelled, failed or done. The row
+current status — running, waiting, stopping, stopped, cancelled, failed or done. A subagent a
+provider spawned itself takes the name the provider gives it, such as a Codex agent nickname. The row
 updates in place from the task's own item and metadata events; it never reads the child's
 history. An application-owned subagent can be opened; any live subagent can be stopped from
 its row. Stop shows Stopping immediately and keeps it until the subagent reports how it
@@ -208,12 +211,19 @@ will start the Agent again on its own, the composer says so in one line, such as
 for 2 background tasks · resumes automatically", with Stop for every live subagent. The line
 belongs to the Session's root conversation; an opened subagent shows its own Runs.
 
-Application tool calls show under the `nodex_app` presentation whatever spelling the
-Provider reports. Execution plumbing — listing available Agent models, polling or waiting
+Lifecycle hooks, automatic reviews, cited memory and the files a command read are Turn
+metadata: they reach the reply's hook indicator and footer details as in any chat, and a
+hook that blocks a prompt explains itself beside that prompt. Context a hook injected for
+the model never appears. Application tool calls show under the `nodex_app` presentation
+whatever spelling the Provider reports. Execution plumbing — listing available Agent models, polling or waiting
 for subagent status — never appears in the transcript, and delegating or cancelling a
 subagent appears only as that subagent's row unless the call itself failed. Request
 bookkeeping such as pending questions, approvals and interrupt requests stays out of the
-transcript; pending questions remain answerable from their request card.
+transcript; pending questions remain answerable from their request card. Optional questions
+the Agent asks while it keeps working are the exception: they read as the message that asked
+them, open the question panel above the ordinary Composer without replacing it, and stay
+answerable until the Agent settles them. Answers reach Codex in its question-reply
+envelope, steered into the running Turn or kept as the next message.
 
 ## Execution location and worktree handoff
 
@@ -343,7 +353,10 @@ application-owned child Thread never acquire Thread navigation or command author
 The Subagents panel shows each subagent's Agent label and model and can stop any live
 subagent the same way its transcript row does. Task metadata events update the pages already
 loaded in place, so later status changes never discard pages the user loaded; a newer report
-always wins over an older one. A delivery gap or Runtime restart attaches the panel again,
+always wins over an older one. When settling or reopening subagents leave a section with
+fewer rows than it showed and more remain unread, the panel reads its next page. A selected
+provider-spawned subagent opens read-only beside the overview, without a Composer; stopping
+its parent stops it. A delivery gap or Runtime restart attaches the panel again,
 and a failed read keeps the last pages visible with Retry, which also happens automatically
 when the Runtime is ready again.
 

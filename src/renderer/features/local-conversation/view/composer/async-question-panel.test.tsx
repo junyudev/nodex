@@ -7,6 +7,7 @@ import { toast } from "@/components/ui/toast";
 import { AsyncQuestionPanel } from "./async-question-panel";
 import { createAsyncQuestionRuntime } from "../../async-question-runtime";
 import type { CodexCanonicalItem } from "../../../../../shared/codex-conversation-state/codex-conversation-state";
+import type { CodexAsyncQuestionReply } from "../../../../../shared/codex-async-user-input";
 
 vi.mock("@/components/ui/toast", () => ({ toast: { danger: vi.fn() } }));
 
@@ -74,7 +75,9 @@ function setup(questions = [{ title: "Which scope?", options: ["Local", "Global"
     },
   });
   runtime.receive("thread", "ask");
-  const send = vi.fn(async (turnId: string, _prompt: string) => ({ turnId }));
+  const send = vi.fn(async (turnId: string, _replies: readonly CodexAsyncQuestionReply[]) => ({
+    turnId,
+  }));
   function Harness() {
     const state = useSyncExternalStore(runtime.subscribe, () => runtime.read("thread"));
     return (
@@ -133,7 +136,9 @@ describe("async question panel", () => {
       fireEvent.keyDown(view.getByRole("group", { name: "Agent question" }), { key: "2" }),
     );
     await waitFor(() => expect(view.send).toHaveBeenCalledTimes(1));
-    expect(view.send.mock.calls[0]?.[1]).toContain('"answer":"Global"');
+    expect(view.send.mock.calls[0]?.[1]).toContainEqual(
+      expect.objectContaining({ answer: "Global" }),
+    );
   });
   test("freeform uses the rich editor and IME Enter never submits", async () => {
     const view = setup([{ title: "What name?", options: [] }]);
@@ -165,7 +170,9 @@ describe("async question panel", () => {
     await waitFor(() => expect(view.getByLabelText("Reply…")).toBeTruthy());
     await interact(() => fireEvent.click(view.getByRole("button", { name: "Skip" })));
     await waitFor(() => expect(view.send).toHaveBeenCalledTimes(1));
-    expect(view.send.mock.calls[0]?.[1]).not.toContain('"question":"What name?"');
+    expect(view.send.mock.calls[0]?.[1]).not.toContainEqual(
+      expect.objectContaining({ question: "What name?" }),
+    );
   });
   test("keeps a custom answer editable even when it matches an option and restores it after keyboard selection", async () => {
     const view = setup();
@@ -182,7 +189,9 @@ describe("async question panel", () => {
     expect(Object.values(view.runtime.read("thread").questions)[0]?.draft).toBe("Local");
     await interact(() => fireEvent.keyDown(editor, { key: "Enter" }));
     await waitFor(() => expect(view.send).toHaveBeenCalledTimes(1));
-    expect(view.send.mock.calls[0]?.[1]).toContain('"answer":"Local"');
+    expect(view.send.mock.calls[0]?.[1]).toContainEqual(
+      expect.objectContaining({ answer: "Local" }),
+    );
   });
   test("shows the final countdown and cancels auto-dismiss when the user interacts", async () => {
     vi.useFakeTimers({
@@ -229,7 +238,9 @@ describe("async question panel", () => {
         await vi.advanceTimersByTimeAsync(1);
       });
       expect(view.send).toHaveBeenCalledTimes(1);
-      expect(view.send.mock.calls[0]?.[1]).toContain('"answer":"Global"');
+      expect(view.send.mock.calls[0]?.[1]).toContainEqual(
+        expect.objectContaining({ answer: "Global" }),
+      );
     } finally {
       view.unmount();
       vi.useRealTimers();

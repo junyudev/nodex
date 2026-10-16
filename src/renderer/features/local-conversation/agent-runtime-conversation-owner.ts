@@ -45,6 +45,10 @@ import {
   agentRuntimeTurnStatus,
   projectAgentRuntimeItem,
   projectAgentRuntimeRequest,
+  isAgentRuntimeAsyncQuestion,
+  projectAgentRuntimeHookRun,
+  type AgentRuntimeQuestionRequest,
+  projectAgentRuntimeAsyncQuestionMessage,
   projectAgentRuntimeTurnDetails,
   type AgentRuntimeProjectedItem,
   type AgentRuntimeRun,
@@ -52,6 +56,14 @@ import {
 } from "./agent-runtime-transcript-projection";
 
 import type { ConversationContentSource } from "./conversation-runtime";
+import { createAsyncQuestionRuntime } from "./async-question-runtime";
+import type { CodexCanonicalHookRun } from "../../../shared/codex-conversation-state/codex-conversation-state";
+import {
+  decodeCodexAsyncQuestionReplies,
+  expandCodexAsyncQuestions,
+  formatCodexAsyncQuestionReplies,
+  type CodexAsyncQuestionReply,
+} from "../../../shared/codex-async-user-input";
 
 export type AgentRuntimeReadTransport = Pick<
   AgentRuntimeRendererTransport,
@@ -190,7 +202,13 @@ export class AgentRuntimeConversationOwner {
   >();
   readonly #residentTaskIds = new Set<string>();
   readonly #turns = new Map<string, ResidentTurn>();
+  /** Each Turn's hooks by item, presented with its reply rather than as transcript rows. */
+  readonly #hookRuns = new Map<string, Map<string, CodexCanonicalHookRun>>();
   readonly #requests = new Map<string, CodexConversationServerRequest>();
+  /** Unanswered asynchronous questions by request, answerable until the Agent settles them. */
+  readonly #asyncQuestions = new Map<string, AgentRuntimeQuestionRequest>();
+  /** Drafts and panel state for this conversation's asynchronous questions. */
+  readonly asyncQuestions = createAsyncQuestionRuntime();
   #turnKeys: string[] = [];
   #state: AgentRuntimeConversationOwnerSnapshot = {
     conversation: null,
@@ -316,6 +334,8 @@ export class AgentRuntimeConversationOwner {
       this.#readMode = null;
       this.#clearTranscript();
       this.#requests.clear();
+      this.#asyncQuestions.clear();
+      this.asyncQuestions.clear(this.threadId);
       this.#nodeRuns.clear();
       this.#cohortHeads.clear();
       this.#patch({
@@ -454,6 +474,7 @@ export class AgentRuntimeConversationOwner {
           this.#historyGeneration += 1;
         }
         this.#requests.clear();
+        this.#asyncQuestions.clear();
         this.#nodeRuns.clear();
         this.#cohortHeads.clear();
         this.#state = {
@@ -466,6 +487,7 @@ export class AgentRuntimeConversationOwner {
         for (const run of conversation.snapshot.projection.runs) this.#captureCohort(run);
         for (const row of conversation.snapshot.projection.visibleTurnItems)
           this.#captureRequest(row.item, row.visibility !== "inherited");
+        this.#reconcileAsyncQuestions();
         this.#updateChildren();
         if (transcript && this.#transcriptActive) this.#reset(conversation.snapshot);
         this.#publishView();
@@ -558,6 +580,7 @@ export class AgentRuntimeConversationOwner {
     this.#liveItemsByRun.clear();
     this.#residentTaskIds.clear();
     this.#turns.clear();
+    this.#hookRuns.clear();
     this.#turnKeys = [];
     this.#queueGeneration += 1;
     this.#queuePage = null;
@@ -624,7 +647,11 @@ export class AgentRuntimeConversationOwner {
               } else continue;
             }
           }
-          const preview = (prompt ?? "Queued message").slice(0, 2048);
+          // Answers to the Agent's questions read as question and answer, not their envelope.
+          const replies = prompt === undefined ? null : decodeCodexAsyncQuestionReplies(prompt);
+          const preview = (
+            replies ? formatCodexAsyncQuestionReplies(replies) : (prompt ?? "Queued message")
+          ).slice(0, 2048);
           entries.push({
             deliveryOwner: "server",
             canSendNow: true,
@@ -726,10 +753,20 @@ export class AgentRuntimeConversationOwner {
           : first
         : undefined;
     let runlessSource = prepend ? firstItem?.sourceThreadId : undefined;
+    const hookTurns = new Set<string>();
     for (let index = rows.length - 1; index >= 0; index -= 1) {
       const row = rows[index]!;
       if (this.#items.has(row.sourceItemId)) continue;
       const item = row.item;
+      if (item.type === "hook_run") {
+        if (item.runId === null) continue;
+        const entityKey = runKey(item.threadId, item.runId);
+        const runs = this.#hookRuns.get(entityKey) ?? new Map<string, CodexCanonicalHookRun>();
+        runs.set(item.id, projectAgentRuntimeHookRun(item));
+        this.#hookRuns.set(entityKey, runs);
+        hookTurns.add(entityKey);
+        continue;
+      }
       const value = projectAgentRuntimeItem(item, thread.worktreePath ?? "");
       if (!value) continue;
       if (item.type === "subagent") this.#residentTaskIds.add(item.subagentId);
@@ -784,6 +821,7 @@ export class AgentRuntimeConversationOwner {
         run: this.#run(runId),
         openingItem: incoming.opening,
         previous: current?.details,
+        hookRuns: this.#turnHookRuns(entityKey),
       });
       const turn = {
         details,
@@ -819,10 +857,27 @@ export class AgentRuntimeConversationOwner {
             },
       );
     }
+    // A resident Turn's hooks change its metadata without adding a row.
+    for (const entityKey of hookTurns) {
+      const current = this.#turns.get(entityKey);
+      if (!current || incomingByTurn.has(entityKey)) continue;
+      const details = { ...current.details, hookRuns: this.#turnHookRuns(entityKey) };
+      this.#turns.set(entityKey, { ...current, details });
+      changes.push({
+        type: "turn",
+        key: { ...this.readOwner.key, entityKey },
+        details,
+        hasSubagentActivity: current.hasSubagentActivity,
+      });
+    }
     // New Turn metadata and slots must exist before its first addressed body update.
     changes.push(...itemChanges);
     this.#turnKeys = prepend ? [...newKeys, ...this.#turnKeys] : [...this.#turnKeys, ...newKeys];
     return changes;
+  }
+  #turnHookRuns(entityKey: string): readonly CodexCanonicalHookRun[] | undefined {
+    const runs = this.#hookRuns.get(entityKey);
+    return runs ? [...runs.values()] : undefined;
   }
   #prepend(page: AgentHistoryPage): void {
     this.#cursor = page.nextCursor;
@@ -837,6 +892,12 @@ export class AgentRuntimeConversationOwner {
   #captureRequest(item: AgentTurnItem, local: boolean): boolean {
     if (!local || (item.type !== "approval_request" && item.type !== "user_input_request"))
       return false;
+    if (isAgentRuntimeAsyncQuestion(item)) {
+      const pending = item.status === "pending" || item.status === "waiting";
+      if (pending) this.#asyncQuestions.set(item.requestId, item);
+      else this.#asyncQuestions.delete(item.requestId);
+      return true;
+    }
     const request = projectAgentRuntimeRequest(
       item,
       this.#state.conversation?.projectId ?? null,
@@ -1123,11 +1184,18 @@ export class AgentRuntimeConversationOwner {
           }
         }
       }
+      const arrived =
+        isAgentRuntimeAsyncQuestion(item) && !this.#asyncQuestions.has(item.requestId);
       if (
         this.#captureRequest(item, true) ||
         (item.type === "user_message" && this.#run(item.runId)?.status === "queued")
       )
         this.#publishView();
+      if (isAgentRuntimeAsyncQuestion(item)) {
+        this.#reconcileAsyncQuestions();
+        if (arrived && this.#asyncQuestions.has(item.requestId))
+          this.asyncQuestions.receive(this.threadId, item.id);
+      }
       if (
         item.type === "user_message" &&
         item.runId &&
@@ -1256,7 +1324,10 @@ export class AgentRuntimeConversationOwner {
           },
         },
       };
-      if (event.payload.status !== "pending") this.#requests.delete(event.payload.id);
+      if (event.payload.status !== "pending") {
+        this.#requests.delete(event.payload.id);
+        if (this.#asyncQuestions.delete(event.payload.id)) this.#reconcileAsyncQuestions();
+      }
       if (event.payload.status !== "pending" && !this.#nodeRuns.get(event.payload.nodeId)?.live)
         this.#nodeRuns.delete(event.payload.nodeId);
       this.#publishView();
@@ -1393,6 +1464,44 @@ export class AgentRuntimeConversationOwner {
       hasNextPage: this.#queuePage?.nextCursor != null,
     };
   }
+  #reconcileAsyncQuestions(): void {
+    const pending = [...this.#asyncQuestions.values()];
+    this.asyncQuestions.reconcileScope(this.threadId, {
+      generation: this.#generation,
+      // Questions stay answerable until the Agent settles them, across its Runs.
+      turnId: pending.length ? AGENT_RUNTIME_QUESTION_SCOPE : null,
+      entityKey: AGENT_RUNTIME_QUESTION_SCOPE,
+      questions: pending.flatMap((item) =>
+        expandCodexAsyncQuestions(projectAgentRuntimeAsyncQuestionMessage(item)),
+      ),
+      answers: new Map(),
+    });
+  }
+  /** The pending requests that receive these replies, with each answer keyed by its question. */
+  asyncQuestionAnswers(replies: readonly CodexAsyncQuestionReply[]): Array<{
+    readonly requestId: string;
+    readonly runId: string | null;
+    readonly answers: Readonly<Record<string, string>>;
+  }> {
+    const answers = new Map<string, Record<string, string>>();
+    for (const item of this.#asyncQuestions.values()) {
+      const questions = expandCodexAsyncQuestions(projectAgentRuntimeAsyncQuestionMessage(item));
+      for (const reply of replies) {
+        const index = questions.findIndex((question) => question.id === reply.questionItemId);
+        const question = item.questions[index];
+        if (!question) continue;
+        answers.set(item.requestId, {
+          ...answers.get(item.requestId),
+          [question.id]: reply.answer,
+        });
+      }
+    }
+    return [...answers].map(([requestId, entries]) => ({
+      requestId,
+      runId: this.#asyncQuestions.get(requestId)?.runId ?? null,
+      answers: entries,
+    }));
+  }
   #publishView(): void {
     const conversation = this.#state.conversation;
     if (!conversation) return;
@@ -1457,6 +1566,8 @@ export class AgentRuntimeConversationOwner {
   }
 }
 const messageOf = (cause: unknown) => (cause instanceof Error ? cause.message : String(cause));
+/** Pending questions share one draft scope, so drafts survive while the Agent moves between Runs. */
+const AGENT_RUNTIME_QUESTION_SCOPE = "agent-runtime:pending-questions";
 
 // Active viewers share one delivery subscription. Unretained owners keep no
 // engine bodies, and disappear when their last caller releases the lease.

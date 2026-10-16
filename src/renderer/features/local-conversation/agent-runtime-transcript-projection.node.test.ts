@@ -3,6 +3,7 @@ import type { AgentTurnItem } from "@nodex/agent-runtime/contracts";
 import {
   isAgentRuntimeItemHidden,
   parseAgentRuntimeToolName,
+  projectAgentRuntimeHookRun,
   projectAgentRuntimeItem,
 } from "./agent-runtime-transcript-projection";
 
@@ -220,5 +221,78 @@ describe("Runtime message attribution and notices", () => {
     expect(
       projectAgentRuntimeItem({ ...base, type: "run_interrupt_request", message: "Stop" }),
     ).toBeNull();
+  });
+});
+
+describe("Runtime Turn metadata", () => {
+  test("hooks stay out of the transcript and read as the Turn's hook runs", () => {
+    const hook: Extract<AgentTurnItem, { type: "hook_run" }> = {
+      ...base,
+      type: "hook_run",
+      eventName: "userPromptSubmit",
+      source: "project",
+      sourcePath: "/workspace/.codex/hooks.json",
+      hookStatus: "blocked",
+      statusMessage: null,
+      entries: [{ kind: "feedback", text: "Fix it before retrying." }],
+    };
+    expect(isAgentRuntimeItemHidden(hook)).toBe(true);
+    expect(projectAgentRuntimeHookRun(hook).run).toMatchObject({
+      eventName: "userPromptSubmit",
+      source: "project",
+      status: "blocked",
+      entries: [{ kind: "feedback", text: "Fix it before retrying." }],
+    });
+  });
+  test("reviews, cited memory and command reads keep what the reply footer reads", () => {
+    expect(
+      projectAgentRuntimeItem(
+        {
+          ...base,
+          type: "approval_review",
+          targetItemId: null,
+          actionKind: "command",
+          actionSummary: "touch protected.txt",
+          decision: "denied",
+          riskLevel: "low",
+          userAuthorization: "low",
+          rationale: "Not requested.",
+        },
+        "/workspace",
+      ),
+    ).toMatchObject({
+      type: "automaticApprovalReview",
+      action: { type: "command", command: "touch protected.txt" },
+      status: "denied",
+      rationale: "Not requested.",
+    });
+    const citation = {
+      entries: [{ path: "MEMORY.md", lineStart: 2, lineEnd: 4, note: "Convention." }],
+      threadIds: [],
+    };
+    expect(
+      projectAgentRuntimeItem({
+        ...base,
+        type: "assistant_message",
+        messageId: "reply",
+        text: "Done.",
+        streaming: false,
+        memoryCitation: citation,
+      }),
+    ).toMatchObject({ type: "agentMessage", memoryCitation: citation });
+    const read = {
+      type: "read",
+      command: "cat SKILL.md",
+      name: "SKILL.md",
+      path: "/w/SKILL.md",
+    } as const;
+    expect(
+      projectAgentRuntimeItem({
+        ...base,
+        type: "command_execution",
+        input: "cat SKILL.md",
+        commandActions: [read],
+      }),
+    ).toMatchObject({ type: "commandExecution", commandActions: [read] });
   });
 });

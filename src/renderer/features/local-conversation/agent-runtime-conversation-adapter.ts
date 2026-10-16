@@ -179,6 +179,25 @@ export function createAgentRuntimeConversationRuntime(
           ),
         }
       : {}),
+    ...(target && owner
+      ? {
+          asyncQuestions: {
+            runtime: owner.asyncQuestions,
+            // Each question's request receives its answers; the Agent decides how they arrive.
+            deliver: async (turnId, replies) => {
+              const requests = owner.asyncQuestionAnswers(replies);
+              if (requests.length === 0) return null;
+              for (const request of requests)
+                await agentRuntimeRuntime.respond({
+                  ...target,
+                  threadId: owner.threadId,
+                  ...request,
+                });
+              return { turnId };
+            },
+          },
+        }
+      : {}),
     primaryRequest: (id) => (matches(id) ? (owner!.getSnapshot().view?.requests[0] ?? null) : null),
     children: (id) => (matches(id) ? owner!.children() : emptyChildren),
     retain: () => owner?.retain() ?? (() => {}),

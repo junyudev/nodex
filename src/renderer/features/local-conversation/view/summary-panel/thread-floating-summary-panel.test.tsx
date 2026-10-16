@@ -410,6 +410,7 @@ describe("ThreadFloatingSummaryPanel", () => {
     expect(motionShell?.style.opacity).toBe("1");
     expect(motionShell?.style.transform).toBe("none");
     expect(widthShell?.className.includes("pointer-events-auto")).toBe(true);
+    expect(motionShell?.hasAttribute("inert")).toBe(false);
     expect(widthShell?.style.width).toBe("300px");
     expect(textContent(view.container).includes("Rate limits")).toBe(false);
     expect(textContent(view.container).includes("82% · 61%")).toBe(false);
@@ -441,6 +442,8 @@ describe("ThreadFloatingSummaryPanel", () => {
     expect(Boolean(view.container.querySelector("[data-testid='thread-summary-panel']"))).toBe(
       true,
     );
+    // The closed panel stays mounted for its exit motion, outside focus and accessibility.
+    expect(motionShell?.hasAttribute("inert")).toBe(true);
   });
 
   test("uses the Codex instant invisible branch while overlay popover is open", async () => {

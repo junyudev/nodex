@@ -2817,7 +2817,6 @@ export function WorkbenchRuntime({
   } = threadSummary;
   const threadSummaryHeaderAction = (
     <WorkbenchThreadSummaryHeader
-      activeProject={activeProject}
       activeSession={activeSession}
       pinnedOpen={threadSummaryPanelPinnedOpen}
       onTogglePinnedOpen={toggleThreadSummaryPanel}

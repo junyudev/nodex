@@ -8,6 +8,8 @@ The built-in Browser is available when its verified runtime is ready. Control of
 
 Computer Use is available only when its verified helper and operating-system requirements are ready. Its service uses the bundled Agent runtime and the owning Profile without requiring a separately installed Codex app or sharing another Profile’s configuration. A failure in one control backend does not weaken or implicitly enable another. ACP tasks and remote Codex executions do not acquire local desktop-control surfaces.
 
+Local Codex chats receive the desktop tools and Desktop features each time their thread starts, resumes, or forks, alongside the user's own MCP servers. When desktop tools cannot be prepared, the chat continues without them. The built-in Browser opens in the window that sent the message. A turn that no window sent, such as a queued, scheduled, or Agent-started turn, keeps the Browser window the chat already had. Archiving or deleting a chat releases its Browser pages.
+
 ## Website tools
 
 The built-in Browser advertises website tool discovery and invocation through its WebMCP capability. The registry is installed on `document.modelContext` before page scripts run. Registration requires a secure context and origin-keyed agent clustering for network documents; local file documents use their secure-file boundary. Tool definitions and results must be JSON-serializable; registrations belong to the current document, support abort-based removal, and carry identities that reject stale discovery results after replacement or removal. Unsupported user-interaction requests fail explicitly.

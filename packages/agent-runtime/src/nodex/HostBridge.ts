@@ -40,6 +40,11 @@ const decodeResult = Schema.decodeUnknownEffect(Result);
 const decodePrepared = Schema.decodeUnknownEffect(
   Schema.Struct({ instructions: Schema.optional(Schema.String) }),
 );
+const decodeThreadConfig = Schema.decodeUnknownEffect(
+  Schema.Struct({
+    config: Schema.optional(Schema.NullOr(Schema.Record(Schema.String, Schema.Unknown))),
+  }),
+);
 
 export const make = Effect.fn("AgentRuntime.makeHostBridge")(function* (
   configuration: AgentRuntimeConfiguration,
@@ -218,6 +223,79 @@ export const make = Effect.fn("AgentRuntime.makeHostBridge")(function* (
     };
   });
 
+  const prepareThread = Effect.fn("AgentRuntime.prepareHostThread")(function* (input: {
+    readonly threadId: string;
+    readonly providerInstanceId: string;
+    readonly nativeDriver: string;
+    readonly cwd: string | null;
+  }) {
+    if (configuration.host === undefined) return {};
+    const output = yield* exchange({
+      type: "host.request",
+      operation: "thread.prepare",
+      identity: {
+        runtimeId,
+        runtimeGeneration,
+        threadId: input.threadId,
+        providerInstanceId: input.providerInstanceId,
+        nativeDriver: input.nativeDriver,
+      },
+      cwd: input.cwd,
+    }).pipe(
+      // Desktop tools may install on first use; a host that cannot answer leaves them out.
+      Effect.timeoutOrElse({
+        duration: "1 minute",
+        orElse: () =>
+          Effect.fail(
+            new ExecutionHost.ExecutionHostError({
+              operation: "thread.prepare",
+              message: "The host did not prepare the thread in time.",
+            }),
+          ),
+      }),
+    );
+    const result = yield* decodeThreadConfig(output).pipe(
+      Effect.mapError(
+        (error) =>
+          new ExecutionHost.ExecutionHostError({
+            operation: "thread.prepare",
+            message: error.message,
+          }),
+      ),
+    );
+    return result.config ? { config: result.config } : {};
+  });
+
+  // Host tools that follow native Turns degrade when the host cannot be told; execution goes on.
+  const observeNativeTurn = Effect.fn("AgentRuntime.observeNativeTurn")(function* (input: {
+    readonly identity: ExecutionHost.HostTurnIdentity;
+    readonly nativeTurnId: string;
+    readonly phase: "started" | "ended";
+  }) {
+    if (configuration.host === undefined) return;
+    yield* exchange({
+      type: "host.request",
+      operation: "turn.native",
+      identity: { ...input.identity, runtimeId, runtimeGeneration },
+      nativeTurnId: input.nativeTurnId,
+      phase: input.phase,
+    }).pipe(
+      Effect.timeoutOrElse({
+        duration: "10 seconds",
+        orElse: () =>
+          Effect.fail(
+            new ExecutionHost.ExecutionHostError({
+              operation: "turn.native",
+              message: "The host did not observe the Turn in time.",
+            }),
+          ),
+      }),
+      Effect.catch((cause) =>
+        Effect.logWarning("Host could not observe a native Turn", { cause, phase: input.phase }),
+      ),
+    );
+  });
+
   const accept = Effect.fn("AgentRuntime.acceptHostResult")(function* (value: unknown) {
     const result = yield* decodeResult(value);
     const waiter = yield* Ref.get(pending).pipe(Effect.map((current) => current.get(result.id)));
@@ -394,6 +472,8 @@ export const make = Effect.fn("AgentRuntime.makeHostBridge")(function* (
       }),
     prepareTurn,
     registerNativeSession,
+    prepareThread,
+    observeNativeTurn,
     onNativeSessionClose: (
       identity: {
         readonly credentialId: string;
@@ -524,6 +604,8 @@ export const layerExecutionHost = Layer.effect(
       releaseNativeToolCall: bridge.releaseNativeToolCall,
       readProviderAuth: bridge.readProviderAuth,
       registerNativeSession: bridge.registerNativeSession,
+      prepareThread: bridge.prepareThread,
+      observeNativeTurn: bridge.observeNativeTurn,
       toolAvailability: { browser: false, device: false },
       orchestrationInstructions: ORCHESTRATION_INSTRUCTIONS,
     };

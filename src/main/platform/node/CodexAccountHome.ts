@@ -261,17 +261,26 @@ export function assertCodexAccountHomeIdentity(home: CodexAccountHome, platform:
   }
 }
 
+/**
+ * Explicit native config retains precedence over this fallback; the shared CLI and every
+ * selected account therefore use the same native history store.
+ */
+export function codexAccountHistoryEnvironment(
+  home: CodexAccountHome,
+  environment: Readonly<NodeJS.ProcessEnv>,
+): { readonly CODEX_SQLITE_HOME?: string } {
+  if (home.mode === "direct") return {};
+  return { CODEX_SQLITE_HOME: environment.CODEX_SQLITE_HOME?.trim() || home.sharedHome };
+}
+
 export function codexAccountHomeEnvironment(
   home: CodexAccountHome,
   environment: Readonly<NodeJS.ProcessEnv>,
 ): NodeJS.ProcessEnv {
-  if (home.mode === "direct") return { ...environment, CODEX_HOME: home.effectiveHome };
   return {
     ...environment,
     CODEX_HOME: home.effectiveHome,
-    // Explicit native config retains precedence over this fallback; the shared
-    // CLI and every selected account therefore use the same native history store.
-    CODEX_SQLITE_HOME: environment.CODEX_SQLITE_HOME?.trim() || home.sharedHome,
+    ...codexAccountHistoryEnvironment(home, environment),
   };
 }
 

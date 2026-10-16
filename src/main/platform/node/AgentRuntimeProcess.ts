@@ -94,7 +94,37 @@ const hostRequestSchema = z.discriminatedUnion("operation", [
       identity: hostToolIdentitySchema,
     })
     .passthrough(),
+  z.object({
+    type: z.literal("host.request"),
+    id: z.string().min(1),
+    operation: z.literal("thread.prepare"),
+    identity: hostIdentitySchema.extend({
+      threadId: z.string().min(1),
+      providerInstanceId: z.string().min(1),
+      nativeDriver: z.string().min(1),
+    }),
+    cwd: z.string().nullable(),
+  }),
+  z.object({
+    type: z.literal("host.request"),
+    id: z.string().min(1),
+    operation: z.literal("turn.native"),
+    identity: hostIdentitySchema
+      .extend({ threadId: z.string().min(1), runId: z.string().min(1) })
+      .passthrough(),
+    nativeTurnId: z.string().min(1),
+    phase: z.enum(["started", "ended"]),
+  }),
 ]);
+// An engine frame this schema rejects ends the connection, so every host operation is admitted.
+type UnadmittedHostOperation = Exclude<
+  AgentHostRequest["operation"],
+  z.infer<typeof hostRequestSchema>["operation"]
+>;
+const everyHostOperationAdmitted: [UnadmittedHostOperation] extends [never]
+  ? true
+  : UnadmittedHostOperation = true;
+void everyHostOperationAdmitted;
 const nativeSourceSchema = z.object({
   runtimeGeneration: z.string(),
   threadId: z.string(),

@@ -167,19 +167,34 @@ const platform: Layer.Layer<CodexPlatform, MainApplicationError, MainConfig | Ap
   );
 
 /** Codex arguments that put this Profile's task-bound `nodex` first in every Codex shell Main launches. */
-export class NodexCliShellLaunch extends Context.Service<
-  NodexCliShellLaunch,
-  { readonly codexArgs: ReadonlyArray<string> }
->()("nodex/main/app/NodexCliShellLaunch") {}
+/**
+ * Config overrides every local Codex process of this Profile starts with, whether Main or Agent
+ * execution runs it: Desktop feature defaults, the `nodex` CLI shell, and the selected account's
+ * credential store and shared history.
+ */
+export class CodexLocalLaunch extends Context.Service<
+  CodexLocalLaunch,
+  { readonly configOverrides: ReadonlyArray<string> }
+>()("nodex/main/app/CodexLocalLaunch") {}
 
 /** Prepared once per Main process: preparing again would drop every live task binding. */
-const cliShell = Layer.effect(
-  NodexCliShellLaunch,
+const localLaunch = Layer.effect(
+  CodexLocalLaunch,
   Effect.gen(function* () {
     const config = yield* MainConfig;
     const codex = yield* CodexPlatform;
-    if (config.platform === "win32") return NodexCliShellLaunch.of({ codexArgs: [] });
-    const codexArgs = yield* Effect.tryPromise(() => prepareNodexCliShell(config.nodexHome)).pipe(
+    const featureArgs = yield* Effect.tryPromise(() =>
+      codexFeatureDefaultLaunchArgs(codex.codexHome),
+    ).pipe(
+      Effect.mapError(
+        (cause) =>
+          new MainApplicationError({ phase: "startup", operation: "read-codex-defaults", cause }),
+      ),
+    );
+    const accountArgs = codexAccountHomeLaunchArgs(codex.accountHome);
+    if (config.platform === "win32")
+      return CodexLocalLaunch.of({ configOverrides: [...featureArgs, ...accountArgs] });
+    const cliArgs = yield* Effect.tryPromise(() => prepareNodexCliShell(config.nodexHome)).pipe(
       Effect.andThen(
         Effect.tryPromise(() =>
           nodexCliShellLaunchArgs({
@@ -202,7 +217,7 @@ const cliShell = Layer.effect(
           }),
       ),
     );
-    return NodexCliShellLaunch.of({ codexArgs });
+    return CodexLocalLaunch.of({ configOverrides: [...featureArgs, ...cliArgs, ...accountArgs] });
   }),
 );
 
@@ -328,17 +343,8 @@ const runtime = Layer.unwrap(
       catch: (cause) =>
         new MainApplicationError({ phase: "startup", operation: "prepare-codex-account", cause }),
     });
-    const cliArgs = (yield* NodexCliShellLaunch).codexArgs;
+    const { configOverrides } = yield* CodexLocalLaunch;
     const appToolSession = yield* makeAppToolSession;
-    const featureArgs = yield* Effect.tryPromise(() =>
-      codexFeatureDefaultLaunchArgs(codex.codexHome),
-    ).pipe(
-      Effect.mapError(
-        (cause) =>
-          new MainApplicationError({ phase: "startup", operation: "read-codex-defaults", cause }),
-      ),
-    );
-    const accountArgs = codexAccountHomeLaunchArgs(accountHome);
     const local: Omit<CodexAppServerSessionOptions, "generation"> = {
       hostId: "local",
       command: codex.runtime.binaryPath,
@@ -346,14 +352,9 @@ const runtime = Layer.unwrap(
         codexHome: accountHome.effectiveHome,
         platform: config.platform,
         resourcesPath: config.resourcesPath,
-        configOverrides: [...featureArgs, ...cliArgs, ...accountArgs],
+        configOverrides,
       },
-      args: [
-        ...codexCliAppServerArgs(config.environment),
-        ...featureArgs,
-        ...cliArgs,
-        ...accountArgs,
-      ],
+      args: [...codexCliAppServerArgs(config.environment), ...configOverrides],
       env: {},
       resolveEnv: () =>
         Effect.try({
@@ -422,7 +423,7 @@ const foundations = Layer.mergeAll(
   appToolInvocations,
   conversations,
 );
-const transport = runtime.pipe(Layer.provideMerge(cliShell), Layer.provideMerge(foundations));
+const transport = runtime.pipe(Layer.provideMerge(localLaunch), Layer.provideMerge(foundations));
 const kernel = pendingRequests.pipe(Layer.provideMerge(transport));
 
 const account = codexAccountLive({ pollInterval: "60 seconds" }).pipe(Layer.provideMerge(kernel));
@@ -474,7 +475,7 @@ const applicationServices = Layer.mergeAll(
 /** Stable Codex host generations and application-owned conversation foundations. */
 export const live: Layer.Layer<
   | CodexPlatform
-  | NodexCliShellLaunch
+  | CodexLocalLaunch
   | CodexHomeContinuity
   | CodexAttestation
   | AppToolInvocationInbox

@@ -245,7 +245,10 @@ export interface AgentRuntimeTarget {
   readonly threadId: string;
 }
 
-/** The model and effort Agent execution recorded for the Session's Thread. */
+/**
+ * The model and effort Agent execution runs the Session's Thread with. A selection that names
+ * no effort runs at the model's default effort.
+ */
 export const waitForAgentThreadExecutionProfile = async (
   page: Page,
   target: AgentRuntimeTarget,
@@ -260,10 +263,20 @@ export const waitForAgentThreadExecutionProfile = async (
           target,
         )) as AgentRuntimeConversation;
         const selection = conversation.snapshot.projection.thread.modelSelection;
+        const providers = (await invokeIpc(
+          page,
+          "agent-runtime:providers:read",
+          {},
+        )) as IpcApi["agent-runtime:providers:read"]["result"];
+        const defaultEffort = providers
+          .find((provider) => provider.instanceId === selection.instanceId)
+          ?.models.find((model) => model.slug === selection.model)
+          ?.capabilities?.optionDescriptors?.find((option) => option.id === "reasoningEffort");
         return {
           modelId: selection.model,
           reasoningEffort:
-            selection.options?.find((option) => option.id === "reasoningEffort")?.value ?? null,
+            selection.options?.find((option) => option.id === "reasoningEffort")?.value ??
+            (defaultEffort?.type === "select" ? (defaultEffort.currentValue ?? null) : null),
         };
       },
       { timeout: 15_000 },

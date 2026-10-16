@@ -1,5 +1,6 @@
 import type { AgentSnapshot, AgentTurnItem } from "@nodex/agent-runtime/contracts";
 import type { CommandAction, UserInput } from "@nodex/codex-app-server-protocol/v2";
+import type { CodexCanonicalHookRun } from "../../../shared/codex-conversation-state/codex-conversation-state";
 import type {
   CodexCanonicalItem,
   CodexConversationServerRequest,
@@ -152,6 +153,37 @@ export function parseAgentRuntimeToolName(toolName: string | null): {
 const isLive = (status: AgentTurnItem["status"]) =>
   status === "pending" || status === "running" || status === "waiting";
 
+export type AgentRuntimeQuestionRequest = Extract<AgentTurnItem, { type: "user_input_request" }> & {
+  readonly responseMode: "message";
+};
+
+/**
+ * Optional questions the Agent asks while it keeps working. They are answered from the
+ * question panel above the ordinary Composer, never from a blocking request card.
+ */
+export const isAgentRuntimeAsyncQuestion = (
+  item: AgentTurnItem,
+): item is AgentRuntimeQuestionRequest =>
+  item.type === "user_input_request" && item.responseMode === "message";
+
+/** An asynchronous question reads as the assistant message that asked it. */
+export function projectAgentRuntimeAsyncQuestionMessage(
+  item: AgentRuntimeQuestionRequest,
+): Extract<CodexCanonicalItem, { type: "agentMessage" }> {
+  return {
+    type: "agentMessage",
+    id: item.id,
+    text: item.questions.map((question) => question.question).join("\n"),
+    phase: null,
+    memoryCitation: null,
+    delivery: "async",
+    questions: item.questions.map((question) => ({
+      title: question.question,
+      options: question.options.length ? question.options.map((option) => option.label) : null,
+    })),
+  };
+}
+
 /** Execution bookkeeping with no conversation meaning stays out of the transcript. */
 export function isAgentRuntimeItemHidden(item: AgentTurnItem): boolean {
   switch (item.type) {
@@ -163,9 +195,11 @@ export function isAgentRuntimeItemHidden(item: AgentTurnItem): boolean {
     case "run_interrupt_request":
     case "checkpoint":
     case "approval_request":
+    // A Turn's hooks are its metadata, presented with its reply rather than as rows.
+    case "hook_run":
       return true;
     case "user_input_request":
-      return isLive(item.status);
+      return isLive(item.status) && !isAgentRuntimeAsyncQuestion(item);
     default:
       return false;
   }
@@ -282,7 +316,12 @@ export function projectAgentRuntimeItem(item: AgentTurnItem, cwd = ""): CodexCan
         id,
         text: item.text,
         phase: null,
-        memoryCitation: null,
+        memoryCitation: item.memoryCitation
+          ? {
+              entries: item.memoryCitation.entries.map((entry) => ({ ...entry })),
+              threadIds: [...item.memoryCitation.threadIds],
+            }
+          : null,
         delivery: null,
         questions: null,
       };
@@ -301,7 +340,9 @@ export function projectAgentRuntimeItem(item: AgentTurnItem, cwd = ""): CodexCan
         processId: null,
         source: "agent",
         status: status === "interrupted" ? "declined" : status,
-        commandActions: emptyCommandActions,
+        commandActions: item.commandActions
+          ? item.commandActions.map((action) => ({ ...action }))
+          : emptyCommandActions,
         aggregatedOutput: item.output ?? null,
         exitCode: item.exitCode ?? null,
         durationMs,
@@ -428,14 +469,59 @@ export function projectAgentRuntimeItem(item: AgentTurnItem, cwd = ""): CodexCan
         item.summary ?? `Continued with ${item.toModel ?? item.toProviderInstanceId}`,
       );
     case "user_input_request":
-      return notice(item, item.questions.map((question) => question.question).join("\n"));
+      return isAgentRuntimeAsyncQuestion(item)
+        ? projectAgentRuntimeAsyncQuestionMessage(item)
+        : notice(item, item.questions.map((question) => question.question).join("\n"));
     case "secret_request":
       return notice(item, item.reason);
+    case "approval_review":
+      return {
+        type: "automaticApprovalReview",
+        id,
+        targetItemId: item.targetItemId,
+        // Each review reads as the action it judged; the reviewer's own wording stays intact.
+        action: { type: "command", source: "shell", command: item.actionSummary, cwd },
+        startedAtMs: agentRuntimeTime(item.startedAt) ?? agentRuntimeTime(item.updatedAt) ?? 0,
+        completedAtMs: agentRuntimeTime(item.completedAt),
+        event: null,
+        status: item.decision,
+        riskLevel: item.riskLevel,
+        userAuthorization: item.userAuthorization,
+        rationale: item.rationale,
+      };
     case "run_interrupt_request":
     case "checkpoint":
     case "approval_request":
+    case "hook_run":
       return null;
   }
+}
+
+/** A Turn's hook, in the shape its reply's hook presentation reads. */
+export function projectAgentRuntimeHookRun(
+  item: Extract<AgentTurnItem, { type: "hook_run" }>,
+): CodexCanonicalHookRun {
+  const startedAt = agentRuntimeTime(item.startedAt) ?? agentRuntimeTime(item.updatedAt) ?? 0;
+  const completedAt = agentRuntimeTime(item.completedAt);
+  return {
+    id: item.id,
+    run: {
+      id: item.id,
+      eventName: item.eventName as CodexCanonicalHookRun["run"]["eventName"],
+      handlerType: "command",
+      executionMode: "sync",
+      scope: "turn",
+      sourcePath: item.sourcePath ?? "",
+      source: item.source as CodexCanonicalHookRun["run"]["source"],
+      displayOrder: 0n,
+      status: item.hookStatus,
+      statusMessage: item.statusMessage,
+      startedAt: BigInt(startedAt),
+      completedAt: completedAt === null ? null : BigInt(completedAt),
+      durationMs: completedAt === null ? null : BigInt(Math.max(0, completedAt - startedAt)),
+      entries: item.entries.map((entry) => ({ ...entry })),
+    },
+  };
 }
 
 export function projectAgentRuntimeTurnDetails(input: {
@@ -444,8 +530,10 @@ export function projectAgentRuntimeTurnDetails(input: {
   readonly run?: AgentRuntimeRun | undefined;
   readonly openingItem?: Extract<AgentTurnItem, { type: "user_message" }> | undefined;
   readonly previous?: CodexTranscriptTurnDetails | undefined;
+  readonly hookRuns?: readonly CodexCanonicalHookRun[] | undefined;
 }): CodexTranscriptTurnDetails {
   const { thread, run, previous, openingItem } = input;
+  const hookRuns = input.hookRuns ?? previous?.hookRuns;
   const startedAt = agentRuntimeTime(
     run?.workStartedAt ?? run?.startedAt ?? run?.requestedAt ?? openingItem?.startedAt,
   );
@@ -464,6 +552,7 @@ export function projectAgentRuntimeTurnDetails(input: {
     completedAtMs: completedAt,
     finalAssistantStartedAtMs: previous?.finalAssistantStartedAtMs ?? null,
     lifecycleStatusByItemId: previous?.lifecycleStatusByItemId,
+    ...(hookRuns?.length ? { hookRuns } : {}),
     params: openingItem
       ? {
           threadId: thread.id,
@@ -541,7 +630,7 @@ export function projectAgentRuntimeRequest(
       reason: item.prompt,
       availableDecisions: item.options?.map((option) => option.decision) ?? null,
     };
-  if (item.type !== "user_input_request") return null;
+  if (item.type !== "user_input_request" || isAgentRuntimeAsyncQuestion(item)) return null;
   return {
     ...base,
     type: "userInput",

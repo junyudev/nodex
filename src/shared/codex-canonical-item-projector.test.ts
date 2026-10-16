@@ -800,6 +800,34 @@ describe("projectCodexCanonicalTurnViews", () => {
     expect(views.at(-1)?.itemId).toBe("assistant");
   });
 
+  test("keeps input that steered the Turn as a user message while a bare echo stays a marker", () => {
+    const steer = (id: string, inputIntent?: "steer") =>
+      ({
+        type: "userMessage",
+        id,
+        clientId: null,
+        content: [{ type: "text", text: `Steer ${id}`, text_elements: [] }],
+        ...(inputIntent ? { inputIntent } : {}),
+      }) satisfies CodexCanonicalItem;
+    const views = projectCodexCanonicalTurnViews({
+      threadId: THREAD_ID,
+      turn: buildCanonicalTurn({
+        params: buildTurnParams({
+          input: [{ type: "text", text: "Prompt", text_elements: [] }],
+        }),
+        items: [steer("delivered", "steer"), steer("echo")],
+      }),
+      observedAtMs: 1000,
+    });
+
+    expect(views.find((view) => view.itemId === "delivered")).toMatchObject({
+      semanticKind: "userMessage",
+      markdownText: "Steer delivered",
+      userInputIntent: "steer",
+    });
+    expect(views.find((view) => view.itemId === "echo")?.semanticKind).toBe("steered");
+  });
+
   test("requires the duplicate prelude for client and structural user-message matches", () => {
     const structurallyEqual = materializeCodexCanonicalProtocolItem({
       type: "userMessage",

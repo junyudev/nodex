@@ -1,31 +1,17 @@
 import { useMemo } from "react";
-import { useBackgroundSubagentRows } from "../../use-background-subagent-rows";
-import { resolveCodexElectronDisplayThreadTitle } from "../../../../../shared/codex-thread-title";
 import type {
   ThreadStageActions,
   ThreadSummaryPanelMode,
   ThreadSummaryPanelScheduledAutomationRow,
 } from "../../thread-stage-types";
-import {
-  useConversationBackgroundTerminalRows,
-  useConversationCwd,
-  useConversationSummaryFields,
-  useConversationTurns,
-} from "../../local-conversation-store";
-import {
-  ThreadSummaryPanelPopover,
-  type ThreadSummaryPanelContentProps,
-} from "./thread-floating-summary-panel";
+import { ThreadSummaryPanelPopover } from "./thread-floating-summary-panel";
+import { useThreadSummaryContent } from "./thread-summary-content";
 import { ThreadSummaryPanelToggle } from "./thread-summary-panel-toggle";
 
 export interface ThreadSummaryPanelHeaderActionProps {
   activeThreadId: string | null;
-  /** Runtime roots have no native subagent overview; their tasks come from the Runtime. */
-  executionKind: "native" | "runtime";
-  preferredHostId?: string | null;
   activeThreadIsManagedWorktree?: boolean;
   onPopoverOpenChange?: (open: boolean) => void;
-  projectWorkspacePath: string | null;
   mode: ThreadSummaryPanelMode;
   pinnedOpen: boolean;
   onPinnedOpenToggle?: () => void;
@@ -39,11 +25,8 @@ export interface ThreadSummaryPanelHeaderActionProps {
 
 export function ThreadSummaryPanelHeaderAction({
   activeThreadId,
-  executionKind,
-  preferredHostId,
   activeThreadIsManagedWorktree = false,
   onPopoverOpenChange,
-  projectWorkspacePath,
   mode,
   pinnedOpen,
   onPinnedOpenToggle,
@@ -51,57 +34,24 @@ export function ThreadSummaryPanelHeaderAction({
   scheduledAutomation,
   actions,
 }: ThreadSummaryPanelHeaderActionProps) {
-  const cwd = useConversationCwd(activeThreadId);
-  const backgroundAgentRows = useBackgroundSubagentRows(
-    executionKind === "native" ? activeThreadId : null,
-    preferredHostId,
-  );
-  const turns = useConversationTurns(activeThreadId);
-  const backgroundTerminalRows = useConversationBackgroundTerminalRows(activeThreadId);
-  const summaryFields = useConversationSummaryFields(activeThreadId);
-  const activeThreadProjectless = summaryFields.threadId ? summaryFields.projectId === null : false;
-  const contentProps = useMemo<ThreadSummaryPanelContentProps>(
-    () => ({
-      activeThreadId,
-      activeThreadTitle:
-        resolveCodexElectronDisplayThreadTitle({
-          threadName: summaryFields.threadName,
-          threadPreview: summaryFields.threadPreview,
-          fallback: "",
-        }) || null,
-      activeThreadIsManagedWorktree:
-        Boolean(summaryFields.managedWorktreePath) || activeThreadIsManagedWorktree,
-      activeThreadProjectless,
-      cwd,
-      projectlessOutputDirectory: summaryFields.projectlessOutputDirectory,
-      projectWorkspacePath,
-      turns,
-      backgroundTerminalRows,
-      backgroundAgentRows,
-      scheduledAutomation: scheduledAutomation ?? null,
-      actions,
-      onErrorMessage: () => undefined,
-    }),
-    [
-      actions,
-      activeThreadIsManagedWorktree,
-      activeThreadId,
-      activeThreadProjectless,
-      backgroundTerminalRows,
-      backgroundAgentRows,
-      cwd,
-      projectWorkspacePath,
-      scheduledAutomation,
-      summaryFields.threadName,
-      summaryFields.threadPreview,
-      summaryFields.managedWorktreePath,
-      summaryFields.projectlessOutputDirectory,
-      turns,
-    ],
+  // The conversation stage owns the summary; the popover presents that same content.
+  const content = useThreadSummaryContent(activeThreadId);
+  const contentProps = useMemo(
+    () =>
+      content && {
+        ...content,
+        activeThreadIsManagedWorktree:
+          Boolean(content.activeThreadIsManagedWorktree) || activeThreadIsManagedWorktree,
+        scheduledAutomation: scheduledAutomation ?? content.scheduledAutomation ?? null,
+        // Header actions close the popover before navigating away from it.
+        actions: { ...content.actions, ...actions },
+      },
+    [actions, activeThreadIsManagedWorktree, content, scheduledAutomation],
   );
 
   if (mode === "hidden") return null;
   if (mode === "popover") {
+    if (!contentProps) return null;
     return (
       <ThreadSummaryPanelPopover
         {...contentProps}

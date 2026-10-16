@@ -7,6 +7,13 @@ import type {
 } from "../../../shared/types";
 import type { LocalConversationAttachmentState } from "./conversation-attachment-state";
 import type { CodexTranscriptReadOwner } from "./normalized-transcript-read-owner";
+import type { AsyncQuestionDelivery, AsyncQuestionRuntime } from "./async-question-runtime";
+
+/** Optional questions answered beside the ordinary Composer, through the execution owner. */
+export interface ConversationAsyncQuestionPort {
+  readonly runtime: AsyncQuestionRuntime;
+  readonly deliver: AsyncQuestionDelivery;
+}
 
 /** One resident execution source; replacing its reader invalidates already admitted UI work. */
 export interface ConversationContentSource {
@@ -38,6 +45,8 @@ export interface ConversationDelegatedTaskPort {
 export interface ConversationRuntime {
   /** Present only where delegated tasks have an execution owner that can stop them. */
   readonly delegatedTasks?: ConversationDelegatedTaskPort;
+  /** Present where the execution owner holds asynchronous questions; native chats use their manager. */
+  readonly asyncQuestions?: ConversationAsyncQuestionPort;
   readonly kind: "codex" | "claude" | "acp" | "opencode";
   readonly hostId: string;
   /** App-owned execution descendants share this Core Session. Native observation IDs do not. */

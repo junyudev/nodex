@@ -3,10 +3,27 @@ import { residentConversationTurns } from "../../../shared/codex-conversation-st
 import {
   expandCodexAsyncQuestions,
   collectCodexAsyncQuestionAnswers,
-  encodeCodexAsyncQuestionReplies,
   type CodexAsyncQuestion,
+  type CodexAsyncQuestionReply,
 } from "../../../shared/codex-async-user-input";
 import type { CodexConversationSnapshot } from "../../../shared/types";
+
+/** The questions one execution owner still accepts answers for, and their accepted answers. */
+export interface AsyncQuestionScope {
+  readonly generation: number | undefined;
+  /** The Turn answers are delivered to; null when no question is answerable. */
+  readonly turnId: string | null;
+  /** Drafts survive while this identity stays the same. */
+  readonly entityKey: string | null;
+  readonly questions: readonly CodexAsyncQuestion[];
+  readonly answers: ReadonlyMap<string, string>;
+}
+
+/** Delivers one batch of answers; null means the Turn ended before they could be delivered. */
+export type AsyncQuestionDelivery = (
+  turnId: string,
+  replies: readonly CodexAsyncQuestionReply[],
+) => Promise<{ turnId: string } | null>;
 
 export interface AsyncQuestionDraft extends CodexAsyncQuestion {
   turnId: string;
@@ -59,6 +76,60 @@ export function createAsyncQuestionRuntime() {
   };
   const close = (threadId: string) =>
     publish(threadId, { ...read(threadId), openIds: [], selectedId: null });
+  const reconcileScope = (threadId: string, scope: AsyncQuestionScope) => {
+    const { generation, entityKey, answers } = scope;
+    const activeTurnId = scope.turnId;
+    const initialized = states.has(threadId) && generations.get(threadId) === generation;
+    const sameTurn = initialized && activeEntityKeys.get(threadId) === entityKey;
+    activeEntityKeys.set(threadId, entityKey);
+    const before = sameTurn ? read(threadId) : EMPTY;
+    if (!sameTurn) {
+      receivedItems.delete(threadId);
+      epochs.set(threadId, {});
+    }
+    const questions: Record<string, AsyncQuestionDraft> = {};
+    for (const question of activeTurnId === null ? [] : scope.questions) {
+      const previous = before.questions[question.id];
+      const canonicalBaseline = answers.get(question.id) ?? "";
+      // A successful steer may be acknowledged before its canonical echo reaches this renderer.
+      const baseline =
+        previous?.canonicalBaseline === canonicalBaseline ? previous.baseline : canonicalBaseline;
+      const followsBaseline = !previous || previous.draft === previous.baseline;
+      const draft = followsBaseline ? baseline : previous.draft;
+      const draftKind =
+        followsBaseline && baseline !== previous?.baseline
+          ? question.options.includes(draft)
+            ? "option"
+            : "freeform"
+          : (previous?.draftKind ?? "freeform");
+      questions[question.id] = {
+        ...question,
+        turnId: activeTurnId!,
+        draft,
+        draftKind,
+        freeformDraft:
+          followsBaseline && draftKind === "freeform" ? draft : (previous?.freeformDraft ?? ""),
+        baseline,
+        canonicalBaseline,
+        skipped: previous?.skipped ?? false,
+        deadlineMs: previous?.deadlineMs ?? null,
+      };
+    }
+    const selectedId = before.selectedId && questions[before.selectedId] ? before.selectedId : null;
+    const openIds = selectedId ? before.openIds.filter((id) => questions[id]) : [];
+    const openedAutomatically = selectedId !== null && before.openedAutomatically;
+    const next = {
+      questions,
+      openIds,
+      selectedId,
+      openedAutomatically,
+      submitting: before.submitting,
+      activeTurnId,
+    };
+    generations.set(threadId, generation);
+    if (initialized && JSON.stringify(read(threadId)) === JSON.stringify(next)) return;
+    publish(threadId, next);
+  };
   return {
     read,
     subscribe(listener: () => void) {
@@ -83,77 +154,30 @@ export function createAsyncQuestionRuntime() {
       }
       for (const listener of listeners) listener();
     },
+    /** A native conversation's answerable questions are those of its active Turn. */
     reconcile(
       conversation: Pick<
         CodexConversationSnapshot,
         "threadId" | "conversationEntityGeneration" | "canonicalState"
       >,
     ) {
-      const threadId = conversation.threadId;
       const canonical = conversation.canonicalState;
       if (!canonical) return;
-      const generation = conversation.conversationEntityGeneration;
-      const initialized = states.has(threadId) && generations.get(threadId) === generation;
       const turns = canonical.turnHistory
         ? mergeCodexCanonicalTurnStates(residentConversationTurns(canonical), canonical.turns)
         : canonical.turns;
       const active = turns.findLast((turn) => turn.status === "inProgress");
-      const activeTurnId = active?.turnId ?? null;
-      const entityKey = active?.entityKey ?? activeTurnId;
-      const sameTurn = initialized && activeEntityKeys.get(threadId) === entityKey;
-      activeEntityKeys.set(threadId, entityKey);
-      const before = sameTurn ? read(threadId) : EMPTY;
-      if (!sameTurn) {
-        receivedItems.delete(threadId);
-        epochs.set(threadId, {});
-      }
       // Completed Turns are rendered from canonical history; only the active Turn owns drafts.
       const items = active?.items ?? [];
-      const answers = collectCodexAsyncQuestionAnswers(items);
-      const questions: Record<string, AsyncQuestionDraft> = {};
-      for (const question of items.flatMap(expandCodexAsyncQuestions)) {
-        const previous = before.questions[question.id];
-        const canonicalBaseline = answers.get(question.id) ?? "";
-        // A successful steer may be acknowledged before its canonical echo reaches this renderer.
-        const baseline =
-          previous?.canonicalBaseline === canonicalBaseline ? previous.baseline : canonicalBaseline;
-        const followsBaseline = !previous || previous.draft === previous.baseline;
-        const draft = followsBaseline ? baseline : previous.draft;
-        const draftKind =
-          followsBaseline && baseline !== previous?.baseline
-            ? question.options.includes(draft)
-              ? "option"
-              : "freeform"
-            : (previous?.draftKind ?? "freeform");
-        questions[question.id] = {
-          ...question,
-          turnId: activeTurnId!,
-          draft,
-          draftKind,
-          freeformDraft:
-            followsBaseline && draftKind === "freeform" ? draft : (previous?.freeformDraft ?? ""),
-          baseline,
-          canonicalBaseline,
-          skipped: previous?.skipped ?? false,
-          deadlineMs: previous?.deadlineMs ?? null,
-        };
-      }
-      const selectedId =
-        before.selectedId && questions[before.selectedId] ? before.selectedId : null;
-      const openIds = selectedId ? before.openIds.filter((id) => questions[id]) : [];
-      const openedAutomatically = selectedId !== null && before.openedAutomatically;
-      const next = {
-        questions,
-        openIds,
-        selectedId,
-        openedAutomatically,
-        submitting: before.submitting,
-        activeTurnId,
-      };
-      generations.set(threadId, generation);
-      if (initialized && JSON.stringify(read(threadId)) === JSON.stringify(next)) return;
-      publish(threadId, next);
+      reconcileScope(conversation.threadId, {
+        generation: conversation.conversationEntityGeneration,
+        turnId: active?.turnId ?? null,
+        entityKey: active?.entityKey ?? active?.turnId ?? null,
+        questions: items.flatMap(expandCodexAsyncQuestions),
+        answers: collectCodexAsyncQuestionAnswers(items),
+      });
     },
+    reconcileScope,
     close,
     /** Called only for an admitted live item/started event, never history hydration. */
     receive(threadId: string, sourceItemId: string, now = Date.now()) {
@@ -244,10 +268,7 @@ export function createAsyncQuestionRuntime() {
       if (state.selectedId !== id || state.questions[id]?.deadlineMs !== deadline) return;
       close(threadId);
     },
-    async submit(
-      threadId: string,
-      steer: (turnId: string, prompt: string) => Promise<{ turnId: string } | null>,
-    ) {
+    async submit(threadId: string, deliver: AsyncQuestionDelivery) {
       const state = read(threadId);
       if (!state.activeTurnId || state.submitting) return;
       const epoch = epochs.get(threadId);
@@ -266,7 +287,7 @@ export function createAsyncQuestionRuntime() {
       }
       publish(threadId, { ...state, submitting: true });
       try {
-        const result = await steer(state.activeTurnId, encodeCodexAsyncQuestionReplies(replies));
+        const result = await deliver(state.activeTurnId, replies);
         if (!isCurrent() || !result) return;
         const current = read(threadId);
         const questions = { ...current.questions };

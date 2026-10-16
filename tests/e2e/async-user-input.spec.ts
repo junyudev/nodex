@@ -135,7 +135,7 @@ test("answers optional questions while the Agent continues and keeps the ordinar
 });
 
 for (const failure of ["inactive", "mismatch"] as const) {
-  test(`preserves an asynchronous answer after ${failure} without starting work`, async ({}, testInfo) => {
+  test(`keeps an answer the running Turn refused (${failure}) as the next message`, async ({}, testInfo) => {
     const harness = await createQuestionHarness({ NODEX_FAKE_CODEX_ASYNC_STEER_FAILURE: failure });
     try {
       const page = await startQuestionScenario(harness);
@@ -144,35 +144,25 @@ for (const failure of ["inactive", "mismatch"] as const) {
       await panel.getByRole("radio", { name: "Project", exact: true }).click();
       await panel.getByLabel("Reply…").fill("Keep this answer on its question");
       await panel.getByRole("button", { name: "Send", exact: true }).click();
-      if (failure === "inactive")
-        await expect(
-          page.getByRole("alert").filter({ hasText: "Couldn’t send response" }),
-        ).toBeVisible();
-      await expect
-        .poll(
-          () =>
-            fs
-              .readFileSync(
-                path.join(harness.profile.runRoot, ".fake-codex/requests.jsonl"),
-                "utf8",
-              )
-              .trim()
-              .split("\n")
-              .filter((line) => JSON.parse(line).method === "turn/steer").length,
-        )
-        .toBe(failure === "mismatch" ? 2 : 1);
-      await expect(panel.getByRole("button", { name: "Send", exact: true })).toBeEnabled();
-      await expect(panel.getByLabel("Reply…")).toHaveText("Keep this answer on its question");
-      const entries = fs
-        .readFileSync(path.join(harness.profile.runRoot, ".fake-codex/requests.jsonl"), "utf8")
-        .trim()
-        .split("\n")
-        .map((line) => JSON.parse(line) as { method: string });
-      expect(entries.filter((entry) => entry.method === "turn/steer")).toHaveLength(
+      await expect(panel).not.toBeVisible();
+      // Agent execution owns the answer once sent: it waits for the Turn instead of being lost.
+      await expect(
+        page
+          .locator("[data-queued-follow-up-row]")
+          .filter({ hasText: "Keep this answer on its question" }),
+      ).toBeVisible({ timeout: 30_000 });
+      const entries = () =>
+        fs
+          .readFileSync(path.join(harness.profile.runRoot, ".fake-codex/requests.jsonl"), "utf8")
+          .trim()
+          .split("\n")
+          .map((line) => JSON.parse(line) as { method: string });
+      // A mismatch is corrected and retried once; the refusal never starts new work mid-Turn.
+      expect(entries().filter((entry) => entry.method === "turn/steer")).toHaveLength(
         failure === "mismatch" ? 2 : 1,
       );
-      expect(entries.filter((entry) => entry.method === "turn/start")).toHaveLength(1);
-      await panel.screenshot({ path: testInfo.outputPath(`question-${failure}.png`) });
+      expect(entries().filter((entry) => entry.method === "turn/start")).toHaveLength(1);
+      await page.screenshot({ path: testInfo.outputPath(`question-${failure}.png`) });
     } catch (error) {
       fs.writeFileSync(
         testInfo.outputPath("runtime-logs.txt"),

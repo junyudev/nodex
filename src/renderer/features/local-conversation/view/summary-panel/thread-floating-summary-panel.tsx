@@ -1926,6 +1926,8 @@ export function ThreadFloatingSummaryPanel({
             "pointer-events-none max-h-full min-h-0 origin-top-right pe-4",
             hideImmediately && "invisible",
           )}
+          // A closed panel stays mounted only for its exit motion; its controls are not reachable.
+          inert={!open}
           initial={false}
           animate={{
             opacity: open ? 1 : 0,

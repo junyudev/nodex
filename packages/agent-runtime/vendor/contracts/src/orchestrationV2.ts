@@ -1162,7 +1162,11 @@ export const OrchestrationV2RuntimeRequest = Schema.Struct({
   status: Schema.Literals(["pending", "resolved", "expired", "cancelled"]),
   responseCapability: Schema.Union([
     Schema.Struct({ type: Schema.Literal("live"), providerSessionId: ProviderSessionId }),
-    Schema.Struct({ type: Schema.Literal("message") }),
+    Schema.Struct({
+      type: Schema.Literal("message"),
+      /** Codex reads replies to its asynchronous questions from its own reply envelope. */
+      replyFormat: Schema.optional(Schema.Literal("codex_question_reply")),
+    }),
     Schema.Struct({ type: Schema.Literal("not_resumable"), reason: Schema.String }),
   ]),
   createdAt: Schema.DateTimeUtc,
@@ -1479,6 +1483,78 @@ export const OrchestrationV2WebSearchResult = Schema.Struct({
 });
 export type OrchestrationV2WebSearchResult = typeof OrchestrationV2WebSearchResult.Type;
 
+/** Notes a provider's memory contributed to a reply, with the lines they came from. */
+export const OrchestrationV2MemoryCitation = Schema.Struct({
+  entries: Schema.Array(
+    Schema.Struct({
+      path: Schema.String,
+      lineStart: NonNegativeInt,
+      lineEnd: NonNegativeInt,
+      note: Schema.String,
+    }),
+  ),
+  threadIds: Schema.Array(Schema.String),
+});
+export type OrchestrationV2MemoryCitation = typeof OrchestrationV2MemoryCitation.Type;
+
+/** What a shell command did as the provider understood it, such as reading one file. */
+export const OrchestrationV2CommandAction = Schema.Union([
+  Schema.Struct({
+    type: Schema.Literal("read"),
+    command: Schema.String,
+    name: Schema.String,
+    path: Schema.String,
+  }),
+  Schema.Struct({
+    type: Schema.Literal("listFiles"),
+    command: Schema.String,
+    path: Schema.NullOr(Schema.String),
+  }),
+  Schema.Struct({
+    type: Schema.Literal("search"),
+    command: Schema.String,
+    query: Schema.NullOr(Schema.String),
+    path: Schema.NullOr(Schema.String),
+  }),
+  Schema.Struct({ type: Schema.Literal("unknown"), command: Schema.String }),
+]);
+export type OrchestrationV2CommandAction = typeof OrchestrationV2CommandAction.Type;
+
+/**
+ * A lifecycle hook the provider ran for a Turn. Its output informs the user and never
+ * becomes transcript content; context it injected for the model stays hidden.
+ */
+const OrchestrationV2HookRunFields = {
+  type: Schema.Literal("hook_run"),
+  /** The provider's lifecycle event, such as a prompt submission or session start. */
+  eventName: TrimmedNonEmptyString,
+  /** Where the hook is configured: user, project, plugin or a managed source. */
+  source: TrimmedNonEmptyString,
+  sourcePath: Schema.NullOr(Schema.String),
+  hookStatus: Schema.Literals(["running", "completed", "failed", "blocked", "stopped"]),
+  statusMessage: Schema.NullOr(Schema.String),
+  entries: Schema.Array(
+    Schema.Struct({
+      kind: Schema.Literals(["warning", "stop", "feedback", "context", "error"]),
+      text: Schema.String,
+    }),
+  ),
+} as const;
+
+/** An automatic reviewer's decision about one action the Agent wanted to take. */
+const OrchestrationV2ApprovalReviewFields = {
+  type: Schema.Literal("approval_review"),
+  /** The item the reviewed action belongs to, when the provider names one. */
+  targetItemId: Schema.NullOr(TurnItemId),
+  actionKind: Schema.Literals(["command", "network", "patch", "stdin", "tool", "permissions"]),
+  /** The reviewed command line, network target or other subject, as text. */
+  actionSummary: Schema.String,
+  decision: Schema.Literals(["inProgress", "approved", "denied", "timedOut", "aborted"]),
+  riskLevel: Schema.NullOr(Schema.Literals(["low", "medium", "high", "critical"])),
+  userAuthorization: Schema.NullOr(Schema.Literals(["unknown", "low", "medium", "high"])),
+  rationale: Schema.NullOr(Schema.String),
+} as const;
+
 export const OrchestrationV2SecretRequestStatus = Schema.Literals([
   "pending",
   "saved",
@@ -1524,6 +1600,7 @@ export const OrchestrationV2TurnItem = Schema.Union([
     text: Schema.String,
     attachments: Schema.optional(Schema.Array(ChatAttachment)),
     streaming: Schema.Boolean,
+    memoryCitation: Schema.optional(OrchestrationV2MemoryCitation),
   }),
   Schema.Struct({
     ...OrchestrationV2TurnItemBaseFields,
@@ -1568,6 +1645,7 @@ export const OrchestrationV2TurnItem = Schema.Union([
     ...OrchestrationV2TurnItemBaseFields,
     type: Schema.Literal("command_execution"),
     input: Schema.String,
+    commandActions: Schema.optional(Schema.Array(OrchestrationV2CommandAction)),
     output: Schema.optional(Schema.String),
     /** Set on the wire when output was withheld; fetch it with getTurnItem. */
     outputOmitted: Schema.optional(Schema.Boolean),
@@ -1704,6 +1782,8 @@ export const OrchestrationV2TurnItem = Schema.Union([
     /** Set on the wire when output was withheld; fetch it with getTurnItem. */
     outputOmitted: Schema.optional(Schema.Boolean),
   }),
+  Schema.Struct({ ...OrchestrationV2TurnItemBaseFields, ...OrchestrationV2HookRunFields }),
+  Schema.Struct({ ...OrchestrationV2TurnItemBaseFields, ...OrchestrationV2ApprovalReviewFields }),
 ]);
 export type OrchestrationV2TurnItem = typeof OrchestrationV2TurnItem.Type;
 
@@ -2309,6 +2389,7 @@ export const OrchestrationV2TurnItemJson = Schema.Union([
     text: Schema.String,
     attachments: Schema.optional(Schema.Array(ChatAttachment)),
     streaming: Schema.Boolean,
+    memoryCitation: Schema.optional(OrchestrationV2MemoryCitation),
   }),
   Schema.Struct({
     ...OrchestrationV2TurnItemJsonBaseFields,
@@ -2353,6 +2434,7 @@ export const OrchestrationV2TurnItemJson = Schema.Union([
     ...OrchestrationV2TurnItemJsonBaseFields,
     type: Schema.Literal("command_execution"),
     input: Schema.String,
+    commandActions: Schema.optional(Schema.Array(OrchestrationV2CommandAction)),
     output: Schema.optional(Schema.String),
     /** Set on the wire when output was withheld; fetch it with getTurnItem. */
     outputOmitted: Schema.optional(Schema.Boolean),
@@ -2486,6 +2568,8 @@ export const OrchestrationV2TurnItemJson = Schema.Union([
     /** Set on the wire when output was withheld; fetch it with getTurnItem. */
     outputOmitted: Schema.optional(Schema.Boolean),
   }),
+  Schema.Struct({ ...OrchestrationV2TurnItemJsonBaseFields, ...OrchestrationV2HookRunFields }),
+  Schema.Struct({ ...OrchestrationV2TurnItemJsonBaseFields, ...OrchestrationV2ApprovalReviewFields }),
 ]);
 export type OrchestrationV2TurnItemJson = typeof OrchestrationV2TurnItemJson.Type;
 

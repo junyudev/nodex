@@ -30,6 +30,7 @@ import * as ProjectionStore from "./ProjectionStore.ts";
 import * as EffectOutbox from "./EffectOutbox.ts";
 import * as ProviderAdapterRegistry from "./ProviderAdapterRegistry.ts";
 import * as ProviderReplayHarness from "./testkit/ProviderReplayHarness.ts";
+import { decodeCodexAsyncQuestionReplies } from "../nodex/CodexConventions.ts";
 import type * as ProviderAdapter from "@t3tools/provider-core/server/ProviderAdapter";
 
 const instanceId = ProviderInstanceId.make("codex");
@@ -193,7 +194,7 @@ it.effect(
           lastError: null,
         },
       });
-      for (const mode of ["live", "message"] as const) {
+      for (const mode of ["live", "message", "reply"] as const) {
         const requestId = RuntimeRequestId.make(`request:${mode}`);
         yield* projections.apply({
           id: EventId.make(`request:${mode}`),
@@ -210,7 +211,9 @@ it.effect(
             responseCapability:
               mode === "live"
                 ? { type: "live", providerSessionId: sessionId }
-                : { type: "message" },
+                : mode === "reply"
+                  ? { type: "message", replyFormat: "codex_question_reply" }
+                  : { type: "message" },
             createdAt: now,
             resolvedAt: null,
           },
@@ -253,7 +256,7 @@ it.effect(
             providerTurnId: null,
             nativeItemRef: null,
             parentItemId: null,
-            ordinal: mode === "live" ? 1 : 2,
+            ordinal: mode === "live" ? 1 : mode === "message" ? 2 : 3,
             status: "waiting",
             title: null,
             startedAt: now,
@@ -273,7 +276,7 @@ it.effect(
           },
         });
         yield* orchestrator.dispatch(
-          mode === "live"
+          mode !== "message"
             ? {
                 type: "runtime-request.respond",
                 commandId: CommandId.make(`respond:${mode}`),
@@ -293,8 +296,28 @@ it.effect(
           "resolved",
         );
         const response = yield* projections.getRuntimeResponseContext(threadId, requestId);
-        assert.equal(response.node?.status, mode === "live" ? "completed" : "cancelled");
-        assert.equal(response.item?.status, mode === "live" ? "completed" : "cancelled");
+        assert.equal(response.node?.status, mode === "message" ? "cancelled" : "completed");
+        assert.equal(response.item?.status, mode === "message" ? "cancelled" : "completed");
+        if (mode === "reply") {
+          // Codex reads replies to its own questions from its reply envelope.
+          const { turnItems } = yield* projections.getThreadRecords(threadId, ["turnItems"], {
+            turnItemTypes: ["user_message"],
+          });
+          const reply = turnItems.find(
+            (item) =>
+              item.type === "user_message" && item.messageId === `async-answer:${requestId}`,
+          );
+          assert.deepEqual(
+            reply?.type === "user_message" ? decodeCodexAsyncQuestionReplies(reply.text) : null,
+            [
+              {
+                questionItemId: "workspace",
+                question: "Which working directory should the task use?",
+                answer: "/repo/target",
+              },
+            ],
+          );
+        }
       }
       yield* orchestrator.dispatch({
         type: "thread.metadata.update",

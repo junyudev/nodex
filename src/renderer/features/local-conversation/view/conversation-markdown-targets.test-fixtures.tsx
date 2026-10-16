@@ -189,7 +189,11 @@ function fixture(
         },
       },
     });
-  const rows = (skills?: readonly CodexComposerSkill[], direct?: ReactNode) => (
+  const rows = (
+    skills?: readonly CodexComposerSkill[],
+    direct?: ReactNode,
+    openThread: ThreadStageActions["onOpenThread"] = onOpenThread,
+  ) => (
     <StrictMode>
       <Capture />
       <NodexTooltipProvider>
@@ -204,7 +208,7 @@ function fixture(
               cwd="/source"
               workspaceRoot="/source-root"
               projectId={options?.projectId ?? null}
-              onOpenThread={onOpenThread}
+              onOpenThread={openThread}
               onStartNewChatWithPrompt={options?.onStartNewChatWithPrompt}
               skills={skills}
             >

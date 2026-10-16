@@ -32,6 +32,7 @@ import {
   make as makeApplication,
 } from "../agent-runtime/AgentRuntimeApplication";
 import { make as makeHost } from "../agent-runtime/AgentRuntimeHost";
+import { make as makeDesktopTools } from "../agent-runtime/AgentRuntimeDesktopTools";
 import { make as makeProviderCatalog } from "../agent-runtime/AgentRuntimeProviderCatalog";
 import {
   make as makeHostTools,
@@ -49,7 +50,10 @@ import {
   AgentRuntimeProviderConfigurationError,
 } from "../agent-runtime/AgentRuntimeProviderConfiguration";
 import { CoreAuthority } from "../core-runtime/CoreAuthority";
+import { BrowserUseRuntime } from "../host-runtime/BrowserUseRuntime";
 import { DatabaseNotifierRuntime } from "../host-runtime/DatabaseNotifierRuntime";
+import { DesktopToolRuntime } from "../host-runtime/DesktopToolRuntime";
+import { WindowRuntime } from "../window-runtime/WindowRuntime";
 import { subscribe as subscribeExecutionChanges } from "../agent-runtime/AgentRuntimeExecutionChanges";
 import { make as makeSnapshotAdmission } from "../agent-runtime/AgentRuntimeSnapshotAdmission";
 import {
@@ -67,6 +71,7 @@ import {
 } from "../platform/node/AgentRuntimeEntrypoint";
 import { acquireAgentRuntimeProcess } from "../platform/node/AgentRuntimeProcess";
 import { AcpAgentLaunchProbe, live as acpProbeLayer } from "../platform/node/AcpAgentLaunchProbe";
+import { codexAccountHistoryEnvironment } from "../platform/node/CodexAccountHome";
 import { shellQuote } from "../platform/node/NodexCliShell";
 import { openCodeExecutableEnvironment } from "../platform/node/OpenCodeExecutable";
 import { ApplicationSettings } from "../settings/ApplicationSettings";
@@ -76,7 +81,7 @@ import { createOperationId } from "../core-runtime/operation-identity";
 import { ProjectWorkspace } from "../project-application/ProjectWorkspace";
 import { run as runSessionNotifications } from "../agent-runtime/AgentRuntimeSessionNotifications";
 import { make as makeQuiescence, reportsNoWork } from "../agent-runtime/AgentRuntimeQuiescence";
-import { CodexPlatform, NodexCliShellLaunch } from "./CodexApplicationLive";
+import { CodexLocalLaunch, CodexPlatform } from "./CodexApplicationLive";
 import { CodexTurnPresentation } from "../codex-application/CodexTurnPresentation";
 import { MainApplicationError } from "./MainApplication";
 import { MainConfig } from "./MainConfig";
@@ -133,13 +138,19 @@ const supervisor = Layer.effectContext(
   Effect.gen(function* () {
     const config = yield* MainConfig;
     const platform = yield* CodexPlatform;
-    const cliShell = yield* NodexCliShellLaunch;
+    const codexLaunch = yield* CodexLocalLaunch;
     const settings = yield* ApplicationSettings;
     const shell = yield* WorktreeShellEnvironmentRuntime;
     const core = yield* CoreAuthority;
     const images = yield* NativePromptImages;
     const workspace = yield* NativeSessionWorkspace;
     const presentation = yield* CodexTurnPresentation;
+    const desktop = makeDesktopTools({
+      tools: yield* DesktopToolRuntime,
+      browserUse: yield* BrowserUseRuntime,
+      windows: yield* WindowRuntime,
+      presentation,
+    });
     const fs = yield* FileSystem.FileSystem;
     const database = yield* DatabaseNotifierRuntime;
     const admission = yield* makeSnapshotAdmission();
@@ -168,6 +179,7 @@ const supervisor = Layer.effectContext(
             platform.runtime.binaryPath,
             platform.accountHome.effectiveHome,
             codexCliAppServerArgs(config.environment),
+            codexLaunch.configOverrides,
           ],
           providers: [snapshot.claudeAgents, snapshot.openCodeAgents, snapshot.acpAgents],
           histories: [...(yield* restoredHistories)],
@@ -196,6 +208,7 @@ const supervisor = Layer.effectContext(
       prepareImages: images.prepare,
       prepareWorkspace: workspace.prepare,
       presentation,
+      releaseDesktopSession: desktop.releaseSession,
       reconcileWorkspace: workspace.reconcile,
       // Product writers span Core admission through execution acknowledgement; hold the process.
       withWriter: (operation) =>
@@ -283,13 +296,17 @@ const supervisor = Layer.effectContext(
           driver: "codex",
           displayName: "Codex",
           enabled: true,
+          // The app's own local Codex launch, so both read one account and one history.
+          environment: Object.entries(
+            codexAccountHistoryEnvironment(platform.accountHome, environment),
+          ).map(([name, value]) => ({ name, value, sensitive: false })),
           config: {
             setupMode: "existing",
             binaryPath: resolve(platform.runtime.binaryPath),
             homePath: platform.accountHome.effectiveHome,
             launchArgs: [
               ...codexCliAppServerArgs(config.environment).filter((arg) => arg !== "app-server"),
-              ...cliShell.codexArgs,
+              ...codexLaunch.configOverrides,
             ]
               .map(shellQuote)
               .join(" "),
@@ -507,6 +524,7 @@ const supervisor = Layer.effectContext(
         const configuration = prepared.get(connection.identity);
         if (!configuration) return Effect.fail(new Error("Execution configuration is unavailable"));
         return makeHost(connection, {
+          desktop,
           presentation,
           projectlessId,
           providers: configuration.providers,
