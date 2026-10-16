@@ -127,6 +127,7 @@ export const readBoundedElectronRuntimeLogs = async (
 
 export interface NodexElectronLaunchInput {
   readonly codexHome?: string;
+  readonly claudeConfigHome?: string;
   readonly cwd?: string;
   readonly environment?: NodeJS.ProcessEnv;
   readonly executablePath?: string;
@@ -155,6 +156,7 @@ export async function launchNodexElectronApplication(
     cwd: input.cwd ?? repositoryRoot,
     env: {
       ...inheritedEnvironment,
+      ...(input.claudeConfigHome ? { CLAUDE_CONFIG_DIR: input.claudeConfigHome } : {}),
       ...input.environment,
       ...(input.codexHome ? { CODEX_HOME: input.codexHome } : {}),
       NODEX_HOME: input.nodexHome,
@@ -364,6 +366,7 @@ export class ElectronScenarioHarness {
     const application = await launchNodexElectronApplication({
       cwd: this.#cwd,
       codexHome: this.profile.codexHome,
+      claudeConfigHome: this.profile.claudeConfigHome,
       nodexHome: this.profile.nodexHome,
       initialProjectsDirectory: this.profile.initialProjectsDirectory,
       runId: this.profile.runId,

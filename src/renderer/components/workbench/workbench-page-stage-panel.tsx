@@ -592,17 +592,7 @@ export function PageStageSessionTab({
             onLoadMoreRelatedChats={async () => {
               await relatedChatsQuery.fetchNextPage();
             }}
-            onOpenCodexThread={async (threadId) => {
-              // Runtime chats open by Session identity; their root Thread is not a native Thread.
-              const runtimeChat = relatedChats.find(
-                (chat) => chat.executionRef?.threadId === threadId,
-              );
-              if (runtimeChat && onOpenRelatedChat) {
-                await onOpenRelatedChat(runtimeChat.sessionId);
-                return;
-              }
-              await onOpenThread(threadId);
-            }}
+            onOpenCodexThread={onOpenThread}
             onOpenPage={async ({ routingContext, pageId, titleSnapshot, sourceBlockId }) => {
               if (routingContext.kind !== "project") return;
               await onOpenPageTab(routingContext.projectId, pageId, titleSnapshot, {

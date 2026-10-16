@@ -43,6 +43,15 @@ export interface AgentRuntimeLaunch {
   readonly message: AgentRuntimeMessage;
 }
 
+const AGENT_EXECUTION_THREAD_PREFIX = "nodex:thread:";
+
+/** Agent execution names a chat's root Thread itself; native Codex Threads are UUIDs. */
+export const agentExecutionThreadId = (digest: string): string =>
+  `${AGENT_EXECUTION_THREAD_PREFIX}${digest}`;
+
+export const isAgentExecutionThreadId = (threadId: string): boolean =>
+  threadId.startsWith(AGENT_EXECUTION_THREAD_PREFIX);
+
 export interface AgentRuntimeSessionTarget {
   readonly sessionId: string;
   /** A descendant remains within the Session's explicitly bound root execution. */

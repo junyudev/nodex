@@ -35,7 +35,7 @@ const identity = { profileId: "profile:test", libraryId: "library:test", storeEp
 const config = Effect.runSync(MainConfig.pipe(Effect.provide(testLayer())));
 
 describe("Nodex per-Turn CLI connection", () => {
-  test("routes provider-neutral shell work through the exact build, Profile and Project", async () => {
+  test("routes Agent shell work through the exact build, Profile and Project", async () => {
     const root = await mkdtemp(join(tmpdir(), "nodex runtime ' "));
     try {
       const bin = join(root, "bin");
@@ -62,7 +62,7 @@ describe("Nodex per-Turn CLI connection", () => {
           actorProjectId: current.manifest.projectId,
         };
         const context = await Effect.runPromise(
-          buildAgentRuntimeCliContext(selected, current.runtime.identity, authority),
+          buildAgentRuntimeCliContext(selected, current.runtime.identity, authority, null),
         );
         expect(context).not.toBeNull();
         const command = context!
@@ -76,10 +76,12 @@ describe("Nodex per-Turn CLI connection", () => {
         expect(actual.profile.id).toBe(current.runtime.identity.profileId);
         expect(actual.project.id).toBe(current.manifest.projectId);
         const projectless = await Effect.runPromise(
-          buildAgentRuntimeCliContext(selected, current.runtime.identity, {
-            ...authority,
-            actorProjectId: null,
-          }),
+          buildAgentRuntimeCliContext(
+            selected,
+            current.runtime.identity,
+            { ...authority, actorProjectId: null },
+            null,
+          ),
         );
         expect(projectless).not.toBeNull();
         expect(
@@ -88,9 +90,27 @@ describe("Nodex per-Turn CLI connection", () => {
               { ...selected, platform: "win32" },
               current.runtime.identity,
               authority,
+              "codex-task",
             ),
           ),
         ).toBeNull();
+        // A Codex shell names its task, so plain nodex reaches this Profile and Project.
+        await prepareNodexCliShell(current.profile.nodexHome);
+        const bound = await Effect.runPromise(
+          buildAgentRuntimeCliContext(selected, current.runtime.identity, authority, "codex-task"),
+        );
+        expect(bound).toContain("Use nodex directly");
+        const plain = await exec("/bin/sh", ["-c", "nodex context"], {
+          cwd: tmpdir(),
+          env: {
+            PATH: `${nodexCliShellPaths(current.profile.nodexHome).bin}:/usr/bin:/bin`,
+            CODEX_THREAD_ID: "codex-task",
+            NODEX_HOME: join(root, "wrong-profile"),
+          },
+        });
+        const routed = JSON.parse(plain.stdout).result;
+        expect(routed.profile.id).toBe(current.runtime.identity.profileId);
+        expect(routed.project.id).toBe(current.manifest.projectId);
       });
     } finally {
       await rm(root, { recursive: true, force: true });

@@ -110,7 +110,9 @@ Instance diagnostics and debug exports belong in that home's `artifacts/`.
 Review recordings, screenshots, and verification reports use the primary
 checkout's review-artifact directory defined in `AGENTS.md`. These local
 directories remain uncommitted. Automatic scenario tests continue to create and
-clean up their own fresh temporary Profiles through the test harness.
+clean up their own fresh temporary Profiles through the test harness. Each also
+gets an empty Claude config directory, so no test sees your Claude login,
+sessions or settings.
 
 `--auth-json` atomically installs only the named authentication file with mode
 `0600`. `--agent-config-toml` passes the named file through the portable agent

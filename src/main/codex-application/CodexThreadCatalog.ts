@@ -14,6 +14,7 @@ import {
   type CodexSidebarThreadMoveResult,
 } from "../../shared/codex-sidebar-thread-move";
 import { cappedApproximateValueBytes } from "../../shared/codex-bounded-value-size";
+import { isAgentExecutionThreadId } from "../../shared/agent-runtime-api";
 import type {
   CodexSidebarSnapshot,
   CodexThreadSummary,
@@ -332,7 +333,49 @@ export const make = (
       return summaries.sort((left, right) => right.updatedAt - left.updatedAt).slice(0, 100);
     });
 
+    /** An Agent chat is named by its execution root Thread and opened through its Session. */
+    const resolveAgentChat = Effect.fn("CodexThreadCatalog.resolveAgentChat")(function* (
+      threadId: string,
+    ) {
+      const found = yield* core.workspace
+        .read({ kind: "agent_runtime_session_binding_by_thread", runtime_thread_id: threadId })
+        .pipe(Effect.mapError((cause) => error("resolve", cause)));
+      if (found.value.kind !== "agent_runtime_session_binding") {
+        return yield* error("resolve", new Error("Core returned the wrong binding read"));
+      }
+      const binding = found.value.binding;
+      if (!binding) return null;
+      const read = yield* core.workspace
+        .read(
+          { kind: "session", session_id: binding.session_id },
+          undefined,
+          binding.project_id ?? null,
+        )
+        .pipe(Effect.mapError((cause) => error("resolve", cause)));
+      if (read.value.kind !== "session") {
+        return yield* error("resolve", new Error("Core returned the wrong Session read"));
+      }
+      const session = read.value.session;
+      const summary: CodexThreadSummary = {
+        threadId,
+        sessionId: session.id,
+        projectId: session.project_id ?? null,
+        source: null,
+        threadName: session.display_title,
+        threadPreview: "",
+        cwd: null,
+        statusType: "notLoaded",
+        statusActiveFlags: [],
+        archived: session.archived,
+        createdAt: Date.parse(session.created_at) || 0,
+        updatedAt: Date.parse(session.updated_at) || 0,
+        linkedAt: binding.bound_at,
+      };
+      return summary;
+    });
+
     const resolveThread = Effect.fn("CodexThreadCatalog.resolve")(function* (threadId: string) {
+      if (isAgentExecutionThreadId(threadId)) return yield* resolveAgentChat(threadId);
       const before = yield* directory
         .resolve({ threadId, fidelity: "durable" })
         .pipe(Effect.mapError((cause) => error("resolve", cause)));

@@ -16,8 +16,7 @@ use crate::infrastructure::sqlite::{StoreError, StoreErrorCode};
 use super::ProjectWorkspaceApplyOutcome;
 use super::mutation::project_session_scope;
 use super::session_lifecycle::{
-    finish_lifecycle_mutation, insert_session_records, normalize_session_title, prepare_session,
-    require_project,
+    finish_lifecycle_mutation, normalize_session_title, prepare_session, require_project,
 };
 use super::session_mutation::{require_session, sqlite_now, validate_id};
 
@@ -36,7 +35,6 @@ pub(super) fn create_session(
     runtime_id: &str,
     runtime_thread_id: &str,
     launch_request_id: &str,
-    replacement_default_session_id: &str,
 ) -> Result<ProjectWorkspaceApplyOutcome, StoreError> {
     // Agent adapters reach this function only after AgentCommand has verified Turn provenance.
     if !matches!(context.adapter, AdapterKind::Agent) {
@@ -101,10 +99,6 @@ pub(super) fn create_session(
         ));
     }
     validate_id("session_id", session_id)?;
-    validate_id(
-        "replacement_default_session_id",
-        replacement_default_session_id,
-    )?;
     let existing = connection
         .query_row(
             "SELECT 1 FROM project_sessions WHERE id = ?1",
@@ -113,7 +107,6 @@ pub(super) fn create_session(
         )
         .optional()?
         .is_some();
-    let mut session_ids = vec![session_id.to_owned()];
     let now = if existing {
         let authority = require_session(connection, library_id, session_id)?;
         if authority.project_id.as_deref() != project_id
@@ -139,19 +132,10 @@ pub(super) fn create_session(
         super::page_chat::validate_initial_page_ids(connection, library_id, initial_page_ids)?;
         let title = normalize_session_title(title)?;
         let now = sqlite_now(connection)?;
+        // Launch graduates a default draft like a native first send; the next New Chat ensures another.
         connection.execute("UPDATE project_sessions SET is_default_draft = 0, no_thread_fallback_title = ?1, updated_at = ?2 WHERE id = ?3", params![title, now, session_id])?;
         for page_id in initial_page_ids {
             connection.execute("INSERT OR IGNORE INTO project_session_pages(session_id, page_id, linked_at) VALUES (?1, ?2, ?3)", params![session_id, page_id, now])?;
-        }
-        if authority.is_default_draft {
-            insert_session_records(
-                connection,
-                replacement_default_session_id,
-                project_id,
-                super::session_lifecycle::NEW_CHAT_TITLE,
-                true,
-            )?;
-            session_ids.push(replacement_default_session_id.to_owned());
         }
         now
     } else {
@@ -186,7 +170,7 @@ pub(super) fn create_session(
         request_hash,
         "create_agent_runtime_session",
         project_id.into_iter().map(str::to_owned).collect(),
-        session_ids,
+        vec![session_id.to_owned()],
         Vec::new(),
         vec![project_session_scope(project_id)],
         project_id,
@@ -266,6 +250,28 @@ pub(super) fn read_binding_by_execution(
         return Ok(None);
     };
     read_binding(connection, context, library_id, &session_id)
+}
+
+/// A chat reference names only the execution root Thread; another engine may reuse that
+/// identity, so an ambiguous Thread resolves to no Session.
+pub(super) fn read_binding_by_thread(
+    connection: &Connection,
+    context: &BoundModuleContext,
+    library_id: &str,
+    runtime_thread_id: &str,
+) -> Result<Option<ProjectWorkspaceAgentRuntimeSessionBinding>, StoreError> {
+    require_host(context)?;
+    validate_id("runtime_thread_id", runtime_thread_id)?;
+    let mut statement = connection.prepare(
+        "SELECT session_id FROM project_session_execution_bindings WHERE runtime_thread_id = ?1 LIMIT 2",
+    )?;
+    let sessions = statement
+        .query_map([runtime_thread_id], |row| row.get::<_, String>(0))?
+        .collect::<Result<Vec<_>, _>>()?;
+    let [session_id] = sessions.as_slice() else {
+        return Ok(None);
+    };
+    read_binding(connection, context, library_id, session_id)
 }
 
 pub(super) fn is_runtime_bound(
@@ -363,7 +369,6 @@ mod tests {
     fn create_intent(session_id: &str) -> ProjectWorkspaceIntent {
         ProjectWorkspaceIntent::CreateAgentRuntimeSession {
             session_id: session_id.into(),
-            replacement_default_session_id: format!("replacement:{session_id}"),
             project_id: Some("project:default".into()),
             title: "Task".into(),
             initial_page_ids: Vec::new(),
@@ -414,7 +419,7 @@ mod tests {
     }
 
     #[test]
-    fn default_draft_promotion_keeps_links_and_replaces_default_atomically() {
+    fn default_draft_promotion_keeps_links_and_releases_the_default_slot() {
         let workspace = seeded_workspace();
         create_library_page(&workspace, "page:linked", "project:default");
         apply(
@@ -445,21 +450,34 @@ mod tests {
         assert_eq!(first.committed.commit_seq, repeated.committed.commit_seq);
         let state = workspace.kernel.writer().call(|connection| Ok((
             connection.query_row("SELECT is_default_draft FROM project_sessions WHERE id='session:draft'", [], |row| row.get::<_, i64>(0))?,
-            connection.query_row("SELECT id FROM project_sessions WHERE project_id='project:default' AND is_default_draft=1", [], |row| row.get::<_, String>(0))?,
+            connection.query_row("SELECT count(*) FROM project_sessions WHERE is_default_draft=1", [], |row| row.get::<_, i64>(0))?,
+            connection.query_row("SELECT count(*) FROM project_sessions", [], |row| row.get::<_, i64>(0))?,
             connection.query_row("SELECT count(*) FROM project_session_pages WHERE session_id='session:draft' AND page_id='page:linked'", [], |row| row.get::<_, i64>(0))?,
             connection.query_row("SELECT count(*) FROM codex_threads", [], |row| row.get::<_, i64>(0))?,
-            connection.query_row("SELECT no_thread_fallback_title FROM project_sessions WHERE id='replacement:session:draft'", [], |row| row.get::<_, String>(0))?,
         ))).unwrap();
-        assert_eq!(
-            state,
-            (
-                0,
-                "replacement:session:draft".into(),
-                1,
-                0,
-                "New chat".into()
-            )
+        // No unrequested draft appears; the next New Chat ensures one.
+        assert_eq!(state, (0, 0, 1, 1, 0));
+        apply(
+            &workspace.module,
+            "next-draft",
+            ProjectWorkspaceIntent::EnsureDefaultDraftSession {
+                session_id: "session:next".into(),
+                project_id: Some("project:default".into()),
+                title: "New thread".into(),
+            },
         );
+        let next = workspace
+            .kernel
+            .writer()
+            .call(|connection| {
+                Ok(connection.query_row(
+                    "SELECT id FROM project_sessions WHERE project_id='project:default' AND is_default_draft=1",
+                    [],
+                    |row| row.get::<_, String>(0),
+                )?)
+            })
+            .unwrap();
+        assert_eq!(next, "session:next");
         let mut replacement = create_intent("session:draft");
         let ProjectWorkspaceIntent::CreateAgentRuntimeSession {
             runtime_thread_id, ..
@@ -518,12 +536,25 @@ mod tests {
                 )
                 .is_err()
         );
-        let state = workspace.kernel.writer().call(|connection| Ok((
-            connection.query_row("SELECT is_default_draft FROM project_sessions WHERE id='session:draft'", [], |row| row.get::<_, i64>(0))?,
-            connection.query_row("SELECT count(*) FROM project_sessions WHERE id='replacement:session:draft'", [], |row| row.get::<_, i64>(0))?,
-            connection.query_row("SELECT count(*) FROM project_session_execution_bindings", [], |row| row.get::<_, i64>(0))?,
-        ))).unwrap();
-        assert_eq!(state, (1, 0, 0));
+        let state = workspace
+            .kernel
+            .writer()
+            .call(|connection| {
+                Ok((
+                    connection.query_row(
+                        "SELECT is_default_draft FROM project_sessions WHERE id='session:draft'",
+                        [],
+                        |row| row.get::<_, i64>(0),
+                    )?,
+                    connection.query_row(
+                        "SELECT count(*) FROM project_session_execution_bindings",
+                        [],
+                        |row| row.get::<_, i64>(0),
+                    )?,
+                ))
+            })
+            .unwrap();
+        assert_eq!(state, (1, 0));
     }
 
     #[test]
@@ -548,6 +579,18 @@ mod tests {
             .unwrap();
         assert!(!first.committed.receipt.mutation.duplicate);
         assert!(duplicate.committed.receipt.mutation.duplicate);
+        let ProjectWorkspaceReadValue::AgentRuntimeSessionBinding {
+            binding: Some(by_thread),
+        } = read(
+            &workspace.module,
+            ProjectWorkspaceRead::AgentRuntimeSessionBindingByThread {
+                runtime_thread_id: "thread:session:task".into(),
+            },
+        )
+        else {
+            panic!("a chat reference resolves to its Session")
+        };
+        assert_eq!(by_thread.session_id, "session:task");
         assert_eq!(first.committed.commit_seq, duplicate.committed.commit_seq);
         assert!(duplicate.event.is_none());
         let ProjectWorkspaceReadValue::AgentRuntimeSessionBinding {
@@ -721,6 +764,16 @@ mod tests {
             };
             assert_eq!(binding.session_id, expected_session);
         }
+        // A chat reference carries only the Thread; two engines sharing it name no single chat.
+        let ProjectWorkspaceReadValue::AgentRuntimeSessionBinding { binding: shared } = read(
+            &workspace.module,
+            ProjectWorkspaceRead::AgentRuntimeSessionBindingByThread {
+                runtime_thread_id: "thread:session:first".into(),
+            },
+        ) else {
+            panic!("Thread-addressed binding read")
+        };
+        assert_eq!(shared, None);
         create_project(&workspace.module, "other-project", "project:other");
         apply(
             &workspace.module,

@@ -9,8 +9,9 @@ and root Thread identity. The execution tree follows that placement for Project
 activity and lifecycle; existing working directories remain attached.
 
 Launching promotes an unstarted Session without changing its identity or existing
-Page links. If it was the default draft, Core creates its replacement in the same
-transaction. A fresh programmatic Session can be created by the same operation.
+Page links. A default draft graduates from the default slot exactly as a native first
+send does, so no unrequested draft appears; the next New Chat ensures a fresh one. A
+fresh programmatic Session can be created by the same operation.
 The transaction admits the execution reference, stable launch request identity and
 requested Page Linked chats. The operation checks current
 Project lifecycle, resource existence and captured execution identity. Repeating the

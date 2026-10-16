@@ -1,17 +1,17 @@
 # NFM Editor Thread Mention Behavior
 
 Status: Active
-Last Updated: 2026-08-17
+Last Updated: 2026-10-17
 
 ## Summary
 
-NFM supports an inline Codex thread mention:
+NFM supports an inline chat mention:
 
 ```xml
 <mention-thread uuid="019..." />
 ```
 
-The mention references a Codex app-server thread/session id as an opaque string. It is a document reference and navigation affordance only; it does not embed or send the mentioned thread's transcript.
+The mention references a chat's root Thread id as an opaque string: a native Codex Thread id, or the execution root Thread of a chat that Agent execution runs. It is a document reference and navigation affordance only; it does not embed or send the mentioned thread's transcript.
 
 ## Persistence
 
@@ -20,6 +20,7 @@ The mention references a Codex app-server thread/session id as an opaque string.
 - The serializer writes only the `uuid` attribute and escapes XML attribute characters.
 - The parser stores the mention as `threadMention` inline content with `{ uuid }`.
 - Unknown future thread id formats are allowed; the parser does not enforce a UUID regex.
+- Core accepts a saved mention only when it names a native Thread or an Agent execution root Thread in the Page's Project or the projectless scope, so a mention written by Send & wrap never makes its Page unreadable.
 
 ## Rendering
 
@@ -41,8 +42,9 @@ The mention references a Codex app-server thread/session id as an opaque string.
 - Card Stage resolves mention metadata from the current project thread summary cache first.
 - If a mention is not cached, Nodex asks the main process for `codex:thread:summary:get(threadId)`.
 - The main process first reads local `codex_threads`; only a miss calls Codex app-server `thread/read` with `includeTurns: false`.
+- An Agent execution root Thread resolves through its Session binding in Core and never reaches Codex app-server. The summary carries the Session's title, archive state and Session id; it is absent unless exactly one Session is bound to that Thread.
 - Resolution must not resume a thread, subscribe to a stream, switch the active thread, or fetch transcript turns.
-- Clicking a resolved mention opens the referenced thread through the existing Codex-thread navigation callback.
+- Clicking a resolved mention opens the referenced thread through the existing Codex-thread navigation callback. An Agent chat opens through its Session; when no Session can be found the action reports that the chat is no longer available.
 - If opening is unavailable or the thread is unresolved, the mention popover exposes `Copy UUID`.
 
 ## Insertion

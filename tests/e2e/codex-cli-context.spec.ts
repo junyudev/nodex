@@ -8,7 +8,6 @@ import { ElectronScenarioHarness } from "../../scripts/scenarios/harness/electro
 import { RendererIpcSeedAdapter } from "../../scripts/scenarios/adapters/renderer-ipc-seed-adapter";
 import { materializeScenario } from "../../scripts/scenarios/seed/scenario-seed";
 import { prepareScenarioCodexAppServerRuntimeSync } from "../../scripts/scenarios/runtime/agent-runtime-fixture";
-import { invokeIpc } from "./support/agent-smoke-harness";
 
 const exec = promisify(execFile);
 
@@ -76,7 +75,7 @@ test("the real Desktop binds plain nodex to its connected Profile and task Proje
         const request = rows.find(
           (row) => row.method === "rpc" && row.params.method === "turn/start",
         );
-        const context = request?.params.params.additionalContext?.["nodex-cli"]?.value as
+        const context = request?.params.params.additionalContext?.nodex_host?.value as
           | string
           | undefined;
         connection = context;
@@ -85,6 +84,7 @@ test("the real Desktop binds plain nodex to its connected Profile and task Proje
       })
       .toBeTruthy();
     expect(threadId, connection).toBeDefined();
+    expect(connection).toContain("Use nodex directly");
     expect(shellEnvironment?.PATH).toBeDefined();
     const result = await exec("/bin/zsh", ["-lc", "nodex context"], {
       cwd: harness.profile.runRoot,

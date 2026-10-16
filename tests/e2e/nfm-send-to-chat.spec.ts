@@ -156,8 +156,12 @@ respect_system_proxy = false
         await destination.locator('[data-nfm-send-to-thread-row-kind="thread"]').click();
         await expect(page.getByText("Sent to chat", { exact: true })).toBeVisible();
         await expect(sideMenu).toHaveCount(0);
-        await expect(editor.locator('[data-content-type="toggleListItem"]')).not.toHaveCount(0);
-        await relatedChat.locator("button").first().click();
+        const sentMention = editor
+          .locator('[data-content-type="toggleListItem"]')
+          .first()
+          .getByRole("button", { name: new RegExp(`^${prompt}`) });
+        await expect(sentMention).toBeVisible({ timeout: 30_000 });
+        await sentMention.click();
         await expect(
           page.locator("[data-user-message-bubble='true']").filter({ hasText: prompt }),
         ).toHaveCount(2);

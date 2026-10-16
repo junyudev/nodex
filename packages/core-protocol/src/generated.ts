@@ -7059,7 +7059,6 @@ export interface components {
                 readonly kind: "create_agent_runtime_session";
                 readonly launch_request_id: string;
                 readonly project_id?: string | null;
-                readonly replacement_default_session_id: string;
                 readonly runtime_id: string;
                 readonly runtime_thread_id: string;
                 readonly session_id: string;
@@ -8325,6 +8324,10 @@ export interface components {
                 readonly runtime_thread_id: string;
             } | {
                 /** @enum {string} */
+                readonly kind: "agent_runtime_session_binding_by_thread";
+                readonly runtime_thread_id: string;
+            } | {
+                /** @enum {string} */
                 readonly kind: "agent_runtime_session_binding_window";
                 readonly project_id?: string | null;
                 readonly runtime_id: string;
@@ -9399,7 +9402,6 @@ export interface components {
             readonly kind: "create_agent_runtime_session";
             readonly launch_request_id: string;
             readonly project_id?: string | null;
-            readonly replacement_default_session_id: string;
             readonly runtime_id: string;
             readonly runtime_thread_id: string;
             readonly session_id: string;

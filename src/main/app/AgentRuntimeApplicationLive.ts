@@ -76,7 +76,7 @@ import { createOperationId } from "../core-runtime/operation-identity";
 import { ProjectWorkspace } from "../project-application/ProjectWorkspace";
 import { run as runSessionNotifications } from "../agent-runtime/AgentRuntimeSessionNotifications";
 import { make as makeQuiescence, reportsNoWork } from "../agent-runtime/AgentRuntimeQuiescence";
-import { CodexPlatform } from "./CodexApplicationLive";
+import { CodexPlatform, NodexCliShellLaunch } from "./CodexApplicationLive";
 import { CodexTurnPresentation } from "../codex-application/CodexTurnPresentation";
 import { MainApplicationError } from "./MainApplication";
 import { MainConfig } from "./MainConfig";
@@ -133,6 +133,7 @@ const supervisor = Layer.effectContext(
   Effect.gen(function* () {
     const config = yield* MainConfig;
     const platform = yield* CodexPlatform;
+    const cliShell = yield* NodexCliShellLaunch;
     const settings = yield* ApplicationSettings;
     const shell = yield* WorktreeShellEnvironmentRuntime;
     const core = yield* CoreAuthority;
@@ -286,8 +287,10 @@ const supervisor = Layer.effectContext(
             setupMode: "existing",
             binaryPath: resolve(platform.runtime.binaryPath),
             homePath: platform.accountHome.effectiveHome,
-            launchArgs: codexCliAppServerArgs(config.environment)
-              .filter((arg) => arg !== "app-server")
+            launchArgs: [
+              ...codexCliAppServerArgs(config.environment).filter((arg) => arg !== "app-server"),
+              ...cliShell.codexArgs,
+            ]
               .map(shellQuote)
               .join(" "),
           },

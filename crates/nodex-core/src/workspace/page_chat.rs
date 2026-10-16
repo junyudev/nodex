@@ -1033,7 +1033,6 @@ mod tests {
             "launch-runtime-chat",
             ProjectWorkspaceIntent::CreateAgentRuntimeSession {
                 session_id: "session:runtime".to_owned(),
-                replacement_default_session_id: "replacement:runtime".to_owned(),
                 project_id: Some("project:default".to_owned()),
                 title: "Runtime chat".to_owned(),
                 initial_page_ids: vec!["page:runtime".to_owned()],

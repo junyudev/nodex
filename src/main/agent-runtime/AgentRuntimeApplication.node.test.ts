@@ -979,10 +979,6 @@ it.effect(
       assert.deepEqual(fixture.applied[0]!.intent, {
         kind: "create_agent_runtime_session",
         session_id: launch.sessionId,
-        replacement_default_session_id:
-          fixture.applied[0]!.intent.kind === "create_agent_runtime_session"
-            ? fixture.applied[0]!.intent.replacement_default_session_id
-            : "",
         project_id: launch.projectId,
         title: launch.title,
         initial_page_ids: launch.initialPageIds ?? [],

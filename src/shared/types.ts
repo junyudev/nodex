@@ -2103,6 +2103,8 @@ export type CodexConversationImageAssetResolveResult =
 export interface CodexThreadSummary {
   threadId: string;
   projectId: string | null;
+  /** Present when Agent execution runs the chat: its Session is what opens it. */
+  sessionId?: string;
   /** Durable execution host for routing the first resume before renderer ownership is hydrated. */
   executionHostId?: string;
   forkedFromId?: string | null;

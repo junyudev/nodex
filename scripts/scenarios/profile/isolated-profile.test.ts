@@ -34,6 +34,8 @@ describe("isolated scenario Profile", () => {
     expect(profile.nodexHome).toBe(path.join(profile.runRoot, ".nodex"));
     expect(profile.settingsPath).toBe(path.join(profile.nodexHome, "config.toml"));
     expect(profile.codexHome).not.toBe(process.env.CODEX_HOME);
+    expect(path.dirname(profile.claudeConfigHome)).toBe(profile.runRoot);
+    expect(await readdir(profile.claudeConfigHome)).toEqual([]);
     expect(JSON.parse(await readFile(profile.manifestPath, "utf8"))).toMatchObject({
       version: 1,
       runId: profile.runId,

@@ -22,7 +22,10 @@ exclusively from the connected Core authority. The entrypoint pins `NODEX_HOME`,
 
 Bindings are task-local and replaced atomically. The runtime-provided task ID
 selects the binding; subagents inherit the root session binding unless the host
-has supplied an explicit child binding. Explicit unavailable child context does
+has supplied an explicit child binding. Native and Agent-execution Codex shells
+share one managed entrypoint and binding directory per Desktop. A provider whose
+shell names no task leaves plain `nodex` unbound and receives an explicit command
+with the same pinned build, Profile and Project in its Turn instructions. Explicit unavailable child context does
 not fall back to the parent. Runtime startup discards previous bindings, and the
 shell policy and Agent-local Bash/Zsh startup adapters preserve the entrypoint
 across login shells and snapshots, including when user startup files prepend

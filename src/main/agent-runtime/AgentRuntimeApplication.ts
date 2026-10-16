@@ -51,6 +51,7 @@ export type {
   AgentRuntimeSessionTarget,
   AgentRuntimeConversation,
 } from "../../shared/agent-runtime-api";
+import { agentExecutionThreadId } from "../../shared/agent-runtime-api";
 
 type Binding = components["schemas"]["ProjectWorkspaceAgentRuntimeSessionBinding"];
 type CleanupWindow = Extract<
@@ -807,7 +808,9 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
       return yield* failure("launch", "Launch identity and title are required");
     yield* assertMessage(input.message);
     const connection = yield* options.connect;
-    const threadId = `nodex:thread:${hash({ launchId: input.launchId, sessionId: input.sessionId })}`;
+    const threadId = agentExecutionThreadId(
+      hash({ launchId: input.launchId, sessionId: input.sessionId }),
+    );
     const binding = {
       session_id: input.sessionId,
       project_id: input.projectId,
@@ -852,9 +855,6 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
             intent: {
               kind: "create_agent_runtime_session",
               ...binding,
-              replacement_default_session_id: commandId("default-session", {
-                launchId: input.launchId,
-              }),
               title: input.title.trim(),
               initial_page_ids: [...new Set(input.initialPageIds ?? [])],
             },
@@ -1146,7 +1146,9 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
     const provenance = yield* CoreApplicationAgent;
 
     const projectId = source.binding.project_id ?? null;
-    const threadId = `nodex:thread:${hash({ forkRequestId: input.requestId, sessionId: input.sessionId })}`;
+    const threadId = agentExecutionThreadId(
+      hash({ forkRequestId: input.requestId, sessionId: input.sessionId }),
+    );
     const sourceTitle = yield* host(
       core.workspace.read(
         { kind: "session", session_id: input.source.sessionId },
@@ -1188,9 +1190,6 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
             intent: {
               kind: "create_agent_runtime_session",
               ...binding,
-              replacement_default_session_id: commandId("fork-default-session", {
-                requestId: input.requestId,
-              }),
               title,
               initial_page_ids: [],
             },

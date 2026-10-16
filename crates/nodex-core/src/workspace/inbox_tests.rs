@@ -983,7 +983,6 @@ fn runtime_session(module: &ProjectWorkspaceModule) {
         "runtime-session",
         ProjectWorkspaceIntent::CreateAgentRuntimeSession {
             session_id: "session:runtime-source".into(),
-            replacement_default_session_id: "session:draft-replacement".into(),
             project_id: Some("project:default".into()),
             title: "Background work".into(),
             initial_page_ids: vec![],

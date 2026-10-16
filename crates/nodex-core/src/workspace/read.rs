@@ -340,6 +340,16 @@ pub(super) fn read(
                 &runtime_thread_id,
             )?,
         }),
+        ProjectWorkspaceRead::AgentRuntimeSessionBindingByThread { runtime_thread_id } => {
+            Ok(ProjectWorkspaceReadValue::AgentRuntimeSessionBinding {
+                binding: super::agent_runtime_binding::read_binding_by_thread(
+                    connection,
+                    context,
+                    library_id,
+                    &runtime_thread_id,
+                )?,
+            })
+        }
         ProjectWorkspaceRead::AgentRuntimeSessionBindingWindow {
             runtime_id,
             project_id,

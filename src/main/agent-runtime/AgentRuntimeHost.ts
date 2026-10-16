@@ -120,7 +120,14 @@ export const make = Effect.fn("AgentRuntimeHost.make")(function* (
     if (proof.runId === null) return yield* unavailable("turn.prepare");
     if (presentation) yield* presentation.observe(proof);
     const base = `You are working in Nodex Session ${sessionId}. Use the Nodex application tools for content operations.`;
-    const cli = yield* buildAgentRuntimeCliContext(config, coreAuthority.identity, context);
+    const cli = yield* buildAgentRuntimeCliContext(
+      config,
+      coreAuthority.identity,
+      context,
+      identity.nativeThreadRef?.driver === "codex"
+        ? (identity.nativeThreadRef.nativeId ?? null)
+        : null,
+    );
     return { instructions: cli ? `${base}\n\n${cli}` : base };
   });
 

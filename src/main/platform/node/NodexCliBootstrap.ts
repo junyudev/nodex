@@ -39,14 +39,28 @@ export const nodexCliPaths = (config: MainConfigValue) => ({
     : join(config.projectRootPath, ".generated/official-agent-skills/skills/nodex/SKILL.md"),
 });
 
-/** Provider-neutral context selects the exact Profile without relying on a native shell snapshot. */
+/**
+ * A Codex shell names its task in `CODEX_THREAD_ID`, so plain `nodex` routes through that task's
+ * binding exactly as in native chats. Other providers receive an explicit command that selects the
+ * exact Profile without relying on a shell snapshot.
+ */
 export const buildAgentRuntimeCliContext = (
   config: MainConfigValue,
   identity: CoreAuthorityIdentity,
   authority: NodexAgentTurnContext,
+  codexShellTaskId: string | null,
 ): Effect.Effect<string | null> => {
   if (config.platform === "win32") return Effect.succeed(null);
   const projectId = authority.actorProjectId;
+  if (codexShellTaskId)
+    return buildNodexCliBootstrap(config, identity, {
+      threadId: codexShellTaskId,
+      hostId: "local",
+      projectId,
+    }).pipe(
+      Effect.map((entry) => entry.value),
+      Effect.orElseSucceed(() => null),
+    );
   return Effect.tryPromise({
     try: async () => {
       const paths = nodexCliPaths(config);

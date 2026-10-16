@@ -2181,12 +2181,20 @@ fn validate_document_references(
                 )
                 .optional()?
                 .is_some(),
+            // A chat is referenced by its Thread: a native Codex Thread, or the execution root
+            // Thread an Agent chat's Session is bound to.
             BlockDocumentReference::Thread {
                 target_thread_id, ..
             } => connection
                 .query_row(
                     "SELECT 1 FROM codex_threads WHERE thread_id = ?1 \
-                     AND (project_id = ?2 OR project_id IS NULL)",
+                     AND (project_id = ?2 OR project_id IS NULL) \
+                     UNION ALL \
+                     SELECT 1 FROM project_session_execution_bindings binding \
+                     JOIN project_sessions session ON session.id = binding.session_id \
+                     WHERE binding.runtime_thread_id = ?1 \
+                       AND (session.project_id = ?2 OR session.project_id IS NULL) \
+                     LIMIT 1",
                     params![target_thread_id, actor_project_id],
                     |_| Ok(()),
                 )
@@ -2541,6 +2549,60 @@ mod reference_tests {
             }
             Ok::<_, StoreError>(())
         }).unwrap();
+    }
+
+    #[test]
+    fn chat_references_name_native_or_agent_execution_threads_in_scope() {
+        let directory = tempfile::tempdir().unwrap();
+        let kernel = SqliteStoreKernel::open_test(directory.path()).unwrap();
+        kernel
+            .writer()
+            .call(|connection| {
+                connection.execute_batch(
+                    "INSERT INTO profiles (id, created_at, updated_at) VALUES ('profile', 'now', 'now');
+                     INSERT INTO libraries (id, profile_id, created_at, updated_at) VALUES ('library', 'profile', 'now', 'now');
+                     INSERT INTO projects (id, name, created, updated, library_id)
+                       VALUES ('project', 'Project', 'now', 'now', 'library'),
+                              ('other', 'Other', 'now', 'now', 'library');
+                     INSERT INTO project_sessions (id, project_id, no_thread_fallback_title, \"order\", created_at, updated_at)
+                       VALUES ('session', 'project', 'Chat', 0, 'now', 'now'),
+                              ('elsewhere', 'other', 'Chat', 1, 'now', 'now');
+                     INSERT INTO project_session_execution_bindings (session_id, runtime_id, runtime_thread_id, launch_request_id, bound_at)
+                       VALUES ('session', 'runtime', 'nodex:thread:agent', 'launch', 'now'),
+                              ('elsewhere', 'runtime', 'nodex:thread:other', 'launch-other', 'now');",
+                )?;
+                let reference = |thread: &str| {
+                    [BlockDocumentReference::Thread {
+                        source_block_id: "block".to_owned(),
+                        target_thread_id: thread.to_owned(),
+                    }]
+                };
+                validate_document_references(
+                    connection,
+                    "library",
+                    Some("project"),
+                    &reference("nodex:thread:agent"),
+                    &[],
+                )
+                .expect("an Agent chat in the Project is referenceable");
+                for (thread, project) in [
+                    ("nodex:thread:other", Some("project")),
+                    ("nodex:thread:agent", None),
+                    ("nodex:thread:unbound", Some("project")),
+                ] {
+                    let error = validate_document_references(
+                        connection,
+                        "library",
+                        project,
+                        &reference(thread),
+                        &[],
+                    )
+                    .expect_err("a chat outside the reference scope is not referenceable");
+                    assert_eq!(error.code, StoreErrorCode::InvalidInput);
+                }
+                Ok::<_, StoreError>(())
+            })
+            .unwrap();
     }
 
     #[test]

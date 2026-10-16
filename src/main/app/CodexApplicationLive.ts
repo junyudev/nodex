@@ -166,6 +166,46 @@ const platform: Layer.Layer<CodexPlatform, MainApplicationError, MainConfig | Ap
     }),
   );
 
+/** Codex arguments that put this Profile's task-bound `nodex` first in every Codex shell Main launches. */
+export class NodexCliShellLaunch extends Context.Service<
+  NodexCliShellLaunch,
+  { readonly codexArgs: ReadonlyArray<string> }
+>()("nodex/main/app/NodexCliShellLaunch") {}
+
+/** Prepared once per Main process: preparing again would drop every live task binding. */
+const cliShell = Layer.effect(
+  NodexCliShellLaunch,
+  Effect.gen(function* () {
+    const config = yield* MainConfig;
+    const codex = yield* CodexPlatform;
+    if (config.platform === "win32") return NodexCliShellLaunch.of({ codexArgs: [] });
+    const codexArgs = yield* Effect.tryPromise(() => prepareNodexCliShell(config.nodexHome)).pipe(
+      Effect.andThen(
+        Effect.tryPromise(() =>
+          nodexCliShellLaunchArgs({
+            nodexHome: config.nodexHome,
+            codexHome: codex.codexHome,
+            searchPaths: codex.runtime.additionalSearchPaths,
+            inheritedPath: config.environmentPath ?? "",
+            homeDirectory: config.homeDirectory,
+            inheritedZdotdir: config.environment.ZDOTDIR,
+            inheritedBashEnv: config.environment.BASH_ENV,
+          }),
+        ),
+      ),
+      Effect.mapError(
+        (cause) =>
+          new MainApplicationError({
+            phase: "startup",
+            operation: "prepare-cli-shell",
+            cause,
+          }),
+      ),
+    );
+    return NodexCliShellLaunch.of({ codexArgs });
+  }),
+);
+
 const requestInbox = Layer.effect(CodexApplicationRequestInbox, makeCodexApplicationRequestInbox);
 
 const continuity = Layer.unwrap(
@@ -288,32 +328,7 @@ const runtime = Layer.unwrap(
       catch: (cause) =>
         new MainApplicationError({ phase: "startup", operation: "prepare-codex-account", cause }),
     });
-    const cliArgs =
-      config.platform === "win32"
-        ? []
-        : yield* Effect.tryPromise(() => prepareNodexCliShell(config.nodexHome)).pipe(
-            Effect.andThen(
-              Effect.tryPromise(() =>
-                nodexCliShellLaunchArgs({
-                  nodexHome: config.nodexHome,
-                  codexHome: codex.codexHome,
-                  searchPaths: codex.runtime.additionalSearchPaths,
-                  inheritedPath: config.environmentPath ?? "",
-                  homeDirectory: config.homeDirectory,
-                  inheritedZdotdir: config.environment.ZDOTDIR,
-                  inheritedBashEnv: config.environment.BASH_ENV,
-                }),
-              ),
-            ),
-            Effect.mapError(
-              (cause) =>
-                new MainApplicationError({
-                  phase: "startup",
-                  operation: "prepare-cli-shell",
-                  cause,
-                }),
-            ),
-          );
+    const cliArgs = (yield* NodexCliShellLaunch).codexArgs;
     const appToolSession = yield* makeAppToolSession;
     const featureArgs = yield* Effect.tryPromise(() =>
       codexFeatureDefaultLaunchArgs(codex.codexHome),
@@ -407,7 +422,7 @@ const foundations = Layer.mergeAll(
   appToolInvocations,
   conversations,
 );
-const transport = runtime.pipe(Layer.provideMerge(foundations));
+const transport = runtime.pipe(Layer.provideMerge(cliShell), Layer.provideMerge(foundations));
 const kernel = pendingRequests.pipe(Layer.provideMerge(transport));
 
 const account = codexAccountLive({ pollInterval: "60 seconds" }).pipe(Layer.provideMerge(kernel));
@@ -459,6 +474,7 @@ const applicationServices = Layer.mergeAll(
 /** Stable Codex host generations and application-owned conversation foundations. */
 export const live: Layer.Layer<
   | CodexPlatform
+  | NodexCliShellLaunch
   | CodexHomeContinuity
   | CodexAttestation
   | AppToolInvocationInbox

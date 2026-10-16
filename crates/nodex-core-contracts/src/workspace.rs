@@ -13,7 +13,7 @@ use crate::inbox::{
 };
 use crate::{ModuleMutationReceipt, ModuleName, VersionedModuleContract};
 
-pub const PROJECT_WORKSPACE_CONTRACT_VERSION: u32 = 37;
+pub const PROJECT_WORKSPACE_CONTRACT_VERSION: u32 = 39;
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 #[serde(tag = "kind", rename_all = "snake_case")]
@@ -88,6 +88,11 @@ pub enum ProjectWorkspaceRead {
     /// Resolves one root execution identity through the unique binding index.
     AgentRuntimeSessionBindingByExecution {
         runtime_id: String,
+        runtime_thread_id: String,
+    },
+    /// Resolves a chat reference, which names only the execution root Thread, to its Session.
+    /// Absent unless exactly one Session is bound to that Thread.
+    AgentRuntimeSessionBindingByThread {
         runtime_thread_id: String,
     },
     /// Bounded execution placement metadata, including archived Sessions and Projects.
@@ -1483,7 +1488,6 @@ pub enum ProjectWorkspaceIntent {
     /// Core does not execute the launch or persist the external Thread's mutable state.
     CreateAgentRuntimeSession {
         session_id: String,
-        replacement_default_session_id: String,
         project_id: Option<String>,
         title: String,
         initial_page_ids: Vec<String>,

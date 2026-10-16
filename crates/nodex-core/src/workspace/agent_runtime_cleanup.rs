@@ -137,7 +137,6 @@ mod tests {
     fn binding(session_id: &str, thread_id: &str) -> ProjectWorkspaceIntent {
         ProjectWorkspaceIntent::CreateAgentRuntimeSession {
             session_id: session_id.into(),
-            replacement_default_session_id: format!("default:{session_id}"),
             project_id: Some("project:default".into()),
             title: "Task".into(),
             initial_page_ids: Vec::new(),

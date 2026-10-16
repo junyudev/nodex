@@ -102,6 +102,8 @@ import type {
   WorkbenchTabCreateInput,
   WorkbenchTabProjection,
 } from "./types";
+import { isAgentExecutionThreadId } from "../../shared/agent-runtime-api";
+import { readCodexThreadSummary } from "./codex-thread-summary";
 
 function isResidentSubagentDescendant(
   rootThreadId: string,
@@ -942,9 +944,18 @@ export function useWorkbenchSessionCommands({
   const openAttachedThreadSessionResult = useCallback(
     async (
       threadId: string,
-      context?: Parameters<NonNullable<ThreadStageActions["onOpenThread"]>>[1],
+      requested?: Parameters<NonNullable<ThreadStageActions["onOpenThread"]>>[1],
     ): Promise<boolean> => {
-      if (context?.isSourceCurrent?.() === false) return false;
+      if (requested?.isSourceCurrent?.() === false) return false;
+      // A reference names an Agent chat by its execution root Thread; its Session opens it.
+      let context = requested;
+      if (!requested?.runtimeSessionId && isAgentExecutionThreadId(threadId)) {
+        const runtimeSessionId =
+          knownSessions.find((session) => session.executionRef?.threadId === threadId)?.id ??
+          (await readCodexThreadSummary(threadId))?.sessionId;
+        if (!runtimeSessionId) throw new Error("This chat is no longer available");
+        context = { ...requested, runtimeSessionId };
+      }
       if (context?.runtimeSessionId) {
         const navigationRequest = ++runtimeNavigationRequestRef.current;
         const session = await sessionCatalog.readCurrent(context.runtimeSessionId);

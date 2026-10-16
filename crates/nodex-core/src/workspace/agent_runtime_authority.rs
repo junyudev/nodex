@@ -70,7 +70,6 @@ mod tests {
     fn launch(session: &str, thread: &str, project: Option<&str>) -> ProjectWorkspaceIntent {
         ProjectWorkspaceIntent::CreateAgentRuntimeSession {
             session_id: session.into(),
-            replacement_default_session_id: format!("replacement:{session}"),
             project_id: project.map(str::to_owned),
             title: "Task".into(),
             initial_page_ids: vec![],

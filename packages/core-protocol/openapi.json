@@ -29238,7 +29238,6 @@
                 "description": "Atomically binds an unstarted Session (or creates one), authorized Linked chats, and runtime launch identity.\nCore does not execute the launch or persist the external Thread's mutable state.",
                 "required": [
                   "session_id",
-                  "replacement_default_session_id",
                   "title",
                   "initial_page_ids",
                   "runtime_id",
@@ -29267,9 +29266,6 @@
                       "string",
                       "null"
                     ]
-                  },
-                  "replacement_default_session_id": {
-                    "type": "string"
                   },
                   "runtime_id": {
                     "type": "string"
@@ -34943,6 +34939,25 @@
               },
               {
                 "type": "object",
+                "description": "Resolves a chat reference, which names only the execution root Thread, to its Session.\nAbsent unless exactly one Session is bound to that Thread.",
+                "required": [
+                  "runtime_thread_id",
+                  "kind"
+                ],
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "agent_runtime_session_binding_by_thread"
+                    ]
+                  },
+                  "runtime_thread_id": {
+                    "type": "string"
+                  }
+                }
+              },
+              {
+                "type": "object",
                 "description": "Bounded execution placement metadata, including archived Sessions and Projects.",
                 "required": [
                   "runtime_id",
@@ -39054,7 +39069,6 @@
             "description": "Atomically binds an unstarted Session (or creates one), authorized Linked chats, and runtime launch identity.\nCore does not execute the launch or persist the external Thread's mutable state.",
             "required": [
               "session_id",
-              "replacement_default_session_id",
               "title",
               "initial_page_ids",
               "runtime_id",
@@ -39083,9 +39097,6 @@
                   "string",
                   "null"
                 ]
-              },
-              "replacement_default_session_id": {
-                "type": "string"
               },
               "runtime_id": {
                 "type": "string"
