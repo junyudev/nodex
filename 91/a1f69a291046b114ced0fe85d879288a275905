@@ -1,0 +1,21 @@
+src/shared/codex-canonical-item-projector.test.ts
+  s_1ca65ffa5958ee::t_1a18f0fbcd3116 708-734
+src/shared/codex-canonical-item-projector.ts
+  s_1ca65ffa5958ee::t_0d994ffce92c4b 453-454,496-497,1416-1419,1427
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "91a1f69a291046b114ced0fe85d879288a275905",
+  "prompts": {},
+  "sessions": {
+    "s_1ca65ffa5958ee": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "67793a21-5e0b-400f-bf07-1018dc4c4f31",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
