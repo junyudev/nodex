@@ -4,6 +4,11 @@ import { describe, expect, test, vi } from "vite-plus/test";
 import { appScope, type ScopeHandle, useScopeHandle } from "@/lib/maitai";
 import { renderWithMaitai } from "../test/thread-maitai";
 import {
+  ApplicationReadinessRoot,
+  createApplicationReadiness,
+  useApplicationReady,
+} from "@/bootstrap/application-surface";
+import {
   closeModal,
   isModalOpen,
   NodexModalHost,
@@ -132,11 +137,19 @@ describe("modal registry", () => {
           resolveLazy = resolve;
         }),
     );
+    const readiness = createApplicationReadiness();
+    const ready = vi.fn();
+    void readiness.ready.then(ready);
+    function ReadyContent() {
+      useApplicationReady(true);
+      return null;
+    }
     const view = renderWithMaitai(
-      <>
+      <ApplicationReadinessRoot readiness={readiness}>
+        <ReadyContent />
         <HandleProbe />
         <NodexModalHost />
-      </>,
+      </ApplicationReadinessRoot>,
     );
     const handle = requireHandle(appHandle);
 
@@ -146,11 +159,15 @@ describe("modal registry", () => {
     });
     expect(view.getByRole("region", { name: "Ready" })).toBeTruthy();
     expect(view.queryByRole("region", { name: "Lazy" })).toBe(null);
+    await act(async () => Promise.resolve());
+    expect(ready).not.toHaveBeenCalled();
 
     await act(async () => {
       resolveLazy?.({ default: StatefulModal });
       await Promise.resolve();
     });
     expect(await view.findByRole("region", { name: "Lazy" })).toBeTruthy();
+    await expect(readiness.ready).resolves.toBeUndefined();
+    expect(ready).toHaveBeenCalledOnce();
   });
 });

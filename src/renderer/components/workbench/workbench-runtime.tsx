@@ -3454,6 +3454,7 @@ export function WorkbenchRuntime({
         if (surface.config.target.kind === "database-default")
           return (
             <WorkbenchDatabaseViewSurface
+              isActivePanelTab={context.active}
               workbenchPresentation={{
                 owner: workbenchWindow.owner,
                 sceneOwner: activeProjectScene.owner,
@@ -3494,6 +3495,7 @@ export function WorkbenchRuntime({
         };
         return (
           <DbViewSessionTab
+            isActivePanelTab={context.active}
             workbenchPresentation={{
               owner: workbenchWindow.owner,
               sceneOwner: activeProjectScene.owner,
@@ -3808,6 +3810,7 @@ export function WorkbenchRuntime({
         }
         return (
           <WorkbenchDatabaseViewSurface
+            isActivePanelTab={context.active}
             workbenchPresentation={{
               owner: workbenchWindow.owner,
               sceneOwner: pagesSceneOwner,

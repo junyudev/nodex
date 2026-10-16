@@ -64,6 +64,7 @@ import { PageStage } from "./workbench-page-stage";
 import { pageChatWindowQueryOptions } from "@/lib/query-options";
 import { queryKeys } from "@/lib/query-keys";
 import { unlinkPageChat } from "@/lib/page-chat-runtime";
+import { ApplicationPending, useApplicationPending } from "@/bootstrap/application-surface";
 
 export interface OpenPageTabOptions {
   placement?: WorkbenchSurfaceRelativePlacement;
@@ -269,6 +270,7 @@ export function PageStageSessionTab({
     : null;
   const pageHydrating =
     !page && (detailSnapshot.loading || (!detailSnapshot.error && !stageProjection.error));
+  useApplicationPending(isActivePanelTab && project != null && pageHydrating);
 
   const ownershipPath = usePageOwnershipPathReadModel(
     projectContentRoute(project?.id ?? pageAccessProjectId),
@@ -442,17 +444,19 @@ export function PageStageSessionTab({
       {(documentModel, documentControls) => {
         if (documentModel.status === "loading") {
           return (
-            <PageStageSessionSkeleton
-              titleSnapshot={page.page.title}
-              breadcrumb={
-                breadcrumb
-                  ? {
-                      ...breadcrumb,
-                      currentTitle: page.page.title,
-                    }
-                  : undefined
-              }
-            />
+            <ApplicationPending active={isActivePanelTab}>
+              <PageStageSessionSkeleton
+                titleSnapshot={page.page.title}
+                breadcrumb={
+                  breadcrumb
+                    ? {
+                        ...breadcrumb,
+                        currentTitle: page.page.title,
+                      }
+                    : undefined
+                }
+              />
+            </ApplicationPending>
           );
         }
         if (documentModel.status === "error") {

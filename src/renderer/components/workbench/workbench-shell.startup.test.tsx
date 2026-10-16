@@ -16,6 +16,64 @@ import {
 import { renderWorkbench } from "./workbench-testkit/workbench-shell-harness";
 
 describe("Workbench startup readiness", () => {
+  test("waits for the restored Board's data before reporting ready", async () => {
+    let resolveBoard = (): void => undefined;
+    const initialBoardDataReady = new Promise<void>((resolve) => {
+      resolveBoard = resolve;
+    });
+    const readiness = createApplicationReadiness();
+    const ready = vi.fn();
+    void readiness.ready.then(ready);
+    const view = renderWorkbench({
+      sessionsByProject: {},
+      initialBoardDataReady,
+      applicationReadiness: readiness,
+      initialWindowLayoutSnapshot: {
+        ...createDefaultWorkbenchLayoutSnapshot(),
+        location: { kind: "project", projectId: "alpha" },
+      },
+    });
+    await view.findByText("Opening Database…");
+    await settleAsyncRender();
+    expect(ready).not.toHaveBeenCalled();
+
+    await act(async () => resolveBoard());
+    await waitFor(() => expect(ready).toHaveBeenCalledOnce());
+    expect(view.queryByText("Opening Database…")).toBeNull();
+    expect(view.getByRole("button", { name: "Card One" })).toBeTruthy();
+  });
+
+  test("waits for Board data after selected chat detail materializes its panels", async () => {
+    const session = makeAttachedSession({ id: "session:delayed-board", projectId: "alpha" });
+    let resolveDetail = (_session: ProjectSession | null): void => undefined;
+    const detail = new Promise<ProjectSession | null>((resolve) => {
+      resolveDetail = resolve;
+    });
+    let resolveBoard = (): void => undefined;
+    const initialBoardDataReady = new Promise<void>((resolve) => {
+      resolveBoard = resolve;
+    });
+    const readDetail = vi.fn(() => detail);
+    const readiness = createApplicationReadiness();
+    const ready = vi.fn();
+    void readiness.ready.then(ready);
+    const view = renderWorkbench({
+      sessionsByProject: { alpha: [session] },
+      sessionGetOverride: readDetail,
+      initialBoardDataReady,
+      applicationReadiness: readiness,
+    });
+    await waitFor(() => expect(readDetail).toHaveBeenCalledWith(session.id));
+    expect(ready).not.toHaveBeenCalled();
+    await act(async () => resolveDetail(session));
+    await view.findByText("Opening Database…");
+    await settleAsyncRender();
+    expect(ready).not.toHaveBeenCalled();
+    await act(async () => resolveBoard());
+    await view.findByRole("button", { name: "Card One" });
+    await waitFor(() => expect(ready).toHaveBeenCalledOnce());
+  });
+
   test.each(["alpha", null])(
     "waits for selected chat detail in Project %s before reporting ready",
     async (projectId) => {

@@ -24,6 +24,7 @@ import {
   pageDetailDocumentDependencies,
 } from "../../lib/page-detail-projection-dependencies";
 import { libraryPageDetailQueryOptions } from "../../lib/library-page-detail-query";
+import { useApplicationPending } from "@/bootstrap/application-surface";
 
 const ignoreLibraryPageClose = (): void => undefined;
 
@@ -118,7 +119,9 @@ export function WorkbenchLibraryPageSurface({
       : null,
   );
 
-  if (detail.isPending || document.isPending) {
+  const pending = detail.isPending || document.isPending;
+  useApplicationPending(isActivePanelTab && pending);
+  if (pending) {
     return (
       <div
         className="flex h-full items-center justify-center bg-token-main-surface-primary text-sm text-token-description-foreground"

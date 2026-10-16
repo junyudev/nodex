@@ -5,6 +5,7 @@ import { act, fireEvent, waitFor, within } from "@testing-library/react";
 import { splitWorkbenchPanelLeaf } from "../../../shared/workbench-panel-layout";
 import { isUuidV7 } from "../../../shared/uuid-v7";
 import { WORKBENCH_NAVIGATION_RAIL_WIDTH_PX } from "@/lib/workbench-shell-geometry";
+import { createApplicationReadiness } from "@/bootstrap/application-surface";
 import {
   makeAttachedSession,
   makeBlankSession,
@@ -1329,6 +1330,9 @@ describe("workbench session shell / pages-shell-navigation", () => {
   });
 
   test("shows a page-stage skeleton while card detail hydration is pending", async () => {
+    const readiness = createApplicationReadiness();
+    const ready = vi.fn();
+    void readiness.ready.then(ready);
     let resolveCardDetail!: (value: unknown) => void;
     const pendingCardDetail = new Promise<unknown>((resolve) => {
       resolveCardDetail = resolve;
@@ -1355,6 +1359,7 @@ describe("workbench session shell / pages-shell-navigation", () => {
       sessionsByProject: { alpha: [session] },
       cardGetOverride: (_projectId, pageId) =>
         pageId === "card-1" ? pendingCardDetail : undefined,
+      applicationReadiness: readiness,
     });
     await settleAsyncRender();
 
@@ -1362,6 +1367,7 @@ describe("workbench session shell / pages-shell-navigation", () => {
       name: "Loading Card One",
     });
     expect(loadingShell !== null).toBe(true);
+    expect(ready).not.toHaveBeenCalled();
     expect(within(loadingShell).queryByRole("button", { name: "Close" })).toBeNull();
     expect(
       within(loadingShell).getByRole("button", { name: "Page actions" }).hasAttribute("disabled"),
@@ -1390,6 +1396,7 @@ describe("workbench session shell / pages-shell-navigation", () => {
     await settleAsyncRender();
 
     expect((await screen.findByText("Page:card-1")) !== null).toBe(true);
+    await waitFor(() => expect(ready).toHaveBeenCalledOnce());
     await waitFor(() => {
       expect(screen.queryByRole("status", { name: "Loading Card One" })).toBeNull();
     });

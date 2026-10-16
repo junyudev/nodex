@@ -27,6 +27,11 @@ import {
   databaseViewHistoryScopeKey,
 } from "./database-view-mutation-history";
 import { committedLocalCommit } from "../../../shared/testing/local-commit";
+import {
+  ApplicationReadinessRoot,
+  createApplicationReadiness,
+  useApplicationReady,
+} from "@/bootstrap/application-surface";
 
 const api = vi.hoisted(() => ({
   applyDatabaseModule: vi.fn<(typeof import("../../lib/api"))["applyDatabaseModule"]>(),
@@ -79,6 +84,10 @@ vi.mock("./workbench-db-view-panel", () => ({
 }));
 
 const timestamp = "2026-08-03T00:00:00.000Z";
+function ReadyWorkbench({ children }: { readonly children: import("react").ReactNode }) {
+  useApplicationReady(true);
+  return children;
+}
 const databaseId = parseDatabaseId("database:standalone");
 const dataSourceId = parseDataSourceId("data-source:standalone");
 const viewId = parseDatabaseViewId("database-view:standalone");
@@ -424,6 +433,78 @@ describe("WorkbenchDatabaseViewSurface", () => {
     expect(pageActionPort.openInNewChat).toBe(onOpenPageInNewChat);
     expect(pageActionPort.sendToChat).toBe(onSendPageToChat);
     expect(pageActionPort.deletePage).toEqual(expect.any(Function));
+  });
+
+  test.each([true, false])(
+    "waits for initial Database data only when visible=%s",
+    async (visible) => {
+      let resolveWindow = (_window: DatabaseViewWindowSnapshot<null>): void => undefined;
+      api.readLibraryDatabaseViewWindow.mockImplementation(
+        () =>
+          new Promise<DatabaseViewWindowSnapshot<null>>((resolve) => {
+            resolveWindow = resolve;
+          }),
+      );
+      const readiness = createApplicationReadiness();
+      const ready = vi.fn();
+      void readiness.ready.then(ready);
+      render(
+        <TestQueryProvider>
+          <ApplicationReadinessRoot readiness={readiness}>
+            <ReadyWorkbench>
+              <WorkbenchDatabaseViewSurface
+                isActivePanelTab={visible}
+                routingContext={{ kind: "library" }}
+                target={{ kind: "database-view", databaseViewId: viewId }}
+                onOpenPage={() => undefined}
+              />
+            </ReadyWorkbench>
+          </ApplicationReadinessRoot>
+        </TestQueryProvider>,
+      );
+      await waitFor(() => expect(api.readLibraryDatabaseViewWindow).toHaveBeenCalled());
+      expect(screen.getByRole("status").textContent).toBe("Opening Database…");
+      if (visible) expect(ready).not.toHaveBeenCalled();
+      else await waitFor(() => expect(ready).toHaveBeenCalledOnce());
+
+      await act(async () => resolveWindow(makeWindow(null)));
+      await screen.findByRole("button", { name: "Shared Database View" });
+      await waitFor(() => expect(ready).toHaveBeenCalledOnce());
+    },
+  );
+
+  test("finishes initial Database loading at a recoverable error and keeps Retry operable", async () => {
+    const error = new Error("Database temporarily unavailable");
+    const logged = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    api.readLibraryDatabaseViewWindow.mockRejectedValueOnce(error);
+    const readiness = createApplicationReadiness();
+    const ready = vi.fn();
+    void readiness.ready.then(ready);
+    try {
+      render(
+        <TestQueryProvider>
+          <ApplicationReadinessRoot readiness={readiness}>
+            <ReadyWorkbench>
+              <WorkbenchDatabaseViewSurface
+                routingContext={{ kind: "library" }}
+                target={{ kind: "database-view", databaseViewId: viewId }}
+                onOpenPage={() => undefined}
+              />
+            </ReadyWorkbench>
+          </ApplicationReadinessRoot>
+        </TestQueryProvider>,
+      );
+      await screen.findByRole("alert");
+      await waitFor(() => expect(ready).toHaveBeenCalledOnce());
+      await act(async () => screen.getByRole("button", { name: "Retry" }).click());
+      await screen.findByRole("button", { name: "Shared Database View" });
+      expect(ready).toHaveBeenCalledOnce();
+      expect(
+        logged.mock.calls.flat().some((entry) => String(entry).includes("not wrapped in act")),
+      ).toBe(false);
+    } finally {
+      logged.mockRestore();
+    }
   });
 
   test.each([

@@ -138,24 +138,43 @@ export function useApplicationReady(ready: boolean): void {
   }, [readiness, ready]);
 }
 
-function PendingSurface({ children }: { readonly children: ReactNode }) {
+/** Ordinary data loading joins the same gate as a committed Suspense fallback. */
+export function useApplicationPending(pending: boolean): void {
   const readiness = useContext(ApplicationReadinessContext);
-  useLayoutEffect(() => readiness?.pending(), [readiness]);
+  useLayoutEffect(() => {
+    if (!pending) return;
+    return readiness?.pending();
+  }, [pending, readiness]);
+}
+
+export function ApplicationPending({
+  children,
+  active = true,
+}: {
+  readonly children: ReactNode;
+  readonly active?: boolean;
+}) {
+  useApplicationPending(active);
   return children;
 }
 
-/** Keep normal React lazy/Suspense semantics while observing only the initial visible commit. */
+/** Observe initial visible content without changing the lifetime of retained lazy surfaces. */
 export function ApplicationSurface({
   children,
   fallback = null,
+  active = true,
 }: {
   readonly children: ReactNode;
   readonly fallback?: ReactNode;
+  /** Controls startup participation; the child tree remains mounted while inactive. */
+  readonly active?: boolean;
 }) {
   const readiness = useContext(ApplicationReadinessContext);
   return (
-    <ApplicationErrorBoundary onError={readiness?.fail}>
-      <Suspense fallback={<PendingSurface>{fallback}</PendingSurface>}>{children}</Suspense>
+    <ApplicationErrorBoundary onError={active ? readiness?.fail : undefined}>
+      <Suspense fallback={<ApplicationPending active={active}>{fallback}</ApplicationPending>}>
+        {children}
+      </Suspense>
     </ApplicationErrorBoundary>
   );
 }

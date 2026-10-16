@@ -49,6 +49,7 @@ import {
   type PageStageViewportLease,
 } from "@/lib/page-stage-viewport-session";
 import { contentRoutingContextKey } from "../../../shared/content-routing-context";
+import { ApplicationPending } from "@/bootstrap/application-surface";
 
 export type { PageStageProps } from "./page-stage/types";
 
@@ -473,7 +474,11 @@ export function PageStage(props: PageStageProps) {
     runtimeRef: documentRuntimeRef,
     onReload: props.documentAuthority.reload,
     dependencies: props.documentAuthority.surfaceDependencies,
-    pendingFallback: <PageStageContentSkeleton titleSnapshot={page.title} />,
+    pendingFallback: (
+      <ApplicationPending active={props.isActivePanelTab ?? true}>
+        <PageStageContentSkeleton titleSnapshot={page.title} />
+      </ApplicationPending>
+    ),
     localAwarenessState: {
       user: { name: "You", color: "#3b82f6" },
     },

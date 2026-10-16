@@ -1851,8 +1851,21 @@ vi.mock("@/features/local-conversation", () => ({
   useLocalConversationConnection: () => ({ status: "connected", retries: 0 }),
 }));
 
+let boardDataReady: Promise<void> | null = null;
+
 vi.mock("@/lib/use-board", () => ({
   useBoard: (options?: { projectId?: string; databaseViewId?: string }) => {
+    const [dataReady, setDataReady] = useState(boardDataReady === null);
+    useEffect(() => {
+      if (!boardDataReady) return;
+      let mounted = true;
+      void boardDataReady.then(() => {
+        if (mounted) setDataReady(true);
+      });
+      return () => {
+        mounted = false;
+      };
+    }, []);
     const projectId = options?.projectId ?? "alpha";
     const cards =
       projectId === "beta"
@@ -1968,7 +1981,7 @@ vi.mock("@/lib/use-board", () => ({
       },
     };
     return {
-      databaseView,
+      databaseView: dataReady ? databaseView : null,
       board: {
         columns: [
           {
@@ -1979,7 +1992,7 @@ vi.mock("@/lib/use-board", () => ({
         ],
       },
       pageIndex: new Map(visibleCards.map((card) => [card.id, card])),
-      loading: false,
+      loading: !dataReady,
       error: null,
       groupPagination: new Map(),
       setPresentationOverride: () => undefined,
@@ -2407,6 +2420,7 @@ export function renderWorkbench({
   cardGetOverride = null,
   sessionGetOverride,
   applicationReadiness,
+  initialBoardDataReady,
   ownershipPathsByPage = {},
   scheduledAutomations = [],
   automationInboxItems = [],
@@ -2437,6 +2451,7 @@ export function renderWorkbench({
   cardGetOverride?: ((projectId: string, pageId: string) => Promise<unknown> | unknown) | null;
   sessionGetOverride?: (sessionId: string) => Promise<ProjectSession | null>;
   applicationReadiness?: ComponentProps<typeof ApplicationReadinessRoot>["readiness"];
+  initialBoardDataReady?: Promise<void>;
   ownershipPathsByPage?: Record<
     string,
     ReadonlyArray<{
@@ -2455,6 +2470,7 @@ export function renderWorkbench({
   initialWindowLayoutSnapshot?: WorkbenchLayoutSnapshot;
   onCreateProject?: ComponentProps<typeof WorkbenchShell>["onCreateProject"];
 } = {}) {
+  boardDataReady = initialBoardDataReady ?? null;
   const resolvedInitialSelectedSessionId =
     initialSelectedSessionId === undefined
       ? (Object.values(sessionsByProject).flat()[0]?.id ?? projectlessSessions[0]?.id ?? null)

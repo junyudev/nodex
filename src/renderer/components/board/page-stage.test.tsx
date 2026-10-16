@@ -30,9 +30,15 @@ import {
   savePageStageViewportSnapshot,
   loadPageStageViewportSnapshot,
 } from "@/lib/page-stage-viewport-storage";
+import {
+  ApplicationReadinessRoot,
+  createApplicationReadiness,
+  useApplicationReady,
+} from "@/bootstrap/application-surface";
 
 let lastNfmEditorProps: Record<string, unknown> | null = null;
 let simulateMountedEditor = false;
+let surfacePending = false;
 let lastRawContent: string | null = null;
 let publishCollaborativeTitle: ((title: string) => void) | null = null;
 let surfaceDocument = createPageDocument({
@@ -93,8 +99,10 @@ vi.mock("@/components/block-documents/block-document-surface", () => ({
   BlockDocumentSurface: (props: {
     descriptor: Record<string, unknown>;
     runtimeRef?: { current: unknown };
+    pendingFallback?: ReactNode;
     children: (surface: Record<string, unknown>) => ReactNode;
   }) => {
+    if (surfacePending) return props.pendingFallback;
     const runtime = {
       descriptor: props.descriptor,
       clientSessionId: "surface-1",
@@ -179,7 +187,7 @@ function documentAuthority(): PageStageDocumentAuthority {
 
 function renderStage(
   page: PageStagePageModel = toStageModel(buildPage()),
-  breadcrumbProps: Pick<PageStageProps, "breadcrumb"> = {},
+  breadcrumbProps: Pick<PageStageProps, "breadcrumb" | "isActivePanelTab"> = {},
   renderView = render,
 ) {
   const { PageStage } = requirePageStage();
@@ -205,6 +213,10 @@ function renderStage(
 }
 
 let loadedPageStage: typeof import("./page-stage") | null = null;
+function ReadyWorkbench({ children }: { readonly children: ReactNode }) {
+  useApplicationReady(true);
+  return children;
+}
 function requirePageStage(): typeof import("./page-stage") {
   if (!loadedPageStage) throw new Error("Page Detail module has not loaded");
   return loadedPageStage;
@@ -215,6 +227,7 @@ describe("page stage", () => {
     localStorage.clear();
     lastNfmEditorProps = null;
     simulateMountedEditor = false;
+    surfacePending = false;
     lastRawContent = null;
     publishCollaborativeTitle = null;
     surfaceDocument.document.destroy();
@@ -225,6 +238,37 @@ describe("page stage", () => {
     populateBlockDocumentBodyFromNfm(surfaceDocument.body, "# Live collaborative body\n\n- item");
     loadedPageStage = await import("./page-stage");
   });
+
+  test.each([true, false])(
+    "waits for the Page Document's first sync only when visible=%s",
+    async (visible) => {
+      surfacePending = true;
+      const readiness = createApplicationReadiness();
+      const ready = vi.fn();
+      void readiness.ready.then(ready);
+      const wrap = (ui: ReactNode) => (
+        <ApplicationReadinessRoot readiness={readiness}>
+          <ReadyWorkbench>{ui}</ReadyWorkbench>
+        </ApplicationReadinessRoot>
+      );
+      const page = toStageModel(buildPage());
+      const view = renderStage(page, { isActivePanelTab: visible }, (ui) => render(wrap(ui)));
+      await settleAsyncRender();
+      expect(view.queryByText("Mock collaborative editor")).toBeNull();
+      if (visible) expect(ready).not.toHaveBeenCalled();
+      else await waitFor(() => expect(ready).toHaveBeenCalledOnce());
+
+      await act(async () => {
+        surfacePending = false;
+        renderStage(page, { isActivePanelTab: visible }, (ui) => {
+          view.rerender(wrap(ui));
+          return view;
+        });
+      });
+      expect(view.getByText("Mock collaborative editor")).toBeTruthy();
+      await waitFor(() => expect(ready).toHaveBeenCalledOnce());
+    },
+  );
 
   test("keeps the new Page viewport subscribed after the previous Page cleanup", async () => {
     simulateMountedEditor = true;

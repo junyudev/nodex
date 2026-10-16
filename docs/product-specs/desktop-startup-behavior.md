@@ -48,6 +48,13 @@ surfaces do not delay the initial Workbench. Their loading boundaries retain the
 Workbench and its state. Renderer readiness waits for the initial route's data selection and
 visible loading boundaries to commit their content; committing an empty loading fallback does
 not release the activation coordinator. Later route changes do not reopen the startup gate.
+This includes ordinary data-loading branches: a restored Database waits for its initial View
+model, a Page waits for its detail, Document preparation, and first content sync, and a visible
+Composer waits for its persisted draft and initial input to commit. Hidden
+retained tabs and hidden Composer content do not delay readiness; retained conversation
+lifecycles continue while their content loads. Their import failures stay within their own
+recovery boundary and do not reject startup. A committed recoverable data error ends that
+loading wait.
 
 Renderer readiness diagnostics record separate durations for the native activation gate,
 bootstrap queries, application module loading, diagnostics initialization, and React mount.

@@ -4,6 +4,12 @@ import { useLayoutEffect, useState } from "react";
 import { act, fireEvent, waitFor, within } from "@testing-library/react";
 import { AppProviders } from "@/app-providers";
 import {
+  ApplicationReadinessRoot,
+  createApplicationReadiness,
+  useApplicationReady,
+} from "@/bootstrap/application-surface";
+import { RightPanelComposerPresentationProvider } from "../right-panel-composer-presentation";
+import {
   __getNodexToastSnapshotForTests,
   __resetNodexToastStoreForTests,
 } from "@/components/ui/toast";
@@ -390,6 +396,67 @@ async function renderComposer(
 
   return view;
 }
+
+test.each([true, false])(
+  "startup draft hydration waits only for a visible Composer: %s",
+  async (visible) => {
+    resetStorage();
+    installAsyncRequestAnimationFrame();
+    document.documentElement.dataset.codexWindowType = "electron";
+    let resolveDraft = (_value: { revision: number; values: Record<string, unknown> }): void =>
+      undefined;
+    const draftSnapshot = new Promise<{ revision: number; values: Record<string, unknown> }>(
+      (resolve) => {
+        resolveDraft = resolve;
+      },
+    );
+    const readDraft = vi.fn(() => draftSnapshot);
+    installComposerWindowApi(async (channel) =>
+      channel === "persisted-atom:sync-request" ? readDraft() : undefined,
+    );
+    const readiness = createApplicationReadiness();
+    const ready = vi.fn(() => Boolean(document.querySelector('[data-codex-composer="true"]')));
+    void readiness.ready.then(ready);
+    function InitialComposer() {
+      useApplicationReady(true);
+      return (
+        <RightPanelComposerPresentationProvider presentation="compact" visible={visible}>
+          <ThreadComposer
+            model={buildModel()}
+            actions={buildActions()}
+            errorMessage={null}
+            onErrorMessage={() => undefined}
+          />
+        </RightPanelComposerPresentationProvider>
+      );
+    }
+    const view = render(
+      <ApplicationReadinessRoot readiness={readiness}>
+        <AppProviders>
+          <TestComposerScopePath>
+            <InitialComposer />
+          </TestComposerScopePath>
+        </AppProviders>
+      </ApplicationReadinessRoot>,
+    );
+    await waitFor(() => expect(readDraft).toHaveBeenCalled());
+    await settleComposerFrame();
+    expect(view.container.querySelector('[data-codex-composer="true"]')).toBeNull();
+    if (visible) expect(ready).not.toHaveBeenCalled();
+    else expect(ready).toHaveBeenCalledOnce();
+
+    await act(async () =>
+      resolveDraft({
+        revision: 1,
+        values: { "composer-prompt-drafts-v1": { "local:thread_1": "Restored startup draft" } },
+      }),
+    );
+    await waitFor(() => expect(readComposerText(view)).toBe("Restored startup draft"));
+    await expect(readiness.ready).resolves.toBeUndefined();
+    expect(ready).toHaveBeenCalledOnce();
+    if (visible) expect(ready).toHaveReturnedWith(true);
+  },
+);
 
 test("a captured image target appends an attachment without submitting or replacing the draft", async () => {
   const send = vi.fn(async () => undefined);

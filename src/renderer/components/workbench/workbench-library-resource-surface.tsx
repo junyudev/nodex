@@ -79,6 +79,7 @@ export function WorkbenchLibraryResourceSurface({
     return <div role="status">Database View is unavailable</div>;
   return (
     <WorkbenchDatabaseViewSurface
+      isActivePanelTab={active}
       workbenchPresentation={{ owner, sceneOwner, surface }}
       routingContext={surface.config.routingContext}
       target={surface.config.target}

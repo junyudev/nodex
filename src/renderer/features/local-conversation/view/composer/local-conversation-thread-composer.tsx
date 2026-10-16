@@ -1,3 +1,4 @@
+import { ApplicationPending } from "@/bootstrap/application-surface";
 import { useComposerRealtimeVoice } from "@/features/realtime-voice/realtime-voice-window";
 import { RealtimeVoiceControls } from "@/features/realtime-voice/realtime-voice-controls";
 import { supportsConversationProviderControl } from "../../conversation-provider-controls";
@@ -1038,7 +1039,8 @@ function ControlledThreadComposer(
 ) {
   const { model, actions, onErrorMessage } = props;
   const { intelligenceController } = props;
-  const { floating: isFloatingComposer } = useRightPanelComposerPresentation();
+  const { floating: isFloatingComposer, visible: composerVisible } =
+    useRightPanelComposerPresentation();
   const composerThreadId = model.conversation?.threadId ?? model.threadId;
   const browserAnnotationConversationId =
     composerThreadId ?? model.newThreadTarget?.sessionId ?? null;
@@ -1261,13 +1263,15 @@ function ControlledThreadComposer(
 
   if (promptDraft.loadable.status === "loading" || !initialized) {
     return (
-      <div
-        data-composer-draft-hydration="loading"
-        className={cn(
-          "border border-token-border bg-token-main-surface-primary",
-          isFloatingComposer ? "h-11 rounded-full" : "min-h-24 rounded-[20px]",
-        )}
-      />
+      <ApplicationPending active={composerVisible}>
+        <div
+          data-composer-draft-hydration="loading"
+          className={cn(
+            "border border-token-border bg-token-main-surface-primary",
+            isFloatingComposer ? "h-11 rounded-full" : "min-h-24 rounded-[20px]",
+          )}
+        />
+      </ApplicationPending>
     );
   }
 

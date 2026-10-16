@@ -188,6 +188,7 @@ export function WorkbenchTabProjectionPanel({
     if (tab.config.target.kind === "database-default")
       return (
         <WorkbenchDatabaseViewSurface
+          isActivePanelTab={isActivePanelTab}
           workbenchPresentation={workbenchPresentation}
           routingContext={routingContext}
           target={tab.config.target}
@@ -207,6 +208,7 @@ export function WorkbenchTabProjectionPanel({
     if (!databaseViewId) return <div role="status">Database View is unavailable</div>;
     return (
       <DbViewSessionTab
+        isActivePanelTab={isActivePanelTab}
         workbenchPresentation={workbenchPresentation}
         sessionId={activeSession.id}
         tab={{

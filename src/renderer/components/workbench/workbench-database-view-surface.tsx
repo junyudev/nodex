@@ -35,6 +35,7 @@ import type { DatabaseViewPageActionPort } from "./database-view-page-actions";
 import type { DatabaseViewPageOpenHandler } from "./database-view-page-open";
 import { useWorkbenchDatabaseViewPresentation } from "@/lib/use-workbench-database-view-presentation";
 import type { WorkbenchDatabaseViewPresentationRegistration } from "@/lib/workbench-database-view-presentation";
+import { useApplicationPending } from "@/bootstrap/application-surface";
 
 type DatabaseReadTarget = { readonly databaseViewId: string } | { readonly databaseId: string };
 
@@ -157,6 +158,7 @@ const mergeWindows = (
 };
 
 export function WorkbenchDatabaseViewSurface({
+  isActivePanelTab = true,
   workbenchPresentation,
   routingContext,
   target,
@@ -168,6 +170,7 @@ export function WorkbenchDatabaseViewSurface({
   onOpenRelatedChat,
   onSendPageToChat,
 }: {
+  readonly isActivePanelTab?: boolean;
   readonly workbenchPresentation?: WorkbenchDatabaseViewPresentationRegistration;
   readonly routingContext: ContentRoutingContext;
   readonly target: DatabaseSurfaceTarget;
@@ -439,6 +442,8 @@ export function WorkbenchDatabaseViewSurface({
       await query.refetch();
     },
   };
+
+  useApplicationPending(isActivePanelTab && query.isPending);
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-token-main-surface-primary">

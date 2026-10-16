@@ -96,6 +96,7 @@ import { parseDatabaseId, parseDatabaseViewId } from "../../../shared/database-i
 import { createUuidV7 } from "../../../shared/uuid-v7";
 import { serializeNfm } from "../../../shared/nfm";
 import { DatabaseViewDeleteConfirmationDialog } from "./database-view-action-menu";
+import { useApplicationPending } from "@/bootstrap/application-surface";
 
 const databaseViewLayoutIcon = (
   layout: DatabaseViewLayout,
@@ -306,6 +307,7 @@ function DatabaseViewTabSurfaceContent({
 }
 
 export function DbViewSessionTab({
+  isActivePanelTab = true,
   workbenchPresentation,
   sessionId,
   tab,
@@ -323,6 +325,7 @@ export function DbViewSessionTab({
   onSelectDatabaseView,
   targetLeafId,
 }: {
+  readonly isActivePanelTab?: boolean;
   readonly workbenchPresentation?: WorkbenchDatabaseViewPresentationRegistration;
   readonly sessionId: string;
   readonly tab: WorkbenchTabProjection;
@@ -854,6 +857,10 @@ export function DbViewSessionTab({
       ? databaseView.databaseViewId
       : null,
   );
+  const contentReady = Boolean(
+    databaseView && effectiveFilter && effectivePresentation && durableEffectivePresentation,
+  );
+  useApplicationPending(isActivePanelTab && !contentReady && !runtime.error);
   if (
     !databaseView ||
     !effectiveFilter ||

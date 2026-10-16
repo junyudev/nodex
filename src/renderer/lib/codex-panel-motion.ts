@@ -218,7 +218,8 @@ export function useCodexAnimatedPanelState({
     opacity,
     animatedSize,
     targetSize,
-    mounted,
+    // Opening content belongs to this commit; state only retains it while closing.
+    mounted: open || mounted,
     animating,
   };
 }

@@ -71,7 +71,7 @@ const SummaryPanelHeaderAction = lazy(async () => ({
 
 export function ConnectedThreadComposerDock(props: ComponentProps<typeof ThreadComposerDock>) {
   return (
-    <ApplicationSurface>
+    <ApplicationSurface active={props.visible}>
       <ThreadComposerDock {...props} />
     </ApplicationSurface>
   );

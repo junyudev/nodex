@@ -1,5 +1,5 @@
+import { lazy } from "react";
 import { toast } from "@/components/ui/toast";
-import { PageCreateDialog } from "@/components/board/page-create-dialog";
 import type { ScopeHandle } from "./maitai";
 import { isModalOpen, openModal, updateOpenModalProps } from "./modal-registry";
 import type { PageCreateDraftSnapshot } from "./page-create-draft";
@@ -10,6 +10,10 @@ import {
   resolveRegisteredPageCreateTarget,
   type PageCreateTarget,
 } from "./page-create-target-registry";
+
+const PageCreateDialog = lazy(async () => ({
+  default: (await import("@/components/board/page-create-dialog")).PageCreateDialog,
+}));
 
 interface PageCreateRequestBase {
   readonly target: PageCreateTarget;

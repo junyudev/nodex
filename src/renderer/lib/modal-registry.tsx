@@ -1,4 +1,5 @@
-import { memo, Suspense, type ComponentType } from "react";
+import { memo, type ComponentType } from "react";
+import { ApplicationSurface } from "@/bootstrap/application-surface";
 import {
   appScope,
   scopedAtom,
@@ -121,8 +122,8 @@ export function NodexModalHost() {
   const { modals } = useScopedAtomValue(modalRegistryAtom);
 
   return modals.map((entry) => (
-    <Suspense key={entry.key} fallback={null}>
+    <ApplicationSurface key={entry.key}>
       <NodexModalHostEntry entry={entry} />
-    </Suspense>
+    </ApplicationSurface>
   ));
 }

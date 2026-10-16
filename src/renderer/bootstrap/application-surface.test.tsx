@@ -15,7 +15,8 @@ function deferredSurface() {
     resolve = accept;
     reject = fail;
   });
-  return { View: lazy(() => module), resolve, reject };
+  const load = vi.fn(() => module);
+  return { View: lazy(load), resolve, reject, load };
 }
 
 function Workbench({
@@ -116,6 +117,71 @@ describe("application surface readiness", () => {
     expect(screen.getByRole("button", { name: "Count 1" })).toBeTruthy();
     expect(success).toHaveBeenCalledOnce();
     expect(failure).not.toHaveBeenCalled();
+  });
+
+  test.each([true, false])(
+    "retains a lazy surface while waiting for its initial content only when active=%s",
+    async (active) => {
+      const surface = deferredSurface();
+      const { readiness, success, failure } = observeReadiness();
+      const content = (isActive: boolean) => (
+        <ApplicationReadinessRoot readiness={readiness}>
+          <Workbench>
+            <ApplicationSurface active={isActive}>
+              <surface.View />
+            </ApplicationSurface>
+          </Workbench>
+        </ApplicationReadinessRoot>
+      );
+      const view = render(content(active));
+      await act(async () => Promise.resolve());
+      expect(surface.load).toHaveBeenCalledOnce();
+      if (active) expect(success).not.toHaveBeenCalled();
+      else expect(success).toHaveBeenCalledOnce();
+
+      await act(async () => surface.resolve({ default: Counter }));
+      await expect(readiness.ready).resolves.toBeUndefined();
+      await act(async () => screen.getByRole("button", { name: "Count 0" }).click());
+      await act(async () => view.rerender(content(!active)));
+      expect(screen.getByRole("button", { name: "Count 1" })).toBeTruthy();
+      expect(surface.load).toHaveBeenCalledOnce();
+      expect(success).toHaveBeenCalledOnce();
+      expect(failure).not.toHaveBeenCalled();
+    },
+  );
+
+  test("contains a hidden lazy failure while visible content is still opening", async () => {
+    const hidden = deferredSurface();
+    const visible = deferredSurface();
+    const { readiness, success, failure } = observeReadiness();
+    const loggedErrors = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    render(
+      <ApplicationReadinessRoot readiness={readiness}>
+        <Workbench>
+          <ApplicationSurface active={false}>
+            <hidden.View />
+          </ApplicationSurface>
+          <ApplicationSurface>
+            <visible.View />
+          </ApplicationSurface>
+        </Workbench>
+      </ApplicationReadinessRoot>,
+    );
+    await act(async () => hidden.reject(new Error("hidden surface import failed")));
+    expect(screen.getByRole("alert")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Restart Nodex" })).toBeTruthy();
+    expect(success).not.toHaveBeenCalled();
+    expect(failure).not.toHaveBeenCalled();
+
+    await act(async () => visible.resolve({ default: () => <button>Edit page</button> }));
+    await expect(readiness.ready).resolves.toBeUndefined();
+    expect(screen.getByRole("button", { name: "Edit page" })).toBeTruthy();
+    expect(screen.getByRole("alert")).toBeTruthy();
+    expect(success).toHaveBeenCalledOnce();
+    expect(failure).not.toHaveBeenCalled();
+    expect(
+      loggedErrors.mock.calls.flat().some((entry) => String(entry).includes("not wrapped in act")),
+    ).toBe(false);
   });
 
   test("rejects a failed initial lazy import while retaining an operable restart action", async () => {
