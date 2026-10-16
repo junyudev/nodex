@@ -49,6 +49,7 @@ export interface DevLauncherArguments {
   readonly build: boolean;
   readonly authJson?: string;
   readonly agentConfigToml?: string;
+  readonly claudeConfigDir?: string;
   readonly remoteDebuggingPort?: string;
   readonly rendererPort?: string;
   readonly enabledFeatures: readonly string[];
@@ -83,6 +84,7 @@ Options:
   --build                    Build optimized Rust binaries and run without HMR
   --auth-json <file>         Copy an auth.json into the environment
   --agent-config-toml <file> Copy a sanitized agent config.toml
+  --claude-config-dir <dir>  Point this environment's Claude Code at a signed-in config directory
   --remote-debugging-port <port>, --cdp <port>
                              Expose DevTools on port 0-65535 (default: 0)
   --enable <feature-slug>    Enable a development feature for this invocation
@@ -119,6 +121,7 @@ export const parseDevLauncherArguments = (args: readonly string[]): DevLauncherA
   let allowMissingConversations = false;
   let authJson: string | undefined;
   let agentConfigToml: string | undefined;
+  let claudeConfigDir: string | undefined;
   let remoteDebuggingPort: string | undefined;
   let build = false;
   let deleteHome = false;
@@ -189,6 +192,12 @@ export const parseDevLauncherArguments = (args: readonly string[]): DevLauncherA
       index += 1;
       continue;
     }
+    if (argument === "--claude-config-dir") {
+      const value = readOptionValue(args, index, argument);
+      claudeConfigDir = setOnce(argument, claudeConfigDir, value);
+      index += 1;
+      continue;
+    }
     if (argument === "--agent-config-toml") {
       const value = readOptionValue(args, index, argument);
       agentConfigToml = setOnce(argument, agentConfigToml, value);
@@ -226,6 +235,7 @@ export const parseDevLauncherArguments = (args: readonly string[]): DevLauncherA
     build,
     ...(authJson === undefined ? {} : { authJson }),
     ...(agentConfigToml === undefined ? {} : { agentConfigToml }),
+    ...(claudeConfigDir === undefined ? {} : { claudeConfigDir }),
     ...(remoteDebuggingPort === undefined ? {} : { remoteDebuggingPort }),
     ...(rendererPort === undefined ? {} : { rendererPort }),
     enabledFeatures,
@@ -608,6 +618,7 @@ const prepareEnvironment = async (input: {
     await updateDevelopmentAgentFiles(current, {
       authJson: input.arguments.authJson,
       agentConfigToml: input.arguments.agentConfigToml,
+      claudeConfigDir: input.arguments.claudeConfigDir,
     });
     return;
   }
@@ -621,6 +632,7 @@ const prepareEnvironment = async (input: {
   await updateDevelopmentAgentFiles(current, {
     authJson: input.arguments.authJson,
     agentConfigToml: input.arguments.agentConfigToml,
+    claudeConfigDir: input.arguments.claudeConfigDir,
   });
   if (seedInitialization.kind === "none") {
     if (!current.manifest.initializedAt) {
