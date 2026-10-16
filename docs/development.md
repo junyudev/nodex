@@ -165,6 +165,12 @@ DevTools port so different homes can run concurrently. Pass
 `0` through `65535` when a stable endpoint is needed. The command-line option
 overrides `NODEX_REMOTE_DEBUGGING_PORT` when both are set.
 
+On macOS, both isolated launch modes pass `-ApplePersistenceIgnoreState YES` to
+Electron. This process-only AppKit setting prevents an OS crash-restoration prompt
+from blocking startup before Electron is ready. Nodex still restores its own
+windows and sessions; installed application launches and global preferences are
+unchanged. See Apple's [restorable-state debugging documentation](https://developer.apple.com/library/archive/releasenotes/AppKit/RN-AppKitOlderNotes/index.html).
+
 Both launch modes first run the installed `install-electron` command to prepare
 the pinned Electron binary. Electron downloads its binary lazily, while
 electron-vite reads the installation path directly. Explicit preparation keeps

@@ -259,7 +259,12 @@ export const createDevLaunchPlan = (input: {
   readonly arguments: DevLauncherArguments;
   readonly environment: NodeJS.ProcessEnv;
   readonly home: DevelopmentEnvironmentHome;
+  readonly platform: NodeJS.Platform;
 }): DevLaunchPlan => {
+  // AppKit's crash-restoration prompt precedes Electron readiness and is shared
+  // by development bundles. This volatile argument leaves Nodex session restore intact.
+  const electronArguments =
+    input.platform === "darwin" ? ["-ApplePersistenceIgnoreState", "YES"] : [];
   const enabledFeatures = resolveDevelopmentFeatureOverrides(input.arguments.enabledFeatures);
   const remoteDebuggingPort =
     input.arguments.remoteDebuggingPort ??
@@ -314,7 +319,13 @@ export const createDevLaunchPlan = (input: {
       ],
       application: {
         command: "pnpm",
-        args: ["exec", "electron", ".", `--remote-debugging-port=${remoteDebuggingPort}`],
+        args: [
+          "exec",
+          "electron",
+          ".",
+          `--remote-debugging-port=${remoteDebuggingPort}`,
+          ...electronArguments,
+        ],
       },
       environment,
       enabledFeatures,
@@ -340,6 +351,7 @@ export const createDevLaunchPlan = (input: {
         "warn",
         "--remoteDebuggingPort",
         remoteDebuggingPort,
+        ...(electronArguments.length > 0 ? ["--", ...electronArguments] : []),
       ],
     },
     environment,
@@ -704,7 +716,13 @@ export const runDevLauncher = (input: {
     }
     const planResult = yield* Effect.result(
       Effect.try({
-        try: () => createDevLaunchPlan({ arguments: arguments_, environment, home }),
+        try: () =>
+          createDevLaunchPlan({
+            arguments: arguments_,
+            environment,
+            home,
+            platform: process.platform,
+          }),
         catch: devLauncherError,
       }),
     );

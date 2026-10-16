@@ -124,34 +124,42 @@ export const terminateForegroundProcessGroup = (input: {
   readonly requestedSignal: SupervisorSignal;
 }): Effect.Effect<void, IsolatedRunFailure> =>
   Effect.gen(function* () {
-    yield* input.processGroup.signal(input.processGroupId, input.requestedSignal);
-    if (
-      yield* waitForProcessGroupExit({
-        ...input,
-        timeoutMs: FOREGROUND_INTERRUPT_GRACE_MS,
-      })
-    )
-      return;
+    const stages = [
+      [input.requestedSignal, FOREGROUND_INTERRUPT_GRACE_MS],
+      ["SIGTERM", FOREGROUND_TERMINATE_GRACE_MS],
+      ["SIGKILL", FOREGROUND_KILL_GRACE_MS],
+    ] as const;
+    for (const [signal, timeoutMs] of stages) {
+      const context = `Isolated foreground process group ${input.processGroupId} after ${signal}`;
+      const delivery = yield* Effect.result(
+        input.processGroup.signal(input.processGroupId, signal),
+      );
+      // macOS can reject a signal with EPERM while only unreaped zombies remain.
+      // A failed signal is safe only once the existing probe confirms the group is gone.
+      const exited = yield* waitForProcessGroupExit({ ...input, timeoutMs }).pipe(
+        Effect.mapError((error) =>
+          failure(
+            new Error(`${context}: exit probe failed: ${asError(error.cause).message}`, {
+              cause: error.cause,
+            }),
+          ),
+        ),
+      );
+      if (exited) return;
+      if (Result.isFailure(delivery)) {
+        return yield* failure(
+          new Error(`${context}: ${asError(delivery.failure.cause).message}`, {
+            cause: delivery.failure.cause,
+          }),
+        );
+      }
+    }
 
-    yield* input.processGroup.signal(input.processGroupId, "SIGTERM");
-    if (
-      yield* waitForProcessGroupExit({
-        ...input,
-        timeoutMs: FOREGROUND_TERMINATE_GRACE_MS,
-      })
-    )
-      return;
-
-    yield* input.processGroup.signal(input.processGroupId, "SIGKILL");
-    if (
-      yield* waitForProcessGroupExit({
-        ...input,
-        timeoutMs: FOREGROUND_KILL_GRACE_MS,
-      })
-    )
-      return;
-
-    return yield* failure(new Error("Timed out terminating the isolated foreground process group"));
+    return yield* failure(
+      new Error(
+        `Timed out terminating isolated foreground process group ${input.processGroupId} after SIGKILL`,
+      ),
+    );
   });
 
 const createClock = (dependencies: IsolatedRunSupervisorDependencies): IsolatedRunClock => ({

@@ -543,6 +543,70 @@ describe("isolated run supervisor", () => {
     expect(readIsolatedRunLeaseOwner(nodexHome)?.runId).toBe(RUN_A);
   });
 
+  test.each(["exited", "still-alive", "unobservable"] as const)(
+    "requires confirmed group exit after a rejected signal: %s",
+    async (groupState) => {
+      const nodexHome = createNodexHome();
+      const child = new FakeChild();
+      const signalSource = new EventEmitter() as unknown as SupervisorSignalSource;
+      const diagnostics = vi.spyOn(console, "error").mockImplementation(() => undefined);
+      const signalProcessGroup = vi.fn(() => {
+        throw Object.assign(new Error("kill EPERM"), { code: "EPERM" });
+      });
+      let clock = 0;
+      const isProcessGroupAlive = vi.fn(() => {
+        if (groupState === "unobservable") throw new Error("process probe unavailable");
+        return groupState === "still-alive" || clock === 0;
+      });
+
+      const result = await runSupervisor({
+        environment: { NODEX_HOME: nodexHome },
+        nodexHome,
+        repositoryRoot: path.resolve("."),
+        command: { command: "pnpm", args: ["exec", "electron-vite", "dev"] },
+        dependencies: {
+          cleanupDependencies: cleanupDependencies({ readClaim: vi.fn(() => null) }),
+          delay: vi.fn(async (durationMs) => {
+            clock += durationMs;
+          }),
+          forceExit: vi.fn(),
+          generateRunId: () => RUN_A,
+          isProcessGroupAlive,
+          now: () => clock,
+          signalSource,
+          signalProcessGroup,
+          spawnChild: () => {
+            queueMicrotask(() => {
+              (signalSource as unknown as EventEmitter).emit("SIGINT");
+              child.close(0);
+            });
+            return child.asChildProcess();
+          },
+        },
+      });
+
+      expect(result).toEqual({
+        childExitCode: 130,
+        cleanupStatus: "not_started",
+        safeToDeleteRunRoot: groupState === "exited",
+      });
+      expect(signalProcessGroup.mock.calls).toEqual([[4321, "SIGINT"]]);
+      expect(isProcessGroupAlive).toHaveBeenCalled();
+      if (groupState === "exited") {
+        expect(readIsolatedRunLeaseOwner(nodexHome)).toBeNull();
+        expect(diagnostics).not.toHaveBeenCalled();
+        return;
+      }
+      expect(readIsolatedRunLeaseOwner(nodexHome)?.runId).toBe(RUN_A);
+      expect(diagnostics).toHaveBeenCalledWith(expect.stringMatching(/4321.*SIGINT/));
+      expect(diagnostics).toHaveBeenCalledWith(
+        expect.stringContaining(
+          groupState === "unobservable" ? "process probe unavailable" : "kill EPERM",
+        ),
+      );
+    },
+  );
+
   test("retains a child failure while still performing no-Core cleanup", async () => {
     const nodexHome = createNodexHome();
     const child = new FakeChild();

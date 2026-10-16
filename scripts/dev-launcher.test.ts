@@ -93,7 +93,12 @@ describe("dev launcher", () => {
       backup: "backup-1",
       allowMissingConversations: true,
     });
-    const plan = createDevLaunchPlan({ arguments: arguments_, environment: {}, home: HOME });
+    const plan = createDevLaunchPlan({
+      arguments: arguments_,
+      environment: {},
+      home: HOME,
+      platform: "linux",
+    });
     expect(plan.environment).toMatchObject({
       NODEX_SENTRY_ENABLED: "false",
       NODEX_SENTRY_REPLAY_ENABLED: "false",
@@ -112,6 +117,7 @@ describe("dev launcher", () => {
       arguments: parsed,
       environment: {},
       home: HOME,
+      platform: "darwin",
     });
     expect(plan.mode).toBe("hmr");
     expect(plan.preparation).toContainEqual({
@@ -125,7 +131,18 @@ describe("dev launcher", () => {
     expect(plan.enabledFeatures).toEqual(["runtime-metrics"]);
     expect(plan.application).toEqual({
       command: "pnpm",
-      args: ["exec", "electron-vite", "dev", "--logLevel", "warn", "--remoteDebuggingPort", "0"],
+      args: [
+        "exec",
+        "electron-vite",
+        "dev",
+        "--logLevel",
+        "warn",
+        "--remoteDebuggingPort",
+        "0",
+        "--",
+        "-ApplePersistenceIgnoreState",
+        "YES",
+      ],
     });
     expect(plan.environment).toMatchObject({
       NODEX_HOME: HOME.nodexHome,
@@ -147,6 +164,7 @@ describe("dev launcher", () => {
       ]),
       environment: {},
       home: HOME,
+      platform: "linux",
     });
     expect(optedIn.enabledFeatures).toEqual(["agentation", "query-devtools"]);
     expect(optedIn.environment.NODEX_DEV_ENABLED_FEATURES).toBe("agentation,query-devtools");
@@ -155,6 +173,7 @@ describe("dev launcher", () => {
       arguments: parseDevLauncherArguments([]),
       environment: optedIn.environment,
       home: HOME,
+      platform: "linux",
     });
     expect(ordinaryLaunch.enabledFeatures).toEqual([]);
     expect(ordinaryLaunch.environment.NODEX_DEV_ENABLED_FEATURES).toBeUndefined();
@@ -165,6 +184,7 @@ describe("dev launcher", () => {
       arguments: parseDevLauncherArguments(["--cdp", "9333"]),
       environment: { NODEX_REMOTE_DEBUGGING_PORT: "9444" },
       home: HOME,
+      platform: "linux",
     });
     expect(plan.application.args).toEqual([
       "exec",
@@ -183,6 +203,7 @@ describe("dev launcher", () => {
       arguments: parseDevLauncherArguments(["--build"]),
       environment: { NODEX_REMOTE_DEBUGGING_PORT: "9333" },
       home: HOME,
+      platform: "darwin",
     });
     expect(plan.mode).toBe("built");
     expect(plan.preparation.map((command) => command.args.at(-1))).toEqual([
@@ -198,8 +219,43 @@ describe("dev launcher", () => {
       ),
       NODEX_CORE_EXECUTABLE: path.join(HOME.repositoryRealpath, "target/release/nodex-core"),
     });
-    expect(plan.application.args).toContain("--remote-debugging-port=9333");
+    expect(plan.application.args).toEqual([
+      "exec",
+      "electron",
+      ".",
+      "--remote-debugging-port=9333",
+      "-ApplePersistenceIgnoreState",
+      "YES",
+    ]);
   });
+
+  test.each(["linux", "win32"] as const)(
+    "keeps native launch arguments unchanged on %s",
+    (platform) => {
+      const plan = (build: boolean) =>
+        createDevLaunchPlan({
+          arguments: parseDevLauncherArguments(build ? ["--build"] : []),
+          environment: {},
+          home: HOME,
+          platform,
+        });
+      expect(plan(false).application.args).toEqual([
+        "exec",
+        "electron-vite",
+        "dev",
+        "--logLevel",
+        "warn",
+        "--remoteDebuggingPort",
+        "0",
+      ]);
+      expect(plan(true).application.args).toEqual([
+        "exec",
+        "electron",
+        ".",
+        "--remote-debugging-port=0",
+      ]);
+    },
+  );
 
   test("applies a seed once, reuses matching provenance, and rejects drift", () => {
     const requestedSeed = { id: "board/dense", revision: 2 } as const;
@@ -246,6 +302,7 @@ describe("dev launcher", () => {
         arguments: parseDevLauncherArguments(["--enable", "missing"]),
         environment: {},
         home: HOME,
+        platform: "linux",
       }),
     ).toThrow(/Unknown development feature missing\. Available features:/u);
     expect(() => parseDevLauncherArguments(["--remote-debugging-port", "70000"])).toThrow(
@@ -259,6 +316,7 @@ describe("dev launcher", () => {
         arguments: parseDevLauncherArguments([]),
         environment: { NODEX_REMOTE_DEBUGGING_PORT: "70000" },
         home: HOME,
+        platform: "linux",
       }),
     ).toThrow("NODEX_REMOTE_DEBUGGING_PORT");
   });
