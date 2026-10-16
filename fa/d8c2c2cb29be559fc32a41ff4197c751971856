@@ -114,6 +114,7 @@ src/renderer/features/inbox/inbox-composer.tsx
 src/renderer/features/inbox/inbox-route.tsx
   s_bd811abbf24a41::t_60cddcfa655519 3-8,54-58,73-74,82-85,91-95,97-98,125,129,154,159-160,176-178,180-182,244,254-257,265-266,269,348-352,366,409-421,423-425,427-435,453,520,554,595-599
   s_bd811abbf24a41::t_5c44636ab863a8 96,426
+  s_bd811abbf24a41::t_edcfbb67a6e0a2 20,65-66,251,267
 src/shared/schemas/workbench-scene.ts
   s_bd811abbf24a41::t_ffa2be3d01f5de 243-246,672-675,743-753,762-768,859-860,865
   s_bd811abbf24a41::t_3f939857fdc66c 21
@@ -163,6 +164,8 @@ src/renderer/components/workbench/workbench-testkit/workbench-shell-harness.tsx
   s_bd811abbf24a41::t_f447bc30c268ce 22
   s_bd811abbf24a41::t_a2433ba39cde7e 844,3271-3273,3276,3278-3285,3290
   s_bd811abbf24a41::t_1193ac89c1a56e 3274-3275,3277,4772,4774-4780
+  s_bd811abbf24a41::t_335c876dade31f 2426
+  s_bd811abbf24a41::t_edcfbb67a6e0a2 1856,2458-2459,2479,3286-3289
 src/renderer/components/workbench/workbench-shell.sidebar-projects.test.tsx
   s_bd811abbf24a41::t_cb25dcf50b9a87 284
   s_bd811abbf24a41::t_7767008a51352a 22,197,247,262,266-268,297,349,355-356,365-366,374,390,392,395,425,433,473,497
@@ -206,6 +209,7 @@ src/renderer/components/workbench/workbench-runtime.tsx
   s_bd811abbf24a41::t_c8640bfb23484f 4746,4750,4763-4766,4887
   s_bd811abbf24a41::t_e9362bc0ed691f 3448
   s_bd811abbf24a41::t_20cae75f3593a5 3462
+  s_bd811abbf24a41::t_edcfbb67a6e0a2 3445
 tests/e2e/local-recovery-removal.spec.ts
   s_bd811abbf24a41::t_2e30c6259bea6b 2,17,92
 crates/nodex-store-format/src/lib.rs
@@ -271,6 +275,10 @@ crates/nodex-core/src/library/navigation.rs
   s_bd811abbf24a41::t_c8c6a6a9eabf70 3823,3859-3861
 src/renderer/components/workbench/workbench-shell.layout-panel-actions.test.tsx
   s_bd811abbf24a41::t_06a11f4c4c9e1d 626-629
+src/renderer/components/workbench/workbench-shell.startup.test.tsx
+  s_bd811abbf24a41::t_335c876dade31f 19-22,29,36,40,42
+docs/product-specs/desktop-startup-behavior.md
+  s_bd811abbf24a41::t_edcfbb67a6e0a2 52-53
 ---
 {
   "schema_version": "authorship/3.0.0",
