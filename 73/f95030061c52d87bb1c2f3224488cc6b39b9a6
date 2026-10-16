@@ -1,0 +1,28 @@
+config/renderer-vite-shared.ts
+  s_256699efb22e39::t_915c5943686512 13,21
+config/renderer-vite-shared.test.ts
+  s_256699efb22e39::t_463e623042f424 1,108-155
+  s_256699efb22e39::t_9821bc2002e451 156-175
+config/renderer-react-compiler.ts
+  s_256699efb22e39::t_915c5943686512 3-4,7,68,72-95,102-104,128,131,178-188,194-196,205-217,219-232
+  s_256699efb22e39::t_6b0089e60872f8 197-204
+  s_256699efb22e39::t_f510c58f85b024 2,129-130,189-193,218
+docs/FRONTEND.md
+  s_256699efb22e39::t_1301ca15a56175 221-225
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "73f95030061c52d87bb1c2f3224488cc6b39b9a6",
+  "prompts": {},
+  "sessions": {
+    "s_256699efb22e39": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a14296-7655-71c0-bea3-eeb0c4e18695",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
