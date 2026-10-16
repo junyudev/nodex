@@ -4,7 +4,7 @@ import * as FiberMap from "effect/FiberMap";
 import * as Layer from "effect/Layer";
 import * as PubSub from "effect/PubSub";
 import * as Stream from "effect/Stream";
-import { nativeTheme, screen, type BrowserWindow } from "electron";
+import { nativeTheme, screen, type BrowserWindow, type WebContents } from "electron";
 import { randomUUID } from "node:crypto";
 import type { InitialProjectPresentation } from "../../shared/initial-project-welcome";
 import type {
@@ -53,11 +53,15 @@ interface ManagedWindowClose {
   rendererGoneHandler: () => void;
   timeoutPending: boolean;
   window: BrowserWindow;
+  webContents: WebContents;
 }
 
 interface RegisteredWindowBase {
   focusSequence: number | null;
   readonly window: BrowserWindow;
+  // Native window getters are unavailable by the time Electron emits `closed`.
+  readonly webContentsId: number;
+  readonly windowId: number;
 }
 
 interface RegisteredPrimaryWindow extends RegisteredWindowBase {
@@ -138,7 +142,7 @@ function applyElectronWindowBackdrop(
 
 interface WindowAppearancePort {
   readonly apply: (window: BrowserWindow, force?: boolean) => void;
-  readonly forget: (window: BrowserWindow) => void;
+  readonly forget: (windowId: number) => void;
   readonly subscribeToTheme: (listener: () => void) => () => void;
 }
 
@@ -153,7 +157,7 @@ function createElectronWindowAppearance(platform: NodeJS.Platform): WindowAppear
   return {
     apply: (window, force) =>
       applyElectronWindowBackdrop(platform, window, opaqueSurfaceModes, force ?? false),
-    forget: (window) => opaqueSurfaceModes.delete(window.id),
+    forget: (windowId) => opaqueSurfaceModes.delete(windowId),
     subscribeToTheme: (listener) => {
       nativeTheme.on("updated", listener);
       return () => nativeTheme.off("updated", listener);
@@ -256,21 +260,21 @@ export const fromState = (
           ): WindowRuntimePrimaryWindowSnapshot => ({
             activeSessionId: entry.activeSessionId,
             focusSequence: entry.focusSequence,
-            focused: currentFocusedWebContentsId === entry.window.webContents.id,
+            focused: currentFocusedWebContentsId === entry.webContentsId,
             kind: entry.kind,
             layoutRevision: entry.layoutRevision,
             rendererGeneration: entry.rendererGeneration,
-            webContentsId: entry.window.webContents.id,
-            windowId: entry.window.id,
+            webContentsId: entry.webContentsId,
+            windowId: entry.windowId,
             windowSessionId: entry.windowSessionId,
           });
 
           const toWindowSnapshot = (entry: RegisteredWindow): WindowRuntimeWindowSnapshot => {
             const base = {
               focusSequence: entry.focusSequence,
-              focused: currentFocusedWebContentsId === entry.window.webContents.id,
-              webContentsId: entry.window.webContents.id,
-              windowId: entry.window.id,
+              focused: currentFocusedWebContentsId === entry.webContentsId,
+              webContentsId: entry.webContentsId,
+              windowId: entry.windowId,
             } as const;
             if (entry.kind === "auxiliary") {
               return { ...base, kind: entry.kind, role: entry.role };
@@ -293,7 +297,7 @@ export const fromState = (
           };
 
           const recordFocus = (entry: RegisteredWindow, focused: boolean): void => {
-            const webContentsId = entry.window.webContents.id;
+            const webContentsId = entry.webContentsId;
             const wasFocused = currentFocusedWebContentsId === webContentsId;
             if (wasFocused === focused) return;
 
@@ -325,18 +329,12 @@ export const fromState = (
             managed.window.removeListener("focus", managed.focusHandler);
             managed.window.removeListener("move", managed.moveHandler);
             managed.window.removeListener("resize", managed.resizeHandler);
-            managed.window.webContents.removeListener(
+            managed.webContents.removeListener(
               "did-start-navigation",
               managed.navigationStartedHandler,
             );
-            managed.window.webContents.removeListener(
-              "did-navigate",
-              managed.navigationCommittedHandler,
-            );
-            managed.window.webContents.removeListener(
-              "render-process-gone",
-              managed.rendererGoneHandler,
-            );
+            managed.webContents.removeListener("did-navigate", managed.navigationCommittedHandler);
+            managed.webContents.removeListener("render-process-gone", managed.rendererGoneHandler);
           };
 
           const release: WindowRuntimeService["release"] = (webContentsId, input) => {
@@ -347,7 +345,7 @@ export const fromState = (
             } finally {
               cleanupClose(webContentsId);
               initializedRenderers.delete(webContentsId);
-              appearance.forget(entry.window);
+              appearance.forget(entry.windowId);
               registeredWindows.delete(webContentsId);
               if (currentFocusedWebContentsId === webContentsId) {
                 currentFocusedWebContentsId = null;
@@ -360,7 +358,7 @@ export const fromState = (
           };
 
           const releaseAuxiliary = (entry: RegisteredAuxiliaryWindow): void => {
-            const webContentsId = entry.window.webContents.id;
+            const webContentsId = entry.webContentsId;
             if (registeredWindows.get(webContentsId) !== entry) return;
             registeredWindows.delete(webContentsId);
             if (currentFocusedWebContentsId === webContentsId) {
@@ -374,13 +372,14 @@ export const fromState = (
             window: BrowserWindow,
             entry: RegisteredPrimaryWindow,
           ): void => {
-            const webContentsId = window.webContents.id;
+            const webContentsId = entry.webContentsId;
             const managed = {} as ManagedWindowClose;
             managed.allowImmediate = false;
             managed.disposition = "unexpected";
             managed.finalBounds = undefined;
             managed.timeoutPending = false;
             managed.window = window;
+            managed.webContents = window.webContents;
             managed.finish = () => {
               if (window.isDestroyed()) return;
               managed.allowImmediate = true;
@@ -487,8 +486,8 @@ export const fromState = (
               sessions.acquireSessionForNewWindow(sourceWebContentsId),
             all: () => primaryEntries().map(({ window }) => window),
             attach: (window, sessionId) => {
-              const webContentsId = window.webContents.id;
               if (window.isDestroyed()) throw new Error("Cannot register a destroyed window");
+              const webContentsId = window.webContents.id;
               if (registeredWindows.has(webContentsId)) {
                 throw new Error("The requesting window is already registered");
               }
@@ -501,6 +500,8 @@ export const fromState = (
                 rendererGeneration: null,
                 presentationOwnerId: null,
                 window,
+                webContentsId,
+                windowId: window.id,
                 windowSessionId: session.id,
               };
               registeredWindows.set(webContentsId, entry);
@@ -558,8 +559,8 @@ export const fromState = (
               recordFocus(entry, true);
             },
             registerAuxiliary: (window, role) => {
-              const webContentsId = window.webContents.id;
               if (window.isDestroyed()) throw new Error("Cannot register a destroyed window");
+              const webContentsId = window.webContents.id;
               if (registeredWindows.has(webContentsId)) {
                 throw new Error("The requesting window is already registered");
               }
@@ -579,6 +580,8 @@ export const fromState = (
                 kind: "auxiliary",
                 role,
                 window,
+                webContentsId,
+                windowId: window.id,
               };
               registeredWindows.set(webContentsId, entry);
               if (window.isFocused()) {
@@ -653,8 +656,7 @@ export const fromState = (
               acceptingLifecycleEvents = false;
               releaseThemeSubscription();
               for (const entry of [...registeredWindows.values()]) {
-                const { window } = entry;
-                const webContentsId = window.webContents.id;
+                const { window, webContentsId } = entry;
                 if (!window.isDestroyed()) window.destroy();
                 if (!registeredWindows.has(webContentsId)) continue;
                 if (entry.kind === "auxiliary") {

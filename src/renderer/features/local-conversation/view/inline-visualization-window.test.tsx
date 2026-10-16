@@ -29,6 +29,17 @@ const boundary = vi.hoisted(() => ({
   query: vi.fn<() => Promise<CodexVisualizationReadResult>>(),
   registry: vi.fn(),
   events: new Set<(event: CodexEvent) => void>(),
+  close: null as ((...args: unknown[]) => void) | null,
+  acknowledgeClose: vi.fn(async (_webContentsId: number) => {}),
+}));
+vi.mock("../../../lib/app-close-flush-deps", () => ({
+  notifyAppCloseFlushComplete: boundary.acknowledgeClose,
+  readAppCloseBridge: () => ({
+    on: (_event: string, listener: (...args: unknown[]) => void) => {
+      boundary.close = listener;
+      return () => {};
+    },
+  }),
 }));
 vi.mock("../../../lib/inline-visualization/inline-visualization-runtime", () => ({
   createInlineVisualizationRuntime: boundary.create,
@@ -51,6 +62,7 @@ const clients: QueryClient[] = [];
 beforeEach(() => {
   instances.length = 0;
   boundary.events.clear();
+  boundary.acknowledgeClose.mockClear();
   boundary.query.mockReset().mockResolvedValue(fragment);
   boundary.create.mockReset().mockImplementation((input) => {
     const element = document.createElement("button");
@@ -121,6 +133,100 @@ function Thread({
 }
 
 describe("window-owned interactive responses", () => {
+  test("window close cancels preparation that has not reached its background admission", async () => {
+    vi.useFakeTimers({
+      toFake: ["setTimeout", "clearTimeout", "requestAnimationFrame", "cancelAnimationFrame"],
+    });
+    const view = render(
+      <InlineVisualizationWindowProvider>{null}</InlineVisualizationWindowProvider>,
+    );
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(100);
+    });
+    expect(view.container.querySelector("webview")).toBeNull();
+    await act(async () => {
+      if (!boundary.close) throw new Error("Expected the window close coordinator");
+      boundary.close(42);
+      await vi.advanceTimersByTimeAsync(10_000);
+    });
+    expect(boundary.acknowledgeClose).toHaveBeenCalledExactlyOnceWith(42);
+    expect(view.container.querySelector("webview")).toBeNull();
+  });
+
+  test("window close retires parked, active and warming guests before acknowledging native shutdown", async () => {
+    vi.useFakeTimers({
+      toFake: ["setTimeout", "clearTimeout", "requestAnimationFrame", "cancelAnimationFrame"],
+    });
+    const client = queryClient();
+    const tree = (threadId: string) => (
+      <QueryClientProvider client={client}>
+        <InlineVisualizationWindowProvider>
+          <Thread threadId={threadId} />
+        </InlineVisualizationWindowProvider>
+      </QueryClientProvider>
+    );
+    const view = render(tree("thread-a"));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(100);
+    });
+    expect(instances).toHaveLength(1);
+    await act(async () => {
+      view.rerender(tree("thread-b"));
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(100);
+    });
+    expect(instances).toHaveLength(2);
+    const [parked, active] = instances;
+    if (!parked || !active) throw new Error("Expected both retained documents");
+    expect(parked.runtime.setActive).toHaveBeenLastCalledWith(false);
+    expect(active.runtime.setActive).toHaveBeenLastCalledWith(true);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5_100);
+    });
+    await vi.waitFor(() => expect(view.container.querySelector("webview")).not.toBeNull());
+    const standby = view.container.querySelector("webview")!;
+    expect(standby.isConnected).toBe(true);
+    let acknowledgedState: unknown;
+    boundary.acknowledgeClose.mockImplementationOnce(async (webContentsId) => {
+      acknowledgedState = {
+        webContentsId,
+        windowConnected: view.container.isConnected,
+        standbyConnected: standby.isConnected,
+        parkedConnected: parked.runtime.element.isConnected,
+        activeConnected: active.runtime.element.isConnected,
+      };
+    });
+
+    await act(async () => {
+      if (!boundary.close) throw new Error("Expected the window close coordinator");
+      boundary.close(42);
+      await Promise.resolve();
+    });
+    await vi.waitFor(() => expect(boundary.acknowledgeClose).toHaveBeenCalledOnce());
+    expect(acknowledgedState).toEqual({
+      webContentsId: 42,
+      windowConnected: true,
+      standbyConnected: false,
+      parkedConnected: false,
+      activeConnected: false,
+    });
+    expect(parked.runtime.dispose).toHaveBeenCalledOnce();
+    expect(active.runtime.dispose).toHaveBeenCalledOnce();
+    await act(async () => {
+      window.dispatchEvent(new Event("languagechange"));
+      await vi.advanceTimersByTimeAsync(10_000);
+    });
+    expect(view.container.querySelector("webview")).toBeNull();
+    await act(async () => {
+      view.unmount();
+      await Promise.resolve();
+    });
+    expect(parked.runtime.dispose).toHaveBeenCalledOnce();
+    expect(active.runtime.dispose).toHaveBeenCalledOnce();
+  });
+
   test("actual application deletion releases only the deleted host's retained guest", async () => {
     boundary.registry.mockReturnValue({
       getForHostId: () => ({

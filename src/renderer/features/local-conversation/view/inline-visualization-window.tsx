@@ -13,6 +13,7 @@ import {
 } from "../../../lib/inline-visualization/inline-visualization-frame-owner";
 import { InlineVisualizationFrameView } from "./inline-visualization-frame";
 import { startInlineVisualizationPrewarmer } from "../../../lib/inline-visualization/inline-visualization-prewarmer";
+import { registerAppCloseFlushHandler } from "../../../lib/app-close-flush";
 
 const FrameOwnerContext = createContext<InlineVisualizationFrameOwner | null>(null);
 export const InlineVisualizationSurfaceContext = createContext<string | null>(null);
@@ -23,10 +24,21 @@ export function InlineVisualizationWindowProvider({ children }: { readonly child
   const [owner] = useState(createInlineVisualizationFrameOwner);
   const [standbyRoot, setStandbyRoot] = useState<HTMLDivElement | null>(null);
   const ids = useSyncExternalStore(owner.subscribe, owner.readIds, owner.readIds);
-  useLayoutEffect(() => owner.acquireWindow(), [owner]);
   useLayoutEffect(() => {
-    if (!standbyRoot) return;
-    return startInlineVisualizationPrewarmer(standbyRoot, { start: owner.startStandby });
+    const releaseWindow = owner.acquireWindow();
+    const stopPrewarmer = standbyRoot
+      ? startInlineVisualizationPrewarmer(standbyRoot, { start: owner.startStandby })
+      : undefined;
+    const unregisterClose = registerAppCloseFlushHandler(() => {
+      stopPrewarmer?.();
+      // Detach native guests while the window's synchronous IPC is still available.
+      owner.dispose();
+    });
+    return () => {
+      unregisterClose();
+      stopPrewarmer?.();
+      releaseWindow();
+    };
   }, [owner, standbyRoot]);
   return (
     <FrameOwnerContext.Provider value={owner}>

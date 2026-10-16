@@ -425,6 +425,45 @@ it.effect("relays archive and queued follow-up events across RPC and socket peer
   }),
 );
 
+it("retires a window service before its RPC handshake without reporting a transport failure", async () => {
+  const { port1, port2 } = new MessageChannel();
+  const errors = vi.fn();
+  const endpoint = vi.fn(() => Promise.reject(new Error("Retired service acquired a peer")));
+  const service = connectConversationService(adaptPort(port1), endpoint, errors);
+  const clientId = service.getClientId();
+  try {
+    service.dispose();
+    service.dispose();
+    expect(await clientId).toBeNull();
+    expect(await service.getClientId()).toBeNull();
+    expect(endpoint).not.toHaveBeenCalled();
+    expect(errors).not.toHaveBeenCalled();
+  } finally {
+    service.dispose();
+    port2.close();
+  }
+});
+
+it("reports a remote port failure while the window service is still active", async () => {
+  const { port1, port2 } = new MessageChannel();
+  const errors = vi.fn();
+  const service = connectConversationService(
+    adaptPort(port1),
+    () => Promise.reject(new Error("Unexpected peer")),
+    errors,
+  );
+  const clientId = service.getClientId();
+  try {
+    port2.close();
+    await expect(clientId).rejects.toThrow("MessagePort message error");
+    expect(errors).toHaveBeenCalledOnce();
+    expect(errors.mock.calls[0]?.[0]).toBeInstanceOf(Error);
+  } finally {
+    service.dispose();
+    port2.close();
+  }
+});
+
 it("opens read state without registering a conversation socket peer", async () => {
   const { port1, port2 } = new MessageChannel();
   const transport = new ConversationServicePortTransport(adaptPort(port2));

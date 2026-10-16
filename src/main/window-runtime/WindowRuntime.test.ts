@@ -23,9 +23,24 @@ const fakeWindow = (webContentsId: number) => {
   const events = new EventEmitter();
   const rendererEvents = new EventEmitter();
   const sentChannels: string[] = [];
+  const whileAlive = <A>(value: A): A => {
+    if (destroyed) throw new Error("Object has been destroyed");
+    return value;
+  };
+  const webContents = {
+    get id() {
+      return whileAlive(webContentsId);
+    },
+    on: rendererEvents.on.bind(rendererEvents),
+    removeListener: rendererEvents.removeListener.bind(rendererEvents),
+    isDestroyed: () => destroyed,
+    send: (channel: string) => sentChannels.push(channel),
+  };
   return {
     window: {
-      id: webContentsId,
+      get id() {
+        return whileAlive(webContentsId);
+      },
       destroy: () => {
         destroyed = true;
         events.emit("closed");
@@ -37,21 +52,17 @@ const fakeWindow = (webContentsId: number) => {
         destroyed = true;
         events.emit("closed");
       },
-      getBounds: () => ({ x: 0, y: 0, width: 1_400, height: 900 }),
-      isFullScreen: () => false,
-      isFocused: () => focused,
-      isMaximized: () => false,
+      getBounds: () => whileAlive({ x: 0, y: 0, width: 1_400, height: 900 }),
+      isFullScreen: () => whileAlive(false),
+      isFocused: () => whileAlive(focused),
+      isMaximized: () => whileAlive(false),
       isDestroyed: () => destroyed,
       on: events.on.bind(events),
       removeListener: events.removeListener.bind(events),
       setBackgroundColor: () => undefined,
       setVibrancy: () => undefined,
-      webContents: {
-        id: webContentsId,
-        on: rendererEvents.on.bind(rendererEvents),
-        removeListener: rendererEvents.removeListener.bind(rendererEvents),
-        isDestroyed: () => false,
-        send: (channel: string) => sentChannels.push(channel),
+      get webContents() {
+        return whileAlive(webContents);
       },
     } as unknown as BrowserWindow,
     blur: () => {
@@ -68,14 +79,18 @@ const fakeWindow = (webContentsId: number) => {
   };
 };
 
-const sessionLayout = (sessionId: string) => ({
-  ...createDefaultWorkbenchLayoutSnapshot(),
-  location: {
+const sessionLayout = (sessionId: string) => {
+  const location = {
     kind: "session" as const,
     projectContextId: null,
     sessionId,
-  },
-});
+  };
+  return {
+    ...createDefaultWorkbenchLayoutSnapshot(),
+    location,
+    homeLocation: location,
+  };
+};
 
 it.effect("revokes exact renderer identities on navigation, process loss, and window release", () =>
   Effect.gen(function* () {
@@ -216,6 +231,14 @@ it.effect("owns the bounded renderer flush handshake before a user close", () =>
     const context = yield* Layer.buildWithScope(fromState(sessions), scope);
     const runtime = Context.get(context, WindowRuntime);
     runtime.attach(subject.window, windowSession.id);
+    const layout = sessionLayout("last-session");
+    runtime.saveLayout(33, { layout, revision: 1, sessionId: windowSession.id });
+    runtime.markRendererInitialized(33);
+    const collected = yield* runtime.events.pipe(
+      Stream.take(1),
+      Stream.runCollect,
+      Effect.forkIn(scope, { startImmediately: true }),
+    );
 
     subject.window.close();
     assert.isTrue(runtime.has(33));
@@ -225,6 +248,31 @@ it.effect("owns the bounded renderer flush handshake before a user close", () =>
     assert.isTrue(subject.isDestroyed());
     assert.isFalse(runtime.has(33));
     assert.isNull(runtime.resolveSessionId(33));
+    assert.isFalse(runtime.isRendererInitialized(33));
+    assert.deepInclude((yield* Fiber.join(collected))[0], {
+      kind: "released",
+      window: {
+        activeSessionId: "last-session",
+        focusSequence: null,
+        focused: false,
+        kind: "primary",
+        layoutRevision: 1,
+        rendererGeneration: null,
+        webContentsId: 33,
+        windowId: 33,
+        windowSessionId: windowSession.id,
+      },
+    });
+    assert.deepInclude(new WindowSessionState(userDataPath).readCatalog()?.sessions[0], {
+      bounds: { x: 0, y: 0, width: 1_400, height: 900, mode: "normal" },
+      layout,
+      layoutRevision: 1,
+    });
+    assert.strictEqual(sessions.readCatalog()?.sessions[0]?.lifecycle.state, "closed");
+    assert.equal(subject.rendererEvents.listenerCount("did-navigate"), 0);
+    assert.equal(subject.rendererEvents.listenerCount("did-start-navigation"), 0);
+    assert.equal(subject.rendererEvents.listenerCount("render-process-gone"), 0);
+    runtime.acknowledgeClose(33);
 
     yield* Scope.close(scope, Exit.void);
   }),

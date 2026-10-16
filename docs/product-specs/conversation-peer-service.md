@@ -63,6 +63,8 @@ owned listeners and clients, including a pending listen. These failures do not p
 desktop from starting. Port closure and window destruction release pending work.
 Local disposal rejects a pending port receive immediately, discards queued messages and closes
 the endpoint even when the remote close sentinel has already failed the session.
+Retiring a window service also settles pending client-identity discovery as unavailable. Expected
+retirement does not report a transport failure; failures on an active service remain observable.
 Follower response envelopes are copied before releasing their RPC references; handler
 deadlines also release outstanding RPC promises. The follower request client preserves remote
 error envelopes and rejects success envelopes for another method. Cancellation before dispatch

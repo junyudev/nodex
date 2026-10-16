@@ -21,14 +21,22 @@ export function connectConversationService(
   const transport = new ConversationServicePortTransport(port);
   let disposed = false;
   let peer: ReturnType<typeof connectCoordinationPeer> | undefined;
+  const reportFailure = (error: unknown): void => {
+    if (disposed) return;
+    onError(error);
+  };
   const coordination = Promise.resolve()
     .then(() => root.services)
     .then((services) => {
       if (disposed || !services.clientCoordination) return undefined;
-      peer = connectCoordinationPeer(getEndpoint, () => services.clientCoordination!, onError);
+      peer = connectCoordinationPeer(
+        getEndpoint,
+        () => services.clientCoordination!,
+        reportFailure,
+      );
       return peer.host;
     });
-  void coordination.catch(onError);
+  void coordination.catch(reportFailure);
   class DeferredCoordination extends RpcTarget implements ConversationCoordinationHost {
     threadArchived(
       input: Parameters<ConversationCoordinationHost["threadArchived"]>[0],
@@ -109,10 +117,16 @@ export function connectConversationService(
   ).getRemoteMain();
   return {
     getClientId: () =>
-      coordination.then(() =>
-        disposed || !peer ? null : peer.getClientId().then((id) => (disposed ? null : id)),
-      ),
+      coordination
+        .then(() =>
+          disposed || !peer ? null : peer.getClientId().then((id) => (disposed ? null : id)),
+        )
+        .catch((error: unknown) => {
+          if (disposed) return null;
+          throw error;
+        }),
     dispose: () => {
+      if (disposed) return;
       disposed = true;
       peer?.dispose();
       transport.abort(new Error("Conversation service was disposed"));
