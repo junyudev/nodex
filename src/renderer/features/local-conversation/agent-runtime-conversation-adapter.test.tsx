@@ -216,6 +216,38 @@ describe("Agent Runtime Codex controls", () => {
     await act(async () => unmount());
   });
 
+  it("names a bound chat by its Session, not by the prompt its engine Thread started from", async () => {
+    vi.spyOn(agentRuntimeRuntime, "catalog").mockResolvedValue([codexProvider]);
+    vi.spyOn(agentRuntimeRuntime, "control").mockResolvedValue({
+      sessionId: "titled-session",
+      projectId: "project",
+      threadId: "engine-thread",
+      snapshot,
+    });
+    vi.spyOn(agentRuntimeRuntime, "subscribe").mockResolvedValue(() => {});
+    const { result, rerender, unmount } = renderHook(
+      ({ sessionTitle }: { sessionTitle: string }) =>
+        useAgentRuntimeConversationAdapter({
+          sessionId: "titled-session",
+          sessionTitle,
+          executionRef: { runtimeId: "engine", threadId: "engine-thread" },
+          projectId: "project",
+          modelProjectId: "project",
+          instances,
+          onRefresh: async () => {},
+          onOpenThread: () => {},
+          ensureDraft: async () => ({ id: "titled-session" }),
+        }),
+      { wrapper: SavedSettingsWorkbench, initialProps: { sessionTitle: "Fix the login" } },
+    );
+    await waitFor(() => expect(result.current.state.connection).toBe("ready"));
+    expect(snapshot.projection.thread.title).not.toBe("Fix the login");
+    expect(result.current.summary?.threadName).toBe("Fix the login");
+    rerender({ sessionTitle: "Renamed in the sidebar" });
+    expect(result.current.summary?.threadName).toBe("Renamed in the sidebar");
+    await act(async () => unmount());
+  });
+
   it("applies model, effort and speed in one selection change under Codex's own option ids", async () => {
     vi.spyOn(agentRuntimeRuntime, "catalog").mockResolvedValue([codexProvider]);
     vi.spyOn(agentRuntimeRuntime, "control").mockResolvedValue({

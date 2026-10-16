@@ -26,6 +26,10 @@ process.stdin.setEncoding("utf8");
 process.stdin.on("data", chunk => { prompt += chunk; });
 process.stdin.on("end", () => {
   const schema = JSON.parse(codex ? fs.readFileSync(args[args.indexOf("--output-schema") + 1], "utf8") : args[args.indexOf("--json-schema") + 1]);
+  if (!codex && schema.$schema) {
+    process.stderr.write("Error: --json-schema is not a valid JSON Schema: no schema with key or ref " + schema.$schema);
+    process.exit(1);
+  }
   const investigation = !!schema.properties.stops;
   if (investigation && !prompt.includes("git diff")) throw new Error("Investigation task context was lost");
   const result = investigation ? { stops: [] } : { title: "Inspect exact native execution" };
@@ -85,7 +89,9 @@ for (const driver of ["codex", "claude"] as const) {
           modelSelection,
         });
         assert.deepEqual(guide, { stops: [] });
+        // Callers may declare a dialect, as Nodex's chat title schema does.
         const outputSchema = {
+          $schema: "https://json-schema.org/draft/2020-12/schema",
           type: "object",
           properties: { title: { type: "string" } },
           required: ["title"],

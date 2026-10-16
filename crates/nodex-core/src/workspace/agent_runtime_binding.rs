@@ -148,7 +148,7 @@ pub(super) fn create_session(
                 connection,
                 replacement_default_session_id,
                 project_id,
-                "New thread",
+                super::session_lifecycle::NEW_CHAT_TITLE,
                 true,
             )?;
             session_ids.push(replacement_default_session_id.to_owned());
@@ -448,8 +448,18 @@ mod tests {
             connection.query_row("SELECT id FROM project_sessions WHERE project_id='project:default' AND is_default_draft=1", [], |row| row.get::<_, String>(0))?,
             connection.query_row("SELECT count(*) FROM project_session_pages WHERE session_id='session:draft' AND page_id='page:linked'", [], |row| row.get::<_, i64>(0))?,
             connection.query_row("SELECT count(*) FROM codex_threads", [], |row| row.get::<_, i64>(0))?,
+            connection.query_row("SELECT no_thread_fallback_title FROM project_sessions WHERE id='replacement:session:draft'", [], |row| row.get::<_, String>(0))?,
         ))).unwrap();
-        assert_eq!(state, (0, "replacement:session:draft".into(), 1, 0));
+        assert_eq!(
+            state,
+            (
+                0,
+                "replacement:session:draft".into(),
+                1,
+                0,
+                "New chat".into()
+            )
+        );
         let mut replacement = create_intent("session:draft");
         let ProjectWorkspaceIntent::CreateAgentRuntimeSession {
             runtime_thread_id, ..

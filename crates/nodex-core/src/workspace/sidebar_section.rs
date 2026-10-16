@@ -800,7 +800,7 @@ pub(super) fn archive_section_sessions(
             connection,
             replacement_session_id,
             None,
-            "New chat",
+            super::session_lifecycle::NEW_CHAT_TITLE,
             false,
         )?;
         place_created_session(

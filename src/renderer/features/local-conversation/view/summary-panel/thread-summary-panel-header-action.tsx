@@ -20,6 +20,8 @@ import { ThreadSummaryPanelToggle } from "./thread-summary-panel-toggle";
 
 export interface ThreadSummaryPanelHeaderActionProps {
   activeThreadId: string | null;
+  /** Runtime roots have no native subagent overview; their tasks come from the Runtime. */
+  executionKind: "native" | "runtime";
   preferredHostId?: string | null;
   activeThreadIsManagedWorktree?: boolean;
   onPopoverOpenChange?: (open: boolean) => void;
@@ -37,6 +39,7 @@ export interface ThreadSummaryPanelHeaderActionProps {
 
 export function ThreadSummaryPanelHeaderAction({
   activeThreadId,
+  executionKind,
   preferredHostId,
   activeThreadIsManagedWorktree = false,
   onPopoverOpenChange,
@@ -49,7 +52,10 @@ export function ThreadSummaryPanelHeaderAction({
   actions,
 }: ThreadSummaryPanelHeaderActionProps) {
   const cwd = useConversationCwd(activeThreadId);
-  const backgroundAgentRows = useBackgroundSubagentRows(activeThreadId, preferredHostId);
+  const backgroundAgentRows = useBackgroundSubagentRows(
+    executionKind === "native" ? activeThreadId : null,
+    preferredHostId,
+  );
   const turns = useConversationTurns(activeThreadId);
   const backgroundTerminalRows = useConversationBackgroundTerminalRows(activeThreadId);
   const summaryFields = useConversationSummaryFields(activeThreadId);

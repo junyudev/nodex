@@ -34,6 +34,7 @@ export function WorkbenchThreadSummaryHeader({
   return (
     <ThreadSummaryPanelHeaderAction
       activeThreadId={execution.rootThreadId}
+      executionKind={execution.kind}
       preferredHostId={execution.kind === "native" ? execution.hostId : undefined}
       activeThreadIsManagedWorktree={Boolean(
         execution.kind === "native"

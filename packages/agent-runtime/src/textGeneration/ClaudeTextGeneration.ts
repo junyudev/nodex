@@ -58,6 +58,16 @@ const decodeClaudeOutput = Schema.decodeEffect(
   Schema.fromJsonString(Schema.Union([ClaudeOutputEnvelope, Schema.Array(ClaudeOutputMessage)])),
 );
 
+/**
+ * The Claude CLI validates `--json-schema` in its own JSON Schema dialect and refuses a schema
+ * that declares another one, so a caller's `$schema` is dropped; the constraints are unchanged.
+ */
+const withoutDeclaredDialect = (schema: unknown): unknown => {
+  if (typeof schema !== "object" || schema === null || !("$schema" in schema)) return schema;
+  const { $schema: _dialect, ...constraints } = schema as Record<string, unknown>;
+  return constraints;
+};
+
 export const makeClaudeTextGeneration = Effect.fn("makeClaudeTextGeneration")(function* (
   claudeSettings: ClaudeSettings,
   environment?: NodeJS.ProcessEnv,
@@ -135,7 +145,7 @@ export const makeClaudeTextGeneration = Effect.fn("makeClaudeTextGeneration")(fu
     };
     const jsonSchemaStr = yield* encodeJsonForOperation(
       operation,
-      jsonSchema ?? toJsonSchemaObject(outputSchemaJson),
+      withoutDeclaredDialect(jsonSchema ?? toJsonSchemaObject(outputSchemaJson)),
       "Failed to encode structured output schema.",
     );
     const caps = getClaudeCatalogModelCapabilities(catalog, resolvedModelSelection.model);

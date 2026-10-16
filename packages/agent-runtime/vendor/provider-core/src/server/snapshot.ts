@@ -13,6 +13,11 @@ export interface ManagedServerProvider {
     readonly fresh?: boolean;
   }) => Effect.Effect<ProviderMaintenanceCapabilities>;
   readonly getSnapshot: Effect.Effect<ServerProvider>;
+  /**
+   * Completes once the status check started with this provider has finished, whatever its
+   * outcome. Until then the snapshot is a placeholder that has checked nothing.
+   */
+  readonly initialCheck: Effect.Effect<void>;
   readonly refresh: Effect.Effect<ServerProvider>;
   readonly streamChanges: Stream.Stream<ServerProvider>;
   /**

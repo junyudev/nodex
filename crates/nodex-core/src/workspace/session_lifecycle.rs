@@ -83,6 +83,9 @@ pub(super) fn prepare_session(
     Ok(now)
 }
 
+/// Every replacement draft Core creates reads the same as a draft the user opens.
+pub(super) const NEW_CHAT_TITLE: &str = "New chat";
+
 #[allow(clippy::too_many_arguments)]
 pub(super) fn ensure_default_draft_session(
     connection: &Connection,

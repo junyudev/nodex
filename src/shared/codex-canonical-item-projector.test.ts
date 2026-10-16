@@ -705,6 +705,33 @@ describe("projectCodexCanonicalTurnViews", () => {
     ]);
   });
 
+  test("the opening prompt keeps who sent it when it stands in for the server message", () => {
+    const input = [{ type: "text" as const, text: "Write the report", text_elements: [] }];
+    const views = projectCodexCanonicalTurnViews({
+      threadId: THREAD_ID,
+      turn: buildCanonicalTurn({
+        params: buildTurnParams({ input, clientUserMessageId: "message:task" }),
+        items: [
+          {
+            type: "userMessage",
+            id: "opening",
+            clientId: "message:task",
+            content: input,
+            origin: { kind: "agent", senderThreadId: "parent-thread" },
+            inputIntent: "steer",
+          },
+        ],
+      }),
+      observedAtMs: 1000,
+    });
+
+    expect(views.map((view) => view.itemId)).toEqual([`${TURN_ID}:input`]);
+    expect(views[0]).toMatchObject({
+      userMessageOrigin: { kind: "agent", senderThreadId: "parent-thread" },
+      userInputIntent: "steer",
+    });
+  });
+
   test("suppresses the matching server user message only across allowed metadata", () => {
     const promptInput = [{ type: "text" as const, text: "Prompt", text_elements: [] }];
     const allowedMetadata: readonly CodexCanonicalItem[] = [

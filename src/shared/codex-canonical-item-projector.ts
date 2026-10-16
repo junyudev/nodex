@@ -450,6 +450,8 @@ function projectTurnParamsUserView(input: {
   readonly turnKey: string;
   readonly params: CodexCanonicalTurnParams;
   readonly rawItemId?: string;
+  /** The server message this row stands in for; its sender and delivery markers carry over. */
+  readonly opening?: Extract<CodexCanonicalItem, { type: "userMessage" }>;
   readonly blocked: boolean;
   readonly observedAtMs: number;
   readonly goalProjection: ReturnType<typeof readCodexCanonicalThreadGoalTranscriptProjection>;
@@ -491,6 +493,8 @@ function projectTurnParamsUserView(input: {
     status: "completed",
     markdownText,
     ...(input.goalProjection ? { goal: true } : {}),
+    ...(input.opening?.origin ? { userMessageOrigin: input.opening.origin } : {}),
+    ...(input.opening?.inputIntent ? { userInputIntent: input.opening.inputIntent } : {}),
     ...(input.blocked ? { deliveryStatus: "not-sent" as const } : {}),
     ...(commentAttachments.length === 0 ? {} : { commentAttachments: [...commentAttachments] }),
     ...(userAttachments.length === 0 ? {} : { userAttachments }),
@@ -1409,6 +1413,10 @@ export function projectCodexCanonicalTurnViews(
     input.openingUserMessageId !== undefined
       ? input.openingUserMessageId
       : resolveCodexCanonicalTurnOpeningUserMessageId(input.turn);
+  const opening = input.turn.items.find(
+    (item): item is Extract<CodexCanonicalItem, { type: "userMessage" }> =>
+      item?.type === "userMessage" && item.id === openingUserMessageId,
+  );
   const paramsView = projectTurnParamsUserView({
     threadId: input.threadId,
     turnId,
@@ -1416,6 +1424,7 @@ export function projectCodexCanonicalTurnViews(
     params: input.turn.params,
     rawItemId:
       input.preserveServerUserMessages === true ? undefined : (openingUserMessageId ?? undefined),
+    ...(opening && input.preserveServerUserMessages !== true ? { opening } : {}),
     blocked,
     observedAtMs: input.observedAtMs,
     goalProjection: readCodexCanonicalThreadGoalTranscriptProjection(input.turn),

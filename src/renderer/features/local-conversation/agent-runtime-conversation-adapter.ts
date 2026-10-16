@@ -973,9 +973,16 @@ export function useAgentRuntimeConversationAdapter(input: {
       : null,
     owner,
   );
+  // Core names the chat; the engine Thread keeps the prompt it started from as its own title.
+  const view = state.view;
+  const sessionTitle = input.sessionTitle;
+  const titledView = useMemo(
+    () => (view && sessionTitle ? { ...view, threadName: sessionTitle } : view),
+    [view, sessionTitle],
+  );
   // Mount the keyed transcript reader before the first query completes; unknown execution is notLoaded.
   const summary: CodexThreadSummary | null =
-    state.view ??
+    titledView ??
     (targetThreadId
       ? {
           threadId: targetThreadId,
