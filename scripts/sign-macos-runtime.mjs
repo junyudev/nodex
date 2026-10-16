@@ -70,7 +70,7 @@ export const refreshSignedWorkspaceRuntimeManifest = (appPath) => {
   if (
     manifest.schemaVersion !== 1 ||
     manifest.targetPlatform !== "darwin" ||
-    !["arm64", "x64"].includes(manifest.targetArch) ||
+    manifest.targetArch !== "arm64" ||
     !Array.isArray(manifest.artifacts) ||
     !manifest.artifacts.length
   )

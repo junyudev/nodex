@@ -34,11 +34,11 @@ vp run preview:landing
 - `terms/index.html`
 - `src/styles.css` for landing-only Tailwind and token styling
 - `src/changelog-renderer.ts` for build-time `CHANGELOG.md` parsing and rendering
-- `src/download-cta.ts` for the direct-download CTA upgrade logic
+- `src/download-cta.ts` for copying the Homebrew install command
 - `public/` for copied brand assets, the committed OG image, and `.nojekyll`
 
 The site is a static multi-page build. It does not use React Router or any client-side routing fallback.
-The homepage keeps the primary macOS CTA no-JS-safe by pointing at the stable arm64 GitHub Release alias first, then downgrades to the x64 alias only when browser signals positively identify Intel.
+The homepage links directly to the stable Apple silicon GitHub Release alias without JavaScript or browser architecture detection.
 The homepage release stamp is also build-time data: it reads the root app version from the repository `package.json`, so the published site shows the same semver that release automation cuts.
 The changelog page at `/changelog/` is also build-time data: it reads the root `CHANGELOG.md`, renders `Unreleased` first as an in-development entry, and then renders dated release entries in the same order as the source file.
 
@@ -70,8 +70,8 @@ There is no separate landing-only validation workflow or second required check.
     `updates/` tree
   - commits only when there is a diff
   - is also called by release promotion after the immutable app Release is
-    verified; that mode projects the Release Bundle's exact signed arm64/x64
-    appcast snapshots into `/updates/stable/<arch>/appcast.xml`, rejects feed
+    verified; that mode projects the Release Bundle's exact signed arm64
+    appcast snapshot into `/updates/stable/arm64/appcast.xml`, rejects feed
     rollback or same-version byte drift, and verifies the public bytes and
     immutable enclosures after push
 
@@ -93,7 +93,6 @@ In `NodexApp/NodexApp.github.io`, configure GitHub Pages to publish from the def
 The stable application-update endpoints are:
 
 - `https://nodex.jyu.app/updates/stable/arm64/appcast.xml`
-- `https://nodex.jyu.app/updates/stable/x64/appcast.xml`
 
 The Pages repository stores only the signed feed control plane. Full ZIPs and
 deltas remain immutable assets of the corresponding `junyudev/nodex` GitHub
@@ -117,7 +116,6 @@ The v1 site is intentionally narrow:
 Release CTA contract:
 
 - default CTA target: `https://github.com/junyudev/nodex/releases/latest/download/Nodex-latest-arm64.dmg`
-- x64 CTA target: `https://github.com/junyudev/nodex/releases/latest/download/Nodex-latest-x64.dmg`
-- browser-side detection is conservative; ambiguous clients stay on arm64 and only explicit Intel evidence switches to x64
+- Nodex requires Apple silicon and macOS 15 or later; the CTA does not select an architecture.
 
 If the site later expands into screenshots, FAQ, or longer-form product copy, keep that work inside `packages/landing` rather than pulling renderer code into the package.

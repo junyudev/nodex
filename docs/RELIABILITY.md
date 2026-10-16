@@ -719,7 +719,7 @@ Testing commands and suite selection live in [AGENTS.md](../AGENTS.md) and
 - backup/restore: every journal interruption phase, asset closure, epoch
   rotation, and stale-client rejection;
 - release runtime: source gate, target-specific packaged verification, signed
-  dual-architecture rehearsal, and immutable Release Bundle checks.
+  macOS arm64 rehearsal, and immutable Release Bundle checks.
 
 For Core read-model or transport changes, run the repository read-budget gate
 and retain its byte/request/query-plan evidence. The transport maximum is a

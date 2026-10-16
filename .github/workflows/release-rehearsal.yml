@@ -91,17 +91,9 @@ jobs:
       csc_link: ${{ secrets.CSC_LINK }}
 
   finalize-sparkle:
-    name: finalize ${{ matrix.arch }} Sparkle updates
+    name: finalize arm64 Sparkle updates
     needs: [validate, distribution]
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - arch: arm64
-            runner: macos-26
-          - arch: x64
-            runner: macos-26-intel
-    runs-on: ${{ matrix.runner }}
+    runs-on: macos-26
     environment: sparkle-feed-finalization
     permissions:
       contents: read
@@ -112,7 +104,7 @@ jobs:
           ref: ${{ needs.validate.outputs.source_sha }}
       - uses: ./.github/actions/finalize-sparkle
         with:
-          architecture: ${{ matrix.arch }}
+          architecture: arm64
           channel: stable
           private_key: ${{ secrets.SPARKLE_ED25519_PRIVATE_KEY }}
           retention_days: 14

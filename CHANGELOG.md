@@ -51,6 +51,10 @@ All notable changes to this project will be documented in this file.
 
 - Hardened rich-text paste, equations, diagrams, and configuration parsing against malicious input.
 
+### Removed
+
+- Intel Mac builds. macOS releases and automatic updates now support Apple Silicon only.
+
 ## [0.3.0] - 2026-09-20
 
 ### Added

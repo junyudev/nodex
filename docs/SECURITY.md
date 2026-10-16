@@ -138,7 +138,7 @@ read through the authenticated Profile and exact execution identity boundary.
   removed in an always-run cleanup step.
 - Scheduled Nightly resolution remains read-only and accepts only the exact
   protected-main HEAD whose latest CI run succeeded. Nightly distribution uses
-  the same Developer ID, notarization, Sparkle key, dual-architecture Bundle,
+  the same Developer ID, notarization, Sparkle key, macOS arm64 Bundle,
   and immutable-asset verification chain as Stable, but its promotion path has
   no Homebrew or official Agent Skills credential. The landing credential can
   change only `updates/nightly/`; Stable publication owns only

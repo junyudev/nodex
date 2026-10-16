@@ -33,7 +33,7 @@ function parseOutputPath(argv: readonly string[]): string {
 }
 
 function resolveArchitecture(): BuildStamp["architecture"] {
-  if (process.arch === "arm64" || process.arch === "x64") return process.arch;
+  if (process.arch === "arm64") return process.arch;
   throw new Error(`Unsupported macOS architecture: ${process.arch}`);
 }
 

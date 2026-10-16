@@ -16,7 +16,7 @@ const relativePath = z
 export const workspaceRuntimeManifestSchema = z.strictObject({
   schemaVersion: z.literal(1),
   targetPlatform: z.literal("darwin"),
-  targetArch: z.enum(["arm64", "x64"]),
+  targetArch: z.literal("arm64"),
   distributionId: z.string().min(1).max(256),
   sourceLockSha256: z.string().regex(/^[a-f0-9]{64}$/u),
   pythonVersion: z.string().min(1).max(64),

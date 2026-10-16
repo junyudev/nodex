@@ -20,7 +20,8 @@ import {
 import { verifySparkleAppcastContract } from "./sparkle-appcast-contract";
 import { parseSparkleArchitectureUpdateManifest } from "./sparkle-manifest";
 
-export type MacArchitecture = "arm64" | "x64";
+export type MacArchitecture = "arm64";
+export const RELEASE_BUNDLE_SCHEMA_VERSION = 3;
 
 export interface ReleaseArtifactIdentity {
   readonly architecture?: MacArchitecture;
@@ -79,7 +80,7 @@ export interface ReleaseBundleManifest {
   >;
   readonly assets: readonly ReleaseArtifactIdentity[];
   readonly runtimeLocks: ArchitectureBuildManifest["runtimeLocks"];
-  readonly schemaVersion: 2;
+  readonly schemaVersion: typeof RELEASE_BUNDLE_SCHEMA_VERSION;
   readonly releaseIdentity: ReleaseIdentity;
   readonly sourceSha: string;
   readonly sourceTree: string;
@@ -173,7 +174,7 @@ const parseArtifact = (value: unknown): ReleaseArtifactIdentity => {
     typeof value.sha256 !== "string" ||
     typeof value.role !== "string" ||
     !ARTIFACT_ROLES.has(value.role as ReleaseArtifactIdentity["role"]) ||
-    (architecture !== undefined && architecture !== "arm64" && architecture !== "x64")
+    (architecture !== undefined && architecture !== "arm64")
   ) {
     throw new Error("Release artifact identity is invalid.");
   }
@@ -191,7 +192,7 @@ export function parseArchitectureBuildManifest(value: unknown): ArchitectureBuil
   const candidate = value as Partial<ArchitectureBuildManifest>;
   if (
     candidate.schemaVersion !== 2 ||
-    (candidate.architecture !== "arm64" && candidate.architecture !== "x64") ||
+    candidate.architecture !== "arm64" ||
     typeof candidate.version !== "string" ||
     typeof candidate.tag !== "string" ||
     typeof candidate.sourceSha !== "string" ||
@@ -248,13 +249,13 @@ export function parseReleaseBundleManifest(value: unknown): ReleaseBundleManifes
   if (!isRecord(value)) throw new Error("Release Bundle manifest is invalid.");
   const candidate = value as Partial<ReleaseBundleManifest>;
   if (
-    candidate.schemaVersion !== 2 ||
+    candidate.schemaVersion !== RELEASE_BUNDLE_SCHEMA_VERSION ||
     typeof candidate.version !== "string" ||
     typeof candidate.tag !== "string" ||
     typeof candidate.sourceSha !== "string" ||
     typeof candidate.sourceTree !== "string" ||
     !candidate.architectures?.arm64 ||
-    !candidate.architectures.x64 ||
+    Object.keys(candidate.architectures).some((architecture) => architecture !== "arm64") ||
     !candidate.runtimeLocks ||
     !Array.isArray(candidate.assets)
   ) {
@@ -286,7 +287,7 @@ export function parseReleaseBundleManifest(value: unknown): ReleaseBundleManifes
     candidate.agentSkills,
     "Release Bundle Agent Skills identity",
   );
-  for (const architecture of ["arm64", "x64"] as const) {
+  for (const architecture of ["arm64"] as const) {
     assertSha(
       candidate.architectures[architecture].manifestSha256,
       `${architecture} architecture manifest`,
@@ -309,20 +310,11 @@ export function parseReleaseBundleManifest(value: unknown): ReleaseBundleManifes
     throw new Error("Release Bundle contains duplicate asset names.");
   const required = [
     ...(releaseIdentity.channel === "stable"
-      ? ([
-          ["Nodex-latest-arm64.dmg", "dmg", "arm64"],
-          ["Nodex-latest-x64.dmg", "dmg", "x64"],
-        ] as const)
-      : ([
-          [`Nodex-${version}-arm64.dmg`, "dmg", "arm64"],
-          [`Nodex-${version}-x64.dmg`, "dmg", "x64"],
-        ] as const)),
+      ? ([["Nodex-latest-arm64.dmg", "dmg", "arm64"]] as const)
+      : ([[`Nodex-${version}-arm64.dmg`, "dmg", "arm64"]] as const)),
     [`Nodex-${version}-arm64.zip`, "sparkle-full", "arm64"],
-    [`Nodex-${version}-x64.zip`, "sparkle-full", "x64"],
     [`Nodex-${version}-appcast-arm64.xml`, "sparkle-appcast", "arm64"],
-    [`Nodex-${version}-appcast-x64.xml`, "sparkle-appcast", "x64"],
     [`Nodex-${version}-update-arm64.json`, "sparkle-update-manifest", "arm64"],
-    [`Nodex-${version}-update-x64.json`, "sparkle-update-manifest", "x64"],
     ...(hasEmbeddedIdentity
       ? [["release-identity.json", "release-identity", undefined] as const]
       : []),
@@ -341,7 +333,7 @@ export function parseReleaseBundleManifest(value: unknown): ReleaseBundleManifes
   const requiredNames = new Set<string>(required.map(([name]) => name));
   for (const asset of assets) {
     if (requiredNames.has(asset.name)) continue;
-    const match = /^Nodex-(.+)-to-(.+)-(arm64|x64)\.delta$/u.exec(asset.name);
+    const match = /^Nodex-(.+)-to-(.+)-(arm64)\.delta$/u.exec(asset.name);
     let fromVersion: string | null = null;
     try {
       fromVersion = match ? normalizeReleaseVersion(match[1]) : null;
@@ -541,8 +533,6 @@ export function assembleReleaseBundle(options: {
   readonly identityPath?: string;
   readonly sourceSha?: string;
   readonly version?: string;
-  readonly x64Directory: string;
-  readonly x64UpdateDirectory: string;
 }): ReleaseBundleManifest {
   const legacyArchitecture = readJson(
     join(resolve(options.arm64Directory), "architecture-build.json"),
@@ -564,28 +554,15 @@ export function assembleReleaseBundle(options: {
   const output = resolve(options.outputDirectory);
   ensureEmptyDirectory(output);
   const arm64Root = resolve(options.arm64Directory);
-  const x64Root = resolve(options.x64Directory);
   const arm64 = readArchitectureDirectory(arm64Root);
-  const x64 = readArchitectureDirectory(x64Root);
   const arm64Update = readUpdateDirectory(options.arm64UpdateDirectory, "arm64", version);
-  const x64Update = readUpdateDirectory(options.x64UpdateDirectory, "x64", version);
   if (
     arm64.sourceSha !== sourceSha ||
-    x64.sourceSha !== sourceSha ||
     arm64.sourceTree !== releaseIdentity.sourceTree ||
-    x64.sourceTree !== releaseIdentity.sourceTree ||
     JSON.stringify(arm64.releaseIdentity) !== JSON.stringify(releaseIdentity) ||
-    JSON.stringify(x64.releaseIdentity) !== JSON.stringify(releaseIdentity) ||
-    arm64.sourceTree !== x64.sourceTree ||
     arm64Update.manifest.sourceSha !== sourceSha ||
-    x64Update.manifest.sourceSha !== sourceSha ||
     arm64Update.manifest.channel !== releaseIdentity.channel ||
-    x64Update.manifest.channel !== releaseIdentity.channel ||
-    arm64Update.manifest.target.buildVersion !== releaseIdentity.buildVersion ||
-    x64Update.manifest.target.buildVersion !== releaseIdentity.buildVersion ||
-    arm64Update.manifest.target.teamIdentifier !== x64Update.manifest.target.teamIdentifier ||
-    JSON.stringify(arm64.agentSkills) !== JSON.stringify(x64.agentSkills) ||
-    JSON.stringify(arm64.runtimeLocks) !== JSON.stringify(x64.runtimeLocks)
+    arm64Update.manifest.target.buildVersion !== releaseIdentity.buildVersion
   ) {
     throw new Error("Architecture and Sparkle builds do not share one release identity.");
   }
@@ -608,7 +585,6 @@ export function assembleReleaseBundle(options: {
   };
   for (const [architecture, architectureRoot, update] of [
     ["arm64", arm64Root, arm64Update],
-    ["x64", x64Root, x64Update],
   ] as const) {
     const fullName = `Nodex-${version}-${architecture}.zip`;
     const fullPath = join(architectureRoot, fullName);
@@ -649,15 +625,10 @@ export function assembleReleaseBundle(options: {
         preparedBuildGeneration: arm64.preparedBuild.generation,
         updateManifestSha256: sha256File(arm64Update.manifestPath),
       },
-      x64: {
-        manifestSha256: sha256File(join(x64Root, "architecture-build.json")),
-        preparedBuildGeneration: x64.preparedBuild.generation,
-        updateManifestSha256: sha256File(x64Update.manifestPath),
-      },
     },
     assets,
     runtimeLocks: arm64.runtimeLocks,
-    schemaVersion: 2,
+    schemaVersion: RELEASE_BUNDLE_SCHEMA_VERSION,
     releaseIdentity,
     sourceSha,
     sourceTree: arm64.sourceTree,

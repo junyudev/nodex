@@ -63,7 +63,7 @@ const makeArchitecture = (architecture: MacArchitecture, sourceSha = SOURCE_SHA)
     artifacts,
     packageProvenanceSha256: "2".repeat(64),
     preparedBuild: {
-      generation: (architecture === "arm64" ? "7" : "8").repeat(64),
+      generation: "7".repeat(64),
       manifestSha256: "3".repeat(64),
       state: "clean",
     },
@@ -187,9 +187,8 @@ afterEach(() => {
   rmSync(fixture, { recursive: true, force: true });
 });
 
-test("assembles the exact dual-architecture Sparkle asset closure", () => {
+test("assembles the exact Apple silicon Sparkle asset closure", () => {
   const arm64 = makeArchitecture("arm64");
-  const x64 = makeArchitecture("x64");
   const output = join(fixture, "output");
   const bundle = assembleReleaseBundle({
     arm64Directory: arm64,
@@ -197,23 +196,16 @@ test("assembles the exact dual-architecture Sparkle asset closure", () => {
     outputDirectory: output,
     sourceSha: SOURCE_SHA,
     version: VERSION,
-    x64Directory: x64,
-    x64UpdateDirectory: makeUpdate("x64", x64),
   });
 
-  expect(bundle.schemaVersion).toBe(2);
+  expect(bundle.schemaVersion).toBe(3);
   expect(bundle.assets.map(({ name }) => name).sort()).toEqual(
     [
       `Nodex-${VERSION}-appcast-arm64.xml`,
-      `Nodex-${VERSION}-appcast-x64.xml`,
       `Nodex-${VERSION}-arm64.zip`,
       `Nodex-${VERSION}-update-arm64.json`,
-      `Nodex-${VERSION}-update-x64.json`,
-      `Nodex-${VERSION}-x64.zip`,
       `Nodex-${PREVIOUS_VERSION}-to-${VERSION}-arm64.delta`,
-      `Nodex-${PREVIOUS_VERSION}-to-${VERSION}-x64.delta`,
       "Nodex-latest-arm64.dmg",
-      "Nodex-latest-x64.dmg",
       "release-identity.json",
     ].sort(),
   );
@@ -224,7 +216,7 @@ test("assembles the exact dual-architecture Sparkle asset closure", () => {
   );
   const site = join(fixture, "site");
   const currentSite = join(fixture, "current-site");
-  for (const architecture of ["arm64", "x64"] as const) {
+  for (const architecture of ["arm64"] as const) {
     const feed = join(currentSite, `updates/stable/${architecture}/appcast.xml`);
     mkdirSync(dirname(feed), { recursive: true });
     writeFileSync(feed, appcastFor("0.2.0"));
@@ -236,9 +228,6 @@ test("assembles the exact dual-architecture Sparkle asset closure", () => {
   });
   expect(readFileSync(join(site, "updates/stable/arm64/appcast.xml"), "utf8")).toBe(
     readFileSync(join(output, `Nodex-${VERSION}-appcast-arm64.xml`), "utf8"),
-  );
-  expect(readFileSync(join(site, "updates/stable/x64/appcast.xml"), "utf8")).toBe(
-    readFileSync(join(output, `Nodex-${VERSION}-appcast-x64.xml`), "utf8"),
   );
   writeFileSync(join(currentSite, "updates/stable/arm64/appcast.xml"), appcastFor("2.0.0"));
   expect(() =>
@@ -254,7 +243,6 @@ test("assembles the exact dual-architecture Sparkle asset closure", () => {
 
 test("derives remote release identities without local copies of the full assets", () => {
   const arm64 = makeArchitecture("arm64");
-  const x64 = makeArchitecture("x64");
   const output = join(fixture, "output");
   const bundle = assembleReleaseBundle({
     arm64Directory: arm64,
@@ -262,8 +250,6 @@ test("derives remote release identities without local copies of the full assets"
     outputDirectory: output,
     sourceSha: SOURCE_SHA,
     version: VERSION,
-    x64Directory: x64,
-    x64UpdateDirectory: makeUpdate("x64", x64),
   });
   for (const asset of bundle.assets) rmSync(join(output, asset.name));
 
@@ -283,7 +269,6 @@ test("derives remote release identities without local copies of the full assets"
 
 test("rejects a Sparkle full update that does not match the architecture ZIP", () => {
   const arm64 = makeArchitecture("arm64");
-  const x64 = makeArchitecture("x64");
   const armUpdate = makeUpdate("arm64", arm64);
   appendFileSync(join(arm64, `Nodex-${VERSION}-arm64.zip`), "tampered");
 
@@ -294,15 +279,12 @@ test("rejects a Sparkle full update that does not match the architecture ZIP", (
       outputDirectory: join(fixture, "output"),
       sourceSha: SOURCE_SHA,
       version: VERSION,
-      x64Directory: x64,
-      x64UpdateDirectory: makeUpdate("x64", x64),
     }),
   ).toThrow("does not match its manifest");
 });
 
 test("rejects a missing or tampered Sparkle delta from the dynamic asset closure", () => {
   const arm64 = makeArchitecture("arm64");
-  const x64 = makeArchitecture("x64");
   const armUpdate = makeUpdate("arm64", arm64);
   const deltaPath = join(armUpdate, `Nodex-${PREVIOUS_VERSION}-to-${VERSION}-arm64.delta`);
   rmSync(deltaPath);
@@ -313,8 +295,6 @@ test("rejects a missing or tampered Sparkle delta from the dynamic asset closure
       outputDirectory: join(fixture, "missing-output"),
       sourceSha: SOURCE_SHA,
       version: VERSION,
-      x64Directory: x64,
-      x64UpdateDirectory: makeUpdate("x64", x64),
     }),
   ).toThrow();
 
@@ -330,15 +310,12 @@ test("rejects a missing or tampered Sparkle delta from the dynamic asset closure
       outputDirectory: join(fixture, "tampered-output"),
       sourceSha: SOURCE_SHA,
       version: VERSION,
-      x64Directory: x64,
-      x64UpdateDirectory: makeUpdate("x64", x64),
     }),
   ).toThrow("does not match");
 });
 
 test("rejects appcast enclosure metadata that diverges from the update manifest", () => {
   const arm64 = makeArchitecture("arm64");
-  const x64 = makeArchitecture("x64");
   const armUpdate = makeUpdate("arm64", arm64);
   const appcastPath = join(armUpdate, `Nodex-${VERSION}-appcast-arm64.xml`);
   const appcast = readFileSync(appcastPath, "utf8");
@@ -374,15 +351,12 @@ test("rejects appcast enclosure metadata that diverges from the update manifest"
       outputDirectory: join(fixture, "mismatched-appcast-output"),
       sourceSha: SOURCE_SHA,
       version: VERSION,
-      x64Directory: x64,
-      x64UpdateDirectory: makeUpdate("x64", x64),
     }),
   ).toThrow("full enclosure");
 });
 
 test("rejects a Sparkle appcast below the product macOS baseline", () => {
   const arm64 = makeArchitecture("arm64");
-  const x64 = makeArchitecture("x64");
   const armUpdate = makeUpdate("arm64", arm64);
   const appcastPath = join(armUpdate, `Nodex-${VERSION}-appcast-arm64.xml`);
   writeFileSync(
@@ -419,15 +393,12 @@ test("rejects a Sparkle appcast below the product macOS baseline", () => {
       outputDirectory: join(fixture, "old-macos-appcast-output"),
       sourceSha: SOURCE_SHA,
       version: VERSION,
-      x64Directory: x64,
-      x64UpdateDirectory: makeUpdate("x64", x64),
     }),
   ).toThrow("require macOS 15.0");
 });
 
 test("rejects architecture and update manifests from different source commits", () => {
   const arm64 = makeArchitecture("arm64");
-  const x64 = makeArchitecture("x64");
 
   expect(() =>
     assembleReleaseBundle({
@@ -436,8 +407,6 @@ test("rejects architecture and update manifests from different source commits", 
       outputDirectory: join(fixture, "output"),
       sourceSha: SOURCE_SHA,
       version: VERSION,
-      x64Directory: x64,
-      x64UpdateDirectory: makeUpdate("x64", x64),
     }),
   ).toThrow("one release identity");
 });
@@ -455,7 +424,6 @@ test("rejects top-level source identity fields that diverge from the embedded id
     }),
   ).toThrow("source identity");
 
-  const x64 = makeArchitecture("x64");
   const output = join(fixture, "output");
   assembleReleaseBundle({
     arm64Directory: arm64,
@@ -463,8 +431,6 @@ test("rejects top-level source identity fields that diverge from the embedded id
     outputDirectory: output,
     sourceSha: SOURCE_SHA,
     version: VERSION,
-    x64Directory: x64,
-    x64UpdateDirectory: makeUpdate("x64", x64),
   });
   const bundlePath = join(output, "release-bundle.json");
   const bundle = JSON.parse(readFileSync(bundlePath, "utf8")) as ReturnType<
@@ -480,7 +446,6 @@ test("rejects top-level source identity fields that diverge from the embedded id
 
 test("rejects unlisted architecture artifacts", () => {
   const arm64 = makeArchitecture("arm64");
-  const x64 = makeArchitecture("x64");
   const manifestPath = join(arm64, "architecture-build.json");
   const manifest = JSON.parse(readFileSync(manifestPath, "utf8")) as ArchitectureBuildManifest;
   writeFileSync(
@@ -502,8 +467,6 @@ test("rejects unlisted architecture artifacts", () => {
       outputDirectory: join(fixture, "output"),
       sourceSha: SOURCE_SHA,
       version: VERSION,
-      x64Directory: x64,
-      x64UpdateDirectory: makeUpdate("x64", x64),
     }),
   ).toThrow("architecture artifacts do not match");
 });

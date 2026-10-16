@@ -47,11 +47,6 @@ describe("materializeBrowserRuntime", () => {
       JSON.stringify({
         assets: {
           "darwin-arm64": sharedAsset,
-          "darwin-x64": {
-            ...sharedAsset,
-            assetName: "browser-runtime-x64.tar.gz",
-            url: "https://github.com/example/nodex/releases/download/browser-runtime-test/browser-runtime-x64.tar.gz",
-          },
         },
         browserPluginVersion: manifest.browserPlugin.version,
         codexCompatibilityVersion: manifest.codexCompatibilityVersion,

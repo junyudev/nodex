@@ -1,3 +1,1 @@
-export * from "./_generated/schema.gen.ts";
-export * from "./_generated/meta.gen.ts";
-export * from "./_generated/namespaces.gen.ts";
+export * from "@nodex/effect-codex-app-server/schema";

@@ -593,6 +593,8 @@ describe("canonical item lifecycle reducer", () => {
     } satisfies ThreadItem;
     const subagent = {
       type: "subAgentActivity",
+      model: null,
+      reasoningEffort: null,
       id: "subagent-orphan",
       kind: "started",
       agentThreadId: "agent-thread",

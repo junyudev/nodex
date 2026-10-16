@@ -24,6 +24,7 @@ export function isCodexMcpPermissionRequest(
 ): boolean {
   return (
     payload.mode !== "url" &&
+    payload.mode !== "openai/userVerification" &&
     typeof payload._meta === "object" &&
     payload._meta !== null &&
     Reflect.get(payload._meta, "codex_approval_kind") === "mcp_tool_call"
@@ -33,6 +34,7 @@ export function isCodexMcpPermissionRequest(
 export function codexMcpElicitationQuestions(
   payload: CodexSchema.McpServerElicitationRequestParams,
 ): ReadonlyArray<CodexSchema.ToolRequestUserInputParams__ToolRequestUserInputQuestion> {
+  if (payload.mode === "openai/userVerification") return [];
   if (payload.mode === "url")
     return [
       {
@@ -82,6 +84,7 @@ export function codexMcpElicitationResponse(
   payload: CodexSchema.McpServerElicitationRequestParams,
   answers: ProviderUserInputAnswers,
 ): CodexSchema.McpServerElicitationRequestResponse {
+  if (payload.mode === "openai/userVerification") return { action: "decline" };
   if (payload.mode === "url")
     return { action: answers.connection === "Done" ? "accept" : "cancel" };
   const form = decodeForm(payload.requestedSchema);

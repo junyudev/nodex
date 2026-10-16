@@ -753,7 +753,7 @@ vp run verify:runtime:mac
 ```
 
 `vp run test:all` remains a compatibility alias for `verify:source`; neither
-command proves Apple signing, notarization, or native Intel behavior. Use the
+command proves Apple signing or notarization. Use the
 production-like `Distribution Rehearsal` described in `release-macos.md` for
 that boundary.
 

@@ -99,6 +99,9 @@ export function createBrowserRuntimePlatformArtifactVerifier(
     if (platform !== "darwin") {
       return `Browser runtime platform verification is unavailable on ${platform}`;
     }
+    if (manifest.targetArch !== "arm64") {
+      return "Browser runtime requires macOS arm64";
+    }
     if (!isMachO(artifactPath)) {
       return artifact.architecture === "any"
         ? null
@@ -111,7 +114,7 @@ export function createBrowserRuntimePlatformArtifactVerifier(
     } catch {
       return "could not inspect Mach-O architecture";
     }
-    const expectedArch = manifest.targetArch === "x64" ? "x86_64" : "arm64";
+    const expectedArch = manifest.targetArch;
     if (!architectures.includes(expectedArch)) {
       return `Mach-O artifact does not contain ${expectedArch}`;
     }

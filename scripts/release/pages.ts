@@ -65,7 +65,7 @@ const readBundleInputs = (bundlePath: string) => {
   const bundle = parseReleaseBundleManifest(
     JSON.parse(readFileSync(resolvedBundle, "utf8")) as unknown,
   );
-  const updates = (["arm64", "x64"] as const).map((architecture) => {
+  const updates = (["arm64"] as const).map((architecture) => {
     const name = `Nodex-${bundle.version}-update-${architecture}.json`;
     const updatePath = path.join(root, name);
     const update = parseSparkleArchitectureUpdateManifest(
@@ -128,7 +128,7 @@ export function projectReleaseAppcasts(options: {
 }): {
   readonly bundleSha256: string;
   readonly feeds: readonly {
-    readonly architecture: "arm64" | "x64";
+    readonly architecture: "arm64";
     readonly path: string;
     readonly sha256: string;
   }[];

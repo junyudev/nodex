@@ -1,5 +1,5 @@
 export type AgentRuntimeTargetPlatform = "darwin";
-export type AgentRuntimeTargetArch = "arm64" | "x64";
+export type AgentRuntimeTargetArch = "arm64";
 export type AgentRuntimeTargetKey = `${AgentRuntimeTargetPlatform}-${AgentRuntimeTargetArch}`;
 
 export const CODEX_APP_SERVER_REQUIRED_ARTIFACTS: readonly [
@@ -7,18 +7,22 @@ export const CODEX_APP_SERVER_REQUIRED_ARTIFACTS: readonly [
   "bin/codex",
   "bin/codex-code-mode-host",
   "codex-path/rg",
-  "codex-resources/zsh/bin/zsh",
 ];
 export const OFFICIAL_CODEX_MACOS_SIGNING_TEAM_ID: "2DC432GLL2";
 
-export interface AgentRuntimeBuild {
+export type CodexReleaseTargetKey = "darwin-arm64" | `${"linux" | "win32"}-${"arm64" | "x64"}`;
+
+export interface CodexReleaseArchive {
   archiveSha256: string;
   archiveSize: number;
   assetName: string;
-  entrypointSha256: string;
-  runtimeMetadataSha256: string;
   targetTriple: string;
   url: string;
+}
+
+export interface AgentRuntimeBuild extends CodexReleaseArchive {
+  entrypointSha256: string;
+  runtimeMetadataSha256: string;
 }
 
 export interface CodexSchemaToolAsset {
@@ -32,7 +36,8 @@ export interface CodexSchemaToolAsset {
 
 export interface CodexAppServerReleaseLock {
   appServerRuntimeVersion: string;
-  builds: Record<AgentRuntimeTargetKey, AgentRuntimeBuild>;
+  builds: Record<CodexReleaseTargetKey, CodexReleaseArchive> &
+    Record<AgentRuntimeTargetKey, AgentRuntimeBuild>;
   notices: {
     licensePath: string;
     licenseSha256: string;

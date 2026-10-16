@@ -38,7 +38,7 @@ import {
   type SparkleFileIdentity,
 } from "./sparkle-manifest";
 import type { MacArchitecture } from "./bundle";
-import { parseReleaseBundleManifest } from "./bundle";
+import { parseReleaseBundleManifest, RELEASE_BUNDLE_SCHEMA_VERSION } from "./bundle";
 import { verifySparkleAppcastContract } from "./sparkle-appcast-contract";
 
 const SPARKLE_NAMESPACE = "http://www.andymatuschak.org/xml-namespaces/sparkle";
@@ -364,7 +364,7 @@ const verifyDeltaRoundTrip = (options: {
   readonly delta: SparkleDeltaIdentity;
   readonly workingDirectory: string;
 }): void => {
-  const sourceZipName = `Nodex-${options.delta.fromVersion}-${options.delta.name.endsWith("-arm64.delta") ? "arm64" : "x64"}.zip`;
+  const sourceZipName = `Nodex-${options.delta.fromVersion}-arm64.zip`;
   const sourceZip = findFileRecursively(options.workingDirectory, sourceZipName);
   const deltaPath = findFileRecursively(options.workingDirectory, options.delta.name);
   if (!sourceZip || !deltaPath)
@@ -384,7 +384,7 @@ const verifyDeltaRoundTrip = (options: {
 export function selectLatestSparkleHistoryAppcast(paths: readonly string[]): string | null {
   const candidates: Array<{ readonly buildVersion: string; readonly path: string }> = [];
   for (const candidatePath of paths) {
-    const nameMatch = /^Nodex-(.+)-appcast-(?:arm64|x64)\.xml$/u.exec(path.basename(candidatePath));
+    const nameMatch = /^Nodex-(.+)-appcast-arm64\.xml$/u.exec(path.basename(candidatePath));
     if (!nameMatch) continue;
     if (!existsSync(candidatePath)) {
       try {
@@ -580,8 +580,8 @@ export function readSparkleHistoryManifest(filePath: string): readonly string[] 
 
 export async function runSparkleFinalizeCli(args: ReadonlyMap<string, string>): Promise<void> {
   const architecture = args.get("arch");
-  if (architecture !== "arm64" && architecture !== "x64") {
-    throw new Error("Sparkle --arch must be arm64 or x64.");
+  if (architecture !== "arm64") {
+    throw new Error("Sparkle --arch must be arm64.");
   }
   const required = (name: string): string => {
     const value = args.get(name)?.trim();
@@ -715,7 +715,7 @@ export function fetchSparkleHistory(options: {
     const rawBundle = JSON.parse(readFileSync(bundlePath, "utf8")) as {
       readonly schemaVersion?: unknown;
     };
-    if (rawBundle.schemaVersion !== 2) {
+    if (rawBundle.schemaVersion !== RELEASE_BUNDLE_SCHEMA_VERSION) {
       rmSync(releaseRoot, { force: true, recursive: true });
       continue;
     }
@@ -812,8 +812,8 @@ export function fetchSparkleHistory(options: {
 
 export function runSparkleHistoryCli(args: ReadonlyMap<string, string>): void {
   const architecture = args.get("arch");
-  if (architecture !== "arm64" && architecture !== "x64") {
-    throw new Error("Sparkle history --arch must be arm64 or x64.");
+  if (architecture !== "arm64") {
+    throw new Error("Sparkle history --arch must be arm64.");
   }
   const required = (name: string): string => {
     const value = args.get(name)?.trim();

@@ -32,6 +32,7 @@
     "typecheck": "tsc-rs --noEmit"
   },
   "dependencies": {
+    "@nodex/effect-codex-app-server": "workspace:*",
     "@t3tools/shared": "workspace:*",
     "effect": "4.0.3"
   },

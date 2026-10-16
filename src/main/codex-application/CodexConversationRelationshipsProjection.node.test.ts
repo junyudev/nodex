@@ -167,6 +167,8 @@ describe("CodexConversationRelationshipsProjection", () => {
           items: [
             {
               type: "subAgentActivity",
+              model: null,
+              reasoningEffort: null,
               id: "activity",
               kind: "started",
               agentThreadId: "child",
@@ -246,6 +248,8 @@ describe("CodexConversationRelationshipsProjection", () => {
         items: [
           {
             type: "subAgentActivity",
+            model: null,
+            reasoningEffort: null,
             id: "resident-activity",
             kind: "started",
             agentThreadId: "resident-child",
@@ -260,6 +264,8 @@ describe("CodexConversationRelationshipsProjection", () => {
         items: [
           {
             type: "subAgentActivity",
+            model: null,
+            reasoningEffort: null,
             id: "live-activity",
             kind: "started",
             agentThreadId: "live-child",
@@ -338,6 +344,8 @@ test("all lifecycle activity establishes membership while messages never do", ()
       {
         items: ["started", "completed", "interrupted", "interacted"].map((kind) => ({
           type: "subAgentActivity",
+          model: null,
+          reasoningEffort: null,
           kind,
           agentThreadId: kind,
         })),

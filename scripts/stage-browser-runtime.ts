@@ -294,6 +294,7 @@ function parseCliOptions(argv: string[]): StageBrowserRuntimeOptions {
     !appServerRuntimeVersion ||
     !appServerSourceCommit ||
     (targetArch !== "arm64" && targetArch !== "x64") ||
+    (targetPlatform === "darwin" && targetArch !== "arm64") ||
     (targetPlatform !== "darwin" && targetPlatform !== "linux" && targetPlatform !== "win32")
   ) {
     throw new Error(
@@ -301,7 +302,7 @@ function parseCliOptions(argv: string[]): StageBrowserRuntimeOptions {
         "--app-server-runtime-version <version> --app-server-source-commit <commit> " +
         "--app-server-protocol-schema-fingerprint <sha256> " +
         "--app-server-entrypoint-sha256 <sha256> --target-platform <platform> " +
-        "--target-arch <arm64|x64>",
+        "--target-arch <arch> (macOS requires arm64)",
     );
   }
   return {

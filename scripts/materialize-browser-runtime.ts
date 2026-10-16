@@ -268,14 +268,10 @@ function parseCliOptions(argv: string[]): MaterializeBrowserRuntimeOptions {
   const outputPath = values.get("--out");
   const targetArch = values.get("--target-arch");
   const targetPlatform = values.get("--target-platform");
-  if (
-    !outputPath ||
-    (targetArch !== "arm64" && targetArch !== "x64") ||
-    targetPlatform !== "darwin"
-  ) {
+  if (!outputPath || targetArch !== "arm64" || targetPlatform !== "darwin") {
     throw new Error(
       "Usage: materialize-browser-runtime.ts --target-platform darwin " +
-        "--target-arch <arm64|x64> --out <directory> [--lock <lock.json>] " +
+        "--target-arch <arm64> --out <directory> [--lock <lock.json>] " +
         "[--cache <directory>] [--archive <tar.gz>]",
     );
   }

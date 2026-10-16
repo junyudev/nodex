@@ -20,7 +20,7 @@ import { materializeSparkleRuntime, verifySparkleToolchain } from "./materialize
 
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
-export type SparkleRuntimeArchitecture = "arm64" | "x64";
+export type SparkleRuntimeArchitecture = "arm64";
 export type SparkleRuntimeChannel = "disabled" | "stable" | "nightly";
 
 export interface SparkleRuntimeManifest {
@@ -112,7 +112,7 @@ export function verifyStagedSparkleRuntime(
   ) {
     throw new Error("Staged Sparkle bridge must be an executable regular file.");
   }
-  const expectedMachArchitecture = expected.architecture === "arm64" ? "arm64" : "x86_64";
+  const expectedMachArchitecture = expected.architecture;
   const architectures = readMachArchitectures(bridgePath);
   if (architectures.length !== 1 || architectures[0] !== expectedMachArchitecture) {
     throw new Error(`Sparkle bridge architecture mismatch: ${architectures.join(", ")}.`);
@@ -284,12 +284,12 @@ function parseCliOptions(argv: readonly string[]): BuildSparkleBridgeOptions {
     values.get("--toolchain") ??
     path.join(repositoryRoot, ".generated", "sparkle-toolchain", "2.9.4");
   if (
-    (architecture !== "arm64" && architecture !== "x64") ||
+    architecture !== "arm64" ||
     (channel !== "disabled" && channel !== "stable" && channel !== "nightly") ||
     !outputPath
   ) {
     throw new Error(
-      "Usage: build-sparkle-bridge.ts --arch <arm64|x64> " +
+      "Usage: build-sparkle-bridge.ts --arch <arm64> " +
         "--channel <disabled|stable|nightly> --out <runtime-directory>.",
     );
   }

@@ -278,10 +278,7 @@ export async function buildMacDistribution(options: {
   const distDirectory = join(cwd, "dist");
   const zipPath = join(distDirectory, `Nodex-${version}-${options.architecture}.zip`);
   const dmgPath = join(distDirectory, `Nodex-${version}-${options.architecture}.dmg`);
-  const packagedAppDirectory = join(
-    distDirectory,
-    options.architecture === "arm64" ? "mac-arm64" : "mac",
-  );
+  const packagedAppDirectory = join(distDirectory, "mac-arm64");
   const packagedAppPath = appAtRoot(packagedAppDirectory);
   rmSync(zipPath, { force: true });
   runTask(cwd, "/usr/bin/ditto", [

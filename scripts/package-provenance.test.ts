@@ -250,7 +250,7 @@ const writeAgentRuntime = (root: string, resources: string): string => {
   const canonicalLockPath = path.resolve("resources/agent-runtime/codex-app-server.lock.json");
   const lock = JSON.parse(fs.readFileSync(canonicalLockPath, "utf8")) as {
     builds: Record<
-      "darwin-arm64" | "darwin-x64",
+      "darwin-arm64",
       {
         archiveSha256: string;
         archiveSize: number;
@@ -289,7 +289,6 @@ const writeAgentRuntime = (root: string, resources: string): string => {
     ["bin/codex", { contents: Buffer.from("app-server\n"), executable: true }],
     ["bin/codex-code-mode-host", { contents: Buffer.from("code-mode\n"), executable: true }],
     ["codex-path/rg", { contents: Buffer.from("ripgrep\n"), executable: true }],
-    ["codex-resources/zsh/bin/zsh", { contents: Buffer.from("zsh\n"), executable: true }],
     ["third-party/codex/LICENSE", { contents: Buffer.from("license\n"), executable: false }],
     ["third-party/codex/NOTICE", { contents: Buffer.from("notice\n"), executable: false }],
   ]);

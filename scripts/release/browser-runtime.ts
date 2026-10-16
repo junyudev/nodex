@@ -79,21 +79,14 @@ export function browserRuntimeReleaseArguments(options: {
   readonly arm64Path: string;
   readonly repo: string;
   readonly tag: string;
-  readonly x64Path: string;
 }): readonly string[] {
   if (!/^browser-runtime-v\d+(?:\.\d+)+$/.test(options.tag)) {
     throw new Error("Browser runtime tag must use browser-runtime-v<version>.");
   }
   const arm64Path = resolve(options.arm64Path);
-  const x64Path = resolve(options.x64Path);
-  for (const [architecture, filePath] of [
-    ["arm64", arm64Path],
-    ["x64", x64Path],
-  ] as const) {
-    const stats = lstatSync(filePath);
-    if (!stats.isFile() || stats.isSymbolicLink() || !basename(filePath).includes(architecture)) {
-      throw new Error(`Browser runtime ${architecture} archive is invalid.`);
-    }
+  const stats = lstatSync(arm64Path);
+  if (!stats.isFile() || stats.isSymbolicLink() || !basename(arm64Path).includes("arm64")) {
+    throw new Error("Browser runtime arm64 archive is invalid.");
   }
   return [
     "release",
@@ -116,10 +109,9 @@ export type BrowserRuntimePublishOptions = {
   readonly lockPath: string;
   readonly repo: string;
   readonly tag: string;
-  readonly x64Path: string;
 };
 
-/** Proves the two published bytes are the exact complete closures named by the release lock. */
+/** Proves the published bytes are the exact complete closure named by the release lock. */
 export async function verifyBrowserRuntimePublishInput(
   options: BrowserRuntimePublishOptions,
 ): Promise<void> {
@@ -130,32 +122,19 @@ export async function verifyBrowserRuntimePublishInput(
   }
 
   const arm64Path = resolve(options.arm64Path);
-  const x64Path = resolve(options.x64Path);
-  if (
-    basename(arm64Path) !== lock.assets["darwin-arm64"].assetName ||
-    basename(x64Path) !== lock.assets["darwin-x64"].assetName
-  ) {
+  if (basename(arm64Path) !== lock.assets["darwin-arm64"].assetName) {
     throw new Error("Browser runtime archive names do not match their release lock.");
   }
 
   const verificationRoot = mkdtempSync(join(tmpdir(), "nodex-browser-runtime-publish-"));
   try {
-    await Promise.all([
-      materializeBrowserRuntime({
-        archivePath: arm64Path,
-        lockPath,
-        outputPath: join(verificationRoot, "arm64"),
-        targetArch: "arm64",
-        targetPlatform: "darwin",
-      }),
-      materializeBrowserRuntime({
-        archivePath: x64Path,
-        lockPath,
-        outputPath: join(verificationRoot, "x64"),
-        targetArch: "x64",
-        targetPlatform: "darwin",
-      }),
-    ]);
+    await materializeBrowserRuntime({
+      archivePath: arm64Path,
+      lockPath,
+      outputPath: join(verificationRoot, "arm64"),
+      targetArch: "arm64",
+      targetPlatform: "darwin",
+    });
   } finally {
     rmSync(verificationRoot, { force: true, recursive: true });
   }
@@ -170,10 +149,7 @@ export async function publishBrowserRuntime(options: BrowserRuntimePublishOption
       { sha256: asset.archiveSha256, size: asset.archiveSize },
     ]),
   );
-  const pathsByName = new Map([
-    [basename(options.arm64Path), resolve(options.arm64Path)],
-    [basename(options.x64Path), resolve(options.x64Path)],
-  ]);
+  const pathsByName = new Map([[basename(options.arm64Path), resolve(options.arm64Path)]]);
   const latestBefore = JSON.parse(run(["api", `repos/${options.repo}/releases/latest`])) as {
     readonly tag_name?: unknown;
   };

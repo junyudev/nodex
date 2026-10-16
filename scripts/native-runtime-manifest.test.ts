@@ -59,7 +59,7 @@ const manifest = {
 };
 
 describe("native runtime manifest", () => {
-  test("keeps Cargo and both macOS linkers on the product deployment target", () => {
+  test("keeps Cargo and the macOS linker on the product deployment target", () => {
     const config = parseToml(readFileSync(".cargo/config.toml", "utf8"));
 
     expect(config).toMatchObject({
@@ -68,16 +68,12 @@ describe("native runtime manifest", () => {
         "aarch64-apple-darwin": {
           rustflags: ["-C", "link-arg=-mmacosx-version-min=15.0"],
         },
-        "x86_64-apple-darwin": {
-          rustflags: ["-C", "link-arg=-mmacosx-version-min=15.0"],
-        },
       },
     });
   });
 
   test("maps package architectures to valid Swift target triples", () => {
     expect(swiftTargetForNativeRuntime("arm64")).toBe("arm64-apple-macos15.0");
-    expect(swiftTargetForNativeRuntime("x64")).toBe("x86_64-apple-macos15.0");
   });
 
   test("accepts the complete architecture-bound package inventory", () => {

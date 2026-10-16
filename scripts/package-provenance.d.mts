@@ -29,7 +29,7 @@ export interface PackagedBuildProvenance {
   };
   readonly provenanceId: string;
   readonly target: {
-    readonly arch: "arm64" | "x64";
+    readonly arch: "arm64";
     readonly platform: "darwin";
   };
 }
@@ -48,7 +48,7 @@ export function writePackagedBuildProvenance(
 export function verifyPackagedBuildProvenance(
   appPath: string,
   options?: PackagedBuildProvenanceOptions & {
-    readonly expectedArch?: "arm64" | "x64";
+    readonly expectedArch?: "arm64";
     readonly expectedPreparedManifestPath?: string;
   },
 ): PackagedBuildProvenance;

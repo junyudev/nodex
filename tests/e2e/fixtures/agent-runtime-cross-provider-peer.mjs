@@ -14,7 +14,12 @@ const home = process.env.NODEX_TEST_CROSS_PROVIDER_HOME;
 if (!home) throw new Error("The native peer requires its owned fixture home");
 const record = (event) => fs.appendFileSync(path.join(home, "native.jsonl"), `${JSON.stringify({ kind, ...event })}\n`);
 const emit = (value) => process.stdout.write(`${JSON.stringify(value)}\n`);
-const argument = (name) => process.argv[process.argv.indexOf(name) + 1];
+const argument = (name) => {
+  const inline = process.argv.find((arg) => arg.startsWith(`${name}=`));
+  if (inline !== undefined) return inline.slice(name.length + 1);
+  const index = process.argv.indexOf(name);
+  return index < 0 ? undefined : process.argv[index + 1];
+};
 const load = () => {
   try { return JSON.parse(fs.readFileSync(path.join(home, "codex-state.json"), "utf8")); }
   catch { return { threads: {} }; }
@@ -31,12 +36,12 @@ const config = Object.fromEntries([
   "web_search", "tools", "instructions", "developer_instructions", "compact_prompt", "model_reasoning_effort", "model_reasoning_summary",
   "model_verbosity", "service_tier", "analytics", "apps", "browser_use", "computer_use", "desktop",
 ].map((key) => [key, null]));
-const nativeSessionId = process.argv.includes("--resume") ? argument("--resume") : process.argv.includes("--session-id") ? argument("--session-id") : randomUUID();
+const nativeSessionId = argument("--resume") ?? argument("--session-id") ?? randomUUID();
 let claudeServer;
 let claudeRunning = false;
 let claudeHooks = {};
 const hookRequests = new Map();
-const model = process.argv.includes("--model") ? argument("--model") : "claude-sonnet-5-5";
+const model = argument("--model") ?? "claude-sonnet-5-5";
 const notify = (method, params) => emit({ method, params });
 const nativeThread = (id, cwd) => ({
   id, cwd, name: null, preview: "Native fixture", ephemeral: false, modelProvider: "openai",
@@ -308,7 +313,7 @@ async function handleClaude(message) {
   }
   if (message.type !== "user") return;
   const prompt = typeof message.message.content === "string" ? message.message.content : message.message.content.filter((value) => value.type === "text").map((value) => value.text).join("\n");
-  record({ event: "prompt", prompt, nativeSessionId, resumed: process.argv.includes("--resume") });
+  record({ event: "prompt", prompt, nativeSessionId, resumed: argument("--resume") !== undefined });
   claudeRunning = true;
   emit({ type: "system", subtype: "init", session_id: nativeSessionId, uuid: randomUUID(), cwd: process.cwd(), tools: [], mcp_servers: [], model, permissionMode: "bypassPermissions", slash_commands: [], agents: [], skills: [], plugins: [], apiKeySource: "none", claude_code_version: "2.1.284", output_style: "default", fast_mode_state: "off" });
   if (prompt.startsWith("Hold child")) return;
@@ -330,7 +335,7 @@ async function handleClaude(message) {
   claudeResult(await answer(prompt, claudeServer));
 }
 
-record({ event: "launch", nativeSessionId, resumed: process.argv.includes("--resume") });
+record({ event: "launch", nativeSessionId, resumed: argument("--resume") !== undefined });
 const input = readline.createInterface({ input: process.stdin });
 for await (const line of input) {
   const message = JSON.parse(line);

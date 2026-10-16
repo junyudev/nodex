@@ -451,7 +451,8 @@ export class MacDictationNativeHelperClient {
       })
         .trim()
         .split(/\s+/);
-      const expected = process.arch === "arm64" ? "arm64" : "x86_64";
+      if (process.arch !== "arm64") throw new Error("Dictation requires Apple silicon");
+      const expected = "arm64";
       if (!architectures.includes(expected)) {
         throw new Error(`Dictation helper does not contain the ${expected} architecture`);
       }

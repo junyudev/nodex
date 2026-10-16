@@ -142,6 +142,8 @@ describe("native dedicated creation and subagent leaves", () => {
   test("the real started leaf consumes later lifecycle state and carries the captured source host/root", async () => {
     const start: ThreadItem = {
       type: "subAgentActivity",
+      model: null,
+      reasoningEffort: null,
       id: "start",
       kind: "started",
       agentThreadId: "child",
@@ -183,6 +185,8 @@ describe("native dedicated creation and subagent leaves", () => {
   test("native parent Turn identity selects current directory metadata without borrowing the layout key", async () => {
     const start: ThreadItem = {
       type: "subAgentActivity",
+      model: null,
+      reasoningEffort: null,
       id: "start",
       kind: "started",
       agentThreadId: "child",

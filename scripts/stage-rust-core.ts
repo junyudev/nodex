@@ -32,11 +32,9 @@ interface Arguments {
 
 const TARGETS = {
   arm64: "aarch64-apple-darwin",
-  x64: "x86_64-apple-darwin",
 } as const satisfies Readonly<Record<TargetArchitecture, string>>;
 
-const expectedFileArchitecture = (architecture: TargetArchitecture): string =>
-  architecture === "arm64" ? "arm64" : "x86_64";
+const expectedFileArchitecture = (architecture: TargetArchitecture): string => architecture;
 
 const parseArguments = (argv: readonly string[]): Arguments => {
   let targetArch: TargetArchitecture | null = null;
@@ -46,7 +44,7 @@ const parseArguments = (argv: readonly string[]): Arguments => {
   for (let index = 0; index < argv.length; index += 1) {
     const value = argv[index];
     const next = argv[index + 1];
-    if (value === "--target-arch" && (next === "arm64" || next === "x64")) {
+    if (value === "--target-arch" && next === "arm64") {
       targetArch = next;
       index += 1;
       continue;
@@ -66,7 +64,7 @@ const parseArguments = (argv: readonly string[]): Arguments => {
 
   if (!targetArch || !outputRoot) {
     throw new Error(
-      "usage: stage-rust-core --target-arch arm64|x64 --out <.generated/path> [--sign-identity <identity>]",
+      "usage: stage-rust-core --target-arch arm64 --out <.generated/path> [--sign-identity <identity>]",
     );
   }
   return { targetArch, outputRoot, signIdentity };

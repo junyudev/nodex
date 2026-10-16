@@ -123,6 +123,8 @@ describe("normalized transcript mutation projection", () => {
     const appended = mutate(before, (draft) => {
       draft.turns[0]!.items.push({
         type: "subAgentActivity",
+        model: null,
+        reasoningEffort: null,
         id: "activity",
         kind: "completed",
         agentThreadId: "child",

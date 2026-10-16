@@ -99,10 +99,7 @@ export function assertCodexRuntimeMatchesReleaseLock(
   metadata: BundledAgentRuntimeMetadata,
   lock: CodexAppServerReleaseLock,
 ): void {
-  if (
-    metadata.targetPlatform !== "darwin" ||
-    (metadata.targetArch !== "arm64" && metadata.targetArch !== "x64")
-  ) {
+  if (metadata.targetPlatform !== "darwin" || metadata.targetArch !== "arm64") {
     throw new Error("Bundled Codex runtime target is unsupported by the release lock");
   }
   const build = lock.builds[`darwin-${metadata.targetArch}`];
@@ -190,7 +187,7 @@ export function verifyCodexRuntime(input: {
       for (const artifact of bundle.manifest.artifacts) {
         if (artifact.kind === "data" || artifact.architecture === "any") continue;
         const artifactPath = join(bundle.rootPath, ...artifact.path.split("/"));
-        const expectedArchitecture = bundle.manifest.targetArch === "x64" ? "x86_64" : "arm64";
+        const expectedArchitecture = "arm64";
         const architectures = readMacosArchitectures(artifactPath);
         const architectureMatches =
           artifact.architecture === "universal"

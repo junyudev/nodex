@@ -31,7 +31,6 @@ describe("Agent runtime macOS platform contract", () => {
         { artifactPath: "bin/codex", executable: true },
         { artifactPath: "bin/codex-code-mode-host", executable: true },
         { artifactPath: "codex-path/rg", executable: false },
-        { artifactPath: "codex-resources/zsh/bin/zsh", executable: true },
       ]),
     ).toThrow("codex-path/rg");
 
@@ -41,7 +40,6 @@ describe("Agent runtime macOS platform contract", () => {
         { artifactPath: "bin/codex", executable: true },
         { artifactPath: "bin/codex-code-mode-host", executable: true },
         { artifactPath: "codex-path/rg", executable: true },
-        { artifactPath: "codex-resources/zsh/bin/zsh", executable: true },
       ]),
     ).not.toThrow();
   });
@@ -94,13 +92,13 @@ describe("Agent runtime macOS platform contract", () => {
       assertAgentRuntimeMacosPlatformContract({
         inspections: [
           {
-            artifactPath: "codex-resources/zsh/bin/zsh",
-            lipoOutput: "x86_64",
+            artifactPath: "codex-resources/voice/bin/codex-voice-host",
+            lipoOutput: "arm64",
             otoolOutput: buildVersion("15.1"),
           },
         ],
         productMinimumMacos: "15.0",
-        targetArch: "x64",
+        targetArch: "arm64",
       }),
     ).toThrow("newer than the product minimum");
 
@@ -109,12 +107,12 @@ describe("Agent runtime macOS platform contract", () => {
         inspections: [
           {
             artifactPath: "bin/codex-code-mode-host",
-            lipoOutput: "x86_64",
+            lipoOutput: "arm64",
             otoolOutput: buildVersion("14.0"),
           },
         ],
         productMinimumMacos: "15.0",
-        targetArch: "x64",
+        targetArch: "arm64",
       }),
     ).not.toThrow();
   });

@@ -101,7 +101,7 @@ function assertExtractedTree(rootPath: string, currentPath = rootPath): void {
 }
 
 function currentTargetKey(): AgentRuntimeTargetKey {
-  if (process.platform !== "darwin" || (process.arch !== "arm64" && process.arch !== "x64")) {
+  if (process.platform !== "darwin" || process.arch !== "arm64") {
     throw new Error(
       `Codex schema generation is unsupported on ${process.platform}/${process.arch}`,
     );

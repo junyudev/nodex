@@ -1312,7 +1312,6 @@ export async function runNativeProbe(arguments_ = parseProbeArguments()) {
         "native drag and resize gestures because the harness does not synthesize pointer input",
         "Reduce Motion transition parity unless the read-only system preference was already enabled",
         "a packaged and notarized Nodex distribution because the host is a disposable Electron copy signed only for this test",
-        "x86_64 behavior because this run requires a native x86_64 host and machine",
         "pre-exit NSPanel object deallocation; stop hides and detaches the panels before the disposable process exits",
         ...(classification.signedHost
           ? []

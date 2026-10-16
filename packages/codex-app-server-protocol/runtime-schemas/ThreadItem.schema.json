@@ -1697,6 +1697,24 @@
         "kind": {
           "$ref": "#/definitions/definitions__SubAgentActivityKind"
         },
+        "model": {
+          "description": "Resolved model at sub-agent creation; absent from older records and other activities.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "reasoningEffort": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/definitions__ReasoningEffort"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Resolved reasoning effort at sub-agent creation, when known."
+        },
         "type": {
           "enum": [
             "subAgentActivity"

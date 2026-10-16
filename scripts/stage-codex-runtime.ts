@@ -84,14 +84,14 @@ export function resolveCodexRuntimeTarget(
   targetPlatform: AgentRuntimeTargetPlatform,
   targetArch: AgentRuntimeTargetArch,
 ): AgentRuntimeTarget {
-  if (targetPlatform !== "darwin") {
+  if (targetPlatform !== "darwin" || targetArch !== "arm64") {
     throw new Error(`Unsupported agent runtime target: ${targetPlatform}/${targetArch}`);
   }
   return {
     targetPlatform,
     targetArch,
     targetKey: `darwin-${targetArch}`,
-    targetTriple: targetArch === "arm64" ? "aarch64-apple-darwin" : "x86_64-apple-darwin",
+    targetTriple: "aarch64-apple-darwin",
   };
 }
 
@@ -760,7 +760,7 @@ function parseCliOptions(argv: string[]): CliOptions {
       continue;
     }
     if (arg === "--target-arch") {
-      if (nextValue !== "arm64" && nextValue !== "x64") {
+      if (nextValue !== "arm64") {
         throw new Error(`Unsupported --target-arch value: ${nextValue ?? "<missing>"}`);
       }
       targetArch = nextValue;
@@ -794,7 +794,7 @@ function parseCliOptions(argv: string[]): CliOptions {
 
   if (!targetPlatform || !targetArch || !outputPath) {
     throw new Error(
-      "Usage: stage-codex-runtime.ts --target-platform darwin --target-arch <arm64|x64> " +
+      "Usage: stage-codex-runtime.ts --target-platform darwin --target-arch arm64 " +
         "--out <dir> [--archive <tar.gz>] [--browser-runtime-source <dir>] " +
         "[--reuse-existing]",
     );

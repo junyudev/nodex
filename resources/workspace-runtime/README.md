@@ -5,10 +5,9 @@ Node runtime. `load_workspace_dependencies` returns their actual executable path
 library versions. No system Python, user site-packages, or package installation is used
 to satisfy this capability.
 
-`workspace-runtime.lock.json` pins both macOS architectures, the Python archive, every
+`workspace-runtime.lock.json` pins the Apple silicon macOS Python archive, every
 transitive wheel, download sizes and SHA-256 digests. Stage an architecture with
-`vp run materialize:workspace-runtime:mac:arm64` or
-`vp run materialize:workspace-runtime:mac:x64`. Downloads use the immutable artifact cache;
+`vp run materialize:workspace-runtime:mac:arm64`. Downloads use the immutable artifact cache;
 validated files are extracted into a private staging directory and atomically replace
 `.generated/workspace-runtime/<arch>`. A staged manifest records the source lock digest
 and every regular file. Python file aliases are materialized as regular files, so the
@@ -24,10 +23,9 @@ security sandbox. Write generated artifacts to the task workspace, never the run
 
 ## Updating and verifying
 
-Resolve wheel-only distributions for CPython 3.13 and both supported macOS architectures.
-Keep each library version identical across architectures and retain its full transitive
-closure. Fetch artifact URLs and hashes from the exact Python release and PyPI release
-metadata, update the distribution ID and lock, and restage both architectures. Do not
+Resolve wheel-only distributions for CPython 3.13 on Apple silicon macOS.
+Retain every library's full transitive closure. Fetch artifact URLs and hashes from the exact Python release and PyPI release
+metadata, update the distribution ID and lock, and restage the runtime. Do not
 replace a missing binary wheel with a local source build or omit a dependency silently.
 
 Run each staged interpreter with `-I -B scripts/fixtures/workspace-runtime/documents.py

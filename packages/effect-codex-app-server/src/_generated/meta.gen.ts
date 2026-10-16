@@ -65,8 +65,10 @@ export const CLIENT_REQUEST_METHODS = {
   "thread/searchOccurrences": "thread/searchOccurrences",
   "thread/loaded/list": "thread/loaded/list",
   "thread/read": "thread/read",
+  "thread/readState/update": "thread/readState/update",
   "thread/turns/list": "thread/turns/list",
   "thread/items/list": "thread/items/list",
+  "thread/items/read": "thread/items/read",
   "thread/inject_items": "thread/inject_items",
   "skills/list": "skills/list",
   "skills/extraRoots/set": "skills/extraRoots/set",
@@ -201,6 +203,7 @@ export const SERVER_NOTIFICATION_METHODS = {
   error: "error",
   "thread/started": "thread/started",
   "thread/status/changed": "thread/status/changed",
+  "thread/readState/changed": "thread/readState/changed",
   "thread/archived": "thread/archived",
   "thread/deleted": "thread/deleted",
   "thread/unarchived": "thread/unarchived",
@@ -353,8 +356,10 @@ export interface ClientRequestParamsByMethod {
   readonly "thread/searchOccurrences": CodexSchema.V2ThreadSearchOccurrencesParams;
   readonly "thread/loaded/list": CodexSchema.V2ThreadLoadedListParams;
   readonly "thread/read": CodexSchema.V2ThreadReadParams;
+  readonly "thread/readState/update": CodexSchema.V2ThreadReadStateUpdateParams;
   readonly "thread/turns/list": CodexSchema.V2ThreadTurnsListParams;
   readonly "thread/items/list": CodexSchema.V2ThreadItemsListParams;
+  readonly "thread/items/read": CodexSchema.V2ThreadItemsReadParams;
   readonly "thread/inject_items": CodexSchema.V2ThreadInjectItemsParams;
   readonly "skills/list": CodexSchema.V2SkillsListParams;
   readonly "skills/extraRoots/set": CodexSchema.V2SkillsExtraRootsSetParams;
@@ -533,8 +538,10 @@ export interface ClientRequestResponsesByMethod {
   readonly "thread/searchOccurrences": CodexSchema.V2ThreadSearchOccurrencesResponse;
   readonly "thread/loaded/list": CodexSchema.V2ThreadLoadedListResponse;
   readonly "thread/read": CodexSchema.V2ThreadReadResponse;
+  readonly "thread/readState/update": CodexSchema.V2ThreadReadStateUpdateResponse;
   readonly "thread/turns/list": CodexSchema.V2ThreadTurnsListResponse;
   readonly "thread/items/list": CodexSchema.V2ThreadItemsListResponse;
+  readonly "thread/items/read": CodexSchema.V2ThreadItemsReadResponse;
   readonly "thread/inject_items": CodexSchema.V2ThreadInjectItemsResponse;
   readonly "skills/list": CodexSchema.V2SkillsListResponse;
   readonly "skills/extraRoots/set": CodexSchema.V2SkillsExtraRootsSetResponse;
@@ -683,6 +690,7 @@ export interface ServerNotificationParamsByMethod {
   readonly error: CodexSchema.V2ErrorNotification;
   readonly "thread/started": CodexSchema.V2ThreadStartedNotification;
   readonly "thread/status/changed": CodexSchema.V2ThreadStatusChangedNotification;
+  readonly "thread/readState/changed": CodexSchema.V2ThreadReadStateChangedNotification;
   readonly "thread/archived": CodexSchema.V2ThreadArchivedNotification;
   readonly "thread/deleted": CodexSchema.V2ThreadDeletedNotification;
   readonly "thread/unarchived": CodexSchema.V2ThreadUnarchivedNotification;
@@ -830,8 +838,10 @@ export const CLIENT_REQUEST_PARAMS = {
   "thread/searchOccurrences": CodexSchema.V2ThreadSearchOccurrencesParams,
   "thread/loaded/list": CodexSchema.V2ThreadLoadedListParams,
   "thread/read": CodexSchema.V2ThreadReadParams,
+  "thread/readState/update": CodexSchema.V2ThreadReadStateUpdateParams,
   "thread/turns/list": CodexSchema.V2ThreadTurnsListParams,
   "thread/items/list": CodexSchema.V2ThreadItemsListParams,
+  "thread/items/read": CodexSchema.V2ThreadItemsReadParams,
   "thread/inject_items": CodexSchema.V2ThreadInjectItemsParams,
   "skills/list": CodexSchema.V2SkillsListParams,
   "skills/extraRoots/set": CodexSchema.V2SkillsExtraRootsSetParams,
@@ -1015,8 +1025,10 @@ export const CLIENT_REQUEST_RESPONSES = {
   "thread/searchOccurrences": CodexSchema.V2ThreadSearchOccurrencesResponse,
   "thread/loaded/list": CodexSchema.V2ThreadLoadedListResponse,
   "thread/read": CodexSchema.V2ThreadReadResponse,
+  "thread/readState/update": CodexSchema.V2ThreadReadStateUpdateResponse,
   "thread/turns/list": CodexSchema.V2ThreadTurnsListResponse,
   "thread/items/list": CodexSchema.V2ThreadItemsListResponse,
+  "thread/items/read": CodexSchema.V2ThreadItemsReadResponse,
   "thread/inject_items": CodexSchema.V2ThreadInjectItemsResponse,
   "skills/list": CodexSchema.V2SkillsListResponse,
   "skills/extraRoots/set": CodexSchema.V2SkillsExtraRootsSetResponse,
@@ -1168,6 +1180,7 @@ export const SERVER_NOTIFICATION_PARAMS = {
   error: CodexSchema.V2ErrorNotification,
   "thread/started": CodexSchema.V2ThreadStartedNotification,
   "thread/status/changed": CodexSchema.V2ThreadStatusChangedNotification,
+  "thread/readState/changed": CodexSchema.V2ThreadReadStateChangedNotification,
   "thread/archived": CodexSchema.V2ThreadArchivedNotification,
   "thread/deleted": CodexSchema.V2ThreadDeletedNotification,
   "thread/unarchived": CodexSchema.V2ThreadUnarchivedNotification,

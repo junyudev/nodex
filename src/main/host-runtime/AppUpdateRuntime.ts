@@ -55,7 +55,7 @@ export interface AppUpdateRuntimeOptions {
 
 const createUpdaterPlatform = (config: MainConfigValue): MacAppUpdaterPlatform | null => {
   if (!config.isPackaged || config.platform !== "darwin") return null;
-  if (config.arch !== "arm64" && config.arch !== "x64") return null;
+  if (config.arch !== "arm64") return null;
   return createPackagedMacAppUpdaterPlatform({
     applicationBundlePath: resolve(config.resourcesPath, "..", ".."),
     architecture: config.arch,

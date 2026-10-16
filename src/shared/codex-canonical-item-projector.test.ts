@@ -109,6 +109,8 @@ function generatedItems(): readonly CodexCanonicalItem[] {
     },
     {
       type: "subAgentActivity",
+      model: null,
+      reasoningEffort: null,
       id: "subagent",
       kind: "interacted",
       agentThreadId: "agent-thread",
@@ -996,6 +998,8 @@ describe("subagent activity lifecycle", () => {
       const views = project([
         materializeCodexCanonicalProtocolItem({
           type: "subAgentActivity",
+          model: null,
+          reasoningEffort: null,
           id: "activity",
           kind,
           agentThreadId: "child",

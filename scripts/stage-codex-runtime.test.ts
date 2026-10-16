@@ -62,7 +62,7 @@ function fixture(
     ["bin/codex", "app-server"],
     ["bin/codex-code-mode-host", "code-mode"],
     ["codex-path/rg", "rg"],
-    ["codex-resources/zsh/bin/zsh", "zsh"],
+    ["codex-resources/voice/bin/codex-voice-host", "voice-host"],
   ]);
   for (const [relativePath, contents] of files) {
     if (relativePath === input.omitArtifact) continue;
@@ -119,6 +119,14 @@ function fixture(
     targetTriple,
     url: `https://github.com/${upstream.repository}/releases/download/${upstream.tag}/${assetName}`,
   });
+  const managedBuild = (targetTriple: string) => {
+    const {
+      entrypointSha256: _entrypoint,
+      runtimeMetadataSha256: _metadata,
+      ...archive
+    } = build(targetTriple, `codex-package-${targetTriple}.tar.gz`);
+    return archive;
+  };
   const schemaTool = (targetTriple: string, assetName: string, entrypoint: string) => ({
     archiveSha256: HASH,
     archiveSize: 1,
@@ -131,7 +139,10 @@ function fixture(
     appServerRuntimeVersion: "0.152.0",
     builds: {
       "darwin-arm64": build("aarch64-apple-darwin", "codex-package-aarch64-apple-darwin.tar.gz"),
-      "darwin-x64": build("x86_64-apple-darwin", "codex-package-x86_64-apple-darwin.tar.gz"),
+      "linux-arm64": managedBuild("aarch64-unknown-linux-musl"),
+      "linux-x64": managedBuild("x86_64-unknown-linux-musl"),
+      "win32-arm64": managedBuild("aarch64-pc-windows-msvc"),
+      "win32-x64": managedBuild("x86_64-pc-windows-msvc"),
     },
     notices: {
       licensePath: "resources/third-party/codex/LICENSE",
@@ -148,11 +159,6 @@ function fixture(
           "aarch64-apple-darwin",
           "codex-aarch64-apple-darwin.tar.gz",
           "codex-aarch64-apple-darwin",
-        ),
-        "darwin-x64": schemaTool(
-          "x86_64-apple-darwin",
-          "codex-x86_64-apple-darwin.tar.gz",
-          "codex-x86_64-apple-darwin",
         ),
       },
     },

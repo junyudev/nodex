@@ -133,6 +133,11 @@ Restored Codex history uses its captured native home and the current configured 
 The Host obtains current credentials privately for ephemeral login and refresh; execution receipts,
 configuration and formal native history captures never persist those credentials.
 
+Codex uses the repository release lock for managed installation and the shared
+`@nodex/effect-codex-app-server` schema and RPC exports. The repository
+`codex:schemas:generate` and `codex:schemas:verify` commands cover both Desktop and
+Agent Runtime consumers; this package has no separate protocol pin or generator.
+
 The package retains provider replay fixtures and lifecycle, transaction, recovery,
 delegation and bounded-transport verification. Run focused tests with this package's
 `vite.config.ts`. Its strict TypeScript configuration is independent of Electron

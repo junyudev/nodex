@@ -13,7 +13,7 @@ interface SparkleNativeBinding {
       readonly hostBundlePath: string;
     },
     emit: (event: unknown) => void,
-  ) => { readonly architecture: "arm64" | "x64"; readonly sparkleVersion: string };
+  ) => { readonly architecture: "arm64"; readonly sparkleVersion: string };
   readonly installDownloadedUpdate: () => void;
   readonly setFeedUrl: (feedUrl: string) => void;
 }

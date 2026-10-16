@@ -25,6 +25,12 @@ import * as ServerConfig from "../config.ts";
 import * as ModelManifest from "./ModelManifest.ts";
 import { resolveProviderCompatibility } from "./providerCompatibility.ts";
 
+import releaseLockJson from "../../../../resources/agent-runtime/codex-app-server.lock.json" with { type: "json" };
+import {
+  parseCodexAppServerReleaseLock,
+  type CodexReleaseArchive,
+} from "../../../../src/shared/codex-app-server-release-lock.mjs";
+
 const DRIVER = ProviderDriverKind.make("codex");
 const Version = Schema.String.check(Schema.isPattern(/^\d+\.\d+\.\d+(?:-[a-zA-Z0-9.-]+)?$/u));
 const ActiveRelease = Schema.Struct({ version: Version });
@@ -49,53 +55,23 @@ export interface CodexReleaseAsset {
   readonly sha256: string;
   readonly archiveBytes: number;
 }
-// Official complete packages retain the code-mode, search, and resource companions.
-const RELEASES: Readonly<Record<string, CodexReleaseAsset>> = {
-  "darwin-arm64": {
-    version: "0.156.1",
-    target: "aarch64-apple-darwin",
-    url: "https://github.com/openai/codex/releases/download/rust-v0.156.1/codex-package-aarch64-apple-darwin.tar.gz",
-    sha256: "fea42f9625091f011e38f059da974d52e57ba31831648bb1c7f0b1a385fde547",
-    archiveBytes: 127394863,
-  },
-  "darwin-x64": {
-    version: "0.156.1",
-    target: "x86_64-apple-darwin",
-    url: "https://github.com/openai/codex/releases/download/rust-v0.156.1/codex-package-x86_64-apple-darwin.tar.gz",
-    sha256: "618dbcd55419fa041871f777a14b107ceb3fe2d339ef81e21e6ab5374420dc71",
-    archiveBytes: 138670455,
-  },
-  "linux-arm64": {
-    version: "0.156.1",
-    target: "aarch64-unknown-linux-musl",
-    url: "https://github.com/openai/codex/releases/download/rust-v0.156.1/codex-package-aarch64-unknown-linux-musl.tar.gz",
-    sha256: "fdd47ed6aade0360796fd3f6f95a45096f327c15e19e8c7339f9dc5633041786",
-    archiveBytes: 136933361,
-  },
-  "linux-x64": {
-    version: "0.156.1",
-    target: "x86_64-unknown-linux-musl",
-    url: "https://github.com/openai/codex/releases/download/rust-v0.156.1/codex-package-x86_64-unknown-linux-musl.tar.gz",
-    sha256: "8b711520beddf385467b8da4d2c93736637c6ba1e46811cf0d8606b7c490b6f6",
-    archiveBytes: 145976992,
-  },
-  "win32-arm64": {
-    version: "0.156.1",
-    target: "aarch64-pc-windows-msvc",
-    url: "https://github.com/openai/codex/releases/download/rust-v0.156.1/codex-package-aarch64-pc-windows-msvc.tar.gz",
-    sha256: "85994caecdc7609c49fd585c1cdb5677fa9d0acbf789650cff23a13afc9505db",
-    archiveBytes: 142037952,
-  },
-  "win32-x64": {
-    version: "0.156.1",
-    target: "x86_64-pc-windows-msvc",
-    url: "https://github.com/openai/codex/releases/download/rust-v0.156.1/codex-package-x86_64-pc-windows-msvc.tar.gz",
-    sha256: "a2e017db9807e6a2269a26fea0e1d9546469cef4d472a33016bc9f3ad7d3b733",
-    archiveBytes: 153839991,
-  },
+// Desktop bundles and managed installations share the exact official release lock.
+const releaseLock = parseCodexAppServerReleaseLock(releaseLockJson);
+const releaseBuilds: Readonly<Record<string, CodexReleaseArchive>> = releaseLock.builds;
+export const resolveCodexReleaseAsset = (
+  platform: NodeJS.Platform,
+  arch: string,
+): CodexReleaseAsset | null => {
+  const build = releaseBuilds[`${platform}-${arch}`];
+  if (!build) return null;
+  return {
+    version: releaseLock.appServerRuntimeVersion,
+    target: build.targetTriple,
+    url: build.url,
+    sha256: build.archiveSha256,
+    archiveBytes: build.archiveSize,
+  };
 };
-export const resolveCodexReleaseAsset = (platform: NodeJS.Platform, arch: string) =>
-  RELEASES[`${platform}-${arch}`] ?? null;
 export class CodexInstallationError extends Schema.TaggedError<CodexInstallationError>()(
   "CodexInstallationError",
   {

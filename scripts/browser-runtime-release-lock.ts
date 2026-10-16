@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 
 export type BrowserRuntimeTargetPlatform = "darwin";
-export type BrowserRuntimeTargetArch = "arm64" | "x64";
+export type BrowserRuntimeTargetArch = "arm64";
 export type BrowserRuntimeTargetKey = `${BrowserRuntimeTargetPlatform}-${BrowserRuntimeTargetArch}`;
 
 export type BrowserRuntimeReleaseAsset = {
@@ -35,7 +35,7 @@ export type BrowserRuntimeReleaseLock = {
 };
 
 const SHA256_PATTERN = /^[a-f0-9]{64}$/u;
-const EXPECTED_TARGET_KEYS = ["darwin-arm64", "darwin-x64"] as const;
+const EXPECTED_TARGET_KEYS = ["darwin-arm64"] as const;
 
 function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -111,9 +111,7 @@ export function parseBrowserRuntimeReleaseLock(value: unknown): BrowserRuntimeRe
   }
   const actualTargetKeys = Object.keys(value.assets).sort();
   if (JSON.stringify(actualTargetKeys) !== JSON.stringify(EXPECTED_TARGET_KEYS)) {
-    throw new Error(
-      "Browser runtime release lock must contain exactly darwin-arm64 and darwin-x64 assets",
-    );
+    throw new Error("Browser runtime release lock must contain exactly darwin-arm64 asset");
   }
 
   const repository = requireString(value.repository, "repository");
@@ -126,7 +124,6 @@ export function parseBrowserRuntimeReleaseLock(value: unknown): BrowserRuntimeRe
   }
   const assets = {
     "darwin-arm64": parseAsset(value.assets["darwin-arm64"], "assets.darwin-arm64"),
-    "darwin-x64": parseAsset(value.assets["darwin-x64"], "assets.darwin-x64"),
   };
   for (const targetKey of EXPECTED_TARGET_KEYS) {
     const asset = assets[targetKey];

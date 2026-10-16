@@ -1,7 +1,7 @@
 import { assert, it } from "@effect/vitest";
 import * as Schema from "effect/Schema";
 
-import * as CodexSchema from "./schema.ts";
+import * as CodexSchema from "effect-codex-app-server/schema";
 
 const isGetAccountResponse = Schema.is(CodexSchema.V2GetAccountResponse);
 const isThreadReadResponse = Schema.is(CodexSchema.V2ThreadReadResponse);
@@ -201,7 +201,7 @@ it("accepts Codex misalignment policy errors for thread responses", () => {
   );
 });
 
-it("accepts account plan slugs newer than the pinned protocol", () => {
+it("accepts account plans declared by the pinned protocol", () => {
   const planTypes = [
     "self_serve_business_prolite",
     "ent26",
@@ -209,7 +209,7 @@ it("accepts account plan slugs newer than the pinned protocol", () => {
     "edu_plus",
     "edu_pro",
     "promax",
-    "some_future_plan",
+    "unknown",
   ];
 
   for (const planType of planTypes) {

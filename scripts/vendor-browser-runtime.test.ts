@@ -57,9 +57,9 @@ describe("readCuaRuntimeVersion", () => {
 
 test("records the selected Chrome host architecture's actual deployment target", () => {
   expect(
-    readMachOMinimumMacosVersion("/signed/ChatGPT for Chrome", "x64", (command, args) => {
+    readMachOMinimumMacosVersion("/signed/ChatGPT for Chrome", "arm64", (command, args) => {
       expect(command).toBe("/usr/bin/otool");
-      expect(args).toEqual(["-arch", "x86_64", "-l", "/signed/ChatGPT for Chrome"]);
+      expect(args).toEqual(["-arch", "arm64", "-l", "/signed/ChatGPT for Chrome"]);
       return `
 Load command 8
       cmd LC_VERSION_MIN_MACOSX

@@ -25,6 +25,14 @@ function makeLock(): Record<string, unknown> {
       url: releaseUrl(assetName),
     };
   };
+  const managedBuild = (targetTriple: string) => {
+    const {
+      entrypointSha256: _entrypoint,
+      runtimeMetadataSha256: _metadata,
+      ...archive
+    } = build(targetTriple);
+    return archive;
+  };
   const schemaTool = (targetTriple: string) => {
     const assetName = `codex-${targetTriple}.tar.gz`;
     return {
@@ -40,7 +48,10 @@ function makeLock(): Record<string, unknown> {
     appServerRuntimeVersion: "0.152.0",
     builds: {
       "darwin-arm64": build("aarch64-apple-darwin"),
-      "darwin-x64": build("x86_64-apple-darwin"),
+      "linux-arm64": managedBuild("aarch64-unknown-linux-musl"),
+      "linux-x64": managedBuild("x86_64-unknown-linux-musl"),
+      "win32-arm64": managedBuild("aarch64-pc-windows-msvc"),
+      "win32-x64": managedBuild("x86_64-pc-windows-msvc"),
     },
     notices: {
       licensePath: "resources/third-party/codex/LICENSE",
@@ -61,7 +72,6 @@ function makeLock(): Record<string, unknown> {
       sha256: HASH,
       tools: {
         "darwin-arm64": schemaTool("aarch64-apple-darwin"),
-        "darwin-x64": schemaTool("x86_64-apple-darwin"),
       },
     },
     requiredArtifacts: [...CODEX_APP_SERVER_REQUIRED_ARTIFACTS],
@@ -119,7 +129,7 @@ test("requires exact supported targets and the canonical runtime artifacts", () 
   const builds = extraTarget.builds as Record<string, unknown>;
   builds["darwin-arm64-debug"] = builds["darwin-arm64"];
   expect(() => parseCodexAppServerReleaseLock(extraTarget)).toThrow(
-    "exactly darwin-arm64 and darwin-x64",
+    "the five supported release targets",
   );
 
   const missingArtifact = makeLock();
@@ -188,6 +198,23 @@ test("requires the reviewed OpenAI signing team and canonical schema tool assets
   const wrongEntrypoint = makeLock();
   const entrypointTools = (wrongEntrypoint.protocolSchema as Record<string, unknown>)
     .tools as Record<string, Record<string, unknown>>;
-  entrypointTools["darwin-x64"]!.entrypoint = "codex";
+  entrypointTools["darwin-arm64"]!.entrypoint = "codex";
   expect(() => parseCodexAppServerReleaseLock(wrongEntrypoint)).toThrow("schema tool entrypoint");
+});
+
+test("rejects managed installation archives from another release or target", () => {
+  const wrongRelease = makeLock();
+  const releaseBuilds = wrongRelease.builds as Record<string, Record<string, unknown>>;
+  releaseBuilds["linux-x64"]!.url = String(releaseBuilds["linux-x64"]!.url).replace(
+    TAG,
+    "rust-v0.151.0",
+  );
+  expect(() => parseCodexAppServerReleaseLock(wrongRelease)).toThrow(
+    "locked official Codex release",
+  );
+
+  const wrongTarget = makeLock();
+  const targetBuilds = wrongTarget.builds as Record<string, Record<string, unknown>>;
+  targetBuilds["win32-arm64"]!.targetTriple = "x86_64-pc-windows-msvc";
+  expect(() => parseCodexAppServerReleaseLock(wrongTarget)).toThrow("targetTriple");
 });

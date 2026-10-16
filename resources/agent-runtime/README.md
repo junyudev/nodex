@@ -1,7 +1,7 @@
 # Codex app-server runtime
 
 Nodex embeds the unmodified, officially published full Codex CLI package for
-each supported macOS architecture. The canonical inputs and all expected
+Apple silicon Macs. The canonical inputs and all expected
 digests live in [`codex-app-server.lock.json`](codex-app-server.lock.json).
 
 ## Runtime authority
@@ -10,7 +10,9 @@ The lock identifies one exact `openai/codex` release by version, annotated tag,
 peeled source commit, and official `codex-package_SHA256SUMS` asset. Each target
 then binds the matching official `codex-package-*.tar.gz` URL, byte
 length, archive SHA-256, CLI entrypoint SHA-256, staged metadata SHA-256, target
-triple, and package manifest.
+triple, and package manifest. The same lock provides archive identities for managed
+installations on macOS, Linux, and Windows; the installer derives its release
+version and URLs directly from that authority.
 
 Nodex does not patch or compile `codex-rs`, mirror the package into a second
 release, or silently fall back to another runtime. A missing official full
@@ -25,7 +27,6 @@ Every package includes these runtime entrypoints and resources:
 - `bin/codex`
 - `bin/codex-code-mode-host`
 - `codex-path/rg`
-- `codex-resources/zsh/bin/zsh`
 
 The release lock also enumerates the complete voice runtime, shared libraries,
 plugins, manifests, and license files supplied by that release. Staging requires
@@ -62,8 +63,8 @@ Staging is fail-closed. It:
 
 All bundled executables must match the requested architecture and support a
 macOS deployment target no newer than Nodex's macOS 15 product minimum. An
-upstream binary built for an older compatible macOS version is valid; the
-bundled zsh currently establishes the effective macOS 15 floor.
+upstream binary built for an older compatible macOS version is valid. Shell
+execution uses the platform shell supplied by the host.
 
 Run the local runtime gates after staging:
 
@@ -72,9 +73,7 @@ vp run test:agent-runtime-conformance
 vp run test:browser-runtime-conformance
 ```
 
-On arm64, the macOS release gate also runs the Browser Computer Use probe. The
-x64 package is staged and validated on arm64 CI, but executable conformance for
-x64 must run on an Intel host or an equivalent trusted target runner.
+The macOS release gate also runs the Browser Computer Use probe on Apple silicon.
 
 ## Upgrading Codex
 
@@ -82,11 +81,12 @@ Upgrade runtime provenance separately from protocol or product changes:
 
 1. Select one reviewed `rust-v<version>` tag and verify its peeled source
    commit.
-2. Require official arm64 and x64
+2. Require the official macOS arm64 package and the Linux/Windows arm64 and x64
    `codex-package-<target>.tar.gz` assets plus
    `codex-package_SHA256SUMS`.
 3. Compare the checksum-manifest entry, GitHub asset digest, downloaded archive
-   digest, and byte length for both targets.
+   digest, and byte length for the macOS arm64 package; bind every managed
+   installation archive to the same checksum manifest.
 4. Update a copy of the lock with the new upstream identity and official asset
    evidence.
 5. Generate a candidate without mutating the canonical lock:
@@ -95,7 +95,6 @@ Upgrade runtime provenance separately from protocol or product changes:
    vp run agent-runtime:relock -- \
      --base-lock /path/to/reviewed-base-lock.json \
      --arm64 /path/to/official-arm64.tar.gz \
-     --x64 /path/to/official-x64.tar.gz \
      --out /path/to/candidate-lock.json
    ```
 
@@ -104,7 +103,7 @@ Upgrade runtime provenance separately from protocol or product changes:
 7. Regenerate the app-server protocol from the pinned official Codex CLI schema
    tool, review the schema diff, and update the Browser exact-pair manifest.
 8. Stage and run the basic, multi-agent, handoff, and Browser conformance gates
-   for both target packages before merging.
+   for the macOS arm64 package before merging.
    Review the basic probe's model IDs and visible default, and verify that loaded
    Thread metadata agrees with its configured model and reasoning effort.
 

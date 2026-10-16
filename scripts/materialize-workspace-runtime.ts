@@ -41,7 +41,7 @@ export const workspaceRuntimeLockSchema = z.strictObject({
   distributionId: z.string(),
   pythonVersion: z.string().regex(/^3\.13\.\d+$/u),
   pythonRelease: z.string(),
-  targets: z.strictObject({ arm64: targetSchema, x64: targetSchema }),
+  targets: z.strictObject({ arm64: targetSchema }),
 });
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const digest = (file: string) => createHash("sha256").update(readFileSync(file)).digest("hex");
@@ -129,7 +129,7 @@ export function collectWorkspaceRuntimeArtifacts(
 }
 
 export async function materializeWorkspaceRuntime(options: {
-  readonly targetArch: "arm64" | "x64";
+  readonly targetArch: "arm64";
   readonly outputPath: string;
   readonly projectRoot?: string;
   readonly lockPath?: string;
@@ -217,7 +217,7 @@ export async function materializeWorkspaceRuntime(options: {
 async function main(): Promise<void> {
   const args = process.argv.slice(2);
   const arch = args[args.indexOf("--target-arch") + 1];
-  if (arch !== "arm64" && arch !== "x64") throw new Error("Use --target-arch arm64|x64");
+  if (arch !== "arm64") throw new Error("Use --target-arch arm64");
   const outputIndex = args.indexOf("--out");
   const outputPath =
     outputIndex >= 0

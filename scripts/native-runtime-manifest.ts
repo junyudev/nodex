@@ -1,12 +1,11 @@
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 
-export type NativeRuntimeArchitecture = "arm64" | "x64";
+export type NativeRuntimeArchitecture = "arm64";
 
 export const swiftTargetForNativeRuntime = (
   architecture: NativeRuntimeArchitecture,
-): "arm64-apple-macos15.0" | "x86_64-apple-macos15.0" =>
-  architecture === "arm64" ? "arm64-apple-macos15.0" : "x86_64-apple-macos15.0";
+): "arm64-apple-macos15.0" => `${architecture}-apple-macos15.0`;
 
 export type NativeRuntimeBinaryName =
   | "nodex"
@@ -28,7 +27,7 @@ export interface NativeRuntimeManifest {
   readonly binaries: readonly NativeRuntimeBinaryManifest[];
   readonly minimumMacOS: "15.0";
   readonly productVersion: string;
-  readonly rustTarget: "aarch64-apple-darwin" | "x86_64-apple-darwin";
+  readonly rustTarget: "aarch64-apple-darwin";
   readonly schemaVersion: 4;
   readonly targetArch: NativeRuntimeArchitecture;
   readonly targetPlatform: "darwin";
@@ -99,11 +98,10 @@ export function parseNativeRuntimeManifest(value: unknown): NativeRuntimeManifes
   if (value.targetPlatform !== "darwin") {
     throw new Error("Unsupported native runtime target platform");
   }
-  if (value.targetArch !== "arm64" && value.targetArch !== "x64") {
+  if (value.targetArch !== "arm64") {
     throw new Error("Unsupported native runtime target architecture");
   }
-  const expectedRustTarget =
-    value.targetArch === "arm64" ? "aarch64-apple-darwin" : "x86_64-apple-darwin";
+  const expectedRustTarget = "aarch64-apple-darwin";
   if (value.rustTarget !== expectedRustTarget) {
     throw new Error("Native runtime Rust target does not match its architecture");
   }

@@ -53,24 +53,24 @@ describe("local macOS app installer", () => {
   });
 
   test("packages a fresh app in one unique generated directory for the selected architecture", () => {
-    const first = createFreshLocalMacPackagePlan("/tmp/repository", "x64", "operation-a");
-    const second = createFreshLocalMacPackagePlan("/tmp/repository", "x64", "operation-b");
+    const first = createFreshLocalMacPackagePlan("/tmp/repository", "arm64", "operation-a");
+    const second = createFreshLocalMacPackagePlan("/tmp/repository", "arm64", "operation-b");
 
     expect(first.outputRoot).toBe("/tmp/repository/.generated/local-install/operation-a");
     expect(first.appPath).toBe(
-      "/tmp/repository/.generated/local-install/operation-a/mac/Nodex.app",
+      "/tmp/repository/.generated/local-install/operation-a/mac-arm64/Nodex.app",
     );
     expect(second.outputRoot).not.toBe(first.outputRoot);
     expect(first.commands.map(({ arguments: arguments_ }) => arguments_)).toEqual([
       ["run", "build"],
-      ["run", "stage:native-runtime:mac:x64"],
+      ["run", "stage:native-runtime:mac:arm64"],
       ["exec", "tsx", "scripts/prepared-electron-build.ts", "verify"],
       [
         "exec",
         "electron-builder",
         "--mac",
         "dir",
-        "--x64",
+        "--arm64",
         "--publish",
         "never",
         "--config.mac.notarize=false",

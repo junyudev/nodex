@@ -519,8 +519,6 @@ static napi_value Initialize(napi_env env, napi_callback_info info) {
     napi_value architectureValue;
 #if defined(__arm64__)
     napi_create_string_utf8(env, "arm64", NAPI_AUTO_LENGTH, &architectureValue);
-#elif defined(__x86_64__)
-    napi_create_string_utf8(env, "x64", NAPI_AUTO_LENGTH, &architectureValue);
 #else
 #error Unsupported macOS architecture
 #endif

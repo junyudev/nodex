@@ -3,17 +3,19 @@ export const CODEX_APP_SERVER_REQUIRED_ARTIFACTS = Object.freeze([
   "bin/codex",
   "bin/codex-code-mode-host",
   "codex-path/rg",
-  "codex-resources/zsh/bin/zsh",
 ]);
 
 export const OFFICIAL_CODEX_MACOS_SIGNING_TEAM_ID = "2DC432GLL2";
 
 const SHA256 = /^[a-f0-9]{64}$/u;
 const COMMIT = /^[a-f0-9]{40}$/u;
-const TARGETS = ["darwin-arm64", "darwin-x64"];
+const TARGETS = ["darwin-arm64"];
 const TARGET_TRIPLES = {
   "darwin-arm64": "aarch64-apple-darwin",
-  "darwin-x64": "x86_64-apple-darwin",
+  "linux-arm64": "aarch64-unknown-linux-musl",
+  "linux-x64": "x86_64-unknown-linux-musl",
+  "win32-arm64": "aarch64-pc-windows-msvc",
+  "win32-x64": "x86_64-pc-windows-msvc",
 };
 const isObject = (value) => typeof value === "object" && value !== null && !Array.isArray(value);
 const hasExactKeys = (value, expected) =>
@@ -49,11 +51,10 @@ const relativePath = (value, label) => {
 
 const targetMap = (value, label, parse) => {
   if (!isObject(value) || !hasExactKeys(value, TARGETS)) {
-    throw new Error(`${label} must contain exactly darwin-arm64 and darwin-x64`);
+    throw new Error(`${label} must contain exactly darwin-arm64`);
   }
   return {
     "darwin-arm64": parse(value["darwin-arm64"], `${label}.darwin-arm64`, "darwin-arm64"),
-    "darwin-x64": parse(value["darwin-x64"], `${label}.darwin-x64`, "darwin-x64"),
   };
 };
 
@@ -149,41 +150,59 @@ export function parseCodexAppServerReleaseLock(value) {
     );
   }
 
-  const builds = targetMap(value.builds, "builds", (entry, label, key) => {
-    if (
-      !isObject(entry) ||
-      !hasExactKeys(entry, [
-        "archiveSha256",
-        "archiveSize",
-        "assetName",
-        "entrypointSha256",
-        "runtimeMetadataSha256",
-        "targetTriple",
-        "url",
-      ])
-    ) {
-      throw new Error(`Invalid Codex app-server release lock ${label}`);
-    }
-    const asset = officialAsset({
-      label,
-      repository: "openai/codex",
-      tag: upstreamTag,
-      value: entry,
-    });
-    const targetTriple = string(entry.targetTriple, `${label}.targetTriple`);
-    if (targetTriple !== TARGET_TRIPLES[key]) {
-      throw new Error(`Invalid Codex app-server release lock ${label}.targetTriple`);
-    }
-    if (asset.assetName !== `codex-package-${targetTriple}.tar.gz`) {
-      throw new Error(`Codex app-server release asset name differs from runtime build ${key}`);
-    }
-    return {
-      ...asset,
-      entrypointSha256: sha(entry.entrypointSha256, `${label}.entrypointSha256`),
-      runtimeMetadataSha256: sha(entry.runtimeMetadataSha256, `${label}.runtimeMetadataSha256`),
-      targetTriple,
-    };
-  });
+  const releaseTargets = Object.keys(TARGET_TRIPLES);
+  if (!isObject(value.builds) || !hasExactKeys(value.builds, releaseTargets)) {
+    throw new Error("Codex builds must contain exactly the five supported release targets");
+  }
+  const builds = Object.fromEntries(
+    releaseTargets.map((key) => {
+      const entry = value.builds[key];
+      const label = `builds.${key}`;
+      const isDesktopBuild = TARGETS.includes(key);
+      if (
+        !isObject(entry) ||
+        !hasExactKeys(entry, [
+          "archiveSha256",
+          "archiveSize",
+          "assetName",
+          ...(isDesktopBuild ? ["entrypointSha256", "runtimeMetadataSha256"] : []),
+          "targetTriple",
+          "url",
+        ])
+      ) {
+        throw new Error(`Invalid Codex app-server release lock ${label}`);
+      }
+      const asset = officialAsset({
+        label,
+        repository: "openai/codex",
+        tag: upstreamTag,
+        value: entry,
+      });
+      const targetTriple = string(entry.targetTriple, `${label}.targetTriple`);
+      if (targetTriple !== TARGET_TRIPLES[key]) {
+        throw new Error(`Invalid Codex app-server release lock ${label}.targetTriple`);
+      }
+      if (asset.assetName !== `codex-package-${targetTriple}.tar.gz`) {
+        throw new Error(`Codex app-server release asset name differs from runtime build ${key}`);
+      }
+      return [
+        key,
+        {
+          ...asset,
+          ...(isDesktopBuild
+            ? {
+                entrypointSha256: sha(entry.entrypointSha256, `${label}.entrypointSha256`),
+                runtimeMetadataSha256: sha(
+                  entry.runtimeMetadataSha256,
+                  `${label}.runtimeMetadataSha256`,
+                ),
+              }
+            : {}),
+          targetTriple,
+        },
+      ];
+    }),
+  );
 
   if (
     !isObject(value.protocolSchema) ||

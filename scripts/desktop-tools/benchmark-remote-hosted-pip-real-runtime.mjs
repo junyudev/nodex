@@ -179,7 +179,7 @@ function verifyKeyArtifact(runtimeRoot, manifest, artifactPath, expectedTeamId) 
     throw new Error(`Runtime artifact checksum changed: ${artifactPath}`);
   }
   const architecture = command("/usr/bin/lipo", ["-archs", absolutePath]);
-  const expectedArchitecture = manifest.targetArch === "x64" ? "x86_64" : "arm64";
+  const expectedArchitecture = "arm64";
   if (!architecture.split(/\s+/u).includes(expectedArchitecture)) {
     throw new Error(`Runtime artifact architecture changed: ${artifactPath}`);
   }
@@ -197,7 +197,7 @@ function inspectRuntime(runtimeRoot) {
   if (manifest.targetPlatform !== "darwin") {
     throw new Error(`Runtime target ${manifest.targetPlatform} is not a macOS closure`);
   }
-  if (manifest.targetArch !== process.arch) {
+  if (manifest.targetArch !== "arm64" || process.arch !== "arm64") {
     throw new Error(`Runtime target ${manifest.targetArch} does not match host ${process.arch}`);
   }
   const nativePip = manifest.capabilities.nativePip;

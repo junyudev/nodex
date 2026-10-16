@@ -32,11 +32,6 @@ function makeLock(): Record<string, unknown> {
   return {
     assets: {
       "darwin-arm64": asset,
-      "darwin-x64": {
-        ...asset,
-        assetName: "browser-runtime-x64.tar.gz",
-        url: "https://github.com/example/nodex/releases/download/browser-runtime-v26.727.40816/browser-runtime-x64.tar.gz",
-      },
     },
     browserPluginVersion: "26.727.40816",
     codexCompatibilityVersion: "0.144.5",
@@ -53,7 +48,7 @@ function makeLock(): Record<string, unknown> {
 }
 
 describe("parseBrowserRuntimeReleaseLock", () => {
-  test("accepts an exact dual-architecture release contract", () => {
+  test("accepts an exact Apple Silicon release contract", () => {
     const lock = parseBrowserRuntimeReleaseLock(makeLock());
 
     expect(lock.assets["darwin-arm64"].runtimeVersions.cuaRuntime).toBe("0.0.6/build");
@@ -62,11 +57,9 @@ describe("parseBrowserRuntimeReleaseLock", () => {
 
   test("rejects locks that silently omit a supported architecture", () => {
     const lock = makeLock();
-    delete (lock.assets as Record<string, unknown>)["darwin-x64"];
+    delete (lock.assets as Record<string, unknown>)["darwin-arm64"];
 
-    expect(() => parseBrowserRuntimeReleaseLock(lock)).toThrow(
-      "must contain exactly darwin-arm64 and darwin-x64",
-    );
+    expect(() => parseBrowserRuntimeReleaseLock(lock)).toThrow("must contain exactly darwin-arm64");
   });
 
   test("rejects non-HTTPS release assets", () => {
@@ -86,7 +79,7 @@ describe("parseBrowserRuntimeReleaseLock", () => {
       resolveCodexAppServerReleaseLockPath(projectRoot),
     );
 
-    for (const targetArch of ["arm64", "x64"] as const) {
+    for (const targetArch of ["arm64"] as const) {
       const asset = browserLock.assets[`darwin-${targetArch}`];
       const appServer = {
         entrypointSha256: agentLock.builds[`darwin-${targetArch}`].entrypointSha256,

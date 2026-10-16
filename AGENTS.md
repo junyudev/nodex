@@ -61,7 +61,7 @@ It ships as an Electron desktop app plus a CLI/HTTP API backed by SQLite.
 - Standard tests: `vp run test`
 - Source gate: `vp run verify:source` (`vp run test:all` is an alias)
 - macOS runtime gate: `vp run verify:runtime:mac`
-- Signed dual-architecture gate: GitHub `Distribution Rehearsal`
+- Signed macOS arm64 gate: GitHub `Distribution Rehearsal`
 
 ## Runtime and Tooling
 

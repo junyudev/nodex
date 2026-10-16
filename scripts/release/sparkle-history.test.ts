@@ -12,7 +12,7 @@ const TAG = `v${VERSION}`;
 const SHA = "a".repeat(40);
 const DIGEST = "b".repeat(64);
 
-const makeHistory = (root: string, schema: number, corruptDigest: boolean) => {
+const makeHistory = (root: string, schema: number, corruptDigest: boolean, bundleSchema: 2 | 3) => {
   const source = path.join(root, "source");
   mkdirSync(source);
   const fullName = `Nodex-${VERSION}-arm64.zip`;
@@ -57,19 +57,20 @@ const makeHistory = (root: string, schema: number, corruptDigest: boolean) => {
     }),
   );
   const assets = [
-    ...(["arm64", "x64"] as const).flatMap((architecture) =>
-      [
-        [`Nodex-${VERSION}-${architecture}.dmg`, "dmg"],
-        [`Nodex-${VERSION}-${architecture}.zip`, "sparkle-full"],
-        [`Nodex-${VERSION}-appcast-${architecture}.xml`, "sparkle-appcast"],
-        [`Nodex-${VERSION}-update-${architecture}.json`, "sparkle-update-manifest"],
-      ].map(([name, role]) => ({
-        architecture,
-        role,
-        ...(existsSync(path.join(source, name))
-          ? identity(name)
-          : { name, bytes: 1, sha256: DIGEST }),
-      })),
+    ...(bundleSchema === 2 ? (["arm64", "x64"] as const) : (["arm64"] as const)).flatMap(
+      (architecture) =>
+        [
+          [`Nodex-${VERSION}-${architecture}.dmg`, "dmg"],
+          [`Nodex-${VERSION}-${architecture}.zip`, "sparkle-full"],
+          [`Nodex-${VERSION}-appcast-${architecture}.xml`, "sparkle-appcast"],
+          [`Nodex-${VERSION}-update-${architecture}.json`, "sparkle-update-manifest"],
+        ].map(([name, role]) => ({
+          architecture,
+          role,
+          ...(existsSync(path.join(source, name))
+            ? identity(name)
+            : { name, bytes: 1, sha256: DIGEST }),
+        })),
     ),
     { name: "release-identity.json", role: "release-identity", bytes: 1, sha256: DIGEST },
   ];
@@ -81,14 +82,15 @@ const makeHistory = (root: string, schema: number, corruptDigest: boolean) => {
   writeFileSync(
     path.join(source, "release-bundle.json"),
     JSON.stringify({
-      schemaVersion: 2,
+      schemaVersion: bundleSchema,
       sourceSha: SHA,
       sourceTree: SHA,
       version: VERSION,
       tag: TAG,
       assets,
       agentSkills: { manifestSha256: DIGEST, treeSha256: DIGEST },
-      architectures: { arm64: architecture, x64: architecture },
+      architectures:
+        bundleSchema === 2 ? { arm64: architecture, x64: architecture } : { arm64: architecture },
       runtimeLocks: { agentSha256: DIGEST, browserSha256: DIGEST, sparkleSha256: DIGEST },
       releaseIdentity: {
         schemaVersion: 1,
@@ -142,16 +144,25 @@ if (args[0] === "api") {
 };
 
 test.each([
-  { schema: 4, corruptDigest: false },
-  { schema: PACKAGED_BUILD_PROVENANCE_SCHEMA_VERSION, corruptDigest: false },
-  { schema: 4, corruptDigest: true },
+  { schema: 4, corruptDigest: false, bundleSchema: 3 as const },
+  {
+    schema: PACKAGED_BUILD_PROVENANCE_SCHEMA_VERSION,
+    corruptDigest: false,
+    bundleSchema: 3 as const,
+  },
+  {
+    schema: PACKAGED_BUILD_PROVENANCE_SCHEMA_VERSION,
+    corruptDigest: false,
+    bundleSchema: 2 as const,
+  },
+  { schema: 4, corruptDigest: true, bundleSchema: 3 as const },
 ])(
-  "fetches only compatible, digest-verified history: $schema / $corruptDigest",
-  ({ schema, corruptDigest }) => {
+  "fetches only compatible, digest-verified history: $schema / $corruptDigest / bundle $bundleSchema",
+  ({ schema, corruptDigest, bundleSchema }) => {
     const root = mkdtempSync(path.join(tmpdir(), "nodex-sparkle-history-"));
     const previousPath = process.env.PATH;
     try {
-      const fixture = makeHistory(root, schema, corruptDigest);
+      const fixture = makeHistory(root, schema, corruptDigest, bundleSchema);
       process.env.PATH = `${fixture.bin}${path.delimiter}${previousPath}`;
       const output = path.join(root, "history");
       const fetch = () =>
@@ -167,7 +178,7 @@ test.each([
         expect(fetch).toThrow("digest verification");
         return;
       }
-      const compatible = schema === PACKAGED_BUILD_PROVENANCE_SCHEMA_VERSION;
+      const compatible = bundleSchema === 3 && schema === PACKAGED_BUILD_PROVENANCE_SCHEMA_VERSION;
       expect(fetch()).toEqual(compatible ? [path.join(output, VERSION)] : []);
       expect(existsSync(path.join(output, VERSION))).toBe(compatible);
       expect(
@@ -177,7 +188,7 @@ test.each([
           .map((line) => JSON.parse(line)),
       ).toEqual([
         "release-bundle.json",
-        fixture.updateName,
+        ...(bundleSchema === 3 ? [fixture.updateName] : []),
         ...(compatible ? [fixture.fullName, fixture.appcastName] : []),
       ]);
     } finally {

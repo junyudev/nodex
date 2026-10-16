@@ -188,7 +188,7 @@ export function parseSparkleArchitectureUpdateManifest(
   const channel = legacyStable ? "stable" : value.channel;
   if (
     (!legacyStable && value.schemaVersion !== 2) ||
-    (value.architecture !== "arm64" && value.architecture !== "x64") ||
+    value.architecture !== "arm64" ||
     (channel !== "stable" && channel !== "nightly")
   ) {
     throw new Error("Sparkle architecture update manifest version or architecture is invalid.");

@@ -289,6 +289,23 @@ describe("parseBrowserRuntimeManifest", () => {
     expect(parseBrowserRuntimeManifest(makeManifest())).toEqual(makeManifest());
   });
 
+  test("rejects Intel Mac closures while preserving other x64 targets", () => {
+    const manifest = makeManifest();
+    manifest.targetArch = "x64";
+    manifest.artifacts = manifest.artifacts.map((artifact) => ({
+      ...artifact,
+      architecture: artifact.architecture === "arm64" ? "x64" : artifact.architecture,
+    }));
+    manifest.capabilities.computerUse = {
+      reason: "architecture-unsupported",
+      status: "unavailable",
+    };
+
+    expect(parseBrowserRuntimeManifest(manifest)).toBeNull();
+    manifest.targetPlatform = "linux";
+    expect(parseBrowserRuntimeManifest(manifest)).toEqual(manifest);
+  });
+
   test("admits Computer Use through its trusted RPC service without a separate client launcher", () => {
     const manifest = makeManifest();
     if (manifest.capabilities.computerUse.status !== "available") {

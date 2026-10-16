@@ -94,7 +94,8 @@ mac:
   sign: scripts/sign-macos-runtime.mjs
   minimumSystemVersion: 15.0.0
   target:
-    - dmg
+    - target: dmg
+      arch: [arm64]
   artifactName: "${productName}-${version}-${arch}.${ext}"
   category: public.app-category.productivity
   hardenedRuntime: true

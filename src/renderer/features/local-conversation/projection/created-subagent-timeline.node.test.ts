@@ -21,6 +21,8 @@ const activity = (
   child = "child",
 ): Extract<ThreadItem, { type: "subAgentActivity" }> => ({
   type: "subAgentActivity",
+  model: null,
+  reasoningEffort: null,
   id,
   kind,
   agentThreadId: child,

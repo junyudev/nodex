@@ -56,7 +56,7 @@ it.effect("installed SDK discovery reads native intelligence without sending exe
       import {writeFileSync,appendFileSync,existsSync,readFileSync} from "node:fs";
       import {createInterface} from "node:readline";
       const args=process.argv.slice(2);
-      const decode=(flag)=>{const value=args[args.indexOf(flag)+1];if(!args.includes(flag))return undefined;try{return JSON.parse(existsSync(value)?readFileSync(value,"utf8"):value);}catch{return value;}};
+      const decode=(flag)=>{const inline=args.find((arg)=>arg.startsWith(flag+"="));const index=args.indexOf(flag);const value=inline===undefined?(index<0?undefined:args[index+1]):inline.slice(flag.length+1);if(value===undefined)return undefined;try{return JSON.parse(existsSync(value)?readFileSync(value,"utf8"):value);}catch{return value;}};
       writeFileSync(process.env.NODEX_TEST_INVOCATION,JSON.stringify({args,cwd:process.cwd(),settings:decode("--settings"),mcp:decode("--mcp-config"),connector:process.env.ENABLE_CLAUDEAI_MCP_SERVERS,ide:process.env.CLAUDE_CODE_AUTO_CONNECT_IDE,forceTerminal:process.env.FORCE_CODE_TERMINAL}));
       const lines=createInterface({input:process.stdin});
       const settings=decode("--settings")??{};

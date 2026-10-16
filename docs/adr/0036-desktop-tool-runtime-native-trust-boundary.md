@@ -30,13 +30,13 @@ The sealed runtime contains the signed Codex CLI, Node, Node REPL, Browser and
 Chrome plugins, their shared client and service, the Browser peer authorizer,
 Chrome native-messaging host, native PiP bridge, and, when the target supports
 it, the Computer Use plugin, `sky.node`, and signed helper app. The release lock
-and schema-v6 inner manifest bind every file, backend, capability, architecture,
+and inner manifest bind every file, backend, capability, architecture,
 artifact and product operating-system minimum, signing-team expectation, and
 the exact sorted native-addon export set. Runtime loading requires that complete
 set, not only a compatible subset.
 
 Browser, Chrome, native PiP, and Computer Use remain independently gated.
-Browser is available on supported arm64 and x64 macOS closures. Chrome is
+The macOS Desktop Tool runtime supports Apple Silicon. Chrome is
 advertised only while its attested native host and an allowed exact extension
 instance are ready. Computer Use is installed and configured only when its
 architecture and operating-system capability verifies. One unavailable
@@ -124,8 +124,6 @@ reimplemented as renderer state.
 - Chrome reuses the attested Browser client and service but has an independent
   plugin descriptor, readiness lifecycle, native-messaging installation, and
   exact extension-instance focus boundary.
-- Intel builds can ship complete Browser support without carrying or advertising
-  an unsupported Computer Use implementation.
 - Native PiP can remain visible independently of React panel mount state but
   cannot become durable task or Scene authority.
 - ACP and remote Codex execution do not acquire local native control surfaces

@@ -51,7 +51,8 @@ folder and retains at most 64 entries. Native commands and filesystem skills rem
 separate catalogs. Nodex does not add Codex instruction files to Claude configuration.
 The native executable resolves from explicit configuration or Desktop/login-shell PATH;
 credentials are not imported from a login shell. Explicit PATH and profile overrides
-remain authoritative.
+remain authoritative. Nodex's Agent SDK and the selected Claude Code executable are
+updated independently; updating Nodex does not replace that executable.
 
 OpenCode discovery uses its native HTTP metadata connection and pinned SDK. It offers
 models from connected providers and preserves exact provider/model identifiers,

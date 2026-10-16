@@ -6,7 +6,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
-export function buildDeviceCheckBridge(architecture: "arm64" | "x64"): void {
+export function buildDeviceCheckBridge(architecture: "arm64"): void {
   if (process.platform !== "darwin") throw new Error("DeviceCheck bridge requires macOS");
   const electronVersion = (
     JSON.parse(readFileSync(path.join(repositoryRoot, "package.json"), "utf8")) as {
@@ -44,7 +44,7 @@ export function buildDeviceCheckBridge(architecture: "arm64" | "x64"): void {
   );
   const binary = path.join(buildRoot, "build", "Release", "nodex_devicecheck.node");
   const actual = execFileSync("/usr/bin/lipo", ["-archs", binary], { encoding: "utf8" }).trim();
-  if (actual !== (architecture === "arm64" ? "arm64" : "x86_64")) {
+  if (actual !== architecture) {
     throw new Error(`DeviceCheck bridge architecture mismatch: ${actual}`);
   }
   const output = path.join(repositoryRoot, ".generated", "devicecheck-runtime", architecture);
@@ -55,6 +55,6 @@ export function buildDeviceCheckBridge(architecture: "arm64" | "x64"): void {
 
 if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href) {
   const architecture = process.argv[2] ?? process.arch;
-  if (architecture !== "arm64" && architecture !== "x64") throw new Error("Expected arm64 or x64");
+  if (architecture !== "arm64") throw new Error("Expected arm64");
   buildDeviceCheckBridge(architecture);
 }

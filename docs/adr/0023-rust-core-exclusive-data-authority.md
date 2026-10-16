@@ -55,6 +55,6 @@ restoring a verified pre-migration backup with a compatible older build; a
 binary must never open a Store identity it does not explicitly accept.
 
 Module contracts, migration tests, the production bootstrap dependency audit,
-failure matrix, no-Electron-database-handle test, and dual-architecture package
+failure matrix, no-Electron-database-handle test, and macOS arm64 package
 verification are release gates. Host fakes in tests must implement the same
 typed ports rather than instantiate a hidden SQLite authority.

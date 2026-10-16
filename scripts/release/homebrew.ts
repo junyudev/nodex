@@ -7,7 +7,6 @@ export interface HomebrewCaskOptions {
   readonly owner?: string;
   readonly repo?: string;
   readonly version: string;
-  readonly x64Sha256: string;
 }
 
 const normalizeSha = (value: string, label: string): string => {
@@ -19,7 +18,6 @@ const normalizeSha = (value: string, label: string): string => {
 export function generateHomebrewCask(options: HomebrewCaskOptions): string {
   const version = normalizeStableVersion(options.version);
   const arm64 = normalizeSha(options.arm64Sha256, "arm64 checksum");
-  const x64 = normalizeSha(options.x64Sha256, "x64 checksum");
   const owner = options.owner?.trim() || "junyudev";
   const repo = options.repo?.trim() || "nodex";
   const bundleId = options.bundleId?.trim() || "app.jyu.nodex";
@@ -30,16 +28,8 @@ export function generateHomebrewCask(options: HomebrewCaskOptions): string {
 cask "nodex" do
   version "${version}"
 
-  on_arm do
-    sha256 "${arm64}"
-
-    url "${releaseBase}/Nodex-latest-arm64.dmg"
-  end
-  on_intel do
-    sha256 "${x64}"
-
-    url "${releaseBase}/Nodex-latest-x64.dmg"
-  end
+  sha256 "${arm64}"
+  url "${releaseBase}/Nodex-latest-arm64.dmg"
 
   name "Nodex"
   desc "Block-based Agent Orchestrator"
@@ -51,6 +41,7 @@ cask "nodex" do
   end
 
   auto_updates true
+  depends_on arch: :arm64
   depends_on macos: :sequoia
 
   app "Nodex.app"
@@ -68,11 +59,9 @@ export function generateHomebrewCaskFromBundle(bundle: ReleaseBundleManifest): s
   const arm64 = bundle.assets.find(
     (asset) => asset.role === "dmg" && asset.architecture === "arm64",
   );
-  const x64 = bundle.assets.find((asset) => asset.role === "dmg" && asset.architecture === "x64");
-  if (!arm64 || !x64) throw new Error("Release bundle does not contain both canonical DMGs.");
+  if (!arm64) throw new Error("Release bundle does not contain the Apple silicon DMG.");
   return generateHomebrewCask({
     arm64Sha256: arm64.sha256,
     version: bundle.version,
-    x64Sha256: x64.sha256,
   });
 }

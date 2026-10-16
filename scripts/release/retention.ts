@@ -22,10 +22,7 @@ interface RemoteRelease {
 }
 
 const NIGHTLY_TAG = /^v\d+\.\d+\.\d+-nightly\.\d{8}\.[1-9]\d*$/u;
-const NIGHTLY_FEEDS = [
-  "https://nodex.jyu.app/updates/nightly/arm64/appcast.xml",
-  "https://nodex.jyu.app/updates/nightly/x64/appcast.xml",
-] as const;
+const NIGHTLY_FEEDS = ["https://nodex.jyu.app/updates/nightly/arm64/appcast.xml"] as const;
 
 const gh = (args: readonly string[]): string =>
   execFileSync("gh", [...args], {

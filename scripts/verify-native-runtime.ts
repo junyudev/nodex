@@ -195,8 +195,7 @@ export function assertPackagedMacCodeObjectEntitlements(
   }
 }
 
-const expectedFileArchitecture = (architecture: NativeRuntimeArchitecture): string =>
-  architecture === "arm64" ? "arm64" : "x86_64";
+const expectedFileArchitecture = (architecture: NativeRuntimeArchitecture): string => architecture;
 
 const DEFAULT_PREVIOUS_STORE_FIXTURE = resolve(
   dirname(fileURLToPath(import.meta.url)),
@@ -1537,9 +1536,9 @@ const main = Effect.gen(function* () {
     const appPath = readOption(arguments_, "--app-path");
     const targetArch = readOption(arguments_, "--target-arch");
     const expectedVersion = readOption(arguments_, "--expected-version");
-    if (!appPath || !expectedVersion || (targetArch !== "arm64" && targetArch !== "x64")) {
+    if (!appPath || !expectedVersion || targetArch !== "arm64") {
       throw new Error(
-        "usage: verify-native-runtime --app-path <Nodex.app> --target-arch arm64|x64 " +
+        "usage: verify-native-runtime --app-path <Nodex.app> --target-arch arm64 " +
           "--expected-version <semver> [--expected-build-version <build>] " +
           "[--previous-store-fixture <store-v130.db>] [--verify-signatures] " +
           "[--require-developer-id] [--verify-notarization] [--launch-app] " +

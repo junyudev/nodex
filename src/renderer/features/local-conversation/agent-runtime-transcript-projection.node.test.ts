@@ -107,6 +107,27 @@ describe("Runtime application tool presentation", () => {
 });
 
 describe("Runtime delegated task rows", () => {
+  test("created conversations retain their selected model in the transcript", () => {
+    expect(
+      projectAgentRuntimeItem({
+        ...base,
+        type: "thread_created",
+        targetThreadId: "child",
+        targetRunId: "child-run",
+        targetProviderInstanceId: "codex",
+        targetModel: "gpt-6.1-sol",
+      }),
+    ).toEqual({
+      type: "subAgentActivity",
+      id: "item",
+      kind: "started",
+      agentThreadId: "child",
+      agentPath: "child",
+      model: "gpt-6.1-sol",
+      reasoningEffort: null,
+    });
+  });
+
   test("a task reports its own lifecycle instead of a creation outcome", () => {
     const statuses = (
       ["running", "waiting", "completed", "failed", "interrupted", "cancelled"] as const

@@ -168,6 +168,8 @@ describe("native voice work history", () => {
       assistant("a1"),
       {
         type: "subAgentActivity",
+        model: null,
+        reasoningEffort: null,
         id: "child",
         kind: "started",
         agentThreadId: "child-thread",

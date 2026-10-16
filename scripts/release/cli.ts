@@ -193,8 +193,7 @@ const main = async (): Promise<void> => {
   }
   if (command === "record-architecture") {
     const architecture = required(flags, "arch");
-    if (architecture !== "arm64" && architecture !== "x64")
-      throw new Error("--arch must be arm64 or x64.");
+    if (architecture !== "arm64") throw new Error("--arch must be arm64.");
     recordArchitectureBuild({
       appPath: required(flags, "app-path"),
       architecture: architecture as MacArchitecture,
@@ -207,8 +206,7 @@ const main = async (): Promise<void> => {
   }
   if (command === "build-mac") {
     const architecture = required(flags, "arch");
-    if (architecture !== "arm64" && architecture !== "x64")
-      throw new Error("--arch must be arm64 or x64.");
+    if (architecture !== "arm64") throw new Error("--arch must be arm64.");
     await buildMacDistribution({
       architecture,
       cwd: projectRoot,
@@ -223,8 +221,6 @@ const main = async (): Promise<void> => {
       arm64UpdateDirectory: required(flags, "arm64-update-dir"),
       identityPath: required(flags, "identity"),
       outputDirectory: required(flags, "output"),
-      x64Directory: required(flags, "x64-dir"),
-      x64UpdateDirectory: required(flags, "x64-update-dir"),
     });
     return;
   }
@@ -330,7 +326,6 @@ const main = async (): Promise<void> => {
       lockPath: required(flags, "lock"),
       repo: required(flags, "repo"),
       tag: required(flags, "tag"),
-      x64Path: required(flags, "x64"),
     });
     return;
   }

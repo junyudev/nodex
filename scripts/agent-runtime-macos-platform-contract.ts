@@ -3,7 +3,7 @@ import { closeSync, lstatSync, openSync, readSync } from "node:fs";
 import path from "node:path";
 import { CODEX_APP_SERVER_REQUIRED_ARTIFACTS } from "./agent-runtime-release-lock";
 
-export type AgentRuntimeMacosTargetArch = "arm64" | "x64";
+export type AgentRuntimeMacosTargetArch = "arm64";
 export const AGENT_RUNTIME_PRODUCT_MINIMUM_MACOS = "15.0" as const;
 
 export type AgentRuntimeMacosPlatformContractInput = {
@@ -105,7 +105,7 @@ export function assertAgentRuntimeMacosPlatformContract(input: {
   targetArch: AgentRuntimeMacosTargetArch;
 }): void {
   parseMacosVersion(input.productMinimumMacos, "product minimum macOS");
-  const expectedArchitecture = input.targetArch === "arm64" ? "arm64" : "x86_64";
+  const expectedArchitecture = "arm64";
   for (const inspection of input.inspections) {
     const architectures = parseLipoArchitectures(inspection.lipoOutput);
     if (architectures.length !== 1 || architectures[0] !== expectedArchitecture) {

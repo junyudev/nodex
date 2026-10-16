@@ -4,6 +4,3 @@ RUST_TEST_THREADS = { value = "2", force = false }
 
 [target.aarch64-apple-darwin]
 rustflags = ["-C", "link-arg=-mmacosx-version-min=15.0"]
-
-[target.x86_64-apple-darwin]
-rustflags = ["-C", "link-arg=-mmacosx-version-min=15.0"]

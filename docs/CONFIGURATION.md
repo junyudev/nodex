@@ -54,9 +54,8 @@ and host scope without exposing the prompt or starting a native connection. See
 
 Packaged macOS builds include managed document dependencies; no Profile setting or system
 Python installation is required. Native application MCP reports the verified runtime paths
-through `load_workspace_dependencies`. Development checkouts stage their architecture with
-`vp run materialize:workspace-runtime:mac:arm64` or
-`vp run materialize:workspace-runtime:mac:x64`, then restart Desktop if the capability was
+through `load_workspace_dependencies`. Development checkouts stage the Apple Silicon runtime with
+`vp run materialize:workspace-runtime:mac:arm64`, then restart Desktop if the capability was
 already checked. Runtime selection does not search `PATH` or user Python environments.
 See [the distribution and verification contract](../resources/workspace-runtime/README.md).
 

@@ -543,7 +543,7 @@ const probeCodexAppServerProvider = Effect.fn("probeCodexAppServerProvider")(fun
       // usage this probe" rather than costing the account and models.
       input.skipNativeUsage
         ? Effect.succeed(undefined)
-        : client.request("account/rateLimits/read", null).pipe(
+        : client.request("account/rateLimits/read", undefined).pipe(
             Effect.map((response): CodexRateLimitsProbe => ({
               snapshot: response.rateLimits,
               rateLimitsByLimitId: response.rateLimitsByLimitId,

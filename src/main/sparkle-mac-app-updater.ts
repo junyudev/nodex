@@ -4,7 +4,7 @@ import path from "node:path";
 import type { AppUpdateChannel, MacAppUpdaterPlatform } from "./mac-app-updater";
 import { loadSparkleNativeBinding, parseSparkleNativeEvent } from "./sparkle-native-binding";
 
-type RuntimeArchitecture = "arm64" | "x64";
+type RuntimeArchitecture = "arm64";
 
 const SPARKLE_ARCHIVE_SHA256 = "ce89daf967db1e1893ed3ebd67575ed82d3902563e3191ca92aaec9164fbdef9";
 const SPARKLE_PUBLIC_KEY = "YNySLZ74gjVAOpEdMo9OOEPvuTEMZf8fMnI+oQD7Ifs=";
@@ -48,10 +48,7 @@ export function parseSparkleRuntimeConfig(value: unknown): SparkleRuntimeConfig 
     "sparkleArchiveSha256",
     "sparkleVersion",
   ]);
-  if (
-    value.schemaVersion !== 3 ||
-    (value.architecture !== "arm64" && value.architecture !== "x64")
-  ) {
+  if (value.schemaVersion !== 3 || value.architecture !== "arm64") {
     throw new Error("Packaged Sparkle runtime manifest version or architecture is invalid.");
   }
   if (

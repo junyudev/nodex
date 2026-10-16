@@ -644,6 +644,7 @@ export function parseBrowserRuntimeManifest(value: unknown): BrowserRuntimeManif
   const sourceSchemaVersion = value.schemaVersion;
   if (value.targetArch !== "arm64" && value.targetArch !== "x64") return null;
   if (!["darwin", "linux", "win32"].includes(String(value.targetPlatform))) return null;
+  if (value.targetPlatform === "darwin" && value.targetArch !== "arm64") return null;
 
   const desktopBuild = parseNonEmptyString(value.desktopBuild);
   const desktopBuildNumber = parseNonEmptyString(value.desktopBuildNumber);
@@ -764,8 +765,6 @@ export function parseBrowserRuntimeManifest(value: unknown): BrowserRuntimeManif
     if (computerUseArtifacts[3]?.kind !== "data") return null;
     if (computerUseArtifacts[4]?.kind !== "executable") return null;
   }
-  if (targetArch === "x64" && capabilities.computerUse.status !== "unavailable") return null;
-
   return {
     artifacts: parsedArtifacts,
     browserPlugin,

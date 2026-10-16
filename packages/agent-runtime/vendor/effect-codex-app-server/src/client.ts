@@ -7,8 +7,7 @@ import * as Stdio from "effect/Stdio";
 import * as Stream from "effect/Stream";
 import * as ChildProcessSpawner from "effect/process/ChildProcessSpawner";
 
-import * as CodexRpc from "./_generated/meta.gen.ts";
-import * as CodexSchema from "./_generated/schema.gen.ts";
+import * as CodexRpc from "@nodex/effect-codex-app-server/rpc";
 import * as CodexError from "./errors.ts";
 import * as CodexProtocol from "./protocol.ts";
 import {
@@ -86,15 +85,6 @@ type ServerNotificationHandler = (
   payload: unknown,
 ) => Effect.Effect<void, CodexError.CodexAppServerError>;
 
-const V2TurnStartParamsWithCollaborationMode = CodexSchema.V2TurnStartParams.pipe(
-  Schema.fieldsAssign({
-    collaborationMode: Schema.optionalKey(CodexSchema.ClientRequest__CollaborationMode),
-    additionalContext: Schema.optionalKey(
-      Schema.Record(Schema.String, CodexSchema.V2TurnStartParams__AdditionalContextEntry),
-    ),
-  }),
-);
-
 export const make = Effect.fn("effect-codex-app-server/CodexAppServerClient.make")(function* (
   stdio: Stdio.Stdio,
   options: CodexAppServerClientOptions = {},
@@ -128,10 +118,7 @@ export const make = Effect.fn("effect-codex-app-server/CodexAppServerClient.make
     method: M,
   ):
     | Schema.Codec<CodexRpc.ClientRequestParamsByMethod[M], CodexRpc.ClientRequestParamsByMethod[M]>
-    | undefined =>
-    method === "turn/start"
-      ? (V2TurnStartParamsWithCollaborationMode as never)
-      : (CodexRpc.CLIENT_REQUEST_PARAMS[method] as never);
+    | undefined => CodexRpc.CLIENT_REQUEST_PARAMS[method] as never;
 
   const getClientRequestResponseSchema = <M extends CodexRpc.ClientRequestMethod>(
     method: M,
@@ -163,7 +150,11 @@ export const make = Effect.fn("effect-codex-app-server/CodexAppServerClient.make
     const handlers = notificationHandlers.get(notification.method) ?? [];
 
     if (schema) {
-      return decodeNotificationPayload(notification.method, schema, notification.params).pipe(
+      return decodeNotificationPayload(
+        notification.method,
+        schema as Schema.Codec<unknown, unknown>,
+        notification.params,
+      ).pipe(
         Effect.flatMap((decoded) =>
           Effect.forEach(handlers, (handler) => handler(decoded), { discard: true }),
         ),

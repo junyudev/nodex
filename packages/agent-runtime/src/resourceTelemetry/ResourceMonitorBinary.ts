@@ -92,7 +92,8 @@ function resourceMonitorPlatformKey(
 ): string | undefined {
   if (
     (platform !== "darwin" && platform !== "linux" && platform !== "win32") ||
-    (architecture !== "arm64" && architecture !== "x64")
+    (architecture !== "arm64" && architecture !== "x64") ||
+    (platform === "darwin" && architecture !== "arm64")
   ) {
     return undefined;
   }
@@ -105,11 +106,7 @@ function resourceMonitorRustTarget(
   linuxLibc?: ResourceMonitorLinuxLibc,
 ): string | undefined {
   if (platform === "darwin") {
-    return architecture === "arm64"
-      ? "aarch64-apple-darwin"
-      : architecture === "x64"
-        ? "x86_64-apple-darwin"
-        : undefined;
+    return architecture === "arm64" ? "aarch64-apple-darwin" : undefined;
   }
   if (platform === "linux") {
     if (linuxLibc !== "gnu") {

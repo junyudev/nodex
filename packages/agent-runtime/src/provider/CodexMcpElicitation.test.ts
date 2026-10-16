@@ -24,6 +24,22 @@ const form: CodexSchema.McpServerElicitationRequestParams = {
 };
 
 describe("native MCP information requests", () => {
+  it("declines native verification challenges without treating them as tool permission", () => {
+    const challenge: CodexSchema.McpServerElicitationRequestParams = {
+      serverName: "connected-app",
+      threadId: "native-thread",
+      turnId: "native-turn",
+      mode: "openai/userVerification",
+      _meta: { codex_approval_kind: "mcp_tool_call" },
+      title: "Verify your identity",
+      description: "Confirm this request in the native verification flow",
+      challenge: "verification-token",
+    };
+    assert.isFalse(isCodexMcpPermissionRequest(challenge));
+    assert.deepEqual(codexMcpElicitationQuestions(challenge), []);
+    assert.deepEqual(codexMcpElicitationResponse(challenge, {}), { action: "decline" });
+  });
+
   it("preserves genuine form questions and encodes only validated requested fields", () => {
     assert.isFalse(isCodexMcpPermissionRequest(form));
     assert.deepEqual(

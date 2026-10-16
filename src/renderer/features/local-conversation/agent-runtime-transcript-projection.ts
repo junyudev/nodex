@@ -376,6 +376,8 @@ export function projectAgentRuntimeItem(item: AgentTurnItem, cwd = ""): CodexCan
     case "thread_created":
       return {
         type: "subAgentActivity",
+        model: item.targetModel,
+        reasoningEffort: null,
         id,
         kind: "started",
         agentThreadId: item.targetThreadId,

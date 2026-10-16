@@ -23,26 +23,29 @@ The release system has one deep repository-owned Release Module under
   Distribution, and promotion logic idempotently.
 
 The important seam is the Release Bundle, not a YAML artifact convention.
-Each native architecture emits an `architecture-build.json` that binds its
+The Apple silicon build emits an `architecture-build.json` that binds its
 source commit/tree, Release Identity, runtime locks, prepared-build generation,
 package provenance, official Agent Skills manifest/tree identity,
-runner/toolchain versions, and artifact hashes. The assembler accepts both
-manifests only when they describe one source and one Skill artifact, then emits:
+runner/toolchain versions, and artifact hashes. The assembler verifies this
+manifest and its Sparkle update against one release identity, then emits:
 
 - `Nodex-latest-arm64.dmg`
-- `Nodex-latest-x64.dmg`
-- versioned arm64/x64 full-update ZIPs
-- signed arm64/x64 appcast snapshots and closed update manifests
+- the versioned arm64 full-update ZIP
+- the signed arm64 appcast snapshot and closed update manifest
 - any architecture-qualified deltas the official Sparkle generator retained
-- `release-identity.json`, identical across both architecture builds
+- `release-identity.json`
 - `release-bundle.json`
 - `SHA256SUMS`
 - `release-notes.md` for the publisher (not a public asset)
 
+Release Bundles carry only Apple silicon artifacts. Delta history must pass the
+current bundle and packaged-provenance contracts; releases without compatible
+history publish a full ZIP update. Nightly retention leaves unverified bundles intact.
+
 The tag is created only after this bundle passes. A published release is never
 rebuilt in place, and an existing tag is never moved.
 
-For each architecture, Distribution executes the stateful packaged runtime
+Distribution executes the stateful packaged runtime
 smoke once against the extracted notarized ZIP App, including launch and the
 symlinked CLI/Core/ripgrep workflow. The mounted DMG receives structural,
 signature, notarization, and provenance verification only; matching sealed
@@ -55,7 +58,7 @@ bounded CI deadline, captures bounded process and Profile logs on failure, and
 terminates the complete Electron process group before releasing the lease.
 Runtime-probe teardown uses bounded filesystem retries because a stopped macOS
 Browser helper can briefly race recursive removal of its temporary Profile.
-The in-process clipboard bridge is built separately for each architecture,
+The in-process clipboard bridge is built for Apple silicon,
 sealed in package provenance, and checked for the required Mach-O architecture,
 minimum macOS version, signature and entitlements. Full Main readiness also
 requires loading the packaged bridge; a source-only or cross-compiled probe does
@@ -72,8 +75,7 @@ launcher preserves the vendor spawn behavior and gives disclaimed descendants
 non-pipe stdio; it never depends on another installed app or a PATH lookup.
 The probe runner uses a temporary LaunchServices background app so helper stdio
 matches an ordinary desktop launch instead of inheriting CI pipe fd guards.
-The x64 probe must prove Computer Use is absent while Browser Use remains
-available. Distribution runs this probe again against the extracted notarized
+Distribution runs this probe again against the extracted notarized
 ZIP App's exact `Contents/Resources` closure with packaged native peer
 authorization enabled; a successful staging probe cannot substitute for it.
 
@@ -81,7 +83,7 @@ authorization enabled; a successful staging probe cannot substitute for it.
 
 `package.json` remains the canonical source version. The Release Module derives
 one exact-key Release Identity from the protected-main commit and passes that
-artifact through every architecture, Sparkle finalizer, assembler, and
+artifact through the Apple silicon build, Sparkle finalizer, assembler, and
 publisher. Stable keeps the source `x.y.z` as its display version. Both channels
 encode the first-parent ordinal as a monotonic Apple build version (`842`
 becomes `1.8.42`); Nightly derives its display version as
@@ -136,14 +138,14 @@ They separate deployment policy and audit. Reusable workflows receive only the
 explicit repository-secret contract declared by their caller; protected
 environment secrets are resolved only by direct jobs.
 
-| Environment                 | Authority                                                             |
-| --------------------------- | --------------------------------------------------------------------- |
-| `macos-distribution`        | Apple signing/notarization; Sentry upload once from production arm64  |
-| `sparkle-feed-finalization` | Sign appcasts and full/delta enclosures after both native builds pass |
-| `release-publish`           | Job-scoped repository `contents: write` only                          |
-| `official-skills-publish`   | Publish the verified artifact to `NodexApp/skills`                    |
-| `homebrew-tap`              | Update and smoke-install `junyudev/homebrew-tap`                      |
-| `landing-production`        | Deploy `NodexApp/NodexApp.github.io`                                  |
+| Environment                 | Authority                                                                    |
+| --------------------------- | ---------------------------------------------------------------------------- |
+| `macos-distribution`        | Apple signing/notarization; Sentry upload once from production arm64         |
+| `sparkle-feed-finalization` | Sign appcasts and full/delta enclosures after the Apple silicon build passes |
+| `release-publish`           | Job-scoped repository `contents: write` only                                 |
+| `official-skills-publish`   | Publish the verified artifact to `NodexApp/skills`                           |
+| `homebrew-tap`              | Update and smoke-install `junyudev/homebrew-tap`                             |
+| `landing-production`        | Deploy `NodexApp/NodexApp.github.io`                                         |
 
 Configure these repository Action secrets:
 
@@ -251,14 +253,12 @@ both their signed runtime identity and `Info.plist`. The stable feeds are:
 
 ```text
 https://nodex.jyu.app/updates/stable/arm64/appcast.xml
-https://nodex.jyu.app/updates/stable/x64/appcast.xml
 ```
 
 The isolated Nightly feeds are:
 
 ```text
 https://nodex.jyu.app/updates/nightly/arm64/appcast.xml
-https://nodex.jyu.app/updates/nightly/x64/appcast.xml
 ```
 
 GitHub Release is the immutable data plane for full ZIPs, deltas, update
@@ -270,7 +270,7 @@ Every enclosure URL uses its exact tag; no feed
 uses `/latest/download`. The finalizer accepts history only from an immutable
 Release in the same channel whose tag resolves to the Release Bundle source SHA. Before it signs a
 release, it proves the protected private key matches the reviewed public key
-and that the extracted App plist/runtime carry that key; both architectures
+and that the extracted App plist/runtime carry that key; the Apple silicon build
 must also use the pinned Developer ID Team ID `8HGUT3HC4Z`.
 
 Update targets use the package-provenance module’s current format. History selection
@@ -346,8 +346,8 @@ Rust, app tests, browser tests, stress contracts, and landing build. Electron
 E2E is an opt-in local diagnostic and is not part of source or release
 certification. `verify:runtime:mac`
 verifies Agent/Desktop Tool schemas and runtime conformance on macOS. Neither
-proves Apple signing, Sparkle finalization, or Intel behavior; the
-dual-architecture Distribution is that deeper Implementation.
+proves Apple signing or Sparkle finalization; the signed Apple silicon
+Distribution is that deeper Implementation.
 
 Prepared Electron Main output must bundle source-only workspace packages. They
 are build-time dependencies, not files for Electron's embedded Node runtime to
@@ -365,13 +365,13 @@ Every distribution first consumes an exact-source certificate produced without
 signing secrets. The certificate binds the full commit SHA and Git tree to the
 deterministic source, browser, stress, and macOS runtime gates. Distribution
 verifies both identities before materializing credentials, carries the
-certificate in each architecture bundle, and then runs the packaged
+certificate in the architecture bundle, and then runs the packaged
 process/runtime probes.
 
 Nodex's Clipboard, DeviceCheck, and Sparkle bridges target macOS 15.0. Keep their
 GYP deployment target in `target_conditions`: Electron header defaults can
 override ordinary `xcode_settings` during late condition expansion. After an
-Electron upgrade, rebuild both architectures and inspect the resulting Mach-O
+Electron upgrade, rebuild the Apple silicon app and inspect the resulting Mach-O
 minimum versions; an environment variable alone does not enforce this contract.
 
 The signed package gate must preserve the complete vendor signature closure
@@ -407,8 +407,8 @@ gh workflow run release-rehearsal.yml \
 The secret-free `release-source` environment admits only a protected-branch
 workflow definition. Inside that boundary, the shared provenance guard requires
 the immutable SHA to be reachable from `main` and to have a successful
-protected-main `Main CI` push run before any source checkout or execution. Both
-hosted macOS architectures use the same source and signing environment.
+protected-main `Main CI` push run before any source checkout or execution.
+The hosted Apple silicon runner uses that source and the protected signing environment.
 Rehearsal also uses the protected Sparkle finalization environment, but it does
 not receive `contents: write`, Homebrew/landing credentials, or a Sentry upload
 token. It creates no tag, Release, tap commit, feed commit, or production
@@ -489,28 +489,26 @@ A valid version transition runs this sequence:
    secrets.
 3. Build, sign, notarize, launch, and inspect arm64 on `macos-26`, refusing a
    source tree that does not match the certificate.
-4. Build, sign, notarize, launch, and inspect x64 on `macos-26-intel` under the
-   same certificate.
-5. On native macOS runners, fetch only compatible schema-2 release history,
+4. On native macOS runners, fetch only compatible release history,
    generate and round-trip deltas, normalize their architecture-qualified
    names, and sign the final appcasts and enclosures with the protected key.
-6. Assemble and hash the exact Release Bundle with its source certificate on a
+5. Assemble and hash the exact Release Bundle with its source certificate on a
    clean Linux runner; obsolete blockmaps, `latest-mac.yml`, and
    `app-update.yml` are rejected.
-7. Revalidate source, version, tag, remote state, and bundle identity.
-8. Create or reuse an annotated tag targeting the exact source SHA.
-9. Create/resume the GitHub draft, upload only the manifest allowlist, publish
+6. Revalidate source, version, tag, remote state, and bundle identity.
+7. Create or reuse an annotated tag targeting the exact source SHA.
+8. Create/resume the GitHub draft, upload only the manifest allowlist, publish
    it as Latest, and verify immutability, asset digests, and tag target.
-10. Regenerate the official Agent Skills from the exact source, require their
-    manifest/tree hashes to match the Release Bundle, and atomically publish the
-    same version to `NodexApp/skills` with an annotated tag.
-11. Generate the Homebrew cask from the same bundle, audit it, push it, and
+9. Regenerate the official Agent Skills from the exact source, require their
+   manifest/tree hashes to match the Release Bundle, and atomically publish the
+   same version to `NodexApp/skills` with an annotated tag.
+10. Generate the Homebrew cask from the same bundle, audit it, push it, and
     smoke-install the published app. The generated DSL follows Homebrew's
     canonical stanza grouping and order and expresses the macOS 15 Sequoia
     minimum as `depends_on macos: :sequoia`.
-12. Deploy the landing site from the same source SHA after release verification,
+11. Deploy the landing site from the same source SHA after release verification,
     preserving existing feeds on ordinary site deploys and atomically projecting
-    the two signed snapshots on release deploys. Public feed bytes and every
+    the signed Apple silicon snapshot on release deploys. Public feed bytes and every
     enclosure are checked after push.
 
 Sentry source maps are uploaded only by the production arm64 build. Both builds
@@ -557,7 +555,7 @@ manual destructive operation and must be investigated before recovery.
 
 The separately sealed Desktop Tool runtime currently retains the
 `browser-runtime` tag and command names for release compatibility, but it
-contains Browser, native PiP, and architecture-optional Computer Use artifacts.
+contains Browser, native PiP, and Computer Use artifacts for Apple silicon.
 It must never become the app Latest release. Publish it only through:
 
 ```bash
@@ -565,19 +563,18 @@ vp run browser-runtime:publish -- \
   --repo junyudev/nodex \
   --tag browser-runtime-v<build> \
   --lock <reviewed-candidate-lock.json> \
-  --arm64 <arm64-archive> \
-  --x64 <x64-archive>
+  --arm64 <arm64-archive>
 ```
 
-That Interface requires the reviewed release lock, proves both archives' names,
-sizes, hashes, manifests, target architectures, and complete artifact closures,
+That Interface requires the reviewed release lock, proves the archive's name,
+size, hash, manifest, target architecture, and complete artifact closure,
 then creates or resumes an exact draft, uploads only missing assets, publishes
 only after creating against `--verify-tag`, forces `--latest=false`, and asserts
 Latest is unchanged. Create and push the runtime tag at an exact reviewed Nodex
 source commit first; do not use a bare `gh release create` for runtime releases.
 
 The primary Agent runtime's canonical lock binds the official Codex tag and
-peeled source commit, official checksum manifest, dual-architecture
+peeled source commit, official checksum manifest, Apple silicon
 `codex-app-server-package-*` bytes, legal evidence, stable upstream entrypoint
 identity, staged metadata, and generated protocol schema. Nodex does not rebuild,
 patch, republish, or re-sign Codex runtime assets: their exact bytes and OpenAI
@@ -585,14 +582,13 @@ Developer ID signatures remain intact. The locked app-server entrypoint digest
 is the stable Browser compatibility identity; package signing and notarization
 seal the containing Nodex application independently.
 
-Generate upgrades from an explicit reviewed base lock and the two downloaded
-official archives:
+Generate upgrades from an explicit reviewed base lock and the downloaded
+official Apple silicon archive:
 
 ```bash
 vp run agent-runtime:relock -- \
   --base-lock <base-lock.json> \
   --arm64 <official-arm64-archive> \
-  --x64 <official-x64-archive> \
   --out <candidate-lock.json>
 ```
 
@@ -600,7 +596,7 @@ The candidate command verifies the official archive closure and derives the
 entrypoint and staged-metadata identities. It never builds source, overwrites the
 canonical lock, or publishes assets. Review and install the candidate
 deliberately, then stage from an empty cache and run schema plus conformance
-probes for both architectures. The complete lock, staging, and probe procedure is
+probes for Apple silicon. The complete lock, staging, and probe procedure is
 owned by
 [`resources/agent-runtime/README.md`](../resources/agent-runtime/README.md).
 
@@ -622,8 +618,6 @@ vp run release:verify:remote -- \
 gh api repos/NodexApp/skills/git/ref/tags/v0.2.1 --jq .object.sha
 curl --fail --silent https://nodex.jyu.app/updates/stable/arm64/appcast.xml \
   --output .generated/v0.2.1-remote/appcast-arm64.xml
-curl --fail --silent https://nodex.jyu.app/updates/stable/x64/appcast.xml \
-  --output .generated/v0.2.1-remote/appcast-x64.xml
 ```
 
 The remote verifier needs only `release-bundle.json` and `SHA256SUMS` locally.
@@ -632,18 +626,18 @@ published asset once into a temporary directory and verifies its byte length and
 SHA-256 digest before removing the temporary copy.
 
 The 0.2.1 baseline must contain zero deltas because 0.2.0 and earlier are not
-compatible history. Also verify both stable DMG URLs, a clean Apple Silicon
+compatible history. Also verify the stable Apple silicon DMG URL, a clean Apple Silicon
 install/first launch,
 `nodex --version`, one Core-backed project operation, one Agent thread, one
 Browser operation, a full-only update check from the 0.2.1 baseline,
 Homebrew install/upgrade, and the
-landing download selector. Confirm `npx skills@latest add NodexApp/skills`
+landing download link. Confirm `npx skills@latest add NodexApp/skills`
 discovers exactly the `nodex` Skill. `releases/latest` must be `v0.2.1`, never
 a Browser runtime tag.
 
 The next 0.2.2 rehearsal is the first incremental acceptance gate. It must use
-the public 0.2.1 full ZIP for each architecture, record the emitted delta size,
+the public 0.2.1 Apple silicon full ZIP, record the emitted delta size,
 prove `BinaryDelta apply` produces the exact 0.2.2 app, and exercise one real
-installed update. Corrupt-delta/full-ZIP fallback and Intel installation remain
-release-candidate/manual checks; a unit fixture alone is not sufficient
+installed update. Corrupt-delta/full-ZIP fallback remains a
+release-candidate/manual check; a unit fixture alone is not sufficient
 evidence.

@@ -62,7 +62,6 @@ test("binds final runtime verification to the complete canonical metadata digest
     "bin/codex-code-mode-host",
     "codex-path/rg",
     "codex-resources/voice/bin/codex-voice-host",
-    "codex-resources/zsh/bin/zsh",
   ]);
   const artifactPaths = [
     ...lock.requiredArtifacts,

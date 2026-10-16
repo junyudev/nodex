@@ -71,6 +71,8 @@ const spawn = (threadId: string) =>
     items: [
       {
         type: "subAgentActivity",
+        model: null,
+        reasoningEffort: null,
         id: `activity-${threadId}`,
         kind: "started",
         agentThreadId: threadId,

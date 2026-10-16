@@ -379,7 +379,7 @@ const parseSparkleRuntimeManifest = (value) => {
   if (!isObject(value) || value.schemaVersion !== 3 || !isObject(value.artifacts)) {
     throw new Error("Packaged Sparkle runtime manifest is unsupported");
   }
-  if (value.architecture !== "arm64" && value.architecture !== "x64") {
+  if (value.architecture !== "arm64") {
     throw new Error("Packaged Sparkle runtime architecture is invalid");
   }
   if (
@@ -468,7 +468,7 @@ export const writePackagedBuildProvenance = (appPath, options = {}) => {
     throw new Error("Packaged Agent Skills do not match the prepared Electron source");
   }
   const targetArch = nativeManifest.targetArch;
-  if (targetArch !== "arm64" && targetArch !== "x64") {
+  if (targetArch !== "arm64") {
     throw new Error("Packaged native runtime target architecture is invalid");
   }
   const agentRuntime = inspectLockedAgentRuntime(
@@ -480,7 +480,7 @@ export const writePackagedBuildProvenance = (appPath, options = {}) => {
   const agentManifest = agentRuntime.metadata;
   if (
     nativeManifest.targetPlatform !== "darwin" ||
-    (targetArch !== "arm64" && targetArch !== "x64") ||
+    targetArch !== "arm64" ||
     nativeManifest.productVersion !== prepared.product.version ||
     agentManifest.targetPlatform !== "darwin" ||
     agentManifest.targetArch !== targetArch ||
@@ -581,10 +581,7 @@ export const verifyPackagedBuildProvenance = (appPath, options = {}) => {
   requireString(value.product.name, "Packaged product name");
   requireString(value.product.version, "Packaged product version");
   assertExactKeys(value.target, ["platform", "arch"], "Packaged target");
-  if (
-    value.target.platform !== "darwin" ||
-    (value.target.arch !== "arm64" && value.target.arch !== "x64")
-  ) {
+  if (value.target.platform !== "darwin" || value.target.arch !== "arm64") {
     throw new Error("Packaged build target is invalid");
   }
   if (options.expectedArch && value.target.arch !== options.expectedArch) {

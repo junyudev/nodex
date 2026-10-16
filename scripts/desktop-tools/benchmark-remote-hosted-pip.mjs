@@ -621,7 +621,7 @@ export async function runStateBenchmark(input = {}) {
           "primary and avatar auxiliary window registry ownership tears down to baseline",
         ],
         requiredExternalGates: [
-          "signed dual-architecture packaged app and helper with the exact runtime manifest",
+          "signed macOS arm64 packaged app and helper with the exact runtime manifest",
           "real Chrome extension and native-messaging connection in a disposable browser profile",
           "real IAB and Computer Use flows against an explicitly owned test application",
           "native NSPanel motion, click, reconnect, and same-machine RSS comparison",

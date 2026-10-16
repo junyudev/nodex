@@ -83,8 +83,7 @@ export function parseLocalMacInstallOptions(
   let appPath: string | null = null;
   let destination = DEFAULT_DESTINATION;
   let cliTargetPath = DEFAULT_CLI_TARGET;
-  let targetArch: NativeRuntimeArchitecture | null =
-    architecture === "arm64" ? "arm64" : architecture === "x64" ? "x64" : null;
+  let targetArch: NativeRuntimeArchitecture | null = architecture === "arm64" ? "arm64" : null;
   let installCli = false;
   let allowProductionDestination = false;
   let strictSign = false;
@@ -112,8 +111,8 @@ export function parseLocalMacInstallOptions(
     }
     if (argument === "--target-arch") {
       const value = readRequiredValue(arguments_, index, argument);
-      if (value !== "arm64" && value !== "x64") {
-        throw new Error("--target-arch must be arm64 or x64.");
+      if (value !== "arm64") {
+        throw new Error("--target-arch must be arm64.");
       }
       targetArch = value;
       index += 1;
@@ -346,7 +345,7 @@ export function createFreshLocalMacPackagePlan(
 ): FreshLocalMacPackagePlan {
   const root = resolve(repositoryRoot);
   const outputRoot = join(root, ".generated", "local-install", operationId);
-  const architectureDirectory = targetArch === "arm64" ? "mac-arm64" : "mac";
+  const architectureDirectory = "mac-arm64";
   return {
     appPath: join(outputRoot, architectureDirectory, "Nodex.app"),
     commands: [

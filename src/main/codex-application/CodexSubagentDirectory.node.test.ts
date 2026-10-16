@@ -581,6 +581,8 @@ for (const kind of ["interacted", "interrupted", "completed"] as const) {
               items: [
                 {
                   type: "subAgentActivity",
+                  model: null,
+                  reasoningEffort: null,
                   id: "activity",
                   kind,
                   agentThreadId: "unrelated",
@@ -941,6 +943,8 @@ it.effect("retains status-before-identity when Core buffering is temporarily una
             completedAtMs: 120_000,
             item: {
               type: "subAgentActivity",
+              model: null,
+              reasoningEffort: null,
               id: "spawn-child-a",
               kind: "started",
               agentThreadId: child.id,
@@ -1076,6 +1080,8 @@ it.effect("durably merges completion-before-row after a Directory restart", () =
             completedAtMs: 130_000,
             item: {
               type: "subAgentActivity",
+              model: null,
+              reasoningEffort: null,
               id: "completed-before-row",
               kind: "completed",
               agentThreadId: child.id,
@@ -1566,6 +1572,8 @@ it.effect("retries strongest V2 completion evidence after the first durable appl
               completedAtMs: 130_000,
               item: {
                 type: "subAgentActivity",
+                model: null,
+                reasoningEffort: null,
                 id: "completed-child-a",
                 kind: "completed",
                 agentThreadId: child.id,
@@ -1705,6 +1713,8 @@ it.effect("retains a compact nested spawn until its parent edge is materialized"
             completedAtMs: 120_000,
             item: {
               type: "subAgentActivity",
+              model: null,
+              reasoningEffort: null,
               id: "spawn-child-a",
               kind: "started",
               agentThreadId: "child-a",
@@ -1732,6 +1742,8 @@ it.effect("retains a compact nested spawn until its parent edge is materialized"
             completedAtMs: 121_000,
             item: {
               type: "subAgentActivity",
+              model: null,
+              reasoningEffort: null,
               id: "spawn-parent-a",
               kind: "started",
               agentThreadId: "parent-a",
@@ -1934,6 +1946,8 @@ for (const storage of ["resident", "overlay"] as const) {
               items: [
                 {
                   type: "subAgentActivity",
+                  model: null,
+                  reasoningEffort: null,
                   id: "observed-spawn-item",
                   kind: "started",
                   agentThreadId: child.id,
@@ -2103,6 +2117,8 @@ it.effect(
                     },
                     {
                       type: "subAgentActivity",
+                      model: null,
+                      reasoningEffort: null,
                       id: "unrelated-completed",
                       kind: "completed",
                       agentThreadId: "not-a-child",
@@ -2110,6 +2126,8 @@ it.effect(
                     },
                     {
                       type: "subAgentActivity",
+                      model: null,
+                      reasoningEffort: null,
                       id: "unrelated-interacted",
                       kind: "interacted",
                       agentThreadId: "not-a-child",
@@ -2117,6 +2135,8 @@ it.effect(
                     },
                     {
                       type: "subAgentActivity",
+                      model: null,
+                      reasoningEffort: null,
                       id: "unrelated-interrupted",
                       kind: "interrupted",
                       agentThreadId: "not-a-child",

@@ -1390,6 +1390,27 @@ export const ClientRequest__ThreadReadParams = Schema.StructWithRest(
   [Schema.Record(Schema.String, CodexJsonExtension)],
 ).annotate({ identifier: "ClientRequest__ThreadReadParams" });
 
+export type ClientRequest__ThreadReadStateOperation =
+  | ({ readonly type: "read" } & { readonly [x: string]: CodexJsonExtension })
+  | ({ readonly type: "unread" } & { readonly [x: string]: CodexJsonExtension });
+export const ClientRequest__ThreadReadStateOperation = Schema.Union(
+  [
+    Schema.StructWithRest(
+      Schema.Struct({
+        type: Schema.Literal("read").annotate({ title: "ReadThreadReadStateOperationType" }),
+      }),
+      [Schema.Record(Schema.String, CodexJsonExtension)],
+    ).annotate({ title: "ReadThreadReadStateOperation" }),
+    Schema.StructWithRest(
+      Schema.Struct({
+        type: Schema.Literal("unread").annotate({ title: "UnreadThreadReadStateOperationType" }),
+      }),
+      [Schema.Record(Schema.String, CodexJsonExtension)],
+    ).annotate({ title: "UnreadThreadReadStateOperation" }),
+  ],
+  { mode: "oneOf" },
+).annotate({ identifier: "ClientRequest__ThreadReadStateOperation" });
+
 export type ClientRequest__ThreadItemsListAnchor = {
   readonly itemId: string;
   readonly type: "item";
@@ -1408,6 +1429,25 @@ export const ClientRequest__ThreadItemsListAnchor = Schema.Union(
 ).annotate({
   description: "An exclusive item position within the requested visible turn.",
   identifier: "ClientRequest__ThreadItemsListAnchor",
+});
+
+export type ClientRequest__ThreadItemsReadParams = {
+  readonly itemIds: ReadonlyArray<string>;
+  readonly threadId: string;
+  readonly turnId: string;
+} & { readonly [x: string]: CodexJsonExtension };
+export const ClientRequest__ThreadItemsReadParams = Schema.StructWithRest(
+  Schema.Struct({
+    itemIds: Schema.Array(Schema.String).annotate({
+      description: "Item IDs to retrieve. Supply 1 to 100 IDs.",
+    }),
+    threadId: Schema.String,
+    turnId: Schema.String,
+  }),
+  [Schema.Record(Schema.String, CodexJsonExtension)],
+).annotate({
+  description: "EXPERIMENTAL - retrieve a bounded set of persisted items from one turn.",
+  identifier: "ClientRequest__ThreadItemsReadParams",
 });
 
 export type ClientRequest__ThreadInjectItemsParams = {
@@ -1829,42 +1869,74 @@ export type ClientRequest__RealtimeVoice =
   | "alloy"
   | "arbor"
   | "ash"
+  | "aube"
   | "ballad"
   | "breeze"
+  | "bubbie"
   | "cedar"
   | "coral"
   | "cove"
   | "echo"
   | "ember"
+  | "haetsal"
+  | "hanul"
+  | "himari"
   | "juniper"
+  | "leher"
   | "maple"
   | "marin"
+  | "miko"
+  | "neer"
+  | "porto"
+  | "rindo"
+  | "rio"
+  | "rivage"
   | "sage"
+  | "selva"
   | "shimmer"
   | "sol"
+  | "sonna"
   | "spruce"
+  | "tinta"
   | "vale"
-  | "verse";
+  | "verse"
+  | "viola";
 export const ClientRequest__RealtimeVoice = Schema.Literals([
   "alloy",
   "arbor",
   "ash",
+  "aube",
   "ballad",
   "breeze",
+  "bubbie",
   "cedar",
   "coral",
   "cove",
   "echo",
   "ember",
+  "haetsal",
+  "hanul",
+  "himari",
   "juniper",
+  "leher",
   "maple",
   "marin",
+  "miko",
+  "neer",
+  "porto",
+  "rindo",
+  "rio",
+  "rivage",
   "sage",
+  "selva",
   "shimmer",
   "sol",
+  "sonna",
   "spruce",
+  "tinta",
   "vale",
   "verse",
+  "viola",
 ]).annotate({ identifier: "ClientRequest__RealtimeVoice" });
 
 export type ClientRequest__ThreadRealtimeAudioChunk = {
@@ -3891,6 +3963,38 @@ export const ServerNotification__TurnStatus = Schema.Literals([
   "failed",
   "inProgress",
 ]).annotate({ identifier: "ServerNotification__TurnStatus" });
+
+export type ServerNotification__ThreadUnreadPosition =
+  | ({ readonly type: "threadStart" } & { readonly [x: string]: CodexJsonExtension })
+  | ({ readonly turnId: string; readonly type: "turn" } & {
+      readonly [x: string]: CodexJsonExtension;
+    });
+export const ServerNotification__ThreadUnreadPosition = Schema.Union(
+  [
+    Schema.StructWithRest(
+      Schema.Struct({
+        type: Schema.Literal("threadStart").annotate({
+          title: "ThreadStartThreadUnreadPositionType",
+        }),
+      }),
+      [Schema.Record(Schema.String, CodexJsonExtension)],
+    ).annotate({
+      title: "ThreadStartThreadUnreadPosition",
+      description: "Explicitly marked unread, including when the thread has no turns.",
+    }),
+    Schema.StructWithRest(
+      Schema.Struct({
+        turnId: Schema.String,
+        type: Schema.Literal("turn").annotate({ title: "TurnThreadUnreadPositionType" }),
+      }),
+      [Schema.Record(Schema.String, CodexJsonExtension)],
+    ).annotate({
+      title: "TurnThreadUnreadPosition",
+      description: "The earliest completed result needing attention.",
+    }),
+  ],
+  { mode: "oneOf" },
+).annotate({ identifier: "ServerNotification__ThreadUnreadPosition" });
 
 export type ServerNotification__ThreadArchivedNotification = { readonly threadId: string } & {
   readonly [x: string]: CodexJsonExtension;
@@ -9871,6 +9975,11 @@ export const V2PluginReadResponse__AbsolutePathBuf = Schema.String.annotate({
   identifier: "V2PluginReadResponse__AbsolutePathBuf",
 });
 
+export type V2PluginReadResponse__LegacyAppPathString = string;
+export const V2PluginReadResponse__LegacyAppPathString = Schema.String.annotate({
+  identifier: "V2PluginReadResponse__LegacyAppPathString",
+});
+
 export type V2PluginReadResponse__ScheduledTaskWeekday =
   | "MO"
   | "TU"
@@ -11461,6 +11570,11 @@ export const V2SkillsListResponse__AbsolutePathBuf = Schema.String.annotate({
   identifier: "V2SkillsListResponse__AbsolutePathBuf",
 });
 
+export type V2SkillsListResponse__LegacyAppPathString = string;
+export const V2SkillsListResponse__LegacyAppPathString = Schema.String.annotate({
+  identifier: "V2SkillsListResponse__LegacyAppPathString",
+});
+
 export type V2SkillsListResponse__SkillScope = "user" | "repo" | "system" | "admin";
 export const V2SkillsListResponse__SkillScope = Schema.Literals([
   "user",
@@ -12817,6 +12931,451 @@ export const V2ThreadItemsListResponse__AbsolutePathBuf = Schema.String.annotate
   identifier: "V2ThreadItemsListResponse__AbsolutePathBuf",
 });
 
+export type V2ThreadItemsReadResponse__ByteRange = {
+  readonly end: number;
+  readonly start: number;
+} & { readonly [x: string]: CodexJsonExtension };
+export const V2ThreadItemsReadResponse__ByteRange = Schema.StructWithRest(
+  Schema.Struct({
+    end: Schema.Number.annotate({ format: "uint" })
+      .check(Schema.isInt().annotate({ expected: "an integer" }))
+      .check(
+        Schema.isGreaterThanOrEqualTo(0).annotate({
+          expected: "a value greater than or equal to 0",
+        }),
+      ),
+    start: Schema.Number.annotate({ format: "uint" })
+      .check(Schema.isInt().annotate({ expected: "an integer" }))
+      .check(
+        Schema.isGreaterThanOrEqualTo(0).annotate({
+          expected: "a value greater than or equal to 0",
+        }),
+      ),
+  }),
+  [Schema.Record(Schema.String, CodexJsonExtension)],
+).annotate({ identifier: "V2ThreadItemsReadResponse__ByteRange" });
+
+export type V2ThreadItemsReadResponse__ImageDetail = "auto" | "low" | "high" | "original";
+export const V2ThreadItemsReadResponse__ImageDetail = Schema.Literals([
+  "auto",
+  "low",
+  "high",
+  "original",
+]).annotate({ identifier: "V2ThreadItemsReadResponse__ImageDetail" });
+
+export type V2ThreadItemsReadResponse__HookPromptFragment = {
+  readonly hookRunId: string;
+  readonly text: string;
+} & { readonly [x: string]: CodexJsonExtension };
+export const V2ThreadItemsReadResponse__HookPromptFragment = Schema.StructWithRest(
+  Schema.Struct({ hookRunId: Schema.String, text: Schema.String }),
+  [Schema.Record(Schema.String, CodexJsonExtension)],
+).annotate({ identifier: "V2ThreadItemsReadResponse__HookPromptFragment" });
+
+export type V2ThreadItemsReadResponse__AgentMessageDelivery = "async";
+export const V2ThreadItemsReadResponse__AgentMessageDelivery = Schema.Literal("async").annotate({
+  identifier: "V2ThreadItemsReadResponse__AgentMessageDelivery",
+});
+
+export type V2ThreadItemsReadResponse__MemoryCitationEntry = {
+  readonly lineEnd: number;
+  readonly lineStart: number;
+  readonly note: string;
+  readonly path: string;
+} & { readonly [x: string]: CodexJsonExtension };
+export const V2ThreadItemsReadResponse__MemoryCitationEntry = Schema.StructWithRest(
+  Schema.Struct({
+    lineEnd: Schema.Number.annotate({ format: "uint32" })
+      .check(Schema.isInt().annotate({ expected: "an integer" }))
+      .check(
+        Schema.isGreaterThanOrEqualTo(0).annotate({
+          expected: "a value greater than or equal to 0",
+        }),
+      ),
+    lineStart: Schema.Number.annotate({ format: "uint32" })
+      .check(Schema.isInt().annotate({ expected: "an integer" }))
+      .check(
+        Schema.isGreaterThanOrEqualTo(0).annotate({
+          expected: "a value greater than or equal to 0",
+        }),
+      ),
+    note: Schema.String,
+    path: Schema.String,
+  }),
+  [Schema.Record(Schema.String, CodexJsonExtension)],
+).annotate({ identifier: "V2ThreadItemsReadResponse__MemoryCitationEntry" });
+
+export type V2ThreadItemsReadResponse__MessagePhase =
+  | "commentary"
+  | "partial_answer"
+  | "final_answer";
+export const V2ThreadItemsReadResponse__MessagePhase = Schema.Union(
+  [
+    Schema.Literal("commentary").annotate({
+      description:
+        "Mid-turn assistant text (for example preamble/progress narration).\n\nAdditional tool calls or assistant output may follow before turn completion.",
+    }),
+    Schema.Literal("partial_answer").annotate({
+      description: "Stable answer text that may be followed by more assistant output or tools.",
+    }),
+    Schema.Literal("final_answer").annotate({
+      description: "The assistant's declared terminal answer text for the current turn.",
+    }),
+  ],
+  { mode: "oneOf" },
+).annotate({
+  description:
+    'Classifies assistant text as commentary, a partial answer, or a terminal answer.\n\nProviders do not emit this consistently, so callers must treat `None` as "phase unknown" and keep compatibility behavior for legacy models.',
+  identifier: "V2ThreadItemsReadResponse__MessagePhase",
+});
+
+export type V2ThreadItemsReadResponse__AsyncUserInputQuestion = {
+  readonly options?: ReadonlyArray<string> | null;
+  readonly title: string;
+} & { readonly [x: string]: CodexJsonExtension };
+export const V2ThreadItemsReadResponse__AsyncUserInputQuestion = Schema.StructWithRest(
+  Schema.Struct({
+    options: Schema.optionalKey(Schema.Union([Schema.Array(Schema.String), Schema.Null])),
+    title: Schema.String,
+  }),
+  [Schema.Record(Schema.String, CodexJsonExtension)],
+).annotate({ identifier: "V2ThreadItemsReadResponse__AsyncUserInputQuestion" });
+
+export type V2ThreadItemsReadResponse__LegacyAppPathString = string;
+export const V2ThreadItemsReadResponse__LegacyAppPathString = Schema.String.annotate({
+  identifier: "V2ThreadItemsReadResponse__LegacyAppPathString",
+});
+
+export type V2ThreadItemsReadResponse__CommandExecutionSource =
+  | "agent"
+  | "userShell"
+  | "unifiedExecStartup"
+  | "unifiedExecInteraction";
+export const V2ThreadItemsReadResponse__CommandExecutionSource = Schema.Literals([
+  "agent",
+  "userShell",
+  "unifiedExecStartup",
+  "unifiedExecInteraction",
+]).annotate({ identifier: "V2ThreadItemsReadResponse__CommandExecutionSource" });
+
+export type V2ThreadItemsReadResponse__CommandExecutionStatus =
+  | "inProgress"
+  | "completed"
+  | "failed"
+  | "declined";
+export const V2ThreadItemsReadResponse__CommandExecutionStatus = Schema.Literals([
+  "inProgress",
+  "completed",
+  "failed",
+  "declined",
+]).annotate({ identifier: "V2ThreadItemsReadResponse__CommandExecutionStatus" });
+
+export type V2ThreadItemsReadResponse__PatchChangeKind =
+  | ({ readonly type: "add" } & { readonly [x: string]: CodexJsonExtension })
+  | ({ readonly type: "delete" } & { readonly [x: string]: CodexJsonExtension })
+  | ({ readonly move_path?: string | null; readonly type: "update" } & {
+      readonly [x: string]: CodexJsonExtension;
+    });
+export const V2ThreadItemsReadResponse__PatchChangeKind = Schema.Union(
+  [
+    Schema.StructWithRest(
+      Schema.Struct({ type: Schema.Literal("add").annotate({ title: "AddPatchChangeKindType" }) }),
+      [Schema.Record(Schema.String, CodexJsonExtension)],
+    ).annotate({ title: "AddPatchChangeKind" }),
+    Schema.StructWithRest(
+      Schema.Struct({
+        type: Schema.Literal("delete").annotate({ title: "DeletePatchChangeKindType" }),
+      }),
+      [Schema.Record(Schema.String, CodexJsonExtension)],
+    ).annotate({ title: "DeletePatchChangeKind" }),
+    Schema.StructWithRest(
+      Schema.Struct({
+        move_path: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
+        type: Schema.Literal("update").annotate({ title: "UpdatePatchChangeKindType" }),
+      }),
+      [Schema.Record(Schema.String, CodexJsonExtension)],
+    ).annotate({ title: "UpdatePatchChangeKind" }),
+  ],
+  { mode: "oneOf" },
+).annotate({ identifier: "V2ThreadItemsReadResponse__PatchChangeKind" });
+
+export type V2ThreadItemsReadResponse__PatchApplyStatus =
+  | "inProgress"
+  | "completed"
+  | "failed"
+  | "declined";
+export const V2ThreadItemsReadResponse__PatchApplyStatus = Schema.Literals([
+  "inProgress",
+  "completed",
+  "failed",
+  "declined",
+]).annotate({ identifier: "V2ThreadItemsReadResponse__PatchApplyStatus" });
+
+export type V2ThreadItemsReadResponse__McpToolCallAppContext = {
+  readonly actionName?: string | null;
+  readonly appName?: string | null;
+  readonly connectorId: string;
+  readonly linkId?: string | null;
+  readonly resourceUri?: string | null;
+} & { readonly [x: string]: CodexJsonExtension };
+export const V2ThreadItemsReadResponse__McpToolCallAppContext = Schema.StructWithRest(
+  Schema.Struct({
+    actionName: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
+    appName: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
+    connectorId: Schema.String,
+    linkId: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
+    resourceUri: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
+  }),
+  [Schema.Record(Schema.String, CodexJsonExtension)],
+).annotate({ identifier: "V2ThreadItemsReadResponse__McpToolCallAppContext" });
+
+export type V2ThreadItemsReadResponse__McpToolCallError = { readonly message: string } & {
+  readonly [x: string]: CodexJsonExtension;
+};
+export const V2ThreadItemsReadResponse__McpToolCallError = Schema.StructWithRest(
+  Schema.Struct({ message: Schema.String }),
+  [Schema.Record(Schema.String, CodexJsonExtension)],
+).annotate({ identifier: "V2ThreadItemsReadResponse__McpToolCallError" });
+
+export type V2ThreadItemsReadResponse__McpAppDisplayMode = "inline" | "fullscreen";
+export const V2ThreadItemsReadResponse__McpAppDisplayMode = Schema.Literals([
+  "inline",
+  "fullscreen",
+]).annotate({ identifier: "V2ThreadItemsReadResponse__McpAppDisplayMode" });
+
+export type V2ThreadItemsReadResponse__McpToolCallResult = {
+  readonly _meta?: Schema.Json;
+  readonly content: ReadonlyArray<Schema.Json>;
+  readonly structuredContent?: Schema.Json;
+} & { readonly [x: string]: CodexJsonExtension };
+export const V2ThreadItemsReadResponse__McpToolCallResult = Schema.StructWithRest(
+  Schema.Struct({
+    _meta: Schema.optionalKey(Schema.Json.annotate({ expected: "JSON value" })),
+    content: Schema.Array(Schema.Json.annotate({ expected: "JSON value" })),
+    structuredContent: Schema.optionalKey(Schema.Json.annotate({ expected: "JSON value" })),
+  }),
+  [Schema.Record(Schema.String, CodexJsonExtension)],
+).annotate({ identifier: "V2ThreadItemsReadResponse__McpToolCallResult" });
+
+export type V2ThreadItemsReadResponse__McpToolCallStatus = "inProgress" | "completed" | "failed";
+export const V2ThreadItemsReadResponse__McpToolCallStatus = Schema.Literals([
+  "inProgress",
+  "completed",
+  "failed",
+]).annotate({ identifier: "V2ThreadItemsReadResponse__McpToolCallStatus" });
+
+export type V2ThreadItemsReadResponse__DynamicToolCallOutputContentItem =
+  | ({ readonly text: string; readonly type: "inputText" } & {
+      readonly [x: string]: CodexJsonExtension;
+    })
+  | ({ readonly imageUrl: string; readonly type: "inputImage" } & {
+      readonly [x: string]: CodexJsonExtension;
+    })
+  | ({ readonly audioUrl: string; readonly type: "inputAudio" } & {
+      readonly [x: string]: CodexJsonExtension;
+    });
+export const V2ThreadItemsReadResponse__DynamicToolCallOutputContentItem = Schema.Union(
+  [
+    Schema.StructWithRest(
+      Schema.Struct({
+        text: Schema.String,
+        type: Schema.Literal("inputText").annotate({
+          title: "InputTextDynamicToolCallOutputContentItemType",
+        }),
+      }),
+      [Schema.Record(Schema.String, CodexJsonExtension)],
+    ).annotate({ title: "InputTextDynamicToolCallOutputContentItem" }),
+    Schema.StructWithRest(
+      Schema.Struct({
+        imageUrl: Schema.String,
+        type: Schema.Literal("inputImage").annotate({
+          title: "InputImageDynamicToolCallOutputContentItemType",
+        }),
+      }),
+      [Schema.Record(Schema.String, CodexJsonExtension)],
+    ).annotate({ title: "InputImageDynamicToolCallOutputContentItem" }),
+    Schema.StructWithRest(
+      Schema.Struct({
+        audioUrl: Schema.String,
+        type: Schema.Literal("inputAudio").annotate({
+          title: "InputAudioDynamicToolCallOutputContentItemType",
+        }),
+      }),
+      [Schema.Record(Schema.String, CodexJsonExtension)],
+    ).annotate({ title: "InputAudioDynamicToolCallOutputContentItem" }),
+  ],
+  { mode: "oneOf" },
+).annotate({ identifier: "V2ThreadItemsReadResponse__DynamicToolCallOutputContentItem" });
+
+export type V2ThreadItemsReadResponse__DynamicToolCallStatus =
+  | "inProgress"
+  | "completed"
+  | "failed";
+export const V2ThreadItemsReadResponse__DynamicToolCallStatus = Schema.Literals([
+  "inProgress",
+  "completed",
+  "failed",
+]).annotate({ identifier: "V2ThreadItemsReadResponse__DynamicToolCallStatus" });
+
+export type V2ThreadItemsReadResponse__CollabAgentStatus =
+  | "pendingInit"
+  | "running"
+  | "interrupted"
+  | "completed"
+  | "errored"
+  | "shutdown"
+  | "notFound";
+export const V2ThreadItemsReadResponse__CollabAgentStatus = Schema.Literals([
+  "pendingInit",
+  "running",
+  "interrupted",
+  "completed",
+  "errored",
+  "shutdown",
+  "notFound",
+]).annotate({ identifier: "V2ThreadItemsReadResponse__CollabAgentStatus" });
+
+export type V2ThreadItemsReadResponse__ReasoningEffort = string;
+export const V2ThreadItemsReadResponse__ReasoningEffort = Schema.String.annotate({
+  description: "A non-empty reasoning effort value advertised by the model.",
+}).check(
+  Schema.isMinLength(1).annotate({
+    expected: "a value with a length of at least 1",
+    identifier: "V2ThreadItemsReadResponse__ReasoningEffort",
+  }),
+);
+
+export type V2ThreadItemsReadResponse__CollabAgentToolCallStatus =
+  | "inProgress"
+  | "completed"
+  | "failed"
+  | "interrupted";
+export const V2ThreadItemsReadResponse__CollabAgentToolCallStatus = Schema.Literals([
+  "inProgress",
+  "completed",
+  "failed",
+  "interrupted",
+]).annotate({ identifier: "V2ThreadItemsReadResponse__CollabAgentToolCallStatus" });
+
+export type V2ThreadItemsReadResponse__CollabAgentTool =
+  | "spawnAgent"
+  | "sendInput"
+  | "resumeAgent"
+  | "wait"
+  | "closeAgent"
+  | "sendMessage"
+  | "followupTask"
+  | "interruptAgent"
+  | "listAgents";
+export const V2ThreadItemsReadResponse__CollabAgentTool = Schema.Literals([
+  "spawnAgent",
+  "sendInput",
+  "resumeAgent",
+  "wait",
+  "closeAgent",
+  "sendMessage",
+  "followupTask",
+  "interruptAgent",
+  "listAgents",
+]).annotate({ identifier: "V2ThreadItemsReadResponse__CollabAgentTool" });
+
+export type V2ThreadItemsReadResponse__SubAgentActivityKind =
+  | "started"
+  | "interacted"
+  | "interrupted"
+  | "completed";
+export const V2ThreadItemsReadResponse__SubAgentActivityKind = Schema.Literals([
+  "started",
+  "interacted",
+  "interrupted",
+  "completed",
+]).annotate({ identifier: "V2ThreadItemsReadResponse__SubAgentActivityKind" });
+
+export type V2ThreadItemsReadResponse__WebSearchAction =
+  | ({
+      readonly queries?: ReadonlyArray<string> | null;
+      readonly query?: string | null;
+      readonly type: "search";
+    } & { readonly [x: string]: CodexJsonExtension })
+  | ({ readonly type: "openPage"; readonly url?: string | null } & {
+      readonly [x: string]: CodexJsonExtension;
+    })
+  | ({
+      readonly pattern?: string | null;
+      readonly type: "findInPage";
+      readonly url?: string | null;
+    } & { readonly [x: string]: CodexJsonExtension })
+  | ({ readonly type: "other" } & { readonly [x: string]: CodexJsonExtension });
+export const V2ThreadItemsReadResponse__WebSearchAction = Schema.Union(
+  [
+    Schema.StructWithRest(
+      Schema.Struct({
+        queries: Schema.optionalKey(Schema.Union([Schema.Array(Schema.String), Schema.Null])),
+        query: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
+        type: Schema.Literal("search").annotate({ title: "SearchWebSearchActionType" }),
+      }),
+      [Schema.Record(Schema.String, CodexJsonExtension)],
+    ).annotate({ title: "SearchWebSearchAction" }),
+    Schema.StructWithRest(
+      Schema.Struct({
+        type: Schema.Literal("openPage").annotate({ title: "OpenPageWebSearchActionType" }),
+        url: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
+      }),
+      [Schema.Record(Schema.String, CodexJsonExtension)],
+    ).annotate({ title: "OpenPageWebSearchAction" }),
+    Schema.StructWithRest(
+      Schema.Struct({
+        pattern: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
+        type: Schema.Literal("findInPage").annotate({ title: "FindInPageWebSearchActionType" }),
+        url: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
+      }),
+      [Schema.Record(Schema.String, CodexJsonExtension)],
+    ).annotate({ title: "FindInPageWebSearchAction" }),
+    Schema.StructWithRest(
+      Schema.Struct({
+        type: Schema.Literal("other").annotate({ title: "OtherWebSearchActionType" }),
+      }),
+      [Schema.Record(Schema.String, CodexJsonExtension)],
+    ).annotate({ title: "OtherWebSearchAction" }),
+  ],
+  { mode: "oneOf" },
+).annotate({ identifier: "V2ThreadItemsReadResponse__WebSearchAction" });
+
+export type V2ThreadItemsReadResponse__ImageGenerationFailure = {
+  readonly limitId: string;
+  readonly resetsAt?: number | null;
+  readonly type: "usageLimitExceeded";
+} & { readonly [x: string]: CodexJsonExtension };
+export const V2ThreadItemsReadResponse__ImageGenerationFailure = Schema.Union(
+  [
+    Schema.StructWithRest(
+      Schema.Struct({
+        limitId: Schema.String,
+        resetsAt: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({ format: "int64" }).check(
+              Schema.isInt().annotate({ expected: "an integer" }),
+            ),
+            Schema.Null,
+          ]),
+        ),
+        type: Schema.Literal("usageLimitExceeded").annotate({
+          title: "UsageLimitExceededImageGenerationFailureType",
+        }),
+      }),
+      [Schema.Record(Schema.String, CodexJsonExtension)],
+    ).annotate({ title: "UsageLimitExceededImageGenerationFailure" }),
+  ],
+  { mode: "oneOf" },
+).annotate({ identifier: "V2ThreadItemsReadResponse__ImageGenerationFailure" });
+
+export type V2ThreadItemsReadResponse__AbsolutePathBuf = string;
+export const V2ThreadItemsReadResponse__AbsolutePathBuf = Schema.String.annotate({
+  description:
+    "A path that is guaranteed to be absolute and normalized (though it is not guaranteed to be canonicalized or exist on the filesystem).\n\nIMPORTANT: When deserializing an `AbsolutePathBuf`, a base path must be set using [AbsolutePathBufGuard::new]. If no base path is set, the deserialization will fail unless the path being deserialized is already absolute.",
+  identifier: "V2ThreadItemsReadResponse__AbsolutePathBuf",
+});
+
 export type V2ThreadListParams__ThreadListCwdFilter = string | ReadonlyArray<string>;
 export const V2ThreadListParams__ThreadListCwdFilter = Schema.Union([
   Schema.String,
@@ -13409,6 +13968,38 @@ export const V2ThreadListResponse__TurnStatus = Schema.Literals([
   "failed",
   "inProgress",
 ]).annotate({ identifier: "V2ThreadListResponse__TurnStatus" });
+
+export type V2ThreadListResponse__ThreadUnreadPosition =
+  | ({ readonly type: "threadStart" } & { readonly [x: string]: CodexJsonExtension })
+  | ({ readonly turnId: string; readonly type: "turn" } & {
+      readonly [x: string]: CodexJsonExtension;
+    });
+export const V2ThreadListResponse__ThreadUnreadPosition = Schema.Union(
+  [
+    Schema.StructWithRest(
+      Schema.Struct({
+        type: Schema.Literal("threadStart").annotate({
+          title: "ThreadStartThreadUnreadPositionType",
+        }),
+      }),
+      [Schema.Record(Schema.String, CodexJsonExtension)],
+    ).annotate({
+      title: "ThreadStartThreadUnreadPosition",
+      description: "Explicitly marked unread, including when the thread has no turns.",
+    }),
+    Schema.StructWithRest(
+      Schema.Struct({
+        turnId: Schema.String,
+        type: Schema.Literal("turn").annotate({ title: "TurnThreadUnreadPositionType" }),
+      }),
+      [Schema.Record(Schema.String, CodexJsonExtension)],
+    ).annotate({
+      title: "TurnThreadUnreadPosition",
+      description: "The earliest completed result needing attention.",
+    }),
+  ],
+  { mode: "oneOf" },
+).annotate({ identifier: "V2ThreadListResponse__ThreadUnreadPosition" });
 
 export type V2ThreadMemoryModeSetParams__ThreadMemoryMode = "enabled" | "disabled";
 export const V2ThreadMemoryModeSetParams__ThreadMemoryMode = Schema.Literals([
@@ -14686,6 +15277,38 @@ export const V2ThreadQueueUpdateResponse__ImageDetail = Schema.Literals([
   "original",
 ]).annotate({ identifier: "V2ThreadQueueUpdateResponse__ImageDetail" });
 
+export type V2ThreadReadResponse__ThreadUnreadPosition =
+  | ({ readonly type: "threadStart" } & { readonly [x: string]: CodexJsonExtension })
+  | ({ readonly turnId: string; readonly type: "turn" } & {
+      readonly [x: string]: CodexJsonExtension;
+    });
+export const V2ThreadReadResponse__ThreadUnreadPosition = Schema.Union(
+  [
+    Schema.StructWithRest(
+      Schema.Struct({
+        type: Schema.Literal("threadStart").annotate({
+          title: "ThreadStartThreadUnreadPositionType",
+        }),
+      }),
+      [Schema.Record(Schema.String, CodexJsonExtension)],
+    ).annotate({
+      title: "ThreadStartThreadUnreadPosition",
+      description: "Explicitly marked unread, including when the thread has no turns.",
+    }),
+    Schema.StructWithRest(
+      Schema.Struct({
+        turnId: Schema.String,
+        type: Schema.Literal("turn").annotate({ title: "TurnThreadUnreadPositionType" }),
+      }),
+      [Schema.Record(Schema.String, CodexJsonExtension)],
+    ).annotate({
+      title: "TurnThreadUnreadPosition",
+      description: "The earliest completed result needing attention.",
+    }),
+  ],
+  { mode: "oneOf" },
+).annotate({ identifier: "V2ThreadReadResponse__ThreadUnreadPosition" });
+
 export type V2ThreadReadResponse__AbsolutePathBuf = string;
 export const V2ThreadReadResponse__AbsolutePathBuf = Schema.String.annotate({
   description:
@@ -15232,6 +15855,91 @@ export const V2ThreadReadResponse__TurnStatus = Schema.Literals([
   "inProgress",
 ]).annotate({ identifier: "V2ThreadReadResponse__TurnStatus" });
 
+export type V2ThreadReadStateChangedNotification__ThreadUnreadPosition =
+  | ({ readonly type: "threadStart" } & { readonly [x: string]: CodexJsonExtension })
+  | ({ readonly turnId: string; readonly type: "turn" } & {
+      readonly [x: string]: CodexJsonExtension;
+    });
+export const V2ThreadReadStateChangedNotification__ThreadUnreadPosition = Schema.Union(
+  [
+    Schema.StructWithRest(
+      Schema.Struct({
+        type: Schema.Literal("threadStart").annotate({
+          title: "ThreadStartThreadUnreadPositionType",
+        }),
+      }),
+      [Schema.Record(Schema.String, CodexJsonExtension)],
+    ).annotate({
+      title: "ThreadStartThreadUnreadPosition",
+      description: "Explicitly marked unread, including when the thread has no turns.",
+    }),
+    Schema.StructWithRest(
+      Schema.Struct({
+        turnId: Schema.String,
+        type: Schema.Literal("turn").annotate({ title: "TurnThreadUnreadPositionType" }),
+      }),
+      [Schema.Record(Schema.String, CodexJsonExtension)],
+    ).annotate({
+      title: "TurnThreadUnreadPosition",
+      description: "The earliest completed result needing attention.",
+    }),
+  ],
+  { mode: "oneOf" },
+).annotate({ identifier: "V2ThreadReadStateChangedNotification__ThreadUnreadPosition" });
+
+export type V2ThreadReadStateUpdateParams__ThreadReadStateOperation =
+  | ({ readonly type: "read" } & { readonly [x: string]: CodexJsonExtension })
+  | ({ readonly type: "unread" } & { readonly [x: string]: CodexJsonExtension });
+export const V2ThreadReadStateUpdateParams__ThreadReadStateOperation = Schema.Union(
+  [
+    Schema.StructWithRest(
+      Schema.Struct({
+        type: Schema.Literal("read").annotate({ title: "ReadThreadReadStateOperationType" }),
+      }),
+      [Schema.Record(Schema.String, CodexJsonExtension)],
+    ).annotate({ title: "ReadThreadReadStateOperation" }),
+    Schema.StructWithRest(
+      Schema.Struct({
+        type: Schema.Literal("unread").annotate({ title: "UnreadThreadReadStateOperationType" }),
+      }),
+      [Schema.Record(Schema.String, CodexJsonExtension)],
+    ).annotate({ title: "UnreadThreadReadStateOperation" }),
+  ],
+  { mode: "oneOf" },
+).annotate({ identifier: "V2ThreadReadStateUpdateParams__ThreadReadStateOperation" });
+
+export type V2ThreadReadStateUpdateResponse__ThreadUnreadPosition =
+  | ({ readonly type: "threadStart" } & { readonly [x: string]: CodexJsonExtension })
+  | ({ readonly turnId: string; readonly type: "turn" } & {
+      readonly [x: string]: CodexJsonExtension;
+    });
+export const V2ThreadReadStateUpdateResponse__ThreadUnreadPosition = Schema.Union(
+  [
+    Schema.StructWithRest(
+      Schema.Struct({
+        type: Schema.Literal("threadStart").annotate({
+          title: "ThreadStartThreadUnreadPositionType",
+        }),
+      }),
+      [Schema.Record(Schema.String, CodexJsonExtension)],
+    ).annotate({
+      title: "ThreadStartThreadUnreadPosition",
+      description: "Explicitly marked unread, including when the thread has no turns.",
+    }),
+    Schema.StructWithRest(
+      Schema.Struct({
+        turnId: Schema.String,
+        type: Schema.Literal("turn").annotate({ title: "TurnThreadUnreadPositionType" }),
+      }),
+      [Schema.Record(Schema.String, CodexJsonExtension)],
+    ).annotate({
+      title: "TurnThreadUnreadPosition",
+      description: "The earliest completed result needing attention.",
+    }),
+  ],
+  { mode: "oneOf" },
+).annotate({ identifier: "V2ThreadReadStateUpdateResponse__ThreadUnreadPosition" });
+
 export type V2ThreadRealtimeAppendAudioParams__ThreadRealtimeAudioChunk = {
   readonly data: string;
   readonly itemId?: string | null;
@@ -15416,42 +16124,74 @@ export type V2ThreadRealtimeListVoicesResponse__RealtimeVoice =
   | "alloy"
   | "arbor"
   | "ash"
+  | "aube"
   | "ballad"
   | "breeze"
+  | "bubbie"
   | "cedar"
   | "coral"
   | "cove"
   | "echo"
   | "ember"
+  | "haetsal"
+  | "hanul"
+  | "himari"
   | "juniper"
+  | "leher"
   | "maple"
   | "marin"
+  | "miko"
+  | "neer"
+  | "porto"
+  | "rindo"
+  | "rio"
+  | "rivage"
   | "sage"
+  | "selva"
   | "shimmer"
   | "sol"
+  | "sonna"
   | "spruce"
+  | "tinta"
   | "vale"
-  | "verse";
+  | "verse"
+  | "viola";
 export const V2ThreadRealtimeListVoicesResponse__RealtimeVoice = Schema.Literals([
   "alloy",
   "arbor",
   "ash",
+  "aube",
   "ballad",
   "breeze",
+  "bubbie",
   "cedar",
   "coral",
   "cove",
   "echo",
   "ember",
+  "haetsal",
+  "hanul",
+  "himari",
   "juniper",
+  "leher",
   "maple",
   "marin",
+  "miko",
+  "neer",
+  "porto",
+  "rindo",
+  "rio",
+  "rivage",
   "sage",
+  "selva",
   "shimmer",
   "sol",
+  "sonna",
   "spruce",
+  "tinta",
   "vale",
   "verse",
+  "viola",
 ]).annotate({ identifier: "V2ThreadRealtimeListVoicesResponse__RealtimeVoice" });
 
 export type V2ThreadRealtimeOutputAudioDeltaNotification__ThreadRealtimeAudioChunk = {
@@ -15589,42 +16329,74 @@ export type V2ThreadRealtimeStartParams__RealtimeVoice =
   | "alloy"
   | "arbor"
   | "ash"
+  | "aube"
   | "ballad"
   | "breeze"
+  | "bubbie"
   | "cedar"
   | "coral"
   | "cove"
   | "echo"
   | "ember"
+  | "haetsal"
+  | "hanul"
+  | "himari"
   | "juniper"
+  | "leher"
   | "maple"
   | "marin"
+  | "miko"
+  | "neer"
+  | "porto"
+  | "rindo"
+  | "rio"
+  | "rivage"
   | "sage"
+  | "selva"
   | "shimmer"
   | "sol"
+  | "sonna"
   | "spruce"
+  | "tinta"
   | "vale"
-  | "verse";
+  | "verse"
+  | "viola";
 export const V2ThreadRealtimeStartParams__RealtimeVoice = Schema.Literals([
   "alloy",
   "arbor",
   "ash",
+  "aube",
   "ballad",
   "breeze",
+  "bubbie",
   "cedar",
   "coral",
   "cove",
   "echo",
   "ember",
+  "haetsal",
+  "hanul",
+  "himari",
   "juniper",
+  "leher",
   "maple",
   "marin",
+  "miko",
+  "neer",
+  "porto",
+  "rindo",
+  "rio",
+  "rivage",
   "sage",
+  "selva",
   "shimmer",
   "sol",
+  "sonna",
   "spruce",
+  "tinta",
   "vale",
   "verse",
+  "viola",
 ]).annotate({ identifier: "V2ThreadRealtimeStartParams__RealtimeVoice" });
 
 export type V2ThreadResumeParams__AskForApproval =
@@ -23470,9 +24242,12 @@ export type ClientRequest__ContentItem =
   | ({ readonly audio_url: string; readonly type: "input_audio" } & {
       readonly [x: string]: CodexJsonExtension;
     })
-  | ({ readonly text: string; readonly type: "output_text" } & {
-      readonly [x: string]: CodexJsonExtension;
-    });
+  | ({
+      readonly annotations?: ReadonlyArray<Schema.Json> | null;
+      readonly logprobs?: ReadonlyArray<Schema.Json> | null;
+      readonly text: string;
+      readonly type: "output_text";
+    } & { readonly [x: string]: CodexJsonExtension });
 export const ClientRequest__ContentItem = Schema.Union(
   [
     Schema.StructWithRest(
@@ -23509,6 +24284,18 @@ export const ClientRequest__ContentItem = Schema.Union(
     ).annotate({ title: "InputAudioContentItem" }),
     Schema.StructWithRest(
       Schema.Struct({
+        annotations: Schema.optionalKey(
+          Schema.Union([
+            Schema.Array(Schema.Json.annotate({ expected: "JSON value" })),
+            Schema.Null,
+          ]),
+        ),
+        logprobs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Array(Schema.Json.annotate({ expected: "JSON value" })),
+            Schema.Null,
+          ]),
+        ),
         text: Schema.String,
         type: Schema.Literal("output_text").annotate({ title: "OutputTextContentItemType" }),
       }),
@@ -23937,6 +24724,7 @@ export type ClientRequest__ThreadListParams = {
   readonly archived?: boolean | null;
   readonly cursor?: string | null;
   readonly cwd?: ClientRequest__ThreadListCwdFilter | null;
+  readonly excludedThreadIds?: ReadonlyArray<string> | null;
   readonly limit?: number | null;
   readonly modelProviders?: ReadonlyArray<string> | null;
   readonly originators?: ReadonlyArray<string> | null;
@@ -23982,6 +24770,15 @@ export const ClientRequest__ThreadListParams = Schema.StructWithRest(
         description:
           "Optional cwd filter or filters; when set, only threads whose session cwd exactly matches one of these paths are returned.",
       }),
+    ),
+    excludedThreadIds: Schema.optionalKey(
+      Schema.Union([
+        Schema.Array(Schema.String).annotate({
+          description:
+            "Thread IDs to exclude before applying the result limit. Up to 100 entries; invalid IDs or a larger list are rejected, never truncated. Send the same exclusions on each page. Omitted, null, or empty means no exclusions.",
+        }),
+        Schema.Null,
+      ]),
     ),
     limit: Schema.optionalKey(
       Schema.Union([
@@ -24225,6 +25022,23 @@ export const ClientRequest__ThreadSearchParams = Schema.StructWithRest(
   [Schema.Record(Schema.String, CodexJsonExtension)],
 ).annotate({ identifier: "ClientRequest__ThreadSearchParams" });
 
+export type ClientRequest__ThreadReadStateUpdateParams = {
+  readonly expectedRevision: string;
+  readonly operation: ClientRequest__ThreadReadStateOperation;
+  readonly threadId: string;
+} & { readonly [x: string]: CodexJsonExtension };
+export const ClientRequest__ThreadReadStateUpdateParams = Schema.StructWithRest(
+  Schema.Struct({
+    expectedRevision: Schema.String.annotate({
+      description:
+        "Revision of the row or transcript actually seen. Conflicts require a fresh user action.",
+    }),
+    operation: ClientRequest__ThreadReadStateOperation,
+    threadId: Schema.String,
+  }),
+  [Schema.Record(Schema.String, CodexJsonExtension)],
+).annotate({ identifier: "ClientRequest__ThreadReadStateUpdateParams" });
+
 export type ClientRequest__ThreadItemsListCursor = string | ClientRequest__ThreadItemsListAnchor;
 export const ClientRequest__ThreadItemsListCursor = Schema.Union([
   Schema.String,
@@ -24422,6 +25236,7 @@ export type ClientRequest__EnvironmentAddParams = {
   readonly environmentId: string;
   readonly execServerUrl: string;
   readonly skills?: ClientRequest__EnvironmentSkillsParams | null;
+  readonly websocketRequestId?: string | null;
 } & { readonly [x: string]: CodexJsonExtension };
 export const ClientRequest__EnvironmentAddParams = Schema.StructWithRest(
   Schema.Struct({
@@ -24457,6 +25272,15 @@ export const ClientRequest__EnvironmentAddParams = Schema.StructWithRest(
         description:
           "Required skills supplied by this environment, checked before model inference.",
       }),
+    ),
+    websocketRequestId: Schema.optionalKey(
+      Schema.Union([
+        Schema.String.annotate({
+          description:
+            "Optional X-Request-ID for the direct WebSocket upgrade, including reconnects. Requires a secure transport or a loopback destination.",
+        }),
+        Schema.Null,
+      ]),
     ),
   }),
   [Schema.Record(Schema.String, CodexJsonExtension)],
@@ -26195,6 +27019,24 @@ export const ServerNotification__CollabAgentState = Schema.StructWithRest(
   }),
   [Schema.Record(Schema.String, CodexJsonExtension)],
 ).annotate({ identifier: "ServerNotification__CollabAgentState" });
+
+export type ServerNotification__ThreadReadState = {
+  readonly firstUnread?: ServerNotification__ThreadUnreadPosition | null;
+  readonly revision: string;
+} & { readonly [x: string]: CodexJsonExtension };
+export const ServerNotification__ThreadReadState = Schema.StructWithRest(
+  Schema.Struct({
+    firstUnread: Schema.optionalKey(
+      Schema.Union([ServerNotification__ThreadUnreadPosition, Schema.Null]),
+    ),
+    revision: Schema.String,
+  }),
+  [Schema.Record(Schema.String, CodexJsonExtension)],
+).annotate({
+  description:
+    "The first unread position in a durable local thread. A null position means read. The opaque revision guards edits against activity or marks the caller has not seen.",
+  identifier: "ServerNotification__ThreadReadState",
+});
 
 export type ServerNotification__ThreadAttachmentUpdatedNotification = {
   readonly attachmentId: string;
@@ -31342,9 +32184,12 @@ export type V2RawResponseItemCompletedNotification__ContentItem =
   | ({ readonly audio_url: string; readonly type: "input_audio" } & {
       readonly [x: string]: CodexJsonExtension;
     })
-  | ({ readonly text: string; readonly type: "output_text" } & {
-      readonly [x: string]: CodexJsonExtension;
-    });
+  | ({
+      readonly annotations?: ReadonlyArray<Schema.Json> | null;
+      readonly logprobs?: ReadonlyArray<Schema.Json> | null;
+      readonly text: string;
+      readonly type: "output_text";
+    } & { readonly [x: string]: CodexJsonExtension });
 export const V2RawResponseItemCompletedNotification__ContentItem = Schema.Union(
   [
     Schema.StructWithRest(
@@ -31385,6 +32230,18 @@ export const V2RawResponseItemCompletedNotification__ContentItem = Schema.Union(
     ).annotate({ title: "InputAudioContentItem" }),
     Schema.StructWithRest(
       Schema.Struct({
+        annotations: Schema.optionalKey(
+          Schema.Union([
+            Schema.Array(Schema.Json.annotate({ expected: "JSON value" })),
+            Schema.Null,
+          ]),
+        ),
+        logprobs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Array(Schema.Json.annotate({ expected: "JSON value" })),
+            Schema.Null,
+          ]),
+        ),
         text: Schema.String,
         type: Schema.Literal("output_text").annotate({ title: "OutputTextContentItemType" }),
       }),
@@ -33006,6 +33863,225 @@ export const V2ThreadItemsListResponse__CollabAgentState = Schema.StructWithRest
   [Schema.Record(Schema.String, CodexJsonExtension)],
 ).annotate({ identifier: "V2ThreadItemsListResponse__CollabAgentState" });
 
+export type V2ThreadItemsReadResponse__TextElement = {
+  readonly byteRange: V2ThreadItemsReadResponse__ByteRange;
+  readonly placeholder?: string | null;
+} & { readonly [x: string]: CodexJsonExtension };
+export const V2ThreadItemsReadResponse__TextElement = Schema.StructWithRest(
+  Schema.Struct({
+    byteRange: Schema.suspend(
+      (): Schema.Codec<V2ThreadItemsReadResponse__ByteRange> =>
+        V2ThreadItemsReadResponse__ByteRange,
+    ).annotate({
+      description: "Byte range in the parent `text` buffer that this element occupies.",
+    }),
+    placeholder: Schema.optionalKey(
+      Schema.Union([
+        Schema.String.annotate({
+          description: "Optional human-readable placeholder for the element, displayed in the UI.",
+        }),
+        Schema.Null,
+      ]),
+    ),
+  }),
+  [Schema.Record(Schema.String, CodexJsonExtension)],
+).annotate({ identifier: "V2ThreadItemsReadResponse__TextElement" });
+
+export type V2ThreadItemsReadResponse__FunctionCallOutputContentItem =
+  | ({ readonly text: string; readonly type: "input_text" } & {
+      readonly [x: string]: CodexJsonExtension;
+    })
+  | ({
+      readonly detail?: V2ThreadItemsReadResponse__ImageDetail | null;
+      readonly type: "input_image";
+      readonly image_url: string;
+    } & { readonly [x: string]: CodexJsonExtension })
+  | ({
+      readonly detail?: V2ThreadItemsReadResponse__ImageDetail | null;
+      readonly type: "input_image";
+      readonly file_id: string;
+    } & { readonly [x: string]: CodexJsonExtension })
+  | ({ readonly audio_url: string; readonly type: "input_audio" } & {
+      readonly [x: string]: CodexJsonExtension;
+    })
+  | ({ readonly encrypted_content: string; readonly type: "encrypted_content" } & {
+      readonly [x: string]: CodexJsonExtension;
+    });
+export const V2ThreadItemsReadResponse__FunctionCallOutputContentItem = Schema.Union(
+  [
+    Schema.StructWithRest(
+      Schema.Struct({
+        text: Schema.String,
+        type: Schema.Literal("input_text").annotate({
+          title: "InputTextFunctionCallOutputContentItemType",
+        }),
+      }),
+      [Schema.Record(Schema.String, CodexJsonExtension)],
+    ).annotate({ title: "InputTextFunctionCallOutputContentItem" }),
+    Schema.Union([
+      Schema.StructWithRest(
+        Schema.Struct({
+          detail: Schema.optionalKey(
+            Schema.Union([V2ThreadItemsReadResponse__ImageDetail, Schema.Null]),
+          ),
+          type: Schema.Literal("input_image").annotate({
+            title: "InputImageFunctionCallOutputContentItemType",
+          }),
+          image_url: Schema.String,
+        }),
+        [Schema.Record(Schema.String, CodexJsonExtension)],
+      ).annotate({ title: "ImageUrlFunctionCallOutputContentItem" }),
+      Schema.StructWithRest(
+        Schema.Struct({
+          detail: Schema.optionalKey(
+            Schema.Union([V2ThreadItemsReadResponse__ImageDetail, Schema.Null]),
+          ),
+          type: Schema.Literal("input_image").annotate({
+            title: "InputImageFunctionCallOutputContentItemType",
+          }),
+          file_id: Schema.String,
+        }),
+        [Schema.Record(Schema.String, CodexJsonExtension)],
+      ).annotate({ title: "FileIdFunctionCallOutputContentItem" }),
+    ]),
+    Schema.StructWithRest(
+      Schema.Struct({
+        audio_url: Schema.String,
+        type: Schema.Literal("input_audio").annotate({
+          title: "InputAudioFunctionCallOutputContentItemType",
+        }),
+      }),
+      [Schema.Record(Schema.String, CodexJsonExtension)],
+    ).annotate({ title: "InputAudioFunctionCallOutputContentItem" }),
+    Schema.StructWithRest(
+      Schema.Struct({
+        encrypted_content: Schema.String,
+        type: Schema.Literal("encrypted_content").annotate({
+          title: "EncryptedContentFunctionCallOutputContentItemType",
+        }),
+      }),
+      [Schema.Record(Schema.String, CodexJsonExtension)],
+    ).annotate({ title: "EncryptedContentFunctionCallOutputContentItem" }),
+  ],
+  { mode: "oneOf" },
+).annotate({
+  description:
+    "Responses API compatible content items that can be returned by a tool call. This is a subset of ContentItem with the types we support as function call outputs.",
+  identifier: "V2ThreadItemsReadResponse__FunctionCallOutputContentItem",
+});
+
+export type V2ThreadItemsReadResponse__MemoryCitation = {
+  readonly entries: ReadonlyArray<V2ThreadItemsReadResponse__MemoryCitationEntry>;
+  readonly threadIds: ReadonlyArray<string>;
+} & { readonly [x: string]: CodexJsonExtension };
+export const V2ThreadItemsReadResponse__MemoryCitation = Schema.StructWithRest(
+  Schema.Struct({
+    entries: Schema.Array(V2ThreadItemsReadResponse__MemoryCitationEntry),
+    threadIds: Schema.Array(Schema.String),
+  }),
+  [Schema.Record(Schema.String, CodexJsonExtension)],
+).annotate({ identifier: "V2ThreadItemsReadResponse__MemoryCitation" });
+
+export type V2ThreadItemsReadResponse__CommandAction =
+  | ({
+      readonly command: string;
+      readonly name: string;
+      readonly path: V2ThreadItemsReadResponse__LegacyAppPathString;
+      readonly type: "read";
+    } & { readonly [x: string]: CodexJsonExtension })
+  | ({ readonly command: string; readonly path?: string | null; readonly type: "listFiles" } & {
+      readonly [x: string]: CodexJsonExtension;
+    })
+  | ({
+      readonly command: string;
+      readonly path?: string | null;
+      readonly query?: string | null;
+      readonly type: "search";
+    } & { readonly [x: string]: CodexJsonExtension })
+  | ({ readonly command: string; readonly type: "unknown" } & {
+      readonly [x: string]: CodexJsonExtension;
+    });
+export const V2ThreadItemsReadResponse__CommandAction = Schema.Union(
+  [
+    Schema.StructWithRest(
+      Schema.Struct({
+        command: Schema.String,
+        name: Schema.String,
+        path: V2ThreadItemsReadResponse__LegacyAppPathString,
+        type: Schema.Literal("read").annotate({ title: "ReadCommandActionType" }),
+      }),
+      [Schema.Record(Schema.String, CodexJsonExtension)],
+    ).annotate({ title: "ReadCommandAction" }),
+    Schema.StructWithRest(
+      Schema.Struct({
+        command: Schema.String,
+        path: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
+        type: Schema.Literal("listFiles").annotate({ title: "ListFilesCommandActionType" }),
+      }),
+      [Schema.Record(Schema.String, CodexJsonExtension)],
+    ).annotate({ title: "ListFilesCommandAction" }),
+    Schema.StructWithRest(
+      Schema.Struct({
+        command: Schema.String,
+        path: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
+        query: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
+        type: Schema.Literal("search").annotate({ title: "SearchCommandActionType" }),
+      }),
+      [Schema.Record(Schema.String, CodexJsonExtension)],
+    ).annotate({ title: "SearchCommandAction" }),
+    Schema.StructWithRest(
+      Schema.Struct({
+        command: Schema.String,
+        type: Schema.Literal("unknown").annotate({ title: "UnknownCommandActionType" }),
+      }),
+      [Schema.Record(Schema.String, CodexJsonExtension)],
+    ).annotate({ title: "UnknownCommandAction" }),
+  ],
+  { mode: "oneOf" },
+).annotate({ identifier: "V2ThreadItemsReadResponse__CommandAction" });
+
+export type V2ThreadItemsReadResponse__FileUpdateChange = {
+  readonly diff: string;
+  readonly kind: V2ThreadItemsReadResponse__PatchChangeKind;
+  readonly path: string;
+} & { readonly [x: string]: CodexJsonExtension };
+export const V2ThreadItemsReadResponse__FileUpdateChange = Schema.StructWithRest(
+  Schema.Struct({
+    diff: Schema.String,
+    kind: V2ThreadItemsReadResponse__PatchChangeKind,
+    path: Schema.String,
+  }),
+  [Schema.Record(Schema.String, CodexJsonExtension)],
+).annotate({ identifier: "V2ThreadItemsReadResponse__FileUpdateChange" });
+
+export type V2ThreadItemsReadResponse__McpAppUi = {
+  readonly preferredModelDisplayMode: V2ThreadItemsReadResponse__McpAppDisplayMode;
+  readonly resourceUri: string;
+} & { readonly [x: string]: CodexJsonExtension };
+export const V2ThreadItemsReadResponse__McpAppUi = Schema.StructWithRest(
+  Schema.Struct({
+    preferredModelDisplayMode: V2ThreadItemsReadResponse__McpAppDisplayMode,
+    resourceUri: Schema.String,
+  }),
+  [Schema.Record(Schema.String, CodexJsonExtension)],
+).annotate({
+  description:
+    "UI resource and display preference for model invocations, captured from the tool descriptor.",
+  identifier: "V2ThreadItemsReadResponse__McpAppUi",
+});
+
+export type V2ThreadItemsReadResponse__CollabAgentState = {
+  readonly message?: string | null;
+  readonly status: V2ThreadItemsReadResponse__CollabAgentStatus;
+} & { readonly [x: string]: CodexJsonExtension };
+export const V2ThreadItemsReadResponse__CollabAgentState = Schema.StructWithRest(
+  Schema.Struct({
+    message: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
+    status: V2ThreadItemsReadResponse__CollabAgentStatus,
+  }),
+  [Schema.Record(Schema.String, CodexJsonExtension)],
+).annotate({ identifier: "V2ThreadItemsReadResponse__CollabAgentState" });
+
 export type V2ThreadListResponse__ThreadEnvironment = {
   readonly cwd: V2ThreadListResponse__LegacyAppPathString;
   readonly environmentId: string;
@@ -33569,6 +34645,24 @@ export const V2ThreadListResponse__CollabAgentState = Schema.StructWithRest(
   }),
   [Schema.Record(Schema.String, CodexJsonExtension)],
 ).annotate({ identifier: "V2ThreadListResponse__CollabAgentState" });
+
+export type V2ThreadListResponse__ThreadReadState = {
+  readonly firstUnread?: V2ThreadListResponse__ThreadUnreadPosition | null;
+  readonly revision: string;
+} & { readonly [x: string]: CodexJsonExtension };
+export const V2ThreadListResponse__ThreadReadState = Schema.StructWithRest(
+  Schema.Struct({
+    firstUnread: Schema.optionalKey(
+      Schema.Union([V2ThreadListResponse__ThreadUnreadPosition, Schema.Null]),
+    ),
+    revision: Schema.String,
+  }),
+  [Schema.Record(Schema.String, CodexJsonExtension)],
+).annotate({
+  description:
+    "The first unread position in a durable local thread. A null position means read. The opaque revision guards edits against activity or marks the caller has not seen.",
+  identifier: "V2ThreadListResponse__ThreadReadState",
+});
 
 export type V2ThreadMetadataUpdateResponse__ThreadEnvironment = {
   readonly cwd: V2ThreadMetadataUpdateResponse__LegacyAppPathString;
@@ -34698,6 +35792,24 @@ export const V2ThreadQueueUpdateResponse__TextElement = Schema.StructWithRest(
   [Schema.Record(Schema.String, CodexJsonExtension)],
 ).annotate({ identifier: "V2ThreadQueueUpdateResponse__TextElement" });
 
+export type V2ThreadReadResponse__ThreadReadState = {
+  readonly firstUnread?: V2ThreadReadResponse__ThreadUnreadPosition | null;
+  readonly revision: string;
+} & { readonly [x: string]: CodexJsonExtension };
+export const V2ThreadReadResponse__ThreadReadState = Schema.StructWithRest(
+  Schema.Struct({
+    firstUnread: Schema.optionalKey(
+      Schema.Union([V2ThreadReadResponse__ThreadUnreadPosition, Schema.Null]),
+    ),
+    revision: Schema.String,
+  }),
+  [Schema.Record(Schema.String, CodexJsonExtension)],
+).annotate({
+  description:
+    "The first unread position in a durable local thread. A null position means read. The opaque revision guards edits against activity or marks the caller has not seen.",
+  identifier: "V2ThreadReadResponse__ThreadReadState",
+});
+
 export type V2ThreadReadResponse__ThreadEnvironment = {
   readonly cwd: V2ThreadReadResponse__LegacyAppPathString;
   readonly environmentId: string;
@@ -35262,6 +36374,42 @@ export const V2ThreadReadResponse__CollabAgentState = Schema.StructWithRest(
   [Schema.Record(Schema.String, CodexJsonExtension)],
 ).annotate({ identifier: "V2ThreadReadResponse__CollabAgentState" });
 
+export type V2ThreadReadStateChangedNotification__ThreadReadState = {
+  readonly firstUnread?: V2ThreadReadStateChangedNotification__ThreadUnreadPosition | null;
+  readonly revision: string;
+} & { readonly [x: string]: CodexJsonExtension };
+export const V2ThreadReadStateChangedNotification__ThreadReadState = Schema.StructWithRest(
+  Schema.Struct({
+    firstUnread: Schema.optionalKey(
+      Schema.Union([V2ThreadReadStateChangedNotification__ThreadUnreadPosition, Schema.Null]),
+    ),
+    revision: Schema.String,
+  }),
+  [Schema.Record(Schema.String, CodexJsonExtension)],
+).annotate({
+  description:
+    "The first unread position in a durable local thread. A null position means read. The opaque revision guards edits against activity or marks the caller has not seen.",
+  identifier: "V2ThreadReadStateChangedNotification__ThreadReadState",
+});
+
+export type V2ThreadReadStateUpdateResponse__ThreadReadState = {
+  readonly firstUnread?: V2ThreadReadStateUpdateResponse__ThreadUnreadPosition | null;
+  readonly revision: string;
+} & { readonly [x: string]: CodexJsonExtension };
+export const V2ThreadReadStateUpdateResponse__ThreadReadState = Schema.StructWithRest(
+  Schema.Struct({
+    firstUnread: Schema.optionalKey(
+      Schema.Union([V2ThreadReadStateUpdateResponse__ThreadUnreadPosition, Schema.Null]),
+    ),
+    revision: Schema.String,
+  }),
+  [Schema.Record(Schema.String, CodexJsonExtension)],
+).annotate({
+  description:
+    "The first unread position in a durable local thread. A null position means read. The opaque revision guards edits against activity or marks the caller has not seen.",
+  identifier: "V2ThreadReadStateUpdateResponse__ThreadReadState",
+});
+
 export type V2ThreadRealtimeItemCompletedNotification__ThreadRealtimeItem =
   | ({
       readonly id: string;
@@ -35449,6 +36597,7 @@ export type V2ThreadRealtimeListVoicesResponse__RealtimeVoicesList = {
   readonly defaultV2: V2ThreadRealtimeListVoicesResponse__RealtimeVoice;
   readonly v1: ReadonlyArray<V2ThreadRealtimeListVoicesResponse__RealtimeVoice>;
   readonly v2: ReadonlyArray<V2ThreadRealtimeListVoicesResponse__RealtimeVoice>;
+  readonly v3?: ReadonlyArray<V2ThreadRealtimeListVoicesResponse__RealtimeVoice>;
 } & { readonly [x: string]: CodexJsonExtension };
 export const V2ThreadRealtimeListVoicesResponse__RealtimeVoicesList = Schema.StructWithRest(
   Schema.Struct({
@@ -35456,6 +36605,9 @@ export const V2ThreadRealtimeListVoicesResponse__RealtimeVoicesList = Schema.Str
     defaultV2: V2ThreadRealtimeListVoicesResponse__RealtimeVoice,
     v1: Schema.Array(V2ThreadRealtimeListVoicesResponse__RealtimeVoice),
     v2: Schema.Array(V2ThreadRealtimeListVoicesResponse__RealtimeVoice),
+    v3: Schema.optionalKey(
+      Schema.Array(V2ThreadRealtimeListVoicesResponse__RealtimeVoice).annotate({ default: [] }),
+    ),
   }),
   [Schema.Record(Schema.String, CodexJsonExtension)],
 ).annotate({ identifier: "V2ThreadRealtimeListVoicesResponse__RealtimeVoicesList" });
@@ -35489,9 +36641,12 @@ export type V2ThreadResumeParams__ContentItem =
   | ({ readonly audio_url: string; readonly type: "input_audio" } & {
       readonly [x: string]: CodexJsonExtension;
     })
-  | ({ readonly text: string; readonly type: "output_text" } & {
-      readonly [x: string]: CodexJsonExtension;
-    });
+  | ({
+      readonly annotations?: ReadonlyArray<Schema.Json> | null;
+      readonly logprobs?: ReadonlyArray<Schema.Json> | null;
+      readonly text: string;
+      readonly type: "output_text";
+    } & { readonly [x: string]: CodexJsonExtension });
 export const V2ThreadResumeParams__ContentItem = Schema.Union(
   [
     Schema.StructWithRest(
@@ -35532,6 +36687,18 @@ export const V2ThreadResumeParams__ContentItem = Schema.Union(
     ).annotate({ title: "InputAudioContentItem" }),
     Schema.StructWithRest(
       Schema.Struct({
+        annotations: Schema.optionalKey(
+          Schema.Union([
+            Schema.Array(Schema.Json.annotate({ expected: "JSON value" })),
+            Schema.Null,
+          ]),
+        ),
+        logprobs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Array(Schema.Json.annotate({ expected: "JSON value" })),
+            Schema.Null,
+          ]),
+        ),
         text: Schema.String,
         type: Schema.Literal("output_text").annotate({ title: "OutputTextContentItemType" }),
       }),
@@ -43780,6 +44947,15 @@ export const ServerNotification__FileChangePatchUpdatedNotification = Schema.Str
   [Schema.Record(Schema.String, CodexJsonExtension)],
 ).annotate({ identifier: "ServerNotification__FileChangePatchUpdatedNotification" });
 
+export type ServerNotification__ThreadReadStateChangedNotification = {
+  readonly readState: ServerNotification__ThreadReadState;
+  readonly threadId: string;
+} & { readonly [x: string]: CodexJsonExtension };
+export const ServerNotification__ThreadReadStateChangedNotification = Schema.StructWithRest(
+  Schema.Struct({ readState: ServerNotification__ThreadReadState, threadId: Schema.String }),
+  [Schema.Record(Schema.String, CodexJsonExtension)],
+).annotate({ identifier: "ServerNotification__ThreadReadStateChangedNotification" });
+
 export type ServerNotification__ThreadGoalUpdatedNotification = {
   readonly goal: ServerNotification__ThreadGoal;
   readonly threadId: string;
@@ -45409,7 +46585,7 @@ export type V2PluginReadResponse__SkillSummary = {
   readonly enabled: boolean;
   readonly interface?: V2PluginReadResponse__SkillInterface | null;
   readonly name: string;
-  readonly path?: V2PluginReadResponse__AbsolutePathBuf | null;
+  readonly path?: V2PluginReadResponse__LegacyAppPathString | null;
   readonly shortDescription?: string | null;
 } & { readonly [x: string]: CodexJsonExtension };
 export const V2PluginReadResponse__SkillSummary = Schema.StructWithRest(
@@ -45420,7 +46596,9 @@ export const V2PluginReadResponse__SkillSummary = Schema.StructWithRest(
       Schema.Union([V2PluginReadResponse__SkillInterface, Schema.Null]),
     ),
     name: Schema.String,
-    path: Schema.optionalKey(Schema.Union([V2PluginReadResponse__AbsolutePathBuf, Schema.Null])),
+    path: Schema.optionalKey(
+      Schema.Union([V2PluginReadResponse__LegacyAppPathString, Schema.Null]),
+    ),
     shortDescription: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
   }),
   [Schema.Record(Schema.String, CodexJsonExtension)],
@@ -45900,7 +47078,7 @@ export type V2SkillsListResponse__SkillMetadata = {
   readonly enabled: boolean;
   readonly interface?: V2SkillsListResponse__SkillInterface | null;
   readonly name: string;
-  readonly path: V2SkillsListResponse__AbsolutePathBuf;
+  readonly path: V2SkillsListResponse__LegacyAppPathString;
   readonly pluginId?: string | null;
   readonly scope: V2SkillsListResponse__SkillScope;
   readonly shortDescription?: string | null;
@@ -45916,7 +47094,7 @@ export const V2SkillsListResponse__SkillMetadata = Schema.StructWithRest(
       Schema.Union([V2SkillsListResponse__SkillInterface, Schema.Null]),
     ),
     name: Schema.String,
-    path: V2SkillsListResponse__AbsolutePathBuf,
+    path: V2SkillsListResponse__LegacyAppPathString,
     pluginId: Schema.optionalKey(
       Schema.Union([
         Schema.String.annotate({
@@ -46228,6 +47406,129 @@ export const V2ThreadItemsListResponse__FunctionCallOutputBody = Schema.Union([
   Schema.String,
   Schema.Array(V2ThreadItemsListResponse__FunctionCallOutputContentItem),
 ]).annotate({ identifier: "V2ThreadItemsListResponse__FunctionCallOutputBody" });
+
+export type V2ThreadItemsReadResponse__UserInput =
+  | ({
+      readonly text: string;
+      readonly text_elements?: ReadonlyArray<V2ThreadItemsReadResponse__TextElement>;
+      readonly type: "text";
+    } & { readonly [x: string]: CodexJsonExtension })
+  | ({
+      readonly detail?: V2ThreadItemsReadResponse__ImageDetail | null;
+      readonly type: "image";
+      readonly url: string;
+    } & { readonly [x: string]: CodexJsonExtension })
+  | ({
+      readonly detail?: V2ThreadItemsReadResponse__ImageDetail | null;
+      readonly type: "image";
+      readonly fileId: string;
+    } & { readonly [x: string]: CodexJsonExtension })
+  | ({
+      readonly detail?: V2ThreadItemsReadResponse__ImageDetail | null;
+      readonly path: string;
+      readonly type: "localImage";
+    } & { readonly [x: string]: CodexJsonExtension })
+  | ({ readonly type: "audio"; readonly url: string } & {
+      readonly [x: string]: CodexJsonExtension;
+    })
+  | ({ readonly path: string; readonly type: "localAudio" } & {
+      readonly [x: string]: CodexJsonExtension;
+    })
+  | ({ readonly name: string; readonly path: string; readonly type: "skill" } & {
+      readonly [x: string]: CodexJsonExtension;
+    })
+  | ({ readonly name: string; readonly path: string; readonly type: "mention" } & {
+      readonly [x: string]: CodexJsonExtension;
+    });
+export const V2ThreadItemsReadResponse__UserInput = Schema.Union(
+  [
+    Schema.StructWithRest(
+      Schema.Struct({
+        text: Schema.String,
+        text_elements: Schema.optionalKey(
+          Schema.Array(V2ThreadItemsReadResponse__TextElement).annotate({
+            description:
+              "UI-defined spans within `text` used to render or persist special elements.",
+            default: [],
+          }),
+        ),
+        type: Schema.Literal("text").annotate({ title: "TextUserInputType" }),
+      }),
+      [Schema.Record(Schema.String, CodexJsonExtension)],
+    ).annotate({ title: "TextUserInput" }),
+    Schema.Union([
+      Schema.StructWithRest(
+        Schema.Struct({
+          detail: Schema.optionalKey(
+            Schema.Union([V2ThreadItemsReadResponse__ImageDetail, Schema.Null]),
+          ),
+          type: Schema.Literal("image").annotate({ title: "ImageUserInputType" }),
+          url: Schema.String,
+        }),
+        [Schema.Record(Schema.String, CodexJsonExtension)],
+      ).annotate({ title: "UrlUserInput" }),
+      Schema.StructWithRest(
+        Schema.Struct({
+          detail: Schema.optionalKey(
+            Schema.Union([V2ThreadItemsReadResponse__ImageDetail, Schema.Null]),
+          ),
+          type: Schema.Literal("image").annotate({ title: "ImageUserInputType" }),
+          fileId: Schema.String,
+        }),
+        [Schema.Record(Schema.String, CodexJsonExtension)],
+      ).annotate({ title: "FileIdUserInput" }),
+    ]),
+    Schema.StructWithRest(
+      Schema.Struct({
+        detail: Schema.optionalKey(
+          Schema.Union([V2ThreadItemsReadResponse__ImageDetail, Schema.Null]),
+        ),
+        path: Schema.String,
+        type: Schema.Literal("localImage").annotate({ title: "LocalImageUserInputType" }),
+      }),
+      [Schema.Record(Schema.String, CodexJsonExtension)],
+    ).annotate({ title: "LocalImageUserInput" }),
+    Schema.StructWithRest(
+      Schema.Struct({
+        type: Schema.Literal("audio").annotate({ title: "AudioUserInputType" }),
+        url: Schema.String,
+      }),
+      [Schema.Record(Schema.String, CodexJsonExtension)],
+    ).annotate({ title: "AudioUserInput" }),
+    Schema.StructWithRest(
+      Schema.Struct({
+        path: Schema.String,
+        type: Schema.Literal("localAudio").annotate({ title: "LocalAudioUserInputType" }),
+      }),
+      [Schema.Record(Schema.String, CodexJsonExtension)],
+    ).annotate({ title: "LocalAudioUserInput" }),
+    Schema.StructWithRest(
+      Schema.Struct({
+        name: Schema.String,
+        path: Schema.String,
+        type: Schema.Literal("skill").annotate({ title: "SkillUserInputType" }),
+      }),
+      [Schema.Record(Schema.String, CodexJsonExtension)],
+    ).annotate({ title: "SkillUserInput" }),
+    Schema.StructWithRest(
+      Schema.Struct({
+        name: Schema.String,
+        path: Schema.String,
+        type: Schema.Literal("mention").annotate({ title: "MentionUserInputType" }),
+      }),
+      [Schema.Record(Schema.String, CodexJsonExtension)],
+    ).annotate({ title: "MentionUserInput" }),
+  ],
+  { mode: "oneOf" },
+).annotate({ identifier: "V2ThreadItemsReadResponse__UserInput" });
+
+export type V2ThreadItemsReadResponse__FunctionCallOutputBody =
+  | string
+  | ReadonlyArray<V2ThreadItemsReadResponse__FunctionCallOutputContentItem>;
+export const V2ThreadItemsReadResponse__FunctionCallOutputBody = Schema.Union([
+  Schema.String,
+  Schema.Array(V2ThreadItemsReadResponse__FunctionCallOutputContentItem),
+]).annotate({ identifier: "V2ThreadItemsReadResponse__FunctionCallOutputBody" });
 
 export type V2ThreadListResponse__SessionSource =
   | "cli"
@@ -49494,10 +50795,12 @@ export type ClientRequest__ResponseItem =
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
       readonly content: ReadonlyArray<ClientRequest__ContentItem>;
+      readonly encrypted_content?: string | null;
       readonly id?: string | null;
       readonly internal_chat_message_metadata_passthrough?: ClientRequest__InternalChatMessageMetadataPassthrough | null;
       readonly phase?: ClientRequest__MessagePhase | null;
       readonly role: string;
+      readonly status?: string | null;
       readonly type: "message";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
@@ -49519,6 +50822,7 @@ export type ClientRequest__ResponseItem =
   | ({
       readonly action: ClientRequest__LocalShellAction;
       readonly call_id?: string | null;
+      readonly encrypted_content?: string | null;
       readonly id?: string | null;
       readonly internal_chat_message_metadata_passthrough?: ClientRequest__InternalChatMessageMetadataPassthrough | null;
       readonly status: ClientRequest__LocalShellStatus;
@@ -49527,16 +50831,19 @@ export type ClientRequest__ResponseItem =
   | ({
       readonly arguments: string;
       readonly call_id: string;
+      readonly encrypted_content?: string | null;
       readonly encrypted_function_args?: ReadonlyArray<string> | null;
       readonly id?: string | null;
       readonly internal_chat_message_metadata_passthrough?: ClientRequest__InternalChatMessageMetadataPassthrough | null;
       readonly name: string;
       readonly namespace?: string | null;
+      readonly status?: string | null;
       readonly type: "function_call";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
       readonly arguments: Schema.Json;
       readonly call_id?: string | null;
+      readonly encrypted_content?: string | null;
       readonly execution: string;
       readonly id?: string | null;
       readonly internal_chat_message_metadata_passthrough?: ClientRequest__InternalChatMessageMetadataPassthrough | null;
@@ -49554,6 +50861,7 @@ export type ClientRequest__ResponseItem =
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
       readonly call_id: string;
+      readonly encrypted_content?: string | null;
       readonly id?: string | null;
       readonly input: string;
       readonly internal_chat_message_metadata_passthrough?: ClientRequest__InternalChatMessageMetadataPassthrough | null;
@@ -49581,12 +50889,14 @@ export type ClientRequest__ResponseItem =
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
       readonly action?: ClientRequest__ResponsesApiWebSearchAction | null;
+      readonly encrypted_content?: string | null;
       readonly id?: string | null;
       readonly internal_chat_message_metadata_passthrough?: ClientRequest__InternalChatMessageMetadataPassthrough | null;
       readonly status?: string | null;
       readonly type: "web_search_call";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly encrypted_content?: string | null;
       readonly id?: string | null;
       readonly internal_chat_message_metadata_passthrough?: ClientRequest__InternalChatMessageMetadataPassthrough | null;
       readonly result: string;
@@ -49628,12 +50938,14 @@ export const ClientRequest__ResponseItem = Schema.Union(
     Schema.StructWithRest(
       Schema.Struct({
         content: Schema.Array(ClientRequest__ContentItem),
+        encrypted_content: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
         id: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
         internal_chat_message_metadata_passthrough: Schema.optionalKey(
           Schema.Union([ClientRequest__InternalChatMessageMetadataPassthrough, Schema.Null]),
         ),
         phase: Schema.optionalKey(Schema.Union([ClientRequest__MessagePhase, Schema.Null])),
         role: Schema.String,
+        status: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
         type: Schema.Literal("message").annotate({ title: "MessageResponseItemType" }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
@@ -49675,6 +50987,7 @@ export const ClientRequest__ResponseItem = Schema.Union(
             Schema.Null,
           ]),
         ),
+        encrypted_content: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
         id: Schema.optionalKey(
           Schema.Union([
             Schema.String.annotate({
@@ -49697,6 +51010,7 @@ export const ClientRequest__ResponseItem = Schema.Union(
       Schema.Struct({
         arguments: Schema.String,
         call_id: Schema.String,
+        encrypted_content: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
         encrypted_function_args: Schema.optionalKey(
           Schema.Union([Schema.Array(Schema.String), Schema.Null]),
         ),
@@ -49706,6 +51020,7 @@ export const ClientRequest__ResponseItem = Schema.Union(
         ),
         name: Schema.String,
         namespace: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
+        status: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
         type: Schema.Literal("function_call").annotate({ title: "FunctionCallResponseItemType" }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
@@ -49714,6 +51029,7 @@ export const ClientRequest__ResponseItem = Schema.Union(
       Schema.Struct({
         arguments: Schema.Json.annotate({ expected: "JSON value" }),
         call_id: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
+        encrypted_content: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
         execution: Schema.String,
         id: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
         internal_chat_message_metadata_passthrough: Schema.optionalKey(
@@ -49745,6 +51061,7 @@ export const ClientRequest__ResponseItem = Schema.Union(
     Schema.StructWithRest(
       Schema.Struct({
         call_id: Schema.String,
+        encrypted_content: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
         id: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
         input: Schema.String,
         internal_chat_message_metadata_passthrough: Schema.optionalKey(
@@ -49795,6 +51112,7 @@ export const ClientRequest__ResponseItem = Schema.Union(
         action: Schema.optionalKey(
           Schema.Union([ClientRequest__ResponsesApiWebSearchAction, Schema.Null]),
         ),
+        encrypted_content: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
         id: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
         internal_chat_message_metadata_passthrough: Schema.optionalKey(
           Schema.Union([ClientRequest__InternalChatMessageMetadataPassthrough, Schema.Null]),
@@ -49808,6 +51126,7 @@ export const ClientRequest__ResponseItem = Schema.Union(
     ).annotate({ title: "WebSearchCallResponseItem" }),
     Schema.StructWithRest(
       Schema.Struct({
+        encrypted_content: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
         id: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
         internal_chat_message_metadata_passthrough: Schema.optionalKey(
           Schema.Union([ClientRequest__InternalChatMessageMetadataPassthrough, Schema.Null]),
@@ -49877,12 +51196,18 @@ export type ClientRequest__TurnToolOutput = {
   readonly name: string;
   readonly namespace?: string | null;
   readonly output: ClientRequest__FunctionCallOutputBody;
+  readonly retain?: boolean;
 } & { readonly [x: string]: CodexJsonExtension };
 export const ClientRequest__TurnToolOutput = Schema.StructWithRest(
   Schema.Struct({
     name: Schema.String,
     namespace: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
     output: ClientRequest__FunctionCallOutputBody,
+    retain: Schema.optionalKey(
+      Schema.Boolean.annotate({
+        description: "Requests retention of this output in the thread's model history.",
+      }),
+    ),
   }),
   [Schema.Record(Schema.String, CodexJsonExtension)],
 ).annotate({ identifier: "ClientRequest__TurnToolOutput" });
@@ -50349,6 +51674,8 @@ export type ServerNotification__ThreadItem =
       readonly agentThreadId: string;
       readonly id: string;
       readonly kind: ServerNotification__SubAgentActivityKind;
+      readonly model?: string | null;
+      readonly reasoningEffort?: ServerNotification__ReasoningEffort | null;
       readonly type: "subAgentActivity";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
@@ -50670,6 +51997,20 @@ export const ServerNotification__ThreadItem = Schema.Union(
         agentThreadId: Schema.String,
         id: Schema.String,
         kind: ServerNotification__SubAgentActivityKind,
+        model: Schema.optionalKey(
+          Schema.Union([
+            Schema.String.annotate({
+              description:
+                "Resolved model at sub-agent creation; absent from older records and other activities.",
+            }),
+            Schema.Null,
+          ]),
+        ),
+        reasoningEffort: Schema.optionalKey(
+          Schema.Union([ServerNotification__ReasoningEffort, Schema.Null]).annotate({
+            description: "Resolved reasoning effort at sub-agent creation, when known.",
+          }),
+        ),
         type: Schema.Literal("subAgentActivity").annotate({
           title: "SubAgentActivityThreadItemType",
         }),
@@ -51020,6 +52361,8 @@ export type V2ItemCompletedNotification__ThreadItem =
       readonly agentThreadId: string;
       readonly id: string;
       readonly kind: V2ItemCompletedNotification__SubAgentActivityKind;
+      readonly model?: string | null;
+      readonly reasoningEffort?: V2ItemCompletedNotification__ReasoningEffort | null;
       readonly type: "subAgentActivity";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
@@ -51347,6 +52690,20 @@ export const V2ItemCompletedNotification__ThreadItem = Schema.Union(
         agentThreadId: Schema.String,
         id: Schema.String,
         kind: V2ItemCompletedNotification__SubAgentActivityKind,
+        model: Schema.optionalKey(
+          Schema.Union([
+            Schema.String.annotate({
+              description:
+                "Resolved model at sub-agent creation; absent from older records and other activities.",
+            }),
+            Schema.Null,
+          ]),
+        ),
+        reasoningEffort: Schema.optionalKey(
+          Schema.Union([V2ItemCompletedNotification__ReasoningEffort, Schema.Null]).annotate({
+            description: "Resolved reasoning effort at sub-agent creation, when known.",
+          }),
+        ),
         type: Schema.Literal("subAgentActivity").annotate({
           title: "SubAgentActivityThreadItemType",
         }),
@@ -51582,6 +52939,8 @@ export type V2ItemStartedNotification__ThreadItem =
       readonly agentThreadId: string;
       readonly id: string;
       readonly kind: V2ItemStartedNotification__SubAgentActivityKind;
+      readonly model?: string | null;
+      readonly reasoningEffort?: V2ItemStartedNotification__ReasoningEffort | null;
       readonly type: "subAgentActivity";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
@@ -51909,6 +53268,20 @@ export const V2ItemStartedNotification__ThreadItem = Schema.Union(
         agentThreadId: Schema.String,
         id: Schema.String,
         kind: V2ItemStartedNotification__SubAgentActivityKind,
+        model: Schema.optionalKey(
+          Schema.Union([
+            Schema.String.annotate({
+              description:
+                "Resolved model at sub-agent creation; absent from older records and other activities.",
+            }),
+            Schema.Null,
+          ]),
+        ),
+        reasoningEffort: Schema.optionalKey(
+          Schema.Union([V2ItemStartedNotification__ReasoningEffort, Schema.Null]).annotate({
+            description: "Resolved reasoning effort at sub-agent creation, when known.",
+          }),
+        ),
         type: Schema.Literal("subAgentActivity").annotate({
           title: "SubAgentActivityThreadItemType",
         }),
@@ -52536,10 +53909,12 @@ export type V2RawResponseItemCompletedNotification__ResponseItem =
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
       readonly content: ReadonlyArray<V2RawResponseItemCompletedNotification__ContentItem>;
+      readonly encrypted_content?: string | null;
       readonly id?: string | null;
       readonly internal_chat_message_metadata_passthrough?: V2RawResponseItemCompletedNotification__InternalChatMessageMetadataPassthrough | null;
       readonly phase?: V2RawResponseItemCompletedNotification__MessagePhase | null;
       readonly role: string;
+      readonly status?: string | null;
       readonly type: "message";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
@@ -52561,6 +53936,7 @@ export type V2RawResponseItemCompletedNotification__ResponseItem =
   | ({
       readonly action: V2RawResponseItemCompletedNotification__LocalShellAction;
       readonly call_id?: string | null;
+      readonly encrypted_content?: string | null;
       readonly id?: string | null;
       readonly internal_chat_message_metadata_passthrough?: V2RawResponseItemCompletedNotification__InternalChatMessageMetadataPassthrough | null;
       readonly status: V2RawResponseItemCompletedNotification__LocalShellStatus;
@@ -52569,16 +53945,19 @@ export type V2RawResponseItemCompletedNotification__ResponseItem =
   | ({
       readonly arguments: string;
       readonly call_id: string;
+      readonly encrypted_content?: string | null;
       readonly encrypted_function_args?: ReadonlyArray<string> | null;
       readonly id?: string | null;
       readonly internal_chat_message_metadata_passthrough?: V2RawResponseItemCompletedNotification__InternalChatMessageMetadataPassthrough | null;
       readonly name: string;
       readonly namespace?: string | null;
+      readonly status?: string | null;
       readonly type: "function_call";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
       readonly arguments: Schema.Json;
       readonly call_id?: string | null;
+      readonly encrypted_content?: string | null;
       readonly execution: string;
       readonly id?: string | null;
       readonly internal_chat_message_metadata_passthrough?: V2RawResponseItemCompletedNotification__InternalChatMessageMetadataPassthrough | null;
@@ -52596,6 +53975,7 @@ export type V2RawResponseItemCompletedNotification__ResponseItem =
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
       readonly call_id: string;
+      readonly encrypted_content?: string | null;
       readonly id?: string | null;
       readonly input: string;
       readonly internal_chat_message_metadata_passthrough?: V2RawResponseItemCompletedNotification__InternalChatMessageMetadataPassthrough | null;
@@ -52623,12 +54003,14 @@ export type V2RawResponseItemCompletedNotification__ResponseItem =
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
       readonly action?: V2RawResponseItemCompletedNotification__ResponsesApiWebSearchAction | null;
+      readonly encrypted_content?: string | null;
       readonly id?: string | null;
       readonly internal_chat_message_metadata_passthrough?: V2RawResponseItemCompletedNotification__InternalChatMessageMetadataPassthrough | null;
       readonly status?: string | null;
       readonly type: "web_search_call";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly encrypted_content?: string | null;
       readonly id?: string | null;
       readonly internal_chat_message_metadata_passthrough?: V2RawResponseItemCompletedNotification__InternalChatMessageMetadataPassthrough | null;
       readonly result: string;
@@ -52670,6 +54052,7 @@ export const V2RawResponseItemCompletedNotification__ResponseItem = Schema.Union
     Schema.StructWithRest(
       Schema.Struct({
         content: Schema.Array(V2RawResponseItemCompletedNotification__ContentItem),
+        encrypted_content: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
         id: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
         internal_chat_message_metadata_passthrough: Schema.optionalKey(
           Schema.Union([
@@ -52681,6 +54064,7 @@ export const V2RawResponseItemCompletedNotification__ResponseItem = Schema.Union
           Schema.Union([V2RawResponseItemCompletedNotification__MessagePhase, Schema.Null]),
         ),
         role: Schema.String,
+        status: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
         type: Schema.Literal("message").annotate({ title: "MessageResponseItemType" }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
@@ -52733,6 +54117,7 @@ export const V2RawResponseItemCompletedNotification__ResponseItem = Schema.Union
             Schema.Null,
           ]),
         ),
+        encrypted_content: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
         id: Schema.optionalKey(
           Schema.Union([
             Schema.String.annotate({
@@ -52758,6 +54143,7 @@ export const V2RawResponseItemCompletedNotification__ResponseItem = Schema.Union
       Schema.Struct({
         arguments: Schema.String,
         call_id: Schema.String,
+        encrypted_content: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
         encrypted_function_args: Schema.optionalKey(
           Schema.Union([Schema.Array(Schema.String), Schema.Null]),
         ),
@@ -52770,6 +54156,7 @@ export const V2RawResponseItemCompletedNotification__ResponseItem = Schema.Union
         ),
         name: Schema.String,
         namespace: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
+        status: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
         type: Schema.Literal("function_call").annotate({ title: "FunctionCallResponseItemType" }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
@@ -52778,6 +54165,7 @@ export const V2RawResponseItemCompletedNotification__ResponseItem = Schema.Union
       Schema.Struct({
         arguments: Schema.Json.annotate({ expected: "JSON value" }),
         call_id: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
+        encrypted_content: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
         execution: Schema.String,
         id: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
         internal_chat_message_metadata_passthrough: Schema.optionalKey(
@@ -52815,6 +54203,7 @@ export const V2RawResponseItemCompletedNotification__ResponseItem = Schema.Union
     Schema.StructWithRest(
       Schema.Struct({
         call_id: Schema.String,
+        encrypted_content: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
         id: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
         input: Schema.String,
         internal_chat_message_metadata_passthrough: Schema.optionalKey(
@@ -52877,6 +54266,7 @@ export const V2RawResponseItemCompletedNotification__ResponseItem = Schema.Union
             Schema.Null,
           ]),
         ),
+        encrypted_content: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
         id: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
         internal_chat_message_metadata_passthrough: Schema.optionalKey(
           Schema.Union([
@@ -52893,6 +54283,7 @@ export const V2RawResponseItemCompletedNotification__ResponseItem = Schema.Union
     ).annotate({ title: "WebSearchCallResponseItem" }),
     Schema.StructWithRest(
       Schema.Struct({
+        encrypted_content: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
         id: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
         internal_chat_message_metadata_passthrough: Schema.optionalKey(
           Schema.Union([
@@ -53069,6 +54460,8 @@ export type V2ReviewStartResponse__ThreadItem =
       readonly agentThreadId: string;
       readonly id: string;
       readonly kind: V2ReviewStartResponse__SubAgentActivityKind;
+      readonly model?: string | null;
+      readonly reasoningEffort?: V2ReviewStartResponse__ReasoningEffort | null;
       readonly type: "subAgentActivity";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
@@ -53391,6 +54784,20 @@ export const V2ReviewStartResponse__ThreadItem = Schema.Union(
         agentThreadId: Schema.String,
         id: Schema.String,
         kind: V2ReviewStartResponse__SubAgentActivityKind,
+        model: Schema.optionalKey(
+          Schema.Union([
+            Schema.String.annotate({
+              description:
+                "Resolved model at sub-agent creation; absent from older records and other activities.",
+            }),
+            Schema.Null,
+          ]),
+        ),
+        reasoningEffort: Schema.optionalKey(
+          Schema.Union([V2ReviewStartResponse__ReasoningEffort, Schema.Null]).annotate({
+            description: "Resolved reasoning effort at sub-agent creation, when known.",
+          }),
+        ),
         type: Schema.Literal("subAgentActivity").annotate({
           title: "SubAgentActivityThreadItemType",
         }),
@@ -53610,6 +55017,8 @@ export type V2ThreadForkResponse__ThreadItem =
       readonly agentThreadId: string;
       readonly id: string;
       readonly kind: V2ThreadForkResponse__SubAgentActivityKind;
+      readonly model?: string | null;
+      readonly reasoningEffort?: V2ThreadForkResponse__ReasoningEffort | null;
       readonly type: "subAgentActivity";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
@@ -53931,6 +55340,20 @@ export const V2ThreadForkResponse__ThreadItem = Schema.Union(
         agentThreadId: Schema.String,
         id: Schema.String,
         kind: V2ThreadForkResponse__SubAgentActivityKind,
+        model: Schema.optionalKey(
+          Schema.Union([
+            Schema.String.annotate({
+              description:
+                "Resolved model at sub-agent creation; absent from older records and other activities.",
+            }),
+            Schema.Null,
+          ]),
+        ),
+        reasoningEffort: Schema.optionalKey(
+          Schema.Union([V2ThreadForkResponse__ReasoningEffort, Schema.Null]).annotate({
+            description: "Resolved reasoning effort at sub-agent creation, when known.",
+          }),
+        ),
         type: Schema.Literal("subAgentActivity").annotate({
           title: "SubAgentActivityThreadItemType",
         }),
@@ -54136,6 +55559,8 @@ export type V2ThreadItemsListResponse__ThreadItem =
       readonly agentThreadId: string;
       readonly id: string;
       readonly kind: V2ThreadItemsListResponse__SubAgentActivityKind;
+      readonly model?: string | null;
+      readonly reasoningEffort?: V2ThreadItemsListResponse__ReasoningEffort | null;
       readonly type: "subAgentActivity";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
@@ -54463,6 +55888,20 @@ export const V2ThreadItemsListResponse__ThreadItem = Schema.Union(
         agentThreadId: Schema.String,
         id: Schema.String,
         kind: V2ThreadItemsListResponse__SubAgentActivityKind,
+        model: Schema.optionalKey(
+          Schema.Union([
+            Schema.String.annotate({
+              description:
+                "Resolved model at sub-agent creation; absent from older records and other activities.",
+            }),
+            Schema.Null,
+          ]),
+        ),
+        reasoningEffort: Schema.optionalKey(
+          Schema.Union([V2ThreadItemsListResponse__ReasoningEffort, Schema.Null]).annotate({
+            description: "Resolved reasoning effort at sub-agent creation, when known.",
+          }),
+        ),
         type: Schema.Literal("subAgentActivity").annotate({
           title: "SubAgentActivityThreadItemType",
         }),
@@ -54566,6 +56005,554 @@ export const V2ThreadItemsListResponse__ThreadItem = Schema.Union(
   { mode: "oneOf" },
 ).annotate({ identifier: "V2ThreadItemsListResponse__ThreadItem" });
 
+export type V2ThreadItemsReadResponse__ThreadItem =
+  | ({
+      readonly clientId?: string | null;
+      readonly content: ReadonlyArray<V2ThreadItemsReadResponse__UserInput>;
+      readonly id: string;
+      readonly type: "userMessage";
+    } & { readonly [x: string]: CodexJsonExtension })
+  | ({
+      readonly fragments: ReadonlyArray<V2ThreadItemsReadResponse__HookPromptFragment>;
+      readonly id: string;
+      readonly type: "hookPrompt";
+    } & { readonly [x: string]: CodexJsonExtension })
+  | ({
+      readonly delivery?: V2ThreadItemsReadResponse__AgentMessageDelivery | null;
+      readonly id: string;
+      readonly memoryCitation?: V2ThreadItemsReadResponse__MemoryCitation | null;
+      readonly phase?: V2ThreadItemsReadResponse__MessagePhase | null;
+      readonly questions?: ReadonlyArray<V2ThreadItemsReadResponse__AsyncUserInputQuestion> | null;
+      readonly text: string;
+      readonly type: "agentMessage";
+    } & { readonly [x: string]: CodexJsonExtension })
+  | ({
+      readonly id: string;
+      readonly name: string;
+      readonly namespace?: string | null;
+      readonly output: V2ThreadItemsReadResponse__FunctionCallOutputBody;
+      readonly type: "functionCallOutput";
+    } & { readonly [x: string]: CodexJsonExtension })
+  | ({ readonly id: string; readonly text: string; readonly type: "plan" } & {
+      readonly [x: string]: CodexJsonExtension;
+    })
+  | ({
+      readonly content?: ReadonlyArray<string>;
+      readonly id: string;
+      readonly summary?: ReadonlyArray<string>;
+      readonly type: "reasoning";
+    } & { readonly [x: string]: CodexJsonExtension })
+  | ({
+      readonly aggregatedOutput?: string | null;
+      readonly command: string;
+      readonly commandActions: ReadonlyArray<V2ThreadItemsReadResponse__CommandAction>;
+      readonly cwd: V2ThreadItemsReadResponse__LegacyAppPathString;
+      readonly durationMs?: number | null;
+      readonly exitCode?: number | null;
+      readonly id: string;
+      readonly pluginId?: string | null;
+      readonly processId?: string | null;
+      readonly scriptPath?: string | null;
+      readonly source?: V2ThreadItemsReadResponse__CommandExecutionSource;
+      readonly status: V2ThreadItemsReadResponse__CommandExecutionStatus;
+      readonly type: "commandExecution";
+    } & { readonly [x: string]: CodexJsonExtension })
+  | ({
+      readonly changes: ReadonlyArray<V2ThreadItemsReadResponse__FileUpdateChange>;
+      readonly id: string;
+      readonly status: V2ThreadItemsReadResponse__PatchApplyStatus;
+      readonly type: "fileChange";
+    } & { readonly [x: string]: CodexJsonExtension })
+  | ({
+      readonly appContext?: V2ThreadItemsReadResponse__McpToolCallAppContext | null;
+      readonly arguments: Schema.Json;
+      readonly durationMs?: number | null;
+      readonly error?: V2ThreadItemsReadResponse__McpToolCallError | null;
+      readonly id: string;
+      readonly mcpAppResourceUri?: string | null;
+      readonly mcpAppUi?: V2ThreadItemsReadResponse__McpAppUi | null;
+      readonly pluginId?: string | null;
+      readonly readOnlyHint?: boolean | null;
+      readonly result?: V2ThreadItemsReadResponse__McpToolCallResult | null;
+      readonly server: string;
+      readonly status: V2ThreadItemsReadResponse__McpToolCallStatus;
+      readonly tool: string;
+      readonly type: "mcpToolCall";
+    } & { readonly [x: string]: CodexJsonExtension })
+  | ({
+      readonly arguments: Schema.Json;
+      readonly contentItems?: ReadonlyArray<V2ThreadItemsReadResponse__DynamicToolCallOutputContentItem> | null;
+      readonly durationMs?: number | null;
+      readonly id: string;
+      readonly namespace?: string | null;
+      readonly status: V2ThreadItemsReadResponse__DynamicToolCallStatus;
+      readonly success?: boolean | null;
+      readonly tool: string;
+      readonly type: "dynamicToolCall";
+    } & { readonly [x: string]: CodexJsonExtension })
+  | ({
+      readonly agentsStates: { readonly [x: string]: V2ThreadItemsReadResponse__CollabAgentState };
+      readonly id: string;
+      readonly model?: string | null;
+      readonly prompt?: string | null;
+      readonly reasoningEffort?: V2ThreadItemsReadResponse__ReasoningEffort | null;
+      readonly receiverThreadIds: ReadonlyArray<string>;
+      readonly senderThreadId: string;
+      readonly status: V2ThreadItemsReadResponse__CollabAgentToolCallStatus;
+      readonly tool: V2ThreadItemsReadResponse__CollabAgentTool;
+      readonly type: "collabAgentToolCall";
+    } & { readonly [x: string]: CodexJsonExtension })
+  | ({
+      readonly agentPath: string;
+      readonly agentThreadId: string;
+      readonly id: string;
+      readonly kind: V2ThreadItemsReadResponse__SubAgentActivityKind;
+      readonly model?: string | null;
+      readonly reasoningEffort?: V2ThreadItemsReadResponse__ReasoningEffort | null;
+      readonly type: "subAgentActivity";
+    } & { readonly [x: string]: CodexJsonExtension })
+  | ({
+      readonly action?: V2ThreadItemsReadResponse__WebSearchAction | null;
+      readonly id: string;
+      readonly query: string;
+      readonly results?: ReadonlyArray<Schema.Json> | null;
+      readonly type: "webSearch";
+    } & { readonly [x: string]: CodexJsonExtension })
+  | ({
+      readonly id: string;
+      readonly path: V2ThreadItemsReadResponse__LegacyAppPathString;
+      readonly type: "imageView";
+    } & { readonly [x: string]: CodexJsonExtension })
+  | ({ readonly durationMs: number; readonly id: string; readonly type: "sleep" } & {
+      readonly [x: string]: CodexJsonExtension;
+    })
+  | ({
+      readonly failure?: V2ThreadItemsReadResponse__ImageGenerationFailure | null;
+      readonly id: string;
+      readonly result: string;
+      readonly revisedPrompt?: string | null;
+      readonly savedPath?: V2ThreadItemsReadResponse__AbsolutePathBuf | null;
+      readonly status: string;
+      readonly transparentBackground?: boolean | null;
+      readonly type: "imageGeneration";
+    } & { readonly [x: string]: CodexJsonExtension })
+  | ({ readonly id: string; readonly review: string; readonly type: "enteredReviewMode" } & {
+      readonly [x: string]: CodexJsonExtension;
+    })
+  | ({ readonly id: string; readonly review: string; readonly type: "exitedReviewMode" } & {
+      readonly [x: string]: CodexJsonExtension;
+    })
+  | ({ readonly id: string; readonly type: "contextCompaction" } & {
+      readonly [x: string]: CodexJsonExtension;
+    });
+export const V2ThreadItemsReadResponse__ThreadItem = Schema.Union(
+  [
+    Schema.StructWithRest(
+      Schema.Struct({
+        clientId: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
+        content: Schema.Array(V2ThreadItemsReadResponse__UserInput),
+        id: Schema.String,
+        type: Schema.Literal("userMessage").annotate({ title: "UserMessageThreadItemType" }),
+      }),
+      [Schema.Record(Schema.String, CodexJsonExtension)],
+    ).annotate({ title: "UserMessageThreadItem" }),
+    Schema.StructWithRest(
+      Schema.Struct({
+        fragments: Schema.Array(V2ThreadItemsReadResponse__HookPromptFragment),
+        id: Schema.String,
+        type: Schema.Literal("hookPrompt").annotate({ title: "HookPromptThreadItemType" }),
+      }),
+      [Schema.Record(Schema.String, CodexJsonExtension)],
+    ).annotate({ title: "HookPromptThreadItem" }),
+    Schema.StructWithRest(
+      Schema.Struct({
+        delivery: Schema.optionalKey(
+          Schema.Union([V2ThreadItemsReadResponse__AgentMessageDelivery, Schema.Null]),
+        ),
+        id: Schema.String,
+        memoryCitation: Schema.optionalKey(
+          Schema.Union([V2ThreadItemsReadResponse__MemoryCitation, Schema.Null]),
+        ),
+        phase: Schema.optionalKey(
+          Schema.Union([V2ThreadItemsReadResponse__MessagePhase, Schema.Null]),
+        ),
+        questions: Schema.optionalKey(
+          Schema.Union([
+            Schema.Array(V2ThreadItemsReadResponse__AsyncUserInputQuestion),
+            Schema.Null,
+          ]),
+        ),
+        text: Schema.String,
+        type: Schema.Literal("agentMessage").annotate({ title: "AgentMessageThreadItemType" }),
+      }),
+      [Schema.Record(Schema.String, CodexJsonExtension)],
+    ).annotate({ title: "AgentMessageThreadItem" }),
+    Schema.StructWithRest(
+      Schema.Struct({
+        id: Schema.String,
+        name: Schema.String,
+        namespace: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
+        output: V2ThreadItemsReadResponse__FunctionCallOutputBody,
+        type: Schema.Literal("functionCallOutput").annotate({
+          title: "FunctionCallOutputThreadItemType",
+        }),
+      }),
+      [Schema.Record(Schema.String, CodexJsonExtension)],
+    ).annotate({ title: "FunctionCallOutputThreadItem" }),
+    Schema.StructWithRest(
+      Schema.Struct({
+        id: Schema.String,
+        text: Schema.String,
+        type: Schema.Literal("plan").annotate({ title: "PlanThreadItemType" }),
+      }),
+      [Schema.Record(Schema.String, CodexJsonExtension)],
+    ).annotate({
+      title: "PlanThreadItem",
+      description:
+        "EXPERIMENTAL - proposed plan item content. The completed plan item is authoritative and may not match the concatenation of `PlanDelta` text.",
+    }),
+    Schema.StructWithRest(
+      Schema.Struct({
+        content: Schema.optionalKey(Schema.Array(Schema.String).annotate({ default: [] })),
+        id: Schema.String,
+        summary: Schema.optionalKey(Schema.Array(Schema.String).annotate({ default: [] })),
+        type: Schema.Literal("reasoning").annotate({ title: "ReasoningThreadItemType" }),
+      }),
+      [Schema.Record(Schema.String, CodexJsonExtension)],
+    ).annotate({ title: "ReasoningThreadItem" }),
+    Schema.StructWithRest(
+      Schema.Struct({
+        aggregatedOutput: Schema.optionalKey(
+          Schema.Union([
+            Schema.String.annotate({
+              description: "The command's output, aggregated from stdout and stderr.",
+            }),
+            Schema.Null,
+          ]),
+        ),
+        command: Schema.String.annotate({ description: "The command to be executed." }),
+        commandActions: Schema.Array(V2ThreadItemsReadResponse__CommandAction).annotate({
+          description:
+            "A best-effort parsing of the command to understand the action(s) it will perform. This returns a list of CommandAction objects because a single shell command may be composed of many commands piped together.",
+        }),
+        cwd: Schema.suspend(
+          (): Schema.Codec<V2ThreadItemsReadResponse__LegacyAppPathString> =>
+            V2ThreadItemsReadResponse__LegacyAppPathString,
+        ).annotate({ description: "The command's working directory." }),
+        durationMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "The duration of the command execution in milliseconds.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        exitCode: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "The command's exit code.",
+              format: "int32",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        id: Schema.String,
+        pluginId: Schema.optionalKey(
+          Schema.Union([
+            Schema.String.annotate({
+              description:
+                "Trusted first-party plugin id when this command resolves to one plugin script.",
+            }),
+            Schema.Null,
+          ]),
+        ),
+        processId: Schema.optionalKey(
+          Schema.Union([
+            Schema.String.annotate({
+              description: "Identifier for the underlying PTY process (when available).",
+            }),
+            Schema.Null,
+          ]),
+        ),
+        scriptPath: Schema.optionalKey(
+          Schema.Union([
+            Schema.String.annotate({
+              description:
+                "Safe plugin-relative path when this command resolves to one plugin script.",
+            }),
+            Schema.Null,
+          ]),
+        ),
+        source: Schema.optionalKey(
+          Schema.suspend(
+            (): Schema.Codec<V2ThreadItemsReadResponse__CommandExecutionSource> =>
+              V2ThreadItemsReadResponse__CommandExecutionSource,
+          ).annotate({ default: "agent" }),
+        ),
+        status: V2ThreadItemsReadResponse__CommandExecutionStatus,
+        type: Schema.Literal("commandExecution").annotate({
+          title: "CommandExecutionThreadItemType",
+        }),
+      }),
+      [Schema.Record(Schema.String, CodexJsonExtension)],
+    ).annotate({ title: "CommandExecutionThreadItem" }),
+    Schema.StructWithRest(
+      Schema.Struct({
+        changes: Schema.Array(V2ThreadItemsReadResponse__FileUpdateChange),
+        id: Schema.String,
+        status: V2ThreadItemsReadResponse__PatchApplyStatus,
+        type: Schema.Literal("fileChange").annotate({ title: "FileChangeThreadItemType" }),
+      }),
+      [Schema.Record(Schema.String, CodexJsonExtension)],
+    ).annotate({ title: "FileChangeThreadItem" }),
+    Schema.StructWithRest(
+      Schema.Struct({
+        appContext: Schema.optionalKey(
+          Schema.Union([V2ThreadItemsReadResponse__McpToolCallAppContext, Schema.Null]),
+        ),
+        arguments: Schema.Json.annotate({ expected: "JSON value" }),
+        durationMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "The duration of the MCP tool call in milliseconds.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        error: Schema.optionalKey(
+          Schema.Union([V2ThreadItemsReadResponse__McpToolCallError, Schema.Null]),
+        ),
+        id: Schema.String,
+        mcpAppResourceUri: Schema.optionalKey(
+          Schema.Union([
+            Schema.String.annotate({
+              description:
+                "Legacy compatibility field; prefer `mcpAppUi.resourceUri` when available.",
+            }),
+            Schema.Null,
+          ]),
+        ),
+        mcpAppUi: Schema.optionalKey(
+          Schema.Union([V2ThreadItemsReadResponse__McpAppUi, Schema.Null]).annotate({
+            description:
+              "Presentation captured from the invoked descriptor; absent in older history.",
+          }),
+        ),
+        pluginId: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
+        readOnlyHint: Schema.optionalKey(Schema.Union([Schema.Boolean, Schema.Null])),
+        result: Schema.optionalKey(
+          Schema.Union([V2ThreadItemsReadResponse__McpToolCallResult, Schema.Null]),
+        ),
+        server: Schema.String,
+        status: V2ThreadItemsReadResponse__McpToolCallStatus,
+        tool: Schema.String,
+        type: Schema.Literal("mcpToolCall").annotate({ title: "McpToolCallThreadItemType" }),
+      }),
+      [Schema.Record(Schema.String, CodexJsonExtension)],
+    ).annotate({ title: "McpToolCallThreadItem" }),
+    Schema.StructWithRest(
+      Schema.Struct({
+        arguments: Schema.Json.annotate({ expected: "JSON value" }),
+        contentItems: Schema.optionalKey(
+          Schema.Union([
+            Schema.Array(V2ThreadItemsReadResponse__DynamicToolCallOutputContentItem),
+            Schema.Null,
+          ]),
+        ),
+        durationMs: Schema.optionalKey(
+          Schema.Union([
+            Schema.Number.annotate({
+              description: "The duration of the dynamic tool call in milliseconds.",
+              format: "int64",
+            }).check(Schema.isInt().annotate({ expected: "an integer" })),
+            Schema.Null,
+          ]),
+        ),
+        id: Schema.String,
+        namespace: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
+        status: V2ThreadItemsReadResponse__DynamicToolCallStatus,
+        success: Schema.optionalKey(Schema.Union([Schema.Boolean, Schema.Null])),
+        tool: Schema.String,
+        type: Schema.Literal("dynamicToolCall").annotate({
+          title: "DynamicToolCallThreadItemType",
+        }),
+      }),
+      [Schema.Record(Schema.String, CodexJsonExtension)],
+    ).annotate({ title: "DynamicToolCallThreadItem" }),
+    Schema.StructWithRest(
+      Schema.Struct({
+        agentsStates: Schema.Record(
+          Schema.String,
+          V2ThreadItemsReadResponse__CollabAgentState,
+        ).annotate({ description: "Last known status of the target agents, when available." }),
+        id: Schema.String.annotate({ description: "Unique identifier for this collab tool call." }),
+        model: Schema.optionalKey(
+          Schema.Union([
+            Schema.String.annotate({
+              description: "Model requested for the spawned agent, when applicable.",
+            }),
+            Schema.Null,
+          ]),
+        ),
+        prompt: Schema.optionalKey(
+          Schema.Union([
+            Schema.String.annotate({
+              description: "Prompt text sent as part of the collab tool call, when available.",
+            }),
+            Schema.Null,
+          ]),
+        ),
+        reasoningEffort: Schema.optionalKey(
+          Schema.Union([V2ThreadItemsReadResponse__ReasoningEffort, Schema.Null]).annotate({
+            description: "Reasoning effort requested for the spawned agent, when applicable.",
+          }),
+        ),
+        receiverThreadIds: Schema.Array(Schema.String).annotate({
+          description:
+            "Thread ID of the receiving agent, when applicable. In case of spawn operation, this corresponds to the newly spawned agent.",
+        }),
+        senderThreadId: Schema.String.annotate({
+          description: "Thread ID of the agent issuing the collab request.",
+        }),
+        status: Schema.suspend(
+          (): Schema.Codec<V2ThreadItemsReadResponse__CollabAgentToolCallStatus> =>
+            V2ThreadItemsReadResponse__CollabAgentToolCallStatus,
+        ).annotate({ description: "Current status of the collab tool call." }),
+        tool: Schema.suspend(
+          (): Schema.Codec<V2ThreadItemsReadResponse__CollabAgentTool> =>
+            V2ThreadItemsReadResponse__CollabAgentTool,
+        ).annotate({ description: "Name of the collab tool that was invoked." }),
+        type: Schema.Literal("collabAgentToolCall").annotate({
+          title: "CollabAgentToolCallThreadItemType",
+        }),
+      }),
+      [Schema.Record(Schema.String, CodexJsonExtension)],
+    ).annotate({ title: "CollabAgentToolCallThreadItem" }),
+    Schema.StructWithRest(
+      Schema.Struct({
+        agentPath: Schema.String,
+        agentThreadId: Schema.String,
+        id: Schema.String,
+        kind: V2ThreadItemsReadResponse__SubAgentActivityKind,
+        model: Schema.optionalKey(
+          Schema.Union([
+            Schema.String.annotate({
+              description:
+                "Resolved model at sub-agent creation; absent from older records and other activities.",
+            }),
+            Schema.Null,
+          ]),
+        ),
+        reasoningEffort: Schema.optionalKey(
+          Schema.Union([V2ThreadItemsReadResponse__ReasoningEffort, Schema.Null]).annotate({
+            description: "Resolved reasoning effort at sub-agent creation, when known.",
+          }),
+        ),
+        type: Schema.Literal("subAgentActivity").annotate({
+          title: "SubAgentActivityThreadItemType",
+        }),
+      }),
+      [Schema.Record(Schema.String, CodexJsonExtension)],
+    ).annotate({ title: "SubAgentActivityThreadItem" }),
+    Schema.StructWithRest(
+      Schema.Struct({
+        action: Schema.optionalKey(
+          Schema.Union([V2ThreadItemsReadResponse__WebSearchAction, Schema.Null]),
+        ),
+        id: Schema.String,
+        query: Schema.String,
+        results: Schema.optionalKey(
+          Schema.Union([
+            Schema.Array(Schema.Json.annotate({ expected: "JSON value" })).annotate({
+              description:
+                "Structured search results returned out-of-band by standalone web search.\n\nThese stay as opaque JSON at the extension/app-server boundary so new result fields and result types can pass through without a Codex release.",
+            }),
+            Schema.Null,
+          ]),
+        ),
+        type: Schema.Literal("webSearch").annotate({ title: "WebSearchThreadItemType" }),
+      }),
+      [Schema.Record(Schema.String, CodexJsonExtension)],
+    ).annotate({ title: "WebSearchThreadItem" }),
+    Schema.StructWithRest(
+      Schema.Struct({
+        id: Schema.String,
+        path: V2ThreadItemsReadResponse__LegacyAppPathString,
+        type: Schema.Literal("imageView").annotate({ title: "ImageViewThreadItemType" }),
+      }),
+      [Schema.Record(Schema.String, CodexJsonExtension)],
+    ).annotate({ title: "ImageViewThreadItem" }),
+    Schema.StructWithRest(
+      Schema.Struct({
+        durationMs: Schema.Number.annotate({ format: "uint64" })
+          .check(Schema.isInt().annotate({ expected: "an integer" }))
+          .check(
+            Schema.isGreaterThanOrEqualTo(0).annotate({
+              expected: "a value greater than or equal to 0",
+            }),
+          ),
+        id: Schema.String,
+        type: Schema.Literal("sleep").annotate({ title: "SleepThreadItemType" }),
+      }),
+      [Schema.Record(Schema.String, CodexJsonExtension)],
+    ).annotate({
+      title: "SleepThreadItem",
+      description: "Display item emitted by the interruptible `clock.sleep` tool.",
+    }),
+    Schema.StructWithRest(
+      Schema.Struct({
+        failure: Schema.optionalKey(
+          Schema.Union([V2ThreadItemsReadResponse__ImageGenerationFailure, Schema.Null]),
+        ),
+        id: Schema.String,
+        result: Schema.String,
+        revisedPrompt: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
+        savedPath: Schema.optionalKey(
+          Schema.Union([V2ThreadItemsReadResponse__AbsolutePathBuf, Schema.Null]),
+        ),
+        status: Schema.String,
+        transparentBackground: Schema.optionalKey(Schema.Union([Schema.Boolean, Schema.Null])),
+        type: Schema.Literal("imageGeneration").annotate({
+          title: "ImageGenerationThreadItemType",
+        }),
+      }),
+      [Schema.Record(Schema.String, CodexJsonExtension)],
+    ).annotate({ title: "ImageGenerationThreadItem" }),
+    Schema.StructWithRest(
+      Schema.Struct({
+        id: Schema.String,
+        review: Schema.String,
+        type: Schema.Literal("enteredReviewMode").annotate({
+          title: "EnteredReviewModeThreadItemType",
+        }),
+      }),
+      [Schema.Record(Schema.String, CodexJsonExtension)],
+    ).annotate({ title: "EnteredReviewModeThreadItem" }),
+    Schema.StructWithRest(
+      Schema.Struct({
+        id: Schema.String,
+        review: Schema.String,
+        type: Schema.Literal("exitedReviewMode").annotate({
+          title: "ExitedReviewModeThreadItemType",
+        }),
+      }),
+      [Schema.Record(Schema.String, CodexJsonExtension)],
+    ).annotate({ title: "ExitedReviewModeThreadItem" }),
+    Schema.StructWithRest(
+      Schema.Struct({
+        id: Schema.String,
+        type: Schema.Literal("contextCompaction").annotate({
+          title: "ContextCompactionThreadItemType",
+        }),
+      }),
+      [Schema.Record(Schema.String, CodexJsonExtension)],
+    ).annotate({ title: "ContextCompactionThreadItem" }),
+  ],
+  { mode: "oneOf" },
+).annotate({ identifier: "V2ThreadItemsReadResponse__ThreadItem" });
+
 export type V2ThreadListResponse__ThreadItem =
   | ({
       readonly clientId?: string | null;
@@ -54668,6 +56655,8 @@ export type V2ThreadListResponse__ThreadItem =
       readonly agentThreadId: string;
       readonly id: string;
       readonly kind: V2ThreadListResponse__SubAgentActivityKind;
+      readonly model?: string | null;
+      readonly reasoningEffort?: V2ThreadListResponse__ReasoningEffort | null;
       readonly type: "subAgentActivity";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
@@ -54989,6 +56978,20 @@ export const V2ThreadListResponse__ThreadItem = Schema.Union(
         agentThreadId: Schema.String,
         id: Schema.String,
         kind: V2ThreadListResponse__SubAgentActivityKind,
+        model: Schema.optionalKey(
+          Schema.Union([
+            Schema.String.annotate({
+              description:
+                "Resolved model at sub-agent creation; absent from older records and other activities.",
+            }),
+            Schema.Null,
+          ]),
+        ),
+        reasoningEffort: Schema.optionalKey(
+          Schema.Union([V2ThreadListResponse__ReasoningEffort, Schema.Null]).annotate({
+            description: "Resolved reasoning effort at sub-agent creation, when known.",
+          }),
+        ),
         type: Schema.Literal("subAgentActivity").annotate({
           title: "SubAgentActivityThreadItemType",
         }),
@@ -55196,6 +57199,8 @@ export type V2ThreadMetadataUpdateResponse__ThreadItem =
       readonly agentThreadId: string;
       readonly id: string;
       readonly kind: V2ThreadMetadataUpdateResponse__SubAgentActivityKind;
+      readonly model?: string | null;
+      readonly reasoningEffort?: V2ThreadMetadataUpdateResponse__ReasoningEffort | null;
       readonly type: "subAgentActivity";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
@@ -55523,6 +57528,20 @@ export const V2ThreadMetadataUpdateResponse__ThreadItem = Schema.Union(
         agentThreadId: Schema.String,
         id: Schema.String,
         kind: V2ThreadMetadataUpdateResponse__SubAgentActivityKind,
+        model: Schema.optionalKey(
+          Schema.Union([
+            Schema.String.annotate({
+              description:
+                "Resolved model at sub-agent creation; absent from older records and other activities.",
+            }),
+            Schema.Null,
+          ]),
+        ),
+        reasoningEffort: Schema.optionalKey(
+          Schema.Union([V2ThreadMetadataUpdateResponse__ReasoningEffort, Schema.Null]).annotate({
+            description: "Resolved reasoning effort at sub-agent creation, when known.",
+          }),
+        ),
         type: Schema.Literal("subAgentActivity").annotate({
           title: "SubAgentActivityThreadItemType",
         }),
@@ -55756,6 +57775,8 @@ export type V2ThreadQueueStartResponse__ThreadItem =
       readonly agentThreadId: string;
       readonly id: string;
       readonly kind: V2ThreadQueueStartResponse__SubAgentActivityKind;
+      readonly model?: string | null;
+      readonly reasoningEffort?: V2ThreadQueueStartResponse__ReasoningEffort | null;
       readonly type: "subAgentActivity";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
@@ -56083,6 +58104,20 @@ export const V2ThreadQueueStartResponse__ThreadItem = Schema.Union(
         agentThreadId: Schema.String,
         id: Schema.String,
         kind: V2ThreadQueueStartResponse__SubAgentActivityKind,
+        model: Schema.optionalKey(
+          Schema.Union([
+            Schema.String.annotate({
+              description:
+                "Resolved model at sub-agent creation; absent from older records and other activities.",
+            }),
+            Schema.Null,
+          ]),
+        ),
+        reasoningEffort: Schema.optionalKey(
+          Schema.Union([V2ThreadQueueStartResponse__ReasoningEffort, Schema.Null]).annotate({
+            description: "Resolved reasoning effort at sub-agent creation, when known.",
+          }),
+        ),
         type: Schema.Literal("subAgentActivity").annotate({
           title: "SubAgentActivityThreadItemType",
         }),
@@ -56302,6 +58337,8 @@ export type V2ThreadReadResponse__ThreadItem =
       readonly agentThreadId: string;
       readonly id: string;
       readonly kind: V2ThreadReadResponse__SubAgentActivityKind;
+      readonly model?: string | null;
+      readonly reasoningEffort?: V2ThreadReadResponse__ReasoningEffort | null;
       readonly type: "subAgentActivity";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
@@ -56623,6 +58660,20 @@ export const V2ThreadReadResponse__ThreadItem = Schema.Union(
         agentThreadId: Schema.String,
         id: Schema.String,
         kind: V2ThreadReadResponse__SubAgentActivityKind,
+        model: Schema.optionalKey(
+          Schema.Union([
+            Schema.String.annotate({
+              description:
+                "Resolved model at sub-agent creation; absent from older records and other activities.",
+            }),
+            Schema.Null,
+          ]),
+        ),
+        reasoningEffort: Schema.optionalKey(
+          Schema.Union([V2ThreadReadResponse__ReasoningEffort, Schema.Null]).annotate({
+            description: "Resolved reasoning effort at sub-agent creation, when known.",
+          }),
+        ),
         type: Schema.Literal("subAgentActivity").annotate({
           title: "SubAgentActivityThreadItemType",
         }),
@@ -56735,10 +58786,12 @@ export type V2ThreadResumeParams__ResponseItem =
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
       readonly content: ReadonlyArray<V2ThreadResumeParams__ContentItem>;
+      readonly encrypted_content?: string | null;
       readonly id?: string | null;
       readonly internal_chat_message_metadata_passthrough?: V2ThreadResumeParams__InternalChatMessageMetadataPassthrough | null;
       readonly phase?: V2ThreadResumeParams__MessagePhase | null;
       readonly role: string;
+      readonly status?: string | null;
       readonly type: "message";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
@@ -56760,6 +58813,7 @@ export type V2ThreadResumeParams__ResponseItem =
   | ({
       readonly action: V2ThreadResumeParams__LocalShellAction;
       readonly call_id?: string | null;
+      readonly encrypted_content?: string | null;
       readonly id?: string | null;
       readonly internal_chat_message_metadata_passthrough?: V2ThreadResumeParams__InternalChatMessageMetadataPassthrough | null;
       readonly status: V2ThreadResumeParams__LocalShellStatus;
@@ -56768,16 +58822,19 @@ export type V2ThreadResumeParams__ResponseItem =
   | ({
       readonly arguments: string;
       readonly call_id: string;
+      readonly encrypted_content?: string | null;
       readonly encrypted_function_args?: ReadonlyArray<string> | null;
       readonly id?: string | null;
       readonly internal_chat_message_metadata_passthrough?: V2ThreadResumeParams__InternalChatMessageMetadataPassthrough | null;
       readonly name: string;
       readonly namespace?: string | null;
+      readonly status?: string | null;
       readonly type: "function_call";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
       readonly arguments: Schema.Json;
       readonly call_id?: string | null;
+      readonly encrypted_content?: string | null;
       readonly execution: string;
       readonly id?: string | null;
       readonly internal_chat_message_metadata_passthrough?: V2ThreadResumeParams__InternalChatMessageMetadataPassthrough | null;
@@ -56795,6 +58852,7 @@ export type V2ThreadResumeParams__ResponseItem =
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
       readonly call_id: string;
+      readonly encrypted_content?: string | null;
       readonly id?: string | null;
       readonly input: string;
       readonly internal_chat_message_metadata_passthrough?: V2ThreadResumeParams__InternalChatMessageMetadataPassthrough | null;
@@ -56822,12 +58880,14 @@ export type V2ThreadResumeParams__ResponseItem =
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
       readonly action?: V2ThreadResumeParams__ResponsesApiWebSearchAction | null;
+      readonly encrypted_content?: string | null;
       readonly id?: string | null;
       readonly internal_chat_message_metadata_passthrough?: V2ThreadResumeParams__InternalChatMessageMetadataPassthrough | null;
       readonly status?: string | null;
       readonly type: "web_search_call";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly encrypted_content?: string | null;
       readonly id?: string | null;
       readonly internal_chat_message_metadata_passthrough?: V2ThreadResumeParams__InternalChatMessageMetadataPassthrough | null;
       readonly result: string;
@@ -56869,12 +58929,14 @@ export const V2ThreadResumeParams__ResponseItem = Schema.Union(
     Schema.StructWithRest(
       Schema.Struct({
         content: Schema.Array(V2ThreadResumeParams__ContentItem),
+        encrypted_content: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
         id: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
         internal_chat_message_metadata_passthrough: Schema.optionalKey(
           Schema.Union([V2ThreadResumeParams__InternalChatMessageMetadataPassthrough, Schema.Null]),
         ),
         phase: Schema.optionalKey(Schema.Union([V2ThreadResumeParams__MessagePhase, Schema.Null])),
         role: Schema.String,
+        status: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
         type: Schema.Literal("message").annotate({ title: "MessageResponseItemType" }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
@@ -56916,6 +58978,7 @@ export const V2ThreadResumeParams__ResponseItem = Schema.Union(
             Schema.Null,
           ]),
         ),
+        encrypted_content: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
         id: Schema.optionalKey(
           Schema.Union([
             Schema.String.annotate({
@@ -56938,6 +59001,7 @@ export const V2ThreadResumeParams__ResponseItem = Schema.Union(
       Schema.Struct({
         arguments: Schema.String,
         call_id: Schema.String,
+        encrypted_content: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
         encrypted_function_args: Schema.optionalKey(
           Schema.Union([Schema.Array(Schema.String), Schema.Null]),
         ),
@@ -56947,6 +59011,7 @@ export const V2ThreadResumeParams__ResponseItem = Schema.Union(
         ),
         name: Schema.String,
         namespace: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
+        status: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
         type: Schema.Literal("function_call").annotate({ title: "FunctionCallResponseItemType" }),
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
@@ -56955,6 +59020,7 @@ export const V2ThreadResumeParams__ResponseItem = Schema.Union(
       Schema.Struct({
         arguments: Schema.Json.annotate({ expected: "JSON value" }),
         call_id: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
+        encrypted_content: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
         execution: Schema.String,
         id: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
         internal_chat_message_metadata_passthrough: Schema.optionalKey(
@@ -56986,6 +59052,7 @@ export const V2ThreadResumeParams__ResponseItem = Schema.Union(
     Schema.StructWithRest(
       Schema.Struct({
         call_id: Schema.String,
+        encrypted_content: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
         id: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
         input: Schema.String,
         internal_chat_message_metadata_passthrough: Schema.optionalKey(
@@ -57036,6 +59103,7 @@ export const V2ThreadResumeParams__ResponseItem = Schema.Union(
         action: Schema.optionalKey(
           Schema.Union([V2ThreadResumeParams__ResponsesApiWebSearchAction, Schema.Null]),
         ),
+        encrypted_content: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
         id: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
         internal_chat_message_metadata_passthrough: Schema.optionalKey(
           Schema.Union([V2ThreadResumeParams__InternalChatMessageMetadataPassthrough, Schema.Null]),
@@ -57049,6 +59117,7 @@ export const V2ThreadResumeParams__ResponseItem = Schema.Union(
     ).annotate({ title: "WebSearchCallResponseItem" }),
     Schema.StructWithRest(
       Schema.Struct({
+        encrypted_content: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
         id: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
         internal_chat_message_metadata_passthrough: Schema.optionalKey(
           Schema.Union([V2ThreadResumeParams__InternalChatMessageMetadataPassthrough, Schema.Null]),
@@ -57216,6 +59285,8 @@ export type V2ThreadResumeResponse__ThreadItem =
       readonly agentThreadId: string;
       readonly id: string;
       readonly kind: V2ThreadResumeResponse__SubAgentActivityKind;
+      readonly model?: string | null;
+      readonly reasoningEffort?: V2ThreadResumeResponse__ReasoningEffort | null;
       readonly type: "subAgentActivity";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
@@ -57540,6 +59611,20 @@ export const V2ThreadResumeResponse__ThreadItem = Schema.Union(
         agentThreadId: Schema.String,
         id: Schema.String,
         kind: V2ThreadResumeResponse__SubAgentActivityKind,
+        model: Schema.optionalKey(
+          Schema.Union([
+            Schema.String.annotate({
+              description:
+                "Resolved model at sub-agent creation; absent from older records and other activities.",
+            }),
+            Schema.Null,
+          ]),
+        ),
+        reasoningEffort: Schema.optionalKey(
+          Schema.Union([V2ThreadResumeResponse__ReasoningEffort, Schema.Null]).annotate({
+            description: "Resolved reasoning effort at sub-agent creation, when known.",
+          }),
+        ),
         type: Schema.Literal("subAgentActivity").annotate({
           title: "SubAgentActivityThreadItemType",
         }),
@@ -57745,6 +59830,8 @@ export type V2ThreadRevertResponse__ThreadItem =
       readonly agentThreadId: string;
       readonly id: string;
       readonly kind: V2ThreadRevertResponse__SubAgentActivityKind;
+      readonly model?: string | null;
+      readonly reasoningEffort?: V2ThreadRevertResponse__ReasoningEffort | null;
       readonly type: "subAgentActivity";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
@@ -58069,6 +60156,20 @@ export const V2ThreadRevertResponse__ThreadItem = Schema.Union(
         agentThreadId: Schema.String,
         id: Schema.String,
         kind: V2ThreadRevertResponse__SubAgentActivityKind,
+        model: Schema.optionalKey(
+          Schema.Union([
+            Schema.String.annotate({
+              description:
+                "Resolved model at sub-agent creation; absent from older records and other activities.",
+            }),
+            Schema.Null,
+          ]),
+        ),
+        reasoningEffort: Schema.optionalKey(
+          Schema.Union([V2ThreadRevertResponse__ReasoningEffort, Schema.Null]).annotate({
+            description: "Resolved reasoning effort at sub-agent creation, when known.",
+          }),
+        ),
         type: Schema.Literal("subAgentActivity").annotate({
           title: "SubAgentActivityThreadItemType",
         }),
@@ -58274,6 +60375,8 @@ export type V2ThreadSearchResponse__ThreadItem =
       readonly agentThreadId: string;
       readonly id: string;
       readonly kind: V2ThreadSearchResponse__SubAgentActivityKind;
+      readonly model?: string | null;
+      readonly reasoningEffort?: V2ThreadSearchResponse__ReasoningEffort | null;
       readonly type: "subAgentActivity";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
@@ -58598,6 +60701,20 @@ export const V2ThreadSearchResponse__ThreadItem = Schema.Union(
         agentThreadId: Schema.String,
         id: Schema.String,
         kind: V2ThreadSearchResponse__SubAgentActivityKind,
+        model: Schema.optionalKey(
+          Schema.Union([
+            Schema.String.annotate({
+              description:
+                "Resolved model at sub-agent creation; absent from older records and other activities.",
+            }),
+            Schema.Null,
+          ]),
+        ),
+        reasoningEffort: Schema.optionalKey(
+          Schema.Union([V2ThreadSearchResponse__ReasoningEffort, Schema.Null]).annotate({
+            description: "Resolved reasoning effort at sub-agent creation, when known.",
+          }),
+        ),
         type: Schema.Literal("subAgentActivity").annotate({
           title: "SubAgentActivityThreadItemType",
         }),
@@ -58865,6 +60982,8 @@ export type V2ThreadStartedNotification__ThreadItem =
       readonly agentThreadId: string;
       readonly id: string;
       readonly kind: V2ThreadStartedNotification__SubAgentActivityKind;
+      readonly model?: string | null;
+      readonly reasoningEffort?: V2ThreadStartedNotification__ReasoningEffort | null;
       readonly type: "subAgentActivity";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
@@ -59192,6 +61311,20 @@ export const V2ThreadStartedNotification__ThreadItem = Schema.Union(
         agentThreadId: Schema.String,
         id: Schema.String,
         kind: V2ThreadStartedNotification__SubAgentActivityKind,
+        model: Schema.optionalKey(
+          Schema.Union([
+            Schema.String.annotate({
+              description:
+                "Resolved model at sub-agent creation; absent from older records and other activities.",
+            }),
+            Schema.Null,
+          ]),
+        ),
+        reasoningEffort: Schema.optionalKey(
+          Schema.Union([V2ThreadStartedNotification__ReasoningEffort, Schema.Null]).annotate({
+            description: "Resolved reasoning effort at sub-agent creation, when known.",
+          }),
+        ),
         type: Schema.Literal("subAgentActivity").annotate({
           title: "SubAgentActivityThreadItemType",
         }),
@@ -59397,6 +61530,8 @@ export type V2ThreadStartResponse__ThreadItem =
       readonly agentThreadId: string;
       readonly id: string;
       readonly kind: V2ThreadStartResponse__SubAgentActivityKind;
+      readonly model?: string | null;
+      readonly reasoningEffort?: V2ThreadStartResponse__ReasoningEffort | null;
       readonly type: "subAgentActivity";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
@@ -59719,6 +61854,20 @@ export const V2ThreadStartResponse__ThreadItem = Schema.Union(
         agentThreadId: Schema.String,
         id: Schema.String,
         kind: V2ThreadStartResponse__SubAgentActivityKind,
+        model: Schema.optionalKey(
+          Schema.Union([
+            Schema.String.annotate({
+              description:
+                "Resolved model at sub-agent creation; absent from older records and other activities.",
+            }),
+            Schema.Null,
+          ]),
+        ),
+        reasoningEffort: Schema.optionalKey(
+          Schema.Union([V2ThreadStartResponse__ReasoningEffort, Schema.Null]).annotate({
+            description: "Resolved reasoning effort at sub-agent creation, when known.",
+          }),
+        ),
         type: Schema.Literal("subAgentActivity").annotate({
           title: "SubAgentActivityThreadItemType",
         }),
@@ -59926,6 +62075,8 @@ export type V2ThreadTimelineListResponse__ThreadItem =
       readonly agentThreadId: string;
       readonly id: string;
       readonly kind: V2ThreadTimelineListResponse__SubAgentActivityKind;
+      readonly model?: string | null;
+      readonly reasoningEffort?: V2ThreadTimelineListResponse__ReasoningEffort | null;
       readonly type: "subAgentActivity";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
@@ -60253,6 +62404,20 @@ export const V2ThreadTimelineListResponse__ThreadItem = Schema.Union(
         agentThreadId: Schema.String,
         id: Schema.String,
         kind: V2ThreadTimelineListResponse__SubAgentActivityKind,
+        model: Schema.optionalKey(
+          Schema.Union([
+            Schema.String.annotate({
+              description:
+                "Resolved model at sub-agent creation; absent from older records and other activities.",
+            }),
+            Schema.Null,
+          ]),
+        ),
+        reasoningEffort: Schema.optionalKey(
+          Schema.Union([V2ThreadTimelineListResponse__ReasoningEffort, Schema.Null]).annotate({
+            description: "Resolved reasoning effort at sub-agent creation, when known.",
+          }),
+        ),
         type: Schema.Literal("subAgentActivity").annotate({
           title: "SubAgentActivityThreadItemType",
         }),
@@ -60458,6 +62623,8 @@ export type V2ThreadTurnsListResponse__ThreadItem =
       readonly agentThreadId: string;
       readonly id: string;
       readonly kind: V2ThreadTurnsListResponse__SubAgentActivityKind;
+      readonly model?: string | null;
+      readonly reasoningEffort?: V2ThreadTurnsListResponse__ReasoningEffort | null;
       readonly type: "subAgentActivity";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
@@ -60785,6 +62952,20 @@ export const V2ThreadTurnsListResponse__ThreadItem = Schema.Union(
         agentThreadId: Schema.String,
         id: Schema.String,
         kind: V2ThreadTurnsListResponse__SubAgentActivityKind,
+        model: Schema.optionalKey(
+          Schema.Union([
+            Schema.String.annotate({
+              description:
+                "Resolved model at sub-agent creation; absent from older records and other activities.",
+            }),
+            Schema.Null,
+          ]),
+        ),
+        reasoningEffort: Schema.optionalKey(
+          Schema.Union([V2ThreadTurnsListResponse__ReasoningEffort, Schema.Null]).annotate({
+            description: "Resolved reasoning effort at sub-agent creation, when known.",
+          }),
+        ),
         type: Schema.Literal("subAgentActivity").annotate({
           title: "SubAgentActivityThreadItemType",
         }),
@@ -60990,6 +63171,8 @@ export type V2ThreadUnarchiveResponse__ThreadItem =
       readonly agentThreadId: string;
       readonly id: string;
       readonly kind: V2ThreadUnarchiveResponse__SubAgentActivityKind;
+      readonly model?: string | null;
+      readonly reasoningEffort?: V2ThreadUnarchiveResponse__ReasoningEffort | null;
       readonly type: "subAgentActivity";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
@@ -61317,6 +63500,20 @@ export const V2ThreadUnarchiveResponse__ThreadItem = Schema.Union(
         agentThreadId: Schema.String,
         id: Schema.String,
         kind: V2ThreadUnarchiveResponse__SubAgentActivityKind,
+        model: Schema.optionalKey(
+          Schema.Union([
+            Schema.String.annotate({
+              description:
+                "Resolved model at sub-agent creation; absent from older records and other activities.",
+            }),
+            Schema.Null,
+          ]),
+        ),
+        reasoningEffort: Schema.optionalKey(
+          Schema.Union([V2ThreadUnarchiveResponse__ReasoningEffort, Schema.Null]).annotate({
+            description: "Resolved reasoning effort at sub-agent creation, when known.",
+          }),
+        ),
         type: Schema.Literal("subAgentActivity").annotate({
           title: "SubAgentActivityThreadItemType",
         }),
@@ -61524,6 +63721,8 @@ export type V2TurnCompletedNotification__ThreadItem =
       readonly agentThreadId: string;
       readonly id: string;
       readonly kind: V2TurnCompletedNotification__SubAgentActivityKind;
+      readonly model?: string | null;
+      readonly reasoningEffort?: V2TurnCompletedNotification__ReasoningEffort | null;
       readonly type: "subAgentActivity";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
@@ -61851,6 +64050,20 @@ export const V2TurnCompletedNotification__ThreadItem = Schema.Union(
         agentThreadId: Schema.String,
         id: Schema.String,
         kind: V2TurnCompletedNotification__SubAgentActivityKind,
+        model: Schema.optionalKey(
+          Schema.Union([
+            Schema.String.annotate({
+              description:
+                "Resolved model at sub-agent creation; absent from older records and other activities.",
+            }),
+            Schema.Null,
+          ]),
+        ),
+        reasoningEffort: Schema.optionalKey(
+          Schema.Union([V2TurnCompletedNotification__ReasoningEffort, Schema.Null]).annotate({
+            description: "Resolved reasoning effort at sub-agent creation, when known.",
+          }),
+        ),
         type: Schema.Literal("subAgentActivity").annotate({
           title: "SubAgentActivityThreadItemType",
         }),
@@ -62056,6 +64269,8 @@ export type V2TurnStartedNotification__ThreadItem =
       readonly agentThreadId: string;
       readonly id: string;
       readonly kind: V2TurnStartedNotification__SubAgentActivityKind;
+      readonly model?: string | null;
+      readonly reasoningEffort?: V2TurnStartedNotification__ReasoningEffort | null;
       readonly type: "subAgentActivity";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
@@ -62383,6 +64598,20 @@ export const V2TurnStartedNotification__ThreadItem = Schema.Union(
         agentThreadId: Schema.String,
         id: Schema.String,
         kind: V2TurnStartedNotification__SubAgentActivityKind,
+        model: Schema.optionalKey(
+          Schema.Union([
+            Schema.String.annotate({
+              description:
+                "Resolved model at sub-agent creation; absent from older records and other activities.",
+            }),
+            Schema.Null,
+          ]),
+        ),
+        reasoningEffort: Schema.optionalKey(
+          Schema.Union([V2TurnStartedNotification__ReasoningEffort, Schema.Null]).annotate({
+            description: "Resolved reasoning effort at sub-agent creation, when known.",
+          }),
+        ),
         type: Schema.Literal("subAgentActivity").annotate({
           title: "SubAgentActivityThreadItemType",
         }),
@@ -62490,12 +64719,18 @@ export type V2TurnStartParams__TurnToolOutput = {
   readonly name: string;
   readonly namespace?: string | null;
   readonly output: V2TurnStartParams__FunctionCallOutputBody;
+  readonly retain?: boolean;
 } & { readonly [x: string]: CodexJsonExtension };
 export const V2TurnStartParams__TurnToolOutput = Schema.StructWithRest(
   Schema.Struct({
     name: Schema.String,
     namespace: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
     output: V2TurnStartParams__FunctionCallOutputBody,
+    retain: Schema.optionalKey(
+      Schema.Boolean.annotate({
+        description: "Requests retention of this output in the thread's model history.",
+      }),
+    ),
   }),
   [Schema.Record(Schema.String, CodexJsonExtension)],
 ).annotate({ identifier: "V2TurnStartParams__TurnToolOutput" });
@@ -62602,6 +64837,8 @@ export type V2TurnStartResponse__ThreadItem =
       readonly agentThreadId: string;
       readonly id: string;
       readonly kind: V2TurnStartResponse__SubAgentActivityKind;
+      readonly model?: string | null;
+      readonly reasoningEffort?: V2TurnStartResponse__ReasoningEffort | null;
       readonly type: "subAgentActivity";
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
@@ -62923,6 +65160,20 @@ export const V2TurnStartResponse__ThreadItem = Schema.Union(
         agentThreadId: Schema.String,
         id: Schema.String,
         kind: V2TurnStartResponse__SubAgentActivityKind,
+        model: Schema.optionalKey(
+          Schema.Union([
+            Schema.String.annotate({
+              description:
+                "Resolved model at sub-agent creation; absent from older records and other activities.",
+            }),
+            Schema.Null,
+          ]),
+        ),
+        reasoningEffort: Schema.optionalKey(
+          Schema.Union([V2TurnStartResponse__ReasoningEffort, Schema.Null]).annotate({
+            description: "Resolved reasoning effort at sub-agent creation, when known.",
+          }),
+        ),
         type: Schema.Literal("subAgentActivity").annotate({
           title: "SubAgentActivityThreadItemType",
         }),
@@ -64363,6 +66614,40 @@ export const V2ThreadItemsListResponse__ThreadItemEntry = Schema.StructWithRest(
   }),
   [Schema.Record(Schema.String, CodexJsonExtension)],
 ).annotate({ identifier: "V2ThreadItemsListResponse__ThreadItemEntry" });
+
+export type V2ThreadItemsReadResponse__ThreadItemEntry = {
+  readonly completedAtMs?: number | null;
+  readonly item: V2ThreadItemsReadResponse__ThreadItem;
+  readonly startedAtMs?: number | null;
+  readonly turnId: string;
+} & { readonly [x: string]: CodexJsonExtension };
+export const V2ThreadItemsReadResponse__ThreadItemEntry = Schema.StructWithRest(
+  Schema.Struct({
+    completedAtMs: Schema.optionalKey(
+      Schema.Union([
+        Schema.Number.annotate({
+          description:
+            "Unix timestamp (milliseconds) when the item completed, if recorded by the producer.",
+          format: "int64",
+        }).check(Schema.isInt().annotate({ expected: "an integer" })),
+        Schema.Null,
+      ]),
+    ),
+    item: V2ThreadItemsReadResponse__ThreadItem,
+    startedAtMs: Schema.optionalKey(
+      Schema.Union([
+        Schema.Number.annotate({
+          description:
+            "Unix timestamp (milliseconds) when the item started, if recorded by the producer.",
+          format: "int64",
+        }).check(Schema.isInt().annotate({ expected: "an integer" })),
+        Schema.Null,
+      ]),
+    ),
+    turnId: Schema.String.annotate({ description: "Turn containing this item." }),
+  }),
+  [Schema.Record(Schema.String, CodexJsonExtension)],
+).annotate({ identifier: "V2ThreadItemsReadResponse__ThreadItemEntry" });
 
 export type V2ThreadListResponse__Turn = {
   readonly completedAt?: number | null;
@@ -69600,6 +71885,11 @@ export type ClientRequest =
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
       readonly id: ClientRequest__RequestId;
+      readonly method: "thread/readState/update";
+      readonly params: ClientRequest__ThreadReadStateUpdateParams;
+    } & { readonly [x: string]: CodexJsonExtension })
+  | ({
+      readonly id: ClientRequest__RequestId;
       readonly method: "thread/turns/list";
       readonly params: ClientRequest__ThreadTurnsListParams;
     } & { readonly [x: string]: CodexJsonExtension })
@@ -69607,6 +71897,11 @@ export type ClientRequest =
       readonly id: ClientRequest__RequestId;
       readonly method: "thread/items/list";
       readonly params: ClientRequest__ThreadItemsListParams;
+    } & { readonly [x: string]: CodexJsonExtension })
+  | ({
+      readonly id: ClientRequest__RequestId;
+      readonly method: "thread/items/read";
+      readonly params: ClientRequest__ThreadItemsReadParams;
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
       readonly id: ClientRequest__RequestId;
@@ -70734,6 +73029,16 @@ export const ClientRequest = Schema.Union(
     Schema.StructWithRest(
       Schema.Struct({
         id: ClientRequest__RequestId,
+        method: Schema.Literal("thread/readState/update").annotate({
+          title: "Thread/readState/updateRequestMethod",
+        }),
+        params: ClientRequest__ThreadReadStateUpdateParams,
+      }),
+      [Schema.Record(Schema.String, CodexJsonExtension)],
+    ).annotate({ title: "Thread/readState/updateRequest" }),
+    Schema.StructWithRest(
+      Schema.Struct({
+        id: ClientRequest__RequestId,
         method: Schema.Literal("thread/turns/list").annotate({
           title: "Thread/turns/listRequestMethod",
         }),
@@ -70751,6 +73056,16 @@ export const ClientRequest = Schema.Union(
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
     ).annotate({ title: "Thread/items/listRequest" }),
+    Schema.StructWithRest(
+      Schema.Struct({
+        id: ClientRequest__RequestId,
+        method: Schema.Literal("thread/items/read").annotate({
+          title: "Thread/items/readRequestMethod",
+        }),
+        params: ClientRequest__ThreadItemsReadParams,
+      }),
+      [Schema.Record(Schema.String, CodexJsonExtension)],
+    ).annotate({ title: "Thread/items/readRequest" }),
     Schema.StructWithRest(
       Schema.Struct({
         id: ClientRequest__RequestId,
@@ -72604,6 +74919,11 @@ export type ServerNotification =
       readonly emittedAtMs?: number;
     } & { readonly [x: string]: CodexJsonExtension })
   | ({
+      readonly method: "thread/readState/changed";
+      readonly params: ServerNotification__ThreadReadStateChangedNotification;
+      readonly emittedAtMs?: number;
+    } & { readonly [x: string]: CodexJsonExtension })
+  | ({
       readonly method: "thread/archived";
       readonly params: ServerNotification__ThreadArchivedNotification;
       readonly emittedAtMs?: number;
@@ -73056,6 +75376,22 @@ export const ServerNotification = Schema.Union(
       }),
       [Schema.Record(Schema.String, CodexJsonExtension)],
     ).annotate({ title: "Thread/status/changedNotification" }),
+    Schema.StructWithRest(
+      Schema.Struct({
+        method: Schema.Literal("thread/readState/changed").annotate({
+          title: "Thread/readState/changedNotificationMethod",
+        }),
+        params: ServerNotification__ThreadReadStateChangedNotification,
+        emittedAtMs: Schema.optionalKey(
+          Schema.Number.annotate({
+            description:
+              "Unix timestamp (in milliseconds) when app-server emitted this notification.",
+            format: "int64",
+          }).check(Schema.isInt().annotate({ expected: "an integer" })),
+        ),
+      }),
+      [Schema.Record(Schema.String, CodexJsonExtension)],
+    ).annotate({ title: "Thread/readState/changedNotification" }),
     Schema.StructWithRest(
       Schema.Struct({
         method: Schema.Literal("thread/archived").annotate({
@@ -75640,6 +77976,7 @@ export type V2EnvironmentAddParams = {
   readonly environmentId: string;
   readonly execServerUrl: string;
   readonly skills?: V2EnvironmentAddParams__EnvironmentSkillsParams | null;
+  readonly websocketRequestId?: string | null;
 } & { readonly [x: string]: CodexJsonExtension };
 export const V2EnvironmentAddParams = Schema.StructWithRest(
   Schema.Struct({
@@ -75675,6 +78012,15 @@ export const V2EnvironmentAddParams = Schema.StructWithRest(
         description:
           "Required skills supplied by this environment, checked before model inference.",
       }),
+    ),
+    websocketRequestId: Schema.optionalKey(
+      Schema.Union([
+        Schema.String.annotate({
+          description:
+            "Optional X-Request-ID for the direct WebSocket upgrade, including reconnects. Requires a secure transport or a loopback destination.",
+        }),
+        Schema.Null,
+      ]),
     ),
   }),
   [Schema.Record(Schema.String, CodexJsonExtension)],
@@ -79870,11 +82216,42 @@ export const V2ThreadItemsListResponse = Schema.StructWithRest(
   [Schema.Record(Schema.String, CodexJsonExtension)],
 ).annotate({ title: "ThreadItemsListResponse" });
 
+export type V2ThreadItemsReadParams = {
+  readonly itemIds: ReadonlyArray<string>;
+  readonly threadId: string;
+  readonly turnId: string;
+} & { readonly [x: string]: CodexJsonExtension };
+export const V2ThreadItemsReadParams = Schema.StructWithRest(
+  Schema.Struct({
+    itemIds: Schema.Array(Schema.String).annotate({
+      description: "Item IDs to retrieve. Supply 1 to 100 IDs.",
+    }),
+    threadId: Schema.String,
+    turnId: Schema.String,
+  }),
+  [Schema.Record(Schema.String, CodexJsonExtension)],
+).annotate({
+  title: "ThreadItemsReadParams",
+  description: "EXPERIMENTAL - retrieve a bounded set of persisted items from one turn.",
+});
+
+export type V2ThreadItemsReadResponse = {
+  readonly data: ReadonlyArray<V2ThreadItemsReadResponse__ThreadItemEntry>;
+} & { readonly [x: string]: CodexJsonExtension };
+export const V2ThreadItemsReadResponse = Schema.StructWithRest(
+  Schema.Struct({ data: Schema.Array(V2ThreadItemsReadResponse__ThreadItemEntry) }),
+  [Schema.Record(Schema.String, CodexJsonExtension)],
+).annotate({
+  title: "ThreadItemsReadResponse",
+  description: "EXPERIMENTAL - persisted items returned in canonical stored order.",
+});
+
 export type V2ThreadListParams = {
   readonly ancestorThreadId?: string | null;
   readonly archived?: boolean | null;
   readonly cursor?: string | null;
   readonly cwd?: V2ThreadListParams__ThreadListCwdFilter | null;
+  readonly excludedThreadIds?: ReadonlyArray<string> | null;
   readonly limit?: number | null;
   readonly modelProviders?: ReadonlyArray<string> | null;
   readonly originators?: ReadonlyArray<string> | null;
@@ -79920,6 +82297,15 @@ export const V2ThreadListParams = Schema.StructWithRest(
         description:
           "Optional cwd filter or filters; when set, only threads whose session cwd exactly matches one of these paths are returned.",
       }),
+    ),
+    excludedThreadIds: Schema.optionalKey(
+      Schema.Union([
+        Schema.Array(Schema.String).annotate({
+          description:
+            "Thread IDs to exclude before applying the result limit. Up to 100 entries; invalid IDs or a larger list are rejected, never truncated. Send the same exclusions on each page. Omitted, null, or empty means no exclusions.",
+        }),
+        Schema.Null,
+      ]),
     ),
     limit: Schema.optionalKey(
       Schema.Union([
@@ -80022,6 +82408,7 @@ export type V2ThreadListResponse = {
   readonly backwardsCursor?: string | null;
   readonly data: ReadonlyArray<V2ThreadListResponse__Thread>;
   readonly nextCursor?: string | null;
+  readonly readStates?: { readonly [x: string]: V2ThreadListResponse__ThreadReadState } | null;
 } & { readonly [x: string]: CodexJsonExtension };
 export const V2ThreadListResponse = Schema.StructWithRest(
   Schema.Struct({
@@ -80040,6 +82427,15 @@ export const V2ThreadListResponse = Schema.StructWithRest(
         Schema.String.annotate({
           description:
             "Opaque cursor to pass to the next call to continue after the last item. if None, there are no more items to return.",
+        }),
+        Schema.Null,
+      ]),
+    ),
+    readStates: Schema.optionalKey(
+      Schema.Union([
+        Schema.Record(Schema.String, V2ThreadListResponse__ThreadReadState).annotate({
+          description:
+            "Local receipts for eligible threads on this page, keyed by thread ID. Null means durable read state is unavailable; an absent key means that row is ineligible.",
         }),
         Schema.Null,
       ]),
@@ -80390,13 +82786,58 @@ export const V2ThreadReadParams = Schema.StructWithRest(
   [Schema.Record(Schema.String, CodexJsonExtension)],
 ).annotate({ title: "ThreadReadParams" });
 
-export type V2ThreadReadResponse = { readonly thread: V2ThreadReadResponse__Thread } & {
-  readonly [x: string]: CodexJsonExtension;
-};
+export type V2ThreadReadResponse = {
+  readonly readState?: V2ThreadReadResponse__ThreadReadState | null;
+  readonly thread: V2ThreadReadResponse__Thread;
+} & { readonly [x: string]: CodexJsonExtension };
 export const V2ThreadReadResponse = Schema.StructWithRest(
-  Schema.Struct({ thread: V2ThreadReadResponse__Thread }),
+  Schema.Struct({
+    readState: Schema.optionalKey(
+      Schema.Union([V2ThreadReadResponse__ThreadReadState, Schema.Null]).annotate({
+        description: "Local receipt. Null means this thread's durable read state is unavailable.",
+      }),
+    ),
+    thread: V2ThreadReadResponse__Thread,
+  }),
   [Schema.Record(Schema.String, CodexJsonExtension)],
 ).annotate({ title: "ThreadReadResponse" });
+
+export type V2ThreadReadStateChangedNotification = {
+  readonly readState: V2ThreadReadStateChangedNotification__ThreadReadState;
+  readonly threadId: string;
+} & { readonly [x: string]: CodexJsonExtension };
+export const V2ThreadReadStateChangedNotification = Schema.StructWithRest(
+  Schema.Struct({
+    readState: V2ThreadReadStateChangedNotification__ThreadReadState,
+    threadId: Schema.String,
+  }),
+  [Schema.Record(Schema.String, CodexJsonExtension)],
+).annotate({ title: "ThreadReadStateChangedNotification" });
+
+export type V2ThreadReadStateUpdateParams = {
+  readonly expectedRevision: string;
+  readonly operation: V2ThreadReadStateUpdateParams__ThreadReadStateOperation;
+  readonly threadId: string;
+} & { readonly [x: string]: CodexJsonExtension };
+export const V2ThreadReadStateUpdateParams = Schema.StructWithRest(
+  Schema.Struct({
+    expectedRevision: Schema.String.annotate({
+      description:
+        "Revision of the row or transcript actually seen. Conflicts require a fresh user action.",
+    }),
+    operation: V2ThreadReadStateUpdateParams__ThreadReadStateOperation,
+    threadId: Schema.String,
+  }),
+  [Schema.Record(Schema.String, CodexJsonExtension)],
+).annotate({ title: "ThreadReadStateUpdateParams" });
+
+export type V2ThreadReadStateUpdateResponse = {
+  readonly readState: V2ThreadReadStateUpdateResponse__ThreadReadState;
+} & { readonly [x: string]: CodexJsonExtension };
+export const V2ThreadReadStateUpdateResponse = Schema.StructWithRest(
+  Schema.Struct({ readState: V2ThreadReadStateUpdateResponse__ThreadReadState }),
+  [Schema.Record(Schema.String, CodexJsonExtension)],
+).annotate({ title: "ThreadReadStateUpdateResponse" });
 
 export type V2ThreadRealtimeAppendAudioParams = {
   readonly audio: V2ThreadRealtimeAppendAudioParams__ThreadRealtimeAudioChunk;

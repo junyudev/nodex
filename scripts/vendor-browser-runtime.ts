@@ -30,7 +30,7 @@ type VendorBrowserRuntimeOptions = {
   codexCompatibilityVersion: string;
   outputPath: string;
   reuseExisting?: boolean;
-  targetArch: "arm64" | "x64";
+  targetArch: "arm64";
 };
 
 function readSha256(filePath: string): string {
@@ -100,10 +100,10 @@ type CommandReader = (command: string, args: string[]) => string;
 /** Records the selected architecture's actual deployment target instead of release folklore. */
 export function readMachOMinimumMacosVersion(
   filePath: string,
-  targetArch: "arm64" | "x64",
+  targetArch: "arm64",
   run: CommandReader = readCommand,
 ): string {
-  const architecture = targetArch === "x64" ? "x86_64" : "arm64";
+  const architecture = targetArch;
   const minimum = parseMachOMinimumMacosVersion(
     run("/usr/bin/otool", ["-arch", architecture, "-l", filePath]),
   );
@@ -113,8 +113,8 @@ export function readMachOMinimumMacosVersion(
   return minimum;
 }
 
-function assertArchitecture(filePath: string, targetArch: "arm64" | "x64"): void {
-  const expected = targetArch === "x64" ? "x86_64" : "arm64";
+function assertArchitecture(filePath: string, targetArch: "arm64"): void {
+  const expected = targetArch;
   const architectures = readArchitectures(filePath);
   if (!architectures.includes(expected)) {
     throw new Error(
@@ -176,14 +176,14 @@ function classifyArtifact(
   filePath: string,
   relativePath: string,
   stats: fs.Stats,
-  targetArch: "arm64" | "x64",
+  targetArch: "arm64",
 ): Pick<BrowserRuntimeArtifact, "architecture" | "executable" | "kind"> {
   if (relativePath.endsWith(".node") || relativePath.endsWith(".dylib")) {
     if (!isMachO(filePath)) {
       throw new Error(`Browser runtime native artifact is not Mach-O: ${relativePath}`);
     }
     const architectures = readArchitectures(filePath);
-    const expected = targetArch === "x64" ? "x86_64" : "arm64";
+    const expected = targetArch;
     const architecture =
       architectures.includes("arm64") && architectures.includes("x86_64")
         ? "universal"
@@ -203,7 +203,7 @@ function classifyArtifact(
     let architecture: BrowserRuntimeArtifact["architecture"] = "any";
     if (isMachO(filePath)) {
       const architectures = readArchitectures(filePath);
-      const expected = targetArch === "x64" ? "x86_64" : "arm64";
+      const expected = targetArch;
       if (!architectures.includes(expected)) {
         throw new Error(`Browser runtime executable ${relativePath} does not include ${expected}`);
       }
@@ -219,7 +219,7 @@ function classifyArtifact(
 
 function listArtifacts(
   rootPath: string,
-  targetArch: "arm64" | "x64",
+  targetArch: "arm64",
   currentPath = rootPath,
 ): BrowserRuntimeArtifact[] {
   const artifacts: BrowserRuntimeArtifact[] = [];
@@ -379,7 +379,7 @@ function isMachO(filePath: string): boolean {
 
 function pruneForeignNativeArtifacts(
   rootPath: string,
-  targetArch: "arm64" | "x64",
+  targetArch: "arm64",
   currentPath = rootPath,
 ): void {
   for (const entry of fs.readdirSync(currentPath, { withFileTypes: true })) {
@@ -391,7 +391,7 @@ function pruneForeignNativeArtifacts(
     if (!entry.isFile() || (!entry.name.endsWith(".node") && !entry.name.endsWith(".dylib"))) {
       continue;
     }
-    const expected = targetArch === "x64" ? "x86_64" : "arm64";
+    const expected = targetArch;
     if (!isMachO(entryPath) || !readArchitectures(entryPath).includes(expected)) {
       fs.rmSync(entryPath);
     }
@@ -720,15 +720,10 @@ function parseCliOptions(argv: string[]): VendorBrowserRuntimeOptions {
   const appPath = values.get("--app");
   const outputPath = values.get("--out");
   const targetArch = values.get("--target-arch");
-  if (
-    !appPath ||
-    !codexCompatibilityVersion ||
-    !outputPath ||
-    (targetArch !== "arm64" && targetArch !== "x64")
-  ) {
+  if (!appPath || !codexCompatibilityVersion || !outputPath || targetArch !== "arm64") {
     throw new Error(
       "Usage: vendor-browser-runtime.ts " +
-        "--codex-compatibility-version <version> --target-arch <arm64|x64> " +
+        "--codex-compatibility-version <version> --target-arch <arm64> " +
         "--app <ChatGPT.app> --out <directory> [--reuse-existing]",
     );
   }

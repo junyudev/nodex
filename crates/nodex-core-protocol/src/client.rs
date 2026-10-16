@@ -47,7 +47,7 @@ const REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
 const ADMINISTRATION_REQUEST_TIMEOUT: Duration = Duration::from_secs(5 * 60);
 const ADMINISTRATION_APPLY_PATH: &str = "/core/v1/modules/administration/apply";
 // Cold selection includes one-time Store backup and migration before Core can
-// publish its runtime descriptor, which can exceed ten seconds on Intel Macs.
+// publish its runtime descriptor, which can exceed ten seconds on slower hosts.
 const STARTUP_TIMEOUT: Duration = Duration::from_secs(60);
 
 const CONNECTION_HEADER: &str = "x-nodex-connection-id";

@@ -605,7 +605,7 @@ Renderer state follows explicit ownership:
 - The Window Session App aggregate owns live owner-scoped Scenes, navigation, surface descriptors, panel trees, and geometry.
 - React components render these owners; component lifetime is not durable state authority.
 
-Reusable transport-neutral helpers and contracts live in [`src/shared`](../src/shared). Shared code must not import Electron Main or renderer presentation. Protocol-facing Codex shapes come from [`packages/codex-app-server-protocol`](../packages/codex-app-server-protocol); local types may derive or project those shapes but must not hand-write a second raw protocol model.
+Reusable transport-neutral helpers and contracts live in [`src/shared`](../src/shared). Shared code must not import Electron Main or renderer presentation. Protocol-facing Codex shapes come from [`packages/codex-app-server-protocol`](../packages/codex-app-server-protocol), with one generated Effect schema and RPC projection in [`packages/effect-codex-app-server`](../packages/effect-codex-app-server) shared by Desktop and Agent Runtime. All are generated from the repository-pinned app-server release; local types may derive or project those shapes but must not hand-write a second raw protocol model.
 
 Cross-feature renderer construction, state-owner selection, and shared UI/editor conventions are detailed in [Frontend](FRONTEND.md). Feature presentation remains with its product specification; Workbench presentation is detailed in [the Workbench shell specification](product-specs/workbench-shell.md) and the Scene ADRs beginning with [ADR 0026](adr/0026-window-owned-project-session-views.md).
 
