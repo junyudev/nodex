@@ -1,0 +1,20 @@
+docs/product-specs/desktop-notification-behavior.md
+  s_256699efb22e39::t_0698035e4ab92d 219-234,239,242-246
+  s_256699efb22e39::t_963013c955c763 247
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "56a41ff2ad6f27108b148323f9c88118c6a8ed76",
+  "prompts": {},
+  "sessions": {
+    "s_256699efb22e39": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a14296-7655-71c0-bea3-eeb0c4e18695",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
