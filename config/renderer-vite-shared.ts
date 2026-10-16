@@ -10,7 +10,7 @@ export function createRendererVitePlugins(root = process.cwd()) {
   const compiler = createRendererCompilerIntegration(root);
   return [
     compiler.coverage,
-    react({
+    ...react({
       // Compiler sources are checked after Babel parses. Skip that work at the plugin boundary,
       // while leaving the React plugin's native JSX and Fast Refresh coverage unchanged.
       babel: (id) => ({
@@ -18,7 +18,7 @@ export function createRendererVitePlugins(root = process.cwd()) {
           ? [["babel-plugin-react-compiler", compiler.options]]
           : [],
       }),
-    }),
+    }).map(compiler.cacheTransform),
   ];
 }
 

@@ -1,9 +1,10 @@
 import type { LoggerEvent, PluginOptions } from "babel-plugin-react-compiler";
-import { createHash } from "node:crypto";
-import { mkdirSync, writeFileSync } from "node:fs";
+import { createHash, randomUUID } from "node:crypto";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { relative, resolve } from "node:path";
-import type { Plugin } from "vite";
+import type { Plugin, TransformResult } from "vite";
 
 const compilerPackage: { readonly version: string } = createRequire(import.meta.url)(
   "babel-plugin-react-compiler/package.json",
@@ -64,8 +65,33 @@ export function projectCompilerEvent(event: LoggerEvent) {
 type CompilerFileCoverage = {
   sourceSha256: string;
   transform: "client" | "ssr";
+  cache?: "hit" | "miss";
   events: Array<ReturnType<typeof projectCompilerEvent>>;
 };
+
+/** Include the entire toolchain and owning configuration in the development cache identity. */
+function compilerConfigurationIdentity(root: string): string {
+  const hash = createHash("sha256").update(process.version).update(compilerPackage.version);
+  for (const path of [
+    "pnpm-lock.yaml",
+    "config/renderer-react-compiler.ts",
+    "config/renderer-vite-shared.ts",
+  ]) {
+    hash.update(path);
+    try {
+      hash.update(readFileSync(resolve(root, path)));
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+    }
+  }
+  return hash.digest("hex");
+}
+
+interface CachedCompilerTransform {
+  readonly identity: string;
+  readonly result: TransformResult;
+  readonly events: CompilerFileCoverage["events"];
+}
 
 /** Observe the same Vite pipeline that serves and builds the renderer; never transform twice. */
 export function createRendererCompilerIntegration(root = process.cwd()) {
@@ -73,6 +99,9 @@ export function createRendererCompilerIntegration(root = process.cwd()) {
   const ssrFiles = new Map<string, CompilerFileCoverage>();
   let command: "build" | "serve" = "serve";
   let mode = "development";
+  let cacheEnabled = false;
+  let cacheIdentity = "";
+  const cacheDirectory = resolve(root, ".generated/react-compiler/cache");
   const sourceKey = (filename: string) =>
     relative(root, filename.split("?")[0]).replaceAll("\\", "/");
   const options = {
@@ -96,6 +125,10 @@ export function createRendererCompilerIntegration(root = process.cwd()) {
     configResolved(config) {
       command = config.command;
       mode = config.mode;
+      // Unknown Babel overrides may depend on state outside this compiler configuration.
+      cacheEnabled =
+        command === "serve" && !config.plugins.some((plugin) => plugin.api?.reactBabel);
+      cacheIdentity = `${compilerConfigurationIdentity(root)}:${mode}:${config.isProduction}`;
     },
     transform(code, id, transformOptions) {
       if (!isRendererCompilerSource(id, root)) return;
@@ -142,5 +175,59 @@ export function createRendererCompilerIntegration(root = process.cwd()) {
       writeFileSync(resolve(directory, `${name}-${process.pid}.json`), report);
     },
   };
-  return { options, coverage };
+
+  /** Cache only Babel's compiler pass; Vite still performs native JSX, Refresh and import analysis. */
+  function cacheTransform(plugin: Plugin): Plugin {
+    if (plugin.name !== "vite:react-babel" || !plugin.transform) return plugin;
+    const transformHook = plugin.transform;
+    const transform = typeof transformHook === "function" ? transformHook : transformHook.handler;
+    const handler: typeof transform = async function (code, id, transformOptions) {
+      const file = files.get(sourceKey(id));
+      if (!cacheEnabled || transformOptions?.ssr || !file || !isRendererCompilerSource(id, root))
+        return transform.call(this, code, id, transformOptions);
+
+      const identity = createHash("sha256")
+        .update(cacheIdentity)
+        .update(id)
+        .update(code)
+        .digest("hex");
+      const path = resolve(cacheDirectory, `${createHash("sha256").update(id).digest("hex")}.json`);
+      try {
+        const cached = JSON.parse(await readFile(path, "utf8")) as CachedCompilerTransform;
+        if (
+          cached.identity === identity &&
+          cached.result &&
+          typeof cached.result === "object" &&
+          "code" in cached.result &&
+          typeof cached.result.code === "string" &&
+          Array.isArray(cached.events)
+        ) {
+          file.cache = "hit";
+          file.events = cached.events;
+          return cached.result;
+        }
+      } catch {
+        // A missing or interrupted local cache must never prevent source compilation.
+      }
+
+      file.cache = "miss";
+      const result = await transform.call(this, code, id, transformOptions);
+      if (!result) return result;
+      try {
+        await mkdir(cacheDirectory, { recursive: true });
+        const temporaryPath = `${path}.${process.pid}.${randomUUID()}.tmp`;
+        await writeFile(temporaryPath, JSON.stringify({ identity, result, events: file.events }));
+        await rename(temporaryPath, path);
+      } catch {
+        // Compilation remains authoritative when the development cache is unavailable.
+      }
+      return result;
+    };
+    return {
+      ...plugin,
+      transform: typeof transformHook === "function" ? handler : { ...transformHook, handler },
+    };
+  }
+
+  return { options, coverage, cacheTransform };
 }

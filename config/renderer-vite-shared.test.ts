@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 import { expect, test } from "vite-plus/test";
@@ -101,6 +101,74 @@ test("compiles components and hooks through the real Babel hook and preserves co
       transform: "ssr",
       events: [],
     });
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("reuses compiler output across dev servers and invalidates changed source or configuration", async () => {
+  const root = await mkdtemp(resolve(tmpdir(), "nodex-renderer-compiler-cache-"));
+  const filename = "src/renderer/Greeting.tsx";
+  const code =
+    "export function Greeting({ name }: { name: string }) { return <span>{name}</span>; }";
+  const compile = async (source: string, command: "serve" | "build" = "serve") => {
+    const config = await resolveConfig(
+      { configFile: false, logLevel: "silent", plugins: createRendererVitePlugins(root) },
+      command,
+    );
+    const coverage = config.plugins.find(
+      (plugin) => plugin.name === "nodex:renderer-compiler-coverage",
+    );
+    const babel = config.plugins.find((plugin) => plugin.name === "vite:react-babel");
+    if (!coverage || !babel || !coverage.closeBundle)
+      throw new Error("Missing renderer compiler plugins");
+    await transform(coverage, source, resolve(root, filename));
+    const result = await transform(babel, source, resolve(root, filename));
+    const close = coverage.closeBundle;
+    await Reflect.apply(typeof close === "function" ? close : close.handler, {}, []);
+    const report = JSON.parse(
+      await readFile(
+        resolve(root, `.generated/react-compiler/${command}-development.json`),
+        "utf8",
+      ),
+    );
+    return { result, coverage: report.files[filename] };
+  };
+  try {
+    const initial = await compile(code);
+    expect(initial.coverage.cache).toBe("miss");
+    expect(initial.coverage.events).toContainEqual(
+      expect.objectContaining({ kind: "CompileSuccess", fnName: "Greeting" }),
+    );
+    const restarted = await compile(code);
+    expect(restarted.result).toEqual(initial.result);
+    expect(restarted.coverage.events).toEqual(initial.coverage.events);
+    expect(restarted.coverage.cache).toBe("hit");
+
+    const changed = await compile(
+      code.replace("<span>", "<strong>").replace("</span>", "</strong>"),
+    );
+    expect(changed.coverage.cache).toBe("miss");
+    expect(changed.result).not.toEqual(initial.result);
+    expect((await compile(code)).coverage.cache).toBe("miss");
+    expect((await compile(code)).coverage.cache).toBe("hit");
+
+    await writeFile(resolve(root, "pnpm-lock.yaml"), "changed dependency graph");
+    expect((await compile(code)).coverage.cache).toBe("miss");
+    await mkdir(resolve(root, "config"));
+    await writeFile(
+      resolve(root, "config/renderer-vite-shared.ts"),
+      "changed compiler configuration",
+    );
+    expect((await compile(code)).coverage.cache).toBe("miss");
+
+    const directory = resolve(root, ".generated/react-compiler/cache");
+    const [cacheFile] = await readdir(directory);
+    await writeFile(resolve(directory, cacheFile), "interrupted write");
+    const repaired = await compile(code);
+    expect(repaired.coverage.cache).toBe("miss");
+    expect(repaired.result).toEqual(initial.result);
+    expect((await compile(code, "build")).coverage.cache).toBeUndefined();
   } finally {
     await rm(root, { recursive: true, force: true });
   }

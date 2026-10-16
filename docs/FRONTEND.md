@@ -218,7 +218,11 @@ compiled projections read the same observation.
 
 Compilation coverage is generated under `.generated/react-compiler/` and
 records the public compiler's success and diagnostic events with source
-identities. A successful build does not mean every function was optimized.
+identities. Development servers reuse unchanged compiler output from a worktree-local
+cache, including its coverage events. Source, owning compiler configuration, dependency
+lockfile, and Node changes invalidate that output; production builds always compile
+from source. The cache does not replace Vite's native JSX, Fast Refresh, or import
+analysis. A successful build does not mean every function was optimized.
 Review skipped critical components and verify behavior in the production
 client pipeline. Chromium and Electron exercise that pipeline. The installed
 React plugin excludes the compiler when it receives an SSR transform; use the
