@@ -202,7 +202,8 @@ import { WorkbenchCanvasStagePanel } from "./workbench-canvas-stage-panel";
 import { WorkbenchDatabaseViewSurface } from "./workbench-database-view-surface";
 import { WorkbenchLibraryPageSurface } from "./workbench-library-page-surface";
 import { PagesSceneBreadcrumb, usePagesSceneNavigation } from "./pages-scene-breadcrumb";
-import { EmptyPagesScene, PagesTabPicker } from "./pages-tab-picker";
+import { PagesTabPicker } from "./pages-tab-picker";
+import { SpaceHome } from "./space-home";
 import { TerminalPanel } from "./workbench-terminal-panel";
 import { buildWorkbenchScenePanels } from "./workbench-scene-panels";
 import { useWorkbenchRouteSurfaces } from "./use-workbench-route-surfaces";
@@ -4092,7 +4093,7 @@ export function WorkbenchRuntime({
             />
           ),
           renderEmptyLeaf: (panelId, leafId) => (
-            <EmptyPagesScene
+            <SpaceHome
               onOpenTarget={(target, titleSnapshot) => {
                 void presentLibraryTarget(target, {
                   titleSnapshot,

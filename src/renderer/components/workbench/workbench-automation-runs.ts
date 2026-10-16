@@ -1,4 +1,5 @@
 import type { CodexAutomationInboxItem } from "@/lib/types";
+import { formatCompactRelativeTime } from "@/lib/compact-relative-time";
 
 export interface WorkbenchAutomationPreviousRunRowModel {
   item: CodexAutomationInboxItem;
@@ -27,28 +28,6 @@ export function formatWorkbenchAutomationRunSourceLabel(sourceCwd: string | null
   return basename(sourceCwd) || sourceCwd;
 }
 
-export function formatWorkbenchAutomationRunRelativeTime(
-  createdAt: number,
-  now = Date.now(),
-): string {
-  if (!Number.isFinite(createdAt)) return "";
-
-  const elapsedMs = Math.max(0, now - createdAt);
-  const minuteMs = 60_000;
-  const hourMs = 60 * minuteMs;
-  const dayMs = 24 * hourMs;
-
-  if (elapsedMs < minuteMs) return "now";
-  if (elapsedMs < hourMs) return `${Math.max(1, Math.floor(elapsedMs / minuteMs))}m`;
-  if (elapsedMs < dayMs) return `${Math.max(1, Math.floor(elapsedMs / hourMs))}h`;
-  if (elapsedMs < 30 * dayMs) return `${Math.max(1, Math.floor(elapsedMs / dayMs))}d`;
-
-  return new Date(createdAt).toLocaleDateString(undefined, {
-    month: "short",
-    day: "numeric",
-  });
-}
-
 export function buildWorkbenchAutomationPreviousRunRowModel({
   item,
   now,
@@ -67,7 +46,7 @@ export function buildWorkbenchAutomationPreviousRunRowModel({
     sessionId,
     title: item.title ?? item.automationName ?? "Untitled",
     sourceLabel: formatWorkbenchAutomationRunSourceLabel(item.sourceCwd),
-    relativeTimeLabel: formatWorkbenchAutomationRunRelativeTime(item.createdAt, now),
+    relativeTimeLabel: formatCompactRelativeTime(item.createdAt, now),
     isUnread: item.readAt === null,
     isArchived,
     isInProgress,

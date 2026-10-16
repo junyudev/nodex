@@ -3,7 +3,6 @@ import type { CodexAutomationInboxItem } from "@/lib/types";
 import {
   buildWorkbenchAutomationPreviousRunRowModel,
   buildWorkbenchAutomationPreviousRunRows,
-  formatWorkbenchAutomationRunRelativeTime,
   formatWorkbenchAutomationRunSourceLabel,
 } from "./workbench-automation-runs";
 
@@ -90,11 +89,7 @@ describe("workbench automation previous runs", () => {
     expect(rows[2]).toMatchObject({ canArchive: true, canOpen: false });
   });
 
-  test("formats compact labels", () => {
+  test("formats the run source label", () => {
     expect(formatWorkbenchAutomationRunSourceLabel("/Users/asc/repo/nodex/")).toBe("nodex");
-    expect(formatWorkbenchAutomationRunRelativeTime(0, 10)).toBe("now");
-    expect(formatWorkbenchAutomationRunRelativeTime(0, 5 * 60_000)).toBe("5m");
-    expect(formatWorkbenchAutomationRunRelativeTime(0, 3 * 60 * 60_000)).toBe("3h");
-    expect(formatWorkbenchAutomationRunRelativeTime(0, 2 * 24 * 60 * 60_000)).toBe("2d");
   });
 });

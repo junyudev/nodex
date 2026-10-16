@@ -2,7 +2,8 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, test, vi } from "vite-plus/test";
 import type { LibraryCatalogEntry } from "../../../shared/library-module";
-import { PagesTabPicker, type PagesTabPickerDataSource } from "./pages-tab-picker";
+import { PagesTabPicker } from "./pages-tab-picker";
+import type { SpaceContentDataSource } from "./space-content";
 import { WorkbenchPanelNewTabButton } from "./workbench-panel-new-tab-button";
 
 const page: LibraryCatalogEntry = {
@@ -36,6 +37,7 @@ const dataSource = {
     isPending: false,
     isError: false,
     hasNextPage: false,
+    isFetchingNextPage: false,
     refetch: async () => ({}) as never,
     fetchNextPage: async () => ({}) as never,
   }),
@@ -44,7 +46,7 @@ const dataSource = {
     createPage: async () => undefined,
     createDatabase: async () => undefined,
   }),
-} satisfies PagesTabPickerDataSource;
+} satisfies SpaceContentDataSource;
 
 describe("PagesTabPicker", () => {
   test("opens the plus picker and accepts a catalog resource by keyboard", async () => {
@@ -139,7 +141,7 @@ describe("PagesTabPicker", () => {
           ],
         },
       }),
-    } satisfies PagesTabPickerDataSource;
+    } satisfies SpaceContentDataSource;
 
     try {
       render(

@@ -1,12 +1,4 @@
-import {
-  useEffect,
-  useId,
-  useMemo,
-  useRef,
-  useState,
-  type KeyboardEvent,
-  type ReactElement,
-} from "react";
+import { useEffect, useId, useRef, useState, type KeyboardEvent, type ReactElement } from "react";
 import {
   CanvasIcon,
   DatabaseIcon,
@@ -16,18 +8,18 @@ import {
 } from "@/components/shared/icons";
 import { NodexPopover, NodexPopoverContent, NodexPopoverTrigger } from "@/components/ui/popover";
 import { NodexTooltip } from "@/components/ui/tooltip";
-import { useInfiniteLibraryCatalog } from "@/lib/use-library-navigation";
 import { MAX_LIBRARY_QUERY_LENGTH, type LibraryRouteTarget } from "../../../shared/library-module";
-import { useLibraryCreateCommands } from "../library/library-new-menu";
 import {
   TOOLBAR_BUTTON_BASE_CLASS,
   TOOLBAR_BUTTON_GHOST_CLASS,
 } from "@/lib/workbench-toolbar-control-styles";
 import { cn } from "@/lib/utils";
 import {
-  configuredPageSearchProjectIds,
-  useInteractivePageSearch,
-} from "@/lib/interactive-page-search";
+  boundSpaceContentQuery,
+  DEFAULT_SPACE_CONTENT_DATA_SOURCE,
+  useSpaceContentResults,
+  type SpaceContentDataSource,
+} from "./space-content";
 
 function targetIcon(target: LibraryRouteTarget) {
   if (target.kind === "database" || target.kind === "view") {
@@ -36,26 +28,6 @@ function targetIcon(target: LibraryRouteTarget) {
   if (target.kind === "canvas") return <CanvasIcon className="icon-xs" />;
   return <PageIcon />;
 }
-
-export interface PagesTabPickerDataSource {
-  readonly useCatalog: (
-    input: Parameters<typeof useInfiniteLibraryCatalog>[0],
-  ) => Pick<
-    ReturnType<typeof useInfiniteLibraryCatalog>,
-    "data" | "isPending" | "isError" | "hasNextPage" | "refetch" | "fetchNextPage"
-  >;
-  readonly useCreateCommands: (
-    input: Parameters<typeof useLibraryCreateCommands>[0],
-  ) => Pick<
-    ReturnType<typeof useLibraryCreateCommands>,
-    "isPending" | "createPage" | "createDatabase"
-  >;
-}
-
-const DEFAULT_DATA_SOURCE: PagesTabPickerDataSource = {
-  useCatalog: (input) => useInfiniteLibraryCatalog(input),
-  useCreateCommands: (input) => useLibraryCreateCommands(input),
-};
 
 const pickerRowClassName = cn(
   "flex min-h-9 w-full items-center gap-2 rounded-lg px-2 text-left text-sm outline-hidden",
@@ -66,12 +38,12 @@ const pickerRowClassName = cn(
 export function PagesTabPicker({
   onOpenTarget,
   triggerButton,
-  dataSource = DEFAULT_DATA_SOURCE,
+  dataSource = DEFAULT_SPACE_CONTENT_DATA_SOURCE,
   defaultOpen = false,
 }: {
   readonly onOpenTarget: (target: LibraryRouteTarget, title?: string) => void;
   readonly triggerButton?: ReactElement;
-  readonly dataSource?: PagesTabPickerDataSource;
+  readonly dataSource?: SpaceContentDataSource;
   readonly defaultOpen?: boolean;
 }) {
   const [open, setOpen] = useState(defaultOpen);
@@ -81,43 +53,13 @@ export function PagesTabPicker({
   const optionRefs = useRef(new Map<number, HTMLButtonElement>());
   const comboboxId = useId();
   const listboxId = `${comboboxId}-listbox`;
-  const liveQuery = query.trim().slice(0, MAX_LIBRARY_QUERY_LENGTH);
-  const catalog = dataSource.useCatalog({
-    lifecycle: "active",
-    kinds: ["page", "database", "canvas"],
-    ...(liveQuery ? { query: liveQuery } : {}),
-    limit: 40,
-  });
+  const { items, catalog } = useSpaceContentResults({ query, dataSource });
   const createCommands = dataSource.useCreateCommands({
     onCreated: (target) => {
       setOpen(false);
       onOpenTarget(target);
     },
   });
-  const preview = useInteractivePageSearch({
-    projectIds: configuredPageSearchProjectIds(),
-    query: liveQuery,
-    limit: 40,
-  });
-  const catalogItems = useMemo(
-    () => catalog.data?.pages.flatMap((page) => page.items) ?? [],
-    [catalog.data?.pages],
-  );
-  const items = useMemo(() => {
-    if (!liveQuery || dataSource !== DEFAULT_DATA_SOURCE) return catalogItems;
-    const previewItems = preview.rows.map((row) => ({
-      target: { kind: "page" as const, pageId: row.pageId },
-      title: row.title,
-      locationLabel: row.locationLabel,
-    }));
-    const previewPageIds = new Set(preview.rows.map((row) => row.pageId));
-    return [
-      ...previewItems,
-      ...catalogItems.filter(
-        (item) => item.target.kind !== "page" || !previewPageIds.has(item.target.pageId),
-      ),
-    ];
-  }, [catalogItems, dataSource, liveQuery, preview.rows]);
   const resolvedActiveIndex = items.length === 0 ? -1 : Math.min(activeIndex, items.length - 1);
   const activeDescendantId =
     resolvedActiveIndex >= 0 ? `${listboxId}-option-${resolvedActiveIndex}` : undefined;
@@ -205,7 +147,7 @@ export function PagesTabPicker({
             maxLength={MAX_LIBRARY_QUERY_LENGTH}
             value={query}
             onChange={(event) => {
-              setQuery(event.target.value.slice(0, MAX_LIBRARY_QUERY_LENGTH));
+              setQuery(boundSpaceContentQuery(event.target.value));
               setActiveIndex(0);
             }}
             onKeyDown={handleInputKeyDown}
@@ -298,32 +240,5 @@ export function PagesTabPicker({
         </div>
       </NodexPopoverContent>
     </NodexPopover>
-  );
-}
-
-export function EmptyPagesScene({
-  onOpenTarget,
-  dataSource,
-}: {
-  readonly onOpenTarget: (target: LibraryRouteTarget, title?: string) => void;
-  readonly dataSource?: PagesTabPickerDataSource;
-}) {
-  return (
-    <div className="flex h-full items-center justify-center">
-      <div className="flex max-w-sm flex-col items-center text-center">
-        <PagesTabPicker
-          onOpenTarget={onOpenTarget}
-          dataSource={dataSource}
-          triggerButton={
-            <button
-              type="button"
-              className="h-8 rounded-lg bg-token-foreground px-3 text-sm font-medium text-token-background"
-            >
-              Browse Space
-            </button>
-          }
-        />
-      </div>
-    </div>
   );
 }
