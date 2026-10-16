@@ -42,6 +42,7 @@ import { CodexGateway } from "../../codex-runtime/CodexGateway";
 import { codexRequestCanRetainOutcome } from "../../../shared/codex-renderer-request";
 import * as Fiber from "effect/Fiber";
 import { makeCodexRendererRequestLifetimes } from "../../codex-runtime/CodexRendererRequestLifetimes";
+import { makeWebContentsDestructionSubscriptions } from "../../platform/electron/WebContentsDestructionSubscriptions";
 import {
   CodexRendererRequestOrigin,
   CodexRendererDeliverySink,
@@ -285,6 +286,7 @@ export const live = Layer.effectDiscard(
     const sideChatCommands = yield* CodexSideChatCommands;
     const gateway = yield* CodexGateway;
     const requestLifetimes = yield* makeCodexRendererRequestLifetimes;
+    const rendererDestruction = yield* makeWebContentsDestructionSubscriptions;
     const callbacks = yield* ScopedCallbackRuntime;
     const rendererClients = yield* RendererClientRuntime;
     const registrations: Array<Effect.Effect<void, never, Scope.Scope>> = [];
@@ -563,23 +565,6 @@ export const live = Layer.effectDiscard(
       }
       return windowSessionId;
     };
-    const interruptWhenRendererIsDestroyed = <A, E, R>(
-      event: IpcMainInvokeEvent,
-      operation: Effect.Effect<A, E, R>,
-    ): Effect.Effect<A, E, R> =>
-      Effect.raceFirst(
-        operation,
-        Effect.callback<never>((resume) => {
-          if (event.sender.isDestroyed()) {
-            resume(Effect.interrupt);
-            return;
-          }
-          const interrupt = (): void => resume(Effect.interrupt);
-          event.sender.once("destroyed", interrupt);
-          return Effect.sync(() => event.sender.removeListener("destroyed", interrupt));
-        }),
-      );
-
     // Codex
     registerEffectQuery("codex:threads:list", (_, projectId, input) =>
       threadCatalog
@@ -976,11 +961,11 @@ export const live = Layer.effectDiscard(
           );
         }
         const onDestroyed = () => callbacks.fork(releaseRendererFork(prepared.receiptId));
-        event.sender.once("destroyed", onDestroyed);
+        const unsubscribeDestroyed = rendererDestruction.subscribe(event.sender, onDestroyed);
         rendererForkReceipts.set(prepared.receiptId, {
           senderId: event.sender.id,
           sourceThreadId,
-          cleanup: () => event.sender.removeListener("destroyed", onDestroyed),
+          cleanup: unsubscribeDestroyed,
         });
         return prepared;
       }).pipe(
@@ -1028,13 +1013,8 @@ export const live = Layer.effectDiscard(
             },
           );
           const onDestroyed = () => callbacks.fork(requestLifetimes.closeRenderer(key));
-          event.sender.once("destroyed", onDestroyed);
-          if (event.sender.isDestroyed()) yield* requestLifetimes.closeRenderer(key);
-          return yield* Fiber.join(fiber).pipe(
-            Effect.ensuring(
-              Effect.sync(() => event.sender.removeListener("destroyed", onDestroyed)),
-            ),
-          );
+          const unsubscribeDestroyed = rendererDestruction.subscribe(event.sender, onDestroyed);
+          return yield* Fiber.join(fiber).pipe(Effect.ensuring(Effect.sync(unsubscribeDestroyed)));
         }).pipe(
           Effect.mapError(
             (cause) => new CodexIpcError({ operation: "native-fork-execute", cause }),
@@ -1232,10 +1212,10 @@ export const live = Layer.effectDiscard(
           );
         }
         const onDestroyed = () => releaseNativeSteer(id);
-        event.sender.once("destroyed", onDestroyed);
+        const unsubscribeDestroyed = rendererDestruction.subscribe(event.sender, onDestroyed);
         nativeSteerPreparations.set(id, {
           senderId: event.sender.id,
-          cleanup: () => event.sender.removeListener("destroyed", onDestroyed),
+          cleanup: unsubscribeDestroyed,
         });
         return prepared;
       }).pipe(
@@ -1305,12 +1285,8 @@ export const live = Layer.effectDiscard(
             },
           );
           const onDestroyed = () => callbacks.fork(requestLifetimes.closeRenderer(key));
-          event.sender.once("destroyed", onDestroyed);
-          return yield* Fiber.join(fiber).pipe(
-            Effect.ensuring(
-              Effect.sync(() => event.sender.removeListener("destroyed", onDestroyed)),
-            ),
-          );
+          const unsubscribeDestroyed = rendererDestruction.subscribe(event.sender, onDestroyed);
+          return yield* Fiber.join(fiber).pipe(Effect.ensuring(Effect.sync(unsubscribeDestroyed)));
         }).pipe(
           Effect.mapError(
             (cause) => new CodexIpcError({ operation: "native-steer-execute", cause }),
@@ -1382,10 +1358,10 @@ export const live = Layer.effectDiscard(
             }),
           );
         }
-        event.sender.once("destroyed", onDestroyed);
+        const unsubscribeDestroyed = rendererDestruction.subscribe(event.sender, onDestroyed);
         nativeTurnPreparations.set(input.clientUserMessageId, {
           senderId: event.sender.id,
-          cleanup: () => event.sender.removeListener("destroyed", onDestroyed),
+          cleanup: unsubscribeDestroyed,
         });
         return request;
       }).pipe(
@@ -1466,11 +1442,8 @@ export const live = Layer.effectDiscard(
           },
         );
         const onDestroyed = () => callbacks.fork(requestLifetimes.closeRenderer(key));
-        event.sender.once("destroyed", onDestroyed);
-        if (event.sender.isDestroyed()) yield* requestLifetimes.closeRenderer(key);
-        return yield* Fiber.join(fiber).pipe(
-          Effect.ensuring(Effect.sync(() => event.sender.removeListener("destroyed", onDestroyed))),
-        );
+        const unsubscribeDestroyed = rendererDestruction.subscribe(event.sender, onDestroyed);
+        return yield* Fiber.join(fiber).pipe(Effect.ensuring(Effect.sync(unsubscribeDestroyed)));
       }).pipe(
         Effect.mapError((cause) => new CodexIpcError({ operation: "native-turn-execute", cause })),
         Effect.match({
@@ -1533,13 +1506,8 @@ export const live = Layer.effectDiscard(
             },
           );
           const onDestroyed = () => callbacks.fork(requestLifetimes.closeRenderer(key));
-          event.sender.once("destroyed", onDestroyed);
-          if (event.sender.isDestroyed()) yield* requestLifetimes.closeRenderer(key);
-          return yield* Fiber.join(fiber).pipe(
-            Effect.ensuring(
-              Effect.sync(() => event.sender.removeListener("destroyed", onDestroyed)),
-            ),
-          );
+          const unsubscribeDestroyed = rendererDestruction.subscribe(event.sender, onDestroyed);
+          return yield* Fiber.join(fiber).pipe(Effect.ensuring(Effect.sync(unsubscribeDestroyed)));
         }).pipe(
           Effect.mapError((cause) => new CodexIpcError({ operation: "native-inject", cause })),
           Effect.match({
@@ -1770,11 +1738,11 @@ export const live = Layer.effectDiscard(
         );
         const retirement = manager.onDispose(() => callbacks.fork(requestLifetimes.close(key)));
         const onDestroyed = () => callbacks.fork(requestLifetimes.closeRenderer(key));
-        event.sender.once("destroyed", onDestroyed);
+        const unsubscribeDestroyed = rendererDestruction.subscribe(event.sender, onDestroyed);
         return yield* Fiber.join(fiber).pipe(
           Effect.ensuring(
             Effect.sync(() => {
-              event.sender.removeListener("destroyed", onDestroyed);
+              unsubscribeDestroyed();
               retirement[Symbol.dispose]();
             }),
           ),
@@ -2026,10 +1994,10 @@ export const live = Layer.effectDiscard(
             );
           }
           const onDestroyed = () => release();
-          event.sender.once("destroyed", onDestroyed);
+          const unsubscribeDestroyed = rendererDestruction.subscribe(event.sender, onDestroyed);
           const receipt = {
             senderId: event.sender.id,
-            cleanup: () => event.sender.removeListener("destroyed", onDestroyed),
+            cleanup: unsubscribeDestroyed,
           };
           if (prepared.start) {
             clearNativeTurnPreparation(id);
