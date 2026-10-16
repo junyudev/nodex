@@ -88,7 +88,8 @@ test("projectless agents use Profile content and Automation tools in both intera
                     `text({updated:unwrap(await app.update_page({pageId:${JSON.stringify(pageId)},body:{kind:"patch",ifMatch:fetched.data.content.etag,patches:[{oldMarkdown:"Original projectless content.",newMarkdown:"Updated without an actor Project."}]}}))});`,
                     'text({created:unwrap(await app.create_pages({destination:{kind:"library"},pages:[{title:"Created without a Project",markdown:"Independent Library Page."}],return:["etags"]}))});',
                     'text({sql:unwrap(await app.query_content({scope:{},sql:"SELECT title FROM pages",parameters:{}}))});',
-                    "text({schema:unwrap(await app.describe_content_schema({scope:{}}))});",
+                    // Table names prove the schema read without spending the output budget on it.
+                    "const schema=unwrap(await app.describe_content_schema({scope:{}})); text({schema:{tables:schema.tables.map(t=>t.table)}});",
                     'const cron={kind:"cron",name:"Projectless review",prompt:"Review this independent task",rrule:"FREQ=YEARLY",projectId:null,cwds:[],executionEnvironment:"local"}; const automation=unwrap(await app.automation_update({mode:"create",...cron})); text({automation});',
                     'text({automationUpdated:unwrap(await app.automation_update({...cron,mode:"update",id:automation.item.id,expectedRevision:automation.item.definitionRevision,status:"PAUSED",name:"Projectless paused review"}))});',
                     "const context=unwrap(await app.get_session_context({})); text({session:context}); const groups=unwrap(await app.list_tab_groups({observationId:context.presentation.observationId}));",

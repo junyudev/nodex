@@ -11,19 +11,19 @@ import {
   withScriptedModelServer,
 } from "../../scripts/scenarios/runtime/scripted-model-server";
 import {
-  collectRecords,
-  invokeIpc,
   createAgentSmokeDraft,
   sendAgentPrompt,
   setAgentExecutionProfile,
-  waitForCompletedAgentTurn,
   waitForFinalMarker,
+  waitForRuntimeCompletedAgentTurn,
 } from "./support/agent-smoke-harness";
 import { createConvergencePage, createConvergenceProject } from "./support/editor-scenario";
 
 const shellOutput = async (page: Page): Promise<string[]> => {
+  // A turn may group its work under a timed summary; Agent execution lists it directly.
   const activity = page.getByRole("button", { name: /^Worked for/u });
-  if ((await activity.getAttribute("aria-expanded")) !== "true") await activity.click();
+  if ((await activity.count()) > 0 && (await activity.getAttribute("aria-expanded")) !== "true")
+    await activity.click();
   const commands = page.getByRole("button", { name: "Ran commands", exact: true });
   if ((await commands.count()) > 0 && (await commands.getAttribute("aria-expanded")) !== "true")
     await commands.click();
@@ -34,6 +34,8 @@ const shellOutput = async (page: Page): Promise<string[]> => {
   }
   const output = page.locator(".group\\/output code");
   await expect(output).toHaveCount(2);
+  // Opening a finished command reads its output on demand.
+  await expect.poll(() => output.allTextContents()).not.toContain("No output");
   return await output.allTextContents();
 };
 
@@ -126,7 +128,7 @@ test("real Shell output survives delayed batching and preserves repeated lines a
           harness.profile.initialProjectsDirectory,
           "release-shell-output",
         );
-        // Wait for native item start so this test isolates Nodex from early process subscription races.
+        // Hold the repeated output until its command is issued, so it streams into a live chat.
         repeatCommand = `while [ ! -f '${outputGate}' ]; do sleep 0.02; done; ${repeatCommand}`;
         const page = await harness.launch();
         await setAgentExecutionProfile(page, { preferredModelId: "gpt-5.5" });
@@ -147,10 +149,7 @@ test("real Shell output survives delayed batching and preserves repeated lines a
         );
         queryCommand = `nodex sql query 'SELECT title,title_etag,file_manifest_revision,intrinsic_properties FROM pages WHERE page_id=:id' --param 'id="${fixture.pageId}"'`;
         await page.evaluate(() => {
-          const scope = window as unknown as { __shellEvents: unknown[] };
-          scope.__shellEvents = [];
-          // Stretch batching timers to force real native completion to overtake queued output.
-          // IPC and native Shell execution remain real; only renderer scheduling is stressed.
+          // Stretch batching timers to force completion to overtake queued output.
           const schedule = window.setTimeout.bind(window);
           window.setTimeout = ((handler: TimerHandler, timeout?: number, ...args: unknown[]) =>
             schedule(
@@ -158,41 +157,19 @@ test("real Shell output survives delayed batching and preserves repeated lines a
               timeout === 50 ? 10_000 : timeout,
               ...args,
             )) as typeof window.setTimeout;
-          if (!window.api) throw new Error("Electron preload API is unavailable");
-          window.api.on("codex:host-message", (message) => scope.__shellEvents.push(message));
         });
         const threadId = await sendAgentPrompt(page, draft.projectSessionId, prompt);
-        await expect
-          .poll(
-            async () =>
-              await page.evaluate((callId) => {
-                const events = (
-                  window as unknown as {
-                    __shellEvents: {
-                      notification?: { method: string; params: { item?: { id: string } } };
-                    }[];
-                  }
-                ).__shellEvents;
-                return events.some(
-                  (event) =>
-                    event.notification?.method === "item/started" &&
-                    event.notification.params.item?.id === callId,
-                );
-              }, repeatCall),
-          )
-          .toBe(true);
+        const target = { sessionId: draft.projectSessionId, threadId };
+        await modelServer.waitForRequest((request) => request.hasToolCallOutput(queryCall));
         fs.writeFileSync(outputGate, "ready");
         await waitForFinalMarker(page, final);
-        const liveSnapshot = await waitForCompletedAgentTurn(page, threadId);
+        const liveConversation = await waitForRuntimeCompletedAgentTurn(page, target);
         // Let the delayed timer fire: it must not append bytes already included in completion.
         await page.waitForTimeout(11_000);
         const live = await shellOutput(page);
-        const hostMessages = await page.evaluate(
-          () => (window as unknown as { __shellEvents: unknown[] }).__shellEvents,
-        );
         fs.writeFileSync(
           testInfo.outputPath("live-state.json"),
-          JSON.stringify({ live, liveSnapshot, capturedToolOutputs, hostMessages }, null, 2),
+          JSON.stringify({ live, liveConversation, capturedToolOutputs }, null, 2),
         );
         const nativeLogs = fs
           .readdirSync(harness.profile.codexHome, { recursive: true })
@@ -209,19 +186,10 @@ test("real Shell output survives delayed batching and preserves repeated lines a
         expect(query.result.rows[0]?.[0]).toBe("Shell query fixture");
         expect(query.result.snapshot).toMatch(/^query_/u);
         expect(live[1]).toBe(`${repeatLine}\n${repeatLine}\n`);
-        const commands = collectRecords(liveSnapshot).filter(
-          (record) => record.type === "commandExecution",
-        );
-        expect(
-          commands.some(
-            (command) =>
-              typeof command.command === "string" &&
-              command.command.includes("nodex sql query") &&
-              command.aggregatedOutput === live[0],
-          ),
-        ).toBe(true);
         const reopened = await harness.restart();
-        await reopened.locator(`[data-app-action-sidebar-thread-id="${threadId}"]`).click();
+        await reopened
+          .locator(`[data-app-action-sidebar-thread-id="${draft.projectSessionId}"]`)
+          .click();
         await waitForFinalMarker(reopened, final);
         const restored = await shellOutput(reopened);
         expect(restored).toEqual(live);

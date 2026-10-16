@@ -38,7 +38,6 @@ test("relaunching a quiet Profile lists models without starting execution", asyn
     prepareAgentRuntime: false,
     environment: {
       NODEX_TEST_AGENT_RUNTIME_PROJECT_ROOT: ".",
-      NODEX_TEST_AGENT_RUNTIME_NODE_EXECUTABLE: process.execPath,
       NODEX_TEST_CROSS_PROVIDER_HOME: fixture,
     },
   });

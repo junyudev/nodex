@@ -78,7 +78,13 @@ function submissionNow(): number {
 type FirstSubmissionPatch = Partial<
   Pick<
     SessionFirstSubmission,
-    "targetProjectId" | "targetSessionId" | "threadId" | "clientThreadId" | "phase" | "failure"
+    | "backend"
+    | "targetProjectId"
+    | "targetSessionId"
+    | "threadId"
+    | "clientThreadId"
+    | "phase"
+    | "failure"
   >
 >;
 

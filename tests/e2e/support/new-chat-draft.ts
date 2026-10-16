@@ -21,8 +21,13 @@ export async function openNewChatDraft(page: Page): Promise<Locator> {
           if (!projectId) return null;
           const tasks = (await window.api?.invoke("workspace:tasks:list", projectId, {
             first: 50,
-          })) as { items: Array<{ id: string; thread?: unknown }> } | undefined;
-          const drafts = tasks?.items.filter((task) => task.thread == null);
+          })) as
+            | { items: Array<{ id: string; thread?: unknown; executionRef?: unknown }> }
+            | undefined;
+          // A draft has neither a native Thread nor an Agent execution binding.
+          const drafts = tasks?.items.filter(
+            (task) => task.thread == null && task.executionRef == null,
+          );
           return drafts?.length === 1 ? drafts[0]!.id : null;
         });
         return sessionId;

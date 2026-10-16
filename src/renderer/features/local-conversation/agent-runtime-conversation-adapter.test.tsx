@@ -219,6 +219,96 @@ describe("Agent Runtime Codex controls", () => {
     await act(async () => unmount());
   });
 
+  it("waits for the Agent catalog when a first message outruns it", async () => {
+    let resolveCatalog: (providers: AgentRuntimeProvider[]) => void = () => {};
+    vi.spyOn(agentRuntimeRuntime, "catalog").mockReturnValue(
+      new Promise((resolve) => {
+        resolveCatalog = resolve;
+      }),
+    );
+    const launch = vi
+      .spyOn(agentRuntimeRuntime, "launch")
+      .mockResolvedValue({ sessionId: "early-draft", projectId: "project", threadId: "thread" });
+    vi.spyOn(agentRuntimeRuntime, "control").mockResolvedValue({
+      sessionId: "early-draft",
+      projectId: "project",
+      threadId: "thread",
+      snapshot,
+    });
+    vi.spyOn(agentRuntimeRuntime, "subscribe").mockResolvedValue(() => {});
+    const { result, unmount } = renderHook(
+      () =>
+        useAgentRuntimeConversationAdapter({
+          sessionId: "early-draft",
+          projectId: "project",
+          modelProjectId: "project",
+          instances,
+          onRefresh: async () => {},
+          onOpenThread: () => {},
+          ensureDraft: async () => ({ id: "early-draft" }),
+        }),
+      { wrapper: SavedSettingsWorkbench },
+    );
+    let started: Promise<void> | undefined;
+    await act(async () => {
+      started = result.current.actions.onStartThreadForSession!({
+        projectId: "project",
+        sessionId: "early-draft",
+        prompt: "Go",
+      });
+      await Promise.resolve();
+    });
+    // The message is already shown; only its launch waits for a model.
+    expect(
+      sessionFirstSubmissionOwner.getSnapshot().submissions.map(({ prompt }) => prompt),
+    ).toEqual(["Go"]);
+    expect(launch).not.toHaveBeenCalled();
+    await act(async () => {
+      resolveCatalog([codexProvider]);
+      await started;
+    });
+    expect(launch.mock.calls[0]![0].modelSelection).toMatchObject({
+      instanceId: "codex",
+      model: "gpt",
+    });
+    await act(async () => unmount());
+  });
+
+  it("starts later new chats from the last Codex model, effort and speed chosen", async () => {
+    vi.spyOn(agentRuntimeRuntime, "catalog").mockResolvedValue([codexProvider]);
+    const renderDraft = (sessionId: string) =>
+      renderHook(
+        () =>
+          useAgentRuntimeConversationAdapter({
+            sessionId,
+            projectId: "project",
+            modelProjectId: "project",
+            instances,
+            onRefresh: async () => {},
+            onOpenThread: () => {},
+            ensureDraft: async () => ({ id: sessionId }),
+          }),
+        { wrapper: SavedSettingsWorkbench },
+      );
+    const first = renderDraft("first-draft");
+    await waitFor(() => expect(first.result.current.selectedModel).toBe("gpt"));
+    await act(async () => {
+      await first.result.current.actions.onIntelligenceSelectionChange!({
+        kind: "codex",
+        model: "gpt-mini",
+        reasoningEffort: "high",
+        serviceTier: "fast",
+      });
+    });
+    await act(async () => first.unmount());
+
+    const next = renderDraft("next-draft");
+    await waitFor(() => expect(next.result.current.selectedModel).toBe("gpt-mini"));
+    expect(next.result.current.selectedEffort).toBe("high");
+    expect(next.result.current.provider.serviceTier).toBe("fast");
+    await act(async () => next.unmount());
+  });
+
   it("names a bound chat by its Session, not by the prompt its engine Thread started from", async () => {
     vi.spyOn(agentRuntimeRuntime, "catalog").mockResolvedValue([codexProvider]);
     vi.spyOn(agentRuntimeRuntime, "control").mockResolvedValue({

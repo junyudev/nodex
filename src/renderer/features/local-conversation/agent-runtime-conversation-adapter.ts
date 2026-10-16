@@ -23,6 +23,7 @@ import {
   readAgentRuntimeServiceTier,
 } from "../../../shared/agent-runtime-provider";
 import { useCodexThreadSettings } from "../../lib/use-codex-thread-settings";
+import { CodexReasoningEffortSchema } from "../../../shared/schemas/codex";
 import { useCodexServiceTierSettings } from "../../lib/use-codex-service-tier-settings";
 import { prepareAgentPrompt } from "../../../shared/agent-prompt";
 import { createUuidV7 } from "../../../shared/uuid-v7";
@@ -181,6 +182,9 @@ export function createAgentRuntimeConversationRuntime(
     primaryRequest: (id) => (matches(id) ? (owner!.getSnapshot().view?.requests[0] ?? null) : null),
     children: (id) => (matches(id) ? owner!.children() : emptyChildren),
     retain: () => owner?.retain() ?? (() => {}),
+    readItemDetail: async (id, itemId) => {
+      if (matches(id)) await owner!.readItem(itemId);
+    },
     resume: async () => {
       await owner?.resume();
     },
@@ -613,23 +617,25 @@ export function useAgentRuntimeConversationAdapter(input: {
     instances: input.instances,
     onReady: refreshCatalog,
   });
+  // A first message sent while the catalog is still loading waits for it to choose a model.
+  const catalogLoad = useRef<Promise<readonly AgentRuntimeProvider[]> | null>(null);
   useEffect(() => {
     let active = true;
-    void agentRuntimeRuntime
+    const load = agentRuntimeRuntime
       .catalog({ refresh: catalogRevision > 0 })
-      .then((providers) => {
-        if (active)
-          setCatalogState({
-            providers: providers.filter(
-              (provider) =>
-                provider.instanceId === "codex" ||
-                input.instances.some(
-                  (instance) => agentRuntimeProviderId(instance.binding) === provider.instanceId,
-                ),
+      .then((providers) =>
+        providers.filter(
+          (provider) =>
+            provider.instanceId === "codex" ||
+            input.instances.some(
+              (instance) => agentRuntimeProviderId(instance.binding) === provider.instanceId,
             ),
-            loading: false,
-            error: null,
-          });
+        ),
+      );
+    catalogLoad.current = load;
+    void load
+      .then((providers) => {
+        if (active) setCatalogState({ providers, loading: false, error: null });
       })
       .catch((cause: unknown) => {
         if (active)
@@ -656,8 +662,22 @@ export function useAgentRuntimeConversationAdapter(input: {
       ),
     );
   }, [catalogState.providers, input.instances]);
-  const { settings: savedCodexSettings } = useCodexThreadSettings();
-  const { serviceTierSettings: savedServiceTier } = useCodexServiceTierSettings();
+  const { settings: savedCodexSettings, updateSettings: updateSavedCodexSettings } =
+    useCodexThreadSettings();
+  const { serviceTierSettings: savedServiceTier, setServiceTier: saveServiceTier } =
+    useCodexServiceTierSettings();
+  // A Codex choice becomes the starting model, effort and speed of later new chats.
+  const rememberCodexChoice = (choice: AgentModelSelection) => {
+    const effort = CodexReasoningEffortSchema.safeParse(
+      choice.options?.find((option) => option.id === "reasoningEffort")?.value,
+    );
+    updateSavedCodexSettings({
+      model: choice.model,
+      ...(effort.success ? { reasoningEffort: effort.data } : {}),
+    });
+    const tier = readAgentRuntimeServiceTier(choice.options);
+    if (tier !== undefined) saveServiceTier(tier, "composer_menu");
+  };
   const draftKey = JSON.stringify([input.sessionId, input.modelProjectId]);
   const draft = useSyncExternalStore(
     (listener) => agentRuntimeDraftOwner.subscribe(draftKey, listener),
@@ -702,21 +722,32 @@ export function useAgentRuntimeConversationAdapter(input: {
     if (catalogState.error) refreshCatalog();
   }, [runtimeConnection.status, owner, catalogState.error]);
   const observed = state.conversation?.snapshot.projection.thread;
-  const entries: readonly AgentModelPickerEntry[] = catalogState.providers.flatMap((provider) => {
-    const binding =
-      provider.instanceId === "codex"
-        ? { kind: "codex" as const }
-        : input.instances.find(
-            (entry) => agentRuntimeProviderId(entry.binding) === provider.instanceId,
-          )?.binding;
-    if (!binding || !isAgentRuntimeProviderAvailable(provider)) return [];
-    return provider.models.map((model) => ({
-      binding,
-      label: agentRuntimeProviderLabel(provider, input.instances),
-      model: projectAgentRuntimeModel(provider, model),
-      selection: { binding, model: model.slug },
-    }));
-  });
+  const entriesFor = (
+    providers: readonly AgentRuntimeProvider[],
+  ): readonly AgentModelPickerEntry[] =>
+    providers.flatMap((provider) => {
+      const binding =
+        provider.instanceId === "codex"
+          ? { kind: "codex" as const }
+          : input.instances.find(
+              (entry) => agentRuntimeProviderId(entry.binding) === provider.instanceId,
+            )?.binding;
+      if (!binding || !isAgentRuntimeProviderAvailable(provider)) return [];
+      return provider.models.map((model) => ({
+        binding,
+        label: agentRuntimeProviderLabel(provider, input.instances),
+        model: projectAgentRuntimeModel(provider, model),
+        selection: { binding, model: model.slug },
+      }));
+    });
+  const draftSelectionFor = (providers: readonly AgentRuntimeProvider[]) =>
+    draft.selection ??
+    seedAgentRuntimeCodexSelection(
+      providers.find((entry) => entry.instanceId === "codex"),
+      { ...savedCodexSettings, serviceTier: savedServiceTier.serviceTier },
+    ) ??
+    entriesFor(providers)[0]?.selection ?? { binding: { kind: "codex" as const }, model: "" };
+  const entries = entriesFor(catalogState.providers);
   const observedBinding = observed
     ? observed.modelSelection.instanceId === "codex"
       ? { kind: "codex" as const }
@@ -730,12 +761,7 @@ export function useAgentRuntimeConversationAdapter(input: {
         model: observed.modelSelection.model,
         options: observed.modelSelection.options,
       }
-    : (draft.selection ??
-      seedAgentRuntimeCodexSelection(
-        catalogState.providers.find((entry) => entry.instanceId === "codex"),
-        { ...savedCodexSettings, serviceTier: savedServiceTier.serviceTier },
-      ) ??
-      entries[0]?.selection ?? { binding: { kind: "codex" as const }, model: "" });
+    : draftSelectionFor(catalogState.providers);
   const provider = catalogState.providers.find(
     (entry) => entry.instanceId === agentRuntimeProviderId(selection.binding),
   );
@@ -786,23 +812,27 @@ export function useAgentRuntimeConversationAdapter(input: {
       throw new Error("Start a new conversation to change Agent");
     if (chosen.binding.kind === "claude")
       nativeIntelligenceIntentOwner.write(intentKey, nextIntent);
+    if (fitted.binding.kind === "codex") rememberCodexChoice(fitted);
     if (!target) {
       agentRuntimeDraftOwner.write(draftKey, { selection: fitted });
       return;
     }
     await agentRuntimeRuntime.setModel({ ...target, requestId: createUuidV7(), modelSelection });
   };
-  const prepare = (
-    text: string,
-    promptInput?: CodexPromptInput,
-    untrustedAppMessage?: import("../../../shared/codex-untrusted-app-input").CodexUntrustedAppMessage,
-  ) =>
-    prepareAgentPrompt(text, promptInput, (file) => readPastedTextAttachment({ file }), {
-      images: true,
-      agentConfigs: true,
-      nativeSkills: selection.binding.kind === "claude",
-      untrustedAppMessage,
-    });
+  const prepareFor =
+    (kind: AgentBackendBinding["kind"]) =>
+    (
+      text: string,
+      promptInput?: CodexPromptInput,
+      untrustedAppMessage?: import("../../../shared/codex-untrusted-app-input").CodexUntrustedAppMessage,
+    ) =>
+      prepareAgentPrompt(text, promptInput, (file) => readPastedTextAttachment({ file }), {
+        images: true,
+        agentConfigs: true,
+        nativeSkills: kind === "claude",
+        untrustedAppMessage,
+      });
+  const prepare = prepareFor(selection.binding.kind);
   const actions: Partial<ThreadStageActions> = {
     onCaptureSubmissionPresentation: () => readCodexSubmissionPresentation(workbenchOwner),
     ...createAgentRuntimeStageActions({
@@ -825,13 +855,13 @@ export function useAgentRuntimeConversationAdapter(input: {
     onStartThreadForSession: async (request) => {
       const submittedPresentation =
         request.submittedPresentation ?? readCodexSubmissionPresentation(workbenchOwner);
-      const modelSelection = agentRuntimeModelSelection(
-        selection.binding,
-        selection.model,
-        selection.options,
-      );
-      if (!modelSelection) throw new Error("Choose a configured Agent and model");
       if (request.runInTarget === "cloud") throw new Error("Choose a local workspace");
+      const modelOf = (candidate: typeof selection) =>
+        agentRuntimeModelSelection(candidate.binding, candidate.model, candidate.options);
+      // The message shows at once; a draft still waiting for the catalog takes its model from it.
+      const pendingCatalog = modelOf(selection) ? null : catalogLoad.current;
+      if (!modelOf(selection) && !pendingCatalog)
+        throw new Error("Choose a configured Agent and model");
       const submission = sessionFirstSubmissionOwner.begin({
         backend: selection.binding.kind,
         originProjectId: request.projectId,
@@ -860,6 +890,15 @@ export function useAgentRuntimeConversationAdapter(input: {
       });
       let launched: import("../../../shared/agent-runtime-api").AgentRuntimeLaunchResult;
       try {
+        const launchSelection = pendingCatalog
+          ? draftSelectionFor(await pendingCatalog)
+          : selection;
+        const modelSelection = modelOf(launchSelection);
+        if (!modelSelection) throw new Error("Choose a configured Agent and model");
+        if (launchSelection.binding.kind !== selection.binding.kind)
+          sessionFirstSubmissionOwner.update(submission.launchId, {
+            backend: launchSelection.binding.kind,
+          });
         const presentationTicket =
           request.presentationTicket ??
           (await captureCodexTurnPresentation(
@@ -867,7 +906,10 @@ export function useAgentRuntimeConversationAdapter(input: {
             { kind: "session", sessionId, launchId: submission.launchId },
             submittedPresentation,
           ));
-        const text = await prepare(request.prompt, request.promptInput);
+        const text = await prepareFor(launchSelection.binding.kind)(
+          request.prompt,
+          request.promptInput,
+        );
         const result = await agentRuntimeRuntime.launch({
           sessionId,
           projectId: request.projectId,

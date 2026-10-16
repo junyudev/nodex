@@ -11,7 +11,8 @@ export const openComposerModelPicker = async (page: Page) => {
 export const refreshComposerModels = async (page: Page): Promise<void> => {
   await openComposerModelPicker(page);
   const refresh = page.getByRole("button", { name: "Refresh models", exact: true });
-  await expect(refresh).toBeEnabled();
+  // The first catalog read starts Agent execution and probes every provider.
+  await expect(refresh).toBeEnabled({ timeout: 30_000 });
   await refresh.click();
 };
 

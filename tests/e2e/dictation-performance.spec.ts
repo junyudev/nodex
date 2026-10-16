@@ -28,7 +28,8 @@ test("shows the persisted dictation route and performance evidence in Voice sett
           authMethod: "chatgpt",
           capabilities: {
             composer: true,
-            global: false,
+            // A signed-in ChatGPT account admits desktop-wide dictation too.
+            global: true,
             sounds: true,
             streaming: "available",
             voiceDictionary: false,

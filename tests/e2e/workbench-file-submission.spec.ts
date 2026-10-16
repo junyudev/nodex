@@ -9,11 +9,10 @@ import {
 import {
   collectRecords,
   createAgentSmokeDraft,
-  invokeIpc,
   sendAgentPrompt,
   setAgentExecutionProfile,
-  waitForCompletedAgentTurn,
   waitForFinalMarker,
+  waitForRuntimeCompletedAgentTurn,
 } from "./support/agent-smoke-harness";
 
 const finalResponse = (id: string, text: string) =>
@@ -79,7 +78,7 @@ test("long file paths retain exact submission context before and after pinning",
                   kind: "files",
                   path: filePath,
                   preview: phase === "PREVIEW",
-                  status: "authorized",
+                  status: "available",
                 }),
               ]),
             });
@@ -117,11 +116,12 @@ test("long file paths retain exact submission context before and after pinning",
           "File submission",
         );
         const threadId = await sendAgentPrompt(page, draft.projectSessionId, "FILE_LINK_PROBE");
+        const target = { sessionId: draft.projectSessionId, threadId };
         const link = page
           .locator('button[data-file-reference="true"]')
           .filter({ hasText: "Submission fixture" });
         await expect(link).toBeVisible();
-        await waitForCompletedAgentTurn(page, threadId, 60_000);
+        await waitForRuntimeCompletedAgentTurn(page, target, 60_000);
         await link.click();
         const tab = page.getByRole("tab", { name: "Submission fixture", exact: true });
         const chrome = tab.locator("xpath=ancestor::*[@data-panel-tab-id][1]");
@@ -134,7 +134,7 @@ test("long file paths retain exact submission context before and after pinning",
         await followUp.fill("FILE_PREVIEW_PROBE");
         await page.getByRole("button", { name: "Send prompt", exact: true }).click();
         await waitForFinalMarker(page, "FILE_PREVIEW_OK");
-        await waitForCompletedAgentTurn(page, threadId, 60_000);
+        await waitForRuntimeCompletedAgentTurn(page, target, 60_000);
         await tab.dblclick();
         await expect(chrome).not.toHaveAttribute("data-app-shell-tab-preview", "true");
         await expect(chrome).toHaveAttribute("data-panel-tab-id", surfaceId!);
@@ -145,7 +145,7 @@ test("long file paths retain exact submission context before and after pinning",
         await followUp.fill("FILE_PINNED_PROBE");
         await page.getByRole("button", { name: "Send prompt", exact: true }).click();
         await waitForFinalMarker(page, "FILE_PINNED_OK");
-        await waitForCompletedAgentTurn(page, threadId, 60_000);
+        await waitForRuntimeCompletedAgentTurn(page, target, 60_000);
       } finally {
         await harness.close();
       }

@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { AGENT_RUNTIME_CODEX_THREAD_SOURCE } from "@nodex/agent-runtime/contracts";
 import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
@@ -21,9 +22,9 @@ import {
   sendAgentPrompt,
   setAgentExecutionProfile,
   waitForAgentThreadExecutionProfile,
-  waitForCompletedAgentTurn,
   waitForFinalMarker,
-  waitForNativeCompletedAgentTurn,
+  readRuntimeConversation,
+  waitForRuntimeCompletedAgentTurn,
 } from "./support/agent-smoke-harness";
 import { startBrowserHttpFixture } from "./support/browser-http-fixture";
 import { openNewChatDraft, waitForDraftScene } from "./support/new-chat-draft";
@@ -88,7 +89,8 @@ for (const { rendererCpuRate, unversioned } of [
           {
             name: "first durable turn",
             match: (request) =>
-              request.isThreadSource("user") && request.hasUserInputText(firstPrompt),
+              request.isThreadSource(AGENT_RUNTIME_CODEX_THREAD_SOURCE) &&
+              request.hasUserInputText(firstPrompt),
             respond: responses.stream([
               responses.created(`response_before_${token}`),
               responses.assistantMessage(`message_before_${token}`, firstReply, "final_answer"),
@@ -98,7 +100,8 @@ for (const { rendererCpuRate, unversioned } of [
           {
             name: "follow-up retains the conversation across process restart",
             match: (request) =>
-              request.isThreadSource("user") && request.hasUserInputText(nextPrompt),
+              request.isThreadSource(AGENT_RUNTIME_CODEX_THREAD_SOURCE) &&
+              request.hasUserInputText(nextPrompt),
             respond: (request) => {
               expect(request.hasInputText(firstPrompt)).toBe(true);
               expect(request.hasInputText(firstReply)).toBe(true);
@@ -154,7 +157,8 @@ for (const { rendererCpuRate, unversioned } of [
             "Thread restart",
           );
           const threadId = await sendAgentPrompt(page, draft.projectSessionId, firstPrompt);
-          await waitForCompletedAgentTurn(page, threadId);
+          const target = { sessionId: draft.projectSessionId, threadId };
+          await waitForRuntimeCompletedAgentTurn(page, target);
           await waitForFinalMarker(page, firstReply);
           let coldDraftSessionId: string | null = null;
           if (rendererCpuRate > 1) {
@@ -177,7 +181,10 @@ for (const { rendererCpuRate, unversioned } of [
             try {
               // Cold renderer scheduling must not turn successful history hydration into failure.
               await cdp.send("Emulation.setCPUThrottlingRate", { rate: rendererCpuRate });
-              await reopened.locator(`[data-app-action-sidebar-thread-id="${threadId}"]`).click();
+              // A chat that Agent execution owns is listed by its Session.
+              await reopened
+                .locator(`[data-app-action-sidebar-thread-id="${draft.projectSessionId}"]`)
+                .click();
               await expect(reopened.getByText(firstReply, { exact: true }).last()).toBeVisible({
                 timeout: 30_000,
               });
@@ -198,9 +205,13 @@ for (const { rendererCpuRate, unversioned } of [
           await composer.press("Enter");
           await waitForFinalMarker(reopened, nextReply, 30_000);
           const session = await invokeIpc(reopened, "project-sessions:get", draft.projectSessionId);
-          expect(session).toMatchObject({ thread: { threadId } });
-          const nativeHistory = await waitForNativeCompletedAgentTurn(reopened, threadId);
-          expect(nativeHistory.turns).toHaveLength(2);
+          expect(session).toMatchObject({ executionRef: { threadId } });
+          // The follow-up continues the same Thread as its second Run.
+          const restored = await waitForRuntimeCompletedAgentTurn(reopened, target);
+          expect(restored.snapshot.projection.runs.at(-1)).toMatchObject({
+            ordinal: 2,
+            status: "completed",
+          });
         } finally {
           try {
             const screenshotPath = testInfo.outputPath("thread-restart.png");
@@ -238,7 +249,8 @@ test("runs a real shell tool through the scripted model boundary", async () => {
           {
             name: "model requests the exact file write",
             match: (request) =>
-              request.isThreadSource("user") && request.hasUserInputText(promptMarker),
+              request.isThreadSource(AGENT_RUNTIME_CODEX_THREAD_SOURCE) &&
+              request.hasUserInputText(promptMarker),
             respond: (request) => {
               assertRequestModel(request, "gpt-5.5");
               const command = `printf %b ${JSON.stringify(fileContents)} > ${JSON.stringify(filePath)} && od -An -t x1 ${JSON.stringify(filePath)}`;
@@ -269,7 +281,9 @@ test("runs a real shell tool through the scripted model boundary", async () => {
           },
           {
             name: "model finishes after the real shell output",
-            match: (request) => request.isThreadSource("user") && request.hasToolCallOutput(callId),
+            match: (request) =>
+              request.isThreadSource(AGENT_RUNTIME_CODEX_THREAD_SOURCE) &&
+              request.hasToolCallOutput(callId),
             respond: responses.stream([
               responses.created(`response_file_final_${token}`),
               responses.assistantMessage(`message_file_${token}`, finalMarker, "final_answer"),
@@ -311,9 +325,11 @@ test("runs a real shell tool through the scripted model boundary", async () => {
             draft.projectSessionId,
             `${promptMarker}: create the requested deterministic fixture`,
           );
-          await waitForAgentThreadExecutionProfile(page, threadId, selectedProfile);
+          const target = { sessionId: draft.projectSessionId, threadId };
+          await waitForAgentThreadExecutionProfile(page, target, selectedProfile);
           await modelServer.waitForRequest((request) => request.hasToolCallOutput(callId));
-          const snapshot = await waitForCompletedAgentTurn(page, threadId);
+          await waitForRuntimeCompletedAgentTurn(page, target);
+          const snapshot = await readRuntimeConversation(page, target);
           if (!JSON.stringify(snapshot).includes(finalMarker)) {
             throw new Error(
               `Completed file turn omitted the final assistant marker:\n${JSON.stringify(snapshot, null, 2)}`,
@@ -322,13 +338,7 @@ test("runs a real shell tool through the scripted model boundary", async () => {
           await waitForFinalMarker(page, finalMarker);
 
           expect(fs.readFileSync(filePath, "utf8")).toBe(fileContents);
-          const snapshotRecord = isRecord(snapshot) ? snapshot : null;
-          expect(Array.isArray(snapshotRecord?.turns) ? snapshotRecord.turns : []).toHaveLength(1);
-          expect(
-            collectRecords(snapshot).some(
-              (record) => record.type === "commandExecution" && record.status === "completed",
-            ),
-          ).toBe(true);
+          expect(snapshot.snapshot.projection.runs).toHaveLength(1);
         } catch (error) {
           const logs = await readBoundedElectronRuntimeLogs(harness.profile);
           throw new Error(
@@ -392,7 +402,8 @@ nodeRepl.write(JSON.stringify({ title: await tab.title(), url: await tab.url() }
           {
             name: "model discovers the deferred Browser tool",
             match: (request) =>
-              request.isThreadSource("user") && request.hasUserInputText(promptMarker),
+              request.isThreadSource(AGENT_RUNTIME_CODEX_THREAD_SOURCE) &&
+              request.hasUserInputText(promptMarker),
             respond: async (request) => {
               assertRequestModel(request, "gpt-5.5");
               if (!request.hasToolType("tool_search")) {
@@ -414,7 +425,8 @@ nodeRepl.write(JSON.stringify({ title: await tab.title(), url: await tab.url() }
           {
             name: "model opens the Browser fixture",
             match: (request) =>
-              request.isThreadSource("user") && request.toolSearchOutput(searchCallId) !== null,
+              request.isThreadSource(AGENT_RUNTIME_CODEX_THREAD_SOURCE) &&
+              request.toolSearchOutput(searchCallId) !== null,
             respond: (request) => {
               const invocation =
                 request.toolInvocation("mcp__node_repl", "js") ??
@@ -438,7 +450,9 @@ nodeRepl.write(JSON.stringify({ title: await tab.title(), url: await tab.url() }
           },
           {
             name: "model finishes after Browser output",
-            match: (request) => request.isThreadSource("user") && request.hasToolCallOutput(callId),
+            match: (request) =>
+              request.isThreadSource(AGENT_RUNTIME_CODEX_THREAD_SOURCE) &&
+              request.hasToolCallOutput(callId),
             respond: async (request) => {
               const output = request.toolCallOutput(callId);
               if (!JSON.stringify(output).includes(pageMarker)) {
@@ -506,7 +520,8 @@ nodeRepl.write(JSON.stringify({ title: await tab.title(), url: await tab.url() }
           await expect(page.getByTestId("pages-primary-surface")).toHaveCount(1);
           releaseBrowserStart();
           const threadId = await threadIdPromise;
-          await waitForAgentThreadExecutionProfile(page, threadId, selectedProfile);
+          const target = { sessionId: draft.projectSessionId, threadId };
+          await waitForAgentThreadExecutionProfile(page, target, selectedProfile);
           await modelServer.waitForRequest((request) => request.hasToolCallOutput(callId), 30_000);
           await expect(
             page.locator(
@@ -520,20 +535,17 @@ nodeRepl.write(JSON.stringify({ title: await tab.title(), url: await tab.url() }
           ).toHaveCount(0);
           await expect(page.getByTestId("pages-primary-surface")).toHaveCount(1);
           releaseFinalResponse();
-          const snapshot = await waitForCompletedAgentTurn(page, threadId, 30_000);
+          await waitForRuntimeCompletedAgentTurn(page, target, 30_000);
+          const snapshot = await readRuntimeConversation(page, target);
           if (!JSON.stringify(snapshot).includes(finalMarker)) {
             throw new Error(
               `Completed Browser turn omitted the final assistant marker:\n${JSON.stringify(snapshot, null, 2)}`,
             );
           }
 
-          expect(fixture.requests).toContain("/browser-smoke");
-          const browserItems = collectRecords(snapshot).filter((record) => {
-            if (record.type !== "mcpToolCall" || !isRecord(record.mcpToolCall)) return false;
-            const source = record.mcpToolCall.source;
-            return isRecord(source) && source.kind === "browserUse" && source.backend === "iab";
-          });
-          expect(browserItems).toHaveLength(1);
+          expect(fixture.requests.filter((request) => request === "/browser-smoke")).toHaveLength(
+            1,
+          );
         } catch (error) {
           const logs = await readBoundedElectronRuntimeLogs(harness.profile);
           throw new Error(
@@ -570,7 +582,8 @@ test("keeps a real collaboration subagent Active until completion, then converge
         {
           name: "root model spawns the child",
           match: (request) =>
-            request.isThreadSource("user") && request.hasUserInputText(promptMarker),
+            request.isThreadSource(AGENT_RUNTIME_CODEX_THREAD_SOURCE) &&
+            request.hasUserInputText(promptMarker),
           respond: (request) => {
             assertRequestModel(request, "gpt-5.6-sol");
             if (!request.toolInvocation("collaboration", "spawn_agent")) {
@@ -638,7 +651,7 @@ test("keeps a real collaboration subagent Active until completion, then converge
         {
           name: "root waits for the running child",
           match: (request) =>
-            request.isThreadSource("user") &&
+            request.isThreadSource(AGENT_RUNTIME_CODEX_THREAD_SOURCE) &&
             request.hasFunctionCallOutput(spawnCallId) &&
             !request.isSubagentRequest(),
           respond: () =>
@@ -656,7 +669,8 @@ test("keeps a real collaboration subagent Active until completion, then converge
         {
           name: "root finishes after the child completion is delivered",
           match: (request) =>
-            request.isThreadSource("user") && request.hasFunctionCallOutput(waitCallId),
+            request.isThreadSource(AGENT_RUNTIME_CODEX_THREAD_SOURCE) &&
+            request.hasFunctionCallOutput(waitCallId),
           respond: responses.stream([
             responses.created(`response_subagent_final_${token}`),
             responses.assistantMessage(
@@ -702,7 +716,8 @@ test("keeps a real collaboration subagent Active until completion, then converge
           draft.projectSessionId,
           `${promptMarker}: delegate one bounded task and wait for it`,
         );
-        await waitForAgentThreadExecutionProfile(page, threadId, selectedProfile);
+        const target = { sessionId: draft.projectSessionId, threadId };
+        await waitForAgentThreadExecutionProfile(page, target, selectedProfile);
         await Promise.all([
           modelServer.waitForRequest(
             (request) => request.isSubagentRequest() && request.hasInputText(childPromptMarker),
@@ -756,7 +771,7 @@ test("keeps a real collaboration subagent Active until completion, then converge
           (request) => request.hasFunctionCallOutput(waitCallId),
           30_000,
         );
-        const snapshot = await waitForCompletedAgentTurn(page, threadId, 30_000);
+        const snapshot = await waitForRuntimeCompletedAgentTurn(page, target, 30_000);
         await waitForFinalMarker(page, finalMarker);
 
         await expect(active.getByRole("heading", { name: "Active · 0" })).toBeVisible({

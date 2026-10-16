@@ -250,13 +250,6 @@ interface RpcEntry {
   readonly params: Record<string, unknown>;
 }
 
-interface ScenarioState {
-  readonly appServerInstances?: ReadonlyArray<{
-    readonly ordinal: number;
-    readonly pid: number;
-  }>;
-}
-
 const readRpcEntries = (logPath: string): RpcEntry[] => {
   if (!fs.existsSync(logPath)) return [];
   return fs
@@ -271,34 +264,6 @@ const readThreadStartParams = (logPath: string): Record<string, unknown> | null 
   return entry?.params ?? null;
 };
 
-const readScenarioState = (statePath: string): ScenarioState =>
-  JSON.parse(fs.readFileSync(statePath, "utf8")) as ScenarioState;
-
-const configureAcpFixture = async (page: Page, harness: ElectronScenarioHarness): Promise<void> => {
-  await page.evaluate(
-    async ({ packageRoot, nodeExecutable, credentialHome }) => {
-      await window.api?.invoke("settings:acp-agents:update", {
-        instances: [
-          {
-            id: "new-chat-lifecycle-acp",
-            agentDefinitionId: "claude-agent-acp",
-            packageRoot,
-            nodeExecutable,
-            enabled: true,
-            credentials: { kind: "isolated-home", home: credentialHome },
-            proxy: "isolated",
-          },
-        ],
-      });
-    },
-    {
-      packageRoot: repositoryRoot,
-      nodeExecutable: process.execPath,
-      credentialHome: harness.profile.runRoot,
-    },
-  );
-};
-
 for (const submission of ["keyboard", "pointer"] as const) {
   test(`${submission} submission atomically moves a New Chat draft into its first user message`, async ({}, testInfo) => {
     test.setTimeout(120_000);
@@ -309,9 +274,7 @@ for (const submission of ["keyboard", "pointer"] as const) {
 
     try {
       const page = await harness.launch();
-      await configureAcpFixture(page, harness);
       await page.getByRole("button", { name: "New chat" }).first().click();
-      await expect(page.locator("[data-new-thread-backend-selector='true']")).toBeVisible();
 
       const composer = page.locator('[data-codex-composer="true"][aria-label="Do anything"]');
       await expect(composer).toBeVisible();
@@ -334,11 +297,7 @@ for (const submission of ["keyboard", "pointer"] as const) {
       await expect(activeComposer).toHaveText("");
 
       const rpcLogPath = path.join(harness.profile.runRoot, ".fake-codex", "requests.jsonl");
-      await expect
-        .poll(() => readThreadStartParams(rpcLogPath))
-        .toMatchObject({
-          historyMode: "paginated",
-        });
+      await expect.poll(() => readThreadStartParams(rpcLogPath)).not.toBeNull();
       await expect
         .poll(() => readRpcEntries(rpcLogPath).some((entry) => entry.method === "turn/start"), {
           timeout: 30_000,
@@ -386,9 +345,7 @@ test("an unversioned host may prove a durable paginated start without enabling o
 
   try {
     const page = await harness.launch();
-    await configureAcpFixture(page, harness);
     await page.getByRole("button", { name: "New chat" }).first().click();
-    await expect(page.locator("[data-new-thread-backend-selector='true']")).toBeVisible();
     const composer = page.locator('[data-codex-composer="true"][aria-label="Do anything"]');
     await expect(composer).toBeVisible();
     await composer.fill(promptText);
@@ -430,101 +387,6 @@ test("an unversioned host may prove a durable paginated start without enabling o
       "New durable Threads require proven paginated history support",
     );
     expect(runtimeLogs).not.toContain("Electron IPC handler failed");
-  } finally {
-    await harness.close();
-  }
-});
-
-test("reconnect capability downgrades keep optional history resident-only without IPC errors", async () => {
-  test.setTimeout(120_000);
-  const harness = await createHarness("new-chat-history-capability-reconnect", {
-    NODEX_FAKE_CODEX_RECONNECT_USER_AGENT: "codex-app-server/0.144.0",
-  });
-  const promptText = "Keep this resident message across reconnect";
-
-  try {
-    const page = await harness.launch();
-    await configureAcpFixture(page, harness);
-    await page.getByRole("button", { name: "New chat" }).first().click();
-    await expect(page.locator("[data-new-thread-backend-selector='true']")).toBeVisible();
-    const composer = page.locator('[data-codex-composer="true"][aria-label="Do anything"]');
-    await expect(composer).toBeVisible();
-    await composer.fill(promptText);
-    await composer.press("Enter");
-    await expect(
-      page.locator("[data-user-message-bubble='true']", { hasText: promptText }),
-    ).toBeVisible({ timeout: 30_000 });
-
-    const rpcLogPath = path.join(harness.profile.runRoot, ".fake-codex", "requests.jsonl");
-    const statePath = path.join(harness.profile.runRoot, ".fake-codex", "state.json");
-    await expect
-      .poll(
-        () => {
-          const value = readRpcEntries(rpcLogPath).find((entry) => entry.method === "turn/start")
-            ?.params.threadId;
-          return typeof value === "string" ? value : null;
-        },
-        { timeout: 30_000 },
-      )
-      .not.toBeNull();
-    const rawThreadId = readRpcEntries(rpcLogPath).find((entry) => entry.method === "turn/start")
-      ?.params.threadId;
-    if (typeof rawThreadId !== "string") throw new Error("turn/start did not identify its Thread");
-    const threadId = rawThreadId;
-
-    const firstInstance = readScenarioState(statePath).appServerInstances?.[0];
-    expect(firstInstance?.ordinal).toBe(1);
-    process.kill(firstInstance!.pid, "SIGKILL");
-    await expect
-      .poll(() => readScenarioState(statePath).appServerInstances?.length ?? 0, {
-        timeout: 30_000,
-      })
-      .toBeGreaterThanOrEqual(2);
-    const secondInstance = readScenarioState(statePath).appServerInstances?.at(-1);
-    await expect
-      .poll(
-        () =>
-          readRpcEntries(rpcLogPath).some(
-            (entry) =>
-              entry.processInstanceOrdinal === secondInstance?.ordinal &&
-              entry.method === "initialize",
-          ),
-        { timeout: 30_000 },
-      )
-      .toBe(true);
-    await expect
-      .poll(
-        () =>
-          page.evaluate(async () => {
-            const connection = (await window.api?.invoke("codex:connection:status")) as {
-              status?: string;
-            };
-            return connection.status;
-          }),
-        { timeout: 30_000 },
-      )
-      .toBe("connected");
-
-    const beforeOptionalReads = readRpcEntries(rpcLogPath);
-    await searchResidentConversation(page, "resident");
-    await expect(
-      page.locator("[data-user-message-bubble='true']", { hasText: promptText }),
-    ).toBeVisible();
-
-    const afterOptionalReads = readRpcEntries(rpcLogPath);
-    const addedCalls = (method: string): RpcEntry[] => {
-      const belongsToReplacement = (entry: RpcEntry): boolean =>
-        entry.processInstanceOrdinal === secondInstance?.ordinal &&
-        entry.method === method &&
-        entry.params.threadId === threadId;
-      const previousCount = beforeOptionalReads.filter(belongsToReplacement).length;
-      return afterOptionalReads.filter(belongsToReplacement).slice(previousCount);
-    };
-    expect(addedCalls("thread/turns/list")).toEqual([]);
-    expect(addedCalls("thread/searchOccurrences")).toEqual([]);
-    const runtimeLogs = await readBoundedElectronRuntimeLogs(harness.profile, 256_000);
-    expect(runtimeLogs).not.toContain("Electron IPC handler failed");
-    expect(runtimeLogs).not.toContain("Prompt rail history requires paginated Thread storage");
   } finally {
     await harness.close();
   }

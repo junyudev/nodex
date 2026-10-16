@@ -103,7 +103,6 @@ test("fans out, batches completions, times out waits and steers while staying on
     prepareAgentRuntime: false,
     environment: {
       NODEX_TEST_AGENT_RUNTIME_PROJECT_ROOT: ".",
-      NODEX_TEST_AGENT_RUNTIME_NODE_EXECUTABLE: process.execPath,
       NODEX_TEST_CROSS_PROVIDER_HOME: fixture,
       NODEX_LOG_FILE: "1",
       NODEX_LOG_FILE_LEVEL: "debug",

@@ -178,13 +178,19 @@ const supervisor = Layer.effectContext(
         Effect.map((identity) => identity !== null),
       ),
     });
+    // Projectless work and Agent execution's own working directory share one Profile directory;
+    // the app path is never a working directory (packaged, it is a file inside the archive).
+    const projectlessWorkspaceRoot = join(config.nodexHome, "tasks");
+    const ensureProjectlessWorkspaceRoot = fs.makeDirectory(projectlessWorkspaceRoot, {
+      recursive: true,
+    });
     const product = yield* makeApplication({
       connect: Deferred.await(ready).pipe(Effect.flatMap((runtime) => runtime.get())),
       providerCatalog,
       projectless: {
         engineProjectId: `nodex:projectless:${core.identity.profileId}`,
-        workspaceRoot: join(config.nodexHome, "tasks"),
-        ensureWorkspaceRoot: fs.makeDirectory(join(config.nodexHome, "tasks"), { recursive: true }),
+        workspaceRoot: projectlessWorkspaceRoot,
+        ensureWorkspaceRoot: ensureProjectlessWorkspaceRoot,
       },
       prepareImages: images.prepare,
       prepareWorkspace: workspace.prepare,
@@ -423,7 +429,7 @@ const supervisor = Layer.effectContext(
       }
       const configuration: AgentRuntimeConfiguration = {
         home: join(config.nodexHome, "agent-runtime"),
-        cwd: config.projectRootPath,
+        cwd: projectlessWorkspaceRoot,
         providers,
         host: { tools: runtimeHostToolCatalog },
       };
@@ -465,6 +471,7 @@ const supervisor = Layer.effectContext(
       acquire: (host) =>
         Effect.gen(function* () {
           const { configuration, environment, executable } = yield* readConfiguration;
+          yield* ensureProjectlessWorkspaceRoot;
           for (const history of (yield* restoredHistories).values()) {
             if (history.driver !== "codex") continue;
             yield* Effect.tryPromise(() =>

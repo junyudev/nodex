@@ -240,20 +240,38 @@ const chooseCodexExecutionProfile = async (
   await page.keyboard.press("Escape");
 };
 
+export interface AgentRuntimeTarget {
+  readonly sessionId: string;
+  readonly threadId: string;
+}
+
+/** The model and effort Agent execution recorded for the Session's Thread. */
 export const waitForAgentThreadExecutionProfile = async (
   page: Page,
-  threadId: string,
+  target: AgentRuntimeTarget,
   expectedProfile: CodexExecutionProfile,
 ): Promise<void> => {
   await expect
     .poll(
       async () => {
-        const summary = await invokeIpc(page, "codex:thread:summary:get", threadId);
-        return isRecord(summary) ? summary.executionProfile : null;
+        const conversation = (await invokeIpc(
+          page,
+          "agent-runtime:session:control",
+          target,
+        )) as AgentRuntimeConversation;
+        const selection = conversation.snapshot.projection.thread.modelSelection;
+        return {
+          modelId: selection.model,
+          reasoningEffort:
+            selection.options?.find((option) => option.id === "reasoningEffort")?.value ?? null,
+        };
       },
       { timeout: 15_000 },
     )
-    .toEqual(expectedProfile);
+    .toEqual({
+      modelId: expectedProfile.modelId,
+      reasoningEffort: expectedProfile.reasoningEffort,
+    });
 };
 
 export interface AgentFirstSubmissionEvidence {
@@ -447,10 +465,17 @@ export const waitForCompletedAgentTurn = async (
   );
 };
 
+/** The Session's conversation as Agent execution presents it, including its turn items. */
+export const readRuntimeConversation = async (
+  page: Page,
+  target: AgentRuntimeTarget,
+): Promise<AgentRuntimeConversation> =>
+  (await invokeIpc(page, "agent-runtime:session:read", target)) as AgentRuntimeConversation;
+
 /** Runtime-backed Sessions complete through their captured product binding, including restart. */
 export const waitForRuntimeCompletedAgentTurn = async (
   page: Page,
-  target: { readonly sessionId: string; readonly threadId: string },
+  target: AgentRuntimeTarget,
   timeout = 20_000,
 ): Promise<AgentRuntimeConversation> => {
   const deadline = Date.now() + timeout;

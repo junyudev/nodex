@@ -122,9 +122,10 @@ test("isolates Profile settings without replacing the launcher HOME", async () =
     await page.getByRole("link", { name: "Agent", exact: true }).click();
     const homeInput = page.getByRole("textbox", { name: "Codex home", exact: true });
     await homeInput.fill(selectedHome);
-    await homeInput.locator("..").getByRole("button", { name: "Save", exact: true }).click();
+    // Codex home and its account directory save together.
+    await homeInput.press("Enter");
     await expect(
-      page.getByRole("status").filter({ hasText: `Restart Nodex to use ${selectedHome}.` }),
+      page.getByRole("status").filter({ hasText: "Restart Nodex to apply the saved directories." }),
     ).toBeVisible();
     const pendingHome = (await page.evaluate(() =>
       window.api!.invoke("settings:codex-home:get"),

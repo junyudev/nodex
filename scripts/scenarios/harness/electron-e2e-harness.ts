@@ -241,6 +241,18 @@ export const stopNodexElectronApplication = async (
   }
 };
 
+/**
+ * Fake native peers are spawned by Agent execution, whose working directory is not the
+ * scenario's. Their relative fixture paths keep meaning "inside this scenario's directory".
+ */
+const anchorFakePeerPaths = (environment: NodeJS.ProcessEnv, cwd: string): NodeJS.ProcessEnv =>
+  Object.fromEntries(
+    Object.entries(environment).map(([name, value]) => [
+      name,
+      name.startsWith("NODEX_FAKE_") && value?.startsWith(".") ? path.resolve(cwd, value) : value,
+    ]),
+  );
+
 export interface ElectronHarnessInput {
   readonly label: string;
   readonly codex?: IsolatedCodexPolicy;
@@ -296,9 +308,8 @@ export class ElectronScenarioHarness {
     });
     try {
       const cwd = input.cwd ?? profile.runRoot;
-      if (input.prepareAgentRuntime !== false && cwd === profile.runRoot) {
-        await prepareScenarioAgentRuntime(cwd);
-      }
+      const scenarioAgentRuntime = input.prepareAgentRuntime !== false && cwd === profile.runRoot;
+      if (scenarioAgentRuntime) await prepareScenarioAgentRuntime(cwd);
       const lease = acquireIsolatedRunLease({
         nodexHome: profile.nodexHome,
         runId: profile.runId,
@@ -309,10 +320,11 @@ export class ElectronScenarioHarness {
         cwd,
         input.codexApiKey ?? input.environment?.OPENAI_API_KEY,
         {
-          ...(input.prepareAgentRuntime !== false && cwd === profile.runRoot
-            ? { NODEX_TEST_AGENT_RUNTIME_PROJECT_ROOT: "." }
-            : {}),
-          ...input.environment,
+          // A scenario runtime is only an app-server peer without the pinned Node; whenever one
+          // replaces the pinned runtime, Agent execution runs on the test's own Node.
+          NODEX_TEST_AGENT_RUNTIME_NODE_EXECUTABLE: process.execPath,
+          ...(scenarioAgentRuntime ? { NODEX_TEST_AGENT_RUNTIME_PROJECT_ROOT: "." } : {}),
+          ...anchorFakePeerPaths(input.environment ?? {}, cwd),
           ...developmentFeatureEnvironment(
             resolveDevelopmentFeatureOverrides(input.enabledFeatures ?? []),
           ),

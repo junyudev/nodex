@@ -619,8 +619,10 @@ describe("ScriptedModelServer", () => {
         input: ["unexpected"],
       });
       expect(response.status).toBe(500);
+      // A title prompt inside a chat's own Thread is not a title run, nor is a title Thread's
+      // unrelated request.
       for (const [source, prompt] of [
-        ["user", "Generate a concise UI title for this task"],
+        ["agent_runtime", "Generate a concise UI title for this task"],
         ["thread_title", "Complete an unrelated task"],
       ]) {
         const rejected = await postJson(`${server.baseUrl}/v1/responses`, {

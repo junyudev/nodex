@@ -6,6 +6,10 @@ import { render, settleAsyncRender, textContent } from "../../../../../test/dom"
 import type { CodexTranscriptEntry } from "../../../../../lib/types";
 import { CodexThreadSettingsProvider } from "../../../../../lib/use-codex-thread-settings";
 import { CommandToolCall, isDateCommand, resolveCommandSummaryLabel } from "./command-tool-call";
+import {
+  ConversationRuntimeContext,
+  type ConversationRuntime,
+} from "../../../conversation-runtime";
 
 const LONG_COMMAND = [
   "bun x tsx scripts/collect-long-command-metrics.ts",
@@ -88,6 +92,39 @@ async function expandCommandShell(container: HTMLElement) {
 describe("CommandToolCall render state", () => {
   beforeEach(() => {
     localStorage.removeItem(THREAD_SETTINGS_STORAGE_KEY);
+  });
+
+  test("reads withheld output when a finished command is opened", async () => {
+    const reads: Array<readonly [string | null, string]> = [];
+    const runtime = {
+      readItemDetail: async (threadId: string | null, itemId: string) => {
+        reads.push([threadId, itemId]);
+      },
+    } as unknown as ConversationRuntime;
+    const renderCommand = (item: CodexTranscriptEntry) =>
+      render(
+        <TooltipProvider>
+          <CodexThreadSettingsProvider>
+            <ConversationRuntimeContext.Provider value={runtime}>
+              <CommandToolCall item={item} />
+            </ConversationRuntimeContext.Provider>
+          </CodexThreadSettingsProvider>
+        </TooltipProvider>,
+      );
+
+    const withheld = renderCommand(buildCommandEntry({ aggregatedOutput: null }));
+    expect(reads).toEqual([]);
+    await act(async () => {
+      await expandCommandShell(withheld.container);
+    });
+    expect(reads).toEqual([["thread-1", "cmd-1"]]);
+    withheld.unmount();
+
+    const present = renderCommand(buildCommandEntry({ itemId: "cmd-2" }));
+    await act(async () => {
+      await expandCommandShell(present.container);
+    });
+    expect(reads).toEqual([["thread-1", "cmd-1"]]);
   });
 
   test("keeps in-progress commands collapsed on first mount", () => {

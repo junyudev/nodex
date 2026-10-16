@@ -59,6 +59,11 @@ export interface ConversationRuntime {
   readonly primaryRequest: (threadId: string | null) => CodexConversationLiveRequest | null;
   readonly children: (threadId: string | null) => readonly CodexConversationChildMembership[];
   readonly retain: (threadId: string, foreground: boolean) => () => void;
+  /**
+   * Hydrates one item whose detail the live projection withholds, such as a finished command's
+   * output; the transcript then shows it in place. Absent where items arrive complete.
+   */
+  readonly readItemDetail?: (threadId: string | null, itemId: string) => Promise<void>;
   readonly resume: (threadId: string) => Promise<void>;
   readonly markRead: (threadId: string) => Promise<void>;
   readonly setPresented: (threadId: string, surfaceId: string, presented: boolean) => Promise<void>;

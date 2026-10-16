@@ -517,8 +517,9 @@ export const standardCodexBackgroundExchanges = (): readonly ScriptedModelExchan
     name: "automatic task title",
     expectedCalls: 0,
     maximumCalls: Number.POSITIVE_INFINITY,
+    // A native title Thread is marked as such; Agent execution titles through an ephemeral run.
     match: (request) =>
-      request.isThreadSource("thread_title") &&
+      (request.isThreadSource("thread_title") || request.isThreadSource("user")) &&
       request.hasUserInputText("Generate a concise UI title"),
     respond: (_request, callIndex) => {
       const id = `scripted-background-title-${callIndex}`;

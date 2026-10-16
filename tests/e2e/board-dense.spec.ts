@@ -847,32 +847,51 @@ test("creates a new collaborative Page Block with Enter", async () => {
         .locator(`[data-page-stage-page-id="${sourcePageId}"]:visible`)
         .locator('.nfm-editor .ProseMirror[contenteditable="true"]')
         .first();
-      const blocks = editor.locator(".bn-block[data-id]");
-      const originalCount = await blocks.count();
-      const sourceBlock = blocks
-        .filter({ hasText: "Keep Board and Page views convergent" })
-        .first();
-      const sourceIndex = (await blocks.allTextContents()).findIndex((text) =>
-        text.includes("Keep Board and Page views convergent"),
+      const sourceText = "Keep Board and Page views convergent.";
+      const sourceContent = editor.locator(".bn-block-content", { hasText: sourceText });
+      await expect(sourceContent).toHaveCount(1);
+      const sourceBlockId = await sourceContent.evaluate(
+        (element) => element.closest(".bn-block[data-id]")?.getAttribute("data-id") ?? null,
       );
-      if (sourceIndex < 0) throw new Error("board/dense Enter source Block is missing");
-      const originalText = (await sourceBlock.innerText()).replace(/\s+/gu, " ").trim();
+      if (!sourceBlockId) throw new Error("board/dense Enter source Block is missing");
 
-      await sourceBlock.click();
-      await page.keyboard.press("End");
+      // Click just inside the last character: End stops at a wrapped line's visual end.
+      const textEnd = await sourceContent.locator(".bn-inline-content").evaluate((element) => {
+        const range = document.createRange();
+        range.selectNodeContents(element);
+        const lines = range.getClientRects();
+        const last = lines[lines.length - 1];
+        if (!last) throw new Error("The source Block has no rendered text");
+        return { x: last.right - 1, y: last.top + last.height / 2 };
+      });
+      await page.mouse.click(textEnd.x, textEnd.y);
+      // The editor adopts a pointer-placed caret on the next selectionchange; a synthetic Enter
+      // sent within the same task would split wherever the caret was before the click.
+      await page.evaluate(
+        () =>
+          new Promise<void>((resolve) =>
+            requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+          ),
+      );
       await page.keyboard.press("Enter");
 
-      await expect(blocks).toHaveCount(originalCount + 1);
+      // Identify the split by Block identity: the collaborative document may still be presenting
+      // earlier Blocks, so positions read before Enter are not stable.
       await expect
-        .poll(async () => {
-          const splitTexts = await Promise.all(
-            [sourceIndex, sourceIndex + 1].map(async (index) =>
-              (await blocks.nth(index).innerText()).replace(/\s+/gu, " ").trim(),
-            ),
-          );
-          return splitTexts.join("");
-        })
-        .toBe(originalText);
+        .poll(() =>
+          editor.evaluate((root, blockId) => {
+            const outer = root
+              .querySelector(`.bn-block[data-id="${blockId}"]`)
+              ?.closest(".bn-block-outer");
+            const text = (block: Element | null | undefined) =>
+              block?.querySelector(":scope > .bn-block-content")?.textContent ?? null;
+            return [
+              text(outer?.querySelector(":scope > .bn-block")),
+              text(outer?.nextElementSibling?.querySelector(":scope > .bn-block")),
+            ];
+          }, sourceBlockId),
+        )
+        .toEqual([sourceText, ""]);
     },
   );
 });

@@ -239,6 +239,7 @@ test("structural gestures preserve Files and hand off source and target independ
         await page
           .getByRole("button", { name: "Open Structural Interactions", exact: true })
           .click();
+        await openProjectBoard(page);
         const board = page.locator('[data-board-column-root][data-board-column-id="triage"]');
         await expect(board).toBeVisible();
         await openBoardPageFromCard({
@@ -331,6 +332,7 @@ test("structural gestures preserve Files and hand off source and target independ
             await targetWindow
               .getByRole("button", { name: "Open Structural Interactions", exact: true })
               .click();
+            await openProjectBoard(targetWindow);
             await openBoardPageFromCard({
               page: targetWindow,
               card: targetWindow.locator(`[data-board-uuid-v7="${fixture.targetPageId}"]`),

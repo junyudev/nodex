@@ -38,6 +38,7 @@ import {
   ToolErrorDetail,
 } from "./tool-primitives";
 import { ThreadExecShellContainer } from "./thread-command-shell-block";
+import { useConversationRuntimeOverride } from "../../../conversation-runtime";
 import { wasToolExecutionDeclinedByAutomaticReview } from "../../../projection/tool-metadata/automatic-approval-review";
 
 interface CommandToolCallProps {
@@ -602,6 +603,15 @@ export function CommandToolCall({
   const { elementHeightPx: bodyHeightPx, elementRef: bodyRef } = useMeasuredElementHeight();
 
   const isExpanded = !hideRawCommand && viewState === "expanded";
+  // Opening a finished command reads output its live projection withheld, once per open.
+  const runtime = useConversationRuntimeOverride();
+  const outputItemId = item.commandExecutionItemId ?? item.rawItemId ?? item.itemId;
+  const needsOutputDetail =
+    isExpanded && !isInProgress && output.length === 0 && Boolean(runtime?.readItemDetail);
+  useEffect(() => {
+    if (!needsOutputDetail) return;
+    void runtime?.readItemDetail?.(item.threadId, outputItemId).catch(() => undefined);
+  }, [needsOutputDetail, runtime, item.threadId, outputItemId]);
   if (shouldHideForProse || shouldHideUnfinishedParsedAction) return null;
   if (singleExplorationAction) {
     return (

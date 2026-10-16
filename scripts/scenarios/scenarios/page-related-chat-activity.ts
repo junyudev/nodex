@@ -7,9 +7,10 @@ import {
   type ScenarioPageSeed,
   type ScenarioSeedPort,
 } from "../contracts";
+import { createProjectListView } from "../seed/project-list-view";
 
 export const PAGE_RELATED_CHAT_ACTIVITY_SCENARIO_ID = "page/related-chat-activity" as const;
-export const PAGE_RELATED_CHAT_ACTIVITY_SCENARIO_REVISION = 1 as const;
+export const PAGE_RELATED_CHAT_ACTIVITY_SCENARIO_REVISION = 2 as const;
 export const PAGE_RELATED_CHAT_ACTIVITY_PAGE_KEY = "activityPage" as const;
 export const PAGE_RELATED_CHAT_ACTIVITY_OPEN_ACTION_PAGE_KEY = "openActionPage" as const;
 export const PAGE_RELATED_CHAT_ACTIVITY_ATTACHED_SESSION_KEY = "attachedSession" as const;
@@ -104,6 +105,7 @@ const materializePageRelatedChatActivity = async (
     },
   ];
   for (const page of pages) await port.createPage(page);
+  await createProjectListView(port, project.id);
   const activityPageId = pages[0]?.pageId;
   const openActionPageId = pages[1]?.pageId;
   if (!activityPageId || !openActionPageId) {
