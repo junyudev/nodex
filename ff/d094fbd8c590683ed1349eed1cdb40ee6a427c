@@ -120,6 +120,7 @@ src/renderer/components/workbench/workbench-route-host.tsx
   s_4a9675942dcb26::t_37572bcfc5b448 31-32,34-35,37-39
 src/renderer/components/workbench/workbench-runtime.tsx
   s_4a9675942dcb26::t_a4e0f938c127c4 20-21,877-878,1021,1664,2984-2987,3010,3027,3084,3089-3134,4668,4693-4710,4712-4715,4717-4763,4765-4767,4769-4771,4773-4824,4826-4841,4844-4874,4877-4910,4913
+  s_cd7a7c963ae6b3::t_cd7c5421445e2b 4842-4843
 src/renderer/components/workbench/workbench-shell.layout-panel-actions.test.tsx
   s_4a9675942dcb26::t_862c75468728a3 55,131,135,145-153,166,730,788,825,834,1007,1023,1027-1029,1031-1034,1296,1309,1449,1458,1743,1752
 src/renderer/components/workbench/workbench-testkit/workbench-shell-harness.tsx
@@ -146,6 +147,14 @@ src/renderer/styles/theme-surface.css
         "tool": "codex",
         "id": "01a133d3-2428-7f03-89e7-aa68fbea7e5c",
         "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_cd7a7c963ae6b3": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "90a77f4c-2ddc-48f4-9dae-559b0ec09666",
+        "model": "claude-opus-5-5"
       },
       "human_author": "Jun Yu <junyu.dev@gmail.com>"
     }
