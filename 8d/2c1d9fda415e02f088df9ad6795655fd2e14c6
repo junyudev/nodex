@@ -63,6 +63,7 @@ src/renderer/components/workbench/workbench-app-rail.tsx
   s_cd7a7c963ae6b3::t_248fe5eb56c2b6 23
   s_cd7a7c963ae6b3::t_93f51a99935dc5 1,11-14,19-20,47-48,57
   s_cd7a7c963ae6b3::t_cf4cb48c9f2b1d 33
+  s_cd7a7c963ae6b3::t_631ccac07a74a6 10
 src/renderer/components/workbench/workbench-settings-route-shell.tsx
   s_cd7a7c963ae6b3::t_533b6b826fd3be 130-133,2113-2117
 docs/product-specs/workbench-shell.md
@@ -175,6 +176,7 @@ src/renderer/features/local-conversation/view/local-conversation-stage-header.ts
   s_cd7a7c963ae6b3::t_8c8b9285c9b1f0 4,63-65,104-130,132-136,138-165,170-205,207-232,237-239,241-256,261-263,265-266
   s_cd7a7c963ae6b3::t_03e57ddc4ea9db 22-26,131
   s_cd7a7c963ae6b3::t_248fe5eb56c2b6 166-167,257-259
+  s_cd7a7c963ae6b3::t_0258baebcff7ef 233-236,240
 src/renderer/features/local-conversation/view/shared/auth-controls.tsx
   s_cd7a7c963ae6b3::t_93f51a99935dc5 1
   s_cd7a7c963ae6b3::t_785051f8d7e582 81,90-91,114-121
