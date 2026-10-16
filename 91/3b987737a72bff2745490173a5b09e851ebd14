@@ -1,0 +1,29 @@
+config/startup-shell-html.ts
+  s_e3eb3d1e3861e4::t_ba928307494034 41-44,49,63,67-73,88-89,92,94-104,107-114,127-128,135-136,145-147,149,152
+docs/product-specs/desktop-startup-behavior.md
+  s_e3eb3d1e3861e4::t_3d0ba8cd752adf 14-15,17
+  s_e3eb3d1e3861e4::t_df888bc58de09e 33
+  s_e3eb3d1e3861e4::t_d32351e919fb9e 4,16
+  s_e3eb3d1e3861e4::t_947524d4873ca6 26
+config/startup-shell-html.test.ts
+  s_e3eb3d1e3861e4::t_7ad8d552e2010f 20,28-31,36
+src/renderer/bootstrap/startup-shell.browser.test.ts
+  s_e3eb3d1e3861e4::t_4d87b3d2bd9432 41-44
+  s_e3eb3d1e3861e4::t_821f873d0de795 29,33-40,45-51,60,63-64,71-72,76-91,103,110,114
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "913b987737a72bff2745490173a5b09e851ebd14",
+  "prompts": {},
+  "sessions": {
+    "s_e3eb3d1e3861e4": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ab83ee6b-41fa-4b99-9151-0aa76dcba0e7",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
