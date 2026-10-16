@@ -44,6 +44,7 @@ export interface ProjectionLiveRuntimeOptions {
     barrier: ProjectionLiveBarrier,
     scopes: readonly ProjectionScope[],
     resetScopes: readonly ProjectionScope[],
+    checkpointScopes: readonly ProjectionScope[],
   ) => Effect.Effect<void, ProjectionLiveRuntimeError>;
   readonly onRepair: (
     repair: ProjectionLiveRepair,
@@ -80,6 +81,7 @@ interface ProjectionLiveState {
   readonly desiredScopes: readonly ProjectionScope[];
   readonly generation: number;
   readonly nextLeaseId: number;
+  readonly recoveryScopes: readonly ProjectionScope[];
 }
 
 type Ingress =
@@ -92,6 +94,7 @@ const initialState: ProjectionLiveState = {
   desiredScopes: [],
   generation: 0,
   nextLeaseId: 1,
+  recoveryScopes: [],
 };
 
 const runtimeError = (operation: string, cause: unknown): ProjectionLiveRuntimeError =>
@@ -118,14 +121,6 @@ const canonicalScopes = (
 const sameScopes = (left: readonly ProjectionScope[], right: readonly ProjectionScope[]): boolean =>
   left.length === right.length &&
   left.every((scope, index) => projectionScopeKey(scope) === projectionScopeKey(right[index]!));
-
-const addedScopes = (
-  previous: readonly ProjectionScope[],
-  next: readonly ProjectionScope[],
-): readonly ProjectionScope[] => {
-  const existing = new Set(previous.map(projectionScopeKey));
-  return next.filter((scope) => !existing.has(projectionScopeKey(scope)));
-};
 
 const isInterruptedOnly = (cause: Cause.Cause<ProjectionLiveRuntimeError>): boolean =>
   cause.reasons.length > 0 && cause.reasons.every(Cause.isInterruptReason);
@@ -184,7 +179,7 @@ export const make = (
           const current = yield* Ref.get(state);
           const lease = current.active;
           if (!lease || lease.id !== leaseId) return;
-          yield* Ref.set(state, { ...current, active: null });
+          yield* Ref.set(state, { ...current, active: null, recoveryScopes: lease.scopes });
           yield* closeLease(lease, false);
           if (error) {
             yield* Effect.logWarning("Scoped Projection live lease ended").pipe(
@@ -255,8 +250,31 @@ export const make = (
                 }
 
                 const previous = current.active;
-                const resetScopes = previous ? addedScopes(previous.scopes, scopes) : scopes;
-                yield* options.onBarrier(subscription.barrier, scopes, resetScopes);
+                const recovering = new Set(current.recoveryScopes.map(projectionScopeKey));
+                const resetScopes = scopes.filter((scope) =>
+                  recovering.has(projectionScopeKey(scope)),
+                );
+                // Closing the old lease can discard queued packets. Every retained
+                // scope must cover the new barrier before ordinary delivery resumes.
+                const checkpointScopes = scopes.filter(
+                  (scope) => !recovering.has(projectionScopeKey(scope)),
+                );
+                if (previous) {
+                  // Await the old consumer before changing epoch/grant authority.
+                  // The new stream is already open and buffering behind its barrier.
+                  yield* closeLease(previous, true);
+                  yield* Ref.set(state, {
+                    ...current,
+                    active: null,
+                    recoveryScopes: previous.scopes,
+                  });
+                }
+                yield* options.onBarrier(
+                  subscription.barrier,
+                  scopes,
+                  resetScopes,
+                  checkpointScopes,
+                );
                 const lease: ActiveLease = {
                   generation,
                   id: current.nextLeaseId,
@@ -267,6 +285,7 @@ export const make = (
                   ...current,
                   active: lease,
                   nextLeaseId: current.nextLeaseId + 1,
+                  recoveryScopes: [],
                 });
 
                 const consume = Effect.forever(
@@ -303,7 +322,6 @@ export const make = (
                   }),
                 );
                 yield* FiberMap.run(watchers, lease.id, watch, { startImmediately: true });
-                if (previous) yield* closeLease(previous, true);
                 return true;
               }),
             );
@@ -335,6 +353,7 @@ export const make = (
           yield* Ref.set(state, { ...current, desiredScopes: scopes, generation });
           yield* FiberHandle.clear(connecting);
           if (scopes.length === 0) {
+            yield* Ref.update(state, (latest) => ({ ...latest, recoveryScopes: [] }));
             if (active) {
               yield* Ref.update(state, (latest) => ({ ...latest, active: null }));
               yield* closeLease(active, true);

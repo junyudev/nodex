@@ -876,6 +876,110 @@ describe("board store", () => {
     unsubscribe();
   });
 
+  test("keeps an already covered Board visible for subscription checkpoints but fences recovery resets", async () => {
+    const projection = createProjectionHarness();
+    const recovery = createDeferred<DatabaseViewWindowSnapshot>();
+    let readCount = 0;
+    const registry = createTestRegistry({
+      readViewWindow: async () => {
+        readCount += 1;
+        return readCount === 1
+          ? createBoardSnapshot(createBoard("Already current"), 1, "view-focused", false, 1)
+          : recovery.promise;
+      },
+      subscribeBoardChanges: () => () => {},
+      getProjectionInvalidationRegistry: projection.getRegistry,
+    });
+    const store = registry.getStore("project-1", "view-focused");
+    const release = store.subscribe(() => {});
+    try {
+      await waitForMicrotasks();
+      const initial = store.getSnapshot();
+      expect(initial.databaseView?.columns[0]?.rows[0]?.title).toBe("Already current");
+      const checkpoint = {
+        version: 2,
+        kind: "checkpoint",
+        scope: { kind: "project", libraryId: "library-1", projectId: "project-1" },
+        stream: { storeEpoch: "epoch-1", commitSeq: 1 },
+      } as const;
+
+      projection.publish(checkpoint);
+      expect(store.getSnapshot()).toBe(initial);
+      await waitForMicrotasks();
+      expect(readCount).toBe(1);
+      expect(store.getSnapshot()).toBe(initial);
+
+      projection.publish({ ...checkpoint, kind: "reset", reason: "event_gap" });
+      expect(store.getSnapshot().databaseView).toBeNull();
+      expect(store.getSnapshot().loading).toBe(true);
+      await waitForMicrotasks();
+      recovery.resolve(createBoardSnapshot(createBoard("Recovered"), 1, "view-focused", false, 1));
+      await waitForMicrotasks();
+      expect(readCount).toBe(2);
+      expect(store.getSnapshot().databaseView?.columns[0]?.rows[0]?.title).toBe("Recovered");
+    } finally {
+      recovery.resolve(createBoardSnapshot(createBoard(), 1, "view-focused", false, 1));
+      release();
+    }
+  });
+
+  test("rejects a read started before a same-floor recovery reset", async () => {
+    const projection = createProjectionHarness();
+    const staleRead = createDeferred<DatabaseViewWindowSnapshot>();
+    const recoveryRead = createDeferred<DatabaseViewWindowSnapshot>();
+    let readCount = 0;
+    const registry = createTestRegistry({
+      readViewWindow: async () => {
+        readCount += 1;
+        if (readCount === 1)
+          return createBoardSnapshot(createBoard("Initial"), 1, "view-focused", false, 1);
+        return readCount === 2 ? staleRead.promise : recoveryRead.promise;
+      },
+      subscribeBoardChanges: () => () => {},
+      getProjectionInvalidationRegistry: projection.getRegistry,
+    });
+    const store = registry.getStore("project-1", "view-focused");
+    const observedTitles: (string | undefined)[] = [];
+    const release = store.subscribe(() => {
+      observedTitles.push(store.getSnapshot().databaseView?.columns[0]?.rows[0]?.title);
+    });
+    let refresh: Promise<boolean> | undefined;
+    try {
+      await waitForMicrotasks();
+      refresh = store.fetchBoard();
+      await waitForMicrotasks();
+      expect(readCount).toBe(2);
+      projection.publish({
+        version: 2,
+        kind: "reset",
+        scope: { kind: "project", libraryId: "library-1", projectId: "project-1" },
+        stream: { storeEpoch: "epoch-1", commitSeq: 1 },
+        reason: "event_gap",
+      });
+      expect(store.getSnapshot().databaseView).toBeNull();
+
+      staleRead.resolve(
+        createBoardSnapshot(createBoard("Stale response"), 1, "view-focused", false, 1),
+      );
+      await waitForMicrotasks();
+      expect(readCount).toBe(3);
+      expect(store.getSnapshot().databaseView).toBeNull();
+      expect(observedTitles).not.toContain("Stale response");
+
+      recoveryRead.resolve(
+        createBoardSnapshot(createBoard("Recovered"), 1, "view-focused", false, 1),
+      );
+      await refresh;
+      expect(store.getSnapshot().databaseView?.columns[0]?.rows[0]?.title).toBe("Recovered");
+    } finally {
+      const fallback = createBoardSnapshot(createBoard(), 1, "view-focused", false, 1);
+      staleRead.resolve(fallback);
+      recoveryRead.resolve(fallback);
+      await refresh;
+      release();
+    }
+  });
+
   test("keeps receiving Page Document effects after an initial checkpoint repair", async () => {
     const projection = createProjectionHarness();
     const readFloors: number[] = [];

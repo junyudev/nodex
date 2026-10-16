@@ -148,10 +148,15 @@ describe("CausalProjectionRuntime", () => {
     current = coordinate(1);
   });
 
-  test("uses the first stream checkpoint only to close subscribe-read races", async () => {
+  test("repairs a later subscription checkpoint received while the first repair is pending", async () => {
     let current = coordinate(0, 4);
-    const repair = vi.fn(async () => {
-      current = coordinate(0, 5);
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const repair = vi.fn(async (request: { readonly minimumCommitSeq: number }) => {
+      await gate;
+      current = coordinate(0, request.minimumCommitSeq);
     });
     const runtime = new CausalProjectionRuntime({
       scopeKey: scope.canonical_key,
@@ -161,23 +166,81 @@ describe("CausalProjectionRuntime", () => {
       apply: vi.fn(),
       readAtLeast: repair,
     });
-    runtime.observeInitialCheckpoint({
+    runtime.observeSubscriptionCheckpoint({
+      storeEpoch: "epoch-1",
+      scannedThroughCommitSeq: 4,
+    });
+    await flush();
+    expect(repair).not.toHaveBeenCalled();
+
+    runtime.observeSubscriptionCheckpoint({
       storeEpoch: "epoch-1",
       scannedThroughCommitSeq: 5,
     });
-    runtime.observeInitialCheckpoint({
+    await flush();
+    expect(repair).toHaveBeenCalledOnce();
+    runtime.observeSubscriptionCheckpoint({
+      storeEpoch: "epoch-1",
+      scannedThroughCommitSeq: 6,
+    });
+    release();
+    await flush();
+    await flush();
+
+    expect(repair).toHaveBeenCalledTimes(2);
+    expect(repair).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        minimumCommitSeq: 6,
+        reason: "subscription_checkpoint_gap",
+      }),
+    );
+    runtime.observeSubscriptionCheckpoint({
       storeEpoch: "epoch-1",
       scannedThroughCommitSeq: 6,
     });
     await flush();
+    expect(repair).toHaveBeenCalledTimes(2);
 
-    expect(repair).toHaveBeenCalledOnce();
-    expect(repair).toHaveBeenCalledWith(
-      expect.objectContaining({
-        minimumCommitSeq: 5,
-        reason: "initial_subscription_gap",
-      }),
+    runtime.reset({ storeEpoch: "epoch-1", commitSeq: 6 });
+    await flush();
+    expect(repair).toHaveBeenCalledTimes(3);
+    expect(repair).toHaveBeenLastCalledWith(
+      expect.objectContaining({ minimumCommitSeq: 6, reason: "stream_reset" }),
     );
+    runtime.dispose();
+  });
+
+  test("does not carry an old epoch revision into a subscription checkpoint repair", async () => {
+    let current = coordinate(100);
+    const repair = vi.fn(async () => {
+      current = { ...coordinate(1), storeEpoch: "epoch-2" };
+    });
+    const runtime = new CausalProjectionRuntime({
+      scopeKey: scope.canonical_key,
+      schemaVersion: 1,
+      repairBurst: immediateRepairBurst,
+      getCoordinate: () => current,
+      apply: vi.fn(),
+      readAtLeast: repair,
+    });
+    try {
+      runtime.observeSubscriptionCheckpoint({
+        storeEpoch: "epoch-2",
+        scannedThroughCommitSeq: 1,
+      });
+      await flush();
+      expect(repair).toHaveBeenCalledOnce();
+      expect(repair).toHaveBeenCalledWith(
+        expect.objectContaining({
+          storeEpoch: "epoch-2",
+          minimumRevision: 0,
+          minimumCommitSeq: 1,
+        }),
+      );
+      expect(runtime.diagnostics().requiredRepair).toBeNull();
+    } finally {
+      runtime.dispose();
+    }
   });
 
   test("bounds buffered effects and canonical reads during a sustained patchless burst", async () => {

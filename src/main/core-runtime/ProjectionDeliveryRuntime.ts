@@ -135,7 +135,7 @@ export const live: Layer.Layer<
           Effect.andThen(audience.publish(envelope.packet)),
           Effect.asVoid,
         ),
-      onBarrier: (barrier, scopes, resetScopes) =>
+      onBarrier: (barrier, scopes, resetScopes, checkpointScopes) =>
         audience
           .installLeases(
             barrier.recipient_leases,
@@ -149,6 +149,7 @@ export const live: Layer.Layer<
             barrier.store_epoch !== coreIdentity.storeEpoch
               ? "store_epoch_replacement"
               : "stream_gap",
+            checkpointScopes.map(projectionScopeDeliveryAddress),
           )
           .pipe(
             Effect.mapError(

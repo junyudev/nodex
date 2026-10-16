@@ -210,6 +210,47 @@ const addressReset = (overrides: Partial<AddressReset> = {}): AddressReset => ({
 });
 
 describe("RendererLocalCommitIngress", () => {
+  test("admits distinct subscription checkpoints while deduplicating exact retries and preserving real resets", () => {
+    const ingress = new RendererLocalCommitIngress();
+    const projection = vi.fn();
+    ingress.subscribeProjection(scope, projection);
+    const identity = {
+      deliveryId: "c".repeat(64),
+      recipientLeaseId: "b".repeat(64),
+      deliveryAddress: addressReset().delivery_address,
+    };
+    const stream = { storeEpoch: "epoch-1", commitSeq: 1 };
+    ingress.admitAddressCheckpoint(identity, stream);
+    ingress.admitAddressCheckpoint(identity, stream);
+    expect(projection).toHaveBeenCalledTimes(1);
+    expect(projection).toHaveBeenLastCalledWith({ version: 2, kind: "checkpoint", scope, stream });
+    expect(() => ingress.admitAddressCheckpoint(identity, { ...stream, commitSeq: 2 })).toThrow(
+      "identity collision",
+    );
+    ingress.admitAddressCheckpoint(
+      { ...identity, deliveryId: "d".repeat(64) },
+      { ...stream, commitSeq: 2 },
+    );
+    ingress.admitAddressReset(addressReset({ required_commit_seq: 2 }));
+    expect(projection.mock.calls.map(([message]) => message.kind)).toEqual([
+      "checkpoint",
+      "checkpoint",
+      "reset",
+    ]);
+    expect(() =>
+      ingress.admitAddressCheckpoint(
+        { ...identity, deliveryId: "e".repeat(64) },
+        { ...stream, commitSeq: -1 },
+      ),
+    ).toThrow("invalid");
+    expect(() =>
+      ingress.admitAddressCheckpoint(
+        { ...identity, deliveryAddress: { kind: "library", library_id: " " } },
+        stream,
+      ),
+    ).toThrow("invalid");
+  });
+
   test("deduplicates an address reset retry by its immutable reset identity", () => {
     const ingress = new RendererLocalCommitIngress();
     const projection = vi.fn();

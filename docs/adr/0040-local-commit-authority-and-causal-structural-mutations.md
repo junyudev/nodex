@@ -35,20 +35,29 @@ presentation; they do not limit content access.
 Non-origin renderers subscribe only to logical Library/Project addresses. The
 Core scoped-live barrier issues a physical recipient lease for every active
 address. Main routes with its exact lease and delivery address. The renderer IPC carries exactly one complete
-packet or one lease-bound `AddressReset`. Send failure, NACK, ACK timeout, queue overflow,
+packet, lease-bound subscription checkpoint, or lease-bound `AddressReset`. Initial subscriptions
+and uninterrupted physical lease replacements carry a checkpoint for every retained address:
+the renderer keeps canonical reads that already cover its floor and repairs uncovered reads.
+Main advances retained address floors with observed commits and repair barriers, so a later
+recipient cannot reuse an outdated subscription floor. Send failure of a packet, NACK, ACK timeout, queue overflow,
 integrity failure, reload, and epoch replacement fence the address and actively
 retry reset delivery with one bounded jittered timer. Retry starts at 100 ms
 and caps at 60 seconds; an independent retry-window budget keeps a continuously
 failed active address within 20 attempts over ten minutes for every jitter
 sequence. Disposal cancels the timer and discards the budget.
-A reset ACK clears only the required floor it covers. If another WebContents
+A control ACK clears only the required floor and recovery generation it covers. Checkpoint
+ACKs cannot clear a later reset, and every new recovery boundary has a distinct immutable
+identity even at the same floor. Retries retain that identity. If another WebContents
 later subscribes to an already-active address, Main installs the retained Core
-lease for that recipient and sends a floor reset before ordinary packets.
+lease and sends its latest subscription checkpoint before ordinary packets. A commit
+observed while a checkpoint is pending raises its obligation; the next checkpoint must
+also be checked for coverage. Reconnects, epoch changes, and pending recovery remain
+strong resets, including when a read already covers the same floor.
 
 Apply responses, including Document apply ACKs, enter the same renderer
 `LocalCommitIngress` before their feature Promise resolves. Audience packets
 and later durable copies use the same packet validation and resource claims,
-so complementary audiences enrich and exact repeats deduplicate. Each transport `AddressReset` retains its immutable identity and covered floor.
+so complementary audiences enrich and exact repeats deduplicate. Each transport control retains its immutable identity and covered floor.
 
 Core separates one semantic mutation into private evidence, one immutable
 semantic Manifest, and authenticated connection delivery. Physical journal rows
@@ -119,8 +128,8 @@ Core-authored packet remains byte-for-byte intact with its original coverage
 and `packet_hash`; adapters receive the selected effect as a separate argument
 and never manufacture a sliced packet that reuses another packet's hash.
 The later tailer copy enriches or deduplicates already delivered resources; an
-identity collision fails closed. Stream checkpoints advance replay bookkeeping
-only.
+identity collision fails closed. Durable replay checkpoints advance replay bookkeeping
+only; recipient subscription checkpoints establish the read coverage needed for live delivery.
 
 Core seals each affected projection scope with an independent
 `base_revision`, `result_revision`, `covered_commit_seq`, `effect_hash`, an

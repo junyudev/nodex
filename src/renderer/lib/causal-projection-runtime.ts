@@ -6,7 +6,7 @@ import type {
 import { BoundedBurstScheduler, type BoundedBurstTiming } from "./bounded-burst-scheduler";
 
 export type ProjectionRepairReason =
-  | "initial_subscription_gap"
+  | "subscription_checkpoint_gap"
   | "effect_gap"
   | "patch_unavailable"
   | "effect_requires_read"
@@ -74,7 +74,6 @@ export class CausalProjectionRuntime {
   #repairing = false;
   #requiredRepair: ProjectionRepairRequest | null = null;
   #repairUrgent = false;
-  #initialCheckpointObserved = false;
   #disposed = false;
   #retryTimer: ReturnType<typeof setTimeout> | null = null;
   #repairRetryAttempt = 0;
@@ -100,13 +99,12 @@ export class CausalProjectionRuntime {
     this.#acceptEffect(delivery);
   }
 
-  observeInitialCheckpoint(input: {
+  /** A subscription can advance its required floor again while admission is pending. */
+  observeSubscriptionCheckpoint(input: {
     readonly storeEpoch: string;
     readonly scannedThroughCommitSeq: number;
   }): void {
     if (this.#disposed) return;
-    if (this.#initialCheckpointObserved) return;
-    this.#initialCheckpointObserved = true;
     const current = this.#input.getCoordinate();
     if (
       current?.storeEpoch === input.storeEpoch &&
@@ -117,16 +115,15 @@ export class CausalProjectionRuntime {
     this.#requestRepair({
       storeEpoch: input.storeEpoch,
       scopeKey: this.#input.scopeKey,
-      minimumRevision: current?.revision ?? 0,
+      minimumRevision: current?.storeEpoch === input.storeEpoch ? current.revision : 0,
       minimumCommitSeq: input.scannedThroughCommitSeq,
-      reason: "initial_subscription_gap",
+      reason: "subscription_checkpoint_gap",
     });
   }
 
   reset(input: { readonly storeEpoch: string; readonly commitSeq: number }): void {
     if (this.#disposed) return;
     this.#buffer.clear();
-    this.#initialCheckpointObserved = true;
     this.#requestRepair({
       storeEpoch: input.storeEpoch,
       scopeKey: this.#input.scopeKey,

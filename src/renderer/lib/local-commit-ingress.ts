@@ -8,12 +8,14 @@ import {
 import {
   projectionScopeKey,
   type ProjectionScope,
+  type ProjectionCursor,
   type ProjectionStreamMessage,
 } from "../../shared/projection-stream";
 import {
   deliveryAddressProjectionScope,
   type AddressReset,
   type DeliveryAddress,
+  type RecipientDeliveryEnvelope,
 } from "../../shared/recipient-delivery";
 import { mapWithConcurrency } from "./map-with-concurrency";
 
@@ -232,7 +234,7 @@ export class RendererLocalCommitIngress {
   readonly #maxRememberedCommits: number;
   readonly #maxInFlightAdmissions: number;
   readonly #remembered = new Map<string, RememberedCommit>();
-  readonly #rememberedAddressResets = new Map<string, string>();
+  readonly #rememberedAddressControls = new Map<string, string>();
   readonly #projectionListeners = new Map<string, Set<ProjectionListener>>();
   readonly #documentListeners = new Map<string, Set<DocumentListener>>();
   readonly #atomListeners = new Set<AtomListener>();
@@ -293,21 +295,14 @@ export class RendererLocalCommitIngress {
       throw new TypeError("Recipient address reset is invalid");
     }
     const fingerprint = JSON.stringify([
+      "reset",
       reset.recipient_lease_id,
       deliveryAddressKey(reset.delivery_address),
       reset.store_epoch,
       reset.required_commit_seq,
       reset.reason,
     ]);
-    const known = this.#rememberedAddressResets.get(reset.reset_id);
-    if (known === fingerprint) {
-      this.#touchAddressReset(reset.reset_id, fingerprint);
-      return;
-    }
-    if (known !== undefined) {
-      throw new Error(`Recipient address reset identity collision for ${reset.reset_id}`);
-    }
-    this.#touchAddressReset(reset.reset_id, fingerprint);
+    if (!this.#admitAddressControl(reset.reset_id, fingerprint)) return;
     this.#resetAddress(
       reset.delivery_address,
       {
@@ -318,6 +313,54 @@ export class RendererLocalCommitIngress {
         ? "store_epoch_changed"
         : "recipient_delivery_failed",
     );
+  }
+
+  admitAddressCheckpoint(
+    identity: Pick<
+      RecipientDeliveryEnvelope,
+      "deliveryId" | "recipientLeaseId" | "deliveryAddress"
+    >,
+    stream: ProjectionCursor,
+  ): void {
+    const address = identity.deliveryAddress;
+    if (
+      !HASH_PATTERN.test(identity.deliveryId) ||
+      !HASH_PATTERN.test(identity.recipientLeaseId) ||
+      !stream.storeEpoch ||
+      stream.storeEpoch !== stream.storeEpoch.trim() ||
+      !Number.isSafeInteger(stream.commitSeq) ||
+      stream.commitSeq < 0 ||
+      !address.library_id ||
+      address.library_id !== address.library_id.trim() ||
+      (address.kind !== "library" && address.kind !== "project") ||
+      (address.kind === "project" &&
+        (!address.project_id || address.project_id !== address.project_id.trim()))
+    )
+      throw new TypeError("Recipient address checkpoint is invalid");
+    const fingerprint = JSON.stringify([
+      "checkpoint",
+      identity.recipientLeaseId,
+      deliveryAddressKey(address),
+      stream.storeEpoch,
+      stream.commitSeq,
+    ]);
+    if (!this.#admitAddressControl(identity.deliveryId, fingerprint)) return;
+    const scope = deliveryAddressProjectionScope(address);
+    if (!scope) throw new TypeError("Recipient checkpoint address is invalid");
+    this.#publishProjection(scope, { version: 2, kind: "checkpoint", scope, stream });
+  }
+
+  #admitAddressControl(deliveryId: string, fingerprint: string): boolean {
+    const known = this.#rememberedAddressControls.get(deliveryId);
+    if (known === fingerprint) {
+      this.#touchAddressControl(deliveryId, fingerprint);
+      return false;
+    }
+    if (known !== undefined) {
+      throw new Error(`Recipient address control identity collision for ${deliveryId}`);
+    }
+    this.#touchAddressControl(deliveryId, fingerprint);
+    return true;
   }
 
   subscribeProjection(scope: ProjectionScope, listener: ProjectionListener): () => void {
@@ -338,12 +381,12 @@ export class RendererLocalCommitIngress {
 
   diagnostics(): {
     readonly rememberedCommits: number;
-    readonly rememberedAddressResets: number;
+    readonly rememberedAddressControls: number;
     readonly inFlightAdmissions: number;
   } {
     return {
       rememberedCommits: this.#remembered.size,
-      rememberedAddressResets: this.#rememberedAddressResets.size,
+      rememberedAddressControls: this.#rememberedAddressControls.size,
       inFlightAdmissions: this.#inFlightAdmissions,
     };
   }
@@ -442,13 +485,13 @@ export class RendererLocalCommitIngress {
     }
   }
 
-  #touchAddressReset(resetId: string, fingerprint: string): void {
-    this.#rememberedAddressResets.delete(resetId);
-    this.#rememberedAddressResets.set(resetId, fingerprint);
-    while (this.#rememberedAddressResets.size > this.#maxRememberedCommits) {
-      const oldest = this.#rememberedAddressResets.keys().next().value;
+  #touchAddressControl(deliveryId: string, fingerprint: string): void {
+    this.#rememberedAddressControls.delete(deliveryId);
+    this.#rememberedAddressControls.set(deliveryId, fingerprint);
+    while (this.#rememberedAddressControls.size > this.#maxRememberedCommits) {
+      const oldest = this.#rememberedAddressControls.keys().next().value;
       if (oldest === undefined) return;
-      this.#rememberedAddressResets.delete(oldest);
+      this.#rememberedAddressControls.delete(oldest);
     }
   }
 

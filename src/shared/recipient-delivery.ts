@@ -1,9 +1,9 @@
 import type { components } from "@nodex/core-protocol";
 
 import type { AuthorizedDeliveryPacket } from "./authorized-delivery-packet";
-import type { ProjectionScope } from "./projection-stream";
+import type { ProjectionCursor, ProjectionScope } from "./projection-stream";
 
-export const RECIPIENT_DELIVERY_VERSION = 3 as const;
+export const RECIPIENT_DELIVERY_VERSION = 4 as const;
 
 export type DeliveryAddress = components["schemas"]["DeliveryAddress"];
 export type AuthorizedRecipientLease = components["schemas"]["AuthorizedRecipientLease"];
@@ -33,6 +33,10 @@ export const deliveryAddressProjectionScope = (address: DeliveryAddress): Projec
       : null;
 
 export type RecipientDeliveryPayload =
+  | {
+      readonly kind: "checkpoint";
+      readonly stream: ProjectionCursor;
+    }
   | {
       readonly kind: "packet";
       readonly packet: AuthorizedDeliveryPacket;

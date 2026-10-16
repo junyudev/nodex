@@ -61,6 +61,7 @@ interface BarrierObservation {
   readonly barrier: ProjectionLiveBarrier;
   readonly scopes: readonly ProjectionScope[];
   readonly resetScopes: readonly ProjectionScope[];
+  readonly checkpointScopes: readonly ProjectionScope[];
 }
 
 const waitUntil = (label: string, predicate: () => boolean): Effect.Effect<void> =>
@@ -72,68 +73,83 @@ const waitUntil = (label: string, predicate: () => boolean): Effect.Effect<void>
     return yield* Effect.die(new Error(`Projection live condition did not settle: ${label}`));
   });
 
-const makeHarness = Effect.gen(function* () {
-  const ownerScope = yield* Scope.make();
-  const leases: PendingLease[] = [];
-  const packets: CoreEventEnvelope[] = [];
-  const repairs: ProjectionLiveRepair[] = [];
-  const barriers: BarrierObservation[] = [];
+const makeHarness = (
+  hooks: Partial<Pick<ProjectionLiveRuntimeOptions, "onPacket" | "onBarrier">> = {},
+) =>
+  Effect.gen(function* () {
+    const ownerScope = yield* Scope.make();
+    const leases: PendingLease[] = [];
+    const packets: CoreEventEnvelope[] = [];
+    const repairs: ProjectionLiveRepair[] = [];
+    const barriers: BarrierObservation[] = [];
 
-  const open: ProjectionLiveRuntimeOptions["open"] = (scopes, onEvent, onRepair) =>
-    Effect.gen(function* () {
-      const opened = yield* Deferred.make<ProjectionLiveSubscription>();
-      const done = yield* Deferred.make<void>();
-      const lease: PendingLease = {
-        scopes,
-        opened,
-        done,
-        onEvent,
-        onRepair,
-        closeCount: 0,
-        interruptedCount: 0,
-      };
-      leases.push(lease);
-      return yield* Deferred.await(opened).pipe(
-        Effect.onInterrupt(() =>
-          Effect.sync(() => {
-            lease.interruptedCount += 1;
-          }),
+    const open: ProjectionLiveRuntimeOptions["open"] = (scopes, onEvent, onRepair) =>
+      Effect.gen(function* () {
+        const opened = yield* Deferred.make<ProjectionLiveSubscription>();
+        const done = yield* Deferred.make<void>();
+        const lease: PendingLease = {
+          scopes,
+          opened,
+          done,
+          onEvent,
+          onRepair,
+          closeCount: 0,
+          interruptedCount: 0,
+        };
+        leases.push(lease);
+        return yield* Deferred.await(opened).pipe(
+          Effect.onInterrupt(() =>
+            Effect.sync(() => {
+              lease.interruptedCount += 1;
+            }),
+          ),
+        );
+      });
+
+    const runtime = yield* make({
+      open,
+      onPacket: (packet) =>
+        (hooks.onPacket?.(packet) ?? Effect.void).pipe(
+          Effect.andThen(
+            Effect.sync(() => {
+              packets.push(packet);
+            }),
+          ),
         ),
-      );
-    });
+      onBarrier: (barrier, scopes, resetScopes, checkpointScopes) =>
+        (hooks.onBarrier?.(barrier, scopes, resetScopes, checkpointScopes) ?? Effect.void).pipe(
+          Effect.andThen(
+            Effect.sync(() => {
+              barriers.push({ barrier, scopes, resetScopes, checkpointScopes });
+            }),
+          ),
+        ),
+      onRepair: (repair) =>
+        Effect.sync(() => {
+          repairs.push(repair);
+        }),
+      retryDelay: "10 millis",
+    }).pipe(Effect.provideService(Scope.Scope, ownerScope));
 
-  const runtime = yield* make({
-    open,
-    onPacket: (packet) =>
-      Effect.sync(() => {
-        packets.push(packet);
-      }),
-    onBarrier: (barrier, scopes, resetScopes) =>
-      Effect.sync(() => {
-        barriers.push({ barrier, scopes, resetScopes });
-      }),
-    onRepair: (repair) =>
-      Effect.sync(() => {
-        repairs.push(repair);
-      }),
-    retryDelay: "10 millis",
-  }).pipe(Effect.provideService(Scope.Scope, ownerScope));
+    const activate = (
+      lease: PendingLease,
+      commitHead: number,
+      storeEpoch = "epoch-1",
+    ): Effect.Effect<void> =>
+      Deferred.succeed(lease.opened, {
+        barrier: { ...barrierFor(lease.scopes, commitHead), store_epoch: storeEpoch },
+        done: Deferred.await(lease.done),
+        close: Effect.sync(() => {
+          lease.closeCount += 1;
+        }),
+      }).pipe(Effect.asVoid);
 
-  const activate = (lease: PendingLease, commitHead: number): Effect.Effect<void> =>
-    Deferred.succeed(lease.opened, {
-      barrier: barrierFor(lease.scopes, commitHead),
-      done: Deferred.await(lease.done),
-      close: Effect.sync(() => {
-        lease.closeCount += 1;
-      }),
-    }).pipe(Effect.asVoid);
-
-  return { activate, barriers, leases, ownerScope, packets, repairs, runtime };
-});
+    return { activate, barriers, leases, ownerScope, packets, repairs, runtime };
+  });
 
 it.effect("keeps the old lease authoritative until the replacement barrier", () =>
   Effect.gen(function* () {
-    const harness = yield* makeHarness;
+    const harness = yield* makeHarness();
     const firstScopes = [projectScope("project-1")];
     const replacementScopes = [...firstScopes, projectScope("project-2")];
 
@@ -141,6 +157,8 @@ it.effect("keeps the old lease authoritative until the replacement barrier", () 
     yield* waitUntil("first open", () => harness.leases.length === 1);
     yield* harness.activate(harness.leases[0]!, 1);
     yield* waitUntil("first barrier", () => harness.barriers.length === 1);
+    assert.deepEqual(harness.barriers[0]!.resetScopes, []);
+    assert.deepEqual(harness.barriers[0]!.checkpointScopes, firstScopes);
 
     yield* harness.runtime.setScopes(replacementScopes);
     yield* waitUntil("replacement open", () => harness.leases.length === 2);
@@ -163,7 +181,8 @@ it.effect("keeps the old lease authoritative until the replacement barrier", () 
     assert.deepEqual(harness.barriers[1], {
       barrier: barrierFor(replacementScopes, 2),
       scopes: replacementScopes,
-      resetScopes: [projectScope("project-2")],
+      resetScopes: [],
+      checkpointScopes: replacementScopes,
     });
 
     harness.leases[0]!.onEvent({} as CoreEventEnvelope);
@@ -180,9 +199,54 @@ it.effect("keeps the old lease authoritative until the replacement barrier", () 
   }),
 );
 
+it.effect("finishes the old consumer before installing a new epoch barrier", () =>
+  Effect.gen(function* () {
+    const blockedPacket = { sequence: 1 } as unknown as CoreEventEnvelope;
+    const newPacket = { sequence: 2 } as unknown as CoreEventEnvelope;
+    let oldPacketStarted = false;
+    let oldPacketInterrupted = false;
+    const harness = yield* makeHarness({
+      onPacket: (packet) =>
+        packet === blockedPacket
+          ? Effect.sync(() => {
+              oldPacketStarted = true;
+            }).pipe(
+              Effect.andThen(Effect.never),
+              Effect.onInterrupt(() =>
+                Effect.sync(() => {
+                  oldPacketInterrupted = true;
+                }),
+              ),
+            )
+          : Effect.void,
+      onBarrier: (barrier) =>
+        Effect.sync(() => {
+          if (barrier.store_epoch === "epoch-2") assert.isTrue(oldPacketInterrupted);
+        }),
+    });
+    yield* harness.runtime.setScopes([projectScope("project-1")]);
+    yield* waitUntil("first open", () => harness.leases.length === 1);
+    yield* harness.activate(harness.leases[0]!, 1);
+    yield* waitUntil("first barrier", () => harness.barriers.length === 1);
+    harness.leases[0]!.onEvent(blockedPacket);
+    yield* waitUntil("old consumer blocked", () => oldPacketStarted);
+    yield* harness.runtime.setScopes([projectScope("project-1"), projectScope("project-2")]);
+    yield* waitUntil("new open", () => harness.leases.length === 2);
+    harness.leases[1]!.onEvent(newPacket);
+    yield* harness.activate(harness.leases[1]!, 0, "epoch-2");
+    yield* waitUntil(
+      "new barrier and packet",
+      () => harness.barriers.length === 2 && harness.packets.length === 1,
+    );
+    assert.deepEqual(harness.packets, [newPacket]);
+    assert.strictEqual(harness.leases[0]!.closeCount, 1);
+    yield* Scope.close(harness.ownerScope, Exit.void);
+  }),
+);
+
 it.effect("backs off and repairs every desired scope after a live lease ends", () =>
   Effect.gen(function* () {
-    const harness = yield* makeHarness;
+    const harness = yield* makeHarness();
     const desired = [projectScope("project-1"), projectScope("project-2")];
 
     yield* harness.runtime.setScopes(desired);
@@ -198,14 +262,38 @@ it.effect("backs off and repairs every desired scope after a live lease ends", (
     yield* harness.activate(harness.leases[1]!, 2);
     yield* waitUntil("reconnect barrier", () => harness.barriers.length === 2);
     assert.deepEqual(harness.barriers[1]!.resetScopes, desired);
+    assert.deepEqual(harness.barriers[1]!.checkpointScopes, []);
 
     yield* Scope.close(harness.ownerScope, Exit.void);
   }),
 );
 
+it.effect(
+  "preserves recovery scopes while separately initializing scopes added during reconnect",
+  () =>
+    Effect.gen(function* () {
+      const harness = yield* makeHarness();
+      const original = projectScope("project-1");
+      const added = projectScope("project-2");
+      yield* harness.runtime.setScopes([original]);
+      yield* waitUntil("initial open", () => harness.leases.length === 1);
+      yield* harness.activate(harness.leases[0]!, 1);
+      yield* waitUntil("initial barrier", () => harness.barriers.length === 1);
+      yield* Deferred.succeed(harness.leases[0]!.done, undefined);
+      yield* waitUntil("disconnected lease", () => harness.leases[0]!.closeCount === 1);
+      yield* harness.runtime.setScopes([original, added]);
+      yield* waitUntil("expanded reconnect", () => harness.leases.length === 2);
+      yield* harness.activate(harness.leases[1]!, 2);
+      yield* waitUntil("expanded barrier", () => harness.barriers.length === 2);
+      assert.deepEqual(harness.barriers[1]!.resetScopes, [original]);
+      assert.deepEqual(harness.barriers[1]!.checkpointScopes, [added]);
+      yield* Scope.close(harness.ownerScope, Exit.void);
+    }),
+);
+
 it.effect("keeps the active lease when scope churn returns to its exact set", () =>
   Effect.gen(function* () {
-    const harness = yield* makeHarness;
+    const harness = yield* makeHarness();
     const stable = [projectScope("project-1")];
 
     yield* harness.runtime.setScopes(stable);
@@ -236,7 +324,7 @@ it.effect("keeps the active lease when scope churn returns to its exact set", ()
 
 it.effect("canonicalizes scope requests and rejects an unbounded broker", () =>
   Effect.gen(function* () {
-    const harness = yield* makeHarness;
+    const harness = yield* makeHarness();
 
     yield* harness.runtime.setScopes([projectScope("project-1"), projectScope("project-1")]);
     yield* waitUntil("deduplicated open", () => harness.leases.length === 1);
@@ -256,7 +344,7 @@ it.effect("canonicalizes scope requests and rejects an unbounded broker", () =>
 
 it.effect("closes the exact active lease and fences late callbacks with its owner Scope", () =>
   Effect.gen(function* () {
-    const harness = yield* makeHarness;
+    const harness = yield* makeHarness();
     const desired = [projectScope("project-1")];
 
     yield* harness.runtime.setScopes(desired);
@@ -288,7 +376,7 @@ it.effect("closes the exact active lease and fences late callbacks with its owne
 
 it.effect("preserves callback order across a live packet burst", () =>
   Effect.gen(function* () {
-    const harness = yield* makeHarness;
+    const harness = yield* makeHarness();
 
     yield* harness.runtime.setScopes([projectScope("project-1")]);
     yield* waitUntil("ordered open", () => harness.leases.length === 1);
@@ -309,7 +397,7 @@ it.effect("preserves callback order across a live packet burst", () =>
 
 it.effect("drops an overflowing pre-barrier attempt and retries through Effect Clock", () =>
   Effect.gen(function* () {
-    const harness = yield* makeHarness;
+    const harness = yield* makeHarness();
 
     yield* harness.runtime.setScopes([projectScope("project-1")]);
     yield* waitUntil("overflowing open", () => harness.leases.length === 1);

@@ -45,7 +45,8 @@ interface DeliveryFloor {
 interface PendingAdmission {
   readonly deliveryId: string;
   readonly floor: DeliveryFloor;
-  readonly reset: boolean;
+  readonly control: "checkpoint" | "reset" | null;
+  readonly controlGeneration: number;
   readonly timerKey: string;
 }
 
@@ -56,7 +57,8 @@ interface AudienceSubscription {
   readonly leaseGeneration: number;
   readonly pending: ReadonlyMap<string, PendingAdmission>;
   readonly requiredFloor: DeliveryFloor | null;
-  readonly resetReason: AddressResetReason;
+  readonly resetReason: AddressResetReason | null;
+  readonly controlGeneration: number;
   readonly retryAttempt: number;
   readonly retryTimerKey: string | null;
   readonly retryWindowAttempts: number;
@@ -142,6 +144,7 @@ export class ProjectionAudienceRuntime extends Context.Service<
       floor: DeliveryFloor,
       resetAddresses: readonly DeliveryAddress[],
       reason: AddressResetReason,
+      checkpointAddresses?: readonly DeliveryAddress[],
     ) => Effect.Effect<void, ProjectionAudienceRuntimeError>;
     readonly publish: (
       packet: AuthorizedDeliveryPacket,
@@ -281,11 +284,40 @@ const fence = (
   subscription: AudienceSubscription,
   floor: DeliveryFloor,
   reason: AddressResetReason,
+  newBoundary = false,
 ): AudienceSubscription => ({
   ...subscription,
   requiredFloor: floorMax(subscription.requiredFloor, floor),
   resetReason: reason,
+  controlGeneration:
+    subscription.controlGeneration + (newBoundary || subscription.resetReason !== reason ? 1 : 0),
 });
+
+const checkpoint = (
+  subscription: AudienceSubscription,
+  floor: DeliveryFloor,
+): AudienceSubscription => ({
+  ...subscription,
+  requiredFloor: floorMax(subscription.requiredFloor, floor),
+});
+
+// Pending deliveries precede the current obligation and cannot restore an old epoch.
+const pendingFloor = (
+  subscription: AudienceSubscription,
+  pending: PendingAdmission,
+): DeliveryFloor =>
+  subscription.requiredFloor && subscription.requiredFloor.storeEpoch !== pending.floor.storeEpoch
+    ? subscription.requiredFloor
+    : pending.floor;
+
+const advanceGrantFloor = (
+  draft: ProjectionAudienceDraft,
+  key: string,
+  floor: DeliveryFloor,
+): void => {
+  const grant = draft.leaseGrants.get(key);
+  if (grant) draft.leaseGrants.set(key, { ...grant, floor: floorMax(grant.floor, floor) });
+};
 
 const releasedReport = (): ProjectionAudienceFanoutReport => ({
   recipients: 1,
@@ -385,7 +417,13 @@ export const make = (
     ) {
       let next = subscription;
       for (const pending of subscription.pending.values()) {
-        if (preserveReason) next = fence(next, pending.floor, preserveReason);
+        if (preserveReason) {
+          const floor = pendingFloor(next, pending);
+          next =
+            pending.control === "checkpoint"
+              ? checkpoint(next, floor)
+              : fence(next, floor, next.resetReason ?? preserveReason);
+        }
         next = yield* forgetPending(draft, next, pending);
       }
       return next;
@@ -483,18 +521,17 @@ export const make = (
       subscriptionKeyValue: string,
       envelope: RecipientDeliveryEnvelope,
       floor: DeliveryFloor,
-      reset: boolean,
+      control: PendingAdmission["control"],
     ): Effect.Effect<boolean> {
       return Effect.gen(function* () {
         let subscription = draft.subscriptions.get(subscriptionKeyValue);
         if (!subscription || !subscription.lease) return false;
         if (subscription.pending.has(envelope.deliveryId)) return true;
         if (subscription.sender.isDestroyed() || subscription.sender.isLoadingMainFrame?.()) {
-          subscription = fence(
-            subscription,
-            floor,
-            reset ? subscription.resetReason : "stream_gap",
-          );
+          subscription =
+            control === "checkpoint"
+              ? checkpoint(subscription, floor)
+              : fence(subscription, floor, subscription.resetReason ?? "stream_gap");
           draft.subscriptions.set(subscription.key, subscription);
           return false;
         }
@@ -502,7 +539,7 @@ export const make = (
           subscription = yield* clearPending(draft, subscription, "queue_overflow");
           subscription = fence(subscription, floor, "queue_overflow");
           draft.subscriptions.set(subscription.key, subscription);
-          if (!reset) yield* sendReset(draft, subscription.key);
+          if (!control) yield* sendControl(draft, subscription.key);
           return false;
         }
 
@@ -515,11 +552,10 @@ export const make = (
           }
         });
         if (!sent) {
-          subscription = fence(
-            subscription,
-            floor,
-            reset ? subscription.resetReason : "stream_gap",
-          );
+          subscription =
+            control === "checkpoint"
+              ? checkpoint(subscription, floor)
+              : fence(subscription, floor, subscription.resetReason ?? "stream_gap");
           draft.subscriptions.set(subscription.key, subscription);
           return false;
         }
@@ -528,7 +564,8 @@ export const make = (
         const pending: PendingAdmission = {
           deliveryId: envelope.deliveryId,
           floor,
-          reset,
+          control,
+          controlGeneration: subscription.controlGeneration,
           timerKey,
         };
         const pendingAdmissions = new Map(subscription.pending);
@@ -544,14 +581,15 @@ export const make = (
       });
     }
 
-    function sendReset(
+    function sendControl(
       draft: ProjectionAudienceDraft,
       subscriptionKeyValue: string,
     ): Effect.Effect<boolean> {
       return Effect.gen(function* () {
         let subscription = draft.subscriptions.get(subscriptionKeyValue);
         if (!subscription?.requiredFloor || !subscription.lease) return false;
-        if ([...subscription.pending.values()].some((pending) => pending.reset)) return true;
+        if ([...subscription.pending.values()].some((pending) => pending.control !== null))
+          return true;
 
         const [claimed, retryBudgetDelay] = yield* claimResetAttempt(subscription);
         subscription = claimed;
@@ -567,29 +605,37 @@ export const make = (
         if (!floor || !lease) return false;
         subscription = yield* clearRetry(subscription);
         draft.subscriptions.set(subscription.key, subscription);
-        const reset: AddressReset = {
-          reset_id: digest([
-            "address-reset-v1",
-            lease.lease_id,
-            lease.delivery_address,
-            floor.storeEpoch,
-            floor.commitSeq,
-            subscription.resetReason,
-          ]),
-          store_epoch: floor.storeEpoch,
-          recipient_lease_id: lease.lease_id,
-          delivery_address: lease.delivery_address,
-          required_commit_seq: floor.commitSeq,
-          reason: subscription.resetReason,
-        };
+        const control = subscription.resetReason === null ? "checkpoint" : "reset";
+        const deliveryId = digest([
+          `address-${control}-v2`,
+          lease.lease_id,
+          lease.delivery_address,
+          floor.storeEpoch,
+          floor.commitSeq,
+          subscription.resetReason,
+          subscription.token,
+          subscription.controlGeneration,
+        ]);
+        const reset: AddressReset | null =
+          subscription.resetReason === null
+            ? null
+            : {
+                reset_id: deliveryId,
+                store_epoch: floor.storeEpoch,
+                recipient_lease_id: lease.lease_id,
+                delivery_address: lease.delivery_address,
+                required_commit_seq: floor.commitSeq,
+                reason: subscription.resetReason,
+              };
         const envelope: RecipientDeliveryEnvelope = {
           version: RECIPIENT_DELIVERY_VERSION,
-          deliveryId: reset.reset_id,
+          deliveryId,
           recipientLeaseId: lease.lease_id,
           deliveryAddress: lease.delivery_address,
-          payload: { kind: "reset", reset },
+          payload:
+            reset === null ? { kind: "checkpoint", stream: floor } : { kind: "reset", reset },
         };
-        const sent = yield* sendEnvelope(draft, subscription.key, envelope, floor, true);
+        const sent = yield* sendEnvelope(draft, subscription.key, envelope, floor, control);
         if (!sent) {
           const latest = draft.subscriptions.get(subscription.key);
           if (latest) yield* scheduleReset(draft, latest);
@@ -610,15 +656,15 @@ export const make = (
         if (!lease) return emptyReport();
         const floor = packetFloor(packet);
         if (!validPacketForLease(lease, packet)) {
-          subscription = fence(subscription, floor, "integrity_failure");
+          subscription = fence(subscription, floor, "integrity_failure", true);
           draft.subscriptions.set(subscription.key, subscription);
-          yield* sendReset(draft, subscription.key);
+          yield* sendControl(draft, subscription.key);
           return { recipients: 1, sent: 0, fenced: 1, released: 0 };
         }
         if (subscription.requiredFloor) {
-          subscription = fence(subscription, floor, subscription.resetReason);
+          subscription = checkpoint(subscription, floor);
           draft.subscriptions.set(subscription.key, subscription);
-          yield* sendReset(draft, subscription.key);
+          yield* sendControl(draft, subscription.key);
           return { recipients: 1, sent: 0, fenced: 1, released: 0 };
         }
 
@@ -629,10 +675,10 @@ export const make = (
           deliveryAddress: lease.delivery_address,
           payload: { kind: "packet", packet },
         };
-        const sent = yield* sendEnvelope(draft, subscription.key, envelope, floor, false);
+        const sent = yield* sendEnvelope(draft, subscription.key, envelope, floor, null);
         if (!sent) {
           const latest = draft.subscriptions.get(subscription.key);
-          if (latest) yield* sendReset(draft, latest.key);
+          if (latest) yield* sendControl(draft, latest.key);
         }
         return {
           recipients: 1,
@@ -658,9 +704,13 @@ export const make = (
           const pending = subscription.pending.get(deliveryId);
           if (!pending) return;
           subscription = yield* forgetPending(draft, subscription, pending, false);
-          subscription = fence(subscription, pending.floor, "ack_timeout");
+          subscription = fence(
+            subscription,
+            pendingFloor(subscription, pending),
+            subscription.resetReason ?? "ack_timeout",
+          );
           draft.subscriptions.set(subscription.key, subscription);
-          yield* sendReset(draft, subscription.key);
+          yield* sendControl(draft, subscription.key);
           yield* commit(draft);
         }),
       );
@@ -690,7 +740,7 @@ export const make = (
             ...subscription,
             retryTimerKey: null,
           });
-          yield* sendReset(draft, subscription.key);
+          yield* sendControl(draft, subscription.key);
           yield* commit(draft);
         }),
       );
@@ -737,9 +787,11 @@ export const make = (
           const key = subscriptionKey(sender.id, address);
           const existing = draft.subscriptions.get(key);
           let recoveryFloor: DeliveryFloor | null = null;
+          let recoveryReason: AddressResetReason | null = null;
           if (existing) {
             const detached = yield* detachLease(draft, existing, true);
             recoveryFloor = detached.requiredFloor;
+            recoveryReason = detached.resetReason;
             draft.subscriptions.delete(key);
           }
 
@@ -754,7 +806,8 @@ export const make = (
             leaseGeneration: 1,
             pending: new Map(),
             requiredFloor: recoveryFloor,
-            resetReason: "stream_gap",
+            resetReason: recoveryReason,
+            controlGeneration: 0,
             retryAttempt: 0,
             retryTimerKey: null,
             retryWindowAttempts: 0,
@@ -762,7 +815,7 @@ export const make = (
             sender,
             token,
           };
-          if (grant) subscription = fence(subscription, grant.floor, "stream_gap");
+          if (grant) subscription = checkpoint(subscription, grant.floor);
           draft.subscriptions.set(key, subscription);
           if (desiredScopes(draft.subscriptions).length > MAX_ADDRESSES) {
             return yield* runtimeError(
@@ -770,7 +823,7 @@ export const make = (
               new RangeError(`Local commit audience supports at most ${MAX_ADDRESSES} addresses`),
             );
           }
-          if (grant) yield* sendReset(draft, key);
+          if (grant) yield* sendControl(draft, key);
           yield* commit(draft);
           yield* publishScopes(draft);
           return { release: releaseSubscription(key, token) };
@@ -783,6 +836,7 @@ export const make = (
       floor: DeliveryFloor,
       resetAddresses: readonly DeliveryAddress[],
       reason: AddressResetReason,
+      checkpointAddresses: readonly DeliveryAddress[] = [],
     ) {
       if (leases.length > MAX_ADDRESSES || leases.some((lease) => !validLease(lease))) {
         return yield* runtimeError(
@@ -798,14 +852,25 @@ export const make = (
           // Grants belong to the active Core stream, not individual windows. Keep
           // them through audience churn until this replacement barrier supersedes
           // them; the broker may retain the same stream when scopes return.
+          const previousGrants = new Map(draft.leaseGrants);
           draft.leaseGrants.clear();
           for (const lease of leases) {
-            draft.leaseGrants.set(deliveryAddressKey(lease.delivery_address), { lease, floor });
+            const key = deliveryAddressKey(lease.delivery_address);
+            draft.leaseGrants.set(key, {
+              lease,
+              floor: floorMax(previousGrants.get(key)?.floor ?? null, floor),
+            });
           }
           const resetKeys = new Set(resetAddresses.map(deliveryAddressKey));
+          const checkpointKeys = new Set(checkpointAddresses.map(deliveryAddressKey));
           const now = yield* Clock.currentTimeMillis;
           for (const [key, initial] of [...draft.subscriptions]) {
-            const lease = draft.leaseGrants.get(deliveryAddressKey(initial.address))?.lease ?? null;
+            const addressKey = deliveryAddressKey(initial.address);
+            const grant = draft.leaseGrants.get(addressKey);
+            const lease = grant?.lease ?? null;
+            const previousGrant = previousGrants.get(addressKey);
+            const epochChanged =
+              previousGrant !== undefined && previousGrant.floor.storeEpoch !== floor.storeEpoch;
             let subscription = initial;
             if (subscription.lease?.lease_id !== lease?.lease_id) {
               subscription = yield* detachLease(draft, subscription, true);
@@ -815,12 +880,19 @@ export const make = (
                 retryWindowStartedAt: now,
               };
             }
-            if (lease && resetKeys.has(deliveryAddressKey(subscription.address))) {
-              subscription = fence(subscription, floor, reason);
+            if (grant && (epochChanged || resetKeys.has(addressKey))) {
+              subscription = fence(
+                subscription,
+                grant.floor,
+                epochChanged ? "store_epoch_replacement" : reason,
+                true,
+              );
+            } else if (grant && checkpointKeys.has(addressKey)) {
+              subscription = checkpoint(subscription, grant.floor);
             }
             draft.subscriptions.set(key, subscription);
             if (subscription.lease && subscription.requiredFloor) {
-              yield* sendReset(draft, key);
+              yield* sendControl(draft, key);
             }
           }
           yield* commit(draft);
@@ -837,6 +909,7 @@ export const make = (
           if (current.closed) return emptyReport();
           const draft = draftFrom(current);
           const packetAddressKey = deliveryAddressKey(packet.delivery_address);
+          advanceGrantFloor(draft, packetAddressKey, packetFloor(packet));
           let report = emptyReport();
           for (const subscription of draft.subscriptions.values()) {
             if (deliveryAddressKey(subscription.address) !== packetAddressKey) continue;
@@ -859,12 +932,15 @@ export const make = (
           if (current.closed) return;
           const draft = draftFrom(current);
           const allowed = addresses ? new Set(addresses.map(deliveryAddressKey)) : null;
+          for (const key of draft.leaseGrants.keys()) {
+            if (!allowed || allowed.has(key)) advanceGrantFloor(draft, key, floor);
+          }
           for (const [key, initial] of draft.subscriptions) {
             if (!initial.lease) continue;
             if (allowed && !allowed.has(deliveryAddressKey(initial.address))) continue;
-            const subscription = fence(initial, floor, reason);
+            const subscription = fence(initial, floor, reason, true);
             draft.subscriptions.set(key, subscription);
-            yield* sendReset(draft, key);
+            yield* sendControl(draft, key);
           }
           yield* commit(draft);
         }),
@@ -895,29 +971,36 @@ export const make = (
           if (!pending) return false;
           subscription = yield* forgetPending(draft, subscription, pending);
           if (value.outcome === "nack") {
-            subscription = fence(subscription, pending.floor, "recipient_nack");
+            subscription = fence(
+              subscription,
+              pendingFloor(subscription, pending),
+              subscription.resetReason ?? "recipient_nack",
+            );
             draft.subscriptions.set(subscription.key, subscription);
-            yield* sendReset(draft, subscription.key);
+            yield* sendControl(draft, subscription.key);
             yield* commit(draft);
             return true;
           }
-          if (pending.reset) {
+          if (pending.control !== null) {
             const required = subscription.requiredFloor;
             if (
               required &&
+              pending.controlGeneration === subscription.controlGeneration &&
+              (pending.control === "reset" || subscription.resetReason === null) &&
               required.storeEpoch === pending.floor.storeEpoch &&
               required.commitSeq <= pending.floor.commitSeq
             ) {
               subscription = yield* clearRetry({
                 ...subscription,
                 requiredFloor: null,
+                resetReason: null,
                 retryAttempt: 0,
                 retryWindowAttempts: 0,
                 retryWindowStartedAt: yield* Clock.currentTimeMillis,
               });
               draft.subscriptions.set(subscription.key, subscription);
             }
-            if (subscription.requiredFloor) yield* sendReset(draft, subscription.key);
+            if (subscription.requiredFloor) yield* sendControl(draft, subscription.key);
           }
           yield* commit(draft);
           return true;

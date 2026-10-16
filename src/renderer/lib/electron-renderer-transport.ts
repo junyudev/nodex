@@ -101,7 +101,7 @@ const acquireAudience = (bridge: ElectronRendererBridge, scope: ProjectionScope)
   };
 };
 
-/** Atom observers own their scoped audience and re-read after a lost delivery interval. */
+/** Atom observers have no coverage cursor, so every subscription floor requires a read. */
 export const subscribeElectronRendererLocalCommitAtoms = (
   bridge: ElectronRendererBridge,
   scope: ProjectionScope,
@@ -114,7 +114,7 @@ export const subscribeElectronRendererLocalCommitAtoms = (
     if (sameRecipientIdentity(packet.delivery_address, address)) onAtom(packet, atom);
   });
   const releaseReset = rendererLocalCommitIngress.subscribeProjection(scope, (message) => {
-    if (message.kind === "reset") onReset();
+    if (message.kind === "reset" || message.kind === "checkpoint") onReset();
   });
   const releaseAudience = acquireAudience(bridge, scope);
   return () => {
@@ -147,7 +147,9 @@ export const initializeElectronRendererLocalCommitIngress = (
           if (!sameRecipientIdentity(packet.delivery_address, envelope.deliveryAddress))
             throw new TypeError("Recipient packet identity is invalid");
           await rendererLocalCommitIngress.admitPacket(packet);
-        } else {
+        } else if (envelope.payload.kind === "checkpoint") {
+          rendererLocalCommitIngress.admitAddressCheckpoint(envelope, envelope.payload.stream);
+        } else if (envelope.payload.kind === "reset") {
           const reset = envelope.payload.reset;
           if (
             reset.reset_id !== envelope.deliveryId ||
@@ -156,6 +158,8 @@ export const initializeElectronRendererLocalCommitIngress = (
           )
             throw new TypeError("Recipient reset identity is invalid");
           rendererLocalCommitIngress.admitAddressReset(reset);
+        } else {
+          throw new TypeError("Recipient delivery payload is invalid");
         }
         result = {
           version: RECIPIENT_DELIVERY_VERSION,

@@ -48,6 +48,15 @@ test("scoped atom observers share a live audience, recover after reset, and rele
       reason: "ack_timeout",
     });
     expect(reset).toHaveBeenCalledOnce();
+    rendererLocalCommitIngress.admitAddressCheckpoint(
+      {
+        deliveryId: "e".repeat(64),
+        recipientLeaseId: "d".repeat(64),
+        deliveryAddress: address,
+      },
+      { storeEpoch: "epoch-atom-observers", commitSeq: 4 },
+    );
+    expect(reset).toHaveBeenCalledTimes(2);
     expect(invoke).toHaveBeenCalledTimes(1);
   } finally {
     releaseFirst();

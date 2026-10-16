@@ -5,13 +5,16 @@ import * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
 import { TestClock } from "effect/testing";
 import { assert, it } from "@effect/vitest";
-import type {
-  AuthorizedRecipientLease,
-  DeliveryAddress,
-  RecipientDeliveryEnvelope,
+import {
+  RECIPIENT_DELIVERY_VERSION,
+  type AuthorizedRecipientLease,
+  type DeliveryAddress,
+  type RecipientDeliveryEnvelope,
 } from "../../shared/recipient-delivery";
 import type { ProjectionScope } from "../../shared/projection-stream";
 import { createCoreLocalCommitFixture } from "../core-client/testing/local-commit-fixture";
+import { RendererLocalCommitIngress } from "../../renderer/lib/local-commit-ingress";
+import { ProjectionInvalidationRegistry } from "../../renderer/lib/projection-invalidation-registry";
 import {
   make,
   ProjectionAudienceRuntimeError,
@@ -76,7 +79,7 @@ const acknowledge = (
   envelope: RecipientDeliveryEnvelope,
 ) =>
   runtime.admit(targetId, {
-    version: 3,
+    version: RECIPIENT_DELIVERY_VERSION,
     deliveryId: envelope.deliveryId,
     outcome: "ack",
   });
@@ -101,6 +104,230 @@ const subscribeReady = (
     return subscription;
   });
 
+it.effect(
+  "checks every advancing subscription floor through renderer ingress without resetting covered reads",
+  () =>
+    Effect.gen(function* () {
+      const harness = yield* makeHarness();
+      const target = sender();
+      const ingress = new RendererLocalCommitIngress();
+      const registry = new ProjectionInvalidationRegistry({
+        subscribeProjection: (scope, listener) => ingress.subscribeProjection(scope, listener),
+      });
+      const fences: number[] = [];
+      const reads: number[] = [];
+      let cursor = { storeEpoch: "epoch-1", commitSeq: 1 };
+      registry.register({
+        scope: { kind: "project", libraryId: "library-1", projectId: "project-1" },
+        consumerKey: "covered-board",
+        getDependencies: () => ({ aggregate: true }),
+        getCursor: () => cursor,
+        fence: (message) => fences.push(message.stream.commitSeq),
+        invalidate: (message) => {
+          reads.push(message.stream.commitSeq);
+          cursor = message.stream;
+        },
+      });
+      yield* harness.runtime.subscribe(target, address("project-1"));
+      yield* harness.runtime.installLeases([lease("project-1")], cursor, [], "stream_gap", [
+        address("project-1"),
+      ]);
+      const first = harness.sent.at(-1)!.envelope;
+      assert.strictEqual(first.payload.kind, "checkpoint");
+      if (first.payload.kind !== "checkpoint") return yield* Effect.die("Expected checkpoint");
+      ingress.admitAddressCheckpoint(first, first.payload.stream);
+      assert.deepEqual(fences, []);
+
+      // Commit 2 races the first checkpoint ACK, so the next control must repair it.
+      assert.strictEqual((yield* harness.runtime.publish(packet(2))).fenced, 1);
+      assert.lengthOf(harness.sent, 1);
+      assert.isTrue(yield* acknowledge(harness.runtime, target.id, first));
+      const second = harness.sent.at(-1)!.envelope;
+      assert.strictEqual(second.payload.kind, "checkpoint");
+      assert.notStrictEqual(second.deliveryId, first.deliveryId);
+      if (second.payload.kind !== "checkpoint") return yield* Effect.die("Expected checkpoint");
+      ingress.admitAddressCheckpoint(second, second.payload.stream);
+      assert.deepEqual(fences, [2]);
+      yield* Effect.promise(() => new Promise<void>((resolve) => setTimeout(resolve, 0)));
+      assert.deepEqual(reads, [2]);
+      assert.deepEqual(cursor, { storeEpoch: "epoch-1", commitSeq: 2 });
+      assert.isTrue(yield* acknowledge(harness.runtime, target.id, second));
+      assert.strictEqual((yield* harness.runtime.publish(packet(3))).sent, 1);
+      registry.dispose();
+      yield* Scope.close(harness.ownerScope, Exit.void);
+    }),
+);
+
+it.effect("keeps late checkpoint and reset ACKs from clearing a newer same-floor recovery", () =>
+  Effect.gen(function* () {
+    const harness = yield* makeHarness();
+    const target = sender();
+    const floor = { storeEpoch: "epoch-1", commitSeq: 7 };
+    yield* harness.runtime.subscribe(target, address("project-1"));
+    yield* harness.runtime.installLeases([lease("project-1")], floor, [], "stream_gap", [
+      address("project-1"),
+    ]);
+    const checkpoint = harness.sent.at(-1)!.envelope;
+    yield* harness.runtime.reset(floor, "stream_gap");
+    assert.isTrue(yield* acknowledge(harness.runtime, target.id, checkpoint));
+    const firstReset = harness.sent.at(-1)!.envelope;
+    assert.strictEqual(firstReset.payload.kind, "reset");
+    assert.notStrictEqual(firstReset.deliveryId, checkpoint.deliveryId);
+
+    yield* harness.runtime.reset(floor, "stream_gap");
+    assert.isTrue(yield* acknowledge(harness.runtime, target.id, firstReset));
+    const secondReset = harness.sent.at(-1)!.envelope;
+    assert.strictEqual(secondReset.payload.kind, "reset");
+    assert.notStrictEqual(secondReset.deliveryId, firstReset.deliveryId);
+    assert.strictEqual((yield* harness.runtime.diagnostics).fencedRecipients, 1);
+    assert.isTrue(yield* acknowledge(harness.runtime, target.id, secondReset));
+    assert.strictEqual((yield* harness.runtime.diagnostics).fencedRecipients, 0);
+
+    const invalidPacket = { ...packet(7), packet_version: 4 } as unknown as ReturnType<
+      typeof packet
+    >;
+    yield* harness.runtime.publish(invalidPacket);
+    const integrityReset = harness.sent.at(-1)!.envelope;
+    yield* harness.runtime.publish(invalidPacket);
+    assert.isTrue(yield* acknowledge(harness.runtime, target.id, integrityReset));
+    const nextIntegrityReset = harness.sent.at(-1)!.envelope;
+    assert.notStrictEqual(nextIntegrityReset.deliveryId, integrityReset.deliveryId);
+    assert.strictEqual((yield* harness.runtime.diagnostics).fencedRecipients, 1);
+    yield* Scope.close(harness.ownerScope, Exit.void);
+  }),
+);
+
+it.effect(
+  "retains checkpoint obligations across lease churn and forces a reset across epochs",
+  () =>
+    Effect.gen(function* () {
+      const harness = yield* makeHarness();
+      const target = sender();
+      yield* harness.runtime.subscribe(target, address("project-1"));
+      yield* harness.runtime.installLeases(
+        [lease("project-1")],
+        { storeEpoch: "epoch-1", commitSeq: 4 },
+        [],
+        "stream_gap",
+        [address("project-1")],
+      );
+      const first = harness.sent.at(-1)!.envelope;
+      yield* harness.runtime.installLeases(
+        [lease("project-1", "b")],
+        { storeEpoch: "epoch-1", commitSeq: 5 },
+        [],
+        "stream_gap",
+        [address("project-1")],
+      );
+      const replacement = harness.sent.at(-1)!.envelope;
+      // Commit 5 was only observed by the replacement barrier, not the old queue.
+      assert.deepEqual(replacement.payload, {
+        kind: "checkpoint",
+        stream: { storeEpoch: "epoch-1", commitSeq: 5 },
+      });
+      assert.isFalse(yield* acknowledge(harness.runtime, target.id, first));
+
+      yield* harness.runtime.installLeases(
+        [lease("project-1", "c")],
+        { storeEpoch: "epoch-2", commitSeq: 0 },
+        [],
+        "stream_gap",
+        [address("project-1")],
+      );
+      const newEpoch = harness.sent.at(-1)!.envelope;
+      assert.strictEqual(newEpoch.payload.kind, "reset");
+      if (newEpoch.payload.kind === "reset") {
+        assert.strictEqual(newEpoch.payload.reset.store_epoch, "epoch-2");
+        assert.strictEqual(newEpoch.payload.reset.required_commit_seq, 0);
+        assert.strictEqual(newEpoch.payload.reset.reason, "store_epoch_replacement");
+      }
+      assert.isFalse(yield* acknowledge(harness.runtime, target.id, replacement));
+      assert.isTrue(yield* acknowledge(harness.runtime, target.id, newEpoch));
+      yield* Scope.close(harness.ownerScope, Exit.void);
+    }),
+);
+
+it.effect(
+  "keeps the current epoch while retiring old pending deliveries and retrying recovery",
+  () =>
+    Effect.gen(function* () {
+      const harness = yield* makeHarness({ ackTimeout: "50 millis" });
+      const target = sender();
+      yield* subscribeReady(harness, target);
+      yield* harness.runtime.publish(packet(9));
+      yield* harness.runtime.reset(
+        { storeEpoch: "epoch-2", commitSeq: 0 },
+        "store_epoch_replacement",
+      );
+      const reset = harness.sent.at(-1)!.envelope;
+      assert.strictEqual(reset.payload.kind, "reset");
+      if (reset.payload.kind === "reset") {
+        assert.strictEqual(reset.payload.reset.store_epoch, "epoch-2");
+        assert.strictEqual(reset.payload.reset.required_commit_seq, 0);
+      }
+      yield* TestClock.adjust("50 millis");
+      assert.deepEqual(harness.sent.at(-1)!.envelope, reset);
+      yield* Scope.close(harness.ownerScope, Exit.void);
+    }),
+);
+
+it.effect(
+  "advances retained subscription floors with commits and repairs even without recipients",
+  () =>
+    Effect.gen(function* () {
+      const harness = yield* makeHarness();
+      const target = sender();
+      const subscription = yield* subscribeReady(harness, target);
+      yield* subscription.release;
+      yield* harness.runtime.publish(packet(9));
+      yield* harness.runtime.publish(packet(5));
+      yield* harness.runtime.installLeases(
+        [lease("project-1", "b")],
+        { storeEpoch: "epoch-1", commitSeq: 7 },
+        [],
+        "stream_gap",
+      );
+      yield* harness.runtime.subscribe(target, address("project-1"));
+      assert.deepEqual(harness.sent.at(-1)!.envelope.payload, {
+        kind: "checkpoint",
+        stream: { storeEpoch: "epoch-1", commitSeq: 9 },
+      });
+      yield* harness.runtime.releaseSender(target.id);
+      yield* harness.runtime.reset({ storeEpoch: "epoch-1", commitSeq: 11 }, "stream_gap");
+      yield* harness.runtime.subscribe(target, address("project-1"));
+      assert.deepEqual(harness.sent.at(-1)!.envelope.payload, {
+        kind: "checkpoint",
+        stream: { storeEpoch: "epoch-1", commitSeq: 11 },
+      });
+      yield* Scope.close(harness.ownerScope, Exit.void);
+    }),
+);
+
+it.effect("retries the same checkpoint identity after a failed send", () =>
+  Effect.gen(function* () {
+    const attempts: RecipientDeliveryEnvelope[] = [];
+    const harness = yield* makeHarness({
+      send: (_target, _channel, envelope) => {
+        attempts.push(envelope);
+        return attempts.length > 1;
+      },
+    });
+    yield* harness.runtime.subscribe(sender(), address("project-1"));
+    yield* harness.runtime.installLeases(
+      [lease("project-1")],
+      { storeEpoch: "epoch-1", commitSeq: 1 },
+      [],
+      "stream_gap",
+      [address("project-1")],
+    );
+    yield* TestClock.adjust("10 millis");
+    assert.lengthOf(attempts, 2);
+    assert.deepEqual(attempts[0], attempts[1]);
+    assert.strictEqual(attempts[0]!.payload.kind, "checkpoint");
+    yield* Scope.close(harness.ownerScope, Exit.void);
+  }),
+);
+
 it.effect("reuses the active Core lease after all windows briefly release an address", () =>
   Effect.gen(function* () {
     const harness = yield* makeHarness();
@@ -112,7 +339,7 @@ it.effect("reuses the active Core lease after all windows briefly release an add
     const next = sender(2);
     yield* harness.runtime.subscribe(next, address("project-1"));
     const reset = harness.sent.at(-1)!.envelope;
-    assert.strictEqual(reset.payload.kind, "reset");
+    assert.strictEqual(reset.payload.kind, "checkpoint");
     assert.isTrue(yield* acknowledge(harness.runtime, next.id, reset));
     assert.strictEqual((yield* harness.runtime.publish(packet(1))).sent, 1);
 
@@ -120,7 +347,7 @@ it.effect("reuses the active Core lease after all windows briefly release an add
     harness.sent.length = 0;
     yield* harness.runtime.subscribe(first, address("project-1"));
     const reopenedReset = harness.sent.at(-1)!.envelope;
-    assert.strictEqual(reopenedReset.payload.kind, "reset");
+    assert.strictEqual(reopenedReset.payload.kind, "checkpoint");
     assert.isTrue(yield* acknowledge(harness.runtime, first.id, reopenedReset));
     assert.strictEqual((yield* harness.runtime.publish(packet(2))).sent, 1);
 
@@ -155,7 +382,7 @@ it.effect("tracks a complete packet until the exact renderer ACK", () =>
     }
     assert.isFalse(
       yield* harness.runtime.admit(target.id, {
-        version: 3,
+        version: RECIPIENT_DELIVERY_VERSION,
         deliveryId: "b".repeat(64),
         outcome: "ack",
       }),
@@ -217,7 +444,7 @@ it.effect("turns NACK and ACK timeout into an address reset", () =>
     const packetDelivery = harness.sent[0]!.envelope;
     assert.isTrue(
       yield* harness.runtime.admit(target.id, {
-        version: 3,
+        version: RECIPIENT_DELIVERY_VERSION,
         deliveryId: packetDelivery.deliveryId,
         outcome: "nack",
         reason: "capacity",
@@ -409,10 +636,12 @@ it.effect("binds a later recipient when its address is already leased", () =>
     const secondReset = harness.sent[0]!;
     assert.strictEqual(secondReset.senderId, 2);
     assert.strictEqual(secondReset.envelope.recipientLeaseId, "c".repeat(64));
-    assert.strictEqual(secondReset.envelope.payload.kind, "reset");
-    if (secondReset.envelope.payload.kind === "reset") {
-      assert.strictEqual(secondReset.envelope.payload.reset.required_commit_seq, 4);
-      assert.strictEqual(secondReset.envelope.payload.reset.reason, "stream_gap");
+    assert.strictEqual(secondReset.envelope.payload.kind, "checkpoint");
+    if (secondReset.envelope.payload.kind === "checkpoint") {
+      assert.deepEqual(secondReset.envelope.payload.stream, {
+        storeEpoch: "epoch-1",
+        commitSeq: 4,
+      });
     }
     assert.isTrue(yield* acknowledge(harness.runtime, second.id, harness.sent.at(-1)!.envelope));
     harness.sent.length = 0;

@@ -1,6 +1,9 @@
 import { describe, expect, test, vi } from "vite-plus/test";
 
-import type { RecipientDeliveryEnvelope } from "../../shared/recipient-delivery";
+import {
+  RECIPIENT_DELIVERY_VERSION,
+  type RecipientDeliveryEnvelope,
+} from "../../shared/recipient-delivery";
 import type { ProjectionScope, ProjectionStreamMessage } from "../../shared/projection-stream";
 import { createCoreLocalCommitFixture } from "../../main/core-client/testing/local-commit-fixture";
 import {
@@ -51,7 +54,7 @@ const packet = (commitSeq: number) =>
   });
 
 const envelope = (commitSeq: number): RecipientDeliveryEnvelope => ({
-  version: 3,
+  version: RECIPIENT_DELIVERY_VERSION,
   deliveryId: "a".repeat(64),
   recipientLeaseId: "c".repeat(64),
   deliveryAddress: address,
@@ -81,6 +84,60 @@ const harness = () => {
 };
 
 describe("Electron renderer recipient delivery", () => {
+  test("ACKs validated subscription checkpoints and rejects malformed floors and reused identities", async () => {
+    const target = harness();
+    const observed: ProjectionStreamMessage[] = [];
+    const release = target.transport.subscribeProjectionStream(scope, (message) =>
+      observed.push(message),
+    );
+    const checkpoint: RecipientDeliveryEnvelope = {
+      version: RECIPIENT_DELIVERY_VERSION,
+      deliveryId: "d".repeat(64),
+      recipientLeaseId: "c".repeat(64),
+      deliveryAddress: address,
+      payload: { kind: "checkpoint", stream: { storeEpoch: "epoch-1", commitSeq: 41 } },
+    };
+    try {
+      target.deliver(checkpoint);
+      await vi.waitFor(() =>
+        expect(target.invoke).toHaveBeenCalledWith("recipient-delivery:admit", {
+          version: RECIPIENT_DELIVERY_VERSION,
+          deliveryId: checkpoint.deliveryId,
+          outcome: "ack",
+        }),
+      );
+      expect(observed).toEqual([
+        { version: 2, kind: "checkpoint", scope, stream: { storeEpoch: "epoch-1", commitSeq: 41 } },
+      ]);
+      target.invoke.mockClear();
+      target.deliver({ ...checkpoint, deliveryAddress: { ...address, project_id: "project-2" } });
+      await vi.waitFor(() =>
+        expect(target.invoke).toHaveBeenCalledWith("recipient-delivery:admit", {
+          version: RECIPIENT_DELIVERY_VERSION,
+          deliveryId: checkpoint.deliveryId,
+          outcome: "nack",
+          reason: "invalid_message",
+        }),
+      );
+      target.deliver({
+        ...checkpoint,
+        deliveryId: "e".repeat(64),
+        payload: { kind: "checkpoint", stream: { storeEpoch: "epoch-1", commitSeq: -1 } },
+      });
+      await vi.waitFor(() =>
+        expect(target.invoke).toHaveBeenCalledWith("recipient-delivery:admit", {
+          version: RECIPIENT_DELIVERY_VERSION,
+          deliveryId: "e".repeat(64),
+          outcome: "nack",
+          reason: "invalid_message",
+        }),
+      );
+      expect(observed).toHaveLength(1);
+    } finally {
+      release();
+    }
+  });
+
   test("ACKs only after a complete packet entered process-wide admission", async () => {
     const target = harness();
     const observed: ProjectionStreamMessage[] = [];
@@ -97,7 +154,7 @@ describe("Electron renderer recipient delivery", () => {
         stream: { commitSeq: 41 },
       });
       expect(target.invoke).toHaveBeenCalledWith("recipient-delivery:admit", {
-        version: 3,
+        version: RECIPIENT_DELIVERY_VERSION,
         deliveryId: "a".repeat(64),
         outcome: "ack",
       });
@@ -120,7 +177,7 @@ describe("Electron renderer recipient delivery", () => {
 
     await vi.waitFor(() => {
       expect(target.invoke).toHaveBeenCalledWith("recipient-delivery:admit", {
-        version: 3,
+        version: RECIPIENT_DELIVERY_VERSION,
         deliveryId: "a".repeat(64),
         outcome: "nack",
         reason: "invalid_message",

@@ -52,7 +52,6 @@ interface ConsumerState {
   running: boolean;
   pending: ProjectionInvalidationCause | null;
   required: ProjectionInvalidationCause | null;
-  initialCheckpointObserved: boolean;
 }
 
 interface ScopeState {
@@ -93,17 +92,19 @@ export class ProjectionInvalidationRegistry {
     const token = Symbol(registration.consumerKey);
     consumer.registrations.set(token, registration);
 
+    // A synchronous subscribe delivery already reaches this consumer.
+    const replayCursor = scope.latestCursor;
     if (!scope.unsubscribeProjection) {
       scope.unsubscribeProjection = this.#subscribeProjection(scope.scope, (message) => {
         this.#handle(scope, message);
       });
     }
-    if (!existingConsumer && scope.latestCursor) {
+    if (!existingConsumer && replayCursor) {
       this.#handleConsumer(consumer, {
         version: 2,
         kind: "checkpoint",
         scope: scope.scope,
-        stream: scope.latestCursor,
+        stream: replayCursor,
       });
     }
 
@@ -140,7 +141,6 @@ export class ProjectionInvalidationRegistry {
       running: false,
       pending: null,
       required: null,
-      initialCheckpointObserved: false,
     };
     consumer.scheduler = new BoundedBurstScheduler({
       ...this.#effectRepairBurst,
@@ -168,7 +168,7 @@ export class ProjectionInvalidationRegistry {
     for (const runtime of runtimes) {
       if (message.kind === "effect") runtime.accept(message.delivery);
       if (message.kind === "checkpoint") {
-        runtime.observeInitialCheckpoint({
+        runtime.observeSubscriptionCheckpoint({
           storeEpoch: message.stream.storeEpoch,
           scannedThroughCommitSeq: message.stream.commitSeq,
         });
@@ -183,10 +183,6 @@ export class ProjectionInvalidationRegistry {
 
     const registration = registrations[0];
     if (!registration) return;
-    if (message.kind === "checkpoint") {
-      if (consumer.initialCheckpointObserved) return;
-      consumer.initialCheckpointObserved = true;
-    }
     if (!this.#shouldInvalidate(registration, message)) return;
     if (message.kind === "checkpoint" || message.kind === "reset") {
       registration.fence?.(message);

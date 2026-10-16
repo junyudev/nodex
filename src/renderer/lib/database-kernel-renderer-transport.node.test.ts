@@ -1,3 +1,4 @@
+import { RECIPIENT_DELIVERY_VERSION } from "../../shared/recipient-delivery";
 import { describe, expect, test, vi } from "vite-plus/test";
 import { createCoreLocalCommitFixture } from "../../main/core-client/testing/local-commit-fixture";
 import {
@@ -65,7 +66,7 @@ describe("Database event renderer IPC", () => {
       ],
     });
     recipient.listener?.({
-      version: 3,
+      version: RECIPIENT_DELIVERY_VERSION,
       deliveryId: "a".repeat(64),
       recipientLeaseId: "c".repeat(64),
       deliveryAddress: address,
@@ -88,7 +89,7 @@ describe("Database event renderer IPC", () => {
         channel: "recipient-delivery:admit",
         args: [
           {
-            version: 3,
+            version: RECIPIENT_DELIVERY_VERSION,
             deliveryId: "a".repeat(64),
             outcome: "ack",
           },

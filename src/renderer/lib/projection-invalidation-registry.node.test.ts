@@ -286,15 +286,18 @@ describe("ProjectionInvalidationRegistry", () => {
     expect(stream.listenerCount()).toBe(0);
   });
 
-  test("uses only the initial checkpoint to close the read-subscribe race", async () => {
+  test("checks each subscription checkpoint against the current read coverage", async () => {
     const stream = harness();
-    const invalidate = vi.fn();
+    let cursor = { storeEpoch: "epoch-1", commitSeq: 1 };
+    const invalidate = vi.fn(async (cause: ProjectionInvalidationCause) => {
+      cursor = cause.stream;
+    });
     const fence = vi.fn();
     stream.registry.register({
       scope,
       consumerKey: "query",
       getDependencies: () => ({ pageIds: ["page-1"] }),
-      getCursor: () => ({ storeEpoch: "epoch-1", commitSeq: 1 }),
+      getCursor: () => cursor,
       fence,
       invalidate,
     });
@@ -304,12 +307,79 @@ describe("ProjectionInvalidationRegistry", () => {
       scope,
       stream: { storeEpoch: "epoch-1", commitSeq },
     });
+    stream.publish(checkpoint(1));
+    await flush();
+    expect(fence).not.toHaveBeenCalled();
+    expect(invalidate).not.toHaveBeenCalled();
+
     stream.publish(checkpoint(2));
     expect(fence).toHaveBeenCalledOnce();
+    await flush();
     stream.publish(checkpoint(3));
     await flush();
-    expect(invalidate).toHaveBeenCalledOnce();
+    expect(invalidate).toHaveBeenCalledTimes(2);
+    expect(fence).toHaveBeenCalledTimes(2);
+    expect(cursor.commitSeq).toBe(3);
+
+    stream.publish(checkpoint(3));
+    stream.publish(checkpoint(2));
+    await flush();
+    expect(invalidate).toHaveBeenCalledTimes(2);
+    expect(fence).toHaveBeenCalledTimes(2);
+    stream.registry.dispose();
+  });
+
+  test("does not replay a checkpoint delivered synchronously while subscribing", async () => {
+    const registry = new ProjectionInvalidationRegistry({
+      subscribeProjection: (_scope, listener) => {
+        listener({
+          version: 2,
+          kind: "checkpoint",
+          scope,
+          stream: { storeEpoch: "epoch-1", commitSeq: 2 },
+        });
+        return () => undefined;
+      },
+    });
+    const fence = vi.fn();
+    const invalidate = vi.fn();
+    registry.register({
+      scope,
+      consumerKey: "query",
+      getDependencies: () => ({ pageIds: ["page-1"] }),
+      getCursor: () => null,
+      fence,
+      invalidate,
+    });
     expect(fence).toHaveBeenCalledOnce();
+    await flush();
+    expect(invalidate).toHaveBeenCalledOnce();
+    registry.dispose();
+  });
+
+  test("still fences a recovery reset whose floor is already covered", async () => {
+    const stream = harness();
+    const invalidate = vi.fn();
+    const fence = vi.fn();
+    stream.registry.register({
+      scope,
+      consumerKey: "query",
+      getDependencies: () => ({ pageIds: ["page-1"] }),
+      getCursor: () => ({ storeEpoch: "epoch-1", commitSeq: 3 }),
+      fence,
+      invalidate,
+    });
+    stream.publish({
+      version: 2,
+      kind: "reset",
+      scope,
+      stream: { storeEpoch: "epoch-1", commitSeq: 3 },
+      reason: "event_gap",
+    });
+    expect(fence).toHaveBeenCalledOnce();
+    await flush();
+    expect(invalidate).toHaveBeenCalledOnce();
+    stream.registry.dispose();
   });
 
   test("replays the latest scope position as a checkpoint for a new consumer", async () => {
