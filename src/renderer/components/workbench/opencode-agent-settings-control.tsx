@@ -2,6 +2,10 @@ import {
   defaultOpenCodeInstance,
   type OpenCodeAgentInstanceConfig,
 } from "../../../shared/opencode-agent-settings";
+import { OpenCodeExecutableStatus } from "../../features/opencode-setup/opencode-executable-status";
+import { usesHostOpenCodeExecutable } from "../../features/opencode-setup/opencode-setup-model";
+import type { OpenCodeSetupOwner } from "../../features/opencode-setup/opencode-setup-owner";
+import { openCodeSetupOwner } from "../../features/opencode-setup/use-opencode-setup";
 import { OPENCODE_ENVIRONMENT_POLICY } from "../../lib/agent-environment-policies";
 import {
   readOpenCodeAgentSettings,
@@ -40,9 +44,11 @@ const environmentSuggestions = [
 export function OpenCodeAgentSettingsControl({
   open,
   runtime = defaultRuntime,
+  setup = openCodeSetupOwner,
 }: {
   readonly open: boolean;
   readonly runtime?: OpenCodeAgentSettingsRuntime;
+  readonly setup?: OpenCodeSetupOwner;
 }) {
   return (
     <AgentInstanceSettingsControl
@@ -54,6 +60,15 @@ export function OpenCodeAgentSettingsControl({
       createInstance={createInstance}
       environmentPolicy={OPENCODE_ENVIRONMENT_POLICY}
       environmentSuggestions={environmentSuggestions}
+      // Host status describes a saved local default that the unsaved draft still keeps; custom
+      // paths, servers and an explicit PATH own their resolution.
+      executableStatus={({ saved, draft, environment }) =>
+        saved &&
+        usesHostOpenCodeExecutable(saved) &&
+        usesHostOpenCodeExecutable({ ...draft, environment }) ? (
+          <OpenCodeExecutableStatus owner={setup} open={open} />
+        ) : null
+      }
       fields={({ draft, disabled, change }) => (
         <>
           <NodexSettingsRow label="Profile directory">

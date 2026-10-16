@@ -4,6 +4,9 @@ import * as CodexThreadHandoffIpc from "../ipc/handlers/CodexThreadHandoffIpc";
 import * as Layer from "effect/Layer";
 import * as WorkbenchAgentIpc from "../ipc/handlers/WorkbenchAgentIpc";
 import * as AppUpdateIpc from "../ipc/handlers/AppUpdateIpc";
+import * as OpenCodeSetupIpc from "../ipc/handlers/OpenCodeSetupIpc";
+import * as OpenCodeSetup from "../host-runtime/OpenCodeSetup";
+import * as OpenCodeInstallPlatform from "../platform/node/OpenCodeInstallPlatform";
 import * as ApplicationLifecycleIpc from "../ipc/handlers/ApplicationLifecycleIpc";
 import * as ApplicationSyncIpc from "../ipc/handlers/ApplicationSyncIpc";
 import * as ApplicationWindowIpc from "../ipc/handlers/ApplicationWindowIpc";
@@ -63,6 +66,9 @@ const terminalIngress = TerminalIpc.live.pipe(Layer.provideMerge(TerminalProject
 export const live = Layer.mergeAll(
   WorkbenchAgentIpc.live,
   AppUpdateIpc.live,
+  OpenCodeSetupIpc.live.pipe(
+    Layer.provide(OpenCodeSetup.live.pipe(Layer.provide(OpenCodeInstallPlatform.nodeLive))),
+  ),
   AvatarOverlayIpc.live,
   SessionPolicyRuntime.live,
   RemoteHostedPipIpc.live,

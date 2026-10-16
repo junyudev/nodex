@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import type { AgentBackendBinding } from "../../../../shared/agent-backend";
 import type { AgentModelSelection } from "../../../../shared/agent-model-catalog";
 import type { ExternalAgentBinding } from "../../../../shared/agent-model-catalog";
@@ -56,6 +56,22 @@ export interface AgentModelPickerEntry {
   readonly selection: AgentModelSelection;
 }
 
+/** A runtime whose models become available after setup, offered beside the model list. */
+export interface AgentModelSetupPresentation {
+  readonly kind: AgentBackendBinding["kind"];
+  readonly label: string;
+  /** The next step or live state, such as `Install` or `42%`. */
+  readonly hint: string;
+  readonly tone: "default" | "danger";
+  /** `open` runs after the menu closes; `settings` routes through `manage`. */
+  readonly action:
+    | {
+        readonly kind: "open";
+        readonly open: (port: { readonly showModels: () => void }) => void;
+      }
+    | { readonly kind: "settings" };
+}
+
 /** The composer chooses one complete runtime/model tuple; options belong to the selected runtime. */
 export interface AgentModelCatalogPresentation {
   readonly entries: readonly AgentModelPickerEntry[];
@@ -71,6 +87,7 @@ export interface AgentModelCatalogPresentation {
   readonly changeConfig?: (id: string, value: string | boolean) => Promise<void>;
   readonly modes?: AgentSessionModeState | null;
   readonly changeMode?: (modeId: string) => Promise<void>;
+  readonly setup?: AgentModelSetupPresentation | null;
 }
 
 function OptionRow({
@@ -130,8 +147,11 @@ export function AgentModelPicker(
   const [pending, setPending] = useState(false);
   const [showAllModels, setShowAllModels] = useState(false);
   const [uncontrolledOpen, setUncontrolledOpen] = useState(false);
+  // A footer action that opens another surface waits until this menu has closed.
+  const afterClose = useRef<(() => void) | null>(null);
   const open = props.open ?? uncontrolledOpen;
   const changeOpen = props.onOpenChange ?? setUncontrolledOpen;
+  const setup = catalog.setup ?? null;
   const isCodex = selection.kind === "codex";
   const native = provider?.nativeIntelligence;
   const active = catalog.entries.find(
@@ -247,6 +267,12 @@ export function AgentModelPicker(
       disabled={props.disabled}
       open={open}
       onOpenChange={changeOpen}
+      finalFocus={() => {
+        const action = afterClose.current;
+        afterClose.current = null;
+        action?.();
+        return true;
+      }}
       side={props.triggerStyle === "settings" ? "bottom" : "top"}
       align="end"
       sideOffset={INTELLIGENCE_SELECTOR_SIDE_OFFSET_PX}
@@ -287,13 +313,43 @@ export function AgentModelPicker(
       }}
       footer={
         <>
+          {hasHiddenModels || setup ? <NodexDropdownSeparator /> : null}
           {hasHiddenModels ? (
-            <>
-              <NodexDropdownSeparator />
-              <NodexDropdownActionRow disabled={pending} onClick={() => setShowAllModels(true)}>
-                Show all models
-              </NodexDropdownActionRow>
-            </>
+            <NodexDropdownActionRow disabled={pending} onClick={() => setShowAllModels(true)}>
+              Show all models
+            </NodexDropdownActionRow>
+          ) : null}
+          {setup ? (
+            <NodexDropdownActionRow
+              className="items-center gap-1.5"
+              disabled={pending}
+              onClick={() => {
+                const { action } = setup;
+                afterClose.current =
+                  action.kind === "settings"
+                    ? catalog.manage
+                    : () =>
+                        action.open({
+                          // Setup returns to the default free-model view; the choice is unchanged.
+                          showModels: () => {
+                            setShowAllModels(false);
+                            changeOpen(true);
+                          },
+                        });
+                changeOpen(false);
+              }}
+            >
+              <AgentProviderIcon kind={setup.kind} className="size-3.5 text-token-text-secondary" />
+              <span className="min-w-0 truncate">{setup.label}</span>{" "}
+              <span
+                className={cn(
+                  "ms-auto shrink-0 ps-2 text-xs tabular-nums",
+                  setup.tone === "danger" ? "text-danger" : "text-token-description-foreground",
+                )}
+              >
+                {setup.hint}
+              </span>
+            </NodexDropdownActionRow>
           ) : null}
           {hasOptions ? <NodexDropdownSeparator /> : null}
           {(isCodex || selection.kind === "claude") &&

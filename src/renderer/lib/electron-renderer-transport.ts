@@ -364,6 +364,14 @@ export function createElectronRendererTransport(bridge: ElectronRendererBridge):
     subscribeAgentSettingsChanges(callback) {
       return bridge.on("agent-settings-changed", callback);
     },
+    subscribeOpenCodeSetupChanges(callback) {
+      return bridge.on("opencode-setup:changed", (...args: unknown[]) => {
+        const payload = args[0] as
+          | import("../../shared/opencode-setup").OpenCodeSetupState
+          | undefined;
+        if (typeof payload?.revision === "number") callback(payload);
+      });
+    },
     subscribeClaudeAgentSettingsChanges(callback) {
       return bridge.on("claude-agent-settings-changed", callback);
     },

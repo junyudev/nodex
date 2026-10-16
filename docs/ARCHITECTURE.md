@@ -765,6 +765,10 @@ native configuration, authentication and history, while each live chat owns its 
 application-tool claims. External endpoint connections retain no local process or application-tool
 configuration authority.
 
+OpenCode executable setup is a scoped Main host capability. It uses the official distribution in
+the operating-system user environment; installing an executable never changes instance Profile
+ownership or a conversation's runtime binding. See [Agent Backend Behavior](product-specs/agent-backend-behavior.md).
+
 Native conversation discovery belongs to Main's backend-neutral catalog. Provider Adapters read
 native metadata; Core atomically owns connection to a Nodex Session, destination and immutable
 native recovery identity. Authentication location never substitutes for history identity. See

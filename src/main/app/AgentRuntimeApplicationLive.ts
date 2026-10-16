@@ -68,6 +68,7 @@ import {
 import { acquireAgentRuntimeProcess } from "../platform/node/AgentRuntimeProcess";
 import { AcpAgentLaunchProbe, live as acpProbeLayer } from "../platform/node/AcpAgentLaunchProbe";
 import { shellQuote } from "../platform/node/NodexCliShell";
+import { openCodeExecutableEnvironment } from "../platform/node/OpenCodeExecutable";
 import { ApplicationSettings } from "../settings/ApplicationSettings";
 import { CodexApplicationEventHub } from "../codex-application/CodexApplicationEventHub";
 import { CodexRendererPresentationRegistry } from "../codex-application/CodexRendererPresentationRegistry";
@@ -326,7 +327,13 @@ const supervisor = Layer.effectContext(
           : null;
         const profile = launch?.profileDirectory;
         const variables = {
-          ...(launch?.environment ?? {}),
+          ...openCodeExecutableEnvironment({
+            binaryPath: configured.binaryPath,
+            inheritedEnvironment: environment,
+            environment: launch?.environment ?? {},
+            homeDirectory: config.homeDirectory,
+            platform: config.platform,
+          }),
           ...(profile
             ? {
                 XDG_DATA_HOME: join(profile, "data"),

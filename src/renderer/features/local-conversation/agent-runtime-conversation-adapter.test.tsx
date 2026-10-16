@@ -22,6 +22,9 @@ import { CodexThreadSettingsProvider } from "../../lib/use-codex-thread-settings
 import { CodexServiceTierSettingsProvider } from "../../lib/use-codex-service-tier-settings";
 import { THREAD_SETTINGS_STORAGE_KEY } from "../../lib/codex-thread-settings";
 import { CODEX_DEFAULT_SERVICE_TIER_STORAGE_KEY } from "../../lib/codex-service-tier-settings";
+import { openCodeSetupRuntime } from "../../lib/opencode-setup-runtime";
+import type { OpenCodeSetupState } from "../../../shared/opencode-setup";
+import { readyExecutable, setupState } from "../opencode-setup/opencode-setup.test-fixtures";
 
 function RuntimeWorkbench({ children }: PropsWithChildren) {
   const [store] = useState(createMaitaiStore);
@@ -774,5 +777,83 @@ describe("Agent Runtime conversation adapter", () => {
       await Promise.resolve();
     });
     expect(release).toHaveBeenCalledOnce();
+  });
+});
+
+describe("Host OpenCode setup", () => {
+  it("reloads the catalog once OpenCode is ready without replacing the chosen model", async () => {
+    const binding = { kind: "opencode", instanceConfigId: "opencode-default" } as const;
+    const missingOpenCode = {
+      ...provider,
+      instanceId: agentRuntimeProviderId(binding),
+      driver: "opencode",
+      displayName: "OpenCode",
+      installed: false,
+      status: "error",
+      models: [],
+    } as unknown as AgentRuntimeProvider;
+    const readyOpenCode = {
+      ...missingOpenCode,
+      installed: true,
+      status: "ready",
+      models: [
+        { slug: "opencode/glm-free", name: "GLM Free", isCustom: false, capabilities: null },
+      ],
+    } as unknown as AgentRuntimeProvider;
+    const catalog = vi
+      .spyOn(agentRuntimeRuntime, "catalog")
+      .mockResolvedValue([codexProvider, missingOpenCode]);
+    const publishSetup = new Set<(state: OpenCodeSetupState) => void>();
+    vi.spyOn(openCodeSetupRuntime, "read").mockResolvedValue(setupState(1));
+    vi.spyOn(openCodeSetupRuntime, "subscribe").mockImplementation((listener) => {
+      publishSetup.add(listener);
+      return () => {
+        publishSetup.delete(listener);
+      };
+    });
+    const configured = [
+      { binding, label: "OpenCode", enabled: true, usesHostExecutable: true },
+    ] as const;
+    const { result, unmount } = renderHook(
+      () =>
+        useAgentRuntimeConversationAdapter({
+          sessionId: "opencode-setup-draft",
+          projectId: "project",
+          modelProjectId: "project",
+          instances: configured,
+          onRefresh: async () => {},
+          onOpenThread: () => {},
+          ensureDraft: async () => ({ id: "opencode-setup-draft" }),
+        }),
+      { wrapper: SavedSettingsWorkbench },
+    );
+    await waitFor(() => expect(result.current.provider.modelCatalog?.setup?.hint).toBe("Install"));
+    await act(async () => {
+      await result.current.provider.modelCatalog!.choose({
+        binding: { kind: "codex" },
+        model: "gpt-mini",
+      });
+    });
+    expect(result.current.selectedModel).toBe("gpt-mini");
+
+    catalog.mockResolvedValue([codexProvider, readyOpenCode]);
+    await act(async () => {
+      for (const publish of publishSetup)
+        publish(
+          setupState(2, {
+            executable: readyExecutable(),
+            installation: { phase: "succeeded", log: { lines: [], progress: 1 } },
+          }),
+        );
+    });
+    await waitFor(() =>
+      expect(
+        result.current.provider.modelCatalog?.entries.map((entry) => entry.model.id),
+      ).toContain("opencode/glm-free"),
+    );
+    expect(catalog).toHaveBeenLastCalledWith({ refresh: true });
+    expect(result.current.provider.modelCatalog?.setup).toBeNull();
+    expect(result.current.selectedModel).toBe("gpt-mini");
+    await act(async () => unmount());
   });
 });

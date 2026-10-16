@@ -54,7 +54,7 @@ credentials are not imported from a login shell. Explicit PATH and profile overr
 remain authoritative. Nodex's Agent SDK and the selected Claude Code executable are
 updated independently; updating Nodex does not replace that executable.
 
-OpenCode discovery uses its native HTTP metadata connection and pinned SDK. It offers
+OpenCode discovery selects the native HTTP metadata protocol for OpenCode 1.x or 2.x. It offers
 models from connected providers and preserves exact provider/model identifiers,
 including model IDs containing slashes. Native model variants and primary agents
 supply the available controls. Discovery retains at most 32 shared connections with
@@ -68,6 +68,21 @@ native ID ends in `-free`, alongside models from other backends and the exact cu
 selection. **Show all models** reveals the remaining OpenCode models without changing
 the selection. This display rule does not restrict the execution catalog or replace a
 saved model choice. Availability and pricing remain with the native provider.
+
+OpenCode setup reuses an existing host installation. Installation starts only from an
+explicit user action and uses OpenCode's official installer in the operating-system
+user environment. The model menu and Settings open a command preview; only Install
+or Retry in that dialog starts the command. The executable remains available outside
+Nodex; native account, configuration and history isolation still follow each instance's Profile.
+Nodex owns installation progress and verifies the resulting executable before making
+it available to discovery without a restart. Closing the installation dialog leaves
+installation running; Cancel stops it. Download progress comes from the installer,
+and failed commands retain their output for retry. Installation never replaces an
+existing executable or changes a saved chat's runtime binding. An incompatible
+installation offers the native upgrade command instead of reinstalling.
+The model menu offers host setup only for enabled local profiles using the default
+executable without an explicit `PATH`; custom executables and external servers keep
+their configured launch rules.
 
 ACP instances use trusted local packages and executables. Compatibility checks verify
 configured package identity, supported version, entrypoint containment, Node version

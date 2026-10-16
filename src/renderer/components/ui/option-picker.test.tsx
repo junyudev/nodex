@@ -1,5 +1,5 @@
 import { fireEvent, waitFor } from "@testing-library/react";
-import { act } from "react";
+import { act, useState } from "react";
 import { describe, expect, test, vi } from "vite-plus/test";
 
 import { render, settleAsyncRender } from "@/test/dom";
@@ -126,5 +126,43 @@ describe("NodexOptionPicker", () => {
     });
     expect(onValueChange).toHaveBeenCalledWith("review");
     expect(view.queryByRole("combobox", { name: "Search statuses" })).toBeNull();
+  });
+
+  test("an owner that closes the picker also clears its query", async () => {
+    function OwnedPicker() {
+      const [open, setOpen] = useState(true);
+      return (
+        <>
+          <NodexOptionPicker
+            value="nodex"
+            search="filter"
+            searchAriaLabel="Search projects"
+            open={open}
+            onOpenChange={setOpen}
+            options={[{ value: "nodex", label: "Nodex" }]}
+            onValueChange={() => {}}
+            triggerButton={trigger("Change project")}
+          />
+          <button type="button" onClick={() => setOpen((current) => !current)}>
+            Toggle from owner
+          </button>
+        </>
+      );
+    }
+    const view = render(<OwnedPicker />);
+    const search = await view.findByRole("combobox", { name: "Search projects" });
+    await act(async () => {
+      fireEvent.change(search, { target: { value: "missing" } });
+      await Promise.resolve();
+    });
+    expect(view.getByText("No matching options")).toBeTruthy();
+    for (let toggle = 0; toggle < 2; toggle += 1)
+      await act(async () => {
+        fireEvent.click(view.getByRole("button", { name: "Toggle from owner", hidden: true }));
+        await settleAsyncRender();
+      });
+    const reopened = view.getByRole("combobox", { name: "Search projects" }) as HTMLInputElement;
+    expect(reopened.value).toBe("");
+    expect(view.getByRole("option", { name: "Nodex" })).toBeTruthy();
   });
 });

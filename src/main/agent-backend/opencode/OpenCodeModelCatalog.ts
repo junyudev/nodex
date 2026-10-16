@@ -2,6 +2,10 @@ import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as RcMap from "effect/RcMap";
+import {
+  openOpenCodeCatalog,
+  type OpenCodeCatalogError,
+} from "@nodex/agent-runtime/opencode-catalog";
 import type { AgentModelCatalog } from "../../../shared/agent-model-catalog";
 import { MainConfig } from "../../app/MainConfig";
 import {
@@ -9,7 +13,12 @@ import {
   type CodexStoredShellEnvironment,
 } from "../../codex/codex-worktree-shell-environment";
 import { ApplicationSettings } from "../../settings/ApplicationSettings";
-import { OpenCodeSdk, type OpenCodeLaunchInput } from "../../platform/node/OpenCodeSdk";
+import {
+  OpenCodeSdk,
+  openCodeEnvironment,
+  type OpenCodeLaunchInput,
+} from "../../platform/node/OpenCodeSdk";
+import { openCodeExecutableEnvironment } from "../../platform/node/OpenCodeExecutable";
 import { agentRuntimeError, AgentRuntimeError } from "../AgentRuntimeError";
 import { openCodeCatalog } from "./OpenCodeModels";
 
@@ -30,6 +39,14 @@ const failure = (
   reason: AgentRuntimeError["reason"] = "request",
 ) =>
   new AgentRuntimeError({ message, operation: `opencode.${operation}`, reason, retryable: false });
+const nativeCatalogFailure = (cause: OpenCodeCatalogError) =>
+  new AgentRuntimeError({
+    message: cause.message,
+    operation: "opencode.catalog",
+    reason: cause.authenticationRequired ? "authentication-required" : "request",
+    retryable: !cause.authenticationRequired,
+    cause,
+  });
 
 /** Metadata connections are bounded and shared; discovery never allocates a native conversation. */
 export const make = Effect.gen(function* () {
@@ -66,7 +83,16 @@ export const make = Effect.gen(function* () {
       serverUrl: launch.instance.serverUrl,
       cwd,
       profileDirectory: launch.profileDirectory,
-      environment: { ...base, ...launch.environment },
+      environment: {
+        ...base,
+        ...openCodeExecutableEnvironment({
+          binaryPath: launch.instance.binaryPath,
+          inheritedEnvironment: base,
+          environment: launch.environment,
+          homeDirectory: config.homeDirectory,
+          platform: config.platform,
+        }),
+      },
       ...(launch.environment.OPENCODE_SERVER_PASSWORD
         ? { serverPassword: launch.environment.OPENCODE_SERVER_PASSWORD }
         : {}),
@@ -76,7 +102,18 @@ export const make = Effect.gen(function* () {
     } satisfies OpenCodeLaunchInput;
   });
   const discovery = yield* RcMap.make({
-    lookup: (key: string) => sdk.open(JSON.parse(key) as OpenCodeLaunchInput),
+    lookup: (key: string) =>
+      Effect.gen(function* () {
+        const launch = JSON.parse(key) as OpenCodeLaunchInput;
+        const native = yield* openOpenCodeCatalog({
+          ...launch,
+          environment: openCodeEnvironment(launch),
+        }).pipe(Effect.mapError(nativeCatalogFailure));
+        if (!native) return yield* sdk.open(launch);
+        return {
+          inventory: native.inventory.pipe(Effect.mapError(nativeCatalogFailure)),
+        };
+      }),
     capacity: 32,
     idleTimeToLive: "30 seconds",
   });

@@ -6,6 +6,7 @@ import {
 import { readOpenCodeAgentSettings } from "../../lib/opencode-agent-settings-runtime";
 import { resolveRendererTransport } from "../../lib/renderer-transport";
 import type { AgentCatalogInstance } from "./use-agent-model-catalog";
+import { usesHostOpenCodeExecutable } from "../opencode-setup/opencode-setup-model";
 
 /** Settings supply runtime identity; each runtime remains responsible for its model catalog. */
 export function useAgentInstances() {
@@ -40,6 +41,7 @@ export function useAgentInstances() {
               binding: { kind: "opencode" as const, instanceConfigId: instance.id },
               label: instance.displayName,
               enabled: instance.enabled,
+              usesHostExecutable: usesHostOpenCodeExecutable(instance),
             })),
             ...acp.instances.map((instance) => ({
               binding: {

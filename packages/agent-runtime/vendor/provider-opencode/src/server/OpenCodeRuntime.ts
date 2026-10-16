@@ -43,10 +43,11 @@ import { AgentScope } from "@t3tools/shared/AgentScope";
 import * as HostProcess from "@t3tools/shared/HostProcess";
 import { compareSemverVersions, parseSemver } from "@t3tools/shared/semver";
 import { resolveSpawnCommand } from "@t3tools/shared/shell";
+import { MINIMUM_OPENCODE_VERSION } from "../settings.ts";
 const encodeUnknownJsonStringExit = Schema.encodeUnknownExit(Schema.fromJsonString(Schema.Unknown));
 const OPENCODE_EMPTY_CONFIG_CONTENT = "{}";
 
-export const MINIMUM_OPENCODE_VERSION = "1.14.19";
+export { MINIMUM_OPENCODE_VERSION };
 const OPENCODE_HEALTH_TIMEOUT = "5 seconds";
 
 const OpenCodeHealthSchema = Schema.Struct({

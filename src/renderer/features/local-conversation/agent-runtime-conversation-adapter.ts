@@ -59,6 +59,7 @@ import {
   stopAgentRuntimeBackgroundTasks,
 } from "./agent-runtime-delegated-tasks";
 import { agentRuntimeBackgroundStatus } from "./agent-runtime-composer-status";
+import { useOpenCodeModelSetup } from "../opencode-setup/use-opencode-setup";
 import {
   agentRuntimeActivityStore,
   useAgentRuntimeConnectionState,
@@ -588,6 +589,7 @@ export function useAgentRuntimeConversationAdapter(input: {
     readonly binding: AgentBackendBinding;
     readonly label: string;
     readonly enabled: boolean;
+    readonly usesHostExecutable?: boolean;
   }[];
   readonly onRefresh: (projectId: string | null) => Promise<unknown>;
   readonly onOpenThread: ThreadStageActions["onOpenThread"];
@@ -606,6 +608,11 @@ export function useAgentRuntimeConversationAdapter(input: {
   }>({ providers: [], loading: true, error: null });
   const [catalogRevision, setCatalogRevision] = useState(0);
   const refreshCatalog = () => setCatalogRevision((value) => value + 1);
+  // A newly usable host OpenCode reloads the catalog; the chosen model is never replaced.
+  const openCodeSetup = useOpenCodeModelSetup({
+    instances: input.instances,
+    onReady: refreshCatalog,
+  });
   useEffect(() => {
     let active = true;
     void agentRuntimeRuntime
@@ -1133,12 +1140,16 @@ export function useAgentRuntimeConversationAdapter(input: {
       loading: catalogState.loading,
       error: catalogState.error,
       choose: chooseModel,
-      refresh: refreshCatalog,
+      refresh: () => {
+        refreshCatalog();
+        openCodeSetup.refresh();
+      },
       configOptions,
       changeConfig,
       runtimeOptions: [],
       chooseRuntime: () => {},
       manage: () => {},
+      setup: openCodeSetup.setup,
     },
     commands:
       provider?.slashCommands.map((command) => ({

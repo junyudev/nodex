@@ -1,10 +1,11 @@
-import type { Model } from "@opencode-ai/sdk/v2";
+import type { OpenCodeCatalogInventory } from "@nodex/agent-runtime/opencode-catalog";
 import type { AgentModelCatalog } from "../../../shared/agent-model-catalog";
 import type {
   AgentSessionConfigOption,
   AgentSessionModeState,
 } from "../../../shared/agent-conversation";
-import type { OpenCodeInventory } from "../../platform/node/OpenCodeSdk";
+type OpenCodeInventory = OpenCodeCatalogInventory;
+type Model = OpenCodeInventory["providers"]["all"][number]["models"][string];
 
 export interface OpenCodeSelection {
   readonly model: string;

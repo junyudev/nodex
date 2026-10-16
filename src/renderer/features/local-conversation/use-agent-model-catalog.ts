@@ -12,6 +12,8 @@ export interface AgentCatalogInstance {
   readonly binding: ExternalAgentBinding;
   readonly label: string;
   readonly enabled: boolean;
+  /** Runs the host's default executable, which host setup can install. */
+  readonly usesHostExecutable?: boolean;
 }
 
 export interface AgentCatalogEntry {

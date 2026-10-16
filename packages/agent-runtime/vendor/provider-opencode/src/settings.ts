@@ -13,6 +13,8 @@ import {
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 
+export const MINIMUM_OPENCODE_VERSION = "1.14.19";
+
 export const OpenCodeSettings = makeProviderSettingsSchema(
   {
     // Off by default (like Cursor and Grok): the binding is not yet stable

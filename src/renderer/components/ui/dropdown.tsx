@@ -772,6 +772,8 @@ export interface NodexOptionPickerProps {
   readonly disabled?: boolean;
   readonly open?: boolean;
   readonly onOpenChange?: (open: boolean) => void;
+  /** Runs as the closed picker restores focus; footer actions open dialogs from here. */
+  readonly finalFocus?: NodexDropdownFinalFocus;
   readonly side?: "top" | "right" | "bottom" | "left";
   readonly align?: "start" | "center" | "end";
   readonly sideOffset?: number;
@@ -794,6 +796,7 @@ function NodexStaticOptionPicker({
   disabled,
   open,
   onOpenChange,
+  finalFocus,
   side,
   align,
   sideOffset,
@@ -810,6 +813,7 @@ function NodexStaticOptionPicker({
       disabled={disabled}
       open={open}
       onOpenChange={onOpenChange}
+      finalFocus={finalFocus}
       side={side}
       align={align}
       sideOffset={sideOffset}
@@ -961,6 +965,7 @@ function NodexFilterOptionPicker({
   disabled = false,
   open: controlledOpen,
   onOpenChange,
+  finalFocus,
   side,
   align = "start",
   sideOffset = 4,
@@ -977,6 +982,12 @@ function NodexFilterOptionPicker({
   const listboxRef = useRef<HTMLDivElement>(null);
   const listboxId = useId();
   const open = controlledOpen ?? uncontrolledOpen;
+  // Every close resets the search, including one requested by a controlling owner.
+  const [queryOpen, setQueryOpen] = useState(open);
+  if (queryOpen !== open) {
+    setQueryOpen(open);
+    if (!open) setQuery("");
+  }
   const effectiveQuery = open ? query : "";
   const filteredOptions = filterOptionPickerOptions(options, effectiveQuery);
   const enabledOptions = filteredOptions.filter((option) => !option.disabled);
@@ -1060,6 +1071,7 @@ function NodexFilterOptionPicker({
           alignOffset={alignOffset}
           portalContainer={portalContainer}
           initialFocus={inputRef}
+          finalFocus={finalFocus}
           className={cn(
             "overflow-hidden p-1",
             resolveDropdownWidthClass(contentWidth),

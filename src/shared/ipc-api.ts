@@ -1292,6 +1292,18 @@ export interface IpcApi extends AgentRuntimeIpcApi {
     result: CodexHomeSettingsSnapshot;
   };
   "settings:opencode-agents:get": { args: []; result: OpenCodeAgentSettings };
+  "opencode-setup:read": {
+    args: [];
+    result: import("./opencode-setup").OpenCodeSetupState;
+  };
+  "opencode-setup:install": {
+    args: [];
+    result: import("./opencode-setup").OpenCodeSetupState;
+  };
+  "opencode-setup:cancel": {
+    args: [];
+    result: import("./opencode-setup").OpenCodeSetupState;
+  };
   "settings:opencode-agents:update": {
     args: [input: UpdateOpenCodeAgentSettingsInput];
     result: OpenCodeAgentSettings;
@@ -2845,6 +2857,7 @@ export interface IpcApi extends AgentRuntimeIpcApi {
 export type IpcArgs<Channel extends keyof IpcApi> = IpcApi[Channel]["args"];
 
 export interface IpcEvents {
+  "opencode-setup:changed": import("./opencode-setup").OpenCodeSetupState;
   "codex:realtime-voice:event": import("./codex-realtime-voice").CodexRealtimeVoiceEvent;
   "dictation:microphone-relinquish": { readonly sessionId: string };
   "workbench-agent:request": WorkbenchAgentRequest;

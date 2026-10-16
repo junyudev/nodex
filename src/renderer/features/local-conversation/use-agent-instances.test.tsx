@@ -91,9 +91,33 @@ test("refresh retries failed profile settings and recovers inventory without blo
       binding: { kind: "opencode", instanceConfigId: instance.id },
       label: instance.displayName,
       enabled: instance.enabled,
+      usesHostExecutable: true,
     },
   ]);
   expect(mocks.readClaude).toHaveBeenCalledTimes(2);
   expect(mocks.readOpenCode).toHaveBeenCalledTimes(2);
   expect(mocks.readAcp).toHaveBeenCalledTimes(2);
+});
+
+test("only local profiles running the default executable depend on host OpenCode setup", async () => {
+  const base = defaultOpenCodeInstance();
+  mocks.readOpenCode.mockResolvedValueOnce({
+    instances: [
+      { ...base, enabled: false },
+      { ...base, id: "custom", binaryPath: "/opt/opencode/bin/opencode" },
+      { ...base, id: "server", serverUrl: "http://127.0.0.1:4096" },
+    ],
+  });
+  const { result } = renderHook(() => useAgentInstances());
+  await waitFor(() => expect(result.current.loading).toBe(false));
+  expect(
+    result.current.instances.map(({ enabled, usesHostExecutable }) => ({
+      enabled,
+      usesHostExecutable,
+    })),
+  ).toEqual([
+    { enabled: false, usesHostExecutable: true },
+    { enabled: true, usesHostExecutable: false },
+    { enabled: true, usesHostExecutable: false },
+  ]);
 });

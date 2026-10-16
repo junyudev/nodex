@@ -21,6 +21,9 @@ export interface RendererTransport {
     callback: (state: import("../../shared/agent-runtime-api").AgentRuntimeConnectionState) => void,
   ) => () => void;
   subscribeAgentSettingsChanges: (callback: () => void) => () => void;
+  subscribeOpenCodeSetupChanges: (
+    callback: (state: import("../../shared/opencode-setup").OpenCodeSetupState) => void,
+  ) => () => void;
   subscribeClaudeAgentSettingsChanges: (callback: () => void) => () => void;
   sendGitWorkerMessage: (
     message: import("../../shared/git-worker-protocol").GitWorkerMessageFromView,

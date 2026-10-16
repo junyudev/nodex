@@ -45,6 +45,7 @@ export function AgentInstanceSettingsControl<Instance extends AgentInstanceField
   environmentPolicy,
   environmentSuggestions,
   fields,
+  executableStatus,
 }: {
   readonly open: boolean;
   readonly label: string;
@@ -59,8 +60,18 @@ export function AgentInstanceSettingsControl<Instance extends AgentInstanceField
     readonly disabled: boolean;
     readonly change: (patch: Partial<Instance>) => void;
   }) => ReactNode;
+  /**
+   * Describes the saved executable; `saved` is null until the selected profile is saved. The
+   * draft's environment rows are edited apart from `draft` and arrive as `environment`.
+   */
+  readonly executableStatus?: (input: {
+    readonly saved: Instance | null;
+    readonly draft: Instance;
+    readonly environment: readonly AgentEnvironmentDraft[];
+  }) => ReactNode;
 }) {
   const [instances, setInstances] = useState<Instance[]>([]);
+  const [saved, setSaved] = useState<readonly Instance[]>([]);
   const [draft, setDraft] = useState<Instance | null>(null);
   const [environments, setEnvironments] = useState<Record<string, AgentEnvironmentDraft[]>>({});
   const [loading, setLoading] = useState(true);
@@ -94,6 +105,7 @@ export function AgentInstanceSettingsControl<Instance extends AgentInstanceField
       (next) => {
         if (!active) return;
         setInstances(next.instances);
+        setSaved(next.instances);
         setDraft(next.instances[0] ?? defaultInstance());
         acceptEnvironments(next.instances);
         setLoading(false);
@@ -156,6 +168,7 @@ export function AgentInstanceSettingsControl<Instance extends AgentInstanceField
         })),
       });
       setInstances(next.instances);
+      setSaved(next.instances);
       setDraft(next.instances.find(({ id }) => id === draft?.id) ?? next.instances[0] ?? null);
       acceptEnvironments(next.instances);
     } catch (cause) {
@@ -225,7 +238,14 @@ export function AgentInstanceSettingsControl<Instance extends AgentInstanceField
               onCheckedChange={(enabled) => change({ enabled } as Partial<Instance>)}
             />
           </NodexSettingsRow>
-          <NodexSettingsRow label="Executable">
+          <NodexSettingsRow
+            label="Executable"
+            description={executableStatus?.({
+              saved: saved.find(({ id }) => id === draft.id) ?? null,
+              draft,
+              environment: environments[draft.id] ?? [],
+            })}
+          >
             <Input
               aria-label={`${label} executable`}
               className="h-8 w-[min(28rem,45vw)] text-sm"

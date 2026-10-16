@@ -262,3 +262,104 @@ test("keeps Codex selectable and exposes Refresh when external inventory fails",
   expect(refresh).toHaveBeenCalledOnce();
   expect(choose).not.toHaveBeenCalled();
 });
+
+function MenuPicker({ catalog }: { readonly catalog: AgentModelCatalogPresentation }) {
+  const [open, setOpen] = useState(true);
+  return (
+    <NodexTooltipProvider delay={0}>
+      <AgentIntelligenceDropdown
+        models={[model]}
+        triggerStyle="settings"
+        open={open}
+        onOpenChange={setOpen}
+        selection={{
+          kind: catalog.selected.binding.kind,
+          model: catalog.selected.model,
+          reasoningEffort: "none",
+          serviceTier: null,
+        }}
+        onSelectionChange={() => {}}
+        provider={{
+          label: "Local",
+          selection: "local",
+          options: [],
+          select: () => {},
+          modelCatalog: catalog,
+        }}
+      />
+    </NodexTooltipProvider>
+  );
+}
+
+test("returns from OpenCode setup to a fresh free-model view without changing the choice", async () => {
+  const choose = vi.fn();
+  const open = vi.fn<(port: { readonly showModels: () => void }) => void>();
+  const work = {
+    binding: { kind: "opencode", instanceConfigId: "work" },
+    model: model.id,
+  } as const;
+  const view = renderWithMaitai(
+    <MenuPicker
+      catalog={presentation({
+        choose,
+        entries: [
+          { binding: selected.binding, label: "Local", model, selection: selected },
+          { binding: work.binding, label: "Work", model, selection: work },
+        ],
+        setup: {
+          kind: "opencode",
+          label: "Free OpenCode models",
+          hint: "Install",
+          tone: "default",
+          action: { kind: "open", open },
+        },
+      })}
+    />,
+  );
+  await click(await view.findByRole("button", { name: "Show all models" }));
+  await view.findByRole("option", { name: /Kimi K3.*Work/ });
+  const search = view.getByRole("combobox", { name: "Search models" });
+  await act(async () => {
+    fireEvent.change(search, { target: { value: "free" } });
+    await Promise.resolve();
+  });
+  // Searching for free models finds setup before any installed model matches.
+  await view.findByText("No matching models");
+  await click(view.getByRole("button", { name: "Free OpenCode models Install" }));
+  await waitFor(() => expect(view.queryByRole("listbox")).toBeNull());
+  await waitFor(() => expect(open).toHaveBeenCalledOnce());
+
+  await act(async () => {
+    open.mock.calls[0]![0].showModels();
+    await Promise.resolve();
+  });
+  const reopened = await view.findByRole("combobox", { name: "Search models" });
+  expect((reopened as HTMLInputElement).value).toBe("");
+  expect(view.queryByText("No matching models")).toBeNull();
+  expect(view.getByRole("option", { name: /Kimi K3.*Local/ }).getAttribute("aria-selected")).toBe(
+    "true",
+  );
+  expect(view.queryByRole("option", { name: /Kimi K3.*Work/ })).toBeNull();
+  expect(view.getByRole("button", { name: "Show all models" })).toBeTruthy();
+  expect(choose).not.toHaveBeenCalled();
+});
+
+test("routes an OpenCode executable that needs updating to provider settings", async () => {
+  const manage = vi.fn();
+  const view = renderWithMaitai(
+    <MenuPicker
+      catalog={presentation({
+        manage,
+        setup: {
+          kind: "opencode",
+          label: "Free OpenCode models",
+          hint: "Update",
+          tone: "default",
+          action: { kind: "settings" },
+        },
+      })}
+    />,
+  );
+  await click(await view.findByRole("button", { name: "Free OpenCode models Update" }));
+  await waitFor(() => expect(manage).toHaveBeenCalledOnce());
+});

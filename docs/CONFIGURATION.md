@@ -144,6 +144,9 @@ Disabling it prevents new connections and leaves existing durable task bindings 
 
 The default OpenCode instance is enabled for new, unconfigured Profiles and uses the
 installed `opencode` executable. Use **Agent > OpenCode** to disable it or configure an instance.
+If OpenCode is missing, Nodex can run its official installer after you choose to install it.
+Installation uses your operating-system user directory. Nodex verifies the installed
+executable and discovers it immediately, without requiring an application restart.
 Choose its profile directory or leave it empty for Nodex's isolated
 `<Profile>/agents/opencode/<instance-id>` directory. Native provider configuration belongs under
 `config/opencode` and authentication/history under `data/opencode` within that directory. Add provider
@@ -151,9 +154,11 @@ keys such as `MOONSHOT_API_KEY` or `OPENROUTER_API_KEY` as sensitive environment
 explicit secrets through system secure storage; it does not import another OpenCode account.
 Native project configuration remains active in the selected execution folder.
 
-OpenCode 1.15.13 is the tested native release. Nodex verifies the native model metadata it requires, fixes execution to full access,
-and automatically answers permission requests. Unsupported metadata produces a compatibility
-error with the native version and an upgrade hint.
+Model discovery supports OpenCode 1.x and 2.x and verifies the native metadata it requires.
+Nodex reuses a compatible installed executable; the install action leaves version selection
+to OpenCode's official installer. Native execution uses full access and automatically answers
+permission requests. Unsupported metadata produces a compatibility error with the native
+version when available. An incompatible local executable includes an upgrade hint.
 
 The composer's model menu initially shows OpenCode models with native IDs ending in `-free`
 and keeps the current selection visible. **Show all models** reveals the other OpenCode models.
