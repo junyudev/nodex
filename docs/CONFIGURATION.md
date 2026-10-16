@@ -142,7 +142,8 @@ Disabling it prevents new connections and leaves existing durable task bindings 
 
 ## OpenCode instances
 
-Use **Agent > OpenCode** to enable an installed `opencode` executable and configure an instance.
+The default OpenCode instance is enabled for new, unconfigured Profiles and uses the
+installed `opencode` executable. Use **Agent > OpenCode** to disable it or configure an instance.
 Choose its profile directory or leave it empty for Nodex's isolated
 `<Profile>/agents/opencode/<instance-id>` directory. Native provider configuration belongs under
 `config/opencode` and authentication/history under `data/opencode` within that directory. Add provider
@@ -154,7 +155,11 @@ OpenCode 1.15.13 is the tested native release. Nodex verifies the native model m
 and automatically answers permission requests. Unsupported metadata produces a compatibility
 error with the native version and an upgrade hint.
 
-The composer's model menu searches models from every enabled instance. Selecting a model selects
+The composer's model menu initially shows OpenCode models with native IDs ending in `-free`
+and keeps the current selection visible. **Show all models** reveals the other OpenCode models.
+Model availability follows the instance's native catalog. Upgrading the executable alone
+does not replace cached model data; use **Refresh models** when a newly offered model is missing.
+Selecting a model selects
 its instance and exposes only its native variants and primary agents. An optional Server
 URL connects an externally managed OpenCode HTTP(S) endpoint; configure
 `OPENCODE_SERVER_PASSWORD` as a sensitive environment row and optional `OPENCODE_SERVER_USERNAME` when needed. External servers retain their

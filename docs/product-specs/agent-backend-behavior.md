@@ -62,6 +62,13 @@ bounded idle retention and sends no prompt. Local profiles isolate configuration
 authentication, history and cache. An external server uses only explicitly configured
 server credentials and retains its own process lifecycle.
 
+The default OpenCode instance is enabled for an unconfigured Profile. An explicitly
+disabled instance stays disabled. The model menu initially shows OpenCode models whose
+native ID ends in `-free`, alongside models from other backends and the exact current
+selection. **Show all models** reveals the remaining OpenCode models without changing
+the selection. This display rule does not restrict the execution catalog or replace a
+saved model choice. Availability and pricing remain with the native provider.
+
 ACP instances use trusted local packages and executables. Compatibility checks verify
 configured package identity, supported version, entrypoint containment, Node version
 and executable-reported version. These checks do not attest package bytes. Credential

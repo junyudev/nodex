@@ -65,8 +65,9 @@ const pendingWrite = () => {
   return { promise, resolve };
 };
 
-test("searching by runtime chooses the exact instance, model and advertised options", async () => {
+test("expands OpenCode models and chooses the exact paid instance, model and advertised options", async () => {
   const choose = vi.fn();
+  const free = catalogModel("opencode/glm-5.3-flash-free", "GLM Flash Free");
   const work = {
     binding: { kind: "opencode", instanceConfigId: "work" },
     model: model.id,
@@ -77,11 +78,23 @@ test("searching by runtime chooses the exact instance, model and advertised opti
     presentation({
       choose,
       entries: [
+        {
+          binding: selected.binding,
+          label: "Local",
+          model: free,
+          selection: { binding: selected.binding, model: free.id },
+        },
         { binding: selected.binding, label: "Local", model, selection: selected },
         { binding: work.binding, label: "Work", model, selection: work },
       ],
     }),
   );
+  await view.findByRole("option", { name: /GLM Flash Free.*Local/ });
+  await view.findByRole("option", { name: /Kimi K3.*Local/ });
+  expect(view.queryByRole("option", { name: /Kimi K3.*Work/ })).toBeNull();
+  await click(await view.findByRole("button", { name: "Show all models" }));
+  await view.findByRole("option", { name: /Kimi K3.*Work/ });
+  expect(choose).not.toHaveBeenCalled();
   // Async queries manage their own act environment; resolve before entering the interaction.
   const search = await view.findByRole("combobox", { name: "Search models" });
   await act(async () => {

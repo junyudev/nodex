@@ -28,7 +28,10 @@ it("saves instance-scoped configuration and preserves saved API keys through pro
   const view = render(
     <OpenCodeAgentSettingsControl
       open
-      runtime={{ read: async () => ({ instances: [defaultOpenCodeInstance()] }), update }}
+      runtime={{
+        read: async () => ({ instances: [{ ...defaultOpenCodeInstance(), enabled: false }] }),
+        update,
+      }}
     />,
   );
   const enable = await view.findByRole("checkbox", { name: "Enable OpenCode" });

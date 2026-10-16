@@ -4,6 +4,7 @@ import {
   agentModelKey,
   agentRuntimeQualifier,
   selectAgentCatalogModel,
+  visibleAgentModelPickerEntries,
 } from "./agent-model-selection";
 import { modelCatalog } from "./agent-model-catalog.test-fixtures";
 
@@ -77,6 +78,43 @@ describe("runtime model choices", () => {
     expect(selectAgentCatalogModel(catalog, "moonshot/kimi-k3")).toBeNull();
     expect(selectAgentCatalogModel(modelCatalog(), "unknown")).toBeNull();
     expect(selectAgentCatalogModel(modelCatalog(), "local/small")?.options).toBeUndefined();
+  });
+});
+
+describe("default picker models", () => {
+  const local = { kind: "opencode", instanceConfigId: "local" } as const;
+  const work = { kind: "opencode", instanceConfigId: "work" } as const;
+  const choice = { binding: local, model: "moonshot/kimi-k3" } as const;
+  const entries = [
+    { binding: local, model: { id: "opencode/deepseek-v4.1-flash-free" } },
+    { binding: local, model: { id: "opencode/glm-5.3-flash-free" } },
+    { binding: local, model: { id: choice.model } },
+    { binding: work, model: { id: choice.model } },
+    { binding: local, model: { id: "opencode/free-preview" } },
+    { binding: local, model: { id: "opencode/preview-free-paid" } },
+    { binding: { kind: "codex" } as const, model: { id: "gpt-sol" } },
+    { binding: { kind: "claude", instanceConfigId: "local" } as const, model: { id: "sonnet" } },
+  ];
+
+  test("matches the free suffix while preserving other backends and the exact selected instance", () => {
+    expect(visibleAgentModelPickerEntries(entries, choice, false)).toEqual([
+      entries[0],
+      entries[1],
+      entries[2],
+      entries[6],
+      entries[7],
+    ]);
+  });
+
+  test("expanding returns the complete catalog without changing its entries", () => {
+    expect(visibleAgentModelPickerEntries(entries, choice, true)).toEqual(entries);
+  });
+
+  test("does not invent entries for an empty catalog or unavailable selection", () => {
+    expect(visibleAgentModelPickerEntries([], choice, false)).toEqual([]);
+    expect(
+      visibleAgentModelPickerEntries(entries, { binding: local, model: "unavailable" }, false),
+    ).toEqual([entries[0], entries[1], entries[6], entries[7]]);
   });
 });
 

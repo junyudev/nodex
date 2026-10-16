@@ -98,7 +98,7 @@ export interface OpenCodeAgentSettings {
 export const defaultOpenCodeInstance = (): OpenCodeAgentInstanceConfig => ({
   id: "opencode-default",
   displayName: "OpenCode",
-  enabled: false,
+  enabled: true,
   binaryPath: "opencode",
   profileDirectory: null,
   serverUrl: null,

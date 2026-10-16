@@ -34,9 +34,21 @@ afterEach(() => {
 });
 const instance = () => ({ ...defaultOpenCodeInstance(), enabled: true });
 
+it("enables OpenCode for unconfigured profiles and preserves an explicitly disabled instance", () => {
+  const source = fixture();
+  expect(getOpenCodeAgentSettings(source).instances[0]?.enabled).toBe(true);
+  updateOpenCodeAgentSettings(
+    { instances: [{ ...defaultOpenCodeInstance(), enabled: false }] },
+    source,
+  );
+  expect(getOpenCodeAgentSettings(source).instances[0]?.enabled).toBe(false);
+  expect(() => getOpenCodeLaunchConfiguration(source, "opencode-default")).toThrow(
+    "unavailable or disabled",
+  );
+});
+
 it("keeps managed profiles isolated by explicit instance identity and supports removing all instances", () => {
   const source = fixture();
-  expect(getOpenCodeAgentSettings(source).instances[0]?.enabled).toBe(false);
   updateOpenCodeAgentSettings(
     { instances: [instance(), { ...instance(), id: "second-account" }] },
     source,

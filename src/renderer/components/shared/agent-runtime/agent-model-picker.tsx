@@ -12,6 +12,7 @@ import {
   agentModelKey,
   agentRuntimeQualifier,
   flattenAgentConfigOptions,
+  visibleAgentModelPickerEntries,
 } from "@/lib/agent-model-selection";
 import {
   formatCodexModelLabel,
@@ -127,6 +128,7 @@ export function AgentModelPicker(
 ) {
   const { catalog, selection, models, provider } = props;
   const [pending, setPending] = useState(false);
+  const [showAllModels, setShowAllModels] = useState(false);
   const [uncontrolledOpen, setUncontrolledOpen] = useState(false);
   const open = props.open ?? uncontrolledOpen;
   const changeOpen = props.onOpenChange ?? setUncontrolledOpen;
@@ -172,7 +174,13 @@ export function AgentModelPicker(
   const reasoningOptions =
     models.find((model) => model.id === selection.model)?.supportedReasoningEfforts ?? [];
   const contextWindows = [...new Set(native?.capabilities.contextWindows ?? [])];
-  const options: readonly NodexOptionPickerOption[] = catalog.entries.map((entry) => {
+  const visibleEntries = visibleAgentModelPickerEntries(
+    catalog.entries,
+    catalog.selected,
+    showAllModels,
+  );
+  const hasHiddenModels = visibleEntries.length < catalog.entries.length;
+  const options: readonly NodexOptionPickerOption[] = visibleEntries.map((entry) => {
     const qualifier = agentRuntimeQualifier(entry.binding, entry.label);
     return {
       value: agentModelKey(entry.binding, entry.model.id),
@@ -279,6 +287,14 @@ export function AgentModelPicker(
       }}
       footer={
         <>
+          {hasHiddenModels ? (
+            <>
+              <NodexDropdownSeparator />
+              <NodexDropdownActionRow disabled={pending} onClick={() => setShowAllModels(true)}>
+                Show all models
+              </NodexDropdownActionRow>
+            </>
+          ) : null}
           {hasOptions ? <NodexDropdownSeparator /> : null}
           {(isCodex || selection.kind === "claude") &&
           (reasoningOptions.length > 0 || native?.capabilities.disableThinking) ? (

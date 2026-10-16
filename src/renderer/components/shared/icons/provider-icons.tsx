@@ -36,6 +36,26 @@ export function ClaudeIcon({ className }: ProviderIconProps) {
   );
 }
 
+/** Official OpenCode square mark: https://opencode.ai/brand. */
+export function OpenCodeIcon({ className }: ProviderIconProps) {
+  return (
+    <svg
+      width="16"
+      height="16"
+      viewBox="0 0 300 300"
+      preserveAspectRatio="xMidYMid"
+      fill="currentColor"
+      aria-hidden="true"
+      className={cn("size-4 shrink-0", className)}
+    >
+      <g transform="translate(30, 0)">
+        <path d="M180 240H60V120H180V240Z" fillOpacity="0.25" />
+        <path d="M180 60H60V240H180V60ZM240 300H0V0H240V300Z" />
+      </g>
+    </svg>
+  );
+}
+
 /** Brand mark for a runtime; runtimes without a first-party mark share the generic Agent glyph. */
 export function AgentProviderIcon({
   kind,
@@ -43,5 +63,6 @@ export function AgentProviderIcon({
 }: ProviderIconProps & { readonly kind: AgentBackendBinding["kind"] }) {
   if (kind === "codex") return <OpenAIIcon className={className} />;
   if (kind === "claude") return <ClaudeIcon className={className} />;
+  if (kind === "opencode") return <OpenCodeIcon className={className} />;
   return <SettingsAgentIcon className={cn("size-4 shrink-0", className)} />;
 }

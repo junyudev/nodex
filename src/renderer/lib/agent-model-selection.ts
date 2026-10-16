@@ -15,6 +15,27 @@ export const agentBindingKey = (binding: AgentBackendBinding): string =>
 export const agentModelKey = (binding: AgentBackendBinding, model: string): string =>
   JSON.stringify([agentBindingKey(binding), model]);
 
+/** Keep OpenCode's free models and the exact current choice in the default picker list. */
+export function visibleAgentModelPickerEntries<
+  Entry extends {
+    readonly binding: AgentBackendBinding;
+    readonly model: { readonly id: string };
+  },
+>(
+  entries: readonly Entry[],
+  selected: AgentModelSelection,
+  showAllModels: boolean,
+): readonly Entry[] {
+  if (showAllModels) return entries;
+  const selectedKey = agentModelKey(selected.binding, selected.model);
+  return entries.filter(
+    (entry) =>
+      entry.binding.kind !== "opencode" ||
+      entry.model.id.endsWith("-free") ||
+      agentModelKey(entry.binding, entry.model.id) === selectedKey,
+  );
+}
+
 const BRANDED_RUNTIME_NAMES: Partial<Record<AgentBackendBinding["kind"], readonly string[]>> = {
   codex: ["codex"],
   claude: ["claude", "claude code"],
