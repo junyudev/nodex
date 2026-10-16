@@ -1,0 +1,88 @@
+native/macos-notifications/binding.gyp
+  s_256699efb22e39::t_d411d3cbf29fc1 1-13
+src/renderer/lib/desktop-notification-authorization.ts
+  s_256699efb22e39::t_02fbe44ccca6ef 2-54
+src/shared/desktop-notification-authorization.ts
+  s_256699efb22e39::t_9bbd7d15dc8356 1-11
+docs/development.md
+  s_256699efb22e39::t_9a14e4245e0a0c 373-378
+  s_256699efb22e39::t_2edc0a9ee79774 379
+native/macos-notifications/src/nodex_notifications.mm
+  s_256699efb22e39::t_d411d3cbf29fc1 1-125
+  s_256699efb22e39::t_3b67a2be051513 126-141
+src/main/platform/electron/NativeNotificationAuthorization.ts
+  s_256699efb22e39::t_9bbd7d15dc8356 1-71
+  s_256699efb22e39::t_143ec385da1b6b 72-89
+CHANGELOG.md
+  s_256699efb22e39::t_28603c7f30a8b7 48-49
+docs/product-specs/calendar-and-reminders-behavior.md
+  s_256699efb22e39::t_b914eec9fb378a 64-68
+docs/product-specs/desktop-notification-behavior.md
+  s_256699efb22e39::t_6f2d7c6e5f48fe 216-230,236-238,243-244
+electron-builder.yml
+  s_256699efb22e39::t_af28e3fd364930 71-72,106
+package.json
+  s_256699efb22e39::t_2f15c882925db7 86,88,127,169
+scripts/build-notification-bridge.ts
+  s_256699efb22e39::t_dd7deda3093c88 1-20
+scripts/package-provenance.d.mts
+  s_256699efb22e39::t_31294ccb4f76cc 3
+scripts/package-provenance.mjs
+  s_256699efb22e39::t_316a4db1a43717 31,53,525,615,634-638,733-738
+scripts/package-provenance.test.ts
+  s_256699efb22e39::t_97e2ba006b8902 374-378,526
+scripts/verify-native-runtime.test.ts
+  s_256699efb22e39::t_339ea8a42849a6 102,109-111
+scripts/verify-native-runtime.ts
+  s_256699efb22e39::t_b9631ab1856342 1376,1444-1446
+src/main/app/MainApplicationLive.ts
+  s_256699efb22e39::t_ceb0f941becbce 61,196
+src/main/app/MainFoundationLive.ts
+  s_256699efb22e39::t_48e4a223272cda 6,28,57,60
+src/main/app/WindowApplicationLive.ts
+  s_256699efb22e39::t_0c365500cc1548 114,347
+src/main/host-runtime/ApplicationSchedulers.test.ts
+  s_256699efb22e39::t_b32823efa6817c 420-449
+src/main/host-runtime/DesktopNotificationRuntime.test.ts
+  s_256699efb22e39::t_6f89c5f77825ed 2,49,52,211,326,361-479
+src/main/host-runtime/DesktopNotificationRuntime.ts
+  s_256699efb22e39::t_72876c919621a2 6,15-19,35,40,46,55,107-108,129,189-195,197-223,225-255,257-260,262-267,271-309,320,344-348,351,353
+src/main/host-runtime/ReminderSchedulerRuntime.ts
+  s_256699efb22e39::t_776a310db24d0f 116,141
+src/main/ipc/handlers/ApplicationSettingsIpc.test.ts
+  s_256699efb22e39::t_2a402ccabd977a 25,113-118,155-157,173-194
+src/main/ipc/handlers/ApplicationSettingsIpc.ts
+  s_256699efb22e39::t_e5483b90d79dbe 38-39,174,186,517-542
+src/main/platform/electron/ElectronDesktop.ts
+  s_256699efb22e39::t_2cb203e63cb175 17-19,46-50,54-68,76
+src/main/platform/electron/NativeNotificationAuthorization.node.test.ts
+  s_256699efb22e39::t_36143a49295867 1-4,6,8-19,21-27,29-69,71-73,75-89
+src/main/platform/electron/NativeNotificationDelivery.node.test.ts
+  s_256699efb22e39::t_43aa79aaf3cf88 1-169
+src/main/platform/electron/NativeNotificationDelivery.ts
+  s_256699efb22e39::t_ca9f68dc83409b 1-116
+src/renderer/components/workbench/workbench-settings-overlay.notifications.test.tsx
+  s_256699efb22e39::t_d3eefa2f5754f4 29,103-183
+src/renderer/components/workbench/workbench-settings-route-shell.tsx
+  s_256699efb22e39::t_756d3fea4cd28a 73,335-387,420
+src/shared/ipc-api.ts
+  s_256699efb22e39::t_7781d1e2901cf0 1360-1371
+src/shared/ipc-endpoint-policy.ts
+  s_256699efb22e39::t_1cd03a16dd51bd 242,638-639
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "c63d0992f6dd06a94a09639fcc229a819e431b2a",
+  "prompts": {},
+  "sessions": {
+    "s_256699efb22e39": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a14296-7655-71c0-bea3-eeb0c4e18695",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}

@@ -1,0 +1,35 @@
+scripts/build-native-bridge.ts
+  s_256699efb22e39::t_62f652d918fd19 1-4,6-9,11-15,17-28,32-34,37-38,40,48-50,55-57,59-62,64-88,93-94,123-127,136-147,162-176
+  s_256699efb22e39::t_eae9b401755a99 29-31,42-45
+  s_256699efb22e39::t_36e51dd8df22f6 35,47,89-92,95-108,110-122,128-135,148-161
+  s_256699efb22e39::t_3eb32d19b0b960 5,16,39,41,46
+  s_256699efb22e39::t_044b4b926caff2 10,36,51-53,58,109
+  s_256699efb22e39::t_4605a78d9396da 54,63
+scripts/build-native-bridge.test.ts
+  s_256699efb22e39::t_8025a391092e7e 25,33,36,45,172-182,202-226
+  s_256699efb22e39::t_36e51dd8df22f6 2-11,35,37-39,49-50,72-75,77-80,84-95,106-108,117-123,126-130,192-201
+  s_256699efb22e39::t_c6b1016d96e802 1,12-24,26-32,34,40-44,46-48,51-68,70-71,76,81-83,96-105,109-116,124-125,131-171,189-191,227
+  s_256699efb22e39::t_3eb32d19b0b960 69,183-188
+docs/development.md
+  s_256699efb22e39::t_1fcab6917fb248 176-182
+scripts/build-clipboard-bridge.ts
+  s_256699efb22e39::t_5b6eb2893c9aa2 3,8-13
+scripts/build-devicecheck-bridge.ts
+  s_256699efb22e39::t_1d5e1fdb516bc4 3,8,10-13
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "d6b9d3cc3339fbd20de0f2a490fafcfecd04fb90",
+  "prompts": {},
+  "sessions": {
+    "s_256699efb22e39": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a14296-7655-71c0-bea3-eeb0c4e18695",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}

@@ -1,0 +1,80 @@
+scripts/stage-browser-runtime.test.ts
+  s_256699efb22e39::t_af985291f40fc0 103,111,114-116,119,127,129-131,134,169,182,198,207,209-211,215,227,233,238,240,243,248,256,261-298,306,309,312
+src/main/platform/node/RuntimeArtifactVerification.node.test.ts
+  s_256699efb22e39::t_0c607bbf27dfc4 1-111
+  s_256699efb22e39::t_e591cb15f3fad1 112-136
+src/main/codex/codex-runtime.test.ts
+  s_256699efb22e39::t_f224f8ba5c5003 9-10,136,138,141-145,150-151,155-156,160,305-306
+  s_256699efb22e39::t_1ce8f4c1c5ea10 6-8,11,15,125-126,128-135,137,139-140,146-149,152-154,158-159,161-175,178,203,207,212,218,232,237,243,256,261,267,270,293,321
+  s_256699efb22e39::t_7ee2263debdc1f 22-28,124
+  s_256699efb22e39::t_e48f5588802c22 3,17-21,127,157
+  s_256699efb22e39::t_da4d6505129f48 16,324,329
+scripts/stage-codex-runtime.ts
+  s_256699efb22e39::t_a37b3c46da8d4e 291-295,583
+  s_256699efb22e39::t_458123136df10f 41,180,185-195,253,597,726
+scripts/stage-browser-runtime.ts
+  s_256699efb22e39::t_458123136df10f 85,89-92,101,103-107,188-190,220-223,264,338,340,356-359
+scripts/stage-codex-runtime.test.ts
+  s_256699efb22e39::t_8764bec8627686 15,470,477,479,493-527,531-532,534-540
+  s_256699efb22e39::t_a37b3c46da8d4e 28-31,528-530,533,541-542
+  s_256699efb22e39::t_67b30e80b4a972 543
+src/main/platform/node/RuntimeArtifactVerification.ts
+  s_256699efb22e39::t_9e6b6096daa88f 18-19,48,86-88
+  s_256699efb22e39::t_c7f4f916d2fee9 1-17,20-47,49-85,89-96
+docs/adr/0036-desktop-tool-runtime-native-trust-boundary.md
+  s_256699efb22e39::t_fd048876d1e1c2 36-39
+scripts/agent-eval/run.ts
+  s_256699efb22e39::t_a51e4e72505ce5 106-112
+scripts/probe-agent-runtime-multi-agent.ts
+  s_256699efb22e39::t_367cd905325d88 825-827
+scripts/probe-agent-runtime.ts
+  s_256699efb22e39::t_8aa04ccb981dec 216-218
+scripts/probe-browser-runtime.ts
+  s_256699efb22e39::t_36fa4cf929cb0b 102,110,112-113,127-128,141,144,147,342,672
+scripts/probe-worktree-handoff-runtime.ts
+  s_256699efb22e39::t_84796d4afff442 664-666
+scripts/release/distribution.ts
+  s_256699efb22e39::t_1be2d9c1583d8b 170
+scripts/verify-codex-runtime.ts
+  s_256699efb22e39::t_e779a22e029244 146,150-151,220,229,237-242
+src/main/app/CodexApplicationLive.ts
+  s_256699efb22e39::t_d8db0a7e1b59e3 28,109,136-149
+src/main/codex/browser-plugin-reconciler.test.ts
+  s_256699efb22e39::t_c48a92aa8fc9a5 32,37,96,224,287,334,408,486,552,603,701
+src/main/codex/browser-runtime-bundle.test.ts
+  s_256699efb22e39::t_8d59c56c0a59b6 78-79,87,92,142,146-149,151,157,166,172,176,182,189,197,203,207,209,225,231
+src/main/codex/browser-runtime-bundle.ts
+  s_256699efb22e39::t_8335c4e0f311a8 1-6,79,89-90,103,107,109,118,121-123,125-128,136,138,154-157,166,168,174,176-177,180,187,189,196,198,206,222,236-265,267,276,284
+src/main/codex/browser-runtime-platform-verifier.node.test.ts
+  s_256699efb22e39::t_2dcbbd2a74a595 53,73,75-76,81,90-93
+src/main/codex/browser-runtime-platform-verifier.ts
+  s_256699efb22e39::t_8f886d70e976e7 1-3,8,46-47,50-51,64,68-72,74,77,89-91,101,109-111,113,123,126,144,146,149
+src/main/codex/browser-use-thread-config.test.ts
+  s_256699efb22e39::t_885a1c32b76ebf 21,27,67,128,146,167
+src/main/codex/bundled-desktop-tool-marketplace.test.ts
+  s_256699efb22e39::t_09c001a900fb0b 19-20,29,75,158,178,202-213,215
+src/main/codex/codex-runtime.ts
+  s_256699efb22e39::t_03d91b56d2a465 1-6,8-9,38,41-69,72,75,78,80,92,98-99,104,107-108,112-116,127,146-148,151,162-165,174,189,195-212
+src/main/core-client/CodexSubagentParityPerformance.stress.test.ts
+  s_256699efb22e39::t_5600c96fcad6c7 661,868-869
+src/main/host-runtime/ChromeControlRuntime.ts
+  s_256699efb22e39::t_645ede1c1d4f3a 457
+src/main/host-runtime/ComputerUseRuntime.node.test.ts
+  s_256699efb22e39::t_18c9c71eef7018 29,36,126,149,198,229,265,289,315,333,350,371
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "66e4738f936a1bd0890400903c018d5c02e86703",
+  "prompts": {},
+  "sessions": {
+    "s_256699efb22e39": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a14296-7655-71c0-bea3-eeb0c4e18695",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}

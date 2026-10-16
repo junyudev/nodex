@@ -1,0 +1,28 @@
+src/main/ipc/handlers/CodexWorkspaceIpc.ts
+  s_256699efb22e39::t_792393ed3a1327 45,289,964,968,1016-1017,1215,1218,1288-1289,1361,1364,1445-1446,1509-1510,1741,1745,1997,2000
+src/main/platform/electron/WebContentsDestructionSubscriptions.node.test.ts
+  s_256699efb22e39::t_ee8c3172a2c900 1-15,18-20,22-25,38,48-49,77,93-94,110,117-124,126-150
+  s_256699efb22e39::t_1ea14318f05aa7 16-17,21,26-37,39-47,50-76,78-92,95-109,111-116,125
+src/main/platform/electron/WebContentsDestructionSubscriptions.ts
+  s_256699efb22e39::t_66ed4345f255f4 1-55
+src/main/window-runtime/WindowRuntime.test.ts
+  s_256699efb22e39::t_32c36e5caefca9 82-83,87-93
+src/renderer/components/workbench/workbench-shell.layout-panel-actions.test.tsx
+  s_256699efb22e39::t_d1604f18f2a769 1785,1919-1925,1958-1962,2139-2145,2148,2732
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "972831ff848a5fca9c4add5e14b4854d4c90d2e1",
+  "prompts": {},
+  "sessions": {
+    "s_256699efb22e39": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a14296-7655-71c0-bea3-eeb0c4e18695",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}

@@ -1,0 +1,84 @@
+src/renderer/components/workbench/workbench-library-page-surface.tsx
+  s_256699efb22e39::t_ebdf270a2a189c 27,122-124
+src/renderer/components/board/page-stage.test.tsx
+  s_256699efb22e39::t_8b2662beedb34c 33-37,41,102,105,190,216-219,230,242-271
+  s_256699efb22e39::t_c82f7e6e1e29f5 272
+src/renderer/components/workbench/workbench-history-panel.tsx
+  s_256699efb22e39::t_393d3d92d5287c 1,3,5-9,13,15-26
+  s_256699efb22e39::t_08516103164139 27-28
+src/renderer/lib/codex-panel-motion.ts
+  s_256699efb22e39::t_d67b12169de9b6 221-222
+src/renderer/components/workbench/workbench-database-view-surface.test.tsx
+  s_256699efb22e39::t_404dd4adf13c92 30-34,87-90,438-442,447-474
+  s_256699efb22e39::t_6d6d7e8a66509a 443-446,475-507
+  s_256699efb22e39::t_b22bfd854ea5e5 508-509
+src/renderer/components/workbench/workbench-shell.startup.test.tsx
+  s_256699efb22e39::t_ebdf270a2a189c 43
+  s_256699efb22e39::t_dff952b50073de 19-42,44-45,76
+  s_256699efb22e39::t_dda4334c3b44c6 46-75
+docs/product-specs/desktop-startup-behavior.md
+  s_256699efb22e39::t_8b2662beedb34c 51-53
+  s_256699efb22e39::t_923874df14a63b 54-57
+src/renderer/components/workbench/workbench-db-view-panel.tsx
+  s_256699efb22e39::t_2a9da1dbb336ab 99,310,328,860-863
+src/renderer/components/workbench/workbench-database-view-surface.tsx
+  s_256699efb22e39::t_2a9da1dbb336ab 38,161,173,446
+  s_256699efb22e39::t_72b3becbdaa923 447
+src/renderer/components/workbench/workbench-testkit/workbench-shell-harness.tsx
+  s_256699efb22e39::t_dff952b50073de 1854-1855,1858-1868,1984,1995,2423,2454,2473
+src/renderer/components/workbench/workbench-shell.pages-shell-navigation.test.tsx
+  s_256699efb22e39::t_8b2662beedb34c 8,1333-1335,1362,1370,1399
+src/renderer/components/board/page-stage.tsx
+  s_256699efb22e39::t_ebdf270a2a189c 52,477-481
+src/renderer/lib/page-create-workflow.tsx
+  s_256699efb22e39::t_393d3d92d5287c 1,14-16
+  s_256699efb22e39::t_318a748bc75f90 17
+src/renderer/components/workbench/workbench-page-stage.tsx
+  s_256699efb22e39::t_393d3d92d5287c 1-14
+  s_256699efb22e39::t_e6fc263ac45945 15-16
+src/renderer/lib/modal-registry.tsx
+  s_256699efb22e39::t_393d3d92d5287c 1-2,125,127
+src/renderer/lib/modal-registry.test.tsx
+  s_256699efb22e39::t_c0997d43e6e6e0 7-10,140-146,148-149,152,162-163,170-171
+  s_256699efb22e39::t_e6c229a7a291d7 6
+src/renderer/components/workbench/workbench-page-stage-panel.tsx
+  s_256699efb22e39::t_ebdf270a2a189c 67,273,447-459
+src/renderer/lib/codex-panel-motion.test.tsx
+  s_256699efb22e39::t_6534f030629206 36,51
+  s_256699efb22e39::t_d67b12169de9b6 25
+  s_256699efb22e39::t_281f144db585f2 1-24,26-35,37-50,52-68
+src/renderer/bootstrap/application-surface.tsx
+  s_256699efb22e39::t_2a9da1dbb336ab 141-142,144-149
+  s_256699efb22e39::t_ebdf270a2a189c 150-157,161,165,169-170,174-175
+  s_256699efb22e39::t_4a9fcebd3b1858 176-177
+src/renderer/bootstrap/application-surface.test.tsx
+  s_256699efb22e39::t_f302297b90efb3 18-19,122-186
+src/renderer/components/workbench/workbench-library-resource-surface.tsx
+  s_256699efb22e39::t_fd7ad4286691d9 82
+src/renderer/components/workbench/workbench-panel-surface.tsx
+  s_256699efb22e39::t_d5a73b14d7fe18 191,211
+src/renderer/components/workbench/workbench-runtime.tsx
+  s_256699efb22e39::t_8d8b706cc9c199 3457,3498,3813
+src/renderer/features/local-conversation/index.tsx
+  s_256699efb22e39::t_a4ccca4f64560c 74
+src/renderer/features/local-conversation/view/composer/local-conversation-thread-composer-speed.test.tsx
+  s_256699efb22e39::t_0e9c13814c7ed7 6-11,400-460
+src/renderer/features/local-conversation/view/composer/local-conversation-thread-composer.tsx
+  s_256699efb22e39::t_b0f65114bba89e 1,1042-1043,1266-1274
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "078882b9c3341f3fac6d44faac2900c27b289502",
+  "prompts": {},
+  "sessions": {
+    "s_256699efb22e39": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a14296-7655-71c0-bea3-eeb0c4e18695",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
