@@ -175,6 +175,7 @@ it stale; ordinary submission cannot offer it.
 ## Keyboard Model
 
 - Existing global command palette, settings, and editor shortcuts remain in force. Undo/redo is local to the focused editable surface; the shell owns no Project-wide history stack.
+- Native Zoom and Undo/Redo target the frame that currently owns input focus. Hidden retained pages and standby interactive responses cannot take those commands from Workbench; a focused embedded page keeps its own commands.
 - The previous stage-order shortcuts (`View -> Card -> Thread -> Diff`) are retired as primary shell semantics.
 - Project/Session/surface keyboard shortcuts follow the hierarchy: Project disclosure control, Project navigation control, Session row, owner primary, and right/bottom panel groups.
 - `Cmd/Ctrl+J` executes the shell-global `toggleBottomPanel` command and shows or hides the selected Scene's bottom panel. Toolbar, command palette, Browser-runtime keyboard handling, and desktop application menu share the same shell executor; Electron owns the desktop accelerator so one keypress cannot toggle twice. It works from editable and desktop Browser surfaces, preserves explicit user unassignment, and safely no-ops only when no Scene is active.

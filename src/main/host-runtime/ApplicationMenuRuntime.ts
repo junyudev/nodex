@@ -60,6 +60,7 @@ import { ScopedCallbackRuntime } from "../app/ScopedCallbackRuntime";
 import type { AppUpdateRuntimeError } from "./AppUpdateRuntime";
 import type { WindowRuntimeService } from "../window-runtime/WindowRuntime";
 import { syncWindowNavigationChrome, type WindowZoomCommand } from "../window-navigation-chrome";
+import { getFocusedFrameOwner } from "../platform/electron/FocusedWebContents";
 
 export interface ApplicationMenuNativePort {
   readonly shouldUseDarkColors: () => boolean;
@@ -102,7 +103,7 @@ export class ApplicationMenuRuntime extends Context.Service<
 
 const electronNative = (): ApplicationMenuNativePort => ({
   shouldUseDarkColors: () => nativeTheme.shouldUseDarkColors,
-  getFocusedWebContents: () => webContents.getFocusedWebContents(),
+  getFocusedWebContents: getFocusedFrameOwner,
   buildFromTemplate: (template) => Menu.buildFromTemplate(template),
   homePath: app.getPath("home"),
   isInApplicationsFolder:

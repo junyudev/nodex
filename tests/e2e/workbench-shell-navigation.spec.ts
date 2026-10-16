@@ -268,6 +268,11 @@ test("keeps Home and Space navigation, tabs and chrome across Settings and resta
 
           await selectAppearance(page, "Light");
           await expectHomeProject();
+          const nativeWindow = await harness.application.browserWindow(page);
+          await harness.application.evaluate(({ app }) => app.focus({ steal: true }));
+          await nativeWindow.evaluate((window) => window.webContents.focus());
+          await expect.poll(() => nativeWindow.evaluate((window) => window.isFocused())).toBe(true);
+          await expect.poll(async () => (await readPaint(page)).electronOpaque).toBe(false);
           const lightPaint = await readPaint(page);
           claim(
             "Light chrome tints native material once and keeps content opaque",
@@ -363,7 +368,6 @@ test("keeps Home and Space navigation, tabs and chrome across Settings and resta
               scheduledOpen: await page.getByTestId("automations-route-shell").isVisible(),
             },
           );
-          const nativeWindow = await harness.application.browserWindow(page);
           const nativeChrome = await nativeWindow.evaluate((window) => ({
             buttons: window.getWindowButtonPosition(),
             zoom: window.webContents.getZoomFactor(),
@@ -470,7 +474,12 @@ test("keeps Home and Space navigation, tabs and chrome across Settings and resta
             await page.mouse.move(x, 74);
             await page.waitForTimeout(70);
           }
-          await page.waitForTimeout(400);
+          await expect
+            .poll(async () => {
+              const bounds = await peek.boundingBox();
+              return bounds ? { x: bounds.x, y: bounds.y, width: bounds.width } : null;
+            })
+            .toEqual({ x: 56, y: 48, width: 284 });
           const peekBounds = await peek.boundingBox();
           claim(
             "A rail peek survives the gap into its surface and keeps the pinned geometry",
@@ -485,6 +494,8 @@ test("keeps Home and Space navigation, tabs and chrome across Settings and resta
           await page.mouse.move(900, 700);
           await expect(peek).toHaveCount(0);
           if (process.platform === "darwin") {
+            const standby = page.locator('webview[data-inline-visualization-standby="ready"]');
+            await expect(standby).toHaveCount(1);
             const windowId = await nativeWindow.evaluate((window) => window.id);
             const zoomCommand = async (id: "view.zoomIn" | "view.resetZoom") => {
               await harness.application.evaluate(({ app, BrowserWindow }, ownedWindowId) => {
@@ -498,9 +509,10 @@ test("keeps Home and Space navigation, tabs and chrome across Settings and resta
                 .poll(() =>
                   harness.application.evaluate(({ BrowserWindow, webContents }, ownedWindowId) => {
                     const target = BrowserWindow.fromId(ownedWindowId);
+                    if (!target || !target.isFocused()) return false;
+                    const frame = target.webContents.focusedFrame;
                     return (
-                      target !== null &&
-                      webContents.getFocusedWebContents()?.id === target.webContents.id
+                      frame !== null && webContents.fromFrame(frame)?.id === target.webContents.id
                     );
                   }, windowId),
                 )
@@ -520,7 +532,9 @@ test("keeps Home and Space navigation, tabs and chrome across Settings and resta
                     targetContentsId: target.webContents.id,
                     windowFocused: target.isFocused(),
                     focusedWindowId: BrowserWindow.getFocusedWindow()?.id ?? null,
-                    focusedContentsId: webContents.getFocusedWebContents()?.id ?? null,
+                    focusedContentsId: target.webContents.focusedFrame
+                      ? (webContents.fromFrame(target.webContents.focusedFrame)?.id ?? null)
+                      : null,
                     before,
                     after: target.webContents.getZoomFactor(),
                   };
@@ -569,7 +583,6 @@ test("keeps Home and Space navigation, tabs and chrome across Settings and resta
                 path.join(artifacts, "native-zoom-geometry.json"),
                 `${JSON.stringify({ native: zoomedNative, geometry: zoomedGeometry }, null, 2)}\n`,
               );
-            } finally {
               await zoomCommand("view.resetZoom");
               await expect
                 .poll(() => nativeWindow.evaluate((window) => window.webContents.getZoomFactor()))
@@ -577,6 +590,13 @@ test("keeps Home and Space navigation, tabs and chrome across Settings and resta
               await expect
                 .poll(async () => (await readNativeSafeGeometry(page)).safeInset)
                 .toBe(88);
+            } finally {
+              // Failure cleanup must not repeat a failed focus prerequisite or hide its error.
+              await nativeWindow
+                .evaluate((window) => {
+                  if (!window.isDestroyed()) window.webContents.setZoomLevel(0);
+                })
+                .catch(() => undefined);
             }
           }
           await page.getByRole("button", { name: "Show sidebar", exact: true }).click();
