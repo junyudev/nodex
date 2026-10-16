@@ -60,7 +60,11 @@ import {
 } from "../../../lib/nfm-block-move-runtime";
 import type { SurfaceHistorySelectionPair, YUndoExtension } from "@blocknote/core/yjs";
 import { NfmHistoryLane } from "./nfm-editor-history";
-import { historyKeyDirection, retainPendingHistoryInput } from "../../../lib/focused-history";
+import {
+  historyKeyDirection,
+  isHistoryInput,
+  retainPendingHistoryInput,
+} from "../../../lib/focused-history";
 import type { SurfaceHistoryControls } from "../../../lib/surface-history/controls";
 import type { SurfaceHistoryDirection } from "../../../../shared/surface-history";
 import {
@@ -340,6 +344,13 @@ export class NfmStructuralEditingSession {
   private readonly settleClipboard: typeof settleStructuralClipboard;
   private readonly awaitClipboard: typeof awaitStructuralClipboard;
   private readonly history: NfmHistoryLane;
+  private readonly inputHistoryControls: SurfaceHistoryControls = {
+    snapshot: () => this.history.snapshot(),
+    subscribe: (listener) => this.history.subscribe(listener),
+    request: (direction) => this.requestHistory(direction),
+    recover: () => this.history.recover(),
+    reset: () => this.history.reset(),
+  };
   private readonly ownsHistory: boolean;
   private readonly detachHistory: () => void;
   private readonly unbindHistory: () => void;
@@ -1012,11 +1023,14 @@ export class NfmStructuralEditingSession {
     return this.whenIdle();
   }
 
+  /** Focus and menu routing request history through the editor's own input owner. */
   get historyControls(): SurfaceHistoryControls {
-    return this.history;
+    return this.inputHistoryControls;
   }
 
   private readonly markFocusInteraction = (event: Event): void => {
+    // A history request, or the next one, cannot cancel the focus its replay restores.
+    if (isHistoryInput(event)) return;
     this.focusRevision++;
     if (event.type === "keydown" && (event as KeyboardEvent).key === "Escape")
       this.cancelPreparations();

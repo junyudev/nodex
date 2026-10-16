@@ -22,6 +22,21 @@ export function historyKeyDirection(event: KeyboardEvent): SurfaceHistoryDirecti
   return null;
 }
 
+const MODIFIER_KEYS = new Set(["Meta", "Control", "Shift", "Alt"]);
+
+/**
+ * Undo and Redo input, including a modifier pressed to begin the shortcut, addresses the current
+ * history owner. It is never an interaction that moves input ownership elsewhere.
+ */
+export function isHistoryInput(event: Event): boolean {
+  if (event instanceof KeyboardEvent)
+    return MODIFIER_KEYS.has(event.key) || historyKeyDirection(event) !== null;
+  return (
+    event instanceof InputEvent &&
+    (event.inputType === "historyUndo" || event.inputType === "historyRedo")
+  );
+}
+
 const focusedRegistration = (
   target: Element | null = document.activeElement,
 ): FocusedHistoryRegistration | null => {
@@ -120,8 +135,7 @@ export function retainPendingHistoryInput(
   const onKeyDown = (event: KeyboardEvent) => {
     const direction = historyKeyDirection(event);
     if (direction) return route(event, direction);
-    if (["Meta", "Control", "Shift", "Alt"].includes(event.key)) return;
-    release();
+    if (!isHistoryInput(event)) release();
   };
   const onBeforeInput = (event: InputEvent) => {
     if (event.isComposing) return release();

@@ -17,7 +17,11 @@ import {
   type InteractionHistory,
 } from "../../../lib/surface-history/owner";
 import { createNfmEditorModeOptions } from "./nfm-editor-source";
-import { dispatchFocusedHistory, readFocusedHistory } from "../../../lib/focused-history";
+import {
+  dispatchFocusedHistory,
+  readFocusedHistory,
+  registerFocusedHistory,
+} from "../../../lib/focused-history";
 import { prepareNfmEditorStructuralMutation } from "./nfm-editor-relocation";
 import { NfmStructuralEditingSession } from "./nfm-structural-editing-extension";
 import { nfmSchema } from "./nfm-schema";
@@ -359,6 +363,97 @@ test("foreign history fences preserve the invoking editor focus without overridi
     other.remove();
   }
 });
+
+test.each(["keyboard", "menu", "native"] as const)(
+  "%s history routed by focus restores the editor that a foreign replay blurred",
+  async (input) => {
+    const history = createInteractionHistory({ scopeKey: `routed-focus-${input}` });
+    // As in a Workbench, another surface starts focus routing before this editor listens.
+    const board = document.createElement("section");
+    document.body.append(board);
+    const releaseBoard = registerFocusedHistory(board, { controls: history });
+    const source = surface(history, `routed-focus-${input}`);
+    let value = true;
+    const foreign = history.bind<"move", never, boolean, boolean>({
+      adapter: {
+        describe: () => "Move Blocks",
+        prepare: async () => {
+          throw new Error("The fixture starts from a committed move");
+        },
+        prepareInverse: async (next) => {
+          await prepareNfmEditorStructuralMutation(source.editor, source.host, {
+            flushAndFence: async () => ({
+              documentId: source.doc.guid,
+              storeEpoch: "epoch:realm",
+              generation: 1,
+              expectedHeadSeq: 1,
+            }),
+          });
+          value = next;
+          return { kind: "complete", receipt: next };
+        },
+        submit: async () => {
+          throw new Error("No remote request is needed");
+        },
+        interpret: (current) => ({ kind: "reversible", inverse: !current }),
+      },
+    });
+    let unregister: () => void = () => undefined;
+    const modifier = navigator.platform.includes("Mac") ? "Meta" : "Control";
+    const request = async (direction: "undo" | "redo") => {
+      if (input === "menu") dispatchFocusedHistory(direction);
+      if (input === "keyboard")
+        await userEvent.keyboard(
+          direction === "undo"
+            ? `{${modifier}>}z{/${modifier}}`
+            : `{${modifier}>}{Shift>}z{/Shift}{/${modifier}}`,
+        );
+      // Chromium's native Undo targets the editable root holding the selection, even unfocused.
+      if (input === "native")
+        source.editor.prosemirrorView!.dom.dispatchEvent(
+          new InputEvent("beforeinput", {
+            inputType: direction === "undo" ? "historyUndo" : "historyRedo",
+            bubbles: true,
+            cancelable: true,
+          }),
+        );
+      await history.whenIdle();
+      await settle();
+    };
+    try {
+      await act(async () => {
+        source.editor.mount(source.host);
+        await settle();
+        const root = source.editor.prosemirrorView!.dom;
+        unregister = registerFocusedHistory(root, {
+          controls: source.session.historyControls,
+          contentEditableRoot: () => root,
+        });
+        foreign.capture("move", true);
+        if (input === "native") (document.activeElement as HTMLElement | null)?.blur();
+        else source.editor.focus();
+        await request("undo");
+      });
+      expect(value).toBe(false);
+      expect(document.activeElement).toBe(source.editor.prosemirrorView!.dom);
+      await act(async () => {
+        await request("redo");
+      });
+      expect(value).toBe(true);
+      expect(document.activeElement).toBe(source.editor.prosemirrorView!.dom);
+      expect(source.errors).toEqual([]);
+    } finally {
+      unregister();
+      releaseBoard();
+      board.remove();
+      foreign.close();
+      await act(async () => {
+        await source.close();
+      });
+      history.close();
+    }
+  },
+);
 
 test.each(["keyboard", "menu"] as const)(
   "%s history input remains owned while a foreign inverse awaits its receipt",

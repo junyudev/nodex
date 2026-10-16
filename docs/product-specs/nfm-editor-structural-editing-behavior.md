@@ -188,10 +188,13 @@ after submission transfers recovery responsibility without erasing the attempt.
 
 While structural replay temporarily blurs its initiating editor to settle browser
 selection, that editor retains keyboard and native-menu Undo/Redo input until
-replay completes. Repeated intents enter the same content queue even when the
-content projection arrives before the command receipt. Pointer interaction,
+replay completes, then regains the focus the replay released. This holds however
+the request arrived: a shortcut, the Edit menu, or native Undo addressed to the
+editor's selection after a drag left focus unclaimed. Repeated intents enter the
+same content queue even when the content projection arrives before the command receipt. Pointer interaction,
 another focused input, ordinary keyboard input, window blur, or detachment ends
-this temporary ownership; completion never reclaims a user's later focus choice.
+this temporary ownership; Undo/Redo input, including the modifier that begins it,
+does not. Completion never reclaims a user's later focus choice.
 
 Portable fallback is part of its reserved Paste gesture, including when Undo
 was requested while the clipboard was still preparing. Ordinary local fallback
