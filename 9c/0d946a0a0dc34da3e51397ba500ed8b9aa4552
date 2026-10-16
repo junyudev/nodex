@@ -1,0 +1,23 @@
+src/renderer/components/workbench/workbench-thread-summary-header.tsx
+  s_1ca65ffa5958ee::t_b46256eb2308a7 37
+src/renderer/features/local-conversation/view/summary-panel/thread-summary-panel-header-action.tsx
+  s_1ca65ffa5958ee::t_b46256eb2308a7 23-24,42,55-58
+src/renderer/features/local-conversation/view/summary-panel/thread-summary-panel-header-action.test.tsx
+  s_1ca65ffa5958ee::t_b84a210bfce858 1-45
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "9c0d946a0a0dc34da3e51397ba500ed8b9aa4552",
+  "prompts": {},
+  "sessions": {
+    "s_1ca65ffa5958ee": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "67793a21-5e0b-400f-bf07-1018dc4c4f31",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
