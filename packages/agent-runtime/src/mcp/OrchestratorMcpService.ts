@@ -762,7 +762,8 @@ const make = Effect.gen(function* () {
       return { parent, target, shell, counts } as const;
     });
 
-  const loadProviders = providerRegistry.getProviders;
+  // Agents choose and validate delegation targets; never from unchecked placeholders.
+  const loadProviders = providerRegistry.getCheckedProviders;
 
   /**
    * Instance ids the adapter registry resolves — the same lookup a

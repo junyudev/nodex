@@ -588,9 +588,9 @@ export const make = Effect.fn("AgentRuntime.makeService")(function* (
           .getThreadShell(input.input.threadId)
           .pipe(Effect.flatMap(encodeThreadShell));
       case "providers.read":
-        return yield* (input.input.refresh ? providers.refresh() : providers.getProviders).pipe(
-          Effect.flatMap(encodeProviders),
-        );
+        return yield* (
+          input.input.refresh ? providers.refresh() : providers.getCheckedProviders
+        ).pipe(Effect.flatMap(encodeProviders));
       case "native-session.authority":
         return yield* readNativeSessionAuthority(input.input);
       case "thread.authority":

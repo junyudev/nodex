@@ -85,6 +85,12 @@ export class ProviderRegistry extends Context.Service<
     readonly getProviders: Effect.Effect<ReadonlyArray<ServerProvider>>;
 
     /**
+     * Read the providers once every current instance has finished the status check it started
+     * with, so a reader never sees "not checked yet" placeholders. Starts no probe of its own.
+     */
+    readonly getCheckedProviders: Effect.Effect<ReadonlyArray<ServerProvider>>;
+
+    /**
      * Refresh all providers, or the default instance of the specified
      * kind when supplied.
      *
@@ -1129,8 +1135,31 @@ export const layer = Layer.effect(
       );
     });
 
+    const getCheckedProviders = instanceRegistry.listInstances.pipe(
+      Effect.flatMap((instances) =>
+        Effect.forEach(
+          instances,
+          (instance) =>
+            Effect.gen(function* () {
+              const source = buildSnapshotSource(instance);
+              yield* instance.snapshot.initialCheck;
+              // The change subscription may not have delivered the result yet.
+              const provider = yield* source.getSnapshot;
+              yield* correlateSnapshotWithSource(source, provider).pipe(
+                Effect.flatMap(syncProvider),
+              );
+            }).pipe(Effect.ignoreCause({ log: true })),
+          { concurrency: "unbounded", discard: true },
+        ),
+      ),
+      // A probe that hangs must not hold every reader; it answers with what is known.
+      Effect.timeoutOption("20 seconds"),
+      Effect.andThen(Ref.get(providersRef)),
+    );
+
     return {
       getProviders: Ref.get(providersRef),
+      getCheckedProviders,
       refresh: (provider?: ProviderDriverKind) =>
         refresh(provider).pipe(Effect.catchCause(recoverRefreshFailure)),
       refreshInstance: (instanceId: ProviderInstanceId) =>
