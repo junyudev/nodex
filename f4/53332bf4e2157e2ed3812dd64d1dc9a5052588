@@ -7,6 +7,7 @@ src/main/inbox-application/inbox-naming.node.test.ts
 crates/nodex-core/src/workspace/inbox_read.rs
   s_bd811abbf24a41::t_b1e1b2427bd243 14-19,31
   s_bd811abbf24a41::t_1ec439684961dc 117,346-349,351-355,356,360-391
+  s_bd811abbf24a41::t_42f39a1777f160 392-400
 src/shared/ipc-api.ts
   s_bd811abbf24a41::t_6b542a59a856aa 1035
 src/renderer/features/inbox/inbox-triage.tsx
@@ -20,6 +21,7 @@ src/renderer/features/inbox/inbox-presentation.node.test.ts
 crates/nodex-core/src/workspace/inbox_tests.rs
   s_bd811abbf24a41::t_d55e0fd567cabe 1801-1802
   s_bd811abbf24a41::t_50ad17e8c14bb7 6-10,1635-1664,1666-1668,1670-1674,1677,1679-1791,1793-1800,1803-1885,1887-1894
+  s_bd811abbf24a41::t_538ae196eefa0d 1665,1669,1675-1676,1678,1792,1886
 src/shared/inbox.ts
   s_bd811abbf24a41::t_e7564c75ad2217 118-119,202-206
   s_bd811abbf24a41::t_af7ed51591288c 207-208
@@ -67,11 +69,13 @@ src/renderer/lib/inbox-runtime.ts
 src/renderer/features/inbox/inbox-triage.test.tsx
   s_bd811abbf24a41::t_cbb945f8fb5dcd 147
   s_bd811abbf24a41::t_bfa1f45395054b 8,42,58,69-72,84,87,89,118,121-146,148-180,188
+  s_bd811abbf24a41::t_fad03ff5805def 354,382
 crates/nodex-core/src/workspace/inbox.rs
   s_bd811abbf24a41::t_1ec439684961dc 1553-1565,1566-1567,1572-1575,1577-1578,1583-1624,1881-1903,1905
   s_bd811abbf24a41::t_b1e1b2427bd243 353-355
   s_bd811abbf24a41::t_27b065122a489d 268,280,284-313,315,330-352,356-367
   s_bd811abbf24a41::t_ab7b7965afcadc 1904,1906
+  s_bd811abbf24a41::t_19b21ce722488a 42-43,1568-1571,1576,1579-1582
 ---
 {
   "schema_version": "authorship/3.0.0",
