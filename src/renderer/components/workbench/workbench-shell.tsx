@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useApplicationReady } from "@/bootstrap/application-surface";
 import { WorkbenchRuntime } from "./workbench-runtime";
 import { useProjects } from "@/lib/use-projects";
 import { useWorkbenchWindowState } from "@/lib/use-workbench-window-state";
@@ -113,6 +114,7 @@ export function WorkbenchShell({
     projectCatalogRenderToken,
     markProjectCatalogRendered,
   } = useProjects();
+  useApplicationReady(!loading && !workbenchV2Enabled);
   useLayoutEffect(() => {
     if (projectCatalogRenderToken === null) return;
     markProjectCatalogRendered(projectCatalogRenderToken);

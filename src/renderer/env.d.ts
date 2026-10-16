@@ -1,4 +1,4 @@
-import type { AppInitializationStep } from "../shared/app-startup";
+import type { AppInitializationStep, RendererInitializationReport } from "../shared/app-startup";
 import type { CoreAuthorityStatus } from "../shared/core-authority-status";
 import type {
   AppUpdateStatus,
@@ -59,10 +59,7 @@ declare global {
       relaunchForCoreAuthority?: () => Promise<void>;
       restartApplication?: () => Promise<void>;
       onInitializationStep?: (callback: (step: AppInitializationStep) => void) => () => void;
-      reportInitializationReady?: (input: {
-        durationMs: number;
-        outcome: "failed" | "ready";
-      }) => void;
+      reportInitializationReady?: (input: RendererInitializationReport) => void;
       onNavigateBack?: (callback: () => void) => () => void;
       onNavigateForward?: (callback: () => void) => () => void;
       onToggleSidebar?: (callback: () => void) => () => void;

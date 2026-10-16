@@ -6,6 +6,10 @@ import type { AppRuntimeCapabilities } from "../shared/runtime-capabilities";
 import App from "./app";
 import { AppProviders } from "./app-providers";
 import { initializeApplicationAppearance } from "./bootstrap/application-appearance";
+import {
+  ApplicationReadinessRoot,
+  createApplicationReadiness,
+} from "./bootstrap/application-surface";
 import "./globals.css";
 
 export async function mountApplicationRenderer({
@@ -25,16 +29,20 @@ export async function mountApplicationRenderer({
       ? (await import("agentation")).Agentation
       : null;
   const root = createRoot(rootElement);
+  const readiness = createApplicationReadiness();
   // The renderer-ready report is a multi-window scheduling boundary, so the
   // first full application commit must precede this function's resolution.
   flushSync(() => {
     root.render(
       <StrictMode>
-        <AppProviders runtimeCapabilities={runtimeCapabilities}>
-          <App windowSessionBootstrap={windowSessionBootstrap} />
-          {Agentation ? <Agentation /> : null}
-        </AppProviders>
+        <ApplicationReadinessRoot readiness={readiness}>
+          <AppProviders runtimeCapabilities={runtimeCapabilities}>
+            <App windowSessionBootstrap={windowSessionBootstrap} />
+            {Agentation ? <Agentation /> : null}
+          </AppProviders>
+        </ApplicationReadinessRoot>
       </StrictMode>,
     );
   });
+  await readiness.ready;
 }

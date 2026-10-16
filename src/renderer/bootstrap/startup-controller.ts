@@ -1,4 +1,4 @@
-import type { AppInitializationStep } from "../../shared/app-startup";
+import type { AppInitializationStep, RendererInitializationPhase } from "../../shared/app-startup";
 import { FAIL_CLOSED_RUNTIME_CAPABILITIES } from "../../shared/runtime-capabilities";
 import { getStartupStatus } from "../lib/app-startup";
 import { startupOperations } from "./startup-operations";
@@ -46,9 +46,27 @@ export function startStartupController(): StartupController {
   if (!api?.awaitInitialization) {
     throw new Error("Nodex bootstrap requires the Electron preload bridge");
   }
+  const awaitInitialization = api.awaitInitialization;
 
   const elements = readStartupElements();
   const startedAt = performance.now();
+  const timingsMs: Partial<Record<RendererInitializationPhase, number>> = {};
+  const measure = async <T>(
+    phase: RendererInitializationPhase,
+    run: () => Promise<T>,
+  ): Promise<T> => {
+    const start = performance.now();
+    try {
+      return await run();
+    } finally {
+      timingsMs[phase] = Math.round(performance.now() - start);
+      try {
+        performance.measure?.(`nodex:startup:${phase}`, { start, end: performance.now() });
+      } catch {
+        // Optional browser profiling must not change the startup outcome.
+      }
+    }
+  };
   let currentPhase: AppInitializationStep["phase"] = "opening";
   let latestMigrationCompleted = -1;
   let disposed = false;
@@ -102,6 +120,12 @@ export function startStartupController(): StartupController {
     const webContentsId = typeof args[0] === "number" ? args[0] : -1;
     void startupOperations.acknowledgeCloseFlush(api, webContentsId);
   });
+  let startupCloseFlushActive = true;
+  const retireStartupCloseFlush = (): void => {
+    if (!startupCloseFlushActive) return;
+    startupCloseFlushActive = false;
+    unsubscribeCloseFlush();
+  };
   const onRestart = (): void => {
     void api.restartApplication?.();
   };
@@ -112,44 +136,55 @@ export function startStartupController(): StartupController {
     disposed = true;
     window.clearTimeout(openingTimer);
     unsubscribeInitialization();
-    unsubscribeCloseFlush();
+    retireStartupCloseFlush();
     document.removeEventListener("visibilitychange", onVisibilityChange);
     document.documentElement.classList.remove("nodex-startup-document-hidden");
     elements.restart.removeEventListener("click", onRestart);
   };
 
-  void api
-    .awaitInitialization()
+  void measure("native", awaitInitialization)
     .then(async () => {
       if (disposed) return;
       renderStep({ phase: "done" });
-      const [windowSession, runtimeCapabilities] = await Promise.all([
-        startupOperations.readWindowSession(api),
-        startupOperations
-          .readRuntimeCapabilities(api)
-          .catch(() => FAIL_CLOSED_RUNTIME_CAPABILITIES),
-      ]);
-      const [application, closeFlush, transport, sentry, telemetry] = await Promise.all([
-        import("../application-renderer"),
-        import("../lib/app-close-flush"),
-        import("../lib/electron-renderer-transport"),
-        import("../lib/sentry-renderer"),
-        import("../lib/statsig-telemetry"),
-      ]);
+      const [windowSession, runtimeCapabilities] = await measure("bootstrap", () =>
+        Promise.all([
+          startupOperations.readWindowSession(api),
+          startupOperations
+            .readRuntimeCapabilities(api)
+            .catch(() => FAIL_CLOSED_RUNTIME_CAPABILITIES),
+        ]),
+      );
+      const [application, closeFlush, transport, sentry, telemetry] = await measure("modules", () =>
+        Promise.all([
+          import("../application-renderer"),
+          import("../lib/app-close-flush"),
+          import("../lib/electron-renderer-transport"),
+          import("../lib/sentry-renderer"),
+          import("../lib/statsig-telemetry"),
+        ]),
+      );
       if (disposed) return;
       transport.initializeElectronRendererLocalCommitIngress(api);
-      await sentry.initializeRendererSentry();
+      await measure("diagnostics", () => sentry.initializeRendererSentry());
       void telemetry.initializeRendererTelemetry();
       // Install the full close coordinator before retiring the bootstrap ack.
       const releaseCloseFlushHandoff = closeFlush.registerAppCloseFlushHandler(() => undefined);
-      await application.mountApplicationRenderer({
-        runtimeCapabilities,
-        windowSessionBootstrap: windowSession,
-      });
-      releaseCloseFlushHandoff();
+      retireStartupCloseFlush();
+      try {
+        await measure("mount", () =>
+          application.mountApplicationRenderer({
+            runtimeCapabilities,
+            windowSessionBootstrap: windowSession,
+          }),
+        );
+      } finally {
+        releaseCloseFlushHandoff();
+      }
+      if (disposed) return;
       api.reportInitializationReady?.({
         durationMs: performance.now() - startedAt,
         outcome: "ready",
+        timingsMs,
       });
       dispose();
     })
@@ -159,6 +194,7 @@ export function startStartupController(): StartupController {
       api.reportInitializationReady?.({
         durationMs: performance.now() - startedAt,
         outcome: "failed",
+        timingsMs,
       });
     });
 

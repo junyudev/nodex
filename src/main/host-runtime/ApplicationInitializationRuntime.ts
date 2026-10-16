@@ -9,6 +9,7 @@ import { performance } from "node:perf_hooks";
 import {
   APP_INITIALIZATION_STEP_CHANNEL,
   type AppInitializationStep,
+  type RendererInitializationReport,
 } from "../../shared/app-startup";
 import type { CoreAuthorityProcessExit, CoreStartupEvent } from "../core-client/core-launcher";
 import { safeBroadcastToWindows } from "../ipc-safe-send";
@@ -28,7 +29,7 @@ export class ApplicationInitializationRuntime extends Context.Service<
     readonly observeCoreStartup: (event: CoreStartupEvent) => Effect.Effect<void>;
     readonly reportRenderer: (
       webContentsId: number,
-      report: { readonly durationMs: number; readonly outcome: "ready" | "failed" },
+      report: RendererInitializationReport,
     ) => Effect.Effect<boolean>;
     readonly rendererLoaded: Stream.Stream<number>;
     readonly state: SubscriptionRef.SubscriptionRef<AppInitializationStep>;
@@ -156,6 +157,7 @@ export const live = (
             logger.info("Renderer initialization finished", {
               durationMs: Math.round(report.durationMs),
               outcome: report.outcome,
+              timingsMs: report.timingsMs,
               webContentsId,
             });
           }).pipe(Effect.andThen(PubSub.publish(rendererLoaded, webContentsId)), Effect.as(true));

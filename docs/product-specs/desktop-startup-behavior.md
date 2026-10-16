@@ -42,6 +42,18 @@ primary is shown and activated first. Each following renderer activates after th
 reports readiness or the bounded coordinator advances it. This avoids simultaneous full Workbench
 imports while preserving every restored Window Session.
 
+Workbench state owners load with the application. Settings, Automations, conversation views,
+terminal, and file editor surfaces load when their route or panel is rendered, so unopened
+surfaces do not delay the initial Workbench. Their loading boundaries retain the surrounding
+Workbench and its state. Renderer readiness waits for the initial route's data selection and
+visible loading boundaries to commit their content; committing an empty loading fallback does
+not release the activation coordinator. Later route changes do not reopen the startup gate.
+
+Renderer readiness diagnostics record separate durations for the native activation gate,
+bootstrap queries, application module loading, diagnostics initialization, and React mount.
+Failed startup includes only phases that were attempted, including the failed phase. Browser
+profiling is best effort and cannot prevent startup or replace the original failure.
+
 ## Failure and recovery
 
 Core, Store, capability-graph, or renderer-import failure retains the Nodex mark in the same window,
@@ -50,6 +62,10 @@ scoped shutdown path. Closing the last failed window quits instead of leaving a 
 Dock activation while the failure window exists focuses that window rather than creating another
 one. A native error dialog is reserved for failures that prevent the renderer document itself from
 loading.
+
+After React takes ownership of the document, a failed surface import or render retains an
+in-application Nodex mark and `Restart Nodex` action. A failed initial surface reports startup
+failure; a failure in a later optional surface retains the surrounding Workbench.
 
 ## Invariants
 

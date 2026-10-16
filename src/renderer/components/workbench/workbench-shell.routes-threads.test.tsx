@@ -174,8 +174,7 @@ describe("workbench session shell / routes-threads", () => {
     await settleAsyncRender();
 
     expect(screen.queryByRole("dialog", { name: "Settings" })).toBe(null);
-    const routeShell = screen.container.querySelector('[data-testid="settings-route-shell"]');
-    expect(routeShell !== null).toBe(true);
+    await screen.findByTestId("settings-route-shell");
     expect(screen.container.querySelector('[data-thread-stage="true"]')).toBe(null);
 
     const settingsSidebar = screen.container.querySelector(".app-shell-left-panel");
@@ -445,8 +444,9 @@ describe("workbench session shell / routes-threads", () => {
       });
       await settleAsyncRender();
 
+      const backToApp = await screen.findByText("Back to app");
       await act(async () => {
-        fireEvent.click(screen.getByText("Back to app"));
+        fireEvent.click(backToApp);
         await Promise.resolve();
       });
       await settleAsyncRender();

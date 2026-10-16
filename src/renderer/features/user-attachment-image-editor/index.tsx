@@ -1,3 +1,6 @@
+import { lazy, type ComponentProps } from "react";
+import { ApplicationSurface } from "@/bootstrap/application-surface";
+
 export { ImageEditorTabIcon } from "@/components/shared/icons";
 export {
   trackImageEditorPinOutcome,
@@ -74,10 +77,7 @@ export type {
   PlaygroundTool,
   SingleImageTool,
 } from "./model/types";
-export {
-  UserAttachmentImageEditorSurface,
-  type UserAttachmentImageEditorSurfaceProps,
-} from "./view/user-attachment-image-editor-surface";
+export type { UserAttachmentImageEditorSurfaceProps } from "./view/user-attachment-image-editor-surface";
 export { ImagePreviewDialog, type ImagePreviewDialogProps } from "./view/image-preview-dialog";
 export {
   GeneratedImageDotField,
@@ -85,3 +85,15 @@ export {
 } from "./view/generated-image-dot-field";
 
 export { useGeneratedImageCollectionGroups } from "./adapters/use-generated-image-collection-groups";
+const ImageEditorSurface = lazy(async () => ({
+  default: (await import("./view/user-attachment-image-editor-surface"))
+    .UserAttachmentImageEditorSurface,
+}));
+
+export function UserAttachmentImageEditorSurface(props: ComponentProps<typeof ImageEditorSurface>) {
+  return (
+    <ApplicationSurface>
+      <ImageEditorSurface {...props} />
+    </ApplicationSurface>
+  );
+}

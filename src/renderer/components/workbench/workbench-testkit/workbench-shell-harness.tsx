@@ -1,6 +1,7 @@
 import { afterEach, beforeAll, beforeEach, expect, vi } from "vite-plus/test";
 import { initPrefersReducedMotion } from "motion";
 import { installMotionPreferenceForTest } from "@/test/browser-globals";
+import { ApplicationReadinessRoot } from "@/bootstrap/application-surface";
 import {
   WORKBENCH_SIDEBAR_PEEK_CLOSE_DELAY_MS,
   WORKBENCH_SIDEBAR_PEEK_OPEN_DELAY_MS,
@@ -2404,6 +2405,8 @@ export function renderWorkbench({
   pendingViewDeepLinkOpen = null,
   onNavigationStateChange,
   cardGetOverride = null,
+  sessionGetOverride,
+  applicationReadiness,
   ownershipPathsByPage = {},
   scheduledAutomations = [],
   automationInboxItems = [],
@@ -2432,6 +2435,8 @@ export function renderWorkbench({
   pendingViewDeepLinkOpen?: ComponentProps<typeof WorkbenchShell>["pendingViewDeepLinkOpen"];
   onNavigationStateChange?: ComponentProps<typeof WorkbenchShell>["onNavigationStateChange"];
   cardGetOverride?: ((projectId: string, pageId: string) => Promise<unknown> | unknown) | null;
+  sessionGetOverride?: (sessionId: string) => Promise<ProjectSession | null>;
+  applicationReadiness?: ComponentProps<typeof ApplicationReadinessRoot>["readiness"];
   ownershipPathsByPage?: Record<
     string,
     ReadonlyArray<{
@@ -3192,6 +3197,7 @@ export function renderWorkbench({
     }
     if (channel === "project-sessions:get") {
       const sessionId = String(args[0]);
+      if (sessionGetOverride) return await sessionGetOverride(sessionId);
       return (
         Object.values(sessionState)
           .flat()
@@ -4496,13 +4502,22 @@ export function renderWorkbench({
     );
   }
 
-  const result = render(
+  const workbench = (
     <TestQueryProvider>
       <RendererStateProvider>
         <WorkbenchShellTestHarness />
         <NodexModalHost />
       </RendererStateProvider>
-    </TestQueryProvider>,
+    </TestQueryProvider>
+  );
+  const result = render(
+    applicationReadiness ? (
+      <ApplicationReadinessRoot readiness={applicationReadiness}>
+        {workbench}
+      </ApplicationReadinessRoot>
+    ) : (
+      workbench
+    ),
   );
   return {
     ...result,

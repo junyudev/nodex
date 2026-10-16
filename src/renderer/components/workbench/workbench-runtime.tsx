@@ -1,4 +1,5 @@
 import { useRegisterFileLocationNavigator } from "@/lib/file-location-navigation";
+import { useApplicationReady } from "@/bootstrap/application-surface";
 import { subscribeDictationRecordingNavigation } from "@/lib/global-dictation-commands";
 import {
   useCallback,
@@ -682,6 +683,11 @@ export function WorkbenchRuntime({
     ...projectSessionDetailQueryOptions(projectAgentDockBoundSessionId ?? ""),
     enabled: projectAgentDockBoundSessionId !== null,
   });
+  const projectAgentDockExactSession =
+    projectAgentDockSessionQuery.data?.projectId === selectedProjectSceneId &&
+    !projectAgentDockSessionQuery.data.archived
+      ? projectAgentDockSessionQuery.data
+      : null;
   const sessionCollectionsByProject = sessionCatalog.collectionsByProject;
   const projectlessSessionCollection = sessionCatalog.projectlessCollection;
   const sessionsByProject = useMemo<Record<string, ProjectSession[]>>(
@@ -694,6 +700,21 @@ export function WorkbenchRuntime({
   );
   const selectedSessionDetailReady = sessionCatalog.selectedDetailReady;
   const selectedSessionDetailError = sessionCatalog.selectedDetailError;
+  // A catalog summary can render the sidebar before the selected scene's detail
+  // materializes its lazy surfaces. Missing selections must reconcile first.
+  const selectedRouteReady =
+    workbenchWindow.location.kind === "session"
+      ? selectedSessionDetailReady &&
+        (sessionCatalog.active !== null || selectedSessionDetailError !== null)
+      : workbenchWindow.location.kind === "project"
+        ? !selectedProjectQuery.isPending &&
+          (selectedProjectQuery.data != null || selectedProjectQuery.isError) &&
+          (!activeProjectScene?.composerOverlay.visible ||
+            projectAgentDockBoundSessionId === null ||
+            projectAgentDockSessionQuery.isError ||
+            projectAgentDockExactSession !== null)
+        : true;
+  useApplicationReady(selectedRouteReady);
   const loadMoreProjectSessionSummaries = sessionCatalog.loadMore;
   const resolveSessionScene = sessionCatalog.resolveScene;
   const resolveProjectDefaultDatabaseViewId = sessionCatalog.resolveDefaultDatabaseViewId;
@@ -1030,11 +1051,6 @@ export function WorkbenchRuntime({
   const projectAgentDockCollection = selectedProjectSceneId
     ? (sessionCollectionsByProject[selectedProjectSceneId] ?? null)
     : null;
-  const projectAgentDockExactSession =
-    projectAgentDockSessionQuery.data?.projectId === selectedProjectSceneId &&
-    !projectAgentDockSessionQuery.data.archived
-      ? projectAgentDockSessionQuery.data
-      : null;
   const projectAgentDockPendingWorktree = useMemo(
     () =>
       resolveProjectAgentDockPendingWorktree(

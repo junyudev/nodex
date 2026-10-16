@@ -4,7 +4,7 @@ import {
   EXECUTE_FOCUSED_HISTORY_CHANNEL,
   type SurfaceHistoryDirection,
 } from "../shared/surface-history";
-import type { AppInitializationStep } from "../shared/app-startup";
+import type { AppInitializationStep, RendererInitializationReport } from "../shared/app-startup";
 import {
   CORE_AUTHORITY_STATUS_CHANNEL,
   GET_CORE_AUTHORITY_STATUS_CHANNEL,
@@ -224,7 +224,7 @@ contextBridge.exposeInMainWorld("api", {
       ipcRenderer.removeListener(APP_INITIALIZATION_STEP_CHANNEL, listener);
     };
   },
-  reportInitializationReady: (input: { durationMs: number; outcome: "failed" | "ready" }) => {
+  reportInitializationReady: (input: RendererInitializationReport) => {
     ipcRenderer.send("app:renderer-initialization-finished", input);
   },
   onNavigateBack: (callback: () => void) => {

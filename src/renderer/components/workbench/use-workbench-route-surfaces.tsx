@@ -1,7 +1,15 @@
-import type { ComponentProps } from "react";
-import { PendingWorktreeRoute } from "./pending-worktree-route";
-import { WorkbenchAutomationsRouteShell } from "./workbench-automations-overlay";
-import { SettingsRouteShell } from "./workbench-settings-route-shell";
+import { lazy, type ComponentProps } from "react";
+import { ApplicationSurface } from "@/bootstrap/application-surface";
+
+const PendingWorktreeRoute = lazy(async () => ({
+  default: (await import("./pending-worktree-route")).PendingWorktreeRoute,
+}));
+const WorkbenchAutomationsRouteShell = lazy(async () => ({
+  default: (await import("./workbench-automations-overlay")).WorkbenchAutomationsRouteShell,
+}));
+const SettingsRouteShell = lazy(async () => ({
+  default: (await import("./workbench-settings-route-shell")).SettingsRouteShell,
+}));
 
 type SettingsProps = Omit<ComponentProps<typeof SettingsRouteShell>, "path">;
 type AutomationsProps = Omit<ComponentProps<typeof WorkbenchAutomationsRouteShell>, "path">;
@@ -32,18 +40,24 @@ export function useWorkbenchRouteSurfaces({
   pendingWorktree,
 }: WorkbenchRouteSurfacesInput) {
   const settingsRouteShell = settings.path ? (
-    <SettingsRouteShell path={settings.path} {...settings.props} />
+    <ApplicationSurface>
+      <SettingsRouteShell path={settings.path} {...settings.props} />
+    </ApplicationSurface>
   ) : null;
 
   const automationsRouteShell = automations.path ? (
-    <WorkbenchAutomationsRouteShell path={automations.path} {...automations.props} />
+    <ApplicationSurface>
+      <WorkbenchAutomationsRouteShell path={automations.path} {...automations.props} />
+    </ApplicationSurface>
   ) : null;
 
   const pendingWorktreeRouteShell = pendingWorktree.clientThreadId ? (
-    <PendingWorktreeRoute
-      clientThreadId={pendingWorktree.clientThreadId}
-      {...pendingWorktree.props}
-    />
+    <ApplicationSurface>
+      <PendingWorktreeRoute
+        clientThreadId={pendingWorktree.clientThreadId}
+        {...pendingWorktree.props}
+      />
+    </ApplicationSurface>
   ) : null;
 
   return {

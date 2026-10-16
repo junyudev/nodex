@@ -91,6 +91,8 @@ export function createRendererCompilerIntegration(root = process.cwd()) {
   const coverage: Plugin = {
     name: "nodex:renderer-compiler-coverage",
     enforce: "pre",
+    // The React plugin cannot infer this dependency from per-file Babel options.
+    config: () => ({ optimizeDeps: { include: ["react/compiler-runtime"] } }),
     configResolved(config) {
       command = config.command;
       mode = config.mode;

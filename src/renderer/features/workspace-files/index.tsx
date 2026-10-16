@@ -1,4 +1,18 @@
-export { WorkspaceFilesPanel } from "./workspace-files-panel";
+import { lazy, type ComponentProps } from "react";
+import { ApplicationSurface } from "@/bootstrap/application-surface";
+
+const WorkspaceFilesPanelView = lazy(async () => ({
+  default: (await import("./workspace-files-panel")).WorkspaceFilesPanel,
+}));
+
+export function WorkspaceFilesPanel(props: ComponentProps<typeof WorkspaceFilesPanelView>) {
+  return (
+    <ApplicationSurface>
+      <WorkspaceFilesPanelView {...props} />
+    </ApplicationSurface>
+  );
+}
+
 export { decideWorkspaceFileTabOpen, type WorkspaceFileOpenMode } from "./workspace-file-tab-model";
 export {
   getWorkspaceFileDomTabId,

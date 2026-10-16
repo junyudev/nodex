@@ -4,7 +4,11 @@ import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
 import type { IpcMainEvent, IpcMainInvokeEvent } from "electron";
 import { z } from "zod";
-import { APP_INITIALIZATION_STEP_CHANNEL, APP_RESTART_CHANNEL } from "../../../shared/app-startup";
+import {
+  APP_INITIALIZATION_STEP_CHANNEL,
+  APP_RESTART_CHANNEL,
+  RENDERER_INITIALIZATION_PHASES,
+} from "../../../shared/app-startup";
 import {
   WindowSessionBoundsSchema,
   WindowSessionSaveLayoutInputSchema,
@@ -36,6 +40,16 @@ const RendererInitializationReport = z
       .min(0)
       .max(10 * 60_000),
     outcome: z.enum(["ready", "failed"]),
+    timingsMs: z
+      .partialRecord(
+        z.enum(RENDERER_INITIALIZATION_PHASES),
+        z
+          .number()
+          .finite()
+          .min(0)
+          .max(10 * 60_000),
+      )
+      .optional(),
   })
   .strict();
 

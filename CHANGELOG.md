@@ -32,6 +32,8 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 
+- Nodex starts faster by loading optional panels when opened, with a restart action if a view cannot load.
+
 - Agents can read and write all Projects, Pages and Library resources in the current Profile, including across Sessions and from background tasks. Native execution uses full access and automatically approves permission requests while retaining questions that need your input.
 
 - Long chats display bounded history while restoring execution, update streamed items independently, and give foreground history requests dedicated capacity. Persisted and live voice segments keep their native order alongside text; missing promoted content and failed item-history pages can be restored in place. Completed responses show their available outputs, and active voice work keeps its live status. Sending, expanding tools, and resizing the composer preserve the reading position; Find includes all assistant messages and retained voice text, with highlights restored as visible rows change.

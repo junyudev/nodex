@@ -200,7 +200,10 @@ TanStack Form with a colocated Zod schema. A simple single-field interaction
 uses local state and a submit-time guard.
 
 The shared renderer Vite pipeline compiles first-party components and hooks
-with React Compiler. Keep render pure: resources and committed identities
+with React Compiler. Apply its source boundary before invoking Babel so shared
+modules, dependencies, and fixtures retain the native transform path. This boundary
+must not narrow Fast Refresh coverage or omit the compiler runtime from dependency
+prebundling. Keep render pure: resources and committed identities
 belong to their owners and effects; refs carry imperative event or effect
 state, not render-time state. Derive display values directly, and let React
 state represent a render that must remember a previous input. Do not add

@@ -3,10 +3,12 @@ import {
   useEffect,
   useMemo,
   useRef,
+  lazy,
   type ComponentProps,
   type ComponentType,
   type MutableRefObject,
 } from "react";
+import { ApplicationSurface } from "@/bootstrap/application-surface";
 import { type MotionValue } from "motion/react";
 import {
   AutomationsIcon,
@@ -72,7 +74,6 @@ import {
 import { listWorkbenchPanelLeaves } from "../../../shared/workbench-panel-layout";
 import type { AppShellTabItem } from "./app-shell-tabs";
 import { buildAutomationsPath } from "./workbench-automations-routes";
-import { WorkbenchAutomationSidePanelTab } from "./workbench-automations-overlay";
 import {
   BackgroundAgentSessionTab,
   SideChatSessionTab,
@@ -83,6 +84,10 @@ import { McpAppSessionTab, ProcessOutputPanelTabView } from "./workbench-runtime
 import { PlanSidePanelTab } from "./plan-side-panel-tab";
 import type { PanelTabPresentationRegistry } from "./panel-tab-presentation-registry";
 import { ReviewRouteOpenAdapter } from "./workbench-review-route-adapter";
+
+const WorkbenchAutomationSidePanelTab = lazy(async () => ({
+  default: (await import("./workbench-automations-overlay")).WorkbenchAutomationSidePanelTab,
+}));
 
 type ProjectSession = WorkbenchSessionRenderProjection;
 type SurfaceProps = ComponentProps<typeof WorkbenchTabProjectionPanel>;
@@ -480,54 +485,57 @@ export function useWorkbenchPanelProjection({
             }
             if (isAutomationPanelTab(tab)) {
               return (
-                <WorkbenchAutomationSidePanelTab
-                  key={`${session.id}:${tab.id}:${tab.stateKey}`}
-                  automationId={tab.automationId}
-                  createInput={tab.createInput}
-                  mode={tab.mode}
-                  projects={projects}
-                  title={tab.title}
-                  updateInput={tab.updateInput}
-                  onClose={() => {
-                    void closeEphemeralPanelTab(tab.panelId, tab.id);
-                  }}
-                  onOpenInScheduled={(automationId) => {
-                    onOpenAutomations(buildAutomationsPath({ automationId }));
-                  }}
-                  onOpenLocalEnvironmentsSettings={onOpenLocalEnvironmentsSettings}
-                  onSaved={(automationValue: CodexScheduledAutomation) => {
-                    panelControllerRef.current.updateAutomationTabsBySession((current) => {
-                      const tabs = current[session.id] ?? [];
-                      return {
-                        ...current,
-                        [session.id]: tabs.map((candidate) =>
-                          candidate.id === tab.id
-                            ? {
-                                ...candidate,
-                                automationId: automationValue.id,
-                                createInput: null,
-                                mode: "open",
-                                title: automationValue.name,
-                                updateInput: null,
-                                stateKey: candidate.stateKey + 1,
-                              }
-                            : candidate,
-                        ),
-                      };
-                    });
-                  }}
-                  onTitleChange={(titleValue) => {
-                    panelControllerRef.current.updateAutomationTabsBySession((current) => {
-                      const tabs = current[session.id] ?? [];
-                      return {
-                        ...current,
-                        [session.id]: tabs.map((candidate) =>
-                          candidate.id === tab.id ? { ...candidate, title: titleValue } : candidate,
-                        ),
-                      };
-                    });
-                  }}
-                />
+                <ApplicationSurface key={`${session.id}:${tab.id}:${tab.stateKey}`}>
+                  <WorkbenchAutomationSidePanelTab
+                    automationId={tab.automationId}
+                    createInput={tab.createInput}
+                    mode={tab.mode}
+                    projects={projects}
+                    title={tab.title}
+                    updateInput={tab.updateInput}
+                    onClose={() => {
+                      void closeEphemeralPanelTab(tab.panelId, tab.id);
+                    }}
+                    onOpenInScheduled={(automationId) => {
+                      onOpenAutomations(buildAutomationsPath({ automationId }));
+                    }}
+                    onOpenLocalEnvironmentsSettings={onOpenLocalEnvironmentsSettings}
+                    onSaved={(automationValue: CodexScheduledAutomation) => {
+                      panelControllerRef.current.updateAutomationTabsBySession((current) => {
+                        const tabs = current[session.id] ?? [];
+                        return {
+                          ...current,
+                          [session.id]: tabs.map((candidate) =>
+                            candidate.id === tab.id
+                              ? {
+                                  ...candidate,
+                                  automationId: automationValue.id,
+                                  createInput: null,
+                                  mode: "open",
+                                  title: automationValue.name,
+                                  updateInput: null,
+                                  stateKey: candidate.stateKey + 1,
+                                }
+                              : candidate,
+                          ),
+                        };
+                      });
+                    }}
+                    onTitleChange={(titleValue) => {
+                      panelControllerRef.current.updateAutomationTabsBySession((current) => {
+                        const tabs = current[session.id] ?? [];
+                        return {
+                          ...current,
+                          [session.id]: tabs.map((candidate) =>
+                            candidate.id === tab.id
+                              ? { ...candidate, title: titleValue }
+                              : candidate,
+                          ),
+                        };
+                      });
+                    }}
+                  />
+                </ApplicationSurface>
               );
             }
             if (isProcessOutputPanelTab(tab)) {

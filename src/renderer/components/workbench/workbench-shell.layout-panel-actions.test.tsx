@@ -1782,7 +1782,7 @@ describe("workbench session shell / layout-panel-actions", () => {
         JSON.stringify(call[1]).includes('"kind":"files"'),
     ).length;
 
-    await pointerDownAndSettle(getFilesPreviewInteractionTarget(screen));
+    await pointerDownAndSettle(await waitFor(() => getFilesPreviewInteractionTarget(screen)));
     expect(
       invokeCalls.filter(
         (call) =>
@@ -1916,12 +1916,14 @@ describe("workbench session shell / layout-panel-actions", () => {
     expect(
       screen.container.querySelector('[data-app-shell-tabpanel-preview="true"]') !== null,
     ).toBe(true);
+    await waitFor(() => {
+      const metadataCall = invokeCalls.find((call) => call[0] === "read-file-metadata");
+      expect(JSON.stringify(metadataCall?.[1])).toContain(
+        "/Users/asc/.nodex/worktrees/abcd/nodex/reports/summary.txt",
+      );
+      expect(JSON.stringify(metadataCall?.[1])).not.toContain("workspaceRoot");
+    });
     expect(invokeCalls.some((call) => call[0] === "window-session-view:tab-create")).toBe(false);
-    const metadataCall = invokeCalls.find((call) => call[0] === "read-file-metadata");
-    expect(JSON.stringify(metadataCall?.[1])).toContain(
-      "/Users/asc/.nodex/worktrees/abcd/nodex/reports/summary.txt",
-    );
-    expect(JSON.stringify(metadataCall?.[1])).not.toContain("workspaceRoot");
   });
 
   test("a Files tree interaction replaces the existing preview without persisting it", async () => {
@@ -1953,12 +1955,11 @@ describe("workbench session shell / layout-panel-actions", () => {
 
     const firstTab = screen.getByRole("tab", { name: "summary.txt" });
     const previewChrome = firstTab.closest("[data-app-shell-tab-controller]");
-    const fileTreeSurface = screen.container.querySelector(
-      "aside[data-tab-preview-pin-exempt='true']",
-    );
-    if (!(fileTreeSurface instanceof HTMLElement)) {
-      throw new Error("Expected the Files tree surface");
-    }
+    const fileTreeSurface = await waitFor(() => {
+      const surface = screen.container.querySelector("aside[data-tab-preview-pin-exempt='true']");
+      if (!(surface instanceof HTMLElement)) throw new Error("Expected the Files tree surface");
+      return surface;
+    });
 
     await pointerDownAndSettle(fileTreeSurface);
     await act(async () => {
@@ -2135,14 +2136,16 @@ describe("workbench session shell / layout-panel-actions", () => {
 
     expect(opened).toBe(true);
     expect(screen.getByRole("tab", { name: "report.md" }) !== null).toBe(true);
-    expect(
-      screen.container.querySelector(
-        '[data-workspace-files-session-id="session:projectless:summary-output"]',
-      ) !== null,
-    ).toBe(true);
+    await waitFor(() => {
+      expect(
+        screen.container.querySelector(
+          '[data-workspace-files-session-id="session:projectless:summary-output"]',
+        ) !== null,
+      ).toBe(true);
+    });
     expect(invokeCalls.some((call) => call[0] === "window-session-view:tab-create")).toBe(false);
 
-    await pointerDownAndSettle(getFilesPreviewInteractionTarget(screen));
+    await pointerDownAndSettle(await waitFor(() => getFilesPreviewInteractionTarget(screen)));
     await waitFor(() => {
       expect(
         invokeCalls.some(
@@ -2726,7 +2729,7 @@ describe("workbench session shell / layout-panel-actions", () => {
         call[0] === "window-session-view:tab-create" &&
         JSON.stringify(call[1]).includes('"kind":"files"'),
     ).length;
-    await pointerDownAndSettle(getFilesPreviewInteractionTarget(screen));
+    await pointerDownAndSettle(await waitFor(() => getFilesPreviewInteractionTarget(screen)));
     expect(
       invokeCalls.filter(
         (call) =>
