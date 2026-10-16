@@ -216,27 +216,34 @@ into request-tick props or handled by a global conversation controller.
 At renderer bootstrap, Nodex checks the browser `Notification` API. A
 `default` status requests permission once per Notification-constructor
 identity, including across StrictMode effect replay. Missing API, initial
-status, result, and failure are logged.
+status, result, and failure are logged. This browser permission is not the
+native desktop notification authorization: the app renderer's permission
+policy denies browser notifications, while task notifications originate in Main.
 
-Main exposes `enabled | disabled | not-determined | null` through a capability
-detected Adapter:
+Main uses Electron's native `Notification` API. On macOS, Electron requests
+alert, sound, and badge authorization through UserNotifications when its
+notification presenter is created. `Notification.isSupported()` reports
+platform support, not permission to deliver a notification. Nodex does not
+currently expose a separate native permission-status query or system-settings
+action.
 
-- a runtime static permission API is used when available;
-- macOS falls back to UserNotifications through a dynamically loaded native
-  bridge;
-- unsupported status queries return `null`, never a fabricated enabled state.
-
-Opening macOS notification settings first requests alert, sound, and badge when
-status is unknown or not determined. The request is fire-and-forget so a native
-prompt cannot block navigation; Main waits about two seconds for OS persistence,
-then opens the real Nodex bundle settings page. Windows opens
-`ms-settings:notifications`.
+macOS authorization belongs to the running application bundle, independently of
+the Nodex Profile. A development Electron instance and an installed Nodex app
+can have different authorization and signing identities. A rejected delivery
+leaves the task's completion and pending question intact; it removes only that
+notification's callback record.
 
 ## Observability
 
 Main logs structured suppression reasons, dropped occurrences with no live
-target, OS permission status/failure, and native permission-request failure.
+target, and native construction, delivery, close, and callback-cleanup failures.
 These logs must not contain prompt bodies, approval commands, or user replies.
+
+On macOS, `UNErrorDomain error 1` means UserNotifications did not allow the
+delivery. This identifies a native notification failure, not a failed Agent Run.
+Check authorization and signing for the actual running bundle; the error alone
+does not establish why authorization is unavailable. Do not infer native
+permission from the renderer's browser permission or platform support check.
 
 ## Asynchronous Question Actions
 
