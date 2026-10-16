@@ -173,6 +173,13 @@ For a standalone repair after `Error: Electron uninstall`, run
 `vp exec install-electron` from the worktree root. See
 [Electron's binary download documentation](https://www.electronjs.org/docs/latest/tutorial/installation#binary-download-step).
 
+The Clipboard, DeviceCheck, and notification bridges reuse verified worktree-local
+outputs when their source, build scripts, dependency lock, Electron/Node versions,
+architecture, selected compiler/SDK, and build environment match. Each reuse checks
+the binary's file type, executable mode, SHA-256, and architecture. Missing or damaged
+outputs rebuild in a temporary directory before publication; custom compiler, header,
+or Gyp overrides bypass reuse. These source-derived outputs stay under `.generated`.
+
 The production build remains fail-closed. It hashes the Electron input closure,
 build context, generated resources, and exact `out/` inventory. Packaging and
 installation verify the prepared build through the same internal module;
