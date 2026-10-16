@@ -1,0 +1,21 @@
+src/renderer/components/shared/icons/provider-icons.tsx
+  s_504f7ab24abf60::t_6b4692b7f4d772 39-58,66
+docs/CONFIGURATION.md
+  s_504f7ab24abf60::t_5da6219fab4016 160-161
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "ffe76b05986fa4cb4546949abfca3ba42d7437b9",
+  "prompts": {},
+  "sessions": {
+    "s_504f7ab24abf60": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a143b5-0054-7ff1-95f7-0d6d50cf9d8f",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
