@@ -2,8 +2,8 @@
 
 ## Intent and authority
 
-Scheduled is the Workbench route for creating, finding, editing, running, and
-reviewing scheduled tasks and templates. Rust Core owns versioned definitions,
+Scheduled is the Workbench destination for creating, finding, editing, running,
+and reviewing scheduled tasks. Rust Core owns versioned definitions,
 schedules, due leases, run/inbox/read/archive state, occurrences, and reminders.
 The Desktop Host owns external agent execution and operating-system
 notifications. The renderer owns route presentation and drafts only.
@@ -40,68 +40,78 @@ original committed result.
 ## Entry points and route state
 
 The rail's `Scheduled` entry, command palette `Manage automations`, and Thread
-Summary Scheduled rows all open `/automations` while keeping the ordinary
-Project/Session sidebar mounted. The rail marks Scheduled as current for the
-route and while Settings returns to it; Home resumes its own last location.
+Summary Scheduled rows open `/automations`. Scheduled is a sidebar destination:
+its own sidebar replaces Home's, and Home resumes its own last location when the
+user leaves. Scheduled lists only tasks owned by the current Profile.
 
 Route state is canonical URL state:
 
-- `tab` selects Tasks or Templates;
-- `automationId` selects a saved definition;
-- `automationMode=create` opens a new draft.
+- `automationId` selects a task;
+- `automationMode=create` opens the create dialog, seeded by `templateId` when
+  present; `automationMode=edit` opens the edit dialog for the selected task;
+- `runSessionId` presents a run's or Heartbeat's chat in place.
 
-List, detail, create, missing-selection, and closed-detail states derive from
-these parameters. Closing detail removes its selection/mode parameter. The
-route replaces the thread stage and its header/actions with one Scheduled main
-pane and a peer detail rail.
+A selected task that no longer exists returns to the landing page. A selected
+Heartbeat opens its target chat. Presenting a chat keeps the Scheduled sidebar and
+rail selection while the chat is the route's active Session, with its ordinary
+header and panels.
 
-## Tasks list
+## Sidebar
 
-Definitions sort by `nextRunAt`, with tasks lacking a next run last, then by
-name. Search covers name, prompt, workspace, schedule label, kind, target Chat,
-RRULE, and working directories. Results group into `Current` and `Paused`.
+The header holds the `Scheduled` title, a Search toggle, and `New task`. Search
+opens an inline field that filters tasks by name; Escape clears it, closes it,
+and returns focus to the toggle.
 
-A task row shows its workspace fallback, schedule, `In progress` or next-run
-status, and unread-run state. Row actions expose Pause/Resume on the status
-control plus `Run now`, `Edit scheduled task`, and `Delete` on hover or keyboard
-focus.
+`Upcoming` lists active tasks by next run, then paused tasks, then by name. Its
+`Filter tasks` menu shows or hides Active and Paused tasks. Each row shows the
+task name over its next run date and schedule (`Oct 19 · Mondays at 9:00 AM`), or
+`Paused · {schedule}`. A spinner marks a running task and a dot marks unread runs.
+Hovering or focusing a row reveals `More task actions`: Pause or Resume, Run now,
+Edit, and Delete, which asks for confirmation. Pause and Resume update the list
+optimistically and roll back with an error toast when the save fails.
 
-Automation-run lifecycle events refresh the task list, run inboxes, and the
-sidebar/recent-Chat projection. Definition-change events are not a substitute
-for run lifecycle refresh.
+A cron task with runs is a folder. Selecting it opens its conversation and its
+newest unarchived runs; selecting it again folds the runs. A run row is titled by
+its summary, `Running now`, or `Run completed`; opening it marks it read and
+presents its chat in place. Runs can be archived from their row. Heartbeats never
+fold; selecting one opens its chat.
 
-## Templates
+The sidebar states loading, `No scheduled tasks`, `No matching tasks`, and a load
+error with `Try again`.
 
-Templates is a searchable system catalog. Search matches template name, prompt,
-and schedule label. Selecting a template opens create mode seeded with its name,
-prompt, and RRULE; Project and intelligence selection remain explicit user
-choices.
+## Main pane
 
-The header uses one split create control. Its primary action is `Create via
-chat` when the conversation-backed creation capability is available and
-`Create manually` otherwise. `New scheduled task options` exposes both paths;
-only the unavailable path is disabled.
+Without a selection, the landing page offers suggested tasks from the system
+template catalog. Choosing one opens the create dialog seeded with its name,
+instructions, and schedule; `Show more` reveals the whole catalog.
 
-## Detail editor
+A selected cron task reads as the conversation that set it up: its instructions
+as the user's message, then `Your task is scheduled. Its next run is …` (or a
+pointer to task details when no next run is known), then a card with the task's
+name and schedule that opens the edit dialog. `Reply about this task…` starts a
+chat about the task in its Project and presents it in place; the message names
+the task so the Agent can read or update it.
 
-The detail rail edits one coherent draft with these fields:
+## Create and edit dialog
 
-- title and prompt;
-- `Runs in` target kind;
-- Chat or Project target;
-- optional local Environment for Codex worktree tasks;
-- repeat/interval schedule;
-- Agent Profile, model and supported effort, plus Codex service tier;
-- Previous runs for cron tasks.
+The dialog edits one draft:
 
-Cron tasks require title, prompt, schedule, and model. They target either one
-Project with one or more of its folders, or `No project`. Project identity remains
-explicit even when Projects share a folder. Switching Project clears the previous
-folder selection and Environment. `No project` uses local execution and creates
-an independent projectless workspace for each run. Project runs create Sessions
-in the selected Project; execution revalidates its active state and selected
-folders before starting. Heartbeat tasks require title, prompt, local Chat, and
-schedule.
+- name (edit only; a new task is named after the first line of its instructions);
+- instructions;
+- `Repeat` (Interval, Daily, Weekdays, Weekly, Custom) with `Every`, `On`, `Time`
+  in the local time zone, or a custom rule;
+- `Advanced`: Notifications, `Start each run in new chat`, the Heartbeat's chat,
+  Project, Workspace, Environment, and the Agent, model, and effort.
+
+`Start each run in new chat` chooses a cron task (on) or a Heartbeat that
+continues one chat (off) and is fixed once the task exists. Cron tasks require
+instructions, schedule, and model. They target either one Project with one or more
+of its folders, or `No project`. Project identity remains explicit even when
+Projects share a folder. Switching Project clears the previous folder selection
+and Environment. `No project` uses local execution and creates an independent
+projectless workspace for each run. Project runs create Sessions in the selected
+Project; execution revalidates its active state and selected folders before
+starting. Heartbeat tasks require instructions, a local Chat, and schedule.
 
 A Heartbeat targets the Chat’s stable Session. Execution resolves that Session’s
 current execution reference; a Session without an available execution remains
@@ -135,6 +145,12 @@ Scheduled native turns do not wait for interactive approvals or questions. They 
 bounded within the due lease; failure, timeout and interruption cancel only their exact
 accepted Turn, settle the run and retain its review record.
 
+Create stays disabled, with a tooltip naming what is missing, until the draft is
+valid; success selects the new task. Editing saves only through `Save`, and its
+footer pauses or resumes the task immediately. Closing a changed draft asks
+`Discard changes?` with `Keep editing` and `Discard changes`; an untouched draft
+closes directly.
+
 ## Notification preferences
 
 A scheduled task can store `notificationPolicy: "failed_runs_only"` to suppress
@@ -149,18 +165,13 @@ their definition's preference until accepted into an ordinary conversation;
 manual follow-ups after acceptance use normal notification behavior. Notification
 preferences are stored separately from prompts and model-authored output.
 
-## Previous runs
+## Runs
 
-Previous runs are available only for a selected cron definition, filtered by
-that definition, and sorted newest first.
-Each row derives unread, running, and archived state plus availability of
-Archive, Unarchive, Delete, and Open.
-
+Runs belong to their cron task, newest first; archived runs leave the sidebar.
 A scheduled Run retains one identity before workspace creation and native launch.
 After admission it binds the actual Session once; its review, read and archive
 state continues to use that Run identity. A failed preparation remains reviewable
-without inventing a Chat or native Thread. Open becomes available after the Run
-has a Session.
+without inventing a Chat or native Thread. A run opens only after it has a Session.
 
 Expired leases and failed retries retain their logical dispatch identity. Reclaiming
 the same firing reuses its Session, launch and message identities; a new manual
@@ -168,31 +179,20 @@ dispatch or changed definition begins a separate firing. Restart may resume an
 interrupted preparation that has no Session. A bound or explicitly archived Run
 never starts a hidden second execution.
 
-Open selects the run's Chat only after that Chat is available. Run actions use
-the scheduled-run boundary and invalidate the canonical run inbox rather than
-patching an independent renderer history.
+Run actions use the scheduled-run boundary and invalidate the canonical run inbox
+rather than patching an independent renderer history.
 
-## Save, navigation, and deletion
+## Deletion and Agent proposals
 
-Creating is an explicit `Create scheduled task` submission. Success replaces
-create mode with the saved `automationId`.
-
-Existing definitions autosave after a short debounce. Before changing route,
-tab, selected row, or closing detail, the route flushes a valid dirty edit
-through the same update payload. A failed save cancels navigation.
-
-A changed create draft guards route/tab/row/detail-close navigation with
-`Keep editing` and `Discard`. An untouched default draft closes directly.
-
-Deleting from a row or detail rail requires the in-app `Delete scheduled task`
-confirmation. Success removes the definition through Core, updates the query
-cache from the committed result, removes its owned run rows atomically, and
-returns a selected detail route to the list.
+Deleting requires the in-app `Delete scheduled task?` confirmation. Success
+removes the definition through Core, updates the query cache from the committed
+result, removes its owned run rows atomically, and returns a selected task to the
+landing page.
 
 The `automation_update` tool may list/search definitions, read one, create,
 update, or delete directly, or return a suggested change for user review.
-Suggested cards open the existing review editor and remain unsaved until the user
-explicitly selects Create or Save. Native MCP proposals retain the resolved Session
+Suggested cards open the same editor in the Chat's side panel and remain unsaved
+until the user explicitly selects Create or Apply changes. Native MCP proposals retain the resolved Session
 target, notification-policy presence, and observed definition revision through review,
 including from projectless Sessions. A definition changed since the proposal was made
 cannot be overwritten by saving that proposal. Direct heartbeat targets must resolve

@@ -2,7 +2,6 @@ import "./workbench-testkit/workbench-shell-harness";
 import { describe, test, expect } from "vite-plus/test";
 import { settleAsyncRender, textContent } from "../../test/dom";
 import { act, fireEvent, waitFor, within } from "@testing-library/react";
-import { WORKBENCH_AUTOMATION_FIRST_RUN_SUGGESTIONS } from "./workbench-automation-templates";
 import { THREAD_QUEUE_FOLLOW_UPS_STORAGE_KEY } from "@/lib/thread-composer-follow-up-mode";
 import { COMPOSER_ENTER_BEHAVIOR_STORAGE_KEY } from "@/lib/composer-enter-behavior";
 import { type CodexScheduledAutomationCreateInput } from "@/lib/types";
@@ -127,8 +126,8 @@ describe("workbench session shell / routes-threads", () => {
         });
         await Promise.resolve();
       });
-      const chat = await screen.findByRole("textbox", { name: "Chat" });
-      expect((chat as HTMLInputElement).value).toBe("session:original");
+      const chat = await screen.findByRole("button", { name: "Chat" });
+      expect(chat.textContent).toContain("Selected chat");
       await act(async () => {
         await new Promise((resolve) => setTimeout(resolve, 700));
       });
@@ -140,7 +139,7 @@ describe("workbench session shell / routes-threads", () => {
       await act(async () => {
         fireEvent.click(
           screen.getByRole("button", {
-            name: mode === "suggested-create" ? "Create scheduled task" : "Apply changes",
+            name: mode === "suggested-create" ? "Create" : "Apply changes",
           }),
         );
         await Promise.resolve();
@@ -195,7 +194,7 @@ describe("workbench session shell / routes-threads", () => {
     expect(screen.container.querySelector('[data-thread-stage="true"]') !== null).toBe(true);
   });
 
-  test("opens scheduled task management as a full-window route shell from the rail", async () => {
+  test("opens Scheduled from the rail with its own sidebar and suggested tasks", async () => {
     const screen = renderWorkbench();
     await settleAsyncRender();
     await settleAsyncRender();
@@ -206,39 +205,19 @@ describe("workbench session shell / routes-threads", () => {
     });
     await settleAsyncRender();
 
-    const routeShell = screen.getByTestId("automations-route-shell");
+    const route = await screen.findByTestId("scheduled-route");
     const globalHeader = screen.getByTestId("workbench-global-header");
-    const headerContextSurface = screen.getByTestId("app-shell-header-context-menu-surface");
     const leftSlot = getHeaderShellSlot(screen, "left");
     const rightSlot = getHeaderShellSlot(screen, "right");
     const leftLabels = Array.from(leftSlot.querySelectorAll("button"))
       .map((button) => button.getAttribute("aria-label"))
       .join(",");
 
-    await waitFor(() => {
-      expect(within(headerContextSurface).queryByRole("button", { name: "Tasks" }) !== null).toBe(
-        true,
-      );
-    });
-
-    expect(routeShell !== null).toBe(true);
     expect(screen.container.querySelector('[data-thread-stage="true"]')).toBe(null);
-    expect(globalHeader.contains(headerContextSurface)).toBe(true);
-    expect(headerContextSurface.getAttribute("aria-hidden")).toBe(null);
-    expect(headerContextSurface.className.includes("invisible")).toBe(false);
     expect(leftLabels).toBe("Back,Forward,Hide sidebar");
     expect(rightSlot.getAttribute("style")?.includes("width: 0px")).toBe(true);
-    expect(rightSlot.getAttribute("style")?.includes("min-width: 0")).toBe(true);
     expect(within(globalHeader).queryByRole("button", { name: "Toggle bottom panel" })).toBe(null);
     expect(within(globalHeader).queryByRole("button", { name: "Toggle side panel" })).toBe(null);
-    expect(within(headerContextSurface).queryByRole("button", { name: "Templates" }) !== null).toBe(
-      true,
-    );
-    expect(
-      within(headerContextSurface).queryByRole("button", { name: "Create via chat" }) !== null,
-    ).toBe(true);
-    expect(routeShell.contains(headerContextSurface)).toBe(false);
-    expect(routeShell.querySelector("main > header") === null).toBe(true);
     const rail = screen.getByRole("navigation", { name: "App navigation" });
     expect(
       within(rail).getByRole("button", { name: "Scheduled" }).getAttribute("aria-current"),
@@ -246,24 +225,15 @@ describe("workbench session shell / routes-threads", () => {
     expect(
       within(rail).getByRole("button", { name: "Home" }).getAttribute("aria-current"),
     ).toBeNull();
-    expect(screen.getByTestId("project-session-sidebar") !== null).toBe(true);
+    expect(screen.getByRole("navigation", { name: "Scheduled task folders" })).not.toBeNull();
+    expect(screen.queryByTestId("project-session-sidebar")).toBeNull();
     expect(
-      textContent(screen.container).includes(
-        "Ask ChatGPT to schedule tasks, set reminders, or monitor for updates.",
-      ),
-    ).toBe(true);
-    expect(textContent(screen.container).includes("Create your first scheduled task")).toBe(true);
-    const firstRunSuggestionNames = WORKBENCH_AUTOMATION_FIRST_RUN_SUGGESTIONS.map(
-      (suggestion) => suggestion.name,
-    ).join(",");
-    const visibleFirstRunSuggestionNames = WORKBENCH_AUTOMATION_FIRST_RUN_SUGGESTIONS.map(
-      (suggestion) =>
-        screen.getByRole("button", { name: suggestion.name }).textContent?.trim() ?? "",
-    ).join(",");
-    expect(visibleFirstRunSuggestionNames).toBe(firstRunSuggestionNames);
-    expect(screen.container.querySelector('[data-testid="project-session-sidebar"]') !== null).toBe(
-      true,
-    );
+      within(route).getByRole("heading", { level: 1, name: "Schedule a task" }),
+    ).not.toBeNull();
+    expect(
+      within(within(route).getByRole("list", { name: "Suggested tasks" })).getAllByRole("button")
+        .length,
+    ).toBe(6);
   });
 
   test("restores Home and Space Database navigation through global Back and Forward", async () => {
@@ -720,6 +690,10 @@ describe("workbench session shell / routes-threads", () => {
     installTerminalEventApiMock();
     const automation = makeScheduledAutomation({
       id: "automation-summary",
+      kind: "cron",
+      targetSessionId: null,
+      executionEnvironment: "local",
+      model: "gpt-5.5",
       name: "Summary cadence",
     });
     const screen = renderWorkbench({
@@ -744,21 +718,11 @@ describe("workbench session shell / routes-threads", () => {
     });
     await settleAsyncRender();
 
-    expect(screen.container.querySelector('[data-testid="automations-route-shell"]') !== null).toBe(
-      true,
-    );
-    await waitFor(() => {
-      expect(textContent(screen.container).includes("Summary cadence")).toBe(true);
-    });
-    expect(screen.container.querySelector('[data-testid="automation-detail-rail"]') !== null).toBe(
-      true,
-    );
-    await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: "Collapse details" }));
-      await Promise.resolve();
-    });
-    await settleAsyncRender();
-    expect(screen.container.querySelector('[data-testid="automation-detail-rail"]')).toBe(null);
+    const route = await screen.findByTestId("scheduled-route");
+    expect(
+      await within(route).findByRole("button", { name: "Summary cadence settings" }),
+    ).not.toBeNull();
+    expect(within(route).getByText(automation.prompt)).not.toBeNull();
     expect(screen.container.querySelector('[data-thread-stage="true"]')).toBe(null);
   });
 
@@ -810,11 +774,13 @@ describe("workbench session shell / routes-threads", () => {
     ) as HTMLElement | null;
     expect(sidePanel !== null).toBe(true);
     if (!sidePanel) throw new Error("Expected automation side panel");
-    expect(screen.container.querySelector('[data-testid="automations-route-shell"]')).toBe(null);
-    expect(textContent(sidePanel).includes("Review release notes")).toBe(true);
+    expect(screen.queryByTestId("scheduled-route")).toBe(null);
+    expect(
+      (within(sidePanel).getByRole("textbox", { name: "Name" }) as HTMLInputElement).value,
+    ).toBe("Review release notes");
 
     await act(async () => {
-      fireEvent.click(within(sidePanel).getByRole("button", { name: "Create scheduled task" }));
+      fireEvent.click(within(sidePanel).getByRole("button", { name: "Create" }));
       await Promise.resolve();
     });
 
@@ -892,7 +858,7 @@ describe("workbench session shell / routes-threads", () => {
     });
 
     await act(async () => {
-      fireEvent.click(within(sidePanel).getByRole("button", { name: "Create scheduled task" }));
+      fireEvent.click(within(sidePanel).getByRole("button", { name: "Create" }));
       await Promise.resolve();
     });
 
@@ -908,6 +874,5 @@ describe("workbench session shell / routes-threads", () => {
       ).toBe(true);
     });
     expect(screen.getScheduledAutomations().length).toBe(0);
-    expect(textContent(sidePanel).includes("Create bridge failed")).toBe(true);
   });
 });

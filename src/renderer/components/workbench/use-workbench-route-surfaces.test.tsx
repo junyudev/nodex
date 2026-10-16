@@ -13,10 +13,10 @@ vi.mock("./workbench-settings-route-shell", () => {
   };
 });
 
-vi.mock("./workbench-automations-overlay", () => {
+vi.mock("@/features/scheduled/scheduled-route", () => {
   loadedRoutes.push("automations");
   return {
-    WorkbenchAutomationsRouteShell: ({ path }: { path: string }) => (
+    ScheduledRoute: ({ path }: { path: string }) => (
       <output aria-label="Automations route">{path}</output>
     ),
   };
@@ -52,7 +52,17 @@ const input: Parameters<typeof useWorkbenchRouteSurfaces>[0] = {
       onTaskShorthandPagePromotionEnabledChange: vi.fn(),
     },
   },
-  automations: { path: null, props: { onPathChange: vi.fn() } },
+  automations: {
+    path: null,
+    props: {
+      tasks: {} as never,
+      projects: [],
+      chats: [],
+      onNavigate: vi.fn(),
+      onOpenHeartbeatChat: vi.fn(),
+      onReplyAboutTask: vi.fn(async () => undefined),
+    },
+  },
   pendingWorktree: {
     clientThreadId: null,
     props: { onClose: vi.fn(), onOpenThread: vi.fn(async () => undefined) },

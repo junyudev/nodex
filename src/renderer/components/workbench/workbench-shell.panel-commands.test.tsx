@@ -320,8 +320,8 @@ describe("workbench session shell / panel-commands", () => {
     });
     await settleAsyncRender();
 
-    const routeShell = screen.container.querySelector('[data-testid="settings-route-shell"]');
-    expect(routeShell !== null).toBe(true);
+    // Settings loads its route module on first open.
+    expect(await screen.findByTestId("settings-route-shell")).not.toBeNull();
   });
 
   test("command palette opens scheduled task management", async () => {
@@ -335,9 +335,7 @@ describe("workbench session shell / panel-commands", () => {
 
     await executeCommandPaletteCommand(screen, "automation", "Manage automations");
 
-    expect(screen.container.querySelector('[data-testid="automations-route-shell"]') !== null).toBe(
-      true,
-    );
+    expect(await screen.findByTestId("scheduled-route")).not.toBeNull();
     expect(screen.container.querySelector('[data-thread-stage="true"]')).toBe(null);
   });
 

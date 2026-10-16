@@ -44,6 +44,7 @@ import {
 import type {
   WorkbenchSessionCatalog,
   WorkbenchSessionCatalogWindowPort,
+  WorkbenchSessionPlacement,
 } from "@/lib/use-workbench-session-catalog";
 import type { WorkbenchPanelController } from "@/lib/use-workbench-panel-controller";
 import type { useWorkbenchSidebarState } from "@/lib/use-workbench-sidebar-state";
@@ -329,7 +330,7 @@ export function useWorkbenchSidebarController({
   );
 
   const selectSession = useCallback(
-    (session: ProjectSessionDomain | ProjectSession) => {
+    (session: ProjectSessionDomain | ProjectSession, placement?: WorkbenchSessionPlacement) => {
       const catalogPresentation = catalog.findById(session.id);
       const domainSession = catalogPresentation?.domain ?? session;
       const targetSession = catalogPresentation
@@ -340,7 +341,7 @@ export function useWorkbenchSidebarController({
           );
       warmProjectSessionDbViewBoards(targetSession);
 
-      catalog.select(domainSession);
+      catalog.select(domainSession, placement);
       if (targetSession.projectId !== null) {
         ensureProjectExpanded(targetSession.projectId);
       }

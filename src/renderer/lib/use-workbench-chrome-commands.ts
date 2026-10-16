@@ -8,9 +8,6 @@ import type { WorkbenchPanelState } from "../../shared/workbench-session-view";
 export const RIGHT_PANEL_DEFAULT_WIDTH = 600;
 const RIGHT_PANEL_MIN_WIDTH = 320;
 const RIGHT_PANEL_MAIN_MIN_WIDTH = 352;
-export const AUTOMATION_DETAIL_RAIL_DEFAULT_WIDTH = 820;
-const AUTOMATION_DETAIL_RAIL_MIN_WIDTH = 360;
-const AUTOMATION_DETAIL_RAIL_MAIN_MIN_WIDTH = 420;
 export const BOTTOM_PANEL_DEFAULT_HEIGHT = 280;
 const BOTTOM_PANEL_MIN_HEIGHT = 160;
 
@@ -20,18 +17,6 @@ export function clampRegularRightPanelWidth(width: number, sessionWidth: number)
       ? Math.max(RIGHT_PANEL_MIN_WIDTH, sessionWidth - RIGHT_PANEL_MAIN_MIN_WIDTH)
       : RIGHT_PANEL_DEFAULT_WIDTH;
   return Math.min(maxWidth, Math.max(RIGHT_PANEL_MIN_WIDTH, width));
-}
-
-export function clampAutomationDetailRailWidth(width: number, shellWidth: number): number {
-  const roundedWidth = Math.round(width);
-  if (!Number.isFinite(shellWidth) || shellWidth <= 0) {
-    return Math.max(AUTOMATION_DETAIL_RAIL_MIN_WIDTH, roundedWidth);
-  }
-  const maxWidth = Math.max(
-    AUTOMATION_DETAIL_RAIL_MIN_WIDTH,
-    Math.floor(shellWidth - AUTOMATION_DETAIL_RAIL_MAIN_MIN_WIDTH),
-  );
-  return Math.min(maxWidth, Math.max(AUTOMATION_DETAIL_RAIL_MIN_WIDTH, roundedWidth));
 }
 
 export function clampBottomPanelHeight(height: number, sessionHeight: number): number {
@@ -75,7 +60,6 @@ interface WorkbenchChromeCommandsInput {
   readonly rightPanelRequestedWidth: MotionValue<number>;
   readonly bottomPanelHeight: MotionValue<number>;
   readonly bottomPanelRequestedHeight: MotionValue<number>;
-  readonly automationsDetailRailRequestedWidth: MotionValue<number>;
 }
 
 /**
@@ -96,7 +80,6 @@ export function useWorkbenchChromeCommands({
   rightPanelRequestedWidth,
   bottomPanelHeight,
   bottomPanelRequestedHeight,
-  automationsDetailRailRequestedWidth,
 }: WorkbenchChromeCommandsInput) {
   const panelControllerRef = useRef(controller);
   panelControllerRef.current = controller;
@@ -260,59 +243,6 @@ export function useWorkbenchChromeCommands({
     ],
   );
 
-  const resizeAutomationDetailRail = useCallback(
-    (event: ReactPointerEvent<HTMLDivElement>) => {
-      if (event.button !== 0) return;
-      event.preventDefault();
-      event.currentTarget.setPointerCapture?.(event.pointerId);
-      const root = workbenchRootRef.current;
-      const windowZoom = readCodexWindowZoom(root);
-      const resizeHandle = event.currentTarget;
-      const pointerId = event.pointerId;
-      const sizingWidth = shellMainContentWidth.get();
-      const startX = event.clientX / windowZoom;
-      const startWidth = clampAutomationDetailRailWidth(
-        automationsDetailRailRequestedWidth.get(),
-        sizingWidth,
-      );
-
-      const onPointerMove = (moveEvent: PointerEvent) => {
-        moveEvent.preventDefault();
-        const pointerX = moveEvent.clientX / windowZoom;
-        const rawWidth = startWidth + startX - pointerX;
-        automationsDetailRailRequestedWidth.set(
-          clampAutomationDetailRailWidth(rawWidth, sizingWidth),
-        );
-      };
-
-      const cleanupPointerResize = () => {
-        document.body.style.userSelect = "";
-        document.body.style.cursor = "";
-        window.removeEventListener("pointermove", onPointerMove);
-        window.removeEventListener("pointerup", onPointerUp);
-        window.removeEventListener("pointercancel", onPointerCancel);
-        if (resizeHandle.hasPointerCapture?.(pointerId)) {
-          resizeHandle.releasePointerCapture(pointerId);
-        }
-      };
-
-      const onPointerUp = (upEvent: PointerEvent) => {
-        upEvent.preventDefault();
-        cleanupPointerResize();
-      };
-      const onPointerCancel = () => {
-        cleanupPointerResize();
-      };
-
-      document.body.style.userSelect = "none";
-      document.body.style.cursor = "col-resize";
-      window.addEventListener("pointermove", onPointerMove);
-      window.addEventListener("pointerup", onPointerUp);
-      window.addEventListener("pointercancel", onPointerCancel);
-    },
-    [automationsDetailRailRequestedWidth, shellMainContentWidth, workbenchRootRef],
-  );
-
   const resizeBottomPanel = useCallback(
     (event: ReactPointerEvent<HTMLDivElement>) => {
       if (event.button !== 0) return;
@@ -417,7 +347,6 @@ export function useWorkbenchChromeCommands({
     setActiveRightPanelFullWidth,
     executeShellNavigation,
     resizeRightPanel,
-    resizeAutomationDetailRail,
     resizeBottomPanel,
   };
 }

@@ -4,9 +4,8 @@ import {
   createDefaultWorkbenchLayoutSnapshotV3,
   getWorkbenchActiveSessionId,
   getWorkbenchPrimaryDestination,
-  getWorkbenchRailDestination,
   type WorkbenchLocation,
-  type WorkbenchRailDestination,
+  type WorkbenchPrimaryDestination,
   type WorkbenchLayoutSnapshot,
 } from "./workbench-layout";
 
@@ -55,13 +54,13 @@ describe("getWorkbenchActiveSessionId", () => {
 });
 
 describe("getWorkbenchPrimaryDestination", () => {
-  test.each<readonly [WorkbenchLocation, "home" | "space"]>([
+  test.each<readonly [WorkbenchLocation, WorkbenchPrimaryDestination]>([
     [{ kind: "pages" }, "space"],
     [{ kind: "empty" }, "home"],
     [{ kind: "project", projectId: "alpha" }, "home"],
     [{ kind: "session", sessionId: "session-a", projectContextId: null }, "home"],
     [{ kind: "inbox", returnTo: { kind: "pages" } }, "home"],
-    [{ kind: "automations", path: "/automations/new", returnTo: { kind: "pages" } }, "home"],
+    [{ kind: "automations", path: "/automations/new", returnTo: { kind: "pages" } }, "scheduled"],
     [
       { kind: "pending-worktree", clientThreadId: "pending-a", returnTo: { kind: "pages" } },
       "home",
@@ -82,29 +81,9 @@ describe("getWorkbenchPrimaryDestination", () => {
         path: "/settings/general",
         returnTo: { kind: "automations", path: "/automations/edit/a", returnTo: { kind: "pages" } },
       },
-      "home",
+      "scheduled",
     ],
   ])("derives %s from the current route", (location, destination) => {
     expect(getWorkbenchPrimaryDestination(location)).toBe(destination);
-  });
-});
-
-describe("getWorkbenchRailDestination", () => {
-  test.each<readonly [WorkbenchLocation, WorkbenchRailDestination]>([
-    [{ kind: "pages" }, "space"],
-    [{ kind: "session", sessionId: "session-a", projectContextId: null }, "home"],
-    [{ kind: "inbox", returnTo: { kind: "pages" } }, "home"],
-    [{ kind: "automations", path: "/automations/new", returnTo: { kind: "pages" } }, "scheduled"],
-    [{ kind: "settings", path: "/settings/general", returnTo: { kind: "pages" } }, "space"],
-    [
-      {
-        kind: "settings",
-        path: "/settings/general",
-        returnTo: { kind: "automations", path: "/automations/edit/a", returnTo: { kind: "pages" } },
-      },
-      "scheduled",
-    ],
-  ])("marks %s on the rail", (location, destination) => {
-    expect(getWorkbenchRailDestination(location)).toBe(destination);
   });
 });

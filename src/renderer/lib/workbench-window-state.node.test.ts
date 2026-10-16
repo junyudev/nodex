@@ -2,7 +2,6 @@ import { describe, expect, test } from "vite-plus/test";
 import {
   createDefaultWorkbenchLayoutSnapshot,
   getWorkbenchPrimaryDestination,
-  getWorkbenchRailDestination,
   getWorkbenchSceneReturnLocation,
   type WorkbenchHomeLocation,
 } from "../../shared/workbench-layout";
@@ -19,6 +18,7 @@ import {
   navigateForwardInWorkbenchWindow,
   navigateWorkbenchWindow,
   openWorkbenchRoute,
+  presentWorkbenchScheduledSession,
   reconcileMissingWorkbenchSession,
   selectWorkbenchProject,
   selectWorkbenchPages,
@@ -65,7 +65,32 @@ describe("WorkbenchWindowState", () => {
     },
   );
 
-  test("Scheduled is a rail destination outside the remembered Home route", () => {
+  test("Scheduled presents a run chat in place and keeps Home's location", () => {
+    const home = selectWorkbenchSession(
+      createWorkbenchWindowState(createDefaultWorkbenchLayoutSnapshot()),
+      { id: "session-home", projectId: "alpha" },
+    );
+    const scheduled = openWorkbenchRoute(home, { kind: "automations", path: "/automations" });
+    const run = presentWorkbenchScheduledSession(scheduled, {
+      path: "/automations?automationId=task-a&runSessionId=session-run",
+      session: { id: "session-run", projectId: "beta" },
+    });
+
+    expect(run.location).toEqual({
+      kind: "automations",
+      path: "/automations?automationId=task-a&runSessionId=session-run",
+      returnTo: { kind: "session", sessionId: "session-run", projectContextId: "beta" },
+    });
+    expect(getWorkbenchPrimaryDestination(run.location)).toBe("scheduled");
+    expect(getWorkbenchSceneReturnLocation(run.location)).toMatchObject({
+      sessionId: "session-run",
+    });
+    expect(run.homeLocation).toEqual(home.location);
+    expect(navigateBackInWorkbenchWindow(run).location).toEqual(scheduled.location);
+    expect(selectWorkbenchHome(run).location).toEqual(home.location);
+  });
+
+  test("Scheduled is its own destination outside the remembered Home route", () => {
     const session = selectWorkbenchSession(
       createWorkbenchWindowState(createDefaultWorkbenchLayoutSnapshot()),
       { id: "session-a", projectId: "alpha" },
@@ -74,8 +99,7 @@ describe("WorkbenchWindowState", () => {
       kind: "automations",
       path: "/automations/edit/a",
     });
-    expect(getWorkbenchRailDestination(scheduled.location)).toBe("scheduled");
-    expect(getWorkbenchPrimaryDestination(scheduled.location)).toBe("home");
+    expect(getWorkbenchPrimaryDestination(scheduled.location)).toBe("scheduled");
     expect(scheduled.homeLocation).toEqual(session.location);
 
     const home = selectWorkbenchHome(scheduled);
@@ -83,7 +107,7 @@ describe("WorkbenchWindowState", () => {
     expect(navigateBackInWorkbenchWindow(home).location).toEqual(scheduled.location);
 
     const settings = openWorkbenchRoute(scheduled, { kind: "settings", path: "/settings/general" });
-    expect(getWorkbenchRailDestination(settings.location)).toBe("scheduled");
+    expect(getWorkbenchPrimaryDestination(settings.location)).toBe("scheduled");
     expect(closeWorkbenchRoute(settings).location).toEqual(scheduled.location);
     const reopened = createWorkbenchWindowState(snapshotWorkbenchWindowState(settings));
     expect(reopened.homeLocation).toEqual(session.location);

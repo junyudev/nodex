@@ -385,7 +385,7 @@ measurement loop is too expensive to rediscover through runtime testing alone.
 | Codex owner/follower ordering and recovery                                                                         | [Owner/follower streaming](product-specs/codex-thread-owner-follower-streaming.md) |
 | Codex transcript, request, activity, and composer projection                                                       | [Transcript behavior](product-specs/codex-thread-transcript-behavior.md)           |
 | Thread Summary sections, artifacts, Git actions, Browser, and PiP                                                  | [Thread Summary panel](product-specs/thread-summary-panel-behavior.md)             |
-| Scheduled task/template route, drafts, runs, and navigation guards                                                 | [Scheduled route](product-specs/scheduled-route-behavior.md)                       |
+| Scheduled sidebar, task drafts, runs, and discard guards                                                           | [Scheduled route](product-specs/scheduled-route-behavior.md)                       |
 | Settings routes, catalog, search, composition, and deep links                                                      | [Settings route](product-specs/settings-route-behavior.md)                         |
 | Block/Owned Document durability, sync, backup, recovery                                                            | [Reliability](RELIABILITY.md)                                                      |
 | Core selection, generation recovery, and Store migration policy                                                    | [Core lifecycle and Store](reliability/core-lifecycle-and-store.md)                |

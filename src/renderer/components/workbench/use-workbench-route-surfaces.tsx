@@ -4,15 +4,15 @@ import { ApplicationSurface } from "@/bootstrap/application-surface";
 const PendingWorktreeRoute = lazy(async () => ({
   default: (await import("./pending-worktree-route")).PendingWorktreeRoute,
 }));
-const WorkbenchAutomationsRouteShell = lazy(async () => ({
-  default: (await import("./workbench-automations-overlay")).WorkbenchAutomationsRouteShell,
+const ScheduledRoute = lazy(async () => ({
+  default: (await import("@/features/scheduled/scheduled-route")).ScheduledRoute,
 }));
 const SettingsRouteShell = lazy(async () => ({
   default: (await import("./workbench-settings-route-shell")).SettingsRouteShell,
 }));
 
 type SettingsProps = Omit<ComponentProps<typeof SettingsRouteShell>, "path">;
-type AutomationsProps = Omit<ComponentProps<typeof WorkbenchAutomationsRouteShell>, "path">;
+type AutomationsProps = Omit<ComponentProps<typeof ScheduledRoute>, "path">;
 type PendingWorktreeProps = Omit<ComponentProps<typeof PendingWorktreeRoute>, "clientThreadId">;
 
 interface WorkbenchRouteSurfacesInput {
@@ -47,7 +47,7 @@ export function useWorkbenchRouteSurfaces({
 
   const automationsRouteShell = automations.path ? (
     <ApplicationSurface>
-      <WorkbenchAutomationsRouteShell path={automations.path} {...automations.props} />
+      <ScheduledRoute path={automations.path} {...automations.props} />
     </ApplicationSurface>
   ) : null;
 

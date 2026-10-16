@@ -346,12 +346,15 @@ test("keeps Home and Space navigation, tabs and chrome across Settings and resta
               .locator('button[aria-current="page"]')
               .evaluateAll((buttons) => buttons.map((button) => button.getAttribute("aria-label")));
           await rail(page).getByRole("button", { name: "Scheduled", exact: true }).click();
-          await expect(page.getByTestId("automations-route-shell")).toBeVisible();
+          await expect(page.getByTestId("scheduled-route")).toBeVisible();
           claim(
-            "Scheduled is a rail destination beside Home's sidebar",
-            { current: ["Scheduled"], homeSidebar: true },
+            "Scheduled is a rail destination with its own sidebar",
+            { current: ["Scheduled"], scheduledSidebar: true, homeSidebar: false },
             {
               current: await currentRailEntries(),
+              scheduledSidebar: await page
+                .getByRole("navigation", { name: "Scheduled task folders", exact: true })
+                .isVisible(),
               homeSidebar: await page
                 .getByRole("navigation", { name: "Home", exact: true })
                 .isVisible(),
@@ -365,7 +368,7 @@ test("keeps Home and Space navigation, tabs and chrome across Settings and resta
             { current: ["Home"], scheduledOpen: false },
             {
               current: await currentRailEntries(),
-              scheduledOpen: await page.getByTestId("automations-route-shell").isVisible(),
+              scheduledOpen: await page.getByTestId("scheduled-route").isVisible(),
             },
           );
           const nativeChrome = await nativeWindow.evaluate((window) => ({

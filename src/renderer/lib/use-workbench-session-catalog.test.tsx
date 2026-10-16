@@ -103,6 +103,7 @@ function makeWindowPort(
     scenesByOwnerKey: {},
     setScene: vi.fn(),
     selectSession: vi.fn(),
+    presentScheduledSession: vi.fn(),
     selectProject: vi.fn(),
     reconcileMissingSession: vi.fn(),
   };

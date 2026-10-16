@@ -12,7 +12,7 @@ import {
   useSyncExternalStore,
 } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { motion, useMotionValue, useTransform, type MotionStyle } from "motion/react";
+import { motion, type MotionStyle } from "motion/react";
 import { BackIcon } from "@/components/shared/icons";
 import { useResolvedReducedMotion } from "@/lib/use-reduced-motion";
 import { PanelTabPresentationRegistry } from "./panel-tab-presentation-registry";
@@ -25,15 +25,11 @@ import {
   WORKBENCH_NAVIGATION_RAIL_WIDTH_PX,
   WORKBENCH_TITLEBAR_HEIGHT_PX,
 } from "@/lib/workbench-shell-geometry";
-import {
-  getWorkbenchPrimaryDestination,
-  getWorkbenchRailDestination,
-} from "../../../shared/workbench-layout";
+import { getWorkbenchPrimaryDestination } from "../../../shared/workbench-layout";
 import { WorkbenchEmptyRoute, WorkbenchRouteHost } from "./workbench-route-host";
 import { InboxRoute } from "@/features/inbox/inbox-route";
 import { parseDatabaseId } from "../../../shared/database-identities";
 import { useInboxInvalidation, useInboxSummary } from "@/features/inbox/use-inbox";
-import { WorkbenchAutomationDetailRail } from "./workbench-automation-detail-rail";
 import { WorkbenchThreadSummaryHeader } from "./workbench-thread-summary-header";
 import { ToolbarIconButton, WindowNavigationToolbarButton } from "./workbench-panel-controls";
 import { ContentIssuesControl } from "@/components/shared/content-issues-control";
@@ -72,7 +68,7 @@ import {
   buildCodexHooksSettingsPath,
   type CodexHooksSettingsTarget,
 } from "@/lib/codex-hooks-route";
-import { buildAutomationsPath } from "./workbench-automations-routes";
+import { buildAutomationsPath, resolveAutomationsRouteState } from "./workbench-automations-routes";
 import type {
   LibraryPlacedResourceTarget,
   LibraryRouteTarget,
@@ -109,7 +105,10 @@ import {
   listPendingWorktrees,
   pendingWorktreeRouteTransport,
 } from "@/lib/pending-worktree-runtime";
-import { useCodexScheduledAutomations } from "@/lib/use-codex-scheduled-automations";
+import { useScheduledTasks } from "@/features/scheduled/use-scheduled-tasks";
+import type { ScheduledSidebarNavigation } from "@/features/scheduled/scheduled-sidebar";
+import type { ScheduledTaskChatOption } from "@/features/scheduled/scheduled-task-fields";
+import { buildScheduledTaskReplyPrompt } from "@/features/scheduled/scheduled-task-model";
 import { useBoard } from "@/lib/use-board";
 import { createPageTitleProjectionStore } from "@/lib/page-title-projection-store";
 import { PageTitleProjectionProvider } from "@/lib/page-title-projection-context";
@@ -209,11 +208,7 @@ import { buildWorkbenchScenePanels } from "./workbench-scene-panels";
 import { useWorkbenchRouteSurfaces } from "./use-workbench-route-surfaces";
 import { WorkbenchCommandPaletteHost } from "./workbench-command-palette-host";
 import { useWorkbenchChromeLayout } from "./use-workbench-chrome-layout";
-import {
-  AUTOMATION_DETAIL_RAIL_DEFAULT_WIDTH,
-  clampAutomationDetailRailWidth,
-  useWorkbenchChromeCommands,
-} from "@/lib/use-workbench-chrome-commands";
+import { useWorkbenchChromeCommands } from "@/lib/use-workbench-chrome-commands";
 import {
   useWorkbenchThreadSummary,
   type WorkbenchThreadSummaryCommands,
@@ -258,6 +253,7 @@ import {
 } from "../../../shared/workbench-layout";
 import type {
   CodexComposerIntent,
+  CodexScheduledAutomation,
   PanelId,
   Project,
   ProjectCreateInput,
@@ -276,7 +272,6 @@ type ProjectSession = WorkbenchSessionRenderProjection;
 import { type RecentPageSession } from "@/lib/use-workbench-profile-preferences";
 import type { PageStageSessionSnapshot } from "@/components/board/page-stage/types";
 import { getCodexSidebarFloatingOuterClassName } from "@/lib/codex-sidebar-auto-reveal";
-import { useSyncedMotionValue } from "@/lib/resize-observer-motion-values";
 import {
   CloseIcon,
   PanelBottomHiddenIcon,
@@ -901,13 +896,9 @@ export function WorkbenchRuntime({
     RIGHT_PANEL_HEADER_FALLBACK_SPACER_WIDTH_PX,
   );
   const [, setHeaderRightRailWidth] = useState(RIGHT_PANEL_HEADER_FALLBACK_RAIL_WIDTH_PX);
-  const [automationsDetailRailOpen, setAutomationsDetailRailOpen] = useState(false);
-  const automationsDetailRailRequestedWidth = useMotionValue(AUTOMATION_DETAIL_RAIL_DEFAULT_WIDTH);
   const [threadScopeIdentityRegistry] = useState(createThreadScopeIdentityRegistry);
   const [projectAgentDockMaterializer] = useState(createProjectAgentDockMaterializer);
   const [projectAgentDockQuery, setProjectAgentDockQuery] = useState("");
-  const [automationsDetailRailPortalElement, setAutomationsDetailRailPortalElement] =
-    useState<HTMLDivElement | null>(null);
   const [rightPanelComposerOverlayTarget, setRightPanelComposerOverlayTarget] =
     useState<HTMLElement | null>(null);
   const terminalSessionVersion = useTerminalSessionStoreVersion();
@@ -1406,7 +1397,7 @@ export function WorkbenchRuntime({
     forkTransferTargetSessionId,
     windowSessionId,
   ]);
-  const scheduledAutomationsQuery = useCodexScheduledAutomations();
+  const scheduledTasks = useScheduledTasks();
   const {
     applySnapshot: applySidebarThreadSnapshot,
     model: sidebarThreadModel,
@@ -2391,8 +2382,6 @@ export function WorkbenchRuntime({
     ensureDefaultDraftSessionForProject,
     startNewChatInProject,
     startNewChatWithPrompt,
-    openScheduledAutomationChatCreate,
-    startScheduledAutomationTemplateChat,
     openSidebarCommandPalette,
     openCommandPalette,
     requestContentSearchOpen,
@@ -2402,7 +2391,8 @@ export function WorkbenchRuntime({
     openAttachedThreadSession,
     openAttachedThreadSessionById,
     openResolvedPendingThreadSession,
-    openAutomationHistorySessionById,
+    presentScheduledChat,
+    replyAboutScheduledTask,
     openProcessOutputInCurrentSession,
     openProcessManagerOutput,
     openTurnDiffFileInSidePanel,
@@ -2411,6 +2401,81 @@ export function WorkbenchRuntime({
     forkSessionFromTurn,
     forkSessionFromTurnIntoWorktree,
   } = sessionCommands;
+  const scheduledRouteState = automationsPath
+    ? resolveAutomationsRouteState(automationsPath)
+    : null;
+  // A run or Heartbeat chat opened from Scheduled is the route's active Session.
+  const scheduledRunPresented =
+    scheduledRouteState?.runSessionId != null &&
+    scheduledRouteState.runSessionId === activeSessionId;
+  const navigateScheduled = useCallback(
+    (path: string, options?: { readonly replace?: boolean }) => {
+      if (workbenchWindow.location.kind !== "automations") {
+        openAutomations(path);
+        return;
+      }
+      workbenchWindow.navigate(
+        { ...workbenchWindow.location, path },
+        { record: options?.replace !== true },
+      );
+    },
+    [openAutomations, workbenchWindow],
+  );
+  const openScheduledTaskChat = useCallback(
+    (task: CodexScheduledAutomation) => {
+      if (!task.targetSessionId) return;
+      void presentScheduledChat(task.targetSessionId, (sessionId) =>
+        buildAutomationsPath({ automationId: task.id, runSessionId: sessionId }),
+      );
+    },
+    [presentScheduledChat],
+  );
+  const replyAboutScheduledTaskInPlace = useCallback(
+    (task: CodexScheduledAutomation, message: string) =>
+      replyAboutScheduledTask({
+        projectId: task.projectId,
+        prompt: buildScheduledTaskReplyPrompt(task, message),
+        scheduledPath: (sessionId) =>
+          buildAutomationsPath({ automationId: task.id, runSessionId: sessionId }),
+      }),
+    [replyAboutScheduledTask],
+  );
+  const scheduledChatOptions = useMemo<ScheduledTaskChatOption[]>(() => {
+    const projectNames = new Map(projects.map((project) => [project.id, project.name]));
+    return knownSessions
+      .filter((session) => !session.archived && (session.thread || session.executionRef))
+      .toSorted((left, right) => right.updatedAt.localeCompare(left.updatedAt))
+      .map((session) => ({
+        id: session.id,
+        title: session.displayTitle,
+        projectName: session.projectId ? (projectNames.get(session.projectId) ?? null) : null,
+      }));
+  }, [knownSessions, projects]);
+  const scheduledSidebarNavigation: ScheduledSidebarNavigation = {
+    tasks: scheduledTasks,
+    selectedTaskId: scheduledRouteState?.automationId ?? null,
+    activeRunSessionId: scheduledRunPresented ? (scheduledRouteState?.runSessionId ?? null) : null,
+    onSelectTask: (task) => {
+      if (task.kind === "heartbeat") {
+        openScheduledTaskChat(task);
+        return;
+      }
+      navigateScheduled(buildAutomationsPath({ automationId: task.id }));
+    },
+    onOpenRun: (task, run) => {
+      if (!run.sessionId) return;
+      void presentScheduledChat(run.sessionId, (sessionId) =>
+        buildAutomationsPath({ automationId: task.id, runSessionId: sessionId }),
+      );
+    },
+    onCreateTask: () => navigateScheduled(buildAutomationsPath({ automationMode: "create" })),
+    onEditTask: (task) =>
+      navigateScheduled(buildAutomationsPath({ automationId: task.id, automationMode: "edit" })),
+    onTaskDeleted: (task) => {
+      if (scheduledRouteState?.automationId === task.id)
+        navigateScheduled(buildAutomationsPath(), { replace: true });
+    },
+  };
   const openSettingsThreadSessionById = useCallback(
     async (threadId: string) => {
       const opened = await openAttachedThreadSessionById(threadId);
@@ -2484,7 +2549,6 @@ export function WorkbenchRuntime({
     rightPanelRequestedWidth,
     bottomPanelHeight,
     bottomPanelRequestedHeight,
-    automationsDetailRailRequestedWidth,
   });
   const {
     showActiveRightPanel,
@@ -2494,7 +2558,6 @@ export function WorkbenchRuntime({
     setActiveRightPanelFullWidth,
     executeShellNavigation,
     resizeRightPanel,
-    resizeAutomationDetailRail,
     resizeBottomPanel,
   } = chromeCommands;
   const browserSidebarState = useBrowserSidebarRendererState();
@@ -2557,6 +2620,7 @@ export function WorkbenchRuntime({
         onRefreshSessions: refreshProjectSessions,
       },
       automation: {
+        chats: scheduledChatOptions,
         onOpenAutomations: openAutomations,
         onOpenLocalEnvironmentsSettings: openLocalEnvironmentsSettings,
       },
@@ -2718,7 +2782,7 @@ export function WorkbenchRuntime({
     pinnedOpen: threadSummaryPanelPinnedOpen,
     sideChatTabs: activeSession ? (sideChatTabsBySession[activeSession.id] ?? []) : [],
     previewTabsByPanel,
-    scheduledAutomations: scheduledAutomationsQuery.data ?? [],
+    scheduledAutomations: scheduledTasks.tasks,
     commands: threadSummaryCommands,
   });
   const {
@@ -3271,16 +3335,14 @@ export function WorkbenchRuntime({
         },
       },
       automations: {
-        path: automationsPath,
+        path: scheduledRunPresented ? null : automationsPath,
         props: {
+          tasks: scheduledTasks,
           projects,
-          externalHeader: true,
-          detailRailPortalTarget: automationsDetailRailPortalElement,
-          onDetailRailOpenChange: setAutomationsDetailRailOpen,
-          onPathChange: setAutomationsPath,
-          onOpenSession: openAutomationHistorySessionById,
-          onCreateWithChat: openScheduledAutomationChatCreate,
-          onPersonalizeTemplate: startScheduledAutomationTemplateChat,
+          chats: scheduledChatOptions,
+          onNavigate: navigateScheduled,
+          onOpenHeartbeatChat: openScheduledTaskChat,
+          onReplyAboutTask: replyAboutScheduledTaskInPlace,
           onOpenLocalEnvironmentsSettings: openLocalEnvironmentsSettings,
         },
       },
@@ -3331,18 +3393,9 @@ export function WorkbenchRuntime({
     ? null
     : pendingWorktreeRouteShell
       ? null
-      : automationsPath || inboxRouteOpen || sceneLocation.kind === "pages"
+      : automationsRouteShell || inboxRouteOpen || sceneLocation.kind === "pages"
         ? sidebarHeaderActions
         : headerActions;
-  const automationsDetailRailMounted = Boolean(automationsRouteShell && automationsDetailRailOpen);
-  const automationsDetailRailOpenValue = useSyncedMotionValue(automationsDetailRailMounted ? 1 : 0);
-  const automationsDetailRailResolvedWidth = useTransform(
-    [automationsDetailRailOpenValue, automationsDetailRailRequestedWidth, shellMainContentWidth],
-    ([latestOpen, latestRequestedWidth, latestShellWidth]) =>
-      Number(latestOpen) > 0
-        ? clampAutomationDetailRailWidth(Number(latestRequestedWidth), Number(latestShellWidth))
-        : 0,
-  );
 
   const commandPalette = (
     <WorkbenchCommandPaletteHost
@@ -4684,7 +4737,6 @@ export function WorkbenchRuntime({
                           "group/titlebar-main pointer-events-none flex h-full min-w-0 flex-1 isolate items-center gap-1.5 overflow-hidden [contain:layout_paint] pe-2",
                           automationsRouteShell == null && rightPanelFullWidth && "invisible",
                         )}
-                        style={{ marginRight: automationsDetailRailResolvedWidth }}
                       >
                         <span
                           aria-hidden="true"
@@ -4732,7 +4784,7 @@ export function WorkbenchRuntime({
                     />
                     <div className="shrink-0 pb-1">
                       <WorkbenchAppRail
-                        destination={getWorkbenchRailDestination(workbenchWindow.location)}
+                        destination={getWorkbenchPrimaryDestination(workbenchWindow.location)}
                         onHome={workbenchWindow.selectHome}
                         onSpace={workbenchWindow.selectPages}
                         onScheduled={() => openAutomations()}
@@ -4768,6 +4820,7 @@ export function WorkbenchRuntime({
                             <WorkbenchSidebar
                               destination={getWorkbenchPrimaryDestination(workbenchWindow.location)}
                               body={sidebarBody}
+                              scheduled={scheduledSidebarNavigation}
                               inline={{
                                 visible: showInlineSidebar,
                                 animatedWidth: realSidebarMotion.animatedWidth,
@@ -4836,23 +4889,18 @@ export function WorkbenchRuntime({
                             ),
                           }}
                           automations={{
-                            content: () => (
-                              <WorkbenchSessionScopePath
-                                thread={APP_SHELL_ROUTE_THREAD_SCOPE_DESCRIPTOR}
-                                route={{ routeKey: automationsPath!, kind: "automations" }}
-                                selected
-                              >
-                                {automationsRouteShell}
-                              </WorkbenchSessionScopePath>
-                            ),
-                            afterMain: (
-                              <WorkbenchAutomationDetailRail
-                                mounted={automationsDetailRailMounted}
-                                width={automationsDetailRailResolvedWidth}
-                                onResizePointerDown={resizeAutomationDetailRail}
-                                onPortalElementChange={setAutomationsDetailRailPortalElement}
-                              />
-                            ),
+                            content: () =>
+                              scheduledRunPresented ? (
+                                activeSessionRoute
+                              ) : (
+                                <WorkbenchSessionScopePath
+                                  thread={APP_SHELL_ROUTE_THREAD_SCOPE_DESCRIPTOR}
+                                  route={{ routeKey: automationsPath!, kind: "automations" }}
+                                  selected
+                                >
+                                  {automationsRouteShell}
+                                </WorkbenchSessionScopePath>
+                              ),
                           }}
                           session={{
                             content: () =>

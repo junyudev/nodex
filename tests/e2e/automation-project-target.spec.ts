@@ -42,23 +42,29 @@ test("selects one Automation Project even when Projects share a folder", async (
         if (!result.item?.id) throw new Error(JSON.stringify(result));
       });
       await page.getByRole("button", { name: "Scheduled", exact: true }).click();
-      await page.getByTestId("automation-list-row-project-target-review").click();
-      const project = page.getByRole("button", { name: "Project", exact: true });
+      const row = page.getByRole("button", { name: /Project target review/ });
+      await row.hover();
+      await row.getByRole("button", { name: "More task actions" }).click();
+      await page.getByRole("menuitem", { name: "Edit", exact: true }).click();
+      const dialog = page.getByRole("dialog", { name: "Edit task" });
+      await dialog.getByRole("button", { name: "Advanced", exact: true }).click();
+      const project = dialog.getByRole("button", { name: "Project", exact: true });
       await expect(project).toHaveText("No project");
       await project.click();
       await page.getByRole("menuitem", { name: /Section Project/ }).click();
       await expect(project).toHaveText("Section Project");
       await page.getByRole("menuitem", { name: /Inbox Project/ }).click();
       await expect(project).toHaveText("Inbox Project");
+      await expect(dialog.getByRole("button", { name: "Workspace", exact: true })).toHaveText(
+        "Local",
+      );
       await testInfo.attach("project-selection", {
         body: await page.screenshot({ path: testInfo.outputPath("project-selection.png") }),
         contentType: "image/png",
       });
       await page.getByRole("menuitem", { name: "No project", exact: true }).click();
       await expect(project).toHaveText("No project");
-      await expect(
-        page.getByRole("button", { name: "Execution environment", exact: true }),
-      ).toHaveText("Local");
+      await expect(dialog.getByRole("button", { name: "Workspace", exact: true })).toHaveCount(0);
     },
   );
 });

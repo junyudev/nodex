@@ -51,6 +51,11 @@ import {
 
 const PROJECTLESS_SCOPE_KEY = "__projectless__";
 
+/** Where a selected Session appears: its Home scene by default, or in place within Scheduled. */
+export interface WorkbenchSessionPlacement {
+  readonly scheduledPath: string;
+}
+
 export interface WorkbenchSessionCatalogWindowPort {
   readonly location: WorkbenchLocation;
   readonly scenesByOwnerKey: Readonly<Record<string, WorkbenchSceneSnapshot>>;
@@ -61,6 +66,10 @@ export interface WorkbenchSessionCatalogWindowPort {
       | ((previous: WorkbenchSceneSnapshot | undefined) => WorkbenchSceneSnapshot),
   ) => void;
   readonly selectSession: (session: WorkbenchSessionCatalogEntry) => void;
+  readonly presentScheduledSession: (input: {
+    readonly path: string;
+    readonly session: WorkbenchSessionCatalogEntry;
+  }) => void;
   readonly selectProject: (projectId: string | null) => void;
   readonly reconcileMissingSession: (sessionId: string) => void;
 }
@@ -122,7 +131,10 @@ export interface WorkbenchSessionCatalog {
   readonly resolveDefaultDatabaseViewId: (projectId: string | null) => string | null;
   readonly findById: (sessionId: string) => WorkbenchSessionPresentation | null;
   readonly findByThreadId: (threadId: string) => WorkbenchSessionPresentation | null;
-  readonly select: (session: ProjectSession | WorkbenchSessionPresentation) => void;
+  readonly select: (
+    session: ProjectSession | WorkbenchSessionPresentation,
+    placement?: WorkbenchSessionPlacement,
+  ) => void;
   readonly selectProject: (projectId: string | null) => void;
   readonly refresh: (projectId: string | null) => Promise<readonly WorkbenchSessionPresentation[]>;
   readonly refreshThrough: (
@@ -651,14 +663,19 @@ export function useWorkbenchSessionCatalog({
     [known],
   );
   const select = useCallback(
-    (session: ProjectSession | WorkbenchSessionPresentation) => {
+    (
+      session: ProjectSession | WorkbenchSessionPresentation,
+      placement?: WorkbenchSessionPlacement,
+    ) => {
       const domain = "domain" in session ? session.domain : session;
       if (window.location.kind !== "session" || window.location.sessionId !== domain.id)
         dispatchWorkbenchCodexNavigation(domain.thread);
-      window.selectSession({
-        id: domain.id,
-        projectId: domain.projectId,
-      });
+      const entry = { id: domain.id, projectId: domain.projectId };
+      if (placement) {
+        window.presentScheduledSession({ path: placement.scheduledPath, session: entry });
+        return;
+      }
+      window.selectSession(entry);
     },
     [window],
   );

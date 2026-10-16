@@ -1,3 +1,5 @@
+import type { WorkbenchPrimaryDestination } from "../../shared/workbench-layout";
+
 /**
  * Hover peek for a collapsed contextual sidebar.
  *
@@ -10,7 +12,7 @@
  * window, or clicking a non-destination rail button closes it immediately.
  */
 
-export type WorkbenchSidebarPeekArea = "home" | "space";
+export type WorkbenchSidebarPeekArea = WorkbenchPrimaryDestination;
 
 export const WORKBENCH_SIDEBAR_PEEK_AREA_ATTRIBUTE = "data-workbench-sidebar-peek-area";
 export const WORKBENCH_SIDEBAR_PEEK_SURFACE_ATTRIBUTE = "data-workbench-sidebar-peek-surface";
@@ -93,7 +95,7 @@ export interface WorkbenchSidebarPeekController {
 
 function readPeekArea(element: Element | null): WorkbenchSidebarPeekArea | null {
   const value = element?.getAttribute(WORKBENCH_SIDEBAR_PEEK_AREA_ATTRIBUTE);
-  return value === "home" || value === "space" ? value : null;
+  return value === "home" || value === "space" || value === "scheduled" ? value : null;
 }
 
 export function createWorkbenchSidebarPeekController({

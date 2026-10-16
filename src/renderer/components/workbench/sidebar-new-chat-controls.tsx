@@ -8,6 +8,7 @@ import {
   type MouseEvent,
   type PointerEvent,
   type ReactNode,
+  type Ref,
 } from "react";
 import {
   InboxIcon,
@@ -114,19 +115,32 @@ export interface SidebarInboxEntry {
  * keep the same title, search, and first-row positions, so switching
  * destinations never shifts the chrome.
  */
+/** A header Search that filters the sidebar in place instead of opening the command palette. */
+export interface WorkbenchSidebarInlineSearch {
+  readonly label: string;
+  readonly expanded: boolean;
+  readonly controlsId: string;
+  readonly buttonRef?: Ref<HTMLButtonElement>;
+  /** Shown under the title row while expanded. */
+  readonly field: ReactNode;
+}
+
 export function WorkbenchSidebarHeader({
   title,
   searchShortcutLabel,
   scrolledContentUnderHeader,
   onSearch,
+  inlineSearch,
   children,
 }: {
   title: string;
   searchShortcutLabel?: string;
   scrolledContentUnderHeader: boolean;
   onSearch: () => void;
+  inlineSearch?: WorkbenchSidebarInlineSearch;
   children: ReactNode;
 }) {
+  const searchLabel = inlineSearch?.label ?? "Search";
   return (
     <div
       data-app-action-sidebar-scroll-header=""
@@ -145,11 +159,22 @@ export function WorkbenchSidebarHeader({
           {title}
         </h2>
         <div className="flex shrink-0 items-center gap-1">
-          <NodexTooltip tooltipContent="Search" shortcutLabel={searchShortcutLabel} side="bottom">
+          <NodexTooltip
+            tooltipContent={searchLabel}
+            shortcutLabel={searchShortcutLabel}
+            side="bottom"
+          >
             <button
+              ref={inlineSearch?.buttonRef}
               type="button"
-              className={SIDEBAR_HEADER_TOOL_BUTTON_CLASS}
-              aria-label="Search"
+              className={cn(
+                SIDEBAR_HEADER_TOOL_BUTTON_CLASS,
+                inlineSearch?.expanded &&
+                  "bg-token-charts-blue/10 text-token-charts-blue hover:bg-token-charts-blue/15 hover:text-token-charts-blue",
+              )}
+              aria-label={searchLabel}
+              aria-expanded={inlineSearch ? inlineSearch.expanded : undefined}
+              aria-controls={inlineSearch?.expanded ? inlineSearch.controlsId : undefined}
               onClick={onSearch}
             >
               <SettingsSearchIcon className="icon-xs" />
@@ -157,6 +182,7 @@ export function WorkbenchSidebarHeader({
           </NodexTooltip>
         </div>
       </div>
+      {inlineSearch?.expanded ? <div className="mb-1">{inlineSearch.field}</div> : null}
       <div className="flex flex-col gap-px">{children}</div>
     </div>
   );

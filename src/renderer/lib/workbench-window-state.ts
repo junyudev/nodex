@@ -187,6 +187,22 @@ export function selectWorkbenchSession(
   });
 }
 
+/**
+ * Scheduled presents a run or Heartbeat chat in place: the route keeps the Scheduled
+ * destination and carries the chat's Session as its Scene.
+ */
+export function presentWorkbenchScheduledSession(
+  state: WorkbenchWindowState,
+  input: { readonly path: string; readonly session: WorkbenchSessionCatalogEntry },
+): WorkbenchWindowState {
+  const projectContextId = input.session.projectId ?? projectContextFromLocation(state.location);
+  return navigateWorkbenchWindow(state, {
+    kind: "automations",
+    path: input.path,
+    returnTo: { kind: "session", sessionId: input.session.id, projectContextId },
+  });
+}
+
 export function selectWorkbenchProject(
   state: WorkbenchWindowState,
   projectId: string | null,

@@ -5,6 +5,11 @@ import {
 } from "./workbench-session-sidebar";
 import { cn } from "@/lib/utils";
 import { WorkbenchSpaceSidebar } from "./workbench-space-sidebar";
+import {
+  ScheduledSidebar,
+  type ScheduledSidebarNavigation,
+} from "@/features/scheduled/scheduled-sidebar";
+import type { WorkbenchPrimaryDestination } from "../../../shared/workbench-layout";
 import type { SidebarPagesSectionProps } from "./sidebar-pages-section";
 import { WORKBENCH_SURFACE_GUTTER_PX } from "@/lib/workbench-shell-geometry";
 import {
@@ -42,7 +47,7 @@ interface WorkbenchInlineSidebarPlacement {
 
 interface WorkbenchFloatingSidebarPlacement {
   readonly visible: boolean;
-  readonly destination?: "home" | "space";
+  readonly destination?: WorkbenchPrimaryDestination;
   readonly outerClassName: string;
   readonly resizing: boolean;
   readonly reducedMotion: boolean;
@@ -51,8 +56,9 @@ interface WorkbenchFloatingSidebarPlacement {
 }
 
 interface WorkbenchSidebarProps {
-  readonly destination: "home" | "space";
+  readonly destination: WorkbenchPrimaryDestination;
   readonly body: WorkbenchSidebarBodyProps;
+  readonly scheduled: ScheduledSidebarNavigation;
   readonly inline: WorkbenchInlineSidebarPlacement;
   readonly floating: WorkbenchFloatingSidebarPlacement;
 }
@@ -61,7 +67,13 @@ interface WorkbenchSidebarProps {
  * Owns the two chrome placements for one logical sidebar body. Placement can
  * change without duplicating the catalog/selection/command Interface.
  */
-export function WorkbenchSidebar({ destination, body, inline, floating }: WorkbenchSidebarProps) {
+export function WorkbenchSidebar({
+  destination,
+  body,
+  scheduled,
+  inline,
+  floating,
+}: WorkbenchSidebarProps) {
   const renderSidebar = (
     placement: Pick<ProjectSessionSidebarProps, WorkbenchSidebarPlacementProp>,
     sidebarDestination = destination,
@@ -69,11 +81,19 @@ export function WorkbenchSidebar({ destination, body, inline, floating }: Workbe
     const placedBody = placement.floating
       ? { ...body, width: body.width - WORKBENCH_SURFACE_GUTTER_PX }
       : body;
-    return sidebarDestination === "space" ? (
-      <WorkbenchSpaceSidebar body={placedBody} {...placement} />
-    ) : (
-      <ProjectSessionSidebar {...placedBody} {...placement} />
-    );
+    if (sidebarDestination === "space")
+      return <WorkbenchSpaceSidebar body={placedBody} {...placement} />;
+    if (sidebarDestination === "scheduled")
+      return (
+        <ScheduledSidebar
+          navigation={scheduled}
+          width={placedBody.width}
+          getWindowZoom={placedBody.getWindowZoom}
+          onResizeWidth={placedBody.onResizeWidth}
+          {...placement}
+        />
+      );
+    return <ProjectSessionSidebar {...placedBody} {...placement} />;
   };
 
   return (

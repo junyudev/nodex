@@ -12,14 +12,14 @@ import {
   WORKBENCH_SIDEBAR_PEEK_AREA_ATTRIBUTE,
   type WorkbenchSidebarPeekArea,
 } from "@/lib/workbench-sidebar-peek";
-import type { WorkbenchRailDestination } from "../../../shared/workbench-layout";
+import type { WorkbenchPrimaryDestination } from "../../../shared/workbench-layout";
 
 /** Every rail control shares the destinations' quiet ghost treatment. */
 export const WORKBENCH_RAIL_BUTTON_CLASS =
   "no-drag rounded-lg text-token-text-secondary hover:text-token-foreground";
 
 export interface WorkbenchAppRailProps {
-  destination: WorkbenchRailDestination;
+  destination: WorkbenchPrimaryDestination;
   onHome: () => void;
   onSpace: () => void;
   onScheduled: () => void;
@@ -29,7 +29,7 @@ export interface WorkbenchAppRailProps {
 }
 
 interface WorkbenchRailEntry {
-  readonly id: WorkbenchRailDestination | "plugins";
+  readonly id: WorkbenchPrimaryDestination | "plugins";
   readonly label: string;
   /** Only destinations that own a contextual sidebar can preview it on hover. */
   readonly peekArea: WorkbenchSidebarPeekArea | null;
@@ -63,7 +63,7 @@ export function WorkbenchAppRail({
     {
       id: "scheduled",
       label: "Scheduled",
-      peekArea: null,
+      peekArea: "scheduled",
       icon: (active) => <WorkbenchScheduledIcon filled={active} />,
       onSelect: onScheduled,
     },

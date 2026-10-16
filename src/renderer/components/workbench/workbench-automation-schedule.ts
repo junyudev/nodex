@@ -49,7 +49,7 @@ const RRULE_WEEKDAY_TO_CODE: Record<number, WorkbenchAutomationWeekdayCode> = {
 const WEEKDAY_INDEX = new Map(
   WORKBENCH_AUTOMATION_ALL_WEEKDAYS.map((weekday, index) => [weekday, index]),
 );
-const WEEKDAY_LABEL: Record<WorkbenchAutomationWeekdayCode, string> = {
+export const WORKBENCH_AUTOMATION_WEEKDAY_LABELS: Record<WorkbenchAutomationWeekdayCode, string> = {
   SU: "Sunday",
   MO: "Monday",
   TU: "Tuesday",
@@ -297,31 +297,30 @@ export function buildWorkbenchAutomationScheduleRrule(input: {
   return `FREQ=WEEKLY;BYDAY=${weekday};${timeParts}`;
 }
 
-export function formatWorkbenchAutomationScheduleModeLabel(input: {
-  mode: WorkbenchAutomationScheduleMode;
-  intervalStyle: WorkbenchAutomationScheduleIntervalStyle;
-}): string {
-  if (input.mode === "hourly") return input.intervalStyle === "heartbeat" ? "Interval" : "Hourly";
-  if (input.mode === "daily") return "Daily";
-  if (input.mode === "weekdays") return "Weekdays";
-  if (input.mode === "weekly") return "Weekly";
+export function formatWorkbenchAutomationScheduleModeLabel(
+  mode: WorkbenchAutomationScheduleMode,
+): string {
+  if (mode === "hourly") return "Interval";
+  if (mode === "daily") return "Daily";
+  if (mode === "weekdays") return "Weekdays";
+  if (mode === "weekly") return "Weekly";
   return "Custom";
 }
 
 export function formatWorkbenchAutomationScheduleLabel(
   config: WorkbenchAutomationScheduleConfig,
 ): string {
-  if (config.mode === "custom") return "Custom";
+  if (config.mode === "custom") return "Custom schedule";
   if (config.mode === "hourly") {
     const intervalMinutes = config.intervalMinutes ?? config.intervalHours * 60;
-    return formatIntervalLabel(intervalMinutes);
+    return formatWorkbenchAutomationIntervalLabel(intervalMinutes);
   }
 
-  const timeLabel = formatScheduleTimeLabel(config.time);
+  const timeLabel = formatWorkbenchAutomationScheduleTimeLabel(config.time);
   if (config.mode === "daily") return `Daily at ${timeLabel}`;
   if (config.mode === "weekdays") return `Weekdays at ${timeLabel}`;
   const weekday = normalizeWeekday(config.weekdays[0]) ?? "MO";
-  return `${WEEKDAY_LABEL[weekday]} at ${timeLabel}`;
+  return `${WORKBENCH_AUTOMATION_WEEKDAY_LABELS[weekday]}s at ${timeLabel}`;
 }
 
 function parseScheduleRrule(rrule: string): ParsedScheduleRrule | null {
@@ -484,7 +483,8 @@ function formatClockTime(hour: number, minute: number): string {
   return `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
 }
 
-function formatScheduleTimeLabel(value: string): string {
+/** A 24-hour `HH:MM` schedule time as the user reads it, e.g. `9:00 AM`. */
+export function formatWorkbenchAutomationScheduleTimeLabel(value: string): string {
   const time =
     parseScheduleTime(value) ?? parseScheduleTime(DEFAULT_WORKBENCH_AUTOMATION_SCHEDULE_TIME);
   if (!time) return "9:00 AM";
@@ -494,7 +494,7 @@ function formatScheduleTimeLabel(value: string): string {
   }).format(new Date(2024, 0, 1, time.hour, time.minute));
 }
 
-function formatIntervalLabel(intervalMinutes: number): string {
+export function formatWorkbenchAutomationIntervalLabel(intervalMinutes: number): string {
   if (intervalMinutes === 1) return "Every minute";
   if (intervalMinutes === 60) return "Hourly";
   if (intervalMinutes === 1_440) return "Daily";

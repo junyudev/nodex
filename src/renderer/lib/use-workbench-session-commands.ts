@@ -63,7 +63,10 @@ import {
 import type { WorkbenchPanelController } from "./use-workbench-panel-controller";
 import type { useWorkbenchPanelLifecycle } from "./use-workbench-panel-lifecycle";
 import type { useWorkbenchPanelOpeners } from "./use-workbench-panel-openers";
-import type { useWorkbenchSessionCatalog } from "./use-workbench-session-catalog";
+import type {
+  useWorkbenchSessionCatalog,
+  WorkbenchSessionPlacement,
+} from "./use-workbench-session-catalog";
 import type { createThreadScopeIdentityRegistry } from "./workbench-ui-scopes";
 import type { CommandMenuMode, CommandMenuOpenRequest } from "./command-palette";
 import type {
@@ -144,7 +147,10 @@ interface WorkbenchSessionCommandsInput {
   readonly codexControl: ReturnType<typeof useCodexAppServerControl>;
   readonly processManagerConversationsById: ReturnType<typeof useConversationSubset>;
   readonly threadScopeIdentityRegistry: ReturnType<typeof createThreadScopeIdentityRegistry>;
-  readonly selectSession: (session: ProjectSessionDomain | ProjectSession) => void;
+  readonly selectSession: (
+    session: ProjectSessionDomain | ProjectSession,
+    placement?: WorkbenchSessionPlacement,
+  ) => void;
   readonly archiveSession: (
     session: ProjectSession,
     options?: { readonly showToast?: boolean },
@@ -554,52 +560,6 @@ export function useWorkbenchSessionCommands({
       await prefillNewChat(input, { revealComposer: true });
     },
     [prefillNewChat],
-  );
-
-  const openScheduledAutomationChatCreate = useCallback(
-    async (prompt: string) => {
-      const targetProject =
-        activeProject ?? projects.find((project) => project.id === activeProjectId) ?? null;
-      if (!targetProject) {
-        throw new Error("No project is available for scheduled task chat.");
-      }
-      await prefillNewChat({
-        projectId: targetProject.id,
-        prompt,
-      });
-    },
-    [activeProject, activeProjectId, prefillNewChat, projects],
-  );
-
-  const startScheduledAutomationTemplateChat = useCallback(
-    async (prompt: string) => {
-      const targetProject =
-        activeProject ?? projects.find((project) => project.id === activeProjectId) ?? null;
-      if (!targetProject) {
-        throw new Error("No project is available for scheduled task personalization.");
-      }
-
-      const session = await ensureDefaultDraftSessionForProject(targetProject.id);
-      setSettingsPath(null);
-      setAutomationsPath(null);
-      await launchAgentRuntimeSession({
-        projectId: targetProject.id,
-        sessionId: session.id,
-        prompt,
-      });
-      await refreshProjectSessions(targetProject.id);
-      selectSession(session);
-    },
-    [
-      activeProject,
-      activeProjectId,
-      ensureDefaultDraftSessionForProject,
-      projects,
-      refreshProjectSessions,
-      selectSession,
-      setAutomationsPath,
-      setSettingsPath,
-    ],
   );
 
   const openSidebarCommandPalette = useCallback(() => {
@@ -1202,13 +1162,47 @@ export function useWorkbenchSessionCommands({
     [openAttachedThreadSessionResult],
   );
 
-  const openAutomationHistorySessionById = useCallback(
-    async (sessionId: string) => {
-      await openProjectSessionById(sessionId);
-      setSettingsPath(null);
-      setAutomationsPath(null);
+  /** Opens a scheduled run or Heartbeat chat without leaving Scheduled. */
+  const presentScheduledChat = useCallback(
+    async (sessionId: string, scheduledPath: (sessionId: string) => string): Promise<void> => {
+      try {
+        const session = await resolveChatSessionById(sessionId);
+        selectSession(session, { scheduledPath: scheduledPath(session.id) });
+      } catch (error) {
+        toast.danger("Could not open chat", {
+          description: error instanceof Error ? error.message : undefined,
+        });
+      }
     },
-    [openProjectSessionById, setSettingsPath, setAutomationsPath],
+    [resolveChatSessionById, selectSession],
+  );
+
+  /** Starts a chat about a scheduled task in its Project and shows it within Scheduled. */
+  const replyAboutScheduledTask = useCallback(
+    async (input: {
+      readonly projectId: string | null;
+      readonly prompt: string;
+      readonly scheduledPath: (sessionId: string) => string;
+    }): Promise<void> => {
+      try {
+        const session = await ensureDefaultDraftSessionForProject(input.projectId, {
+          select: false,
+        });
+        await launchAgentRuntimeSession({
+          projectId: input.projectId,
+          sessionId: session.id,
+          prompt: input.prompt,
+        });
+        await refreshProjectSessions(input.projectId);
+        selectSession(session, { scheduledPath: input.scheduledPath(session.id) });
+      } catch (error) {
+        toast.danger("Could not send reply", {
+          description: error instanceof Error ? error.message : undefined,
+        });
+        throw error;
+      }
+    },
+    [ensureDefaultDraftSessionForProject, refreshProjectSessions, selectSession],
   );
 
   const openProcessOutputInCurrentSession = useCallback(
@@ -1457,8 +1451,6 @@ export function useWorkbenchSessionCommands({
     sendPageToChat,
     startNewChatInProject,
     startNewChatWithPrompt,
-    openScheduledAutomationChatCreate,
-    startScheduledAutomationTemplateChat,
     openSidebarCommandPalette,
     openCommandPalette,
     requestContentSearchOpen,
@@ -1469,7 +1461,8 @@ export function useWorkbenchSessionCommands({
     openAttachedThreadSession,
     openResolvedPendingThreadSession,
     openAttachedThreadSessionById,
-    openAutomationHistorySessionById,
+    presentScheduledChat,
+    replyAboutScheduledTask,
     openProcessOutputInCurrentSession,
     openProcessManagerOutput,
     openTurnDiffFileInSidePanel,

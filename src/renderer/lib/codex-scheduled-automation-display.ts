@@ -73,14 +73,3 @@ export function formatCodexScheduledAutomationNextRunLabel(
     minute: "2-digit",
   }).format(nextRun);
 }
-
-export function sortCodexScheduledAutomationsForDisplay(
-  automations: readonly CodexScheduledAutomation[],
-): CodexScheduledAutomation[] {
-  return [...automations].sort((left, right) => {
-    const leftNextRun = left.nextRunAt ?? Number.POSITIVE_INFINITY;
-    const rightNextRun = right.nextRunAt ?? Number.POSITIVE_INFINITY;
-    if (leftNextRun !== rightNextRun) return leftNextRun - rightNextRun;
-    return left.name.localeCompare(right.name);
-  });
-}

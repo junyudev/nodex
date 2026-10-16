@@ -461,7 +461,7 @@ Load the narrow contract only for the branch being changed:
 | Codex transcript, requests, tools, composer, and turn/activity projection   | [Codex transcript behavior](product-specs/codex-thread-transcript-behavior.md)     |
 | Codex owner/follower publication and recovery                               | [Owner/follower streaming](product-specs/codex-thread-owner-follower-streaming.md) |
 | Thread Summary sections, rows, artifacts, Git actions, Browser, and PiP     | [Thread Summary panel](product-specs/thread-summary-panel-behavior.md)             |
-| Scheduled task/template route and editor                                    | [Scheduled route](product-specs/scheduled-route-behavior.md)                       |
+| Scheduled sidebar, route, and task editor                                   | [Scheduled route](product-specs/scheduled-route-behavior.md)                       |
 | Settings navigation, catalog, search, page composition, and deep links      | [Settings route](product-specs/settings-route-behavior.md)                         |
 | Review and Git diff presentation                                            | [Review right panel](product-specs/review-right-panel-behavior.md)                 |
 | Command palette ranking and execution                                       | [Command palette](product-specs/command-palette-behavior.md)                       |

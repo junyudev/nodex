@@ -40,6 +40,15 @@ describe("workbench automation schedule", () => {
         intervalStyle: "default",
       }),
     ).toBe("FREQ=WEEKLY;BYDAY=SU;BYHOUR=10;BYMINUTE=30");
+    expect(formatWorkbenchAutomationScheduleLabel(weekly)).toBe("Sundays at 10:30 AM");
+  });
+
+  test("names schedules it cannot express as custom", () => {
+    const config = resolveWorkbenchAutomationScheduleConfig({
+      rrule: "FREQ=MONTHLY;BYMONTHDAY=1;BYHOUR=9;BYMINUTE=0",
+      intervalStyle: "default",
+    });
+    expect(formatWorkbenchAutomationScheduleLabel(config)).toBe("Custom schedule");
   });
 
   test("uses minutely RRULEs for heartbeat intervals", () => {

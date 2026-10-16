@@ -238,7 +238,7 @@ export type WorkbenchStableLocation = Exclude<
   { readonly kind: "settings" | "pending-worktree" }
 >;
 
-/** Home remembers its own routes; Space and the Scheduled rail destination are restored separately. */
+/** Home remembers its own routes; Space and Scheduled restore their own state. */
 export type WorkbenchHomeLocation = Exclude<
   WorkbenchStableLocation,
   { readonly kind: "pages" | "automations" }
@@ -253,9 +253,8 @@ export type WorkbenchLocationV8 =
     }
   | Extract<WorkbenchLocationV7, { readonly kind: "pending-worktree" }>;
 
-export type WorkbenchPrimaryDestination = "home" | "space";
-/** Rail entries that can be current; Scheduled is a route inside Home's sidebar context. */
-export type WorkbenchRailDestination = WorkbenchPrimaryDestination | "scheduled";
+/** Rail destinations that own a contextual sidebar. */
+export type WorkbenchPrimaryDestination = "home" | "space" | "scheduled";
 
 export interface WorkbenchLayoutSnapshotV8 {
   readonly version: 8;
@@ -369,18 +368,13 @@ export function createDefaultWorkbenchLayoutSnapshot(): WorkbenchLayoutSnapshot 
   };
 }
 
-/** Selects the contextual sidebar; Settings retains its originating destination. */
+/** The rail and contextual sidebar follow the route; Settings retains its originating destination. */
 export function getWorkbenchPrimaryDestination(
   location: WorkbenchLocation,
 ): WorkbenchPrimaryDestination {
   if (location.kind === "settings") return getWorkbenchPrimaryDestination(location.returnTo);
-  return location.kind === "pages" ? "space" : "home";
-}
-
-/** The rail reflects the canonical route; Settings retains its originating destination. */
-export function getWorkbenchRailDestination(location: WorkbenchLocation): WorkbenchRailDestination {
-  if (location.kind === "settings") return getWorkbenchRailDestination(location.returnTo);
-  return location.kind === "automations" ? "scheduled" : getWorkbenchPrimaryDestination(location);
+  if (location.kind === "pages") return "space";
+  return location.kind === "automations" ? "scheduled" : "home";
 }
 
 /** Resolves the stable Home route, including the actual Settings origin. */

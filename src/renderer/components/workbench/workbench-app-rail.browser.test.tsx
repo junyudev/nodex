@@ -2,7 +2,7 @@ import { act, render } from "@testing-library/react";
 import { useState } from "react";
 import { expect, test, vi } from "vite-plus/test";
 import { userEvent } from "vite-plus/test/browser";
-import type { WorkbenchRailDestination } from "../../../shared/workbench-layout";
+import type { WorkbenchPrimaryDestination } from "../../../shared/workbench-layout";
 import { WorkbenchAppRail } from "./workbench-app-rail";
 
 test("rail entries remain keyboard reachable and reflect the selected destination", async () => {
@@ -12,7 +12,7 @@ test("rail entries remain keyboard reachable and reflect the selected destinatio
   const onPlugins = vi.fn();
 
   function RailHarness() {
-    const [destination, setDestination] = useState<WorkbenchRailDestination>("home");
+    const [destination, setDestination] = useState<WorkbenchPrimaryDestination>("home");
     return (
       <WorkbenchAppRail
         destination={destination}

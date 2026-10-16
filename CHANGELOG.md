@@ -32,6 +32,8 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 
+- Scheduled has its own sidebar of upcoming tasks with search, status filters and task actions. Cron tasks open as folders of their runs, runs and Heartbeat chats open without leaving Scheduled, and tasks are created and edited in a focused dialog. A selected task reads as the conversation that set it up, with a reply box for follow-up questions.
+
 - Nodex starts faster by loading optional panels when opened, with a restart action if a view cannot load.
 
 - Agents can read and write all Projects, Pages and Library resources in the current Profile, including across Sessions and from background tasks. Native execution uses full access and automatically approves permission requests while retaining questions that need your input.

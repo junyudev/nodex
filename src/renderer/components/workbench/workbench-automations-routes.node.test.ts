@@ -1,51 +1,54 @@
 import { describe, expect, test } from "vite-plus/test";
-import {
-  buildAutomationsPath,
-  resolveAutomationsRouteState,
-  updateAutomationsPath,
-} from "./workbench-automations-routes";
+import { buildAutomationsPath, resolveAutomationsRouteState } from "./workbench-automations-routes";
 
 describe("workbench automations routes", () => {
-  test("builds the root scheduled tasks path without redundant params", () => {
+  test("builds the Scheduled root without redundant params", () => {
     expect(buildAutomationsPath()).toBe("/automations");
-    expect(buildAutomationsPath({ tab: "tasks", automationId: "  " })).toBe("/automations");
+    expect(buildAutomationsPath({ automationId: "  ", runSessionId: "" })).toBe("/automations");
   });
 
-  test("preserves Codex automationId and automationMode search semantics", () => {
+  test("round trips task selection, dialog mode, and a presented run chat", () => {
+    const path = buildAutomationsPath({
+      automationId: "automation-1",
+      automationMode: "edit",
+    });
+    expect(path).toBe("/automations?automationId=automation-1&automationMode=edit");
+    expect(resolveAutomationsRouteState(path)).toEqual({
+      automationId: "automation-1",
+      automationMode: "edit",
+      templateId: null,
+      runSessionId: null,
+    });
     expect(
-      buildAutomationsPath({
-        automationId: "automation-1",
-        automationMode: "create",
-      }),
-    ).toBe("/automations?automationId=automation-1&automationMode=create");
+      resolveAutomationsRouteState("/automations?automationId=a&runSessionId=session-1"),
+    ).toEqual({
+      automationId: "a",
+      automationMode: null,
+      templateId: null,
+      runSessionId: "session-1",
+    });
+  });
 
-    expect(
-      JSON.stringify(
-        resolveAutomationsRouteState(
-          "/automations?tab=templates&automationId=automation-2&automationMode=create",
-        ),
-      ),
-    ).toBe(
-      JSON.stringify({
-        tab: "templates",
-        automationId: "automation-2",
-        automationMode: "create",
-      }),
+  test("editing requires a task while creating does not", () => {
+    expect(buildAutomationsPath({ automationMode: "edit" })).toBe("/automations");
+    expect(buildAutomationsPath({ automationMode: "create" })).toBe(
+      "/automations?automationMode=create",
+    );
+    expect(resolveAutomationsRouteState("/automations?automationMode=edit").automationMode).toBe(
+      null,
     );
   });
 
-  test("updates selection while preserving current tab by default", () => {
+  test("only a new task starts from a template", () => {
+    const path = buildAutomationsPath({ automationMode: "create", templateId: "daily-bug-scan" });
+    expect(path).toBe("/automations?automationMode=create&templateId=daily-bug-scan");
+    expect(resolveAutomationsRouteState(path).templateId).toBe("daily-bug-scan");
+    expect(buildAutomationsPath({ automationId: "a", templateId: "daily-bug-scan" })).toBe(
+      "/automations?automationId=a",
+    );
     expect(
-      updateAutomationsPath("/automations?tab=templates", {
-        automationId: "automation-3",
-      }),
-    ).toBe("/automations?tab=templates&automationId=automation-3");
-
-    expect(
-      updateAutomationsPath("/automations?automationId=automation-3&automationMode=create", {
-        automationId: null,
-        automationMode: null,
-      }),
-    ).toBe("/automations");
+      resolveAutomationsRouteState("/automations?automationId=a&templateId=daily-bug-scan")
+        .templateId,
+    ).toBe(null);
   });
 });

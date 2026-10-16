@@ -85,8 +85,8 @@ import { PlanSidePanelTab } from "./plan-side-panel-tab";
 import type { PanelTabPresentationRegistry } from "./panel-tab-presentation-registry";
 import { ReviewRouteOpenAdapter } from "./workbench-review-route-adapter";
 
-const WorkbenchAutomationSidePanelTab = lazy(async () => ({
-  default: (await import("./workbench-automations-overlay")).WorkbenchAutomationSidePanelTab,
+const ScheduledTaskSidePanel = lazy(async () => ({
+  default: (await import("@/features/scheduled/scheduled-task-side-panel")).ScheduledTaskSidePanel,
 }));
 
 type ProjectSession = WorkbenchSessionRenderProjection;
@@ -177,9 +177,10 @@ interface WorkbenchPanelProjectionInput {
     readonly onRefreshSessions: ComponentProps<typeof SideChatSessionTab>["onRefreshSessions"];
   };
   readonly automation: {
+    readonly chats: ComponentProps<typeof ScheduledTaskSidePanel>["chats"];
     readonly onOpenAutomations: (path: string) => void;
     readonly onOpenLocalEnvironmentsSettings: ComponentProps<
-      typeof WorkbenchAutomationSidePanelTab
+      typeof ScheduledTaskSidePanel
     >["onOpenLocalEnvironmentsSettings"];
   };
   readonly onTogglePageStageHistoryModal: SurfaceProps["onTogglePageStageHistoryModal"];
@@ -306,7 +307,7 @@ export function useWorkbenchPanelProjection({
     onQueueingEnabledChange,
     onRefreshSessions,
   } = conversation;
-  const { onOpenAutomations, onOpenLocalEnvironmentsSettings } = automation;
+  const { chats: scheduledChats, onOpenAutomations, onOpenLocalEnvironmentsSettings } = automation;
 
   const presentedPageIds = useMemo<ReadonlySet<string>>(() => {
     if (!activeRenderSession || !activeSessionPanelModel) return new Set();
@@ -486,11 +487,12 @@ export function useWorkbenchPanelProjection({
             if (isAutomationPanelTab(tab)) {
               return (
                 <ApplicationSurface key={`${session.id}:${tab.id}:${tab.stateKey}`}>
-                  <WorkbenchAutomationSidePanelTab
+                  <ScheduledTaskSidePanel
                     automationId={tab.automationId}
                     createInput={tab.createInput}
                     mode={tab.mode}
                     projects={projects}
+                    chats={scheduledChats}
                     title={tab.title}
                     updateInput={tab.updateInput}
                     onClose={() => {
@@ -796,6 +798,7 @@ export function useWorkbenchPanelProjection({
       onOpenLocalEnvironmentsSettings,
       onQueueingEnabledChange,
       onRefreshSessions,
+      scheduledChats,
       onTogglePageStageHistoryModal,
       onUpdateSessionViewTab,
       openAttachedThreadSession,

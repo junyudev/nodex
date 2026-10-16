@@ -1,44 +1,51 @@
 export const AUTOMATIONS_ROOT_PATH = "/automations";
 
-export type WorkbenchAutomationsTab = "tasks" | "templates";
-export type WorkbenchAutomationMode = "create";
+/** The task dialog open over the Scheduled main pane. */
+export type WorkbenchAutomationMode = "create" | "edit";
 
+/**
+ * Scheduled route state. `automationId` selects a task; `automationMode` opens the create or
+ * edit dialog, and `templateId` seeds a new task; `runSessionId` presents a run or Heartbeat chat
+ * in place.
+ */
 export interface WorkbenchAutomationsRouteState {
-  tab: WorkbenchAutomationsTab;
   automationId: string | null;
   automationMode: WorkbenchAutomationMode | null;
+  templateId: string | null;
+  runSessionId: string | null;
 }
 
 export interface BuildAutomationsPathInput {
-  tab?: WorkbenchAutomationsTab | null;
   automationId?: string | null;
   automationMode?: WorkbenchAutomationMode | null;
+  templateId?: string | null;
+  runSessionId?: string | null;
 }
 
-function normalizeAutomationId(automationId: string | null | undefined): string | null {
-  const normalized = automationId?.trim() ?? "";
+function normalizeId(value: string | null | undefined): string | null {
+  const normalized = value?.trim() ?? "";
   return normalized.length > 0 ? normalized : null;
 }
 
-function normalizeAutomationMode(
-  automationMode: WorkbenchAutomationMode | null | undefined,
-): WorkbenchAutomationMode | null {
-  return automationMode === "create" ? "create" : null;
-}
-
-function normalizeTab(tab: string | null | undefined): WorkbenchAutomationsTab {
-  return tab === "templates" ? "templates" : "tasks";
+function normalizeAutomationMode(value: string | null | undefined): WorkbenchAutomationMode | null {
+  return value === "create" || value === "edit" ? value : null;
 }
 
 export function buildAutomationsPath(input: BuildAutomationsPathInput = {}): string {
   const searchParams = new URLSearchParams();
-  const tab = normalizeTab(input.tab ?? null);
-  const automationId = normalizeAutomationId(input.automationId);
+  const automationId = normalizeId(input.automationId);
   const automationMode = normalizeAutomationMode(input.automationMode);
+  const runSessionId = normalizeId(input.runSessionId);
 
-  if (tab === "templates") searchParams.set("tab", "templates");
   if (automationId) searchParams.set("automationId", automationId);
-  if (automationMode) searchParams.set("automationMode", automationMode);
+  // Editing needs a task to edit.
+  if (automationMode === "create" || (automationMode === "edit" && automationId)) {
+    searchParams.set("automationMode", automationMode);
+  }
+  // Only a new task starts from a template.
+  const templateId = automationMode === "create" ? normalizeId(input.templateId) : null;
+  if (templateId) searchParams.set("templateId", templateId);
+  if (runSessionId) searchParams.set("runSessionId", runSessionId);
 
   const query = searchParams.toString();
   return query ? `${AUTOMATIONS_ROOT_PATH}?${query}` : AUTOMATIONS_ROOT_PATH;
@@ -48,24 +55,13 @@ export function resolveAutomationsRouteState(path: string): WorkbenchAutomations
   const queryStart = path.indexOf("?");
   const query = queryStart >= 0 ? path.slice(queryStart + 1) : "";
   const searchParams = new URLSearchParams(query);
+  const automationId = normalizeId(searchParams.get("automationId"));
+  const automationMode = normalizeAutomationMode(searchParams.get("automationMode"));
+  const mode = automationMode === "edit" && automationId === null ? null : automationMode;
   return {
-    tab: normalizeTab(searchParams.get("tab")),
-    automationId: normalizeAutomationId(searchParams.get("automationId")),
-    automationMode: normalizeAutomationMode(
-      searchParams.get("automationMode") as WorkbenchAutomationMode | null,
-    ),
+    automationId,
+    automationMode: mode,
+    templateId: mode === "create" ? normalizeId(searchParams.get("templateId")) : null,
+    runSessionId: normalizeId(searchParams.get("runSessionId")),
   };
-}
-
-export function updateAutomationsPath(
-  currentPath: string,
-  input: BuildAutomationsPathInput,
-): string {
-  const current = resolveAutomationsRouteState(currentPath);
-  return buildAutomationsPath({
-    tab: input.tab ?? current.tab,
-    automationId: input.automationId === undefined ? current.automationId : input.automationId,
-    automationMode:
-      input.automationMode === undefined ? current.automationMode : input.automationMode,
-  });
 }
