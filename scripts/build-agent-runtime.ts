@@ -4,6 +4,10 @@ import { createRequire } from "node:module";
 import { join } from "node:path";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import {
+  nodeBuildOptimizationArguments,
+  type NodeBuildMode,
+} from "../config/node-build-optimization";
 
 const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -13,7 +17,7 @@ const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
  * a mode, and each mode loads its own chunk graph. It lives beside `out/main`, never inside it,
  * because the Main build empties `out/main` on every development start and hot rebuild.
  */
-export function buildAgentRuntime(root = repositoryRoot): void {
+export function buildAgentRuntime(root = repositoryRoot, mode: NodeBuildMode = "production"): void {
   const output = join(root, "out/agent-runtime");
   rmSync(output, { recursive: true, force: true });
   execFileSync(
@@ -27,6 +31,7 @@ export function buildAgentRuntime(root = repositoryRoot): void {
       "--platform=node",
       "--format=esm",
       "--target=node24",
+      ...nodeBuildOptimizationArguments(mode),
       "--external:@anthropic-ai/claude-agent-sdk",
       "--external:@ff-labs/fff-node",
       '--banner:js=import { createRequire as nodexCreateRequire } from "node:module"; const require = nodexCreateRequire(import.meta.url);',
@@ -48,5 +53,13 @@ export function buildAgentRuntime(root = repositoryRoot): void {
     cpSync(join(root, "packages/agent-runtime", notice), join(output, notice));
 }
 
-if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url))
-  buildAgentRuntime();
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  const arguments_ = process.argv.slice(2);
+  if (arguments_.length > 1 || (arguments_.length === 1 && arguments_[0] !== "--development")) {
+    throw new Error("Usage: build-agent-runtime.ts [--development]");
+  }
+  buildAgentRuntime(
+    repositoryRoot,
+    arguments_[0] === "--development" ? "development" : "production",
+  );
+}

@@ -167,6 +167,17 @@ jobs:
             rm -f "${NODEX_SIGNING_CERTIFICATE}"
           fi
 
+      - name: Upload JavaScript source maps
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: nodex-javascript-sourcemaps-arm64-${{ inputs.source_sha }}
+          path: |
+            out/**/*.map
+            .generated/prepared-electron-build.json
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: ${{ inputs.retention_days }}
+
       - name: Upload arm64 architecture bundle
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:

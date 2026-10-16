@@ -1,6 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { gzipSync } from "node:zlib";
+import { rendererBootstrapImports } from "./lib/renderer-bootstrap-imports";
 
 const rendererDirectory = path.resolve("out/renderer");
 const htmlPath = path.join(rendererDirectory, "index.html");
@@ -57,10 +58,7 @@ invariant(
 );
 
 const entrySource = eagerJavaScript[0].toString("utf8");
-const staticImports = [
-  ...entrySource.matchAll(/^import\s.+?from\s*"([^"]+)";?$/gmu),
-  ...entrySource.matchAll(/^import\s*"([^"]+)";?$/gmu),
-].map(([, specifier]) => specifier);
+const staticImports = rendererBootstrapImports(entryMatch[1], entrySource);
 invariant(
   staticImports.every((specifier) =>
     path.basename(specifier).startsWith("renderer-bootstrap-runtime-"),

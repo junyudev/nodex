@@ -1,12 +1,15 @@
 import { resolve } from "path";
 import { defineConfig } from "electron-vite";
 import { sentryVitePlugin } from "@sentry/vite-plugin";
-import type { Plugin, Rollup } from "vite";
+import type { BuildEnvironmentOptions, Plugin, Rollup } from "vite";
 import { createExcalidrawFontAssetPlugins } from "./config/excalidraw-font-assets";
 import { createStartupShellHtmlPlugin } from "./config/startup-shell-html";
 import { createTypographyBootstrapHtmlPlugin } from "./config/typography-bootstrap";
 import { BUNDLED_ELECTRON_MAIN_DEPENDENCIES } from "./config/electron-main-runtime-closure";
-import { resolveRendererManualChunk } from "./config/renderer-manual-chunks";
+import {
+  resolveRendererChunkFileName,
+  resolveRendererManualChunk,
+} from "./config/renderer-manual-chunks";
 import {
   createRendererVitePlugins,
   rendererViteCss,
@@ -39,8 +42,6 @@ function createSentryPlugins() {
     telemetry: false,
   });
 }
-
-const sentrySourcemapSetting = shouldEmitSentrySourceMaps() ? "hidden" : false;
 
 function enforceSelfContainedSandboxedPreloads(): Plugin {
   return {
@@ -123,84 +124,101 @@ function isKnownYProsemirrorAwarenessTypeImportWarning(warning: Rollup.RollupLog
   );
 }
 
-export default defineConfig({
-  main: {
-    plugins: createSentryPlugins(),
-    build: {
-      externalizeDeps: {
-        exclude: [...BUNDLED_ELECTRON_MAIN_DEPENDENCIES],
-      },
-      sourcemap: sentrySourcemapSetting,
-      rollupOptions: {
-        input: {
-          bootstrap: resolve(__dirname, "src/main/bootstrap.ts"),
-          "git-worker": resolve(__dirname, "src/main/git-worker/entry.ts"),
-          "worktree-worker": resolve(__dirname, "src/main/worktree-worker/entry.ts"),
+export default defineConfig(({ command, mode }) => {
+  const productionBuild = command === "build" && mode !== "development";
+  const buildOptimization = {
+    minify: productionBuild ? "oxc" : false,
+    sourcemap: productionBuild || shouldEmitSentrySourceMaps() ? "hidden" : false,
+  } satisfies Pick<BuildEnvironmentOptions, "minify" | "sourcemap">;
+
+  return {
+    main: {
+      plugins: createSentryPlugins(),
+      build: {
+        externalizeDeps: {
+          exclude: [...BUNDLED_ELECTRON_MAIN_DEPENDENCIES],
         },
-        onwarn(warning, defaultHandler) {
-          if (isKnownYProsemirrorAwarenessTypeImportWarning(warning)) return;
-          defaultHandler(warning);
-        },
-        output: {
-          entryFileNames: "[name].js",
-          chunkFileNames: "[name]-[hash].js",
-        },
-      },
-    },
-  },
-  preload: {
-    plugins: [enforceSelfContainedSandboxedPreloads(), ...createSentryPlugins()],
-    build: {
-      sourcemap: sentrySourcemapSetting,
-      rollupOptions: {
-        input: {
-          "avatar-overlay": resolve(__dirname, "src/preload/avatar-overlay.ts"),
-          "browser-guest": resolve(__dirname, "src/preload/browser-guest.ts"),
-          "global-dictation": resolve(__dirname, "src/preload/global-dictation.ts"),
-          index: resolve(__dirname, "src/preload/index.ts"),
-          "mcp-app-sandbox-guest": resolve(__dirname, "src/preload/mcp-app-sandbox-guest.ts"),
-        },
-      },
-    },
-  },
-  renderer: {
-    server: {
-      port: process.env.NODEX_DEV_RENDERER_PORT
-        ? Number(process.env.NODEX_DEV_RENDERER_PORT)
-        : 51284,
-      strictPort: true,
-      // Generic app/icon surfaces intentionally use Vite's /@fs route in development.
-      fs: { strict: false },
-      headers: {
-        "Content-Security-Policy": buildTopLevelRendererCsp({
-          mode: "development",
-        }),
-      },
-    },
-    root: resolve(__dirname, "src/renderer"),
-    build: {
-      sourcemap: sentrySourcemapSetting,
-      rollupOptions: {
-        input: {
-          index: resolve(__dirname, "src/renderer/index.html"),
-        },
-        output: {
-          manualChunks(id) {
-            return resolveRendererManualChunk(id);
+        ...buildOptimization,
+        rollupOptions: {
+          input: {
+            bootstrap: resolve(__dirname, "src/main/bootstrap.ts"),
+            "git-worker": resolve(__dirname, "src/main/git-worker/entry.ts"),
+            "worktree-worker": resolve(__dirname, "src/main/worktree-worker/entry.ts"),
+          },
+          onwarn(warning, defaultHandler) {
+            if (isKnownYProsemirrorAwarenessTypeImportWarning(warning)) return;
+            defaultHandler(warning);
+          },
+          output: {
+            keepNames: productionBuild,
+            entryFileNames: "[name].js",
+            chunkFileNames: "[name]-[hash].js",
           },
         },
       },
     },
-    resolve: rendererViteResolve,
-    plugins: [
-      createStartupShellHtmlPlugin(),
-      createTypographyBootstrapHtmlPlugin(),
-      createRendererDevelopmentCspPlugin(),
-      createRendererProductionCspPlugin(),
-      ...createExcalidrawFontAssetPlugins(),
-      ...createRendererVitePlugins(),
-      ...createSentryPlugins(),
-    ],
-    css: rendererViteCss,
-  },
+    preload: {
+      plugins: [enforceSelfContainedSandboxedPreloads(), ...createSentryPlugins()],
+      build: {
+        // Sandboxed preload loaders cannot require shared chunks, including name helpers.
+        isolatedEntries: true,
+        externalizeDeps: false,
+        ...buildOptimization,
+        rollupOptions: {
+          input: {
+            "avatar-overlay": resolve(__dirname, "src/preload/avatar-overlay.ts"),
+            "browser-guest": resolve(__dirname, "src/preload/browser-guest.ts"),
+            "global-dictation": resolve(__dirname, "src/preload/global-dictation.ts"),
+            index: resolve(__dirname, "src/preload/index.ts"),
+            "mcp-app-sandbox-guest": resolve(__dirname, "src/preload/mcp-app-sandbox-guest.ts"),
+          },
+          output: { keepNames: productionBuild },
+        },
+      },
+    },
+    renderer: {
+      server: {
+        port: process.env.NODEX_DEV_RENDERER_PORT
+          ? Number(process.env.NODEX_DEV_RENDERER_PORT)
+          : 51284,
+        strictPort: true,
+        // Generic app/icon surfaces intentionally use Vite's /@fs route in development.
+        fs: { strict: false },
+        headers: {
+          "Content-Security-Policy": buildTopLevelRendererCsp({
+            mode: "development",
+          }),
+        },
+      },
+      root: resolve(__dirname, "src/renderer"),
+      build: {
+        ...buildOptimization,
+        rollupOptions: {
+          input: {
+            index: resolve(__dirname, "src/renderer/index.html"),
+          },
+          output: {
+            keepNames: productionBuild,
+            chunkFileNames(chunk) {
+              return resolveRendererChunkFileName(chunk.moduleIds);
+            },
+            manualChunks(id) {
+              return resolveRendererManualChunk(id);
+            },
+          },
+        },
+      },
+      resolve: rendererViteResolve,
+      plugins: [
+        createStartupShellHtmlPlugin(),
+        createTypographyBootstrapHtmlPlugin(),
+        createRendererDevelopmentCspPlugin(),
+        createRendererProductionCspPlugin(),
+        ...createExcalidrawFontAssetPlugins(),
+        ...createRendererVitePlugins(),
+        ...createSentryPlugins(),
+      ],
+      css: rendererViteCss,
+    },
+  };
 });

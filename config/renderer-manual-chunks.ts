@@ -48,3 +48,12 @@ export function resolveRendererManualChunk(id: string): string | undefined {
 
   return undefined;
 }
+
+export function resolveRendererChunkFileName(moduleIds: readonly string[]): string {
+  // Rolldown assigns its runtime before manual chunking and keeps it separate.
+  // Only that pure helper chunk belongs to the lightweight bootstrap boundary.
+  if (moduleIds.length === 1 && moduleIds[0] === "\0rolldown/runtime.js") {
+    return "assets/renderer-bootstrap-runtime-[hash].js";
+  }
+  return "assets/[name]-[hash].js";
+}

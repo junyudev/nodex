@@ -244,9 +244,9 @@ export const parseDevLauncherArguments = (args: readonly string[]): DevLauncherA
   };
 };
 
-const pnpmScript = (script: string): SupervisedCommandPlan => ({
+const pnpmScript = (script: string, ...arguments_: readonly string[]): SupervisedCommandPlan => ({
   command: "pnpm",
-  args: ["--silent", "run", script],
+  args: ["--silent", "run", script, ...arguments_],
 });
 
 // electron-vite reads path.txt directly, bypassing Electron's lazy runtime download.
@@ -328,7 +328,7 @@ export const createDevLaunchPlan = (input: {
       pnpmScript("core:build:dev"),
       pnpmScript("stage:codex-runtime:mac:cached"),
       pnpmScript("sync:icons"),
-      pnpmScript("build:agent-runtime"),
+      pnpmScript("build:agent-runtime", "--development"),
     ],
     application: {
       command: "pnpm",

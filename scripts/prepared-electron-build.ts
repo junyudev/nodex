@@ -19,6 +19,7 @@ import { fileURLToPath } from "node:url";
 import { inspectOfficialAgentSkillsArtifact } from "./official-agent-skills-artifact.mjs";
 import { BUNDLED_ELECTRON_MAIN_DEPENDENCIES } from "../config/electron-main-runtime-closure";
 import { buildAgentRuntime } from "./build-agent-runtime";
+import { nodeBuildOptimizationArguments } from "../config/node-build-optimization";
 import { parseReleaseIdentity, type ReleaseIdentity } from "./release/model";
 
 const MANIFEST_SCHEMA_VERSION = 4;
@@ -543,6 +544,7 @@ function runProductionBuild(): void {
       "--platform=node",
       "--format=cjs",
       "--target=node20",
+      ...nodeBuildOptimizationArguments("production"),
       "--outfile=out/main/remote-worktree-worker.cjs",
     ],
     { cwd: repositoryRoot, stdio: "inherit" },
@@ -559,6 +561,7 @@ function runProductionBuild(): void {
       "--platform=node",
       "--format=esm",
       "--target=node24",
+      ...nodeBuildOptimizationArguments("production"),
       "--outfile=out/main/app-tools/server.mjs",
     ],
     { cwd: repositoryRoot, stdio: "inherit" },

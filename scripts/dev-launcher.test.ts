@@ -114,6 +114,10 @@ describe("dev launcher", () => {
       home: HOME,
     });
     expect(plan.mode).toBe("hmr");
+    expect(plan.preparation).toContainEqual({
+      command: "pnpm",
+      args: ["--silent", "run", "build:agent-runtime", "--development"],
+    });
     expect(plan.preparation[0]).toEqual({
       command: "pnpm",
       args: ["exec", "install-electron"],

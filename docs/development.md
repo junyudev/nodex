@@ -347,6 +347,16 @@ Build the app:
 vp run build
 ```
 
+Production JavaScript builds minify Electron Main, Preload, Renderer, Agent Runtime,
+the remote worktree worker and the application MCP server while preserving function
+and class names. They emit separate hidden source maps for offline diagnostics;
+Electron maps retain the existing Sentry upload path when credentials are configured.
+The distribution workflow retains remaining maps and their prepared-build manifest
+in a separate CI artifact. Source maps are excluded from installers. Development HMR
+output stays unminified; the launcher builds Agent Runtime with
+`build:agent-runtime --development` for the same readable output. The standalone
+`build:agent-runtime` command defaults to production.
+
 Package local macOS installers:
 
 ```bash
