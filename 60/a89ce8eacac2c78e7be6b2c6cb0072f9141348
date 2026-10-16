@@ -1,0 +1,42 @@
+src/main/window-runtime/WindowRuntime.test.ts
+  s_256699efb22e39::t_ed9811460b827c 26-38,41-43,55-58,64-65,230-237,247-271
+src/renderer/features/local-conversation/view/inline-visualization-window.tsx
+  s_256699efb22e39::t_dc565ba41cfcfc 16,28-41
+src/renderer/features/local-conversation/view/inline-visualization-window.test.tsx
+  s_256699efb22e39::t_d04e8dcb2621a8 32-42,65,154,158-166,178-188,190,198-205,213-227
+  s_256699efb22e39::t_dc565ba41cfcfc 189,191-197,206-212
+  s_256699efb22e39::t_17ba839e2f74a4 136-153
+  s_256699efb22e39::t_8e15e8eea273e1 155-157,167-172,175-177
+  s_256699efb22e39::t_f265c68c7b6f40 173-174
+  s_256699efb22e39::t_97017a2e704c00 228-229
+src/main/platform/electron/CodexConversationService.node.test.ts
+  s_256699efb22e39::t_e75ce482e2412c 428-466
+tests/e2e/inline-visualization-window-close.spec.ts
+  s_256699efb22e39::t_d59f360cb593b2 1-63
+src/main/platform/electron/CodexConversationService.ts
+  s_256699efb22e39::t_e75ce482e2412c 24-27,32-36,39,120-125
+  s_256699efb22e39::t_9ef30711435e57 126-127,129
+src/main/window-runtime/WindowRuntime.ts
+  s_256699efb22e39::t_a2e44fb9b4778e 7,56,63-64,145,160,263,267-268,275-277,300,332,336-337,348,361,375,382,490,503-504,563,583-584,659
+  s_256699efb22e39::t_ed9811460b827c 62
+docs/product-specs/conversation-peer-service.md
+  s_256699efb22e39::t_8476a1d91c9d84 66-67
+docs/product-specs/codex-thread-transcript-behavior.md
+  s_256699efb22e39::t_97bec1914c4cb5 129
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "60a89ce8eacac2c78e7be6b2c6cb0072f9141348",
+  "prompts": {},
+  "sessions": {
+    "s_256699efb22e39": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a14296-7655-71c0-bea3-eeb0c4e18695",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}

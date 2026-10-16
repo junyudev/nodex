@@ -1,0 +1,112 @@
+src/main/host-runtime/ApplicationInitializationRuntime.ts
+  s_256699efb22e39::t_e056c7bb2077e5 12,32,160
+src/renderer/components/workbench/workbench-testkit/workbench-shell-harness.tsx
+  s_256699efb22e39::t_bc8e331815e701 4511
+  s_256699efb22e39::t_4823c8ee0bbb77 4,2408-2409,2438-2439,3200,4505,4512-4519
+  s_256699efb22e39::t_e39e2f81f20d2d 4520
+src/renderer/features/user-attachment-image-editor/index.tsx
+  s_256699efb22e39::t_984a83fa330ced 95,97
+  s_256699efb22e39::t_580239d71ee7e3 1-3
+  s_256699efb22e39::t_c9c8f88b10a534 4-94,96,98-99
+config/renderer-vite-shared.ts
+  s_256699efb22e39::t_16f69fc98aba5c 4-7,9-10,13-21
+src/renderer/application-renderer.tsx
+  s_256699efb22e39::t_b4f6e09893d2e7 9-12,32,38-43,47
+src/renderer/components/workbench/workbench-terminal-panel.tsx
+  s_256699efb22e39::t_984a83fa330ced 1-2,10,12
+  s_256699efb22e39::t_3f89e742dd403f 3-9,11,13-14
+src/renderer/features/local-conversation/index.tsx
+  s_256699efb22e39::t_984a83fa330ced 74,76,82,84,90,92,100,102
+  s_256699efb22e39::t_3f89e742dd403f 4-73,75,77-81,83,85-89,91,93-99,101,103-104
+  s_256699efb22e39::t_580239d71ee7e3 1-3
+src/main/ipc/handlers/ApplicationBootstrapIpc.ts
+  s_256699efb22e39::t_e056c7bb2077e5 8-11,43-46
+  s_256699efb22e39::t_69accb3d904405 7,47-52
+config/renderer-react-compiler.ts
+  s_256699efb22e39::t_16f69fc98aba5c 94-95
+src/renderer/bootstrap/application-surface.test.tsx
+  s_256699efb22e39::t_5108ad8c5c474d 1-206
+  s_256699efb22e39::t_ca29e30fb4d2c4 207-240
+docs/product-specs/desktop-startup-behavior.md
+  s_256699efb22e39::t_7939be5d5f73ed 4,42-44,48-52
+  s_256699efb22e39::t_2104d788a57317 45-47,63-65
+  s_256699efb22e39::t_f7e169c7320b21 53
+  s_256699efb22e39::t_913b072c42bf4c 66
+src/preload/index.ts
+  s_256699efb22e39::t_4a5a3a7e1865ae 7,227
+src/renderer/components/workbench/use-workbench-route-surfaces.tsx
+  s_256699efb22e39::t_3f89e742dd403f 4-12,44,50,56-59
+  s_256699efb22e39::t_984a83fa330ced 1-2,43,45,49,51,55,60
+  s_256699efb22e39::t_6ae96af55ac193 3
+src/renderer/env.d.ts
+  s_256699efb22e39::t_e056c7bb2077e5 1,62
+src/renderer/components/workbench/workbench-shell.routes-threads.test.tsx
+  s_256699efb22e39::t_984a83fa330ced 177,447,449
+src/shared/app-startup.ts
+  s_256699efb22e39::t_e056c7bb2077e5 4-19
+src/renderer/components/workbench/use-workbench-route-surfaces.test.tsx
+  s_256699efb22e39::t_4cd4539ef1bb05 1-108
+  s_256699efb22e39::t_1954ee325e2cb9 109-115
+src/renderer/bootstrap/startup-controller.jsdom.test.ts
+  s_256699efb22e39::t_b430e9bbfab0e6 4,240,242-257,259-266,305
+  s_256699efb22e39::t_324ff1c06660c7 42-45,62-63,69,80,85-86,160,162-165,171-181,183,191-233,235-239
+  s_256699efb22e39::t_6caedc368c48db 12,23-28,50,54,70-73,91-93,267-286,288-304,306-323
+  s_256699efb22e39::t_cdfb2bbdbf34dc 324-327
+config/renderer-vite-shared.test.ts
+  s_256699efb22e39::t_8ecfafb8942d2a 37-47,70
+  s_256699efb22e39::t_16f69fc98aba5c 1-36,48-69,71-107
+docs/FRONTEND.md
+  s_256699efb22e39::t_16f69fc98aba5c 203-206
+src/main/ipc/handlers/ApplicationBootstrapIpc.test.ts
+  s_256699efb22e39::t_f067eb06f3f906 6-8,20-21,39,79,121-122,139,155
+  s_256699efb22e39::t_bd6eead3200791 18-19,80-120,123-138,140-154,156-167
+  s_256699efb22e39::t_f5682c9c287ec0 168
+src/renderer/components/workbench/workbench-runtime.tsx
+  s_256699efb22e39::t_e7f131a463fb69 714
+  s_256699efb22e39::t_cc984c7770ef99 711-713
+  s_256699efb22e39::t_4ac377c2d8edf5 2,703-710,716-717
+  s_256699efb22e39::t_e30fe68bd4ad2c 686-690,715
+src/renderer/components/workbench/workbench-shell.startup.test.tsx
+  s_256699efb22e39::t_4823c8ee0bbb77 1-5,7,12-18,41,47-60,103
+  s_256699efb22e39::t_cc984c7770ef99 6,8-11,19-40,42-46,61-102
+  s_256699efb22e39::t_be2a3e327d13bd 104-105
+src/renderer/bootstrap/application-surface.tsx
+  s_256699efb22e39::t_b4f6e09893d2e7 1-8,10-94,102-131,133-161
+  s_256699efb22e39::t_3ade158686fa79 9,95-101
+  s_256699efb22e39::t_e7f131a463fb69 132
+src/renderer/components/workbench/use-workbench-panel-projection.tsx
+  s_256699efb22e39::t_984a83fa330ced 11,488-538
+  s_256699efb22e39::t_3f89e742dd403f 6,88-91
+src/renderer/application-renderer.test.tsx
+  s_256699efb22e39::t_3a567b5a6c84e8 1-112
+  s_256699efb22e39::t_f28d5a07ad847e 113-130
+src/renderer/bootstrap/startup-controller.ts
+  s_256699efb22e39::t_7939be5d5f73ed 1,54-57,63-67,149-165
+  s_256699efb22e39::t_cece734d231cd5 123-128,139,172-183
+  s_256699efb22e39::t_4a5a3a7e1865ae 49,145
+  s_256699efb22e39::t_e056c7bb2077e5 53,58-62,68-69,168,187,197
+src/renderer/features/workspace-files/index.tsx
+  s_256699efb22e39::t_984a83fa330ced 1-2,10,12
+  s_256699efb22e39::t_c9c8f88b10a534 3-9,11,13-30
+CHANGELOG.md
+  s_256699efb22e39::t_1317ea3c99f407 35-36
+src/renderer/components/workbench/workbench-shell.tsx
+  s_256699efb22e39::t_b4f6e09893d2e7 2
+  s_256699efb22e39::t_4ac377c2d8edf5 117
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "3766d3fbd697b214f97e2b255c65d29e02ed3094",
+  "prompts": {},
+  "sessions": {
+    "s_256699efb22e39": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a14296-7655-71c0-bea3-eeb0c4e18695",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
