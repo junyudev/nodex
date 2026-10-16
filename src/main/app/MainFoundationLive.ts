@@ -3,6 +3,7 @@ import * as Layer from "effect/Layer";
 import { BrowserProfileHelperPlatform } from "../browser/browser-profile-helper-client";
 import * as ElectronApp from "../platform/electron/ElectronApp";
 import * as ElectronDesktop from "../platform/electron/ElectronDesktop";
+import * as NativeNotificationAuthorization from "../platform/electron/NativeNotificationAuthorization";
 import * as SecretEncryption from "../platform/electron/SecretEncryption";
 import * as ElectronIpc from "../platform/electron/ElectronIpc";
 import * as ElectronSessionHost from "../platform/electron/ElectronSessionHost";
@@ -24,6 +25,7 @@ export type MainFoundation =
   | ScopedCallbackRuntime.ScopedCallbackRuntime
   | ElectronApp.ElectronApp
   | ElectronDesktop.ElectronDesktop
+  | NativeNotificationAuthorization.NativeNotificationAuthorization
   | ElectronIpc.ElectronIpc
   | ElectronIpc.ElectronSyncIpc
   | ElectronSessionHost.ElectronSessionHost
@@ -52,9 +54,10 @@ export const make = (config: unknown): Layer.Layer<MainFoundation, MainConfig.Ma
     ScopedCallbackRuntime.layer,
     nodePlatform,
   );
-  const profileServices = Layer.merge(
+  const profileServices = Layer.mergeAll(
     ApplicationSettings.live.pipe(Layer.provide(SecretEncryption.live)),
     TemporaryAssets.live,
+    NativeNotificationAuthorization.live,
   ).pipe(Layer.provideMerge(base));
   return electronPlatform.pipe(Layer.provideMerge(profileServices));
 };

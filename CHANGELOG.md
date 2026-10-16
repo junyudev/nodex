@@ -45,6 +45,8 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- macOS notifications wait for system authorization before sending, and Settings shows the current permission with an action to allow notifications or open System Settings.
+
 - Terminals retain startup events and release processes that exit before attachment completes.
 - Deleted Pages are cleared from local storage once their retention period ends instead of being kept indefinitely.
 - Retained edits that cannot be received can now be removed from this device after confirmation, clearing their warning without changing current documents.

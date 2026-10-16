@@ -7,7 +7,6 @@ import { MermaidDiagramModalController } from "@/components/board/editor/mermaid
 import { AppUpdateRestartNotice } from "@/components/workbench/app-update-restart-notice";
 import { LocalConversationProvider } from "@/features/local-conversation";
 import { HeartbeatAutomationController } from "@/features/local-conversation/heartbeat-automation-controller";
-import { DesktopNotificationPermissionBootstrap } from "@/features/local-conversation/desktop-notification-permission-bootstrap";
 import { LocalConversationViewStateCleanupController } from "@/features/local-conversation/view/local-conversation-view-state-cleanup-controller";
 import { InlineVisualizationWindowProvider } from "@/features/local-conversation/view/inline-visualization-window";
 import { InlineVisualizationWindowLifecycle } from "@/features/local-conversation/view/inline-visualization-window-lifecycle";
@@ -86,7 +85,6 @@ export default function App({ windowSessionBootstrap }: AppProps) {
         <RealtimeVoiceWindowProvider>
           <InlineVisualizationWindowProvider>
             <InlineVisualizationWindowLifecycle />
-            <DesktopNotificationPermissionBootstrap />
             <LocalConversationViewStateCleanupController />
             <HeartbeatAutomationController />
             <WorkbenchShell windowSessionBootstrap={windowSessionBootstrap} />

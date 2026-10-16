@@ -1373,6 +1373,7 @@ export const resolveNodexNativeCodeObjects = (
   ...manifest.binaries.map(({ bundlePath }) => join(appPath, "Contents", bundlePath)),
   join(appPath, "Contents/Resources/native/nodex-clipboard.node"),
   join(appPath, "Contents/Resources/native/nodex-devicecheck.node"),
+  join(appPath, "Contents/Resources/native/nodex-notifications.node"),
 ];
 
 export function verifyPackagedNativeRuntimeStructure(
@@ -1440,6 +1441,9 @@ export function verifyPackagedNativeRuntimeStructure(
   const deviceCheckBridge = join(contentsPath, "Resources/native/nodex-devicecheck.node");
   assertRegularExecutable(deviceCheckBridge);
   assertMachO(deviceCheckBridge, options.targetArch, manifest.minimumMacOS);
+  const notificationBridge = join(contentsPath, "Resources/native/nodex-notifications.node");
+  assertRegularExecutable(notificationBridge);
+  assertMachO(notificationBridge, options.targetArch, manifest.minimumMacOS);
   const nativeBinaryPaths = resolveNodexNativeCodeObjects(appPath, manifest);
   const sparkleCodeObjects = verifySparkleRuntime(appPath, options);
   const computerUseInfo = join(

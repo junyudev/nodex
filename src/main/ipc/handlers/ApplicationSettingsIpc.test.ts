@@ -22,6 +22,7 @@ import {
   ApplicationSettings,
   make as makeApplicationSettings,
 } from "../../settings/ApplicationSettings";
+import { DesktopNotificationRuntime } from "../../host-runtime/DesktopNotificationRuntime";
 import { ApplicationSettingsIpcError, live } from "./ApplicationSettingsIpc";
 
 type Handler = (
@@ -109,6 +110,12 @@ it.effect("owns the complete application settings ingress with the Main Scope", 
             }),
             Layer.succeed(CodexHomeContinuity, homeContinuity),
             Layer.succeed(DictationRuntime, dictation),
+            Layer.succeed(DesktopNotificationRuntime, {
+              authorization: {
+                read: Effect.succeed("authorized"),
+                request: Effect.succeed("authorized"),
+              },
+            } as unknown as DesktopNotificationRuntime["Service"]),
             Layer.succeed(StoreAdministrationSchedulerRuntime, schedulers),
             Layer.succeed(ElectronIpc, ipc),
             mainConfigLayer({
@@ -145,6 +152,9 @@ it.effect("owns the complete application settings ingress with the Main Scope", 
       "settings:history:update",
       "settings:inbox:get",
       "settings:inbox:update",
+      "settings:notification-authorization:open-settings",
+      "settings:notification-authorization:read",
+      "settings:notification-authorization:request",
       "settings:opencode-agents:get",
       "settings:opencode-agents:update",
       "settings:telemetry:get",
@@ -160,6 +170,28 @@ it.effect("owns the complete application settings ingress with the Main Scope", 
       sender: { getType: () => "window", id: 7, mainFrame: frame },
       senderFrame: frame,
     } as unknown as IpcMainInvokeEvent;
+    assert.strictEqual(
+      yield* handlers.get("settings:notification-authorization:read")!(event),
+      "authorized",
+    );
+    assert.strictEqual(
+      yield* handlers.get("settings:notification-authorization:request")!(event),
+      "authorized",
+    );
+    const untrustedEvent = {
+      ...event,
+      senderFrame: { url: "https://example.com" },
+    } as IpcMainInvokeEvent;
+    for (const channel of [
+      "settings:notification-authorization:read",
+      "settings:notification-authorization:request",
+      "settings:notification-authorization:open-settings",
+    ]) {
+      assert.strictEqual(
+        (yield* Effect.result(handlers.get(channel)!(untrustedEvent)))._tag,
+        "Failure",
+      );
+    }
     assert.strictEqual(providerRefreshes, 0);
     for (const channel of [
       "settings:claude-agents:update",

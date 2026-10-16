@@ -61,7 +61,11 @@ schedule, exception, projection, and receipt atomically.
 Reminder offsets are evaluated from current schedule authority and Page content.
 The scheduler deduplicates a Page occurrence across Project presentation routes
 and chooses an active Project context for delivery. Startup/resume catch-
-up does not send the same logical reminder twice.
+up does not send the same logical reminder twice. Native notification authorization
+is checked before presentation. A reminder blocked by system permission retains its
+lease retry instead of being marked delivered. A reminder is marked delivered only
+after Electron confirms native scheduling; native failure or closing before that
+confirmation retains the retry.
 
 Notification activation opens the exact Page. Snooze belongs to the requesting
 Project and Page and validates their current identity and lifecycle. It expires

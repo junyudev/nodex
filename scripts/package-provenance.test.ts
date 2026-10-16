@@ -371,6 +371,11 @@ const makeApp = (
   fs.writeFileSync(path.join(resources, "native/nodex-devicecheck.node"), "devicecheck bridge", {
     mode: 0o755,
   });
+  fs.writeFileSync(
+    path.join(resources, "native/nodex-notifications.node"),
+    "notifications bridge",
+    { mode: 0o755 },
+  );
   const agentSkills = writeAgentSkills(resources);
   const prepared = makePreparedManifest(agentSkills);
   writeJson(path.join(resources, "prepared-electron-build.json"), prepared);
@@ -518,6 +523,7 @@ describe("packaged build provenance", () => {
     "native/nodex-sparkle.node",
     "native/nodex-clipboard.node",
     "native/nodex-devicecheck.node",
+    "native/nodex-notifications.node",
   ])("rejects a packaged payload mutation in %s", (relativePath) => {
     const fixture = makeApp();
     writePackagedBuildProvenance(fixture.appPath, provenanceOptions(fixture));

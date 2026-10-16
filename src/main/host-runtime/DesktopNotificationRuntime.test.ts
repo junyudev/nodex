@@ -1,4 +1,5 @@
 import * as Context from "effect/Context";
+import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as Layer from "effect/Layer";
@@ -45,9 +46,10 @@ const defaultOptions = (
   overrides: Partial<DesktopNotificationRuntimeOptions> = {},
 ): DesktopNotificationRuntimeOptions => ({
   isSupported: () => true,
+  authorization: { read: Effect.succeed("authorized"), request: Effect.succeed("authorized") },
   createNotification: () => new FakeNotification(),
   homeDirectory: "/tmp",
-  logger: { warn: () => undefined },
+  logger: { warn: () => undefined, info: () => undefined },
   platform: "linux",
   soundSourcePaths: [],
   ...overrides,
@@ -206,7 +208,7 @@ it.effect(
     Effect.gen(function* () {
       const notifications: FakeNotification[] = [];
       const remove = vi.fn();
-      const logger = { warn: vi.fn() };
+      const logger = { warn: vi.fn(), info: vi.fn() };
       yield* useRuntime(
         {
           logger,
@@ -321,7 +323,7 @@ it.effect("closes native resources and fences late actions with the Main Scope",
 it.effect("isolates cleanup callback failures while releasing all remaining resources", () =>
   Effect.gen(function* () {
     const notifications: FakeNotification[] = [];
-    const logger = { warn: vi.fn() };
+    const logger = { warn: vi.fn(), info: vi.fn() };
     yield* useRuntime(
       {
         logger,
@@ -355,4 +357,123 @@ it.effect("isolates cleanup callback failures while releasing all remaining reso
       expect.objectContaining({ notificationId: "throws" }),
     );
   }),
+);
+
+it.effect(
+  "waits for native authorization and withdraws denied delivery without changing the task",
+  () =>
+    Effect.gen(function* () {
+      const decision = yield* Deferred.make<"authorized" | "denied">();
+      const createNotification = vi.fn(() => new FakeNotification());
+      const remove = vi.fn();
+      const action = vi.fn();
+      const logger = { info: vi.fn(), warn: vi.fn() };
+      yield* useRuntime(
+        {
+          authorization: {
+            read: Effect.succeed("not-determined"),
+            request: Deferred.await(decision),
+          },
+          createNotification,
+          logger,
+        },
+        (runtime) =>
+          Effect.gen(function* () {
+            runtime.show(
+              { id: "pending-question", kind: "question", title: "Input needed", body: "Question" },
+              origin(),
+              action,
+              remove,
+            );
+            yield* Effect.yieldNow;
+            assert.strictEqual(createNotification.mock.calls.length, 0);
+            yield* Deferred.succeed(decision, "denied");
+            yield* Effect.yieldNow;
+            assert.strictEqual(createNotification.mock.calls.length, 0);
+            assert.strictEqual(remove.mock.calls.length, 1);
+            assert.strictEqual(action.mock.calls.length, 0);
+            assert.strictEqual(logger.warn.mock.calls.length, 0);
+            expect(logger.info).toHaveBeenCalledWith(
+              "[desktop-notifications] delivery unavailable",
+              { status: "denied", notificationId: "pending-question" },
+            );
+          }),
+      );
+      assert.strictEqual(remove.mock.calls.length, 1);
+    }),
+);
+
+it.effect(
+  "never delivers removed or replaced occurrences after a delayed authorization grant",
+  () =>
+    Effect.gen(function* () {
+      const decision = yield* Deferred.make<"authorized">();
+      const shown: string[] = [];
+      const removed: string[] = [];
+      yield* useRuntime(
+        {
+          authorization: {
+            read: Effect.succeed("not-determined"),
+            request: Deferred.await(decision),
+          },
+          createNotification: ({ body }) => {
+            shown.push(body ?? "");
+            return new FakeNotification();
+          },
+        },
+        (runtime) =>
+          Effect.gen(function* () {
+            const show = (id: string, body: string, sender = origin()) =>
+              runtime.show(
+                { id, kind: "question", title: "Input needed", body },
+                sender,
+                () => undefined,
+                () => removed.push(body),
+              );
+            show("dismissed", "dismissed");
+            runtime.dismiss({ notificationId: "dismissed" });
+            show("replaced", "old");
+            show("replaced", "new");
+            show("closed-window", "closed window", origin(99));
+            runtime.dismissByOriginWebContentsId(99);
+            yield* Deferred.succeed(decision, "authorized");
+            yield* Effect.yieldNow;
+            assert.deepEqual(shown, ["new"]);
+            assert.deepEqual(removed, ["dismissed", "old", "closed window"]);
+          }),
+      );
+      assert.deepEqual(removed, ["dismissed", "old", "closed window", "new"]);
+    }),
+);
+
+it.effect(
+  "closing the Main Scope releases pending authorization callbacks before any native presentation",
+  () =>
+    Effect.gen(function* () {
+      const decision = yield* Deferred.make<"authorized">();
+      const createNotification = vi.fn(() => new FakeNotification());
+      const remove = vi.fn();
+      yield* useRuntime(
+        {
+          authorization: {
+            read: Effect.succeed("not-determined"),
+            request: Deferred.await(decision),
+          },
+          createNotification,
+        },
+        (runtime) =>
+          Effect.sync(() => {
+            runtime.show(
+              { id: "closing", kind: "question", title: "Input needed", body: "Question" },
+              origin(),
+              () => undefined,
+              remove,
+            );
+          }),
+      );
+      yield* Deferred.succeed(decision, "authorized");
+      yield* Effect.yieldNow;
+      assert.strictEqual(createNotification.mock.calls.length, 0);
+      assert.strictEqual(remove.mock.calls.length, 1);
+    }),
 );

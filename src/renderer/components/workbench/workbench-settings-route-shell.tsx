@@ -70,6 +70,7 @@ import { useSpellcheck } from "../../lib/use-spellcheck";
 import { useTheme } from "../../lib/use-theme";
 import { useCodexServiceTierSettings } from "../../lib/use-codex-service-tier-settings";
 import { useCodexThreadSettings } from "../../lib/use-codex-thread-settings";
+import { useDesktopNotificationAuthorization } from "@/lib/desktop-notification-authorization";
 import { useThreadNotificationSettings } from "../../lib/use-thread-notification-settings";
 import { useWindowRestoreSettings } from "../../lib/use-window-restore-settings";
 import { useStoreBackupRuntime } from "../../lib/use-store-backup-runtime";
@@ -331,6 +332,59 @@ export function ReducedMotionSettingControl() {
   );
 }
 
+function NativeNotificationPermissionControl({ open }: { open: boolean }) {
+  const { query, request, settings } = useDesktopNotificationAuthorization(open);
+  const status = query.data;
+  const failed = query.isError || request.isError || settings.isError;
+  if (!open || status === "unknown") return null;
+  const description = failed
+    ? "Could not read or update notification permission."
+    : status === "denied"
+      ? "Notifications are blocked for this app in macOS."
+      : status === "not-determined"
+        ? "Allow this app to send notifications."
+        : status === "unsupported"
+          ? "Notifications are unavailable on this system."
+          : status === "authorized" || status === "provisional"
+            ? "Allowed by macOS."
+            : "Checking permission…";
+  return (
+    <SettingRow label="System permission" description={description}>
+      {failed ? (
+        <NodexButton
+          variant="outline"
+          size="sm"
+          onClick={() => {
+            request.reset();
+            settings.reset();
+            void query.refetch();
+          }}
+        >
+          Retry
+        </NodexButton>
+      ) : status === "not-determined" ? (
+        <NodexButton
+          variant="outline"
+          size="sm"
+          disabled={request.isPending}
+          onClick={() => request.mutate()}
+        >
+          Allow notifications
+        </NodexButton>
+      ) : status === "denied" ? (
+        <NodexButton
+          variant="outline"
+          size="sm"
+          disabled={settings.isPending}
+          onClick={() => settings.mutate()}
+        >
+          Open System Settings
+        </NodexButton>
+      ) : null}
+    </SettingRow>
+  );
+}
+
 export function ThreadNotificationSettingControl({ open }: { open: boolean }) {
   const { settings, isLoading, reloadSettings, updateSettings } = useThreadNotificationSettings();
   const [busy, setBusy] = useState(false);
@@ -363,6 +417,7 @@ export function ThreadNotificationSettingControl({ open }: { open: boolean }) {
 
   return (
     <>
+      <NativeNotificationPermissionControl open={open} />
       <SettingRow
         label="Turn completion notifications"
         description="Set when agent alerts you that it's finished"

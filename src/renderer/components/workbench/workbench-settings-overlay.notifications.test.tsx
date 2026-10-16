@@ -26,6 +26,7 @@ describe("ThreadNotificationSettingControl", () => {
     window.api = {
       ...(originalApi ?? {}),
       invoke: async (channel, ...args) => {
+        if (channel === "settings:notification-authorization:read") return "authorized";
         if (channel === "settings:thread-notifications:get") return settings;
         if (channel === "settings:thread-notifications:update") {
           const nextSettings = args[0] as UpdateThreadNotificationSettingsInput;
@@ -98,4 +99,85 @@ describe("ThreadNotificationSettingControl", () => {
       questionsEnabled: false,
     });
   });
+});
+
+test("requests native permission and updates its status without changing notification preferences", async () => {
+  let permission = "not-determined";
+  const calls: string[] = [];
+  window.api = {
+    ...(originalApi ?? {}),
+    invoke: async (channel, ...args) => {
+      calls.push(channel);
+      if (channel === "settings:notification-authorization:read") return permission;
+      if (channel === "settings:notification-authorization:request") {
+        permission = "authorized";
+        return permission;
+      }
+      if (channel === "settings:thread-notifications:get")
+        return { turnMode: "unfocused", questionsEnabled: true };
+      return originalApi?.invoke(channel, ...args);
+    },
+  } as typeof window.api;
+  const view = render(
+    <AppProviders>
+      <ThreadNotificationSettingControl open />
+    </AppProviders>,
+  );
+  const allow = await view.findByRole("button", { name: "Allow notifications" });
+  await act(async () => {
+    fireEvent.click(allow);
+    await Promise.resolve();
+  });
+  await view.findByText("Allowed by macOS.");
+  expect(
+    calls.filter((channel) => channel === "settings:notification-authorization:request"),
+  ).toHaveLength(1);
+  expect(calls).not.toContain("settings:thread-notifications:update");
+  expect(
+    view
+      .getByRole("switch", { name: "Enable question notifications" })
+      .getAttribute("aria-checked"),
+  ).toBe("true");
+});
+
+test("shows denied native authorization with a settings action and preserves app preferences", async () => {
+  const calls: string[] = [];
+  let status = "denied";
+  window.api = {
+    ...(originalApi ?? {}),
+    invoke: async (channel, ...args) => {
+      calls.push(channel);
+      if (channel === "settings:notification-authorization:read") return status;
+      if (channel === "settings:notification-authorization:open-settings") return;
+      if (channel === "settings:thread-notifications:get")
+        return { turnMode: "always", questionsEnabled: true };
+      return originalApi?.invoke(channel, ...args);
+    },
+  } as typeof window.api;
+  const view = render(
+    <AppProviders>
+      <ThreadNotificationSettingControl open />
+    </AppProviders>,
+  );
+  const settings = await view.findByRole("button", { name: "Open System Settings" });
+  await act(async () => {
+    fireEvent.click(settings);
+    await Promise.resolve();
+  });
+  await waitFor(() => expect(calls).toContain("settings:notification-authorization:open-settings"));
+  expect(calls).not.toContain("settings:notification-authorization:request");
+  expect(calls).not.toContain("settings:thread-notifications:update");
+  status = "authorized";
+  await act(async () => {
+    window.dispatchEvent(new Event("focus"));
+    await Promise.resolve();
+  });
+  await view.findByText("Allowed by macOS.");
+  expect(view.queryByRole("button", { name: "Open System Settings" })).toBeNull();
+  expect(view.getByRole("button", { name: "Always" })).toBeTruthy();
+  expect(
+    view
+      .getByRole("switch", { name: "Enable question notifications" })
+      .getAttribute("aria-checked"),
+  ).toBe("true");
 });

@@ -370,6 +370,13 @@ Package local macOS installers:
 vp run package
 ```
 
+macOS notification authorization uses an in-process native bridge, built by
+`vp run notification-bridge:build` and included in development/build/package
+preparation. It reads the running Electron bundle's permission, which may differ
+from the installed Nodex app even when both use equivalent Profiles. The Electron
+notification API requires a correctly signed app bundle for delivery; a development
+permission or signing failure must not be diagnosed through browser permissions.
+
 ## Validation
 
 ### UI development and verification

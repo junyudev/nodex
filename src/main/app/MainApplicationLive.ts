@@ -58,6 +58,7 @@ import * as TerminalRuntimeLive from "../terminal-runtime/TerminalRuntimeLive";
 import { MainApplication, MainApplicationError } from "./MainApplication";
 import { MainCleanup } from "./MainCleanup";
 import { MainConfig } from "./MainConfig";
+import { NativeNotificationAuthorization } from "../platform/electron/NativeNotificationAuthorization";
 import { MainShutdown } from "./MainShutdown";
 import { ScopedCallbackRuntime } from "./ScopedCallbackRuntime";
 import { ApplicationWindowRuntime } from "../window-runtime/ApplicationWindowRuntime";
@@ -192,6 +193,7 @@ export const live: Layer.Layer<
   | FileSystem.FileSystem
   | BrowserProfileHelperPlatform
   | MainConfig
+  | NativeNotificationAuthorization
   | MainCleanup
   | MainShutdown
   | ScopedCallbackRuntime

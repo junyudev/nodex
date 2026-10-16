@@ -35,6 +35,8 @@ import { resolveCodexHome } from "../../codex/codex-home";
 import { inspectCodexAccountHome } from "../../platform/node/CodexAccountHome";
 import { isTrustedAppRendererIpcSender } from "../../app-renderer-ipc-authorization";
 import { ApplicationMenuRuntime } from "../../host-runtime/ApplicationMenuRuntime";
+import { DesktopNotificationRuntime } from "../../host-runtime/DesktopNotificationRuntime";
+import { shell } from "electron";
 import { DictationRuntime } from "../../host-runtime/DictationRuntime";
 import { StoreAdministrationSchedulerRuntime } from "../../host-runtime/StoreAdministrationSchedulerRuntime";
 import { safeBroadcastToWindows } from "../../ipc-safe-send";
@@ -169,6 +171,7 @@ export const live: Layer.Layer<
   | AgentRuntimeProviderConfiguration
   | CodexHomeContinuity
   | DictationRuntime
+  | DesktopNotificationRuntime
   | StoreAdministrationSchedulerRuntime
   | ElectronIpc
   | MainConfig
@@ -180,6 +183,7 @@ export const live: Layer.Layer<
     const codexHomeContinuity = yield* CodexHomeContinuity;
     const config = yield* MainConfig;
     const dictation = yield* DictationRuntime;
+    const notifications = yield* DesktopNotificationRuntime;
     const ipc = yield* ElectronIpc;
     const menus = yield* ApplicationMenuRuntime;
     const schedulers = yield* StoreAdministrationSchedulerRuntime;
@@ -509,6 +513,32 @@ export const live: Layer.Layer<
       "settings:thread-notifications:get",
       "Thread notification settings",
       (value) => value.notifications,
+    );
+    yield* ipc.handleQuery("settings:notification-authorization:read", (event) =>
+      authorize(event, "Notification authorization").pipe(
+        Effect.andThen(notifications.authorization.read),
+        Effect.mapError(settingsError("notification-authorization-read")),
+      ),
+    );
+    yield* ipc.handlePlainCommand("settings:notification-authorization:request", (event) =>
+      authorize(event, "Notification authorization").pipe(
+        Effect.andThen(notifications.authorization.request),
+        Effect.mapError(settingsError("notification-authorization-request")),
+      ),
+    );
+    yield* ipc.handlePlainCommand("settings:notification-authorization:open-settings", (event) =>
+      authorize(event, "Notification authorization").pipe(
+        Effect.andThen(
+          config.platform === "darwin"
+            ? Effect.tryPromise(() =>
+                shell.openExternal(
+                  "x-apple.systempreferences:com.apple.Notifications-Settings.extension",
+                ),
+              )
+            : Effect.void,
+        ),
+        Effect.mapError(settingsError("notification-authorization-open-settings")),
+      ),
     );
     yield* ipc.handlePlainCommand("settings:thread-notifications:update", (event, input: unknown) =>
       authorize(event, "Thread notification settings").pipe(

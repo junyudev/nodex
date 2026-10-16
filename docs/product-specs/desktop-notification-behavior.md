@@ -213,30 +213,35 @@ into request-tick props or handled by a global conversation controller.
 
 ## System Permission
 
-At renderer bootstrap, Nodex checks the browser `Notification` API. A
-`default` status requests permission once per Notification-constructor
-identity, including across StrictMode effect replay. Missing API, initial
-status, result, and failure are logged. This browser permission is not the
-native desktop notification authorization: the app renderer's permission
-policy denies browser notifications, while task notifications originate in Main.
+Main reads the running application's native authorization before delivery. On
+macOS, the native bridge queries `UNUserNotificationCenter` inside Electron's
+process so permission belongs to the same bundle that sends notifications.
+Only an undetermined permission triggers an authorization request, and delivery
+waits for its result. Concurrent requests share the authorization gate. Every
+later delivery reads the current system decision again, including changes made
+outside Nodex. Authorized and provisional permissions permit delivery; denied
+permission releases the notification occurrence without attempting native delivery.
 
-Main uses Electron's native `Notification` API. On macOS, Electron requests
-alert, sound, and badge authorization through UserNotifications when its
-notification presenter is created. `Notification.isSupported()` reports
-platform support, not permission to deliver a notification. Nodex does not
-currently expose a separate native permission-status query or system-settings
-action.
+Notification settings show the macOS authorization separately from the two app
+preferences. An undetermined permission can be requested there; a denied
+permission offers an action to open System Settings. Returning to Nodex refreshes
+the status. Browser notification permission is unrelated and is never requested
+by the task notification flow. `Notification.isSupported()` is only a platform
+capability check.
 
 macOS authorization belongs to the running application bundle, independently of
 the Nodex Profile. A development Electron instance and an installed Nodex app
 can have different authorization and signing identities. A rejected delivery
 leaves the task's completion and pending question intact; it removes only that
-notification's callback record.
+notification's callback record. Resolving a question, disposing its window,
+replacing an occurrence, or shutting down while authorization is pending prevents
+that obsolete occurrence from appearing after permission is granted.
 
 ## Observability
 
 Main logs structured suppression reasons, dropped occurrences with no live
-target, and native construction, delivery, close, and callback-cleanup failures.
+target, denied/unavailable authorization, and native authorization, construction,
+delivery, close, and callback-cleanup failures.
 These logs must not contain prompt bodies, approval commands, or user replies.
 
 On macOS, `UNErrorDomain error 1` means UserNotifications did not allow the

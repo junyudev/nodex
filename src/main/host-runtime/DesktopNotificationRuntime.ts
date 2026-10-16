@@ -3,6 +3,7 @@ import { join } from "node:path";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as FiberSet from "effect/FiberSet";
 import { Notification, type WebContents } from "electron";
 import type {
   DesktopNotificationActionPayload,
@@ -11,6 +12,11 @@ import type {
 } from "../../shared/types";
 import { toDesktopNotificationPlainText } from "../../shared/desktop-notification-text";
 import { MainConfig } from "../app/MainConfig";
+import { canDeliverDesktopNotification } from "../../shared/desktop-notification-authorization";
+import {
+  NativeNotificationAuthorization,
+  type NativeNotificationAuthorizationService,
+} from "../platform/electron/NativeNotificationAuthorization";
 import { getLogger } from "../logging/logger";
 
 const MAX_ACTIONS = 4;
@@ -26,17 +32,18 @@ export interface DesktopNotificationInstance {
 
 export interface DesktopNotificationRuntimeOptions {
   readonly isSupported: () => boolean;
+  readonly authorization: NativeNotificationAuthorizationService;
   readonly createNotification: (
     input: Electron.NotificationConstructorOptions,
   ) => DesktopNotificationInstance;
   readonly homeDirectory: string;
-  readonly logger: Pick<Console, "warn">;
+  readonly logger: Pick<Console, "warn" | "info">;
   readonly platform: NodeJS.Platform;
   readonly soundSourcePaths: readonly string[];
 }
 
 interface ActiveDesktopNotification {
-  readonly notification: DesktopNotificationInstance;
+  notification: DesktopNotificationInstance | null;
   readonly notificationId: string;
   readonly conversationId: string | null;
   readonly navigationPath: string | null;
@@ -45,6 +52,7 @@ interface ActiveDesktopNotification {
 }
 
 export interface DesktopNotificationRuntimeService {
+  readonly authorization: NativeNotificationAuthorizationService;
   readonly show: (
     notification: DesktopNotificationPayload,
     originWebContents: WebContents,
@@ -96,6 +104,8 @@ export const layer = (
     DesktopNotificationRuntime,
     Effect.gen(function* () {
       const notifications = new Map<string, ActiveDesktopNotification>();
+      const pending = yield* FiberSet.make<void>();
+      const run = yield* FiberSet.runtime(pending)();
       let accepting = true;
       let soundResolved = false;
       let soundName: string | null = null;
@@ -116,7 +126,7 @@ export const layer = (
         if (!active) return;
         notifications.delete(occurrenceId);
         callRemove(active.remove, active.notificationId);
-        if (!closeNative) return;
+        if (!closeNative || !active.notification) return;
         try {
           active.notification.close();
         } catch (error) {
@@ -176,90 +186,127 @@ export const layer = (
         const occurrenceId = notification.occurrenceId ?? notification.id;
         remove(occurrenceId, true);
 
-        let instance: DesktopNotificationInstance;
-        try {
-          instance = options.createNotification({
-            title: toDesktopNotificationPlainText(notification.title),
-            body: toDesktopNotificationPlainText(notification.body),
-            silent: false,
-            timeoutType,
-            hasReply,
-            replyPlaceholder: hasReply ? notification.replyPlaceholder : undefined,
-            sound: resolveSoundName(),
-            actions: actions.map((action) => ({ type: "button", text: action.title })),
-          });
-        } catch (error) {
-          options.logger.warn("[desktop-notifications] constructor failed", {
-            error,
-            notificationId: notification.id,
-          });
-          callRemove(onRemove, notification.id);
-          return;
-        }
-
-        let actionConsumed = false;
-        const consumeAction = (payload: DesktopNotificationActionPayload): void => {
-          if (actionConsumed) return;
-          const active = notifications.get(occurrenceId);
-          if (!accepting || active?.notification !== instance) return;
-          actionConsumed = true;
-          remove(occurrenceId, true);
-          onAction(payload);
-        };
-
-        instance.on("click", () => {
-          consumeAction({ notificationId: notification.id, actionId: null, actionType: "open" });
-        });
-        instance.on("action", (_event, index) => {
-          if (typeof index !== "number") return;
-          const action = actions[index];
-          if (!action) return;
-          consumeAction({
-            notificationId: notification.id,
-            actionId: action.id,
-            actionType: action.actionType,
-          });
-        });
-        instance.on("reply", (_event, reply) => {
-          if (typeof reply !== "string") return;
-          consumeAction({
-            notificationId: notification.id,
-            actionId: null,
-            actionType: "reply",
-            reply,
-          });
-        });
-        instance.on("close", () => {
-          if (notifications.get(occurrenceId)?.notification === instance) {
-            remove(occurrenceId, false);
-          }
-        });
-        instance.on("failed", (error) => {
-          if (notifications.get(occurrenceId)?.notification !== instance) return;
-          options.logger.warn("[desktop-notifications] native show failed", {
-            error,
-            notificationId: notification.id,
-          });
-          remove(occurrenceId, false);
-        });
-
-        notifications.set(occurrenceId, {
-          notification: instance,
+        const active: ActiveDesktopNotification = {
+          notification: null,
           notificationId: notification.id,
           conversationId: notification.conversationId ?? null,
           navigationPath: notification.navigationPath ?? null,
           originWebContentsId: originWebContents.id,
           remove: onRemove,
-        });
-        try {
-          instance.show();
-        } catch (error) {
-          options.logger.warn("[desktop-notifications] show threw", {
-            error,
-            notificationId: notification.id,
+        };
+        notifications.set(occurrenceId, active);
+        const present = () => {
+          if (notifications.get(occurrenceId) !== active) return;
+          if (!accepting || originWebContents.isDestroyed()) {
+            remove(occurrenceId, false);
+            return;
+          }
+          let instance: DesktopNotificationInstance;
+          try {
+            instance = options.createNotification({
+              title: toDesktopNotificationPlainText(notification.title),
+              body: toDesktopNotificationPlainText(notification.body),
+              silent: false,
+              timeoutType,
+              hasReply,
+              replyPlaceholder: hasReply ? notification.replyPlaceholder : undefined,
+              sound: resolveSoundName(),
+              actions: actions.map((action) => ({ type: "button", text: action.title })),
+            });
+          } catch (error) {
+            options.logger.warn("[desktop-notifications] constructor failed", {
+              error,
+              notificationId: notification.id,
+            });
+            remove(occurrenceId, false);
+            return;
+          }
+
+          let actionConsumed = false;
+          const consumeAction = (payload: DesktopNotificationActionPayload): void => {
+            if (actionConsumed) return;
+            const active = notifications.get(occurrenceId);
+            if (!accepting || active?.notification !== instance) return;
+            actionConsumed = true;
+            remove(occurrenceId, true);
+            onAction(payload);
+          };
+
+          instance.on("click", () => {
+            consumeAction({ notificationId: notification.id, actionId: null, actionType: "open" });
           });
-          remove(occurrenceId, true);
-        }
+          instance.on("action", (_event, index) => {
+            if (typeof index !== "number") return;
+            const action = actions[index];
+            if (!action) return;
+            consumeAction({
+              notificationId: notification.id,
+              actionId: action.id,
+              actionType: action.actionType,
+            });
+          });
+          instance.on("reply", (_event, reply) => {
+            if (typeof reply !== "string") return;
+            consumeAction({
+              notificationId: notification.id,
+              actionId: null,
+              actionType: "reply",
+              reply,
+            });
+          });
+          instance.on("close", () => {
+            if (notifications.get(occurrenceId)?.notification === instance) {
+              remove(occurrenceId, false);
+            }
+          });
+          instance.on("failed", (error) => {
+            if (notifications.get(occurrenceId)?.notification !== instance) return;
+            options.logger.warn("[desktop-notifications] native show failed", {
+              error,
+              notificationId: notification.id,
+            });
+            remove(occurrenceId, false);
+          });
+
+          active.notification = instance;
+          try {
+            instance.show();
+          } catch (error) {
+            options.logger.warn("[desktop-notifications] show threw", {
+              error,
+              notificationId: notification.id,
+            });
+            remove(occurrenceId, true);
+          }
+        };
+        run(
+          options.authorization.request.pipe(
+            Effect.flatMap((status) =>
+              Effect.sync(() => {
+                if (notifications.get(occurrenceId) !== active) return;
+                if (canDeliverDesktopNotification(status)) {
+                  present();
+                  return;
+                }
+                options.logger.info("[desktop-notifications] delivery unavailable", {
+                  status,
+                  notificationId: notification.id,
+                });
+                remove(occurrenceId, false);
+              }),
+            ),
+            Effect.catch((error) =>
+              Effect.sync(() => {
+                if (notifications.get(occurrenceId) !== active) return;
+                options.logger.warn("[desktop-notifications] authorization failed", {
+                  error,
+                  notificationId: notification.id,
+                });
+                remove(occurrenceId, false);
+              }),
+            ),
+          ),
+        );
       };
 
       yield* Effect.addFinalizer(() =>
@@ -270,6 +317,7 @@ export const layer = (
       );
 
       return DesktopNotificationRuntime.of({
+        authorization: options.authorization,
         show,
         dismiss: (selector) => {
           if (selector.occurrenceId !== undefined) {
@@ -293,10 +341,16 @@ export const layer = (
     }),
   );
 
-export const live: Layer.Layer<DesktopNotificationRuntime, never, MainConfig> = Layer.unwrap(
+export const live: Layer.Layer<
+  DesktopNotificationRuntime,
+  never,
+  MainConfig | NativeNotificationAuthorization
+> = Layer.unwrap(
   Effect.gen(function* () {
     const config = yield* MainConfig;
+    const authorization = yield* NativeNotificationAuthorization;
     return layer({
+      authorization,
       isSupported: () => Notification.isSupported(),
       createNotification: createElectronNotification,
       homeDirectory: config.homeDirectory,

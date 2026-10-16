@@ -1,6 +1,6 @@
 import type { TestedBrowserAppServerPair } from "../src/shared/browser-app-server-compatibility.mjs";
 
-export const PACKAGED_BUILD_PROVENANCE_SCHEMA_VERSION: 6;
+export const PACKAGED_BUILD_PROVENANCE_SCHEMA_VERSION: 8;
 
 export interface PackagedAgentRuntimeIdentity {
   readonly archiveSha256: string;

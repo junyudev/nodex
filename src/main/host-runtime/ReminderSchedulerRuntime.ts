@@ -113,7 +113,7 @@ export const live = (
                   cause,
                 }),
             });
-            yield* desktop.showNotification({
+            const presented = yield* desktop.showNotification({
               title: payload.title,
               body: payload.body,
               actions: ["Snooze 10m", "Snooze 1h"],
@@ -138,6 +138,7 @@ export const live = (
                     ),
                   ),
             });
+            if (!presented) return yield* failLease(claim.leaseId, "notification_failed");
             yield* automation.reminders.completeLease(claim.leaseId);
           });
           const result = yield* Effect.exit(delivery);

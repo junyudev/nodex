@@ -14,6 +14,9 @@ import {
   type MessageBoxReturnValue,
 } from "electron";
 import { ScopedCallbackRuntime } from "../../app/ScopedCallbackRuntime";
+import { makeNativeNotificationDelivery } from "./NativeNotificationDelivery";
+import { getLogger } from "../../logging/logger";
+import { NativeNotificationAuthorization } from "./NativeNotificationAuthorization";
 
 export interface ElectronNotificationInput {
   readonly title: string;
@@ -40,20 +43,29 @@ export class ElectronDesktop extends Context.Service<
   }
 >()("nodex/main/platform/electron/ElectronDesktop") {}
 
-export const live: Layer.Layer<ElectronDesktop, never, ScopedCallbackRuntime> = Layer.effect(
+export const live: Layer.Layer<
+  ElectronDesktop,
+  never,
+  ScopedCallbackRuntime | NativeNotificationAuthorization
+> = Layer.effect(
   ElectronDesktop,
   Effect.gen(function* () {
     const callbacks = yield* ScopedCallbackRuntime;
-    const activeNotifications = new Set<Notification>();
-    yield* Effect.addFinalizer(() =>
-      Effect.sync(() => {
-        for (const notification of activeNotifications) {
-          notification.removeAllListeners();
-          notification.close();
-        }
-        activeNotifications.clear();
-      }),
-    );
+    const authorization = yield* NativeNotificationAuthorization;
+    const deliver = yield* makeNativeNotificationDelivery({
+      authorization,
+      isSupported: () => Notification.isSupported(),
+      createNotification: (input) =>
+        new Notification({
+          title: input.title,
+          body: input.body,
+          actions: input.actions?.map((text) => ({ type: "button" as const, text })),
+        }),
+      runCallback: (effect) => {
+        callbacks.fork(effect);
+      },
+      logger: getLogger({ component: "native-notification-delivery" }),
+    });
     return ElectronDesktop.of({
       dialog,
       menu: Menu,
@@ -61,40 +73,7 @@ export const live: Layer.Layer<ElectronDesktop, never, ScopedCallbackRuntime> = 
       safeStorage,
       shell,
       showMessage: (options) => Effect.promise(() => dialog.showMessageBox(options)),
-      showNotification: (input) =>
-        Effect.sync(() => {
-          if (!Notification.isSupported()) return false;
-          const notification = new Notification({
-            title: input.title,
-            body: input.body,
-            actions: input.actions?.map((text) => ({ type: "button" as const, text })),
-          });
-          const release = () => {
-            notification.removeAllListeners();
-            activeNotifications.delete(notification);
-          };
-          notification.once("close", release);
-          const onClick = input.onClick;
-          if (onClick !== undefined) {
-            notification.on("click", () => {
-              callbacks.fork(onClick);
-            });
-          }
-          const onAction = input.onAction;
-          if (onAction !== undefined) {
-            notification.on("action", (_event, index) => {
-              callbacks.fork(onAction(index));
-            });
-          }
-          activeNotifications.add(notification);
-          try {
-            notification.show();
-          } catch (error) {
-            release();
-            throw error;
-          }
-          return true;
-        }),
+      showNotification: (input) => deliver(input).pipe(Effect.orDie),
       onPowerEvent: (event, handler) => {
         const listener = () => {
           callbacks.fork(handler);

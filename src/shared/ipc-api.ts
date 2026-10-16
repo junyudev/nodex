@@ -1357,6 +1357,18 @@ export interface IpcApi extends AgentRuntimeIpcApi {
     args: [input: UpdateTelemetrySettingsInput];
     result: TelemetrySettings;
   };
+  "settings:notification-authorization:read": {
+    args: [];
+    result: import("./desktop-notification-authorization").DesktopNotificationAuthorization;
+  };
+  "settings:notification-authorization:request": {
+    args: [];
+    result: import("./desktop-notification-authorization").DesktopNotificationAuthorization;
+  };
+  "settings:notification-authorization:open-settings": {
+    args: [];
+    result: void;
+  };
   "settings:thread-notifications:get": {
     args: [];
     result: ThreadNotificationSettings;

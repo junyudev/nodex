@@ -111,6 +111,7 @@ import * as WindowSessionCatalog from "../window-runtime/WindowSessionCatalog";
 import { WindowRuntime } from "../window-runtime/WindowRuntime";
 import { live as windowShutdownLive, WindowShutdown } from "../window-runtime/WindowShutdown";
 import { MainConfig } from "./MainConfig";
+import { NativeNotificationAuthorization } from "../platform/electron/NativeNotificationAuthorization";
 import { MainCleanup } from "./MainCleanup";
 import { ScopedCallbackRuntime } from "./ScopedCallbackRuntime";
 import { ApplicationSettings } from "../settings/ApplicationSettings";
@@ -343,6 +344,7 @@ export const live: Layer.Layer<
   | FileExportRuntime
   | MainCleanup
   | MainConfig
+  | NativeNotificationAuthorization
   | ProjectWorkspace
   | RemoteHostedPipNativePlatform
   | ScopedCallbackRuntime

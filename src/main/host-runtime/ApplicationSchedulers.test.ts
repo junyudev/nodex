@@ -417,6 +417,36 @@ it.effect("delivers reminder leases and routes notification actions through scop
   }),
 );
 
+it.effect("retains a reminder for retry when system authorization prevents presentation", () =>
+  Effect.gen(function* () {
+    const failures: string[] = [];
+    const completed: string[] = [];
+    let claims = 0;
+    const automation = defaultAutomation({
+      reminders: {
+        claimDue: () => Effect.sync(() => (claims++ === 0 ? [reminderClaim] : [])),
+        failLease: (leaseId, _delay, reason) =>
+          Effect.sync(() => {
+            failures.push(`${leaseId}:${reason}`);
+          }),
+        completeLease: (leaseId) =>
+          Effect.sync(() => {
+            completed.push(leaseId);
+          }),
+      },
+    });
+    const harness = yield* buildHarness({
+      automation,
+      showNotification: () => Effect.succeed(false),
+    });
+    yield* harness.reminders.activate({ openReminder: () => undefined });
+    yield* waitUntil("unavailable notification deferral", () => failures.length === 1);
+    assert.deepEqual(failures, ["reminder-lease:1:notification_failed"]);
+    assert.deepEqual(completed, []);
+    yield* Scope.close(harness.scope, Exit.void);
+  }),
+);
+
 it.effect("keeps idle scheduler probes read-only", () =>
   Effect.gen(function* () {
     let definitionPlans = 0;

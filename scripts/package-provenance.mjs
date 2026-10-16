@@ -28,7 +28,7 @@ import {
   parseCodexAppServerReleaseLock,
 } from "../src/shared/codex-app-server-release-lock.mjs";
 
-export const PACKAGED_BUILD_PROVENANCE_SCHEMA_VERSION = 7;
+export const PACKAGED_BUILD_PROVENANCE_SCHEMA_VERSION = 8;
 const PREPARED_SCHEMA_VERSION = 4;
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const canonicalAgentRuntimeLockPath = path.join(
@@ -50,6 +50,7 @@ const preparedRelativePath = `${resourcesRelativePath}/prepared-electron-build.j
 const appAsarRelativePath = `${resourcesRelativePath}/app.asar`;
 const clipboardBridgeRelativePath = `${resourcesRelativePath}/native/nodex-clipboard.node`;
 const deviceCheckBridgeRelativePath = `${resourcesRelativePath}/native/nodex-devicecheck.node`;
+const notificationBridgeRelativePath = `${resourcesRelativePath}/native/nodex-notifications.node`;
 const nativeManifestRelativePath = `${resourcesRelativePath}/bin/rust-core-runtime.json`;
 const agentManifestRelativePath = `${resourcesRelativePath}/agent-runtime.json`;
 const browserManifestRelativePath = `${resourcesRelativePath}/browser-runtime/browser-runtime-manifest.json`;
@@ -521,6 +522,7 @@ export const writePackagedBuildProvenance = (appPath, options = {}) => {
       appAsar: fileIdentity(resolvedAppPath, appAsarRelativePath),
       clipboardBridge: fileIdentity(resolvedAppPath, clipboardBridgeRelativePath),
       deviceCheckBridge: fileIdentity(resolvedAppPath, deviceCheckBridgeRelativePath),
+      notificationBridge: fileIdentity(resolvedAppPath, notificationBridgeRelativePath),
       nativeRuntimeManifest: fileIdentity(resolvedAppPath, nativeManifestRelativePath),
       agentRuntimeManifest: fileIdentity(resolvedAppPath, agentManifestRelativePath),
       browserRuntimeManifest: optionalFileIdentity(resolvedAppPath, browserManifestRelativePath),
@@ -610,6 +612,7 @@ export const verifyPackagedBuildProvenance = (appPath, options = {}) => {
       "appAsar",
       "clipboardBridge",
       "deviceCheckBridge",
+      "notificationBridge",
       "nativeRuntimeManifest",
       "agentRuntimeManifest",
       "browserRuntimeManifest",
@@ -627,6 +630,11 @@ export const verifyPackagedBuildProvenance = (appPath, options = {}) => {
     value.payload.deviceCheckBridge,
     "native/nodex-devicecheck.node",
     "Packaged DeviceCheck bridge",
+  );
+  const notificationBridge = parseFileIdentity(
+    value.payload.notificationBridge,
+    "native/nodex-notifications.node",
+    "Packaged notification bridge",
   );
   const nativeRuntimeManifest = parseFileIdentity(
     value.payload.nativeRuntimeManifest,
@@ -721,6 +729,12 @@ export const verifyPackagedBuildProvenance = (appPath, options = {}) => {
     deviceCheckBridge,
     deviceCheckBridgeRelativePath,
     "Packaged DeviceCheck bridge",
+  );
+  verifyFileIdentity(
+    resolvedAppPath,
+    notificationBridge,
+    notificationBridgeRelativePath,
+    "Packaged notification bridge",
   );
   verifyFileIdentity(
     resolvedAppPath,
