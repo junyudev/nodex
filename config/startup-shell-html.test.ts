@@ -17,25 +17,23 @@ describe("parser-time startup shell", () => {
     expect(status?.textContent).toContain("Opening Nodex…");
   });
 
-  test("keeps shimmer compositor-only and disables it for reduced motion", () => {
+  test("keeps startup motion compositor-only and disables it for reduced motion", () => {
     const window = new JSDOM(`<style>${createStartupShellCriticalCss()}</style>`).window;
     const document = window.document;
     const rules = Array.from(document.styleSheets[0]?.cssRules ?? []);
-    const keyframes = rules.find(
-      (rule): rule is CSSKeyframesRule => rule.type === window.CSSRule.KEYFRAMES_RULE,
-    );
     const reducedMotion = rules.find(
       (rule): rule is CSSMediaRule => rule.type === window.CSSRule.MEDIA_RULE,
     );
     const animatedProperties = new Set<string>();
-    const frames = Array.from(keyframes?.cssRules ?? []).filter(
-      (rule): rule is CSSKeyframeRule => rule.type === window.CSSRule.KEYFRAME_RULE,
-    );
+    const frames = rules
+      .filter((rule): rule is CSSKeyframesRule => rule.type === window.CSSRule.KEYFRAMES_RULE)
+      .flatMap((keyframes) => Array.from(keyframes.cssRules))
+      .filter((rule): rule is CSSKeyframeRule => rule.type === window.CSSRule.KEYFRAME_RULE);
     for (const frame of frames) {
       for (const property of Array.from(frame.style)) animatedProperties.add(property);
     }
 
-    expect([...animatedProperties]).toEqual(["transform"]);
+    expect([...animatedProperties].sort()).toEqual(["opacity", "transform"]);
     expect(reducedMotion?.conditionText).toBe("(prefers-reduced-motion: reduce)");
     expect(reducedMotion?.cssText).toContain("display: none");
   });

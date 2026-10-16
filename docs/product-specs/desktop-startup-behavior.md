@@ -1,7 +1,7 @@
 # Desktop Startup Behavior
 
 Status: Active
-Last updated: 2026-09-11
+Last updated: 2026-10-16
 
 ## Promise
 
@@ -11,7 +11,10 @@ window, not a splash dialog that is later exchanged for another window.
 
 ## First frame
 
-- The first visible content is the Nodex mark centered in the restored window bounds.
+- The first visible content is the Nodex mark centered in the restored window bounds. It fades in
+  over a fraction of a second, so a fast start never pops a full-strength mark in and out.
+- The mark is a quiet, translucent material that lets the window surface show through in each
+  appearance, not a solid glyph. A soft highlight sweeps across it on a slow, steady cadence.
 - The base mark is part of the application document and remains visible when application modules,
   React, stylesheets, IPC, Core, or the Store are delayed.
 - The initial document and mounted Workbench use the same resolved appearance palette. The opaque
@@ -20,14 +23,14 @@ window, not a splash dialog that is later exchanged for another window.
   transparency, an unfocused or oversized surface, or an unsupported platform selects the normal
   theme-matched opaque fallback.
 - The shimmer is decorative, pauses while the document is hidden, and becomes a static mark when
-  Reduce motion is enabled.
+  Reduce motion is enabled. Reduce motion also skips the fade-in.
 
 ## Progress and transition
 
 Fast starts remain quiet. After 1.8 seconds, ordinary startup may show `Opening Nodex…`. A real
 Store migration immediately shows `Updating local data…`; when trustworthy progress is available,
 the integer percentage never moves backward. Opening the initial Project then shows
-`Opening workspace…`.
+`Opening workspace…`. Status copy appears below the mark without moving it off center.
 
 The full Workbench loads only after global initialization and that window's activation gate are
 both ready. React replaces the startup document in place. BrowserWindow and WebContents identities,

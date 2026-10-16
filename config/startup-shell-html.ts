@@ -38,16 +38,15 @@ export function createStartupShellCriticalCss(): string {
     .join("\n");
   return `${themeCss}
 :root {
-  --startup-logo-base: #26272c;
-  --startup-logo-highlight: rgba(255, 255, 255, 0.92);
-  --startup-text: rgba(38, 39, 44, 0.58);
+  --startup-logo-base: rgb(0 0 0 / 0.24);
+  --startup-logo-shimmer-soft: rgb(255 255 255 / 0.04);
+  --startup-logo-shimmer-peak: rgb(255 255 255 / 0.48);
+  --startup-logo-shimmer-tail: rgb(255 255 255 / 0.08);
   --startup-surface: var(--app-color-background-surface-under);
   color-scheme: light;
 }
 :root.dark {
-  --startup-logo-base: #d9dade;
-  --startup-logo-highlight: rgba(255, 255, 255, 0.96);
-  --startup-text: rgba(229, 230, 234, 0.58);
+  --startup-logo-base: rgb(255 255 255 / 0.68);
   color-scheme: dark;
 }
 html, body, #root { width: 100%; height: 100%; margin: 0; background: transparent; }
@@ -61,11 +60,17 @@ body { overflow: hidden; }
   align-items: center;
   justify-content: center;
   gap: 16px;
-  color: var(--startup-logo-base);
+  color: var(--app-color-text-foreground-secondary);
   font-family: var(--font-ui-family, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif);
   -webkit-app-region: drag;
 }
-.nodex-startup-brand { position: relative; width: 68px; height: 68px; }
+.nodex-startup-brand {
+  position: relative;
+  width: 56px;
+  height: 56px;
+  opacity: 0;
+  animation: nodex-startup-fade-in 180ms ease-out 60ms forwards;
+}
 .nodex-startup-logo-base { display: block; width: 100%; height: 100%; color: var(--startup-logo-base); }
 .nodex-startup-logo-highlight {
   position: absolute;
@@ -80,17 +85,33 @@ body { overflow: hidden; }
   -webkit-mask-size: contain;
   mask-size: contain;
 }
+/* A 220%-wide sweep translated by its own width keeps the gradient geometry of a
+   background-position sweep from 140% to -105% while animating only transform. */
 .nodex-startup-logo-highlight > span {
   position: absolute;
-  inset-block: -15%;
+  inset-block: 0;
   left: 0;
-  width: 42%;
-  background: linear-gradient(90deg, transparent, var(--startup-logo-highlight), transparent);
-  transform: translate3d(-180%, 0, 0) skewX(-12deg);
-  animation: nodex-startup-shimmer 1.85s cubic-bezier(.4, 0, .2, 1) infinite;
+  width: 220%;
+  background: linear-gradient(
+    112deg,
+    transparent 22%,
+    var(--startup-logo-shimmer-soft) 38%,
+    var(--startup-logo-shimmer-peak) 49%,
+    var(--startup-logo-shimmer-tail) 56%,
+    transparent 74%
+  );
+  transform: translate3d(-76.3636%, 0, 0);
+  animation: nodex-startup-shimmer 2.2s cubic-bezier(.4, 0, .2, 1) infinite;
   will-change: transform;
 }
-.nodex-startup-status { min-height: 20px; color: var(--startup-text); }
+.nodex-startup-status {
+  position: absolute;
+  top: calc(50% + 44px);
+  inset-inline: 0;
+  min-height: 20px;
+  text-align: center;
+  color: var(--app-color-text-foreground-tertiary);
+}
 .nodex-startup-status p { margin: 0; font-size: var(--text-sm, 13px); line-height: 20px; letter-spacing: .005em; }
 .nodex-startup-sr-only {
   position: absolute;
@@ -103,30 +124,32 @@ body { overflow: hidden; }
   white-space: nowrap;
   border: 0;
 }
-.nodex-startup-failure { max-width: 340px; text-align: center; color: var(--startup-text); }
-.nodex-startup-failure h1 { margin: 0; color: var(--startup-logo-base); font-size: var(--text-lg, 16px); font-weight: 500; }
+.nodex-startup-failure { max-width: 340px; text-align: center; }
+.nodex-startup-failure h1 { margin: 0; color: var(--app-color-text-foreground); font-size: var(--text-lg, 16px); font-weight: 500; }
 .nodex-startup-failure p { margin: 8px 0 0; font-size: var(--text-sm, 13px); line-height: 20px; }
 .nodex-startup-failure button {
   margin-top: 18px;
   border: 0;
   border-radius: 7px;
   padding: 7px 12px;
-  color: var(--startup-surface);
-  background: var(--startup-logo-base);
+  color: var(--app-color-text-button-primary);
+  background: var(--app-color-background-button-primary);
   font: inherit;
   cursor: default;
   -webkit-app-region: no-drag;
 }
 .nodex-startup-shell[data-startup-phase="failed"] .nodex-startup-status { display: none; }
-.nodex-startup-shell[data-startup-phase="failed"] .nodex-startup-brand { width: 54px; height: 54px; }
 .nodex-startup-shell[data-startup-phase="failed"] .nodex-startup-logo-highlight { display: none; }
 :root.nodex-startup-document-hidden .nodex-startup-logo-highlight > span { animation-play-state: paused; }
 :root.hide-startup-shell .nodex-startup-shell { display: none; }
+@keyframes nodex-startup-fade-in {
+  to { opacity: 1; }
+}
 @keyframes nodex-startup-shimmer {
-  0%, 22% { transform: translate3d(-180%, 0, 0) skewX(-12deg); }
-  72%, 100% { transform: translate3d(340%, 0, 0) skewX(-12deg); }
+  to { transform: translate3d(57.2727%, 0, 0); }
 }
 @media (prefers-reduced-motion: reduce) {
+  .nodex-startup-brand { animation: none; opacity: 1; }
   .nodex-startup-logo-highlight { display: none; }
 }`;
 }
