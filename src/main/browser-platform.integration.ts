@@ -6,6 +6,7 @@ import { pathToFileURL } from "node:url";
 
 import { afterEach, describe, expect, test } from "vite-plus/test";
 import { _electron as electron, type ElectronApplication } from "playwright";
+import { isolatedElectronArguments } from "../../scripts/isolated-run/electron-arguments";
 
 interface BrowserPlatformFixture {
   createGuest(id: string, url: string): Promise<number>;
@@ -67,7 +68,7 @@ describe("Browser Platform Electron substrate", () => {
       const childEnvironment = { ...process.env };
       delete childEnvironment.ELECTRON_RUN_AS_NODE;
       application = await electron.launch({
-        args: [fixtureMain],
+        args: [fixtureMain, ...isolatedElectronArguments()],
         env: {
           ...childEnvironment,
           NODEX_BROWSER_INTEGRATION_USER_DATA: userData,

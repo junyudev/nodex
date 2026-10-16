@@ -101,7 +101,8 @@ describe("electron-builder runtime resources", () => {
     expect(
       config.mac?.binaries?.some((entry) => entry.startsWith("Contents/Resources/agent-runtime/")),
     ).toBe(false);
-    expect(config.mac?.target).toEqual(["dmg"]);
+    // Mac releases ship as one Apple silicon disk image.
+    expect(config.mac?.target).toEqual([{ target: "dmg", arch: ["arm64"] }]);
     expect(config.mac?.minimumSystemVersion).toBe("15.0.0");
     expect(config.mac?.extendInfo).toMatchObject({
       SUPublicEDKey: "YNySLZ74gjVAOpEdMo9OOEPvuTEMZf8fMnI+oQD7Ifs=",

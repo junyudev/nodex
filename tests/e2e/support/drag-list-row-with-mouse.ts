@@ -1,5 +1,23 @@
 import { expect, type Locator, type Page } from "@playwright/test";
 
+/**
+ * A point on the row's own surface past its title, where a pointer user grabs or clicks a row.
+ * The depth gutter at the List's leading edge can sit under the sidebar's resize edge.
+ */
+export async function listRowSurfacePoint(row: Locator): Promise<{ x: number; y: number }> {
+  const titleBox = await row.locator('[data-list-grid-column="title"]').boundingBox();
+  if (!titleBox) throw new Error("List row title cell has no layout box");
+  const point = { x: titleBox.x + titleBox.width * 0.75, y: titleBox.y + titleBox.height / 2 };
+  const reachable = await row.evaluate((element, { x, y }) => {
+    const hit = document.elementFromPoint(x, y);
+    return Boolean(
+      hit && element.contains(hit) && !hit.closest("button, a, input, [role=checkbox]"),
+    );
+  }, point);
+  if (!reachable) throw new Error("The List row's surface point is covered or interactive");
+  return point;
+}
+
 export async function dragListRowWithMouse({
   page,
   sourceRow,
@@ -16,13 +34,7 @@ export async function dragListRowWithMouse({
   await sourceRow.scrollIntoViewIfNeeded();
   await sourceRow.hover();
   await expect(sourceRow).toHaveAttribute("draggable", "true");
-  const dragSurface = sourceRow.locator('[data-list-grid-column="indent"]');
-  const handleBox = await dragSurface.boundingBox();
-  if (!handleBox) throw new Error("List row drag surface has no layout box");
-  const sourcePoint = {
-    x: handleBox.x + handleBox.width / 2,
-    y: handleBox.y + handleBox.height / 2,
-  };
+  const sourcePoint = await listRowSurfacePoint(sourceRow);
   const targetBox = await targetRow.boundingBox();
   if (!targetBox) throw new Error("List target row has no layout box");
   const targetRatio = position === "before" ? 0.14 : position === "after" ? 0.86 : 0.5;

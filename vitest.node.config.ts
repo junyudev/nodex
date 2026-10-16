@@ -1,4 +1,5 @@
 import { resolveVitestTestTier } from "./config/vitest-test-tier";
+import { TEST_ENVIRONMENT } from "./config/test-environment";
 import { testObservation } from "./config/vitest-observation";
 import { defineConfig } from "vite-plus";
 import { rendererViteResolve } from "./config/renderer-vite-shared";
@@ -10,7 +11,7 @@ export default defineConfig({
   resolve: rendererViteResolve,
   test: {
     ...testObservation("unit"),
-    env: { TZ: "UTC" },
+    env: TEST_ENVIRONMENT,
     environment: "node",
     include: testFiles.include,
     exclude: testFiles.exclude,

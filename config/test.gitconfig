@@ -1,0 +1,11 @@
+# The only git configuration test runs read. A developer's own settings, such as
+# commit signing, hooks, or a default branch, never reach git fixtures.
+[init]
+	defaultBranch = main
+[user]
+	name = Nodex Test
+	email = test@nodex.invalid
+[commit]
+	gpgSign = false
+[tag]
+	gpgSign = false

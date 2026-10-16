@@ -5,6 +5,7 @@ import {
   installRendererThemeFixture,
   readRendererThemeColor,
 } from "@/test/renderer-theme";
+import { workbenchMainSurfaceClassName } from "@/components/workbench/workbench-route-host";
 
 import "@/globals.css";
 
@@ -145,7 +146,8 @@ describe("semantic theme contract in the renderer build", () => {
   );
 
   test("keeps main content, legacy content, and conversation roles aligned across theme changes", () => {
-    const main = mountRole("main-surface text-token-foreground");
+    // The one opaque content surface every route renders inside.
+    const main = mountRole(`${workbenchMainSurfaceClassName(false)} text-token-foreground`);
     const legacy = mountRole("bg-background text-foreground");
     const bubble = mountRole("bg-user-message text-user-message");
     const composer = mountRole("bg-composer-primary text-composer-primary");

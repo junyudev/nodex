@@ -1,4 +1,5 @@
 import { resolveVitestTestTier } from "./config/vitest-test-tier";
+import { TEST_ENVIRONMENT } from "./config/test-environment";
 import { availableParallelism, totalmem } from "node:os";
 import { testObservation } from "./config/vitest-observation";
 import { defineConfig } from "vite-plus";
@@ -18,7 +19,7 @@ export default defineConfig({
   css: rendererViteCss,
   test: {
     ...testObservation("renderer"),
-    env: { TZ: "UTC" },
+    env: TEST_ENVIRONMENT,
     environment: "jsdom",
     environmentOptions: {
       jsdom: { url: "http://renderer.test/" },

@@ -825,6 +825,7 @@ function CodexProjectHoverCardContent({
   onArchiveProject,
   onSetProjectPinned,
   onRequestClose,
+  activityStore,
 }: {
   project: Project;
   activity: ProjectActivitySummary | null | undefined;
@@ -834,12 +835,13 @@ function CodexProjectHoverCardContent({
   onArchiveProject: (projectId: string) => Promise<ProjectLifecycleMutationResult>;
   onSetProjectPinned?: (projectId: string, input: ProjectPinnedInput) => Promise<Project | null>;
   onRequestClose: () => void;
+  activityStore?: AgentRuntimeActivityStore;
 }) {
   // The hover card mounts only while open, so the aggregate subscription is short-lived.
   const activity = mergeRuntimeProjectActivity(
     coreActivity,
     runtimeSessions,
-    useAgentRuntimeActivities(),
+    useAgentRuntimeActivities(activityStore),
   );
   const appHandle = useScopeHandle(appScope);
   const primaryWorkspaceRoot = normalizePrimaryWorkspaceRoot(project);
@@ -987,6 +989,7 @@ export function CodexProjectRow({
   sectionCatalog,
   currentSectionId = null,
   inboxCount = 0,
+  activityStore,
   children,
 }: {
   project: Project;
@@ -1016,6 +1019,8 @@ export function CodexProjectRow({
   currentSectionId?: string | null;
   /** Messages waiting in this Project's own Inbox, which is its Home. */
   inboxCount?: number;
+  /** Live Runtime activity for the hover card; the application store by default. */
+  activityStore?: AgentRuntimeActivityStore;
   children?: ReactNode;
 }) {
   const sortableEnabled = dnd !== undefined;
@@ -1171,6 +1176,7 @@ export function CodexProjectRow({
         onOpenChange={setProjectHoverCardOpen}
         hoverCardContent={
           <CodexProjectHoverCardContent
+            activityStore={activityStore}
             project={project}
             activity={activity}
             runtimeSessions={runtimeSessions}

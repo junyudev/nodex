@@ -39,6 +39,7 @@ import { superviseIsolatedRun, type SupervisedCommandPlan } from "./isolated-run
 import type { IsolatedRunFailure } from "./isolated-run/IsolatedRun";
 import { getScenario } from "./scenarios/registry";
 import { materializeDevelopmentSeed } from "./scenarios/harness/development-seed";
+import { isolatedElectronArguments } from "./isolated-run/electron-arguments";
 
 export interface DevLauncherArguments {
   readonly home?: string;
@@ -261,10 +262,7 @@ export const createDevLaunchPlan = (input: {
   readonly home: DevelopmentEnvironmentHome;
   readonly platform: NodeJS.Platform;
 }): DevLaunchPlan => {
-  // AppKit's crash-restoration prompt precedes Electron readiness and is shared
-  // by development bundles. This volatile argument leaves Nodex session restore intact.
-  const electronArguments =
-    input.platform === "darwin" ? ["-ApplePersistenceIgnoreState", "YES"] : [];
+  const electronArguments = isolatedElectronArguments(input.platform);
   const enabledFeatures = resolveDevelopmentFeatureOverrides(input.arguments.enabledFeatures);
   const remoteDebuggingPort =
     input.arguments.remoteDebuggingPort ??

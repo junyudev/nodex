@@ -44,6 +44,6 @@ describe("app shell tab sizing", () => {
         trailingWidthPx: -8,
         lockedWidthPx: Number.POSITIVE_INFINITY,
       }),
-    ).toBe("clamp(183px, calc(100% - 0px), 323px)");
+    ).toBe("clamp(183px, calc(100cqw - 0px), 323px)");
   });
 });

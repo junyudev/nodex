@@ -25,6 +25,7 @@ import { cleanupIsolatedProfile, createIsolatedProfile } from "../profile/isolat
 import { getScenario } from "../registry";
 import { prepareScenarioAgentRuntime } from "../runtime/agent-runtime-fixture";
 import { inspectScenario, materializeScenario } from "../seed/scenario-seed";
+import { isolatedElectronArguments } from "../../isolated-run/electron-arguments";
 
 const repositoryRoot = process.cwd();
 const DEFAULT_RUNTIME_LOG_CHARS = 32_768;
@@ -149,6 +150,7 @@ export async function launchNodexElectronApplication(
         ? ["-r", path.join(repositoryRoot, "scripts/scenarios/harness/electron-isolated-paths.cjs")]
         : []),
       ...(input.executablePath ? [] : [repositoryRoot]),
+      ...isolatedElectronArguments(),
     ],
     cwd: input.cwd ?? repositoryRoot,
     env: {

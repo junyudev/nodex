@@ -12,6 +12,14 @@ import {
   DATABASE_SETTINGS_CONFIGURATION_SCENARIO_REVISION,
   requireDatabaseSettingsConfigurationFacts,
 } from "../../scripts/scenarios/scenarios/database-settings-configuration";
+/**
+ * Edges that should coincide may differ by compositing snap: a strip that becomes a drag layer
+ * moves to whole pixels, and popper placement rounds. Within one device pixel is the same edge.
+ */
+const expectSameEdge = (actual: number, expected: number): void => {
+  expect(Math.abs(actual - expected)).toBeLessThan(1);
+};
+
 const focusSettingsDatabase = async (page: Page): Promise<void> => {
   await page.evaluate(() => localStorage.setItem("nodex-theme", "dark"));
   await page.reload();
@@ -841,7 +849,7 @@ test("View tabs own their action menu and persist direct drag reorder", async ()
       expect(boardIconBox.width).toBeCloseTo(16, 0);
       expect(boardLabelBox.x - (boardIconBox.x + boardIconBox.width)).toBeCloseTo(6, 0);
       expect(menuBox.width).toBeCloseTo(220, 0);
-      expect(menuBox.x).toBeCloseTo(boardBox.x, 0);
+      expectSameEdge(menuBox.x, boardBox.x);
       await captureDatabaseSettingsArtifact(page, "view-tab-action-menu-dark");
 
       await menu.getByRole("menuitem", { name: "Rename", exact: true }).click();
@@ -886,13 +894,13 @@ test("View tabs own their action menu and persist direct drag reorder", async ()
       await page.mouse.move(tabListBox.x - 200, dragY);
       const leftBoundedOverlayBox = await dragOverlay.boundingBox();
       if (!leftBoundedOverlayBox) throw new Error("Left-bounded drag geometry is unavailable");
-      expect(leftBoundedOverlayBox.x).toBeCloseTo(tabListBox.x, 0);
+      expectSameEdge(leftBoundedOverlayBox.x, tabListBox.x);
       await page.mouse.move(tabListBox.x + tabListBox.width + 200, dragY);
       const rightBoundedOverlayBox = await dragOverlay.boundingBox();
       if (!rightBoundedOverlayBox) throw new Error("Right-bounded drag geometry is unavailable");
-      expect(rightBoundedOverlayBox.x + rightBoundedOverlayBox.width).toBeCloseTo(
+      expectSameEdge(
+        rightBoundedOverlayBox.x + rightBoundedOverlayBox.width,
         tabListBox.x + tabListBox.width,
-        0,
       );
       await captureDatabaseSettingsArtifact(page, "view-tabs-bounded-drag-dark");
 
@@ -1027,14 +1035,14 @@ test("View identity stays exact through tab selection, layout conversion, and re
       expect(await viewNameInput.evaluate((element) => getComputedStyle(element).color)).toBe(
         railPrimaryColor,
       );
-      expect(viewNameInputStyle.fontSize).toBe("14px");
-      expect(viewNameInputStyle.lineHeight).toBe("20px");
+      expect(viewNameInputStyle.fontSize).toBe("13px");
+      expect(viewNameInputStyle.lineHeight).toBe("18.5714px");
       const rootTitle = rail.getByRole("heading", { name: "View settings", exact: true });
       await expect(rootTitle).toHaveCSS("font-size", "12px");
       await expect(rootTitle).toHaveCSS("font-weight", "500");
       const layoutRow = rail.getByRole("button", { name: /^Layout/ }).first();
       expect((await layoutRow.boundingBox())?.height).toBeCloseTo(28, 0);
-      await expect(layoutRow).toHaveCSS("font-size", "14px");
+      await expect(layoutRow).toHaveCSS("font-size", "13px");
       await expect(layoutRow).toHaveCSS("font-weight", "400");
       await expect(layoutRow).toHaveCSS("line-height", "16.8px");
       await expect(layoutRow).toHaveCSS("color", railPrimaryColor);
@@ -1245,8 +1253,8 @@ test("Property settings create, edit options, delete dependencies, and restore i
       expect(newPropertyNameInputStyle.backgroundColor).not.toBe("rgba(0, 0, 0, 0)");
       expect(newPropertyNameInputStyle.borderRadius).toBe("6px");
       expect(newPropertyNameInputStyle.borderTopWidth).toBe("1px");
-      expect(newPropertyNameInputStyle.fontSize).toBe("14px");
-      expect(newPropertyNameInputStyle.lineHeight).toBe("20px");
+      expect(newPropertyNameInputStyle.fontSize).toBe("13px");
+      expect(newPropertyNameInputStyle.lineHeight).toBe("18.5714px");
       await captureDatabaseSettingsArtifact(page, "database-settings-new-property-input-dark");
       await newPropertyNameInput.fill("E2E choice");
       await rail.getByRole("button", { name: "Select", exact: true }).click();

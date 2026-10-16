@@ -1,16 +1,14 @@
 import { expect, test, type Page } from "@playwright/test";
 
 import { withElectronScenario } from "../../scripts/scenarios/harness/electron-e2e-harness";
+import { openSpace } from "../../scripts/scenarios/harness/space-ui";
 import {
   PAGE_RELOCATION_SCENARIO_ID,
   requirePageRelocationScenarioFacts,
 } from "../../scripts/scenarios/scenarios/page-relocation";
 
 const openSourcePageMenu = async (page: Page, pageId: string): Promise<void> => {
-  await page
-    .getByRole("navigation", { name: "App navigation", exact: true })
-    .getByRole("button", { name: "Space", exact: true })
-    .click();
+  await openSpace(page);
   const target = page.locator(`[data-database-view-page-menu-target="${pageId}"]`);
   if (!(await target.isVisible().catch(() => false))) {
     await page
@@ -93,10 +91,7 @@ test("moves a Sidebar Page into a Database and restores its Library position", a
     async ({ page, facts }) => {
       if (!facts) throw new Error("Page relocation scenario did not materialize");
       const relocation = requirePageRelocationScenarioFacts(facts);
-      await page
-        .getByRole("navigation", { name: "App navigation", exact: true })
-        .getByRole("button", { name: "Space", exact: true })
-        .click();
+      await openSpace(page);
       const content = page
         .getByRole("navigation", { name: "Space", exact: true })
         .getByRole("list", { name: "Content", exact: true });

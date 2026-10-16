@@ -1296,7 +1296,7 @@ describe("ConnectedThreadStage archived resume behavior", () => {
         controls: { subagents: true },
       },
     });
-    await openNodexMenu(view.getByRole("button", { name: "Task actions" }));
+    await openNodexMenu(view.getByRole("button", { name: "Chat actions" }));
     expect(view.queryByRole("menuitem", { name: "Tasks" })).toBeNull();
     await act(async () => {
       fireEvent.click(await view.findByRole("menuitem", { name: "Subagents" }));

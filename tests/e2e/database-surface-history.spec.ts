@@ -221,8 +221,11 @@ test("replays Board, List, and editor transfers through their content participan
       const pageId = await created.getAttribute("data-board-uuid-v7");
       promotedPageId = requireString(pageId, "Promoted Page id");
       const promoted = triage.locator(`[data-board-uuid-v7="${pageId}"]`);
-      // Pointer focus on the Board's padding chooses its owner without editing content.
-      await page.locator('[data-database-board-scroll="true"]').click({ position: { x: 4, y: 4 } });
+      // Pointer focus on the Board's top padding chooses its owner without editing content,
+      // clear of the sidebar's resize edge over the content's leading pixels.
+      await page
+        .locator('[data-database-board-scroll="true"]')
+        .click({ position: { x: 32, y: 4 } });
       await invokeHistoryMenu(harness, "undo", "Move to Database");
       await expect(dropped).toBeVisible();
       await expect(promoted).toHaveCount(0);

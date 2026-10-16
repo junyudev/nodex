@@ -24,8 +24,10 @@ test.each(["light", "dark"] as const)(
 
     expect(Object.keys(green).length).toBeGreaterThan(60);
     for (const value of Object.values(green)) expect(value).not.toContain("var(");
-    expect(green["--font-text-sm-size"]).toBe("14px");
-    expect(green["--font-weight-normal"]).toBe("400");
+    // Apps receive the host's small UI size from the default typography scale.
+    expect(green["--font-text-sm-size"]).toBe("13px");
+    // Normal app text matches the host's ordinary UI weight.
+    expect(green["--font-weight-normal"]).toBe("430");
     expect(Number.parseFloat(green["--border-radius-md"] ?? "")).toBeGreaterThan(0);
 
     applyCodexThemeVariant(root, variant, document.body, { kind: "preset", name: "pink" });

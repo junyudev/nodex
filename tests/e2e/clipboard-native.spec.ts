@@ -8,11 +8,15 @@ import path from "node:path";
 import packageJson from "../../package.json";
 
 import type { NativeClipboardBridge } from "../../src/main/platform/electron/native-clipboard";
+import { isolatedElectronArguments } from "../../scripts/isolated-run/electron-arguments";
 
 test("enhances a browser copy without losing private formats or overwriting newer copies", async () => {
   const application = await _electron.launch({
     executablePath: process.env.NODEX_ELECTRON_CLIPBOARD_CANDIDATE,
-    args: [path.join(process.cwd(), "tests/e2e/clipboard-fixture/main.cjs")],
+    args: [
+      path.join(process.cwd(), "tests/e2e/clipboard-fixture/main.cjs"),
+      ...isolatedElectronArguments(),
+    ],
     env: {
       ...process.env,
       ELECTRON_RUN_AS_NODE: "",

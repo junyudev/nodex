@@ -1,13 +1,14 @@
 import type { BlockTransferDataSourcePlacement } from "../../src/shared/block-transfer";
 import { readTestClipboard, writeTestClipboardImage } from "./clipboard";
 import { selectEditorBlockRange } from "./support/select-editor-block-range";
-import { dragListRowWithMouse } from "./support/drag-list-row-with-mouse";
+import { dragListRowWithMouse, listRowSurfacePoint } from "./support/drag-list-row-with-mouse";
 import {
   dragBlockFromEditorWithMouse,
   dispatchEditorAncestorScroll,
 } from "./support/drag-block-with-mouse";
 import { expect, test } from "@playwright/test";
 import { openProjectBoard } from "../../scripts/scenarios/harness/project-board-ui";
+import { openSpace } from "../../scripts/scenarios/harness/space-ui";
 import {
   _electron as electron,
   type CDPSession,
@@ -22,11 +23,6 @@ import os from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { build } from "vite";
-import {
-  createRendererVitePlugins,
-  rendererViteCss,
-  rendererViteResolve,
-} from "../../config/renderer-vite-shared";
 import { CoreClient } from "../../src/main/core-client/core-client";
 import { LARGE_CONTENT_FIXTURE_SIZES } from "../../src/main/performance/large-content-fixtures";
 import { createUuidV7 } from "../../src/shared/uuid-v7";
@@ -75,6 +71,7 @@ import {
   type ConvergenceProject,
   type ConvergencePage,
 } from "./support/editor-scenario";
+import { isolatedElectronArguments } from "../../scripts/isolated-run/electron-arguments";
 
 async function expectClosingSideMenuToBeInert({
   page,
@@ -633,22 +630,14 @@ async function readConvergenceBoardTotal(
 }
 
 async function launchLargeContentFixtureApplication(): Promise<ElectronApplication> {
-  return electron.launch({ args: [largeContentElectronMain] });
+  return electron.launch({ args: [largeContentElectronMain, ...isolatedElectronArguments()] });
 }
 
 async function buildLargeContentFixture(outDir: string): Promise<string> {
+  // The fixture's own Vite config carries the renderer toolchain.
   await build({
-    root: largeContentFixtureRoot,
-    base: "./",
-    configFile: false,
-    logLevel: "warn",
-    resolve: rendererViteResolve,
-    css: rendererViteCss,
-    plugins: createRendererVitePlugins(),
-    build: {
-      outDir,
-      emptyOutDir: true,
-    },
+    configFile: path.join(largeContentFixtureRoot, "vite.config.ts"),
+    build: { outDir },
   });
   return path.join(outDir, "index.html");
 }
@@ -2004,7 +1993,10 @@ test.describe("parallel functional Electron smoke", () => {
       const projectScene = createdProject?.id
         ? layout?.scenesByOwnerKey?.[`project:${createdProject.id}`]
         : undefined;
-      expect(projectScene?.primary?.kind).toBe("db_view");
+      expect(projectScene?.primary).toMatchObject({
+        kind: "inbox",
+        config: { projectId: createdProject?.id },
+      });
       const surfaces = Object.values(projectScene?.panelSurfacesById ?? {});
       expect(surfaces.map((surface) => surface.kind)).toEqual(["page_stage"]);
       expect(projectScene?.panels?.right).toMatchObject({
@@ -2186,7 +2178,7 @@ test.describe("parallel functional Electron smoke", () => {
           exact: true,
         })
         .click();
-      await openProjectBoard(page);
+      await openSpace(page);
       await page.getByRole("button", { name: "New Page or Database" }).click({
         force: true,
       });
@@ -2195,7 +2187,9 @@ test.describe("parallel functional Electron smoke", () => {
 
       await page.getByRole("button", { name: "Actions for Untitled" }).last().click();
       await page.getByRole("menuitem", { name: "Open in Project…" }).click();
-      await page.getByRole("button", { name: "Grant and open" }).click();
+      const openInProject = page.getByRole("dialog", { name: "Open in Project" });
+      await openInProject.getByLabel("Project").selectOption({ label: "Canvas workflow" });
+      await openInProject.getByRole("button", { name: "Open", exact: true }).click();
 
       const editor = page
         .locator('[data-page-stage-surface="true"]')
@@ -2343,7 +2337,7 @@ test.describe("parallel functional Electron smoke", () => {
           exact: true,
         })
         .click();
-      await openProjectBoard(page);
+      await openSpace(page);
       await page
         .getByRole("button", {
           name: "Actions for Source Page",
@@ -2504,6 +2498,11 @@ test.describe("parallel functional Electron smoke", () => {
       expect(new Set(frameCounts)).toEqual(new Set([1]));
       await expect(createdCard).toHaveCount(1);
 
+      // Escape closes one menu level at a time; the root Page menu takes a second press.
+      const closePageMenu = async () => {
+        await page.keyboard.press("Escape");
+        await expect(page.getByRole("menu")).toHaveCount(0);
+      };
       await createdCard
         .locator('[data-card-context-menu-trigger="true"]')
         .click({ button: "right" });
@@ -2523,6 +2522,7 @@ test.describe("parallel functional Electron smoke", () => {
       ).toBeVisible({ timeout: 15_000 });
       await tagsSearch.press("Escape");
       await expect(tagsSearch).toHaveCount(0);
+      await closePageMenu();
 
       await createdCard
         .locator('[data-card-context-menu-trigger="true"]')
@@ -2552,6 +2552,7 @@ test.describe("parallel functional Electron smoke", () => {
       );
       await assigneeInput.press("Escape");
       await expect(assigneeInput).toHaveCount(0);
+      await closePageMenu();
 
       await createdCard
         .locator('[data-card-context-menu-trigger="true"]')
@@ -2566,6 +2567,7 @@ test.describe("parallel functional Electron smoke", () => {
       await expect(page.getByRole("button", { name: "Edit Due date" })).toHaveCount(0);
       await dueDateInput.press("Escape");
       await expect(dueDateInput).toHaveCount(0);
+      await closePageMenu();
 
       await createdCard
         .locator('[data-card-context-menu-trigger="true"]')
@@ -3824,6 +3826,7 @@ test.describe("parallel functional Electron smoke", () => {
       );
 
       await page.getByRole("button", { name: "Open Page File placement", exact: true }).click();
+      await openProjectBoard(page);
       const triageColumn = page.locator('[data-board-column-root][data-board-column-id="triage"]');
       await expect(triageColumn).toBeVisible({ timeout: 15_000 });
       const sourceCard = triageColumn.locator(`[data-board-uuid-v7="${source.pageId}"]`);
@@ -3989,6 +3992,7 @@ test.describe("parallel functional Electron smoke", () => {
       );
 
       await page.getByRole("button", { name: "Open Page File move", exact: true }).click();
+      await openProjectBoard(page);
       const triageColumn = page.locator('[data-board-column-root][data-board-column-id="triage"]');
       await expect(triageColumn).toBeVisible({ timeout: 15_000 });
       const targetCard = triageColumn.locator(`[data-board-uuid-v7="${target.pageId}"]`);
@@ -4319,6 +4323,7 @@ test.describe("parallel functional Electron smoke", () => {
           exact: true,
         })
         .click();
+      await openProjectBoard(page);
       const board = page.locator("[data-board-column-root]").first();
       await expect(board).toBeVisible({ timeout: 15_000 });
       await page
@@ -4432,7 +4437,8 @@ test.describe("parallel functional Electron smoke", () => {
           childParentPageId: sourcePageId,
         });
 
-      await targetRow.locator('[data-list-grid-column="indent"]').click();
+      const targetPoint = await listRowSurfacePoint(targetRow);
+      await page.mouse.click(targetPoint.x, targetPoint.y);
       const pageStage = page.locator('[data-page-stage-surface="true"]:visible');
       await expect(pageStage).toBeVisible({ timeout: 15_000 });
       await expect(pageStage.getByRole("textbox", { name: "Page title" })).toHaveText(

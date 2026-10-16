@@ -122,7 +122,11 @@ describe("IntelligenceSelectorTrigger layout", () => {
         Math.max(...candidateWidths),
         1,
       );
-      expect(measurement.clientHeight).toBe(Math.max(...candidateHeights));
+      // Rendered boxes can be fractional; the stack is exactly one candidate tall.
+      expect(measurement.getBoundingClientRect().height).toBeCloseTo(
+        Math.max(...candidateHeights),
+        1,
+      );
       expect(measurement.scrollHeight).toBe(measurement.clientHeight);
       expect(trigger.scrollHeight).toBeLessThanOrEqual(trigger.clientHeight);
       expect(controlRow.scrollHeight).toBe(controlRow.clientHeight);

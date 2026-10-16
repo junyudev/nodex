@@ -7,6 +7,7 @@ import { createServer, type ViteDevServer } from "vite";
 import { afterEach, describe, expect, test } from "vite-plus/test";
 import { APP_RENDERER_URL, buildTopLevelRendererCsp } from "../shared/app-renderer-policy";
 import { buildAppFilesystemPath, buildAppFilesystemUrl } from "../shared/app-protocol";
+import { isolatedElectronArguments } from "../../scripts/isolated-run/electron-arguments";
 
 const temporaryDirectories: string[] = [];
 
@@ -101,7 +102,7 @@ describe("production app renderer origin", () => {
     let application: ElectronApplication | null = null;
     try {
       application = await electron.launch({
-        args: [path.join(outputDirectory, "main.js")],
+        args: [path.join(outputDirectory, "main.js"), ...isolatedElectronArguments()],
         env: childEnvironment,
       });
       const page = await application.firstWindow();
@@ -212,7 +213,7 @@ describe("production app renderer origin", () => {
       let application: ElectronApplication | null = null;
       try {
         application = await electron.launch({
-          args: [path.join(outputDirectory, "main.js")],
+          args: [path.join(outputDirectory, "main.js"), ...isolatedElectronArguments()],
           env: childEnvironment,
         });
         const page = await application.firstWindow();
@@ -288,7 +289,7 @@ describe("development HTTP renderer origin", () => {
       }
       delete childEnvironment.ELECTRON_RUN_AS_NODE;
       application = await electron.launch({
-        args: [path.join(outputDirectory, "main.js")],
+        args: [path.join(outputDirectory, "main.js"), ...isolatedElectronArguments()],
         env: childEnvironment,
       });
       const page = await application.firstWindow();
