@@ -1,0 +1,23 @@
+crates/nodex-core/src/workspace/session_lifecycle.rs
+  s_1ca65ffa5958ee::t_661493acc4292e 86-88
+crates/nodex-core/src/workspace/sidebar_section.rs
+  s_1ca65ffa5958ee::t_661493acc4292e 803
+crates/nodex-core/src/workspace/agent_runtime_binding.rs
+  s_1ca65ffa5958ee::t_661493acc4292e 151,451,453
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "78095eaa7745325b30a42fee11c6f2a63497ee90",
+  "prompts": {},
+  "sessions": {
+    "s_1ca65ffa5958ee": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "67793a21-5e0b-400f-bf07-1018dc4c4f31",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
