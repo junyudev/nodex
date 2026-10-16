@@ -89,3 +89,8 @@ split-debuginfo = "unpacked"
 
 [profile.dev.package.sha2]
 opt-level = 3
+
+[profile.release.build-override]
+# Proc-macro libraries are loaded by the host compiler, never shipped. Stripping
+# their Mach-O symbol tables can make them unloadable by macOS dyld.
+strip = "none"
