@@ -1,0 +1,175 @@
+docs/ENGINEERING_LEARNINGS.md
+  s_cd7a7c963ae6b3::t_51df8c1ab4bd3e 388
+src/renderer/components/workbench/workbench-shell.panel-commands.test.tsx
+  s_cd7a7c963ae6b3::t_f1f914bfa1b737 338
+  s_cd7a7c963ae6b3::t_105e7cc3d74cba 323-324
+src/renderer/lib/workbench-sidebar-peek.ts
+  s_cd7a7c963ae6b3::t_96dc25f0491fa9 1-2,98
+  s_cd7a7c963ae6b3::t_f31dde5a1663ec 15
+src/renderer/components/workbench/workbench-runtime.tsx
+  s_cd7a7c963ae6b3::t_ab4b7684be7f60 108-111,211,1400,2394-2395,2785,3338,3340,3342-3345,3396,4823,4892-4903
+  s_cd7a7c963ae6b3::t_4ad4d9c3ee07de 256
+  s_cd7a7c963ae6b3::t_29513c0098b9e7 2623
+  s_cd7a7c963ae6b3::t_e3660a42f6f256 15,2404-2478
+  s_cd7a7c963ae6b3::t_96dc25f0491fa9 4787
+  s_cd7a7c963ae6b3::t_ba02727ffc9c68 28,71
+src/renderer/components/workbench/sidebar-new-chat-controls.tsx
+  s_cd7a7c963ae6b3::t_eeed5d17467258 11
+  s_cd7a7c963ae6b3::t_b010a6a7e406b0 118-127,133,140,143,162-166,168,170-177,185
+src/renderer/features/scheduled/scheduled-task-form.tsx
+  s_cd7a7c963ae6b3::t_50250ed4641478 135,144,155,178
+  s_cd7a7c963ae6b3::t_29513c0098b9e7 45-46,119,123
+  s_cd7a7c963ae6b3::t_b5398d1723f110 44,118,153
+  s_cd7a7c963ae6b3::t_8eaa9a328a4f8c 162-163
+  s_cd7a7c963ae6b3::t_45925de85b386e 1-8,12,26,100,128
+  s_cd7a7c963ae6b3::t_96814c5bc910ed 33-36,109-110,136,232,238
+  s_cd7a7c963ae6b3::t_9cc8f7ad66e4c7 9-11,13-25,27-32,37-43,47-99,101-108,111-117,120-122,124-127,129-134,137-143,145-152,154,156-161,164-177,179-231,233-237,239-341
+docs/FRONTEND.md
+  s_cd7a7c963ae6b3::t_51df8c1ab4bd3e 464
+src/renderer/features/scheduled/scheduled-task-model.ts
+  s_cd7a7c963ae6b3::t_ee6156826d5b80 97-104
+  s_cd7a7c963ae6b3::t_b5398d1723f110 105-116,119-121
+  s_cd7a7c963ae6b3::t_6d6f61a28e01ee 1-79,122-199
+  s_cd7a7c963ae6b3::t_ba02727ffc9c68 117-118
+  s_cd7a7c963ae6b3::t_71a482b8a18af9 80-96
+src/renderer/features/scheduled/use-scheduled-tasks.ts
+  s_cd7a7c963ae6b3::t_64472f4767aeb4 5,149-157,172
+  s_cd7a7c963ae6b3::t_29b7130fc4e316 1-4,6-148,158-171,173-176
+src/renderer/features/scheduled/scheduled-route.tsx
+  s_cd7a7c963ae6b3::t_af0a7f694c3729 1-50,57-269,272-325
+  s_cd7a7c963ae6b3::t_ba02727ffc9c68 51-56,270-271
+src/renderer/features/scheduled/scheduled-task-side-panel.tsx
+  s_cd7a7c963ae6b3::t_fa0483a4e78d1c 114-120
+  s_cd7a7c963ae6b3::t_96814c5bc910ed 188-189
+  s_cd7a7c963ae6b3::t_d5e1a84d84996c 1-24,26-34,36-88,90-99,103-113,121-187,190-192,198-200,203-240
+  s_cd7a7c963ae6b3::t_ba02727ffc9c68 100-102,193-197
+  s_cd7a7c963ae6b3::t_29513c0098b9e7 25,35,89,201-202
+src/renderer/components/workbench/use-workbench-panel-projection.tsx
+  s_cd7a7c963ae6b3::t_29513c0098b9e7 180,310,495
+  s_cd7a7c963ae6b3::t_ddced3d2f137b7 88-89,183,490
+  s_cd7a7c963ae6b3::t_fa0483a4e78d1c 801
+docs/product-specs/workbench-shell.md
+  s_cd7a7c963ae6b3::t_5dcabee29d9fb1 5,12,16,159
+  s_cd7a7c963ae6b3::t_190c968a4b7bd6 19
+src/shared/workbench-layout.ts
+  s_cd7a7c963ae6b3::t_f31dde5a1663ec 241
+  s_cd7a7c963ae6b3::t_ffcdb2158eb934 256-257,371,376-377
+src/renderer/components/workbench/workbench-app-rail.browser.test.tsx
+  s_cd7a7c963ae6b3::t_3462a72e341691 5,15
+src/renderer/components/workbench/workbench-automation-schedule.ts
+  s_cd7a7c963ae6b3::t_3c816edc7596ad 313
+  s_cd7a7c963ae6b3::t_51e54d40994840 52,323
+  s_cd7a7c963ae6b3::t_a51c6ca5237365 300-306,316,319,486-487,497
+src/renderer/features/scheduled/scheduled-task-model.node.test.ts
+  s_cd7a7c963ae6b3::t_ba02727ffc9c68 66
+  s_cd7a7c963ae6b3::t_6e4d89d3444141 1-4,7-65,67-118,140-141
+  s_cd7a7c963ae6b3::t_ea221fd4622dc6 5-6,119-139
+src/renderer/features/scheduled/scheduled-task-fields.tsx
+  s_cd7a7c963ae6b3::t_719664a871f8b7 1,53-60,63,65,77
+  s_cd7a7c963ae6b3::t_9c657cc7a51fd8 141-150,212
+  s_cd7a7c963ae6b3::t_8eaa9a328a4f8c 135,251-253
+  s_cd7a7c963ae6b3::t_50250ed4641478 42,47
+  s_cd7a7c963ae6b3::t_ba02727ffc9c68 44,503-506
+  s_cd7a7c963ae6b3::t_1d063255f11da6 2-41,43,45-46,48-52,61-62,64,66-76,78-134,136-140,151-211,213-250,254-502,507-539
+src/renderer/lib/use-workbench-session-commands.ts
+  s_cd7a7c963ae6b3::t_4162d6b2d1d1d9 66-69,1165-1203,1205,1464-1465
+  s_cd7a7c963ae6b3::t_4f2aae08f75c25 150-153
+src/renderer/lib/use-workbench-session-catalog.ts
+  s_cd7a7c963ae6b3::t_a8a5ff605bd7a5 54-58,69-72,134-137,673-678
+  s_cd7a7c963ae6b3::t_ba02727ffc9c68 666-669
+src/renderer/components/workbench/workbench-automation-schedule.node.test.ts
+  s_cd7a7c963ae6b3::t_60a7ad783c1a24 43-51
+src/renderer/features/scheduled/scheduled-task-cache.ts
+  s_cd7a7c963ae6b3::t_4e29c926923b68 1-74
+src/renderer/components/workbench/use-workbench-sidebar-controller.ts
+  s_cd7a7c963ae6b3::t_a8a5ff605bd7a5 333,344
+  s_cd7a7c963ae6b3::t_4f2aae08f75c25 47
+src/renderer/lib/use-workbench-session-catalog.test.tsx
+  s_cd7a7c963ae6b3::t_a27dff653a6de7 106
+src/renderer/components/workbench/workbench-shell.routes-threads.test.tsx
+  s_cd7a7c963ae6b3::t_9a4c519a6568ce 197,208,228-229,234-236
+  s_cd7a7c963ae6b3::t_9c7b4f553fc8e9 129-130,142,233,721-725,777-780,783
+  s_cd7a7c963ae6b3::t_3290f8613292d6 861
+  s_cd7a7c963ae6b3::t_ba02727ffc9c68 231-232
+  s_cd7a7c963ae6b3::t_5d21591e00b532 693-696
+src/renderer/features/scheduled/scheduled-sidebar.tsx
+  s_cd7a7c963ae6b3::t_d6a3c41df8f956 1,56,58,60,388-389,392,394-402,490
+  s_cd7a7c963ae6b3::t_64472f4767aeb4 4,158,163,166,184-186,188-200,303
+  s_cd7a7c963ae6b3::t_ac4fb055508461 230,271
+  s_cd7a7c963ae6b3::t_ba02727ffc9c68 97,372-375
+  s_cd7a7c963ae6b3::t_4489c15cec1add 2-3,5-55,57,59,61-96,98-157,159-162,164-165,167-183,187,201-214,216-225,227-229,231-270,272,274-279,282-287,292-302,304-323,325-327,329-338,340-371,376-387,390-391,393,403-408,414-475,480-481,483-489,491-555,563-604
+  s_cd7a7c963ae6b3::t_fb23fbf8187e38 215,226,288-291,324,328,339,409-413,476-479,482,556-562
+  s_cd7a7c963ae6b3::t_b284715523213a 273,280-281
+src/renderer/lib/workbench-window-state.node.test.ts
+  s_cd7a7c963ae6b3::t_ba02727ffc9c68 85-87
+  s_cd7a7c963ae6b3::t_9ba41a0b3f723d 21,68-84,88-91
+  s_cd7a7c963ae6b3::t_3462a72e341691 102,110
+  s_cd7a7c963ae6b3::t_797b01bda51b4d 93
+  s_cd7a7c963ae6b3::t_e611ae65be38f7 92
+src/renderer/lib/workbench-window-owner.ts
+  s_cd7a7c963ae6b3::t_2dcae20412b449 38,262-263
+src/renderer/components/workbench/use-workbench-route-surfaces.test.tsx
+  s_cd7a7c963ae6b3::t_ee4b5c11fe8c42 16,19,55-65
+src/renderer/components/workbench/workbench-sidebar.tsx
+  s_cd7a7c963ae6b3::t_96dc25f0491fa9 12,50,59
+  s_cd7a7c963ae6b3::t_f23a2d7381a141 8-11,61,70-76,84-96
+tests/e2e/workbench-shell-navigation.spec.ts
+  s_cd7a7c963ae6b3::t_c5cd1e39f7fc21 349,351-352,355-357,371
+docs/product-specs/scheduled-route-behavior.md
+  s_cd7a7c963ae6b3::t_9469f33293f874 5-6,43-45,49-114,148-153,168,170,174,182-183,185,187-190,194-195
+src/renderer/components/workbench/workbench-shell.automations-conversation.test.tsx
+  s_cd7a7c963ae6b3::t_f1f914bfa1b737 289-292,327,330
+  s_cd7a7c963ae6b3::t_b9f7c387f34656 74-79,86,164
+  s_cd7a7c963ae6b3::t_ba02727ffc9c68 168-172,190-192,233-235,255-257,437-441,453-455,458,467
+  s_cd7a7c963ae6b3::t_d4e4067632f37c 80,82-83
+  s_cd7a7c963ae6b3::t_26f12f4789c976 393-400,449,468-473
+  s_cd7a7c963ae6b3::t_35cb840ad07e0e 362-366,501-503
+  s_cd7a7c963ae6b3::t_fa0483a4e78d1c 2
+  s_cd7a7c963ae6b3::t_c7678f9678b695 56-73,81,84-85,87-103,132,136-148,151,153-156,158-160,163,165-167,173-186,188-189,193-194,196-199,201,204-206,208-215,217-220,222-232,237-241,243-248,250-254,258-259,262,264-274,278,280,282,284-288,293-311,313-316,318,321-326,328-329,331-333,335-342,344-359,368,371,373-374,377-378,380-387,404,407-412,417-427,430,432-436,442-445,447-448,450-452,456,459-460,462-464,466,476,478-481,483,485-488,490,493-495,498,505,508-510
+  s_cd7a7c963ae6b3::t_6731f7f04b08a7 236
+CHANGELOG.md
+  s_cd7a7c963ae6b3::t_7c4f4bdd603e54 35-36
+src/renderer/components/workbench/workbench-automations-routes.ts
+  s_cd7a7c963ae6b3::t_d63314ec246661 41
+  s_cd7a7c963ae6b3::t_4f729bd3e2a25b 8-9,14,21,45-47,60,63-64
+  s_cd7a7c963ae6b3::t_557ecd39e5c775 3-4,6-7,10,15,22,25-26,30-31,36,38,42-44,48,58-59,62,65
+src/renderer/features/scheduled/scheduled-task-dialog.tsx
+  s_cd7a7c963ae6b3::t_ba02727ffc9c68 245-249
+  s_cd7a7c963ae6b3::t_fa0483a4e78d1c 100-107
+  s_cd7a7c963ae6b3::t_2e5bab62bc2021 1-54,56-82,84-90,92-99,108-153,155-158,161-183,185-244,250-292,294-313
+  s_cd7a7c963ae6b3::t_50250ed4641478 55,154
+  s_cd7a7c963ae6b3::t_96814c5bc910ed 159-160
+  s_cd7a7c963ae6b3::t_35cb840ad07e0e 83,91,184,293
+docs/product-specs/index.md
+  s_cd7a7c963ae6b3::t_34a50fe1a73a84 37
+src/shared/workbench-layout.test.ts
+  s_cd7a7c963ae6b3::t_3462a72e341691 8,57,63,84
+src/renderer/lib/workbench-window-state.ts
+  s_cd7a7c963ae6b3::t_2dcae20412b449 190-205
+src/renderer/components/workbench/workbench-automations-routes.node.test.ts
+  s_cd7a7c963ae6b3::t_545aa63b697f70 5,7,10-18,20-21,23,30,32-38
+  s_cd7a7c963ae6b3::t_4f729bd3e2a25b 2,19,42-48,50-52
+  s_cd7a7c963ae6b3::t_ba02727ffc9c68 24-29
+src/renderer/components/workbench/use-workbench-route-surfaces.tsx
+  s_cd7a7c963ae6b3::t_572a7aef7b0608 7-8,15,50
+src/renderer/components/workbench/workbench-app-rail.tsx
+  s_cd7a7c963ae6b3::t_96dc25f0491fa9 15,22,32,66
+tests/e2e/automation-project-target.spec.ts
+  s_cd7a7c963ae6b3::t_ba3232acd63439 45-51,58-60,67
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "ee14d0452d33b38ac62e21e4b79d215201b3d289",
+  "prompts": {},
+  "sessions": {
+    "s_cd7a7c963ae6b3": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "90a77f4c-2ddc-48f4-9dae-559b0ec09666",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
