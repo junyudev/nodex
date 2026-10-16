@@ -1,0 +1,21 @@
+tests/e2e/database-settings.spec.ts
+  s_bd811abbf24a41::t_bc51ce90e63fa6 15-22,852,897,901-902,1039,1257
+  s_bd811abbf24a41::t_f6bfce3ae15ce4 1038,1256
+  s_bd811abbf24a41::t_5779a8acf8bbcd 1045
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "218db6b879e0cb6088d0528495560724aac0ad83",
+  "prompts": {},
+  "sessions": {
+    "s_bd811abbf24a41": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d475c410-7aa3-406e-a6d6-6873f7b30325",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
