@@ -1,0 +1,47 @@
+src/renderer/components/workbench/workbench-automation-runs.node.test.ts
+  s_cd7a7c963ae6b3::t_152cfede7e6e93 92
+src/renderer/lib/compact-relative-time.ts
+  s_cd7a7c963ae6b3::t_8589b45a7ae38d 4,6,13-14
+  s_cd7a7c963ae6b3::t_efc95796312192 1-3,5,7-12,15-16
+src/renderer/components/workbench/space-home.test.tsx
+  s_cd7a7c963ae6b3::t_4e085dcf035fad 91-95
+  s_cd7a7c963ae6b3::t_115b0bb12b1f8e 1-31,34-35,38-90,96-150
+  s_cd7a7c963ae6b3::t_410cb202ab6cdf 32-33,36-37
+src/renderer/components/workbench/workbench-automation-runs.ts
+  s_cd7a7c963ae6b3::t_efc95796312192 2,49
+src/renderer/components/workbench/pages-tab-picker.tsx
+  s_cd7a7c963ae6b3::t_48bdc63a99f996 1,18-22,41,46,56,150
+src/renderer/components/workbench/space-content.ts
+  s_cd7a7c963ae6b3::t_2cf8f27152ba0e 1-16,24-77,79-99
+  s_cd7a7c963ae6b3::t_4e085dcf035fad 17-23
+  s_cd7a7c963ae6b3::t_0db1308cb4046b 78
+src/renderer/components/workbench/space-home.tsx
+  s_cd7a7c963ae6b3::t_4e085dcf035fad 46-47,112-118,122-124,149-151
+  s_cd7a7c963ae6b3::t_dcda9de0d8ca6d 44-45,222
+  s_cd7a7c963ae6b3::t_f869254dcd929a 1-43,48-111,119-121,125-148,152-221,223-328
+src/renderer/components/workbench/workbench-runtime.tsx
+  s_cd7a7c963ae6b3::t_c30cdc3934b9af 205-206,4096
+docs/product-specs/workbench-shell.md
+  s_cd7a7c963ae6b3::t_a0bfe8974cdeab 15
+src/renderer/lib/compact-relative-time.node.test.ts
+  s_cd7a7c963ae6b3::t_efc95796312192 1-9,12-21
+  s_cd7a7c963ae6b3::t_8589b45a7ae38d 10-11
+src/renderer/components/workbench/pages-tab-picker.test.tsx
+  s_cd7a7c963ae6b3::t_3bf65e5ae26e66 5-6,40,49,144
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "863e8ddcde9149b770cd99e0ef6e362ad00d0685",
+  "prompts": {},
+  "sessions": {
+    "s_cd7a7c963ae6b3": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "90a77f4c-2ddc-48f4-9dae-559b0ec09666",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
