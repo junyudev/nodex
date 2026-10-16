@@ -1,0 +1,30 @@
+scripts/dev-launcher.ts
+  s_1ca65ffa5958ee::t_7ec230275e6047 52,87,124,195-200,238,621,635
+scripts/development-environment-home.ts
+  s_1ca65ffa5958ee::t_d2b973339c0dee 17,19,23-27,394-433,436-440,458
+scripts/development-environment-home.test.ts
+  s_1ca65ffa5958ee::t_7e5676ad6de280 14-17,168-201
+  s_1ca65ffa5958ee::t_8bd028e13ef740 202-203
+docs/development.md
+  s_1ca65ffa5958ee::t_013a6d99575234 74,120-135
+  s_1ca65ffa5958ee::t_b0882686ada374 306-308
+  s_1ca65ffa5958ee::t_f430efb79578fd 136
+scripts/dev-launcher.test.ts
+  s_1ca65ffa5958ee::t_7e5676ad6de280 41-42,59
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "1361761418a15521af47869f9bc9d0ba70d8ad92",
+  "prompts": {},
+  "sessions": {
+    "s_1ca65ffa5958ee": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "67793a21-5e0b-400f-bf07-1018dc4c4f31",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
