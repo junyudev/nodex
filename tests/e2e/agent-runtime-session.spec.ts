@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { openNewChatDraft } from "./support/new-chat-draft";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -113,8 +114,7 @@ test("preserves Session identity through native execution, selected-Run stop and
     expect(
       catalog.find((provider) => provider.instanceId === "codex")?.models.length,
     ).toBeGreaterThan(0);
-    await page.getByRole("button", { name: "New chat" }).first().click();
-    const composer = page.locator('[data-codex-composer="true"]').first();
+    const composer = (await openNewChatDraft(page)).locator('[data-codex-composer="true"]').first();
     await expect(composer).toBeVisible();
     const project = (await invoke(page, "projects:list")).items[0];
     if (!project) throw new Error("Fixture Project missing");

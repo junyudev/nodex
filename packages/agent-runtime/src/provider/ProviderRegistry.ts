@@ -91,6 +91,14 @@ export class ProviderRegistry extends Context.Service<
     readonly getCheckedProviders: Effect.Effect<ReadonlyArray<ServerProvider>>;
 
     /**
+     * The named instances once each has finished its first status check. Other instances are
+     * neither awaited nor returned, so one slow provider never delays a reader of another.
+     */
+    readonly getCheckedProvidersFor: (
+      instanceIds: ReadonlyArray<string>,
+    ) => Effect.Effect<ReadonlyArray<ServerProvider>>;
+
+    /**
      * Refresh all providers, or the default instance of the specified
      * kind when supplied.
      *
@@ -1135,31 +1143,40 @@ export const layer = Layer.effect(
       );
     });
 
-    const getCheckedProviders = instanceRegistry.listInstances.pipe(
-      Effect.flatMap((instances) =>
-        Effect.forEach(
-          instances,
-          (instance) =>
-            Effect.gen(function* () {
-              const source = buildSnapshotSource(instance);
-              yield* instance.snapshot.initialCheck;
-              // The change subscription may not have delivered the result yet.
-              const provider = yield* source.getSnapshot;
-              yield* correlateSnapshotWithSource(source, provider).pipe(
-                Effect.flatMap(syncProvider),
-              );
-            }).pipe(Effect.ignoreCause({ log: true })),
-          { concurrency: "unbounded", discard: true },
+    const checkedProviders = (selected?: ReadonlySet<string>) =>
+      instanceRegistry.listInstances.pipe(
+        Effect.map((instances) =>
+          selected ? instances.filter((instance) => selected.has(instance.instanceId)) : instances,
         ),
-      ),
-      // A probe that hangs must not hold every reader; it answers with what is known.
-      Effect.timeoutOption("20 seconds"),
-      Effect.andThen(Ref.get(providersRef)),
-    );
+        Effect.flatMap((instances) =>
+          Effect.forEach(
+            instances,
+            (instance) =>
+              Effect.gen(function* () {
+                const source = buildSnapshotSource(instance);
+                yield* instance.snapshot.initialCheck;
+                // The change subscription may not have delivered the result yet.
+                const provider = yield* source.getSnapshot;
+                yield* correlateSnapshotWithSource(source, provider).pipe(
+                  Effect.flatMap(syncProvider),
+                );
+              }).pipe(Effect.ignoreCause({ log: true })),
+            { concurrency: "unbounded", discard: true },
+          ),
+        ),
+        // A probe that hangs must not hold every reader; it answers with what is known.
+        Effect.timeoutOption("20 seconds"),
+        Effect.andThen(Ref.get(providersRef)),
+        Effect.map((providers) =>
+          selected ? providers.filter((provider) => selected.has(provider.instanceId)) : providers,
+        ),
+      );
+    const getCheckedProviders = checkedProviders();
 
     return {
       getProviders: Ref.get(providersRef),
       getCheckedProviders,
+      getCheckedProvidersFor: (instanceIds) => checkedProviders(new Set(instanceIds)),
       refresh: (provider?: ProviderDriverKind) =>
         refresh(provider).pipe(Effect.catchCause(recoverRefreshFailure)),
       refreshInstance: (instanceId: ProviderInstanceId) =>

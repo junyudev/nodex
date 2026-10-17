@@ -13,6 +13,7 @@ import {
   CodexVisualizationStateEntrySchema,
   codexVisualizationStateAtomKey,
   codexVisualizationInteractionAtomKey,
+  codexVisualizationPassiveSentAtomKey,
   codexVisualizationStateEntryKey,
   parseCodexVisualizationWidgetState,
   parseCodexVisualizationInteractionState,
@@ -63,6 +64,14 @@ export class CodexVisualizationState extends Context.Service<
       scope: CodexVisualizationStateScope,
       attachments?: readonly CodexVisualizationPassiveAttachment[],
     ) => Effect.Effect<CodexVisualizationPassiveContext | undefined>;
+    /** The thread's widget context unless the Agent was already sent exactly this. */
+    readonly readUnsentPassiveContext: (
+      scope: CodexVisualizationStateScope,
+    ) => Effect.Effect<CodexVisualizationPassiveContext | undefined>;
+    readonly markPassiveContextSent: (
+      scope: CodexVisualizationStateScope,
+      key: string,
+    ) => Effect.Effect<void, CodexVisualizationStateError>;
     readonly clearThread: (
       scope: CodexVisualizationStateScope,
     ) => Effect.Effect<readonly PersistedAtomEvent[], CodexVisualizationStateError>;
@@ -213,6 +222,35 @@ export const live: Layer.Layer<CodexVisualizationState, never, ProfilePersistedA
             }
           }),
       );
+      const readUnsentPassiveContext = Effect.fn(
+        "CodexVisualizationState.readUnsentPassiveContext",
+      )((raw: CodexVisualizationStateScope) =>
+        readPassiveContext(raw).pipe(
+          Effect.map((context) => {
+            if (!context) return undefined;
+            const sent = store.readState()[codexVisualizationPassiveSentAtomKey(raw)];
+            return sent === context.key ? undefined : context;
+          }),
+        ),
+      );
+      const markPassiveContextSent = Effect.fn("CodexVisualizationState.markPassiveContextSent")(
+        (raw: CodexVisualizationStateScope, key: string) =>
+          Effect.try({
+            try: () => {
+              const scope = CodexVisualizationStateScopeSchema.parse(raw);
+              store.commitMutation(
+                {
+                  key: codexVisualizationPassiveSentAtomKey(scope),
+                  value: key,
+                  mutationId: `visualization-passive-sent:${randomUUID()}`,
+                },
+                null,
+              );
+            },
+            catch: (cause) =>
+              new CodexVisualizationStateError({ operation: "mark-passive-sent", cause }),
+          }),
+      );
       const clearThread = Effect.fn("CodexVisualizationState.clearThread")(
         (raw: CodexVisualizationStateScope) =>
           Effect.try({
@@ -222,6 +260,7 @@ export const live: Layer.Layer<CodexVisualizationState, never, ProfilePersistedA
                 [
                   codexVisualizationStateAtomKey(scope),
                   codexVisualizationInteractionAtomKey(scope),
+                  codexVisualizationPassiveSentAtomKey(scope),
                 ],
                 `visualization-clear:${randomUUID()}`,
                 null,
@@ -236,6 +275,8 @@ export const live: Layer.Layer<CodexVisualizationState, never, ProfilePersistedA
         write,
         writeInteraction,
         readPassiveContext,
+        readUnsentPassiveContext,
+        markPassiveContextSent,
         clearThread,
       });
     }),

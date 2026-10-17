@@ -4,6 +4,7 @@ import path from "node:path";
 import {
   ElectronScenarioHarness,
   readBoundedElectronRuntimeLogs,
+  openNodexWindow,
 } from "../../scripts/scenarios/harness/electron-e2e-harness";
 import { prepareScenarioCodexAppServerRuntimeSync } from "../../scripts/scenarios/runtime/agent-runtime-fixture";
 import {
@@ -68,17 +69,14 @@ test("two windows keep an Agent chat going after its Codex process exits", async
     const threadId = await sendAgentPrompt(first, draft.projectSessionId, firstPrompt);
     const target = { sessionId: draft.projectSessionId, threadId };
     await waitForRuntimeCompletedAgentTurn(first, target);
-    const opened = harness.application.waitForEvent("window");
-    expect(
-      await invokeIpc(first, "window:new", {
-        activeProjectSessionId: draft.projectSessionId,
-        activeProjectId: draft.projectId,
-      }),
-    ).toBe(true);
-    const second = await opened;
-    await second.waitForURL((url) => url.protocol !== "about:");
-    await second.waitForLoadState("domcontentloaded");
-    await second.evaluate(() => window.api?.awaitInitialization?.());
+    const second = await openNodexWindow(harness.application, async () => {
+      expect(
+        await invokeIpc(first, "window:new", {
+          activeProjectSessionId: draft.projectSessionId,
+          activeProjectId: draft.projectId,
+        }),
+      ).toBe(true);
+    });
     for (const page of [first, second]) await expect(bubble(page, firstPrompt)).toHaveCount(1);
 
     // Only this fresh Profile's fixture log names the process; never a user's running app.

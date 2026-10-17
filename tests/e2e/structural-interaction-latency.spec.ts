@@ -6,7 +6,10 @@ import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { resolveCoreExecutable } from "../../src/main/core-client/core-launcher";
 import os from "node:os";
-import { withElectronScenario } from "../../scripts/scenarios/harness/electron-e2e-harness";
+import {
+  withElectronScenario,
+  openNodexWindow,
+} from "../../scripts/scenarios/harness/electron-e2e-harness";
 import {
   STRUCTURAL_INTERACTIONS_SCENARIO_ID,
   STRUCTURAL_INTERACTIONS_PRESSURE_SCENARIO_ID,
@@ -322,13 +325,10 @@ test("structural gestures preserve Files and hand off source and target independ
               )
               .toBe(false);
           if (iteration === 0) {
-            const opened = application.waitForEvent("window");
-            expect(await invokeIpc(page, "window:new", {})).toBe(true);
-            const targetWindow = await opened;
+            const targetWindow = await openNodexWindow(application, async () => {
+              expect(await invokeIpc(page, "window:new", {})).toBe(true);
+            });
             targetWindow.on("pageerror", (error) => pageErrors.push(error.message));
-            await targetWindow.waitForURL((url) => url.protocol !== "about:");
-            await targetWindow.waitForLoadState("domcontentloaded");
-            await targetWindow.evaluate(() => window.api?.awaitInitialization?.());
             await targetWindow
               .getByRole("button", { name: "Open Structural Interactions", exact: true })
               .click();

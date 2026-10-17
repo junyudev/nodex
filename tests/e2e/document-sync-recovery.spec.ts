@@ -6,7 +6,10 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { expect, test } from "@playwright/test";
 import { openProjectBoard } from "../../scripts/scenarios/harness/project-board-ui";
-import { withElectronScenario } from "../../scripts/scenarios/harness/electron-e2e-harness";
+import {
+  withElectronScenario,
+  openNodexWindow,
+} from "../../scripts/scenarios/harness/electron-e2e-harness";
 import { DOCUMENT_SYNC_RECOVERY_SCENARIO_ID } from "../../scripts/scenarios/scenarios/document-sync-recovery";
 import { openBoardPageFromCard } from "./support/open-board-page";
 import { dragBlockFromEditorWithMouse } from "./support/drag-block-with-mouse";
@@ -293,9 +296,9 @@ test("editing, native reorder and cancelled structural waits recover through Ele
       const review = page.getByRole("button", { name: "Review", exact: true });
       await expect(review).toBeVisible({ timeout: 15000 });
       // A background window must converge through Core delivery without a focus refresh.
-      const audienceOpened = application.waitForEvent("window");
-      expect(await page.evaluate(() => window.api?.invoke("window:new", {}))).toBe(true);
-      const audience = await audienceOpened;
+      const audience = await openNodexWindow(application, async () => {
+        expect(await page.evaluate(() => window.api?.invoke("window:new", {}))).toBe(true);
+      });
       await audience.getByRole("button", { name: "Open Document Recovery", exact: true }).click();
       await openProjectBoard(audience);
       await openBoardPageFromCard({

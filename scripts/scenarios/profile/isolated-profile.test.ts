@@ -4,7 +4,10 @@ import path from "node:path";
 import { afterEach, describe, expect, test } from "vite-plus/test";
 
 import { acquireIsolatedRunLease } from "../../../src/main/core-client/isolated-run-ownership";
-import { getOpenCodeAgentSettings } from "../../../src/main/settings/application-settings-persistence";
+import {
+  getClaudeAgentSettings,
+  getOpenCodeAgentSettings,
+} from "../../../src/main/settings/application-settings-persistence";
 
 import {
   cleanupIsolatedProfile,
@@ -37,13 +40,13 @@ describe("isolated scenario Profile", () => {
     expect(profile.codexHome).not.toBe(process.env.CODEX_HOME);
     expect(path.dirname(profile.claudeConfigHome)).toBe(profile.runRoot);
     expect(await readdir(profile.claudeConfigHome)).toEqual([]);
-    // Read the way the app reads it: a disabled instance never probes the host's OpenCode.
-    expect(
-      getOpenCodeAgentSettings({
-        settingsPath: profile.settingsPath,
-        environment: {},
-      }).instances.map(({ enabled }) => enabled),
-    ).toEqual([false]);
+    // Read the way the app reads it: a disabled instance never probes the host's CLI.
+    for (const settings of [getClaudeAgentSettings, getOpenCodeAgentSettings])
+      expect(
+        settings({ settingsPath: profile.settingsPath, environment: {} }).instances.map(
+          ({ enabled }) => enabled,
+        ),
+      ).toEqual([false]);
     expect(JSON.parse(await readFile(profile.manifestPath, "utf8"))).toMatchObject({
       version: 1,
       runId: profile.runId,

@@ -7,6 +7,7 @@ import { createUuidV7 } from "../../src/shared/uuid-v7";
 import {
   ElectronScenarioHarness,
   readBoundedElectronRuntimeLogs,
+  openNodexWindow,
 } from "../../scripts/scenarios/harness/electron-e2e-harness";
 import {
   responses,
@@ -245,12 +246,9 @@ test("native Sidebar commands converge across two windows with mixed and built-i
         );
         actorId = actor.projectSessionId;
         await setAgentExecutionProfile(first, { preferredModelId: "gpt-5.6-sol" });
-        const opened = harness.application.waitForEvent("window");
-        expect(await invokeIpc(first, "window:new", {})).toBe(true);
-        const second = await opened;
-        await second.waitForURL((url) => url.protocol !== "about:");
-        await second.waitForLoadState("domcontentloaded");
-        await second.evaluate(() => window.api?.awaitInitialization?.());
+        const second = await openNodexWindow(harness.application, async () => {
+          expect(await invokeIpc(first, "window:new", {})).toBe(true);
+        });
         const windows = [first, second];
         const threadId = await sendAgentPrompt(first, actorId, "SIDEBAR_mixed");
         await waitForRuntimeCompletedAgentTurn(first, { sessionId: actorId, threadId }, 60_000);

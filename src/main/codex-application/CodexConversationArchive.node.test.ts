@@ -184,6 +184,8 @@ const makeArchive = (input: {
         write: () => Effect.die("unused"),
         writeInteraction: () => Effect.die("unused"),
         readPassiveContext: () => Effect.succeed(undefined),
+        readUnsentPassiveContext: () => Effect.succeed(undefined),
+        markPassiveContextSent: () => Effect.void,
         clearThread: (scope) =>
           input.widgetClearFailure
             ? Effect.fail(

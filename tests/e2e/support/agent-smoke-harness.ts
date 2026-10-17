@@ -450,7 +450,10 @@ export const sendAgentPrompt = async (
 ): Promise<string> =>
   (await sendAgentPromptWithEvidence(page, projectSessionId, prompt, beforeSend)).threadId;
 
-/** Sends a follow-up in the open chat and waits until its message is in the transcript. */
+/**
+ * Sends a follow-up in the open chat and waits until its message is in the transcript. Every
+ * painted frame shows the words either in the Composer or as the sent message, never neither.
+ */
 export const sendAgentFollowUp = async (page: Page, prompt: string): Promise<void> => {
   const composer = page
     .locator('[data-codex-composer="true"][aria-label="Ask for follow-up changes"]')
@@ -459,11 +462,37 @@ export const sendAgentFollowUp = async (page: Page, prompt: string): Promise<voi
     await composer.fill(prompt);
     await expect(composer).toHaveText(prompt, { timeout: 1_000 });
   }).toPass({ timeout: 10_000 });
+  await page.evaluate((expected) => {
+    const scope = window as typeof window & {
+      __followUpBlankFrames?: number;
+      __followUpFrame?: number;
+    };
+    const shows = (selector: string) =>
+      Array.from(document.querySelectorAll<HTMLElement>(selector)).some(
+        (element) => element.textContent?.replace(/\s+/gu, " ").includes(expected) === true,
+      );
+    scope.__followUpBlankFrames = 0;
+    const sample = () => {
+      if (!shows("[data-codex-composer='true']") && !shows("[data-user-message-bubble='true']"))
+        scope.__followUpBlankFrames = (scope.__followUpBlankFrames ?? 0) + 1;
+      scope.__followUpFrame = requestAnimationFrame(sample);
+    };
+    scope.__followUpFrame = requestAnimationFrame(sample);
+  }, prompt);
   await page.getByRole("button", { name: "Send prompt" }).click();
   await expect(page.locator("[data-user-message-bubble='true']", { hasText: prompt })).toHaveCount(
     1,
     { timeout: 10_000 },
   );
+  const blankFrames = await page.evaluate(() => {
+    const scope = window as typeof window & {
+      __followUpBlankFrames?: number;
+      __followUpFrame?: number;
+    };
+    if (scope.__followUpFrame !== undefined) cancelAnimationFrame(scope.__followUpFrame);
+    return scope.__followUpBlankFrames ?? 0;
+  });
+  expect(blankFrames, "frames showing the follow-up nowhere").toBe(0);
 };
 
 export const waitForFinalMarker = async (

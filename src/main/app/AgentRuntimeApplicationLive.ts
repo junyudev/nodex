@@ -1,3 +1,5 @@
+import { CodexVisualizationState } from "../codex-application/CodexVisualizationState";
+import { codexVisualizationPassiveParts } from "../../shared/codex-visualization-passive-context";
 import { createHash } from "node:crypto";
 import { join, resolve } from "node:path";
 import * as NodeServices from "@effect/platform-node/NodeServices";
@@ -147,6 +149,7 @@ const supervisor = Layer.effectContext(
     const images = yield* NativePromptImages;
     const workspace = yield* NativeSessionWorkspace;
     const presentation = yield* CodexTurnPresentation;
+    const visualizationState = yield* CodexVisualizationState;
     const desktop = makeDesktopTools({
       tools: yield* DesktopToolRuntime,
       browserUse: yield* BrowserUseRuntime,
@@ -208,6 +211,23 @@ const supervisor = Layer.effectContext(
         ensureWorkspaceRoot: ensureProjectlessWorkspaceRoot,
       },
       prepareImages: images.prepare,
+      interactiveState: {
+        unsent: (threadId) =>
+          visualizationState
+            .readUnsentPassiveContext({ hostId: "local", threadId })
+            .pipe(
+              Effect.map((context) =>
+                context
+                  ? { key: context.key, parts: codexVisualizationPassiveParts(context) }
+                  : undefined,
+              ),
+            ),
+        // A lost mark only means the same state is offered once more.
+        sent: (threadId, key) =>
+          visualizationState
+            .markPassiveContextSent({ hostId: "local", threadId }, key)
+            .pipe(Effect.ignore),
+      },
       prepareWorkspace: workspace.prepare,
       presentation,
       releaseDesktopSession: desktop.releaseSession,

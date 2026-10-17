@@ -1,7 +1,10 @@
 import { expect, test, type Page } from "@playwright/test";
 import { openProjectBoard } from "../../scripts/scenarios/harness/project-board-ui";
 import type { PageDetail } from "../../src/shared/page-detail";
-import { ElectronScenarioHarness } from "../../scripts/scenarios/harness/electron-e2e-harness";
+import {
+  ElectronScenarioHarness,
+  openNodexWindow,
+} from "../../scripts/scenarios/harness/electron-e2e-harness";
 import {
   createConvergenceBoardPage,
   createConvergenceProject,
@@ -61,12 +64,9 @@ test("two windows retain independent text history after the same Document's stru
         .locator('.nfm-editor .ProseMirror[contenteditable="true"]');
     };
     const firstEditor = await open(first);
-    const opened = harness.application.waitForEvent("window");
-    expect(await invokeIpc(first, "window:new", {})).toBe(true);
-    const second = await opened;
-    await second.waitForURL((url) => url.protocol !== "about:");
-    await second.waitForLoadState("domcontentloaded");
-    await second.evaluate(() => window.api?.awaitInitialization?.());
+    const second = await openNodexWindow(harness.application, async () => {
+      expect(await invokeIpc(first, "window:new", {})).toBe(true);
+    });
     const secondEditor = await open(second);
     const block = (editor: ReturnType<Page["locator"]>, id: string) =>
       editor.locator(`.bn-block[data-id="${id}"]`);
@@ -232,13 +232,10 @@ test("cross-window paste supersedes only the source Cut and keeps independent Un
     await sourceWindow.keyboard.type(" B-after");
     await expect(survivor).toHaveText("survivor C-before B-after");
 
-    const opened = harness.application.waitForEvent("window");
-    expect(await invokeIpc(sourceWindow, "window:new", {})).toBe(true);
-    const targetWindow = await opened;
+    const targetWindow = await openNodexWindow(harness.application, async () => {
+      expect(await invokeIpc(sourceWindow, "window:new", {})).toBe(true);
+    });
     targetWindow.on("pageerror", (error) => errors.push(error.message));
-    await targetWindow.waitForURL((url) => url.protocol !== "about:");
-    await targetWindow.waitForLoadState("domcontentloaded");
-    await targetWindow.evaluate(() => window.api?.awaitInitialization?.());
     const targetEditor = await open(targetWindow, target, "Paste target");
     const targetOwner = targetEditor.locator(`.bn-block[data-id="${child.pageId}"]`);
     const targetText = targetEditor.locator(

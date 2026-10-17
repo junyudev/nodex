@@ -243,6 +243,7 @@ export class AgentRuntimeConversationOwner {
   #generation = 0;
   #historyGeneration = 0;
   #sequence = 0;
+  readonly #observers = new Set<{ readonly sequence: number; readonly resolve: () => void }>();
   #cursor: string | null = null;
   #transcriptActive = false;
   #transcriptHydrated = false;
@@ -298,6 +299,30 @@ export class AgentRuntimeConversationOwner {
   };
   readonly children = (): readonly CodexConversationChildMembership[] => this.#children;
   readonly queueBoundary = (): string | null => this.#queuePage?.nextRunId ?? null;
+  /**
+   * Resolves once the conversation has applied the event a write reported, so what the write
+   * shows appears together with whatever the writer clears. A missing event waits no longer
+   * than the bound.
+   */
+  readonly whenObserved = (sequence: number, boundMs = 500): Promise<void> => {
+    if (this.#disposed || this.#sequence >= sequence) return Promise.resolve();
+    return new Promise((resolve) => {
+      const observer = {
+        sequence,
+        resolve: () => {
+          clearTimeout(timer);
+          this.#observers.delete(observer);
+          resolve();
+        },
+      };
+      const timer = setTimeout(observer.resolve, boundMs);
+      this.#observers.add(observer);
+    });
+  };
+  #settleObservers(): void {
+    for (const observer of [...this.#observers])
+      if (this.#disposed || observer.sequence <= this.#sequence) observer.resolve();
+  }
   readonly nextQueuePage = async (): Promise<void> => {
     await this.#queueRequest;
     if (!this.#queuePage?.nextCursor) return;
@@ -440,6 +465,7 @@ export class AgentRuntimeConversationOwner {
     this.#cohortHeads.clear();
     this.readOwner.dispose();
     this.#listeners.clear();
+    this.#settleObservers();
   }
 
   #thread(): AgentRuntimeThread | undefined {
@@ -490,6 +516,7 @@ export class AgentRuntimeConversationOwner {
             this.readOwner.readStructure() !== null,
         };
         this.#sequence = conversation.snapshot.snapshotSequence;
+        this.#settleObservers();
         if (transcript) {
           this.#cursor = conversation.snapshot.historyCursor ?? null;
           this.#historyGeneration += 1;
@@ -534,6 +561,7 @@ export class AgentRuntimeConversationOwner {
               return;
             }
             this.#accept(notification.event);
+            this.#settleObservers();
           },
         );
         if (generation !== this.#generation || this.#disposed) {

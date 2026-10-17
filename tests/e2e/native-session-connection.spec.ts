@@ -99,6 +99,16 @@ test("connects a Claude CLI conversation through the shared chooser and reopens 
         ],
       });
       const observationsPath = path.join(nativeHome, "observations.jsonl");
+      // Agent execution may probe the CLI for its account and models; only a launch that keeps
+      // a session would continue a conversation.
+      const conversationLaunches = () =>
+        existsSync(observationsPath)
+          ? readFileSync(observationsPath, "utf8")
+              .split("\n")
+              .filter(Boolean)
+              .map((line) => JSON.parse(line) as { type: string; persistent?: boolean })
+              .filter((entry) => entry.type === "launch" && entry.persistent)
+          : [];
 
       await page.getByRole("button", { name: "Settings", exact: true }).click();
       await page.getByRole("link", { name: "Conversations", exact: true }).click();
@@ -110,13 +120,13 @@ test("connects a Claude CLI conversation through the shared chooser and reopens 
       await expect(
         page.getByRole("button", { name: "Connect Existing CLI conversation" }),
       ).toBeVisible();
-      expect(existsSync(observationsPath)).toBe(false);
+      expect(conversationLaunches()).toEqual([]);
       await page.screenshot({ path: testInfo.outputPath("native-conversation-chooser.png") });
       await page.getByRole("button", { name: "Connect Existing CLI conversation" }).click();
       await expect(
         page.getByRole("button", { name: "Connected Existing CLI conversation" }),
       ).toBeDisabled();
-      expect(existsSync(observationsPath)).toBe(false);
+      expect(conversationLaunches()).toEqual([]);
       expect(readFileSync(transcriptPath, "utf8")).toBe(history);
 
       const attached = (await invokeIpc(page, "native-sessions:list", {
@@ -173,7 +183,7 @@ test("connects a Claude CLI conversation through the shared chooser and reopens 
         reopenedPage.getByText("Existing context retained", { exact: true }),
       ).toBeVisible();
       await expect(reopenedPage.locator('[data-codex-composer="true"]')).toHaveCount(0);
-      expect(existsSync(observationsPath)).toBe(false);
+      expect(conversationLaunches()).toEqual([]);
       expect(readFileSync(transcriptPath, "utf8")).toBe(history);
     },
   );

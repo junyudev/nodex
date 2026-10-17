@@ -35,12 +35,17 @@ function transport() {
     overview: vi
       .fn()
       .mockResolvedValueOnce({
-        active: { items: [item("one", "child-one")], nextCursor: "after-one", hasMore: true },
-        terminal: { items: [], nextCursor: null, hasMore: false },
+        active: {
+          items: [item("one", "child-one")],
+          nextCursor: "after-one",
+          hasMore: true,
+          totalCount: 2,
+        },
+        terminal: { items: [], nextCursor: null, hasMore: false, totalCount: 0 },
       })
       .mockResolvedValueOnce({
-        active: { items: [item("native", null)], nextCursor: null, hasMore: false },
-        terminal: { items: [], nextCursor: null, hasMore: false },
+        active: { items: [item("native", null)], nextCursor: null, hasMore: false, totalCount: 1 },
+        terminal: { items: [], nextCursor: null, hasMore: false, totalCount: 0 },
       }),
     inspect: vi.fn(async () => ({
       sessionId: "session",

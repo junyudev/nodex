@@ -6,6 +6,7 @@ import { createUuidV7 } from "../../src/shared/uuid-v7";
 import {
   ElectronScenarioHarness,
   readBoundedElectronRuntimeLogs,
+  openNodexWindow,
 } from "../../scripts/scenarios/harness/electron-e2e-harness";
 import { prepareScenarioCodexAppServerRuntimeSync } from "../../scripts/scenarios/runtime/agent-runtime-fixture";
 import {
@@ -104,18 +105,15 @@ test("two windows share an Agent chat's queue, Stop and Main commands, then cont
         ...(intent ? { intent } : {}),
       });
     await expect(first.getByRole("button", { name: "Stop", exact: true })).toBeVisible();
-    const opened = harness.application.waitForEvent("window");
-    expect(
-      await invokeIpc(first, "window:new", {
-        activeProjectSessionId: draft.projectSessionId,
-        activeProjectId: draft.projectId,
-      }),
-    ).toBe(true);
-    const second = await opened;
+    const second = await openNodexWindow(harness.application, async () => {
+      expect(
+        await invokeIpc(first, "window:new", {
+          activeProjectSessionId: draft.projectSessionId,
+          activeProjectId: draft.projectId,
+        }),
+      ).toBe(true);
+    });
     observe(second);
-    await second.waitForURL((url) => url.protocol !== "about:");
-    await second.waitForLoadState("domcontentloaded");
-    await second.evaluate(() => window.api?.awaitInitialization?.());
     const windows = await Promise.all(
       [first, second].map(
         async (page) =>

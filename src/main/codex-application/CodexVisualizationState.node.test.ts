@@ -10,7 +10,10 @@ import {
   codexVisualizationStateAtomKey,
   codexVisualizationInteractionAtomKey,
 } from "../../shared/codex-visualization-state";
-import type { CodexVisualizationPassiveContext } from "../../shared/codex-visualization-passive-context";
+import {
+  codexVisualizationPassiveParts,
+  type CodexVisualizationPassiveContext,
+} from "../../shared/codex-visualization-passive-context";
 import { ProfilePersistedAtoms } from "../local-store/ProfilePersistedAtoms";
 import { PersistedAtomStore } from "../local-store/persisted-atoms";
 import { codexClientThreadIdentityAtomKey } from "../codex/codex-client-thread-identity";
@@ -40,21 +43,7 @@ const write = (
   owner.write({ identity: target, state: { count }, mutationId: `write-${count}` }, "renderer-one");
 const payloads = (context: CodexVisualizationPassiveContext | undefined) => {
   assert.isDefined(context);
-  return context!.items
-    .filter((_, index) => index % 2 === 1)
-    .map((item) => {
-      if (!item || typeof item !== "object" || Array.isArray(item) || !Array.isArray(item.output))
-        throw new Error("Expected paired native output");
-      const output = item.output[0];
-      if (
-        !output ||
-        typeof output !== "object" ||
-        Array.isArray(output) ||
-        typeof output.text !== "string"
-      )
-        throw new Error("Expected native text output");
-      return JSON.parse(output.text) as unknown;
-    });
+  return codexVisualizationPassiveParts(context!);
 };
 const interaction = (
   store: PersistedAtomStore,
@@ -450,6 +439,30 @@ it.effect(
             { path: "/plot.html", interaction: { selected: 2 } },
           ],
         );
+      }),
+    ),
+);
+
+it.effect(
+  "offers an Agent chat each change of its widget context once, until the Thread is cleared",
+  () =>
+    withStore((store) =>
+      Effect.gen(function* () {
+        const owner = yield* CodexVisualizationState;
+        const scope = { hostId: "local", threadId: "display" };
+        yield* write(owner, identity, 1);
+        const first = yield* owner.readUnsentPassiveContext(scope);
+        assert.deepEqual(payloads(first), [{ path: "/plot.html", state: null }]);
+        yield* owner.markPassiveContextSent(scope, first!.key);
+        assert.strictEqual(yield* owner.readUnsentPassiveContext(scope), undefined);
+        interaction(store, identity, 2);
+        const changed = yield* owner.readUnsentPassiveContext(scope);
+        assert.notStrictEqual(changed?.key, first?.key);
+        yield* owner.markPassiveContextSent(scope, changed!.key);
+        yield* owner.clearThread(scope);
+        yield* write(owner, identity, 1);
+        // A cleared Thread forgets what was sent with the state it held.
+        assert.strictEqual((yield* owner.readUnsentPassiveContext(scope))?.key, first?.key);
       }),
     ),
 );

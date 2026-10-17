@@ -12,7 +12,6 @@ const logPath = process.env.NODEX_FAKE_CODEX_LOG_PATH;
 const baseFixture = process.env.NODEX_FAKE_CODEX_BASE_FIXTURE;
 if (!statePath || !commandPath || !logPath || !baseFixture)
   throw new Error("Transcript streaming fixture requires explicit isolated paths");
-let consumed = 0;
 const notify = (method, params) => process.stdout.write(`${JSON.stringify({ method, params })}\n`);
 const writeState = (state) => {
   const temporary = `${statePath}.${process.pid}.tmp`;
@@ -20,18 +19,19 @@ const writeState = (state) => {
   fs.renameSync(temporary, statePath);
 };
 const record = (command) => fs.appendFileSync(logPath, `${JSON.stringify({ method: "fixture-command", params: command })}\n`);
-const handle = (command) => {
-  const state = JSON.parse(fs.readFileSync(statePath, "utf8"));
+/** Runs a command in the Turn's own process; anything else leaves it for later. */
+const handle = (command, state) => {
   const threadId = state.thread?.id;
-  if (!threadId) throw new Error("The synthetic Thread has not been created through the app");
   // Streams go into the Turn the app started for the controlled prompt, as a model's reply would.
   const turn = state.turns.find(
     (entry) => entry.id === state.controlledTurnId && entry.status === "inProgress",
   );
-  // A command that arrives before the controlled prompt's Turn waits for it.
-  if (!turn) return false;
-  // Every app-server process of the Profile reads the channel; only the Turn's own one answers.
-  if (state.controlledTurnPid !== process.pid) return;
+  // A command that arrives before the app started the controlled prompt's Turn waits for it.
+  if (!threadId || !turn) return false;
+  // Every app-server process of the Profile reads the channel; only the Turn's own one answers,
+  // and it may start after the test wrote its commands.
+  if (state.controlledTurnPid !== process.pid) return false;
+  state.executedCommands = (state.executedCommands ?? 0) + 1;
   const message = (id, phase) => ({
     type: "agentMessage", id, text: "", phase, delivery: null, memoryCitation: null, questions: null,
   });
@@ -47,7 +47,7 @@ const handle = (command) => {
     turn.items.push(sibling, target);
     writeState(state);
     record(command);
-    return;
+    return true;
   }
   if (command.type === "delta") {
     const item = turn.items.find((entry) => entry.id === "stream-target");
@@ -55,7 +55,7 @@ const handle = (command) => {
     writeState(state);
     notify("item/agentMessage/delta", { threadId, turnId: turn.id, itemId: item.id, delta: command.delta });
     record(command);
-    return;
+    return true;
   }
   if (command.type !== "complete") throw new Error(`Unknown fixture command: ${command.type}`);
   turn.status = "completed";
@@ -67,15 +67,19 @@ const handle = (command) => {
   notify("turn/completed", { threadId, turn });
   notify("thread/status/changed", { threadId, status: { type: "idle" } });
   record(command);
+  return true;
 };
 
 fs.mkdirSync(path.dirname(commandPath), { recursive: true });
 if (!fs.existsSync(commandPath)) fs.writeFileSync(commandPath, "");
-// A restarted native process must not replay already executed synthetic commands.
-consumed = fs.readFileSync(commandPath, "utf8").split("\n").filter(Boolean).length;
+// The executed count is durable, so a restarted native process never replays a command.
 setInterval(() => {
   const commands = fs.readFileSync(commandPath, "utf8").split("\n").filter(Boolean);
-  while (consumed < commands.length && handle(JSON.parse(commands[consumed])) !== false) consumed++;
+  for (;;) {
+    const state = JSON.parse(fs.readFileSync(statePath, "utf8"));
+    const next = state.executedCommands ?? 0;
+    if (next >= commands.length || !handle(JSON.parse(commands[next]), state)) break;
+  }
 }, 10);
 // Cold resumes normally keep controlled streams alive; interaction scenarios
 // can opt into automatic completion for ordinary follow-up submissions.

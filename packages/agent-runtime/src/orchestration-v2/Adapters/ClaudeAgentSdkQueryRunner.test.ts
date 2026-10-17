@@ -219,3 +219,44 @@ it.effect(
       );
     }).pipe(Effect.provide(NodeServices.layer)),
 );
+
+it.live("ends its messages when closed while the CLI is idle", () =>
+  Effect.gen(function* () {
+    // An idle CLI never answers the pending read; only closing the Query releases it.
+    const idle = {
+      next: () => new Promise<never>(() => {}),
+      return: async () => ({ done: true as const, value: undefined }),
+      close: () => {},
+    } as unknown as ClaudeSdk.Query;
+    const query = vi.spyOn(ClaudeSdk, "query").mockReturnValue(idle);
+    yield* Effect.addFinalizer(() => Effect.sync(() => query.mockRestore()));
+    yield* Effect.gen(function* () {
+      const runner = yield* ClaudeAgentSdkQueryRunner;
+      const session = yield* runner.open({
+        threadId: ThreadId.make("thread-idle"),
+        providerSessionId: ProviderSessionId.make("session-idle"),
+        options: {
+          sessionId: "native-idle",
+          model: "claude-sonnet-4-6",
+          tools: [],
+          permissionMode: "default",
+        },
+      });
+      yield* session.close;
+      // A stopped Turn settles when this stream ends, not after a close timeout.
+      const ended = yield* session.messages.pipe(
+        Stream.runCollect,
+        Effect.timeoutOption("1 second"),
+      );
+      assert.isTrue(ended._tag === "Some");
+    }).pipe(
+      Effect.provide(
+        layerQueryRunner.pipe(
+          Layer.provide(
+            Layer.succeed(ProviderEventLoggers, { native: undefined, canonical: undefined }),
+          ),
+        ),
+      ),
+    );
+  }).pipe(Effect.provide(NodeServices.layer)),
+);

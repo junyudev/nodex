@@ -22,10 +22,12 @@ import {
   agentRuntimeOverviewSectionsToRefill,
   agentRuntimeOverviewWindow,
   appendAgentRuntimeOverviewPage,
+  agentRuntimeOverviewTotalsUnknown,
   applyAgentRuntimeOverviewTask,
   type AgentRuntimeOverviewWindow,
   projectAgentRuntimeSubagentOverview,
   type AgentRuntimeTaskRecord,
+  withAgentRuntimeOverviewTotals,
 } from "@/features/local-conversation/agent-runtime-subagent-overview";
 import {
   agentRuntimeAgentLabel,
@@ -283,7 +285,9 @@ export function AgentRuntimeSubagentsOverviewPanel(input: {
   const [state, setState] = useState<{
     source: AgentSubagentOverview | null;
     error: string | null;
-  }>({ source: null, error: null });
+    /** Advances when a report leaves the section totals to a re-read. */
+    recount: number;
+  }>({ source: null, error: null, recount: 0 });
   const [attachment, setAttachment] = useState(0);
   const loadingMore = useRef(new Set<"active" | "terminal">());
   const connection = useAgentRuntimeConnectionState();
@@ -335,7 +339,13 @@ export function AgentRuntimeSubagentsOverviewPanel(input: {
           else
             setState((current) =>
               current.source
-                ? { ...current, source: applyAgentRuntimeOverviewTask(current.source, task) }
+                ? {
+                    ...current,
+                    source: applyAgentRuntimeOverviewTask(current.source, task),
+                    recount:
+                      current.recount +
+                      Number(agentRuntimeOverviewTotalsUnknown(current.source, task)),
+                  }
                 : current,
             );
         },
@@ -351,9 +361,18 @@ export function AgentRuntimeSubagentsOverviewPanel(input: {
           threadId: input.threadId,
         });
         if (!active) return;
-        const source = (pending ?? []).reduce(applyAgentRuntimeOverviewTask, read);
+        let source = read;
+        let recount = false;
+        for (const task of pending ?? []) {
+          recount ||= agentRuntimeOverviewTotalsUnknown(source, task);
+          source = applyAgentRuntimeOverviewTask(source, task);
+        }
         pending = null;
-        setState({ source, error: null });
+        setState((current) => ({
+          source,
+          error: null,
+          recount: current.recount + Number(recount),
+        }));
       })
       .catch(fail);
     return () => {
@@ -361,6 +380,28 @@ export function AgentRuntimeSubagentsOverviewPanel(input: {
       release?.();
     };
   }, [input.sessionId, input.threadId, attachment]);
+  // Bursts of reports share one re-read; its totals replace the patched ones.
+  useEffect(() => {
+    if (state.recount === 0) return;
+    let active = true;
+    const timer = window.setTimeout(() => {
+      void agentRuntimeRuntime
+        .overview({ sessionId: input.sessionId, threadId: input.threadId })
+        .then((read) => {
+          if (!active) return;
+          setState((current) =>
+            current.source
+              ? { ...current, source: withAgentRuntimeOverviewTotals(current.source, read) }
+              : current,
+          );
+        })
+        .catch(() => {});
+    }, 100);
+    return () => {
+      active = false;
+      window.clearTimeout(timer);
+    };
+  }, [input.sessionId, input.threadId, state.recount]);
   useEffect(() => {
     for (const task of state.source?.terminal.items ?? [])
       agentRuntimeDelegatedTasks.settle(input.sessionId, task.id);
@@ -378,7 +419,11 @@ export function AgentRuntimeSubagentsOverviewPanel(input: {
       });
       setState((current) =>
         current.source
-          ? { source: appendAgentRuntimeOverviewPage(current.source, page, key), error: null }
+          ? {
+              ...current,
+              source: appendAgentRuntimeOverviewPage(current.source, page, key),
+              error: null,
+            }
           : current,
       );
     } catch (cause) {

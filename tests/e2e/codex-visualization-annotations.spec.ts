@@ -248,9 +248,13 @@ test("authors, previews and persists HTML adjustments and sends them as app data
     const streamingFrameId = await newFrames.getAttribute("data-visualization-frame-id");
     if (!streamingFrameId) throw new Error("Streaming visualization has no resource identity");
     const streamed = page.locator(`[data-visualization-frame-id="${streamingFrameId}"]`);
+    // Fullscreen is offered while the response loads; adjustments wait for its document.
     await expect(
       streamed.getByRole("button", { name: "Open fullscreen", exact: true }),
-    ).toBeVisible({ timeout: 60_000 });
+    ).toBeVisible();
+    await expect(streamed).toHaveAttribute("data-visualization-status", "ready", {
+      timeout: 60_000,
+    });
     await expect(
       streamed.getByRole("button", { name: "Adjust visualization", exact: true }),
     ).toBeVisible();

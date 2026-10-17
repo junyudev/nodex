@@ -3,6 +3,7 @@ import {
   agentMessageDisplayText,
   prepareAgentAppContext,
   prepareAgentMessage,
+  retainAgentAppContext,
 } from "./agent-prompt";
 
 const prepareAgentPrompt = async (...input: Parameters<typeof prepareAgentMessage>) =>
@@ -165,4 +166,27 @@ it("compiles visualization follow-ups as labeled app data and refuses invalid ca
       untrustedAppMessage: { ...untrustedAppMessage, sourceId: "" },
     }),
   ).rejects.toThrow("Invalid untrusted app message");
+});
+
+it("keeps a queued message's app data when its words are rewritten", async () => {
+  const untrustedAppMessage = {
+    source: "visualization" as const,
+    sourceId: "chart-1",
+    text: "Use the highlighted bar",
+    structuredContent: { bar: 3 },
+  };
+  const original = await prepareAgentMessage("Compare these", undefined, vi.fn(), {
+    untrustedAppMessage,
+  });
+  const rewritten = retainAgentAppContext({ text: "Compare only the first two" }, original);
+  expect(agentMessageDisplayText(rewritten.text)).toBe("Compare only the first two");
+  expect(rewritten.context).toEqual(original.context);
+  expect(rewritten.text.replace("Compare only the first two", "Compare these")).toBe(original.text);
+
+  // New app data replaces the old; a message that had none gains none.
+  const fresh = await prepareAgentMessage("Compare", undefined, vi.fn(), {
+    untrustedAppMessage: { ...untrustedAppMessage, sourceId: "chart-2" },
+  });
+  expect(retainAgentAppContext(fresh, original)).toBe(fresh);
+  expect(retainAgentAppContext({ text: "Plain" }, { text: "Before" })).toEqual({ text: "Plain" });
 });

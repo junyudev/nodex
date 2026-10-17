@@ -52,36 +52,40 @@ test("the real Desktop binds plain nodex to its connected Profile and task Proje
     let threadId: string | undefined;
     let shellEnvironment: Record<string, string> | undefined;
     let connection: string | undefined;
+    // A fresh Profile's first message waits for its Agent catalog's first check.
     await expect
-      .poll(async () => {
-        const rows = (await readFile(log, "utf8"))
-          .trim()
-          .split("\n")
-          .map((line) => JSON.parse(line));
-        const launch = rows.find((row) => row.method === "launch");
-        shellEnvironment = launch
-          ? Object.fromEntries(
-              launch.params.args
-                .filter((arg: string) => arg.startsWith("shell_environment_policy.set."))
-                .map((arg: string) => {
-                  const equal = arg.indexOf("=");
-                  return [
-                    arg.slice("shell_environment_policy.set.".length, equal),
-                    JSON.parse(arg.slice(equal + 1)),
-                  ];
-                }),
-            )
-          : undefined;
-        const request = rows.find(
-          (row) => row.method === "rpc" && row.params.method === "turn/start",
-        );
-        const context = request?.params.params.additionalContext?.nodex_host?.value as
-          | string
-          | undefined;
-        connection = context;
-        threadId = request?.params.params.threadId;
-        return connection;
-      })
+      .poll(
+        async () => {
+          const rows = (await readFile(log, "utf8"))
+            .trim()
+            .split("\n")
+            .map((line) => JSON.parse(line));
+          const launch = rows.find((row) => row.method === "launch");
+          shellEnvironment = launch
+            ? Object.fromEntries(
+                launch.params.args
+                  .filter((arg: string) => arg.startsWith("shell_environment_policy.set."))
+                  .map((arg: string) => {
+                    const equal = arg.indexOf("=");
+                    return [
+                      arg.slice("shell_environment_policy.set.".length, equal),
+                      JSON.parse(arg.slice(equal + 1)),
+                    ];
+                  }),
+              )
+            : undefined;
+          const request = rows.find(
+            (row) => row.method === "rpc" && row.params.method === "turn/start",
+          );
+          const context = request?.params.params.additionalContext?.nodex_host?.value as
+            | string
+            | undefined;
+          connection = context;
+          threadId = request?.params.params.threadId;
+          return connection;
+        },
+        { timeout: 30_000 },
+      )
       .toBeTruthy();
     expect(threadId, connection).toBeDefined();
     expect(connection).toContain("Use nodex directly");

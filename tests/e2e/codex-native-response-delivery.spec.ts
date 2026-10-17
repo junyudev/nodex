@@ -5,7 +5,10 @@ import type { Thread } from "../../packages/codex-app-server-protocol/src/v2/Thr
 import type { CodexHostMessage } from "../../src/shared/types";
 import type { IpcApi } from "../../src/shared/ipc-api";
 import { invokeIpc } from "./support/agent-smoke-harness";
-import { ElectronScenarioHarness } from "../../scripts/scenarios/harness/electron-e2e-harness";
+import {
+  ElectronScenarioHarness,
+  openNodexWindow,
+} from "../../scripts/scenarios/harness/electron-e2e-harness";
 import { prepareScenarioCodexAppServerRuntimeSync } from "../../scripts/scenarios/runtime/agent-runtime-fixture";
 
 const nativeThreadReadRequest = (
@@ -205,12 +208,9 @@ test("does not broadcast a destroyed coalesced leader when a live waiter receive
       .map((line) => JSON.parse(line) as { method: string; params: { requestId?: string } });
   try {
     const first = await harness.launch();
-    const opened = harness.application.waitForEvent("window");
-    expect(await invokeIpc(first, "window:new", {})).toBe(true);
-    const second = await opened;
-    await second.waitForURL((url) => url.protocol !== "about:");
-    await second.waitForLoadState("domcontentloaded");
-    await second.evaluate(() => window.api?.awaitInitialization?.());
+    const second = await openNodexWindow(harness.application, async () => {
+      expect(await invokeIpc(first, "window:new", {})).toBe(true);
+    });
     fs.rmSync(releasePath, { force: true });
 
     await second.evaluate(() => {
@@ -312,12 +312,9 @@ test("uses the exact request-id prefixes when routing destroyed read responses",
     });
   try {
     const first = await harness.launch();
-    const openedSecond = harness.application.waitForEvent("window");
-    expect(await invokeIpc(first, "window:new", {})).toBe(true);
-    const second = await openedSecond;
-    await second.waitForURL((url) => url.protocol !== "about:");
-    await second.waitForLoadState("domcontentloaded");
-    await second.evaluate(() => window.api?.awaitInitialization?.());
+    const second = await openNodexWindow(harness.application, async () => {
+      expect(await invokeIpc(first, "window:new", {})).toBe(true);
+    });
     await installEvidence(second);
 
     fs.rmSync(releasePath, { force: true });
@@ -346,12 +343,9 @@ test("uses the exact request-id prefixes when routing destroyed read responses",
       .toEqual(["destroyed-read-random-uuid"]);
 
     fs.rmSync(releasePath, { force: true });
-    const openedThird = harness.application.waitForEvent("window");
-    expect(await invokeIpc(second, "window:new", {})).toBe(true);
-    const third = await openedThird;
-    await third.waitForURL((url) => url.protocol !== "about:");
-    await third.waitForLoadState("domcontentloaded");
-    await third.evaluate(() => window.api?.awaitInitialization?.());
+    const third = await openNodexWindow(harness.application, async () => {
+      expect(await invokeIpc(second, "window:new", {})).toBe(true);
+    });
     await installEvidence(third);
     await second.evaluate<void, unknown>((input) => {
       const api = window.api;

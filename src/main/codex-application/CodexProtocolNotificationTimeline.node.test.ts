@@ -112,6 +112,8 @@ const fixture = Effect.fn("notificationTimelineTest.fixture")(function* (
           write: () => Effect.die("unused"),
           writeInteraction: () => Effect.die("unused"),
           readPassiveContext: () => Effect.succeed(undefined),
+          readUnsentPassiveContext: () => Effect.succeed(undefined),
+          markPassiveContextSent: () => Effect.void,
           clearThread: () => Effect.succeed([]),
         }),
       ),

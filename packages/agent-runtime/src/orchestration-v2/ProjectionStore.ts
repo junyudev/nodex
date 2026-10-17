@@ -541,6 +541,8 @@ export interface ProjectionSubagentOverviewPage {
   readonly items: readonly ProjectionSubagentOverviewItem[];
   readonly nextCursor: string | null;
   readonly hasMore: boolean;
+  /** Every task in this section, loaded or not. */
+  readonly totalCount: number;
 }
 export interface ProjectionSubagentOverview {
   readonly active: ProjectionSubagentOverviewPage;
@@ -6846,16 +6848,21 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
                     threadId: input.threadId,
                     cause: new Error("Invalid task overview cursor"),
                   });
+                const inPhase = sql`thread_id = ${input.threadId}
+              ${input.taskId === undefined ? sql`` : sql`AND subagent_id = ${input.taskId}`}
+              AND CASE WHEN status IN ('completed','failed','cancelled','interrupted') THEN 'terminal' ELSE 'active' END = ${phase}`;
+                const [counted] = yield* sql<{ total: number }>`
+            SELECT COUNT(*) AS total FROM orchestration_v2_projection_subagents WHERE ${inPhase}`;
+                const totalCount = counted?.total ?? 0;
                 const ids = yield* sql<{ subagent_id: string; updated_at: string }>`
             SELECT subagent_id, updated_at FROM orchestration_v2_projection_subagents
-            WHERE thread_id = ${input.threadId}
-              ${input.taskId === undefined ? sql`` : sql`AND subagent_id = ${input.taskId}`}
-              AND CASE WHEN status IN ('completed','failed','cancelled','interrupted') THEN 'terminal' ELSE 'active' END = ${phase}
+            WHERE ${inPhase}
               AND (${anchor?.updatedAt ?? null} IS NULL OR updated_at < ${anchor?.updatedAt ?? null}
                 OR (updated_at = ${anchor?.updatedAt ?? null} AND subagent_id < ${anchor?.id ?? null}))
             ORDER BY updated_at DESC, subagent_id DESC LIMIT ${limit + 1}`;
                 const admitted = ids.slice(0, limit);
-                if (admitted.length === 0) return { items: [], nextCursor: null, hasMore: false };
+                if (admitted.length === 0)
+                  return { items: [], nextCursor: null, hasMore: false, totalCount };
                 const rows = yield* sql<PayloadRow>`SELECT json_patch(json_object(
             'id', task.subagent_id, 'threadId', task.thread_id, 'runId', task.run_id,
             'parentNodeId', task.parent_node_id, 'origin', task.origin, 'driver', task.driver,
@@ -6882,6 +6889,7 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
                 return {
                   items,
                   hasMore,
+                  totalCount,
                   nextCursor: hasMore
                     ? encodeSubagentOverviewCursor(
                         input.threadId,
@@ -10403,13 +10411,14 @@ export const layerMemory: Layer.Layer<ProjectionStoreV2> = Layer.effect(
                   threadId: input.threadId,
                   cause: new Error("Invalid task overview cursor"),
                 });
-              const candidates = state.subagents
+              const inPhase = state.subagents.filter(
+                (task) =>
+                  (input.taskId === undefined || task.id === input.taskId) &&
+                  ["completed", "failed", "cancelled", "interrupted"].includes(task.status) ===
+                    (phase === "terminal"),
+              );
+              const candidates = inPhase
                 .filter((task) => {
-                  if (input.taskId !== undefined && task.id !== input.taskId) return false;
-                  const terminal = ["completed", "failed", "cancelled", "interrupted"].includes(
-                    task.status,
-                  );
-                  if (terminal !== (phase === "terminal")) return false;
                   const updatedAt = DateTime.formatIso(task.updatedAt);
                   return (
                     anchor === null ||
@@ -10460,6 +10469,7 @@ export const layerMemory: Layer.Layer<ProjectionStoreV2> = Layer.effect(
               return {
                 items,
                 hasMore,
+                totalCount: inPhase.length,
                 nextCursor:
                   hasMore && last
                     ? encodeSubagentOverviewCursor(

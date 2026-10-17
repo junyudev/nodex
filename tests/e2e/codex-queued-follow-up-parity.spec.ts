@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { openNewChatDraft } from "./support/new-chat-draft";
 import fs from "node:fs";
 import path from "node:path";
 import { ElectronScenarioHarness } from "../../scripts/scenarios/harness/electron-e2e-harness";
@@ -37,24 +38,9 @@ const queueAndInterrupt = async (
   beforeQueue?: (page: Page) => Promise<void>,
 ): Promise<Page> => {
   const page = await harness.launch();
-  await page.getByRole("button", { name: "New chat" }).first().click();
-  await expect
-    .poll(
-      async () =>
-        await page.evaluate(async () => {
-          const projects = (await window.api?.invoke("projects:list")) as
-            | { items?: Array<{ id?: unknown }> }
-            | undefined;
-          const projectId = projects?.items?.[0]?.id;
-          if (typeof projectId !== "string") return 0;
-          const tasks = (await window.api?.invoke("workspace:tasks:list", projectId, {
-            first: 50,
-          })) as { items?: Array<{ thread?: unknown }> } | undefined;
-          return tasks?.items?.filter((item) => item.thread == null).length ?? 0;
-        }),
-    )
-    .toBe(1);
-  const newThreadComposer = page.locator('[data-codex-composer="true"][aria-label="Do anything"]');
+  const newThreadComposer = (await openNewChatDraft(page)).locator(
+    '[data-codex-composer="true"][aria-label="Do anything"]',
+  );
   await expect(newThreadComposer).toBeVisible();
   await newThreadComposer.fill("Hold the active turn for queue parity");
   await expect(newThreadComposer).toHaveText("Hold the active turn for queue parity");

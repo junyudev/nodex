@@ -67,6 +67,24 @@ function fingerprint(value: string): string {
   return result.toString(16).padStart(16, "0");
 }
 
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  value !== null && typeof value === "object" && !Array.isArray(value);
+
+/** Each widget's model content as data, without the native tool-history framing. */
+export function codexVisualizationPassiveParts(
+  context: CodexVisualizationPassiveContext,
+): readonly Record<string, unknown>[] {
+  return context.items.flatMap((item) => {
+    if (!isRecord(item) || item.type !== "function_call_output" || !Array.isArray(item.output))
+      return [];
+    return item.output.flatMap((part) => {
+      if (!isRecord(part) || part.type !== "input_text" || typeof part.text !== "string") return [];
+      const value: unknown = JSON.parse(part.text);
+      return isRecord(value) ? [value] : [];
+    });
+  });
+}
+
 /** Compiles persisted model context independently of whether its widget is currently mounted. */
 export function compileCodexVisualizationPassiveContext(input: {
   readonly scope: CodexVisualizationStateScope;

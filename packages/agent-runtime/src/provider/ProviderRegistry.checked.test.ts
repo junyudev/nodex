@@ -41,41 +41,63 @@ const checked: ServerProvider = {
   models: [{ slug: "gpt-5.5", name: "GPT-5.5", isCustom: false, capabilities: null }],
 };
 
+const instanceOf = (
+  provider: ServerProvider,
+  current: Ref.Ref<ServerProvider>,
+  initialCheck: Effect.Effect<void>,
+) =>
+  ({
+    instanceId: provider.instanceId,
+    driverKind: provider.driver,
+    continuationIdentity: {
+      driverKind: provider.driver,
+      continuationKey: `${provider.instanceId}:test`,
+    },
+    displayName: undefined,
+    enabled: true,
+    snapshot: {
+      resolveMaintenance: () =>
+        Effect.succeed(
+          makeManualOnlyProviderMaintenanceCapabilities({
+            provider: provider.driver,
+            packageName: null,
+          }),
+        ),
+      getSnapshot: Ref.get(current),
+      initialCheck,
+      refresh: Ref.get(current),
+      // The result must be read even when no change notification arrives.
+      streamChanges: Stream.empty,
+      applyUsageLimits: () => Effect.void,
+    },
+    orchestrationAdapter: {} as ProviderInstance["orchestrationAdapter"],
+    textGeneration: {} as ProviderInstance["textGeneration"],
+  }) satisfies ProviderInstance;
+
+const registryOf = (instances: ReadonlyArray<ProviderInstance>) =>
+  ProviderRegistry.layer.pipe(
+    Layer.provide(
+      Layer.succeed(ProviderInstanceRegistry.ProviderInstanceRegistry, {
+        getInstance: (id) =>
+          Effect.succeed(instances.find((instance) => instance.instanceId === id)),
+        listInstances: Effect.succeed(instances),
+        listUnavailable: Effect.succeed([]),
+        streamChanges: Stream.empty,
+        subscribeChanges: Effect.flatMap(PubSub.unbounded<void>(), PubSub.subscribe),
+      }),
+    ),
+  );
+
+const environment = Layer.mergeAll(
+  ModelManifest.layerTest,
+  ServerConfig.layerTest(process.cwd(), { prefix: "nodex-provider-checked-" }),
+).pipe(Layer.provideMerge(NodeServices.layer));
+
 it.effect("a checked read waits for the first status check instead of a placeholder", () =>
   Effect.gen(function* () {
     const current = yield* Ref.make(unchecked);
     const firstCheck = yield* Deferred.make<void>();
-    const instance = {
-      instanceId: unchecked.instanceId,
-      driverKind: unchecked.driver,
-      continuationIdentity: { driverKind: unchecked.driver, continuationKey: "codex:test" },
-      displayName: undefined,
-      enabled: true,
-      snapshot: {
-        resolveMaintenance: () =>
-          Effect.succeed(
-            makeManualOnlyProviderMaintenanceCapabilities({
-              provider: unchecked.driver,
-              packageName: null,
-            }),
-          ),
-        getSnapshot: Ref.get(current),
-        initialCheck: Deferred.await(firstCheck),
-        refresh: Ref.get(current),
-        // The result must be read even when no change notification arrives.
-        streamChanges: Stream.empty,
-        applyUsageLimits: () => Effect.void,
-      },
-      orchestrationAdapter: {} as ProviderInstance["orchestrationAdapter"],
-      textGeneration: {} as ProviderInstance["textGeneration"],
-    } satisfies ProviderInstance;
-    const instances = Layer.succeed(ProviderInstanceRegistry.ProviderInstanceRegistry, {
-      getInstance: (id) => Effect.succeed(id === instance.instanceId ? instance : undefined),
-      listInstances: Effect.succeed([instance]),
-      listUnavailable: Effect.succeed([]),
-      streamChanges: Stream.empty,
-      subscribeChanges: Effect.flatMap(PubSub.unbounded<void>(), PubSub.subscribe),
-    });
+    const instance = instanceOf(unchecked, current, Deferred.await(firstCheck));
     yield* Effect.gen(function* () {
       const registry = yield* ProviderRegistry.ProviderRegistry;
       assert.strictEqual((yield* registry.getProviders)[0]?.installed, false);
@@ -90,13 +112,26 @@ it.effect("a checked read waits for the first status check instead of a placehol
         providers[0]?.models.map(({ slug }) => slug),
         ["gpt-5.5"],
       );
-    }).pipe(Effect.provide(ProviderRegistry.layer.pipe(Layer.provide(instances))), Effect.scoped);
-  }).pipe(
-    Effect.provide(
-      Layer.mergeAll(
-        ModelManifest.layerTest,
-        ServerConfig.layerTest(process.cwd(), { prefix: "nodex-provider-checked-" }),
-      ).pipe(Layer.provideMerge(NodeServices.layer)),
-    ),
-  ),
+    }).pipe(Effect.provide(registryOf([instance])), Effect.scoped);
+  }).pipe(Effect.provide(environment)),
+);
+
+it.effect("a read of named Agents does not wait for another Agent's check", () =>
+  Effect.gen(function* () {
+    const slow: ServerProvider = {
+      ...unchecked,
+      instanceId: ProviderInstanceId.make("claude-default"),
+      driver: ProviderDriverKind.make("claudeAgent"),
+    };
+    const codex = instanceOf(checked, yield* Ref.make(checked), Effect.void);
+    const claude = instanceOf(slow, yield* Ref.make(slow), Effect.never);
+    yield* Effect.gen(function* () {
+      const registry = yield* ProviderRegistry.ProviderRegistry;
+      const providers = yield* registry.getCheckedProvidersFor(["codex"]);
+      assert.deepStrictEqual(
+        providers.map(({ instanceId, status }) => [instanceId, status]),
+        [["codex", "ready"]],
+      );
+    }).pipe(Effect.provide(registryOf([codex, claude])), Effect.scoped);
+  }).pipe(Effect.provide(environment)),
 );

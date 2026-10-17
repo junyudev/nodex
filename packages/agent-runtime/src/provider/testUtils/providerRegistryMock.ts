@@ -10,6 +10,8 @@ const makeProviderRegistryMock = (
 ): ProviderRegistry.ProviderRegistry["Service"] => ({
   getProviders: Effect.succeed(providers),
   getCheckedProviders: Effect.succeed(providers),
+  getCheckedProvidersFor: (instanceIds) =>
+    Effect.succeed(providers.filter((provider) => instanceIds.includes(provider.instanceId))),
   refresh: () => Effect.succeed(providers),
   refreshInstance: () => Effect.succeed(providers),
   refreshWorkspaceSnapshot: () => Effect.succeed(providers),

@@ -520,6 +520,8 @@ const makeHarness = (input: {
         writeInteraction: () => Effect.die("unused"),
         clearThread: () => Effect.die("unused"),
         readPassiveContext: input.readPassiveContext ?? (() => Effect.succeed(undefined)),
+        readUnsentPassiveContext: () => Effect.succeed(undefined),
+        markPassiveContextSent: () => Effect.void,
       }),
       Effect.provideService(
         CodexAutoThreadTitle,

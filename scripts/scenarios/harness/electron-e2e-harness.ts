@@ -89,6 +89,36 @@ export async function waitForNodexWindowInitialization(page: Page): Promise<Page
   throw new Error("Nodex application window did not finish initialization before the deadline");
 }
 
+/**
+ * Opens one more application window and resolves it once Main has initialized it. The
+ * dictation and avatar overlays are windows too, and may appear meanwhile; only a window
+ * with the application preload is the one that was opened.
+ */
+export async function openNodexWindow(
+  application: ElectronApplication,
+  open: () => Promise<unknown>,
+): Promise<Page> {
+  const existing = new Set(application.windows());
+  await open();
+  const deadline = Date.now() + APPLICATION_WINDOW_DISCOVERY_TIMEOUT_MS;
+  while (Date.now() < deadline) {
+    for (const page of application.windows()) {
+      if (existing.has(page) || page.isClosed()) continue;
+      const hasApplicationPreload = await page
+        .evaluate(() =>
+          Boolean(
+            (window as unknown as { api?: { awaitInitialization?: unknown } }).api
+              ?.awaitInitialization,
+          ),
+        )
+        .catch(() => false);
+      if (hasApplicationPreload) return await waitForNodexWindowInitialization(page);
+    }
+    await delay(25);
+  }
+  throw new Error("Nodex did not open another application window before the deadline");
+}
+
 /** Resolves the first physical application window without waiting for Main initialization. */
 export async function waitForNodexFirstWindow(application: ElectronApplication): Promise<Page> {
   const deadline = Date.now() + APPLICATION_WINDOW_DISCOVERY_TIMEOUT_MS;

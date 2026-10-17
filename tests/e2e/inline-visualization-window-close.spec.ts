@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 import {
   ElectronScenarioHarness,
-  waitForNodexWindowInitialization,
+  openNodexWindow,
 } from "../../scripts/scenarios/harness/electron-e2e-harness";
 import { createAgentSmokeDraft, invokeIpc } from "./support/agent-smoke-harness";
 
@@ -32,15 +32,14 @@ test("native window close releases its prepared visualization guest without rend
       }, guestId),
     ).toBe(true);
 
-    const opened = harness.application.waitForEvent("window");
-    expect(
-      await invokeIpc(page, "window:new", {
-        activeProjectId: draft.projectId,
-        activeProjectSessionId: null,
-      }),
-    ).toBe(true);
-    const survivingWindow = await opened;
-    await waitForNodexWindowInitialization(survivingWindow);
+    const survivingWindow = await openNodexWindow(harness.application, async () => {
+      expect(
+        await invokeIpc(page, "window:new", {
+          activeProjectId: draft.projectId,
+          activeProjectSessionId: null,
+        }),
+      ).toBe(true);
+    });
 
     const closed = page.waitForEvent("close");
     const ownerWindow = await harness.application.browserWindow(page);

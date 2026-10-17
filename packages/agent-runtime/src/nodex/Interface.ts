@@ -68,17 +68,16 @@ export type AgentSubagentOverviewItem = AgentWire<
     | "updatedAt"
   >
 > & { readonly childRunId: string | null; readonly resultAvailable: boolean };
+export interface AgentSubagentOverviewPage {
+  readonly items: ReadonlyArray<AgentSubagentOverviewItem>;
+  readonly nextCursor: string | null;
+  readonly hasMore: boolean;
+  /** Every task in this section, loaded or not. */
+  readonly totalCount: number;
+}
 export interface AgentSubagentOverview {
-  readonly active: {
-    readonly items: ReadonlyArray<AgentSubagentOverviewItem>;
-    readonly nextCursor: string | null;
-    readonly hasMore: boolean;
-  };
-  readonly terminal: {
-    readonly items: ReadonlyArray<AgentSubagentOverviewItem>;
-    readonly nextCursor: string | null;
-    readonly hasMore: boolean;
-  };
+  readonly active: AgentSubagentOverviewPage;
+  readonly terminal: AgentSubagentOverviewPage;
 }
 
 export interface AgentRuntimeConfiguration {
@@ -308,7 +307,8 @@ export interface AgentRuntimeOperations {
     readonly output: AgentWire<OrchestrationV2ThreadShell> | null;
   };
   readonly "providers.read": {
-    readonly input: { readonly refresh?: boolean };
+    /** Naming instances reads only those Agents, without waiting for the others' checks. */
+    readonly input: { readonly refresh?: boolean; readonly instanceIds?: ReadonlyArray<string> };
     readonly output: ReadonlyArray<AgentWire<ServerProvider>>;
   };
   readonly "providers.configure": {

@@ -90,6 +90,10 @@ steering, selected-Run stop, information answers, model selection and planning.
 App-supplied data — interactive response changes or an app's model context — travels beside
 the user's words as a context record rather than inside them. The transcript, queue and
 editing show only what the user wrote; the Agent receives the record as data marked untrusted.
+Editing a queued message rewrites only those words: the record it carried stays with it.
+State the user leaves in a chat's interactive responses travels the same way, with their next
+message that starts a Run and once per change; a steer, a queued message or a message that
+already carries app data leaves it for later, and a response's private content never travels.
 Page editor submissions use that same interface. New submissions promote the chosen
 Session with its Page links, model options and workspace configuration; existing
 sections resolve a bound Session before sending. Imported native history does not
@@ -429,4 +433,6 @@ Listing providers and models starts the process only when nothing current is kno
 is stopped, model pickers, launch defaults and provider checks see the catalog it last served,
 as long as the execution build and the provider settings and installation it described are
 unchanged; otherwise the listing starts the process. A running process always answers live,
-and an explicit refresh always reaches it.
+and an explicit refresh always reaches it. A listing may name the Agents it needs; it then waits
+only for their first checks. A first message sent before any model is chosen takes Codex's
+default as soon as Codex is checked, and reads the whole catalog only when Codex has none.

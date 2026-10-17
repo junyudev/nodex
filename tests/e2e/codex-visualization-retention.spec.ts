@@ -4,6 +4,7 @@ import path from "node:path";
 import {
   ElectronScenarioHarness,
   readBoundedElectronRuntimeLogs,
+  openNodexWindow,
 } from "../../scripts/scenarios/harness/electron-e2e-harness";
 import { resolveCodexThreadVisualizationDirectory } from "../../src/main/codex/codex-dynamic-first-turn-context";
 import {
@@ -583,15 +584,16 @@ test("retains native HTML guests across real Thread navigation and releases dele
     expect([...guestsBeforeClose].sort((left, right) => left - right)).toEqual(
       [...a.map((guest) => guest.id), finalSpare.id].sort((left, right) => left - right),
     );
-    const opened = harness.application.waitForEvent("window");
-    expect(
-      await invokeIpc(page, "window:new", {
-        activeProjectId: sessions[0]!.projectId,
-        activeProjectSessionId: null,
-      }),
-    ).toBe(true);
-    const survivingWindow = await opened;
-    await survivingWindow.waitForURL((url) => url.protocol !== "about:");
+    const opener = page;
+    // Another window keeps the app running while this one closes.
+    await openNodexWindow(harness.application, async () => {
+      expect(
+        await invokeIpc(opener, "window:new", {
+          activeProjectId: sessions[0]!.projectId,
+          activeProjectSessionId: null,
+        }),
+      ).toBe(true);
+    });
     const closed = page.waitForEvent("close");
     const ownerWindow = await harness.application.browserWindow(page);
     await ownerWindow.evaluate((window) => window.close());

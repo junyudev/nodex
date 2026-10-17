@@ -117,8 +117,10 @@ test("shows an Agent chat's subagents and reads the selected child without resum
     await expect(
       active.getByRole("button", { name: "Open subagent Approval sentinel" }),
     ).toBeVisible();
-    // Done is read a page at a time and claims no total it has not read.
-    await expect(done.getByRole("heading", { name: /^Done · 1\d\+?$/u })).toBeVisible();
+    // Done is read a page at a time but counts every finished subagent from the start.
+    await expect(done.getByRole("heading", { name: "Done · 13" })).toBeVisible({
+      timeout: 30_000,
+    });
     await expandSection(done);
     await expect(done.getByRole("heading", { name: "Done · 13" })).toBeVisible();
     await expect(rows(done)).toHaveCount(13);
@@ -168,11 +170,11 @@ test("omits an empty Done section and remains usable at narrow width", async () 
     await openSubagentsPanel(page);
     const { panel, active } = overviewSections(page);
     await expect(panel).toBeVisible({ timeout: 30_000 });
-    await expect(active.getByRole("heading", { name: /^Active · [45]\+?$/u })).toBeVisible({
+    await expect(active.getByRole("heading", { name: "Active · 5" })).toBeVisible({
       timeout: 30_000,
     });
     await expandSection(active);
-    await expect(active.getByRole("heading", { name: "Active · 5" })).toBeVisible();
+    await expect(rows(active)).toHaveCount(5);
     await expect(panel.locator('[data-subagent-overview-section="done"]')).toHaveCount(0);
     await expect(panel.getByRole("heading", { name: /^Done/u })).toHaveCount(0);
     await expect(
@@ -195,13 +197,12 @@ test("stopping the root stops each active child once and settles every subagent 
     await openSubagentsPanel(page);
     const { panel, active, done } = overviewSections(page);
     await expect(panel).toBeVisible({ timeout: 30_000 });
-    await expect(done.getByRole("heading", { name: /^Done · 1\d\+?$/u })).toBeVisible({
+    await expect(done.getByRole("heading", { name: "Done · 12" })).toBeVisible({
       timeout: 30_000,
     });
+    await expect(active.getByRole("heading", { name: "Active · 5" })).toBeVisible();
     await expandSection(active);
     await expandSection(done);
-    await expect(active.getByRole("heading", { name: "Active · 5" })).toBeVisible();
-    await expect(done.getByRole("heading", { name: "Done · 12" })).toBeVisible();
 
     const rootComposer = page.locator('[data-codex-composer="true"]').first();
     await rootComposer.click();

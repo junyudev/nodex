@@ -639,6 +639,7 @@ it.effect(
         taskId: NodeId.make("task:00002"),
       });
       assert.equal(addressed.active.items.length, 0);
+      assert.deepEqual([addressed.active.totalCount, addressed.terminal.totalCount], [0, 1]);
       assert.deepEqual(
         addressed.terminal.items.map((task) => task.id),
         ["task:00002"],
@@ -648,6 +649,8 @@ it.effect(
       const first = yield* store.getThreadSubagentOverview({ threadId });
       assert.equal(first.active.items.length, 4);
       assert.equal(first.terminal.items.length, 10);
+      // Each section counts every task, not only the loaded page.
+      assert.deepEqual([first.active.totalCount, first.terminal.totalCount], [5000, 5000]);
       assert.equal(first.terminal.items[0]?.id, "task:10000");
       assert.isTrue(first.terminal.items[0]!.resultAvailable);
       assert.isBelow(JSON.stringify(first).length, 16 * 1024);

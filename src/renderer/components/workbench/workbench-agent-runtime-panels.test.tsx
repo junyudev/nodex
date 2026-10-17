@@ -45,8 +45,8 @@ const overviewOf = (
   active: readonly AgentSubagentOverviewItem[],
   terminal: readonly AgentSubagentOverviewItem[] = [],
 ): AgentSubagentOverview => ({
-  active: { items: active, nextCursor: null, hasMore: false },
-  terminal: { items: terminal, nextCursor: null, hasMore: false },
+  active: { items: active, nextCursor: null, hasMore: false, totalCount: active.length },
+  terminal: { items: terminal, nextCursor: null, hasMore: false, totalCount: terminal.length },
 });
 
 function observe() {
@@ -89,12 +89,12 @@ function observe() {
 
 it("opens only bounded metadata, loads one explicit continuation and releases its observer", async () => {
   const initial: AgentSubagentOverview = {
-    active: { items: [task("one")], nextCursor: "after-one", hasMore: true },
-    terminal: { items: [], nextCursor: null, hasMore: false },
+    active: { items: [task("one")], nextCursor: "after-one", hasMore: true, totalCount: 2 },
+    terminal: { items: [], nextCursor: null, hasMore: false, totalCount: 0 },
   };
   const next: AgentSubagentOverview = {
     ...initial,
-    active: { items: [task("two")], nextCursor: null, hasMore: false },
+    active: { items: [task("two")], nextCursor: null, hasMore: false, totalCount: 2 },
   };
   const overview = vi
     .spyOn(agentRuntimeRuntime, "overview")
@@ -139,8 +139,8 @@ it("opens only bounded metadata, loads one explicit continuation and releases it
 it("stops a native task through its owning Session and Run without inventing a child conversation", async () => {
   const native = { ...task("native"), origin: "provider_native" as const, childThreadId: null };
   vi.spyOn(agentRuntimeRuntime, "overview").mockResolvedValue({
-    active: { items: [native], nextCursor: null, hasMore: false },
-    terminal: { items: [], nextCursor: null, hasMore: false },
+    active: { items: [native], nextCursor: null, hasMore: false, totalCount: 1 },
+    terminal: { items: [], nextCursor: null, hasMore: false, totalCount: 0 },
   });
   const release = vi.fn();
   vi.spyOn(agentRuntimeRuntime, "subscribe").mockResolvedValue(release);
@@ -215,8 +215,8 @@ it("keeps loaded pages across task events and attaches again after a delivery ga
   const overview = vi
     .spyOn(agentRuntimeRuntime, "overview")
     .mockResolvedValueOnce({
-      active: { items: [task("one")], nextCursor: "after-one", hasMore: true },
-      terminal: { items: [], nextCursor: null, hasMore: false },
+      active: { items: [task("one")], nextCursor: "after-one", hasMore: true, totalCount: 2 },
+      terminal: { items: [], nextCursor: null, hasMore: false, totalCount: 0 },
     })
     .mockResolvedValueOnce(overviewOf([task("two")]))
     .mockRejectedValueOnce(new Error("Agent execution is restarting"))
@@ -260,5 +260,35 @@ it("keeps loaded pages across task events and attaches again after a delivery ga
   await screen.findByRole("button", { name: "Open subagent Review three" });
   expect(screen.queryByRole("alert")).toBeNull();
   expect(subscribe).toHaveBeenCalledTimes(3);
+  view.unmount();
+});
+
+it("counts every Done task and re-reads the totals a report from an unloaded page leaves unknown", async () => {
+  const done = (id: string) => ({ ...task(id), status: "completed" as const });
+  const initial: AgentSubagentOverview = {
+    active: { items: [], nextCursor: null, hasMore: false, totalCount: 0 },
+    terminal: { items: [done("a")], nextCursor: "after-a", hasMore: true, totalCount: 12 },
+  };
+  const overview = vi
+    .spyOn(agentRuntimeRuntime, "overview")
+    .mockResolvedValueOnce(initial)
+    .mockResolvedValueOnce({
+      active: { ...initial.active, totalCount: 1 },
+      terminal: { ...initial.terminal, totalCount: 11 },
+    });
+  const { update } = observe();
+  const view = render(
+    <AgentRuntimeSubagentsOverviewPanel sessionId="session" threadId="root" onSelect={vi.fn()} />,
+  );
+  expect(await screen.findByText("Done · 12")).toBeTruthy();
+
+  // A Done task from a page not loaded yet starts working again.
+  await act(async () => {
+    update({ ...task("old"), updatedAt: "2026-10-13T21:00:00Z" }, 2);
+    await Promise.resolve();
+  });
+  expect(await screen.findByText("Done · 11")).toBeTruthy();
+  expect(screen.getByText("Active · 1")).toBeTruthy();
+  expect(overview).toHaveBeenCalledTimes(2);
   view.unmount();
 });

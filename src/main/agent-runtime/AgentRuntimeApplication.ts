@@ -36,6 +36,7 @@ import type {
 import { resolveAgentRuntimeAgentConfig } from "./AgentRuntimeAgentConfig";
 import { generateSessionTitle } from "./AgentRuntimeSessionTitle";
 import { splitCodexPromptAgentConfigLines } from "../../shared/codex-prompt-preparation";
+import { appendAgentAppContext, hasAgentAppContext } from "../../shared/agent-prompt";
 import type {
   ProjectSessionArchiveCommandInput,
   ProjectSessionDeleteCommandInput,
@@ -112,6 +113,16 @@ export interface AgentRuntimeApplicationOptions {
   /** Desktop resources an archived or deleted Session's Agents held, such as Browser pages. */
   readonly releaseDesktopSession?: (sessionId: string) => Effect.Effect<void>;
   readonly reconcileWorkspace?: NativeSessionWorkspace["Service"]["reconcile"];
+  /**
+   * State the user left in a Thread's interactive responses that the Agent has not seen. It
+   * travels as app data with the next message that starts a Run, once per change.
+   */
+  readonly interactiveState?: {
+    readonly unsent: (
+      threadId: string,
+    ) => Effect.Effect<{ readonly key: string; readonly parts: readonly unknown[] } | undefined>;
+    readonly sent: (threadId: string, key: string) => Effect.Effect<void>;
+  };
   readonly prepareImages?: (
     images: NonNullable<AgentRuntimeMessage["images"]>,
   ) => Effect.Effect<
@@ -1303,16 +1314,34 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
         input.message.messageId,
       ) ?? Effect.void
     );
-    return yield* dispatch(
+    const agent = (yield* CoreApplicationAgent) !== null;
+    // Only a person's message that starts a Run carries the state they left; a message with app
+    // data of its own already speaks for the response it came from.
+    const interactive =
+      options.interactiveState &&
+      !agent &&
+      !queueAfterActive &&
+      !prepared.hasConfig &&
+      (input.intent ?? "auto") === "auto" &&
+      loaded.thread.activeRunId === null &&
+      !hasAgentAppContext(prepared.message)
+        ? yield* options.interactiveState.unsent(loaded.threadId)
+        : undefined;
+    const outgoing = interactive
+      ? appendAgentAppContext(prepared.message, interactive.parts, "Interactive response state")
+      : prepared.message;
+    const result = yield* dispatch(
       connection,
       messageCommand(
         loaded.threadId,
-        yield* prepareMessage(connection, loaded.threadId, prepared.message),
+        yield* prepareMessage(connection, loaded.threadId, outgoing),
         input.intent,
-        (yield* CoreApplicationAgent) !== null,
+        agent,
         queueAfterActive || prepared.hasConfig,
       ),
     );
+    if (interactive) yield* options.interactiveState!.sent(loaded.threadId, interactive.key);
+    return result;
   });
 
   const stop = Effect.fn("AgentRuntimeApplication.stop")(function* (
@@ -2063,14 +2092,17 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
       owned(
         "catalog",
         Effect.gen(function* () {
+          const named = input.instanceIds;
           const known =
             input.refresh || !options.providerCatalog
               ? null
               : yield* options.providerCatalog.lastKnown;
-          if (known) return known;
+          if (known)
+            return named ? known.filter((provider) => named.includes(provider.instanceId)) : known;
           const connection = yield* options.connect;
           const providers = yield* connection.request("providers.read", input);
-          if (options.providerCatalog) yield* options.providerCatalog.record(providers);
+          // Only a whole catalog stands in for the process while it is stopped.
+          if (options.providerCatalog && !named) yield* options.providerCatalog.record(providers);
           return providers;
         }),
       ),

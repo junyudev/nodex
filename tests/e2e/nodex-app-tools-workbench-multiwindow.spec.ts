@@ -8,6 +8,7 @@ import type { WindowSessionBootstrap } from "../../src/shared/window-session";
 import {
   ElectronScenarioHarness,
   readBoundedElectronRuntimeLogs,
+  openNodexWindow,
 } from "../../scripts/scenarios/harness/electron-e2e-harness";
 import { RendererIpcSeedAdapter } from "../../scripts/scenarios/adapters/renderer-ipc-seed-adapter";
 import {
@@ -331,17 +332,14 @@ test("native Workbench observations keep two windows independent and preserve th
         await waitForFinalMarker(first, "WORKBENCH_MULTIWINDOW_BOOT_OK");
         await waitForRuntimeCompletedAgentTurn(first, { sessionId: sessionId, threadId }, 30_000);
 
-        const opened = harness.application.waitForEvent("window");
-        expect(
-          await invokeIpc(first, "window:new", {
-            activeProjectSessionId: sessionId,
-            activeProjectId: draft.projectId,
-          }),
-        ).toBe(true);
-        const second = await opened;
-        await second.waitForURL((url) => url.protocol !== "about:");
-        await second.waitForLoadState("domcontentloaded");
-        await second.evaluate(() => window.api?.awaitInitialization?.());
+        const second = await openNodexWindow(harness.application, async () => {
+          expect(
+            await invokeIpc(first, "window:new", {
+              activeProjectSessionId: sessionId,
+              activeProjectId: draft.projectId,
+            }),
+          ).toBe(true);
+        });
         await expect(
           second.getByRole("button", { name: "Hide sidebar", exact: true }),
         ).toBeVisible();

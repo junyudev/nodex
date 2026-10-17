@@ -2,6 +2,7 @@ import { describe, expect, test } from "vite-plus/test";
 import type { ThreadInjectItemsParams } from "@nodex/codex-app-server-protocol/v2";
 import {
   CODEX_VISUALIZATION_PASSIVE_MAX_BYTES,
+  codexVisualizationPassiveParts,
   compileCodexVisualizationPassiveContext,
   selectCodexVisualizationPassiveContextKey,
   type CodexVisualizationPassiveAttachment,
@@ -43,16 +44,7 @@ function pair(
 }
 function payloads(context: ReturnType<typeof compile>) {
   if (!context) throw new Error("Expected compiled context");
-  return context.items
-    .filter((_, index) => index % 2 === 1)
-    .map((item) => {
-      if (!item || typeof item !== "object" || Array.isArray(item) || !Array.isArray(item.output))
-        throw new Error("Expected native function output");
-      const part = item.output[0];
-      if (!part || typeof part !== "object" || Array.isArray(part) || typeof part.text !== "string")
-        throw new Error("Expected native text output");
-      return JSON.parse(part.text) as Record<string, unknown>;
-    });
+  return codexVisualizationPassiveParts(context);
 }
 
 describe("passive widget model context", () => {

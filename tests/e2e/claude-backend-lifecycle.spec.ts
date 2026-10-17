@@ -374,9 +374,10 @@ test("runs a Claude Code chat in a new worktree environment and continues it wit
         content: "Wait for cancellation",
       });
     await page.getByRole("button", { name: "Stop", exact: true }).click();
+    // Stop settles promptly; it never waits out the query close timeout.
     await expect
       .poll(async () => (await control()).snapshot.projection.runs.at(-1)?.status, {
-        timeout: 20_000,
+        timeout: 3_000,
       })
       .toBe("interrupted");
     await composer.fill("Keep this draft");

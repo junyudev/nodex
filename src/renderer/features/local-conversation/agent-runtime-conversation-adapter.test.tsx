@@ -274,6 +274,51 @@ describe("Agent Runtime Codex controls", () => {
     await act(async () => unmount());
   });
 
+  it("launches a first message once its default Agent is checked, not every Agent", async () => {
+    // Another Agent's first check never finishes; the whole catalog stays pending.
+    const catalog = vi
+      .spyOn(agentRuntimeRuntime, "catalog")
+      .mockImplementation((input) =>
+        input?.instanceIds ? Promise.resolve([codexProvider]) : new Promise(() => {}),
+      );
+    const launch = vi
+      .spyOn(agentRuntimeRuntime, "launch")
+      .mockResolvedValue({ sessionId: "early-draft", projectId: "project", threadId: "thread" });
+    vi.spyOn(agentRuntimeRuntime, "control").mockResolvedValue({
+      sessionId: "early-draft",
+      projectId: "project",
+      threadId: "thread",
+      snapshot,
+    });
+    vi.spyOn(agentRuntimeRuntime, "subscribe").mockResolvedValue(() => {});
+    const { result, unmount } = renderHook(
+      () =>
+        useAgentRuntimeConversationAdapter({
+          sessionId: "early-draft",
+          projectId: "project",
+          modelProjectId: "project",
+          instances,
+          onRefresh: async () => {},
+          onOpenThread: () => {},
+          ensureDraft: async () => ({ id: "early-draft" }),
+        }),
+      { wrapper: SavedSettingsWorkbench },
+    );
+    await act(async () => {
+      await result.current.actions.onStartThreadForSession!({
+        projectId: "project",
+        sessionId: "early-draft",
+        prompt: "Go",
+      });
+    });
+    expect(catalog).toHaveBeenCalledWith({ instanceIds: ["codex"] });
+    expect(launch.mock.calls[0]![0].modelSelection).toMatchObject({
+      instanceId: "codex",
+      model: "gpt",
+    });
+    await act(async () => unmount());
+  });
+
   it("starts later new chats from the last Codex model, effort and speed chosen", async () => {
     vi.spyOn(agentRuntimeRuntime, "catalog").mockResolvedValue([codexProvider]);
     const renderDraft = (sessionId: string) =>
@@ -441,8 +486,9 @@ describe("Agent Runtime background status", () => {
         ],
         nextCursor: null,
         hasMore: false,
+        totalCount: 1,
       },
-      terminal: { items: [], nextCursor: null, hasMore: false },
+      terminal: { items: [], nextCursor: null, hasMore: false, totalCount: 0 },
     });
     const stopTask = vi.spyOn(agentRuntimeRuntime, "stopTask").mockResolvedValue({ sequence: 3 });
     const { result, unmount } = renderHook(

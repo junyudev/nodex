@@ -7,6 +7,7 @@ import {
   readBoundedElectronRuntimeLogs,
 } from "../../scripts/scenarios/harness/electron-e2e-harness";
 import { prepareScenarioCodexAppServerRuntimeSync } from "../../scripts/scenarios/runtime/agent-runtime-fixture";
+import { openNewChatDraft } from "./support/new-chat-draft";
 
 const repositoryRoot = process.cwd();
 
@@ -274,9 +275,9 @@ for (const submission of ["keyboard", "pointer"] as const) {
 
     try {
       const page = await harness.launch();
-      await page.getByRole("button", { name: "New chat" }).first().click();
-
-      const composer = page.locator('[data-codex-composer="true"][aria-label="Do anything"]');
+      // The Project's Agent Dock can still show while the chat opens; type into the chat.
+      const scene = await openNewChatDraft(page);
+      const composer = scene.locator('[data-codex-composer="true"][aria-label="Do anything"]');
       await expect(composer).toBeVisible();
       await composer.fill(promptText);
       await expect(composer).toHaveText(promptText);
@@ -297,7 +298,10 @@ for (const submission of ["keyboard", "pointer"] as const) {
       await expect(activeComposer).toHaveText("");
 
       const rpcLogPath = path.join(harness.profile.runRoot, ".fake-codex", "requests.jsonl");
-      await expect.poll(() => readThreadStartParams(rpcLogPath)).not.toBeNull();
+      // The message shows at once; its Thread starts once the execution process is ready.
+      await expect
+        .poll(() => readThreadStartParams(rpcLogPath), { timeout: 30_000 })
+        .not.toBeNull();
       await expect
         .poll(() => readRpcEntries(rpcLogPath).some((entry) => entry.method === "turn/start"), {
           timeout: 30_000,
@@ -345,8 +349,8 @@ test("an unversioned host may prove a durable paginated start without enabling o
 
   try {
     const page = await harness.launch();
-    await page.getByRole("button", { name: "New chat" }).first().click();
-    const composer = page.locator('[data-codex-composer="true"][aria-label="Do anything"]');
+    const scene = await openNewChatDraft(page);
+    const composer = scene.locator('[data-codex-composer="true"][aria-label="Do anything"]');
     await expect(composer).toBeVisible();
     await composer.fill(promptText);
     await composer.press("Enter");

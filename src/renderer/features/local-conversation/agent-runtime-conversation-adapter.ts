@@ -26,7 +26,7 @@ import {
 import { useCodexThreadSettings } from "../../lib/use-codex-thread-settings";
 import { CodexReasoningEffortSchema } from "../../../shared/schemas/codex";
 import { useCodexServiceTierSettings } from "../../lib/use-codex-service-tier-settings";
-import { prepareAgentMessage } from "../../../shared/agent-prompt";
+import { prepareAgentMessage, retainAgentAppContext } from "../../../shared/agent-prompt";
 import { createUuidV7 } from "../../../shared/uuid-v7";
 import type {
   CodexCollaborationModePreset,
@@ -310,7 +310,7 @@ export function createAgentRuntimeStageActions(input: {
         AgentRuntimeConversationOwner,
         "getSnapshot" | "nextQueuePage" | "previousQueuePage" | "queueBoundary" | "readQueuedInput"
       > &
-        Partial<Pick<AgentRuntimeConversationOwner, "contentSource">>)
+        Partial<Pick<AgentRuntimeConversationOwner, "contentSource" | "whenObserved">>)
     | null;
   readonly transport?: AgentRuntimeRendererTransport;
   readonly prepare: (
@@ -346,7 +346,8 @@ export function createAgentRuntimeStageActions(input: {
       ? await input.capturePresentation?.({ kind: "thread", threadId: target.threadId }, submitted)
       : undefined;
     const prepared = await input.prepare(text, promptInput, appMessage);
-    await transport.message({
+    const owner = input.owner();
+    const accepted = await transport.message({
       ...target,
       presentationTicket,
       message: {
@@ -357,6 +358,8 @@ export function createAgentRuntimeStageActions(input: {
       },
       ...(intent ? { intent } : {}),
     });
+    // The Composer clears when this resolves; the sent message is on screen by then.
+    await owner?.whenObserved?.(accepted.sequence);
   };
   const respond = async (
     requestId: string | number,
@@ -403,7 +406,7 @@ export function createAgentRuntimeStageActions(input: {
     const presentationTicket = await input.capturePresentation?.({ kind: "thread", threadId });
     const prepared = await input.prepare(prompt, promptInput, appMessage);
     assertCurrent();
-    await transport.queueMessage({
+    const accepted = await transport.queueMessage({
       ...target,
       presentationTicket,
       message: {
@@ -413,6 +416,7 @@ export function createAgentRuntimeStageActions(input: {
         ...(promptInput ? { agentConfigs: promptInput.agentConfigs ?? [] } : {}),
       },
     });
+    await owner?.whenObserved?.(accepted.sequence);
   };
   const editQueuedMessage = async (
     threadId: string,
@@ -426,6 +430,9 @@ export function createAgentRuntimeStageActions(input: {
       ?.getSnapshot()
       .view?.queuedFollowUps?.entries.find((entry) => entry.followUpId === runId);
     if (!queued) throw new Error("This queued message is no longer pending");
+    const original = await transport.readQueuedMessage({ ...target, runId });
+    if (original?.id !== queued.clientUserMessageId)
+      throw new Error("This queued message is no longer pending");
     const presentationTicket = await input.capturePresentation?.({ kind: "thread", threadId });
     await transport.queue({
       ...target,
@@ -435,7 +442,7 @@ export function createAgentRuntimeStageActions(input: {
       runId,
       message: {
         messageId: queued.clientUserMessageId,
-        ...(await input.prepare(prompt, promptInput)),
+        ...retainAgentAppContext(await input.prepare(prompt, promptInput), original),
         images: agentRuntimePromptImages(promptInput),
         ...(promptInput ? { agentConfigs: promptInput.agentConfigs ?? [] } : {}),
       },
@@ -768,6 +775,19 @@ export function useAgentRuntimeConversationAdapter(input: {
       { ...savedCodexSettings, serviceTier: savedServiceTier.serviceTier },
     ) ??
     entriesFor(providers)[0]?.selection ?? { binding: { kind: "codex" as const }, model: "" };
+  /** The default Agent's model, read alone first; the whole catalog only when it has none. */
+  const resolveDefaultSelection = async () => {
+    const whole = catalogLoad.current;
+    const preferred = draftSelectionFor(
+      await agentRuntimeRuntime
+        .catalog({ instanceIds: ["codex"] })
+        .catch((): readonly AgentRuntimeProvider[] => []),
+    );
+    if (agentRuntimeModelSelection(preferred.binding, preferred.model, preferred.options))
+      return preferred;
+    if (!whole) throw new Error("Choose a configured Agent and model");
+    return draftSelectionFor(await whole);
+  };
   const entries = entriesFor(catalogState.providers);
   const observedBinding = observed
     ? observed.modelSelection.instanceId === "codex"
@@ -879,10 +899,11 @@ export function useAgentRuntimeConversationAdapter(input: {
       if (request.runInTarget === "cloud") throw new Error("Choose a local workspace");
       const modelOf = (candidate: typeof selection) =>
         agentRuntimeModelSelection(candidate.binding, candidate.model, candidate.options);
-      // The message shows at once; a draft still waiting for the catalog takes its model from it.
-      const pendingCatalog = modelOf(selection) ? null : catalogLoad.current;
-      if (!modelOf(selection) && !pendingCatalog)
-        throw new Error("Choose a configured Agent and model");
+      // The message shows at once. A draft still waiting for the catalog takes its default Agent's
+      // model once that Agent is checked, without waiting for every other Agent's check.
+      const pendingSelection = modelOf(selection) ? null : resolveDefaultSelection();
+      // Its failure is reported where the launch awaits it.
+      pendingSelection?.catch(() => {});
       const submission = sessionFirstSubmissionOwner.begin({
         backend: selection.binding.kind,
         originProjectId: request.projectId,
@@ -911,9 +932,7 @@ export function useAgentRuntimeConversationAdapter(input: {
       });
       let launched: import("../../../shared/agent-runtime-api").AgentRuntimeLaunchResult;
       try {
-        const launchSelection = pendingCatalog
-          ? draftSelectionFor(await pendingCatalog)
-          : selection;
+        const launchSelection = pendingSelection ? await pendingSelection : selection;
         const modelSelection = modelOf(launchSelection);
         if (!modelSelection) throw new Error("Choose a configured Agent and model");
         if (launchSelection.binding.kind !== selection.binding.kind)

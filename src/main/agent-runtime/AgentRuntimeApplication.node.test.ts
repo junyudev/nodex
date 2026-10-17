@@ -1299,6 +1299,20 @@ it.effect("listing models while execution is stopped never starts it; refresh al
     yield* owner.catalog();
     yield* owner.catalog();
     assert.equal(reads(), 4);
+    // A read of named Agents answers from what was kept, narrowed to them.
+    const kept = live[0]!.instanceId;
+    assert.deepEqual(
+      (yield* owner.catalog({ instanceIds: [kept] })).map((provider) => provider.instanceId),
+      [kept],
+    );
+    assert.equal(reads(), 4);
+    // Live, it reaches the process and never stands in for the whole catalog.
+    declared.running = true;
+    yield* owner.catalog({ instanceIds: [kept] });
+    assert.equal(reads(), 5);
+    declared.running = false;
+    assert.deepEqual(yield* owner.catalog(), live);
+    assert.equal(reads(), 5);
   }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
 );
 
@@ -2644,5 +2658,78 @@ it.effect(
         ).length,
         1,
       );
+    }),
+);
+
+it.effect(
+  "a person's message that starts a Run carries interactive state the Agent has not seen",
+  () =>
+    Effect.gen(function* () {
+      const parts = [{ path: "/responses/chart.html", state: { selected: 2 } }];
+      let unsent: { key: string; parts: readonly unknown[] } | undefined = {
+        key: "state:1",
+        parts,
+      };
+      const marked: string[] = [];
+      const fixture = setup({
+        interactiveState: {
+          unsent: () => Effect.succeed(unsent),
+          sent: (_threadId, key) =>
+            Effect.sync(() => {
+              marked.push(key);
+              unsent = undefined;
+            }),
+        },
+      });
+      const owner = yield* fixture.owner;
+      const launched = yield* owner.launch(launch);
+      const settle = () => {
+        const current = fixture.snapshots.get(launched.threadId)!;
+        fixture.snapshots.set(launched.threadId, {
+          ...current,
+          projection: {
+            ...current.projection,
+            runs: current.projection.runs.map((run) => ({ ...run, status: "completed" }) as never),
+          },
+        });
+      };
+      const dispatched = (messageId: string) =>
+        [...fixture.commands.values()].find(
+          (command) => command.type === "message.dispatch" && command.messageId === messageId,
+        ) as Extract<AgentCommand, { type: "message.dispatch" }>;
+      settle();
+      yield* owner.message({
+        sessionId: launch.sessionId,
+        message: { messageId: "message:state", text: "Use the selection" },
+      });
+      const carried = dispatched("message:state");
+      assert.match(
+        carried.text,
+        /^Use the selection\n\n\[Interactive response state\]\(t3-context:\/\/v1\/nodex-app-context\/\w+\)$/u,
+      );
+      assert.deepEqual(
+        (carried.context?.records[0] as { payload: { items: unknown } } | undefined)?.payload.items,
+        parts,
+      );
+      assert.deepEqual(marked, ["state:1"]);
+
+      // Unchanged state is not offered again.
+      settle();
+      yield* owner.message({
+        sessionId: launch.sessionId,
+        message: { messageId: "message:plain", text: "Thanks" },
+      });
+      assert.equal(dispatched("message:plain").text, "Thanks");
+
+      // A steer leaves new state for a later message that starts a Run.
+      unsent = { key: "state:2", parts };
+      settle();
+      yield* owner.message({
+        sessionId: launch.sessionId,
+        message: { messageId: "message:steer", text: "Also this" },
+        intent: "steer",
+      });
+      assert.equal(dispatched("message:steer").text, "Also this");
+      assert.deepEqual(marked, ["state:1"]);
     }),
 );

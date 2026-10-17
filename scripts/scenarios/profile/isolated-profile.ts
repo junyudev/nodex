@@ -125,10 +125,20 @@ const ensureOwnedRootShape = async (profile: IsolatedProfile): Promise<void> => 
 };
 
 /**
- * OpenCode needs no account to reach its hosted free models, so a scenario that fell through to
- * the host's `opencode` would talk to a real model. Scenarios configure their own OpenCode peer.
+ * The default Claude Code and OpenCode instances run the host's own CLIs. A scenario that fell
+ * through to them would probe the developer's account (OpenCode even reaches hosted free models
+ * without one), and every catalog read would wait for that probe. Scenarios configure their own
+ * peers.
  */
-const SCENARIO_PROFILE_SETTINGS = `[[server.opencode_agent_instances]]
+const SCENARIO_PROFILE_SETTINGS = `[[server.claude_agent_instances]]
+id = "claude-default"
+displayName = "Claude Code"
+binaryPath = "claude"
+configDirectory = ""
+enabled = false
+environment = []
+
+[[server.opencode_agent_instances]]
 id = "opencode-default"
 displayName = "OpenCode"
 enabled = false
@@ -212,7 +222,6 @@ export const createIsolatedProfile = async (
       retention: "dispose",
     });
     if (cleanup.status === "unsafe") {
-      // oxlint-disable-next-line eslint/preserve-caught-error -- AggregateError retains the primary failure and cleanup failure explicitly.
       throw new AggregateError(
         [error, new Error(cleanup.reason)],
         `Failed to create and clean isolated Profile ${profile.runRoot}`,

@@ -227,6 +227,75 @@ describe("Agent Runtime stage commands", () => {
     expect(f.queueMessage.mock.calls[0]![0].message.agentConfigs).toEqual(promptInput.agentConfigs);
     expect(f.message.mock.calls[0]![0].message.text).toBe("Prepared Inspect");
   });
+  it("finishes sending a message only once the conversation shows it", async () => {
+    const order: string[] = [];
+    const message = vi.fn(async () => {
+      order.push("accepted");
+      return { sequence: 8 };
+    });
+    const whenObserved = vi.fn(async (sequence: number) => {
+      order.push(`observed:${sequence}`);
+    });
+    const actions = createAgentRuntimeStageActions({
+      target: () => ({ sessionId: "session", threadId: "child" }),
+      owner: () =>
+        ({
+          getSnapshot: () => ({}) as AgentRuntimeConversationOwnerSnapshot,
+          whenObserved,
+        }) as never,
+      transport: { message } as unknown as AgentRuntimeRendererTransport,
+      prepare: async (text) => ({ text }),
+    });
+    await actions.onSendPrompt!("Next step");
+    expect(order).toEqual(["accepted", "observed:8"]);
+  });
+
+  it("keeps the app data of a queued message whose words are edited", async () => {
+    const queue = vi.fn().mockResolvedValue({ sequence: 1 });
+    const record = { kind: "nodex-app-context", contextId: "chart", label: "Chart", payload: {} };
+    const readQueuedMessage = vi.fn().mockResolvedValue({
+      id: "message-1",
+      text: "Compare these\n\n[Chart](t3-context://v1/nodex-app-context/chart)",
+      context: { version: 1, records: [record] },
+    });
+    const state = {
+      view: {
+        queuedFollowUps: { entries: [{ followUpId: "run-1", clientUserMessageId: "message-1" }] },
+      },
+    } as unknown as AgentRuntimeConversationOwnerSnapshot;
+    const actions = createAgentRuntimeStageActions({
+      target: () => ({ sessionId: "session", threadId: "child" }),
+      owner: () => ({
+        getSnapshot: () => state,
+        nextQueuePage: async () => {},
+        previousQueuePage: async () => {},
+        queueBoundary: () => null,
+        readQueuedInput: async () => ({ text: "Compare these" }),
+      }),
+      transport: { queue, readQueuedMessage } as unknown as AgentRuntimeRendererTransport,
+      prepare: async (text) => ({ text }),
+    });
+
+    await actions.onReplaceQueuedFollowUp!("child", "run-1", 0, "Compare the first two");
+
+    expect(readQueuedMessage).toHaveBeenCalledWith({
+      sessionId: "session",
+      threadId: "child",
+      runId: "run-1",
+    });
+    expect(queue).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: "edit",
+        runId: "run-1",
+        message: expect.objectContaining({
+          messageId: "message-1",
+          text: "Compare the first two\n\n[Chart](t3-context://v1/nodex-app-context/chart)",
+          context: { version: 1, records: [record] },
+        }),
+      }),
+    );
+  });
+
   it("waits for native rollback settlement before submitting the edited message", async () => {
     const f = fixture();
     let settle!: (value: { rolledBack: true }) => void;

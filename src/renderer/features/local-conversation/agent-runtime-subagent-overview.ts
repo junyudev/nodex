@@ -75,7 +75,7 @@ export function projectAgentRuntimeSubagentOverview(
   const section = (page: AgentSubagentOverview["active"]) => ({
     rows: page.items.map(project),
     knownCount: page.items.length,
-    totalCount: page.hasMore ? null : page.items.length,
+    totalCount: page.totalCount,
     continuation: page.nextCursor,
   });
   return {
@@ -95,6 +95,30 @@ function find(overview: AgentSubagentOverview, id: string) {
     overview.terminal.items.find((item) => item.id === id)
   );
 }
+const sectionOf = (item: AgentSubagentOverviewItem): Section =>
+  isTerminal(item.status) ? "terminal" : "active";
+
+/**
+ * Only a report for a loaded row says which section it leaves. Any other report may be a new
+ * task or one from a page the user has not loaded, so the section totals are re-read.
+ */
+export function agentRuntimeOverviewTotalsUnknown(
+  overview: AgentSubagentOverview,
+  task: Pick<AgentSubagentOverviewItem, "id">,
+): boolean {
+  return find(overview, task.id) === undefined;
+}
+
+/** Takes each section's total from a fresh read, keeping the loaded rows. */
+export function withAgentRuntimeOverviewTotals(
+  overview: AgentSubagentOverview,
+  read: AgentSubagentOverview,
+): AgentSubagentOverview {
+  return {
+    active: { ...overview.active, totalCount: read.active.totalCount },
+    terminal: { ...overview.terminal, totalCount: read.terminal.totalCount },
+  };
+}
 
 /** Places one item by recency; an older or equal report never replaces a newer one. */
 function upsert(
@@ -104,12 +128,20 @@ function upsert(
 ): AgentSubagentOverview {
   const existing = find(overview, item.id);
   if (existing && existing.updatedAt.localeCompare(item.updatedAt) > 0) return overview;
-  const target: Section = isTerminal(item.status) ? "terminal" : "active";
+  const target = sectionOf(item);
+  const origin = existing ? sectionOf(existing) : null;
+  // A live report for a loaded row moves it between section totals; the totals of anything
+  // else wait for a re-read.
+  const counted = withinLoadedWindow && origin !== null && origin !== target;
   const without = (section: Section) => ({
     ...overview[section],
     items: overview[section].items.filter((candidate) => candidate.id !== item.id),
   });
   const next = { active: without("active"), terminal: without("terminal") };
+  if (counted) {
+    if (origin) next[origin] = { ...next[origin], totalCount: next[origin].totalCount - 1 };
+    next[target] = { ...next[target], totalCount: next[target].totalCount + 1 };
+  }
   const page = next[target];
   const last = page.items.at(-1);
   // Beyond a partly loaded section the item belongs to a page the user has not loaded.
@@ -187,12 +219,15 @@ export function appendAgentRuntimeOverviewPage(
 ): AgentSubagentOverview {
   let merged = current;
   for (const item of page[section].items) merged = upsert(merged, item, false);
-  return {
-    ...merged,
-    [section]: {
-      ...merged[section],
-      nextCursor: page[section].nextCursor,
-      hasMore: page[section].hasMore,
+  return withAgentRuntimeOverviewTotals(
+    {
+      ...merged,
+      [section]: {
+        ...merged[section],
+        nextCursor: page[section].nextCursor,
+        hasMore: page[section].hasMore,
+      },
     },
-  };
+    page,
+  );
 }

@@ -209,4 +209,9 @@ export const AgentRuntimeObserveSchema = AgentRuntimeTargetSchema.extend({
     .optional(),
 });
 export const AgentRuntimeUnobserveSchema = z.object({ subscriptionId: id }).strict();
-export const AgentRuntimeCatalogSchema = z.object({ refresh: z.boolean().optional() }).strict();
+export const AgentRuntimeCatalogSchema = z
+  .object({
+    refresh: z.boolean().optional(),
+    instanceIds: z.array(z.string().trim().min(1).max(128)).max(32).optional(),
+  })
+  .strict();

@@ -4,6 +4,7 @@ import path from "node:path";
 import {
   ElectronScenarioHarness,
   readBoundedElectronRuntimeLogs,
+  openNodexWindow,
 } from "../../scripts/scenarios/harness/electron-e2e-harness";
 import { prepareScenarioCodexAppServerRuntimeSync } from "../../scripts/scenarios/runtime/agent-runtime-fixture";
 import { resolveCodexThreadVisualizationDirectory } from "../../src/main/codex/codex-dynamic-first-turn-context";
@@ -732,6 +733,44 @@ test("restores interactive HTML responses, retains guests during navigation and 
         "document.getElementById('counter-live').textContent",
       ),
     ).toBe("0");
+    // The state the user left travels with their next message as app data, once, and without
+    // the widget's private content.
+    const turnInputs = async () =>
+      (await readFile(path.join(stateDirectory, "requests.jsonl"), "utf8"))
+        .split("\n")
+        .filter(Boolean)
+        .map((line) => JSON.parse(line) as { method: string; params: Record<string, unknown> })
+        .filter((row) => row.method === "turn/start")
+        .map((row) =>
+          ((row.params.input ?? []) as { readonly text?: string }[])
+            .map((part) => part.text ?? "")
+            .join("\n"),
+        );
+    const turnsBefore = (await turnInputs()).length;
+    await sendAgentFollowUp(page, "Keep the saved selection");
+    await expect.poll(async () => (await turnInputs()).length).toBe(turnsBefore + 1);
+    const carried = (await turnInputs()).at(-1)!;
+    const envelope = /<context kind="nodex-app-context" id="[^"]+">\n([\s\S]*?)\n<\/context>/u.exec(
+      carried,
+    );
+    expect(envelope).not.toBeNull();
+    expect(
+      JSON.parse(envelope![1]!.replaceAll("&lt;", "<").replaceAll("&amp;", "&")),
+    ).toMatchObject({
+      trust: "untrusted",
+      items: expect.arrayContaining([
+        { path: expect.stringContaining("live-widget.html"), state: { selected: 2 } },
+      ]),
+    });
+    expect(carried).not.toContain("privateSentinel");
+    // The record's label names an interactive response, so the fixture holds this Turn open.
+    await command({ type: "start" });
+    await command({ type: "complete" });
+    await expect(page.getByRole("button", { name: "Stop", exact: true })).toHaveCount(0);
+    await sendAgentFollowUp(page, "Nothing changed since");
+    await expect.poll(async () => (await turnInputs()).length).toBe(turnsBefore + 2);
+    expect((await turnInputs()).at(-1)).not.toContain("nodex-app-context");
+    await expect(page.getByRole("button", { name: "Stop", exact: true })).toHaveCount(0);
     const idsBeforeRelease = await guestIds(page);
     await expect(page.locator('webview[data-inline-visualization-standby="ready"]')).toHaveCount(
       1,
@@ -762,15 +801,15 @@ test("restores interactive HTML responses, retains guests during navigation and 
         idsBeforeRelease,
       ),
     ).toBe(true);
-    const opened = harness.application.waitForEvent("window");
-    expect(
-      await invokeIpc(page, "window:new", {
-        activeProjectId: draft.projectId,
-        activeProjectSessionId: null,
-      }),
-    ).toBe(true);
-    const survivingWindow = await opened;
-    await survivingWindow.waitForURL((url) => url.protocol !== "about:");
+    // Another window keeps the app running while this one closes.
+    await openNodexWindow(harness.application, async () => {
+      expect(
+        await invokeIpc(page, "window:new", {
+          activeProjectId: draft.projectId,
+          activeProjectSessionId: null,
+        }),
+      ).toBe(true);
+    });
     const closed = page.waitForEvent("close");
     const ownerWindow = await harness.application.browserWindow(page);
     await ownerWindow.evaluate((window) => window.close());
@@ -800,9 +839,8 @@ test("restores interactive HTML responses, retains guests during navigation and 
           download: { name: "widget-data.txt", contents: "widget download bytes" },
           state: { selected: 2, persistence: "host", modelContext: "untrusted" },
           passiveContext: {
-            injectedBeforeStart: true,
-            confirmedBeforeStart: true,
-            repeatedInjectionCount: 0,
+            carriedWithNextMessage: true,
+            repeatedCount: 0,
             privateStateExcluded: true,
           },
           originalGuestId: liveGuest,

@@ -204,7 +204,13 @@ const AgentRequest = Schema.Union([
   request("attachments.persist", PersistChatAttachmentsInput),
   request("thread.read", Schema.Struct({ threadId: ThreadId })),
   request("thread.control", Schema.Struct({ threadId: ThreadId })),
-  request("providers.read", Schema.Struct({ refresh: Schema.optional(Schema.Boolean) })),
+  request(
+    "providers.read",
+    Schema.Struct({
+      refresh: Schema.optional(Schema.Boolean),
+      instanceIds: Schema.optional(Schema.Array(Schema.String)),
+    }),
+  ),
   request(
     "native-session.authority",
     Schema.Struct({
@@ -362,6 +368,7 @@ const OverviewPage = Schema.Struct({
   items: Schema.Array(OverviewItem),
   nextCursor: Schema.NullOr(Schema.String),
   hasMore: Schema.Boolean,
+  totalCount: Schema.Int,
 });
 const encodeOverview = Schema.encodeEffect(
   Schema.toCodecJson(Schema.Struct({ active: OverviewPage, terminal: OverviewPage })),
@@ -587,10 +594,21 @@ export const make = Effect.fn("AgentRuntime.makeService")(function* (
         return yield* orchestrator
           .getThreadShell(input.input.threadId)
           .pipe(Effect.flatMap(encodeThreadShell));
-      case "providers.read":
+      case "providers.read": {
+        const named = input.input.instanceIds;
         return yield* (
-          input.input.refresh ? providers.refresh() : providers.getCheckedProviders
-        ).pipe(Effect.flatMap(encodeProviders));
+          input.input.refresh
+            ? providers.refresh()
+            : named
+              ? providers.getCheckedProvidersFor(named)
+              : providers.getCheckedProviders
+        ).pipe(
+          Effect.map((all) =>
+            named ? all.filter((provider) => named.includes(provider.instanceId)) : all,
+          ),
+          Effect.flatMap(encodeProviders),
+        );
+      }
       case "native-session.authority":
         return yield* readNativeSessionAuthority(input.input);
       case "thread.authority":

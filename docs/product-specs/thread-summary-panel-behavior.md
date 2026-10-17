@@ -144,7 +144,8 @@ Subagents uses the canonical root-scoped overview and shared identity from
 compact strip that prefers up to four unfinished agents, or the last four
 finished agents when none remain active. The root panel groups metadata-only
 rows as Active and Done, initially shows at most four Active and ten Done rows,
-and exposes exact totals only after discovery is complete. It uses the same
+and exposes exact totals only after discovery is complete. An Agent chat's sections
+count every subagent from the start, including rows on pages not yet loaded. It uses the same
 runtime/history status rules as inline activity; unnamed rows are omitted.
 Waiting rows retain elapsed time, and the Done section is absent when its count
 is zero. Show more expands the already discovered collection; Show less restores

@@ -35,7 +35,7 @@ import {
 import {
   ElectronScenarioHarness,
   stopNodexElectronApplication as stopApplication,
-  waitForNodexWindowInitialization,
+  openNodexWindow,
 } from "../../scripts/scenarios/harness/electron-e2e-harness";
 import { openBoardPageFromCard } from "./support/open-board-page";
 
@@ -4073,12 +4073,9 @@ test.describe("parallel functional Electron smoke", () => {
         ),
         "Cut source image Block id",
       );
-      const targetWindowOpened = harness.application.waitForEvent("window");
-      expect(await invokeIpc(page, "window:new", {})).toBe(true);
-      const targetPage = await targetWindowOpened;
-      await targetPage.waitForURL((url) => url.protocol !== "about:");
-      await targetPage.waitForLoadState("domcontentloaded");
-      await targetPage.evaluate(() => window.api?.awaitInitialization?.());
+      const targetPage = await openNodexWindow(harness.application, async () => {
+        expect(await invokeIpc(page, "window:new", {})).toBe(true);
+      });
       await targetPage.getByRole("button", { name: "Open Page File move", exact: true }).click();
       await openProjectBoard(targetPage);
       const targetWindowColumn = targetPage.locator(
@@ -4853,10 +4850,9 @@ test("converges a high-pressure Page promotion across tab groups and WebContents
       .first();
     await expect(titleBlock).toBeVisible({ timeout: 15_000 });
 
-    const audienceWindowOpened = application.waitForEvent("window");
-    expect(await invokeIpc(page, "window:new", {})).toBe(true);
-    const audiencePage = await audienceWindowOpened;
-    await waitForNodexWindowInitialization(audiencePage);
+    const audiencePage = await openNodexWindow(application, async () => {
+      expect(await invokeIpc(page, "window:new", {})).toBe(true);
+    });
     await audiencePage
       .getByRole("button", {
         name: "Open Cross-tab Board stress",

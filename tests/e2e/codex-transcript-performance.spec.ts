@@ -4,7 +4,7 @@ import path from "node:path";
 import {
   ElectronScenarioHarness,
   readBoundedElectronRuntimeLogs,
-  waitForNodexWindowInitialization,
+  openNodexWindow,
 } from "../../scripts/scenarios/harness/electron-e2e-harness";
 import { prepareScenarioCodexAppServerRuntimeSync } from "../../scripts/scenarios/runtime/agent-runtime-fixture";
 import { createAgentSmokeDraft, invokeIpc, sendAgentPrompt } from "./support/agent-smoke-harness";
@@ -114,15 +114,14 @@ test("streams an Agent chat reply into one item, across windows, without touchin
     });
 
     // A second window follows the same reply after the first one leaves the chat.
-    const opened = harness.application.waitForEvent("window");
-    expect(
-      await invokeIpc(first, "window:new", {
-        activeProjectSessionId: draft.projectSessionId,
-        activeProjectId: draft.projectId,
-      }),
-    ).toBe(true);
-    const second = await opened;
-    await waitForNodexWindowInitialization(second);
+    const second = await openNodexWindow(harness.application, async () => {
+      expect(
+        await invokeIpc(first, "window:new", {
+          activeProjectSessionId: draft.projectSessionId,
+          activeProjectId: draft.projectId,
+        }),
+      ).toBe(true);
+    });
     const follower = second.locator(
       '[data-message-copy-root*="stream-target"] [data-thread-selected-text-target="true"]',
     );

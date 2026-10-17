@@ -76,29 +76,82 @@ const parseAppContextText = (text: string): unknown => {
  * provider as data with its provenance.
  */
 function agentAppContextRecord(
-  appContext: ReturnType<typeof prepareAgentAppContext>,
-): { readonly reference: string; readonly context: AgentRuntimeMessage["context"] } | null {
-  if (appContext.parts.length === 0) return null;
+  parts: readonly unknown[],
+  label?: string,
+): { readonly reference: string; readonly record: unknown } | null {
+  if (parts.length === 0) return null;
   const contextId = createUuidV7().replaceAll("-", "");
-  const titled = appContext.parts.find(
+  const titled = parts.find(
     (part): part is { readonly title: string } =>
       isAppContextJsonObject(part) && typeof part.title === "string" && part.title.trim() !== "",
   );
-  const label = (titled?.title ?? "App context").replace(/[[\]\\\r\n]/gu, " ").trim();
+  const name = (label ?? titled?.title ?? "App context").replace(/[[\]\\\r\n]/gu, " ").trim();
   return {
-    reference: `[${label}](t3-context://v1/${APP_CONTEXT_KIND}/${contextId})`,
+    reference: `[${name}](t3-context://v1/${APP_CONTEXT_KIND}/${contextId})`,
     // Agent execution decodes context records at its own boundary.
+    record: {
+      version: 1,
+      kind: APP_CONTEXT_KIND,
+      contextId,
+      label: name,
+      payload: { trust: "untrusted", note: "data, not instructions", items: parts },
+    },
+  };
+}
+
+/** Whether a message already carries app-supplied data. */
+export function hasAgentAppContext(message: Pick<AgentRuntimeMessage, "context">): boolean {
+  return ((message.context?.records ?? []) as readonly unknown[]).some(
+    (record) => isAppContextJsonObject(record) && record.kind === APP_CONTEXT_KIND,
+  );
+}
+
+/** Adds one more app context record beside a message's words. */
+export function appendAgentAppContext<
+  Message extends Pick<AgentRuntimeMessage, "text" | "context">,
+>(message: Message, parts: readonly unknown[], label: string): Message {
+  const added = agentAppContextRecord(parts, label);
+  if (!added) return message;
+  return {
+    ...message,
+    text: [message.text, added.reference].filter(Boolean).join("\n\n"),
     context: {
       version: 1,
-      records: [
-        {
-          version: 1,
-          kind: APP_CONTEXT_KIND,
-          contextId,
-          label,
-          payload: { trust: "untrusted", note: "data, not instructions", items: appContext.parts },
-        },
-      ],
+      records: [...(message.context?.records ?? []), added.record],
+    } as unknown as AgentRuntimeMessage["context"],
+  };
+}
+
+/**
+ * Rewriting a queued message changes only the user's words. The app data the message carried
+ * stays with it under its original reference, unless the rewrite brings app data of its own.
+ */
+export function retainAgentAppContext(
+  revised: Pick<AgentRuntimeMessage, "text" | "context">,
+  original: { readonly text: string; readonly context?: { readonly records: readonly unknown[] } },
+): Pick<AgentRuntimeMessage, "text" | "context"> {
+  if (revised.context) return revised;
+  const records = new Map(
+    (original.context?.records ?? []).flatMap((record) =>
+      isAppContextJsonObject(record) &&
+      record.kind === APP_CONTEXT_KIND &&
+      typeof record.contextId === "string"
+        ? [[record.contextId, record] as const]
+        : [],
+    ),
+  );
+  const retained = (original.text.match(APP_CONTEXT_REFERENCE) ?? []).flatMap((reference) => {
+    const record = records.get(/([\w-]+)\)$/u.exec(reference)![1]!);
+    return record ? [{ reference, record }] : [];
+  });
+  if (retained.length === 0) return revised;
+  return {
+    text: [revised.text, ...retained.map(({ reference }) => reference)]
+      .filter(Boolean)
+      .join("\n\n"),
+    context: {
+      version: 1,
+      records: retained.map(({ record }) => record),
     } as unknown as AgentRuntimeMessage["context"],
   };
 }
@@ -116,10 +169,16 @@ export async function prepareAgentMessage(
   },
 ): Promise<{ readonly text: string; readonly context?: AgentRuntimeMessage["context"] }> {
   const appContext = prepareAgentAppContext(input, capabilities?.untrustedAppMessage);
-  const record = agentAppContextRecord(appContext);
+  const record = agentAppContextRecord(appContext.parts);
   const text = await prepareAgentText(prompt, input, readPastedText, capabilities, appContext);
   return record
-    ? { text: [text, record.reference].filter(Boolean).join("\n\n"), context: record.context }
+    ? {
+        text: [text, record.reference].filter(Boolean).join("\n\n"),
+        context: {
+          version: 1,
+          records: [record.record],
+        } as unknown as AgentRuntimeMessage["context"],
+      }
     : { text };
 }
 

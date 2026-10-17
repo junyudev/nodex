@@ -7,10 +7,12 @@ import {
   agentRuntimeOverviewSectionsToRefill,
   agentRuntimeOverviewWindow,
   appendAgentRuntimeOverviewPage,
+  agentRuntimeOverviewTotalsUnknown,
   applyAgentRuntimeOverviewTask,
   projectAgentRuntimeSubagent,
   projectAgentRuntimeSubagentOverview,
   type AgentRuntimeTaskRecord,
+  withAgentRuntimeOverviewTotals,
 } from "./agent-runtime-subagent-overview";
 
 const task: AgentSubagentOverviewItem = {
@@ -32,10 +34,15 @@ const task: AgentSubagentOverviewItem = {
   updatedAt: "2026-10-13T20:00:05Z",
   resultAvailable: false,
 };
-const page = (items: readonly AgentSubagentOverviewItem[], nextCursor: string | null = null) => ({
+const page = (
+  items: readonly AgentSubagentOverviewItem[],
+  nextCursor: string | null = null,
+  totalCount = items.length,
+) => ({
   items,
   nextCursor,
   hasMore: nextCursor !== null,
+  totalCount,
 });
 
 describe("Runtime subagent overview", () => {
@@ -55,14 +62,14 @@ describe("Runtime subagent overview", () => {
       canInteract: false,
     });
   });
-  it("reports an incomplete window without inventing a total or retaining task bodies", () => {
+  it("counts every task in a partly loaded section without retaining task bodies", () => {
     const view = projectAgentRuntimeSubagentOverview("root", {
-      active: page([task], "after-task"),
+      active: page([task], "after-task", 7),
       terminal: page([]),
     });
     expect(view).toMatchObject({
       completeness: "incomplete",
-      active: { knownCount: 1, totalCount: null, continuation: "after-task" },
+      active: { knownCount: 1, totalCount: 7, continuation: "after-task" },
     });
     expect(view.active.rows[0]).toMatchObject({ objective: null, status: "active" });
   });
@@ -73,7 +80,8 @@ describe("Runtime subagent overview", () => {
     };
     const next: AgentSubagentOverview = {
       active: page([task, { ...task, id: "next", childThreadId: "next-child" }]),
-      terminal: page([]),
+      // A page read reports both sections' totals as of the read.
+      terminal: page([], null, 1),
     };
     const merged = appendAgentRuntimeOverviewPage(previous, next, "active");
     expect(merged.active.items.map((item) => item.id)).toEqual(["task", "next"]);
@@ -135,6 +143,27 @@ describe("Runtime subagent overview events", () => {
       ["task", "interrupted", "child-run"],
       ["old", "completed", "child-run"],
     ]);
+    expect([settled.active.totalCount, settled.terminal.totalCount]).toEqual([0, 2]);
+  });
+
+  it("re-reads section totals for any task that is not a loaded row", () => {
+    const loaded: AgentSubagentOverview = {
+      active: page([task]),
+      terminal: page([{ ...task, id: "done", status: "completed" }], "after-done", 30),
+    };
+    const unseen = record({ id: "unseen", status: "running", updatedAt: "2026-10-13T21:00:00Z" });
+    expect(agentRuntimeOverviewTotalsUnknown(loaded, unseen)).toBe(true);
+    // Even with every page loaded, an unseen report may not be a new task.
+    expect(
+      agentRuntimeOverviewTotalsUnknown({ active: page([task]), terminal: page([]) }, unseen),
+    ).toBe(true);
+    expect(agentRuntimeOverviewTotalsUnknown(loaded, record())).toBe(false);
+    const patched = applyAgentRuntimeOverviewTask(loaded, unseen);
+    expect([patched.active.totalCount, patched.terminal.totalCount]).toEqual([1, 30]);
+    const read = { active: page([], null, 2), terminal: page([], null, 29) };
+    const recounted = withAgentRuntimeOverviewTotals(patched, read);
+    expect([recounted.active.totalCount, recounted.terminal.totalCount]).toEqual([2, 29]);
+    expect(recounted.active.items).toBe(patched.active.items);
   });
 
   it("ignores an older report and leaves unloaded pages to explicit paging", () => {

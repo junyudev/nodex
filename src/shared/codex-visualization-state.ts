@@ -113,6 +113,13 @@ export function codexVisualizationInteractionAtomKey(
   return `visualization-interaction-state-v1:${JSON.stringify([identity.hostId, identity.threadId])}`;
 }
 
+/** The fingerprint of the widget context an Agent chat last sent with a message. */
+export function codexVisualizationPassiveSentAtomKey(
+  identity: CodexVisualizationStateScope,
+): string {
+  return `visualization-passive-sent-v1:${JSON.stringify([identity.hostId, identity.threadId])}`;
+}
+
 /** Interaction context is an object or an explicit clear, budgeted as formatted JSON characters. */
 export function parseCodexVisualizationInteractionState(
   value: unknown,

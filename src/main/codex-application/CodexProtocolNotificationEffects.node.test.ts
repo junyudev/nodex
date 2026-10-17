@@ -79,6 +79,8 @@ it.effect("drains only Main-owned prose before applying terminal product consequ
             write: () => Effect.die("unused"),
             writeInteraction: () => Effect.die("unused"),
             readPassiveContext: () => Effect.succeed(undefined),
+            readUnsentPassiveContext: () => Effect.succeed(undefined),
+            markPassiveContextSent: () => Effect.void,
             clearThread: (scope) =>
               widgetClearFailure
                 ? Effect.fail(

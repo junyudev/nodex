@@ -6,6 +6,7 @@ import { createUuidV7 } from "../../src/shared/uuid-v7";
 import {
   ElectronScenarioHarness,
   waitForNodexWindowInitialization,
+  openNodexWindow,
 } from "../../scripts/scenarios/harness/electron-e2e-harness";
 import { RendererIpcSeedAdapter } from "../../scripts/scenarios/adapters/renderer-ipc-seed-adapter";
 import { prepareScenarioCodexAppServerRuntimeSync } from "../../scripts/scenarios/runtime/agent-runtime-fixture";
@@ -250,15 +251,15 @@ test("persists typography across real conversation, Page, settings and Electron 
       .locator('[data-app-action-sidebar-thread-active="true"]')
       .getAttribute("data-app-action-sidebar-thread-id");
     if (!threadId) throw new Error("Missing active conversation identity");
-    const newWindow = harness.application.waitForEvent("window");
-    expect(
-      await page.evaluate((active) => window.api!.invoke("window:new", active), {
-        activeProjectSessionId: draft.projectSessionId,
-        activeProjectId: draft.projectId,
-      }),
-    ).toBe(true);
-    const second = await newWindow;
-    await waitForNodexWindowInitialization(second);
+    const opener = page;
+    const second = await openNodexWindow(harness.application, async () => {
+      expect(
+        await opener.evaluate((active) => window.api!.invoke("window:new", active), {
+          activeProjectSessionId: draft.projectSessionId,
+          activeProjectId: draft.projectId,
+        }),
+      ).toBe(true);
+    });
     await expect.poll(() => readWindowTypography(second).then((value) => value.prose)).toBe(14);
     await page.bringToFront();
 

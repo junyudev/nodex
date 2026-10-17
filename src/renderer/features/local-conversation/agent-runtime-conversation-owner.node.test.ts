@@ -747,6 +747,31 @@ test("control-only retirement uses captured node sources and preserves unknown A
 });
 
 describe("Agent Runtime keyed transcript reads", () => {
+  test("a write resolves once its event is applied, or after a bound when none arrives", async () => {
+    vi.useFakeTimers();
+    try {
+      const { owner, wire } = await open(conversation([assistant()]));
+      const applied = vi.fn();
+      void owner.whenObserved(5).then(applied);
+      wire.emit(event(assistant("Before"), 4));
+      await Promise.resolve();
+      expect(applied).not.toHaveBeenCalled();
+      wire.emit(event(assistant("The sent message"), 5));
+      await Promise.resolve();
+      expect(applied).toHaveBeenCalledOnce();
+      // An event already applied resolves at once; one that never arrives waits only the bound.
+      await owner.whenObserved(5);
+      const missing = vi.fn();
+      void owner.whenObserved(9, 500).then(missing);
+      await vi.advanceTimersByTimeAsync(499);
+      expect(missing).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(1);
+      expect(missing).toHaveBeenCalledOnce();
+      owner.dispose();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
   test("retains a content source across streamed deltas and retires it on reconnect or release", async () => {
     const { owner, wire, release } = await open(conversation([assistant()]));
     const source = owner.contentSource();

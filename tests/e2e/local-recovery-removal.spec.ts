@@ -1,7 +1,10 @@
 import { expect, test } from "@playwright/test";
 import { openProjectBoard } from "../../scripts/scenarios/harness/project-board-ui";
 import { recoverySummary } from "../../src/renderer/lib/document-recovery-staging";
-import { withElectronScenario } from "../../scripts/scenarios/harness/electron-e2e-harness";
+import {
+  withElectronScenario,
+  openNodexWindow,
+} from "../../scripts/scenarios/harness/electron-e2e-harness";
 import { DOCUMENT_SYNC_RECOVERY_SCENARIO_ID } from "../../scripts/scenarios/scenarios/document-sync-recovery";
 import { openBoardPageFromCard } from "./support/open-board-page";
 
@@ -63,9 +66,9 @@ test("unverified retained edits can be removed without changing the source Page"
         },
       );
       await page.reload();
-      const opened = application.waitForEvent("window");
-      await page.evaluate(() => window.api?.invoke("window:new", {}));
-      const audience = await opened;
+      const audience = await openNodexWindow(application, async () => {
+        await page.evaluate(() => window.api?.invoke("window:new", {}));
+      });
       await audience.getByRole("button", { name: "Open Document Recovery", exact: true }).click();
       await expect(
         audience.getByRole("button", { name: "Content issues", exact: true }),

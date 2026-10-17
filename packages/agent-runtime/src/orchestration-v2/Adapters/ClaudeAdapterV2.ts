@@ -937,6 +937,9 @@ export const layerQueryRunner: Layer.Layer<
           close: BoundedQueue.shutdown(promptQueue).pipe(
             Effect.andThen(closeClaudeQuery(queryRuntime)),
             Effect.andThen(Fiber.interrupt(rawMessagePump)),
+            // An interrupted pump never reports its end; readers see it here, so a stopped
+            // Turn settles now instead of after the close timeout.
+            Effect.andThen(BoundedQueue.end(messages)),
             Effect.asVoid,
             Effect.tap(() =>
               logProtocolEvent({

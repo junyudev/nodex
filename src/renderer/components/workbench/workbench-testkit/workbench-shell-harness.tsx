@@ -2812,8 +2812,8 @@ export function renderWorkbench({
     }
     if (channel === "agent-runtime:session:overview")
       return {
-        active: { items: [], nextCursor: null, hasMore: false },
-        terminal: { items: [], nextCursor: null, hasMore: false },
+        active: { items: [], nextCursor: null, hasMore: false, totalCount: 0 },
+        terminal: { items: [], nextCursor: null, hasMore: false, totalCount: 0 },
       };
     if (channel === "agent-runtime:session:observe") return { observed: true };
     if (channel === "agent-runtime:session:unobserve") return { unobserved: true };
