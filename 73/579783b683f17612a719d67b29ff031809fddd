@@ -1,0 +1,53 @@
+src/main/codex/codex-managed-worktree-effects.ts
+  s_bd811abbf24a41::t_e5bd73ac52586b 72-86
+src/main/codex-application/ManagedWorktreeRetentionRuntime.node.test.ts
+  s_bd811abbf24a41::t_e7d2d45967a53b 18-22,96,101-105,115,628-714
+src/main/app/ConversationApplicationLive.ts
+  s_bd811abbf24a41::t_1685af30075e3d 201,574
+src/main/codex-application/AgentChatWorktrees.ts
+  s_bd811abbf24a41::t_da0600b2c78ac2 1-9,15-36,38-80,82-85
+  s_bd811abbf24a41::t_e5bd73ac52586b 10-14,37,81
+src/main/codex-application/ManagedWorktreeCatalog.node.test.ts
+  s_bd811abbf24a41::t_112e68f6f0a51d 12-16,114,156-164,708-827
+  s_bd811abbf24a41::t_996ca2c4061777 84-85
+  s_bd811abbf24a41::t_302119af8ea739 828-830
+docs/product-specs/codex-managed-worktree-lifecycle-behavior.md
+  s_bd811abbf24a41::t_f09c75afe92ce9 261-265
+src/main/agent-runtime/AgentRuntimeApplication.ts
+  s_bd811abbf24a41::t_3df1447cd0f85d 32-35,1602-1603,1609,1621-1699,1764
+src/main/codex/codex-managed-worktree-effects.test.ts
+  s_bd811abbf24a41::t_0141b18daf6af7 12,77-86
+  s_bd811abbf24a41::t_996ca2c4061777 87-89
+  s_bd811abbf24a41::t_1699eb3306bbff 90-91
+src/main/codex-application/ManagedWorktreeRetentionRuntime.ts
+  s_bd811abbf24a41::t_acaf4a69bd72a6 27,77,90,155-173,231,240,268
+src/renderer/features/local-conversation/view/connected-thread-stage.tsx
+  s_bd811abbf24a41::t_67c01a94fb9fed 1360,1369,1371-1372,1375-1377
+src/main/app/AgentRuntimeApplicationLive.ts
+  s_bd811abbf24a41::t_1685af30075e3d 34,608-609
+src/main/codex-application/ManagedWorktreeCatalog.ts
+  s_bd811abbf24a41::t_3fb63d7d7827ff 149
+  s_bd811abbf24a41::t_e5bd73ac52586b 13,20,28-32,98,108,142-143,178-230,235-241,291-297,299,329-330,471-485
+  s_bd811abbf24a41::t_996ca2c4061777 174-177,231-234
+  s_bd811abbf24a41::t_465cdebe6807af 486
+src/main/agent-backend/NativeSessionWorkspace.ts
+  s_bd811abbf24a41::t_0a0bf7060abeea 90,94-97
+  s_bd811abbf24a41::t_996ca2c4061777 91
+  s_bd811abbf24a41::t_39fb4f32082808 16
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "73579783b683f17612a719d67b29ff031809fddd",
+  "prompts": {},
+  "sessions": {
+    "s_bd811abbf24a41": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d475c410-7aa3-406e-a6d6-6873f7b30325",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
