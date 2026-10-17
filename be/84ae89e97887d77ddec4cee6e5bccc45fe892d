@@ -1,0 +1,45 @@
+docs/product-specs/agent-runtime-behavior.md
+  s_bd811abbf24a41::t_704d7241450fee 213-217
+packages/agent-runtime/src/mcp/OrchestratorMcpService.ts
+  s_bd811abbf24a41::t_31212d58812349 615-622
+src/renderer/features/local-conversation/agent-runtime-conversation-owner.ts
+  s_bd811abbf24a41::t_f39f745812df78 49,205-206,583,756,761-769,824
+  s_bd811abbf24a41::t_61a6bde61b58be 60,860-872,878-880
+  s_bd811abbf24a41::t_16ec6aec781ba0 881
+src/renderer/features/local-conversation/agent-runtime-transcript-projection.node.test.ts
+  s_bd811abbf24a41::t_436bc198c8f7a2 6,226-297
+  s_bd811abbf24a41::t_128a1da149bdc7 298
+packages/agent-runtime/src/orchestration-v2/Adapters/CodexAdapterV2.test.ts
+  s_bd811abbf24a41::t_953d61b2825d1a 3214-3255,3260-3289,3296-3337,3341-3388,3390-3406
+  s_bd811abbf24a41::t_497067e46452cf 3256-3259,3290-3295,3338-3340
+  s_bd811abbf24a41::t_9ddcccba589e22 3389
+tests/e2e/fixtures/codex-queue-app-server.mjs
+  s_bd811abbf24a41::t_6fbe5cf1c75784 9-13,255,475
+src/renderer/features/local-conversation/agent-runtime-transcript-projection.ts
+  s_bd811abbf24a41::t_d62f46044c27b0 3,198-199,319-324,343-345,477-491,495,500-526,533,536,555
+packages/agent-runtime/src/orchestration-v2/Adapters/CodexAdapterV2.ts
+  s_bd811abbf24a41::t_f4b7bc43e54b25 51,1229-1230,1234-1251,3707,4384-4386,4388,4403,4406-4407,4419,4432,4440-4442
+  s_bd811abbf24a41::t_7528972f69278b 1231-1233
+  s_bd811abbf24a41::t_d482b2b5c4a3eb 1252-1285,4292-4383,4387,4389-4402,4404-4405,4408-4418,4420-4431,4433-4439,4443-4446
+  s_bd811abbf24a41::t_4e1acb872be56c 3349-3353,3422,3550-3553,3556-3560,3705-3706,5305-5309
+  s_bd811abbf24a41::t_49be6ddb591d50 50,3518-3519
+  s_bd811abbf24a41::t_07dd5616512cfe 4447
+packages/agent-runtime/vendor/contracts/src/orchestrationV2.ts
+  s_bd811abbf24a41::t_99a39a73618316 1486-1557,1603,1648,1785-1786,2392,2437,2571-2572
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "be84ae89e97887d77ddec4cee6e5bccc45fe892d",
+  "prompts": {},
+  "sessions": {
+    "s_bd811abbf24a41": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d475c410-7aa3-406e-a6d6-6873f7b30325",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}

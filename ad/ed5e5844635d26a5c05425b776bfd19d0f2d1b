@@ -1,0 +1,38 @@
+docs/product-specs/agent-interface-behavior.md
+  s_bd811abbf24a41::t_9d139e98528fc3 281-285
+packages/agent-runtime/src/orchestration-v2/WireProjection.test.ts
+  s_bd811abbf24a41::t_444f4f966f0860 489-509
+src/renderer/features/local-conversation/view/shared/tools/dynamic-tool-call.test.tsx
+  s_bd811abbf24a41::t_5ca166b14cf984 219,221-226,233-240,242-270
+  s_bd811abbf24a41::t_76bd5a4dbde337 241
+  s_bd811abbf24a41::t_fa2ffeb876e244 220,227-232
+src/renderer/features/local-conversation/projection/tool-metadata/dynamic-tool-call-utils.ts
+  s_bd811abbf24a41::t_5c7600c29a2408 2,45
+  s_bd811abbf24a41::t_6f6b6437c35e50 727-733
+src/renderer/features/local-conversation/projection/tool-metadata/agent-session-tool.ts
+  s_bd811abbf24a41::t_fa2ffeb876e244 27,33-41
+  s_bd811abbf24a41::t_76bd5a4dbde337 56
+  s_bd811abbf24a41::t_cc7fc43dfb48bd 1-4,10-26,28-32,42-55,57
+  s_bd811abbf24a41::t_6f6b6437c35e50 5-9
+src/renderer/features/local-conversation/view/shared/tools/dynamic-tool-call.tsx
+  s_bd811abbf24a41::t_5c7600c29a2408 361-398,610-611
+  s_bd811abbf24a41::t_4828998102f166 12
+packages/agent-runtime/vendor/shared/src/toolOutput.ts
+  s_bd811abbf24a41::t_cebd7bae293af7 37,123
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "aded5e5844635d26a5c05425b776bfd19d0f2d1b",
+  "prompts": {},
+  "sessions": {
+    "s_bd811abbf24a41": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d475c410-7aa3-406e-a6d6-6873f7b30325",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
