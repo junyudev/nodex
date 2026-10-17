@@ -183,6 +183,7 @@ test("persists typography across real conversation, Page, settings and Electron 
       NODEX_TEST_AGENT_RUNTIME_PROJECT_ROOT: ".",
       NODEX_FAKE_CODEX_AUTO_COMPLETE_FIRST_TURN: "1",
       NODEX_FAKE_CODEX_AUTOMATIC_COMPLETION_DELAY_MS: "120",
+      NODEX_FAKE_CODEX_CONTROLLED_PROMPT: "Show typography for this task",
       NODEX_FAKE_CODEX_APP_SERVER_VERSION: "0.162.0-alpha.17.2",
     },
   });
@@ -228,12 +229,12 @@ test("persists typography across real conversation, Page, settings and Electron 
       title: "Typography Page",
       nfm: "# Typography Page\n\nPage body keeps its own size.\n\n```text\nPage code uses the code preference.\n```",
     });
+    // The reply streams into the Turn this prompt starts, a finished block at a time.
     await sendAgentPrompt(page, draft.projectSessionId, "Show typography for this task");
-    await expect(page.getByText("The task completed successfully.", { exact: true })).toBeVisible();
     await command({ type: "start" });
     await command({
       type: "delta",
-      delta: `\n\nConversation body keeps its reading rhythm.\n\n## Typography heading\n\n\`\`\`text\nConversation code uses the code preference.\n\`\`\``,
+      delta: `\n\nConversation body keeps its reading rhythm.\n\n## Typography heading\n\n\`\`\`text\nConversation code uses the code preference.\n\`\`\`\n`,
     });
     await expect(page.getByRole("button", { name: "Stop", exact: true })).toBeVisible();
     await expect(

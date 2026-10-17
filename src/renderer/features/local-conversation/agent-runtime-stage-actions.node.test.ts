@@ -18,7 +18,7 @@ function fixture() {
   });
   const openFork = vi.fn().mockResolvedValue(undefined);
   const rollback = vi.fn().mockResolvedValue({ rolledBack: true });
-  const prepare = vi.fn(async (text: string) => `Prepared ${text}`);
+  const prepare = vi.fn(async (text: string) => ({ text: `Prepared ${text}` }));
   let state = {
     view: {
       requests: [
@@ -137,7 +137,7 @@ describe("Agent Runtime stage commands", () => {
       owner: () => owner as never,
       prepare: async (text) => {
         await pending;
-        return text;
+        return { text };
       },
       transport: { queueMessage: f.queueMessage } as unknown as AgentRuntimeRendererTransport,
     });
@@ -173,7 +173,7 @@ describe("Agent Runtime stage commands", () => {
       transport: { message } as unknown as AgentRuntimeRendererTransport,
       prepare: async (text) => {
         order.push("prepare");
-        return text;
+        return { text };
       },
     });
     await actions.onSendPrompt!("Task", { submittedPresentation: submitted });
@@ -360,7 +360,7 @@ describe("Agent Runtime stage commands", () => {
       target: () => null,
       owner: () => null,
       transport: { message } as unknown as AgentRuntimeRendererTransport,
-      prepare: async (text) => text,
+      prepare: async (text) => ({ text }),
     });
     await expect(actions.onSendPrompt!("hello")).rejects.toThrow("Open a conversation");
     expect(message).not.toHaveBeenCalled();

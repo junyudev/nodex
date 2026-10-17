@@ -24,7 +24,7 @@ import { CODEX_CLIENT_THREAD_ID_PREFIX } from "../../shared/codex-client-thread"
 import { launchAgentRuntimeSession } from "./agent-runtime-session-launch";
 import { agentRuntimeRuntime } from "./agent-runtime-runtime";
 import { createUuidV7 } from "../../shared/uuid-v7";
-import { prepareAgentPrompt } from "../../shared/agent-prompt";
+import { prepareAgentMessage } from "../../shared/agent-prompt";
 import { readPastedTextAttachment } from "./api";
 import { agentRuntimePromptImages } from "./agent-runtime-prompt";
 import {
@@ -440,7 +440,7 @@ export function useWorkbenchSessionCommands({
           startTurn: async ({ threadId, context }) => {
             const session = await resolveChatSessionForThread(threadId);
             if (!session.executionRef) throw new Error("This chat has no Agent Runtime execution");
-            const text = await prepareAgentPrompt(
+            const prepared = await prepareAgentMessage(
               context.promptInput.text,
               context.promptInput,
               (file) => readPastedTextAttachment({ file }),
@@ -451,7 +451,7 @@ export function useWorkbenchSessionCommands({
               threadId,
               message: {
                 messageId: createUuidV7(),
-                text,
+                ...prepared,
                 images: agentRuntimePromptImages(context.promptInput),
                 agentConfigs: context.promptInput.agentConfigs ?? [],
               },
@@ -460,7 +460,7 @@ export function useWorkbenchSessionCommands({
           startThread: async ({ projectId, sessionId, context }) => {
             const session = await resolveChatSessionById(sessionId);
             if (session.executionRef) {
-              const text = await prepareAgentPrompt(
+              const prepared = await prepareAgentMessage(
                 context.promptInput.text,
                 context.promptInput,
                 (file) => readPastedTextAttachment({ file }),
@@ -470,7 +470,7 @@ export function useWorkbenchSessionCommands({
                 sessionId,
                 message: {
                   messageId: createUuidV7(),
-                  text,
+                  ...prepared,
                   images: agentRuntimePromptImages(context.promptInput),
                   agentConfigs: context.promptInput.agentConfigs ?? [],
                 },

@@ -10,77 +10,45 @@ const statePath = process.env.NODEX_FAKE_CODEX_STATE_PATH;
 const commandPath = process.env.NODEX_FAKE_CODEX_COMMAND_PATH;
 const logPath = process.env.NODEX_FAKE_CODEX_LOG_PATH;
 const baseFixture = process.env.NODEX_FAKE_CODEX_BASE_FIXTURE;
-const pressurePageReleasePath = process.env.NODEX_FAKE_CODEX_PRESSURE_PAGE_RELEASE_PATH;
 if (!statePath || !commandPath || !logPath || !baseFixture)
-  throw new Error("Transcript pressure fixture requires explicit isolated paths");
+  throw new Error("Transcript streaming fixture requires explicit isolated paths");
 let consumed = 0;
 const notify = (method, params) => process.stdout.write(`${JSON.stringify({ method, params })}\n`);
-const writeState = (state) => fs.writeFileSync(statePath, JSON.stringify(state));
+const writeState = (state) => {
+  const temporary = `${statePath}.${process.pid}.tmp`;
+  fs.writeFileSync(temporary, JSON.stringify(state));
+  fs.renameSync(temporary, statePath);
+};
 const record = (command) => fs.appendFileSync(logPath, `${JSON.stringify({ method: "fixture-command", params: command })}\n`);
 const handle = (command) => {
   const state = JSON.parse(fs.readFileSync(statePath, "utf8"));
   const threadId = state.thread?.id;
   if (!threadId) throw new Error("The synthetic Thread has not been created through the app");
-  if (command.type === "release-pressure-page") {
-    if (!pressurePageReleasePath) throw new Error("Pressure page barrier is not configured");
-    fs.writeFileSync(pressurePageReleasePath, "released");
-    record(command);
-    return;
-  }
-  if (command.type === "pressure") {
-    const pressure = {
-      id: "pressure-turn", rootTurnId: null, itemsView: "full", status: "completed",
-      error: null, startedAt: 1_800_000_000, completedAt: 1_800_000_001, durationMs: 1000,
-      items: Array.from({ length: 1001 }, (_, index) => ({
-        type: "commandExecution", id: `pressure-command-${index.toString().padStart(4, "0")}`,
-        command: `printf synthetic-${index}`, cwd: state.thread.cwd, pluginId: null,
-        scriptPath: null, processId: null, source: "agent", status: "completed",
-        commandActions: [{ type: "unknown", command: `printf synthetic-${index}` }],
-        aggregatedOutput: `Synthetic output ${index}`, exitCode: 0, durationMs: 1,
-      })),
-    };
-    const live = {
-      id: "pressure-live-turn", rootTurnId: null, itemsView: "full", status: "inProgress",
-      error: null, startedAt: 1_800_000_002, completedAt: null, durationMs: null,
-      items: [{ type: "agentMessage", id: "pressure-live-answer", phase: "final_answer",
-        text: "Eviction live sentinel.\n\n" + "A synthetic paragraph gives the live Turn a measurable viewport while completed tool history remains outside it.\n\n".repeat(80) + "Eviction viewport marker.",
-        delivery: null, memoryCitation: null, questions: null }],
-    };
-    state.turns.push(pressure, live);
-    writeState(state);
-    notify("turn/started", { threadId, turn: { ...pressure, items: [], status: "inProgress" } });
-    for (const item of pressure.items) {
-      notify("item/started", { threadId, turnId: pressure.id, item, startedAtMs: 1_800_000_000_000 });
-      notify("item/completed", { threadId, turnId: pressure.id, item, completedAtMs: 1_800_000_001_000 });
-    }
-    notify("turn/completed", { threadId, turn: pressure });
-    notify("turn/started", { threadId, turn: { ...live, items: [] } });
-    for (const item of live.items)
-      notify("item/started", { threadId, turnId: live.id, item, startedAtMs: 1_800_000_002_000 });
-    notify("thread/status/changed", { threadId, status: { type: "active", activeFlags: [] } });
-    record(command);
-    return;
-  }
+  // Streams go into the Turn the app started for the controlled prompt, as a model's reply would.
+  const turn = state.turns.find(
+    (entry) => entry.id === state.controlledTurnId && entry.status === "inProgress",
+  );
+  // A command that arrives before the controlled prompt's Turn waits for it.
+  if (!turn) return false;
+  // Every app-server process of the Profile reads the channel; only the Turn's own one answers.
+  if (state.controlledTurnPid !== process.pid) return;
+  const message = (id, phase) => ({
+    type: "agentMessage", id, text: "", phase, delivery: null, memoryCitation: null, questions: null,
+  });
   if (command.type === "start") {
-    const turn = {
-      id: "performance-stream-turn", rootTurnId: null, status: "inProgress",
-      error: null, startedAt: Math.floor(Date.now() / 1000), completedAt: null,
-      durationMs: null, itemsView: "full", items: [
-        { type: "agentMessage", id: "stream-sibling", text: "Unchanged sibling", phase: "final_answer", delivery: null, memoryCitation: null, questions: null },
-        { type: "agentMessage", id: "stream-target", text: "Stream baseline", phase: "final_answer", delivery: null, memoryCitation: null, questions: null },
-      ],
-    };
-    state.turns.push(turn);
+    // A commentary sibling settles first; the final answer then streams like Codex streams it.
+    const sibling = { ...message("stream-sibling", "commentary"), text: "Unchanged sibling" };
+    const target = message("stream-target", "final_answer");
+    notify("item/started", { threadId, turnId: turn.id, item: { ...sibling, text: "" }, startedAtMs: Date.now() });
+    notify("item/completed", { threadId, turnId: turn.id, item: sibling, completedAtMs: Date.now() });
+    notify("item/started", { threadId, turnId: turn.id, item: target, startedAtMs: Date.now() });
+    target.text = "Stream baseline\n\n";
+    notify("item/agentMessage/delta", { threadId, turnId: turn.id, itemId: target.id, delta: target.text });
+    turn.items.push(sibling, target);
     writeState(state);
-    notify("turn/started", { threadId, turn: { ...turn, items: [] } });
-    for (const item of turn.items)
-      notify("item/started", { threadId, turnId: turn.id, item, startedAtMs: Date.now() });
-    notify("thread/status/changed", { threadId, status: { type: "active", activeFlags: [] } });
     record(command);
     return;
   }
-  const turn = state.turns.find((entry) => entry.id === "performance-stream-turn");
-  if (!turn) throw new Error("The synthetic stream has not been started");
   if (command.type === "delta") {
     const item = turn.items.find((entry) => entry.id === "stream-target");
     item.text += command.delta;
@@ -94,8 +62,8 @@ const handle = (command) => {
   turn.completedAt = Math.floor(Date.now() / 1000);
   turn.durationMs = 1000;
   writeState(state);
-  for (const item of turn.items)
-    notify("item/completed", { threadId, turnId: turn.id, item, completedAtMs: Date.now() });
+  const target = turn.items.find((entry) => entry.id === "stream-target");
+  notify("item/completed", { threadId, turnId: turn.id, item: target, completedAtMs: Date.now() });
   notify("turn/completed", { threadId, turn });
   notify("thread/status/changed", { threadId, status: { type: "idle" } });
   record(command);
@@ -105,10 +73,10 @@ fs.mkdirSync(path.dirname(commandPath), { recursive: true });
 if (!fs.existsSync(commandPath)) fs.writeFileSync(commandPath, "");
 // A restarted native process must not replay already executed synthetic commands.
 consumed = fs.readFileSync(commandPath, "utf8").split("\n").filter(Boolean).length;
-fs.watchFile(commandPath, { interval: 10 }, () => {
+setInterval(() => {
   const commands = fs.readFileSync(commandPath, "utf8").split("\n").filter(Boolean);
-  while (consumed < commands.length) handle(JSON.parse(commands[consumed++]));
-});
+  while (consumed < commands.length && handle(JSON.parse(commands[consumed])) !== false) consumed++;
+}, 10);
 // Cold resumes normally keep controlled streams alive; interaction scenarios
 // can opt into automatic completion for ordinary follow-up submissions.
 if (JSON.parse(fs.readFileSync(statePath, "utf8")).turnSequence > 0)

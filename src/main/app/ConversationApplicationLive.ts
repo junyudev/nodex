@@ -441,7 +441,6 @@ const threadGoals = codexThreadGoalRuntimeLive.pipe(
 
 const foundations = Layer.mergeAll(
   conversationContext,
-  visualizations,
   conversationRelationships,
   externalAgentImport,
   historySearchAdapter,
@@ -686,10 +685,14 @@ const conversationResume = Layer.effect(
 /** Native filesystem and conversation foundations needed before execution construction. */
 export const live = managedWorktreeHandoff;
 
-/** Native interaction owners are acquired only after the canonical execution facade exists. */
+/**
+ * Native interaction owners are acquired only after the canonical execution facade exists, as is
+ * the visualization reader, which follows an Agent chat to its Codex thread.
+ */
 export const interactions = Layer.mergeAll(
   composerPrediction,
   realtimeVoiceLive.pipe(Layer.provideMerge(realtimeVoicePolicyLive)),
+  visualizations,
 );
 
 /** Protocol observation depends on the single interaction owner, never the other way around. */

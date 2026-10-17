@@ -88,10 +88,25 @@ export function splitBufferedAssistantText(text: string): { ready: string; rest:
   return { ready: text.slice(0, boundary), rest: text.slice(boundary) };
 }
 
-/** Buffer assistant messages and reasoning alike, keeping unfinished markdown out of the read model. */
+/** Paragraph updates of one message land at most once per window. */
+export const ASSISTANT_STREAMING_WINDOW_MS = 400;
+
+/**
+ * Buffer assistant messages and reasoning alike, keeping unfinished markdown out of the read
+ * model. Paragraphs that arrive inside one window are held and land together when it ends, so
+ * the last paragraph of a burst never waits for an update that may not come.
+ */
 export function makeAssistantStreamingFilter(mode: ResponseStreamingMode) {
   const delivered = new Map<string, { text: string; at: number }>();
-  return (
+  const held = new Map<
+    string,
+    {
+      readonly event: ProviderAdapter.ProviderAdapterV2Event;
+      readonly text: string;
+      readonly dueAt: number;
+    }
+  >();
+  const accept = (
     event: ProviderAdapter.ProviderAdapterV2Event,
     now: number,
   ): ProviderAdapter.ProviderAdapterV2Event | null => {
@@ -112,21 +127,45 @@ export function makeAssistantStreamingFilter(mode: ResponseStreamingMode) {
     const key = `${event.type}:${message.id}`;
     if (!message.streaming) {
       delivered.delete(key);
+      held.delete(key);
       return event;
     }
     if (mode === "turn") return null;
     const previous = delivered.get(key);
-    if (previous && now - previous.at < 400) return null;
     const { ready } = splitBufferedAssistantText(message.text);
     if (!ready || ready === previous?.text) return null;
+    const update =
+      event.type === "message.updated"
+        ? { ...event, message: { ...event.message, text: ready } }
+        : event.type === "turn_item.updated" &&
+            (event.turnItem.type === "assistant_message" || event.turnItem.type === "reasoning")
+          ? { ...event, turnItem: { ...event.turnItem, text: ready } }
+          : event;
+    if (previous && now - previous.at < ASSISTANT_STREAMING_WINDOW_MS) {
+      held.set(key, {
+        event: update,
+        text: ready,
+        dueAt: previous.at + ASSISTANT_STREAMING_WINDOW_MS,
+      });
+      return null;
+    }
+    held.delete(key);
     delivered.set(key, { text: ready, at: now });
-    if (event.type === "message.updated")
-      return { ...event, message: { ...event.message, text: ready } };
-    if (
-      event.type === "turn_item.updated" &&
-      (event.turnItem.type === "assistant_message" || event.turnItem.type === "reasoning")
-    )
-      return { ...event, turnItem: { ...event.turnItem, text: ready } };
-    return event;
+    return update;
   };
+  /** Held paragraphs whose window has ended, now delivered. */
+  const takeDue = (now: number): ReadonlyArray<ProviderAdapter.ProviderAdapterV2Event> => {
+    const due: ProviderAdapter.ProviderAdapterV2Event[] = [];
+    for (const [key, entry] of held) {
+      if (entry.dueAt > now) continue;
+      held.delete(key);
+      delivered.set(key, { text: entry.text, at: now });
+      due.push(entry.event);
+    }
+    return due;
+  };
+  /** When the earliest held paragraph is due, if any is held. */
+  const nextDueAt = (): number | null =>
+    held.size === 0 ? null : Math.min(...[...held.values()].map((entry) => entry.dueAt));
+  return { accept, takeDue, nextDueAt };
 }

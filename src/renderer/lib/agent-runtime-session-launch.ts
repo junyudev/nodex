@@ -1,7 +1,7 @@
 import type { AgentRuntimeLaunchResult, AgentRuntimeLaunch } from "../../shared/agent-runtime-api";
 import type { CodexPromptInput, CodexThreadSettings, CodexServiceTier } from "../../shared/types";
 import { createUuidV7 } from "../../shared/uuid-v7";
-import { prepareAgentPrompt } from "../../shared/agent-prompt";
+import { prepareAgentMessage } from "../../shared/agent-prompt";
 import { applyAgentRuntimeOptionIntent } from "../../shared/agent-runtime-provider";
 import { readPastedTextAttachment } from "./api";
 import { agentRuntimeRuntime, type AgentRuntimeRendererTransport } from "./agent-runtime-runtime";
@@ -45,7 +45,7 @@ export async function launchAgentRuntimeSession(
     provider?.models[0];
   if (!provider || !model)
     throw new Error("Choose an available Agent model before starting this chat");
-  const text = await prepareAgentPrompt(
+  const prepared = await prepareAgentMessage(
     input.prompt,
     input.promptInput,
     (file) => readPastedTextAttachment({ file }),
@@ -85,7 +85,7 @@ export async function launchAgentRuntimeSession(
     worktreeStartingState: input.worktreeStartingState,
     message: {
       messageId: identity.messageId,
-      text,
+      ...prepared,
       images: agentRuntimePromptImages(input.promptInput),
       ...(input.promptInput ? { agentConfigs: input.promptInput.agentConfigs ?? [] } : {}),
     },

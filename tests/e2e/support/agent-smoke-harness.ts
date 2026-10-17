@@ -336,10 +336,14 @@ export const sendAgentPromptWithEvidence = async (
     const sample = () => {
       const composerContainsPrompt = Array.from(
         document.querySelectorAll<HTMLElement>("[data-codex-composer='true']"),
-      ).some((element) => element.textContent?.includes(expectedPrompt) === true);
+      ).some(
+        (element) => element.textContent?.replace(/\s+/gu, " ").includes(expectedPrompt) === true,
+      );
       const matchingRows = Array.from(
         document.querySelectorAll<HTMLElement>("[data-user-message-bubble='true']"),
-      ).filter((element) => element.textContent?.includes(expectedPrompt) === true);
+      ).filter(
+        (element) => element.textContent?.replace(/\s+/gu, " ").includes(expectedPrompt) === true,
+      );
       if (matchingRows.length > 0 && scope.__agentFirstSubmissionFirstUserAt === null) {
         scope.__agentFirstSubmissionFirstUserAt = performance.now();
       }
@@ -393,6 +397,10 @@ export const sendAgentPromptWithEvidence = async (
     throw error;
   }
   if (!threadId) throw new Error("Agent smoke turn returned no Thread id");
+  // The submitted bubble settles into the transcript's own row; sample once it has.
+  await expect
+    .poll(() => page.locator("[data-user-message-bubble='true']", { hasText: prompt }).count())
+    .toBe(1);
   const firstSubmission = await page.evaluate((expectedPrompt) => {
     const scope = window as typeof window & {
       __agentFirstSubmissionFrame?: number;
@@ -406,7 +414,9 @@ export const sendAgentPromptWithEvidence = async (
     }
     const rows = Array.from(
       document.querySelectorAll<HTMLElement>("[data-user-message-bubble='true']"),
-    ).filter((element) => element.textContent?.includes(expectedPrompt) === true);
+    ).filter(
+      (element) => element.textContent?.replace(/\s+/gu, " ").includes(expectedPrompt) === true,
+    );
     const identities = new Set(
       rows.flatMap((row) =>
         row.dataset.clientUserMessageId ? [row.dataset.clientUserMessageId] : [],
@@ -439,6 +449,22 @@ export const sendAgentPrompt = async (
   beforeSend: () => Promise<void> = async () => undefined,
 ): Promise<string> =>
   (await sendAgentPromptWithEvidence(page, projectSessionId, prompt, beforeSend)).threadId;
+
+/** Sends a follow-up in the open chat and waits until its message is in the transcript. */
+export const sendAgentFollowUp = async (page: Page, prompt: string): Promise<void> => {
+  const composer = page
+    .locator('[data-codex-composer="true"][aria-label="Ask for follow-up changes"]')
+    .first();
+  await expect(async () => {
+    await composer.fill(prompt);
+    await expect(composer).toHaveText(prompt, { timeout: 1_000 });
+  }).toPass({ timeout: 10_000 });
+  await page.getByRole("button", { name: "Send prompt" }).click();
+  await expect(page.locator("[data-user-message-bubble='true']", { hasText: prompt })).toHaveCount(
+    1,
+    { timeout: 10_000 },
+  );
+};
 
 export const waitForFinalMarker = async (
   page: Page,

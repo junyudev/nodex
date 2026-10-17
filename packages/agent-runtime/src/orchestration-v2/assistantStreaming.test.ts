@@ -54,14 +54,31 @@ const turnItem = (
 describe("V2 assistant streaming", () => {
   it("delivers completed paragraphs, coalesces rapid updates, and flushes final text", () => {
     const filter = makeAssistantStreamingFilter("paragraph");
-    expect(filter(message("First"), 0)).toBeNull();
-    expect(filter(message("First\n\nSec"), 10)).toMatchObject({ message: { text: "First\n\n" } });
-    expect(filter(message("First\n\nSecond\n\nThi"), 100)).toBeNull();
-    expect(filter(message("First\n\nSecond\n\nThird"), 410)).toMatchObject({
+    expect(filter.accept(message("First"), 0)).toBeNull();
+    expect(filter.accept(message("First\n\nSec"), 10)).toMatchObject({
+      message: { text: "First\n\n" },
+    });
+    expect(filter.accept(message("First\n\nSecond\n\nThi"), 100)).toBeNull();
+    expect(filter.accept(message("First\n\nSecond\n\nThird"), 410)).toMatchObject({
       message: { text: "First\n\nSecond\n\n" },
     });
     const final = message("First\n\nSecond\n\nThird", false);
-    expect(filter(final, 420)).toBe(final);
+    expect(filter.accept(final, 420)).toBe(final);
+  });
+  it("lands a paragraph held inside a window when the window ends, without another update", () => {
+    const filter = makeAssistantStreamingFilter("paragraph");
+    expect(filter.accept(message("First\n\n"), 0)).toMatchObject({
+      message: { text: "First\n\n" },
+    });
+    expect(filter.accept(message("First\n\nSecond\n\n"), 100)).toBeNull();
+    expect(filter.takeDue(399)).toEqual([]);
+    expect(filter.takeDue(400)).toMatchObject([{ message: { text: "First\n\nSecond\n\n" } }]);
+    expect(filter.takeDue(1_000)).toEqual([]);
+    // The final text supersedes anything still held.
+    expect(filter.accept(message("First\n\nSecond\n\nThird\n\n"), 500)).toBeNull();
+    const final = message("First\n\nSecond\n\nThird", false);
+    expect(filter.accept(final, 510)).toBe(final);
+    expect(filter.takeDue(2_000)).toEqual([]);
   });
   it("keeps code fences intact", () => {
     expect(splitBufferedAssistantText("Intro\n\n```ts\nx()\n\n")).toEqual({
@@ -77,9 +94,9 @@ describe("V2 assistant streaming", () => {
     const running = message("partial");
     const final = message("complete", false);
     const buffered = makeAssistantStreamingFilter("turn");
-    expect(buffered(running, 0)).toBeNull();
-    expect(buffered(message("First\n\nSecond\n\n"), 500)).toBeNull();
-    expect(buffered(final, 501)).toBe(final);
+    expect(buffered.accept(running, 0)).toBeNull();
+    expect(buffered.accept(message("First\n\nSecond\n\n"), 500)).toBeNull();
+    expect(buffered.accept(final, 501)).toBe(final);
   });
 
   it.each(["assistant_message", "reasoning"] as const)(
@@ -87,20 +104,20 @@ describe("V2 assistant streaming", () => {
     (type) => {
       const item = (text: string, streaming = true) => turnItem(text, streaming, type);
       const filter = makeAssistantStreamingFilter("paragraph");
-      expect(filter(item("First"), 0)).toBeNull();
-      expect(filter(item("First\n\nSec"), 10)).toMatchObject({
+      expect(filter.accept(item("First"), 0)).toBeNull();
+      expect(filter.accept(item("First\n\nSec"), 10)).toMatchObject({
         turnItem: { text: "First\n\n", streaming: true, type },
       });
-      expect(filter(item("First\n\nSecond\n\nThi"), 100)).toBeNull();
-      expect(filter(item("First\n\nSecond\n\nThi"), 410)).toMatchObject({
+      expect(filter.accept(item("First\n\nSecond\n\nThi"), 100)).toBeNull();
+      expect(filter.accept(item("First\n\nSecond\n\nThi"), 410)).toMatchObject({
         turnItem: { text: "First\n\nSecond\n\n", streaming: true },
       });
       const final = item("First\n\nSecond\n\nThird", false);
-      expect(filter(final, 420)).toBe(final);
+      expect(filter.accept(final, 420)).toBe(final);
 
       const buffered = makeAssistantStreamingFilter("turn");
-      expect(buffered(item("First\n\nSecond"), 0)).toBeNull();
-      expect(buffered(final, 1)).toBe(final);
+      expect(buffered.accept(item("First\n\nSecond"), 0)).toBeNull();
+      expect(buffered.accept(final, 1)).toBe(final);
     },
   );
 
@@ -129,11 +146,11 @@ describe("V2 assistant streaming", () => {
           completedAt: null,
         },
       };
-      expect(filter(running, 0)).toBeNull();
+      expect(filter.accept(running, 0)).toBeNull();
       const completed = { ...running, node: { ...running.node, status: "completed" as const } };
-      expect(filter(completed, 1)).toBe(completed);
+      expect(filter.accept(completed, 1)).toBe(completed);
       const tool = { ...running, node: { ...running.node, kind: "tool_call" as const } };
-      expect(filter(tool, 2)).toBe(tool);
+      expect(filter.accept(tool, 2)).toBe(tool);
     },
   );
 });

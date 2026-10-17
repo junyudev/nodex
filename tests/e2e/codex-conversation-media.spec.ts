@@ -37,6 +37,7 @@ test("reads message media through its native source and preserves it when stream
       NODEX_TEST_AGENT_RUNTIME_PROJECT_ROOT: ".",
       NODEX_FAKE_CODEX_AUTO_COMPLETE_FIRST_TURN: "1",
       NODEX_FAKE_CODEX_AUTOMATIC_COMPLETION_DELAY_MS: "120",
+      NODEX_FAKE_CODEX_CONTROLLED_PROMPT: "Prepare a message with local media",
       NODEX_FAKE_CODEX_APP_SERVER_VERSION: "0.162.0-alpha.17.2",
     },
   });
@@ -78,12 +79,13 @@ test("reads message media through its native source and preserves it when stream
       harness.profile.initialProjectsDirectory,
       "Message media",
     );
+    // The reply streams into the Turn this prompt starts.
     await sendAgentPrompt(page, draft.projectSessionId, "Prepare a message with local media");
-    await expect(page.getByText("The task completed successfully.", { exact: true })).toBeVisible();
     await command({ type: "start" });
     await command({
       type: "delta",
-      delta: `\n\n![Source image](<${imagePath}>)\n\n## Audio\n\n![Source audio](<${audioPath}>)`,
+      // Agent chats reveal a reply a finished block at a time.
+      delta: `\n\n![Source image](<${imagePath}>)\n\n## Audio\n\n![Source audio](<${audioPath}>)\n\n`,
     });
     const image = page.getByRole("img", { name: "Source image", exact: true });
     await expect(image).toBeVisible();

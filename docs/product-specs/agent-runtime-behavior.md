@@ -87,6 +87,9 @@ working directories and list filters organize content and execution.
 
 Page Chat and Workbench use one Session interface for Agent launch, follow-up messages,
 steering, selected-Run stop, information answers, model selection and planning.
+App-supplied data — interactive response changes or an app's model context — travels beside
+the user's words as a context record rather than inside them. The transcript, queue and
+editing show only what the user wrote; the Agent receives the record as data marked untrusted.
 Page editor submissions use that same interface. New submissions promote the chosen
 Session with its Page links, model options and workspace configuration; existing
 sections resolve a bound Session before sending. Imported native history does not

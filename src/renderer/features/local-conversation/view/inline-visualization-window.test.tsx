@@ -6,6 +6,7 @@ import type {
   CodexEvent,
   CodexVisualizationReadResult,
 } from "../../../../shared/types";
+import type { LocalConversationAttachmentState } from "../conversation-attachment-state";
 import type {
   createInlineVisualizationRuntime,
   InlineVisualizationRuntime,
@@ -130,6 +131,51 @@ function Thread({
       </ConversationVisualizationContext.Provider>
     </InlineVisualizationSurfaceProvider>
   );
+}
+
+// Native conversation metadata per host and Thread, with the store's change signals.
+function nativeRegistry(defaultResumeState: CodexConversationResumeState = "resumed") {
+  const key = (hostId: string, threadId: string) => JSON.stringify([hostId, threadId]);
+  const states = new Map<string, CodexConversationResumeState | null>();
+  const attachments = new Map<string, LocalConversationAttachmentState>();
+  const subscriptions = new Map<string, Set<() => void>>();
+  const subscribe = (hostId: string, threadId: string, listener: () => void) => {
+    const callbacks = subscriptions.get(key(hostId, threadId)) ?? new Set();
+    callbacks.add(listener);
+    subscriptions.set(key(hostId, threadId), callbacks);
+    return () => callbacks.delete(listener);
+  };
+  const read = vi.fn((hostId: string, threadId: string) => ({
+    resumeState: states.has(key(hostId, threadId))
+      ? states.get(key(hostId, threadId))!
+      : defaultResumeState,
+  }));
+  boundary.registry.mockReturnValue({
+    getForHostId: (hostId: string) => ({
+      readConversation: (threadId: string) => read(hostId, threadId),
+      addConversationCallback: (threadId: string, listener: () => void) =>
+        subscribe(hostId, threadId, listener),
+      readConversationAttachmentState: (threadId: string) =>
+        attachments.get(key(hostId, threadId)) ?? { status: "idle" },
+      subscribeConversationAttachment: (threadId: string, listener: () => void) =>
+        subscribe(hostId, threadId, listener),
+    }),
+  });
+  return {
+    read,
+    update: (
+      hostId: string,
+      threadId: string,
+      change: {
+        resumeState?: CodexConversationResumeState | null;
+        attachment?: LocalConversationAttachmentState;
+      },
+    ) => {
+      if ("resumeState" in change) states.set(key(hostId, threadId), change.resumeState!);
+      if (change.attachment) attachments.set(key(hostId, threadId), change.attachment);
+      subscriptions.get(key(hostId, threadId))?.forEach((listener) => listener());
+    },
+  };
 }
 
 describe("window-owned interactive responses", () => {
@@ -340,21 +386,90 @@ describe("window-owned interactive responses", () => {
   });
 
   test("accepted host-scoped deletion and resume eviction release only detached documents", async () => {
-    const states = new Map<string, CodexConversationResumeState | null>();
-    const subscriptions = new Map<string, Set<() => void>>();
-    const read = vi.fn((hostId: string, threadId: string) => ({
-      resumeState: states.get(JSON.stringify([hostId, threadId])) ?? "resumed",
-    }));
+    const sharedThread = "0197f6e8-8c00-7000-8000-000000000001";
+    const otherThread = "0197f6e8-8c00-7000-8000-000000000002";
+    const registry = nativeRegistry();
+    const client = queryClient();
+    const tree = (threadId: string) => (
+      <QueryClientProvider client={client}>
+        <InlineVisualizationWindowProvider>
+          <InlineVisualizationWindowLifecycle />
+          <Thread hostId="local" threadId={threadId} />
+          <Thread hostId="remote" threadId={sharedThread} surfaceId="remote-main" />
+        </InlineVisualizationWindowProvider>
+      </QueryClientProvider>
+    );
+    const view = render(tree(sharedThread));
+    await view.findByText((_, node) => node === instances[1]?.runtime.element);
+    const local = instances[0];
+    const remote = instances[1];
+    if (!local || !remote) throw new Error("Expected both host-owned documents");
+    await act(async () => {
+      view.rerender(tree(otherThread));
+    });
+    await view.findByText((_, node) => node === instances[2]?.runtime.element);
+    await act(async () => {
+      registry.update("local", sharedThread, {});
+    });
+    expect(local.runtime.dispose).not.toHaveBeenCalled();
+    expect(boundary.create).toHaveBeenCalledTimes(3);
+    await act(async () => {
+      registry.update("local", sharedThread, { resumeState: "needs_resume" });
+    });
+    expect(local.runtime.dispose).toHaveBeenCalledOnce();
+    expect(remote.runtime.dispose).not.toHaveBeenCalled();
+    await act(async () => {
+      dispatchCodexAppServerMessage("thread-deleted", {
+        hostId: "local",
+        threadId: sharedThread,
+      });
+    });
+    expect(remote.runtime.dispose).not.toHaveBeenCalled();
+    await act(async () => {
+      dispatchCodexAppServerMessage("thread-deleted", {
+        hostId: "remote",
+        threadId: sharedThread,
+      });
+    });
+    expect(remote.runtime.dispose).toHaveBeenCalledOnce();
+    expect(registry.read).toHaveBeenCalledWith("local", sharedThread);
+    expect(registry.read).toHaveBeenCalledWith("remote", sharedThread);
+  });
+  test("attached read-only native history keeps its detached response until a reconnect invalidates it", async () => {
+    const historyThread = "0197f6e8-8c00-7000-8000-000000000003";
+    const otherThread = "0197f6e8-8c00-7000-8000-000000000004";
+    // Attached native history is read without a resume.
+    const registry = nativeRegistry("needs_resume");
+    registry.update("local", historyThread, { attachment: { status: "attached" } });
+    registry.update("local", otherThread, { attachment: { status: "attached" } });
+    const client = queryClient();
+    const tree = (threadId: string) => (
+      <QueryClientProvider client={client}>
+        <InlineVisualizationWindowProvider>
+          <InlineVisualizationWindowLifecycle />
+          <Thread threadId={threadId} />
+        </InlineVisualizationWindowProvider>
+      </QueryClientProvider>
+    );
+    const view = render(tree(historyThread));
+    await view.findByText((_, node) => node === instances[0]?.runtime.element);
+    const history = instances[0]!;
+    await act(async () => {
+      view.rerender(tree(otherThread));
+    });
+    await view.findByText((_, node) => node === instances[1]?.runtime.element);
+    expect(history.runtime.dispose).not.toHaveBeenCalled();
+    await act(async () => {
+      registry.update("local", historyThread, { attachment: { status: "idle" } });
+    });
+    expect(history.runtime.dispose).toHaveBeenCalledOnce();
+  });
+  test("an Agent chat's detached response stays resident; its history needs no native resume", async () => {
+    const read = vi.fn(() => null);
     boundary.registry.mockReturnValue({
-      getForHostId: (hostId: string) => ({
-        readConversation: (threadId: string) => read(hostId, threadId),
-        addConversationCallback: (threadId: string, listener: () => void) => {
-          const key = JSON.stringify([hostId, threadId]);
-          const callbacks = subscriptions.get(key) ?? new Set();
-          callbacks.add(listener);
-          subscriptions.set(key, callbacks);
-          return () => callbacks.delete(listener);
-        },
+      getForHostId: () => ({
+        readConversation: read,
+        addConversationCallback: () => () => {},
       }),
     });
     const client = queryClient();
@@ -362,48 +477,18 @@ describe("window-owned interactive responses", () => {
       <QueryClientProvider client={client}>
         <InlineVisualizationWindowProvider>
           <InlineVisualizationWindowLifecycle />
-          <Thread hostId="local" threadId={threadId} />
-          <Thread hostId="remote" threadId="shared-thread" surfaceId="remote-main" />
+          <Thread threadId={threadId} />
         </InlineVisualizationWindowProvider>
       </QueryClientProvider>
     );
-    const view = render(tree("shared-thread"));
+    const view = render(tree("nodex:thread:agent-chat"));
+    await view.findByText((_, node) => node === instances[0]?.runtime.element);
+    const agentChat = instances[0]!;
+    await act(async () => {
+      view.rerender(tree("nodex:thread:other-chat"));
+    });
     await view.findByText((_, node) => node === instances[1]?.runtime.element);
-    const local = instances[0];
-    const remote = instances[1];
-    if (!local || !remote) throw new Error("Expected both host-owned documents");
-    await act(async () => {
-      view.rerender(tree("other-thread"));
-    });
-    await view.findByText((_, node) => node === instances[2]?.runtime.element);
-    const signal = (hostId: string, threadId: string) =>
-      subscriptions.get(JSON.stringify([hostId, threadId]))?.forEach((listener) => listener());
-    await act(async () => {
-      signal("local", "shared-thread");
-    });
-    expect(local.runtime.dispose).not.toHaveBeenCalled();
-    expect(boundary.create).toHaveBeenCalledTimes(3);
-    await act(async () => {
-      states.set(JSON.stringify(["local", "shared-thread"]), "needs_resume");
-      signal("local", "shared-thread");
-    });
-    expect(local.runtime.dispose).toHaveBeenCalledOnce();
-    expect(remote.runtime.dispose).not.toHaveBeenCalled();
-    await act(async () => {
-      dispatchCodexAppServerMessage("thread-deleted", {
-        hostId: "local",
-        threadId: "shared-thread",
-      });
-    });
-    expect(remote.runtime.dispose).not.toHaveBeenCalled();
-    await act(async () => {
-      dispatchCodexAppServerMessage("thread-deleted", {
-        hostId: "remote",
-        threadId: "shared-thread",
-      });
-    });
-    expect(remote.runtime.dispose).toHaveBeenCalledOnce();
-    expect(read).toHaveBeenCalledWith("local", "shared-thread");
-    expect(read).toHaveBeenCalledWith("remote", "shared-thread");
+    expect(agentChat.runtime.dispose).not.toHaveBeenCalled();
+    expect(read).not.toHaveBeenCalled();
   });
 });

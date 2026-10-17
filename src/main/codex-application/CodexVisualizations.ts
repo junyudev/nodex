@@ -2,8 +2,10 @@ import path from "node:path";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 import type { CodexVisualizationReadInput, CodexVisualizationReadResult } from "../../shared/types";
+import { AgentRuntimeApplication } from "../agent-runtime/AgentRuntimeApplication";
 import { areStructurallyEqual } from "../../shared/structural-equality";
 import { resolveCodexThreadVisualizationDirectory } from "../codex/codex-dynamic-first-turn-context";
 import {
@@ -20,7 +22,7 @@ import { ConversationEntityMap } from "./internal/ConversationEntityMap";
 export const CODEX_VISUALIZATION_MAX_BYTES = 5_000_000;
 const readSchema = Schema.Struct({
   hostId: Schema.Trimmed.check(Schema.isMinLength(1)),
-  sourceThreadId: Schema.String.check(Schema.isPattern(/^[a-zA-Z0-9_-]+$/)),
+  sourceThreadId: Schema.String.check(Schema.isPattern(/^[a-zA-Z0-9_.%:-]+$/)),
   file: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(8_192)),
   turnId: Schema.optionalKey(Schema.String.check(Schema.isMinLength(1))),
 });
@@ -78,6 +80,7 @@ export const live: Layer.Layer<
     const gateway = yield* CodexGateway;
     const files = yield* NodeVisualizationFiles;
     const config = yield* MainConfig;
+    const agents = yield* Effect.serviceOption(AgentRuntimeApplication);
     const readPermissions = (input: CodexVisualizationReadInput) => {
       const canonical = conversations.current(input.sourceThreadId)?.readCanonicalState();
       const params = input.turnId
@@ -102,13 +105,27 @@ export const live: Layer.Layer<
         const input = yield* Schema.decodeUnknownEffect(readSchema)(raw).pipe(
           Effect.mapError((cause) => new CodexVisualizationError({ operation: "decode", cause })),
         );
+        // An Agent chat keeps its replies' files in its Codex thread's folder, on this device.
+        const agentSource =
+          resolveCodexThreadVisualizationDirectory("/", input.sourceThreadId, path.posix) ===
+            null && Option.isSome(agents)
+            ? yield* agents.value.visualizationSource(input.sourceThreadId)
+            : null;
+        const readAgentSource = () =>
+          Option.isSome(agents)
+            ? agents.value.visualizationSource(input.sourceThreadId)
+            : Effect.succeed(null);
         const dayDirectory = resolveCodexThreadVisualizationDirectory(
           "/",
-          input.sourceThreadId,
+          agentSource?.nativeThreadId ?? input.sourceThreadId,
           path.posix,
         );
         if (!dayDirectory) return yield* invalid("thread-identity");
-        if ((yield* resolver.resolve(input.sourceThreadId)) !== input.hostId)
+        if (
+          agentSource
+            ? input.hostId !== "local"
+            : (yield* resolver.resolve(input.sourceThreadId)) !== input.hostId
+        )
           return yield* invalid("thread-host");
         const host = yield* hosts.resolve(input.hostId);
         const api =
@@ -130,9 +147,12 @@ export const live: Layer.Layer<
         const connection = local ? null : yield* gateway.connection(input.hostId);
         if (connection && connection.kind !== "ready") return yield* invalid("host-lifetime");
         const fence = connection ? codexGatewayGenerationFence(connection) : null;
-        const owner = conversations.current(input.sourceThreadId);
-        const permission = readPermissions(input);
-        const workspace = absolute ? yield* context.read(input.sourceThreadId) : null;
+        const owner = agentSource ? null : conversations.current(input.sourceThreadId);
+        const permission = agentSource
+          ? { policy: undefined, roots: undefined, cwd: agentSource.cwd }
+          : readPermissions(input);
+        const workspace =
+          absolute && !agentSource ? yield* context.read(input.sourceThreadId) : null;
         const day = path.posix.relative("/", dayDirectory);
         const bases: Root[] = [
           ...new Set([host.descriptor.codexHome, host.descriptor.managedRoot]),
@@ -235,13 +255,16 @@ export const live: Layer.Layer<
           if (result.kind === "missing") continue;
           if (result.kind === "too-large") return { contents: null, path: null };
           const nextConnection = connection ? yield* gateway.connection(input.hostId) : null;
+          const sourceCurrent = agentSource
+            ? areStructurallyEqual(agentSource, yield* readAgentSource())
+            : conversations.current(input.sourceThreadId) === owner &&
+              areStructurallyEqual(permission, readPermissions(input)) &&
+              (yield* resolver.resolve(input.sourceThreadId)) === input.hostId;
           if (
             (connection &&
               (nextConnection?.kind !== "ready" ||
                 nextConnection.generation !== connection.generation)) ||
-            conversations.current(input.sourceThreadId) !== owner ||
-            !areStructurallyEqual(permission, readPermissions(input)) ||
-            (yield* resolver.resolve(input.sourceThreadId)) !== input.hostId ||
+            !sourceCurrent ||
             !areStructurallyEqual(host.descriptor, (yield* hosts.resolve(input.hostId)).descriptor)
           )
             return yield* invalid("read-lifetime");

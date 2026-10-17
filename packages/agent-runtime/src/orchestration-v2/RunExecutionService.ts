@@ -33,6 +33,7 @@ import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
 import * as Ref from "effect/Ref";
 import * as Schema from "effect/Schema";
+import * as Semaphore from "effect/Semaphore";
 import * as Stream from "effect/Stream";
 
 import * as McpSessionRegistry from "../mcp/McpSessionRegistry.ts";
@@ -1399,7 +1400,29 @@ export const layer: Layer.Layer<
             }
             return true;
           });
-          const filterAssistantEvent = makeAssistantStreamingFilter(responseStreamingMode);
+          const assistantStreaming = makeAssistantStreamingFilter(responseStreamingMode);
+          // Provider events and held paragraphs reach the read model one at a time, in order.
+          const ingestion = yield* Semaphore.make(1);
+          let heldDelivery = false;
+          const deliverHeldParagraphs = Effect.gen(function* () {
+            heldDelivery = false;
+            for (const event of assistantStreaming.takeDue(
+              DateTime.toEpochMillis(yield* DateTime.now),
+            ))
+              yield* providerEventIngestor.ingestNormalized({
+                analyticsContext: {
+                  modelSelection: input.modelSelection,
+                  runtimeMode: input.runtimePolicy.runtimeMode,
+                  interactionMode: input.runtimePolicy.interactionMode,
+                },
+                providerSessionId: input.providerSessionId,
+                providerInstanceId: input.run.providerInstanceId,
+                threadId: input.run.threadId,
+                runId: input.run.id,
+                nodeId: input.rootNode.id,
+                event,
+              });
+          });
           const providerEventFiber = yield* eventSubscription.events.pipe(
             Stream.filterEffect((event) =>
               Effect.gen(function* () {
@@ -1415,85 +1438,97 @@ export const layer: Layer.Layer<
               }),
             ),
             Stream.tap((event) =>
-              Effect.gen(function* () {
-                let storedEventCount = 0;
-                const deliveredEvent = filterAssistantEvent(
-                  event,
-                  DateTime.toEpochMillis(yield* DateTime.now),
-                );
-                if (deliveredEvent) {
-                  // Root provider_thread.updated always uses an ownership gate:
-                  // pre-terminal writeIfRunCurrent (attempt still running), or
-                  // post-terminal writeIfProviderThreadOwner so late roster
-                  // clears still land while this attempt owns the run and this
-                  // run owns lastRunOrdinal.
-                  const rootTerminalAlreadySeen = yield* Ref.get(rootTerminalSeen);
-                  const isRootProviderThreadUpdate =
-                    event.type === "provider_thread.updated" &&
-                    event.providerThread.id === input.providerThread.id;
-                  const storedEvents = yield* providerEventIngestor.ingestNormalized({
-                    analyticsContext: {
-                      modelSelection: input.modelSelection,
-                      runtimeMode: input.runtimePolicy.runtimeMode,
-                      interactionMode: input.runtimePolicy.interactionMode,
-                    },
-                    providerSessionId: input.providerSessionId,
-                    providerInstanceId: input.run.providerInstanceId,
-                    threadId: input.run.threadId,
-                    runId: input.run.id,
-                    nodeId: input.rootNode.id,
-                    event: deliveredEvent,
-                    ...(isRootProviderThreadUpdate
-                      ? rootTerminalAlreadySeen
-                        ? {
-                            writeIfProviderThreadOwner: {
-                              providerThreadId: input.providerThread.id,
-                              runId: input.run.id,
-                              activeAttemptId: input.attempt.id,
-                              expectedLastRunOrdinal: input.run.ordinal,
-                            },
-                          }
-                        : {
-                            writeIfRunCurrent: {
-                              runId: input.run.id,
-                              activeAttemptId: input.attempt.id,
-                              expectedStatus: "running" as const,
-                            },
-                          }
-                      : {}),
-                  });
-                  storedEventCount = storedEvents.length;
+              ingestion.withPermits(1)(
+                Effect.gen(function* () {
+                  let storedEventCount = 0;
+                  const acceptedAt = DateTime.toEpochMillis(yield* DateTime.now);
+                  const deliveredEvent = assistantStreaming.accept(event, acceptedAt);
+                  // A paragraph held inside a streaming window lands when the window ends.
+                  const dueAt = assistantStreaming.nextDueAt();
+                  if (dueAt !== null && !heldDelivery) {
+                    heldDelivery = true;
+                    yield* Effect.sleep(Math.max(0, dueAt - acceptedAt)).pipe(
+                      Effect.andThen(ingestion.withPermits(1)(deliverHeldParagraphs)),
+                      Effect.forkChild,
+                    );
+                  }
+                  if (deliveredEvent) {
+                    // Root provider_thread.updated always uses an ownership gate:
+                    // pre-terminal writeIfRunCurrent (attempt still running), or
+                    // post-terminal writeIfProviderThreadOwner so late roster
+                    // clears still land while this attempt owns the run and this
+                    // run owns lastRunOrdinal.
+                    const rootTerminalAlreadySeen = yield* Ref.get(rootTerminalSeen);
+                    const isRootProviderThreadUpdate =
+                      event.type === "provider_thread.updated" &&
+                      event.providerThread.id === input.providerThread.id;
+                    const storedEvents = yield* providerEventIngestor.ingestNormalized({
+                      analyticsContext: {
+                        modelSelection: input.modelSelection,
+                        runtimeMode: input.runtimePolicy.runtimeMode,
+                        interactionMode: input.runtimePolicy.interactionMode,
+                      },
+                      providerSessionId: input.providerSessionId,
+                      providerInstanceId: input.run.providerInstanceId,
+                      threadId: input.run.threadId,
+                      runId: input.run.id,
+                      nodeId: input.rootNode.id,
+                      event: deliveredEvent,
+                      ...(isRootProviderThreadUpdate
+                        ? rootTerminalAlreadySeen
+                          ? {
+                              writeIfProviderThreadOwner: {
+                                providerThreadId: input.providerThread.id,
+                                runId: input.run.id,
+                                activeAttemptId: input.attempt.id,
+                                expectedLastRunOrdinal: input.run.ordinal,
+                              },
+                            }
+                          : {
+                              writeIfRunCurrent: {
+                                runId: input.run.id,
+                                activeAttemptId: input.attempt.id,
+                                expectedStatus: "running" as const,
+                              },
+                            }
+                        : {}),
+                    });
+                    storedEventCount = storedEvents.length;
+                    if (
+                      isRootProviderThreadUpdate &&
+                      rootTerminalAlreadySeen &&
+                      storedEventCount === 0
+                    ) {
+                      // Ownership lost (or thread row missing). Stop pinning the
+                      // stream on this run's background probe.
+                      yield* Ref.set(providerThreadOwnerLost, true);
+                    }
+                  }
+                  if (event.type === "provider_thread.updated") {
+                    if (
+                      event.providerThread.id === input.providerThread.id &&
+                      storedEventCount > 0
+                    ) {
+                      yield* Ref.set(latestProviderThread, event.providerThread);
+                    }
+                  }
                   if (
-                    isRootProviderThreadUpdate &&
-                    rootTerminalAlreadySeen &&
-                    storedEventCount === 0
+                    event.type === "turn_item.updated" &&
+                    event.turnItem.providerTurnId ===
+                      (yield* Ref.get(eventRouting)).rootProviderTurnId
                   ) {
-                    // Ownership lost (or thread row missing). Stop pinning the
-                    // stream on this run's background probe.
-                    yield* Ref.set(providerThreadOwnerLost, true);
+                    yield* Ref.update(latestTurnItemOrdinal, (current) =>
+                      Math.max(current, event.turnItem.ordinal),
+                    );
                   }
-                }
-                if (event.type === "provider_thread.updated") {
-                  if (event.providerThread.id === input.providerThread.id && storedEventCount > 0) {
-                    yield* Ref.set(latestProviderThread, event.providerThread);
+                  if (event.type === "turn.terminal") {
+                    yield* Ref.set(terminalEvent, event);
+                    yield* Ref.set(rootTerminalSeen, true);
+                    yield* finalizeRootRun(event);
                   }
-                }
-                if (
-                  event.type === "turn_item.updated" &&
-                  event.turnItem.providerTurnId ===
-                    (yield* Ref.get(eventRouting)).rootProviderTurnId
-                ) {
-                  yield* Ref.update(latestTurnItemOrdinal, (current) =>
-                    Math.max(current, event.turnItem.ordinal),
-                  );
-                }
-                if (event.type === "turn.terminal") {
-                  yield* Ref.set(terminalEvent, event);
-                  yield* Ref.set(rootTerminalSeen, true);
-                  yield* finalizeRootRun(event);
-                }
-                yield* trackChildLifecycle(event, deliveredEvent !== null);
-              }),
+                  yield* trackChildLifecycle(event, deliveredEvent !== null);
+                }),
+              ),
             ),
             Stream.takeUntilEffect(() => shouldStopProviderEventIngestion),
             Stream.runDrain,

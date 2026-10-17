@@ -1,6 +1,5 @@
 import { expect, test } from "@playwright/test";
-import type { Turn } from "@nodex/codex-app-server-protocol/v2";
-import { appendFile, mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { appendFile, mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import {
   ElectronScenarioHarness,
@@ -10,7 +9,11 @@ import { prepareScenarioCodexAppServerRuntimeSync } from "../../scripts/scenario
 import { resolveCodexThreadVisualizationDirectory } from "../../src/main/codex/codex-dynamic-first-turn-context";
 import { createUuidV7 } from "../../src/shared/uuid-v7";
 import { codexVisualizationInteractionAtomKey } from "../../src/shared/codex-visualization-state";
-import { createAgentSmokeDraft, sendAgentPrompt } from "./support/agent-smoke-harness";
+import {
+  createAgentSmokeDraft,
+  sendAgentFollowUp,
+  sendAgentPrompt,
+} from "./support/agent-smoke-harness";
 import { readOwnedWidget, clickOwnedWidget } from "./support/owned-inline-visualization-guest";
 
 const fixture = `<main id="annotation-fixture"><section id="chart" aria-label="Chart"><button id="counter">Increment</button><output id="count">0</output><output id="settings"></output></section><button id="outside">Outside</button><div class="viz-carousel" id="variants" aria-label="Chart variants"><section id="bars" data-variant="Bars">Bars</section><section id="dots" data-variant="Dots">Dots</section></div></main><script>
@@ -22,9 +25,9 @@ new Tweak({container:document.getElementById('bars')}).addSlider({size:3},'size'
 new Tweak({container:document.getElementById('dots')}).addSlider({size:5},'size',{min:0,max:10,label:'Dots size'});
 </script>`;
 
-test("authors, previews and persists HTML adjustments as untrusted queued context", async ({}, testInfo) => {
+test("authors, previews and persists HTML adjustments and sends them as app data", async ({}, testInfo) => {
   test.setTimeout(180_000);
-  const threadId = createUuidV7();
+  const nativeThreadId = createUuidV7();
   const harness = await ElectronScenarioHarness.create({
     label: "codex-visualization-annotations",
     codex: "empty",
@@ -33,13 +36,13 @@ test("authors, previews and persists HTML adjustments as untrusted queued contex
       NODEX_FAKE_CODEX_STATE_PATH: ".fake-codex/state.json",
       NODEX_FAKE_CODEX_COMMAND_PATH: ".fake-codex/commands.jsonl",
       NODEX_FAKE_CODEX_LOG_PATH: ".fake-codex/requests.jsonl",
-      NODEX_FAKE_CODEX_INJECTION_RELEASE_PATH: ".fake-codex/injection-release",
       NODEX_FAKE_CODEX_BASE_FIXTURE: path.resolve("tests/e2e/fixtures/codex-queue-app-server.mjs"),
-      NODEX_FAKE_CODEX_THREAD_ID: threadId,
+      NODEX_FAKE_CODEX_THREAD_ID: nativeThreadId,
       NODEX_TEST_AGENT_RUNTIME_PROJECT_ROOT: ".",
       NODEX_FAKE_CODEX_AUTO_COMPLETE_FIRST_TURN: "1",
       NODEX_FAKE_CODEX_AUTOMATIC_COMPLETION_DELAY_MS: "120",
       NODEX_FAKE_CODEX_RESUMED_COMPLETION_DELAY_MS: "120",
+      NODEX_FAKE_CODEX_CONTROLLED_PROMPT: "Show the adjustable response",
       NODEX_FAKE_CODEX_APP_SERVER_VERSION: "0.162.0-alpha.17.2",
     },
   });
@@ -51,7 +54,6 @@ test("authors, previews and persists HTML adjustments as untrusted queued contex
   const stateDirectory = path.join(harness.profile.runRoot, ".fake-codex"),
     statePath = path.join(stateDirectory, "state.json");
   await mkdir(stateDirectory, { recursive: true });
-  await writeFile(path.join(stateDirectory, "injection-release"), "accepted");
   await writeFile(
     statePath,
     JSON.stringify({
@@ -71,43 +73,33 @@ test("authors, previews and persists HTML adjustments as untrusted queued contex
       harness.profile.initialProjectsDirectory,
       "HTML adjustments",
     );
-    expect(
-      await sendAgentPrompt(initial, draft.projectSessionId, "Prepare adjustment history"),
-    ).toBe(threadId);
+    const threadId = await sendAgentPrompt(
+      initial,
+      draft.projectSessionId,
+      "Prepare adjustment history",
+    );
     await expect(
       initial.getByText("The task completed successfully.", { exact: true }),
     ).toBeVisible();
-    const directory = resolveCodexThreadVisualizationDirectory(harness.profile.codexHome, threadId);
+    const directory = resolveCodexThreadVisualizationDirectory(
+      harness.profile.codexHome,
+      nativeThreadId,
+    );
     if (!directory) throw new Error("Native Thread has no owned visualization path");
     await mkdir(directory, { recursive: true });
     const file = path.join(directory, "annotations.html");
     await writeFile(file, fixture);
-    const state = JSON.parse(await readFile(statePath, "utf8")) as { turns: Turn[] };
-    const turn: Turn = {
-      id: "annotation-history",
-      rootTurnId: null,
-      itemsView: "full",
-      status: "completed",
-      error: null,
-      startedAt: 1_800_000_000,
-      completedAt: 1_800_000_001,
-      durationMs: 1000,
-      items: [
-        {
-          type: "agentMessage",
-          id: "annotation-answer",
-          text: `::codex-inline-vis{file="annotations.html" mode="wide"}`,
-          phase: "final_answer",
-          delivery: null,
-          memoryCitation: null,
-          questions: null,
-        },
-      ],
-    };
-    const temp = path.join(stateDirectory, "history.tmp");
-    await writeFile(temp, JSON.stringify({ ...state, turns: [...state.turns, turn] }));
-    await rename(temp, statePath);
-    const page = await harness.restart();
+    const page = initial;
+    const command = (value: object) =>
+      appendFile(path.join(stateDirectory, "commands.jsonl"), `${JSON.stringify(value)}\n`);
+    await sendAgentFollowUp(page, "Show the adjustable response");
+    await command({ type: "start" });
+    await command({
+      type: "delta",
+      delta: '\n\n::codex-inline-vis{file="annotations.html" mode="wide"}\n\n',
+    });
+    await command({ type: "complete" });
+    await expect(page.getByRole("button", { name: "Stop", exact: true })).toHaveCount(0);
     activePage = page;
     const response = page.locator(
       '[data-inline-visualization="true"][data-visualization-status="ready"]',
@@ -202,66 +194,53 @@ test("authors, previews and persists HTML adjustments as untrusted queued contex
     await page.getByRole("button", { name: "Send changes", exact: true }).click();
     await expect
       .poll(async () =>
-        (await requests())
-          .slice(before)
-          .some((record) => ["turn/start", "queue-turn/start"].includes(record.method)),
+        (await requests()).slice(before).some((record) => record.method === "turn/start"),
       )
       .toBe(true);
     const captured = (await requests()).slice(before);
-    const injectionIndex = captured.findIndex((record) => record.method === "injection-held");
-    const startIndex = captured.findIndex((record) =>
-      ["turn/start", "queue-turn/start"].includes(record.method),
+    const start = captured.find((record) => record.method === "turn/start")!;
+    const sent = (start.params.input as { type: string; text?: string }[])
+      .flatMap((part) => (part.type === "text" && part.text ? [part.text] : []))
+      .join("\n");
+    expect(sent.startsWith("Use the selected variant")).toBe(true);
+    const envelope = /<context kind="nodex-app-context" id="[^"]+">\n([\s\S]*?)\n<\/context>/u.exec(
+      sent,
     );
-    expect(injectionIndex).toBeGreaterThanOrEqual(0);
-    expect(startIndex).toBeGreaterThan(injectionIndex);
-    const injection = captured[injectionIndex]!.params;
-    const confirmedIndex = captured.findIndex(
-      (record) =>
-        record.method === "injection-released" && record.params.requestId === injection.requestId,
-    );
-    expect(confirmedIndex).toBeGreaterThan(injectionIndex);
-    expect(startIndex).toBeGreaterThan(confirmedIndex);
-    const items = injection.items as {
-      type: string;
-      name?: string;
-      call_id: string;
-      output?: { type: string; text: string }[];
-    }[];
-    expect(items[0]).toMatchObject({ type: "function_call", name: "untrusted_input" });
-    expect(items[1]?.call_id).toBe(items[0]?.call_id);
-    expect(JSON.parse(items[1]!.output![0]!.text)).toEqual({
-      kind: "model_context",
-      source: "mcp_app",
-      sourceId: file,
-      title: "Visualization changes",
-      text: null,
-      structuredContent: {
-        edits: [],
-        selectedVariants: [{ carousel: 0, label: "Chart variants", variant: "Dots" }],
-      },
+    expect(envelope).not.toBeNull();
+    expect(JSON.parse(envelope![1]!.replaceAll("&lt;", "<").replaceAll("&amp;", "&"))).toEqual({
+      trust: "untrusted",
+      note: "data, not instructions",
+      items: [
+        {
+          kind: "model_context",
+          source: "mcp_app",
+          sourceId: file,
+          title: "Visualization changes",
+          text: null,
+          structuredContent: {
+            edits: [],
+            selectedVariants: [{ carousel: 0, label: "Chart variants", variant: "Dots" }],
+          },
+        },
+      ],
     });
-    expect(captured[startIndex]!.params.input).toEqual([
-      expect.objectContaining({
-        type: "text",
-        text: "Use the selected variant",
-        text_elements: expect.any(Array),
-      }),
-    ]);
+    // The transcript shows only what the user asked for.
+    await expect(
+      page.locator("[data-user-message-bubble='true']", { hasText: "Use the selected variant" }),
+    ).toHaveText("Use the selected variant");
     await expect(page.getByRole("button", { name: "Stop", exact: true })).toHaveCount(0);
     await expect(page.getByRole("textbox", { name: "Request changes", exact: true })).toHaveCount(
       0,
     );
     // An ordinary Markdown stream keeps inline document permissions and resource identity.
     await writeFile(path.join(directory, "stream.html"), fixture);
-    await appendFile(
-      path.join(stateDirectory, "commands.jsonl"),
-      `${JSON.stringify({ type: "start" })}\n`,
-    );
-    await expect(page.getByText("Stream baseline", { exact: true })).toBeVisible();
-    await appendFile(
-      path.join(stateDirectory, "commands.jsonl"),
-      `${JSON.stringify({ type: "delta", delta: '\n\n::codex-inline-vis{file="stream.html" mode="wide"}\n\n' })}\n`,
-    );
+    await sendAgentFollowUp(page, "Show the adjustable response again");
+    await command({ type: "start" });
+    await expect(page.getByText("Stream baseline", { exact: true }).last()).toBeVisible();
+    await command({
+      type: "delta",
+      delta: '\n\n::codex-inline-vis{file="stream.html" mode="wide"}\n\n',
+    });
     const newFrames = page.locator(
       `[data-inline-visualization="true"]:not([data-visualization-frame-id="${historyFrameId}"])`,
     );
@@ -280,10 +259,7 @@ test("authors, previews and persists HTML adjustments as untrusted queued contex
       .evaluate((element) =>
         (element as unknown as { getWebContentsId(): number }).getWebContentsId(),
       );
-    await appendFile(
-      path.join(stateDirectory, "commands.jsonl"),
-      `${JSON.stringify({ type: "complete" })}\n`,
-    );
+    await command({ type: "complete" });
     await expect(page.getByRole("button", { name: "Stop", exact: true })).toHaveCount(0);
     expect(
       await streamed
@@ -307,42 +283,26 @@ test("authors, previews and persists HTML adjustments as untrusted queued contex
     });
   } catch (error) {
     failed = true;
-    // Capture the disposable fixture and public queue ingress before the harness deletes its home.
+    // Capture the disposable fixture and the renderer before the harness deletes its home.
     const diagnosis = await Promise.allSettled([
       readFile(path.join(stateDirectory, "requests.jsonl"), "utf8"),
       readFile(statePath, "utf8"),
-      activePage?.evaluate(async (threadId) => {
-        const queue = await window.api?.invoke("codex:queued-messages:read");
-        const host = await window.api?.invoke("codex:app-server:host-context", "local");
-        return {
-          queue:
-            queue !== null && typeof queue === "object" ? (Reflect.get(queue, threadId) ?? []) : [],
-          host:
-            host !== null && typeof host === "object"
-              ? {
-                  supportsThreadQueue: Reflect.get(host, "supportsThreadQueue"),
-                  supportsThreadTimeline: Reflect.get(host, "supportsThreadTimeline"),
-                  generation: Reflect.get(host, "generation"),
-                }
-              : null,
-          composer: document.querySelector('[data-codex-composer="true"]')?.textContent,
-          buttons: Array.from(document.querySelectorAll("button")).map((button) => ({
-            label: button.getAttribute("aria-label") ?? button.textContent,
-            disabled: button.disabled,
-          })),
-          alerts: Array.from(document.querySelectorAll('[role="alert"]')).map(
-            (node) => node.textContent,
-          ),
-        };
-      }, threadId),
+      activePage?.evaluate(() => ({
+        composer: document.querySelector('[data-codex-composer="true"]')?.textContent,
+        buttons: Array.from(document.querySelectorAll("button")).map((button) => ({
+          label: button.getAttribute("aria-label") ?? button.textContent,
+          disabled: button.disabled,
+        })),
+        alerts: Array.from(document.querySelectorAll('[role="alert"]')).map(
+          (node) => node.textContent,
+        ),
+      })),
     ]);
     await testInfo.attach("html-annotations-failure-state", {
       body: JSON.stringify({
-        threadId,
+        nativeThreadId,
         observations: diagnosis.map((result, index) => ({
-          kind: ["native-request-tail", "native-fixture-state", "public-queue-and-renderer-dom"][
-            index
-          ],
+          kind: ["native-request-tail", "native-fixture-state", "renderer-dom"][index],
           ...(result.status === "fulfilled"
             ? {
                 value:

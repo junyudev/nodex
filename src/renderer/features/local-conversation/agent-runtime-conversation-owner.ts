@@ -1,3 +1,4 @@
+import { agentMessageDisplayText } from "../../../shared/agent-prompt";
 import type {
   AgentEvent,
   AgentHistoryPage,
@@ -311,7 +312,7 @@ export class AgentRuntimeConversationOwner {
     }
     if (!this.#queuePage?.entries.some((entry) => entry.runId === runId))
       throw new Error("This queued message is no longer available");
-    return { text: message.text, images };
+    return { text: agentMessageDisplayText(message.text), images };
   };
   readonly subscribe = (listener: () => void): (() => void) => {
     this.#listeners.add(listener);
@@ -633,7 +634,7 @@ export class AgentRuntimeConversationOwner {
                 message?.messageId === row.userMessageId &&
                 message.threadId === this.#target.threadId
               ) {
-                prompt = message.text;
+                prompt = agentMessageDisplayText(message.text);
                 images = row.userItemId
                   ? message.images.map((image) => ({
                       caption: image.name,

@@ -52,6 +52,10 @@ export const agentExecutionThreadId = (digest: string): string =>
 export const isAgentExecutionThreadId = (threadId: string): boolean =>
   threadId.startsWith(AGENT_EXECUTION_THREAD_PREFIX);
 
+/** Only a native app-server conversation is a UUID; no Agent execution Thread, root or child, is. */
+export const isNativeCodexThreadId = (threadId: string): boolean =>
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu.test(threadId);
+
 export interface AgentRuntimeSessionTarget {
   readonly sessionId: string;
   /** A descendant remains within the Session's explicitly bound root execution. */

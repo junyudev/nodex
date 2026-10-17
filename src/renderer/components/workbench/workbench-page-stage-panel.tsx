@@ -28,7 +28,7 @@ import {
 import { launchAgentRuntimeSession } from "@/lib/agent-runtime-session-launch";
 import { agentRuntimeRuntime } from "@/lib/agent-runtime-runtime";
 import { agentRuntimePromptImages } from "@/lib/agent-runtime-prompt";
-import { prepareAgentPrompt } from "../../../shared/agent-prompt";
+import { prepareAgentMessage } from "../../../shared/agent-prompt";
 import { readPastedTextAttachment } from "@/lib/api";
 import { sessionFirstSubmissionOwner } from "@/features/conversation-launch/session-first-submission-owner";
 import { usePageOwnershipPathReadModel } from "@/lib/block-reference-queries";
@@ -648,12 +648,12 @@ export function PageStageSessionTab({
                 presentationTicket,
                 message: {
                   messageId: createUuidV7(),
-                  text: await prepareAgentPrompt(
+                  ...(await prepareAgentMessage(
                     prompt,
                     materializedInput,
                     (file) => readPastedTextAttachment({ file }),
                     { images: true, agentConfigs: true },
-                  ),
+                  )),
                   images: agentRuntimePromptImages(materializedInput),
                   agentConfigs: materializedInput?.agentConfigs ?? [],
                 },

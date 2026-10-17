@@ -1,4 +1,4 @@
-import { expect, test, type ElectronApplication, type Page } from "@playwright/test";
+import { expect, test, type ElectronApplication, type Locator, type Page } from "@playwright/test";
 import { mkdir, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import {
@@ -41,10 +41,10 @@ interface NativeFocusEvent {
   readonly focusedWindowId: number | null;
   readonly focusedContentsId: number | null;
 }
-interface ComposerFocusObservation {
+interface OwnerFocusObservation {
   readonly target: Element;
   readonly controller: AbortController;
-  readonly events: Array<{ readonly tag: string; readonly composer: boolean }>;
+  readonly events: Array<{ readonly tag: string; readonly target: boolean }>;
 }
 async function exists(file: string) {
   try {
@@ -148,8 +148,14 @@ async function nativeGuestTimeOrigin(application: ElectronApplication, id: numbe
   }, id);
 }
 
-async function focusComposer(page: Page, application: ElectronApplication) {
-  const composer = page.locator('[data-codex-composer="true"][contenteditable="true"]').first();
+// Focuses an element of the owner page with a real click on `pointer` (the target itself by
+// default) and records every later focus change inside the page.
+async function focusOwner(
+  page: Page,
+  application: ElectronApplication,
+  target: Locator,
+  pointer: Locator = target,
+) {
   const ownerWindow = await application.browserWindow(page);
   const ownerId = await ownerWindow.evaluate((window) => {
     if (window.isMinimized()) window.restore();
@@ -157,37 +163,40 @@ async function focusComposer(page: Page, application: ElectronApplication) {
     window.focus();
     return window.webContents.id;
   });
-  await application.evaluate(({ app, webContents }, id) => {
-    app.focus({ steal: true });
-    webContents.fromId(id)?.focus();
-  }, ownerId);
-  await composer.click();
-  await expect(composer).toBeFocused();
-  await expect
-    .poll(() =>
-      application.evaluate(
-        ({ webContents }, id) => webContents.fromId(id)?.isFocused() ?? false,
-        ownerId,
-      ),
-    )
-    .toBe(true);
-  await composer.evaluate((element) => {
+  // Another application may take activation back while the test runs, so keep asking until the
+  // owner window is key; the page keeps its focused element across activation changes.
+  const activate = () =>
+    application.evaluate(({ app, BrowserWindow, webContents }, id) => {
+      const owner = webContents.fromId(id);
+      if (!owner || owner.isDestroyed()) throw new Error("Owned contents is unavailable");
+      if (owner.isFocused()) return true;
+      app.focus({ steal: true });
+      BrowserWindow.fromWebContents(owner)?.focus();
+      owner.focus();
+      return false;
+    }, ownerId);
+  await activate();
+  await pointer.click();
+  await expect(target).toBeFocused();
+  await expect.poll(activate).toBe(true);
+  await expect(target).toBeFocused();
+  await target.evaluate((element) => {
     const state = window as typeof window & {
-      retainedComposerFocus?: ComposerFocusObservation;
+      retainedOwnerFocus?: OwnerFocusObservation;
     };
-    state.retainedComposerFocus?.controller.abort();
-    const observation: ComposerFocusObservation = {
+    state.retainedOwnerFocus?.controller.abort();
+    const observation: OwnerFocusObservation = {
       target: element,
       controller: new AbortController(),
       events: [],
     };
-    state.retainedComposerFocus = observation;
+    state.retainedOwnerFocus = observation;
     document.addEventListener(
       "focusin",
       (event) => {
         observation.events.push({
           tag: event.target instanceof Element ? event.target.tagName : "unknown",
-          composer: event.target === element,
+          target: event.target === element,
         });
       },
       { capture: true, signal: observation.controller.signal },
@@ -198,22 +207,22 @@ async function focusComposer(page: Page, application: ElectronApplication) {
       (globalThis as typeof globalThis & { retainedFocusEvents?: NativeFocusEvent[] })
         .retainedFocusEvents?.length ?? 0,
   );
-  return { composer, ownerId, eventIndex };
+  return { target, ownerId, eventIndex };
 }
 
 async function assertStandbyPreservesFocus(
   application: ElectronApplication,
-  focus: Awaited<ReturnType<typeof focusComposer>>,
+  focus: Awaited<ReturnType<typeof focusOwner>>,
   spareId: number,
 ) {
-  await expect(focus.composer).toBeFocused();
-  const dom = await focus.composer.evaluate((element) => {
+  await expect(focus.target).toBeFocused();
+  const dom = await focus.target.evaluate((element) => {
     const observation = (
       window as typeof window & {
-        retainedComposerFocus?: ComposerFocusObservation;
+        retainedOwnerFocus?: OwnerFocusObservation;
       }
-    ).retainedComposerFocus;
-    if (!observation) throw new Error("Composer focus observation is unavailable");
+    ).retainedOwnerFocus;
+    if (!observation) throw new Error("Owner focus observation is unavailable");
     return {
       sameElement: observation.target === element && element.isConnected,
       focused: document.activeElement === observation.target,
@@ -221,7 +230,7 @@ async function assertStandbyPreservesFocus(
     };
   });
   expect(dom.sameElement && dom.focused).toBe(true);
-  expect(dom.events.filter((event) => !event.composer)).toEqual([]);
+  expect(dom.events.filter((event) => !event.target)).toEqual([]);
   const native = await application.evaluate(
     ({ BrowserWindow, webContents }, input) => {
       const owner = webContents.fromId(input.ownerId);
@@ -357,13 +366,33 @@ test("retains native HTML guests across real Thread navigation and releases dele
     }
     await page.reload();
     await page.evaluate(() => window.api?.awaitInitialization?.());
-    const initialFocus = await focusComposer(page, harness.application);
+    // A launch opens no chat; the first standby is prepared while a new chat's Composer has focus.
+    await page.getByRole("button", { name: "New chat", exact: true }).click();
+    const initialFocus = await focusOwner(
+      page,
+      harness.application,
+      page.locator('[data-codex-composer="true"][contenteditable="true"]').first(),
+    );
     const initialSpare = await preparedGuest(page, harness.application);
     const initialNativeFocus = await assertStandbyPreservesFocus(
       harness.application,
       initialFocus,
       initialSpare.id,
     );
+    // Attached native history is read-only, so later standbys are prepared while the reader
+    // has focused the conversation itself.
+    const focusConversation = async (index: number) => {
+      const title = sessions[index]!.displayTitle;
+      const conversation = page!
+        .getByRole("region", { name: "Conversation", exact: true })
+        .filter({ hasText: title });
+      return await focusOwner(
+        page!,
+        harness.application,
+        conversation,
+        conversation.getByText(title, { exact: true }).first(),
+      );
+    };
     const navigate = async (index: number, count: number) => {
       await page!.getByText(sessions[index]!.displayTitle, { exact: true }).first().click();
       await expect
@@ -386,7 +415,7 @@ test("retains native HTML guests across real Thread navigation and releases dele
     expect(await nativeGuestTimeOrigin(harness.application, claimedA!.id)).toBe(
       initialSpare.timeOrigin,
     );
-    const replacementFocus = await focusComposer(page, harness.application);
+    const replacementFocus = await focusConversation(0);
     const replacementSpare = await preparedGuest(page, harness.application);
     expect(replacementSpare.id).not.toBe(initialSpare.id);
     const replacementNativeFocus = await assertStandbyPreservesFocus(
@@ -424,7 +453,7 @@ test("retains native HTML guests across real Thread navigation and releases dele
     expect(await nativeGuestTimeOrigin(harness.application, b.id)).toBe(
       replacementSpare.timeOrigin,
     );
-    const finalFocus = await focusComposer(page, harness.application);
+    const finalFocus = await focusConversation(1);
     const finalSpare = await preparedGuest(page, harness.application);
     expect(finalSpare.id).not.toBe(initialSpare.id);
     expect(finalSpare.id).not.toBe(replacementSpare.id);

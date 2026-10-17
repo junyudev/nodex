@@ -14,6 +14,7 @@ import type { AgentBackendBinding } from "../../../shared/agent-backend";
 import type { AgentModelSelection } from "../../../shared/agent-model-catalog";
 import type {
   AgentRuntimeConnectionState,
+  AgentRuntimeMessage,
   AgentRuntimeSessionTarget,
 } from "../../../shared/agent-runtime-api";
 import {
@@ -25,7 +26,7 @@ import {
 import { useCodexThreadSettings } from "../../lib/use-codex-thread-settings";
 import { CodexReasoningEffortSchema } from "../../../shared/schemas/codex";
 import { useCodexServiceTierSettings } from "../../lib/use-codex-service-tier-settings";
-import { prepareAgentPrompt } from "../../../shared/agent-prompt";
+import { prepareAgentMessage } from "../../../shared/agent-prompt";
 import { createUuidV7 } from "../../../shared/uuid-v7";
 import type {
   CodexCollaborationModePreset,
@@ -316,7 +317,7 @@ export function createAgentRuntimeStageActions(input: {
     text: string,
     promptInput?: CodexPromptInput,
     appMessage?: import("../../../shared/codex-untrusted-app-input").CodexUntrustedAppMessage,
-  ) => Promise<string>;
+  ) => Promise<Pick<AgentRuntimeMessage, "text" | "context">>;
   readonly capturePresentation?: (
     target: CodexTurnPresentationTarget,
     submitted?: WorkbenchSubmitPresentation,
@@ -350,7 +351,7 @@ export function createAgentRuntimeStageActions(input: {
       presentationTicket,
       message: {
         messageId,
-        text: prepared,
+        ...prepared,
         images: agentRuntimePromptImages(promptInput, appMessage),
         ...(promptInput ? { agentConfigs: promptInput.agentConfigs ?? [] } : {}),
       },
@@ -400,14 +401,14 @@ export function createAgentRuntimeStageActions(input: {
     };
     const messageId = createUuidV7();
     const presentationTicket = await input.capturePresentation?.({ kind: "thread", threadId });
-    const text = await input.prepare(prompt, promptInput, appMessage);
+    const prepared = await input.prepare(prompt, promptInput, appMessage);
     assertCurrent();
     await transport.queueMessage({
       ...target,
       presentationTicket,
       message: {
         messageId,
-        text,
+        ...prepared,
         images: agentRuntimePromptImages(promptInput, appMessage),
         ...(promptInput ? { agentConfigs: promptInput.agentConfigs ?? [] } : {}),
       },
@@ -434,7 +435,7 @@ export function createAgentRuntimeStageActions(input: {
       runId,
       message: {
         messageId: queued.clientUserMessageId,
-        text: await input.prepare(prompt, promptInput),
+        ...(await input.prepare(prompt, promptInput)),
         images: agentRuntimePromptImages(promptInput),
         ...(promptInput ? { agentConfigs: promptInput.agentConfigs ?? [] } : {}),
       },
@@ -845,7 +846,7 @@ export function useAgentRuntimeConversationAdapter(input: {
       promptInput?: CodexPromptInput,
       untrustedAppMessage?: import("../../../shared/codex-untrusted-app-input").CodexUntrustedAppMessage,
     ) =>
-      prepareAgentPrompt(text, promptInput, (file) => readPastedTextAttachment({ file }), {
+      prepareAgentMessage(text, promptInput, (file) => readPastedTextAttachment({ file }), {
         images: true,
         agentConfigs: true,
         nativeSkills: kind === "claude",
@@ -925,7 +926,7 @@ export function useAgentRuntimeConversationAdapter(input: {
             { kind: "session", sessionId, launchId: submission.launchId },
             submittedPresentation,
           ));
-        const text = await prepareFor(launchSelection.binding.kind)(
+        const prepared = await prepareFor(launchSelection.binding.kind)(
           request.prompt,
           request.promptInput,
         );
@@ -943,7 +944,7 @@ export function useAgentRuntimeConversationAdapter(input: {
           worktreeStartingState: request.worktreeStartingState,
           message: {
             messageId: submission.clientUserMessageId,
-            text,
+            ...prepared,
             images: agentRuntimePromptImages(request.promptInput),
             ...(request.promptInput
               ? { agentConfigs: request.promptInput.agentConfigs ?? [] }

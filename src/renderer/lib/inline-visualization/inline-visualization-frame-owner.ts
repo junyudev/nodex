@@ -1,7 +1,4 @@
-import type {
-  CodexConversationResumeState,
-  CodexVisualizationReadResult,
-} from "../../../shared/types";
+import type { CodexVisualizationReadResult } from "../../../shared/types";
 import type { CodexVisualizationStateIdentity } from "../../../shared/codex-visualization-state";
 import {
   INLINE_VISUALIZATION_INITIAL_HEIGHT,
@@ -98,7 +95,8 @@ export function createInlineVisualizationFrameOwner(
   const frames = new Map<string, Frame>();
   const byOccurrence = new Map<string, Set<string>>();
   const surfaces = new Map<string, string | null>();
-  const resumes = new Map<string, CodexConversationResumeState | null>();
+  // Whether each Thread's loaded history is still the one its parked guests rendered.
+  const histories = new Map<string, boolean>();
   const listeners = new Set<() => void>();
   let ids: readonly string[] = EMPTY_IDS;
   let parking: HTMLElement | null = null;
@@ -149,9 +147,8 @@ export function createInlineVisualizationFrameOwner(
     if (frame.binding?.anchor.isConnected) return;
     const { identity } = frame.snapshot;
     const key = threadKey(identity.hostId, identity.threadId);
-    if (surfaces.get(identity.surfaceId) === key || !resumes.has(key)) return;
-    const state = resumes.get(key);
-    if (state === null || state === "needs_resume") release(frame);
+    if (surfaces.get(identity.surfaceId) === key) return;
+    if (histories.get(key) === false) release(frame);
   };
   const releaseIfUnused = (frame: Frame) => {
     if (frame.binding?.anchor.isConnected) return;
@@ -210,7 +207,7 @@ export function createInlineVisualizationFrameOwner(
     standby.dispose();
     frames.forEach(release);
     surfaces.clear();
-    resumes.clear();
+    histories.clear();
     listeners.clear();
     parking = null;
   };
@@ -355,13 +352,9 @@ export function createInlineVisualizationFrameOwner(
       const frame = frames.get(id);
       return frame !== undefined && active(frame);
     },
-    reportResumeState: (
-      hostId: string,
-      threadId: string,
-      state: CodexConversationResumeState | null,
-    ) => {
-      resumes.set(threadKey(hostId, threadId), state);
-      if (state !== null && state !== "needs_resume") return;
+    reportHistory: (hostId: string, threadId: string, current: boolean) => {
+      histories.set(threadKey(hostId, threadId), current);
+      if (current) return;
       for (const frame of frames.values()) {
         const identity = frame.snapshot.identity;
         if (identity.hostId !== hostId || identity.threadId !== threadId) continue;
@@ -387,7 +380,7 @@ export function createInlineVisualizationFrameOwner(
         const identity = frame.snapshot.identity;
         if (identity.hostId === hostId && identity.threadId === threadId) release(frame);
       }
-      resumes.delete(threadKey(hostId, threadId));
+      histories.delete(threadKey(hostId, threadId));
     },
     dispose,
   };

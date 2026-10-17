@@ -25,7 +25,11 @@ const load = () => {
   catch { return { threads: {} }; }
 };
 let state = load();
-const persist = () => fs.writeFileSync(path.join(home, "codex-state.json"), JSON.stringify(state));
+const persist = () => {
+  const target = path.join(home, "codex-state.json");
+  fs.writeFileSync(`${target}.${process.pid}.tmp`, JSON.stringify(state));
+  fs.renameSync(`${target}.${process.pid}.tmp`, target);
+};
 const servers = new Map();
 /** Input steered into an active turn, read by that turn before it finishes. */
 const steered = new Map();

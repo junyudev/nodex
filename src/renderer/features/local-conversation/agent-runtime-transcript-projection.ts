@@ -14,6 +14,7 @@ import type {
 import { projectCodexCanonicalTurnViews } from "../../../shared/codex-canonical-item-projector";
 import { projectCodexItemViewToTranscriptEntry } from "../../../shared/codex-transcript-entry-projection";
 import { buildAgentRuntimeAttachmentSource } from "../../../shared/agent-runtime-attachments";
+import { agentMessageDisplayText } from "../../../shared/agent-prompt";
 import type { CodexTranscriptTurnDetails } from "../../../shared/codex-transcript-projection";
 
 export type AgentRuntimeThread = AgentSnapshot["projection"]["thread"];
@@ -296,7 +297,11 @@ export function projectAgentRuntimeItem(item: AgentTurnItem, cwd = ""): CodexCan
         ...(origin ? { origin } : {}),
         ...(inputIntent ? { inputIntent } : {}),
         content: [
-          { type: "text", text: item.text, text_elements: emptyTextElements },
+          {
+            type: "text",
+            text: agentMessageDisplayText(item.text),
+            text_elements: emptyTextElements,
+          },
           ...item.attachments
             .filter((attachment) => attachment.type === "image")
             .map((attachment): UserInput => ({
@@ -557,7 +562,11 @@ export function projectAgentRuntimeTurnDetails(input: {
       ? {
           threadId: thread.id,
           input: [
-            { type: "text", text: openingItem.text, text_elements: emptyTextElements },
+            {
+              type: "text",
+              text: agentMessageDisplayText(openingItem.text),
+              text_elements: emptyTextElements,
+            },
             ...openingItem.attachments
               .filter((attachment) => attachment.type === "image")
               .map((attachment): UserInput => ({

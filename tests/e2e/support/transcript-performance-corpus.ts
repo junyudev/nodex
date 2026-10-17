@@ -1,11 +1,6 @@
 import type { Turn } from "@nodex/codex-app-server-protocol/v2";
 
-/** Fixed synthetic text keeps pressure evidence reproducible and free of user content. */
-export const TRANSCRIPT_PERFORMANCE_CORPORA = [
-  { id: "short", turnCount: 10, activeHistoryEviction: false },
-  { id: "long", turnCount: 10_000, activeHistoryEviction: true },
-] as const;
-
+/** Fixed synthetic text keeps benchmark evidence reproducible and free of user content. */
 export const buildTranscriptPerformanceCorpus = (turnCount: number): Turn[] =>
   Array.from({ length: turnCount }, (_, index) => ({
     id: `history-turn-${index.toString().padStart(4, "0")}`,

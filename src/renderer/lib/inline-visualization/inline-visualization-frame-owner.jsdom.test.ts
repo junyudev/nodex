@@ -107,7 +107,7 @@ describe("window-owned interactive response occurrences", () => {
   });
   test("A-B-A parks the document, denies inactive actions, then binds the original frame and current callback", async () => {
     const { owner, parking, flush } = harness();
-    owner.reportResumeState("local", "a", "resumed");
+    owner.reportHistory("local", "a", true);
     owner.setSurface("main", "local", "a");
     const first = owner.bind(input(), element());
     const guest = runtime();
@@ -144,45 +144,39 @@ describe("window-owned interactive response occurrences", () => {
     expect(owner.readIds()).toEqual([]);
     owner.dispose();
   });
-  test.each([null, "needs_resume"] as const)(
-    "leaving an unbound selected Thread retires its already invalidated %s history",
-    (state) => {
-      const { owner, flush } = harness();
-      owner.reportResumeState("local", "a", "resumed");
-      owner.setSurface("main", "local", "a");
-      const binding = owner.bind(input(), element());
-      const guest = runtime();
-      owner.attachRuntime(binding.frameId, guest);
-      owner.setSurface("main", "local", "b");
-      owner.unbind(binding);
-      flush();
-      owner.setSurface("main", "local", "a");
-      owner.reportResumeState("local", "a", state);
-      flush();
-      expect(guest.dispose).not.toHaveBeenCalled();
-      owner.setSurface("main", "local", "b");
-      expect(guest.dispose).toHaveBeenCalledOnce();
-      expect(owner.readIds()).toEqual([]);
-      owner.dispose();
-    },
-  );
-  test.each([null, "needs_resume"] as const)(
-    "inactive detached frame is released when Thread metadata becomes %s",
-    (state) => {
-      const { owner, flush } = harness();
-      owner.setSurface("main", "local", "a");
-      const binding = owner.bind(input(), element());
-      const guest = runtime();
-      owner.attachRuntime(binding.frameId, guest);
-      owner.setSurface("main", "local", "b");
-      owner.reportResumeState("local", "a", state);
-      expect(guest.dispose).not.toHaveBeenCalled();
-      owner.unbind(binding);
-      flush();
-      expect(guest.dispose).toHaveBeenCalledOnce();
-      owner.dispose();
-    },
-  );
+  test("leaving an unbound selected Thread retires its already invalidated history", () => {
+    const { owner, flush } = harness();
+    owner.reportHistory("local", "a", true);
+    owner.setSurface("main", "local", "a");
+    const binding = owner.bind(input(), element());
+    const guest = runtime();
+    owner.attachRuntime(binding.frameId, guest);
+    owner.setSurface("main", "local", "b");
+    owner.unbind(binding);
+    flush();
+    owner.setSurface("main", "local", "a");
+    owner.reportHistory("local", "a", false);
+    flush();
+    expect(guest.dispose).not.toHaveBeenCalled();
+    owner.setSurface("main", "local", "b");
+    expect(guest.dispose).toHaveBeenCalledOnce();
+    expect(owner.readIds()).toEqual([]);
+    owner.dispose();
+  });
+  test("inactive detached frame is released when its Thread history is invalidated", () => {
+    const { owner, flush } = harness();
+    owner.setSurface("main", "local", "a");
+    const binding = owner.bind(input(), element());
+    const guest = runtime();
+    owner.attachRuntime(binding.frameId, guest);
+    owner.setSurface("main", "local", "b");
+    owner.reportHistory("local", "a", false);
+    expect(guest.dispose).not.toHaveBeenCalled();
+    owner.unbind(binding);
+    flush();
+    expect(guest.dispose).toHaveBeenCalledOnce();
+    owner.dispose();
+  });
   test("height is tied weakly to body contents and rejects stale document generations", () => {
     const { owner } = harness();
     owner.setSurface("main", "local", "a");

@@ -1581,6 +1581,27 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
       }),
     );
   });
+  /** A Thread of a bound Session; an archived one is still readable but never executes. */
+  const boundThread = Effect.fn("AgentRuntimeApplication.boundThread")(function* (
+    threadId: string,
+    allowArchived: boolean,
+  ) {
+    if (options.runtimeExists && !(yield* options.runtimeExists)) return null;
+    const connection = yield* options.connect;
+    const thread = yield* connection.request("thread.read", { threadId });
+    if (!thread || thread.deletedAt || (!allowArchived && thread.archivedAt)) return null;
+    const binding = yield* host(
+      core.workspace.read({
+        kind: "agent_runtime_session_binding_by_execution",
+        runtime_id: connection.identity.runtimeId,
+        runtime_thread_id: thread.lineage.rootThreadId,
+      }),
+    );
+    if (binding.value.kind !== "agent_runtime_session_binding" || !binding.value.binding)
+      return null;
+    yield* targetInfo(connection, { sessionId: binding.value.binding.session_id, threadId });
+    return { connection, thread, sessionId: binding.value.binding.session_id };
+  });
   const cleanupDeletedSessions = Effect.fn("AgentRuntimeApplication.cleanupDeletedSessions")(
     function* () {
       if (yield* CoreApplicationAgent)
@@ -1644,25 +1665,20 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
           );
         }),
       ),
-    nativeThread: (threadId: string) =>
+    nativeThread: (threadId: string) => owned("native-thread", boundThread(threadId, false)),
+    /** The Codex thread and workspace an Agent chat's reply visualizations are read from. */
+    visualizationSource: (threadId: string) =>
       owned(
-        "native-thread",
+        "visualization-source",
         Effect.gen(function* () {
-          if (options.runtimeExists && !(yield* options.runtimeExists)) return null;
-          const connection = yield* options.connect;
-          const thread = yield* connection.request("thread.read", { threadId });
-          if (!thread || thread.deletedAt || thread.archivedAt) return null;
-          const binding = yield* host(
-            core.workspace.read({
-              kind: "agent_runtime_session_binding_by_execution",
-              runtime_id: connection.identity.runtimeId,
-              runtime_thread_id: thread.lineage.rootThreadId,
-            }),
-          );
-          if (binding.value.kind !== "agent_runtime_session_binding" || !binding.value.binding)
-            return null;
-          yield* targetInfo(connection, { sessionId: binding.value.binding.session_id, threadId });
-          return { connection, thread, sessionId: binding.value.binding.session_id };
+          const bound = yield* boundThread(threadId, true);
+          if (!bound?.thread.activeProviderThreadId) return null;
+          const snapshot = yield* bound.connection.request("thread.control", { threadId });
+          const native = snapshot.projection.providerThreads.find(
+            (provider) => provider.id === bound.thread.activeProviderThreadId,
+          )?.nativeThreadRef;
+          if (native?.driver !== "codex" || !native.nativeId) return null;
+          return { nativeThreadId: native.nativeId, cwd: bound.thread.worktreePath };
         }),
       ),
     withExecutionLocationWriter: <A, E, R>(sessionId: string, use: Effect.Effect<A, E, R>) =>

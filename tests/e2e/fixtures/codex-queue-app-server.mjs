@@ -17,7 +17,6 @@ const automaticCompletionDelayMs = Number.parseInt(
 );
 const injectionReleasePath = process.env.NODEX_FAKE_CODEX_INJECTION_RELEASE_PATH;
 const threadReadReleasePath = process.env.NODEX_FAKE_CODEX_THREAD_READ_RELEASE_PATH;
-const pressurePageReleasePath = process.env.NODEX_FAKE_CODEX_PRESSURE_PAGE_RELEASE_PATH;
 // Individual scenarios can opt into newer contracts after enabling their matching fixture paths.
 const appServerVersion = process.env.NODEX_FAKE_CODEX_APP_SERVER_VERSION ?? "0.145.0-alpha.15";
 
@@ -33,9 +32,12 @@ let state = readState();
 let inputBuffer = "";
 const nowSeconds = () => Math.floor(Date.now() / 1_000);
 
+// Every app-server process of the Profile shares this file, so a reader never sees a torn write.
 const persist = () => {
   fs.mkdirSync(path.dirname(statePath), { recursive: true });
-  fs.writeFileSync(statePath, JSON.stringify(state));
+  const temporary = `${statePath}.${process.pid}.tmp`;
+  fs.writeFileSync(temporary, JSON.stringify(state));
+  fs.renameSync(temporary, statePath);
 };
 
 const write = (message) => process.stdout.write(`${JSON.stringify(message)}\n`);
@@ -193,9 +195,13 @@ const scheduleAutomaticCompletion = (turnId) => {
   );
 };
 
+// A Turn whose prompt names this marker stays open for a test to stream into and complete.
+const controlledPrompt = process.env.NODEX_FAKE_CODEX_CONTROLLED_PROMPT?.trim() || null;
+
 const startTurn = (params, source = "turn/start") => {
   state = readState();
   state.turnSequence += 1;
+  const controlled = controlledPrompt !== null && promptText(params).includes(controlledPrompt);
   const shouldAutoComplete =
     process.env.NODEX_FAKE_CODEX_AUTO_COMPLETE_FIRST_TURN === "1" || state.turnSequence > 1;
   const userMessage = {
@@ -215,6 +221,13 @@ const startTurn = (params, source = "turn/start") => {
   record(source, params);
   setTimeout(() => {
     notify("turn/started", { threadId: thread().id, turn: next });
+    // The test may stream into the Turn only once the app has heard that it started.
+    if (controlled) {
+      state = readState();
+      state.controlledTurnId = next.id;
+      state.controlledTurnPid = process.pid;
+      persist();
+    }
     if (params.queuedSubmissionId != null) {
       const timestamp = Date.now();
       notify("item/started", {
@@ -315,7 +328,7 @@ const startTurn = (params, source = "turn/start") => {
       persist();
       notify("hook/completed", { threadId: thread().id, turnId: next.id, run });
     }
-    if (shouldAutoComplete) scheduleAutomaticCompletion(next.id);
+    if (shouldAutoComplete && !controlled) scheduleAutomaticCompletion(next.id);
   }, 0);
   return next;
 };
@@ -623,17 +636,6 @@ const handle = (message) => {
         nextCursor: ordered[start + page.length]?.id ?? null,
         backwardsCursor: ordered[start - 1]?.id ?? null,
       };
-      if (pressurePageReleasePath && params.turnId === "pressure-turn" && params.cursor === "pressure-command-0401" && !fs.existsSync(pressurePageReleasePath)) {
-        record("pressure-page-held", { requestId: id, ...params });
-        const release = setInterval(() => {
-          if (!fs.existsSync(pressurePageReleasePath)) return;
-          clearInterval(release);
-          record("pressure-page-released", { requestId: id, ...params });
-          respond(id, result);
-        }, 10);
-        release.unref();
-        return;
-      }
       respond(id, result);
       return;
     }

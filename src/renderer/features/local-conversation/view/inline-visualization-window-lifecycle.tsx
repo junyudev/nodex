@@ -1,4 +1,7 @@
 import { useEffect, useLayoutEffect, useSyncExternalStore } from "react";
+import { isNativeCodexThreadId } from "../../../../shared/agent-runtime-api";
+import type { CodexConversationResumeState } from "../../../../shared/types";
+import type { LocalConversationAttachmentState } from "../conversation-attachment-state";
 import { subscribeCodexAppServerMessage } from "../app-server-message-bus";
 import { subscribeCodexEvents } from "../local-conversation-deps";
 import { useCodexAppServerRegistry } from "../local-conversation-store";
@@ -51,12 +54,39 @@ function ThreadLifetime({
 }) {
   const registry = useCodexAppServerRegistry();
   const manager = registry.getForHostId(hostId);
-  const state = useSyncExternalStore(
-    (listener) => manager.addConversationCallback(threadId, listener),
-    () => manager.readConversation(threadId)?.resumeState ?? null,
+  // Agent execution keeps an Agent chat's history itself; it never needs a native resume.
+  const native = isNativeCodexThreadId(threadId);
+  const current = useSyncExternalStore(
+    (listener) => {
+      if (!native) return () => {};
+      const stopConversation = manager.addConversationCallback(threadId, listener);
+      const stopAttachment = manager.subscribeConversationAttachment(threadId, listener);
+      return () => {
+        stopConversation();
+        stopAttachment();
+      };
+    },
+    () =>
+      !native ||
+      isNativeHistoryCurrent(
+        manager.readConversation(threadId)?.resumeState ?? null,
+        manager.readConversationAttachmentState(threadId),
+      ),
   );
   useLayoutEffect(() => {
-    owner.reportResumeState(hostId, threadId, state);
-  }, [owner, hostId, threadId, state]);
+    owner.reportHistory(hostId, threadId, current);
+  }, [owner, hostId, threadId, current]);
   return null;
+}
+
+/**
+ * A native Thread's loaded history is current while it is resumed, or while read-only history
+ * stays attached without a resume. A reconnect detaches it and asks for a resume.
+ */
+export function isNativeHistoryCurrent(
+  resumeState: CodexConversationResumeState | null,
+  attachment: LocalConversationAttachmentState,
+): boolean {
+  if (resumeState === "resumed") return true;
+  return resumeState === "needs_resume" && attachment.status === "attached";
 }

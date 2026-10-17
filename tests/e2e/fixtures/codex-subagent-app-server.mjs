@@ -139,9 +139,12 @@ const readState = () => {
 let state = readState();
 let inputBuffer = "";
 
+// Every app-server process of the Profile shares this file, so a reader never sees a torn write.
 const persist = () => {
   fs.mkdirSync(path.dirname(statePath), { recursive: true });
-  fs.writeFileSync(statePath, JSON.stringify(state));
+  const temporary = `${statePath}.${process.pid}.tmp`;
+  fs.writeFileSync(temporary, JSON.stringify(state));
+  fs.renameSync(temporary, statePath);
 };
 
 const processInstance = {

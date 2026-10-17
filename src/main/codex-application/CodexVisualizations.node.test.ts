@@ -12,6 +12,7 @@ import {
   type NodeVisualizationRead,
 } from "../platform/node/NodeVisualizationFiles";
 import { ConversationEntityMap } from "./internal/ConversationEntityMap";
+import { AgentRuntimeApplication } from "../agent-runtime/AgentRuntimeApplication";
 import { ExecutionHostRuntime } from "./ExecutionHostRuntime";
 import { CodexConversationContext } from "./CodexConversationContext";
 import { CodexVisualizations, live } from "./CodexVisualizations";
@@ -54,6 +55,10 @@ interface Fixture {
   readonly disconnected?: boolean;
   readonly changeHostDuringRead?: boolean;
   readonly changeHostRootsDuringRead?: boolean;
+  readonly agentSources?: () => {
+    readonly nativeThreadId: string;
+    readonly cwd: string | null;
+  } | null;
 }
 function fixture(options: Fixture = {}) {
   const hostId = options.remote ? "ssh:test" : "local";
@@ -153,6 +158,13 @@ function fixture(options: Fixture = {}) {
     Layer.succeed(ConversationEntityMap, {
       current: () => owner,
     } as unknown as ConversationEntityMap["Service"]),
+    ...(options.agentSources
+      ? [
+          Layer.succeed(AgentRuntimeApplication, {
+            visualizationSource: () => Effect.sync(() => options.agentSources!()),
+          } as unknown as AgentRuntimeApplication["Service"]),
+        ]
+      : []),
   );
   return { hostId, paths, contextRequests, layer: live.pipe(Layer.provide(dependencies)) };
 }
@@ -319,5 +331,60 @@ it.effect("rejects remote symlink parents before reading HTML contents", () => {
         service.read({ hostId: test.hostId, sourceThreadId: threadId, file: "plot.html" }),
       ))._tag === "Failure",
     );
+  }).pipe(Effect.provide(test.layer));
+});
+
+it.effect("reads an Agent chat's files from its Codex thread folder and its own workspace", () => {
+  let reads = 0;
+  const test = fixture({
+    agentSources: () => {
+      reads += 1;
+      return { nativeThreadId: threadId, cwd: "/agent/workspace" };
+    },
+  });
+  const agentThreadId = "nodex:thread:0123abcd";
+  return Effect.gen(function* () {
+    const service = yield* CodexVisualizations;
+    assert.deepEqual(
+      yield* service.read({ hostId: "local", sourceThreadId: agentThreadId, file: "plot.html" }),
+      { contents: "<html>chart</html>", path: primary },
+    );
+    assert.strictEqual(
+      (yield* service.read({
+        hostId: "local",
+        sourceThreadId: agentThreadId,
+        file: "/agent/workspace/plot.html",
+      })).path,
+      "/agent/workspace/plot.html",
+    );
+    for (const input of [
+      { hostId: "local", file: "/workspace/source/plot.html" },
+      { hostId: "ssh:test", file: "plot.html" },
+    ])
+      assert.isTrue(
+        (yield* Effect.result(service.read({ ...input, sourceThreadId: agentThreadId })))._tag ===
+          "Failure",
+      );
+    // The source is proven again after the read, as a native conversation's is.
+    assert.isAbove(reads, 2);
+    assert.deepEqual(test.contextRequests, []);
+  }).pipe(Effect.provide(test.layer));
+});
+
+it.effect("refuses an Agent chat's file when its Codex thread changes during the read", () => {
+  let reads = 0;
+  const test = fixture({
+    agentSources: () => {
+      reads += 1;
+      return reads === 1 ? { nativeThreadId: threadId, cwd: "/agent/workspace" } : null;
+    },
+  });
+  return Effect.gen(function* () {
+    const service = yield* CodexVisualizations;
+    const result = yield* Effect.result(
+      service.read({ hostId: "local", sourceThreadId: "nodex:thread:0123abcd", file: "plot.html" }),
+    );
+    assert.strictEqual(result._tag, "Failure");
+    assert.deepEqual(test.paths, [primary]);
   }).pipe(Effect.provide(test.layer));
 });

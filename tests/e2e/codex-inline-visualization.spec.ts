@@ -1,6 +1,5 @@
 import { expect, test, type ElectronApplication, type Page } from "@playwright/test";
-import type { Turn } from "@nodex/codex-app-server-protocol/v2";
-import { appendFile, mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { appendFile, mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import {
   ElectronScenarioHarness,
@@ -13,7 +12,12 @@ import {
   parseMcpAppSandboxPartition,
   parseMcpAppSandboxSourceUrl,
 } from "../../src/shared/mcp-app/mcp-app-sandbox-contract";
-import { createAgentSmokeDraft, invokeIpc, sendAgentPrompt } from "./support/agent-smoke-harness";
+import {
+  createAgentSmokeDraft,
+  invokeIpc,
+  sendAgentFollowUp,
+  sendAgentPrompt,
+} from "./support/agent-smoke-harness";
 
 const widgetDocument = (id: string) =>
   `<!doctype html><html><head><meta charset="utf-8"><style>*{box-sizing:border-box}body{margin:0;font:16px sans-serif;background:white;color:#222}.content{padding:20px;min-height:140px}button{font:inherit}section{height:540px;background:#eef2f6;margin-top:16px}</style></head><body><main class="content" id="fixture-${id}"><button id="toggle-${id}">Show details</button><button id="increment-${id}">Increment</button><button id="tool-${id}">Try tool</button><output id="counter-${id}" aria-label="Interaction count">0</output><div role="status" id="tool-result-${id}" aria-label="Tool result">Pending</div><section id="details-${id}" hidden>Expanded content</section></main><script>let count=0;document.getElementById('increment-${id}').addEventListener('click',()=>{document.getElementById('counter-${id}').textContent=String(++count)});document.getElementById('toggle-${id}').addEventListener('click',()=>{const detail=document.getElementById('details-${id}');detail.hidden=!detail.hidden});document.getElementById('tool-${id}').addEventListener('click',async()=>{const result=document.getElementById('tool-result-${id}');if(typeof window.openai?.callTool!=='function'){result.textContent='API unavailable';return}try{await window.openai.callTool('ungranted_tool',{});result.textContent='Tool accepted'}catch(error){result.textContent=String(error?.message??error)}});</script></body></html>`;
@@ -207,6 +211,7 @@ test("restores interactive HTML responses, retains guests during navigation and 
       NODEX_FAKE_CODEX_AUTO_COMPLETE_FIRST_TURN: "1",
       NODEX_FAKE_CODEX_AUTOMATIC_COMPLETION_DELAY_MS: "120",
       NODEX_FAKE_CODEX_RESUMED_COMPLETION_DELAY_MS: "120",
+      NODEX_FAKE_CODEX_CONTROLLED_PROMPT: "Interactive response",
       NODEX_FAKE_CODEX_APP_SERVER_VERSION: "0.162.0-alpha.17.2",
     },
   });
@@ -242,7 +247,7 @@ test("restores interactive HTML responses, retains guests during navigation and 
       draft.projectSessionId,
       "Prepare the interactive response history",
     );
-    expect(threadId).toBe(nativeThreadId);
+    expect(threadId).not.toBe(nativeThreadId);
     await expect(
       initial.getByText("The task completed successfully.", { exact: true }),
     ).toBeVisible();
@@ -258,41 +263,21 @@ test("restores interactive HTML responses, retains guests during navigation and 
       "workspace-widget.html",
     );
     await writeFile(workspaceFile, widgetDocument("workspace"));
-    const publicState = JSON.parse(await readFile(statePath, "utf8")) as { turns: Turn[] };
-    const turn: Turn = {
-      id: "widget-history-turn",
-      rootTurnId: null,
-      itemsView: "full",
-      status: "completed",
-      error: null,
-      startedAt: 1_800_000_000,
-      completedAt: 1_800_000_001,
-      durationMs: 1_000,
-      items: [
-        {
-          type: "userMessage",
-          id: "widget-history-user",
-          clientId: null,
-          content: [{ type: "text", text: "Interactive response history", text_elements: [] }],
-        },
-        {
-          type: "agentMessage",
-          id: "widget-history-answer",
-          text: `::codex-inline-vis{file="directory-widget.html" mode="wide"}\n\n::codex-inline-vis{path="${workspaceFile}"}`,
-          phase: "final_answer",
-          delivery: null,
-          memoryCitation: null,
-          questions: null,
-        },
-      ],
-    };
-    const replacement = path.join(stateDirectory, "widget-state.tmp");
-    await writeFile(
-      replacement,
-      JSON.stringify({ ...publicState, turns: [...publicState.turns, turn] }),
-    );
-    await rename(replacement, statePath);
-    const page = await harness.restart();
+    // The Agent's reply names a file in its Codex thread's folder and one in the workspace.
+    const page = initial;
+    const commandPath = path.join(stateDirectory, "commands.jsonl");
+    const command = (value: object) => appendFile(commandPath, `${JSON.stringify(value)}\n`);
+    await sendAgentFollowUp(page, "Interactive response history");
+    await command({ type: "start" });
+    await command({
+      type: "delta",
+      delta: `\n\n::codex-inline-vis{file="directory-widget.html" mode="wide"}\n\n::codex-inline-vis{path="${workspaceFile}"}\n\n`,
+    });
+    await command({ type: "complete" });
+    await expect(page.getByRole("button", { name: "Stop", exact: true })).toHaveCount(0);
+    // Reopening restores the responses from the chat's history, scrolled to its end.
+    await page.reload();
+    await page.evaluate(() => window.api?.awaitInitialization?.());
     const rendererErrors: string[] = [];
     page.on("pageerror", (error) => rendererErrors.push(error.stack ?? error.message));
     await expect(
@@ -537,13 +522,10 @@ test("restores interactive HTML responses, retains guests during navigation and 
       });
     }
     await writeFile(path.join(directory, "live-widget.html"), interactiveWidgetDocument("live"));
-    const commandPath = path.join(stateDirectory, "commands.jsonl");
-    await appendFile(commandPath, `${JSON.stringify({ type: "start" })}\n`);
-    await expect(page.getByText("Stream baseline", { exact: true })).toBeVisible();
-    await appendFile(
-      commandPath,
-      `${JSON.stringify({ type: "delta", delta: '\n\n::codex-inline-vis{file="live-widget.html"}\n\n' })}\n`,
-    );
+    await sendAgentFollowUp(page, "Interactive response live");
+    await command({ type: "start" });
+    await expect(page.getByText("Stream baseline", { exact: true }).last()).toBeVisible();
+    await command({ type: "delta", delta: '\n\n::codex-inline-vis{file="live-widget.html"}\n\n' });
     const liveGuest = await findReadyGuest(harness.application, page, "live");
     await expect(page.getByRole("button", { name: "Stop", exact: true })).toBeVisible();
     await testInfo.attach("live-widget-before-input", {
@@ -581,7 +563,7 @@ test("restores interactive HTML responses, retains guests during navigation and 
         ),
       )
       .toBe("1");
-    await appendFile(commandPath, `${JSON.stringify({ type: "complete" })}\n`);
+    await command({ type: "complete" });
     await expect(page.getByRole("button", { name: "Stop", exact: true })).toHaveCount(0);
     await expect.poll(async () => (await guestIds(page)).includes(liveGuest)).toBe(true);
     await expect
@@ -750,116 +732,6 @@ test("restores interactive HTML responses, retains guests during navigation and 
         "document.getElementById('counter-live').textContent",
       ),
     ).toBe("0");
-    const requestPath = path.join(stateDirectory, "requests.jsonl");
-    const readRequests = async (): Promise<{ method: string; params: Record<string, unknown> }[]> =>
-      (await readFile(requestPath, "utf8"))
-        .trim()
-        .split("\n")
-        .filter(Boolean)
-        .map((line) => JSON.parse(line));
-    const submitFollowUp = async (prompt: string) => {
-      const composer = page.locator('[data-codex-composer="true"][contenteditable="true"]').first();
-      await composer.fill(prompt);
-      await page.getByRole("button", { name: "Send prompt", exact: true }).click();
-      await expect(
-        page.getByLabel("Conversation", { exact: true }).getByText(prompt, { exact: true }),
-      ).toBeVisible();
-      await expect
-        .poll(async () =>
-          (await readRequests()).some(
-            (record) =>
-              record.method === "turn/start" &&
-              JSON.stringify(record.params.input).includes(prompt),
-          ),
-        )
-        .toBe(true);
-      await expect(page.getByRole("button", { name: "Stop", exact: true })).toHaveCount(0);
-      await expect(composer).toHaveText("");
-    };
-    const beforeFollowUp = (await readRequests()).length;
-    await submitFollowUp("Use the saved interactive selection");
-    const afterFirstFollowUp = (await readRequests()).slice(beforeFollowUp);
-    const injectedIndex = afterFirstFollowUp.findIndex(
-      (record) => record.method === "injection-held",
-    );
-    const startIndex = afterFirstFollowUp.findIndex((record) => record.method === "turn/start");
-    expect(injectedIndex).toBeGreaterThanOrEqual(0);
-    expect(startIndex).toBeGreaterThan(injectedIndex);
-    const injected = afterFirstFollowUp[injectedIndex]!.params;
-    const releasedIndex = afterFirstFollowUp.findIndex(
-      (record) =>
-        record.method === "injection-released" && record.params.requestId === injected.requestId,
-    );
-    expect(releasedIndex).toBeGreaterThan(injectedIndex);
-    expect(startIndex).toBeGreaterThan(releasedIndex);
-    expect(afterFirstFollowUp.filter((record) => record.method === "injection-held")).toHaveLength(
-      1,
-    );
-    expect(injected.threadId).toBe(nativeThreadId);
-    expect(injected.items).toEqual([
-      {
-        type: "function_call",
-        name: "untrusted_input",
-        arguments: "{}",
-        call_id: expect.any(String),
-      },
-      {
-        type: "function_call_output",
-        call_id: expect.any(String),
-        output: [
-          {
-            type: "input_text",
-            text: JSON.stringify({
-              path: path.join(directory, "live-widget.html"),
-              state: { selected: 2 },
-            }),
-          },
-        ],
-      },
-      {
-        type: "function_call",
-        name: "untrusted_input",
-        arguments: "{}",
-        call_id: expect.any(String),
-      },
-      {
-        type: "function_call_output",
-        call_id: expect.any(String),
-        output: [
-          {
-            type: "input_text",
-            text: JSON.stringify({
-              path: path.join(directory, "live-widget.html"),
-              interaction: { edits: [], selectedVariants: [{ carousel: 0, variant: "One" }] },
-            }),
-          },
-        ],
-      },
-    ]);
-    if (!Array.isArray(injected.items)) throw new Error("Native context has no response items");
-    expect(injected.items[0].call_id).toBe(injected.items[1].call_id);
-    expect(injected.items[2].call_id).toBe(injected.items[3].call_id);
-    expect(injected.items[0].call_id).not.toBe(injected.items[2].call_id);
-    expect(JSON.stringify(injected.items)).not.toContain("excluded-from-model");
-    const beforeSecondFollowUp = (await readRequests()).length;
-    await submitFollowUp("Keep using the saved selection");
-    expect(
-      (await readRequests())
-        .slice(beforeSecondFollowUp)
-        .filter((record) => record.method === "injection-held"),
-    ).toHaveLength(0);
-    await testInfo.attach("passive-widget-context", {
-      body: JSON.stringify({
-        injectedBeforeStart: true,
-        confirmedBeforeStart: true,
-        savedState: { selected: 2 },
-        savedInteraction: { edits: [], selectedVariants: [{ carousel: 0, variant: "One" }] },
-        injectedPairCount: 2,
-        repeatedInjectionCount: 0,
-        privateStateExcluded: true,
-      }),
-      contentType: "application/json",
-    });
     const idsBeforeRelease = await guestIds(page);
     await expect(page.locator('webview[data-inline-visualization-standby="ready"]')).toHaveCount(
       1,

@@ -31,7 +31,7 @@ test("the browser platform retains a parked occurrence and retires it after its 
   try {
     const releaseWindow = owner.acquireWindow();
     owner.setParking(parking);
-    owner.reportResumeState("local", "a", "resumed");
+    owner.reportHistory("local", "a", true);
     owner.setSurface("main", "local", "a");
     const first = owner.bind(input, firstAnchor);
     const container = owner.readFrame(first.frameId)!.container;
@@ -43,7 +43,7 @@ test("the browser platform retains a parked occurrence and retires it after its 
     expect(container.parentElement).toBe(parking);
     owner.setSurface("main", "local", "a");
     await Promise.resolve();
-    owner.reportResumeState("local", "a", "resumed");
+    owner.reportHistory("local", "a", true);
     expect(owner.readIds()).toEqual([first.frameId]);
     const returned = owner.bind(input, secondAnchor);
     expect(returned.frameId).toBe(first.frameId);
