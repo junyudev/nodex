@@ -1,0 +1,33 @@
+src/renderer/features/local-conversation/view/summary-panel/thread-floating-summary-panel.test.tsx
+  s_bd811abbf24a41::t_17b2a396afefa3 446
+  s_bd811abbf24a41::t_9db93134cbaf18 445
+  s_bd811abbf24a41::t_901bb41ad7c13a 413
+src/renderer/features/local-conversation/view/summary-panel/thread-summary-content.ts
+  s_bd811abbf24a41::t_2937e6adec1eec 1-42
+  s_bd811abbf24a41::t_db2159129c8cac 43-44
+src/renderer/features/local-conversation/view/connected-thread-stage.tsx
+  s_bd811abbf24a41::t_4016be437bc0f5 97
+  s_bd811abbf24a41::t_1a934c77c1f3c9 1466-1467
+src/renderer/features/local-conversation/view/summary-panel/thread-summary-panel-header-action.test.tsx
+  s_bd811abbf24a41::t_6e302d2bcc2417 1,3-4,7-12,16-45,47-53,55-64
+src/renderer/features/local-conversation/view/summary-panel/thread-summary-panel-header-action.tsx
+  s_bd811abbf24a41::t_708ac78c041ddf 7-8,37-49,54
+src/renderer/features/local-conversation/view/summary-panel/thread-floating-summary-panel.tsx
+  s_bd811abbf24a41::t_d2f51b3166c989 1929-1930
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "94e75d8a0f5dcff4226dcefe19a893955f204d02",
+  "prompts": {},
+  "sessions": {
+    "s_bd811abbf24a41": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d475c410-7aa3-406e-a6d6-6873f7b30325",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
