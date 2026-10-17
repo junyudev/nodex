@@ -1,0 +1,27 @@
+scripts/scenarios/runtime/scripted-opencode-agent.mjs
+  s_bd811abbf24a41::t_fe2c4b483be666 72,78,85,160-164,191,194,244
+  s_bd811abbf24a41::t_2c3345b4f8d81a 290-295
+  s_bd811abbf24a41::t_b428863a6b70b5 181,192-193,195-196
+tests/e2e/opencode-backend-lifecycle.spec.ts
+  s_bd811abbf24a41::t_a697873519e738 121
+  s_bd811abbf24a41::t_b0b61cfd1cc6ba 156
+  s_bd811abbf24a41::t_83781de5540a56 122,124-126,128-130,132-133
+  s_bd811abbf24a41::t_885364a7ece4db 3,70,94,229-232
+  s_bd811abbf24a41::t_2e90c359dddd46 13-15,39,149-150,152,154-155,157-159,161-165,175-176,178-179,181-184,186-187
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "ebcd4c57de5e379f721197103e5cfa45e62ce2c4",
+  "prompts": {},
+  "sessions": {
+    "s_bd811abbf24a41": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d475c410-7aa3-406e-a6d6-6873f7b30325",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}

@@ -1,0 +1,24 @@
+tests/e2e/worktree-lifecycle.spec.ts
+  s_bd811abbf24a41::t_c82377f01d12a4 226-229
+  s_bd811abbf24a41::t_fbc30357ed0519 224-225
+  s_bd811abbf24a41::t_4c596b4522f598 11,133-145,148-166,169-173,175-198,201-202,206-210,212,214-215,218-223,230-235,239-241,244-246,257,259-267,270-273,275-276,280,284,289-297,300,304,309-313,315-323,327-328,330,332,334,336-345,351,355-359,362
+  s_bd811abbf24a41::t_996ca2c4061777 268
+  s_bd811abbf24a41::t_cadb6b07ad9d24 314
+  s_bd811abbf24a41::t_b5af6dd326388a 87
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "f548acc5c657c08b095df9d727b8c0136c7d95ad",
+  "prompts": {},
+  "sessions": {
+    "s_bd811abbf24a41": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d475c410-7aa3-406e-a6d6-6873f7b30325",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
