@@ -23,7 +23,7 @@
     "@effect/platform-node": "4.0.3",
     "@effect/vitest": "4.0.3",
     "@ff-labs/fff-node": "0.11.0",
-    "@modelcontextprotocol/sdk": "1.29.0",
+    "@modelcontextprotocol/sdk": "1.31.0",
     "@nodex/codex-app-server-protocol": "workspace:*",
     "@opencode-ai/sdk": "1.15.13",
     "@t3tools/contracts": "workspace:*",
