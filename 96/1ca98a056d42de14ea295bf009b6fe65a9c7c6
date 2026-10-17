@@ -1,0 +1,45 @@
+tests/e2e/codex-conversation-media.spec.ts
+  s_bd811abbf24a41::t_17c48d37bb8976 87-88
+  s_bd811abbf24a41::t_edabed31282891 40,82
+tests/e2e/support/agent-smoke-harness.ts
+  s_bd811abbf24a41::t_23d65e4ece5e65 400-403
+  s_bd811abbf24a41::t_387061fcc0e4b8 339-341,344-346,417-419,453-467
+  s_bd811abbf24a41::t_66d82f776a4a88 468
+tests/e2e/codex-inline-visualization.spec.ts
+  s_bd811abbf24a41::t_387061fcc0e4b8 15-20,270,525
+  s_bd811abbf24a41::t_9f29852778eed0 278-280
+  s_bd811abbf24a41::t_274c11e21a30cd 2
+  s_bd811abbf24a41::t_bf5b93a42ae41e 214,250,266-269,271-277,526-528,566
+tests/e2e/fixtures/codex-subagent-app-server.mjs
+  s_bd811abbf24a41::t_72201dbd90494f 142,145-147
+tests/e2e/typography-settings.spec.ts
+  s_bd811abbf24a41::t_86901ace158b1f 186,232,237
+tests/e2e/fixtures/codex-transcript-performance-app-server.mjs
+  s_bd811abbf24a41::t_1850be2b520105 72-73,117,119-120
+  s_bd811abbf24a41::t_ad918442103769 74-78,80-88,106-107
+  s_bd811abbf24a41::t_1713d8fefc0176 68-71
+  s_bd811abbf24a41::t_148cc87aa4e487 18-22
+tests/e2e/fixtures/codex-queue-app-server.mjs
+  s_bd811abbf24a41::t_ed95ecb39dc8b3 225-228,230-231
+  s_bd811abbf24a41::t_ad918442103769 229
+  s_bd811abbf24a41::t_148cc87aa4e487 36,39-41
+  s_bd811abbf24a41::t_1713d8fefc0176 199-201,205,332
+tests/e2e/fixtures/agent-runtime-cross-provider-peer.mjs
+  s_bd811abbf24a41::t_72201dbd90494f 28-32
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "961ca98a056d42de14ea295bf009b6fe65a9c7c6",
+  "prompts": {},
+  "sessions": {
+    "s_bd811abbf24a41": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d475c410-7aa3-406e-a6d6-6873f7b30325",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
