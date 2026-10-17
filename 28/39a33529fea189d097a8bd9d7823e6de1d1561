@@ -1,0 +1,21 @@
+tests/e2e/fixtures/codex-transcript-performance-app-server.mjs
+  s_bd811abbf24a41::t_3149a40676332f 14
+tests/e2e/support/transcript-performance-corpus.ts
+  s_bd811abbf24a41::t_c735bd03a986f4 3
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "2839a33529fea189d097a8bd9d7823e6de1d1561",
+  "prompts": {},
+  "sessions": {
+    "s_bd811abbf24a41": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d475c410-7aa3-406e-a6d6-6873f7b30325",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
