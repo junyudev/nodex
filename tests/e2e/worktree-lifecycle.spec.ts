@@ -8,6 +8,7 @@ import { ElectronScenarioHarness } from "../../scripts/scenarios/harness/electro
 import { prepareScenarioCodexAppServerRuntimeSync } from "../../scripts/scenarios/runtime/agent-runtime-fixture";
 import { createBoundedOperationId } from "../../src/shared/operation-identity";
 import { createUuidV7 } from "../../src/shared/uuid-v7";
+import type { ProjectSessionSummary } from "../../src/shared/types";
 
 const repositoryRoot = process.cwd();
 const worktreeElectronEnvironment = {
@@ -39,33 +40,6 @@ async function invokeIpc(
       await window.api?.invoke(targetChannel, ...targetArgs),
     { channel, args },
   );
-}
-
-async function beginPendingWorktreeEventCapture(page: Page): Promise<void> {
-  await page.evaluate(() => {
-    const scope = window as typeof window & {
-      __worktreeE2ePendingEntries?: unknown[];
-      __worktreeE2eStopPendingCapture?: () => void;
-    };
-    scope.__worktreeE2eStopPendingCapture?.();
-    scope.__worktreeE2ePendingEntries = [];
-    scope.__worktreeE2eStopPendingCapture = window.api?.on(
-      "codex:pending-worktrees:changed",
-      (entries: unknown) => {
-        if (!Array.isArray(entries)) return;
-        scope.__worktreeE2ePendingEntries?.push(...entries);
-      },
-    );
-  });
-}
-
-async function capturedPendingWorktreeEntries(page: Page): Promise<readonly unknown[]> {
-  return await page.evaluate(() => {
-    const scope = window as typeof window & {
-      __worktreeE2ePendingEntries?: unknown[];
-    };
-    return scope.__worktreeE2ePendingEntries ?? [];
-  });
 }
 
 function runGit(cwd: string, args: readonly string[]): string {
@@ -110,6 +84,7 @@ async function createWorktreeHarness(label: string): Promise<ElectronScenarioHar
     prepareAgentRuntime: false,
     environment: {
       ...worktreeElectronEnvironment,
+      NODEX_FAKE_CODEX_AUTO_COMPLETE_FIRST_TURN: "1",
       NODEX_FAKE_CODEX_LOG_PATH: ".fake-codex/requests.jsonl",
       NODEX_FAKE_CODEX_STATE_PATH: ".fake-codex/state.json",
       NODEX_LOG_FILE: "1",
@@ -142,22 +117,6 @@ async function createProject(page: Page, sources: readonly string[]): Promise<st
   return project.id;
 }
 
-async function createProjectSession(page: Page, projectId: string): Promise<string> {
-  const sessionId = createUuidV7();
-  const session = await invokeIpc(page, "project-sessions:create", {
-    operationId: createBoundedOperationId("e2e.worktree.session.create"),
-    payload: {
-      sessionId,
-      input: { projectId, noThreadFallbackTitle: "New thread", initialPageIds: [] },
-    },
-  });
-  const value = requireCoreValue(session, "Project Session creation");
-  if (!isRecord(value) || typeof value.id !== "string") {
-    throw new Error("Project Session creation returned no session id");
-  }
-  return value.id;
-}
-
 async function waitForProjectDraft(page: Page, projectId: string): Promise<void> {
   await expect
     .poll(
@@ -171,149 +130,120 @@ async function waitForProjectDraft(page: Page, projectId: string): Promise<void>
     .toBe(1);
 }
 
-function pendingStartInput(input: {
-  additionalRoot: string;
-  environmentPath: string | null;
-  nestedCwd: string;
-  projectId: string;
-  projectSessionId: string;
-  sourceRoot: string;
-}): Record<string, unknown> {
-  return {
-    hostId: "local",
-    label: "Managed worktree E2E",
-    sourceWorkspaceRoot: input.sourceRoot,
-    startingState: { type: "working-tree" },
-    localEnvironmentConfigPath: input.environmentPath,
-    launchMode: "start-conversation",
-    firstSubmission: {
-      launchId: "01991e60-b800-7000-8000-000000000101",
-      clientUserMessageId: "01991e60-b800-7000-8000-000000000102",
-    },
-    prompt: "Report the current working directory.",
-    projectSessionId: input.projectSessionId,
-    startConversationParamsInput: {
-      input: [{ type: "text", text: "Report the current working directory.", text_elements: [] }],
-      commentAttachments: [],
-      workspaceRoots: [input.sourceRoot, input.additionalRoot],
-      cwd: input.nestedCwd,
-      fileAttachments: [],
-      addedFiles: [],
-      agentMode: "auto",
-      shouldSendPermissionOverrides: true,
-      model: null,
-      serviceTier: null,
-      reasoningEffort: null,
-      collaborationMode: null,
-      config: {},
-      threadSource: "user",
-      workspaceKind: "project",
-      projectAssignment: {
-        projectKind: "local",
-        projectId: input.projectId,
-        pendingCoreUpdate: false,
-      },
-    },
-    sourceConversationId: null,
-    sourceCollaborationMode: null,
-  };
+const fakeRequests = (harness: ElectronScenarioHarness) =>
+  fs
+    .readFileSync(path.join(harness.profile.runRoot, ".fake-codex", "requests.jsonl"), "utf8")
+    .split("\n")
+    .filter(Boolean)
+    .map((line) => JSON.parse(line) as { method: string; params: Record<string, unknown> });
+
+interface WorktreeFixture {
+  readonly fixtureRoot: string;
+  readonly managedRoot: string;
+  readonly sourceRoot: string;
+  readonly projectId: string;
+  readonly page: Page;
 }
 
-function worktreeInitCount(value: unknown): number {
-  if (!isRecord(value) || !Array.isArray(value.turns)) return 0;
-  return value.turns.reduce((count, turn) => {
-    if (!isRecord(turn) || !Array.isArray(turn.items)) return count;
-    return (
-      count +
-      turn.items.filter((item) => isRecord(item) && item.semanticKind === "worktreeInit").length
-    );
-  }, 0);
+async function openWorktreeProject(
+  harness: ElectronScenarioHarness,
+  prefix: string,
+): Promise<WorktreeFixture> {
+  // Core uses a Unix-domain socket under this root; keep the prefix short enough
+  // to leave room for the generated profile/run/core endpoint on macOS.
+  const fixtureRoot = fs.mkdtempSync(path.join(os.tmpdir(), prefix));
+  const managedRoot = path.join(fixtureRoot, "managed worktrees");
+  const fixture = createRepository(fixtureRoot);
+  fs.mkdirSync(managedRoot, { recursive: true });
+  const page = await harness.launch();
+  const projectId = await createProject(page, [fixture.sourceRoot]);
+  await invokeIpc(page, "worktrees:settings:update", {
+    worktreeRoot: managedRoot,
+    autoDeleteEnabled: false,
+  });
+  await page.reload();
+  await page.evaluate(() => window.api?.awaitInitialization?.());
+  return { fixtureRoot, managedRoot, sourceRoot: fixture.sourceRoot, projectId, page };
 }
 
-function runtimeWorkspaceRoots(value: unknown): readonly string[] {
-  if (!isRecord(value)) return [];
-  if (Array.isArray(value.runtimeWorkspaceRoots)) {
-    return value.runtimeWorkspaceRoots.filter((root): root is string => typeof root === "string");
+function removeFixtureRoot(fixtureRoot: string | undefined, prefix: string): void {
+  if (!fixtureRoot) return;
+  const resolvedFixtureRoot = path.resolve(fixtureRoot);
+  if (!resolvedFixtureRoot.startsWith(`${path.resolve(os.tmpdir())}${path.sep}${prefix}`)) {
+    throw new Error(`Refusing to clean unexpected worktree E2E root: ${resolvedFixtureRoot}`);
   }
-  const canonicalState = value.canonicalState;
-  if (!isRecord(canonicalState) || !isRecord(canonicalState.currentPermissions)) return [];
-  const roots = canonicalState.currentPermissions.runtimeWorkspaceRoots;
-  return Array.isArray(roots)
-    ? roots.filter((root): root is string => typeof root === "string")
-    : [];
+  fs.rmSync(resolvedFixtureRoot, { recursive: true, force: true });
 }
 
-async function waitForPendingThread(page: Page, clientThreadId: string): Promise<string> {
-  let resolvedThreadId: string | null = null;
+/** Writes a prompt in the Project's new chat and chooses a new worktree with its Environment. */
+async function composeWorktreeChat(page: Page, projectId: string, prompt: string) {
+  await page
+    .getByRole("button", { name: "Start new chat in Managed Worktree E2E", exact: true })
+    .click();
+  await waitForProjectDraft(page, projectId);
+  const composer = page.locator('[contenteditable="true"][aria-label="Do anything"]');
+  await expect(composer).toBeVisible({ timeout: 20_000 });
+  await composer.fill(prompt);
+  await expect(composer).toHaveText(prompt);
+  await page.getByRole("button", { name: "Start in" }).click();
+  await page.locator('[data-new-chat-start-in-option="newWorktree"]').click();
+  await expect(composer).toHaveText(prompt);
+  await expect(page.getByRole("button", { name: "Select starting state" })).toContainText("main");
+  await expect(page.getByRole("button", { name: "Select worktree environment" })).toContainText(
+    "E2E Environment",
+    { timeout: 20_000 },
+  );
+  const sendButton = page.getByRole("button", { name: "Send prompt" });
+  await expect(sendButton).toBeEnabled({ timeout: 20_000 });
+  return sendButton;
+}
+
+async function agentSession(page: Page, projectId: string): Promise<ProjectSessionSummary> {
+  let session: ProjectSessionSummary | null = null;
   await expect
     .poll(
       async () => {
-        const result = await invokeIpc(
-          page,
-          "codex:pending-worktree:resolve-thread",
-          clientThreadId,
-        );
-        if (!isRecord(result)) return "missing";
-        if (result.state === "succeeded" && typeof result.threadId === "string") {
-          resolvedThreadId = result.threadId;
-        }
-        if (result.state === "failed") {
-          const pending = await invokeIpc(page, "codex:pending-worktrees:list");
-          return `failed: ${JSON.stringify({ pending, resolution: result })}`;
-        }
-        return String(result.state ?? "missing");
+        const tasks = (await invokeIpc(page, "workspace:tasks:list", projectId, {
+          first: 20,
+        })) as { items?: ProjectSessionSummary[] };
+        session = tasks.items?.find((item) => item.executionRef) ?? null;
+        return session !== null;
       },
-      { timeout: 45_000 },
+      { timeout: 30_000 },
     )
-    .toBe("succeeded");
-  if (resolvedThreadId === null) throw new Error("Pending worktree returned no thread id");
-  return resolvedThreadId;
+    .toBe(true);
+  return session!;
 }
 
-test("keeps a pre-checkout failure in the creation state and renders exact recovery actions", async () => {
-  test.setTimeout(90_000);
+async function sendWorktreeChat(harness: ElectronScenarioHarness, fixture: WorktreeFixture) {
+  const prompt = "Report the current working directory.";
+  await (await composeWorktreeChat(fixture.page, fixture.projectId, prompt)).click();
+  await expect(fixture.page.getByText("The task completed successfully.").first()).toBeVisible({
+    timeout: 45_000,
+  });
+  const started = fakeRequests(harness).filter((request) => request.method === "thread/start");
+  const cwd = fs.realpathSync(String(started.at(-1)?.params.cwd ?? ""));
+  // The chat runs in its own worktree under the configured managed root.
+  const worktreeGitRoot = runGit(cwd, ["rev-parse", "--show-toplevel"]);
+  expect(worktreeGitRoot.startsWith(`${fs.realpathSync(fixture.managedRoot)}${path.sep}`)).toBe(
+    true,
+  );
+  return { session: await agentSession(fixture.page, fixture.projectId), worktreeGitRoot };
+}
+
+test("a worktree that cannot be prepared offers Retry and Work locally, and runs locally", async () => {
+  test.setTimeout(120_000);
   const harness = await createWorktreeHarness("worktree-failure");
   let fixtureRoot: string | undefined;
   try {
-    fixtureRoot = fs.mkdtempSync(path.join(os.tmpdir(), "ndx-wt-fail-"));
-    const managedRoot = path.join(fixtureRoot, "managed worktrees");
-    const fixture = createRepository(fixtureRoot);
-    fs.mkdirSync(managedRoot, { recursive: true });
-    const page = await harness.launch();
-    const projectId = await createProject(page, [fixture.sourceRoot]);
-    await invokeIpc(page, "worktrees:settings:update", {
-      worktreeRoot: managedRoot,
-      autoDeleteEnabled: false,
-    });
+    const fixture = await openWorktreeProject(harness, "ndx-wt-fail-");
+    fixtureRoot = fixture.fixtureRoot;
+    const { page } = fixture;
     const rendererErrors: string[] = [];
     page.on("pageerror", (error) => rendererErrors.push(error.message));
-
-    await page.reload();
-    await page.evaluate(() => window.api?.awaitInitialization?.());
-    await page
-      .getByRole("button", {
-        name: "Start new chat in Managed Worktree E2E",
-        exact: true,
-      })
-      .click();
-    await waitForProjectDraft(page, projectId);
-    const composer = page.locator('[contenteditable="true"][aria-label="Do anything"]');
-    await composer.fill("Invalid Git source E2E");
-    await expect(composer).toHaveText("Invalid Git source E2E");
-    await page.getByRole("button", { name: "Start in" }).click();
-    await page.locator('[data-new-chat-start-in-option="newWorktree"]').click();
-    await expect(page.getByRole("button", { name: "Select starting state" })).toContainText("main");
-    await expect(page.getByRole("button", { name: "Select worktree environment" })).toContainText(
-      "E2E Environment",
-      { timeout: 20_000 },
-    );
-    const sendButton = page.getByRole("button", { name: "Send prompt" });
-    await expect(sendButton).toBeEnabled({ timeout: 20_000 });
-
-    await beginPendingWorktreeEventCapture(page);
-    // Keep the discovered branch visible to Composer while invalidating its
-    // commit before the worker consumes it. This is the exact pre-checkout
-    // boundary that previously published a false "Worktree created" state.
+    const sendButton = await composeWorktreeChat(page, fixture.projectId, "Invalid Git source E2E");
+    // Keep the discovered branch visible to the Composer while invalidating its commit
+    // before the worktree is checked out.
     const sourceCommit = runGit(fixture.sourceRoot, ["rev-parse", "HEAD"]);
     fs.rmSync(
       path.join(
@@ -324,332 +254,111 @@ test("keeps a pre-checkout failure in the creation state and renders exact recov
         sourceCommit.slice(2),
       ),
     );
-    await sendButton.evaluate((button) => {
-      if (!(button instanceof HTMLButtonElement)) throw new Error("Expected send button");
-      button.click();
-    });
+    await sendButton.click();
 
-    let pendingWorktreeId: string | null = null;
-    await expect
-      .poll(
-        async () => {
-          const entries = await capturedPendingWorktreeEntries(page);
-          const entry = entries.find(
-            (candidate) =>
-              isRecord(candidate) &&
-              candidate.launchMode === "start-conversation" &&
-              candidate.label === "Invalid Git source E2E",
-          );
-          if (!isRecord(entry) || typeof entry.id !== "string") return "missing";
-          pendingWorktreeId = entry.id;
-          return "captured";
-        },
-        { timeout: 20_000 },
-      )
-      .toBe("captured");
-    if (pendingWorktreeId === null) throw new Error("Pending failure fixture returned no identity");
-
-    let failedEntry: Record<string, unknown> | null = null;
-    await expect
-      .poll(
-        async () => {
-          const entries = await invokeIpc(page, "codex:pending-worktrees:list");
-          if (!Array.isArray(entries)) return "missing";
-          const entry = entries.find(
-            (candidate) => isRecord(candidate) && candidate.id === pendingWorktreeId,
-          );
-          if (!isRecord(entry)) return "missing";
-          failedEntry = entry;
-          return String(entry.phase ?? "missing");
-        },
-        { timeout: 20_000 },
-      )
-      .toBe("failed");
-    expect(failedEntry).toMatchObject({
-      worktreeGitRoot: null,
-      worktreeWorkspaceRoot: null,
-    });
-
-    await expect(page.getByTestId("pending-worktree-route-shell")).toBeVisible();
-    await expect(page.getByText("Worktree setup failed", { exact: true })).toBeVisible();
-    await expect(page.getByText("Preparing workspace", { exact: true })).toBeVisible();
-    await expect(page.getByText("Checking out files", { exact: true })).toBeVisible();
-    await expect(page.getByRole("button", { name: "Less details" })).toBeVisible();
-    await expect(page.getByRole("button", { name: "Edit environment" })).toBeVisible();
-    await expect(page.getByRole("button", { name: "Retry" })).toBeVisible();
+    await expect(
+      page.getByText("The worktree could not be prepared.", { exact: true }),
+    ).toBeVisible({ timeout: 45_000 });
+    await expect(page.getByText("Invalid Git source E2E", { exact: true }).first()).toBeVisible();
+    await expect(page.getByRole("button", { name: "Retry", exact: true })).toBeVisible();
+    const workLocally = page.getByRole("button", { name: "Work locally", exact: true });
+    await expect(workLocally).toBeVisible();
     await expect(page.getByText("Worktree created", { exact: true })).toHaveCount(0);
-    await expect(page.getByRole("button", { name: "Auto-fix" })).toHaveCount(0);
-    await expect(page.getByRole("button", { name: "Continue anyway" })).toHaveCount(0);
+    expect(fakeRequests(harness).some((request) => request.method === "turn/start")).toBe(false);
+    expect(fs.readdirSync(fixture.managedRoot).filter((name) => !name.startsWith("."))).toEqual([]);
+
+    // Working locally starts the same message in the source checkout.
+    await workLocally.click();
+    await expect(page.getByText("The task completed successfully.").first()).toBeVisible({
+      timeout: 45_000,
+    });
+    const started = fakeRequests(harness).find((request) => request.method === "thread/start");
+    expect(fs.realpathSync(String(started?.params.cwd))).toBe(fs.realpathSync(fixture.sourceRoot));
     expect(rendererErrors).toEqual([]);
   } finally {
     await harness.close();
-    if (fixtureRoot) {
-      const resolvedFixtureRoot = path.resolve(fixtureRoot);
-      const expectedPrefix = `${path.resolve(os.tmpdir())}${path.sep}ndx-wt-fail-`;
-      if (!resolvedFixtureRoot.startsWith(expectedPrefix)) {
-        throw new Error(
-          `Refusing to clean unexpected failed-worktree E2E root: ${resolvedFixtureRoot}`,
-        );
-      }
-      fs.rmSync(resolvedFixtureRoot, { recursive: true, force: true });
-    }
+    removeFixtureRoot(fixtureRoot, "ndx-wt-fail-");
   }
 });
 
-test("creates a new-worktree Task through the real Composer without changing renderer identity", async () => {
+test("creates a new-worktree chat through the Composer and runs it there", async () => {
   test.setTimeout(120_000);
-  // Core uses a Unix-domain socket under this root; keep the prefix short enough
-  // to leave room for the generated profile/run/core endpoint on macOS.
   const harness = await createWorktreeHarness("worktree-composer");
   let fixtureRoot: string | undefined;
   try {
-    fixtureRoot = fs.mkdtempSync(path.join(os.tmpdir(), "ndx-wt-ui-"));
-    const managedRoot = path.join(fixtureRoot, "managed worktrees");
-    const fixture = createRepository(fixtureRoot);
-    fs.mkdirSync(managedRoot, { recursive: true });
-    const page = await harness.launch();
-    const projectId = await createProject(page, [fixture.sourceRoot]);
-    await invokeIpc(page, "worktrees:settings:update", {
-      worktreeRoot: managedRoot,
-      autoDeleteEnabled: false,
-    });
-
-    await page.reload();
-    await page.evaluate(() => window.api?.awaitInitialization?.());
-    const rendererErrors: string[] = [];
-    page.on("pageerror", (error) => rendererErrors.push(error.message));
-    const openProjectChat = page.getByRole("button", {
-      name: "Start new chat in Managed Worktree E2E",
-      exact: true,
-    });
-    await expect(openProjectChat).toBeVisible({ timeout: 20_000 });
-    await openProjectChat.click();
-    await waitForProjectDraft(page, projectId);
-
-    const composer = page.locator('[contenteditable="true"][aria-label="Do anything"]');
-    await expect(composer).toBeVisible({ timeout: 20_000 });
-    await composer.fill("Report the current working directory.");
-    await expect(composer).toHaveText("Report the current working directory.");
-    await page.getByRole("button", { name: "Start in" }).click();
-    await page.locator('[data-new-chat-start-in-option="newWorktree"]').click();
-    await expect(composer).toHaveText("Report the current working directory.");
-    await expect(page.getByRole("button", { name: "Select worktree environment" })).toContainText(
-      "E2E Environment",
-      { timeout: 20_000 },
-    );
-    const sendButton = page.getByRole("button", { name: "Send prompt" });
-    await expect(sendButton).toBeEnabled({ timeout: 20_000 });
-    await beginPendingWorktreeEventCapture(page);
-    await sendButton.click();
-
-    let clientThreadId: string | null = null;
-    await expect
-      .poll(
-        async () => {
-          const entries = await capturedPendingWorktreeEntries(page);
-          const entry = entries.find(
-            (candidate) => isRecord(candidate) && candidate.launchMode === "start-conversation",
-          );
-          if (!isRecord(entry) || typeof entry.clientThreadId !== "string") return "missing";
-          clientThreadId = entry.clientThreadId;
-          return "captured";
-        },
-        { timeout: 20_000 },
-      )
-      .toBe("captured");
-    if (clientThreadId === null) throw new Error("Composer worktree returned no client id");
-
-    const threadId = await waitForPendingThread(page, clientThreadId);
-    const threadPage = page.getByTestId("session-thread-page");
-    const prompt = threadPage.getByText("Report the current working directory.", { exact: true });
-    await expect(prompt).toBeVisible({ timeout: 20_000 });
-    await expect(threadPage.getByRole("button", { name: "Stop", exact: true })).toBeVisible();
-    await expect(threadPage.getByText("Thread could not be restored", { exact: true })).toHaveCount(
-      0,
-    );
-    const snapshot = await invokeIpc(page, "codex:thread:snapshot:request", threadId);
-    expect(worktreeInitCount(snapshot)).toBe(1);
-    expect(
-      rendererErrors.filter((message) => message.includes("IdentityPromotionConflict")),
-    ).toEqual([]);
+    const fixture = await openWorktreeProject(harness, "ndx-wt-ui-");
+    fixtureRoot = fixture.fixtureRoot;
+    const { worktreeGitRoot } = await sendWorktreeChat(harness, fixture);
+    // The Environment's setup ran in the new worktree before the message.
+    await expect(fixture.page.getByText("Preparing workspace").first()).toBeVisible();
+    expect(runGit(worktreeGitRoot, ["status", "--porcelain"])).toBe("");
+    await expect(
+      fixture.page.getByText("Thread could not be restored", { exact: true }),
+    ).toHaveCount(0);
   } finally {
     await harness.close();
-    if (fixtureRoot) {
-      const resolvedFixtureRoot = path.resolve(fixtureRoot);
-      const expectedPrefix = `${path.resolve(os.tmpdir())}${path.sep}ndx-wt-ui-`;
-      if (!resolvedFixtureRoot.startsWith(expectedPrefix)) {
-        throw new Error(`Refusing to clean unexpected Composer E2E root: ${resolvedFixtureRoot}`);
-      }
-      fs.rmSync(resolvedFixtureRoot, { recursive: true, force: true });
-    }
+    removeFixtureRoot(fixtureRoot, "ndx-wt-ui-");
   }
 });
 
-test("keeps a managed Task recoverable across renderer and full app restarts", async () => {
+test("lists an Agent chat's worktree, archives the chat when it is deleted, and restores it", async () => {
   test.setTimeout(180_000);
   const harness = await createWorktreeHarness("worktree-restart");
   let fixtureRoot: string | undefined;
-  let managedPath = "";
   try {
-    fixtureRoot = fs.mkdtempSync(path.join(os.tmpdir(), "nodex-worktree-e2e-"));
-    const managedRoot = path.join(fixtureRoot, "managed worktrees");
-    const fixture = createRepository(fixtureRoot);
-    fs.mkdirSync(managedRoot, { recursive: true });
-    let page = await harness.launch();
-    const projectId = await createProject(page, [fixture.sourceRoot, fixture.additionalRoot]);
-    const projectSessionId = await createProjectSession(page, projectId);
-    await invokeIpc(page, "worktrees:settings:update", {
-      worktreeRoot: managedRoot,
-      autoDeleteEnabled: false,
-    });
+    const fixture = await openWorktreeProject(harness, "ndx-wt-life-");
+    fixtureRoot = fixture.fixtureRoot;
+    const { session, worktreeGitRoot } = await sendWorktreeChat(harness, fixture);
+    const threadId = session.executionRef!.threadId;
 
-    const created = await invokeIpc(
-      page,
-      "codex:pending-worktree:create",
-      pendingStartInput({
-        ...fixture,
-        environmentPath: ".codex/environments/environment.toml",
-        projectId,
-        projectSessionId,
-      }),
-    );
-    if (
-      !isRecord(created) ||
-      typeof created.clientThreadId !== "string" ||
-      typeof created.pendingWorktreeId !== "string"
-    ) {
-      throw new Error("Pending worktree creation returned no identities");
-    }
-
-    const threadId = await waitForPendingThread(page, created.clientThreadId);
-    const liveSummary = await invokeIpc(page, "codex:thread:summary:get", threadId);
-    if (!isRecord(liveSummary) || typeof liveSummary.managedWorktreePath !== "string") {
-      throw new Error("Created Task returned no managed worktree path");
-    }
-    managedPath = liveSummary.managedWorktreePath;
-    expect(path.resolve(managedPath).startsWith(`${path.resolve(managedRoot)}${path.sep}`)).toBe(
-      true,
-    );
-    expect(fs.existsSync(managedPath)).toBe(true);
-
-    const liveSnapshot = await invokeIpc(page, "codex:thread:snapshot:request", threadId);
-    expect(worktreeInitCount(liveSnapshot)).toBe(1);
-    expect(liveSummary).toMatchObject({
-      threadId,
-      managedWorktreePath: managedPath,
-    });
-    expect((liveSummary as { cwd?: string }).cwd).toBe(path.join(managedPath, "packages", "app"));
-    expect(runtimeWorkspaceRoots(liveSnapshot)).toEqual([managedPath, fixture.additionalRoot]);
-
-    const taskWindow = await invokeIpc(page, "workspace:tasks:list", projectId);
-    expect(taskWindow).toMatchObject({
-      items: expect.arrayContaining([
-        expect.objectContaining({
-          id: projectSessionId,
-          thread: expect.objectContaining({
-            threadId,
-            managedWorktreePath: managedPath,
-          }),
-        }),
-      ]),
-    });
-    await invokeIpc(page, "project-sessions:set-pinned", {
-      operationId: createBoundedOperationId("e2e.worktree.session.pin"),
-      payload: { sessionId: projectSessionId, pinned: true },
-    });
-
+    const page = await harness.restart();
+    const listed = async () =>
+      (await invokeIpc(page, "worktrees:list", "local")) as Array<{
+        path: string;
+        conversations: Array<{
+          threadId: string;
+          sessionId: string | null;
+          sessionTitle: string | null;
+        }>;
+      }>;
     await expect
       .poll(
         async () => {
-          const sidebar = await invokeIpc(page, "codex:sidebar:snapshot", { refresh: false });
-          if (!isRecord(sidebar) || !Array.isArray(sidebar.items)) return null;
-          const item = sidebar.items.find(
-            (candidate) => isRecord(candidate) && candidate.threadId === threadId,
+          const record = (await listed()).find(
+            (entry) => fs.realpathSync(entry.path) === fs.realpathSync(worktreeGitRoot),
           );
-          return isRecord(item) ? item.runLocation : null;
+          return record?.conversations.map((conversation) => conversation.sessionId) ?? null;
         },
-        { timeout: 15_000 },
+        { timeout: 30_000 },
       )
-      .toEqual({
-        kind: "local-worktree",
-        path: managedPath,
-        phase: "ready",
-      });
+      .toEqual([session.id]);
 
-    await page.reload();
-    await page.evaluate(() => window.api?.awaitInitialization?.());
-    const rendererReloadSnapshot = await invokeIpc(page, "codex:thread:snapshot:request", threadId);
-    expect(worktreeInitCount(rendererReloadSnapshot)).toBe(1);
-
-    page = await harness.restart();
-    const coldProject = page.getByRole("listitem", { name: "Managed Worktree E2E" });
-    await coldProject.hover();
-    await coldProject.getByRole("button", { name: "Expand project", exact: true }).click();
-    const coldThreadLink = page.locator(`[data-app-action-sidebar-thread-id="${threadId}"]`);
-    await expect(coldThreadLink).toBeVisible({ timeout: 20_000 });
-    await coldThreadLink.click();
-    await expect(page.getByTestId("session-thread-page")).toBeVisible({ timeout: 20_000 });
-    await expect(
-      page.getByText("Report the current working directory.", { exact: true }).last(),
-    ).toBeVisible({ timeout: 30_000 });
-    const coldSummary = await invokeIpc(page, "codex:thread:summary:get", threadId);
-    expect(coldSummary).toMatchObject({
-      threadId,
-      cwd: path.join(managedPath, "packages", "app"),
-      managedWorktreePath: managedPath,
-    });
-
-    let records: unknown = null;
-    await expect
-      .poll(
-        async () => {
-          try {
-            records = await invokeIpc(page, "worktrees:list", "local");
-            return Array.isArray(records);
-          } catch {
-            return false;
-          }
-        },
-        { timeout: 20_000 },
-      )
-      .toBe(true);
-    expect(records).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          hostId: "local",
-          path: managedPath,
-          exists: true,
-          conversations: expect.arrayContaining([expect.objectContaining({ threadId })]),
-        }),
-      ]),
-    );
-    await invokeIpc(page, "worktrees:delete", "local", managedPath);
-    await expect.poll(() => fs.existsSync(managedPath), { timeout: 20_000 }).toBe(false);
-    const deletedAvailability = await invokeIpc(page, "worktrees:thread:availability", threadId);
-    expect(deletedAvailability).toEqual({
+    const record = (await listed()).find(
+      (entry) => fs.realpathSync(entry.path) === fs.realpathSync(worktreeGitRoot),
+    )!;
+    await invokeIpc(page, "worktrees:delete", "local", record.path);
+    await expect.poll(() => fs.existsSync(worktreeGitRoot), { timeout: 20_000 }).toBe(false);
+    expect(
+      ((await invokeIpc(page, "project-sessions:get", session.id)) as { archived: boolean })
+        .archived,
+    ).toBe(true);
+    expect(await invokeIpc(page, "worktrees:thread:availability", threadId)).toEqual({
       state: "restorable",
       repositoryPath: fixture.sourceRoot,
       snapshotRef: expect.stringMatching(/^refs\/codex\/snapshots\/[a-f0-9]{40}$/u),
     });
 
-    const restored = await invokeIpc(page, "worktrees:thread:restore", threadId);
-    expect(restored).toEqual({
+    expect(await invokeIpc(page, "worktrees:thread:restore", threadId)).toEqual({
       availability: { state: "available" },
       ownerWarning: null,
     });
-    expect(fs.existsSync(managedPath)).toBe(true);
-    expect(runGit(managedPath, ["status", "--porcelain"])).toBe("");
-    const restoredAvailability = await invokeIpc(page, "worktrees:thread:availability", threadId);
-    expect(restoredAvailability).toMatchObject({ state: "available" });
+    expect(fs.existsSync(worktreeGitRoot)).toBe(true);
+    expect(runGit(worktreeGitRoot, ["status", "--porcelain"])).toBe("");
+    expect(await invokeIpc(page, "worktrees:thread:availability", threadId)).toMatchObject({
+      state: "available",
+    });
   } finally {
     await harness.close();
-    if (fixtureRoot) {
-      const resolvedFixtureRoot = path.resolve(fixtureRoot);
-      const expectedPrefix = `${path.resolve(os.tmpdir())}${path.sep}nodex-worktree-e2e-`;
-      if (!resolvedFixtureRoot.startsWith(expectedPrefix)) {
-        throw new Error(`Refusing to clean unexpected Worktree E2E root: ${resolvedFixtureRoot}`);
-      }
-      fs.rmSync(resolvedFixtureRoot, { recursive: true, force: true });
-    }
+    removeFixtureRoot(fixtureRoot, "ndx-wt-life-");
   }
 });

@@ -10,12 +10,14 @@ import type {
   ManagedWorktreeSettings,
   UpdateManagedWorktreeSettingsInput,
 } from "../../shared/types";
+import { isAgentExecutionThreadId } from "../../shared/agent-runtime-api";
 import { CODEX_APP_LOCAL_HOST_ID } from "../codex/codex-app-meta-thread-tools";
 import type {
   DesktopManagedWorktreeSummary,
   DesktopManagedWorktreeWindow,
 } from "../core-client/project-workspace-adapter";
 import {
+  managedWorktreeGitRootContaining,
   normalizeWorktreePathForIdentity,
   resolveWorktreePathComparisonKey,
 } from "../codex/codex-managed-worktree-effects";
@@ -23,6 +25,11 @@ import {
   ProjectWorkspace,
   type ProjectWorkspaceError,
 } from "../project-application/ProjectWorkspace";
+import {
+  AgentChatWorktrees,
+  agentChatWorktreeConsumers,
+  type ManagedWorktreeOwner,
+} from "./AgentChatWorktrees";
 import { CodexApplicationEventHub } from "./CodexApplicationEventHub";
 import { buildWorkspaceThreadSummary } from "./CodexThreadCatalogProjection";
 import { ManagedWorktreeConfiguration } from "./ExecutionHostConfiguration";
@@ -88,6 +95,7 @@ export const make = (
 ): Effect.Effect<
   ManagedWorktreeCatalog["Service"],
   never,
+  | AgentChatWorktrees
   | CodexApplicationEventHub
   | ExecutionHostRuntime
   | ManagedWorktreeConfiguration
@@ -97,6 +105,7 @@ export const make = (
   | Scope.Scope
 > =>
   Effect.gen(function* () {
+    const agentChats = yield* AgentChatWorktrees;
     const events = yield* CodexApplicationEventHub;
     const executionHosts = yield* ExecutionHostRuntime;
     const configuration = yield* ManagedWorktreeConfiguration;
@@ -130,19 +139,14 @@ export const make = (
       operation: "inspect-thread" | "restore-thread",
     ): Effect.Effect<ManagedThreadContext | null, ManagedWorktreeCatalogError> =>
       Effect.gen(function* () {
+        if (isAgentExecutionThreadId(threadId))
+          return yield* resolveAgentChatContext(threadId, operation);
         const thread = yield* project(operation, workspace.getThread(threadId));
         const worktreeGitRoot = thread?.managedWorktreePath?.trim();
         const cwd = thread?.cwd?.trim();
         if (!thread || !worktreeGitRoot || !cwd) return null;
 
-        const lifecycle = yield* project(operation, workspace.readManagedWorktreeLifecycleSnapshot);
-        const candidates = new Set(
-          lifecycle.projects
-            .filter((project) => project.projectId === thread.projectId)
-            .flatMap((project) => project.sourceRoots)
-            .map((root) => root.trim())
-            .filter(Boolean),
-        );
+        const candidates = yield* projectSourceRoots(operation, thread.projectId);
         if (candidates.size === 0) {
           const inventory = yield* managed.list(thread.executionHostId).pipe(
             Effect.mapError((cause) => fail(operation, cause)),
@@ -166,6 +170,74 @@ export const make = (
           candidateRepositoryPaths: [...candidates],
         };
       });
+
+    const projectSourceRoots = (
+      operation: ManagedWorktreeCatalogError["operation"],
+      projectId: string | null,
+    ) =>
+      project(operation, workspace.readManagedWorktreeLifecycleSnapshot).pipe(
+        Effect.map(
+          (lifecycle) =>
+            new Set(
+              lifecycle.projects
+                .filter((entry) => entry.projectId === projectId)
+                .flatMap((entry) => entry.sourceRoots)
+                .map((root) => root.trim())
+                .filter(Boolean),
+            ),
+        ),
+      );
+    /**
+     * An Agent chat records only where it works. Its managed worktree is the one its owner
+     * metadata names, or, once removed, the allocation that contains its working directory.
+     */
+    function resolveAgentChatContext(
+      threadId: string,
+      operation: "inspect-thread" | "restore-thread",
+    ): Effect.Effect<ManagedThreadContext | null, ManagedWorktreeCatalogError> {
+      return Effect.gen(function* () {
+        const source = yield* agentChats.source.pipe(
+          Effect.mapError((cause) => fail(operation, cause)),
+        );
+        const location = yield* source
+          .location(threadId)
+          .pipe(Effect.mapError((cause) => fail(operation, cause)));
+        if (!location) return null;
+        const host = yield* executionHosts
+          .resolve(CODEX_APP_LOCAL_HOST_ID)
+          .pipe(Effect.mapError((cause) => fail(operation, cause)));
+        const inventory = yield* managed.list(host.descriptor.hostId).pipe(
+          Effect.mapError((cause) => fail(operation, cause)),
+          Effect.catch(() => Effect.succeed(null)),
+        );
+        const owned = inventory?.entries.find((entry) => entry.ownerThreadId === threadId);
+        const worktreeGitRoot =
+          owned?.worktreeGitRoot ??
+          managedWorktreeGitRootContaining(host.descriptor.managedRoot, location.cwd);
+        if (!worktreeGitRoot) return null;
+        const candidates = yield* projectSourceRoots(operation, location.projectId);
+        if (owned?.repositoryPath?.trim()) candidates.add(owned.repositoryPath.trim());
+        return {
+          threadId,
+          hostId: host.descriptor.hostId,
+          worktreeGitRoot,
+          cwd: location.cwd,
+          candidateRepositoryPaths: [...candidates],
+        };
+      });
+    }
+    const ownersOf = (
+      hostId: string,
+      entries: readonly {
+        readonly worktreeGitRoot: string;
+        readonly ownerThreadId: string | null;
+      }[],
+    ): ManagedWorktreeOwner[] =>
+      entries.flatMap((entry) =>
+        entry.ownerThreadId
+          ? [{ hostId, worktreeGitRoot: entry.worktreeGitRoot, ownerThreadId: entry.ownerThreadId }]
+          : [],
+      );
 
     const list = (hostId: string) =>
       runOwned(
@@ -216,8 +288,15 @@ export const make = (
               { concurrency: "unbounded" },
             )).map((root) => `${CODEX_APP_LOCAL_HOST_ID}\0${root}`),
           );
+          const agentConsumers = yield* agentChatWorktreeConsumers(
+            agentChats,
+            ownersOf(normalizedHostId, inventory.entries),
+          ).pipe(Effect.mapError((cause) => fail("list", cause)));
+          const agentTitles = new Map(
+            agentConsumers.map((consumer) => [consumer.threadId, consumer.title] as const),
+          );
           const consumersByPath = new Map<string, typeof lifecycle.consumers>();
-          for (const consumer of lifecycle.consumers) {
+          for (const consumer of [...lifecycle.consumers, ...agentConsumers]) {
             const key = `${consumer.executionHostId}\0${normalizeWorktreePathForIdentity(
               consumer.managedWorktreePath,
             )}`;
@@ -247,7 +326,8 @@ export const make = (
                       ? (projectNameById.get(consumer.projectId) ?? null)
                       : null,
                     sessionId: consumer.sessionId,
-                    sessionTitle: summary?.sessionTitle ?? null,
+                    sessionTitle:
+                      summary?.sessionTitle ?? agentTitles.get(consumer.threadId) ?? null,
                     threadName: summary?.threadName ?? null,
                     archived: consumer.archived,
                     updatedAt: consumer.updatedAt,
@@ -387,6 +467,22 @@ export const make = (
               yield* project("delete", workspace.setThreadArchived(consumer.threadId, true)).pipe(
                 Effect.asVoid,
               );
+            }
+            const agentOwners = ownersOf(
+              hostId,
+              inventory.entries.filter(
+                (entry) =>
+                  normalizeWorktreePathForIdentity(entry.worktreeGitRoot) === normalizedPath,
+              ),
+            ).filter((owner) => isAgentExecutionThreadId(owner.ownerThreadId));
+            if (agentOwners.length > 0) {
+              const source = yield* agentChats.source.pipe(
+                Effect.mapError((cause) => fail("delete", cause)),
+              );
+              for (const owner of agentOwners)
+                yield* source
+                  .archive(owner.ownerThreadId)
+                  .pipe(Effect.mapError((cause) => fail("delete", cause)));
             }
             const result = yield* managed
               .remove({

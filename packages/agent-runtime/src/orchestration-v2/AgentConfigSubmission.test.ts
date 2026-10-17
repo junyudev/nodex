@@ -32,6 +32,48 @@ const layer = ProviderReplayHarness.layerWithRegistry(
   { databaseLayer: SqlitePersistence.layerMemory, runEffectWorker: false },
 );
 
+it.effect.each([
+  { deliveryIntent: "auto" as const },
+  { deliveryIntent: "auto" as const, interactionMode: "default" as const },
+])("a first message deferred for its worktree waits for it (%o)", (delivery) =>
+  Effect.gen(function* () {
+    const orchestrator = yield* Orchestrator.OrchestratorV2;
+    const threadId = ThreadId.make("deferred-worktree-root");
+    yield* orchestrator.dispatch({
+      type: "thread.create",
+      commandId: CommandId.make("deferred:create"),
+      threadId,
+      projectId: ProjectId.make("project"),
+      title: "Worktree",
+      modelSelection: { instanceId, model: "model-a" },
+      runtimeMode: "full-access",
+      interactionMode: "default",
+      branch: null,
+      worktreePath: "/workspace",
+      createdBy: "user",
+      creationSource: "web",
+    });
+    yield* orchestrator.dispatch({
+      type: "message.dispatch",
+      commandId: CommandId.make("deferred:message"),
+      threadId,
+      messageId: MessageId.make("deferred:message"),
+      text: "Work in a new worktree",
+      attachments: [],
+      ...delivery,
+      dispatchMode: {
+        type: "defer_start",
+        workspaceStrategy: { type: "worktree", baseRef: "HEAD" },
+      },
+      createdBy: "user",
+      creationSource: "web",
+    });
+    const [run] = (yield* orchestrator.getThreadProjection(threadId)).runs;
+    assert.equal(run?.status, "preparing");
+    assert.deepEqual(run?.workspacePreparation, { type: "worktree", baseRef: "HEAD" });
+  }).pipe(Effect.provide(layer)),
+);
+
 it.effect(
   "captures queued intelligence and planning without changing the active Turn, then applies them on promotion",
   () =>

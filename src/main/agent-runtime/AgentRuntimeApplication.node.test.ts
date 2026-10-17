@@ -1801,7 +1801,9 @@ it.effect("a failed worktree preparation can be retried or started in the source
       prepareWorkspace: () =>
         Effect.suspend(() =>
           (attempts += 1) === 1
-            ? Effect.fail(new Error("Branch feature is checked out elsewhere"))
+            ? Effect.fail(
+                new Error(`Branch feature is checked out elsewhere\n${"detail ".repeat(1_000)}\n`),
+              )
             : Effect.succeed({
                 location: {
                   cwd: "/worktrees/retried",
@@ -1822,6 +1824,9 @@ it.effect("a failed worktree preparation can be retried or started in the source
       { type: "prepared-run.fail" }
     >;
     assert.include(failed.failure.message, "checked out elsewhere");
+    // A tool can report more than the engine stores; the failure is still recorded.
+    assert.equal(failed.failure.message, failed.failure.message.trim());
+    assert.isAtMost(failed.failure.message.length, 4_096);
     const runId = failed.runId;
     yield* owner.retryPreparation({
       sessionId: result.sessionId,

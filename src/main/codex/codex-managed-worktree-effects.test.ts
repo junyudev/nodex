@@ -9,6 +9,7 @@ import {
   isCurrentManagedWorktreeDirectory,
   isLegacyManagedWorktreeParent,
   listManagedWorktreesOnHost,
+  managedWorktreeGitRootContaining,
   removeRetainedManagedWorktree,
   resolveManagedWorktreeId,
   resolveManagedWorktreeSnapshotRef,
@@ -71,6 +72,21 @@ describe("managed worktree data-safety effects", () => {
     expect(isCurrentManagedWorktreeDirectory("260829-1430-a1B2c3D4")).toBe(true);
     expect(isCurrentManagedWorktreeDirectory("20260829-1430-a1b2c3d4")).toBe(false);
     expect(isCurrentManagedWorktreeDirectory("260829-143-a1b2c3d4")).toBe(false);
+  });
+
+  test("finds the allocation that contains a working directory", () => {
+    expect(managedWorktreeGitRootContaining("/managed", "/managed/260829-1430-a1b2c3d4/app")).toBe(
+      "/managed/260829-1430-a1b2c3d4",
+    );
+    expect(managedWorktreeGitRootContaining("/managed", "/managed/a1b2/repository/app")).toBe(
+      "/managed/a1b2/repository",
+    );
+    expect(managedWorktreeGitRootContaining("/managed", "/managed")).toBeNull();
+    expect(managedWorktreeGitRootContaining("/managed", "/managed/a1b2")).toBeNull();
+    expect(managedWorktreeGitRootContaining("/managed", "/managed/notes/app")).toBeNull();
+    expect(
+      managedWorktreeGitRootContaining("/managed", "/elsewhere/260829-1430-a1b2c3d4"),
+    ).toBeNull();
   });
 
   test("snapshots the final materialized tree without mutating the real index", async () => {

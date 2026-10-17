@@ -29,6 +29,10 @@ import type { ProjectWorkspaceApplyInput } from "../core-client/types";
 import { CoreModuleResponseError } from "../core-client/core-client";
 import { ProjectWorkspace } from "../project-application/ProjectWorkspace";
 import type { CodexTurnPresentation } from "../codex-application/CodexTurnPresentation";
+import type {
+  AgentChatWorktreeConsumer,
+  AgentChatWorktreeSource,
+} from "../codex-application/AgentChatWorktrees";
 import { resolveAgentRuntimeAgentConfig } from "./AgentRuntimeAgentConfig";
 import { generateSessionTitle } from "./AgentRuntimeSessionTitle";
 import { splitCodexPromptAgentConfigLines } from "../../shared/codex-prompt-preparation";
@@ -714,12 +718,16 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
   /** Preparations with a live owner in this Main process. */
   const preparing = new Set<string>();
   const preparationKey = (threadId: string, runId: string) => JSON.stringify([threadId, runId]);
-  const preparationFailure = (message: string) => ({
-    class: "validation_error" as const,
-    message,
-    code: null,
-    retryable: true,
-  });
+  const preparationFailure = (message: string) => {
+    // The engine stores trimmed text of at most 4,096 characters; a tool can report more.
+    const text = Array.from(message.trim()).slice(0, 4_096).join("").trim();
+    return {
+      class: "validation_error" as const,
+      message: text || "The worktree could not be prepared",
+      code: null,
+      retryable: true,
+    };
+  };
 
   /**
    * Creates a launch's managed worktree while its Run waits as `preparing`. The Run starts only
@@ -792,7 +800,13 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
               ? (Cause.squash(cause) as Error).message
               : "The worktree could not be prepared",
           ),
-        }).pipe(Effect.ignoreCause),
+        }).pipe(
+          Effect.catchCause((recordCause) =>
+            Effect.logWarning("Worktree preparation failure could not be recorded").pipe(
+              Effect.annotateLogs({ threadId, runId, cause: Cause.pretty(recordCause) }),
+            ),
+          ),
+        ),
       ),
       Effect.ensuring(Effect.sync(() => preparing.delete(preparationKey(threadId, runId)))),
     );
@@ -1585,15 +1599,14 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
       }),
     );
   });
-  /** A Thread of a bound Session; an archived one is still readable but never executes. */
-  const boundThread = Effect.fn("AgentRuntimeApplication.boundThread")(function* (
+  /** A live Thread and the Session bound to its root, read without touching execution. */
+  const readBoundThread = Effect.fn("AgentRuntimeApplication.readBoundThread")(function* (
     threadId: string,
-    allowArchived: boolean,
   ) {
     if (options.runtimeExists && !(yield* options.runtimeExists)) return null;
     const connection = yield* options.connect;
     const thread = yield* connection.request("thread.read", { threadId });
-    if (!thread || thread.deletedAt || (!allowArchived && thread.archivedAt)) return null;
+    if (!thread || thread.deletedAt) return null;
     const binding = yield* host(
       core.workspace.read({
         kind: "agent_runtime_session_binding_by_execution",
@@ -1603,9 +1616,87 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
     );
     if (binding.value.kind !== "agent_runtime_session_binding" || !binding.value.binding)
       return null;
-    yield* targetInfo(connection, { sessionId: binding.value.binding.session_id, threadId });
     return { connection, thread, sessionId: binding.value.binding.session_id };
   });
+  /** A Thread of a bound Session; an archived one is still readable but never executes. */
+  const boundThread = Effect.fn("AgentRuntimeApplication.boundThread")(function* (
+    threadId: string,
+    allowArchived: boolean,
+  ) {
+    const bound = yield* readBoundThread(threadId);
+    if (!bound || (!allowArchived && bound.thread.archivedAt)) return null;
+    yield* targetInfo(bound.connection, { sessionId: bound.sessionId, threadId });
+    return bound;
+  });
+  const seconds = (iso: string) => Math.floor(Date.parse(iso) / 1000);
+  /** Agent chats as owners of managed worktrees, described like native Threads. */
+  const worktreeChats: AgentChatWorktreeSource = {
+    consumers: (owners) =>
+      owned(
+        "worktree-consumers",
+        Effect.forEach(
+          owners,
+          (owner) =>
+            Effect.gen(function* () {
+              const bound = yield* readBoundThread(owner.ownerThreadId);
+              if (!bound) return [];
+              const session = yield* workspace.getProjectSession(bound.sessionId);
+              if (!session) return [];
+              const { thread } = bound;
+              const working =
+                thread.activeRunId !== null || (thread.pendingBackgroundTasks?.length ?? 0) > 0;
+              return [
+                {
+                  threadId: thread.id,
+                  projectId: session.projectId,
+                  sessionId: session.id,
+                  executionHostId: owner.hostId,
+                  cwd: thread.worktreePath,
+                  managedWorktreePath: owner.worktreeGitRoot,
+                  runtimeWorkspaceRoots: [],
+                  archived: session.archived,
+                  pinnedOrder: session.pinnedOrder,
+                  statusType: working ? "active" : "idle",
+                  statusActiveFlags: [],
+                  // Native Threads count in seconds.
+                  createdAt: seconds(thread.createdAt),
+                  updatedAt: Math.max(seconds(thread.updatedAt), seconds(session.updatedAt)),
+                  linkedAt: session.createdAt,
+                  title: session.displayTitle,
+                } satisfies AgentChatWorktreeConsumer,
+              ];
+            }),
+          { concurrency: 4 },
+        ).pipe(Effect.map((consumers) => consumers.flat())),
+      ),
+    location: (threadId) =>
+      owned(
+        "worktree-location",
+        Effect.gen(function* () {
+          const bound = yield* readBoundThread(threadId);
+          if (!bound?.thread.worktreePath) return null;
+          const session = yield* workspace.getProjectSession(bound.sessionId);
+          if (!session) return null;
+          return { threadId, projectId: session.projectId, cwd: bound.thread.worktreePath };
+        }),
+      ),
+    archive: (threadId) =>
+      Effect.gen(function* () {
+        const bound = yield* owned("worktree-archive", readBoundThread(threadId));
+        if (!bound) return;
+        yield* withSessionLifecycle(
+          "archive-session",
+          bound.sessionId,
+          archiveSession(
+            {
+              operationId: createOperationId("agent-runtime.worktree-archive"),
+              payload: { sessionId: bound.sessionId },
+            },
+            true,
+          ),
+        );
+      }),
+  };
   const cleanupDeletedSessions = Effect.fn("AgentRuntimeApplication.cleanupDeletedSessions")(
     function* () {
       if (yield* CoreApplicationAgent)
@@ -1670,6 +1761,7 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
         }),
       ),
     nativeThread: (threadId: string) => owned("native-thread", boundThread(threadId, false)),
+    worktreeChats,
     /** The Codex thread and workspace an Agent chat's reply visualizations are read from. */
     visualizationSource: (threadId: string) =>
       owned(

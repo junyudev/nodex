@@ -122,7 +122,8 @@ export function resolveMessageDispatchIntent(
   requestedMode: MessageDispatchMode,
   deliveryIntent?: "auto" | "steer" | "restart",
 ): MessageDispatchMode {
-  if (deliveryIntent === undefined) return requestedMode;
+  // A Run deferred for its workspace waits for it; how a message is delivered never cancels that.
+  if (deliveryIntent === undefined || requestedMode.type === "defer_start") return requestedMode;
 
   const activeRun = projection.runs.findLast(
     (run) =>

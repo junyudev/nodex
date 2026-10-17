@@ -31,6 +31,7 @@ import {
   AgentRuntimeApplication,
   make as makeApplication,
 } from "../agent-runtime/AgentRuntimeApplication";
+import { AgentChatWorktrees } from "../codex-application/AgentChatWorktrees";
 import { make as makeHost } from "../agent-runtime/AgentRuntimeHost";
 import { make as makeDesktopTools } from "../agent-runtime/AgentRuntimeDesktopTools";
 import { make as makeProviderCatalog } from "../agent-runtime/AgentRuntimeProviderCatalog";
@@ -604,6 +605,8 @@ const supervisor = Layer.effectContext(
           });
         }),
     });
+    // Managed worktree listing and retention learn about Agent chats from here on.
+    yield* (yield* AgentChatWorktrees).register(product.worktreeChats);
     return Context.make(AgentRuntimeSupervisor, runtime).pipe(
       Context.add(AgentRuntimeSessionActivity, {
         read: activity.read,

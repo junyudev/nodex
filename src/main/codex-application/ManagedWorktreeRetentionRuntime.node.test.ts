@@ -15,6 +15,11 @@ import {
   ProjectWorkspace,
   type ProjectWorkspaceService,
 } from "../project-application/ProjectWorkspace";
+import {
+  AgentChatWorktrees,
+  live as agentChatWorktreesLive,
+  type AgentChatWorktreeSource,
+} from "./AgentChatWorktrees";
 import { CodexApplicationEventHub } from "./CodexApplicationEventHub";
 import { CodexPendingWorktreeRuntime } from "./CodexPendingWorktreeRuntime";
 import { ManagedWorktreeConfiguration } from "./ExecutionHostConfiguration";
@@ -88,10 +93,16 @@ const buildRuntime = (
     readonly pendingWorktrees?: CodexPendingWorktreeRuntime["Service"];
     readonly automation?: AutomationApplication["Service"];
     readonly handoffJournal?: CodexThreadHandoffJournalStorage;
+    readonly agentChats?: AgentChatWorktreeSource;
   } = {},
 ) =>
   Effect.gen(function* () {
     const scope = yield* Scope.make();
+    const chats = yield* Layer.buildWithScope(agentChatWorktreesLive, scope);
+    if (options.agentChats)
+      yield* Context.get(chats, AgentChatWorktrees)
+        .register(options.agentChats)
+        .pipe(Scope.provide(scope));
     const context = yield* Layer.buildWithScope(
       managedWorktreeRetentionRuntimeLive({
         handoffJournal: options.handoffJournal ?? {
@@ -101,6 +112,7 @@ const buildRuntime = (
       }).pipe(
         Layer.provide(
           Layer.mergeAll(
+            Layer.succeedContext(chats),
             Layer.succeed(AutomationApplication, options.automation ?? automationApplication()),
             Layer.succeed(
               CodexApplicationEventHub,
@@ -610,6 +622,93 @@ it.effect("fails closed when any physical inventory is unavailable", () =>
     assert.strictEqual(plan.status, "skipped");
     if (plan.status === "skipped") assert.strictEqual(plan.reason, "metadata-incomplete");
 
+    yield* Scope.close(scope, Exit.void);
+  }),
+);
+
+const agentOwnedEntries = () =>
+  ["nodex:thread:agent", null, null].map((ownerThreadId, index) => ({
+    worktreeGitRoot: `/managed/${String(index).padStart(4, "0")}/repository`,
+    repositoryPath: "/repositories/repository",
+    createdAtMs: Date.parse("2026-08-13T00:00:00.000Z") + index,
+    ownerThreadId,
+    ownerReadFailed: false,
+  }));
+
+it.effect("keeps a working Agent chat's worktree like a native Thread's", () =>
+  Effect.gen(function* () {
+    const removed: string[] = [];
+    const { runtime, scope } = yield* buildRuntime({
+      settings: () => ({ ...disabledSettings, autoDeleteEnabled: true }),
+      executionHosts: executionHosts(["local"]),
+      managedWorktrees: managedWorktrees({
+        list: () => Effect.succeed({ entries: agentOwnedEntries() }),
+        remove: (input) =>
+          Effect.sync(() => {
+            removed.push(input.worktreeGitRoot);
+            return { removed: true, alreadyMissing: false, snapshot: null, warnings: [] };
+          }),
+      }),
+      agentChats: {
+        consumers: (owners) =>
+          Effect.succeed(
+            owners.map((owner) => ({
+              threadId: owner.ownerThreadId,
+              projectId: "project",
+              sessionId: "session",
+              executionHostId: owner.hostId,
+              cwd: owner.worktreeGitRoot,
+              managedWorktreePath: owner.worktreeGitRoot,
+              runtimeWorkspaceRoots: [],
+              archived: false,
+              pinnedOrder: null,
+              statusType: "active" as const,
+              statusActiveFlags: [],
+              createdAt: 1,
+              updatedAt: 1,
+              linkedAt: "2026-08-13T00:00:00.000Z",
+              title: "Agent chat",
+            })),
+          ),
+        location: () => Effect.die("unused"),
+        archive: () => Effect.die("unused"),
+      },
+    });
+
+    yield* TestClock.setTime(Date.parse("2026-08-14T00:00:00.000Z"));
+    const plan = yield* runtime.run;
+    assert.strictEqual(plan.status, "planned");
+    assert.deepEqual(
+      plan.status === "planned"
+        ? plan.items.find((item) => item.ownerThreadId === "nodex:thread:agent")?.protectionReasons
+        : [],
+      ["in-progress"],
+    );
+    assert.deepEqual(removed, ["/managed/0001/repository"]);
+    yield* Scope.close(scope, Exit.void);
+  }),
+);
+
+it.effect("cleans up nothing until Agent execution can describe the chats owning worktrees", () =>
+  Effect.gen(function* () {
+    const removed: string[] = [];
+    const { runtime, scope } = yield* buildRuntime({
+      settings: () => ({ ...disabledSettings, autoDeleteEnabled: true }),
+      executionHosts: executionHosts(["local"]),
+      managedWorktrees: managedWorktrees({
+        list: () => Effect.succeed({ entries: agentOwnedEntries() }),
+        remove: (input) =>
+          Effect.sync(() => {
+            removed.push(input.worktreeGitRoot);
+            return { removed: true, alreadyMissing: false, snapshot: null, warnings: [] };
+          }),
+      }),
+    });
+
+    yield* TestClock.setTime(Date.parse("2026-08-14T00:00:00.000Z"));
+    const plan = yield* runtime.run;
+    assert.strictEqual(plan.status, "skipped");
+    assert.deepEqual(removed, []);
     yield* Scope.close(scope, Exit.void);
   }),
 );

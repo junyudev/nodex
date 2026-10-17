@@ -69,6 +69,21 @@ export function isCurrentManagedWorktreeDirectory(name: string): boolean {
   return CURRENT_MANAGED_WORKTREE_PATTERN.test(name);
 }
 
+/** The managed worktree that contains `location`, read from the managed root's layout. */
+export function managedWorktreeGitRootContaining(
+  managedRoot: string,
+  location: string,
+): string | null {
+  const relative = path.relative(path.resolve(managedRoot), path.resolve(location));
+  if (!relative || relative === ".." || relative.startsWith(`..${path.sep}`)) return null;
+  if (path.isAbsolute(relative)) return null;
+  const [first, second] = relative.split(path.sep);
+  if (isCurrentManagedWorktreeDirectory(first!)) return path.join(managedRoot, first!);
+  if (second && isLegacyManagedWorktreeParent(first!))
+    return path.join(managedRoot, first!, second);
+  return null;
+}
+
 function assertExactManagedWorktreePath(worktreeGitRoot: string): string {
   const resolvedWorktreeRoot = path.resolve(worktreeGitRoot.trim());
   const filesystemRoot = path.parse(resolvedWorktreeRoot).root;

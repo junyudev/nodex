@@ -198,6 +198,7 @@ import {
   make as makeCodexPendingWorktreeRuntime,
 } from "../codex-application/CodexPendingWorktreeRuntime";
 import { live as managedWorktreeRetentionLive } from "../codex-application/ManagedWorktreeRetentionRuntime";
+import { live as agentChatWorktreesLive } from "../codex-application/AgentChatWorktrees";
 import { live as crossHostThreadHandoffLive } from "../codex-application/CrossHostThreadHandoff";
 import { live as managedWorktreeHandoffLive } from "../codex-application/ManagedWorktreeHandoff";
 import {
@@ -570,7 +571,7 @@ const managedWorktreeRetention = Layer.unwrap(
       ),
     });
   }),
-).pipe(Layer.provideMerge(createdThreadTargets));
+).pipe(Layer.provideMerge(Layer.merge(createdThreadTargets, agentChatWorktreesLive)));
 const crossHostThreadHandoff = Layer.unwrap(
   Effect.gen(function* () {
     const platform = yield* CodexPlatform;

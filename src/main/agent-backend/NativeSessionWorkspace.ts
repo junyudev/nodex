@@ -13,10 +13,7 @@ import { ExecutionHostRuntime } from "../codex-application/ExecutionHostRuntime"
 import { ManagedWorktreeRuntime } from "../codex-application/ManagedWorktreeRuntime";
 import { createCodexProjectlessWorkspace } from "../codex/codex-projectless-workspace";
 import { persistCodexWorktreeShellEnvironmentAtGitPath } from "../codex/codex-worktree-shell-environment";
-import {
-  isCurrentManagedWorktreeDirectory,
-  isLegacyManagedWorktreeParent,
-} from "../codex/codex-managed-worktree-effects";
+import { managedWorktreeGitRootContaining } from "../codex/codex-managed-worktree-effects";
 import { readManagedWorktreeOwnerThread } from "../codex/git-worktree-service";
 
 export interface NativeSessionWorkspaceInput {
@@ -90,22 +87,14 @@ export const make = Effect.gen(function* () {
         worktree: await realpath(root),
       })).pipe(Effect.orElseSucceed(() => null));
       if (!roots) return;
-      const relative = path.relative(roots.managed, roots.worktree);
-      if (
-        !relative ||
-        relative.startsWith(`..${path.sep}`) ||
-        relative === ".." ||
-        path.isAbsolute(relative)
-      )
+      // Only an allocation itself is adopted, never a directory inside one.
+      if (managedWorktreeGitRootContaining(roots.managed, roots.worktree) !== roots.worktree)
         return;
       // Keep the configured spelling used by newborn ownership while comparing canonical paths.
-      const worktreeGitRoot = path.join(host.descriptor.managedRoot, relative);
-      const parts = relative.split(path.sep);
-      if (
-        !(parts.length === 1 && isCurrentManagedWorktreeDirectory(parts[0]!)) &&
-        !(parts.length === 2 && isLegacyManagedWorktreeParent(parts[0]!))
-      )
-        return;
+      const worktreeGitRoot = path.join(
+        host.descriptor.managedRoot,
+        path.relative(roots.managed, roots.worktree),
+      );
       const gitDirectory = yield* git.readPath(worktreeGitRoot, [
         "rev-parse",
         "--path-format=absolute",

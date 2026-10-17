@@ -9,6 +9,11 @@ import {
   type DesktopProjectWorkspaceThread,
   type ProjectWorkspaceService,
 } from "../project-application/ProjectWorkspace";
+import {
+  AgentChatWorktrees,
+  AgentChatWorktreesUnavailable,
+  type AgentChatWorktreeSource,
+} from "./AgentChatWorktrees";
 import { CodexApplicationEventHub, type CodexApplicationEvent } from "./CodexApplicationEventHub";
 import { ManagedWorktreeConfiguration } from "./ExecutionHostConfiguration";
 import { ExecutionHostRuntime } from "./ExecutionHostRuntime";
@@ -76,6 +81,8 @@ const makeExecutionHosts = (
 ): ExecutionHostRuntime["Service"] =>
   ({
     hosts: () => Effect.succeed([{ hostId: "local" }]),
+    resolve: (hostId: string) =>
+      Effect.succeed({ descriptor: { hostId, managedRoot: "/managed" } }),
     updateLocalManagedRoot: (managedRoot: string) =>
       Effect.sync(() => updateManagedRoot("local", managedRoot)),
   }) as unknown as ExecutionHostRuntime["Service"];
@@ -104,6 +111,7 @@ const makeCatalog = (
     readonly executionHosts?: ExecutionHostRuntime["Service"];
     readonly publish?: (event: CodexApplicationEvent) => void;
     readonly retention?: ManagedWorktreeRetentionRuntime["Service"];
+    readonly agentChats?: AgentChatWorktreeSource;
     readonly settings?: {
       readonly read: () => ManagedWorktreeSettings;
       readonly update: (input: Partial<ManagedWorktreeSettings>) => ManagedWorktreeSettings;
@@ -145,6 +153,15 @@ const makeCatalog = (
     ),
     Effect.provideService(ManagedWorktreeRuntime, managed),
     Effect.provideService(ProjectWorkspace, ProjectWorkspace.of(projectWorkspace)),
+    Effect.provideService(
+      AgentChatWorktrees,
+      AgentChatWorktrees.of({
+        register: () => Effect.void,
+        source: options.agentChats
+          ? Effect.succeed(options.agentChats)
+          : Effect.fail(new AgentChatWorktreesUnavailable()),
+      }),
+    ),
     Effect.provideService(Scope.Scope, scope),
   );
 };
@@ -685,6 +702,129 @@ it.effect("rejects a stale settings deletion before archive or worker mutation",
     assert.isTrue(Exit.isFailure(result));
     assert.strictEqual(archiveCalls, 0);
     assert.strictEqual(removeCalls, 0);
+    yield* Scope.close(scope, Exit.void);
+  }),
+);
+
+it.effect("lists, deletes and restores the worktree an Agent chat works in", () =>
+  Effect.gen(function* () {
+    const scope = yield* Scope.make();
+    const agentThread = "nodex:thread:agent";
+    const worktreeGitRoot = "/managed/260814-1200-abcdef01";
+    let present = true;
+    const archived: string[] = [];
+    const removed: string[] = [];
+    const inspected: ManagedWorktreeInspectInput[] = [];
+    const catalog = yield* makeCatalog(
+      scope,
+      makeProjectWorkspace({
+        readManagedWorktreeLifecycleSnapshot: Effect.succeed({
+          projectionRevision: 1,
+          consumers: [],
+          projects: [
+            {
+              projectId: "project-one",
+              lifecycle: "active" as Project["lifecycle"],
+              sourceRoots: ["/repositories/repository"],
+              primaryWorkspaceRoot: "/repositories/repository",
+            },
+          ],
+        }),
+      }),
+      makeManaged({
+        list: () =>
+          Effect.succeed({
+            entries: present
+              ? [
+                  {
+                    worktreeGitRoot,
+                    repositoryPath: "/repositories/repository",
+                    createdAtMs: 1,
+                    ownerThreadId: agentThread,
+                    ownerReadFailed: false,
+                  },
+                ]
+              : [],
+          }),
+        remove: (input) =>
+          Effect.sync(() => {
+            removed.push(input.worktreeGitRoot);
+            present = false;
+            return { removed: true, alreadyMissing: false, snapshot: null, warnings: [] };
+          }),
+        inspect: (input) =>
+          Effect.sync(() => {
+            inspected.push(input);
+            return {
+              availability: {
+                state: "restorable" as const,
+                repositoryPath: "/repositories/repository",
+                snapshotRef: "refs/codex/snapshots/agent",
+              },
+            };
+          }),
+      }),
+      {
+        agentChats: {
+          consumers: (owners) =>
+            Effect.succeed(
+              owners.map((owner) => ({
+                threadId: owner.ownerThreadId,
+                projectId: "project-one",
+                sessionId: "agent-session",
+                executionHostId: owner.hostId,
+                cwd: `${owner.worktreeGitRoot}/packages/app`,
+                managedWorktreePath: owner.worktreeGitRoot,
+                runtimeWorkspaceRoots: [],
+                archived: false,
+                pinnedOrder: null,
+                statusType: "idle" as const,
+                statusActiveFlags: [],
+                createdAt: 1,
+                updatedAt: 2,
+                linkedAt: "2026-08-14T00:00:00.000Z",
+                title: "Agent chat",
+              })),
+            ),
+          location: (threadId) =>
+            Effect.succeed({
+              threadId,
+              projectId: "project-one",
+              cwd: `${worktreeGitRoot}/packages/app`,
+            }),
+          archive: (threadId) => Effect.sync(() => void archived.push(threadId)),
+        },
+      },
+    );
+
+    const [record] = yield* catalog.list("local");
+    assert.deepEqual(
+      record?.conversations.map((conversation) => [
+        conversation.threadId,
+        conversation.sessionId,
+        conversation.sessionTitle,
+      ]),
+      [[agentThread, "agent-session", "Agent chat"]],
+    );
+
+    assert.isTrue(yield* catalog.delete("local", worktreeGitRoot));
+    assert.deepEqual(archived, [agentThread]);
+    assert.deepEqual(removed, [worktreeGitRoot]);
+
+    // Once removed, the chat's working directory still names its allocation.
+    assert.deepEqual(yield* catalog.inspectThread(agentThread), {
+      state: "restorable",
+      repositoryPath: "/repositories/repository",
+      snapshotRef: "refs/codex/snapshots/agent",
+    });
+    assert.deepEqual(inspected, [
+      {
+        hostId: "local",
+        worktreeGitRoot,
+        cwd: `${worktreeGitRoot}/packages/app`,
+        candidateRepositoryPaths: ["/repositories/repository"],
+      },
+    ]);
     yield* Scope.close(scope, Exit.void);
   }),
 );

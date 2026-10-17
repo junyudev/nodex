@@ -258,7 +258,11 @@ It protects:
 
 If pinned or Project protection metadata cannot be read reliably, the entire
 retention pass is skipped. Missing metadata is never interpreted as an empty
-protection set.
+protection set. A Runtime Session is the consumer of the worktree its owner
+metadata names, with the Session's pin, archive state and title and its Thread's
+activity; while Agent Runtime cannot describe such an owner, the pass is skipped.
+A removed Runtime Session worktree is found again from its Thread's working
+directory, so it can be inspected and restored like a native Chat's.
 
 Eligible ownerless worktrees are ordered oldest first by birth time. Eligible
 owned worktrees are then ordered oldest first by owner Chat update time. The

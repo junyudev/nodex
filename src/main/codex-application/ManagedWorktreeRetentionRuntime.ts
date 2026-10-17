@@ -24,6 +24,7 @@ import {
   type CodexManagedWorktreeRetentionPathProtection,
 } from "../codex/codex-managed-worktree-retention";
 import { ProjectWorkspace } from "../project-application/ProjectWorkspace";
+import { AgentChatWorktrees, agentChatWorktreeConsumers } from "./AgentChatWorktrees";
 import { CodexApplicationEventHub } from "./CodexApplicationEventHub";
 import { CodexPendingWorktreeRuntime } from "./CodexPendingWorktreeRuntime";
 import { ManagedWorktreeConfiguration } from "./ExecutionHostConfiguration";
@@ -73,6 +74,7 @@ export const live = (
 ): Layer.Layer<
   ManagedWorktreeRetentionRuntime,
   never,
+  | AgentChatWorktrees
   | CodexPendingWorktreeRuntime
   | CodexApplicationEventHub
   | AutomationApplication
@@ -85,6 +87,7 @@ export const live = (
     ManagedWorktreeRetentionRuntime,
     Effect.gen(function* () {
       const automation = yield* AutomationApplication;
+      const agentChats = yield* AgentChatWorktrees;
       const executionHosts = yield* ExecutionHostRuntime;
       const applicationEvents = yield* CodexApplicationEventHub;
       const configuration = yield* ManagedWorktreeConfiguration;
@@ -149,6 +152,25 @@ export const live = (
         const physicalEntries = physicalByHost.flatMap(({ hostId, inventory }) =>
           inventory.entries.map((entry) => ({ hostId, entry })),
         );
+        // Agent chats are protected exactly like native Threads; until Agent execution can
+        // describe them, the plan is incomplete rather than treating their worktrees as idle.
+        const consumers = [
+          ...lifecycle.consumers,
+          ...(yield* agentChatWorktreeConsumers(
+            agentChats,
+            physicalEntries.flatMap(({ hostId, entry }) =>
+              entry.ownerThreadId
+                ? [
+                    {
+                      hostId,
+                      worktreeGitRoot: entry.worktreeGitRoot,
+                      ownerThreadId: entry.ownerThreadId,
+                    },
+                  ]
+                : [],
+            ),
+          ).pipe(Effect.mapError((cause) => error(`${phase}-agent-chats`, cause)))),
+        ];
         const localPermanentKeys = new Set(
           yield* Effect.forEach(
             lifecycle.projects.flatMap((project) => project.sourceRoots),
@@ -206,7 +228,7 @@ export const live = (
 
         const automationProtection = new Map(
           yield* Effect.forEach(
-            lifecycle.consumers,
+            consumers,
             (consumer) =>
               automation.runs.get(consumer.threadId).pipe(
                 Effect.mapError((cause) => error(`${phase}-automation-protection`, cause)),
@@ -215,7 +237,7 @@ export const live = (
             { concurrency: 8 },
           ),
         );
-        for (const consumer of lifecycle.consumers) {
+        for (const consumer of consumers) {
           const reason =
             consumer.pinnedOrder !== null
               ? "pinned"
@@ -243,7 +265,7 @@ export const live = (
             ownerThreadId: entry.ownerThreadId,
             ownerReadFailed: entry.ownerReadFailed,
           })),
-          threadMetadata: lifecycle.consumers.map((consumer) => ({
+          threadMetadata: consumers.map((consumer) => ({
             threadId: consumer.threadId,
             updatedAtMs: consumer.updatedAt,
             pinned: consumer.pinnedOrder !== null,

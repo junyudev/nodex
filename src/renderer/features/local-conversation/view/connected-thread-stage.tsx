@@ -1357,7 +1357,7 @@ function ConnectedThreadStageContent({
   // carry it in their Core summary.
   const runtimeSession = runtime.sessionId !== undefined;
   const runtimeLocation = useRuntimeExecutionLocation(
-    runtimeSession && summaryPanelMounted ? activeThreadId : null,
+    runtimeSession && (summaryPanelMounted || routeActive) ? activeThreadId : null,
     "on-demand",
   );
   const activeManagedWorktreePath = runtimeSession
@@ -1366,12 +1366,15 @@ function ConnectedThreadStageContent({
   const activeThreadIsManagedWorktree = Boolean(activeManagedWorktreePath);
   const managedWorktreeAvailability = useManagedWorktreeAvailability(
     activeThreadId,
-    activeThreadIsManagedWorktree && routeActive && !runtimeSession,
+    activeThreadIsManagedWorktree && routeActive,
   );
+  // A native Thread resumes only into a checked worktree. Agent execution checks its own
+  // location before running, so only a known loss hides an Agent chat's Composer.
   const worktreeRuntimeAvailable =
     !activeThreadIsManagedWorktree ||
-    runtimeSession ||
-    managedWorktreeAvailability.data?.state === "available";
+    (runtimeSession
+      ? (managedWorktreeAvailability.data?.state ?? "available") === "available"
+      : managedWorktreeAvailability.data?.state === "available");
   const activeThreadHasRuntimeWork = Boolean(
     (statusType ?? input.activeThreadSummary?.statusType) === "active" ||
     statusActiveFlags.length > 0 ||

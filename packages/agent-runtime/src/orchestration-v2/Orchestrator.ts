@@ -4789,7 +4789,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       const interactionMode = command.interactionMode ?? projection.thread.interactionMode;
       let dispatchMode = resolveMessageDispatchIntent(
         projection,
-        command.interactionMode === undefined
+        command.interactionMode === undefined || command.dispatchMode.type === "defer_start"
           ? command.dispatchMode
           : { type: "queue_after_active" },
         command.interactionMode === undefined ? command.deliveryIntent : undefined,
