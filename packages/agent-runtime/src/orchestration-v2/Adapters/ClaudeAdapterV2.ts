@@ -8035,6 +8035,28 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
             }),
           );
 
+        // The environment the workspace's setup prepared reaches every command the session
+        // runs; a host that cannot say leaves the provider's own environment.
+        const readWorkspaceEnvironment = (turnInput: ProviderAdapter.ProviderAdapterV2TurnInput) =>
+          executionHost.prepareThread === undefined
+            ? Effect.succeed(undefined)
+            : executionHost
+                .prepareThread({
+                  threadId: turnInput.threadId,
+                  providerInstanceId: adapterOptions.instanceId,
+                  nativeDriver: CLAUDE_PROVIDER,
+                  cwd: turnInput.runtimePolicy.cwd ?? null,
+                })
+                .pipe(
+                  Effect.map((prepared) => prepared.environment),
+                  Effect.catch((cause) =>
+                    Effect.logWarning("orchestration-v2.claude-workspace-environment-unavailable", {
+                      threadId: turnInput.threadId,
+                      cause,
+                    }).pipe(Effect.as(undefined)),
+                  ),
+                );
+
         const openQuery = Effect.fnUntraced(function* (
           turnInput: ProviderAdapter.ProviderAdapterV2TurnInput,
           nativeThreadId: string,
@@ -8134,7 +8156,10 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
             cwd: turnInput.runtimePolicy.cwd,
             attachmentsDir,
             settings: adapterOptions.settings,
-            environment: adapterOptions.environment,
+            environment: ExecutionHost.withWorkspaceEnvironment(
+              adapterOptions.environment,
+              yield* readWorkspaceEnvironment(turnInput),
+            ),
             tools: queryPolicy.tools ?? CLAUDE_CODE_PRESET_TOOLS,
             ...(mcpOverrides.allowedTools === undefined
               ? {}

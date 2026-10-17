@@ -130,6 +130,10 @@ export interface NodexElectronLaunchInput {
   readonly claudeConfigHome?: string;
   readonly cwd?: string;
   readonly environment?: NodeJS.ProcessEnv;
+  /**
+   * A packaged app, or a development launcher that names the app before forwarding its
+   * arguments: the harness's arguments include positional values (macOS process defaults).
+   */
   readonly executablePath?: string;
   readonly initialProjectsDirectory: string;
   readonly nodexHome: string;

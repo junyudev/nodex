@@ -55,6 +55,14 @@ export const make = Effect.fn("AgentRuntimeHost.make")(function* (
     readonly providerDriver?: (instanceId: string) => string | undefined;
     readonly execute: AgentRuntimeHostToolExecutor;
     readonly desktop?: Pick<AgentRuntimeDesktopTools, "threadConfig" | "observeNativeTurn">;
+    /** What a workspace's Environment setup changed, for providers that start their own processes. */
+    readonly workspaceEnvironment?: (cwd: string) => Effect.Effect<
+      {
+        readonly set: Readonly<Record<string, string>>;
+        readonly exclude: readonly string[];
+      } | null,
+      unknown
+    >;
     readonly presentation?: Pick<
       CodexTurnPresentation["Service"],
       "observeRuntimeMessage" | "finishRuntimeSource" | "finishRuntimeLease" | "finish"
@@ -165,13 +173,16 @@ export const make = Effect.fn("AgentRuntimeHost.make")(function* (
       if (request.operation === "thread.prepare") {
         const { identity } = request;
         if (!isCurrentLease(identity)) return yield* unavailable("thread.prepare");
-        if (
-          !options.desktop ||
-          identity.nativeDriver !== "codex" ||
-          driverOf(identity.providerInstanceId) !== "codex"
-        )
-          return {};
-        return { config: yield* options.desktop.threadConfig(request.cwd) };
+        if (identity.nativeDriver === "codex" && driverOf(identity.providerInstanceId) === "codex")
+          // Codex applies its worktree's Environment to its shells itself.
+          return options.desktop
+            ? { config: yield* options.desktop.threadConfig(request.cwd) }
+            : {};
+        const environment =
+          request.cwd && options.workspaceEnvironment
+            ? yield* options.workspaceEnvironment(request.cwd)
+            : null;
+        return environment ? { environment } : {};
       }
       if (request.operation === "turn.native") {
         const { identity } = request;

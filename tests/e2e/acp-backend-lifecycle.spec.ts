@@ -3,10 +3,13 @@ import fs from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 
-import { openComposerModelPicker } from "./support/composer-model-picker";
+import { chooseComposerModel } from "./support/composer-model-picker";
 import { ElectronScenarioHarness } from "../../scripts/scenarios/harness/electron-e2e-harness";
 import { createBoundedOperationId } from "../../src/shared/operation-identity";
 import { createUuidV7 } from "../../src/shared/uuid-v7";
+import type { AgentRuntimeConversation } from "../../src/shared/agent-runtime-api";
+import { agentRuntimeProviderId } from "../../src/shared/agent-runtime-provider";
+import type { ProjectSession } from "../../src/shared/types";
 
 const repositoryRoot = process.cwd();
 const instanceConfigId = "claude-e2e";
@@ -82,37 +85,7 @@ const invoke = async <Result>(page: Page, channel: string, ...args: unknown[]): 
     { targetChannel: channel, targetArgs: args },
   )) as Result;
 
-const beginAcpDeltaCapture = async (page: Page, threadId: string): Promise<void> => {
-  await page.evaluate(async (targetThreadId) => {
-    if (!window.api) throw new Error("Nodex preload API is unavailable");
-    const scope = window as typeof window & {
-      __acpLifecycleDeltas?: unknown[];
-      __releaseAcpLifecycleDeltas?: () => void;
-    };
-    scope.__releaseAcpLifecycleDeltas?.();
-    scope.__acpLifecycleDeltas = [];
-    scope.__releaseAcpLifecycleDeltas = window.api.on(
-      "agent-backend:session-changed",
-      (event: unknown) => scope.__acpLifecycleDeltas?.push(event),
-    );
-    await window.api.invoke("agent-backend:session:observe", targetThreadId);
-  }, threadId);
-};
-
-const capturedAcpDeltas = async (page: Page): Promise<readonly unknown[]> =>
-  await page.evaluate(() => {
-    const scope = window as typeof window & { __acpLifecycleDeltas?: unknown[] };
-    return scope.__acpLifecycleDeltas ?? [];
-  });
-
-const containsText = (value: unknown, expected: string): boolean => {
-  if (value === expected) return true;
-  if (Array.isArray(value)) return value.some((entry) => containsText(entry, expected));
-  if (typeof value !== "object" || value === null) return false;
-  return Object.values(value).some((entry) => containsText(entry, expected));
-};
-
-test("persists an ACP backend and resumes its protocol session after restart", async () => {
+test("runs a chat on an ACP agent and continues its protocol session after restart", async () => {
   test.setTimeout(120_000);
   const harness = await ElectronScenarioHarness.create({ label: "acp-backend-lifecycle" });
   const packageRoot = path.join(harness.profile.runRoot, "scripted-acp-package");
@@ -170,56 +143,41 @@ test("persists an ACP backend and resumes its protocol session after restart", a
       .locator('[data-codex-composer="true"][contenteditable="true"]:visible')
       .first();
     await composer.fill("Start the ACP lifecycle scenario");
-    await openComposerModelPicker(page);
-    await page.getByRole("button", { name: "Start with Claude Agent", exact: true }).click();
-    await page.keyboard.press("Escape");
-    await page.keyboard.press("Escape");
+    await chooseComposerModel(page, "Claude Agent");
     await expect(composer).toHaveText("Start the ACP lifecycle scenario");
     await page.getByRole("button", { name: "Send prompt", exact: true }).click();
-    type LinkedSession = { thread: { threadId: string; backendBinding: unknown } };
     await expect
       .poll(
         async () =>
-          (await invoke<LinkedSession>(page, "project-sessions:get", sessionId)).thread
-            ?.backendBinding,
+          (await invoke<ProjectSession>(page, "project-sessions:get", sessionId)).executionRef,
       )
-      .toEqual({
+      .toBeTruthy();
+    const { executionRef } = await invoke<ProjectSession>(page, "project-sessions:get", sessionId);
+    const target = { sessionId, threadId: executionRef!.threadId };
+    // The chat runs on the configured ACP agent and keeps its protocol session.
+    const protocolSession = async () => {
+      const control = await invoke<AgentRuntimeConversation>(
+        page,
+        "agent-runtime:session:control",
+        target,
+      );
+      const thread = control.snapshot.projection.providerThreads.find(
+        (candidate) => candidate.id === control.snapshot.projection.thread.activeProviderThreadId,
+      );
+      return {
+        provider: control.snapshot.projection.thread.providerInstanceId,
+        nativeId: thread?.nativeThreadRef?.nativeId ?? null,
+      };
+    };
+    await expect.poll(protocolSession).toEqual({
+      provider: agentRuntimeProviderId({
         kind: "acp",
         agentDefinitionId: "claude-agent-acp",
         instanceConfigId,
-      });
-    const started = await invoke<LinkedSession>(page, "project-sessions:get", sessionId);
-    const threadId = started.thread.threadId;
-    await expect
-      .poll(
-        async () =>
-          (
-            await invoke<{ snapshot: { sessionId: string } } | null>(
-              page,
-              "agent-backend:session:read",
-              threadId,
-            )
-          )?.snapshot.sessionId,
-      )
-      .toBe(protocolSessionId);
-    expect(started.thread.backendBinding).toEqual({
-      kind: "acp",
-      agentDefinitionId: "claude-agent-acp",
-      instanceConfigId,
+      }),
+      nativeId: protocolSessionId,
     });
-    await expect
-      .poll(async () => {
-        const current = await invoke<{
-          readonly snapshot: { readonly turns: readonly unknown[] };
-        } | null>(page, "agent-backend:session:read", threadId);
-        return containsText(current?.snapshot.turns, liveMessage);
-      })
-      .toBe(true);
-
-    const durableBeforeRestart = await invoke<{
-      readonly thread: { readonly backendBinding: unknown } | null;
-    } | null>(page, "project-sessions:get", sessionId);
-    expect(durableBeforeRestart?.thread?.backendBinding).toEqual(started.thread.backendBinding);
+    await expect(page.getByText(liveMessage, { exact: true }).first()).toBeVisible();
     await expect
       .poll(() => readObservations(observationPath))
       .toEqual(
@@ -228,37 +186,40 @@ test("persists an ACP backend and resumes its protocol session after restart", a
           expect.objectContaining({ method: "session/prompt", sessionId: protocolSessionId }),
         ]),
       );
-
-    await expect(page.getByText(liveMessage, { exact: true })).toBeVisible();
-    await beginAcpDeltaCapture(page, threadId);
-    await composer.fill("Emit a live delta through Main and preload");
+    await composer.fill("Continue in the same protocol session");
     await page.getByRole("button", { name: "Send prompt", exact: true }).click();
     await expect
-      .poll(async () => containsText(await capturedAcpDeltas(page), liveMessage))
-      .toBe(true);
+      .poll(
+        () =>
+          readObservations(observationPath).filter(({ method }) => method === "session/prompt")
+            .length,
+      )
+      .toBe(2);
+    await expect(page.getByText(liveMessage, { exact: true })).toHaveCount(2);
 
+    // The window reopens on the chat.
     page = await harness.restart();
-    const reopened = await invoke<{
-      readonly snapshot: {
-        readonly sessionId: string;
-        readonly turns: readonly unknown[];
-      };
-    }>(page, "agent-backend:session:open", { threadId });
-    expect(reopened.snapshot.sessionId).toBe(protocolSessionId);
-    expect(containsText(reopened.snapshot.turns, restoredMessage)).toBe(true);
-    await expect(page.getByText(restoredMessage, { exact: true })).toBeVisible();
+    // History comes back from Nodex; the agent is not asked to replay it.
+    await expect(page.getByText(liveMessage, { exact: true })).toHaveCount(2, { timeout: 30_000 });
+    await expect(page.getByText(restoredMessage, { exact: true })).toHaveCount(0);
+    const followUp = page
+      .locator('[data-codex-composer="true"][contenteditable="true"]:visible')
+      .first();
+    await followUp.fill("Continue after restart");
+    await page.getByRole("button", { name: "Send prompt", exact: true }).click();
+    // The restarted agent process loads the same protocol session before the prompt.
     await expect
-      .poll(() => readObservations(observationPath))
-      .toEqual(
-        expect.arrayContaining([
-          expect.objectContaining({ method: "session/load", sessionId: protocolSessionId }),
-        ]),
-      );
-
-    const durableAfterRestart = await invoke<{
-      readonly thread: { readonly backendBinding: unknown } | null;
-    } | null>(page, "project-sessions:get", sessionId);
-    expect(durableAfterRestart?.thread?.backendBinding).toEqual(started.thread.backendBinding);
+      .poll(() => readObservations(observationPath).map(({ method }) => method))
+      .toEqual(["initialize", "session/load", "session/prompt"]);
+    expect(
+      readObservations(observationPath).filter(({ method }) => method !== "initialize"),
+    ).toEqual([
+      { method: "session/load", sessionId: protocolSessionId },
+      { method: "session/prompt", sessionId: protocolSessionId },
+    ]);
+    await expect(page.getByText(liveMessage, { exact: true })).toHaveCount(3);
+    await expect(page.getByText(restoredMessage, { exact: true })).toHaveCount(0);
+    expect(await protocolSession()).toMatchObject({ nativeId: protocolSessionId });
   } finally {
     await harness.close();
   }

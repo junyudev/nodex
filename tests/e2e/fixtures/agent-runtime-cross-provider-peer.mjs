@@ -30,6 +30,11 @@ const persist = () => {
   fs.writeFileSync(`${target}.${process.pid}.tmp`, JSON.stringify(state));
   fs.renameSync(`${target}.${process.pid}.tmp`, target);
 };
+// Like the real server, a config override may name a nested table or a dotted path.
+const configValue = (config, key) => {
+  if (config && Object.hasOwn(config, key)) return config[key];
+  return key.split(".").reduce((value, part) => value?.[part], config ?? undefined);
+};
 const servers = new Map();
 /** Input steered into an active turn, read by that turn before it finishes. */
 const steered = new Map();
@@ -106,7 +111,7 @@ async function callTool(server, name, args, native) {
   if (kind === "codex") notify("item/started", { ...native, item, startedAtMs: Date.now() });
   else args = await invokeClaudeHook("PreToolUse", name, args, callId);
   let response;
-  let body;
+  let json;
   try {
     response = await fetch(server.url, {
       method: "POST",
@@ -116,14 +121,17 @@ async function callTool(server, name, args, native) {
           "x-codex-turn-metadata": { turn_id: native.turnId, root_turn_id: native.turnId } } } : {}),
       } }),
     });
-    body = await response.text();
+    const body = await response.text();
+    json = body.trim().startsWith("{") ? JSON.parse(body) : body.split("\n").filter((line) => line.startsWith("data: ")).map((line) => JSON.parse(line.slice(6))).find((value) => value.result || value.error);
   } finally {
-    if (kind === "codex") notify("item/completed", { ...native, item: { ...item, status: "completed" }, completedAtMs: Date.now() });
+    // Like Codex, the completed call carries what the tool returned.
+    const result = json?.result;
+    if (kind === "codex") notify("item/completed", { ...native, item: { ...item, status: result && !result.isError ? "completed" : "failed",
+      result: result ? { content: result.content ?? [], structuredContent: result.structuredContent ?? null, _meta: null } : null }, completedAtMs: Date.now() });
     else await invokeClaudeHook("PostToolUse", name, args, callId);
   }
-  const json = body.trim().startsWith("{") ? JSON.parse(body) : body.split("\n").filter((line) => line.startsWith("data: ")).map((line) => JSON.parse(line.slice(6))).find((value) => value.result || value.error);
   if (!response.ok || !json || json.error || json.result?.isError)
-    throw new Error(`Execution tool failed: ${response.status} ${JSON.stringify(json?.error ?? json?.result ?? body)}`);
+    throw new Error(`Execution tool failed: ${response.status} ${JSON.stringify(json?.error ?? json?.result)}`);
   const result = json.result.structuredContent;
   record({ event: "tool.result", name, result });
   return result;
@@ -150,6 +158,11 @@ async function answer(prompt, server, native) {
     }
     if (prompt === "Follow up after async completion") return "Codex follow-up complete";
     return `${kind === "claude" ? "Claude" : "Codex"} child report`;
+  }
+  if (delegation.createSession) {
+    const created = await callTool(server, "create_session", delegation.createSession, native);
+    record({ event: "session.created", sessionId: created.sessionId, threadId: created.threadId });
+    return `${kind === "claude" ? "Claude" : "Codex"} started ${delegation.createSession.title}`;
   }
   record({ event: "delegate.started", prompt });
   await callTool(server, "list_agent_models", {}, native);
@@ -235,14 +248,14 @@ async function handleCodex(message) {
       const thread = { ...nativeThread(threadId, params.cwd), turns: [] };
       state.threads[threadId] = thread;
       persist();
-      servers.set(threadId, params.config?.mcp_servers?.nodex_app);
+      servers.set(threadId, configValue(params.config, "mcp_servers.nodex_app"));
       reply(threadResponse(thread, params.model)); return;
     }
     case "thread/resume": {
       state = load();
       const thread = state.threads[params.threadId];
       if (!thread) { emit({ id, error: { code: -32001, message: "Thread missing" } }); return; }
-      servers.set(thread.id, params.config?.mcp_servers?.nodex_app);
+      servers.set(thread.id, configValue(params.config, "mcp_servers.nodex_app"));
       reply(threadResponse(thread, params.model)); return;
     }
     case "thread/read": { state = load(); reply({ thread: state.threads[params.threadId] }); return; }

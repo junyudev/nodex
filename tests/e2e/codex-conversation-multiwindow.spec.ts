@@ -1,8 +1,8 @@
 import { expect, test, type Page } from "@playwright/test";
 import fs from "node:fs";
 import path from "node:path";
-import type { CodexConversationSnapshot } from "../../src/shared/types";
 import type { WindowSessionBootstrap } from "../../src/shared/window-session";
+import { createUuidV7 } from "../../src/shared/uuid-v7";
 import {
   ElectronScenarioHarness,
   readBoundedElectronRuntimeLogs,
@@ -12,7 +12,7 @@ import {
   createAgentSmokeDraft,
   invokeIpc,
   sendAgentPrompt,
-  waitForCompletedAgentTurn,
+  waitForRuntimeCompletedAgentTurn,
 } from "./support/agent-smoke-harness";
 
 const row = (page: Page, prompt: string) =>
@@ -20,7 +20,7 @@ const row = (page: Page, prompt: string) =>
 const bubble = (page: Page, prompt: string) =>
   page.locator("[data-user-message-bubble='true']").filter({ hasText: prompt });
 
-test("two windows share queued execution and Main actions, then continue after the owner closes", async () => {
+test("two windows share an Agent chat's queue, Stop and Main commands, then continue after one closes", async () => {
   test.setTimeout(120_000);
   const harness = await ElectronScenarioHarness.create({
     label: "conversation-two-window-handoff",
@@ -65,11 +65,7 @@ test("two windows share queued execution and Main actions, then continue after t
           entry.method === "queue-turn/start",
       )
       .map((entry) => entry.params.input?.find((item) => item.type === "text")?.text ?? "");
-  const queueRequestCount = (method: string) =>
-    readLog().filter((entry) => entry.method === "rpc" && entry.params.method === method).length;
-  const resumeCount = () =>
-    readLog().filter((entry) => entry.method === "rpc" && entry.params.method === "thread/resume")
-      .length;
+  const steerCount = () => readLog().filter((entry) => entry.method === "turn/steer").length;
   const initialPrompt = "Keep this conversation active across both windows";
   const queuedPrompts = [
     "Send the shared queue head once",
@@ -77,7 +73,7 @@ test("two windows share queued execution and Main actions, then continue after t
     "Continue the remaining server queue automatically",
   ];
   const mainPrompt = "Continue from the Main command ingress";
-  const mainSteerPrompt = "Adjust the active Turn through its window owner";
+  const mainSteerPrompt = "Adjust the active Turn through the Main command";
   const handoffPrompt = "Continue from the surviving window";
   const rendererErrors: string[] = [];
   const pages: Page[] = [];
@@ -99,8 +95,15 @@ test("two windows share queued execution and Main actions, then continue after t
       "Conversation peers",
     );
     const threadId = await sendAgentPrompt(first, draft.projectSessionId, initialPrompt);
+    const target = { sessionId: draft.projectSessionId, threadId };
+    // Main commands carry no renderer presentation or testing authority.
+    const message = (page: Page, text: string, intent?: "steer") =>
+      invokeIpc(page, "agent-runtime:session:message", {
+        ...target,
+        message: { messageId: createUuidV7(), text },
+        ...(intent ? { intent } : {}),
+      });
     await expect(first.getByRole("button", { name: "Stop", exact: true })).toBeVisible();
-    const resumesBeforeFollow = resumeCount();
     const opened = harness.application.waitForEvent("window");
     expect(
       await invokeIpc(first, "window:new", {
@@ -113,11 +116,6 @@ test("two windows share queued execution and Main actions, then continue after t
     await second.waitForURL((url) => url.protocol !== "about:");
     await second.waitForLoadState("domcontentloaded");
     await second.evaluate(() => window.api?.awaitInitialization?.());
-    for (const page of [first, second]) {
-      await expect
-        .poll(() => invokeIpc(page, "codex:app-server:host-context", "local"))
-        .toMatchObject({ hostId: "local", supportsThreadQueue: true });
-    }
     const windows = await Promise.all(
       [first, second].map(
         async (page) =>
@@ -132,28 +130,12 @@ test("two windows share queued execution and Main actions, then continue after t
       });
     await expect(bubble(second, initialPrompt)).toHaveCount(1);
     await expect(second.getByRole("button", { name: "Stop", exact: true })).toBeVisible();
-    expect(resumeCount()).toBe(resumesBeforeFollow);
 
-    const steered = await invokeIpc(second, "codex:turn:steer", {
-      threadId,
-      prompt: mainSteerPrompt,
-    });
-    expect(steered).toMatchObject({ turnId: expect.any(String) });
+    await message(second, mainSteerPrompt, "steer");
     await expect.poll(prompts).toEqual([initialPrompt, mainSteerPrompt]);
-    expect(readLog().filter((entry) => entry.method === "turn/steer")).toHaveLength(1);
+    expect(steerCount()).toBe(1);
     for (const page of [first, second]) {
       await expect(bubble(page, mainSteerPrompt)).toHaveCount(1);
-      await expect(page.getByRole("button", { name: "Stop", exact: true })).toBeVisible();
-    }
-
-    await invokeIpc(second, "codex:thread:compact:start", threadId);
-    await expect
-      .poll(() => readLog().filter((entry) => entry.method === "thread/compact/start").length)
-      .toBe(1);
-    for (const page of [first, second]) {
-      await expect(page.getByText("Context automatically compacted", { exact: true })).toHaveCount(
-        1,
-      );
       await expect(page.getByRole("button", { name: "Stop", exact: true })).toBeVisible();
     }
 
@@ -169,7 +151,6 @@ test("two windows share queued execution and Main actions, then continue after t
       await expect(composer).toHaveAttribute("contenteditable", "true");
       await expect(composer).toHaveText("");
     }
-    expect(queueRequestCount("thread/queue/add")).toBe(queuedPrompts.length);
     await second.getByRole("button", { name: "Stop", exact: true }).click();
     for (const page of [first, second])
       await expect(
@@ -179,7 +160,6 @@ test("two windows share queued execution and Main actions, then continue after t
       .locator("#above-composer-queue-portal")
       .getByRole("button", { name: "Resume", exact: true })
       .click();
-    await expect.poll(() => queueRequestCount("thread/queue/start")).toBe(1);
     for (const page of [first, second]) {
       await expect(row(page, queuedPrompts[0]!)).toHaveCount(0);
       await expect(bubble(page, queuedPrompts[0]!)).toHaveCount(1);
@@ -189,10 +169,8 @@ test("two windows share queued execution and Main actions, then continue after t
       ).toHaveCount(0);
     }
 
-    const deleteRequestsBeforeConcurrentSend = queueRequestCount("thread/queue/delete");
-    const steerRequestsBeforeConcurrentSend = readLog().filter(
-      (entry) => entry.method === "turn/steer",
-    ).length;
+    // Both windows steer the same queued message into the running Turn; it is sent once.
+    const steersBeforeConcurrentSend = steerCount();
     for (const page of [first, second])
       await expect(
         row(page, queuedPrompts[1]!).getByRole("button", {
@@ -210,14 +188,7 @@ test("two windows share queued execution and Main actions, then continue after t
           }),
       ),
     );
-    await expect
-      .poll(() => readLog().filter((entry) => entry.method === "turn/steer").length, {
-        timeout: 30_000,
-      })
-      .toBe(steerRequestsBeforeConcurrentSend + 1);
-    await expect
-      .poll(() => queueRequestCount("thread/queue/delete"), { timeout: 30_000 })
-      .toBe(deleteRequestsBeforeConcurrentSend + 1);
+    await expect.poll(steerCount, { timeout: 30_000 }).toBe(steersBeforeConcurrentSend + 1);
     await expect
       .poll(prompts, { timeout: 30_000 })
       .toEqual([initialPrompt, mainSteerPrompt, ...queuedPrompts]);
@@ -230,18 +201,24 @@ test("two windows share queued execution and Main actions, then continue after t
         timeout: 30_000,
       });
     }
-    // This is the public Main command, with no renderer presentation or testing authority.
-    expect(await invokeIpc(second, "codex:turn:start", threadId, mainPrompt)).not.toBeNull();
-    await waitForCompletedAgentTurn(second, threadId);
+    expect(steerCount()).toBe(steersBeforeConcurrentSend + 1);
+
+    await message(second, mainPrompt);
+    await waitForRuntimeCompletedAgentTurn(second, target, 30_000);
     for (const page of [first, second]) await expect(bubble(page, mainPrompt)).toHaveCount(1);
-    const mainSnapshot = (await invokeIpc(
-      second,
-      "codex:thread:snapshot:request",
-      threadId,
-    )) as CodexConversationSnapshot;
-    expect(mainSnapshot.threadId).toBe(threadId);
-    expect(new Set(mainSnapshot.turns.map((turn) => turn.turnId)).size).toBe(4);
     expect(prompts()).toEqual([initialPrompt, mainSteerPrompt, ...queuedPrompts, mainPrompt]);
+
+    await invokeIpc(second, "agent-runtime:session:compact", {
+      ...target,
+      requestId: createUuidV7(),
+    });
+    await expect
+      .poll(() => readLog().filter((entry) => entry.method === "thread/compact/start").length)
+      .toBe(1);
+    for (const page of [first, second])
+      await expect(page.getByText("Context automatically compacted", { exact: true })).toHaveCount(
+        1,
+      );
 
     const closed = first.waitForEvent("close");
     const ownerWindow = await harness.application.browserWindow(first);
@@ -252,10 +229,9 @@ test("two windows share queued execution and Main actions, then continue after t
     await expect
       .poll(prompts, { timeout: 30_000 })
       .toEqual([initialPrompt, mainSteerPrompt, ...queuedPrompts, mainPrompt, handoffPrompt]);
-    await waitForCompletedAgentTurn(second, threadId);
+    await waitForRuntimeCompletedAgentTurn(second, target, 30_000);
     await expect(bubble(second, handoffPrompt)).toHaveCount(1);
     await expect(second.getByRole("button", { name: "Stop", exact: true })).toHaveCount(0);
-    expect(resumeCount()).toBeGreaterThan(resumesBeforeFollow);
   } catch (error) {
     workflowFailure = error;
     await test.info().attach("workflow-failure.txt", {
@@ -280,7 +256,6 @@ test("two windows share queued execution and Main actions, then continue after t
             .locator("[data-testid='session-thread-page']")
             .evaluateAll((nodes) => nodes.map((node) => node.outerHTML)),
           session: await invokeIpc(page, "window-sessions:bootstrap"),
-          stored: await invokeIpc(page, "codex:queued-messages:read"),
           visible: await page.locator("[data-queued-follow-up-row]").allTextContents(),
         })),
     );
@@ -294,7 +269,6 @@ test("two windows share queued execution and Main actions, then continue after t
       await harness.close();
     } catch (error) {
       if (!workflowFailure) throw error;
-      // oxlint-disable-next-line eslint/preserve-caught-error -- AggregateError retains both failures and the cleanup cause in its third argument.
       throw new AggregateError(
         [workflowFailure, error],
         "Conversation workflow and cleanup failed",

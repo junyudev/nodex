@@ -43,6 +43,14 @@ const decodePrepared = Schema.decodeUnknownEffect(
 const decodeThreadConfig = Schema.decodeUnknownEffect(
   Schema.Struct({
     config: Schema.optional(Schema.NullOr(Schema.Record(Schema.String, Schema.Unknown))),
+    environment: Schema.optional(
+      Schema.NullOr(
+        Schema.Struct({
+          set: Schema.Record(Schema.String, Schema.String),
+          exclude: Schema.Array(Schema.String),
+        }),
+      ),
+    ),
   }),
 );
 
@@ -263,7 +271,10 @@ export const make = Effect.fn("AgentRuntime.makeHostBridge")(function* (
           }),
       ),
     );
-    return result.config ? { config: result.config } : {};
+    return {
+      ...(result.config ? { config: result.config } : {}),
+      ...(result.environment ? { environment: result.environment } : {}),
+    };
   });
 
   // Host tools that follow native Turns degrade when the host cannot be told; execution goes on.

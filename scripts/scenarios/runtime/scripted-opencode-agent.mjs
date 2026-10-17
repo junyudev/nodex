@@ -69,20 +69,20 @@ const agents = ["build", "plan"].map((name) => ({
   options: {},
   permission: [],
 }));
-const createSession = (sessions, permission = [], messages = []) => {
+const createSession = (sessions, permission = [], messages = [], directory = process.cwd()) => {
   const id = `ses_${randomUUID().replaceAll("-", "")}`;
   const session = {
     id,
     slug: "scripted-opencode",
     projectID: "scripted-project",
-    directory: process.cwd(),
+    directory,
     title: "Scripted OpenCode",
     version: "1.15.13",
     permission,
     time: { created: Date.now(), updated: Date.now() },
   };
   sessions[id] = { session, messages };
-  observe({ kind: "createSession", sessionId: id, cwd: process.cwd() });
+  observe({ kind: "createSession", sessionId: id, cwd: directory });
   save(sessions);
   return session;
 };
@@ -157,6 +157,11 @@ const server = createServer(async (request, response) => {
   }
   const url = new URL(request.url, "http://127.0.0.1");
   const route = url.pathname;
+  // Like the real server, one server process serves every directory a request names.
+  const header = request.headers["x-opencode-directory"];
+  const directory =
+    url.searchParams.get("directory") ??
+    (typeof header === "string" ? decodeURIComponent(header) : process.cwd());
   if (route === "/global/health") return json(response, { healthy: true, version: "1.15.13" });
   if (route === "/event") {
     response.writeHead(200, {
@@ -173,7 +178,7 @@ const server = createServer(async (request, response) => {
   }
   if (route === "/provider") return json(response, providers);
   if (route === "/agent") return json(response, agents);
-  if (route === "/command") return json(response, []);
+  if (route === "/command" || route === "/skill") return json(response, []);
   if (route === "/config")
     return json(response, { model: "moonshot/kimi-k3", default_agent: "build" });
   if (route === "/permission" || route === "/question") return json(response, []);
@@ -183,7 +188,12 @@ const server = createServer(async (request, response) => {
   const body = chunks.length ? JSON.parse(Buffer.concat(chunks).toString("utf8")) : {};
   const sessions = state();
   if (route === "/session" && request.method === "POST")
-    return json(response, createSession(sessions, body.permission));
+    return json(response, createSession(sessions, body.permission, [], directory));
+  // Like the real server, an added MCP server reports its connection status by name.
+  if (route === "/mcp" && request.method === "POST") {
+    observe({ kind: "addMcp", name: body.name, directory });
+    return json(response, { [body.name]: { status: "connected" } });
+  }
   const segments = route.split("/").filter(Boolean);
   if (segments[0] === "permission" && segments[2] === "reply") {
     const turn = pending.get(segments[1]);
@@ -231,7 +241,7 @@ const server = createServer(async (request, response) => {
     observe({
       kind: "prompt",
       sessionId: id,
-      cwd: process.cwd(),
+      cwd: stored.session.directory,
       model: body.model,
       variant: body.variant,
       agent: body.agent,
@@ -277,7 +287,12 @@ const server = createServer(async (request, response) => {
     const at = stored.messages.findIndex((entry) => entry.info.id === body.messageID);
     return json(
       response,
-      createSession(sessions, stored.session.permission, stored.messages.slice(0, at + 1)),
+      createSession(
+        sessions,
+        stored.session.permission,
+        stored.messages.slice(0, at + 1),
+        stored.session.directory,
+      ),
     );
   }
   if (segments[2] === "summarize") return json(response, true);

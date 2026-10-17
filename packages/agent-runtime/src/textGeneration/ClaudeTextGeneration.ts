@@ -210,6 +210,8 @@ export const makeClaudeTextGeneration = Effect.fn("makeClaudeTextGeneration")(fu
           "--settings",
           settingsJson,
           "--dangerously-skip-permissions",
+          // A utility task is not a conversation: it never joins the user's Claude history.
+          "--no-session-persistence",
         ],
         { env: claudeEnvironment },
       );

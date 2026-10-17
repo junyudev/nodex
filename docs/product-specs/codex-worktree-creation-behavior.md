@@ -192,8 +192,10 @@ base shell environment plus `CODEX_SOURCE_TREE_PATH` and
 `CODEX_WORKTREE_PATH`. Stdout and stderr stream into the setup output tail.
 
 Successful shell environment changes are stored in the worktree Git metadata
-for later Thread launches. Persistence failure is nonfatal because it must not
-discard a successfully created and set-up worktree. Setup script or config
+for later Thread launches. Codex applies them to its shells; a Claude Code chat
+working in the worktree starts with them applied to its own environment, so every
+command it runs sees what setup prepared. Persistence failure is nonfatal because
+it must not discard a successfully created and set-up worktree. Setup script or config
 failure retains the worktree for Retry, Continue anyway, Edit environment, or
 Auto-fix. Cancellation sends termination to the complete detached process
 group, escalates to a kill signal after a short grace period, then removes the

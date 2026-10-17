@@ -1,4 +1,5 @@
 import type { CodexAppHandoffOperation } from "../../../../../shared/codex-thread-handoff";
+import { AGENT_SESSION_TOOLS, resolveAgentSessionToolLabel } from "./agent-session-tool";
 import { formatCodexScheduledAutomationRruleSummary } from "../../../../lib/codex-scheduled-automation-display";
 import { formatDynamicToolCallMarkdownFallback } from "../../../../../shared/codex-dynamic-tool-markdown";
 import {
@@ -41,6 +42,7 @@ const DYNAMIC_TOOL_ACTIVE_FALLBACK_LABELS: Record<string, string> = {
 };
 
 export type DynamicToolRendererKind =
+  | "agentSession"
   | "automationUpdate"
   | "chromeTabContext"
   | "codexAppThread"
@@ -722,6 +724,13 @@ function resolveAutomationUpdateSummaryKey(call: CodexDynamicToolCallView): stri
 }
 
 const DYNAMIC_TOOL_REGISTRY: DynamicToolRegistryEntry[] = [
+  ...AGENT_SESSION_TOOLS.map((tool): DynamicToolRegistryEntry => ({
+    namespace: "nodex_app",
+    tool,
+    rendererKind: "agentSession",
+    resolveLabel: resolveAgentSessionToolLabel,
+    getCompletedSummaryPartKey: (call) => call.callId,
+  })),
   ...[...new Set([...NODEX_APP_V2_TOOLS, ...NODEX_APP_V3_TOOLS])].map(
     (tool): DynamicToolRegistryEntry => ({
       namespace: "nodex_app",

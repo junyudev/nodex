@@ -15,8 +15,8 @@ const argument = (name) => {
   const index = process.argv.indexOf(name);
   return index < 0 ? undefined : process.argv[index + 1];
 };
-const sessionId = argument("--resume") ?? argument("--session-id");
-if (!sessionId) throw new Error("Expected a native session identity");
+// Like the real CLI, a launch that names no session starts a new one.
+const sessionId = argument("--resume") ?? argument("--session-id") ?? randomUUID();
 const cwd = process.cwd();
 const directory = join(
   process.env.CLAUDE_CONFIG_DIR,
@@ -158,6 +158,20 @@ for await (const line of createInterface({ input: process.stdin })) {
           },
         ],
         fast_mode_state: fastState(),
+      });
+      continue;
+    }
+    // Like the real CLI, MCP servers set for the session report what changed.
+    if (request.subtype === "mcp_set_servers") {
+      respond(incoming, { added: Object.keys(request.servers ?? {}), removed: [], errors: {} });
+      continue;
+    }
+    if (request.subtype === "get_usage") {
+      respond(incoming, {
+        session: {},
+        subscription_type: "pro",
+        rate_limits_available: false,
+        behaviors: null,
       });
       continue;
     }

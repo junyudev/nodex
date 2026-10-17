@@ -33,7 +33,8 @@ process.stdin.on("end", () => {
   const investigation = !!schema.properties.stops;
   if (investigation && !prompt.includes("git diff")) throw new Error("Investigation task context was lost");
   const result = investigation ? { stops: [] } : { title: "Inspect exact native execution" };
-  fs.appendFileSync(path.join(process.env.NATIVE_UTILITY_PROOF_DIR, "accepted.jsonl"), JSON.stringify({ investigation, cwd: process.cwd() }) + "\\n");
+  const ephemeral = args.includes(codex ? "--ephemeral" : "--no-session-persistence");
+  fs.appendFileSync(path.join(process.env.NATIVE_UTILITY_PROOF_DIR, "accepted.jsonl"), JSON.stringify({ investigation, ephemeral, cwd: process.cwd() }) + "\\n");
   if (codex) fs.writeFileSync(args[args.indexOf("--output-last-message") + 1], JSON.stringify(result));
   else process.stdout.write(JSON.stringify({ structured_output: result }));
 });
@@ -116,11 +117,16 @@ for (const driver of ["codex", "claude"] as const) {
         const accepted = (yield* fs.readFileString(path.join(directory, "accepted.jsonl")))
           .trim()
           .split("\n")
-          .map((line) => JSON.parse(line) as { investigation: boolean; cwd: string });
+          .map(
+            (line) =>
+              JSON.parse(line) as { investigation: boolean; ephemeral: boolean; cwd: string },
+          );
         assert.deepEqual(
           accepted.map((row) => row.investigation),
           [false, true, false, false],
         );
+        // Utility tasks never leave a conversation in the user's native history.
+        assert.isTrue(accepted.every((row) => row.ephemeral));
         assert.strictEqual(accepted[1]?.cwd, yield* fs.realPath(directory));
       }).pipe(
         Effect.provide(

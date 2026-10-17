@@ -278,6 +278,11 @@ same destination and native workspace ownership instead of forking again. Forkin
 not start a new Turn; an explicit follow-up starts work in the child, whose application
 context uses its own Session identity.
 
+In the calling conversation, each completed `create_session`, `fork_session` and
+`send_message_to_session` call reads as one activity row, such as "Created chat: Plan review".
+Selecting the row opens the Session it names; opening it again never creates another Session.
+A failed call names the failure and opens nothing.
+
 `handoff_session` moves another active Session between its local checkout and managed
 worktree while retaining the same Session, root Thread and conversation history. Runtime
 Sessions use the durable handoff journal and the Runtime's execution hold. The move stops

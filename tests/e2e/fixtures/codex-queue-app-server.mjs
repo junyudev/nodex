@@ -67,7 +67,7 @@ const promptText = (params) =>
 
 const record = (method, params) => {
   fs.mkdirSync(path.dirname(logPath), { recursive: true });
-  fs.appendFileSync(logPath, `${JSON.stringify({ method, params })}\n`);
+  fs.appendFileSync(logPath, `${JSON.stringify({ method, params, pid: process.pid })}\n`);
 };
 
 record("launch", { args: process.argv.slice(2), pid: process.pid });
@@ -800,7 +800,28 @@ const handle = (message) => {
       record(method, params);
       const current = state.turns.findLast((entry) => entry.status === "inProgress");
       if (!current) {
-        write({ id, error: { code: -32600, message: "No active scenario Turn to compact" } });
+        // Like the real server, compacting an idle thread runs a Turn of its own.
+        state = readState();
+        state.turnSequence += 1;
+        const compaction = turn(`turn-compaction-${state.turnSequence}`, "inProgress", {}, []);
+        state.turns.push(compaction);
+        persist();
+        respond(id, {});
+        setTimeout(() => {
+          notify("turn/started", { threadId: thread().id, turn: compaction });
+          const item = { type: "contextCompaction", id: `compaction-${compaction.id}` };
+          state = readState();
+          const stored = state.turns.find((entry) => entry.id === compaction.id);
+          stored.items.push(item);
+          stored.status = "completed";
+          stored.completedAt = nowSeconds();
+          stored.durationMs = 20;
+          persist();
+          notify("item/started", { threadId: thread().id, turnId: compaction.id, item, startedAtMs: Date.now() });
+          notify("item/completed", { threadId: thread().id, turnId: compaction.id, item, completedAtMs: Date.now() });
+          notify("turn/completed", { threadId: thread().id, turn: stored });
+          notify("thread/status/changed", { threadId: thread().id, status: { type: "idle" } });
+        }, 20);
         return;
       }
       const item = { type: "contextCompaction", id: `compaction-${current.id}-${current.items.length}` };

@@ -36,6 +36,26 @@ export type HostNativeSessionIdentity = Omit<HostTurnIdentity, "runId" | "attemp
 };
 export type HostExecutionIdentity = HostTurnIdentity | HostNativeSessionIdentity;
 
+/**
+ * What a workspace's setup changed in its environment: variables it set and variables it
+ * removed. A process started in that workspace applies both on top of its own environment.
+ */
+export interface HostWorkspaceEnvironment {
+  readonly set: Readonly<Record<string, string>>;
+  readonly exclude: readonly string[];
+}
+
+/** The environment with a workspace's setup changes applied. */
+export const withWorkspaceEnvironment = (
+  environment: NodeJS.ProcessEnv,
+  workspace: HostWorkspaceEnvironment | undefined,
+): NodeJS.ProcessEnv => {
+  if (workspace === undefined) return environment;
+  const next = { ...environment };
+  for (const name of workspace.exclude) delete next[name];
+  return { ...next, ...workspace.set };
+};
+
 export class ExecutionHostError extends Schema.TaggedError<ExecutionHostError>()(
   "ExecutionHostError",
   {
@@ -88,14 +108,21 @@ export class ExecutionHost extends Context.Reference<{
   ) => Effect.Effect<{ readonly instructions?: string; readonly identity?: HostTurnIdentity }, ExecutionHostError>;
   /**
    * Provider configuration the host contributes whenever a native thread starts, resumes or
-   * forks, such as desktop tools that live outside the execution process.
+   * forks, such as desktop tools that live outside the execution process, and the environment
+   * its workspace setup prepared for the working directory.
    */
   readonly prepareThread?: (input: {
     readonly threadId: ThreadId;
     readonly providerInstanceId: ProviderInstanceId;
     readonly nativeDriver: import("@t3tools/contracts").ProviderDriverKind;
     readonly cwd: string | null;
-  }) => Effect.Effect<{ readonly config?: Readonly<Record<string, unknown>> }, ExecutionHostError>;
+  }) => Effect.Effect<
+    {
+      readonly config?: Readonly<Record<string, unknown>>;
+      readonly environment?: HostWorkspaceEnvironment;
+    },
+    ExecutionHostError
+  >;
   /** A host-owned native tool follows the provider's own Turns, which it addresses by native id. */
   readonly observeNativeTurn?: (input: {
     readonly identity: HostTurnIdentity;

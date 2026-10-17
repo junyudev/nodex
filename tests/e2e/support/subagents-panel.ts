@@ -1,4 +1,4 @@
-import { expect, type Page } from "@playwright/test";
+import { expect, type Locator, type Page } from "@playwright/test";
 
 /**
  * Opens the conversation's subagents panel from its summary. A narrow conversation keeps the
@@ -6,14 +6,22 @@ import { expect, type Page } from "@playwright/test";
  * not a mounted panel, says whether the summary is already open.
  */
 export const openSubagentsPanel = async (page: Page): Promise<void> => {
+  const summary = await openSummaryPanel(page);
+  const open = summary.getByRole("button", { name: "Open subagents" }).first();
+  await expect(open).toBeVisible({ timeout: 30_000 });
+  await open.click();
+};
+
+/**
+ * Opens the conversation's summary and returns it. A closed pinned summary stays mounted, fully
+ * transparent, for its exit motion, so only the toggle says whether it is open.
+ */
+export const openSummaryPanel = async (page: Page): Promise<Locator> => {
   const toggle = page.getByRole("button", { name: /^Toggle (pinned )?summary$/u }).first();
   await expect(toggle).toBeVisible({ timeout: 30_000 });
   if ((await toggle.getAttribute("aria-pressed")) !== "true") await toggle.click();
   await expect(toggle).toHaveAttribute("aria-pressed", "true");
-  const summary = page
+  return page
     .locator('[data-thread-summary-panel-mode="pinned"][data-thread-summary-panel-open="true"]')
     .or(page.locator('[data-thread-summary-panel-mode="popover"]'));
-  const open = summary.getByRole("button", { name: "Open subagents" }).first();
-  await expect(open).toBeVisible({ timeout: 30_000 });
-  await open.click();
 };

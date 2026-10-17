@@ -10,12 +10,14 @@ import {
 import { RendererIpcSeedAdapter } from "../../scripts/scenarios/adapters/renderer-ipc-seed-adapter";
 import { materializeScenario } from "../../scripts/scenarios/seed/scenario-seed";
 import { AGENT_CLI_SCENARIO_ID } from "../../scripts/scenarios/scenarios/agent-cli-workflow";
-import type { AgentBackendSessionPresentation } from "../../src/shared/agent-conversation";
+import type { AgentRuntimeConversation } from "../../src/shared/agent-runtime-api";
 import type { CodexThreadHandoffSnapshot } from "../../src/shared/codex-thread-handoff";
 import type { ProjectSession } from "../../src/shared/types";
 import { createBoundedOperationId } from "../../src/shared/operation-identity";
 import { createUuidV7 } from "../../src/shared/uuid-v7";
 import { invokeIpc } from "./support/agent-smoke-harness";
+import { chooseComposerModel } from "./support/composer-model-picker";
+import { openSummaryPanel } from "./support/subagents-panel";
 
 interface NativeObservation {
   readonly type: "launch" | "prompt";
@@ -39,7 +41,7 @@ const readNativeObservations = (filePath: string): NativeObservation[] => {
     .map((line) => JSON.parse(line) as NativeObservation);
 };
 
-test("moves an attached Claude chat with its uncommitted files and native history across worktree, restart, and local checkout", async () => {
+test("moves a Claude Code chat with its uncommitted files and native history across worktree, restart, and local checkout", async () => {
   test.setTimeout(120_000);
   const harness = await ElectronScenarioHarness.create({
     label: "claude-thread-handoff",
@@ -114,14 +116,16 @@ test("moves an attached Claude chat with its uncommitted files and native histor
     });
     expect(created).toMatchObject({ ok: true });
     const projectRow = page.locator(`[data-app-action-sidebar-project-id="${manifest.projectId}"]`);
-    await projectRow.hover();
-    const expand = projectRow.getByRole("button", { name: "Expand project", exact: true });
-    if (await expand.count()) await expand.click();
-    await page.getByText("Claude handoff", { exact: true }).first().click();
-    await page.getByRole("button", { name: "Select model", exact: true }).click();
-    await page.getByRole("menuitem", { name: "Agent Codex", exact: true }).hover();
-    await page.getByRole("menuitem", { name: "Claude Code", exact: true }).click();
-    await page.keyboard.press("Escape");
+    const chatRow = page.getByText("Claude handoff", { exact: true }).first();
+    // The expand control shows on hover; a re-render can take it away mid-click.
+    await expect(async () => {
+      await projectRow.hover();
+      const expand = projectRow.getByRole("button", { name: "Expand project", exact: true });
+      if (await expand.count()) await expand.click({ timeout: 1_000 });
+      await expect(chatRow).toBeVisible({ timeout: 1_000 });
+    }).toPass({ timeout: 15_000 });
+    await chatRow.click();
+    await chooseComposerModel(page, "Claude Opus 5", "Claude Opus 5");
     await page.keyboard.press("Escape");
 
     const composer = () =>
@@ -135,19 +139,18 @@ test("moves an attached Claude chat with its uncommitted files and native histor
     };
     await submit("origin");
     const original = (await invokeIpc(page, "project-sessions:get", sessionId)) as ProjectSession;
-    if (!original.thread) throw new Error("Claude chat did not attach to its Session");
-    threadId = original.thread.threadId;
-    const originalAgent = (await invokeIpc(
-      page,
-      "agent-backend:session:read",
-      threadId,
-    )) as AgentBackendSessionPresentation;
-    nativeSessionId = originalAgent.snapshot.sessionId;
-    expect(original.thread).toMatchObject({
-      cwd: sourceRoot,
-      managedWorktreePath: null,
-      backendBinding: { kind: "claude", instanceConfigId: "claude-handoff" },
-    });
+    if (!original.executionRef) throw new Error("Claude chat did not start in its Session");
+    threadId = original.executionRef.threadId;
+    const target = { sessionId, threadId };
+    const location = async () =>
+      ((await invokeIpc(page, "agent-runtime:session:control", target)) as AgentRuntimeConversation)
+        .snapshot.projection.thread.worktreePath;
+    nativeSessionId =
+      readNativeObservations(observationsPath).find(
+        (entry) => entry.type === "launch" && entry.persistent,
+      )?.sessionId ?? null;
+    if (!nativeSessionId) throw new Error("Claude did not start a native session");
+    expect(await location()).toBe(sourceRoot);
 
     writeFileSync(path.join(sourceRoot, "README.md"), "Uncommitted task changes\n");
     writeFileSync(path.join(sourceRoot, "task-notes.txt"), "Untracked task context\n");
@@ -155,18 +158,11 @@ test("moves an attached Claude chat with its uncommitted files and native histor
     await composer().fill("Retain my handoff draft");
 
     const move = async (destination: "local" | "worktree", rejected = false) => {
-      const summary = page.getByTestId("thread-summary-panel");
-      if (!(await summary.isVisible())) {
-        await page
-          .getByRole("button", { name: /^Toggle (?:pinned )?summary$/u })
-          .first()
-          .click();
-      }
-      await expect(summary).toBeVisible();
+      const summary = await openSummaryPanel(page);
       const trigger = summary.locator('[data-thread-execution-location-trigger="true"]');
       const sourceLabel = destination === "worktree" ? "Local" : "Worktree";
       await expect(trigger).toHaveText(sourceLabel);
-      const before = (await invokeIpc(page, "project-sessions:get", sessionId)) as ProjectSession;
+      const before = await location();
       const previousOperations = new Set(
         (
           (await invokeIpc(page, "codex:thread-handoffs:list")) as CodexThreadHandoffSnapshot
@@ -178,12 +174,8 @@ test("moves an attached Claude chat with its uncommitted files and native histor
       const dialog = page.getByRole("dialog", { name: title, exact: true });
       await expect(dialog).toBeVisible();
       await expect(trigger).toHaveText(sourceLabel);
-      const pending = (await invokeIpc(page, "project-sessions:get", sessionId)) as ProjectSession;
-      expect(pending.thread).toMatchObject({
-        threadId,
-        cwd: before.thread?.cwd,
-        managedWorktreePath: before.thread?.managedWorktreePath,
-      });
+      // Nothing moves until the move is confirmed.
+      expect(await location()).toBe(before);
       await dialog.getByRole("button", { name: title, exact: true }).click();
       await expect
         .poll(
@@ -225,20 +217,14 @@ test("moves an attached Claude chat with its uncommitted files and native histor
         expect(operation?.message).toContain("Stash or commit your local changes");
         await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
         await expect(trigger).toHaveText(sourceLabel);
-        return (await invokeIpc(page, "project-sessions:get", sessionId)) as ProjectSession;
+        return await location();
       }
       await expect(dialog).toHaveCount(0);
       await expect(trigger).toHaveText(destination === "worktree" ? "Worktree" : "Local");
-      return (await invokeIpc(page, "project-sessions:get", sessionId)) as ProjectSession;
+      return await location();
     };
-    const moved = await move("worktree");
-    const worktreeRoot = moved.thread?.managedWorktreePath;
+    const worktreeRoot = await move("worktree");
     if (!worktreeRoot) throw new Error("Move to worktree did not retain its destination");
-    expect(moved.thread).toMatchObject({
-      threadId,
-      cwd: worktreeRoot,
-      backendBinding: original.thread.backendBinding,
-    });
     expect(worktreeRoot.startsWith(`${realpathSync(managedRoot)}${path.sep}`)).toBe(true);
     expect(runGit(sourceRoot, "branch", "--show-current")).toBe("main");
     expect(runGit(sourceRoot, "status", "--porcelain")).toBe("");
@@ -264,14 +250,12 @@ test("moves an attached Claude chat with its uncommitted files and native histor
 
     page = await harness.restart();
     observeRenderer(page);
-    const restored = (await invokeIpc(page, "agent-backend:session:open", {
-      threadId,
-    })) as AgentBackendSessionPresentation;
-    expect(restored.snapshot.sessionId).toBe(nativeSessionId);
-    expect(restored.snapshot.turns.map((turn) => turn.promptText)).toEqual([
-      "Verify handoff origin",
-      "Verify handoff worktree",
-    ]);
+    // The chat reopens in its worktree with its history; the next message resumes Claude there.
+    await expect(page.getByText("Native handoff verified: worktree", { exact: true })).toBeVisible({
+      timeout: 30_000,
+    });
+    expect(await location()).toBe(worktreeRoot);
+    await submit("restarted");
     expect(
       readNativeObservations(observationsPath)
         .filter((entry) => entry.type === "launch" && entry.persistent)
@@ -282,28 +266,13 @@ test("moves an attached Claude chat with its uncommitted files and native histor
       resumed: true,
       historyPromptTexts: ["Verify handoff origin", "Verify handoff worktree"],
     });
-    await submit("restarted");
     const blockingFile = path.join(sourceRoot, "local-only.txt");
     writeFileSync(blockingFile, "Keep local changes\n");
-    const rejected = await move("local", true);
-    expect(rejected.thread).toMatchObject({
-      threadId,
-      cwd: worktreeRoot,
-      managedWorktreePath: worktreeRoot,
-    });
+    expect(await move("local", true)).toBe(worktreeRoot);
     expect(readFileSync(blockingFile, "utf8")).toBe("Keep local changes\n");
     expect(readFileSync(path.join(worktreeRoot, "README.md"), "utf8")).toBe(
       "Uncommitted task changes\n",
     );
-    expect(
-      (
-        (await invokeIpc(
-          page,
-          "agent-backend:session:read",
-          threadId,
-        )) as AgentBackendSessionPresentation
-      ).snapshot.sessionId,
-    ).toBe(nativeSessionId);
     await submit("after-rejection");
     expect(
       readNativeObservations(observationsPath)
@@ -319,13 +288,7 @@ test("moves an attached Claude chat with its uncommitted files and native histor
       ],
     });
     rmSync(blockingFile);
-    const local = await move("local");
-    expect(local.thread).toMatchObject({
-      threadId,
-      cwd: sourceRoot,
-      managedWorktreePath: null,
-      backendBinding: original.thread.backendBinding,
-    });
+    expect(await move("local")).toBe(sourceRoot);
     expect(runGit(sourceRoot, "branch", "--show-current")).toBe("task-work");
     expect(readFileSync(path.join(sourceRoot, "README.md"), "utf8")).toBe(
       "Uncommitted task changes\n",
@@ -335,7 +298,7 @@ test("moves an attached Claude chat with its uncommitted files and native histor
     );
     expect(runGit(worktreeRoot, "status", "--porcelain")).toBe("");
     await expect(
-      page.getByTestId("thread-summary-panel").getByRole("button", {
+      (await openSummaryPanel(page)).getByRole("button", {
         name: "task-work",
         exact: true,
       }),
@@ -355,19 +318,14 @@ test("moves an attached Claude chat with its uncommitted files and native histor
         "Verify handoff after-rejection",
       ],
     });
-    const final = (await invokeIpc(
-      page,
-      "agent-backend:session:read",
-      threadId,
-    )) as AgentBackendSessionPresentation;
-    expect(final.snapshot.sessionId).toBe(nativeSessionId);
-    expect(final.snapshot.turns.map((turn) => turn.promptText)).toEqual([
-      "Verify handoff origin",
-      "Verify handoff worktree",
-      "Verify handoff restarted",
-      "Verify handoff after-rejection",
-      "Verify handoff local",
-    ]);
+    // One Claude session carried the whole conversation across every location.
+    expect(
+      new Set(
+        readNativeObservations(observationsPath)
+          .filter((entry) => entry.type === "prompt")
+          .map((entry) => entry.sessionId),
+      ),
+    ).toEqual(new Set([nativeSessionId]));
     expect(rendererErrors).toEqual([]);
     await page.screenshot({ path: test.info().outputPath("claude-local-handoff.png") });
     await test.info().attach("native-execution-history", {

@@ -32,7 +32,6 @@ const selectedDeleteDelayMs = Number.parseInt(
   10,
 );
 const topologyRecoveryEnabled = process.env.NODEX_FAKE_SUBAGENT_TOPOLOGY_MISSED_EDGE === "1";
-const createdThreadNavigationEnabled = process.env.NODEX_FAKE_CREATED_THREAD_NAVIGATION === "1";
 // Agent execution learns children only from the root Turn's own spawn calls and child Turns.
 const spawnedChildrenEnabled = process.env.NODEX_FAKE_SUBAGENT_SPAWN === "1";
 const scenarioThreadTimestampHex =
@@ -46,8 +45,6 @@ const nowSeconds = () => Math.floor(Date.now() / 1_000);
 const rootThreadId = scenarioThreadId("000000000101");
 const fallbackInterruptThreadId = scenarioThreadId("000000000201");
 const selectedThreadId = scenarioThreadId("000000000202");
-const createdRootThreadId = scenarioThreadId("000000000401");
-const createdGrandchildThreadId = scenarioThreadId("000000000402");
 
 const activeDefinitions = [
   {
@@ -62,7 +59,7 @@ const activeDefinitions = [
     id: scenarioThreadId("000000000202"),
     name: "Deep investigator",
     preview: "Trace the selected-only hydration path",
-    status: createdThreadNavigationEnabled ? { type: "idle" } : { type: "active", activeFlags: [] },
+    status: { type: "active", activeFlags: [] },
     parentThreadId: rootThreadId,
     depth: 1,
   },
@@ -103,19 +100,7 @@ const doneDefinitions = Array.from({ length: Math.max(0, doneCount) }, (_, index
   depth: index === 11 ? 2 : 1,
 }));
 
-const createdGrandchild = {
-  id: createdGrandchildThreadId,
-  name: "Created grandchild",
-  preview: "Read the created descendant in its captured root panel",
-  status: { type: "idle" },
-  parentThreadId: selectedThreadId,
-  depth: 2,
-};
-const definitions = [
-  ...activeDefinitions,
-  ...doneDefinitions,
-  ...(createdThreadNavigationEnabled ? [createdGrandchild] : []),
-];
+const definitions = [...activeDefinitions, ...doneDefinitions];
 const topologyRecoveredDefinition = topologyRecoveryEnabled ? (doneDefinitions.at(-1) ?? null) : null;
 const discoveryDefinitions = [
   activeDefinitions[4],
@@ -193,15 +178,9 @@ const finalMessage = (id, text) => ({
   type: "agentMessage", id, text, phase: "final_answer", memoryCitation: null,
   delivery: null, questions: null,
 });
-const createdRootItem = () => finalMessage(
-  "created-root-result",
-  `Created an independent chat.\n\n::created-thread{threadId="${createdRootThreadId}" hostId="local"}`,
-);
 const rootTurn = (status, itemsView = "full") => ({
   ...emptyTurn("turn-subagent-root", status, itemsView),
-  items: createdThreadNavigationEnabled && status === "completed" && itemsView !== "notLoaded"
-    ? [createdRootItem()]
-    : [],
+  items: [],
 });
 
 const topologyEdgeItem = () =>
@@ -261,25 +240,9 @@ const rootThread = (includeTurns = false) => ({
   agentRole: null,
   gitInfo: null,
   name: "Subagent parity scenario",
-  turns: includeTurns && (state.rootTurnStarted || (createdThreadNavigationEnabled && state.rootCompletedAtMs))
-    ? [rootTurn(state.rootTurnStarted ? "inProgress" : "completed")]
-    : [],
+  turns: includeTurns && state.rootTurnStarted ? [rootTurn("inProgress")] : [],
 });
 
-// This native root is deliberately absent from list/discovery and has no Core row before its card opens.
-const createdRootTurn = (itemsView = "full") => ({
-  ...emptyTurn("turn-created-root", "completed", itemsView),
-  items: itemsView === "notLoaded" ? [] : [finalMessage("created-root-body", "Atomic created root opened.")],
-});
-const createdRootThread = (includeTurns = false) => ({
-  ...rootThread(false),
-  id: createdRootThreadId,
-  sessionId: "created-root-native-session",
-  name: "Independent created chat",
-  preview: "Atomic created root opened.",
-  status: { type: "idle" },
-  turns: includeTurns ? [createdRootTurn()] : [],
-});
 
 const definitionById = (threadId) => {
   if (Array.isArray(state.deletedChildIds) && state.deletedChildIds.includes(threadId)) return null;
@@ -347,14 +310,7 @@ const childTurnStatus = (definition) => {
 
 const childTurn = (definition, itemsView = "full") => ({
   ...emptyTurn(`turn-${definition.id}`, childTurnStatus(definition), itemsView),
-  items: createdThreadNavigationEnabled && definition.id === selectedThreadId && itemsView !== "notLoaded"
-    ? [finalMessage(
-        "selected-child-created-result",
-        `The selected child created a descendant.\n\n::created-thread{threadId="${createdGrandchildThreadId}" hostId="local"}`,
-      )]
-    : createdThreadNavigationEnabled && definition.id === createdGrandchildThreadId && itemsView !== "notLoaded"
-      ? [finalMessage("created-grandchild-body", "Grandchild remains in the captured top-root panel.")]
-      : definition.id === selectedThreadId && itemsView !== "notLoaded" ? [{
+  items: definition.id === selectedThreadId && itemsView !== "notLoaded" ? [{
     type: "agentMessage", id: "selected-child-progress",
     text: "Checking the selected child history.", phase: "commentary", memoryCitation: null,
     delivery: null, questions: null,
@@ -409,14 +365,6 @@ const childThread = (definition, includeTurns = false) => {
   };
 };
 
-const announceCreatedGrandchild = (threadId) => {
-  if (!createdThreadNavigationEnabled || threadId !== selectedThreadId || state.createdGrandchildAnnounced)
-    return;
-  state.createdGrandchildAnnounced = true;
-  persist();
-  // A real native creation receipt establishes parent/host metadata, independently of catalogue scans.
-  notify("thread/started", { thread: childThread(createdGrandchild) });
-};
 
 const threadResponse = (thread) => ({
   thread,
@@ -598,16 +546,7 @@ const completeRootNormally = () => {
   state = readState();
   if (!state.rootTurnStarted) return;
   state.rootTurnStarted = false;
-  state.rootCompletedAtMs = Date.now();
   persist();
-  if (createdThreadNavigationEnabled) {
-    notify("item/completed", {
-      threadId: rootThreadId,
-      turnId: "turn-subagent-root",
-      completedAtMs: Date.now(),
-      item: createdRootItem(),
-    });
-  }
   notify("turn/completed", {
     threadId: rootThreadId,
     turn: rootTurn("completed"),
@@ -770,10 +709,6 @@ const handle = (message) => {
         const visibleDefinitions = discoveryDefinitions.filter(
           (definition) => definitionById(definition.id) !== null && isDescendant(definition),
         );
-        if (params.ancestorThreadId === rootThreadId) {
-          state.lastDiscoveryThreadIds = visibleDefinitions.map((definition) => definition.id);
-          persist();
-        }
         const respondWithDescendants = () => respond(id, {
           data: visibleDefinitions.map((definition) => childThread(definition)),
           nextCursor: null,
@@ -836,10 +771,6 @@ const handle = (message) => {
       respond(id, threadResponse(rootThread()));
       return;
     case "thread/resume": {
-      if (createdThreadNavigationEnabled && params.threadId === createdRootThreadId) {
-        respond(id, threadResponse(createdRootThread(params.excludeTurns !== true)));
-        return;
-      }
       if (params.threadId === rootThreadId) {
         respond(id, threadResponse(rootThread(params.excludeTurns !== true)));
         return;
@@ -854,17 +785,10 @@ const handle = (message) => {
     }
     case "thread/turns/list": {
       const itemsView = params.itemsView ?? "summary";
-      if (params.sortDirection === "desc") announceCreatedGrandchild(params.threadId);
-      if (createdThreadNavigationEnabled && params.threadId === createdRootThreadId) {
-        respond(id, { data: [createdRootTurn(itemsView)], nextCursor: null, backwardsCursor: null });
-        return;
-      }
       if (params.threadId === rootThreadId) {
         respond(id, {
           data: state.rootTurnStarted
             ? [rootTurn("inProgress", itemsView)]
-            : createdThreadNavigationEnabled && state.rootCompletedAtMs
-              ? [rootTurn("completed", itemsView)]
             : [],
           nextCursor: null,
           backwardsCursor: null,
@@ -885,32 +809,11 @@ const handle = (message) => {
       return;
     }
     case "thread/items/list": {
-      if (createdThreadNavigationEnabled) {
-        const definition = definitionById(params.threadId);
-        const turn = params.threadId === createdRootThreadId
-          ? createdRootTurn()
-          : params.threadId === rootThreadId
-            ? rootTurn(state.rootTurnStarted ? "inProgress" : "completed")
-            : definition ? childTurn(definition) : null;
-        respond(id, {
-          data: turn ? turn.items.map((item) => ({
-            turnId: turn.id, item, startedAtMs: turn.startedAt * 1000,
-            completedAtMs: turn.completedAt === null ? null : turn.completedAt * 1000,
-          })) : [],
-          nextCursor: null, backwardsCursor: null,
-        });
-        return;
-      }
       const definition = definitionById(params.threadId);
       respond(id, { data: definition ? childTurn(definition).items.map((item) => ({ turnId: params.turnId, item })) : [], nextCursor: null, backwardsCursor: null });
       return;
     }
     case "thread/read": {
-      if (createdThreadNavigationEnabled && params.threadId === createdRootThreadId) {
-        respond(id, { thread: createdRootThread(params.includeTurns === true) });
-        return;
-      }
-      if (params.includeTurns === true) announceCreatedGrandchild(params.threadId);
       if (
         params.threadId === selectedThreadId &&
         processInstance.ordinal === 1 &&
@@ -975,7 +878,6 @@ const handle = (message) => {
       }
       state.rootTurnStarted = true;
       state.rootTurnStartedAtMs = Date.now();
-      state.rootCompletedAtMs = null;
       persist();
       const started = {
         ...emptyTurn("turn-subagent-root"),
@@ -988,14 +890,6 @@ const handle = (message) => {
           threadId: rootThreadId,
           status: { type: "active", activeFlags: [] },
         });
-        if (createdThreadNavigationEnabled) {
-          notify("item/started", {
-            threadId: rootThreadId,
-            turnId: "turn-subagent-root",
-            startedAtMs: Date.now(),
-            item: { ...createdRootItem(), text: "" },
-          });
-        }
         if (spawnedChildrenEnabled) {
           setTimeout(spawnChildren, 25);
         } else {

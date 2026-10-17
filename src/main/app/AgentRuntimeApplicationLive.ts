@@ -49,6 +49,7 @@ import { AgentRuntimeSessionActivity } from "../agent-runtime/AgentRuntimeSessio
 import {
   AgentRuntimeProviderConfiguration,
   AgentRuntimeProviderConfigurationError,
+  applyProviderSettings,
 } from "../agent-runtime/AgentRuntimeProviderConfiguration";
 import { CoreAuthority } from "../core-runtime/CoreAuthority";
 import { BrowserUseRuntime } from "../host-runtime/BrowserUseRuntime";
@@ -526,6 +527,7 @@ const supervisor = Layer.effectContext(
         if (!configuration) return Effect.fail(new Error("Execution configuration is unavailable"));
         return makeHost(connection, {
           desktop,
+          workspaceEnvironment: workspace.environment,
           presentation,
           projectlessId,
           providers: configuration.providers,
@@ -557,12 +559,15 @@ const supervisor = Layer.effectContext(
       idle: { after: AGENT_RUNTIME_IDLE_AFTER, quiescent: reportsNoWork },
       quiescence,
     });
-    const refresh = Effect.gen(function* () {
-      if (!(yield* runtime.inspect)) return;
-      const connection = yield* runtime.get();
-      const { configuration } = yield* readConfiguration;
-      yield* connection.request("providers.configure", { providers: configuration.providers });
-      prepared.set(connection.identity, configuration);
+    const refresh = applyProviderSettings({
+      states: runtime.connectionChanges,
+      running: runtime.inspect.pipe(Effect.map((identity) => identity !== null)),
+      apply: Effect.gen(function* () {
+        const connection = yield* runtime.get();
+        const { configuration } = yield* readConfiguration;
+        yield* connection.request("providers.configure", { providers: configuration.providers });
+        prepared.set(connection.identity, configuration);
+      }),
     }).pipe(
       Effect.mapError((cause) => new AgentRuntimeProviderConfigurationError({ cause })),
       Effect.asVoid,

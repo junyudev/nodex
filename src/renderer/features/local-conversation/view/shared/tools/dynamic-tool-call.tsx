@@ -9,6 +9,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { Circle } from "@/components/shared/icons/generic-icons";
 import type { CodexDynamicToolCallView } from "../../../../../lib/types";
 import { cn } from "../../../../../lib/utils";
+import { readAgentSessionToolTarget } from "../../../projection/tool-metadata/agent-session-tool";
 import {
   resolveNodexDynamicToolCallPresentation,
   type NodexDynamicToolPresentationIcon,
@@ -357,6 +358,44 @@ function CodexAppThreadToolCall({
   );
 }
 
+/** A chat an Agent created, forked or messaged opens from its row. */
+function AgentSessionToolCall({
+  call,
+  onOpenThread,
+  variant = "row",
+}: {
+  call: CodexDynamicToolCallView;
+  onOpenThread?: ToolComponentProps["onOpenThread"];
+  variant?: DynamicToolCallRenderVariant;
+}) {
+  const label = resolveDynamicToolRegistryLabel(call);
+  if (!label) return null;
+  const target = variant === "row" ? readAgentSessionToolTarget(call) : null;
+  return (
+    <DynamicToolRegistryLabelRow
+      active={!call.completed}
+      icon={
+        variant === "summary-text" ? null : (
+          <AppActivityIcon
+            className={cn(
+              "icon-xs shrink-0 text-token-conversation-body",
+              target && "group-hover:!text-token-foreground",
+            )}
+            aria-hidden
+          />
+        )
+      }
+      label={label}
+      onClick={
+        target && onOpenThread
+          ? () => void onOpenThread(target.threadId, { runtimeSessionId: target.sessionId })
+          : undefined
+      }
+      variant={variant}
+    />
+  );
+}
+
 function SettingsToolCall({
   call,
   isLeadingSummaryPart = true,
@@ -568,6 +607,8 @@ function renderRegisteredDynamicToolCall({
   variant: DynamicToolCallRenderVariant;
 }) {
   switch (entry.rendererKind) {
+    case "agentSession":
+      return <AgentSessionToolCall call={call} onOpenThread={onOpenThread} variant={variant} />;
     case "automationUpdate":
       if (!resolveDynamicToolRegistryLabel(call)) return null;
       return (

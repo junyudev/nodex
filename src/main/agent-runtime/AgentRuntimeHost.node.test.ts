@@ -145,8 +145,13 @@ const fixture = Effect.gen(function* () {
     projectlessId: "projectless",
     providers: {
       acp: { driver: "acpRegistry", config: {} },
+      claude: { driver: "claudeAgent", config: {} },
       codex: { driver: "codex", config: {} },
     },
+    workspaceEnvironment: (cwd) =>
+      Effect.succeed(
+        cwd === "/worktree" ? { set: { WORKTREE_READY: "prepared" }, exclude: ["NODE_ENV"] } : null,
+      ),
     desktop: {
       threadConfig: (cwd) => Effect.succeed({ "mcp_servers.node_repl": { cwd } }),
       observeNativeTurn: (turn) =>
@@ -335,6 +340,7 @@ const nativeTurn = (
 const prepareThread = (
   providerInstanceId: string,
   runtimeGeneration = "lease",
+  cwd: string | null = "/worktree",
 ): AgentHostRequest => ({
   type: "host.request",
   id: "thread",
@@ -344,9 +350,14 @@ const prepareThread = (
     runtimeGeneration,
     threadId: "thread:child",
     providerInstanceId,
-    nativeDriver: providerInstanceId === "codex" ? "codex" : "acpRegistry",
+    nativeDriver:
+      providerInstanceId === "codex"
+        ? "codex"
+        : providerInstanceId === "claude"
+          ? "claudeAgent"
+          : "acpRegistry",
   },
-  cwd: "/worktree",
+  cwd,
 });
 
 it.effect("only the current lease's Codex threads receive the desktop tool config", () =>
@@ -355,8 +366,18 @@ it.effect("only the current lease's Codex threads receive the desktop tool confi
     assert.deepEqual(yield* f.execute(prepareThread("codex")), {
       config: { "mcp_servers.node_repl": { cwd: "/worktree" } },
     });
-    assert.deepEqual(yield* f.execute(prepareThread("acp")), {});
     yield* Effect.flip(f.execute(prepareThread("codex", "previous-lease")));
+  }).pipe(Effect.scoped),
+);
+
+it.effect("other providers receive the Environment their worktree's setup prepared", () =>
+  Effect.gen(function* () {
+    const f = yield* fixture;
+    const environment = { set: { WORKTREE_READY: "prepared" }, exclude: ["NODE_ENV"] };
+    assert.deepEqual(yield* f.execute(prepareThread("claude")), { environment });
+    assert.deepEqual(yield* f.execute(prepareThread("acp")), { environment });
+    assert.deepEqual(yield* f.execute(prepareThread("claude", "lease", "/checkout")), {});
+    assert.deepEqual(yield* f.execute(prepareThread("claude", "lease", null)), {});
   }).pipe(Effect.scoped),
 );
 

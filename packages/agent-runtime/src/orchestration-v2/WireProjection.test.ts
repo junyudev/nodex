@@ -486,6 +486,27 @@ describe("orchestration V2 wire projection", () => {
     expect(projectDomainEventForWire(projected)).toEqual(projected);
   });
 
+  it("keeps the identity of a chat a tool created, so its row can open it", () => {
+    const item = {
+      ...base,
+      toolName: "nodex_app.create_session",
+      output: {
+        content: [{ type: "text", text: "PRIVATE_BODY" }],
+        structuredContent: {
+          sessionId: "created-session",
+          threadId: "created-thread",
+          launchState: "attached",
+        },
+      },
+    } satisfies OrchestrationV2TurnItem;
+    const projected = projectTurnItemForWire(item);
+    expect(projected).toMatchObject({
+      output: { sessionId: "created-session", threadId: "created-thread" },
+      outputOmitted: true,
+    });
+    expect(JSON.stringify(projected)).not.toContain("PRIVATE_BODY");
+  });
+
   it("does not serialize raw dynamic output to discard it", () => {
     const output = {
       toJSON: () => {

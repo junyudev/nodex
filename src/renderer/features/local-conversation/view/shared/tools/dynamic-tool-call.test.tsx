@@ -216,6 +216,58 @@ describe("DynamicToolCall", () => {
     ]);
   });
 
+  const createdSession = { sessionId: "session-created", threadId: "thread-created" };
+  test("opens the chat an Agent created from its row", async () => {
+    const opened: Array<{ id: string; context: unknown }> = [];
+    const { getByRole } = render(
+      <DynamicToolCall
+        item={buildDynamicEntry({
+          namespace: "nodex_app",
+          tool: "create_session",
+          arguments: {
+            prompt: "Review the plan",
+            title: "Plan review",
+            target: { type: "projectless" },
+          },
+          contentItems: [{ type: "inputText", text: JSON.stringify(createdSession) }],
+        })}
+        onOpenThread={(threadId, context) => {
+          opened.push({ id: threadId, context });
+        }}
+      />,
+    );
+
+    await act(async () => {
+      fireEvent.click(getByRole("button", { name: "Created chat: Plan review" }));
+      await Promise.resolve();
+    });
+
+    expect(opened).toEqual([
+      { id: "thread-created", context: { runtimeSessionId: "session-created" } },
+    ]);
+  });
+
+  test("leaves a chat the Agent could not create closed", () => {
+    const { container, queryByRole } = render(
+      <DynamicToolCall
+        item={buildDynamicEntry({
+          namespace: "nodex_app",
+          tool: "fork_session",
+          arguments: {},
+          status: "failed",
+          success: false,
+          contentItems: [{ type: "inputText", text: JSON.stringify(createdSession) }],
+        })}
+        onOpenThread={() => {
+          throw new Error("A failed fork has no chat to open");
+        }}
+      />,
+    );
+
+    expect(activityText(container)).toBe("Couldn't fork chat");
+    expect(queryByRole("button")).toBeNull();
+  });
+
   test("renders settings and Chrome tab-context calls with registered labels", () => {
     const { container: settings } = render(
       <DynamicToolCall

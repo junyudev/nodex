@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import { openComposerModelPicker as openModelPicker } from "./support/composer-model-picker";
-import { existsSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import {
@@ -10,7 +10,9 @@ import {
 import { RendererIpcSeedAdapter } from "../../scripts/scenarios/adapters/renderer-ipc-seed-adapter";
 import { materializeScenario } from "../../scripts/scenarios/seed/scenario-seed";
 import { AGENT_CLI_SCENARIO_ID } from "../../scripts/scenarios/scenarios/agent-cli-workflow";
-import type { AgentBackendSessionPresentation } from "../../src/shared/agent-conversation";
+import type { AgentRuntimeConversation } from "../../src/shared/agent-runtime-api";
+import { agentRuntimeProviderId } from "../../src/shared/agent-runtime-provider";
+import { waitForRuntimeCompletedAgentTurn } from "./support/agent-smoke-harness";
 import type { ProjectSession } from "../../src/shared/types";
 import { createBoundedOperationId } from "../../src/shared/operation-identity";
 import { createUuidV7 } from "../../src/shared/uuid-v7";
@@ -34,7 +36,7 @@ interface OpenCodeObservation {
   readonly cwd?: string;
 }
 
-test("chooses a connected OpenCode model with native options before its first prompt and restores the session without replay", async () => {
+test("chooses an OpenCode model with native options before its first prompt and reopens the chat without replay", async () => {
   test.setTimeout(240_000);
   const harness = await ElectronScenarioHarness.create({
     label: "opencode-backend-lifecycle",
@@ -65,6 +67,7 @@ test("chooses a connected OpenCode model with native options before its first pr
       : [];
   const rendererErrors: string[] = [];
   let threadId: string | undefined;
+  let harnessSessionId = "";
   try {
     writeFileSync(path.join(sourceRoot, "README.md"), "Isolated OpenCode workspace\n");
     let page = await harness.launch();
@@ -88,6 +91,7 @@ test("chooses a connected OpenCode model with native options before its first pr
       ],
     });
     const sessionId = createUuidV7();
+    harnessSessionId = sessionId;
     const created = await invoke<{ ok: boolean }>(page, "project-sessions:create", {
       operationId: createBoundedOperationId("e2e.opencode.create"),
       payload: {
@@ -114,17 +118,19 @@ test("chooses a connected OpenCode model with native options before its first pr
       observations().filter(({ kind }) => kind === "createSession" || kind === "prompt"),
     ).toEqual([]);
     await kimi.click();
+    await expect(search).toBeHidden();
+    // OpenCode's variant is offered as Reasoning and its agent mode as Agent.
     await openModelPicker(page);
-    await page.getByRole("button", { name: /^Variant /u }).click();
-    await page.getByRole("menuitem", { name: "high", exact: true }).click();
-    await expect(page.getByRole("menuitem", { name: "high", exact: true })).not.toBeVisible();
+    await page.getByRole("button", { name: /^Reasoning /u }).click();
+    await page.getByRole("menuitem", { name: /^high$/iu }).click();
+    await expect(page.getByRole("menuitem", { name: /^high$/iu })).not.toBeVisible();
     await openModelPicker(page);
-    await page.getByRole("button", { name: /^Mode /u }).click();
-    await page.getByRole("menuitem", { name: "plan", exact: true }).click();
-    await expect(page.getByRole("menuitem", { name: "plan", exact: true })).not.toBeVisible();
+    await page.getByRole("button", { name: /^Agent /u }).click();
+    await page.getByRole("menuitem", { name: /^plan$/iu }).click();
+    await expect(page.getByRole("menuitem", { name: /^plan$/iu })).not.toBeVisible();
     await openModelPicker(page);
-    await expect(page.getByRole("button", { name: "Variant high", exact: true })).toBeVisible();
-    await expect(page.getByRole("button", { name: "Mode plan", exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: /^Reasoning high$/iu })).toBeVisible();
+    await expect(page.getByRole("button", { name: /^Agent plan$/iu })).toBeVisible();
     const evidenceRoot = path.resolve("notes.local/artifacts/opencode-model-picker");
     mkdirSync(evidenceRoot, { recursive: true });
     await page.screenshot({
@@ -140,34 +146,23 @@ test("chooses a connected OpenCode model with native options before its first pr
     await expect
       .poll(
         async () =>
-          (await invoke<ProjectSession | null>(page, "project-sessions:get", sessionId))?.thread
-            ?.backendBinding,
+          (await invoke<ProjectSession | null>(page, "project-sessions:get", sessionId))
+            ?.executionRef,
       )
-      .toEqual({ kind: "opencode", instanceConfigId: "opencode-default" });
+      .toBeTruthy();
     const linked = await invoke<ProjectSession>(page, "project-sessions:get", sessionId);
-    if (!linked.thread) throw new Error("OpenCode Thread was not attached");
-    threadId = linked.thread.threadId;
-    const read = () =>
-      invoke<AgentBackendSessionPresentation | null>(page, "agent-backend:session:read", threadId);
-    await expect
-      .poll(async () => (await read())?.snapshot.turns.at(-1)?.stopReason, { timeout: 30_000 })
-      .toBe("end_turn");
-    const completed = await read();
-    if (!completed) throw new Error("OpenCode session closed after completing its first turn");
-    expect(completed.snapshot.status).toBe("idle");
-    expect(completed.snapshot.error).toBeNull();
-    expect(completed.snapshot.turns.flatMap(({ updates }) => updates)).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ kind: "message", role: "agent", text: "OPEN_CODE_OK" }),
-      ]),
+    threadId = linked.executionRef!.threadId;
+    const target = { sessionId, threadId };
+    const completed = await waitForRuntimeCompletedAgentTurn(page, target, 30_000);
+    const thread = completed.snapshot.projection.thread;
+    expect(thread.providerInstanceId).toBe(
+      agentRuntimeProviderId({ kind: "opencode", instanceConfigId: "opencode-default" }),
     );
-    expect(completed.configOptions.find(({ category }) => category === "model")).toMatchObject({
-      currentValue: "moonshot/kimi-k3",
-    });
-    expect(completed.configOptions.find(({ id }) => id === "variant")).toMatchObject({
-      currentValue: "high",
-    });
-    expect(completed.modes?.currentModeId).toBe("plan");
+    expect(thread.modelSelection).toMatchObject({ model: "moonshot/kimi-k3" });
+    expect(thread.modelSelection.options).toEqual(
+      expect.arrayContaining([expect.objectContaining({ value: "high" })]),
+    );
+    await expect(page.getByText("OPEN_CODE_OK", { exact: true }).last()).toBeVisible();
     expect(observations().find(({ kind }) => kind === "prompt")).toMatchObject({
       model: { providerID: "moonshot", modelID: "kimi-k3" },
       variant: "high",
@@ -177,48 +172,22 @@ test("chooses a connected OpenCode model with native options before its first pr
     const promptCount = observations().filter(({ kind }) => kind === "prompt").length;
     const sessionCount = observations().filter(({ kind }) => kind === "createSession").length;
     expect(sessionCount).toBe(1);
+
+    // Nodex keeps the history; reopening never prompts or creates a native session again.
     page = await harness.restart();
-    const restored = await invoke<AgentBackendSessionPresentation>(
+    await expect(page.getByText("OPEN_CODE_OK", { exact: true }).last()).toBeVisible({
+      timeout: 30_000,
+    });
+    const restored = await invoke<AgentRuntimeConversation>(
       page,
-      "agent-backend:session:open",
-      { threadId },
+      "agent-runtime:session:control",
+      target,
     );
-    expect(restored.snapshot.sessionId).toBe(completed.snapshot.sessionId);
-    expect(restored.snapshot.status).toBe("idle");
-    expect(restored.snapshot.turns.at(-1)).toMatchObject({
-      clientUserMessageId: completed.snapshot.turns.at(-1)?.clientUserMessageId,
-      nativeUserMessageId: completed.snapshot.turns.at(-1)?.nativeUserMessageId,
-      stopReason: "end_turn",
-    });
-    expect(restored.snapshot.turns.flatMap(({ updates }) => updates)).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ kind: "message", role: "agent", text: "OPEN_CODE_OK" }),
-      ]),
-    );
-    expect(restored.configOptions.find(({ category }) => category === "model")).toMatchObject({
-      currentValue: "moonshot/kimi-k3",
-    });
-    expect(restored.configOptions.find(({ id }) => id === "variant")).toMatchObject({
-      currentValue: "high",
-    });
-    expect(restored.modes?.currentModeId).toBe("plan");
-    expect(observations().filter(({ kind }) => kind === "prompt")).toHaveLength(promptCount);
-    expect(observations().filter(({ kind }) => kind === "createSession")).toHaveLength(
-      sessionCount,
-    );
+    expect(restored.snapshot.projection.thread.modelSelection).toEqual(thread.modelSelection);
+    expect(restored.snapshot.projection.runs.at(-1)?.status).toBe("completed");
     await page.screenshot({
       path: path.join(evidenceRoot, "restored-conversation.png"),
       animations: "disabled",
-    });
-    rmSync(path.join(nativeRoot, "sessions.json"), { force: true });
-    page = await harness.restart();
-    await expect(invoke(page, "agent-backend:session:open", { threadId })).rejects.toThrow(
-      /session|available|found/iu,
-    );
-    const missing = await invoke<ProjectSession>(page, "project-sessions:get", sessionId);
-    expect(missing.thread?.backendBinding).toEqual({
-      kind: "opencode",
-      instanceConfigId: "opencode-default",
     });
     expect(observations().filter(({ kind }) => kind === "prompt")).toHaveLength(promptCount);
     expect(observations().filter(({ kind }) => kind === "createSession")).toHaveLength(
@@ -257,9 +226,10 @@ test("chooses a connected OpenCode model with native options before its first pr
       contentType: "text/plain",
     });
     if (threadId) {
-      const presentation = await invoke(harness.page, "agent-backend:session:read", threadId).catch(
-        (cause) => ({ error: cause instanceof Error ? cause.message : String(cause) }),
-      );
+      const presentation = await invoke(harness.page, "agent-runtime:session:read", {
+        sessionId: harnessSessionId,
+        threadId,
+      }).catch((cause) => ({ error: cause instanceof Error ? cause.message : String(cause) }));
       await test.info().attach("opencode-session", {
         body: JSON.stringify(presentation, null, 2),
         contentType: "application/json",

@@ -220,7 +220,8 @@ test("streams, cancels and inserts dictation regardless of the remote streaming 
     launcher,
     [
       "#!/bin/sh",
-      `exec ${shellQuote(executable)} --use-fake-device-for-media-stream --use-fake-ui-for-media-stream ${shellQuote(`--use-file-for-fake-audio-capture=${audio}`)} --autoplay-policy=no-user-gesture-required "$@" ${shellQuote(process.cwd())}`,
+      // The app comes first, as in every development launch; the harness's switches follow it.
+      `exec ${shellQuote(executable)} --use-fake-device-for-media-stream --use-fake-ui-for-media-stream ${shellQuote(`--use-file-for-fake-audio-capture=${audio}`)} --autoplay-policy=no-user-gesture-required ${shellQuote(process.cwd())} "$@"`,
       "",
     ].join("\n"),
     { mode: 0o700 },
@@ -248,6 +249,9 @@ test("streams, cancels and inserts dictation regardless of the remote streaming 
         if (!app.commandLine.hasSwitch("use-fake-device-for-media-stream")) {
           throw new Error("The isolated fake microphone was not enabled");
         }
+        // The launcher still runs the harness's isolation preload, which consumes this marker.
+        if (process.env.NODEX_INTERNAL_SCENARIO_HOME !== undefined)
+          throw new Error("The isolated scenario home was not applied");
         // Stub only macOS TCC: Chromium supplies the actual synthetic capture device.
         systemPreferences.getMediaAccessStatus = () => "granted";
       });

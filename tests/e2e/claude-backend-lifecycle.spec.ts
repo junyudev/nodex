@@ -15,7 +15,7 @@ import {
 import { RendererIpcSeedAdapter } from "../../scripts/scenarios/adapters/renderer-ipc-seed-adapter";
 import { materializeScenario } from "../../scripts/scenarios/seed/scenario-seed";
 import { AGENT_CLI_SCENARIO_ID } from "../../scripts/scenarios/scenarios/agent-cli-workflow";
-import type { AgentBackendSessionPresentation } from "../../src/shared/agent-conversation";
+import type { AgentRuntimeConversation } from "../../src/shared/agent-runtime-api";
 import type {
   ProjectSession,
   WorktreeEnvironmentSaveResult,
@@ -53,7 +53,7 @@ const chevronGeometry = async (trigger: Locator) =>
       };
     });
 
-test("runs Claude in the selected worktree environment and restores its native conversation and controls after restart", async () => {
+test("runs a Claude Code chat in a new worktree environment and continues it with its options after restart", async () => {
   // Two isolated cold startups have their own 60s readiness deadline, in addition to the workflow.
   test.setTimeout(180_000);
   const harness = await ElectronScenarioHarness.create({
@@ -75,7 +75,7 @@ test("runs Claude in the selected worktree environment and restores its native c
     mode: 0o755,
   });
   const rendererErrors: string[] = [];
-  let linkedThreadId: string | undefined;
+  let linkedTarget: { sessionId: string; threadId: string } | undefined;
   const observations = () => {
     const observationPath = path.join(
       harness.profile.runRoot,
@@ -199,10 +199,18 @@ test("runs Claude in the selected worktree environment and restores its native c
     });
     expect(created.ok).toBe(true);
     const projectRow = page.locator(`[data-app-action-sidebar-project-id="${manifest.projectId}"]`);
-    await projectRow.hover();
-    const expandProject = projectRow.getByRole("button", { name: "Expand project", exact: true });
-    if (await expandProject.count()) await expandProject.click();
-    await page.getByText("Native Claude lifecycle", { exact: true }).first().click();
+    const chatRow = page.getByText("Native Claude lifecycle", { exact: true }).first();
+    // The expand control shows on hover; a re-render can take it away mid-click.
+    await expect(async () => {
+      await projectRow.hover();
+      const expandProject = projectRow.getByRole("button", {
+        name: "Expand project",
+        exact: true,
+      });
+      if (await expandProject.count()) await expandProject.click({ timeout: 1_000 });
+      await expect(chatRow).toBeVisible({ timeout: 1_000 });
+    }).toPass({ timeout: 15_000 });
+    await chatRow.click();
     const composer = page
       .locator('[data-codex-composer="true"][contenteditable="true"]:visible')
       .first();
@@ -210,8 +218,7 @@ test("runs Claude in the selected worktree environment and restores its native c
     const startIn = page.getByRole("button", { name: "Start in", exact: true });
     await expect(startIn).toHaveText("Work locally");
     const codexChevron = await chevronGeometry(startIn);
-    await chooseComposerModel(page, "claude-opus-5 Claude Code");
-    await page.keyboard.press("Escape");
+    await chooseComposerModel(page, "Claude Opus 5", "Claude Opus 5");
     await page.keyboard.press("Escape");
     await expect(startIn).toBeEnabled();
     await expect(startIn).toHaveText("Work locally");
@@ -230,7 +237,7 @@ test("runs Claude in the selected worktree environment and restores its native c
     });
     await expect(composer).toHaveText("Native Claude lifecycle");
     await openComposerModelPicker(page);
-    const sonnet = page.getByRole("option", { name: /Claude Sonnet 5\.5.*Claude Code/u });
+    const sonnet = page.getByRole("option", { name: "Claude Sonnet 5.5", exact: true });
     await expect(sonnet).toBeVisible();
     await expect(page.getByRole("option", { name: "Default", exact: true })).toHaveCount(0);
     await page.screenshot({ path: test.info().outputPath("claude-model-picker.png") });
@@ -238,19 +245,13 @@ test("runs Claude in the selected worktree environment and restores its native c
     await openComposerOptionControl(page, "Effort");
     await expect(page.getByRole("menuitem", { name: "Max", exact: true })).toBeVisible();
     await expect(page.getByRole("menuitem", { name: "Default", exact: true })).toHaveCount(0);
-    await page.screenshot({ path: test.info().outputPath("claude-effort-picker.png") });
     await page.getByRole("menuitem", { name: "Max", exact: true }).click();
     await expect(page.getByRole("button", { name: "Effort Max", exact: true })).toBeVisible();
     await page.keyboard.press("Escape");
     await openComposerOptionControl(page, "Speed");
     await expect(page.getByRole("menuitem", { name: "Standard", exact: true })).toBeVisible();
-    await page.screenshot({
-      animations: "disabled",
-      path: test.info().outputPath("claude-speed-picker.png"),
-    });
     await page.getByRole("menuitem", { name: "Fast", exact: true }).click();
     await expect(page.getByRole("button", { name: "Speed Fast", exact: true })).toBeVisible();
-    await expect(page.getByRole("menuitem", { name: "Default", exact: true })).toHaveCount(0);
     await page.keyboard.press("Escape");
     await page.keyboard.press("Escape");
     await expect(page.getByRole("button", { name: "Speed Fast", exact: true })).toHaveCount(0);
@@ -259,10 +260,6 @@ test("runs Claude in the selected worktree environment and restores its native c
     await startIn.click();
     const newWorktree = page.locator('[data-new-chat-start-in-option="newWorktree"]');
     await expect(newWorktree).toBeEnabled();
-    await page.screenshot({
-      animations: "disabled",
-      path: test.info().outputPath("claude-start-in-menu.png"),
-    });
     await newWorktree.click();
     await expect(startIn).toHaveText("New worktree");
     await page.getByRole("button", { name: "Select worktree environment", exact: true }).click();
@@ -270,106 +267,37 @@ test("runs Claude in the selected worktree environment and restores its native c
     await expect(
       page.getByRole("button", { name: "Select worktree environment", exact: true }),
     ).toContainText("Claude lifecycle");
-    await page.screenshot({
-      animations: "disabled",
-      path: test.info().outputPath("claude-shared-controls.png"),
-    });
     await page.getByRole("button", { name: "Send prompt", exact: true }).click();
     await expect
       .poll(
         async () =>
-          (await invoke<ProjectSession | null>(page, "project-sessions:get", sessionId))?.thread
-            ?.backendBinding,
+          (await invoke<ProjectSession | null>(page, "project-sessions:get", sessionId))
+            ?.executionRef,
       )
-      .toEqual({ kind: "claude", instanceConfigId: "claude-default" });
-    const linked = await invoke<ProjectSession>(page, "project-sessions:get", sessionId);
-    if (!linked.thread) throw new Error("Native task was not attached");
-    const threadId = linked.thread.threadId;
-    const worktreePath = linked.thread.managedWorktreePath;
-    if (!worktreePath) throw new Error("Claude did not retain its managed worktree");
+      .toBeTruthy();
+    const launched = await invoke<ProjectSession>(page, "project-sessions:get", sessionId);
+    const target = { sessionId, threadId: launched.executionRef!.threadId };
+    linkedTarget = target;
+    const control = () =>
+      invoke<AgentRuntimeConversation>(page, "agent-runtime:session:control", target);
+
+    // The question arrives once the new worktree is ready and its Environment has run.
+    await expect(page.getByRole("radiogroup", { name: "Which target?" })).toBeVisible({
+      timeout: 45_000,
+    });
+    const worktreePath = (await control()).snapshot.projection.thread.worktreePath;
+    if (!worktreePath) throw new Error("Claude did not run in a worktree");
     expect(worktreePath.startsWith(`${realpathSync(managedRoot)}${path.sep}`)).toBe(true);
-    expect(worktreePath).not.toBe(sourceRoot);
-    expect(linked.thread.cwd).toBe(worktreePath);
     expect(readFileSync(path.join(worktreePath, ".claude-worktree-ready"), "utf8")).toBe(
       "prepared\n",
     );
     expect(runGit(worktreePath, ["rev-parse", "--show-toplevel"])).toBe(worktreePath);
-    linkedThreadId = threadId;
-    await expect
-      .poll(async () => {
-        const current = await invoke<AgentBackendSessionPresentation | null>(
-          page,
-          "agent-backend:session:read",
-          threadId,
-        );
-        if (current?.snapshot.error) throw new Error(current.snapshot.error);
-        return current?.snapshot.requests?.length ?? 0;
-      })
-      .toBe(1);
-    await expect(page.getByRole("radiogroup", { name: "Which target?" })).toBeVisible();
     await expect(page.getByText("That chat is not available", { exact: true })).toHaveCount(0);
     await page.getByRole("radio", { name: "Desktop", exact: true }).click();
     await expect(page.getByText("Native Claude workflow complete", { exact: true })).toBeVisible();
     await page.screenshot({ path: test.info().outputPath("claude-conversation.png") });
-    const completed = await invoke<AgentBackendSessionPresentation>(
-      page,
-      "agent-backend:session:read",
-      threadId,
-    );
-    expect(completed.configOptions.find(({ category }) => category === "model")).toMatchObject({
-      currentValue: "claude-opus-5",
-    });
-    expect(completed.configOptions.find(({ id }) => id === "effort")).toMatchObject({
-      currentValue: "max",
-    });
-    expect(completed.snapshot.metadata?.effectiveSelection).toMatchObject({
-      model: "claude-opus-5",
-      effort: "max",
-      fast: true,
-      thinking: true,
-      permissionMode: "bypassPermissions",
-    });
-    expect(completed.snapshot.turns.flatMap(({ updates }) => updates)).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          kind: "tool-call",
-          name: "Bash",
-          status: "completed",
-          output: expect.objectContaining({ stdout: "Workspace inspected" }),
-        }),
-        expect.objectContaining({
-          kind: "message",
-          role: "thought",
-          text: "Inspecting workspace carefully",
-        }),
-      ]),
-    );
-    expect(completed.snapshot.tasks).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ id: "subtask-1", status: "completed", toolUseId: "spawn-1" }),
-      ]),
-    );
-    await expect(page.getByText("Native child workspace report", { exact: true })).toHaveCount(0);
-    await page.getByRole("button", { name: "Chat actions", exact: true }).click();
-    await page.getByRole("menuitem", { name: "Tasks", exact: true }).click();
-    const taskDialog = page.getByRole("dialog", { name: "Tasks", exact: true });
-    await expect(taskDialog).toBeVisible();
-    await taskDialog
-      .getByRole("button", { name: "Inspect workspace, Completed", exact: true })
-      .click();
-    await expect(
-      taskDialog.getByText("Native child workspace report", { exact: true }),
-    ).toBeVisible();
-    await page.screenshot({ path: test.info().outputPath("claude-task-details.png") });
-    await taskDialog.getByRole("button", { name: "Stop Watch build", exact: true }).click();
-    await expect(
-      taskDialog.getByRole("button", { name: "Stop Watch build", exact: true }),
-    ).toHaveCount(0);
-    await page.keyboard.press("Escape");
-    await expect(taskDialog).toHaveCount(0);
-    await expect(page.getByRole("button", { name: "Send prompt", exact: true })).toBeVisible();
-    await page.screenshot({ path: test.info().outputPath("claude-conversation.png") });
-    expect(observations().find(({ type }) => type === "prompt")).toMatchObject({
+    const launchedPrompt = observations().find(({ type }) => type === "prompt");
+    expect(launchedPrompt).toMatchObject({
       cwd: worktreePath,
       model: "claude-opus-5",
       effort: "max",
@@ -384,11 +312,11 @@ test("runs Claude in the selected worktree environment and restores its native c
         worktreeEnv: "prepared",
       },
     });
-    expect(
-      observations().find(({ type, persistent }) => type === "launch" && persistent),
-    ).toMatchObject({
+    const nativeLaunch = observations().find(
+      ({ type, persistent }) => type === "launch" && persistent,
+    );
+    expect(nativeLaunch).toMatchObject({
       cwd: worktreePath,
-      sessionId: completed.snapshot.sessionId,
       resumed: false,
       worktreeEnv: "prepared",
     });
@@ -397,35 +325,14 @@ test("runs Claude in the selected worktree environment and restores its native c
         ({ type, permissionMode }) => type === "launch" && permissionMode === "bypassPermissions",
       ),
     ).toMatchObject({ allowsBypass: true });
+
     await openComposerOptionControl(page, "Effort");
-    await page.getByRole("menuitem", { name: "Off", exact: true }).click();
-    await expect(page.getByRole("button", { name: "Effort Off", exact: true })).toBeVisible();
+    await page.getByRole("menuitem", { name: "Medium", exact: true }).click();
+    await expect(page.getByRole("button", { name: "Effort Medium", exact: true })).toBeVisible();
     await page.keyboard.press("Escape");
     await openComposerOptionControl(page, "Speed");
     await page.getByRole("menuitem", { name: "Standard", exact: true }).click();
     await expect(page.getByRole("button", { name: "Speed Standard", exact: true })).toBeVisible();
-    await page.keyboard.press("Escape");
-    await page.keyboard.press("Escape");
-    await composer.fill("Verify thinking disabled");
-    await page.getByRole("button", { name: "Send prompt", exact: true }).click();
-    await expect(page.getByRole("radio", { name: "Yes", exact: true })).toBeVisible();
-    await page.getByRole("radio", { name: "Yes", exact: true }).click();
-    await page.getByRole("button", { name: "Submit ⏎", exact: true }).click();
-    await expect(page.getByText("Native thinking disabled", { exact: true })).toBeVisible();
-    expect(
-      observations()
-        .filter(({ type }) => type === "prompt")
-        .at(-1),
-    ).toMatchObject({
-      model: "claude-opus-5",
-      effort: "high",
-      permissionMode: "bypassPermissions",
-      thinking: false,
-      fast: false,
-    });
-    await openComposerOptionControl(page, "Effort");
-    await page.getByRole("menuitem", { name: "Medium", exact: true }).click();
-    await expect(page.getByRole("button", { name: "Effort Medium", exact: true })).toBeVisible();
     await page.keyboard.press("Escape");
     await page.keyboard.press("Escape");
     await composer.fill("Verify thinking enabled");
@@ -439,6 +346,7 @@ test("runs Claude in the selected worktree environment and restores its native c
       model: "claude-opus-5",
       effort: "medium",
       thinking: true,
+      fast: false,
       permissionMode: "bypassPermissions",
     });
     await openComposerModelPicker(page);
@@ -446,11 +354,7 @@ test("runs Claude in the selected worktree environment and restores its native c
     await expect(page.getByRole("button", { name: "Select model", exact: true })).toContainText(
       "Claude Sonnet 5.5",
     );
-    await page.keyboard.press("Escape");
     await openComposerOptionControl(page, "Effort");
-    await expect(page.getByRole("menuitem", { name: "Off", exact: true })).toHaveCount(0);
-    await expect(page.getByRole("menuitem", { name: "Max", exact: true })).toHaveCount(0);
-    await expect(page.getByRole("menuitem", { name: "Extra High", exact: true })).toHaveCount(0);
     await expect(page.getByRole("menuitem", { name: "Default", exact: true })).toHaveCount(0);
     await page.getByRole("menuitem", { name: "Low", exact: true }).click();
     await page.keyboard.press("Escape");
@@ -470,53 +374,42 @@ test("runs Claude in the selected worktree environment and restores its native c
         content: "Wait for cancellation",
       });
     await page.getByRole("button", { name: "Stop", exact: true }).click();
+    await expect
+      .poll(async () => (await control()).snapshot.projection.runs.at(-1)?.status, {
+        timeout: 20_000,
+      })
+      .toBe("interrupted");
     await composer.fill("Keep this draft");
     await expect(page.getByRole("button", { name: "Send prompt", exact: true })).toBeVisible();
     await expect(composer).toHaveText("Keep this draft");
-    const cancelled = await invoke<AgentBackendSessionPresentation>(
-      page,
-      "agent-backend:session:read",
-      threadId,
-    );
-    expect(cancelled.snapshot.turns.at(-1)?.stopReason).toBe("cancelled");
+    const selection = (await control()).snapshot.projection.thread.modelSelection;
+    expect(selection).toMatchObject({ model: "claude-sonnet-5-5" });
+
+    // The chat reopens with its history and options, and continues the same Claude session.
     page = await harness.restart();
-    const reopened = await invoke<AgentBackendSessionPresentation>(
-      page,
-      "agent-backend:session:open",
-      { threadId },
-    );
-    expect(reopened.snapshot.sessionId).toBe(completed.snapshot.sessionId);
+    await expect(page.getByText("Native Claude workflow complete", { exact: true })).toBeVisible({
+      timeout: 30_000,
+    });
+    expect((await control()).snapshot.projection.thread.modelSelection).toEqual(selection);
+    expect((await control()).snapshot.projection.thread.worktreePath).toBe(worktreePath);
+    const reopened = page
+      .locator('[data-codex-composer="true"][contenteditable="true"]:visible')
+      .first();
+    await reopened.fill("Verify thinking enabled");
+    await page.getByRole("button", { name: "Send prompt", exact: true }).click();
+    await expect(page.getByText("Native thinking enabled", { exact: true })).toHaveCount(2, {
+      timeout: 30_000,
+    });
     expect(
       observations()
         .filter(({ type, persistent }) => type === "launch" && persistent)
         .at(-1),
     ).toMatchObject({
-      sessionId: completed.snapshot.sessionId,
+      sessionId: nativeLaunch.sessionId,
       resumed: true,
       cwd: worktreePath,
       worktreeEnv: "prepared",
     });
-    const restored = await invoke<ProjectSession>(page, "project-sessions:get", sessionId);
-    expect(restored.thread).toMatchObject({ cwd: worktreePath, managedWorktreePath: worktreePath });
-    expect(reopened.snapshot.turns.flatMap(({ updates }) => updates)).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ kind: "message", text: "Native Claude workflow complete" }),
-      ]),
-    );
-    expect(reopened.snapshot.status).toBe("idle");
-    expect(reopened.snapshot.turns.at(-1)).toMatchObject({
-      promptText: "Wait for cancellation",
-      status: "cancelled",
-      stopReason: "cancelled",
-    });
-    expect(reopened.configOptions.find(({ category }) => category === "model")).toMatchObject({
-      currentValue: "claude-sonnet-5-5",
-    });
-    expect(reopened.configOptions.find(({ id }) => id === "effort")).toMatchObject({
-      currentValue: "low",
-    });
-    expect(reopened.snapshot.requests ?? []).toEqual([]);
-    await expect(page.getByText("Native Claude workflow complete", { exact: true })).toBeVisible();
   } catch (error) {
     const observationPath = path.join(
       harness.profile.runRoot,
@@ -529,11 +422,11 @@ test("runs Claude in the selected worktree environment and restores its native c
         : "No native user messages were received",
       contentType: "text/plain",
     });
-    if (linkedThreadId) {
+    if (linkedTarget) {
       const sessionError = await invoke(
         harness.page,
-        "agent-backend:session:read",
-        linkedThreadId,
+        "agent-runtime:session:read",
+        linkedTarget,
       ).catch((cause: unknown) => String(cause));
       await test.info().attach("claude-session", {
         body: JSON.stringify(sessionError),

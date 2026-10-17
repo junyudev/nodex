@@ -11,12 +11,12 @@ import type {
   NativeSessionAttachResult,
   NativeSessionCatalogPage,
 } from "../../src/shared/native-session-catalog";
-import type { AgentBackendSessionPresentation } from "../../src/shared/agent-conversation";
+import type { AgentConversationSnapshot } from "../../src/shared/agent-conversation";
 import type { ProjectSession } from "../../src/shared/types";
 import { createUuidV7 } from "../../src/shared/uuid-v7";
 import { invokeIpc } from "./support/agent-smoke-harness";
 
-test("connects a Claude CLI conversation through the shared chooser and resumes its exact native identity after restart", async ({}, testInfo) => {
+test("connects a Claude CLI conversation through the shared chooser and reopens it as read-only history after restart", async ({}, testInfo) => {
   test.setTimeout(120_000);
   await withElectronScenario(
     {
@@ -150,20 +150,30 @@ test("connects a Claude CLI conversation through the shared chooser and resumes 
       });
 
       const reopenedPage = await harness.restart();
-      const restored = (await invokeIpc(reopenedPage, "agent-backend:session:open", {
+      const restored = (await invokeIpc(reopenedPage, "agent-backend:session:history", {
         threadId: entry.attachedThreadId,
-      })) as AgentBackendSessionPresentation;
-      expect(restored.snapshot.sessionId).toBe(nativeSessionId);
-      expect(restored.snapshot.turns[0]?.promptText).toBe("Remember my existing CLI context");
-      const observations = readFileSync(observationsPath, "utf8")
-        .trim()
-        .split("\n")
-        .map((line) => JSON.parse(line));
-      expect(observations.find((event) => event.type === "launch")).toMatchObject({
-        sessionId: nativeSessionId,
-        resumed: true,
-      });
-      expect(observations.filter((event) => event.type === "prompt")).toEqual([]);
+      })) as AgentConversationSnapshot;
+      expect(restored.sessionId).toBe(nativeSessionId);
+      expect(restored.turns[0]?.promptText).toBe("Remember my existing CLI context");
+      // The connected conversation opens as history without a Composer; new work starts a
+      // Runtime chat, so the CLI conversation is never resumed or sent anything.
+      const projectRow = reopenedPage.locator(
+        `[data-app-action-sidebar-project-id="${manifest.projectId}"]`,
+      );
+      // The window reopens where it was, in Settings.
+      await reopenedPage.getByRole("button", { name: "Home", exact: true }).click();
+      await projectRow.hover();
+      const expandProject = projectRow.getByRole("button", { name: "Expand project", exact: true });
+      if (await expandProject.count()) await expandProject.click();
+      await reopenedPage.getByText("Existing CLI conversation", { exact: true }).first().click();
+      await expect(
+        reopenedPage.getByText("Remember my existing CLI context", { exact: true }),
+      ).toBeVisible();
+      await expect(
+        reopenedPage.getByText("Existing context retained", { exact: true }),
+      ).toBeVisible();
+      await expect(reopenedPage.locator('[data-codex-composer="true"]')).toHaveCount(0);
+      expect(existsSync(observationsPath)).toBe(false);
       expect(readFileSync(transcriptPath, "utf8")).toBe(history);
     },
   );

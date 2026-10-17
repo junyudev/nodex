@@ -12,7 +12,11 @@ import { CodexGitProbe } from "../codex-application/CodexGitProbe";
 import { ExecutionHostRuntime } from "../codex-application/ExecutionHostRuntime";
 import { ManagedWorktreeRuntime } from "../codex-application/ManagedWorktreeRuntime";
 import { createCodexProjectlessWorkspace } from "../codex/codex-projectless-workspace";
-import { persistCodexWorktreeShellEnvironmentAtGitPath } from "../codex/codex-worktree-shell-environment";
+import {
+  loadCodexWorktreeShellEnvironmentAtGitPath,
+  persistCodexWorktreeShellEnvironmentAtGitPath,
+  type CodexStoredShellEnvironment,
+} from "../codex/codex-worktree-shell-environment";
 import { managedWorktreeGitRootContaining } from "../codex/codex-managed-worktree-effects";
 import { readManagedWorktreeOwnerThread } from "../codex/git-worktree-service";
 
@@ -64,6 +68,10 @@ export class NativeSessionWorkspace extends Context.Service<
     readonly reconcile: (
       input: NativeSessionWorkspaceReconcileInput,
     ) => Effect.Effect<void, NativeSessionWorkspaceError>;
+    /** What a managed worktree's Environment setup changed for processes working in it. */
+    readonly environment: (
+      cwd: string,
+    ) => Effect.Effect<CodexStoredShellEnvironment | null, NativeSessionWorkspaceError>;
   }
 >()("nodex/main/agent-backend/NativeSessionWorkspace") {}
 
@@ -74,6 +82,19 @@ export const make = Effect.gen(function* () {
   const worktrees = yield* ManagedWorktreeRuntime;
   const git = yield* CodexGitProbe;
   return NativeSessionWorkspace.of({
+    environment: Effect.fn("NativeSessionWorkspace.environment")(function* (cwd: string) {
+      const gitPath = yield* git.readPath(cwd, [
+        "rev-parse",
+        "--git-path",
+        "codex-shell-environment.json",
+      ]);
+      if (!gitPath) return null;
+      return yield* Effect.tryPromise({
+        try: () => loadCodexWorktreeShellEnvironmentAtGitPath({ cwd, gitPath }),
+        catch: (cause) =>
+          new NativeSessionWorkspaceError({ operation: "workspace.environment", cause }),
+      });
+    }),
     reconcile: Effect.fn("NativeSessionWorkspace.reconcile")(function* (
       input: NativeSessionWorkspaceReconcileInput,
     ) {
