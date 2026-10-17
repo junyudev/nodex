@@ -443,6 +443,39 @@ describe("LocalConversationComposerShell", () => {
     expect(resumeCalls).toBe(1);
   });
 
+  test("explains a queue held for another reason and resumes it", async () => {
+    installComposerShellWindowApi();
+    const base = buildComposerShellModel();
+    const row = base.composerShell.queuedFollowUpRows[0];
+    if (!row) throw new Error("Expected queue story row");
+    let resumeCalls = 0;
+    const view = renderComposerShell(
+      {
+        ...base,
+        composerShell: {
+          ...base.composerShell,
+          queuedFollowUpRows: [
+            { ...row, pauseKind: "held", pausedReason: "Queue paused because a message failed" },
+          ],
+        },
+      },
+      buildActions({
+        onResumeQueuedFollowUps: async () => {
+          resumeCalls += 1;
+        },
+      }),
+    );
+    await settleAsyncRender();
+
+    expect(view.getByText("Queue paused because a message failed")).not.toBeNull();
+    expect(view.queryByText("Queue paused because you interrupted")).toBeNull();
+    await act(async () => {
+      fireEvent.click(view.getByRole("button", { name: "Resume" }));
+      await Promise.resolve();
+    });
+    expect(resumeCalls).toBe(1);
+  });
+
   test("shows failed rows as Retry and locks every destructive action while in flight", async () => {
     installComposerShellWindowApi();
     const base = buildComposerShellModel();

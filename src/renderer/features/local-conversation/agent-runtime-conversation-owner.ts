@@ -22,6 +22,7 @@ import { buildAgentRuntimeAttachmentSource } from "../../../shared/agent-runtime
 import {
   CODEX_INTERRUPTED_STEER_REASON,
   EMPTY_CODEX_QUEUED_FOLLOW_UP_PROJECTION,
+  type CodexQueuedFollowUpPause,
   type CodexQueuedFollowUpProjection,
   type CodexQueuedFollowUp,
 } from "../../../shared/codex-queued-follow-up-state";
@@ -189,6 +190,25 @@ function controlConversation(value: AgentRuntimeConversation): AgentRuntimeConve
 }
 
 /** A window-scoped query cache over canonical engine events, with no execution writer or second reducer. */
+/**
+ * Why an Agent chat's queue waits for an explicit resume, read from the Run that ended last:
+ * Stop holds it, and so does a message the provider could not run.
+ */
+export function agentRuntimeQueueHoldPause(
+  runs: readonly Pick<AgentRuntimeRun, "status" | "ordinal">[],
+): CodexQueuedFollowUpPause {
+  const latest = runs.reduce<Pick<AgentRuntimeRun, "status" | "ordinal"> | undefined>(
+    (latest, run) =>
+      run.status !== "queued" && (!latest || latest.ordinal < run.ordinal) ? run : latest,
+    undefined,
+  );
+  if (latest?.status === "interrupted" || latest?.status === "cancelled")
+    return { kind: "interrupted", reason: CODEX_INTERRUPTED_STEER_REASON };
+  if (latest?.status === "failed")
+    return { kind: "held", reason: "Queue paused because a message failed" };
+  return { kind: "held", reason: "Queue paused" };
+}
+
 export class AgentRuntimeConversationOwner {
   readonly readOwner: CodexTranscriptReadOwner;
   readonly #transport: AgentRuntimeReadTransport;
@@ -665,9 +685,8 @@ export class AgentRuntimeConversationOwner {
             collaborationMode: null,
             serviceTier: null,
             summary: null,
-            pause: row.held
-              ? { kind: "interrupted", reason: CODEX_INTERRUPTED_STEER_REASON }
-              : null,
+            // The reason follows the latest Run when the view is published.
+            pause: row.held ? { kind: "held", reason: "" } : null,
           });
         }
         if (
@@ -1452,6 +1471,24 @@ export class AgentRuntimeConversationOwner {
       };
     });
   }
+  /** Held rows explain the hold from the Run that ended last; unchanged rows keep identity. */
+  #heldQueueEntries(): readonly CodexQueuedFollowUp[] {
+    const pause = agentRuntimeQueueHoldPause(
+      this.#state.conversation?.snapshot.projection.runs ?? [],
+    );
+    if (
+      this.#queueEntries.every(
+        (entry) =>
+          entry.pause === null ||
+          (entry.pause.kind === pause.kind && entry.pause.reason === pause.reason),
+      )
+    )
+      return this.#queueEntries;
+    this.#queueEntries = this.#queueEntries.map((entry) =>
+      entry.pause === null ? entry : { ...entry, pause },
+    );
+    return this.#queueEntries;
+  }
   #queuedFollowUps(): CodexQueuedFollowUpProjection {
     if (!this.#transcriptActive) return EMPTY_CODEX_QUEUED_FOLLOW_UP_PROJECTION;
     return {
@@ -1460,7 +1497,7 @@ export class AgentRuntimeConversationOwner {
       error: this.#queueError,
       ledgerRevision: this.#queuePage?.snapshotSequence ?? 0,
       projectionRevision: this.#queuePage?.snapshotSequence ?? 0,
-      entries: this.#queueEntries,
+      entries: this.#heldQueueEntries(),
       hasPreviousPage: this.#queuePrevious.length > 0,
       hasNextPage: this.#queuePage?.nextCursor != null,
     };

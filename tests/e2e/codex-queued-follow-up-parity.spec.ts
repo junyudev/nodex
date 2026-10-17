@@ -3,9 +3,6 @@ import fs from "node:fs";
 import path from "node:path";
 import { ElectronScenarioHarness } from "../../scripts/scenarios/harness/electron-e2e-harness";
 import { prepareScenarioCodexAppServerRuntimeSync } from "../../scripts/scenarios/runtime/agent-runtime-fixture";
-import type { CodexQueuedMessageState } from "../../src/shared/codex-queued-message";
-import type { IpcApi } from "../../src/shared/ipc-api";
-import type { TurnStartParams } from "@nodex/codex-app-server-protocol/v2";
 
 const repositoryRoot = process.cwd();
 const interruptedReason = "Queue paused because you interrupted";
@@ -94,7 +91,7 @@ const resumeQueue = async (page: Page): Promise<void> => {
     .click();
 };
 
-const readAcceptedPrompts = (logPath: string): string[] => {
+const readAcceptedInputs = (logPath: string): string[] => {
   const entries = fs
     .readFileSync(logPath, "utf8")
     .split("\n")
@@ -114,11 +111,19 @@ const readAcceptedPrompts = (logPath: string): string[] => {
     });
 };
 
-test("persists an interrupted queue across restart and continues FIFO after an explicit send", async () => {
+// A Turn that follows history Codex has not seen carries that history ahead of the user's words.
+const readAcceptedPrompts = (logPath: string): string[] =>
+  readAcceptedInputs(logPath).map((text) => text.split("\nUser message:\n").at(-1)!);
+
+const sendNow = async (page: Page, prompt: string): Promise<void> => {
+  await queuedRow(page, prompt)
+    .getByRole("button", { name: "Submit without interrupting the model" })
+    .click();
+};
+
+test("persists an interrupted queue across restart and sends the chosen message before the rest", async () => {
   test.setTimeout(120_000);
-  const harness = await createQueueHarness("codex-queued-follow-up-restart", {
-    NODEX_FAKE_CODEX_RESUME_CLOSING_ATTEMPTS: "1",
-  });
+  const harness = await createQueueHarness("codex-queued-follow-up-restart");
 
   try {
     const scenarioLogPath = path.join(harness.profile.runRoot, ".fake-codex", "requests.jsonl");
@@ -133,47 +138,26 @@ test("persists an interrupted queue across restart and continues FIFO after an e
     });
     await expect(queuedRow(page, "First queued follow-up")).toBeVisible();
     await expect(queuedRow(page, "Second queued follow-up")).toBeVisible();
-
-    const resumeAttempts = fs
-      .readFileSync(scenarioLogPath, "utf8")
-      .split("\n")
-      .filter(Boolean)
-      .map(
-        (line) =>
-          JSON.parse(line) as { method: string; params: { requestId: string; closing: boolean } },
-      )
-      .filter((entry) => entry.method === "resume-attempt");
-    expect(resumeAttempts.map(({ params }) => params.closing)).toEqual([true, false]);
-    expect(new Set(resumeAttempts.map(({ params }) => params.requestId)).size).toBe(2);
-
-    await resumeQueue(page);
-    await expect(page.getByText(interruptedReason, { exact: true })).toHaveCount(0);
-    await expect(queuedRow(page, "First queued follow-up")).toBeVisible();
-    await expect(queuedRow(page, "Second queued follow-up")).toBeVisible();
     expect(readAcceptedPrompts(scenarioLogPath)).toEqual(["Hold the active turn for queue parity"]);
-    await queuedRow(page, "First queued follow-up")
-      .getByRole("button", { name: "Submit without interrupting the model" })
-      .click();
-    await expect(queuedRow(page, "First queued follow-up")).toHaveCount(0, {
-      timeout: 30_000,
-    });
-    await expect(page.getByText("The task completed successfully.").first()).toBeVisible();
-    await expect(queuedRow(page, "Second queued follow-up")).toHaveCount(0, {
-      timeout: 30_000,
-    });
+
+    // Sending a held message while idle sends exactly that one; the queue follows in order.
+    await sendNow(page, "Second queued follow-up");
+    await expect(queuedRow(page, "Second queued follow-up")).toHaveCount(0, { timeout: 30_000 });
+    await expect(queuedRow(page, "First queued follow-up")).toHaveCount(0, { timeout: 30_000 });
+    await expect(page.getByText(interruptedReason, { exact: true })).toHaveCount(0);
     await expect
       .poll(() => readAcceptedPrompts(scenarioLogPath))
       .toEqual([
         "Hold the active turn for queue parity",
-        "First queued follow-up",
         "Second queued follow-up",
+        "First queued follow-up",
       ]);
   } finally {
     await harness.close();
   }
 });
 
-test("keeps a failed head in place while a later row is sent and retried manually", async () => {
+test("holds the rest of the queue after a message fails until it is resumed", async () => {
   test.setTimeout(120_000);
   const failedPrompt = "First queued follow-up";
   const laterPrompt = "Second queued follow-up";
@@ -186,26 +170,27 @@ test("keeps a failed head in place while a later row is sent and retried manuall
     const page = await queueAndInterrupt(harness, [failedPrompt, laterPrompt]);
     await resumeQueue(page);
 
-    const failedRow = queuedRow(page, failedPrompt);
-    const laterRow = queuedRow(page, laterPrompt);
-    await failedRow.getByRole("button", { name: "Submit without interrupting the model" }).click();
+    // The failed message stays in the conversation with its error; the next one waits.
+    await expect(queuedRow(page, failedPrompt)).toHaveCount(0, { timeout: 30_000 });
     await expect(
-      failedRow.getByRole("button", { name: "Try sending this queued message again" }),
-    ).toBeVisible({ timeout: 30_000 });
-    await expect(laterRow).toBeVisible();
+      page.getByText("The provider could not start this turn.", { exact: false }),
+    ).toBeVisible();
+    await expect(
+      page.getByText("Queue paused because a message failed", { exact: true }),
+    ).toBeVisible();
+    await expect(queuedRow(page, laterPrompt)).toBeVisible();
+    expect(readAcceptedPrompts(scenarioLogPath)).toEqual(["Hold the active turn for queue parity"]);
 
-    await laterRow.getByRole("button", { name: "Submit without interrupting the model" }).click();
-    await expect(laterRow).toHaveCount(0, { timeout: 30_000 });
-    await expect(failedRow).toBeVisible();
+    await resumeQueue(page);
+    await expect(queuedRow(page, laterPrompt)).toHaveCount(0, { timeout: 30_000 });
     await expect
       .poll(() => readAcceptedPrompts(scenarioLogPath))
       .toEqual(["Hold the active turn for queue parity", laterPrompt]);
-
-    await failedRow.getByRole("button", { name: "Try sending this queued message again" }).click();
-    await expect(failedRow).toHaveCount(0, { timeout: 30_000 });
-    await expect
-      .poll(() => readAcceptedPrompts(scenarioLogPath))
-      .toEqual(["Hold the active turn for queue parity", laterPrompt, failedPrompt]);
+    // Codex learns that the failed message never ran.
+    const handoff = readAcceptedInputs(scenarioLogPath).at(-1)!;
+    expect(handoff).toContain(failedPrompt);
+    expect(handoff).toContain("The provider could not start this turn.");
+    await expect(page.getByText("The task completed successfully.").first()).toBeVisible();
   } finally {
     await harness.close();
   }

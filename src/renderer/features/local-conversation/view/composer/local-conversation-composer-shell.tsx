@@ -520,7 +520,9 @@ function QueuePanel({
   const queuedFollowUpRows = model.composerShell.queuedFollowUpRows;
   const queueStatus = model.composerShell.queuedFollowUpStatus ?? "ready";
   const queueError = model.composerShell.queuedFollowUpError ?? null;
-  const hasInterruptedRows = queuedFollowUpRows.some((row) => row.pauseKind === "interrupted");
+  const queuePause = queuedFollowUpRows.find(
+    (row) => row.pauseKind === "interrupted" || row.pauseKind === "held",
+  );
   const hasInFlightRow = queuedFollowUpRows.some((row) => row.isInFlight === true);
   const [isResumePending, setResumePending] = useState(false);
   const sensors = useSensors(
@@ -582,7 +584,7 @@ function QueuePanel({
   return (
     <ComposerShellCard showRoundedTop={showRoundedTop}>
       <div className="vertical-scroll-fade-mask hide-scrollbar flex max-h-[30dvh] flex-col gap-px overflow-x-hidden overflow-y-auto px-3 py-row-y">
-        {hasInterruptedRows ? (
+        {queuePause ? (
           <>
             <div className="group flex min-w-0 items-center justify-between gap-2 py-0.5 text-sm">
               <div className="flex min-w-0 flex-1 items-center gap-1.5">
@@ -590,7 +592,9 @@ function QueuePanel({
                   <QueuePauseIcon className="text-token-text-tertiary/70" />
                 </span>
                 <div className="text-size-chat min-w-0 flex-1 leading-4 text-token-foreground">
-                  Queue paused because you interrupted
+                  {queuePause.pauseKind === "held"
+                    ? queuePause.pausedReason
+                    : "Queue paused because you interrupted"}
                 </div>
               </div>
               <QueueLabelActionButton

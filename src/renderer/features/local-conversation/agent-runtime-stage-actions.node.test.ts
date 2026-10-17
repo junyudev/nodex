@@ -95,6 +95,16 @@ function fixture() {
     clearRequests: () => {
       state = { ...state, view: { ...state.view!, requests: [] } };
     },
+    settle: () => {
+      state = {
+        ...state,
+        conversation: {
+          snapshot: {
+            projection: { runs: [{ id: "run:completed", ordinal: 2, status: "completed" }] },
+          },
+        },
+      } as unknown as AgentRuntimeConversationOwnerSnapshot;
+    },
   };
 }
 
@@ -277,6 +287,14 @@ describe("Agent Runtime stage commands", () => {
       "identity changed",
     );
     expect(f.queue).toHaveBeenCalledTimes(3);
+  });
+  it("sends exactly the chosen queued message when the chat is idle", async () => {
+    const f = fixture();
+    f.settle();
+    await f.actions.onSendQueuedFollowUpNow!("child", "queued:b");
+    expect(f.queue.mock.calls.map(([input]) => input)).toEqual([
+      expect.objectContaining({ ...f.target, action: "resume", runId: "queued:b" }),
+    ]);
   });
 
   it("forks from the exact observed Run into a new Session and opens that accepted identity", async () => {

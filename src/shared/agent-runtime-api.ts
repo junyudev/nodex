@@ -148,7 +148,7 @@ export type AgentRuntimePreparationRetryInput = AgentRuntimeSessionTarget & {
   readonly workLocally: boolean;
 };
 export type AgentRuntimeQueueInput = AgentRuntimeSessionTarget & { readonly requestId: string } & (
-    | { readonly action: "resume" }
+    | { readonly action: "resume"; readonly runId?: string }
     | { readonly action: "cancel"; readonly runId: string }
     | {
         readonly action: "reorder";

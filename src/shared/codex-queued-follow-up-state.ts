@@ -14,6 +14,11 @@ export type CodexQueuedFollowUpPause =
   | {
       readonly kind: "failed";
       readonly reason: string;
+    }
+  // The whole queue waits for an explicit resume; the reason says why.
+  | {
+      readonly kind: "held";
+      readonly reason: string;
     };
 
 /** Composer presentation derived from the manager's captured queue messages. */

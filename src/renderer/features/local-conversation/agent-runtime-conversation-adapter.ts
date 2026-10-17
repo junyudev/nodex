@@ -536,8 +536,9 @@ export function createAgentRuntimeStageActions(input: {
         .conversation?.snapshot.projection.runs.findLast((run) =>
           ["preparing", "starting", "running", "waiting"].includes(run.status),
         );
+      // An idle chat sends exactly this message now; the queue continues behind it.
       if (!activeRun) {
-        await transport.queue({ ...target, requestId: createUuidV7(), action: "resume" });
+        await transport.queue({ ...target, requestId: createUuidV7(), action: "resume", runId });
         return;
       }
       await transport.queue({

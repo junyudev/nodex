@@ -135,6 +135,8 @@ Session and Thread share one read owner. Queue observation reads at most 25 meta
 rows per page with canonical Run and message identities. An open queue hydrates bounded
 previews only for its visible page; editing explicitly reads that message. Collapsed
 queues and controls do not load prompts. A held queue remains paused until an explicit queue command resumes it.
+Sending a queued message while the chat is idle resumes the queue from that message; the
+others follow in their order.
 
 The initial window admits at most five user Turns and 500 distinct items. Its complete
 public envelope, including metadata, stays within 1 MiB. Root windows retain visible

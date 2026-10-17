@@ -477,6 +477,59 @@ it.effect.each(["thread.stop", "run.interrupt"] as const)(
     }).pipe(Effect.provide(layerTest.pipe(Layer.provideMerge(TestClock.layer())))),
 );
 
+it.effect("resuming a held queue from a chosen message sends it before the rest", () =>
+  Effect.gen(function* () {
+    const orchestrator = yield* Orchestrator.OrchestratorV2;
+    const projections = yield* ProjectionStore.ProjectionStoreV2;
+    const threadId = ThreadId.make("thread:resume-chosen");
+    yield* createWatchingThread(threadId, 13);
+    yield* send(threadId, "first", "start_immediately");
+    for (const text of ["a", "b", "c"]) yield* send(threadId, text, "queue_after_active");
+    const now = yield* DateTime.now;
+    const [first, ...queued] = (yield* orchestrator.getThreadProjection(threadId)).runs;
+    for (const run of [first!, ...queued]) {
+      yield* projections.apply({
+        id: EventId.make(`event:resume-chosen:hold:${run.id}`),
+        type: "run.updated",
+        threadId,
+        runId: run.id,
+        occurredAt: now,
+        payload:
+          run.id === first!.id
+            ? { ...run, status: "completed", completedAt: now }
+            : { ...run, queueHeld: true },
+      });
+    }
+    const [a, b, c] = queued;
+    const refused = yield* Effect.exit(
+      orchestrator.dispatch({
+        type: "queue.resume",
+        commandId: CommandId.make("resume-from-finished"),
+        threadId,
+        runId: first!.id,
+      }),
+    );
+    assert.isTrue(Exit.isFailure(refused));
+    yield* orchestrator.dispatch({
+      type: "queue.resume",
+      commandId: CommandId.make("resume-from-b"),
+      threadId,
+      runId: b!.id,
+    });
+    const runs = (yield* orchestrator.getThreadProjection(threadId)).runs;
+    const read = (id: typeof a) => runs.find((run) => run.id === id!.id)!;
+    assert.equal(read(b).status, "starting");
+    assert.deepEqual(
+      [a, c].map((run) => [read(run).status, read(run).queueHeld]),
+      [
+        ["queued", false],
+        ["queued", false],
+      ],
+    );
+    assert.isTrue(read(a).queuePosition! < read(c).queuePosition!);
+  }).pipe(Effect.provide(layerTest)),
+);
+
 it.effect("a delegated task that cannot be stopped fails the walk after its siblings stop", () =>
   Effect.gen(function* () {
     const orchestrator = yield* Orchestrator.OrchestratorV2;

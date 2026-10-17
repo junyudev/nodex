@@ -11,6 +11,7 @@ import type {
 } from "../../../shared/agent-runtime-api";
 import {
   AgentRuntimeConversationOwner,
+  agentRuntimeQueueHoldPause,
   type AgentRuntimeReadTransport,
 } from "./agent-runtime-conversation-owner";
 import { hasDurableCanonicalFirstSubmission } from "../conversation-launch/session-first-submission-owner";
@@ -669,7 +670,8 @@ test("retires only live resident keys and the addressed delivery without rereadi
   expect(after.subagents[2]).toBe(before.subagents[2]);
   expect(after.subagents[3]).toBe(before.subagents[3]);
   expect(owner.getSnapshot().view?.queuedFollowUps.entries).toMatchObject([
-    { followUpId: "held", prompt: "Keep my queued intent", pause: { kind: "interrupted" } },
+    // The latest Run here is still running, so the hold has no recorded cause.
+    { followUpId: "held", prompt: "Keep my queued intent", pause: { kind: "held" } },
   ]);
   wire.emit({
     sequence: 3,
@@ -1069,7 +1071,7 @@ describe("Agent Runtime keyed transcript reads", () => {
           clientUserMessageId: run.userMessageId,
           prompt: "Queued work",
           deliveryOwner: "server",
-          pause: { kind: "interrupted" },
+          pause: { kind: "held", reason: "Queue paused" },
         },
       ]),
     );
@@ -1680,4 +1682,21 @@ test("preserves a native Session question's unknown Run across display and physi
   });
   expect(owner.getSnapshot().view?.requests).toEqual([]);
   release();
+});
+
+test("a held queue explains itself from the Run that ended last", () => {
+  const run = (ordinal: number, status: AgentSnapshot["projection"]["runs"][number]["status"]) => ({
+    ordinal,
+    status,
+  });
+  expect(
+    agentRuntimeQueueHoldPause([run(1, "completed"), run(2, "interrupted"), run(3, "queued")]),
+  ).toMatchObject({ kind: "interrupted" });
+  expect(
+    agentRuntimeQueueHoldPause([run(1, "interrupted"), run(2, "failed"), run(3, "queued")]),
+  ).toEqual({ kind: "held", reason: "Queue paused because a message failed" });
+  expect(agentRuntimeQueueHoldPause([run(1, "queued")])).toEqual({
+    kind: "held",
+    reason: "Queue paused",
+  });
 });

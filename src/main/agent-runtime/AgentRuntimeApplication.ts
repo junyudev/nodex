@@ -1426,7 +1426,7 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
         input.orderedRunIds.some((id) => !validId(id)))
     )
       return yield* failure("queue", "Queue order is invalid");
-    if ("runId" in input && !validId(input.runId))
+    if ("runId" in input && input.runId !== undefined && !validId(input.runId))
       return yield* failure("queue", "Run identity is invalid");
     if (input.action === "steer" && !validId(input.targetRunId))
       return yield* failure("queue", "Target Run identity is invalid");
@@ -1440,7 +1440,11 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
     const base = { threadId: loaded.threadId, commandId: commandId("queue", identity) };
     switch (input.action) {
       case "resume":
-        return yield* dispatch(connection, { ...base, type: "queue.resume" });
+        return yield* dispatch(connection, {
+          ...base,
+          type: "queue.resume",
+          ...(input.runId === undefined ? {} : { runId: input.runId }),
+        });
       case "cancel":
         return yield* dispatch(connection, {
           ...base,

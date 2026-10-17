@@ -3177,6 +3177,8 @@ export const OrchestrationV2Command = Schema.Union([
     type: Schema.Literal("queue.resume"),
     commandId: CommandId,
     threadId: ThreadId,
+    /** Sends this queued message first; the rest of the queue keeps its order. */
+    runId: Schema.optional(RunId),
   }),
   Schema.Struct({
     type: Schema.Literal("queued-run.reorder"),

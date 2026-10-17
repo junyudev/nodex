@@ -1139,7 +1139,7 @@ export interface ThreadComposerShellQueuedFollowUpRowModel {
   displayText: string;
   collaborationMode?: CodexCollaborationModeKind | null;
   pausedReason?: string | null;
-  pauseKind?: "interrupted" | "failed" | null;
+  pauseKind?: "interrupted" | "failed" | "held" | null;
   isInFlight?: boolean;
   imagePreviewSource?: string | null;
   ledgerRevision?: number;

@@ -135,7 +135,11 @@ export const AgentRuntimePreparationRetrySchema = AgentRuntimeTargetSchema.exten
   workLocally: z.boolean(),
 }).strict();
 export const AgentRuntimeQueueSchema = z.discriminatedUnion("action", [
-  AgentRuntimeTargetSchema.extend({ requestId: id, action: z.literal("resume") }).strict(),
+  AgentRuntimeTargetSchema.extend({
+    requestId: id,
+    action: z.literal("resume"),
+    runId: id.optional(),
+  }).strict(),
   AgentRuntimeTargetSchema.extend({
     requestId: id,
     action: z.literal("cancel"),

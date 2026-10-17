@@ -11237,6 +11237,31 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         }
         const now = yield* DateTime.now;
         const queued = projection.runs.filter((run) => run.status === "queued");
+        const positions = new Map<RunId, number>();
+        if (command.runId !== undefined) {
+          const order = {
+            runs: queued,
+            messages: (yield* loadProjectionForCommand(command, ["messages"], {
+              messageRoles: ["user"],
+            })).messages,
+          };
+          const delivery = queuedRunsInDeliveryOrder(order);
+          const first = delivery.find((run) => run.id === command.runId);
+          if (first === undefined) {
+            return yield* new OrchestratorDispatchError({
+              commandId: command.commandId,
+              commandType: command.type,
+              cause: `Run ${command.runId} is not queued.`,
+            });
+          }
+          // The chosen message goes next, behind only automatic completion deliveries.
+          const automatic = delivery.filter((run) => isAutomaticCompletionRun(order, run));
+          [
+            ...automatic,
+            ...(automatic.includes(first) ? [] : [first]),
+            ...delivery.filter((run) => run !== first && !automatic.includes(run)),
+          ].forEach((run, index) => positions.set(run.id, index + 1));
+        }
         for (const run of queued) {
           yield* emit(
             events,
@@ -11247,7 +11272,11 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
             runId: run.id,
             providerInstanceId: run.providerInstanceId,
             occurredAt: now,
-            payload: { ...run, queueHeld: false },
+            payload: {
+              ...run,
+              queueHeld: false,
+              queuePosition: positions.get(run.id) ?? run.queuePosition,
+            },
           });
         }
         if (queued.length === 0) {
