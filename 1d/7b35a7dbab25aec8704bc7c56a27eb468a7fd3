@@ -51,6 +51,7 @@ src/shared/workbench-scene.ts
   s_bd811abbf24a41::t_4ae58c9bdbcfb5 1322-1323
 src/renderer/components/workbench/codex-sidebar.tsx
   s_bd811abbf24a41::t_7b6e28b1537c75 1296-1303
+  s_bd811abbf24a41::t_fcbfe51e5321ac 989,1017-1018
 tests/e2e/nfm-editor-lifecycle.spec.ts
   s_bd811abbf24a41::t_eca072d19df153 2,16
 src/renderer/lib/workbench-presentation-lifecycle.test.tsx
@@ -209,6 +210,7 @@ src/renderer/components/workbench/workbench-runtime.tsx
   s_bd811abbf24a41::t_e9362bc0ed691f 3502
   s_bd811abbf24a41::t_20cae75f3593a5 3516
   s_bd811abbf24a41::t_edcfbb67a6e0a2 3499
+  s_bd811abbf24a41::t_fcbfe51e5321ac 4672
 tests/e2e/local-recovery-removal.spec.ts
   s_bd811abbf24a41::t_2e30c6259bea6b 2,17,92
 crates/nodex-store-format/src/lib.rs
@@ -245,6 +247,7 @@ docs/product-specs/workbench-shell.md
   s_bd811abbf24a41::t_d9a6cd62a3a8c8 229
   s_bd811abbf24a41::t_0865cdd05b3366 235
   s_bd811abbf24a41::t_e03d3474748b5d 22,25,236
+  s_bd811abbf24a41::t_e8a8ec804bf0cb 5
 docs/KEYBOARD_SHORTCUTS.md
   s_bd811abbf24a41::t_ae5e2d74f66142 32
 src/main/core-client/inbox-workspace.node.test.ts
@@ -278,6 +281,12 @@ src/renderer/components/workbench/workbench-shell.startup.test.tsx
   s_bd811abbf24a41::t_335c876dade31f 19-22,29,36,40,42
 docs/product-specs/desktop-startup-behavior.md
   s_bd811abbf24a41::t_edcfbb67a6e0a2 52-53
+src/shared/initial-project-welcome.ts
+  s_bd811abbf24a41::t_fcbfe51e5321ac 17
+src/renderer/components/workbench/workbench-session-sidebar.tsx
+  s_bd811abbf24a41::t_fcbfe51e5321ac 11,689,741-742,1452,1782-1783,1853,2106,2134
+src/main/window-session-state.test.ts
+  s_bd811abbf24a41::t_fcbfe51e5321ac 124-128
 ---
 {
   "schema_version": "authorship/3.0.0",
