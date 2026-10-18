@@ -232,3 +232,67 @@ it.live("deletes a shared attachment only after its last live Session is deleted
     );
   }).pipe(Effect.provide(NodeServices.layer)),
 );
+
+it.live("reads durable accepted and rejected command receipts after runtime restart", () =>
+  Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem;
+    const home = yield* fs.makeTempDirectoryScoped({ prefix: "nodex-runtime-admission-" });
+    const configuration = { home, cwd: home, providers: {} };
+    const use = (verify: boolean) =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const runtime = yield* AgentRuntime;
+          const request = (method: string, input: unknown) =>
+            runtime.handle({ id: `${method}:${JSON.stringify(input)}`, method, input });
+          if (!verify) {
+            yield* request("project.upsert", {
+              id: "project:one",
+              title: "Test",
+              workspaceRoot: home,
+            });
+            yield* request("command.dispatch", {
+              type: "thread.create",
+              commandId: "create:one",
+              threadId: "thread:one",
+              projectId: "project:one",
+              title: "Test",
+              modelSelection: { instanceId: "codex", model: "test" },
+              runtimeMode: "full-access",
+              interactionMode: "default",
+              branch: null,
+              worktreePath: null,
+              createdBy: "user",
+              creationSource: "web",
+            });
+            const rejected = yield* request("command.dispatch", {
+              type: "thread.archive",
+              commandId: "reject:one",
+              threadId: "thread:missing",
+            }).pipe(Effect.result);
+            expect(rejected._tag).toBe("Failure");
+            return;
+          }
+          const accepted = yield* request("command.receipt", {
+            commandId: "create:one",
+            threadId: "thread:one",
+          });
+          expect(accepted).toMatchObject({ status: "accepted", error: null });
+          const rejected = yield* request("command.receipt", {
+            commandId: "reject:one",
+            threadId: "thread:missing",
+          });
+          expect(rejected).toMatchObject({ status: "rejected" });
+          expect(
+            yield* request("command.receipt", { commandId: "never-sent", threadId: "thread:one" }),
+          ).toBeNull();
+          const mismatch = yield* request("command.receipt", {
+            commandId: "create:one",
+            threadId: "thread:other",
+          }).pipe(Effect.result);
+          expect(mismatch._tag).toBe("Failure");
+        }).pipe(Effect.provide(Application.layer(configuration, () => Effect.void))),
+      );
+    yield* use(false);
+    yield* use(true);
+  }).pipe(Effect.provide(NodeServices.layer)),
+);

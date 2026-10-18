@@ -1,6 +1,11 @@
 import { useState, type ReactNode } from "react";
 import { motion } from "motion/react";
-import type { InboxEntryKind, InboxItem, InboxProposal } from "../../../shared/inbox";
+import type {
+  InboxEntryKind,
+  InboxItem,
+  InboxProposal,
+  InboxPageBasis,
+} from "../../../shared/inbox";
 import type { Project } from "../../../shared/types";
 import {
   ArchiveIcon,
@@ -8,6 +13,7 @@ import {
   DispatchIcon,
   EditIcon,
   RetryIcon,
+  ThreadIcon,
   AskAiIcon,
 } from "@/components/shared/icons";
 import { NodexButton } from "@/components/ui/button";
@@ -19,6 +25,7 @@ import {
   InboxIconActions,
   type InboxIcon,
 } from "./inbox-icon-action";
+import { InboxGroupMembers, type InboxGroupMember } from "./inbox-group-members";
 import { InboxKindControl } from "./inbox-kind-control";
 import { InboxMessageEditor } from "./inbox-message-editor";
 import { InboxOutcomeLine } from "./inbox-outcome";
@@ -30,7 +37,7 @@ import {
 } from "./inbox-presentation";
 import {
   InboxDispatchEditor,
-  draftFromAction,
+  draftForInboxItem,
   type InboxDispatchDraft,
 } from "./inbox-dispatch-editor";
 import type { InboxActions } from "./use-inbox-actions";
@@ -102,16 +109,16 @@ function Decision({
   onClick,
 }: {
   readonly label: string;
-  /** The exact destination, revealed on hover so the strip never states it twice. */
+  /** Canonical destination; the user can check it before deciding. */
   readonly target: string | null;
   readonly icon: InboxIcon;
   readonly variant?: "primary" | "ghost";
   readonly onClick: () => void;
 }) {
   const button = (
-    <NodexButton size="xs" variant={variant} className="shrink-0 gap-1.5" onClick={onClick}>
-      <Icon className="icon-xs" />
-      {label}
+    <NodexButton size="xs" variant={variant} className="min-w-0 gap-1.5" onClick={onClick}>
+      <Icon className="icon-xs shrink-0" />
+      <span className="truncate">{target ?? label}</span>
     </NodexButton>
   );
   return target ? (
@@ -175,6 +182,8 @@ export interface InboxTriageParts {
  * dispatch it by hand. Only a button here can make anything run. `Edit` rewrites the message
  * itself; dispatching by hand lives in the message menu.
  */
+const NO_MEMBERS: readonly InboxGroupMember[] = [];
+
 export function InboxTriage({
   item,
   projects,
@@ -187,8 +196,14 @@ export function InboxTriage({
   onManualDraftChange,
   onEditAsPage,
   children,
+  members = NO_MEMBERS,
+  onOpenPage,
+  onOpenSession,
 }: {
   readonly item: InboxItem;
+  readonly members?: readonly InboxGroupMember[];
+  readonly onOpenPage?: (pageId: string) => void;
+  readonly onOpenSession?: (sessionId: string) => void;
   readonly projects: readonly Project[];
   /** The Project whose Inbox holds the message, or null for the Library Inbox. */
   readonly inboxProjectId: string | null;
@@ -206,21 +221,26 @@ export function InboxTriage({
   /** Places the strip and the action row around the message. */
   readonly children: (parts: InboxTriageParts) => ReactNode;
 }) {
-  const [editing, setEditing] = useState(false);
+  const [editing, setEditing] = useState<{
+    readonly baseText: string;
+    readonly basis: InboxPageBasis;
+  } | null>(null);
+  const [refining, setRefining] = useState<InboxProposal | null>(null);
   const model = inboxTriageModel(item, suggestionsEnabled);
   const message = item.body;
   const done = () => void actions.setState([item.pageId], "done");
   const keep = () => void actions.keep([item.pageId]);
-  const dispatchByHand = () =>
-    onManualDraftChange(
-      draftFromAction({ type: "new_chat", projectId: inboxProjectId, prompt: message }, message),
-    );
+  const dispatchByHand = () => onManualDraftChange(draftForInboxItem(item, inboxProjectId));
   const editAction = item.bodyEditable ? (
-    <InboxIconAction label="Edit" icon={EditIcon} onClick={() => setEditing(true)} />
+    <InboxIconAction
+      label="Edit"
+      icon={EditIcon}
+      onClick={() => setEditing({ baseText: item.body, basis: item.basis })}
+    />
   ) : (
     <InboxIconAction label="Edit as Page" icon={EditIcon} onClick={onEditAsPage} />
   );
-  const keepAction = <InboxIconAction label="Keep as a note" icon={ArchiveIcon} onClick={keep} />;
+  const keepAction = <InboxIconAction label="Keep" icon={ArchiveIcon} onClick={keep} />;
   const doneAction = <InboxIconAction label="Mark done" icon={CheckmarkIcon} onClick={done} />;
   const setKind = (kind: InboxEntryKind | null) => void actions.setKind(item.pageId, kind);
   // A kind, once known, leads every strip so it can be read and corrected in place.
@@ -231,24 +251,84 @@ export function InboxTriage({
     </Row>
   );
 
+  const groupMembers = (proposal: InboxProposal) => (
+    <InboxGroupMembers
+      pageIds={proposal.pageIds}
+      members={members}
+      onOpenPage={onOpenPage}
+      onRemove={(pageId) => {
+        void actions.requestSuggestion(
+          proposal.pageIds.filter((id) => id !== pageId),
+          proposal.basis.filter((basis) => basis.pageId !== pageId),
+          {
+            proposal,
+            correction:
+              "Revise the suggestion for only the remaining supplied messages. Do not include work from the removed message.",
+          },
+        );
+      }}
+    />
+  );
+
   const parts = (): Omit<InboxTriageParts, "editor"> => {
+    if (refining)
+      return {
+        strip: (
+          <InboxMessageEditor
+            text=""
+            label="Refine suggestion"
+            saveLabel="Update suggestion"
+            onCancel={() => setRefining(null)}
+            onSave={async (correction) => {
+              const saved = await actions.requestSuggestion(refining.pageIds, refining.basis, {
+                proposal: refining,
+                correction,
+              });
+              if (saved) setRefining(null);
+              return saved;
+            }}
+          />
+        ),
+        actions: null,
+      };
     if (manualDraft) {
       return {
         strip: (
-          <InboxDispatchEditor
-            embedded
-            initial={manualDraft}
-            projects={projects}
-            inboxProjectId={inboxProjectId}
-            onCancel={() => onManualDraftChange(null)}
-            onSubmit={(action) => actions.dispatch([item.pageId], action)}
-          />
+          <div className="flex flex-col gap-2">
+            <InboxGroupMembers
+              pageIds={(manualDraft.basis ?? manualDraft.proposal?.basis ?? [item.basis]).map(
+                (basis) => basis.pageId,
+              )}
+              members={members}
+              onOpenPage={onOpenPage}
+            />
+            <InboxDispatchEditor
+              embedded
+              initial={manualDraft}
+              projects={projects}
+              inboxProjectId={inboxProjectId}
+              onCancel={() => onManualDraftChange(null)}
+              onSubmit={(action) =>
+                manualDraft.proposal
+                  ? actions.confirm(manualDraft.proposal, action)
+                  : actions.dispatch(
+                      (manualDraft.basis ?? [item.basis]).map((basis) => basis.pageId),
+                      action,
+                      manualDraft.basis ?? [item.basis],
+                    )
+              }
+            />
+          </div>
         ),
         actions: null,
       };
     }
 
-    if (groupedWithKey && model.kind === "suggestion") {
+    if (
+      groupedWithKey &&
+      (model.kind === "suggestion" ||
+        (model.kind === "undecided" && item.proposal?.state === "open"))
+    ) {
       return {
         strip: (
           <span className="text-xs text-token-description-foreground">
@@ -291,6 +371,7 @@ export function InboxTriage({
         return {
           strip: (
             <Settle id={proposal.proposalId}>
+              {groupMembers(proposal)}
               <SuggestionStrip
                 proposal={proposal}
                 kind={item.kind ?? proposal.kind}
@@ -303,6 +384,11 @@ export function InboxTriage({
               <InboxIconActions>
                 {menu}
                 {editAction}
+                <InboxIconAction
+                  label="Refine suggestion…"
+                  icon={AskAiIcon}
+                  onClick={() => setRefining(proposal)}
+                />
                 {proposal.action.type === "keep" ? null : keepAction}
                 {doneAction}
               </InboxIconActions>
@@ -334,7 +420,7 @@ export function InboxTriage({
                 <InboxIconAction
                   label="Retry"
                   icon={RetryIcon}
-                  onClick={() => void actions.requestSuggestion([item.pageId])}
+                  onClick={() => void actions.requestSuggestion([item.pageId], [item.basis])}
                 />
                 <InboxIconAction label="Dispatch…" icon={DispatchIcon} onClick={dispatchByHand} />
                 {keepAction}
@@ -349,7 +435,12 @@ export function InboxTriage({
             <Settle id="dispatch-failed">
               <Row>
                 {kindControl}
-                <Notice tone="error">Couldn’t dispatch — {model.message}</Notice>
+                <Notice tone="error">
+                  {model.proposal.failureKind === "unknown"
+                    ? "Delivery not confirmed"
+                    : "Couldn’t dispatch"}{" "}
+                  — {model.message}
+                </Notice>
               </Row>
             </Settle>
           ),
@@ -357,17 +448,25 @@ export function InboxTriage({
             <Row>
               <InboxIconActions>
                 {menu}
+                {model.proposal.failureKind === "unknown" ? (
+                  model.proposal.chat && onOpenSession ? (
+                    <InboxIconAction
+                      label="Open chat"
+                      icon={ThreadIcon}
+                      onClick={() => onOpenSession(model.proposal.chat!.sessionId)}
+                    />
+                  ) : null
+                ) : model.proposal.failureKind === "rejected" ? null : (
+                  <InboxIconAction
+                    label="Retry"
+                    icon={RetryIcon}
+                    onClick={() => void actions.retryDispatch(model.proposal.proposalId)}
+                  />
+                )}
                 <InboxIconAction
-                  label="Retry"
-                  icon={RetryIcon}
-                  onClick={() => void actions.retryDispatch(model.proposal.proposalId)}
-                />
-                <InboxIconAction
-                  label="Dispatch…"
+                  label={model.proposal.failureKind === "unknown" ? "Send again…" : "Dispatch…"}
                   icon={DispatchIcon}
-                  onClick={() =>
-                    onManualDraftChange(draftFromAction(model.proposal.action, message))
-                  }
+                  onClick={() => onManualDraftChange(draftForInboxItem(item, inboxProjectId))}
                 />
                 {keepAction}
                 {doneAction}
@@ -378,15 +477,19 @@ export function InboxTriage({
       case "undecided":
         return {
           // With nothing suggested, the card is the message alone, plus its kind once known.
-          strip:
-            kindControl && item.kind ? (
-              <Row>
-                {kindControl}
-                <span className="text-[13px] text-token-description-foreground">
-                  {INBOX_KIND_LABELS[item.kind]}
-                </span>
-              </Row>
-            ) : null,
+          strip: model.reason ? (
+            <div className="flex flex-col gap-2">
+              {item.proposal ? groupMembers(item.proposal) : null}
+              <Notice tone="quiet">{model.reason}</Notice>
+            </div>
+          ) : kindControl && item.kind ? (
+            <Row>
+              {kindControl}
+              <span className="text-[13px] text-token-description-foreground">
+                {INBOX_KIND_LABELS[item.kind]}
+              </span>
+            </Row>
+          ) : null,
           actions: (
             <Row>
               <InboxIconActions>
@@ -394,9 +497,13 @@ export function InboxTriage({
                 {editAction}
                 {suggestionsEnabled ? (
                   <InboxIconAction
-                    label="Suggest"
+                    label={item.proposal?.action.type === "none" ? "Refine suggestion…" : "Suggest"}
                     icon={AskAiIcon}
-                    onClick={() => void actions.requestSuggestion([item.pageId])}
+                    onClick={() =>
+                      item.proposal?.action.type === "none"
+                        ? setRefining(item.proposal)
+                        : void actions.requestSuggestion([item.pageId], [item.basis])
+                    }
                   />
                 ) : null}
                 {keepAction}
@@ -425,11 +532,12 @@ export function InboxTriage({
     return children({
       editor: (
         <InboxMessageEditor
-          text={item.body}
-          onCancel={() => setEditing(false)}
+          text={editing.baseText}
+          currentText={item.body}
+          onCancel={() => setEditing(null)}
           onSave={async (text) => {
-            const saved = await actions.edit(item.pageId, item.body, text);
-            if (saved) setEditing(false);
+            const saved = await actions.edit(item.pageId, editing.baseText, text, editing.basis);
+            if (saved) setEditing(null);
             return saved;
           }}
         />

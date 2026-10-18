@@ -156,6 +156,7 @@ const setup = (
     runtimeId: "engine",
     failMessage: false,
     failThreadCreate: false,
+    refusedThreadReceipt: false,
     failCore: false,
     failCoreAcknowledgment: false,
     failBindingProof: false,
@@ -331,6 +332,19 @@ const setup = (
       calls.push({ method, input });
       order.push(method);
       if (method === "providers.read") return providers as AgentRuntimeOperations[M]["output"];
+      if (method === "command.receipt") {
+        const request = input as AgentRuntimeOperations["command.receipt"]["input"];
+        const admitted = commands.get(request.commandId);
+        if (admitted?.type === "thread.create" && state.refusedThreadReceipt)
+          return {
+            status: "rejected",
+            sequence: commands.size,
+            error: "Model unavailable",
+          } as AgentRuntimeOperations[M]["output"];
+        return (
+          admitted ? { status: "accepted", sequence: commands.size, error: null } : null
+        ) as AgentRuntimeOperations[M]["output"];
+      }
       if (method === "text.generate-structured")
         return (
           state.generatedTitle === null
@@ -994,6 +1008,99 @@ it.effect(
     }),
 );
 
+it.effect("message admission survives archive and never materializes an unbound Session", () =>
+  Effect.gen(function* () {
+    const fixture = setup();
+    const owner = yield* fixture.owner;
+    assert.equal(
+      yield* owner.messageAdmission({
+        sessionId: launch.sessionId,
+        messageId: launch.message.messageId,
+      }),
+      null,
+    );
+    assert.equal(fixture.commands.size, 0);
+    const opened = yield* owner.launch(launch);
+    fixture.state.archived = true;
+    const receipt = yield* owner.messageAdmission({
+      sessionId: launch.sessionId,
+      messageId: launch.message.messageId,
+    });
+    assert.equal(receipt?.status, "accepted");
+    assert.equal(receipt?.threadId, opened.threadId);
+    assert.equal(
+      yield* owner.messageAdmission({ sessionId: launch.sessionId, messageId: "not-sent" }),
+      null,
+    );
+    const wrongOwner = yield* owner
+      .messageAdmission({
+        sessionId: launch.sessionId,
+        messageId: launch.message.messageId,
+        expectedExecutionRef: { runtimeId: "other", threadId: opened.threadId },
+      })
+      .pipe(Effect.result);
+    assert.equal(wrongOwner._tag, "Failure");
+    fixture.bindings.set(launch.sessionId, {
+      ...fixture.bindings.get(launch.sessionId)!,
+      runtime_thread_id: "thread:replacement",
+    });
+    const frozen = yield* owner.messageAdmission({
+      sessionId: launch.sessionId,
+      messageId: launch.message.messageId,
+      expectedExecutionRef: { runtimeId: "engine", threadId: opened.threadId },
+    });
+    assert.equal(frozen?.status, "accepted");
+    assert.equal(frozen?.threadId, opened.threadId);
+  }),
+);
+
+it.effect("a competing launch refuses admission while the original receipt stays readable", () =>
+  Effect.gen(function* () {
+    const fixture = setup();
+    const owner = yield* fixture.owner;
+    const opened = yield* owner.launch(launch);
+    const before = fixture.commands.size;
+    const error = yield* owner
+      .launch({ ...launch, launchId: "competing-launch" })
+      .pipe(Effect.flip);
+    assert.isTrue(error.admissionRejected);
+    assert.equal(fixture.commands.size, before);
+
+    fixture.bindings.set(launch.sessionId, {
+      ...fixture.bindings.get(launch.sessionId)!,
+      launch_request_id: "replacement-launch",
+      runtime_thread_id: "replacement-root",
+    });
+    const receipt = yield* owner.messageAdmission({
+      sessionId: launch.sessionId,
+      launchId: launch.launchId,
+      messageId: launch.message.messageId,
+    });
+    assert.equal(receipt?.status, "accepted");
+    assert.equal(receipt?.threadId, opened.threadId);
+  }),
+);
+
+it.effect("Thread acceptance is not message acceptance, but a refused launch is final", () =>
+  Effect.gen(function* () {
+    const fixture = setup();
+    const owner = yield* fixture.owner;
+    fixture.state.failMessage = true;
+    const result = yield* owner.launch(launch).pipe(Effect.result);
+    assert.equal(result._tag, "Failure");
+    const input = {
+      sessionId: launch.sessionId,
+      messageId: launch.message.messageId,
+      launchId: launch.launchId,
+    };
+    assert.equal(yield* owner.messageAdmission(input), null);
+    fixture.state.refusedThreadReceipt = true;
+    const refused = yield* owner.messageAdmission(input);
+    assert.equal(refused?.status, "rejected");
+    assert.equal(refused?.error, "Model unavailable");
+  }),
+);
+
 it.effect("control reads retain Session ownership without hydrating transcript history", () =>
   Effect.gen(function* () {
     const fixture = setup();
@@ -1550,6 +1657,30 @@ it.effect(
         },
       });
     }),
+);
+
+it.effect("refuses a queued message when its frozen root was rebound before admission", () =>
+  Effect.gen(function* () {
+    const fixture = setup();
+    const owner = yield* fixture.owner;
+    const opened = yield* owner.launch(launch);
+    const binding = fixture.bindings.get(launch.sessionId)!;
+    fixture.bindings.set(launch.sessionId, {
+      ...binding,
+      runtime_thread_id: "replacement-root",
+    });
+    fixture.snapshots.set("replacement-root", snapshot("replacement-root"));
+    const before = fixture.commands.size;
+    const result = yield* owner
+      .queueMessage({
+        sessionId: launch.sessionId,
+        threadId: opened.threadId,
+        message: { messageId: "frozen-follow-up", text: "Keep the original target" },
+      })
+      .pipe(Effect.result);
+    assert.equal(result._tag, "Failure");
+    assert.equal(fixture.commands.size, before);
+  }),
 );
 
 it.effect("Stop targets the selected Run and never substitutes a newer foreground Run", () =>

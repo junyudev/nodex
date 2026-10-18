@@ -3494,6 +3494,7 @@ export function WorkbenchRuntime({
         const homeProject = projects.find((project) => project.id === projectId);
         return (
           <InboxRoute
+            windowSessionId={windowSessionId}
             scope={projectInbox(projectId)}
             visible={context.active}
             projects={projects}
@@ -4937,6 +4938,7 @@ export function WorkbenchRuntime({
                                 selected
                               >
                                 <InboxRoute
+                                  windowSessionId={windowSessionId}
                                   scope={LIBRARY_INBOX}
                                   projects={projects}
                                   focusComposerToken={inboxFocusToken}

@@ -51,12 +51,14 @@ fn workspace_policy(read: &ProjectWorkspaceRead) -> ReadBudgetPolicy {
         | ProjectWorkspaceRead::BuiltinSidebarOrder { .. }
         | ProjectWorkspaceRead::SidebarSectionHostLinkWindow { .. }
         | ProjectWorkspaceRead::InboxWindow { .. }
+        | ProjectWorkspaceRead::InboxChatTargets { .. }
         | ProjectWorkspaceRead::AgentRuntimeExecutionCleanupWindow { .. }
         | ProjectWorkspaceRead::AgentRuntimeSessionBindingWindow { .. } => {
             ReadBudgetPolicy::CollectionWindow
         }
         // Caller limits are clamped to a small fixed batch with bounded content per entry.
         ProjectWorkspaceRead::InboxPendingSuggestions { .. }
+        | ProjectWorkspaceRead::InboxSuggestionRequests { .. }
         | ProjectWorkspaceRead::InboxDispatchContext { .. }
         | ProjectWorkspaceRead::InboxDispatchOutbox { .. }
         | ProjectWorkspaceRead::InboxCounts => ReadBudgetPolicy::BoundedBatch,

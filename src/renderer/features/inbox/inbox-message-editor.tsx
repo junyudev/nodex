@@ -9,10 +9,16 @@ const MAX_TEXTAREA_HEIGHT_PX = 320;
  */
 export function InboxMessageEditor({
   text,
+  currentText = text,
+  label = "Edit message",
+  saveLabel = "Save",
   onSave,
   onCancel,
 }: {
   readonly text: string;
+  readonly label?: string;
+  readonly saveLabel?: string;
+  readonly currentText?: string;
   /** Resolves false when the rewrite was not saved, so the draft stays open. */
   readonly onSave: (text: string) => Promise<boolean>;
   readonly onCancel: () => void;
@@ -62,7 +68,7 @@ export function InboxMessageEditor({
     >
       <textarea
         ref={textareaRef}
-        aria-label="Edit message"
+        aria-label={label}
         rows={1}
         value={draft}
         disabled={saving}
@@ -70,12 +76,20 @@ export function InboxMessageEditor({
         onKeyDown={handleKeyDown}
         className="w-full resize-none bg-transparent text-size-chat leading-relaxed text-inherit outline-none"
       />
+      {currentText !== text ? (
+        <details className="text-xs text-token-description-foreground">
+          <summary className="cursor-interaction">
+            Message changed elsewhere — view current text
+          </summary>
+          <p className="mt-1 whitespace-pre-wrap">{currentText}</p>
+        </details>
+      ) : null}
       <div className="flex items-center justify-end gap-1">
         <NodexButton size="xs" variant="ghost" disabled={saving} onClick={onCancel}>
           Cancel
         </NodexButton>
         <NodexButton size="xs" variant="primary" type="submit" disabled={!changed || saving}>
-          Save
+          {saveLabel}
         </NodexButton>
       </div>
     </form>

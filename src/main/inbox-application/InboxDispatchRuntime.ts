@@ -1,34 +1,29 @@
 import { createHash } from "node:crypto";
-import * as Cause from "effect/Cause";
-import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Schedule from "effect/Schedule";
-import * as Schema from "effect/Schema";
 import * as Semaphore from "effect/Semaphore";
 import * as Stream from "effect/Stream";
-import type { InboxSettings } from "../../shared/inbox";
 import { createUuidV7FromTimestamp } from "../../shared/uuid-v7";
 import { AgentRuntimeApplication } from "../agent-runtime/AgentRuntimeApplication";
 import { CodexTurnCommands } from "../codex-application/CodexTurnCommands";
 import { CODEX_APP_LOCAL_HOST_ID } from "../codex/codex-app-meta-thread-tools";
 import {
   inboxDispatchActionFromCore,
+  inboxExecutionSelectionFromCore,
   type CoreInboxDispatchWork,
 } from "../core-client/inbox-adapter";
 import { DatabaseNotifierRuntime } from "../host-runtime/DatabaseNotifierRuntime";
 import { getLogger } from "../logging/logger";
 import { ProjectWorkspace } from "../project-application/ProjectWorkspace";
-import { ApplicationSettings } from "../settings/ApplicationSettings";
-import { InboxApplication, InboxRuntimeError } from "./InboxApplication";
-import { resolveInboxModel } from "./InboxRuntimeSelection";
-import { composeInboxDispatchPrompt, describeInboxRuntimeFailure } from "./inbox-suggestions";
+import { InboxApplication } from "./InboxApplication";
 
-const OUTBOX_BATCH = 8;
+const OUTBOX_BATCH = 200;
 const SAFETY_POLL = "30 seconds";
+const ADMISSION_TIMEOUT = "30 seconds";
 
-/** Confirmed proposals retain these identities across reconnects and lost acknowledgements. */
+/** Historical dispatches predate frozen payloads; only look up their existing receipt. */
 export const inboxDispatchIdentity = (
   work: Pick<CoreInboxDispatchWork, "proposal_id" | "attempt" | "confirmed_at">,
   purpose: string,
@@ -44,82 +39,129 @@ export const inboxDispatchIdentity = (
   );
 };
 
-/** One serialized outbox pass; the Runtime owns command receipts and execution state. */
+/** Core owns confirmed intent; the Runtime is the sole owner of local queued execution. */
 export const make = Effect.gen(function* () {
   const inbox = yield* InboxApplication;
-  const settings = yield* ApplicationSettings;
   const runtime = yield* AgentRuntimeApplication;
   const workspace = yield* ProjectWorkspace;
   const remoteTurns = yield* Effect.serviceOption(CodexTurnCommands);
   const logger = getLogger({ component: "inbox-dispatch-runtime" });
   const lane = yield* Semaphore.make(1);
 
-  const promptFor = Effect.fn("InboxDispatchRuntime.promptFor")(function* (
+  const reconcile = Effect.fn("InboxDispatchRuntime.reconcile")(function* (
     work: CoreInboxDispatchWork,
-    prompt: string,
   ) {
-    const context = yield* inbox.dispatchContext(work.page_ids);
-    return composeInboxDispatchPrompt({
-      prompt,
-      messages: context.entries.map((entry) => ({
-        pageKey: entry.page_key ?? null,
-        text: entry.body,
-      })),
+    const receipt = yield* runtime.messageAdmission({
+      sessionId: work.session_id,
+      ...(work.action.type === "new_chat"
+        ? {
+            launchId:
+              work.final_text == null ? inboxDispatchIdentity(work, "launch") : work.launch_id,
+          }
+        : {}),
+      messageId: work.final_text == null ? inboxDispatchIdentity(work, "message") : work.message_id,
+      ...(work.target_execution_ref
+        ? {
+            expectedExecutionRef: {
+              runtimeId: work.target_execution_ref.runtime_id,
+              threadId: work.target_execution_ref.thread_id,
+            },
+          }
+        : {}),
     });
+    if (!receipt) return false;
+    if (receipt.status === "accepted") yield* inbox.completeDispatch(work, receipt.threadId);
+    else
+      yield* inbox.failDispatch(
+        work,
+        receipt.error || "The chat rejected this message",
+        "rejected",
+      );
+    return true;
   });
 
   const deliver = Effect.fn("InboxDispatchRuntime.deliver")(function* (
     work: CoreInboxDispatchWork,
-    current: InboxSettings,
   ) {
     const action = inboxDispatchActionFromCore(work.action);
     if (action.type !== "new_chat" && action.type !== "send_to_chat")
-      return yield* new InboxRuntimeError({ message: "This suggestion is not a chat dispatch" });
-    const sessionId = action.type === "send_to_chat" ? action.sessionId : work.session_id;
-    const session = yield* workspace.getProjectSession(sessionId);
+      return yield* inbox.failDispatch(
+        work,
+        "This decision does not send a chat message",
+        "rejected",
+      );
+    // A recorded acceptance wins over later archive, model changes or an execution failure.
+    if (yield* reconcile(work)) return;
+    if (!work.final_text)
+      return yield* inbox.failDispatch(
+        work,
+        "Review this decision before sending again; its confirmed text is unavailable",
+        "unknown",
+      );
+    const session = yield* workspace.getProjectSession(work.session_id);
     if (!session || session.archived)
-      return yield* new InboxRuntimeError({ message: "The target chat is unavailable" });
-
+      return yield* inbox.failDispatch(work, "The target chat is unavailable", "unavailable");
+    if (session.projectId && (action.type === "new_chat" || session.executionRef)) {
+      const project = yield* workspace.getProject(session.projectId);
+      if (!project || project.lifecycle !== "active" || !project.primaryWorkspaceRoot)
+        return yield* inbox.failDispatch(
+          work,
+          "The Project has no available execution workspace",
+          "unavailable",
+        );
+    }
+    const message = { messageId: work.message_id, text: work.final_text, agentConfigs: [] };
     if (action.type === "new_chat") {
+      if (session.projectId !== action.projectId)
+        return yield* inbox.failDispatch(
+          work,
+          "The chat moved to another Project; review this decision",
+          "rejected",
+        );
+      if (!work.execution_selection)
+        return yield* inbox.failDispatch(
+          work,
+          "Review the Agent selection before sending",
+          "rejected",
+        );
       if (session.thread && !session.executionRef)
-        return yield* new InboxRuntimeError({
-          message: "The chat has a different execution owner",
-        });
-      const existing = session.executionRef ? yield* runtime.inspect({ sessionId }) : null;
-      const modelSelection = existing
-        ? existing.thread.modelSelection
-        : yield* resolveInboxModel(runtime, current.chatAgent);
-      const text = yield* promptFor(work, action.prompt);
-      // Confirmation can outlive Core's operation window. Durable launch/message IDs stay fixed;
-      // a fresh issuance is safe because launch first reconciles the exact Session binding.
+        return yield* inbox.failDispatch(
+          work,
+          "The chat has a different execution owner",
+          "rejected",
+        );
+      const selection = inboxExecutionSelectionFromCore(work.execution_selection);
       const started = yield* runtime.launch({
-        launchId: inboxDispatchIdentity(work, "launch"),
-        acceptedAt: yield* Clock.currentTimeMillis,
-        sessionId,
-        projectId: existing?.projectId ?? session.projectId,
-        title: existing?.thread.title ?? session.displayTitle,
-        modelSelection,
-        interactionMode: existing?.thread.interactionMode ?? "default",
+        launchId: work.launch_id,
+        acceptedAt: Date.parse(work.confirmed_at),
+        sessionId: work.session_id,
+        projectId: action.projectId,
+        title: session.displayTitle,
+        modelSelection: selection.modelSelection,
+        interactionMode: selection.interactionMode,
         runInTarget: "localProject",
-        message: { messageId: inboxDispatchIdentity(work, "message"), text },
+        message,
       });
-      // Binding proves product identity, not message delivery. Every replay crosses launch.
-      return yield* inbox.completeDispatch(work.proposal_id, started.threadId);
+      return yield* inbox.completeDispatch(work, started.threadId);
     }
-
     if (session.executionRef) {
-      const target = yield* runtime.inspect({ sessionId });
-      if (target.thread.activeRunId !== null) return;
-      const text = yield* promptFor(work, action.prompt);
-      // The engine queues if another Run starts after the idle metadata read.
+      if (
+        work.target_execution_ref &&
+        (session.executionRef.runtimeId !== work.target_execution_ref.runtime_id ||
+          session.executionRef.threadId !== work.target_execution_ref.thread_id)
+      )
+        return yield* inbox.failDispatch(
+          work,
+          "The chat's execution owner changed; review this decision",
+          "rejected",
+        );
       yield* runtime.queueMessage({
-        sessionId,
-        message: { messageId: inboxDispatchIdentity(work, "message"), text },
+        sessionId: work.session_id,
+        threadId: session.executionRef.threadId,
+        message,
       });
-      return yield* inbox.completeDispatch(work.proposal_id, target.threadId);
+      return yield* inbox.completeDispatch(work, session.executionRef.threadId);
     }
-
-    // Only an explicitly remote Codex Session retains the remote peer's native writer.
     const thread = session.thread;
     if (
       !thread ||
@@ -128,44 +170,72 @@ export const make = Effect.gen(function* () {
       thread.backendBinding.kind !== "codex" ||
       Option.isNone(remoteTurns)
     )
-      return yield* new InboxRuntimeError({ message: "This chat's runtime is unavailable" });
-    if (thread.statusType === "active") return;
-    const text = yield* promptFor(work, action.prompt);
-    const turn = yield* remoteTurns.value.start(thread.threadId, text, {
-      clientUserMessageId: inboxDispatchIdentity(work, "message"),
-    });
-    if (!turn) return;
-    yield* inbox.completeDispatch(work.proposal_id, thread.threadId);
+      return yield* inbox.failDispatch(work, "This chat's runtime is unavailable", "unavailable");
+    if (work.thread_id !== thread.threadId)
+      return yield* inbox.failDispatch(
+        work,
+        "The remote chat target changed; review this decision",
+        "rejected",
+      );
+    if (thread.statusType === "active")
+      return yield* inbox.failDispatch(
+        work,
+        "The remote chat is busy; retry when it is idle",
+        "unavailable",
+      );
+    // Persist uncertainty before the external call. Restart must never repeat a possibly sent native request.
+    yield* inbox.beginDispatch(work);
+    const startedWork = { ...work, revision: work.revision + 1 };
+    const result = yield* remoteTurns.value
+      .start(thread.threadId, work.final_text, {
+        clientUserMessageId: work.message_id,
+        promptInput: { text: work.final_text, agentConfigs: [] },
+      })
+      .pipe(Effect.result);
+    if (result._tag === "Failure" || !result.success) return;
+    yield* inbox.failDispatch(
+      startedWork,
+      "Submitted to remote chat; open it to verify",
+      "unknown",
+    );
   });
 
   const drain = lane.withPermits(1)(
     Effect.gen(function* () {
-      const current = (yield* settings.snapshot()).inbox;
       const outbox = yield* inbox.outbox(OUTBOX_BATCH);
       for (const work of outbox) {
-        yield* deliver(work, current).pipe(
-          Effect.catchCause((cause) => {
-            const error = Cause.squash(cause);
-            if (Schema.is(InboxRuntimeError)(error))
-              return inbox
-                .failDispatch(
-                  work.proposal_id,
-                  describeInboxRuntimeFailure(error.message, "dispatch"),
+        yield* deliver(work).pipe(
+          Effect.catchTag("AgentRuntimeApplicationError", (error) =>
+            error.admissionRejected
+              ? reconcile(work).pipe(
+                  Effect.flatMap((settled) =>
+                    settled ? Effect.void : inbox.failDispatch(work, error.message, "rejected"),
+                  ),
                 )
-                .pipe(Effect.ignore);
-            // A launch, message, or Core completion may already have committed. Keep the same
-            // outbox attempt so the next pass reconciles its durable command receipts.
-            return Effect.sync(() =>
-              logger.warn("Inbox delivery awaits retry", { proposalId: work.proposal_id, cause }),
-            );
-          }),
+              : Effect.fail(error),
+          ),
+          Effect.timeout(ADMISSION_TIMEOUT),
+          Effect.catchCause(() =>
+            // A timeout or lost reply is not a rejection. A later pass asks the durable receipt first.
+            reconcile(work).pipe(
+              Effect.timeout(ADMISSION_TIMEOUT),
+              Effect.catchCause(() => Effect.succeed(false)),
+              Effect.tap((settled) =>
+                settled
+                  ? Effect.void
+                  : Effect.sync(() =>
+                      logger.warn("Inbox handoff awaits reconciliation", {
+                        proposalId: work.proposal_id,
+                        messageId: work.message_id,
+                      }),
+                    ),
+              ),
+              Effect.asVoid,
+            ),
+          ),
         );
       }
-    }).pipe(
-      Effect.catchCause((cause) =>
-        Effect.sync(() => logger.warn("Inbox dispatch pass failed", { cause })),
-      ),
-    ),
+    }).pipe(Effect.catchCause(() => Effect.sync(() => logger.warn("Inbox handoff pass failed")))),
   );
   return { drain };
 });

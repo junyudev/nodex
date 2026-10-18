@@ -794,6 +794,13 @@ Main retains account policy, media ownership and renderer routing. Their owners 
 after the Runtime facade, before protocol consumers, within the same Main Scope.
 The detailed contract is [Agent Runtime behavior](product-specs/agent-runtime-behavior.md).
 
+Inbox confirmation freezes the source versions, complete message, target and execution
+selection in Core before Main hands the stable command to the Runtime. Durable message
+admission ends the local Inbox handoff; execution progress remains owned by the chat.
+Uncertain remote delivery requires explicit reconciliation rather than automatic replay.
+Inbox edits and grouped filing decisions compose Document and Library work inside one
+Workspace transaction. See [Inbox behavior](product-specs/inbox-behavior.md).
+
 ### Native Codex conversation peers
 
 Direct native Codex peers serve explicit native account/catalog and remote-host conversations.

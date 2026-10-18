@@ -31,12 +31,14 @@ metadata. The title is a label. Core gives it a provisional excerpt unless the
 sender provides one. The suggestion Agent may replace only that provisional
 title, through an ordinary Document title write fenced by the Page head it read.
 
-The ProjectWorkspace Module owns three records next to that Page:
+The ProjectWorkspace Module owns the decision records next to that Page:
 
 - **Inbox entry:** source provenance, kind, and triage state.
 - **Dispatch proposal:** a typed, versioned action for one or more entries.
   Each proposal is fenced by the message revisions it was computed from.
 - **Dispatch outbox:** confirmed chat work in the `dispatching` state.
+- **Suggestion request:** exact scope, membership, Page basis and generation of
+  a bounded suggestion or correction.
 
 Kind and triage state describe inbox handling, not Page content, so they are not
 Data Source Properties. Placing the records in Workspace lets one confirmation
@@ -60,31 +62,43 @@ Project placement, parent-child lineage, background execution and planning mode
 do not restrict their content operations. Inbox confirmation is a dispatch workflow,
 not a resource permission request.
 
-A suggestion is advice. The suggestion Agent receives only message text and a
-bounded routing context, and it has no tools. One pass covers one Inbox. A
+A suggestion is advice. The suggestion Agent receives message text and a
+bounded routing context through the shared Runtime utility capability. Like
+other native utilities it uses full access and automatic approvals; its prompt
+asks only for structured advice and does not create a permission boundary. One
+pass covers one Inbox. A
 Project's Inbox narrows the context to that Project: its messages already belong
 there, so routing stays inside the Project except for filing in another one. Main validates every target
 against that context before recording a proposal. Only the user's confirmation
-can start a chat or send a prompt. A Page move is the user's own Library
-relocation, which Core verifies before completing the proposal. Rewriting a
-message is likewise the user's own Page write: Core prepares it under the same
-rules as sending, the Document owner applies it fenced by the Page Core read,
-and only then does the Inbox withdraw suggestions about the old text.
+can authorize a proposed chat handoff. Core atomically composes the user's Page
+relocation with the Inbox decision, including a single consumable group Undo.
+Rewriting a message similarly composes a Document-owned write with withdrawal of
+the old suggestions under one version-fenced Core mutation.
 
-Main delivers confirmed chat work through the same launch and message seams that
-ordinary chats use. Launch identities derive from the proposal. Delivery to a
-busy chat waits for idle.
+Main prepares a confirmation once and callers retain those parameters until the
+durable commit is visible. Core freezes complete dispatch text, source versions,
+destination and the new chat's exact execution selection. Stable launch and
+message identities name that decision independently of retries.
+
+Main hands confirmed local work to the same Runtime launch and queue interfaces
+ordinary chats use. Runtime atomically admits the message and owns waiting for a
+busy chat, execution and provider recovery. Core outbox settlement records this
+durable admission; it does not maintain a second execution queue or wait for
+provider task completion. Remote native conversations retain their own writer
+and expose uncertain sends without automatically replaying them.
 
 ## Consequences
 
 Captured messages survive model and runtime failures, and they remain ordinary
 Pages after they are filed into a Project. A Project's Inbox can be the
 Project's Home because its messages are already the Project's Pages. One proposal state machine serves
-both Agent suggestions and hand-written dispatches. Restart and retry cannot
-start a chat twice.
+both Agent suggestions and hand-written dispatches. Durable command receipts
+recover local handoff after restart and lost replies; provider side effects are
+governed by Runtime recovery rather than an Inbox exactly-once guarantee.
 
 Inbox preferences, such as the suggestion runtime and routing guidance, stay Main
-Profile settings. Core stores no model configuration.
+Profile settings. Core stores the immutable execution selection for a confirmed
+decision, not another writable source of Profile defaults.
 
 Steering a running Turn, attachments in the capture composer, and system-wide
 capture are not part of this decision.

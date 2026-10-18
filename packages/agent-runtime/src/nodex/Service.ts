@@ -223,6 +223,7 @@ const AgentRequest = Schema.Union([
   request("thread.authority", Schema.Struct({ threadId: ThreadId, runId: RunId })),
   request("run.outcome", Schema.Struct({ threadId: ThreadId, messageId: MessageId })),
   request("command.dispatch", OrchestrationV2Command),
+  request("command.receipt", Schema.Struct({ commandId: CommandId, threadId: ThreadId })),
   request("thread.compact", Schema.Struct({ threadId: ThreadId, requestId: CommandId })),
   request(
     "thread.rollback",
@@ -620,6 +621,18 @@ export const make = Effect.fn("AgentRuntime.makeService")(function* (
       case "command.dispatch": {
         const result = yield* orchestrator.dispatch(input.input);
         return { sequence: result.sequence };
+      }
+      case "command.receipt": {
+        const found = yield* orchestrator.getReceipt(input.input.commandId);
+        if (Option.isNone(found)) return null;
+        const receipt = found.value;
+        if (receipt.threadId !== input.input.threadId)
+          return yield* Effect.fail(new Error("Command receipt belongs to another Thread"));
+        return {
+          status: receipt.status,
+          sequence: receipt.resultSequence,
+          error: receipt.error,
+        };
       }
       case "thread.compact":
         return yield* compactThread(input.input).pipe(

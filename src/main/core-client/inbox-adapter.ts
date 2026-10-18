@@ -10,7 +10,10 @@ import type {
   InboxSource,
   InboxSummary,
   InboxThreadStatus,
+  InboxPageBasis,
+  InboxExecutionSelection,
 } from "../../shared/inbox";
+import { InboxExecutionSelectionSchema } from "../../shared/schemas/inbox";
 
 type Schemas = components["schemas"];
 export type CoreInboxDispatchAction = Schemas["ProjectWorkspaceInboxDispatchAction"];
@@ -20,6 +23,8 @@ export type CoreInboxSuggestionInput = Schemas["ProjectWorkspaceInboxSuggestionI
 export type CoreInboxDispatchContext = Schemas["ProjectWorkspaceInboxDispatchContext"];
 export type CoreInboxDispatchWork = Schemas["ProjectWorkspaceInboxDispatchWork"];
 export type CoreInboxPageBasis = Schemas["ProjectWorkspaceInboxPageBasis"];
+export type CoreInboxSuggestionRequest = Schemas["ProjectWorkspaceInboxSuggestionRequest"];
+type CoreInboxExecutionSelection = Schemas["ProjectWorkspaceInboxExecutionSelection"];
 type CoreInboxSource = Schemas["ProjectWorkspaceInboxSource"];
 type CoreInboxLocation = Schemas["ProjectWorkspaceInboxLocation"];
 type CoreInboxChat = Schemas["ProjectWorkspaceInboxChat"];
@@ -32,6 +37,8 @@ export const inboxDispatchActionFromCore = (
   action: CoreInboxDispatchAction,
 ): InboxDispatchAction => {
   switch (action.type) {
+    case "none":
+      return { type: "none", reason: action.reason };
     case "keep":
       return { type: "keep" };
     case "new_chat":
@@ -45,6 +52,8 @@ export const inboxDispatchActionFromCore = (
 
 export const inboxDispatchActionToCore = (action: InboxDispatchAction): CoreInboxDispatchAction => {
   switch (action.type) {
+    case "none":
+      return { type: "none", reason: action.reason };
     case "keep":
       return { type: "keep" };
     case "new_chat":
@@ -58,6 +67,32 @@ export const inboxDispatchActionToCore = (action: InboxDispatchAction): CoreInbo
 
 export const inboxScopeFromCore = (scope: CoreInboxScope): InboxScope =>
   scope.kind === "library" ? { kind: "library" } : { kind: "project", projectId: scope.project_id };
+
+export const inboxPageBasisFromCore = (basis: CoreInboxPageBasis): InboxPageBasis => ({
+  pageId: basis.page_id,
+  generation: basis.generation,
+  headSeq: basis.head_seq,
+  placementRevision: basis.placement_revision,
+});
+export const inboxPageBasisToCore = (basis: InboxPageBasis): CoreInboxPageBasis => ({
+  page_id: basis.pageId,
+  generation: basis.generation,
+  head_seq: basis.headSeq,
+  placement_revision: basis.placementRevision,
+});
+export const inboxExecutionSelectionToCore = (
+  selection: InboxExecutionSelection | null | undefined,
+): CoreInboxExecutionSelection | null =>
+  selection
+    ? { model_selection: selection.modelSelection, interaction_mode: selection.interactionMode }
+    : null;
+export const inboxExecutionSelectionFromCore = (
+  selection: CoreInboxExecutionSelection,
+): InboxExecutionSelection =>
+  InboxExecutionSelectionSchema.parse({
+    modelSelection: selection.model_selection,
+    interactionMode: selection.interaction_mode,
+  });
 
 export const inboxScopeToCore = (scope: InboxScope): CoreInboxScope =>
   scope.kind === "library" ? { kind: "library" } : { kind: "project", project_id: scope.projectId };
@@ -100,7 +135,7 @@ const threadStatusFromCore = (
 ): InboxThreadStatus | null =>
   status ? { statusType: status.status_type, activeFlags: [...status.active_flags] } : null;
 
-const chatFromCore = (chat: CoreInboxChat): InboxChat => ({
+export const inboxChatFromCore = (chat: CoreInboxChat): InboxChat => ({
   sessionId: chat.session_id,
   projectId: chat.project_id ?? null,
   projectName: chat.project_name ?? null,
@@ -117,14 +152,16 @@ const proposalFromCore = (proposal: CoreInboxProposal): InboxProposal => ({
   origin: proposal.origin,
   state: proposal.state,
   pageIds: [...proposal.page_ids],
+  basis: proposal.basis.map(inboxPageBasisFromCore),
   action: inboxDispatchActionFromCore(proposal.action),
   kind: proposal.kind ?? null,
   summary: proposal.summary,
   rationale: proposal.rationale ?? null,
   producedBy: proposal.produced_by ?? null,
   targetProjectName: proposal.target_project_name ?? null,
-  chat: proposal.chat ? chatFromCore(proposal.chat) : null,
+  chat: proposal.chat ? inboxChatFromCore(proposal.chat) : null,
   failureMessage: proposal.failure_message ?? null,
+  failureKind: proposal.failure_kind ?? null,
   createdAt: proposal.created_at,
   updatedAt: proposal.updated_at,
 });
@@ -140,15 +177,21 @@ export const inboxItemFromCore = (item: CoreInboxItem): InboxItem => ({
   source: inboxSourceFromCore(item.source),
   kind: item.kind ?? null,
   state: item.state,
+  outcome: item.outcome ?? null,
   suggestionState: item.suggestion_state,
   suggestionError: item.suggestion_error ?? null,
   scope: inboxScopeFromCore(item.scope),
   location: locationFromCore(item.location),
   proposal: item.proposal ? proposalFromCore(item.proposal) : null,
   revision: item.revision,
+  basis: inboxPageBasisFromCore(item.basis),
 });
 
-export const inboxSummaryFromCore = (summary: CoreInboxSummary): InboxSummary => ({
+export const inboxSummaryFromCore = (
+  summary: CoreInboxSummary,
+  storeEpoch: string,
+): InboxSummary => ({
+  storeEpoch,
   databaseId: summary.database_id ?? null,
   viewId: summary.view_id ?? null,
   entryCount: summary.entry_count,

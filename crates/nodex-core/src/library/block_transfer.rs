@@ -271,6 +271,8 @@ struct BlockTransferUndoSchemaRestoreV1 {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 struct PageRelocationUndoRecipeV3 {
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    requires_attached_scope: bool,
     version: u32,
     project_id: Option<String>,
     library_id: String,
@@ -1220,7 +1222,7 @@ pub(super) fn apply_agent_page_move(
 }
 
 #[allow(clippy::too_many_arguments)]
-pub(super) fn apply_semantic_page_move(
+pub(super) fn apply_semantic_page_move_in_scope(
     connection: &Connection,
     context: &BoundModuleContext,
     library_id: &str,
@@ -1231,6 +1233,7 @@ pub(super) fn apply_semantic_page_move(
     assets_root: &Path,
     authority: &super::mutation::LibraryMutationRoute,
     prepared: PreparedBlockTransfer,
+    attached_scope: Option<&DurableMutationScope<'_>>,
 ) -> Result<LibraryApplyOutcome, StoreError> {
     let transfer_authority = match authority.requesting_project_id.as_deref() {
         Some(project_id) => PageOwnershipTransferContext::ProductRoute {
@@ -1249,7 +1252,7 @@ pub(super) fn apply_semantic_page_move(
         assets_root,
         transfer_authority,
         PageOwnershipHistory::RecordRelocation,
-        None,
+        attached_scope,
         prepared,
     )
 }
@@ -2808,6 +2811,7 @@ fn apply_page_ownership_transfer(
                     &prepared.target,
                     result_location_revision,
                     prepared_undo,
+                    attached_scope.is_some(),
                 )
             })
             .transpose()?;
@@ -4038,6 +4042,7 @@ fn capture_page_relocation_undo_source(
     })
 }
 
+#[allow(clippy::too_many_arguments)]
 fn seal_page_relocation_undo_recipe(
     operation_id: &str,
     store_epoch: &str,
@@ -4046,6 +4051,7 @@ fn seal_page_relocation_undo_recipe(
     target: &PreparedPageOwnershipTarget,
     result_location_revision: i64,
     prepared: PreparedPageRelocationUndoV3,
+    requires_attached_scope: bool,
 ) -> Result<history::Prepared, StoreError> {
     let result_parent = match target {
         PreparedPageOwnershipTarget::Library { .. } => PageRelocationUndoParentV2::Library {
@@ -4061,6 +4067,7 @@ fn seal_page_relocation_undo_recipe(
         }
     };
     let recipe = PageRelocationUndoRecipeV3 {
+        requires_attached_scope,
         version: PAGE_RELOCATION_UNDO_RECIPE_VERSION,
         project_id: project_id.map(str::to_owned),
         library_id: library_id.to_owned(),
@@ -6558,6 +6565,31 @@ pub(super) fn undo_page_relocation(
     token: &LibraryBlockTransferUndoToken,
     assets_root: &Path,
 ) -> Result<LibraryApplyOutcome, StoreError> {
+    undo_page_relocation_in_scope(
+        connection,
+        context,
+        library_id,
+        operation_id,
+        store_epoch,
+        request_hash,
+        token,
+        assets_root,
+        None,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn undo_page_relocation_in_scope(
+    connection: &Connection,
+    context: &BoundModuleContext,
+    library_id: &str,
+    operation_id: &str,
+    store_epoch: &str,
+    request_hash: &str,
+    token: &LibraryBlockTransferUndoToken,
+    assets_root: &Path,
+    attached_scope: Option<&DurableMutationScope<'_>>,
+) -> Result<LibraryApplyOutcome, StoreError> {
     if token.store_epoch != store_epoch {
         return Err(StoreError::new(
             StoreErrorCode::StaleStoreEpoch,
@@ -6568,6 +6600,11 @@ pub(super) fn undo_page_relocation(
     let authority =
         super::mutation::resolve_library_mutation_authority(connection, context, library_id)?;
     let recipe = read_page_relocation_undo_recipe(connection, context, library_id, token)?;
+    if recipe.requires_attached_scope && attached_scope.is_none() {
+        return Err(conflict(
+            "Undo this relocation through its complete decision",
+        ));
+    }
     let (parent_kind, parent_id, location_revision) = connection
         .query_row(
             "SELECT page.parent_kind, page.parent_id, block.placement_revision FROM pages page \
@@ -6701,7 +6738,7 @@ pub(super) fn undo_page_relocation(
             recipe: Box::new(recipe),
             token: token.clone(),
         },
-        None,
+        attached_scope,
         prepared,
     )
 }

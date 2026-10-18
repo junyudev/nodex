@@ -1589,9 +1589,24 @@ export interface components {
             }[];
             readonly next_cursor?: string | null;
         };
+        readonly CollectionWindow_ProjectWorkspaceInboxChat: {
+            readonly authority: components["schemas"]["CollectionWindowAuthority"];
+            readonly items: readonly {
+                readonly archived: boolean;
+                readonly display_title: string;
+                readonly project_id?: string | null;
+                readonly project_name?: string | null;
+                readonly session_id: string;
+                readonly status?: null | components["schemas"]["ProjectWorkspaceThreadStatus"];
+                readonly thread_id?: string | null;
+                readonly unread: boolean;
+            }[];
+            readonly next_cursor?: string | null;
+        };
         readonly CollectionWindow_ProjectWorkspaceInboxItem: {
             readonly authority: components["schemas"]["CollectionWindowAuthority"];
             readonly items: readonly {
+                readonly basis: components["schemas"]["ProjectWorkspaceInboxPageBasis"];
                 readonly body: string;
                 /**
                  * @description The body is still plain message text that the stream shows whole, so the user
@@ -1601,6 +1616,7 @@ export interface components {
                 readonly body_truncated: boolean;
                 readonly kind?: null | components["schemas"]["ProjectWorkspaceInboxEntryKind"];
                 readonly location: components["schemas"]["ProjectWorkspaceInboxLocation"];
+                readonly outcome?: null | components["schemas"]["ProjectWorkspaceInboxOutcome"];
                 readonly page_id: string;
                 readonly page_key?: string | null;
                 readonly proposal?: null | components["schemas"]["ProjectWorkspaceInboxProposal"];
@@ -7293,6 +7309,7 @@ export interface components {
                 readonly session_id: string;
             } | {
                 readonly document_id: string;
+                readonly expected_store_epoch?: string | null;
                 /** @enum {string} */
                 readonly kind: "send_inbox_message";
                 readonly page_id: string;
@@ -7320,14 +7337,20 @@ export interface components {
                 readonly summary: string;
             } | {
                 readonly action?: null | components["schemas"]["ProjectWorkspaceInboxDispatchAction"];
+                readonly basis: readonly components["schemas"]["ProjectWorkspaceInboxPageBasis"][];
+                readonly execution_selection?: null | components["schemas"]["ProjectWorkspaceInboxExecutionSelection"];
                 /** Format: int64 */
                 readonly expected_revision: number;
+                readonly expected_store_epoch: string;
                 /** @enum {string} */
                 readonly kind: "confirm_inbox_dispatch";
                 readonly proposal_id: string;
                 readonly session_id?: string | null;
             } | {
                 readonly action: components["schemas"]["ProjectWorkspaceInboxDispatchAction"];
+                readonly basis: readonly components["schemas"]["ProjectWorkspaceInboxPageBasis"][];
+                readonly execution_selection?: null | components["schemas"]["ProjectWorkspaceInboxExecutionSelection"];
+                readonly expected_store_epoch: string;
                 /** @enum {string} */
                 readonly kind: "dispatch_inbox_entries";
                 readonly page_ids: readonly string[];
@@ -7349,8 +7372,49 @@ export interface components {
                 readonly page_id: string;
             } | {
                 /** @enum {string} */
+                readonly kind: "prepare_inbox_suggestions";
+                /** Format: int32 */
+                readonly limit: number;
+                readonly request_id: string;
+            } | {
+                readonly basis: readonly components["schemas"]["ProjectWorkspaceInboxPageBasis"][];
+                readonly correction?: string | null;
+                /** Format: int64 */
+                readonly expected_revision?: number | null;
+                /** @enum {string} */
                 readonly kind: "request_inbox_suggestion";
+                readonly mode: components["schemas"]["ProjectWorkspaceInboxSuggestionMode"];
                 readonly page_ids: readonly string[];
+                readonly proposal_id?: string | null;
+                readonly request_id: string;
+            } | {
+                readonly error?: string | null;
+                /** Format: int64 */
+                readonly generation: number;
+                /** @enum {string} */
+                readonly kind: "settle_inbox_suggestion";
+                readonly produced_by?: string | null;
+                readonly request_id: string;
+                readonly suggestions: readonly components["schemas"]["ProjectWorkspaceInboxSuggestedDispatch"][];
+                readonly titles: readonly components["schemas"]["ProjectWorkspaceInboxSuggestionTitle"][];
+            } | {
+                readonly basis: components["schemas"]["ProjectWorkspaceInboxPageBasis"];
+                /** @enum {string} */
+                readonly kind: "edit_inbox_message";
+                readonly original_text: string;
+                readonly page_id: string;
+                readonly text: string;
+            } | {
+                /** @enum {string} */
+                readonly kind: "undo_inbox_decision";
+                readonly undo_token: string;
+            } | {
+                /** Format: int64 */
+                readonly expected_revision: number;
+                /** @enum {string} */
+                readonly kind: "begin_inbox_dispatch";
+                readonly message_id: string;
+                readonly proposal_id: string;
             } | {
                 /** @enum {string} */
                 readonly kind: "revise_inbox_message";
@@ -7362,13 +7426,20 @@ export interface components {
                 readonly page_ids: readonly string[];
             } | {
                 readonly dispatched_thread_id?: string | null;
+                /** Format: int64 */
+                readonly expected_revision: number;
                 /** @enum {string} */
                 readonly kind: "complete_inbox_dispatch";
+                readonly message_id: string;
                 readonly proposal_id: string;
             } | {
+                /** Format: int64 */
+                readonly expected_revision: number;
+                readonly failure_kind: components["schemas"]["ProjectWorkspaceInboxFailureKind"];
                 /** @enum {string} */
                 readonly kind: "fail_inbox_dispatch";
                 readonly message: string;
+                readonly message_id: string;
                 readonly proposal_id: string;
             } | {
                 /** @enum {string} */
@@ -8421,6 +8492,17 @@ export interface components {
                 readonly window: components["schemas"]["CollectionWindowRequest"];
             } | {
                 /** @enum {string} */
+                readonly kind: "inbox_chat_targets";
+                readonly query: string;
+                readonly scope: components["schemas"]["ProjectWorkspaceInboxScope"];
+                readonly window: components["schemas"]["CollectionWindowRequest"];
+            } | {
+                /** @enum {string} */
+                readonly kind: "inbox_suggestion_requests";
+                /** Format: int32 */
+                readonly limit: number;
+            } | {
+                /** @enum {string} */
                 readonly kind: "inbox_pending_suggestions";
                 /** Format: int32 */
                 readonly limit: number;
@@ -9058,6 +9140,10 @@ export interface components {
             /** @enum {string} */
             readonly type: "keep";
         } | {
+            readonly reason: string;
+            /** @enum {string} */
+            readonly type: "none";
+        } | {
             readonly project_id?: string | null;
             readonly prompt: string;
             /** @enum {string} */
@@ -9090,6 +9176,12 @@ export interface components {
             /** Format: int64 */
             readonly attempt: number;
             readonly confirmed_at: string;
+            readonly execution_selection?: null | components["schemas"]["ProjectWorkspaceInboxExecutionSelection"];
+            readonly failure_kind?: null | components["schemas"]["ProjectWorkspaceInboxFailureKind"];
+            /** @description None only for pre-snapshot history that must be reconciled, never sent. */
+            readonly final_text?: string | null;
+            readonly launch_id: string;
+            readonly message_id: string;
             readonly page_ids: readonly string[];
             readonly page_keys: readonly string[];
             readonly project_id?: string | null;
@@ -9097,6 +9189,7 @@ export interface components {
             /** Format: int64 */
             readonly revision: number;
             readonly session_id: string;
+            readonly target_execution_ref?: null | components["schemas"]["ProjectWorkspaceSessionExecutionRef"];
             /** @description Runtime family of the target chat's Thread: codex, claude, opencode, or acp. */
             readonly thread_backend_kind?: string | null;
             readonly thread_id?: string | null;
@@ -9113,6 +9206,14 @@ export interface components {
          * @enum {string}
          */
         readonly ProjectWorkspaceInboxEntryState: "open" | "kept" | "done";
+        readonly ProjectWorkspaceInboxExecutionSelection: {
+            readonly interaction_mode: components["schemas"]["ProjectWorkspaceInboxInteractionMode"];
+            readonly model_selection: components["schemas"]["ProjectWorkspaceInboxModelSelection"];
+        };
+        /** @enum {string} */
+        readonly ProjectWorkspaceInboxFailureKind: "rejected" | "unavailable" | "unknown";
+        /** @enum {string} */
+        readonly ProjectWorkspaceInboxInteractionMode: "default" | "plan";
         /** @description Where a message's Page lives, relative to the Inbox that received it. */
         readonly ProjectWorkspaceInboxLocation: {
             /** @enum {string} */
@@ -9140,6 +9241,20 @@ export interface components {
             /** @description The new provisional title, only while the title is still provisional. */
             readonly title_markdown?: string | null;
         };
+        readonly ProjectWorkspaceInboxModelOption: {
+            readonly id: string;
+            readonly value: unknown;
+        };
+        readonly ProjectWorkspaceInboxModelSelection: {
+            readonly instanceId: string;
+            readonly model: string;
+            readonly options?: readonly components["schemas"]["ProjectWorkspaceInboxModelOption"][] | null;
+        };
+        /**
+         * @description Product decision, independent of the Page's current location.
+         * @enum {string}
+         */
+        readonly ProjectWorkspaceInboxOutcome: "kept" | "done" | "moved" | "chat";
         /** @description Causal evidence that a proposal was made for the current message content. */
         readonly ProjectWorkspaceInboxPageBasis: {
             /** Format: int64 */
@@ -9147,6 +9262,8 @@ export interface components {
             /** Format: int64 */
             readonly head_seq: number;
             readonly page_id: string;
+            /** Format: int64 */
+            readonly placement_revision: number;
         };
         readonly ProjectWorkspaceInboxProjectCount: {
             /** Format: int32 */
@@ -9155,8 +9272,10 @@ export interface components {
         };
         readonly ProjectWorkspaceInboxProposal: {
             readonly action: components["schemas"]["ProjectWorkspaceInboxDispatchAction"];
+            readonly basis: readonly components["schemas"]["ProjectWorkspaceInboxPageBasis"][];
             readonly chat?: null | components["schemas"]["ProjectWorkspaceInboxChat"];
             readonly created_at: string;
+            readonly failure_kind?: null | components["schemas"]["ProjectWorkspaceInboxFailureKind"];
             readonly failure_message?: string | null;
             readonly kind?: null | components["schemas"]["ProjectWorkspaceInboxEntryKind"];
             readonly origin: components["schemas"]["ProjectWorkspaceInboxProposalOrigin"];
@@ -9206,6 +9325,14 @@ export interface components {
             readonly label: string;
             readonly project_id?: string | null;
         };
+        readonly ProjectWorkspaceInboxSuggestedDispatch: {
+            readonly action: components["schemas"]["ProjectWorkspaceInboxDispatchAction"];
+            readonly entry_kind?: null | components["schemas"]["ProjectWorkspaceInboxEntryKind"];
+            readonly page_ids: readonly string[];
+            readonly proposal_id: string;
+            readonly rationale?: string | null;
+            readonly summary: string;
+        };
         /** @description One entry the suggestion Agent should consider, with bounded content. */
         readonly ProjectWorkspaceInboxSuggestionInput: {
             readonly basis: components["schemas"]["ProjectWorkspaceInboxPageBasis"];
@@ -9221,7 +9348,26 @@ export interface components {
             readonly title_provisional: boolean;
         };
         /** @enum {string} */
+        readonly ProjectWorkspaceInboxSuggestionMode: "auto" | "grouped" | "refine";
+        readonly ProjectWorkspaceInboxSuggestionRequest: {
+            readonly basis: readonly components["schemas"]["ProjectWorkspaceInboxPageBasis"][];
+            readonly context: components["schemas"]["ProjectWorkspaceInboxDispatchContext"];
+            readonly correction?: string | null;
+            /** Format: int64 */
+            readonly expected_revision?: number | null;
+            /** Format: int64 */
+            readonly generation: number;
+            readonly mode: components["schemas"]["ProjectWorkspaceInboxSuggestionMode"];
+            readonly page_ids: readonly string[];
+            readonly proposal_id?: string | null;
+            readonly request_id: string;
+        };
+        /** @enum {string} */
         readonly ProjectWorkspaceInboxSuggestionState: "pending" | "settled" | "failed";
+        readonly ProjectWorkspaceInboxSuggestionTitle: {
+            readonly page_id: string;
+            readonly title: string;
+        };
         readonly ProjectWorkspaceInboxSummary: {
             /** @description The Database new messages of this Inbox become Pages in, once it exists. */
             readonly database_id?: string | null;
@@ -9636,6 +9782,7 @@ export interface components {
             readonly session_id: string;
         } | {
             readonly document_id: string;
+            readonly expected_store_epoch?: string | null;
             /** @enum {string} */
             readonly kind: "send_inbox_message";
             readonly page_id: string;
@@ -9663,14 +9810,20 @@ export interface components {
             readonly summary: string;
         } | {
             readonly action?: null | components["schemas"]["ProjectWorkspaceInboxDispatchAction"];
+            readonly basis: readonly components["schemas"]["ProjectWorkspaceInboxPageBasis"][];
+            readonly execution_selection?: null | components["schemas"]["ProjectWorkspaceInboxExecutionSelection"];
             /** Format: int64 */
             readonly expected_revision: number;
+            readonly expected_store_epoch: string;
             /** @enum {string} */
             readonly kind: "confirm_inbox_dispatch";
             readonly proposal_id: string;
             readonly session_id?: string | null;
         } | {
             readonly action: components["schemas"]["ProjectWorkspaceInboxDispatchAction"];
+            readonly basis: readonly components["schemas"]["ProjectWorkspaceInboxPageBasis"][];
+            readonly execution_selection?: null | components["schemas"]["ProjectWorkspaceInboxExecutionSelection"];
+            readonly expected_store_epoch: string;
             /** @enum {string} */
             readonly kind: "dispatch_inbox_entries";
             readonly page_ids: readonly string[];
@@ -9692,8 +9845,49 @@ export interface components {
             readonly page_id: string;
         } | {
             /** @enum {string} */
+            readonly kind: "prepare_inbox_suggestions";
+            /** Format: int32 */
+            readonly limit: number;
+            readonly request_id: string;
+        } | {
+            readonly basis: readonly components["schemas"]["ProjectWorkspaceInboxPageBasis"][];
+            readonly correction?: string | null;
+            /** Format: int64 */
+            readonly expected_revision?: number | null;
+            /** @enum {string} */
             readonly kind: "request_inbox_suggestion";
+            readonly mode: components["schemas"]["ProjectWorkspaceInboxSuggestionMode"];
             readonly page_ids: readonly string[];
+            readonly proposal_id?: string | null;
+            readonly request_id: string;
+        } | {
+            readonly error?: string | null;
+            /** Format: int64 */
+            readonly generation: number;
+            /** @enum {string} */
+            readonly kind: "settle_inbox_suggestion";
+            readonly produced_by?: string | null;
+            readonly request_id: string;
+            readonly suggestions: readonly components["schemas"]["ProjectWorkspaceInboxSuggestedDispatch"][];
+            readonly titles: readonly components["schemas"]["ProjectWorkspaceInboxSuggestionTitle"][];
+        } | {
+            readonly basis: components["schemas"]["ProjectWorkspaceInboxPageBasis"];
+            /** @enum {string} */
+            readonly kind: "edit_inbox_message";
+            readonly original_text: string;
+            readonly page_id: string;
+            readonly text: string;
+        } | {
+            /** @enum {string} */
+            readonly kind: "undo_inbox_decision";
+            readonly undo_token: string;
+        } | {
+            /** Format: int64 */
+            readonly expected_revision: number;
+            /** @enum {string} */
+            readonly kind: "begin_inbox_dispatch";
+            readonly message_id: string;
+            readonly proposal_id: string;
         } | {
             /** @enum {string} */
             readonly kind: "revise_inbox_message";
@@ -9705,13 +9899,20 @@ export interface components {
             readonly page_ids: readonly string[];
         } | {
             readonly dispatched_thread_id?: string | null;
+            /** Format: int64 */
+            readonly expected_revision: number;
             /** @enum {string} */
             readonly kind: "complete_inbox_dispatch";
+            readonly message_id: string;
             readonly proposal_id: string;
         } | {
+            /** Format: int64 */
+            readonly expected_revision: number;
+            readonly failure_kind: components["schemas"]["ProjectWorkspaceInboxFailureKind"];
             /** @enum {string} */
             readonly kind: "fail_inbox_dispatch";
             readonly message: string;
+            readonly message_id: string;
             readonly proposal_id: string;
         } | {
             /** @enum {string} */
@@ -10915,6 +11116,7 @@ export interface components {
                     readonly affected_project_ids: readonly string[];
                     readonly affected_session_ids: readonly string[];
                     readonly affected_thread_ids: readonly string[];
+                    readonly inbox_undo_token?: string | null;
                 };
                 readonly receipt: components["schemas"]["ModuleMutationReceipt"] & {
                     readonly affected_project_ids: readonly string[];
@@ -10928,6 +11130,7 @@ export interface components {
                     readonly affected_project_ids: readonly string[];
                     readonly affected_session_ids: readonly string[];
                     readonly affected_thread_ids: readonly string[];
+                    readonly inbox_undo_token?: string | null;
                 };
                 readonly receipt: components["schemas"]["ModuleMutationReceipt"] & {
                     readonly affected_project_ids: readonly string[];
@@ -11625,6 +11828,14 @@ export interface components {
                     readonly items: components["schemas"]["CollectionWindow_ProjectWorkspaceInboxItem"];
                     /** @enum {string} */
                     readonly kind: "inbox_window";
+                } | {
+                    /** @enum {string} */
+                    readonly kind: "inbox_chat_targets";
+                    readonly window: components["schemas"]["CollectionWindow_ProjectWorkspaceInboxChat"];
+                } | {
+                    /** @enum {string} */
+                    readonly kind: "inbox_suggestion_requests";
+                    readonly requests: readonly components["schemas"]["ProjectWorkspaceInboxSuggestionRequest"][];
                 } | {
                     readonly entries: readonly components["schemas"]["ProjectWorkspaceInboxSuggestionInput"][];
                     /** @enum {string} */

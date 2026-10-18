@@ -7,39 +7,33 @@ import type { InboxSettings } from "../../shared/inbox";
 import { createUuidV7 } from "../../shared/uuid-v7";
 import { AgentRuntimeApplication } from "../agent-runtime/AgentRuntimeApplication";
 import { MainConfig } from "../app/MainConfig";
-import type { CoreInboxDispatchContext } from "../core-client/inbox-adapter";
+import {
+  inboxDispatchActionToCore,
+  type CoreInboxSuggestionRequest,
+} from "../core-client/inbox-adapter";
 import { DatabaseNotifierRuntime } from "../host-runtime/DatabaseNotifierRuntime";
 import { getLogger } from "../logging/logger";
 import { ApplicationSettings } from "../settings/ApplicationSettings";
-import { InboxApplication, InboxRuntimeError } from "./InboxApplication";
+import { InboxApplication, type InboxSuggestionSettlement } from "./InboxApplication";
 import {
   INBOX_SUGGESTION_BATCH,
   INBOX_SUGGESTION_MAX_OUTPUT_BYTES,
   INBOX_SUGGESTION_OUTPUT_SCHEMA,
   INBOX_SUGGESTION_TIMEOUT_MS,
-  InboxSuggestionOutput,
+  INBOX_PROMPT_VERSION,
+  INBOX_SCHEMA_VERSION,
   buildInboxSuggestionPrompt,
   describeInboxRuntimeFailure,
   validateInboxSuggestions,
-  type InboxSuggestionOutput as Output,
 } from "./inbox-suggestions";
 import { resolveInboxModel } from "./InboxRuntimeSelection";
+import { InboxRuntimeError } from "./InboxRuntimeError";
 
-/** Captured messages often arrive in bursts; one batch lets the Agent group them. */
 const SETTLE_DELAY_MS = 1_500;
 const SAFETY_POLL = "60 seconds";
 const MAX_BATCHES_PER_DRAIN = 8;
-const CODEX_SUGGESTION_EFFORT = "medium";
 
-const describeAgent = (settings: InboxSettings): string => {
-  const runtime = settings.suggestionAgent.kind === "codex" ? "Codex" : "Claude";
-  return settings.suggestionModel ? `${runtime} · ${settings.suggestionModel}` : runtime;
-};
-
-/**
- * Generates advice from bounded routing metadata. Naming uses captured Page heads;
- * executable dispatch remains in Core's confirmed outbox.
- */
+/** A durable request fixes membership; Core atomically accepts all titles and decisions. */
 export const make = Effect.gen(function* () {
   const inbox = yield* InboxApplication;
   const settings = yield* ApplicationSettings;
@@ -48,102 +42,111 @@ export const make = Effect.gen(function* () {
   const logger = getLogger({ component: "inbox-dispatcher" });
   const lane = yield* Semaphore.make(1);
 
-  const generate = Effect.fn("InboxDispatcher.generate")(function* (
+  const suggest = Effect.fn("InboxDispatcher.suggest")(function* (
     current: InboxSettings,
-    prompt: string,
-  ): Effect.fn.Return<Output | null, InboxRuntimeError> {
-    const modelSelection = yield* resolveInboxModel(
-      runtime,
-      current.suggestionAgent,
-      current.suggestionModel,
-      current.suggestionAgent.kind === "claude" ? "low" : CODEX_SUGGESTION_EFFORT,
-    );
-    const output = yield* runtime
-      .generateStructured({
+    request: CoreInboxSuggestionRequest,
+  ) {
+    const identity = {
+      requestId: request.request_id,
+      generation: request.generation,
+      mode: request.mode,
+      correction: request.correction,
+    };
+    const outcome = yield* Effect.gen(function* () {
+      const modelSelection = yield* resolveInboxModel(
+        runtime,
+        current.suggestionAgent,
+        current.suggestionModel,
+        undefined,
+        "suggestion",
+      );
+      const prompt = yield* Effect.try({
+        try: () =>
+          buildInboxSuggestionPrompt({
+            context: request.context,
+            instructions: current.instructions,
+            request: identity,
+          }),
+        catch: (cause) =>
+          new InboxRuntimeError({
+            message: cause instanceof Error ? cause.message : "The suggestion input is invalid",
+          }),
+      });
+      const provider = (yield* runtime.catalog()).find(
+        (candidate) => candidate.instanceId === modelSelection.instanceId,
+      );
+      // Provenance records the actual selection. Captured bodies and correction text never enter logs.
+      logger.info("Inbox suggestion requested", {
+        requestId: request.request_id,
+        generation: request.generation,
+        instanceId: modelSelection.instanceId,
+        model: modelSelection.model,
+        options: modelSelection.options,
+        providerVersion: provider?.version,
+        promptVersion: INBOX_PROMPT_VERSION,
+        schemaVersion: INBOX_SCHEMA_VERSION,
+        inputBytes: Buffer.byteLength(prompt),
+        memberCount: request.page_ids.length,
+      });
+      const output = yield* runtime.generateStructured({
         modelSelection,
         prompt,
         cwd: config.nodexHome,
         outputSchema: INBOX_SUGGESTION_OUTPUT_SCHEMA,
         maxOutputBytes: INBOX_SUGGESTION_MAX_OUTPUT_BYTES,
         timeoutMs: INBOX_SUGGESTION_TIMEOUT_MS,
-      })
-      .pipe(Effect.mapError((error) => new InboxRuntimeError({ message: error.message })));
-    const parsed = InboxSuggestionOutput.safeParse(output);
-    return parsed.success ? parsed.data : null;
-  });
-
-  const suggestBatch = Effect.fn("InboxDispatcher.suggestBatch")(function* (
-    current: InboxSettings,
-  ) {
-    const entries = yield* inbox.pendingSuggestions(INBOX_SUGGESTION_BATCH);
-    if (entries.length === 0) return false;
-    const pageIds = entries.map((entry) => entry.page_id);
-    const outcome = yield* Effect.gen(function* () {
-      const context: CoreInboxDispatchContext = yield* inbox.dispatchContext(pageIds);
-      const output = yield* generate(
-        current,
-        buildInboxSuggestionPrompt({ context, instructions: current.instructions }),
-      );
-      if (!output) {
-        return yield* new InboxRuntimeError({ message: "The Agent returned no suggestion" });
-      }
-      return validateInboxSuggestions(output, context, context.entries);
+      });
+      const validated = yield* Effect.try({
+        try: () =>
+          validateInboxSuggestions(output, request.context, request.context.entries, identity),
+        catch: () => new InboxRuntimeError({ message: "The Agent returned an invalid suggestion" }),
+      });
+      return {
+        validated,
+        producedBy: `${modelSelection.instanceId} · ${modelSelection.model}`.slice(0, 256),
+      };
     }).pipe(Effect.result);
-
+    const base = { request_id: request.request_id, generation: request.generation };
     if (outcome._tag === "Failure") {
-      logger.info("Inbox suggestion failed", { error: outcome.failure.message });
-      yield* inbox.recordSuggestionFailure(
-        pageIds,
-        describeInboxRuntimeFailure(outcome.failure.message, "suggestion"),
-      );
-      return true;
+      logger.info("Inbox suggestion failed", {
+        requestId: request.request_id,
+        generation: request.generation,
+      });
+      yield* inbox.settleSuggestion({
+        ...base,
+        titles: [],
+        suggestions: [],
+        produced_by: null,
+        error: describeInboxRuntimeFailure(outcome.failure.message, "suggestion"),
+      });
+      return;
     }
-    const basisByPage = new Map(entries.map((entry) => [entry.page_id, entry.basis]));
-    // Naming happens first so each proposal is fenced by the Page as it will stay.
-    for (const [pageId, title] of outcome.success.titles) {
-      const basis = basisByPage.get(pageId);
-      if (!basis) continue;
-      const named = yield* inbox.nameEntry({ basis, title }).pipe(
-        Effect.catch((error) =>
-          Effect.sync(() => {
-            logger.info("Inbox message was not named", { error: error.message });
-            return null;
-          }),
-        ),
-      );
-      if (named) basisByPage.set(pageId, named);
-    }
-    for (const suggestion of outcome.success.suggestions) {
-      yield* inbox
-        .propose({
-          proposalId: createUuidV7(),
-          pageIds: suggestion.pageIds,
-          basis: suggestion.pageIds.flatMap((pageId) => {
-            const basis = basisByPage.get(pageId);
-            return basis ? [basis] : [];
-          }),
-          action: suggestion.action,
-          kind: suggestion.kind,
-          summary: suggestion.summary,
-          rationale: suggestion.rationale,
-          producedBy: describeAgent(current),
-        })
-        .pipe(
-          // A message edited while the Agent was thinking stays pending for a fresh pass.
-          Effect.catch((error) =>
-            Effect.sync(() =>
-              logger.info("Inbox suggestion was not recorded", { error: error.message }),
-            ),
-          ),
-        );
-    }
-    if (outcome.success.unresolvedPageIds.length > 0) {
-      yield* inbox.recordSuggestionFailure(
-        outcome.success.unresolvedPageIds,
-        "No valid suggestion was produced",
-      );
-    }
-    return true;
+    const { validated, producedBy } = outcome.success;
+    const suggestions: InboxSuggestionSettlement["suggestions"] = [
+      ...validated.suggestions.map((suggestion) => ({
+        proposal_id: createUuidV7(),
+        page_ids: [...suggestion.pageIds],
+        action: inboxDispatchActionToCore(suggestion.action),
+        entry_kind: suggestion.kind,
+        summary: suggestion.summary,
+        rationale: suggestion.rationale,
+      })),
+      ...validated.none.map((suggestion) => ({
+        proposal_id: createUuidV7(),
+        page_ids: [...suggestion.pageIds],
+        action: { type: "none" as const, reason: suggestion.reason },
+        entry_kind: null,
+        summary: suggestion.reason,
+        rationale: null,
+      })),
+    ];
+    yield* inbox.settleSuggestion({
+      ...base,
+      titles: [...validated.titles].map(([page_id, title]) => ({ page_id, title })),
+      suggestions,
+      produced_by: producedBy,
+      error: null,
+    });
   });
 
   const drain = lane.withPermits(1)(
@@ -151,15 +154,17 @@ export const make = Effect.gen(function* () {
       const snapshot = yield* settings.snapshot();
       if (!snapshot.inbox.suggestionsEnabled) return;
       for (let batch = 0; batch < MAX_BATCHES_PER_DRAIN; batch += 1) {
-        if (!(yield* suggestBatch(snapshot.inbox))) return;
+        yield* inbox.prepareSuggestions(INBOX_SUGGESTION_BATCH);
+        const [request] = yield* inbox.suggestionRequests(1);
+        if (!request) return;
+        yield* suggest(snapshot.inbox, request);
       }
     }).pipe(
-      Effect.catchCause((cause) =>
-        Effect.sync(() => logger.warn("Inbox suggestion pass failed", { cause })),
+      Effect.catchCause(() =>
+        Effect.sync(() => logger.warn("Inbox suggestion pass could not settle")),
       ),
     ),
   );
-
   return { drain };
 });
 

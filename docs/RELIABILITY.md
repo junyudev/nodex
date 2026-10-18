@@ -405,6 +405,19 @@ a launch skips starting it only with durable evidence, bound to the exact store 
 last stopped with no live or pending work. Unexpected exits restart it within a bounded
 sliding-window budget rather than once per user action.
 
+### Inbox confirmation handoff
+
+Inbox confirmations retain complete dispatch text, the reviewed Page revisions,
+the exact target and stable launch/message identities in Core. Main hands local
+work to Agent Runtime and settles Core only after durable admission; a lost
+reply replays the same command rather than rebuilding input from current Pages
+or preferences. Busy chats accept their messages into the Runtime queue. A
+durable rejection is an actionable failure rather than an endless transport
+retry. Explicit remote native sends do not inherit this admission guarantee:
+an uncertain result remains awaiting confirmation instead of being blindly
+resubmitted. Inbox deletion removes unsubmitted snapshots but does not recall
+messages already accepted by a chat.
+
 ### Explicit remote Codex conversations
 
 For an explicitly attached remote conversation, the app-server endpoint generation

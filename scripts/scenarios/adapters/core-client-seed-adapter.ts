@@ -46,12 +46,12 @@ import {
 } from "./core-client-seed-runtime";
 import {
   LIBRARY_INBOX,
-  type InboxDispatchInput,
   type InboxScope,
   type InboxWindow,
   type InboxWindowFilter,
 } from "../../../src/shared/inbox";
-import type { ScenarioInboxProposalSeed } from "../contracts";
+import type { ScenarioInboxDispatchSeed, ScenarioInboxProposalSeed } from "../contracts";
+import { inboxPageBasisFromCore } from "../../../src/main/core-client/inbox-adapter";
 
 const requireSuccess = <Value>(
   result:
@@ -419,7 +419,22 @@ export class CoreClientSeedAdapter implements ScenarioSeedPort {
     text: string,
     scope: InboxScope = LIBRARY_INBOX,
   ): Promise<{ readonly pageId: string }> {
-    return await runScenarioInbox(this.#runtime, (inbox) => inbox.send({ scope, text }));
+    return await runScenarioInbox(
+      this.#runtime,
+      Effect.fn("Scenario.captureInbox")(function* (inbox) {
+        const summary = yield* inbox.summary({ scope });
+        const result = yield* inbox.send({
+          scope,
+          text,
+          operationId: createBoundedOperationId("scenario.inbox.send"),
+          pageId: createUuidV7(),
+          documentId: createUuidV7(),
+          issuedAt: Date.now(),
+          storeEpoch: summary.storeEpoch,
+        });
+        return result.value;
+      }),
+    );
   }
 
   async proposeInboxDispatch(input: ScenarioInboxProposalSeed): Promise<void> {
@@ -441,8 +456,32 @@ export class CoreClientSeedAdapter implements ScenarioSeedPort {
     );
   }
 
-  async dispatchInboxEntries(input: InboxDispatchInput): Promise<void> {
-    await runScenarioInbox(this.#runtime, (inbox) => inbox.dispatch(input));
+  async dispatchInboxEntries(input: ScenarioInboxDispatchSeed): Promise<void> {
+    await runScenarioInbox(
+      this.#runtime,
+      Effect.fn("Scenario.dispatchInbox")(function* (inbox) {
+        const context = yield* inbox.dispatchContext(input.pageIds);
+        const summary = yield* inbox.summary({ scope: input.scope ?? LIBRARY_INBOX });
+        const prepared = yield* inbox.prepareConfirmation({
+          kind: "direct",
+          pageIds: input.pageIds,
+          storeEpoch: summary.storeEpoch,
+          basis: context.entries.map((entry) => inboxPageBasisFromCore(entry.basis)),
+          action: input.action,
+        });
+        if (prepared.kind !== "direct") throw new Error("Expected a direct Inbox decision");
+        yield* inbox.dispatch({
+          operationId: prepared.operationId,
+          proposalId: prepared.proposalId,
+          storeEpoch: prepared.storeEpoch,
+          sessionId: prepared.sessionId,
+          pageIds: prepared.pageIds,
+          basis: prepared.basis,
+          action: prepared.action,
+          executionSelection: prepared.executionSelection,
+        });
+      }),
+    );
   }
 
   async keepInboxEntries(pageIds: readonly string[]): Promise<void> {
@@ -456,7 +495,14 @@ export class CoreClientSeedAdapter implements ScenarioSeedPort {
   }
 
   async completeInboxDispatch(proposalId: string, threadId: string | null): Promise<void> {
-    await runScenarioInbox(this.#runtime, (inbox) => inbox.completeDispatch(proposalId, threadId));
+    await runScenarioInbox(
+      this.#runtime,
+      Effect.fn("Scenario.completeInbox")(function* (inbox) {
+        const work = (yield* inbox.outbox(16)).find((work) => work.proposal_id === proposalId);
+        if (!work) throw new Error("Scenario confirmed dispatch is missing");
+        yield* inbox.completeDispatch(work, threadId);
+      }),
+    );
   }
 
   async readInbox(

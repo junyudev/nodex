@@ -1,12 +1,21 @@
+import { useLayoutEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import type {
+  InboxConfirmationDraft,
   InboxDispatchAction,
   InboxEntryKind,
   InboxEntryState,
+  InboxPageBasis,
   InboxProposal,
+  InboxPreparedConfirmation,
   InboxScope,
+  InboxSendInput,
+  InboxSendResult,
+  InboxItem,
 } from "../../../shared/inbox";
 import type { Project } from "../../../shared/types";
+import { createBoundedOperationId } from "../../../shared/operation-identity";
+import { createUuidV7 } from "../../../shared/uuid-v7";
 import { toast } from "@/components/ui/toast";
 import {
   confirmInboxDispatch,
@@ -14,30 +23,49 @@ import {
   dispatchInboxEntries,
   editInboxMessage,
   keepInboxEntries,
+  prepareInboxConfirmation,
   requestInboxSuggestion,
   retryInboxDispatch,
   sendInboxMessage,
   setInboxEntryKind,
   setInboxEntryState,
+  undoInboxDecision,
 } from "@/lib/inbox-runtime";
-import { readableInboxError } from "./inbox-presentation";
+import { CoreApiError } from "@/lib/core-api-error";
+import { RendererCommandRejectedError } from "@/lib/renderer-command";
+import { inboxReceiptNeedsReview, readableInboxError } from "./inbox-presentation";
 import { invalidateInbox } from "./use-inbox";
-import { useMoveInboxPagesToProject } from "./use-inbox-move";
+import { useInboxCaptureState } from "./use-inbox-capture";
 
 export interface InboxActions {
-  readonly send: (text: string) => Promise<boolean>;
-  /** Rewrites a waiting message from the text the user started with; it is suggested again. */
-  readonly edit: (pageId: string, originalText: string, text: string) => Promise<boolean>;
-  /** Confirms a suggestion, optionally as edited by the user. */
+  readonly send: (intent: InboxSendInput) => Promise<InboxSendResult>;
+  readonly pendingDecisions: readonly {
+    readonly key: string;
+    readonly prepared: InboxPreparedConfirmation;
+  }[];
+  readonly retryDecision: (key: string) => Promise<boolean>;
+  readonly forgetDecision: (key: string) => Promise<boolean>;
+  readonly edit: (
+    pageId: string,
+    originalText: string,
+    text: string,
+    basis: InboxPageBasis,
+  ) => Promise<boolean>;
   readonly confirm: (proposal: InboxProposal, edited?: InboxDispatchAction) => Promise<boolean>;
-  /** Authors and confirms a dispatch without a suggestion. */
-  readonly dispatch: (pageIds: readonly string[], action: InboxDispatchAction) => Promise<boolean>;
+  readonly dispatch: (
+    pageIds: readonly string[],
+    action: InboxDispatchAction,
+    basis: readonly InboxPageBasis[],
+  ) => Promise<boolean>;
   readonly keep: (pageIds: readonly string[]) => Promise<boolean>;
-  /** Erases messages for good; there is no Undo. */
   readonly delete: (pageIds: readonly string[]) => Promise<boolean>;
   readonly setState: (pageIds: readonly string[], state: InboxEntryState) => Promise<boolean>;
   readonly setKind: (pageId: string, kind: InboxEntryKind | null) => Promise<boolean>;
-  readonly requestSuggestion: (pageIds: readonly string[]) => Promise<boolean>;
+  readonly requestSuggestion: (
+    pageIds: readonly string[],
+    basis: readonly InboxPageBasis[],
+    refine?: { readonly proposal: InboxProposal; readonly correction: string },
+  ) => Promise<boolean>;
   readonly retryDispatch: (proposalId: string) => Promise<boolean>;
 }
 
@@ -46,11 +74,44 @@ const clearedLabel = (outcome: "kept" | "done", count: number): string => {
   return count > 1 ? `Marked ${count} messages done` : "Marked done";
 };
 
-/** Inbox commands with uniform failure reporting and invalidation. New messages go to `scope`. */
-export function useInboxActions(projects: readonly Project[], scope: InboxScope): InboxActions {
+/** Decisions keep their prepared identity across transport failure and renderer restart. */
+export function useInboxActions(
+  projects: readonly Project[],
+  scope: InboxScope,
+  windowSessionId: string,
+  storeEpoch: string | null,
+  visibleItems: readonly InboxItem[],
+): InboxActions {
   const queryClient = useQueryClient();
-  const moveToProject = useMoveInboxPagesToProject();
-
+  const local = useInboxCaptureState(windowSessionId, scope);
+  const deciding = useRef(
+    new Map<string, { readonly draft: InboxConfirmationDraft; readonly promise: Promise<void> }>(),
+  );
+  const [activeDecisions, setActiveDecisions] = useState<readonly string[]>([]);
+  const decisions = local.state.value.decisions;
+  const write = local.write;
+  useLayoutEffect(() => {
+    const observed = new Set(
+      visibleItems.flatMap((item) =>
+        item.proposal && item.proposal.state !== "open" ? [item.proposal.proposalId] : [],
+      ),
+    );
+    if (
+      !Object.values(decisions).some(
+        (decision) => decision.storeEpoch === storeEpoch && observed.has(decision.proposalId),
+      )
+    )
+      return;
+    void write((state) => ({
+      ...state,
+      decisions: Object.fromEntries(
+        Object.entries(state.decisions).filter(
+          ([, decision]) =>
+            decision.storeEpoch !== storeEpoch || !observed.has(decision.proposalId),
+        ),
+      ),
+    })).catch(() => undefined);
+  }, [decisions, visibleItems, storeEpoch, write]);
   const run = async (fallback: string, task: () => Promise<unknown>): Promise<boolean> => {
     try {
       await task();
@@ -63,77 +124,164 @@ export function useInboxActions(projects: readonly Project[], scope: InboxScope)
     }
   };
 
-  // Clearing the Inbox is reversible for anything that started no work.
   const announceCleared = (outcome: "kept" | "done", pageIds: readonly string[]) =>
     toast.success(clearedLabel(outcome, pageIds.length), {
       action: {
         label: "Undo",
         onClick: () => {
-          void setInboxEntryState({ pageIds, state: "open" })
-            .catch((error: unknown) =>
-              toast.danger(readableInboxError(error, "The message could not be restored")),
-            )
-            .finally(() => void invalidateInbox(queryClient));
+          void run("The message could not be restored", () =>
+            setInboxEntryState({ pageIds, state: "open" }),
+          );
         },
       },
     });
 
-  const announceChat = (action: InboxDispatchAction, proposal: InboxProposal | null) => {
-    if (action.type === "new_chat") {
-      const project = action.projectId
-        ? (projects.find((candidate) => candidate.id === action.projectId)?.name ??
-          proposal?.targetProjectName ??
-          "its Project")
-        : null;
-      toast.success(project ? `Starting a chat in ${project}` : "Starting a projectless chat");
-    } else if (action.type === "send_to_chat") {
-      const title = proposal?.chat?.displayTitle;
-      toast.success(title ? `Sending to “${title}”` : "Sending to the chat");
+  const submitPrepared = (prepared: InboxPreparedConfirmation) => {
+    if (prepared.kind === "proposal") {
+      const { kind: _kind, ...input } = prepared;
+      return confirmInboxDispatch(input);
+    }
+    const { kind: _kind, ...input } = prepared;
+    return dispatchInboxEntries(input);
+  };
+
+  const performDecision = async (draft: InboxConfirmationDraft, key: string) => {
+    try {
+      const prepared = local.read().decisions[key] ?? (await prepareInboxConfirmation(draft));
+      await local.write((state) => ({
+        ...state,
+        decisions: { ...state.decisions, [key]: prepared },
+      }));
+      const result = await submitPrepared(prepared);
+      await local.write((state) => ({
+        ...state,
+        decisions: Object.fromEntries(Object.entries(state.decisions).filter(([id]) => id !== key)),
+      }));
+      const action = draft.action;
+      if (result.value.undoToken) {
+        const undoToken = result.value.undoToken;
+        const operationId = createBoundedOperationId("inbox.undo");
+        toast.success(
+          action?.type === "move_to_project"
+            ? `Moved to ${projects.find((project) => project.id === action.projectId)?.name ?? "Project"}`
+            : "Moved",
+          {
+            action: {
+              label: "Undo",
+              onClick: () => {
+                void run("The move could not be undone", () =>
+                  undoInboxDecision({ operationId, undoToken }),
+                );
+              },
+            },
+          },
+        );
+      } else if (action?.type === "keep")
+        announceCleared(
+          "kept",
+          draft.basis.map((basis) => basis.pageId),
+        );
+      else if (action?.type === "new_chat" || action?.type === "send_to_chat")
+        toast.success("Handing off to chat");
+    } catch (error) {
+      if (inboxReceiptNeedsReview(error))
+        throw new Error(
+          "This handoff could not be verified. Check the destination before deciding again.",
+          { cause: error },
+        );
+      if (error instanceof RendererCommandRejectedError || error instanceof CoreApiError) {
+        await local
+          .write((state) => ({
+            ...state,
+            decisions: Object.fromEntries(
+              Object.entries(state.decisions).filter(([id]) => id !== key),
+            ),
+          }))
+          .catch(() => undefined);
+      }
+      throw error;
     }
   };
 
-  const requireProject = (projectId: string): Project => {
-    const project = projects.find((candidate) => candidate.id === projectId);
-    if (!project) throw new Error("That Project is no longer available");
-    return project;
+  const decide = (draft: InboxConfirmationDraft, key = JSON.stringify(draft)): Promise<void> => {
+    if (local.state.status !== "ready")
+      return Promise.reject(
+        new Error("Saved decisions are not available yet. Retry after loading."),
+      );
+    if (!storeEpoch || draft.storeEpoch !== storeEpoch)
+      return Promise.reject(
+        new Error(
+          "This handoff is from before a Profile restore. Review the current message before trying again.",
+        ),
+      );
+    const pending = deciding.current.get(key);
+    if (pending) return pending.promise;
+    const requestedPages = new Set(draft.basis.map((basis) => basis.pageId));
+    if (
+      [...deciding.current.values()].some(({ draft: active }) =>
+        active.basis.some((basis) => requestedPages.has(basis.pageId)),
+      ) ||
+      Object.entries(local.read().decisions).some(
+        ([savedKey, saved]) =>
+          savedKey !== key && saved.basis.some((basis) => requestedPages.has(basis.pageId)),
+      )
+    )
+      return Promise.reject(
+        new Error("A previous handoff is still unconfirmed. Check it before starting another."),
+      );
+    setActiveDecisions((current) => [...current, key]);
+    const submission = performDecision(draft, key).finally(() => {
+      deciding.current.delete(key);
+      setActiveDecisions((current) => current.filter((active) => active !== key));
+    });
+    deciding.current.set(key, { draft, promise: submission });
+    return submission;
   };
 
   return {
-    send: (text) => run("The message could not be saved", () => sendInboxMessage({ scope, text })),
-    edit: (pageId, originalText, text) =>
+    pendingDecisions: Object.entries(decisions).flatMap(([key, prepared]) =>
+      activeDecisions.includes(key) ? [] : [{ key, prepared }],
+    ),
+    retryDecision: (key) =>
+      run("The handoff could not be confirmed", async () => {
+        const prepared = local.read().decisions[key];
+        if (prepared) await decide(prepared, key);
+      }),
+    forgetDecision: (key) =>
+      run("The saved handoff could not be cleared", () =>
+        local.write((state) => ({
+          ...state,
+          decisions: Object.fromEntries(
+            Object.entries(state.decisions).filter(([savedKey]) => savedKey !== key),
+          ),
+        })),
+      ),
+    send: async (input) => {
+      try {
+        return (await sendInboxMessage(input)).value;
+      } finally {
+        void invalidateInbox(queryClient);
+      }
+    },
+    edit: (pageId, originalText, text, basis) =>
       run("The message could not be edited", () =>
-        editInboxMessage({ pageId, originalText, text }),
+        editInboxMessage({ pageId, basis, originalText, text }),
       ),
     confirm: (proposal, edited) =>
-      run("The suggestion could not be confirmed", async () => {
-        const action = edited ?? proposal.action;
-        if (action.type === "move_to_project") {
-          // The move is the user's own Library relocation; Core then records it as filed.
-          await moveToProject(proposal.pageIds, requireProject(action.projectId));
-        }
-        await confirmInboxDispatch({
+      run("The suggestion could not be confirmed", () =>
+        decide({
+          kind: "proposal",
+          storeEpoch: storeEpoch ?? "",
           proposalId: proposal.proposalId,
           expectedRevision: proposal.revision,
-          ...(edited ? { action: edited } : {}),
-        });
-        if (action.type === "keep") announceCleared("kept", proposal.pageIds);
-        else announceChat(action, proposal);
-      }),
-    dispatch: (pageIds, action) =>
-      run("The message could not be dispatched", async () => {
-        if (action.type === "move_to_project") {
-          await moveToProject(pageIds, requireProject(action.projectId));
-          await dispatchInboxEntries({ pageIds, action });
-          return;
-        }
-        if (action.type === "keep") {
-          await keepInboxEntries({ pageIds });
-          announceCleared("kept", pageIds);
-          return;
-        }
-        await dispatchInboxEntries({ pageIds, action });
-        announceChat(action, null);
-      }),
+          basis: proposal.basis,
+          action: edited ?? proposal.action,
+        }),
+      ),
+    dispatch: (pageIds, action, basis) =>
+      run("The message could not be dispatched", () =>
+        decide({ kind: "direct", storeEpoch: storeEpoch ?? "", pageIds, action, basis }),
+      ),
     keep: (pageIds) =>
       run("The message could not be kept", async () => {
         await keepInboxEntries({ pageIds });
@@ -142,6 +290,16 @@ export function useInboxActions(projects: readonly Project[], scope: InboxScope)
     delete: (pageIds) =>
       run("The message could not be deleted", async () => {
         await deleteInboxMessages({ pageIds });
+        const deleted = new Set(pageIds);
+        await local.write((state) => ({
+          ...state,
+          captures: state.captures.filter((capture) => !deleted.has(capture.intent.pageId)),
+          decisions: Object.fromEntries(
+            Object.entries(state.decisions).filter(
+              ([, decision]) => !decision.basis.some((basis) => deleted.has(basis.pageId)),
+            ),
+          ),
+        }));
         toast.success(pageIds.length > 1 ? `Deleted ${pageIds.length} messages` : "Deleted");
       }),
     setState: (pageIds, state) =>
@@ -151,8 +309,22 @@ export function useInboxActions(projects: readonly Project[], scope: InboxScope)
       }),
     setKind: (pageId, kind) =>
       run("The message could not be updated", () => setInboxEntryKind({ pageId, kind })),
-    requestSuggestion: (pageIds) =>
-      run("A new suggestion could not be requested", () => requestInboxSuggestion({ pageIds })),
+    requestSuggestion: (pageIds, basis, refine) =>
+      run("A new suggestion could not be requested", () =>
+        requestInboxSuggestion({
+          requestId: createUuidV7(),
+          mode: refine ? "refine" : pageIds.length > 1 ? "grouped" : "auto",
+          pageIds,
+          basis,
+          ...(refine
+            ? {
+                proposalId: refine.proposal.proposalId,
+                expectedRevision: refine.proposal.revision,
+                correction: refine.correction,
+              }
+            : {}),
+        }),
+      ),
     retryDispatch: (proposalId) =>
       run("The dispatch could not be retried", () => retryInboxDispatch({ proposalId })),
   };

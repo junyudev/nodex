@@ -4,6 +4,7 @@ import {
   inboxScopeProjectId,
   type InboxItem,
   type InboxScope,
+  type InboxSendInput,
   type InboxWindowFilter,
 } from "../../../shared/inbox";
 import type { Project } from "../../../shared/types";
@@ -27,6 +28,7 @@ import { InboxComposer } from "./inbox-composer";
 import {
   InboxDispatchEditor,
   draftFromAction,
+  draftForInboxItem,
   type InboxDispatchDraft,
 } from "./inbox-dispatch-editor";
 import { InboxDeleteDialog, type InboxDeleteRequest } from "./inbox-delete-dialog";
@@ -39,6 +41,7 @@ import {
   type InboxOutcomeTarget,
 } from "./inbox-presentation";
 import { InboxTriage } from "./inbox-triage";
+import { useInboxCapture } from "./use-inbox-capture";
 import { useInboxActions } from "./use-inbox-actions";
 import {
   useInboxInvalidation,
@@ -56,6 +59,7 @@ export interface InboxRouteProps {
    * a Project's Inbox is that Project's Home tab and carries its header inline.
    */
   readonly scope: InboxScope;
+  readonly windowSessionId: string;
   readonly projects: readonly Project[];
   readonly focusComposerToken?: number;
   readonly onOpenSession: (sessionId: string) => void;
@@ -179,7 +183,7 @@ function EmptyState({
         <p className="max-w-sm text-sm text-balance text-token-description-foreground">
           {projectName
             ? "Drop thoughts, todos, and questions about this Project. Each becomes a Page on its Board, and Nodex suggests what to do with it."
-            : "Drop a thought, a todo, or a question. Nodex suggests where it should go, and nothing runs until you confirm."}
+            : "Drop a thought, a todo, or a question. Review a suggestion or decide where it goes."}
         </p>
       </div>
     );
@@ -242,6 +246,7 @@ function streamEntries(items: readonly InboxItem[], nowMs: number): readonly Str
 
 export function InboxRoute({
   scope,
+  windowSessionId,
   projects,
   focusComposerToken,
   onOpenSession,
@@ -266,7 +271,13 @@ export function InboxRoute({
   const summary = useInboxSummary(scope);
   useApplicationPending(visible && (stream.isPending || summary.isPending));
   const settings = useInboxSettings();
-  const actions = useInboxActions(projects, scope);
+  const actions = useInboxActions(
+    projects,
+    scope,
+    windowSessionId,
+    summary.data?.storeEpoch ?? null,
+    stream.items,
+  );
   const scrollRef = useRef<HTMLDivElement>(null);
   const stickToBottomRef = useRef(true);
   const contentRef = useRef<HTMLDivElement>(null);
@@ -313,11 +324,18 @@ export function InboxRoute({
     setSelected(new Set());
     setBulkDraft(null);
   };
-  const send = async (text: string) => {
+  const send = async (intent: InboxSendInput) => {
     stickToBottomRef.current = true;
     if (view !== "inbox") changeView("inbox");
-    return await actions.send(text);
+    return await actions.send(intent);
   };
+  const capture = useInboxCapture({
+    windowSessionId,
+    scope,
+    storeEpoch: summary.data?.storeEpoch ?? null,
+    visiblePageIds: stream.items.map((item) => item.pageId),
+    onSend: send,
+  });
   const setManualDraft = (pageId: string, draft: InboxDispatchDraft | null) =>
     setManualDrafts((current) => {
       const next = { ...current };
@@ -341,19 +359,12 @@ export function InboxRoute({
         item={item}
         handlers={{
           onOpenPage: () => onOpenPage(item.pageId),
-          onDispatch: () =>
-            setManualDraft(
-              item.pageId,
-              draftFromAction(
-                proposal?.action ?? {
-                  type: "new_chat",
-                  projectId: inboxProjectId,
-                  prompt: item.body,
-                },
-                item.body,
-              ),
+          onDispatch: () => setManualDraft(item.pageId, draftForInboxItem(item, inboxProjectId)),
+          onSuggestAgain: () =>
+            void actions.requestSuggestion(
+              proposal?.pageIds ?? [item.pageId],
+              proposal?.basis ?? [item.basis],
             ),
-          onSuggestAgain: () => void actions.requestSuggestion([item.pageId]),
           onSetDone: (done) => void actions.setState([item.pageId], done ? "done" : "open"),
           onDelete: () => requestDelete([item]),
         }}
@@ -369,6 +380,14 @@ export function InboxRoute({
         manualDraft={manualDrafts[item.pageId] ?? null}
         groupedWithKey={anchor && anchor !== item.pageId ? (keysByPage.get(anchor) ?? null) : null}
         menu={menu}
+        members={(proposal?.pageIds ?? []).flatMap((pageId) => {
+          const member = inboxItems.find((entry) => entry.pageId === pageId);
+          return member
+            ? [{ pageId, label: member.pageKey ?? member.title, body: member.body }]
+            : [];
+        })}
+        onOpenPage={onOpenPage}
+        onOpenSession={onOpenSession}
         onManualDraftChange={(draft) => setManualDraft(item.pageId, draft)}
         onEditAsPage={() => onOpenPage(item.pageId)}
       >
@@ -448,13 +467,33 @@ export function InboxRoute({
         // Both gutters stay reserved, so a scrollbar appearing never nudges the stream sideways.
         className="flex min-h-0 flex-1 flex-col overflow-y-auto [scrollbar-gutter:stable_both-edges]"
       >
+        {stream.error || summary.error ? (
+          <div
+            role="status"
+            className="mx-auto flex w-full max-w-(--thread-content-max-width) items-center gap-2 px-toolbar py-2 text-sm text-token-description-foreground"
+          >
+            <span>{stream.items.length ? "Couldn’t refresh Inbox" : "Couldn’t load Inbox"}</span>
+            <NodexButton
+              size="xs"
+              variant="ghost"
+              onClick={() => {
+                void stream.retry();
+                void summary.refetch();
+              }}
+            >
+              Retry
+            </NodexButton>
+          </div>
+        ) : null}
         {stream.isPending ? null : stream.items.length === 0 ? (
-          <EmptyState
-            view={view}
-            everUsed={(summary.data?.entryCount ?? 0) > 0}
-            projectName={projectName}
-            onShowHistory={() => changeView("processed")}
-          />
+          stream.error || summary.error ? null : (
+            <EmptyState
+              view={view}
+              everUsed={(summary.data?.entryCount ?? 0) > 0}
+              projectName={projectName}
+              onShowHistory={() => changeView("processed")}
+            />
+          )
         ) : view === "processed" ? (
           <div className="mx-auto flex w-full max-w-(--thread-content-max-width) flex-col gap-3 px-toolbar py-6">
             <InboxHistory
@@ -522,7 +561,11 @@ export function InboxRoute({
                     inboxProjectId={inboxProjectId}
                     onCancel={() => setBulkDraft(null)}
                     onSubmit={async (action) => {
-                      const done = await actions.dispatch(selectedPageIds, action);
+                      const done = await actions.dispatch(
+                        (bulkDraft.basis ?? []).map((basis) => basis.pageId),
+                        action,
+                        bulkDraft.basis ?? [],
+                      );
                       if (done) setSelected(new Set());
                       return done;
                     }}
@@ -541,9 +584,14 @@ export function InboxRoute({
                     icon={AskAiIcon}
                     disabled={selectedItems.length > 16}
                     onClick={() =>
-                      void actions.requestSuggestion(selectedPageIds).then((done) => {
-                        if (done) clearSelection();
-                      })
+                      void actions
+                        .requestSuggestion(
+                          selectedPageIds,
+                          selectedItems.map((item) => item.basis),
+                        )
+                        .then((done) => {
+                          if (done) clearSelection();
+                        })
                     }
                   />
                   <InboxIconAction
@@ -551,16 +599,17 @@ export function InboxRoute({
                     icon={DispatchIcon}
                     disabled={selectedItems.length > 16}
                     onClick={() =>
-                      setBulkDraft(
-                        draftFromAction(
+                      setBulkDraft({
+                        ...draftFromAction(
                           { type: "new_chat", projectId: inboxProjectId, prompt: combinedText },
                           combinedText,
                         ),
-                      )
+                        basis: selectedItems.map((item) => item.basis),
+                      })
                     }
                   />
                   <InboxIconAction
-                    label="Keep as notes"
+                    label="Keep"
                     icon={ArchiveIcon}
                     onClick={() =>
                       void actions.keep(selectedPageIds).then((done) => {
@@ -594,8 +643,103 @@ export function InboxRoute({
             </motion.div>
           ) : null}
         </AnimatePresence>
+        {actions.pendingDecisions.map(({ key, prepared }) => (
+          <div
+            key={key}
+            role="status"
+            className="mb-2 flex min-w-0 items-center gap-2 px-2 text-sm text-token-description-foreground"
+          >
+            <details className="min-w-0 flex-1">
+              <summary className="cursor-interaction">Handoff not confirmed</summary>
+              {prepared.action && "prompt" in prepared.action ? (
+                <p className="whitespace-pre-wrap">{prepared.action.prompt}</p>
+              ) : null}
+              {summary.data && prepared.storeEpoch !== summary.data.storeEpoch ? (
+                <p className="mt-1 text-xs">
+                  From before a Profile restore. Review the current message before trying again.
+                </p>
+              ) : null}
+            </details>
+            {summary.data && prepared.storeEpoch !== summary.data.storeEpoch ? (
+              <NodexButton
+                size="xs"
+                variant="ghost"
+                onClick={() => void actions.forgetDecision(key)}
+              >
+                Clear
+              </NodexButton>
+            ) : (
+              <NodexButton
+                size="xs"
+                variant="ghost"
+                disabled={!summary.data}
+                onClick={() => void actions.retryDecision(key)}
+              >
+                Retry
+              </NodexButton>
+            )}
+          </div>
+        ))}
+        {capture.pending.map((pending) => (
+          <div
+            key={pending.intent.pageId}
+            role="status"
+            className="mb-2 flex min-w-0 items-center gap-2 px-2 text-sm text-token-description-foreground"
+          >
+            <details className="min-w-0 flex-1">
+              <summary className="cursor-interaction truncate">{pending.intent.text}</summary>
+              <p className="whitespace-pre-wrap">{pending.intent.text}</p>
+              <p className="mt-1 text-xs">
+                {summary.data && pending.intent.storeEpoch !== summary.data.storeEpoch
+                  ? "From before a Profile restore. The original message may already exist."
+                  : (pending.error ?? "Waiting for Inbox")}
+              </p>
+            </details>
+            {pending.status === "needs_review" ||
+            (summary.data && pending.intent.storeEpoch !== summary.data.storeEpoch) ? (
+              <NodexButton
+                size="xs"
+                variant="ghost"
+                onClick={() => void capture.recoverText(pending)}
+              >
+                Recover text
+              </NodexButton>
+            ) : (
+              <NodexButton
+                size="xs"
+                variant="ghost"
+                disabled={!capture.ready}
+                onClick={() => void capture.retry(pending)}
+              >
+                Retry
+              </NodexButton>
+            )}
+          </div>
+        ))}
+        {capture.validationError ? (
+          <p role="alert" className="mb-2 text-xs text-token-error-foreground">
+            {capture.validationError}
+          </p>
+        ) : null}
+        {capture.error ? (
+          <div
+            role="alert"
+            className="mb-2 flex items-center gap-2 text-xs text-token-error-foreground"
+          >
+            {capture.canEdit
+              ? "Draft could not be saved. Your text is still here."
+              : "Couldn’t load your saved draft."}
+            <NodexButton size="xs" variant="ghost" onClick={() => void capture.retryPersistence()}>
+              Retry
+            </NodexButton>
+          </div>
+        ) : null}
         <InboxComposer
-          onSend={send}
+          draft={capture.draft}
+          onDraftChange={capture.setDraft}
+          disabled={!capture.ready}
+          readOnly={!capture.canEdit}
+          onSend={capture.submit}
           focusToken={focusComposerToken}
           placeholder={projectName ? `Add a thought to ${projectName}…` : undefined}
         />

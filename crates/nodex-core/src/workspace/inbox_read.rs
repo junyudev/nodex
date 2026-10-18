@@ -36,7 +36,7 @@ use super::inbox::{
 };
 
 const MAX_STREAM_BODY_BYTES: usize = 8 * 1024;
-const MAX_AGENT_BODY_BYTES: usize = 4 * 1024;
+const MAX_AGENT_BODY_BYTES: usize = 64 * 1024;
 const MAX_CONTEXT_PROJECTS: i64 = 50;
 const MAX_CONTEXT_SESSIONS: i64 = 30;
 const MAX_CONTEXT_PROPOSALS: i64 = 20;
@@ -95,7 +95,7 @@ pub(super) fn read_summary(
         "SELECT count(DISTINCT proposal.proposal_id) FROM inbox_proposals proposal \
          JOIN inbox_proposal_pages link ON link.proposal_id = proposal.proposal_id \
          JOIN inbox_entries entry ON entry.page_id = link.page_id \
-         WHERE proposal.library_id = ?1 AND proposal.state = 'dispatching' \
+         WHERE proposal.library_id = ?1 AND proposal.state = 'dispatching' AND COALESCE(proposal.failure_kind,'') <> 'unknown' \
            AND entry.scope_project_id IS ?2",
         params![library_id, project_id],
         |row| row.get::<_, i64>(0),
@@ -115,7 +115,7 @@ pub(super) fn read_summary(
 /// filing it into a Project, Keep, and Done all handle it; a failed dispatch brings it
 /// back. Where the Page lives does not matter. Never NULL.
 pub(super) const IN_INBOX: &str = "(entry.state = 'open' \
-    AND COALESCE(proposal.state, '') <> 'dispatching' \
+    AND NOT (COALESCE(proposal.state, '') = 'dispatching' AND COALESCE(proposal.failure_kind,'') <> 'unknown') \
     AND NOT (COALESCE(proposal.state, '') = 'completed' \
       AND COALESCE(json_extract(proposal.action_json, '$.type'), '') \
         IN ('new_chat', 'send_to_chat')))";
@@ -283,6 +283,7 @@ struct EntryRow {
     plain_text: String,
     generation: i64,
     head_seq: i64,
+    placement_revision: i64,
 }
 
 /// Admit a small complete NFM or bounded text prefix in SQLite before decoding.
@@ -302,7 +303,7 @@ fn read_entry(
                  THEN materialization.nfm ELSE NULL END, \
                substr(COALESCE(materialization.plain_text, ''),1,?3), document.generation, document.head_seq, \
                entry.provisional_title, entry.source_turn_id, \
-               COALESCE(octet_length(materialization.plain_text),0) > ?3, entry.scope_project_id \
+               COALESCE(octet_length(materialization.plain_text),0) > ?3, entry.scope_project_id, (SELECT placement_revision FROM blocks WHERE id=entry.page_id) \
              FROM inbox_entries entry \
              JOIN pages page ON page.block_id = entry.page_id \
              JOIN documents document ON document.id = page.document_id \
@@ -336,6 +337,7 @@ fn read_entry(
                     plain_text: row.get(17)?,
                     generation: row.get(18)?,
                     head_seq: row.get(19)?,
+                    placement_revision: row.get(24)?,
                 })
             },
         )
@@ -380,6 +382,7 @@ pub(super) fn read_message_edit(
         .map(|excerpt| super::inbox::title_markdown(&excerpt));
     Ok(ProjectWorkspaceInboxMessageEdit {
         basis: ProjectWorkspaceInboxPageBasis {
+            placement_revision: row.placement_revision,
             page_id: page_id.to_owned(),
             generation: row.generation,
             head_seq: row.head_seq,
@@ -461,6 +464,23 @@ fn read_item(
         .flatten();
     Ok((
         ProjectWorkspaceInboxItem {
+            basis: ProjectWorkspaceInboxPageBasis {
+                placement_revision: row.placement_revision,
+                page_id: page_id.to_owned(),
+                generation: row.generation,
+                head_seq: row.head_seq,
+            },
+            outcome: connection
+                .query_row(
+                    "SELECT outcome FROM inbox_entries WHERE page_id=?1",
+                    [page_id],
+                    |row| row.get::<_, Option<String>>(0),
+                )?
+                .map(|value| {
+                    serde_json::from_value(serde_json::Value::String(value))
+                        .map_err(|_| corrupt("Invalid Inbox outcome"))
+                })
+                .transpose()?,
             page_id: page_id.to_owned(),
             page_key: crate::database::current_page_key_for_page(connection, library_id, page_id)?,
             title: row.title.clone(),
@@ -597,6 +617,18 @@ fn read_proposal(
         .transpose()?
         .flatten();
     Ok(Some(ProjectWorkspaceInboxProposal {
+        failure_kind: connection
+            .query_row(
+                "SELECT failure_kind FROM inbox_proposals WHERE proposal_id=?1",
+                [proposal_id],
+                |r| r.get::<_, Option<String>>(0),
+            )?
+            .map(|v| {
+                serde_json::from_value(serde_json::Value::String(v))
+                    .map_err(|_| corrupt("Invalid failure kind"))
+            })
+            .transpose()?,
+        basis: super::inbox::require_proposal(connection, library_id, proposal_id)?.basis,
         proposal_id: proposal_id.to_owned(),
         revision,
         origin: if origin == "user" {
@@ -710,13 +742,17 @@ pub(super) fn read_pending_suggestions(
         .collect()
 }
 
-fn suggestion_input(
+pub(super) fn suggestion_input(
     connection: &Connection,
     library_id: &str,
     page_id: &str,
 ) -> Result<ProjectWorkspaceInboxSuggestionInput, StoreError> {
     let row = read_entry(connection, page_id, MAX_AGENT_BODY_BYTES)?;
-    let (body, _) = bounded_utf8(&message_body(&row), MAX_AGENT_BODY_BYTES);
+    let full_body = message_body(&row);
+    if row.source_body_truncated || full_body.len() > MAX_AGENT_BODY_BYTES {
+        return Err(invalid("Inbox input exceeds the complete 64 KiB bound"));
+    }
+    let body = full_body;
     Ok(ProjectWorkspaceInboxSuggestionInput {
         page_id: page_id.to_owned(),
         page_key: crate::database::current_page_key_for_page(connection, library_id, page_id)?,
@@ -727,6 +763,7 @@ fn suggestion_input(
         submitted_at: row.submitted_at.clone(),
         scope: scope_of(row.scope_project_id.clone()),
         basis: ProjectWorkspaceInboxPageBasis {
+            placement_revision: row.placement_revision,
             page_id: page_id.to_owned(),
             generation: row.generation,
             head_seq: row.head_seq,
@@ -734,6 +771,48 @@ fn suggestion_input(
         // Any rename, by the user or by an earlier suggestion, makes the title theirs.
         title_provisional: row.provisional_title.as_deref() == Some(row.title.as_str()),
     })
+}
+
+/// Small lexical hints let related older chats compete with recent activity. This does
+/// not read transcripts or add a second search authority to Inbox.
+fn context_search_terms(entries: &[ProjectWorkspaceInboxSuggestionInput]) -> Vec<String> {
+    let mut terms = Vec::new();
+    for entry in entries {
+        let text = format!(
+            "{} {}",
+            entry.title,
+            entry.body.chars().take(4096).collect::<String>()
+        )
+        .to_lowercase();
+        for word in text.split(|ch: char| !ch.is_alphanumeric()) {
+            let chars = word.chars().collect::<Vec<_>>();
+            if chars.len() < 3 {
+                continue;
+            }
+            let candidates = if chars
+                .iter()
+                .all(|ch| ('\u{3400}'..='\u{9fff}').contains(ch))
+            {
+                chars
+                    .windows(2)
+                    .map(|pair| pair.iter().collect())
+                    .collect::<Vec<String>>()
+            } else if chars.len() <= 64 {
+                vec![word.to_owned()]
+            } else {
+                vec![]
+            };
+            for term in candidates {
+                if !terms.contains(&term) {
+                    terms.push(term);
+                }
+                if terms.len() == 24 {
+                    return terms;
+                }
+            }
+        }
+    }
+    terms
 }
 
 pub(super) fn read_dispatch_context(
@@ -791,12 +870,17 @@ pub(super) fn read_dispatch_context(
             },
         )?
         .collect::<rusqlite::Result<Vec<_>>>()?;
+    let terms = serde_json::to_string(&context_search_terms(&entries))
+        .map_err(|_| corrupt("Inbox context terms cannot be encoded"))?;
     let sessions = connection
         .prepare(
             "SELECT session.id, session.project_id, thread.thread_name, \
                substr(COALESCE(thread.thread_preview, ''),1,240), session.no_thread_fallback_title, \
                thread.status_type, thread.status_active_flags_json, \
-               COALESCE(thread.recency_at,unixepoch(session.updated_at)*1000) \
+               COALESCE(thread.recency_at,unixepoch(session.updated_at)*1000), \
+               (SELECT count(*) FROM json_each(?4) term WHERE instr(lower( \
+                 COALESCE(thread.thread_name,'') || ' ' || session.no_thread_fallback_title || ' ' || \
+                 substr(COALESCE(thread.thread_preview,''),1,4000)),term.value)>0) AS relevance \
              FROM project_sessions session \
              LEFT JOIN project_session_execution_bindings binding ON binding.session_id=session.id \
              LEFT JOIN project_session_threads link ON link.session_id = session.id \
@@ -807,10 +891,10 @@ pub(super) fn read_dispatch_context(
                AND (session.project_id IS NULL OR (project.library_id = ?1 \
                  AND project.lifecycle = 'active')) \
                AND (?3 IS NULL OR session.project_id = ?3) \
-             ORDER BY COALESCE(thread.recency_at,unixepoch(session.updated_at)*1000) DESC, session.id LIMIT ?2",
+             ORDER BY relevance DESC, COALESCE(thread.recency_at,unixepoch(session.updated_at)*1000) DESC, session.id LIMIT ?2",
         )?
         .query_map(
-            params![library_id, MAX_CONTEXT_SESSIONS, project_id],
+            params![library_id, MAX_CONTEXT_SESSIONS, project_id, terms],
             |row| {
                 let preview = super::task_window::bounded_preview(&row.get::<_, String>(3)?);
                 Ok(ProjectWorkspaceInboxContextSession {
@@ -893,7 +977,7 @@ pub(super) fn read_dispatch_outbox(
         .prepare(
             "SELECT proposal.proposal_id, proposal.revision, proposal.action_json, \
                proposal.dispatch_session_id, session.project_id, \
-               COALESCE(binding.runtime_thread_id,link.thread_id, proposal.dispatch_thread_id), proposal.attempt, \
+               COALESCE(proposal.dispatch_thread_id,binding.runtime_thread_id,link.thread_id), proposal.attempt, \
                proposal.confirmed_at, thread.status_type, thread.status_active_flags_json, \
                thread.agent_backend_kind \
              FROM inbox_proposals proposal \
@@ -902,7 +986,7 @@ pub(super) fn read_dispatch_outbox(
              LEFT JOIN project_session_threads link ON link.session_id = proposal.dispatch_session_id \
              LEFT JOIN codex_threads thread \
                ON thread.thread_id = COALESCE(link.thread_id, proposal.dispatch_thread_id) \
-             WHERE proposal.library_id = ?1 AND proposal.state = 'dispatching' \
+             WHERE proposal.library_id = ?1 AND proposal.state = 'dispatching' AND COALESCE(proposal.failure_kind,'') <> 'unknown' \
              ORDER BY proposal.confirmed_at, proposal.proposal_id LIMIT ?2",
         )?
         .query_map(params![library_id, limit], |row| {
@@ -926,6 +1010,7 @@ pub(super) fn read_dispatch_outbox(
         })?
         .collect::<rusqlite::Result<Vec<_>>>()?;
     let mut work = Vec::with_capacity(rows.len());
+    let mut encoded_bytes = 0;
     for (
         proposal_id,
         revision,
@@ -948,7 +1033,45 @@ pub(super) fn read_dispatch_outbox(
                 page_keys.push(key);
             }
         }
-        work.push(ProjectWorkspaceInboxDispatchWork {
+        let item = ProjectWorkspaceInboxDispatchWork {
+            final_text: connection
+                .query_row(
+                    "SELECT final_text FROM inbox_handoffs WHERE proposal_id=?1",
+                    [&proposal_id],
+                    |row| row.get(0),
+                )
+                .optional()?,
+            launch_id: super::inbox::reliable::stored_handoff_identity(
+                connection,
+                &proposal_id,
+                "launch",
+            )?,
+            message_id: super::inbox::reliable::stored_handoff_identity(
+                connection,
+                &proposal_id,
+                "message",
+            )?,
+            execution_selection: super::inbox::reliable::read_handoff_json(
+                connection,
+                &proposal_id,
+                "execution_selection_json",
+            )?,
+            target_execution_ref: super::inbox::reliable::read_handoff_json(
+                connection,
+                &proposal_id,
+                "target_execution_ref_json",
+            )?,
+            failure_kind: connection
+                .query_row(
+                    "SELECT failure_kind FROM inbox_proposals WHERE proposal_id=?1",
+                    [&proposal_id],
+                    |row| row.get::<_, Option<String>>(0),
+                )?
+                .map(|value| {
+                    serde_json::from_value(serde_json::Value::String(value))
+                        .map_err(|_| corrupt("Invalid Inbox failure kind"))
+                })
+                .transpose()?,
             proposal_id,
             revision,
             action: parse_action(&action_json)?,
@@ -961,7 +1084,15 @@ pub(super) fn read_dispatch_outbox(
             confirmed_at,
             thread_status,
             thread_backend_kind,
-        });
+        };
+        let bytes = serde_json::to_vec(&item)
+            .map_err(|_| corrupt("Inbox delivery cannot be encoded"))?
+            .len();
+        if !work.is_empty() && encoded_bytes + bytes > 12 * 1024 * 1024 {
+            break;
+        }
+        encoded_bytes += bytes;
+        work.push(item);
     }
     Ok(work)
 }
@@ -1000,6 +1131,69 @@ fn count(value: i64) -> Result<u32, StoreError> {
     u32::try_from(value).map_err(|_| corrupt("Inbox count is invalid"))
 }
 
+/// Search the complete eligible Session collection before applying the cursor window.
+pub(super) fn read_chat_targets(
+    connection: &Connection,
+    library_id: &str,
+    commit_head: i64,
+    scope: &ProjectWorkspaceInboxScope,
+    query: &str,
+    request: &CollectionWindowRequest,
+) -> Result<CollectionWindow<ProjectWorkspaceInboxChat>, StoreError> {
+    let project_id = scope_project(scope)?;
+    if query.len() > 512 {
+        return Err(invalid("Chat search is too long"));
+    }
+    let query = query.trim().to_lowercase();
+    let normalized = normalize_request(request)?;
+    let fingerprint = cursor::query_fingerprint(&("inbox_chat_targets_v1", scope, &query))?;
+    let subject = CollectionCursorSubject {
+        kind: "inbox_chat_targets",
+        library_id,
+        query_fingerprint: &fingerprint,
+    };
+    let after = normalized
+        .after
+        .map(|value| cursor::decode(connection, value, subject))
+        .transpose()?
+        .map(|(direction, coordinate)| {
+            if direction != CursorDirection::Forward || !coordinate.values.is_empty() {
+                return Err(invalid("Chat cursor is incompatible"));
+            }
+            Ok(coordinate.stable_id)
+        })
+        .transpose()?;
+    let rows=connection.prepare("SELECT session.id FROM project_sessions session LEFT JOIN projects project ON project.id=session.project_id LEFT JOIN project_session_execution_bindings binding ON binding.session_id=session.id LEFT JOIN project_session_threads link ON link.session_id=session.id LEFT JOIN codex_threads thread ON thread.thread_id=link.thread_id WHERE session.archived=0 AND (session.project_id IS NULL OR (project.library_id=?1 AND project.lifecycle='active')) AND (?2 IS NULL OR session.project_id=?2) AND (binding.runtime_thread_id IS NOT NULL OR thread.thread_id IS NOT NULL) AND (?3='' OR instr(lower(COALESCE(thread.thread_name,'') || ' ' || session.no_thread_fallback_title || ' ' || COALESCE(thread.thread_preview,'')),?3)>0) AND (?4 IS NULL OR session.id>?4) ORDER BY session.id LIMIT ?5")?.query_map(params![library_id,project_id,query,after,normalized.first as i64+1],|r|r.get::<_,String>(0))?.collect::<rusqlite::Result<Vec<_>>>()?;
+    let candidates = rows
+        .into_iter()
+        .map(|id| {
+            Ok(WindowCandidate {
+                coordinate: KeysetCoordinate {
+                    values: Vec::new(),
+                    stable_id: id.clone(),
+                },
+                item: read_chat(connection, library_id, &id)?
+                    .ok_or_else(|| corrupt("Chat disappeared during read"))?,
+            })
+        })
+        .collect::<Result<Vec<_>, StoreError>>()?;
+    assemble(
+        candidates,
+        normalized.first,
+        CollectionWindowAuthority {
+            projection_revision: commit_head,
+        },
+        |coordinate| {
+            cursor::mint(
+                connection,
+                subject,
+                CursorDirection::Forward,
+                coordinate.clone(),
+            )
+        },
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::super::test_support::{apply, seeded_workspace};
@@ -1013,6 +1207,7 @@ mod tests {
             &workspace.module,
             "large-capture",
             ProjectWorkspaceIntent::SendInboxMessage {
+                expected_store_epoch: None,
                 page_id: "page:large".into(),
                 document_id: "document:large".into(),
                 text: "Initial message".into(),

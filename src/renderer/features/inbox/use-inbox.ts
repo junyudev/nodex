@@ -18,6 +18,7 @@ import { DEFAULT_INBOX_SETTINGS, inboxScopeKey } from "../../../shared/inbox";
 import { subscribeInboxChanges, subscribeLibraryChanges } from "@/lib/api";
 import {
   readInboxCounts,
+  readInboxChatTargets,
   readInboxSettings,
   readInboxSummary,
   readInboxWindow,
@@ -64,13 +65,16 @@ export function useInboxCounts(): InboxCounts {
   return query.data ?? NO_COUNTS;
 }
 
-export function useInboxSettings(): InboxSettings {
-  const query = useQuery({
+export function useInboxSettingsQuery() {
+  return useQuery({
     queryKey: queryKeys.inbox.settings(),
     queryFn: readInboxSettings,
     staleTime: 30_000,
   });
-  return query.data ?? DEFAULT_INBOX_SETTINGS;
+}
+
+export function useInboxSettings(): InboxSettings {
+  return useInboxSettingsQuery().data ?? DEFAULT_INBOX_SETTINGS;
 }
 
 export function useUpdateInboxSettings() {
@@ -99,9 +103,23 @@ export function useInboxStream(scope: InboxScope, filter: InboxWindowFilter) {
   );
   return {
     items,
+    error: query.error,
+    retry: query.refetch,
     isPending: query.isPending,
     hasNextPage: query.hasNextPage,
     isFetchingNextPage: query.isFetchingNextPage,
     fetchNextPage: query.fetchNextPage,
   };
+}
+
+/** Search is applied before Core paginates eligible Sessions, so old chats remain reachable. */
+export function useInboxChatTargets(scope: InboxScope, query: string, enabled: boolean) {
+  return useInfiniteQuery({
+    queryKey: [...queryKeys.inbox.all(), "chat-targets", inboxScopeKey(scope), query],
+    queryFn: ({ pageParam }) => readInboxChatTargets({ scope, query, after: pageParam, first: 50 }),
+    initialPageParam: null as string | null,
+    getNextPageParam: (page) => page.nextCursor ?? undefined,
+    enabled,
+    staleTime: 5_000,
+  });
 }

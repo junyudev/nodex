@@ -186,8 +186,37 @@ pub(super) fn move_page(
     expected_etag: &str,
     assets_root: &Path,
 ) -> Result<LibraryApplyOutcome, StoreError> {
+    move_page_in_scope(
+        connection,
+        context,
+        store_epoch,
+        library_id,
+        operation_id,
+        request_hash,
+        page_id,
+        destination,
+        Some(expected_etag),
+        assets_root,
+        None,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn move_page_in_scope(
+    connection: &Connection,
+    context: &BoundModuleContext,
+    store_epoch: &str,
+    library_id: &str,
+    operation_id: &str,
+    request_hash: &str,
+    page_id: &str,
+    destination: &LibraryPageWriteDestination,
+    expected_etag: Option<&str>,
+    assets_root: &Path,
+    attached_scope: Option<&crate::infrastructure::durable_mutation::DurableMutationScope<'_>>,
+) -> Result<LibraryApplyOutcome, StoreError> {
     validate_id(page_id, "page_id")?;
-    if expected_etag.is_empty() {
+    if expected_etag == Some("") {
         return Err(invalid("Page move requires a move ETag"));
     }
     let authority = resolve_library_mutation_authority(connection, context, library_id)?;
@@ -219,7 +248,9 @@ pub(super) fn move_page(
         page_id,
         validator_view_id.as_deref(),
     )?;
-    if !constant_time_equal(expected_etag.as_bytes(), current_etag.as_bytes()) {
+    if expected_etag
+        .is_some_and(|expected| !constant_time_equal(expected.as_bytes(), current_etag.as_bytes()))
+    {
         return Err(conflict("Page move ETag changed"));
     }
     let target = transfer_target(library_id, &destination)?;
@@ -242,7 +273,7 @@ pub(super) fn move_page(
         &intent,
         &authority,
     )?;
-    super::block_transfer::apply_semantic_page_move(
+    super::block_transfer::apply_semantic_page_move_in_scope(
         connection,
         context,
         library_id,
@@ -253,6 +284,7 @@ pub(super) fn move_page(
         assets_root,
         &authority,
         prepared,
+        attached_scope,
     )
 }
 

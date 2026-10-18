@@ -1,7 +1,8 @@
 import { assert, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import { createUuidV7 } from "../../shared/uuid-v7";
-import { inboxOverRealCore } from "./InboxApplication.test-support";
+import { captureInbox, inboxOverRealCore } from "./InboxApplication.test-support";
+import { inboxPageBasisFromCore } from "../core-client/inbox-adapter";
 
 const LIBRARY = { kind: "library" } as const;
 
@@ -10,7 +11,7 @@ it.effect("an edit rewrites the message Page and asks for a fresh suggestion", (
     Effect.gen(function* () {
       const { inbox, client } = yield* inboxOverRealCore();
       const original = "Homepage feels like a dev tool.\nMaybe it should read like an assistant?";
-      const { pageId } = yield* inbox.send({ scope: LIBRARY, text: original });
+      const { pageId } = yield* captureInbox(inbox, original);
       const [entry] = yield* inbox.pendingSuggestions(8);
       if (!entry) return assert.fail("Missing pending entry");
       yield* inbox.propose({
@@ -26,7 +27,8 @@ it.effect("an edit rewrites the message Page and asks for a fresh suggestion", (
 
       const rewritten =
         "The homepage should read like a personal assistant.\n\nKeep the docs link.";
-      yield* inbox.edit({ pageId, originalText: original, text: rewritten });
+      const basis = inboxPageBasisFromCore(entry.basis);
+      yield* inbox.edit({ pageId, basis, originalText: original, text: rewritten });
 
       const [item] = (yield* inbox.window({ scope: LIBRARY, filter: "inbox" })).items;
       assert.deepInclude(item, {
@@ -56,9 +58,9 @@ it.effect("an edit rewrites the message Page and asks for a fresh suggestion", (
 
       // An edit started from text that has since changed never overwrites it.
       const stale = yield* Effect.flip(
-        inbox.edit({ pageId, originalText: original, text: "Something else" }),
+        inbox.edit({ pageId, basis, originalText: original, text: "Something else" }),
       );
-      assert.match(stale.message, /changed while you were editing/);
+      assert.match(stale.message, /message changed/);
       const [unchanged] = (yield* inbox.window({ scope: LIBRARY, filter: "inbox" })).items;
       assert.strictEqual(unchanged?.body, rewritten);
     }),

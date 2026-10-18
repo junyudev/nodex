@@ -1,3 +1,4 @@
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, fireEvent, screen, waitFor } from "@testing-library/react";
 import { describe, expect, test, vi } from "vite-plus/test";
 
@@ -5,7 +6,7 @@ import { openNodexMenu, render } from "@/test/dom";
 import type { InboxItem, InboxProposal } from "../../../shared/inbox";
 import type { Project } from "../../../shared/types";
 import { InboxDeleteDialog } from "./inbox-delete-dialog";
-import { draftFromAction } from "./inbox-dispatch-editor";
+import { draftForInboxItem } from "./inbox-dispatch-editor";
 import { InboxHistory } from "./inbox-history";
 import { InboxMessage } from "./inbox-message";
 import { InboxTriage } from "./inbox-triage";
@@ -20,6 +21,7 @@ const proposal = (overrides: Partial<InboxProposal> = {}): InboxProposal => ({
   origin: "agent",
   state: "open",
   pageIds: ["page:1"],
+  basis: [{ pageId: "page:1", generation: 1, headSeq: 1, placementRevision: 1 }],
   action: { type: "new_chat", projectId: "project:nodex", prompt: "Compare both positions." },
   kind: "question",
   summary: "Compare both homepage positions first.",
@@ -28,6 +30,7 @@ const proposal = (overrides: Partial<InboxProposal> = {}): InboxProposal => ({
   targetProjectName: "Nodex",
   chat: null,
   failureMessage: null,
+  failureKind: null,
   createdAt: "2026-10-11T10:00:00.000Z",
   updatedAt: "2026-10-11T10:00:00.000Z",
   ...overrides,
@@ -35,6 +38,8 @@ const proposal = (overrides: Partial<InboxProposal> = {}): InboxProposal => ({
 
 const item = (overrides: Partial<InboxItem> = {}): InboxItem => ({
   pageId: "page:1",
+  outcome: null,
+  basis: { pageId: "page:1", generation: 1, headSeq: 1, placementRevision: 1 },
   pageKey: "IN-1",
   title: "Homepage positioning",
   body: "Homepage feels like a dev tool",
@@ -54,7 +59,10 @@ const item = (overrides: Partial<InboxItem> = {}): InboxItem => ({
 });
 
 const actions = (): InboxActions => ({
-  send: vi.fn(async () => true),
+  send: vi.fn(async () => ({ pageId: "page:1", state: "saved" as const })),
+  pendingDecisions: [],
+  retryDecision: vi.fn(async () => true),
+  forgetDecision: vi.fn(async () => true),
   edit: vi.fn(async () => true),
   confirm: vi.fn(async () => true),
   dispatch: vi.fn(async () => true),
@@ -71,27 +79,31 @@ const renderTriage = (
   commands: InboxActions = actions(),
 ) => {
   render(
-    <InboxTriage
-      item={item()}
-      projects={[project("project:nodex", "Nodex"), project("project:site", "Site")]}
-      suggestionsEnabled
-      actions={commands}
-      manualDraft={null}
-      groupedWithKey={null}
-      inboxProjectId={null}
-      menu={null}
-      onManualDraftChange={vi.fn()}
-      onEditAsPage={vi.fn()}
-      {...overrides}
+    <QueryClientProvider
+      client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
     >
-      {({ editor, strip, actions: row }) => (
-        <>
-          {editor ?? <p>{overrides.item?.body ?? item().body}</p>}
-          {strip}
-          {row}
-        </>
-      )}
-    </InboxTriage>,
+      <InboxTriage
+        item={item()}
+        projects={[project("project:nodex", "Nodex"), project("project:site", "Site")]}
+        suggestionsEnabled
+        actions={commands}
+        manualDraft={null}
+        groupedWithKey={null}
+        inboxProjectId={null}
+        menu={null}
+        onManualDraftChange={vi.fn()}
+        onEditAsPage={vi.fn()}
+        {...overrides}
+      >
+        {({ editor, strip, actions: row }) => (
+          <>
+            {editor ?? <p>{overrides.item?.body ?? item().body}</p>}
+            {strip}
+            {row}
+          </>
+        )}
+      </InboxTriage>
+    </QueryClientProvider>,
   );
   return commands;
 };
@@ -104,13 +116,199 @@ const click = async (name: string) => {
 };
 
 describe("InboxTriage", () => {
+  test.each(["open", "failed", "dispatching"] as const)(
+    "reviewing a %s group keeps all sources and only confirms an open proposal",
+    (state) => {
+      const grouped = proposal({
+        state,
+        failureKind: state === "dispatching" ? "unknown" : null,
+        pageIds: ["page:1", "page:2"],
+        basis: [
+          item().basis,
+          { pageId: "page:2", generation: 2, headSeq: 3, placementRevision: 4 },
+        ],
+      });
+      const draft = draftForInboxItem(item({ proposal: grouped }), null);
+      expect(draft.basis).toEqual(grouped.basis);
+      expect(draft.prompt).toBe("Compare both positions.");
+      expect(draft.proposal).toEqual(state === "open" ? grouped : undefined);
+    },
+  );
+
+  test("an abstention keeps a manual decision inside its Project Inbox", () => {
+    expect(
+      draftForInboxItem(
+        item({ proposal: proposal({ action: { type: "none", reason: "Choose a task" } }) }),
+        "project:nodex",
+      ),
+    ).toMatchObject({ type: "new_chat", projectId: "project:nodex" });
+  });
+
+  test("keeps the opening edit basis when another view changes the message", async () => {
+    const commands = { ...actions(), edit: vi.fn(async () => false) };
+    const view = (message: InboxItem) => (
+      <InboxTriage
+        item={message}
+        projects={[]}
+        inboxProjectId={null}
+        suggestionsEnabled
+        actions={commands}
+        manualDraft={null}
+        groupedWithKey={null}
+        menu={null}
+        onManualDraftChange={vi.fn()}
+        onEditAsPage={vi.fn()}
+      >
+        {({ editor, strip, actions: controls }) => (
+          <>
+            {editor ?? message.body}
+            {strip}
+            {controls}
+          </>
+        )}
+      </InboxTriage>
+    );
+    const rendered = render(view(item({ body: "A" })));
+    await click("Edit");
+    await act(async () => {
+      fireEvent.change(screen.getByRole("textbox", { name: "Edit message" }), {
+        target: { value: "B" },
+      });
+    });
+    rendered.rerender(
+      view(
+        item({
+          body: "C",
+          basis: { pageId: "page:1", generation: 1, headSeq: 2, placementRevision: 1 },
+        }),
+      ),
+    );
+    await click("Save");
+    await waitFor(() =>
+      expect(commands.edit).toHaveBeenCalledWith("page:1", "A", "B", item().basis),
+    );
+    expect(
+      (screen.getByRole("textbox", { name: "Edit message" }) as HTMLTextAreaElement).value,
+    ).toBe("B");
+    expect(screen.getByText("C")).toBeTruthy();
+  });
+
+  test("refines only the frozen proposal without capturing another message", async () => {
+    const commands = renderTriage();
+    await click("Refine suggestion…");
+    await act(async () => {
+      fireEvent.change(screen.getByRole("textbox", { name: "Refine suggestion" }), {
+        target: { value: "Keep this for later" },
+      });
+    });
+    await click("Update suggestion");
+    await waitFor(() =>
+      expect(commands.requestSuggestion).toHaveBeenCalledWith(
+        proposal().pageIds,
+        proposal().basis,
+        { proposal: proposal(), correction: "Keep this for later" },
+      ),
+    );
+    expect(commands.send).not.toHaveBeenCalled();
+    expect(commands.confirm).not.toHaveBeenCalled();
+  });
+
+  test("abstention leaves the message undecided without an executable suggestion", () => {
+    renderTriage({
+      item: item({
+        proposal: proposal({ action: { type: "none", reason: "Choose a Project first" } }),
+      }),
+    });
+    expect(screen.getByText("Choose a Project first")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "New chat in Nodex" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Dispatch…" })).toBeTruthy();
+  });
+
+  test("unknown remote delivery offers checking the chat before an explicit new send", async () => {
+    const onOpenSession = vi.fn();
+    const onManualDraftChange = vi.fn();
+    const failed = proposal({
+      state: "dispatching",
+      failureKind: "unknown",
+      failureMessage: "Check the destination chat",
+      chat: {
+        sessionId: "session:remote",
+        displayTitle: "Remote chat",
+        projectId: null,
+        projectName: null,
+        threadId: null,
+        status: null,
+        unread: false,
+        archived: false,
+      },
+    });
+    const commands = renderTriage({
+      item: item({ proposal: failed }),
+      onOpenSession,
+      onManualDraftChange,
+    });
+    expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
+    await click("Open chat");
+    expect(onOpenSession).toHaveBeenCalledWith("session:remote");
+    await click("Send again…");
+    expect(onManualDraftChange).toHaveBeenCalledWith(
+      expect.objectContaining({ basis: failed.basis }),
+    );
+    expect(commands.retryDispatch).not.toHaveBeenCalled();
+    expect(commands.dispatch).not.toHaveBeenCalled();
+  });
+
+  test("a rejected handoff requires a new reviewed decision", async () => {
+    const onManualDraftChange = vi.fn();
+    const commands = renderTriage({
+      item: item({
+        proposal: proposal({
+          state: "failed",
+          failureKind: "rejected",
+          failureMessage: "Target is archived",
+        }),
+      }),
+      onManualDraftChange,
+    });
+    expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
+    await click("Dispatch…");
+    expect(onManualDraftChange).toHaveBeenCalled();
+    expect(commands.retryDispatch).not.toHaveBeenCalled();
+  });
+
+  test("removing a member refines the remaining group without deleting any message", async () => {
+    const grouped = proposal({
+      pageIds: ["page:1", "page:2"],
+      basis: [item().basis, { ...item().basis, pageId: "page:2" }],
+    });
+    const commands = renderTriage({
+      item: item({ proposal: grouped }),
+      members: [
+        { pageId: "page:1", label: "IN-1", body: "First" },
+        { pageId: "page:2", label: "IN-2", body: "Second" },
+      ],
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByText("2 messages"));
+      await Promise.resolve();
+    });
+    await screen.findByRole("button", { name: "Remove IN-2 from suggestion" });
+    await click("Remove IN-2 from suggestion");
+    expect(commands.requestSuggestion).toHaveBeenCalledWith(["page:1"], [item().basis], {
+      proposal: grouped,
+      correction: expect.any(String),
+    });
+    expect(commands.delete).not.toHaveBeenCalled();
+    expect(commands.confirm).not.toHaveBeenCalled();
+  });
+
   test("confirms the exact suggested action and nothing else", async () => {
     const commands = renderTriage();
     expect(screen.getByText("Compare both homepage positions first.")).toBeTruthy();
-    // The kind leads the suggestion as a glyph; the destination waits in the button's tooltip.
+    // The exact destination is visible before confirming.
     expect(screen.getByRole("button", { name: "Kind: Question" })).toBeTruthy();
-    expect(screen.queryByText(/New chat in Nodex/)).toBeNull();
-    await click("Start chat");
+    expect(screen.getByRole("button", { name: "New chat in Nodex" })).toBeTruthy();
+    await click("New chat in Nodex");
     await waitFor(() => expect(commands.confirm).toHaveBeenCalledWith(proposal()));
     expect(commands.dispatch).not.toHaveBeenCalled();
   });
@@ -136,6 +334,7 @@ describe("InboxTriage", () => {
         "page:1",
         "Homepage feels like a dev tool",
         "Homepage should read like an assistant",
+        { pageId: "page:1", generation: 1, headSeq: 1, placementRevision: 1 },
       ),
     );
     expect(await screen.findByText("Compare both homepage positions first.")).toBeTruthy();
@@ -174,10 +373,14 @@ describe("InboxTriage", () => {
   });
 
   test("a hand-written dispatch from the suggestion sends the edited action", async () => {
-    const message = item();
-    const commands = renderTriage({
-      manualDraft: draftFromAction(proposal().action, message.body),
+    const grouped = proposal({
+      pageIds: ["page:1", "page:2"],
+      basis: [item().basis, { ...item().basis, pageId: "page:2" }],
     });
+    const commands = renderTriage({
+      manualDraft: draftForInboxItem(item({ proposal: grouped }), null),
+    });
+    expect(screen.getByText("2 messages")).toBeTruthy();
     const prompt = await screen.findByRole("textbox", { name: "Prompt" });
     await act(async () => {
       fireEvent.change(prompt, { target: { value: "Only list the trade-offs." } });
@@ -185,7 +388,7 @@ describe("InboxTriage", () => {
     });
     await click("Start chat");
     await waitFor(() =>
-      expect(commands.dispatch).toHaveBeenCalledWith(["page:1"], {
+      expect(commands.confirm).toHaveBeenCalledWith(grouped, {
         type: "new_chat",
         projectId: "project:nodex",
         prompt: "Only list the trade-offs.",
@@ -195,7 +398,7 @@ describe("InboxTriage", () => {
 
   test("keep and done clear the message without dispatching it", async () => {
     const commands = renderTriage();
-    await click("Keep as a note");
+    await click("Keep");
     await waitFor(() => expect(commands.keep).toHaveBeenCalledWith(["page:1"]));
     await click("Mark done");
     await waitFor(() => expect(commands.setState).toHaveBeenCalledWith(["page:1"], "done"));
@@ -214,7 +417,9 @@ describe("InboxTriage", () => {
     });
     expect(screen.getByText(/Sign in to the suggestion agent first/)).toBeTruthy();
     await click("Retry");
-    await waitFor(() => expect(commands.requestSuggestion).toHaveBeenCalledWith(["page:1"]));
+    await waitFor(() =>
+      expect(commands.requestSuggestion).toHaveBeenCalledWith(["page:1"], [item().basis]),
+    );
     await click("Dispatch…");
     expect(onManualDraftChange).toHaveBeenCalledWith(
       expect.objectContaining({ type: "new_chat", prompt: "Homepage feels like a dev tool" }),
@@ -237,8 +442,9 @@ describe("InboxTriage", () => {
   test("a message without a suggestion still shows and corrects its kind in the strip", async () => {
     const commands = renderTriage({ item: item({ kind: "todo", proposal: null }) });
     await openNodexMenu(screen.getByRole("button", { name: "Kind: Todo" }));
+    const question = await screen.findByRole("menuitem", { name: "Question" });
     await act(async () => {
-      fireEvent.click(await screen.findByRole("menuitem", { name: "Question" }));
+      fireEvent.click(question);
       await Promise.resolve();
     });
     await waitFor(() => expect(commands.setKind).toHaveBeenCalledWith("page:1", "question"));
@@ -252,6 +458,7 @@ describe("InboxHistory", () => {
       <InboxHistory
         items={[
           item({
+            outcome: "chat",
             proposal: proposal({
               state: "completed",
               chat: {
@@ -286,7 +493,11 @@ describe("InboxHistory", () => {
   test("a kept message can return to the Inbox or be deleted", async () => {
     const onReturn = vi.fn();
     const onDelete = vi.fn();
-    const kept = item({ state: "kept", proposal: proposal({ state: "dismissed" }) });
+    const kept = item({
+      state: "kept",
+      outcome: "kept",
+      proposal: proposal({ state: "dismissed" }),
+    });
     render(
       <InboxHistory
         items={[kept]}

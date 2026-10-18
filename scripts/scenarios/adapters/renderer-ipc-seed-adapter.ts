@@ -1,7 +1,6 @@
 import type { Page } from "playwright";
 import {
   LIBRARY_INBOX,
-  type InboxDispatchInput,
   type InboxScope,
   type InboxWindow,
   type InboxWindowFilter,
@@ -27,6 +26,7 @@ import type {
   ScenarioPageSeed,
   ScenarioRelatedChatSeed,
   ScenarioRelatedChatSeedResult,
+  ScenarioInboxDispatchSeed,
   ScenarioSeedPort,
   ScenarioStandalonePageSeed,
 } from "../contracts";
@@ -400,19 +400,57 @@ export class RendererIpcSeedAdapter implements ScenarioSeedPort {
     text: string,
     scope: InboxScope = LIBRARY_INBOX,
   ): Promise<{ readonly pageId: string }> {
-    return await this.#invoke("inbox:send", { scope, text });
+    const summary = await this.#invoke("inbox:summary", { scope });
+    return requireSuccess(
+      await this.#invoke("inbox:send", {
+        scope,
+        text,
+        operationId: createBoundedOperationId("scenario.inbox.send"),
+        pageId: createUuidV7(),
+        documentId: createUuidV7(),
+        issuedAt: Date.now(),
+        storeEpoch: summary.storeEpoch,
+      }),
+      "Capture Inbox message",
+    );
   }
 
   async proposeInboxDispatch(): Promise<void> {
     throw new Error("Inbox suggestions are seeded only through Core; renderers cannot propose");
   }
 
-  async dispatchInboxEntries(input: InboxDispatchInput): Promise<void> {
-    await this.#invoke("inbox:dispatch", input);
+  async dispatchInboxEntries(input: ScenarioInboxDispatchSeed): Promise<void> {
+    const window = await this.readInbox("inbox", input.scope ?? LIBRARY_INBOX);
+    const basis = input.pageIds.map((id) => {
+      const item = window.items.find((item) => item.pageId === id);
+      if (!item) throw new Error("Scenario message is missing from its Inbox");
+      return item.basis;
+    });
+    const prepared = await this.#invoke("inbox:prepare-confirmation", {
+      kind: "direct",
+      basis,
+      storeEpoch: window.storeEpoch,
+      pageIds: input.pageIds,
+      action: input.action,
+    });
+    if (prepared.kind !== "direct") throw new Error("Expected a direct Inbox decision");
+    requireSuccess(
+      await this.#invoke("inbox:dispatch", {
+        storeEpoch: prepared.storeEpoch,
+        operationId: prepared.operationId,
+        proposalId: prepared.proposalId,
+        sessionId: prepared.sessionId,
+        pageIds: prepared.pageIds,
+        basis: prepared.basis,
+        action: prepared.action,
+        executionSelection: prepared.executionSelection,
+      }),
+      "Dispatch Inbox messages",
+    );
   }
 
   async keepInboxEntries(pageIds: readonly string[]): Promise<void> {
-    await this.#invoke("inbox:keep", { pageIds });
+    requireSuccess(await this.#invoke("inbox:keep", { pageIds }), "Keep Inbox messages");
   }
 
   async recordInboxSuggestionFailure(): Promise<void> {

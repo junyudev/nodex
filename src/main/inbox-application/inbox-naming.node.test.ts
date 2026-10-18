@@ -1,7 +1,8 @@
 import { assert, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import { createUuidV7 } from "../../shared/uuid-v7";
-import { inboxOverRealCore } from "./InboxApplication.test-support";
+import { captureInbox, inboxOverRealCore } from "./InboxApplication.test-support";
+import { inboxPageBasisFromCore } from "../core-client/inbox-adapter";
 
 const LIBRARY = { kind: "library" } as const;
 
@@ -11,7 +12,7 @@ it.effect("names a provisional title only on the exact Page the Agent read", () 
       const { inbox } = yield* inboxOverRealCore();
       const message =
         "Homepage feels like a dev tool.\nMaybe it should read like a personal assistant?";
-      const { pageId } = yield* inbox.send({ scope: LIBRARY, text: message });
+      const { pageId } = yield* captureInbox(inbox, message);
 
       const [entry] = yield* inbox.pendingSuggestions(8);
       if (!entry) return assert.fail("Missing pending entry");
@@ -46,7 +47,12 @@ it.effect("names a provisional title only on the exact Page the Agent read", () 
       assert.strictEqual(window.items[0]?.proposal?.state, "open");
 
       // Once named, the title belongs to the Page; a fresh suggestion pass may not rename it.
-      yield* inbox.requestSuggestion({ pageIds: [pageId] });
+      yield* inbox.requestSuggestion({
+        requestId: createUuidV7(),
+        mode: "auto",
+        pageIds: [pageId],
+        basis: [inboxPageBasisFromCore(named)],
+      });
       const [again] = yield* inbox.pendingSuggestions(8);
       assert.strictEqual(again?.page_id, pageId);
       assert.isFalse(again?.title_provisional);
@@ -63,10 +69,10 @@ it.effect("deleting a message erases it from both views and wakes Store maintena
           erasureRequests += 1;
         }),
       );
-      const { pageId } = yield* inbox.send({
-        scope: LIBRARY,
-        text: "Use the key sk-live-0123456789 for staging",
-      });
+      const { pageId } = yield* captureInbox(
+        inbox,
+        "A private staging credential was pasted here by mistake",
+      );
       yield* inbox.delete({ pageIds: [pageId] });
 
       assert.deepEqual((yield* inbox.window({ scope: LIBRARY, filter: "inbox" })).items, []);

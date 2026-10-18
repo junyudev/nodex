@@ -138,6 +138,8 @@ export class AgentRuntimeApplicationError extends Schema.TaggedError<AgentRuntim
     message: Schema.String,
     cause: Schema.optionalKey(Schema.Defect()),
     committedOperationId: Schema.optionalKey(Schema.String),
+    /** This attempt failed admission validation before any product or execution mutation. */
+    admissionRejected: Schema.optionalKey(Schema.Literal(true)),
   },
 ) {}
 
@@ -154,6 +156,8 @@ const hash = (value: unknown) =>
     .update(stableStringifyBlockPropertyJson(JSON.parse(JSON.stringify(value))))
     .digest("hex");
 const commandId = (kind: string, identity: unknown) => `nodex:${kind}:${hash(identity)}`;
+const launchThreadId = (launchId: string, sessionId: string) =>
+  agentExecutionThreadId(hash({ launchId, sessionId }));
 /** A fork reads as its source conversation; an untitled source gets a neutral name. */
 export const forkTitle = (sourceTitle: string | null) => {
   const trimmed = sourceTitle?.trim() ?? "";
@@ -835,9 +839,7 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
       return yield* failure("launch", "Launch identity and title are required");
     yield* assertMessage(input.message);
     const connection = yield* options.connect;
-    const threadId = agentExecutionThreadId(
-      hash({ launchId: input.launchId, sessionId: input.sessionId }),
-    );
+    const threadId = launchThreadId(input.launchId, input.sessionId);
     const binding = {
       session_id: input.sessionId,
       project_id: input.projectId,
@@ -848,7 +850,11 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
     yield* validateCaller();
     const previousBinding = yield* lookupDestinationBinding(input.sessionId);
     if (previousBinding && !matchesBinding(previousBinding, binding))
-      return yield* failure("launch", "Session is already bound to another launch request");
+      return yield* new AgentRuntimeApplicationError({
+        operation: "launch",
+        message: "Session is already bound to another launch request",
+        admissionRejected: true,
+      });
     const projectId = previousBinding ? (previousBinding.project_id ?? null) : input.projectId;
     if (input.runInTarget === "newWorktree" && !options.prepareWorkspace)
       return yield* failure("workspace", "Worktree preparation is unavailable");
@@ -2042,6 +2048,71 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
         }),
       ),
     message: (input: Parameters<typeof message>[0]) => ownedWrite("message", message(input)),
+    /** Read before retrying a durable handoff: archive and execution failure do not erase admission. */
+    messageAdmission: (input: {
+      readonly sessionId: string;
+      readonly messageId: string;
+      readonly expectedExecutionRef?: { readonly runtimeId: string; readonly threadId: string };
+      readonly launchId?: string;
+    }) =>
+      owned(
+        "message-admission",
+        Effect.gen(function* () {
+          if (
+            !validId(input.sessionId) ||
+            !validId(input.messageId) ||
+            (input.launchId !== undefined && !validId(input.launchId))
+          )
+            return yield* failure(
+              "message-admission",
+              "Session and message identities are required",
+            );
+          yield* authorizeSession(input.sessionId);
+          const binding = yield* lookupDestinationBinding(input.sessionId);
+          const runtimeId = input.expectedExecutionRef?.runtimeId ?? binding?.runtime_id;
+          const threadId =
+            input.expectedExecutionRef?.threadId ??
+            (input.launchId
+              ? launchThreadId(input.launchId, input.sessionId)
+              : binding?.runtime_thread_id);
+          if (!runtimeId || !threadId) return null;
+          const connection = yield* options.connect;
+          if (runtimeId !== connection.identity.runtimeId)
+            return yield* failure(
+              "message-admission",
+              "Session belongs to another execution owner",
+            );
+          let identity = commandId("message", { threadId, messageId: input.messageId });
+          let receipt = yield* connection.request("command.receipt", {
+            commandId: identity,
+            threadId,
+          });
+          if (!receipt && input.launchId) {
+            const launchIdentity = commandId("launch-thread", {
+              launchId: input.launchId,
+              sessionId: input.sessionId,
+            });
+            const launchReceipt = yield* connection.request("command.receipt", {
+              commandId: launchIdentity,
+              threadId,
+            });
+            // A refused Thread prevents submission. An accepted Thread proves nothing about its message.
+            if (launchReceipt?.status === "rejected") {
+              receipt = launchReceipt;
+              identity = launchIdentity;
+            }
+          }
+          return receipt
+            ? {
+                ...receipt,
+                runtimeId,
+                threadId,
+                messageId: input.messageId,
+                commandId: identity,
+              }
+            : null;
+        }),
+      ),
     queueMessage: (input: Parameters<typeof message>[0]) =>
       ownedWrite("queue-message", message(input, true)),
     queue: (input: Parameters<typeof queue>[0]) => ownedWrite("queue", queue(input)),

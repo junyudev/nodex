@@ -7784,3 +7784,7 @@ pub(crate) fn create_recovery_copy(
         }
     }
 }
+
+// Inbox composes these Library-owned relocations into one decision LocalCommit.
+pub(crate) use block_transfer::undo_page_relocation_in_scope as undo_inbox_page_in_scope;
+pub(crate) use page_write_semantic::move_page_in_scope as move_inbox_page_in_scope;

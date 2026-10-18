@@ -1,3 +1,5 @@
+mod attached_edit;
+pub(crate) use attached_edit::edit_page_in_scope;
 mod asset_migration;
 pub(crate) use asset_migration::migrate_document_assets;
 mod block_document;

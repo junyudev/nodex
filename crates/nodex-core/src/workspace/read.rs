@@ -57,6 +57,25 @@ pub(super) fn read(
     request: ProjectWorkspaceRead,
 ) -> Result<ProjectWorkspaceReadValue, StoreError> {
     match request {
+        ProjectWorkspaceRead::InboxChatTargets {
+            scope,
+            query,
+            window,
+        } => Ok(ProjectWorkspaceReadValue::InboxChatTargets {
+            window: super::inbox_read::read_chat_targets(
+                connection,
+                library_id,
+                commit_head,
+                &scope,
+                &query,
+                &window,
+            )?,
+        }),
+        ProjectWorkspaceRead::InboxSuggestionRequests { limit } => {
+            Ok(ProjectWorkspaceReadValue::InboxSuggestionRequests {
+                requests: super::inbox::read_requests(connection, context, library_id, limit)?,
+            })
+        }
         ProjectWorkspaceRead::InboxSummary { scope } => {
             Ok(ProjectWorkspaceReadValue::InboxSummary {
                 summary: super::inbox_read::read_summary(connection, context, library_id, &scope)?,

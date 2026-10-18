@@ -1,3 +1,4 @@
+import { CoreApiError } from "@/lib/core-api-error";
 import type {
   InboxChat,
   InboxDispatchAction,
@@ -15,7 +16,7 @@ export type InboxTriageModel =
   | { readonly kind: "suggestion-failed"; readonly message: string }
   | { readonly kind: "dispatch-failed"; readonly proposal: InboxProposal; readonly message: string }
   /** Nothing to confirm: the user decides by hand. */
-  | { readonly kind: "undecided" }
+  | { readonly kind: "undecided"; readonly reason?: string }
   /** Handled; the message is on its way to History. */
   | { readonly kind: "handled" };
 
@@ -24,8 +25,8 @@ const isChatAction = (action: InboxDispatchAction) =>
 
 /**
  * Mirrors Core's Inbox membership: a message is handled once a chat dispatch is confirmed, or
- * once it is filed, kept, or done. Where its Page lives never decides it. A failed dispatch is
- * not handled.
+ * once it is filed, kept, or done. Where its Page lives never decides it. Failed or
+ * uncertain delivery remains in the Inbox for a reviewed decision.
  */
 export function isInboxItemHandled(item: InboxItem): boolean {
   if (item.state !== "open") return true;
@@ -33,13 +34,19 @@ export function isInboxItemHandled(item: InboxItem): boolean {
   return Boolean(
     proposal &&
     isChatAction(proposal.action) &&
+    proposal.failureKind !== "unknown" &&
     (proposal.state === "dispatching" || proposal.state === "completed"),
   );
 }
 
 export function inboxTriageModel(item: InboxItem, suggestionsEnabled: boolean): InboxTriageModel {
   const proposal = item.proposal;
-  if (proposal?.state === "failed" && isChatAction(proposal.action)) {
+  if (
+    proposal &&
+    isChatAction(proposal.action) &&
+    (proposal.state === "failed" ||
+      (proposal.state === "dispatching" && proposal.failureKind === "unknown"))
+  ) {
     return {
       kind: "dispatch-failed",
       proposal,
@@ -47,6 +54,8 @@ export function inboxTriageModel(item: InboxItem, suggestionsEnabled: boolean): 
     };
   }
   if (isInboxItemHandled(item)) return { kind: "handled" };
+  if (proposal?.state === "open" && proposal.action.type === "none")
+    return { kind: "undecided", reason: proposal.action.reason };
   if (proposal?.state === "open") return { kind: "suggestion", proposal };
   if (item.suggestionState === "pending" && suggestionsEnabled) return { kind: "suggesting" };
   if (item.suggestionState === "failed") {
@@ -76,8 +85,25 @@ export interface InboxOutcome {
 }
 
 export function describeInboxOutcome(item: InboxItem): InboxOutcome {
+  if (item.outcome === "kept") {
+    return {
+      icon: "keep",
+      label: item.kind ? `Kept as ${INBOX_KIND_LABELS[item.kind].toLowerCase()}` : "Kept",
+      status: null,
+      open: null,
+      canReturn: true,
+    };
+  }
+  if (item.outcome === "done") {
+    return { icon: "done", label: "Done", status: null, open: null, canReturn: true };
+  }
   const proposal = item.proposal;
-  if (proposal && isChatAction(proposal.action)) {
+  if (
+    proposal &&
+    isChatAction(proposal.action) &&
+    (item.outcome === "chat" ||
+      (proposal.state === "dispatching" && proposal.failureKind !== "unknown"))
+  ) {
     const chat = proposal.chat;
     const title = chat?.displayTitle ?? "chat";
     const open: InboxOutcomeTarget | null = chat
@@ -88,7 +114,7 @@ export function describeInboxOutcome(item: InboxItem): InboxOutcome {
         icon: "pending",
         label:
           proposal.action.type === "send_to_chat"
-            ? `Queued for “${title}”`
+            ? `Sending to “${title}”`
             : `Starting a chat in ${proposal.targetProjectName ?? "no Project"}`,
         status: null,
         open,
@@ -106,35 +132,17 @@ export function describeInboxOutcome(item: InboxItem): InboxOutcome {
       };
     }
   }
-  if (item.location.kind === "database") {
+  if (item.outcome === "moved") {
     return {
       icon: "move",
-      label: `Moved to ${item.location.projectName ?? item.location.databaseName}`,
+      label: `Moved to ${proposal?.targetProjectName ?? (item.location.kind === "database" ? item.location.projectName : null) ?? "Project"}`,
       status: null,
-      open: { kind: "database", databaseId: item.location.databaseId },
+      open:
+        item.location.kind === "database"
+          ? { kind: "database", databaseId: item.location.databaseId }
+          : null,
       canReturn: false,
     };
-  }
-  if (item.location.kind === "other") {
-    return {
-      icon: "move",
-      label: "Moved out of the Inbox",
-      status: null,
-      open: null,
-      canReturn: false,
-    };
-  }
-  if (item.state === "kept") {
-    return {
-      icon: "keep",
-      label: item.kind ? `Kept as ${INBOX_KIND_LABELS[item.kind].toLowerCase()}` : "Kept",
-      status: null,
-      open: null,
-      canReturn: true,
-    };
-  }
-  if (item.state === "done") {
-    return { icon: "done", label: "Done", status: null, open: null, canReturn: true };
   }
   return { icon: "inbox", label: "In the Inbox", status: null, open: null, canReturn: false };
 }
@@ -154,8 +162,10 @@ export function describeInboxAction(
   },
 ): InboxActionPresentation {
   switch (action.type) {
+    case "none":
+      return { verb: "Decide", target: action.reason };
     case "keep":
-      return { verb: "Keep", target: "Keep in Inbox" };
+      return { verb: "Keep", target: "Keep" };
     case "new_chat":
       return {
         verb: "Start chat",
@@ -252,6 +262,11 @@ export function groupInboxItemsByDay(
   }
   return sections;
 }
+
+/** Expired proof cannot tell us whether the earlier command was committed. */
+export const inboxReceiptNeedsReview = (error: unknown): boolean =>
+  error instanceof CoreApiError &&
+  (error.code === "idempotency_window_expired" || error.code === "legacy_idempotency_unavailable");
 
 const REMOTE_METHOD_PREFIX = /^Error invoking remote method '[^']+': (?:[A-Za-z]*Error: )?/;
 

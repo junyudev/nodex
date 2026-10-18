@@ -1,4 +1,7 @@
 import type { CodexThreadActiveFlag, CodexThreadStatusType } from "./types";
+import type { AgentRuntimeLaunch } from "./agent-runtime-api";
+import { agentRuntimeProviderId } from "./agent-runtime-provider";
+import type { AgentRuntimeOperations } from "@nodex/agent-runtime/contracts";
 
 /** User-editable classification. It never authorizes work. */
 export type InboxEntryKind = "note" | "todo" | "question";
@@ -42,6 +45,7 @@ export const INBOX_ENTRY_KINDS = [
 
 /** The exact action a dispatch suggestion asks the user to authorize. */
 export type InboxDispatchAction =
+  | { readonly type: "none"; readonly reason: string }
   | { readonly type: "keep" }
   | { readonly type: "new_chat"; readonly projectId: string | null; readonly prompt: string }
   | { readonly type: "send_to_chat"; readonly sessionId: string; readonly prompt: string }
@@ -92,11 +96,13 @@ export interface InboxChat {
 }
 
 export interface InboxProposal {
+  readonly failureKind: "rejected" | "unavailable" | "unknown" | null;
   readonly proposalId: string;
   readonly revision: number;
   readonly origin: InboxProposalOrigin;
   readonly state: InboxProposalState;
   readonly pageIds: readonly string[];
+  readonly basis: readonly InboxPageBasis[];
   readonly action: InboxDispatchAction;
   readonly kind: InboxEntryKind | null;
   readonly summary: string;
@@ -110,6 +116,7 @@ export interface InboxProposal {
 }
 
 export interface InboxItem {
+  readonly outcome: "kept" | "done" | "moved" | "chat" | null;
   readonly pageId: string;
   readonly pageKey: string | null;
   readonly title: string;
@@ -127,15 +134,38 @@ export interface InboxItem {
   readonly location: InboxLocation;
   readonly proposal: InboxProposal | null;
   readonly revision: number;
+  readonly basis: InboxPageBasis;
+}
+
+/** The exact Document revision the user reviewed. */
+export interface InboxPageBasis {
+  readonly pageId: string;
+  readonly generation: number;
+  readonly headSeq: number;
+  readonly placementRevision: number;
+}
+
+export interface InboxChatTargetsInput {
+  readonly scope: InboxScope;
+  readonly query: string;
+  readonly after?: string | null;
+  readonly first?: number;
+}
+
+export interface InboxChatTargets {
+  readonly items: readonly InboxChat[];
+  readonly nextCursor: string | null;
 }
 
 export interface InboxWindow {
   readonly items: readonly InboxItem[];
   readonly nextCursor: string | null;
   readonly projectionRevision: number;
+  readonly storeEpoch: string;
 }
 
 export interface InboxSummary {
+  readonly storeEpoch: string;
   /** The Database this Inbox's messages become Pages in, once it exists. */
   readonly databaseId: string | null;
   readonly viewId: string | null;
@@ -166,15 +196,26 @@ export interface InboxWindowInput {
 }
 
 export interface InboxSendInput {
+  readonly operationId: string;
+  readonly pageId: string;
+  readonly documentId: string;
+  readonly issuedAt: number;
+  readonly storeEpoch: string;
   readonly scope: InboxScope;
   readonly text: string;
 }
 
 export interface InboxSendResult {
   readonly pageId: string;
+  readonly state: "saved" | "deleted";
 }
 
 export interface InboxConfirmInput {
+  readonly storeEpoch: string;
+  readonly operationId: string;
+  readonly sessionId: string;
+  readonly basis: readonly InboxPageBasis[];
+  readonly executionSelection?: InboxExecutionSelection | null;
   readonly proposalId: string;
   readonly expectedRevision: number;
   /** Present when the user edited the suggestion before confirming it. */
@@ -182,8 +223,54 @@ export interface InboxConfirmInput {
 }
 
 export interface InboxDispatchInput {
+  readonly storeEpoch: string;
+  readonly operationId: string;
+  readonly proposalId: string;
+  readonly sessionId: string;
+  readonly basis: readonly InboxPageBasis[];
+  readonly executionSelection?: InboxExecutionSelection | null;
   readonly pageIds: readonly string[];
   readonly action: InboxDispatchAction;
+}
+
+/** Frozen by Main before the first confirmation is submitted. */
+export interface InboxExecutionSelection {
+  readonly modelSelection: AgentRuntimeLaunch["modelSelection"];
+  readonly interactionMode: AgentRuntimeLaunch["interactionMode"];
+}
+
+export type InboxConfirmationDraft =
+  | ({ readonly kind: "proposal" } & Omit<
+      InboxConfirmInput,
+      "operationId" | "sessionId" | "executionSelection"
+    >)
+  | ({ readonly kind: "direct" } & Omit<
+      InboxDispatchInput,
+      "operationId" | "proposalId" | "sessionId" | "executionSelection"
+    >);
+
+/** Retry this object unchanged after an uncertain confirmation response. */
+export type InboxPreparedConfirmation =
+  | ({ readonly kind: "proposal" } & InboxConfirmInput)
+  | ({ readonly kind: "direct" } & InboxDispatchInput);
+
+export interface InboxDecisionResult {
+  readonly undoToken: string | null;
+}
+
+export interface InboxUndoInput {
+  readonly operationId: string;
+  readonly undoToken: string;
+}
+
+export interface InboxSuggestionRequestInput {
+  readonly requestId: string;
+  readonly mode: "auto" | "grouped" | "refine";
+  readonly pageIds: readonly string[];
+  readonly basis: readonly InboxPageBasis[];
+  readonly proposalId?: string | null;
+  readonly expectedRevision?: number | null;
+  readonly correction?: string | null;
 }
 
 export interface InboxPageIdsInput {
@@ -202,6 +289,7 @@ export interface InboxSetKindInput {
 /** Rewrites a waiting message; `originalText` is the text the user started from. */
 export interface InboxEditInput {
   readonly pageId: string;
+  readonly basis: InboxPageBasis;
   readonly originalText: string;
   readonly text: string;
 }
@@ -225,9 +313,14 @@ export const inboxNeedsDecision = (item: InboxItem): boolean =>
   item.state === "open" && item.proposal?.state === "open";
 
 /** The Agent runtime that suggests dispatches or runs dispatched chats. */
-export type InboxAgentBinding =
-  | { readonly kind: "codex" }
-  | { readonly kind: "claude"; readonly instanceConfigId: string };
+export interface InboxAgentBinding {
+  readonly instanceId: string;
+}
+
+/** Native utility implementations currently exposing generateStructured. */
+export const supportsInboxStructuredGeneration = (
+  provider: Pick<AgentRuntimeOperations["providers.read"]["output"][number], "driver">,
+): boolean => provider.driver === "codex" || provider.driver === "claudeAgent";
 
 export interface InboxSettings {
   /** When off, the Inbox captures messages and supports manual dispatch only. */
@@ -247,18 +340,23 @@ export const MAX_INBOX_INSTRUCTIONS_CHARS = 4_000;
 
 export const DEFAULT_INBOX_SETTINGS: InboxSettings = {
   suggestionsEnabled: true,
-  suggestionAgent: { kind: "codex" },
+  suggestionAgent: { instanceId: "codex" },
   suggestionModel: null,
   instructions: "",
-  chatAgent: { kind: "codex" },
+  chatAgent: { instanceId: "codex" },
 };
 
-export const encodeInboxAgentBinding = (binding: InboxAgentBinding): string =>
-  binding.kind === "codex" ? "codex" : `claude:${binding.instanceConfigId}`;
+export const encodeInboxAgentBinding = (binding: InboxAgentBinding): string => binding.instanceId;
 
 export const decodeInboxAgentBinding = (value: unknown): InboxAgentBinding | null => {
-  if (value === "codex") return { kind: "codex" };
-  if (typeof value !== "string" || !value.startsWith("claude:")) return null;
-  const instanceConfigId = value.slice("claude:".length).trim();
-  return instanceConfigId ? { kind: "claude", instanceConfigId } : null;
+  if (typeof value !== "string" || !value.trim()) return null;
+  // Older Profile preferences named the native account instead of its Runtime instance.
+  if (value.startsWith("claude:")) {
+    const instanceId = agentRuntimeProviderId({
+      kind: "claude",
+      instanceConfigId: value.slice("claude:".length).trim(),
+    });
+    return instanceId ? { instanceId } : null;
+  }
+  return value.trim() === value && value.length <= 512 ? { instanceId: value } : null;
 };

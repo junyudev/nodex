@@ -8,6 +8,31 @@ import { CoreModules } from "../core-runtime/CoreModules";
 import { coreRuntimeError } from "../core-runtime/CoreRuntimeError";
 import { StoreAdministration } from "../core-runtime/StoreAdministration";
 import { make as makeInboxApplication } from "./InboxApplication";
+import { AgentRuntimeApplication } from "../agent-runtime/AgentRuntimeApplication";
+import { ApplicationSettings } from "../settings/ApplicationSettings";
+import { DEFAULT_INBOX_SETTINGS, LIBRARY_INBOX, type InboxScope } from "../../shared/inbox";
+import { createBoundedOperationId } from "../../shared/operation-identity";
+import { createUuidV7 } from "../../shared/uuid-v7";
+import type { InboxApplication } from "./InboxApplication";
+
+/** Uses a caller-owned capture identity even when a test only needs a single send. */
+export const captureInbox = (
+  inbox: InboxApplication["Service"],
+  text: string,
+  scope: InboxScope = LIBRARY_INBOX,
+) =>
+  Effect.gen(function* () {
+    const summary = yield* inbox.summary({ scope });
+    return (yield* inbox.send({
+      scope,
+      text,
+      operationId: createBoundedOperationId("test.inbox.send"),
+      pageId: createUuidV7(),
+      documentId: createUuidV7(),
+      issuedAt: Date.now(),
+      storeEpoch: summary.storeEpoch,
+    })).value;
+  });
 
 type ScenarioClient = CoreScenarioContext["client"];
 
@@ -73,6 +98,12 @@ export const inboxOverRealCore = (requestErasure: Effect.Effect<void> = Effect.v
       Effect.provideService(StoreAdministration, {
         requestErasure,
       } as unknown as StoreAdministration["Service"]),
+      Effect.provideService(AgentRuntimeApplication, {
+        catalog: () => Effect.die("Content tests must not start an Agent catalog"),
+      } as unknown as AgentRuntimeApplication["Service"]),
+      Effect.provideService(ApplicationSettings, {
+        snapshot: () => Effect.succeed({ inbox: DEFAULT_INBOX_SETTINGS }),
+      } as unknown as ApplicationSettings["Service"]),
     );
     return { inbox, client: context.client };
   });

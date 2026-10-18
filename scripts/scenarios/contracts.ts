@@ -1,6 +1,5 @@
 import type {
   InboxDispatchAction,
-  InboxDispatchInput,
   InboxEntryKind,
   InboxScope,
   InboxWindow,
@@ -129,6 +128,12 @@ export interface ScenarioInboxProposalSeed {
   readonly rationale: string | null;
 }
 
+export interface ScenarioInboxDispatchSeed {
+  readonly pageIds: readonly string[];
+  readonly action: InboxDispatchAction;
+  readonly scope?: InboxScope;
+}
+
 export interface ScenarioRelatedChatSeedResult {
   readonly sessionId: string;
   readonly threadId: string | null;
@@ -183,7 +188,7 @@ export interface ScenarioSeedPort {
   sendInboxMessage(text: string, scope?: InboxScope): Promise<{ readonly pageId: string }>;
   /** Records an Agent-shaped suggestion for current message content. Core seeding only. */
   proposeInboxDispatch(input: ScenarioInboxProposalSeed): Promise<void>;
-  dispatchInboxEntries(input: InboxDispatchInput): Promise<void>;
+  dispatchInboxEntries(input: ScenarioInboxDispatchSeed): Promise<void>;
   keepInboxEntries(pageIds: readonly string[]): Promise<void>;
   recordInboxSuggestionFailure(pageIds: readonly string[], message: string): Promise<void>;
   /** Marks a confirmed chat dispatch delivered without launching a runtime. Core seeding only. */

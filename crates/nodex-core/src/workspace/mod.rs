@@ -6,6 +6,7 @@ mod child_thread_window;
 mod codex_thread_navigation;
 mod execution;
 mod inbox;
+pub(crate) use inbox::reliable::discard_replaced_dispatches as discard_replaced_inbox_dispatches;
 mod inbox_read;
 #[cfg(test)]
 mod inbox_tests;

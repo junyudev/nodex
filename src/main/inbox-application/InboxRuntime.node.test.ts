@@ -3,10 +3,9 @@ import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import { TestClock } from "effect/testing";
 import { vi } from "vitest";
-import type { AgentRuntimeInspection, AgentRuntimeLaunch } from "../../shared/agent-runtime-api";
-import { agentRuntimeProviderId } from "../../shared/agent-runtime-provider";
+import type { AgentRuntimeLaunch } from "../../shared/agent-runtime-api";
 import type { InboxAgentBinding, InboxSettings } from "../../shared/inbox";
-import type { ProjectSession } from "../../shared/types";
+import type { Project, ProjectSession } from "../../shared/types";
 import {
   AgentRuntimeApplication,
   AgentRuntimeApplicationError,
@@ -19,7 +18,7 @@ import { ApplicationSettings } from "../settings/ApplicationSettings";
 import {
   InboxApplication,
   InboxApplicationError,
-  type InboxSuggestionProposal,
+  type InboxSuggestionSettlement,
 } from "./InboxApplication";
 import { inboxDispatchIdentity, make as makeDelivery } from "./InboxDispatchRuntime";
 import { make as makeSuggestions } from "./InboxDispatcher";
@@ -31,17 +30,17 @@ import {
 
 type Runtime = AgentRuntimeApplication["Service"];
 type Provider = Effect.Success<ReturnType<Runtime["catalog"]>>[number];
-const claude = { kind: "claude", instanceConfigId: "claude:inbox" } as const;
+const claude = { instanceId: "claude:inbox" } as const;
 const settings: InboxSettings = {
   suggestionsEnabled: true,
   suggestionAgent: claude,
   suggestionModel: null,
   instructions: "Prefer existing chats when relevant.",
-  chatAgent: { kind: "codex" },
+  chatAgent: { instanceId: "codex" },
 };
-const provider = (binding: InboxAgentBinding = { kind: "codex" }): Provider => ({
-  instanceId: agentRuntimeProviderId(binding)!,
-  driver: binding.kind === "claude" ? "claudeAgent" : "codex",
+const provider = (binding: InboxAgentBinding = { instanceId: "codex" }): Provider => ({
+  instanceId: binding.instanceId,
+  driver: binding.instanceId.startsWith("claude") ? "claudeAgent" : "codex",
   enabled: true,
   installed: true,
   version: "1.0.0",
@@ -80,6 +79,15 @@ const work = (
     prompt: "Investigate this issue",
   },
 ): CoreInboxDispatchWork => ({
+  final_text: "Frozen complete message",
+  launch_id: "launch:stable",
+  message_id: "message:stable",
+  execution_selection: {
+    model_selection: { instanceId: "codex", model: "confirmed-model" },
+    interaction_mode: "plan",
+  },
+  target_execution_ref: null,
+  failure_kind: null,
   proposal_id: "proposal:one",
   revision: 2,
   action,
@@ -109,21 +117,6 @@ const session = (bound = false): ProjectSession => ({
   createdAt: "2026-01-01T00:00:00.000Z",
   updatedAt: "2026-01-01T00:00:00.000Z",
 });
-const inspection = (activeRunId: string | null = null): AgentRuntimeInspection =>
-  ({
-    sessionId: "session:one",
-    projectId: "project:one",
-    runtimeId: "runtime:one",
-    rootThreadId: "thread:one",
-    threadId: "thread:one",
-    thread: {
-      id: "thread:one",
-      title: "Investigation",
-      activeRunId,
-      modelSelection: { instanceId: agentRuntimeProviderId(claude)!, model: "original-model" },
-      interactionMode: "plan",
-    },
-  }) as AgentRuntimeInspection;
 const context = (): CoreInboxDispatchContext => ({
   entries: [
     {
@@ -135,7 +128,7 @@ const context = (): CoreInboxDispatchContext => ({
       kind: null,
       submitted_at: "2026-10-15T00:00:00.000Z",
       scope: { kind: "library" },
-      basis: { page_id: "page:one", generation: 1, head_seq: 3 },
+      basis: { page_id: "page:one", generation: 1, head_seq: 3, placement_revision: 1 },
       title_provisional: false,
     },
   ],
@@ -164,15 +157,24 @@ const delivery = (input: {
   runtime: Partial<Runtime>;
   inbox: Partial<InboxApplication["Service"]>;
   session: () => ProjectSession;
+  project?: () => Project | null;
 }) =>
   makeDelivery.pipe(
-    Effect.provideService(AgentRuntimeApplication, input.runtime as Runtime),
+    Effect.provideService(AgentRuntimeApplication, {
+      messageAdmission: () => Effect.succeed(null),
+      ...input.runtime,
+    } as Runtime),
     Effect.provideService(InboxApplication, {
       dispatchContext: () => Effect.succeed(context()),
       ...input.inbox,
     } as InboxApplication["Service"]),
     Effect.provideService(ProjectWorkspace, {
       getProjectSession: () => Effect.sync(input.session),
+      getProject: () =>
+        Effect.sync(
+          input.project ??
+            (() => ({ lifecycle: "active", primaryWorkspaceRoot: "/project" }) as Project),
+        ),
     } as unknown as ProjectWorkspace["Service"]),
     Effect.provideService(ApplicationSettings, settingsService),
   );
@@ -180,7 +182,12 @@ const delivery = (input: {
 it.effect("uses a warm model catalog without refreshing any Provider", () =>
   Effect.gen(function* () {
     const catalog = vi.fn(() => Effect.succeed([provider()]));
-    const selection = yield* resolveInboxModel({ catalog }, { kind: "codex" }, null, "medium");
+    const selection = yield* resolveInboxModel(
+      { catalog },
+      { instanceId: "codex" },
+      null,
+      "medium",
+    );
     assert.deepEqual(selection, {
       instanceId: "codex",
       model: "default-model",
@@ -189,11 +196,30 @@ it.effect("uses a warm model catalog without refreshing any Provider", () =>
     assert.deepEqual(catalog.mock.calls, [[]]);
     const withoutOptions = yield* resolveInboxModel(
       { catalog },
-      { kind: "codex" },
+      { instanceId: "codex" },
       "first-model",
       "medium",
     );
     assert.deepEqual(withoutOptions, { instanceId: "codex", model: "first-model" });
+  }),
+);
+
+it.effect("restricts only suggestion utilities while allowing other launch Providers", () =>
+  Effect.gen(function* () {
+    const opencode = { ...provider({ instanceId: "opencode:one" }), driver: "opencode" as const };
+    const catalog = () => Effect.succeed([opencode]);
+    const selected = yield* resolveInboxModel({ catalog }, { instanceId: opencode.instanceId });
+    assert.strictEqual(selected.instanceId, opencode.instanceId);
+    const suggestion = yield* resolveInboxModel(
+      { catalog },
+      { instanceId: opencode.instanceId },
+      null,
+      undefined,
+      "suggestion",
+    ).pipe(Effect.result);
+    assert.strictEqual(suggestion._tag, "Failure");
+    if (suggestion._tag === "Failure")
+      assert.match(suggestion.failure.message, /cannot generate Inbox suggestions/);
   }),
 );
 
@@ -215,7 +241,7 @@ it.effect(
       ready = true;
       yield* TestClock.adjust("200 millis");
       assert.deepEqual(yield* Fiber.join(pending), {
-        instanceId: agentRuntimeProviderId(claude)!,
+        instanceId: claude.instanceId,
         model: "default-model",
       });
       const calls = vi.mocked(catalog).mock.calls;
@@ -229,7 +255,7 @@ it.effect("ends a cold catalog wait at its bounded deadline", () =>
     const catalog: Runtime["catalog"] = vi.fn(() =>
       Effect.succeed([{ ...provider(), models: [] }]),
     );
-    const pending = yield* resolveInboxModel({ catalog }, { kind: "codex" }).pipe(
+    const pending = yield* resolveInboxModel({ catalog }, { instanceId: "codex" }).pipe(
       Effect.result,
       Effect.forkChild,
     );
@@ -241,255 +267,450 @@ it.effect("ends a cold catalog wait at its bounded deadline", () =>
   }),
 );
 
-it.effect(
-  "replays a bound launch and its message after uncertain execution and completion replies",
-  () =>
-    Effect.gen(function* () {
-      yield* TestClock.setTime(Date.parse("2026-10-15T00:00:00.000Z"));
-      let current = work();
-      let product = session();
-      let pending = true;
-      let loseLaunch = true;
-      let loseComplete = true;
-      const accepted = new Set<string>();
-      const calls: AgentRuntimeLaunch[] = [];
-      const complete = vi.fn(() =>
+it.effect("reconciles durable acceptance after lost replies and archive without resubmission", () =>
+  Effect.gen(function* () {
+    let accepted = false;
+    let pending = true;
+    let loseComplete = true;
+    let product = session();
+    const calls: AgentRuntimeLaunch[] = [];
+    const confirmed = work();
+    const complete = vi.fn(() =>
+      Effect.suspend(() => {
+        if (loseComplete) {
+          loseComplete = false;
+          return Effect.fail(inboxError());
+        }
+        pending = false;
+        return Effect.void;
+      }),
+    );
+    const fail = vi.fn(() => Effect.void);
+    const runtime: Partial<Runtime> = {
+      messageAdmission: () =>
+        Effect.succeed(
+          accepted
+            ? {
+                status: "accepted",
+                sequence: 1,
+                error: null,
+                runtimeId: "runtime:one",
+                threadId: "thread:one",
+                messageId: confirmed.message_id,
+                commandId: "command:one",
+              }
+            : null,
+        ),
+      launch: (input) =>
         Effect.suspend(() => {
-          if (loseComplete) {
-            loseComplete = false;
-            return Effect.fail(inboxError());
-          }
-          pending = false;
-          return Effect.void;
+          calls.push(input);
+          accepted = true;
+          product = { ...session(true), archived: true };
+          return Effect.fail(applicationError());
         }),
-      );
-      const fail = vi.fn(() => Effect.void);
-      const runtime: Partial<Runtime> = {
-        catalog: () => Effect.succeed([provider()]),
-        inspect: () => Effect.succeed(inspection("run:already-accepted")),
-        launch: (input) =>
-          Effect.suspend(() => {
-            calls.push(input);
-            accepted.add(input.message.messageId);
-            product = session(true);
-            current = { ...current, thread_id: "thread:one" };
-            if (loseLaunch) {
-              loseLaunch = false;
-              return Effect.fail(applicationError());
-            }
-            return Effect.succeed({
-              sessionId: product.id,
-              projectId: product.projectId,
-              threadId: "thread:one",
-            });
-          }),
-      };
-      const input = {
-        runtime,
-        session: () => product,
-        inbox: {
-          outbox: () => Effect.sync(() => (pending ? [current] : [])),
-          completeDispatch: complete,
-          failDispatch: fail,
-        },
-      };
-      yield* delivery(input).pipe(Effect.flatMap(({ drain }) => drain));
-      assert.strictEqual(complete.mock.calls.length, 0);
-      assert.strictEqual(fail.mock.calls.length, 0);
-      yield* TestClock.adjust("1 day");
-      // A new worker models process restart: the durable outbox and binding are the only proof.
-      yield* delivery(input).pipe(Effect.flatMap(({ drain }) => drain));
-      assert.strictEqual(pending, true);
-      yield* delivery(input).pipe(Effect.flatMap(({ drain }) => drain));
-      assert.strictEqual(pending, false);
-      assert.strictEqual(accepted.size, 1);
-      assert.strictEqual(calls.length, 3);
-      assert.strictEqual(new Set(calls.map((call) => call.launchId)).size, 1);
-      assert.strictEqual(calls[0]?.message.messageId, inboxDispatchIdentity(current, "message"));
-      assert.isAbove(calls[0]!.acceptedAt, Date.parse(current.confirmed_at));
-      assert.isAbove(calls[1]!.acceptedAt, calls[0]!.acceptedAt);
-      assert.deepEqual(calls[1]?.modelSelection, inspection().thread.modelSelection);
-      assert.strictEqual(calls[1]?.interactionMode, "plan");
-      assert.strictEqual(fail.mock.calls.length, 0);
-    }),
+    };
+    const input = {
+      runtime,
+      session: () => product,
+      inbox: {
+        outbox: () => Effect.succeed(pending ? [confirmed] : []),
+        completeDispatch: complete,
+        failDispatch: fail,
+      },
+    };
+    yield* delivery(input).pipe(Effect.flatMap(({ drain }) => drain));
+    assert.strictEqual(pending, true);
+    yield* delivery(input).pipe(Effect.flatMap(({ drain }) => drain));
+    assert.strictEqual(pending, false);
+    assert.strictEqual(calls.length, 1);
+    assert.strictEqual(calls[0]?.message.text, confirmed.final_text);
+    assert.strictEqual(calls[0]?.message.messageId, confirmed.message_id);
+    assert.strictEqual(calls[0]?.launchId, confirmed.launch_id);
+    assert.strictEqual(calls[0]?.acceptedAt, Date.parse(confirmed.confirmed_at));
+    assert.deepEqual(calls[0]?.modelSelection, confirmed.execution_selection?.model_selection);
+    assert.strictEqual(calls[0]?.interactionMode, "plan");
+    assert.strictEqual(fail.mock.calls.length, 0);
+  }),
 );
 
-it.effect(
-  "waits for actual Session idleness and retries one queued follow-up after a lost reply",
-  () =>
-    Effect.gen(function* () {
-      let busy = true;
-      let replyLost = true;
+it.effect("hands busy follow-ups to the Runtime queue and does not starve a ninth chat", () =>
+  Effect.gen(function* () {
+    const items = Array.from({ length: 9 }, (_, index) => ({
+      ...work({ type: "send_to_chat", session_id: "session:one", prompt: "Follow up" }),
+      proposal_id: `proposal:${index}`,
+      message_id: `message:${index}`,
+      thread_status: { status_type: "active" as const, active_flags: [] },
+    }));
+    const queueMessage = vi.fn<Runtime["queueMessage"]>(() => Effect.succeed({ sequence: 5 }));
+    const complete = vi.fn(() => Effect.void);
+    const { drain } = yield* delivery({
+      session: () => session(true),
+      runtime: { queueMessage },
+      inbox: {
+        outbox: () => Effect.succeed(items),
+        completeDispatch: complete,
+      },
+    });
+    yield* drain;
+    assert.strictEqual(queueMessage.mock.calls.length, 9);
+    assert.isTrue(queueMessage.mock.calls.every(([target]) => target.threadId === "thread:one"));
+    assert.strictEqual(complete.mock.calls.length, 9);
+  }),
+);
+
+it.effect("a durable rejection settles once and never submits again", () =>
+  Effect.gen(function* () {
+    const confirmed = work();
+    const fail = vi.fn(() => Effect.void);
+    const launch = vi.fn(() => Effect.die("must not submit"));
+    const { drain } = yield* delivery({
+      session: () => session(true),
+      runtime: {
+        launch,
+        messageAdmission: () =>
+          Effect.succeed({
+            status: "rejected",
+            sequence: 2,
+            error: "Model unavailable",
+            runtimeId: "runtime:one",
+            threadId: "thread:one",
+            messageId: confirmed.message_id,
+            commandId: "command:one",
+          }),
+      },
+      inbox: { outbox: () => Effect.succeed([confirmed]), failDispatch: fail },
+    });
+    yield* drain;
+    assert.strictEqual(launch.mock.calls.length, 0);
+    assert.deepEqual(fail.mock.calls[0], [confirmed, "Model unavailable", "rejected"]);
+  }),
+);
+
+it.effect("settles a host admission refusal only after checking its original message receipt", () =>
+  Effect.gen(function* () {
+    for (const accepted of [false, true]) {
+      const confirmed = work();
       let pending = true;
-      const accepted = new Set<string>();
-      const message = vi.fn((input: Parameters<Runtime["queueMessage"]>[0]) =>
-        Effect.suspend(() => {
-          accepted.add(input.message.messageId);
-          if (replyLost) {
-            replyLost = false;
-            return Effect.fail(applicationError());
-          }
-          return Effect.succeed({ sequence: 5 });
+      let attempted = false;
+      const fail = vi.fn(() =>
+        Effect.sync(() => {
+          pending = false;
         }),
-      );
-      const inspect = vi.fn((_input: Parameters<Runtime["inspect"]>[0]) =>
-        Effect.sync(() => inspection(busy ? "run:busy" : null)),
       );
       const complete = vi.fn(() =>
         Effect.sync(() => {
           pending = false;
         }),
       );
-      const fail = vi.fn(() => Effect.void);
-      const confirmed = {
-        ...work({ type: "send_to_chat", session_id: "session:one", prompt: "Follow up" }),
-        thread_id: "stale-native-thread",
-        thread_status: { status_type: "active" as const, active_flags: [] },
-      };
+      const launch = vi.fn(() => {
+        attempted = true;
+        return Effect.fail(
+          new AgentRuntimeApplicationError({
+            operation: "launch",
+            message: "Session is already bound to another launch request",
+            admissionRejected: true,
+          }),
+        );
+      });
       const { drain } = yield* delivery({
-        session: () => session(true),
-        runtime: { inspect, queueMessage: message },
+        session: () => session(),
+        runtime: {
+          launch,
+          messageAdmission: () =>
+            Effect.succeed(
+              attempted && accepted
+                ? {
+                    status: "accepted",
+                    sequence: 2,
+                    error: null,
+                    runtimeId: "runtime:one",
+                    threadId: "thread:original",
+                    messageId: confirmed.message_id,
+                    commandId: "command:one",
+                  }
+                : null,
+            ),
+        },
         inbox: {
-          outbox: () => Effect.sync(() => (pending ? [confirmed] : [])),
-          completeDispatch: complete,
+          outbox: () => Effect.succeed(pending ? [confirmed] : []),
           failDispatch: fail,
+          completeDispatch: complete,
         },
       });
       yield* drain;
-      assert.strictEqual(message.mock.calls.length, 0);
-      assert.strictEqual(complete.mock.calls.length, 0);
-      busy = false;
       yield* drain;
-      assert.strictEqual(complete.mock.calls.length, 0);
-      yield* drain;
-      assert.strictEqual(pending, false);
-      assert.deepEqual(inspect.mock.calls, [
-        [{ sessionId: "session:one" }],
-        [{ sessionId: "session:one" }],
-        [{ sessionId: "session:one" }],
-      ]);
-      assert.strictEqual(message.mock.calls.length, 2);
-      assert.deepEqual(message.mock.calls[0]?.[0], {
-        sessionId: "session:one",
-        message: {
-          messageId: inboxDispatchIdentity(confirmed, "message"),
-          text: message.mock.calls[1]?.[0].message.text,
-        },
-      });
-      assert.strictEqual(accepted.size, 1);
-      assert.strictEqual(fail.mock.calls.length, 0);
-    }),
+      assert.strictEqual(launch.mock.calls.length, 1);
+      assert.strictEqual(complete.mock.calls.length, accepted ? 1 : 0);
+      assert.strictEqual(fail.mock.calls.length, accepted ? 0 : 1);
+      if (!accepted)
+        assert.deepEqual(fail.mock.calls[0], [
+          confirmed,
+          "Session is already bound to another launch request",
+          "rejected",
+        ]);
+    }
+  }),
 );
 
-it.effect("keeps the native writer confined to explicitly remote Codex Sessions", () =>
+it.effect("an unavailable local workspace fails visibly before runtime submission", () =>
   Effect.gen(function* () {
-    const nativeSession = session();
-    nativeSession.thread = {
-      threadId: "thread:remote",
-      executionHostId: "ssh:remote",
-      backendBinding: { kind: "codex" },
-      archived: false,
-      statusType: "idle",
-    } as ProjectSession["thread"];
-    const start = vi.fn(() =>
-      Effect.succeed({
+    const fail = vi.fn(() => Effect.void);
+    const launch = vi.fn(() => Effect.die("must not submit"));
+    const confirmed = work();
+    const { drain } = yield* delivery({
+      session: () => session(),
+      project: () => null,
+      runtime: { launch },
+      inbox: { outbox: () => Effect.succeed([confirmed]), failDispatch: fail },
+    });
+    yield* drain;
+    assert.strictEqual(launch.mock.calls.length, 0);
+    assert.deepEqual(fail.mock.calls[0], [
+      confirmed,
+      "The Project has no available execution workspace",
+      "unavailable",
+    ]);
+  }),
+);
+
+it.effect("reconciles legacy identities but never reconstructs historical text", () =>
+  Effect.gen(function* () {
+    const confirmed = { ...work(), final_text: null };
+    const messageAdmission = vi.fn((_input: Parameters<Runtime["messageAdmission"]>[0]) =>
+      Effect.succeed(null),
+    );
+    const fail = vi.fn(() => Effect.void);
+    const launch = vi.fn(() => Effect.die("must not submit"));
+    const { drain } = yield* delivery({
+      session: () => session(true),
+      runtime: { launch, messageAdmission },
+      inbox: { outbox: () => Effect.succeed([confirmed]), failDispatch: fail },
+    });
+    yield* drain;
+    assert.strictEqual(
+      messageAdmission.mock.calls[0]?.[0].messageId,
+      inboxDispatchIdentity(confirmed, "message"),
+    );
+    assert.strictEqual(
+      messageAdmission.mock.calls[0]?.[0].launchId,
+      inboxDispatchIdentity(confirmed, "launch"),
+    );
+    assert.strictEqual(launch.mock.calls.length, 0);
+    assert.strictEqual(fail.mock.calls.length, 1);
+  }),
+);
+
+it.effect("persists remote uncertainty before submitting and never automatically resends", () =>
+  Effect.gen(function* () {
+    const nativeSession = {
+      ...session(),
+      thread: {
         threadId: "thread:remote",
-        turnId: "turn:one",
-        status: "inProgress" as const,
-        itemIds: [],
+        executionHostId: "ssh:remote",
+        backendBinding: { kind: "codex" },
+        archived: false,
+        statusType: "idle",
+      } as ProjectSession["thread"],
+    };
+    let pending = true;
+    const calls: string[] = [];
+    const confirmed = {
+      ...work({
+        type: "send_to_chat",
+        session_id: "session:one",
+        prompt: "Follow up",
       }),
+      thread_id: "thread:remote",
+    };
+    const start = vi.fn(() =>
+      Effect.sync(() => {
+        calls.push("start");
+      }).pipe(Effect.andThen(Effect.fail(applicationError()))),
     );
     const complete = vi.fn(() => Effect.void);
-    const fail = vi.fn(() => Effect.void);
-    const input = {
+    const { drain } = yield* delivery({
       session: () => nativeSession,
       runtime: {},
       inbox: {
-        outbox: () =>
-          Effect.succeed([
-            work({ type: "send_to_chat", session_id: "session:one", prompt: "Follow up" }),
-          ]),
+        outbox: () => Effect.succeed(pending ? [confirmed] : []),
         completeDispatch: complete,
-        failDispatch: fail,
+        beginDispatch: () =>
+          Effect.sync(() => {
+            pending = false;
+            calls.push("persist-unknown");
+          }),
       },
-    };
-    const { drain } = yield* delivery(input).pipe(
+    }).pipe(
       Effect.provideService(CodexTurnCommands, {
         start,
       } as unknown as CodexTurnCommands["Service"]),
     );
     yield* drain;
-    assert.strictEqual(start.mock.calls.length, 1);
-    assert.strictEqual(complete.mock.calls.length, 1);
-    nativeSession.thread!.executionHostId = "local";
     yield* drain;
+    assert.deepEqual(calls, ["persist-unknown", "start"]);
     assert.strictEqual(start.mock.calls.length, 1);
-    assert.strictEqual(fail.mock.calls.length, 1);
+    assert.strictEqual(complete.mock.calls.length, 0);
   }),
 );
 
-it.effect(
-  "generates structured suggestions for the selected Provider and validates product Session targets",
-  () =>
-    Effect.gen(function* () {
-      let pending = true;
-      const proposed: InboxSuggestionProposal[] = [];
-      const generated = vi.fn((_input: Parameters<Runtime["generateStructured"]>[0]) =>
-        Effect.succeed({
-          titles: [],
-          suggestions: [
-            {
-              page_ids: ["page:one"],
-              kind: "todo",
-              action: "send_to_chat",
-              project_id: null,
-              session_id: "session:one",
-              prompt: "Continue with the evidence",
-              summary: "Continue the investigation",
-              rationale: "The existing investigation is relevant",
-            },
-          ],
-        }),
-      );
-      const failures = vi.fn(() => Effect.void);
-      const inbox = {
-        pendingSuggestions: () => Effect.succeed(pending ? context().entries : []),
-        dispatchContext: () => Effect.succeed(context()),
-        recordSuggestionFailure: failures,
-        propose: (proposal: InboxSuggestionProposal) =>
-          Effect.sync(() => {
-            proposed.push(proposal);
-            pending = false;
-          }),
-      };
-      const { drain } = yield* makeSuggestions.pipe(
-        Effect.provideService(InboxApplication, inbox as unknown as InboxApplication["Service"]),
-        Effect.provideService(ApplicationSettings, settingsService),
-        Effect.provideService(AgentRuntimeApplication, {
-          catalog: () => Effect.succeed([provider(), provider(claude)]),
-          generateStructured: generated,
-        } as unknown as Runtime),
-        Effect.provide(configLayer({ nodexHome: "/profiles/inbox" })),
-      );
-      yield* drain;
-      assert.strictEqual(proposed.length, 1);
-      assert.deepEqual(proposed[0]?.action, {
+it.effect("a remote live acknowledgment remains unknown until durable evidence exists", () =>
+  Effect.gen(function* () {
+    const nativeSession = {
+      ...session(),
+      thread: {
+        threadId: "thread:remote",
+        executionHostId: "ssh:remote",
+        backendBinding: { kind: "codex" },
+        archived: false,
+        statusType: "idle",
+      } as ProjectSession["thread"],
+    };
+    const confirmed = {
+      ...work({
         type: "send_to_chat",
-        sessionId: "session:one",
-        prompt: "Continue with the evidence",
-      });
-      assert.strictEqual(failures.mock.calls.length, 0);
-      const request = vi.mocked(generated).mock.calls[0]?.[0] as unknown as Parameters<
-        Runtime["generateStructured"]
-      >[0];
-      assert.deepEqual(request.modelSelection, {
-        instanceId: agentRuntimeProviderId(claude)!,
-        model: "default-model",
-        options: [{ id: "reasoningEffort", value: "low" }],
-      });
-      assert.strictEqual(request.cwd, "/profiles/inbox");
-      assert.strictEqual(request.maxOutputBytes, INBOX_SUGGESTION_MAX_OUTPUT_BYTES);
-      assert.strictEqual(request.timeoutMs, INBOX_SUGGESTION_TIMEOUT_MS);
-      assert.include(request.prompt, "Captured evidence");
-    }),
+        session_id: "session:one",
+        prompt: "Follow up",
+      }),
+      thread_id: "thread:remote",
+    };
+    const complete = vi.fn(() => Effect.void);
+    const fail = vi.fn(() => Effect.void);
+    const start = vi.fn(() =>
+      Effect.succeed({
+        threadId: "thread:remote",
+        turnId: "turn:one",
+        status: "inProgress",
+        itemIds: [],
+      }),
+    );
+    const { drain } = yield* delivery({
+      session: () => nativeSession,
+      runtime: {},
+      inbox: {
+        outbox: () => Effect.succeed([confirmed]),
+        beginDispatch: () => Effect.void,
+        completeDispatch: complete,
+        failDispatch: fail,
+      },
+    }).pipe(
+      Effect.provideService(CodexTurnCommands, {
+        start,
+      } as unknown as CodexTurnCommands["Service"]),
+    );
+    yield* drain;
+    assert.strictEqual(complete.mock.calls.length, 0);
+    assert.deepEqual(fail.mock.calls[0], [
+      { ...confirmed, revision: confirmed.revision + 1 },
+      "Submitted to remote chat; open it to verify",
+      "unknown",
+    ]);
+  }),
+);
+
+const suggestionOutput = (pageIds: string[], action = "send_to_chat") => ({
+  request_id: "request:one",
+  generation: 1,
+  titles: [],
+  suggestions: [
+    {
+      page_ids: pageIds,
+      kind: action === "none" ? null : "todo",
+      action,
+      project_id: null,
+      session_id: action === "send_to_chat" ? "session:one" : null,
+      prompt: action === "none" ? null : "Continue with the evidence",
+      summary: action === "none" ? null : "Continue the investigation",
+      rationale: null,
+      reason: action === "none" ? "Needs your decision" : null,
+    },
+  ],
+});
+
+const suggestionHarness = (count = 1, none = false) =>
+  Effect.gen(function* () {
+    let pending = true;
+    const routing = {
+      ...context(),
+      entries: Array.from({ length: count }, (_, index) => ({
+        ...context().entries[0]!,
+        page_id: `page:${index}`,
+        basis: { page_id: `page:${index}`, generation: 1, head_seq: 3, placement_revision: 1 },
+      })),
+    };
+    const pageIds = routing.entries.map((entry) => entry.page_id);
+    const generated = vi.fn((_input: Parameters<Runtime["generateStructured"]>[0]) =>
+      Effect.succeed(suggestionOutput(pageIds, none ? "none" : "send_to_chat")),
+    );
+    const settlements: InboxSuggestionSettlement[] = [];
+    const inbox = {
+      prepareSuggestions: () => Effect.void,
+      suggestionRequests: () =>
+        Effect.succeed(
+          pending
+            ? [
+                {
+                  request_id: "request:one",
+                  generation: 1,
+                  mode: count > 1 ? ("grouped" as const) : ("auto" as const),
+                  page_ids: pageIds,
+                  basis: routing.entries.map((entry) => entry.basis),
+                  correction: null,
+                  proposal_id: null,
+                  expected_revision: null,
+                  context: routing,
+                },
+              ]
+            : [],
+        ),
+      settleSuggestion: (settlement: InboxSuggestionSettlement) =>
+        Effect.sync(() => {
+          settlements.push(settlement);
+          pending = false;
+        }),
+    };
+    const worker = yield* makeSuggestions.pipe(
+      Effect.provideService(InboxApplication, inbox as unknown as InboxApplication["Service"]),
+      Effect.provideService(ApplicationSettings, settingsService),
+      Effect.provideService(AgentRuntimeApplication, {
+        catalog: () => Effect.succeed([provider(), provider(claude)]),
+        generateStructured: generated,
+      } as unknown as Runtime),
+      Effect.provide(configLayer({ nodexHome: "/profiles/inbox" })),
+    );
+    return { ...worker, generated, settlements, pageIds };
+  });
+
+it.effect("settles a 16-message explicit group atomically with the actual resolved model", () =>
+  Effect.gen(function* () {
+    const { drain, generated, settlements, pageIds } = yield* suggestionHarness(16);
+    yield* drain;
+    assert.strictEqual(generated.mock.calls.length, 1);
+    assert.strictEqual(settlements.length, 1);
+    assert.strictEqual(settlements[0]?.suggestions.length, 1);
+    assert.deepEqual(settlements[0]?.suggestions[0]?.page_ids, pageIds);
+    assert.strictEqual(settlements[0]?.produced_by, "claude:inbox · default-model");
+    const request = generated.mock.calls[0]![0];
+    assert.deepEqual(request.modelSelection, {
+      instanceId: claude.instanceId,
+      model: "default-model",
+      options: [{ id: "reasoningEffort", value: "low" }],
+    });
+    assert.strictEqual(request.maxOutputBytes, INBOX_SUGGESTION_MAX_OUTPUT_BYTES);
+    assert.strictEqual(request.timeoutMs, INBOX_SUGGESTION_TIMEOUT_MS);
+    assert.include(request.prompt, "Captured evidence");
+  }),
+);
+
+it.effect("settles none as a durable decision and does not generate it on every poll", () =>
+  Effect.gen(function* () {
+    const { drain, generated, settlements } = yield* suggestionHarness(1, true);
+    yield* drain;
+    yield* drain;
+    assert.strictEqual(generated.mock.calls.length, 1);
+    assert.deepEqual(settlements[0]?.suggestions[0]?.action, {
+      type: "none",
+      reason: "Needs your decision",
+    });
+    assert.strictEqual(settlements[0]?.error, null);
+  }),
 );

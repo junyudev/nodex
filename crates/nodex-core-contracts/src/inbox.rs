@@ -86,6 +86,8 @@ pub enum ProjectWorkspaceInboxProposalState {
 pub enum ProjectWorkspaceInboxDispatchAction {
     /// Keep the entries open as notes, todos, or questions.
     Keep,
+    /// No decision is proposed; the entry remains available for manual triage.
+    None { reason: String },
     /// Start a new chat in one active Project, or a projectless chat.
     NewChat {
         project_id: Option<String>,
@@ -101,6 +103,7 @@ pub enum ProjectWorkspaceInboxDispatchAction {
 /// Causal evidence that a proposal was made for the current message content.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 pub struct ProjectWorkspaceInboxPageBasis {
+    pub placement_revision: i64,
     pub page_id: String,
     pub generation: i64,
     pub head_seq: i64,
@@ -165,6 +168,8 @@ pub struct ProjectWorkspaceInboxChat {
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 pub struct ProjectWorkspaceInboxProposal {
+    pub failure_kind: Option<ProjectWorkspaceInboxFailureKind>,
+    pub basis: Vec<ProjectWorkspaceInboxPageBasis>,
     pub proposal_id: String,
     pub revision: i64,
     pub origin: ProjectWorkspaceInboxProposalOrigin,
@@ -186,6 +191,8 @@ pub struct ProjectWorkspaceInboxProposal {
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 pub struct ProjectWorkspaceInboxItem {
+    pub basis: ProjectWorkspaceInboxPageBasis,
+    pub outcome: Option<ProjectWorkspaceInboxOutcome>,
     pub page_id: String,
     pub page_key: Option<String>,
     pub title: String,
@@ -302,6 +309,13 @@ pub struct ProjectWorkspaceInboxDispatchContext {
 /// A confirmed dispatch that the Desktop Host must deliver.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 pub struct ProjectWorkspaceInboxDispatchWork {
+    /// None only for pre-snapshot history that must be reconciled, never sent.
+    pub final_text: Option<String>,
+    pub launch_id: String,
+    pub message_id: String,
+    pub execution_selection: Option<ProjectWorkspaceInboxExecutionSelection>,
+    pub target_execution_ref: Option<crate::workspace::ProjectWorkspaceSessionExecutionRef>,
+    pub failure_kind: Option<ProjectWorkspaceInboxFailureKind>,
     pub proposal_id: String,
     pub revision: i64,
     pub action: ProjectWorkspaceInboxDispatchAction,
@@ -319,3 +333,80 @@ pub struct ProjectWorkspaceInboxDispatchWork {
 }
 
 pub type ProjectWorkspaceInboxWindow = CollectionWindow<ProjectWorkspaceInboxItem>;
+
+/// Product decision, independent of the Page's current location.
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum ProjectWorkspaceInboxOutcome {
+    Kept,
+    Done,
+    Moved,
+    Chat,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ProjectWorkspaceInboxModelSelection {
+    pub instance_id: String,
+    pub model: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub options: Option<Vec<ProjectWorkspaceInboxModelOption>>,
+}
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct ProjectWorkspaceInboxModelOption {
+    pub id: String,
+    pub value: serde_json::Value,
+}
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum ProjectWorkspaceInboxInteractionMode {
+    Default,
+    Plan,
+}
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct ProjectWorkspaceInboxExecutionSelection {
+    pub model_selection: ProjectWorkspaceInboxModelSelection,
+    pub interaction_mode: ProjectWorkspaceInboxInteractionMode,
+}
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum ProjectWorkspaceInboxFailureKind {
+    Rejected,
+    Unavailable,
+    Unknown,
+}
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum ProjectWorkspaceInboxSuggestionMode {
+    Auto,
+    Grouped,
+    Refine,
+}
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+pub struct ProjectWorkspaceInboxSuggestionRequest {
+    pub request_id: String,
+    pub generation: i64,
+    pub mode: ProjectWorkspaceInboxSuggestionMode,
+    pub page_ids: Vec<String>,
+    pub basis: Vec<ProjectWorkspaceInboxPageBasis>,
+    pub proposal_id: Option<String>,
+    pub expected_revision: Option<i64>,
+    pub correction: Option<String>,
+    pub context: ProjectWorkspaceInboxDispatchContext,
+}
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+pub struct ProjectWorkspaceInboxSuggestionTitle {
+    pub page_id: String,
+    pub title: String,
+}
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+pub struct ProjectWorkspaceInboxSuggestedDispatch {
+    pub proposal_id: String,
+    pub page_ids: Vec<String>,
+    pub action: ProjectWorkspaceInboxDispatchAction,
+    pub entry_kind: Option<ProjectWorkspaceInboxEntryKind>,
+    pub summary: String,
+    pub rationale: Option<String>,
+}

@@ -1,97 +1,151 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import type { InboxAgentBinding } from "../../../shared/inbox";
-import { MAX_INBOX_INSTRUCTIONS_CHARS } from "../../../shared/inbox";
-import { NodexButton, NodexSwitch } from "@/components/ui/button";
 import {
-  NodexDropdownItem,
-  NodexDropdownMenu,
-  NodexDropdownSelectedIcon,
-  NodexSettingsDropdownTrigger,
-} from "@/components/ui/dropdown";
+  DEFAULT_INBOX_SETTINGS,
+  MAX_INBOX_INSTRUCTIONS_CHARS,
+  supportsInboxStructuredGeneration,
+} from "../../../shared/inbox";
+import { NodexButton, NodexSwitch } from "@/components/ui/button";
+import { NodexOptionPicker, NodexSettingsDropdownTrigger } from "@/components/ui/dropdown";
 import {
   NodexSettingsPageSurface as SettingsPageSurface,
   NodexSettingsRow as SettingRow,
   NodexSettingsSection as SectionBlock,
 } from "@/components/ui/settings";
 import { toast } from "@/components/ui/toast";
-import { readClaudeAgentSettings } from "@/lib/workbench-settings-runtime";
+import { readInboxAgentCatalog } from "@/lib/inbox-runtime";
 import { readableInboxError } from "./inbox-presentation";
-import { useInboxSettings, useUpdateInboxSettings } from "./use-inbox";
+import { useInboxSettingsQuery, useUpdateInboxSettings } from "./use-inbox";
 
-const sameBinding = (left: InboxAgentBinding, right: InboxAgentBinding) =>
-  left.kind === right.kind &&
-  (left.kind === "codex" ||
-    (right.kind === "claude" && left.instanceConfigId === right.instanceConfigId));
+type InboxProvider = Awaited<ReturnType<typeof readInboxAgentCatalog>>[number];
+
+const available = (provider: InboxProvider) =>
+  provider.enabled &&
+  provider.installed &&
+  provider.status !== "error" &&
+  provider.status !== "disabled" &&
+  provider.availability !== "unavailable";
 
 function AgentPicker({
   value,
   ariaLabel,
+  providers,
+  suggestions = false,
   onChange,
 }: {
   readonly value: InboxAgentBinding;
   readonly ariaLabel: string;
+  readonly providers: readonly InboxProvider[];
+  readonly suggestions?: boolean;
   readonly onChange: (binding: InboxAgentBinding) => void;
 }) {
-  const claude = useQuery({
-    queryKey: ["settings", "claudeAgents", "inbox"],
-    queryFn: readClaudeAgentSettings,
-    staleTime: 30_000,
-  });
-  const options: { readonly binding: InboxAgentBinding; readonly label: string }[] = [
-    { binding: { kind: "codex" }, label: "Codex" },
-    ...(claude.data?.instances ?? [])
-      .filter((instance) => instance.enabled)
-      .map((instance) => ({
-        binding: { kind: "claude" as const, instanceConfigId: instance.id },
-        label: instance.displayName,
-      })),
-  ];
-  const current = options.find((option) => sameBinding(option.binding, value))?.label ?? "Codex";
+  const selected = providers.find((provider) => provider.instanceId === value.instanceId);
+  const current = selected?.displayName ?? value.instanceId;
+  const usable =
+    selected &&
+    available(selected) &&
+    (!suggestions || supportsInboxStructuredGeneration(selected));
   return (
-    <NodexDropdownMenu
+    <NodexOptionPicker
       align="end"
+      search="filter"
+      searchAriaLabel={`Search ${ariaLabel.toLowerCase()}s`}
       triggerButton={
         <NodexSettingsDropdownTrigger aria-label={ariaLabel}>
           {current}
+          {usable ? "" : " · Unavailable"}
         </NodexSettingsDropdownTrigger>
       }
-    >
-      {options.map((option) => (
-        <NodexDropdownItem
-          key={option.label + option.binding.kind}
-          rightSlot={sameBinding(option.binding, value) ? <NodexDropdownSelectedIcon /> : null}
-          onSelect={() => onChange(option.binding)}
-        >
-          {option.label}
-        </NodexDropdownItem>
-      ))}
-    </NodexDropdownMenu>
+      value={value.instanceId}
+      options={providers
+        .filter(
+          (provider) =>
+            !suggestions ||
+            supportsInboxStructuredGeneration(provider) ||
+            provider.instanceId === value.instanceId,
+        )
+        .map((provider) => ({
+          value: provider.instanceId,
+          label: provider.displayName ?? provider.instanceId,
+          disabled:
+            !available(provider) || (suggestions && !supportsInboxStructuredGeneration(provider)),
+          subText: available(provider) ? undefined : "Unavailable",
+        }))}
+      onValueChange={(instanceId) => onChange({ instanceId })}
+    />
   );
 }
 
 export function InboxSettingsPage() {
-  const settings = useInboxSettings();
+  const settingsQuery = useInboxSettingsQuery();
+  const settings = settingsQuery.data ?? DEFAULT_INBOX_SETTINGS;
   const update = useUpdateInboxSettings();
-  const [instructions, setInstructions] = useState(settings.instructions);
-  const [model, setModel] = useState(settings.suggestionModel ?? "");
-  useEffect(() => setInstructions(settings.instructions), [settings.instructions]);
-  useEffect(() => setModel(settings.suggestionModel ?? ""), [settings.suggestionModel]);
+  const [instructionsDraft, setInstructionsDraft] = useState<string | null>(null);
+  const instructions = instructionsDraft ?? settings.instructions;
+  const catalog = useQuery({
+    queryKey: ["inbox", "agent-catalog"],
+    queryFn: readInboxAgentCatalog,
+    staleTime: 30_000,
+  });
+  const providers = catalog.data ?? [];
+  const suggestionProvider = providers.find(
+    (provider) => provider.instanceId === settings.suggestionAgent.instanceId,
+  );
+  const models = suggestionProvider?.models ?? [];
+  const defaultModel = models.find((model) => model.isDefault) ?? models[0];
+  const selectedModel = models.find((model) => model.slug === settings.suggestionModel);
+  const modelLabel =
+    settings.suggestionModel === null
+      ? `Default${defaultModel ? ` · ${defaultModel.name}` : ""}`
+      : (selectedModel?.name ?? `${settings.suggestionModel} · Unavailable`);
 
   const save = (input: Parameters<typeof update.mutate>[0]) =>
     update.mutate(input, {
+      onSuccess: () => {
+        if (input.instructions !== undefined)
+          setInstructionsDraft((current) => (current === input.instructions ? null : current));
+      },
       onError: (error) => toast.danger(readableInboxError(error, "Inbox settings were not saved")),
     });
+
+  if (!settingsQuery.data)
+    return (
+      <SettingsPageSurface title="Inbox">
+        <div
+          role="status"
+          className="flex items-center gap-2 text-sm text-token-description-foreground"
+        >
+          {settingsQuery.error ? "Couldn’t load Inbox settings" : "Loading…"}
+          {settingsQuery.error ? (
+            <NodexButton size="xs" variant="ghost" onClick={() => void settingsQuery.refetch()}>
+              Retry
+            </NodexButton>
+          ) : null}
+        </div>
+      </SettingsPageSurface>
+    );
 
   return (
     <SettingsPageSurface
       title="Inbox"
-      subtitle="How messages you capture are suggested and dispatched. Nothing runs until you confirm."
+      subtitle="How captured messages are suggested and handed to chats."
     >
+      {catalog.error ? (
+        <div
+          role="status"
+          className="flex items-center gap-2 text-sm text-token-description-foreground"
+        >
+          Couldn’t load Agents{" "}
+          <NodexButton size="xs" variant="ghost" onClick={() => void catalog.refetch()}>
+            Retry
+          </NodexButton>
+        </div>
+      ) : null}
       <SectionBlock title="Suggestions">
         <SettingRow
           label="Suggest where messages go"
-          description="An Agent reads new messages and proposes a chat, a Project, or keeping them. It never acts on its own."
+          description="Propose what to do with new messages."
         >
           <NodexSwitch
             ariaLabel="Suggest where messages go"
@@ -103,23 +157,30 @@ export function InboxSettingsPage() {
           <AgentPicker
             ariaLabel="Suggestion agent"
             value={settings.suggestionAgent}
+            providers={providers}
+            suggestions
             onChange={(suggestionAgent) => save({ suggestionAgent, suggestionModel: null })}
           />
         </SettingRow>
-        <SettingRow
-          label="Model"
-          description="Optional exact model for suggestions. Leave empty for the runtime's helper default."
-        >
-          <input
-            aria-label="Suggestion model"
-            value={model}
-            placeholder="Default"
-            onChange={(event) => setModel(event.currentTarget.value)}
-            onBlur={() => {
-              const next = model.trim() || null;
-              if (next !== settings.suggestionModel) save({ suggestionModel: next });
-            }}
-            className="h-8 w-48 rounded-lg border border-token-input-border bg-token-input-background px-2.5 text-sm text-token-input-foreground outline-none placeholder:text-token-input-placeholder-foreground focus:border-token-focus-border"
+        <SettingRow label="Model" description="Default follows the selected Agent’s model catalog.">
+          <NodexOptionPicker
+            align="end"
+            search="filter"
+            searchAriaLabel="Search suggestion models"
+            value={settings.suggestionModel ?? "default"}
+            triggerButton={
+              <NodexSettingsDropdownTrigger aria-label="Suggestion model">
+                {modelLabel}
+              </NodexSettingsDropdownTrigger>
+            }
+            options={[
+              {
+                value: "default",
+                label: `Default${defaultModel ? ` · ${defaultModel.name}` : ""}`,
+              },
+              ...models.map((model) => ({ value: model.slug, label: model.name })),
+            ]}
+            onValueChange={(model) => save({ suggestionModel: model === "default" ? null : model })}
           />
         </SettingRow>
       </SectionBlock>
@@ -145,7 +206,7 @@ export function InboxSettingsPage() {
             rows={5}
             value={instructions}
             placeholder="Research and comparisons go to new read-only chats. UI fixes for Nodex go to the Nodex Project."
-            onChange={(event) => setInstructions(event.currentTarget.value)}
+            onChange={(event) => setInstructionsDraft(event.currentTarget.value)}
             className="mt-1.5 w-full resize-y rounded-md border border-token-input-border bg-token-input-background px-2.5 py-2 text-sm text-token-input-foreground outline-none placeholder:text-token-input-placeholder-foreground focus:border-token-focus-border"
           />
         </div>
@@ -158,6 +219,7 @@ export function InboxSettingsPage() {
           <AgentPicker
             ariaLabel="New chat runtime"
             value={settings.chatAgent}
+            providers={providers}
             onChange={(chatAgent) => save({ chatAgent })}
           />
         </SettingRow>

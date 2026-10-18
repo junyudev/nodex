@@ -1,5 +1,9 @@
 import type {
   InboxConfirmInput,
+  InboxConfirmationDraft,
+  InboxSuggestionRequestInput,
+  InboxUndoInput,
+  InboxChatTargetsInput,
   InboxDispatchInput,
   InboxEditInput,
   InboxPageIdsInput,
@@ -11,18 +15,24 @@ import type {
   InboxWindowInput,
   UpdateInboxSettingsInput,
 } from "../../shared/inbox";
-import { defineRendererCommand, invokePlainCommand, invokeRendererQuery } from "./renderer-command";
+import {
+  defineRendererCommand,
+  defineLocalCommitRendererCommand,
+  invokeLocalCommitCommand,
+  invokePlainCommand,
+  invokeRendererQuery,
+} from "./renderer-command";
 
 const inboxCommand = <const Key extends string, const Channel extends InboxCommandChannel>(
   key: Key,
   channel: Channel,
 ) =>
-  defineRendererCommand({
+  defineLocalCommitRendererCommand({
     key,
     channel,
     authority: "core",
     owner: "Inbox",
-    protocol: { kind: "pending_operation" },
+    protocol: { kind: "receipt_fenced_projection", presentation: "pending" },
   });
 
 type InboxCommandChannel =
@@ -35,7 +45,8 @@ type InboxCommandChannel =
   | "inbox:set-state"
   | "inbox:set-kind"
   | "inbox:request-suggestion"
-  | "inbox:retry-dispatch";
+  | "inbox:retry-dispatch"
+  | "inbox:undo";
 
 const sendCommand = inboxCommand("inbox.send", "inbox:send");
 const editCommand = inboxCommand("inbox.edit", "inbox:edit");
@@ -51,6 +62,8 @@ const requestSuggestionCommand = inboxCommand(
 );
 const retryDispatchCommand = inboxCommand("inbox.retry-dispatch", "inbox:retry-dispatch");
 
+const undoCommand = inboxCommand("inbox.undo", "inbox:undo");
+
 const settingsCommand = defineRendererCommand({
   key: "settings.inbox.update",
   channel: "settings:inbox:update",
@@ -64,24 +77,37 @@ export const readInboxSummary = (input: InboxSummaryInput) =>
 export const readInboxCounts = () => invokeRendererQuery("inbox:counts");
 export const readInboxWindow = (input: InboxWindowInput) =>
   invokeRendererQuery("inbox:window", input);
-export const sendInboxMessage = (input: InboxSendInput) => invokePlainCommand(sendCommand, input);
-export const editInboxMessage = (input: InboxEditInput) => invokePlainCommand(editCommand, input);
+export const sendInboxMessage = (input: InboxSendInput) =>
+  invokeLocalCommitCommand(sendCommand, input);
+export const editInboxMessage = (input: InboxEditInput) =>
+  invokeLocalCommitCommand(editCommand, input);
 export const confirmInboxDispatch = (input: InboxConfirmInput) =>
-  invokePlainCommand(confirmCommand, input);
+  invokeLocalCommitCommand(confirmCommand, input);
 export const dispatchInboxEntries = (input: InboxDispatchInput) =>
-  invokePlainCommand(dispatchCommand, input);
+  invokeLocalCommitCommand(dispatchCommand, input);
 export const keepInboxEntries = (input: InboxPageIdsInput) =>
-  invokePlainCommand(keepCommand, input);
+  invokeLocalCommitCommand(keepCommand, input);
 export const deleteInboxMessages = (input: InboxPageIdsInput) =>
-  invokePlainCommand(deleteCommand, input);
+  invokeLocalCommitCommand(deleteCommand, input);
 export const setInboxEntryState = (input: InboxSetStateInput) =>
-  invokePlainCommand(setStateCommand, input);
+  invokeLocalCommitCommand(setStateCommand, input);
 export const setInboxEntryKind = (input: InboxSetKindInput) =>
-  invokePlainCommand(setKindCommand, input);
-export const requestInboxSuggestion = (input: InboxPageIdsInput) =>
-  invokePlainCommand(requestSuggestionCommand, input);
+  invokeLocalCommitCommand(setKindCommand, input);
+export const requestInboxSuggestion = (input: InboxSuggestionRequestInput) =>
+  invokeLocalCommitCommand(requestSuggestionCommand, input);
 export const retryInboxDispatch = (input: InboxProposalInput) =>
-  invokePlainCommand(retryDispatchCommand, input);
+  invokeLocalCommitCommand(retryDispatchCommand, input);
 export const readInboxSettings = () => invokeRendererQuery("settings:inbox:get");
 export const updateInboxSettings = (input: UpdateInboxSettingsInput) =>
   invokePlainCommand(settingsCommand, input);
+
+export const prepareInboxConfirmation = (input: InboxConfirmationDraft) =>
+  invokeRendererQuery("inbox:prepare-confirmation", input);
+export const undoInboxDecision = (input: InboxUndoInput) =>
+  invokeLocalCommitCommand(undoCommand, input);
+
+export const readInboxAgentCatalog = () =>
+  invokeRendererQuery("agent-runtime:providers:read", { refresh: true });
+
+export const readInboxChatTargets = (input: InboxChatTargetsInput) =>
+  invokeRendererQuery("inbox:chat-targets", input);

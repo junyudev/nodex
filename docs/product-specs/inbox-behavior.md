@@ -5,13 +5,15 @@
 The Inbox is where a user drops a thought, a todo, or a question without first
 deciding which chat it belongs to. The Library Inbox takes anything; each
 Project's own Inbox, its Home, takes what is already about that Project. Every
-message is saved at once as an ordinary Page. A bound suggestion Agent may then
-propose where it should go, but nothing runs until the user confirms.
+message is saved as an ordinary Page. A bound suggestion Agent may then propose
+where it should go; a proposal never confirms itself.
 
 Rust Core owns the Library Inbox Database, each Inbox entry's Inbox, provenance,
 and triage state, and versioned dispatch proposals. The Desktop Host owns
-suggestion generation, delivery of confirmed chat work, and the Profile's Inbox
-preferences. The renderer owns route presentation, drafts, and selection only.
+suggestion generation, handoff of confirmed chat work, and the Profile's Inbox
+preferences. Agent Runtime owns accepted messages, execution queues and Runs.
+The renderer owns route presentation, durable authored drafts and pending capture
+intents, and selection.
 
 ## Library and Project Inboxes
 
@@ -50,6 +52,10 @@ preferences. The renderer owns route presentation, drafts, and selection only.
 - A message is saved whether or not any suggestion runtime is available. The
   composer accepts plain text. `Enter` sends, and `Shift+Enter` inserts a line
   break.
+- Drafts belong to the current Profile, Inbox and window. Submitting preserves a
+  recoverable capture before clearing that draft, so a failed earlier send never
+  overwrites the next message. Retrying the same capture preserves its identity.
+  A read failure offers retry rather than appearing to be an empty Inbox.
 - The Inbox entry records who sent the message. That source is written by Core
   from the connection and never by the caller:
   - **User:** typed in the Inbox composer. Renders as a right-aligned user bubble.
@@ -75,7 +81,10 @@ back. While it is rewritten, what Nodex made of the old text steps aside.
   waits for a new suggestion. A provisional title follows the new opening words;
   a name given by the user or a suggestion is kept.
 - An edit started from text that has changed since is refused rather than
-  overwriting it.
+  overwriting it. The original text remains fixed for the lifetime of that edit,
+  including when another view updates the message while its editor is open.
+- Saving the body, updating a provisional title and withdrawing suggestions about
+  the old text are one atomic operation.
 - A message whose Page holds richer content, or more than the stream shows, is
   edited as its Page: its row offers `Edit as Page` instead.
 - Handled messages are a record of what was decided and are not edited from
@@ -86,7 +95,7 @@ back. While it is rewritten, what Nodex made of the old text steps aside.
 The goal is an empty Inbox. A message stays in the Inbox only while it still
 needs the user; once handled, it moves to History.
 
-- **Inbox:** open messages with no confirmed chat dispatch. This covers
+- **Inbox:** open messages with no confirmed chat dispatch or an uncertain delivery. This covers
   messages being suggested, with a suggestion to decide, with a failed
   suggestion, with no suggestion, or whose delivery failed.
 - **History:** every handled message: a confirmed chat dispatch (including one
@@ -94,7 +103,7 @@ needs the user; once handled, it moves to History.
 
 Where a message's Page lives never decides this. Moving the Page by other means,
 such as dragging it on a Board, leaves the message in its Inbox until it is
-handled. A failed delivery and an undone move bring a message back to the
+handled. Failed or uncertain delivery and an undone move bring a message back to the
 Inbox. Core applies the same membership to the stream windows and to every
 Inbox count.
 
@@ -106,6 +115,10 @@ Each entry has a user-editable kind and a triage state.
   - Keep dismisses open suggestions and marks the entry `kept`.
   - Done means it was handled elsewhere.
   - `Return to Inbox` in History sets a kept or done entry back to `open`.
+
+History describes the recorded decision. A Page moved elsewhere and then kept
+or marked done still shows Keep or Done and can return to its original Inbox;
+returning does not move its Page.
 
 The Inbox reads like a conversation: newest at the bottom, resting against the
 composer, with time shown the way a chat shows it. A centered time appears above
@@ -138,9 +151,16 @@ that Inbox. It is never an unread count.
 
 When suggestions are enabled, Main reads pending entries in batches of up to
 eight, waiting briefly so a burst of messages can be considered together. One
-batch never mixes Inboxes. The suggestion Agent sees each message's text plus a
-bounded routing context of active Projects, recent chats, and open suggestions.
-It has no tools and cannot read the Library.
+request never mixes Inboxes. Explicit grouped requests retain all selected
+members, up to sixteen, rather than being split by the automatic batch size.
+Each request and response is fenced by its identity and the Page revisions it
+read; an old success or failure cannot replace a newer request.
+
+The suggestion Agent receives bounded message text and eligible routing
+candidates, including relevant chat previews. Its prompt asks only for a
+structured proposal. It uses the shared Agent Runtime utility policy, which is
+full-access with automatic native approvals; the prompt and output schema are
+behavioral constraints, not a separate tool or content permission boundary.
 
 A Project's Inbox narrows that context to the Project. Its messages are already
 that Project's Pages, so a new chat starts in the Project, an existing chat must
@@ -154,15 +174,20 @@ one exact action:
 - **New chat:** start a chat in a Project or without one, with a prompt.
 - **Send to chat:** send a prompt to an existing chat.
 - **Move to Project:** file the message Page in another Project's Database.
+- **No suggestion:** leave the message for the user when the intent, target or
+  grouping is unclear. This completes the current suggestion request without
+  handling the message or automatically requesting the same suggestion again.
 
-Main rejects a proposal whose target is not in the routing context. A suggestion
-can never invent a destination.
+Main rejects unknown targets, invalid action fields, duplicate or missing members
+and overlong prompts instead of repairing or truncating them. A suggestion can
+never invent a destination. An explicit group produces one suggestion covering
+all its members, or no suggestion for the group.
 
 In the same pass, the Agent names each message that still has its provisional
-title. Main applies the name before recording the proposal, and only if the Page
-is still exactly the revision the Agent read. The proposal is then fenced by the
-named Page. Any edit made in the meantime wins: the name is skipped, and the
-message waits for a new pass.
+title. Core checks the complete request's source versions and atomically applies
+all titles, advice or abstentions, and request settlement. The proposals are
+fenced by the resulting Page versions. Any intervening edit rejects the entire
+stale result; no title or partial suggestion from it is applied.
 
 What Nodex made of a message is not a reply. It is a strip joined to the
 message itself: the message fills the top of one rounded object, and the strip
@@ -183,11 +208,13 @@ strip and its row show one of these:
   - a one-line summary. Hovering it shows the rationale and the runtime that
     suggested it;
   - the prompt, collapsed to two lines;
-  - a primary button named for the action. Hovering it names the exact
-    destination, which the strip never states a second time;
+  - a primary action with its exact destination visible without hovering;
+  - the member count for a group, with access to its complete scope;
   - `Keep`.
-- **Failure:** a failed suggestion or delivery, with one short reason, `Retry`,
-  `Dispatch…`, and `Keep`.
+- **Failure:** one short reason and a new decision. Suggestion failures and
+  temporarily unavailable delivery offer `Retry`. Definite rejection requires
+  reviewing `Dispatch…`; uncertain delivery offers `Open chat` and `Send again…`
+  without an automatic retry.
 - **No suggestion:** `Dispatch…`, `Suggest` when suggestions are on, and `Keep`.
 
 Only the decision keeps a text label, with its action's glyph: the suggested
@@ -204,31 +231,56 @@ suggestion renders once, on the newest message in its group; the others say
 which message carries it. A missing sign-in is reported as
 `Sign in to the suggestion agent first`.
 
+Editing a grouped dispatch keeps its full membership and revision. Handling just
+one member requires an explicit new decision; the remaining members cannot keep
+an old prompt that still includes the removed work. `Refine suggestion…` revises
+that suggestion locally without creating another captured message or changing
+standing preferences. Manual target selection searches eligible chats beyond
+the recent list.
+
 ## Dispatch
 
 Only a user action turns a suggestion into work: confirming a proposal, or
 submitting the dispatch editor. Confirmation is fenced by the message revisions
 the proposal was computed from.
 
+Every confirmation, including an edited action, checks the message versions
+the user reviewed. It freezes the complete original text, final prompt and
+destination. New chats also retain the resolved Agent instance, model and
+options; retries do not re-read the current defaults. Confirmed text is ordinary
+message content and cannot override that selection through inline Agent config
+instructions.
+
 - **New chat:** Core creates the Session atomically with the confirmation, titled
   after the first message. Main then starts its first Turn. The prompt is the
   confirmed prompt, followed by the original messages quoted as context with
   their Page keys.
-- **Send to chat:** delivery waits while the target chat is busy. History shows
-  `Queued for “<chat>”` and delivers when the chat becomes idle.
-- **Move to Project:** the user's own Library relocation moves the Page into the
-  Project's Database. Core then records the message as filed, only after the
-  Page is actually there. Filing is final: the message is kept in History as
+- **Send to chat:** a local chat receives the message into its Runtime queue even
+  while busy. Its own queue controls when execution starts.
+- **Move to Project:** Core moves every member and records the filing in one
+  transaction. A conflict leaves every Page and Inbox state unchanged. Filing
+  is final: the message is kept in History as
   `Moved to <Project>` and never opens again in that Project's Inbox. The move's
-  `Undo` moves the Page back and returns the message to its Inbox.
+  single `Undo` restores the entire group and its original Inbox state, or
+  refuses the whole undo when a member has changed since.
 - **Keep:** marks the entries `kept`.
 
 Confirmed chat work is a durable outbox in Core. After a restart, Main re-reads
-it, and launch identities derive from the proposal. A retried delivery therefore
-never starts a second chat or sends a prompt twice.
+it with the same immutable input and launch/message identities. Local handoff
+ends when Agent Runtime durably accepts that message. Runtime command receipts
+make this handoff replayable across lost replies; provider execution and recovery
+remain the chat's responsibility. Accepted does not mean the Agent completed
+the task. A definite rejection is shown as a failure instead of being retried
+forever.
 
-A delivered message's History line shows the chat's title and live status. A
-failed delivery returns to the Inbox with its reason and `Retry`.
+An explicit remote Codex chat retains its remote execution owner. When a send's
+result cannot be established, it remains awaiting confirmation and is not
+automatically sent again. Other local handoffs can continue.
+
+A delivered message's History line shows the chat's title and live status.
+Before admission it shows that Nodex is starting or sending to the chat and
+already links to its Session. Failed or uncertain delivery returns to the Inbox
+with its reason and the recovery action appropriate to that result.
 
 ## Deleting a message
 
@@ -250,9 +302,11 @@ and that an exposed secret should be rotated. There is no Undo.
 In one Core transaction, the Inbox:
 
 - removes the entry;
-- removes every suggestion that names the message, since a summary or prompt may
-  quote it. Other messages those suggestions covered keep their outcome: handled
-  ones become `done`, and the rest wait for a new suggestion;
+- removes advice and unsubmitted payloads that name the message, since a summary
+  or prompt may quote it. Other messages keep their actual outcome. If a group
+  handoff has already started, its remaining members retain a redacted,
+  uncertain-delivery record and the destination link for checking; deletion does
+  not infer delivery or authorize a resend;
 - tombstones the Page and its owned Blocks;
 - deletes every revision of its Documents, pinned ones included;
 - requests erasure.
@@ -322,13 +376,17 @@ creates a second message, and does not count against the Agent budget again.
   - free-text routing preferences given to the suggestion Agent;
   - the runtime for chats the Inbox starts.
 
-  Messages sent to an existing chat use that chat's runtime.
+  Choices come from the Runtime provider and model catalog. An unavailable
+  instance retains its real name rather than appearing as another Agent.
+  An omitted suggestion model resolves to that instance's catalog default;
+  messages sent to an existing chat use that chat's runtime.
 
 ## Current limits
 
 - The composer accepts text only. Images and files can be added afterward by
   opening the message Page.
-- Delivery to a busy chat waits for idle; it never steers a running Turn.
+- Delivery to a busy local chat uses its Runtime queue; it never steers a
+  running Turn.
 - Capture happens inside the app window. There is no system-wide capture
   shortcut.
 - Messages are named only when suggestions run. With suggestions turned off or

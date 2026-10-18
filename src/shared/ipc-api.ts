@@ -1028,22 +1028,58 @@ export interface IpcApi extends AgentRuntimeIpcApi {
     args: [input: import("./inbox").InboxWindowInput];
     result: import("./inbox").InboxWindow;
   };
+  "inbox:prepare-confirmation": {
+    args: [input: import("./inbox").InboxConfirmationDraft];
+    result: import("./inbox").InboxPreparedConfirmation;
+  };
+  "inbox:chat-targets": {
+    args: [input: import("./inbox").InboxChatTargetsInput];
+    result: import("./inbox").InboxChatTargets;
+  };
   "inbox:send": {
     args: [input: import("./inbox").InboxSendInput];
-    result: import("./inbox").InboxSendResult;
+    result: CoreLocalCommitResult<import("./inbox").InboxSendResult>;
   };
-  "inbox:edit": { args: [input: import("./inbox").InboxEditInput]; result: void };
-  "inbox:confirm": { args: [input: import("./inbox").InboxConfirmInput]; result: void };
-  "inbox:dispatch": { args: [input: import("./inbox").InboxDispatchInput]; result: void };
-  "inbox:keep": { args: [input: import("./inbox").InboxPageIdsInput]; result: void };
-  "inbox:delete": { args: [input: import("./inbox").InboxPageIdsInput]; result: void };
-  "inbox:set-state": { args: [input: import("./inbox").InboxSetStateInput]; result: void };
-  "inbox:set-kind": { args: [input: import("./inbox").InboxSetKindInput]; result: void };
-  "inbox:request-suggestion": {
+  "inbox:edit": {
+    args: [input: import("./inbox").InboxEditInput];
+    result: CoreLocalCommitResult<void>;
+  };
+  "inbox:confirm": {
+    args: [input: import("./inbox").InboxConfirmInput];
+    result: CoreLocalCommitResult<import("./inbox").InboxDecisionResult>;
+  };
+  "inbox:dispatch": {
+    args: [input: import("./inbox").InboxDispatchInput];
+    result: CoreLocalCommitResult<import("./inbox").InboxDecisionResult>;
+  };
+  "inbox:keep": {
     args: [input: import("./inbox").InboxPageIdsInput];
-    result: void;
+    result: CoreLocalCommitResult<void>;
   };
-  "inbox:retry-dispatch": { args: [input: import("./inbox").InboxProposalInput]; result: void };
+  "inbox:delete": {
+    args: [input: import("./inbox").InboxPageIdsInput];
+    result: CoreLocalCommitResult<void>;
+  };
+  "inbox:set-state": {
+    args: [input: import("./inbox").InboxSetStateInput];
+    result: CoreLocalCommitResult<void>;
+  };
+  "inbox:set-kind": {
+    args: [input: import("./inbox").InboxSetKindInput];
+    result: CoreLocalCommitResult<void>;
+  };
+  "inbox:request-suggestion": {
+    args: [input: import("./inbox").InboxSuggestionRequestInput];
+    result: CoreLocalCommitResult<void>;
+  };
+  "inbox:retry-dispatch": {
+    args: [input: import("./inbox").InboxProposalInput];
+    result: CoreLocalCommitResult<void>;
+  };
+  "inbox:undo": {
+    args: [input: import("./inbox").InboxUndoInput];
+    result: CoreLocalCommitResult<void>;
+  };
   "projects:create": {
     args: [command: ProjectCreateCommandInput];
     result: CoreLocalCommitResult<Project>;

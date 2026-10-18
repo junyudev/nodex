@@ -312,25 +312,35 @@ pub(super) fn apply(
             };
             match admitted_intent {
                 ProjectWorkspaceIntent::SendInboxMessage {
+                    expected_store_epoch,
                     page_id,
                     document_id,
                     text,
                     title,
                     project_id,
-                } => super::inbox::send_message(
-                    transaction,
-                    &library_id,
-                    &context,
-                    &store_epoch,
-                    &request.operation_id,
-                    &request_hash,
-                    agent_provenance,
-                    page_id,
-                    document_id,
-                    text,
-                    title.as_deref(),
-                    project_id.as_deref(),
-                ),
+                } => {
+                    if expected_store_epoch.as_deref().is_some_and(|epoch| epoch != store_epoch) {
+                        return Err(StoreError::new(
+                            StoreErrorCode::StaleStoreEpoch,
+                            "Capture belongs to a previous Store",
+                            true,
+                        ));
+                    }
+                    super::inbox::send_message(
+                        transaction,
+                        &library_id,
+                        &context,
+                        &store_epoch,
+                        &request.operation_id,
+                        &request_hash,
+                        agent_provenance,
+                        page_id,
+                        document_id,
+                        text,
+                        title.as_deref(),
+                        project_id.as_deref(),
+                    )
+                },
                 ProjectWorkspaceIntent::ProposeInboxDispatch {
                     proposal_id,
                     page_ids,
@@ -358,40 +368,18 @@ pub(super) fn apply(
                         produced_by: produced_by.as_deref(),
                     },
                 ),
-                ProjectWorkspaceIntent::ConfirmInboxDispatch {
-                    proposal_id,
-                    expected_revision,
-                    action,
-                    session_id,
-                } => super::inbox::confirm(
-                    transaction,
-                    &library_id,
-                    &context,
-                    &store_epoch,
-                    &request.operation_id,
-                    &request_hash,
-                    proposal_id,
-                    *expected_revision,
-                    action.as_ref(),
-                    session_id.as_deref(),
-                ),
-                ProjectWorkspaceIntent::DispatchInboxEntries {
-                    proposal_id,
-                    page_ids,
-                    action,
-                    session_id,
-                } => super::inbox::dispatch_entries(
-                    transaction,
-                    &library_id,
-                    &context,
-                    &store_epoch,
-                    &request.operation_id,
-                    &request_hash,
-                    proposal_id,
-                    page_ids,
-                    action,
-                    session_id.as_deref(),
-                ),
+                intent @ (ProjectWorkspaceIntent::ConfirmInboxDispatch { .. }
+                    | ProjectWorkspaceIntent::DispatchInboxEntries { .. }
+                    | ProjectWorkspaceIntent::EditInboxMessage { .. }
+                    | ProjectWorkspaceIntent::UndoInboxDecision { .. }
+                    | ProjectWorkspaceIntent::BeginInboxDispatch { .. }
+                    | ProjectWorkspaceIntent::PrepareInboxSuggestions { .. }
+                    | ProjectWorkspaceIntent::SettleInboxSuggestion { .. }
+                    | ProjectWorkspaceIntent::RequestInboxSuggestion { .. }
+                    | ProjectWorkspaceIntent::CompleteInboxDispatch { .. }
+                    | ProjectWorkspaceIntent::FailInboxDispatch { .. }) => super::inbox::apply_reliable(
+                        transaction, &library_id, &context, &store_epoch, &request.operation_id,
+                        &request_hash, intent.clone(), &assets_root),
                 ProjectWorkspaceIntent::KeepInboxEntries { page_ids } => super::inbox::keep_entries(
                     transaction,
                     &library_id,
@@ -448,17 +436,6 @@ pub(super) fn apply(
                         page_id,
                     )
                 }
-                ProjectWorkspaceIntent::RequestInboxSuggestion { page_ids } => {
-                    super::inbox::request_suggestion(
-                        transaction,
-                        &library_id,
-                        &context,
-                        &store_epoch,
-                        &request.operation_id,
-                        &request_hash,
-                        page_ids,
-                    )
-                }
                 ProjectWorkspaceIntent::RecordInboxSuggestionFailure { page_ids, message } => {
                     super::inbox::record_suggestion_failure(
                         transaction,
@@ -471,32 +448,6 @@ pub(super) fn apply(
                         message,
                     )
                 }
-                ProjectWorkspaceIntent::CompleteInboxDispatch {
-                    proposal_id,
-                    dispatched_thread_id,
-                } => super::inbox::complete_dispatch(
-                    transaction,
-                    &library_id,
-                    &context,
-                    &store_epoch,
-                    &request.operation_id,
-                    &request_hash,
-                    proposal_id,
-                    dispatched_thread_id.as_deref(),
-                ),
-                ProjectWorkspaceIntent::FailInboxDispatch {
-                    proposal_id,
-                    message,
-                } => super::inbox::fail_dispatch(
-                    transaction,
-                    &library_id,
-                    &context,
-                    &store_epoch,
-                    &request.operation_id,
-                    &request_hash,
-                    proposal_id,
-                    message,
-                ),
                 ProjectWorkspaceIntent::RetryInboxDispatch { proposal_id } => {
                     super::inbox::retry_dispatch(
                         transaction,
@@ -1562,6 +1513,7 @@ pub(super) fn finish_no_op(
             )?;
             let committed = crate::ModuleWriterResult {
                 value: ProjectWorkspaceCommitValue {
+                    inbox_undo_token: None,
                     affected_project_ids: project_ids.clone(),
                     affected_session_ids: session_ids.clone(),
                     affected_thread_ids: Vec::new(),
@@ -1700,6 +1652,13 @@ fn seal_mutation(
     )?;
     let committed = crate::ModuleWriterResult {
         value: ProjectWorkspaceCommitValue {
+            inbox_undo_token: connection
+                .query_row(
+                    "SELECT token FROM inbox_decision_undo WHERE operation_id=?1",
+                    [operation_id],
+                    |row| row.get(0),
+                )
+                .optional()?,
             affected_project_ids: effects.project_ids.clone(),
             affected_session_ids: effects.session_ids.clone(),
             affected_thread_ids: effects.thread_ids.clone(),

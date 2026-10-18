@@ -12,6 +12,8 @@ import {
 
 const item = (overrides: Partial<InboxItem> = {}): InboxItem => ({
   pageId: "page:1",
+  outcome: null,
+  basis: { pageId: "page:1", generation: 1, headSeq: 1, placementRevision: 1 },
   pageKey: "IN-1",
   title: "Message",
   body: "Message",
@@ -36,6 +38,7 @@ const proposal = (overrides: Partial<InboxProposal> = {}): InboxProposal => ({
   origin: "agent",
   state: "open",
   pageIds: ["page:1"],
+  basis: [{ pageId: "page:1", generation: 1, headSeq: 1, placementRevision: 1 }],
   action: { type: "new_chat", projectId: "project:nodex", prompt: "Research" },
   kind: "question",
   summary: "Compare both positions",
@@ -44,6 +47,7 @@ const proposal = (overrides: Partial<InboxProposal> = {}): InboxProposal => ({
   targetProjectName: "Nodex",
   chat: null,
   failureMessage: null,
+  failureKind: null,
   createdAt: "2026-10-11T10:00:01.000Z",
   updatedAt: "2026-10-11T10:00:01.000Z",
   ...overrides,
@@ -110,6 +114,21 @@ describe("inboxTriageModel", () => {
 });
 
 describe("isInboxItemHandled", () => {
+  it("keeps an uncertain delivery visible for checking and a reviewed new send", () => {
+    const uncertain = item({
+      proposal: proposal({
+        state: "dispatching",
+        failureKind: "unknown",
+        failureMessage: "Check the destination chat",
+      }),
+    });
+    expect(isInboxItemHandled(uncertain)).toBe(false);
+    expect(inboxTriageModel(uncertain, true)).toMatchObject({
+      kind: "dispatch-failed",
+      message: "Check the destination chat",
+    });
+  });
+
   it("matches Core: confirmed chats and filed, kept, or done messages leave the Inbox", () => {
     const elsewhere = {
       kind: "database",
@@ -121,15 +140,31 @@ describe("isInboxItemHandled", () => {
     expect(isInboxItemHandled(item({ proposal: proposal() }))).toBe(false);
     expect(isInboxItemHandled(item({ proposal: proposal({ state: "dispatching" }) }))).toBe(true);
     expect(isInboxItemHandled(item({ proposal: proposal({ state: "failed" }) }))).toBe(false);
-    expect(isInboxItemHandled(item({ state: "kept" }))).toBe(true);
-    expect(isInboxItemHandled(item({ state: "done" }))).toBe(true);
+    expect(isInboxItemHandled(item({ state: "kept", outcome: "kept" }))).toBe(true);
+    expect(isInboxItemHandled(item({ state: "done", outcome: "done" }))).toBe(true);
     // Filing marks the message kept; moving its Page by other means does not handle it.
-    expect(isInboxItemHandled(item({ state: "kept", location: elsewhere }))).toBe(true);
+    expect(isInboxItemHandled(item({ state: "kept", outcome: "kept", location: elsewhere }))).toBe(
+      true,
+    );
     expect(isInboxItemHandled(item({ location: elsewhere }))).toBe(false);
   });
 });
 
 describe("describeInboxOutcome", () => {
+  it("keeps triage outcomes independent of the Page location", () => {
+    for (const state of ["kept", "done"] as const) {
+      expect(
+        describeInboxOutcome(item({ state, outcome: state, location: { kind: "other" } })),
+      ).toMatchObject({
+        icon: state === "kept" ? "keep" : "done",
+        canReturn: true,
+      });
+    }
+    expect(describeInboxOutcome(item({ location: { kind: "other" } }))).toMatchObject({
+      icon: "inbox",
+      canReturn: false,
+    });
+  });
   it("keeps a newly dispatched Session navigable before its Thread exists", () => {
     expect(
       describeInboxOutcome(
@@ -145,7 +180,9 @@ describe("describeInboxOutcome", () => {
 
   it("names where a handled message went and how to get back to it", () => {
     expect(
-      describeInboxOutcome(item({ proposal: proposal({ state: "completed", chat }) })),
+      describeInboxOutcome(
+        item({ outcome: "chat", proposal: proposal({ state: "completed", chat }) }),
+      ),
     ).toEqual({
       icon: "chat",
       label: "Started “Homepage positioning”",
@@ -163,10 +200,16 @@ describe("describeInboxOutcome", () => {
           }),
         }),
       ),
-    ).toMatchObject({ icon: "pending", label: "Queued for “Homepage positioning”" });
+    ).toMatchObject({ icon: "pending", label: "Sending to “Homepage positioning”" });
     expect(
       describeInboxOutcome(
         item({
+          state: "kept",
+          outcome: "moved",
+          proposal: proposal({
+            state: "completed",
+            action: { type: "move_to_project", projectId: "project:nodex" },
+          }),
           location: {
             kind: "database",
             databaseId: "db",
@@ -177,11 +220,13 @@ describe("describeInboxOutcome", () => {
         }),
       ),
     ).toMatchObject({ icon: "move", label: "Moved to Nodex", open: { kind: "database" } });
-    expect(describeInboxOutcome(item({ state: "kept", kind: "question" }))).toMatchObject({
+    expect(
+      describeInboxOutcome(item({ state: "kept", outcome: "kept", kind: "question" })),
+    ).toMatchObject({
       label: "Kept as question",
       canReturn: true,
     });
-    expect(describeInboxOutcome(item({ state: "done" }))).toMatchObject({
+    expect(describeInboxOutcome(item({ state: "done", outcome: "done" }))).toMatchObject({
       label: "Done",
       canReturn: true,
     });

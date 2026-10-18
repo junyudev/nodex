@@ -3274,6 +3274,7 @@ export function renderWorkbench({
       // A Project's Inbox files into its own Database, so its Home offers the Board.
       const scope = (args[0] as { scope?: { kind?: string } } | undefined)?.scope;
       return {
+        storeEpoch: "epoch-workbench-test",
         databaseId: scope?.kind === "project" ? makeProject().databaseId : null,
         viewId: null,
         entryCount: 0,
@@ -3285,7 +3286,12 @@ export function renderWorkbench({
     }
     if (channel === "inbox:window") {
       if (inboxDataReady) await inboxDataReady;
-      return { items: [], nextCursor: null, projectionRevision: 0 };
+      return {
+        items: [],
+        nextCursor: null,
+        projectionRevision: 0,
+        storeEpoch: "epoch-workbench-test",
+      };
     }
     if (channel === "settings:inbox:get") return DEFAULT_INBOX_SETTINGS;
     if (channel === "codex:sidebar:snapshot") {

@@ -496,6 +496,7 @@ mod tests {
             schema_restore: None,
         };
         let relocation = PageRelocationUndoRecipeV3 {
+            requires_attached_scope: false,
             version: PAGE_RELOCATION_UNDO_RECIPE_VERSION,
             project_id: Some("project".into()),
             library_id: "library".into(),

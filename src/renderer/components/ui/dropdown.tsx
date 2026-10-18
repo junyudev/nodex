@@ -762,6 +762,9 @@ export interface NodexOptionPickerProps {
   readonly search?: NodexOptionPickerSearchMode;
   readonly searchPlaceholder?: string;
   readonly searchAriaLabel?: string;
+  /** Search-capable owners may enrich the list without recreating the combobox. */
+  readonly onSearchChange?: (query: string) => void;
+  readonly filterOptions?: boolean;
   /** Compact actions that belong to the list as a whole, aligned at the end of the search row. */
   readonly searchTrailingContent?: ReactNode;
   readonly title?: ReactNode;
@@ -957,6 +960,8 @@ function NodexFilterOptionPicker({
   onValueChange,
   searchPlaceholder = "Search options…",
   searchAriaLabel,
+  onSearchChange,
+  filterOptions = true,
   searchTrailingContent,
   title,
   footer,
@@ -989,12 +994,15 @@ function NodexFilterOptionPicker({
     if (!open) setQuery("");
   }
   const effectiveQuery = open ? query : "";
-  const filteredOptions = filterOptionPickerOptions(options, effectiveQuery);
+  const filteredOptions = filterOptions
+    ? filterOptionPickerOptions(options, effectiveQuery)
+    : options;
   const enabledOptions = filteredOptions.filter((option) => !option.disabled);
 
   const changeOpen = (next: boolean) => {
     if (controlledOpen === undefined) setUncontrolledOpen(next);
     if (!next) setQuery("");
+    onSearchChange?.("");
     onOpenChange?.(next);
   };
 
@@ -1089,7 +1097,10 @@ function NodexFilterOptionPicker({
             aria-controls={listboxId}
             placeholder={searchPlaceholder}
             value={effectiveQuery}
-            onChange={(event) => setQuery(event.currentTarget.value)}
+            onChange={(event) => {
+              setQuery(event.currentTarget.value);
+              onSearchChange?.(event.currentTarget.value);
+            }}
             onKeyDown={handleSearchKeyDown}
             trailingContent={searchTrailingContent}
           />

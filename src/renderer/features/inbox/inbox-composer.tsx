@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
+import { useLayoutEffect, useRef, type FormEvent, type KeyboardEvent } from "react";
 import { UpArrowIcon } from "@/components/shared/icons";
 import { NodexTooltip } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
@@ -6,22 +6,28 @@ import { cn } from "@/lib/utils";
 const MAX_TEXTAREA_HEIGHT_PX = 240;
 
 /**
- * Capture is never blocked on a model: the draft clears as soon as it is handed to Core and
- * returns only if saving fails.
+ * The capture owner persists drafts and each submission before clearing this input.
  */
 export function InboxComposer({
   onSend,
+  draft,
+  onDraftChange,
+  disabled = false,
+  readOnly = false,
   focusToken,
   placeholder = "Drop a thought, task, or question…",
 }: {
-  readonly onSend: (text: string) => Promise<boolean>;
+  readonly onSend: () => Promise<void>;
+  readonly draft: string;
+  readonly onDraftChange: (draft: string) => void;
+  readonly disabled?: boolean;
+  readonly readOnly?: boolean;
   /** Changing this value focuses the composer, for example after a keyboard shortcut. */
   readonly focusToken?: number;
   readonly placeholder?: string;
 }) {
-  const [draft, setDraft] = useState("");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const canSend = draft.trim().length > 0;
+  const canSend = !disabled && draft.trim().length > 0;
 
   useLayoutEffect(() => {
     const textarea = textareaRef.current;
@@ -36,11 +42,8 @@ export function InboxComposer({
 
   const submit = async (event?: FormEvent) => {
     event?.preventDefault();
-    const text = draft;
-    if (!text.trim()) return;
-    setDraft("");
-    const saved = await onSend(text);
-    if (!saved) setDraft((current) => (current ? current : text));
+    if (!canSend) return;
+    await onSend();
     textareaRef.current?.focus();
   };
 
@@ -60,9 +63,10 @@ export function InboxComposer({
         ref={textareaRef}
         aria-label="Message your Inbox"
         rows={1}
+        readOnly={readOnly}
         value={draft}
         placeholder={placeholder}
-        onChange={(event) => setDraft(event.currentTarget.value)}
+        onChange={(event) => onDraftChange(event.currentTarget.value)}
         onKeyDown={handleKeyDown}
         className="min-h-[34px] flex-1 resize-none bg-transparent py-[7px] text-size-chat leading-[20px] outline-none placeholder:text-token-input-placeholder-foreground"
       />
@@ -72,7 +76,7 @@ export function InboxComposer({
           aria-label="Send to Inbox"
           disabled={!canSend}
           className={cn(
-            "cursor-interaction flex h-token-button-composer aspect-square shrink-0 items-center justify-center rounded-full bg-background-composer-primary p-0.5 text-text-composer-primary transition-opacity",
+            "cursor-interaction flex h-token-button-composer aspect-square shrink-0 items-center justify-center rounded-full bg-background-composer-primary p-0.5 text-text-composer-primary",
             !canSend && "opacity-50",
           )}
         >

@@ -326,6 +326,11 @@ const MIGRATION_STEPS: &[MigrationStep] = &[
         to_revision: 183,
         apply: migrate_v182_to_v183,
     },
+    MigrationStep {
+        from_revision: 183,
+        to_revision: 184,
+        apply: migrate_v183_to_v184,
+    },
 ];
 
 fn resolve_migration_path(
@@ -2324,6 +2329,21 @@ fn migrate_v171_to_v172(
 
 /// Inbox entries record which Inbox owns their decision instead of inferring it from where
 /// their Page lives.
+fn migrate_v183_to_v184(
+    connection: &Connection,
+    context: &MigrationContext,
+) -> Result<(), StoreError> {
+    connection.execute_batch(include_str!("../../schema/migrations/v183_to_v184.sql"))?;
+    connection.execute(
+        "INSERT INTO core_store_migration_history(source_revision,target_revision,source_schema_fingerprint,target_schema_fingerprint,backup_name,completed_at_unix_ms,evidence_json) VALUES (?1,?2,?3,?4,?5,?6,?7)",
+        params![context.source_revision, context.target_revision, context.source_schema_fingerprint,
+            context.target_schema_fingerprint, context.backup_name, context.completed_at_unix_ms,
+            r#"{"inbox_decisions":true}"#],
+    )?;
+    connection.pragma_update(None, "user_version", context.target_revision)?;
+    Ok(())
+}
+
 fn migrate_v182_to_v183(
     connection: &Connection,
     context: &MigrationContext,
@@ -7153,6 +7173,72 @@ mod tests {
         assert_eq!(
             serde_json::from_str::<serde_json::Value>(&options).unwrap()["model"],
             "moonshot/kimi-k3"
+        );
+    }
+
+    #[test]
+    fn inbox_migration_preserves_delivery_uncertainty_and_invalidates_unfenced_advice() {
+        let profile = tempdir().expect("Profile");
+        install_intermediate_fixture(profile.path(), 183);
+        let mut connection = open_writer(&profile.path().join("nodex.db")).expect("predecessor");
+        // These storage fixtures isolate the historical Inbox rows being transformed.
+        connection
+            .pragma_update(None, "foreign_keys", false)
+            .unwrap();
+        for (index, state) in ["open", "dispatching", "completed"].into_iter().enumerate() {
+            let basis =
+                json!([{"page_id": format!("migration:{state}"), "generation": 1, "head_seq": 1}])
+                    .to_string();
+            connection.execute("INSERT INTO inbox_proposals(proposal_id,library_id,origin,state,action_json,summary,basis_json,dispatch_session_id,confirmed_at,created_at,updated_at) VALUES (?1,'library','agent',?2,'{\"type\":\"new_chat\",\"project_id\":null,\"prompt\":\"Review\"}','Review',?3,'session','today','today','today')", params![state,state,basis]).unwrap();
+            connection.execute("INSERT INTO inbox_entries(page_id,library_id,seq,submitted_at,source_kind,state,suggestion_state,current_proposal_id,updated_at) VALUES (?1,'library',?2,'today','user',?3,'settled',?4,'today')", params![format!("migration:{state}"), index as i64 + 1, if state == "open" {"open"} else {"kept"}, state]).unwrap();
+        }
+        with_immediate_transaction(&mut connection, |transaction| {
+            migrate_v183_to_v184(
+                transaction,
+                &MigrationContext {
+                    source_revision: 183,
+                    target_revision: 184,
+                    backup_name: "inbox-fixture".into(),
+                    source_schema_fingerprint: published_format(183)?.schema_fingerprint,
+                    target_schema_fingerprint: published_format(184)?.schema_fingerprint,
+                    completed_at_unix_ms: 1,
+                },
+            )
+        })
+        .expect("Inbox migration");
+        validate_schema_identity(&connection, 184).expect("current schema");
+        let delivery: Option<String> = connection
+            .query_row(
+                "SELECT outcome FROM inbox_entries WHERE current_proposal_id='dispatching'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert!(delivery.is_none());
+        let accepted: String = connection
+            .query_row(
+                "SELECT outcome FROM inbox_entries WHERE current_proposal_id='completed'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(accepted, "chat");
+        let advice: (String, Option<String>) = connection.query_row("SELECT suggestion_state,current_proposal_id FROM inbox_entries WHERE page_id='migration:open'", [], |row| Ok((row.get(0)?,row.get(1)?))).unwrap();
+        assert_eq!(advice, ("pending".into(), None));
+        let open: String = connection
+            .query_row(
+                "SELECT state FROM inbox_proposals WHERE proposal_id='open'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(open, "superseded");
+        assert_eq!(
+            connection
+                .query_row("SELECT count(*) FROM inbox_handoffs", [], |row| row
+                    .get::<_, i64>(0))
+                .unwrap(),
+            0
         );
     }
 

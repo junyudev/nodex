@@ -65,6 +65,7 @@ pub(crate) fn send(
                 operation_id: operation_id.clone(),
                 store_epoch: StoreEpoch(client.handshake.store_epoch.clone()),
                 intent: ProjectWorkspaceIntent::SendInboxMessage {
+                    expected_store_epoch: Some(client.handshake.store_epoch.clone()),
                     page_id: page_id.clone(),
                     document_id: stable_uuid(&operation_id, "inbox-document"),
                     text,

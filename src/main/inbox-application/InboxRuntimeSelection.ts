@@ -1,10 +1,9 @@
 import * as Effect from "effect/Effect";
 import * as Schedule from "effect/Schedule";
-import { agentRuntimeProviderId } from "../../shared/agent-runtime-provider";
 import type { AgentRuntimeLaunch } from "../../shared/agent-runtime-api";
-import type { InboxAgentBinding } from "../../shared/inbox";
+import { supportsInboxStructuredGeneration, type InboxAgentBinding } from "../../shared/inbox";
 import type { AgentRuntimeApplication } from "../agent-runtime/AgentRuntimeApplication";
-import { InboxRuntimeError } from "./InboxApplication";
+import { InboxRuntimeError } from "./InboxRuntimeError";
 
 /** Explicit Inbox work waits for the configured Runtime's bounded model metadata. */
 export const resolveInboxModel = Effect.fn("InboxRuntimeSelection.resolve")(function* (
@@ -12,8 +11,9 @@ export const resolveInboxModel = Effect.fn("InboxRuntimeSelection.resolve")(func
   binding: InboxAgentBinding,
   requestedModel: string | null = null,
   requestedEffort?: string,
+  purpose: "chat" | "suggestion" = "chat",
 ): Effect.fn.Return<AgentRuntimeLaunch["modelSelection"], InboxRuntimeError> {
-  const instanceId = agentRuntimeProviderId(binding);
+  const instanceId = binding.instanceId;
   if (!instanceId) return yield* new InboxRuntimeError({ message: "The Agent is not configured" });
   const read = Effect.gen(function* () {
     const providers = yield* runtime.catalog();
@@ -25,6 +25,10 @@ export const resolveInboxModel = Effect.fn("InboxRuntimeSelection.resolve")(func
       provider.availability === "unavailable"
     )
       return yield* new InboxRuntimeError({ message: "The configured Agent is unavailable" });
+    if (purpose === "suggestion" && !supportsInboxStructuredGeneration(provider))
+      return yield* new InboxRuntimeError({
+        message: "The configured Agent cannot generate Inbox suggestions",
+      });
     // A cold boot snapshot is enabled but not yet installed/probed. Refresh owns the probe.
     if (!provider.installed || provider.models.length === 0) return null;
     const model = requestedModel
@@ -35,13 +39,19 @@ export const resolveInboxModel = Effect.fn("InboxRuntimeSelection.resolve")(func
     const effort = model.capabilities?.optionDescriptors?.find(
       (option) => option.type === "select" && /effort|reasoning/i.test(option.id),
     );
+    const desiredEffort =
+      purpose === "suggestion"
+        ? provider.driver === "claudeAgent"
+          ? "low"
+          : "medium"
+        : requestedEffort;
     return {
       instanceId,
       model: model.slug,
-      ...(requestedEffort &&
+      ...(desiredEffort &&
       effort?.type === "select" &&
-      effort.options.some((option) => option.id === requestedEffort)
-        ? { options: [{ id: effort.id, value: requestedEffort }] }
+      effort.options.some((option) => option.id === desiredEffort)
+        ? { options: [{ id: effort.id, value: desiredEffort }] }
         : {}),
     } satisfies AgentRuntimeLaunch["modelSelection"];
   });

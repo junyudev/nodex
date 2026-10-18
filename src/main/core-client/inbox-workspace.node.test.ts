@@ -3,6 +3,7 @@ import { describe, expect, test } from "vite-plus/test";
 import { withCoreScenario } from "../../../scripts/scenarios/harness/core-scenario-harness";
 import { BOARD_DENSE_SCENARIO_ID } from "../../../scripts/scenarios/scenarios/board-dense";
 import { createUuidV7 } from "../../shared/uuid-v7";
+import { createBoundedOperationId } from "../../shared/operation-identity";
 import {
   inboxDispatchActionToCore,
   inboxItemFromCore,
@@ -17,7 +18,7 @@ describe("Inbox over the real Core transport", () => {
       const pageId = createUuidV7();
 
       await client.workspaceApply({
-        operationId: createUuidV7(),
+        operationId: createBoundedOperationId("test.inbox.send"),
         intent: {
           kind: "send_inbox_message",
           page_id: pageId,
@@ -47,11 +48,17 @@ describe("Inbox over the real Core transport", () => {
 
       const sessionId = createUuidV7();
       await client.workspaceApply({
-        operationId: createUuidV7(),
+        operationId: createBoundedOperationId("test.inbox.dispatch"),
         intent: {
           kind: "dispatch_inbox_entries",
           proposal_id: createUuidV7(),
           page_ids: [pageId],
+          basis: window.value.items.items.map((entry) => entry.basis),
+          expected_store_epoch: window.store_epoch,
+          execution_selection: {
+            model_selection: { instanceId: "codex", model: "reviewed-model" },
+            interaction_mode: "plan",
+          },
           action: inboxDispatchActionToCore({
             type: "new_chat",
             projectId,
@@ -68,13 +75,17 @@ describe("Inbox over the real Core transport", () => {
       ]);
       const [work] = outbox.value.dispatches;
       if (!work) throw new Error("Missing dispatch work");
+      expect(work.final_text).toContain("Keep it read-only.");
+      expect(work.execution_selection?.model_selection.model).toBe("reviewed-model");
 
       await client.workspaceApply({
-        operationId: createUuidV7(),
+        operationId: createBoundedOperationId("test.inbox.complete"),
         intent: {
           kind: "complete_inbox_dispatch",
           proposal_id: work.proposal_id,
-          dispatched_thread_id: null,
+          expected_revision: work.revision,
+          message_id: work.message_id,
+          dispatched_thread_id: createUuidV7(),
         },
       });
       const summary = await client.workspaceRead({
@@ -82,7 +93,7 @@ describe("Inbox over the real Core transport", () => {
         scope: { kind: "library" },
       });
       if (summary.value.kind !== "inbox_summary") throw new Error("Wrong summary variant");
-      expect(inboxSummaryFromCore(summary.value.summary)).toMatchObject({
+      expect(inboxSummaryFromCore(summary.value.summary, summary.store_epoch)).toMatchObject({
         entryCount: 1,
         dispatchingCount: 0,
         pendingSuggestionCount: 0,

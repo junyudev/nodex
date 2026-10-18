@@ -14,6 +14,9 @@ import {
   InboxApplication,
   live as inboxApplicationLive,
 } from "../../../src/main/inbox-application/InboxApplication";
+import { AgentRuntimeApplication } from "../../../src/main/agent-runtime/AgentRuntimeApplication";
+import { ApplicationSettings } from "../../../src/main/settings/ApplicationSettings";
+import { DEFAULT_INBOX_SETTINGS } from "../../../src/shared/inbox";
 import { live as storeAdministrationLive } from "../../../src/main/core-runtime/StoreAdministration";
 import {
   DatabaseModule,
@@ -111,6 +114,17 @@ export const runScenarioInbox = <A, E>(
       const inboxContext = yield* Layer.build(
         inboxApplicationLive.pipe(
           Layer.provide(storeAdministrationLive.pipe(Layer.provideMerge(coreLayer))),
+          // Scenario content setup has no execution process; new Agent work is never seeded.
+          Layer.provide(
+            Layer.succeed(AgentRuntimeApplication, {
+              catalog: () => Effect.die("Scenario capture must not start an Agent catalog"),
+            } as unknown as AgentRuntimeApplication["Service"]),
+          ),
+          Layer.provide(
+            Layer.succeed(ApplicationSettings, {
+              snapshot: () => Effect.succeed({ inbox: DEFAULT_INBOX_SETTINGS }),
+            } as unknown as ApplicationSettings["Service"]),
+          ),
         ),
       );
       return yield* use(Context.get(inboxContext, InboxApplication));

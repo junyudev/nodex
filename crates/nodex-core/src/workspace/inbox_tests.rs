@@ -81,6 +81,7 @@ fn send_to(module: &ProjectWorkspaceModule, id: &str, text: &str, project_id: Op
         module,
         &format!("send:{id}"),
         ProjectWorkspaceIntent::SendInboxMessage {
+            expected_store_epoch: None,
             page_id: format!("page:{id}"),
             document_id: format!("document:{id}"),
             text: text.to_owned(),
@@ -252,6 +253,7 @@ fn project_selection_preserves_the_profile_inbox() {
             request(
                 "project-send",
                 ProjectWorkspaceIntent::SendInboxMessage {
+                    expected_store_epoch: None,
                     page_id: "page:cross-project".into(),
                     document_id: "document:cross-project".into(),
                     text: "Shared Profile message".into(),
@@ -311,6 +313,9 @@ fn confirmed_new_chat_creates_one_session_and_enters_the_outbox() {
     assert_eq!(summary(module).needs_decision_count, 1);
 
     let confirm = ProjectWorkspaceIntent::ConfirmInboxDispatch {
+        expected_store_epoch: "epoch-1".into(),
+        basis: proposal_basis(module, "proposal:1"),
+        execution_selection: Some(selection()),
         proposal_id: "proposal:1".into(),
         expected_revision: proposal.revision,
         action: None,
@@ -329,7 +334,7 @@ fn confirmed_new_chat_creates_one_session_and_enters_the_outbox() {
     assert!(replay.committed.receipt.mutation.duplicate);
     assert_eq!(
         apply_host_error(module, "confirm:again", confirm),
-        CoreErrorCode::Conflict
+        CoreErrorCode::RevisionConflict
     );
     assert_eq!(
         count(
@@ -358,6 +363,8 @@ fn confirmed_new_chat_creates_one_session_and_enters_the_outbox() {
         module,
         "complete:1",
         ProjectWorkspaceIntent::CompleteInboxDispatch {
+            expected_revision: dispatches[0].revision,
+            message_id: dispatches[0].message_id.clone(),
             proposal_id: "proposal:1".into(),
             dispatched_thread_id: Some("thread:dispatched".into()),
         },
@@ -449,6 +456,12 @@ fn keep_dismisses_suggestions_and_states_filter_the_stream() {
         module,
         "resuggest:note",
         ProjectWorkspaceIntent::RequestInboxSuggestion {
+            request_id: "request:note".into(),
+            mode: nodex_core_contracts::inbox::ProjectWorkspaceInboxSuggestionMode::Auto,
+            basis: pages_basis(module, vec!["page:note".into()]),
+            proposal_id: None,
+            expected_revision: None,
+            correction: None,
             page_ids: vec!["page:note".into()],
         },
     );
@@ -487,6 +500,9 @@ fn user_dispatch_to_a_started_chat_carries_its_thread() {
         module,
         "dispatch:follow-up",
         ProjectWorkspaceIntent::DispatchInboxEntries {
+            expected_store_epoch: "epoch-1".into(),
+            basis: pages_basis(module, vec!["page:follow-up".into()]),
+            execution_selection: Some(selection()),
             proposal_id: "proposal:manual".into(),
             page_ids: vec!["page:follow-up".into()],
             action: ProjectWorkspaceInboxDispatchAction::SendToChat {
@@ -519,6 +535,10 @@ fn user_dispatch_to_a_started_chat_carries_its_thread() {
         module,
         "fail:follow-up",
         ProjectWorkspaceIntent::FailInboxDispatch {
+            expected_revision: dispatches[0].revision,
+            message_id: dispatches[0].message_id.clone(),
+            failure_kind:
+                nodex_core_contracts::inbox::ProjectWorkspaceInboxFailureKind::Unavailable,
             proposal_id: "proposal:manual".into(),
             message: "Chat is busy".into(),
         },
@@ -534,7 +554,7 @@ fn user_dispatch_to_a_started_chat_carries_its_thread() {
 }
 
 #[test]
-fn move_suggestions_complete_only_after_the_page_moves() {
+fn confirming_a_move_owns_the_library_relocation() {
     let workspace = seeded_workspace();
     let module = &workspace.module;
     send(module, "task", "Add keyboard shortcuts to the Board");
@@ -547,18 +567,23 @@ fn move_suggestions_complete_only_after_the_page_moves() {
             project_id: "project:default".into(),
         },
     );
+    apply_host(
+        module,
+        "confirm:move",
+        ProjectWorkspaceIntent::ConfirmInboxDispatch {
+            expected_store_epoch: "epoch-1".into(),
+            basis: proposal_basis(module, "proposal:move"),
+            execution_selection: None,
+            proposal_id: "proposal:move".into(),
+            expected_revision: 1,
+            action: None,
+            session_id: None,
+        },
+    );
+    let item = window(module, ProjectWorkspaceInboxWindowFilter::Processed).remove(0);
     assert_eq!(
-        apply_host_error(
-            module,
-            "confirm:move",
-            ProjectWorkspaceIntent::ConfirmInboxDispatch {
-                proposal_id: "proposal:move".into(),
-                expected_revision: 1,
-                action: None,
-                session_id: None,
-            },
-        ),
-        CoreErrorCode::Conflict
+        item.outcome,
+        Some(nodex_core_contracts::inbox::ProjectWorkspaceInboxOutcome::Moved)
     );
 }
 
@@ -598,6 +623,7 @@ fn agents_capture_authenticated_provenance_with_a_replay_safe_turn_cap() {
             },
         }),
         intent: Box::new(ProjectWorkspaceIntent::SendInboxMessage {
+            expected_store_epoch: None,
             page_id: format!("page:{id}"),
             document_id: format!("document:{id}"),
             text: "The settings buttons are missing accessible labels".into(),
@@ -683,6 +709,7 @@ fn command_line_sends_are_labeled_with_their_project() {
         ..context()
     };
     let intent = |id: &str| ProjectWorkspaceIntent::SendInboxMessage {
+        expected_store_epoch: None,
         page_id: format!("page:{id}"),
         document_id: format!("document:{id}"),
         text: "Benchmark search on the large fixture".into(),
@@ -943,6 +970,9 @@ fn deleting_keeps_handled_neighbours_handled_and_refuses_filed_pages() {
         module,
         "dispatch:ab",
         ProjectWorkspaceIntent::DispatchInboxEntries {
+            expected_store_epoch: "epoch-1".into(),
+            basis: pages_basis(module, vec!["page:a".into(), "page:b".into()]),
+            execution_selection: Some(selection()),
             proposal_id: "proposal:ab".into(),
             page_ids: vec!["page:a".into(), "page:b".into()],
             action: ProjectWorkspaceInboxDispatchAction::NewChat {
@@ -950,6 +980,17 @@ fn deleting_keeps_handled_neighbours_handled_and_refuses_filed_pages() {
                 prompt: "Survey onboarding flows and their empty states".into(),
             },
             session_id: Some("session:ab".into()),
+        },
+    );
+    let delivery = outbox(module).remove(0);
+    apply_host(
+        module,
+        "complete:ab",
+        ProjectWorkspaceIntent::CompleteInboxDispatch {
+            proposal_id: delivery.proposal_id,
+            expected_revision: delivery.revision,
+            message_id: delivery.message_id,
+            dispatched_thread_id: Some("thread:accepted".into()),
         },
     );
     apply_host(
@@ -1008,6 +1049,7 @@ fn agent_send(
             ProjectWorkspaceIntent::AgentCommand {
                 provenance: Box::new(provenance.clone()),
                 intent: Box::new(ProjectWorkspaceIntent::SendInboxMessage {
+                    expected_store_epoch: None,
                     page_id: format!("page:{id}"),
                     document_id: format!("document:{id}"),
                     text: "A background result".into(),
@@ -1199,6 +1241,9 @@ fn runtime_bound_chats_remain_suggestion_and_dispatch_targets() {
         module,
         "confirm:runtime-target",
         ProjectWorkspaceIntent::ConfirmInboxDispatch {
+            expected_store_epoch: "epoch-1".into(),
+            basis: proposal_basis(module, "proposal:runtime-target"),
+            execution_selection: Some(selection()),
             proposal_id: "proposal:runtime-target".into(),
             expected_revision: 1,
             action: None,
@@ -1341,6 +1386,7 @@ fn only_the_desktop_app_chooses_a_project_inbox() {
                 request(
                     "cli:choose",
                     ProjectWorkspaceIntent::SendInboxMessage {
+                        expected_store_epoch: None,
                         page_id: "page:cli".into(),
                         document_id: "document:cli".into(),
                         text: "Choose for me".into(),
@@ -1358,6 +1404,7 @@ fn only_the_desktop_app_chooses_a_project_inbox() {
             module,
             "send:missing",
             ProjectWorkspaceIntent::SendInboxMessage {
+                expected_store_epoch: None,
                 page_id: "page:missing".into(),
                 document_id: "document:missing".into(),
                 text: "Nowhere".into(),
@@ -1383,23 +1430,13 @@ fn filing_into_a_project_keeps_the_message_handled_in_its_own_inbox() {
             project_id: PROJECT.into(),
         },
     );
-    // The user's own Library relocation, which the desktop app performs before confirming.
-    let data_source = project_data_source(&workspace);
-    workspace
-        .kernel
-        .writer()
-        .call(move |connection| {
-            connection.execute(
-                "UPDATE pages SET parent_id = ?1 WHERE block_id = 'page:task'",
-                [&data_source],
-            )?;
-            Ok(())
-        })
-        .expect("relocate Page");
     apply_host(
         module,
         "confirm:file",
         ProjectWorkspaceIntent::ConfirmInboxDispatch {
+            expected_store_epoch: "epoch-1".into(),
+            basis: proposal_basis(module, "proposal:file"),
+            execution_selection: Some(selection()),
             proposal_id: "proposal:file".into(),
             expected_revision: 1,
             action: None,
@@ -1441,11 +1478,14 @@ fn filing_into_a_project_keeps_the_message_handled_in_its_own_inbox() {
 }
 
 #[test]
-fn filing_by_hand_records_the_move_the_user_made() {
+fn filing_by_hand_moves_and_records_the_pages_atomically() {
     let workspace = seeded_workspace();
     let module = &workspace.module;
     send(module, "task", "Document the capture shortcut");
     let file = || ProjectWorkspaceIntent::DispatchInboxEntries {
+        expected_store_epoch: "epoch-1".into(),
+        basis: pages_basis(module, vec!["page:task".into()]),
+        execution_selection: Some(selection()),
         proposal_id: "proposal:by-hand".into(),
         page_ids: vec!["page:task".into()],
         action: ProjectWorkspaceInboxDispatchAction::MoveToProject {
@@ -1453,23 +1493,6 @@ fn filing_by_hand_records_the_move_the_user_made() {
         },
         session_id: None,
     };
-    // Filing never moves content itself; the user's Library relocation comes first.
-    assert_eq!(
-        apply_host_error(module, "file:early", file()),
-        CoreErrorCode::Conflict
-    );
-    let data_source = project_data_source(&workspace);
-    workspace
-        .kernel
-        .writer()
-        .call(move |connection| {
-            connection.execute(
-                "UPDATE pages SET parent_id = ?1 WHERE block_id = 'page:task'",
-                [&data_source],
-            )?;
-            Ok(())
-        })
-        .expect("relocate Page");
     apply_host(module, "file:by-hand", file());
     assert!(window(module, ProjectWorkspaceInboxWindowFilter::Inbox).is_empty());
     assert_eq!(
@@ -1622,6 +1645,9 @@ fn one_suggestion_pass_never_mixes_inboxes() {
             module,
             "dispatch:mixed",
             ProjectWorkspaceIntent::DispatchInboxEntries {
+                expected_store_epoch: "epoch-1".into(),
+                basis: pages_basis(module, vec!["page:first".into(), "page:project".into()]),
+                execution_selection: Some(selection()),
                 proposal_id: "proposal:mixed".into(),
                 page_ids: vec!["page:first".into(), "page:project".into()],
                 action: ProjectWorkspaceInboxDispatchAction::Keep,
@@ -1890,4 +1916,1004 @@ fn only_plain_waiting_messages_are_rewritten_in_place() {
         .expect("named message waits for a suggestion");
     assert_eq!(entry.title, "Homepage positioning");
     assert!(!entry.title_provisional);
+}
+
+fn selection() -> nodex_core_contracts::inbox::ProjectWorkspaceInboxExecutionSelection {
+    use nodex_core_contracts::inbox::*;
+    ProjectWorkspaceInboxExecutionSelection {
+        model_selection: ProjectWorkspaceInboxModelSelection {
+            instance_id: "agent:test".into(),
+            model: "model:test".into(),
+            options: None,
+        },
+        interaction_mode: ProjectWorkspaceInboxInteractionMode::Default,
+    }
+}
+fn pages_basis(
+    module: &ProjectWorkspaceModule,
+    pages: Vec<String>,
+) -> Vec<nodex_core_contracts::inbox::ProjectWorkspaceInboxPageBasis> {
+    pages
+        .into_iter()
+        .map(|page| {
+            let ProjectWorkspaceReadValue::InboxDispatchContext { context } = read_host(
+                module,
+                ProjectWorkspaceRead::InboxDispatchContext {
+                    page_ids: vec![page],
+                },
+            ) else {
+                panic!("context")
+            };
+            context.entries[0].basis.clone()
+        })
+        .collect()
+}
+fn proposal_basis(
+    module: &ProjectWorkspaceModule,
+    id: &str,
+) -> Vec<nodex_core_contracts::inbox::ProjectWorkspaceInboxPageBasis> {
+    for scope in [ProjectWorkspaceInboxScope::Library, project_scope()] {
+        for filter in [
+            ProjectWorkspaceInboxWindowFilter::Inbox,
+            ProjectWorkspaceInboxWindowFilter::Processed,
+        ] {
+            for item in window_in(module, scope.clone(), filter) {
+                if let Some(p) = item.proposal
+                    && p.proposal_id == id
+                {
+                    return p.basis;
+                }
+            }
+        }
+    }
+    Vec::new()
+}
+
+fn outbox(
+    module: &ProjectWorkspaceModule,
+) -> Vec<nodex_core_contracts::inbox::ProjectWorkspaceInboxDispatchWork> {
+    let ProjectWorkspaceReadValue::InboxDispatchOutbox { dispatches } = read_host(
+        module,
+        ProjectWorkspaceRead::InboxDispatchOutbox { limit: 16 },
+    ) else {
+        panic!("outbox")
+    };
+    dispatches
+}
+fn requests(
+    module: &ProjectWorkspaceModule,
+) -> Vec<nodex_core_contracts::inbox::ProjectWorkspaceInboxSuggestionRequest> {
+    let ProjectWorkspaceReadValue::InboxSuggestionRequests { requests } = read_host(
+        module,
+        ProjectWorkspaceRead::InboxSuggestionRequests { limit: 16 },
+    ) else {
+        panic!("requests")
+    };
+    requests
+}
+fn grouped_request(module: &ProjectWorkspaceModule, id: &str, pages: Vec<String>) {
+    apply_host(
+        module,
+        id,
+        ProjectWorkspaceIntent::RequestInboxSuggestion {
+            request_id: id.into(),
+            mode: nodex_core_contracts::inbox::ProjectWorkspaceInboxSuggestionMode::Grouped,
+            basis: pages_basis(module, pages.clone()),
+            page_ids: pages,
+            proposal_id: None,
+            expected_revision: None,
+            correction: None,
+        },
+    );
+}
+#[test]
+fn atomic_edit_fences_content_and_invalidates_the_complete_request() {
+    let workspace = seeded_workspace();
+    let module = &workspace.module;
+    send(module, "a", "Original message");
+    send(module, "b", "Related thought");
+    grouped_request(
+        module,
+        "request:group",
+        vec!["page:a".into(), "page:b".into()],
+    );
+    let unchanged = module
+        .apply(
+            &host(),
+            request(
+                "edit:unchanged",
+                ProjectWorkspaceIntent::EditInboxMessage {
+                    page_id: "page:a".into(),
+                    basis: pages_basis(module, vec!["page:a".into()]).remove(0),
+                    original_text: "Original message".into(),
+                    text: "Original message".into(),
+                },
+            ),
+        )
+        .expect("unchanged edit");
+    assert!(unchanged.event.is_none());
+    assert_eq!(requests(module).len(), 1);
+    let before = pages_basis(module, vec!["page:a".into()]).remove(0);
+    let edit = ProjectWorkspaceIntent::EditInboxMessage {
+        page_id: "page:a".into(),
+        basis: before.clone(),
+        original_text: "Original message".into(),
+        text: "Revised message".into(),
+    };
+    let result = module
+        .apply(&host(), request("edit:atomic", edit.clone()))
+        .expect("atomic edit");
+    assert!(result.event.is_some());
+    assert!(requests(module).is_empty());
+    let items = window(module, ProjectWorkspaceInboxWindowFilter::Inbox);
+    assert!(
+        items
+            .iter()
+            .all(|i| i.suggestion_state == ProjectWorkspaceInboxSuggestionState::Pending)
+    );
+    assert_eq!(
+        items.iter().find(|i| i.page_id == "page:a").unwrap().body,
+        "Revised message"
+    );
+    assert_eq!(
+        apply_host_error(module, "edit:stale", edit),
+        CoreErrorCode::Conflict
+    );
+    assert_eq!(
+        count(
+            &workspace,
+            "SELECT count(*) FROM document_versions WHERE document_id='document:a'"
+        ),
+        1
+    );
+}
+#[test]
+fn complete_handoff_and_selection_survive_retries_with_fenced_receipts() {
+    let workspace = seeded_workspace();
+    let module = &workspace.module;
+    let body = format!("{} THE END", "complete input ".repeat(450));
+    send(module, "long", &body);
+    apply_host(
+        module,
+        "dispatch:frozen",
+        ProjectWorkspaceIntent::DispatchInboxEntries {
+            expected_store_epoch: "epoch-1".into(),
+            basis: pages_basis(module, vec!["page:long".into()]),
+            execution_selection: Some(selection()),
+            proposal_id: "proposal:frozen".into(),
+            page_ids: vec!["page:long".into()],
+            action: ProjectWorkspaceInboxDispatchAction::NewChat {
+                project_id: None,
+                prompt: "Answer the question".into(),
+            },
+            session_id: Some("session:frozen".into()),
+        },
+    );
+    let work = outbox(module).remove(0);
+    assert!(work.final_text.as_ref().unwrap().contains(&body));
+    assert_eq!(work.execution_selection, Some(selection()));
+    assert_eq!(work.message_id.len(), 36);
+    apply_host(
+        module,
+        "fail:frozen",
+        ProjectWorkspaceIntent::FailInboxDispatch {
+            proposal_id: work.proposal_id.clone(),
+            expected_revision: work.revision,
+            message_id: work.message_id.clone(),
+            failure_kind:
+                nodex_core_contracts::inbox::ProjectWorkspaceInboxFailureKind::Unavailable,
+            message: "Runtime unavailable".into(),
+        },
+    );
+    apply_host(
+        module,
+        "retry:frozen",
+        ProjectWorkspaceIntent::RetryInboxDispatch {
+            proposal_id: work.proposal_id.clone(),
+        },
+    );
+    let retried = outbox(module).remove(0);
+    assert_eq!(retried.message_id, work.message_id);
+    assert_eq!(retried.launch_id, work.launch_id);
+    assert_eq!(retried.final_text, work.final_text);
+    assert_eq!(
+        apply_host_error(
+            module,
+            "complete:stale",
+            ProjectWorkspaceIntent::CompleteInboxDispatch {
+                proposal_id: work.proposal_id.clone(),
+                expected_revision: work.revision,
+                message_id: work.message_id.clone(),
+                dispatched_thread_id: Some("thread:frozen".into())
+            }
+        ),
+        CoreErrorCode::RevisionConflict
+    );
+    apply_host(
+        module,
+        "complete:frozen",
+        ProjectWorkspaceIntent::CompleteInboxDispatch {
+            proposal_id: retried.proposal_id,
+            expected_revision: retried.revision,
+            message_id: retried.message_id,
+            dispatched_thread_id: Some("thread:frozen".into()),
+        },
+    );
+    assert!(outbox(module).is_empty());
+    assert_eq!(
+        count(
+            &workspace,
+            "SELECT length(final_text) FROM inbox_handoffs WHERE proposal_id='proposal:frozen'"
+        ),
+        0
+    );
+}
+
+#[test]
+fn replacing_a_failed_group_member_retires_its_delivery_and_reopens_the_rest() {
+    use nodex_core_contracts::inbox::ProjectWorkspaceInboxFailureKind;
+    for decide_again in [true, false] {
+        let workspace = seeded_workspace();
+        let module = &workspace.module;
+        send(module, "a", "First message");
+        send(module, "b", "Second message");
+        let pages = vec!["page:a".into(), "page:b".into()];
+        apply_host(
+            module,
+            "dispatch:group",
+            ProjectWorkspaceIntent::DispatchInboxEntries {
+                expected_store_epoch: "epoch-1".into(),
+                proposal_id: "proposal:group".into(),
+                basis: pages_basis(module, pages.clone()),
+                page_ids: pages,
+                action: ProjectWorkspaceInboxDispatchAction::NewChat {
+                    project_id: None,
+                    prompt: "Discuss both messages".into(),
+                },
+                session_id: Some("session:group".into()),
+                execution_selection: Some(selection()),
+            },
+        );
+        let work = outbox(module).remove(0);
+        apply_host(
+            module,
+            "fail:group",
+            ProjectWorkspaceIntent::FailInboxDispatch {
+                proposal_id: work.proposal_id.clone(),
+                expected_revision: work.revision,
+                message_id: work.message_id,
+                failure_kind: ProjectWorkspaceInboxFailureKind::Unavailable,
+                message: "Runtime unavailable".into(),
+            },
+        );
+        if decide_again {
+            apply_host(
+                module,
+                "decide:a",
+                ProjectWorkspaceIntent::DispatchInboxEntries {
+                    expected_store_epoch: "epoch-1".into(),
+                    proposal_id: "proposal:a".into(),
+                    basis: pages_basis(module, vec!["page:a".into()]),
+                    page_ids: vec!["page:a".into()],
+                    action: ProjectWorkspaceInboxDispatchAction::Keep,
+                    session_id: None,
+                    execution_selection: None,
+                },
+            );
+            assert_eq!(
+                count(
+                    &workspace,
+                    "SELECT count(*) FROM inbox_proposals \
+                     WHERE proposal_id='proposal:group' AND state='superseded'"
+                ),
+                1
+            );
+            assert_eq!(
+                count(
+                    &workspace,
+                    "SELECT count(*) FROM inbox_handoffs WHERE proposal_id='proposal:group'"
+                ),
+                0
+            );
+            assert_eq!(
+                window(module, ProjectWorkspaceInboxWindowFilter::Processed)[0].state,
+                ProjectWorkspaceInboxEntryState::Kept
+            );
+        } else {
+            // A request releases the old membership before a new proposal has settled.
+            grouped_request(module, "request:a", vec!["page:a".into()]);
+            assert_eq!(
+                count(
+                    &workspace,
+                    "SELECT count(*) FROM inbox_proposals \
+                     WHERE proposal_id='proposal:group' AND state='failed'"
+                ),
+                1
+            );
+        }
+        let items = window(module, ProjectWorkspaceInboxWindowFilter::Inbox);
+        let remaining = items.iter().find(|item| item.page_id == "page:b").unwrap();
+        assert!(remaining.proposal.is_none());
+        assert_eq!(remaining.state, ProjectWorkspaceInboxEntryState::Open);
+        assert_eq!(
+            remaining.suggestion_state,
+            ProjectWorkspaceInboxSuggestionState::Pending
+        );
+        assert_eq!(
+            apply_host_error(
+                module,
+                "retry:old-group",
+                ProjectWorkspaceIntent::RetryInboxDispatch {
+                    proposal_id: work.proposal_id,
+                },
+            ),
+            CoreErrorCode::Conflict
+        );
+        assert!(outbox(module).is_empty());
+    }
+}
+
+#[test]
+fn grouped_settlement_is_atomic_and_refine_preserves_explicit_membership() {
+    use nodex_core_contracts::inbox::*;
+    let workspace = seeded_workspace();
+    let module = &workspace.module;
+    send(module, "a", "A thought");
+    send(module, "b", "B thought");
+    let pages = vec!["page:a".into(), "page:b".into()];
+    grouped_request(module, "request:ab", pages.clone());
+    let settlement = ProjectWorkspaceIntent::SettleInboxSuggestion {
+        request_id: "request:ab".into(),
+        generation: 1,
+        titles: vec![ProjectWorkspaceInboxSuggestionTitle {
+            page_id: "page:a".into(),
+            title: "Grouped thought".into(),
+        }],
+        suggestions: vec![ProjectWorkspaceInboxSuggestedDispatch {
+            proposal_id: "proposal:ab".into(),
+            page_ids: pages,
+            action: ProjectWorkspaceInboxDispatchAction::None {
+                reason: "Keep for later".into(),
+            },
+            entry_kind: None,
+            summary: "Review together".into(),
+            rationale: None,
+        }],
+        produced_by: Some("test model".into()),
+        error: None,
+    };
+    apply_host(module, "settle:ab", settlement.clone());
+    assert!(requests(module).is_empty());
+    assert!(pending(module).is_empty());
+    let idle = module
+        .apply(
+            &host(),
+            request(
+                "prepare:none",
+                ProjectWorkspaceIntent::PrepareInboxSuggestions {
+                    request_id: "request:idle".into(),
+                    limit: 8,
+                },
+            ),
+        )
+        .expect("idle preparation");
+    assert!(idle.event.is_none());
+    let a = window(module, ProjectWorkspaceInboxWindowFilter::Inbox)
+        .into_iter()
+        .find(|i| i.page_id == "page:a")
+        .unwrap();
+    assert_eq!(a.title, "Grouped thought");
+    assert!(a.basis.head_seq > 1);
+    assert_eq!(
+        a.proposal
+            .as_ref()
+            .unwrap()
+            .basis
+            .iter()
+            .find(|b| b.page_id == a.page_id)
+            .unwrap(),
+        &a.basis
+    );
+    assert_eq!(
+        apply_host_error(
+            module,
+            "confirm:none",
+            ProjectWorkspaceIntent::ConfirmInboxDispatch {
+                expected_store_epoch: "epoch-1".into(),
+                basis: a.proposal.as_ref().unwrap().basis.clone(),
+                execution_selection: None,
+                proposal_id: "proposal:ab".into(),
+                expected_revision: 1,
+                action: None,
+                session_id: None
+            }
+        ),
+        CoreErrorCode::InvalidInput
+    );
+    apply_host(
+        module,
+        "refine:a",
+        ProjectWorkspaceIntent::RequestInboxSuggestion {
+            request_id: "request:a".into(),
+            mode: ProjectWorkspaceInboxSuggestionMode::Refine,
+            page_ids: vec!["page:a".into()],
+            basis: vec![a.basis],
+            proposal_id: Some("proposal:ab".into()),
+            expected_revision: Some(1),
+            correction: Some("Only the first message".into()),
+        },
+    );
+    let request = requests(module).remove(0);
+    assert_eq!(request.page_ids, vec!["page:a"]);
+    assert_eq!(
+        request.correction.as_deref(),
+        Some("Only the first message")
+    );
+    assert!(
+        window(module, ProjectWorkspaceInboxWindowFilter::Inbox)
+            .iter()
+            .all(|i| i.proposal.is_none())
+    );
+    assert_eq!(
+        apply_host_error(module, "settle:late", settlement),
+        CoreErrorCode::Conflict
+    );
+}
+#[test]
+fn grouped_move_and_undo_share_one_decision_and_refuse_partial_undo() {
+    let workspace = seeded_workspace();
+    let module = &workspace.module;
+    send(module, "a", "First");
+    send(module, "b", "Second");
+    let pages = vec!["page:a".into(), "page:b".into()];
+    let move_intent = |proposal: &str| ProjectWorkspaceIntent::DispatchInboxEntries {
+        expected_store_epoch: "epoch-1".into(),
+        basis: pages_basis(module, pages.clone()),
+        execution_selection: None,
+        proposal_id: proposal.into(),
+        page_ids: pages.clone(),
+        action: ProjectWorkspaceInboxDispatchAction::MoveToProject {
+            project_id: PROJECT.into(),
+        },
+        session_id: None,
+    };
+    let moved = module
+        .apply(
+            &host(),
+            request("move:group", move_intent("proposal:move-group")),
+        )
+        .expect("group move");
+    let token = moved
+        .committed
+        .value
+        .inbox_undo_token
+        .expect("one composite undo");
+    let history = window(module, ProjectWorkspaceInboxWindowFilter::Processed);
+    assert_eq!(history.len(), 2);
+    assert!(
+        history
+            .iter()
+            .all(|i| matches!(i.location, ProjectWorkspaceInboxLocation::Database { .. }))
+    );
+    // A member's internal relocation inverse cannot consume one part of the decision.
+    let member_token: String = workspace
+        .kernel
+        .readers()
+        .read_default(|connection| {
+            Ok(connection.query_row(
+                "SELECT json_extract(recipe_json,'$.tokens[0]') FROM inbox_decision_undo",
+                [],
+                |row| row.get(0),
+            )?)
+        })
+        .expect("member token");
+    let library = crate::library::LibraryModule::new("profile-1", "library-1", &workspace.kernel);
+    let error = library
+        .apply(
+            &host(),
+            nodex_core_contracts::ModuleApplyRequest {
+                contract_version: nodex_core_contracts::LIBRARY_CONTRACT_VERSION,
+                operation_id: "undo:partial".into(),
+                store_epoch: nodex_core_contracts::StoreEpoch("epoch-1".into()),
+                intent: nodex_core_contracts::library::LibraryIntent::UndoPageRelocation {
+                    token: serde_json::from_str(&member_token).unwrap(),
+                },
+            },
+        )
+        .expect_err("member inverse is reserved");
+    assert_eq!(error.code, CoreErrorCode::RevisionConflict);
+    assert_eq!(
+        error.message,
+        "Undo this relocation through its complete decision"
+    );
+    apply_host(
+        module,
+        "undo:group",
+        ProjectWorkspaceIntent::UndoInboxDecision {
+            undo_token: token.clone(),
+        },
+    );
+    assert_eq!(
+        window(module, ProjectWorkspaceInboxWindowFilter::Inbox).len(),
+        2
+    );
+    assert_eq!(
+        apply_host_error(
+            module,
+            "undo:twice",
+            ProjectWorkspaceIntent::UndoInboxDecision { undo_token: token }
+        ),
+        CoreErrorCode::Conflict
+    );
+    let moved = module
+        .apply(
+            &host(),
+            request("move:again", move_intent("proposal:move-again")),
+        )
+        .expect("move again");
+    apply_host(
+        module,
+        "done:b",
+        ProjectWorkspaceIntent::SetInboxEntryState {
+            page_ids: vec!["page:b".into()],
+            state: ProjectWorkspaceInboxEntryState::Done,
+        },
+    );
+    assert_eq!(
+        apply_host_error(
+            module,
+            "undo:changed",
+            ProjectWorkspaceIntent::UndoInboxDecision {
+                undo_token: moved.committed.value.inbox_undo_token.unwrap()
+            }
+        ),
+        CoreErrorCode::Conflict
+    );
+    assert_eq!(
+        window(module, ProjectWorkspaceInboxWindowFilter::Processed).len(),
+        2
+    );
+}
+#[test]
+fn deleting_a_lost_reply_capture_never_resurrects_its_page_on_replay() {
+    let workspace = seeded_workspace();
+    let module = &workspace.module;
+    let intent = ProjectWorkspaceIntent::SendInboxMessage {
+        expected_store_epoch: Some("epoch-1".into()),
+        page_id: "page:lost".into(),
+        document_id: "document:lost".into(),
+        text: "A capture with a lost reply".into(),
+        title: None,
+        project_id: None,
+    };
+    module
+        .apply(&host(), request("capture:lost", intent.clone()))
+        .expect("commit capture");
+    apply_host(
+        module,
+        "delete:lost",
+        ProjectWorkspaceIntent::DeleteInboxMessages {
+            page_ids: vec!["page:lost".into()],
+        },
+    );
+    let replay = module
+        .apply(&host(), request("capture:lost", intent))
+        .expect("replay receipt");
+    assert!(replay.committed.receipt.mutation.duplicate);
+    assert_eq!(
+        count(
+            &workspace,
+            "SELECT count(*) FROM inbox_entries WHERE page_id='page:lost'"
+        ),
+        0
+    );
+    assert_eq!(
+        count(
+            &workspace,
+            "SELECT count(*) FROM blocks WHERE id='page:lost' AND lifecycle='active'"
+        ),
+        0
+    );
+}
+
+#[test]
+fn remote_unknown_is_not_replayed_and_new_decisions_have_new_delivery_identity() {
+    use nodex_core_contracts::inbox::ProjectWorkspaceInboxFailureKind;
+    let workspace = seeded_workspace();
+    let module = &workspace.module;
+    send(module, "a", "Send this once");
+    send(module, "b", "Keep this with the first message");
+    let make = |proposal: &str, session: &str| ProjectWorkspaceIntent::DispatchInboxEntries {
+        expected_store_epoch: "epoch-1".into(),
+        basis: pages_basis(module, vec!["page:a".into(), "page:b".into()]),
+        execution_selection: Some(selection()),
+        proposal_id: proposal.into(),
+        page_ids: vec!["page:a".into(), "page:b".into()],
+        action: ProjectWorkspaceInboxDispatchAction::NewChat {
+            project_id: None,
+            prompt: "Discuss".into(),
+        },
+        session_id: Some(session.into()),
+    };
+    let mut stale = make("proposal:stale", "session:stale");
+    if let ProjectWorkspaceIntent::DispatchInboxEntries {
+        expected_store_epoch,
+        ..
+    } = &mut stale
+    {
+        *expected_store_epoch = "old-epoch".into();
+    }
+    assert_eq!(
+        apply_host_error(module, "dispatch:stale-epoch", stale),
+        CoreErrorCode::StaleStoreEpoch
+    );
+    assert_eq!(
+        count(
+            &workspace,
+            "SELECT count(*) FROM project_sessions WHERE id='session:stale'"
+        ),
+        0
+    );
+    apply_host(
+        module,
+        "dispatch:unknown",
+        make("proposal:unknown", "session:unknown"),
+    );
+    let first = outbox(module).remove(0);
+    apply_host(
+        module,
+        "begin:unknown",
+        ProjectWorkspaceIntent::BeginInboxDispatch {
+            proposal_id: first.proposal_id,
+            expected_revision: first.revision,
+            message_id: first.message_id.clone(),
+        },
+    );
+    assert!(outbox(module).is_empty());
+    let item = window(module, ProjectWorkspaceInboxWindowFilter::Inbox).remove(0);
+    assert_eq!(
+        item.proposal.unwrap().failure_kind,
+        Some(ProjectWorkspaceInboxFailureKind::Unknown)
+    );
+    let mut partial = make("proposal:partial", "session:partial");
+    if let ProjectWorkspaceIntent::DispatchInboxEntries {
+        page_ids, basis, ..
+    } = &mut partial
+    {
+        page_ids.pop();
+        basis.pop();
+    }
+    assert_eq!(
+        apply_host_error(module, "dispatch:partial", partial),
+        CoreErrorCode::Conflict
+    );
+    assert_eq!(
+        window(module, ProjectWorkspaceInboxWindowFilter::Inbox).len(),
+        2
+    );
+    assert!(outbox(module).is_empty());
+    apply_host(
+        module,
+        "dispatch:again",
+        make("proposal:again", "session:again"),
+    );
+    assert_ne!(outbox(module)[0].message_id, first.message_id);
+}
+#[test]
+fn failed_settlement_rolls_back_titles_and_prior_suggestions() {
+    use nodex_core_contracts::inbox::*;
+    let workspace = seeded_workspace();
+    let module = &workspace.module;
+    send(module, "a", "First thought");
+    send(module, "b", "Second thought");
+    apply_host(
+        module,
+        "prepare:ab",
+        ProjectWorkspaceIntent::PrepareInboxSuggestions {
+            request_id: "request:ab".into(),
+            limit: 8,
+        },
+    );
+    let input = requests(module).remove(0);
+    let suggestions = input
+        .page_ids
+        .iter()
+        .map(|page| ProjectWorkspaceInboxSuggestedDispatch {
+            proposal_id: "proposal:duplicate".into(),
+            page_ids: vec![page.clone()],
+            action: ProjectWorkspaceInboxDispatchAction::Keep,
+            entry_kind: None,
+            summary: "Keep it".into(),
+            rationale: None,
+        })
+        .collect();
+    assert_eq!(
+        apply_host_error(
+            module,
+            "settle:bad",
+            ProjectWorkspaceIntent::SettleInboxSuggestion {
+                request_id: input.request_id,
+                generation: input.generation,
+                titles: vec![ProjectWorkspaceInboxSuggestionTitle {
+                    page_id: "page:a".into(),
+                    title: "This must roll back".into()
+                }],
+                suggestions,
+                produced_by: None,
+                error: None
+            }
+        ),
+        CoreErrorCode::Conflict
+    );
+    let items = window(module, ProjectWorkspaceInboxWindowFilter::Inbox);
+    assert_eq!(
+        items.iter().find(|i| i.page_id == "page:a").unwrap().title,
+        "First thought"
+    );
+    assert!(items.iter().all(|i| i.proposal.is_none()));
+    assert_eq!(requests(module).len(), 1);
+}
+#[test]
+fn chat_target_search_reaches_older_sessions_and_binds_its_cursor_to_the_query() {
+    let workspace = seeded_workspace();
+    let module = &workspace.module;
+    create_session_thread(
+        module,
+        "old-needle",
+        "session:000-needle",
+        "thread:needle",
+        None,
+        1,
+    );
+    for index in 0..105 {
+        create_session_thread(
+            module,
+            &format!("new-{index}"),
+            &format!("session:new-{index:03}"),
+            &format!("thread:new-{index:03}"),
+            None,
+            index + 2,
+        );
+    }
+    send(module, "search", "Continue the needle discussion");
+    let ProjectWorkspaceReadValue::InboxDispatchContext { context: relevant } = read_host(
+        module,
+        ProjectWorkspaceRead::InboxDispatchContext {
+            page_ids: vec!["page:search".into()],
+        },
+    ) else {
+        panic!("context")
+    };
+    assert!(
+        relevant
+            .sessions
+            .iter()
+            .any(|chat| chat.session_id == "session:000-needle")
+    );
+    assert!(relevant.sessions.len() <= 30);
+    let query = |query: &str, after: Option<String>| ProjectWorkspaceRead::InboxChatTargets {
+        scope: ProjectWorkspaceInboxScope::Library,
+        query: query.into(),
+        window: CollectionWindowRequest {
+            first: Some(1),
+            after,
+        },
+    };
+    let ProjectWorkspaceReadValue::InboxChatTargets { window: found } =
+        read_host(module, query("needle", None))
+    else {
+        panic!("targets")
+    };
+    assert_eq!(found.items[0].session_id, "session:000-needle");
+    let ProjectWorkspaceReadValue::InboxChatTargets { window: first } =
+        read_host(module, query("", None))
+    else {
+        panic!("targets")
+    };
+    assert!(first.next_cursor.is_some());
+    assert!(
+        module
+            .read(
+                &host(),
+                ModuleReadRequest {
+                    contract_version: PROJECT_WORKSPACE_CONTRACT_VERSION,
+                    read: query("other", first.next_cursor)
+                }
+            )
+            .is_err()
+    );
+}
+
+#[test]
+fn stale_failure_cannot_hide_new_document_content_from_suggestions() {
+    let workspace = seeded_workspace();
+    let module = &workspace.module;
+    send(module, "a", "Original message");
+    grouped_request(module, "request:old", vec!["page:a".into()]);
+    let old = requests(module).remove(0);
+    // The regular Page editor can change a Document without an Inbox mutation.
+    let edit = prepare_edit(
+        module,
+        "page:a",
+        "Original message",
+        "Changed in the Page editor",
+    )
+    .expect("prepare document edit");
+    write_message(&workspace, &edit, "Changed in the Page editor");
+    assert_eq!(
+        apply_host_error(
+            module,
+            "settle:old-failure",
+            ProjectWorkspaceIntent::SettleInboxSuggestion {
+                request_id: old.request_id,
+                generation: old.generation,
+                titles: vec![],
+                suggestions: vec![],
+                produced_by: None,
+                error: Some("Provider unavailable".into()),
+            }
+        ),
+        CoreErrorCode::Conflict
+    );
+    apply_host(
+        module,
+        "prepare:new-content",
+        ProjectWorkspaceIntent::PrepareInboxSuggestions {
+            request_id: "request:new".into(),
+            limit: 8,
+        },
+    );
+    let fresh = requests(module).remove(0);
+    assert_eq!(fresh.request_id, "request:new");
+    assert_eq!(fresh.context.entries[0].body, "Changed in the Page editor");
+    apply_host(
+        module,
+        "settle:current-failure",
+        ProjectWorkspaceIntent::SettleInboxSuggestion {
+            request_id: fresh.request_id,
+            generation: fresh.generation,
+            titles: vec![],
+            suggestions: vec![],
+            produced_by: None,
+            error: Some("Provider unavailable".into()),
+        },
+    );
+    let edit = prepare_edit(
+        module,
+        "page:a",
+        "Changed in the Page editor",
+        "Changed again after the failure",
+    )
+    .unwrap();
+    write_message(&workspace, &edit, "Changed again after the failure");
+    apply_host(
+        module,
+        "prepare:after-failure",
+        ProjectWorkspaceIntent::PrepareInboxSuggestions {
+            request_id: "request:after-failure".into(),
+            limit: 8,
+        },
+    );
+    assert_eq!(requests(module)[0].request_id, "request:after-failure");
+}
+
+#[test]
+fn outbox_byte_budget_never_splits_a_frozen_handoff() {
+    let workspace = seeded_workspace();
+    let module = &workspace.module;
+    for id in ["a", "b"] {
+        send(module, id, "Dispatch this complete message");
+        let pages = vec![format!("page:{id}")];
+        apply_host(
+            module,
+            &format!("dispatch:{id}"),
+            ProjectWorkspaceIntent::DispatchInboxEntries {
+                expected_store_epoch: "epoch-1".into(),
+                basis: pages_basis(module, pages.clone()),
+                execution_selection: Some(selection()),
+                proposal_id: format!("proposal:{id}"),
+                page_ids: pages,
+                action: ProjectWorkspaceInboxDispatchAction::NewChat {
+                    project_id: None,
+                    prompt: "Discuss".into(),
+                },
+                session_id: Some(format!("session:{id}")),
+            },
+        );
+    }
+    // Storage pressure fixture: JSON escaping expands each valid persisted payload sixfold.
+    workspace
+        .kernel
+        .writer()
+        .call(|connection| {
+            connection.execute(
+                "UPDATE inbox_handoffs SET final_text=?1",
+                ["\u{1}".repeat(1_179_000)],
+            )?;
+            Ok(())
+        })
+        .expect("install pressure payloads");
+    let work = outbox(module);
+    assert_eq!(work.len(), 1);
+    assert_eq!(work[0].final_text.as_ref().unwrap().len(), 1_179_000);
+    assert!(serde_json::to_vec(&work).unwrap().len() < 16 * 1024 * 1024);
+}
+
+#[test]
+fn erasing_a_dispatch_member_preserves_unknown_receipts_without_payload() {
+    use nodex_core_contracts::inbox::ProjectWorkspaceInboxFailureKind;
+    for remote_begun in [false, true] {
+        let workspace = seeded_workspace();
+        let module = &workspace.module;
+        send(module, "secret", "secret-to-erase");
+        send(module, "remaining", "Keep this message visible");
+        let pages = vec!["page:secret".into(), "page:remaining".into()];
+        apply_host(
+            module,
+            "dispatch:group",
+            ProjectWorkspaceIntent::DispatchInboxEntries {
+                expected_store_epoch: "epoch-1".into(),
+                basis: pages_basis(module, pages.clone()),
+                execution_selection: Some(selection()),
+                proposal_id: "proposal:group".into(),
+                page_ids: pages,
+                action: ProjectWorkspaceInboxDispatchAction::NewChat {
+                    project_id: None,
+                    prompt: "Discuss secret-to-erase".into(),
+                },
+                session_id: Some("session:group".into()),
+            },
+        );
+        let delivery = outbox(module).remove(0);
+        if remote_begun {
+            apply_host(
+                module,
+                "begin:group",
+                ProjectWorkspaceIntent::BeginInboxDispatch {
+                    proposal_id: delivery.proposal_id.clone(),
+                    expected_revision: delivery.revision,
+                    message_id: delivery.message_id.clone(),
+                },
+            );
+        }
+        apply_host(
+            module,
+            "delete:secret",
+            ProjectWorkspaceIntent::DeleteInboxMessages {
+                page_ids: vec!["page:secret".into()],
+            },
+        );
+        let remaining = item(module, "page:remaining");
+        let proposal = remaining.proposal.unwrap();
+        assert_eq!(proposal.page_ids, vec!["page:remaining"]);
+        assert_eq!(
+            proposal.failure_kind,
+            Some(ProjectWorkspaceInboxFailureKind::Unknown)
+        );
+        assert_eq!(
+            remaining.suggestion_state,
+            ProjectWorkspaceInboxSuggestionState::Settled
+        );
+        assert!(outbox(module).is_empty());
+        assert!(window(module, ProjectWorkspaceInboxWindowFilter::Processed).is_empty());
+        let (action, text, message): (String, String, String) = workspace.kernel.readers().read_default(|connection| {
+            Ok(connection.query_row("SELECT proposal.action_json,handoff.final_text,handoff.message_id FROM inbox_proposals proposal JOIN inbox_handoffs handoff USING(proposal_id)", [], |row| Ok((row.get(0)?,row.get(1)?,row.get(2)?)))?)
+        }).unwrap();
+        assert!(!action.contains("secret-to-erase"));
+        assert!(text.is_empty());
+        assert_eq!(message, delivery.message_id);
+        assert_eq!(
+            apply_host_error(
+                module,
+                "late:complete",
+                ProjectWorkspaceIntent::CompleteInboxDispatch {
+                    proposal_id: delivery.proposal_id,
+                    expected_revision: delivery.revision + i64::from(remote_begun),
+                    message_id: delivery.message_id,
+                    dispatched_thread_id: Some("thread:late".into()),
+                }
+            ),
+            CoreErrorCode::RevisionConflict
+        );
+    }
 }

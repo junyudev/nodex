@@ -335,6 +335,15 @@ export interface AgentRuntimeOperations {
     readonly input: AgentCommand;
     readonly output: { readonly sequence: number };
   };
+  /** Durable admission evidence, independent of a Thread's current execution/lifecycle state. */
+  readonly "command.receipt": {
+    readonly input: { readonly commandId: string; readonly threadId: string };
+    readonly output: {
+      readonly status: "accepted" | "rejected";
+      readonly sequence: number;
+      readonly error: string | null;
+    } | null;
+  };
   readonly "thread.compact": {
     readonly input: { readonly threadId: string; readonly requestId: string };
     readonly output: {

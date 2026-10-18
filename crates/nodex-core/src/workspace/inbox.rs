@@ -8,6 +8,9 @@
 //! `DispatchInboxEntries` can turn it into dispatch work, and confirmed chat
 //! work is delivered by the Desktop Host through the dispatch outbox.
 
+#[path = "inbox_reliable.rs"]
+pub(super) mod reliable;
+pub(super) use reliable::{apply_reliable, read_requests};
 use std::collections::BTreeSet;
 
 use nodex_core_contracts::agent::AgentTurnProvenance;
@@ -896,6 +899,7 @@ fn insert_proposal(
             "An Inbox entry is still being dispatched; wait for it to finish",
         ));
     }
+    supersede_failed_proposals(connection, proposal.page_ids, now)?;
     supersede_open_proposals(connection, proposal.page_ids, "superseded", now)?;
     connection.execute(
         "INSERT INTO inbox_proposals(\
@@ -979,125 +983,47 @@ fn supersede_open_proposals(
     Ok(())
 }
 
-#[allow(clippy::too_many_arguments)]
-pub(super) fn confirm(
+/// Replacing any member retires the entire failed delivery, including its frozen payload.
+fn supersede_failed_proposals(
     connection: &Connection,
-    library_id: &str,
-    context: &BoundModuleContext,
-    store_epoch: &str,
-    operation_id: &str,
-    request_hash: &str,
-    proposal_id: &str,
-    expected_revision: i64,
-    edited_action: Option<&ProjectWorkspaceInboxDispatchAction>,
-    session_id: Option<&str>,
-) -> Result<ProjectWorkspaceApplyOutcome, StoreError> {
-    validate_id("proposal_id", proposal_id)?;
-    let proposal = require_proposal(connection, library_id, proposal_id)?;
-    if proposal.state != "open" {
-        return Err(conflict("This Inbox suggestion is no longer open"));
-    }
-    if proposal.revision != expected_revision {
-        return Err(StoreError::new(
-            StoreErrorCode::RevisionConflict,
-            "This Inbox suggestion changed; review it again",
-            true,
-        ));
-    }
-    require_live_entries(connection, library_id, &proposal.page_ids)?;
-    if edited_action.is_none() {
-        // An unedited suggestion is valid only for the message content it saw.
-        require_basis(connection, &proposal.page_ids, &proposal.basis)?;
-    }
-    let scope = require_one_scope(connection, &proposal.page_ids)?;
-    let action = normalize_action(
-        connection,
-        library_id,
-        scope.as_deref(),
-        edited_action.unwrap_or(&proposal.action),
-    )?;
-    let now = sqlite_now(connection)?;
-    run_mutation(
-        connection,
-        context,
-        store_epoch,
-        operation_id,
-        request_hash,
-        &now,
-        |_| {
-            apply_confirmation(
-                connection,
-                library_id,
-                proposal_id,
-                &proposal.page_ids,
-                &action,
-                session_id,
-                &now,
-            )
-        },
-    )
-}
-
-#[allow(clippy::too_many_arguments)]
-pub(super) fn dispatch_entries(
-    connection: &Connection,
-    library_id: &str,
-    context: &BoundModuleContext,
-    store_epoch: &str,
-    operation_id: &str,
-    request_hash: &str,
-    proposal_id: &str,
     page_ids: &[String],
-    action: &ProjectWorkspaceInboxDispatchAction,
-    session_id: Option<&str>,
-) -> Result<ProjectWorkspaceApplyOutcome, StoreError> {
-    validate_id("proposal_id", proposal_id)?;
-    let page_ids = unique_page_ids(page_ids, MAX_PROPOSAL_PAGES)?;
-    require_live_entries(connection, library_id, &page_ids)?;
-    let scope = require_one_scope(connection, &page_ids)?;
-    let action = normalize_action(connection, library_id, scope.as_deref(), action)?;
-    let basis = current_basis(connection, &page_ids)?;
-    let summary = user_summary(&action);
-    let now = sqlite_now(connection)?;
-    run_mutation(
-        connection,
-        context,
-        store_epoch,
-        operation_id,
-        request_hash,
-        &now,
-        |_| {
-            insert_proposal(
-                connection,
-                library_id,
-                NewProposal {
-                    proposal_id,
-                    origin: ProjectWorkspaceInboxProposalOrigin::User,
-                    page_ids: &page_ids,
-                    basis: &basis,
-                    action: &action,
-                    entry_kind: None,
-                    summary: &summary,
-                    rationale: None,
-                    produced_by: None,
-                },
-                &now,
-            )?;
-            apply_confirmation(
-                connection,
-                library_id,
-                proposal_id,
-                &page_ids,
-                &action,
-                session_id,
-                &now,
-            )
-        },
-    )
+    now: &str,
+) -> Result<(), StoreError> {
+    let page_ids = serde_json::to_string(page_ids)
+        .map_err(|_| internal("Inbox proposal members cannot be encoded"))?;
+    let proposals = connection
+        .prepare(
+            "SELECT DISTINCT proposal.proposal_id FROM inbox_proposals proposal \
+             JOIN inbox_proposal_pages member USING(proposal_id) \
+             WHERE proposal.state='failed' \
+               AND member.page_id IN (SELECT value FROM json_each(?1))",
+        )?
+        .query_map([page_ids], |row| row.get::<_, String>(0))?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    for proposal_id in proposals {
+        connection.execute(
+            "UPDATE inbox_entries SET current_proposal_id=NULL,outcome=NULL, \
+               suggestion_state='pending',suggestion_request_id=NULL,suggestion_error=NULL, \
+               revision=revision+1,updated_at=?2 \
+             WHERE current_proposal_id=?1 AND state='open'",
+            params![proposal_id, now],
+        )?;
+        connection.execute(
+            "UPDATE inbox_proposals SET state='superseded',revision=revision+1,updated_at=?2 \
+             WHERE proposal_id=?1",
+            params![proposal_id, now],
+        )?;
+        connection.execute(
+            "DELETE FROM inbox_handoffs WHERE proposal_id=?1",
+            [&proposal_id],
+        )?;
+    }
+    Ok(())
 }
 
 fn user_summary(action: &ProjectWorkspaceInboxDispatchAction) -> String {
     match action {
+        ProjectWorkspaceInboxDispatchAction::None { .. } => "Review message".to_owned(),
         ProjectWorkspaceInboxDispatchAction::Keep => "Keep as a note".to_owned(),
         ProjectWorkspaceInboxDispatchAction::NewChat { .. } => "Start a new chat".to_owned(),
         ProjectWorkspaceInboxDispatchAction::SendToChat { .. } => {
@@ -1118,14 +1044,17 @@ fn apply_confirmation(
 ) -> Result<WorkspaceMutationEffects, StoreError> {
     let encoded_action = action_json(action)?;
     match action {
+        ProjectWorkspaceInboxDispatchAction::None { .. } => {
+            Err(invalid("No decision was proposed"))
+        }
         ProjectWorkspaceInboxDispatchAction::Keep => {
             finish_proposal(connection, proposal_id, &encoded_action, now)?;
             set_entries_state(connection, library_id, page_ids, "kept", now)?;
             Ok(simple_effects("inbox_confirm_keep", now))
         }
         ProjectWorkspaceInboxDispatchAction::MoveToProject { project_id } => {
-            // The Library relocation is the user's own move. Confirmation records
-            // that it satisfied this suggestion; it never moves content itself.
+            // Library has relocated every member inside this decision transaction.
+            // Verify the resulting placement before recording the Inbox outcome.
             let data_source_id = project_data_source(connection, library_id, project_id)?;
             for page_id in page_ids {
                 let parent = connection.query_row(
@@ -1377,8 +1306,8 @@ pub(super) fn delete_messages(
     )
 }
 
-/// Suggestions that name an erased message may quote it, so they go too. Other messages
-/// they covered keep their outcome: handled ones are done, the rest wait for a new suggestion.
+/// Erase advice and delivery content that could quote a deleted message. An unacknowledged
+/// delivery retains only its remaining members and receipt references for explicit review.
 fn forget_proposals(
     connection: &Connection,
     page_ids: &[String],
@@ -1386,6 +1315,8 @@ fn forget_proposals(
 ) -> Result<(), StoreError> {
     let page_ids_json = serde_json::to_string(page_ids)
         .map_err(|_| internal("Inbox message identities cannot be encoded"))?;
+    connection.execute("UPDATE inbox_entries SET suggestion_request_id=NULL,suggestion_state=CASE WHEN state='open' THEN 'pending' ELSE suggestion_state END WHERE suggestion_request_id IN (SELECT request_id FROM inbox_suggestion_request_pages WHERE page_id IN (SELECT value FROM json_each(?1)))",[&page_ids_json])?;
+    connection.execute("DELETE FROM inbox_suggestion_requests WHERE request_id IN (SELECT request_id FROM inbox_suggestion_request_pages WHERE page_id IN (SELECT value FROM json_each(?1)))",[&page_ids_json])?;
     let proposals = connection
         .prepare(
             "SELECT DISTINCT proposal.proposal_id, proposal.state \
@@ -1398,7 +1329,20 @@ fn forget_proposals(
         })?
         .collect::<rusqlite::Result<Vec<_>>>()?;
     for (proposal_id, state) in proposals {
-        let handled = matches!(state.as_str(), "dispatching" | "completed");
+        let remaining = proposal_page_ids(connection, &proposal_id)?
+            .into_iter()
+            .filter(|page| !page_ids.contains(page))
+            .collect::<Vec<_>>();
+        if state == "dispatching" && !remaining.is_empty() {
+            // Runtime may already have accepted even a local delivery. Erasure cannot infer
+            // non-delivery, replay it, or report the remaining members as completed.
+            connection.execute("UPDATE inbox_proposals SET action_json=json_set(action_json,'$.prompt','Review the remaining Inbox messages'),summary='Delivery needs review',rationale=NULL,produced_by=NULL,kind=NULL,basis_json=?2,failure_kind='unknown',failure_message='A message was deleted before delivery was confirmed',revision=revision+1,updated_at=?3 WHERE proposal_id=?1",params![proposal_id,serde_json::to_string(&current_basis(connection,&remaining)?).map_err(|_| internal("Inbox basis cannot be encoded"))?,now])?;
+            connection.execute("UPDATE inbox_handoffs SET final_text='',execution_selection_json=NULL WHERE proposal_id=?1",[&proposal_id])?;
+            connection.execute("DELETE FROM inbox_proposal_pages WHERE proposal_id=?1 AND page_id IN (SELECT value FROM json_each(?2))",params![proposal_id,page_ids_json])?;
+            connection.execute("UPDATE inbox_entries SET state='open',outcome=NULL,suggestion_state='settled',suggestion_request_id=NULL,suggestion_error=NULL,revision=revision+1,updated_at=?2 WHERE current_proposal_id=?1 AND page_id NOT IN (SELECT value FROM json_each(?3))",params![proposal_id,now,page_ids_json])?;
+            continue;
+        }
+        let handled = state == "completed";
         connection.execute(
             "UPDATE inbox_entries SET current_proposal_id = NULL, \
                state = CASE WHEN ?2 THEN 'done' ELSE state END, \
@@ -1458,9 +1402,15 @@ fn set_entries_state(
     state: &str,
     now: &str,
 ) -> Result<(), StoreError> {
+    if state != "open" {
+        let ids = serde_json::to_string(page_ids)
+            .map_err(|_| internal("Inbox identities cannot be encoded"))?;
+        connection.execute("UPDATE inbox_suggestion_requests SET state='superseded',generation=generation+1,correction=NULL WHERE state='pending' AND request_id IN (SELECT request_id FROM inbox_suggestion_request_pages WHERE page_id IN (SELECT value FROM json_each(?1)))",[&ids])?;
+        connection.execute("UPDATE inbox_entries SET suggestion_request_id=NULL,suggestion_state=CASE WHEN state='open' THEN 'pending' ELSE suggestion_state END WHERE suggestion_request_id IN (SELECT request_id FROM inbox_suggestion_requests WHERE state='superseded')",[])?;
+    }
     for page_id in page_ids {
         connection.execute(
-            "UPDATE inbox_entries SET state = ?2, \
+            "UPDATE inbox_entries SET state = ?2, outcome=CASE ?2 WHEN 'kept' THEN 'kept' WHEN 'done' THEN 'done' ELSE NULL END, \
                suggestion_state = CASE WHEN suggestion_state = 'pending' AND ?2 <> 'open' \
                  THEN 'settled' ELSE suggestion_state END, \
                revision = revision + 1, updated_at = ?3 \
@@ -1506,46 +1456,6 @@ pub(super) fn set_kind(
                 ],
             )?;
             Ok(simple_effects("inbox_set_entry_kind", &now))
-        },
-    )
-}
-
-#[allow(clippy::too_many_arguments)]
-pub(super) fn request_suggestion(
-    connection: &Connection,
-    library_id: &str,
-    context: &BoundModuleContext,
-    store_epoch: &str,
-    operation_id: &str,
-    request_hash: &str,
-    page_ids: &[String],
-) -> Result<ProjectWorkspaceApplyOutcome, StoreError> {
-    let page_ids = unique_page_ids(page_ids, MAX_PROPOSAL_PAGES)?;
-    require_live_entries(connection, library_id, &page_ids)?;
-    if has_in_flight_dispatch(connection, &page_ids)? {
-        return Err(conflict(
-            "An Inbox entry is still being dispatched; wait for it to finish",
-        ));
-    }
-    let now = sqlite_now(connection)?;
-    run_mutation(
-        connection,
-        context,
-        store_epoch,
-        operation_id,
-        request_hash,
-        &now,
-        |_| {
-            supersede_open_proposals(connection, &page_ids, "superseded", &now)?;
-            for page_id in &page_ids {
-                connection.execute(
-                    "UPDATE inbox_entries SET state = 'open', suggestion_state = 'pending', \
-                       suggestion_error = NULL, revision = revision + 1, updated_at = ?2 \
-                     WHERE page_id = ?1 AND library_id = ?3",
-                    params![page_id, now, library_id],
-                )?;
-            }
-            Ok(simple_effects("inbox_request_suggestion", &now))
         },
     )
 }
@@ -1659,83 +1569,6 @@ pub(super) fn record_suggestion_failure(
 }
 
 #[allow(clippy::too_many_arguments)]
-pub(super) fn complete_dispatch(
-    connection: &Connection,
-    library_id: &str,
-    context: &BoundModuleContext,
-    store_epoch: &str,
-    operation_id: &str,
-    request_hash: &str,
-    proposal_id: &str,
-    thread_id: Option<&str>,
-) -> Result<ProjectWorkspaceApplyOutcome, StoreError> {
-    require_host(context)?;
-    if let Some(thread_id) = thread_id {
-        validate_id("thread_id", thread_id)?;
-    }
-    let proposal = require_proposal(connection, library_id, proposal_id)?;
-    if proposal.state != "dispatching" {
-        return Err(conflict("This Inbox dispatch is not in flight"));
-    }
-    let now = sqlite_now(connection)?;
-    run_mutation(
-        connection,
-        context,
-        store_epoch,
-        operation_id,
-        request_hash,
-        &now,
-        |_| {
-            connection.execute(
-                "UPDATE inbox_proposals SET state = 'completed', \
-                   dispatch_thread_id = COALESCE(?2, dispatch_thread_id), \
-                   failure_message = NULL, revision = revision + 1, updated_at = ?3 \
-                 WHERE proposal_id = ?1",
-                params![proposal_id, thread_id, now],
-            )?;
-            Ok(simple_effects("inbox_complete_dispatch", &now))
-        },
-    )
-}
-
-#[allow(clippy::too_many_arguments)]
-pub(super) fn fail_dispatch(
-    connection: &Connection,
-    library_id: &str,
-    context: &BoundModuleContext,
-    store_epoch: &str,
-    operation_id: &str,
-    request_hash: &str,
-    proposal_id: &str,
-    message: &str,
-) -> Result<ProjectWorkspaceApplyOutcome, StoreError> {
-    require_host(context)?;
-    let proposal = require_proposal(connection, library_id, proposal_id)?;
-    if proposal.state != "dispatching" {
-        return Err(conflict("This Inbox dispatch is not in flight"));
-    }
-    let message = failure_text(message);
-    let now = sqlite_now(connection)?;
-    run_mutation(
-        connection,
-        context,
-        store_epoch,
-        operation_id,
-        request_hash,
-        &now,
-        |_| {
-            connection.execute(
-                "UPDATE inbox_proposals SET state = 'failed', failure_message = ?2, \
-                   attempt = attempt + 1, revision = revision + 1, updated_at = ?3 \
-                 WHERE proposal_id = ?1",
-                params![proposal_id, message, now],
-            )?;
-            Ok(simple_effects("inbox_fail_dispatch", &now))
-        },
-    )
-}
-
-#[allow(clippy::too_many_arguments)]
 pub(super) fn retry_dispatch(
     connection: &Connection,
     library_id: &str,
@@ -1749,6 +1582,16 @@ pub(super) fn retry_dispatch(
     if proposal.state != "failed" || proposal.dispatch_session_id.is_none() {
         return Err(conflict("Only a failed chat dispatch can be retried"));
     }
+    let kind: Option<String> = connection.query_row(
+        "SELECT failure_kind FROM inbox_proposals WHERE proposal_id=?1",
+        [proposal_id],
+        |r| r.get(0),
+    )?;
+    if kind.as_deref() != Some("unavailable") {
+        return Err(conflict(
+            "Review this rejected decision before sending again",
+        ));
+    }
     let now = sqlite_now(connection)?;
     run_mutation(
         connection,
@@ -1758,8 +1601,22 @@ pub(super) fn retry_dispatch(
         request_hash,
         &now,
         |_| {
+            require_live_entries(connection, library_id, &proposal.page_ids)?;
+            for page_id in &proposal.page_ids {
+                let still_owned = connection.query_row(
+                    "SELECT state='open' AND current_proposal_id IS ?2 \
+                     FROM inbox_entries WHERE page_id=?1",
+                    params![page_id, proposal_id],
+                    |row| row.get::<_, bool>(0),
+                )?;
+                if !still_owned {
+                    return Err(conflict(
+                        "The Inbox group changed; review its messages before sending again",
+                    ));
+                }
+            }
             connection.execute(
-                "UPDATE inbox_proposals SET state = 'dispatching', failure_message = NULL, \
+                "UPDATE inbox_proposals SET state = 'dispatching', failure_message = NULL, failure_kind = NULL, \
                    revision = revision + 1, updated_at = ?2 \
                  WHERE proposal_id = ?1",
                 params![proposal_id, now],
@@ -1933,13 +1790,14 @@ pub(super) fn current_basis(
         .map(|page_id| {
             connection
                 .query_row(
-                    "SELECT document.generation, document.head_seq FROM pages page \
+                    "SELECT document.generation, document.head_seq, block.placement_revision FROM pages page JOIN blocks block ON block.id=page.block_id \
                      JOIN documents document ON document.id = page.document_id \
                      WHERE page.block_id = ?1",
                     [page_id],
                     |row| {
                         Ok(ProjectWorkspaceInboxPageBasis {
                             page_id: page_id.clone(),
+                            placement_revision: row.get(2)?,
                             generation: row.get(0)?,
                             head_seq: row.get(1)?,
                         })
@@ -2006,6 +1864,11 @@ fn normalize_action(
     action: &ProjectWorkspaceInboxDispatchAction,
 ) -> Result<ProjectWorkspaceInboxDispatchAction, StoreError> {
     match action {
+        ProjectWorkspaceInboxDispatchAction::None { reason } => {
+            Ok(ProjectWorkspaceInboxDispatchAction::None {
+                reason: bounded_text("reason", reason, 2000)?,
+            })
+        }
         ProjectWorkspaceInboxDispatchAction::Keep => Ok(ProjectWorkspaceInboxDispatchAction::Keep),
         ProjectWorkspaceInboxDispatchAction::NewChat { project_id, prompt } => {
             if scope.is_some() && project_id.as_deref() != scope {

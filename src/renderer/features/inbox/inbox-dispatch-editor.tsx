@@ -1,18 +1,21 @@
-import { useMemo, useState, type ReactNode } from "react";
-import type { InboxDispatchAction } from "../../../shared/inbox";
+import { useMemo, useState, type ReactNode, type ComponentProps } from "react";
+import type {
+  InboxDispatchAction,
+  InboxChat,
+  InboxItem,
+  InboxProposal,
+  InboxPageBasis,
+} from "../../../shared/inbox";
 import type { Project } from "../../../shared/types";
 import { NodexButton } from "@/components/ui/button";
-import {
-  NodexDropdownItem,
-  NodexDropdownMenu,
-  NodexDropdownSelectedIcon,
-} from "@/components/ui/dropdown";
+import { NodexOptionPicker } from "@/components/ui/dropdown";
 import { CompactChevronDownIcon } from "@/components/shared/icons";
-import { useCommandPaletteThreadItems } from "@/lib/command-palette-chat-search";
+import { LIBRARY_INBOX, projectInbox } from "../../../shared/inbox";
+import { useInboxChatTargets } from "./use-inbox";
 import { cn } from "@/lib/utils";
 import { INBOX_ACTION_ICONS } from "./inbox-icon-action";
 
-type ActionType = InboxDispatchAction["type"];
+type ActionType = Exclude<InboxDispatchAction["type"], "none">;
 
 const ACTION_LABELS: Readonly<Record<ActionType, string>> = {
   keep: "Keep",
@@ -29,6 +32,9 @@ const CONFIRM_LABELS: Readonly<Record<ActionType, string>> = {
 };
 
 export interface InboxDispatchDraft {
+  readonly proposal?: InboxProposal;
+  readonly chat?: InboxChat | null;
+  readonly basis?: readonly InboxPageBasis[];
   readonly type: ActionType;
   readonly projectId: string | null;
   readonly sessionId: string | null;
@@ -40,6 +46,8 @@ export function draftFromAction(
   fallbackPrompt: string,
 ): InboxDispatchDraft {
   switch (action.type) {
+    case "none":
+      return { type: "new_chat", projectId: null, sessionId: null, prompt: fallbackPrompt };
     case "keep":
       return { type: "keep", projectId: null, sessionId: null, prompt: fallbackPrompt };
     case "new_chat":
@@ -66,6 +74,23 @@ export function draftFromAction(
   }
 }
 
+/** A new decision still reviews the complete source group of the previous handoff. */
+export function draftForInboxItem(item: InboxItem, projectId: string | null): InboxDispatchDraft {
+  const proposal = item.proposal;
+  const action = proposal?.action;
+  return {
+    ...draftFromAction(
+      action && action.type !== "none"
+        ? action
+        : { type: "new_chat", projectId, prompt: item.body },
+      item.body,
+    ),
+    basis: proposal?.basis ?? [item.basis],
+    chat: proposal?.chat ?? null,
+    ...(proposal?.state === "open" ? { proposal } : {}),
+  };
+}
+
 /** Returns the exact action a draft authorizes, or null while it is incomplete. */
 export function actionFromDraft(draft: InboxDispatchDraft): InboxDispatchAction | null {
   const prompt = draft.prompt.trim();
@@ -86,12 +111,14 @@ export function actionFromDraft(draft: InboxDispatchDraft): InboxDispatchAction 
 function PickerTrigger({
   label,
   children,
-}: {
+  ...buttonProps
+}: ComponentProps<"button"> & {
   readonly label: string;
   readonly children: ReactNode;
 }) {
   return (
     <button
+      {...buttonProps}
       type="button"
       aria-label={label}
       className="cursor-interaction inline-flex h-7 max-w-[240px] min-w-0 items-center gap-1 rounded-lg px-2 text-sm text-token-foreground hover:bg-token-list-hover-background"
@@ -134,19 +161,15 @@ export function InboxDispatchEditor({
     () => projects.filter((project) => project.lifecycle === "active"),
     [projects],
   );
-  const { threads } = useCommandPaletteThreadItems({
-    enabled: draft.type === "send_to_chat",
-    activeProjectId: inboxProjectId,
-    refreshKey: 0,
-  });
-  const chats = useMemo(
-    () =>
-      threads.filter(
-        (thread) =>
-          thread.sessionId && (inboxProjectId === null || thread.projectId === inboxProjectId),
-      ),
-    [threads, inboxProjectId],
+  const [chatQuery, setChatQuery] = useState("");
+  const [chatOpen, setChatOpen] = useState(false);
+  const [selectedChat, setSelectedChat] = useState(initial.chat ?? initial.proposal?.chat ?? null);
+  const chatTargets = useInboxChatTargets(
+    inboxProjectId === null ? LIBRARY_INBOX : projectInbox(inboxProjectId),
+    chatQuery,
+    chatOpen,
   );
+  const chats = (chatTargets.data?.pages ?? []).flatMap((page) => page.items);
   const choosableProjects =
     draft.type === "move_to_project" && inboxProjectId !== null
       ? activeProjects.filter((project) => project.id !== inboxProjectId)
@@ -170,7 +193,8 @@ export function InboxDispatchEditor({
       ? "No Project"
       : (activeProjects.find((project) => project.id === projectId)?.name ?? "Choose a Project");
   const chatTitle =
-    chats.find((chat) => chat.sessionId === draft.sessionId)?.title ??
+    chats.find((chat) => chat.sessionId === draft.sessionId)?.displayTitle ??
+    (selectedChat?.sessionId === draft.sessionId ? selectedChat?.displayTitle : null) ??
     (draft.sessionId ? "Selected chat" : "Choose a chat");
 
   const submit = async () => {
@@ -200,7 +224,7 @@ export function InboxDispatchEditor({
               aria-checked={draft.type === type}
               onClick={() => selectType(type)}
               className={cn(
-                "cursor-interaction inline-flex h-7 items-center gap-1.5 rounded-lg px-2.5 text-sm transition-colors",
+                "cursor-interaction inline-flex h-7 items-center gap-1.5 rounded-lg px-2.5 text-sm",
                 draft.type === type
                   ? "bg-token-main-surface-primary text-token-foreground shadow-[0_0_0_0.5px_var(--color-token-border)]"
                   : "text-token-description-foreground hover:text-token-foreground",
@@ -217,58 +241,82 @@ export function InboxDispatchEditor({
         draft.type === "move_to_project" ? (
         <div className="flex items-center gap-2 px-1 text-sm text-token-description-foreground">
           <span>Project</span>
-          <NodexDropdownMenu
+          <NodexOptionPicker
+            search="filter"
+            searchAriaLabel="Search Projects"
+            searchPlaceholder="Search Projects…"
             triggerButton={
               <PickerTrigger label="Project">{projectName(draft.projectId)}</PickerTrigger>
             }
-          >
-            {draft.type === "new_chat" ? (
-              <NodexDropdownItem
-                rightSlot={draft.projectId === null ? <NodexDropdownSelectedIcon /> : null}
-                onSelect={() => setDraft((current) => ({ ...current, projectId: null }))}
-              >
-                No Project
-              </NodexDropdownItem>
-            ) : null}
-            {choosableProjects.map((project) => (
-              <NodexDropdownItem
-                key={project.id}
-                rightSlot={draft.projectId === project.id ? <NodexDropdownSelectedIcon /> : null}
-                onSelect={() => setDraft((current) => ({ ...current, projectId: project.id }))}
-              >
-                {project.name}
-              </NodexDropdownItem>
-            ))}
-          </NodexDropdownMenu>
+            value={draft.projectId ?? "projectless"}
+            options={[
+              ...(draft.type === "new_chat" ? [{ value: "projectless", label: "No Project" }] : []),
+              ...choosableProjects.map((project) => ({ value: project.id, label: project.name })),
+            ]}
+            onValueChange={(value) =>
+              setDraft((current) => ({
+                ...current,
+                projectId: value === "projectless" ? null : value,
+              }))
+            }
+          />
         </div>
       ) : null}
 
       {draft.type === "send_to_chat" ? (
         <div className="flex items-center gap-2 px-1 text-sm text-token-description-foreground">
           <span>Chat</span>
-          <NodexDropdownMenu
+          <NodexOptionPicker
+            search="filter"
+            filterOptions={false}
+            onSearchChange={setChatQuery}
+            open={chatOpen}
+            onOpenChange={setChatOpen}
+            searchAriaLabel="Search chats"
+            searchPlaceholder="Search chats…"
             triggerButton={<PickerTrigger label="Chat">{chatTitle}</PickerTrigger>}
-            contentMaxHeight="tall"
-          >
-            {chats.length === 0 ? (
-              <NodexDropdownItem disabled>No recent chats</NodexDropdownItem>
-            ) : (
-              chats.slice(0, 40).map((chat) => (
-                <NodexDropdownItem
-                  key={chat.id}
-                  subText={chat.projectName ?? "No Project"}
-                  rightSlot={
-                    draft.sessionId === chat.sessionId ? <NodexDropdownSelectedIcon /> : null
-                  }
-                  onSelect={() =>
-                    setDraft((current) => ({ ...current, sessionId: chat.sessionId }))
-                  }
-                >
-                  {chat.title}
-                </NodexDropdownItem>
-              ))
+            value={draft.sessionId ?? ""}
+            options={chats.flatMap((chat) =>
+              chat.sessionId
+                ? [
+                    {
+                      value: chat.sessionId,
+                      label: chat.displayTitle,
+                      subText: chat.projectName ?? "No Project",
+                      searchText: `${chat.displayTitle} ${chat.projectName ?? ""}`,
+                    },
+                  ]
+                : [],
             )}
-          </NodexDropdownMenu>
+            emptyMessage={
+              chatTargets.isPending
+                ? "Loading chats…"
+                : chatTargets.error
+                  ? "Couldn’t load chats"
+                  : "No matching chats"
+            }
+            footer={
+              chatTargets.error ? (
+                <NodexButton size="xs" variant="ghost" onClick={() => void chatTargets.refetch()}>
+                  Retry
+                </NodexButton>
+              ) : chatTargets.hasNextPage ? (
+                <NodexButton
+                  size="xs"
+                  variant="ghost"
+                  disabled={chatTargets.isFetchingNextPage}
+                  onClick={() => void chatTargets.fetchNextPage()}
+                >
+                  More chats
+                </NodexButton>
+              ) : null
+            }
+            onValueChange={(sessionId) => {
+              setSelectedChat(chats.find((chat) => chat.sessionId === sessionId) ?? null);
+              setDraft((current) => ({ ...current, sessionId }));
+            }}
+            contentMaxHeight="tall"
+          />
         </div>
       ) : null}
 

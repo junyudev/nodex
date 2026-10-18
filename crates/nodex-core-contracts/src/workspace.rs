@@ -6,14 +6,17 @@ use crate::collection::{CollectionWindow, CollectionWindowRequest};
 use crate::inbox::{
     ProjectWorkspaceInboxCounts, ProjectWorkspaceInboxDispatchAction,
     ProjectWorkspaceInboxDispatchContext, ProjectWorkspaceInboxDispatchWork,
-    ProjectWorkspaceInboxEntryKind, ProjectWorkspaceInboxEntryState, ProjectWorkspaceInboxItem,
-    ProjectWorkspaceInboxMessageEdit, ProjectWorkspaceInboxPageBasis, ProjectWorkspaceInboxScope,
-    ProjectWorkspaceInboxSuggestionInput, ProjectWorkspaceInboxSummary,
-    ProjectWorkspaceInboxWindowFilter,
+    ProjectWorkspaceInboxEntryKind, ProjectWorkspaceInboxEntryState,
+    ProjectWorkspaceInboxExecutionSelection, ProjectWorkspaceInboxFailureKind,
+    ProjectWorkspaceInboxItem, ProjectWorkspaceInboxMessageEdit, ProjectWorkspaceInboxPageBasis,
+    ProjectWorkspaceInboxScope, ProjectWorkspaceInboxSuggestedDispatch,
+    ProjectWorkspaceInboxSuggestionInput, ProjectWorkspaceInboxSuggestionMode,
+    ProjectWorkspaceInboxSuggestionRequest, ProjectWorkspaceInboxSuggestionTitle,
+    ProjectWorkspaceInboxSummary, ProjectWorkspaceInboxWindowFilter,
 };
 use crate::{ModuleMutationReceipt, ModuleName, VersionedModuleContract};
 
-pub const PROJECT_WORKSPACE_CONTRACT_VERSION: u32 = 39;
+pub const PROJECT_WORKSPACE_CONTRACT_VERSION: u32 = 40;
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 #[serde(tag = "kind", rename_all = "snake_case")]
@@ -174,6 +177,14 @@ pub enum ProjectWorkspaceRead {
     },
     /// Entries the suggestion Agent should consider, oldest first. One read never
     /// mixes Inboxes: it returns the oldest waiting entry's Inbox only.
+    InboxChatTargets {
+        scope: ProjectWorkspaceInboxScope,
+        query: String,
+        window: CollectionWindowRequest,
+    },
+    InboxSuggestionRequests {
+        limit: u32,
+    },
     InboxPendingSuggestions {
         limit: u32,
     },
@@ -317,6 +328,12 @@ pub enum ProjectWorkspaceReadValue {
     },
     InboxWindow {
         items: CollectionWindow<ProjectWorkspaceInboxItem>,
+    },
+    InboxChatTargets {
+        window: CollectionWindow<crate::inbox::ProjectWorkspaceInboxChat>,
+    },
+    InboxSuggestionRequests {
+        requests: Vec<ProjectWorkspaceInboxSuggestionRequest>,
     },
     InboxPendingSuggestions {
         entries: Vec<ProjectWorkspaceInboxSuggestionInput>,
@@ -1700,6 +1717,8 @@ pub enum ProjectWorkspaceIntent {
     /// The whole text becomes the Page body. Without a sender title, Core gives the
     /// Page a provisional title that the suggestion Agent may later replace.
     SendInboxMessage {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        expected_store_epoch: Option<String>,
         page_id: String,
         document_id: String,
         text: String,
@@ -1729,6 +1748,9 @@ pub enum ProjectWorkspaceIntent {
     },
     /// The user authorizes one exact proposal revision, optionally with edits.
     ConfirmInboxDispatch {
+        expected_store_epoch: String,
+        basis: Vec<ProjectWorkspaceInboxPageBasis>,
+        execution_selection: Option<ProjectWorkspaceInboxExecutionSelection>,
         proposal_id: String,
         expected_revision: i64,
         action: Option<ProjectWorkspaceInboxDispatchAction>,
@@ -1736,6 +1758,9 @@ pub enum ProjectWorkspaceIntent {
     },
     /// The user authors and authorizes a dispatch without a suggestion.
     DispatchInboxEntries {
+        expected_store_epoch: String,
+        basis: Vec<ProjectWorkspaceInboxPageBasis>,
+        execution_selection: Option<ProjectWorkspaceInboxExecutionSelection>,
         proposal_id: String,
         page_ids: Vec<String>,
         action: ProjectWorkspaceInboxDispatchAction,
@@ -1754,8 +1779,40 @@ pub enum ProjectWorkspaceIntent {
         entry_kind: Option<ProjectWorkspaceInboxEntryKind>,
     },
     /// Supersedes current open suggestions and asks for a new one.
+    PrepareInboxSuggestions {
+        request_id: String,
+        limit: u32,
+    },
     RequestInboxSuggestion {
+        request_id: String,
+        mode: ProjectWorkspaceInboxSuggestionMode,
         page_ids: Vec<String>,
+        basis: Vec<ProjectWorkspaceInboxPageBasis>,
+        proposal_id: Option<String>,
+        expected_revision: Option<i64>,
+        correction: Option<String>,
+    },
+    SettleInboxSuggestion {
+        request_id: String,
+        generation: i64,
+        titles: Vec<ProjectWorkspaceInboxSuggestionTitle>,
+        suggestions: Vec<ProjectWorkspaceInboxSuggestedDispatch>,
+        produced_by: Option<String>,
+        error: Option<String>,
+    },
+    EditInboxMessage {
+        page_id: String,
+        basis: ProjectWorkspaceInboxPageBasis,
+        original_text: String,
+        text: String,
+    },
+    UndoInboxDecision {
+        undo_token: String,
+    },
+    BeginInboxDispatch {
+        proposal_id: String,
+        expected_revision: i64,
+        message_id: String,
     },
     /// Records that the user rewrote a message. Suggestions made for the old text are
     /// withdrawn and every message they covered waits for a new one; a provisional
@@ -1769,10 +1826,15 @@ pub enum ProjectWorkspaceIntent {
     },
     /// Records successful host delivery of a confirmed chat dispatch.
     CompleteInboxDispatch {
+        expected_revision: i64,
+        message_id: String,
         proposal_id: String,
         dispatched_thread_id: Option<String>,
     },
     FailInboxDispatch {
+        expected_revision: i64,
+        message_id: String,
+        failure_kind: ProjectWorkspaceInboxFailureKind,
         proposal_id: String,
         message: String,
     },
@@ -1849,6 +1911,8 @@ pub struct ProjectWorkspaceCodexThreadObservation {
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 pub struct ProjectWorkspaceCommitValue {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub inbox_undo_token: Option<String>,
     pub affected_project_ids: Vec<String>,
     pub affected_session_ids: Vec<String>,
     pub affected_thread_ids: Vec<String>,

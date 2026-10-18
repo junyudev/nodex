@@ -318,6 +318,7 @@ pub(super) fn rotate_installed_store_epoch(
                 ));
             }
             crate::library::discard_replaced_editor_history(transaction)?;
+            crate::workspace::discard_replaced_inbox_dispatches(transaction)?;
             transaction.execute_batch("PRAGMA defer_foreign_keys = ON;")?;
             transaction.execute_batch("DROP TRIGGER change_log_is_immutable")?;
             transaction.execute(

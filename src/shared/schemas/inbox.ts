@@ -6,6 +6,13 @@ import {
 } from "../inbox";
 import type {
   InboxConfirmInput,
+  InboxConfirmationDraft,
+  InboxPreparedConfirmation,
+  InboxExecutionSelection,
+  InboxSuggestionRequestInput,
+  InboxUndoInput,
+  InboxPageBasis,
+  InboxChatTargetsInput,
   InboxDispatchAction,
   InboxDispatchInput,
   InboxEditInput,
@@ -18,6 +25,8 @@ import type {
   InboxSummaryInput,
   InboxWindowInput,
 } from "../inbox";
+import { isBoundedOperationId } from "../operation-identity";
+import { AgentRuntimeModelSelectionSchema } from "./agent-runtime-api";
 
 export const MAX_INBOX_MESSAGE_BYTES = 64 * 1024;
 export const MAX_INBOX_DISPATCH_PAGES = 16;
@@ -25,6 +34,7 @@ export const MAX_INBOX_BULK_PAGES = 200;
 export const MAX_INBOX_PROMPT_BYTES = 32 * 1024;
 
 const id = z.string().trim().min(1).max(512);
+const operationId = id.refine(isBoundedOperationId, "Operation identity is invalid");
 const utf8Bytes = (value: string) => new TextEncoder().encode(value).length;
 
 const pageIds = (maximum: number) =>
@@ -50,11 +60,37 @@ export const InboxEntryStateSchema = z.enum(["open", "kept", "done"]);
 export const InboxWindowFilterSchema = z.enum(["inbox", "processed"]);
 
 export const InboxDispatchActionSchema = z.discriminatedUnion("type", [
+  z.object({ type: z.literal("none"), reason: z.string().trim().min(1).max(200) }).strict(),
   z.object({ type: z.literal("keep") }).strict(),
   z.object({ type: z.literal("new_chat"), projectId: id.nullable(), prompt }).strict(),
   z.object({ type: z.literal("send_to_chat"), sessionId: id, prompt }).strict(),
   z.object({ type: z.literal("move_to_project"), projectId: id }).strict(),
 ]) satisfies z.ZodType<InboxDispatchAction>;
+
+export const InboxPageBasisSchema = z
+  .object({
+    pageId: id,
+    generation: z.number().int().nonnegative(),
+    headSeq: z.number().int().nonnegative(),
+    placementRevision: z.number().int().nonnegative(),
+  })
+  .strict() satisfies z.ZodType<InboxPageBasis>;
+
+const basis = z
+  .array(InboxPageBasisSchema)
+  .min(1)
+  .max(MAX_INBOX_DISPATCH_PAGES)
+  .refine(
+    (values) => new Set(values.map((value) => value.pageId)).size === values.length,
+    "Message revisions must be unique",
+  );
+
+export const InboxExecutionSelectionSchema = z
+  .object({
+    modelSelection: AgentRuntimeModelSelectionSchema,
+    interactionMode: z.enum(["default", "plan"]),
+  })
+  .strict() satisfies z.ZodType<InboxExecutionSelection>;
 
 export const InboxScopeSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("library") }).strict(),
@@ -64,6 +100,15 @@ export const InboxScopeSchema = z.discriminatedUnion("kind", [
 export const InboxSummaryInputSchema = z
   .object({ scope: InboxScopeSchema })
   .strict() satisfies z.ZodType<InboxSummaryInput>;
+
+export const InboxChatTargetsInputSchema = z
+  .object({
+    scope: InboxScopeSchema,
+    query: z.string().trim().max(512),
+    after: z.string().min(1).max(4096).nullable().optional(),
+    first: z.number().int().min(1).max(100).optional(),
+  })
+  .strict() satisfies z.ZodType<InboxChatTargetsInput>;
 
 export const InboxWindowInputSchema = z
   .object({
@@ -76,17 +121,31 @@ export const InboxWindowInputSchema = z
 
 export const InboxSendInputSchema = z
   .object({
+    operationId,
+    pageId: id,
+    documentId: id,
+    issuedAt: z.number().int().nonnegative(),
+    storeEpoch: id,
     scope: InboxScopeSchema,
     text: messageText,
   })
   .strict() satisfies z.ZodType<InboxSendInput>;
 
 export const InboxEditInputSchema = z
-  .object({ pageId: id, originalText: messageText, text: messageText })
-  .strict() satisfies z.ZodType<InboxEditInput>;
+  .object({ pageId: id, basis: InboxPageBasisSchema, originalText: messageText, text: messageText })
+  .strict()
+  .refine(
+    (input) => input.pageId === input.basis.pageId,
+    "Message revision belongs to another Page",
+  ) satisfies z.ZodType<InboxEditInput>;
 
 export const InboxConfirmInputSchema = z
   .object({
+    storeEpoch: id,
+    operationId,
+    sessionId: id,
+    basis,
+    executionSelection: InboxExecutionSelectionSchema.nullable().optional(),
     proposalId: id,
     expectedRevision: z.number().int().min(1),
     action: InboxDispatchActionSchema.optional(),
@@ -95,18 +154,87 @@ export const InboxConfirmInputSchema = z
 
 export const InboxDispatchInputSchema = z
   .object({
+    storeEpoch: id,
+    operationId,
+    proposalId: id,
+    sessionId: id,
+    basis,
+    executionSelection: InboxExecutionSelectionSchema.nullable().optional(),
     pageIds: pageIds(MAX_INBOX_DISPATCH_PAGES),
     action: InboxDispatchActionSchema,
   })
   .strict() satisfies z.ZodType<InboxDispatchInput>;
+
+export const InboxConfirmationDraftSchema = z.discriminatedUnion("kind", [
+  z
+    .object({
+      kind: z.literal("proposal"),
+      storeEpoch: id,
+      proposalId: id,
+      expectedRevision: z.number().int().min(1),
+      basis,
+      action: InboxDispatchActionSchema.optional(),
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("direct"),
+      storeEpoch: id,
+      pageIds: pageIds(MAX_INBOX_DISPATCH_PAGES),
+      basis,
+      action: InboxDispatchActionSchema,
+    })
+    .strict(),
+]) satisfies z.ZodType<InboxConfirmationDraft>;
+
+export const InboxPreparedConfirmationSchema = z.discriminatedUnion("kind", [
+  InboxConfirmInputSchema.extend({ kind: z.literal("proposal") }),
+  InboxDispatchInputSchema.extend({ kind: z.literal("direct") }),
+]) satisfies z.ZodType<InboxPreparedConfirmation>;
+
+export const InboxUndoInputSchema = z
+  .object({ operationId, undoToken: id })
+  .strict() satisfies z.ZodType<InboxUndoInput>;
 
 export const InboxPageIdsInputSchema = z
   .object({ pageIds: pageIds(MAX_INBOX_BULK_PAGES) })
   .strict() satisfies z.ZodType<InboxPageIdsInput>;
 
 export const InboxSuggestionRequestInputSchema = z
-  .object({ pageIds: pageIds(MAX_INBOX_DISPATCH_PAGES) })
-  .strict() satisfies z.ZodType<InboxPageIdsInput>;
+  .object({
+    requestId: id,
+    mode: z.enum(["auto", "grouped", "refine"]),
+    pageIds: pageIds(MAX_INBOX_DISPATCH_PAGES),
+    basis,
+    proposalId: id.nullable().optional(),
+    expectedRevision: z.number().int().positive().nullable().optional(),
+    correction: z.string().trim().min(1).max(4_000).nullable().optional(),
+  })
+  .strict()
+  .superRefine((input, context) => {
+    const members = new Set(input.pageIds);
+    if (
+      input.basis.length !== members.size ||
+      input.basis.some((entry) => !members.has(entry.pageId))
+    )
+      context.addIssue({
+        code: "custom",
+        message: "Every selected message needs its exact revision",
+      });
+    if (input.mode === "refine") {
+      if (!input.proposalId || !input.expectedRevision || !input.correction)
+        context.addIssue({
+          code: "custom",
+          message: "Refining needs the current suggestion and a correction",
+        });
+      return;
+    }
+    if (input.proposalId || input.expectedRevision || input.correction)
+      context.addIssue({
+        code: "custom",
+        message: "Only a refinement can name a suggestion or correction",
+      });
+  }) satisfies z.ZodType<InboxSuggestionRequestInput>;
 
 export const InboxSetStateInputSchema = z
   .object({ pageIds: pageIds(MAX_INBOX_BULK_PAGES), state: InboxEntryStateSchema })
@@ -116,10 +244,9 @@ export const InboxSetKindInputSchema = z
   .object({ pageId: id, kind: InboxEntryKindSchema.nullable() })
   .strict() satisfies z.ZodType<InboxSetKindInput>;
 
-export const InboxAgentBindingSchema = z.discriminatedUnion("kind", [
-  z.object({ kind: z.literal("codex") }).strict(),
-  z.object({ kind: z.literal("claude"), instanceConfigId: id }).strict(),
-]) satisfies z.ZodType<InboxAgentBinding>;
+export const InboxAgentBindingSchema = z
+  .object({ instanceId: id })
+  .strict() satisfies z.ZodType<InboxAgentBinding>;
 
 export const UpdateInboxSettingsInputSchema = z
   .object({
