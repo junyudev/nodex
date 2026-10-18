@@ -1,0 +1,29 @@
+src/renderer/features/local-conversation/agent-runtime-conversation-owner.node.test.ts
+  s_bd811abbf24a41::t_8f75784449198d 750-774
+tests/e2e/support/agent-smoke-harness.ts
+  s_bd811abbf24a41::t_294021e2643b9c 453-456,465-481,487-495
+src/renderer/features/local-conversation/agent-runtime-conversation-adapter.ts
+  s_bd811abbf24a41::t_ad328db307b631 409
+  s_bd811abbf24a41::t_250425012b4694 313,349-350,361-362
+  s_bd811abbf24a41::t_0a2c7a7951a7bb 419
+src/renderer/features/local-conversation/agent-runtime-stage-actions.node.test.ts
+  s_bd811abbf24a41::t_4810270767ad2c 230-252
+src/renderer/features/local-conversation/agent-runtime-conversation-owner.ts
+  s_bd811abbf24a41::t_47062d103c75ff 246,302-325,468,519,564
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "bbb63637357f3a2c41766e19c09cd8860406d900",
+  "prompts": {},
+  "sessions": {
+    "s_bd811abbf24a41": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d475c410-7aa3-406e-a6d6-6873f7b30325",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}

@@ -1,0 +1,57 @@
+tests/e2e/codex-inline-visualization.spec.ts
+  s_bd811abbf24a41::t_e73ff24b2b1a06 736-773
+  s_bd811abbf24a41::t_960f99d5a98981 842-843
+docs/product-specs/agent-runtime-behavior.md
+  s_bd811abbf24a41::t_960f99d5a98981 94-96
+src/main/codex-application/CodexProtocolNotificationTimeline.node.test.ts
+  s_bd811abbf24a41::t_0256e26b39292f 115-116
+src/main/codex-application/CodexConversationArchive.node.test.ts
+  s_bd811abbf24a41::t_0256e26b39292f 187-188
+src/main/codex-application/CodexVisualizationState.ts
+  s_bd811abbf24a41::t_45491eb306c8e8 16,67-74,225-253,263,278-279
+src/main/codex-application/CodexTurnCommands.node.test.ts
+  s_bd811abbf24a41::t_0256e26b39292f 523-524
+src/main/app/AgentRuntimeApplicationLive.ts
+  s_bd811abbf24a41::t_ba387616bcaad2 1-2,152,214-230
+src/shared/agent-prompt.ts
+  s_bd811abbf24a41::t_ba387616bcaad2 110-112,149-151,177-180
+  s_bd811abbf24a41::t_d320000e72a461 79-82,84,88,90,92-103,105-109,113-117,120,172
+  s_bd811abbf24a41::t_b1e1bd668ec1e7 175-176,181
+  s_bd811abbf24a41::t_dc127176822bbc 104
+src/shared/codex-visualization-passive-context.node.test.ts
+  s_bd811abbf24a41::t_7be73e035faef2 5,47
+src/shared/codex-visualization-state.ts
+  s_bd811abbf24a41::t_45491eb306c8e8 116,120
+  s_bd811abbf24a41::t_ba387616bcaad2 117-119
+  s_bd811abbf24a41::t_66c914ad7bfc59 114-115
+src/main/agent-runtime/AgentRuntimeApplication.ts
+  s_bd811abbf24a41::t_ba387616bcaad2 39,116-125,1317-1333,1337,1339,1343-1344
+src/shared/codex-visualization-passive-context.ts
+  s_bd811abbf24a41::t_dc127176822bbc 70-72,78-79,81,83
+  s_bd811abbf24a41::t_7be73e035faef2 73-77,80,82,84-87
+src/main/agent-runtime/AgentRuntimeApplication.node.test.ts
+  s_bd811abbf24a41::t_2b97fbe3a1a479 2663,2682-2683,2715,2723,2735
+  s_bd811abbf24a41::t_960f99d5a98981 2664-2681,2684-2714,2716-2722,2724-2734
+src/main/codex-application/CodexProtocolNotificationEffects.node.test.ts
+  s_bd811abbf24a41::t_0256e26b39292f 82-83
+src/main/codex-application/CodexVisualizationState.node.test.ts
+  s_bd811abbf24a41::t_0125ca7dc407c1 13-16,46,445
+  s_bd811abbf24a41::t_960f99d5a98981 446-467
+  s_bd811abbf24a41::t_43e5856e50c780 468
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "b59130576b21b84adfe60868a6b2210e71733388",
+  "prompts": {},
+  "sessions": {
+    "s_bd811abbf24a41": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d475c410-7aa3-406e-a6d6-6873f7b30325",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}

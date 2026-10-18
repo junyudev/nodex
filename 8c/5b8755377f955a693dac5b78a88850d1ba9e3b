@@ -1,0 +1,43 @@
+scripts/scenarios/harness/electron-e2e-harness.ts
+  s_bd811abbf24a41::t_3cc93e8e32a10c 172-173,176-186,200-205,325,336,349,358,436
+  s_bd811abbf24a41::t_bab835cb381126 394
+tests/e2e/workbench-shell-navigation.spec.ts
+  s_bd811abbf24a41::t_27d58e260afdfe 216-217
+tests/e2e/database-surface-history.spec.ts
+  s_bd811abbf24a41::t_27d58e260afdfe 71-75
+docs/development.md
+  s_bd811abbf24a41::t_e7f44fd57e1a8f 597-601
+tests/e2e/codex-visualization-retention.spec.ts
+  s_bd811abbf24a41::t_27d58e260afdfe 271-272
+  s_bd811abbf24a41::t_66e231d7e8998f 590-591
+scripts/scenarios/harness/electron-background-windows.cjs
+  s_bd811abbf24a41::t_80bab87d93a069 1-29
+src/renderer/features/local-conversation/agent-runtime-subagent-overview.node.test.ts
+  s_bd811abbf24a41::t_d0b784c2c33d85 149,156-159
+src/renderer/features/local-conversation/agent-runtime-subagent-overview.ts
+  s_bd811abbf24a41::t_d0b784c2c33d85 102-103,109,133-135
+tests/e2e/subagents.spec.ts
+  s_bd811abbf24a41::t_3376c1d79d8d1a 121-123
+tests/e2e/acp-backend-lifecycle.spec.ts
+  s_bd811abbf24a41::t_e4f5ab6725b621 203
+tests/e2e/codex-inline-visualization.spec.ts
+  s_bd811abbf24a41::t_66e231d7e8998f 804-805
+tests/e2e/electron-startup.spec.ts
+  s_bd811abbf24a41::t_a987ec78ace612 84-88,100
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "8c5b8755377f955a693dac5b78a88850d1ba9e3b",
+  "prompts": {},
+  "sessions": {
+    "s_bd811abbf24a41": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d475c410-7aa3-406e-a6d6-6873f7b30325",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
