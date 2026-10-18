@@ -268,6 +268,8 @@ test("retains native HTML guests across real Thread navigation and releases dele
   const runtime = await resolveNativeVisualizationFixtureRuntime(repositoryRoot);
   const harness = await ElectronScenarioHarness.create({
     label: "codex-visualization-retention",
+    // Guest focus follows real window activation.
+    windows: "foreground",
     codex: "empty",
     // The real connection requires an account even for history; no Turn uses this synthetic key.
     codexApiKey: "nodex-read-only-history-test-key",

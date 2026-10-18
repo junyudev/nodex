@@ -213,6 +213,8 @@ test("keeps Home and Space navigation, tabs and chrome across Settings and resta
     await withElectronScenario(
       {
         label: "workbench-shell-navigation",
+        // Native window material and focus are what this measures.
+        windows: "foreground",
         scenarioId: PAGE_RELOCATION_SCENARIO_ID,
         onFailure: async ({ readRuntimeLogs }) => {
           await writeFile(path.join(artifacts, "runtime.log"), await readRuntimeLogs());

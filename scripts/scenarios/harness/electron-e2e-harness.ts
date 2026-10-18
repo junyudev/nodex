@@ -169,7 +169,20 @@ export interface NodexElectronLaunchInput {
   readonly nodexHome: string;
   readonly runId?: string;
   readonly isolatedHostHome?: string;
+  /** Defaults to `NODEX_E2E_WINDOWS`, else background. */
+  readonly windows?: E2eWindowPresentation;
 }
+
+/**
+ * Background windows never appear, take the Dock or take the keyboard while tests run; a spec
+ * that asserts real window focus or native window chrome asks for foreground windows.
+ * `NODEX_E2E_WINDOWS=foreground` shows every window, for watching a run.
+ */
+export type E2eWindowPresentation = "background" | "foreground";
+const e2eWindowPresentation = (
+  requested: E2eWindowPresentation | undefined,
+): E2eWindowPresentation =>
+  process.env.NODEX_E2E_WINDOWS === "foreground" ? "foreground" : (requested ?? "background");
 
 export async function launchNodexElectronApplication(
   input: NodexElectronLaunchInput,
@@ -183,6 +196,12 @@ export async function launchNodexElectronApplication(
     args: [
       ...(input.isolatedHostHome
         ? ["-r", path.join(repositoryRoot, "scripts/scenarios/harness/electron-isolated-paths.cjs")]
+        : []),
+      ...(e2eWindowPresentation(input.windows) === "background"
+        ? [
+            "-r",
+            path.join(repositoryRoot, "scripts/scenarios/harness/electron-background-windows.cjs"),
+          ]
         : []),
       ...(input.executablePath ? [] : [repositoryRoot]),
       ...isolatedElectronArguments(),
@@ -303,6 +322,7 @@ export interface ElectronHarnessInput {
   readonly prepareAgentRuntime?: boolean;
   /** Isolate Electron's home/Documents paths before Main captures its host configuration. */
   readonly isolateHostDirectories?: boolean;
+  readonly windows?: E2eWindowPresentation;
 }
 
 export class ElectronScenarioHarness {
@@ -313,6 +333,7 @@ export class ElectronScenarioHarness {
   readonly #executablePath: string | undefined;
   readonly #lease: IsolatedRunLease;
   readonly #isolateHostDirectories: boolean;
+  readonly #windows: E2eWindowPresentation | undefined;
   #application: ElectronApplication | null = null;
   #page: Page | null = null;
   #closing: Promise<void> | null = null;
@@ -325,6 +346,7 @@ export class ElectronScenarioHarness {
     lease: IsolatedRunLease,
     executablePath?: string,
     isolateHostDirectories = false,
+    windows?: E2eWindowPresentation,
   ) {
     this.profile = profile;
     this.#cwd = cwd;
@@ -333,6 +355,7 @@ export class ElectronScenarioHarness {
     this.#executablePath = executablePath;
     this.#lease = lease;
     this.#isolateHostDirectories = isolateHostDirectories;
+    this.#windows = windows;
   }
 
   static async create(input: ElectronHarnessInput): Promise<ElectronScenarioHarness> {
@@ -368,6 +391,7 @@ export class ElectronScenarioHarness {
         lease,
         input.executablePath,
         input.isolateHostDirectories,
+        input.windows,
       );
     } catch (error) {
       const cleanup = await cleanupIsolatedProfile({
@@ -409,6 +433,7 @@ export class ElectronScenarioHarness {
       ...(this.#isolateHostDirectories
         ? { isolatedHostHome: path.join(this.profile.runRoot, "home") }
         : {}),
+      ...(this.#windows ? { windows: this.#windows } : {}),
     });
     this.#application = application;
     const page =

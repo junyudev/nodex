@@ -68,7 +68,11 @@ async function invokeHistoryMenu(
 
 test("replays Board, List, and editor transfers through their content participants", async () => {
   test.setTimeout(180_000);
-  const harness = await ElectronScenarioHarness.create({ label: "database-surface-history" });
+  // The native Edit menu acts on the focused window.
+  const harness = await ElectronScenarioHarness.create({
+    label: "database-surface-history",
+    windows: "foreground",
+  });
   const modifier = process.platform === "darwin" ? "Meta" : "Control";
   try {
     const page = await harness.launch();
