@@ -1,0 +1,99 @@
+brand/round3/research/README.md
+  s_e2686ed51a5860::t_00c683c08f9354 1-140
+brand/round3/.gitignore
+  s_e2686ed51a5860::t_90c2e711e08510 1-9
+brand/round3/vector/README.md
+  s_e2686ed51a5860::t_00c683c08f9354 1-86
+brand/round3/imagegen/README.md
+  s_e2686ed51a5860::t_00c683c08f9354 1-64
+vite.config.ts
+  s_e2686ed51a5860::t_00c683c08f9354 11
+brand/round3/research/work/build_a.py
+  s_e2686ed51a5860::t_8524d5b7995174 1-49
+brand/round3/research/work/build_all.py
+  s_e2686ed51a5860::t_25ef825bf38d81 1-38
+brand/round3/research/work/build_b.py
+  s_abb68521e49fa0::t_848e1b5bb89bb2 1-25
+brand/round3/research/work/build_c.py
+  s_e2686ed51a5860::t_7f5db509fc2afc 1-120
+brand/round3/research/work/build_lockups.py
+  s_cd7a7c963ae6b3::t_8218ca5138b342 1-56
+brand/round3/research/work/build_overview.py
+  s_e2686ed51a5860::t_0ff45257b9ad15 1-138
+brand/round3/research/work/chrome.py
+  s_e2686ed51a5860::t_54d300b314b9b2 1-59
+brand/round3/research/work/hull.py
+  s_e2686ed51a5860::t_f31e0205b793dd 1-63
+brand/round3/research/work/tile.py
+  s_e2686ed51a5860::t_34dc3ee8e890df 1-106
+brand/round3/vector/01-bloody-reina/emblem.svg
+  s_e2686ed51a5860::t_5fc1d6f020d0c8 1
+brand/round3/vector/01-bloody-reina/icon-small.svg
+  s_e2686ed51a5860::t_b2f21dc64068a2 1
+brand/round3/vector/01-bloody-reina/icon.svg
+  s_e2686ed51a5860::t_7a33954fb8a2b8 1
+brand/round3/vector/01-bloody-reina/lockup.svg
+  s_e2686ed51a5860::t_2a2163001cdfa3 1
+brand/round3/vector/02-squad-patch/icon-small.svg
+  s_e2686ed51a5860::t_d54b703a8a1457 1
+brand/round3/vector/02-squad-patch/icon.svg
+  s_e2686ed51a5860::t_35f10d9eb0cfbb 1
+brand/round3/vector/02-squad-patch/lockup.svg
+  s_e2686ed51a5860::t_b606f22841dc41 1
+brand/round3/vector/02-squad-patch/patch.svg
+  s_e2686ed51a5860::t_fcd52e2f67c517 1
+brand/round3/vector/03-hull-01/icon-small.svg
+  s_e2686ed51a5860::t_9401e072a75138 1
+brand/round3/vector/03-hull-01/icon.svg
+  s_e2686ed51a5860::t_26eb6c2a4ee8a6 1
+brand/round3/vector/03-hull-01/lockup.svg
+  s_e2686ed51a5860::t_18ddf368aef10c 1
+brand/round3/vector/overview.html
+  s_e2686ed51a5860::t_a8a5450de1485e 1-77
+brand/round3/vector/src/build.py
+  s_e2686ed51a5860::t_e12e665f33524b 1-157
+brand/round3/vector/src/h1lib.py
+  s_e2686ed51a5860::t_f26ce4afc4399d 1-524
+brand/round3/vector/src/hull.py
+  s_e2686ed51a5860::t_be1ce0305d4ba2 1-87
+brand/round3/vector/src/hull_one.py
+  s_e2686ed51a5860::t_ed6181695221a4 1-73
+brand/round3/vector/src/overview.py
+  s_e2686ed51a5860::t_5d411945c40120 1-126
+brand/round3/vector/src/patch.py
+  s_e2686ed51a5860::t_6ce78ab5611580 1-125
+brand/round3/vector/src/personal_mark.py
+  s_e2686ed51a5860::t_2fc356286ecdf2 1-324
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "0560ca383cbb0cf991825929bc956b0d395d7881",
+  "prompts": {},
+  "sessions": {
+    "s_abb68521e49fa0": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "fb6fba0e-ddde-45c4-b7f3-cc628f9877c2",
+        "model": "unknown"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_cd7a7c963ae6b3": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "90a77f4c-2ddc-48f4-9dae-559b0ec09666",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_e2686ed51a5860": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "0526dede-ce9b-4111-bcb9-7579823a5abd",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
