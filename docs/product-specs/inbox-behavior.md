@@ -187,7 +187,10 @@ Main rejects unknown targets, invalid action fields, duplicate or missing member
 and overlong prompts instead of repairing or truncating them. A suggestion can
 never invent a destination. An explicit group produces one concrete suggestion
 covering all its members. Generation and transport failures remain failures
-with Retry; they do not masquerade as completed advice.
+with Retry; they do not masquerade as completed advice. A failure names its own
+cause: a timeout, missing sign-in, a rate limit, or an answer too long or in a
+form Nodex cannot read. The Agent Runtime waits a suggestion's whole time
+budget, so a slow suggestion fails only as its own timeout.
 
 In the same pass, the Agent names each message that still has its provisional
 title. Core checks the complete request's source versions and atomically applies

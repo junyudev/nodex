@@ -106,6 +106,13 @@ or a Core socket path that exceeds the macOS Unix-domain socket budget. Central
 storage does not permit writable Profile reuse across worktrees. Use a short
 slug and a distinct home suffix for an independent instance or Profile snapshot.
 
+Main logs to `<home>/.nodex/logs/backend-*.log`, and warnings also print in the
+`vp run dev` terminal. A failed Inbox suggestion logs `Inbox suggestion failed`
+with its `requestId`, `elapsedMs`, and the runtime's own `reason` (for example a
+timeout or an unreadable answer); the `Inbox suggestion requested` line with the
+same `requestId` names the model and input size. Captured text never enters
+these lines, including anything a failing CLI echoed of it.
+
 Instance diagnostics and debug exports belong in that home's `artifacts/`.
 Review recordings, screenshots, and verification reports use the primary
 checkout's review-artifact directory defined in `AGENTS.md`. These local

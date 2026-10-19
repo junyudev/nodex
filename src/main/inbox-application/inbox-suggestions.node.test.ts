@@ -6,6 +6,7 @@ import type {
 import {
   buildInboxSuggestionPrompt,
   describeInboxRuntimeFailure,
+  loggableInboxRuntimeFailure,
   parseInboxSuggestionOutput,
   validateInboxSuggestions,
 } from "./inbox-suggestions";
@@ -263,6 +264,29 @@ describe("describeInboxRuntimeFailure", () => {
     expect(describeInboxRuntimeFailure(`Unknown failure\n${"x".repeat(500)}`, "suggestion")).toBe(
       "Unknown failure",
     );
+    expect(describeInboxRuntimeFailure("Agent Runtime request timed out", "suggestion")).toBe(
+      "The suggestion agent timed out",
+    );
+    expect(
+      describeInboxRuntimeFailure(
+        "Text generation failed in generateStructured: Codex returned invalid structured output.",
+        "suggestion",
+      ),
+    ).toBe("The suggestion agent answered in a form Nodex couldn’t read");
+  });
+
+  it("never shows or logs what a failing CLI echoed of the captured text", () => {
+    const echoed =
+      "Text generation failed in generateStructured: Codex CLI command failed: OpenAI Codex v0.163.0\nuser\nMy salary review notes\nERROR: stream disconnected before completion";
+    expect(loggableInboxRuntimeFailure(echoed)).toBe(
+      "Codex CLI command failed: ERROR: stream disconnected before completion",
+    );
+    expect(describeInboxRuntimeFailure(echoed, "suggestion")).toBe(
+      "Codex CLI command failed: ERROR: stream disconnected before completion",
+    );
+    const endsInText =
+      "Text generation failed in generateStructured: Codex CLI command failed: OpenAI Codex\nuser\nMy salary review notes";
+    expect(loggableInboxRuntimeFailure(endsInText)).toBe("Codex CLI command failed");
   });
 });
 

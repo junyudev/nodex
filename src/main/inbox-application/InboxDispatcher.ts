@@ -1,3 +1,4 @@
+import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Schedule from "effect/Schedule";
@@ -5,7 +6,10 @@ import * as Semaphore from "effect/Semaphore";
 import * as Stream from "effect/Stream";
 import type { InboxSettings } from "../../shared/inbox";
 import { createUuidV7 } from "../../shared/uuid-v7";
-import { AgentRuntimeApplication } from "../agent-runtime/AgentRuntimeApplication";
+import {
+  AgentRuntimeApplication,
+  agentRuntimeFailureReason,
+} from "../agent-runtime/AgentRuntimeApplication";
 import { MainConfig } from "../app/MainConfig";
 import {
   inboxDispatchActionToCore,
@@ -24,6 +28,7 @@ import {
   INBOX_SCHEMA_VERSION,
   buildInboxSuggestionPrompt,
   describeInboxRuntimeFailure,
+  loggableInboxRuntimeFailure,
   validateInboxSuggestions,
 } from "./inbox-suggestions";
 import { resolveInboxModel } from "./InboxRuntimeSelection";
@@ -52,6 +57,7 @@ export const make = Effect.gen(function* () {
       mode: request.mode,
       correction: request.correction,
     };
+    const startedAt = yield* Clock.currentTimeMillis;
     const outcome = yield* Effect.gen(function* () {
       const modelSelection = yield* resolveInboxModel(
         runtime,
@@ -108,16 +114,21 @@ export const make = Effect.gen(function* () {
     }).pipe(Effect.result);
     const base = { request_id: request.request_id, generation: request.generation };
     if (outcome._tag === "Failure") {
-      logger.info("Inbox suggestion failed", {
+      const reason = agentRuntimeFailureReason(outcome.failure);
+      // A warning, so a development run prints it beside the app. The matching "requested" line
+      // names the model and input size; captured text never enters the log.
+      logger.warn("Inbox suggestion failed", {
         requestId: request.request_id,
         generation: request.generation,
+        elapsedMs: (yield* Clock.currentTimeMillis) - startedAt,
+        reason: loggableInboxRuntimeFailure(reason),
       });
       yield* inbox.settleSuggestion({
         ...base,
         titles: [],
         suggestions: [],
         produced_by: null,
-        error: describeInboxRuntimeFailure(outcome.failure.message, "suggestion"),
+        error: describeInboxRuntimeFailure(reason, "suggestion"),
       });
       return;
     }

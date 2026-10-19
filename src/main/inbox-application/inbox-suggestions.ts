@@ -293,6 +293,28 @@ export const validateInboxSuggestions = (
 const MAX_FAILURE_CHARS = 160;
 const capitalize = (value: string) => value.charAt(0).toUpperCase() + value.slice(1);
 
+const GENERATION_FAILURE_PREFIX = /^Text generation failed in [^:]+: /;
+const CLI_FAILURE = /^(.*?CLI command failed): ([\s\S]*)$/;
+
+/**
+ * A runtime failure reduced to what may be logged or shown. A CLI's own output can echo the
+ * captured text it was given, so only its final line is kept, and only when it reads as an error.
+ */
+export const loggableInboxRuntimeFailure = (reason: string): string => {
+  const stripped = reason.replace(GENERATION_FAILURE_PREFIX, "");
+  const cli = CLI_FAILURE.exec(stripped);
+  if (!cli) return (stripped.split("\n")[0] ?? "").trim().slice(0, 500);
+  const last =
+    cli[2]!
+      .split("\n")
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .at(-1) ?? "";
+  return /error|fail|status|denied|refused|unauthori[sz]ed|disconnect/i.test(last)
+    ? `${cli[1]}: ${last.slice(0, 300)}`
+    : cli[1]!;
+};
+
 /** Turns runtime failures into one short reason the stream can show beside a message. */
 export const describeInboxRuntimeFailure = (
   message: string,
@@ -307,7 +329,10 @@ export const describeInboxRuntimeFailure = (
   if (/exceeded (?:its|their) .*budget/i.test(message)) {
     return `${capitalize(agent)} answered at more length than Nodex reads`;
   }
-  const firstLine = message.split("\n")[0]?.trim() ?? "";
+  if (/invalid (?:structured output|suggestion)/i.test(message)) {
+    return `${capitalize(agent)} answered in a form Nodex couldn’t read`;
+  }
+  const firstLine = loggableInboxRuntimeFailure(message);
   if (!firstLine) return subject === "suggestion" ? "The suggestion failed" : "The chat failed";
   return firstLine.length <= MAX_FAILURE_CHARS
     ? firstLine

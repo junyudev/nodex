@@ -673,7 +673,7 @@ const suggestionHarness = (count = 1, action = "send_to_chat") =>
       })),
     };
     const pageIds = routing.entries.map((entry) => entry.page_id);
-    const generated = vi.fn((_input: Parameters<Runtime["generateStructured"]>[0]) =>
+    const generated = vi.fn<Runtime["generateStructured"]>(() =>
       Effect.succeed(suggestionOutput(pageIds, action)),
     );
     const settlements: InboxSuggestionSettlement[] = [];
@@ -733,6 +733,23 @@ it.effect("settles a 16-message explicit group atomically with the actual resolv
     assert.strictEqual(request.maxOutputBytes, INBOX_SUGGESTION_MAX_OUTPUT_BYTES);
     assert.strictEqual(request.timeoutMs, INBOX_SUGGESTION_TIMEOUT_MS);
     assert.include(request.prompt, "Captured evidence");
+  }),
+);
+
+it.effect("a failed suggestion keeps the runtime's own reason under the generic failure", () =>
+  Effect.gen(function* () {
+    const { drain, generated, settlements } = yield* suggestionHarness(1);
+    generated.mockImplementation(() =>
+      Effect.fail(
+        new AgentRuntimeApplicationError({
+          operation: "structured-generation",
+          message: "Agent operation could not be completed",
+          cause: new Error("Agent Runtime request timed out"),
+        }),
+      ),
+    );
+    yield* drain;
+    assert.strictEqual(settlements[0]?.error, "The suggestion agent timed out");
   }),
 );
 

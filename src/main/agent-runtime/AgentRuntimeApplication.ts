@@ -149,6 +149,20 @@ const failure = (operation: string, message: string, cause?: unknown) =>
     message,
     ...(cause === undefined ? {} : { cause }),
   });
+const AGENT_OPERATION_FAILED = "Agent operation could not be completed";
+
+/**
+ * Why an Agent operation failed. A failure from beneath this Module carries a generic message
+ * and the runtime's own reason, such as a timeout or unreadable output, as its cause.
+ */
+export const agentRuntimeFailureReason = (error: unknown): string => {
+  if (!(error instanceof Error)) return String(error);
+  return error.message === AGENT_OPERATION_FAILED &&
+    error.cause instanceof Error &&
+    error.cause.message
+    ? error.cause.message
+    : error.message;
+};
 const validId = (value: string) =>
   value.length > 0 && value.trim() === value && value.length <= 512;
 const hash = (value: unknown) =>
@@ -182,7 +196,7 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
       Effect.mapError((cause) =>
         Schema.is(AgentRuntimeApplicationError)(cause)
           ? cause
-          : failure(operation, "Agent operation could not be completed", cause),
+          : failure(operation, AGENT_OPERATION_FAILED, cause),
       ),
     );
   const ownedWrite = <A, E, R>(operation: string, effect: Effect.Effect<A, E, R>) =>
