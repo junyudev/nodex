@@ -471,13 +471,6 @@ export const make: Effect.Effect<
   ) => Effect.Effect<void, CodexSubagentDirectoryError> = () => Effect.void;
   let schedulePendingStatusRepair: (context: RootContext) => void = () => undefined;
 
-  const residentChildReferences = (parentThreadId: string | null | undefined) =>
-    collectCodexSubagentThreadIds(
-      conversationTurnsWithOverlay(
-        parentThreadId ? conversations.read(parentThreadId)?.canonicalState : null,
-      ),
-    );
-
   const hasResidentConversation = (threadId: string): boolean => {
     const resident = conversations.read(threadId);
     return resident?.canonicalState != null || resident?.snapshot != null;
@@ -497,10 +490,12 @@ export const make: Effect.Effect<
     }
     const knownConversationsById: Record<string, SubagentConversation> = {};
     for (const threadId of ids) {
-      const resident = conversations.read(threadId);
-      const state = resident?.canonicalState;
+      // Overview may inspect resident canonical history without materializing a transcript view.
+      const resident = entities.current(threadId);
+      const state = resident?.readCanonicalState();
       if (!state) {
-        if (resident?.snapshot) knownConversationsById[threadId] = resident.snapshot;
+        const snapshot = resident?.readSnapshot();
+        if (snapshot) knownConversationsById[threadId] = snapshot;
         else {
           const thread = skeletons.get(threadId);
           if (thread)
@@ -546,12 +541,7 @@ export const make: Effect.Effect<
     return projectCodexSubagentOverviewWindow(overview, () => false, {
       parentTurns: knownConversationsById[overview.universe.root_thread_id]?.turns ?? [],
       cachedConversationIds: overview.universe.host_id
-        ? entities
-            .forHost(overview.universe.host_id)
-            .filter(
-              (entity) => entity.readCanonicalState() !== null || entity.readSnapshot() !== null,
-            )
-            .map((entity) => entity.threadId)
+        ? entities.forHost(overview.universe.host_id).map((entity) => entity.threadId)
         : Object.keys(knownConversationsById),
       sourceLinkedThreadIds: discovered.map((thread) => thread.id),
       knownConversationsById,
@@ -1489,14 +1479,20 @@ export const make: Effect.Effect<
       ...overview.active.items.map((item) => item.thread.thread_id),
       ...overview.done.items.map((item) => item.thread.thread_id),
     ]) {
-      for (const threadId of residentChildReferences(parent)) retained.add(threadId);
+      const state = entities.current(parent)?.readCanonicalState();
+      for (const threadId of collectCodexSubagentThreadIds(conversationTurnsWithOverlay(state)))
+        retained.add(threadId);
     }
-    const visible = (item: CoreSubagentOverview["active"]["items"][number]) =>
-      present.has(item.thread.thread_id) ||
-      retained.has(item.thread.thread_id) ||
-      hasResidentConversation(item.thread.thread_id) ||
-      (conversations.read(item.thread.thread_id)?.canonicalState?.threadRuntimeStatus?.type ??
-        item.thread.status.status_type) === "active";
+    const visible = (item: CoreSubagentOverview["active"]["items"][number]) => {
+      if (present.has(item.thread.thread_id) || retained.has(item.thread.thread_id)) return true;
+      const entity = entities.current(item.thread.thread_id);
+      const state = entity?.readCanonicalState();
+      return (
+        state != null ||
+        entity?.readSnapshot() != null ||
+        item.thread.status.status_type === "active"
+      );
+    };
     return projectOverview(
       {
         ...overview,

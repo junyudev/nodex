@@ -185,11 +185,58 @@ const buildDirectory = (input: {
   readonly entities?: ConversationEntityMap["Service"];
 }) => {
   const unsupported = () => Effect.die(new Error("unused"));
+  const readConversation: CodexConversations["Service"]["read"] =
+    input.readConversation ??
+    ((threadId: string) => {
+      const observedThreadIds =
+        input.observedSubagentThreadIdsByParent?.[threadId] ??
+        (threadId === "root-a" ? input.observedSubagentThreadIds : undefined);
+      if (!observedThreadIds?.length && !input.hasLiveRootTurn) return null;
+      return {
+        generation: 1,
+        snapshot: null,
+        canonicalState: {
+          ...conversationFixture(threadId, [
+            {
+              ...turnFixture("turn-root", input.hasLiveRootTurn ? "inProgress" : "completed"),
+              items: [
+                {
+                  type: "collabAgentToolCall",
+                  id: "spawn-fixture",
+                  tool: "spawnAgent",
+                  status: "completed",
+                  senderThreadId: threadId,
+                  receiverThreadIds: [...(observedThreadIds ?? [])],
+                  prompt: null,
+                  model: null,
+                  reasoningEffort: null,
+                  agentsStates: {},
+                },
+              ],
+            },
+          ]),
+          threadRuntimeStatus:
+            threadId !== "root-a" || input.hasLiveRootTurn
+              ? { type: "active", activeFlags: [] }
+              : { type: "idle" },
+        },
+      } as never;
+    });
+  const registry = makeConversationEntityStateRegistry();
   return make.pipe(
     Effect.provideService(
       ConversationEntityMap,
       input.entities ?? {
-        ...makeConversationEntityStateRegistry(),
+        ...registry,
+        current: (threadId) => {
+          const view = readConversation(threadId);
+          if (!view) return null;
+          return {
+            ...registry.acquire(threadId),
+            readCanonicalState: () => view.canonicalState,
+            readSnapshot: () => view.snapshot,
+          };
+        },
         entity: () => {
           throw new Error("Unexpected entity acquisition");
         },
@@ -221,43 +268,7 @@ const buildDirectory = (input: {
     Effect.provideService(
       CodexConversations,
       CodexConversations.of({
-        read:
-          input.readConversation ??
-          ((threadId: string) => {
-            const observedThreadIds =
-              input.observedSubagentThreadIdsByParent?.[threadId] ??
-              (threadId === "root-a" ? input.observedSubagentThreadIds : undefined);
-            if (!observedThreadIds?.length && !input.hasLiveRootTurn) return null;
-            return {
-              generation: 1,
-              snapshot: null,
-              canonicalState: {
-                ...conversationFixture(threadId, [
-                  {
-                    ...turnFixture("turn-root", input.hasLiveRootTurn ? "inProgress" : "completed"),
-                    items: [
-                      {
-                        type: "collabAgentToolCall",
-                        id: "spawn-fixture",
-                        tool: "spawnAgent",
-                        status: "completed",
-                        senderThreadId: threadId,
-                        receiverThreadIds: [...(observedThreadIds ?? [])],
-                        prompt: null,
-                        model: null,
-                        reasoningEffort: null,
-                        agentsStates: {},
-                      },
-                    ],
-                  },
-                ]),
-                threadRuntimeStatus:
-                  threadId !== "root-a" || input.hasLiveRootTurn
-                    ? { type: "active", activeFlags: [] }
-                    : { type: "idle" },
-              },
-            } as never;
-          }),
+        read: readConversation,
       } as unknown as CodexConversations["Service"]),
     ),
     Effect.provideService(CodexMainConversationManagers, {
@@ -2370,6 +2381,73 @@ const discoveryItem = (threadId: string, statusType: "active" | "idle" = "active
     status: "active",
     evidence: { kind: "notification", source_revision: 12, observed_at_ms: 120_000 },
   }) as unknown as Overview["active"]["items"][number];
+
+it.effect("projects resident child status without materializing a transcript presentation", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const registry = makeConversationEntityStateRegistry();
+      const entity = registry.acquire(child.id);
+      entity.installFollowerCanonicalState({
+        ...conversationFixture(child.id),
+        hostId: capability.hostId,
+        parentThreadId: "root-a",
+        threadRuntimeStatus: { type: "active", activeFlags: [] },
+      });
+      const service = yield* buildDirectory({
+        capability,
+        entities: {
+          ...registry,
+          current: (id) => {
+            const current = registry.current(id);
+            if (!current) return null;
+            return {
+              ...current,
+              readSnapshot: () => {
+                throw new Error("Overview must not materialize a resident transcript");
+              },
+            };
+          },
+          entity: () => {
+            throw new Error("Overview must not acquire a Conversation Entity");
+          },
+          runCommand: (_id, operation) => operation,
+          runThreadObservation: (_id, operation) => operation,
+          runTerminalCommand: (_id, operation) => operation,
+          captureNativeTerminalTarget: () => null,
+          assertExecutionAvailable: () => Effect.void,
+          admitExecution: (_id, _source, operation) => operation,
+          withExecutionHandoff: (_id, operation) => operation,
+          executionEpoch: () => Effect.succeed(0),
+          setRecoveryRequired: () => Effect.void,
+          retire: () => Effect.void,
+        },
+        read: () =>
+          Effect.succeed({
+            commit_head: 1,
+            value: {
+              kind: "subagent_overview_window",
+              overview: discoveryOverview([discoveryItem(child.id, "idle")], true),
+            },
+          } as ProjectWorkspaceReadSnapshot),
+        apply: () => Effect.die("Complete overview must not mutate Workspace"),
+        requestOnHost: (() =>
+          Effect.die("Resident overview needs no native read")) as RequestOnHost,
+        readConversation: () => {
+          throw new Error("Overview must not read a Conversation presentation");
+        },
+      });
+
+      for (const mode of ["initial", "expanded"] as const) {
+        const result = yield* service.readOverview({ rootThreadId: "root-a", mode });
+        assert.deepEqual(
+          result.active.rows.map((row) => row.threadId),
+          [child.id],
+        );
+        assert.strictEqual(result.done.rows.length, 0);
+      }
+    }),
+  ),
+);
 
 it.effect("collects all raw Core pages before regrouping and limiting initial rows", () =>
   Effect.scoped(

@@ -122,7 +122,9 @@ interface RealPersistedHistoryMeasurement {
   readonly metadataListBytes: number;
   readonly metadataListLatency: TimingSummary;
   readonly rssBeforeMetadataBytes: number;
+  readonly rssAfterWarmupBytes: number;
   readonly rssAfterMetadataBytes: number;
+  readonly coldRssGrowthBytes: number;
   readonly rssGrowthBytes: number;
   readonly rssGrowthGateBytes: number;
 }
@@ -810,9 +812,16 @@ const measureRealPersistedHistory = async (input: {
     try {
       await delay(100);
       const rssBeforeMetadataBytes = residentSetBytes(reader.pid);
+      // Warmups absorb fixed metadata-index startup cost. Cross-Profile cold/retained RSS
+      // comparisons below still detect history loading before steady sampling begins.
+      let rssAfterWarmupBytes = rssBeforeMetadataBytes;
       const latencySamples: number[] = [];
       let metadataListBytes = 0;
       for (let sampleIndex = 0; sampleIndex < WARMUP_COUNT + SAMPLE_COUNT; sampleIndex += 1) {
+        if (sampleIndex === WARMUP_COUNT) {
+          await delay(100);
+          rssAfterWarmupBytes = residentSetBytes(reader.pid);
+        }
         const startedAt = performance.now();
         const response = await reader.request("thread/list", REAL_HISTORY_LIST_PARAMS);
         const elapsedMs = performance.now() - startedAt;
@@ -831,7 +840,8 @@ const measureRealPersistedHistory = async (input: {
       }
       await delay(100);
       const rssAfterMetadataBytes = residentSetBytes(reader.pid);
-      const rssGrowthBytes = Math.max(0, rssAfterMetadataBytes - rssBeforeMetadataBytes);
+      const coldRssGrowthBytes = Math.max(0, rssAfterWarmupBytes - rssBeforeMetadataBytes);
+      const rssGrowthBytes = Math.max(0, rssAfterMetadataBytes - rssAfterWarmupBytes);
       const rssGrowthGateBytes = Math.max(
         REAL_HISTORY_RSS_NOISE_FLOOR_BYTES,
         Math.floor(persistedHistoryBytes * 0.1),
@@ -839,7 +849,11 @@ const measureRealPersistedHistory = async (input: {
       const metadataListLatency = summarize(latencySamples);
       assert.isAtMost(metadataListLatency.p95Ms, REAL_HISTORY_LIST_P95_GATE_MS);
       assert.isAtMost(metadataListBytes, 64 * 1024);
-      assert.isAtMost(rssGrowthBytes, rssGrowthGateBytes);
+      assert.isAtMost(
+        rssGrowthBytes,
+        rssGrowthGateBytes,
+        `Steady metadata RSS with ${input.historyItemCount} persisted items`,
+      );
       return {
         historyItemCount: input.historyItemCount,
         historyMarkerCount,
@@ -847,7 +861,9 @@ const measureRealPersistedHistory = async (input: {
         metadataListBytes,
         metadataListLatency,
         rssBeforeMetadataBytes,
+        rssAfterWarmupBytes,
         rssAfterMetadataBytes,
+        coldRssGrowthBytes,
         rssGrowthBytes,
         rssGrowthGateBytes,
       };
@@ -990,8 +1006,8 @@ it.live(
           assert.strictEqual(harness.measurement.gateway.transcriptResponseBytes, 0);
           assert.strictEqual(harness.measurement.gateway.requestCount, 0);
           assert.strictEqual(harness.measurement.childSubscriptionDependencyReads, 0);
-          // Reading the resident root prevents starting a second live owner. Only child
-          // Conversation reads would hydrate descendant history through this boundary.
+          // Overview reads resident canonical state directly. The Conversation facade also
+          // materializes transcript presentations, which metadata-only children never need.
           const childConversationReads = harness.measurement.conversationsReadThreadIds.filter(
             (threadId) => threadId !== fixture.rootThreadId,
           );
@@ -1058,8 +1074,8 @@ it.live(
         0,
         tenThousandHistory!.rssAfterMetadataBytes - zeroHistory!.rssAfterMetadataBytes,
       );
-      assert.isAtMost(startupRssDeltaBytes, crossProfileRssGateBytes);
-      assert.isAtMost(retainedRssDeltaBytes, crossProfileRssGateBytes);
+      assert.isAtMost(startupRssDeltaBytes, crossProfileRssGateBytes, "Cold process history RSS");
+      assert.isAtMost(retainedRssDeltaBytes, crossProfileRssGateBytes, "Retained history RSS");
 
       const thousandFixture = fixtures.get(1_000)!;
       const selectedHarness = yield* makeDirectoryHarness({
@@ -1125,9 +1141,27 @@ it.live(
               const overview = yield* readKnownOverview(statusHarness, tenFixture.rootThreadId);
               projectHotOverview(overview);
               const row = overview.active.rows.find(({ threadId }) => threadId === knownThread.id);
-              assert.strictEqual(row?.status, waiting ? "waiting" : "active");
+              assert.strictEqual(row?.status, "active");
             }),
           );
+          // Directory owns observed status evidence; runtime metadata has a separate owner.
+          // Read outside the timed projection to prove the notification reached real Core.
+          const persisted = yield* Effect.promise(() =>
+            runtime.client.workspaceRead({
+              kind: "subagent_overview_item",
+              universe: {
+                host_id: HOST_ID,
+                source_epoch: SOURCE_EPOCH,
+                generation: HOST_GENERATION,
+                root_thread_id: tenFixture.rootThreadId,
+              },
+              thread_id: knownThread.id,
+            }),
+          );
+          if (persisted.value.kind !== "subagent_overview_item") {
+            return yield* Effect.die(new Error("Core returned the wrong Subagent item variant"));
+          }
+          assert.strictEqual(persisted.value.item?.status, waiting ? "waiting" : "active");
           knownStatusSamples.push(sample.elapsedMs);
         }
 
@@ -1180,7 +1214,7 @@ it.live(
       assert.isAtMost(unknownStatus.p95Ms, 2_000);
 
       const evidence = {
-        schemaVersion: 2,
+        schemaVersion: 3,
         generatedAt: new Date().toISOString(),
         source: {
           gitHead: execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim(),
@@ -1200,6 +1234,8 @@ it.live(
           warmupsPerMatrixCell: WARMUP_COUNT,
           realHistoryMethod:
             "three disposable real app-server Profiles with one constant seed plus 0/100/10000 measured persisted Responses items; after the writer closes, visibility-only metadata is seeded, metadata-only resume is verified in a second process, and only thread/list useStateDbOnly is sampled in a third process",
+          realHistoryRssMethod:
+            "repeated-query growth starts after metadata warmups; original cold-process and final retained RSS remain compared across the 0-item and 10000-item Profiles to catch history loading on the first read",
           realHistoryItemTextBytes: REAL_HISTORY_ITEM_TEXT_BYTES,
           realHistoryInjectionBatchSize: REAL_HISTORY_INJECTION_BATCH_SIZE,
           transcriptMethods: [...TRANSCRIPT_METHODS, "thread/read(includeTurns:true)"],

@@ -1,7 +1,7 @@
 # Codex Subagent Behavior
 
 Status: Active
-Last Updated: 2026-10-15
+Last Updated: 2026-10-19
 
 ## Intent and ownership
 
@@ -44,7 +44,8 @@ The overview classifies the complete row collection before applying presentation
 limits. Initially it shows four Active and ten Done rows. Show more expands the
 local collection; Show less restores those limits. Counts reflect the shared
 visible rows and remain lower bounds until discovery completes. Expansion never
-loads child transcripts. Root-scoped invalidations refresh the metadata view;
+loads child transcripts. Resident canonical state supplies row evidence without
+materializing child transcript presentations. Root-scoped invalidations refresh the metadata view;
 old host generations cannot replace a newer view.
 
 The shared source order places parent-history members first, followed by resident descendants, active metadata-only descendants and discovered source rows. Pending requests use this order; overview sections sort their own rows by recency.
