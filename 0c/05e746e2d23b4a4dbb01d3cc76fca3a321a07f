@@ -1,0 +1,28 @@
+src/renderer/components/board/editor/nfm-link-toolbar.tsx
+  s_bd811abbf24a41::t_3adf4a9ef2d090 14
+  s_bd811abbf24a41::t_ab77046c5950af 432,512
+src/renderer/components/workbench/local-environment-summary.tsx
+  s_bd811abbf24a41::t_3adf4a9ef2d090 16
+  s_bd811abbf24a41::t_ab77046c5950af 67,77
+src/renderer/lib/use-copy-feedback.ts
+  s_bd811abbf24a41::t_114affa9d3e880 1-46
+src/renderer/features/local-conversation/view/shared/thread-message-actions.tsx
+  s_bd811abbf24a41::t_3ad7e4743bb22c 169-172
+  s_bd811abbf24a41::t_bccd0c0ce88d7d 1,10,163-168,173
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "0c05e746e2d23b4a4dbb01d3cc76fca3a321a07f",
+  "prompts": {},
+  "sessions": {
+    "s_bd811abbf24a41": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d475c410-7aa3-406e-a6d6-6873f7b30325",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
