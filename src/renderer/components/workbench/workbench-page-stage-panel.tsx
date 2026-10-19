@@ -1,18 +1,10 @@
 import type { WorkbenchSubmitPresentation } from "../../../shared/nodex-app-tools/workbench";
 import { materializePagePromptInput } from "@/lib/page-prompt-input";
-import {
-  useCallback,
-  useMemo,
-  type ComponentPropsWithoutRef,
-  type MutableRefObject,
-  type ReactNode,
-  type RefObject,
-} from "react";
+import { useCallback, useMemo, type MutableRefObject, type ReactNode, type RefObject } from "react";
 import { useInfiniteQuery, useQueryClient } from "@tanstack/react-query";
 import { createUuidV7 } from "../../../shared/uuid-v7";
 import { OwnedBlockDocumentBoundary } from "@/components/block-documents/owned-block-document-boundary";
-import { PageStageContentSkeleton } from "@/components/board/page-stage/content-skeleton";
-import { PageStageToolbar } from "@/components/board/page-stage/toolbar";
+import { PageStageLoadingFrame } from "@/components/board/page-stage/frame";
 import type {
   PageStageRelatedChatCandidate,
   PageStageSessionSnapshot,
@@ -39,11 +31,9 @@ import {
 import { makeEditorSurfaceKey } from "@/lib/document-session-registry";
 import { projectPageDetailToStageModel } from "@/lib/page-stage-page";
 import { pageStageSemanticValues, type PageStageSemanticValues } from "@/lib/page-stage-properties";
-import { readPageStageContentWidthPreference } from "@/lib/page-stage-layout";
 import { requestPageBlockFocus } from "@/lib/page-block-focus-intents";
 import { fetchPageDetail, usePageDetail } from "@/lib/page-detail-store";
 import { usePublishCanonicalPageTitle } from "@/lib/page-title-projection-context";
-import { RIGHT_PANEL_COMPOSER_OVERLAY_SCROLL_RESERVE_STYLE } from "@/lib/right-panel-composer-overlay-reserve";
 import { projectContentRoute } from "../../../shared/content-routing-context";
 import type {
   CodexPromptInput,
@@ -53,7 +43,6 @@ import type {
   WorkbenchTabProjection,
 } from "@/lib/types";
 import { useBoard } from "@/lib/use-board";
-import { cn } from "@/lib/utils";
 import type { WorkbenchSessionRenderProjection } from "@/lib/workbench-session-presentation";
 import type { OpenPageInNewChatInput } from "@/lib/page-chat-actions";
 import { projectWorkspaceRootOrNull } from "@/lib/workbench-workspace-context";
@@ -64,7 +53,7 @@ import { PageStage } from "./workbench-page-stage";
 import { pageChatWindowQueryOptions } from "@/lib/query-options";
 import { queryKeys } from "@/lib/query-keys";
 import { unlinkPageChat } from "@/lib/page-chat-runtime";
-import { ApplicationPending, useApplicationPending } from "@/bootstrap/application-surface";
+import { useApplicationPending } from "@/bootstrap/application-surface";
 
 export interface OpenPageTabOptions {
   placement?: WorkbenchSurfaceRelativePlacement;
@@ -388,7 +377,7 @@ export function PageStageSessionTab({
 
   if (pageHydrating) {
     return (
-      <PageStageSessionSkeleton
+      <PageStageLoadingFrame
         titleSnapshot={tab.config.titleSnapshot}
         breadcrumb={
           breadcrumb
@@ -442,23 +431,6 @@ export function PageStageSessionTab({
       ownerBlockId={page.page.id}
     >
       {(documentModel, documentControls) => {
-        if (documentModel.status === "loading") {
-          return (
-            <ApplicationPending active={isActivePanelTab}>
-              <PageStageSessionSkeleton
-                titleSnapshot={page.page.title}
-                breadcrumb={
-                  breadcrumb
-                    ? {
-                        ...breadcrumb,
-                        currentTitle: page.page.title,
-                      }
-                    : undefined
-                }
-              />
-            </ApplicationPending>
-          );
-        }
         if (documentModel.status === "error") {
           const retrying = documentModel.error.retrying === true;
           return (
@@ -476,24 +448,14 @@ export function PageStageSessionTab({
             />
           );
         }
-        if (documentModel.status !== "ready") {
-          return (
-            <PageStageSessionNotice
-              title="Page content is not ready"
-              description="This Page content is not ready to edit."
-              actionLabel="Retry"
-              onAction={() => {
-                void documentControls.reload();
-              }}
-            />
-          );
-        }
-
-        const documentAuthority = {
-          kind: "yjs" as const,
-          descriptor: documentModel.descriptor,
-          reload: documentControls.reload,
-        };
+        const documentAuthority =
+          documentModel.status === "ready"
+            ? {
+                kind: "yjs" as const,
+                descriptor: documentModel.descriptor,
+                reload: documentControls.reload,
+              }
+            : null;
 
         return (
           <PageStage
@@ -674,60 +636,6 @@ export function PageStageSessionTab({
     >
       {renderDocumentSurface}
     </PageStageDatabaseCapabilityBoundary>
-  );
-}
-
-function PageStageSessionSkeleton({
-  titleSnapshot,
-  breadcrumb,
-}: {
-  titleSnapshot?: string;
-  breadcrumb?: ComponentPropsWithoutRef<typeof PageStageToolbar>["breadcrumb"];
-}) {
-  const title = titleSnapshot?.trim();
-  const label = title ? `Loading ${titleSnapshot}` : "Loading card";
-  const limitMainContentWidth = readPageStageContentWidthPreference();
-  const contentBodyClassName = cn(
-    "mx-auto w-full px-(--page-stage-body-gutter-inline)",
-    limitMainContentWidth && "max-w-(--page-stage-body-max-width)",
-  );
-
-  return (
-    <div
-      className="flex h-full w-full flex-col bg-(--background) select-none"
-      role="status"
-      aria-busy="true"
-      aria-label={label}
-    >
-      <PageStageToolbar
-        saving={false}
-        disabled={true}
-        historyPanelActive={false}
-        limitMainContentWidth={limitMainContentWidth}
-        showRawContent={false}
-        onCopyDeeplink={() => undefined}
-        onDelete={() => undefined}
-        onToggleContentWidth={() => undefined}
-        onToggleShowRawContent={() => undefined}
-        onToggleHistoryPanel={() => undefined}
-        breadcrumb={breadcrumb}
-      />
-
-      <div
-        className="scrollbar-token min-h-0 flex-1 overflow-y-auto"
-        style={RIGHT_PANEL_COMPOSER_OVERLAY_SCROLL_RESERVE_STYLE}
-      >
-        <div
-          className={contentBodyClassName}
-          data-page-stage-body="true"
-          data-page-stage-body-width={limitMainContentWidth ? "constrained" : "full"}
-        >
-          <div className="w-full">
-            <PageStageContentSkeleton titleSnapshot={title} announce={false} />
-          </div>
-        </div>
-      </div>
-    </div>
   );
 }
 

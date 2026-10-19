@@ -1319,7 +1319,7 @@ test("Page layout visibility remains independent and durable across restart", as
       await rail.getByRole("button", { name: /Customize page layout/ }).click();
       await expect(
         rail.getByRole("button", { name: "Page visibility for Scenario text 1" }),
-      ).toContainText("Hide when empty");
+      ).toContainText("Always show");
       await expect(
         rail.getByRole("button", { name: "Page visibility for Scenario checkbox 3" }),
       ).toContainText("Always hide");

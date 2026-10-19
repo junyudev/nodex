@@ -336,6 +336,11 @@ const MIGRATION_STEPS: &[MigrationStep] = &[
         to_revision: 185,
         apply: migrate_v184_to_v185,
     },
+    MigrationStep {
+        from_revision: 185,
+        to_revision: 186,
+        apply: migrate_v185_to_v186,
+    },
 ];
 
 fn resolve_migration_path(
@@ -2381,6 +2386,21 @@ fn migrate_v183_to_v184(
         params![context.source_revision, context.target_revision, context.source_schema_fingerprint,
             context.target_schema_fingerprint, context.backup_name, context.completed_at_unix_ms,
             r#"{"inbox_decisions":true}"#],
+    )?;
+    connection.pragma_update(None, "user_version", context.target_revision)?;
+    Ok(())
+}
+
+fn migrate_v185_to_v186(
+    connection: &Connection,
+    context: &MigrationContext,
+) -> Result<(), StoreError> {
+    connection.execute_batch(include_str!("../../schema/migrations/v185_to_v186.sql"))?;
+    connection.execute(
+        "INSERT INTO core_store_migration_history(source_revision,target_revision,source_schema_fingerprint,target_schema_fingerprint,backup_name,completed_at_unix_ms,evidence_json) VALUES (?1,?2,?3,?4,?5,?6,?7)",
+        params![context.source_revision, context.target_revision, context.source_schema_fingerprint,
+            context.target_schema_fingerprint, context.backup_name, context.completed_at_unix_ms,
+            r#"{"page_layout_hides_empty_properties":true}"#],
     )?;
     connection.pragma_update(None, "user_version", context.target_revision)?;
     Ok(())
@@ -7231,6 +7251,93 @@ mod tests {
             serde_json::from_str::<serde_json::Value>(&options).unwrap()["model"],
             "moonshot/kimi-k3"
         );
+    }
+
+    #[test]
+    fn page_layout_migration_hides_empty_properties_and_keeps_explicit_hides() {
+        use crate::infrastructure::store::SqliteStoreKernel;
+        use crate::workspace::ProjectWorkspaceModule;
+
+        let profile = tempdir().expect("Profile");
+        install_intermediate_fixture(profile.path(), 185);
+        // Current Project creation produces the Data Source and Page layout closure shared by
+        // v185 and v186; only the retired default visibility needs SQL.
+        let predecessor = SqliteStoreKernel::open_test(profile.path()).expect("v185 runtime");
+        let (profile_id, library_id): (String, String) = predecessor
+            .readers()
+            .read_default(|connection| {
+                Ok(
+                    connection.query_row("SELECT profile_id,id FROM libraries", [], |row| {
+                        Ok((row.get(0)?, row.get(1)?))
+                    })?,
+                )
+            })
+            .unwrap();
+        let module = ProjectWorkspaceModule::new(&profile_id, &library_id, &predecessor).unwrap();
+        module.seed_rootless_default_project_for_test();
+        let (data_source_id, revision, entries): (String, i64, i64) = predecessor
+            .writer()
+            .call(|connection| {
+                with_immediate_transaction(connection, |transaction| {
+                    transaction.execute(
+                        "UPDATE data_source_page_layout_entries SET visibility = \
+                         CASE WHEN property_id = 'task_parent' THEN 'always_hide' \
+                         ELSE 'always_show' END",
+                        [],
+                    )?;
+                    Ok(())
+                })?;
+                validate_migration_source(connection, 185)?;
+                Ok(connection.query_row(
+                    "SELECT layout.data_source_id, layout.revision, count(entry.property_id) \
+                     FROM data_source_page_layouts layout \
+                     JOIN data_source_page_layout_entries entry USING (data_source_id) \
+                     GROUP BY layout.data_source_id",
+                    [],
+                    |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+                )?)
+            })
+            .expect("historical Page layout");
+        assert!(entries > 1);
+        drop(module);
+        drop(predecessor);
+
+        let store = SqliteStoreKernel::open(profile.path()).expect("upgrade Page layout");
+        assert_eq!(store.preparation().migrated_from_version, Some(185));
+        store
+            .readers()
+            .read_default(|connection| {
+                validate_current_store(connection)?;
+                let visibility = |value: &str| -> rusqlite::Result<i64> {
+                    connection.query_row(
+                        "SELECT count(*) FROM data_source_page_layout_entries \
+                         WHERE data_source_id = ?1 AND visibility = ?2",
+                        params![data_source_id, value],
+                        |row| row.get(0),
+                    )
+                };
+                assert_eq!(visibility("always_show")?, 0);
+                assert_eq!(visibility("hide_when_empty")?, entries - 1);
+                assert_eq!(
+                    connection.query_row(
+                        "SELECT visibility FROM data_source_page_layout_entries \
+                         WHERE data_source_id = ?1 AND property_id = 'task_parent'",
+                        [&data_source_id],
+                        |row| row.get::<_, String>(0),
+                    )?,
+                    "always_hide"
+                );
+                assert_eq!(
+                    connection.query_row(
+                        "SELECT revision FROM data_source_page_layouts WHERE data_source_id = ?1",
+                        [&data_source_id],
+                        |row| row.get::<_, i64>(0),
+                    )?,
+                    revision + 1
+                );
+                Ok(())
+            })
+            .expect("Page layout hides empty Properties");
     }
 
     #[test]

@@ -120,10 +120,6 @@ vi.mock("@/components/block-documents/block-document-surface", () => ({
   },
 }));
 
-vi.mock("./page-stage/inline-property-strip", () => ({
-  PageStageInlinePropertyStrip: () => <div>Inline property strip</div>,
-}));
-
 vi.mock("./page-stage/properties-section", () => ({
   PageStagePropertiesSection: () => <div>Properties section</div>,
 }));
@@ -187,7 +183,9 @@ function documentAuthority(): PageStageDocumentAuthority {
 
 function renderStage(
   page: PageStagePageModel = toStageModel(buildPage()),
-  breadcrumbProps: Pick<PageStageProps, "breadcrumb" | "isActivePanelTab"> = {},
+  breadcrumbProps: Partial<
+    Pick<PageStageProps, "breadcrumb" | "isActivePanelTab" | "documentAuthority">
+  > = {},
   renderView = render,
 ) {
   const { PageStage } = requirePageStage();
@@ -198,10 +196,14 @@ function renderStage(
         onClose={() => undefined}
         page={page}
         projectName="Default"
-        documentAuthority={documentAuthority()}
         onUpdate={async () => ({ status: "updated", didMutate: true })}
         onUpdateProperty={async () => ({ status: "updated", didMutate: true })}
         {...breadcrumbProps}
+        documentAuthority={
+          breadcrumbProps.documentAuthority === undefined
+            ? documentAuthority()
+            : breadcrumbProps.documentAuthority
+        }
         {...(page.databaseContext.kind === "member"
           ? {
               onDelete: async () => undefined,
@@ -269,6 +271,27 @@ describe("page stage", () => {
       await waitFor(() => expect(ready).toHaveBeenCalledOnce());
     },
   );
+
+  test("shows Page properties while the Document is still being prepared", async () => {
+    const page = toStageModel(buildPage({ title: "Prepared title" }));
+    const view = renderStage(page, { documentAuthority: null });
+    await settleAsyncRender();
+
+    expect(view.getByText("Properties section")).toBeTruthy();
+    expect(view.container.querySelector('[data-page-title-placeholder="true"]')?.textContent).toBe(
+      "Prepared title",
+    );
+    expect(view.queryByText("Mock collaborative editor")).toBeNull();
+    expect(view.getByRole("button", { name: "History" }).hasAttribute("disabled")).toBe(true);
+
+    renderStage(page, {}, (ui) => {
+      view.rerender(ui);
+      return view;
+    });
+    expect(view.getByText("Mock collaborative editor")).toBeTruthy();
+    expect(view.getByText("Properties section")).toBeTruthy();
+    expect(view.container.querySelector('[data-page-title-placeholder="true"]')).toBeNull();
+  });
 
   test("keeps the new Page viewport subscribed after the previous Page cleanup", async () => {
     simulateMountedEditor = true;

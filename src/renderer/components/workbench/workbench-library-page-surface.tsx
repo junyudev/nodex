@@ -3,6 +3,7 @@ import { hashKey, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createUuidV7 } from "../../../shared/uuid-v7";
 
 import { PageStage } from "./workbench-page-stage";
+import { PageStageLoadingFrame } from "../board/page-stage/frame";
 import { prepareLibraryOwnedBlockDocument } from "../../lib/api";
 import {
   type ReadyPageBlockDocumentDescriptor,
@@ -119,18 +120,8 @@ export function WorkbenchLibraryPageSurface({
       : null,
   );
 
-  const pending = detail.isPending || document.isPending;
-  useApplicationPending(isActivePanelTab && pending);
-  if (pending) {
-    return (
-      <div
-        className="flex h-full items-center justify-center bg-token-main-surface-primary text-sm text-token-description-foreground"
-        role="status"
-      >
-        Opening Page…
-      </div>
-    );
-  }
+  useApplicationPending(isActivePanelTab && detail.isPending);
+  if (detail.isPending) return <PageStageLoadingFrame />;
 
   if (detail.isError || document.isError || !stagePage) {
     const error = detail.error ?? document.error;
@@ -162,13 +153,17 @@ export function WorkbenchLibraryPageSurface({
       page={stagePage}
       autoFocusTitle={stagePage.page.title.trim() === "Untitled"}
       projectName={null}
-      documentAuthority={{
-        kind: "yjs",
-        descriptor: document.data,
-        reload: async () => {
-          await queryClient.resetQueries({ queryKey: documentQueryKey, exact: true });
-        },
-      }}
+      documentAuthority={
+        document.data
+          ? {
+              kind: "yjs",
+              descriptor: document.data,
+              reload: async () => {
+                await queryClient.resetQueries({ queryKey: documentQueryKey, exact: true });
+              },
+            }
+          : null
+      }
       onOpenDatabase={onOpenDatabase}
       onOpenPage={
         onOpenPage
@@ -184,7 +179,6 @@ export function WorkbenchLibraryPageSurface({
             }
           : undefined
       }
-      toolbarPlacement={{ kind: "surface" }}
       onClose={onClose}
       isActivePanelTab={isActivePanelTab}
       onUpdate={async (targetPageId, patch) => {

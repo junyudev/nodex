@@ -74,9 +74,11 @@ family or row line height. User-message metadata remains on the UI small scale.
 
 Page prose uses its independent size, content family, normal 400 weight and
 1.625 line height. Body heading multipliers match the conversation hierarchy.
-The Page title uses content family and UI heading-app size with 1.2 line height;
-adjusting Page content size changes the body and its headings while preserving
-the title size. Page inline code follows surrounding text; code blocks continue
+The Page title uses content family, UI heading-app size, 1.2 line height and
+600 weight, so it stays the strongest heading above body H1. While a Page opens,
+its title placeholder uses that identical typography and position. Adjusting
+Page content size changes the body and its headings while preserving the title
+size. Page inline code follows surrounding text; code blocks continue
 to use the independent code size.
 
 Diff line height is code size × 1.8. The editable source editor rounds that line

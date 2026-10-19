@@ -33,6 +33,9 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 
+- Database Pages show only the properties that have something to say. Empty properties wait behind one `N more properties` row and keep their place while you fill them in; **Always show** in a Database's Page layout pins a property that should always prompt for a value.
+- Pages open in one steady layout: properties appear as soon as the Page is selected, the title keeps its weight and line breaks, and the body fills in without a placeholder flash.
+
 - Scheduled has its own sidebar of upcoming tasks with search, status filters and task actions. Cron tasks open as folders of their runs, runs and Heartbeat chats open without leaving Scheduled, and tasks are created and edited in a focused dialog. A selected task reads as the conversation that set it up, with a reply box for follow-up questions.
 
 - A Project now opens on its own Inbox. Thoughts about the Project land there as Pages on its Board, suggestions stay inside the Project, and the sidebar counts what is waiting. The Board opens beside the Inbox as an ordinary tab, and `⌘⇧D` captures into the Inbox of the Project you are in.

@@ -1,6 +1,6 @@
 import { lazy } from "react";
 import { ApplicationSurface } from "@/bootstrap/application-surface";
-import { PageStageContentSkeleton } from "../board/page-stage/content-skeleton";
+import { PageStageLoadingFrame } from "../board/page-stage/frame";
 import type { PageStageProps } from "../board/page-stage/types";
 
 const PageStageView = lazy(async () => ({
@@ -8,8 +8,18 @@ const PageStageView = lazy(async () => ({
 }));
 
 export function PageStage(props: PageStageProps) {
+  const title = props.page?.page.title;
   return (
-    <ApplicationSurface fallback={<PageStageContentSkeleton />}>
+    <ApplicationSurface
+      fallback={
+        <PageStageLoadingFrame
+          titleSnapshot={title}
+          breadcrumb={
+            props.breadcrumb ? { ...props.breadcrumb, currentTitle: title ?? "" } : undefined
+          }
+        />
+      }
+    >
       <PageStageView {...props} />
     </ApplicationSurface>
   );

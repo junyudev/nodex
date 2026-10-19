@@ -29,8 +29,6 @@ import {
 interface UsePageStageControllerResult {
   page: PageStageCorePage | null;
   contentRoutingContext: ContentRoutingContext;
-  storeEpoch: string;
-  hasDatabaseProperties: boolean;
   propertyControls: PageStagePropertyControls;
   title: string;
   saving: boolean;
@@ -45,8 +43,6 @@ interface UsePageStageControllerResult {
   relatedChatCandidates: NonNullable<PageStageProps["relatedChatCandidates"]>;
   hasRelatedChatsRow: boolean;
   currentSessionId: string | null;
-  contentBodyClassName: string;
-  contentShellClassName: string;
   schedule: ReturnType<typeof useScheduleState>;
   schedulePage: PageScheduleSource | null;
   onCreateRelatedChat?: () => Promise<void> | void;
@@ -390,19 +386,9 @@ export function usePageStageController(
     Boolean(onCreateRelatedChat) ||
     Boolean(onLinkRelatedChat);
 
-  const contentBodyClassName = [
-    "mx-auto w-full px-(--page-stage-body-gutter-inline)",
-    limitMainContentWidth ? "max-w-(--page-stage-body-max-width)" : "",
-  ]
-    .filter(Boolean)
-    .join(" ");
-  const contentShellClassName = "w-full";
-
   return {
     page,
     contentRoutingContext,
-    storeEpoch: props.documentAuthority.descriptor.storeEpoch,
-    hasDatabaseProperties: propertyControls.properties.length > 0,
     propertyControls,
     title,
     saving,
@@ -417,8 +403,6 @@ export function usePageStageController(
     relatedChatCandidates,
     hasRelatedChatsRow,
     currentSessionId: sessionId,
-    contentBodyClassName,
-    contentShellClassName,
     schedule,
     schedulePage,
     onCreateRelatedChat,

@@ -19,7 +19,6 @@ import { PageFilesRow } from "./page-files-row";
 const controller = {
   page: { id: "page-1", title: "Files" },
   contentRoutingContext: { kind: "project", projectId: "project-1" },
-  storeEpoch: "epoch-1",
 } as PageStageController;
 
 const file = {

@@ -7,10 +7,9 @@ import { buildPageStageFixturePage } from "@/test/page-stage-fixture";
 import { projectPageDetailToStageModel } from "./page-stage-page";
 import {
   hasPageStageScheduleCapability,
-  isPageStagePrimaryProperty,
-  pageStageSectionProperties,
   readPageDetailWorkflowStatus,
 } from "./page-stage-properties";
+import { pageStagePropertyRows } from "./page-stage-property-layout";
 
 const detail = (): PageDetail => {
   const result = buildPageDetailFixtureResult("project-1", buildPageStageFixturePage());
@@ -109,16 +108,28 @@ describe("Page Stage properties", () => {
     });
   });
 
+  test("presents a valid schedule pair as one Schedule row", () => {
+    const model = projectPageDetailToStageModel(detail());
+    if (model.databaseContext.kind !== "member") throw new Error("Expected a Database Page");
+    const rowKeys = pageStagePropertyRows(
+      model.databaseContext.properties,
+      model.databaseContext.semanticProperties,
+    ).map((row) => row.key);
+    expect(rowKeys.filter((key) => key === "schedule")).toHaveLength(1);
+    expect(rowKeys).not.toContain("scheduled_start");
+    expect(rowKeys).not.toContain("scheduled_end");
+  });
+
   test("degrades a partial schedule pair to ordinary independent rows", () => {
     const model = projectPageDetailToStageModel(withoutProperty(detail(), "scheduled_end"));
     if (model.databaseContext.kind !== "member") return;
     expect(hasPageStageScheduleCapability(model.databaseContext.semanticProperties)).toBe(false);
-    expect(
-      pageStageSectionProperties(
-        model.databaseContext.properties,
-        model.databaseContext.semanticProperties,
-      ).map((item) => item.property.propertyId),
-    ).toContain("scheduled_start");
+    const rowKeys = pageStagePropertyRows(
+      model.databaseContext.properties,
+      model.databaseContext.semanticProperties,
+    ).map((row) => row.key);
+    expect(rowKeys).toContain("scheduled_start");
+    expect(rowKeys).not.toContain("schedule");
   });
 
   test("degrades a corrupt schedule pair so the local error remains visible", () => {
@@ -142,10 +153,10 @@ describe("Page Stage properties", () => {
     if (model.databaseContext.kind !== "member") return;
     expect(hasPageStageScheduleCapability(model.databaseContext.semanticProperties)).toBe(false);
     expect(
-      pageStageSectionProperties(
+      pageStagePropertyRows(
         model.databaseContext.properties,
         model.databaseContext.semanticProperties,
-      ).map((item) => item.property.propertyId),
+      ).map((row) => row.key),
     ).toEqual(expect.arrayContaining(["scheduled_start", "scheduled_end"]));
   });
 
@@ -176,7 +187,7 @@ describe("Page Stage properties", () => {
     expect(model.databaseContext.semanticProperties.status?.value).toBe("build");
   });
 
-  test("does not grant primary semantics to a wrong-type reserved Property", () => {
+  test("does not grant built-in semantics to a wrong-type reserved Property", () => {
     const source = detail();
     if (source.dataSourceContext.kind !== "member") return;
     const model = projectPageDetailToStageModel({
@@ -204,10 +215,6 @@ describe("Page Stage properties", () => {
       },
     });
     if (model.databaseContext.kind !== "member") return;
-    const dueDate = model.databaseContext.properties.find(
-      (item) => item.property.propertyId === "due_date",
-    );
-    expect(dueDate && isPageStagePrimaryProperty(dueDate)).toBe(false);
     expect(model.databaseContext.semanticProperties.dueDate).toBeNull();
   });
 });

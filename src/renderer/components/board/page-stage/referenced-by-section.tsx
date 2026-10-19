@@ -39,9 +39,10 @@ export function ReferencedBySection({
   onLoadMore,
 }: ReferencedBySectionProps) {
   const [expanded, setExpanded] = useState(defaultExpanded);
-  const countLabel = loading ? "…" : String(sourcePageCount);
+  const countLabel = String(sourcePageCount);
 
-  if (!loading && sourcePageCount === 0) return null;
+  // Appears only once a source Page is known, so a Page without references never flashes it.
+  if (sourcePageCount === 0) return null;
 
   return (
     <section className="border-t border-token-border pt-3" data-page-backlinks-section="true">

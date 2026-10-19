@@ -1,5 +1,5 @@
 import type { WorkbenchSubmitPresentation } from "../../../../shared/nodex-app-tools/workbench";
-import type { MutableRefObject, ReactNode } from "react";
+import type { MutableRefObject } from "react";
 import type { PageInput, CodexPromptInput, CodexThreadSummary, PageChatItem } from "@/lib/types";
 import type { ReadyPageBlockDocumentDescriptor } from "@/lib/owned-block-document";
 import type { BlockDocumentSurfaceDependencies } from "@/components/block-documents/block-document-surface";
@@ -58,13 +58,6 @@ export interface PageStageProps {
   retainEditorSession?: boolean;
   /** Optional route-level navigation control for standalone Page surfaces. */
   onNavigateBack?: () => void;
-  /** Hosts the single Page toolbar outside the surface without duplicating it. */
-  toolbarPlacement?:
-    | { readonly kind: "surface" }
-    | {
-        readonly kind: "external";
-        readonly render: (toolbar: ReactNode) => ReactNode;
-      };
   onLeavePage?: (snapshot: PageStageSessionSnapshot) => void;
   /** Focuses the collaborative title when this Page surface first mounts. */
   autoFocusTitle?: boolean;
@@ -114,7 +107,7 @@ export interface PageStageProps {
   onOpenPage?: (input: ContentPageNavigationTarget) => void | Promise<void>;
   onOpenDatabase?: (databaseId: DatabaseId) => void | Promise<void>;
   onOpenCanvas?: (input: ContentCanvasNavigationTarget) => void | Promise<void>;
-  breadcrumb?: Omit<PageStageBreadcrumbProps, "currentTitle" | "disabled">;
+  breadcrumb?: Omit<PageStageBreadcrumbProps, "currentTitle">;
   onStartNewSessionThreadFromEditor?: (input: {
     projectId: string;
     targetSessionId?: string;
@@ -131,5 +124,9 @@ export interface PageStageProps {
     submittedPresentation?: WorkbenchSubmitPresentation;
   }) => Promise<void>;
   historyPanelActive?: boolean;
-  documentAuthority: PageStageDocumentAuthority;
+  /**
+   * The prepared owned Document, or null while it is still being prepared. Page Detail
+   * (properties, capabilities) renders immediately; title and body editors wait for it.
+   */
+  documentAuthority: PageStageDocumentAuthority | null;
 }

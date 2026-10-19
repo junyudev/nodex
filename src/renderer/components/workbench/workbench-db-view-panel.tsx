@@ -77,6 +77,7 @@ import {
 } from "./database-view-mutation-history";
 import type { DatabaseViewPageActionPort } from "./database-view-page-actions";
 import type { DatabaseViewPageOpenHandler } from "./database-view-page-open";
+import { usePageDetailPrefetch } from "@/lib/page-detail-store";
 import {
   DatabasePageChatActivityBoundary,
   useDatabasePageChatActivityRuntime,
@@ -158,6 +159,7 @@ function DatabaseViewTabSurfaceContent({
   onCloseTaskSearch,
   onReorderViews,
   onOpenPage,
+  onPrepareOpenPage,
   pageActionPort,
   onCommitted,
   keyboardSurface,
@@ -198,6 +200,8 @@ function DatabaseViewTabSurfaceContent({
     orderedViewIds: readonly string[],
   ) => boolean | Promise<boolean>;
   readonly onOpenPage: DatabaseViewPageOpenHandler;
+  /** A pointer pressed on a Page row or card: warm what its Page Stage will need. */
+  readonly onPrepareOpenPage?: (pageId: string) => void;
   readonly pageActionPort?: DatabaseViewPageActionPort;
   readonly onCommitted?: (cursor?: {
     readonly storeEpoch: string;
@@ -250,7 +254,17 @@ function DatabaseViewTabSurfaceContent({
       <div className="relative flex min-h-0 flex-1">
         <div className="relative flex min-w-0 flex-1 flex-col overflow-hidden">
           {rulesBar}
-          <div className="relative min-h-0 flex-1 overflow-hidden">
+          <div
+            className="relative min-h-0 flex-1 overflow-hidden"
+            onPointerDownCapture={(event) => {
+              if (event.button !== 0 || !onPrepareOpenPage) return;
+              const target = event.target instanceof Element ? event.target : null;
+              const pageId = target
+                ?.closest<HTMLElement>("[data-database-view-page-id]")
+                ?.getAttribute("data-database-view-page-id");
+              if (pageId) onPrepareOpenPage(pageId);
+            }}
+          >
             {overlay}
             {presentation.layout === "list" ? (
               <DatabaseList
@@ -492,6 +506,7 @@ export function DbViewSessionTab({
     () => projects.find((project) => project.id === projectId) ?? null,
     [projectId, projects],
   );
+  const prefetchPageDetail = usePageDetailPrefetch(currentProject?.libraryId ?? null, projectId);
   const listPageCreateTarget = useMemo(
     () =>
       currentProject
@@ -1148,6 +1163,7 @@ export function DbViewSessionTab({
         onSearchQueryChange={(value) => setSearchQuery(projectId, value)}
         onOpenTaskSearch={openTaskSearch}
         onCloseTaskSearch={() => setTaskSearchOpen(false)}
+        onPrepareOpenPage={prefetchPageDetail}
         onOpenPage={(pageId, titleSnapshot, openMode) => {
           void onOpenPageTab(projectId, pageId, titleSnapshot, {
             placement: { kind: "adjacent-right", sourceSurfaceId: tab.id },

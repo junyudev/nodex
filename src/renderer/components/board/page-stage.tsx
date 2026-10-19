@@ -7,7 +7,6 @@ import {
   useRef,
   useState,
   useSyncExternalStore,
-  type CSSProperties,
   type ReactNode,
   type RefObject,
 } from "react";
@@ -22,8 +21,12 @@ import { PageEditorSessionSurface } from "@/components/block-documents/page-edit
 import { BlockDocumentSyncStatus } from "@/components/block-documents/block-document-sync-status";
 import { CollaborativePageTitle } from "@/components/block-documents/collaborative-page-title";
 import type { ContentInteractionHistoryScope } from "@/lib/content-interaction-history";
-import { PageStageInlinePropertyStrip } from "./page-stage/inline-property-strip";
-import { PageStageContentSkeleton } from "./page-stage/content-skeleton";
+import {
+  PageStageBodyPlaceholder,
+  PageStageContentLayout,
+  PageStageFrame,
+  PageTitlePlaceholder,
+} from "./page-stage/frame";
 import { PageStagePropertiesSection } from "./page-stage/properties-section";
 import { PageStageRawContent } from "./page-stage/raw-content";
 import { PageStageToolbar } from "./page-stage/toolbar";
@@ -35,7 +38,6 @@ import { buildPageDeepLink } from "@/lib/page-deeplink";
 import { writeTextToClipboard } from "@/lib/clipboard";
 import type { BlockDocumentSurfaceRuntime } from "@/lib/block-document-surface-runtime";
 import type { EditorSurfaceLease } from "@/lib/document-session-registry";
-import { RIGHT_PANEL_COMPOSER_OVERLAY_SCROLL_RESERVE_STYLE } from "@/lib/right-panel-composer-overlay-reserve";
 import { materializePageDocument } from "../../../shared/block-documents/block-document-codec";
 import { PAGE_DESCRIPTION_PLACEHOLDER } from "@/lib/page-description-placeholder";
 import {
@@ -52,13 +54,6 @@ import { contentRoutingContextKey } from "../../../shared/content-routing-contex
 import { ApplicationPending } from "@/bootstrap/application-surface";
 
 export type { PageStageProps } from "./page-stage/types";
-
-export const PAGE_STAGE_SCROLL_CONTAINER_TEST_ID = "page-stage-scroll-container";
-
-const PAGE_STAGE_SCROLL_CONTAINER_STYLE = {
-  ...RIGHT_PANEL_COMPOSER_OVERLAY_SCROLL_RESERVE_STYLE,
-  overflowAnchor: "none",
-} satisfies CSSProperties;
 
 async function copyPageDeeplink(pageId: string): Promise<void> {
   const copied = await writeTextToClipboard(buildPageDeepLink({ pageId: pageId }));
@@ -314,26 +309,17 @@ function PageStageContent({
   syncStatus,
 }: PageStageContentProps) {
   return (
-    <div className={controller.contentShellClassName}>
-      <div className="h-toolbar-sm" />
-      <div className="flex items-start gap-3">
-        <div className="min-w-0 flex-1">{title}</div>
-        {syncStatus ? <div className="shrink-0 pt-1">{syncStatus}</div> : null}
-      </div>
-
-      <div className="h-2" />
-
-      {controller.hasDatabaseProperties ? (
-        <PageStageInlinePropertyStrip controls={controller.propertyControls} />
-      ) : null}
-
-      <PageStagePropertiesSection controller={controller} />
-
-      <div className="pt-2 pb-8">
-        {description}
-        {referencedBy}
-      </div>
-    </div>
+    <PageStageContentLayout
+      title={title}
+      syncStatus={syncStatus}
+      properties={<PageStagePropertiesSection controller={controller} />}
+      body={
+        <>
+          {description}
+          {referencedBy}
+        </>
+      }
+    />
   );
 }
 
@@ -467,23 +453,36 @@ export function PageStage(props: PageStageProps) {
       }
     />
   );
-  const surfaceProps = {
-    descriptor: props.documentAuthority.descriptor,
-    pageTitleIdentity: props.pageTitleIdentity,
-    isActive: props.isActivePanelTab ?? true,
-    runtimeRef: documentRuntimeRef,
-    onReload: props.documentAuthority.reload,
-    dependencies: props.documentAuthority.surfaceDependencies,
-    pendingFallback: (
-      <ApplicationPending active={props.isActivePanelTab ?? true}>
-        <PageStageContentSkeleton titleSnapshot={page.title} />
-      </ApplicationPending>
-    ),
-    localAwarenessState: {
-      user: { name: "You", color: "#3b82f6" },
-    },
-  } as const;
-  const documentSurface = props.editorSessionKey ? (
+  const isActivePanelTab = props.isActivePanelTab ?? true;
+  // Page Detail is readable before the Document: properties render now, while the title
+  // and body hold their exact places until the collaborative editor is ready.
+  const pendingDocumentContent = (
+    <ApplicationPending active={isActivePanelTab}>
+      <PageStageContent
+        controller={controller}
+        title={<PageTitlePlaceholder title={controller.title} />}
+        description={<PageStageBodyPlaceholder seed={page.id} />}
+      />
+    </ApplicationPending>
+  );
+  const documentAuthority = props.documentAuthority;
+  const surfaceProps = documentAuthority
+    ? ({
+        descriptor: documentAuthority.descriptor,
+        pageTitleIdentity: props.pageTitleIdentity,
+        isActive: isActivePanelTab,
+        runtimeRef: documentRuntimeRef,
+        onReload: documentAuthority.reload,
+        dependencies: documentAuthority.surfaceDependencies,
+        pendingFallback: pendingDocumentContent,
+        localAwarenessState: {
+          user: { name: "You", color: "#3b82f6" },
+        },
+      } as const)
+    : null;
+  const documentSurface = !surfaceProps ? (
+    pendingDocumentContent
+  ) : props.editorSessionKey ? (
     <PageEditorSessionSurface
       {...surfaceProps}
       sessionKey={props.editorSessionKey}
@@ -496,64 +495,44 @@ export function PageStage(props: PageStageProps) {
       {(surface) => renderDocumentSurface(surface)}
     </BlockDocumentSurface>
   );
-  const toolbar = (
-    <PageStageToolbar
-      onNavigateBack={props.onNavigateBack}
-      saving={controller.saving}
-      historyPanelActive={controller.historyPanelActive}
-      limitMainContentWidth={controller.limitMainContentWidth}
-      showRawContent={controller.showRawContent}
-      onCopyDeeplink={() => {
-        void copyPageDeeplink(page.id);
-      }}
-      onDelete={() => {
-        void controller.handleDelete();
-      }}
-      showDelete={Boolean(props.onDelete)}
-      onToggleContentWidth={controller.handleToggleContentWidth}
-      onToggleShowRawContent={controller.handleToggleShowRawContent}
-      onToggleHistoryPanel={handleToggleHistoryPanel}
-      breadcrumb={
-        props.breadcrumb
-          ? {
-              ...props.breadcrumb,
-              currentTitle: controller.title,
-            }
-          : undefined
-      }
-    />
-  );
 
   return (
-    <div
-      className="flex h-full w-full flex-col bg-(--background)"
+    <PageStageFrame
       data-page-stage-surface="true"
       data-page-stage-page-id={page.id}
+      limitMainContentWidth={controller.limitMainContentWidth}
+      headingRailPortalRef={setHeadingRailPortalElement}
+      scrollContainerRef={scrollContainerRef}
+      toolbar={
+        <PageStageToolbar
+          onNavigateBack={props.onNavigateBack}
+          saving={controller.saving}
+          pending={!documentAuthority}
+          historyPanelActive={controller.historyPanelActive}
+          limitMainContentWidth={controller.limitMainContentWidth}
+          showRawContent={controller.showRawContent}
+          onCopyDeeplink={() => {
+            void copyPageDeeplink(page.id);
+          }}
+          onDelete={() => {
+            void controller.handleDelete();
+          }}
+          showDelete={Boolean(props.onDelete)}
+          onToggleContentWidth={controller.handleToggleContentWidth}
+          onToggleShowRawContent={controller.handleToggleShowRawContent}
+          onToggleHistoryPanel={handleToggleHistoryPanel}
+          breadcrumb={
+            props.breadcrumb
+              ? {
+                  ...props.breadcrumb,
+                  currentTitle: controller.title,
+                }
+              : undefined
+          }
+        />
+      }
     >
-      {props.toolbarPlacement?.kind === "external"
-        ? props.toolbarPlacement.render(toolbar)
-        : toolbar}
-
-      <div
-        ref={setHeadingRailPortalElement}
-        className="relative min-h-0 flex-1"
-        data-page-stage-heading-navigation-portal-target="true"
-      >
-        <div
-          ref={scrollContainerRef}
-          className="scrollbar-token h-full min-h-0 overflow-y-auto"
-          data-testid={PAGE_STAGE_SCROLL_CONTAINER_TEST_ID}
-          style={PAGE_STAGE_SCROLL_CONTAINER_STYLE}
-        >
-          <div
-            className={controller.contentBodyClassName}
-            data-page-stage-body="true"
-            data-page-stage-body-width={controller.limitMainContentWidth ? "constrained" : "full"}
-          >
-            {documentSurface}
-          </div>
-        </div>
-      </div>
-    </div>
+      {documentSurface}
+    </PageStageFrame>
   );
 }

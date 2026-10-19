@@ -613,7 +613,7 @@ const configureDatabase = async (
           dataSourceId: source.dataSourceId,
           expectedRevision: pageLayout.value.value.revision,
           propertyId: text.id,
-          visibility: "hide_when_empty",
+          visibility: "always_show",
         },
         {
           kind: "put_page_layout_entry",

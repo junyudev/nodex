@@ -104,11 +104,8 @@ const page = {
 const emptyPropertyControls: PageStagePropertyControls = {
   pageId: null,
   properties: [],
-  primaryProperties: [],
-  sectionProperties: [],
-  hiddenLayoutProperties: [],
+  rows: [],
   semanticValues: null,
-  hasScheduleCapability: false,
   options: {},
   optionRegistryStates: {},
   requestOptions: vi.fn(),
@@ -142,8 +139,6 @@ const buildController = (overrides: Partial<PageStageController> = {}): PageStag
   ({
     page,
     contentRoutingContext: { kind: "project", projectId: "project-1" },
-    storeEpoch: "store-1",
-    hasDatabaseProperties: false,
     hasRelatedChatsRow: false,
     relatedChats: [],
     relatedChatsLoading: false,
@@ -163,7 +158,7 @@ describe("PageStagePropertiesSection", () => {
   test("keeps empty Files available behind the shared disclosure", async () => {
     const view = renderProperties(<PageStagePropertiesSection controller={buildController()} />);
 
-    expect(view.getByText("Properties")).toBeTruthy();
+    expect(view.getByRole("region", { name: "Properties" })).toBeTruthy();
     expect(view.queryByRole("button", { name: "Add Page Files" })).toBeNull();
     const more = await view.findByRole("button", { name: "1 more property" });
     expect(more.getAttribute("aria-expanded")).toBe("false");
@@ -205,7 +200,6 @@ describe("PageStagePropertiesSection", () => {
       await Promise.resolve();
     });
 
-    expect(view.getByText("Properties")).toBeTruthy();
     expect(view.getByText("Linked chats")).toBeTruthy();
     expect(view.getByRole("button", { name: "Add chat" }).textContent).toBe("Empty");
     expect(view.queryByText("Local project")).toBeNull();

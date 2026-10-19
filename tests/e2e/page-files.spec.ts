@@ -324,7 +324,7 @@ test("imports native files and folders with canonical identities", async () => {
 
       await page.keyboard.press("Escape");
       await expect(dialog).not.toBeVisible();
-      await stage.getByRole("button", { name: "Hide 1 property" }).click();
+      await stage.getByRole("button", { name: /^Hide \d+ propert(?:y|ies)$/u }).click();
       await expect(stage.locator('[data-page-file-chip="true"]')).toHaveCount(2);
       await expect(stage.getByRole("button", { name: "Open 4 more Page Files" })).toBeVisible();
       await expect(stage.locator('[data-page-file-chip="true"] [data-file-tab-icon]')).toHaveCount(

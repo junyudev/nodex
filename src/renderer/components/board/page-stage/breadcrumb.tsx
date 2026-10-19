@@ -14,7 +14,6 @@ export interface PageStageBreadcrumbItem {
 export interface PageStageBreadcrumbProps {
   readonly ancestors: readonly PageStageBreadcrumbItem[];
   readonly currentTitle: string;
-  readonly disabled?: boolean;
   readonly onOpenAncestor: (ancestor: PageStageBreadcrumbItem, ancestorIndex: number) => void;
 }
 
@@ -41,16 +40,14 @@ function PageStageBreadcrumbSeparator() {
 function PageStageBreadcrumbAncestor({
   entry,
   showSeparator,
-  disabled,
   onOpenAncestor,
 }: {
   readonly entry: IndexedBreadcrumbItem;
   readonly showSeparator: boolean;
-  readonly disabled: boolean;
   readonly onOpenAncestor: PageStageBreadcrumbProps["onOpenAncestor"];
 }) {
   const label = breadcrumbLabel(entry.item.title);
-  const itemDisabled = disabled || entry.item.disabled === true;
+  const itemDisabled = entry.item.disabled === true;
   return (
     <li className="flex min-w-0 shrink items-center gap-1">
       {showSeparator ? <PageStageBreadcrumbSeparator /> : null}
@@ -76,7 +73,6 @@ function PageStageBreadcrumbAncestor({
 export function PageStageBreadcrumb({
   ancestors,
   currentTitle,
-  disabled = false,
   onOpenAncestor,
 }: PageStageBreadcrumbProps) {
   if (ancestors.length === 0) return null;
@@ -100,7 +96,6 @@ export function PageStageBreadcrumb({
             key={`${entry.item.projectId}:${entry.item.pageId}:${entry.index}`}
             entry={entry}
             showSeparator={index > 0}
-            disabled={disabled}
             onOpenAncestor={onOpenAncestor}
           />
         ))}
@@ -109,7 +104,6 @@ export function PageStageBreadcrumb({
           <li className="flex shrink-0 items-center gap-1">
             <PageStageBreadcrumbSeparator />
             <NodexDropdownMenu
-              disabled={disabled}
               side="bottom"
               align="start"
               contentWidth="menuBounded"
@@ -121,8 +115,6 @@ export function PageStageBreadcrumb({
                   className={cn(
                     "inline-flex size-6 items-center justify-center rounded-md text-token-description-foreground outline-hidden",
                     "hover:bg-token-foreground/5 hover:text-token-text-primary focus-visible:ring-token-focus-border focus-visible:ring-2",
-                    disabled &&
-                      "cursor-not-allowed opacity-40 hover:bg-transparent hover:text-token-description-foreground",
                   )}
                 >
                   <MoreActionsIcon className="icon-2xs shrink-0" />
@@ -135,7 +127,7 @@ export function PageStageBreadcrumb({
                   <NodexDropdownItem
                     key={`${entry.item.projectId}:${entry.item.pageId}:${entry.index}`}
                     tooltipText={label}
-                    disabled={disabled || entry.item.disabled === true}
+                    disabled={entry.item.disabled === true}
                     onSelect={() => onOpenAncestor(entry.item, entry.index)}
                   >
                     {label}
@@ -151,7 +143,6 @@ export function PageStageBreadcrumb({
             key={`${entry.item.projectId}:${entry.item.pageId}:${entry.index}`}
             entry={entry}
             showSeparator={true}
-            disabled={disabled}
             onOpenAncestor={onOpenAncestor}
           />
         ))}

@@ -13,6 +13,7 @@ import { DATABASE_PAGE_PROPERTY_OUTLINED_TOKEN_CLASS_NAME } from "@/components/d
 import {
   ActivitySpinnerIcon,
   ChevronDownIcon,
+  ClockIcon,
   CloseIcon,
   PageMenuOpenNewChatIcon,
   PlusIcon,
@@ -28,12 +29,18 @@ import {
   resolvePageFilesPropertySignal,
   type PageStageQuietPropertiesInput,
 } from "@/lib/page-stage-quiet-properties";
+import {
+  advancePageStagePropertyDisclosure,
+  type PageStagePropertyDisclosureState,
+  type PageStagePropertyRow as PageStagePropertyRowModel,
+} from "@/lib/page-stage-property-layout";
 import { usePageFiles } from "@/lib/use-page-files";
 import { cn } from "@/lib/utils";
 import { PageStageDataSourcePropertyControl } from "./data-source-property-control";
 import type { PageStageController } from "./use-page-stage-controller";
 import type { PageStageRelatedChat } from "./types";
 import { PageFilesRow } from "./page-files-row";
+import { PageStagePropertyRow } from "./property-row";
 import { pageStagePropertyAddControl } from "./property-value-styles";
 
 interface PageStagePropertiesSectionProps {
@@ -248,17 +255,8 @@ function RelatedChatsPropertyRow({ controller }: PageStagePropertiesSectionProps
   const showEmptyControl = empty && !relatedChatsLoading;
 
   return (
-    <div className="grid min-h-7.5 grid-cols-[10rem_minmax(0,1fr)] items-start">
-      <div className="flex min-h-7.5 min-w-0 items-center gap-1.5 pl-1.5">
-        <div className="flex w-5 shrink-0 items-center justify-center text-(--foreground-secondary)">
-          <ThreadsIcon />
-        </div>
-        <span className="min-w-0 truncate text-sm/5 text-(--foreground-secondary)">
-          Linked chats
-        </span>
-      </div>
-
-      <div className={cn("min-w-0 px-2", showEmptyControl && !relatedChatsError && "self-center")}>
+    <PageStagePropertyRow icon={<ThreadsIcon />} label="Linked chats">
+      <div className="min-w-0 flex-1">
         {relatedChatsError ? (
           <div className="flex min-h-7 items-center gap-2 text-xs text-(--red-text)">
             <span className="min-w-0 flex-1 truncate">{relatedChatsError}</span>
@@ -312,7 +310,7 @@ function RelatedChatsPropertyRow({ controller }: PageStagePropertiesSectionProps
         ) : null}
         {showEmptyControl ? <RelatedChatAddControl controller={controller} empty={true} /> : null}
       </div>
-    </div>
+    </PageStagePropertyRow>
   );
 }
 
@@ -325,24 +323,35 @@ function DataSourcePropertyRow({
 }) {
   const Icon = dataSourcePropertyIcon(item.property);
   return (
-    <div className="flex min-h-7.5 items-center">
-      <div className="flex w-40 shrink-0 items-center gap-1.5 pl-1.5">
-        <div className="flex w-5 items-center justify-center text-(--foreground-secondary)">
-          <Icon className="size-4 shrink-0" />
-        </div>
-        <span className="truncate text-sm/5 text-(--foreground-secondary)">
-          {item.property.name}
-        </span>
-      </div>
-      <PageStageDataSourcePropertyControl
-        item={item}
-        controls={controls}
-        className="min-w-0 flex-1 px-2"
-      />
-    </div>
+    <PageStagePropertyRow
+      icon={<Icon />}
+      label={item.property.name}
+      data-page-stage-property-id={item.property.propertyId}
+    >
+      <PageStageDataSourcePropertyControl item={item} controls={controls} className="flex-1" />
+    </PageStagePropertyRow>
   );
 }
 
+function PropertyListRow({
+  row,
+  controller,
+}: PageStagePropertiesSectionProps & { readonly row: PageStagePropertyRowModel }) {
+  if (row.kind === "property") {
+    return <DataSourcePropertyRow item={row.item} controls={controller.propertyControls} />;
+  }
+  if (!controller.schedulePage) return null;
+  return (
+    <PageStagePropertyRow icon={<ClockIcon />} label="Schedule">
+      <SchedulePopover schedule={controller.schedule} page={controller.schedulePage} />
+    </PageStagePropertyRow>
+  );
+}
+
+/**
+ * One quiet list: rows with something to say stay visible, everything empty waits behind
+ * a single disclosure. Visibility is stable for the mounted Page, so editing never moves a row.
+ */
 export function PageStagePropertiesSection({ controller }: PageStagePropertiesSectionProps) {
   const pageId = controller.page?.id ?? "";
   const baseFiles = usePageFiles(controller.contentRoutingContext, pageId);
@@ -374,6 +383,14 @@ export function PageStagePropertiesSection({ controller }: PageStagePropertiesSe
       : createPageStageQuietPropertiesState(quietPropertiesInput);
   const [expandedState, setExpandedState] = useState({ pageId, expanded: false });
   const propertiesExpanded = expandedState.pageId === pageId ? expandedState.expanded : false;
+  const { rows } = controller.propertyControls;
+  const [disclosure, setDisclosure] = useState<PageStagePropertyDisclosureState | null>(null);
+  const nextDisclosure = advancePageStagePropertyDisclosure(disclosure, {
+    pageId,
+    rows,
+    expanded: propertiesExpanded,
+  });
+  if (nextDisclosure !== disclosure) setDisclosure(nextDisclosure);
 
   useLayoutEffect(() => {
     setQuietPropertiesState((current) =>
@@ -389,18 +406,28 @@ export function PageStagePropertiesSection({ controller }: PageStagePropertiesSe
   }, [filesManifestRevision, filesSignal, linkedChatsSignal, pageId]);
 
   if (!controller.page) return null;
-  const { propertyControls } = controller;
+  const shownRows = rows.filter((row) => nextDisclosure.shownKeys.has(row.key));
+  const hiddenRows = rows.filter((row) => !nextDisclosure.shownKeys.has(row.key));
   const filesCollapsed = !currentQuietPropertiesState.files.visible;
   const relatedChatsCollapsed =
     controller.hasRelatedChatsRow &&
     linkedChatsSignal !== "attention" &&
     !currentQuietPropertiesState.linkedChats.visible;
   const collapsedPropertyCount =
-    [filesCollapsed, relatedChatsCollapsed].filter(Boolean).length +
-    propertyControls.hiddenLayoutProperties.length;
+    hiddenRows.length + [filesCollapsed, relatedChatsCollapsed].filter(Boolean).length;
   const collapsedPropertyLabel = formatPageStageQuietPropertyCountLabel(
     collapsedPropertyCount,
     propertiesExpanded,
+  );
+  const linkedChatsRow = controller.hasRelatedChatsRow ? (
+    <RelatedChatsPropertyRow controller={controller} />
+  ) : null;
+  const filesRow = (
+    <PageFilesRow
+      baseFiles={baseFiles}
+      controller={controller}
+      hidden={filesCollapsed && !propertiesExpanded}
+    />
   );
 
   const togglePropertiesExpanded = (): void => {
@@ -411,60 +438,39 @@ export function PageStagePropertiesSection({ controller }: PageStagePropertiesSe
   };
 
   return (
-    <section className="border-b-[0.5px] border-(--table-border) pb-3" aria-label="Properties">
-      <div className="flex items-center gap-2 py-0.75 pl-1.5">
-        <h2 className="text-base/4.5 font-medium text-(--foreground-secondary)">Properties</h2>
-      </div>
+    <section
+      className="mt-2.5 flex flex-col border-b-[0.5px] border-(--table-border) pb-3"
+      aria-label="Properties"
+    >
+      {shownRows.map((row) => (
+        <PropertyListRow key={row.key} row={row} controller={controller} />
+      ))}
+      {relatedChatsCollapsed ? null : linkedChatsRow}
+      {filesCollapsed ? null : filesRow}
 
-      <div className="flex flex-col pb-1">
-        <PageFilesRow
-          baseFiles={baseFiles}
-          controller={controller}
-          hidden={!propertiesExpanded && filesCollapsed}
-        />
-
-        {propertyControls.sectionProperties.map((item) => {
-          return (
-            <DataSourcePropertyRow
-              key={item.property.propertyId}
-              item={item}
-              controls={propertyControls}
-            />
-          );
-        })}
-
-        {propertiesExpanded
-          ? propertyControls.hiddenLayoutProperties.map((item) => (
-              <DataSourcePropertyRow
-                key={`hidden:${item.property.propertyId}`}
-                item={item}
-                controls={propertyControls}
-              />
-            ))
-          : null}
-
-        {controller.hasRelatedChatsRow && (propertiesExpanded || !relatedChatsCollapsed) ? (
-          <RelatedChatsPropertyRow controller={controller} />
-        ) : null}
-
-        {propertyControls.hasScheduleCapability && controller.schedulePage ? (
-          <SchedulePopover schedule={controller.schedule} page={controller.schedulePage} />
-        ) : null}
-      </div>
+      {propertiesExpanded
+        ? hiddenRows.map((row) => (
+            <PropertyListRow key={row.key} row={row} controller={controller} />
+          ))
+        : null}
+      {relatedChatsCollapsed && propertiesExpanded ? linkedChatsRow : null}
+      {filesCollapsed ? filesRow : null}
 
       {collapsedPropertyCount > 0 ? (
         <button
           type="button"
           aria-expanded={propertiesExpanded}
           onClick={togglePropertiesExpanded}
-          className="flex h-8 items-center gap-1.5 rounded-sm px-1.5 text-sm text-(--foreground-tertiary) hover:bg-token-foreground/5"
+          className="flex h-7.5 w-fit items-center gap-1.5 rounded-sm pr-2 pl-1 text-sm/5 text-(--foreground-tertiary) hover:bg-token-foreground/5 hover:text-(--foreground-secondary)"
         >
-          <ChevronDownIcon
-            className={cn(
-              "icon-2xs shrink-0 transition-transform duration-150",
-              propertiesExpanded && "rotate-180",
-            )}
-          />
+          <span className="flex w-5 shrink-0 items-center justify-center">
+            <ChevronDownIcon
+              className={cn(
+                "icon-2xs transition-transform duration-150",
+                propertiesExpanded && "rotate-180",
+              )}
+            />
+          </span>
           {collapsedPropertyLabel}
         </button>
       ) : null}

@@ -329,8 +329,8 @@ Block, has no Document, and has no independent Library placement. It owns one
 typed property schema, Data Source-parented Pages, their property values, one
 Page layout, schema/query revisions, and dormant membership history. The Page
 layout orders Source-defined Properties and assigns each one `always_show`,
-`hide_when_empty`, or `always_hide`; it does not own Page capabilities such as
-Files, Linked chats, or schedules.
+`hide_when_empty` (the default), or `always_hide`; it does not own Page
+capabilities such as Files, Linked chats, or schedules.
 
 Property identity is local to one Data Source. Built-in capabilities use
 reserved stable IDs such as `status`, `priority`, and `tags`; custom Properties

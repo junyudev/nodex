@@ -27,6 +27,7 @@ import {
   type PortableRichText,
 } from "../../../shared/block-documents/portable-rich-text";
 import { cn } from "@/lib/utils";
+import { PAGE_TITLE_TEXT_CLASS_NAME } from "./page-title-typography";
 import { selectEditableLeafContent } from "@/lib/editable-leaf-selection";
 import {
   portableRichTitleAtomLabel,
@@ -91,10 +92,8 @@ interface AbsoluteTitleSelection {
 }
 
 const TITLE_CLASS_NAME = cn(
-  "w-full min-w-0 whitespace-pre-wrap wrap-break-word",
-  "font-content text-(length:--text-heading-app) leading-[1.2]",
-  "text-(--foreground)",
-  "border-none bg-transparent px-0.5 pt-0.75",
+  PAGE_TITLE_TEXT_CLASS_NAME,
+  "border-none bg-transparent",
   "focus-visible:ring-0 focus-visible:outline-none",
   "empty:before:pointer-events-none empty:before:text-(--foreground-disabled)",
   "empty:before:content-[attr(data-placeholder)]",

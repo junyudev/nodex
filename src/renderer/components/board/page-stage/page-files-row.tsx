@@ -59,6 +59,7 @@ import { usePageFiles, type PageFilesReadModel } from "@/lib/use-page-files";
 import { cn } from "@/lib/utils";
 import type { PageStageController } from "./use-page-stage-controller";
 import { pageStagePropertyAddControl } from "./property-value-styles";
+import { PageStagePropertyRow } from "./property-row";
 
 interface PageFilesRowProps {
   readonly controller: PageStageController;
@@ -661,14 +662,8 @@ export function PageFilesRow({ baseFiles, controller, hidden = false }: PageFile
   };
 
   return (
-    <div hidden={hidden} className="grid min-h-7.5 grid-cols-[10rem_minmax(0,1fr)] items-start">
-      <div className="flex min-h-7.5 min-w-0 items-center gap-1.5 pl-1.5">
-        <div className="flex w-5 shrink-0 items-center justify-center text-(--foreground-secondary)">
-          <FileIcon className="size-4" />
-        </div>
-        <span className="min-w-0 truncate text-sm/5 text-(--foreground-secondary)">Files</span>
-      </div>
-      <div className="min-w-0 px-2 self-center">
+    <PageStagePropertyRow hidden={hidden} icon={<FileIcon />} label="Files">
+      <div className="min-w-0 flex-1">
         {baseFiles.error && !baseFiles.inventory ? (
           <button
             type="button"
@@ -755,6 +750,6 @@ export function PageFilesRow({ baseFiles, controller, hidden = false }: PageFile
           </div>
         ) : null}
       </div>
-    </div>
+    </PageStagePropertyRow>
   );
 }

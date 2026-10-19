@@ -310,9 +310,11 @@ represented by one overlay, preserves its source dimensions, stays horizontally
 locked and vertically bounded to the Property list, and commits one presentation
 change only on drop. A Data
 Source owns the order used when its Pages open and assigns each schema Property **Always show**,
-**Hide when empty**, or **Always hide**. Hidden Page Properties remain reachable
-through one disclosure; expanding it is Page-session state and does not change
-the Data Source layout. Files, Linked chats, and other Page capabilities keep
+**Hide when empty**, or **Always hide**. New Properties start as **Hide when empty**, so
+a Page shows what its Properties say rather than rows of `Empty`; **Always show**
+pins a Property that should prompt for a value. Hidden Page Properties remain
+reachable through one disclosure; expanding it is Page-session state and does not
+change the Data Source layout. Files, Linked chats, and other Page capabilities keep
 their own presentation rules and are not schema Properties.
 
 Existing Property rows use semantic icons for built-in identities such as
@@ -802,6 +804,21 @@ Page Stage may show Source Properties only when the Page is currently parented
 by a Data Source and the corresponding schema/value coordinates are valid.
 Losing or changing membership removes only that capability; Page identity,
 Document, content, and local editing surface remain stable.
+
+Opening a Page keeps one composition: toolbar, title, Properties, then body.
+Page Detail renders Properties as soon as it is readable; the Document gates
+only the title and body editors. Until then the title shows its known text in
+the editor's exact typography and position, and the body area stays quiet,
+revealing placeholder bars only when preparation outlasts a short grace period.
+No loading state invents Property values or changes geometry when the editors
+mount.
+
+Properties form one label/value list under the title, in Page-layout order, with
+a valid schedule pair presented as one Schedule row; Linked chats and Files
+follow. Rows the layout shows stay visible; everything else waits behind one
+`N more properties` disclosure. Visibility is stable while the Page stays
+mounted: clearing a value leaves its row in place, and a row filled while the
+disclosure is open keeps its position until the disclosure closes.
 
 Mounted surfaces own independent caret, selection, and presence. Their local Page
 body/title and Database edits share window-local content interaction history

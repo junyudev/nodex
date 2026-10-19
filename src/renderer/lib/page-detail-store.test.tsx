@@ -25,6 +25,7 @@ import {
   resetPageDetailStoreForTests,
   setPageDetail,
   usePageDetail,
+  usePageDetailPrefetch,
 } from "./page-detail-store";
 
 const timestamp = "2026-07-22T00:00:00.000Z";
@@ -480,6 +481,35 @@ describe("Page Detail store realtime convergence", () => {
       await Promise.resolve();
     });
 
+    expect(getPageDetail("project-1", "page-1")).toBe(null);
+  });
+
+  test("prefetches an opening Page once and never serves the prefetch past an effect", async () => {
+    mocks.readPageDetail.mockResolvedValue({ ok: true, value: detail("Prefetched", 1) });
+    const prefetch = renderHook(() => usePageDetailPrefetch("library-1", "project-1"), {
+      wrapper,
+    });
+    await act(async () => {
+      prefetch.result.current("page-1");
+      prefetch.result.current("page-1");
+      await Promise.resolve();
+    });
+    await waitFor(() =>
+      expect(getPageDetail("project-1", "page-1")?.page.title).toBe("Prefetched"),
+    );
+
+    const opened = renderHook(() => usePageDetail("library-1", "project-1", "page-1"), {
+      wrapper,
+    });
+    expect(opened.result.current).toMatchObject({ loading: false, error: null });
+    expect(opened.result.current.detail?.page.title).toBe("Prefetched");
+    expect(mocks.readPageDetail).toHaveBeenCalledTimes(1);
+    opened.unmount();
+
+    await act(async () => {
+      publish(pageEvent("page-1", 2));
+      await Promise.resolve();
+    });
     expect(getPageDetail("project-1", "page-1")).toBe(null);
   });
 

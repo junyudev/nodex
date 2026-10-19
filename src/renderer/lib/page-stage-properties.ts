@@ -20,13 +20,6 @@ import { readRelationValuePreview } from "./data-source-relation-value";
 
 const ESTIMATES = new Set<Estimate>(["xs", "s", "m", "l", "xl"]);
 
-export const PAGE_STAGE_PRIMARY_PROPERTY_IDS = [
-  "priority",
-  "status",
-  "estimate",
-  "due_date",
-] as const;
-
 export interface PageStageDataSourceProperty {
   readonly property: DataSourcePropertyRecordV2;
   readonly value: DatabaseJsonValue;
@@ -236,11 +229,6 @@ export const readPageDetailWorkflowStatus = (
   );
 };
 
-export const isPageStagePrimaryProperty = (property: PageStageDataSourceProperty): boolean =>
-  PAGE_STAGE_PRIMARY_PROPERTY_IDS.some(
-    (propertyId) => matchBuiltInDataSourceProperty(property.property) === propertyId,
-  );
-
 export const hasPageStageScheduleCapability = (semantic: PageStageSemanticProperties): boolean =>
   semantic.scheduledStart !== null &&
   semantic.scheduledEnd !== null &&
@@ -259,21 +247,6 @@ export const pageStageSemanticValues = (
   ...(semantic.scheduledEnd?.value ? { scheduledEnd: semantic.scheduledEnd.value } : {}),
   ...(semantic.assignee?.value ? { assignee: semantic.assignee.value } : {}),
 });
-
-export const pageStageSectionProperties = (
-  properties: readonly PageStageDataSourceProperty[],
-  semantic: PageStageSemanticProperties,
-): readonly PageStageDataSourceProperty[] => {
-  const ownsSchedulePair = hasPageStageScheduleCapability(semantic);
-  return properties.filter((property) => {
-    if (isPageStagePrimaryProperty(property)) return false;
-    if (!ownsSchedulePair) return true;
-    return (
-      property.property.propertyId !== "scheduled_start" &&
-      property.property.propertyId !== "scheduled_end"
-    );
-  });
-};
 
 export const pageStageValueRecord = (
   item: PageStageDataSourceProperty,

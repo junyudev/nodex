@@ -18,7 +18,8 @@ import { PageStageBreadcrumb, type PageStageBreadcrumbProps } from "./breadcrumb
 
 interface PageStageToolbarProps {
   saving: boolean;
-  disabled?: boolean;
+  /** The Page is still opening: actions are inert but keep their resting appearance. */
+  pending?: boolean;
   historyPanelActive: boolean;
   limitMainContentWidth: boolean;
   showRawContent: boolean;
@@ -28,18 +29,19 @@ interface PageStageToolbarProps {
   onToggleContentWidth: () => void;
   onToggleShowRawContent: () => void;
   onToggleHistoryPanel?: () => void;
-  breadcrumb?: Omit<PageStageBreadcrumbProps, "disabled">;
+  breadcrumb?: PageStageBreadcrumbProps;
   onNavigateBack?: () => void;
 }
 
-const pageStageToolbarButtonChrome = "inline-flex size-7 items-center justify-center rounded-md";
+const pageStageToolbarButtonChrome =
+  "inline-flex size-7 items-center justify-center rounded-md disabled:pointer-events-none";
 
 const pageStageToolbarButtonHover =
   "hover:bg-[color-mix(in_srgb,var(--foreground)_5%,transparent)]";
 
 export function PageStageToolbar({
   saving,
-  disabled = false,
+  pending = false,
   historyPanelActive,
   limitMainContentWidth,
   showRawContent,
@@ -71,11 +73,7 @@ export function PageStageToolbar({
           </button>
         </NodexTooltip>
       ) : null}
-      {breadcrumb ? (
-        <PageStageBreadcrumb {...breadcrumb} disabled={disabled} />
-      ) : (
-        <div className="min-w-0 flex-1" />
-      )}
+      {breadcrumb ? <PageStageBreadcrumb {...breadcrumb} /> : <div className="min-w-0 flex-1" />}
 
       <div className="flex shrink-0 items-center gap-1">
         {saving && <span className="mr-2 text-xs text-(--foreground-tertiary)">Saving...</span>}
@@ -90,7 +88,7 @@ export function PageStageToolbar({
             onClick={onToggleShowRawContent}
             aria-pressed={showRawContent}
             aria-label="Show raw"
-            disabled={disabled}
+            disabled={pending}
             className={cn(
               pageStageToolbarButtonChrome,
               showRawContent
@@ -98,8 +96,6 @@ export function PageStageToolbar({
                 : "text-(--foreground-tertiary)",
               pageStageToolbarButtonHover,
               "hover:text-(--foreground-secondary)",
-              disabled &&
-                "cursor-not-allowed opacity-40 hover:bg-transparent hover:text-(--foreground-tertiary)",
             )}
           >
             <CodeIcon className="icon-xs" />
@@ -112,7 +108,7 @@ export function PageStageToolbar({
             onClick={onToggleContentWidth}
             aria-pressed={!limitMainContentWidth}
             aria-label="Full width"
-            disabled={disabled}
+            disabled={pending}
             className={cn(
               pageStageToolbarButtonChrome,
               !limitMainContentWidth
@@ -120,8 +116,6 @@ export function PageStageToolbar({
                 : "text-(--foreground-tertiary)",
               pageStageToolbarButtonHover,
               "hover:text-(--foreground-secondary)",
-              disabled &&
-                "cursor-not-allowed opacity-40 hover:bg-transparent hover:text-(--foreground-tertiary)",
             )}
           >
             <FullWidthIcon className="icon-xs" />
@@ -134,7 +128,7 @@ export function PageStageToolbar({
             onClick={onToggleHistoryPanel}
             aria-pressed={historyPanelActive}
             aria-label="History"
-            disabled={disabled}
+            disabled={pending}
             className={cn(
               pageStageToolbarButtonChrome,
               historyPanelActive
@@ -142,8 +136,6 @@ export function PageStageToolbar({
                 : "text-(--foreground-tertiary)",
               pageStageToolbarButtonHover,
               "hover:text-(--foreground-secondary)",
-              disabled &&
-                "cursor-not-allowed opacity-40 hover:bg-transparent hover:text-(--foreground-tertiary)",
             )}
           >
             <PageHistoryIcon className="icon-xs" />
@@ -155,21 +147,19 @@ export function PageStageToolbar({
           side="bottom"
           sideOffset={6}
           contentWidth="xs"
-          disabled={disabled}
+          disabled={pending}
           triggerTooltipContent="Page actions"
           triggerButton={
             <button
               type="button"
               aria-label="Page actions"
               data-tab-preview-pin-exempt="true"
-              disabled={disabled}
+              disabled={pending}
               className={cn(
                 pageStageToolbarButtonChrome,
                 "text-(--foreground-tertiary)",
                 pageStageToolbarButtonHover,
                 "hover:text-(--foreground-secondary)",
-                disabled &&
-                  "cursor-not-allowed opacity-40 hover:bg-transparent hover:text-(--foreground-tertiary)",
               )}
             >
               <ProjectActionsIcon className="icon-sm shrink-0" />

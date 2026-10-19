@@ -103,6 +103,19 @@
   }
 }
 
+/* Waits out fast reads so a brief load never flashes placeholder bars. */
+.nodex-loading-deferred {
+  opacity: 0;
+  animation: nodex-loading-deferred-reveal 180ms ease-out var(--loading-deferred-delay, 450ms)
+    forwards;
+}
+
+@keyframes nodex-loading-deferred-reveal {
+  to {
+    opacity: 1;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .nodex-loading-results-shimmer::before,
   .nodex-loading-placeholder[data-animate="true"]::before {

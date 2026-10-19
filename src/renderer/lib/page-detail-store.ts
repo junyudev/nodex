@@ -387,3 +387,20 @@ export const usePageDetail = (
 
   return snapshot;
 };
+
+/**
+ * Starts reading a Page Detail the moment a Page is about to open, so its properties are
+ * ready when the Page Stage mounts. The entry joins projection invalidation like any
+ * retained detail; an unobserved entry is dropped rather than served stale.
+ */
+export const usePageDetailPrefetch = (
+  libraryId: string | null,
+  projectId: string | null,
+): ((pageId: string) => void) => {
+  const registry = useProjectionInvalidationRegistry();
+  return (pageId) => {
+    if (!libraryId || !projectId || getPageDetail(projectId, pageId)) return;
+    retainPageDetailAuthority(libraryId, projectId, pageId, registry);
+    void fetchPageDetail(projectId, pageId, { libraryId }).catch(() => undefined);
+  };
+};

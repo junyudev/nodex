@@ -1340,7 +1340,7 @@ fn put_property(
     let inserted_layout_entry = connection.execute(
         "INSERT OR IGNORE INTO data_source_page_layout_entries(\
            data_source_id, property_id, rank_key, visibility\
-         ) SELECT ?1, id, rank_key, 'always_show' FROM data_source_properties \
+         ) SELECT ?1, id, rank_key, 'hide_when_empty' FROM data_source_properties \
            WHERE data_source_id = ?1 AND id = ?2",
         params![data_source_id, property_id],
     )?;

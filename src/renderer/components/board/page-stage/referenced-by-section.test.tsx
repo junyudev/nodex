@@ -42,10 +42,15 @@ describe("ReferencedBySection", () => {
     expect(view.queryByText("Referenced by")).toBeNull();
   });
 
-  test("keeps a loading state visible without exposing a zero count", () => {
+  test("waits for a known source Page instead of flashing while loading", () => {
     const loadingView = render(
       <ReferencedBySection items={[]} sourcePageCount={0} loading onOpen={() => undefined} />,
     );
-    expect(loadingView.getByRole("button", { name: "Referenced by …" })).toBeTruthy();
+    expect(loadingView.queryByText("Referenced by")).toBeNull();
+
+    loadingView.rerender(
+      <ReferencedBySection items={[ITEM]} sourcePageCount={1} loading onOpen={() => undefined} />,
+    );
+    expect(loadingView.getByRole("button", { name: "Referenced by 1" })).toBeTruthy();
   });
 });
