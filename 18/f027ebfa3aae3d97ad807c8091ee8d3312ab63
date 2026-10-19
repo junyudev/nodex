@@ -1,0 +1,264 @@
+src/renderer/features/local-conversation/view/local-conversation-viewport-motion.browser.test.tsx
+  s_abb68521e49fa0::t_1b8e77facb673a 108
+src/renderer/components/workbench/workbench-shell.panel-commands.test.tsx
+  s_abb68521e49fa0::t_e391702d5b81b7 401
+src/renderer/features/local-conversation/native-conversation-history-owner.node.test.ts
+  s_abb68521e49fa0::t_e391702d5b81b7 99
+src/renderer/features/local-conversation/view/blocks/local-conversation-block-renderer.tsx
+  s_abb68521e49fa0::t_e391702d5b81b7 49,89,249,308
+src/main/codex-application/CodexConversationServerRequestProjection.node.test.ts
+  s_abb68521e49fa0::t_e391702d5b81b7 92,104
+packages/agent-runtime/src/nodex/Rollback.test.ts
+  s_abb68521e49fa0::t_285ba0b7b8f2df 83-119,122,124-125,131-174,176-192,194-208,210-221,223-228,231-281
+src/renderer/features/local-conversation/agent-runtime-stage-actions.node.test.ts
+  s_abb68521e49fa0::t_930e62a8ed91dc 49-57,87,284-286,345-386
+  s_abb68521e49fa0::t_92d4820bcefbc3 326
+  s_abb68521e49fa0::t_4da18b1dbeff26 266,288,294
+  s_abb68521e49fa0::t_e391702d5b81b7 321,337
+src/renderer/features/local-conversation/thread-stage-types.ts
+  s_abb68521e49fa0::t_e45cc1833924b5 518
+src/renderer/features/local-conversation/view/connected-thread-stage.test.tsx
+  s_abb68521e49fa0::t_e391702d5b81b7 475,529
+src/shared/codex-user-turn-edit.ts
+  s_abb68521e49fa0::t_8f3c98946e99cd 1-59
+src/shared/types.ts
+  s_abb68521e49fa0::t_e391702d5b81b7 4410
+src/shared/agent-runtime-api.ts
+  s_abb68521e49fa0::t_0b896350ff669c 126,128,344,347-349
+src/renderer/features/local-conversation/view/local-conversation-captured-widget-submit.test.tsx
+  s_abb68521e49fa0::t_e391702d5b81b7 58
+src/renderer/features/local-conversation/view/local-conversation-thread-body-owner.tsx
+  s_abb68521e49fa0::t_e4732811fb94d5 127-132
+  s_abb68521e49fa0::t_e391702d5b81b7 1132,1137,1402
+  s_abb68521e49fa0::t_e45cc1833924b5 665-671
+  s_abb68521e49fa0::t_a04162d8d64746 1135,1139-1140,1145
+  s_abb68521e49fa0::t_c9196fb70043e1 648-664,672,1397
+src/main/codex-application/CodexThreadDirectoryProjection.ts
+  s_abb68521e49fa0::t_e391702d5b81b7 283
+src/main/ipc/handlers/AgentRuntimeIpc.ts
+  s_abb68521e49fa0::t_0b896350ff669c 188,190-191
+src/renderer/lib/review-code-comments.node.test.ts
+  s_abb68521e49fa0::t_e391702d5b81b7 60
+src/renderer/features/local-conversation/view/local-conversation-thread-view-state.ts
+  s_abb68521e49fa0::t_8686588f16c6c0 27-31,71-82,120,122-124,127,129,132,137-159,197-201,209-219,249-258,260-274
+  s_abb68521e49fa0::t_e45cc1833924b5 259
+src/renderer/features/local-conversation/agent-runtime-conversation-owner.node.test.ts
+  s_abb68521e49fa0::t_1bfd4eba17e1df 193-195,207,1409-1454
+  s_abb68521e49fa0::t_4da18b1dbeff26 192,606,958,976,981,996,1055
+  s_abb68521e49fa0::t_9c054b0b1752c8 1455-1457
+src/shared/codex-conversation-state/codex-owner-edit.test.ts
+  s_abb68521e49fa0::t_83ff99f88be6f4 29-34,37-38,41,53,74-76,130-163
+  s_abb68521e49fa0::t_b7766693cd0705 12,111,167,180
+  s_abb68521e49fa0::t_13185762d80a56 164
+packages/agent-runtime/src/orchestration-v2/CheckpointRollbackService.ts
+  s_abb68521e49fa0::t_9eb38aa60b6789 132
+  s_abb68521e49fa0::t_f76db03da54ec0 20
+src/renderer/features/local-conversation/native-thread-stage-actions.ts
+  s_abb68521e49fa0::t_e391702d5b81b7 51
+src/main/codex-application/CodexMainConversationEdit.ts
+  s_abb68521e49fa0::t_b7766693cd0705 15,54
+src/renderer/features/local-conversation/view/composer/local-conversation-composer-shell.test.tsx
+  s_abb68521e49fa0::t_e391702d5b81b7 100
+src/renderer/features/local-conversation/agent-runtime-conversation-adapter.ts
+  s_abb68521e49fa0::t_689fcb6c6fe398 486,488-500,502-511,838
+  s_abb68521e49fa0::t_4da18b1dbeff26 438
+  s_abb68521e49fa0::t_4ea26af5e1ee7d 311-316
+src/renderer/features/local-conversation/view/local-conversation-footer.test.tsx
+  s_abb68521e49fa0::t_e391702d5b81b7 78,162
+src/shared/codex-conversation-patches.test.ts
+  s_abb68521e49fa0::t_e391702d5b81b7 40
+packages/agent-runtime/src/nodex/Interface.ts
+  s_abb68521e49fa0::t_0b896350ff669c 407-408
+src/renderer/features/local-conversation/normalized-timeline-rendering.test.tsx
+  s_abb68521e49fa0::t_1b8e77facb673a 84
+src/renderer/components/workbench/workbench-shell.automations-conversation.test.tsx
+  s_abb68521e49fa0::t_e391702d5b81b7 556,559,562
+src/shared/agent-conversation-presentation.node.test.ts
+  s_abb68521e49fa0::t_e391702d5b81b7 432,493
+docs/product-specs/codex-thread-transcript-behavior.md
+  s_abb68521e49fa0::t_d53cd39c357b52 169,446-448
+CHANGELOG.md
+  s_abb68521e49fa0::t_6ac2c0d64a2b52 32
+src/main/codex-application/CodexConversationRelationships.node.test.ts
+  s_abb68521e49fa0::t_e391702d5b81b7 61
+src/renderer/features/local-conversation/projection/build-composer-shell-model.node.test.ts
+  s_abb68521e49fa0::t_e391702d5b81b7 51
+src/renderer/features/local-conversation/view/composer/local-conversation-thread-composer-speed.test.tsx
+  s_abb68521e49fa0::t_e391702d5b81b7 257
+src/renderer/features/local-conversation/view/local-conversation-thread-turn.tsx
+  s_abb68521e49fa0::t_e391702d5b81b7 67,218,280,306
+src/renderer/features/local-conversation/view/composer/local-conversation-thread-composer-dictation.test.tsx
+  s_abb68521e49fa0::t_e391702d5b81b7 199,281
+src/renderer/lib/codex-context-window.node.test.ts
+  s_abb68521e49fa0::t_e391702d5b81b7 35
+src/renderer/lib/composer-enter-behavior-atom.ts
+  s_abb68521e49fa0::t_8586accc147ff5 1-9
+docs/product-specs/agent-runtime-behavior.md
+  s_abb68521e49fa0::t_d53cd39c357b52 154-162
+  s_abb68521e49fa0::t_a132d143675476 354-355
+src/renderer/test/composer-shell-fixture.ts
+  s_abb68521e49fa0::t_e391702d5b81b7 189
+packages/agent-runtime/src/provider/CodexProvider.ts
+  s_abb68521e49fa0::t_c95b3d759dbcc6 83-84
+packages/agent-runtime/src/nodex/Service.ts
+  s_abb68521e49fa0::t_0b896350ff669c 252,530,532,851
+src/main/agent-runtime/AgentRuntimeApplication.ts
+  s_abb68521e49fa0::t_e45cc1833924b5 2027
+  s_abb68521e49fa0::t_0b896350ff669c 2022,2024,2030
+src/renderer/features/local-conversation/view/local-conversation-stage-header.test.tsx
+  s_abb68521e49fa0::t_e391702d5b81b7 36
+src/renderer/features/local-conversation/view/local-conversation-realtime-transcript.browser.test.tsx
+  s_abb68521e49fa0::t_1b8e77facb673a 84
+packages/agent-runtime/src/orchestration-v2/CheckpointRollbackService.test.ts
+  s_abb68521e49fa0::t_fbfb5a0b0a2329 357,360,508-509
+src/renderer/features/local-conversation/view/local-conversation-virtualized-turn-list.test.tsx
+  s_abb68521e49fa0::t_1b8e77facb673a 237,569
+packages/agent-runtime/src/orchestration-v2/Orchestrator.ts
+  s_abb68521e49fa0::t_339007baefbc89 9879,9883
+  s_abb68521e49fa0::t_9eb38aa60b6789 86
+packages/agent-runtime/src/orchestration-v2/Orchestrator.control-reads.test.ts
+  s_abb68521e49fa0::t_f4b4c9dc598027 911,960
+src/renderer/features/local-conversation/projection/build-thread-body-model.node.test.ts
+  s_abb68521e49fa0::t_e391702d5b81b7 97
+src/renderer/features/local-conversation/view/local-conversation-turn-entry.tsx
+  s_abb68521e49fa0::t_e391702d5b81b7 48,86,227,336
+src/main/codex-application/CodexConversationRelationshipsProjection.node.test.ts
+  s_abb68521e49fa0::t_e391702d5b81b7 46
+src/renderer/features/local-conversation/local-conversation-store.ts
+  s_abb68521e49fa0::t_e391702d5b81b7 512,1044,3315,6825,9967,9985,10242
+  s_abb68521e49fa0::t_adfdc383eae20e 139,1056,1066
+  s_abb68521e49fa0::t_b7766693cd0705 136,6868
+src/renderer/features/local-conversation/view/local-conversation-thread-scroll-controller.tsx
+  s_abb68521e49fa0::t_e45cc1833924b5 462-471
+  s_abb68521e49fa0::t_f339f9725f850f 87-89,460-461,472-474
+src/renderer/features/local-conversation/view/composer/request-cards/codex-pending-request-card.test.tsx
+  s_abb68521e49fa0::t_e391702d5b81b7 116
+src/renderer/features/local-conversation/remote-codex-stage-actions.ts
+  s_abb68521e49fa0::t_e391702d5b81b7 129-130
+src/renderer/features/local-conversation/selectors.node.test.ts
+  s_abb68521e49fa0::t_e391702d5b81b7 77
+src/renderer/test/composer-actions-fixture.ts
+  s_abb68521e49fa0::t_e391702d5b81b7 22
+src/renderer/features/local-conversation/view/local-conversation-thread-body.test.tsx
+  s_abb68521e49fa0::t_e391702d5b81b7 314,356,389,1750,1761-1762,1772,1781-1782
+  s_abb68521e49fa0::t_49bc92a3a83554 1785-1836
+  s_abb68521e49fa0::t_6cac564a049e7c 1783-1784
+src/renderer/features/local-conversation/view/summary-panel/thread-floating-summary-panel.test.tsx
+  s_abb68521e49fa0::t_e391702d5b81b7 349
+src/renderer/features/local-conversation/view/ordinary-history-position.browser.test.tsx
+  s_abb68521e49fa0::t_1b8e77facb673a 96
+src/shared/codex-user-turn-edit.test.ts
+  s_abb68521e49fa0::t_7641e87968c9d9 1-71
+  s_abb68521e49fa0::t_8c00d4b5a5d0d5 72-89
+src/renderer/features/local-conversation/view/local-conversation-virtualized-turn-list.tsx
+  s_abb68521e49fa0::t_e4732811fb94d5 238-239,608,1840
+  s_abb68521e49fa0::t_e391702d5b81b7 242,408,450,525,578,611,1846
+  s_abb68521e49fa0::t_dfd21b4a1662aa 42
+  s_abb68521e49fa0::t_e85ad3b4bfcf3c 1928-1937,2230,2236-2237,2271,2277-2280
+  s_abb68521e49fa0::t_2631100f7c5562 2231-2235
+  s_abb68521e49fa0::t_a04162d8d64746 85
+src/renderer/features/local-conversation/view/local-conversation-find-placement.browser.test.tsx
+  s_abb68521e49fa0::t_e391702d5b81b7 165,232,394
+src/renderer/features/local-conversation/view/right-panel-composer-latest-turn-preview.tsx
+  s_abb68521e49fa0::t_e391702d5b81b7 26,55,154
+src/shared/codex-conversation-document.test.ts
+  s_abb68521e49fa0::t_e391702d5b81b7 38
+src/renderer/features/local-conversation/view/composer/request-cards/pending-request-conversation-actions.node.test.ts
+  s_abb68521e49fa0::t_e391702d5b81b7 34
+packages/agent-runtime/src/orchestration-v2/QueueWindow.test.ts
+  s_abb68521e49fa0::t_0b896350ff669c 125,129,158,167-168
+src/renderer/features/local-conversation/local-conversation-store.test.tsx
+  s_abb68521e49fa0::t_e45cc1833924b5 20114,21244,21351,21438,21625
+  s_abb68521e49fa0::t_e391702d5b81b7 1119,4159,20204,21572,21933,21950,21973,22544
+src/renderer/features/local-conversation/view/blocks/local-conversation-block-leaves.test.tsx
+  s_abb68521e49fa0::t_b41a34b5f371b6 15,542-667
+  s_abb68521e49fa0::t_e391702d5b81b7 467,490,497,513,533
+  s_abb68521e49fa0::t_5d967e41a797b8 668
+src/renderer/features/local-conversation/view/composer/new-chat-start-in-selector.test.tsx
+  s_abb68521e49fa0::t_e391702d5b81b7 47
+src/renderer/features/local-conversation/view/composer/new-chat-project-selector.test.tsx
+  s_abb68521e49fa0::t_e391702d5b81b7 55
+src/renderer/features/local-conversation/agent-runtime-conversation-adapter.test.tsx
+  s_abb68521e49fa0::t_4da18b1dbeff26 116
+src/shared/schemas/agent-runtime-api.ts
+  s_abb68521e49fa0::t_0b896350ff669c 191
+src/renderer/features/local-conversation/view/local-conversation-timeline-image.test.tsx
+  s_abb68521e49fa0::t_e391702d5b81b7 84
+src/renderer/features/local-conversation/agent-runtime-conversation-owner.ts
+  s_abb68521e49fa0::t_4da18b1dbeff26 79,344
+  s_abb68521e49fa0::t_c73667e39ddea5 256,296-299,347-357,360-367,369,375-388,394-395,398,401-402,1666-1671
+  s_abb68521e49fa0::t_38024efc0a8d9b 12
+  s_abb68521e49fa0::t_6e2b87c21b5cff 358-359,368,370-374
+src/renderer/features/local-conversation/view/local-conversation-voice-work.browser.test.tsx
+  s_abb68521e49fa0::t_1b8e77facb673a 158
+src/renderer/features/local-conversation/view/blocks/local-conversation-block-leaves.tsx
+  s_abb68521e49fa0::t_e391702d5b81b7 121,1042
+  s_abb68521e49fa0::t_b7b367a3f74938 268-275,874-923,929-974,1078-1083,1089-1093,1095,1141-1146,1201
+  s_abb68521e49fa0::t_02831de21eaa07 100-103
+  s_abb68521e49fa0::t_1ba74d8208692d 924-928
+src/shared/ipc-endpoint-policy.ts
+  s_abb68521e49fa0::t_0b896350ff669c 85
+src/shared/codex-conversation-state/codex-owner-edit.ts
+  s_abb68521e49fa0::t_b7766693cd0705 37-42,77
+src/renderer/features/local-conversation/native-conversation-history-owner.ts
+  s_abb68521e49fa0::t_e391702d5b81b7 128
+src/renderer/features/local-conversation/view/connected-review-diff-panel.test.ts
+  s_abb68521e49fa0::t_e391702d5b81b7 72
+src/renderer/features/local-conversation/view/local-conversation-turn-virtualization.test.ts
+  s_abb68521e49fa0::t_b2135f9ee8e5c9 5,600-638
+packages/agent-runtime/src/orchestration-v2/ProviderTurnControlService.test.ts
+  s_abb68521e49fa0::t_0b896350ff669c 229
+src/renderer/components/workbench/use-workbench-preferences.ts
+  s_abb68521e49fa0::t_8586accc147ff5 8
+packages/agent-runtime/src/orchestration-v2/ProjectionStore.ts
+  s_abb68521e49fa0::t_0b896350ff669c 1070-1071,6725,6730,6734,8976,10302,10306-10308
+src/renderer/features/local-conversation/view/local-conversation-turn-virtualization.ts
+  s_abb68521e49fa0::t_f339f9725f850f 788,805-808,813,818,824
+  s_abb68521e49fa0::t_2631100f7c5562 789-804
+src/main/codex-application/CodexConversationServerRequestProjection.ts
+  s_abb68521e49fa0::t_a3a6e97b6535f2 11,73-76
+src/renderer/features/local-conversation/view/local-conversation-footer.tsx
+  s_abb68521e49fa0::t_e391702d5b81b7 365
+src/shared/codex-turn-notification.test.ts
+  s_abb68521e49fa0::t_e391702d5b81b7 56
+src/renderer/components/workbench/workbench-testkit/workbench-shell-harness.tsx
+  s_abb68521e49fa0::t_e391702d5b81b7 234,320,407-408,4656,5114-5115
+  s_abb68521e49fa0::t_6e2b87c21b5cff 2821-2835
+docs/KEYBOARD_SHORTCUTS.md
+  s_abb68521e49fa0::t_d53cd39c357b52 140-150
+packages/agent-runtime/src/nodex/Rollback.ts
+  s_abb68521e49fa0::t_f4b4c9dc598027 8-10
+packages/agent-runtime/src/orchestration-v2/CheckpointRestoreSafety.ts
+  s_abb68521e49fa0::t_9eb38aa60b6789 1-6,14-37
+  s_abb68521e49fa0::t_78ae3132cbc4fe 38
+src/renderer/lib/agent-runtime-runtime.ts
+  s_abb68521e49fa0::t_0b896350ff669c 22-23,198-199,237
+packages/agent-runtime/src/provider/ClaudeProvider.ts
+  s_abb68521e49fa0::t_c95b3d759dbcc6 63-64
+src/main/codex/codex-conversation-snapshot.test.ts
+  s_abb68521e49fa0::t_e391702d5b81b7 79,108,177,196,248,312,395
+src/renderer/components/workbench/review-diff-panel.test.tsx
+  s_abb68521e49fa0::t_e391702d5b81b7 568
+src/renderer/features/local-conversation/view/connected-thread-stage.tsx
+  s_abb68521e49fa0::t_e391702d5b81b7 370,852
+src/shared/agent-conversation-presentation.ts
+  s_abb68521e49fa0::t_e391702d5b81b7 663
+src/shared/codex-canonical-pending-request.node.test.ts
+  s_abb68521e49fa0::t_e391702d5b81b7 54
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "18f027ebfa3aae3d97ad807c8091ee8d3312ab63",
+  "prompts": {},
+  "sessions": {
+    "s_abb68521e49fa0": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "fb6fba0e-ddde-45c4-b7f3-cc628f9877c2",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
