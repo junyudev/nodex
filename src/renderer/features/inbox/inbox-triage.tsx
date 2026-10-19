@@ -233,7 +233,7 @@ export function InboxTriage({
   const model = inboxTriageModel(item, suggestionsEnabled);
   const done = () => void actions.setState([item.pageId], "done");
   const keep = () => void actions.keep([item.pageId]);
-  const dispatchByHand = () => onManualDraftChange(draftForInboxItem(item, inboxProjectId));
+  const handleManually = () => onManualDraftChange(draftForInboxItem(item, inboxProjectId));
   const editAction = item.bodyEditable ? (
     <InboxIconAction
       label="Edit"
@@ -245,6 +245,9 @@ export function InboxTriage({
   );
   const keepAction = <InboxIconAction label="Keep" icon={ArchiveIcon} onClick={keep} />;
   const doneAction = <InboxIconAction label="Mark done" icon={CheckmarkIcon} onClick={done} />;
+  const handleManuallyAction = (
+    <InboxIconAction label="Handle manually" icon={DispatchIcon} onClick={handleManually} />
+  );
   const setKind = (kind: InboxEntryKind | null) => void actions.setKind(item.pageId, kind);
   // A kind, once known, leads every strip so it can be read and corrected in place.
   const kindControl = item.kind ? <InboxKindControl kind={item.kind} onChange={setKind} /> : null;
@@ -348,8 +351,8 @@ export function InboxTriage({
     switch (model.kind) {
       case "suggesting":
         return {
-          // Until advice arrives the card is the message alone. The spinner holds the place
-          // where the decision then appears.
+          // Until advice arrives the card is the message alone; it can still be handled by hand
+          // without waiting. The spinner holds the place where the decision then appears.
           strip: null,
           actions: (
             <Row>
@@ -357,6 +360,7 @@ export function InboxTriage({
                 {menu}
                 {editAction}
                 {doneAction}
+                {handleManuallyAction}
               </InboxIconActions>
               {awaitingIndicator ? (
                 // Ends where the card's corner curve meets its bottom edge, not at the
@@ -432,9 +436,9 @@ export function InboxTriage({
                   icon={RetryIcon}
                   onClick={() => void actions.requestSuggestion([item.pageId], [item.basis])}
                 />
-                <InboxIconAction label="Dispatch" icon={DispatchIcon} onClick={dispatchByHand} />
                 {keepAction}
                 {doneAction}
+                {handleManuallyAction}
               </InboxIconActions>
             </Row>
           ),
@@ -448,7 +452,7 @@ export function InboxTriage({
                 <Notice tone="error">
                   {model.proposal.failureKind === "unknown"
                     ? "Delivery not confirmed"
-                    : "Couldn’t dispatch"}{" "}
+                    : "Couldn’t deliver"}{" "}
                   — {model.message}
                 </Notice>
               </Row>
@@ -473,13 +477,17 @@ export function InboxTriage({
                     onClick={() => void actions.retryDispatch(model.proposal.proposalId)}
                   />
                 )}
-                <InboxIconAction
-                  label={model.proposal.failureKind === "unknown" ? "Send again" : "Dispatch"}
-                  icon={DispatchIcon}
-                  onClick={() => onManualDraftChange(draftForInboxItem(item, inboxProjectId))}
-                />
                 {keepAction}
                 {doneAction}
+                {model.proposal.failureKind === "unknown" ? (
+                  <InboxIconAction
+                    label="Send again"
+                    icon={DispatchIcon}
+                    onClick={handleManually}
+                  />
+                ) : (
+                  handleManuallyAction
+                )}
               </InboxIconActions>
             </Row>
           ),
@@ -512,11 +520,11 @@ export function InboxTriage({
                 {doneAction}
               </InboxIconActions>
               <Decision
-                label="Dispatch"
+                label="Handle manually"
                 target={null}
                 icon={DispatchIcon}
                 variant="ghost"
-                onClick={dispatchByHand}
+                onClick={handleManually}
               />
             </Row>
           ),

@@ -180,7 +180,7 @@ Tasks and questions favor a new chat; a clear continuation can target an existin
 chat. In the Library Inbox, work without a suitable Project can start a projectless
 chat. Notes, references and ambiguous fragments get a focused Keep proposal.
 An uncertain selected group can be kept as notes together. The Agent never
-completes a request by asking the user to choose Dispatch manually.
+completes a request by asking the user to handle the message manually.
 
 Main rejects unknown targets, invalid action fields, duplicate or missing members
 and overlong prompts instead of repairing or truncating them. A suggestion can
@@ -198,8 +198,8 @@ What Nodex made of a message is not a reply. It is a strip joined to the
 message itself: the message fills the top of one rounded object, and the strip
 sits beneath it inside the same outline. The ways to act sit in one row just
 under that card and exactly as wide, all at its trailing end. The first of its icons
-opens the message menu: `Open as Page`, `Dispatch`,
-`Suggest again`, `Mark done`, and `Delete`. `Dispatch` opens the dispatch editor
+opens the message menu: `Open as Page`, `Handle manually`,
+`Suggest again`, `Mark done`, and `Delete`. `Handle manually` opens the dispatch editor
 in place of the strip, starting from the current suggestion when there is one.
 The second icon is `Edit`, on every message still waiting in the Inbox except one
 whose delivery failed. With nothing to say yet, the card is
@@ -208,10 +208,10 @@ kind's glyph leads its strip in every state. Hovering the glyph names the kind,
 and clicking it changes the kind; this is the one place a kind is changed. The
 strip and its row show one of these:
 
-- **Awaiting advice:** no strip. Only the newest such message shows a small
-  spinner at the end of its row, the place where its decision appears once
-  advice arrives. The spinner ends where the card's bottom-right corner curve
-  meets its bottom edge.
+- **Suggestion running:** no strip. The `Handle manually` icon decides by hand
+  without waiting. Only the newest such message shows a small spinner at the end
+  of its row, the place where its decision appears once advice arrives. The spinner
+  ends where the card's bottom-right corner curve meets its bottom edge.
 - **Suggestion:**
   - a one-line summary. Hovering it shows the rationale and the runtime that
     suggested it;
@@ -221,15 +221,17 @@ strip and its row show one of these:
   - `Keep`.
 - **Failure:** one short reason and a new decision. Suggestion failures and
   temporarily unavailable delivery offer `Retry`. Definite rejection requires
-  reviewing `Dispatch`; uncertain delivery offers `Open chat` and `Send again`
+  reviewing `Handle manually`; uncertain delivery offers `Open chat` and `Send again`
   without an automatic retry.
-- **Awaiting advice or suggestions off:** `Dispatch`, `Suggest` when suggestions
-  are on, and `Keep`.
+- **No advice requested, or suggestions off:** `Handle manually`, `Suggest`
+  when suggestions are on, and `Keep`.
 
 Only the decision keeps a text label, with its action's glyph: the suggested
-action, or `Dispatch` when there is no suggestion. It ends the row, flush with
-the card's right edge, so it is always in the same horizontal place. `Edit`,
-`Keep as a note`, `Retry`, `Suggest`, `Mark done`, `Dispatch` on a failure, and
+action, or `Handle manually` when there is no suggestion. It ends the row, flush with
+the card's right edge, so it is always in the same horizontal place; while a
+suggestion runs, the spinner holds that place. `Edit`,
+`Keep as a note`, `Retry`, `Suggest`, `Mark done`, `Handle manually` while a
+suggestion runs or after a failure (always the last icon, right of `Mark done`), and
 the message menu are icon buttons named by their tooltips, gathered at the
 trailing edge just before any decision. Every suggestion offers the `Mark done` check. The Nodex
 mark stands for the AI. It appears only on actions that ask for a suggestion and
@@ -333,7 +335,7 @@ above the composer. Selecting never resizes or shifts the stream: the scroll
 gutters stay reserved. The bar's actions are icon buttons:
 
 - **Suggest together:** asks for one grouped suggestion.
-- **Dispatch:** opens the dispatch editor for the whole selection.
+- **Handle manually:** opens the dispatch editor for the whole selection.
 - **Keep as notes**
 - **Mark done**
 - **Delete**

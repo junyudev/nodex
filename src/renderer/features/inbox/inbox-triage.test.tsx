@@ -135,8 +135,9 @@ describe("InboxTriage", () => {
     },
   );
 
-  test("a message waiting for advice shows a spinner until its decision takes that place", () => {
+  test("a message waiting for advice shows a spinner until its decision takes that place", async () => {
     const waiting = item({ kind: null, suggestionState: "pending", proposal: null });
+    const onManualDraftChange = vi.fn();
     const { unmount } = render(
       <QueryClientProvider client={new QueryClient()}>
         <InboxTriage
@@ -149,7 +150,7 @@ describe("InboxTriage", () => {
           groupedWithKey={null}
           inboxProjectId={null}
           menu={null}
-          onManualDraftChange={vi.fn()}
+          onManualDraftChange={onManualDraftChange}
           onEditAsPage={vi.fn()}
         >
           {({ strip, actions: row }) => (
@@ -163,6 +164,9 @@ describe("InboxTriage", () => {
     );
     expect(screen.getByRole("status", { name: "Finding where this goes" })).toBeTruthy();
     expect(screen.queryByTestId("strip")).toBeNull();
+    // Someone who would rather not wait can decide by hand right away.
+    await click("Handle manually");
+    expect(onManualDraftChange).toHaveBeenCalledWith(draftForInboxItem(waiting, null));
     unmount();
 
     renderTriage({ item: item({ suggestionState: "settled" }), awaitingIndicator: true });
@@ -259,7 +263,7 @@ describe("InboxTriage", () => {
       }),
     });
     expect(screen.getByText("Keep the navigation reference")).toBeTruthy();
-    expect(screen.queryByRole("button", { name: "Dispatch" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Handle manually" })).toBeNull();
     expect(commands.confirm).not.toHaveBeenCalled();
     await click("Keep");
     await waitFor(() => expect(commands.confirm).toHaveBeenCalledWith(note));
@@ -313,7 +317,7 @@ describe("InboxTriage", () => {
       onManualDraftChange,
     });
     expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
-    await click("Dispatch");
+    await click("Handle manually");
     expect(onManualDraftChange).toHaveBeenCalled();
     expect(commands.retryDispatch).not.toHaveBeenCalled();
   });
@@ -462,7 +466,7 @@ describe("InboxTriage", () => {
     await waitFor(() =>
       expect(commands.requestSuggestion).toHaveBeenCalledWith(["page:1"], [item().basis]),
     );
-    await click("Dispatch");
+    await click("Handle manually");
     expect(onManualDraftChange).toHaveBeenCalledWith(
       expect.objectContaining({ type: "new_chat", prompt: "Homepage feels like a dev tool" }),
     );

@@ -170,7 +170,7 @@ function EmptyState({
       <div className="flex flex-1 flex-col items-center justify-center gap-2 px-6 text-center">
         <p className="text-base font-medium text-token-foreground">Nothing handled yet</p>
         <p className="max-w-sm text-sm text-balance text-token-description-foreground">
-          Messages you dispatch, file, keep, or finish collect here.
+          Messages you send to chats, file, keep, or finish collect here.
         </p>
       </div>
     );
@@ -598,7 +598,7 @@ export function InboxRoute({
                     }
                   />
                   <InboxIconAction
-                    label="Dispatch"
+                    label="Handle manually"
                     icon={DispatchIcon}
                     disabled={selectedItems.length > 16}
                     onClick={() =>

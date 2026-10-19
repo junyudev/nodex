@@ -228,7 +228,7 @@ export function InboxSettingsPage() {
           />
         </div>
       </SectionBlock>
-      <SectionBlock title="Dispatch">
+      <SectionBlock title="Chats">
         <SettingRow
           label="New chats run on"
           description="The runtime for chats the Inbox starts. Messages sent to an existing chat use that chat's runtime."

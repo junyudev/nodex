@@ -67,7 +67,7 @@ export function InboxMessageMenu({
         leftSlot={<DispatchIcon className="icon-xs" />}
         onSelect={handlers.onDispatch}
       >
-        Dispatch
+        Handle manually
       </NodexDropdownItem>
       {item.state === "open" ? (
         <NodexDropdownItem
