@@ -6,12 +6,21 @@ import type {
   CodexRateLimitsSnapshot,
 } from "../../shared/types";
 
-export const emptyAccountSnapshot = (): CodexAccountSnapshot => ({
+/** The account before the native endpoint has answered. */
+export const loadingAccountSnapshot = (): CodexAccountSnapshot => ({
+  status: "loading",
   account: null,
-  requiresOpenAiAuth: true,
+  requiresOpenAiAuth: false,
   pendingLogin: null,
   rateLimits: null,
   rateLimitResetCredits: null,
+});
+
+/** A known signed-out account: after logout, or when the host requires login. */
+export const signedOutAccountSnapshot = (): CodexAccountSnapshot => ({
+  ...loadingAccountSnapshot(),
+  status: "ready",
+  requiresOpenAiAuth: true,
 });
 
 export const emptyAccountRateLimitState = (): Pick<

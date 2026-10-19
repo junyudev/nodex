@@ -14,6 +14,7 @@ import {
 const queryChannels = [
   "asset:resolve-path",
   "codex:account:read",
+  "codex:account:snapshot",
   "codex:composer-prediction:availability",
   "codex:connection:status",
   "codex:dictation:state:read",

@@ -15,7 +15,7 @@ describe("Codex MCP app query policy", () => {
     ).toBe(false);
     expect(
       shouldEnableCodexMcpAppsQuery({
-        account: { account: { type: "apiKey" }, requiresOpenAiAuth: false },
+        account: { status: "ready", account: { type: "apiKey" }, requiresOpenAiAuth: false },
         appsFeatureEnabled: true,
         callerEnabled: true,
         productSupportsApps: true,
@@ -24,6 +24,7 @@ describe("Codex MCP app query policy", () => {
     expect(
       shouldEnableCodexMcpAppsQuery({
         account: {
+          status: "ready",
           account: { type: "chatgpt", email: "fixture@example.test", planType: "team" },
           requiresOpenAiAuth: true,
         },
@@ -35,6 +36,7 @@ describe("Codex MCP app query policy", () => {
     expect(
       shouldEnableCodexMcpAppsQuery({
         account: {
+          status: "ready",
           account: { type: "chatgpt", email: "fixture@example.test", planType: "team" },
           requiresOpenAiAuth: true,
         },
@@ -46,6 +48,7 @@ describe("Codex MCP app query policy", () => {
     expect(
       shouldEnableCodexMcpAppsQuery({
         account: {
+          status: "ready",
           account: { type: "chatgpt", email: "fixture@example.test", planType: "team" },
           requiresOpenAiAuth: true,
         },
@@ -57,6 +60,7 @@ describe("Codex MCP app query policy", () => {
     expect(
       shouldEnableCodexMcpAppsQuery({
         account: {
+          status: "ready",
           account: { type: "chatgpt", email: "fixture@example.test", planType: "team" },
           requiresOpenAiAuth: true,
         },

@@ -293,6 +293,7 @@ export const live: Layer.Layer<
     );
 
     yield* ipc.handleQuery("codex:account:read", () => account.refresh);
+    yield* ipc.handleQuery("codex:account:snapshot", () => SubscriptionRef.get(account.snapshot));
     yield* ipc.handlePlainCommand(
       "codex:account:rate-limit-reset:consume",
       (_event, input: CodexRateLimitResetInput) => account.consumeRateLimitResetCredit(input),

@@ -6,6 +6,7 @@ import { render, textContent } from "@/test/dom";
 import { WorkbenchRailAccountControls } from "./workbench-rail-account-controls";
 
 const authenticatedAccount: CodexAccountSnapshot = {
+  status: "ready",
   account: { type: "chatgpt", email: "dev@example.com", planType: "Plus" },
   requiresOpenAiAuth: false,
   pendingLogin: null,
@@ -36,6 +37,7 @@ const authenticatedAccount: CodexAccountSnapshot = {
 };
 
 const signedOutAccount: CodexAccountSnapshot = {
+  status: "ready",
   account: null,
   requiresOpenAiAuth: true,
   pendingLogin: null,
@@ -221,9 +223,38 @@ describe("WorkbenchRailAccountControls", () => {
       view.getAllByRole("button").map((button) => button.getAttribute("aria-label"));
 
     expect(Boolean(view.queryByTestId("sidebar-account-rate-limit-ring"))).toBe(false);
-    expect(labels()).toEqual(["Settings"]);
+    expect(labels()).toEqual(["Loading Codex account", "Settings"]);
 
     view.rerender(renderControls(signedOutAccount));
     expect(labels()).toEqual(["Sign in", "Settings"]);
+  });
+
+  test("says why an unknown account cannot load and asks again when clicked", async () => {
+    let refreshCount = 0;
+    const unreachable: CodexAccountSnapshot = { ...signedOutAccount, status: "unavailable" };
+    const view = render(
+      <NodexTooltipProvider>
+        <WorkbenchRailAccountControls
+          onOpenSettings={() => undefined}
+          account={unreachable}
+          connection={{ status: "connected", retries: 0 }}
+          onRefreshAccount={async () => {
+            refreshCount += 1;
+            return unreachable;
+          }}
+          onLogout={async () => undefined}
+        />
+      </NodexTooltipProvider>,
+    );
+
+    const placeholder = view.getByRole("button", {
+      name: "Can't reach your Codex account. Retrying automatically",
+    });
+    expect(placeholder.getAttribute("data-rail-account-state")).toBe("unavailable");
+    await act(async () => {
+      fireEvent.click(placeholder);
+      await Promise.resolve();
+    });
+    await waitFor(() => expect(refreshCount).toBe(1));
   });
 });

@@ -1937,7 +1937,10 @@ export interface IpcApi extends AgentRuntimeIpcApi {
     result: void;
   };
   "codex:connection:status": { args: [hostId?: string]; result: CodexConnectionState };
+  /** Reads the account again from the native endpoint. */
   "codex:account:read": { args: []; result: CodexAccountSnapshot };
+  /** What Main currently knows about the account, without contacting the native endpoint. */
+  "codex:account:snapshot": { args: []; result: CodexAccountSnapshot };
   "codex:visualization:capture-image": {
     args: [input: import("./visualization-image-capture").VisualizationImageCaptureInput];
     result: Uint8Array;

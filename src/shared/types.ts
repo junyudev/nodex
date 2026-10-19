@@ -2039,7 +2039,14 @@ export type CodexAccountIdentity =
   | { type: "apiKey" }
   | { type: "chatgpt"; email: string; planType: string };
 
+/**
+ * What Nodex knows about the native account: `loading` until the first answer, `ready` once an
+ * answer (signed in or signed out) arrived, `unavailable` after a read failed.
+ */
+export type CodexAccountStatus = "loading" | "ready" | "unavailable";
+
 export interface CodexAccountSnapshot {
+  status: CodexAccountStatus;
   account: CodexAccountIdentity | null;
   requiresOpenAiAuth: boolean;
   pendingLogin?: {

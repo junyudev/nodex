@@ -3487,6 +3487,7 @@ export class CodexAppServerManager {
 
     this.bootstrapStarted = true;
     void this.bootstrapConnection();
+    void this.bootstrapAccount();
     void this.bootstrapDictationState();
   }
 
@@ -8021,6 +8022,22 @@ export class CodexAppServerManager {
           objectId: "connection",
           value: connection,
         },
+      });
+    } catch {
+      // host messages stay authoritative if bootstrap fails
+    }
+  }
+
+  /** A window that opens after Main first read the account starts from what Main knows. */
+  private async bootstrapAccount(): Promise<void> {
+    if (this.hostId !== DEFAULT_CODEX_HOST_ID) return;
+    try {
+      const account = await runConversationOperation("codex:account:snapshot");
+      // A broadcast that arrived meanwhile is newer than this read.
+      if (!account || this.account !== null) return;
+      this.handleSharedObjectUpdated({
+        hostId: this.hostId,
+        object: { objectType: "account", objectId: "account", value: account },
       });
     } catch {
       // host messages stay authoritative if bootstrap fails

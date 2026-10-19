@@ -14,7 +14,7 @@ import { MainConfig } from "../../app/MainConfig";
 import { CodexAccount } from "../../codex-application/CodexAccount";
 import { CodexConnection } from "../../codex-application/CodexConnection";
 import { CodexMedia } from "../../codex-application/CodexMedia";
-import { emptyAccountSnapshot } from "../../codex-application/CodexAccountState";
+import { signedOutAccountSnapshot } from "../../codex-application/CodexAccountState";
 import { CodexToolRuntime } from "../../codex-application/CodexToolRuntime";
 import { ComposerCatalog } from "../../codex-application/ComposerCatalog";
 import { ComposerExternalSuggestions } from "../../codex-application/ComposerExternalSuggestions";
@@ -41,10 +41,10 @@ it.effect("registers application channels directly against their owning modules"
         }),
       on: () => Effect.void,
     });
-    const accountSnapshot = yield* SubscriptionRef.make(emptyAccountSnapshot());
+    const accountSnapshot = yield* SubscriptionRef.make(signedOutAccountSnapshot());
     const account = CodexAccount.of({
       snapshot: accountSnapshot,
-      refresh: Effect.succeed(emptyAccountSnapshot()),
+      refresh: Effect.succeed(signedOutAccountSnapshot()),
       readUsageLimits: Effect.die("unused"),
       consumeRateLimitResetCredit: () => Effect.die("unused"),
       startLogin: () => Effect.die("unused"),

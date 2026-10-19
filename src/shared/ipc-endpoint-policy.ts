@@ -132,6 +132,7 @@ type QueryEndpointPolicy =
   | "clipboard:read-paste"
   | "codex-command-keymap-state"
   | "codex:account:read"
+  | "codex:account:snapshot"
   | "codex:automation-runs:inbox-items"
   | "codex:composer-appshot:target"
   | "codex:composer-prediction:availability"

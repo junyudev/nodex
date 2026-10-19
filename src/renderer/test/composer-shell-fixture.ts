@@ -33,6 +33,7 @@ const FIXTURE_PROJECT_ID = "composer-project";
 const FIXTURE_WORKSPACE_PATH = "/workspace/nodex";
 const FIXTURE_THREAD_ID = "thread_composer";
 const DEFAULT_ACCOUNT_AUTHENTICATED: CodexAccountSnapshot = {
+  status: "ready",
   account: {
     type: "chatgpt",
     email: "asc@example.com",

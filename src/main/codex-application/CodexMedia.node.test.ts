@@ -16,6 +16,7 @@ import { ElectronNet, ElectronNetError } from "../platform/electron/ElectronNet"
 import { DictationNetwork } from "../platform/electron/DictationNetwork";
 import type { openDictationWebSocket } from "../platform/node/DictationWebSocket";
 import type { DictationStreamTransportEvent } from "../../shared/dictation-stream-transport";
+import type { CodexAccountSnapshot } from "../../shared/types";
 import { DictationRuntime } from "../host-runtime/DictationRuntime";
 import { ChatGptDesktop, ChatGptDesktopAuthError } from "./ChatGptDesktop";
 import { CodexAccount } from "./CodexAccount";
@@ -170,7 +171,8 @@ const build = Effect.fn("CodexMediaTest.build")(function* (
   scope: Scope.Closeable,
   setEnabled: DictationRuntime["Service"]["setEnabled"] = () => Effect.void,
 ) {
-  const accountSnapshot = yield* SubscriptionRef.make({
+  const accountSnapshot = yield* SubscriptionRef.make<CodexAccountSnapshot>({
+    status: "ready",
     account: null,
     requiresOpenAiAuth: false,
   });

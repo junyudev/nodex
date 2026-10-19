@@ -19,7 +19,8 @@ import { CodexGateway } from "../codex-runtime/CodexGateway";
 import type { CodexRuntimeError } from "../codex-runtime/CodexRuntimeError";
 import {
   emptyAccountRateLimitState,
-  emptyAccountSnapshot,
+  loadingAccountSnapshot,
+  signedOutAccountSnapshot,
   parseAccountIdentity,
   parseRateLimitResetCreditsSummary,
   parseRateLimitsSnapshot,
@@ -84,12 +85,10 @@ export const live = (
     Effect.gen(function* () {
       const gateway = yield* CodexGateway;
       const authState = yield* CodexExecutionHostAuthState;
-      const snapshot = yield* SubscriptionRef.make<CodexAccountSnapshot>(emptyAccountSnapshot());
+      const snapshot = yield* SubscriptionRef.make<CodexAccountSnapshot>(loadingAccountSnapshot());
       const refreshLock = yield* Semaphore.make(1);
       const refreshInFlight = yield* Ref.make<AccountRefreshEffect | null>(null);
       const authGeneration = yield* Ref.make(0);
-      // A failed read (an unreachable service) leaves the account unknown rather than signed out.
-      const lastReadFailed = yield* Ref.make(false);
       const awaitReady = gateway.awaitReady(gateway.localHostId);
       const asRecord = (value: unknown): Readonly<Record<string, unknown>> | undefined =>
         typeof value === "object" && value !== null && !Array.isArray(value)
@@ -122,6 +121,7 @@ export const live = (
         if (currentGeneration !== generation) return yield* SubscriptionRef.get(snapshot);
         const previous = yield* SubscriptionRef.get(snapshot);
         const next: CodexAccountSnapshot = {
+          status: "ready",
           account,
           requiresOpenAiAuth: Boolean(response.requiresOpenaiAuth),
           pendingLogin: previous.pendingLogin ?? null,
@@ -138,8 +138,14 @@ export const live = (
         return next;
       }).pipe(
         refreshLock.withPermits(1),
-        Effect.tap(() => Ref.set(lastReadFailed, false)),
-        Effect.tapError(() => Ref.set(lastReadFailed, true)),
+        // A failed read (an unreachable service) leaves the account unknown, not signed out.
+        Effect.tapError(() =>
+          SubscriptionRef.update(snapshot, (current) =>
+            current.status === "unavailable"
+              ? current
+              : { ...current, status: "unavailable" as const },
+          ),
+        ),
       );
 
       const refresh: CodexAccount["Service"]["refresh"] = Effect.gen(function* () {
@@ -174,7 +180,7 @@ export const live = (
       const pollOnce = Effect.gen(function* () {
         const current = yield* SubscriptionRef.get(snapshot);
         if (current.account?.type === "chatgpt") return yield* refreshRateLimits;
-        if (yield* Ref.get(lastReadFailed)) return yield* refresh;
+        if (current.status === "unavailable") return yield* refresh;
       }).pipe(Effect.ignore);
       yield* Effect.repeat(pollOnce, Schedule.spaced(options.pollInterval)).pipe(Effect.forkScoped);
 
@@ -278,7 +284,7 @@ export const live = (
       const invalidateWithoutServer = Effect.gen(function* () {
         yield* Ref.update(authGeneration, (generation) => generation + 1);
         yield* Ref.set(refreshInFlight, null);
-        yield* SubscriptionRef.set(snapshot, emptyAccountSnapshot());
+        yield* SubscriptionRef.set(snapshot, signedOutAccountSnapshot());
       }).pipe(Effect.withSpan("CodexAccount.invalidateWithoutServer"));
 
       yield* authState.changes.pipe(
@@ -291,7 +297,7 @@ export const live = (
       const logout = Effect.gen(function* () {
         yield* awaitReady;
         yield* gateway.requestLocal("account/logout", undefined);
-        yield* SubscriptionRef.set(snapshot, emptyAccountSnapshot());
+        yield* SubscriptionRef.set(snapshot, signedOutAccountSnapshot());
         return true;
       });
 

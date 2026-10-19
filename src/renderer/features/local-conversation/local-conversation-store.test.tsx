@@ -3187,6 +3187,7 @@ describe("local-conversation-store", () => {
           objectType: "account",
           objectId: "account",
           value: {
+            status: "ready",
             account: { type: "chatgpt", email: "later@example.com", planType: "plus" },
             requiresOpenAiAuth: false,
             pendingLogin: null,
@@ -3251,7 +3252,7 @@ describe("local-conversation-store", () => {
         .sort()
         .join(","),
     ).toBe(
-      "codex:account:read,codex:app-server:host-context,codex:app-server:request,codex:connection:status,codex:dictation:state:read,codex:dictation:state:read",
+      "codex:account:read,codex:account:snapshot,codex:app-server:host-context,codex:app-server:request,codex:connection:status,codex:dictation:state:read,codex:dictation:state:read",
     );
     expect(textContent(container)).toBe("connected:dev@example.com:gpt-5.3-codex");
   });

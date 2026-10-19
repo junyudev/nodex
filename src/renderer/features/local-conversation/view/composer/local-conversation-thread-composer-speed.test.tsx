@@ -216,6 +216,7 @@ function buildModel(overrides?: Partial<ThreadFooterModel>): ThreadFooterModel {
     threadId: "thread_1",
     cwd: "/tmp/project",
     account: {
+      status: "ready",
       account: {
         type: "chatgpt",
         email: "asc@example.com",

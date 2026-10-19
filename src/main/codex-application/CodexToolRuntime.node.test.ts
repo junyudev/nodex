@@ -12,7 +12,7 @@ import type { CodexAccountSnapshot } from "../../shared/types";
 import { CodexGateway } from "../codex-runtime/CodexGateway";
 import { CodexAccount } from "./CodexAccount";
 import { CodexToolRuntime, live as codexToolRuntimeLive } from "./CodexToolRuntime";
-import { emptyAccountSnapshot } from "./CodexAccountState";
+import { signedOutAccountSnapshot } from "./CodexAccountState";
 
 it.effect("gates app discovery and coalesces concurrent status reads", () =>
   Effect.gen(function* () {
@@ -78,7 +78,7 @@ it.effect("gates app discovery and coalesces concurrent status reads", () =>
       restartHost: unsupported,
     });
     const accountSnapshot = yield* SubscriptionRef.make<CodexAccountSnapshot>({
-      ...emptyAccountSnapshot(),
+      ...signedOutAccountSnapshot(),
       account: { type: "chatgpt" as const, email: "agent@example.com", planType: "plus" },
     });
     const account = CodexAccount.of({
