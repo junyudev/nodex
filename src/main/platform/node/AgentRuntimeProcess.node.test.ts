@@ -188,6 +188,27 @@ it.live("snapshot release remains admitted with every normal request slot occupi
   }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
 );
 
+it.live("waits for model work's own deadline rather than cutting it at the transport default", () =>
+  Effect.gen(function* () {
+    const connection = yield* acquireAgentRuntimeProcess({
+      executable: process.execPath,
+      entryPath,
+      configuration: { home: "/tmp", cwd: "/tmp", providers: {} },
+      requestTimeoutMs: 200,
+      host: () => Effect.succeed({ sequence: 9 }),
+    });
+    // The fixture replies 200ms before this budget ends, well after the 200ms default.
+    const output = yield* connection.request("text.generate-structured", {
+      cwd: "/tmp",
+      prompt: "Name this",
+      modelSelection: { instanceId: "codex", model: "gpt-6.1-sol" },
+      outputSchema: { type: "object" },
+      timeoutMs: 700,
+    });
+    assert.deepEqual(output, { title: "Generated" });
+  }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+);
+
 it.live("distinguishes a known remote refusal from an uncertain transport timeout", () =>
   Effect.gen(function* () {
     const connection = yield* acquire();

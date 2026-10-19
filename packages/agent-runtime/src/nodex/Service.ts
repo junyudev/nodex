@@ -86,6 +86,7 @@ import type {
   AgentRuntimeNotification,
   AgentRuntimeConfiguration,
 } from "./Interface.ts";
+import { AGENT_RUNTIME_STRUCTURED_GENERATION_MAX_TIMEOUT_MS } from "./TextGenerationLimits.ts";
 
 const request = <Method extends string, Input extends Schema.Constraint>(
   method: Method,
@@ -186,7 +187,12 @@ const AgentRequest = Schema.Union([
         Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 262144 })),
       ),
       timeoutMs: Schema.optional(
-        Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 180000 })),
+        Schema.Int.check(
+          Schema.isBetween({
+            minimum: 1,
+            maximum: AGENT_RUNTIME_STRUCTURED_GENERATION_MAX_TIMEOUT_MS,
+          }),
+        ),
       ),
     }),
   ),

@@ -1,13 +1,14 @@
 import { randomUUID } from "node:crypto";
-import type {
-  AgentRuntimeBootstrap,
-  AgentHostRequest,
-  AgentHostResult,
-  AgentRuntimeConfiguration,
-  AgentRuntimeIdentity,
-  AgentRuntimeMethod,
-  AgentRuntimeNotification,
-  AgentRuntimeOperations,
+import {
+  AGENT_RUNTIME_STRUCTURED_GENERATION_MAX_TIMEOUT_MS,
+  type AgentRuntimeBootstrap,
+  type AgentHostRequest,
+  type AgentHostResult,
+  type AgentRuntimeConfiguration,
+  type AgentRuntimeIdentity,
+  type AgentRuntimeMethod,
+  type AgentRuntimeNotification,
+  type AgentRuntimeOperations,
 } from "@nodex/agent-runtime/contracts";
 import * as Deferred from "effect/Deferred";
 import type { Done } from "effect/Cause";
@@ -30,6 +31,27 @@ const MAXIMUM_FRAME_BYTES = 16 * 1024 * 1024;
  */
 export const AGENT_RUNTIME_NODE_FLAGS = ["--max-semi-space-size=8"] as const;
 const MAXIMUM_PENDING_REQUESTS = 64;
+const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
+/** Time for a reply to arrive after the work it reports has reached its own deadline. */
+const REPLY_GRACE_MS = 5_000;
+
+/**
+ * How long the transport waits for a reply. Structured generation runs model work under its own
+ * deadline, which may exceed the default, so it is awaited for that deadline and the reply's way
+ * back: the runtime's own failure, such as its timeout, then reaches the caller instead of a
+ * transport timeout cutting the work short.
+ */
+export const agentRuntimeRequestTimeoutMs = <M extends AgentRuntimeMethod>(
+  method: M,
+  payload: AgentRuntimeOperations[M]["input"],
+  defaultMs: number = DEFAULT_REQUEST_TIMEOUT_MS,
+): number => {
+  if (method !== "text.generate-structured") return defaultMs;
+  const budget =
+    (payload as AgentRuntimeOperations["text.generate-structured"]["input"]).timeoutMs ??
+    AGENT_RUNTIME_STRUCTURED_GENERATION_MAX_TIMEOUT_MS;
+  return Math.max(defaultMs, budget + REPLY_GRACE_MS);
+};
 const MAXIMUM_PENDING_HOST_REQUESTS = 128;
 const identitySchema = z.object({
   runtimeId: z.string().min(1),
@@ -491,7 +513,9 @@ export const acquireAgentRuntimeProcess = Effect.fn("AgentRuntimeProcess.acquire
     if (refused) return yield* refused;
     return yield* send({ id, method, input: payload }).pipe(
       Effect.andThen(Deferred.await(waiter)),
-      Effect.timeout(Duration.millis(options.requestTimeoutMs ?? 30_000)),
+      Effect.timeout(
+        Duration.millis(agentRuntimeRequestTimeoutMs(method, payload, options.requestTimeoutMs)),
+      ),
       Effect.mapError((cause) =>
         cause instanceof AgentRuntimeProcessError
           ? cause
