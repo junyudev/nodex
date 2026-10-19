@@ -35,6 +35,7 @@ import { InboxDeleteDialog, type InboxDeleteRequest } from "./inbox-delete-dialo
 import { InboxHistory } from "./inbox-history";
 import { InboxIconAction } from "./inbox-icon-action";
 import { InboxMessage, InboxMessageMenu } from "./inbox-message";
+import { INBOX_EASE_OUT, InboxStreamItem } from "./inbox-stream-item";
 import {
   INBOX_VIEW_LABELS,
   inboxAwaitingIndicatorPageId,
@@ -52,7 +53,6 @@ import {
 } from "./use-inbox";
 
 const STICK_TO_BOTTOM_PX = 160;
-const EASE_OUT = [0.2, 0, 0, 1] as const;
 
 export interface InboxRouteProps {
   /**
@@ -194,7 +194,7 @@ function EmptyState({
       data-testid="inbox-zero"
       initial={{ opacity: 0, scale: 0.97 }}
       animate={{ opacity: 1, scale: 1 }}
-      transition={{ duration: 0.35, ease: EASE_OUT }}
+      transition={{ duration: 0.35, ease: INBOX_EASE_OUT }}
       className="flex flex-1 flex-col items-center justify-center gap-3 px-6 text-center"
     >
       <motion.span
@@ -522,18 +522,7 @@ export function InboxRoute({
                     <ThreadTimestampSeparator sentAtMs={entry.sentAtMs} />
                   </motion.div>
                 ) : (
-                  <motion.div
-                    key={entry.key}
-                    layout="position"
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    // A handled message folds away, which is what clearing the Inbox feels like.
-                    exit={{ opacity: 0, height: 0, scale: 0.98 }}
-                    transition={{ duration: 0.28, ease: EASE_OUT }}
-                    className="origin-top overflow-hidden pb-4"
-                  >
-                    {renderMessage(entry.item)}
-                  </motion.div>
+                  <InboxStreamItem key={entry.key}>{renderMessage(entry.item)}</InboxStreamItem>
                 ),
               )}
             </AnimatePresence>
@@ -549,7 +538,7 @@ export function InboxRoute({
               initial={{ opacity: 0, y: 6 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: 6 }}
-              transition={{ duration: 0.18, ease: EASE_OUT }}
+              transition={{ duration: 0.18, ease: INBOX_EASE_OUT }}
               className={cn(
                 "absolute bottom-full z-10 mb-2",
                 bulkDraft ? "inset-x-toolbar" : "left-1/2 -translate-x-1/2",

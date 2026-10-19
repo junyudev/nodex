@@ -228,8 +228,9 @@ strip and its row show one of these:
 
 Only the decision keeps a text label, with its action's glyph: the suggested
 action, or `Handle manually` when there is no suggestion. It ends the row, flush with
-the card's right edge, so it is always in the same horizontal place; while a
-suggestion runs, the spinner holds that place. `Edit`,
+the card's right edge, so it is always in the same horizontal place. A row
+without one, the spinner of a running suggestion or a row of icons, ends where
+the card's bottom-right corner curve meets its bottom edge. `Edit`,
 `Keep as a note`, `Retry`, `Suggest`, `Mark done`, `Handle manually` while a
 suggestion runs or after a failure (always the last icon, right of `Mark done`), and
 the message menu are icon buttons named by their tooltips, gathered at the
@@ -330,7 +331,8 @@ interval. Existing backups are not rewritten.
 ## Selecting several messages
 
 Each message is selected with the checkbox beside it, shown on hover or focus.
-Selecting messages outlines them inside their own border and floats a compact bar
+Selecting messages rings them on their own border, never clipped by the stream,
+and floats a compact bar
 above the composer. Selecting never resizes or shifts the stream: the scroll
 gutters stay reserved. The bar's actions are icon buttons:
 

@@ -66,7 +66,15 @@ export function InboxIconAction({
   );
 }
 
-/** Secondary actions sit together at the trailing edge, so every strip ends the same way. */
+/**
+ * Secondary actions sit together at the trailing edge, so every strip ends the same way. When
+ * they end the row, the last glyph ends where the card's corner curve meets its bottom edge,
+ * as the waiting spinner does; a decision after them stays flush with the card instead.
+ */
 export function InboxIconActions({ children }: { readonly children: React.ReactNode }) {
-  return <div className="ml-auto flex shrink-0 items-center gap-0.5 last:-mr-1">{children}</div>;
+  return (
+    <div className="ml-auto flex shrink-0 items-center gap-0.5 last:mr-[calc(var(--inbox-card-radius,0px)_-_var(--spacing))]">
+      {children}
+    </div>
+  );
 }

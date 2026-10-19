@@ -29,6 +29,7 @@ import {
 import { InboxGroupMembers, type InboxGroupMember } from "./inbox-group-members";
 import { InboxKindControl } from "./inbox-kind-control";
 import { InboxMessageEditor } from "./inbox-message-editor";
+import { INBOX_EASE_OUT } from "./inbox-stream-item";
 import { InboxOutcomeLine } from "./inbox-outcome";
 import {
   INBOX_KIND_LABELS,
@@ -50,7 +51,7 @@ function Settle({ id, children }: { readonly id: string; readonly children: Reac
       key={id}
       initial={{ opacity: 0, y: -3 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.22, ease: [0.2, 0, 0, 1] }}
+      transition={{ duration: 0.22, ease: INBOX_EASE_OUT }}
       className="flex flex-col gap-2"
     >
       {children}
