@@ -229,7 +229,6 @@ export function InboxTriage({
     readonly baseText: string;
     readonly basis: InboxPageBasis;
   } | null>(null);
-  const [refining, setRefining] = useState<InboxProposal | null>(null);
   const model = inboxTriageModel(item, suggestionsEnabled);
   const done = () => void actions.setState([item.pageId], "done");
   const keep = () => void actions.keep([item.pageId]);
@@ -277,26 +276,6 @@ export function InboxTriage({
   );
 
   const parts = (): Omit<InboxTriageParts, "editor"> => {
-    if (refining)
-      return {
-        strip: (
-          <InboxMessageEditor
-            text=""
-            label="Refine suggestion"
-            saveLabel="Update suggestion"
-            onCancel={() => setRefining(null)}
-            onSave={async (correction) => {
-              const saved = await actions.requestSuggestion(refining.pageIds, refining.basis, {
-                proposal: refining,
-                correction,
-              });
-              if (saved) setRefining(null);
-              return saved;
-            }}
-          />
-        ),
-        actions: null,
-      };
     if (manualDraft) {
       return {
         strip: (
@@ -398,11 +377,6 @@ export function InboxTriage({
               <InboxIconActions>
                 {menu}
                 {editAction}
-                <InboxIconAction
-                  label="Refine suggestion"
-                  icon={AskAiIcon}
-                  onClick={() => setRefining(proposal)}
-                />
                 {proposal.action.type === "keep" ? null : keepAction}
                 {doneAction}
               </InboxIconActions>

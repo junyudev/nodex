@@ -230,26 +230,6 @@ describe("InboxTriage", () => {
     expect(screen.getByText("C")).toBeTruthy();
   });
 
-  test("refines only the frozen proposal without capturing another message", async () => {
-    const commands = renderTriage();
-    await click("Refine suggestion");
-    await act(async () => {
-      fireEvent.change(screen.getByRole("textbox", { name: "Refine suggestion" }), {
-        target: { value: "Keep this for later" },
-      });
-    });
-    await click("Update suggestion");
-    await waitFor(() =>
-      expect(commands.requestSuggestion).toHaveBeenCalledWith(
-        proposal().pageIds,
-        proposal().basis,
-        { proposal: proposal(), correction: "Keep this for later" },
-      ),
-    );
-    expect(commands.send).not.toHaveBeenCalled();
-    expect(commands.confirm).not.toHaveBeenCalled();
-  });
-
   test("a note gets a concrete Keep decision without asking the user to dispatch", async () => {
     const note = proposal({
       action: { type: "keep" },

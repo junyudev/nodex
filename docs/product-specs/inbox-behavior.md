@@ -42,8 +42,8 @@ intents, and selection.
   in Triage, with the Project's Page key. It is on the Project's Board at once.
 - The whole message becomes the Page body, line for line, and the stream bubble
   shows exactly that body. The Page title is only a label for Board, List,
-  search, tabs, and new chats. The stream does not show it; the message menu's
-  `Open as Page` names the Page key.
+  search, tabs, and new chats. The stream does not show it; `Open page` in the
+  message menu opens the Page.
 - A sender may give the title. Otherwise Core labels the Page with a provisional
   title: the message's opening words, cut to about 48 columns, where wide
   characters count twice. Later, the suggestion Agent replaces that title with
@@ -198,7 +198,7 @@ What Nodex made of a message is not a reply. It is a strip joined to the
 message itself: the message fills the top of one rounded object, and the strip
 sits beneath it inside the same outline. The ways to act sit in one row just
 under that card and exactly as wide, all at its trailing end. The first of its icons
-opens the message menu: `Open as Page`, `Handle manually`,
+opens the message menu: `Open page`, `Handle manually`,
 `Suggest again`, `Mark done`, and `Delete`. `Handle manually` opens the dispatch editor
 in place of the strip, starting from the current suggestion when there is one.
 The second icon is `Edit`, on every message still waiting in the Inbox except one
@@ -244,10 +244,10 @@ which message carries it. A missing sign-in is reported as
 
 Editing a grouped dispatch keeps its full membership and revision. Handling just
 one member requires an explicit new decision; the remaining members cannot keep
-an old prompt that still includes the removed work. `Refine suggestion` revises
-that suggestion locally without creating another captured message or changing
-standing preferences. Manual target selection searches eligible chats beyond
-the recent list.
+an old prompt that still includes the removed work. Changing a suggestion's
+destination or prompt happens in `Handle manually`, which starts from that
+suggestion. Manual target selection searches eligible chats beyond the recent
+list.
 
 ## Dispatch
 

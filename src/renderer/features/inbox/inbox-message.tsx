@@ -50,18 +50,8 @@ export function InboxMessageMenu({
         </NodexButton>
       }
     >
-      <NodexDropdownItem
-        leftSlot={<PageIcon className="icon-xs" />}
-        rightSlot={
-          item.pageKey ? (
-            <span className="font-mono text-[11px] text-token-description-foreground">
-              {item.pageKey}
-            </span>
-          ) : null
-        }
-        onSelect={handlers.onOpenPage}
-      >
-        Open as Page
+      <NodexDropdownItem leftSlot={<PageIcon className="icon-xs" />} onSelect={handlers.onOpenPage}>
+        Open page
       </NodexDropdownItem>
       <NodexDropdownItem
         leftSlot={<DispatchIcon className="icon-xs" />}
