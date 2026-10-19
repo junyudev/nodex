@@ -1,0 +1,21 @@
+scripts/audit-version-surfaces.ts
+  s_8b55d06a4e395f::t_648a02500ae876 473-484
+src/renderer/features/inbox/inbox-triage.test.tsx
+  s_8b55d06a4e395f::t_980d551cda2c25 452,454
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "7413c4006c054b065ff9bb1b17424c17c3e933b7",
+  "prompts": {},
+  "sessions": {
+    "s_8b55d06a4e395f": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a13e56-631e-7a23-9318-42a7caa5031e",
+        "model": "gpt-6-astra"
+      },
+      "human_author": null
+    }
+  }
+}
