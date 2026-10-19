@@ -6,6 +6,7 @@ import {
 import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
+import zlib from "node:zlib";
 
 import {
   ElectronScenarioHarness,
@@ -14,6 +15,7 @@ import {
 import { prepareScenarioCodexAppServerRuntimeSync } from "../../scripts/scenarios/runtime/agent-runtime-fixture";
 import {
   responses,
+  standardCodexBackgroundExchanges,
   type ScriptedModelRequest,
   withScriptedModelServer,
 } from "../../scripts/scenarios/runtime/scripted-model-server";
@@ -25,6 +27,7 @@ import {
   waitForAgentThreadExecutionProfile,
   waitForFinalMarker,
   readRuntimeConversation,
+  sendAgentFollowUp,
   waitForRuntimeCompletedAgentTurn,
 } from "./support/agent-smoke-harness";
 import { startBrowserHttpFixture } from "./support/browser-http-fixture";
@@ -38,6 +41,52 @@ const assertRequestModel = (request: ScriptedModelRequest, expectedModel: string
   throw new Error(
     `Scripted Agent request selected ${String(request.body.model)}; expected ${expectedModel}`,
   );
+};
+
+/** The words of the newest user message, which identify the Turn a request starts. */
+const latestUserText = (request: ScriptedModelRequest): string => {
+  const latest = request
+    .inputItems()
+    .filter(
+      (item): item is Record<string, unknown> =>
+        typeof item === "object" &&
+        item !== null &&
+        (item as Record<string, unknown>).type === "message" &&
+        (item as Record<string, unknown>).role === "user",
+    )
+    .at(-1);
+  return JSON.stringify(latest?.content ?? null);
+};
+
+const hasInputImage = (request: ScriptedModelRequest): boolean =>
+  JSON.stringify(request.inputItems()).includes('"input_image"');
+
+/** A small opaque PNG, encoded so the Composer receives it as a pasted image. */
+const swatchPngBase64 = (): string => {
+  const size = 8;
+  const rows = Buffer.concat(
+    Array.from({ length: size }, () =>
+      Buffer.concat([Buffer.from([0]), Buffer.alloc(size * 3, Buffer.from([0xd0, 0x10, 0x10]))]),
+    ),
+  );
+  const chunk = (type: string, data: Buffer) => {
+    const body = Buffer.concat([Buffer.from(type, "ascii"), data]);
+    const length = Buffer.alloc(4);
+    length.writeUInt32BE(data.length);
+    const crc = Buffer.alloc(4);
+    crc.writeUInt32BE(zlib.crc32(body));
+    return Buffer.concat([length, body, crc]);
+  };
+  const header = Buffer.alloc(13);
+  header.writeUInt32BE(size, 0);
+  header.writeUInt32BE(size, 4);
+  header.set([8, 2, 0, 0, 0], 8);
+  return Buffer.concat([
+    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+    chunk("IHDR", header),
+    chunk("IDAT", zlib.deflateSync(rows)),
+    chunk("IEND", Buffer.alloc(0)),
+  ]).toString("base64");
 };
 
 const scriptedCodexConfig = (baseUrl: string): string => `
@@ -355,6 +404,149 @@ test("runs a real shell tool through the scripted model boundary", async () => {
   } finally {
     fs.rmSync(filePath, { force: true });
   }
+});
+
+test("edits an earlier message and continues from it without the later Turns", async () => {
+  test.setTimeout(150_000);
+  const token = randomUUID();
+  const first = `Remember the first note ${token}`;
+  const firstReply = `First note saved ${token}`;
+  const second = `Keep this swatch with the second note ${token}`;
+  const secondReply = `Second note saved ${token}`;
+  const third = `Add a third note ${token}`;
+  const thirdReply = `Third note saved ${token}`;
+  const rewritten = `Describe the swatch instead ${token}`;
+  const rewrittenReply = `Rewritten note answered ${token}`;
+  const reply = (name: string, text: string) =>
+    responses.stream([
+      responses.created(`response_${name}_${token}`),
+      responses.assistantMessage(`message_${name}_${token}`, text, "final_answer"),
+      responses.completed(`response_${name}_${token}`, true),
+    ]);
+  const turn = (
+    name: string,
+    words: string,
+    text: string,
+    check?: (request: ScriptedModelRequest) => void,
+  ) => ({
+    name,
+    match: (request: ScriptedModelRequest) =>
+      request.isThreadSource(AGENT_RUNTIME_CODEX_THREAD_SOURCE) &&
+      latestUserText(request).includes(words),
+    respond: (request: ScriptedModelRequest) => {
+      check?.(request);
+      return reply(name, text);
+    },
+  });
+
+  await withScriptedModelServer(
+    {
+      exchanges: [
+        turn("first message", first, firstReply),
+        turn("second message with its image", second, secondReply, (request) => {
+          expect(hasInputImage(request)).toBe(true);
+        }),
+        turn("third message", third, thirdReply),
+        turn("rewritten second message", rewritten, rewrittenReply, (request) => {
+          // The first Turn survives the rewind; the original words and the later Turn do not,
+          // and the rewritten message still carries the image it was sent with.
+          expect(request.hasInputText(first)).toBe(true);
+          expect(request.hasInputText(firstReply)).toBe(true);
+          expect(request.hasInputText(second)).toBe(false);
+          expect(request.hasInputText(secondReply)).toBe(false);
+          expect(request.hasInputText(third)).toBe(false);
+          expect(request.hasInputText(thirdReply)).toBe(false);
+          expect(hasInputImage(request)).toBe(true);
+        }),
+        ...standardCodexBackgroundExchanges(),
+      ],
+    },
+    async (modelServer) => {
+      const harness = await ElectronScenarioHarness.create({
+        label: "scripted-agent-edit",
+        cwd: repositoryRoot,
+        prepareAgentRuntime: false,
+        retention: process.env.NODEX_KEEP_SCENARIO_PROFILES === "1" ? "keep" : "dispose",
+        environment: {
+          ...modelServer.loopbackEnvironment(),
+          NODEX_LOG_CONSOLE: "0",
+          NODEX_LOG_FILE: "1",
+          OPENAI_API_KEY: "nodex-scripted-model-test-key",
+        },
+      });
+      fs.writeFileSync(
+        path.join(harness.profile.codexHome, "config.toml"),
+        scriptedCodexConfig(modelServer.baseUrl),
+        { encoding: "utf8", mode: 0o600 },
+      );
+      try {
+        const page = await harness.launch();
+        await setAgentExecutionProfile(page, { preferredModelId: "gpt-5.5" });
+        const draft = await createAgentSmokeDraft(
+          page,
+          harness.profile.initialProjectsDirectory,
+          "Scripted Agent edit",
+        );
+        const threadId = await sendAgentPrompt(page, draft.projectSessionId, first);
+        const target = { sessionId: draft.projectSessionId, threadId };
+        await waitForRuntimeCompletedAgentTurn(page, target);
+        await waitForFinalMarker(page, firstReply);
+
+        const composer = page
+          .locator('[data-codex-composer="true"][aria-label="Ask for follow-up changes"]')
+          .first();
+        await composer.fill(second);
+        await composer.evaluate((element, base64) => {
+          const bytes = Uint8Array.from(atob(base64), (character) => character.charCodeAt(0));
+          const clipboardData = new DataTransfer();
+          clipboardData.items.add(new File([bytes], "swatch.png", { type: "image/png" }));
+          element.dispatchEvent(
+            new ClipboardEvent("paste", { clipboardData, bubbles: true, cancelable: true }),
+          );
+        }, swatchPngBase64());
+        await expect(page.getByRole("img", { name: "User attachment" })).toHaveCount(1);
+        await page.getByRole("button", { name: "Send prompt" }).click();
+        await waitForRuntimeCompletedAgentTurn(page, target);
+        await waitForFinalMarker(page, secondReply);
+        await sendAgentFollowUp(page, third);
+        await waitForRuntimeCompletedAgentTurn(page, target);
+        await waitForFinalMarker(page, thirdReply);
+
+        const bubbles = page.locator("[data-user-message-bubble='true']");
+        await expect(page.getByRole("button", { name: "Edit message" })).toHaveCount(3);
+        const secondTurn = page.locator("[data-thread-turn-id]", {
+          has: bubbles.filter({ hasText: second }),
+        });
+        await secondTurn.locator("[data-user-message-bubble='true']").hover();
+        await secondTurn.getByRole("button", { name: "Edit message" }).click();
+        const editor = page.getByRole("textbox", { name: "Edit message" });
+        await expect(editor).toBeFocused();
+        await expect(editor).toHaveValue(second);
+        await editor.fill(rewritten);
+        await editor.press("Enter");
+        await expect(editor).toHaveCount(0);
+
+        await modelServer.waitForRequest((request) => latestUserText(request).includes(rewritten));
+        await waitForRuntimeCompletedAgentTurn(page, target);
+        await waitForFinalMarker(page, rewrittenReply);
+        await expect(bubbles).toHaveText([first, rewritten]);
+        await expect(page.getByText(thirdReply)).toHaveCount(0);
+        const rewrittenTurn = page.locator("[data-thread-turn-id]", {
+          has: bubbles.filter({ hasText: rewritten }),
+        });
+        await expect(rewrittenTurn.getByRole("img")).not.toHaveCount(0);
+        await expect(page.getByRole("button", { name: "Edit message" })).toHaveCount(2);
+      } catch (error) {
+        const logs = await readBoundedElectronRuntimeLogs(harness.profile);
+        throw new Error(
+          `${error instanceof Error ? error.message : String(error)}\n\nElectron runtime logs:\n${logs}`,
+          { cause: error },
+        );
+      } finally {
+        await harness.close();
+      }
+    },
+  );
 });
 
 test("opens a loopback page through the real in-app Browser runtime", async () => {
