@@ -1,0 +1,68 @@
+crates/nodex-core/src/administration/profile_clone.rs
+  s_f79dd9d0c7ac54::t_7881f541da2d4e 23,146,166,168-171
+  s_f79dd9d0c7ac54::t_6f76081b21307c 522-523,525-527
+  s_f79dd9d0c7ac54::t_11854a658ff8c6 524
+  s_f79dd9d0c7ac54::t_67ced99d0b12c0 521
+docs/development.md
+  s_f79dd9d0c7ac54::t_2c9ab129b8e5cb 279-282
+src/main/core-client/uds-http.node.test.ts
+  s_f79dd9d0c7ac54::t_c0de3ada417de5 8,397-453
+  s_f79dd9d0c7ac54::t_6b1ad6dec6a6ae 454
+crates/nodex-core/src/library/structural_edit/history_payload.rs
+  s_f79dd9d0c7ac54::t_99fc0f478b395d 290-292
+crates/nodex-core/src/library/mod.rs
+  s_f79dd9d0c7ac54::t_99fc0f478b395d 823,828-832
+  s_f79dd9d0c7ac54::t_a919ad842498c4 833-834
+docs/reliability/core-lifecycle-and-store.md
+  s_f79dd9d0c7ac54::t_99fc0f478b395d 198-202
+  s_f79dd9d0c7ac54::t_f4f349be6c99ed 196-197
+docs/CLI.md
+  s_f79dd9d0c7ac54::t_5479725124599d 24-25
+  s_f79dd9d0c7ac54::t_2c9ab129b8e5cb 20-23
+docs/reliability/backup-restore-and-maintenance.md
+  s_f79dd9d0c7ac54::t_2c9ab129b8e5cb 115-119
+src/main/core-client/uds-http.ts
+  s_f79dd9d0c7ac54::t_c0de3ada417de5 975
+crates/nodex-core/src/infrastructure/migration.rs
+  s_f79dd9d0c7ac54::t_00676bcae8f222 5271-5294,5298-5300,5303,5308-5337,5347-5380,5387-5390,5473-5479,5481-5487,5489-5490,5524-5525
+  s_f79dd9d0c7ac54::t_b90aa6a59eaf0e 5295-5297,5301-5302,5491,5502-5523
+  s_f79dd9d0c7ac54::t_94d46121d0677a 5338-5340
+  s_f79dd9d0c7ac54::t_f850c03def9a17 5396-5404,5437
+  s_f79dd9d0c7ac54::t_99fc0f478b395d 2393,2408
+  s_f79dd9d0c7ac54::t_7367a832eddf67 5381-5384,5480
+  s_f79dd9d0c7ac54::t_68b82c8dab1e70 5391-5395,5405-5436,5438-5472
+  s_f79dd9d0c7ac54::t_1e6b3f90f6f250 5304-5307,5385-5386,5488,5492-5493,5496,5500
+  s_f79dd9d0c7ac54::t_e529e91a5e904e 5341-5346
+  s_f79dd9d0c7ac54::t_5de0e7e327a328 5494-5495,5497-5499,5501
+  s_f79dd9d0c7ac54::t_fde9ac6fb472b7 5270
+CHANGELOG.md
+  s_f79dd9d0c7ac54::t_e2944510914c0f 51
+  s_f79dd9d0c7ac54::t_65fc5454159948 52
+crates/nodex-core/src/administration/backup.rs
+  s_f79dd9d0c7ac54::t_11854a658ff8c6 2494-2495,2524-2536,2581-2585
+  s_f79dd9d0c7ac54::t_591a5b334dd0f7 2589
+  s_f79dd9d0c7ac54::t_6f76081b21307c 2417-2493,2496-2523,2537-2580,2586-2588,2590-2601
+  s_f79dd9d0c7ac54::t_7881f541da2d4e 921-922,1051-1052,1058,1095-1100,1103
+crates/nodex-core/src/library/structural_edit/history_owner.rs
+  s_f79dd9d0c7ac54::t_5c5e7257039d15 579-581,585-588
+docs/reliability/local-commit-and-projections.md
+  s_f79dd9d0c7ac54::t_c0de3ada417de5 41-43
+docs/SECURITY.md
+  s_f79dd9d0c7ac54::t_5479725124599d 272-275
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "1a9860af9dac3b4b268e692674b4c8c88eb73d4d",
+  "prompts": {},
+  "sessions": {
+    "s_f79dd9d0c7ac54": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a151d6-b92f-7f41-b4e5-4834cb7752bd",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
