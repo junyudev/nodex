@@ -111,7 +111,7 @@ describe("startup controller", () => {
     Reflect.deleteProperty(window, "api");
   });
 
-  test("keeps fast opening quiet and immediately presents real migration state", () => {
+  test("presents real migration state immediately and clears it once the Store is ready", () => {
     const bridge = installBridge();
     const controller = startStartupController();
     const visibleStatus = document.querySelector<HTMLElement>("[data-startup-visible-status]");
@@ -138,19 +138,24 @@ describe("startup controller", () => {
     expect(visibleStatus?.textContent).toBe("Updating local data… 80%");
     bridge.sendStep({ phase: "opening" });
     expect(visibleStatus?.textContent).toBe("Updating local data… 80%");
+    bridge.sendStep({ phase: "opening_workspace" });
+    expect(visibleStatus?.hidden).toBe(true);
 
     controller.dispose();
   });
 
-  test("reveals generic copy only after the quiet-start delay", async () => {
-    installBridge();
+  test("never shows visible copy for a slow ordinary opening", async () => {
+    const bridge = installBridge();
     const controller = startStartupController();
     const visibleStatus = document.querySelector<HTMLElement>("[data-startup-visible-status]");
+    const accessibilityStatus = document.querySelector<HTMLElement>("[data-startup-a11y-status]");
 
+    await act(async () => vi.advanceTimersByTime(10_000));
     expect(visibleStatus?.hidden).toBe(true);
-    await act(async () => vi.advanceTimersByTime(1_800));
-    expect(visibleStatus?.hidden).toBe(false);
-    expect(visibleStatus?.textContent).toBe("Opening Nodex…");
+    bridge.sendStep({ phase: "opening_workspace" });
+    await act(async () => vi.advanceTimersByTime(10_000));
+    expect(visibleStatus?.hidden).toBe(true);
+    expect(accessibilityStatus?.textContent).toBe("Opening Nodex…");
 
     controller.dispose();
   });

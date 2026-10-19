@@ -2,8 +2,10 @@ import { describe, expect, test } from "vite-plus/test";
 import { getStartupStatus } from "./app-startup";
 
 describe("app startup helpers", () => {
-  test("returns bootstrap copy while initialization is running", () => {
-    expect(getStartupStatus({ phase: "opening" })).toBe("Opening Nodex…");
+  test("keeps ordinary opening phases quiet", () => {
+    expect(getStartupStatus({ phase: "opening" })).toBeNull();
+    expect(getStartupStatus({ phase: "opening_workspace" })).toBeNull();
+    expect(getStartupStatus({ phase: "done" })).toBeNull();
   });
 
   test("returns migration copy while sqlite work is running", () => {
@@ -24,15 +26,15 @@ describe("app startup helpers", () => {
     ).toBe("Updating local data… 67%");
   });
 
-  test("stops claiming migration after the Core store is ready", () => {
-    expect(getStartupStatus({ phase: "opening_workspace" })).toBe("Opening workspace…");
-  });
-
-  test("keeps generic copy until the renderer is actually ready", () => {
-    expect(getStartupStatus({ phase: "done" })).toBe("Opening Nodex…");
-  });
-
-  test("returns explicit failure copy", () => {
-    expect(getStartupStatus({ phase: "failed" })).toBe("Nodex could not finish opening.");
+  test("omits a percentage when the migration total is not trustworthy", () => {
+    expect(
+      getStartupStatus({
+        phase: "migrating",
+        fromVersion: 104,
+        toVersion: 107,
+        completed: 0,
+        total: 0,
+      }),
+    ).toBe("Updating local data…");
   });
 });

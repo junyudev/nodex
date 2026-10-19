@@ -17,7 +17,7 @@ export function createStartupShellMarkup(): string {
   </div>
   <div class="nodex-startup-status" role="status" aria-live="polite" aria-atomic="true">
     <span class="nodex-startup-sr-only" data-startup-a11y-status>Opening Nodex…</span>
-    <p data-startup-visible-status hidden>Opening Nodex…</p>
+    <p data-startup-visible-status hidden></p>
   </div>
   <div class="nodex-startup-failure" data-startup-failure hidden>
     <h1>Nodex could not finish opening</h1>

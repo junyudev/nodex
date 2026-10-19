@@ -1,17 +1,13 @@
 import type { AppInitializationStep } from "../../shared/app-startup";
 
-export function getStartupStatus(step: AppInitializationStep): string {
-  if (step.phase === "migrating") {
-    if (step.completed === undefined || step.total === undefined) {
-      return "Updating local data…";
-    }
-    if (step.total <= 0) return "Updating local data…";
-    const percentage = Math.floor(
-      (Math.min(Math.max(step.completed, 0), step.total) / step.total) * 100,
-    );
-    return `Updating local data… ${percentage}%`;
+/** Visible startup copy is reserved for real local-data work; ordinary opening stays quiet. */
+export function getStartupStatus(step: AppInitializationStep): string | null {
+  if (step.phase !== "migrating") return null;
+  if (step.completed === undefined || step.total === undefined || step.total <= 0) {
+    return "Updating local data…";
   }
-  if (step.phase === "opening_workspace") return "Opening workspace…";
-  if (step.phase === "failed") return "Nodex could not finish opening.";
-  return "Opening Nodex…";
+  const percentage = Math.floor(
+    (Math.min(Math.max(step.completed, 0), step.total) / step.total) * 100,
+  );
+  return `Updating local data… ${percentage}%`;
 }

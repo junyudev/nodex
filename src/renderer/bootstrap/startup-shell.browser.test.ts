@@ -73,11 +73,12 @@ describe("parser-time startup shell presentation", () => {
     expect(darkColor).not.toBe(lightColor);
   });
 
-  test("keeps the mark centered when delayed status copy appears", () => {
+  test("keeps the mark centered when migration status copy appears", () => {
     const { brand, visibleStatus } = mountStartupShell({ dark: false, opaque: false });
     const viewportCenter = { x: window.innerWidth / 2, y: window.innerHeight / 2 };
     const quietCenter = readCenter(brand);
 
+    visibleStatus.textContent = "Updating local data… 42%";
     visibleStatus.hidden = false;
     const statusCenter = readCenter(brand);
 

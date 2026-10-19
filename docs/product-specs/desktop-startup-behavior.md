@@ -1,7 +1,7 @@
 # Desktop Startup Behavior
 
 Status: Active
-Last updated: 2026-10-16
+Last updated: 2026-10-19
 
 ## Promise
 
@@ -27,10 +27,11 @@ window, not a splash dialog that is later exchanged for another window.
 
 ## Progress and transition
 
-Fast starts remain quiet. After 1.8 seconds, ordinary startup may show `Opening Nodex…`. A real
-Store migration immediately shows `Updating local data…`; when trustworthy progress is available,
-the integer percentage never moves backward. Opening the initial Project then shows
-`Opening workspace…`. Status copy appears below the mark without moving it off center.
+Ordinary startup stays quiet however long it takes: the mark alone signals that Nodex is opening,
+and only assistive technology hears `Opening Nodex…`. Visible status copy is reserved for real
+local-data work. A Store migration immediately shows `Updating local data…`; when trustworthy
+progress is available, the integer percentage never moves backward. The copy clears as soon as the
+Store is ready. Status copy appears below the mark without moving it off center.
 
 The full Workbench loads only after global initialization and that window's activation gate are
 both ready. React replaces the startup document in place. BrowserWindow and WebContents identities,

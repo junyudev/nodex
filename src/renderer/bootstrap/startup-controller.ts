@@ -3,7 +3,7 @@ import { FAIL_CLOSED_RUNTIME_CAPABILITIES } from "../../shared/runtime-capabilit
 import { getStartupStatus } from "../lib/app-startup";
 import { startupOperations } from "./startup-operations";
 
-const OPENING_COPY_DELAY_MS = 1_800;
+const OPENING_ACCESSIBILITY_STATUS = "Opening Nodex…";
 const PHASE_ORDER: Record<AppInitializationStep["phase"], number> = {
   opening: 0,
   migrating: 1,
@@ -70,7 +70,6 @@ export function startStartupController(): StartupController {
   let currentPhase: AppInitializationStep["phase"] = "opening";
   let latestMigrationCompleted = -1;
   let disposed = false;
-  let openingDelayElapsed = false;
 
   const renderStep = (step: AppInitializationStep): void => {
     if (disposed || PHASE_ORDER[step.phase] < PHASE_ORDER[currentPhase]) return;
@@ -95,16 +94,10 @@ export function startStartupController(): StartupController {
     }
 
     const status = getStartupStatus(step);
-    elements.accessibilityStatus.textContent = status;
-    elements.visibleStatus.textContent = status;
-    elements.visibleStatus.hidden =
-      step.phase === "opening" && !openingDelayElapsed ? true : step.phase === "done";
+    elements.accessibilityStatus.textContent = status ?? OPENING_ACCESSIBILITY_STATUS;
+    elements.visibleStatus.textContent = status ?? "";
+    elements.visibleStatus.hidden = status === null;
   };
-
-  const openingTimer = window.setTimeout(() => {
-    openingDelayElapsed = true;
-    if (currentPhase === "opening") renderStep({ phase: "opening" });
-  }, OPENING_COPY_DELAY_MS);
 
   const onVisibilityChange = (): void => {
     document.documentElement.classList.toggle(
@@ -134,7 +127,6 @@ export function startStartupController(): StartupController {
   const dispose = (): void => {
     if (disposed) return;
     disposed = true;
-    window.clearTimeout(openingTimer);
     unsubscribeInitialization();
     retireStartupCloseFlush();
     document.removeEventListener("visibilitychange", onVisibilityChange);
