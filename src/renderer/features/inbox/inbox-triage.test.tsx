@@ -228,7 +228,7 @@ describe("InboxTriage", () => {
 
   test("refines only the frozen proposal without capturing another message", async () => {
     const commands = renderTriage();
-    await click("Refine suggestion…");
+    await click("Refine suggestion");
     await act(async () => {
       fireEvent.change(screen.getByRole("textbox", { name: "Refine suggestion" }), {
         target: { value: "Keep this for later" },
@@ -259,7 +259,7 @@ describe("InboxTriage", () => {
       }),
     });
     expect(screen.getByText("Keep the navigation reference")).toBeTruthy();
-    expect(screen.queryByRole("button", { name: "Dispatch…" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Dispatch" })).toBeNull();
     expect(commands.confirm).not.toHaveBeenCalled();
     await click("Keep");
     await waitFor(() => expect(commands.confirm).toHaveBeenCalledWith(note));
@@ -292,7 +292,7 @@ describe("InboxTriage", () => {
     expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
     await click("Open chat");
     expect(onOpenSession).toHaveBeenCalledWith("session:remote");
-    await click("Send again…");
+    await click("Send again");
     expect(onManualDraftChange).toHaveBeenCalledWith(
       expect.objectContaining({ basis: failed.basis }),
     );
@@ -313,7 +313,7 @@ describe("InboxTriage", () => {
       onManualDraftChange,
     });
     expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
-    await click("Dispatch…");
+    await click("Dispatch");
     expect(onManualDraftChange).toHaveBeenCalled();
     expect(commands.retryDispatch).not.toHaveBeenCalled();
   });
@@ -462,7 +462,7 @@ describe("InboxTriage", () => {
     await waitFor(() =>
       expect(commands.requestSuggestion).toHaveBeenCalledWith(["page:1"], [item().basis]),
     );
-    await click("Dispatch…");
+    await click("Dispatch");
     expect(onManualDraftChange).toHaveBeenCalledWith(
       expect.objectContaining({ type: "new_chat", prompt: "Homepage feels like a dev tool" }),
     );
@@ -556,7 +556,7 @@ describe("InboxHistory", () => {
     expect(screen.getByText("Homepage feels like a dev tool")).toBeTruthy();
     await click("Return to Inbox");
     expect(onReturn).toHaveBeenCalledWith("page:1");
-    await click("Delete…");
+    await click("Delete");
     expect(onDelete).toHaveBeenCalledWith(kept);
   });
 });

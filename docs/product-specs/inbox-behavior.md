@@ -142,7 +142,7 @@ Expanding a line shows the message, its Page key, and icon buttons:
 - `Open chat` or `Open in Project`;
 - `Open Page`;
 - `Return to Inbox`, for kept or done messages;
-- `Delete…`, while the Page is still in its Inbox's Database.
+- `Delete`, while the Page is still in its Inbox's Database.
 
 Every count, in the sidebar and on the `Inbox` tab, is the number of messages in
 that Inbox. It is never an unread count.
@@ -198,8 +198,8 @@ What Nodex made of a message is not a reply. It is a strip joined to the
 message itself: the message fills the top of one rounded object, and the strip
 sits beneath it inside the same outline. The ways to act sit in one row just
 under that card and exactly as wide, all at its trailing end. The first of its icons
-opens the message menu: `Open as Page`, `Dispatch…`,
-`Suggest again`, `Mark done`, and `Delete…`. `Dispatch…` opens the dispatch editor
+opens the message menu: `Open as Page`, `Dispatch`,
+`Suggest again`, `Mark done`, and `Delete`. `Dispatch` opens the dispatch editor
 in place of the strip, starting from the current suggestion when there is one.
 The second icon is `Edit`, on every message still waiting in the Inbox except one
 whose delivery failed. With nothing to say yet, the card is
@@ -221,15 +221,15 @@ strip and its row show one of these:
   - `Keep`.
 - **Failure:** one short reason and a new decision. Suggestion failures and
   temporarily unavailable delivery offer `Retry`. Definite rejection requires
-  reviewing `Dispatch…`; uncertain delivery offers `Open chat` and `Send again…`
+  reviewing `Dispatch`; uncertain delivery offers `Open chat` and `Send again`
   without an automatic retry.
-- **Awaiting advice or suggestions off:** `Dispatch…`, `Suggest` when suggestions
+- **Awaiting advice or suggestions off:** `Dispatch`, `Suggest` when suggestions
   are on, and `Keep`.
 
 Only the decision keeps a text label, with its action's glyph: the suggested
-action, or `Dispatch…` when there is no suggestion. It ends the row, flush with
+action, or `Dispatch` when there is no suggestion. It ends the row, flush with
 the card's right edge, so it is always in the same horizontal place. `Edit`,
-`Keep as a note`, `Retry`, `Suggest`, `Mark done`, `Dispatch…` on a failure, and
+`Keep as a note`, `Retry`, `Suggest`, `Mark done`, `Dispatch` on a failure, and
 the message menu are icon buttons named by their tooltips, gathered at the
 trailing edge just before any decision. Every suggestion offers the `Mark done` check. The Nodex
 mark stands for the AI. It appears only on actions that ask for a suggestion and
@@ -242,7 +242,7 @@ which message carries it. A missing sign-in is reported as
 
 Editing a grouped dispatch keeps its full membership and revision. Handling just
 one member requires an explicit new decision; the remaining members cannot keep
-an old prompt that still includes the removed work. `Refine suggestion…` revises
+an old prompt that still includes the removed work. `Refine suggestion` revises
 that suggestion locally without creating another captured message or changing
 standing preferences. Manual target selection searches eligible chats beyond
 the recent list.
@@ -296,7 +296,7 @@ with its reason and the recovery action appropriate to that result.
 A message sent by mistake, for example one holding a key or something private,
 can be deleted:
 
-- from the message menu (`Delete…`);
+- from the message menu (`Delete`);
 - for the whole selection, from the selection bar;
 - from an expanded History line, while its Page is still in its Inbox's
   Database.
@@ -333,10 +333,10 @@ above the composer. Selecting never resizes or shifts the stream: the scroll
 gutters stay reserved. The bar's actions are icon buttons:
 
 - **Suggest together:** asks for one grouped suggestion.
-- **Dispatch…:** opens the dispatch editor for the whole selection.
+- **Dispatch:** opens the dispatch editor for the whole selection.
 - **Keep as notes**
 - **Mark done**
-- **Delete…**
+- **Delete**
 - **Clear selection**
 
 Grouped suggestions and dispatches accept at most 16 messages.

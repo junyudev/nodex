@@ -598,7 +598,7 @@ export function InboxRoute({
                     }
                   />
                   <InboxIconAction
-                    label="Dispatch…"
+                    label="Dispatch"
                     icon={DispatchIcon}
                     disabled={selectedItems.length > 16}
                     onClick={() =>
@@ -630,7 +630,7 @@ export function InboxRoute({
                     }
                   />
                   <InboxIconAction
-                    label="Delete…"
+                    label="Delete"
                     icon={DeleteIcon}
                     tone="danger"
                     onClick={() => requestDelete(selectedItems)}

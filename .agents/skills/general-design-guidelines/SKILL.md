@@ -300,7 +300,7 @@ All action context menus use the deep app-owned module in `@/components/ui/conte
 
 - Default action menus are content-sized within a compact 172–240px range. Use a wider semantic size only when the content demands it; never use a fixed width that leaves obvious empty space.
 - Shared menu-item primitives own leading-icon hierarchy: 16px, `shrink-0`, secondary color at rest, and primary color on hover/focus. Feature menus only provide the semantic icon or an intentional accent.
-- Use `…` only when completing the command requires missing information or an additional choice. Immediate and confirmation-only commands use plain labels, for example `Archive` rather than `Archive…`.
+- Action labels never end in `…`, even when the command opens an editor, a dialog, or another choice: `Dispatch`, `Delete`, `Refine suggestion`, not `Dispatch…`. The trailing ellipsis is visual noise. Keep `…` only for in-progress status and placeholder text, such as `Loading…` or `Search chats…`.
 
 ## Dialogs
 

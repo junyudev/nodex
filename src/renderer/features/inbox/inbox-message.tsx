@@ -67,7 +67,7 @@ export function InboxMessageMenu({
         leftSlot={<DispatchIcon className="icon-xs" />}
         onSelect={handlers.onDispatch}
       >
-        Dispatch…
+        Dispatch
       </NodexDropdownItem>
       {item.state === "open" ? (
         <NodexDropdownItem
@@ -89,7 +89,7 @@ export function InboxMessageMenu({
         leftSlot={<DeleteIcon className="icon-xs" />}
         onSelect={handlers.onDelete}
       >
-        Delete…
+        Delete
       </NodexDropdownItem>
     </NodexDropdownMenu>
   );

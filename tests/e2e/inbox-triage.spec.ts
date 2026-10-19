@@ -75,7 +75,7 @@ test("preserves capture and filing decisions while Project counts share the acti
         await second.getByRole("checkbox", { name: "Select message", exact: true }).check();
         const selection = page.getByTestId("inbox-bulk-bar");
         await expect(selection).toContainText("2 selected");
-        await selection.getByRole("button", { name: "Dispatch…", exact: true }).click();
+        await selection.getByRole("button", { name: "Dispatch", exact: true }).click();
         await page.getByRole("radio", { name: "Move to Project", exact: true }).click();
         await page.getByRole("button", { name: "Project", exact: true }).click();
         await page.getByRole("option", { name: "Inbox filing target", exact: true }).click();

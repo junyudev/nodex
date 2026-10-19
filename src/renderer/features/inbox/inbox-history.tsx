@@ -81,7 +81,7 @@ function HistoryRow({
               {/* A message filed into a Project is that Project's Page now; it is deleted there. */}
               {item.location.kind === "inbox" ? (
                 <InboxIconAction
-                  label="Delete…"
+                  label="Delete"
                   icon={DeleteIcon}
                   tone="danger"
                   onClick={onDelete}

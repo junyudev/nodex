@@ -395,7 +395,7 @@ export function InboxTriage({
                 {menu}
                 {editAction}
                 <InboxIconAction
-                  label="Refine suggestion…"
+                  label="Refine suggestion"
                   icon={AskAiIcon}
                   onClick={() => setRefining(proposal)}
                 />
@@ -432,7 +432,7 @@ export function InboxTriage({
                   icon={RetryIcon}
                   onClick={() => void actions.requestSuggestion([item.pageId], [item.basis])}
                 />
-                <InboxIconAction label="Dispatch…" icon={DispatchIcon} onClick={dispatchByHand} />
+                <InboxIconAction label="Dispatch" icon={DispatchIcon} onClick={dispatchByHand} />
                 {keepAction}
                 {doneAction}
               </InboxIconActions>
@@ -474,7 +474,7 @@ export function InboxTriage({
                   />
                 )}
                 <InboxIconAction
-                  label={model.proposal.failureKind === "unknown" ? "Send again…" : "Dispatch…"}
+                  label={model.proposal.failureKind === "unknown" ? "Send again" : "Dispatch"}
                   icon={DispatchIcon}
                   onClick={() => onManualDraftChange(draftForInboxItem(item, inboxProjectId))}
                 />
@@ -512,7 +512,7 @@ export function InboxTriage({
                 {doneAction}
               </InboxIconActions>
               <Decision
-                label="Dispatch…"
+                label="Dispatch"
                 target={null}
                 icon={DispatchIcon}
                 variant="ghost"
