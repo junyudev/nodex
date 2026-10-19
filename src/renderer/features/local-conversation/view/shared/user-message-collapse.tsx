@@ -1,4 +1,4 @@
-import type { CSSProperties } from "react";
+import type { CSSProperties, ReactNode } from "react";
 import { useLayoutEffect, useRef, useState } from "react";
 import { ChevronDownIcon } from "@/components/shared/icons";
 import { cn } from "../../../../lib/utils";
@@ -12,6 +12,8 @@ export const DEFAULT_USER_MESSAGE_COLLAPSED_LINES = 20;
 
 interface UserMessageTextProps {
   text: string;
+  /** Leads the first line, one line tall; the lines below it run the full width. */
+  leading?: ReactNode;
   collapsedLineCount?: number;
   cwd?: string | null;
   projectWorkspacePath?: string | null;
@@ -23,11 +25,12 @@ const USER_MESSAGE_COLLAPSED_STYLE: CSSProperties = {
 
 function CollapsibleUserMessageText({
   text,
+  leading,
   collapsedLineCount,
   cwd,
   projectWorkspacePath,
 }: Required<Pick<UserMessageTextProps, "text" | "collapsedLineCount">> &
-  Pick<UserMessageTextProps, "cwd" | "projectWorkspacePath">) {
+  Pick<UserMessageTextProps, "leading" | "cwd" | "projectWorkspacePath">) {
   const contentRef = useRef<HTMLDivElement>(null);
   const clipRef = useRef<HTMLDivElement>(null);
   const [expandedText, setExpandedText] = useState<string | null>(null);
@@ -84,6 +87,9 @@ function CollapsibleUserMessageText({
       <div className="text-size-chat relative w-full min-w-0 leading-relaxed">
         <div ref={clipRef} style={collapsedStyle}>
           <div ref={contentRef}>
+            {leading ? (
+              <div className="float-left me-1.5 flex h-[1lh] items-center">{leading}</div>
+            ) : null}
             <MarkdownRenderer
               content={text}
               preserveLineBreaks
@@ -126,6 +132,7 @@ function CollapsibleUserMessageText({
 
 export function UserMessageText({
   text,
+  leading,
   collapsedLineCount = DEFAULT_USER_MESSAGE_COLLAPSED_LINES,
   cwd,
   projectWorkspacePath,
@@ -133,6 +140,7 @@ export function UserMessageText({
   return (
     <CollapsibleUserMessageText
       text={text}
+      leading={leading}
       collapsedLineCount={collapsedLineCount}
       cwd={cwd}
       projectWorkspacePath={projectWorkspacePath}

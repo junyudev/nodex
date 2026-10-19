@@ -332,7 +332,9 @@ describe("InboxTriage", () => {
 
   test("confirms the exact suggested action and nothing else", async () => {
     const commands = renderTriage();
-    expect(screen.getByText("Compare both homepage positions first.")).toBeTruthy();
+    // A chat suggestion reads as the prompt it will send; its summary waits on the decision.
+    expect(screen.getByText("Compare both positions.")).toBeTruthy();
+    expect(screen.queryByText("Compare both homepage positions first.")).toBeNull();
     // The exact destination is visible before confirming.
     expect(screen.getByRole("button", { name: "Kind: Question" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "New chat in Nodex" })).toBeTruthy();
@@ -347,7 +349,7 @@ describe("InboxTriage", () => {
     const editor = await screen.findByRole("textbox", { name: "Edit message" });
     expect((editor as HTMLTextAreaElement).value).toBe("Homepage feels like a dev tool");
     // What Nodex made of the old text steps aside while it is rewritten.
-    expect(screen.queryByText("Compare both homepage positions first.")).toBeNull();
+    expect(screen.queryByText("Compare both positions.")).toBeNull();
     expect(screen.queryByRole("button", { name: "Start chat" })).toBeNull();
     await act(async () => {
       fireEvent.change(editor, { target: { value: "Homepage should read like an assistant" } });
@@ -365,7 +367,7 @@ describe("InboxTriage", () => {
         { pageId: "page:1", generation: 1, headSeq: 1, placementRevision: 1 },
       ),
     );
-    expect(await screen.findByText("Compare both homepage positions first.")).toBeTruthy();
+    expect(await screen.findByText("Compare both positions.")).toBeTruthy();
     expect(commands.confirm).not.toHaveBeenCalled();
     expect(commands.dispatch).not.toHaveBeenCalled();
   });

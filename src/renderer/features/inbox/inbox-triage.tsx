@@ -29,6 +29,7 @@ import {
 import { InboxCopyAction } from "./inbox-copy-action";
 import { InboxGroupMembers, type InboxGroupMember } from "./inbox-group-members";
 import { InboxKindControl } from "./inbox-kind-control";
+import { UserMessageText } from "@/features/local-conversation/view/shared/user-message-collapse";
 import { InboxMessageEditor } from "./inbox-message-editor";
 import { INBOX_EASE_OUT } from "./inbox-stream-item";
 import { InboxOutcomeLine } from "./inbox-outcome";
@@ -37,6 +38,7 @@ import {
   describeInboxAction,
   describeInboxOutcome,
   inboxTriageModel,
+  isChatAction,
 } from "./inbox-presentation";
 import {
   InboxDispatchEditor,
@@ -86,27 +88,11 @@ function Notice({
   );
 }
 
-function PromptPreview({ prompt }: { readonly prompt: string }) {
-  const [expanded, setExpanded] = useState(false);
-  return (
-    <button
-      type="button"
-      aria-expanded={expanded}
-      onClick={() => setExpanded((current) => !current)}
-      className={cn(
-        "cursor-interaction border-l-2 border-token-border pl-2.5 text-left text-[13px] leading-relaxed whitespace-pre-wrap text-token-description-foreground hover:text-token-foreground/80",
-        !expanded && "line-clamp-2",
-      )}
-    >
-      {prompt}
-    </button>
-  );
-}
-
 /** The decision the row asks for, always at the trailing edge where it is easy to find. */
 function Decision({
   label,
   target,
+  why = null,
   icon: Icon,
   variant = "primary",
   onClick,
@@ -114,6 +100,8 @@ function Decision({
   readonly label: string;
   /** Canonical destination; the user can check it before deciding. */
   readonly target: string | null;
+  /** What the suggestion does and why, a hover away. */
+  readonly why?: ReactNode;
   readonly icon: InboxIcon;
   readonly variant?: "primary" | "ghost";
   readonly onClick: () => void;
@@ -125,7 +113,15 @@ function Decision({
     </NodexButton>
   );
   return target ? (
-    <NodexTooltip tooltipContent={target} side="top">
+    <NodexTooltip
+      tooltipContent={
+        <div className="flex max-w-80 flex-col gap-1">
+          <span>{target}</span>
+          {why}
+        </div>
+      }
+      side="top"
+    >
       {button}
     </NodexTooltip>
   ) : (
@@ -133,6 +129,21 @@ function Decision({
   );
 }
 
+/** The summary of a chat suggestion, and for every suggestion why it was made and by whom. */
+function SuggestionWhy({ proposal }: { readonly proposal: InboxProposal }) {
+  const why = [proposal.rationale, proposal.producedBy].filter(Boolean).join(" — ");
+  return (
+    <>
+      {isChatAction(proposal.action) ? <span>{proposal.summary}</span> : null}
+      {why ? <span className="text-token-description-foreground">{why}</span> : null}
+    </>
+  );
+}
+
+/**
+ * A chat suggestion is the prompt it will send, read like the message above it; where it goes
+ * is on the decision. Other suggestions say what they do in one line.
+ */
 function SuggestionStrip({
   proposal,
   kind,
@@ -142,30 +153,18 @@ function SuggestionStrip({
   readonly kind: InboxEntryKind | null;
   readonly onSetKind: (kind: InboxEntryKind | null) => void;
 }) {
-  const prompt =
-    proposal.action.type === "new_chat" || proposal.action.type === "send_to_chat"
-      ? proposal.action.prompt
-      : null;
-  const why = proposal.rationale
-    ? `${proposal.rationale}${proposal.producedBy ? ` — ${proposal.producedBy}` : ""}`
-    : proposal.producedBy;
-  const summary = (
-    <p className="min-w-0 text-sm leading-snug text-token-foreground">{proposal.summary}</p>
-  );
+  const kindControl = kind ? <InboxKindControl kind={kind} onChange={onSetKind} /> : null;
+  const action = proposal.action;
   return (
-    <div data-testid="inbox-suggestion" className="flex min-w-0 items-start gap-1.5">
-      {kind ? <InboxKindControl kind={kind} onChange={onSetKind} /> : null}
-      <div className={cn("flex min-w-0 flex-1 flex-col gap-2", kind && "pt-0.5")}>
-        {/* Why, and who suggested it, are a hover away rather than another line. */}
-        {why ? (
-          <NodexTooltip tooltipContent={why} side="top">
-            {summary}
-          </NodexTooltip>
-        ) : (
-          summary
-        )}
-        {prompt ? <PromptPreview prompt={prompt} /> : null}
-      </div>
+    <div data-testid="inbox-suggestion" className="min-w-0 text-token-foreground">
+      {isChatAction(action) ? (
+        <UserMessageText text={action.prompt} leading={kindControl} />
+      ) : (
+        <div className="flex min-w-0 items-start gap-1.5">
+          {kindControl}
+          <p className={cn("min-w-0 text-sm leading-snug", kind && "pt-0.5")}>{proposal.summary}</p>
+        </div>
+      )}
     </div>
   );
 }
@@ -383,6 +382,7 @@ export function InboxTriage({
               <Decision
                 label={presentation.verb}
                 target={presentation.target}
+                why={<SuggestionWhy proposal={proposal} />}
                 icon={INBOX_ACTION_ICONS[proposal.action.type]}
                 onClick={() => void actions.confirm(proposal)}
               />

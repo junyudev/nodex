@@ -220,10 +220,13 @@ strip and its row show one of these:
   of its row, the place where its decision appears once advice arrives. The spinner
   ends where the card's bottom-right corner curve meets its bottom edge.
 - **Suggestion:**
-  - a one-line summary. Hovering it shows the rationale and the runtime that
-    suggested it;
-  - the prompt, collapsed to two lines;
-  - a primary action with its exact destination visible without hovering;
+  - for a new chat or a send to a chat, the prompt it will send, read like the
+    message above it: the same size and color, the card's full width after the
+    kind's glyph, and collapsed after as many lines as a user message in a chat.
+    Other suggestions say what they do in a one-line summary;
+  - a primary action with its exact destination visible without hovering.
+    Hovering it adds a chat suggestion's summary, the rationale and the runtime
+    that suggested it;
   - the member count for a group, with access to its complete scope;
   - `Keep`.
 - **Failure:** one short reason and a new decision. Suggestion failures and

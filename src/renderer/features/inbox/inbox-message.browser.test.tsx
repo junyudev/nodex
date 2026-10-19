@@ -7,7 +7,7 @@ import { userEvent } from "vite-plus/test/browser";
 import "@/globals.css";
 import { NodexTooltipProvider } from "@/components/ui/tooltip";
 import { installRendererThemeFixture } from "@/test/renderer-theme";
-import type { InboxItem } from "../../../shared/inbox";
+import type { InboxItem, InboxProposal } from "../../../shared/inbox";
 import { InboxMessage } from "./inbox-message";
 import { InboxStreamItem } from "./inbox-stream-item";
 import { InboxTriage } from "./inbox-triage";
@@ -173,4 +173,53 @@ test("Copy and Edit wait on the text's bottom-right corner until the message is 
   await userEvent.hover(screen.getByText("Homepage feels like a dev tool"));
   await expect.poll(() => getComputedStyle(tools).opacity).toBe("1");
   expect(getComputedStyle(tools).pointerEvents).toBe("auto");
+});
+
+test("a chat suggestion reads as its prompt: full width, the message's size, why on the decision", async () => {
+  const prompt =
+    "整理当前尚未合并的 commits，使提交历史清晰、连贯、便于审阅，保留最终改动意图。完整要求见附带原文，并在整理前后各列出一次提交清单供对照。";
+  const proposal: InboxProposal = {
+    proposalId: "proposal:1",
+    revision: 1,
+    origin: "agent",
+    state: "open",
+    pageIds: ["page:1"],
+    basis: [waiting.basis],
+    action: { type: "new_chat", projectId: "project:nodex", prompt },
+    kind: "todo",
+    summary: "整理合并前的提交历史",
+    rationale: "A clear task for a new chat.",
+    producedBy: "codex · gpt-6.1-sol",
+    targetProjectName: "Nodex",
+    chat: null,
+    failureMessage: null,
+    failureKind: null,
+    createdAt: "2026-10-11T10:00:00.000Z",
+    updatedAt: "2026-10-11T10:00:00.000Z",
+  };
+  render(
+    <Stream>
+      <StreamMessage
+        key="page:1"
+        item={{ ...waiting, kind: "todo", suggestionState: "settled", proposal }}
+      />
+    </Stream>,
+  );
+  const glyph = screen.getByRole("button", { name: "Kind: Todo" }).getBoundingClientRect();
+  const paragraph = screen.getByText(prompt);
+  const range = document.createRange();
+  range.selectNodeContents(paragraph);
+  const lines = Array.from(range.getClientRects());
+  expect(lines.length).toBeGreaterThan(1);
+  // The first line follows the glyph; the lines below run the strip's full width.
+  expect(lines[0]!.left).toBeGreaterThanOrEqual(glyph.right);
+  expect(lines.at(-1)!.left).toBeLessThanOrEqual(glyph.left + 4);
+  expect(getComputedStyle(paragraph).fontSize).toBe(
+    getComputedStyle(screen.getByText("Homepage feels like a dev tool")).fontSize,
+  );
+  expect(screen.queryByText("整理合并前的提交历史")).toBeNull();
+
+  await userEvent.hover(screen.getByRole("button", { name: "New chat in Nodex" }));
+  expect(await screen.findByText("整理合并前的提交历史", {}, { timeout: 3_000 })).toBeTruthy();
+  expect(screen.getByText("A clear task for a new chat. — codex · gpt-6.1-sol")).toBeTruthy();
 });

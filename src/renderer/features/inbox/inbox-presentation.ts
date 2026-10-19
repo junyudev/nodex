@@ -21,7 +21,10 @@ export type InboxTriageModel =
   /** Handled; the message is on its way to History. */
   | { readonly kind: "handled" };
 
-const isChatAction = (action: InboxDispatchAction) =>
+/** Starts a chat or sends to one, so it carries a prompt. */
+export const isChatAction = (
+  action: InboxDispatchAction,
+): action is Extract<InboxDispatchAction, { type: "new_chat" | "send_to_chat" }> =>
   action.type === "new_chat" || action.type === "send_to_chat";
 
 /**
