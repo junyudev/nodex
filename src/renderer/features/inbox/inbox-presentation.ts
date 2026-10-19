@@ -90,6 +90,10 @@ export function inboxPageRoutingContext(item: InboxItem): ContentRoutingContext 
   return item.scope;
 }
 
+/** The kind the user set, else the one the current suggestion proposes. */
+export const inboxEntryKind = (item: InboxItem): InboxEntryKind | null =>
+  item.kind ?? item.proposal?.kind ?? null;
+
 export type InboxOutcomeIcon = "chat" | "pending" | "move" | "keep" | "done" | "inbox";
 
 export type InboxOutcomeTarget =

@@ -1,4 +1,4 @@
-import type { InboxItem } from "../../../shared/inbox";
+import { INBOX_ENTRY_KINDS, type InboxEntryKind, type InboxItem } from "../../../shared/inbox";
 import {
   AutomationMoreIcon,
   CheckmarkIcon,
@@ -10,19 +10,22 @@ import {
 import {
   NodexDropdownItem,
   NodexDropdownMenu,
+  NodexDropdownSelectedIcon,
   NodexDropdownSeparator,
+  NodexDropdownSummarySubmenuItem,
 } from "@/components/ui/dropdown";
 import { NodexButton } from "@/components/ui/button";
 import { NodexCheckbox } from "@/components/ui/settings";
 import { UserMessageText } from "@/features/local-conversation/view/shared/user-message-collapse";
 import { cn } from "@/lib/utils";
-import { formatInboxTime } from "./inbox-presentation";
+import { INBOX_KIND_LABELS, formatInboxTime, inboxEntryKind } from "./inbox-presentation";
 
 export interface InboxMessageMenuHandlers {
   readonly onOpenPage: () => void;
   readonly onDispatch: () => void;
   readonly onSuggestAgain: () => void;
   readonly onSetDone: (done: boolean) => void;
+  readonly onSetKind: (kind: InboxEntryKind) => void;
   readonly onDelete: () => void;
 }
 
@@ -35,6 +38,7 @@ export function InboxMessageMenu({
   readonly handlers: InboxMessageMenuHandlers;
 }) {
   const done = item.state === "done";
+  const kind = inboxEntryKind(item);
   return (
     <NodexDropdownMenu
       align="end"
@@ -73,6 +77,18 @@ export function InboxMessageMenu({
       >
         {done ? "Reopen" : "Mark done"}
       </NodexDropdownItem>
+      {/* What kind of thought it is only steers suggestions, so it is corrected here, not shown. */}
+      <NodexDropdownSummarySubmenuItem label="Kind" value={kind ? INBOX_KIND_LABELS[kind] : "None"}>
+        {INBOX_ENTRY_KINDS.map((option) => (
+          <NodexDropdownItem
+            key={option}
+            rightSlot={option === kind ? <NodexDropdownSelectedIcon /> : null}
+            onSelect={() => handlers.onSetKind(option)}
+          >
+            {INBOX_KIND_LABELS[option]}
+          </NodexDropdownItem>
+        ))}
+      </NodexDropdownSummarySubmenuItem>
       <NodexDropdownSeparator />
       <NodexDropdownItem
         className="text-token-error-foreground"

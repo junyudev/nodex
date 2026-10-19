@@ -1,11 +1,6 @@
 import { useState, type ReactNode } from "react";
 import { motion } from "motion/react";
-import type {
-  InboxEntryKind,
-  InboxItem,
-  InboxProposal,
-  InboxPageBasis,
-} from "../../../shared/inbox";
+import type { InboxItem, InboxProposal, InboxPageBasis } from "../../../shared/inbox";
 import type { Project } from "../../../shared/types";
 import {
   ActivitySpinnerIcon,
@@ -28,13 +23,11 @@ import {
 } from "./inbox-icon-action";
 import { InboxCopyAction } from "./inbox-copy-action";
 import { InboxGroupMembers, type InboxGroupMember } from "./inbox-group-members";
-import { InboxKindControl } from "./inbox-kind-control";
 import { UserMessageText } from "@/features/local-conversation/view/shared/user-message-collapse";
 import { InboxMessageEditor } from "./inbox-message-editor";
 import { INBOX_EASE_OUT } from "./inbox-stream-item";
 import { InboxOutcomeLine } from "./inbox-outcome";
 import {
-  INBOX_KIND_LABELS,
   describeInboxAction,
   describeInboxOutcome,
   inboxTriageModel,
@@ -144,26 +137,14 @@ function SuggestionWhy({ proposal }: { readonly proposal: InboxProposal }) {
  * A chat suggestion is the prompt it will send, read like the message above it; where it goes
  * is on the decision. Other suggestions say what they do in one line.
  */
-function SuggestionStrip({
-  proposal,
-  kind,
-  onSetKind,
-}: {
-  readonly proposal: InboxProposal;
-  readonly kind: InboxEntryKind | null;
-  readonly onSetKind: (kind: InboxEntryKind | null) => void;
-}) {
-  const kindControl = kind ? <InboxKindControl kind={kind} onChange={onSetKind} /> : null;
+function SuggestionStrip({ proposal }: { readonly proposal: InboxProposal }) {
   const action = proposal.action;
   return (
     <div data-testid="inbox-suggestion" className="min-w-0 text-token-foreground">
       {isChatAction(action) ? (
-        <UserMessageText text={action.prompt} leading={kindControl} />
+        <UserMessageText text={action.prompt} />
       ) : (
-        <div className="flex min-w-0 items-start gap-1.5">
-          {kindControl}
-          <p className={cn("min-w-0 text-sm leading-snug", kind && "pt-0.5")}>{proposal.summary}</p>
-        </div>
+        <p className="min-w-0 text-sm leading-snug">{proposal.summary}</p>
       )}
     </div>
   );
@@ -251,9 +232,6 @@ export function InboxTriage({
   const handleManuallyAction = (
     <InboxIconAction label="Handle manually" icon={DispatchIcon} onClick={handleManually} />
   );
-  const setKind = (kind: InboxEntryKind | null) => void actions.setKind(item.pageId, kind);
-  // A kind, once known, leads every strip so it can be read and corrected in place.
-  const kindControl = item.kind ? <InboxKindControl kind={item.kind} onChange={setKind} /> : null;
   const menuOnly = (
     <Row>
       <InboxIconActions>{menu}</InboxIconActions>
@@ -365,11 +343,7 @@ export function InboxTriage({
           strip: (
             <Settle id={proposal.proposalId}>
               {groupMembers(proposal)}
-              <SuggestionStrip
-                proposal={proposal}
-                kind={item.kind ?? proposal.kind}
-                onSetKind={setKind}
-              />
+              <SuggestionStrip proposal={proposal} />
             </Settle>
           ),
           actions: (
@@ -394,10 +368,7 @@ export function InboxTriage({
         return {
           strip: (
             <Settle id="suggestion-failed">
-              <Row>
-                {kindControl}
-                <Notice tone="error">Couldn’t suggest — {model.message}</Notice>
-              </Row>
+              <Notice tone="error">Couldn’t suggest — {model.message}</Notice>
             </Settle>
           ),
           actions: (
@@ -420,15 +391,12 @@ export function InboxTriage({
         return {
           strip: (
             <Settle id="dispatch-failed">
-              <Row>
-                {kindControl}
-                <Notice tone="error">
-                  {model.proposal.failureKind === "unknown"
-                    ? "Delivery not confirmed"
-                    : "Couldn’t deliver"}{" "}
-                  — {model.message}
-                </Notice>
-              </Row>
+              <Notice tone="error">
+                {model.proposal.failureKind === "unknown"
+                  ? "Delivery not confirmed"
+                  : "Couldn’t deliver"}{" "}
+                — {model.message}
+              </Notice>
             </Settle>
           ),
           actions: (
@@ -467,16 +435,8 @@ export function InboxTriage({
         };
       case "undecided":
         return {
-          // With nothing suggested, the card is the message alone, plus its kind once known.
-          strip:
-            kindControl && item.kind ? (
-              <Row>
-                {kindControl}
-                <span className="text-[13px] text-token-description-foreground">
-                  {INBOX_KIND_LABELS[item.kind]}
-                </span>
-              </Row>
-            ) : null,
+          // With nothing suggested, the card is the message alone.
+          strip: null,
           actions: (
             <Row>
               <InboxIconActions>

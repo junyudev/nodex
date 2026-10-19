@@ -14,18 +14,15 @@ import {
   LoadingIcon,
   MoveDownIcon,
   MoveUpIcon,
-  NoteIcon,
   PageHistoryIcon,
   PauseIcon,
   PlayIcon,
-  QuestionIcon,
   ResetIcon,
   RetryIcon,
   SendToChatIcon,
   SortAscendingIcon,
   SortDescendingIcon,
   TerminalIcon,
-  TodoIcon,
   VisibilityIcon,
   VisibilityOffIcon,
 } from "./canonical-icons";
@@ -144,7 +141,7 @@ describe("canonical shared icons", () => {
   });
 
   test("draws line glyphs at the house weight so they sit beside outlined icons", () => {
-    const glyphs = [NoteIcon, TodoIcon, QuestionIcon, SendToChatIcon, DispatchIcon];
+    const glyphs = [SendToChatIcon, DispatchIcon];
     const signatures = glyphs.map((Icon) => {
       const view = render(<Icon />);
       const svg = view.container.querySelector("svg");

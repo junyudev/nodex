@@ -200,7 +200,7 @@ message itself: the message fills the top of one rounded object, and the strip
 sits beneath it inside the same outline. The ways to act sit in one row just
 under that card and exactly as wide, all at its trailing end. The first of its icons
 opens the message menu: `Open page`, `Handle manually`,
-`Suggest again`, `Mark done`, and `Delete`. `Handle manually` opens the dispatch editor
+`Suggest again`, `Mark done`, `Kind`, and `Delete`. `Handle manually` opens the dispatch editor
 in place of the strip, starting from the current suggestion when there is one.
 `Copy` and `Edit` act on the text itself, so they sit on it: in the bottom-right
 corner of the message text, shown while the message is hovered or one of them
@@ -210,10 +210,10 @@ message, reading it from the Page when the stream shows only part of it, and
 confirms with a check for a moment. `Edit` appears on every message still
 waiting in the Inbox except one whose delivery failed, and neither appears
 while the message or its dispatch is being edited. With nothing to say yet, the card is
-the message alone. Once a message has a kind, the
-kind's glyph leads its strip in every state. Hovering the glyph names the kind,
-and clicking it changes the kind; this is the one place a kind is changed. The
-strip and its row show one of these:
+the message alone. A kind only steers suggestions, so the card never shows it.
+The menu's `Kind` names it, the user's own or else the one the suggestion
+proposes, and is the one place to change it. The strip and its row show one of
+these:
 
 - **Suggestion running:** no strip. The `Handle manually` icon decides by hand
   without waiting. Only the newest such message shows a small spinner at the end
@@ -221,8 +221,8 @@ strip and its row show one of these:
   ends where the card's bottom-right corner curve meets its bottom edge.
 - **Suggestion:**
   - for a new chat or a send to a chat, the prompt it will send, read like the
-    message above it: the same size and color, the card's full width after the
-    kind's glyph, and collapsed after as many lines as a user message in a chat.
+    message above it: the same size and color, the card's full width, and
+    collapsed after as many lines as a user message in a chat.
     Other suggestions say what they do in a one-line summary;
   - a primary action with its exact destination visible without hovering.
     Hovering it adds a chat suggestion's summary, the rationale and the runtime
@@ -247,8 +247,7 @@ the message menu are icon buttons named by their tooltips, gathered at the
 trailing edge just before any decision. Every suggestion offers the `Mark done` check. The Nodex
 mark stands for the AI. It appears only on actions that ask for a suggestion and
 never decorates the suggestions themselves. The same glyph
-marks each dispatch kind in the strip, the dispatch editor, and History, and each
-kind (note, todo, question) everywhere the kind is shown or changed. A grouped
+marks each dispatch kind in the strip, the dispatch editor, and History. A grouped
 suggestion renders once, on the newest message in its group; the others say
 which message carries it. A missing sign-in is reported as
 `Sign in to the suggestion agent first`.

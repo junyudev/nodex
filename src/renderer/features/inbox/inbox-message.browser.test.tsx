@@ -205,15 +205,15 @@ test("a chat suggestion reads as its prompt: full width, the message's size, why
       />
     </Stream>,
   );
-  const glyph = screen.getByRole("button", { name: "Kind: Todo" }).getBoundingClientRect();
+  const strip = screen.getByTestId("inbox-suggestion").getBoundingClientRect();
   const paragraph = screen.getByText(prompt);
   const range = document.createRange();
   range.selectNodeContents(paragraph);
   const lines = Array.from(range.getClientRects());
   expect(lines.length).toBeGreaterThan(1);
-  // The first line follows the glyph; the lines below run the strip's full width.
-  expect(lines[0]!.left).toBeGreaterThanOrEqual(glyph.right);
-  expect(lines.at(-1)!.left).toBeLessThanOrEqual(glyph.left + 4);
+  // Every line runs from the strip's own edge; nothing about the message's kind sits in it.
+  for (const line of lines) expect(Math.abs(line.left - strip.left)).toBeLessThanOrEqual(1);
+  expect(screen.queryByRole("button", { name: /^Kind/ })).toBeNull();
   expect(getComputedStyle(paragraph).fontSize).toBe(
     getComputedStyle(screen.getByText("Homepage feels like a dev tool")).fontSize,
   );

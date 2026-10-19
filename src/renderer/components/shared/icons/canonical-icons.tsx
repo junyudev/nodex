@@ -399,24 +399,6 @@ function lineGlyphPaths(...d: readonly string[]) {
   }));
 }
 
-const NOTE_PATHS = lineGlyphPaths(
-  "M16.5 11.5V6.5a3 3 0 0 0-3-3h-7a3 3 0 0 0-3 3v7a3 3 0 0 0 3 3h5z",
-  "M11.5 16.5v-2.5a2.5 2.5 0 0 1 2.5-2.5h2.5",
-);
-
-const TODO_PATHS = lineGlyphPaths(
-  "M11 4.5H6.5a3 3 0 0 0-3 3v5a3 3 0 0 0 3 3h5a3 3 0 0 0 3-3v-2",
-  "M7 9.25l2.75 2.75 7-7",
-);
-
-const QUESTION_PATHS = [
-  ...lineGlyphPaths(
-    "M17 10a7 7 0 1 1-14 0 7 7 0 0 1 14 0z",
-    "M7.9 8.1a2.15 2.15 0 0 1 4.2.55c0 1.45-2.1 1.7-2.1 3.1",
-  ),
-  "M10.85 13.85a.85.85 0 1 1-1.7 0 .85.85 0 0 1 1.7 0z",
-];
-
 const SEND_TO_CHAT_PATHS = lineGlyphPaths(
   "M16.6 3.4 11.7 16.6a.6.6 0 0 1-1.1.03L8.4 11.6 3.37 9.4a.6.6 0 0 1 .03-1.1z",
   "m8.4 11.6 3.35-3.35",
@@ -426,20 +408,6 @@ const DISPATCH_PATHS = lineGlyphPaths(
   "M3 10h2.5c2.5 0 3.5-4.5 6-4.5h4.75M5.5 10c2.5 0 3.5 4.5 6 4.5h4.75",
   "M14 3.25l2.25 2.25L14 7.75M14 12.25l2.25 2.25L14 16.75",
 );
-
-/** A loose note: a sticky sheet with its corner turned. */
-export function NoteIcon(props: CanonicalIconProps) {
-  return <CanonicalGlyph {...props} paths={NOTE_PATHS} />;
-}
-
-/** Something to do: a check leaving its box. */
-export function TodoIcon(props: CanonicalIconProps) {
-  return <CanonicalGlyph {...props} paths={TODO_PATHS} />;
-}
-
-export function QuestionIcon(props: CanonicalIconProps) {
-  return <CanonicalGlyph {...props} paths={QUESTION_PATHS} />;
-}
 
 export function SendToChatIcon(props: CanonicalIconProps) {
   return <CanonicalGlyph {...props} paths={SEND_TO_CHAT_PATHS} />;

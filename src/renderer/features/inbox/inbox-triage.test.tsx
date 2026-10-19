@@ -8,7 +8,7 @@ import type { Project } from "../../../shared/types";
 import { InboxDeleteDialog } from "./inbox-delete-dialog";
 import { draftForInboxItem } from "./inbox-dispatch-editor";
 import { InboxHistory } from "./inbox-history";
-import { InboxMessage } from "./inbox-message";
+import { InboxMessage, InboxMessageMenu } from "./inbox-message";
 import { InboxTriage } from "./inbox-triage";
 import type { InboxActions } from "./use-inbox-actions";
 
@@ -336,7 +336,8 @@ describe("InboxTriage", () => {
     expect(screen.getByText("Compare both positions.")).toBeTruthy();
     expect(screen.queryByText("Compare both homepage positions first.")).toBeNull();
     // The exact destination is visible before confirming.
-    expect(screen.getByRole("button", { name: "Kind: Question" })).toBeTruthy();
+    // A kind only steers suggestions, so the card never shows it.
+    expect(screen.queryByRole("button", { name: /^Kind/ })).toBeNull();
     expect(screen.getByRole("button", { name: "New chat in Nodex" })).toBeTruthy();
     await click("New chat in Nodex");
     await waitFor(() => expect(commands.confirm).toHaveBeenCalledWith(proposal()));
@@ -469,15 +470,34 @@ describe("InboxTriage", () => {
     expect(screen.getByRole("button", { name: "Message actions" })).toBeTruthy();
   });
 
-  test("a message without a suggestion still shows and corrects its kind in the strip", async () => {
-    const commands = renderTriage({ item: item({ kind: "todo", proposal: null }) });
-    await openNodexMenu(screen.getByRole("button", { name: "Kind: Todo" }));
-    const question = await screen.findByRole("menuitem", { name: "Question" });
+  test("the message menu shows the kind and corrects it", async () => {
+    const onSetKind = vi.fn();
+    render(
+      <InboxMessageMenu
+        item={item({ kind: null })}
+        handlers={{
+          onOpenPage: vi.fn(),
+          onDispatch: vi.fn(),
+          onSuggestAgain: vi.fn(),
+          onSetDone: vi.fn(),
+          onSetKind,
+          onDelete: vi.fn(),
+        }}
+      />,
+    );
+    await openNodexMenu(screen.getByRole("button", { name: "Message actions" }));
+    // Until the user sets one, the kind is the one the suggestion proposes.
+    const kind = await screen.findByRole("menuitem", { name: /Kind/ });
+    expect(kind.textContent).toContain("Question");
     await act(async () => {
-      fireEvent.click(question);
+      fireEvent.click(kind);
       await Promise.resolve();
     });
-    await waitFor(() => expect(commands.setKind).toHaveBeenCalledWith("page:1", "question"));
+    await act(async () => {
+      fireEvent.click(await screen.findByRole("menuitem", { name: "Todo" }));
+      await Promise.resolve();
+    });
+    expect(onSetKind).toHaveBeenCalledWith("todo");
   });
 });
 

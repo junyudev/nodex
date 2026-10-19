@@ -368,6 +368,7 @@ export function InboxRoute({
               proposal?.basis ?? [item.basis],
             ),
           onSetDone: (done) => void actions.setState([item.pageId], done ? "done" : "open"),
+          onSetKind: (kind) => void actions.setKind(item.pageId, kind),
           onDelete: () => requestDelete([item]),
         }}
       />

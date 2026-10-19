@@ -1,14 +1,6 @@
 import type { ComponentType } from "react";
-import type { InboxDispatchAction, InboxEntryKind } from "../../../shared/inbox";
-import {
-  ArchiveIcon,
-  MoveToIcon,
-  NewChatIcon,
-  NoteIcon,
-  QuestionIcon,
-  SendToChatIcon,
-  TodoIcon,
-} from "@/components/shared/icons";
+import type { InboxDispatchAction } from "../../../shared/inbox";
+import { ArchiveIcon, MoveToIcon, NewChatIcon, SendToChatIcon } from "@/components/shared/icons";
 import { NodexButton } from "@/components/ui/button";
 import { NodexTooltip } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
@@ -21,13 +13,6 @@ export const INBOX_ACTION_ICONS: Readonly<Record<InboxDispatchAction["type"], In
   new_chat: NewChatIcon,
   send_to_chat: SendToChatIcon,
   move_to_project: MoveToIcon,
-};
-
-/** What a message is, at a glance. */
-export const INBOX_KIND_ICONS: Readonly<Record<InboxEntryKind, InboxIcon>> = {
-  note: NoteIcon,
-  todo: TodoIcon,
-  question: QuestionIcon,
 };
 
 /**
