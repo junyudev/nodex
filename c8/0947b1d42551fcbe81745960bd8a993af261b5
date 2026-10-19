@@ -1,0 +1,25 @@
+src/renderer/lib/inbox-runtime.ts
+  s_f79dd9d0c7ac54::t_04aaf172cf164d 40-47,52,67-68,70,72,74,76,78,80,82,84
+  s_f79dd9d0c7ac54::t_d6be1e1f7a5888 48-51
+scripts/audit-version-surfaces.ts
+  s_f79dd9d0c7ac54::t_b1a702ced1b24e 66,443-447
+  s_f79dd9d0c7ac54::t_b47a68343515cc 448
+scripts/ci/icon-inline-svg-baseline.json
+  s_f79dd9d0c7ac54::t_04aaf172cf164d 3-6,15-18
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "c80947b1d42551fcbe81745960bd8a993af261b5",
+  "prompts": {},
+  "sessions": {
+    "s_f79dd9d0c7ac54": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a151d6-b92f-7f41-b4e5-4834cb7752bd",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
