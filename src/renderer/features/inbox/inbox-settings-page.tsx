@@ -4,6 +4,7 @@ import type { InboxAgentBinding } from "../../../shared/inbox";
 import {
   DEFAULT_INBOX_SETTINGS,
   MAX_INBOX_INSTRUCTIONS_CHARS,
+  inboxDefaultSuggestionModel,
   supportsInboxStructuredGeneration,
 } from "../../../shared/inbox";
 import { NodexButton, NodexSwitch } from "@/components/ui/button";
@@ -94,7 +95,9 @@ export function InboxSettingsPage() {
     (provider) => provider.instanceId === settings.suggestionAgent.instanceId,
   );
   const models = suggestionProvider?.models ?? [];
-  const defaultModel = models.find((model) => model.isDefault) ?? models[0];
+  const defaultModel = suggestionProvider
+    ? inboxDefaultSuggestionModel(suggestionProvider)
+    : undefined;
   const selectedModel = models.find((model) => model.slug === settings.suggestionModel);
   const modelLabel =
     catalogState === "loading"
@@ -167,7 +170,10 @@ export function InboxSettingsPage() {
             onChange={(suggestionAgent) => save({ suggestionAgent, suggestionModel: null })}
           />
         </SettingRow>
-        <SettingRow label="Model" description="Default follows the selected Agent’s model catalog.">
+        <SettingRow
+          label="Model"
+          description="Runs for every message, so Default uses GPT-6.1 Sol on Codex."
+        >
           <NodexOptionPicker
             align="end"
             search="filter"

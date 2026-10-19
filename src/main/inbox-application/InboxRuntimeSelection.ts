@@ -1,7 +1,11 @@
 import * as Effect from "effect/Effect";
 import * as Schedule from "effect/Schedule";
 import type { AgentRuntimeLaunch } from "../../shared/agent-runtime-api";
-import { supportsInboxStructuredGeneration, type InboxAgentBinding } from "../../shared/inbox";
+import {
+  inboxDefaultSuggestionModel,
+  supportsInboxStructuredGeneration,
+  type InboxAgentBinding,
+} from "../../shared/inbox";
 import type { AgentRuntimeApplication } from "../agent-runtime/AgentRuntimeApplication";
 import { InboxRuntimeError } from "./InboxRuntimeError";
 
@@ -33,7 +37,9 @@ export const resolveInboxModel = Effect.fn("InboxRuntimeSelection.resolve")(func
     if (!provider.installed || provider.models.length === 0) return null;
     const model = requestedModel
       ? provider.models.find((candidate) => candidate.slug === requestedModel)
-      : (provider.models.find((candidate) => candidate.isDefault) ?? provider.models[0]);
+      : purpose === "suggestion"
+        ? inboxDefaultSuggestionModel(provider)
+        : (provider.models.find((candidate) => candidate.isDefault) ?? provider.models[0]);
     if (!model)
       return yield* new InboxRuntimeError({ message: "The selected model is unavailable" });
     const effort = model.capabilities?.optionDescriptors?.find(

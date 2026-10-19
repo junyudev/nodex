@@ -204,6 +204,42 @@ it.effect("uses a warm model catalog without refreshing any Provider", () =>
   }),
 );
 
+it.effect("suggests on Codex's Sol model by default while chats keep the catalog default", () =>
+  Effect.gen(function* () {
+    const codex = provider();
+    const sol = { ...codex.models[1]!, slug: "gpt-6.1-sol", name: "GPT-6.1 Sol", isDefault: false };
+    const catalog = (models: Provider["models"]) => () => Effect.succeed([{ ...codex, models }]);
+    const withSol = { catalog: catalog([...codex.models, sol]) };
+    const suggestion = yield* resolveInboxModel(
+      withSol,
+      { instanceId: "codex" },
+      null,
+      undefined,
+      "suggestion",
+    );
+    assert.strictEqual(suggestion.model, "gpt-6.1-sol");
+    const chat = yield* resolveInboxModel(withSol, { instanceId: "codex" });
+    assert.strictEqual(chat.model, "default-model");
+    const chosen = yield* resolveInboxModel(
+      withSol,
+      { instanceId: "codex" },
+      "first-model",
+      undefined,
+      "suggestion",
+    );
+    assert.strictEqual(chosen.model, "first-model");
+    // A catalog without Sol keeps working on its own default.
+    const withoutSol = yield* resolveInboxModel(
+      { catalog: catalog(codex.models) },
+      { instanceId: "codex" },
+      null,
+      undefined,
+      "suggestion",
+    );
+    assert.strictEqual(withoutSol.model, "default-model");
+  }),
+);
+
 it.effect("restricts only suggestion utilities while allowing other launch Providers", () =>
   Effect.gen(function* () {
     const opencode = { ...provider({ instanceId: "opencode:one" }), driver: "opencode" as const };

@@ -321,6 +321,29 @@ export const supportsInboxStructuredGeneration = (
   provider: Pick<AgentRuntimeOperations["providers.read"]["output"][number], "driver">,
 ): boolean => provider.driver === "codex" || provider.driver === "claudeAgent";
 
+/**
+ * Suggestions run for every captured message, so Codex defaults to its economical Sol model
+ * rather than its catalog default.
+ */
+const INBOX_SUGGESTION_MODEL_PREFERENCES: Readonly<Partial<Record<string, string>>> = {
+  codex: "gpt-6.1-sol",
+};
+
+/** The model an omitted suggestion model resolves to; the catalog default when the preference is absent. */
+export const inboxDefaultSuggestionModel = <
+  Model extends { readonly slug: string; readonly isDefault?: boolean },
+>(provider: {
+  readonly driver: string;
+  readonly models: readonly Model[];
+}): Model | undefined => {
+  const preferred = INBOX_SUGGESTION_MODEL_PREFERENCES[provider.driver];
+  return (
+    provider.models.find((model) => model.slug === preferred) ??
+    provider.models.find((model) => model.isDefault) ??
+    provider.models[0]
+  );
+};
+
 export interface InboxSettings {
   /** When off, the Inbox captures messages and supports manual dispatch only. */
   readonly suggestionsEnabled: boolean;

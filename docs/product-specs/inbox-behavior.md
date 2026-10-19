@@ -388,7 +388,9 @@ creates a second message, and does not count against the Agent budget again.
   the saved choice unavailable. Only a loaded catalog can establish that a choice
   is missing or unavailable. Agent setting changes refresh the choices.
   An unavailable instance retains its real name rather than appearing as another Agent.
-  An omitted suggestion model resolves to that instance's catalog default;
+  Suggestions run for every message, so an omitted suggestion model resolves to
+  GPT-6.1 Sol on Codex, and otherwise, or when the catalog lacks it, to that
+  instance's catalog default. Chats the Inbox starts keep the catalog default;
   messages sent to an existing chat use that chat's runtime.
 
 ## Current limits
