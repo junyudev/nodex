@@ -37,18 +37,19 @@ type InboxCommandChannel =
   | "inbox:request-suggestion"
   | "inbox:retry-dispatch";
 
-const commands = {
-  send: inboxCommand("inbox.send", "inbox:send"),
-  edit: inboxCommand("inbox.edit", "inbox:edit"),
-  confirm: inboxCommand("inbox.confirm", "inbox:confirm"),
-  dispatch: inboxCommand("inbox.dispatch", "inbox:dispatch"),
-  keep: inboxCommand("inbox.keep", "inbox:keep"),
-  delete: inboxCommand("inbox.delete", "inbox:delete"),
-  setState: inboxCommand("inbox.set-state", "inbox:set-state"),
-  setKind: inboxCommand("inbox.set-kind", "inbox:set-kind"),
-  requestSuggestion: inboxCommand("inbox.request-suggestion", "inbox:request-suggestion"),
-  retryDispatch: inboxCommand("inbox.retry-dispatch", "inbox:retry-dispatch"),
-} as const;
+const sendCommand = inboxCommand("inbox.send", "inbox:send");
+const editCommand = inboxCommand("inbox.edit", "inbox:edit");
+const confirmCommand = inboxCommand("inbox.confirm", "inbox:confirm");
+const dispatchCommand = inboxCommand("inbox.dispatch", "inbox:dispatch");
+const keepCommand = inboxCommand("inbox.keep", "inbox:keep");
+const deleteCommand = inboxCommand("inbox.delete", "inbox:delete");
+const setStateCommand = inboxCommand("inbox.set-state", "inbox:set-state");
+const setKindCommand = inboxCommand("inbox.set-kind", "inbox:set-kind");
+const requestSuggestionCommand = inboxCommand(
+  "inbox.request-suggestion",
+  "inbox:request-suggestion",
+);
+const retryDispatchCommand = inboxCommand("inbox.retry-dispatch", "inbox:retry-dispatch");
 
 const settingsCommand = defineRendererCommand({
   key: "settings.inbox.update",
@@ -63,24 +64,24 @@ export const readInboxSummary = (input: InboxSummaryInput) =>
 export const readInboxCounts = () => invokeRendererQuery("inbox:counts");
 export const readInboxWindow = (input: InboxWindowInput) =>
   invokeRendererQuery("inbox:window", input);
-export const sendInboxMessage = (input: InboxSendInput) => invokePlainCommand(commands.send, input);
-export const editInboxMessage = (input: InboxEditInput) => invokePlainCommand(commands.edit, input);
+export const sendInboxMessage = (input: InboxSendInput) => invokePlainCommand(sendCommand, input);
+export const editInboxMessage = (input: InboxEditInput) => invokePlainCommand(editCommand, input);
 export const confirmInboxDispatch = (input: InboxConfirmInput) =>
-  invokePlainCommand(commands.confirm, input);
+  invokePlainCommand(confirmCommand, input);
 export const dispatchInboxEntries = (input: InboxDispatchInput) =>
-  invokePlainCommand(commands.dispatch, input);
+  invokePlainCommand(dispatchCommand, input);
 export const keepInboxEntries = (input: InboxPageIdsInput) =>
-  invokePlainCommand(commands.keep, input);
+  invokePlainCommand(keepCommand, input);
 export const deleteInboxMessages = (input: InboxPageIdsInput) =>
-  invokePlainCommand(commands.delete, input);
+  invokePlainCommand(deleteCommand, input);
 export const setInboxEntryState = (input: InboxSetStateInput) =>
-  invokePlainCommand(commands.setState, input);
+  invokePlainCommand(setStateCommand, input);
 export const setInboxEntryKind = (input: InboxSetKindInput) =>
-  invokePlainCommand(commands.setKind, input);
+  invokePlainCommand(setKindCommand, input);
 export const requestInboxSuggestion = (input: InboxPageIdsInput) =>
-  invokePlainCommand(commands.requestSuggestion, input);
+  invokePlainCommand(requestSuggestionCommand, input);
 export const retryInboxDispatch = (input: InboxProposalInput) =>
-  invokePlainCommand(commands.retryDispatch, input);
+  invokePlainCommand(retryDispatchCommand, input);
 export const readInboxSettings = () => invokeRendererQuery("settings:inbox:get");
 export const updateInboxSettings = (input: UpdateInboxSettingsInput) =>
   invokePlainCommand(settingsCommand, input);

@@ -15,24 +15,6 @@ type Surface = readonly [
  */
 const VERSION_SURFACES: readonly Surface[] = [
   [
-    "packages/agent-runtime/src/cloud/serviceProtocol.ts:EXACT_SERVICE_VERSION",
-    "algorithmIdentity",
-    "Agent service version grammar",
-    "reject invalid remote service identities",
-  ],
-  [
-    "packages/agent-runtime/src/device/DeviceToolchain.ts:AGENT_DEVICE_VERSION",
-    "runtimeCompatibility",
-    "Agent device tooling",
-    "install the pinned device tool",
-  ],
-  [
-    "packages/agent-runtime/src/device/DeviceToolchain.ts:DEVICE_HUB_VERSION",
-    "runtimeCompatibility",
-    "Device hub tooling",
-    "install the pinned device hub",
-  ],
-  [
     "packages/agent-runtime/src/mcp/AcpMcpStdioBridge.ts:MCP_PROTOCOL_VERSION",
     "runtimeCompatibility",
     "Agent MCP stdio bridge",
@@ -43,24 +25,6 @@ const VERSION_SURFACES: readonly Surface[] = [
     "durableFormat",
     "Agent projection store",
     "rebuild projections with the current schema",
-  ],
-  [
-    "packages/agent-runtime/src/provider/antigravityRelease.ts:ANTIGRAVITY_RELEASE_VERSION",
-    "runtimeCompatibility",
-    "Antigravity installation",
-    "select the supported provider release",
-  ],
-  [
-    "packages/agent-runtime/src/usage/usageScanCache.ts:SPEED_COMPATIBLE_SINCE_VERSION",
-    "durableFormat",
-    "Agent usage scan cache",
-    "decode compatible service-tier cache rows",
-  ],
-  [
-    "packages/agent-runtime/src/usage/usageScanCache.ts:USAGE_SCAN_CACHE_VERSION",
-    "durableFormat",
-    "Agent usage scan cache",
-    "decode or rebuild persisted scan results",
   ],
   [
     "packages/agent-runtime/vendor/contracts/src/desktopAppActivation.ts:DESKTOP_APP_ACTIVATION_PROTOCOL_VERSION",
@@ -99,40 +63,16 @@ const VERSION_SURFACES: readonly Surface[] = [
     "require a pinned runner package identity",
   ],
   [
-    "packages/agent-runtime/vendor/provider-cursor/src/server/accountCache.ts:CURSOR_ACCOUNT_CACHE_VERSION",
-    "durableFormat",
-    "Cursor account cache",
-    "decode or replace persisted account rows",
-  ],
-  [
-    "packages/agent-runtime/vendor/provider-opencode/src/server/OpenCodeRuntime.ts:MINIMUM_OPENCODE_VERSION",
+    "packages/agent-runtime/vendor/provider-opencode/src/settings.ts:MINIMUM_OPENCODE_VERSION",
     "runtimeCompatibility",
     "OpenCode runtime",
     "reject unsupported native provider versions",
-  ],
-  [
-    "packages/agent-runtime/vendor/provider-pi/src/server/status.ts:MINIMUM_PI_VERSION",
-    "runtimeCompatibility",
-    "Pi runtime",
-    "require native history and terminalization support",
   ],
   [
     "packages/agent-runtime/vendor/shared/src/mcpApp.ts:MCP_APP_PROTOCOL_VERSION",
     "runtimeCompatibility",
     "Agent MCP Apps protocol",
     "negotiate the MCP Apps extension",
-  ],
-  [
-    "packages/agent-runtime/vendor/shared/src/relayClient.ts:CLOUDFLARED_MIN_VERSION",
-    "runtimeCompatibility",
-    "Agent relay connector",
-    "reject binaries without the required connector flags",
-  ],
-  [
-    "packages/agent-runtime/vendor/shared/src/relayClient.ts:CLOUDFLARED_VERSION",
-    "runtimeCompatibility",
-    "Agent relay installation",
-    "install the supported relay release",
   ],
   [
     "packages/agent-runtime/vendor/source-control-azure-devops/src/server/AzureDevOpsPullRequestCli.ts:REST_API_VERSION",
@@ -145,12 +85,6 @@ const VERSION_SURFACES: readonly Surface[] = [
     "runtimeCompatibility",
     "GitHub REST adapter",
     "request the pinned remote API format",
-  ],
-  [
-    "packages/agent-runtime/vendor/ssh/src/tunnel.ts:EXACT_ARCHIVE_VERSION",
-    "algorithmIdentity",
-    "Agent SSH archive version grammar",
-    "reject unsafe archive identities",
   ],
   [
     "src/shared/codex-app-server-version.ts:CODEX_THREAD_TIMELINE_MINIMUM_VERSION",
@@ -505,6 +439,12 @@ const VERSION_SURFACES: readonly Surface[] = [
     "durableFormat",
     "prepared Electron build",
     "reject unknown manifests",
+  ],
+  [
+    "scripts/release/bundle.ts:RELEASE_BUNDLE_SCHEMA_VERSION",
+    "durableFormat",
+    "Release Bundle manifest",
+    "reject unsupported immutable release manifests",
   ],
   [
     "scripts/scenarios/contracts.ts:SCENARIO_MANIFEST_VERSION",

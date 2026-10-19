@@ -34,9 +34,7 @@ import {
   MessagesSquareIcon as LucideMessagesSquareIcon,
   Minimize2 as LucideMinimize2,
   Minus as LucideMinus,
-  Monitor as LucideMonitor,
   MonitorCog as LucideMonitorCog,
-  Moon as LucideMoon,
   PictureInPicture2 as LucidePictureInPicture2,
   Plug as LucidePlug,
   Pipette as LucidePipette,
@@ -55,7 +53,6 @@ import {
   Sparkles as LucideSparkles,
   SplitIcon as LucideSplitIcon,
   Star as LucideStar,
-  Sun as LucideSun,
   TextCursorInput as LucideTextCursorInput,
   TriangleAlert as LucideTriangleAlert,
   UploadCloud as LucideUploadCloud,
@@ -231,12 +228,10 @@ export const Minimize2: LucideIconType = /* @__PURE__ */ createGenericIcon(
   "Minimize2",
 );
 export const Minus: LucideIconType = /* @__PURE__ */ createGenericIcon(LucideMinus, "Minus");
-export const Monitor: LucideIconType = /* @__PURE__ */ createGenericIcon(LucideMonitor, "Monitor");
 export const MonitorCog: LucideIconType = /* @__PURE__ */ createGenericIcon(
   LucideMonitorCog,
   "MonitorCog",
 );
-export const Moon: LucideIconType = /* @__PURE__ */ createGenericIcon(LucideMoon, "Moon");
 export const PictureInPicture2: LucideIconType = /* @__PURE__ */ createGenericIcon(
   LucidePictureInPicture2,
   "PictureInPicture2",
@@ -285,7 +280,6 @@ export const SplitIcon: LucideIconType = /* @__PURE__ */ createGenericIcon(
   "SplitIcon",
 );
 export const Star: LucideIconType = /* @__PURE__ */ createGenericIcon(LucideStar, "Star");
-export const Sun: LucideIconType = /* @__PURE__ */ createGenericIcon(LucideSun, "Sun");
 export const TextCursorInput: LucideIconType = /* @__PURE__ */ createGenericIcon(
   LucideTextCursorInput,
   "TextCursorInput",

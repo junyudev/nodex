@@ -1,5 +1,9 @@
 {
   "inlineSvg": {
+    "src/renderer/bootstrap/application-surface.tsx": {
+      "count": 1,
+      "reason": "Startup failure presents the canonical Nodex brand logo without loading the Workbench icon graph."
+    },
     "src/renderer/bootstrap/nodex-logo-source.ts": 1,
     "src/renderer/components/board/editor/nfm-code-block.browser.test.tsx": {
       "count": 3,
@@ -8,6 +12,10 @@
     "src/renderer/components/board/nfm-renderer.tsx": 2,
     "src/renderer/components/ui/nodex-home-mark.tsx": 1,
     "src/renderer/components/ui/settings.tsx": 1,
+    "src/renderer/components/ui/theme-mode-selector.tsx": {
+      "count": 1,
+      "reason": "Appearance selection uses a composite application illustration to preview light and dark surfaces, not a reusable control icon."
+    },
     "src/renderer/components/workbench/command-menu-reference-icons.tsx": 1,
     "src/renderer/components/workbench/database-list/database-list-icons.tsx": 3,
     "src/renderer/components/workbench/database-list/database-list-nesting-lines.tsx": 1,
