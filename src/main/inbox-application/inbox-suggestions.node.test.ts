@@ -52,7 +52,6 @@ const raw = (overrides: Record<string, unknown>) => ({
   prompt: null,
   summary: "Keep it",
   rationale: "Not ready",
-  reason: null,
   ...overrides,
 });
 
@@ -100,6 +99,10 @@ describe("validateInboxSuggestions", () => {
     ["keep execution fields", [raw({ prompt: "Execute" })]],
     ["long prompt", [raw({ action: "new_chat", prompt: "x".repeat(2001) })]],
     ["blank prompt", [raw({ action: "new_chat", prompt: " " })]],
+    ["abstention", [raw({ action: "none" })]],
+    ["abstention reason", [raw({ reason: "Choose a destination yourself" })]],
+    ["missing classification", [raw({ kind: null })]],
+    ["missing summary", [raw({ summary: " " })]],
   ])("rejects %s instead of repairing it", (_label, suggestions) => {
     const entries = [entry("1", "A")];
     expect(() =>
@@ -128,25 +131,78 @@ describe("validateInboxSuggestions", () => {
     ).toThrow("one decision");
   });
 
-  it("returns none for the exact group without an executable proposal", () => {
+  it("gives an ambiguous selected group one confirmable Keep proposal", () => {
     const entries = [entry("1", "Maybe later"), entry("2", "Not sure")];
     const result = validateInboxSuggestions(
       output([
         raw({
           page_ids: ["1", "2"],
-          action: "none",
-          kind: null,
-          summary: null,
+          action: "keep",
+          kind: "note",
+          summary: "Keep these thoughts for later",
           rationale: null,
-          reason: "Intent is unclear",
         }),
       ]),
       context(entries),
       entries,
       { ...request, mode: "grouped" },
     );
-    expect(result.suggestions).toEqual([]);
-    expect(result.none).toEqual([{ pageIds: ["1", "2"], reason: "Intent is unclear" }]);
+    expect(result.suggestions).toEqual([
+      {
+        pageIds: ["1", "2"],
+        kind: "note",
+        action: { type: "keep" },
+        summary: "Keep these thoughts for later",
+        rationale: null,
+      },
+    ]);
+  });
+
+  it("admits a projectless answer when Library candidates do not supply a destination", () => {
+    const entries = [entry("1", "Explain why the sky is blue")];
+    const routing = { ...context(entries), projects: [], sessions: [] };
+    const result = validateInboxSuggestions(
+      output([
+        raw({
+          kind: "question",
+          action: "new_chat",
+          prompt: "Answer the attached question with a clear explanation.",
+          summary: "Explain why the sky is blue",
+        }),
+      ]),
+      routing,
+      entries,
+      request,
+    );
+    expect(result.suggestions[0]?.action).toEqual({
+      type: "new_chat",
+      projectId: null,
+      prompt: "Answer the attached question with a clear explanation.",
+    });
+  });
+
+  it("keeps the full long source while accepting a concise chat instruction", () => {
+    const body = `Research Nodex layout. ${"Detailed context. ".repeat(1000)}Do not change code.`;
+    const entries = [entry("1", body)];
+    const routing = context(entries, { kind: "project", project_id: "project:nodex" });
+    const input = buildInboxSuggestionPrompt({ context: routing, instructions: "", request });
+    expect(JSON.parse(input.split("JSON data:\n")[1]!).messages[0].body).toBe(body);
+    const result = validateInboxSuggestions(
+      output([
+        raw({
+          action: "new_chat",
+          project_id: "project:nodex",
+          prompt:
+            "Research the attached layout requirements. Honor all original constraints; do not change code.",
+          summary: "Research the layout requirements",
+        }),
+      ]),
+      routing,
+      entries,
+      request,
+    );
+    expect(result.suggestions).toHaveLength(1);
+    expect(result.suggestions[0]?.action.type).toBe("new_chat");
   });
 
   it("does not repair a missing Project destination or accept a cross-Project chat", () => {

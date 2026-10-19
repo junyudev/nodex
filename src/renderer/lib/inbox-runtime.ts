@@ -106,8 +106,5 @@ export const prepareInboxConfirmation = (input: InboxConfirmationDraft) =>
 export const undoInboxDecision = (input: InboxUndoInput) =>
   invokeLocalCommitCommand(undoCommand, input);
 
-export const readInboxAgentCatalog = () =>
-  invokeRendererQuery("agent-runtime:providers:read", { refresh: true });
-
 export const readInboxChatTargets = (input: InboxChatTargetsInput) =>
   invokeRendererQuery("inbox:chat-targets", input);

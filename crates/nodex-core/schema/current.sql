@@ -4489,7 +4489,7 @@ CREATE TABLE inbox_decision_undo (
   consumed INTEGER NOT NULL DEFAULT 0 CHECK(consumed IN (0,1))
 ) WITHOUT ROWID, STRICT;
 
-PRAGMA user_version = 184;
+PRAGMA user_version = 185;
 
 CREATE TABLE document_recovery_drafts (
     library_id TEXT NOT NULL REFERENCES libraries(id) ON DELETE CASCADE,

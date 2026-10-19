@@ -15,8 +15,8 @@ export type InboxTriageModel =
   | { readonly kind: "suggestion"; readonly proposal: InboxProposal }
   | { readonly kind: "suggestion-failed"; readonly message: string }
   | { readonly kind: "dispatch-failed"; readonly proposal: InboxProposal; readonly message: string }
-  /** Nothing to confirm: the user decides by hand. */
-  | { readonly kind: "undecided"; readonly reason?: string }
+  /** No advice has arrived, or suggestions are disabled. */
+  | { readonly kind: "undecided" }
   /** Handled; the message is on its way to History. */
   | { readonly kind: "handled" };
 
@@ -54,8 +54,6 @@ export function inboxTriageModel(item: InboxItem, suggestionsEnabled: boolean): 
     };
   }
   if (isInboxItemHandled(item)) return { kind: "handled" };
-  if (proposal?.state === "open" && proposal.action.type === "none")
-    return { kind: "undecided", reason: proposal.action.reason };
   if (proposal?.state === "open") return { kind: "suggestion", proposal };
   if (item.suggestionState === "pending" && suggestionsEnabled) return { kind: "suggesting" };
   if (item.suggestionState === "failed") {
@@ -162,8 +160,6 @@ export function describeInboxAction(
   },
 ): InboxActionPresentation {
   switch (action.type) {
-    case "none":
-      return { verb: "Decide", target: action.reason };
     case "keep":
       return { verb: "Keep", target: "Keep" };
     case "new_chat":

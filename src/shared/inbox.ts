@@ -45,7 +45,6 @@ export const INBOX_ENTRY_KINDS = [
 
 /** The exact action a dispatch suggestion asks the user to authorize. */
 export type InboxDispatchAction =
-  | { readonly type: "none"; readonly reason: string }
   | { readonly type: "keep" }
   | { readonly type: "new_chat"; readonly projectId: string | null; readonly prompt: string }
   | { readonly type: "send_to_chat"; readonly sessionId: string; readonly prompt: string }

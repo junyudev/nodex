@@ -18,6 +18,9 @@ function normalizeNullable(value: string | null | undefined): string {
 }
 
 export const queryKeys = {
+  agentRuntime: {
+    providers: () => ["agentRuntime", "providers"] as const,
+  },
   projects: {
     all: () => ["projects"] as const,
     lists: () => ["projects", "list"] as const,

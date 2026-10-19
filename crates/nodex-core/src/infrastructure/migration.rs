@@ -331,6 +331,11 @@ const MIGRATION_STEPS: &[MigrationStep] = &[
         to_revision: 184,
         apply: migrate_v183_to_v184,
     },
+    MigrationStep {
+        from_revision: 184,
+        to_revision: 185,
+        apply: migrate_v184_to_v185,
+    },
 ];
 
 fn resolve_migration_path(
@@ -2339,6 +2344,21 @@ fn migrate_v183_to_v184(
         params![context.source_revision, context.target_revision, context.source_schema_fingerprint,
             context.target_schema_fingerprint, context.backup_name, context.completed_at_unix_ms,
             r#"{"inbox_decisions":true}"#],
+    )?;
+    connection.pragma_update(None, "user_version", context.target_revision)?;
+    Ok(())
+}
+
+fn migrate_v184_to_v185(
+    connection: &Connection,
+    context: &MigrationContext,
+) -> Result<(), StoreError> {
+    connection.execute_batch(include_str!("../../schema/migrations/v184_to_v185.sql"))?;
+    connection.execute(
+        "INSERT INTO core_store_migration_history(source_revision,target_revision,source_schema_fingerprint,target_schema_fingerprint,backup_name,completed_at_unix_ms,evidence_json) VALUES (?1,?2,?3,?4,?5,?6,?7)",
+        params![context.source_revision, context.target_revision, context.source_schema_fingerprint,
+            context.target_schema_fingerprint, context.backup_name, context.completed_at_unix_ms,
+            r#"{"inbox_concrete_suggestions":true}"#],
     )?;
     connection.pragma_update(None, "user_version", context.target_revision)?;
     Ok(())
@@ -7173,6 +7193,189 @@ mod tests {
         assert_eq!(
             serde_json::from_str::<serde_json::Value>(&options).unwrap()["model"],
             "moonshot/kimi-k3"
+        );
+    }
+
+    #[test]
+    fn inbox_migration_requeues_abstentions_without_executing_them() {
+        use crate::infrastructure::store::SqliteStoreKernel;
+        use crate::workspace::ProjectWorkspaceModule;
+        use nodex_core_contracts::inbox::{
+            ProjectWorkspaceInboxDispatchAction, ProjectWorkspaceInboxSuggestionMode,
+        };
+        use nodex_core_contracts::workspace::{
+            ProjectWorkspaceIntent, ProjectWorkspaceRead, ProjectWorkspaceReadValue,
+        };
+        use nodex_core_contracts::{
+            AdapterKind, BoundModuleContext, LibraryId, ModuleApplyRequest, ModuleReadRequest,
+            PROJECT_WORKSPACE_CONTRACT_VERSION, ProfileId, StoreEpoch,
+        };
+
+        let profile = tempdir().expect("Profile");
+        install_intermediate_fixture(profile.path(), 184);
+        // Start the published predecessor without upgrading it. Current public operations
+        // produce the Page/Document and membership closure shared by v184 and v185.
+        let predecessor = SqliteStoreKernel::open_test(profile.path()).expect("v184 runtime");
+        let (profile_id, library_id, epoch): (String, String, String) = predecessor
+            .readers()
+            .read_default(|connection| {
+                Ok(connection.query_row(
+                    "SELECT profile_id,id,(SELECT store_epoch FROM block_store_metadata) FROM libraries",
+                    [],
+                    |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+                )?)
+            })
+            .unwrap();
+        let context = BoundModuleContext {
+            editor_history_owner: None,
+            profile_id: ProfileId(profile_id.clone()),
+            library_id: LibraryId(library_id.clone()),
+            project_id: None,
+            connection_id: "connection:inbox-migration".into(),
+            adapter: AdapterKind::ElectronHost,
+        };
+        let module = ProjectWorkspaceModule::new(&profile_id, &library_id, &predecessor).unwrap();
+        module.seed_rootless_default_project_for_test();
+        let apply = |operation_id: &str, intent| {
+            module
+                .apply(
+                    &context,
+                    ModuleApplyRequest {
+                        contract_version: PROJECT_WORKSPACE_CONTRACT_VERSION,
+                        operation_id: format!("{operation_id}:{}", random_uuid_v7().unwrap()),
+                        store_epoch: StoreEpoch(epoch.clone()),
+                        intent,
+                    },
+                )
+                .unwrap();
+        };
+        for id in ["open", "kept", "concrete"] {
+            apply(
+                &format!("send:{id}"),
+                ProjectWorkspaceIntent::SendInboxMessage {
+                    expected_store_epoch: Some(epoch.clone()),
+                    page_id: format!("page:{id}"),
+                    document_id: format!("document:{id}"),
+                    text: format!("Preserve the {id} message"),
+                    title: None,
+                    project_id: None,
+                },
+            );
+        }
+        let ProjectWorkspaceReadValue::InboxPendingSuggestions { entries } = module
+            .read(
+                &context,
+                ModuleReadRequest {
+                    contract_version: PROJECT_WORKSPACE_CONTRACT_VERSION,
+                    read: ProjectWorkspaceRead::InboxPendingSuggestions { limit: 8 },
+                },
+            )
+            .unwrap()
+            .value
+        else {
+            panic!("pending Inbox entries");
+        };
+        for entry in &entries {
+            apply(
+                &format!("propose:{}", entry.page_id),
+                ProjectWorkspaceIntent::ProposeInboxDispatch {
+                    proposal_id: format!("proposal:{}", entry.page_id),
+                    page_ids: vec![entry.page_id.clone()],
+                    basis: vec![entry.basis.clone()],
+                    action: ProjectWorkspaceInboxDispatchAction::Keep,
+                    entry_kind: None,
+                    summary: "Keep this note".into(),
+                    rationale: None,
+                    produced_by: None,
+                },
+            );
+        }
+        let open = entries
+            .iter()
+            .find(|entry| entry.page_id == "page:open")
+            .unwrap();
+        apply(
+            "refine:old",
+            ProjectWorkspaceIntent::RequestInboxSuggestion {
+                request_id: "request:old".into(),
+                mode: ProjectWorkspaceInboxSuggestionMode::Refine,
+                page_ids: vec![open.page_id.clone()],
+                basis: vec![open.basis.clone()],
+                proposal_id: Some("proposal:page:open".into()),
+                expected_revision: Some(1),
+                correction: Some("Give this a concrete action".into()),
+            },
+        );
+        predecessor.writer().call(move |connection| {
+            with_immediate_transaction(connection, |transaction| {
+                // Only the retired storage action and its historical handled state need SQL.
+                transaction.execute(
+                    "UPDATE inbox_proposals SET action_json='{\"type\":\"none\",\"reason\":\"Decide manually\"}' WHERE proposal_id IN ('proposal:page:open','proposal:page:kept')",
+                    [],
+                )?;
+                transaction.execute(
+                    "UPDATE inbox_entries SET state='kept',outcome='kept' WHERE page_id='page:kept'",
+                    [],
+                )?;
+                // Exercise every proposal FK, including retained capability rows. The
+                // migration must remove their payloads even with foreign_keys disabled.
+                transaction.execute(
+                    "INSERT INTO inbox_handoffs(proposal_id,store_epoch,final_text,launch_id,message_id) VALUES ('proposal:page:kept',?1,'Old payload','launch:old','message:old')",
+                    [&epoch],
+                )?;
+                transaction.execute(
+                    "INSERT INTO inbox_decision_undo(token,operation_id,library_id,store_epoch,proposal_id,recipe_json) VALUES ('undo:old','decision:old',?1,?2,'proposal:page:kept','{}')",
+                    params![library_id,epoch],
+                )?;
+                Ok(())
+            })?;
+            validate_migration_source(connection, 184)
+        }).expect("valid historical Inbox closure");
+        drop(module);
+        drop(predecessor);
+
+        // The production open runs migrate_store with foreign_keys disabled, creates
+        // its backup, validates the entire Store, and only then starts the runtime.
+        let store = SqliteStoreKernel::open(profile.path()).expect("upgrade historical Inbox");
+        assert_eq!(store.preparation().migrated_from_version, Some(184));
+        store.readers().read_default(|connection| {
+            validate_current_store(connection)?;
+            let open: (String,String,Option<String>,Option<String>,Option<String>) = connection.query_row(
+                "SELECT state,suggestion_state,current_proposal_id,suggestion_request_id,outcome FROM inbox_entries WHERE page_id='page:open'",
+                [], |row| Ok((row.get(0)?,row.get(1)?,row.get(2)?,row.get(3)?,row.get(4)?)),
+            )?;
+            assert_eq!(open,("open".into(),"pending".into(),None,None,None));
+            let kept: (String,Option<String>,Option<String>) = connection.query_row(
+                "SELECT state,current_proposal_id,outcome FROM inbox_entries WHERE page_id='page:kept'",
+                [], |row| Ok((row.get(0)?,row.get(1)?,row.get(2)?)),
+            )?;
+            assert_eq!(kept,("kept".into(),None,Some("kept".into())));
+            let request: (String,i64,Option<String>,Option<i64>,Option<String>) = connection.query_row(
+                "SELECT state,generation,proposal_id,expected_revision,correction FROM inbox_suggestion_requests WHERE request_id='request:old'",
+                [], |row| Ok((row.get(0)?,row.get(1)?,row.get(2)?,row.get(3)?,row.get(4)?)),
+            )?;
+            assert_eq!(request,("superseded".into(),2,None,None,None));
+            let proposals: Vec<String> = connection.prepare("SELECT proposal_id FROM inbox_proposals")?
+                .query_map([],|row|row.get(0))?.collect::<rusqlite::Result<_>>()?;
+            assert_eq!(proposals,vec!["proposal:page:concrete"]);
+            let members: Vec<String> = connection.prepare("SELECT page_id FROM inbox_proposal_pages")?
+                .query_map([],|row|row.get(0))?.collect::<rusqlite::Result<_>>()?;
+            assert_eq!(members,vec!["page:concrete"]);
+            for table in ["inbox_handoffs","inbox_decision_undo"] {
+                assert_eq!(connection.query_row(&format!("SELECT count(*) FROM {table}"),[],|row|row.get::<_,i64>(0))?,0);
+            }
+            assert_eq!(connection.query_row("SELECT count(*) FROM pages",[],|row|row.get::<_,i64>(0))?,3);
+            assert_eq!(connection.query_row("SELECT count(*) FROM inbox_proposals WHERE state IN ('dispatching','completed')",[],|row|row.get::<_,i64>(0))?,0);
+            Ok(())
+        }).expect("migration preserves content without executing advice");
+        drop(store);
+        let reopened = SqliteStoreKernel::open(profile.path()).expect("reopen upgraded Inbox");
+        assert_eq!(reopened.preparation().migrated_from_version, None);
+        assert_eq!(
+            fs::read_dir(profile.path().join("backups/core-migrations"))
+                .unwrap()
+                .count(),
+            1
         );
     }
 

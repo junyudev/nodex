@@ -280,7 +280,12 @@ export function SidebarProjectNewChatButton({
         tooltipContent={disabled ? (disabledLabel ?? label) : label}
         side="right"
       >
-        <span className={cn("inline-flex opacity-0 group-hover/folder-row:opacity-100", className)}>
+        <span
+          className={cn(
+            "inline-flex opacity-0 group-hover/folder-row:opacity-100 group-focus-within/folder-row:opacity-100",
+            className,
+          )}
+        >
           <button
             type="button"
             className={SIDEBAR_PROJECT_NEW_CHAT_BUTTON_CLASS}

@@ -682,7 +682,11 @@ export const CodexProjectActionsMenu = forwardRef<
 
   return (
     <div
-      className={open ? "opacity-100" : "opacity-0 group-hover/folder-row:opacity-100"}
+      className={
+        open
+          ? "opacity-100"
+          : "opacity-0 group-hover/folder-row:opacity-100 group-focus-within/folder-row:opacity-100"
+      }
       onPointerDown={stopCodexSidebarRowActionPropagation}
       onKeyDown={stopCodexSidebarRowActionKeyPropagation}
       onClick={stopCodexSidebarRowActionPropagation}
@@ -1247,36 +1251,49 @@ export function CodexProjectRow({
               </>
             }
             actions={
-              <>
-                <CodexProjectActionsMenu
-                  ref={projectActionsMenuRef}
-                  project={project}
-                  threadItems={threadItems}
-                  onUpdateProject={onUpdateProject}
-                  onArchiveProject={onArchiveProject}
-                  onSetProjectPinned={onSetProjectPinned}
-                  onCreateStableWorktree={onCreateStableWorktree}
-                  canCreateStableWorktree={canCreateStableWorktree}
-                  stableWorktreeWorkspaceRootOptions={stableWorktreeWorkspaceRootOptions}
-                  stableWorktreeWorkspaceRootLabels={stableWorktreeWorkspaceRootLabels}
-                  onArchiveThreadItem={onArchiveThreadItem}
-                  onMarkThreadItemRead={onMarkThreadItemRead}
-                  onThreadsChanged={onThreadsChanged}
-                  sectionActions={sectionActions}
-                  sectionCatalog={sectionCatalog}
-                  currentSectionId={currentSectionId}
-                  onOpenChange={(open) => {
-                    setProjectActionsMenuOpen(open);
-                    if (open) setProjectHoverCardOpen(false);
-                  }}
-                />
-                {onStartNewChat ? (
-                  <SidebarProjectNewChatButton
-                    label={`Start new chat in ${project.name}`}
-                    onClick={onStartNewChat}
-                  />
+              <div className="grid items-center">
+                {inboxCount > 0 ? (
+                  <span
+                    aria-label={`${inboxCount} in ${project.name}'s Inbox`}
+                    className={cn(
+                      "pointer-events-none col-start-1 row-start-1 justify-self-end pr-1.5 text-xs text-token-description-foreground tabular-nums group-hover/folder-row:invisible group-focus-within/folder-row:invisible",
+                      projectActionsMenuOpen && "invisible",
+                    )}
+                  >
+                    {inboxCount}
+                  </span>
                 ) : null}
-              </>
+                <div className="col-start-1 row-start-1 flex gap-1">
+                  <CodexProjectActionsMenu
+                    ref={projectActionsMenuRef}
+                    project={project}
+                    threadItems={threadItems}
+                    onUpdateProject={onUpdateProject}
+                    onArchiveProject={onArchiveProject}
+                    onSetProjectPinned={onSetProjectPinned}
+                    onCreateStableWorktree={onCreateStableWorktree}
+                    canCreateStableWorktree={canCreateStableWorktree}
+                    stableWorktreeWorkspaceRootOptions={stableWorktreeWorkspaceRootOptions}
+                    stableWorktreeWorkspaceRootLabels={stableWorktreeWorkspaceRootLabels}
+                    onArchiveThreadItem={onArchiveThreadItem}
+                    onMarkThreadItemRead={onMarkThreadItemRead}
+                    onThreadsChanged={onThreadsChanged}
+                    sectionActions={sectionActions}
+                    sectionCatalog={sectionCatalog}
+                    currentSectionId={currentSectionId}
+                    onOpenChange={(open) => {
+                      setProjectActionsMenuOpen(open);
+                      if (open) setProjectHoverCardOpen(false);
+                    }}
+                  />
+                  {onStartNewChat ? (
+                    <SidebarProjectNewChatButton
+                      label={`Start new chat in ${project.name}`}
+                      onClick={onStartNewChat}
+                    />
+                  ) : null}
+                </div>
+              </div>
             }
           >
             <button
@@ -1299,14 +1316,6 @@ export function CodexProjectRow({
               >
                 {project.name}
               </span>
-              {inboxCount > 0 ? (
-                <span
-                  aria-label={`${inboxCount} in ${project.name}'s Inbox`}
-                  className="shrink-0 pr-1.5 text-xs text-token-description-foreground tabular-nums group-hover/folder-row:hidden"
-                >
-                  {inboxCount}
-                </span>
-              ) : null}
             </button>
           </CodexSidebarRowLayout>
         </CodexSidebarTreeRow>

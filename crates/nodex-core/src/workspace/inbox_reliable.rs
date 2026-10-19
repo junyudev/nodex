@@ -498,9 +498,6 @@ fn decide(
     require_live_entries(connection, library_id, pages)?;
     let inbox_scope = require_one_scope(connection, pages)?;
     let action = normalize_action(connection, library_id, inbox_scope.as_deref(), action)?;
-    if matches!(action, ProjectWorkspaceInboxDispatchAction::None { .. }) {
-        return Err(invalid("No decision was proposed"));
-    }
     if let Some(selection) = selection
         && (selection.model_selection.instance_id.trim().is_empty()
             || selection.model_selection.model.trim().is_empty()
@@ -799,7 +796,7 @@ fn settle_request(
     }
     if covered.len() != pages.len() {
         return Err(invalid(
-            "Every requested message needs a suggestion or an explicit none result",
+            "Every requested message needs a concrete suggestion",
         ));
     }
     let mut named = BTreeSet::new();

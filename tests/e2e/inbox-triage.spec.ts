@@ -4,7 +4,7 @@ import { expect, test } from "@playwright/test";
 import { withElectronScenario } from "../../scripts/scenarios/harness/electron-e2e-harness";
 import { invokeIpc } from "./support/editor-scenario";
 
-test("preserves a draft across reload, edits a message, and files a selection with one Undo", async ({}, testInfo) => {
+test("preserves capture and filing decisions while Project counts share the action area", async ({}, testInfo) => {
   test.setTimeout(180_000);
   const artifacts =
     process.env.NODEX_INBOX_TRIAGE_ARTIFACT_DIR ?? testInfo.outputPath("inbox-triage-review");
@@ -117,6 +117,28 @@ test("preserves a draft across reload, edits a message, and files a selection wi
           true,
           (await firstRow.innerText()).includes("Deliver a short comparison."),
         );
+        await seed.sendInboxMessage("Keep the navigation reference.", {
+          kind: "project",
+          projectId: target.id,
+        });
+        const projectRow = page.locator(
+          '[data-app-action-sidebar-project-label="Inbox filing target"]',
+        );
+        const count = projectRow.getByLabel("1 in Inbox filing target's Inbox", { exact: true });
+        await composer.focus();
+        await page.mouse.move(1000, 450);
+        await expect(count).toBeVisible();
+        await projectRow.hover();
+        await expect(count).toBeHidden();
+        await page.screenshot({ path: path.join(artifacts, "hover.png") });
+        await composer.focus();
+        await page.mouse.move(1000, 450);
+        await expect(count).toBeVisible();
+        claim(
+          "The Project count returns after the pointer leaves its shared actions",
+          "1",
+          await count.innerText(),
+        );
         await page.screenshot({ path: path.join(artifacts, "final.png") });
         await page.waitForTimeout(700);
         status = "passed";
@@ -132,7 +154,7 @@ test("preserves a draft across reload, edits a message, and files a selection wi
         );
         await writeFile(
           path.join(artifacts, "README.md"),
-          `# Inbox triage verification\n\nStatus: **${status}**\n\nA fresh disposable Electron Profile captures a message, restores the next draft after reload, edits the original message inline, files two selected messages to a Project, and returns both with one Undo. The destination Inbox has no duplicate capture. The recording uses synthetic content and real renderer/Main/Core operations. Exact expected and actual values are in result.json.\n\nArtifacts: review.webm and final.png.\n${failure ? `\nFailure: ${failure}\n` : ""}`,
+          `# Inbox triage verification\n\nStatus: **${status}**\n\nA fresh disposable Electron Profile captures a message, restores the next draft after reload, edits the original message inline, files two selected messages to a Project, and returns both with one Undo. The destination Inbox has no duplicate capture. A separate Project capture then verifies its count is replaced by row actions on hover and returns when the pointer leaves. The recording uses synthetic content and real renderer/Main/Core operations. Exact expected and actual values are in result.json.\n\nArtifacts: review.webm, final.png and hover.png.\n${failure ? `\nFailure: ${failure}\n` : ""}`,
         );
       }
     },

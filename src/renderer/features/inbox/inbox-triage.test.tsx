@@ -135,13 +135,11 @@ describe("InboxTriage", () => {
     },
   );
 
-  test("an abstention keeps a manual decision inside its Project Inbox", () => {
-    expect(
-      draftForInboxItem(
-        item({ proposal: proposal({ action: { type: "none", reason: "Choose a task" } }) }),
-        "project:nodex",
-      ),
-    ).toMatchObject({ type: "new_chat", projectId: "project:nodex" });
+  test("a manual decision before advice arrives stays inside its Project Inbox", () => {
+    expect(draftForInboxItem(item({ proposal: null }), "project:nodex")).toMatchObject({
+      type: "new_chat",
+      projectId: "project:nodex",
+    });
   });
 
   test("keeps the opening edit basis when another view changes the message", async () => {
@@ -213,15 +211,24 @@ describe("InboxTriage", () => {
     expect(commands.confirm).not.toHaveBeenCalled();
   });
 
-  test("abstention leaves the message undecided without an executable suggestion", () => {
-    renderTriage({
+  test("a note gets a concrete Keep decision without asking the user to dispatch", async () => {
+    const note = proposal({
+      action: { type: "keep" },
+      kind: "note",
+      summary: "Keep the navigation reference",
+    });
+    const commands = renderTriage({
       item: item({
-        proposal: proposal({ action: { type: "none", reason: "Choose a Project first" } }),
+        kind: "note",
+        proposal: note,
       }),
     });
-    expect(screen.getByText("Choose a Project first")).toBeTruthy();
-    expect(screen.queryByRole("button", { name: "New chat in Nodex" })).toBeNull();
-    expect(screen.getByRole("button", { name: "Dispatch…" })).toBeTruthy();
+    expect(screen.getByText("Keep the navigation reference")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Dispatch…" })).toBeNull();
+    expect(commands.confirm).not.toHaveBeenCalled();
+    await click("Keep");
+    await waitFor(() => expect(commands.confirm).toHaveBeenCalledWith(note));
+    expect(commands.dispatch).not.toHaveBeenCalled();
   });
 
   test("unknown remote delivery offers checking the chat before an explicit new send", async () => {

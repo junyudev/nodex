@@ -178,8 +178,8 @@ export interface InboxTriageParts {
 }
 
 /**
- * What Nodex made of one message: a suggestion to decide, a reason it has none, or the way to
- * dispatch it by hand. Only a button here can make anything run. `Edit` rewrites the message
+ * What Nodex made of one message: a concrete suggestion, a generation failure, or a manual
+ * dispatch before advice arrives. Only a button here can make anything run. `Edit` rewrites the message
  * itself; dispatching by hand lives in the message menu.
  */
 const NO_MEMBERS: readonly InboxGroupMember[] = [];
@@ -324,11 +324,7 @@ export function InboxTriage({
       };
     }
 
-    if (
-      groupedWithKey &&
-      (model.kind === "suggestion" ||
-        (model.kind === "undecided" && item.proposal?.state === "open"))
-    ) {
+    if (groupedWithKey && model.kind === "suggestion") {
       return {
         strip: (
           <span className="text-xs text-token-description-foreground">
@@ -477,19 +473,15 @@ export function InboxTriage({
       case "undecided":
         return {
           // With nothing suggested, the card is the message alone, plus its kind once known.
-          strip: model.reason ? (
-            <div className="flex flex-col gap-2">
-              {item.proposal ? groupMembers(item.proposal) : null}
-              <Notice tone="quiet">{model.reason}</Notice>
-            </div>
-          ) : kindControl && item.kind ? (
-            <Row>
-              {kindControl}
-              <span className="text-[13px] text-token-description-foreground">
-                {INBOX_KIND_LABELS[item.kind]}
-              </span>
-            </Row>
-          ) : null,
+          strip:
+            kindControl && item.kind ? (
+              <Row>
+                {kindControl}
+                <span className="text-[13px] text-token-description-foreground">
+                  {INBOX_KIND_LABELS[item.kind]}
+                </span>
+              </Row>
+            ) : null,
           actions: (
             <Row>
               <InboxIconActions>
@@ -497,13 +489,9 @@ export function InboxTriage({
                 {editAction}
                 {suggestionsEnabled ? (
                   <InboxIconAction
-                    label={item.proposal?.action.type === "none" ? "Refine suggestion…" : "Suggest"}
+                    label="Suggest"
                     icon={AskAiIcon}
-                    onClick={() =>
-                      item.proposal?.action.type === "none"
-                        ? setRefining(item.proposal)
-                        : void actions.requestSuggestion([item.pageId], [item.basis])
-                    }
+                    onClick={() => void actions.requestSuggestion([item.pageId], [item.basis])}
                   />
                 ) : null}
                 {keepAction}

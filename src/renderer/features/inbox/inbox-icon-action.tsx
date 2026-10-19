@@ -17,7 +17,6 @@ export type InboxIcon = ComponentType<{ readonly className?: string }>;
 
 /** One glyph per kind of dispatch, wherever that action is offered or chosen. */
 export const INBOX_ACTION_ICONS: Readonly<Record<InboxDispatchAction["type"], InboxIcon>> = {
-  none: QuestionIcon,
   keep: ArchiveIcon,
   new_chat: NewChatIcon,
   send_to_chat: SendToChatIcon,

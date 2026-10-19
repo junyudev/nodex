@@ -2272,9 +2272,7 @@ fn grouped_settlement_is_atomic_and_refine_preserves_explicit_membership() {
         suggestions: vec![ProjectWorkspaceInboxSuggestedDispatch {
             proposal_id: "proposal:ab".into(),
             page_ids: pages,
-            action: ProjectWorkspaceInboxDispatchAction::None {
-                reason: "Keep for later".into(),
-            },
+            action: ProjectWorkspaceInboxDispatchAction::Keep,
             entry_kind: None,
             summary: "Review together".into(),
             rationale: None,
@@ -2289,7 +2287,7 @@ fn grouped_settlement_is_atomic_and_refine_preserves_explicit_membership() {
         .apply(
             &host(),
             request(
-                "prepare:none",
+                "prepare:settled",
                 ProjectWorkspaceIntent::PrepareInboxSuggestions {
                     request_id: "request:idle".into(),
                     limit: 8,
@@ -2315,20 +2313,8 @@ fn grouped_settlement_is_atomic_and_refine_preserves_explicit_membership() {
         &a.basis
     );
     assert_eq!(
-        apply_host_error(
-            module,
-            "confirm:none",
-            ProjectWorkspaceIntent::ConfirmInboxDispatch {
-                expected_store_epoch: "epoch-1".into(),
-                basis: a.proposal.as_ref().unwrap().basis.clone(),
-                execution_selection: None,
-                proposal_id: "proposal:ab".into(),
-                expected_revision: 1,
-                action: None,
-                session_id: None
-            }
-        ),
-        CoreErrorCode::InvalidInput
+        a.proposal.as_ref().unwrap().action,
+        ProjectWorkspaceInboxDispatchAction::Keep
     );
     apply_host(
         module,
@@ -2599,6 +2585,178 @@ fn remote_unknown_is_not_replayed_and_new_decisions_have_new_delivery_identity()
     );
     assert_ne!(outbox(module)[0].message_id, first.message_id);
 }
+#[test]
+fn migrating_a_pending_abstention_refinement_releases_the_suggestion_lane() {
+    use nodex_core_contracts::inbox::*;
+    let workspace = seeded_workspace();
+    let module = &workspace.module;
+    send(module, "a", "First thought");
+    let entry = pending(module).remove(0);
+    propose(
+        module,
+        "proposal:old",
+        &entry,
+        ProjectWorkspaceInboxDispatchAction::Keep,
+    );
+    apply_host(
+        module,
+        "refine:old",
+        ProjectWorkspaceIntent::RequestInboxSuggestion {
+            request_id: "request:old".into(),
+            mode: ProjectWorkspaceInboxSuggestionMode::Refine,
+            page_ids: vec!["page:a".into()],
+            basis: vec![entry.basis],
+            proposal_id: Some("proposal:old".into()),
+            expected_revision: Some(1),
+            correction: Some("Please give this a concrete next action".into()),
+        },
+    );
+    assert_eq!(
+        requests(module)[0].proposal_id.as_deref(),
+        Some("proposal:old")
+    );
+    // Preserve the public-operation membership, then install only the retired stored action.
+    workspace.kernel.writer().call(|connection| {
+        crate::infrastructure::sqlite::with_immediate_transaction(connection, |transaction| {
+            transaction.execute(
+                "UPDATE inbox_proposals SET action_json='{\"type\":\"none\",\"reason\":\"Decide manually\"}' WHERE proposal_id='proposal:old'",
+                [],
+            )?;
+            transaction.execute_batch(include_str!("../../schema/migrations/v184_to_v185.sql"))?;
+            Ok(())
+        })
+    }).expect("migrate pending historical refinement");
+    assert!(requests(module).is_empty());
+    let item = window(module, ProjectWorkspaceInboxWindowFilter::Inbox).remove(0);
+    assert!(item.proposal.is_none());
+    assert_eq!(
+        item.suggestion_state,
+        ProjectWorkspaceInboxSuggestionState::Pending
+    );
+    apply_host(
+        module,
+        "prepare:concrete",
+        ProjectWorkspaceIntent::PrepareInboxSuggestions {
+            request_id: "request:concrete".into(),
+            limit: 8,
+        },
+    );
+    let fresh = requests(module).remove(0);
+    assert_eq!(fresh.request_id, "request:concrete");
+    assert_eq!(
+        apply_host_error(
+            module,
+            "settle:old",
+            ProjectWorkspaceIntent::SettleInboxSuggestion {
+                request_id: "request:old".into(),
+                generation: 1,
+                titles: vec![],
+                suggestions: vec![],
+                produced_by: None,
+                error: Some("Old refinement failed".into()),
+            },
+        ),
+        CoreErrorCode::Conflict
+    );
+    apply_host(
+        module,
+        "settle:concrete",
+        ProjectWorkspaceIntent::SettleInboxSuggestion {
+            request_id: fresh.request_id,
+            generation: fresh.generation,
+            titles: vec![],
+            suggestions: vec![ProjectWorkspaceInboxSuggestedDispatch {
+                proposal_id: "proposal:concrete".into(),
+                page_ids: fresh.page_ids,
+                action: ProjectWorkspaceInboxDispatchAction::Keep,
+                entry_kind: None,
+                summary: "Keep this note".into(),
+                rationale: None,
+            }],
+            produced_by: None,
+            error: None,
+        },
+    );
+    assert!(requests(module).is_empty());
+    assert_eq!(
+        window(module, ProjectWorkspaceInboxWindowFilter::Inbox)[0]
+            .proposal
+            .as_ref()
+            .unwrap()
+            .action,
+        ProjectWorkspaceInboxDispatchAction::Keep
+    );
+}
+
+#[test]
+fn successful_suggestion_settlement_requires_a_concrete_action_for_every_member() {
+    use nodex_core_contracts::inbox::*;
+    let workspace = seeded_workspace();
+    let module = &workspace.module;
+    send(module, "a", "First thought");
+    send(module, "b", "Second thought");
+    apply_host(
+        module,
+        "prepare:ab",
+        ProjectWorkspaceIntent::PrepareInboxSuggestions {
+            request_id: "request:ab".into(),
+            limit: 8,
+        },
+    );
+    let input = requests(module).remove(0);
+    for (operation, suggestions) in [
+        ("settle:empty", vec![]),
+        (
+            "settle:partial",
+            vec![ProjectWorkspaceInboxSuggestedDispatch {
+                proposal_id: "proposal:a".into(),
+                page_ids: vec!["page:a".into()],
+                action: ProjectWorkspaceInboxDispatchAction::Keep,
+                entry_kind: None,
+                summary: "Keep this note".into(),
+                rationale: None,
+            }],
+        ),
+    ] {
+        assert_eq!(
+            apply_host_error(
+                module,
+                operation,
+                ProjectWorkspaceIntent::SettleInboxSuggestion {
+                    request_id: input.request_id.clone(),
+                    generation: input.generation,
+                    titles: vec![ProjectWorkspaceInboxSuggestionTitle {
+                        page_id: "page:a".into(),
+                        title: "Do not apply a partial result".into(),
+                    }],
+                    suggestions,
+                    produced_by: None,
+                    error: None,
+                },
+            ),
+            CoreErrorCode::InvalidInput
+        );
+        let items = window(module, ProjectWorkspaceInboxWindowFilter::Inbox);
+        assert!(items.iter().all(|item| item.proposal.is_none()));
+        assert_eq!(
+            items
+                .iter()
+                .find(|item| item.page_id == "page:a")
+                .unwrap()
+                .title,
+            "First thought"
+        );
+        assert_eq!(requests(module).len(), 1);
+    }
+    assert!(
+        serde_json::from_value::<ProjectWorkspaceInboxDispatchAction>(serde_json::json!({
+            "type": "none",
+            "reason": "Decide manually"
+        }))
+        .is_err()
+    );
+}
+
 #[test]
 fn failed_settlement_rolls_back_titles_and_prior_suggestions() {
     use nodex_core_contracts::inbox::*;

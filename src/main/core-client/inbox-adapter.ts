@@ -37,8 +37,6 @@ export const inboxDispatchActionFromCore = (
   action: CoreInboxDispatchAction,
 ): InboxDispatchAction => {
   switch (action.type) {
-    case "none":
-      return { type: "none", reason: action.reason };
     case "keep":
       return { type: "keep" };
     case "new_chat":
@@ -52,8 +50,6 @@ export const inboxDispatchActionFromCore = (
 
 export const inboxDispatchActionToCore = (action: InboxDispatchAction): CoreInboxDispatchAction => {
   switch (action.type) {
-    case "none":
-      return { type: "none", reason: action.reason };
     case "keep":
       return { type: "keep" };
     case "new_chat":

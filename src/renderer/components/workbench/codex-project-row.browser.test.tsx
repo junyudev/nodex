@@ -1,6 +1,6 @@
 import type { CSSProperties } from "react";
 import { act } from "@testing-library/react";
-import { describe, expect, test } from "vite-plus/test";
+import { describe, expect, test, vi } from "vite-plus/test";
 import { userEvent } from "vite-plus/test/browser";
 import type { Project } from "@/lib/types";
 import { NodexHoverCardProvider } from "@/components/ui/hover-card";
@@ -104,5 +104,82 @@ describe("CodexProjectRow interaction chrome in Chromium", () => {
     expect(document.activeElement).toBe(disclosure);
     expect(getComputedStyle(marker).visibility).toBe("hidden");
     expect(getComputedStyle(disclosure).opacity).toBe("1");
+  });
+
+  test("shares the trailing space between the Inbox count and pointer or keyboard actions", async () => {
+    const onStartNewChat = vi.fn();
+    const view = render(
+      <TestQueryProvider>
+        <NodexHoverCardProvider>
+          <NodexTooltipProvider>
+            <div className="w-72">
+              <CodexProjectRow
+                project={PROJECT}
+                activityStore={QUIET_ACTIVITY}
+                active={false}
+                expanded
+                inboxCount={12}
+                hoverCardOpen={false}
+                onActivate={() => undefined}
+                onSelectProject={() => undefined}
+                onStartNewChat={onStartNewChat}
+                onUpdateProject={async () => null}
+                onArchiveProject={async () => ({ kind: "not-found" })}
+              />
+            </div>
+          </NodexTooltipProvider>
+        </NodexHoverCardProvider>
+      </TestQueryProvider>,
+    );
+    const row = view.container.querySelector<HTMLElement>("[data-app-action-sidebar-project-row]");
+    if (!row) throw new Error("Expected Project row");
+    const count = view.getByLabelText("12 in Alpha's Inbox");
+    const projectNavigation = view.getByRole("button", { name: "Open Alpha" });
+    const menu = view.getByRole("button", { name: "Project actions for Alpha" });
+    const newChat = view.getByRole("button", { name: "Start new chat in Alpha" });
+    const painted = (element: Element) =>
+      element.checkVisibility({ opacityProperty: true, visibilityProperty: true });
+    await act(async () => {
+      await userEvent.unhover(row);
+    });
+    expect(painted(count)).toBe(true);
+    expect(painted(menu)).toBe(false);
+    expect(painted(newChat)).toBe(false);
+    const text = document.createRange();
+    text.selectNodeContents(count);
+    const countRight = text.getBoundingClientRect().right;
+    expect(row.getBoundingClientRect().right - countRight).toBeLessThanOrEqual(8);
+    expect(countRight).toBeGreaterThan(newChat.getBoundingClientRect().left);
+    expect(countRight).toBeLessThanOrEqual(newChat.getBoundingClientRect().right);
+
+    await act(async () => {
+      await userEvent.hover(row);
+    });
+    expect(painted(count)).toBe(false);
+    expect(painted(menu)).toBe(true);
+    expect(painted(newChat)).toBe(true);
+    await act(async () => {
+      await userEvent.click(menu);
+      await userEvent.unhover(row);
+    });
+    expect(menu.getAttribute("aria-expanded")).toBe("true");
+    expect(painted(count)).toBe(false);
+    await act(async () => {
+      await userEvent.keyboard("{Escape}");
+      projectNavigation.focus();
+      await userEvent.tab();
+    });
+    expect(document.activeElement).toBe(menu);
+    expect(painted(count)).toBe(false);
+    expect(painted(menu)).toBe(true);
+    await act(async () => {
+      await userEvent.tab();
+    });
+    expect(document.activeElement).toBe(newChat);
+    expect(painted(newChat)).toBe(true);
+    await act(async () => {
+      await userEvent.keyboard("{Enter}");
+    });
+    expect(onStartNewChat).toHaveBeenCalledOnce();
   });
 });

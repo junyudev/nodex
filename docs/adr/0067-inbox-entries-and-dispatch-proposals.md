@@ -75,6 +75,11 @@ relocation with the Inbox decision, including a single consumable group Undo.
 Rewriting a message similarly composes a Document-owned write with withdrawal of
 the old suggestions under one version-fenced Core mutation.
 
+A successful request covers every message with a concrete Keep, new-chat,
+existing-chat or filing proposal. Uncertainty guides the choice of action rather
+than becoming a terminal non-action. Actual generation failures remain retryable
+failures; the manual Dispatch control is independent of generated advice.
+
 Main prepares a confirmation once and callers retain those parameters until the
 durable commit is visible. Core freezes complete dispatch text, source versions,
 destination and the new chat's exact execution selection. Stable launch and

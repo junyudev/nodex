@@ -38019,25 +38019,6 @@
           },
           {
             "type": "object",
-            "description": "No decision is proposed; the entry remains available for manual triage.",
-            "required": [
-              "reason",
-              "type"
-            ],
-            "properties": {
-              "reason": {
-                "type": "string"
-              },
-              "type": {
-                "type": "string",
-                "enum": [
-                  "none"
-                ]
-              }
-            }
-          },
-          {
-            "type": "object",
             "description": "Start a new chat in one active Project, or a projectless chat.",
             "required": [
               "prompt",

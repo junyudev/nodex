@@ -365,7 +365,7 @@ export const make = Effect.gen(function* () {
         ? context.open_proposals.find((proposal) => proposal.proposal_id === draft.proposalId)
         : undefined;
     const action = draft.action ?? (proposal ? inboxDispatchActionFromCore(proposal.action) : null);
-    if (!action || action.type === "none")
+    if (!action)
       return yield* fail("prepare-confirmation")(
         new Error("Review this suggestion before deciding"),
       );

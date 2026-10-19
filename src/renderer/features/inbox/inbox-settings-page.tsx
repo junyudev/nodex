@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import type { AgentRuntimeOperations } from "@nodex/agent-runtime/contracts";
 import type { InboxAgentBinding } from "../../../shared/inbox";
 import {
   DEFAULT_INBOX_SETTINGS,
@@ -14,11 +14,12 @@ import {
   NodexSettingsSection as SectionBlock,
 } from "@/components/ui/settings";
 import { toast } from "@/components/ui/toast";
-import { readInboxAgentCatalog } from "@/lib/inbox-runtime";
+import { useAgentRuntimeProviders } from "@/lib/use-agent-runtime-providers";
 import { readableInboxError } from "./inbox-presentation";
 import { useInboxSettingsQuery, useUpdateInboxSettings } from "./use-inbox";
 
-type InboxProvider = Awaited<ReturnType<typeof readInboxAgentCatalog>>[number];
+type InboxProvider = AgentRuntimeOperations["providers.read"]["output"][number];
+type CatalogState = "loading" | "ready" | "error";
 
 const available = (provider: InboxProvider) =>
   provider.enabled &&
@@ -31,12 +32,14 @@ function AgentPicker({
   value,
   ariaLabel,
   providers,
+  catalogState,
   suggestions = false,
   onChange,
 }: {
   readonly value: InboxAgentBinding;
   readonly ariaLabel: string;
   readonly providers: readonly InboxProvider[];
+  readonly catalogState: CatalogState;
   readonly suggestions?: boolean;
   readonly onChange: (binding: InboxAgentBinding) => void;
 }) {
@@ -51,10 +54,11 @@ function AgentPicker({
       align="end"
       search="filter"
       searchAriaLabel={`Search ${ariaLabel.toLowerCase()}s`}
+      disabled={catalogState !== "ready"}
       triggerButton={
         <NodexSettingsDropdownTrigger aria-label={ariaLabel}>
-          {current}
-          {usable ? "" : " · Unavailable"}
+          {catalogState === "loading" ? "Loading…" : current}
+          {catalogState === "ready" && !usable ? " · Unavailable" : ""}
         </NodexSettingsDropdownTrigger>
       }
       value={value.instanceId}
@@ -83,11 +87,8 @@ export function InboxSettingsPage() {
   const update = useUpdateInboxSettings();
   const [instructionsDraft, setInstructionsDraft] = useState<string | null>(null);
   const instructions = instructionsDraft ?? settings.instructions;
-  const catalog = useQuery({
-    queryKey: ["inbox", "agent-catalog"],
-    queryFn: readInboxAgentCatalog,
-    staleTime: 30_000,
-  });
+  const catalog = useAgentRuntimeProviders();
+  const catalogState: CatalogState = catalog.data ? "ready" : catalog.error ? "error" : "loading";
   const providers = catalog.data ?? [];
   const suggestionProvider = providers.find(
     (provider) => provider.instanceId === settings.suggestionAgent.instanceId,
@@ -96,9 +97,12 @@ export function InboxSettingsPage() {
   const defaultModel = models.find((model) => model.isDefault) ?? models[0];
   const selectedModel = models.find((model) => model.slug === settings.suggestionModel);
   const modelLabel =
-    settings.suggestionModel === null
-      ? `Default${defaultModel ? ` · ${defaultModel.name}` : ""}`
-      : (selectedModel?.name ?? `${settings.suggestionModel} · Unavailable`);
+    catalogState === "loading"
+      ? "Loading…"
+      : settings.suggestionModel === null
+        ? `Default${defaultModel ? ` · ${defaultModel.name}` : ""}`
+        : (selectedModel?.name ??
+          `${settings.suggestionModel}${catalogState === "ready" ? " · Unavailable" : ""}`);
 
   const save = (input: Parameters<typeof update.mutate>[0]) =>
     update.mutate(input, {
@@ -158,6 +162,7 @@ export function InboxSettingsPage() {
             ariaLabel="Suggestion agent"
             value={settings.suggestionAgent}
             providers={providers}
+            catalogState={catalogState}
             suggestions
             onChange={(suggestionAgent) => save({ suggestionAgent, suggestionModel: null })}
           />
@@ -167,6 +172,12 @@ export function InboxSettingsPage() {
             align="end"
             search="filter"
             searchAriaLabel="Search suggestion models"
+            disabled={
+              catalogState !== "ready" ||
+              !suggestionProvider ||
+              !available(suggestionProvider) ||
+              !supportsInboxStructuredGeneration(suggestionProvider)
+            }
             value={settings.suggestionModel ?? "default"}
             triggerButton={
               <NodexSettingsDropdownTrigger aria-label="Suggestion model">
@@ -220,6 +231,7 @@ export function InboxSettingsPage() {
             ariaLabel="New chat runtime"
             value={settings.chatAgent}
             providers={providers}
+            catalogState={catalogState}
             onChange={(chatAgent) => save({ chatAgent })}
           />
         </SettingRow>

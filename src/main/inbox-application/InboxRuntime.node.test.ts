@@ -614,19 +614,18 @@ const suggestionOutput = (pageIds: string[], action = "send_to_chat") => ({
   suggestions: [
     {
       page_ids: pageIds,
-      kind: action === "none" ? null : "todo",
+      kind: action === "keep" ? "note" : "todo",
       action,
       project_id: null,
       session_id: action === "send_to_chat" ? "session:one" : null,
-      prompt: action === "none" ? null : "Continue with the evidence",
-      summary: action === "none" ? null : "Continue the investigation",
+      prompt: action === "keep" ? null : "Continue with the evidence",
+      summary: action === "keep" ? "Keep these thoughts for later" : "Continue the investigation",
       rationale: null,
-      reason: action === "none" ? "Needs your decision" : null,
     },
   ],
 });
 
-const suggestionHarness = (count = 1, none = false) =>
+const suggestionHarness = (count = 1, action = "send_to_chat") =>
   Effect.gen(function* () {
     let pending = true;
     const routing = {
@@ -639,7 +638,7 @@ const suggestionHarness = (count = 1, none = false) =>
     };
     const pageIds = routing.entries.map((entry) => entry.page_id);
     const generated = vi.fn((_input: Parameters<Runtime["generateStructured"]>[0]) =>
-      Effect.succeed(suggestionOutput(pageIds, none ? "none" : "send_to_chat")),
+      Effect.succeed(suggestionOutput(pageIds, action)),
     );
     const settlements: InboxSuggestionSettlement[] = [];
     const inbox = {
@@ -701,16 +700,29 @@ it.effect("settles a 16-message explicit group atomically with the actual resolv
   }),
 );
 
-it.effect("settles none as a durable decision and does not generate it on every poll", () =>
+it.effect("settles a confirmable Keep suggestion once instead of repeating it on every poll", () =>
   Effect.gen(function* () {
-    const { drain, generated, settlements } = yield* suggestionHarness(1, true);
+    const { drain, generated, settlements } = yield* suggestionHarness(1, "keep");
     yield* drain;
     yield* drain;
     assert.strictEqual(generated.mock.calls.length, 1);
-    assert.deepEqual(settlements[0]?.suggestions[0]?.action, {
-      type: "none",
-      reason: "Needs your decision",
-    });
+    assert.deepEqual(settlements[0]?.suggestions[0]?.action, { type: "keep" });
+    assert.strictEqual(settlements[0]?.suggestions[0]?.summary, "Keep these thoughts for later");
     assert.strictEqual(settlements[0]?.error, null);
   }),
+);
+
+it.effect(
+  "records an abstaining model output as a failed request, never a successful decision",
+  () =>
+    Effect.gen(function* () {
+      const { drain, generated, settlements } = yield* suggestionHarness(1, "none");
+      yield* drain;
+      yield* drain;
+      assert.strictEqual(generated.mock.calls.length, 1);
+      assert.strictEqual(settlements.length, 1);
+      assert.deepEqual(settlements[0]?.suggestions, []);
+      assert.isNotNull(settlements[0]?.error);
+      assert.isNull(settlements[0]?.produced_by);
+    }),
 );

@@ -60,7 +60,6 @@ export const InboxEntryStateSchema = z.enum(["open", "kept", "done"]);
 export const InboxWindowFilterSchema = z.enum(["inbox", "processed"]);
 
 export const InboxDispatchActionSchema = z.discriminatedUnion("type", [
-  z.object({ type: z.literal("none"), reason: z.string().trim().min(1).max(200) }).strict(),
   z.object({ type: z.literal("keep") }).strict(),
   z.object({ type: z.literal("new_chat"), projectId: id.nullable(), prompt }).strict(),
   z.object({ type: z.literal("send_to_chat"), sessionId: id, prompt }).strict(),

@@ -96,8 +96,8 @@ The goal is an empty Inbox. A message stays in the Inbox only while it still
 needs the user; once handled, it moves to History.
 
 - **Inbox:** open messages with no confirmed chat dispatch or an uncertain delivery. This covers
-  messages being suggested, with a suggestion to decide, with a failed
-  suggestion, with no suggestion, or whose delivery failed.
+  messages awaiting advice, with a concrete suggestion to decide, with a failed
+  suggestion, with suggestions disabled, or whose delivery failed.
 - **History:** every handled message: a confirmed chat dispatch (including one
   still being delivered), a message filed in a Project, Keep, or Done.
 
@@ -174,18 +174,23 @@ one exact action:
 - **New chat:** start a chat in a Project or without one, with a prompt.
 - **Send to chat:** send a prompt to an existing chat.
 - **Move to Project:** file the message Page in another Project's Database.
-- **No suggestion:** leave the message for the user when the intent, target or
-  grouping is unclear. This completes the current suggestion request without
-  handling the message or automatically requesting the same suggestion again.
+
+Every successful suggestion request produces a concrete action for every member.
+Tasks and questions favor a new chat; a clear continuation can target an existing
+chat. In the Library Inbox, work without a suitable Project can start a projectless
+chat. Notes, references and ambiguous fragments get a focused Keep proposal.
+An uncertain selected group can be kept as notes together. The Agent never
+completes a request by asking the user to choose Dispatch manually.
 
 Main rejects unknown targets, invalid action fields, duplicate or missing members
 and overlong prompts instead of repairing or truncating them. A suggestion can
-never invent a destination. An explicit group produces one suggestion covering
-all its members, or no suggestion for the group.
+never invent a destination. An explicit group produces one concrete suggestion
+covering all its members. Generation and transport failures remain failures
+with Retry; they do not masquerade as completed advice.
 
 In the same pass, the Agent names each message that still has its provisional
 title. Core checks the complete request's source versions and atomically applies
-all titles, advice or abstentions, and request settlement. The proposals are
+all titles, concrete proposals, and request settlement. The proposals are
 fenced by the resulting Page versions. Any intervening edit rejects the entire
 stale result; no title or partial suggestion from it is applied.
 
@@ -215,7 +220,8 @@ strip and its row show one of these:
   temporarily unavailable delivery offer `Retry`. Definite rejection requires
   reviewing `Dispatch…`; uncertain delivery offers `Open chat` and `Send again…`
   without an automatic retry.
-- **No suggestion:** `Dispatch…`, `Suggest` when suggestions are on, and `Keep`.
+- **Awaiting advice or suggestions off:** `Dispatch…`, `Suggest` when suggestions
+  are on, and `Keep`.
 
 Only the decision keeps a text label, with its action's glyph: the suggested
 action, or `Dispatch…` when there is no suggestion. It ends the row, flush with
@@ -376,8 +382,12 @@ creates a second message, and does not count against the Agent budget again.
   - free-text routing preferences given to the suggestion Agent;
   - the runtime for chats the Inbox starts.
 
-  Choices come from the Runtime provider and model catalog. An unavailable
-  instance retains its real name rather than appearing as another Agent.
+  Choices read the Runtime's existing provider and model catalog without forcing
+  discovery on open. Cached choices remain visible during background refresh;
+  a first load shows Loading, and a failed read offers Retry without declaring
+  the saved choice unavailable. Only a loaded catalog can establish that a choice
+  is missing or unavailable. Agent setting changes refresh the choices.
+  An unavailable instance retains its real name rather than appearing as another Agent.
   An omitted suggestion model resolves to that instance's catalog default;
   messages sent to an existing chat use that chat's runtime.
 

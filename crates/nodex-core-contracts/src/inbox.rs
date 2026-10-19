@@ -86,8 +86,6 @@ pub enum ProjectWorkspaceInboxProposalState {
 pub enum ProjectWorkspaceInboxDispatchAction {
     /// Keep the entries open as notes, todos, or questions.
     Keep,
-    /// No decision is proposed; the entry remains available for manual triage.
-    None { reason: String },
     /// Start a new chat in one active Project, or a projectless chat.
     NewChat {
         project_id: Option<String>,

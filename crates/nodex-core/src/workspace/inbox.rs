@@ -1023,7 +1023,6 @@ fn supersede_failed_proposals(
 
 fn user_summary(action: &ProjectWorkspaceInboxDispatchAction) -> String {
     match action {
-        ProjectWorkspaceInboxDispatchAction::None { .. } => "Review message".to_owned(),
         ProjectWorkspaceInboxDispatchAction::Keep => "Keep as a note".to_owned(),
         ProjectWorkspaceInboxDispatchAction::NewChat { .. } => "Start a new chat".to_owned(),
         ProjectWorkspaceInboxDispatchAction::SendToChat { .. } => {
@@ -1044,9 +1043,6 @@ fn apply_confirmation(
 ) -> Result<WorkspaceMutationEffects, StoreError> {
     let encoded_action = action_json(action)?;
     match action {
-        ProjectWorkspaceInboxDispatchAction::None { .. } => {
-            Err(invalid("No decision was proposed"))
-        }
         ProjectWorkspaceInboxDispatchAction::Keep => {
             finish_proposal(connection, proposal_id, &encoded_action, now)?;
             set_entries_state(connection, library_id, page_ids, "kept", now)?;
@@ -1864,11 +1860,6 @@ fn normalize_action(
     action: &ProjectWorkspaceInboxDispatchAction,
 ) -> Result<ProjectWorkspaceInboxDispatchAction, StoreError> {
     match action {
-        ProjectWorkspaceInboxDispatchAction::None { reason } => {
-            Ok(ProjectWorkspaceInboxDispatchAction::None {
-                reason: bounded_text("reason", reason, 2000)?,
-            })
-        }
         ProjectWorkspaceInboxDispatchAction::Keep => Ok(ProjectWorkspaceInboxDispatchAction::Keep),
         ProjectWorkspaceInboxDispatchAction::NewChat { project_id, prompt } => {
             if scope.is_some() && project_id.as_deref() != scope {

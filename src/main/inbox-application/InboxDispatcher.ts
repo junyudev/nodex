@@ -122,24 +122,16 @@ export const make = Effect.gen(function* () {
       return;
     }
     const { validated, producedBy } = outcome.success;
-    const suggestions: InboxSuggestionSettlement["suggestions"] = [
-      ...validated.suggestions.map((suggestion) => ({
+    const suggestions: InboxSuggestionSettlement["suggestions"] = validated.suggestions.map(
+      (suggestion) => ({
         proposal_id: createUuidV7(),
         page_ids: [...suggestion.pageIds],
         action: inboxDispatchActionToCore(suggestion.action),
         entry_kind: suggestion.kind,
         summary: suggestion.summary,
         rationale: suggestion.rationale,
-      })),
-      ...validated.none.map((suggestion) => ({
-        proposal_id: createUuidV7(),
-        page_ids: [...suggestion.pageIds],
-        action: { type: "none" as const, reason: suggestion.reason },
-        entry_kind: null,
-        summary: suggestion.reason,
-        rationale: null,
-      })),
-    ];
+      }),
+    );
     yield* inbox.settleSuggestion({
       ...base,
       titles: [...validated.titles].map(([page_id, title]) => ({ page_id, title })),

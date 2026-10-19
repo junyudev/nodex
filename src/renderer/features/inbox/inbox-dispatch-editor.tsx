@@ -15,7 +15,7 @@ import { useInboxChatTargets } from "./use-inbox";
 import { cn } from "@/lib/utils";
 import { INBOX_ACTION_ICONS } from "./inbox-icon-action";
 
-type ActionType = Exclude<InboxDispatchAction["type"], "none">;
+type ActionType = InboxDispatchAction["type"];
 
 const ACTION_LABELS: Readonly<Record<ActionType, string>> = {
   keep: "Keep",
@@ -46,8 +46,6 @@ export function draftFromAction(
   fallbackPrompt: string,
 ): InboxDispatchDraft {
   switch (action.type) {
-    case "none":
-      return { type: "new_chat", projectId: null, sessionId: null, prompt: fallbackPrompt };
     case "keep":
       return { type: "keep", projectId: null, sessionId: null, prompt: fallbackPrompt };
     case "new_chat":
@@ -79,12 +77,7 @@ export function draftForInboxItem(item: InboxItem, projectId: string | null): In
   const proposal = item.proposal;
   const action = proposal?.action;
   return {
-    ...draftFromAction(
-      action && action.type !== "none"
-        ? action
-        : { type: "new_chat", projectId, prompt: item.body },
-      item.body,
-    ),
+    ...draftFromAction(action ?? { type: "new_chat", projectId, prompt: item.body }, item.body),
     basis: proposal?.basis ?? [item.basis],
     chat: proposal?.chat ?? null,
     ...(proposal?.state === "open" ? { proposal } : {}),

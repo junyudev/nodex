@@ -9140,10 +9140,6 @@ export interface components {
             /** @enum {string} */
             readonly type: "keep";
         } | {
-            readonly reason: string;
-            /** @enum {string} */
-            readonly type: "none";
-        } | {
             readonly project_id?: string | null;
             readonly prompt: string;
             /** @enum {string} */
