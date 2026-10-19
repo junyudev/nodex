@@ -234,7 +234,7 @@ function renderVirtualizedTurnList(input: {
           historyRows={input.historyRows}
           conversationId="thread_1"
           threadCwd="/tmp/project"
-          editableTurnId={null}
+          editableTurnIds={new Set()}
           canForkFromTurn={true}
           initialLatestTurnRestoreState={input.initialLatestTurnRestoreState}
           onLatestTurnRestoreStateChange={input.onLatestTurnRestoreStateChange}
@@ -566,7 +566,7 @@ describe("LocalConversationVirtualizedTurnList", () => {
             entries={[suspend ? pending : initial]}
             conversationId="thread_1"
             threadCwd="/tmp/project"
-            editableTurnId={null}
+            editableTurnIds={new Set()}
             canForkFromTurn={true}
             initialLatestTurnRestoreState={{
               followMode: "prework_watch",

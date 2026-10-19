@@ -2,10 +2,10 @@ import { useCallback, useEffect } from "react";
 import { isCodexGitSettings } from "../../../shared/codex-git-settings";
 import { readCodexGitSettings } from "../../lib/codex-git-settings";
 import {
-  readComposerEnterBehavior,
   writeComposerEnterBehavior,
   type ComposerEnterBehavior,
 } from "../../lib/composer-enter-behavior";
+import { composerEnterBehaviorAtom } from "../../lib/composer-enter-behavior-atom";
 import { appScope, scopedAtomWithInitializer, useScopedAtom } from "../../lib/maitai";
 import {
   readTaskShorthandPagePromotionEnabled,
@@ -52,9 +52,6 @@ const threadQueueFollowUpsEnabledAtom = scopedAtomWithInitializer(
   readThreadQueueFollowUpsEnabled,
   { debugLabel: "thread-queue-follow-ups-enabled" },
 );
-const composerEnterBehaviorAtom = scopedAtomWithInitializer(appScope, readComposerEnterBehavior, {
-  debugLabel: "composer-enter-behavior",
-});
 const worktreeStartModeAtom = scopedAtomWithInitializer(appScope, readWorktreeStartMode, {
   debugLabel: "worktree-start-mode",
 });

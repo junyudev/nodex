@@ -185,10 +185,10 @@ export const live = Layer.effectDiscard(
       handle(event, Inputs.AgentRuntimeQueueReadSchema, value, application.readQueuePage),
     );
     yield* ipc.handleQuery("agent-runtime:session:queued-preview", (event, value) =>
-      handle(event, Inputs.AgentRuntimeQueuedMessageSchema, value, application.readQueuedPreview),
+      handle(event, Inputs.AgentRuntimeRunSchema, value, application.readQueuedPreview),
     );
-    yield* ipc.handleQuery("agent-runtime:session:queued-message", (event, value) =>
-      handle(event, Inputs.AgentRuntimeQueuedMessageSchema, value, application.readQueuedMessage),
+    yield* ipc.handleQuery("agent-runtime:session:run-message", (event, value) =>
+      handle(event, Inputs.AgentRuntimeRunSchema, value, application.readRunMessage),
     );
     yield* ipc.handleQuery("agent-runtime:session:item", (event, value) =>
       handle(event, Inputs.AgentRuntimeItemSchema, value, application.item),

@@ -8,6 +8,7 @@ import type {
   CodexTurnSummary,
 } from "../../shared/types";
 import { buildCodexTurnOccurrenceKey } from "../../shared/codex-turn-identity";
+import { canEditCodexConversationUserTurns } from "../../shared/codex-user-turn-edit";
 import type {
   CodexCanonicalConversationState,
   CodexCanonicalTurnState,
@@ -69,27 +70,10 @@ export const buildCodexCanonicalTurnSummary = (
 const projectCapabilityFlags = (
   conversation: CodexConversationSnapshot,
   requests: CodexConversationSnapshot["requests"],
-): CodexConversationCapabilityFlags => {
-  const latestTurn = conversation.turns.at(-1) ?? null;
-  const latestTurnHasUserMessage =
-    latestTurn !== null &&
-    latestTurn.items.some(
-      (item) => item.semanticKind === "userMessage" || item.kind === "userMessage",
-    );
-  const actionable = !conversation.archived && conversation.statusType !== "systemError";
-  return {
-    ...conversation.capabilityFlags,
-    canEditLastUserTurn: Boolean(
-      actionable &&
-      conversation.canonicalState?.historyMode === "paginated" &&
-      !conversation.canonicalState.ephemeral &&
-      latestTurn &&
-      latestTurn.status !== "inProgress" &&
-      latestTurnHasUserMessage &&
-      requests.every((request) => request.turnId !== latestTurn.turnId),
-    ),
-  };
-};
+): CodexConversationCapabilityFlags => ({
+  ...conversation.capabilityFlags,
+  canEditUserTurns: canEditCodexConversationUserTurns(conversation, requests),
+});
 
 const projectTurn = (input: {
   readonly before: CodexCanonicalConversationState;

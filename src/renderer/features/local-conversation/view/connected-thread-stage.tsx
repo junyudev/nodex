@@ -367,7 +367,7 @@ function ConnectedThreadStageBody({
   const capabilityFlags = useMemo(
     () =>
       readOnly
-        ? { ...liveCapabilityFlags, canEditLastUserTurn: false, canForkFromTurn: false }
+        ? { ...liveCapabilityFlags, canEditUserTurns: false, canForkFromTurn: false }
         : liveCapabilityFlags,
     [liveCapabilityFlags, readOnly],
   );
@@ -849,7 +849,7 @@ export function ConnectedThreadStageFooter({
             backgroundTerminalRows,
             childMemberships,
             capabilityFlags: {
-              canEditLastUserTurn: false,
+              canEditUserTurns: false,
               canForkFromTurn: false,
               canSearch: true,
               canCollapseTurns: true,

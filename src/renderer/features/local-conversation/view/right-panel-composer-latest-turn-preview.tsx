@@ -23,7 +23,7 @@ interface RightPanelComposerLatestTurnPreviewProps {
   projectWorkspacePath?: string | null;
   threadCwd?: string | null;
   onExpandedChange: (expanded: boolean) => void;
-  onEditLastUserTurn?: (input: {
+  onEditUserTurn?: (input: {
     threadId: string;
     turnId: string;
     message: string;
@@ -52,7 +52,7 @@ export function RightPanelComposerLatestTurnPreview({
   projectWorkspacePath,
   threadCwd,
   onExpandedChange,
-  onEditLastUserTurn,
+  onEditUserTurn,
   onForkFromTurn,
   onOpenTurnDiffReview,
   onOpenTurnDiffFileInSidePanel,
@@ -151,7 +151,7 @@ export function RightPanelComposerLatestTurnPreview({
                     isStreamingTurn={turn.isStreamingTurn}
                     projectWorkspacePath={projectWorkspacePath}
                     threadCwd={threadCwd}
-                    onEditLastUserTurn={onEditLastUserTurn}
+                    onEditUserTurn={onEditUserTurn}
                     onForkFromTurn={onForkFromTurn}
                     onOpenTurnDiffReview={onOpenTurnDiffReview}
                     onOpenTurnDiffFileInSidePanel={onOpenTurnDiffFileInSidePanel}

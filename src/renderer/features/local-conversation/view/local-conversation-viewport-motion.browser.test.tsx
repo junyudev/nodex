@@ -105,7 +105,7 @@ function renderThread(initial: VisibleConversationTurnEntry[], reducedMotion: bo
             }))}
             conversationId="viewport-thread"
             threadCwd={null}
-            editableTurnId={null}
+            editableTurnIds={new Set()}
             canForkFromTurn={false}
             initialScrollOffset={0}
             latestTurnSynchronousMeasurementKey={entries.at(-1)?.turnKey}

@@ -1116,7 +1116,7 @@ function buildConversation(threadId: string, projectId: string): CodexConversati
     },
     backgroundTerminalRows: [],
     capabilityFlags: {
-      canEditLastUserTurn: true,
+      canEditUserTurns: true,
       canForkFromTurn: true,
       canSearch: true,
       canCollapseTurns: true,
@@ -4156,7 +4156,7 @@ describe("local-conversation-store", () => {
       await ownerManager.requestThreadStreamResume("thread-1");
       await flushAsyncWork(2);
 
-      const editResult = await followerManager.editLastUserTurn(
+      const editResult = await followerManager.editUserTurn(
         "thread-1",
         "turn-user",
         "Rewrite prompt",
@@ -20111,11 +20111,7 @@ describe("local-conversation-store", () => {
         sourceClientId: "owner-a",
       });
 
-      const editPromise = manager.editLastUserTurn(
-        "thread-1",
-        "turn-older",
-        "Rewrite older prompt",
-      );
+      const editPromise = manager.editUserTurn("thread-1", "turn-older", "Rewrite older prompt");
       await flushAsyncWork();
 
       const followerRecords = invokeRecords.filter(
@@ -20205,7 +20201,7 @@ describe("local-conversation-store", () => {
       });
 
       const editPromise = manager
-        .editLastUserTurn("thread-1", "turn-latest", "Rewrite latest prompt")
+        .editUserTurn("thread-1", "turn-latest", "Rewrite latest prompt")
         .then(() => {
           resolved = true;
         });
@@ -21245,11 +21241,7 @@ describe("local-conversation-store", () => {
       resumeThreadResult = withPaginatedCanonicalState(currentConversation);
       ownerEditRevertResult = buildRevertResponseFromConversation(revertConversation);
 
-      const result = await manager.editLastUserTurn(
-        "thread-1",
-        "turn-latest",
-        "Rewrite latest prompt",
-      );
+      const result = await manager.editUserTurn("thread-1", "turn-latest", "Rewrite latest prompt");
 
       const resumeIndex = invokeRecords.findIndex(
         (record) => record.channel === "codex:thread:resume:prepare",
@@ -21356,11 +21348,7 @@ describe("local-conversation-store", () => {
       });
       invokeRecords = [];
 
-      const result = await manager.editLastUserTurn(
-        "thread-1",
-        "turn-latest",
-        "Rewrite latest prompt",
-      );
+      const result = await manager.editUserTurn("thread-1", "turn-latest", "Rewrite latest prompt");
 
       expect(
         invokeRecords.find((record) => record.channel === "peer:requestThreadFollower")?.args[0],
@@ -21447,11 +21435,7 @@ describe("local-conversation-store", () => {
         expect(turns[0]?.turnId).toBe("turn-older");
         expect(turns[1]?.turnId).toBeNull();
       };
-      const result = await manager.editLastUserTurn(
-        "thread-1",
-        "turn-latest",
-        "Rewrite latest prompt",
-      );
+      const result = await manager.editUserTurn("thread-1", "turn-latest", "Rewrite latest prompt");
 
       const revertIndex = recordedNativeRequests().findIndex(
         (record) =>
@@ -21585,7 +21569,7 @@ describe("local-conversation-store", () => {
         ).toBe(true);
       };
       await act(async () => {
-        await manager.editLastUserTurn("thread-1", "turn-latest", "Rewrite latest prompt");
+        await manager.editUserTurn("thread-1", "turn-latest", "Rewrite latest prompt");
       });
 
       expect(view.queryByText("Latest prompt")).toBeNull();
@@ -21638,11 +21622,7 @@ describe("local-conversation-store", () => {
       await manager.requestThreadStreamResume("thread-1");
       invokeRecords = [];
 
-      const editPromise = manager.editLastUserTurn(
-        "thread-1",
-        "turn-latest",
-        "Rewrite latest prompt",
-      );
+      const editPromise = manager.editUserTurn("thread-1", "turn-latest", "Rewrite latest prompt");
       dispatchCodexAppServerMessage("native-notification", {
         type: "nativeNotification",
         generation: resumeThreadGeneration,
@@ -21950,7 +21930,7 @@ describe("local-conversation-store", () => {
       const currentConversation: CodexConversationSnapshot = {
         ...buildConversation("thread-1", "project-1"),
         capabilityFlags: {
-          canEditLastUserTurn: false,
+          canEditUserTurns: false,
           canForkFromTurn: true,
           canSearch: true,
           canCollapseTurns: true,
@@ -21967,7 +21947,7 @@ describe("local-conversation-store", () => {
       };
       resumeThreadResult = withPaginatedCanonicalState(currentConversation);
       await manager.requestThreadStreamResume("thread-1");
-      expect(manager.readConversation("thread-1")?.capabilityFlags.canEditLastUserTurn).toBe(false);
+      expect(manager.readConversation("thread-1")?.capabilityFlags.canEditUserTurns).toBe(false);
       invokeRecords = [];
 
       dispatchCodexAppServerMessage("native-notification", {
@@ -21990,7 +21970,7 @@ describe("local-conversation-store", () => {
       await flushAsyncWork();
 
       expect(manager.readConversation("thread-1")?.turns[0]?.status).toBe("completed");
-      expect(manager.readConversation("thread-1")?.capabilityFlags.canEditLastUserTurn).toBe(true);
+      expect(manager.readConversation("thread-1")?.capabilityFlags.canEditUserTurns).toBe(true);
     } finally {
       resumeThreadResult = null;
       manager.destroy();
@@ -22561,7 +22541,7 @@ describe("local-conversation-store", () => {
         },
         ephemeral: true,
         capabilityFlags: {
-          canEditLastUserTurn: false,
+          canEditUserTurns: false,
           canForkFromTurn: false,
           canSearch: true,
           canCollapseTurns: true,

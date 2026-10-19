@@ -133,9 +133,10 @@ import {
   selectCanonicalRetentionRequestKind,
 } from "../../../shared/codex-canonical-retention";
 import {
-  editCanonicalLastUserTurn,
+  editCanonicalUserTurn,
   type CanonicalEditOptions,
 } from "../../../shared/codex-conversation-state/codex-owner-edit";
+import { canEditCodexConversationUserTurns } from "../../../shared/codex-user-turn-edit";
 
 import { mutateCodexCanonicalRevert } from "../../../shared/codex-conversation-state/codex-revert-state";
 import {
@@ -508,7 +509,7 @@ const EMPTY_CONVERSATION_SUMMARY_FIELDS = {
   linkedAt: "",
 };
 const EMPTY_CONVERSATION_CAPABILITY_FLAGS: CodexConversationCapabilityFlags = {
-  canEditLastUserTurn: false,
+  canEditUserTurns: false,
   canForkFromTurn: false,
   canSearch: false,
   canCollapseTurns: false,
@@ -1034,34 +1035,13 @@ function areConversationSummaryFieldsEqual(
   );
 }
 
-function isConversationUserMessageItem(item: CodexConversationItem): boolean {
-  return item.kind === "userMessage" || item.semanticKind === "userMessage";
-}
-
-function conversationTurnHasUserMessage(turn: CodexConversationTurn): boolean {
-  return turn.items.some(isConversationUserMessageItem);
-}
-
-function resolveLatestEditableUserTurnId(conversation: CodexConversationSnapshot): string | null {
-  const latestTurn = conversation.turns.at(-1) ?? null;
-  if (!latestTurn || latestTurn.status === "inProgress") return null;
-  if (!conversationTurnHasUserMessage(latestTurn)) return null;
-
-  const hasPendingRequest = conversation.requests.some(
-    (request) => request.turnId === latestTurn.turnId,
-  );
-  if (hasPendingRequest) return null;
-
-  return latestTurn.turnId;
-}
-
 function areConversationCapabilityFlagsEqual(
   left: CodexConversationCapabilityFlags | undefined,
   right: CodexConversationCapabilityFlags,
 ): boolean {
   return Boolean(
     left &&
-    left.canEditLastUserTurn === right.canEditLastUserTurn &&
+    left.canEditUserTurns === right.canEditUserTurns &&
     left.canForkFromTurn === right.canForkFromTurn &&
     left.canSearch === right.canSearch &&
     left.canCollapseTurns === right.canCollapseTurns,
@@ -1073,7 +1053,7 @@ function deriveConversationCapabilityFlags(
 ): CodexConversationCapabilityFlags {
   if (conversation.source?.sideConversation === true) {
     return {
-      canEditLastUserTurn: false,
+      canEditUserTurns: false,
       canForkFromTurn: false,
       canSearch: true,
       canCollapseTurns: true,
@@ -1083,12 +1063,7 @@ function deriveConversationCapabilityFlags(
   const isConversationActionable =
     !conversation.archived && conversation.statusType !== "systemError";
   return {
-    canEditLastUserTurn: Boolean(
-      isConversationActionable &&
-      conversation.canonicalState?.historyMode === "paginated" &&
-      !conversation.canonicalState.ephemeral &&
-      resolveLatestEditableUserTurnId(conversation),
-    ),
+    canEditUserTurns: canEditCodexConversationUserTurns(conversation, conversation.requests),
     canForkFromTurn: Boolean(isConversationActionable && conversation.turns.length > 0),
     canSearch: true,
     canCollapseTurns: true,
@@ -3337,7 +3312,7 @@ export class CodexAppServerManager {
       pendingSteers: [],
       backgroundTerminalRows: [],
       capabilityFlags: {
-        canEditLastUserTurn: true,
+        canEditUserTurns: true,
         canForkFromTurn: true,
         canSearch: true,
         canCollapseTurns: true,
@@ -6847,7 +6822,7 @@ export class CodexAppServerManager {
   }
   private sendQueuedFollowUpNowAsOwner = this.sendQueuedFollowUpNow.bind(this);
 
-  async editLastUserTurn(
+  async editUserTurn(
     threadId: string,
     turnId: string,
     message: string,
@@ -6890,7 +6865,7 @@ export class CodexAppServerManager {
   ): Promise<void> {
     this.assertOwnerForConversation(id);
     await this.refreshNativeHostContext();
-    await editCanonicalLastUserTurn(
+    await editCanonicalUserTurn(
       {
         getConversation: () => {
           this.assertOwnerForConversation(id);
@@ -9989,7 +9964,7 @@ export function useCodexAppServerControl(
       managerForConversation(threadId).sendQueuedFollowUpNow(threadId, followUpId),
     [managerForConversation],
   );
-  const editLastUserTurn = useCallback(
+  const editUserTurn = useCallback(
     async (
       threadId: string,
       turnId: string,
@@ -10007,7 +9982,7 @@ export function useCodexAppServerControl(
         },
         submittedPresentation,
       );
-      return managerForConversation(threadId).editLastUserTurn(
+      return managerForConversation(threadId).editUserTurn(
         threadId,
         turnId,
         message,
@@ -10264,7 +10239,7 @@ export function useCodexAppServerControl(
     resumeQueuedFollowUps,
     resolveQueuedFollowUpsAfterFreshStart,
     sendQueuedFollowUpNow,
-    editLastUserTurn,
+    editUserTurn,
     forkConversationFromTurn,
     compactThread,
     getThreadGoal,

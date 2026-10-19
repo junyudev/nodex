@@ -17,6 +17,7 @@ import * as Schema from "effect/Schema";
 
 import {
   isCheckpointRestoreIsolated,
+  isEditableUserRun,
   SHARED_WORKSPACE_RESTORE_MESSAGE,
 } from "./CheckpointRestoreSafety.ts";
 import { CheckpointServiceV2 } from "./CheckpointService.ts";
@@ -128,15 +129,7 @@ export const layer: Layer.Layer<
         "providerTurns",
       ]);
       if (input.beforeRunId !== undefined) {
-        const target = projection.runs.find((run) => run.id === input.beforeRunId);
-        const latest = projection.runs.findLast((run) => run.status !== "rolled_back");
-        if (
-          target === undefined ||
-          latest?.id !== target.id ||
-          projection.runs.some((run) =>
-            ["preparing", "queued", "starting", "running", "waiting"].includes(run.status),
-          )
-        ) {
+        if (!isEditableUserRun(projection.runs, input.beforeRunId)) {
           return yield* new CheckpointRollbackExecutionError({
             reason: "rollback-target-invalid",
             threadId: input.threadId,

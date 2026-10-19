@@ -48,7 +48,7 @@ export function composeNativeThreadStageActions(
     onReorderQueuedFollowUps: unavailable,
     onSendQueuedFollowUpNow: unavailable,
     onEditQueuedFollowUp: unavailable,
-    onEditLastUserTurn: unavailable,
+    onEditUserTurn: unavailable,
     onForkFromTurn: unavailable,
     onUnarchiveThread: unavailable,
     onConsumeComposerIntent: () => undefined,

@@ -5,8 +5,9 @@ import * as IdAllocator from "@t3tools/provider-core/server/IdAllocator";
 import { ThreadManagementService } from "../orchestration-v2/ThreadManagementService.ts";
 
 /**
- * Rewind the latest user message through durable provider rollback, leaving files intact.
- * The rewind point is the newest earlier Run's ordinal anchor, never a workspace snapshot.
+ * Rewind the conversation to just before a user message's Run through durable provider
+ * rollback, leaving files intact. That Run and every later Run leave the conversation. The
+ * rewind point is the newest earlier Run's ordinal anchor, never a workspace snapshot.
  */
 export const rollbackThread = Effect.fn("AgentRuntime.rollbackThread")(function* (input: {
   readonly threadId: ThreadId;

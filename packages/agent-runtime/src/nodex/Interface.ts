@@ -404,7 +404,8 @@ export interface AgentRuntimeOperations {
       readonly images: ReadonlyArray<AgentWire<Omit<ChatImageAttachment, "source">>>;
     } | null;
   };
-  readonly "thread.queued-message": {
+  /** The user message that started a Run still in the conversation, queued or settled. */
+  readonly "thread.run-message": {
     readonly input: { readonly threadId: string; readonly runId: string };
     readonly output: AgentWire<OrchestrationV2ConversationMessage> | null;
   };

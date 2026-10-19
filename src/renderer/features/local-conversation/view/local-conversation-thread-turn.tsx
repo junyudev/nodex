@@ -64,7 +64,7 @@ interface ThreadTurnProps {
   childMemberships?: readonly CodexConversationChildMembership[];
   parentModel?: string | null;
   threadCwd?: string | null;
-  onEditLastUserTurn?: (input: {
+  onEditUserTurn?: (input: {
     threadId: string;
     turnId: string;
     message: string;
@@ -215,7 +215,7 @@ function ThreadTurnBody({
   projectWorkspacePath,
   projectlessOutputDirectory,
   threadCwd,
-  onEditLastUserTurn,
+  onEditUserTurn,
   onForkFromTurn,
   onOpenTurnDiffReview,
   onOpenTurnDiffFileInSidePanel,
@@ -277,7 +277,7 @@ function ThreadTurnBody({
       childMemberships={childMemberships}
       parentModel={parentModel}
       threadCwd={threadCwd}
-      onEditLastUserTurn={onEditLastUserTurn}
+      onEditUserTurn={onEditUserTurn}
       onForkFromTurn={onForkFromTurn}
       onOpenTurnDiffReview={onOpenTurnDiffReview}
       onOpenTurnDiffFileInSidePanel={onOpenTurnDiffFileInSidePanel}
@@ -303,7 +303,7 @@ function ThreadTurnBody({
       childMemberships={childMemberships}
       parentModel={parentModel}
       threadCwd={threadCwd}
-      onEditLastUserTurn={onEditLastUserTurn}
+      onEditUserTurn={onEditUserTurn}
       onForkFromTurn={onForkFromTurn}
       onOpenTurnDiffReview={onOpenTurnDiffReview}
       onOpenTurnDiffFileInSidePanel={onOpenTurnDiffFileInSidePanel}

@@ -113,7 +113,7 @@ beforeEach(() => {
     nextRunId: null,
   });
   vi.spyOn(agentRuntimeRuntime, "readQueuedPreview").mockResolvedValue(null);
-  vi.spyOn(agentRuntimeRuntime, "readQueuedMessage").mockResolvedValue(null);
+  vi.spyOn(agentRuntimeRuntime, "readRunMessage").mockResolvedValue(null);
 });
 afterEach(() => {
   vi.restoreAllMocks();

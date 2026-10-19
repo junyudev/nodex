@@ -60,6 +60,8 @@ const CLAUDE_PRESENTATION = {
   displayName: "Claude",
   showInteractionModeToggle: true,
   reportsContextWindow: true,
+  // Native rollback truncates the conversation at any earlier Turn, so any user message can be edited.
+  supportsConversationRollback: true,
 } as const;
 function toTitleCaseWords(value: string): string {
   const parts: Array<string> = [];

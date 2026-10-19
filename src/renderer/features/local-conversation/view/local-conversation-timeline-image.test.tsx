@@ -81,7 +81,7 @@ function metadataRuntime(state: ReturnType<typeof nativeImageTimelineFixture>["s
     pendingSteers: [],
     backgroundTerminalRows: [],
     capabilityFlags: {
-      canEditLastUserTurn: false,
+      canEditUserTurns: false,
       canForkFromTurn: false,
       canSearch: true,
       canCollapseTurns: false,

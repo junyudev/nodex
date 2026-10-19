@@ -53,7 +53,7 @@ function baseConversation(
     pendingSteers: [],
     backgroundTerminalRows: [],
     capabilityFlags: {
-      canEditLastUserTurn: false,
+      canEditUserTurns: false,
       canForkFromTurn: false,
       canSearch: true,
       canCollapseTurns: true,

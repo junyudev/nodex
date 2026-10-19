@@ -89,7 +89,7 @@ it.each([
     pendingSteers: [],
     backgroundTerminalRows: [],
     capabilityFlags: {
-      canEditLastUserTurn: true,
+      canEditUserTurns: true,
       canForkFromTurn: true,
       canSearch: true,
       canCollapseTurns: true,
@@ -101,5 +101,5 @@ it.each([
     turnId: "turn-edit",
   });
 
-  expect(projected.capabilityFlags.canEditLastUserTurn).toBe(options.editable);
+  expect(projected.capabilityFlags.canEditUserTurns).toBe(options.editable);
 });

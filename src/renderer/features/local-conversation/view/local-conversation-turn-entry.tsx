@@ -45,7 +45,7 @@ interface LocalConversationTurnEntryProps {
   projectWorkspacePath?: string | null;
   projectlessOutputDirectory?: string | null;
   threadCwd?: string | null;
-  onEditLastTurnMessage?: (input: {
+  onEditUserTurn?: (input: {
     threadId: string;
     turnId: string;
     message: string;
@@ -83,7 +83,7 @@ function LocalConversationTurnEntryComponent({
   projectWorkspacePath,
   projectlessOutputDirectory,
   threadCwd,
-  onEditLastTurnMessage,
+  onEditUserTurn,
   onForkTurnMessage,
   onOpenTurnDiffReview,
   onOpenTurnDiffFileInSidePanel,
@@ -224,7 +224,7 @@ function LocalConversationTurnEntryComponent({
             childMemberships={childMemberships}
             parentModel={parentModel}
             threadCwd={threadCwd}
-            onEditLastUserTurn={onEditLastTurnMessage}
+            onEditUserTurn={onEditUserTurn}
             onForkFromTurn={onForkTurnMessage}
             onOpenTurnDiffReview={onOpenTurnDiffReview}
             onOpenTurnDiffFileInSidePanel={onOpenTurnDiffFileInSidePanel}
@@ -333,7 +333,7 @@ export const LocalConversationTurnEntry = memo(
     left.projectWorkspacePath === right.projectWorkspacePath &&
     left.projectlessOutputDirectory === right.projectlessOutputDirectory &&
     left.threadCwd === right.threadCwd &&
-    left.onEditLastTurnMessage === right.onEditLastTurnMessage &&
+    left.onEditUserTurn === right.onEditUserTurn &&
     left.onForkTurnMessage === right.onForkTurnMessage &&
     left.onOpenTurnDiffReview === right.onOpenTurnDiffReview &&
     left.onOpenTurnDiffFileInSidePanel === right.onOpenTurnDiffFileInSidePanel &&

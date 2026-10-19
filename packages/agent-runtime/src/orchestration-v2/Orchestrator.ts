@@ -83,6 +83,7 @@ import * as Stream from "effect/Stream";
 import * as ProjectStore from "./ProjectStore.ts";
 import {
   isCheckpointRestoreIsolated,
+  isEditableUserRun,
   SHARED_WORKSPACE_RESTORE_MESSAGE,
 } from "./CheckpointRestoreSafety.ts";
 import { CheckpointServiceV2 } from "./CheckpointService.ts";
@@ -9875,16 +9876,11 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         { turnItemTypes: [], messageRoles: ["user"] },
       );
       if (command.beforeRunId !== undefined) {
-        const target = projection.runs.find((run) => run.id === command.beforeRunId);
-        const latest = projection.runs.findLast((run) => run.status !== "rolled_back");
-        const busy = projection.runs.some((run) =>
-          ["preparing", "queued", "starting", "running", "waiting"].includes(run.status),
-        );
-        if (target === undefined || latest?.id !== target.id || busy) {
+        if (!isEditableUserRun(projection.runs, command.beforeRunId)) {
           return yield* new OrchestratorDispatchError({
             commandId: command.commandId,
             commandType: command.type,
-            cause: "Only the latest user Run of an idle conversation can be edited.",
+            cause: "Only a sent user message of an idle conversation can be edited.",
           });
         }
       }

@@ -472,7 +472,7 @@ function buildConversation(
     pendingSteers: [],
     backgroundTerminalRows: [],
     capabilityFlags: {
-      canEditLastUserTurn: true,
+      canEditUserTurns: true,
       canForkFromTurn: true,
       canSearch: true,
       canCollapseTurns: true,
@@ -526,7 +526,7 @@ function buildActions(): ThreadStageActions {
     onReorderQueuedFollowUps: noopAsync,
     onSendQueuedFollowUpNow: noopAsync,
     onEditQueuedFollowUp: noopAsync,
-    onEditLastUserTurn: noopAsync,
+    onEditUserTurn: noopAsync,
     onForkFromTurn: noopAsync,
     onUnarchiveThread: noopAsync,
     onOpenTurnDiffReview: () => {},

@@ -553,13 +553,13 @@ describe("workbench session shell / automations-conversation", () => {
     await settleAsyncRender();
 
     const actions = getLastThreadStageActions();
-    const onEditLastUserTurn = actions.onEditLastUserTurn as
+    const onEditUserTurn = actions.onEditUserTurn as
       | ((input: { threadId: string; turnId: string; message: string }) => Promise<void>)
       | undefined;
-    expect(typeof onEditLastUserTurn).toBe("function");
+    expect(typeof onEditUserTurn).toBe("function");
 
     await act(async () => {
-      await onEditLastUserTurn?.({
+      await onEditUserTurn?.({
         threadId: "thread-alpha",
         turnId: "turn-latest",
         message: "Rewrite the latest prompt",

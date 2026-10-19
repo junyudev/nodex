@@ -362,7 +362,7 @@ function LocalConversationFooterComponent({
             projectWorkspacePath={model.projectWorkspacePath}
             threadCwd={model.cwd}
             onExpandedChange={handleLatestTurnExpandedChange}
-            onEditLastUserTurn={actions.onEditLastUserTurn}
+            onEditUserTurn={actions.onEditUserTurn}
             onForkFromTurn={actions.onForkFromTurn}
             onOpenTurnDiffReview={actions.onOpenTurnDiffReview}
             onOpenTurnDiffFileInSidePanel={actions.onOpenTurnDiffFileInSidePanel}

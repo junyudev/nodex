@@ -308,7 +308,12 @@ export function createAgentRuntimeStageActions(input: {
   readonly owner: () =>
     | (Pick<
         AgentRuntimeConversationOwner,
-        "getSnapshot" | "nextQueuePage" | "previousQueuePage" | "queueBoundary" | "readQueuedInput"
+        | "getSnapshot"
+        | "nextQueuePage"
+        | "previousQueuePage"
+        | "queueBoundary"
+        | "readQueuedInput"
+        | "readSentMessage"
       > &
         Partial<Pick<AgentRuntimeConversationOwner, "contentSource" | "whenObserved">>)
     | null;
@@ -430,7 +435,7 @@ export function createAgentRuntimeStageActions(input: {
       ?.getSnapshot()
       .view?.queuedFollowUps?.entries.find((entry) => entry.followUpId === runId);
     if (!queued) throw new Error("This queued message is no longer pending");
-    const original = await transport.readQueuedMessage({ ...target, runId });
+    const original = await transport.readRunMessage({ ...target, runId });
     if (original?.id !== queued.clientUserMessageId)
       throw new Error("This queued message is no longer pending");
     const presentationTicket = await input.capturePresentation?.({ kind: "thread", threadId });
@@ -478,10 +483,32 @@ export function createAgentRuntimeStageActions(input: {
         options?.submittedPresentation,
         options?.untrustedAppMessage,
       ),
-    onEditLastUserTurn: async (request) => {
+    onEditUserTurn: async (request) => {
       const target = exactTarget(request.threadId);
+      const owner = input.owner();
+      if (!owner) throw new Error("Open the conversation before editing this message");
+      const original = await owner.readSentMessage(request.turnId);
+      const promptInput: CodexPromptInput = { text: request.message, images: original.images };
+      const presentationTicket = await input.capturePresentation?.({
+        kind: "thread",
+        threadId: request.threadId,
+      });
+      // Compile before rewinding: a message the Agent cannot accept must not discard any history.
+      const prepared = retainAgentAppContext(
+        await input.prepare(request.message, promptInput),
+        original.message,
+      );
       await transport.rollback({ ...target, requestId: createUuidV7(), runId: request.turnId });
-      await dispatch(request.message);
+      const accepted = await transport.message({
+        ...target,
+        presentationTicket,
+        message: {
+          messageId: createUuidV7(),
+          ...prepared,
+          images: agentRuntimePromptImages(promptInput),
+        },
+      });
+      await owner.whenObserved?.(accepted.sequence);
     },
     onEnqueueQueuedFollowUp: (threadId, prompt, options) =>
       queuedMessage(threadId, prompt, options?.promptInput, options?.untrustedAppMessage),
@@ -808,7 +835,7 @@ export function useAgentRuntimeConversationAdapter(input: {
   );
   const canRollback = provider?.supportsConversationRollback === true;
   useEffect(() => {
-    owner?.setCapabilities({ canEditLastUserTurn: canRollback });
+    owner?.setCapabilities({ supportsUserTurnEdits: canRollback });
   }, [owner, canRollback]);
   const intentKey =
     targetThreadId ??

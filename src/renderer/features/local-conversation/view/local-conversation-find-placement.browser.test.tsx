@@ -162,7 +162,7 @@ const actions: ThreadStageActions = {
   onReorderQueuedFollowUps: async () => {},
   onSendQueuedFollowUpNow: async () => {},
   onEditQueuedFollowUp: async () => {},
-  onEditLastUserTurn: async () => {},
+  onEditUserTurn: async () => {},
   onForkFromTurn: async () => {},
   onUnarchiveThread: async () => {},
   onOpenTurnDiffReview: () => {},
@@ -229,7 +229,7 @@ describe("actual transcript Find placement", () => {
                       resumeState="resumed"
                       turnPagination={null}
                       capabilityFlags={{
-                        canEditLastUserTurn: false,
+                        canEditUserTurns: false,
                         canForkFromTurn: false,
                         canSearch: true,
                         canCollapseTurns: true,
@@ -391,7 +391,7 @@ describe("actual transcript Find placement", () => {
         resumeState="resumed"
         turnPagination={null}
         capabilityFlags={{
-          canEditLastUserTurn: false,
+          canEditUserTurns: false,
           canForkFromTurn: false,
           canSearch: true,
           canCollapseTurns: true,

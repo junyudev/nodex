@@ -24,6 +24,11 @@ interface ConversationTurnCollapseKey {
   readonly turnSearchKey: string;
 }
 
+interface UserTurnEditDraftKey {
+  readonly conversationId: string;
+  readonly turnId: string;
+}
+
 interface LatestTurnCollapseTransitionEntry {
   readonly hasMcpApp: boolean;
   readonly turnSearchKey: string;
@@ -63,6 +68,18 @@ const collapseKeysByConversationIdAtom = scopedAtom<Readonly<Record<string, read
   { debugLabel: "local-conversation-collapse-key-index" },
 );
 
+/** An open message edit keeps its draft while its Turn scrolls out of the virtualized window. */
+export const localConversationUserTurnEditDraftFamily = scopedAtomFamily({
+  scope: appScope,
+  debugLabel: "local-conversation-user-turn-edit-draft",
+  key: ({ conversationId, turnId }: UserTurnEditDraftKey) => ({ conversationId, turnId }),
+  create: () => scopedAtom<string | null>(appScope, null, { debugLabel: "draft" }),
+});
+
+const editDraftTurnIdsByConversationIdAtom = scopedAtom<
+  Readonly<Record<string, readonly string[]>>
+>(appScope, EMPTY_COLLAPSE_KEY_INDEX, { debugLabel: "local-conversation-edit-draft-key-index" });
+
 const deletedConversationIdsAtom = scopedAtom<Readonly<Record<string, true>>>(
   appScope,
   Object.freeze({}),
@@ -100,19 +117,44 @@ export function resolveLatestTurnCollapseTransition(input: {
   return [...turnSearchKeys];
 }
 
+function indexConversationKey(
+  handle: ScopeHandle,
+  index: typeof collapseKeysByConversationIdAtom,
+  conversationId: string,
+  key: string,
+): void {
+  if (handle.get(deletedConversationIdsAtom)[conversationId] === true) return;
+  handle.set(index, (current) => {
+    const currentKeys = current[conversationId] ?? [];
+    if (currentKeys.includes(key)) return current;
+    return {
+      ...current,
+      [conversationId]: [...currentKeys, key],
+    };
+  });
+}
+
+function removeConversationKeyIndex(
+  handle: ScopeHandle,
+  index: typeof collapseKeysByConversationIdAtom,
+  conversationId: string,
+): readonly string[] {
+  const keys = handle.get(index)[conversationId] ?? [];
+  if (keys.length === 0) return keys;
+  handle.set(index, (current) => {
+    if (!(conversationId in current)) return current;
+    const next = { ...current };
+    delete next[conversationId];
+    return Object.keys(next).length === 0 ? EMPTY_COLLAPSE_KEY_INDEX : next;
+  });
+  return keys;
+}
+
 function indexCollapseKey(
   handle: ScopeHandle,
   { conversationId, turnSearchKey }: ConversationTurnCollapseKey,
 ): void {
-  if (handle.get(deletedConversationIdsAtom)[conversationId] === true) return;
-  handle.set(collapseKeysByConversationIdAtom, (current) => {
-    const currentKeys = current[conversationId] ?? [];
-    if (currentKeys.includes(turnSearchKey)) return current;
-    return {
-      ...current,
-      [conversationId]: [...currentKeys, turnSearchKey],
-    };
-  });
+  indexConversationKey(handle, collapseKeysByConversationIdAtom, conversationId, turnSearchKey);
 }
 
 export function setLocalConversationTurnCollapseOverride(
@@ -151,10 +193,12 @@ export function removeLocalConversationViewState(
       [conversationId]: true,
     });
   }
-  const collapseKeysByConversationId = handle.get(collapseKeysByConversationIdAtom);
-  const collapseKeys = collapseKeysByConversationId[conversationId] ?? [];
   let removed = localConversationThreadRestoreSnapshotFamily.remove(handle, conversationId);
-
+  const collapseKeys = removeConversationKeyIndex(
+    handle,
+    collapseKeysByConversationIdAtom,
+    conversationId,
+  );
   for (const turnSearchKey of collapseKeys) {
     removed =
       localConversationTurnCollapseOverrideFamily.remove(handle, {
@@ -162,15 +206,17 @@ export function removeLocalConversationViewState(
         turnSearchKey,
       }) || removed;
   }
-
-  if (collapseKeys.length === 0) return removed;
-  handle.set(collapseKeysByConversationIdAtom, (current) => {
-    if (!(conversationId in current)) return current;
-    const next = { ...current };
-    delete next[conversationId];
-    return Object.keys(next).length === 0 ? EMPTY_COLLAPSE_KEY_INDEX : next;
-  });
-  return true;
+  const draftTurnIds = removeConversationKeyIndex(
+    handle,
+    editDraftTurnIdsByConversationIdAtom,
+    conversationId,
+  );
+  for (const turnId of draftTurnIds) {
+    removed =
+      localConversationUserTurnEditDraftFamily.remove(handle, { conversationId, turnId }) ||
+      removed;
+  }
+  return removed || collapseKeys.length > 0 || draftTurnIds.length > 0;
 }
 
 export function useLocalConversationTurnCollapseOverride({
@@ -199,4 +245,30 @@ export function useLocalConversationTurnCollapseOverride({
   );
 
   return [override, setOverride] as const;
+}
+
+/**
+ * The open edit draft of one sent user message, or null while the message is not being edited.
+ * Without a Turn identity the message cannot be edited, so the draft stays closed.
+ */
+export function useLocalConversationUserTurnEditDraft(
+  conversationId: string,
+  turnId: string | null,
+): readonly [string | null, (draft: string | null) => void] {
+  const handle = useScopeHandle(appScope);
+  const key = useMemo(() => ({ conversationId, turnId: turnId ?? "" }), [conversationId, turnId]);
+  const draft = useScopedAtomValue(localConversationUserTurnEditDraftFamily(key));
+
+  const setDraft = useCallback(
+    (next: string | null) => {
+      if (turnId === null || handle.get(deletedConversationIdsAtom)[conversationId] === true)
+        return;
+      if (next !== null)
+        indexConversationKey(handle, editDraftTurnIdsByConversationIdAtom, conversationId, turnId);
+      handle.set(localConversationUserTurnEditDraftFamily(key), next);
+    },
+    [conversationId, handle, key, turnId],
+  );
+
+  return [turnId === null ? null : draft, setDraft] as const;
 }

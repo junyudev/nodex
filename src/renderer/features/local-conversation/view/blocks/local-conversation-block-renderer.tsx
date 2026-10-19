@@ -46,7 +46,7 @@ interface ThreadBlockRendererProps {
   childMemberships?: readonly CodexConversationChildMembership[];
   parentModel?: string | null;
   threadCwd?: string | null;
-  onEditLastUserTurn?: (input: {
+  onEditUserTurn?: (input: {
     threadId: string;
     turnId: string;
     message: string;
@@ -86,7 +86,7 @@ export function ThreadBlockRenderer({
   childMemberships,
   parentModel,
   threadCwd,
-  onEditLastUserTurn,
+  onEditUserTurn,
   onForkFromTurn,
   onOpenTurnDiffReview,
   onOpenTurnDiffFileInSidePanel,
@@ -246,7 +246,7 @@ export function ThreadBlockRenderer({
         isStreamingTurn={isStreamingTurn}
         isSearchMatch={isSearchMatch}
         isActiveSearchMatch={isActiveSearchMatch}
-        onEditLastUserTurn={onEditLastUserTurn}
+        onEditUserTurn={onEditUserTurn}
         onForkFromTurn={onForkFromTurn}
         onOpenSideChat={onOpenSideChat}
         onOpenThread={onOpenThread}
@@ -305,7 +305,7 @@ export function ThreadBlockRenderer({
               childMemberships={childMemberships}
               parentModel={parentModel}
               threadCwd={threadCwd}
-              onEditLastUserTurn={onEditLastUserTurn}
+              onEditUserTurn={onEditUserTurn}
               onForkFromTurn={onForkFromTurn}
               onOpenTurnDiffReview={onOpenTurnDiffReview}
               onOpenTurnDiffFileInSidePanel={onOpenTurnDiffFileInSidePanel}

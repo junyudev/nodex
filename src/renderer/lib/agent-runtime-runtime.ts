@@ -19,8 +19,8 @@ import type {
   AgentRuntimeHistoryInput,
   AgentRuntimeQueueReadInput,
   AgentRuntimeQueuePage,
-  AgentRuntimeQueuedMessageInput,
-  AgentRuntimeQueuedMessage,
+  AgentRuntimeRunInput,
+  AgentRuntimeRunMessage,
   AgentRuntimeQueuedPreview,
   AgentRuntimeItemInput,
   AgentRuntimeAttachmentInput,
@@ -195,12 +195,8 @@ export interface AgentRuntimeRendererTransport {
   ) => Promise<AgentRuntimeOperations["providers.read"]["output"]>;
   readonly history: (input: AgentRuntimeHistoryInput) => Promise<AgentHistoryPage>;
   readonly readQueuePage: (input: AgentRuntimeQueueReadInput) => Promise<AgentRuntimeQueuePage>;
-  readonly readQueuedPreview: (
-    input: AgentRuntimeQueuedMessageInput,
-  ) => Promise<AgentRuntimeQueuedPreview>;
-  readonly readQueuedMessage: (
-    input: AgentRuntimeQueuedMessageInput,
-  ) => Promise<AgentRuntimeQueuedMessage>;
+  readonly readQueuedPreview: (input: AgentRuntimeRunInput) => Promise<AgentRuntimeQueuedPreview>;
+  readonly readRunMessage: (input: AgentRuntimeRunInput) => Promise<AgentRuntimeRunMessage>;
   readonly item: (input: AgentRuntimeItemInput) => Promise<AgentTurnItem | null>;
   readonly attachment: (
     input: AgentRuntimeAttachmentInput,
@@ -238,7 +234,7 @@ export const agentRuntimeRuntime: AgentRuntimeRendererTransport = {
   history: (input) => invokeRendererQuery("agent-runtime:session:history", input),
   readQueuePage: (input) => invokeRendererQuery("agent-runtime:session:queue-read", input),
   readQueuedPreview: (input) => invokeRendererQuery("agent-runtime:session:queued-preview", input),
-  readQueuedMessage: (input) => invokeRendererQuery("agent-runtime:session:queued-message", input),
+  readRunMessage: (input) => invokeRendererQuery("agent-runtime:session:run-message", input),
   item: (input) => invokeRendererQuery("agent-runtime:session:item", input),
   attachment: (input) => invokeRendererQuery("agent-runtime:session:attachment", input),
   activity: () => invokeRendererQuery("agent-runtime:activity:read"),

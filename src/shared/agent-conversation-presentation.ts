@@ -660,7 +660,7 @@ export function projectAgentConversation(
       error: null,
     },
     capabilityFlags: {
-      canEditLastUserTurn:
+      canEditUserTurns:
         (snapshot.metadata?.capabilities ?? presentation.capabilities)?.controls?.rollback === true,
       canForkFromTurn:
         (snapshot.metadata?.capabilities ?? presentation.capabilities)?.controls?.fork === true,

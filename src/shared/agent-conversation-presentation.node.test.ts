@@ -429,7 +429,7 @@ test("uses native effective metadata and maps resume dialog answers to the exact
   ).toEqual({ decision: "dialog", result: "never" });
   expect(agentInteractionResponseFromAnswers(request, {})).toEqual({ decision: "deny" });
   expect(projected.capabilityFlags).toMatchObject({
-    canEditLastUserTurn: true,
+    canEditUserTurns: true,
     canForkFromTurn: true,
   });
 });
@@ -490,7 +490,7 @@ describe.each(["claude", "acp"] as const)("%s shared conversation presentation",
     expect(completed.turns[0]?.status).toBe("completed");
     expect(completed.requests).toEqual([]);
     expect(completed.capabilityFlags).toEqual({
-      canEditLastUserTurn: false,
+      canEditUserTurns: false,
       canForkFromTurn: false,
       canSearch: true,
       canCollapseTurns: true,

@@ -76,7 +76,7 @@ describe("buildCodexConversationSnapshot", () => {
       requests: [],
       canonicalState,
       capabilityFlags: {
-        canEditLastUserTurn: true,
+        canEditUserTurns: true,
         canForkFromTurn: true,
         canSearch: true,
         canCollapseTurns: true,
@@ -105,7 +105,7 @@ describe("buildCodexConversationSnapshot", () => {
       resumeState: "resumed",
       requests: [request],
       capabilityFlags: {
-        canEditLastUserTurn: true,
+        canEditUserTurns: true,
         canForkFromTurn: true,
         canSearch: true,
         canCollapseTurns: true,
@@ -174,7 +174,7 @@ describe("buildCodexConversationSnapshot", () => {
       resumeState: "resumed",
       requests: [],
       capabilityFlags: {
-        canEditLastUserTurn: true,
+        canEditUserTurns: true,
         canForkFromTurn: true,
         canSearch: true,
         canCollapseTurns: true,
@@ -193,7 +193,7 @@ describe("buildCodexConversationSnapshot", () => {
       resumeState: "resumed",
       requests: [],
       capabilityFlags: {
-        canEditLastUserTurn: true,
+        canEditUserTurns: true,
         canForkFromTurn: true,
         canSearch: true,
         canCollapseTurns: true,
@@ -245,7 +245,7 @@ describe("buildCodexConversationSnapshot", () => {
       resumeState: "resumed",
       requests: [],
       capabilityFlags: {
-        canEditLastUserTurn: true,
+        canEditUserTurns: true,
         canForkFromTurn: true,
         canSearch: true,
         canCollapseTurns: true,
@@ -309,7 +309,7 @@ describe("buildCodexConversationSnapshot", () => {
       resumeState: "resumed",
       requests: [],
       capabilityFlags: {
-        canEditLastUserTurn: true,
+        canEditUserTurns: true,
         canForkFromTurn: true,
         canSearch: true,
         canCollapseTurns: true,
@@ -392,7 +392,7 @@ describe("buildCodexConversationSnapshot", () => {
       resumeState: "resumed",
       requests: [],
       capabilityFlags: {
-        canEditLastUserTurn: true,
+        canEditUserTurns: true,
         canForkFromTurn: true,
         canSearch: true,
         canCollapseTurns: true,

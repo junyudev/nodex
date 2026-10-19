@@ -12,7 +12,7 @@ import { CodexMainConversationSettings } from "./CodexMainConversationSettings";
 import { ConversationEntityMap } from "./internal/ConversationEntityMap";
 import { CodexTurnCommands } from "./CodexTurnCommands";
 import {
-  editCanonicalLastUserTurn,
+  editCanonicalUserTurn,
   type CanonicalEditOptions,
 } from "../../shared/codex-conversation-state/codex-owner-edit";
 
@@ -51,7 +51,7 @@ export const make = Effect.gen(function* () {
         const nativeOptions = { expectedHostId: hostId, expectedGeneration: nativeGeneration };
         yield* Effect.tryPromise({
           try: () =>
-            editCanonicalLastUserTurn(
+            editCanonicalUserTurn(
               {
                 getConversation: () => {
                   assertOwner();

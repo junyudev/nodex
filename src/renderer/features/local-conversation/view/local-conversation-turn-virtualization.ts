@@ -785,19 +785,43 @@ export function resolveThreadLatestTurnPhase(
   return turn.finalAssistantStartedAtMs == null ? "idle" : "final_answer";
 }
 
+/**
+ * Editing an earlier message first rewinds history, which leaves an existing Turn latest. A
+ * pending submit placement belongs to the Turn the rewritten message starts, not to that survivor.
+ */
+export function isRewindSurvivorLatestTurn(input: {
+  readonly latestTurnKey: string | null;
+  readonly previousLatestTurnKey: string | null;
+  readonly previousTurnKeys: ReadonlySet<string>;
+}): boolean {
+  return (
+    input.latestTurnKey !== null &&
+    input.latestTurnKey !== input.previousLatestTurnKey &&
+    input.previousTurnKeys.has(input.latestTurnKey)
+  );
+}
+
+/**
+ * A submit from the bottom places its new Turn at the top of the viewport; a submit while reading
+ * history keeps the reader's position. An edit always places its rebuilt Turn, because the
+ * message the reader just rewrote becomes the newest Turn wherever they were reading.
+ */
 export function buildPendingLatestTurnSubmitPlacement({
   distanceFromBottomPx,
   responseSpacerHeightPx,
   scrollHeightPx,
+  placeLatestTurn = false,
 }: {
   distanceFromBottomPx: number;
   responseSpacerHeightPx: number;
   scrollHeightPx: number | null;
+  placeLatestTurn?: boolean;
 }): PendingLatestTurnSubmitPlacement {
   return {
     distanceFromBottomPx,
     scrollHeightPx,
     shouldPlaceLatestTurn:
+      placeLatestTurn ||
       distanceFromBottomPx - responseSpacerHeightPx <= LATEST_TURN_SUBMIT_PLACEMENT_THRESHOLD_PX,
   };
 }

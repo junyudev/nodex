@@ -84,7 +84,9 @@ export interface LocalConversationThreadScrollControllerValue {
   shouldFollowContentGrowth: () => boolean;
   maybeStickToBottom: () => void;
   preserveScrollPositionForNextLayout: () => void;
-  prepareLatestTurnSubmitPlacement: () => PendingLatestTurnSubmitPlacement | null;
+  prepareLatestTurnSubmitPlacement: (options?: {
+    readonly placeLatestTurn?: boolean;
+  }) => PendingLatestTurnSubmitPlacement | null;
   registerResponseSpacerState: (state: ThreadResponseSpacerState | null) => void;
   responseSpacerState: ThreadResponseSpacerState | null;
   scrollToBottom: () => void;
@@ -455,17 +457,21 @@ function LocalConversationThreadScrollControllerProvider({ children }: { childre
     setResponseSpacerState(state);
   }, []);
 
-  const prepareLatestTurnSubmitPlacement = useCallback(() => {
-    cancelNativeFindScroll();
-    const element = scrollElementRef.current;
-    const placement = buildPendingLatestTurnSubmitPlacement({
-      distanceFromBottomPx: getScrollDistanceFromBottomPx(),
-      responseSpacerHeightPx: responseSpacerStateRef.current?.getHeightPx() ?? 0,
-      scrollHeightPx: element?.scrollHeight ?? null,
-    });
-    pendingLatestTurnSubmitPlacementRef.current = placement;
-    return placement;
-  }, [cancelNativeFindScroll, getScrollDistanceFromBottomPx]);
+  const prepareLatestTurnSubmitPlacement = useCallback(
+    (options?: { readonly placeLatestTurn?: boolean }) => {
+      cancelNativeFindScroll();
+      const element = scrollElementRef.current;
+      const placement = buildPendingLatestTurnSubmitPlacement({
+        distanceFromBottomPx: getScrollDistanceFromBottomPx(),
+        responseSpacerHeightPx: responseSpacerStateRef.current?.getHeightPx() ?? 0,
+        scrollHeightPx: element?.scrollHeight ?? null,
+        placeLatestTurn: options?.placeLatestTurn,
+      });
+      pendingLatestTurnSubmitPlacementRef.current = placement;
+      return placement;
+    },
+    [cancelNativeFindScroll, getScrollDistanceFromBottomPx],
+  );
 
   const consumePendingLatestTurnSubmitPlacement = useCallback(() => {
     const placement = pendingLatestTurnSubmitPlacementRef.current;

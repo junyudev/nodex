@@ -1,10 +1,40 @@
-import type { OrchestrationV2AppThread, OrchestrationV2CheckpointScope } from "@t3tools/contracts";
+import type {
+  OrchestrationV2AppThread,
+  OrchestrationV2CheckpointScope,
+  OrchestrationV2Run,
+  RunId,
+} from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 import type * as FileSystem from "effect/FileSystem";
 import * as Option from "effect/Option";
 import type * as Path from "effect/Path";
 import type { ProjectionStoreV2 } from "./ProjectionStore.ts";
 import type * as ProjectStore from "./ProjectStore.ts";
+
+const UNSETTLED_RUN_STATUSES: ReadonlySet<OrchestrationV2Run["status"]> = new Set([
+  "preparing",
+  "queued",
+  "starting",
+  "running",
+  "waiting",
+]);
+
+/**
+ * Editing a user message rewinds the conversation to just before that message's Run. Any Run
+ * still in the conversation can be the target; every later Run leaves with it. Pending or
+ * executing work would race the rewind, so the whole conversation must be idle.
+ */
+export function isEditableUserRun(
+  runs: ReadonlyArray<Pick<OrchestrationV2Run, "id" | "status">>,
+  runId: RunId,
+): boolean {
+  const target = runs.find((run) => run.id === runId);
+  return (
+    target !== undefined &&
+    target.status !== "rolled_back" &&
+    !runs.some((run) => UNSETTLED_RUN_STATUSES.has(run.status))
+  );
+}
 
 export const SHARED_WORKSPACE_RESTORE_MESSAGE =
   "File restore requires an isolated worktree. This workspace may contain changes from another thread. Rewind the conversation without restoring files instead.";

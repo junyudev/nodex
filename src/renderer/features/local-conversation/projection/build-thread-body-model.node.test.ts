@@ -94,7 +94,7 @@ function buildConversation(
     pendingSteers: [],
     backgroundTerminalRows: [],
     capabilityFlags: {
-      canEditLastUserTurn: true,
+      canEditUserTurns: true,
       canForkFromTurn: true,
       canSearch: true,
       canCollapseTurns: true,

@@ -515,11 +515,7 @@ export interface ThreadStageActions {
     promptInput?: CodexPromptInput;
     ledgerRevision?: number;
   }) => Promise<void>;
-  onEditLastUserTurn: (input: {
-    threadId: string;
-    turnId: string;
-    message: string;
-  }) => Promise<void>;
+  onEditUserTurn: (input: { threadId: string; turnId: string; message: string }) => Promise<void>;
   onForkFromTurn: (input: { threadId: string; turnId: string; message: string }) => Promise<void>;
   onCompactThread?: (threadId: string) => Promise<void>;
   onGetThreadGoal?: (threadId: string) => Promise<ThreadGoal | null>;

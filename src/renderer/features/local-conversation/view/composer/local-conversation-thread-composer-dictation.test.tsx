@@ -196,7 +196,7 @@ function buildModel(overrides?: Partial<ThreadFooterModel>): ThreadFooterModel {
       pendingSteers: [],
       backgroundTerminalRows: [],
       capabilityFlags: {
-        canEditLastUserTurn: true,
+        canEditUserTurns: true,
         canForkFromTurn: true,
         canSearch: true,
         canCollapseTurns: true,
@@ -278,7 +278,7 @@ function buildActions(overrides?: Partial<ThreadStageActions>): ThreadStageActio
     onReorderQueuedFollowUps: async () => {},
     onSendQueuedFollowUpNow: async () => {},
     onEditQueuedFollowUp: async () => {},
-    onEditLastUserTurn: async () => {},
+    onEditUserTurn: async () => {},
     onForkFromTurn: async () => {},
     onUnarchiveThread: async () => {},
     onOpenTurnDiffReview: () => {},

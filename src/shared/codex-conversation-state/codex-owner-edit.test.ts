@@ -9,7 +9,7 @@ import { replaceCanonicalHistoryDraft } from "./codex-canonical-history-loader";
 import { mutateCodexCanonicalRevert } from "./codex-revert-state";
 import { residentConversationTurns } from "./codex-turn-mutation";
 import {
-  editCanonicalLastUserTurn,
+  editCanonicalUserTurn,
   replaceCanonicalEditedPrompt,
   type CanonicalEditClient,
 } from "./codex-owner-edit";
@@ -26,12 +26,19 @@ function harness(
     ephemeral?: boolean;
     supportsRevert?: boolean;
     input?: TurnStartParams["input"];
+    /** Later Turns after the edited message; by default one automatic Turn without user input. */
+    later?: ReadonlyArray<{
+      readonly id: string;
+      readonly input: TurnStartParams["input"];
+      readonly status?: Turn["status"];
+    }>;
   } = {},
 ) {
-  const turn = (id: string): Turn => ({
+  const later = options.later ?? [{ id: "automatic", input: [] }];
+  const turn = (id: string, status: Turn["status"] = "completed"): Turn => ({
     rootTurnId: null,
     id,
-    status: "completed",
+    status,
     itemsView: "full",
     items: [],
     error: null,
@@ -43,7 +50,7 @@ function harness(
     ...buildAgentActivityV2CorpusThread([]),
     historyMode: options.historyMode ?? "paginated",
     ephemeral: options.ephemeral ?? false,
-    turns: [turn("message"), turn("automatic")],
+    turns: [turn("message"), ...later.map((entry) => turn(entry.id, entry.status))],
   };
   let state: CodexCanonicalConversationState = {
     ...createCodexCanonicalHydratedConversationState(thread, {
@@ -64,7 +71,9 @@ function harness(
       { type: "text", text: "# Files\n## My request for Codex:\nold", text_elements: [] },
       { type: "localImage", path: "/image.png" },
     ];
-    draft.turns[1]!.params.input = [];
+    later.forEach((entry, index) => {
+      draft.turns[index + 1]!.params.input = entry.input;
+    });
     replaceCanonicalHistoryDraft(draft, draft.turns, false);
   });
   const calls: string[] = [];
@@ -99,7 +108,7 @@ function harness(
 
 test("editing the latest message also reverts trailing automatic turns and keeps non-text input", async () => {
   const f = harness();
-  await editCanonicalLastUserTurn(f.client, "id", {
+  await editCanonicalUserTurn(f.client, "id", {
     turnId: "message",
     message: "new",
   });
@@ -118,9 +127,44 @@ test("editing the latest message also reverts trailing automatic turns and keeps
   expect(f.read().paginatedHistory).toEqual({ itemsBackwardsCursor: "items" });
 });
 
+test("editing an earlier message reverts it with every later user Turn", async () => {
+  const f = harness({
+    later: [
+      { id: "follow-up", input: [{ type: "text", text: "follow up", text_elements: [] }] },
+      { id: "latest", input: [{ type: "text", text: "latest", text_elements: [] }] },
+    ],
+  });
+  await editCanonicalUserTurn(f.client, "id", { turnId: "message", message: "rewritten" });
+
+  expect(f.calls).toEqual(["settings", "revert:message"]);
+  expect(f.starts[0]?.input).toEqual([
+    { type: "text", text: "# Files\n## My request:\nrewritten\n", text_elements: [] },
+    { type: "localImage", path: "/image.png" },
+  ]);
+  expect(residentConversationTurns(f.read())).toEqual([]);
+});
+
+test("editing waits for every later Turn to settle", async () => {
+  const f = harness({
+    later: [
+      {
+        id: "running",
+        input: [{ type: "text", text: "still going", text_elements: [] }],
+        status: "inProgress",
+      },
+    ],
+  });
+
+  await expect(
+    editCanonicalUserTurn(f.client, "id", { turnId: "message", message: "rewritten" }),
+  ).rejects.toThrow("Cannot edit a message while a turn is in progress.");
+  expect(f.calls).toEqual(["settings"]);
+  expect(f.starts).toEqual([]);
+});
+
 test("editing an attachment-only message sends the new text alongside its image", async () => {
   const f = harness({ input: [{ type: "image", fileId: "file_123" }] });
-  await editCanonicalLastUserTurn(f.client, "id", { turnId: "message", message: "Describe it" });
+  await editCanonicalUserTurn(f.client, "id", { turnId: "message", message: "Describe it" });
 
   expect(f.starts[0]?.input).toEqual([
     { type: "text", text: "Describe it", text_elements: [] },
@@ -133,7 +177,7 @@ test.each([{ historyMode: "legacy" as const }, { ephemeral: true }, { supportsRe
   async (options) => {
     const f = harness(options);
     await expect(
-      editCanonicalLastUserTurn(f.client, "id", { turnId: "message", message: "new" }),
+      editCanonicalUserTurn(f.client, "id", { turnId: "message", message: "new" }),
     ).rejects.toThrow("Editing messages requires");
     expect(f.calls).toEqual(["settings"]);
     expect(f.starts).toEqual([]);

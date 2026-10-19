@@ -908,7 +908,7 @@ it.effect(
 );
 
 it.effect(
-  "fences last-message rewinds against foreign, stale and queued Runs before native work",
+  "fences message-edit rewinds against foreign Runs and unsettled conversations before native work",
   () =>
     Effect.gen(function* () {
       const orchestrator = yield* Orchestrator.OrchestratorV2;
@@ -957,7 +957,7 @@ it.effect(
         if (error._tag === "OrchestratorDispatchError")
           assert.equal(
             error.cause,
-            "Only the latest user Run of an idle conversation can be edited.",
+            "Only a sent user message of an idle conversation can be edited.",
           );
       }
       assert.deepEqual((yield* orchestrator.getThreadRecords(threadId, ["runs"])).runs, runs);

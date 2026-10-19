@@ -29,6 +29,7 @@ All notable changes to this project will be documented in this file.
 - Message images can open in a separate read-only tab, copy their contents or web address, add an attachment to the chat, and download a copy.
 - MCP Apps in chat messages can add context to the draft and voice call while preserving updates that arrive during submission.
 - Files can preview remote text, Markdown, images and PDFs while preserving the source host when pinned or reopened.
+- Any earlier message in a chat can be edited, not only the latest. Sending the edit continues the conversation from the rewritten message with its images and attached context, replacing every later Turn while leaving files untouched. Local Codex and Claude chats now offer editing too, and an open edit keeps its draft while you scroll.
 
 ### Changed
 

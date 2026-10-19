@@ -137,6 +137,17 @@ unless a separately listed app command owns an accelerator.
 | `↓`                  | Walk prompt history forward or clear recall | Thread composer only when traversing recalled history. It walks toward newer entries; pressing from the newest recalled entry clears the composer and exits traversal.                                                             |
 | `Ctrl+M`             | Hold to dictate                             | Electron-only thread composer dictation. Keydown starts recording; keyup stops and inserts the transcript. Button click also starts dictation, and the active dictation footer exposes `Stop dictation` and `Transcribe and send`. |
 
+### Message Editor
+
+Editing a sent user message uses the Composer's Enter preference.
+
+| Shortcut       | Action         | Notes                                                                                   |
+| -------------- | -------------- | --------------------------------------------------------------------------------------- |
+| `Enter`        | Send edit      | In `Cmd/Ctrl+Enter to send long prompts` mode, multiline drafts use `Enter` for newline |
+| `⌘/Ctrl+Enter` | Send edit      | Always sends a nonempty draft                                                           |
+| `Shift+Enter`  | Insert newline |                                                                                         |
+| `Escape`       | Cancel edit    | Closes the editor without sending and discards its draft                                |
+
 ### macOS Global Dictation
 
 | Shortcut            | Action                        | Notes                                                                                                                                                                                                                                                                                                                                |

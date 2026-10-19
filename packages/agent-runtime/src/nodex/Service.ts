@@ -249,7 +249,7 @@ const AgentRequest = Schema.Union([
     Schema.Struct({ threadId: ThreadId, cursor: Schema.optional(Schema.String) }),
   ),
   request("thread.queued-preview", Schema.Struct({ threadId: ThreadId, runId: RunId })),
-  request("thread.queued-message", Schema.Struct({ threadId: ThreadId, runId: RunId })),
+  request("thread.run-message", Schema.Struct({ threadId: ThreadId, runId: RunId })),
   request("project.close", Schema.Struct({ projectId: ProjectId })),
   request(
     "shell.read",
@@ -527,9 +527,9 @@ export const make = Effect.fn("AgentRuntime.makeService")(function* (
         return yield* projections.getQueuedRunPage(input.input.threadId, input.input.cursor);
       case "thread.queued-preview":
         return yield* projections.getQueuedRunPreview(input.input.threadId, input.input.runId);
-      case "thread.queued-message":
+      case "thread.run-message":
         return yield* projections
-          .getQueuedRunMessage(input.input.threadId, input.input.runId)
+          .getRunUserMessage(input.input.threadId, input.input.runId)
           .pipe(Effect.flatMap(encodeQueuedMessage));
       case "tasks.overview":
         return yield* projections
@@ -848,7 +848,7 @@ export const make = Effect.fn("AgentRuntime.makeService")(function* (
       case "project.activity":
       case "project.roots":
       case "thread.queue":
-      case "thread.queued-message":
+      case "thread.run-message":
       case "thread.queued-preview":
       case "shell.read":
       case "thread.snapshot":

@@ -46,6 +46,15 @@ function fixture() {
       if (!entry) throw new Error("Queued message missing");
       return { text: entry.prompt, images: [] };
     },
+    readSentMessage: vi.fn(async (runId: string) => ({
+      message: {
+        id: `message:${runId}`,
+        threadId: "child",
+        text: "Original",
+        attachments: [],
+      } as never,
+      images: [] as { source: string; caption?: string }[],
+    })),
   };
   const actions = createAgentRuntimeStageActions({
     target: () => target,
@@ -75,6 +84,7 @@ function fixture() {
     fork,
     openFork,
     rollback,
+    owner,
     actions,
     sessionQuestion: () => {
       state = {
@@ -253,7 +263,7 @@ describe("Agent Runtime stage commands", () => {
   it("keeps the app data of a queued message whose words are edited", async () => {
     const queue = vi.fn().mockResolvedValue({ sequence: 1 });
     const record = { kind: "nodex-app-context", contextId: "chart", label: "Chart", payload: {} };
-    const readQueuedMessage = vi.fn().mockResolvedValue({
+    const readRunMessage = vi.fn().mockResolvedValue({
       id: "message-1",
       text: "Compare these\n\n[Chart](t3-context://v1/nodex-app-context/chart)",
       context: { version: 1, records: [record] },
@@ -271,14 +281,17 @@ describe("Agent Runtime stage commands", () => {
         previousQueuePage: async () => {},
         queueBoundary: () => null,
         readQueuedInput: async () => ({ text: "Compare these" }),
+        readSentMessage: async () => {
+          throw new Error("Only queued messages are edited here");
+        },
       }),
-      transport: { queue, readQueuedMessage } as unknown as AgentRuntimeRendererTransport,
+      transport: { queue, readRunMessage } as unknown as AgentRuntimeRendererTransport,
       prepare: async (text) => ({ text }),
     });
 
     await actions.onReplaceQueuedFollowUp!("child", "run-1", 0, "Compare the first two");
 
-    expect(readQueuedMessage).toHaveBeenCalledWith({
+    expect(readRunMessage).toHaveBeenCalledWith({
       sessionId: "session",
       threadId: "child",
       runId: "run-1",
@@ -305,11 +318,12 @@ describe("Agent Runtime stage commands", () => {
           settle = resolve;
         }),
     );
-    const edited = f.actions.onEditLastUserTurn!({
+    const edited = f.actions.onEditUserTurn!({
       threadId: "child",
       turnId: "run:completed",
       message: "Edited",
     });
+    await vi.waitFor(() => expect(f.rollback).toHaveBeenCalledOnce());
     expect(f.message).not.toHaveBeenCalled();
     settle({ rolledBack: true });
     await edited;
@@ -320,13 +334,55 @@ describe("Agent Runtime stage commands", () => {
     });
     f.rollback.mockRejectedValue(new Error("Native rollback refused"));
     await expect(
-      f.actions.onEditLastUserTurn!({
+      f.actions.onEditUserTurn!({
         threadId: "child",
         turnId: "run:completed",
         message: "Unsafe edit",
       }),
     ).rejects.toThrow("Native rollback refused");
     expect(f.message).toHaveBeenCalledTimes(1);
+  });
+
+  it("resends an earlier message's images and app data with its rewritten words", async () => {
+    const f = fixture();
+    const record = { kind: "nodex-app-context", contextId: "chart", label: "Chart", payload: {} };
+    f.owner.readSentMessage.mockResolvedValueOnce({
+      message: {
+        id: "message:run:completed",
+        threadId: "child",
+        text: "Compare these\n\n[Chart](t3-context://v1/nodex-app-context/chart)",
+        context: { version: 1, records: [record] },
+        attachments: [],
+      } as never,
+      images: [{ source: "/attachments/chart.png", caption: "chart.png" }],
+    });
+
+    await f.actions.onEditUserTurn!({
+      threadId: "child",
+      turnId: "run:completed",
+      message: "Compare the first two",
+    });
+
+    expect(f.prepare).toHaveBeenCalledWith("Compare the first two", {
+      text: "Compare the first two",
+      images: [{ source: "/attachments/chart.png", caption: "chart.png" }],
+    });
+    expect(f.message.mock.calls[0]![0].message).toMatchObject({
+      text: "Prepared Compare the first two\n\n[Chart](t3-context://v1/nodex-app-context/chart)",
+      context: { version: 1, records: [record] },
+      images: [{ source: "/attachments/chart.png", caption: "chart.png" }],
+    });
+  });
+
+  it("keeps the conversation when the rewritten message cannot be sent", async () => {
+    const f = fixture();
+    f.prepare.mockRejectedValueOnce(new Error("This Agent connection does not support images"));
+
+    await expect(
+      f.actions.onEditUserTurn!({ threadId: "child", turnId: "run:completed", message: "Edited" }),
+    ).rejects.toThrow("does not support images");
+    expect(f.rollback).not.toHaveBeenCalled();
+    expect(f.message).not.toHaveBeenCalled();
   });
   it("keeps queued submissions and Run controls bound to the selected child", async () => {
     const f = fixture();

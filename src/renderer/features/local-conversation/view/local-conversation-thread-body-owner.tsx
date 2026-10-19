@@ -124,18 +124,18 @@ import {
   createCodexConversationHistoryTurnItemsRef,
   type CodexConversationHistoryTurnItemsRef,
 } from "../../../../shared/codex-conversation-history-page";
+import {
+  codexConversationTurnHasUserMessage,
+  resolveEditableUserTurnIds,
+} from "../../../../shared/codex-user-turn-edit";
+
+const NO_EDITABLE_USER_TURNS: ReadonlySet<string> = new Set();
 
 const PROGRESS_PHASES = [
   { key: "creatingWorktree", label: "Worktree" },
   { key: "runningSetup", label: "Setup" },
   { key: "startingThread", label: "Thread" },
 ] as const;
-
-function turnHasUserMessage(turn: CodexConversationTurn): boolean {
-  return turn.items.some(
-    (item) => item.kind === "userMessage" || item.semanticKind === "userMessage",
-  );
-}
 
 /** Holds committed search inputs and mounted DOM/API handles without subscribing to text. */
 function createThreadBodySearchReadPort(
@@ -291,12 +291,6 @@ function turnEntryHasMcpApp(entry: LocalConversationVirtualizedTurnListEntry | u
   if (entry && isCodexRealtimeTimelineEntry(entry)) return false;
   if (entry && isNormalizedConversationTurnEntry(entry)) return entry.hasMcpApp;
   return entry?.turn.items.some((item) => item.mcpToolCall?.mcpAppResourceUri != null) === true;
-}
-
-function resolveLatestEditableTurnId(turns: CodexConversationTurn[]): string | null {
-  const latestTurn = turns.at(-1) ?? null;
-  if (!latestTurn || latestTurn.status === "inProgress") return null;
-  return turnHasUserMessage(latestTurn) ? latestTurn.turnId : null;
 }
 
 function escapeAttributeSelectorValue(value: string): string {
@@ -651,14 +645,31 @@ export function LocalConversationThreadBodyOwner({
     [canonicalRequests, requests, resumeState, threadId, turns],
   );
 
-  const editableTurnId = capabilityFlags.canEditLastUserTurn
-    ? transcriptOwner && parentTurns.length === 0
-      ? transcriptStructure?.turns.at(-1)?.value.details.status !== "inProgress" &&
-        transcriptStructure?.turns.at(-1)?.hasUserMessage
-        ? (transcriptStructure?.turns.at(-1)?.value.details.turnId ?? null)
-        : null
-      : resolveLatestEditableTurnId(turns)
-    : null;
+  const editableTurnIds = useMemo(
+    () =>
+      capabilityFlags.canEditUserTurns
+        ? resolveEditableUserTurnIds(
+            transcriptOwner && parentTurns.length === 0
+              ? (transcriptStructure?.turns ?? []).map((row) => ({
+                  turnId: row.value.details.turnId,
+                  status: row.value.details.status,
+                  hasUserMessage: row.hasUserMessage && !row.isStartupPrewarm,
+                }))
+              : turns.map((turn) => ({
+                  turnId: turn.turnId,
+                  status: turn.status,
+                  hasUserMessage: codexConversationTurnHasUserMessage(turn),
+                })),
+          )
+        : NO_EDITABLE_USER_TURNS,
+    [
+      capabilityFlags.canEditUserTurns,
+      parentTurns.length,
+      transcriptOwner,
+      transcriptStructure,
+      turns,
+    ],
+  );
   const canForkFromTurn = capabilityFlags.canForkFromTurn;
   const [firstSubmissionPresentation, setFirstSubmissionPresentation] =
     useState<CodexConversationTurn | null>(firstSubmissionTurn ?? null);
@@ -1118,19 +1129,20 @@ export function LocalConversationThreadBodyOwner({
   ]);
   useRegisterContentSearchSource(contentSearchSource);
 
-  const handleEditLastUserTurn = useCallback(
+  const handleEditUserTurn = useCallback(
     async (input: { threadId: string; turnId: string; message: string }) => {
       onErrorMessage(null);
+      threadScrollController.prepareLatestTurnSubmitPlacement({ placeLatestTurn: true });
       try {
-        await actions.onEditLastUserTurn(input);
+        await actions.onEditUserTurn(input);
       } catch (error) {
-        const nextError =
-          error instanceof Error ? error.message : "Could not edit the last user message";
+        threadScrollController.clearPendingLatestTurnSubmitPlacement();
+        const nextError = error instanceof Error ? error.message : "Could not edit the message";
         onErrorMessage(nextError);
         throw error;
       }
     },
-    [actions, onErrorMessage],
+    [actions, onErrorMessage, threadScrollController],
   );
 
   const runForkChoice = useCallback(
@@ -1382,12 +1394,12 @@ export function LocalConversationThreadBodyOwner({
                 parentModel={parentModel}
                 projectWorkspacePath={projectWorkspacePath}
                 projectlessOutputDirectory={projectlessOutputDirectory}
-                editableTurnId={editableTurnId}
+                editableTurnIds={editableTurnIds}
                 canForkFromTurn={canForkFromTurn}
                 initialCollapsedAgentBodyByTurnSearchKey={
                   initialUiState?.collapsedAgentBodyByTurnId
                 }
-                onEditLastTurnMessage={handleEditLastUserTurn}
+                onEditUserTurn={handleEditUserTurn}
                 onForkTurnMessage={handleForkFromTurn}
                 onOpenTurnDiffReview={actions.onOpenTurnDiffReview}
                 onOpenTurnDiffFileInSidePanel={actions.onOpenTurnDiffFileInSidePanel}

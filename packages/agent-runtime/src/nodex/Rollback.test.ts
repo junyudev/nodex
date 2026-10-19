@@ -80,167 +80,205 @@ const context: ProjectionCheckpointContext = {
   ],
 };
 
-it.effect.each([true, false])(
-  "replays an accepted rewind after its Run is discarded (recorded anchor: %s)",
-  (recordedAnchor) => {
-    const instanceId = ProviderInstanceId.make("codex");
-    const adapter: ProviderAdapter.ProviderAdapterV2["Service"] = {
-      instanceId,
-      driver: ProviderDriverKind.make("codex"),
-      getCapabilities: () => Effect.succeed(CodexProviderCapabilitiesV2),
-      planSelectionTransition: () => Effect.succeed({ type: "apply_on_next_turn" }),
-      openSession: () =>
-        Effect.die("Native rewind is exercised by CheckpointRollbackService tests."),
-    };
-    return Effect.gen(function* () {
-      const orchestrator = yield* Orchestrator.OrchestratorV2;
-      const events = yield* EventSinkV2;
-      yield* orchestrator.dispatch({
-        type: "thread.create",
-        commandId: CommandId.make("create:rewind"),
-        threadId,
-        projectId: ProjectId.make("project:rewind"),
-        title: "Rewind",
-        modelSelection: { instanceId, model: "gpt-5.4" },
-        runtimeMode: "full-access",
-        interactionMode: "default",
-        branch: null,
-        worktreePath: null,
-        createdBy: "user",
-        creationSource: "web",
-      });
+const rewindInstanceId = ProviderInstanceId.make("codex");
+const rewindAdapter: ProviderAdapter.ProviderAdapterV2["Service"] = {
+  instanceId: rewindInstanceId,
+  driver: ProviderDriverKind.make("codex"),
+  getCapabilities: () => Effect.succeed(CodexProviderCapabilitiesV2),
+  planSelectionTransition: () => Effect.succeed({ type: "apply_on_next_turn" }),
+  openSession: () => Effect.die("Native rewind is exercised by CheckpointRollbackService tests."),
+};
+const rewindHarness = ProviderReplayHarness.layerWithRegistry(
+  { name: "rewind-receipt" },
+  ProviderAdapterRegistry.layerSingle(rewindAdapter),
+  { runEffectWorker: false },
+);
+
+/** An idle conversation whose user messages each completed one Run. */
+const seedIdleConversation = (input: {
+  readonly messages: ReadonlyArray<string>;
+  readonly recordedAnchor: boolean;
+}) =>
+  Effect.gen(function* () {
+    const orchestrator = yield* Orchestrator.OrchestratorV2;
+    const events = yield* EventSinkV2;
+    yield* orchestrator.dispatch({
+      type: "thread.create",
+      commandId: CommandId.make("create:rewind"),
+      threadId,
+      projectId: ProjectId.make("project:rewind"),
+      title: "Rewind",
+      modelSelection: { instanceId: rewindInstanceId, model: "gpt-5.4" },
+      runtimeMode: "full-access",
+      interactionMode: "default",
+      branch: null,
+      worktreePath: null,
+      createdBy: "user",
+      creationSource: "web",
+    });
+    for (const [index, text] of input.messages.entries())
       yield* orchestrator.dispatch({
         type: "message.dispatch",
-        commandId: CommandId.make("dispatch:rewind"),
+        commandId: CommandId.make(`dispatch:rewind:${index}`),
         threadId,
-        messageId: MessageId.make("message:rewind"),
-        text: "Original",
+        messageId: MessageId.make(`message:rewind:${index}`),
+        text,
         attachments: [],
         dispatchMode: { type: "defer_start" },
         createdBy: "user",
         creationSource: "web",
       });
-      const projection = yield* orchestrator.getThreadRecords(threadId, ["runs"]);
-      const run = { ...projection.runs[0]!, status: "completed" as const, queuePosition: null };
-      const now = yield* DateTime.now;
-      const providerThreadId = ProviderThreadId.make("provider-thread:rewind");
-      const nodeId = NodeId.make("node:rewind");
-      const eventFields = { threadId, providerInstanceId: instanceId, occurredAt: now };
-      yield* events.write({
-        events: [
-          {
-            ...eventFields,
-            id: EventId.make("event:rewind:run"),
-            type: "run.updated",
-            payload: run,
+    const projection = yield* orchestrator.getThreadRecords(threadId, ["runs"]);
+    const runs = projection.runs.map((run) => ({
+      ...run,
+      status: "completed" as const,
+      queuePosition: null,
+    }));
+    const now = yield* DateTime.now;
+    const providerThreadId = ProviderThreadId.make("provider-thread:rewind");
+    const nodeId = NodeId.make("node:rewind");
+    const eventFields = { threadId, providerInstanceId: rewindInstanceId, occurredAt: now };
+    yield* events.write({
+      events: [
+        ...runs.map((run) => ({
+          ...eventFields,
+          id: EventId.make(`event:rewind:run:${run.id}`),
+          type: "run.updated" as const,
+          payload: run,
+        })),
+        {
+          ...eventFields,
+          id: EventId.make("event:rewind:thread"),
+          type: "thread.metadata-updated",
+          payload: { ...projection.thread, activeProviderThreadId: providerThreadId },
+        },
+        {
+          ...eventFields,
+          id: EventId.make("event:rewind:provider"),
+          type: "provider-thread.updated",
+          payload: {
+            id: providerThreadId,
+            driver: ProviderDriverKind.make("codex"),
+            providerInstanceId: rewindInstanceId,
+            providerSessionId: ProviderSessionId.make("session:rewind"),
+            appThreadId: threadId,
+            ownerNodeId: nodeId,
+            nativeThreadRef: null,
+            nativeConversationHeadRef: null,
+            status: "idle",
+            firstRunOrdinal: 1,
+            lastRunOrdinal: runs.length,
+            handoffIds: [],
+            forkedFrom: null,
+            createdAt: now,
+            updatedAt: now,
           },
-          {
-            ...eventFields,
-            id: EventId.make("event:rewind:thread"),
-            type: "thread.metadata-updated",
-            payload: { ...projection.thread, activeProviderThreadId: providerThreadId },
+        },
+        {
+          ...eventFields,
+          id: EventId.make("event:rewind:scope"),
+          type: "checkpoint-scope.created",
+          payload: {
+            id: scopeId,
+            threadId,
+            runId: runs[0]!.id,
+            nodeId,
+            parentScopeId: null,
+            providerThreadId,
+            kind: "root_run",
+            ordinalWithinParent: 0,
+            advancesAppRunCount: true,
+            cwd: "/workspace",
+            createdAt: now,
           },
-          {
-            ...eventFields,
-            id: EventId.make("event:rewind:provider"),
-            type: "provider-thread.updated",
-            payload: {
-              id: providerThreadId,
-              driver: ProviderDriverKind.make("codex"),
-              providerInstanceId: instanceId,
-              providerSessionId: ProviderSessionId.make("session:rewind"),
-              appThreadId: threadId,
-              ownerNodeId: nodeId,
-              nativeThreadRef: null,
-              nativeConversationHeadRef: null,
-              status: "idle",
-              firstRunOrdinal: 1,
-              lastRunOrdinal: 1,
-              handoffIds: [],
-              forkedFrom: null,
-              createdAt: now,
-              updatedAt: now,
-            },
-          },
-          {
-            ...eventFields,
-            id: EventId.make("event:rewind:scope"),
-            type: "checkpoint-scope.created",
-            payload: {
-              id: scopeId,
-              threadId,
-              runId: run.id,
-              nodeId,
-              parentScopeId: null,
-              providerThreadId,
-              kind: "root_run",
-              ordinalWithinParent: 0,
-              advancesAppRunCount: true,
-              cwd: "/workspace",
-              createdAt: now,
-            },
-          },
-          // Without a recorded anchor, the rewind records the thread start itself.
-          ...(recordedAnchor
-            ? [
-                {
-                  ...eventFields,
-                  id: EventId.make("event:rewind:checkpoint"),
-                  type: "checkpoint.captured" as const,
-                  payload: {
-                    ...context.checkpoints[0]!,
-                    threadId,
-                    nodeId,
-                    parentCheckpointId: null,
-                    files: [],
-                    capturedAt: now,
-                  },
+        },
+        // Without a recorded anchor, the rewind records the thread start itself.
+        ...(input.recordedAnchor
+          ? [
+              {
+                ...eventFields,
+                id: EventId.make("event:rewind:checkpoint"),
+                type: "checkpoint.captured" as const,
+                payload: {
+                  ...context.checkpoints[0]!,
+                  threadId,
+                  nodeId,
+                  parentCheckpointId: null,
+                  files: [],
+                  capturedAt: now,
                 },
-              ]
-            : []),
-        ],
-      });
-      yield* Effect.gen(function* () {
-        const request = { threadId, requestId: CommandId.make("rewind-once"), runId: run.id };
-        const accepted = yield* rollbackThread(request);
-        yield* events.write({
-          events: [
-            {
-              ...eventFields,
-              id: EventId.make("event:rewind:discarded"),
-              type: "run.updated",
-              payload: { ...run, status: "rolled_back" },
-            },
-          ],
-        });
-        expect(yield* rollbackThread(request)).toEqual(accepted);
-        expect((yield* orchestrator.getThreadRecords(threadId, ["runs"])).runs[0]?.status).toBe(
-          "rolled_back",
-        );
-        const anchors = (yield* orchestrator.getCheckpointContext(threadId)).checkpoints;
-        expect(anchors.map((anchor) => [anchor.ordinalWithinScope, anchor.appRunOrdinal])).toEqual([
-          [0, null],
-        ]);
-      }).pipe(
-        Effect.provide(
-          Layer.mock(ThreadManagementService)({
-            getReceipt: orchestrator.getReceipt,
-            getCheckpointContext: orchestrator.getCheckpointContext,
-            getThreadRecords: orchestrator.getThreadRecords,
-            dispatch: orchestrator.dispatch,
-          }),
-        ),
-      );
-    }).pipe(
+              },
+            ]
+          : []),
+      ],
+    });
+    return { runs, eventFields };
+  });
+
+const withOrchestratorThreads = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
+  Effect.gen(function* () {
+    const orchestrator = yield* Orchestrator.OrchestratorV2;
+    return yield* effect.pipe(
       Effect.provide(
-        ProviderReplayHarness.layerWithRegistry(
-          { name: "rewind-receipt" },
-          ProviderAdapterRegistry.layerSingle(adapter),
-          { runEffectWorker: false },
-        ),
+        Layer.mock(ThreadManagementService)({
+          getReceipt: orchestrator.getReceipt,
+          getCheckpointContext: orchestrator.getCheckpointContext,
+          getThreadRecords: orchestrator.getThreadRecords,
+          dispatch: orchestrator.dispatch,
+        }),
       ),
     );
-  },
+  });
+
+it.effect.each([true, false])(
+  "replays an accepted rewind after its Run is discarded (recorded anchor: %s)",
+  (recordedAnchor) =>
+    Effect.gen(function* () {
+      const orchestrator = yield* Orchestrator.OrchestratorV2;
+      const events = yield* EventSinkV2;
+      const { runs, eventFields } = yield* seedIdleConversation({
+        messages: ["Original"],
+        recordedAnchor,
+      });
+      const run = runs[0]!;
+      yield* withOrchestratorThreads(
+        Effect.gen(function* () {
+          const request = { threadId, requestId: CommandId.make("rewind-once"), runId: run.id };
+          const accepted = yield* rollbackThread(request);
+          yield* events.write({
+            events: [
+              {
+                ...eventFields,
+                id: EventId.make("event:rewind:discarded"),
+                type: "run.updated",
+                payload: { ...run, status: "rolled_back" },
+              },
+            ],
+          });
+          expect(yield* rollbackThread(request)).toEqual(accepted);
+          expect((yield* orchestrator.getThreadRecords(threadId, ["runs"])).runs[0]?.status).toBe(
+            "rolled_back",
+          );
+          const anchors = (yield* orchestrator.getCheckpointContext(threadId)).checkpoints;
+          expect(
+            anchors.map((anchor) => [anchor.ordinalWithinScope, anchor.appRunOrdinal]),
+          ).toEqual([[0, null]]);
+        }),
+      );
+    }).pipe(Effect.provide(rewindHarness)),
+);
+
+it.effect("admits a rewind before an earlier user message of an idle conversation", () =>
+  Effect.gen(function* () {
+    const { runs } = yield* seedIdleConversation({
+      messages: ["First", "Second", "Third"],
+      recordedAnchor: true,
+    });
+    const accepted = yield* withOrchestratorThreads(
+      rollbackThread({ threadId, requestId: CommandId.make("rewind-earlier"), runId: runs[1]!.id }),
+    );
+    expect(accepted.userMessageId).toBe(runs[1]!.userMessageId);
+  }).pipe(Effect.provide(rewindHarness)),
 );
 
 it.effect.each([

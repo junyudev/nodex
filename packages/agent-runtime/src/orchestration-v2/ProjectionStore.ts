@@ -1067,7 +1067,8 @@ export interface ProjectionStoreV2Shape {
     } | null,
     ProjectionStoreV2Error
   >;
-  readonly getQueuedRunMessage: (
+  /** A Run's user message while the Run remains in the conversation (not rolled back). */
+  readonly getRunUserMessage: (
     threadId: ThreadId,
     runId: RunId,
   ) => Effect.Effect<OrchestrationV2ConversationMessage | null, ProjectionStoreV2Error>;
@@ -6721,16 +6722,16 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
         Effect.mapError((cause) => new ProjectionStoreReadError({ threadId, cause })),
       );
 
-    const getQueuedRunMessage: ProjectionStoreV2Shape["getQueuedRunMessage"] = (threadId, runId) =>
+    const getRunUserMessage: ProjectionStoreV2Shape["getRunUserMessage"] = (threadId, runId) =>
       Effect.gen(function* () {
         const rows = yield* sql<PayloadRow>`SELECT message.payload_json
         FROM orchestration_v2_projection_runs run JOIN orchestration_v2_projection_messages message
           ON message.message_id = json_extract(run.payload_json,'$.userMessageId') AND message.thread_id = run.thread_id
-        WHERE run.thread_id = ${threadId} AND run.run_id = ${runId} AND run.status = 'queued'
+        WHERE run.thread_id = ${threadId} AND run.run_id = ${runId} AND run.status != 'rolled_back'
           AND message.role = 'user' LIMIT 1`;
         if (!rows[0]) return null;
         if (Buffer.byteLength(rows[0].payload_json) > 15 * 1024 * 1024)
-          return yield* Effect.fail(new Error("Queued message exceeds the detail budget"));
+          return yield* Effect.fail(new Error("User message exceeds the detail budget"));
         return yield* decodeMessagePayload(rows[0].payload_json);
       }).pipe(Effect.mapError((cause) => new ProjectionStoreReadError({ threadId, cause })));
 
@@ -8972,7 +8973,7 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
       getProjectRoots,
       getQueuedRunPage,
       getQueuedRunPreview,
-      getQueuedRunMessage,
+      getRunUserMessage,
       getProjectProviderSessionBindings,
       getExecutionActors,
       getExecutionHandoffs,
@@ -10298,11 +10299,13 @@ export const layerMemory: Layer.Layer<ProjectionStoreV2> = Layer.effect(
               }
             : null;
         }),
-      getQueuedRunMessage: (threadId, runId) =>
+      getRunUserMessage: (threadId, runId) =>
         Effect.gen(function* () {
           const state = yield* Ref.get(replayState);
           const projection = state.projections.get(threadId);
-          const run = projection?.runs.find((run) => run.id === runId && run.status === "queued");
+          const run = projection?.runs.find(
+            (run) => run.id === runId && run.status !== "rolled_back",
+          );
           return run
             ? (projection?.messages.find(
                 (message) =>

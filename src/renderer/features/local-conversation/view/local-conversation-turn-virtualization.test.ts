@@ -2,6 +2,7 @@ import { describe, expect, test } from "vite-plus/test";
 import {
   buildPendingLatestTurnSubmitPlacement,
   buildVirtualizedTurnLayout,
+  isRewindSurvivorLatestTurn,
   buildVirtualizedTurnListRestoreState,
   createThreadLatestTurnFollowState,
   resolveAdjustedScrollDistanceFromBottomForMeasuredTurnHeightDelta,
@@ -596,6 +597,45 @@ describe("latest turn follow helpers", () => {
       }),
     ).toBe(true);
   });
+  test("an edit places its rebuilt Turn even when submitted while reading history", () => {
+    const reading = {
+      distanceFromBottomPx: 4_000,
+      responseSpacerHeightPx: 0,
+      scrollHeightPx: 9_000,
+    };
+    expect(buildPendingLatestTurnSubmitPlacement(reading).shouldPlaceLatestTurn).toBe(false);
+    expect(
+      buildPendingLatestTurnSubmitPlacement({ ...reading, placeLatestTurn: true })
+        .shouldPlaceLatestTurn,
+    ).toBe(true);
+  });
+
+  test("an edit's placement waits past the Turn its rewind leaves latest", () => {
+    const previousTurnKeys = new Set(["first", "second", "third"]);
+    expect(
+      isRewindSurvivorLatestTurn({
+        latestTurnKey: "first",
+        previousLatestTurnKey: "third",
+        previousTurnKeys,
+      }),
+    ).toBe(true);
+    // The rebuilt Turn and a steer on the same latest Turn both keep the placement.
+    expect(
+      isRewindSurvivorLatestTurn({
+        latestTurnKey: "rebuilt",
+        previousLatestTurnKey: "first",
+        previousTurnKeys,
+      }),
+    ).toBe(false);
+    expect(
+      isRewindSurvivorLatestTurn({
+        latestTurnKey: "third",
+        previousLatestTurnKey: "third",
+        previousTurnKeys,
+      }),
+    ).toBe(false);
+  });
+
   test("keeps explicit user follow through prework and idle, and holds it on interaction", () => {
     const state = resolveThreadLatestTurnFollowState(createThreadLatestTurnFollowState(), {
       type: "scroll_to_bottom",

@@ -34,8 +34,12 @@ export function replaceCanonicalEditedPrompt(original: string, message: string):
     : `${original.slice(0, marker.index).trimEnd()}\n## My request:\n${message}\n`;
 }
 
-/** Runs on the owner after follower dispatch; preserves the original message's non-text inputs. */
-export async function editCanonicalLastUserTurn(
+/**
+ * Rewrites any settled user Turn: the conversation reverts to just before it, so that Turn and
+ * every later Turn leave history, then the rewritten message starts a new Turn. Runs on the owner
+ * after follower dispatch and preserves the original message's non-text inputs.
+ */
+export async function editCanonicalUserTurn(
   client: CanonicalEditClient,
   id: string,
   options: CanonicalEditOptions,
@@ -70,13 +74,8 @@ export async function editCanonicalLastUserTurn(
     throw new Error("Editing messages requires a host with paginated history and message revert.");
   const turns = mergeCodexCanonicalTurnStates(residentConversationTurns(state), state.turns);
   const index = turns.findIndex((turn) => turn.turnId === original.turnId);
+  if (original.turnId === null || index === -1) throw new Error("Turn not found for edit.");
   const removed = turns.slice(index);
-  if (
-    original.turnId === null ||
-    index === -1 ||
-    removed.slice(1).some((turn) => turn.params.input.length > 0)
-  )
-    throw new Error("Only the most recent message can be edited.");
   if (removed.some((turn) => turn.status === "inProgress"))
     throw new Error("Cannot edit a message while a turn is in progress.");
   const response = await client.revert(id, original.turnId);

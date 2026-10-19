@@ -69,7 +69,7 @@ function buildConversation(unifiedDiff: string): CodexConversationSnapshot {
     },
     backgroundTerminalRows: [],
     capabilityFlags: {
-      canEditLastUserTurn: false,
+      canEditUserTurns: false,
       canForkFromTurn: false,
       canSearch: false,
       canCollapseTurns: false,

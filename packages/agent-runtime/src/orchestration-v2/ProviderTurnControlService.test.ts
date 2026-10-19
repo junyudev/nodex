@@ -226,7 +226,7 @@ it.effect(
           getProjectRoots: () => Effect.die("unused Project roots"),
           getQueuedRunPage: () => Effect.die("unused queue page"),
           getQueuedRunPreview: () => Effect.succeed(null),
-          getQueuedRunMessage: () => Effect.die("unused queued message"),
+          getRunUserMessage: () => Effect.die("unused Run message"),
           getProjectProviderSessionBindings: () => Effect.die("unused provider binding page"),
           getLimitRecoveryCandidates: () => Effect.die("unused getLimitRecoveryCandidates"),
           getShellSnapshot: () => Effect.die("unused getShellSnapshot"),

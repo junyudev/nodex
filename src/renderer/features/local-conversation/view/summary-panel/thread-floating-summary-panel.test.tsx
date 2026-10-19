@@ -346,7 +346,7 @@ function makeSubagentConversation(
     backgroundTerminalRows: [],
     capabilityFlags: {
       canCollapseTurns: true,
-      canEditLastUserTurn: true,
+      canEditUserTurns: true,
       canForkFromTurn: true,
       canSearch: true,
     },

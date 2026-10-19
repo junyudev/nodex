@@ -151,11 +151,15 @@ details provide those bodies. Long text appears as a bounded preview with a trun
 marker; full copy and export use explicit full-item reads. A control envelope that
 cannot fit fails explicitly rather than exceeding the transport budget.
 
-Compaction admits one durable maintenance Run per request. Editing the latest user
-message first admits a conversation rewind and waits for that exact Run to become
-rolled back before submitting replacement content. Queued or active work and native
-background tasks block editing. Conversation rewind leaves workspace files intact
-and can proceed without a Git file checkpoint. Repeated commands retain their original
+Compaction admits one durable maintenance Run per request. Editing any sent user
+message first admits a conversation rewind to just before that message's Run and waits
+for that exact Run to become rolled back before submitting replacement content; every
+later Run leaves the conversation with it. The replacement keeps the original message's
+images and app context, and is compiled before the rewind so a message the Agent cannot
+accept discards nothing. Queued or active work and native background tasks block editing.
+Only Providers whose native rollback truncates at an earlier Turn offer editing.
+Conversation rewind leaves workspace files intact and can proceed without a Git file
+checkpoint. Repeated commands retain their original
 Run and message identity; reusing an identity for another target fails.
 Active proposed plans can be implemented in another Project. Recording a created
 Session also works across Projects; the source plan, parent Run and target Session
@@ -347,8 +351,8 @@ Both have full access to the current Profile.
 Conversation and queued-message images retain native attachment descriptors. A mounted
 image resolves its exact item and captured read ancestry to the Runtime's stored file
 path, then uses the desktop image reader. Metadata, cold history and closed queues
-never read image bytes. Editing a queued message resolves its own image paths and
-preserves the images when submitting the edited prompt.
+never read image bytes. Editing a queued or sent message resolves its own image paths
+and preserves the images when submitting the edited prompt.
 
 Session titles, archive state and placement come from Core Session overview; Core is
 their only writer. The engine keeps placement and archive only as execution gates (the

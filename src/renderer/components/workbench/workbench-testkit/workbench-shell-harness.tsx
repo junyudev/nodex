@@ -231,7 +231,7 @@ export let refreshSelectedSubagentAuthorityImpl:
 export let removeQueuedFollowUpCalls: unknown[][] = [];
 export let reorderQueuedFollowUpsCalls: unknown[][] = [];
 export let sendQueuedFollowUpNowCalls: unknown[][] = [];
-export let editLastUserTurnCalls: unknown[][] = [];
+export let editUserTurnCalls: unknown[][] = [];
 export let setComposerIntentCalls: unknown[][] = [];
 export let removePlanImplementationRequestCalls: unknown[][] = [];
 export let cleanBackgroundTerminalsCalls: string[] = [];
@@ -317,7 +317,7 @@ export const mockCodexControl = {
       },
       backgroundTerminalRows: [],
       capabilityFlags: {
-        canEditLastUserTurn: false,
+        canEditUserTurns: false,
         canForkFromTurn: false,
         canSearch: true,
         canCollapseTurns: true,
@@ -404,8 +404,8 @@ export const mockCodexControl = {
   sendQueuedFollowUpNow: async (threadId: string, followUpId: string) => {
     sendQueuedFollowUpNowCalls.push([threadId, followUpId]);
   },
-  editLastUserTurn: async (threadId: string, turnId: string, message: string) => {
-    editLastUserTurnCalls.push([threadId, turnId, message]);
+  editUserTurn: async (threadId: string, turnId: string, message: string) => {
+    editUserTurnCalls.push([threadId, turnId, message]);
     return {
       threadId,
       composerIntent: {
@@ -2818,6 +2818,21 @@ export function renderWorkbench({
     if (channel === "agent-runtime:session:observe") return { observed: true };
     if (channel === "agent-runtime:session:unobserve") return { unobserved: true };
     if (channel === "agent-runtime:session:rollback") return { rolledBack: true };
+    if (channel === "agent-runtime:session:run-message") {
+      const input = args[0] as { threadId: string; runId: string };
+      return {
+        id: `message:${input.runId}`,
+        threadId: input.threadId,
+        runId: input.runId,
+        nodeId: null,
+        role: "user",
+        text: "Original prompt",
+        attachments: [],
+        streaming: false,
+        createdAt: "2026-10-14T00:00:00Z",
+        updatedAt: "2026-10-14T00:00:00Z",
+      };
+    }
     if (
       channel === "agent-runtime:session:message" ||
       channel === "agent-runtime:session:queue" ||
@@ -4638,7 +4653,7 @@ beforeEach(() => {
   removeQueuedFollowUpCalls = [];
   reorderQueuedFollowUpsCalls = [];
   sendQueuedFollowUpNowCalls = [];
-  editLastUserTurnCalls = [];
+  editUserTurnCalls = [];
   setComposerIntentCalls = [];
   removePlanImplementationRequestCalls = [];
   cleanBackgroundTerminalsCalls = [];
@@ -5096,8 +5111,8 @@ export function setSendQueuedFollowUpNowCalls(value: typeof sendQueuedFollowUpNo
   sendQueuedFollowUpNowCalls = value;
 }
 
-export function setEditLastUserTurnCalls(value: typeof editLastUserTurnCalls): void {
-  editLastUserTurnCalls = value;
+export function setEditUserTurnCalls(value: typeof editUserTurnCalls): void {
+  editUserTurnCalls = value;
 }
 
 export function setSetComposerIntentCalls(value: typeof setComposerIntentCalls): void {

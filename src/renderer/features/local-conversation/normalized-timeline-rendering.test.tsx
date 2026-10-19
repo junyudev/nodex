@@ -81,7 +81,7 @@ function TimelineHarness({
         entries={[...projection.entries]}
         historyRows={projection.historyRows ?? undefined}
         threadCwd="/workspace"
-        editableTurnId={null}
+        editableTurnIds={new Set()}
         canForkFromTurn={false}
         scrollElement={null}
         historyTurnItemsRefs={

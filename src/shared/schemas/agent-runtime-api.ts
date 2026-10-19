@@ -188,7 +188,7 @@ export const AgentRuntimeHistorySchema = AgentRuntimeTargetSchema.extend({
 export const AgentRuntimeQueueReadSchema = AgentRuntimeTargetSchema.extend({
   cursor: id.optional(),
 });
-export const AgentRuntimeQueuedMessageSchema = AgentRuntimeTargetSchema.extend({ runId: id });
+export const AgentRuntimeRunSchema = AgentRuntimeTargetSchema.extend({ runId: id });
 export const AgentRuntimeItemSchema = AgentRuntimeTargetSchema.extend({
   itemId: id,
   sourceThreadId: id.optional(),

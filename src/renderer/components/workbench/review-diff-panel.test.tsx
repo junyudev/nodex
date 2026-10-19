@@ -565,7 +565,7 @@ function buildConversation(): CodexConversationSnapshot {
     pendingSteers: [],
     backgroundTerminalRows: [],
     capabilityFlags: {
-      canEditLastUserTurn: true,
+      canEditUserTurns: true,
       canForkFromTurn: true,
       canSearch: true,
       canCollapseTurns: true,

@@ -97,6 +97,10 @@ import type {
 } from "../../thread-stage-types";
 import { THREAD_VISUAL_TOKENS } from "./local-conversation-visual-tokens";
 import { useHookFeedbackSettingsNavigation } from "../hook-feedback-settings-navigation";
+import { useLocalConversationUserTurnEditDraft } from "../local-conversation-thread-view-state";
+import { resolveComposerSubmitIntentFromKeyDown } from "../shared/composer-action";
+import { composerEnterBehaviorAtom } from "@/lib/composer-enter-behavior-atom";
+import { useScopedAtomValue } from "@/lib/maitai";
 import {
   useCodexTranscriptBlock,
   CodexTranscriptReasoningSummary,
@@ -114,7 +118,7 @@ export interface ThreadLeafBlockProps {
   childMemberships?: readonly CodexConversationChildMembership[];
   parentModel?: string | null;
   threadCwd?: string | null;
-  onEditLastUserTurn?: (input: {
+  onEditUserTurn?: (input: {
     threadId: string;
     turnId: string;
     message: string;
@@ -260,6 +264,14 @@ function humanizeBlockType(type: ThreadBlockModel["type"]): string {
 
 const EDIT_MESSAGE_MIN_ROWS = 2;
 const EDIT_MESSAGE_MAX_ROWS = 6;
+
+/** Opens the editor ready to continue typing at the end of the message. */
+function focusEditMessageTextareaOnMount(element: HTMLTextAreaElement | null): void {
+  if (!element || element.ownerDocument.activeElement === element) return;
+  resizeEditMessageTextarea(element);
+  element.focus();
+  element.setSelectionRange(element.value.length, element.value.length);
+}
 
 function resizeEditMessageTextarea(element: HTMLTextAreaElement): void {
   const lineHeightPx = Number.parseFloat(window.getComputedStyle(element).lineHeight);
@@ -859,17 +871,107 @@ export function ThreadUserAttachmentStripBlock({ block }: ThreadSpecialBlockProp
   return <UserAttachmentStrip attachments={block.attachments} />;
 }
 
-async function submitUserMessageEdit(
-  operation: () => void | Promise<void>,
-  onSuccess: () => void,
-  onSettled: () => void,
-) {
-  try {
-    await operation();
-    onSuccess();
-  } finally {
-    onSettled();
-  }
+/**
+ * Rewrites a sent message in place of its bubble. Sending rewinds the conversation to just
+ * before this message and continues from the rewritten one; keys follow the Composer.
+ */
+function UserMessageEditForm({
+  draft,
+  onDraftChange,
+  onCancel,
+  onSubmit,
+}: {
+  readonly draft: string;
+  readonly onDraftChange: (draft: string) => void;
+  readonly onCancel: () => void;
+  /** Rejects when the edit failed, so the draft stays open to retry. */
+  readonly onSubmit: (message: string) => Promise<void>;
+}) {
+  const enterBehavior = useScopedAtomValue(composerEnterBehaviorAtom);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const canSubmit = draft.trim().length > 0 && !isSubmitting;
+
+  const submit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!canSubmit) return;
+    setIsSubmitting(true);
+    try {
+      await onSubmit(draft.trim());
+    } catch {
+      // The conversation surface reports the failure; the draft stays for another try.
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  return (
+    <form
+      className="flex w-full flex-col gap-4 rounded-2xl bg-token-foreground/5 px-3 py-2.5"
+      onSubmit={(event) => {
+        void submit(event);
+      }}
+    >
+      <textarea
+        aria-label={footerText("Edit message")}
+        className="w-full resize-none bg-transparent p-0 font-content text-size-chat leading-5 text-token-foreground outline-none placeholder:text-token-description-foreground"
+        placeholder={footerText("Edit message")}
+        rows={EDIT_MESSAGE_MIN_ROWS}
+        value={draft}
+        onChange={(event) => {
+          resizeEditMessageTextarea(event.currentTarget);
+          onDraftChange(event.currentTarget.value);
+        }}
+        // Programmatic value writes such as dictation bypass React's change tracking.
+        onInput={(event) => {
+          resizeEditMessageTextarea(event.currentTarget);
+          onDraftChange(event.currentTarget.value);
+        }}
+        onKeyDown={(event) => {
+          if (event.nativeEvent.isComposing) return;
+          if (event.key === "Escape") {
+            event.preventDefault();
+            event.stopPropagation();
+            onCancel();
+            return;
+          }
+          const intent = resolveComposerSubmitIntentFromKeyDown({
+            enterBehavior,
+            hasMultilinePrompt: draft.includes("\n"),
+            isThreadRunning: false,
+            primarySubmitAction: "send",
+            alternateSubmitAction: null,
+            key: event.key,
+            ctrlKey: event.ctrlKey,
+            metaKey: event.metaKey,
+            shiftKey: event.shiftKey,
+            altKey: event.altKey,
+          });
+          if (!intent) return;
+          event.preventDefault();
+          event.currentTarget.form?.requestSubmit();
+        }}
+        ref={focusEditMessageTextareaOnMount}
+      />
+      <div className="flex justify-end gap-1.5">
+        <button
+          type="button"
+          disabled={isSubmitting}
+          className="border-token-border user-select-none no-drag cursor-interaction flex items-center gap-1 border focus:outline-none disabled:cursor-not-allowed disabled:opacity-40 rounded-lg border-token-border text-token-button-tertiary-foreground bg-token-bg-fog enabled:hover:bg-token-list-hover-background data-[state=open]:bg-token-list-hover-background border h-token-button-composer px-2 py-0 text-base leading-[18px]"
+          onClick={onCancel}
+        >
+          Cancel
+        </button>
+        <button
+          type="submit"
+          disabled={!canSubmit}
+          aria-busy={isSubmitting}
+          className="border-token-border user-select-none no-drag cursor-interaction flex items-center gap-1 border focus:outline-none disabled:cursor-not-allowed disabled:opacity-40 rounded-lg bg-token-foreground enabled:hover:bg-token-foreground/80 data-[state=open]:bg-token-foreground/80 text-token-dropdown-background h-token-button-composer px-2 py-0 text-base leading-[18px]"
+        >
+          Send
+        </button>
+      </div>
+    </form>
+  );
 }
 
 const USER_INPUT_INTENT_LABEL = {
@@ -937,7 +1039,7 @@ export function UserMessageBubble({
   block,
   isSearchMatch = false,
   isActiveSearchMatch = false,
-  onEditLastUserTurn,
+  onEditUserTurn,
   onOpenThread,
   projectWorkspacePath,
   threadCwd,
@@ -973,49 +1075,25 @@ export function UserMessageBubble({
     isGoalMessage ||
     isHookFeedback ||
     ((hasMessageContent || canEdit) && !compactUserMessageActions && !hideUserMessageActions);
-  const [isEditing, setIsEditing] = useState(false);
-  const [draftMessage, setDraftMessage] = useState(content);
-  const [isSubmittingEdit, setIsSubmittingEdit] = useState(false);
+  const [editDraft, setEditDraft] = useLocalConversationUserTurnEditDraft(
+    block.entry.threadId,
+    block.turnId,
+  );
+  // A draft outlives a moment when the message cannot be edited, such as a Turn running.
+  const isEditing = canEdit && editDraft !== null;
   const clientUserMessageId =
     block.entry.rawItem && typeof block.entry.rawItem === "object"
       ? ((block.entry.rawItem as { readonly clientId?: unknown }).clientId ?? null)
       : null;
 
-  const openInlineEditor = useCallback(() => {
-    setDraftMessage(content);
-    setIsEditing(true);
-  }, [content]);
-
-  const cancelInlineEditor = useCallback(() => {
-    setDraftMessage(content);
-    setIsEditing(false);
-  }, [content]);
-
-  const handleEditSubmit = useCallback(
-    async (event: FormEvent<HTMLFormElement>) => {
-      event.preventDefault();
-      if (!onEditLastUserTurn || isSubmittingEdit || block.turnId === null) return;
-      const turnId = block.turnId;
-
-      setIsSubmittingEdit(true);
-      await submitUserMessageEdit(
-        () =>
-          onEditLastUserTurn({
-            threadId: block.entry.threadId,
-            turnId,
-            message: draftMessage.trim(),
-          }),
-        () => setIsEditing(false),
-        () => setIsSubmittingEdit(false),
-      );
+  const submitEdit = useCallback(
+    async (message: string) => {
+      if (!onEditUserTurn || block.turnId === null) return;
+      await onEditUserTurn({ threadId: block.entry.threadId, turnId: block.turnId, message });
+      setEditDraft(null);
     },
-    [block.entry.threadId, block.turnId, draftMessage, isSubmittingEdit, onEditLastUserTurn],
+    [block.entry.threadId, block.turnId, onEditUserTurn, setEditDraft],
   );
-
-  const handleDraftMessageInput = useCallback((element: HTMLTextAreaElement) => {
-    resizeEditMessageTextarea(element);
-    setDraftMessage(element.value);
-  }, []);
   const messageBubble = (
     <div
       data-user-message-bubble="true"
@@ -1060,52 +1138,12 @@ export function UserMessageBubble({
       <div className="group flex w-full flex-col items-end justify-end gap-1">
         <UserMessageDeliveryMarkers entry={block.entry} onOpenThread={onOpenThread} />
         {isEditing ? (
-          <form
-            className="flex w-full flex-col gap-4 rounded-2xl bg-token-foreground/5 px-3 py-2.5"
-            onSubmit={(event) => {
-              void handleEditSubmit(event).catch(() => {});
-            }}
-          >
-            <textarea
-              aria-label={footerText("Edit message")}
-              autoFocus
-              className="w-full resize-none bg-transparent p-0 font-content text-size-chat leading-5 text-token-foreground outline-none placeholder:text-token-description-foreground"
-              rows={EDIT_MESSAGE_MIN_ROWS}
-              value={draftMessage}
-              onChange={(event) => {
-                handleDraftMessageInput(event.currentTarget);
-              }}
-              onInput={(event) => {
-                handleDraftMessageInput(event.currentTarget as HTMLTextAreaElement);
-              }}
-              onKeyDown={(event) => {
-                if (event.key !== "Enter" || !event.metaKey) return;
-                event.preventDefault();
-                event.currentTarget.form?.requestSubmit();
-              }}
-              ref={(element) => {
-                if (!element) return;
-                resizeEditMessageTextarea(element);
-              }}
-            />
-            <div className="flex justify-end gap-1.5">
-              <button
-                type="button"
-                disabled={isSubmittingEdit}
-                className="border-token-border user-select-none no-drag cursor-interaction flex items-center gap-1 border focus:outline-none disabled:cursor-not-allowed disabled:opacity-40 rounded-lg border-token-border text-token-button-tertiary-foreground bg-token-bg-fog enabled:hover:bg-token-list-hover-background data-[state=open]:bg-token-list-hover-background border h-token-button-composer px-2 py-0 text-base leading-[18px]"
-                onClick={cancelInlineEditor}
-              >
-                Cancel
-              </button>
-              <button
-                type="submit"
-                disabled={isSubmittingEdit}
-                className="border-token-border user-select-none no-drag cursor-interaction flex items-center gap-1 border focus:outline-none disabled:cursor-not-allowed disabled:opacity-40 rounded-lg bg-token-foreground enabled:hover:bg-token-foreground/80 data-[state=open]:bg-token-foreground/80 text-token-dropdown-background h-token-button-composer px-2 py-0 text-base leading-[18px]"
-              >
-                Send
-              </button>
-            </div>
-          </form>
+          <UserMessageEditForm
+            draft={editDraft}
+            onDraftChange={setEditDraft}
+            onCancel={() => setEditDraft(null)}
+            onSubmit={submitEdit}
+          />
         ) : compactUserMessageActions && hasMessageContent && !hideUserMessageActions ? (
           <div className="flex w-full items-center justify-end gap-1">
             <div
@@ -1160,7 +1198,7 @@ export function UserMessageBubble({
                     <ThreadActionIconButton
                       label={footerText("Edit message")}
                       tooltip={footerText("Edit")}
-                      onClick={openInlineEditor}
+                      onClick={() => setEditDraft(content)}
                     >
                       <EditMessageIcon />
                     </ThreadActionIconButton>

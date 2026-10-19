@@ -126,8 +126,8 @@ export function createRemoteCodexStageActions(input: {
         focusNonce: Date.now(),
       });
     },
-    onEditLastUserTurn: async ({ threadId: requested, turnId, message }) => {
-      await control.editLastUserTurn(requireThread(requested), turnId, message);
+    onEditUserTurn: async ({ threadId: requested, turnId, message }) => {
+      await control.editUserTurn(requireThread(requested), turnId, message);
     },
     onForkFromTurn: async ({ threadId: requested, turnId, message }) => {
       const result = await control.forkConversationFromTurn(

@@ -125,7 +125,7 @@ export class NativeConversationHistoryOwner {
             canonicalRequests: [],
             capabilityFlags: {
               ...projected.capabilityFlags,
-              canEditLastUserTurn: false,
+              canEditUserTurns: false,
               canForkFromTurn: false,
             },
           },

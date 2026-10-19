@@ -31,7 +31,7 @@ function createActions(log: string[]): ThreadStageActions {
     onReorderQueuedFollowUps: async () => {},
     onSendQueuedFollowUpNow: async () => {},
     onEditQueuedFollowUp: async () => {},
-    onEditLastUserTurn: async () => {},
+    onEditUserTurn: async () => {},
     onForkFromTurn: async () => {},
     onUnarchiveThread: async () => {},
     onOpenTurnDiffReview: () => {},

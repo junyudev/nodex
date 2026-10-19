@@ -9,6 +9,7 @@ import type {
   AgentRuntimeConversation,
   AgentRuntimeSessionTarget,
   AgentRuntimeQueuePage,
+  AgentRuntimeRunMessage,
 } from "../../../shared/agent-runtime-api";
 import { AGENT_RUNTIME_CONTROL_EVENT_TYPES } from "../../../shared/agent-runtime-api";
 import type {
@@ -75,7 +76,7 @@ export type AgentRuntimeReadTransport = Pick<
   | "item"
   | "subscribe"
   | "readQueuePage"
-  | "readQueuedMessage"
+  | "readRunMessage"
   | "readQueuedPreview"
   | "attachment"
 >;
@@ -252,7 +253,7 @@ export class AgentRuntimeConversationOwner {
   #opening: Promise<void> | null = null;
   #historyRequest: Promise<void> | null = null;
   #disposed = false;
-  #canEditLastUserTurn = false;
+  #supportsUserTurnEdits = false;
   #contentSource: ConversationContentSource | null = null;
   #queuePage: AgentRuntimeQueuePage | null = null;
   #queueEntries: readonly CodexQueuedFollowUp[] = [];
@@ -292,9 +293,10 @@ export class AgentRuntimeConversationOwner {
   readonly getSnapshot = (): AgentRuntimeConversationOwnerSnapshot => this.#state;
   readonly contentSource = (): ConversationContentSource | null =>
     this.#contentSource?.isCurrent() ? this.#contentSource : null;
-  readonly setCapabilities = (input: { readonly canEditLastUserTurn: boolean }): void => {
-    if (this.#canEditLastUserTurn === input.canEditLastUserTurn) return;
-    this.#canEditLastUserTurn = input.canEditLastUserTurn;
+  /** Whether the bound Provider can rewind its conversation to an earlier user message. */
+  readonly setCapabilities = (input: { readonly supportsUserTurnEdits: boolean }): void => {
+    if (this.#supportsUserTurnEdits === input.supportsUserTurnEdits) return;
+    this.#supportsUserTurnEdits = input.supportsUserTurnEdits;
     this.#publishView();
   };
   readonly children = (): readonly CodexConversationChildMembership[] => this.#children;
@@ -339,26 +341,65 @@ export class AgentRuntimeConversationOwner {
   readonly readQueuedInput = async (runId: string): Promise<CodexPromptInput> => {
     const row = this.#queuePage?.entries.find((entry) => entry.runId === runId);
     if (!row) throw new Error("This queued message is no longer available");
-    const message = await this.#transport.readQueuedMessage({ ...this.#target, runId });
+    const message = await this.#transport.readRunMessage({ ...this.#target, runId });
     if (!message || message.id !== row.userMessageId || message.threadId !== this.#target.threadId)
       throw new Error("This queued message is no longer available");
-    const images: NonNullable<CodexPromptInput["images"]> = [];
-    for (const attachment of message.attachments) {
-      if (attachment.type !== "image") continue;
-      if (!row.userItemId) throw new Error("This queued image is not available yet");
-      const source = await this.#transport.attachment({
-        ...this.#target,
-        sourceThreadId: message.threadId,
-        itemId: row.userItemId,
-        attachmentId: attachment.id,
-      });
-      if (!source) throw new Error("This queued image is no longer available");
-      images.push({ source: source.path, caption: attachment.name });
-    }
+    if (!row.userItemId && message.attachments.some((attachment) => attachment.type === "image"))
+      throw new Error("This queued image is not available yet");
+    const images = row.userItemId
+      ? await this.#resolveMessageImages(message, message.threadId, row.userItemId)
+      : [];
     if (!this.#queuePage?.entries.some((entry) => entry.runId === runId))
       throw new Error("This queued message is no longer available");
     return { text: agentMessageDisplayText(message.text), images };
   };
+  /**
+   * Reads the message that started a sent Run, with its images resolved to files, so an edit
+   * can submit the rewritten words alongside everything else the message carried. The Agent
+   * Runtime answers only while that Run remains in the conversation.
+   */
+  readonly readSentMessage = async (
+    runId: string,
+  ): Promise<{
+    readonly message: NonNullable<AgentRuntimeRunMessage>;
+    readonly images: NonNullable<CodexPromptInput["images"]>;
+  }> => {
+    const message = await this.#transport.readRunMessage({ ...this.#target, runId });
+    if (!message || message.threadId !== this.#target.threadId || message.role !== "user")
+      throw new Error("This message is no longer available");
+    if (!message.attachments.some((attachment) => attachment.type === "image"))
+      return { message, images: [] };
+    // Image bytes are addressed through the message's transcript item, resident while shown.
+    const opening = [...this.#items.values()].find((item) => item.runId === runId && item.opening);
+    if (!opening) throw new Error("This message's images are not loaded");
+    return {
+      message,
+      images: await this.#resolveMessageImages(
+        message,
+        opening.sourceThreadId,
+        opening.sourceItemId,
+      ),
+    };
+  };
+  async #resolveMessageImages(
+    message: NonNullable<AgentRuntimeRunMessage>,
+    sourceThreadId: string,
+    itemId: string,
+  ): Promise<NonNullable<CodexPromptInput["images"]>> {
+    const images: NonNullable<CodexPromptInput["images"]> = [];
+    for (const attachment of message.attachments) {
+      if (attachment.type !== "image") continue;
+      const source = await this.#transport.attachment({
+        ...this.#target,
+        sourceThreadId,
+        itemId,
+        attachmentId: attachment.id,
+      });
+      if (!source) throw new Error("An image in this message is no longer available");
+      images.push({ source: source.path, caption: attachment.name });
+    }
+    return images;
+  }
   readonly subscribe = (listener: () => void): (() => void) => {
     this.#listeners.add(listener);
     return () => this.#listeners.delete(listener);
@@ -1622,7 +1663,12 @@ export class AgentRuntimeConversationOwner {
         itemsView: "full",
       },
       capabilityFlags: {
-        canEditLastUserTurn: this.#canEditLastUserTurn,
+        // A rewind races any pending or executing Run, queued messages included.
+        canEditUserTurns:
+          this.#supportsUserTurnEdits &&
+          !(this.#state.conversation?.snapshot.projection.runs ?? []).some(
+            (run) => run.status === "queued" || runIsActive(run.status),
+          ),
         canForkFromTurn: true,
         canSearch: false,
         canCollapseTurns: true,

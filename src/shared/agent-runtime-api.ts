@@ -123,9 +123,9 @@ export type AgentRuntimeModeInput = AgentRuntimeSessionTarget & {
 export type AgentRuntimeCompactInput = AgentRuntimeSessionTarget & { readonly requestId: string };
 export type AgentRuntimeQueueReadInput = AgentRuntimeSessionTarget & { readonly cursor?: string };
 export type AgentRuntimeQueuePage = AgentRuntimeOperations["thread.queue"]["output"];
-export type AgentRuntimeQueuedMessageInput = AgentRuntimeSessionTarget & { readonly runId: string };
+export type AgentRuntimeRunInput = AgentRuntimeSessionTarget & { readonly runId: string };
 export type AgentRuntimeQueuedPreview = AgentRuntimeOperations["thread.queued-preview"]["output"];
-export type AgentRuntimeQueuedMessage = AgentRuntimeOperations["thread.queued-message"]["output"];
+export type AgentRuntimeRunMessage = AgentRuntimeOperations["thread.run-message"]["output"];
 export type AgentRuntimeRollbackInput = AgentRuntimeSessionTarget & {
   readonly requestId: string;
   readonly runId: string;
@@ -341,12 +341,12 @@ export interface AgentRuntimeIpcApi {
     result: AgentRuntimeQueuePage;
   };
   "agent-runtime:session:queued-preview": {
-    args: [input: AgentRuntimeQueuedMessageInput];
+    args: [input: AgentRuntimeRunInput];
     result: AgentRuntimeQueuedPreview;
   };
-  "agent-runtime:session:queued-message": {
-    args: [input: AgentRuntimeQueuedMessageInput];
-    result: AgentRuntimeQueuedMessage;
+  "agent-runtime:session:run-message": {
+    args: [input: AgentRuntimeRunInput];
+    result: AgentRuntimeRunMessage;
   };
   "agent-runtime:session:item": {
     args: [input: AgentRuntimeItemInput];

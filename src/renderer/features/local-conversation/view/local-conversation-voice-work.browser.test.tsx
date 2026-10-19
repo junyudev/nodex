@@ -155,7 +155,7 @@ test.for([false, true])(
               entries={[...value.project().entries]}
               conversationId="voice-work-history"
               threadCwd={null}
-              editableTurnId={null}
+              editableTurnIds={new Set()}
               canForkFromTurn={false}
               initialScrollOffset={offset}
               initialRestoreState={restore}

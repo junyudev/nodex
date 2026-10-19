@@ -311,7 +311,7 @@ function buildConversation(
     pendingSteers: [],
     backgroundTerminalRows: [],
     capabilityFlags: {
-      canEditLastUserTurn: true,
+      canEditUserTurns: true,
       canForkFromTurn: true,
       canSearch: true,
       canCollapseTurns: true,
@@ -353,7 +353,7 @@ function buildModel(overrides?: {
     resumeState: conversation?.resumeState ?? null,
     statusType: conversation?.statusType ?? null,
     capabilityFlags: conversation?.capabilityFlags ?? {
-      canEditLastUserTurn: false,
+      canEditUserTurns: false,
       canForkFromTurn: false,
       canSearch: false,
       canCollapseTurns: false,
@@ -386,7 +386,7 @@ function buildActions(overrides?: Partial<ThreadStageActions>): ThreadStageActio
     onReorderQueuedFollowUps: async () => {},
     onSendQueuedFollowUpNow: async () => {},
     onEditQueuedFollowUp: async () => {},
-    onEditLastUserTurn: async () => {},
+    onEditUserTurn: async () => {},
     onForkFromTurn: async () => {},
     onUnarchiveThread: async () => {},
     onOpenTurnDiffReview: () => {},
@@ -1747,7 +1747,7 @@ describe("LocalConversationThreadBody", () => {
   });
 
   test("opens an inline edit prompt in place and only edits on send", async () => {
-    const onEditLastUserTurnCalls: Array<{
+    const onEditUserTurnCalls: Array<{
       threadId: string;
       turnId: string;
       message: string;
@@ -1758,8 +1758,8 @@ describe("LocalConversationThreadBody", () => {
         <LocalConversationThreadBody
           model={buildModel()}
           actions={buildActions({
-            onEditLastUserTurn: async (input) => {
-              onEditLastUserTurnCalls.push(input);
+            onEditUserTurn: async (input) => {
+              onEditUserTurnCalls.push(input);
             },
           })}
           onErrorMessage={() => {}}
@@ -1769,7 +1769,7 @@ describe("LocalConversationThreadBody", () => {
 
     fireEvent.click(getByLabelText("Edit message"));
 
-    expect(onEditLastUserTurnCalls.length).toBe(0);
+    expect(onEditUserTurnCalls.length).toBe(0);
     const textarea = getByDisplayValue("run `bun test`") as HTMLTextAreaElement;
     textarea.value = "run `bun test --bail`";
     fireEvent.input(textarea);
@@ -1778,8 +1778,62 @@ describe("LocalConversationThreadBody", () => {
     await settleAsyncRender();
 
     expect(Boolean(queryByDisplayValue("run `bun test --bail`"))).toBe(false);
-    expect(onEditLastUserTurnCalls.length).toBe(1);
-    expect(onEditLastUserTurnCalls[0]?.message).toBe("run `bun test --bail`");
+    expect(onEditUserTurnCalls.length).toBe(1);
+    expect(onEditUserTurnCalls[0]?.message).toBe("run `bun test --bail`");
+  });
+
+  test("offers Edit on every settled user message and hides it while a Turn runs", async () => {
+    const onEditUserTurnCalls: Array<{ threadId: string; turnId: string; message: string }> = [];
+    const { LocalConversationThreadBody } = await import("./local-conversation-thread-body");
+    const turns = [buildIndexedTurn(1), buildIndexedTurn(2), buildIndexedTurn(3)];
+    const actions = buildActions({
+      onEditUserTurn: async (input) => {
+        onEditUserTurnCalls.push(input);
+      },
+    });
+    const view = (conversation: CodexConversationSnapshot) => (
+      <TooltipProvider>
+        <LocalConversationThreadBody
+          model={buildModel({ conversation })}
+          actions={actions}
+          onErrorMessage={() => {}}
+        />
+      </TooltipProvider>
+    );
+    const { getAllByRole, queryAllByRole, getByDisplayValue, getByRole, rerender } = render(
+      view(buildConversation({ turns })),
+    );
+    await settleAsyncRender();
+    expect(getAllByRole("button", { name: "Edit message" })).toHaveLength(3);
+
+    await act(async () => {
+      fireEvent.click(getAllByRole("button", { name: "Edit message" })[0]!);
+      await Promise.resolve();
+    });
+    await act(async () => {
+      fireEvent.change(getByDisplayValue("Message 1"), {
+        target: { value: "Message 1, rewritten" },
+      });
+      await Promise.resolve();
+    });
+    await act(async () => {
+      fireEvent.click(getByRole("button", { name: "Send" }));
+      await Promise.resolve();
+    });
+    await settleAsyncRender();
+    expect(onEditUserTurnCalls).toEqual([
+      { threadId: "thread_1", turnId: "turn_1", message: "Message 1, rewritten" },
+    ]);
+
+    rerender(
+      view(
+        buildConversation({
+          turns: [turns[0]!, turns[1]!, { ...turns[2]!, status: "inProgress" }],
+        }),
+      ),
+    );
+    await settleAsyncRender();
+    expect(queryAllByRole("button", { name: "Edit message" })).toHaveLength(0);
   });
 
   test("renders a worked-for toggle for the latest completed turn when a persisted collapse state exists", async () => {

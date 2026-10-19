@@ -122,11 +122,11 @@ it.effect(
       }
 
       assert.isTrue(
-        (yield* store.getQueuedRunMessage(threadId, firstRun))!.text.startsWith(
+        (yield* store.getRunUserMessage(threadId, firstRun))!.text.startsWith(
           `Queued ${first.entries[0]!.userMessageId.slice("message:".length)} `,
         ),
       );
-      assert.isNull(yield* store.getQueuedRunMessage(ThreadId.make("foreign"), firstRun));
+      assert.isNull(yield* store.getRunUserMessage(ThreadId.make("foreign"), firstRun));
       const second = yield* store.getQueuedRunPage(threadId, first.nextCursor!);
       assert.equal(second.entries.length, 5);
       assert.equal(second.entries[0]?.runId, first.nextRunId);
@@ -155,7 +155,7 @@ it.effect(
         text: "Edited queued message",
       });
       assert.equal(
-        (yield* store.getQueuedRunMessage(threadId, firstRun))?.text,
+        (yield* store.getRunUserMessage(threadId, firstRun))?.text,
         "Edited queued message",
       );
       yield* orchestrator.dispatch({
@@ -164,6 +164,7 @@ it.effect(
         commandId: CommandId.make("cancel:queued"),
         runId: firstRun,
       });
-      assert.isNull(yield* store.getQueuedRunMessage(threadId, firstRun));
+      const remaining = yield* store.getQueuedRunPage(threadId);
+      assert.isFalse(remaining.entries.some((entry) => entry.runId === firstRun));
     }).pipe(Effect.provide(layer)),
 );

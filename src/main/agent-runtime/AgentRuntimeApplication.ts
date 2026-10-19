@@ -2019,15 +2019,15 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
           });
         }),
       ),
-    readQueuedMessage: (input: AgentRuntimeSessionTarget & { readonly runId: string }) =>
+    readRunMessage: (input: AgentRuntimeSessionTarget & { readonly runId: string }) =>
       owned(
-        "queued-message",
+        "run-message",
         Effect.gen(function* () {
           if (!validId(input.runId))
-            return yield* failure("queued-message", "Run identity is invalid");
+            return yield* failure("run-message", "Run identity is invalid");
           const connection = yield* options.connect;
           const loaded = yield* targetInfo(connection, input);
-          return yield* connection.request("thread.queued-message", {
+          return yield* connection.request("thread.run-message", {
             threadId: loaded.threadId,
             runId: input.runId,
           });

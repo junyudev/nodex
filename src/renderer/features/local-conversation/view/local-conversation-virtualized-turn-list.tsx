@@ -39,6 +39,7 @@ import type {
 import {
   buildVirtualizedTurnLayout,
   buildVirtualizedTurnListRestoreState,
+  isRewindSurvivorLatestTurn,
   resolveAnchorPreservedDistanceFromBottom,
   resolveInitialVirtualizedTurnViewportState,
   resolveMeasuredVisibleAnchorKey,
@@ -81,6 +82,7 @@ import {
   type RealtimeTranscriptViewportAnchor,
 } from "./local-conversation-realtime-transcript-restore";
 import {
+  isCodexNativeTimelineTurnEntry,
   isCodexRealtimeTimelineEntry,
   readLatestCodexTimelineTurnEntry,
   type CodexTimelineViewEntry,
@@ -233,10 +235,11 @@ interface LocalConversationVirtualizedTurnListProps {
   threadCwd: string | null;
   projectWorkspacePath?: string | null;
   projectlessOutputDirectory?: string | null;
-  editableTurnId: string | null;
+  /** Turns whose user message can be rewritten; every later Turn leaves with the edit. */
+  editableTurnIds: ReadonlySet<string>;
   canForkFromTurn: boolean;
   initialCollapsedAgentBodyByTurnSearchKey?: Readonly<Record<string, boolean>>;
-  onEditLastTurnMessage?: (input: {
+  onEditUserTurn?: (input: {
     threadId: string;
     turnId: string;
     message: string;
@@ -402,7 +405,7 @@ interface MeasuredTurnProps {
   initialCollapsedOverride?: boolean;
   canEditTurnUserPrefix: boolean;
   canForkTurn: boolean;
-  onEditLastTurnMessage?: (input: {
+  onEditUserTurn?: (input: {
     threadId: string;
     turnId: string;
     message: string;
@@ -444,7 +447,7 @@ function MeasuredTurnComponent({
   initialCollapsedOverride,
   canEditTurnUserPrefix,
   canForkTurn,
-  onEditLastTurnMessage,
+  onEditUserTurn,
   onForkTurnMessage,
   onOpenTurnDiffReview,
   onOpenTurnDiffFileInSidePanel,
@@ -519,7 +522,7 @@ function MeasuredTurnComponent({
           projectWorkspacePath={projectWorkspacePath}
           projectlessOutputDirectory={projectlessOutputDirectory}
           threadCwd={threadCwd}
-          onEditLastTurnMessage={onEditLastTurnMessage}
+          onEditUserTurn={onEditUserTurn}
           onForkTurnMessage={onForkTurnMessage}
           onOpenTurnDiffReview={onOpenTurnDiffReview}
           onOpenTurnDiffFileInSidePanel={onOpenTurnDiffFileInSidePanel}
@@ -572,7 +575,7 @@ const MeasuredTurn = memo(
     left.initialCollapsedOverride === right.initialCollapsedOverride &&
     left.canEditTurnUserPrefix === right.canEditTurnUserPrefix &&
     left.canForkTurn === right.canForkTurn &&
-    left.onEditLastTurnMessage === right.onEditLastTurnMessage &&
+    left.onEditUserTurn === right.onEditUserTurn &&
     left.onForkTurnMessage === right.onForkTurnMessage &&
     left.onOpenTurnDiffReview === right.onOpenTurnDiffReview &&
     left.onOpenTurnDiffFileInSidePanel === right.onOpenTurnDiffFileInSidePanel &&
@@ -602,10 +605,10 @@ function LocalConversationVirtualizedTurnListCore({
   threadCwd,
   projectWorkspacePath,
   projectlessOutputDirectory,
-  editableTurnId,
+  editableTurnIds,
   canForkFromTurn,
   initialCollapsedAgentBodyByTurnSearchKey,
-  onEditLastTurnMessage,
+  onEditUserTurn,
   onForkTurnMessage,
   onOpenTurnDiffReview,
   onOpenTurnDiffFileInSidePanel,
@@ -1834,13 +1837,13 @@ function LocalConversationVirtualizedTurnListCore({
               initialCollapsedOverride={
                 initialCollapsedAgentBodyByTurnSearchKey?.[entry.turnSearchKey]
               }
-              canEditTurnUserPrefix={entry.turnId !== null && editableTurnId === entry.turnId}
+              canEditTurnUserPrefix={entry.turnId !== null && editableTurnIds.has(entry.turnId)}
               canForkTurn={
                 canForkFromTurn &&
                 !isCodexRealtimeTimelineEntry(entry) &&
                 readTimelineEntryStatus(entry) !== "inProgress"
               }
-              onEditLastTurnMessage={onEditLastTurnMessage}
+              onEditUserTurn={onEditUserTurn}
               onForkTurnMessage={onForkTurnMessage}
               onOpenTurnDiffReview={onOpenTurnDiffReview}
               onOpenTurnDiffFileInSidePanel={onOpenTurnDiffFileInSidePanel}
@@ -1922,6 +1925,16 @@ export function LocalConversationVirtualizedTurnList({
   const latestTurnEntry = useMemo(() => readLatestCodexTimelineTurnEntry(entries), [entries]);
   const latest = useCodexTranscriptLatestTurnMetadata(latestTurnEntry);
   const latestTurnKey = latestTurnEntry?.turnKey ?? null;
+  const nativeTurnKeys = useMemo(
+    () =>
+      new Set(
+        entries.flatMap((entry) => (isCodexNativeTimelineTurnEntry(entry) ? [entry.turnKey] : [])),
+      ),
+    [entries],
+  );
+  // Read by the placement effect before this commit's values replace them.
+  const committedTurnKeysRef = useRef<ReadonlySet<string>>(nativeTurnKeys);
+  const committedLatestTurnKeyRef = useRef(latestTurnKey);
   const placementKey =
     latestTurnKey === null
       ? null
@@ -2214,6 +2227,14 @@ export function LocalConversationVirtualizedTurnList({
     if (previousKey !== placementKey) {
       const initialPlacement = needsInitialActivePlacementRef.current;
       needsInitialActivePlacementRef.current = false;
+      if (
+        isRewindSurvivorLatestTurn({
+          latestTurnKey,
+          previousLatestTurnKey: committedLatestTurnKeyRef.current,
+          previousTurnKeys: committedTurnKeysRef.current,
+        })
+      )
+        return;
       const placement = baseScrollController.consumePendingLatestTurnSubmitPlacement();
       // Peers and history hydration may append rows; only this window's submit owns placement.
       if (placement === null && !initialPlacement) return;
@@ -2247,11 +2268,16 @@ export function LocalConversationVirtualizedTurnList({
   }, [
     baseScrollController,
     isLatestTurnInProgress,
+    latestTurnKey,
     latestTurnPhase,
     placementKey,
     responseSpace,
     updateFollowState,
   ]);
+  useLayoutEffect(() => {
+    committedTurnKeysRef.current = nativeTurnKeys;
+    committedLatestTurnKeyRef.current = latestTurnKey;
+  }, [latestTurnKey, nativeTurnKeys]);
   const handleViewportChange = useCallback(
     (change: VirtualizedTurnViewportChange) => {
       if (onLoadHistoryBoundary) {

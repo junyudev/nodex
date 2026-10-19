@@ -82,7 +82,7 @@ type QueryEndpointPolicy =
   | "agent-runtime:session:history"
   | "agent-runtime:session:attachment"
   | "agent-runtime:session:queue-read"
-  | "agent-runtime:session:queued-message"
+  | "agent-runtime:session:run-message"
   | "agent-runtime:session:queued-preview"
   | "agent-runtime:session:item"
   | "agent-runtime:providers:read"

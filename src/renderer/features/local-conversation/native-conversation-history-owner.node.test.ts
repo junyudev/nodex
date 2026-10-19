@@ -96,7 +96,7 @@ test("older pages preserve resident Turn references and the exact native cursor"
   ]);
   expect(state.view!.turns[1]).toBe(resident);
   expect(state.hasOlder).toBe(false);
-  expect(state.view!.capabilityFlags.canEditLastUserTurn).toBe(false);
+  expect(state.view!.capabilityFlags.canEditUserTurns).toBe(false);
   expect(state.view!.requests).toEqual([]);
   release();
 });

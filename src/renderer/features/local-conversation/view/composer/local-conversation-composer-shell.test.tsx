@@ -97,7 +97,7 @@ function buildActions(overrides?: Partial<ThreadStageActions>): ThreadStageActio
     onReorderQueuedFollowUps: async () => {},
     onSendQueuedFollowUpNow: async () => {},
     onEditQueuedFollowUp: async () => {},
-    onEditLastUserTurn: async () => {},
+    onEditUserTurn: async () => {},
     onForkFromTurn: async () => {},
     onUnarchiveThread: async () => {},
     onOpenTurnDiffReview: () => {},

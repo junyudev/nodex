@@ -19,7 +19,7 @@ export function buildComposerActions(overrides?: Partial<ThreadStageActions>): T
     onReorderQueuedFollowUps: async () => {},
     onSendQueuedFollowUpNow: async () => {},
     onEditQueuedFollowUp: async () => {},
-    onEditLastUserTurn: async () => {},
+    onEditUserTurn: async () => {},
     onForkFromTurn: async () => {},
     onCompactThread: async () => {},
     onGetThreadGoal: async () => null,

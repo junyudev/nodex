@@ -354,8 +354,10 @@ it.effect.each([
   { restoreFiles: false, shared: "worktree" },
   { restoreFiles: true, shared: "historical" },
   { restoreFiles: false, shared: "none", targetOrdinal: 1 },
+  // Editing an earlier message rewinds its Run and every later Run.
   { restoreFiles: false, shared: "none", beforeRunId: "run-1" },
   { restoreFiles: false, shared: "none", beforeRunId: "run-2", serialize: true },
+  { restoreFiles: false, shared: "none", beforeRunId: "run-3" },
 ])(
   "rewinds safely with %s",
   ({
@@ -503,7 +505,8 @@ it.effect.each([
         restoreFiles,
         ...(beforeRunId === undefined ? {} : { beforeRunId: RunId.make(beforeRunId) }),
       };
-      if (beforeRunId === "run-1") {
+      if (beforeRunId === "run-3") {
+        // A Run that already left the conversation cannot be edited again.
         const error = yield* service.execute(input).pipe(Effect.flip);
         assert.equal(error.reason, "rollback-target-invalid");
         assert.deepEqual(calls, []);

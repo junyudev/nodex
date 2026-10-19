@@ -80,6 +80,8 @@ const CODEX_PRESENTATION = {
   displayName: "Codex",
   showInteractionModeToggle: true,
   reportsContextWindow: true,
+  // Native rollback truncates the conversation at any earlier Turn, so any user message can be edited.
+  supportsConversationRollback: true,
 } as const;
 
 export interface CodexAppServerProviderSnapshot {

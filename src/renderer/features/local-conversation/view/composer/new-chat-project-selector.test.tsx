@@ -52,7 +52,7 @@ function buildActions(overrides?: Partial<ThreadStageActions>): ThreadStageActio
     onReorderQueuedFollowUps: noopAsync,
     onSendQueuedFollowUpNow: noopAsync,
     onEditQueuedFollowUp: noopAsync,
-    onEditLastUserTurn: noopAsync,
+    onEditUserTurn: noopAsync,
     onForkFromTurn: noopAsync,
     onUnarchiveThread: noopAsync,
     onOpenTurnDiffReview: () => undefined,

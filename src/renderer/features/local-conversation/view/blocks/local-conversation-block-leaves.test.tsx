@@ -12,6 +12,7 @@ import { renderWithMaitai as render } from "../../../../test/thread-maitai";
 import { settleAsyncRender, textContent } from "../../../../test/dom";
 import { TestQueryProvider } from "../../../../test/query";
 import { THREAD_SETTINGS_STORAGE_KEY } from "../../../../lib/codex-thread-settings";
+import { COMPOSER_ENTER_BEHAVIOR_STORAGE_KEY } from "../../../../lib/composer-enter-behavior";
 import { CodexThreadSettingsProvider } from "../../../../lib/use-codex-thread-settings";
 import { buildCodexFileChangeMap } from "../../../../../shared/codex-file-change";
 import { applyContentSearchDomMarks } from "../../../content-search/content-search-dom";
@@ -463,7 +464,7 @@ describe("UserMessageBubble collapse", () => {
           block={block}
           isLatestTurn
           isStreamingTurn={false}
-          onEditLastUserTurn={vi.fn()}
+          onEditUserTurn={vi.fn()}
         />
       </TooltipProvider>,
     );
@@ -486,14 +487,14 @@ describe("UserMessageBubble collapse", () => {
     const retry = new Promise<void>((resolve) => {
       completeRetry = resolve;
     });
-    const onEditLastUserTurn = vi.fn().mockReturnValueOnce(first).mockReturnValueOnce(retry);
+    const onEditUserTurn = vi.fn().mockReturnValueOnce(first).mockReturnValueOnce(retry);
     const { getByRole, queryByRole } = render(
       <TooltipProvider>
         <UserMessageBubble
           block={block}
           isLatestTurn
           isStreamingTurn={false}
-          onEditLastUserTurn={onEditLastUserTurn}
+          onEditUserTurn={onEditUserTurn}
         />
       </TooltipProvider>,
     );
@@ -509,7 +510,7 @@ describe("UserMessageBubble collapse", () => {
       fireEvent.submit(input.form!);
       await Promise.resolve();
     });
-    expect(onEditLastUserTurn).toHaveBeenCalledExactlyOnceWith({
+    expect(onEditUserTurn).toHaveBeenCalledExactlyOnceWith({
       threadId: "thread-1",
       turnId: "turn-1",
       message: "Revised request",
@@ -529,13 +530,140 @@ describe("UserMessageBubble collapse", () => {
       fireEvent.submit(input.form!);
       await Promise.resolve();
     });
-    expect(onEditLastUserTurn).toHaveBeenCalledTimes(2);
+    expect(onEditUserTurn).toHaveBeenCalledTimes(2);
     expect(queryByRole("textbox", { name: "Edit message" })).not.toBeNull();
     await act(async () => {
       completeRetry();
       await Promise.resolve();
     });
     await waitFor(() => expect(queryByRole("textbox", { name: "Edit message" })).toBeNull());
+  });
+
+  test("edits with the Composer's keys and keeps the draft while the message scrolls away", async () => {
+    const block = buildUserMessageBlock("Original request");
+    block.userMessageActions = { canEdit: true, sentAtMs: null };
+    const onEditUserTurn = vi.fn().mockResolvedValue(undefined);
+    const bubble = (visible: boolean) => (
+      <TooltipProvider>
+        {visible ? (
+          <UserMessageBubble
+            block={block}
+            isLatestTurn={false}
+            isStreamingTurn={false}
+            onEditUserTurn={onEditUserTurn}
+          />
+        ) : null}
+      </TooltipProvider>
+    );
+    const { getByRole, queryByRole, rerender } = render(bubble(true));
+    const editor = () => getByRole("textbox", { name: "Edit message" }) as HTMLTextAreaElement;
+
+    await act(async () => {
+      fireEvent.click(getByRole("button", { name: "Edit message" }));
+      await Promise.resolve();
+    });
+    expect(document.activeElement).toBe(editor());
+    expect(editor().selectionStart).toBe("Original request".length);
+    await act(async () => {
+      fireEvent.change(editor(), { target: { value: "Rewritten request" } });
+      fireEvent.keyDown(editor(), { key: "Enter", shiftKey: true });
+      await Promise.resolve();
+    });
+    expect(onEditUserTurn).not.toHaveBeenCalled();
+
+    rerender(bubble(false));
+    rerender(bubble(true));
+    expect(editor().value).toBe("Rewritten request");
+
+    await act(async () => {
+      fireEvent.keyDown(editor(), { key: "Escape" });
+      await Promise.resolve();
+    });
+    expect(queryByRole("textbox", { name: "Edit message" })).toBeNull();
+    await act(async () => {
+      fireEvent.click(getByRole("button", { name: "Edit message" }));
+      await Promise.resolve();
+    });
+    expect(editor().value).toBe("Original request");
+
+    await act(async () => {
+      fireEvent.change(editor(), { target: { value: "Rewritten request" } });
+      fireEvent.keyDown(editor(), { key: "Enter" });
+      await Promise.resolve();
+    });
+    expect(onEditUserTurn).toHaveBeenCalledExactlyOnceWith({
+      threadId: "thread-1",
+      turnId: "turn-1",
+      message: "Rewritten request",
+    });
+    await waitFor(() => expect(queryByRole("textbox", { name: "Edit message" })).toBeNull());
+  });
+
+  test("sends a multi-line edit with Cmd+Enter when the Composer reserves Enter for new lines", async () => {
+    localStorage.setItem(COMPOSER_ENTER_BEHAVIOR_STORAGE_KEY, "cmdIfMultiline");
+    try {
+      const block = buildUserMessageBlock("Original request");
+      block.userMessageActions = { canEdit: true, sentAtMs: null };
+      const onEditUserTurn = vi.fn().mockResolvedValue(undefined);
+      const { getByRole } = render(
+        <TooltipProvider>
+          <UserMessageBubble
+            block={block}
+            isLatestTurn
+            isStreamingTurn={false}
+            onEditUserTurn={onEditUserTurn}
+          />
+        </TooltipProvider>,
+      );
+      await act(async () => {
+        fireEvent.click(getByRole("button", { name: "Edit message" }));
+        await Promise.resolve();
+      });
+      const editor = getByRole("textbox", { name: "Edit message" });
+      await act(async () => {
+        fireEvent.change(editor, { target: { value: "First line\nSecond line" } });
+        fireEvent.keyDown(editor, { key: "Enter" });
+        await Promise.resolve();
+      });
+      expect(onEditUserTurn).not.toHaveBeenCalled();
+      await act(async () => {
+        fireEvent.keyDown(editor, { key: "Enter", metaKey: true });
+        await Promise.resolve();
+      });
+      expect(onEditUserTurn).toHaveBeenCalledWith(
+        expect.objectContaining({ message: "First line\nSecond line" }),
+      );
+    } finally {
+      localStorage.removeItem(COMPOSER_ENTER_BEHAVIOR_STORAGE_KEY);
+    }
+  });
+
+  test("does not send an emptied edit", async () => {
+    const block = buildUserMessageBlock("Original request");
+    block.userMessageActions = { canEdit: true, sentAtMs: null };
+    const onEditUserTurn = vi.fn();
+    const { getByRole } = render(
+      <TooltipProvider>
+        <UserMessageBubble
+          block={block}
+          isLatestTurn
+          isStreamingTurn={false}
+          onEditUserTurn={onEditUserTurn}
+        />
+      </TooltipProvider>,
+    );
+    await act(async () => {
+      fireEvent.click(getByRole("button", { name: "Edit message" }));
+      await Promise.resolve();
+    });
+    const editor = getByRole("textbox", { name: "Edit message" });
+    await act(async () => {
+      fireEvent.change(editor, { target: { value: "   " } });
+      fireEvent.keyDown(editor, { key: "Enter" });
+      await Promise.resolve();
+    });
+    expect((getByRole("button", { name: "Send" }) as HTMLButtonElement).disabled).toBe(true);
+    expect(onEditUserTurn).not.toHaveBeenCalled();
   });
 
   test("explicitly hidden user actions preserve status while omitting copy and edit", () => {

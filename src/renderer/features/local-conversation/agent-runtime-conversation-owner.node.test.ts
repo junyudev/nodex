@@ -189,8 +189,10 @@ function transport(initial: AgentRuntimeConversation, pages: readonly AgentHisto
           }
         : null;
     }),
-    readQueuedMessage: vi.fn(async (input) => {
-      const run = queuedRows().find((run) => run.id === input.runId);
+    readRunMessage: vi.fn(async (input) => {
+      const run = current.snapshot.projection.runs.find(
+        (run) => run.id === input.runId && run.status !== "rolled_back",
+      );
       const item = current.snapshot.projection.visibleTurnItems.find(
         (row) => row.item.type === "user_message" && row.item.runId === input.runId,
       )?.item;
@@ -202,7 +204,7 @@ function transport(initial: AgentRuntimeConversation, pages: readonly AgentHisto
         nodeId: null,
         role: "user" as const,
         text: item.text,
-        attachments: [],
+        attachments: item.attachments,
         streaming: false,
         createdAt: at,
         updatedAt: at,
@@ -601,7 +603,7 @@ test("retires only live resident keys and the addressed delivery without rereadi
   expect(wire.port.item).not.toHaveBeenCalled();
   expect(wire.port.readQueuePage).not.toHaveBeenCalled();
   expect(wire.port.readQueuedPreview).not.toHaveBeenCalled();
-  expect(wire.port.readQueuedMessage).not.toHaveBeenCalled();
+  expect(wire.port.readRunMessage).not.toHaveBeenCalled();
   expect(changed).toHaveBeenCalledOnce();
   expect(siblingChanged).not.toHaveBeenCalled();
   expect(structureChanged).toHaveBeenCalledOnce();
@@ -953,7 +955,7 @@ describe("Agent Runtime keyed transcript reads", () => {
         };
       },
     );
-    const readQueuedMessage: NonNullable<AgentRuntimeReadTransport["readQueuedMessage"]> = vi.fn(
+    const readRunMessage: NonNullable<AgentRuntimeReadTransport["readRunMessage"]> = vi.fn(
       async (input) => messages.find((message) => message.runId === input.runId) ?? null,
     );
     const readQueuedPreview: AgentRuntimeReadTransport["readQueuedPreview"] = vi.fn(
@@ -971,12 +973,12 @@ describe("Agent Runtime keyed transcript reads", () => {
       },
     );
     const attachment = vi.fn(async () => ({ path: "/managed/queue-image.png" }));
-    const port = { ...wire.port, readQueuePage, readQueuedMessage, readQueuedPreview, attachment };
+    const port = { ...wire.port, readQueuePage, readRunMessage, readQueuedPreview, attachment };
     const owner = new AgentRuntimeConversationOwner(target, port);
     const releaseControl = owner.retain();
     await owner.resume();
     expect(readQueuePage).not.toHaveBeenCalled();
-    expect(readQueuedMessage).not.toHaveBeenCalled();
+    expect(readRunMessage).not.toHaveBeenCalled();
     const release = owner.readOwner.subscribeStructure(() => {});
     await owner.resume();
     await vi.waitFor(() =>
@@ -991,7 +993,7 @@ describe("Agent Runtime keyed transcript reads", () => {
         .view?.queuedFollowUps.entries.every((entry) => entry.prompt.length <= 2048),
     ).toBe(true);
     expect(readQueuedPreview).toHaveBeenCalledTimes(25);
-    expect(readQueuedMessage).not.toHaveBeenCalled();
+    expect(readRunMessage).not.toHaveBeenCalled();
     expect(attachment).not.toHaveBeenCalled();
     expect(owner.getSnapshot().view?.queuedFollowUps.entries[6]?.promptInput?.images).toEqual([
       { caption: "Queue.png", source: "nodex-runtime-image:thread/queued-user%3A6/queue-image" },
@@ -1050,7 +1052,7 @@ describe("Agent Runtime keyed transcript reads", () => {
     await vi.waitFor(() => expect(owner.getSnapshot().view?.queuedFollowUps.status).toBe("error"));
     expect(owner.getSnapshot().view?.queuedFollowUps.error).toBe("Queue unavailable");
     expect(owner.getSnapshot().view?.queuedFollowUps.entries).toEqual([]);
-    expect(wire.port.readQueuedMessage).not.toHaveBeenCalled();
+    expect(wire.port.readRunMessage).not.toHaveBeenCalled();
     expect(wire.port.readQueuedPreview).not.toHaveBeenCalled();
     release();
   });
@@ -1401,6 +1403,55 @@ describe("Agent Runtime keyed transcript reads", () => {
     expect(owner.readOwner.readStructure()).toBe(structure);
     expect(wire.port.read).toHaveBeenCalledOnce();
     expect(wire.port.subscribe).toHaveBeenCalledOnce();
+    release();
+  });
+
+  test("offers edits only while every Run is settled and resends a sent message's images", async () => {
+    const image = {
+      type: "image" as const,
+      id: "image-1",
+      name: "chart.png",
+      mimeType: "image/png",
+      sizeBytes: 10,
+    };
+    const sent: Extract<AgentTurnItem, { type: "user_message" }> = {
+      ...base("sent-item", 1),
+      type: "user_message",
+      messageId: "user-message",
+      text: "Compare these",
+      attachments: [image],
+      inputIntent: "turn_start",
+      createdBy: "user",
+      creationSource: "web",
+    };
+    const { owner, wire, release } = await open(conversation([sent, assistant()]));
+    owner.setCapabilities({ supportsUserTurnEdits: true });
+    expect(owner.getSnapshot().view?.capabilityFlags.canEditUserTurns).toBe(false);
+
+    const run = owner.getSnapshot().conversation!.snapshot.projection.runs[0]!;
+    wire.emit({
+      sequence: 2,
+      commandId: null,
+      event: {
+        id: "settled",
+        threadId: target.threadId,
+        occurredAt: at,
+        type: "run.updated",
+        payload: { ...run, status: "completed", completedAt: at },
+      },
+    });
+    expect(owner.getSnapshot().view?.capabilityFlags.canEditUserTurns).toBe(true);
+
+    vi.mocked(wire.port.attachment).mockResolvedValueOnce({ path: "/attachments/chart.png" });
+    const read = await owner.readSentMessage("run");
+    expect(read.message.text).toBe("Compare these");
+    expect(read.images).toEqual([{ source: "/attachments/chart.png", caption: "chart.png" }]);
+    expect(wire.port.attachment).toHaveBeenCalledWith({
+      ...target,
+      sourceThreadId: target.threadId,
+      itemId: "sent-item",
+      attachmentId: "image-1",
+    });
     release();
   });
 

@@ -55,7 +55,7 @@ function model(running: boolean): ThreadBodySurfaceModel {
     resumeState: "resumed",
     statusType: running ? "active" : "idle",
     capabilityFlags: {
-      canEditLastUserTurn: false,
+      canEditUserTurns: false,
       canForkFromTurn: false,
       canSearch: false,
       canCollapseTurns: false,

@@ -4407,7 +4407,7 @@ export interface CodexConversationChildMembership {
 }
 
 export interface CodexConversationCapabilityFlags {
-  canEditLastUserTurn: boolean;
+  canEditUserTurns: boolean;
   canForkFromTurn: boolean;
   canSearch: boolean;
   canCollapseTurns: boolean;
