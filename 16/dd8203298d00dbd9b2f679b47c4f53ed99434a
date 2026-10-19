@@ -1,0 +1,34 @@
+src/main/codex-application/CodexSubagentDirectory.ts
+  s_f79dd9d0c7ac54::t_8659494fab3852 493
+  s_f79dd9d0c7ac54::t_3e574a3966cc8b 494-495,497-498,1482-1484,1486-1495
+  s_f79dd9d0c7ac54::t_4794f5940664bf 544
+src/main/core-client/CodexSubagentParityPerformance.stress.test.ts
+  s_f79dd9d0c7ac54::t_374548c601c613 815-816
+  s_f79dd9d0c7ac54::t_71ff32fabf39b5 125,127,817,821-824,843-844,852-856,864,866,1077-1078,1217,1237-1238
+  s_f79dd9d0c7ac54::t_b2875915655645 1009-1010
+  s_f79dd9d0c7ac54::t_8c3fc434e3d26b 1144,1147-1164
+src/main/codex-application/CodexSubagentDirectory.node.test.ts
+  s_f79dd9d0c7ac54::t_10c760f4d50134 2385-2432,2435-2441,2446-2450
+  s_f79dd9d0c7ac54::t_4794f5940664bf 188-224,2433-2434,2442-2445
+  s_f79dd9d0c7ac54::t_d1030acde75aae 225,230-239,271
+  s_f79dd9d0c7ac54::t_af76f51d933551 2451
+docs/product-specs/codex-subagent-behavior.md
+  s_f79dd9d0c7ac54::t_c08b6f57cd6e78 47-48
+  s_f79dd9d0c7ac54::t_3098167c7110ad 4
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "16dd8203298d00dbd9b2f679b47c4f53ed99434a",
+  "prompts": {},
+  "sessions": {
+    "s_f79dd9d0c7ac54": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a151d6-b92f-7f41-b4e5-4834cb7752bd",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
