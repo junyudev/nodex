@@ -269,9 +269,10 @@ read through the authenticated Profile and exact execution identity boundary.
   A disconnected SSH mutation is reported as unknown/reconcilable rather than
   assumed absent or repeated. Local filesystem APIs never inspect a remote path.
 - No arbitrary SQL inspection route in IPC or the public CLI.
-- Offline Profile cloning accepts only a current evidence-backed published Core
-  backup and a nonexistent target home. It rejects symlinks and source/target
-  ancestry, verifies copied database and asset-tree digests in a private sibling
+- Offline Profile cloning accepts only an evidence-backed, assets-inclusive
+  published Core backup with a current or exact supported predecessor Store and
+  a nonexistent target home. It rejects symlinks and source/target ancestry,
+  verifies copied database and asset-tree digests in a private sibling
   staging directory, preserves the imported Store lineage, and remints
   Profile-instance secrets before the target becomes visible. It never copies
   Agent credentials. Development launches sourced from a real Profile disable

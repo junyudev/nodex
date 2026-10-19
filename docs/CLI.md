@@ -17,10 +17,12 @@ rank, Yjs storage coordinate, or Desktop renderer state.
 
 `nodex profile clone --from <profile-home> --to <new-profile-home>` is the
 provisioning command for production-shape local testing. It selects the
-latest current evidence-backed, assets-inclusive published backup by default;
-`--backup <id>` selects an exact current backup. Create a fresh backup when only
-an older manifest exists. The target and its parent must be local real paths,
-and the target must not already exist.
+latest evidence-backed, assets-inclusive published backup by default;
+`--backup <id>` selects an exact backup. Its Store must be current or an exact
+supported predecessor; a predecessor retains its revision until the target Core
+upgrades it on first open. Backups without recorded integrity evidence and Store
+identity require a fresh backup. The target and its parent must be local real
+paths, and the target must not already exist.
 
 This command does not connect to or launch the source Profile's Core. The Core
 Administration materializer verifies the published database SHA-256 and

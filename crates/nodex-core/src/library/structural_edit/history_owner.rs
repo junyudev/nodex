@@ -576,9 +576,16 @@ pub(crate) fn discard_replaced(connection: &Connection) -> Result<(), StoreError
     )?;
     // Bundle deletion also releases Cut's source-Document foreign key. Merely
     // ending the lease would leave an unusable old clipboard retaining content.
+    // Schema rebuilds disable cascades, so retire the complete ephemeral closure explicitly.
+    connection.execute("DELETE FROM structural_cut_claims", [])?;
+    connection.execute("DELETE FROM structural_clipboard_leases", [])?;
     connection.execute("DELETE FROM structural_clipboard_bundles", [])?;
     connection.execute("DELETE FROM structural_retention_members", [])?;
     connection.execute("DELETE FROM structural_history_root_cleanup", [])?;
+    connection.execute("DELETE FROM editor_history_local_roots", [])?;
+    connection.execute("DELETE FROM editor_history_local_sets", [])?;
+    connection.execute("DELETE FROM editor_history_recipes", [])?;
+    connection.execute("DELETE FROM editor_history_cleanup", [])?;
     connection.execute("DELETE FROM editor_history_owners", [])?;
     Ok(())
 }

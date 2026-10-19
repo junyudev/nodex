@@ -2390,6 +2390,7 @@ fn migrate_v179_to_v180(
     connection: &Connection,
     context: &MigrationContext,
 ) -> Result<(), StoreError> {
+    while crate::library::prepare_editor_history_replacement_step(connection)? {}
     connection.execute_batch(include_str!("../../schema/migrations/v179_to_v180.sql"))?;
     let next_epoch = format!(
         "epoch:{}",
@@ -2404,6 +2405,7 @@ fn migrate_v179_to_v180(
                 .to_rfc3339_opts(SecondsFormat::Millis, true)
         ],
     )?;
+    crate::library::discard_replaced_editor_history(connection)?;
     connection.execute("INSERT INTO core_store_migration_history(source_revision,target_revision,source_schema_fingerprint,target_schema_fingerprint,backup_name,completed_at_unix_ms,evidence_json) VALUES(?1,?2,?3,?4,?5,?6,?7)",params![context.source_revision,context.target_revision,context.source_schema_fingerprint,context.target_schema_fingerprint,context.backup_name,context.completed_at_unix_ms,r#"{"profile_access":true,"delivery_epoch_replaced":true}"#])?;
     connection.pragma_update(None, "user_version", context.target_revision)?;
     Ok(())
@@ -5263,6 +5265,262 @@ mod tests {
         assert_eq!(history, 1);
         let reopened = prepare_profile_store(&mut connection, directory.path()).expect("reopen");
         assert_eq!(reopened.migrated_from_version, None);
+    }
+
+    #[test]
+    fn epoch_migration_releases_old_lifetimes_after_preserving_dormant_content() {
+        use crate::infrastructure::store::SqliteStoreKernel;
+        use crate::library::LibraryModule;
+
+        const NOW: &str = "2026-10-01T00:00:00.000Z";
+        const DOCUMENT: &str = "document:retained-upgrade";
+        const PLACEHOLDER: &str = "018f0000-0000-7000-8000-000000000921";
+        let profile = tempdir().unwrap();
+        install_intermediate_fixture(profile.path(), 174);
+        let mut connection = open_writer(&profile.path().join("nodex.db")).unwrap();
+        let (profile_id, library_id): (String, String) = connection
+            .query_row("SELECT profile_id,id FROM libraries", [], |row| {
+                Ok((row.get(0)?, row.get(1)?))
+            })
+            .unwrap();
+        connection.execute(
+            "INSERT OR IGNORE INTO block_store_metadata(id,store_epoch,created_at,updated_at) VALUES (1,'epoch:before-upgrade',?1,?1)",
+            [NOW],
+        ).unwrap();
+        let epoch: String = connection
+            .query_row("SELECT store_epoch FROM block_store_metadata", [], |row| {
+                row.get(0)
+            })
+            .unwrap();
+        let genesis =
+            crate::document::prepare_page_yjs_genesis(DOCUMENT, "Retained content", PLACEHOLDER)
+                .unwrap();
+        let body = json!({"action": {"kind": "restore_turned_selection", "state": {
+            "dormantPages": [{"pageId": "page:former-owner", "documentId": DOCUMENT,
+                "placeholderBlockId": PLACEHOLDER}]
+        }}})
+        .to_string();
+        let hash = crate::document::sha256(body.as_bytes());
+        let transfer_body = json!({"version":2,"project_id":"project:upgrade","library_id":library_id,"store_epoch":epoch,
+            "page_id":PLACEHOLDER,"result_location_revision":1,"result_parent":{"kind":"library","library_id":library_id},
+            "source":{"kind":"library","previous_sibling_id":null,"next_sibling_id":null}}).to_string();
+        let transfer_hash = crate::document::sha256(transfer_body.as_bytes());
+        super::super::legacy_visibility_migration::install_test_maintenance_context(&connection)
+            .unwrap();
+        with_immediate_transaction(&mut connection, |transaction| {
+            transaction.execute(
+                "INSERT INTO projects(id,library_id,name,created,updated) VALUES ('project:upgrade',?1,'Retained Project',?2,?2)",
+                params![library_id,NOW],
+            )?;
+            transaction.execute(
+                "INSERT INTO blocks(id,library_id,type,lifecycle,placement_revision,metadata_revision,created_at,updated_at) VALUES (?1,?2,'paragraph','active',1,1,?3,?3)",
+                params![PLACEHOLDER,library_id,NOW],
+            )?;
+            transaction.execute(
+                "INSERT INTO documents(id,library_id,generation,head_seq,schema_key,schema_version,state_vector,state_hash,readiness,authority,created_at,updated_at,sync_engine)
+                 VALUES (?1,?2,1,0,'nodex.page',3,?3,'','ready','ydoc_primary',?4,?4,'yjs')",
+                params![DOCUMENT,library_id,genesis.state_vector_v1,NOW],
+            )?;
+            transaction.execute(
+                "INSERT INTO document_snapshots(document_id,generation,snapshot_seq,state_vector,snapshot_update,snapshot_hash,schema_version,created_at) VALUES (?1,1,0,?2,?3,?4,3,?5)",
+                params![DOCUMENT,genesis.state_vector_v1,genesis.update_v1,crate::document::sha256(&genesis.update_v1),NOW],
+            )?;
+            let materialization = &genesis.materialization;
+            let title = serde_json::to_string(&materialization.rich_title).unwrap();
+            transaction.execute(
+                "INSERT INTO document_materializations(document_id,generation,projected_seq,schema_version,title,title_rich_json,title_rich_hash,nfm,plain_text,preview,block_tree_json,updated_at)
+                 VALUES (?1,1,0,3,?2,?3,?4,?5,?6,?7,?8,?9)",
+                params![DOCUMENT,materialization.title,title,crate::document::sha256(title.as_bytes()),materialization.nfm,
+                    materialization.plain_text,materialization.preview,serde_json::to_string(&materialization.block_tree).unwrap(),NOW],
+            )?;
+            for (id, kind) in [("owned", "structural_edit"), ("unowned", "structural_edit"), ("capture", "structural_edit"), ("transfer", "block_transfer")] {
+                transaction.execute(
+                    "INSERT INTO change_log(project_id,store_epoch,kind,operation_id,payload_json,committed_at,projection_impact_json)
+                     VALUES ('project:upgrade',?1,'library.changed',?2,'{}',?3,?4)",
+                    params![epoch,id,NOW,super::super::projection_impact::encode(&nodex_core_contracts::ProjectionImpact::None)?],
+                )?;
+                let change_log_seq = transaction.last_insert_rowid();
+                transaction.execute(
+                    "INSERT INTO block_mutations(mutation_id,project_id,store_epoch,mutation_kind,request_hash,request_json,outcome,result_json,recorded_at,change_log_seq)
+                     VALUES (?1,'project:upgrade',?2,?3,?4,'{}','committed','{}',?5,?6)",
+                    params![id,epoch,kind,hash,NOW,change_log_seq],
+                )?;
+            }
+            for id in ["owned", "unowned"] {
+                transaction.execute(
+                    "INSERT INTO structural_history_recipes(recipe_operation_id,library_id,project_id,store_epoch,recipe_hash,payload_ref_json,state,created_at)
+                     VALUES (?1,?2,'project:upgrade',?3,?4,?5,'available',?6)",
+                    params![id,library_id,epoch,hash,body,NOW],
+                )?;
+                transaction.execute(
+                    "INSERT INTO structural_retention_members(authority_kind,authority_id,library_id,member_kind,member_id) VALUES ('history_recipe',?1,?2,'document',?3)",
+                    params![id,library_id,DOCUMENT],
+                )?;
+            }
+            for (id, state) in [("active-owner", "active"), ("closed-owner", "closed")] {
+                transaction.execute(
+                    "INSERT INTO editor_history_owners(owner_id,library_id,store_epoch,peer_pid,state) VALUES (?1,?2,?3,42,?4)",
+                    params![id,library_id,epoch,state],
+                )?;
+                transaction.execute(
+                    "INSERT INTO editor_history_local_sets(owner_id,surface_id,project_id,document_id,generation,revision,membership_hash,closed,retain_document)
+                     VALUES (?1,'surface','project:upgrade',?2,1,1,'retained',0,1)",
+                    params![id,DOCUMENT],
+                )?;
+                transaction.execute("INSERT INTO editor_history_local_roots VALUES (?1,'surface',?2)",params![id,PLACEHOLDER])?;
+            }
+            transaction.execute("INSERT INTO editor_history_recipes VALUES ('owned','active-owner')",[])?;
+            transaction.execute("INSERT INTO editor_history_cleanup VALUES ('closed-owner')",[])?;
+            transaction.execute("UPDATE structural_history_payload_backfill SET complete=0,after_recipe_operation_id=''",[])?;
+            transaction.execute(
+                "INSERT INTO structural_clipboard_bundles VALUES ('bundle','capture',?1,?2,?3,?3,'{}',?4)",
+                params![library_id,epoch,hash,NOW],
+            )?;
+            transaction.execute("INSERT INTO structural_clipboard_leases VALUES ('bundle',1,'active',NULL,?1)",[NOW])?;
+            transaction.execute(
+                "INSERT INTO structural_cut_claims VALUES ('bundle',?1,?2,'unowned',1,'available',NULL,?3,?3)",
+                params![DOCUMENT,serde_json::to_string(&[PLACEHOLDER]).unwrap(),NOW],
+            )?;
+            transaction.execute(
+                "INSERT INTO block_transfer_undo_recipes VALUES ('transfer','project:upgrade',?1,?2,?3,?4,NULL,?5)",
+                params![library_id,epoch,transfer_hash,transfer_body,NOW],
+            )?;
+            Ok(())
+        }).unwrap();
+        validate_migration_source(&connection, 174).expect("valid historical Profile");
+        let mut failing_steps =
+            resolve_migration_path(174, CURRENT_STORE_REVISION, MIGRATION_STEPS)
+                .expect("supported predecessor path");
+        failing_steps.last_mut().unwrap().apply =
+            |_, _| Err(corrupt("injected failure after history epoch replacement"));
+        let error = migrate_store(
+            &mut connection,
+            profile.path(),
+            &mut |_| {},
+            174,
+            &failing_steps,
+        )
+        .expect_err("a later failure must roll back history publication and replacement");
+        assert_eq!(error.code, StoreErrorCode::StoreCorrupt);
+        assert_eq!(
+            error.message,
+            "injected failure after history epoch replacement"
+        );
+        validate_schema_identity(&connection, 174).expect("source schema is unchanged");
+        assert_eq!(
+            connection
+                .query_row("SELECT store_epoch FROM block_store_metadata", [], |row| {
+                    row.get::<_, String>(0)
+                })
+                .unwrap(),
+            epoch
+        );
+        assert_eq!(
+            connection
+                .query_row("SELECT count(*) FROM editor_history_owners", [], |row| row
+                    .get::<_, i64>(
+                    0
+                ))
+                .unwrap(),
+            2
+        );
+        assert_eq!(
+            connection
+                .query_row(
+                    "SELECT count(*) FROM editor_history_local_roots",
+                    [],
+                    |row| row.get::<_, i64>(0)
+                )
+                .unwrap(),
+            2
+        );
+        assert_eq!(connection.query_row("SELECT count(*) FROM structural_history_recipes WHERE state='available' AND payload_ref_json=?1",[&body],|row|row.get::<_,i64>(0)).unwrap(),2);
+        assert_eq!(
+            connection
+                .query_row(
+                    "SELECT count(*) FROM structural_history_payloads",
+                    [],
+                    |row| row.get::<_, i64>(0)
+                )
+                .unwrap(),
+            0
+        );
+        assert_eq!(
+            connection
+                .query_row(
+                    "SELECT count(*) FROM structural_dormant_document_sources",
+                    [],
+                    |row| row.get::<_, i64>(0)
+                )
+                .unwrap(),
+            0
+        );
+        assert!(
+            !connection
+                .query_row(
+                    "SELECT complete FROM structural_history_payload_backfill",
+                    [],
+                    |row| row.get::<_, bool>(0)
+                )
+                .unwrap()
+        );
+        assert_eq!(
+            fs::read_dir(profile.path().join("backups/core-migrations"))
+                .unwrap()
+                .count(),
+            1
+        );
+        drop(connection);
+
+        let store = SqliteStoreKernel::open(profile.path()).expect("migrate historical Profile");
+        assert_eq!(store.preparation().migrated_from_version, Some(174));
+        store.readers().read_default(|connection| {
+            let current: String = connection.query_row("SELECT store_epoch FROM block_store_metadata",[],|row|row.get(0))?;
+            assert_ne!(current,epoch);
+            for table in ["editor_history_owners", "editor_history_cleanup", "editor_history_recipes", "editor_history_local_sets", "editor_history_local_roots", "structural_retention_members", "structural_clipboard_bundles", "structural_clipboard_leases", "structural_cut_claims"] {
+                assert_eq!(connection.query_row(&format!("SELECT count(*) FROM {table}"),[],|row|row.get::<_,i64>(0))?,0,"{table} must not retain the old epoch");
+            }
+            assert_eq!(connection.query_row("SELECT count(*) FROM structural_history_recipes WHERE state='consumed'",[],|row|row.get::<_,i64>(0))?,2);
+            for id in ["owned", "unowned"] {
+                assert_eq!(connection.query_row("SELECT payload_chunk FROM structural_history_payloads WHERE recipe_operation_id=?1 AND part=0",[id],|row|row.get::<_,String>(0))?,body);
+            }
+            assert_eq!(connection.query_row("SELECT count(*) FROM structural_dormant_document_sources WHERE document_id=?1",[DOCUMENT],|row|row.get::<_,i64>(0))?,1);
+            assert!(connection.query_row("SELECT consumed_at IS NOT NULL FROM block_transfer_undo_recipes WHERE transfer_operation_id='transfer'",[],|row|row.get::<_,bool>(0))?);
+            Ok(())
+        }).unwrap();
+        let library = LibraryModule::new(profile_id, library_id, &store);
+        let mut pending = true;
+        for _ in 0..12 {
+            pending = library
+                .maintain_editor_history_owners(|_| true)
+                .expect("maintenance succeeds after epoch replacement");
+            if !pending {
+                break;
+            }
+        }
+        assert!(!pending, "maintenance converges after epoch replacement");
+        store
+            .readers()
+            .read_default(|connection| {
+                assert_eq!(
+                    connection.query_row(
+                        "SELECT snapshot_update FROM document_snapshots WHERE document_id=?1",
+                        [DOCUMENT],
+                        |row| row.get::<_, Vec<u8>>(0)
+                    )?,
+                    genesis.update_v1
+                );
+                assert_eq!(
+                    connection.query_row(
+                        "SELECT title FROM document_materializations WHERE document_id=?1",
+                        [DOCUMENT],
+                        |row| row.get::<_, String>(0)
+                    )?,
+                    "Retained content"
+                );
+                Ok(())
+            })
+            .unwrap();
     }
 
     #[test]

@@ -5,7 +5,7 @@ import path from "node:path";
 import { afterEach, describe, expect, test } from "vite-plus/test";
 import { CORE_CLIENT_REQUIREMENTS, CORE_TRANSPORT_BUDGETS } from "@nodex/core-protocol";
 
-import type { CoreEventEnvelope, CoreEventReplayRequired } from "./types";
+import type { CoreEventEnvelope, CoreEventReplayRequired, CoreStreamCheckpoint } from "./types";
 import { createCoreLocalCommitFixture } from "./testing/local-commit-fixture";
 import {
   CoreEventCompatibilityError,
@@ -392,6 +392,64 @@ describe("UDS Core event replay boundaries", () => {
     const subscription = await transport.openEventStream(4, () => undefined);
 
     await expect(subscription.done).rejects.toEqual(new CoreEventReplayError(replayBoundary));
+  });
+
+  test("delivers the checkpoint when the retained replay window is empty", async () => {
+    const checkpoint: CoreStreamCheckpoint = {
+      store_epoch: "epoch-1",
+      generation: "generation-1",
+      scanned_through_seq: 42,
+      oldest_available_seq: 43,
+      resync_token: null,
+    };
+    const transport = configureEventContract(
+      new UdsHttpTransport(
+        await serveSseFrames(`event: stream-checkpoint\ndata: ${JSON.stringify(checkpoint)}\n\n`),
+        "test-capability",
+      ),
+    );
+    const observed: CoreStreamCheckpoint[] = [];
+    const subscription = await transport.openEventStream(
+      42,
+      () => undefined,
+      {},
+      undefined,
+      undefined,
+      (value) => observed.push(value),
+    );
+
+    await expect(subscription.done).resolves.toBeUndefined();
+    expect(observed).toEqual([checkpoint]);
+  });
+
+  test("rejects a replay checkpoint whose retention boundary is beyond the next sequence", async () => {
+    const checkpoint: CoreStreamCheckpoint = {
+      store_epoch: "epoch-1",
+      generation: "generation-1",
+      scanned_through_seq: 42,
+      oldest_available_seq: 44,
+      resync_token: null,
+    };
+    const transport = configureEventContract(
+      new UdsHttpTransport(
+        await serveSseFrames(`event: stream-checkpoint\ndata: ${JSON.stringify(checkpoint)}\n\n`),
+        "test-capability",
+      ),
+    );
+    const observed: CoreStreamCheckpoint[] = [];
+    const subscription = await transport.openEventStream(
+      42,
+      () => undefined,
+      {},
+      undefined,
+      undefined,
+      (value) => observed.push(value),
+    );
+
+    await expect(subscription.done).rejects.toEqual(
+      new CoreEventCompatibilityError("Core stream checkpoint is invalid"),
+    );
+    expect(observed).toEqual([]);
   });
 
   test("accepts a legal committed event larger than the old 512 KiB budget", async () => {

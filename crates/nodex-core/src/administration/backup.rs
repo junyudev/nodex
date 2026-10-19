@@ -918,7 +918,8 @@ fn stage_backup(
         progress.validation_ms = duration_millis(validation_started_at.elapsed());
     })?;
     let staged_store = open_immutable_reader(&database_path)?;
-    let required = super::profile_clone::read_clone_executions(&staged_store)?;
+    let required =
+        super::profile_clone::read_clone_executions(&staged_store, store_schema_version)?;
     let has_execution = participant.capture(super::ProfileSnapshotCapture {
         source_profile: profile_home,
         staging_profile: staging_directory,
@@ -1047,13 +1048,14 @@ pub(super) fn resolve_backup_for_profile_clone(
         None => list_backup_inventory(profile_home)?
             .into_iter()
             .find(|item| {
-                item.record.includes_assets && item.record.version == BACKUP_MANIFEST_VERSION
+                item.record.includes_assets
+                    && matches!(item.record.version, 3 | BACKUP_MANIFEST_VERSION)
             })
             .map(|item| item.record.backup_id)
             .ok_or_else(|| {
                 StoreError::new(
                     StoreErrorCode::NotFound,
-                    "Profile has no current evidence-backed backup to clone; create a new backup",
+                    "Profile has no evidence-backed backup to clone; create a new backup",
                     false,
                 )
             })?,
@@ -1090,10 +1092,15 @@ fn validate_evidence_backed_profile_clone(
             "Published backup manifest identity does not match its directory",
         ));
     }
-    if manifest.version != BACKUP_MANIFEST_VERSION || manifest.integrity_evidence.is_none() {
+    if !matches!(manifest.version, 3 | BACKUP_MANIFEST_VERSION)
+        || !manifest.includes_assets
+        || manifest.integrity_evidence.is_none()
+        || manifest.store_schema_version.is_none()
+        || manifest.store_epoch.as_ref().is_none_or(String::is_empty)
+    {
         return Err(StoreError::new(
             StoreErrorCode::UnsupportedSchema,
-            "Profile clone requires a current evidence-backed backup; create a new backup",
+            "Profile clone requires an assets-inclusive backup with Store identity and integrity evidence; create a new backup",
             false,
         ));
     }
@@ -2406,4 +2413,189 @@ fn io_error(error: std::io::Error) -> StoreError {
         format!("Backup filesystem operation failed: {error}"),
         false,
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use tempfile::tempdir;
+
+    use crate::administration::profile_clone::{
+        ProfileCloneBackupSelection, ProfileCloneRequest, prepare_profile_clone,
+    };
+    use crate::infrastructure::store::SqliteStoreKernel;
+
+    use super::*;
+
+    /// A historical backup package: preserve the frozen Store schema and add only Profile identity.
+    fn publish_v3_predecessor_backup(source: &Path) -> (PathBuf, BackupManifest) {
+        let published = source.join("backups/predecessor");
+        fs::create_dir_all(published.join("assets")).unwrap();
+        let database = published.join(BACKUP_DATABASE_FILE_NAME);
+        fs::write(
+            &database,
+            include_bytes!("../../tests/fixtures/store-v174.db"),
+        )
+        .unwrap();
+        let connection = Connection::open(&database).unwrap();
+        connection.execute_batch(
+            "INSERT INTO block_store_metadata(id,store_epoch,created_at,updated_at)
+             VALUES (1,'epoch:predecessor','2026-10-01T00:00:00.000Z','2026-10-01T00:00:00.000Z');
+             INSERT INTO profiles(id,created_at,updated_at)
+             VALUES ('profile:predecessor','2026-10-01T00:00:00.000Z','2026-10-01T00:00:00.000Z');
+             INSERT INTO libraries(id,profile_id,created_at,updated_at)
+             VALUES ('library:predecessor','profile:predecessor','2026-10-01T00:00:00.000Z','2026-10-01T00:00:00.000Z');",
+        ).unwrap();
+        drop(connection);
+        fs::write(published.join("assets/retained.bin"), b"retained asset").unwrap();
+        let db_bytes = regular_file_length(&database).unwrap();
+        let (assets_bytes, asset_tree_sha256) =
+            digest_asset_tree(&published.join("assets")).unwrap();
+        let manifest = BackupManifest {
+            version: 3,
+            id: "predecessor".into(),
+            created_at: "2026-10-01T00:00:00.000Z".into(),
+            trigger: "manual".into(),
+            label: None,
+            includes_assets: true,
+            db_bytes,
+            assets_bytes,
+            execution_bytes: 0,
+            total_bytes: db_bytes + assets_bytes,
+            store_schema_version: Some(174),
+            store_epoch: Some("epoch:predecessor".into()),
+            integrity_evidence: Some(BackupIntegrityEvidence {
+                version: BACKUP_INTEGRITY_EVIDENCE_VERSION,
+                database_sha256: sha256_regular_file(&database).unwrap(),
+                asset_tree_sha256,
+                execution_tree_sha256: None,
+            }),
+            core_operation_id: None,
+            core_request_hash: None,
+        };
+        write_manifest(&published, &manifest).unwrap();
+        (published, manifest)
+    }
+
+    type BackendSession = (String, String, Option<String>, Option<String>);
+
+    fn backend_sessions(connection: &Connection) -> Vec<BackendSession> {
+        connection.prepare(
+            "SELECT thread_id,backend_session_id,native_home,native_state_json FROM thread_backend_sessions ORDER BY thread_id",
+        ).unwrap().query_map([], |row| Ok((row.get(0)?,row.get(1)?,row.get(2)?,row.get(3)?)))
+            .unwrap().collect::<rusqlite::Result<_>>().unwrap()
+    }
+
+    #[test]
+    fn clones_a_v3_predecessor_backup_then_upgrades_only_the_isolated_store() {
+        let directory = tempdir().unwrap();
+        let source = directory.path().join("source");
+        let target = directory.path().join("target");
+        let (published, manifest) = publish_v3_predecessor_backup(&source);
+        let original_hash =
+            sha256_regular_file(&published.join(BACKUP_DATABASE_FILE_NAME)).unwrap();
+        let original_sessions = backend_sessions(
+            &open_immutable_reader(&published.join(BACKUP_DATABASE_FILE_NAME)).unwrap(),
+        );
+        assert_eq!(original_sessions.len(), 2);
+        let prepared = prepare_profile_clone(ProfileCloneRequest {
+            source_profile_home: source.clone(),
+            target_profile_home: target.clone(),
+            backup: ProfileCloneBackupSelection::Latest,
+        })
+        .unwrap();
+        assert!(prepared.executions().is_empty());
+        assert_eq!(prepared.threads().len(), 2);
+        let receipt = prepared.store_receipt().clone();
+        assert_eq!(receipt.backup_id, manifest.id);
+        assert_eq!(receipt.store_schema_version, 174);
+        assert_eq!(receipt.store_epoch, "epoch:predecessor");
+        prepared.publish(&receipt).unwrap();
+        assert_eq!(
+            open_immutable_reader(&target.join(BACKUP_DATABASE_FILE_NAME))
+                .unwrap()
+                .query_row("PRAGMA user_version", [], |row| row.get::<_, u32>(0))
+                .unwrap(),
+            174,
+        );
+
+        let store = SqliteStoreKernel::open(&target).unwrap();
+        assert_eq!(store.preparation().migrated_from_version, Some(174));
+        assert_eq!(store.preparation().schema_version, CURRENT_STORE_REVISION);
+        store
+            .readers()
+            .read_default(|connection| {
+                assert_eq!(backend_sessions(connection), original_sessions);
+                assert_eq!(
+                    connection.query_row("SELECT profile_id,id FROM libraries", [], |row| {
+                        Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+                    })?,
+                    ("profile:predecessor".into(), "library:predecessor".into())
+                );
+                Ok(())
+            })
+            .unwrap();
+        drop(store);
+        let reopened = SqliteStoreKernel::open(&target).unwrap();
+        assert_eq!(reopened.preparation().migrated_from_version, None);
+        drop(reopened);
+        assert_eq!(
+            fs::read_dir(target.join("backups/core-migrations"))
+                .unwrap()
+                .count(),
+            1,
+        );
+        assert_eq!(
+            fs::read(target.join("assets/retained.bin")).unwrap(),
+            b"retained asset",
+        );
+        assert_eq!(
+            sha256_regular_file(&published.join(BACKUP_DATABASE_FILE_NAME)).unwrap(),
+            original_hash,
+        );
+        assert_eq!(
+            fs::read(published.join("assets/retained.bin")).unwrap(),
+            b"retained asset",
+        );
+        assert!(!source.join(BACKUP_DATABASE_FILE_NAME).exists());
+    }
+
+    #[test]
+    fn rejects_predecessor_backups_without_store_identity_or_integrity_evidence() {
+        let directory = tempdir().unwrap();
+        let source = directory.path().join("source");
+        let (published, mut manifest) = publish_v3_predecessor_backup(&source);
+        let evidence = manifest.integrity_evidence.take();
+        let schema = manifest.store_schema_version.take();
+        let epoch = manifest.store_epoch.take();
+        for missing in ["integrity", "schema", "epoch", "assets"] {
+            manifest.integrity_evidence = evidence.clone();
+            manifest.store_schema_version = schema;
+            manifest.store_epoch = epoch.clone();
+            manifest.includes_assets = true;
+            match missing {
+                "integrity" => manifest.integrity_evidence = None,
+                "schema" => manifest.store_schema_version = None,
+                "epoch" => manifest.store_epoch = None,
+                "assets" => {
+                    manifest.includes_assets = false;
+                    manifest
+                        .integrity_evidence
+                        .as_mut()
+                        .unwrap()
+                        .asset_tree_sha256 = empty_asset_tree_sha256();
+                }
+                _ => unreachable!(),
+            }
+            fs::remove_file(published.join(BACKUP_MANIFEST_FILE_NAME)).unwrap();
+            write_manifest(&published, &manifest).unwrap();
+            let target = directory.path().join(missing);
+            let result = prepare_profile_clone(ProfileCloneRequest {
+                source_profile_home: source.clone(),
+                target_profile_home: target.clone(),
+                backup: ProfileCloneBackupSelection::Id(manifest.id.clone()),
+            });
+            assert!(result.is_err(), "missing {missing} must reject the clone");
+            assert!(!target.exists());
+        }
+    }
 }

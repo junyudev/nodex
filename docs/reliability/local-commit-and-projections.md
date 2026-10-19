@@ -38,6 +38,9 @@ results that are still inside the idempotency window are detached from their
 LocalCommit parent before delivery evidence is removed. A Store epoch rotation
 cuts one canonical resync boundary and drops the old delivery window instead of
 resealing every historical operation under the new epoch.
+An empty retained window keeps its monotonic commit head and places the oldest
+available sequence one past that head. Stream checkpoints preserve this boundary
+after scanning through the head, even though no delivery packets remain.
 
 Retention is internal bookkeeping, not a semantic mutation: it creates no
 LocalCommit, projection event, change-log row, or module receipt of its own.

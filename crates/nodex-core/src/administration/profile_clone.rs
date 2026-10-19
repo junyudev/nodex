@@ -20,6 +20,7 @@ const PRIVATE_DIRECTORY_MODE: u32 = 0o700;
 const PRIVATE_FILE_MODE: u32 = 0o600;
 const MAX_CLONE_THREADS: usize = 100_000;
 const MAX_THREAD_METADATA_BYTES: usize = 16 * 1024 * 1024;
+const AGENT_RUNTIME_BINDINGS_STORE_REVISION: u32 = 178;
 
 #[derive(Clone, Debug, Deserialize, Serialize, utoipa::ToSchema)]
 #[serde(rename_all = "snake_case")]
@@ -142,7 +143,7 @@ pub fn prepare_profile_clone(
             crate::infrastructure::sqlite::open_immutable_reader(&staging.join(STORE_FILE_NAME))?;
         let threads =
             read_clone_threads(&connection, MAX_CLONE_THREADS, MAX_THREAD_METADATA_BYTES)?;
-        let executions = read_clone_executions(&connection)?;
+        let executions = read_clone_executions(&connection, receipt.store_schema_version)?;
         Ok(PreparedProfileClone {
             source,
             target: target.clone(),
@@ -162,7 +163,12 @@ pub fn prepare_profile_clone(
 /// Reads only execution references, with the same allocation bounds as native requirements.
 pub(super) fn read_clone_executions(
     connection: &rusqlite::Connection,
+    store_schema_version: u32,
 ) -> Result<Vec<ProfileCloneExecution>, StoreError> {
+    // Supported predecessors retain their source revision until the target Core opens them.
+    if store_schema_version < AGENT_RUNTIME_BINDINGS_STORE_REVISION {
+        return Ok(Vec::new());
+    }
     let mut statement = connection.prepare("SELECT session_id, runtime_id, runtime_thread_id FROM project_session_execution_bindings ORDER BY session_id")?;
     let mut rows = statement.query([])?;
     let mut executions = Vec::new();
@@ -510,6 +516,13 @@ mod tests {
             assert!(error.message.contains("byte budget"));
             assert_eq!(read_clone_threads(&connection, 1, 18).unwrap().len(), 1);
         }
+    }
+
+    #[test]
+    fn execution_requirements_skip_only_predecessors_without_runtime_bindings() {
+        let connection = rusqlite::Connection::open_in_memory().unwrap();
+        assert!(read_clone_executions(&connection, 177).unwrap().is_empty());
+        assert!(read_clone_executions(&connection, 178).is_err());
     }
 
     #[test]

@@ -287,8 +287,9 @@ pub(crate) fn collect_one(
     })
 }
 
-/// The cursor and body replacement commit together. No schema migration walks
-/// payloads, and a cancelled copy never advances past the uncommitted artifact.
+/// The cursor and body replacement commit together. Ordinary maintenance converts
+/// one artifact; an offline epoch transition finishes publication before releasing
+/// retention. A cancelled copy never advances past the uncommitted artifact.
 pub(crate) fn backfill_one(connection: &Connection) -> Result<bool, StoreError> {
     let (after, complete): (String, bool) = connection.query_row(
         "SELECT after_recipe_operation_id, complete FROM structural_history_payload_backfill WHERE id = 1",

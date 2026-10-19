@@ -276,9 +276,10 @@ being silently repaired or replaced with synthetic files. A diagnostic clone als
 preserves unattached Documents and their source bytes so ownership defects can be
 reproduced locally. Cloning does not certify those Documents for restore or grant
 them editing authority; restore and normal reads retain their strict validation.
-Select a specific
-current backup with `--backup <backup-id>` when reproducibility matters; create
-a fresh backup first when the Profile has only an older manifest.
+Select a specific backup with `--backup <backup-id>` when reproducibility matters.
+An exact supported predecessor retains its Store revision through provisioning
+and upgrades on first open. Create a fresh backup when existing backups lack
+recorded integrity evidence or Store identity.
 
 The Profile materializer also captures the source's idle local Codex history:
 active and archived rollouts, inherited fork history, selected history after

@@ -48,6 +48,8 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- Existing Profiles open reliably after an upgrade and resume background cleanup while preserving saved document content.
+
 - macOS notifications wait for system authorization before sending, and Settings shows the current permission with an action to allow notifications or open System Settings.
 
 - Terminals retain startup events and release processes that exit before attachment completes.

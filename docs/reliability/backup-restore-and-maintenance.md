@@ -112,8 +112,11 @@ restored Store.
 
 ## Development Profile clones
 
-Development provisioning may materialize a current evidence-backed
-published backup into a new Profile home. The source Core is never launched:
+Development provisioning may materialize an evidence-backed, assets-inclusive
+published backup with a current or exact supported predecessor Store into a new
+Profile home. Predecessors retain their source revision until the target Core
+upgrades them on first open; clone requirements use only authorities present at
+that revision. The source Core is never launched:
 Core reads only the backup package, copies `nodex.db` and its managed-asset
 closure into a private sibling staging directory, and rejects symlinks,
 existing targets, or source/target ancestry overlap. Regular-file copying uses

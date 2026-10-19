@@ -820,9 +820,16 @@ pub(crate) fn prepare_editor_history_replacement(
     connection: &mut rusqlite::Connection,
 ) -> Result<(), StoreError> {
     while crate::infrastructure::sqlite::with_immediate_transaction(connection, |transaction| {
-        structural_edit::history_payload::backfill_one(transaction)
+        prepare_editor_history_replacement_step(transaction)
     })? {}
     Ok(())
+}
+
+/// Publishes one retained source within the caller's transaction before an epoch transition.
+pub(crate) fn prepare_editor_history_replacement_step(
+    connection: &rusqlite::Connection,
+) -> Result<bool, StoreError> {
+    structural_edit::history_payload::backfill_one(connection)
 }
 
 pub(crate) fn discard_replaced_editor_history(

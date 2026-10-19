@@ -193,8 +193,13 @@ The verified backup exists before the write transaction and remains available
 after either success or rollback. A failed transaction leaves the live Store at
 its exact source identity. A successful reopen observes the current identity
 and does not repeat the backup or history row. Native migration does not replace
-the Store file with a staging copy and therefore does not rotate Store epoch or
-enter the Store-replacement journal.
+the Store file with a staging copy or enter the Store-replacement journal. A step
+that retires durable delivery coordinates rotates the Store epoch in the same
+transaction and ends old editor, structural Undo and clipboard lifetimes through
+Library's replacement boundary. It publishes retained dormant sources before
+releasing ephemeral roots. Consumers reacquire current projection cursors after
+reopening, and later maintenance never tries to close an old lifetime under the
+new epoch.
 
 Yrs is the authority for Document content during migration. If a migration
 changes the interpretation of derived materialization records, Core validates

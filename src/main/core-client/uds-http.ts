@@ -972,7 +972,7 @@ const parseStreamCheckpoint = (json: string, contract: CoreEventContract): CoreS
     !isNonNegativeSafeInteger(value.scanned_through_seq) ||
     !("oldest_available_seq" in value) ||
     !isNonNegativeSafeInteger(value.oldest_available_seq) ||
-    value.oldest_available_seq > value.scanned_through_seq ||
+    value.oldest_available_seq > value.scanned_through_seq + 1 ||
     !("resync_token" in value) ||
     (value.resync_token !== null && !isIdentity(value.resync_token))
   ) {
