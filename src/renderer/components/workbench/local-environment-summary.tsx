@@ -13,6 +13,7 @@ import type {
   WorktreeEnvironmentPlatform,
   WorktreeEnvironmentScriptDefinition,
 } from "@/lib/types";
+import { useCopyFeedback } from "@/lib/use-copy-feedback";
 import { cn } from "@/lib/utils";
 import { LocalEnvironmentVariablesPopover } from "./local-environment-variables-popover";
 
@@ -63,7 +64,7 @@ function LocalEnvironmentScriptPreview({
   language: "bash" | "text";
   ariaLabel: string;
 }) {
-  const [copied, setCopied] = useState(false);
+  const { copied, copy } = useCopyFeedback(1_200);
 
   return (
     <div className="flex max-h-56 min-h-20 flex-col overflow-auto rounded-lg border-[0.5px] border-token-border bg-token-input-background">
@@ -73,13 +74,7 @@ function LocalEnvironmentScriptPreview({
           size="icon-xs"
           variant="ghost"
           aria-label={copied ? "Copied" : "Copy script"}
-          onClick={() => {
-            void writeTextToClipboard(script).then((didCopy) => {
-              if (!didCopy) return;
-              setCopied(true);
-              window.setTimeout(() => setCopied(false), 1_200);
-            });
-          }}
+          onClick={() => void copy(() => writeTextToClipboard(script))}
         >
           {copied ? <CheckmarkIcon className="icon-xs" /> : <CopyIcon className="icon-xs" />}
         </NodexButton>

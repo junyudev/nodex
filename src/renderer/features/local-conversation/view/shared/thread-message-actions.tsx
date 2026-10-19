@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ButtonHTMLAttributes, type ReactNode } from "react";
+import { type ButtonHTMLAttributes, type ReactNode } from "react";
 import { NodexTooltip } from "./thread-message-actions-deps";
 import {
   CheckmarkIcon,
@@ -7,6 +7,7 @@ import {
   EditIcon,
   ForkIcon,
 } from "../../../../components/shared/icons";
+import { useCopyFeedback } from "../../../../lib/use-copy-feedback";
 import { cn } from "../../../../lib/utils";
 import { getMessageCopyHtml, writeMessageToClipboard } from "./message-clipboard";
 import { footerText } from "./thread-footer-i18n";
@@ -14,16 +15,6 @@ import { formatThreadMessageTimestamp } from "./thread-message-timestamp";
 
 const USER_COPY_FEEDBACK_MS = 1500;
 const ASSISTANT_COPY_FEEDBACK_MS = 2000;
-
-async function writeAndReleaseMessageCopy(write: () => Promise<boolean>, release: () => void) {
-  try {
-    return await write();
-  } catch {
-    return false;
-  } finally {
-    release();
-  }
-}
 
 export const threadMessageActionButtonClassName = `
   border-token-border no-drag cursor-interaction flex items-center
@@ -169,49 +160,17 @@ export function CopyMessageActionButton({
   stopPropagation?: boolean;
   className?: string;
 }) {
-  const [copied, setCopied] = useState(false);
-  const resetTimerRef = useRef<number | null>(null);
-  const copyingRef = useRef(false);
-  const mountedRef = useRef(false);
+  const { copied, copy } = useCopyFeedback(feedbackMs);
 
-  useEffect(() => {
-    mountedRef.current = true;
-    return () => {
-      mountedRef.current = false;
-      if (resetTimerRef.current !== null) {
-        window.clearTimeout(resetTimerRef.current);
-      }
-    };
-  }, []);
-
-  const handleCopy = async (trigger: HTMLElement) => {
-    if (resetTimerRef.current !== null || copyingRef.current) return;
-    copyingRef.current = true;
-    const didCopy = await writeAndReleaseMessageCopy(
-      () => {
-        const currentText = getText ? getText() : (text ?? "");
-        if (currentText === null) return Promise.resolve(false);
-        return writeMessageToClipboard(
-          currentText,
-          getHtml?.() ?? html ?? getMessageCopyHtml(trigger),
-        );
-      },
-      () => {
-        copyingRef.current = false;
-      },
-    );
-    if (!didCopy || !mountedRef.current) return;
-
-    if (resetTimerRef.current !== null) {
-      window.clearTimeout(resetTimerRef.current);
-    }
-
-    setCopied(true);
-    resetTimerRef.current = window.setTimeout(() => {
-      setCopied(false);
-      resetTimerRef.current = null;
-    }, feedbackMs);
-  };
+  const handleCopy = (trigger: HTMLElement) =>
+    copy(() => {
+      const currentText = getText ? getText() : (text ?? "");
+      if (currentText === null) return Promise.resolve(false);
+      return writeMessageToClipboard(
+        currentText,
+        getHtml?.() ?? html ?? getMessageCopyHtml(trigger),
+      );
+    });
 
   return (
     <ThreadActionIconButton

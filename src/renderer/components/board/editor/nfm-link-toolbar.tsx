@@ -11,6 +11,7 @@ import type { MouseEvent as ReactMouseEvent, ReactNode } from "react";
 import { FormattingToolbarLinkIcon } from "@/components/shared/icons";
 import { NodexPopover, NodexPopoverContent, NodexPopoverTrigger } from "@/components/ui/popover";
 import { NodexTooltip } from "@/components/ui/tooltip";
+import { useCopyFeedback } from "@/lib/use-copy-feedback";
 import { cn } from "@/lib/utils";
 import {
   NfmCompactLinkToolbar,
@@ -428,9 +429,8 @@ export function NfmLinkToolbar(props: NfmLinkToolbarProps) {
   const hostRuntime = useBlockReferenceHostRuntime();
   const { deleteLink } = useExtension(LinkToolbarExtension);
   const [isEditing, setIsEditing] = useState(false);
-  const [copied, setCopied] = useState(false);
+  const { copied, copy } = useCopyFeedback(COPY_FEEDBACK_MS);
   const editToolbarRef = useRef<HTMLDivElement | null>(null);
-  const copyResetTimerRef = useRef<number | null>(null);
   const liveRangeRef = useRef(props.range);
   const action = resolveNfmLinkAction(props.url, props.projectWorkspacePath);
   const tooltip = resolveNfmLinkTooltipLabel(action, false) ?? dict.link_toolbar.open.tooltip;
@@ -442,14 +442,6 @@ export function NfmLinkToolbar(props: NfmLinkToolbarProps) {
     if (isEditing) return;
     liveRangeRef.current = props.range;
   }, [isEditing, props.range]);
-
-  useEffect(() => {
-    return () => {
-      if (copyResetTimerRef.current !== null) {
-        window.clearTimeout(copyResetTimerRef.current);
-      }
-    };
-  }, []);
 
   const applyLiveLinkEdit = useCallback(
     (nextUrl: string) => {
@@ -517,20 +509,7 @@ export function NfmLinkToolbar(props: NfmLinkToolbarProps) {
     [applyLiveLinkEdit, closeEditDialog, currentUrl],
   );
 
-  const handleCopyLink = useCallback(async () => {
-    const didCopy = await writeTextToClipboard(props.url);
-    if (!didCopy) return;
-
-    if (copyResetTimerRef.current !== null) {
-      window.clearTimeout(copyResetTimerRef.current);
-    }
-
-    setCopied(true);
-    copyResetTimerRef.current = window.setTimeout(() => {
-      setCopied(false);
-      copyResetTimerRef.current = null;
-    }, COPY_FEEDBACK_MS);
-  }, [props.url]);
+  const handleCopyLink = () => copy(() => writeTextToClipboard(props.url));
 
   if (isEditing) {
     return (
