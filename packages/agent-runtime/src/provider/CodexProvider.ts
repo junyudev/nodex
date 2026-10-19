@@ -70,8 +70,17 @@ type CodexRateLimitsProbe =
   | { readonly failure: string };
 
 const CODEX_APP_SERVER_PROBE_FORCE_KILL_AFTER = "2 seconds" as const;
-const CODEX_CATALOG_REFRESH_TIMEOUT = "3 seconds" as const;
+const CODEX_CATALOG_REFRESH_TIMEOUT_MS = 3_000;
 const CODEX_CATALOG_REFRESH_POLL = "100 millis" as const;
+/** Left of the probe's budget for the app-server to exit before the status check gives up. */
+const CODEX_PROBE_EXIT_MARGIN_MS = 1_000;
+
+/**
+ * How long an optional step may still take: its own limit, but never past the probe's deadline.
+ * Waiting on a catalog refresh or on usage must never cost the account and models already read.
+ */
+export const codexProbeStepBudgetMs = (limitMs: number, nowMs: number, deadlineMs: number) =>
+  Math.max(0, Math.min(limitMs, deadlineMs - nowMs));
 /** Matches the identity Nodex uses for every native Codex connection. */
 const CODEX_CLIENT_NAME = "nodex";
 const CODEX_CLIENT_TITLE = "Nodex";
@@ -388,19 +397,29 @@ const readCodexModelsCacheFetchedAt = Effect.fn("readCodexModelsCacheFetchedAt")
  * newer than this process's spawn lands, then list again. If no refresh
  * lands in time, keep the first answer. Another client writing in the same
  * few hundred milliseconds can still win; the next probe corrects it.
+ *
+ * `model/list` itself may already have waited on a slow or failing online
+ * refresh, so the wait for a newer write only spends what is left before the
+ * probe's deadline.
  */
-const requestCodexChatGptModels = Effect.fn("requestCodexChatGptModels")(function* (input: {
+export const requestCodexChatGptModels = Effect.fn("requestCodexChatGptModels")(function* (input: {
   readonly client: CodexClient.CodexAppServerClient["Service"];
   readonly codexHome: string;
   readonly spawnedAtMs: number;
+  readonly deadlineMs: number;
 }) {
   const models = yield* requestAllCodexModels(input.client);
+  const waitMs = codexProbeStepBudgetMs(
+    CODEX_CATALOG_REFRESH_TIMEOUT_MS,
+    DateTime.toEpochMillis(yield* DateTime.now),
+    input.deadlineMs,
+  );
   const refreshed = yield* readCodexModelsCacheFetchedAt(input.codexHome).pipe(
     Effect.repeat({
       schedule: Schedule.spaced(CODEX_CATALOG_REFRESH_POLL),
       until: (fetchedAtMs) => fetchedAtMs >= input.spawnedAtMs,
     }),
-    Effect.timeoutOption(CODEX_CATALOG_REFRESH_TIMEOUT),
+    Effect.timeoutOption(Duration.millis(waitMs)),
   );
   if (Option.isNone(refreshed)) {
     yield* Effect.logWarning(
@@ -517,6 +536,8 @@ const probeCodexAppServerProvider = Effect.fn("probeCodexAppServerProvider")(fun
   readonly authentication?: Parameters<typeof withCodexAppServerClient>[0]["authentication"];
 }) {
   const spawnedAtMs = DateTime.toEpochMillis(yield* DateTime.now);
+  // Optional steps share what is left of the status check's own budget.
+  const deadlineMs = spawnedAtMs + AUTH_PROBE_TIMEOUT_MS - CODEX_PROBE_EXIT_MARGIN_MS;
   const { client, initialize } = yield* withCodexAppServerClient(input);
 
   // Extract the version string after the first '/' in userAgent, up to the next space or the end
@@ -533,13 +554,23 @@ const probeCodexAppServerProvider = Effect.fn("probeCodexAppServerProvider")(fun
     } satisfies CodexAppServerProviderSnapshot;
   }
 
+  const usageBudgetMs = codexProbeStepBudgetMs(
+    RATE_LIMITS_PROBE_TIMEOUT_MS,
+    DateTime.toEpochMillis(yield* DateTime.now),
+    deadlineMs,
+  );
   const [skillsResponse, models, rateLimits] = yield* Effect.all(
     [
       client.request("skills/list", {
         cwds: [input.cwd],
       }),
       accountResponse.account?.type === "chatgpt"
-        ? requestCodexChatGptModels({ client, codexHome: initialize.codexHome, spawnedAtMs })
+        ? requestCodexChatGptModels({
+            client,
+            codexHome: initialize.codexHome,
+            spawnedAtMs,
+            deadlineMs,
+          })
         : requestAllCodexModels(client),
       // Usage is an enrichment: a failure or a slow answer degrades to "no
       // usage this probe" rather than costing the account and models.
@@ -552,7 +583,7 @@ const probeCodexAppServerProvider = Effect.fn("probeCodexAppServerProvider")(fun
               resetCredits: response.rateLimitResetCredits,
               accountId: response.accountId,
             })),
-            Effect.timeoutOption(Duration.millis(RATE_LIMITS_PROBE_TIMEOUT_MS)),
+            Effect.timeoutOption(Duration.millis(usageBudgetMs)),
             Effect.map(
               Option.getOrElse((): CodexRateLimitsProbe => ({
                 failure: "Codex did not answer the usage request.",

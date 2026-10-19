@@ -1,6 +1,49 @@
+import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, it } from "@effect/vitest";
+import * as Effect from "effect/Effect";
+import * as TestClock from "effect/testing/TestClock";
+import type * as CodexClient from "effect-codex-app-server/client";
 
-import { applyPreferredCodexDefaultModel, mapCodexModelCapabilities } from "./CodexProvider.ts";
+import {
+  applyPreferredCodexDefaultModel,
+  codexProbeStepBudgetMs,
+  mapCodexModelCapabilities,
+  requestCodexChatGptModels,
+} from "./CodexProvider.ts";
+
+it("gives an optional probe step its own limit, but never past the probe's deadline", () => {
+  assert.strictEqual(codexProbeStepBudgetMs(3_000, 1_000, 9_000), 3_000);
+  assert.strictEqual(codexProbeStepBudgetMs(3_000, 7_000, 9_000), 2_000);
+  assert.strictEqual(codexProbeStepBudgetMs(3_000, 9_500, 9_000), 0);
+});
+
+it.effect(
+  "keeps the listed catalog at the probe's deadline when a slow online refresh never lands",
+  () =>
+    Effect.gen(function* () {
+      let lists = 0;
+      // As on a slow network: model/list waits on an online refresh that fails, then answers.
+      const client = {
+        request: () =>
+          Effect.sleep("7 seconds").pipe(
+            Effect.tap(() => Effect.sync(() => (lists += 1))),
+            Effect.as({ data: [], nextCursor: null }),
+          ),
+      } as unknown as CodexClient.CodexAppServerClient["Service"];
+      const listing = yield* requestCodexChatGptModels({
+        client,
+        codexHome: "/nonexistent/codex-home",
+        spawnedAtMs: 0,
+        deadlineMs: 9_000,
+      }).pipe(Effect.forkChild);
+      // A full three-second wait would run to ten seconds, past the status check's budget.
+      yield* TestClock.adjust("9 seconds");
+      const exit = listing.pollUnsafe();
+      assert.isDefined(exit);
+      assert.strictEqual(exit?._tag, "Success");
+      assert.strictEqual(lists, 1);
+    }).pipe(Effect.provide(NodeServices.layer)),
+);
 
 it("maps current Codex model capability fields", () => {
   const capabilities = mapCodexModelCapabilities({
