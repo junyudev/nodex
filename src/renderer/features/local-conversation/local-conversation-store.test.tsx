@@ -7143,7 +7143,10 @@ describe("local-conversation-store", () => {
         },
       });
 
-      await new Promise((resolve) => setTimeout(resolve, 120));
+      await waitFor(() => {
+        expect(manager.readConversation("thread-1")?.turns[0]?.items[0]?.markdownText).toBe(delta);
+        expect(manager.readConversation("thread-1")?.turns[0]?.items[0]?.status).toBe("completed");
+      });
 
       const publishRecords = invokeRecords.filter(
         (record) => record.channel === "peer:threadStreamStateChanged",
@@ -7153,8 +7156,6 @@ describe("local-conversation-store", () => {
         publicationStates.some((state) => state.text === delta && state.status === "inProgress"),
       ).toBe(true);
       expect(publicationStates.at(-1)).toEqual({ text: delta, status: "completed" });
-      expect(manager.readConversation("thread-1")?.turns[0]?.items[0]?.markdownText).toBe(delta);
-      expect(manager.readConversation("thread-1")?.turns[0]?.items[0]?.status).toBe("completed");
     } finally {
       resumeThreadResult = null;
       manager.destroy();

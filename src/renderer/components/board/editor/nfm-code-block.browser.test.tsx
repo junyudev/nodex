@@ -7,6 +7,7 @@ import { codeBlockViewState } from "@/lib/nfm/code-block-view-state";
 import { NodexModalHost } from "@/lib/modal-registry";
 import { createMaitaiStore, MaitaiProvider } from "@/lib/maitai";
 import { applyRendererThemeForTest, installRendererThemeFixture } from "@/test/renderer-theme";
+import { settleLazyRender } from "@/test/dom";
 import {
   contrastRatio,
   getPaintedBackground,
@@ -314,6 +315,9 @@ describe("NFM Code Block surface in Chromium", () => {
     const surface = host.querySelector<HTMLElement>("[data-nfm-code-block-surface]")!;
 
     expect(surface.dataset.mermaidPreviewMode).toBe("split");
+    const preview = surface.querySelector<HTMLElement>("[data-nfm-mermaid-preview]")!;
+    await waitFor(() => expect(preview.dataset.nfmMermaidStatus).not.toBe("empty"));
+    await settleLazyRender();
     expect(
       await screen.findByRole("button", { name: "Click diagram to expand in fullscreen" }),
     ).not.toBeNull();
@@ -516,9 +520,18 @@ describe("NFM Code Block surface in Chromium", () => {
 
     await act(async () => {
       fireEvent.pointerOver(surface);
+      await Promise.resolve();
     });
-    fireEvent.click(screen.getByRole("button", { name: "Open block actions menu" }));
-    fireEvent.click(await screen.findByRole("option", { name: "Format code" }));
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Open block actions menu" }));
+      await Promise.resolve();
+    });
+    const formatAction = await screen.findByRole("option", { name: "Format code" });
+    await act(async () => {
+      fireEvent.click(formatAction);
+      await Promise.resolve();
+    });
+    await settleLazyRender();
 
     await waitFor(() => {
       expect(editor.getBlock("code-format-action")?.content).toEqual([

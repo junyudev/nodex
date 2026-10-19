@@ -1,6 +1,11 @@
 import "./workbench-testkit/workbench-shell-harness";
 import { describe, test, expect } from "vite-plus/test";
-import { settleAsyncRender, textContent, textContentIncludingShadowRoots } from "../../test/dom";
+import {
+  settleAsyncRender,
+  settleLazyRender,
+  textContent,
+  textContentIncludingShadowRoots,
+} from "../../test/dom";
 import { fireEvent, within, act, waitFor } from "@testing-library/react";
 import { splitWorkbenchPanelLeaf } from "../../../shared/workbench-panel-layout";
 import { primaryCanvasBlockId } from "../../../shared/block-documents/canvas-document-identity";
@@ -320,7 +325,7 @@ describe("workbench session shell / panel-commands", () => {
     });
     await settleAsyncRender();
 
-    // Settings loads its route module on first open.
+    await settleLazyRender();
     expect(await screen.findByTestId("settings-route-shell")).not.toBeNull();
   });
 

@@ -80,7 +80,7 @@ import type {
   SidebarDisclosureSectionId,
   SidebarCollapsibleSectionsState,
 } from "@/lib/use-workbench-profile-preferences";
-import { openNodexMenu, render, settleAsyncRender } from "../../../test/dom";
+import { openNodexMenu, render, settleAsyncRender, settleLazyRender } from "../../../test/dom";
 import { TestQueryProvider } from "../../../test/query";
 import { RendererStateProvider } from "../../../app-providers";
 import { NewChatProjectSelector } from "@/features/local-conversation/view/composer/new-chat-project-selector";
@@ -4737,7 +4737,7 @@ export async function executeCommandPaletteCommand(
     fireEvent.click(within(paletteSurface).getByRole("button", { name: label }));
     await Promise.resolve();
   });
-  await settleAsyncRender();
+  await settleLazyRender();
   await settleAsyncRender();
 }
 

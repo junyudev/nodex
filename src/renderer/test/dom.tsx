@@ -6,6 +6,7 @@ import {
   waitFor,
 } from "@testing-library/react";
 import { type ReactElement } from "react";
+import { vi } from "vite-plus/test";
 
 export function render(ui: ReactElement, options?: Omit<RenderOptions, "wrapper">) {
   return rtlRender(ui, options);
@@ -30,6 +31,14 @@ export async function settleAsyncRender() {
   await act(async () => {
     await Promise.resolve();
     await new Promise((resolve) => setTimeout(resolve, 0));
+  });
+}
+
+/** Commit the trigger before waiting for imports started by its lazy children. */
+export async function settleLazyRender() {
+  await settleAsyncRender();
+  await act(async () => {
+    await vi.dynamicImportSettled();
   });
 }
 

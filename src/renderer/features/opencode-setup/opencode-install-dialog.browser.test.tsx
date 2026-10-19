@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import { useState } from "react";
 import { expect, test, vi } from "vite-plus/test";
 import { userEvent } from "vite-plus/test/browser";
@@ -122,12 +122,12 @@ test("moves from a fruitless model search to the installer and back to fresh fre
   );
 
   const trigger = screen.getByRole("button", { name: "Select model" });
-  await userEvent.click(trigger);
-  await userEvent.type(await screen.findByRole("combobox", { name: "Search models" }), "free");
+  await act(async () => userEvent.click(trigger));
+  const initialSearch = await screen.findByRole("combobox", { name: "Search models" });
+  await act(async () => userEvent.type(initialSearch, "free"));
   await screen.findByText("No matching models");
-  await userEvent.click(
-    await screen.findByRole("button", { name: "Free OpenCode models Install" }),
-  );
+  const installModels = await screen.findByRole("button", { name: "Free OpenCode models Install" });
+  await act(async () => userEvent.click(installModels));
 
   // The menu closes before the dialog takes focus; opening shows the command without running it.
   const dialog = await screen.findByRole("dialog", { name: "Install OpenCode" });
@@ -136,7 +136,7 @@ test("moves from a fruitless model search to the installer and back to fresh fre
   await within(dialog).findByText(`$ ${OPENCODE_INSTALL_COMMAND}`);
   expect(main.runtime.install).not.toHaveBeenCalled();
 
-  await userEvent.click(within(dialog).getByRole("button", { name: "Install" }));
+  await act(async () => userEvent.click(within(dialog).getByRole("button", { name: "Install" })));
   const progress = await within(dialog).findByRole("progressbar", {
     name: "Installation progress",
   });
@@ -148,13 +148,16 @@ test("moves from a fruitless model search to the installer and back to fresh fre
     expect(fill / progress.getBoundingClientRect().width).toBeCloseTo(0.42, 2);
   });
 
-  main.emit(
-    setupState(3, {
-      executable: readyExecutable(),
-      installation: { phase: "succeeded", log: { lines, progress: 1 } },
-    }),
-  );
-  await userEvent.click(await within(dialog).findByRole("button", { name: "Show free models" }));
+  await act(async () => {
+    main.emit(
+      setupState(3, {
+        executable: readyExecutable(),
+        installation: { phase: "succeeded", log: { lines, progress: 1 } },
+      }),
+    );
+  });
+  const showModels = await within(dialog).findByRole("button", { name: "Show free models" });
+  await act(async () => userEvent.click(showModels));
 
   // Focus returns to the reopened menu's empty search, beside the new model and the same choice.
   const search = await screen.findByRole("combobox", { name: "Search models" });
