@@ -65,6 +65,17 @@ export function inboxTriageModel(item: InboxItem, suggestionsEnabled: boolean): 
   return { kind: "undecided" };
 }
 
+/** One quiet indicator is enough: only the newest message still waiting for advice shows it. */
+export function inboxAwaitingIndicatorPageId(
+  items: readonly InboxItem[],
+  suggestionsEnabled: boolean,
+): string | null {
+  return (
+    items.findLast((item) => inboxTriageModel(item, suggestionsEnabled).kind === "suggesting")
+      ?.pageId ?? null
+  );
+}
+
 export type InboxOutcomeIcon = "chat" | "pending" | "move" | "keep" | "done" | "inbox";
 
 export type InboxOutcomeTarget =

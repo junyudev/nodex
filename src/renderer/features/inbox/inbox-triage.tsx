@@ -8,6 +8,7 @@ import type {
 } from "../../../shared/inbox";
 import type { Project } from "../../../shared/types";
 import {
+  ActivitySpinnerIcon,
   ArchiveIcon,
   CheckmarkIcon,
   DispatchIcon,
@@ -199,8 +200,11 @@ export function InboxTriage({
   members = NO_MEMBERS,
   onOpenPage,
   onOpenSession,
+  awaitingIndicator = false,
 }: {
   readonly item: InboxItem;
+  /** Shows the spinner of the newest message still waiting for advice. */
+  readonly awaitingIndicator?: boolean;
   readonly members?: readonly InboxGroupMember[];
   readonly onOpenPage?: (pageId: string) => void;
   readonly onOpenSession?: (sessionId: string) => void;
@@ -227,7 +231,6 @@ export function InboxTriage({
   } | null>(null);
   const [refining, setRefining] = useState<InboxProposal | null>(null);
   const model = inboxTriageModel(item, suggestionsEnabled);
-  const message = item.body;
   const done = () => void actions.setState([item.pageId], "done");
   const keep = () => void actions.keep([item.pageId]);
   const dispatchByHand = () => onManualDraftChange(draftForInboxItem(item, inboxProjectId));
@@ -345,9 +348,9 @@ export function InboxTriage({
     switch (model.kind) {
       case "suggesting":
         return {
-          strip: (
-            <span className="loading-shimmer-pure-text text-[13px]">Finding where this goes…</span>
-          ),
+          // Until advice arrives the card is the message alone. The spinner holds the place
+          // where the decision then appears.
+          strip: null,
           actions: (
             <Row>
               <InboxIconActions>
@@ -355,6 +358,17 @@ export function InboxTriage({
                 {editAction}
                 {doneAction}
               </InboxIconActions>
+              {awaitingIndicator ? (
+                // Ends where the card's corner curve meets its bottom edge, not at the
+                // outer edge the curve has already left.
+                <span
+                  role="status"
+                  aria-label="Finding where this goes"
+                  className="mr-(--inbox-card-radius) flex text-token-description-foreground"
+                >
+                  <ActivitySpinnerIcon className="icon-xs" />
+                </span>
+              ) : null}
             </Row>
           ),
         };

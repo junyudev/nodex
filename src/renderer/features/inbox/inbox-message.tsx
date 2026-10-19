@@ -160,7 +160,10 @@ export function InboxMessage({
       data-testid="inbox-message"
       data-inbox-page-id={item.pageId}
       data-inbox-source={item.source.kind}
-      className={cn("group/message flex flex-col gap-1", fromUser ? "items-end" : "items-start")}
+      className={cn(
+        "group/message flex flex-col gap-1 [--inbox-card-radius:var(--radius-2xl)]",
+        fromUser ? "items-end" : "items-start",
+      )}
     >
       {item.source.kind === "agent" ? (
         <button
@@ -198,7 +201,7 @@ export function InboxMessage({
           <div
             data-testid="inbox-message-unit"
             className={cn(
-              "flex flex-col overflow-hidden rounded-2xl border",
+              "flex flex-col overflow-hidden rounded-(--inbox-card-radius) border",
               fromUser ? "border-background-user-message" : "border-token-border",
               selected && "outline-2 -outline-offset-1 outline-token-focus-border",
             )}

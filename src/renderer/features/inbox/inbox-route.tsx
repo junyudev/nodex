@@ -37,6 +37,7 @@ import { InboxIconAction } from "./inbox-icon-action";
 import { InboxMessage, InboxMessageMenu } from "./inbox-message";
 import {
   INBOX_VIEW_LABELS,
+  inboxAwaitingIndicatorPageId,
   inboxTimestampSeparators,
   type InboxOutcomeTarget,
 } from "./inbox-presentation";
@@ -285,6 +286,7 @@ export function InboxRoute({
   const inboxItems = view === "inbox" ? stream.items.toReversed() : [];
   const entries = streamEntries(inboxItems, Date.now());
   const anchors = groupAnchors(inboxItems);
+  const awaitingPageId = inboxAwaitingIndicatorPageId(inboxItems, settings.suggestionsEnabled);
   const keysByPage = new Map(
     inboxItems.map((item) => [item.pageId, item.pageKey ?? "another message"]),
   );
@@ -376,6 +378,7 @@ export function InboxRoute({
         projects={projects}
         inboxProjectId={inboxProjectId}
         suggestionsEnabled={settings.suggestionsEnabled}
+        awaitingIndicator={item.pageId === awaitingPageId}
         actions={actions}
         manualDraft={manualDrafts[item.pageId] ?? null}
         groupedWithKey={anchor && anchor !== item.pageId ? (keysByPage.get(anchor) ?? null) : null}

@@ -5,6 +5,7 @@ import {
   describeInboxChatStatus,
   describeInboxOutcome,
   groupInboxItemsByDay,
+  inboxAwaitingIndicatorPageId,
   inboxTimestampSeparators,
   inboxTriageModel,
   isInboxItemHandled,
@@ -89,6 +90,19 @@ describe("inboxTimestampSeparators", () => {
     expect(inboxTimestampSeparators([first], ms("2026-10-11T11:00:00.001Z"))).toEqual([
       ms("2026-10-11T10:00:00.000Z"),
     ]);
+  });
+});
+
+describe("inboxAwaitingIndicatorPageId", () => {
+  it("marks only the newest message still waiting for advice", () => {
+    const waiting = (pageId: string) => item({ pageId, suggestionState: "pending" });
+    const advised = item({ pageId: "page:advised", proposal: proposal() });
+    expect(
+      inboxAwaitingIndicatorPageId([waiting("page:a"), waiting("page:b"), advised], true),
+    ).toBe("page:b");
+    expect(inboxAwaitingIndicatorPageId([advised], true)).toBeNull();
+    // Nothing is working on a message while suggestions are off.
+    expect(inboxAwaitingIndicatorPageId([waiting("page:a")], false)).toBeNull();
   });
 });
 

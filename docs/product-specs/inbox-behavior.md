@@ -208,7 +208,10 @@ kind's glyph leads its strip in every state. Hovering the glyph names the kind,
 and clicking it changes the kind; this is the one place a kind is changed. The
 strip and its row show one of these:
 
-- **Working:** `Finding where this goes…` while the suggestion runs.
+- **Awaiting advice:** no strip. Only the newest such message shows a small
+  spinner at the end of its row, the place where its decision appears once
+  advice arrives. The spinner ends where the card's bottom-right corner curve
+  meets its bottom edge.
 - **Suggestion:**
   - a one-line summary. Hovering it shows the rationale and the runtime that
     suggested it;

@@ -135,6 +135,41 @@ describe("InboxTriage", () => {
     },
   );
 
+  test("a message waiting for advice shows a spinner until its decision takes that place", () => {
+    const waiting = item({ kind: null, suggestionState: "pending", proposal: null });
+    const { unmount } = render(
+      <QueryClientProvider client={new QueryClient()}>
+        <InboxTriage
+          item={waiting}
+          projects={[]}
+          suggestionsEnabled
+          awaitingIndicator
+          actions={actions()}
+          manualDraft={null}
+          groupedWithKey={null}
+          inboxProjectId={null}
+          menu={null}
+          onManualDraftChange={vi.fn()}
+          onEditAsPage={vi.fn()}
+        >
+          {({ strip, actions: row }) => (
+            <>
+              {strip === null ? null : <div data-testid="strip">{strip}</div>}
+              {row}
+            </>
+          )}
+        </InboxTriage>
+      </QueryClientProvider>,
+    );
+    expect(screen.getByRole("status", { name: "Finding where this goes" })).toBeTruthy();
+    expect(screen.queryByTestId("strip")).toBeNull();
+    unmount();
+
+    renderTriage({ item: item({ suggestionState: "settled" }), awaitingIndicator: true });
+    expect(screen.queryByRole("status", { name: "Finding where this goes" })).toBeNull();
+    expect(screen.getByRole("button", { name: "New chat in Nodex" })).toBeTruthy();
+  });
+
   test("a manual decision before advice arrives stays inside its Project Inbox", () => {
     expect(draftForInboxItem(item({ proposal: null }), "project:nodex")).toMatchObject({
       type: "new_chat",
