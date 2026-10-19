@@ -1102,6 +1102,16 @@ const COMMANDS: &[CommandMetadata] = &[
         ],
     },
     CommandMetadata {
+        path: &["profile", "check"],
+        capability: "profile_check",
+        effect: CommandEffect::Local,
+        validators: &["global_only"],
+        result: "profile_store_check",
+        errors: &["INVALID_INPUT", "CLI_INTERNAL"],
+        example: "nodex --json profile check --home ~/.nodex",
+        example_argv: &["--json", "profile", "check", "--home", "/tmp/profile"],
+    },
+    CommandMetadata {
         path: &["doctor"],
         capability: "doctor",
         effect: CommandEffect::Write,

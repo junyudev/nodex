@@ -164,6 +164,15 @@ pub struct ProfileArgs {
 pub enum ProfileCommand {
     /// Clone a published Store backup and current local conversations into a new Profile.
     Clone(ProfileCloneArgs),
+    /// Report whether this build can open a Profile's Store, without opening it.
+    Check(ProfileCheckArgs),
+}
+
+#[derive(Clone, Debug, Args, PartialEq)]
+pub struct ProfileCheckArgs {
+    /// Profile home whose Store to check.
+    #[arg(long, value_name = "PROFILE_HOME")]
+    pub home: PathBuf,
 }
 
 #[derive(Clone, Debug, Args, PartialEq)]

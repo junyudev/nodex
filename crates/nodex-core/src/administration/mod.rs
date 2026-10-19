@@ -3,6 +3,7 @@ mod operation_journal;
 mod profile_clone;
 mod profile_snapshot;
 mod restore;
+mod store_check;
 
 #[cfg(test)]
 mod tests;
@@ -56,6 +57,7 @@ pub use profile_clone::{
     ProfileCloneThread, ProfileStoreCloneReceipt, prepare_profile_clone,
 };
 pub use profile_snapshot::{ProfileSnapshotCapture, ProfileSnapshotParticipant};
+pub use store_check::{ProfileStoreCheck, ProfileStoreStatus, check_profile_store};
 
 const MODULE_NAME: &str = "store_administration";
 const MAX_OPERATION_ID_BYTES: usize = 512;

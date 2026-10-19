@@ -531,6 +531,12 @@ the source Profile. Because no target Core exists yet, the native CLI invokes
 the Core Administration materializer in-process; it cannot read a live Store or
 perform ordinary semantic operations through that exception.
 
+`profile check` is the global offline diagnosis of whether this build can open
+a Profile's Store. It returns `new`, `current`, `upgradable`, or `incompatible`
+with Core's reason. The native CLI runs Core's own identity check in-process,
+reading only the Store revision, schema and Core ownership metadata, never
+content, and writing nothing.
+
 At human selector boundaries, a Page may be addressed by canonical `@pageId`,
 a current or retained historical Page key, or an exact supported title path.
 Core resolves aliases inside the selected Project before the CLI calls the

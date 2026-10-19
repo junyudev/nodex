@@ -4,6 +4,8 @@ import { describe, expect, test } from "vite-plus/test";
 import type { DevelopmentEnvironmentHome } from "./development-environment-home";
 import {
   createDevLaunchPlan,
+  developmentStoreRejection,
+  parseDevelopmentStoreCheck,
   parseDevLauncherArguments,
   resolveDevelopmentSeedInitialization,
 } from "./dev-launcher";
@@ -294,6 +296,39 @@ describe("dev launcher", () => {
         requestedSeed,
       }),
     ).toThrow("already initialized without a seed");
+  });
+
+  test("opens Stores this build can open and refuses one it cannot, with the way out", () => {
+    const check = (result: unknown) =>
+      parseDevelopmentStoreCheck(JSON.stringify({ ok: true, result, version: 1 }));
+    for (const openable of [
+      { status: "new", currentRevision: 185 },
+      { status: "current", storeRevision: 185, currentRevision: 185 },
+      { status: "upgradable", storeRevision: 183, currentRevision: 185 },
+    ]) {
+      expect(developmentStoreRejection(HOME.root, check(openable))).toBeNull();
+    }
+
+    const rejection = developmentStoreRejection(
+      HOME.root,
+      check({
+        status: "incompatible",
+        storeRevision: 178,
+        currentRevision: 185,
+        reason: "v178 physical schema fingerprint is a; expected b",
+      }),
+    );
+    expect(rejection).toContain(
+      "/tmp/nodex-dev holds a v178 Store this build cannot open: v178 physical schema fingerprint is a; expected b",
+    );
+    expect(rejection).toContain("Start a new --home, or rerun with --delete");
+
+    expect(() => check({ status: "unknown", currentRevision: 185 })).toThrow(
+      "Profile Store check result is invalid",
+    );
+    expect(() =>
+      parseDevelopmentStoreCheck(JSON.stringify({ ok: false, error: { code: "INVALID_INPUT" } })),
+    ).toThrow("Profile Store check result is invalid");
   });
 
   test("fails before launch for unknown feature slugs and invalid debug ports", () => {

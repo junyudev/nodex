@@ -36,8 +36,8 @@ use serde_json::{Value, json};
 use crate::cli::{
     BackupCommand, BlockArgs, BlockCommand, Cli, Command, DraftArgs, DraftCommand, HistoryArgs,
     InboxArgs, InboxCommand, OpenArgs, OpenCommand, PageArgs, PageCommand, PagePrepareArgs,
-    PrepareOperation, ProfileArgs, ProfileCloneArgs, ProfileCommand, ReadArgs, RgArgs, SedArgs,
-    ServiceArgs,
+    PrepareOperation, ProfileArgs, ProfileCheckArgs, ProfileCloneArgs, ProfileCommand, ReadArgs,
+    RgArgs, SedArgs, ServiceArgs,
 };
 use crate::error::{CliError, CliErrorCode};
 
@@ -164,12 +164,13 @@ pub(crate) fn execute_with_presentation(
             _ => unreachable!("guarded by the Skill command match"),
         };
     }
-    if let Command::Profile(ProfileArgs {
-        command: ProfileCommand::Clone(arguments),
-    }) = &cli.command
-    {
-        reject_profile_clone_scope_flags(&cli)?;
-        return clone_profile(arguments).map(CommandOutput::Json);
+    if let Command::Profile(ProfileArgs { command }) = &cli.command {
+        reject_profile_scope_flags(&cli)?;
+        return match command {
+            ProfileCommand::Clone(arguments) => clone_profile(arguments),
+            ProfileCommand::Check(arguments) => check_profile(arguments),
+        }
+        .map(CommandOutput::Json);
     }
     match &mut cli.command {
         Command::DataSource(args) => crate::data_source::prepare(args)?,
@@ -409,7 +410,13 @@ fn clone_profile(arguments: &ProfileCloneArgs) -> Result<Value, CliError> {
     serde_json::to_value(receipt).map_err(internal)
 }
 
-fn reject_profile_clone_scope_flags(cli: &Cli) -> Result<(), CliError> {
+fn check_profile(arguments: &ProfileCheckArgs) -> Result<Value, CliError> {
+    let check = nodex_profile::check_profile_store(&arguments.home)
+        .map_err(|error| CliError::new(CliErrorCode::InvalidInput, error.message))?;
+    serde_json::to_value(check).map_err(internal)
+}
+
+fn reject_profile_scope_flags(cli: &Cli) -> Result<(), CliError> {
     if cli.expect_profile.is_none()
         && cli.project.is_none()
         && cli.database.is_none()
@@ -419,7 +426,7 @@ fn reject_profile_clone_scope_flags(cli: &Cli) -> Result<(), CliError> {
     }
     Err(CliError::new(
         CliErrorCode::InvalidInput,
-        "profile clone does not accept Profile, Project, Database, or Page selectors",
+        "profile commands do not accept Profile, Project, Database, or Page selectors",
     ))
 }
 

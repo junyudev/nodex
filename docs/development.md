@@ -224,11 +224,13 @@ a home already initialized without one, fails. Later manual edits belong to the
 environment and are not reset or compared with the original recipe.
 
 A home keeps the Store it was created with. A branch may still be changing its own
-unreleased Store revision. In that case, a home created by an earlier build of the
-branch fails Core startup with a `physical schema fingerprint` mismatch. Reopening
-it with the same seed does not repair it. Start a new home with the seed. To remove
-the old home, reopen it with `--delete`; the launcher deletes it after you quit
-the app.
+unreleased Store revision, so a home created by an earlier build of the branch can
+hold a Store this build cannot open. Before launching, the launcher asks
+`nodex profile check` and refuses such a home with Core's reason, typically a
+`physical schema fingerprint` mismatch, instead of opening a window that cannot
+finish opening. Reopening it with the same seed does not repair it. Start a new
+home with the seed. `--delete` removes the old home at once without launching it;
+for a compatible home, the launcher deletes it after you quit the app.
 
 `landing/showcase` supplies three Tinyboard Pages with an unfinished brief.
 `landing/shared-pages` supplies the complete brief, an empty Implementation notes

@@ -409,6 +409,43 @@ pub(crate) fn validate_profile_clone_source(connection: &Connection) -> Result<i
     Ok(version)
 }
 
+/// What opening a Store would do in this build.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum StoreOpenDisposition {
+    Install,
+    Open,
+    Upgrade { from_revision: i64 },
+}
+
+/// Decides how this build would open a Store from its identity alone: the
+/// revision, its exact published physical schema, and Core ownership. Unlike
+/// opening, it never writes, migrates, or repeats the deep content validation.
+pub(crate) fn store_open_disposition(
+    connection: &Connection,
+) -> Result<StoreOpenDisposition, StoreError> {
+    let version: i64 = connection.query_row("PRAGMA user_version", [], |row| row.get(0))?;
+    let object_count: i64 = connection.query_row(
+        "SELECT count(*) FROM sqlite_schema WHERE name NOT LIKE 'sqlite_%'",
+        [],
+        |row| row.get(0),
+    )?;
+    if version == 0 && object_count == 0 {
+        return Ok(StoreOpenDisposition::Install);
+    }
+    if version == CURRENT_STORE_REVISION {
+        validate_schema_identity(connection, CURRENT_STORE_REVISION)?;
+        validate_core_metadata(connection)?;
+        return Ok(StoreOpenDisposition::Open);
+    }
+    if resolve_migration_path(version, CURRENT_STORE_REVISION, MIGRATION_STEPS).is_none() {
+        return Err(unsupported_schema(version));
+    }
+    validate_migration_source_identity(connection, version)?;
+    Ok(StoreOpenDisposition::Upgrade {
+        from_revision: version,
+    })
+}
+
 pub(crate) fn prepare_profile_store_with_validation(
     connection: &mut Connection,
     profile_home: &Path,

@@ -3,11 +3,12 @@ import {
   resolveDevelopmentRendererPort,
   requireDevelopmentRendererPort,
 } from "./development-renderer-origin";
-import { spawn } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import { readFile, realpath } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { promisify } from "node:util";
 import * as Data from "effect/Data";
 import * as Effect from "effect/Effect";
 import * as Result from "effect/Result";
@@ -440,6 +441,61 @@ export const resolveDevelopmentSeedInitialization = (input: {
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 
+const nativeCliExecutable = (home: DevelopmentEnvironmentHome, build: boolean): string =>
+  path.join(home.repositoryRealpath, build ? "target/release/nodex" : "target/debug/nodex");
+
+/** Core's read-only verdict on whether this build can open a home's Store. */
+export interface DevelopmentStoreCheck {
+  readonly status: "new" | "current" | "upgradable" | "incompatible";
+  readonly storeRevision?: number;
+  readonly reason?: string;
+}
+
+const STORE_CHECK_STATUSES = new Set<unknown>(["new", "current", "upgradable", "incompatible"]);
+
+export const parseDevelopmentStoreCheck = (output: string): DevelopmentStoreCheck => {
+  const envelope: unknown = JSON.parse(output);
+  const result = isRecord(envelope) && envelope.ok === true ? envelope.result : undefined;
+  if (
+    !isRecord(result) ||
+    !STORE_CHECK_STATUSES.has(result.status) ||
+    (result.storeRevision !== undefined && !Number.isInteger(result.storeRevision)) ||
+    (result.reason !== undefined && typeof result.reason !== "string")
+  ) {
+    throw new Error("Profile Store check result is invalid");
+  }
+  return result as unknown as DevelopmentStoreCheck;
+};
+
+/**
+ * A home keeps the Store it was created with, so a home written by an earlier build of an
+ * unreleased Store revision fails here, with its way out, instead of opening a window that
+ * cannot finish opening.
+ */
+export const developmentStoreRejection = (
+  root: string,
+  check: DevelopmentStoreCheck,
+): string | null =>
+  check.status === "incompatible"
+    ? `${root} holds a ${check.storeRevision === undefined ? "" : `v${check.storeRevision} `}Store this build cannot open: ${check.reason ?? "unknown reason"}\n` +
+      "A build whose unreleased Store revision has since changed probably created it. " +
+      "Start a new --home, or rerun with --delete to remove this one."
+    : null;
+
+const checkDevelopmentStore = (input: {
+  readonly build: boolean;
+  readonly environment: NodeJS.ProcessEnv;
+  readonly home: DevelopmentEnvironmentHome;
+}): Effect.Effect<DevelopmentStoreCheck, DevLauncherError> =>
+  attemptPromise(async () => {
+    const { stdout } = await promisify(execFile)(
+      nativeCliExecutable(input.home, input.build),
+      ["--json", "profile", "check", "--home", input.home.nodexHome],
+      { cwd: input.home.repositoryRealpath, env: input.environment },
+    );
+    return parseDevelopmentStoreCheck(stdout);
+  });
+
 const readProfileSnapshotReceipt = async (
   nodexHome: string,
   sourceProfileHome: string,
@@ -559,13 +615,9 @@ const prepareProfileSnapshot = (input: {
       return yield* Effect.fail(publishedResult.failure);
     }
 
-    const executable = path.join(
-      current.repositoryRealpath,
-      input.arguments.build ? "target/release/nodex" : "target/debug/nodex",
-    );
     yield* runCommand(
       {
-        command: executable,
+        command: nativeCliExecutable(current, input.arguments.build),
         args: [
           "--json",
           "profile",
@@ -759,6 +811,30 @@ export const runDevLauncher = (input: {
         yield* attemptPromise(() => cleanupDevelopmentEnvironmentHome(home));
       }
       return yield* Effect.fail(preparation.failure);
+    }
+
+    const storeRejection = developmentStoreRejection(
+      home.root,
+      yield* checkDevelopmentStore({
+        build: arguments_.build,
+        environment: plan.environment,
+        home,
+      }),
+    );
+    if (storeRejection !== null) {
+      if (!arguments_.deleteHome) {
+        return yield* Effect.fail(devLauncherError(new Error(storeRejection)));
+      }
+      const cleanup = yield* attemptPromise(() => cleanupDevelopmentEnvironmentHome(home));
+      if (cleanup.status === "unsafe") {
+        return yield* Effect.fail(
+          devLauncherError(
+            new Error(`Preserved unsafe development home ${home.root}: ${cleanup.reason}`),
+          ),
+        );
+      }
+      yield* Effect.sync(() => process.stdout.write(`Deleted development home ${home.root}\n`));
+      return 0;
     }
 
     let environmentPreparationFailed = false;

@@ -12,7 +12,10 @@ pub use snapshot::ExecutionProfileSnapshotParticipant;
 
 pub use codex::ConversationSnapshotReceipt;
 pub use execution::ExecutionSnapshotReceipt;
-pub use nodex_core::administration::{ProfileCloneBackupSelection, ProfileCloneRequest};
+pub use nodex_core::administration::{
+    ProfileCloneBackupSelection, ProfileCloneRequest, ProfileStoreCheck, ProfileStoreStatus,
+    check_profile_store,
+};
 use nodex_core::administration::{
     ProfileStoreCloneReceipt as StoreCloneReceipt, prepare_profile_clone,
 };

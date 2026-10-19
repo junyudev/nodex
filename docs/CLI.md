@@ -54,6 +54,16 @@ local-fork provenance and reports managed asset references that were already
 missing from the source backup; formal restore continues to require a complete
 asset closure and rotates the installed Store epoch.
 
+## Profile Store checks
+
+`nodex profile check --home <profile-home>` reports, without starting Core or
+writing anything, whether this build can open a Profile's Store: `new` when
+there is none yet, `current`, `upgradable` from a published predecessor, or
+`incompatible` with Core's reason, such as a Store written by a newer Nodex or
+by another build's unpublished revision. It decides from the Store's revision,
+exact schema and Core ownership alone, so a Store that passes can still fail
+the deep validation performed when Core opens it.
+
 ## Installation and capabilities
 
 The macOS app bundle distributes the CLI and Core as one update closure. The app
