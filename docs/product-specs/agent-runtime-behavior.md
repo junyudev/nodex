@@ -438,6 +438,10 @@ Listing providers and models starts the process only when nothing current is kno
 is stopped, model pickers, launch defaults and provider checks see the catalog it last served,
 as long as the execution build and the provider settings and installation it described are
 unchanged; otherwise the listing starts the process. A running process always answers live,
-and an explicit refresh always reaches it. A listing may name the Agents it needs; it then waits
+and an explicit refresh always reaches it. A provider check that ends without an answer, such
+as when the provider's service cannot be reached, is retried on its own after 15 seconds,
+doubling up to the provider health interval, until a check settles; a signed-out provider
+waits for the user instead. Opening the model menu reads the catalog again without forcing a
+check, so a provider that has recovered appears without a manual refresh. A listing may name the Agents it needs; it then waits
 only for their first checks. A first message sent before any model is chosen takes Codex's
 default as soon as Codex is checked, and reads the whole catalog only when Codex has none.

@@ -20,6 +20,13 @@ import * as ProviderHost from "./ProviderHost.ts";
 import { applyUsageLimitsUpdate, resolveUsageLimitsAfterProbe } from "./usageLimits.ts";
 import type { ManagedServerProvider } from "./snapshot.ts";
 
+/** The first retry after a check that ended without an answer; each later retry doubles it. */
+const UNSETTLED_CHECK_RETRY_INITIAL_MS = 15_000;
+
+/** A failed check that could not determine authentication never reached a definitive answer. */
+export const isUnsettledProviderFailure = (snapshot: ServerProvider): boolean =>
+  snapshot.enabled && snapshot.status === "error" && snapshot.auth.status === "unknown";
+
 interface ProviderSnapshotState {
   readonly snapshot: ServerProvider;
   readonly enrichmentGeneration: number;
@@ -65,6 +72,8 @@ export const makeManagedServerProvider = Effect.fn("makeManagedServerProvider")(
     PubSub.unbounded<ServerProvider>(),
     PubSub.shutdown,
   );
+  // Wakes the refresh loop to reconsider its schedule: the interval changed, or a check finished.
+  const scheduleChanges = yield* Queue.sliding<void>(1);
   const initialSettings = yield* input.getSettings;
   const initialSnapshot = yield* input.initialSnapshot(initialSettings);
   const snapshotStateRef = yield* Ref.make<ProviderSnapshotState>({
@@ -190,6 +199,7 @@ export const makeManagedServerProvider = Effect.fn("makeManagedServerProvider")(
     );
     yield* Ref.set(settingsRef, nextSettings);
     yield* PubSub.publish(changesPubSub, nextSnapshot);
+    yield* Queue.offer(scheduleChanges, undefined);
     yield* restartSnapshotEnrichment(nextSettings, nextSnapshot, nextGeneration);
     return nextSnapshot;
   });
@@ -248,7 +258,6 @@ export const makeManagedServerProvider = Effect.fn("makeManagedServerProvider")(
           Effect.orElseSucceed(() => DEFAULT_PROVIDER_HEALTH_REFRESH_INTERVAL),
         );
 
-  const refreshIntervalChanges = yield* Queue.sliding<void>(1);
   if (input.refreshInterval === undefined) {
     const serverSettingsChanges = yield* host.settings.subscribe;
     yield* serverSettingsChanges.pipe(
@@ -258,7 +267,7 @@ export const makeManagedServerProvider = Effect.fn("makeManagedServerProvider")(
         ),
       ),
       Stream.changes,
-      Stream.runForEach(() => Queue.offer(refreshIntervalChanges, undefined).pipe(Effect.asVoid)),
+      Stream.runForEach(() => Queue.offer(scheduleChanges, undefined).pipe(Effect.asVoid)),
       Effect.forkScoped,
     );
   }
@@ -267,33 +276,40 @@ export const makeManagedServerProvider = Effect.fn("makeManagedServerProvider")(
     Effect.asVoid(applySnapshot(nextSettings)),
   ).pipe(Effect.forkScoped);
 
+  // A check that ended without an answer (an unreachable service, a timeout) says nothing about
+  // the provider's configuration, so it is retried on a short backoff until a check settles, even
+  // without background demand. Settled providers follow the health interval and its demand rule;
+  // a zero interval disables both.
+  const recoveryAttemptsRef = yield* Ref.make(0);
   yield* Effect.forever(
-    getRefreshInterval.pipe(
-      Effect.flatMap((refreshInterval) =>
-        // @effect-diagnostics-next-line raceFirstWithSleepToTimeout:off - races the interval against a settings-change signal, not a timeout
-        Effect.raceFirst(
-          Effect.sleep(
-            Duration.toMillis(Duration.fromInputUnsafe(refreshInterval)) <= 0
-              ? "60 seconds"
-              : refreshInterval,
-          ).pipe(Effect.as(true)),
-          Queue.take(refreshIntervalChanges).pipe(Effect.as(false)),
-        ).pipe(
-          Effect.flatMap((intervalElapsed) =>
-            input.refreshOnInterval !== false &&
-            intervalElapsed &&
-            Duration.toMillis(Duration.fromInputUnsafe(refreshInterval)) > 0
-              ? hasProviderStatusDemand.pipe(
-                  Effect.flatMap((shouldRefresh) =>
-                    shouldRefresh ? refreshSnapshot().pipe(Effect.asVoid) : Effect.void,
-                  ),
-                )
-              : Effect.void,
-          ),
-        ),
-      ),
-      Effect.ignoreCause({ log: true }),
-    ),
+    Effect.gen(function* () {
+      const refreshInterval = yield* getRefreshInterval;
+      const intervalMs = Duration.toMillis(Duration.fromInputUnsafe(refreshInterval));
+      const { snapshot } = yield* Ref.get(snapshotStateRef);
+      const recovering = intervalMs > 0 && isUnsettledProviderFailure(snapshot);
+      const attempts = recovering
+        ? yield* Ref.get(recoveryAttemptsRef)
+        : yield* Ref.set(recoveryAttemptsRef, 0).pipe(Effect.as(0));
+      const delayMs =
+        intervalMs <= 0
+          ? 60_000
+          : recovering
+            ? Math.min(UNSETTLED_CHECK_RETRY_INITIAL_MS * 2 ** attempts, intervalMs)
+            : intervalMs;
+      // @effect-diagnostics-next-line raceFirstWithSleepToTimeout:off - races the interval against a settings-change signal, not a timeout
+      const intervalElapsed = yield* Effect.raceFirst(
+        Effect.sleep(Duration.millis(delayMs)).pipe(Effect.as(true)),
+        Queue.take(scheduleChanges).pipe(Effect.as(false)),
+      );
+      if (!intervalElapsed) return;
+      if (recovering) {
+        yield* Ref.update(recoveryAttemptsRef, (count) => count + 1);
+        yield* refreshSnapshot();
+        return;
+      }
+      if (input.refreshOnInterval !== false && intervalMs > 0 && (yield* hasProviderStatusDemand))
+        yield* refreshSnapshot();
+    }).pipe(Effect.ignoreCause({ log: true })),
   ).pipe(Effect.forkScoped);
 
   const initialCheck = yield* Deferred.make<void>();

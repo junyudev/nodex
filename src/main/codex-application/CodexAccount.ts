@@ -88,6 +88,8 @@ export const live = (
       const refreshLock = yield* Semaphore.make(1);
       const refreshInFlight = yield* Ref.make<AccountRefreshEffect | null>(null);
       const authGeneration = yield* Ref.make(0);
+      // A failed read (an unreachable service) leaves the account unknown rather than signed out.
+      const lastReadFailed = yield* Ref.make(false);
       const awaitReady = gateway.awaitReady(gateway.localHostId);
       const asRecord = (value: unknown): Readonly<Record<string, unknown>> | undefined =>
         typeof value === "object" && value !== null && !Array.isArray(value)
@@ -134,7 +136,11 @@ export const live = (
           }),
         );
         return next;
-      }).pipe(refreshLock.withPermits(1));
+      }).pipe(
+        refreshLock.withPermits(1),
+        Effect.tap(() => Ref.set(lastReadFailed, false)),
+        Effect.tapError(() => Ref.set(lastReadFailed, true)),
+      );
 
       const refresh: CodexAccount["Service"]["refresh"] = Effect.gen(function* () {
         const candidate = yield* Effect.cached(load);
@@ -163,12 +169,13 @@ export const live = (
         });
       }).pipe(refreshLock.withPermits(1));
 
-      const pollOnce = SubscriptionRef.get(snapshot).pipe(
-        Effect.flatMap((current) =>
-          current.account?.type === "chatgpt" ? refreshRateLimits.pipe(Effect.asVoid) : Effect.void,
-        ),
-        Effect.ignore,
-      );
+      // Polling keeps a known ChatGPT account's limits current and retries a read that failed
+      // until the account is known; a signed-out answer waits for the user to sign in.
+      const pollOnce = Effect.gen(function* () {
+        const current = yield* SubscriptionRef.get(snapshot);
+        if (current.account?.type === "chatgpt") return yield* refreshRateLimits;
+        if (yield* Ref.get(lastReadFailed)) return yield* refresh;
+      }).pipe(Effect.ignore);
       yield* Effect.repeat(pollOnce, Schedule.spaced(options.pollInterval)).pipe(Effect.forkScoped);
 
       yield* gateway.events.pipe(

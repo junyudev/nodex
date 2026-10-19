@@ -8,6 +8,7 @@ import * as PubSub from "effect/PubSub";
 import * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
 import * as SubscriptionRef from "effect/SubscriptionRef";
+import * as TestClock from "effect/testing/TestClock";
 import { assert, it } from "@effect/vitest";
 import {
   CodexExecutionHostAuthState,
@@ -265,4 +266,57 @@ it.effect(
         assert.deepEqual(requests, ["account/read"]);
       }),
     ),
+);
+
+it.effect("retries an account read that failed until the account is known", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const connection = yield* SubscriptionRef.make<
+        import("../codex-runtime/CodexEventHub").CodexEndpointConnection
+      >({ kind: "stopped", hostId: "local" });
+      const requests: string[] = [];
+      const gateway = {
+        localHostId: "local",
+        events: Stream.empty,
+        connectionChanges: () => SubscriptionRef.changes(connection),
+        awaitReady: () => Effect.void,
+        requestLocal: (method: string) =>
+          Effect.suspend((): Effect.Effect<unknown, Error> => {
+            requests.push(method);
+            if (method === "account/rateLimits/read") return Effect.succeed({ rateLimits: null });
+            // The first read happens while the account service cannot be reached.
+            return requests.filter((request) => request === "account/read").length === 1
+              ? Effect.fail(new Error("workspace routing discovery failed"))
+              : Effect.succeed({
+                  account: { type: "chatgpt", email: "agent@example.com", planType: "pro" },
+                  requiresOpenaiAuth: false,
+                });
+          }),
+      } as unknown as CodexGateway["Service"];
+      const context = yield* Layer.buildWithScope(
+        accountLive({ pollInterval: "60 seconds" }).pipe(
+          Layer.provide(
+            Layer.merge(Layer.succeed(CodexGateway, gateway), executionHostAuthStateLive),
+          ),
+        ),
+        yield* Scope.Scope,
+      );
+      const account = Context.get(context, CodexAccount);
+      const settle = Effect.forEach(Array.from({ length: 20 }), () => Effect.yieldNow, {
+        discard: true,
+      });
+      yield* SubscriptionRef.set(connection, { kind: "ready", hostId: "local", generation: 1 });
+      yield* settle;
+      assert.deepEqual(requests, ["account/read"]);
+      assert.isNull((yield* SubscriptionRef.get(account.snapshot)).account);
+
+      yield* TestClock.adjust("60 seconds");
+      yield* settle;
+      assert.deepEqual((yield* SubscriptionRef.get(account.snapshot)).account, {
+        type: "chatgpt",
+        email: "agent@example.com",
+        planType: "pro",
+      });
+    }),
+  ).pipe(Effect.provide(TestClock.layer())),
 );

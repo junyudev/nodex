@@ -79,7 +79,10 @@ export interface AgentModelCatalogPresentation {
   readonly loading: boolean;
   readonly error?: string | null;
   readonly choose: (selection: AgentModelSelection) => Promise<void> | void;
+  /** Forces providers to check again, as the Refresh button does. */
   readonly refresh: () => void;
+  /** Reads the catalog as it is now without forcing a check; opening the picker calls it. */
+  readonly reload?: () => void;
   readonly manage: () => void;
   readonly runtimeOptions?: readonly { binding: ExternalAgentBinding; label: string }[];
   readonly chooseRuntime?: (binding: ExternalAgentBinding) => void;
@@ -150,7 +153,13 @@ export function AgentModelPicker(
   // A footer action that opens another surface waits until this menu has closed.
   const afterClose = useRef<(() => void) | null>(null);
   const open = props.open ?? uncontrolledOpen;
-  const changeOpen = props.onOpenChange ?? setUncontrolledOpen;
+  const requestOpenChange = props.onOpenChange ?? setUncontrolledOpen;
+  // A provider may have become available since the last read, such as once its service is
+  // reachable again, so opening shows the catalog as it is now.
+  const changeOpen = (next: boolean) => {
+    if (next && !open) catalog.reload?.();
+    requestOpenChange(next);
+  };
   const setup = catalog.setup ?? null;
   const isCodex = selection.kind === "codex";
   const native = provider?.nativeIntelligence;

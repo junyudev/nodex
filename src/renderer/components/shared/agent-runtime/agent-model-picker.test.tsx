@@ -363,3 +363,47 @@ test("routes an OpenCode executable that needs updating to provider settings", a
   await click(await view.findByRole("button", { name: "Free OpenCode models Update" }));
   await waitFor(() => expect(manage).toHaveBeenCalledOnce());
 });
+
+test("reads the catalog again each time it opens without forcing providers to check", async () => {
+  const reload = vi.fn();
+  const refresh = vi.fn();
+  const catalog = presentation({ reload, refresh });
+  const view = renderWithMaitai(
+    <NodexTooltipProvider delay={0}>
+      <AgentIntelligenceDropdown
+        models={[model]}
+        triggerStyle="composer"
+        selection={{
+          kind: catalog.selected.binding.kind,
+          model: catalog.selected.model,
+          reasoningEffort: "none",
+          serviceTier: null,
+        }}
+        onSelectionChange={() => {}}
+        provider={{
+          label: "Local",
+          selection: "local",
+          options: [],
+          select: () => {},
+          modelCatalog: catalog,
+        }}
+      />
+    </NodexTooltipProvider>,
+  );
+  const trigger = await view.findByRole("button", { name: "Select model" });
+  await click(trigger);
+  expect(await view.findByRole("listbox")).not.toBeNull();
+  expect(reload).toHaveBeenCalledOnce();
+
+  await act(async () => {
+    fireEvent.keyDown(within(view.getByRole("listbox")).getAllByRole("option")[0]!, {
+      key: "Escape",
+    });
+    await Promise.resolve();
+  });
+  await waitFor(() => expect(view.queryByRole("listbox")).toBeNull());
+  await click(trigger);
+  expect(await view.findByRole("listbox")).not.toBeNull();
+  expect(reload).toHaveBeenCalledTimes(2);
+  expect(refresh).not.toHaveBeenCalled();
+});

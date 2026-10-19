@@ -665,8 +665,12 @@ export function useAgentRuntimeConversationAdapter(input: {
     loading: boolean;
     error: string | null;
   }>({ providers: [], loading: true, error: null });
-  const [catalogRevision, setCatalogRevision] = useState(0);
-  const refreshCatalog = () => setCatalogRevision((value) => value + 1);
+  // A forced read makes providers check again; a plain read returns their current state.
+  const [catalogRequest, setCatalogRequest] = useState({ revision: 0, refresh: false });
+  const refreshCatalog = () =>
+    setCatalogRequest(({ revision }) => ({ revision: revision + 1, refresh: true }));
+  const reloadCatalog = () =>
+    setCatalogRequest(({ revision }) => ({ revision: revision + 1, refresh: false }));
   // A newly usable host OpenCode reloads the catalog; the chosen model is never replaced.
   const openCodeSetup = useOpenCodeModelSetup({
     instances: input.instances,
@@ -677,7 +681,7 @@ export function useAgentRuntimeConversationAdapter(input: {
   useEffect(() => {
     let active = true;
     const load = agentRuntimeRuntime
-      .catalog({ refresh: catalogRevision > 0 })
+      .catalog({ refresh: catalogRequest.refresh })
       .then((providers) =>
         providers.filter(
           (provider) =>
@@ -703,7 +707,7 @@ export function useAgentRuntimeConversationAdapter(input: {
     return () => {
       active = false;
     };
-  }, [catalogRevision, input.instances]);
+  }, [catalogRequest, input.instances]);
   useEffect(() => {
     agentRuntimeDelegatedTasks.publishLabels(
       new Map(
@@ -1253,6 +1257,7 @@ export function useAgentRuntimeConversationAdapter(input: {
         refreshCatalog();
         openCodeSetup.refresh();
       },
+      reload: reloadCatalog,
       configOptions,
       changeConfig,
       runtimeOptions: [],
