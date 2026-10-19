@@ -1,0 +1,40 @@
+src/renderer/components/board/editor/nfm-code-block.browser.test.tsx
+  s_f79dd9d0c7ac54::t_66c9df23d4c874 523,525
+  s_f79dd9d0c7ac54::t_433b59c61f9176 10,318-320,526-534
+src/renderer/test/dom.tsx
+  s_f79dd9d0c7ac54::t_8e88df6f5be152 9,37-41
+  s_f79dd9d0c7ac54::t_2e112abeb67128 42-44
+docs/FRONTEND.md
+  s_f79dd9d0c7ac54::t_9309f5e0bdab57 506-509
+src/renderer/features/local-conversation/local-conversation-store.test.tsx
+  s_f79dd9d0c7ac54::t_637f6d0a032581 7146-7149
+src/renderer/features/opencode-setup/opencode-install-dialog.browser.test.tsx
+  s_f79dd9d0c7ac54::t_04aaf172cf164d 1,125-127,129-130,139,151-160
+src/renderer/lib/conversation-media/conversation-media.browser.test.tsx
+  s_f79dd9d0c7ac54::t_433b59c61f9176 8,145
+src/renderer/components/board/page-stage/raw-content.browser.test.tsx
+  s_f79dd9d0c7ac54::t_77273f662a45ef 1-34
+src/renderer/components/workbench/workbench-shell.panel-commands.test.tsx
+  s_f79dd9d0c7ac54::t_1323219fdafd3e 3-8
+  s_f79dd9d0c7ac54::t_f3f1d92aef7e8a 328
+src/renderer/components/workbench/workbench-shell.routes-threads.test.tsx
+  s_f79dd9d0c7ac54::t_eb99337b70c8a4 3,129,177,210
+src/renderer/components/workbench/workbench-testkit/workbench-shell-harness.tsx
+  s_f79dd9d0c7ac54::t_13faf592f8bf1b 83,4740
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "d2c16c5dc20c61fe73e8e8d803451ec5642f6faa",
+  "prompts": {},
+  "sessions": {
+    "s_f79dd9d0c7ac54": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a151d6-b92f-7f41-b4e5-4834cb7752bd",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
