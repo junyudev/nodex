@@ -1,0 +1,25 @@
+src/main/agent-runtime/AgentRuntimeSessionActivity.node.test.ts
+  s_f79dd9d0c7ac54::t_04bea32cec9bfb 4,9-12,118,131,299-365
+  s_f79dd9d0c7ac54::t_70153eb90222a9 366-367
+docs/product-specs/agent-runtime-behavior.md
+  s_f79dd9d0c7ac54::t_b0747248051ec7 405-407
+src/main/agent-runtime/AgentRuntimeSessionActivity.ts
+  s_f79dd9d0c7ac54::t_04bea32cec9bfb 17,74-75,155,170-172,432-435,442-455,459
+  s_f79dd9d0c7ac54::t_33b3c3fe2c78c6 436-441
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "034626ffc3d3cb0e455d7f6d6352113e7bb3a780",
+  "prompts": {},
+  "sessions": {
+    "s_f79dd9d0c7ac54": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a151d6-b92f-7f41-b4e5-4834cb7752bd",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
