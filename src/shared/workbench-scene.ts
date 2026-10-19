@@ -80,8 +80,44 @@ export interface WorkbenchAgentDockState {
   readonly newDraftId: string;
 }
 
+/** Where a Scene's floating composer rests inside its pane. */
+export type WorkbenchFloatingComposerDock =
+  | "bottom-left"
+  | "bottom-center"
+  | "bottom-right"
+  | "top-left"
+  | "top-right";
+
+export const WORKBENCH_FLOATING_COMPOSER_DOCKS = [
+  "bottom-left",
+  "bottom-center",
+  "bottom-right",
+  "top-left",
+  "top-right",
+] as const satisfies readonly WorkbenchFloatingComposerDock[];
+
+/** A minimized composer's bubble rests in a pane corner. */
+export type WorkbenchFloatingComposerCornerDock = Exclude<
+  WorkbenchFloatingComposerDock,
+  "bottom-center"
+>;
+
+export const WORKBENCH_FLOATING_COMPOSER_CORNER_DOCKS = [
+  "bottom-left",
+  "bottom-right",
+  "top-left",
+  "top-right",
+] as const satisfies readonly WorkbenchFloatingComposerCornerDock[];
+
+/**
+ * A Scene's floating composer: shown or minimized to its bubble, where it rests, and the corner its
+ * bubble rests in. A Scene without a dock uses the window's last chosen dock; a bubble without a
+ * corner rests at the bottom right.
+ */
 export interface WorkbenchComposerOverlayState {
   readonly visible: boolean;
+  readonly dock?: WorkbenchFloatingComposerDock;
+  readonly minimizedDock?: WorkbenchFloatingComposerCornerDock;
 }
 
 export function makeWorkbenchSceneKey(owner: WorkbenchSceneOwner): WorkbenchSceneKey {

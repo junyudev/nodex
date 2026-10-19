@@ -4,10 +4,9 @@ import type { GlobalDictationDeclineReason } from "../../../../../shared/global-
 export function resolveComposerGlobalDictationAdmission(input: {
   readonly floating: boolean;
   readonly visible: boolean;
-  readonly expanded: boolean;
   readonly editor: HTMLElement | null;
 }): GlobalDictationDeclineReason | null {
-  if (input.floating && (!input.visible || !input.expanded)) return "hidden";
+  if (input.floating && !input.visible) return "hidden";
   const activeElement = input.editor?.ownerDocument.activeElement;
   if (
     !input.editor ||

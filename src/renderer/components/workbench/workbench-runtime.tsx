@@ -55,10 +55,6 @@ import { BrowserSidebarPanel } from "@/features/browser-sidebar/browser-sidebar-
 import { useBrowserSidebarRendererState } from "@/features/browser-sidebar/browser-sidebar-renderer-state-store";
 import { WorkspaceFilesPanel, type WorkspaceFilesTab } from "@/features/workspace-files";
 import {
-  getBrowserDocumentBottomKey,
-  useBrowserDocumentBottom,
-} from "@/features/browser-sidebar/browser-document-bottom-store";
-import {
   ContentSearchProvider,
   type ContentSearchOpenRequest,
 } from "@/features/content-search/content-search-context";
@@ -148,10 +144,12 @@ import {
   makeWorkbenchSceneKey,
   materializeInitialWorkbenchScene,
   updateWorkbenchSceneSurface,
+  type WorkbenchComposerOverlayState,
   type WorkbenchSceneOwner,
   type WorkbenchSceneSnapshot,
   type WorkbenchSurfaceDescriptor,
 } from "../../../shared/workbench-scene";
+import type { FloatingComposerPlacement } from "@/features/floating-composer/floating-composer";
 import {
   findWorkbenchPanelLeafForTab,
   getWorkbenchPanelActiveLeaf,
@@ -277,6 +275,7 @@ import { getCodexSidebarFloatingOuterClassName } from "@/lib/codex-sidebar-auto-
 import {
   CloseIcon,
   PanelBottomHiddenIcon,
+  ExitFullViewIcon,
   PanelBottomVisibleIcon,
   SidebarHiddenIcon,
   SidebarVisibleIcon,
@@ -1154,35 +1153,34 @@ export function WorkbenchRuntime({
     },
     [workbenchWindow],
   );
-  const setComposerOverlayVisible = useCallback(
-    (owner: WorkbenchSceneOwner, visible: boolean) => {
+  const updateComposerOverlay = useCallback(
+    (owner: WorkbenchSceneOwner, patch: Partial<WorkbenchComposerOverlayState>) => {
       workbenchWindow.setScene(
         owner,
         (stored) => {
           const scene = stored ?? materializeInitialWorkbenchScene(owner);
-          if (scene.composerOverlay.visible === visible) return scene;
-          return {
-            ...scene,
-            composerOverlay: { visible },
-          };
+          const current = scene.composerOverlay;
+          const next = { ...current, ...patch };
+          if (
+            next.visible === current.visible &&
+            next.dock === current.dock &&
+            next.minimizedDock === current.minimizedDock
+          ) {
+            return scene;
+          }
+          return { ...scene, composerOverlay: next };
         },
         { recordHistory: false },
       );
     },
     [workbenchWindow],
   );
-  const setProjectAgentDockVisible = useCallback(
-    (visible: boolean) => {
+  const updateProjectAgentDockOverlay = useCallback(
+    (patch: Partial<WorkbenchComposerOverlayState>) => {
       if (!selectedProjectSceneId) return;
-      setComposerOverlayVisible(
-        {
-          kind: "project",
-          projectId: selectedProjectSceneId,
-        },
-        visible,
-      );
+      updateComposerOverlay({ kind: "project", projectId: selectedProjectSceneId }, patch);
     },
-    [selectedProjectSceneId, setComposerOverlayVisible],
+    [selectedProjectSceneId, updateComposerOverlay],
   );
   const selectProjectAgentDockTarget = useCallback(
     (row: ProjectAgentDockTargetRow) => {
@@ -1357,18 +1355,12 @@ export function WorkbenchRuntime({
   );
   const activeRenderSession = activeSession;
   const activeSessionScene = activeSession ? resolveSessionScene(activeSession) : null;
-  const setActiveSessionComposerOverlayVisible = useCallback(
-    (visible: boolean) => {
+  const updateActiveSessionComposerOverlay = useCallback(
+    (patch: Partial<WorkbenchComposerOverlayState>) => {
       if (!activeSession) return;
-      setComposerOverlayVisible(
-        {
-          kind: "session",
-          sessionId: activeSession.id,
-        },
-        visible,
-      );
+      updateComposerOverlay({ kind: "session", sessionId: activeSession.id }, patch);
     },
-    [activeSession, setComposerOverlayVisible],
+    [activeSession, updateComposerOverlay],
   );
   const forkTransferTargetConversationId = activeRenderSession?.thread?.threadId ?? null;
   const forkTransferTargetSessionId = activeRenderSession?.id ?? null;
@@ -1602,46 +1594,6 @@ export function WorkbenchRuntime({
     (activeImageEditorOwnsRootComposer || Boolean(activeSession.thread)) &&
     isRootThreadRightPanelComposerOverlayEligibleTab(rightActiveRenderableTab),
   );
-  const rightPanelComposerOverlayCompact =
-    rightPanelComposerOverlayEnabled &&
-    rightActiveRenderableTab !== null &&
-    "kind" in rightActiveRenderableTab &&
-    rightActiveRenderableTab.kind === "browser";
-  const rightPanelComposerOverlayBrowserTabId =
-    rightPanelComposerOverlayCompact && rightActiveRenderableTab
-      ? rightActiveRenderableTab.id
-      : null;
-  const rightPanelComposerOverlayBrowserIdentity =
-    rightPanelComposerOverlayBrowserTabId && activeSession
-      ? {
-          browserConversationId: activeSession.id,
-          browserViewScopeId: windowSessionId,
-          browserTabId: rightPanelComposerOverlayBrowserTabId,
-        }
-      : null;
-  const rightPanelComposerOverlayAtDocumentBottom = useBrowserDocumentBottom(
-    rightPanelComposerOverlayBrowserIdentity,
-  );
-  const rightPanelComposerOverlayDocumentBottomKey = getBrowserDocumentBottomKey(
-    rightPanelComposerOverlayBrowserIdentity,
-  );
-  const rightPanelComposerOverlayVisibility = activeSessionScene
-    ? rightPanelComposerOverlayCompact
-      ? {
-          kind: "controlled-browser-auto" as const,
-          visible: activeSessionScene.composerOverlay.visible,
-          attention: "none" as const,
-          onVisibleChange: setActiveSessionComposerOverlayVisible,
-          documentBottomKey: rightPanelComposerOverlayDocumentBottomKey,
-          isAtDocumentBottom: rightPanelComposerOverlayAtDocumentBottom,
-        }
-      : {
-          kind: "controlled" as const,
-          visible: activeSessionScene.composerOverlay.visible,
-          attention: "none" as const,
-          onVisibleChange: setActiveSessionComposerOverlayVisible,
-        }
-    : undefined;
   const shellCanNavigateBack = workbenchWindow.canNavigateBack;
   const shellCanNavigateForward = workbenchWindow.canNavigateForward;
   const isMacPlatform =
@@ -2576,6 +2528,31 @@ export function WorkbenchRuntime({
     resizeRightPanel,
     resizeBottomPanel,
   } = chromeCommands;
+  const rightPanelComposerOverlayPlacement: FloatingComposerPlacement | undefined =
+    activeSessionScene && activeSession
+      ? {
+          control: {
+            state: activeSessionScene.composerOverlay,
+            attention: "none",
+            onStateChange: updateActiveSessionComposerOverlay,
+          },
+          // Browser pages own their full height; other surfaces scroll clear of the composer.
+          reserveContent:
+            !rightActiveRenderableTab ||
+            !("kind" in rightActiveRenderableTab) ||
+            rightActiveRenderableTab.kind !== "browser",
+          title: activeSession.displayTitle,
+          menuItems: [
+            {
+              id: "beside",
+              label: "Move to left pane",
+              icon: <ExitFullViewIcon />,
+              onSelect: () => void setActiveRightPanelFullWidth(false),
+            },
+          ],
+          onDropBesideContent: () => void setActiveRightPanelFullWidth(false),
+        }
+      : undefined;
   const browserSidebarState = useBrowserSidebarRendererState();
   const browserTabSnapshotByKey = useMemo(
     () =>
@@ -4315,6 +4292,16 @@ export function WorkbenchRuntime({
           ),
         )
       : "none";
+  const projectAgentDockPlacement: FloatingComposerPlacement | undefined = activeProjectScene
+    ? {
+        control: {
+          state: activeProjectScene.composerOverlay,
+          attention: projectAgentDockAttention,
+          onStateChange: updateProjectAgentDockOverlay,
+        },
+        reserveContent: true,
+      }
+    : undefined;
   const projectHomeActive =
     activeProjectScene?.primary?.kind === "inbox" &&
     getWorkbenchPanelActiveLeaf(activeProjectScene.panels.right.layout).activeTabId ===
@@ -4343,12 +4330,7 @@ export function WorkbenchRuntime({
             composerDock={{
               visible: activeProjectScene.composerOverlay.visible,
               target: rightPanelComposerOverlayTarget,
-              visibility: {
-                kind: "controlled",
-                visible: activeProjectScene.composerOverlay.visible,
-                attention: projectAgentDockAttention,
-                onVisibleChange: setProjectAgentDockVisible,
-              },
+              placement: projectAgentDockPlacement,
               leadingContent: projectAgentDockLeadingContent,
             }}
             composerScopeIdentity={projectAgentDockThreadScope.stableKey}
@@ -4388,9 +4370,7 @@ export function WorkbenchRuntime({
       ) : (
         <ProjectAgentDockUnavailableOverlay
           target={rightPanelComposerOverlayTarget}
-          visible={activeProjectScene.composerOverlay.visible}
-          attention={projectAgentDockAttention}
-          onVisibleChange={setProjectAgentDockVisible}
+          placement={projectAgentDockPlacement}
           leadingContent={projectAgentDockLeadingContent}
           message={
             projectAgentDockSessionQuery.isError
@@ -4559,9 +4539,8 @@ export function WorkbenchRuntime({
           onOpenBackgroundTerminalOutput: openSummaryBackgroundTerminalOutput,
           onToggleSummaryComputerUsePip: threadSummary.onToggleSummaryComputerUsePip,
           rightPanelComposerOverlayEnabled,
-          rightPanelComposerOverlayCompact,
           rightPanelComposerOverlayTarget,
-          rightPanelComposerOverlayVisibility,
+          rightPanelComposerOverlayPlacement,
           onOpenSideChat: filterAvailablePanelActions(
             PANEL_NEW_TAB_ACTIONS,
             activeRenderSession.tabs,

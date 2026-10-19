@@ -912,24 +912,6 @@ export class BrowserSidebarRendererWebviewManager {
     });
   }
 
-  async readIsAtDocumentBottom(input: WebviewHostKey): Promise<boolean | null> {
-    const host = this.hosts.get(makeHostKey(input));
-    if (!host || host.disposed || !host.isVisible) return null;
-
-    try {
-      const result = await host.webview.executeJavaScript?.(
-        `(() => {
-          const root = document.scrollingElement ?? document.documentElement;
-          const viewportHeight = window.visualViewport?.height ?? window.innerHeight;
-          return root.scrollHeight <= root.scrollTop + viewportHeight + 1;
-        })()`,
-      );
-      return typeof result === "boolean" ? result : null;
-    } catch {
-      return null;
-    }
-  }
-
   disposeAll(): void {
     const hadHosts = this.hosts.size > 0;
     this.hostClaimEpoch += 1;

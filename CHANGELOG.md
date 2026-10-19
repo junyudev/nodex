@@ -38,6 +38,8 @@ All notable changes to this project will be documented in this file.
 
 - Scheduled has its own sidebar of upcoming tasks with search, status filters and task actions. Cron tasks open as folders of their runs, runs and Heartbeat chats open without leaving Scheduled, and tasks are created and edited in a focused dialog. A selected task reads as the conversation that set it up, with a reply box for follow-up questions.
 
+- The composer that floats over full-width content can be dragged to any corner or the bottom centre, resized from either edge, and minimized to a bubble that keeps its own corner. Its header with chat and location controls unfolds while you type, clicking it expands the latest reply above the prompt, and an unread reply appears as a card you can open or dismiss. Size and position are remembered.
+
 - A Project now opens on its own Inbox. Thoughts about the Project land there as Pages on its Board, suggestions stay inside the Project, and the sidebar counts what is waiting. The Board opens beside the Inbox as an ordinary tab, and `⌘⇧D` captures into the Inbox of the Project you are in.
 - Nodex starts faster by loading optional panels when opened, with a restart action if a view cannot load.
 

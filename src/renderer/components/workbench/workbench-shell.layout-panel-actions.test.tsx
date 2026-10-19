@@ -65,6 +65,7 @@ import {
   waitForLastThreadStageActions,
   waitForThreadRow,
 } from "./workbench-testkit/workbench-shell-harness";
+import type { FloatingComposerPlacement } from "@/features/floating-composer/floating-composer";
 
 // Layout fixtures control the body budget independently of fixed window chrome.
 const setShellBodyWidthForTest = (width: number) =>
@@ -875,42 +876,41 @@ describe("workbench session shell / layout-panel-actions", () => {
       .__lastConnectedThreadStageProps;
     expect(host !== null).toBe(true);
     expect(props?.rightPanelComposerOverlayEnabled).toBe(true);
-    expect(props?.rightPanelComposerOverlayCompact).toBe(false);
     expect(props?.rightPanelComposerOverlayTarget).toBe(host);
-    const visibility = props?.rightPanelComposerOverlayVisibility as
-      | {
-          kind?: string;
-          visible?: boolean;
-          onVisibleChange?: (visible: boolean) => void;
-        }
+    const placement = props?.rightPanelComposerOverlayPlacement as
+      | FloatingComposerPlacement
       | undefined;
-    expect(visibility?.kind).toBe("controlled");
-    expect(visibility?.visible).toBe(true);
+    expect(placement?.reserveContent).toBe(true);
+    expect(placement?.control?.state).toMatchObject({ visible: true });
+    expect(placement?.menuItems?.map((item) => item.label)).toEqual(["Move to left pane"]);
 
+    // Minimizing and docking persist in the Session's Scene.
     await act(async () => {
-      visibility?.onVisibleChange?.(false);
+      placement?.control?.onStateChange({ visible: false, minimizedDock: "top-left" });
+      await Promise.resolve();
+    });
+    await settleAsyncRender();
+    await act(async () => {
+      placement?.control?.onStateChange({ dock: "bottom-right" });
       await Promise.resolve();
     });
     await settleAsyncRender();
 
-    const hiddenProps = (
+    const nextPlacement = (
       globalThis as {
         __lastConnectedThreadStageProps?: Record<string, unknown>;
       }
-    ).__lastConnectedThreadStageProps;
-    const hiddenVisibility = hiddenProps?.rightPanelComposerOverlayVisibility as
-      | {
-          kind?: string;
-          visible?: boolean;
-        }
+    ).__lastConnectedThreadStageProps?.rightPanelComposerOverlayPlacement as
+      | FloatingComposerPlacement
       | undefined;
-    expect(hiddenVisibility).toMatchObject({
-      kind: "controlled",
+    expect(nextPlacement?.control?.state).toEqual({
       visible: false,
+      minimizedDock: "top-left",
+      dock: "bottom-right",
     });
   });
 
-  test("limits compact composer presentation to a full-width Browser tab", async () => {
+  test("a full-width Browser tab floats the same composer without reserving page space", async () => {
     const browserTab = makeSessionTab({
       id: "browser-tab",
       sessionId: "session:alpha:database-view",
@@ -941,13 +941,11 @@ describe("workbench session shell / layout-panel-actions", () => {
       }
     ).__lastConnectedThreadStageProps;
     expect(props?.rightPanelComposerOverlayEnabled).toBe(true);
-    expect(props?.rightPanelComposerOverlayCompact).toBe(true);
-    expect(props?.rightPanelComposerOverlayVisibility).toMatchObject({
-      kind: "controlled-browser-auto",
-      visible: true,
-      isAtDocumentBottom: false,
-      documentBottomKey: expect.stringContaining("browser-tab"),
-    });
+    const placement = props?.rightPanelComposerOverlayPlacement as
+      | FloatingComposerPlacement
+      | undefined;
+    expect(placement?.reserveContent).toBe(false);
+    expect(placement?.control?.state).toMatchObject({ visible: true });
   });
 
   test("full-width overlay state keeps the bottom-panel toggle clickable after pointerdown", async () => {

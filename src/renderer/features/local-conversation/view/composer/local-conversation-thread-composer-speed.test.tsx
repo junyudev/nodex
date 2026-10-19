@@ -421,7 +421,7 @@ test.each([true, false])(
     function InitialComposer() {
       useApplicationReady(true);
       return (
-        <RightPanelComposerPresentationProvider presentation="compact" visible={visible}>
+        <RightPanelComposerPresentationProvider visible={visible}>
           <ThreadComposer
             model={buildModel()}
             actions={buildActions()}

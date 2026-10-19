@@ -82,10 +82,6 @@ import { BrowserUseCursorPortal } from "./browser-use-cursor-portal";
 import { useBrowserSidebarRendererState } from "./browser-sidebar-renderer-state-store";
 import { computeBrowserViewportLayout } from "./browser-viewport-layout";
 import {
-  clearBrowserDocumentBottom,
-  publishBrowserDocumentBottom,
-} from "./browser-document-bottom-store";
-import {
   readBrowserConfigDeviceToolbarState,
   readBrowserConfigDeviceToolbarVisible,
   readBrowserConfigFavicon,
@@ -838,41 +834,6 @@ export function BrowserSidebarPanel({
   useLayoutEffect(() => {
     syncWebviewPresentationRef.current?.();
   }, [isVisible, themeVariant]);
-
-  useEffect(() => {
-    if (
-      !browserRuntimeAvailable ||
-      !activeForContentSearch ||
-      isBlank ||
-      snapshot.deviceToolbarVisible
-    ) {
-      publishBrowserDocumentBottom(browserIdentity, false);
-      return;
-    }
-
-    let disposed = false;
-    const sampleDocumentBottom = async () => {
-      const isAtDocumentBottom =
-        await browserSidebarRendererWebviewManager.readIsAtDocumentBottom(browserIdentity);
-      if (disposed || isAtDocumentBottom === null) return;
-      publishBrowserDocumentBottom(browserIdentity, isAtDocumentBottom);
-    };
-    void sampleDocumentBottom();
-    const timer = window.setInterval(() => {
-      void sampleDocumentBottom();
-    }, 200);
-    return () => {
-      disposed = true;
-      window.clearInterval(timer);
-      clearBrowserDocumentBottom(browserIdentity);
-    };
-  }, [
-    activeForContentSearch,
-    browserIdentity,
-    browserRuntimeAvailable,
-    isBlank,
-    snapshot.deviceToolbarVisible,
-  ]);
 
   useEffect(() => {
     if (addressFocused) return;

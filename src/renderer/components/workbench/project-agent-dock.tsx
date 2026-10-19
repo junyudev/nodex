@@ -5,9 +5,9 @@ import type {
   ProjectAgentDockTargetRow,
 } from "@/lib/project-agent-dock-model";
 import {
-  RightPanelComposerOverlay,
-  type RightPanelComposerOverlayAttention,
-} from "@/features/local-conversation/view/right-panel-composer-overlay";
+  FloatingComposer,
+  type FloatingComposerPlacement,
+} from "@/features/floating-composer/floating-composer";
 import {
   ComposerContextRail,
   ComposerContextRailSlot,
@@ -84,46 +84,29 @@ export function ProjectAgentDockLeadingRow({
 
 export function ProjectAgentDockUnavailableOverlay({
   target,
-  visible,
-  attention,
-  focusRequestKey,
-  onVisibleChange,
+  placement,
   leadingContent,
   message,
 }: {
   readonly target: HTMLElement | null;
-  readonly visible: boolean;
-  readonly attention: RightPanelComposerOverlayAttention;
-  readonly focusRequestKey?: number;
-  readonly onVisibleChange: (visible: boolean) => void;
+  readonly placement?: FloatingComposerPlacement;
   readonly leadingContent: React.ReactNode;
   readonly message: string;
 }) {
   return (
-    <RightPanelComposerOverlay
-      target={target}
-      visibility={{
-        kind: "controlled",
-        visible,
-        attention,
-        focusRequestKey,
-        onVisibleChange,
-      }}
-    >
-      <div className="flex min-w-0 flex-col">
-        <ComposerContextRailSlot visible>
-          <ComposerContextRail>
-            {leadingContent}
-            <span aria-hidden="true" className="order-2 min-w-0 flex-1" />
-          </ComposerContextRail>
-        </ComposerContextRailSlot>
-        <div
-          role="status"
-          className="composer-surface-chrome flex min-h-11 items-center rounded-2xl bg-token-input-background/90 px-3 text-sm text-token-description-foreground backdrop-blur-lg electron:dark:bg-token-dropdown-background"
-        >
-          {message}
-        </div>
+    <FloatingComposer target={target} {...placement} headerPinned>
+      <ComposerContextRailSlot visible>
+        <ComposerContextRail>
+          {leadingContent}
+          <span aria-hidden="true" className="order-2 min-w-0 flex-1" />
+        </ComposerContextRail>
+      </ComposerContextRailSlot>
+      <div
+        role="status"
+        className="flex min-h-11 items-center px-3 text-sm text-token-description-foreground"
+      >
+        {message}
       </div>
-    </RightPanelComposerOverlay>
+    </FloatingComposer>
   );
 }

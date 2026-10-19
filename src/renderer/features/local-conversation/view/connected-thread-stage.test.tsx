@@ -35,7 +35,7 @@ import type {
 import { ConversationRuntimeContext, type ConversationRuntime } from "../conversation-runtime";
 import { NativeConversationHistoryOwner } from "../native-conversation-history-owner";
 import { createNativeConversationHistoryRuntime } from "../native-conversation-history-adapter";
-import type { RightPanelComposerOverlayVisibility } from "./right-panel-composer-overlay";
+import type { FloatingComposerPlacement } from "@/features/floating-composer/floating-composer";
 import { sessionFirstSubmissionOwner } from "../../conversation-launch/session-first-submission-owner";
 import { CodexConversationEntityDocument } from "../../../../shared/codex-conversation-entity-document";
 import { createCodexCanonicalHydratedConversationState } from "../../../../shared/codex-conversation-state/codex-conversation-state";
@@ -545,7 +545,7 @@ async function renderStage(
     routeActive?: boolean;
     rightPanelComposerOverlayEnabled?: boolean;
     rightPanelComposerOverlayTarget?: HTMLElement;
-    rightPanelComposerOverlayVisibility?: RightPanelComposerOverlayVisibility;
+    rightPanelComposerOverlayPlacement?: FloatingComposerPlacement;
     threadBodyVisible?: boolean;
     runtime?: ConversationRuntime;
     provider?: ConversationProviderPresentation;
@@ -592,7 +592,7 @@ async function renderStage(
                 routeActive={options.routeActive}
                 rightPanelComposerOverlayEnabled={options.rightPanelComposerOverlayEnabled}
                 rightPanelComposerOverlayTarget={options.rightPanelComposerOverlayTarget}
-                rightPanelComposerOverlayVisibility={options.rightPanelComposerOverlayVisibility}
+                rightPanelComposerOverlayPlacement={options.rightPanelComposerOverlayPlacement}
                 threadBodyVisible={options.threadBodyVisible}
                 provider={options.provider}
                 summaryPanelMounted={options.summaryPanelOpen}
@@ -1061,14 +1061,21 @@ describe("ConnectedThreadStage archived resume behavior", () => {
             .readItem("turn:resident-4999", "plan-4999"),
         ).toMatchObject({ text: "Plan 4999" }),
       );
-      const preview = await waitFor(() => {
-        const node = document.querySelector<HTMLElement>("[data-right-panel-latest-turn-preview]");
+      const expand = await waitFor(() => {
+        const node = document.querySelector<HTMLElement>('button[aria-label="Expand composer"]');
         expect(node).not.toBeNull();
         return node!;
       });
       await act(async () => {
-        fireEvent.click(within(preview).getByRole("button"));
+        fireEvent.click(expand);
         await Promise.resolve();
+      });
+      const preview = await waitFor(() => {
+        const node = document.querySelector<HTMLElement>(
+          '[data-floating-conversation-transcript="true"]',
+        );
+        expect(node).not.toBeNull();
+        return node!;
       });
       await waitFor(() => expect(within(preview).getByText("Plan 4999")).toBeDefined());
       const planLeaf = within(preview).getByText("Plan 4999");
@@ -1585,11 +1592,12 @@ describe("ConnectedThreadStage archived resume behavior", () => {
       routeActive: true,
       threadBodyVisible: false,
       rightPanelComposerOverlayEnabled: true,
-      rightPanelComposerOverlayVisibility: {
-        kind: "controlled",
-        visible: false,
-        attention: "request",
-        onVisibleChange: () => {},
+      rightPanelComposerOverlayPlacement: {
+        control: {
+          state: { visible: false },
+          attention: "request",
+          onStateChange: () => {},
+        },
       },
     });
     await act(async () => {

@@ -290,32 +290,6 @@ describe("BrowserSidebarRendererWebviewManager", () => {
     expect(created[0]?.mountGeneration).toBe(1);
   });
 
-  test("reads document-bottom state from the visible guest", async () => {
-    const manager = createManager();
-    const identity = {
-      browserConversationId: "session-1",
-      browserViewScopeId: "window-session-1",
-      browserTabId: "tab-browser",
-    } as const;
-    const mountGeneration = manager.claimMountGeneration(identity);
-    manager.syncWebview({
-      ...identity,
-      projectId: "alpha",
-      hostKind: "panel",
-      initialUrl: "https://example.com",
-      bounds: visibleBounds,
-      mountGeneration,
-      onHostCreated: () => undefined,
-    });
-    const webview = getManagerRoot()?.querySelector(
-      "webview",
-    ) as BrowserSidebarWebviewElement | null;
-    if (!webview) throw new Error("Expected managed webview");
-    webview.executeJavaScript = async () => true;
-
-    await expect(manager.readIsAtDocumentBottom(identity)).resolves.toBe(true);
-  });
-
   test("sends and replays the active annotation design preview", () => {
     const manager = createManager();
     const identity = {

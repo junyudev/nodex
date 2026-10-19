@@ -3696,6 +3696,36 @@ export function TextActionPencilSmallIcon({ className }: IconProps) {
   );
 }
 
+export function MinimizeIcon({ className }: IconProps) {
+  return (
+    <svg
+      width="24"
+      height="24"
+      viewBox="0 0 24 24"
+      className={cn("shrink-0", className)}
+      fill="currentColor"
+      aria-hidden="true"
+    >
+      <path d="M6 12a1 1 0 0 1 1-1h10a1 1 0 1 1 0 2H7a1 1 0 0 1-1-1Z" />
+    </svg>
+  );
+}
+
+export function ChatBubbleIcon({ className }: IconProps) {
+  return (
+    <svg
+      width="24"
+      height="24"
+      viewBox="0 0 24 24"
+      className={cn("shrink-0", className)}
+      fill="currentColor"
+      aria-hidden="true"
+    >
+      <path d="M12 4.5C7.527 4.5 4 7.911 4 12c0 1.696.6 3.263 1.62 4.525.185.228.26.526.206.814-.096.512-.222 1.011-.369 1.501a12.4 12.4 0 0 0 1.841-.4 1 1 0 0 1 .745.08A8.6 8.6 0 0 0 12 19.5c4.473 0 8-3.411 8-7.5s-3.527-7.5-8-7.5ZM2 12c0-5.3 4.532-9.5 10-9.5S22 6.7 22 12s-4.532 9.5-10 9.5a10.6 10.6 0 0 1-4.539-1.033 17.6 17.6 0 0 1-3.4.53 1 1 0 0 1-.995-1.356c.29-.755.534-1.497.704-2.242A9.2 9.2 0 0 1 2 12Z" />
+    </svg>
+  );
+}
+
 export function DragHandleDotsIcon({ className }: IconProps) {
   return (
     <svg

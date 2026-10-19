@@ -75,7 +75,7 @@ import {
 } from "../local-conversation-store";
 import { LocalConversationFooter } from "./local-conversation-footer";
 import { EnsureLocalConversationThreadScrollController } from "./local-conversation-thread-scroll-controller";
-import type { RightPanelComposerOverlayVisibility } from "./right-panel-composer-overlay";
+import type { FloatingComposerPlacement } from "@/features/floating-composer/floating-composer";
 import { LocalConversationNewThreadHomeScreen } from "./local-conversation-new-thread-home-screen";
 import { LocalConversationStageScreen } from "./local-conversation-stage-screen";
 import { CodexAfterPaintMarker } from "../codex-turn-first-response-view";
@@ -191,9 +191,8 @@ interface ConnectedThreadStageProps extends ConnectedThreadStageInput {
   backgroundAgentDetail?: boolean;
   backgroundAgentCanInteract?: boolean;
   rightPanelComposerOverlayEnabled?: boolean;
-  rightPanelComposerOverlayCompact?: boolean;
   rightPanelComposerOverlayTarget?: HTMLElement | null;
-  rightPanelComposerOverlayVisibility?: RightPanelComposerOverlayVisibility;
+  rightPanelComposerOverlayPlacement?: FloatingComposerPlacement;
   turnDiffHoverPreviewDisabled?: boolean;
   summaryPanelMounted?: boolean;
   summaryPanelOpen?: boolean;
@@ -551,12 +550,8 @@ export function ConnectedThreadStageFooter({
   onErrorMessage,
   variant = "thread",
   rightPanelComposerOverlayEnabled = false,
-  rightPanelComposerOverlayCompact = false,
-  rightPanelComposerOverlayAtDocumentBottom = false,
-  rightPanelComposerOverlayDocumentBottomKey = null,
   rightPanelComposerOverlayTarget = null,
-  turnDiffHoverPreviewDisabled = false,
-  rightPanelComposerOverlayVisibility,
+  rightPanelComposerOverlayPlacement,
   rightPanelComposerLeadingContent,
   worktreeRuntimeAvailable = true,
 }: {
@@ -568,12 +563,8 @@ export function ConnectedThreadStageFooter({
   onErrorMessage: (message: string | null) => void;
   variant?: "thread" | "newThreadHome";
   rightPanelComposerOverlayEnabled?: boolean;
-  rightPanelComposerOverlayCompact?: boolean;
-  rightPanelComposerOverlayAtDocumentBottom?: boolean;
-  rightPanelComposerOverlayDocumentBottomKey?: string | null;
   rightPanelComposerOverlayTarget?: HTMLElement | null;
-  turnDiffHoverPreviewDisabled?: boolean;
-  rightPanelComposerOverlayVisibility?: RightPanelComposerOverlayVisibility;
+  rightPanelComposerOverlayPlacement?: FloatingComposerPlacement;
   rightPanelComposerLeadingContent?: ReactNode;
   worktreeRuntimeAvailable?: boolean;
 }) {
@@ -981,6 +972,11 @@ export function ConnectedThreadStageFooter({
     ],
   );
 
+  const markConversationRead = useCallback(() => {
+    if (!activeThreadId) return;
+    void runtime.markRead(activeThreadId).catch(() => {});
+  }, [activeThreadId, runtime]);
+
   return (
     <>
       {!input.sideChatContext ? (
@@ -991,6 +987,7 @@ export function ConnectedThreadStageFooter({
       ) : null}
       <LocalConversationFooter
         model={model}
+        onMarkConversationRead={markConversationRead}
         normalizedPreview={bodyPresentation.preview}
         actions={actionsWithComposerCapabilityRefresh}
         worktreeRuntimeAvailable={worktreeRuntimeAvailable}
@@ -999,15 +996,11 @@ export function ConnectedThreadStageFooter({
         variant={variant}
         rightPanelComposerOverlay={{
           enabled: rightPanelComposerOverlayEnabled,
-          compact: rightPanelComposerOverlayCompact,
-          documentBottomKey: rightPanelComposerOverlayDocumentBottomKey,
-          isAtDocumentBottom: rightPanelComposerOverlayAtDocumentBottom,
           target: rightPanelComposerOverlayTarget,
-          visibility: rightPanelComposerOverlayVisibility,
+          placement: rightPanelComposerOverlayPlacement,
           leadingContent: rightPanelComposerLeadingContent,
         }}
         planSidePanelState={input.planSidePanelState ?? null}
-        turnDiffHoverPreviewDisabled={turnDiffHoverPreviewDisabled}
       />
     </>
   );
@@ -1019,7 +1012,7 @@ export interface ConnectedThreadComposerDockProps extends ConnectedThreadStageIn
   readonly routeActive: boolean;
   readonly visible: boolean;
   readonly overlayTarget: HTMLElement | null;
-  readonly overlayVisibility: RightPanelComposerOverlayVisibility;
+  readonly overlayPlacement?: FloatingComposerPlacement;
   readonly leadingContent: ReactNode;
 }
 
@@ -1033,7 +1026,7 @@ export function ConnectedThreadComposerDock({
   routeActive,
   visible,
   overlayTarget,
-  overlayVisibility,
+  overlayPlacement,
   leadingContent,
   ...input
 }: ConnectedThreadComposerDockProps) {
@@ -1139,9 +1132,8 @@ export function ConnectedThreadComposerDock({
         onErrorMessage={setErrorMessage}
         rightPanelComposerOverlayEnabled
         rightPanelComposerOverlayTarget={overlayTarget}
-        rightPanelComposerOverlayVisibility={overlayVisibility}
+        rightPanelComposerOverlayPlacement={overlayPlacement}
         rightPanelComposerLeadingContent={leadingContent}
-        turnDiffHoverPreviewDisabled
       />
     </EnsureLocalConversationThreadScrollController>
   );
@@ -1176,9 +1168,8 @@ function ConnectedThreadStageContent({
   backgroundAgentCanInteract = false,
   executionAvailable = true,
   rightPanelComposerOverlayEnabled = false,
-  rightPanelComposerOverlayCompact = false,
   rightPanelComposerOverlayTarget = null,
-  rightPanelComposerOverlayVisibility,
+  rightPanelComposerOverlayPlacement,
   turnDiffHoverPreviewDisabled = false,
   summaryPanelMounted = false,
   summaryPanelOpen = false,
@@ -1325,10 +1316,7 @@ function ConnectedThreadStageContent({
   }, [backgroundAgentDetail, backgroundAgentRows, knownConversationsById, childMemberships]);
   const presentedConversationIds = useMemo(() => {
     const overlayManuallyVisible =
-      rightPanelComposerOverlayVisibility?.kind !== "controlled" &&
-      rightPanelComposerOverlayVisibility?.kind !== "controlled-browser-auto"
-        ? true
-        : rightPanelComposerOverlayVisibility.visible;
+      rightPanelComposerOverlayPlacement?.control?.state.visible ?? true;
     const requestSurfaceVisible =
       threadBodyVisible || (rightPanelComposerOverlayEnabled && overlayManuallyVisible);
     if (!routeActive || !requestSurfaceVisible) return [];
@@ -1343,7 +1331,7 @@ function ConnectedThreadStageContent({
   }, [
     activeThreadId,
     rightPanelComposerOverlayEnabled,
-    rightPanelComposerOverlayVisibility,
+    rightPanelComposerOverlayPlacement,
     routeActive,
     threadBodyVisible,
     visibleBackgroundRequestConversationId,
@@ -1580,7 +1568,6 @@ function ConnectedThreadStageContent({
               variant="newThreadHome"
               rightPanelComposerOverlayEnabled={false}
               rightPanelComposerOverlayTarget={null}
-              turnDiffHoverPreviewDisabled={turnDiffHoverPreviewDisabled}
               worktreeRuntimeAvailable={worktreeRuntimeAvailable}
             />
           }
@@ -1682,10 +1669,8 @@ function ConnectedThreadStageContent({
                   errorMessage={errorMessage ?? input.provider?.error ?? null}
                   onErrorMessage={setErrorMessage}
                   rightPanelComposerOverlayEnabled={rightPanelComposerOverlayEnabled && !isSideChat}
-                  rightPanelComposerOverlayCompact={rightPanelComposerOverlayCompact}
                   rightPanelComposerOverlayTarget={rightPanelComposerOverlayTarget}
-                  rightPanelComposerOverlayVisibility={rightPanelComposerOverlayVisibility}
-                  turnDiffHoverPreviewDisabled={turnDiffHoverPreviewDisabled}
+                  rightPanelComposerOverlayPlacement={rightPanelComposerOverlayPlacement}
                   worktreeRuntimeAvailable={worktreeRuntimeAvailable}
                 />
               )

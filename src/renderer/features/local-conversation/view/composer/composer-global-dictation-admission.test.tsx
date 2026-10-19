@@ -2,28 +2,21 @@ import { describe, expect, test } from "vitest";
 import { resolveComposerGlobalDictationAdmission } from "./composer-global-dictation-admission";
 
 describe("resolveComposerGlobalDictationAdmission", () => {
-  test("rejects a mounted floating composer while collapsed or hidden", () => {
+  test("rejects a mounted floating composer while minimized", () => {
     const editor = document.createElement("div");
+    editor.tabIndex = 0;
     document.body.append(editor);
-    expect(
-      resolveComposerGlobalDictationAdmission({
-        floating: true,
-        visible: true,
-        expanded: false,
-        editor,
-      }),
-    ).toBe("hidden");
+    editor.focus();
     expect(
       resolveComposerGlobalDictationAdmission({
         floating: true,
         visible: false,
-        expanded: true,
         editor,
       }),
     ).toBe("hidden");
   });
 
-  test("requires the editor to own focus even when the floating composer is expanded", () => {
+  test("requires the editor to own focus even when the floating composer is shown", () => {
     const editor = document.createElement("div");
     editor.tabIndex = 0;
     const pageEditor = document.createElement("div");
@@ -34,7 +27,6 @@ describe("resolveComposerGlobalDictationAdmission", () => {
       resolveComposerGlobalDictationAdmission({
         floating: true,
         visible: true,
-        expanded: true,
         editor,
       }),
     ).toBe("focus-not-owned");
@@ -44,7 +36,6 @@ describe("resolveComposerGlobalDictationAdmission", () => {
       resolveComposerGlobalDictationAdmission({
         floating: true,
         visible: true,
-        expanded: true,
         editor,
       }),
     ).toBeNull();

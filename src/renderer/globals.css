@@ -80,20 +80,6 @@
     background-color: transparent;
   }
 
-  @keyframes right-panel-composer-overlay-enter {
-    0% {
-      opacity: 0;
-    }
-
-    to {
-      opacity: 1;
-    }
-  }
-
-  .right-panel-composer-overlay-enter {
-    animation: right-panel-composer-overlay-enter 0.12s var(--cubic-enter) both;
-  }
-
   @keyframes subagent-activity-chip-enter {
     0% {
       opacity: 0;
@@ -117,7 +103,6 @@
   }
 
   @media (prefers-reduced-motion: reduce) {
-    .right-panel-composer-overlay-enter,
     .subagent-activity-chip[data-animate-entrance] {
       animation: none;
     }

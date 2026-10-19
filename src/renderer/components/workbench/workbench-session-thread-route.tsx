@@ -11,7 +11,7 @@ import {
   type SessionThreadCommands,
   type ThreadStageActions,
 } from "@/features/local-conversation";
-import type { RightPanelComposerOverlayVisibility } from "@/features/local-conversation/view/right-panel-composer-overlay";
+import type { FloatingComposerPlacement } from "@/features/floating-composer/floating-composer";
 import { composeNativeThreadStageActions } from "@/features/local-conversation/native-thread-stage-actions";
 import { useOpenNativeRuntimeDiagnostics } from "@/components/shared/agent-runtime/native-runtime-diagnostics";
 import type {
@@ -97,9 +97,8 @@ function SharedConnectedSessionThread({
   onOpenBackgroundTerminalOutput,
   onToggleSummaryComputerUsePip,
   rightPanelComposerOverlayEnabled,
-  rightPanelComposerOverlayCompact,
   rightPanelComposerOverlayTarget,
-  rightPanelComposerOverlayVisibility,
+  rightPanelComposerOverlayPlacement,
   onOpenMcpAppSidePanel,
   onOpenSideChat,
   onOpenPlanInSidePanel,
@@ -187,9 +186,8 @@ function SharedConnectedSessionThread({
   onOpenBackgroundTerminalOutput?: ThreadStageActions["onOpenBackgroundTerminalOutput"];
   onToggleSummaryComputerUsePip: NonNullable<ThreadStageActions["onToggleSummaryComputerUsePip"]>;
   rightPanelComposerOverlayEnabled: boolean;
-  rightPanelComposerOverlayCompact: boolean;
   rightPanelComposerOverlayTarget: HTMLElement | null;
-  rightPanelComposerOverlayVisibility?: RightPanelComposerOverlayVisibility;
+  rightPanelComposerOverlayPlacement?: FloatingComposerPlacement;
   onOpenSideChat?: (
     input?: ThreadOpenSideChatInput & {
       collaborationMode?: CodexCollaborationModeKind;
@@ -208,7 +206,7 @@ function SharedConnectedSessionThread({
   composerDock?: {
     readonly visible: boolean;
     readonly target: HTMLElement | null;
-    readonly visibility: RightPanelComposerOverlayVisibility;
+    readonly placement?: FloatingComposerPlacement;
     readonly leadingContent: React.ReactNode;
   };
   composerScopeIdentity?: string | null;
@@ -520,7 +518,7 @@ function SharedConnectedSessionThread({
         routeActive={routeActive}
         visible={composerDock.visible}
         overlayTarget={composerDock.target}
-        overlayVisibility={composerDock.visibility}
+        overlayPlacement={composerDock.placement}
         leadingContent={composerDock.leadingContent}
         composerScopeIdentity={composerScopeIdentity}
       />
@@ -542,9 +540,8 @@ function SharedConnectedSessionThread({
         summaryPanelHideImmediately={summaryPanelHideImmediately}
         summaryPanelContentShift={summaryPanelContentShift}
         rightPanelComposerOverlayEnabled={rightPanelComposerOverlayEnabled}
-        rightPanelComposerOverlayCompact={rightPanelComposerOverlayCompact}
         rightPanelComposerOverlayTarget={rightPanelComposerOverlayTarget}
-        rightPanelComposerOverlayVisibility={rightPanelComposerOverlayVisibility}
+        rightPanelComposerOverlayPlacement={rightPanelComposerOverlayPlacement}
         turnDiffHoverPreviewDisabled={turnDiffHoverPreviewDisabled}
         routeActive={routeActive}
         threadBodyVisible={threadBodyVisible}
@@ -908,7 +905,6 @@ export function ProjectSessionThreadComposerDock({
       onOpenSummaryOutputInSidePanel={() => false}
       onToggleSummaryComputerUsePip={noOp}
       rightPanelComposerOverlayEnabled={false}
-      rightPanelComposerOverlayCompact={false}
       rightPanelComposerOverlayTarget={null}
       onOpenMcpAppSidePanel={undefined}
       onOpenPlanInSidePanel={undefined}

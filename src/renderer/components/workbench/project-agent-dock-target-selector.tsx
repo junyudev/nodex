@@ -2,8 +2,8 @@ import { useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
 import {
   ActivitySpinnerIcon,
   CheckmarkIcon,
-  PlusIcon,
   SearchIcon,
+  TitlebarNewChatIcon,
 } from "@/components/shared/icons";
 import { NodexDropdownButtonTrigger } from "@/components/ui/dropdown";
 import { NodexPopover, NodexPopoverContent, NodexPopoverTrigger } from "@/components/ui/popover";
@@ -129,10 +129,7 @@ function ProjectAgentDockTargetOption({
       onClick={onAccept}
     >
       {row.kind === "new" ? (
-        <PlusIcon
-          className="size-3.5 shrink-0 text-token-description-foreground"
-          aria-hidden="true"
-        />
+        <TitlebarNewChatIcon className="size-3.5 shrink-0 text-token-description-foreground" />
       ) : (
         <ProjectAgentDockChatIndicatorView indicator={indicator} />
       )}
@@ -245,10 +242,7 @@ export function ProjectAgentDockTargetSelector({
           className="group/agent-target max-w-72 px-1.5 text-token-text-tertiary hover:text-token-foreground"
         >
           {model.trigger.kind === "new" ? (
-            <PlusIcon
-              aria-hidden="true"
-              className="size-3.5 shrink-0 text-token-description-foreground"
-            />
+            <TitlebarNewChatIcon className="size-3.5 shrink-0 text-token-description-foreground" />
           ) : (
             <ProjectAgentDockChatIndicatorView indicator={triggerIndicator} />
           )}

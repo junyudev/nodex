@@ -22,11 +22,15 @@ import {
   LocalConversationAboveComposerQueuePortalHost,
 } from "./local-conversation-above-composer-portal";
 import { useLocalConversationThreadScrollController } from "./local-conversation-thread-scroll-controller";
-import { RightPanelComposerLatestTurnPreview } from "./right-panel-composer-latest-turn-preview";
 import {
-  RightPanelComposerOverlay,
-  type RightPanelComposerOverlayVisibility,
-} from "./right-panel-composer-overlay";
+  FloatingConversationCompletionPreview,
+  FloatingConversationTranscript,
+  resolveFloatingConversationAnswerPreview,
+} from "./floating-conversation-turn";
+import {
+  FloatingComposer,
+  type FloatingComposerPlacement,
+} from "@/features/floating-composer/floating-composer";
 
 interface LocalConversationFooterProps {
   model: ThreadFooterModel;
@@ -37,16 +41,14 @@ interface LocalConversationFooterProps {
   rightPanelComposerOverlay?: {
     enabled: boolean;
     target: HTMLElement | null;
-    compact?: boolean;
-    documentBottomKey?: string | null;
-    isAtDocumentBottom?: boolean;
-    visibility?: RightPanelComposerOverlayVisibility;
+    placement?: FloatingComposerPlacement;
     leadingContent?: ReactNode;
   };
   planSidePanelState?: ThreadPlanSidePanelState | null;
-  turnDiffHoverPreviewDisabled?: boolean;
   worktreeRuntimeAvailable?: boolean;
   normalizedPreview?: ConversationLatestTurnPreview | null;
+  /** Marks the conversation read once a floating composer shows its latest response. */
+  onMarkConversationRead?: () => void;
 }
 
 function LocalConversationFooterChrome({
@@ -55,7 +57,6 @@ function LocalConversationFooterChrome({
   errorMessage,
   onErrorMessage,
   catchUpControl,
-  latestTurnPreview,
   contextRailLeadingContent,
   showComposer = true,
 }: {
@@ -64,7 +65,6 @@ function LocalConversationFooterChrome({
   errorMessage: string | null;
   onErrorMessage: (message: string | null) => void;
   catchUpControl: ReactNode;
-  latestTurnPreview?: ReactNode;
   contextRailLeadingContent?: ReactNode;
   showComposer?: boolean;
 }) {
@@ -79,7 +79,6 @@ function LocalConversationFooterChrome({
           onContentPresenceChange={setHasFixedPortalContent}
         />
         <LocalConversationAboveComposerQueuePortalHost conversationId={model.threadId} />
-        {latestTurnPreview}
         {showComposer ? (
           <LocalConversationComposerShell
             model={model}
@@ -110,9 +109,9 @@ function LocalConversationFooterComponent({
   variant = "thread",
   rightPanelComposerOverlay,
   planSidePanelState,
-  turnDiffHoverPreviewDisabled = false,
   worktreeRuntimeAvailable = true,
   normalizedPreview = null,
+  onMarkConversationRead,
 }: LocalConversationFooterProps) {
   const {
     addScrollListener,
@@ -126,16 +125,14 @@ function LocalConversationFooterComponent({
   const [scrollDistanceFromBottomPx, setScrollDistanceFromBottomPx] = useState(() =>
     getLastScrollDistanceFromBottomPx(),
   );
-  const [latestTurnExpansion, setLatestTurnExpansion] = useState<{
-    readonly ownerKey: string;
-    readonly turnKey: string;
-  } | null>(null);
+  // The owner whose floating composer shows its conversation; any other owner starts compact.
+  const [expandedOwnerKey, setExpandedOwnerKey] = useState<string | null>(null);
   const isResumingActiveThread =
     !model.isNewThreadTab &&
     (model.attachmentState?.status === "attaching" ||
       model.attachmentState?.status === "failed" ||
       (model.resumeState !== null && model.resumeState !== "resumed"));
-  const controlledOverlay = rightPanelComposerOverlay?.visibility?.kind === "controlled";
+  const controlledOverlay = rightPanelComposerOverlay?.placement?.control !== undefined;
   const rightPanelOverlayEnabled =
     rightPanelComposerOverlay?.enabled === true && (!isResumingActiveThread || controlledOverlay);
   const previewEntry = rightPanelOverlayEnabled ? normalizedPreview?.entry : null;
@@ -193,36 +190,18 @@ function LocalConversationFooterComponent({
   ]);
   const latestTurnKey = latestTurn?.turnKey ?? null;
   const latestTurnOwnerKey = model.composerScopeIdentity?.trim() || model.threadId;
-  const latestTurnExpanded = Boolean(
+  const hasFloatingTranscript = Boolean(latestTurn && latestTurn.blocks.length > 0);
+  const floatingExpanded = Boolean(
+    rightPanelOverlayEnabled &&
+    hasFloatingTranscript &&
     latestTurnOwnerKey &&
-    latestTurnKey &&
-    latestTurnExpansion?.ownerKey === latestTurnOwnerKey &&
-    latestTurnExpansion.turnKey === latestTurnKey,
+    expandedOwnerKey === latestTurnOwnerKey,
   );
-  const handleLatestTurnExpandedChange = useCallback(
-    (expanded: boolean) => {
-      if (!expanded || !latestTurnOwnerKey || !latestTurnKey) {
-        setLatestTurnExpansion(null);
-        return;
-      }
-      setLatestTurnExpansion({
-        ownerKey: latestTurnOwnerKey,
-        turnKey: latestTurnKey,
-      });
-    },
-    [latestTurnKey, latestTurnOwnerKey],
-  );
+  // The conversation is read while a floating composer shows it.
+  const conversationUnread = model.conversation?.hasUnreadTurn === true;
   useEffect(() => {
-    if (!latestTurnExpansion) return;
-    if (
-      rightPanelOverlayEnabled &&
-      latestTurnExpansion.ownerKey === latestTurnOwnerKey &&
-      latestTurnExpansion.turnKey === latestTurnKey
-    ) {
-      return;
-    }
-    setLatestTurnExpansion(null);
-  }, [latestTurnExpansion, latestTurnKey, latestTurnOwnerKey, rightPanelOverlayEnabled]);
+    if (floatingExpanded && conversationUnread) onMarkConversationRead?.();
+  }, [conversationUnread, floatingExpanded, onMarkConversationRead]);
   useEffect(() => addScrollListener(setScrollDistanceFromBottomPx), [addScrollListener]);
 
   const actionsWithSubmitPlacement = useMemo<ThreadStageActions>(() => {
@@ -347,21 +326,15 @@ function LocalConversationFooterComponent({
     </div>
   );
   const contextRailLeadingContent = rightPanelComposerOverlay?.leadingContent;
-  const showLatestTurnPreview = Boolean(
-    rightPanelOverlayEnabled && latestTurn && latestTurn.blocks.length > 0,
-  );
-  const latestTurnPreview =
-    showLatestTurnPreview && latestTurn ? (
+  const floatingTranscript =
+    rightPanelOverlayEnabled && hasFloatingTranscript && latestTurn ? (
       <CodexTranscriptReadOwnerContext.Provider value={normalizedPreview?.owner ?? null}>
         <CodexTranscriptTurnEntityContext.Provider value={previewEntry?.historyEntityKey ?? null}>
-          <RightPanelComposerLatestTurnPreview
-            key={latestTurnOwnerKey ?? "right-panel-latest-turn"}
+          <FloatingConversationTranscript
+            key={latestTurnKey ?? "floating-transcript"}
             turn={latestTurn}
-            expanded={latestTurnExpanded}
-            contextRailLeadingContent={contextRailLeadingContent}
             projectWorkspacePath={model.projectWorkspacePath}
             threadCwd={model.cwd}
-            onExpandedChange={handleLatestTurnExpandedChange}
             onEditUserTurn={actions.onEditUserTurn}
             onForkFromTurn={actions.onForkFromTurn}
             onOpenTurnDiffReview={actions.onOpenTurnDiffReview}
@@ -372,30 +345,42 @@ function LocalConversationFooterComponent({
             onOpenPlanInSidePanel={actions.onOpenPlanInSidePanel}
             onClosePlanSidePanel={actions.onClosePlanSidePanel}
             planSidePanelState={planSidePanelState}
-            turnDiffHoverPreviewDisabled={rightPanelOverlayEnabled || turnDiffHoverPreviewDisabled}
+            turnDiffHoverPreviewDisabled={true}
           />
         </CodexTranscriptTurnEntityContext.Provider>
       </CodexTranscriptReadOwnerContext.Provider>
     ) : null;
+  // A completed, unread response is announced beside the compact composer.
+  const floatingCompletionPreview =
+    floatingTranscript && latestTurn && !latestTurn.isStreamingTurn && conversationUnread ? (
+      <FloatingConversationCompletionPreview
+        title={
+          rightPanelComposerOverlay?.placement?.title ||
+          model.conversation?.threadName?.trim() ||
+          "Chat"
+        }
+        preview={resolveFloatingConversationAnswerPreview(latestTurn)}
+        onOpen={() => {
+          if (latestTurnOwnerKey) setExpandedOwnerKey(latestTurnOwnerKey);
+        }}
+        onDismiss={() => onMarkConversationRead?.()}
+      />
+    ) : null;
 
   if (rightPanelOverlayEnabled) {
+    const showComposer = !isResumingActiveThread && worktreeRuntimeAvailable;
     return (
-      <RightPanelComposerOverlay
+      <FloatingComposer
         target={rightPanelComposerOverlay?.target ?? null}
-        compact={rightPanelComposerOverlay?.compact === true}
-        visibility={
-          rightPanelComposerOverlay?.visibility ??
-          (rightPanelComposerOverlay?.compact
-            ? {
-                kind: "browser-auto",
-                documentBottomKey: rightPanelComposerOverlay.documentBottomKey ?? null,
-                isAtDocumentBottom: rightPanelComposerOverlay.isAtDocumentBottom === true,
-              }
-            : { kind: "always" })
+        {...rightPanelComposerOverlay?.placement}
+        attention={model.isThreadRunning ? "activity" : "none"}
+        headerPinned={!showComposer}
+        transcript={floatingTranscript}
+        expanded={floatingExpanded}
+        onExpandedChange={(expanded) =>
+          setExpandedOwnerKey(expanded ? (latestTurnOwnerKey ?? null) : null)
         }
-        onPointerDownOutside={() => {
-          handleLatestTurnExpandedChange(false);
-        }}
+        previews={floatingCompletionPreview}
       >
         <LocalConversationFooterChrome
           model={model}
@@ -403,11 +388,10 @@ function LocalConversationFooterComponent({
           errorMessage={errorMessage}
           onErrorMessage={onErrorMessage}
           catchUpControl={catchUpControl}
-          latestTurnPreview={latestTurnPreview}
-          contextRailLeadingContent={showLatestTurnPreview ? undefined : contextRailLeadingContent}
-          showComposer={!isResumingActiveThread && worktreeRuntimeAvailable}
+          contextRailLeadingContent={contextRailLeadingContent}
+          showComposer={showComposer}
         />
-      </RightPanelComposerOverlay>
+      </FloatingComposer>
     );
   }
 

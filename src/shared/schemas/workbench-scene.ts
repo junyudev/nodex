@@ -9,6 +9,8 @@ import {
   removeWorkbenchPanelTab,
 } from "../workbench-panel-layout";
 import {
+  WORKBENCH_FLOATING_COMPOSER_CORNER_DOCKS,
+  WORKBENCH_FLOATING_COMPOSER_DOCKS,
   WORKBENCH_SCENE_MAX_PANEL_SURFACES,
   WORKBENCH_SCENE_VERSION,
   isPagesSceneSurfaceAllowed,
@@ -425,6 +427,8 @@ const WorkbenchAgentDockStateSchema = z
 const WorkbenchComposerOverlayStateSchema = z
   .object({
     visible: z.boolean(),
+    dock: z.enum(WORKBENCH_FLOATING_COMPOSER_DOCKS).optional(),
+    minimizedDock: z.enum(WORKBENCH_FLOATING_COMPOSER_CORNER_DOCKS).optional(),
   })
   .strict();
 

@@ -508,7 +508,7 @@ describe("LocalConversationFooter", () => {
     restoreMotionPreference();
   });
 
-  test("overlay mode renders portals, latest-turn preview, and composer in fixture order", async () => {
+  test("overlay mode renders portals and composer in fixture order and expands into the latest turn", async () => {
     const { LocalConversationFooter } = await import("./local-conversation-footer");
     const target = document.createElement("div");
     document.body.appendChild(target);
@@ -535,9 +535,6 @@ describe("LocalConversationFooter", () => {
       expect(overlay.querySelector('[data-thread-footer-stack="true"]') !== null).toBe(true);
       expect(overlay.querySelector("#above-composer-portal") !== null).toBe(true);
       expect(overlay.querySelector("#above-composer-queue-portal") !== null).toBe(true);
-      expect(overlay.querySelector('[data-right-panel-latest-turn-preview="true"]') !== null).toBe(
-        true,
-      );
       expect(
         overlay.querySelector('[data-local-conversation-composer-shell="true"]') !== null,
       ).toBe(true);
@@ -551,63 +548,55 @@ describe("LocalConversationFooter", () => {
     const footerStack = footerOwner?.querySelector('[data-thread-footer-stack="true"]');
     const aboveComposerPortal = footerStack?.querySelector("#above-composer-portal");
     const queuePortal = footerStack?.querySelector("#above-composer-queue-portal");
-    const latestTurnPreview = footerStack?.querySelector(
-      '[data-right-panel-latest-turn-preview="true"]',
-    );
     const composerShell = footerStack?.querySelector(
       '[data-local-conversation-composer-shell="true"]',
     );
-    if (!aboveComposerPortal || !queuePortal || !latestTurnPreview || !composerShell) {
+    if (!aboveComposerPortal || !queuePortal || !composerShell) {
       throw new Error("Expected overlay fixture nodes");
     }
 
     expect(isBefore(catchUpSlot, footerStack)).toBe(true);
-    expect(
-      Boolean(
-        aboveComposerPortal.compareDocumentPosition(queuePortal) & Node.DOCUMENT_POSITION_FOLLOWING,
-      ),
-    ).toBe(true);
-    expect(
-      Boolean(
-        queuePortal.compareDocumentPosition(latestTurnPreview) & Node.DOCUMENT_POSITION_FOLLOWING,
-      ),
-    ).toBe(true);
-    expect(
-      Boolean(
-        latestTurnPreview.compareDocumentPosition(composerShell) & Node.DOCUMENT_POSITION_FOLLOWING,
-      ),
-    ).toBe(true);
+    expect(isBefore(aboveComposerPortal, queuePortal)).toBe(true);
+    expect(isBefore(queuePortal, composerShell)).toBe(true);
 
     await waitFor(() => {
-      expect(overlay.getAttribute("aria-hidden")).toBe("false");
       const prompt = overlay.querySelector('[data-codex-composer="true"]');
       if (!prompt) throw new Error("Expected floating prompt editor");
       expect(prompt.getAttribute("aria-label")).toBe("Do anything");
     });
     const addContext = overlay.querySelector('button[aria-label="Add files and more"]');
     const prompt = overlay.querySelector('[data-codex-composer="true"]');
-
     const formFooter = overlay.querySelector('[data-composer-form-footer="true"]');
     const inputSlot = formFooter?.querySelector('[data-composer-input-slot="true"]');
     expect(isBefore(addContext, prompt)).toBe(true);
     expect(formFooter?.getAttribute("data-composer-layout")).toBe("single-line");
     expect(inputSlot?.getAttribute("data-composer-footer-row")).toBe("single-line");
     expect(inputSlot?.contains(prompt)).toBe(true);
-    expect(overlay.textContent?.includes("Run the checks") ?? false).toBe(false);
     expect(overlay.querySelector('[data-composer-attachments="true"]')).toBeNull();
+    // The compact composer keeps its conversation folded away.
+    expect(overlay.querySelector('[data-floating-conversation-transcript="true"]')).toBeNull();
 
-    const previewToggle = latestTurnPreview.querySelector("button");
-    if (!previewToggle) throw new Error("Expected latest turn toggle");
+    const expand = overlay.querySelector<HTMLElement>('button[aria-label="Expand composer"]');
+    if (!expand) throw new Error("Expected the expand toggle");
+    expect(expand.getAttribute("aria-expanded")).toBe("false");
     await act(async () => {
-      fireEvent.click(previewToggle);
+      fireEvent.click(expand);
       await Promise.resolve();
     });
     await waitFor(() => {
+      expect(
+        overlay.querySelector('[data-floating-conversation-transcript="true"]'),
+      ).not.toBeNull();
       expect(overlay.querySelector('button[aria-label="Copy"]') !== null).toBe(true);
     });
+    expect(
+      overlay
+        .querySelector('button[aria-label="Collapse composer"]')
+        ?.getAttribute("aria-expanded"),
+    ).toBe("true");
   });
 
-  test("unifies a connected Project Dock target and latest turn in one context rail", async () => {
+  test("hosts a connected Project Dock target in the floating header's one context rail", async () => {
     const { LocalConversationFooter } = await import("./local-conversation-footer");
     const target = document.createElement("div");
     document.body.appendChild(target);
@@ -646,13 +635,21 @@ describe("LocalConversationFooter", () => {
       if (!element) throw new Error("Expected right-panel overlay");
       return element;
     });
-    const rails = overlay.querySelectorAll('[data-composer-context-rail="true"]');
-    expect(rails).toHaveLength(1);
+    const rails = await waitFor(() => {
+      const found = overlay.querySelectorAll('[data-composer-context-rail="true"]');
+      expect(found).toHaveLength(1);
+      return found;
+    });
     const rail = rails[0];
     if (!(rail instanceof HTMLElement)) throw new Error("Expected context rail");
-    expect(within(rail).getByRole("button", { name: "Greet user" })).not.toBeNull();
-    expect(within(rail).getByRole("button", { name: "Open task" })).not.toBeNull();
-    expect(rail.querySelector('button[aria-expanded="false"]')).not.toBeNull();
+    // The rail lives in the header, which stays folded until the prompt is in use.
+    const header = rail.closest("header");
+    expect(header?.getAttribute("aria-hidden")).toBe("true");
+    expect(within(rail).getByRole("button", { name: "Greet user", hidden: true })).not.toBeNull();
+    expect(within(rail).getByRole("button", { name: "Open task", hidden: true })).not.toBeNull();
+    expect(
+      header?.querySelector('button[aria-label="Expand composer"]')?.getAttribute("aria-expanded"),
+    ).toBe("false");
   });
 
   test("keeps the Project Dock target when the latest turn has no renderable blocks", async () => {
@@ -685,14 +682,19 @@ describe("LocalConversationFooter", () => {
       if (!element) throw new Error("Expected right-panel overlay");
       return element;
     });
-    const rails = overlay.querySelectorAll('[data-composer-context-rail="true"]');
-    expect(rails).toHaveLength(1);
+    const rails = await waitFor(() => {
+      const found = overlay.querySelectorAll('[data-composer-context-rail="true"]');
+      expect(found).toHaveLength(1);
+      return found;
+    });
     expect(
       within(rails[0] as HTMLElement).getByRole("button", {
         name: "Greet user",
+        hidden: true,
       }),
     ).not.toBeNull();
-    expect(overlay.querySelector('[data-right-panel-latest-turn-preview="true"]')).toBeNull();
+    // Without a renderable turn there is no conversation to expand into.
+    expect(overlay.querySelector('button[aria-label="Expand composer"]')).toBeNull();
   });
 
   test("unifies a Project-scoped new task without repeating its fixed Project", async () => {
@@ -764,15 +766,18 @@ describe("LocalConversationFooter", () => {
       if (!element) throw new Error("Expected right-panel overlay");
       return element;
     });
-    const rails = overlay.querySelectorAll('[data-composer-context-rail="true"]');
-    expect(rails).toHaveLength(1);
+    const rails = await waitFor(() => {
+      const found = overlay.querySelectorAll('[data-composer-context-rail="true"]');
+      expect(found).toHaveLength(1);
+      return found;
+    });
     const rail = rails[0];
     if (!(rail instanceof HTMLElement)) throw new Error("Expected context rail");
-    expect(within(rail).getByRole("button", { name: "New task" })).not.toBeNull();
-    expect(within(rail).queryByRole("button", { name: "Select project" })).toBeNull();
+    expect(within(rail).getByRole("button", { name: "New task", hidden: true })).not.toBeNull();
+    expect(within(rail).queryByRole("button", { name: "Select project", hidden: true })).toBeNull();
   });
 
-  test("resets an expanded latest-turn tray atomically when the composer target changes", async () => {
+  test("collapses the floating conversation atomically when the composer target changes", async () => {
     const { LocalConversationFooter } = await import("./local-conversation-footer");
     const target = document.createElement("div");
     document.body.appendChild(target);
@@ -792,18 +797,16 @@ describe("LocalConversationFooter", () => {
       </TooltipProvider>
     );
     const view = render(renderFooter("project-dock:session-a"));
-    const preview = await waitFor(() => {
+    const expand = await waitFor(() => {
       const element = document.body.querySelector<HTMLElement>(
-        '[data-right-panel-latest-turn-preview="true"]',
+        'button[aria-label="Expand composer"]',
       );
-      if (!element) throw new Error("Expected latest-turn tray");
+      if (!element) throw new Error("Expected the expand toggle");
       return element;
     });
-    const previewToggle = preview.querySelector("button");
-    if (!previewToggle) throw new Error("Expected latest-turn toggle");
 
     await act(async () => {
-      fireEvent.click(previewToggle);
+      fireEvent.click(expand);
       await Promise.resolve();
     });
     await waitFor(() => {
@@ -815,10 +818,11 @@ describe("LocalConversationFooter", () => {
       await Promise.resolve();
     });
 
-    const nextPreview = document.body.querySelector<HTMLElement>(
-      '[data-right-panel-latest-turn-preview="true"]',
-    );
-    expect(nextPreview?.querySelector("button")?.getAttribute("aria-expanded")).toBe("false");
+    expect(
+      document.body
+        .querySelector('button[aria-label="Expand composer"]')
+        ?.getAttribute("aria-expanded"),
+    ).toBe("false");
     expect(document.body.querySelector('button[aria-label="Copy"]')).toBeNull();
   });
 
@@ -989,7 +993,7 @@ describe("LocalConversationFooter", () => {
     expect(container.querySelector("[data-above-composer-fixed-pill]") === null).toBe(true);
   });
 
-  test("overlay outside pointerdown collapses preview without globally dismissing tooltips", async () => {
+  test("outside pointerdown collapses the floating conversation without globally dismissing tooltips", async () => {
     const { LocalConversationFooter } = await import("./local-conversation-footer");
     const target = document.createElement("div");
     document.body.appendChild(target);
@@ -1014,26 +1018,22 @@ describe("LocalConversationFooter", () => {
         </TooltipProvider>,
       );
 
-      const overlay = await waitFor(() => {
-        const element = document.body.querySelector(
-          '[data-testid="right-panel-composer-overlay"]',
-        ) as HTMLElement | null;
-        if (!element) throw new Error("Expected right-panel overlay");
-        expect(element.getAttribute("aria-hidden")).toBe("false");
+      const expand = await waitFor(() => {
+        const element = document.body.querySelector<HTMLElement>(
+          'button[aria-label="Expand composer"]',
+        );
+        if (!element) throw new Error("Expected the expand toggle");
         return element;
       });
-
-      const latestTurnPreview = overlay.querySelector(
-        '[data-right-panel-latest-turn-preview="true"]',
-      );
-      const previewToggle = latestTurnPreview?.querySelector("button");
-      expect(previewToggle?.getAttribute("aria-expanded")).toBe("false");
-
-      if (!previewToggle) throw new Error("Expected latest turn toggle");
       await act(async () => {
-        fireEvent.click(previewToggle);
+        fireEvent.click(expand);
+        await Promise.resolve();
       });
-      expect(previewToggle.getAttribute("aria-expanded")).toBe("true");
+      await waitFor(() => {
+        expect(
+          document.body.querySelector('button[aria-label="Collapse composer"]'),
+        ).not.toBeNull();
+      });
 
       await act(async () => {
         fireEvent.pointerDown(document.body);
@@ -1041,12 +1041,73 @@ describe("LocalConversationFooter", () => {
       });
 
       await waitFor(() => {
-        expect(previewToggle?.getAttribute("aria-expanded")).toBe("false");
+        expect(
+          document.body
+            .querySelector('button[aria-label="Expand composer"]')
+            ?.getAttribute("aria-expanded"),
+        ).toBe("false");
       });
       expect(tooltipDismissEvents).toBe(0);
     } finally {
       window.removeEventListener("codex:dismiss-tooltips", handleTooltipDismiss);
     }
+  });
+
+  test("announces an unread completed response beside the compact composer until it is read", async () => {
+    const { LocalConversationFooter } = await import("./local-conversation-footer");
+    const target = document.createElement("div");
+    document.body.appendChild(target);
+    const base = buildModelWithRenderableLatestTurn();
+    if (!base.conversation) throw new Error("Expected a conversation");
+    const onMarkConversationRead = vi.fn();
+    const renderFooter = (hasUnreadTurn: boolean) => (
+      <TooltipProvider>
+        <EnsureLocalConversationThreadScrollController>
+          <LocalConversationFooter
+            model={{ ...base, conversation: { ...base.conversation!, hasUnreadTurn } }}
+            actions={buildActions()}
+            errorMessage={null}
+            onErrorMessage={() => {}}
+            onMarkConversationRead={onMarkConversationRead}
+            rightPanelComposerOverlay={{
+              enabled: true,
+              target,
+              placement: { title: "Release notes" },
+            }}
+          />
+        </EnsureLocalConversationThreadScrollController>
+      </TooltipProvider>
+    );
+    const view = render(renderFooter(true));
+
+    const open = await view.findByRole("button", {
+      name: "Open completed response: Release notes",
+    });
+    await act(async () => {
+      fireEvent.click(view.getByRole("button", { name: "Dismiss and mark as read" }));
+      await Promise.resolve();
+    });
+    expect(onMarkConversationRead).toHaveBeenCalledTimes(1);
+
+    // Opening the response expands the composer, which reads the conversation.
+    await act(async () => {
+      fireEvent.click(open);
+      await Promise.resolve();
+    });
+    await waitFor(() => {
+      expect(
+        document.body.querySelector('[data-floating-conversation-transcript="true"]'),
+      ).not.toBeNull();
+    });
+    expect(onMarkConversationRead).toHaveBeenCalledTimes(2);
+
+    await act(async () => {
+      view.rerender(renderFooter(false));
+      await Promise.resolve();
+    });
+    expect(
+      view.queryByRole("button", { name: "Open completed response: Release notes" }),
+    ).toBeNull();
   });
 
   test("resuming active threads keep overlay composer ownership disabled", async () => {
@@ -1095,11 +1156,12 @@ describe("LocalConversationFooter", () => {
             rightPanelComposerOverlay={{
               enabled: true,
               target,
-              visibility: {
-                kind: "controlled",
-                visible: true,
-                attention: "activity",
-                onVisibleChange: () => undefined,
+              placement: {
+                control: {
+                  state: { visible: true },
+                  attention: "activity",
+                  onStateChange: () => undefined,
+                },
               },
               leadingContent: <button type="button">Choose task</button>,
             }}

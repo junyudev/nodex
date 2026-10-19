@@ -1267,8 +1267,9 @@ function ControlledThreadComposer(
         <div
           data-composer-draft-hydration="loading"
           className={cn(
-            "border border-token-border bg-token-main-surface-primary",
-            isFloatingComposer ? "h-11 rounded-full" : "min-h-24 rounded-[20px]",
+            isFloatingComposer
+              ? "h-11"
+              : "min-h-24 rounded-[20px] border border-token-border bg-token-main-surface-primary",
           )}
         />
       </ApplicationPending>
@@ -1311,11 +1312,8 @@ function HydratedThreadComposer({
   intentFocusNonce,
   onIntentFocused,
 }: HydratedThreadComposerProps) {
-  const {
-    floating: isFloatingComposer,
-    presentation: composerPresentation,
-    visible: composerVisible,
-  } = useRightPanelComposerPresentation();
+  const { floating: isFloatingComposer, visible: composerVisible } =
+    useRightPanelComposerPresentation();
   const composerScopeKey = useScopeHandle(ComposerScope).path;
   const [globalDictationTargetId] = useState(() => `composer:${crypto.randomUUID()}`);
   const threadScopePath = useScopeHandle(ThreadScope).path;
@@ -2763,7 +2761,6 @@ function HydratedThreadComposer({
         resolveComposerGlobalDictationAdmission({
           floating: isFloatingComposer,
           visible: composerVisible,
-          expanded: composerPresentation === "expanded",
           editor: promptEditorRef.current?.getElement() ?? null,
         }),
     },
@@ -4103,10 +4100,13 @@ function HydratedThreadComposer({
         ) : null}
         <div
           className={cn(
-            "composer-surface-chrome relative flex flex-col bg-token-input-background/90 backdrop-blur-lg electron:dark:bg-token-dropdown-background",
+            "relative flex flex-col",
+            // A floating composer's frame draws the surface.
+            !isFloatingComposer &&
+              "composer-surface-chrome bg-token-input-background/90 backdrop-blur-lg electron:dark:bg-token-dropdown-background",
             floatingComposerSingleLine
               ? "overflow-visible rounded-full"
-              : "overflow-y-auto composer-multiline-surface",
+              : cn("overflow-y-auto", !isFloatingComposer && "composer-multiline-surface"),
             showExternalFooter && "z-10",
           )}
         >
