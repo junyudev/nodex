@@ -140,7 +140,8 @@ message's Page title and where it went:
 Expanding a line shows the message, its Page key, and icon buttons:
 
 - `Open chat` or `Open in Project`;
-- `Open Page`;
+- `Open page`;
+- `Copy`;
 - `Return to Inbox`, for kept or done messages;
 - `Delete`, while the Page is still in its Inbox's Database.
 
@@ -201,8 +202,14 @@ under that card and exactly as wide, all at its trailing end. The first of its i
 opens the message menu: `Open page`, `Handle manually`,
 `Suggest again`, `Mark done`, and `Delete`. `Handle manually` opens the dispatch editor
 in place of the strip, starting from the current suggestion when there is one.
-The second icon is `Edit`, on every message still waiting in the Inbox except one
-whose delivery failed. With nothing to say yet, the card is
+`Copy` and `Edit` act on the text itself, so they sit on it: in the bottom-right
+corner of the message text, shown while the message is hovered or one of them
+has keyboard focus. Hidden, they leave the text beneath them selectable; shown,
+they float on the text's own color without moving it. `Copy` copies the whole
+message, reading it from the Page when the stream shows only part of it, and
+confirms with a check for a moment. `Edit` appears on every message still
+waiting in the Inbox except one whose delivery failed, and neither appears
+while the message or its dispatch is being edited. With nothing to say yet, the card is
 the message alone. Once a message has a kind, the
 kind's glyph leads its strip in every state. Hovering the glyph names the kind,
 and clicking it changes the kind; this is the one place a kind is changed. The
@@ -230,7 +237,7 @@ Only the decision keeps a text label, with its action's glyph: the suggested
 action, or `Handle manually` when there is no suggestion. It ends the row, flush with
 the card's right edge, so it is always in the same horizontal place. A row
 without one, the spinner of a running suggestion or a row of icons, ends where
-the card's bottom-right corner curve meets its bottom edge. `Edit`,
+the card's bottom-right corner curve meets its bottom edge.
 `Keep as a note`, `Retry`, `Suggest`, `Mark done`, `Handle manually` while a
 suggestion runs or after a failure (always the last icon, right of `Mark done`), and
 the message menu are icon buttons named by their tooltips, gathered at the

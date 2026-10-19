@@ -402,6 +402,7 @@ export function InboxRoute({
             onToggleSelected={() => toggleSelected(item.pageId)}
             onOpenSource={onOpenSession}
             editor={triage.editor}
+            messageActions={triage.messageActions}
             strip={triage.strip}
             actions={triage.actions}
           />

@@ -7,6 +7,7 @@ import type {
   InboxProposal,
   InboxWindowFilter,
 } from "../../../shared/inbox";
+import type { ContentRoutingContext } from "../../../shared/content-routing-context";
 import { USER_TURN_TIMESTAMP_GAP_MS } from "../local-conversation/projection/conversation-turn-timestamps";
 
 /** What the strip attached to a message in the Inbox shows: what Nodex made of it. */
@@ -74,6 +75,16 @@ export function inboxAwaitingIndicatorPageId(
     items.findLast((item) => inboxTriageModel(item, suggestionsEnabled).kind === "suggesting")
       ?.pageId ?? null
   );
+}
+
+/** Where a message's Page is read from now: its filed Database's Project, else its Inbox's. */
+export function inboxPageRoutingContext(item: InboxItem): ContentRoutingContext {
+  if (item.location.kind === "database") {
+    return item.location.projectId
+      ? { kind: "project", projectId: item.location.projectId }
+      : { kind: "library" };
+  }
+  return item.scope;
 }
 
 export type InboxOutcomeIcon = "chat" | "pending" | "move" | "keep" | "done" | "inbox";

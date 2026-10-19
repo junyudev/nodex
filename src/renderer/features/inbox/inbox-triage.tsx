@@ -26,6 +26,7 @@ import {
   InboxIconActions,
   type InboxIcon,
 } from "./inbox-icon-action";
+import { InboxCopyAction } from "./inbox-copy-action";
 import { InboxGroupMembers, type InboxGroupMember } from "./inbox-group-members";
 import { InboxKindControl } from "./inbox-kind-control";
 import { InboxMessageEditor } from "./inbox-message-editor";
@@ -173,6 +174,8 @@ function SuggestionStrip({
 export interface InboxTriageParts {
   /** Replaces the message's text while the user rewrites it; null otherwise. */
   readonly editor: ReactNode;
+  /** Copy and Edit, which act on the text itself and sit on it; null while an editor is open. */
+  readonly messageActions: ReactNode;
   /** What Nodex made of the message; null when there is nothing to say. */
   readonly strip: ReactNode;
   /** Icon actions and the menu, then the decision at the right; null while an editor is open. */
@@ -245,6 +248,7 @@ export function InboxTriage({
   );
   const keepAction = <InboxIconAction label="Keep" icon={ArchiveIcon} onClick={keep} />;
   const doneAction = <InboxIconAction label="Mark done" icon={CheckmarkIcon} onClick={done} />;
+  const copyAction = <InboxCopyAction item={item} />;
   const handleManuallyAction = (
     <InboxIconAction label="Handle manually" icon={DispatchIcon} onClick={handleManually} />
   );
@@ -276,7 +280,7 @@ export function InboxTriage({
     />
   );
 
-  const parts = (): Omit<InboxTriageParts, "editor"> => {
+  const parts = (): Omit<InboxTriageParts, "editor" | "messageActions"> => {
     if (manualDraft) {
       return {
         strip: (
@@ -319,10 +323,7 @@ export function InboxTriage({
         ),
         actions: (
           <Row>
-            <InboxIconActions>
-              {menu}
-              {editAction}
-            </InboxIconActions>
+            <InboxIconActions>{menu}</InboxIconActions>
           </Row>
         ),
       };
@@ -338,7 +339,6 @@ export function InboxTriage({
             <Row>
               <InboxIconActions>
                 {menu}
-                {editAction}
                 {doneAction}
                 {handleManuallyAction}
               </InboxIconActions>
@@ -377,7 +377,6 @@ export function InboxTriage({
             <Row>
               <InboxIconActions>
                 {menu}
-                {editAction}
                 {proposal.action.type === "keep" ? null : keepAction}
                 {doneAction}
               </InboxIconActions>
@@ -405,7 +404,6 @@ export function InboxTriage({
             <Row>
               <InboxIconActions>
                 {menu}
-                {editAction}
                 <InboxIconAction
                   label="Retry"
                   icon={RetryIcon}
@@ -483,7 +481,6 @@ export function InboxTriage({
             <Row>
               <InboxIconActions>
                 {menu}
-                {editAction}
                 {suggestionsEnabled ? (
                   <InboxIconAction
                     label="Suggest"
@@ -527,9 +524,21 @@ export function InboxTriage({
           }}
         />
       ),
+      messageActions: null,
       strip: null,
       actions: null,
     });
   }
-  return children({ editor: null, ...parts() });
+  // A delivered or failed delivery's text is settled, and a dispatch editor is already open.
+  const editable = !manualDraft && model.kind !== "handled" && model.kind !== "dispatch-failed";
+  return children({
+    editor: null,
+    messageActions: (
+      <>
+        {copyAction}
+        {editable ? editAction : null}
+      </>
+    ),
+    ...parts(),
+  });
 }

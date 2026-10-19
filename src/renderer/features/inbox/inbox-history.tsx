@@ -8,6 +8,7 @@ import {
   ThreadIcon,
 } from "@/components/shared/icons";
 import { cn } from "@/lib/utils";
+import { InboxCopyAction } from "./inbox-copy-action";
 import { InboxIconAction, InboxIconActions } from "./inbox-icon-action";
 import { InboxOutcomeGlyph, InboxOutcomeLine } from "./inbox-outcome";
 import {
@@ -74,7 +75,8 @@ function HistoryRow({
                   onClick={() => onOpenTarget(target)}
                 />
               ) : null}
-              <InboxIconAction label="Open Page" icon={PageIcon} onClick={onOpenPage} />
+              <InboxIconAction label="Open page" icon={PageIcon} onClick={onOpenPage} />
+              <InboxCopyAction item={item} />
               {outcome.canReturn ? (
                 <InboxIconAction label="Return to Inbox" icon={InboxIcon} onClick={onReturn} />
               ) : null}

@@ -6,6 +6,7 @@ import {
   describeInboxOutcome,
   groupInboxItemsByDay,
   inboxAwaitingIndicatorPageId,
+  inboxPageRoutingContext,
   inboxTimestampSeparators,
   inboxTriageModel,
   isInboxItemHandled,
@@ -103,6 +104,29 @@ describe("inboxAwaitingIndicatorPageId", () => {
     expect(inboxAwaitingIndicatorPageId([advised], true)).toBeNull();
     // Nothing is working on a message while suggestions are off.
     expect(inboxAwaitingIndicatorPageId([waiting("page:a")], false)).toBeNull();
+  });
+});
+
+describe("inboxPageRoutingContext", () => {
+  it("reads a message from where its Page lives now", () => {
+    const filed = (projectId: string | null) =>
+      item({
+        location: {
+          kind: "database",
+          databaseId: "db",
+          databaseName: "Tasks",
+          projectId,
+          projectName: projectId,
+        },
+      });
+    expect(inboxPageRoutingContext(filed("project:site"))).toEqual({
+      kind: "project",
+      projectId: "project:site",
+    });
+    expect(inboxPageRoutingContext(filed(null))).toEqual({ kind: "library" });
+    expect(
+      inboxPageRoutingContext(item({ scope: { kind: "project", projectId: "project:nodex" } })),
+    ).toEqual({ kind: "project", projectId: "project:nodex" });
   });
 });
 

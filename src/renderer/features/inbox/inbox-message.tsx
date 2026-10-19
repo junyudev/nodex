@@ -98,6 +98,7 @@ export function InboxMessage({
   onToggleSelected,
   onOpenSource,
   editor,
+  messageActions,
   strip,
   actions,
 }: {
@@ -109,6 +110,8 @@ export function InboxMessage({
   readonly onOpenSource: (sessionId: string) => void;
   /** Takes the message text's place while the user rewrites it. */
   readonly editor: React.ReactNode;
+  /** Copy and Edit, shown on the text's bottom-right corner while the message is hovered or focused. */
+  readonly messageActions: React.ReactNode;
   /** What Nodex made of the message, inside the card; null leaves the message alone. */
   readonly strip: React.ReactNode;
   /** The row of ways to act, under the card and exactly as wide. */
@@ -198,7 +201,7 @@ export function InboxMessage({
           >
             <div
               className={cn(
-                "px-3 py-2 break-words",
+                "relative px-3 py-2 break-words",
                 fromUser
                   ? "bg-background-user-message text-text-user-message"
                   : "text-token-foreground",
@@ -206,6 +209,20 @@ export function InboxMessage({
               )}
             >
               {editor ?? <UserMessageText text={item.body} />}
+              {editor == null && messageActions != null ? (
+                // Floats over the end of the last line on the text's own color, so showing it
+                // never moves the text.
+                <div
+                  data-testid="inbox-message-actions"
+                  className={cn(
+                    "pointer-events-none absolute right-1.5 bottom-1 flex items-center gap-0.5 rounded-md opacity-0 transition-opacity",
+                    "group-hover/message:pointer-events-auto group-hover/message:opacity-100 focus-within:opacity-100",
+                    fromUser ? "bg-background-user-message" : "bg-token-main-surface-primary",
+                  )}
+                >
+                  {messageActions}
+                </div>
+              ) : null}
             </div>
             {strip == null ? null : (
               <div data-testid="inbox-triage" className="px-3 py-2.5">

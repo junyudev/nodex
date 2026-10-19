@@ -95,9 +95,10 @@ const renderTriage = (
         onEditAsPage={vi.fn()}
         {...overrides}
       >
-        {({ editor, strip, actions: row }) => (
+        {({ editor, messageActions, strip, actions: row }) => (
           <>
             {editor ?? <p>{overrides.item?.body ?? item().body}</p>}
+            {messageActions}
             {strip}
             {row}
           </>
@@ -196,9 +197,10 @@ describe("InboxTriage", () => {
         onManualDraftChange={vi.fn()}
         onEditAsPage={vi.fn()}
       >
-        {({ editor, strip, actions: controls }) => (
+        {({ editor, messageActions, strip, actions: controls }) => (
           <>
             {editor ?? message.body}
+            {messageActions}
             {strip}
             {controls}
           </>
@@ -589,6 +591,7 @@ describe("InboxMessage source navigation", () => {
           onToggleSelected={vi.fn()}
           onOpenSource={onOpenSource}
           editor={null}
+          messageActions={null}
           strip={null}
           actions={null}
         />,
@@ -617,6 +620,7 @@ describe("InboxMessage source navigation", () => {
         onToggleSelected={vi.fn()}
         onOpenSource={onOpenSource}
         editor={null}
+        messageActions={null}
         strip={null}
         actions={null}
       />,

@@ -3,6 +3,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { AnimatePresence } from "motion/react";
 import type { ReactNode } from "react";
 import { expect, test, vi } from "vite-plus/test";
+import { userEvent } from "vite-plus/test/browser";
 import "@/globals.css";
 import { NodexTooltipProvider } from "@/components/ui/tooltip";
 import { installRendererThemeFixture } from "@/test/renderer-theme";
@@ -62,6 +63,7 @@ function StreamMessage({ item, selected = false }: { item: InboxItem; selected?:
             onToggleSelected={vi.fn()}
             onOpenSource={vi.fn()}
             editor={triage.editor}
+            messageActions={triage.messageActions}
             strip={triage.strip}
             actions={triage.actions}
           />
@@ -145,4 +147,30 @@ test("a selected card's ring is never clipped, and only a message folding away c
   });
   expect(item.isConnected).toBe(true);
   expect(getComputedStyle(item).overflowY).toBe("hidden");
+});
+
+test("Copy and Edit wait on the text's bottom-right corner until the message is hovered", async () => {
+  render(
+    <Stream>
+      <StreamMessage key="page:1" item={waiting} />
+    </Stream>,
+  );
+  const tools = screen.getByTestId("inbox-message-actions");
+  expect(Array.from(tools.querySelectorAll("button"), (button) => button.ariaLabel)).toEqual([
+    "Copy",
+    "Edit",
+  ]);
+  const text = tools.parentElement!.getBoundingClientRect();
+  const box = tools.getBoundingClientRect();
+  expect(box.right).toBeLessThanOrEqual(text.right);
+  expect(box.bottom).toBeLessThanOrEqual(text.bottom);
+  expect(text.right - box.right).toBeLessThan(box.width);
+  expect(text.bottom - box.bottom).toBeLessThan(box.height);
+  // Hidden, it leaves the text beneath it selectable.
+  expect(getComputedStyle(tools).opacity).toBe("0");
+  expect(getComputedStyle(tools).pointerEvents).toBe("none");
+
+  await userEvent.hover(screen.getByText("Homepage feels like a dev tool"));
+  await expect.poll(() => getComputedStyle(tools).opacity).toBe("1");
+  expect(getComputedStyle(tools).pointerEvents).toBe("auto");
 });

@@ -53,6 +53,8 @@ test("preserves capture and filing decisions while Project counts share the acti
           await composer.inputValue(),
         );
         const firstRow = page.locator(`[data-inbox-page-id="${firstId}"]`);
+        // Copy and Edit show on the text while the message is hovered.
+        await firstRow.getByTestId("inbox-message-unit").hover();
         await firstRow.getByRole("button", { name: "Edit", exact: true }).click();
         await firstRow
           .getByRole("textbox", { name: "Edit message" })
