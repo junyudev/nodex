@@ -14,6 +14,7 @@ import type {
 } from "../../shared/agent-runtime-api";
 import { CoreApplicationAgent } from "../core-runtime/CoreApplicationAgent";
 import { CoreModules } from "../core-runtime/CoreModules";
+import { MAIN_OBSERVATION_EVENT_CAPACITY } from "../runtime-limits";
 import type {
   AgentRuntimeProcessConnection,
   AgentRuntimeProcessDelivery,
@@ -70,6 +71,8 @@ export interface AgentRuntimeSessionActivityOptions {
   readonly snapshotLimit?: number;
   /** Notifications arriving within this window share one point read. */
   readonly coalesce?: Duration.Input;
+  /** Buffered activity changes before a slow observer must reload its snapshot. */
+  readonly changeCapacity?: number;
 }
 
 const POINT_READ_LIMIT = 100;
@@ -149,7 +152,7 @@ export const coreSessionResolver = Effect.gen(function* () {
  * Main's Session activity projection. Each process generation reads `execution.activity` once,
  * follows activity notifications from one execution observation, point-reads changed roots and
  * maps them to Sessions. Memory holds only non-idle roots; delivery gaps and generation changes
- * publish `reset`.
+ * publish `reset`. Slow observers recover from bounded-channel overflow with the same snapshot.
  */
 export const make = Effect.fn("AgentRuntimeSessionActivity.make")(function* (
   options: AgentRuntimeSessionActivityOptions,
@@ -164,7 +167,9 @@ export const make = Effect.fn("AgentRuntimeSessionActivity.make")(function* (
     sessions: new Map(),
     roots: new Map(),
   });
-  const changes = yield* PubSub.unbounded<AgentRuntimeSessionActivityChange>();
+  const changes = yield* PubSub.sliding<AgentRuntimeSessionActivityChange>(
+    options.changeCapacity ?? MAIN_OBSERVATION_EVENT_CAPACITY,
+  );
   const transitions = yield* PubSub.sliding<AgentRuntimeActivityTransition>(1_024);
   yield* Effect.addFinalizer(() =>
     PubSub.shutdown(changes).pipe(Effect.andThen(PubSub.shutdown(transitions))),
@@ -424,10 +429,34 @@ export const make = Effect.fn("AgentRuntimeSessionActivity.make")(function* (
     );
   });
 
+  // Each subscriber owns its cursor. Sliding never blocks execution; a missed change becomes
+  // a reset rather than a partial patch that could leave a Session permanently stale.
+  const activityChanges = Stream.unwrap(
+    Effect.gen(function* () {
+      const [subscription, baseline] = yield* lock.withPermit(
+        Effect.gen(function* () {
+          const subscription = yield* PubSub.subscribe(changes);
+          return [subscription, (yield* Ref.get(state)).sequence] as const;
+        }),
+      );
+      return Stream.fromSubscription(subscription).pipe(
+        Stream.mapAccum(
+          () => baseline,
+          (sequence, change): readonly [number, readonly AgentRuntimeSessionActivityChange[]] => {
+            if (change.sequence <= sequence) return [sequence, []];
+            if (change.sequence !== sequence + 1)
+              return [change.sequence, [{ type: "reset", sequence: change.sequence }]];
+            return [change.sequence, [change]];
+          },
+        ),
+      );
+    }),
+  );
+
   return {
     /** Bounded snapshot of non-idle Sessions; reading never starts a process. */
     read,
-    activityChanges: Stream.fromPubSub(changes),
+    activityChanges,
     /** Observes one process generation for the lifetime of the caller's Scope; never starts one. */
     attach,
     /** Bound root changes within one generation, for unread and notification policy. */

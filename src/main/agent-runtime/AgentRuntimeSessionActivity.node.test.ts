@@ -1,11 +1,15 @@
 import { assert, it } from "@effect/vitest";
 import type { AgentRootActivity, AgentRuntimeNotification } from "@nodex/agent-runtime/contracts";
 import * as Effect from "effect/Effect";
+import * as Deferred from "effect/Deferred";
 import * as Exit from "effect/Exit";
 import * as PubSub from "effect/PubSub";
 import * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
-import type { AgentRuntimeSessionActivityChange } from "../../shared/agent-runtime-api";
+import type {
+  AgentRuntimeSessionActivity as SessionActivity,
+  AgentRuntimeSessionActivityChange,
+} from "../../shared/agent-runtime-api";
 import type {
   AgentRuntimeProcessConnection,
   AgentRuntimeProcessDelivery,
@@ -111,7 +115,7 @@ const fakeRuntime = (generation: string) =>
     return { connection, roots, requests, commit, finishRun };
   });
 
-const fixture = (bindings: Readonly<Record<string, string>>) =>
+const fixture = (bindings: Readonly<Record<string, string>>, changeCapacity?: number) =>
   Effect.gen(function* () {
     const resolved: string[] = [];
     const activity = yield* make({
@@ -124,6 +128,7 @@ const fixture = (bindings: Readonly<Record<string, string>>) =>
         }),
       coalesce: "1 millis",
       pageSize: 2,
+      changeCapacity,
     });
     const changes: AgentRuntimeSessionActivityChange[] = [];
     const transitions: AgentRuntimeActivityTransition[] = [];
@@ -289,5 +294,74 @@ it.live("a root without a Session binding stays hidden until Core binds it", () 
       (yield* f.activity.read).items.map((item) => item.sessionId),
       ["session:new"],
     );
+  }).pipe(Effect.scoped),
+);
+
+it.live("a slow activity observer resets after overflow without blocking other windows", () =>
+  Effect.gen(function* () {
+    const f = yield* fixture(
+      { "thread:a": "session:a", "thread:b": "session:b", "thread:c": "session:c" },
+      2,
+    );
+    const paused = yield* Deferred.make<void>();
+    const resume = yield* Deferred.make<void>();
+    const observed: AgentRuntimeSessionActivityChange[] = [];
+    let projection = new Map<string, SessionActivity>();
+    let appliedSequence = -1;
+    yield* f.activity.activityChanges.pipe(
+      Stream.runForEach((change) =>
+        Effect.gen(function* () {
+          observed.push(change);
+          if (change.sequence > appliedSequence) {
+            if (change.type === "reset") {
+              const snapshot = yield* f.activity.read;
+              appliedSequence = snapshot.sequence;
+              projection = new Map(snapshot.items.map((item) => [item.sessionId, item]));
+            } else {
+              appliedSequence = change.sequence;
+              if (change.type === "upsert")
+                projection.set(change.activity.sessionId, change.activity);
+              else projection.delete(change.sessionId);
+            }
+          }
+          if (observed.length !== 1) return;
+          yield* Deferred.succeed(paused, undefined);
+          yield* Deferred.await(resume);
+        }),
+      ),
+      Effect.forkScoped({ startImmediately: true }),
+    );
+    const runtime = yield* fakeRuntime("1");
+    runtime.roots.set("thread:a", root("thread:a", "running"));
+    yield* f.attach(runtime.connection);
+    yield* Deferred.await(paused);
+    assert.isTrue(projection.has("session:a"));
+
+    const updates = [
+      ["thread:a", null],
+      ["thread:b", root("thread:b", "running")],
+      ["thread:b", root("thread:b", "waiting")],
+      ["thread:b", root("thread:b", "background")],
+      ["thread:c", root("thread:c", "running")],
+    ] as const;
+    for (const [index, [threadId, next]] of updates.entries()) {
+      yield* runtime.commit(threadId, next);
+      yield* f.until(() => f.changes.length === index + 2);
+    }
+    // The fast observer and canonical snapshot advance while the other window remains paused.
+    assert.strictEqual(observed.length, 1);
+    assert.deepEqual(
+      f.changes.map((change) => change.type),
+      ["reset", "remove", "upsert", "upsert", "upsert", "upsert"],
+    );
+    const snapshot = yield* f.activity.read;
+    yield* Deferred.succeed(resume, undefined);
+    yield* f.until(() => observed.at(-1)?.sequence === snapshot.sequence);
+    assert.deepEqual(
+      observed.map((change) => change.type),
+      ["reset", "reset", "upsert"],
+    );
+    assert.deepEqual([...projection.values()], snapshot.items);
+    assert.isFalse(projection.has("session:a"));
   }).pipe(Effect.scoped),
 );
