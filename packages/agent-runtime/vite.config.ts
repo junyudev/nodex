@@ -1,6 +1,7 @@
 import "vite-plus/test/config";
 import { defineConfig } from "vite-plus";
 import { fileURLToPath } from "node:url";
+import { TEST_ENVIRONMENT } from "../../config/test-environment.ts";
 import { filesForSuite } from "../../config/test-suites.ts";
 import { resolveVitestTestTier } from "../../config/vitest-test-tier.ts";
 
@@ -10,6 +11,7 @@ const localGlob = (glob: string) => glob.replace(/^packages\/agent-runtime\//u, 
 export default defineConfig({
   root: fileURLToPath(new URL(".", import.meta.url)),
   test: {
+    env: TEST_ENVIRONMENT,
     environment: "node",
     include: testFiles.include.map(localGlob),
     exclude: testFiles.exclude.map(localGlob),
