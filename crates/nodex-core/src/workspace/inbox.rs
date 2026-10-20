@@ -348,6 +348,19 @@ pub(super) fn has_message_shape(blocks: &[NfmBlock]) -> bool {
         })
 }
 
+/// Collects a message's Library images in reading order, each once, as a chat receives them.
+pub(super) fn collect_image_sources(blocks: &[NfmBlock], sources: &mut Vec<String>) {
+    for block in blocks {
+        if let NfmBlock::Image { source, .. } = block
+            && parse_page_file_source(source).is_some()
+            && !sources.contains(source)
+        {
+            sources.push(source.clone());
+        }
+        collect_image_sources(block_children(block), sources);
+    }
+}
+
 fn contains_image(block: &NfmBlock) -> bool {
     matches!(block, NfmBlock::Image { .. }) || block_children(block).iter().any(contains_image)
 }

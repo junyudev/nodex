@@ -38132,6 +38132,7 @@
         "type": "object",
         "description": "A confirmed dispatch that the Desktop Host must deliver.",
         "required": [
+          "image_sources",
           "launch_id",
           "message_id",
           "proposal_id",
@@ -38180,6 +38181,13 @@
               "null"
             ],
             "description": "None only for pre-snapshot history that must be reconciled, never sent."
+          },
+          "image_sources": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Library images of the delivered messages, frozen with the text and sent with it."
           },
           "launch_id": {
             "type": "string"

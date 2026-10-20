@@ -780,6 +780,23 @@ pub(super) fn suggestion_input(
     })
 }
 
+/// The Library images of a message's Page as it is now, for a chat that receives it.
+pub(super) fn message_image_sources(
+    connection: &Connection,
+    page_id: &str,
+    sources: &mut Vec<String>,
+) -> Result<(), StoreError> {
+    let row = read_entry(connection, page_id, MAX_AGENT_BODY_BYTES)?;
+    if let Some(blocks) = row
+        .nfm
+        .as_deref()
+        .and_then(|nfm| crate::domain::nfm_parser::parse_nfm(nfm).ok())
+    {
+        super::inbox::collect_image_sources(&blocks, sources);
+    }
+    Ok(())
+}
+
 /// Small lexical hints let related older chats compete with recent activity. This does
 /// not read transcripts or add a second search authority to Inbox.
 fn context_search_terms(entries: &[ProjectWorkspaceInboxSuggestionInput]) -> Vec<String> {
@@ -1048,6 +1065,12 @@ pub(super) fn read_dispatch_outbox(
                     |row| row.get(0),
                 )
                 .optional()?,
+            image_sources: super::inbox::reliable::read_handoff_json(
+                connection,
+                &proposal_id,
+                "image_sources_json",
+            )?
+            .unwrap_or_default(),
             launch_id: super::inbox::reliable::stored_handoff_identity(
                 connection,
                 &proposal_id,

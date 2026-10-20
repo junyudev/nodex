@@ -9180,6 +9180,8 @@ export interface components {
             readonly failure_kind?: null | components["schemas"]["ProjectWorkspaceInboxFailureKind"];
             /** @description None only for pre-snapshot history that must be reconciled, never sent. */
             readonly final_text?: string | null;
+            /** @description Library images of the delivered messages, frozen with the text and sent with it. */
+            readonly image_sources: readonly string[];
             readonly launch_id: string;
             readonly message_id: string;
             readonly page_ids: readonly string[];

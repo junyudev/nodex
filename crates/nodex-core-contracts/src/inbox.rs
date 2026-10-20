@@ -311,6 +311,8 @@ pub struct ProjectWorkspaceInboxDispatchContext {
 pub struct ProjectWorkspaceInboxDispatchWork {
     /// None only for pre-snapshot history that must be reconciled, never sent.
     pub final_text: Option<String>,
+    /// Library images of the delivered messages, frozen with the text and sent with it.
+    pub image_sources: Vec<String>,
     pub launch_id: String,
     pub message_id: String,
     pub execution_selection: Option<ProjectWorkspaceInboxExecutionSelection>,

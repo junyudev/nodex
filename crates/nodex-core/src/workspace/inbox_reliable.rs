@@ -47,6 +47,9 @@ pub(in crate::workspace) fn read_handoff_json<T: serde::de::DeserializeOwned>(
         "target_execution_ref_json" => {
             "SELECT target_execution_ref_json FROM inbox_handoffs WHERE proposal_id=?1"
         }
+        "image_sources_json" => {
+            "SELECT image_sources_json FROM inbox_handoffs WHERE proposal_id=?1"
+        }
         _ => return Err(internal("Unknown handoff field")),
     };
     let json: Option<String> = connection
@@ -56,6 +59,10 @@ pub(in crate::workspace) fn read_handoff_json<T: serde::de::DeserializeOwned>(
     json.map(|j| serde_json::from_str(&j).map_err(|_| corrupt("Stored Inbox handoff is invalid")))
         .transpose()
 }
+
+/// An Agent takes at most this many images with one message; the rest stay on their Pages.
+const MAX_HANDOFF_IMAGES: usize = 20;
+
 fn encode<T: Serialize + ?Sized>(value: &T) -> Result<String, StoreError> {
     serde_json::to_string(value).map_err(|_| internal("Inbox value cannot be encoded"))
 }
@@ -569,7 +576,9 @@ fn decide(
             require_host(context)?;
             let mut text = prompt.trim().to_owned();
             text.push_str("\n\nOriginal Inbox messages:\n");
+            let mut images = Vec::new();
             for (index, page_id) in pages.iter().enumerate() {
+                super::super::inbox_read::message_image_sources(connection, page_id, &mut images)?;
                 let entry =
                     super::super::inbox_read::suggestion_input(connection, library_id, page_id)?;
                 text.push_str(&format!(
@@ -596,7 +605,8 @@ fn decide(
                 ProjectWorkspaceInboxDispatchAction::SendToChat{session_id,..}=>connection.query_row("SELECT runtime_id,runtime_thread_id FROM project_session_execution_bindings WHERE session_id=?1",[session_id],|r|Ok(ProjectWorkspaceSessionExecutionRef{runtime_id:r.get(0)?,thread_id:r.get(1)?})).optional()?,
                 _=>None,
             };
-            connection.execute("INSERT INTO inbox_handoffs(proposal_id,store_epoch,final_text,launch_id,message_id,execution_selection_json,target_execution_ref_json) VALUES (?1,?2,?3,?4,?5,?6,?7)",params![proposal_id,scope.store_epoch(),text,handoff_identity(proposal_id,"launch",scope.store_epoch()),handoff_identity(proposal_id,"message",scope.store_epoch()),selection.map(encode).transpose()?,target.as_ref().map(encode).transpose()?])?;
+            images.truncate(MAX_HANDOFF_IMAGES);
+            connection.execute("INSERT INTO inbox_handoffs(proposal_id,store_epoch,final_text,launch_id,message_id,execution_selection_json,target_execution_ref_json,image_sources_json) VALUES (?1,?2,?3,?4,?5,?6,?7,?8)",params![proposal_id,scope.store_epoch(),text,handoff_identity(proposal_id,"launch",scope.store_epoch()),handoff_identity(proposal_id,"message",scope.store_epoch()),selection.map(encode).transpose()?,target.as_ref().map(encode).transpose()?,encode(&images)?])?;
         }
         ProjectWorkspaceInboxDispatchAction::MoveToProject { .. } => {
             connection.execute(

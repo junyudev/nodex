@@ -13,6 +13,15 @@ import type { AgentRuntimeError } from "./AgentRuntimeError";
 
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
 const MAX_TOTAL_BYTES = 20 * 1024 * 1024;
+const MAX_IMAGES = 20;
+
+/** What an Agent takes with one message: each image, all of them together, and their count. */
+export const NATIVE_PROMPT_IMAGE_LIMITS = {
+  imageBytes: MAX_IMAGE_BYTES,
+  totalBytes: MAX_TOTAL_BYTES,
+  count: MAX_IMAGES,
+} as const;
+
 const types = new Map<string, AgentPromptImage["mediaType"]>([
   [".png", "image/png"],
   [".jpg", "image/jpeg"],
@@ -21,12 +30,15 @@ const types = new Map<string, AgentPromptImage["mediaType"]>([
   [".webp", "image/webp"],
 ]);
 
+export const isNativePromptImageType = (mimeType: string): boolean =>
+  [...types.values()].some((type) => type === mimeType);
+
 /** Materialize only the images explicitly attached by a trusted renderer. No network fetches. */
 export async function prepareNativePromptImages(
   images: readonly CodexPromptImageInput[],
   readManaged: (source: string) => { readonly mimeType: string; readonly bytes: Uint8Array },
 ): Promise<readonly AgentPromptImage[]> {
-  if (images.length > 20) throw new Error("Attach at most 20 images");
+  if (images.length > MAX_IMAGES) throw new Error("Attach at most 20 images");
   let total = 0;
   const prepared: AgentPromptImage[] = [];
   for (const { source } of images) {

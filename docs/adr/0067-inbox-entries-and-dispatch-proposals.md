@@ -36,7 +36,8 @@ The ProjectWorkspace Module owns the decision records next to that Page:
 - **Inbox entry:** source provenance, kind, and triage state.
 - **Dispatch proposal:** a typed, versioned action for one or more entries.
   Each proposal is fenced by the message revisions it was computed from.
-- **Dispatch outbox:** confirmed chat work in the `dispatching` state.
+- **Dispatch outbox:** confirmed chat work in the `dispatching` state, with its
+  text and the Library images of its messages frozen at confirmation.
 - **Suggestion request:** exact scope, membership, Page basis and generation of
   a bounded suggestion or correction.
 

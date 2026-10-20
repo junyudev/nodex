@@ -2077,6 +2077,50 @@ fn atomic_edit_fences_content_and_invalidates_the_complete_request() {
     );
 }
 #[test]
+fn a_dispatched_chat_receives_the_messages_images_with_their_text() {
+    let workspace = seeded_workspace();
+    let module = &workspace.module;
+    super::test_support::create_library_image(&workspace, "shot");
+    super::test_support::create_library_image(&workspace, "detail");
+    send(
+        module,
+        "pictured",
+        "The banner is cut off\n<image source=\"nodex://files/shot\"></image>\n<image source=\"nodex://files/detail\"></image>",
+    );
+    // The same screenshot in a second message is sent once.
+    send(
+        module,
+        "again",
+        "Same on the pricing page\n<image source=\"nodex://files/shot\"></image>",
+    );
+    let pages = vec!["page:pictured".to_owned(), "page:again".to_owned()];
+    apply_host(
+        module,
+        "dispatch:pictured",
+        ProjectWorkspaceIntent::DispatchInboxEntries {
+            expected_store_epoch: "epoch-1".into(),
+            basis: pages_basis(module, pages.clone()),
+            execution_selection: Some(selection()),
+            proposal_id: "proposal:pictured".into(),
+            page_ids: pages,
+            action: ProjectWorkspaceInboxDispatchAction::NewChat {
+                project_id: None,
+                prompt: "Fix the banners".into(),
+            },
+            session_id: Some("session:pictured".into()),
+        },
+    );
+    let work = outbox(module).remove(0);
+    assert_eq!(
+        work.image_sources,
+        vec!["nodex://files/shot", "nodex://files/detail"]
+    );
+    let text = work.final_text.unwrap();
+    assert!(text.contains("> The banner is cut off"));
+    assert!(!text.contains("<image"));
+}
+
+#[test]
 fn complete_handoff_and_selection_survive_retries_with_fenced_receipts() {
     let workspace = seeded_workspace();
     let module = &workspace.module;

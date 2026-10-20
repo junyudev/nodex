@@ -341,6 +341,11 @@ const MIGRATION_STEPS: &[MigrationStep] = &[
         to_revision: 186,
         apply: migrate_v185_to_v186,
     },
+    MigrationStep {
+        from_revision: 186,
+        to_revision: 187,
+        apply: migrate_v186_to_v187,
+    },
 ];
 
 fn resolve_migration_path(
@@ -2401,6 +2406,22 @@ fn migrate_v185_to_v186(
         params![context.source_revision, context.target_revision, context.source_schema_fingerprint,
             context.target_schema_fingerprint, context.backup_name, context.completed_at_unix_ms,
             r#"{"page_layout_hides_empty_properties":true}"#],
+    )?;
+    connection.pragma_update(None, "user_version", context.target_revision)?;
+    Ok(())
+}
+
+/// Inbox handoffs freeze the Library images of the messages they deliver.
+fn migrate_v186_to_v187(
+    connection: &Connection,
+    context: &MigrationContext,
+) -> Result<(), StoreError> {
+    connection.execute_batch(include_str!("../../schema/migrations/v186_to_v187.sql"))?;
+    connection.execute(
+        "INSERT INTO core_store_migration_history(source_revision,target_revision,source_schema_fingerprint,target_schema_fingerprint,backup_name,completed_at_unix_ms,evidence_json) VALUES (?1,?2,?3,?4,?5,?6,?7)",
+        params![context.source_revision, context.target_revision, context.source_schema_fingerprint,
+            context.target_schema_fingerprint, context.backup_name, context.completed_at_unix_ms,
+            r#"{"inbox_handoff_images":true}"#],
     )?;
     connection.pragma_update(None, "user_version", context.target_revision)?;
     Ok(())

@@ -13,6 +13,7 @@ import {
 import { testLayer as configLayer } from "../app/MainConfig";
 import { CodexTurnCommands } from "../codex-application/CodexTurnCommands";
 import type { CoreInboxDispatchContext, CoreInboxDispatchWork } from "../core-client/inbox-adapter";
+import { LibraryModule } from "../library-application/LibraryModule";
 import { ProjectWorkspace } from "../project-application/ProjectWorkspace";
 import { ApplicationSettings } from "../settings/ApplicationSettings";
 import {
@@ -80,6 +81,7 @@ const work = (
   },
 ): CoreInboxDispatchWork => ({
   final_text: "Frozen complete message",
+  image_sources: [],
   launch_id: "launch:stable",
   message_id: "message:stable",
   execution_selection: {
@@ -158,8 +160,18 @@ const delivery = (input: {
   inbox: Partial<InboxApplication["Service"]>;
   session: () => ProjectSession;
   project?: () => Project | null;
+  /** Library Files by id; any other File is unavailable. */
+  files?: Readonly<Record<string, { readonly mimeType: string; readonly bytes: Uint8Array }>>;
 }) =>
   makeDelivery.pipe(
+    Effect.provideService(LibraryModule, {
+      readFileBlob: (_routing: unknown, request: { readonly fileId: string }) => {
+        const file = input.files?.[request.fileId];
+        return file
+          ? Effect.succeed({ ...file, etag: request.fileId })
+          : Effect.fail(new Error("File unavailable"));
+      },
+    } as unknown as LibraryModule["Service"]),
     Effect.provideService(AgentRuntimeApplication, {
       messageAdmission: () => Effect.succeed(null),
       ...input.runtime,
@@ -366,6 +378,50 @@ it.effect("reconciles durable acceptance after lost replies and archive without 
     assert.deepEqual(calls[0]?.modelSelection, confirmed.execution_selection?.model_selection);
     assert.strictEqual(calls[0]?.interactionMode, "plan");
     assert.strictEqual(fail.mock.calls.length, 0);
+  }),
+);
+
+it.effect("a dispatched chat receives the messages' Library images with their text", () =>
+  Effect.gen(function* () {
+    const calls: AgentRuntimeLaunch[] = [];
+    const png = new Uint8Array([137, 80, 78, 71]);
+    const confirmed = {
+      ...work(),
+      image_sources: [
+        "nodex://files/shot",
+        "nodex://files/vector",
+        "nodex://files/trashed",
+        "nodex://files/huge",
+        "nodex://files/detail",
+      ],
+    };
+    const { drain } = yield* delivery({
+      session: () => session(),
+      runtime: {
+        launch: (input) =>
+          Effect.sync(() => {
+            calls.push(input);
+            return { threadId: "thread:one" } as never;
+          }),
+      },
+      inbox: {
+        outbox: () => Effect.succeed(calls.length === 0 ? [confirmed] : []),
+        completeDispatch: () => Effect.void,
+      },
+      files: {
+        shot: { mimeType: "image/png", bytes: png },
+        vector: { mimeType: "image/svg+xml", bytes: png },
+        huge: { mimeType: "image/png", bytes: new Uint8Array(6 * 1024 * 1024) },
+        detail: { mimeType: "image/jpeg", bytes: png },
+      },
+    });
+    yield* drain;
+    // An image an Agent cannot take, or one no longer in the Library, stays on its Page.
+    assert.deepEqual(calls[0]?.message.images, [
+      { source: `data:image/png;base64,${Buffer.from(png).toString("base64")}` },
+      { source: `data:image/jpeg;base64,${Buffer.from(png).toString("base64")}` },
+    ]);
+    assert.strictEqual(calls[0]?.message.text, confirmed.final_text);
   }),
 );
 

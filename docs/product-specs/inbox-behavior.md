@@ -304,6 +304,11 @@ instructions.
   after the first message. Main then starts its first Turn. The prompt is the
   confirmed prompt, followed by the original messages quoted as context with
   their Page keys.
+- A chat message sent from the Inbox carries the Library images of its messages
+  with the text, each image once and in reading order. Core freezes them with
+  the text at confirmation. Up to 20 images within the Agent's image limits are
+  sent; an image the Agent cannot take, or one no longer in the Library, stays on
+  its Page, which the text names.
 - **Send to chat:** a local chat receives the message into its Runtime queue even
   while busy. Its own queue controls when execution starts.
 - **Move to Project:** Core moves every member and records the filing in one
@@ -447,7 +452,6 @@ creates a second message, and does not count against the Agent budget again.
 
 - The composer takes images but no other files. Other files can be added
   afterward by opening the message Page.
-- A message sent to a chat carries its text; its images stay on its Page.
 - Delivery to a busy local chat uses its Runtime queue; it never steers a
   running Turn.
 - Capture happens inside the app window. There is no system-wide capture

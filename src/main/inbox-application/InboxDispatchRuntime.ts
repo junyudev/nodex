@@ -5,7 +5,13 @@ import * as Option from "effect/Option";
 import * as Schedule from "effect/Schedule";
 import * as Semaphore from "effect/Semaphore";
 import * as Stream from "effect/Stream";
+import { parseFileSource } from "../../shared/file-resources";
+import type { CodexPromptImageInput } from "../../shared/types";
 import { createUuidV7FromTimestamp } from "../../shared/uuid-v7";
+import {
+  isNativePromptImageType,
+  NATIVE_PROMPT_IMAGE_LIMITS,
+} from "../agent-backend/NativePromptImages";
 import { AgentRuntimeApplication } from "../agent-runtime/AgentRuntimeApplication";
 import { CodexTurnCommands } from "../codex-application/CodexTurnCommands";
 import { CODEX_APP_LOCAL_HOST_ID } from "../codex/codex-app-meta-thread-tools";
@@ -15,6 +21,7 @@ import {
   type CoreInboxDispatchWork,
 } from "../core-client/inbox-adapter";
 import { DatabaseNotifierRuntime } from "../host-runtime/DatabaseNotifierRuntime";
+import { LibraryModule } from "../library-application/LibraryModule";
 import { getLogger } from "../logging/logger";
 import { ProjectWorkspace } from "../project-application/ProjectWorkspace";
 import { InboxApplication } from "./InboxApplication";
@@ -44,9 +51,43 @@ export const make = Effect.gen(function* () {
   const inbox = yield* InboxApplication;
   const runtime = yield* AgentRuntimeApplication;
   const workspace = yield* ProjectWorkspace;
+  const library = yield* LibraryModule;
   const remoteTurns = yield* Effect.serviceOption(CodexTurnCommands);
   const logger = getLogger({ component: "inbox-dispatch-runtime" });
   const lane = yield* Semaphore.make(1);
+
+  /**
+   * The messages' frozen Library images travel inline with their text, in order, as far as an
+   * Agent takes them with one message. The rest stay on their Pages, which the text names.
+   */
+  const images = Effect.fn("InboxDispatchRuntime.images")(function* (work: CoreInboxDispatchWork) {
+    const images: CodexPromptImageInput[] = [];
+    let total = 0;
+    for (const source of work.image_sources) {
+      const fileId = parseFileSource(source);
+      if (!fileId || images.length >= NATIVE_PROMPT_IMAGE_LIMITS.count) continue;
+      const file = yield* library
+        .readFileBlob({ kind: "library" }, { fileId, source: { kind: "direct" } })
+        .pipe(Effect.option);
+      if (
+        Option.isNone(file) ||
+        !isNativePromptImageType(file.value.mimeType) ||
+        file.value.bytes.byteLength > NATIVE_PROMPT_IMAGE_LIMITS.imageBytes ||
+        total + file.value.bytes.byteLength > NATIVE_PROMPT_IMAGE_LIMITS.totalBytes
+      ) {
+        logger.warn("Inbox handoff leaves an image on its Page", {
+          proposalId: work.proposal_id,
+          fileId,
+        });
+        continue;
+      }
+      total += file.value.bytes.byteLength;
+      images.push({
+        source: `data:${file.value.mimeType};base64,${Buffer.from(file.value.bytes).toString("base64")}`,
+      });
+    }
+    return images;
+  });
 
   const reconcile = Effect.fn("InboxDispatchRuntime.reconcile")(function* (
     work: CoreInboxDispatchWork,
@@ -110,7 +151,12 @@ export const make = Effect.gen(function* () {
           "unavailable",
         );
     }
-    const message = { messageId: work.message_id, text: work.final_text, agentConfigs: [] };
+    const message = {
+      messageId: work.message_id,
+      text: work.final_text,
+      agentConfigs: [],
+      images: yield* images(work),
+    };
     if (action.type === "new_chat") {
       if (session.projectId !== action.projectId)
         return yield* inbox.failDispatch(
@@ -189,7 +235,7 @@ export const make = Effect.gen(function* () {
     const result = yield* remoteTurns.value
       .start(thread.threadId, work.final_text, {
         clientUserMessageId: work.message_id,
-        promptInput: { text: work.final_text, agentConfigs: [] },
+        promptInput: { text: work.final_text, agentConfigs: [], images: message.images },
       })
       .pipe(Effect.result);
     if (result._tag === "Failure" || !result.success) return;
