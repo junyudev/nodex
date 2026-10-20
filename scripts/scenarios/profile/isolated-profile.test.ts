@@ -13,6 +13,7 @@ import {
   cleanupIsolatedProfile,
   createIsolatedProfile,
   resumeIsolatedProfile,
+  waitForCoreRuntimeRemoval,
   type IsolatedProfile,
 } from "./isolated-profile";
 
@@ -201,6 +202,26 @@ describe("isolated scenario Profile", () => {
     } finally {
       lease.release();
     }
+  });
+
+  test("waits for all Core runtime evidence even after its socket has gone", async () => {
+    const profile = await createIsolatedProfile({ label: "draining", retention: "keep" });
+    retained.push(profile);
+    const runtimeDirectory = path.join(profile.nodexHome, "run/core");
+    const descriptorPath = path.join(runtimeDirectory, "core.json");
+    const authPath = path.join(runtimeDirectory, "core.auth");
+    await mkdir(runtimeDirectory, { recursive: true });
+    await writeFile(descriptorPath, "{}");
+    await writeFile(authPath, "capability");
+
+    await expect(waitForCoreRuntimeRemoval(profile.nodexHome, 25)).rejects.toThrow(authPath);
+    await rm(authPath);
+    await expect(waitForCoreRuntimeRemoval(profile.nodexHome, 25)).rejects.toThrow(descriptorPath);
+    await rm(descriptorPath);
+    await expect(waitForCoreRuntimeRemoval(profile.nodexHome)).resolves.toBeUndefined();
+    await expect(cleanupIsolatedProfile({ ...profile, retention: "dispose" })).resolves.toEqual({
+      status: "deleted",
+    });
   });
 
   test("rejects unsupported retained manifest versions", async () => {

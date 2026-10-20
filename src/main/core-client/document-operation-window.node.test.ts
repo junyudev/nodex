@@ -1,16 +1,9 @@
 import { execFileSync } from "node:child_process";
-import { existsSync } from "node:fs";
 import path from "node:path";
 import { expect, test } from "vite-plus/test";
 import * as Y from "yjs";
-import {
-  createIsolatedProfile,
-  cleanupIsolatedProfile,
-} from "../../../scripts/scenarios/profile/isolated-profile";
-import { CoreClientSeedAdapter } from "../../../scripts/scenarios/adapters/core-client-seed-adapter";
-import { materializeScenario } from "../../../scripts/scenarios/seed/scenario-seed";
+import { withCoreScenario } from "../../../scripts/scenarios/harness/core-scenario-harness";
 import { DOCUMENT_SYNC_RECOVERY_SCENARIO_ID } from "../../../scripts/scenarios/scenarios/document-sync-recovery";
-import { initializeStandaloneDataAuthority } from "./standalone-data-authority";
 import { createCoreDocumentSyncAdapter } from "./document-sync-adapter";
 import { createCoreCanvasSceneAdapter } from "./core-canvas-scene-adapter";
 import { NodexYProvider } from "../../renderer/lib/nodex-y-provider";
@@ -26,36 +19,16 @@ import type {
 // stopped. Content still comes from the authoritative public-operation scenario.
 test.each(["page", "canvas", "checkpoint"] as const)(
   "%s saves and exact retries remain usable after the legacy identity window closes",
-  async (kind) => {
-    const profile = await createIsolatedProfile({ label: `aged-document-${kind}`, codex: "empty" });
-    const start = () =>
-      initializeStandaloneDataAuthority({
-        nodexHome: profile.nodexHome,
-        isPackaged: false,
-        buildId: "document-operation-window",
+  async (kind) =>
+    withCoreScenario({ scenarioId: DOCUMENT_SYNC_RECOVERY_SCENARIO_ID }, async (scenario) => {
+      const { profile, manifest } = scenario;
+      await scenario.withStoppedCore(async () => {
+        execFileSync("sqlite3", [
+          path.join(profile.nodexHome, "nodex.db"),
+          "UPDATE operational_journal_state SET operation_identity_cutover_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-8 days') WHERE id = 1;",
+        ]);
       });
-    let runtime: Awaited<ReturnType<typeof start>> | undefined;
-    const stop = async () => {
-      if (!runtime) return;
-      await runtime.rootClient.shutdown();
-      await expect
-        .poll(() => existsSync(path.join(profile.nodexHome, "run/core/core.sock")))
-        .toBe(false);
-      runtime = undefined;
-    };
-    try {
-      runtime = await start();
-      const manifest = await materializeScenario(
-        DOCUMENT_SYNC_RECOVERY_SCENARIO_ID,
-        new CoreClientSeedAdapter(runtime),
-        profile.initialProjectsDirectory,
-      );
-      await stop();
-      execFileSync("sqlite3", [
-        path.join(profile.nodexHome, "nodex.db"),
-        "UPDATE operational_journal_state SET operation_identity_cutover_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-8 days') WHERE id = 1;",
-      ]);
-      runtime = await start();
+      const runtime = scenario.runtime;
       const client = runtime.clientForProject(manifest.projectId);
       const documents = createCoreDocumentSyncAdapter(client);
       // Prove this fixture would reject an unmigrated producer, not just accept
@@ -206,10 +179,5 @@ test.each(["page", "canvas", "checkpoint"] as const)(
       } finally {
         stream.close();
       }
-    } finally {
-      await stop();
-      const cleanup = await cleanupIsolatedProfile(profile);
-      expect(cleanup.status).not.toBe("unsafe");
-    }
-  },
+    }),
 );
