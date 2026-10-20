@@ -57,16 +57,23 @@ const pendingClientRequestIds = new Map<string, string | number>();
 const pendingAgentRequestMethods = new Map<string, string>();
 
 function writeStatus(failure?: unknown): void {
-  NodeFS.writeFileSync(
-    replayStatusPath,
-    JSON.stringify({
-      scenario: transcript.scenario,
-      cursor,
-      total: transcript.entries.length,
-      ...(failure === undefined ? {} : { failure }),
-    }),
-    "utf8",
-  );
+  const pendingPath = `${replayStatusPath}.${process.pid}.tmp`;
+  try {
+    NodeFS.writeFileSync(
+      pendingPath,
+      JSON.stringify({
+        scenario: transcript.scenario,
+        cursor,
+        total: transcript.entries.length,
+        ...(failure === undefined ? {} : { failure }),
+      }),
+      "utf8",
+    );
+    // The harness may read while this process is running; never expose a partial snapshot.
+    NodeFS.renameSync(pendingPath, replayStatusPath);
+  } finally {
+    NodeFS.rmSync(pendingPath, { force: true });
+  }
 }
 
 function stableStringify(value: unknown): string {
@@ -184,11 +191,11 @@ function materializeInbound(value: unknown): unknown {
   );
 }
 
-function emitInbound(recorded: LogicalFrame): void {
+function enqueueInbound(recorded: LogicalFrame, messages: JsonRpcMessage[]): void {
   const frame = materializeInbound(recorded) as LogicalFrame;
   switch (frame.kind) {
     case "notification":
-      send({
+      messages.push({
         jsonrpc: "2.0",
         method: frame.method,
         ...(frame.params === undefined ? {} : { params: frame.params }),
@@ -198,7 +205,7 @@ function emitInbound(recorded: LogicalFrame): void {
       const id = nextAgentRequestId;
       nextAgentRequestId += 1;
       pendingAgentRequestMethods.set(String(id), frame.method);
-      send({
+      messages.push({
         jsonrpc: "2.0",
         id,
         method: frame.method,
@@ -214,7 +221,7 @@ function emitInbound(recorded: LogicalFrame): void {
         return;
       }
       pendingClientRequestIds.delete(frame.method);
-      send({
+      messages.push({
         jsonrpc: "2.0",
         id,
         ...(frame.result === undefined ? {} : { result: frame.result }),
@@ -225,9 +232,10 @@ function emitInbound(recorded: LogicalFrame): void {
 }
 
 function flushInbound(): void {
+  const messages: JsonRpcMessage[] = [];
   while (!stopped) {
     const entry = transcript.entries[cursor];
-    if (entry === undefined || entry.type === "expect_outbound") return;
+    if (entry === undefined || entry.type === "expect_outbound") break;
     if (entry.type === "runtime_exit") {
       if (entry.status !== "success" && entry.status !== "cancelled") {
         stopWithFailure(`Recorded runtime exit was ${entry.status ?? "unknown"}`, entry.error);
@@ -246,10 +254,13 @@ function flushInbound(): void {
       stopWithFailure("Invalid emit_inbound logical ACP frame", entry.frame);
       return;
     }
-    emitInbound(frame);
+    enqueueInbound(frame, messages);
     if (stopped) return;
     advance();
   }
+  // A received frame can immediately trigger the harness's completeness assertion.
+  // Publish the whole segment, including its trailing runtime_exit, before sending it.
+  for (const message of messages) send(message);
 }
 
 function handleMessage(message: JsonRpcMessage): void {
@@ -261,6 +272,7 @@ function handleMessage(message: JsonRpcMessage): void {
   }
   const entry = transcript.entries[cursor];
   if (entry?.type !== "expect_outbound" || !matchesExpected(entry.frame, actual)) {
+    stopWithFailure("Unexpected outbound ACP frame", actual);
     if (actual.kind === "request" && message.id !== undefined && message.id !== null) {
       send({
         jsonrpc: "2.0",
@@ -268,7 +280,6 @@ function handleMessage(message: JsonRpcMessage): void {
         error: { code: -32603, message: "ACP replay frame mismatch" },
       });
     }
-    stopWithFailure("Unexpected outbound ACP frame", actual);
     return;
   }
   if (actual.kind === "request" && message.id !== undefined && message.id !== null) {
