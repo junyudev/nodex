@@ -146,6 +146,9 @@ export const live = Layer.effectDiscard(
     yield* ipc.handlePlainCommand("agent-runtime:session:fork", (event, value) =>
       handle(event, Inputs.AgentRuntimeForkSchema, value, application.fork),
     );
+    yield* ipc.handlePlainCommand("agent-runtime:session:merge-back", (event, value) =>
+      handle(event, Inputs.AgentRuntimeMergeBackSchema, value, application.mergeBack),
+    );
     yield* ipc.handlePlainCommand("agent-runtime:session:stop", (event, value) =>
       handle(event, Inputs.AgentRuntimeStopSchema, value, application.stop),
     );

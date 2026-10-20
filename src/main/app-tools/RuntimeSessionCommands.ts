@@ -9,6 +9,7 @@ import { createStableOperationId } from "../core-runtime/operation-identity";
 import { toCoreAgentTurnProvenance } from "../core-client/core-agent-execution-authorization";
 import { createSessionSchema } from "../../shared/nodex-app-tools/session-launch-schema";
 import { sessionForkSchema } from "../../shared/nodex-app-tools/session-fork-schema";
+import { sessionMergeSchema } from "../../shared/nodex-app-tools/session-merge-schema";
 import { sessionMessageSchema } from "../../shared/nodex-app-tools/session-message-schema";
 import { captureAppToolAuthority, readHostedAppToolSessionContext } from "./AppToolCaller";
 import type { AppToolInvocation } from "./AppToolInvocationInbox";
@@ -95,6 +96,19 @@ export const make = Effect.gen(function* () {
           environment: request.environment.type,
         });
         return toolSuccess({ ...result, operationId, forkState: "attached" });
+      }
+      if (input.name === "merge_session_back") {
+        const parsed = sessionMergeSchema.safeParse(input.arguments);
+        if (!parsed.success) return toolFailure("invalid_arguments");
+        const request = parsed.data;
+        // A fork's own running reply cannot be merged; its finished work is merged from elsewhere.
+        if (request.sessionId === sessionId) return toolFailure("cannot_merge_calling_session");
+        const operationId = stableOperation(request.operationId);
+        const merged = yield* application.mergeBack({
+          sessionId: request.sessionId,
+          requestId: operationId,
+        });
+        return toolSuccess({ ...merged, operationId, mergeState: "pending_next_message" });
       }
       if (input.name !== "create_session") return toolFailure("unknown_tool");
       const parsed = createSessionSchema.safeParse(input.arguments);

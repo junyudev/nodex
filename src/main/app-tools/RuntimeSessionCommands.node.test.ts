@@ -62,6 +62,7 @@ const fixture = () => {
       }),
       launch: method("launch", { sessionId: "new", projectId: "project", threadId: "new-root" }),
       message: method("message", { sequence: 1 }),
+      mergeBack: method("merge", { sessionId: "source", projectId: "project", threadId: "root" }),
       fork: method("fork", {
         sourceSessionId: "session:root",
         sessionId: "fork",
@@ -177,6 +178,28 @@ it.effect(
       assert.isTrue(unnamed.isError);
     }),
 );
+it.effect("merges another fork Session back into its source, never the calling Session", () =>
+  Effect.gen(function* () {
+    const f = fixture();
+    const execute = yield* f.execute;
+    const own = yield* execute({
+      caller: f.caller,
+      name: "merge_session_back",
+      arguments: { sessionId: "session:root" },
+    });
+    assert.isTrue(own.isError);
+    const merged = yield* execute({
+      caller: f.caller,
+      name: "merge_session_back",
+      arguments: { sessionId: "fork" },
+    });
+    assert.isFalse(merged.isError ?? false);
+    const call = f.calls.find((entry) => entry.name === "merge")!;
+    assert.equal((call.input as { sessionId: string }).sessionId, "fork");
+    assert.isNotNull(call.agent);
+  }),
+);
+
 it.effect(
   "cross-Project Session commands retain Profile identity; forged and withdrawn callers fail",
   () =>

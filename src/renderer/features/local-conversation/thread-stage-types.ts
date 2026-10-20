@@ -517,6 +517,8 @@ export interface ThreadStageActions {
   }) => Promise<void>;
   onEditUserTurn: (input: { threadId: string; turnId: string; message: string }) => Promise<void>;
   onForkFromTurn: (input: { threadId: string; turnId: string; message: string }) => Promise<void>;
+  /** Present in a fork: brings its newest finished work into the chat it was forked from. */
+  onMergeForkBack?: () => Promise<void>;
   onCompactThread?: (threadId: string) => Promise<void>;
   onGetThreadGoal?: (threadId: string) => Promise<ThreadGoal | null>;
   onSetThreadGoal?: (input: CodexThreadGoalSetActionInput) => Promise<ThreadGoal | null>;

@@ -58,6 +58,7 @@ it("launches the packaged MCP layout through its private generation descriptor",
         create_session: { approval_mode: "prompt" },
         send_message_to_session: { approval_mode: "prompt" },
         fork_session: { approval_mode: "prompt" },
+        merge_session_back: { approval_mode: "prompt" },
         handoff_session: { approval_mode: "prompt" },
       },
     });

@@ -10,6 +10,7 @@ import { sessionToolCatalog } from "./session-schemas";
 import { sessionObservationToolCatalog } from "./session-observation-schemas";
 import { createSessionTool } from "./session-launch-schema";
 import { sessionForkTool } from "./session-fork-schema";
+import { sessionMergeTool } from "./session-merge-schema";
 import { sessionMessageTool } from "./session-message-schema";
 import { sendToInboxTool } from "./inbox-schema";
 import { automationTool } from "./automation-schema";
@@ -34,6 +35,7 @@ export const appToolCatalog: readonly Tool[] = [
   sessionMessageTool,
   sendToInboxTool,
   sessionForkTool,
+  sessionMergeTool,
   automationTool,
   ...sidebarToolCatalog,
   ...sessionToolCatalog,

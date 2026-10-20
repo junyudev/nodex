@@ -257,8 +257,16 @@ function makeCreateCommand(input: {
 }
 
 describe("orchestration V2 merge-back provider replay", () => {
-  it.effect.each(PROVIDERS)(
-    "merges one fork delta back into the original $driver thread",
+  // A fork may stay in its source's lineage or become its own root, as a separate chat does.
+  it.effect.each(
+    PROVIDERS.flatMap((variant) =>
+      (["same_root", "independent_root"] as const).map((rootPolicy) => ({
+        ...variant,
+        rootPolicy,
+      })),
+    ),
+  )(
+    "merges one fork delta back into the original $driver thread from a $rootPolicy fork",
     (variant) =>
       Effect.gen(function* () {
         const rawTranscript = yield* readTranscript("thread_merge_back_continue", variant.driver);
@@ -306,6 +314,7 @@ describe("orchestration V2 merge-back provider replay", () => {
               sourceThreadId,
               targetThreadId: forkThreadId,
               sourcePoint: { type: "latest_stable" },
+              rootPolicy: variant.rootPolicy,
               title: "Merge-back fork",
             },
             {

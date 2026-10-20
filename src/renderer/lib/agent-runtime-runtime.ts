@@ -14,6 +14,7 @@ import type {
   AgentRuntimeTaskStopInput,
   AgentRuntimePreparationRetryInput,
   AgentRuntimeQueueInput,
+  AgentRuntimeMergeBackInput,
   AgentRuntimeForkInput,
   AgentRuntimeHistoryInput,
   AgentRuntimeQueueReadInput,
@@ -78,6 +79,14 @@ const queue = defineRendererCommand({
 const fork = defineRendererCommand({
   key: "agent_runtime.session.fork",
   channel: "agent-runtime:session:fork",
+  authority: "external",
+  owner: "AgentRuntimeConversationOwner",
+  protocol: { kind: "returned_value" },
+  trace: { scopeKind: "session" },
+});
+const mergeBack = defineRendererCommand({
+  key: "agent_runtime.session.merge_back",
+  channel: "agent-runtime:session:merge-back",
   authority: "external",
   owner: "AgentRuntimeConversationOwner",
   protocol: { kind: "returned_value" },
@@ -166,6 +175,7 @@ export interface AgentRuntimeRendererTransport {
   readonly fork: (
     input: AgentRuntimeForkInput,
   ) => Promise<AgentRuntimeLaunchResult & { readonly sourceSessionId: string }>;
+  readonly mergeBack: (input: AgentRuntimeMergeBackInput) => Promise<AgentRuntimeLaunchResult>;
   readonly stop: (input: AgentRuntimeStopInput) => Promise<{ readonly stopped: boolean }>;
   readonly respond: (input: AgentRuntimeResponseInput) => Promise<{ readonly sequence: number }>;
   readonly setModes: (input: AgentRuntimeModeInput) => Promise<{ readonly changed: boolean }>;
@@ -211,6 +221,7 @@ export const agentRuntimeRuntime: AgentRuntimeRendererTransport = {
   queueMessage: (input) => invokePlainCommand(queueMessage, input),
   queue: (input) => invokePlainCommand(queue, input),
   fork: (input) => invokePlainCommand(fork, input),
+  mergeBack: (input) => invokePlainCommand(mergeBack, input),
   stop: (input) => invokePlainCommand(stop, input),
   respond: (input) => invokePlainCommand(respond, input),
   setModes: (input) => invokePlainCommand(setModes, input),

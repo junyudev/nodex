@@ -499,7 +499,13 @@ const setup = (
                   parentThreadId: independent ? null : command.sourceThreadId,
                   relationshipToParent: independent ? null : "fork",
                 },
+                forkedFrom: {
+                  type: "run",
+                  threadId: command.sourceThreadId,
+                  runId: command.sourcePoint.type === "run" ? command.sourcePoint.runId : "latest",
+                },
               },
+              runs: [],
             },
           });
         }
@@ -1750,6 +1756,69 @@ it.effect("a message continues the chat on another Agent only while the chat can
       { instanceId: "codex", model: "gpt" },
     );
   }),
+);
+
+it.effect(
+  "a fork merges its newest finished Run into the chat it came from, once both allow it",
+  () =>
+    Effect.gen(function* () {
+      const fixture = setup();
+      const owner = yield* fixture.owner;
+      const source = yield* owner.launch(launch);
+      const fork = yield* owner.fork({
+        source: { sessionId: source.sessionId },
+        sessionId: "session:fork",
+        requestId: "fork:request",
+        acceptedAt: launch.acceptedAt,
+        environment: "same-directory",
+        sourceRunId: "run:source",
+      });
+      const setRuns = (threadId: string, runs: readonly { id: string; status: string }[]) => {
+        const current = fixture.snapshots.get(threadId)!;
+        fixture.snapshots.set(threadId, {
+          ...current,
+          projection: {
+            ...current.projection,
+            runs: runs.map((run, index) => ({ ...run, ordinal: index + 1 }) as never),
+          },
+        });
+      };
+      const merge = (requestId: string) =>
+        owner.mergeBack({ sessionId: fork.sessionId, requestId }).pipe(Effect.result);
+      const merges = () =>
+        [...fixture.commands.values()].filter((command) => command.type === "thread.merge_back");
+      // Nothing finished in the fork yet, then the source is busy with its own reply.
+      assert.equal((yield* merge("merge:empty"))._tag, "Failure");
+      setRuns(fork.threadId, [
+        { id: "fork:done", status: "completed" },
+        { id: "fork:working", status: "running" },
+      ]);
+      assert.equal((yield* merge("merge:partial"))._tag, "Failure");
+      setRuns(fork.threadId, [{ id: "fork:done", status: "completed" }]);
+      setRuns(source.threadId, [{ id: "source:running", status: "running" }]);
+      assert.equal((yield* merge("merge:busy"))._tag, "Failure");
+      assert.lengthOf(merges(), 0);
+      setRuns(source.threadId, [{ id: "source:done", status: "completed" }]);
+      const merged = yield* owner.mergeBack({ sessionId: fork.sessionId, requestId: "merge:one" });
+      assert.deepEqual(merged, {
+        sessionId: source.sessionId,
+        projectId: "project",
+        threadId: source.threadId,
+      });
+      const [command] = merges();
+      assert.deepInclude(command, {
+        sourceThreadId: fork.threadId,
+        targetThreadId: source.threadId,
+        sourcePoint: { type: "run", runId: "fork:done" },
+      });
+      // A chat that is not a fork has nothing to merge.
+      assert.equal(
+        (yield* owner
+          .mergeBack({ sessionId: source.sessionId, requestId: "merge:source" })
+          .pipe(Effect.result))._tag,
+        "Failure",
+      );
+    }),
 );
 
 it.effect("Stop targets the selected Run and never substitutes a newer foreground Run", () =>

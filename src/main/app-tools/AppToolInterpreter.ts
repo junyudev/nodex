@@ -83,6 +83,7 @@ export const make = Effect.gen(function* () {
       input.name !== "send_message_to_session" &&
       input.name !== "send_to_inbox" &&
       input.name !== "fork_session" &&
+      input.name !== "merge_session_back" &&
       input.name !== "handoff_session" &&
       input.name !== "get_handoff_status" &&
       input.name !== "automation_update" &&
@@ -112,6 +113,7 @@ export const make = Effect.gen(function* () {
     if (
       input.name === "create_session" ||
       input.name === "fork_session" ||
+      input.name === "merge_session_back" ||
       input.name === "send_message_to_session"
     )
       return yield* sessionCommands(input);

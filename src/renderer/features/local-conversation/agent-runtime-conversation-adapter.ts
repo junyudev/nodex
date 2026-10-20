@@ -42,6 +42,7 @@ import {
   agentRuntimePendingSelection,
   agentRuntimeSelectionRefusal,
 } from "../../../shared/agent-runtime-agent-switch";
+import { agentRuntimeForkSource } from "../../../shared/agent-runtime-fork-merge";
 import { useCodexThreadSettings } from "../../lib/use-codex-thread-settings";
 import { CodexReasoningEffortSchema } from "../../../shared/schemas/codex";
 import { useCodexServiceTierSettings } from "../../lib/use-codex-service-tier-settings";
@@ -1176,6 +1177,19 @@ export function useAgentRuntimeConversationAdapter(input: {
         ),
       });
     },
+    ...(target && observed && agentRuntimeForkSource(observed)
+      ? {
+          onMergeForkBack: async () => {
+            const merged = await agentRuntimeRuntime.mergeBack({
+              ...target,
+              requestId: createUuidV7(),
+            });
+            await input.onRefresh(merged.projectId);
+            await input.onOpenThread(merged.threadId, { runtimeSessionId: merged.sessionId });
+            toast.success("The fork's work joins your next message in this chat.");
+          },
+        }
+      : {}),
     onCollaborationModeChange: async (interactionMode) => {
       if (!target) {
         await writeChoice(draftKey, { interactionMode });

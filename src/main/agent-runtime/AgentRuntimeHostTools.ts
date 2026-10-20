@@ -49,7 +49,7 @@ export const runtimeHostToolCatalog: ReadonlyArray<AgentHostTool> = appToolCatal
             : tool.name === "fork_session"
               ? "Fork captured conversation history into an independent Session in the source Project. Omit sessionId to fork the exact calling Thread, including an app-owned child. Choose same-directory or worktree explicitly; reuse operationId for retries."
               : tool.name === "send_message_to_session"
-                ? "Send a follow-up to another Runtime Session. Omit model to retain its selection. Reuse operationId with identical arguments for retries; a repeated request never dispatches another message. The calling Session cannot message itself."
+                ? "Send a follow-up to another Runtime Session. Omit model to retain its selection; set providerInstanceId and model from list_agent_models to continue it on another Agent with the conversation so far. Reuse operationId with identical arguments for retries; a repeated request never dispatches another message. The calling Session cannot message itself."
                 : tool.description,
       }
     : {}),
@@ -122,6 +122,7 @@ export const make = (options: {
       if (
         name === "create_session" ||
         name === "fork_session" ||
+        name === "merge_session_back" ||
         name === "send_message_to_session"
       )
         return yield* commands(invocation);

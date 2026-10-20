@@ -101,6 +101,7 @@ export const AgentRuntimeMessageInputSchema = AgentRuntimeTargetSchema.extend({
   presentationTicket: CodexTurnPresentationTicketSchema.optional(),
 });
 export const AgentRuntimeStopSchema = AgentRuntimeTargetSchema.extend({ runId: id });
+export const AgentRuntimeMergeBackSchema = AgentRuntimeTargetSchema.extend({ requestId: id });
 export const AgentRuntimeResponseSchema = AgentRuntimeTargetSchema.extend({
   runId: id.nullable(),
   requestId: id,

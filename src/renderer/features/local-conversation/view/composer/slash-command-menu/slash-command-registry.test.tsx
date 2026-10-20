@@ -1,4 +1,4 @@
-import { waitFor } from "@testing-library/react";
+import { fireEvent, waitFor } from "@testing-library/react";
 import { describe, expect, test, vi } from "vite-plus/test";
 import { installWindowApi } from "@/test/browser-globals";
 import { render } from "@/test/dom";
@@ -118,6 +118,53 @@ describe("buildComposerSlashCommands", () => {
     await pet.onSelect({ source: "dialog" });
 
     expect(toggles).toBe(1);
+  });
+
+  test("offers Merge back only in a fork and only once its reply has finished", async () => {
+    const onMergeForkBack = vi.fn(async () => undefined);
+    const build = (actions: ThreadStageActions, isThreadRunning = false) =>
+      buildComposerSlashCommands({
+        model: { ...buildModel(), isThreadRunning },
+        actions,
+        serviceTier: null,
+        setServiceTier: () => undefined,
+        openExpandedDialog: () => undefined,
+        onPetToggle: () => undefined,
+        activateGoalMode: () => undefined,
+      }).find((command) => command.id === "merge");
+    expect(build(buildActions())?.isVisible).toBe(false);
+    const fork = { ...buildActions(), onMergeForkBack };
+    expect(build(fork, true)?.isEnabled).toBe(false);
+    const merge = build(fork);
+    expect(merge?.isVisible).toBe(true);
+    expect(merge?.isEnabled).toBe(true);
+    await merge?.onSelect?.({ source: "dialog" });
+    expect(onMergeForkBack).toHaveBeenCalledOnce();
+  });
+
+  test("keeps the Composer focused when a nested panel row is pressed so its click runs", async () => {
+    const onForkFromTurn = vi.fn(async () => undefined);
+    const fork = buildComposerSlashCommands({
+      model: buildModel(),
+      actions: { ...buildActions(), onForkFromTurn },
+      serviceTier: null,
+      setServiceTier: () => undefined,
+      openExpandedDialog: () => undefined,
+      onPetToggle: () => undefined,
+      activateGoalMode: () => undefined,
+    }).find((command) => command.id === "fork");
+    const close = vi.fn();
+    const view = render(<>{fork?.Content?.({ close, back: () => undefined })}</>);
+    const row = view.getByRole("button", { name: /Fork conversation/u });
+    // A prevented mousedown keeps focus in the Composer, which would otherwise close the menu.
+    expect(fireEvent.mouseDown(row)).toBe(false);
+    fireEvent.click(row);
+    await waitFor(() => expect(close).toHaveBeenCalledOnce());
+    expect(onForkFromTurn).toHaveBeenCalledWith({
+      threadId: "thread_1",
+      turnId: "turn_1",
+      message: "",
+    });
   });
 
   test("keeps capabilities in the context provider instead of duplicating plugin slash commands", () => {

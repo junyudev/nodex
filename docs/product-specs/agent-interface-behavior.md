@@ -281,8 +281,15 @@ same destination and native workspace ownership instead of forking again. Forkin
 not start a new Turn; an explicit follow-up starts work in the child, whose application
 context uses its own Session identity.
 
-In the calling conversation, each completed `create_session`, `fork_session` and
-`send_message_to_session` call reads as one activity row, such as "Created chat: Plan review".
+`merge_session_back` brings another fork Session's newest finished Run back into the
+Session it was forked from under the same rules as Merge back in the
+[conversation interface](agent-runtime-behavior.md#conversation-interface); the calling
+Session cannot merge itself. It returns the source Session and Thread
+with `mergeState: "pending_next_message"` and sends nothing: the source's next message
+carries the fork's work. A retry with the same operation identity merges once.
+
+In the calling conversation, each completed `create_session`, `fork_session`,
+`merge_session_back` and `send_message_to_session` call reads as one activity row, such as "Created chat: Plan review".
 Selecting the row opens the Session it names; opening it again never creates another Session.
 A failed call names the failure and opens nothing.
 

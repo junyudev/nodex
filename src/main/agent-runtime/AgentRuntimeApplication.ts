@@ -47,6 +47,7 @@ import type {
 import type {
   AgentRuntimeMessage,
   AgentRuntimeLaunch,
+  AgentRuntimeLaunchResult,
   AgentRuntimeSessionTarget,
   AgentRuntimeConversation,
 } from "../../shared/agent-runtime-api";
@@ -58,6 +59,10 @@ export type {
 } from "../../shared/agent-runtime-api";
 import { agentExecutionThreadId } from "../../shared/agent-runtime-api";
 import { agentRuntimeAgentSwitchRefusal } from "../../shared/agent-runtime-agent-switch";
+import {
+  agentRuntimeForkSource,
+  agentRuntimeMergeableRun,
+} from "../../shared/agent-runtime-fork-merge";
 
 type Binding = components["schemas"]["ProjectWorkspaceAgentRuntimeSessionBinding"];
 type CleanupWindow = Extract<
@@ -1309,6 +1314,63 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
     };
   });
 
+  /**
+   * Brings a fork's newest finished Run back into the chat it was forked from. That chat's next
+   * message carries the fork's work since it branched; nothing runs until a person sends it.
+   */
+  const mergeBack = Effect.fn("AgentRuntimeApplication.mergeBack")(function* (
+    input: import("../../shared/agent-runtime-api").AgentRuntimeMergeBackInput,
+  ) {
+    if (!validId(input.requestId)) return yield* failure("merge", "Request identity is required");
+    const connection = yield* options.connect;
+    const fork = yield* targetInfo(connection, input, true);
+    const sourceThreadId = agentRuntimeForkSource(fork.thread);
+    if (sourceThreadId === null) return yield* failure("merge", "This chat is not a fork");
+    const source = yield* connection.request("thread.read", { threadId: sourceThreadId });
+    const owner = source
+      ? yield* host(
+          core.workspace.read({
+            kind: "agent_runtime_session_binding_by_execution",
+            runtime_id: connection.identity.runtimeId,
+            runtime_thread_id: source.lineage.rootThreadId,
+          }),
+        )
+      : null;
+    const binding =
+      owner?.value.kind === "agent_runtime_session_binding" ? owner.value.binding : null;
+    if (!source || source.deletedAt !== null || !binding)
+      return yield* failure("merge", "The chat this fork came from is no longer available");
+    const target = yield* targetInfo(
+      connection,
+      { sessionId: binding.session_id, threadId: source.id },
+      true,
+    );
+    // The merged work joins the next message, which must start its own Run.
+    if (target.thread.activeRunId !== null)
+      return yield* failure(
+        "merge",
+        "Wait for the reply in the chat this fork came from to finish, then merge.",
+      );
+    const control = yield* connection.request("thread.control", { threadId: fork.threadId });
+    const run = agentRuntimeMergeableRun(control.projection.runs);
+    if (!run) return yield* failure("merge", "Finish a reply in this fork before merging it back.");
+    const agent = (yield* CoreApplicationAgent) !== null;
+    yield* dispatch(connection, {
+      type: "thread.merge_back",
+      commandId: commandId("merge-back", { threadId: fork.threadId, requestId: input.requestId }),
+      sourceThreadId: fork.threadId,
+      targetThreadId: source.id,
+      sourcePoint: { type: "run", runId: run.id },
+      createdBy: agent ? "agent" : "user",
+      creationSource: agent ? "mcp" : "web",
+    });
+    return {
+      sessionId: binding.session_id,
+      projectId: binding.project_id ?? null,
+      threadId: source.id,
+    } satisfies AgentRuntimeLaunchResult;
+  });
+
   const message = Effect.fn("AgentRuntimeApplication.message")(function* (
     input: AgentRuntimeSessionTarget & {
       readonly message: AgentRuntimeMessage;
@@ -2053,6 +2115,8 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
         }),
       ),
     message: (input: Parameters<typeof message>[0]) => ownedWrite("message", message(input)),
+    mergeBack: (input: Parameters<typeof mergeBack>[0]) =>
+      ownedWrite("merge-back", mergeBack(input)),
     /** Read before retrying a durable handoff: archive and execution failure do not erase admission. */
     messageAdmission: (input: {
       readonly sessionId: string;

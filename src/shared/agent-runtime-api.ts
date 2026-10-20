@@ -111,6 +111,8 @@ export type AgentRuntimeMessageInput = AgentRuntimeSessionTarget & {
   readonly presentationTicket?: import("./nodex-app-tools/turn-presentation").CodexTurnPresentationTicket;
 };
 export type AgentRuntimeStopInput = AgentRuntimeSessionTarget & { readonly runId: string };
+/** The fork Session whose newest finished Run merges back into the chat it came from. */
+export type AgentRuntimeMergeBackInput = AgentRuntimeSessionTarget & { readonly requestId: string };
 export type AgentRuntimeResponseInput = AgentRuntimeSessionTarget &
   Pick<Respond, "requestId" | "decision" | "answers" | "attachmentsByQuestionId"> & {
     readonly runId: string | null;
@@ -294,6 +296,10 @@ export interface AgentRuntimeIpcApi {
   "agent-runtime:session:fork": {
     args: [input: AgentRuntimeForkInput];
     result: AgentRuntimeLaunchResult & { readonly sourceSessionId: string };
+  };
+  "agent-runtime:session:merge-back": {
+    args: [input: AgentRuntimeMergeBackInput];
+    result: AgentRuntimeLaunchResult;
   };
   "agent-runtime:session:stop": {
     args: [input: AgentRuntimeStopInput];

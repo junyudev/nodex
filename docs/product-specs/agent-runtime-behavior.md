@@ -123,6 +123,13 @@ resume an imported native conversation or hydrate history to choose a workspace.
 Native forks use the source Run's captured native incarnation. If its provider binding
 has since changed, the fork carries the bounded source prefix through portable history.
 
+A fork can bring its work back into the chat it was forked from with Merge back (`/merge`)
+or `merge_session_back`. The fork's newest finished Run is merged: a reply still working in
+the fork holds the merge, and the source chat must not be running a reply. Merging starts
+nothing and opens the source chat; its next message carries the fork's work since it
+branched as a context handoff, on whichever Agent that message uses, and the transcript
+marks it as a merged fork. Merging again before that message replaces the earlier merge.
+
 Workbench presentation is captured before asynchronous submission work. Main binds
 the ticket to the exact engine Thread and stable client message, then attaches it to
 the Run only through causal provider evidence. A later foreground Run does not change

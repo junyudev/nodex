@@ -3758,10 +3758,13 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
           (cause) => new OrchestratorProjectionError({ threadId: command.targetThreadId, cause }),
         ),
       );
-    if (
-      sourceProjection.thread.lineage.relationshipToParent !== "fork" ||
-      sourceProjection.thread.lineage.parentThreadId !== command.targetThreadId
-    ) {
+    // A fork that became its own root keeps its source only as the Run it forked from.
+    const forkedFrom = sourceProjection.thread.forkedFrom;
+    const forkOfTarget =
+      (sourceProjection.thread.lineage.relationshipToParent === "fork" &&
+        sourceProjection.thread.lineage.parentThreadId === command.targetThreadId) ||
+      (forkedFrom?.type === "run" && forkedFrom.threadId === command.targetThreadId);
+    if (!forkOfTarget) {
       return yield* new OrchestratorDispatchError({
         commandId: command.commandId,
         commandType: command.type,

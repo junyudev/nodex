@@ -3,6 +3,7 @@ import type { FeedbackUploadParams, McpServerStatus } from "@nodex/codex-app-ser
 import type { ThreadMemoryMode } from "@nodex/codex-app-server-protocol";
 import {
   ClipboardListIcon,
+  GitMergeIcon,
   MessageCirclePlusIcon,
   MessagesSquareIcon,
   SendIcon,
@@ -155,6 +156,21 @@ export function buildComposerSlashCommands(input: BuildSlashCommandsInput): Comp
           {...props}
         />
       ),
+    },
+    {
+      id: "merge",
+      title: "Merge back",
+      description: "Bring this fork's work into the chat it came from",
+      group: "Commands",
+      icon: <GitMergeIcon className={iconClassName} />,
+      requiresEmptyComposer: true,
+      isVisible: canUseExistingThread && Boolean(input.actions.onMergeForkBack),
+      isEnabled: !input.model.isThreadRunning,
+      onSelect: async () => {
+        await runCommand("Could not merge this fork", async () => {
+          await input.actions.onMergeForkBack?.();
+        });
+      },
     },
     {
       id: "goal",
@@ -669,6 +685,9 @@ function CommandPanelRow({
       type="button"
       disabled={disabled}
       className="mx-1 flex min-h-9 items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm text-token-foreground hover:bg-token-list-hover-background disabled:cursor-not-allowed disabled:opacity-45"
+      // Like the command rows, a panel row keeps the Composer focused so the menu stays open
+      // until its click runs.
+      onMouseDown={(event) => event.preventDefault()}
       onClick={onClick}
     >
       <span className="icon-xs shrink-0 text-token-description-foreground">

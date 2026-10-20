@@ -48,7 +48,7 @@ use different Agent Instances.
 
 A Context Handoff carries a Thread's bounded portable history to the Agent that runs its
 next Run when that Agent's native conversation has not seen those Runs, such as after the
-person changes Agent or forks onto another Agent. The Thread remains the one history;
+person changes Agent, forks onto another Agent, or merges a fork back into its source. The Thread remains the one history;
 each Agent keeps its own native conversation and receives only what it missed.
 
 ### Run

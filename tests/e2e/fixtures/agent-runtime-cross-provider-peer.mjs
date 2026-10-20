@@ -259,6 +259,20 @@ async function handleCodex(message) {
       reply(threadResponse(thread, params.model)); return;
     }
     case "thread/read": { state = load(); reply({ thread: state.threads[params.threadId] }); return; }
+    case "thread/fork": {
+      // A native fork copies the source history through its last turn into a new thread.
+      state = load();
+      const source = state.threads[params.threadId];
+      if (!source) { emit({ id, error: { code: -32001, message: "Thread missing" } }); return; }
+      const last = params.lastTurnId === undefined ? source.turns.length : source.turns.findIndex((turn) => turn.id === params.lastTurnId) + 1;
+      const threadId = randomUUID();
+      const thread = { ...nativeThread(threadId, params.cwd ?? source.cwd), forkedFromId: source.id, turns: source.turns.slice(0, last) };
+      state.threads[threadId] = thread;
+      persist();
+      servers.set(threadId, configValue(params.config, "mcp_servers.nodex_app"));
+      record({ event: "fork", sourceThreadId: source.id, threadId });
+      reply(threadResponse(thread, params.model)); return;
+    }
     case "turn/start": {
       const turnId = randomUUID();
       const prompt = params.input?.filter((value) => value.type === "text").map((value) => value.text).join("\n") ?? "";

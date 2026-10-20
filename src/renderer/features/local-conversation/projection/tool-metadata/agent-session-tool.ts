@@ -8,6 +8,11 @@ const AGENT_SESSION_TOOL_LABELS = {
     failed: "Couldn't create chat",
   },
   fork_session: { active: "Forking chat", completed: "Forked chat", failed: "Couldn't fork chat" },
+  merge_session_back: {
+    active: "Merging fork back",
+    completed: "Merged fork back",
+    failed: "Couldn't merge fork back",
+  },
   send_message_to_session: {
     active: "Messaging chat",
     completed: "Messaged chat",

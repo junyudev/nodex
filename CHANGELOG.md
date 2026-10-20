@@ -12,7 +12,9 @@ All notable changes to this project will be documented in this file.
 
 - Appearance settings can choose UI, content and code fonts separately for light and dark themes, with independent UI, code and Page text sizes that stay consistent across windows and restart.
 
-- A started chat can continue on another Agent: choose another Agent's model and the next message carries the conversation so far to it, including in finished chats. Returning to an earlier Agent resumes its own conversation with only what it missed, and the transcript marks each handoff.
+- A started chat can continue on another Agent: choose another Agent's model and the next message carries the conversation so far to it, including in finished chats. Returning to an earlier Agent resumes its own conversation with only what it missed, and the transcript marks each handoff. Agents can do the same for another chat, and each model keeps the options last chosen for it.
+
+- A fork can merge its finished work back into the chat it came from with `/merge`; that chat's next message carries what the fork found, on whichever Agent it uses. Agents can merge forks they manage.
 
 - Codex and Claude chats can delegate work to each other, open each child's conversation, and receive results after the parent Turn ends. Delegated work, result delivery and cancellation survive runtime restart, while Profile snapshots preserve the complete execution history and native conversation identities.
 

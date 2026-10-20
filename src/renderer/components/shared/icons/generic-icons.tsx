@@ -20,6 +20,7 @@ import {
   CornerDownLeft as LucideCornerDownLeft,
   Filter as LucideFilter,
   GitBranchPlus as LucideGitBranchPlus,
+  GitMerge as LucideGitMerge,
   Hash as LucideHash,
   ImagePlus as LucideImagePlus,
   KeyRound as LucideKeyRound,
@@ -274,6 +275,10 @@ export const Smartphone: LucideIconType = /* @__PURE__ */ createGenericIcon(
 export const Sparkles: LucideIconType = /* @__PURE__ */ createGenericIcon(
   LucideSparkles,
   "Sparkles",
+);
+export const GitMergeIcon: LucideIconType = /* @__PURE__ */ createGenericIcon(
+  LucideGitMerge,
+  "GitMergeIcon",
 );
 export const SplitIcon: LucideIconType = /* @__PURE__ */ createGenericIcon(
   LucideSplitIcon,

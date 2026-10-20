@@ -456,6 +456,7 @@ type PlainResultCommandEndpointPolicy =
   | "agent-runtime:session:queue-message"
   | "agent-runtime:session:queue"
   | "agent-runtime:session:fork"
+  | "agent-runtime:session:merge-back"
   | "agent-runtime:session:stop"
   | "agent-runtime:session:respond"
   | "agent-runtime:session:set-modes"
