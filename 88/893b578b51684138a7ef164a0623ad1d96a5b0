@@ -1,0 +1,20 @@
+src/renderer/components/workbench/project-agent-dock-target-selector.tsx
+  s_cd7a7c963ae6b3::t_23ca23fd14f9d9 6
+  s_cd7a7c963ae6b3::t_2830ed7eb376ec 132,245
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "88893b578b51684138a7ef164a0623ad1d96a5b0",
+  "prompts": {},
+  "sessions": {
+    "s_cd7a7c963ae6b3": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "90a77f4c-2ddc-48f4-9dae-559b0ec09666",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
