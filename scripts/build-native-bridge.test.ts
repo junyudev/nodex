@@ -21,6 +21,8 @@ const originalPlatform = Object.getOwnPropertyDescriptor(process, "platform")!;
 let builds = 0;
 let toolchain = "toolchain-one";
 let architecture = "arm64";
+let minimumMacOS = "15.0";
+let cachedMinimumMacOS: string | undefined;
 let failBuild = false;
 let selectedSdk: string | undefined;
 
@@ -29,6 +31,8 @@ beforeEach(() => {
   builds = 0;
   toolchain = "toolchain-one";
   architecture = "arm64";
+  minimumMacOS = "15.0";
+  cachedMinimumMacOS = undefined;
   failBuild = false;
   selectedSdk = undefined;
   for (const key of Object.keys(process.env)) {
@@ -42,9 +46,16 @@ beforeEach(() => {
   }
   vi.mocked(execFileSync).mockImplementation((command, args) => {
     if (command === "/usr/bin/lipo") return architecture;
+    if (command === "/usr/bin/otool") {
+      const minimum = args?.at(-1)?.includes("-runtime/")
+        ? (cachedMinimumMacOS ?? minimumMacOS)
+        : minimumMacOS;
+      return `cmd LC_BUILD_VERSION\n  platform 1\n  minos ${minimum}\n  sdk 27.0\n`;
+    }
     if (args?.includes("--show-sdk-path") && selectedSdk) return selectedSdk;
     if (args?.[1] !== "rebuild") return toolchain;
     builds += 1;
+    cachedMinimumMacOS = undefined;
     const directory = args[args.indexOf("--directory") + 1]!;
     const target = JSON.parse(readFileSync(path.join(directory, "binding.gyp"), "utf8")).targets[0]
       .target_name;
@@ -136,7 +147,7 @@ test.each(["source", "binding", "builder", "lock", "electron", "toolchain", "env
   },
 );
 
-test.each(["missing", "tampered", "non-executable", "symlink", "bad-receipt"])(
+test.each(["missing", "tampered", "non-executable", "symlink", "bad-receipt", "minimum-macos"])(
   "rebuilds %s cached output instead of trusting the receipt",
   (damage) => {
     const instance = fixture();
@@ -151,8 +162,23 @@ test.each(["missing", "tampered", "non-executable", "symlink", "bad-receipt"])(
       symlinkSync(other, instance.output);
     }
     if (damage === "bad-receipt") writeFileSync(`${instance.output}.build.json`, "invalid JSON");
+    if (damage === "minimum-macos") cachedMinimumMacOS = "13.0";
     expect(instance.build()).toBe("built");
     expect(builds).toBe(2);
+  },
+);
+
+test.each(["13.0", "26.0"])(
+  "rejects newly compiled macOS %s output before publication",
+  (minimum) => {
+    const instance = fixture();
+    minimumMacOS = minimum;
+    expect(() => instance.build()).toThrow("minimum macOS mismatch");
+    expect(existsSync(instance.output)).toBe(false);
+    expect(existsSync(`${instance.output}.build.json`)).toBe(false);
+    minimumMacOS = "15.0";
+    expect(instance.build()).toBe("built");
+    expect(instance.build()).toBe("reused");
   },
 );
 

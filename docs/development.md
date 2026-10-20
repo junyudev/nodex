@@ -437,6 +437,11 @@ from the installed Nodex app even when both use equivalent Profiles. The Electro
 notification API requires a correctly signed app bundle for delivery; a development
 permission or signing failure must not be diagnosed through browser permissions.
 
+Native bridge preparation verifies the actual Mach-O architecture and deployment
+target before publishing or reusing an output. See the
+[macOS release contract](release-macos.md) for the build configuration and
+packaged verification requirements.
+
 ## Validation
 
 ### UI development and verification

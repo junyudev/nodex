@@ -17,6 +17,8 @@ import { fileURLToPath } from "node:url";
 import { replaceOwnedDirectory } from "./replace-owned-directory";
 import { readSparkleReleaseLock, resolveSparkleReleaseLockPath } from "./sparkle-release-lock";
 import { materializeSparkleRuntime, verifySparkleToolchain } from "./materialize-sparkle-runtime";
+import { verifyOwnedNativeBridgePlatform } from "./native-bridge-platform-contract";
+import { NATIVE_RUNTIME_MINIMUM_MACOS } from "./native-runtime-manifest";
 
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -34,7 +36,7 @@ export interface SparkleRuntimeManifest {
   readonly architecture: SparkleRuntimeArchitecture;
   readonly buildChannel: SparkleRuntimeChannel;
   readonly feedUrls: null | Readonly<Record<"stable" | "nightly", string>>;
-  readonly minimumMacOS: "15.0";
+  readonly minimumMacOS: typeof NATIVE_RUNTIME_MINIMUM_MACOS;
   readonly publicKey: string;
   readonly schemaVersion: 3;
   readonly sparkleArchiveSha256: string;
@@ -86,12 +88,6 @@ const artifactIdentity = (filePath: string, bundlePath: string): SparkleArtifact
   };
 };
 
-const readMachArchitectures = (binaryPath: string): readonly string[] =>
-  execFileSync("/usr/bin/lipo", ["-archs", binaryPath], { encoding: "utf8" })
-    .trim()
-    .split(/\s+/u)
-    .filter(Boolean);
-
 export function verifyStagedSparkleRuntime(
   outputPath: string,
   expected: SparkleRuntimeManifest,
@@ -112,11 +108,7 @@ export function verifyStagedSparkleRuntime(
   ) {
     throw new Error("Staged Sparkle bridge must be an executable regular file.");
   }
-  const expectedMachArchitecture = expected.architecture;
-  const architectures = readMachArchitectures(bridgePath);
-  if (architectures.length !== 1 || architectures[0] !== expectedMachArchitecture) {
-    throw new Error(`Sparkle bridge architecture mismatch: ${architectures.join(", ")}.`);
-  }
+  verifyOwnedNativeBridgePlatform(bridgePath, expected.architecture);
   const frameworkPath = path.join(root, "Sparkle.framework");
   if (!lstatSync(frameworkPath).isDirectory()) {
     throw new Error("Staged Sparkle framework is missing.");
@@ -189,7 +181,7 @@ export async function buildSparkleBridge(
     ],
     {
       cwd: projectRoot,
-      env: { ...process.env, MACOSX_DEPLOYMENT_TARGET: "15.0" },
+      env: { ...process.env, MACOSX_DEPLOYMENT_TARGET: NATIVE_RUNTIME_MINIMUM_MACOS },
       stdio: "inherit",
     },
   );
@@ -247,7 +239,7 @@ export async function buildSparkleBridge(
       architecture: options.architecture,
       buildChannel: options.channel,
       feedUrls: options.channel === "disabled" ? null : feedUrlsFor(options.architecture),
-      minimumMacOS: "15.0",
+      minimumMacOS: NATIVE_RUNTIME_MINIMUM_MACOS,
       publicKey,
       schemaVersion: 3,
       sparkleArchiveSha256: lock.archive.sha256,
