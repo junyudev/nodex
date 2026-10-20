@@ -17,9 +17,9 @@ import {
 } from "@/components/ui/dropdown";
 import { NodexButton } from "@/components/ui/button";
 import { NodexCheckbox } from "@/components/ui/settings";
-import { UserMessageText } from "@/features/local-conversation/view/shared/user-message-collapse";
 import { cn } from "@/lib/utils";
 import { INBOX_KIND_ICONS } from "./inbox-icon-action";
+import { InboxMessageDocument } from "./inbox-message-document";
 import { INBOX_KIND_LABELS, formatInboxTime, inboxEntryKind } from "./inbox-presentation";
 
 export interface InboxMessageMenuHandlers {
@@ -234,7 +234,7 @@ export function InboxMessage({
                 !fromUser && strip != null && "border-b border-token-border",
               )}
             >
-              {editor ?? <UserMessageText text={item.body} />}
+              {editor ?? <InboxMessageDocument item={item} />}
               {editor == null && messageActions != null ? (
                 // Floats over the end of the last line on the text's own color, so showing it
                 // never moves the text.

@@ -6,7 +6,8 @@ import { libraryPageDetailQueryOptions } from "@/lib/library-page-detail-query";
 export interface InboxGroupMember {
   readonly pageId: string;
   readonly label: string;
-  readonly body: string | null;
+  /** The message as one line of plain text. */
+  readonly preview: string | null;
 }
 
 function Member({
@@ -38,7 +39,7 @@ function Member({
         onClick={() => onOpenPage?.(pageId)}
       >
         {label}
-        {member?.body ? ` · ${member.body}` : ""}
+        {member?.preview ? ` · ${member.preview}` : ""}
       </button>
       {detail.error ? (
         <NodexButton size="xs" variant="ghost" onClick={() => void detail.refetch()}>

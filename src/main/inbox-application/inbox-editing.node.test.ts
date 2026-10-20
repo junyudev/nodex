@@ -25,8 +25,7 @@ it.effect("an edit rewrites the message Page and asks for a fresh suggestion", (
         producedBy: "Test",
       });
 
-      const rewritten =
-        "The homepage should read like a personal assistant.\nKeep the docs link.";
+      const rewritten = "The homepage should read like a personal assistant.\nKeep the docs link.";
       const basis = inboxPageBasisFromCore(entry.basis);
       yield* inbox.edit({ pageId, basis, originalBody: original, body: rewritten });
 

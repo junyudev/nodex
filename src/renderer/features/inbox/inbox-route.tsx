@@ -9,6 +9,8 @@ import {
   type InboxWindowFilter,
 } from "../../../shared/inbox";
 import type { Project } from "../../../shared/types";
+import { messageTextNfm } from "../../../shared/message-content";
+import { extractPlainText } from "../../../shared/nfm/extract-text";
 import {
   ArchiveIcon,
   BoardIcon,
@@ -340,7 +342,7 @@ export function InboxRoute({
   const requestDelete = (items: readonly InboxItem[]) =>
     setDeleteRequest({
       pageIds: items.map((item) => item.pageId),
-      preview: items.length === 1 ? (items[0]?.body ?? null) : null,
+      preview: items.length === 1 && items[0] ? extractPlainText(items[0].body) : null,
     });
   const openTarget = (target: InboxOutcomeTarget) =>
     target.kind === "session" ? onOpenSession(target.sessionId) : onOpenDatabase(target.databaseId);
@@ -379,7 +381,13 @@ export function InboxRoute({
         members={(proposal?.pageIds ?? []).flatMap((pageId) => {
           const member = inboxItems.find((entry) => entry.pageId === pageId);
           return member
-            ? [{ pageId, label: member.pageKey ?? member.title, body: member.body }]
+            ? [
+                {
+                  pageId,
+                  label: member.pageKey ?? member.title,
+                  preview: extractPlainText(member.body),
+                },
+              ]
             : [];
         })}
         onOpenPage={onOpenPage}
@@ -405,7 +413,7 @@ export function InboxRoute({
   };
 
   const selectedPageIds = selectedItems.map((item) => item.pageId);
-  const combinedText = selectedItems.map((item) => item.body).join("\n\n");
+  const combinedText = selectedItems.map((item) => messageTextNfm(item.body)).join("\n");
   const loadEarlier = stream.hasNextPage ? (
     <button
       type="button"

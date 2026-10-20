@@ -50,10 +50,13 @@ One written message has exactly two projections.
 
 Every bubble that shows written content renders its Nested Markdown with one
 read-only message renderer: compact typography, images, file chips, and
-mentions. An Inbox bubble shows its Page as it is now, including anything later
-added in the Page; the stream shows a bounded part of a long body, and the full
-message stays one action away. Long messages collapse after the same number of
-lines as a user message in a chat.
+mentions. The images attached after the text show as thumbnails above it, as in
+the Composer, and open in the image viewer; an image inside the text stays in
+place. Images are read with the access of the Page the message belongs to, and
+one that cannot be read says so. An Inbox bubble shows its Page as it is now,
+including anything later added in the Page; the stream shows a bounded part of a
+long body, and the full message stays one action away. Long messages collapse
+after the same number of lines as a user message in a chat.
 
 ## Inbox message shape
 

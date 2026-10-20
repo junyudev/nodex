@@ -18,6 +18,7 @@ import type {
   NfmBlock,
   NfmInlineContent,
   NfmColor,
+  NfmImage,
   NfmNumberedListItem,
   NfmStyleSet,
   NfmTable,
@@ -25,6 +26,8 @@ import type {
 import { FileLinkAnchor } from "../shared/file-link-anchor";
 import { parseNfm } from "@/lib/nfm/parser";
 import { resolveAssetSourceToDisplayUrl } from "@/lib/assets";
+import { parseFileSource } from "../../../shared/file-resources";
+import { useFilePlacementRuntime, useFileReadSnapshot } from "./editor/file-runtime";
 import { formatThreadMentionShortUuid } from "@/lib/nfm/thread-mention-display";
 import { formatDateMentionPlainText } from "@/lib/nfm/date-mention";
 import { cn } from "@/lib/utils";
@@ -48,15 +51,50 @@ interface NfmRendererProps {
   projectWorkspacePath?: string | null;
 }
 
-/** Read-only renderer for Notion-flavored Markdown. */
+/** Read-only renderer for Nested Markdown. */
 export function NfmRenderer({ content, className, projectWorkspacePath }: NfmRendererProps) {
   if (!content.trim()) return null;
-  const blocks = parseNfm(content);
+  return (
+    <NfmDocument
+      blocks={parseNfm(content)}
+      className={className}
+      projectWorkspacePath={projectWorkspacePath}
+    />
+  );
+}
+
+/**
+ * Read-only rendering of parsed Nested Markdown Blocks. Library File images resolve through the
+ * enclosing File runtime. `--nfm-paragraph-gap` sets the space around each paragraph.
+ */
+export function NfmDocument({
+  blocks,
+  className,
+  projectWorkspacePath,
+}: {
+  readonly blocks: NfmBlock[];
+  readonly className?: string;
+  readonly projectWorkspacePath?: string | null;
+}) {
   return (
     <div className={cn("nfm-render", MARKDOWN_CONTENT_CLASS_NAME, className)}>
       <BlockList blocks={blocks} projectWorkspacePath={projectWorkspacePath} />
     </div>
   );
+}
+
+/** Where an image source displays from: a Library File through the File runtime, else as is. */
+export function useNfmImage(source: string): {
+  readonly url: string | null;
+  readonly failed: boolean;
+} {
+  const runtime = useFilePlacementRuntime();
+  const snapshot = useFileReadSnapshot(runtime, source, { objectUrl: true });
+  if (parseFileSource(source) === null) {
+    const url = resolveAssetSourceToDisplayUrl(source);
+    return { url, failed: url === null };
+  }
+  return { url: snapshot.objectUrl, failed: runtime === null || Boolean(snapshot.contentError) };
 }
 
 function BlockList({
@@ -128,7 +166,7 @@ function BlockComponent({
   switch (block.type) {
     case "paragraph":
       return (
-        <div className={cn("my-1 leading-relaxed", colorClass)}>
+        <div className={cn("my-[var(--nfm-paragraph-gap,0.25rem)] leading-relaxed", colorClass)}>
           <p>
             <InlineList items={block.content} projectWorkspacePath={projectWorkspacePath} />
           </p>
@@ -284,35 +322,14 @@ function BlockComponent({
         </div>
       );
 
-    case "image": {
-      const sourceUrl = resolveAssetSourceToDisplayUrl(block.source);
-      const alt = inlineText(block.caption) || "Image";
-      const widthStyle =
-        block.previewWidth !== undefined
-          ? { width: `${block.previewWidth}px`, maxWidth: "100%" }
-          : undefined;
-
+    case "image":
       return (
-        <figure className={cn("my-3", colorClass)}>
-          {sourceUrl ? (
-            <img
-              src={sourceUrl}
-              alt={alt}
-              className="max-w-full rounded-md border border-(--border)"
-              style={widthStyle}
-              width={block.sourceWidth}
-              height={block.sourceHeight}
-              loading="lazy"
-            />
-          ) : null}
-          {block.caption.length > 0 && (
-            <figcaption className="mt-1 text-sm text-(--foreground-secondary)">
-              <InlineList items={block.caption} projectWorkspacePath={projectWorkspacePath} />
-            </figcaption>
-          )}
-        </figure>
+        <NfmImageFigure
+          block={block}
+          className={colorClass}
+          projectWorkspacePath={projectWorkspacePath}
+        />
       );
-    }
 
     case "pageRef": {
       const mentionUrl = buildPageDeepLink({
@@ -368,6 +385,45 @@ function BlockComponent({
       return <div className="h-[1em]" />;
   }
 }
+
+function NfmImageFigure({
+  block,
+  className,
+  projectWorkspacePath,
+}: {
+  block: NfmImage;
+  className?: string;
+  projectWorkspacePath?: string | null;
+}) {
+  const { url: sourceUrl } = useNfmImage(block.source);
+  const widthStyle =
+    block.previewWidth !== undefined
+      ? { width: `${block.previewWidth}px`, maxWidth: "100%" }
+      : undefined;
+
+  return (
+    <figure className={cn("my-3", className)}>
+      {sourceUrl ? (
+        <img
+          src={sourceUrl}
+          alt={nfmImageAlt(block)}
+          className="max-w-full rounded-md border border-(--border)"
+          style={widthStyle}
+          width={block.sourceWidth}
+          height={block.sourceHeight}
+          loading="lazy"
+        />
+      ) : null}
+      {block.caption.length > 0 && (
+        <figcaption className="mt-1 text-sm text-(--foreground-secondary)">
+          <InlineList items={block.caption} projectWorkspacePath={projectWorkspacePath} />
+        </figcaption>
+      )}
+    </figure>
+  );
+}
+
+export const nfmImageAlt = (block: NfmImage): string => inlineText(block.caption) || "Image";
 
 function ResourceBlock({ label, detail }: { label: string; detail: string }) {
   return (

@@ -11,7 +11,7 @@ import {
 import { useConversationImageAssetContext } from "../conversation-image-asset-context";
 import { useConversationImageAsset } from "./use-conversation-image-asset";
 
-function ImageLoadingTile({ label }: { label: string }) {
+export function ImageLoadingTile({ label }: { label: string }) {
   return (
     <div
       className="size-16 rounded-lg border border-token-border bg-token-bg-tertiary text-token-description-foreground"
@@ -25,7 +25,7 @@ function ImageLoadingTile({ label }: { label: string }) {
   );
 }
 
-function ImageErrorTile({ onRetry }: { onRetry?: () => void }) {
+export function ImageErrorTile({ onRetry }: { onRetry?: () => void }) {
   const className =
     "size-16 rounded-lg border border-token-border bg-token-bg-tertiary px-1.5 text-center text-[10px] leading-tight text-token-description-foreground";
   if (!onRetry) {
@@ -54,14 +54,16 @@ function ImageErrorTile({ onRetry }: { onRetry?: () => void }) {
   );
 }
 
-function UserImageButton({
+export function UserImageButton({
   src,
+  alt = "User attachment",
   fit,
   bordered,
   onOpenPreview,
   onImageError,
 }: {
   src: string;
+  alt?: string;
   fit: "cover" | "contain";
   bordered: boolean;
   onOpenPreview: (trigger: HTMLButtonElement) => void;
@@ -82,7 +84,7 @@ function UserImageButton({
         src={src}
         width={64}
         height={64}
-        alt="User attachment"
+        alt={alt}
         referrerPolicy="no-referrer"
         className={cn(
           "h-full w-full rounded-md",

@@ -9,7 +9,7 @@ import {
 } from "../contracts";
 
 export const INBOX_TRIAGE_SCENARIO_ID = "inbox/triage" as const;
-export const INBOX_TRIAGE_SCENARIO_REVISION = 2 as const;
+export const INBOX_TRIAGE_SCENARIO_REVISION = 3 as const;
 
 const PAGE_KEYS = {
   kept: "keptNote",
@@ -18,6 +18,7 @@ const PAGE_KEYS = {
   move: "moveSuggestion",
   dispatched: "dispatchedMessage",
   failed: "failedSuggestion",
+  pictured: "picturedMessage",
   projectNewChat: "projectNewChatSuggestion",
   projectSendToChat: "projectSendToChatSuggestion",
   projectMove: "projectMoveSuggestion",
@@ -25,6 +26,14 @@ const PAGE_KEYS = {
 const WORKING_SESSION_KEY = "workingSession";
 const WORKING_THREAD_KEY = "workingThread";
 const WEBSITE_PROJECT_KEY = "websiteProject";
+const SCREENSHOT_FILE_KEY = "screenshotFile";
+// A 192 by 96 PNG, enough for a thumbnail to show its real pixels.
+const SCREENSHOT_BYTES = new Uint8Array(
+  Buffer.from(
+    "iVBORw0KGgoAAAANSUhEUgAAAMAAAABgCAIAAADEouq+AAABBklEQVR4nO3SQQkAIADAQMMaxzgGtIN7iHBwAfbYmGvDtfG8gK8ZiMRAJAYiMRCJgUgMRGIgEgORGIjEQCQGIjEQiYFIDERiIBIDkRiIxEAkBiIxEImBSAxEYiASA5EYiMRAJAYiMRCJgUgMRGIgEgORGIjEQCQGIjEQiYFIDERiIBIDkRiIxEAkBiIxEImBSAxEYiASA5EYiMRAJAYiMRCJgUgMRGIgEgORGIjEQCQGIjEQiYFIDERiIBIDkRiIxEAkBiIxEImBSAxEYiASA5EYiMRAJAYiMRCJgUgMRGIgEgORGIjEQCQGIjEQiYFIDERiIBIDkRiIxEAkBiIxEImBSAxEcgBRsybr72+iHwAAAABJRU5ErkJggg==",
+    "base64",
+  ),
+);
 
 export interface InboxTriageScenarioFacts extends ScenarioFacts {
   readonly entryCount: number;
@@ -153,6 +162,36 @@ const materializeInboxTriage = async (
     rationale: "Concrete, small, and not urgent.",
   });
 
+  const screenshotFileId = createUuidV7();
+  await port.createLibraryFile({
+    projectId: project.id,
+    operationId: createUuidV7(),
+    fileId: screenshotFileId,
+    defaultName: "settings-toolbar.png",
+    mimeType: "image/png",
+    bytes: SCREENSHOT_BYTES,
+  });
+  // Written in Nested Markdown: formatting, a list, and a pasted screenshot after the text.
+  const pictured = await port.sendInboxMessage(
+    [
+      "Settings buttons have **no accessible labels**:",
+      "- the gear in the toolbar",
+      "- the close button on dialogs",
+      `<image source="nodex://files/${screenshotFileId}">Settings toolbar</image>`,
+    ].join("\n"),
+  );
+  await port.proposeInboxDispatch({
+    pageIds: [pictured.pageId],
+    action: {
+      type: "send_to_chat",
+      sessionId: working.sessionId,
+      prompt: "Also give the toolbar gear and the dialog close buttons accessible labels.",
+    },
+    kind: "todo",
+    summary: "Add the missing labels to the sidebar polish chat.",
+    rationale: "Small accessibility fixes on surfaces already in progress.",
+  });
+
   const failed = await port.sendInboxMessage("Should Telegram become an Inbox source?");
   await port.recordInboxSuggestionFailure([failed.pageId], "The suggestion model is unavailable");
 
@@ -215,6 +254,7 @@ const materializeInboxTriage = async (
       [PAGE_KEYS.sendToChat]: sendToChat.pageId,
       [PAGE_KEYS.move]: move.pageId,
       [PAGE_KEYS.failed]: failed.pageId,
+      [PAGE_KEYS.pictured]: pictured.pageId,
       [PAGE_KEYS.projectNewChat]: projectNewChat.pageId,
       [PAGE_KEYS.projectSendToChat]: projectSendToChat.pageId,
       [PAGE_KEYS.projectMove]: projectMove.pageId,
@@ -223,6 +263,7 @@ const materializeInboxTriage = async (
       [WORKING_SESSION_KEY]: working.sessionId,
       [WORKING_THREAD_KEY]: workingThreadId,
       [WEBSITE_PROJECT_KEY]: website.id,
+      [SCREENSHOT_FILE_KEY]: screenshotFileId,
     },
     minimumCommitSeq: 0,
     materializedAt: new Date().toISOString(),
@@ -250,9 +291,9 @@ const inspectInboxTriage = async (
       .length,
   };
   if (
-    facts.entryCount !== 6 ||
-    facts.inboxCount !== 4 ||
-    facts.needsDecisionCount !== 3 ||
+    facts.entryCount !== 7 ||
+    facts.inboxCount !== 5 ||
+    facts.needsDecisionCount !== 4 ||
     facts.keptCount !== 1 ||
     facts.dispatchedCount !== 1 ||
     facts.failedSuggestionCount !== 1 ||

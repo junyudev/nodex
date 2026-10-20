@@ -10,6 +10,7 @@ import {
 import { cn } from "@/lib/utils";
 import { InboxCopyAction } from "./inbox-copy-action";
 import { InboxIconAction, InboxIconActions } from "./inbox-icon-action";
+import { InboxMessageDocument } from "./inbox-message-document";
 import { InboxOutcomeGlyph, InboxOutcomeLine } from "./inbox-outcome";
 import {
   describeInboxOutcome,
@@ -58,9 +59,9 @@ function HistoryRow({
       </button>
       {expanded ? (
         <div className="mb-2 ml-9 flex flex-col gap-2 pt-1 pr-2">
-          <p className="border-l-2 border-token-border pl-3 text-sm leading-relaxed whitespace-pre-wrap text-token-foreground/85">
-            {item.body}
-          </p>
+          <div className="border-l-2 border-token-border pl-3 text-token-foreground/85">
+            <InboxMessageDocument item={item} />
+          </div>
           <div className="flex items-center gap-2">
             {item.pageKey ? (
               <span className="font-mono text-[11px] text-token-description-foreground">

@@ -3,6 +3,7 @@ import { act, fireEvent, screen, waitFor } from "@testing-library/react";
 import { describe, expect, test, vi } from "vite-plus/test";
 
 import { openNodexMenu, render } from "@/test/dom";
+import { TestQueryProvider } from "@/test/query";
 import type { InboxItem, InboxProposal } from "../../../shared/inbox";
 import type { Project } from "../../../shared/types";
 import { InboxDeleteDialog } from "./inbox-delete-dialog";
@@ -312,8 +313,8 @@ describe("InboxTriage", () => {
     const commands = renderTriage({
       item: item({ proposal: grouped }),
       members: [
-        { pageId: "page:1", label: "IN-1", body: "First" },
-        { pageId: "page:2", label: "IN-2", body: "Second" },
+        { pageId: "page:1", label: "IN-1", preview: "First" },
+        { pageId: "page:2", label: "IN-2", preview: "Second" },
       ],
     });
     await act(async () => {
@@ -505,30 +506,32 @@ describe("InboxHistory", () => {
   test("a delivered chat shows its live status and opens the conversation", async () => {
     const onOpenTarget = vi.fn();
     render(
-      <InboxHistory
-        items={[
-          item({
-            outcome: "chat",
-            proposal: proposal({
-              state: "completed",
-              chat: {
-                sessionId: "session:1",
-                projectId: "project:nodex",
-                projectName: "Nodex",
-                displayTitle: "Homepage positioning",
-                threadId: "thread:1",
-                status: { statusType: "active", activeFlags: ["waitingOnApproval"] },
-                unread: false,
-                archived: false,
-              },
+      <TestQueryProvider>
+        <InboxHistory
+          items={[
+            item({
+              outcome: "chat",
+              proposal: proposal({
+                state: "completed",
+                chat: {
+                  sessionId: "session:1",
+                  projectId: "project:nodex",
+                  projectName: "Nodex",
+                  displayTitle: "Homepage positioning",
+                  threadId: "thread:1",
+                  status: { statusType: "active", activeFlags: ["waitingOnApproval"] },
+                  unread: false,
+                  archived: false,
+                },
+              }),
             }),
-          }),
-        ]}
-        onOpenTarget={onOpenTarget}
-        onOpenPage={vi.fn()}
-        onReturn={vi.fn()}
-        onDelete={vi.fn()}
-      />,
+          ]}
+          onOpenTarget={onOpenTarget}
+          onOpenPage={vi.fn()}
+          onReturn={vi.fn()}
+          onDelete={vi.fn()}
+        />
+      </TestQueryProvider>,
     );
     expect(screen.getByText("Started “Homepage positioning”")).toBeTruthy();
     expect(screen.getByText("Waiting")).toBeTruthy();
@@ -549,13 +552,15 @@ describe("InboxHistory", () => {
       proposal: proposal({ state: "dismissed" }),
     });
     render(
-      <InboxHistory
-        items={[kept]}
-        onOpenTarget={vi.fn()}
-        onOpenPage={vi.fn()}
-        onReturn={onReturn}
-        onDelete={onDelete}
-      />,
+      <TestQueryProvider>
+        <InboxHistory
+          items={[kept]}
+          onOpenTarget={vi.fn()}
+          onOpenPage={vi.fn()}
+          onReturn={onReturn}
+          onDelete={onDelete}
+        />
+      </TestQueryProvider>,
     );
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { expanded: false }));
@@ -597,13 +602,45 @@ describe("InboxMessage source navigation", () => {
     async (runId) => {
       const onOpenSource = vi.fn();
       render(
+        <TestQueryProvider>
+          <InboxMessage
+            item={item({
+              source: {
+                kind: "agent",
+                sessionId: "session:owner",
+                threadId: "thread:child",
+                runId,
+                projectId: "project:another",
+                label: "Research Agent",
+              },
+            })}
+            selected={false}
+            selectionActive={false}
+            onToggleSelected={vi.fn()}
+            onOpenSource={onOpenSource}
+            editor={null}
+            messageActions={null}
+            strip={null}
+            actions={null}
+          />
+        </TestQueryProvider>,
+      );
+      await click("From Research Agent");
+      expect(onOpenSource).toHaveBeenCalledExactlyOnceWith("session:owner");
+    },
+  );
+
+  test("an unavailable Session cannot be replaced with a native Thread lookup", async () => {
+    const onOpenSource = vi.fn();
+    render(
+      <TestQueryProvider>
         <InboxMessage
           item={item({
             source: {
               kind: "agent",
-              sessionId: "session:owner",
+              sessionId: null,
               threadId: "thread:child",
-              runId,
+              runId: null,
               projectId: "project:another",
               label: "Research Agent",
             },
@@ -616,36 +653,8 @@ describe("InboxMessage source navigation", () => {
           messageActions={null}
           strip={null}
           actions={null}
-        />,
-      );
-      await click("From Research Agent");
-      expect(onOpenSource).toHaveBeenCalledExactlyOnceWith("session:owner");
-    },
-  );
-
-  test("an unavailable Session cannot be replaced with a native Thread lookup", async () => {
-    const onOpenSource = vi.fn();
-    render(
-      <InboxMessage
-        item={item({
-          source: {
-            kind: "agent",
-            sessionId: null,
-            threadId: "thread:child",
-            runId: null,
-            projectId: "project:another",
-            label: "Research Agent",
-          },
-        })}
-        selected={false}
-        selectionActive={false}
-        onToggleSelected={vi.fn()}
-        onOpenSource={onOpenSource}
-        editor={null}
-        messageActions={null}
-        strip={null}
-        actions={null}
-      />,
+        />
+      </TestQueryProvider>,
     );
     expect(
       screen.getByRole("button", { name: "From Research Agent" }).hasAttribute("disabled"),

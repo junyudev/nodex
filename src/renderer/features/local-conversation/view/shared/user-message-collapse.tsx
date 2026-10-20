@@ -1,4 +1,4 @@
-import type { CSSProperties } from "react";
+import type { CSSProperties, ReactNode } from "react";
 import { useLayoutEffect, useRef, useState } from "react";
 import { ChevronDownIcon } from "@/components/shared/icons";
 import { cn } from "../../../../lib/utils";
@@ -21,25 +21,31 @@ const USER_MESSAGE_COLLAPSED_STYLE: CSSProperties = {
   overflow: "hidden",
 };
 
-function CollapsibleUserMessageText({
-  text,
-  collapsedLineCount,
-  cwd,
-  projectWorkspacePath,
-}: Required<Pick<UserMessageTextProps, "text" | "collapsedLineCount">> &
-  Pick<UserMessageTextProps, "cwd" | "projectWorkspacePath">) {
+/**
+ * Collapses a written message after `collapsedLineCount` lines, with `Show more` to read the
+ * rest. `contentKey` identifies the message: an expanded message collapses again when it changes.
+ */
+export function UserMessageCollapse({
+  contentKey,
+  collapsedLineCount = DEFAULT_USER_MESSAGE_COLLAPSED_LINES,
+  children,
+}: {
+  readonly contentKey: string;
+  readonly collapsedLineCount?: number;
+  readonly children: ReactNode;
+}) {
   const contentRef = useRef<HTMLDivElement>(null);
   const clipRef = useRef<HTMLDivElement>(null);
-  const [expandedText, setExpandedText] = useState<string | null>(null);
+  const [expandedKey, setExpandedKey] = useState<string | null>(null);
   const { collapsedHeightPx, isOverflowing } = useContentOverflow(contentRef, collapsedLineCount);
 
-  const expanded = expandedText === text;
+  const expanded = expandedKey === contentKey;
   const collapsed = isOverflowing && !expanded;
   useLayoutEffect(() => {
     const clip = clipRef.current;
     if (!collapsed || !clip) return;
-    return registerContentSearchRevealOwner(clip, () => setExpandedText(text));
-  }, [collapsed, text]);
+    return registerContentSearchRevealOwner(clip, () => setExpandedKey(contentKey));
+  }, [collapsed, contentKey]);
   useClippedFocusSafety(clipRef, collapsed);
   const showEllipsis = collapsed && collapsedLineCount > 2;
   const visibleLines = collapsedLineCount - Number(showEllipsis);
@@ -70,7 +76,7 @@ function CollapsibleUserMessageText({
       resize.disconnect();
       mutation.disconnect();
     };
-  }, [collapsed, text, visibleLines]);
+  }, [collapsed, contentKey, visibleLines]);
   const collapsedStyle =
     collapsed && collapsedHeightPx !== null
       ? {
@@ -81,17 +87,9 @@ function CollapsibleUserMessageText({
 
   return (
     <div className="flex flex-col items-end gap-1">
-      <div className="text-size-chat relative w-full min-w-0 leading-relaxed">
+      <div className="contentKey-size-chat relative w-full min-w-0 leading-relaxed">
         <div ref={clipRef} style={collapsedStyle}>
-          <div ref={contentRef}>
-            <MarkdownRenderer
-              content={text}
-              preserveLineBreaks
-              cwd={cwd}
-              projectWorkspacePath={projectWorkspacePath}
-              className="codex-markdown-user text-size-chat"
-            />
-          </div>
+          <div ref={contentRef}>{children}</div>
         </div>
         {showEllipsis ? (
           <span
@@ -111,8 +109,8 @@ function CollapsibleUserMessageText({
           data-thread-find-skip="true"
           data-content-search-skip="true"
           data-markdown-copy="exclude"
-          className="text-size-chat mt-1.5 inline-flex cursor-interaction items-center gap-1 self-start text-token-description-foreground hover:text-token-foreground"
-          onClick={() => setExpandedText((current) => (current === text ? null : text))}
+          className="contentKey-size-chat mt-1.5 inline-flex cursor-interaction items-center gap-1 self-start contentKey-token-description-foreground hover:contentKey-token-foreground"
+          onClick={() => setExpandedKey((current) => (current === contentKey ? null : contentKey))}
         >
           <span>{expanded ? "Show less" : "Show more"}</span>
           <ChevronDownIcon
@@ -131,11 +129,14 @@ export function UserMessageText({
   projectWorkspacePath,
 }: UserMessageTextProps) {
   return (
-    <CollapsibleUserMessageText
-      text={text}
-      collapsedLineCount={collapsedLineCount}
-      cwd={cwd}
-      projectWorkspacePath={projectWorkspacePath}
-    />
+    <UserMessageCollapse contentKey={text} collapsedLineCount={collapsedLineCount}>
+      <MarkdownRenderer
+        content={text}
+        preserveLineBreaks
+        cwd={cwd}
+        projectWorkspacePath={projectWorkspacePath}
+        className="codex-markdown-user text-size-chat"
+      />
+    </UserMessageCollapse>
   );
 }
