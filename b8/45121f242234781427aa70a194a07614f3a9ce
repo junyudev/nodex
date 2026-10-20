@@ -1,0 +1,114 @@
+src/shared/codex-conversation-state/codex-conversation-state.ts
+  s_296df3191f971b::t_bf9108b0619ef7 412-417,420-424
+  s_c615225d2b711b::t_4494d6dba919f2 425
+src/renderer/features/local-conversation/agent-runtime-conversation-adapter.test.tsx
+  s_296df3191f971b::t_d50c1a870a4093 5,392,410,430,439-445,458-552,556-602
+  s_296df3191f971b::t_2daab617038ad4 83-84
+  s_296df3191f971b::t_a5a74c8b78958a 553-555
+  s_296df3191f971b::t_a76c26f9accb16 603-604
+src/renderer/features/local-conversation/agent-runtime-agent-switch.node.test.ts
+  s_296df3191f971b::t_6005156b892096 1-130
+src/renderer/features/local-conversation/agent-runtime-agent-switch.ts
+  s_296df3191f971b::t_7c5dbc760acc31 7-8,10-18,21-37,42,44,50-55,59-64,67-72,76-77,79-87,90,92
+  s_296df3191f971b::t_049e042325d09c 38-41,43,45-49,56-58,65-66,73-75,78,88-89,91
+  s_296df3191f971b::t_13a2bfc1901b3f 1-6,9
+  s_296df3191f971b::t_a5a74c8b78958a 19-20
+src/renderer/features/local-conversation/view/shared/transcript-divider.test.tsx
+  s_296df3191f971b::t_18d6c52703b55b 1-45
+src/renderer/features/local-conversation/agent-runtime-transcript-projection.ts
+  s_296df3191f971b::t_7daf466a3a29bc 471-488
+src/main/app-tools/RuntimeSessionCommands.node.test.ts
+  s_296df3191f971b::t_3fc8a8cdbe12cf 137-151
+src/renderer/features/local-conversation/agent-runtime-conversation-adapter.ts
+  s_296df3191f971b::t_5d0471e4d2f347 69,186
+  s_296df3191f971b::t_68a7b47b13b318 858-870,876,883-892,894-911,952,954-955,959-964,993
+  s_296df3191f971b::t_b5c9554df331ec 12-16,26,31-35
+  s_296df3191f971b::t_176bc1b29f7db8 277-286,743,748
+  s_296df3191f971b::t_39e5c120bcfc28 356-357,360-364,392,452,540
+  s_296df3191f971b::t_b1daa9acfc6770 747,749-760
+  s_296df3191f971b::t_617b7c5aabc568 823-824,829,872,877-882,893
+src/renderer/features/local-conversation/agent-runtime-conversation-owner.ts
+  s_296df3191f971b::t_b5ed71d2581613 1487-1491,1493,1495-1501
+  s_296df3191f971b::t_8923190c3df469 1486,1492,1494,1502-1509
+  s_e2686ed51a5860::t_6459794627e7a2 1484-1485
+src/renderer/features/local-conversation/agent-runtime-delegated-tasks.ts
+  s_296df3191f971b::t_b7aa7a5ba472c6 3-7,64,90
+  s_296df3191f971b::t_be3074d5c8642e 57-60
+  s_296df3191f971b::t_5d0471e4d2f347 138-150
+src/renderer/features/local-conversation/view/shared/delegated-task-row.tsx
+  s_296df3191f971b::t_be3074d5c8642e 39-41,44-45,48
+tests/e2e/agent-runtime-agent-switch.spec.ts
+  s_296df3191f971b::t_23bc4b7dc64966 1-116,118-165
+  s_296df3191f971b::t_a5a74c8b78958a 117
+src/renderer/components/shared/agent-runtime/agent-model-picker.tsx
+  s_296df3191f971b::t_4aafd08b3a694d 57-58,230-231
+src/renderer/features/local-conversation/conversation-runtime.ts
+  s_296df3191f971b::t_b7aa7a5ba472c6 8,25-27,30-38,55-56
+CONTEXT.md
+  s_296df3191f971b::t_254dd4613464b8 44-52
+tests/e2e/fixtures/agent-runtime-cross-provider-peer.mjs
+  s_296df3191f971b::t_026a0b6e3b2597 306-307
+docs/product-specs/agent-backend-behavior.md
+  s_296df3191f971b::t_254dd4613464b8 8-11
+src/renderer/features/local-conversation/agent-runtime-conversation-owner.node.test.ts
+  s_296df3191f971b::t_96abb70c49e5fd 1409-1441
+src/renderer/features/local-conversation/agent-runtime-draft-owner.ts
+  s_296df3191f971b::t_94cf6a4c5f8d57 9-13
+src/renderer/features/local-conversation/view/shared/transcript-divider.tsx
+  s_296df3191f971b::t_1272278a1e20b8 1-14,19-35,40-80
+  s_296df3191f971b::t_a5a74c8b78958a 15-18,36-39
+src/shared/agent-runtime-provider.ts
+  s_296df3191f971b::t_882af366ae75cb 29-44
+src/renderer/features/local-conversation/projection/bucketize-turn-items.ts
+  s_296df3191f971b::t_7072ab08a26dab 180-190
+src/renderer/features/local-conversation/projection/bucketize-turn-items.node.test.ts
+  s_296df3191f971b::t_0ba6b4e8add526 2049-2072
+src/renderer/features/local-conversation/view/shared/delegated-task-row.test.tsx
+  s_296df3191f971b::t_be3074d5c8642e 7,30-34,56
+src/main/app-tools/RuntimeSessionCommands.ts
+  s_296df3191f971b::t_f93337e50b2ced 58,61-64,66-67
+  s_296df3191f971b::t_d827440c549ee8 65
+src/renderer/features/local-conversation/view/blocks/local-conversation-block-leaves.tsx
+  s_296df3191f971b::t_8f57e4c1547be5 32,644-647,1647-1654
+src/renderer/features/local-conversation/agent-runtime-transcript-projection.node.test.ts
+  s_296df3191f971b::t_ffa0e4190f2877 225-258
+docs/product-specs/agent-runtime-behavior.md
+  s_296df3191f971b::t_efbcf2f682ca80 197-199,203-232
+  s_c615225d2b711b::t_8d7b37fb9cae0d 233
+CHANGELOG.md
+  s_296df3191f971b::t_254dd4613464b8 15-16
+src/shared/agent-runtime-api.ts
+  s_296df3191f971b::t_03cabcb7d963ec 86-88
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "b845121f242234781427aa70a194a07614f3a9ce",
+  "prompts": {},
+  "sessions": {
+    "s_296df3191f971b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ff883e7c-1b4f-4838-94de-135a14742a5e",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_c615225d2b711b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "89a0a637-b452-4a28-9a76-51a68ac4cc28",
+        "model": "unknown"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_e2686ed51a5860": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "0526dede-ce9b-4111-bcb9-7579823a5abd",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}

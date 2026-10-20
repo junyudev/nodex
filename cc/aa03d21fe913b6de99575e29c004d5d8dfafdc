@@ -1,0 +1,46 @@
+src/main/app-tools/RuntimeSessionObservation.ts
+  s_296df3191f971b::t_d03e8fd7d26d6b 104-109,294
+src/shared/agent-runtime-agent-switch.ts
+  s_296df3191f971b::t_e66efff5ab426f 1-92
+src/main/app-tools/SessionObservation.ts
+  s_296df3191f971b::t_d03e8fd7d26d6b 41-46,53,114,285,336
+src/main/app-tools/SessionWaiter.node.test.ts
+  s_296df3191f971b::t_3036ef3256459f 26
+src/main/app-tools/RuntimeSessionObservation.node.test.ts
+  s_296df3191f971b::t_10b06c2b0a8f11 55,105-106
+src/main/agent-runtime/AgentRuntimeApplication.node.test.ts
+  s_296df3191f971b::t_f339de416a3381 1686-1749,1751-1753
+  s_296df3191f971b::t_5b1968d0690a84 1750,1754
+docs/product-specs/agent-interface-behavior.md
+  s_296df3191f971b::t_60198bec99d109 251-254,381-382
+docs/product-specs/agent-runtime-behavior.md
+  s_296df3191f971b::t_60198bec99d109 230-232
+src/shared/nodex-app-tools/session-message-schema.ts
+  s_296df3191f971b::t_3f5fd71be77a12 5-17,22
+src/main/app-tools/RuntimeSessionCommands.ts
+  s_296df3191f971b::t_1d036969a679fa 61-65
+  s_296df3191f971b::t_3f5fd71be77a12 58-60,71
+src/main/agent-runtime/AgentRuntimeApplication.ts
+  s_296df3191f971b::t_8ac7476e3bfd01 60,1323-1329
+src/main/app-tools/RuntimeSessionCommands.node.test.ts
+  s_296df3191f971b::t_1d036969a679fa 152-170
+  s_296df3191f971b::t_7eb2f0b018d67f 171-177
+src/renderer/features/local-conversation/agent-runtime-conversation-adapter.ts
+  s_296df3191f971b::t_e66efff5ab426f 35
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "ccaa03d21fe913b6de99575e29c004d5d8dfafdc",
+  "prompts": {},
+  "sessions": {
+    "s_296df3191f971b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ff883e7c-1b4f-4838-94de-135a14742a5e",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
