@@ -326,13 +326,9 @@ export function AttachmentInlineContent({
     await fileReferenceRouter.open({ path }, { title: label });
   }, [fileReferenceRouter, isOwnedFile, label, fileRuntime, resolvePrimaryPath, resolvedProps]);
   const attachmentPreview = useAttachmentPreview(resolvedProps, fileRuntime, open);
-  const handleOpenChange = (nextOpen: boolean) => {
-    if (nextOpen) attachmentPreview.preload();
-    setOpen(nextOpen);
-  };
 
   return (
-    <NodexPopover open={open} onOpenChange={handleOpenChange}>
+    <NodexPopover open={open} onOpenChange={setOpen}>
       <NodexTooltip
         tooltipContent={
           <div className="space-y-0.5">
@@ -365,8 +361,6 @@ export function AttachmentInlineContent({
               }
               trailing={resolvedProps.mode === "link" ? <Link2 className="size-full" /> : undefined}
               data-attachment-inline-chip="true"
-              onPointerEnter={attachmentPreview.preload}
-              onFocus={attachmentPreview.preload}
               onMouseDown={(event) => {
                 event.preventDefault();
               }}
@@ -382,7 +376,7 @@ export function AttachmentInlineContent({
       <NfmEditorPopoverContent side="top" align="start" className="w-auto">
         <AttachmentPopover
           props={resolvedProps}
-          previewState={attachmentPreview.state}
+          previewState={attachmentPreview}
           onPrimaryOpen={handlePrimaryOpen}
         />
       </NfmEditorPopoverContent>

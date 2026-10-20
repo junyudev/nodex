@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { readManagedAssetPreview } from "@/lib/assets";
 import {
@@ -105,15 +105,15 @@ const previewFromFileBytes = (
 };
 
 /**
- * Owns one attachment preview for the lifetime of its inline chip. The semantic
- * resource key, rather than React object identity or Popover mounting, controls
- * invalidation and stale async results can never replace a newer resource.
+ * Reads only while the preview is active. Library File demand owns its cache
+ * lifetime; managed assets retain a resource-keyed result in the inline chip.
+ * Stale async results can never replace a newer resource.
  */
 export function useAttachmentPreview(
   input: AttachmentPreviewInput,
   fileRuntime: FilePlacementRuntime | null,
   active: boolean,
-): { readonly state: AttachmentPreviewState; readonly preload: () => void } {
+): AttachmentPreviewState {
   const pageFileId = parseFileSource(input.source);
   const previewable = canPreviewAttachment(input, fileRuntime);
   const fileSnapshot = useFileReadSnapshot(fileRuntime, input.source, {
@@ -126,23 +126,18 @@ export function useAttachmentPreview(
   const previewKey = attachmentPreviewKey(input, fileRuntime);
   const [entry, setEntry] = useState<AttachmentPreviewEntry | null>(null);
   const entryRef = useRef<AttachmentPreviewEntry | null>(null);
-  const currentKeyRef = useRef(previewKey);
   const requestIdRef = useRef(0);
-  currentKeyRef.current = previewKey;
 
   useEffect(
     () => () => {
       requestIdRef.current += 1;
+      if (entryRef.current?.state.status === "loading") entryRef.current = null;
     },
-    [],
+    [previewKey],
   );
 
-  const preload = useCallback(() => {
-    if (pageFileId) {
-      if (previewable) fileRuntime?.preload(input.source, { content: true });
-      return;
-    }
-    if (!previewKey) return;
+  useEffect(() => {
+    if (!active || !previewKey) return;
     const currentEntry = entryRef.current;
     if (currentEntry?.key === previewKey && currentEntry.state.status !== "failed") return;
 
@@ -162,7 +157,7 @@ export function useAttachmentPreview(
       mimeType: input.mimeType,
     }).then(
       (preview) => {
-        if (requestIdRef.current !== requestId || currentKeyRef.current !== previewKey) return;
+        if (requestIdRef.current !== requestId) return;
         const readyEntry: AttachmentPreviewEntry = {
           key: previewKey,
           state: { status: "ready", preview },
@@ -171,7 +166,7 @@ export function useAttachmentPreview(
         setEntry(readyEntry);
       },
       () => {
-        if (requestIdRef.current !== requestId || currentKeyRef.current !== previewKey) return;
+        if (requestIdRef.current !== requestId) return;
         const failedEntry: AttachmentPreviewEntry = {
           key: previewKey,
           state: { status: "failed" },
@@ -180,37 +175,20 @@ export function useAttachmentPreview(
         setEntry(failedEntry);
       },
     );
-  }, [
-    input.kind,
-    input.mimeType,
-    input.mode,
-    input.source,
-    pageFileId,
-    fileRuntime,
-    previewable,
-    previewKey,
-  ]);
-
-  useEffect(() => {
-    if (!active) return;
-    preload();
-  }, [active, preload]);
+  }, [active, input.kind, input.mimeType, input.mode, input.source, previewKey]);
 
   if (pageFileId) {
-    if (!previewable) return { state: UNAVAILABLE_PREVIEW_STATE, preload };
+    if (!previewable) return UNAVAILABLE_PREVIEW_STATE;
     if (pageFilePreview) {
-      return { state: { status: "ready", preview: pageFilePreview }, preload };
+      return { status: "ready", preview: pageFilePreview };
     }
-    return {
-      state: fileSnapshot.contentError ? { status: "failed" } : LOADING_PREVIEW_STATE,
-      preload,
-    };
+    return fileSnapshot.contentError ? { status: "failed" } : LOADING_PREVIEW_STATE;
   }
   if (!previewKey) {
-    return { state: UNAVAILABLE_PREVIEW_STATE, preload };
+    return UNAVAILABLE_PREVIEW_STATE;
   }
   if (entry?.key === previewKey) {
-    return { state: entry.state, preload };
+    return entry.state;
   }
-  return { state: LOADING_PREVIEW_STATE, preload };
+  return LOADING_PREVIEW_STATE;
 }

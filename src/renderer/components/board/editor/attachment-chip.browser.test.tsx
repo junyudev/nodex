@@ -300,19 +300,35 @@ describe("attachment chip Library Files", () => {
   });
 
   test("shows a truthful state when a preview read fails", async () => {
+    let contentConsumers = 0;
+    const readOwnership: boolean[] = [];
     const read = vi.fn(async () => {
+      readOwnership.push(contentConsumers > 0);
       throw new Error("preview unavailable");
     });
+    const fileRuntime = createFileRuntime({
+      read,
+      metadata: async () =>
+        createFileMetadata({
+          default_name: "result.json",
+          mime_type: "application/json",
+          byte_length: 18,
+        }),
+    });
+    const runtime: FilePlacementRuntime = {
+      ...fileRuntime,
+      subscribe(source, demand, listener) {
+        const release = fileRuntime.subscribe(source, demand, listener);
+        if (!demand.content) return release;
+        contentConsumers += 1;
+        return () => {
+          contentConsumers -= 1;
+          release();
+        };
+      },
+    };
     const { editor, view } = renderAttachment(
-      createFileRuntime({
-        read,
-        metadata: async () =>
-          createFileMetadata({
-            default_name: "result.json",
-            mime_type: "application/json",
-            byte_length: 18,
-          }),
-      }),
+      runtime,
       {
         kind: "file",
         mode: "materialized",
@@ -339,6 +355,7 @@ describe("attachment chip Library Files", () => {
         expect(within(popover).getByText("Preview unavailable.")).toBeVisible();
       });
       expect(within(popover).queryByText("Loading preview...")).toBeNull();
+      expect(readOwnership).toEqual([true]);
       expect(read).toHaveBeenCalledTimes(1);
 
       await act(async () => {
@@ -346,12 +363,14 @@ describe("attachment chip Library Files", () => {
         await settleEditor();
       });
       await waitFor(() => expect(view.queryByRole("dialog")).toBeNull());
+      expect(contentConsumers).toBe(0);
       await act(async () => {
         fireEvent.click(chip);
         await settleEditor();
       });
       await view.findByRole("dialog");
       await waitFor(() => expect(read).toHaveBeenCalledTimes(2));
+      expect(readOwnership).toEqual([true, true]);
     } finally {
       view.unmount();
       editor._tiptapEditor.destroy();
