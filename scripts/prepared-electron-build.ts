@@ -21,6 +21,7 @@ import { BUNDLED_ELECTRON_MAIN_DEPENDENCIES } from "../config/electron-main-runt
 import { buildAgentRuntime } from "./build-agent-runtime";
 import { nodeBuildOptimizationArguments } from "../config/node-build-optimization";
 import { parseReleaseIdentity, type ReleaseIdentity } from "./release/model";
+import { prepareElectronRuntime } from "./prepare-electron-runtime";
 
 const MANIFEST_SCHEMA_VERSION = 4;
 const scriptPath = fileURLToPath(import.meta.url);
@@ -574,12 +575,13 @@ function runProductionBuild(): void {
   );
 }
 
-function main(): void {
+async function main(): Promise<void> {
   const [command, ...extraArguments] = process.argv.slice(2);
   if (extraArguments.length > 0 || (command !== "build" && command !== "verify")) {
     throw new Error("Usage: prepared-electron-build.ts <build|verify>");
   }
   if (command === "build") {
+    await prepareElectronRuntime({ projectRoot: repositoryRoot });
     runProductionBuild();
     return;
   }
@@ -588,11 +590,9 @@ function main(): void {
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === scriptPath) {
-  try {
-    main();
-  } catch (error) {
+  void main().catch((error: unknown) => {
     const message = error instanceof Error ? error.message : String(error);
     process.stderr.write(`${message}\n`);
     process.exitCode = 1;
-  }
+  });
 }

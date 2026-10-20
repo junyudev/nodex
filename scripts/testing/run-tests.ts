@@ -6,6 +6,7 @@ import {
   nativeRequirements,
   requiresAgentRuntime,
   parseTestSuite,
+  runtimeForSuite,
   type SuiteId,
   type NativeArtifactId,
 } from "../../config/test-suites.ts";
@@ -13,6 +14,7 @@ import { resolveVitestTestTier, type VitestTestTier } from "../../config/vitest-
 import { runCommand, withCommandSignal, type Command } from "../tooling/process.ts";
 import { prepareNativeArtifacts, preparedNativeEnvironment } from "./native-artifacts.ts";
 import { discoverSuite, vitestCommand } from "./runtime.ts";
+import { prepareElectronRuntime } from "../prepare-electron-runtime.ts";
 
 export interface TestSelection {
   readonly suites: readonly SuiteId[];
@@ -60,6 +62,7 @@ export async function runTests(
     readonly prepare?: typeof prepareNativeArtifacts;
     readonly discover?: typeof discoverSuite;
     readonly execute?: typeof runCommand;
+    readonly prepareElectron?: typeof prepareElectronRuntime;
   },
 ): Promise<number> {
   const environment: NodeJS.ProcessEnv = { ...context.env, NODEX_TEST_TIER: selection.tier };
@@ -70,6 +73,13 @@ export async function runTests(
   };
   const requirements: NativeArtifactId[] = [];
   let stageAgentRuntime = false;
+  if (context.signal.aborted) return 130;
+  // Discovery also runs under Electron; prepare before either path resolves its lazy executable.
+  if (selection.suites.some((suite) => runtimeForSuite(suite) === "electron-node")) {
+    await (context.prepareElectron ?? prepareElectronRuntime)({
+      projectRoot: context.repositoryRoot,
+    });
+  }
   for (const suite of selection.suites) {
     if (context.signal.aborted) return 130;
     const needsSelection =

@@ -128,7 +128,7 @@ describe("dev launcher", () => {
     });
     expect(plan.preparation[0]).toEqual({
       command: "pnpm",
-      args: ["exec", "install-electron"],
+      args: ["--silent", "run", "electron:prepare"],
     });
     expect(plan.enabledFeatures).toEqual(["runtime-metrics"]);
     expect(plan.application).toEqual({
@@ -209,7 +209,7 @@ describe("dev launcher", () => {
     });
     expect(plan.mode).toBe("built");
     expect(plan.preparation.map((command) => command.args.at(-1))).toEqual([
-      "install-electron",
+      "electron:prepare",
       "core:binaries:build:release",
       "build",
       "stage:codex-runtime:mac:cached",

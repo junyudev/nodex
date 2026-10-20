@@ -81,7 +81,8 @@ audit:
 allowBuilds:
   "@parcel/watcher": true
   "@sentry/cli": true
-  electron: true
+  # The repository prepares a verified, independent dist from the shared extraction cache.
+  electron: false
   electron-winstaller: true
   esbuild: true
   msgpackr-extract: false

@@ -16,7 +16,7 @@ Nodex pins Node `24.15.0` in `.node-version` and pnpm `12.3.4` in
 `vite-plus` development dependency pins the project toolchain independently of
 the globally installed launcher version.
 
-The install lifecycle runs `electron-builder install-app-deps`, which rebuilds
+The install lifecycle prepares pinned Electron, then runs `electron-builder install-app-deps`, which rebuilds
 `node-pty` for Electron. Do not run `vp rebuild` for it: that can replace the
 Electron-compatible binary with a host-Node binary. SQLite and collaborative
 Document authority are native Rust code and do not use a Node addon.
@@ -49,8 +49,10 @@ across worktrees download and extract once. Cross-process locks, verification,
 and atomic publication protect both cache layers. Corrupt entries are rebuilt;
 different pinned versions can coexist.
 
-Set `NODEX_BUILD_CACHE_DIR` to an absolute directory to isolate Nodex cache
-families; an explicit materializer `--cache` selects that family directly.
+Electron retains its upstream machine-wide ZIP cache and shares verified extracted
+distributions through the same immutable cache. Set `NODEX_BUILD_CACHE_DIR` to an
+absolute directory to isolate all Nodex runtime and native build cache families;
+an explicit materializer `--cache` still selects that family's directory directly.
 
 Materialization creates independent outputs under each worktree's `.generated/`.
 Files use copy-on-write clones where the filesystem supports them, with regular
@@ -195,12 +197,13 @@ killed instance of the same bundle, from blocking startup before Electron is rea
 windows and sessions; installed application launches and global preferences are
 unchanged. See Apple's [restorable-state debugging documentation](https://developer.apple.com/library/archive/releasenotes/AppKit/RN-AppKitOlderNotes/index.html).
 
-Both launch modes first run the installed `install-electron` command to prepare
-the pinned Electron binary. Electron downloads its binary lazily, while
-electron-vite reads the installation path directly. Explicit preparation keeps
-a fresh dependency install launchable; an already installed binary is reused.
-For a standalone repair after `Error: Electron uninstall`, run
-`vp exec install-electron` from the worktree root. See
+Installation, development, builds, and Electron test preparation run the repository's
+`electron:prepare` owner before a consumer can trigger Electron's lazy installer.
+It verifies the exact package-pinned distribution and creates an independent local
+`dist` from a shared extraction. For a standalone repair after `Error: Electron uninstall`,
+run `vp run electron:prepare` from the worktree root. The upstream
+`vp exec install-electron` remains an explicit bypass; normal preparation restores
+the package-pinned host distribution. See
 [Electron's binary download documentation](https://www.electronjs.org/docs/latest/tutorial/installation#binary-download-step).
 
 The Clipboard, DeviceCheck, and notification bridges reuse verified worktree-local

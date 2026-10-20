@@ -26,6 +26,7 @@ import { getScenario } from "../registry";
 import { prepareScenarioAgentRuntime } from "../runtime/agent-runtime-fixture";
 import { inspectScenario, materializeScenario } from "../seed/scenario-seed";
 import { isolatedElectronArguments } from "../../isolated-run/electron-arguments";
+import { prepareElectronRuntime } from "../../prepare-electron-runtime";
 
 const repositoryRoot = process.cwd();
 const DEFAULT_RUNTIME_LOG_CHARS = 32_768;
@@ -187,12 +188,14 @@ const e2eWindowPresentation = (
 export async function launchNodexElectronApplication(
   input: NodexElectronLaunchInput,
 ): Promise<ElectronApplication> {
+  const executablePath =
+    input.executablePath ?? (await prepareElectronRuntime({ projectRoot: repositoryRoot }));
   // Exercise the app's initialize identity, not an inherited host-client override.
   const inheritedEnvironment = Object.fromEntries(
     Object.entries(process.env).filter(([key]) => key !== "CODEX_INTERNAL_ORIGINATOR_OVERRIDE"),
   );
   return await electron.launch({
-    ...(input.executablePath ? { executablePath: input.executablePath } : {}),
+    executablePath,
     args: [
       ...(input.isolatedHostHome
         ? ["-r", path.join(repositoryRoot, "scripts/scenarios/harness/electron-isolated-paths.cjs")]

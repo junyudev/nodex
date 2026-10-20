@@ -7,6 +7,28 @@ const result = (exitCode = 0) => ({ exitCode, signal: null, durationMs: 1 });
 const root = path.resolve(".");
 
 describe("test execution", () => {
+  test("prepares Electron before focused discovery resolves its runtime", async () => {
+    const events: string[] = [];
+    await runTests(parseTestSelection(["main", CODEX_SCALE_TEST]), {
+      repositoryRoot: root,
+      env: {},
+      signal: new AbortController().signal,
+      prepareElectron: async () => {
+        events.push("electron");
+        return "/tmp/electron";
+      },
+      discover: async () => {
+        events.push("discover");
+        return [CODEX_SCALE_TEST];
+      },
+      prepare: async () => ({ executables: {} }),
+      execute: async () => {
+        events.push("test");
+        return result();
+      },
+    });
+    expect(events).toEqual(["electron", "discover", "test"]);
+  });
   test("forwards focused paths and Vitest flags without shell parsing", () => {
     const args = ["src/main/path with spaces.node.test.ts", "-t", "literal $value"];
     expect(parseTestSelection(["core-client", ...args], "default")).toMatchObject({
@@ -25,6 +47,7 @@ describe("test execution", () => {
     const events: string[] = [];
     const exit = await runTests(parseTestSelection(["standard"]), {
       repositoryRoot: root,
+      prepareElectron: async () => "/tmp/electron",
       env: {},
       signal: new AbortController().signal,
       prepare: async (artifacts) => {
@@ -53,6 +76,7 @@ describe("test execution", () => {
   test("prepares only bridge for an actually discovered bridge selection", async () => {
     await runTests(parseTestSelection(["core-client", YJS_YRS_TEST]), {
       repositoryRoot: root,
+      prepareElectron: async () => "/tmp/electron",
       env: {},
       signal: new AbortController().signal,
       discover: async () => [YJS_YRS_TEST],
@@ -68,6 +92,7 @@ describe("test execution", () => {
     expect(
       await runTests(parseTestSelection(["standard"]), {
         repositoryRoot: root,
+        prepareElectron: async () => "/tmp/electron",
         env: {},
         signal: new AbortController().signal,
         prepare: async () => ({ executables: {} }),
@@ -83,6 +108,7 @@ describe("test execution", () => {
     await expect(
       runTests(parseTestSelection(["integration"]), {
         repositoryRoot: root,
+        prepareElectron: async () => "/tmp/electron",
         env: {},
         signal: new AbortController().signal,
         prepare: async () => {
@@ -100,6 +126,7 @@ describe("test execution", () => {
     expect(
       await runTests(parseTestSelection(["standard"]), {
         repositoryRoot: root,
+        prepareElectron: async () => "/tmp/electron",
         env: {},
         signal: controller.signal,
         prepare: async () => ({ executables: {} }),
@@ -117,6 +144,7 @@ describe("test execution", () => {
 test("a full Core stress tier does not prepare the default-only bridge", async () => {
   await runTests(parseTestSelection(["core-client"], "stress"), {
     repositoryRoot: root,
+    prepareElectron: async () => "/tmp/electron",
     env: {},
     signal: new AbortController().signal,
     discover: async (_suite, _args, _related, context) => {
@@ -136,6 +164,7 @@ test("stages the locked Agent runtime before a discovered real-history pressure 
   const events: string[] = [];
   const exit = await runTests(parseTestSelection(["main", CODEX_SCALE_TEST], "stress"), {
     repositoryRoot: root,
+    prepareElectron: async () => "/tmp/electron",
     env: {},
     signal: new AbortController().signal,
     discover: async () => [CODEX_SCALE_TEST],

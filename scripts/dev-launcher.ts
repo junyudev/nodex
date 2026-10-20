@@ -252,10 +252,7 @@ const pnpmScript = (script: string, ...arguments_: readonly string[]): Supervise
 });
 
 // electron-vite reads path.txt directly, bypassing Electron's lazy runtime download.
-const prepareElectronRuntime: SupervisedCommandPlan = {
-  command: "pnpm",
-  args: ["exec", "install-electron"],
-};
+const prepareElectronRuntime: SupervisedCommandPlan = pnpmScript("electron:prepare");
 
 export const createDevLaunchPlan = (input: {
   readonly arguments: DevLauncherArguments;
