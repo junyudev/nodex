@@ -587,11 +587,12 @@ The test commands follow production boundaries:
   Chromium's built-in `toHaveTextContent` checks the complete normalized text;
   use `toMatchTextContent` for a substring or regular expression.
 - `vp run test:integration` runs integration tests in Electron's Node runtime.
-- Rust development and test profiles retain full debug information in separate
-  build artifacts (`split-debuginfo = "unpacked"`) on every host. Keep these
-  artifacts for native debugging. Core hashes its executable during startup;
-  embedding full debug information can exceed its executable admission limit
-  on Linux even when the corresponding macOS build remains within the limit.
+- Rust development and test profiles retain file/line backtraces with
+  `debug = "line-tables-only"`, incremental compilation, and separate debug
+  artifacts (`split-debuginfo = "unpacked"`). For variable/type debugging, set
+  `CARGO_PROFILE_DEV_DEBUG=full CARGO_PROFILE_TEST_DEBUG=full` on the command;
+  Cargo rebuilds the affected profile. Core hashes its executable during startup, so keep debug data outside
+  that executable admission input.
 - `vp run test:stress` runs every catalogued stress owner, including core-client,
   one worker at a time, independently of the ordinary suite.
 - `vp run verify:test-inventory` compares independent repository enumeration with

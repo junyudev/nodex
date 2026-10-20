@@ -83,8 +83,10 @@ yrs = { version = "=0.27.4", features = ["sync", "small-client"] }
 unsafe_code = "forbid"
 
 [profile.dev]
-# Keep full debugger information outside the executable on every host. Core
-# hashes its executable at startup, so embedded DWARF must not inflate that input.
+# Keep file/line backtraces without variable/type debug data. Set
+# CARGO_PROFILE_DEV_DEBUG=full (or CARGO_PROFILE_TEST_DEBUG=full) for LLDB locals.
+debug = "line-tables-only"
+# Core hashes its executable at startup; keep DWARF outside that input.
 split-debuginfo = "unpacked"
 
 [profile.dev.package.sha2]
