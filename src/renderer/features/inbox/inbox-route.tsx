@@ -15,12 +15,18 @@ import {
   CloseIcon,
   DeleteIcon,
   DispatchIcon,
+  HistoryIcon,
+  InboxIcon,
   SettingsGeneralIcon,
   AskAiIcon,
 } from "@/components/shared/icons";
 import { useApplicationPending } from "@/bootstrap/application-surface";
 import { NodexButton } from "@/components/ui/button";
-import { NodexTooltip } from "@/components/ui/tooltip";
+import {
+  SURFACE_TOOLBAR_ROW_CLASS,
+  surfaceViewPillClassName,
+} from "@/components/workbench/surface-toolbar";
+import { ToolbarIconButton } from "@/components/workbench/workbench-panel-controls";
 import { AppShellHeaderContentRegistrar } from "@/lib/workbench-ui-scopes";
 import { cn } from "@/lib/utils";
 import { ThreadTimestampSeparator } from "@/features/local-conversation/view/shared/thread-timestamp-separator";
@@ -53,6 +59,8 @@ import {
 } from "./use-inbox";
 
 const STICK_TO_BOTTOM_PX = 160;
+
+const INBOX_VIEW_ICONS = { inbox: InboxIcon, processed: HistoryIcon } as const;
 
 export interface InboxRouteProps {
   /**
@@ -95,59 +103,43 @@ function InboxHeader({
   return (
     <header
       className={cn(
-        "grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4",
-        inline
-          ? "mx-auto h-11 max-w-(--thread-content-max-width) shrink-0 px-toolbar"
-          : "electron:h-toolbar",
+        // A Project's Inbox is one of its tabs, so it tops the tab like a Board's views do.
+        inline ? cn(SURFACE_TOOLBAR_ROW_CLASS, "shrink-0") : "flex w-full items-center gap-2",
+        !inline && "electron:h-toolbar",
       )}
     >
-      <div role="tablist" aria-label="Inbox view" className="flex min-w-0 items-center">
-        {(["inbox", "processed"] as const).map((option) => (
-          <button
-            key={option}
-            type="button"
-            role="tab"
-            aria-selected={view === option}
-            onClick={() => onViewChange(option)}
-            className={cn(
-              "cursor-interaction inline-flex h-7 items-center gap-1.5 rounded-lg px-2 text-base transition-colors",
-              view === option
-                ? "font-medium text-token-foreground"
-                : "text-token-description-foreground hover:text-token-foreground",
-            )}
-          >
-            {INBOX_VIEW_LABELS[option]}
-            {option === "inbox" && inboxCount > 0 ? (
-              <span className="text-xs font-normal text-token-description-foreground tabular-nums">
-                {inboxCount}
-              </span>
-            ) : null}
-          </button>
-        ))}
-      </div>
-      <div className="flex items-center gap-0.5">
-        {databaseId ? (
-          <NodexTooltip tooltipContent={databaseLabel} side="bottom">
-            <NodexButton
-              size="icon-xs"
-              variant="ghost"
-              aria-label={databaseLabel}
-              onClick={() => onOpenDatabase(databaseId)}
+      <div role="tablist" aria-label="Inbox view" className="-ml-1 flex min-w-0 items-center">
+        {(["inbox", "processed"] as const).map((option) => {
+          const ViewIcon = INBOX_VIEW_ICONS[option];
+          return (
+            <button
+              key={option}
+              type="button"
+              role="tab"
+              aria-selected={view === option}
+              onClick={() => onViewChange(option)}
+              className={cn(surfaceViewPillClassName({ active: view === option }), "mx-0.5")}
             >
-              <BoardIcon className="icon-xs" />
-            </NodexButton>
-          </NodexTooltip>
+              <ViewIcon className="size-4 shrink-0 text-current" />
+              <span className="ml-1.5">{INBOX_VIEW_LABELS[option]}</span>
+              {option === "inbox" && inboxCount > 0 ? (
+                <span className="ml-1.5 font-normal text-token-text-tertiary tabular-nums">
+                  {inboxCount}
+                </span>
+              ) : null}
+            </button>
+          );
+        })}
+      </div>
+      <div className="ml-auto flex items-center gap-0.5">
+        {databaseId ? (
+          <ToolbarIconButton label={databaseLabel} onClick={() => onOpenDatabase(databaseId)}>
+            <BoardIcon className="icon-sm" />
+          </ToolbarIconButton>
         ) : null}
-        <NodexTooltip tooltipContent="Inbox settings" side="bottom">
-          <NodexButton
-            size="icon-xs"
-            variant="ghost"
-            aria-label="Inbox settings"
-            onClick={onOpenSettings}
-          >
-            <SettingsGeneralIcon className="icon-xs" />
-          </NodexButton>
-        </NodexTooltip>
+        <ToolbarIconButton label="Inbox settings" onClick={onOpenSettings}>
+          <SettingsGeneralIcon className="icon-sm" />
+        </ToolbarIconButton>
       </div>
     </header>
   );

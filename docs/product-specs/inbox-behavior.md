@@ -393,10 +393,17 @@ creates a second message, and does not count against the Agent budget again.
   way it focuses the composer. The command palette exposes the same command as
   `Open Inbox`.
 - The Inbox header offers:
-  - the `Inbox` and `History` tabs;
+  - the `Inbox` and `History` views, as pills with their glyphs like a
+    Database's views, the Inbox showing its count;
   - `Open Inbox as a Database` in the Library Inbox, or `Open Board` in a
     Project's Inbox;
   - `Inbox settings`.
+
+  The Library Inbox's header sits in the window's title bar. A Project's Inbox
+  is one of the Project's tabs, so its header spans the tab like a Board's:
+  views at the start and tools at the end, in the same places as on every
+  other tab.
+
 - `Settings → Inbox` holds these Profile preferences:
   - whether suggestions run;
   - the suggestion runtime and optional model;

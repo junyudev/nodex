@@ -1,3 +1,4 @@
+import { SURFACE_TOOLBAR_ROW_CLASS, surfaceViewPillClassName } from "./surface-toolbar";
 import {
   DndContext,
   type DragEndEvent,
@@ -87,15 +88,8 @@ function DatabaseViewTabPill({
   const showIcon = displayMode !== "text_only";
   const showLabel = displayMode !== "icon_only";
   const className = cn(
-    "group/view inline-flex h-8 max-w-[220px] shrink-0 items-center justify-center rounded-[20px]",
-    "px-3 text-sm font-medium leading-[16.8px] whitespace-nowrap outline-none",
-    "focus-visible:ring-2 focus-visible:ring-(--ring)/35",
+    surfaceViewPillClassName({ active, menuOpen }),
     overlay && "pointer-events-none shadow-none",
-    active
-      ? menuOpen
-        ? "bg-token-foreground/10 text-token-text-primary"
-        : "bg-token-foreground/5 text-token-text-primary"
-      : "text-token-text-secondary hover:bg-token-foreground/5 hover:text-token-text-primary",
   );
   const content = (
     <>
@@ -315,8 +309,8 @@ export function DbViewToolbar({
       data-testid={DB_VIEW_TOOLBAR_TEST_ID}
       data-database-view-tab-drag-over={dragOverItemId ?? undefined}
     >
-      <div className="h-10 pl-4 pr-2">
-        <div className="flex h-10 items-center gap-2">
+      <div className="h-10">
+        <div className={SURFACE_TOOLBAR_ROW_CLASS}>
           <div className="flex min-w-0 shrink items-center">
             <NodexContextMenuRoot open={menuOpen} onOpenChange={handleMenuOpenChange}>
               <NodexContextMenuTrigger>
