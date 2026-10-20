@@ -1,0 +1,28 @@
+scripts/prepare-electron-runtime.test.ts
+  s_61befdbfc1bda3::t_e56bc4a3a2700b 167
+  s_61befdbfc1bda3::t_79f383ae72ed95 9,163,199
+  s_61befdbfc1bda3::t_71157e80165ea4 2,16-17,108,139,151,157-162,164-166,168-198,200-204
+  s_61befdbfc1bda3::t_59fe928b05832a 205-214
+scripts/prepare-electron-runtime-cli.ts
+  s_61befdbfc1bda3::t_804d055629d09d 1-11
+package.json
+  s_61befdbfc1bda3::t_804d055629d09d 188
+scripts/prepare-electron-runtime.ts
+  s_61befdbfc1bda3::t_804d055629d09d 39-40,98,100
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "bec6aa9237f6c36213a564207cfeeb824d60dfe7",
+  "prompts": {},
+  "sessions": {
+    "s_61befdbfc1bda3": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1585c-7bfb-7b90-8054-48511c1b75c7",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
