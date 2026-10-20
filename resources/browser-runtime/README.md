@@ -72,8 +72,9 @@ Updating the runtime is an explicit maintainer workflow:
      --arm64 .generated/browser-runtime-release/<arm64-asset>.tar.gz
    ```
 
-   The publisher proves the local archive against that lock, including exact
-   name, size, digest, manifest, target architecture, and complete artifact
+   The publisher proves the local archive against that lock in a fresh temporary
+   extraction, so shared runtime caches cannot substitute for upload verification.
+   This includes exact name, size, digest, manifest, target architecture, and complete artifact
    closure. It creates or resumes a draft, rejects every unexpected or
    mismatched remote asset, uploads only missing archives, and publishes only
    after the draft is exact. It passes `--latest=false` throughout and verifies

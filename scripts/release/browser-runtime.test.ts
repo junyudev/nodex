@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, expect, test } from "vite-plus/test";
@@ -134,6 +134,13 @@ test("Browser runtime publisher proves the archive against the reviewed release 
   await expect(
     verifyBrowserRuntimePublishInput({ ...options, repo: "example/wrong-repository" }),
   ).rejects.toThrow("does not match its release lock");
+
+  const archiveBytes = readFileSync(options.arm64Path);
+  archiveBytes[0] = archiveBytes[0]! ^ 0xff;
+  writeFileSync(options.arm64Path, archiveBytes);
+  await expect(verifyBrowserRuntimePublishInput(options)).rejects.toThrow(
+    "archive checksum mismatch",
+  );
 
   writeFileSync(options.arm64Path, "tampered");
   await expect(verifyBrowserRuntimePublishInput(options)).rejects.toThrow("archive size mismatch");
