@@ -1,4 +1,5 @@
 import { SCROLL_SAVE_DEBOUNCE_MS } from "./timing";
+import { findViewportAnchor } from "./viewport-memory";
 import {
   loadPageStageViewportSnapshot,
   rememberPageStageViewportSnapshot,
@@ -42,23 +43,10 @@ function findAnchorElement(
   contentRoot: HTMLElement,
   scrollElement: HTMLElement,
 ): HTMLElement | null {
-  const viewport = scrollElement.getBoundingClientRect();
-  const candidates = contentRoot.querySelectorAll<HTMLElement>(BLOCK_SELECTOR);
-  let partiallyVisibleCandidate: HTMLElement | null = null;
-  for (const candidate of candidates) {
-    const rect = candidate.getBoundingClientRect();
-    if (rect.height <= 0) continue;
-    if (rect.bottom <= viewport.top + EDGE_EPSILON_PX) continue;
-    if (rect.top >= viewport.bottom - EDGE_EPSILON_PX) continue;
-    partiallyVisibleCandidate ??= candidate;
-    if (
-      rect.top >= viewport.top - EDGE_EPSILON_PX &&
-      rect.bottom <= viewport.bottom + EDGE_EPSILON_PX
-    ) {
-      return candidate;
-    }
-  }
-  return partiallyVisibleCandidate;
+  return findViewportAnchor(
+    scrollElement,
+    contentRoot.querySelectorAll<HTMLElement>(BLOCK_SELECTOR),
+  );
 }
 
 function captureSnapshot(viewport: MountedViewport): PageStageViewportSnapshot {

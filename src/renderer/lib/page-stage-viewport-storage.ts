@@ -1,3 +1,5 @@
+import { createViewportMemory } from "./viewport-memory";
+
 const STORAGE_KEY = "nodex-page-stage-viewport-v2";
 const LEGACY_STORAGE_KEY = "nodex-page-stage-scroll-v1";
 const MAX_ENTRIES = 200;
@@ -23,10 +25,7 @@ export type PageStageViewportSnapshot =
       readonly fallbackScrollTop: number;
     });
 
-type ViewportMap = Record<string, PageStageViewportSnapshot>;
 type LegacyScrollMap = Record<string, number>;
-
-const hotSnapshots = new Map<string, PageStageViewportSnapshot>();
 
 function makeKey(documentScopeKey: string, pageId: string, editorSessionKey?: string): string {
   if (editorSessionKey) return `page-stage-session:${editorSessionKey}`;
@@ -81,24 +80,6 @@ function decodeSnapshot(value: unknown): PageStageViewportSnapshot | null {
   };
 }
 
-function readViewportMap(): ViewportMap {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return {};
-    const parsed = JSON.parse(raw);
-    if (!parsed || typeof parsed !== "object") return {};
-
-    const result: ViewportMap = {};
-    for (const [key, value] of Object.entries(parsed)) {
-      const snapshot = decodeSnapshot(value);
-      if (snapshot) result[key] = snapshot;
-    }
-    return result;
-  } catch {
-    return {};
-  }
-}
-
 function readLegacyScrollMap(): LegacyScrollMap {
   try {
     const raw = localStorage.getItem(LEGACY_STORAGE_KEY);
@@ -116,27 +97,11 @@ function readLegacyScrollMap(): LegacyScrollMap {
   }
 }
 
-function writeViewportMap(map: ViewportMap): void {
-  try {
-    const keys = Object.keys(map);
-    if (keys.length > MAX_ENTRIES) {
-      for (const key of keys.slice(0, keys.length - MAX_ENTRIES)) delete map[key];
-    }
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(map));
-  } catch {
-    // localStorage may be unavailable in restricted renderer contexts.
-  }
-}
-
-function rememberHotSnapshot(key: string, snapshot: PageStageViewportSnapshot): void {
-  hotSnapshots.delete(key);
-  hotSnapshots.set(key, snapshot);
-  while (hotSnapshots.size > MAX_ENTRIES) {
-    const oldestKey = hotSnapshots.keys().next().value;
-    if (typeof oldestKey !== "string") return;
-    hotSnapshots.delete(oldestKey);
-  }
-}
+const memory = createViewportMemory({
+  storageKey: STORAGE_KEY,
+  decode: decodeSnapshot,
+  maxEntries: MAX_ENTRIES,
+});
 
 export function rememberPageStageViewportSnapshot(
   documentScopeKey: string,
@@ -144,7 +109,7 @@ export function rememberPageStageViewportSnapshot(
   snapshot: PageStageViewportSnapshot,
   editorSessionKey?: string,
 ): void {
-  rememberHotSnapshot(makeKey(documentScopeKey, pageId, editorSessionKey), snapshot);
+  memory.remember(makeKey(documentScopeKey, pageId, editorSessionKey), snapshot);
 }
 
 export function savePageStageViewportSnapshot(
@@ -153,12 +118,7 @@ export function savePageStageViewportSnapshot(
   snapshot: PageStageViewportSnapshot,
   editorSessionKey?: string,
 ): void {
-  const key = makeKey(documentScopeKey, pageId, editorSessionKey);
-  rememberHotSnapshot(key, snapshot);
-  const map = readViewportMap();
-  delete map[key];
-  map[key] = snapshot;
-  writeViewportMap(map);
+  memory.save(makeKey(documentScopeKey, pageId, editorSessionKey), snapshot);
 }
 
 export function loadPageStageViewportSnapshot(
@@ -167,14 +127,8 @@ export function loadPageStageViewportSnapshot(
   editorSessionKey?: string,
 ): PageStageViewportSnapshot | null {
   const key = makeKey(documentScopeKey, pageId, editorSessionKey);
-  const hotSnapshot = hotSnapshots.get(key);
-  if (hotSnapshot) return hotSnapshot;
-
-  const snapshot = readViewportMap()[key];
-  if (snapshot) {
-    rememberHotSnapshot(key, snapshot);
-    return snapshot;
-  }
+  const snapshot = memory.load(key);
+  if (snapshot) return snapshot;
 
   const legacyScrollTop =
     readLegacyScrollMap()[makeLegacyKey(documentScopeKey, pageId, editorSessionKey)];
@@ -184,7 +138,7 @@ export function loadPageStageViewportSnapshot(
     kind: "offset",
     scrollTop: legacyScrollTop,
   };
-  rememberHotSnapshot(key, migrated);
+  memory.remember(key, migrated);
   return migrated;
 }
 
@@ -194,11 +148,7 @@ export function forgetPageStageViewportSnapshot(
   editorSessionKey?: string,
 ): void {
   const key = makeKey(documentScopeKey, pageId, editorSessionKey);
-  hotSnapshots.delete(key);
-
-  const map = readViewportMap();
-  delete map[key];
-  writeViewportMap(map);
+  memory.forget(key);
 
   try {
     const legacyMap = readLegacyScrollMap();
