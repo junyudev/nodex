@@ -27,7 +27,7 @@ uses the same policy through
 - Safe by default: common secret-bearing fields are redacted before write.
 - Bounded: large payloads are truncated so logging cannot explode on huge objects or prompts.
 - Sink-specific: terminal, durable file, and observer thresholds are independent.
-- Backpressure-aware: disk latency cannot create an unbounded in-memory write buffer.
+- Backpressure-aware: slow disks and terminals cannot create unbounded in-memory write buffers.
 - Cheap to adopt: services use child loggers with contextual bindings instead of building custom wrappers.
 - Non-fatal: logging must never throw back into application control flow.
 
@@ -51,12 +51,23 @@ Important properties:
 - Each producer's segments are bounded by both a 14-day retention policy and a
   100 MiB budget. A producer never rotates or unlinks another live producer's
   active segment.
-- Bounded asynchronous queues isolate file and terminal I/O from business work. Queue
+- Bounded asynchronous file queues isolate disk I/O from business work. Queue
   pressure discards trace/debug/info before warn/error and emits one structured
   dropped-record summary for the accumulated pressure interval.
+- Electron terminal output has no additional queue. A full stdout or stderr
+  stream drops subsequent terminal records until `drain`; dropped terminal
+  output does not affect files or observers. Records larger than 64 KiB,
+  including the newline, are omitted from terminal output.
 - Files are created with mode `0600`; a newly created log directory uses mode `0700`.
-- Stream failures disable only the file sink, emit one emergency terminal error, and never fail application work.
+- File failures disable only the file sink and attempt one emergency terminal
+  error through the same protected terminal writer. A terminal write failure
+  disables that stream for its lifetime without reporting back into logging.
 - The active profile is determined by the same `NODEX_HOME` resolution used elsewhere in the app.
+- Bootstrap and runtime diagnostics use the same serializer, sink thresholds,
+  queues, and retained backend segments. Before acquiring the single-instance
+  lock, a launch uses only terminal and observer sinks so a rejected second
+  instance cannot modify the primary's files. Early startup exits flush pending
+  diagnostics before quitting; there is no separate bootstrap log.
 
 ## Default Runtime Behavior
 
@@ -472,6 +483,10 @@ rg '"level":"error"' ~/.nodex/logs/backend-2026-03-09-*.log
 ## Failure and Safety Properties
 
 - Serialization, observer, console, and file failures cannot escape into application code.
+- Terminal error listeners are installed before writing. Synchronous throws,
+  asynchronous write callbacks, error events, and stream closure disable only
+  the affected terminal stream. Listeners remain attached to absorb delayed
+  errors; stream failures never enter global uncaught-exception reporting.
 - File writes are best-effort append-only within the active segment; closed segments are never reopened unless a later process resumes the latest same-day segment below the size limit.
 - The writer waits for `drain`, bounds queued records and bytes, and favors warn/error records under pressure.
 - Shutdown waits for queued records and stream completion up to the configured flush bound.
@@ -483,7 +498,8 @@ rg '"level":"error"' ~/.nodex/logs/backend-2026-03-09-*.log
 Current logger-specific tests live in:
 
 - [src/main/logging/logger.test.ts](src/main/logging/logger.test.ts)
-- [src/main/bootstrap-log.test.ts](src/main/bootstrap-log.test.ts)
+- [src/main/logging/terminal-sink.test.ts](../../src/main/logging/terminal-sink.test.ts)
+- [src/main/logging/stdio-failure.test.ts](../../src/main/logging/stdio-failure.test.ts)
 - [src/main/codex-runtime/CodexRuntime.node.test.ts](../../src/main/codex-runtime/CodexRuntime.node.test.ts)
 - [packages/effect-codex-app-server/src/client.test.ts](../../packages/effect-codex-app-server/src/client.test.ts)
 - [packages/effect-codex-app-server/src/protocol.test.ts](../../packages/effect-codex-app-server/src/protocol.test.ts)
@@ -495,7 +511,7 @@ They cover:
 - truncation
 - independent sink filtering
 - file persistence, rotation, global capacity, and queue-pressure priority
-- bootstrap sink filtering
+- asynchronous terminal failures, closed pipes, backpressure, and independent durable logging
 - structured Codex RPC and stderr severity logging
 - explicit dev-metric opt-in
 

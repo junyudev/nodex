@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import { writeTerminalLog } from "./terminal-sink";
 import {
   isLogLevelEnabled,
   resolveLogSinkLevels,
@@ -597,11 +598,7 @@ class RotatingJsonlLogWriter {
     if (this.failureReported) return;
     this.failureReported = true;
     const detail = error instanceof Error ? error.message : String(error);
-    try {
-      process.stderr.write(`[nodex] ERROR backend file logging disabled: ${detail}\n`);
-    } catch {
-      // There is no remaining safe sink during a file and stderr failure.
-    }
+    writeTerminalLog("error", `[nodex] ERROR backend file logging disabled: ${detail}`);
   }
 }
 
@@ -660,12 +657,7 @@ class BackendLoggerImpl implements BackendLogger {
     }
 
     if (writeConsole) {
-      const stream = level === "warn" || level === "error" ? process.stderr : process.stdout;
-      try {
-        stream.write(`${line}\n`);
-      } catch {
-        // Ignore console sink failures.
-      }
+      writeTerminalLog(level, line);
     }
 
     if (writeFile) {

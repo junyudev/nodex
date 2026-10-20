@@ -4,9 +4,7 @@ import * as Effect from "effect/Effect";
 import { configureInstanceScopePaths } from "./instance-scope";
 import { resolveBootstrapConfig } from "./bootstrap-config";
 import { BootstrapRuntimeEventQueue } from "./bootstrap-events";
-import { writeBootstrapLog } from "./bootstrap-log";
-import { resolveLogSinkLevels } from "./logging/log-level";
-import { configureBackendLogger } from "./logging/logger";
+import { configureBackendLogger, getLogger, shutdownBackendLogger } from "./logging/logger";
 import { getDiagnosticsSettings } from "./settings/application-settings-persistence";
 import { captureMainException, initializeMainSentry } from "./observability/sentry-main";
 import { electronMainSentryAdapter } from "./observability/sentry-electron-main-adapter";
@@ -38,41 +36,27 @@ delete process.env[ISOLATED_RUN_ID_ENV];
 const bootstrapConfig = resolveBootstrapConfig({ isPackaged: app.isPackaged });
 const { nodexHome } = bootstrapConfig;
 process.env.NODEX_HOME = nodexHome;
-configureBackendLogger({
+const backendLoggerConfiguration = {
   cwd: process.cwd(),
   environment: bootstrapConfig.environment,
   nodexHome,
+};
+// A rejected second launch must not append to or prune the primary's log files.
+configureBackendLogger({
+  ...backendLoggerConfiguration,
+  environment: { ...bootstrapConfig.environment, NODEX_LOG_FILE: "false" },
 });
 configureInstanceScopePaths(app, nodexHome);
 const runtimeQueue = new BootstrapRuntimeEventQueue();
+const bootstrapLogger = getLogger({ scope: "bootstrap" });
 let primaryIsolatedRunId: string | null = null;
-
-function parseBooleanEnv(value: string | undefined, fallback: boolean): boolean {
-  if (value === undefined) return fallback;
-  const normalized = value.trim().toLowerCase();
-  if (normalized === "0" || normalized === "false" || normalized === "no" || normalized === "off")
-    return false;
-  if (normalized === "1" || normalized === "true" || normalized === "yes" || normalized === "on")
-    return true;
-  return fallback;
-}
 
 function logBootstrap(
   level: "info" | "warn" | "error",
   message: string,
   fields: Record<string, unknown> = {},
 ): void {
-  const defaultSinkEnabled = !app.isPackaged;
-  const sinkLevels = resolveLogSinkLevels(bootstrapConfig.environment);
-  writeBootstrapLog(nodexHome, level, message, fields, {
-    consoleEnabled: parseBooleanEnv(
-      bootstrapConfig.environment.NODEX_LOG_CONSOLE,
-      defaultSinkEnabled,
-    ),
-    fileEnabled: parseBooleanEnv(bootstrapConfig.environment.NODEX_LOG_FILE, defaultSinkEnabled),
-    consoleLevel: sinkLevels.console,
-    fileLevel: sinkLevels.file,
-  });
+  bootstrapLogger[level](message, fields);
 }
 
 function initializeBootstrapDiagnostics(): Promise<boolean> {
@@ -318,16 +302,16 @@ function registerPrimaryInstance(): void {
   });
 
   process.on("uncaughtException", (error) => {
-    logBootstrap("error", "Uncaught exception before runtime startup", { error });
+    logBootstrap("error", "Uncaught Main process exception", { error });
     captureMainException(error, {
-      tags: { phase: "bootstrap", kind: "uncaughtException" },
+      tags: { runtime: "electron-main", kind: "uncaughtException" },
     });
   });
 
   process.on("unhandledRejection", (reason) => {
-    logBootstrap("error", "Unhandled rejection before runtime startup", { reason });
+    logBootstrap("error", "Unhandled Main process rejection", { reason });
     captureMainException(reason, {
-      tags: { phase: "bootstrap", kind: "unhandledRejection" },
+      tags: { runtime: "electron-main", kind: "unhandledRejection" },
     });
   });
 }
@@ -341,16 +325,15 @@ function bootstrapApplication(): boolean {
     });
   } catch (error) {
     logBootstrap("error", "Isolated run ownership validation failed", { error });
-    app.quit();
     return false;
   }
 
   const hasSingleInstanceLock = app.requestSingleInstanceLock();
   if (!hasSingleInstanceLock) {
     logBootstrap("info", "Another Nodex instance already owns this profile");
-    app.quit();
     return false;
   }
+  configureBackendLogger(backendLoggerConfiguration);
 
   if (isolatedRunAccess.kind === "supervised") {
     try {
@@ -362,7 +345,6 @@ function bootstrapApplication(): boolean {
       primaryIsolatedRunId = isolatedRunAccess.runId;
     } catch (error) {
       logBootstrap("error", "Isolated run primary-host claim failed", { error });
-      app.quit();
       return false;
     }
   }
@@ -372,3 +354,4 @@ function bootstrapApplication(): boolean {
 }
 
 if (bootstrapApplication()) launchMainApplication();
+else void shutdownBackendLogger().finally(() => app.quit());

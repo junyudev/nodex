@@ -95,6 +95,53 @@ async function withTempLoggerEnv(run: (root: string) => Promise<void>): Promise<
 }
 
 describe("backend logger", () => {
+  test("leaves the primary's files untouched until file logging is admitted", async () => {
+    await withTempLoggerEnv(async (root) => {
+      const loggerModule = await importLoggerModule();
+      const configuration = {
+        cwd: process.cwd(),
+        nodexHome: root,
+        environment: {
+          ...process.env,
+          NODEX_LOG_MAX_FILE_BYTES: "1024",
+          NODEX_LOG_MAX_TOTAL_BYTES: "1024",
+        },
+      };
+      loggerModule.configureBackendLogger({
+        ...configuration,
+        environment: { ...configuration.environment, NODEX_LOG_FILE: "false" },
+      });
+      const bootstrap = loggerModule.getLogger({ scope: "bootstrap" });
+      const logDir = loggerModule.getBackendLogDirectory();
+      const primaryFile = path.join(logDir, "backend-2020-01-01-000.log");
+      fs.mkdirSync(logDir);
+      fs.writeFileSync(primaryFile, "primary process diagnostic\n");
+
+      try {
+        bootstrap.warn("Profile already owned");
+        expect(fs.readdirSync(logDir)).toEqual([path.basename(primaryFile)]);
+        expect(fs.readFileSync(primaryFile, "utf8")).toBe("primary process diagnostic\n");
+
+        loggerModule.configureBackendLogger(configuration);
+        bootstrap.info("Profile acquired");
+        await loggerModule.shutdownBackendLogger();
+
+        const records = fs.readdirSync(logDir).flatMap((name) =>
+          fs
+            .readFileSync(path.join(logDir, name), "utf8")
+            .trim()
+            .split("\n")
+            .map((line) => JSON.parse(line) as { scope: string; msg: string }),
+        );
+        expect(records.map(({ scope, msg }) => [scope, msg])).toEqual([
+          ["bootstrap", "Profile acquired"],
+        ]);
+      } finally {
+        await loggerModule.resetBackendLoggerForTests();
+      }
+    });
+  });
+
   test("keeps info logs durable while the terminal defaults to warn and above", async () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "nodex-logger-test-"));
     process.env.NODEX_HOME = root;
