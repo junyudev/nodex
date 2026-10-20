@@ -1,0 +1,21 @@
+Cargo.toml
+  s_95332696c50923::t_938550c7e8882c 86-89
+docs/development.md
+  s_95332696c50923::t_c5ed1b2b9b1061 590-595
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "245e2b3d2fccca31caf5567696c1e8600cc3bea1",
+  "prompts": {},
+  "sessions": {
+    "s_95332696c50923": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a15850-3732-7aa0-a93b-5b00ac465c0d",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
