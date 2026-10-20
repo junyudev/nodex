@@ -1,16 +1,8 @@
-/// <reference types="vite/client" />
 import { act, fireEvent, render, waitFor } from "@testing-library/react";
-import { beforeAll, describe, expect, test } from "vite-plus/test";
+import { describe, expect, test } from "vite-plus/test";
 import "../../../../globals.css";
-import { streamdownCodePlugin } from "../../../../lib/streamdown";
-import { NFM_CODE_THEME_PAIR } from "../../../../lib/syntax-highlighting";
+import { waitForStreamdownCodeHighlight } from "../../../../test/dom";
 import { UserMessageText } from "./user-message-collapse";
-
-// Streamdown exposes no preload API for its lazy code body; settle that installed chunk before geometry assertions.
-const codeBodies = import.meta.glob("/node_modules/streamdown/dist/highlighted-body-*.js");
-beforeAll(async () => {
-  await Promise.all(Object.values(codeBodies).map((load) => load()));
-});
 
 describe("UserMessageText browser collapse", () => {
   test("measures real layout and removes clipped links from keyboard navigation", async () => {
@@ -63,25 +55,12 @@ describe("UserMessageText browser collapse", () => {
       fence +
       "\n\n" +
       Array.from({ length: 30 }, (_, index) => `After code ${index}`).join("\n");
-    let view!: ReturnType<typeof render>;
-    await act(async () => {
-      view = render(
-        <div style={{ width: 420 }}>
-          <UserMessageText text={text} collapsedLineCount={5} />
-        </div>,
-      );
-      await new Promise((resolve) => {
-        const result = streamdownCodePlugin.highlight(
-          {
-            code: codeText,
-            language: "typescript",
-            themes: [...NFM_CODE_THEME_PAIR],
-          },
-          resolve,
-        );
-        if (result) resolve(result);
-      });
-    });
+    const view = render(
+      <div style={{ width: 420 }}>
+        <UserMessageText text={text} collapsedLineCount={5} />
+      </div>,
+    );
+    await waitForStreamdownCodeHighlight(view.container);
     await view.findByRole("button", { name: "Show more" });
     await act(async () => {
       await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
