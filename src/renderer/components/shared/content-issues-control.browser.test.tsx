@@ -42,6 +42,10 @@ async function click(
     fireEvent.click(view.getByRole(role, { name }));
     await Promise.resolve();
   });
+  // Floating surfaces finish their open/close lifecycle on the next browser frame.
+  await act(async () => {
+    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+  });
 }
 async function openClearConfirmation(view: ReturnType<typeof renderWithAppMaitai>) {
   await click(view, /^More actions for /);
