@@ -130,6 +130,8 @@ export async function verifyBrowserRuntimePublishInput(
   try {
     await materializeBrowserRuntime({
       archivePath: arm64Path,
+      // Publication must inspect these archive bytes even when a shared extraction is cached.
+      cachePath: join(verificationRoot, "cache"),
       lockPath,
       outputPath: join(verificationRoot, "arm64"),
       targetArch: "arm64",

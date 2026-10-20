@@ -1,6 +1,7 @@
 import { execFileSync } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
 import {
+  chmodSync,
   closeSync,
   constants,
   copyFileSync,
@@ -617,7 +618,8 @@ function assertEmptyDirectoryDestination(sourcePath: string, destinationPath: st
 
 /** Clones a tree into an absent or empty directory, preserving modes and internal relative symlinks. */
 export function cloneImmutableDirectory(sourcePath: string, destinationPath: string): void {
-  if (!lstatSync(sourcePath).isDirectory()) {
+  const source = lstatSync(sourcePath);
+  if (!source.isDirectory()) {
     throw new Error(`Immutable directory source must be a real directory: ${sourcePath}`);
   }
   assertEmptyDirectoryDestination(sourcePath, destinationPath);
@@ -637,4 +639,6 @@ export function cloneImmutableDirectory(sourcePath: string, destinationPath: str
     recursive: true,
     verbatimSymlinks: true,
   });
+  // cpSync preserves newly created directories, but leaves an existing root's mode unchanged.
+  chmodSync(destinationPath, source.mode & 0o7777);
 }
