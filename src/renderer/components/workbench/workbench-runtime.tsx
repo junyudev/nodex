@@ -1591,7 +1591,7 @@ export function WorkbenchRuntime({
     sidePanelOpen &&
     rightPanelFullWidth &&
     rightPanelComposerOverlayTarget &&
-    (activeImageEditorOwnsRootComposer || Boolean(activeSession.thread)) &&
+    (activeImageEditorOwnsRootComposer || hasSessionConversation(activeSession)) &&
     isRootThreadRightPanelComposerOverlayEligibleTab(rightActiveRenderableTab),
   );
   const shellCanNavigateBack = workbenchWindow.canNavigateBack;
@@ -2411,7 +2411,7 @@ export function WorkbenchRuntime({
   const scheduledChatOptions = useMemo<ScheduledTaskChatOption[]>(() => {
     const projectNames = new Map(projects.map((project) => [project.id, project.name]));
     return knownSessions
-      .filter((session) => !session.archived && (session.thread || session.executionRef))
+      .filter((session) => !session.archived && hasSessionConversation(session))
       .toSorted((left, right) => right.updatedAt.localeCompare(left.updatedAt))
       .map((session) => ({
         id: session.id,
@@ -4549,9 +4549,7 @@ export function WorkbenchRuntime({
               kind: "session",
               backendKind: activeRenderSession.thread?.backendBinding.kind ?? "codex",
               projectId: activeRenderSession.projectId,
-              hasAttachedThread: Boolean(
-                activeRenderSession.executionRef || activeRenderSession.thread,
-              ),
+              hasAttachedThread: hasSessionConversation(activeRenderSession),
               cwd: activeRenderSession.thread?.cwd,
               projectWorkspaceRoot: projectWorkspaceRootOrNull(activeSessionProject),
             },

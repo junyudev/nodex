@@ -910,6 +910,29 @@ describe("workbench session shell / layout-panel-actions", () => {
     });
   });
 
+  test("a Runtime-owned chat floats its composer over full-width content", async () => {
+    const runtimeSession = makeAttachedSession({
+      rightFullWidth: true,
+      thread: null,
+      executionRef: { runtimeId: "runtime:test", threadId: "runtime-thread-alpha" },
+    });
+    const screen = renderWorkbench({
+      sessionsByProject: { alpha: [runtimeSession] },
+    });
+    await settleAsyncRender();
+    await settleAsyncRender();
+    await settleAsyncRender();
+
+    const host = screen
+      .getByTestId("session-right-panel")
+      .querySelector('[data-right-panel-composer-overlay-host="true"]');
+    const props = (globalThis as { __lastConnectedThreadStageProps?: Record<string, unknown> })
+      .__lastConnectedThreadStageProps;
+    expect(host !== null).toBe(true);
+    expect(props?.rightPanelComposerOverlayEnabled).toBe(true);
+    expect(props?.rightPanelComposerOverlayTarget).toBe(host);
+  });
+
   test("a full-width Browser tab floats the same composer without reserving page space", async () => {
     const browserTab = makeSessionTab({
       id: "browser-tab",
