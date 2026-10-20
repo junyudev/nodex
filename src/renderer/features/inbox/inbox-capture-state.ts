@@ -1,43 +1,93 @@
 import { z } from "zod";
+import type { MessageDraftImage } from "@/components/message/message-images-input";
 import type { InboxPreparedConfirmation, InboxScope, InboxSendInput } from "../../../shared/inbox";
 import { inboxScopeKey } from "../../../shared/inbox";
 import {
   InboxSendInputSchema,
   InboxPreparedConfirmationSchema,
 } from "../../../shared/schemas/inbox";
+import { parseFileSource } from "../../../shared/file-resources";
+import {
+  composeMessageNfm,
+  messageImageBlock,
+  splitMessageContent,
+} from "../../../shared/message-content";
+import { parseNfm } from "../../../shared/nfm/parser";
+import { serializeNfm } from "../../../shared/nfm/serializer";
 import { createBoundedOperationId } from "../../../shared/operation-identity";
 import { createUuidV7 } from "../../../shared/uuid-v7";
 
+/** What the composer holds: the text as typed, read as Nested Markdown, and its images. */
+export interface InboxDraft {
+  readonly text: string;
+  readonly images: readonly MessageDraftImage[];
+}
+
+export const EMPTY_INBOX_DRAFT: InboxDraft = { text: "", images: [] };
+
+export const isEmptyInboxDraft = (draft: InboxDraft): boolean =>
+  draft.text.trim().length === 0 && draft.images.length === 0;
+
+/** How a draft is named while it waits to be saved: its text, else its images. */
+export const inboxDraftLabel = (draft: InboxDraft): string =>
+  draft.text.trim() || (draft.images.length === 1 ? "1 image" : `${draft.images.length} images`);
+
+export const inboxDraftBody = (draft: InboxDraft): string =>
+  composeMessageNfm(
+    draft.text,
+    draft.images.map((image) => image.block ?? messageImageBlock(image.fileId)),
+  );
+
+/** The draft a message in the message shape is rewritten from: its text, then its images. */
+export function inboxDraftFromBody(body: string): InboxDraft {
+  const { text, attachments } = splitMessageContent(parseNfm(body));
+  return {
+    text: serializeNfm([...text]),
+    images: attachments.flatMap((block) => {
+      const fileId = parseFileSource(block.source);
+      return fileId ? [{ fileId, name: "", block }] : [];
+    }),
+  };
+}
+
 export interface PendingInboxCapture {
   readonly intent: InboxSendInput;
+  /** The draft it was sent from, so recovering it restores the text and images exactly. */
+  readonly draft: InboxDraft;
   readonly draftRevision: number;
   readonly status: "pending" | "accepted" | "failed" | "needs_review";
   readonly error: string | null;
 }
 
 export interface InboxCaptureState {
-  readonly version: 1;
-  readonly draft: string;
+  readonly version: 2;
+  readonly draft: InboxDraft;
   readonly draftRevision: number;
   readonly captures: readonly PendingInboxCapture[];
   readonly decisions: Readonly<Record<string, InboxPreparedConfirmation>>;
 }
 
 export const EMPTY_INBOX_CAPTURE_STATE: InboxCaptureState = {
-  version: 1,
-  draft: "",
+  version: 2,
+  draft: EMPTY_INBOX_DRAFT,
   draftRevision: 0,
   captures: [],
   decisions: {},
 };
 
+const draftSchema = z.object({
+  text: z.string(),
+  images: z.array(z.object({ fileId: z.string().min(1), name: z.string() })),
+});
+
 const stateSchema = z.object({
-  version: z.literal(1),
-  draft: z.string(),
+  version: z.literal(2),
+  draft: draftSchema,
   draftRevision: z.number().int().nonnegative(),
   captures: z.array(
     z.object({
       intent: InboxSendInputSchema,
+      draft: draftSchema,
       draftRevision: z.number().int().nonnegative(),
       status: z.enum(["pending", "accepted", "failed", "needs_review"]),
       error: z.string().nullable(),
@@ -51,12 +101,26 @@ export const decodeInboxCaptureState = (value: unknown): InboxCaptureState =>
 
 /** Profile storage supplies the outer boundary; each writable window form gets its own key. */
 export const inboxCaptureStorageKey = (windowSessionId: string, scope: InboxScope): string =>
-  `inbox-capture-v1:${JSON.stringify([windowSessionId, inboxScopeKey(scope)])}`;
+  `inbox-capture-v2:${JSON.stringify([windowSessionId, inboxScopeKey(scope)])}`;
 
-export const changeInboxDraft = (state: InboxCaptureState, draft: string): InboxCaptureState => ({
+export const changeInboxDraft = (
+  state: InboxCaptureState,
+  change: (draft: InboxDraft) => InboxDraft,
+): InboxCaptureState => ({
   ...state,
-  draft,
+  draft: change(state.draft),
   draftRevision: state.draftRevision + 1,
+});
+
+/** A capture that may not have been saved goes back into the draft, after what is there. */
+export const recoverInboxDraft = (draft: InboxDraft, recovered: InboxDraft): InboxDraft => ({
+  text: [draft.text, recovered.text].filter((text) => text.trim()).join("\n\n"),
+  images: [
+    ...draft.images,
+    ...recovered.images.filter(
+      (image) => !draft.images.some((existing) => existing.fileId === image.fileId),
+    ),
+  ],
 });
 
 export function createInboxCapture(
@@ -73,8 +137,9 @@ export function createInboxCapture(
       issuedAt,
       storeEpoch,
       scope,
-      body: state.draft,
+      body: inboxDraftBody(state.draft),
     },
+    draft: state.draft,
     draftRevision: state.draftRevision,
     status: "pending",
     error: null,
@@ -96,7 +161,7 @@ export const consumeInboxDraft = (
 ): InboxCaptureState =>
   state.draftRevision !== capture.draftRevision
     ? state
-    : { ...state, draft: "", draftRevision: state.draftRevision + 1 };
+    : { ...state, draft: EMPTY_INBOX_DRAFT, draftRevision: state.draftRevision + 1 };
 
 export const settleInboxCapture = (
   state: InboxCaptureState,

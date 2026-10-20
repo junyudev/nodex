@@ -3152,6 +3152,15 @@ fn a_message_keeps_its_images_after_its_text() {
         ),
         CoreErrorCode::InvalidInput
     );
+    // An attachment is a Library File, so an image from elsewhere is Page content, not a message.
+    assert_eq!(
+        send_error(
+            module,
+            "external",
+            "The banner is cut off\n<image source=\"https://example.com/shot.png\">Banner</image>",
+        ),
+        CoreErrorCode::InvalidInput
+    );
     assert_eq!(
         send_error(module, "empty", "\n  \n"),
         CoreErrorCode::InvalidInput

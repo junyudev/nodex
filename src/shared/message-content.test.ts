@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vite-plus/test";
-import { messageTextNfm, splitMessageContent } from "./message-content";
+import {
+  composeMessageNfm,
+  messageImageBlock,
+  messageTextNfm,
+  splitMessageContent,
+} from "./message-content";
 import { parseNfm } from "./nfm/parser";
 
 const image = (id: string) => `<image source="nodex://files/${id}">${id}</image>`;
@@ -33,5 +38,29 @@ describe("splitMessageContent", () => {
     expect(messageTextNfm(["**Ship** the changelog", "- tag it", image("a")].join("\n"))).toBe(
       "**Ship** the changelog\n- tag it",
     );
+  });
+
+  it("writes a Composer's text and then its images, which read back as its attachments", () => {
+    const body = composeMessageNfm("Settings are cut off\r\n- on hover\n\n", [
+      messageImageBlock("a"),
+      messageImageBlock("b"),
+    ]);
+    expect(body).toBe(
+      'Settings are cut off\n- on hover\n<image source="nodex://files/a"></image>\n<image source="nodex://files/b"></image>',
+    );
+    const content = splitMessageContent(parseNfm(body));
+    expect(sources(content.text)).toEqual(["paragraph", "bulletListItem"]);
+    expect(sources(content.attachments)).toEqual(["nodex://files/a", "nodex://files/b"]);
+    expect(composeMessageNfm("  ", [messageImageBlock("a")])).toBe(
+      '<image source="nodex://files/a"></image>',
+    );
+  });
+
+  it("rewrites a message's images exactly as its Page has them", () => {
+    const body =
+      'Settings\n<image source="nodex://files/a" color="blue" preview-width="320">**Toolbar**</image>';
+    const { text, attachments } = splitMessageContent(parseNfm(body));
+    expect(text).toHaveLength(1);
+    expect(composeMessageNfm("Settings", attachments)).toBe(body);
   });
 });

@@ -30,6 +30,7 @@ import { InboxOutcomeLine } from "./inbox-outcome";
 import {
   describeInboxAction,
   describeInboxOutcome,
+  inboxPageRoutingContext,
   inboxTriageModel,
   isChatAction,
 } from "./inbox-presentation";
@@ -210,7 +211,7 @@ export function InboxTriage({
   readonly children: (parts: InboxTriageParts) => ReactNode;
 }) {
   const [editing, setEditing] = useState<{
-    readonly baseText: string;
+    readonly baseBody: string;
     readonly basis: InboxPageBasis;
   } | null>(null);
   const model = inboxTriageModel(item, suggestionsEnabled);
@@ -221,7 +222,7 @@ export function InboxTriage({
     <InboxIconAction
       label="Edit"
       icon={EditIcon}
-      onClick={() => setEditing({ baseText: item.body, basis: item.basis })}
+      onClick={() => setEditing({ baseBody: item.body, basis: item.basis })}
     />
   ) : (
     <InboxIconAction label="Edit as Page" icon={EditIcon} onClick={onEditAsPage} />
@@ -474,11 +475,12 @@ export function InboxTriage({
     return children({
       editor: (
         <InboxMessageEditor
-          text={editing.baseText}
-          currentText={item.body}
+          body={editing.baseBody}
+          currentBody={item.body}
+          routing={inboxPageRoutingContext(item)}
           onCancel={() => setEditing(null)}
-          onSave={async (text) => {
-            const saved = await actions.edit(item.pageId, editing.baseText, text, editing.basis);
+          onSave={async (body) => {
+            const saved = await actions.edit(item.pageId, editing.baseBody, body, editing.basis);
             if (saved) setEditing(null);
             return saved;
           }}

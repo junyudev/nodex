@@ -1,39 +1,61 @@
 import { useLayoutEffect, useRef, useState, type KeyboardEvent } from "react";
+import { MessageDocument } from "@/components/message/message-document";
+import {
+  MessageImagePicker,
+  MessageImageRow,
+  useMessageImageInput,
+} from "@/components/message/message-images-input";
 import { NodexButton } from "@/components/ui/button";
+import type { ContentRoutingContext } from "../../../shared/content-routing-context";
+import {
+  inboxDraftBody,
+  inboxDraftFromBody,
+  isEmptyInboxDraft,
+  type InboxDraft,
+} from "./inbox-capture-state";
+import { useInboxImageAccess } from "./use-inbox-image-access";
 
 const MAX_TEXTAREA_HEIGHT_PX = 320;
 
 /**
- * Rewrites a message in its own bubble, keyed like the Inbox composer: Enter saves, Shift+Enter
- * breaks the line, and Escape puts the message back as it was.
+ * Rewrites a message in its own bubble with the composer's text and images, keyed like the
+ * Inbox composer: Enter saves, Shift+Enter breaks the line, and Escape puts the message back.
  */
 export function InboxMessageEditor({
-  text,
-  currentText = text,
-  label = "Edit message",
-  saveLabel = "Save",
+  body,
+  currentBody = body,
+  routing,
   onSave,
   onCancel,
 }: {
-  readonly text: string;
-  readonly label?: string;
-  readonly saveLabel?: string;
-  readonly currentText?: string;
+  /** The message body the rewrite starts from. */
+  readonly body: string;
+  /** The body as it is now, which may have changed elsewhere since the rewrite began. */
+  readonly currentBody?: string;
+  /** Where images added during the rewrite are imported. */
+  readonly routing: ContentRoutingContext;
   /** Resolves false when the rewrite was not saved, so the draft stays open. */
-  readonly onSave: (text: string) => Promise<boolean>;
+  readonly onSave: (body: string) => Promise<boolean>;
   readonly onCancel: () => void;
 }) {
-  const [draft, setDraft] = useState(text);
+  const [draft, setDraft] = useState<InboxDraft>(() => inboxDraftFromBody(body));
   const [saving, setSaving] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const changed = draft.trim().length > 0 && draft !== text;
+  const images = useInboxImageAccess(routing);
+  const input = useMessageImageInput({
+    access: saving ? null : images,
+    onImported: (added) =>
+      setDraft((current) => ({ ...current, images: [...current.images, ...added] })),
+  });
+  const next = inboxDraftBody(draft);
+  const changed = !isEmptyInboxDraft(draft) && next !== body && !input.importing;
 
   useLayoutEffect(() => {
     const textarea = textareaRef.current;
     if (!textarea) return;
     textarea.style.height = "0px";
     textarea.style.height = `${Math.min(textarea.scrollHeight, MAX_TEXTAREA_HEIGHT_PX)}px`;
-  }, [draft]);
+  }, [draft.text]);
 
   useLayoutEffect(() => {
     const textarea = textareaRef.current;
@@ -44,7 +66,7 @@ export function InboxMessageEditor({
   const save = async () => {
     if (!changed || saving) return;
     setSaving(true);
-    if (!(await onSave(draft))) setSaving(false);
+    if (!(await onSave(next))) setSaving(false);
   };
 
   const handleKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -65,31 +87,57 @@ export function InboxMessageEditor({
         event.preventDefault();
         void save();
       }}
+      onDragOver={input.onDragOver}
+      onDrop={input.onDrop}
     >
+      <MessageImageRow
+        images={draft.images}
+        input={input}
+        readAuthority={images?.readAuthority ?? null}
+        onRemove={(fileId) =>
+          setDraft((current) => ({
+            ...current,
+            images: current.images.filter((image) => image.fileId !== fileId),
+          }))
+        }
+      />
       <textarea
         ref={textareaRef}
-        aria-label={label}
+        aria-label="Edit message"
         rows={1}
-        value={draft}
+        value={draft.text}
         disabled={saving}
-        onChange={(event) => setDraft(event.currentTarget.value)}
+        onChange={(event) => {
+          const text = event.currentTarget.value;
+          setDraft((current) => ({ ...current, text }));
+        }}
+        onPaste={input.onPaste}
         onKeyDown={handleKeyDown}
         className="w-full resize-none bg-transparent text-size-chat leading-relaxed text-inherit outline-none"
       />
-      {currentText !== text ? (
+      {currentBody !== body ? (
         <details className="text-xs text-token-description-foreground">
           <summary className="cursor-interaction">
-            Message changed elsewhere — view current text
+            Message changed elsewhere — view current message
           </summary>
-          <p className="mt-1 whitespace-pre-wrap">{currentText}</p>
+          <div className="mt-1">
+            <MessageDocument nfm={currentBody} fileAuthority={images?.readAuthority ?? null} />
+          </div>
         </details>
       ) : null}
-      <div className="flex items-center justify-end gap-1">
-        <NodexButton size="xs" variant="ghost" disabled={saving} onClick={onCancel}>
+      <div className="flex items-center gap-1">
+        {images ? <MessageImagePicker onFiles={input.add} disabled={saving} /> : null}
+        <NodexButton
+          size="xs"
+          variant="ghost"
+          className="ml-auto"
+          disabled={saving}
+          onClick={onCancel}
+        >
           Cancel
         </NodexButton>
         <NodexButton size="xs" variant="primary" type="submit" disabled={!changed || saving}>
-          {saveLabel}
+          Save
         </NodexButton>
       </div>
     </form>

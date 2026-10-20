@@ -57,12 +57,17 @@ intents, and selection.
   a short name in the message's language. A title the user or an earlier
   suggestion has changed is never replaced.
 - A message is saved whether or not any suggestion runtime is available. The
-  composer accepts text, read as Nested Markdown. `Enter` sends, and `Shift+Enter` inserts a line
-  break.
-- Drafts belong to the current Profile, Inbox and window. Submitting preserves a
-  recoverable capture before clearing that draft, so a failed earlier send never
-  overwrites the next message. Retrying the same capture preserves its identity.
-  A read failure offers retry rather than appearing to be an empty Inbox.
+  composer accepts text, read as Nested Markdown, and images by paste, drop, or
+  `Add photos`. `Enter` sends, and `Shift+Enter` inserts a line break.
+- Each image becomes a Library File as soon as it is added and shows in the row
+  above the text; the message is sent once every image is in. A sent message is
+  its text followed by its images. An image removed from a draft stays in the
+  Library as an unused File.
+- Drafts, with their images, belong to the current Profile, Inbox and window.
+  Submitting preserves a recoverable capture before clearing that draft, so a
+  failed earlier send never overwrites the next message. Retrying the same
+  capture preserves its identity, and recovering it restores its text and
+  images. A read failure offers retry rather than appearing to be an empty Inbox.
 - The Inbox entry records who sent the message. That source is written by Core
   from the connection and never by the caller:
   - **User:** typed in the Inbox composer. Renders as a right-aligned user bubble.
@@ -78,9 +83,11 @@ intents, and selection.
 
 ## Editing a message
 
-`Edit` rewrites a message that is still waiting in the Inbox, in its own bubble.
-`Enter` saves, `Shift+Enter` inserts a line break, and `Escape` puts the message
-back. While it is rewritten, what Nodex made of the old text steps aside.
+`Edit` rewrites a message that is still waiting in the Inbox, in its own bubble,
+with the composer's text and images: images can be added or removed, and those
+kept are written back exactly as the Page has them. `Enter` saves,
+`Shift+Enter` inserts a line break, and `Escape` puts the message back. While it
+is rewritten, what Nodex made of the old text steps aside.
 
 - Saving is an ordinary write to the message Page under the same rules as
   sending, so the Board, search, and an open Page agree with the stream.
@@ -92,9 +99,9 @@ back. While it is rewritten, what Nodex made of the old text steps aside.
   including when another view updates the message while its editor is open.
 - Saving the body, updating a provisional title and withdrawing suggestions about
   the old text are one atomic operation.
-- A message whose Page no longer has the message shape, text followed by images,
-  or holds more than the stream shows, is edited as its Page: its row offers
-  `Edit as Page` instead.
+- A message whose Page no longer has the message shape, text followed by
+  Library images, or holds more than the stream shows, is edited as its Page:
+  its row offers `Edit as Page` instead.
 - Handled messages are a record of what was decided and are not edited from
   History.
 
@@ -438,8 +445,9 @@ creates a second message, and does not count against the Agent budget again.
 
 ## Current limits
 
-- The composer accepts text only. Images and files can be added afterward by
-  opening the message Page.
+- The composer takes images but no other files. Other files can be added
+  afterward by opening the message Page.
+- A message sent to a chat carries its text; its images stay on its Page.
 - Delivery to a busy local chat uses its Runtime queue; it never steers a
   running Turn.
 - Capture happens inside the app window. There is no system-wide capture

@@ -91,7 +91,8 @@ function MessageImage({
   );
 }
 
-function MessageImagePreview({
+/** The image viewer over a message's images, starting at `index`. */
+export function MessageImagePreview({
   images,
   index,
   onIndexChange,
@@ -102,7 +103,8 @@ function MessageImagePreview({
   readonly index: number;
   readonly onIndexChange: (index: number) => void;
   readonly onClose: () => void;
-  readonly finalFocus: HTMLButtonElement;
+  /** Takes focus back when the viewer closes. */
+  readonly finalFocus: HTMLElement | null;
 }) {
   const image = images[index]!;
   const { url } = useNfmImage(image.source);
@@ -114,7 +116,7 @@ function MessageImagePreview({
         if (!open) onClose();
       }}
       finalFocus={() => {
-        finalFocus.focus();
+        finalFocus?.focus();
         return false;
       }}
       src={url}

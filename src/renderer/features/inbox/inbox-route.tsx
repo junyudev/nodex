@@ -51,7 +51,9 @@ import {
   type InboxOutcomeTarget,
 } from "./inbox-presentation";
 import { InboxTriage } from "./inbox-triage";
+import { inboxDraftLabel } from "./inbox-capture-state";
 import { useInboxCapture } from "./use-inbox-capture";
+import { useInboxImageAccess } from "./use-inbox-image-access";
 import { useInboxActions } from "./use-inbox-actions";
 import { useInboxSettings, useInboxStream, useInboxSummary } from "./use-inbox";
 import { INBOX_STICK_TO_BOTTOM_PX } from "./inbox-viewport";
@@ -325,6 +327,7 @@ export function InboxRoute({
     if (view !== "inbox") changeView("inbox");
     return await actions.send(intent);
   };
+  const imageAccess = useInboxImageAccess(scope);
   const capture = useInboxCapture({
     windowSessionId,
     scope,
@@ -675,8 +678,10 @@ export function InboxRoute({
             className="mb-2 flex min-w-0 items-center gap-2 px-2 text-sm text-token-description-foreground"
           >
             <details className="min-w-0 flex-1">
-              <summary className="cursor-interaction truncate">{pending.intent.body}</summary>
-              <p className="whitespace-pre-wrap">{pending.intent.body}</p>
+              <summary className="cursor-interaction truncate">
+                {inboxDraftLabel(pending.draft)}
+              </summary>
+              <p className="whitespace-pre-wrap">{pending.draft.text}</p>
               <p className="mt-1 text-xs">
                 {summary.data && pending.intent.storeEpoch !== summary.data.storeEpoch
                   ? "From before a Profile restore. The original message may already exist."
@@ -685,12 +690,8 @@ export function InboxRoute({
             </details>
             {pending.status === "needs_review" ||
             (summary.data && pending.intent.storeEpoch !== summary.data.storeEpoch) ? (
-              <NodexButton
-                size="xs"
-                variant="ghost"
-                onClick={() => void capture.recoverText(pending)}
-              >
-                Recover text
+              <NodexButton size="xs" variant="ghost" onClick={() => void capture.recover(pending)}>
+                Recover
               </NodexButton>
             ) : (
               <NodexButton
@@ -724,7 +725,8 @@ export function InboxRoute({
         ) : null}
         <InboxComposer
           draft={capture.draft}
-          onDraftChange={capture.setDraft}
+          onDraftChange={capture.changeDraft}
+          images={imageAccess}
           disabled={!capture.ready}
           readOnly={!capture.canEdit}
           onSend={capture.submit}

@@ -61,7 +61,8 @@ after the same number of lines as a user message in a chat.
 ## Inbox message shape
 
 A message written in a Composer has the message shape: text Blocks followed by
-attachment Blocks. A message with that shape is edited in place with the same
+image Blocks of Library Files, which the Composer imports as each image is
+added. A message with that shape is edited in place with the same
 Composer, and the edit reads back exactly. A body that no longer has that shape,
 for example because an image was moved between paragraphs in the Page, is
 edited as its Page.

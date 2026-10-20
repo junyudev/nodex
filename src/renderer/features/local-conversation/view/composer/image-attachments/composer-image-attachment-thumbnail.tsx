@@ -5,7 +5,11 @@ import { cn } from "@/lib/utils";
 import type { ComposerImageAttachment } from "./composer-image-attachment-model";
 
 export interface ComposerImageAttachmentThumbnailProps {
-  readonly attachment: ComposerImageAttachment;
+  /** Only what a thumbnail shows, so every Composer's attachments use the same one. */
+  readonly attachment: Pick<
+    ComposerImageAttachment,
+    "id" | "filename" | "src" | "uploadStatus" | "uploadProgress"
+  >;
   readonly previewEnabled: boolean;
   readonly size: 80 | 54;
   readonly onOpen: (id: string) => void;
@@ -61,13 +65,16 @@ export function ComposerImageAttachmentThumbnail({
       onKeyDown={handleKeyDown}
     >
       <span className="composer-attachment-surface absolute inset-0 overflow-hidden rounded-lg">
-        <img
-          src={displaySrc}
-          alt="User attachment"
-          draggable={false}
-          referrerPolicy="no-referrer"
-          className="size-full object-cover"
-        />
+        {/* An image still on its way has nothing to show yet but its progress. */}
+        {displaySrc ? (
+          <img
+            src={displaySrc}
+            alt="User attachment"
+            draggable={false}
+            referrerPolicy="no-referrer"
+            className="size-full object-cover"
+          />
+        ) : null}
         {isUploading ? (
           <span
             role="progressbar"

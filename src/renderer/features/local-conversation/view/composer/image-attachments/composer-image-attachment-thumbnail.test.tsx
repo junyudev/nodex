@@ -89,13 +89,6 @@ describe("ComposerImageAttachmentThumbnail", () => {
         attachment={{
           ...attachment,
           src: "/managed/diagram.png",
-          origin: "restored",
-          materialization: {
-            hostId: "local",
-            managedSource: null,
-            localPath: "/managed/diagram.png",
-          },
-          materializationStatus: "ready",
         }}
         previewEnabled
         size={80}

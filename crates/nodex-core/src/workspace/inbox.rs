@@ -27,6 +27,7 @@ use crate::database::{
     create_database_authority_records, create_page_key_namespace,
     resolve_page_transfer_data_source_destination,
 };
+use crate::domain::derived_records::parse_page_file_source;
 use crate::domain::identity::stable_uuid_v7;
 use crate::domain::nfm::{NfmBlock, NfmInlineContent, NfmStyleSet, serialize_nfm};
 use crate::infrastructure::sqlite::{StoreError, StoreErrorCode};
@@ -328,6 +329,8 @@ pub(super) fn message_body(body: &str) -> Result<MessageBody, StoreError> {
 
 /// Text Blocks, then the images attached to them: the shape a Composer writes and can
 /// edit in place. Images inside the text, or with Blocks of their own, belong to Pages.
+/// Text Blocks followed by Library File images, which is what a Composer writes and can
+/// therefore rewrite exactly.
 pub(super) fn has_message_shape(blocks: &[NfmBlock]) -> bool {
     let attachments = blocks
         .iter()
@@ -336,9 +339,13 @@ pub(super) fn has_message_shape(blocks: &[NfmBlock]) -> bool {
     blocks[..attachments]
         .iter()
         .all(|block| !contains_image(block))
-        && blocks[attachments..]
-            .iter()
-            .all(|block| matches!(block, NfmBlock::Image { children, .. } if children.is_empty()))
+        && blocks[attachments..].iter().all(|block| {
+            matches!(
+                block,
+                NfmBlock::Image { source, children, .. }
+                    if children.is_empty() && parse_page_file_source(source).is_some()
+            )
+        })
 }
 
 fn contains_image(block: &NfmBlock) -> bool {

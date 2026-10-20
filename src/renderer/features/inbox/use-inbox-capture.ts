@@ -14,6 +14,8 @@ import { inboxReceiptNeedsReview, readableInboxError } from "./inbox-presentatio
 import {
   EMPTY_INBOX_CAPTURE_STATE,
   changeInboxDraft,
+  isEmptyInboxDraft,
+  recoverInboxDraft,
   consumeInboxDraft,
   createInboxCapture,
   decodeInboxCaptureState,
@@ -22,6 +24,7 @@ import {
   retainInboxCapture,
   settleInboxCapture,
   type InboxCaptureState,
+  type InboxDraft,
   type PendingInboxCapture,
 } from "./inbox-capture-state";
 
@@ -112,7 +115,7 @@ export function useInboxCapture({
           current,
           intent.pageId,
           inboxReceiptNeedsReview(error)
-            ? "Could not verify whether this capture was saved. Check the Inbox before recovering its text."
+            ? "Could not verify whether this capture was saved. Check the Inbox before recovering it."
             : readableInboxError(error, "Message not saved — retry"),
           inboxReceiptNeedsReview(error),
         ),
@@ -125,7 +128,7 @@ export function useInboxCapture({
   const submit = async () => {
     if (preparing.current || !storeEpoch || state.status !== "ready") return;
     const current = read();
-    if (!current.draft.trim()) return;
+    if (isEmptyInboxDraft(current.draft)) return;
     preparing.current = true;
     const capture =
       current.captures.find((entry) => entry.draftRevision === current.draftRevision) ??
@@ -162,19 +165,17 @@ export function useInboxCapture({
     validationError,
     canEdit: state.status === "ready" || state.pendingMutationCount > 0,
     ready: state.status === "ready" && storeEpoch !== null,
-    setDraft: (draft: string) => {
+    /** Applies to the draft as it is when written, so a finished image import never drops text. */
+    changeDraft: (change: (draft: InboxDraft) => InboxDraft) => {
       setValidationError(null);
-      void write((current) => changeInboxDraft(current, draft)).catch(() => undefined);
+      void write((current) => changeInboxDraft(current, change)).catch(() => undefined);
     },
     submit,
     retry: deliver,
     retryPersistence,
-    recoverText: (capture: PendingInboxCapture) =>
+    recover: (capture: PendingInboxCapture) =>
       write((current) => ({
-        ...changeInboxDraft(
-          current,
-          [current.draft, capture.intent.body].filter(Boolean).join("\n\n"),
-        ),
+        ...changeInboxDraft(current, (draft) => recoverInboxDraft(draft, capture.draft)),
         captures: current.captures.filter((entry) => entry.intent.pageId !== capture.intent.pageId),
       })),
   };

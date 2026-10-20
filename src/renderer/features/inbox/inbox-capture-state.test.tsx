@@ -124,7 +124,7 @@ describe("Inbox capture ownership", () => {
     try {
       await waitFor(() => expect(hook.result.current.ready).toBe(true));
       await act(async () => {
-        hook.result.current.setDraft("A");
+        hook.result.current.changeDraft((draft) => ({ ...draft, text: "A" }));
       });
       let first!: Promise<void>;
       await act(async () => {
@@ -132,13 +132,13 @@ describe("Inbox capture ownership", () => {
         await Promise.resolve();
       });
       await waitFor(() => expect(onSend).toHaveBeenCalledTimes(1));
-      expect(hook.result.current.draft).toBe("");
+      expect(hook.result.current.draft.text).toBe("");
       await act(async () => {
-        hook.result.current.setDraft("B");
+        hook.result.current.changeDraft((draft) => ({ ...draft, text: "B" }));
         rejectFirst(new Error("response lost"));
         await first;
       });
-      expect(hook.result.current.draft).toBe("B");
+      expect(hook.result.current.draft.text).toBe("B");
       expect(hook.result.current.pending[0]?.intent.body).toBe("A");
       await act(async () => {
         await hook.result.current.retry(hook.result.current.pending[0]!);
@@ -148,7 +148,7 @@ describe("Inbox capture ownership", () => {
       const pageId = hook.result.current.pending[0]!.intent.pageId;
       hook.rerender({ visiblePageIds: [pageId], storeEpoch: "epoch:1" });
       await waitFor(() => expect(hook.result.current.pending).toEqual([]));
-      expect(hook.result.current.draft).toBe("B");
+      expect(hook.result.current.draft.text).toBe("B");
     } finally {
       hook.dispose();
     }
@@ -161,14 +161,14 @@ describe("Inbox capture ownership", () => {
     try {
       await waitFor(() => expect(hook.result.current.ready).toBe(true));
       await act(async () => {
-        hook.result.current.setDraft("Keep this text");
+        hook.result.current.changeDraft((draft) => ({ ...draft, text: "Keep this text" }));
       });
       persistence.failNext = true;
       await act(async () => {
         await hook.result.current.submit();
       });
       expect(onSend).not.toHaveBeenCalled();
-      expect(hook.result.current.draft).toBe("Keep this text");
+      expect(hook.result.current.draft.text).toBe("Keep this text");
       expect(hook.result.current.error?.message).toBe("disk unavailable");
       await act(async () => {
         await hook.result.current.retryPersistence();
@@ -176,7 +176,7 @@ describe("Inbox capture ownership", () => {
       await act(async () => {
         await hook.result.current.retry(hook.result.current.pending[0]!);
       });
-      expect(hook.result.current.draft).toBe("");
+      expect(hook.result.current.draft.text).toBe("");
       const pageId = hook.result.current.pending[0]!.intent.pageId;
       hook.rerender({ visiblePageIds: [pageId], storeEpoch: "epoch:1" });
       await waitFor(() => expect(hook.result.current.pending).toEqual([]));
@@ -200,7 +200,7 @@ describe("Inbox capture ownership", () => {
     );
     await waitFor(() => expect(first.result.current.ready).toBe(true));
     await act(async () => {
-      first.result.current.setDraft("A");
+      first.result.current.changeDraft((draft) => ({ ...draft, text: "A" }));
     });
     await act(async () => {
       await first.result.current.submit();
@@ -219,9 +219,9 @@ describe("Inbox capture ownership", () => {
       });
       expect(onSend).not.toHaveBeenCalled();
       await act(async () => {
-        await reopened.result.current.recoverText(reopened.result.current.pending[0]!);
+        await reopened.result.current.recover(reopened.result.current.pending[0]!);
       });
-      expect(reopened.result.current.draft).toBe("A");
+      expect(reopened.result.current.draft.text).toBe("A");
       expect(onSend).not.toHaveBeenCalled();
     } finally {
       reopened.dispose();
@@ -247,7 +247,7 @@ describe("Inbox capture ownership", () => {
     try {
       await waitFor(() => expect(hook.result.current.ready).toBe(true));
       await act(async () => {
-        hook.result.current.setDraft("Deleted elsewhere");
+        hook.result.current.changeDraft((draft) => ({ ...draft, text: "Deleted elsewhere" }));
       });
       await act(async () => {
         await hook.result.current.submit();
@@ -259,7 +259,7 @@ describe("Inbox capture ownership", () => {
     }
   });
 
-  test("an expired capture keeps its text for explicit recovery without resending", async () => {
+  test("an expired capture keeps its text and images for explicit recovery without resending", async () => {
     const persistence = new MemoryPersistence();
     const onSend = vi.fn(async (): Promise<InboxSendResult> => {
       throw expiredReceipt();
@@ -268,21 +268,31 @@ describe("Inbox capture ownership", () => {
     try {
       await waitFor(() => expect(hook.result.current.ready).toBe(true));
       await act(async () => {
-        hook.result.current.setDraft("Check whether this was saved");
+        hook.result.current.changeDraft(() => ({
+          text: "Check whether this was saved",
+          images: [{ fileId: "shot", name: "shot.png" }],
+        }));
       });
       await act(async () => {
         await hook.result.current.submit();
       });
       const capture = hook.result.current.pending[0]!;
       expect(capture.status).toBe("needs_review");
+      // The images follow the text in the message body, as the message shape requires.
+      expect(capture.intent.body).toBe(
+        'Check whether this was saved\n<image source="nodex://files/shot"></image>',
+      );
       await act(async () => {
         await hook.result.current.retry(capture);
       });
       expect(onSend).toHaveBeenCalledTimes(1);
       await act(async () => {
-        await hook.result.current.recoverText(capture);
+        await hook.result.current.recover(capture);
       });
-      expect(hook.result.current.draft).toBe("Check whether this was saved");
+      expect(hook.result.current.draft).toEqual({
+        text: "Check whether this was saved",
+        images: [{ fileId: "shot", name: "shot.png" }],
+      });
       expect(hook.result.current.pending).toEqual([]);
       expect(onSend).toHaveBeenCalledTimes(1);
     } finally {

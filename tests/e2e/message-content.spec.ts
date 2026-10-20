@@ -73,3 +73,68 @@ test("an Inbox message shows its Markdown and the images in its Page", async ({}
     },
   );
 });
+
+test("the Inbox composer sends pasted and picked images after the text", async ({}, testInfo) => {
+  test.setTimeout(120_000);
+  const artifacts =
+    process.env.NODEX_MESSAGE_CONTENT_ARTIFACT_DIR ?? testInfo.outputPath("message-content-review");
+  await mkdir(artifacts, { recursive: true });
+  await withElectronScenario(
+    { label: "message-content-composer", scenarioId: null },
+    async ({ page }) => {
+      await invokeIpc(page, "settings:inbox:update", { suggestionsEnabled: false });
+      await page.setViewportSize({ width: 1280, height: 800 });
+      await page.getByTestId("sidebar-inbox-row-wrapper").getByRole("button").click();
+      const composer = page.getByRole("textbox", { name: "Message your Inbox" });
+      await composer.fill("The toolbar is cut off on **narrow** windows");
+
+      // Paste goes through the real clipboard event path with an image File on it.
+      await composer.evaluate((element, base64) => {
+        const bytes = Uint8Array.from(atob(base64), (char) => char.charCodeAt(0));
+        const transfer = new DataTransfer();
+        transfer.items.add(new File([bytes], "pasted.png", { type: "image/png" }));
+        element.dispatchEvent(
+          new ClipboardEvent("paste", { clipboardData: transfer, bubbles: true, cancelable: true }),
+        );
+      }, Buffer.from(SCREENSHOT_PNG).toString("base64"));
+      await page.getByTestId("message-image-picker").setInputFiles({
+        name: "picked.png",
+        mimeType: "image/png",
+        buffer: Buffer.from(SCREENSHOT_PNG),
+      });
+      const form = page.getByTestId("inbox-composer");
+      await expect(form.getByRole("button", { name: "pasted.png" })).toBeVisible();
+      await expect(form.getByRole("button", { name: "picked.png" })).toBeVisible();
+      await page.screenshot({ path: path.join(artifacts, "composer.png") });
+
+      await composer.press("Enter");
+      const message = page
+        .getByTestId("inbox-message")
+        .filter({ hasText: "The toolbar is cut off" });
+      await expect(message).toBeVisible();
+      await expect(message.getByText("narrow", { exact: true })).toBeVisible();
+      const thumbnails = message.getByRole("button", { name: "Open image preview" });
+      await expect(thumbnails).toHaveCount(2);
+      await expect
+        .poll(() =>
+          message
+            .getByRole("img")
+            .evaluateAll((images) =>
+              images.map((image) =>
+                (image as HTMLImageElement).complete ? (image as HTMLImageElement).naturalWidth : 0,
+              ),
+            ),
+        )
+        .toEqual([192, 192]);
+      await expect(form.getByRole("button", { name: "pasted.png" })).toHaveCount(0);
+
+      const [item] = (
+        await invokeIpc(page, "inbox:window", { scope: { kind: "library" }, filter: "inbox" })
+      ).items;
+      expect(item?.body).toMatch(
+        /^The toolbar is cut off on \*\*narrow\*\* windows\n<image source="nodex:\/\/files\/[^"]+"><\/image>\n<image source="nodex:\/\/files\/[^"]+"><\/image>$/,
+      );
+      await page.screenshot({ path: path.join(artifacts, "sent.png") });
+    },
+  );
+});

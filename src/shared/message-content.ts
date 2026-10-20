@@ -1,3 +1,4 @@
+import { fileSource } from "./file-resources";
 import { parseNfm } from "./nfm/parser";
 import { serializeNfm } from "./nfm/serializer";
 import type { NfmBlock, NfmImage } from "./nfm/types";
@@ -28,3 +29,20 @@ export function splitMessageContent(blocks: readonly NfmBlock[]): MessageContent
 /** The message's text as Nested Markdown, without its attached images: a prompt draft's start. */
 export const messageTextNfm = (nfm: string): string =>
   serializeNfm([...splitMessageContent(parseNfm(nfm)).text]);
+
+/** A Library File attached to a message, as the image Block a Composer writes for it. */
+export const messageImageBlock = (fileId: string): NfmImage => ({
+  type: "image",
+  source: fileSource(fileId),
+  caption: [],
+  children: [],
+});
+
+/**
+ * A Composer's message as its Nested Markdown body: the text as typed, then its image Blocks,
+ * the message shape Core keeps as the Page body.
+ */
+export function composeMessageNfm(text: string, images: readonly NfmImage[]): string {
+  const lines = text.replace(/\r\n?/g, "\n").trimEnd();
+  return [lines, serializeNfm([...images])].filter(Boolean).join("\n");
+}

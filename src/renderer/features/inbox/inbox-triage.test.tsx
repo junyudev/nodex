@@ -208,7 +208,7 @@ describe("InboxTriage", () => {
         )}
       </InboxTriage>
     );
-    const rendered = render(view(item({ body: "A" })));
+    const rendered = render(<TestQueryProvider>{view(item({ body: "A" }))}</TestQueryProvider>);
     await click("Edit");
     await act(async () => {
       fireEvent.change(screen.getByRole("textbox", { name: "Edit message" }), {
@@ -216,12 +216,14 @@ describe("InboxTriage", () => {
       });
     });
     rendered.rerender(
-      view(
-        item({
-          body: "C",
-          basis: { pageId: "page:1", generation: 1, headSeq: 2, placementRevision: 1 },
-        }),
-      ),
+      <TestQueryProvider>
+        {view(
+          item({
+            body: "C",
+            basis: { pageId: "page:1", generation: 1, headSeq: 2, placementRevision: 1 },
+          }),
+        )}
+      </TestQueryProvider>,
     );
     await click("Save");
     await waitFor(() =>
