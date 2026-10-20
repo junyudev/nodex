@@ -6,6 +6,7 @@ import {
   DispatchIcon,
   PageIcon,
   AskAiIcon,
+  TagsIcon,
 } from "@/components/shared/icons";
 import {
   NodexDropdownItem,
@@ -18,6 +19,7 @@ import { NodexButton } from "@/components/ui/button";
 import { NodexCheckbox } from "@/components/ui/settings";
 import { UserMessageText } from "@/features/local-conversation/view/shared/user-message-collapse";
 import { cn } from "@/lib/utils";
+import { INBOX_KIND_ICONS } from "./inbox-icon-action";
 import { INBOX_KIND_LABELS, formatInboxTime, inboxEntryKind } from "./inbox-presentation";
 
 export interface InboxMessageMenuHandlers {
@@ -78,16 +80,24 @@ export function InboxMessageMenu({
         {done ? "Reopen" : "Mark done"}
       </NodexDropdownItem>
       {/* What kind of thought it is only steers suggestions, so it is corrected here, not shown. */}
-      <NodexDropdownSummarySubmenuItem label="Kind" value={kind ? INBOX_KIND_LABELS[kind] : "None"}>
-        {INBOX_ENTRY_KINDS.map((option) => (
-          <NodexDropdownItem
-            key={option}
-            rightSlot={option === kind ? <NodexDropdownSelectedIcon /> : null}
-            onSelect={() => handlers.onSetKind(option)}
-          >
-            {INBOX_KIND_LABELS[option]}
-          </NodexDropdownItem>
-        ))}
+      <NodexDropdownSummarySubmenuItem
+        label="Kind"
+        leftSlot={<TagsIcon className="icon-xs" />}
+        value={kind ? INBOX_KIND_LABELS[kind] : "None"}
+      >
+        {INBOX_ENTRY_KINDS.map((option) => {
+          const KindIcon = INBOX_KIND_ICONS[option];
+          return (
+            <NodexDropdownItem
+              key={option}
+              leftSlot={<KindIcon className="icon-xs" />}
+              rightSlot={option === kind ? <NodexDropdownSelectedIcon /> : null}
+              onSelect={() => handlers.onSetKind(option)}
+            >
+              {INBOX_KIND_LABELS[option]}
+            </NodexDropdownItem>
+          );
+        })}
       </NodexDropdownSummarySubmenuItem>
       <NodexDropdownSeparator />
       <NodexDropdownItem

@@ -1437,6 +1437,7 @@ export function NodexDropdownFlyoutSubmenuItem({
 export function NodexDropdownSummarySubmenuItem({
   ariaLabel,
   label,
+  leftSlot,
   value,
   children,
   className,
@@ -1447,6 +1448,8 @@ export function NodexDropdownSummarySubmenuItem({
 }: {
   ariaLabel?: string;
   label: ReactNode;
+  /** Leads the row like any item's icon, so the menu's labels stay aligned. */
+  leftSlot?: ReactNode;
   value: ReactNode;
   children: ReactNode;
   className?: string;
@@ -1466,6 +1469,17 @@ export function NodexDropdownSummarySubmenuItem({
       onOpenChange={onOpenChange}
       triggerContent={
         <div className="flex w-full min-w-0 items-center gap-3">
+          {leftSlot ? (
+            <span
+              className={cn(
+                dropdownItemLeftSlotClassName,
+                !disabled && dropdownItemLeftSlotInteractiveClassName,
+                "-me-1",
+              )}
+            >
+              {leftSlot}
+            </span>
+          ) : null}
           <span className="shrink-0">{label}</span>
           <span className="flex min-w-0 flex-1 justify-end text-token-text-tertiary">
             <span className="min-w-0 truncate">{value}</span>

@@ -215,8 +215,10 @@ waiting in the Inbox except one whose delivery failed, and neither appears
 while the message or its dispatch is being edited. With nothing to say yet, the card is
 the message alone. A kind only steers suggestions, so the card never shows it.
 The menu's `Kind` names it, the user's own or else the one the suggestion
-proposes, and is the one place to change it. The strip and its row show one of
-these:
+proposes, and is the one place to change it; each kind keeps its own glyph there.
+A note is a sheet with its corner turned, while a todo and a question, both
+asking for work, share a circle around a check or a question mark. The strip
+and its row show one of these:
 
 - **Suggestion running:** no strip. The `Handle manually` icon decides by hand
   without waiting. Only the newest such message shows a small spinner at the end

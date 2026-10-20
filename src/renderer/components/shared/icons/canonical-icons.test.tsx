@@ -19,7 +19,10 @@ import {
   PlayIcon,
   ResetIcon,
   RetryIcon,
+  NoteIcon,
+  QuestionIcon,
   SendToChatIcon,
+  TodoIcon,
   SortAscendingIcon,
   SortDescendingIcon,
   TerminalIcon,
@@ -141,7 +144,7 @@ describe("canonical shared icons", () => {
   });
 
   test("draws line glyphs at the house weight so they sit beside outlined icons", () => {
-    const glyphs = [SendToChatIcon, DispatchIcon];
+    const glyphs = [NoteIcon, TodoIcon, QuestionIcon, SendToChatIcon, DispatchIcon];
     const signatures = glyphs.map((Icon) => {
       const view = render(<Icon />);
       const svg = view.container.querySelector("svg");
