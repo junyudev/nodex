@@ -8,6 +8,7 @@ import type { DatabaseId } from "./database-identities";
 import type { WorkbenchImageEditorSurfaceConfig } from "./workbench-image-editor";
 import type { LibraryPlacedResourceTarget } from "./library-module";
 import type { WorkbenchReviewConfig } from "./workbench-review";
+import { inboxScopeKey, LIBRARY_INBOX, projectInbox, type InboxScope } from "./inbox";
 import {
   activateWorkbenchSessionViewTab,
   cloneWorkbenchLayoutForNewWindow as cloneLegacyWorkbenchLayoutForNewWindow,
@@ -46,7 +47,7 @@ import {
   type WorkbenchPanelSplitSide,
 } from "./workbench-panel-layout";
 
-export const WORKBENCH_SCENE_VERSION = 8 as const;
+export const WORKBENCH_SCENE_VERSION = 9 as const;
 export const WORKBENCH_SCENE_MAX_PANEL_SURFACES = 2_048;
 
 export type WorkbenchSceneOwner =
@@ -59,11 +60,25 @@ export type WorkbenchSceneOwner =
       readonly sessionId: string;
     }
   | {
-      readonly kind: "pages";
+      /** Space: the window's one Scene for Library Pages, Databases, and Canvases. */
+      readonly kind: "library";
+    }
+  | {
+      /** The Library Inbox, the Home of its own Scene like a Project's Inbox. */
+      readonly kind: "inbox";
     };
 
+export const LIBRARY_SCENE_OWNER: WorkbenchSceneOwner = { kind: "library" };
+export const INBOX_SCENE_OWNER: WorkbenchSceneOwner = { kind: "inbox" };
+
+/** Owners before the Library and its Inbox had Scenes of their own. */
+type WorkbenchContentSceneOwner = Exclude<
+  WorkbenchSceneOwner,
+  { readonly kind: "library" | "inbox" }
+>;
+
 export type WorkbenchSceneOwnerV4 =
-  | Exclude<WorkbenchSceneOwner, { readonly kind: "pages" }>
+  | WorkbenchContentSceneOwner
   | {
       readonly kind: "resource";
       readonly root: LibraryPlacedResourceTarget;
@@ -123,7 +138,7 @@ export interface WorkbenchComposerOverlayState {
 export function makeWorkbenchSceneKey(owner: WorkbenchSceneOwner): WorkbenchSceneKey {
   if (owner.kind === "project") return `project:${owner.projectId}`;
   if (owner.kind === "session") return `session:${owner.sessionId}`;
-  return "pages";
+  return owner.kind;
 }
 
 export type WorkbenchSurfaceKind =
@@ -142,9 +157,9 @@ export interface WorkbenchConversationSurfaceConfig {
   readonly sessionId: string;
 }
 
-/** A Project's own Inbox, which is that Project Scene's Home. */
+/** An Inbox as its Scene's Home: the Library Inbox's own Scene, or a Project's. */
 export interface WorkbenchInboxSurfaceConfig {
-  readonly projectId: string;
+  readonly scope: InboxScope;
 }
 
 export interface WorkbenchDbViewSurfaceConfig {
@@ -295,7 +310,7 @@ export type WorkbenchSurfaceDescriptorV3 =
 
 export interface WorkbenchSceneSnapshotV3 {
   readonly version: 3;
-  readonly owner: Exclude<WorkbenchSceneOwner, { readonly kind: "pages" }>;
+  readonly owner: WorkbenchContentSceneOwner;
   readonly primary: WorkbenchSurfaceDescriptorV3;
   readonly panelSurfacesById: Readonly<Record<string, WorkbenchSurfaceDescriptorV3>>;
   readonly panels: Readonly<Record<WorkbenchPanelId, WorkbenchPanelState>>;
@@ -423,12 +438,17 @@ function toLegacyPanelView(scene: WorkbenchSceneSnapshot): WorkbenchSessionViewS
   };
 }
 
-function enforceProjectSceneInvariants(scene: WorkbenchSceneSnapshot): WorkbenchSceneSnapshot {
+/**
+ * A Scene whose Home is an Inbox keeps that Home as the first tab of its full-width right stack;
+ * it never moves to the bottom panel.
+ */
+function enforceInboxHomeInvariants(
+  scene: WorkbenchSceneSnapshot,
+  isPanelSurfaceAllowed: (surface: WorkbenchSurfaceDescriptor) => boolean,
+): WorkbenchSceneSnapshot {
   if (!scene.primary) return scene;
   const panelSurfacesById = Object.fromEntries(
-    Object.entries(scene.panelSurfacesById).filter(([, surface]) =>
-      isProjectScenePanelSurfaceAllowed(surface),
-    ),
+    Object.entries(scene.panelSurfacesById).filter(([, surface]) => isPanelSurfaceAllowed(surface)),
   );
   const knownIds = new Set([scene.primary.id, ...Object.keys(panelSurfacesById)]);
   let rightLayout = scene.panels.right.layout;
@@ -486,10 +506,26 @@ function enforceProjectSceneInvariants(scene: WorkbenchSceneSnapshot): Workbench
       scene.lastFocusedPanelId === "right" || scene.lastFocusedPanelId === "bottom"
         ? scene.lastFocusedPanelId
         : null,
+  };
+}
+
+function enforceProjectSceneInvariants(scene: WorkbenchSceneSnapshot): WorkbenchSceneSnapshot {
+  if (!scene.primary) return scene;
+  return {
+    ...enforceInboxHomeInvariants(scene, isProjectScenePanelSurfaceAllowed),
     agentDock: scene.agentDock ?? {
       binding: { kind: "new" },
       newDraftId: `agent-draft:${scene.primary.id}`,
     },
+  };
+}
+
+/** The Library Inbox's Scene: Library content beside its Inbox, with no execution composer. */
+function enforceInboxSceneInvariants(scene: WorkbenchSceneSnapshot): WorkbenchSceneSnapshot {
+  return {
+    ...enforceInboxHomeInvariants(scene, isLibrarySceneSurfaceAllowed),
+    composerOverlay: { visible: false },
+    agentDock: null,
   };
 }
 
@@ -540,7 +576,8 @@ export function enforceWorkbenchSessionReviewEligibility(
   return { ...eligibleScene, touchedAt: scene.touchedAt };
 }
 
-export function isPagesSceneSurfaceAllowed(surface: WorkbenchSurfaceDescriptor): boolean {
+/** The Library Scene and the Library Inbox's Scene present only Library-routed content. */
+export function isLibrarySceneSurfaceAllowed(surface: WorkbenchSurfaceDescriptor): boolean {
   if (surface.kind === "page_stage" || surface.kind === "canvas_stage") {
     return surface.config.routingContext.kind === "library";
   }
@@ -560,14 +597,16 @@ export function isWorkbenchScenePanelSurfaceAllowed(
   surface: WorkbenchSurfaceDescriptor,
 ): boolean {
   if (owner.kind === "project") return isProjectScenePanelSurfaceAllowed(surface);
-  if (owner.kind === "pages") return isPagesSceneSurfaceAllowed(surface);
+  if (owner.kind === "library" || owner.kind === "inbox") {
+    return isLibrarySceneSurfaceAllowed(surface);
+  }
   return surface.kind !== "conversation" && surface.kind !== "inbox";
 }
 
-function enforcePagesSceneInvariants(scene: WorkbenchSceneSnapshot): WorkbenchSceneSnapshot {
+function enforceLibrarySceneInvariants(scene: WorkbenchSceneSnapshot): WorkbenchSceneSnapshot {
   const panelSurfacesById = Object.fromEntries(
     Object.entries(scene.panelSurfacesById).filter(([, surface]) =>
-      isPagesSceneSurfaceAllowed(surface),
+      isLibrarySceneSurfaceAllowed(surface),
     ),
   );
   const knownIds = new Set(Object.keys(panelSurfacesById));
@@ -604,8 +643,11 @@ function enforceWorkbenchSceneInvariants(scene: WorkbenchSceneSnapshot): Workben
   if (scene.owner.kind === "project") {
     return enforceProjectSceneInvariants(scene);
   }
-  if (scene.owner.kind === "pages") {
-    return enforcePagesSceneInvariants(scene);
+  if (scene.owner.kind === "inbox") {
+    return enforceInboxSceneInvariants(scene);
+  }
+  if (scene.owner.kind === "library") {
+    return enforceLibrarySceneInvariants(scene);
   }
   return enforceSessionSceneInvariants(scene);
 }
@@ -758,12 +800,12 @@ export function applyLegacySessionViewToWorkbenchScene(
 }
 
 /** A Project's Home: its own Inbox, the protected first tab of its Scene. */
-export function projectInboxSurface(id: string, projectId: string): WorkbenchSurfaceDescriptor {
+export function inboxSurface(id: string, scope: InboxScope): WorkbenchSurfaceDescriptor {
   return {
     id,
     kind: "inbox",
     titleSnapshot: "Inbox",
-    config: { projectId },
+    config: { scope },
     stateKey: 0,
     state: null,
   };
@@ -779,7 +821,7 @@ export function adoptProjectInboxHome<
   if (scene.owner.kind !== "project" || !scene.primary || scene.primary.kind === "inbox") {
     return scene;
   }
-  return { ...scene, primary: projectInboxSurface(scene.primary.id, scene.owner.projectId) };
+  return { ...scene, primary: inboxSurface(scene.primary.id, projectInbox(scene.owner.projectId)) };
 }
 
 function ownerRootPrimary(
@@ -787,7 +829,10 @@ function ownerRootPrimary(
   identityFactory: WorkbenchSceneIdentityFactory,
 ): WorkbenchSurfaceDescriptor | null {
   if (owner.kind === "project") {
-    return projectInboxSurface(identityFactory.createId("surface"), owner.projectId);
+    return inboxSurface(identityFactory.createId("surface"), projectInbox(owner.projectId));
+  }
+  if (owner.kind === "inbox") {
+    return inboxSurface(identityFactory.createId("surface"), LIBRARY_INBOX);
   }
 
   if (owner.kind === "session")
@@ -822,7 +867,7 @@ export function createEmptyWorkbenchScene(
     panelSurfacesById: {},
     panels: view.panels,
     lastFocusedPanelId: null,
-    composerOverlay: { visible: owner.kind !== "pages" },
+    composerOverlay: { visible: owner.kind === "project" || owner.kind === "session" },
     agentDock:
       owner.kind === "project"
         ? {
@@ -1035,7 +1080,7 @@ export function migrateWorkbenchSceneV1ToV4(
   };
 }
 
-/** Migrates the former per-resource Scene model into the shared Pages Scene. */
+/** Migrates the former per-resource Scene model into the shared Library Scene. */
 export function migrateWorkbenchSceneV4ToV5(
   legacy: WorkbenchSceneSnapshotV4,
 ): WorkbenchSceneSnapshot {
@@ -1049,12 +1094,12 @@ export function migrateWorkbenchSceneV4ToV5(
     );
   }
   const retainedSiblings = Object.entries(legacy.panelSurfacesById)
-    .filter(([, surface]) => isPagesSceneSurfaceAllowed(surface))
+    .filter(([, surface]) => isLibrarySceneSurfaceAllowed(surface))
     .slice(0, WORKBENCH_SCENE_MAX_PANEL_SURFACES - 1);
   return normalizeWorkbenchScene({
     ...legacy,
     version: WORKBENCH_SCENE_VERSION,
-    owner: { kind: "pages" },
+    owner: LIBRARY_SCENE_OWNER,
     primary: null,
     panelSurfacesById: {
       [legacy.primary.id]: legacy.primary,
@@ -1304,18 +1349,15 @@ function cloneWorkbenchScene(
     toLegacyIdentityFactory(identityFactory),
   ).sessionViewsBySessionId[sceneKey];
   if (!legacy) throw new Error(`Missing cloned Workbench Scene ${sceneKey}`);
-  const projectId = scene.owner.kind === "project" ? scene.owner.projectId : null;
-  const clonedPlacedPrimary = projectId
-    ? (Object.values(legacy.tabsById).find((tab) => {
-        const surface = tab as WorkbenchSurfaceDescriptor;
-        return (
-          surface.kind === "db_view" &&
-          surface.config.target.kind === "project-default" &&
-          surface.config.routingContext.kind === "project" &&
-          surface.config.routingContext.projectId === projectId
-        );
-      }) as WorkbenchSurfaceDescriptor | undefined)
-    : undefined;
+  // A Home placed among the tabs was cloned with them; keep that clone as the new Home.
+  const primaryReuseKey = scene.primary ? getWorkbenchSurfaceReuseKey(scene.primary) : null;
+  const clonedPlacedPrimary =
+    scene.primary && primaryReuseKey && isSurfacePlaced(scene, scene.primary.id)
+      ? (Object.values(legacy.tabsById).find(
+          (tab) =>
+            getWorkbenchSurfaceReuseKey(tab as WorkbenchSurfaceDescriptor) === primaryReuseKey,
+        ) as WorkbenchSurfaceDescriptor | undefined)
+      : undefined;
   return fromLegacyPanelView(
     {
       ...scene,
@@ -1356,7 +1398,7 @@ export function getWorkbenchSurfaceReuseKey(
     case "conversation":
       return `conversation:${surface.config.sessionId}`;
     case "inbox":
-      return `inbox:${surface.config.projectId}`;
+      return `inbox:${inboxScopeKey(surface.config.scope)}`;
     case "db_view": {
       const accessKey = contentRoutingContextKey(surface.config.routingContext);
       return surface.config.target.kind === "project-default"

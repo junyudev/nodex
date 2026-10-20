@@ -77,7 +77,7 @@ function harness(sessions: readonly ProjectSession[]) {
     () => {
       const owner = useWorkbenchWindowOwner({
         ...createDefaultWorkbenchLayoutSnapshot(),
-        location: { kind: "pages" },
+        location: { kind: "library" },
       });
       useWorkbenchCodexNavigation(owner, (id) => byId.get(id) ?? null);
       return owner;
@@ -133,7 +133,7 @@ it("keeps Pages, unknown or non-Codex Sessions and Side Chat panel changes out o
       materializeInitialWorkbenchScene({ kind: "session", sessionId: "a" }),
     );
     expect(observations.spans).toHaveLength(1);
-    view.result.current.selectPages();
+    view.result.current.selectLibrary();
     expect(observations.spans[0]?.outcomes).toEqual(["aborted:navigation_away"]);
     view.result.current.selectSession({ id: "unknown", projectId: null });
     view.result.current.selectSession(native);

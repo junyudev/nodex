@@ -14,7 +14,7 @@ const owner = {} as Parameters<typeof readCodexSubmissionPresentation>[0];
 const target = { kind: "thread", threadId: "thread-a" } as const;
 const available: WorkbenchSubmitPresentation = {
   rendererGeneration: "generation-a",
-  sceneOwner: { kind: "pages" },
+  sceneOwner: { kind: "library" },
   presentationRevision: 7,
   focusedTarget: null,
   selectedTabs: [],

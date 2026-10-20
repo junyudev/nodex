@@ -223,8 +223,8 @@ describe("shared Workbench Scene executor", () => {
   });
 
   test("opens a file at a line in a hidden Session without changing location, then navigates through the same receipt boundary", async () => {
-    const subject = fixture(seededScene({ kind: "pages" }, [page("visible")]));
-    subject.owner.selectPages();
+    const subject = fixture(seededScene({ kind: "library" }, [page("visible")]));
+    subject.owner.selectLibrary();
     const sceneOwner = { kind: "session" as const, sessionId: "hidden" };
     const ledger = createWorkbenchAgentCommands(subject.owner, subject.executor);
     const input: WorkbenchCommandEnvelope = {
@@ -250,7 +250,7 @@ describe("shared Workbench Scene executor", () => {
     };
     const opened = await ledger.execute(input, () => true);
     expect(opened).toMatchObject({ applied: true, persisted: true, error: null });
-    expect(subject.owner.read().windowState.location).toMatchObject({ kind: "pages" });
+    expect(subject.owner.read().windowState.location).toMatchObject({ kind: "library" });
     const scene =
       subject.owner.read().windowState.scenesByOwnerKey[makeWorkbenchSceneKey(sceneOwner)]!;
     expect(scene.panelSurfacesById[opened.tabId!]).toMatchObject({
@@ -286,7 +286,7 @@ describe("shared Workbench Scene executor", () => {
       sessionId: "hidden",
       projectContextId: null,
     });
-    expect(Object.keys(subject.owner.read().windowState.scenesByOwnerKey)).toContain("pages");
+    expect(Object.keys(subject.owner.read().windowState.scenesByOwnerKey)).toContain("library");
   });
 
   test("rejects stale Session presentation and mismatched reveals before changing a Scene", async () => {
@@ -425,7 +425,7 @@ describe("shared Workbench Scene executor", () => {
   );
 
   test("changes a hidden Scene and reports the exact queued layout even when navigation advances", async () => {
-    const scene = seededScene({ kind: "pages" }, [page("a"), page("b")]);
+    const scene = seededScene({ kind: "library" }, [page("a"), page("b")]);
     const subject = fixture(scene);
     const acknowledgement = deferred<WorkbenchWindowPersistenceReceipt>();
     subject.commit.mockImplementationOnce(() => acknowledgement.promise);
@@ -459,7 +459,7 @@ describe("shared Workbench Scene executor", () => {
   test.each(["revision", "generation"] as const)(
     "checks %s after asynchronous save preparation before removing a tab",
     async (fence) => {
-      const subject = fixture(seededScene({ kind: "pages" }, [page("a")]));
+      const subject = fixture(seededScene({ kind: "library" }, [page("a")]));
       const save = deferred<boolean>();
       subject.lifecycle.prepareClose.mockImplementationOnce(() => save.promise);
       let current = true;
@@ -483,7 +483,7 @@ describe("shared Workbench Scene executor", () => {
   );
 
   test("vetoes failed saves and distinguishes an applied change whose persistence failed", async () => {
-    const subject = fixture(seededScene({ kind: "pages" }, [page("a")]));
+    const subject = fixture(seededScene({ kind: "library" }, [page("a")]));
     subject.lifecycle.prepareClose.mockResolvedValueOnce(false);
     expect(await subject.execute({ kind: "close_tab", tabId: "a" })).toMatchObject({
       applied: false,
@@ -621,7 +621,7 @@ describe("shared Workbench Scene executor", () => {
   });
 
   test("opens, reuses, moves, splits, merges, and applies panel state without selecting the hidden Scene", async () => {
-    const scene = seededScene({ kind: "pages" }, [page("a"), page("b")]);
+    const scene = seededScene({ kind: "library" }, [page("a"), page("b")]);
     const subject = fixture(scene);
     const initialLocation = subject.owner.read().windowState.location;
     const groupId = scene.panels.right.layout.activeLeafId;
@@ -681,10 +681,10 @@ describe("shared Workbench Scene executor", () => {
   });
 
   test("keeps a preview's identity when an explicit open makes it durable", async () => {
-    const scene = materializeInitialWorkbenchScene({ kind: "pages" });
+    const scene = materializeInitialWorkbenchScene({ kind: "library" });
     const subject = fixture(scene);
     const groupId = scene.panels.right.layout.activeLeafId;
-    const slot = makeWorkbenchPanelSlotKey("pages", "right", groupId);
+    const slot = makeWorkbenchPanelSlotKey("library", "right", groupId);
     subject.owner.dispatchEphemeral({
       type: "update",
       field: "previewSurfacesByPanel",
@@ -749,7 +749,7 @@ describe("shared Workbench Scene executor", () => {
 
 describe("generation-local Workbench operation receipts", () => {
   test("canonicalizes equivalent payloads and does not replay applied-but-unpersisted commands", async () => {
-    const subject = fixture(seededScene({ kind: "pages" }, [page("a")]));
+    const subject = fixture(seededScene({ kind: "library" }, [page("a")]));
     subject.commit.mockRejectedValueOnce(new Error("disk"));
     const ledger = createWorkbenchAgentCommands(subject.owner, subject.executor);
     const input = subject.envelope({ kind: "close_tab", tabId: "a" });
@@ -769,7 +769,7 @@ describe("generation-local Workbench operation receipts", () => {
   });
 
   test("shares an in-flight receipt and refuses an old generation after async digest preparation", async () => {
-    const subject = fixture(seededScene({ kind: "pages" }, [page("a")]));
+    const subject = fixture(seededScene({ kind: "library" }, [page("a")]));
     const save = deferred<boolean>();
     subject.lifecycle.prepareClose.mockImplementation(() => save.promise);
     const ledger = createWorkbenchAgentCommands(subject.owner, subject.executor);
@@ -796,7 +796,7 @@ describe("generation-local Workbench operation receipts", () => {
   });
 
   test("keeps its bound without evicting a receipt and replaying an old operation", async () => {
-    const subject = fixture(materializeInitialWorkbenchScene({ kind: "pages" }));
+    const subject = fixture(materializeInitialWorkbenchScene({ kind: "library" }));
     const ledger = createWorkbenchAgentCommands(subject.owner, subject.executor);
     const first = subject.envelope({ kind: "close_tab", tabId: "absent" });
     const receipt = await ledger.execute(first, () => true);
@@ -811,7 +811,7 @@ describe("generation-local Workbench operation receipts", () => {
   test("the command grammar excludes arbitrary saved state and unknown patch properties", () => {
     const base = {
       operationId: "op",
-      sceneOwner: { kind: "pages" },
+      sceneOwner: { kind: "library" },
       expectedPresentationRevision: 0,
     };
     expect(
@@ -943,14 +943,14 @@ describe("resource-preserving preview promotion", () => {
   });
 
   test("retains a failed promotion as a live preview and permits retry", async () => {
-    const scene = materializeInitialWorkbenchScene({ kind: "pages" });
+    const scene = materializeInitialWorkbenchScene({ kind: "library" });
     const subject = fixture(scene);
     const groupId = scene.panels.right.layout.activeLeafId;
     const preview = { ...page("preview"), state: { selection: "pending" } };
     subject.owner.dispatchEphemeral({
       type: "update",
       field: "previewSurfacesByPanel",
-      update: { [makeWorkbenchPanelSlotKey("pages", "right", groupId)]: preview },
+      update: { [makeWorkbenchPanelSlotKey("library", "right", groupId)]: preview },
     });
     const command: WorkbenchCommand = {
       kind: "open_tab",
@@ -976,7 +976,7 @@ describe("resource-preserving preview promotion", () => {
       error: null,
     });
     expect(
-      subject.owner.read().windowState.scenesByOwnerKey.pages!.panelSurfacesById.preview?.state,
+      subject.owner.read().windowState.scenesByOwnerKey.library!.panelSurfacesById.preview?.state,
     ).toEqual({ selection: "pending" });
   });
 });

@@ -620,7 +620,7 @@ describe("workbench session shell / layout-panel-actions", () => {
 
       const assertRootContent = () => {
         const panel = screen.getByTestId(
-          destination === "project" ? "project-right-panel" : "pages-right-panel",
+          destination === "project" ? "project-right-panel" : "library-right-panel",
         );
         expect(panel.getAttribute("data-right-panel-width-mode")).toBe("full");
         if (destination === "project") {

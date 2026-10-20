@@ -40,11 +40,11 @@ function deferred<Value>() {
   });
   return { promise, resolve };
 }
-function fixture(sceneOwner: WorkbenchSceneOwner = { kind: "pages" }) {
+function fixture(sceneOwner: WorkbenchSceneOwner = { kind: "library" }) {
   const store = createMaitaiStore();
   disposers.push(() => disposeMaitaiStore(store));
   const routingContext =
-    sceneOwner.kind === "pages"
+    sceneOwner.kind === "library"
       ? { kind: "library" as const }
       : { kind: "project" as const, projectId: "project-a" };
   const scene = createWorkbenchSceneSurface(materializeInitialWorkbenchScene(sceneOwner), {
@@ -214,7 +214,7 @@ describe("Workbench Page content barrier", () => {
       if (change === "generation")
         subject.patchStatus({ provider: { ...subject.status().provider, generation: 2 } });
       if (change === "participant") subject.replaceParticipant({ ...subject.participant });
-      if (change === "presentation") subject.owner.selectPages();
+      if (change === "presentation") subject.owner.selectLibrary();
       save.resolve({
         documentId: "document-a",
         storeEpoch: "epoch-a",

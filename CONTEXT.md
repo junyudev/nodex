@@ -442,7 +442,8 @@ query rows never become host Document children.
 A Project is an execution context, not content. It owns filesystem sources,
 ordinary Sessions, execution Thread references, and runtime settings. A
 Project may have zero Sessions. A Window Session owns owner-scoped Workbench
-Scenes through which one app window presents Project or Session resources;
+Scenes through which one app window presents a Project, a Session, the Library
+Inbox, or Library content;
 Terminal and Browser Modules own their live runtimes.
 It binds exactly one primary Database and has lifecycle `active | inactive |
 archived`. One Database has at most one active Project.

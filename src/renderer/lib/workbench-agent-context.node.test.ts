@@ -74,7 +74,7 @@ function browser(id: string): WorkbenchSurfaceDescriptor {
 
 describe("Workbench Agent presentation observation", () => {
   test("submission captures selected semantic targets even when a tab ID is later reused", () => {
-    const sceneOwner = { kind: "pages" as const };
+    const sceneOwner = { kind: "library" as const };
     let scene = materializeInitialWorkbenchScene(sceneOwner);
     scene = createWorkbenchSceneSurface(scene, {
       panelId: "right",
@@ -87,13 +87,13 @@ describe("Workbench Agent presentation observation", () => {
         config: { routingContext: { kind: "library" }, pageId: "page-first" },
       },
     });
-    const state = stateFor([scene], { kind: "pages" });
+    const state = stateFor([scene], { kind: "library" });
     const submission = readWorkbenchSubmitPresentation(state, "generation-a");
     const next = updateWorkbenchSceneSurface(scene, "page-tab", {
       config: { routingContext: { kind: "library" }, pageId: "page-second" },
     });
     const after = readWorkbenchSubmitPresentation(
-      stateFor([next], { kind: "pages" }),
+      stateFor([next], { kind: "library" }),
       "generation-a",
     );
     expect(submission.focusedTarget).toBeNull();
@@ -423,13 +423,13 @@ describe("Workbench Agent presentation observation", () => {
     });
     const hiddenState = {
       ...state,
-      windowState: { ...state.windowState, location: { kind: "pages" as const } },
+      windowState: { ...state.windowState, location: { kind: "library" as const } },
     };
     const hidden = readWorkbenchAgentContext(hiddenState, owner)!;
     expect(hidden.mounted).toBe(false);
-    expect(hidden.selectedSceneOwner).toEqual({ kind: "pages" });
+    expect(hidden.selectedSceneOwner).toEqual({ kind: "library" });
     expect(hidden.tabs.every((tab) => !tab.visible)).toBe(true);
-    expect(hiddenState.windowState.location).toEqual({ kind: "pages" });
+    expect(hiddenState.windowState.location).toEqual({ kind: "library" });
   });
 
   test("discovers exact Session and Project Dock owners and captures the submitting Scene", () => {
@@ -442,7 +442,7 @@ describe("Workbench Agent presentation observation", () => {
         newDraftId: project.agentDock!.newDraftId,
       },
     };
-    const pages = materializeInitialWorkbenchScene({ kind: "pages" });
+    const pages = materializeInitialWorkbenchScene({ kind: "library" });
     const state = stateFor([session, dockScene, pages], {
       kind: "project",
       projectId: "project-a",
@@ -466,7 +466,7 @@ describe("Workbench Agent presentation observation", () => {
       ),
     });
     expect(readWorkbenchAgentContext(state, { kind: "session", sessionId: "absent" })).toBeNull();
-    expect(readWorkbenchAgentContext(state, { kind: "pages" })?.tabs).toEqual([]);
+    expect(readWorkbenchAgentContext(state, { kind: "library" })?.tabs).toEqual([]);
     const routed = {
       ...state,
       windowState: {

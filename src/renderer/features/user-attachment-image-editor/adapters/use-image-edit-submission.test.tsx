@@ -15,7 +15,7 @@ vi.mock("@/features/local-conversation/local-conversation-store", () => ({
   useCodexAppServerControl: () => ({
     captureSubmissionPresentation: () => ({
       rendererGeneration: "renderer-a",
-      sceneOwner: { kind: "pages" },
+      sceneOwner: { kind: "library" },
       presentationRevision: 1,
       selectedTabs: [],
       focusedTarget: null,

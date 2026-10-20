@@ -213,8 +213,12 @@ export function selectWorkbenchProject(
   );
 }
 
-export function selectWorkbenchPages(state: WorkbenchWindowState): WorkbenchWindowState {
-  return navigateWorkbenchWindow(state, { kind: "pages" });
+export function selectWorkbenchLibrary(state: WorkbenchWindowState): WorkbenchWindowState {
+  return navigateWorkbenchWindow(state, { kind: "library" });
+}
+
+export function selectWorkbenchInbox(state: WorkbenchWindowState): WorkbenchWindowState {
+  return navigateWorkbenchWindow(state, { kind: "inbox" });
 }
 
 export function selectWorkbenchHome(state: WorkbenchWindowState): WorkbenchWindowState {
@@ -226,7 +230,6 @@ export function openWorkbenchRoute(
   route:
     | { readonly kind: "settings"; readonly path: string }
     | { readonly kind: "automations"; readonly path: string }
-    | { readonly kind: "inbox" }
     | {
         readonly kind: "pending-worktree";
         readonly clientThreadId: string;
@@ -248,14 +251,7 @@ export function openWorkbenchRoute(
 }
 
 export function closeWorkbenchRoute(state: WorkbenchWindowState): WorkbenchWindowState {
-  if (
-    state.location.kind === "project" ||
-    state.location.kind === "session" ||
-    state.location.kind === "pages" ||
-    state.location.kind === "empty"
-  ) {
-    return state;
-  }
+  if (!("returnTo" in state.location)) return state;
   return navigateWorkbenchWindow(state, state.location.returnTo);
 }
 
@@ -448,7 +444,7 @@ export function replaceWorkbenchWindowSnapshot(
 export function snapshotWorkbenchWindowState(state: WorkbenchWindowState): WorkbenchLayoutSnapshot {
   const location = getRestorableWorkbenchLocation(state.location);
   return {
-    version: 8,
+    version: 9,
     location,
     homeLocation: getWorkbenchHomeLocation(location) ?? state.homeLocation,
     databaseSearchByProject: {

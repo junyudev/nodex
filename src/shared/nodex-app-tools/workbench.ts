@@ -1,4 +1,5 @@
 import { contentRoutingContextKey } from "../content-routing-context";
+import { inboxScopeKey } from "../inbox";
 import {
   canonicalWorkbenchFilesConfig,
   WorkbenchAbsoluteFilePathSchema,
@@ -13,6 +14,7 @@ import {
   ContentRoutingContextSchema,
   WorkbenchDbViewSurfaceConfigSchema,
 } from "../schemas/workbench-scene";
+import { InboxScopeSchema } from "../schemas/inbox-scope";
 import {
   WorkbenchCommandEnvelopeSchema,
   WorkbenchCommandReceiptSchema,
@@ -70,7 +72,7 @@ export const WorkbenchSurfaceReferenceSchema = z.discriminatedUnion("kind", [
   z.strictObject({
     ...referenceBase,
     kind: z.literal("inbox"),
-    config: z.strictObject({ projectId: identity }),
+    config: z.strictObject({ scope: InboxScopeSchema }),
   }),
   z.strictObject({
     ...referenceBase,
@@ -429,7 +431,7 @@ export function projectWorkbenchSurfaceReference(
 function observedTargetKey(surface: WorkbenchSurfaceReference): string {
   const { kind, config } = surface;
   if (kind === "conversation") return JSON.stringify([kind, config.sessionId]);
-  if (kind === "inbox") return JSON.stringify([kind, config.projectId]);
+  if (kind === "inbox") return JSON.stringify([kind, inboxScopeKey(config.scope)]);
   if (kind === "browser") return JSON.stringify([kind, config.browserTabId]);
   if (kind === "files")
     return JSON.stringify([kind, config.projectId, workbenchFilesResourceKey(config)]);

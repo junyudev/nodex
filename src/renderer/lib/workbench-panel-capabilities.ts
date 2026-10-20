@@ -43,7 +43,8 @@ export interface ResolveWorkbenchPanelCapabilitiesInput {
         readonly cwd: string | null | undefined;
         readonly projectWorkspaceRoot?: string | null;
       }
-    | { readonly kind: "pages" }
+    | { readonly kind: "library" }
+    | { readonly kind: "inbox" }
     | null;
   existingTabKinds?: readonly WorkbenchTabKind[];
 }
@@ -105,7 +106,7 @@ function resolveActionCapability(
 ): WorkbenchPanelActionCapability {
   const owner = input.owner;
   if (!owner) return unavailable("no_session");
-  if (owner.kind === "pages") return unavailable("owner_not_supported");
+  if (owner.kind === "library" || owner.kind === "inbox") return unavailable("owner_not_supported");
 
   const supportedActions = input.panelId === "right" ? RIGHT_PANEL_ACTIONS : BOTTOM_PANEL_ACTIONS;
   if (!supportedActions.has(kind)) return unavailable("panel_not_supported");

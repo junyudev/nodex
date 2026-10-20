@@ -89,7 +89,7 @@ describe("WindowSessionState", () => {
 
       expect(session.lifecycle).toEqual({ state: "open" });
       expect(session.layoutRevision).toBe(0);
-      expect(session.layout.version).toBe(8);
+      expect(session.layout.version).toBe(9);
       expect(getActiveProjectId(session.layout)).toBeNull();
       expect(catalog?.version).toBe(3);
       expect(catalog?.sessions).toHaveLength(1);
@@ -124,7 +124,7 @@ describe("WindowSessionState", () => {
       // The Project opens on its Inbox Home, with the Welcome Page beside it.
       expect(scene?.primary).toMatchObject({
         kind: "inbox",
-        config: { projectId: presentation.projectId },
+        config: { scope: { kind: "project", projectId: presentation.projectId } },
       });
       expect(Object.values(scene?.panelSurfacesById ?? {}).map((surface) => surface.kind)).toEqual([
         "page_stage",
@@ -578,7 +578,7 @@ describe("WindowSessionState", () => {
         lifecycle: { state: "open" },
         layoutRevision: 7,
         layout: {
-          version: 8,
+          version: 9,
           location: {
             kind: "project",
             projectId: "legacy",
@@ -626,7 +626,7 @@ describe("WindowSessionState", () => {
         lifecycle: { state: "open" },
         layoutRevision: 0,
         layout: {
-          version: 8,
+          version: 9,
           location: {
             kind: "project",
             projectId: "legacy",

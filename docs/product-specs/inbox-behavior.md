@@ -20,11 +20,14 @@ intents, and selection.
 - Each message belongs to exactly one Inbox, fixed when it is captured: the
   Library Inbox or one Project's Inbox. Moving its Page later never changes
   which Inbox it belongs to.
-- A Project's Inbox is its Home: the first tab of the Project, which cannot be
-  closed or moved. The Project's Views are ordinary tabs beside it. The Home's
-  `Open Board` button opens the Project's default View, or focuses it when it is
-  already open. The Project's Agent Dock is hidden while the Home is showing,
-  since the Home has its own composer.
+- Every Inbox is the Home of its own tab set: the first tab, which cannot be
+  closed or moved. A Project's Inbox is its Project's Home, with the Project's
+  Views as ordinary tabs beside it; the Home's `Open Board` button opens the
+  Project's default View, or focuses it when it is already open. The Project's
+  Agent Dock is hidden while the Home is showing, since the Home has its own
+  composer. The Library Inbox is the Home of the Inbox's own tab set: a
+  message's Page, the Inbox Database, and Library content opened from them open
+  as tabs beside it, so reading or editing a message never leaves the Inbox.
 - The Inbox composer sends to the Inbox it shows. Agent Turns send to their
   chat's Project Inbox, and the command line to its Project's Inbox; both use
   the Library Inbox outside a Project. Only the desktop app chooses an Inbox
@@ -397,7 +400,8 @@ creates a second message, and does not count against the Agent budget again.
 ## Entry points and settings
 
 - The sidebar's `Inbox` row sits directly above `New chat` and opens the
-  Library Inbox. A Project row opens that Project on its Inbox Home.
+  Library Inbox on its Inbox tab; tabs opened beside it stay open. A Project
+  row opens that Project on its Inbox Home.
 - `⌘/Ctrl+Shift+D` captures where the user is: in a Project it shows that
   Project's Inbox Home, and anywhere else it opens the Library Inbox. Either
   way it focuses the composer. The command palette exposes the same command as
@@ -409,10 +413,8 @@ creates a second message, and does not count against the Agent budget again.
     Project's Inbox;
   - `Inbox settings`.
 
-  The Library Inbox's header sits in the window's title bar. A Project's Inbox
-  is one of the Project's tabs, so its header spans the tab like a Board's:
-  views at the start and tools at the end, in the same places as on every
-  other tab.
+  Each Inbox is a tab, so its header spans the tab like a Board's: views at
+  the start and tools at the end, in the same places as on every other tab.
 
 - `Settings → Inbox` holds these Profile preferences:
   - whether suggestions run;

@@ -28,7 +28,6 @@ import {
   surfaceViewPillClassName,
 } from "@/components/workbench/surface-toolbar";
 import { ToolbarIconButton } from "@/components/workbench/workbench-panel-controls";
-import { AppShellHeaderContentRegistrar } from "@/lib/workbench-ui-scopes";
 import { cn } from "@/lib/utils";
 import { ThreadTimestampSeparator } from "@/features/local-conversation/view/shared/thread-timestamp-separator";
 import { InboxComposer } from "./inbox-composer";
@@ -60,8 +59,8 @@ const INBOX_VIEW_ICONS = { inbox: InboxIcon, processed: HistoryIcon } as const;
 
 export interface InboxRouteProps {
   /**
-   * Which Inbox to show. The Library Inbox is a full route whose header joins the app shell;
-   * a Project's Inbox is that Project's Home tab and carries its header inline.
+   * Which Inbox to show. Each is the Home tab of its Scene: the Library Inbox of its own Scene,
+   * a Project's Inbox of that Project's.
    */
   readonly scope: InboxScope;
   readonly windowSessionId: string;
@@ -80,7 +79,6 @@ function InboxHeader({
   inboxCount,
   databaseId,
   databaseLabel,
-  inline,
   onViewChange,
   onOpenDatabase,
   onOpenSettings,
@@ -90,20 +88,13 @@ function InboxHeader({
   readonly databaseId: string | null;
   /** What the Database button opens: the Inbox's own Database or the Project's Board. */
   readonly databaseLabel: string;
-  /** Inside a Project's tab the header sits in the surface, not the window's title bar. */
-  readonly inline: boolean;
   readonly onViewChange: (view: InboxWindowFilter) => void;
   readonly onOpenDatabase: (databaseId: string) => void;
   readonly onOpenSettings: () => void;
 }) {
   return (
-    <header
-      className={cn(
-        // A Project's Inbox is one of its tabs, so it tops the tab like a Board's views do.
-        inline ? cn(SURFACE_TOOLBAR_ROW_CLASS, "shrink-0") : "flex w-full items-center gap-2",
-        !inline && "electron:h-toolbar",
-      )}
-    >
+    // An Inbox is its Scene's Home tab, so it tops the tab like a Board's views do.
+    <header className={cn(SURFACE_TOOLBAR_ROW_CLASS, "shrink-0")}>
       <div role="tablist" aria-label="Inbox view" className="-ml-1 flex min-w-0 items-center">
         {(["inbox", "processed"] as const).map((option) => {
           const ViewIcon = INBOX_VIEW_ICONS[option];
@@ -438,8 +429,7 @@ export function InboxRoute({
       view={view}
       inboxCount={summary.data?.inboxCount ?? 0}
       databaseId={summary.data?.databaseId ?? null}
-      databaseLabel={projectName ? "Open Board" : "Open Inbox as a Database"}
-      inline={projectName !== null}
+      databaseLabel={inboxProjectId ? "Open Board" : "Open Inbox as a Database"}
       onViewChange={changeView}
       onOpenDatabase={onOpenDatabase}
       onOpenSettings={onOpenSettings}
@@ -452,14 +442,7 @@ export function InboxRoute({
       data-inbox-scope={inboxProjectId ? "project" : "library"}
       className="flex h-full min-h-0 w-full flex-col"
     >
-      {projectName ? (
-        header
-      ) : (
-        <>
-          <AppShellHeaderContentRegistrar content={header} />
-          <div aria-hidden="true" className="h-toolbar shrink-0" />
-        </>
-      )}
+      {header}
       <div
         ref={scrollRef}
         data-testid="inbox-stream"

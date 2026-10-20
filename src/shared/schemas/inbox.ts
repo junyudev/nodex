@@ -18,7 +18,6 @@ import type {
   InboxEditInput,
   InboxPageIdsInput,
   InboxProposalInput,
-  InboxScope,
   InboxSendInput,
   InboxSetKindInput,
   InboxSetStateInput,
@@ -27,6 +26,7 @@ import type {
 } from "../inbox";
 import { isBoundedOperationId } from "../operation-identity";
 import { AgentRuntimeModelSelectionSchema } from "./agent-runtime-api";
+import { InboxScopeSchema } from "./inbox-scope";
 
 export const MAX_INBOX_MESSAGE_BYTES = 64 * 1024;
 export const MAX_INBOX_DISPATCH_PAGES = 16;
@@ -90,11 +90,6 @@ export const InboxExecutionSelectionSchema = z
     interactionMode: z.enum(["default", "plan"]),
   })
   .strict() satisfies z.ZodType<InboxExecutionSelection>;
-
-export const InboxScopeSchema = z.discriminatedUnion("kind", [
-  z.object({ kind: z.literal("library") }).strict(),
-  z.object({ kind: z.literal("project"), projectId: id }).strict(),
-]) satisfies z.ZodType<InboxScope>;
 
 export const InboxSummaryInputSchema = z
   .object({ scope: InboxScopeSchema })

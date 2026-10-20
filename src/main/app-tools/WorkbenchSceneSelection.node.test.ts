@@ -12,7 +12,7 @@ const windowA = { windowSessionId: "A", rendererGeneration: "A-1" };
 const windowB = { windowSessionId: "B", rendererGeneration: "B-1" };
 const project: WorkbenchSceneOwner = { kind: "project", projectId: "project" };
 const session: WorkbenchSceneOwner = { kind: "session", sessionId: "session" };
-const pages: WorkbenchSceneOwner = { kind: "pages" };
+const pages: WorkbenchSceneOwner = { kind: "library" };
 const anchor: PresentationAnchor = {
   ...windowA,
   sceneOwner: project,

@@ -44,7 +44,7 @@ function resourceProjectId(
 }
 
 function projectionConfig(
-  surface: Exclude<WorkbenchSurfaceDescriptor, { readonly kind: "conversation" }>,
+  surface: Exclude<WorkbenchSurfaceDescriptor, { readonly kind: "conversation" | "inbox" }>,
 ): WorkbenchTabProjection["config"] {
   if (surface.kind !== "browser") return surface.config;
   return {
@@ -88,7 +88,7 @@ export function presentWorkbenchSessionPanelsWithScene(
       .flatMap((leaf) => leaf.tabIds)
       .map((surfaceId, order) => {
         const surface = scene.panelSurfacesById[surfaceId];
-        if (!surface || surface.kind === "conversation") return null;
+        if (!surface || surface.kind === "conversation" || surface.kind === "inbox") return null;
         const base = {
           id: surface.id,
           sessionId: session.id,

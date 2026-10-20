@@ -121,7 +121,7 @@ describe("bounded semantic Workbench context", () => {
     } as WorkbenchObservedTab;
     const bounded = boundWorkbenchSubmission({
       rendererGeneration: "generation",
-      sceneOwner: { kind: "pages" },
+      sceneOwner: { kind: "library" },
       presentationRevision: 1,
       focusedTarget: null,
       selectedTabs: [invalid, tab("valid")],

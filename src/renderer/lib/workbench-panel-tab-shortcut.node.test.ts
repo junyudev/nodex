@@ -39,7 +39,7 @@ function sceneWithTwoPageSurfaces(owner: WorkbenchSceneOwner) {
 }
 
 describe("workbench panel tab shortcut projection", () => {
-  test.each([[{ kind: "project", projectId: "alpha" }], [{ kind: "pages" }]] as const)(
+  test.each([[{ kind: "project", projectId: "alpha" }], [{ kind: "library" }]] as const)(
     "projects the %s owner scene by leaf",
     (owner) => {
       const scene = sceneWithTwoPageSurfaces(owner);

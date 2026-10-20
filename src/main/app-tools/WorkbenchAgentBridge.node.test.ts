@@ -102,7 +102,7 @@ const setup = Effect.gen(function* () {
     bridge,
     scope,
     sent,
-    first: { ...first, sceneOwner: { kind: "pages" as const } },
+    first: { ...first, sceneOwner: { kind: "library" as const } },
     second,
     replace,
     state,
@@ -123,7 +123,7 @@ it.effect("correlates observations to the exact window, renderer, and request ki
   Effect.gen(function* () {
     const subject = yield* setup;
     const request = yield* subject.bridge
-      .request(subject.first, { kind: "observe", sceneOwner: { kind: "pages" } })
+      .request(subject.first, { kind: "observe", sceneOwner: { kind: "library" } })
       .pipe(Effect.forkIn(subject.scope, { startImmediately: true }));
     yield* Effect.yieldNow;
     const message = subject.sent.find(
@@ -163,7 +163,7 @@ it.effect(
     Effect.gen(function* () {
       const subject = yield* setup;
       const request = yield* subject.bridge
-        .request(subject.first, { kind: "observe", sceneOwner: { kind: "pages" } })
+        .request(subject.first, { kind: "observe", sceneOwner: { kind: "library" } })
         .pipe(Effect.flip, Effect.forkIn(subject.scope, { startImmediately: true }));
       yield* Effect.yieldNow;
       const message = subject.sent[0]!.value;
@@ -182,7 +182,7 @@ it.effect(
         "stale_renderer",
       );
       const afterReload = yield* subject.bridge
-        .request(replacement, { kind: "observe", sceneOwner: { kind: "pages" } })
+        .request(replacement, { kind: "observe", sceneOwner: { kind: "library" } })
         .pipe(Effect.forkIn(subject.scope, { startImmediately: true }));
       yield* Effect.yieldNow;
       assert.isTrue(yield* subject.bridge.reply(11, response(subject.sent.at(-1)!.value)));
@@ -195,7 +195,7 @@ it.effect("bounds pending requests and frees capacity on timeout and caller canc
   Effect.gen(function* () {
     const subject = yield* setup;
     const request = yield* subject.bridge
-      .request(subject.first, { kind: "observe", sceneOwner: { kind: "pages" } })
+      .request(subject.first, { kind: "observe", sceneOwner: { kind: "library" } })
       .pipe(Effect.flip, Effect.forkIn(subject.scope, { startImmediately: true }));
     yield* Effect.yieldNow;
     assert.equal(
@@ -211,7 +211,7 @@ it.effect("bounds pending requests and frees capacity on timeout and caller canc
       1,
     );
     const cancelled = yield* subject.bridge
-      .request(subject.first, { kind: "observe", sceneOwner: { kind: "pages" } })
+      .request(subject.first, { kind: "observe", sceneOwner: { kind: "library" } })
       .pipe(Effect.forkIn(subject.scope, { startImmediately: true }));
     yield* Effect.yieldNow;
     yield* Fiber.interrupt(cancelled);
@@ -220,7 +220,7 @@ it.effect("bounds pending requests and frees capacity on timeout and caller canc
       2,
     );
     const finalRequest = yield* subject.bridge
-      .request(subject.first, { kind: "observe", sceneOwner: { kind: "pages" } })
+      .request(subject.first, { kind: "observe", sceneOwner: { kind: "library" } })
       .pipe(Effect.forkIn(subject.scope, { startImmediately: true }));
     yield* Effect.yieldNow;
     assert.isTrue(yield* subject.bridge.reply(11, response(subject.sent.at(-1)!.value)));

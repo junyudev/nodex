@@ -13,14 +13,14 @@ import {
   WORKBENCH_FLOATING_COMPOSER_DOCKS,
   WORKBENCH_SCENE_MAX_PANEL_SURFACES,
   WORKBENCH_SCENE_VERSION,
-  isPagesSceneSurfaceAllowed,
+  inboxSurface,
+  isLibrarySceneSurfaceAllowed,
   isProjectScenePanelSurfaceAllowed,
   makeWorkbenchSceneKey,
   migrateWorkbenchSceneV1ToV4,
   migrateWorkbenchSceneV2ToV4,
   migrateWorkbenchSceneV3ToV4,
   migrateWorkbenchSceneV4ToV5,
-  projectInboxSurface,
   type WorkbenchSceneOwner,
   type WorkbenchSceneOwnerV4,
   type WorkbenchSceneSnapshot,
@@ -32,6 +32,8 @@ import {
 } from "../workbench-scene";
 import { BrowserSidebarDeviceToolbarStateSchema } from "../browser/browser-schemas";
 import { WorkbenchViewSchema } from "./workbench";
+import { InboxScopeSchema } from "./inbox-scope";
+import { inboxScopeKey, LIBRARY_INBOX, projectInbox } from "../inbox";
 import { WorkbenchReviewConfigSchema } from "./workbench-review";
 import { WorkbenchImageEditorSurfaceConfigSchema } from "./workbench-image-editor";
 import {
@@ -69,7 +71,12 @@ export const WorkbenchSceneOwnerSchema = z.discriminatedUnion("kind", [
     .strict(),
   z
     .object({
-      kind: z.literal("pages"),
+      kind: z.literal("library"),
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("inbox"),
     })
     .strict(),
 ]) satisfies z.ZodType<WorkbenchSceneOwner>;
@@ -243,7 +250,7 @@ export const WorkbenchSurfaceDescriptorSchema = z
       .object({
         ...surfaceBaseSchema,
         kind: z.literal("inbox"),
-        config: z.object({ projectId: z.string().trim().min(1).max(512) }).strict(),
+        config: z.object({ scope: InboxScopeSchema }).strict(),
       })
       .strict(),
     z
@@ -677,7 +684,7 @@ function isRawScenePanelSurfaceAllowed(ownerKind: unknown, surface: unknown): bo
     return record.kind !== "conversation" && record.kind !== "review" && record.kind !== "inbox";
   }
   if (ownerKind === "session") return record.kind !== "conversation" && record.kind !== "inbox";
-  if (ownerKind !== "pages") return true;
+  if (ownerKind !== "library" && ownerKind !== "inbox") return true;
 
   const config = record.config;
   if (!config || typeof config !== "object" || Array.isArray(config)) return false;
@@ -744,15 +751,39 @@ function stripOwnerInvalidPanelSurfacesFromScene(value: unknown): unknown {
   };
 }
 
+function isRawRecord(value: unknown): value is Record<string, unknown> {
+  return !!value && typeof value === "object" && !Array.isArray(value);
+}
+
 /** Before v8 a Project's Home was a Database View; it becomes the Project's Inbox in place. */
 function adoptRawProjectInboxHome(value: unknown): unknown {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return value;
-  const scene = value as Record<string, unknown>;
-  const owner = scene.owner as Record<string, unknown> | null | undefined;
-  const primary = scene.primary as Record<string, unknown> | null | undefined;
+  if (!isRawRecord(value)) return value;
+  const owner = isRawRecord(value.owner) ? value.owner : null;
+  const primary = isRawRecord(value.primary) ? value.primary : null;
   if (owner?.kind !== "project" || typeof owner.projectId !== "string") return value;
   if (!primary || typeof primary.id !== "string" || primary.kind === "inbox") return value;
-  return { ...scene, primary: projectInboxSurface(primary.id, owner.projectId) };
+  return { ...value, primary: inboxSurface(primary.id, projectInbox(owner.projectId)) };
+}
+
+/**
+ * Before v9 Space's Scene was owned by `pages`, and an Inbox Home named only its Project because
+ * the Library Inbox had no Scene.
+ */
+function migrateRawSceneToV9(value: unknown): unknown {
+  if (!isRawRecord(value)) return value;
+  const owner =
+    isRawRecord(value.owner) && value.owner.kind === "pages" ? { kind: "library" } : value.owner;
+  const primary = value.primary;
+  const config = isRawRecord(primary) && primary.kind === "inbox" ? primary.config : null;
+  return {
+    ...value,
+    version: WORKBENCH_SCENE_VERSION,
+    owner,
+    primary:
+      isRawRecord(primary) && isRawRecord(config) && typeof config.projectId === "string"
+        ? { ...primary, config: { scope: projectInbox(config.projectId) } }
+        : primary,
+  };
 }
 
 function migrateWorkbenchSceneSnapshot(value: unknown): unknown {
@@ -763,12 +794,16 @@ function migrateWorkbenchSceneSnapshot(value: unknown): unknown {
   if (record?.version === WORKBENCH_SCENE_VERSION) {
     return stripOwnerInvalidPanelSurfacesFromScene(stripDatabaseLayoutsFromScene(value));
   }
+  if (record?.version === 8) {
+    return stripOwnerInvalidPanelSurfacesFromScene(
+      migrateRawSceneToV9(stripDatabaseLayoutsFromScene(value)),
+    );
+  }
   if (record?.version === 5 || record?.version === 6 || record?.version === 7) {
     return adoptRawProjectInboxHome(
-      stripOwnerInvalidPanelSurfacesFromScene({
-        ...(stripDatabaseLayoutsFromScene(value) as Record<string, unknown>),
-        version: WORKBENCH_SCENE_VERSION,
-      }),
+      stripOwnerInvalidPanelSurfacesFromScene(
+        migrateRawSceneToV9(stripDatabaseLayoutsFromScene(value)),
+      ),
     );
   }
   const v4Candidate = record?.version === 4 ? stripDatabaseLayoutsFromScene(value) : value;
@@ -857,30 +892,28 @@ export const WorkbenchSceneSnapshotSchema = z.preprocess(
         });
       }
 
-      if (scene.owner.kind === "project") {
-        if (
-          !scene.primary ||
-          scene.primary.kind !== "inbox" ||
-          scene.primary.config.projectId !== scene.owner.projectId
-        ) {
+      if (scene.owner.kind === "project" || scene.owner.kind === "inbox") {
+        const homeScope =
+          scene.primary?.kind === "inbox" ? inboxScopeKey(scene.primary.config.scope) : null;
+        const ownerScope =
+          scene.owner.kind === "project"
+            ? inboxScopeKey(projectInbox(scene.owner.projectId))
+            : inboxScopeKey(LIBRARY_INBOX);
+        if (homeScope !== ownerScope) {
           context.addIssue({
             code: "custom",
             path: ["primary"],
-            message: "A Project Scene's Home must be that Project's Inbox",
-          });
-        }
-        if (scene.agentDock === null) {
-          context.addIssue({
-            code: "custom",
-            path: ["agentDock"],
-            message: "Project Scene must own Agent Dock view state",
+            message:
+              scene.owner.kind === "project"
+                ? "A Project Scene's Home must be that Project's Inbox"
+                : "The Inbox Scene's Home must be the Library Inbox",
           });
         }
         if (placementCount.get(scene.primary?.id ?? "") !== 1) {
           context.addIssue({
             code: "custom",
             path: ["primary", "id"],
-            message: "Project primary must be placed exactly once",
+            message: "An Inbox Home must be placed exactly once",
           });
         }
         if (
@@ -889,7 +922,7 @@ export const WorkbenchSceneSnapshotSchema = z.preprocess(
           context.addIssue({
             code: "custom",
             path: ["panels", "bottom"],
-            message: "Project primary must stay in the right surface stack",
+            message: "An Inbox Home must stay in the right surface stack",
           });
         }
         const primaryLeaf = findWorkbenchPanelLeafForTab(
@@ -900,50 +933,74 @@ export const WorkbenchSceneSnapshotSchema = z.preprocess(
           context.addIssue({
             code: "custom",
             path: ["panels", "right", "layout"],
-            message: "Project primary must be the first tab in its leaf",
+            message: "An Inbox Home must be the first tab in its leaf",
           });
         }
         if (scene.panels.right.collapsed || scene.panels.right.size.fullWidth !== true) {
           context.addIssue({
             code: "custom",
             path: ["panels", "right"],
-            message: "Project right surface stack must remain open and full width",
+            message: "An Inbox Home's surface stack must remain open and full width",
           });
         }
-        if (entries.some(([, surface]) => !isProjectScenePanelSurfaceAllowed(surface))) {
-          context.addIssue({
-            code: "custom",
-            path: ["panelSurfacesById"],
-            message: "Project Scene contains a Session-only panel surface",
-          });
+        if (scene.owner.kind === "project") {
+          if (scene.agentDock === null) {
+            context.addIssue({
+              code: "custom",
+              path: ["agentDock"],
+              message: "Project Scene must own Agent Dock view state",
+            });
+          }
+          if (entries.some(([, surface]) => !isProjectScenePanelSurfaceAllowed(surface))) {
+            context.addIssue({
+              code: "custom",
+              path: ["panelSurfacesById"],
+              message: "Project Scene contains a Session-only panel surface",
+            });
+          }
+        } else {
+          if (scene.agentDock !== null || scene.composerOverlay.visible) {
+            context.addIssue({
+              code: "custom",
+              path: ["agentDock"],
+              message: "Inbox Scene cannot own execution composer state",
+            });
+          }
+          if (entries.some(([, surface]) => !isLibrarySceneSurfaceAllowed(surface))) {
+            context.addIssue({
+              code: "custom",
+              path: ["panelSurfacesById"],
+              message: "Inbox Scene contains a non-Library or execution-only surface",
+            });
+          }
         }
-      } else if (scene.owner.kind === "pages") {
+      } else if (scene.owner.kind === "library") {
         if (scene.primary !== null) {
           context.addIssue({
             code: "custom",
             path: ["primary"],
-            message: "Pages Scene does not own a protected primary surface",
+            message: "Library Scene does not own a protected primary surface",
           });
         }
         if (scene.agentDock !== null || scene.composerOverlay.visible) {
           context.addIssue({
             code: "custom",
             path: ["agentDock"],
-            message: "Pages Scene cannot own execution composer state",
+            message: "Library Scene cannot own execution composer state",
           });
         }
         if (scene.panels.right.collapsed || scene.panels.right.size.fullWidth !== true) {
           context.addIssue({
             code: "custom",
             path: ["panels", "right"],
-            message: "Pages right surface stack must remain open and full width",
+            message: "Library right surface stack must remain open and full width",
           });
         }
-        if (entries.some(([, surface]) => !isPagesSceneSurfaceAllowed(surface))) {
+        if (entries.some(([, surface]) => !isLibrarySceneSurfaceAllowed(surface))) {
           context.addIssue({
             code: "custom",
             path: ["panelSurfacesById"],
-            message: "Pages Scene contains a non-Library or execution-only surface",
+            message: "Library Scene contains a non-Library or execution-only surface",
           });
         }
       } else if (

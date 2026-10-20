@@ -20,7 +20,7 @@ type Scenario = (typeof scenarios)[number];
 
 export const rendererCohort = [
   "src/renderer/components/workbench/workbench-shell.layout-panel-actions.test.tsx",
-  "src/renderer/components/workbench/workbench-shell.pages-shell-navigation.test.tsx",
+  "src/renderer/components/workbench/workbench-shell.library-shell-navigation.test.tsx",
   "src/renderer/components/workbench/review-diff-panel.test.tsx",
   "src/renderer/components/workbench/workbench-shell.sidebar-core.test.tsx",
   "src/renderer/components/workbench/workbench-shell.automations-conversation.test.tsx",

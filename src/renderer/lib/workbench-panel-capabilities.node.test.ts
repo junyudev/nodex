@@ -215,10 +215,10 @@ describe("resolveWorkbenchPanelCapabilities", () => {
     expect(result.availableActionKinds).not.toContain("review");
   });
 
-  it("does not expose generic execution actions in the Pages Scene", () => {
+  it("does not expose generic execution actions in the Library Scene", () => {
     const result = resolveWorkbenchPanelCapabilities({
       panelId: "right",
-      owner: { kind: "pages" },
+      owner: { kind: "library" },
     });
 
     expect(result.availableActionKinds).toEqual([]);

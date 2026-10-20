@@ -5,7 +5,7 @@ import { make } from "./CodexTurnPresentation";
 
 export const testSubmitPresentation: WorkbenchSubmitPresentation = {
   rendererGeneration: "renderer-a",
-  sceneOwner: { kind: "pages" },
+  sceneOwner: { kind: "library" },
   presentationRevision: 7,
   selectedTabs: [],
   focusedTarget: { tabId: "tab-page", panelId: "right", groupId: "group-a" },

@@ -173,7 +173,7 @@ describe("Agent Runtime stage commands", () => {
     const ticket = { ticketId: "018f0097-a39b-7000-8000-000000000000" };
     const submitted = {
       rendererGeneration: "renderer",
-      sceneOwner: { kind: "pages" as const },
+      sceneOwner: { kind: "library" as const },
       presentationRevision: 3,
       focusedTarget: null,
       selectedTabs: [],

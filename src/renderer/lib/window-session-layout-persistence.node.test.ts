@@ -40,7 +40,7 @@ describe("Window Session layout commits", () => {
       initialLayout,
       save,
     });
-    const pages = { ...initialLayout, location: { kind: "pages" as const } };
+    const pages = { ...initialLayout, location: { kind: "library" as const } };
     const project = {
       ...initialLayout,
       location: { kind: "project" as const, projectId: "project-b" },
@@ -91,7 +91,7 @@ describe("Window Session layout commits", () => {
       save,
     });
     const desired = {
-      layout: { ...initialLayout, location: { kind: "pages" as const } },
+      layout: { ...initialLayout, location: { kind: "library" as const } },
       presentationRevision: 3,
     };
 
@@ -121,7 +121,7 @@ describe("Window Session layout commits", () => {
     expect(save).not.toHaveBeenCalled();
     await expect(
       writer.commit({
-        layout: { ...initialLayout, location: { kind: "pages" } },
+        layout: { ...initialLayout, location: { kind: "library" } },
         presentationRevision: 9,
       }),
     ).rejects.toBeInstanceOf(WorkbenchLayoutCommitRejected);

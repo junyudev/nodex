@@ -5,21 +5,21 @@ import { describe, expect, test } from "vite-plus/test";
 import { render } from "../../test/dom";
 import { TestQueryProvider } from "../../test/query";
 import { queryKeys } from "../../lib/query-keys";
-import { usePagesSceneNavigation } from "./pages-scene-breadcrumb";
+import { useLibrarySceneNavigation } from "./library-scene-breadcrumb";
 
-function EmptyPagesSceneNavigation() {
-  const navigation = usePagesSceneNavigation(null);
+function EmptyLibrarySceneNavigation() {
+  const navigation = useLibrarySceneNavigation(null);
   return <output>{navigation.activeSurface ? "active" : "empty"}</output>;
 }
 
-describe("Pages scene navigation", () => {
+describe("Library scene navigation", () => {
   test("does not materialize a placeholder Library query without a target", async () => {
     const queryClient = new QueryClient({
       defaultOptions: { queries: { retry: false, gcTime: Infinity } },
     });
     const view = render(
       <TestQueryProvider client={queryClient}>
-        <EmptyPagesSceneNavigation />
+        <EmptyLibrarySceneNavigation />
       </TestQueryProvider>,
     );
 

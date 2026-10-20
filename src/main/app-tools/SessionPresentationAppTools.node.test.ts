@@ -117,7 +117,7 @@ const fixture = (
             return {
               kind: "discover",
               presentationRevision: 17,
-              selectedSceneOwner: { kind: "pages" },
+              selectedSceneOwner: { kind: "library" },
               sceneOwners: [],
             };
           if (body.kind !== "command") throw new Error("Unexpected presentation request");

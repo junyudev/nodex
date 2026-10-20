@@ -209,7 +209,7 @@ describe("WorkbenchSceneNavigator", () => {
 
   test("pins and closes a Scene preview through the explicit preview commands", async () => {
     const harness = createHarness();
-    const owner = { kind: "pages" as const };
+    const owner = { kind: "library" as const };
     const result = await harness.navigator.presentPanelSurface({
       owner,
       request: {
@@ -244,7 +244,7 @@ describe("WorkbenchSceneNavigator", () => {
       }),
     ).toBe(true);
     expect(harness.previews).toEqual({});
-    expect(harness.scenes.pages?.panelSurfacesById[result.surfaceId]).toMatchObject({
+    expect(harness.scenes.library?.panelSurfacesById[result.surfaceId]).toMatchObject({
       kind: "page_stage",
     });
   });
@@ -393,7 +393,7 @@ describe("WorkbenchSceneNavigator", () => {
 
   test("keeps source-relative Page navigation in the source tab group", async () => {
     const harness = createHarness();
-    const owner = { kind: "pages" as const };
+    const owner = { kind: "library" as const };
     const request = (pageId: string) => ({
       kind: "page_stage" as const,
       config: {
@@ -440,7 +440,7 @@ describe("WorkbenchSceneNavigator", () => {
     });
     if (child.status !== "presented") throw new Error("Expected child Page");
 
-    const scene = harness.scenes.pages!;
+    const scene = harness.scenes.library!;
     const sourceLeaf = findWorkbenchPanelLeafForTab(scene.panels.right.layout, source.surfaceId);
     const distractorLeaf = findWorkbenchPanelLeafForTab(
       scene.panels.right.layout,
@@ -454,7 +454,7 @@ describe("WorkbenchSceneNavigator", () => {
 
   test("resolves same-group navigation from an ephemeral Page preview", async () => {
     const harness = createHarness();
-    const owner = { kind: "pages" as const };
+    const owner = { kind: "library" as const };
     const request = (pageId: string) => ({
       kind: "page_stage" as const,
       config: {
@@ -482,7 +482,7 @@ describe("WorkbenchSceneNavigator", () => {
       navigation: "background",
     });
     if (other.status !== "presented") throw new Error("Expected other Page");
-    const sceneBeforePreview = harness.scenes.pages!;
+    const sceneBeforePreview = harness.scenes.library!;
     const anchorLeaf = findWorkbenchPanelLeafForTab(
       sceneBeforePreview.panels.right.layout,
       anchor.surfaceId,
@@ -509,7 +509,7 @@ describe("WorkbenchSceneNavigator", () => {
     });
     if (child.status !== "presented") throw new Error("Expected child Page");
 
-    const scene = harness.scenes.pages!;
+    const scene = harness.scenes.library!;
     expect(findWorkbenchPanelLeafForTab(scene.panels.right.layout, child.surfaceId)?.id).toBe(
       anchorLeaf.id,
     );
@@ -569,19 +569,19 @@ describe("WorkbenchSceneNavigator", () => {
     });
   });
 
-  test("opens the singleton Pages Scene", () => {
+  test("opens the singleton Library Scene", () => {
     const harness = createHarness();
 
-    harness.navigator.openPages();
+    harness.navigator.openLibrary();
 
     expect(harness.windowOwner.read().windowState.location).toEqual({
-      kind: "pages",
+      kind: "library",
     });
   });
 
-  test("opens and focuses Library targets in one Pages tablist", async () => {
+  test("opens and focuses Library targets in one Library tablist", async () => {
     const harness = createHarness();
-    const owner = { kind: "pages" as const };
+    const owner = { kind: "library" as const };
     const present = (pageId: string) =>
       harness.navigator.presentPanelSurface({
         owner,
@@ -604,15 +604,15 @@ describe("WorkbenchSceneNavigator", () => {
 
     expect(first).toMatchObject({ status: "presented", reused: false });
     expect(reused).toMatchObject({ status: "presented", reused: true });
-    expect(Object.keys(harness.scenes)).toEqual(["pages"]);
-    expect(Object.values(harness.scenes.pages!.panelSurfacesById)).toHaveLength(2);
-    expect(harness.windowOwner.read().windowState.location).toEqual({ kind: "pages" });
+    expect(Object.keys(harness.scenes)).toEqual(["library"]);
+    expect(Object.values(harness.scenes.library!.panelSurfacesById)).toHaveLength(2);
+    expect(harness.windowOwner.read().windowState.location).toEqual({ kind: "library" });
     expect(harness.windowOwner.read().windowState.history.backStack.length).toBeGreaterThan(0);
   });
 
-  test("keeps nested Pages navigation with a bottom-panel source", async () => {
+  test("keeps nested Library navigation with a bottom-panel source", async () => {
     const harness = createHarness();
-    const owner = { kind: "pages" as const };
+    const owner = { kind: "library" as const };
     const request = (pageId: string) => ({
       kind: "page_stage" as const,
       config: {
@@ -642,17 +642,17 @@ describe("WorkbenchSceneNavigator", () => {
     });
     if (second.status !== "presented") throw new Error("Expected child Page");
 
-    const scene = harness.scenes.pages!;
+    const scene = harness.scenes.library!;
     expect(
       findWorkbenchPanelLeafForTab(scene.panels.bottom.layout, second.surfaceId)?.tabIds,
     ).toEqual([first.surfaceId, second.surfaceId]);
     expect(findWorkbenchPanelLeafForTab(scene.panels.right.layout, second.surfaceId)).toBeNull();
   });
 
-  test("rejects execution-only surfaces in the Pages Scene", async () => {
+  test("rejects execution-only surfaces in the Library Scene", async () => {
     const harness = createHarness();
     const owner = {
-      kind: "pages" as const,
+      kind: "library" as const,
     };
 
     await expect(
@@ -668,7 +668,7 @@ describe("WorkbenchSceneNavigator", () => {
       }),
     ).resolves.toEqual({
       status: "unavailable",
-      reason: "Pages only accepts Library content surfaces",
+      reason: "Only Library Pages, Databases, and Canvases open here",
     });
     expect(harness.scenes).toEqual({});
   });

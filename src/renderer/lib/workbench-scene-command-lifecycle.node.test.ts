@@ -115,7 +115,7 @@ const common = (id: string) => ({ id, titleSnapshot: id, stateKey: 0, state: nul
 
 describe("Workbench Scene content and runtime close boundary", () => {
   test("requires a completed Page flush and checkpoint before descriptor removal and lease disposal", async () => {
-    const subject = fixture({ kind: "pages" }, [
+    const subject = fixture({ kind: "library" }, [
       {
         ...common("page-tab"),
         kind: "page_stage",
@@ -160,7 +160,7 @@ describe("Workbench Scene content and runtime close boundary", () => {
     expect(await file.close("file-tab")).toMatchObject({ applied: false, error: "save_failed" });
     expect(file.tabIds()).toContain("file-tab");
     expect(runtime.flushFile).toHaveBeenCalledExactlyOnceWith("file-tab");
-    const canvas = fixture({ kind: "pages" }, [
+    const canvas = fixture({ kind: "library" }, [
       {
         ...common("canvas-tab"),
         kind: "canvas_stage",
@@ -177,7 +177,7 @@ describe("Workbench Scene content and runtime close boundary", () => {
     expect(await canvas.close("canvas-tab")).toMatchObject({ applied: true, error: null });
     expect(runtime.flushCanvas).toHaveBeenCalledWith("canvas-a");
     expect(runtime.disposeCanvas).toHaveBeenCalledExactlyOnceWith(
-      JSON.stringify(["window-a", "pages", "canvas-tab"]),
+      JSON.stringify(["window-a", "library", "canvas-tab"]),
     );
   });
 

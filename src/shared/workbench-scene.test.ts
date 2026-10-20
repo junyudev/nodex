@@ -5,8 +5,10 @@ import {
   getWorkbenchPanelActiveLeaf,
   moveWorkbenchPanelTab,
 } from "./workbench-panel-layout";
+import { LIBRARY_INBOX, projectInbox } from "./inbox";
 import {
   WORKBENCH_SCENE_MAX_PANEL_SURFACES,
+  WORKBENCH_SCENE_VERSION,
   activateWorkbenchSceneSurface,
   cloneWorkbenchSceneLayoutForNewWindow,
   collectWorkbenchScenePresentedPageIds,
@@ -22,7 +24,9 @@ import {
   migrateWorkbenchSceneV4ToV5,
   moveWorkbenchSceneSurface,
   patchWorkbenchScenePanel,
-  projectInboxSurface,
+  inboxSurface,
+  INBOX_SCENE_OWNER,
+  LIBRARY_SCENE_OWNER,
   removeWorkbenchSceneSurface,
   reorderWorkbenchSceneSurfaces,
   splitWorkbenchSceneLeaf,
@@ -95,8 +99,8 @@ function databaseHome(scene: WorkbenchSceneSnapshot): WorkbenchSceneSnapshot {
 function sceneV2Fields(
   scene: WorkbenchSceneSnapshot,
 ): Omit<WorkbenchSceneSnapshotV2, "version" | "agentDock"> {
-  if (scene.owner.kind === "pages") {
-    throw new Error("Pages Scenes did not exist in Scene v2");
+  if (scene.owner.kind === "library" || scene.owner.kind === "inbox") {
+    throw new Error("Library Scenes did not exist in Scene v2");
   }
   return {
     owner: scene.owner,
@@ -153,7 +157,7 @@ describe("WorkbenchScene", () => {
     expect(project.primary).toMatchObject({
       kind: "inbox",
       titleSnapshot: "Inbox",
-      config: { projectId: "project-1" },
+      config: { scope: { kind: "project", projectId: "project-1" } },
     });
     expect(session.primary).toMatchObject({
       kind: "conversation",
@@ -174,17 +178,95 @@ describe("WorkbenchScene", () => {
     expect(project.panels.bottom.collapsed).toBe(true);
     expect(makeWorkbenchSceneKey(project.owner)).toBe("project:project-1");
     expect(makeWorkbenchSceneKey(session.owner)).toBe("session:session-1");
-    const pages = materializeInitialWorkbenchScene({ kind: "pages" });
-    expect(pages.primary).toBeNull();
-    expect(pages.panelSurfacesById).toEqual({});
-    expect(pages.panels.right.collapsed).toBe(false);
-    expect(pages.panels.right.size.fullWidth).toBe(true);
-    expect(pages.composerOverlay.visible).toBe(false);
-    expect(pages.agentDock).toBeNull();
-    expect(makeWorkbenchSceneKey(pages.owner)).toBe("pages");
+    const library = materializeInitialWorkbenchScene(LIBRARY_SCENE_OWNER);
+    expect(library.primary).toBeNull();
+    expect(library.panelSurfacesById).toEqual({});
+    expect(library.panels.right.collapsed).toBe(false);
+    expect(library.panels.right.size.fullWidth).toBe(true);
+    expect(library.composerOverlay.visible).toBe(false);
+    expect(library.agentDock).toBeNull();
+    expect(makeWorkbenchSceneKey(library.owner)).toBe("library");
     expect(WorkbenchSceneSnapshotSchema.parse(project)).toEqual(project);
     expect(WorkbenchSceneSnapshotSchema.parse(session)).toEqual(session);
-    expect(WorkbenchSceneSnapshotSchema.parse(pages)).toEqual(pages);
+    expect(WorkbenchSceneSnapshotSchema.parse(library)).toEqual(library);
+  });
+
+  test("the Library Inbox is the Home of its own Scene, with Library content beside it", () => {
+    const inbox = materializeInitialWorkbenchScene(INBOX_SCENE_OWNER, {
+      identityFactory: identityFactory("inbox"),
+    });
+    const home = protectedPrimary(inbox);
+    expect(makeWorkbenchSceneKey(inbox.owner)).toBe("inbox");
+    expect(home).toEqual(inboxSurface(home.id, LIBRARY_INBOX));
+    expect(inbox.panels.right.layout.root).toMatchObject({ type: "leaf", tabIds: [home.id] });
+    expect(inbox.composerOverlay.visible).toBe(false);
+    expect(inbox.agentDock).toBeNull();
+
+    const libraryPage: WorkbenchSurfaceDescriptor = {
+      id: "library-page",
+      kind: "page_stage",
+      titleSnapshot: "Note",
+      config: { routingContext: { kind: "library" }, pageId: "page-1" },
+      stateKey: 0,
+      state: null,
+    };
+    const withPage = createWorkbenchSceneSurface(inbox, { panelId: "right", surface: libraryPage });
+    expect(withPage.panels.right.layout.root).toMatchObject({
+      tabIds: [home.id, "library-page"],
+    });
+    expect(WorkbenchSceneSnapshotSchema.parse(withPage)).toEqual(withPage);
+
+    // Only Library content opens beside the Library Inbox.
+    expect(
+      createWorkbenchSceneSurface(inbox, { panelId: "right", surface: browserSurface() }),
+    ).toBe(inbox);
+    expect(
+      createWorkbenchSceneSurface(inbox, {
+        panelId: "right",
+        surface: {
+          ...libraryPage,
+          id: "project-page",
+          config: { routingContext: { kind: "project", projectId: "project-1" }, pageId: "p" },
+        },
+      }),
+    ).toBe(inbox);
+    // The Inbox Home cannot be closed or sent to the bottom panel.
+    expect(removeWorkbenchSceneSurface(withPage, home.id)).toBe(withPage);
+    expect(
+      WorkbenchSceneSnapshotSchema.safeParse({
+        ...inbox,
+        primary: inboxSurface(home.id, projectInbox("project-1")),
+      }).success,
+    ).toBe(false);
+  });
+
+  test("a v8 Scene keeps its tabs as the Library Scene and names its Project Inbox", () => {
+    const project = projectScene();
+    const library = createWorkbenchSceneSurface(
+      materializeInitialWorkbenchScene(LIBRARY_SCENE_OWNER, {
+        identityFactory: identityFactory("library"),
+      }),
+      {
+        panelId: "right",
+        surface: {
+          id: "library-page",
+          kind: "page_stage",
+          titleSnapshot: "Note",
+          config: { routingContext: { kind: "library" }, pageId: "page-1" },
+          stateKey: 0,
+          state: null,
+        },
+      },
+    );
+    const savedProject = {
+      ...project,
+      version: 8,
+      primary: { ...protectedPrimary(project), config: { projectId: "project-1" } },
+    };
+    const savedLibrary = { ...library, version: 8, owner: { kind: "pages" } };
+
+    expect(WorkbenchSceneSnapshotSchema.parse(savedProject)).toEqual(project);
+    expect(WorkbenchSceneSnapshotSchema.parse(savedLibrary)).toEqual(library);
   });
 
   test("owns each panel surface exactly once and never allows closing primary", () => {
@@ -213,9 +295,9 @@ describe("WorkbenchScene", () => {
 
     const migrated = WorkbenchSceneSnapshotSchema.parse(saved);
 
-    expect(migrated.version).toBe(8);
+    expect(migrated.version).toBe(WORKBENCH_SCENE_VERSION);
     expect(migrated.primary).toEqual(
-      projectInboxSurface(protectedPrimary(migrated).id, "project-1"),
+      inboxSurface(protectedPrimary(migrated).id, projectInbox("project-1")),
     );
     expect(migrated.primary?.id).toBe(saved.primary?.id);
     expect(migrated.panels).toEqual(saved.panels);
@@ -303,12 +385,9 @@ describe("WorkbenchScene", () => {
   });
 
   test("treats every Pages surface as ordinary and permits an empty tablist", () => {
-    const pages = materializeInitialWorkbenchScene(
-      { kind: "pages" },
-      {
-        identityFactory: identityFactory("pages"),
-      },
-    );
+    const pages = materializeInitialWorkbenchScene(LIBRARY_SCENE_OWNER, {
+      identityFactory: identityFactory("library"),
+    });
     const withPage = createWorkbenchSceneSurface(pages, {
       panelId: "right",
       surface: {
@@ -653,7 +732,7 @@ describe("WorkbenchScene", () => {
       newDraftId: `agent-draft:${canonical.primary.id}`,
     });
     const currentSnapshot = WorkbenchSceneSnapshotSchema.parse(canonical);
-    expect(currentSnapshot.version).toBe(8);
+    expect(currentSnapshot.version).toBe(WORKBENCH_SCENE_VERSION);
     expect(currentSnapshot.primary?.kind).toBe("inbox");
     expect(WorkbenchSceneSnapshotSchema.parse(legacy)).toEqual(currentSnapshot);
   });
@@ -684,7 +763,7 @@ describe("WorkbenchScene", () => {
 
   test("migrates v3 resource configs to explicit Project access", () => {
     const current = databaseHome(projectScene());
-    if (current.owner.kind === "pages") {
+    if (current.owner.kind === "library" || current.owner.kind === "inbox") {
       throw new Error("Expected a legacy-compatible Project Scene");
     }
     const legacy = {
@@ -729,7 +808,7 @@ describe("WorkbenchScene", () => {
 
     const migrated = WorkbenchSceneSnapshotSchema.parse(legacy);
 
-    expect(migrated.version).toBe(8);
+    expect(migrated.version).toBe(WORKBENCH_SCENE_VERSION);
     expect(migrated.panelSurfacesById.board?.config).not.toHaveProperty("view");
     expect(WorkbenchSceneSnapshotSchema.parse(migrated)).toEqual(migrated);
   });
@@ -850,7 +929,9 @@ describe("WorkbenchScene", () => {
     expect(getWorkbenchSurfaceReuseKey(protectedPrimary(conversation))).toBe(
       "conversation:session-1",
     );
-    expect(getWorkbenchSurfaceReuseKey(protectedPrimary(projectScene()))).toBe("inbox:project-1");
+    expect(getWorkbenchSurfaceReuseKey(protectedPrimary(projectScene()))).toBe(
+      "inbox:project:project-1",
+    );
     expect(getWorkbenchSurfaceReuseKey(projectDatabase("board"))).toBe(
       "db:project:project-1:default",
     );

@@ -942,7 +942,7 @@ describe("useWorkbenchSessionCatalog", () => {
 
   test("dispatches a newly resolved Thread before committing its Session route", async () => {
     invokeMock.mockImplementation(() => Promise.resolve(makeWindow([])));
-    const window = makeWindowPort({ kind: "pages" });
+    const window = makeWindowPort({ kind: "library" });
     const { hook } = createHarness(window);
     const order: string[] = [];
     const session = makeAttachedSession({

@@ -57,12 +57,12 @@ describe("Workbench synchronous Window owner", () => {
     const view = renderHook(() => useWorkbenchWindowState(), { wrapper: wrapper() });
     const owner = view.result.current.owner;
     await act(async () => {
-      owner.selectPages();
-      owner.openRoute({ kind: "inbox" });
+      owner.selectLibrary();
+      owner.selectInbox();
       owner.openRoute({ kind: "settings", path: "/settings/inbox" });
       await Promise.resolve();
     });
-    const origin = { kind: "inbox", returnTo: { kind: "pages" } };
+    const origin = { kind: "inbox" };
     expect(getWorkbenchPrimaryDestination(view.result.current.location)).toBe("home");
     expect(owner.snapshotForPersistence().location).toEqual({
       kind: "settings",
@@ -85,18 +85,15 @@ describe("Workbench synchronous Window owner", () => {
     const unsubscribe = owner.subscribe(() => seen.push(owner.read().presentationRevision));
 
     await act(async () => {
-      owner.openRoute({ kind: "inbox" });
-      owner.selectPages();
-      expect(owner.snapshotForPersistence().homeLocation).toEqual({
-        kind: "inbox",
-        returnTo: { kind: "empty" },
-      });
+      owner.selectInbox();
+      owner.selectLibrary();
+      expect(owner.snapshotForPersistence().homeLocation).toEqual({ kind: "inbox" });
       owner.selectHome();
       owner.selectHome();
       await Promise.resolve();
     });
 
-    expect(view.result.current.location).toEqual({ kind: "inbox", returnTo: { kind: "empty" } });
+    expect(view.result.current.location).toEqual({ kind: "inbox" });
     expect(view.result.current.state.history.backStack).toHaveLength(3);
     expect(seen).toEqual([1, 2, 3]);
     unsubscribe();
@@ -107,14 +104,14 @@ describe("Workbench synchronous Window owner", () => {
     const earlyReader = renderHook(() => useWorkbenchWindowOwner(), { wrapper: sharedWrapper });
     const initialLayout = {
       ...createDefaultWorkbenchLayoutSnapshot(),
-      location: { kind: "pages" as const },
+      location: { kind: "library" as const },
     };
     const shell = renderHook(() => useWorkbenchWindowState(initialLayout), {
       wrapper: sharedWrapper,
     });
     expect(shell.result.current.owner).toBe(earlyReader.result.current);
-    expect(earlyReader.result.current.read().windowState.location).toEqual({ kind: "pages" });
-    expect(shell.result.current.location).toEqual({ kind: "pages" });
+    expect(earlyReader.result.current.read().windowState.location).toEqual({ kind: "library" });
+    expect(shell.result.current.location).toEqual({ kind: "library" });
     expect(shell.result.current.owner.read().presentationRevision).toBe(0);
   });
 
@@ -128,32 +125,32 @@ describe("Workbench synchronous Window owner", () => {
     expect(firstWindow.result.current.second.owner).toBe(owner);
     const seen: number[] = [];
     const unsubscribe = owner.subscribe(() => seen.push(owner.read().presentationRevision));
-    const pagesOwner: WorkbenchSceneOwner = { kind: "pages" };
-    const pagesScene = materializeInitialWorkbenchScene(pagesOwner);
+    const libraryOwner: WorkbenchSceneOwner = { kind: "library" };
+    const libraryScene = materializeInitialWorkbenchScene(libraryOwner);
 
     await act(async () => {
-      owner.setScene(pagesOwner, () => pagesScene, { expectedPresentationRevision: 0 });
+      owner.setScene(libraryOwner, () => libraryScene, { expectedPresentationRevision: 0 });
       owner.dispatchEphemeral({
         type: "update",
         field: "panelCollapsedOverrides",
         update: { "session-a:right": true },
       });
-      owner.setFocusedPanelGroup({ ownerKey: "pages", panelId: "right", leafId: "leaf-a" });
+      owner.setFocusedPanelGroup({ ownerKey: "library", panelId: "right", leafId: "leaf-a" });
       const beforeConflict = owner.read();
       expect(beforeConflict.presentationRevision).toBe(3);
       expect(() =>
-        owner.setScene(pagesOwner, () => pagesScene, { expectedPresentationRevision: 1 }),
+        owner.setScene(libraryOwner, () => libraryScene, { expectedPresentationRevision: 1 }),
       ).toThrow(WorkbenchPresentationConflict);
       expect(owner.read()).toBe(beforeConflict);
-      expect(owner.snapshotForPersistence().scenesByOwnerKey.pages).toEqual(pagesScene);
+      expect(owner.snapshotForPersistence().scenesByOwnerKey.library).toEqual(libraryScene);
       expect(owner.snapshotForPersistence()).not.toHaveProperty("ephemeralPanels");
       expect(secondWindow.result.current.owner.read().presentationRevision).toBe(0);
-      owner.selectPages();
+      owner.selectLibrary();
       expect(owner.read().focusedPanelGroup).toBeNull();
       await Promise.resolve();
     });
 
-    expect(firstWindow.result.current.second.location).toEqual({ kind: "pages" });
+    expect(firstWindow.result.current.second.location).toEqual({ kind: "library" });
     expect(seen).toEqual([1, 2, 3, 4]);
     unsubscribe();
     await act(async () => {
@@ -177,7 +174,7 @@ describe("Workbench synchronous Window owner", () => {
                 ? `session:${owner.sessionId}`
                 : owner.kind === "project"
                   ? `project:${owner.projectId}`
-                  : "pages";
+                  : owner.kind;
             return next.windowState.scenesByOwnerKey[key]!;
           },
         });
@@ -260,14 +257,14 @@ describe("Workbench synchronous Window owner", () => {
     const { owner } = view.result.current;
     let receiptPromise: ReturnType<typeof owner.commitCurrent> | undefined;
     await act(async () => {
-      owner.selectPages();
+      owner.selectLibrary();
       receiptPromise = owner.commitCurrent();
       owner.selectProject("project-b");
       await Promise.resolve();
     });
     expect(saveWindowSessionLayout).toHaveBeenCalledTimes(1);
     const firstRequest = vi.mocked(saveWindowSessionLayout).mock.calls[0]![0];
-    expect(firstRequest.layout.location).toEqual({ kind: "pages" });
+    expect(firstRequest.layout.location).toEqual({ kind: "library" });
 
     await act(async () => {
       finishFirstSave(accept(firstRequest));
@@ -276,7 +273,7 @@ describe("Workbench synchronous Window owner", () => {
     await expect(receiptPromise).resolves.toMatchObject({
       layoutRevision: 5,
       presentationRevision: 1,
-      layout: { location: { kind: "pages" } },
+      layout: { location: { kind: "library" } },
     });
     expect(owner.read().presentationRevision).toBe(2);
     await act(async () => {

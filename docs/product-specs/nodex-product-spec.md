@@ -61,10 +61,10 @@ Database and Canvas, and an editable Welcome Page. Projects may also have no
 source or no Chat. Removing a Project archives execution context while leaving
 its source folders and Library resources intact.
 
-The Workbench presents Project, Session, and Pages Scenes through one
+The Workbench presents Project, Session, Inbox, and Library Scenes through one
 multi-window shell. Each Window Session owns its local navigation, tabs, panel
 trees, layout, and previews; all windows share canonical content and execution
-state. Pages offers bounded navigation to Library roots that need an entry
+state. Space offers bounded navigation to Library roots that need an entry
 outside active Projects and never becomes a second content owner.
 
 Read [Product Foundations](product-foundations.md) for onboarding, Projects,

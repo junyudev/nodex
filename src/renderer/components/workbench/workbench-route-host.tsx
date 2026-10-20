@@ -15,7 +15,7 @@ interface WorkbenchRouteHostProps {
   readonly settings: ReactNode;
   readonly pendingWorktree: WorkbenchRouteSlot;
   readonly automations: WorkbenchRouteSlot;
-  readonly inbox: WorkbenchRouteSlot;
+  /** The selected Scene: a Project, a Session, the Library, the Library Inbox, or empty. */
   readonly session: WorkbenchRouteSlot;
 }
 
@@ -69,7 +69,6 @@ export function WorkbenchRouteHost({
   settings,
   pendingWorktree,
   automations,
-  inbox,
   session,
 }: WorkbenchRouteHostProps) {
   if (location.kind === "settings") return settings;
@@ -98,20 +97,11 @@ export function WorkbenchRouteHost({
     );
   }
 
-  if (location.kind === "inbox") {
-    return (
-      <>
-        {sidebar}
-        <WorkbenchRouteMain sidebarMounted={sidebarMounted}>{inbox.content()}</WorkbenchRouteMain>
-        {inbox.afterMain}
-      </>
-    );
-  }
-
   if (
     location.kind === "project" ||
     location.kind === "session" ||
-    location.kind === "pages" ||
+    location.kind === "library" ||
+    location.kind === "inbox" ||
     location.kind === "empty"
   ) {
     return (

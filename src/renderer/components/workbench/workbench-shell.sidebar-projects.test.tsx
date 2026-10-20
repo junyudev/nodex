@@ -298,12 +298,10 @@ describe("workbench session shell / sidebar-projects", () => {
     expect(invokeCalls.some((call) => call[0] === "project-sessions:archive")).toBe(false);
   });
 
-  test("the Library Inbox keeps its header when opened from a Project", async () => {
+  test("the Library Inbox is its own Scene and opens its Database beside it", async () => {
     const screen = renderWorkbench({ sessionsByProject: { alpha: [] } });
     await settleAsyncRender();
     await settleAsyncRender();
-    // The Project Home's own header is inline in its tab.
-    expect(screen.getAllByRole("tablist", { name: "Inbox view" })).toHaveLength(1);
 
     const inboxRow = screen.container.querySelector(
       '[data-testid="sidebar-inbox-row-wrapper"] button',
@@ -320,10 +318,30 @@ describe("workbench session shell / sidebar-projects", () => {
       if (!(element instanceof HTMLElement)) throw new Error("Expected the Library Inbox");
       return element;
     });
-    // The Library Inbox's header joins the window's title row instead of its own surface.
-    const header = await screen.findByRole("tablist", { name: "Inbox view" });
-    expect(route.contains(header)).toBe(false);
-    expect(screen.getByRole("button", { name: "Inbox settings" })).not.toBeNull();
+    // Like a Project's Inbox, its header tops its own Home tab.
+    expect(route.contains(screen.getByRole("tablist", { name: "Inbox view" }))).toBe(true);
+    const homeTab = getInboxHomeTab(screen);
+    expect(screen.queryByTestId("inbox-right-panel")).not.toBeNull();
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Open Inbox as a Database" }));
+      await Promise.resolve();
+    });
+    await settleAsyncRender();
+
+    // The Database opens as a tab beside the Inbox instead of leaving it for Space.
+    const databaseTab = await waitFor(() => {
+      const tab = screen
+        .getAllByRole("tab", { selected: true })
+        .find((candidate) => candidate !== homeTab && candidate.closest("[data-panel-tab-row]"));
+      if (!tab) throw new Error("Expected the Inbox Database tab");
+      return tab;
+    });
+    expect(databaseTab.closest("[data-panel-tab-row]")).toBe(
+      homeTab.closest("[data-panel-tab-row]"),
+    );
+    expect(screen.queryByTestId("inbox-right-panel")).not.toBeNull();
+    expect(screen.queryByTestId("library-right-panel")).toBeNull();
   });
 
   test("empty Project bottom panel opens a Project-scoped Terminal", async () => {

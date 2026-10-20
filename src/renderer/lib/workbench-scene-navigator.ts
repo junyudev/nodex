@@ -198,7 +198,7 @@ export interface WorkbenchSceneNavigator {
     readonly id: string;
     readonly projectId: string | null;
   }) => void;
-  readonly openPages: () => void;
+  readonly openLibrary: () => void;
   readonly presentPanelSurface: (
     input: PresentWorkbenchPanelSurfaceInput,
   ) => Promise<PresentWorkbenchPanelSurfaceResult>;
@@ -465,7 +465,7 @@ function validateSceneSurfaceRequest(
       reason: "Review requires a started conversation",
     };
   }
-  if (input.owner.kind !== "pages") return null;
+  if (input.owner.kind !== "library" && input.owner.kind !== "inbox") return null;
 
   const requestAllowed =
     input.request.kind === "page_stage" ||
@@ -479,7 +479,7 @@ function validateSceneSurfaceRequest(
     ? null
     : {
         status: "unavailable",
-        reason: "Pages only accepts Library content surfaces",
+        reason: "Only Library Pages, Databases, and Canvases open here",
       };
 }
 
@@ -563,8 +563,8 @@ export function createWorkbenchSceneNavigator(
         projectContextId: session.projectId,
       });
     },
-    openPages() {
-      port.selectLocation({ kind: "pages" });
+    openLibrary() {
+      port.selectLocation({ kind: "library" });
     },
     presentPanelSurface,
     clearPreview,
@@ -583,5 +583,5 @@ export function sceneLocationForOwner(owner: WorkbenchSceneOwner): WorkbenchScen
       projectContextId: null,
     };
   }
-  return { kind: "pages" };
+  return { kind: owner.kind };
 }

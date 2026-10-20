@@ -71,7 +71,7 @@ outside ordinary Library root navigation. Root eligibility, counts,
 continuations, and selected-root inclusion are evaluated by Core.
 
 Selecting a Space content row opens or focuses that resource in the window's
-singleton Pages Scene. It never chooses a Project or creates a Chat. The Scene may
+singleton Library Scene. It never chooses a Project or creates a Chat. The Scene may
 hold ordinary Page, Database, View, and Canvas surfaces; it
 cannot own execution-only Terminal, Browser, Review, or Files-tree surfaces.
 Opening a resource in a Project changes its presentation route without changing

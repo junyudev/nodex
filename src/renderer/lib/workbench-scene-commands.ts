@@ -685,13 +685,13 @@ export function prepareWorkbenchSceneCommand(
     )
       return reject("invalid_command");
     if (
-      sceneOwner.kind === "project" &&
+      (sceneOwner.kind === "project" || sceneOwner.kind === "inbox") &&
       command.panelId === "right" &&
       (command.collapsed === true || command.size?.fullWidth === false)
     )
       return reject("protected_primary");
     if (
-      sceneOwner.kind === "pages" &&
+      sceneOwner.kind === "library" &&
       command.panelId === "right" &&
       (command.collapsed === true || command.size?.fullWidth === false)
     )

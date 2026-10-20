@@ -27,11 +27,11 @@ const record: WorkbenchObservationRecord = {
   reference: {
     windowSessionId: "window",
     rendererGeneration: "generation",
-    sceneOwner: { kind: "pages" },
+    sceneOwner: { kind: "library" },
   },
   observation: {
-    sceneOwner: { kind: "pages" },
-    selectedSceneOwner: { kind: "pages" },
+    sceneOwner: { kind: "library" },
+    selectedSceneOwner: { kind: "library" },
     presentationRevision: 7,
     mounted: true,
     focusedTarget: null,
@@ -143,7 +143,7 @@ it.effect(
       const second = yield* execute(context);
       assert.deepStrictEqual(requests[0], {
         operationId: "retry",
-        sceneOwner: { kind: "pages" },
+        sceneOwner: { kind: "library" },
         expectedPresentationRevision: 7,
         command: { kind: "close_tab", tabId: "raw-page-id" },
       });

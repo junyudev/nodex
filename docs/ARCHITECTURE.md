@@ -1062,9 +1062,9 @@ The complete user-visible and recovery contracts are [Dictation Behavior](produc
 
 ### Window Session and Workbench presentation
 
-A Window Session owns one restorable Workbench layout with owner-scoped Scenes. A Scene owner is a Project, Session, or the window-local Pages context. Project and Session owners have semantic primary surfaces; Pages has no protected primary. Right and bottom split trees are the only surface placement and ordering source.
+A Window Session owns one restorable Workbench layout with owner-scoped Scenes. A Scene owner is a Project, a Session, the window-local Library Inbox, or the window-local Library. Project, Inbox, and Session owners have semantic primary surfaces, and an Inbox is the Home tab of its Project or Inbox Scene; the Library Scene has no protected primary. Right and bottom split trees are the only surface placement and ordering source.
 
-Home and Space selection is derived from that canonical location. Space selects the Pages Scene, while the Window Session retains the last stable Home route, including Inbox and Scheduled, for return navigation. This checkpoint participates in the same atomic navigation history and persisted layout as Scenes; authoritative owner removal repairs both the checkpoint and retained history. Settings retains its actual stable return route and derives its destination from it. No separate destination selector owns navigation.
+Home and Space selection is derived from that canonical location. Space selects the Library Scene, while the Window Session retains the last stable Home route, including the Inbox Scene, for return navigation. This checkpoint participates in the same atomic navigation history and persisted layout as Scenes; authoritative owner removal repairs both the checkpoint and retained history. Settings retains its actual stable return route and derives its destination from it. No separate destination selector owns navigation.
 
 Live Scene changes are pure renderer transitions. Main persists validated, revisioned snapshots and manages open/closed window lifecycle and restore policy. Core stores no panel tree, tab geometry, active surface, or BrowserWindow attachment.
 

@@ -8,7 +8,7 @@ import {
   type WorkbenchSurfaceDescriptor,
 } from "../../../shared/workbench-scene";
 import { listWorkbenchPanelLeaves } from "../../../shared/workbench-panel-layout";
-import { activePagesSceneSurface } from "./pages-scene-breadcrumb";
+import { activeLibrarySceneSurface } from "./library-scene-breadcrumb";
 
 function pageSurface(id: string): WorkbenchSurfaceDescriptor {
   return {
@@ -24,9 +24,9 @@ function pageSurface(id: string): WorkbenchSurfaceDescriptor {
   };
 }
 
-describe("activePagesSceneSurface", () => {
+describe("activeLibrarySceneSurface", () => {
   test("falls back to the visible right panel after the focused bottom leaf empties", () => {
-    const initial = materializeInitialWorkbenchScene({ kind: "pages" });
+    const initial = materializeInitialWorkbenchScene({ kind: "library" });
     const withRight = createWorkbenchSceneSurface(initial, {
       panelId: "right",
       surface: pageSurface("right-page"),
@@ -52,6 +52,6 @@ describe("activePagesSceneSurface", () => {
       lastFocusedPanelId: "bottom" as const,
     };
 
-    expect(activePagesSceneSurface(withoutBottom)?.id).toBe("right-page");
+    expect(activeLibrarySceneSurface(withoutBottom)?.id).toBe("right-page");
   });
 });

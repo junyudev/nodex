@@ -40,7 +40,7 @@ function fixture(sceneOwner: WorkbenchSceneOwner = { kind: "project", projectId:
   const scene = materializeInitialWorkbenchScene(sceneOwner);
   const owner = getWorkbenchWindowOwner(createScopeHandle(getMaitaiRootView(store)), {
     ...createDefaultWorkbenchLayoutSnapshot(),
-    location: sceneOwner.kind === "project" ? sceneOwner : { kind: "pages" },
+    location: sceneOwner.kind === "project" ? sceneOwner : { kind: "library" },
     scenesByOwnerKey: { [makeWorkbenchSceneKey(sceneOwner)]: scene },
   });
   owner.initialize();
@@ -129,7 +129,7 @@ describe("Workbench rendered presentation lifetime", () => {
   });
 
   test("an unmounted UI generation cannot finish a pending close against its old owner", async () => {
-    const { owner, sceneOwner } = fixture({ kind: "pages" });
+    const { owner, sceneOwner } = fixture({ kind: "library" });
     owner.setScene(sceneOwner, (scene) =>
       createWorkbenchSceneSurface(scene!, {
         panelId: "right",

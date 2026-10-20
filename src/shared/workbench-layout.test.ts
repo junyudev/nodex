@@ -55,23 +55,23 @@ describe("getWorkbenchActiveSessionId", () => {
 
 describe("getWorkbenchPrimaryDestination", () => {
   test.each<readonly [WorkbenchLocation, WorkbenchPrimaryDestination]>([
-    [{ kind: "pages" }, "space"],
+    [{ kind: "library" }, "space"],
     [{ kind: "empty" }, "home"],
     [{ kind: "project", projectId: "alpha" }, "home"],
     [{ kind: "session", sessionId: "session-a", projectContextId: null }, "home"],
-    [{ kind: "inbox", returnTo: { kind: "pages" } }, "home"],
-    [{ kind: "automations", path: "/automations/new", returnTo: { kind: "pages" } }, "scheduled"],
+    [{ kind: "inbox" }, "home"],
+    [{ kind: "automations", path: "/automations/new", returnTo: { kind: "library" } }, "scheduled"],
     [
-      { kind: "pending-worktree", clientThreadId: "pending-a", returnTo: { kind: "pages" } },
+      { kind: "pending-worktree", clientThreadId: "pending-a", returnTo: { kind: "library" } },
       "home",
     ],
-    [{ kind: "settings", path: "/settings/general", returnTo: { kind: "pages" } }, "space"],
+    [{ kind: "settings", path: "/settings/general", returnTo: { kind: "library" } }, "space"],
     [{ kind: "settings", path: "/settings/general", returnTo: { kind: "empty" } }, "home"],
     [
       {
         kind: "settings",
         path: "/settings/inbox",
-        returnTo: { kind: "inbox", returnTo: { kind: "pages" } },
+        returnTo: { kind: "inbox" },
       },
       "home",
     ],
@@ -79,7 +79,11 @@ describe("getWorkbenchPrimaryDestination", () => {
       {
         kind: "settings",
         path: "/settings/general",
-        returnTo: { kind: "automations", path: "/automations/edit/a", returnTo: { kind: "pages" } },
+        returnTo: {
+          kind: "automations",
+          path: "/automations/edit/a",
+          returnTo: { kind: "library" },
+        },
       },
       "scheduled",
     ],

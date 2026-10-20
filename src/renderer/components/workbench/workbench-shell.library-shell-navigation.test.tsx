@@ -38,7 +38,7 @@ import {
   setPageChatItems,
 } from "./workbench-testkit/workbench-shell-harness";
 
-describe("workbench session shell / pages-shell-navigation", () => {
+describe("workbench session shell / library-shell-navigation", () => {
   test("projects migrate retired Calendar tabs to the durable View's Board layout", async () => {
     const session = makeSession({
       tabs: [

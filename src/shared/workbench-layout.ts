@@ -201,29 +201,29 @@ export interface WorkbenchLayoutSnapshotV6 {
   readonly scenesByOwnerKey: Record<WorkbenchSceneKey, WorkbenchSceneSnapshotV4>;
 }
 
-export type WorkbenchSceneLocation = WorkbenchSceneLocationV5 | { readonly kind: "pages" };
+export type WorkbenchSceneLocationV7 = WorkbenchSceneLocationV5 | { readonly kind: "pages" };
 
 export type WorkbenchLocationV7 =
-  | WorkbenchSceneLocation
+  | WorkbenchSceneLocationV7
   | {
       readonly kind: "settings";
       readonly path: string;
-      readonly returnTo: WorkbenchSceneLocation;
+      readonly returnTo: WorkbenchSceneLocationV7;
     }
   | {
       readonly kind: "automations";
       readonly path: string;
-      readonly returnTo: WorkbenchSceneLocation;
+      readonly returnTo: WorkbenchSceneLocationV7;
     }
   | {
       readonly kind: "inbox";
-      readonly returnTo: WorkbenchSceneLocation;
+      readonly returnTo: WorkbenchSceneLocationV7;
     }
   | {
       readonly kind: "pending-worktree";
       readonly clientThreadId: string;
       readonly expectedHostId?: string;
-      readonly returnTo: WorkbenchSceneLocation;
+      readonly returnTo: WorkbenchSceneLocationV7;
     };
 
 export interface WorkbenchLayoutSnapshotV7 {
@@ -233,39 +233,84 @@ export interface WorkbenchLayoutSnapshotV7 {
   readonly scenesByOwnerKey: Record<WorkbenchSceneKey, WorkbenchSceneSnapshot>;
 }
 
-export type WorkbenchStableLocation = Exclude<
+export type WorkbenchStableLocationV8 = Exclude<
   WorkbenchLocationV7,
   { readonly kind: "settings" | "pending-worktree" }
 >;
 
-/** Home remembers its own routes; Space and Scheduled restore their own state. */
-export type WorkbenchHomeLocation = Exclude<
-  WorkbenchStableLocation,
+export type WorkbenchHomeLocationV8 = Exclude<
+  WorkbenchStableLocationV8,
   { readonly kind: "pages" | "automations" }
 >;
 
 export type WorkbenchLocationV8 =
+  | WorkbenchStableLocationV8
+  | {
+      readonly kind: "settings";
+      readonly path: string;
+      readonly returnTo: WorkbenchStableLocationV8;
+    }
+  | Extract<WorkbenchLocationV7, { readonly kind: "pending-worktree" }>;
+
+export interface WorkbenchLayoutSnapshotV8 {
+  readonly version: 8;
+  readonly location: Exclude<WorkbenchLocationV8, { readonly kind: "pending-worktree" }>;
+  readonly homeLocation: WorkbenchHomeLocationV8;
+  readonly databaseSearchByProject: Record<string, string>;
+  readonly scenesByOwnerKey: Record<WorkbenchSceneKey, WorkbenchSceneSnapshot>;
+}
+
+/**
+ * Where a window shows a Scene: a Project, a Session, Space's Library Scene, the Library Inbox's
+ * Scene, or nothing yet.
+ */
+export type WorkbenchSceneLocation =
+  | WorkbenchSceneLocationV5
+  | { readonly kind: "library" }
+  | { readonly kind: "inbox" };
+
+/** A location Back, Home, and cold reopen can return to. */
+export type WorkbenchStableLocation =
+  | WorkbenchSceneLocation
+  | {
+      readonly kind: "automations";
+      readonly path: string;
+      readonly returnTo: WorkbenchSceneLocation;
+    };
+
+export type WorkbenchLocationV9 =
   | WorkbenchStableLocation
   | {
       readonly kind: "settings";
       readonly path: string;
       readonly returnTo: WorkbenchStableLocation;
     }
-  | Extract<WorkbenchLocationV7, { readonly kind: "pending-worktree" }>;
+  | {
+      readonly kind: "pending-worktree";
+      readonly clientThreadId: string;
+      readonly expectedHostId?: string;
+      readonly returnTo: WorkbenchSceneLocation;
+    };
+
+/** Home remembers its own routes; Space and Scheduled restore their own state. */
+export type WorkbenchHomeLocation = Exclude<
+  WorkbenchStableLocation,
+  { readonly kind: "library" | "automations" }
+>;
 
 /** Rail destinations that own a contextual sidebar. */
 export type WorkbenchPrimaryDestination = "home" | "space" | "scheduled";
 
-export interface WorkbenchLayoutSnapshotV8 {
-  readonly version: 8;
-  readonly location: Exclude<WorkbenchLocationV8, { readonly kind: "pending-worktree" }>;
+export interface WorkbenchLayoutSnapshotV9 {
+  readonly version: 9;
+  readonly location: Exclude<WorkbenchLocationV9, { readonly kind: "pending-worktree" }>;
   readonly homeLocation: WorkbenchHomeLocation;
   readonly databaseSearchByProject: Record<string, string>;
   readonly scenesByOwnerKey: Record<WorkbenchSceneKey, WorkbenchSceneSnapshot>;
 }
 
-export type WorkbenchLocation = WorkbenchLocationV8;
-export type WorkbenchLayoutSnapshot = WorkbenchLayoutSnapshotV8;
+export type WorkbenchLocation = WorkbenchLocationV9;
+export type WorkbenchLayoutSnapshot = WorkbenchLayoutSnapshotV9;
 
 function createDefaultDockTree(): WorkbenchLayoutSnapshotV3["dock"]["tree"] {
   return {
@@ -362,9 +407,11 @@ export function createDefaultWorkbenchLayoutSnapshotV7(): WorkbenchLayoutSnapsho
 
 export function createDefaultWorkbenchLayoutSnapshot(): WorkbenchLayoutSnapshot {
   return {
-    ...createDefaultWorkbenchLayoutSnapshotV7(),
-    version: 8,
+    version: 9,
+    location: { kind: "empty" },
     homeLocation: { kind: "empty" },
+    databaseSearchByProject: {},
+    scenesByOwnerKey: {},
   };
 }
 
@@ -373,7 +420,7 @@ export function getWorkbenchPrimaryDestination(
   location: WorkbenchLocation,
 ): WorkbenchPrimaryDestination {
   if (location.kind === "settings") return getWorkbenchPrimaryDestination(location.returnTo);
-  if (location.kind === "pages") return "space";
+  if (location.kind === "library") return "space";
   return location.kind === "automations" ? "scheduled" : "home";
 }
 
@@ -382,6 +429,20 @@ export function getWorkbenchHomeLocation(
   location: WorkbenchLocation,
 ): WorkbenchHomeLocation | null {
   if (location.kind === "settings") return getWorkbenchHomeLocation(location.returnTo);
+  if (
+    location.kind === "library" ||
+    location.kind === "automations" ||
+    location.kind === "pending-worktree"
+  ) {
+    return null;
+  }
+  return location;
+}
+
+export function getWorkbenchHomeLocationV8(
+  location: WorkbenchLocationV8,
+): WorkbenchHomeLocationV8 | null {
+  if (location.kind === "settings") return getWorkbenchHomeLocationV8(location.returnTo);
   if (
     location.kind === "pages" ||
     location.kind === "automations" ||
@@ -405,6 +466,13 @@ export function getWorkbenchSceneReturnLocation(
   location: WorkbenchLocation,
 ): WorkbenchSceneLocation {
   if ("returnTo" in location) return getWorkbenchSceneReturnLocation(location.returnTo);
+  return location;
+}
+
+export function getWorkbenchSceneReturnLocationV8(
+  location: WorkbenchLocationV8,
+): WorkbenchSceneLocationV7 {
+  if ("returnTo" in location) return getWorkbenchSceneReturnLocationV8(location.returnTo);
   return location;
 }
 
@@ -451,4 +519,9 @@ export function getRestorableWorkbenchLocationV8(
   return location.returnTo;
 }
 
-export const getRestorableWorkbenchLocation = getRestorableWorkbenchLocationV8;
+export function getRestorableWorkbenchLocation(
+  location: WorkbenchLocation,
+): WorkbenchLayoutSnapshot["location"] {
+  if (location.kind !== "pending-worktree") return location;
+  return location.returnTo;
+}

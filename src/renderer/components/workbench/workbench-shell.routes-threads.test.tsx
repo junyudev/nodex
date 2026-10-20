@@ -292,7 +292,7 @@ describe("workbench session shell / routes-threads", () => {
     expect(screen.getByTestId("workbench-database-view-surface") !== null).toBe(true);
   });
 
-  test("opens a standalone Database with Library authority in the Pages Scene", async () => {
+  test("opens a standalone Database with Library authority in the Library Scene", async () => {
     const screen = renderWorkbench({ libraryRoots: [standaloneTasksDatabase] });
     await settleAsyncRender();
     await settleAsyncRender();
@@ -316,7 +316,7 @@ describe("workbench session shell / routes-threads", () => {
     expect(screen.queryByText("Library")).toBeNull();
   });
 
-  test("projects a visible Pages Scene Page Stage back into its Database surface", async () => {
+  test("projects a visible Library Scene Page Stage back into its Database surface", async () => {
     const screen = renderWorkbench({ libraryRoots: [standaloneTasksDatabase] });
     await settleAsyncRender();
     await openStandaloneDatabase(screen);

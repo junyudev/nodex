@@ -54,7 +54,7 @@ function selectedSceneOwner(state: WorkbenchWindowPresentationState): WorkbenchS
   const { location } = state.windowState;
   if (location.kind === "project") return { kind: "project", projectId: location.projectId };
   if (location.kind === "session") return { kind: "session", sessionId: location.sessionId };
-  if (location.kind === "pages") return { kind: "pages" };
+  if (location.kind === "library" || location.kind === "inbox") return { kind: location.kind };
   return null;
 }
 

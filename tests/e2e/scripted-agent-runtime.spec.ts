@@ -711,7 +711,7 @@ nodeRepl.write(JSON.stringify({ title: await tab.title(), url: await tab.url() }
           });
           await page.keyboard.press("g");
           await page.keyboard.press("p");
-          await expect(page.getByTestId("pages-primary-surface")).toHaveCount(1);
+          await expect(page.getByTestId("library-primary-surface")).toHaveCount(1);
           releaseBrowserStart();
           const threadId = await threadIdPromise;
           const target = { sessionId: draft.projectSessionId, threadId };
@@ -727,7 +727,7 @@ nodeRepl.write(JSON.stringify({ title: await tab.title(), url: await tab.url() }
               '[data-browser-sidebar-webview-manager-root][data-browser-sidebar-webview-host-kind="panel"]',
             ),
           ).toHaveCount(0);
-          await expect(page.getByTestId("pages-primary-surface")).toHaveCount(1);
+          await expect(page.getByTestId("library-primary-surface")).toHaveCount(1);
           releaseFinalResponse();
           await waitForRuntimeCompletedAgentTurn(page, target, 30_000);
           const snapshot = await readRuntimeConversation(page, target);

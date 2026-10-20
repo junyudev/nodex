@@ -21,7 +21,8 @@ import {
   presentWorkbenchScheduledSession,
   reconcileMissingWorkbenchSession,
   selectWorkbenchProject,
-  selectWorkbenchPages,
+  selectWorkbenchInbox,
+  selectWorkbenchLibrary,
   selectWorkbenchHome,
   selectWorkbenchSession,
   snapshotWorkbenchWindowState,
@@ -33,11 +34,11 @@ import {
 describe("WorkbenchWindowState", () => {
   test.each([{ kind: "inbox" as const }])(
     "Settings retains its stable $kind origin after leaving Space",
-    (route) => {
-      const pages = selectWorkbenchPages(
+    () => {
+      const pages = selectWorkbenchLibrary(
         createWorkbenchWindowState(createDefaultWorkbenchLayoutSnapshot()),
       );
-      const home = openWorkbenchRoute(pages, route);
+      const home = selectWorkbenchInbox(pages);
       const settings = openWorkbenchRoute(home, { kind: "settings", path: "/settings/general" });
 
       expect(settings.location).toEqual({
@@ -46,7 +47,7 @@ describe("WorkbenchWindowState", () => {
         returnTo: home.location,
       });
       expect(getWorkbenchPrimaryDestination(settings.location)).toBe("home");
-      expect(getWorkbenchSceneReturnLocation(settings.location)).toEqual(pages.location);
+      expect(getWorkbenchSceneReturnLocation(settings.location)).toEqual({ kind: "inbox" });
       expect(settings.homeLocation).toEqual(home.location);
       expect(closeWorkbenchRoute(settings).location).toEqual(home.location);
       const back = navigateBackInWorkbenchWindow(settings);
@@ -54,7 +55,7 @@ describe("WorkbenchWindowState", () => {
       expect(navigateForwardInWorkbenchWindow(back).location).toEqual(settings.location);
       const reopened = createWorkbenchWindowState(snapshotWorkbenchWindowState(settings));
       expect(closeWorkbenchRoute(reopened).location).toEqual(home.location);
-      expect(selectWorkbenchHome(selectWorkbenchPages(reopened)).location).toEqual(home.location);
+      expect(selectWorkbenchHome(selectWorkbenchLibrary(reopened)).location).toEqual(home.location);
       expect(
         openWorkbenchRoute(settings, { kind: "settings", path: "/settings/appearance" }).location,
       ).toEqual({
@@ -114,48 +115,37 @@ describe("WorkbenchWindowState", () => {
     expect(selectWorkbenchHome(reopened).location).toEqual(session.location);
   });
 
-  test.each([{ kind: "inbox" as const }])(
-    "missing-owner repair retains Settings and its $kind return route",
-    (route) => {
-      const session = selectWorkbenchSession(
-        createWorkbenchWindowState(createDefaultWorkbenchLayoutSnapshot()),
-        {
-          id: "session-a",
-          projectId: "alpha",
-        },
-      );
-      const home = openWorkbenchRoute(session, route);
-      const settings = openWorkbenchRoute(home, { kind: "settings", path: "/settings/general" });
-      const withoutSession = reconcileMissingWorkbenchSession(settings, "session-a");
-      const repairedHome = { ...home.location, returnTo: { kind: "project", projectId: "alpha" } };
-      expect(withoutSession.location).toEqual({ ...settings.location, returnTo: repairedHome });
-      expect(withoutSession.homeLocation).toEqual(repairedHome);
-      expect(getWorkbenchPrimaryDestination(withoutSession.location)).toBe("home");
-      const withoutProject = removeWorkbenchScene(withoutSession, {
-        kind: "project",
-        projectId: "alpha",
-      });
-      expect(closeWorkbenchRoute(withoutProject).location).toEqual({
-        ...home.location,
-        returnTo: { kind: "empty" },
-      });
-      expect(navigateBackInWorkbenchWindow(withoutProject).location).toEqual({
-        ...home.location,
-        returnTo: { kind: "empty" },
-      });
-    },
-  );
+  test("removing a Session leaves the Inbox and Settings over it in place", () => {
+    const session = selectWorkbenchSession(
+      createWorkbenchWindowState(createDefaultWorkbenchLayoutSnapshot()),
+      { id: "session-a", projectId: "alpha" },
+    );
+    const inbox = selectWorkbenchInbox(session);
+    const settings = openWorkbenchRoute(inbox, { kind: "settings", path: "/settings/general" });
+    const withoutSession = reconcileMissingWorkbenchSession(settings, "session-a");
+
+    expect(withoutSession.location).toEqual(settings.location);
+    expect(withoutSession.homeLocation).toEqual({ kind: "inbox" });
+    expect(closeWorkbenchRoute(withoutSession).location).toEqual({ kind: "inbox" });
+    // Back past the Inbox lands on the repaired Session origin, its Project.
+    const backToInbox = navigateBackInWorkbenchWindow(withoutSession);
+    expect(backToInbox.location).toEqual({ kind: "inbox" });
+    expect(navigateBackInWorkbenchWindow(backToInbox).location).toEqual({
+      kind: "project",
+      projectId: "alpha",
+    });
+  });
 
   test.each<WorkbenchHomeLocation>([
     { kind: "project", projectId: "alpha" },
     { kind: "session", sessionId: "session-a", projectContextId: "alpha" },
-    { kind: "inbox", returnTo: { kind: "project", projectId: "alpha" } },
+    { kind: "inbox" },
   ])("restores the previous Home route after reopening Space: $kind", (location) => {
     const initial = createWorkbenchWindowState({
       ...createDefaultWorkbenchLayoutSnapshot(),
       location,
     });
-    const pages = selectWorkbenchPages(initial);
+    const pages = selectWorkbenchLibrary(initial);
     const home = selectWorkbenchHome(pages);
 
     expect(pages.homeLocation).toEqual(location);
@@ -163,7 +153,7 @@ describe("WorkbenchWindowState", () => {
     expect(home.location).toEqual(location);
     expect(home.history.backStack).toHaveLength(2);
     expect(selectWorkbenchHome(home)).toBe(home);
-    expect(selectWorkbenchPages(pages)).toBe(pages);
+    expect(selectWorkbenchLibrary(pages)).toBe(pages);
     const reopened = createWorkbenchWindowState(snapshotWorkbenchWindowState(pages));
     expect(reopened.history.backStack).toHaveLength(0);
     expect(selectWorkbenchHome(reopened).location).toEqual(location);
@@ -174,7 +164,7 @@ describe("WorkbenchWindowState", () => {
       createWorkbenchWindowState(createDefaultWorkbenchLayoutSnapshot()),
       { id: "session-a", projectId: "alpha" },
     );
-    const inbox = openWorkbenchRoute(initial, { kind: "inbox" });
+    const inbox = selectWorkbenchInbox(initial);
     const settings = openWorkbenchRoute(inbox, { kind: "settings", path: "/settings/general" });
     const pending = openWorkbenchRoute(inbox, {
       kind: "pending-worktree",
@@ -183,7 +173,7 @@ describe("WorkbenchWindowState", () => {
 
     expect(settings.homeLocation).toEqual(inbox.location);
     expect(pending.homeLocation).toEqual(inbox.location);
-    expect(selectWorkbenchHome(selectWorkbenchPages(settings)).location).toEqual(inbox.location);
+    expect(selectWorkbenchHome(selectWorkbenchLibrary(settings)).location).toEqual(inbox.location);
     expect(selectWorkbenchHome(pending).location).toEqual(inbox.location);
   });
 
@@ -192,9 +182,9 @@ describe("WorkbenchWindowState", () => {
       createWorkbenchWindowState(createDefaultWorkbenchLayoutSnapshot()),
       "alpha",
     );
-    const firstSpace = selectWorkbenchPages(initial);
+    const firstSpace = selectWorkbenchLibrary(initial);
     const secondHome = selectWorkbenchSession(firstSpace, { id: "session-b", projectId: "beta" });
-    const secondSpace = selectWorkbenchPages(secondHome);
+    const secondSpace = selectWorkbenchLibrary(secondHome);
     const backHome = navigateBackInWorkbenchWindow(secondSpace);
     const backSpace = navigateBackInWorkbenchWindow(backHome);
 
@@ -215,12 +205,12 @@ describe("WorkbenchWindowState", () => {
       location: { kind: "session", sessionId: owner.sessionId, projectContextId: "alpha" },
       scenesByOwnerKey: { [makeWorkbenchSceneKey(owner)]: scene },
     });
-    const pages = selectWorkbenchPages(home);
+    const pages = selectWorkbenchLibrary(home);
     const restored = selectWorkbenchHome(pages);
     const withForward = navigateBackInWorkbenchWindow(restored);
     const pruned = reconcileMissingWorkbenchSession(withForward, owner.sessionId);
 
-    expect(pruned.location).toEqual({ kind: "pages" });
+    expect(pruned.location).toEqual({ kind: "library" });
     expect(pruned.homeLocation).toEqual({ kind: "project", projectId: "alpha" });
     expect(selectWorkbenchHome(pruned).location).toEqual(pruned.homeLocation);
     expect(navigateBackInWorkbenchWindow(pruned).location).toEqual(pruned.homeLocation);
@@ -234,16 +224,13 @@ describe("WorkbenchWindowState", () => {
   test("authoritative Project removal repairs Home routes without discarding projectless Sessions", () => {
     const home = createWorkbenchWindowState({
       ...createDefaultWorkbenchLayoutSnapshot(),
-      location: { kind: "inbox", returnTo: { kind: "project", projectId: "alpha" } },
+      location: { kind: "project", projectId: "alpha" },
     });
-    const pruned = removeWorkbenchScene(selectWorkbenchPages(home), {
+    const pruned = removeWorkbenchScene(selectWorkbenchLibrary(home), {
       kind: "project",
       projectId: "alpha",
     });
-    expect(selectWorkbenchHome(pruned).location).toEqual({
-      kind: "inbox",
-      returnTo: { kind: "empty" },
-    });
+    expect(selectWorkbenchHome(pruned).location).toEqual({ kind: "empty" });
     const projectless = selectWorkbenchSession(selectWorkbenchProject(home, "alpha"), {
       id: "session-projectless",
       projectId: null,
@@ -340,9 +327,9 @@ describe("WorkbenchWindowState", () => {
     expect(forward.history.forwardStack).toHaveLength(0);
   });
 
-  test("the Pages Scene participates in shared window history", () => {
+  test("the Library Scene participates in shared window history", () => {
     const initial = createWorkbenchWindowState(createDefaultWorkbenchLayoutSnapshot());
-    const pages = selectWorkbenchPages(initial);
+    const pages = selectWorkbenchLibrary(initial);
     const settings = openWorkbenchRoute(pages, {
       kind: "settings",
       path: "/settings/general",
@@ -358,7 +345,7 @@ describe("WorkbenchWindowState", () => {
     expect(pagesForward.history.forwardStack).toHaveLength(1);
   });
 
-  test("opens the Pages Scene atomically from another auxiliary route", () => {
+  test("opens the Library Scene atomically from another auxiliary route", () => {
     const initial = createWorkbenchWindowState({
       ...createDefaultWorkbenchLayoutSnapshot(),
       location: { kind: "project", projectId: "alpha" },
@@ -367,14 +354,14 @@ describe("WorkbenchWindowState", () => {
       kind: "settings",
       path: "/settings/general",
     });
-    const pages = selectWorkbenchPages(settings);
+    const pages = selectWorkbenchLibrary(settings);
 
-    expect(pages.location).toEqual({ kind: "pages" });
+    expect(pages.location).toEqual({ kind: "library" });
     expect(navigateBackInWorkbenchWindow(pages).location).toEqual(settings.location);
   });
 
   test("records Pages surface creation and selection as one history entry", () => {
-    const owner = { kind: "pages" } as const;
+    const owner = { kind: "library" } as const;
     const initial = createWorkbenchWindowState({
       ...createDefaultWorkbenchLayoutSnapshot(),
       location: { kind: "project", projectId: "alpha" },
@@ -397,11 +384,11 @@ describe("WorkbenchWindowState", () => {
             state: null,
           },
         }),
-      { kind: "pages" },
+      { kind: "library" },
     );
 
     expect(presented.history.backStack).toHaveLength(1);
-    expect(presented.location).toEqual({ kind: "pages" });
+    expect(presented.location).toEqual({ kind: "library" });
     const back = navigateBackInWorkbenchWindow(presented);
     expect(back.location).toEqual(initial.location);
     expect(back.scenesByOwnerKey.pages).toBeUndefined();
@@ -409,10 +396,10 @@ describe("WorkbenchWindowState", () => {
 
   test("Pages replacement does not add history and divergent navigation clears forward", () => {
     const initial = createWorkbenchWindowState(createDefaultWorkbenchLayoutSnapshot());
-    const pages = selectWorkbenchPages(initial);
+    const pages = selectWorkbenchLibrary(initial);
     const emptyAgain = navigateBackInWorkbenchWindow(pages);
     const project = selectWorkbenchProject(emptyAgain, "alpha");
-    const replacement = navigateWorkbenchWindow(project, { kind: "pages" }, { record: false });
+    const replacement = navigateWorkbenchWindow(project, { kind: "library" }, { record: false });
 
     expect(project.history.forwardStack).toHaveLength(0);
     expect(replacement.history).toEqual(project.history);

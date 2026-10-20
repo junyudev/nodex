@@ -1857,6 +1857,7 @@ vi.mock("@/features/local-conversation", () => ({
 }));
 
 let boardDataReady: Promise<void> | null = null;
+export const LIBRARY_INBOX_TEST_DATABASE_ID = "database:library-inbox";
 let inboxDataReady: Promise<void> | null = null;
 
 vi.mock("@/lib/use-board", () => ({
@@ -3306,11 +3307,12 @@ export function renderWorkbench({
     // Every Project's Home is its Inbox; the shell renders it empty unless a test seeds it.
     if (channel === "inbox:counts") return { library: 0, projects: {} };
     if (channel === "inbox:summary") {
-      // A Project's Inbox files into its own Database, so its Home offers the Board.
+      // Each Inbox files into its own Database: a Project's Board, or the Library Inbox Database.
       const scope = (args[0] as { scope?: { kind?: string } } | undefined)?.scope;
       return {
         storeEpoch: "epoch-workbench-test",
-        databaseId: scope?.kind === "project" ? makeProject().databaseId : null,
+        databaseId:
+          scope?.kind === "project" ? makeProject().databaseId : LIBRARY_INBOX_TEST_DATABASE_ID,
         viewId: null,
         entryCount: 0,
         inboxCount: 0,
@@ -5086,7 +5088,7 @@ export type WorkbenchShellTestScope =
   | "automations-conversation"
   | "layout-panel-actions"
   | "panel-commands"
-  | "pages-shell-navigation";
+  | "library-shell-navigation";
 
 export function setInvokeCalls(value: typeof invokeCalls): void {
   invokeCalls = value;

@@ -28,7 +28,7 @@ import {
 import { getWorkbenchPrimaryDestination } from "../../../shared/workbench-layout";
 import { WorkbenchEmptyRoute, WorkbenchRouteHost } from "./workbench-route-host";
 import { InboxRoute } from "@/features/inbox/inbox-route";
-import { LIBRARY_INBOX, projectInbox } from "../../../shared/inbox";
+import { inboxScopeProjectId } from "../../../shared/inbox";
 import { parseDatabaseId } from "../../../shared/database-identities";
 import { useInboxCounts, useInboxInvalidation } from "@/features/inbox/use-inbox";
 import { WorkbenchThreadSummaryHeader } from "./workbench-thread-summary-header";
@@ -141,6 +141,8 @@ import {
 import {
   applyForkBrowserTransferToWorkbenchScene,
   collectWorkbenchScenePresentedPageIds,
+  INBOX_SCENE_OWNER,
+  LIBRARY_SCENE_OWNER,
   makeWorkbenchSceneKey,
   materializeInitialWorkbenchScene,
   updateWorkbenchSceneSurface,
@@ -200,7 +202,7 @@ import { WorkbenchLibraryResourceSurface } from "./workbench-library-resource-su
 import { WorkbenchCanvasStagePanel } from "./workbench-canvas-stage-panel";
 import { WorkbenchDatabaseViewSurface } from "./workbench-database-view-surface";
 import { WorkbenchLibraryPageSurface } from "./workbench-library-page-surface";
-import { PagesSceneBreadcrumb, usePagesSceneNavigation } from "./pages-scene-breadcrumb";
+import { LibrarySceneBreadcrumb, useLibrarySceneNavigation } from "./library-scene-breadcrumb";
 import { PagesTabPicker } from "./pages-tab-picker";
 import { SpaceHome } from "./space-home";
 import { TerminalPanel } from "./workbench-terminal-panel";
@@ -650,28 +652,31 @@ export function WorkbenchRuntime({
       recordHistory: false,
     });
   }, [activeProjectScene, projectSceneKey, projectSceneOwner, workbenchWindow]);
-  const pagesSceneOwner = useMemo(
-    () => (sceneLocation.kind === "pages" ? { kind: "pages" as const } : null),
-    [sceneLocation],
-  );
-  const pagesSceneKey = pagesSceneOwner ? makeWorkbenchSceneKey(pagesSceneOwner) : null;
-  const activePagesScene =
-    pagesSceneOwner && pagesSceneKey
-      ? (workbenchWindow.scenesByOwnerKey[pagesSceneKey] ??
-        materializeInitialWorkbenchScene(pagesSceneOwner))
+  // Space and the Library Inbox are the window's two Scenes of Library content.
+  const librarySceneOwner =
+    sceneLocation.kind === "library"
+      ? LIBRARY_SCENE_OWNER
+      : sceneLocation.kind === "inbox"
+        ? INBOX_SCENE_OWNER
+        : null;
+  const librarySceneKey = librarySceneOwner ? makeWorkbenchSceneKey(librarySceneOwner) : null;
+  const activeLibraryScene =
+    librarySceneOwner && librarySceneKey
+      ? (workbenchWindow.scenesByOwnerKey[librarySceneKey] ??
+        materializeInitialWorkbenchScene(librarySceneOwner))
       : null;
   useEffect(() => {
-    if (!pagesSceneOwner || !pagesSceneKey || !activePagesScene) {
+    if (!librarySceneOwner || !librarySceneKey || !activeLibraryScene) {
       return;
     }
-    if (workbenchWindow.scenesByOwnerKey[pagesSceneKey]) return;
-    workbenchWindow.setScene(pagesSceneOwner, activePagesScene, {
+    if (workbenchWindow.scenesByOwnerKey[librarySceneKey]) return;
+    workbenchWindow.setScene(librarySceneOwner, activeLibraryScene, {
       recordHistory: false,
     });
-  }, [activePagesScene, pagesSceneKey, pagesSceneOwner, workbenchWindow]);
-  const activeOwnedScene = activeProjectScene ?? activePagesScene;
-  const activeOwnedSceneOwner = projectSceneOwner ?? pagesSceneOwner;
-  const activeOwnedSceneKey = projectSceneKey ?? pagesSceneKey;
+  }, [activeLibraryScene, librarySceneKey, librarySceneOwner, workbenchWindow]);
+  const activeOwnedScene = activeProjectScene ?? activeLibraryScene;
+  const activeOwnedSceneOwner = projectSceneOwner ?? librarySceneOwner;
+  const activeOwnedSceneKey = projectSceneKey ?? librarySceneKey;
   const projectAgentDockBoundSessionId =
     activeProjectScene?.agentDock?.binding.kind === "session"
       ? activeProjectScene.agentDock.binding.sessionId
@@ -860,18 +865,18 @@ export function WorkbenchRuntime({
         : null,
     [activeProjectScene, previewSurfacesByPanel, tabOrderByPanelGroup],
   );
-  const pagesScenePresentation = useMemo(
+  const libraryScenePresentation = useMemo(
     () =>
-      activePagesScene
+      activeLibraryScene
         ? projectWorkbenchScenePreviews(
-            activePagesScene,
+            activeLibraryScene,
             previewSurfacesByPanel,
             tabOrderByPanelGroup,
           )
         : null,
-    [activePagesScene, previewSurfacesByPanel, tabOrderByPanelGroup],
+    [activeLibraryScene, previewSurfacesByPanel, tabOrderByPanelGroup],
   );
-  const activeOwnedScenePresentation = projectScenePresentation ?? pagesScenePresentation;
+  const activeOwnedScenePresentation = projectScenePresentation ?? libraryScenePresentation;
   const projectScenePresentedPageIds = useMemo<ReadonlySet<string>>(
     () =>
       projectScenePresentation
@@ -879,14 +884,14 @@ export function WorkbenchRuntime({
         : new Set(),
     [projectScenePresentation],
   );
-  const pagesScenePresentedPageIds = useMemo<ReadonlySet<string>>(
+  const libraryScenePresentedPageIds = useMemo<ReadonlySet<string>>(
     () =>
-      pagesScenePresentation
-        ? collectWorkbenchScenePresentedPageIds(pagesScenePresentation.scene)
+      libraryScenePresentation
+        ? collectWorkbenchScenePresentedPageIds(libraryScenePresentation.scene)
         : new Set(),
-    [pagesScenePresentation],
+    [libraryScenePresentation],
   );
-  const pagesSceneNavigation = usePagesSceneNavigation(pagesScenePresentation?.scene ?? null);
+  const librarySceneNavigation = useLibrarySceneNavigation(libraryScenePresentation?.scene ?? null);
   const [pageTitleStore] = useState(createPageTitleProjectionStore);
   const [panelTabPresentationRegistry] = useState(() => new PanelTabPresentationRegistry());
   const panelTabPresentationControllerKeysRef = useRef(new Set<string>());
@@ -1878,11 +1883,22 @@ export function WorkbenchRuntime({
   ]);
 
   const [inboxFocusToken, setInboxFocusToken] = useState(0);
+  // Every way into the Library Inbox lands on the Inbox itself; tabs opened beside it stay open.
   const openInbox = useCallback(() => {
     closePendingWorktreeRoute();
     setInboxFocusToken((current) => current + 1);
-    if (workbenchWindow.location.kind !== "inbox") workbenchWindow.openRoute({ kind: "inbox" });
-  }, [closePendingWorktreeRoute, workbenchWindow]);
+    const home =
+      workbenchWindow.scenesByOwnerKey[makeWorkbenchSceneKey(INBOX_SCENE_OWNER)]?.primary;
+    if (!home) {
+      workbenchWindow.selectInbox();
+      return;
+    }
+    void executeSceneCommand(
+      INBOX_SCENE_OWNER,
+      { kind: "activate_tab", tabId: home.id },
+      { location: { kind: "inbox" } },
+    );
+  }, [closePendingWorktreeRoute, executeSceneCommand, workbenchWindow]);
   // Capture where you are: inside a Project the shortcut opens that Project's own Inbox.
   const captureInbox = useCallback(() => {
     const home = activeProjectScene?.primary;
@@ -2000,7 +2016,7 @@ export function WorkbenchRuntime({
                     titleSnapshot: options.titleSnapshot,
                   };
         const presented = await sceneNavigator.presentPanelSurface({
-          owner: options.owner ?? { kind: "pages" },
+          owner: options.owner ?? LIBRARY_SCENE_OWNER,
           request,
           target: {
             panelId: options.targetPanelId ?? "right",
@@ -2990,7 +3006,7 @@ export function WorkbenchRuntime({
         return executeWorkbenchCommand({ commandId, source });
       },
       openCommandPalette,
-      goToPages: workbenchWindow.selectPages,
+      goToPages: workbenchWindow.selectLibrary,
       goToSettings: openSettings,
       toggleSettings,
       openKeyboardShortcuts: openKeyboardShortcutHelp,
@@ -3003,7 +3019,7 @@ export function WorkbenchRuntime({
       executeShellNavigation,
       executeWorkbenchCommand,
       openCommandPalette,
-      workbenchWindow.selectPages,
+      workbenchWindow.selectLibrary,
       openSettings,
       openKeyboardShortcutHelp,
       openDesktopNotification,
@@ -3374,22 +3390,19 @@ export function WorkbenchRuntime({
         },
       },
     });
-  const inboxRouteOpen = workbenchWindow.location.kind === "inbox";
   // A full-width Scene panel covers the title row only while its Scene is showing,
-  // never under a route such as the Inbox or Automations opened over it.
-  const appShellHeaderCoveredByScene =
-    rightPanelFullWidth && automationsRouteShell == null && !inboxRouteOpen;
+  // never under a route such as Automations opened over it.
+  const appShellHeaderCoveredByScene = rightPanelFullWidth && automationsRouteShell == null;
   const appShellHeaderCenterVisible =
     settingsRouteShell == null &&
     (activePanelOwnerKey != null ||
       automationsRouteShell != null ||
-      pendingWorktreeRouteShell != null ||
-      inboxRouteOpen);
+      pendingWorktreeRouteShell != null);
   const appShellHeaderActions = settingsPath
     ? null
     : pendingWorktreeRouteShell
       ? null
-      : automationsRouteShell || inboxRouteOpen || sceneLocation.kind === "pages"
+      : automationsRouteShell || librarySceneOwner
         ? sidebarHeaderActions
         : headerActions;
 
@@ -3467,12 +3480,13 @@ export function WorkbenchRuntime({
       };
 
       if (surface.kind === "inbox") {
-        const projectId = surface.config.projectId;
+        const projectId = inboxScopeProjectId(surface.config.scope);
+        if (!projectId) return null;
         const homeProject = projects.find((project) => project.id === projectId);
         return (
           <InboxRoute
             windowSessionId={windowSessionId}
-            scope={projectInbox(projectId)}
+            scope={surface.config.scope}
             visible={context.active}
             projects={projects}
             focusComposerToken={inboxFocusToken}
@@ -3880,21 +3894,48 @@ export function WorkbenchRuntime({
       windowSessionId,
     ],
   );
-  const renderPagesSceneSurface = useCallback(
+  const renderLibrarySceneSurface = useCallback(
     (
       surface: WorkbenchSurfaceDescriptor,
       context: { readonly active: boolean; readonly panelId: PanelId },
     ) => {
-      if (!activePagesScene || !pagesSceneOwner || !pagesSceneKey) {
+      if (!activeLibraryScene || !librarySceneOwner || !librarySceneKey) {
         return null;
       }
       const removeSurface = () => {
-        void executeSceneCommand(activePagesScene.owner, { kind: "close_tab", tabId: surface.id });
+        void executeSceneCommand(librarySceneOwner, { kind: "close_tab", tabId: surface.id });
       };
       const publishTitle = (title: string) => {
         if (surface.titleSnapshot === title) return;
-        updateSceneSurfacePresentation(pagesSceneOwner, surface.id, { titleSnapshot: title });
+        updateSceneSurfacePresentation(librarySceneOwner, surface.id, { titleSnapshot: title });
       };
+      // Content opened from this Scene stays in it, in the source surface's tab group.
+      const openBeside = (target: LibraryRouteTarget, titleSnapshot?: string) => {
+        void presentLibraryTarget(target, {
+          owner: librarySceneOwner,
+          titleSnapshot,
+          targetPanelId: context.panelId,
+          placement: { kind: "same-group", sourceSurfaceId: surface.id },
+        });
+      };
+
+      if (surface.kind === "inbox") {
+        return (
+          <InboxRoute
+            windowSessionId={windowSessionId}
+            scope={surface.config.scope}
+            visible={context.active}
+            projects={projects}
+            focusComposerToken={inboxFocusToken}
+            onOpenSession={sessionCommands.openProjectSessionById}
+            onOpenPage={(pageId) => openBeside({ kind: "page", pageId })}
+            onOpenDatabase={(databaseId) =>
+              openBeside({ kind: "database", databaseId: parseDatabaseId(databaseId) })
+            }
+            onOpenSettings={() => openSettingsAt("inbox-settings")}
+          />
+        );
+      }
 
       if (surface.kind === "db_view") {
         if (surface.config.target.kind === "project-default") {
@@ -3909,7 +3950,7 @@ export function WorkbenchRuntime({
             isActivePanelTab={context.active}
             workbenchPresentation={{
               owner: workbenchWindow.owner,
-              sceneOwner: pagesSceneOwner,
+              sceneOwner: librarySceneOwner,
               surface,
             }}
             routingContext={surface.config.routingContext}
@@ -3918,7 +3959,7 @@ export function WorkbenchRuntime({
               surfaceId: surface.id,
               presentationId: surface.id,
             }}
-            presentedPageIds={pagesScenePresentedPageIds}
+            presentedPageIds={libraryScenePresentedPageIds}
             projects={projects}
             pageStageCloseRef={pageStageCloseRef}
             onOpenPageInNewChat={sessionCommands.openPageInNewChat}
@@ -3933,6 +3974,7 @@ export function WorkbenchRuntime({
               void presentLibraryTarget(
                 { kind: "page", pageId },
                 {
+                  owner: librarySceneOwner,
                   titleSnapshot,
                   placement: { kind: "adjacent-right", sourceSurfaceId: surface.id },
                   mode: openMode,
@@ -3950,30 +3992,13 @@ export function WorkbenchRuntime({
             surfaceId={surface.id}
             isActivePanelTab={context.active}
             onClose={removeSurface}
-            onOpenDatabase={(databaseId) => {
-              void presentLibraryTarget(
-                { kind: "database", databaseId },
-                { placement: { kind: "same-group", sourceSurfaceId: surface.id } },
-              );
-            }}
-            onOpenPage={(pageId, titleSnapshot) => {
-              void presentLibraryTarget(
-                { kind: "page", pageId },
-                {
-                  titleSnapshot,
-                  placement: { kind: "same-group", sourceSurfaceId: surface.id },
-                },
-              );
-            }}
-            onOpenCanvas={(canvasId, titleSnapshot) => {
-              void presentLibraryTarget(
-                { kind: "canvas", canvasId },
-                {
-                  titleSnapshot,
-                  placement: { kind: "same-group", sourceSurfaceId: surface.id },
-                },
-              );
-            }}
+            onOpenDatabase={(databaseId) => openBeside({ kind: "database", databaseId })}
+            onOpenPage={(pageId, titleSnapshot) =>
+              openBeside({ kind: "page", pageId }, titleSnapshot)
+            }
+            onOpenCanvas={(canvasId, titleSnapshot) =>
+              openBeside({ kind: "canvas", canvasId }, titleSnapshot)
+            }
           />
         );
       }
@@ -3983,19 +4008,13 @@ export function WorkbenchRuntime({
           <WorkbenchCanvasStagePanel
             surface={surface}
             windowSessionId={windowSessionId}
-            presentationOwnerId={pagesSceneKey}
+            presentationOwnerId={librarySceneKey}
             isActivePanelTab={context.active}
             onClose={removeSurface}
             onTitleChange={publishTitle}
-            onOpenPage={({ pageId, titleSnapshot }) => {
-              void presentLibraryTarget(
-                { kind: "page", pageId },
-                {
-                  titleSnapshot,
-                  placement: { kind: "same-group", sourceSurfaceId: surface.id },
-                },
-              );
-            }}
+            onOpenPage={({ pageId, titleSnapshot }) =>
+              openBeside({ kind: "page", pageId }, titleSnapshot)
+            }
           />
         );
       }
@@ -4008,11 +4027,13 @@ export function WorkbenchRuntime({
     },
     [
       executeSceneCommand,
-      activePagesScene,
+      activeLibraryScene,
+      inboxFocusToken,
+      openSettingsAt,
       presentLibraryTarget,
-      pagesSceneKey,
-      pagesScenePresentedPageIds,
-      pagesSceneOwner,
+      librarySceneKey,
+      libraryScenePresentedPageIds,
+      librarySceneOwner,
       pageStageCloseRef,
       projects,
       sessionCommands.openPageInNewChat,
@@ -4153,10 +4174,10 @@ export function WorkbenchRuntime({
           },
         })
       : null;
-  const pagesScenePanels =
-    pagesScenePresentation && panelController.sceneDurable
+  const libraryScenePanels =
+    libraryScenePresentation && panelController.sceneDurable
       ? buildWorkbenchScenePanels({
-          scene: pagesScenePresentation.scene,
+          scene: libraryScenePresentation.scene,
           project: null,
           projects,
           currentLibraryId,
@@ -4165,7 +4186,7 @@ export function WorkbenchRuntime({
           pageTitleStore,
           commands: panelController.sceneDurable,
           executeCommand: executeSceneCommand,
-          previewSurfaceIds: pagesScenePresentation.previewSurfaceIds,
+          previewSurfaceIds: libraryScenePresentation.previewSurfaceIds,
           isMac: isMacPlatform,
           commandKeymapState,
           availableActions: [],
@@ -4173,11 +4194,12 @@ export function WorkbenchRuntime({
           rightPanelHeaderAfterList,
           rightPanelHeaderStartInsetWidth,
           bottomPanelGlobalHeaderInsetWidth,
-          renderSurface: renderPagesSceneSurface,
+          renderSurface: renderLibrarySceneSurface,
           renderNewTab: (panelId, leafId) => (
             <PagesTabPicker
               onOpenTarget={(target, titleSnapshot) => {
                 void presentLibraryTarget(target, {
+                  owner: libraryScenePresentation.scene.owner,
                   titleSnapshot,
                   targetPanelId: panelId,
                   targetLeafId: leafId,
@@ -4189,6 +4211,7 @@ export function WorkbenchRuntime({
             <SpaceHome
               onOpenTarget={(target, titleSnapshot) => {
                 void presentLibraryTarget(target, {
+                  owner: libraryScenePresentation.scene.owner,
                   titleSnapshot,
                   targetPanelId: panelId,
                   targetLeafId: leafId,
@@ -4201,7 +4224,7 @@ export function WorkbenchRuntime({
           },
           onPinPreview: (panelId, leafId, surfaceId) => {
             sceneNavigator.pinPreview({
-              owner: pagesScenePresentation.scene.owner,
+              owner: libraryScenePresentation.scene.owner,
               panelId,
               leafId,
               surfaceId,
@@ -4416,24 +4439,26 @@ export function WorkbenchRuntime({
         {projectAgentDock}
       </>
     ) : null;
-  const pagesSceneRoute =
-    pagesSceneKey && activePagesScene && pagesScenePresentation ? (
+  const librarySceneRoute =
+    librarySceneKey && activeLibraryScene && libraryScenePresentation ? (
       <WorkbenchSessionScopePath
         thread={APP_SHELL_ROUTE_THREAD_SCOPE_DESCRIPTOR}
         route={{
-          routeKey: "/pages",
-          kind: "pages",
+          routeKey: `/${librarySceneKey}`,
+          kind: libraryScenePresentation.scene.owner.kind === "inbox" ? "inbox" : "library",
         }}
         selected
       >
-        <PagesSceneBreadcrumb scene={pagesScenePresentation.scene} />
+        {libraryScenePresentation.scene.owner.kind === "library" ? (
+          <LibrarySceneBreadcrumb scene={libraryScenePresentation.scene} />
+        ) : null}
         <WorkbenchSceneFrame
-          ownerKey={pagesSceneKey}
+          ownerKey={librarySceneKey}
           primary={null}
-          primaryTestId="pages-primary-surface"
+          primaryTestId={`${librarySceneKey}-primary-surface`}
           primaryHidden
-          rightPanelTestId="pages-right-panel"
-          bottomPanelTestId="pages-bottom-panel"
+          rightPanelTestId={`${librarySceneKey}-right-panel`}
+          bottomPanelTestId={`${librarySceneKey}-bottom-panel`}
           layout={{
             appShellMainContentLayout: "default",
             rightPanelTargetWidth,
@@ -4442,12 +4467,12 @@ export function WorkbenchRuntime({
               ...rightPanelMotion,
               open: sidePanelOpen,
               fullWidth: rightPanelFullWidth,
-              content: pagesScenePanels?.right ?? null,
+              content: libraryScenePanels?.right ?? null,
             },
             bottomPanel: {
               ...bottomPanelMotion,
               open: bottomPanelOpen,
-              content: pagesScenePanels?.bottom ?? null,
+              content: libraryScenePanels?.bottom ?? null,
             },
           }}
           chrome={{
@@ -4644,7 +4669,7 @@ export function WorkbenchRuntime({
     onOpenInbox: openInbox,
     onOpenResourceTarget: openResourceTarget,
     onOpenResourceTargetInProject: openResourceTargetInProject,
-    activeResourceTarget: pagesSceneNavigation.activeRoot,
+    activeResourceTarget: librarySceneNavigation.activeRoot,
     inboxActive: workbenchWindow.location.kind === "inbox",
     inboxCounts,
     projectPickerOpenTick,
@@ -4832,7 +4857,7 @@ export function WorkbenchRuntime({
                       <WorkbenchAppRail
                         destination={getWorkbenchPrimaryDestination(workbenchWindow.location)}
                         onHome={workbenchWindow.selectHome}
-                        onSpace={workbenchWindow.selectPages}
+                        onSpace={workbenchWindow.selectLibrary}
                         onScheduled={() => openAutomations()}
                         onPlugins={() => showUnavailableProduct("Plugins")}
                         footer={
@@ -4907,35 +4932,6 @@ export function WorkbenchRuntime({
                               </WorkbenchSessionScopePath>
                             ),
                           }}
-                          inbox={{
-                            content: () => (
-                              <WorkbenchSessionScopePath
-                                thread={APP_SHELL_ROUTE_THREAD_SCOPE_DESCRIPTOR}
-                                route={{ routeKey: "/inbox", kind: "inbox" }}
-                                selected
-                              >
-                                <InboxRoute
-                                  windowSessionId={windowSessionId}
-                                  scope={LIBRARY_INBOX}
-                                  projects={projects}
-                                  focusComposerToken={inboxFocusToken}
-                                  onOpenSession={(sessionId) =>
-                                    void sessionCommands.openProjectSessionById(sessionId)
-                                  }
-                                  onOpenPage={(pageId) =>
-                                    void openResourceTarget({ kind: "page", pageId })
-                                  }
-                                  onOpenDatabase={(databaseId) =>
-                                    void openResourceTarget({
-                                      kind: "database",
-                                      databaseId: parseDatabaseId(databaseId),
-                                    })
-                                  }
-                                  onOpenSettings={() => openSettingsAt("inbox-settings")}
-                                />
-                              </WorkbenchSessionScopePath>
-                            ),
-                          }}
                           automations={{
                             content: () =>
                               scheduledRunPresented ? (
@@ -4953,7 +4949,7 @@ export function WorkbenchRuntime({
                           session={{
                             content: () =>
                               projectSceneRoute ??
-                              pagesSceneRoute ??
+                              librarySceneRoute ??
                               activeSessionRoute ?? (
                                 <WorkbenchEmptyRoute
                                   activeProjectId={activeProjectId}

@@ -40,7 +40,7 @@ const input: WorkbenchContentReadInput = {
     reference: {
       windowSessionId: "window:exact",
       rendererGeneration: "renderer:exact",
-      sceneOwner: { kind: "pages" },
+      sceneOwner: { kind: "library" },
     },
     tabId: "tab:exact",
     expectedPresentationRevision: 4,
@@ -179,7 +179,7 @@ it.effect("reprojects displayed occurrence conditions through exact Agent author
     assert.deepEqual(result.query.result.rows, [["page:target", "Core title"]]);
     assert.deepEqual(requests[0], {
       kind: "capture_view",
-      sceneOwner: { kind: "pages" },
+      sceneOwner: { kind: "library" },
       tabId: "tab:exact",
       expectedPresentationRevision: 4,
       purpose: "display",

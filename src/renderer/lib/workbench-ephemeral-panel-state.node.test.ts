@@ -111,7 +111,7 @@ describe("Workbench ephemeral panel state", () => {
       kind: "project",
       projectId: "project:one",
     });
-    const pagesOwnerKey = makeWorkbenchSceneKey({ kind: "pages" });
+    const pagesOwnerKey = makeWorkbenchSceneKey({ kind: "library" });
     const projectSlot = makeWorkbenchPanelSlotKey(projectOwnerKey, "right", "leaf:project");
     const pagesSlot = makeWorkbenchPanelSlotKey(pagesOwnerKey, "right", "leaf:pages");
     const initial = {

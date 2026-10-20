@@ -1,7 +1,8 @@
 import { DatabaseIcon, InboxIcon } from "@/components/shared/icons";
 import { describe, expect, test } from "vite-plus/test";
 
-import { projectInboxSurface, type WorkbenchSurfaceDescriptor } from "../../shared/workbench-scene";
+import { LIBRARY_INBOX, projectInbox } from "../../shared/inbox";
+import { inboxSurface, type WorkbenchSurfaceDescriptor } from "../../shared/workbench-scene";
 import { resolveWorkbenchSceneTabPresentation } from "./workbench-scene-tab-presentation";
 
 const databaseSurface: WorkbenchSurfaceDescriptor = {
@@ -17,11 +18,13 @@ const databaseSurface: WorkbenchSurfaceDescriptor = {
 };
 
 describe("resolveWorkbenchSceneTabPresentation", () => {
-  test("presents a Project's Home as its Inbox", () => {
-    expect(resolveWorkbenchSceneTabPresentation(projectInboxSurface("home", "alpha"))).toEqual({
-      title: "Inbox",
-      icon: InboxIcon,
-    });
+  test("presents every Inbox Home as Inbox", () => {
+    for (const scope of [projectInbox("alpha"), LIBRARY_INBOX]) {
+      expect(resolveWorkbenchSceneTabPresentation(inboxSurface("home", scope))).toEqual({
+        title: "Inbox",
+        icon: InboxIcon,
+      });
+    }
   });
 
   test("presents the Project's Database like a standard DB View tab", () => {

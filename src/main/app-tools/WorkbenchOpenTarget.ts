@@ -39,7 +39,7 @@ export const make = Effect.gen(function* () {
     const projectId =
       sceneOwner.kind === "project" ? sceneOwner.projectId : (session?.projectId ?? null);
     const routingContext =
-      sceneOwner.kind === "pages" || projectId === null
+      sceneOwner.kind === "library" || sceneOwner.kind === "inbox" || projectId === null
         ? { kind: "library" as const }
         : { kind: "project" as const, projectId };
     if (target.kind === "page" || target.kind === "view" || target.kind === "canvas") {
@@ -91,7 +91,7 @@ export const make = Effect.gen(function* () {
         titleSnapshot: description.title.slice(0, 2_000),
       };
     }
-    if (sceneOwner.kind === "pages") return null;
+    if (sceneOwner.kind === "library" || sceneOwner.kind === "inbox") return null;
     const runtimeId = createHash("sha256")
       .update(
         JSON.stringify([nodexAgentAuthorityFingerprint(authority), sceneOwner, input.operationId]),

@@ -19,10 +19,10 @@ import type {
 } from "../../../shared/workbench-scene";
 import { usePresentedPageTitle } from "@/lib/page-title-projection-context";
 
-export function activePagesSceneSurface(
+export function activeLibrarySceneSurface(
   scene: WorkbenchSceneSnapshot | null,
 ): WorkbenchSurfaceDescriptor | null {
-  if (!scene || scene.owner.kind !== "pages") return null;
+  if (!scene || scene.owner.kind !== "library") return null;
   const preferredPanelId = scene.lastFocusedPanelId ?? "right";
   const panelIds =
     preferredPanelId === "right" ? (["right", "bottom"] as const) : (["bottom", "right"] as const);
@@ -43,7 +43,7 @@ export function activePagesSceneSurface(
   return null;
 }
 
-export function libraryTargetForPagesSurface(
+export function libraryTargetForLibrarySurface(
   surface: WorkbenchSurfaceDescriptor | null,
 ): LibraryRouteTarget | null {
   if (!surface) return null;
@@ -75,14 +75,14 @@ export function libraryTargetForPagesSurface(
   return null;
 }
 
-export function usePagesSceneNavigation(scene: WorkbenchSceneSnapshot | null): {
+export function useLibrarySceneNavigation(scene: WorkbenchSceneSnapshot | null): {
   readonly activeSurface: WorkbenchSurfaceDescriptor | null;
   readonly activeRoot: LibraryPlacedResourceTarget | null;
   readonly activeRootNode: LibraryNavigationNode | null;
   readonly activeTargetNode: LibraryNavigationNode | null;
 } {
-  const activeSurface = activePagesSceneSurface(scene);
-  const target = libraryTargetForPagesSurface(activeSurface);
+  const activeSurface = activeLibrarySceneSurface(scene);
+  const target = libraryTargetForLibrarySurface(activeSurface);
   const pathQueries: Array<ReturnType<typeof libraryPathQueryOptions>> = target
     ? [libraryPathQueryOptions(target)]
     : [];
@@ -97,10 +97,10 @@ export function usePagesSceneNavigation(scene: WorkbenchSceneSnapshot | null): {
   };
 }
 
-export function PagesSceneBreadcrumb({ scene }: { readonly scene: WorkbenchSceneSnapshot }) {
-  const navigation = usePagesSceneNavigation(scene);
+export function LibrarySceneBreadcrumb({ scene }: { readonly scene: WorkbenchSceneSnapshot }) {
+  const navigation = useLibrarySceneNavigation(scene);
   const surface = navigation.activeSurface;
-  const target = libraryTargetForPagesSurface(surface);
+  const target = libraryTargetForLibrarySurface(surface);
   const root = navigation.activeRoot;
   const Icon =
     root?.kind === "database" ? DatabaseIcon : root?.kind === "canvas" ? CanvasIcon : PageIcon;

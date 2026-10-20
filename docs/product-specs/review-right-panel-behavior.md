@@ -9,7 +9,7 @@ The Review right-panel tab is Nodex's code-review workspace for an attached thre
 
 ## Shell And DOM Contract
 
-Review is available only in a Session Scene with a bound execution Thread. Project Home, the Pages Scene, and unstarted draft Sessions do not expose Review and cannot own a Review surface. Review is a Session singleton, but its durable tab id stays separate from the DOM id used by the right-panel shell. Review tab chrome and the active tabpanel expose `data-tab-id="diff"`. The active panel exposes `role="tabpanel"`, `aria-label="Review"`, and `data-app-shell-tab-panel-controller="right"` when mounted in the right panel.
+Review is available only in a Session Scene with a bound execution Thread. Project Home, the Inbox and Library Scenes, and unstarted draft Sessions do not expose Review and cannot own a Review surface. Review is a Session singleton, but its durable tab id stays separate from the DOM id used by the right-panel shell. Review tab chrome and the active tabpanel expose `data-tab-id="diff"`. The active panel exposes `role="tabpanel"`, `aria-label="Review"`, and `data-app-shell-tab-panel-controller="right"` when mounted in the right panel.
 
 Runtime Sessions use their exact execution binding and share the existing keyed conversation reader. Review consumes only resident Turns and subscribes to their changes; it does not request additional history or rebuild the conversation's transcript snapshot. Git sources use the execution cwd, and follow-up prompts use the same Session command owner.
 

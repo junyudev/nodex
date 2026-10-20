@@ -84,7 +84,7 @@ function makeLayout(owner: WorkbenchSceneOwner): WorkbenchLayoutSnapshot {
     location:
       owner.kind === "project"
         ? { kind: "project", projectId: owner.projectId }
-        : { kind: "pages" },
+        : { kind: "library" },
     databaseSearchByProject: {},
     scenesByOwnerKey: {
       [makeWorkbenchSceneKey(owner)]: scene,
@@ -166,8 +166,8 @@ describe("owner-scoped workbench panel commands", () => {
     expect(screen.container.querySelector('[data-panel-tab-id="first-page"]')).not.toBeNull();
   });
 
-  test("cycles Pages Scene tabs through the native command port", async () => {
-    const owner = { kind: "pages" as const };
+  test("cycles Library Scene tabs through the native command port", async () => {
+    const owner = { kind: "library" as const };
     const screen = renderWorkbench({
       projects: [makeProject("alpha")],
       sessionsByProject: { alpha: [] },
