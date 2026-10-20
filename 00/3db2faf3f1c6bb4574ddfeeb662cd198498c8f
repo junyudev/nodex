@@ -1,0 +1,37 @@
+tests/e2e/inbox-sync.spec.ts
+  s_bdf71b9880673e::t_a6dd677136db07 1-58
+  s_bdf71b9880673e::t_eb6638e5ecfdf2 59-62
+docs/product-specs/inbox-behavior.md
+  s_bdf71b9880673e::t_157325fe8b425e 112-118
+  s_bdf71b9880673e::t_f3974fe668b6fa 119
+src/renderer/features/inbox/inbox-history.tsx
+  s_bdf71b9880673e::t_28cbcbda2eab78 38
+src/renderer/features/inbox/use-inbox-viewport.ts
+  s_bdf71b9880673e::t_68b4071994e373 1-13,15-19,21-39,41,43-52,55-57,66-69,74-76,80,82-87,89-92,94,96-110,113-116
+  s_bdf71b9880673e::t_31c89a7df11675 14,20,40,42,53-54,58-65,70-73,77-79,81,88,93,95,111-112
+src/renderer/features/inbox/inbox-viewport.browser.test.tsx
+  s_bdf71b9880673e::t_d8e4cb4aa01e6c 81-82,86-92,109,123
+  s_bdf71b9880673e::t_dc80c10f8d65b8 1-80,83-85,93-108,110-122,124-149
+src/renderer/features/inbox/inbox-viewport.ts
+  s_bdf71b9880673e::t_c8bdc2f007cfad 1-4,6-90,95-121,123-124
+  s_bdf71b9880673e::t_28cbcbda2eab78 91-94,122
+  s_bdf71b9880673e::t_f99a3f37dd577d 5
+src/renderer/features/inbox/inbox-route.tsx
+  s_bdf71b9880673e::t_28cbcbda2eab78 4,56-57,247,252-254,273,285-296,331,468,472-473
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "003db2faf3f1c6bb4574ddfeeb662cd198498c8f",
+  "prompts": {},
+  "sessions": {
+    "s_bdf71b9880673e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8d936889-1784-495a-8683-8013f2a30b4f",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
