@@ -4832,14 +4832,17 @@ export async function pointerDownAndSettle(element: HTMLElement): Promise<void> 
   await settleAsyncRender();
 }
 
-export function getFilesPreviewInteractionTarget(
+export async function findFilesPreviewInteractionTarget(
   screen: ReturnType<typeof renderWorkbench>,
-): HTMLElement {
-  return (
-    screen.container.querySelector<HTMLElement>("[data-workspace-files-session-id]") ??
-    screen.container.querySelector<HTMLElement>("[data-source-viewer='true']") ??
-    screen.queryByPlaceholderText("Filter files…") ??
-    screen.getByText("No file or workspace folder is available.")
+): Promise<HTMLElement> {
+  // A durable tab can exist while its first Files surface import is still pending.
+  await settleLazyRender();
+  return waitFor(
+    () =>
+      screen.container.querySelector<HTMLElement>("[data-workspace-files-session-id]") ??
+      screen.container.querySelector<HTMLElement>("[data-source-viewer='true']") ??
+      screen.queryByPlaceholderText("Filter files…") ??
+      screen.getByText("No file or workspace folder is available."),
   );
 }
 
