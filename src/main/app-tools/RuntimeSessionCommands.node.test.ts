@@ -149,6 +149,32 @@ it.effect(
         (messages[1]!.input as { message: { modelSelection?: unknown } }).message.modelSelection,
         { instanceId: "claude_instance", model: "opus" },
       );
+      // Another Agent continues the Session from its model's own defaults.
+      yield* execute({
+        caller: f.caller,
+        name: "send_message_to_session",
+        arguments: {
+          sessionId: "other",
+          prompt: "Take over",
+          providerInstanceId: "codex",
+          model: "gpt",
+        },
+      });
+      assert.deepEqual(
+        (
+          f.calls.filter((call) => call.name === "message")[2]!.input as {
+            message: { modelSelection?: unknown };
+          }
+        ).message.modelSelection,
+        { instanceId: "codex", model: "gpt" },
+      );
+      // Choosing another Agent names the model it runs.
+      const unnamed = yield* execute({
+        caller: f.caller,
+        name: "send_message_to_session",
+        arguments: { sessionId: "other", prompt: "Take over", providerInstanceId: "codex" },
+      });
+      assert.isTrue(unnamed.isError);
     }),
 );
 it.effect(

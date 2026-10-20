@@ -248,7 +248,10 @@ cancelled or retired credentials cannot replay a write receipt.
 
 `send_message_to_session` sends a follow-up to an existing unarchived Runtime Session,
 including a configured ACP Session. It retains the destination's instance and settings unless
-a supported model is explicitly supplied. The calling Session cannot message itself, and
+a supported model is explicitly supplied. A `providerInstanceId` with its `model` from
+`list_agent_models` continues the Session on that Agent from its model's defaults, with the
+same context handoff and refusal rules as a person's choice; see
+[Changing Agent in a chat](agent-runtime-behavior.md#changing-agent-in-a-chat). The calling Session cannot message itself, and
 an unstarted draft has no execution target. Core verifies the captured caller and exact
 destination binding; the Runtime's stable message identity and durable receipt prevent a
 retry from starting duplicate work. An accepted delivery identifies the Session, Thread and
@@ -375,7 +378,8 @@ are complete with empty history; unloaded backends are explicitly unavailable. C
 identity is checked for each target and rechecked when history is read.
 
 `read_session` returns a Session in the current Profile's status and newest conversation turns without
-opening a window. It defaults to the calling Session, three turns, and 300 characters per text
+opening a window. A Runtime Session reports the `agent` instance and model its next message
+runs on; `wait_sessions` reports the same `agent` for each target. It defaults to the calling Session, three turns, and 300 characters per text
 item, with tool outputs omitted. The complete response has a 24 KiB budget; a larger response
 fails explicitly so the caller can narrow its limits. Core validates the captured execution
 identity before and after backend history reads. A changed backend binding discards the

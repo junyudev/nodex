@@ -227,7 +227,9 @@ Another Agent stays listed but cannot be chosen when the chat cannot hand over: 
 reply is starting before its Agent session exists, when the chat's Agent session cannot
 hand off, or when a started chat has no native conversation to hand over. A model change
 within an Agent that keeps one model per chat is refused the same way. The disabled
-choice explains why. The transcript marks each handoff above the Turn that continued it
+choice explains why. The Session interface applies the same rule to every message that
+changes Agent, including an Agent's `send_message_to_session`, and refuses it with the same
+reason. The transcript marks each handoff above the Turn that continued it
 with the configured Agent and model names it moved from and to. An unavailable chosen
 Agent fails the message explicitly; the chat never falls back to another Agent.
 

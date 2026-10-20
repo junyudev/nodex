@@ -101,6 +101,12 @@ export const make = Effect.gen(function* () {
         backend: loaded
           ? backendOf(loaded.thread.providerInstanceId)
           : (after.thread?.backend_binding.kind ?? null),
+        agent: loaded
+          ? {
+              providerInstanceId: loaded.thread.modelSelection.instanceId,
+              model: loaded.thread.modelSelection.model,
+            }
+          : null,
         status,
         activeFlags,
         disposition,
@@ -285,6 +291,7 @@ export const make = Effect.gen(function* () {
           threadId: after.session.execution_ref?.thread_id ?? after.thread?.thread_id ?? null,
           title: after.session.display_title,
           backend: control.backend,
+          agent: control.agent,
           archived: after.session.archived,
           pinned: after.session.pinned,
           status: { type: control.status, activeFlags: control.activeFlags },

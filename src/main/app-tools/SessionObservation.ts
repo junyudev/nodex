@@ -38,12 +38,19 @@ type SessionHistory =
   | { readonly availability: "empty"; readonly turns: readonly [] }
   | { readonly availability: "unavailable"; readonly reason: "backend_not_loaded" };
 
+/** The configured Agent and model a Runtime Session's next message runs on. */
+export interface SessionAgent {
+  readonly providerInstanceId: string;
+  readonly model: string;
+}
+
 export interface SessionObservationResult {
   readonly sessionId: string;
   readonly projectId: string | null;
   readonly threadId: string | null;
   readonly title: string;
   readonly backend: "codex" | "acp" | "claude" | "opencode" | null;
+  readonly agent: SessionAgent | null;
   readonly archived: boolean;
   readonly pinned: boolean;
   readonly status: { readonly type: string; readonly activeFlags: readonly string[] };
@@ -104,6 +111,7 @@ export interface SessionInspection {
   readonly sessionId: string;
   readonly title: string;
   readonly backend: "codex" | "acp" | "claude" | "opencode" | null;
+  readonly agent: SessionAgent | null;
   readonly status: string;
   readonly activeFlags: readonly string[];
   readonly disposition: "running" | "complete" | "needs_attention" | "unavailable";
@@ -274,6 +282,7 @@ export const make = Effect.gen(function* () {
         sessionId,
         title: after.session.display_title,
         backend: thread?.backend_binding.kind ?? null,
+        agent: null,
         status,
         activeFlags,
         disposition: disposition(status, activeFlags, executionInProgress),
@@ -324,6 +333,7 @@ export const make = Effect.gen(function* () {
         threadId: after.thread?.thread_id ?? null,
         title: after.session.display_title,
         backend: after.thread?.backend_binding.kind ?? null,
+        agent: null,
         archived: after.session.archived,
         pinned: after.session.pinned,
         status: {

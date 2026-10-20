@@ -23,6 +23,7 @@ const snapshot = (
   sessionId,
   title: sessionId,
   backend: "codex",
+  agent: { providerInstanceId: "codex", model: "gpt" },
   status: disposition === "running" ? "active" : "idle",
   activeFlags: [],
   disposition,

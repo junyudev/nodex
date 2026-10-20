@@ -52,6 +52,7 @@ const fixture = () => {
             threadId: "root",
             thread: {
               providerInstanceId: "codex",
+              modelSelection: { instanceId: "codex", model: "gpt", options: [] },
               status: "completed",
               activeRunId: null,
               latestRunId: "run:5",
@@ -101,6 +102,8 @@ it.effect(
       const owner = yield* f.owner;
       const result = yield* owner.inspect("session", provenance);
       assert.equal(result.disposition, "complete");
+      // The Agent its next message runs on, as send_message_to_session can change it.
+      assert.deepEqual(result.agent, { providerInstanceId: "codex", model: "gpt" });
       assert.isFalse(f.calls.includes("body"));
       const before = f.calls.length;
       f.deny();

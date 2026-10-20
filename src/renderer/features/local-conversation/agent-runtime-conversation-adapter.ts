@@ -32,7 +32,7 @@ import {
   agentRuntimeAgentSwitchRefusal,
   agentRuntimePendingSelection,
   agentRuntimeSelectionRefusal,
-} from "./agent-runtime-agent-switch";
+} from "../../../shared/agent-runtime-agent-switch";
 import { useCodexThreadSettings } from "../../lib/use-codex-thread-settings";
 import { CodexReasoningEffortSchema } from "../../../shared/schemas/codex";
 import { useCodexServiceTierSettings } from "../../lib/use-codex-service-tier-settings";

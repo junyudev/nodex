@@ -4,7 +4,7 @@ import type {
   AgentWire,
   ModelSelection,
 } from "@nodex/agent-runtime/contracts";
-import { agentRuntimeModelSelectionsEqual } from "../../../shared/agent-runtime-provider";
+import { agentRuntimeModelSelectionsEqual } from "./agent-runtime-provider";
 
 type AgentRuntimeProvider = AgentRuntimeOperations["providers.read"]["output"][number];
 type Projection = Pick<

@@ -1683,6 +1683,75 @@ it.effect("refuses a queued message when its frozen root was rebound before admi
   }),
 );
 
+it.effect("a message continues the chat on another Agent only while the chat can hand over", () =>
+  Effect.gen(function* () {
+    const fixture = setup();
+    const owner = yield* fixture.owner;
+    const opened = yield* owner.launch(launch);
+    const withProjection = (projection: Partial<AgentSnapshot["projection"]>) => {
+      const current = fixture.snapshots.get(opened.threadId)!;
+      fixture.snapshots.set(opened.threadId, {
+        ...current,
+        projection: {
+          ...current.projection,
+          thread: { ...current.projection.thread, activeProviderThreadId: "provider-thread" },
+          providerSessions: [],
+          ...projection,
+        },
+      });
+    };
+    const send = (messageId: string) =>
+      owner
+        .message({
+          sessionId: launch.sessionId,
+          threadId: opened.threadId,
+          message: {
+            messageId,
+            text: "Continue on Codex",
+            modelSelection: { instanceId: "codex", model: "gpt" },
+          },
+        })
+        .pipe(Effect.result);
+    const dispatched = (messageId: string) =>
+      [...fixture.commands.values()].find(
+        (command) => command.type === "message.dispatch" && command.messageId === messageId,
+      );
+    withProjection({
+      runs: [{ id: "run", ordinal: 1, status: "starting", providerThreadId: null } as never],
+      providerThreads: [],
+    });
+    const starting = yield* send("while-starting");
+    assert.equal(starting._tag, "Failure");
+    assert.isUndefined(dispatched("while-starting"));
+    withProjection({
+      runs: [
+        {
+          id: "run",
+          ordinal: 1,
+          status: "completed",
+          providerThreadId: "provider-thread",
+        } as never,
+      ],
+      providerThreads: [
+        {
+          id: "provider-thread",
+          appThreadId: opened.threadId,
+          providerInstanceId: "claude",
+          providerSessionId: null,
+          nativeThreadRef: { driver: "claudeAgent", nativeId: "native", strength: "strong" },
+        } as never,
+      ],
+    });
+    const finished = yield* send("after-finish");
+    assert.equal(finished._tag, "Success");
+    assert.deepEqual(
+      (dispatched("after-finish") as Extract<AgentCommand, { type: "message.dispatch" }>)
+        .modelSelection,
+      { instanceId: "codex", model: "gpt" },
+    );
+  }),
+);
+
 it.effect("Stop targets the selected Run and never substitutes a newer foreground Run", () =>
   Effect.gen(function* () {
     const fixture = setup();

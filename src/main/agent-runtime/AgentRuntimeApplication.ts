@@ -57,6 +57,7 @@ export type {
   AgentRuntimeConversation,
 } from "../../shared/agent-runtime-api";
 import { agentExecutionThreadId } from "../../shared/agent-runtime-api";
+import { agentRuntimeAgentSwitchRefusal } from "../../shared/agent-runtime-agent-switch";
 
 type Binding = components["schemas"]["ProjectWorkspaceAgentRuntimeSessionBinding"];
 type CleanupWindow = Extract<
@@ -1319,6 +1320,13 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
     yield* assertMessage(input.message);
     const connection = yield* options.connect;
     const loaded = yield* targetInfo(connection, input, true);
+    // A message that continues the chat on another Agent needs a conversation it can hand over.
+    const requested = input.message.modelSelection;
+    if (requested && requested.instanceId !== loaded.thread.modelSelection.instanceId) {
+      const control = yield* connection.request("thread.control", { threadId: loaded.threadId });
+      const refusal = agentRuntimeAgentSwitchRefusal(control.projection);
+      if (refusal) return yield* failure("message", refusal);
+    }
     const prepared = yield* prepareAgentConfig(
       connection,
       input.message,
