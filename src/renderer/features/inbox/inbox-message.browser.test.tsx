@@ -170,7 +170,9 @@ test("Copy and Edit wait on the text's bottom-right corner until the message is 
   expect(getComputedStyle(tools).opacity).toBe("0");
   expect(getComputedStyle(tools).pointerEvents).toBe("none");
 
-  await userEvent.hover(screen.getByText("Homepage feels like a dev tool"));
+  await act(async () => {
+    await userEvent.hover(screen.getByText("Homepage feels like a dev tool"));
+  });
   await expect.poll(() => getComputedStyle(tools).opacity).toBe("1");
   expect(getComputedStyle(tools).pointerEvents).toBe("auto");
 });
@@ -219,7 +221,10 @@ test("a chat suggestion reads as its prompt: full width, the message's size, why
   );
   expect(screen.queryByText("整理合并前的提交历史")).toBeNull();
 
-  await userEvent.hover(screen.getByRole("button", { name: "New chat in Nodex" }));
+  await act(async () => {
+    await userEvent.hover(screen.getByRole("button", { name: "New chat in Nodex" }));
+    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+  });
   expect(await screen.findByText("整理合并前的提交历史", {}, { timeout: 3_000 })).toBeTruthy();
   expect(screen.getByText("A clear task for a new chat. — codex · gpt-6.1-sol")).toBeTruthy();
 });

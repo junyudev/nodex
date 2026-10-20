@@ -2,20 +2,41 @@ import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import type { Reporter, TestModule } from "vite-plus/test/node";
 
-/** Store public Vitest diagnostics with their original, non-additive timing semantics. */
+/** Enforce settled React interactions and optionally retain public Vitest diagnostics. */
 export default class TimingReporter implements Reporter {
   private readonly reactActWarnings: string[] = [];
 
+  onTestRunStart() {
+    this.reactActWarnings.length = 0;
+  }
+
   onUserConsoleLog(log: Parameters<NonNullable<Reporter["onUserConsoleLog"]>>[0]) {
-    if (/not wrapped in act\(|not configured to support act\(/u.test(log.content)) {
+    if (
+      /not wrapped in act\(|not configured to support act\(|overlapping act\(\) calls|act\(async \(\) => \.\.\.\) without await|`act` call was not awaited/u.test(
+        log.content,
+      )
+    ) {
       this.reactActWarnings.push(log.content);
     }
   }
 
-  constructor(private readonly options: { directory: string; suite: string }) {}
+  constructor(private readonly options: { directory?: string; suite: string }) {}
 
   async onTestRunEnd(modules: readonly TestModule[], errors: readonly unknown[], reason: string) {
-    await mkdir(this.options.directory, { recursive: true });
+    await this.writeReport(modules, errors, reason);
+    if (this.reactActWarnings.length) {
+      throw new Error("React act warnings invalidate this test run; fix the interaction boundary.");
+    }
+  }
+
+  private async writeReport(
+    modules: readonly TestModule[],
+    errors: readonly unknown[],
+    reason: string,
+  ) {
+    const { directory } = this.options;
+    if (!directory) return;
+    await mkdir(directory, { recursive: true });
     const files = modules.map((module) => ({
       path: module.relativeModuleId,
       state: module.state(),
@@ -50,13 +71,8 @@ export default class TimingReporter implements Reporter {
       },
     };
     await writeFile(
-      path.join(this.options.directory, this.options.suite + "-" + process.pid + ".json"),
+      path.join(directory, this.options.suite + "-" + process.pid + ".json"),
       JSON.stringify(report, null, 2) + "\n",
     );
-    if (this.reactActWarnings.length) {
-      throw new Error(
-        "React act warnings invalidate this test performance sample; fix the interaction boundary.",
-      );
-    }
   }
 }

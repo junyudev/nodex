@@ -8,6 +8,8 @@ export interface StdioFailureResult {
   readonly stderrErrorCodes: string[];
   readonly uncaughtExceptions: number;
   readonly pendingStderrBytes: number;
+  readonly peakPendingStderrBytes: number;
+  readonly stderrBackpressureObserved: boolean;
   readonly stderrHighWaterMark: number;
 }
 
@@ -56,8 +58,12 @@ process.send?.({ kind: "ready" });
 async function run(): Promise<void> {
   logger.warn("terminal probe");
   await setImmediate();
+  let peakPendingStderrBytes = 0;
+  let stderrBackpressureObserved = false;
   for (let index = 0; index < 2_000; index += 1) {
     logger.warn("continued diagnostics", { index, payload: "x".repeat(1_200) });
+    peakPendingStderrBytes = Math.max(peakPendingStderrBytes, stderr.writableLength);
+    stderrBackpressureObserved ||= stderr.writableNeedDrain;
   }
   await setImmediate();
   logger.info("stdout remains available");
@@ -71,6 +77,8 @@ async function run(): Promise<void> {
     stderrErrorCodes: [...stderrErrorCodes],
     uncaughtExceptions,
     pendingStderrBytes: stderr.writableLength,
+    peakPendingStderrBytes,
+    stderrBackpressureObserved,
     stderrHighWaterMark: stderr.writableHighWaterMark,
   };
   process.send?.(result, () => process.disconnect());
