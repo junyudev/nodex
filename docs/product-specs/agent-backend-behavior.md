@@ -5,7 +5,10 @@
 New local Sessions execute through Agent Runtime with an explicit configured Provider.
 Codex is the default. Enabled Profile-local Claude Code, OpenCode and ACP instances
 retain their own account, native history, models and configuration. A Session never
-silently falls back to another Provider when its selected instance is unavailable.
+silently falls back to another Provider when its selected instance is unavailable. A
+person can explicitly continue a started Session on another enabled Provider; its next
+message hands over the conversation, as described in
+[Changing Agent in a chat](agent-runtime-behavior.md#changing-agent-in-a-chat).
 Core binds the product Session to its runtime root before execution starts. Native
 history imports keep their durable native descriptor and do not open another execution
 owner. Real native Codex and remote-host history remain available through their own

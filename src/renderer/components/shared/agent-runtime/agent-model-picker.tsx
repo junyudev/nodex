@@ -54,6 +54,8 @@ export interface AgentModelPickerEntry {
   readonly label: string;
   readonly model: AgentModelOption;
   readonly selection: AgentModelSelection;
+  /** Why this chat cannot use the model now; the model stays listed but cannot be chosen. */
+  readonly unavailableReason?: string;
 }
 
 /** A runtime whose models become available after setup, offered beside the model list. */
@@ -225,8 +227,8 @@ export function AgentModelPicker(
         entry.model.displayName
       ),
       searchText: `${entry.model.displayName} ${entry.model.id} ${entry.label} ${entry.binding.kind}`,
-      tooltipText: entry.model.description || entry.model.id,
-      disabled: pending,
+      tooltipText: entry.unavailableReason ?? (entry.model.description || entry.model.id),
+      disabled: pending || entry.unavailableReason !== undefined,
     };
   });
   const genericOptions =

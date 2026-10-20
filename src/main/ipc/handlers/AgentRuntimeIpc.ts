@@ -157,9 +157,6 @@ export const live = Layer.effectDiscard(
         application.respond,
       ),
     );
-    yield* ipc.handlePlainCommand("agent-runtime:session:set-model", (event, value) =>
-      handle(event, Inputs.AgentRuntimeModelSchema, value, application.setModel),
-    );
     yield* ipc.handlePlainCommand("agent-runtime:session:set-modes", (event, value) =>
       handle(event, Inputs.AgentRuntimeModesSchema, value, application.setModes),
     );

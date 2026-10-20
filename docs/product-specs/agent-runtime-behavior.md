@@ -194,11 +194,42 @@ managed-worktree ownership is attached only after the durable execution is verif
 
 Effort and speed are written under each model's own option names: Codex reasoning effort
 and service tier, Claude effort with its thinking, speed and context choices. A model,
-effort and speed change from the composer is one selection update, so concurrent choices
-never overwrite each other, and options a newly chosen model does not offer fall back to
-its defaults. A new Codex chat starts from the user's saved Codex model, effort and speed.
+effort and speed change from the composer is one choice, so concurrent choices never
+overwrite each other, and options a newly chosen model does not offer fall back to its
+defaults. A new Codex chat starts from the user's saved Codex model, effort and speed.
 Fast in a Runtime chat changes that chat's own speed rather than the saved default. Goal
 mode is not offered for Runtime chats.
+
+In a started chat, the composer's choice applies from the next message the person sends
+from it: sending, steering, queueing or editing the last message carries the choice with
+that message, and the Run it starts uses it. Choosing alone changes nothing in the chat,
+so a running reply is never interrupted by a choice. Once a Run has applied the choice the
+chat's own selection shows again; a choice that has not reached a Run stays in that
+window's composer and is not restored after restart.
+
+### Changing Agent in a chat
+
+The model menu of a started chat lists every configured Agent. Choosing another Agent's
+model continues the same chat, Session and transcript on that Agent from the next message.
+The chat keeps one history: each Agent keeps its own native conversation, and the next Run
+on a new Agent receives a context handoff of the chat's earlier Runs. Returning to an Agent
+that already holds a native conversation resumes it and hands over only the Runs it missed.
+Codex receives the handoff as earlier conversation history; other Agents receive it with
+the message. The handoff uses the same bounded portable history as forks: it prioritizes the
+latest request and reply and the opening request, never replays foreign tool calls,
+reasoning or attachments, and tells the Agent how to read omitted history with `task_read`.
+A finished, failed or stopped chat can change Agent the same way. Sending while a reply
+runs follows the usual delivery: a queued message waits with its own choice, while
+steering stops the running reply and continues that Run on the chosen Agent with the
+conversation so far. Queued messages keep the Agent they were queued with.
+
+Another Agent stays listed but cannot be chosen when the chat cannot hand over: while a
+reply is starting before its Agent session exists, when the chat's Agent session cannot
+hand off, or when a started chat has no native conversation to hand over. A model change
+within an Agent that keeps one model per chat is refused the same way. The disabled
+choice explains why. The transcript marks each handoff above the Turn that continued it
+with the configured Agent and model names it moved from and to. An unavailable chosen
+Agent fails the message explicitly; the chat never falls back to another Agent.
 
 ## Delegated work in the conversation
 

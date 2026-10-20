@@ -8,7 +8,6 @@ import type {
   AgentRuntimeMessageInput,
   AgentRuntimeStopInput,
   AgentRuntimeResponseInput,
-  AgentRuntimeModelInput,
   AgentRuntimeModeInput,
   AgentRuntimeCompactInput,
   AgentRuntimeRollbackInput,
@@ -100,14 +99,6 @@ const respond = defineRendererCommand({
   protocol: { kind: "returned_value" },
   trace: { scopeKind: "session" },
 });
-const setModel = defineRendererCommand({
-  key: "agent_runtime.session.model",
-  channel: "agent-runtime:session:set-model",
-  authority: "external",
-  owner: "AgentRuntimeConversationOwner",
-  protocol: { kind: "returned_value" },
-  trace: { scopeKind: "session" },
-});
 const setModes = defineRendererCommand({
   key: "agent_runtime.session.modes",
   channel: "agent-runtime:session:set-modes",
@@ -177,7 +168,6 @@ export interface AgentRuntimeRendererTransport {
   ) => Promise<AgentRuntimeLaunchResult & { readonly sourceSessionId: string }>;
   readonly stop: (input: AgentRuntimeStopInput) => Promise<{ readonly stopped: boolean }>;
   readonly respond: (input: AgentRuntimeResponseInput) => Promise<{ readonly sequence: number }>;
-  readonly setModel: (input: AgentRuntimeModelInput) => Promise<{ readonly sequence: number }>;
   readonly setModes: (input: AgentRuntimeModeInput) => Promise<{ readonly changed: boolean }>;
   readonly compact: (
     input: AgentRuntimeCompactInput,
@@ -223,7 +213,6 @@ export const agentRuntimeRuntime: AgentRuntimeRendererTransport = {
   fork: (input) => invokePlainCommand(fork, input),
   stop: (input) => invokePlainCommand(stop, input),
   respond: (input) => invokePlainCommand(respond, input),
-  setModel: (input) => invokePlainCommand(setModel, input),
   setModes: (input) => invokePlainCommand(setModes, input),
   compact: (input) => invokePlainCommand(compact, input),
   rollback: (input) => invokePlainCommand(rollback, input),

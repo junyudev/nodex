@@ -468,11 +468,24 @@ export function projectAgentRuntimeItem(item: AgentTurnItem, cwd = ""): CodexCan
       return notice(item, "Stopped", { kind: "stopped" });
     case "system_notice":
       return notice(item, item.message);
-    case "handoff":
-      return notice(
-        item,
-        item.summary ?? `Continued with ${item.toModel ?? item.toProviderInstanceId}`,
-      );
+    case "handoff": {
+      // The carried history itself stays with the Runtime; the notice names who continued.
+      const to = { providerInstanceId: item.toProviderInstanceId, model: item.toModel ?? null };
+      const from = item.fromModelSelections?.length
+        ? item.fromModelSelections.map((selection) => ({
+            providerInstanceId: selection.instanceId,
+            model: selection.model,
+          }))
+        : item.fromProviderInstanceIds.map((providerInstanceId) => ({
+            providerInstanceId,
+            model: null,
+          }));
+      return notice(item, `Context handoff to ${to.model ?? to.providerInstanceId}`, {
+        kind: "agentHandoff",
+        from,
+        to,
+      });
+    }
     case "user_input_request":
       return isAgentRuntimeAsyncQuestion(item)
         ? projectAgentRuntimeAsyncQuestionMessage(item)

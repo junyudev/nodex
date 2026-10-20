@@ -1406,6 +1406,39 @@ describe("Agent Runtime keyed transcript reads", () => {
     release();
   });
 
+  test("follows the chat's provider session from attach through detach", async () => {
+    const { owner, wire, release } = await open(conversation([assistant()]));
+    const session = {
+      id: "provider-session",
+      driver: "claudeAgent",
+      providerInstanceId: "claude",
+      status: "running",
+      cwd: "/workspace",
+      model: "model",
+      capabilities: { sessions: { supportsProviderSwitchingViaHandoff: true } },
+      createdAt: at,
+      updatedAt: at,
+      lastError: null,
+    } as unknown as AgentSnapshot["projection"]["providerSessions"][number];
+    const sessions = () => owner.getSnapshot().conversation!.snapshot.projection.providerSessions;
+    const emit = (sequence: number, event: Record<string, unknown>) =>
+      wire.emit({
+        sequence,
+        commandId: null,
+        event: { id: `session:${sequence}`, threadId: target.threadId, occurredAt: at, ...event },
+      } as unknown as AgentEvent);
+    emit(2, { type: "provider-session.attached", payload: session });
+    emit(3, { type: "provider-session.updated", payload: { ...session, status: "ready" } });
+    expect(sessions()).toEqual([{ ...session, status: "ready" }]);
+    emit(4, {
+      type: "provider-session.detached",
+      payload: { providerSessionId: session.id, detachedAt: at },
+    });
+    expect(sessions()).toEqual([]);
+    expect(wire.port.read).toHaveBeenCalledOnce();
+    release();
+  });
+
   test("offers edits only while every Run is settled and resends a sent message's images", async () => {
     const image = {
       type: "image" as const,

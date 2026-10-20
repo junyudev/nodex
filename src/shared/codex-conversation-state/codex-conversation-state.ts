@@ -409,7 +409,19 @@ export type CodexRuntimeNotice =
     }
   /** A Run stopped before finishing; it ends that Run's visible history. */
   | { readonly kind: "stopped" }
+  /** The conversation so far was handed to the Agent that runs the following Turn. */
+  | {
+      readonly kind: "agentHandoff";
+      readonly from: readonly CodexRuntimeNoticeAgent[];
+      readonly to: CodexRuntimeNoticeAgent;
+    }
   | { readonly kind: "info" };
+
+/** A configured Agent and the model it ran, named by the conversation's presentation. */
+export interface CodexRuntimeNoticeAgent {
+  readonly providerInstanceId: string;
+  readonly model: string | null;
+}
 
 /** Read-only execution history that has no native provider item equivalent. */
 export interface CodexCanonicalRuntimeNoticeItem {

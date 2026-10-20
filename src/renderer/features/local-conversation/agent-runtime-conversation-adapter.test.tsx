@@ -2,6 +2,7 @@ import { act, fireEvent, render, renderHook, waitFor } from "@testing-library/re
 import { StrictMode, useEffect, useState, type PropsWithChildren } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import type { AgentSnapshot, AgentTurnItem } from "@nodex/agent-runtime/contracts";
+import type { AgentRuntimeSessionEvent } from "../../../shared/agent-runtime-api";
 import { agentRuntimeRuntime } from "../../lib/agent-runtime-runtime";
 import {
   useAgentRuntimeConversationAdapter,
@@ -79,6 +80,8 @@ const snapshot = {
     checkpointScopes: [],
     contextHandoffs: [],
     contextTransfers: [],
+    providerThreads: [],
+    providerSessions: [],
   },
 } as unknown as AgentSnapshot;
 beforeEach(() => {
@@ -386,7 +389,7 @@ describe("Agent Runtime Codex controls", () => {
     await act(async () => unmount());
   });
 
-  it("applies model, effort and speed in one selection change under Codex's own option ids", async () => {
+  it("carries model, effort and speed to the next message as one choice under Codex's own option ids", async () => {
     vi.spyOn(agentRuntimeRuntime, "catalog").mockResolvedValue([codexProvider]);
     vi.spyOn(agentRuntimeRuntime, "control").mockResolvedValue({
       sessionId: "codex-session",
@@ -404,7 +407,7 @@ describe("Agent Runtime Codex controls", () => {
       } as AgentSnapshot,
     });
     vi.spyOn(agentRuntimeRuntime, "subscribe").mockResolvedValue(() => {});
-    const setModel = vi.spyOn(agentRuntimeRuntime, "setModel").mockResolvedValue({ sequence: 2 });
+    const message = vi.spyOn(agentRuntimeRuntime, "message").mockResolvedValue({ sequence: 1 });
     const { result, unmount } = renderHook(
       () =>
         useAgentRuntimeConversationAdapter({
@@ -424,11 +427,7 @@ describe("Agent Runtime Codex controls", () => {
     await act(async () => {
       await result.current.actions.onReasoningEffortChange!("high");
     });
-    expect(setModel.mock.calls[0]![0].modelSelection).toEqual({
-      instanceId: "codex",
-      model: "gpt",
-      options: [{ id: "reasoningEffort", value: "high" }],
-    });
+    expect(result.current.selectedEffort).toBe("high");
     await act(async () => {
       await result.current.actions.onIntelligenceSelectionChange!({
         kind: "codex",
@@ -437,8 +436,13 @@ describe("Agent Runtime Codex controls", () => {
         serviceTier: "fast",
       });
     });
-    expect(setModel).toHaveBeenCalledTimes(2);
-    expect(setModel.mock.calls[1]![0].modelSelection).toEqual({
+    // Choosing changes nothing in the chat until a message uses the choice.
+    expect(message).not.toHaveBeenCalled();
+    expect(result.current.selectedModel).toBe("gpt-mini");
+    await act(async () => {
+      await result.current.actions.onSendPrompt!("Continue");
+    });
+    expect(message.mock.calls[0]![0].message.modelSelection).toEqual({
       instanceId: "codex",
       model: "gpt-mini",
       options: [
@@ -447,6 +451,153 @@ describe("Agent Runtime Codex controls", () => {
       ],
     });
     expect(result.current.provider.controls?.goals).toBe(false);
+    await act(async () => unmount());
+  });
+});
+
+describe("Agent Runtime Agent switching", () => {
+  const claudeBinding = { kind: "claude" as const, instanceConfigId: "switch-claude" };
+  const claudeId = agentRuntimeProviderId(claudeBinding)!;
+  const configured = [{ binding: claudeBinding, enabled: true, label: "Claude" }];
+  const claudeProvider = {
+    ...provider,
+    instanceId: claudeId,
+    driver: "claude",
+    displayName: "Claude",
+    models: [{ slug: "sonnet", name: "Sonnet", isCustom: false, capabilities: null }],
+  } as unknown as AgentRuntimeProvider;
+  const finishedCodex = (runStatus: string) =>
+    ({
+      ...snapshot,
+      projection: {
+        ...snapshot.projection,
+        thread: {
+          ...snapshot.projection.thread,
+          activeProviderThreadId: "provider-thread",
+          modelSelection: { instanceId: "codex", model: "model" },
+        },
+        runs: [
+          {
+            id: "run",
+            ordinal: 1,
+            status: runStatus,
+            providerThreadId: "provider-thread",
+            modelSelection: { instanceId: "codex", model: "model" },
+          },
+        ],
+        providerSessions: [],
+        providerThreads: [
+          {
+            id: "provider-thread",
+            appThreadId: "engine-thread",
+            providerInstanceId: "codex",
+            providerSessionId: null,
+            nativeThreadRef: { driver: "codex", nativeId: "native", strength: "strong" },
+          },
+        ],
+      },
+    }) as unknown as AgentSnapshot;
+  const mount = (initial: AgentSnapshot) => {
+    vi.spyOn(agentRuntimeRuntime, "catalog").mockResolvedValue([provider, claudeProvider]);
+    vi.spyOn(agentRuntimeRuntime, "control").mockResolvedValue({
+      sessionId: "switch-session",
+      projectId: "project",
+      threadId: "engine-thread",
+      snapshot: initial,
+    });
+    const listeners: Array<(event: AgentRuntimeSessionEvent) => void> = [];
+    vi.spyOn(agentRuntimeRuntime, "subscribe").mockImplementation(async (_input, listener) => {
+      listeners.push(listener);
+      return () => {};
+    });
+    const hook = renderHook(
+      () =>
+        useAgentRuntimeConversationAdapter({
+          sessionId: "switch-session",
+          executionRef: { runtimeId: "engine", threadId: "engine-thread" },
+          projectId: "project",
+          modelProjectId: "project",
+          instances: configured,
+          onRefresh: async () => {},
+          onOpenThread: () => {},
+          ensureDraft: async () => ({ id: "switch-session" }),
+        }),
+      { wrapper: RuntimeWorkbench },
+    );
+    let sequence = initial.snapshotSequence;
+    const switchThread = async (modelSelection: { instanceId: string; model: string }) => {
+      sequence += 1;
+      await act(async () => {
+        for (const listener of listeners)
+          listener({
+            type: "event",
+            subscriptionId: "subscription",
+            sessionId: "switch-session",
+            threadId: "engine-thread",
+            event: {
+              sequence,
+              event: {
+                type: "thread.provider-switched",
+                threadId: "engine-thread",
+                providerInstanceId: modelSelection.instanceId,
+                occurredAt: "2026-10-20T00:00:00Z",
+                payload: { ...initial.projection.thread, modelSelection },
+              },
+            },
+          } as unknown as AgentRuntimeSessionEvent);
+        await Promise.resolve();
+      });
+    };
+    return { ...hook, switchThread };
+  };
+  const claudeEntry = (result: {
+    current: ReturnType<typeof useAgentRuntimeConversationAdapter>;
+  }) =>
+    result.current.provider.modelCatalog!.entries.find((entry) => entry.binding.kind === "claude")!;
+
+  it("continues a finished Codex chat on Claude from the next message, then follows the chat", async () => {
+    const message = vi.spyOn(agentRuntimeRuntime, "message").mockResolvedValue({ sequence: 1 });
+    const { result, unmount, switchThread } = mount(finishedCodex("completed"));
+    await waitFor(() => expect(result.current.state.connection).toBe("ready"));
+    await waitFor(() => expect(result.current.provider.modelCatalog?.loading).toBe(false));
+    expect(claudeEntry(result).unavailableReason).toBeUndefined();
+    await act(async () => {
+      await result.current.provider.modelCatalog!.choose(claudeEntry(result).selection);
+    });
+    // The Composer now speaks for Claude; the chat itself is unchanged until a message uses it.
+    expect(result.current.provider.kind).toBe("claude");
+    expect(result.current.selectedModel).toBe("sonnet");
+    expect(message).not.toHaveBeenCalled();
+    await act(async () => {
+      await result.current.actions.onSendPrompt!("Continue with Claude");
+    });
+    expect(message.mock.calls[0]![0].message).toMatchObject({
+      text: "Continue with Claude",
+      modelSelection: { instanceId: claudeId, model: "sonnet" },
+    });
+    await switchThread({ instanceId: claudeId, model: "sonnet" });
+    await act(async () => {
+      await result.current.actions.onSendPrompt!("Keep going");
+    });
+    // The applied choice is spent: later messages carry nothing and the chat's own Agent applies.
+    expect(message.mock.calls[1]![0].message.modelSelection).toBeUndefined();
+    await switchThread({ instanceId: "codex", model: "model" });
+    expect(result.current.provider.kind).toBe("codex");
+    await act(async () => unmount());
+  });
+
+  it("keeps other Agents listed but unavailable while a reply starts without its session", async () => {
+    const { result, unmount } = mount(finishedCodex("starting"));
+    await waitFor(() => expect(result.current.state.connection).toBe("ready"));
+    await waitFor(() => expect(result.current.provider.modelCatalog?.loading).toBe(false));
+    const entry = claudeEntry(result);
+    expect(entry.unavailableReason).toBe(
+      "Wait for the current reply to start, then choose another Agent.",
+    );
+    await expect(result.current.provider.modelCatalog!.choose(entry.selection)).rejects.toThrow(
+      entry.unavailableReason,
+    );
+    expect(result.current.provider.kind).toBe("codex");
     await act(async () => unmount());
   });
 });

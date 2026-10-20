@@ -108,10 +108,6 @@ export const AgentRuntimeResponseSchema = AgentRuntimeTargetSchema.extend({
   answers: z.record(z.string(), z.unknown()).optional(),
   attachmentsByQuestionId: z.record(z.string(), z.unknown()).optional(),
 });
-export const AgentRuntimeModelSchema = AgentRuntimeTargetSchema.extend({
-  requestId: id,
-  modelSelection: AgentRuntimeModelSelectionSchema,
-});
 export const AgentRuntimeModesSchema = AgentRuntimeTargetSchema.extend({
   requestId: id,
   interactionMode: AgentRuntimeInteractionModeSchema.optional(),

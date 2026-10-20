@@ -62,7 +62,6 @@ const fixture = () => {
       }),
       launch: method("launch", { sessionId: "new", projectId: "project", threadId: "new-root" }),
       message: method("message", { sequence: 1 }),
-      setModel: method("model", { changed: true }),
       fork: method("fork", {
         sourceSessionId: "session:root",
         sessionId: "fork",
@@ -135,6 +134,21 @@ it.effect(
       });
       assert.equal(f.calls.filter((call) => call.name === "message").length, 1);
       assert.isNotNull(f.calls.find((call) => call.name === "message")!.agent);
+      // A model override travels with its message and keeps the Session's own Agent.
+      yield* execute({
+        caller: f.caller,
+        name: "send_message_to_session",
+        arguments: { sessionId: "other", prompt: "Review", model: "opus" },
+      });
+      const messages = f.calls.filter((call) => call.name === "message");
+      assert.deepEqual(
+        (messages[0]!.input as { message: { modelSelection?: unknown } }).message.modelSelection,
+        undefined,
+      );
+      assert.deepEqual(
+        (messages[1]!.input as { message: { modelSelection?: unknown } }).message.modelSelection,
+        { instanceId: "claude_instance", model: "opus" },
+      );
     }),
 );
 it.effect(

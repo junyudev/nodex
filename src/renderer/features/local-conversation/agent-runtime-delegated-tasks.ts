@@ -1,6 +1,10 @@
 import type { AgentRuntimeRendererTransport } from "../../lib/agent-runtime-runtime";
 import { createUuidV7 } from "../../../shared/uuid-v7";
-import type { ConversationDelegatedTaskPort } from "./conversation-runtime";
+import type { AgentBackendBinding } from "../../../shared/agent-backend";
+import type {
+  ConversationAgentLabelPort,
+  ConversationDelegatedTaskPort,
+} from "./conversation-runtime";
 import { delegatedTaskAgentLabel } from "./delegated-task-presentation";
 import { formatCodexModelLabel } from "../../lib/codex-thread-settings";
 
@@ -50,12 +54,14 @@ export async function stopAgentRuntimeTask(
 }
 
 /**
- * Profile-wide presentation facts shared by every delegated task row: configured Agent
- * labels and Stop requests that have not settled yet. Rows keep showing "Stopping…" across
- * remounts until their task reports a terminal status or the request fails.
+ * Profile-wide presentation facts shared by Agent Runtime conversations: configured Agent
+ * labels for task rows and handoff dividers, and Stop requests that have not settled yet.
+ * Rows keep showing "Stopping…" across remounts until their task reports a terminal status or
+ * the request fails.
  */
 export interface AgentRuntimeProviderLabel {
   readonly label: string;
+  readonly kind: AgentBackendBinding["kind"];
   /** Catalog display names by model slug. */
   readonly models: ReadonlyMap<string, string>;
 }
@@ -81,6 +87,7 @@ export function createAgentRuntimeDelegatedTaskStore() {
       ) =>
         right !== undefined &&
         left.label === right.label &&
+        left.kind === right.kind &&
         left.models.size === right.models.size &&
         [...left.models].every(([slug, name]) => right.models.get(slug) === name);
       const changed = [...next].filter(
@@ -128,6 +135,19 @@ export type AgentRuntimeDelegatedTaskStore = ReturnType<
 >;
 export const agentRuntimeDelegatedTasks = createAgentRuntimeDelegatedTaskStore();
 
+export function createAgentRuntimeAgentLabelPort(
+  store: AgentRuntimeDelegatedTaskStore,
+): ConversationAgentLabelPort {
+  return {
+    subscribe: store.subscribe,
+    label: (providerInstanceId, model) =>
+      agentRuntimeAgentLabel(store.readLabels(), providerInstanceId, model),
+    kind: (providerInstanceId) => store.readLabels().get(providerInstanceId)?.kind ?? null,
+  };
+}
+
+export const agentRuntimeAgentLabels = createAgentRuntimeAgentLabelPort(agentRuntimeDelegatedTasks);
+
 /** Stop marks the task immediately and keeps the mark until it settles or the request fails. */
 export async function requestAgentRuntimeTaskStop(
   sessionId: string,
@@ -151,8 +171,6 @@ export function createAgentRuntimeDelegatedTaskPort(
 ): ConversationDelegatedTaskPort {
   return {
     subscribe: store.subscribe,
-    agentLabel: (providerInstanceId, model) =>
-      agentRuntimeAgentLabel(store.readLabels(), providerInstanceId, model),
     isStopping: (taskId) => store.isStopping(sessionId, taskId),
     settle: (taskId) => store.settle(sessionId, taskId),
     stop: (parentThreadId, task) =>

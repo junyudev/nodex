@@ -458,7 +458,6 @@ type PlainResultCommandEndpointPolicy =
   | "agent-runtime:session:fork"
   | "agent-runtime:session:stop"
   | "agent-runtime:session:respond"
-  | "agent-runtime:session:set-model"
   | "agent-runtime:session:set-modes"
   | "agent-runtime:session:compact"
   | "agent-runtime:session:rollback"

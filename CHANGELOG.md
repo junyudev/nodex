@@ -12,6 +12,8 @@ All notable changes to this project will be documented in this file.
 
 - Appearance settings can choose UI, content and code fonts separately for light and dark themes, with independent UI, code and Page text sizes that stay consistent across windows and restart.
 
+- A started chat can continue on another Agent: choose another Agent's model and the next message carries the conversation so far to it, including in finished chats. Returning to an earlier Agent resumes its own conversation with only what it missed, and the transcript marks each handoff.
+
 - Codex and Claude chats can delegate work to each other, open each child's conversation, and receive results after the parent Turn ends. Delegated work, result delivery and cancellation survive runtime restart, while Profile snapshots preserve the complete execution history and native conversation identities.
 
 - Chats can use configured OpenCode models, including Kimi and OpenRouter providers, through the shared searchable model menu, with native options and questions. OpenCode is enabled by default, initially showing its `-free` models with other models available through Show all models. If OpenCode is missing, its official installer is available directly from the model menu and Settings. Independent profiles preserve model choices, and conversation history restores each prompt with its replies across restart and pagination.

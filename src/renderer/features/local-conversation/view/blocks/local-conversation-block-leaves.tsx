@@ -29,6 +29,7 @@ import { useConversationVisualizationContext } from "../inline-visualization-con
 import { AutomaticApprovalReviewSurface } from "../shared/automatic-approval-review-surface";
 import { MultiAgentActionSurface } from "../shared/multi-agent-action-surface";
 import { DelegatedTaskRow, RuntimeNoticeRow } from "../shared/delegated-task-row";
+import { AgentHandoffDivider, TranscriptDivider } from "../shared/transcript-divider";
 import { ImageViewSurface } from "../shared/image-view-surface";
 import { GeneratedImageGallery } from "../shared/generated-image-gallery";
 import { CompletedRequestActivitySurface } from "../shared/completed-request-activity-surface";
@@ -640,7 +641,10 @@ export function ThreadDelegatedTaskBlock({
 }
 
 export function ThreadRuntimeNoticeBlock({ block, onOpenThread }: ThreadLeafBlockProps) {
-  if (block.type !== "runtimeNotice" || !block.entry.markdownText?.trim()) return null;
+  if (block.type !== "runtimeNotice") return null;
+  const notice = block.entry.runtimeNotice;
+  if (notice?.kind === "agentHandoff") return <AgentHandoffDivider notice={notice} />;
+  if (!block.entry.markdownText?.trim()) return null;
   return (
     <RuntimeNoticeRow
       message={block.entry.markdownText}
@@ -1640,18 +1644,14 @@ export function ThreadContextCompactionBlock({ block }: ThreadLeafBlockProps) {
   const isCompleted = block.status !== "inProgress";
 
   return (
-    <div className="text-size-chat my-2 flex items-center gap-2 text-token-text-secondary">
-      <div className="flex-1 border-t border-current/20" />
-      <div className="flex items-center gap-1 whitespace-nowrap">
-        {isCompleted ? <ContextCompactionIcon className="icon-2xs" /> : null}
-        {isCompleted ? (
-          <span>Context automatically compacted</span>
-        ) : (
-          <CodexShimmerText>Automatically compacting context</CodexShimmerText>
-        )}
-      </div>
-      <div className="flex-1 border-t border-current/20" />
-    </div>
+    <TranscriptDivider>
+      {isCompleted ? <ContextCompactionIcon className="icon-2xs" /> : null}
+      {isCompleted ? (
+        <span>Context automatically compacted</span>
+      ) : (
+        <CodexShimmerText>Automatically compacting context</CodexShimmerText>
+      )}
+    </TranscriptDivider>
   );
 }
 

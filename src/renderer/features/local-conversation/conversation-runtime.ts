@@ -5,6 +5,7 @@ import type {
   CodexConversationLiveRequest,
   CodexConversationSnapshot,
 } from "../../../shared/types";
+import type { AgentBackendBinding } from "../../../shared/agent-backend";
 import type { LocalConversationAttachmentState } from "./conversation-attachment-state";
 import type { CodexTranscriptReadOwner } from "./normalized-transcript-read-owner";
 import type { AsyncQuestionDelivery, AsyncQuestionRuntime } from "./async-question-runtime";
@@ -21,12 +22,20 @@ export interface ConversationContentSource {
   readonly isCurrent: () => boolean;
 }
 
-/** Delegated task rows read Agent labels and request Stop through their conversation's owner. */
-export interface ConversationDelegatedTaskPort {
-  /** Notifies when labels or unsettled Stop requests change. */
+/** Configured Agent names and marks for the Agents a conversation's work ran on. */
+export interface ConversationAgentLabelPort {
+  /** Notifies when the configured Agents or their model names change. */
   readonly subscribe: (listener: () => void) => () => void;
   /** The configured Agent label and model display name, as one label. */
-  readonly agentLabel: (providerInstanceId: string, model: string | null) => string | null;
+  readonly label: (providerInstanceId: string, model: string | null) => string | null;
+  /** The Agent Backend whose mark identifies the Agent, when it is configured. */
+  readonly kind: (providerInstanceId: string) => AgentBackendBinding["kind"] | null;
+}
+
+/** Delegated task rows request Stop through their conversation's owner. */
+export interface ConversationDelegatedTaskPort {
+  /** Notifies when unsettled Stop requests change. */
+  readonly subscribe: (listener: () => void) => () => void;
   /** A Stop request stays visible until the task settles or the request fails. */
   readonly isStopping: (taskId: string) => boolean;
   /** Releases a settled task's Stop request. */
@@ -43,6 +52,8 @@ export interface ConversationDelegatedTaskPort {
 
 /** Product conversation reads and lifecycle; protocol ownership stays in each Adapter. */
 export interface ConversationRuntime {
+  /** Present where work can run on several configured Agents. */
+  readonly agentLabels?: ConversationAgentLabelPort;
   /** Present only where delegated tasks have an execution owner that can stop them. */
   readonly delegatedTasks?: ConversationDelegatedTaskPort;
   /** Present where the execution owner holds asynchronous questions; native chats use their manager. */

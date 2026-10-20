@@ -1483,6 +1483,32 @@ export class AgentRuntimeConversationOwner {
       this.#publishView();
       return;
     }
+    // Which Agents the next message may use follows the chat's live provider session.
+    if (
+      event.type === "provider-session.attached" ||
+      event.type === "provider-session.updated" ||
+      event.type === "provider-session.detached"
+    ) {
+      const projection = conversation.snapshot.projection;
+      const providerSessions =
+        event.type === "provider-session.detached"
+          ? projection.providerSessions.filter(
+              (session) => session.id !== event.payload.providerSessionId,
+            )
+          : [
+              ...projection.providerSessions.filter((session) => session.id !== event.payload.id),
+              event.payload,
+            ];
+      this.#state = {
+        ...this.#state,
+        conversation: {
+          ...conversation,
+          snapshot: { ...conversation.snapshot, projection: { ...projection, providerSessions } },
+        },
+      };
+      this.#publishView();
+      return;
+    }
     if (event.type.startsWith("thread.") && "lineage" in event.payload) {
       this.#state = {
         ...this.#state,

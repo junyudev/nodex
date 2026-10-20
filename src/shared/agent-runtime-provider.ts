@@ -26,6 +26,22 @@ export function agentRuntimeModelSelection(
   return { instanceId, model: model.trim(), ...(options === undefined ? {} : { options }) };
 }
 
+/** The same Agent, model and option values; option order carries no meaning. */
+export function agentRuntimeModelSelectionsEqual(
+  left: AgentWire<ModelSelection>,
+  right: AgentWire<ModelSelection>,
+): boolean {
+  if (left.instanceId !== right.instanceId || left.model !== right.model) return false;
+  const values = (selection: AgentWire<ModelSelection>) =>
+    new Map((selection.options ?? []).map((option) => [option.id, option.value]));
+  const leftValues = values(left);
+  const rightValues = values(right);
+  return (
+    leftValues.size === rightValues.size &&
+    [...leftValues].every(([id, value]) => rightValues.get(id) === value)
+  );
+}
+
 type AgentRuntimeProviderModel =
   import("@nodex/agent-runtime/contracts").AgentRuntimeOperations["providers.read"]["output"][number]["models"][number];
 export type AgentRuntimeOptionDescriptor = NonNullable<

@@ -303,6 +303,8 @@ async function handleCodex(message) {
       return;
     }
     case "turn/interrupt": reply({}); finishCodex(params.threadId, params.turnId, "interrupted"); return;
+    // History another Agent produced joins the model-visible thread before the next turn.
+    case "thread/inject_items": record({ event: "inject", threadId: params.threadId, items: params.items }); reply({}); return;
     default: reply({});
   }
 }

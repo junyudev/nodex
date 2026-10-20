@@ -36,15 +36,16 @@ export function DelegatedTaskRow({
   membership: CodexConversationChildMembership | undefined;
   onOpenThread?: ThreadStageActions["onOpenThread"];
 }) {
-  const port = useConversationRuntimeOverride()?.delegatedTasks;
-  const subscribe = port?.subscribe ?? noSubscription;
+  const runtime = useConversationRuntimeOverride();
+  const port = runtime?.delegatedTasks;
+  const labels = runtime?.agentLabels;
   const model = membership?.thread?.model ?? null;
   const agent = useSyncExternalStore(
-    subscribe,
-    () => port?.agentLabel(task.providerInstanceId, model) ?? null,
+    labels?.subscribe ?? noSubscription,
+    () => labels?.label(task.providerInstanceId, model) ?? null,
   );
   const stopRequested = useSyncExternalStore(
-    subscribe,
+    port?.subscribe ?? noSubscription,
     () => port?.isStopping(task.taskId) ?? false,
   );
   const live = isDelegatedTaskLive(task.status);

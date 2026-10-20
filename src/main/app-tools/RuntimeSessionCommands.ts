@@ -54,16 +54,17 @@ export const make = Effect.gen(function* () {
         if (request.sessionId === sessionId) return toolFailure("cannot_message_calling_session");
         const operationId = stableOperation(request.operationId);
         const target = yield* application.inspect({ sessionId: request.sessionId });
-        if (request.model)
-          yield* application.setModel({
-            sessionId: request.sessionId,
-            requestId: operationId,
-            modelSelection: { ...target.thread.modelSelection, model: request.model },
-          });
         if (!input.caller.isActive()) return toolFailure("call_withdrawn");
+        // A model override belongs to this message's Run; the Session's own Agent runs it.
         yield* application.message({
           sessionId: request.sessionId,
-          message: { messageId: operationId, text: request.prompt },
+          message: {
+            messageId: operationId,
+            text: request.prompt,
+            ...(request.model
+              ? { modelSelection: { ...target.thread.modelSelection, model: request.model } }
+              : {}),
+          },
         });
         return toolSuccess({
           operationId,

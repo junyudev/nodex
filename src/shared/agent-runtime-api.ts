@@ -83,6 +83,9 @@ export const AGENT_RUNTIME_CONTROL_EVENT_TYPES = [
   "runtime-request.updated",
   "subagent.updated",
   "provider-thread.updated",
+  "provider-session.attached",
+  "provider-session.updated",
+  "provider-session.detached",
   "thread.created",
   "thread.archived",
   "thread.unarchived",
@@ -112,10 +115,6 @@ export type AgentRuntimeResponseInput = AgentRuntimeSessionTarget &
   Pick<Respond, "requestId" | "decision" | "answers" | "attachmentsByQuestionId"> & {
     readonly runId: string | null;
   };
-export type AgentRuntimeModelInput = AgentRuntimeSessionTarget & {
-  readonly requestId: string;
-  readonly modelSelection: CreateThread["modelSelection"];
-};
 export type AgentRuntimeModeInput = AgentRuntimeSessionTarget & {
   readonly requestId: string;
   readonly interactionMode?: CreateThread["interactionMode"];
@@ -302,10 +301,6 @@ export interface AgentRuntimeIpcApi {
   };
   "agent-runtime:session:respond": {
     args: [input: AgentRuntimeResponseInput];
-    result: { readonly sequence: number };
-  };
-  "agent-runtime:session:set-model": {
-    args: [input: AgentRuntimeModelInput];
     result: { readonly sequence: number };
   };
   "agent-runtime:session:set-modes": {

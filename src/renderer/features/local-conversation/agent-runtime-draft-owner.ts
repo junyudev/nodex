@@ -6,7 +6,11 @@ interface RuntimeDraft {
 }
 const emptyDraft: RuntimeDraft = { interactionMode: "default" };
 
-/** Unstarted Session presentations share one draft; execution begins only through Main. */
+/**
+ * Composer choices that have not reached execution: an unstarted Session's Agent and mode,
+ * or a started chat's Agent and model for its next message. Presentations of the same key
+ * share one draft; execution begins or changes only through a message sent through Main.
+ */
 class AgentRuntimeDraftOwner {
   readonly #drafts = new Map<string, RuntimeDraft>();
   readonly #listeners = new Map<string, Set<() => void>>();

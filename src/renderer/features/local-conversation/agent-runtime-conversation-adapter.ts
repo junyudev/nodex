@@ -9,7 +9,11 @@ import {
   runtimeClaudeModelOption,
 } from "./agent-runtime-model-intent";
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
-import type { AgentRuntimeOperations } from "@nodex/agent-runtime/contracts";
+import type {
+  AgentRuntimeOperations,
+  AgentWire,
+  ModelSelection,
+} from "@nodex/agent-runtime/contracts";
 import type { AgentBackendBinding } from "../../../shared/agent-backend";
 import type { AgentModelSelection } from "../../../shared/agent-model-catalog";
 import type {
@@ -19,10 +23,16 @@ import type {
 } from "../../../shared/agent-runtime-api";
 import {
   agentRuntimeModelSelection,
+  agentRuntimeModelSelectionsEqual,
   agentRuntimeProviderId,
   applyAgentRuntimeOptionIntent,
   readAgentRuntimeServiceTier,
 } from "../../../shared/agent-runtime-provider";
+import {
+  agentRuntimeAgentSwitchRefusal,
+  agentRuntimePendingSelection,
+  agentRuntimeSelectionRefusal,
+} from "./agent-runtime-agent-switch";
 import { useCodexThreadSettings } from "../../lib/use-codex-thread-settings";
 import { CodexReasoningEffortSchema } from "../../../shared/schemas/codex";
 import { useCodexServiceTierSettings } from "../../lib/use-codex-service-tier-settings";
@@ -56,6 +66,7 @@ import {
 } from "./local-conversation-store";
 import { copyAgentRuntimeConversationMarkdown } from "./agent-runtime-markdown-export";
 import {
+  agentRuntimeAgentLabels,
   agentRuntimeDelegatedTasks,
   createAgentRuntimeDelegatedTaskPort,
   stopAgentRuntimeBackgroundTasks,
@@ -172,6 +183,7 @@ export function createAgentRuntimeConversationRuntime(
     },
     connection: () => projectAgentRuntimeConnection(agentRuntimeActivityStore.readConnection()),
     role: (id) => (matches(id) ? "follower" : null),
+    agentLabels: agentRuntimeAgentLabels,
     ...(target
       ? {
           delegatedTasks: createAgentRuntimeDelegatedTaskPort(
@@ -262,6 +274,16 @@ export const isAgentRuntimeProviderAvailable = (provider: AgentRuntimeProvider):
   provider.status !== "error" &&
   provider.status !== "disabled";
 
+/** The configured Agent behind a Runtime provider instance; Codex needs no configuration. */
+export function agentRuntimeBinding(
+  instanceId: string,
+  instances: readonly { readonly binding: AgentBackendBinding }[],
+): AgentBackendBinding | undefined {
+  return instanceId === "codex"
+    ? { kind: "codex" }
+    : instances.find((entry) => agentRuntimeProviderId(entry.binding) === instanceId)?.binding;
+}
+
 /** The configured Agent name the user chose, then the provider's own name. */
 export function agentRuntimeProviderLabel(
   provider: Pick<AgentRuntimeProvider, "instanceId" | "displayName">,
@@ -331,8 +353,15 @@ export function createAgentRuntimeStageActions(input: {
   readonly openFork?: (
     result: import("../../../shared/agent-runtime-api").AgentRuntimeLaunchResult,
   ) => Promise<void>;
+  /** The Agent and model the person chose for the chat's next message, when it changes them. */
+  readonly nextSelection?: () => AgentRuntimeMessage["modelSelection"] | null;
 }): Partial<ThreadStageActions> {
   const transport = input.transport ?? agentRuntimeRuntime;
+  // A choice travels with the message that uses it; the Runtime applies it to that message's Run.
+  const chosenSelection = () => {
+    const modelSelection = input.nextSelection?.();
+    return modelSelection ? { modelSelection } : {};
+  };
   const requireTarget = () => {
     const target = input.target();
     if (!target) throw new Error("Open a conversation before sending a message");
@@ -360,6 +389,7 @@ export function createAgentRuntimeStageActions(input: {
         ...prepared,
         images: agentRuntimePromptImages(promptInput, appMessage),
         ...(promptInput ? { agentConfigs: promptInput.agentConfigs ?? [] } : {}),
+        ...chosenSelection(),
       },
       ...(intent ? { intent } : {}),
     });
@@ -419,6 +449,7 @@ export function createAgentRuntimeStageActions(input: {
         ...prepared,
         images: agentRuntimePromptImages(promptInput, appMessage),
         ...(promptInput ? { agentConfigs: promptInput.agentConfigs ?? [] } : {}),
+        ...chosenSelection(),
       },
     });
     await owner?.whenObserved?.(accepted.sequence);
@@ -506,6 +537,7 @@ export function createAgentRuntimeStageActions(input: {
           messageId: createUuidV7(),
           ...prepared,
           images: agentRuntimePromptImages(promptInput),
+          ...chosenSelection(),
         },
       });
       await owner.whenObserved?.(accepted.sequence);
@@ -708,16 +740,24 @@ export function useAgentRuntimeConversationAdapter(input: {
       active = false;
     };
   }, [catalogRequest, input.instances]);
+  const bindingFor = (instanceId: string) => agentRuntimeBinding(instanceId, input.instances);
   useEffect(() => {
     agentRuntimeDelegatedTasks.publishLabels(
       new Map(
-        catalogState.providers.map((provider) => [
-          provider.instanceId,
-          {
-            label: agentRuntimeProviderLabel(provider, input.instances),
-            models: new Map(provider.models.map((model) => [model.slug, model.name])),
-          },
-        ]),
+        catalogState.providers.flatMap((provider) => {
+          const binding = agentRuntimeBinding(provider.instanceId, input.instances);
+          if (!binding) return [];
+          return [
+            [
+              provider.instanceId,
+              {
+                label: agentRuntimeProviderLabel(provider, input.instances),
+                kind: binding.kind,
+                models: new Map(provider.models.map((model) => [model.slug, model.name])),
+              },
+            ],
+          ];
+        }),
       ),
     );
   }, [catalogState.providers, input.instances]);
@@ -780,17 +820,13 @@ export function useAgentRuntimeConversationAdapter(input: {
     if (owner?.getSnapshot().connection === "failed") void owner.resume();
     if (catalogState.error) refreshCatalog();
   }, [runtimeConnection.status, owner, catalogState.error]);
-  const observed = state.conversation?.snapshot.projection.thread;
+  const projection = state.conversation?.snapshot.projection;
+  const observed = projection?.thread;
   const entriesFor = (
     providers: readonly AgentRuntimeProvider[],
   ): readonly AgentModelPickerEntry[] =>
     providers.flatMap((provider) => {
-      const binding =
-        provider.instanceId === "codex"
-          ? { kind: "codex" as const }
-          : input.instances.find(
-              (entry) => agentRuntimeProviderId(entry.binding) === provider.instanceId,
-            )?.binding;
+      const binding = bindingFor(provider.instanceId);
       if (!binding || !isAgentRuntimeProviderAvailable(provider)) return [];
       return provider.models.map((model) => ({
         binding,
@@ -819,25 +855,60 @@ export function useAgentRuntimeConversationAdapter(input: {
     if (!whole) throw new Error("Choose a configured Agent and model");
     return draftSelectionFor(await whole);
   };
-  const entries = entriesFor(catalogState.providers);
-  const observedBinding = observed
-    ? observed.modelSelection.instanceId === "codex"
-      ? { kind: "codex" as const }
-      : input.instances.find(
-          (entry) => agentRuntimeProviderId(entry.binding) === observed.modelSelection.instanceId,
-        )?.binding
-    : undefined;
-  const selection = observed
+  const modelOf = (candidate: AgentModelSelection) =>
+    agentRuntimeModelSelection(candidate.binding, candidate.model, candidate.options);
+  const providerOf = (candidate: AgentModelSelection) =>
+    catalogState.providers.find(
+      (entry) => entry.instanceId === agentRuntimeProviderId(candidate.binding),
+    );
+  // A started chat's choice for its next message; the chat keeps its own until a message uses it.
+  const choiceKey = targetThreadId ? JSON.stringify(["thread", targetThreadId]) : null;
+  const choice = useSyncExternalStore(
+    (listener) => (choiceKey ? agentRuntimeDraftOwner.subscribe(choiceKey, listener) : () => {}),
+    () => (choiceKey ? agentRuntimeDraftOwner.read(choiceKey).selection : undefined),
+  );
+  const observedSelection: AgentModelSelection | undefined = observed
     ? {
-        binding: observedBinding ?? { kind: "codex" as const },
+        binding: bindingFor(observed.modelSelection.instanceId) ?? { kind: "codex" },
         model: observed.modelSelection.model,
         options: observed.modelSelection.options,
       }
-    : draftSelectionFor(catalogState.providers);
-  const provider = catalogState.providers.find(
-    (entry) => entry.instanceId === agentRuntimeProviderId(selection.binding),
-  );
-  const canRollback = provider?.supportsConversationRollback === true;
+    : undefined;
+  const nextSelection = observed
+    ? agentRuntimePendingSelection(
+        observed.modelSelection,
+        (choice && modelOf(choice)) ?? undefined,
+      )
+    : null;
+  // A choice the chat has since applied is spent, so a later change elsewhere is not undone.
+  useEffect(() => {
+    if (choiceKey && choice && observed && !nextSelection)
+      agentRuntimeDraftOwner.write(choiceKey, { selection: undefined });
+  }, [choiceKey, choice, observed, nextSelection]);
+  const selection =
+    (nextSelection ? choice : undefined) ??
+    observedSelection ??
+    draftSelectionFor(catalogState.providers);
+  const provider = providerOf(selection);
+  const agentSwitchRefusal = projection ? agentRuntimeAgentSwitchRefusal(projection) : null;
+  const refusalFor = (candidate: Pick<AgentWire<ModelSelection>, "instanceId" | "model">) =>
+    observed
+      ? agentRuntimeSelectionRefusal({
+          current: observed.modelSelection,
+          next: candidate,
+          agentSwitchRefusal,
+          providers: catalogState.providers,
+        })
+      : null;
+  const entries = entriesFor(catalogState.providers).map((entry) => {
+    const candidate = modelOf(entry.selection);
+    const unavailableReason = candidate ? refusalFor(candidate) : null;
+    return unavailableReason ? { ...entry, unavailableReason } : entry;
+  });
+  // Editing rewinds the Run the chat's own Agent ran; the edited message may then change Agent.
+  const canRollback =
+    (observedSelection ? providerOf(observedSelection) : provider)?.supportsConversationRollback ===
+    true;
   useEffect(() => {
     owner?.setCapabilities({ supportsUserTurnEdits: canRollback });
   }, [owner, canRollback]);
@@ -878,18 +949,19 @@ export function useAgentRuntimeConversationAdapter(input: {
               {},
             ),
           };
-    const modelSelection = agentRuntimeModelSelection(fitted.binding, fitted.model, fitted.options);
+    const modelSelection = modelOf(fitted);
     if (!modelSelection || !chosenModel) throw new Error("Choose an available model");
-    if (target && observed && modelSelection.instanceId !== observed.modelSelection.instanceId)
-      throw new Error("Start a new conversation to change Agent");
+    const refusal = refusalFor(modelSelection);
+    if (refusal) throw new Error(refusal);
     if (chosen.binding.kind === "claude")
       nativeIntelligenceIntentOwner.write(intentKey, nextIntent);
     if (fitted.binding.kind === "codex") rememberCodexChoice(fitted);
-    if (!target) {
-      agentRuntimeDraftOwner.write(draftKey, { selection: fitted });
-      return;
-    }
-    await agentRuntimeRuntime.setModel({ ...target, requestId: createUuidV7(), modelSelection });
+    agentRuntimeDraftOwner.write(choiceKey ?? draftKey, {
+      selection:
+        observed && agentRuntimeModelSelectionsEqual(observed.modelSelection, modelSelection)
+          ? undefined
+          : fitted,
+    });
   };
   const prepareFor =
     (kind: AgentBackendBinding["kind"]) =>
@@ -918,6 +990,7 @@ export function useAgentRuntimeConversationAdapter(input: {
         await input.onRefresh(result.projectId);
         await input.onOpenThread(result.threadId, { runtimeSessionId: result.sessionId });
       },
+      nextSelection: () => nextSelection,
     }),
     onOpenThread: (threadId, context) =>
       input.onOpenThread(threadId, {
@@ -928,8 +1001,6 @@ export function useAgentRuntimeConversationAdapter(input: {
       const submittedPresentation =
         request.submittedPresentation ?? readCodexSubmissionPresentation(workbenchOwner);
       if (request.runInTarget === "cloud") throw new Error("Choose a local workspace");
-      const modelOf = (candidate: typeof selection) =>
-        agentRuntimeModelSelection(candidate.binding, candidate.model, candidate.options);
       // The message shows at once. A draft still waiting for the catalog takes its default Agent's
       // model once that Agent is checked, without waiting for every other Agent's check.
       const pendingSelection = modelOf(selection) ? null : resolveDefaultSelection();

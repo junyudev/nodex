@@ -222,6 +222,40 @@ describe("Runtime message attribution and notices", () => {
       projectAgentRuntimeItem({ ...base, type: "run_interrupt_request", message: "Stop" }),
     ).toBeNull();
   });
+
+  test("a handoff names the Agents it moved between, never the history it carried", () => {
+    const handoff = {
+      ...base,
+      type: "handoff",
+      contextHandoffId: "handoff",
+      fromProviderThreadIds: ["codex-thread"],
+      toProviderThreadId: "claude-thread",
+      fromProviderInstanceIds: ["codex"],
+      toProviderInstanceId: "claude",
+      toModel: "sonnet",
+      strategy: "full_thread_summary",
+      summary: "[Historical user; user_message] the whole earlier conversation",
+    } as Extract<AgentTurnItem, { type: "handoff" }>;
+    expect(
+      projectAgentRuntimeItem({
+        ...handoff,
+        fromModelSelections: [{ instanceId: "codex", model: "gpt" }],
+      }),
+    ).toEqual({
+      type: "runtimeNotice",
+      id: "item",
+      message: "Context handoff to sonnet",
+      notice: {
+        kind: "agentHandoff",
+        from: [{ providerInstanceId: "codex", model: "gpt" }],
+        to: { providerInstanceId: "claude", model: "sonnet" },
+      },
+    });
+    // Without recorded source models the Agents still name the handoff.
+    expect(projectAgentRuntimeItem(handoff)).toMatchObject({
+      notice: { from: [{ providerInstanceId: "codex", model: null }] },
+    });
+  });
 });
 
 describe("Runtime Turn metadata", () => {

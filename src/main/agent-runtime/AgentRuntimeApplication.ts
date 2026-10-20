@@ -1422,23 +1422,6 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
     });
   });
 
-  const setModel = Effect.fn("AgentRuntimeApplication.setModel")(function* (
-    input: AgentRuntimeSessionTarget & {
-      readonly requestId: string;
-      readonly modelSelection: CreateThread["modelSelection"];
-    },
-  ) {
-    if (!validId(input.requestId)) return yield* failure("model", "Request identity is required");
-    const connection = yield* options.connect;
-    const loaded = yield* targetInfo(connection, input, true);
-    return yield* dispatch(connection, {
-      type: "thread.model-selection.set",
-      commandId: commandId("model", { threadId: loaded.threadId, requestId: input.requestId }),
-      threadId: loaded.threadId,
-      modelSelection: input.modelSelection,
-    });
-  });
-
   const setModes = Effect.fn("AgentRuntimeApplication.setModes")(function* (
     input: AgentRuntimeSessionTarget & {
       readonly requestId: string;
@@ -2157,7 +2140,6 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
       ownedWrite("retry-preparation", retryPreparation(input)),
     reconcileLiveExecutions: () => owned("reconcile-live", reconcileLiveExecutions()),
     respond: (input: Parameters<typeof respond>[0]) => ownedWrite("respond", respond(input)),
-    setModel: (input: Parameters<typeof setModel>[0]) => ownedWrite("model", setModel(input)),
     setModes: (input: Parameters<typeof setModes>[0]) => ownedWrite("mode", setModes(input)),
     compact: (input: import("../../shared/agent-runtime-api").AgentRuntimeCompactInput) =>
       ownedWrite(

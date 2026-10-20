@@ -4,6 +4,7 @@ import type { ReactNode } from "react";
 import { NodexTooltipProvider } from "../../../../components/ui/tooltip";
 import type { CodexDelegatedTaskView } from "../../../../../shared/types";
 import {
+  createAgentRuntimeAgentLabelPort,
   createAgentRuntimeDelegatedTaskPort,
   createAgentRuntimeDelegatedTaskStore,
   type AgentRuntimeTaskStopTransport,
@@ -26,8 +27,11 @@ function setup() {
   const store = createAgentRuntimeDelegatedTaskStore();
   store.publishLabels(
     new Map([
-      ["claude", { label: "Claude", models: new Map([["opus", "Claude Opus 5.5"]]) }],
-      ["codex", { label: "Codex", models: new Map([["gpt", "GPT-5.5"]]) }],
+      [
+        "claude",
+        { label: "Claude", kind: "claude", models: new Map([["opus", "Claude Opus 5.5"]]) },
+      ],
+      ["codex", { label: "Codex", kind: "codex", models: new Map([["gpt", "GPT-5.5"]]) }],
     ]),
   );
   let finishStop: () => void = () => {};
@@ -49,6 +53,7 @@ function setup() {
     stopTask: vi.fn(async () => ({ sequence: 1 })),
   };
   const runtime = {
+    agentLabels: createAgentRuntimeAgentLabelPort(store),
     delegatedTasks: createAgentRuntimeDelegatedTaskPort("session", transport, store),
   } as unknown as ConversationRuntime;
   const wrap = (ui: ReactNode) => (

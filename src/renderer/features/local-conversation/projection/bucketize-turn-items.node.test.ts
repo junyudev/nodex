@@ -2046,6 +2046,30 @@ describe("bucketizeTurnItems", () => {
     expect(midTurn.agentItems.map((item) => item.id)).toEqual(["update"]);
   });
 
+  test("a handoff opens the Turn that continues on another Agent, above the person's message", () => {
+    const handoff = buildItem({
+      id: "handoff",
+      type: "runtimeNotice",
+      entry: {
+        ...buildItem({}).entry,
+        runtimeNotice: {
+          kind: "agentHandoff",
+          from: [{ providerInstanceId: "codex", model: "gpt" }],
+          to: { providerInstanceId: "claude", model: "sonnet" },
+        },
+      },
+    });
+    const user = buildItem({
+      id: "user",
+      type: "userMessage",
+      entry: { ...buildItem({}).entry, itemId: "user", kind: "userMessage" },
+    });
+    const buckets = bucketizeTurnItems({ items: [handoff, user, buildItem({ id: "answer" })] });
+    expect(buckets.preUserItems.map((item) => item.id)).toEqual(["handoff"]);
+    expect(buckets.userItems.map((item) => item.id)).toEqual(["user"]);
+    expect(buckets.assistantItem?.id).toBe("answer");
+  });
+
   test("Runtime stop markers and task rows stay visible in the response body", () => {
     const buckets = bucketizeTurnItems({
       items: [

@@ -177,6 +177,17 @@ export function bucketizeTurnItems(input: BucketizeTurnItemsInput): ThreadTurnRe
       continue;
     }
 
+    // A Run that continues on another Agent opens with that handoff, above the person's message.
+    if (
+      beforeAgentSequence &&
+      buckets.userItems.length === 0 &&
+      item.type === "runtimeNotice" &&
+      item.entry.runtimeNotice?.kind === "agentHandoff"
+    ) {
+      buckets.preUserItems.push(item);
+      continue;
+    }
+
     // Worktree initialization is inserted before app-server items, but it is
     // authored as agent activity for the same first Turn. Keep looking for the
     // Turn's user prefix after staging this transparent preface.

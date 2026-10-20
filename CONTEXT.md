@@ -41,7 +41,15 @@ relationships owners of the conversation or its delegated tasks.
 
 A Thread is an execution conversation with its own history, model selection and Runs.
 A Session binds one root Thread. A delegated Thread belongs to that root's execution
-lineage and does not require a separate sidebar Session.
+lineage and does not require a separate sidebar Session. Successive Runs of one Thread may
+use different Agent Instances.
+
+### Context Handoff
+
+A Context Handoff carries a Thread's bounded portable history to the Agent that runs its
+next Run when that Agent's native conversation has not seen those Runs, such as after the
+person changes Agent or forks onto another Agent. The Thread remains the one history;
+each Agent keeps its own native conversation and receives only what it missed.
 
 ### Run
 
