@@ -1,0 +1,43 @@
+scripts/tooling/vitest-timing-reporter.ts
+  s_61befdbfc1bda3::t_b60c7c7e4cc651 14-18
+  s_61befdbfc1bda3::t_bd53b390d6f11c 9-12
+  s_61befdbfc1bda3::t_101ea01b7274d3 5,23,26-39,74
+src/renderer/components/workbench/workbench-shell.task-suggestions.test.tsx
+  s_61befdbfc1bda3::t_90095473f2b430 103-106,166-169,269-272
+scripts/tooling/vitest-timing-reporter.test.ts
+  s_61befdbfc1bda3::t_101ea01b7274d3 7-9,13-31
+  s_61befdbfc1bda3::t_b60c7c7e4cc651 10-12
+  s_61befdbfc1bda3::t_bd53b390d6f11c 32-44
+docs/development.md
+  s_61befdbfc1bda3::t_0d7cb9e40a6aab 726-730
+src/main/logging/stdio-failure.test.ts
+  s_61befdbfc1bda3::t_3772a20bffb177 93-98
+src/main/logging/testing/stdio-failure-process.ts
+  s_61befdbfc1bda3::t_3772a20bffb177 11-12,61-62,65-66,80-81
+src/renderer/features/inbox/inbox-message.browser.test.tsx
+  s_61befdbfc1bda3::t_41c3a63c6198c4 173-175,224-227
+src/renderer/components/workbench/workbench-testkit/workbench-shell-harness.tsx
+  s_61befdbfc1bda3::t_cb9d748960f673 2728-2729
+  s_61befdbfc1bda3::t_c4743165d45979 51-54,2730,2734,2736,2740-2742,2764-2767,2770
+  s_61befdbfc1bda3::t_b6ee600c032561 2712-2713,2746-2748
+config/vitest-observation.ts
+  s_61befdbfc1bda3::t_101ea01b7274d3 3
+src/renderer/features/inbox/inbox-viewport.browser.test.tsx
+  s_61befdbfc1bda3::t_bb67ba36339800 108
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "dc6388a3404e46416a458e9cf6fd0451e8f35b05",
+  "prompts": {},
+  "sessions": {
+    "s_61befdbfc1bda3": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1585c-7bfb-7b90-8054-48511c1b75c7",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}

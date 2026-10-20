@@ -1,0 +1,27 @@
+scripts/immutable-artifact-cache.ts
+  s_61befdbfc1bda3::t_2f055804300747 4,621-622,642-643
+scripts/release/browser-runtime.test.ts
+  s_61befdbfc1bda3::t_2f055804300747 1,138-143
+  s_61befdbfc1bda3::t_51c75fa13162c6 144
+scripts/release/browser-runtime.ts
+  s_61befdbfc1bda3::t_2f055804300747 133-134
+resources/browser-runtime/README.md
+  s_61befdbfc1bda3::t_874cc00a2266f3 76-77
+  s_61befdbfc1bda3::t_2f055804300747 75
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "219191bb3c6f2952f08bd0106e3f9eaa1c82983d",
+  "prompts": {},
+  "sessions": {
+    "s_61befdbfc1bda3": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1585c-7bfb-7b90-8054-48511c1b75c7",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}

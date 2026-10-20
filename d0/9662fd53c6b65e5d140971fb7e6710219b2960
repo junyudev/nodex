@@ -1,0 +1,19 @@
+src/renderer/components/shared/content-issues-control.browser.test.tsx
+  s_61befdbfc1bda3::t_2fc4613e8b321c 45-48
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "d09662fd53c6b65e5d140971fb7e6710219b2960",
+  "prompts": {},
+  "sessions": {
+    "s_61befdbfc1bda3": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1585c-7bfb-7b90-8054-48511c1b75c7",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}

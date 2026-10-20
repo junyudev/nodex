@@ -1,0 +1,24 @@
+packages/agent-runtime/scripts/acp-replay-agent.ts
+  s_61befdbfc1bda3::t_b437ac896198aa 60-76,194,198,208,224,235,238,257,261-263
+  s_61befdbfc1bda3::t_26b2a64284bb99 275
+packages/agent-runtime/src/testUtils/acpReplayAgent.test.ts
+  s_61befdbfc1bda3::t_66c5ddfbd1b80a 1-5,7-39,41-54,56-73,83-86,88-115,121-162,178-180
+  s_61befdbfc1bda3::t_9a1f11643c0649 40,55,74-82,116-120,163-177
+  s_61befdbfc1bda3::t_b437ac896198aa 6,87
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "8476322c5e5b4378186bf22cae9b2c8913d79bb5",
+  "prompts": {},
+  "sessions": {
+    "s_61befdbfc1bda3": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1585c-7bfb-7b90-8054-48511c1b75c7",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}

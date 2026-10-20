@@ -1,0 +1,23 @@
+packages/agent-runtime/src/testUtils/gitConfig.setup.ts
+  s_61befdbfc1bda3::t_2ddaa82a2e4b44 1-4
+packages/agent-runtime/vite.config.ts
+  s_61befdbfc1bda3::t_2ddaa82a2e4b44 4,14
+packages/agent-runtime/src/testUtils/gitConfig.test.ts
+  s_61befdbfc1bda3::t_50ff1131184b2f 1-46
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "1c2a1da06002f8b24a25eb204a712aca6f2b45b1",
+  "prompts": {},
+  "sessions": {
+    "s_61befdbfc1bda3": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1585c-7bfb-7b90-8054-48511c1b75c7",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
