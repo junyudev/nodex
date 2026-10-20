@@ -16,10 +16,8 @@ patchedDependencies:
 supportedArchitectures:
   os:
     - current
-    - darwin
   cpu:
-    - arm64
-    - x64
+    - current
 
 overrides:
   "@opencode/protocol>effect": 4.0.3

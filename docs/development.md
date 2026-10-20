@@ -21,6 +21,11 @@ The install lifecycle runs `electron-builder install-app-deps`, which rebuilds
 Electron-compatible binary with a host-Node binary. SQLite and collaborative
 Document authority are native Rust code and do not use a Node addon.
 
+Optional dependencies are installed for the current operating system and CPU.
+Prepare additional architectures explicitly in a dedicated checkout by setting
+`supportedArchitectures` before installation; this installs optional packages,
+not cross-compiled native addons.
+
 ### Worktrees
 
 Follow [Worktrees and local artifacts](../AGENTS.md#worktrees-and-local-artifacts).
