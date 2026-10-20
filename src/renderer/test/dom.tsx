@@ -57,7 +57,13 @@ export async function openNodexMenu(trigger: HTMLElement) {
 
 export async function waitForStreamdownCodeHighlight(node: ParentNode) {
   await waitFor(() => {
-    const highlightedCode = node.querySelector('pre code span[style*="--sdm-c"]');
+    // Streamdown's lazy fallback also has color variables, with an inherited color.
+    const highlightedCode = Array.from(node.querySelectorAll<HTMLElement>("pre code span")).some(
+      (token) => {
+        const color = token.style.getPropertyValue("--sdm-c").trim();
+        return color !== "" && color !== "inherit";
+      },
+    );
     if (!highlightedCode) {
       throw new Error("Expected Streamdown code block highlighting to finish.");
     }

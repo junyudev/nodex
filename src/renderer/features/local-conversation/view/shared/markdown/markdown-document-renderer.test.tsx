@@ -3,7 +3,7 @@ import { act, fireEvent, waitFor } from "@testing-library/react";
 import { StrictMode } from "react";
 import { renderWithMaitai as render } from "@/test/thread-maitai";
 import { NodexTooltipProvider } from "@/components/ui/tooltip";
-import { waitForStreamdownCodeHighlight } from "@/test/dom";
+import { settleLazyRender, waitForStreamdownCodeHighlight } from "@/test/dom";
 import { MarkdownRenderer } from "./markdown-renderer";
 import { markdownSyntaxEngine } from "@/lib/markdown/markdown-syntax";
 
@@ -41,7 +41,7 @@ describe("typed Markdown document through the public rich provider", () => {
             <MarkdownRenderer content={`\`\`\`text\n${code}\n\`\`\``} />
           </NodexTooltipProvider>,
         );
-        await waitForStreamdownCodeHighlight(view.container);
+        await settleLazyRender();
         const copy = view.container.querySelector<HTMLButtonElement>(
           '[data-streamdown="code-block-copy-button"]',
         )!;
@@ -115,7 +115,7 @@ describe("typed Markdown document through the public rich provider", () => {
         />
       </NodexTooltipProvider>,
     );
-    await waitForStreamdownCodeHighlight(view.container);
+    await settleLazyRender();
     const codeButton = view.container.querySelector<HTMLButtonElement>(
       '[data-streamdown="code-block-copy-button"]',
     )!;
