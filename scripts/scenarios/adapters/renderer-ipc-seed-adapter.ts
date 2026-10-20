@@ -397,14 +397,14 @@ export class RendererIpcSeedAdapter implements ScenarioSeedPort {
   }
 
   async sendInboxMessage(
-    text: string,
+    body: string,
     scope: InboxScope = LIBRARY_INBOX,
   ): Promise<{ readonly pageId: string }> {
     const summary = await this.#invoke("inbox:summary", { scope });
     return requireSuccess(
       await this.#invoke("inbox:send", {
         scope,
-        text,
+        body,
         operationId: createBoundedOperationId("scenario.inbox.send"),
         pageId: createUuidV7(),
         documentId: createUuidV7(),

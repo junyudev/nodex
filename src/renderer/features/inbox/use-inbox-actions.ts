@@ -47,8 +47,8 @@ export interface InboxActions {
   readonly forgetDecision: (key: string) => Promise<boolean>;
   readonly edit: (
     pageId: string,
-    originalText: string,
-    text: string,
+    originalBody: string,
+    body: string,
     basis: InboxPageBasis,
   ) => Promise<boolean>;
   readonly confirm: (proposal: InboxProposal, edited?: InboxDispatchAction) => Promise<boolean>;
@@ -263,9 +263,9 @@ export function useInboxActions(
         void invalidateInbox(queryClient);
       }
     },
-    edit: (pageId, originalText, text, basis) =>
+    edit: (pageId, originalBody, body, basis) =>
       run("The message could not be edited", () =>
-        editInboxMessage({ pageId, basis, originalText, text }),
+        editInboxMessage({ pageId, basis, originalBody, body }),
       ),
     confirm: (proposal, edited) =>
       run("The suggestion could not be confirmed", () =>

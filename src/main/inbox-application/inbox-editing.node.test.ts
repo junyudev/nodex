@@ -26,9 +26,9 @@ it.effect("an edit rewrites the message Page and asks for a fresh suggestion", (
       });
 
       const rewritten =
-        "The homepage should read like a personal assistant.\n\nKeep the docs link.";
+        "The homepage should read like a personal assistant.\nKeep the docs link.";
       const basis = inboxPageBasisFromCore(entry.basis);
-      yield* inbox.edit({ pageId, basis, originalText: original, text: rewritten });
+      yield* inbox.edit({ pageId, basis, originalBody: original, body: rewritten });
 
       const [item] = (yield* inbox.window({ scope: LIBRARY, filter: "inbox" })).items;
       assert.deepInclude(item, {
@@ -58,7 +58,7 @@ it.effect("an edit rewrites the message Page and asks for a fresh suggestion", (
 
       // An edit started from text that has since changed never overwrites it.
       const stale = yield* Effect.flip(
-        inbox.edit({ pageId, basis, originalText: original, text: "Something else" }),
+        inbox.edit({ pageId, basis, originalBody: original, body: "Something else" }),
       );
       assert.match(stale.message, /message changed/);
       const [unchanged] = (yield* inbox.window({ scope: LIBRARY, filter: "inbox" })).items;

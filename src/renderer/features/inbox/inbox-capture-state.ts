@@ -73,7 +73,7 @@ export function createInboxCapture(
       issuedAt,
       storeEpoch,
       scope,
-      text: state.draft,
+      body: state.draft,
     },
     draftRevision: state.draftRevision,
     status: "pending",

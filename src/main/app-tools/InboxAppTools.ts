@@ -56,7 +56,7 @@ export const makeWithCapture = (
                 kind: "send_inbox_message",
                 page_id: pageId,
                 document_id: deriveSessionDispatchIdentity(operationId, "inbox-document"),
-                text: parsed.data.text,
+                body: parsed.data.body,
                 ...(parsed.data.title ? { title: parsed.data.title } : {}),
               },
             },

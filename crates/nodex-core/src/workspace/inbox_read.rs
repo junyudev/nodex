@@ -346,38 +346,37 @@ fn read_entry(
 }
 
 /// Prepares a user's rewrite of a message: the same rules as sending it, fenced by the
-/// text the user started from and the Page state that text was read at.
+/// body the user started from and the Page state that body was read at.
 pub(super) fn read_message_edit(
     connection: &Connection,
     _context: &BoundModuleContext,
     library_id: &str,
     page_id: &str,
-    original_text: &str,
-    text: &str,
+    original_body: &str,
+    body: &str,
 ) -> Result<ProjectWorkspaceInboxMessageEdit, StoreError> {
     super::inbox::require_waiting_entry(connection, library_id, page_id)?;
     let row = read_entry(connection, page_id, MAX_STREAM_BODY_BYTES)?;
-    let current = editable_text(&row)
-        .filter(|_| !row.source_body_truncated)
-        .ok_or_else(|| {
-            StoreError::new(
-                StoreErrorCode::Conflict,
-                "This message has richer content now; edit it as its Page",
-                false,
-            )
-        })?;
-    if current != original_text {
+    let current = editable_body(&row).ok_or_else(|| {
+        StoreError::new(
+            StoreErrorCode::Conflict,
+            "This message has richer content now; edit it as its Page",
+            false,
+        )
+    })?;
+    let original = super::inbox::message_body(original_body).ok();
+    if original.is_none_or(|original| original.nfm != current) {
         return Err(StoreError::new(
             StoreErrorCode::RevisionConflict,
             "This message changed while you were editing it",
             true,
         ));
     }
-    let lines = super::inbox::message_lines(text)?;
-    let changed = lines.join("\n") != current;
+    let next = super::inbox::message_body(body)?;
+    let changed = next.nfm != current;
     let provisional = row.provisional_title.as_deref() == Some(row.title.as_str());
     let title_markdown = changed
-        .then(|| super::inbox::provisional_title(&lines[0]))
+        .then(|| super::inbox::provisional_title(&next.title_text))
         .filter(|excerpt| provisional && *excerpt != row.title)
         .map(|excerpt| super::inbox::title_markdown(&excerpt));
     Ok(ProjectWorkspaceInboxMessageEdit {
@@ -387,22 +386,31 @@ pub(super) fn read_message_edit(
             generation: row.generation,
             head_seq: row.head_seq,
         },
-        body_markdown: changed.then(|| super::inbox::message_body_nfm(&lines)),
+        body_markdown: changed.then_some(next.nfm),
         title_markdown,
     })
 }
 
-/// The message text while the bounded Page body is still plain message text the stream
-/// shows whole; otherwise the message is edited as its Page.
-fn editable_text(row: &EntryRow) -> Option<String> {
-    row.nfm
-        .as_deref()
-        .and_then(super::inbox::plain_message_text)
-        .filter(|text| text.len() <= MAX_STREAM_BODY_BYTES)
+/// The Page body while the stream shows it whole and it still has the message shape;
+/// otherwise the message is edited as its Page.
+fn editable_body(row: &EntryRow) -> Option<String> {
+    let nfm = row.nfm.as_deref().filter(|_| !row.source_body_truncated)?;
+    let blocks = crate::domain::nfm_parser::parse_nfm(nfm).ok()?;
+    super::inbox::has_message_shape(&blocks).then(|| crate::domain::nfm::serialize_nfm(&blocks))
 }
 
-/// The message is the Page body; the title is only its label.
-fn message_body(row: &EntryRow) -> String {
+/// The message as the stream shows it, in Nested Markdown: the Page body when it fits
+/// the stream budget, otherwise the opening of its text as plain paragraphs.
+fn stream_body(row: &EntryRow) -> (String, bool) {
+    if let Some(nfm) = row.nfm.as_deref().filter(|_| !row.source_body_truncated) {
+        return (nfm.to_owned(), false);
+    }
+    let (text, _) = bounded_utf8(&row.plain_text, MAX_STREAM_BODY_BYTES);
+    (super::inbox::text_paragraphs_nfm(&text), true)
+}
+
+/// The message's text, one line per Block, for the suggestion Agent.
+fn message_text(row: &EntryRow) -> String {
     let Some(nfm) = &row.nfm else {
         return row.plain_text.clone();
     };
@@ -453,8 +461,7 @@ fn read_item(
     page_id: &str,
 ) -> Result<(ProjectWorkspaceInboxItem, i64), StoreError> {
     let row = read_entry(connection, page_id, MAX_STREAM_BODY_BYTES)?;
-    let (body, body_truncated) = bounded_utf8(&message_body(&row), MAX_STREAM_BODY_BYTES);
-    let body_truncated = body_truncated || row.source_body_truncated || row.nfm.is_none();
+    let (body, body_truncated) = stream_body(&row);
     let location = location(connection, home, &row)?;
     let proposal = row
         .current_proposal_id
@@ -484,7 +491,7 @@ fn read_item(
             page_id: page_id.to_owned(),
             page_key: crate::database::current_page_key_for_page(connection, library_id, page_id)?,
             title: row.title.clone(),
-            body_editable: !body_truncated && editable_text(&row).is_some(),
+            body_editable: !body_truncated && editable_body(&row).is_some(),
             body,
             body_truncated,
             submitted_at: row.submitted_at.clone(),
@@ -748,7 +755,7 @@ pub(super) fn suggestion_input(
     page_id: &str,
 ) -> Result<ProjectWorkspaceInboxSuggestionInput, StoreError> {
     let row = read_entry(connection, page_id, MAX_AGENT_BODY_BYTES)?;
-    let full_body = message_body(&row);
+    let full_body = message_text(&row);
     if row.source_body_truncated || full_body.len() > MAX_AGENT_BODY_BYTES {
         return Err(invalid("Inbox input exceeds the complete 64 KiB bound"));
     }
@@ -1210,7 +1217,7 @@ mod tests {
                 expected_store_epoch: None,
                 page_id: "page:large".into(),
                 document_id: "document:large".into(),
-                text: "Initial message".into(),
+                body: "Initial message".into(),
                 title: None,
                 project_id: None,
             },
@@ -1223,7 +1230,7 @@ mod tests {
                 let row=read_entry(connection,"page:large",budget)?;
                 assert!(row.nfm.is_none(),"oversized NFM never crosses the SQL read boundary");
                 assert!(row.plain_text.len()<=budget*4);assert!(row.source_body_truncated);
-                let (body,truncated)=bounded_utf8(&message_body(&row),budget);
+                let (body,truncated)=bounded_utf8(&message_text(&row),budget);
                 assert!(truncated);assert!(body.len()<=budget);assert!(!body.is_empty());
                 assert!(body.chars().all(|value|value=='界'));
             }

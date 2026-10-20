@@ -44,7 +44,7 @@ const pageIds = (maximum: number) =>
     .max(maximum)
     .refine((values) => new Set(values).size === values.length, "Inbox entries must be unique");
 
-const messageText = z
+const messageBody = z
   .string()
   .refine((value) => value.trim().length > 0, "Message is empty")
   .refine((value) => utf8Bytes(value) <= MAX_INBOX_MESSAGE_BYTES, "Message is too long");
@@ -121,12 +121,12 @@ export const InboxSendInputSchema = z
     issuedAt: z.number().int().nonnegative(),
     storeEpoch: id,
     scope: InboxScopeSchema,
-    text: messageText,
+    body: messageBody,
   })
   .strict() satisfies z.ZodType<InboxSendInput>;
 
 export const InboxEditInputSchema = z
-  .object({ pageId: id, basis: InboxPageBasisSchema, originalText: messageText, text: messageText })
+  .object({ pageId: id, basis: InboxPageBasisSchema, originalBody: messageBody, body: messageBody })
   .strict()
   .refine(
     (input) => input.pageId === input.basis.pageId,

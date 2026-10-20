@@ -108,8 +108,8 @@ pub(in crate::workspace) fn apply_reliable(
     if let ProjectWorkspaceIntent::EditInboxMessage {
         page_id,
         basis,
-        original_text,
-        text,
+        original_body,
+        body,
     } = &intent
     {
         require_basis(
@@ -122,8 +122,8 @@ pub(in crate::workspace) fn apply_reliable(
             context,
             library_id,
             page_id,
-            original_text,
-            text,
+            original_body,
+            body,
         )?;
         if edit.body_markdown.is_none() && edit.title_markdown.is_none() {
             return super::super::mutation::finish_no_op(
@@ -244,8 +244,8 @@ pub(in crate::workspace) fn apply_reliable(
                 ProjectWorkspaceIntent::EditInboxMessage {
                     page_id,
                     basis,
-                    original_text,
-                    text,
+                    original_body,
+                    body,
                 } => {
                     require_basis(
                         connection,
@@ -257,8 +257,8 @@ pub(in crate::workspace) fn apply_reliable(
                         context,
                         library_id,
                         &page_id,
-                        &original_text,
-                        &text,
+                        &original_body,
+                        &body,
                     )?;
                     crate::document::edit_page_in_scope(
                         connection,

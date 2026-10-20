@@ -260,8 +260,8 @@ Use `read_session` or `wait_sessions` to observe it. Explicit remote native Sess
 their own supported execution route.
 
 `send_to_inbox` leaves a self-contained message in the user's Inbox for work outside the
-caller's task, such as a follow-up, an idea, or a question for later. The text becomes the
-body of an Inbox Page, and an optional title names it. Core records the caller's chat
+caller's task, such as a follow-up, an idea, or a question for later. Its Nested Markdown
+body becomes the body of an Inbox Page, and an optional title names it. Core records the caller's chat
 and Project from its verified execution source. A proven Run can send at most five
 messages. A native source without causal Run evidence keeps its Run null and uses an
 independent five-message budget for that native connection. A retry with the same

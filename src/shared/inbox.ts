@@ -201,7 +201,8 @@ export interface InboxSendInput {
   readonly issuedAt: number;
   readonly storeEpoch: string;
   readonly scope: InboxScope;
-  readonly text: string;
+  /** The message in Nested Markdown: its text, then its images. */
+  readonly body: string;
 }
 
 export interface InboxSendResult {
@@ -285,12 +286,12 @@ export interface InboxSetKindInput {
   readonly kind: InboxEntryKind | null;
 }
 
-/** Rewrites a waiting message; `originalText` is the text the user started from. */
+/** Rewrites a waiting message; `originalBody` is the Nested Markdown the user started from. */
 export interface InboxEditInput {
   readonly pageId: string;
   readonly basis: InboxPageBasis;
-  readonly originalText: string;
-  readonly text: string;
+  readonly originalBody: string;
+  readonly body: string;
 }
 
 export interface InboxProposalInput {

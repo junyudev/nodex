@@ -23,7 +23,7 @@ describe("Inbox over the real Core transport", () => {
           kind: "send_inbox_message",
           page_id: pageId,
           document_id: createUuidV7(),
-          text: "Survey onboarding flows\nKeep it read-only.",
+          body: "Survey onboarding flows\nKeep it read-only.",
         },
       });
 

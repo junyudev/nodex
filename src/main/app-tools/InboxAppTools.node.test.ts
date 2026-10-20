@@ -21,7 +21,7 @@ const authority: NodexAgentTurnContext = {
 };
 const input: AppToolInvocation = {
   name: "send_to_inbox",
-  arguments: { text: "Settings buttons need accessible labels" },
+  arguments: { body: "Settings buttons need accessible labels" },
   caller: {
     threadId: "caller",
     turnId: "turn",
@@ -82,7 +82,7 @@ it.effect("drops one message under the calling Turn and replays it without a sec
     assert.strictEqual(intent?.provenance.authority.turn_id, "turn");
     assert.deepInclude(intent?.intent, {
       kind: "send_inbox_message",
-      text: "Settings buttons need accessible labels",
+      body: "Settings buttons need accessible labels",
     });
     // The same call derives the same operation and Page, so Core sees an idempotent replay.
     assert.deepEqual(again, sent);

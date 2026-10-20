@@ -315,7 +315,7 @@ pub(super) fn apply(
                     expected_store_epoch,
                     page_id,
                     document_id,
-                    text,
+                    body,
                     title,
                     project_id,
                 } => {
@@ -336,7 +336,7 @@ pub(super) fn apply(
                         agent_provenance,
                         page_id,
                         document_id,
-                        text,
+                        body,
                         title.as_deref(),
                         project_id.as_deref(),
                     )

@@ -7400,7 +7400,7 @@ mod tests {
                     expected_store_epoch: Some(epoch.clone()),
                     page_id: format!("page:{id}"),
                     document_id: format!("document:{id}"),
-                    text: format!("Preserve the {id} message"),
+                    body: format!("Preserve the {id} message"),
                     title: None,
                     project_id: None,
                 },

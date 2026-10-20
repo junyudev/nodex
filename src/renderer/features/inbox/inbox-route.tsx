@@ -667,8 +667,8 @@ export function InboxRoute({
             className="mb-2 flex min-w-0 items-center gap-2 px-2 text-sm text-token-description-foreground"
           >
             <details className="min-w-0 flex-1">
-              <summary className="cursor-interaction truncate">{pending.intent.text}</summary>
-              <p className="whitespace-pre-wrap">{pending.intent.text}</p>
+              <summary className="cursor-interaction truncate">{pending.intent.body}</summary>
+              <p className="whitespace-pre-wrap">{pending.intent.body}</p>
               <p className="mt-1 text-xs">
                 {summary.data && pending.intent.storeEpoch !== summary.data.storeEpoch
                   ? "From before a Profile restore. The original message may already exist."

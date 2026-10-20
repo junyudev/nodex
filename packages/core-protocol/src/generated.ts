@@ -1607,10 +1607,14 @@ export interface components {
             readonly authority: components["schemas"]["CollectionWindowAuthority"];
             readonly items: readonly {
                 readonly basis: components["schemas"]["ProjectWorkspaceInboxPageBasis"];
+                /**
+                 * @description The message as the stream shows it, in Nested Markdown: the Page body when it
+                 *     fits the stream budget, otherwise the opening of its text as paragraphs.
+                 */
                 readonly body: string;
                 /**
-                 * @description The body is still plain message text that the stream shows whole, so the user
-                 *     can rewrite it in place. Richer or longer bodies are edited as their Page.
+                 * @description The stream shows the whole body and it still has the message shape, text followed
+                 *     by images, so the user can rewrite it in place. Other bodies are edited as their Page.
                  */
                 readonly body_editable: boolean;
                 readonly body_truncated: boolean;
@@ -7308,6 +7312,7 @@ export interface components {
                 readonly kind: "mutate_session";
                 readonly session_id: string;
             } | {
+                readonly body: string;
                 readonly document_id: string;
                 readonly expected_store_epoch?: string | null;
                 /** @enum {string} */
@@ -7318,7 +7323,6 @@ export interface components {
                  *     an Agent Turn uses its own Project and the command line its bound Project.
                  */
                 readonly project_id?: string | null;
-                readonly text: string;
                 readonly title?: string | null;
             } | {
                 /** @enum {string} */
@@ -7399,11 +7403,11 @@ export interface components {
                 readonly titles: readonly components["schemas"]["ProjectWorkspaceInboxSuggestionTitle"][];
             } | {
                 readonly basis: components["schemas"]["ProjectWorkspaceInboxPageBasis"];
+                readonly body: string;
                 /** @enum {string} */
                 readonly kind: "edit_inbox_message";
-                readonly original_text: string;
+                readonly original_body: string;
                 readonly page_id: string;
-                readonly text: string;
             } | {
                 /** @enum {string} */
                 readonly kind: "undo_inbox_decision";
@@ -8516,11 +8520,11 @@ export interface components {
                 /** Format: int32 */
                 readonly limit: number;
             } | {
+                readonly body: string;
                 /** @enum {string} */
                 readonly kind: "inbox_message_edit";
-                readonly original_text: string;
+                readonly original_body: string;
                 readonly page_id: string;
-                readonly text: string;
             };
         };
         readonly ModuleReadRequest_QueryRead: {
@@ -9777,6 +9781,7 @@ export interface components {
             readonly kind: "mutate_session";
             readonly session_id: string;
         } | {
+            readonly body: string;
             readonly document_id: string;
             readonly expected_store_epoch?: string | null;
             /** @enum {string} */
@@ -9787,7 +9792,6 @@ export interface components {
              *     an Agent Turn uses its own Project and the command line its bound Project.
              */
             readonly project_id?: string | null;
-            readonly text: string;
             readonly title?: string | null;
         } | {
             /** @enum {string} */
@@ -9868,11 +9872,11 @@ export interface components {
             readonly titles: readonly components["schemas"]["ProjectWorkspaceInboxSuggestionTitle"][];
         } | {
             readonly basis: components["schemas"]["ProjectWorkspaceInboxPageBasis"];
+            readonly body: string;
             /** @enum {string} */
             readonly kind: "edit_inbox_message";
-            readonly original_text: string;
+            readonly original_body: string;
             readonly page_id: string;
-            readonly text: string;
         } | {
             /** @enum {string} */
             readonly kind: "undo_inbox_decision";

@@ -257,9 +257,10 @@ fn ensure_registry(
     Ok((registry, true))
 }
 
-/// A message becomes a Page whose body is the complete message, line for line.
-/// Its title is the sender's own when one is given. Otherwise it is a short
-/// provisional label that the suggestion Agent may later replace with a name.
+/// A message becomes a Page whose body is the message itself: a Nested Markdown document
+/// with the message shape (see Message Content Behavior). Its title is the sender's own
+/// when one is given. Otherwise it is a short provisional label that the suggestion Agent
+/// may later replace with a name.
 pub(super) struct MessagePage {
     pub(super) title_markdown: String,
     pub(super) body_nfm: String,
@@ -267,8 +268,8 @@ pub(super) struct MessagePage {
     pub(super) provisional_title: Option<String>,
 }
 
-pub(super) fn message_page(text: &str, title: Option<&str>) -> Result<MessagePage, StoreError> {
-    let lines = message_lines(text)?;
+pub(super) fn message_page(body: &str, title: Option<&str>) -> Result<MessagePage, StoreError> {
+    let message = message_body(body)?;
     let (title, provisional_title) = match title {
         Some(title) => {
             let title = title.split_whitespace().collect::<Vec<_>>().join(" ");
@@ -280,54 +281,128 @@ pub(super) fn message_page(text: &str, title: Option<&str>) -> Result<MessagePag
             (title, None)
         }
         None => {
-            let excerpt = provisional_title(&lines[0]);
+            let excerpt = provisional_title(&message.title_text);
             (excerpt.clone(), Some(excerpt))
         }
     };
     Ok(MessagePage {
         title_markdown: title_markdown(&title),
-        body_nfm: message_body_nfm(&lines),
+        body_nfm: message.nfm,
         provisional_title,
     })
 }
 
-/// The lines a message keeps: line endings unified, trailing spaces and blank lines at
-/// either end dropped. The first line always has text.
-pub(super) fn message_lines(text: &str) -> Result<Vec<String>, StoreError> {
-    if text.len() > MAX_MESSAGE_BYTES {
-        return Err(invalid("Inbox message exceeds its 64 KiB bound"));
-    }
-    let normalized = text.replace("\r\n", "\n").replace('\r', "\n");
-    let mut lines = normalized
-        .split('\n')
-        .map(|line| line.trim_end().to_owned())
-        .skip_while(|line| line.trim().is_empty())
-        .collect::<Vec<_>>();
-    while lines.last().is_some_and(|line| line.trim().is_empty()) {
-        lines.pop();
-    }
-    if lines.is_empty() {
-        return Err(invalid("Inbox message must contain text"));
-    }
-    Ok(lines)
+/// A message body as Core keeps it: canonical Nested Markdown, and the text a
+/// provisional title is drawn from.
+pub(super) struct MessageBody {
+    pub(super) nfm: String,
+    pub(super) title_text: String,
 }
 
-/// The Page body for message lines: one plain paragraph per line.
-pub(super) fn message_body_nfm(lines: &[String]) -> String {
-    let blocks = lines
+/// Reads written Nested Markdown as a message. Text that forms no markup stays literal,
+/// so everyday writing is always a valid body; a body must hold text or an image and
+/// keep the message shape a Composer writes and edits in place.
+pub(super) fn message_body(body: &str) -> Result<MessageBody, StoreError> {
+    if body.len() > MAX_MESSAGE_BYTES {
+        return Err(invalid("Inbox message exceeds its 64 KiB bound"));
+    }
+    let normalized = body.replace("\r\n", "\n").replace('\r', "\n");
+    let blocks = crate::domain::nfm_parser::parse_nfm(&normalized).map_err(|error| {
+        invalid(&format!(
+            "Inbox message is not valid Nested Markdown: {error}"
+        ))
+    })?;
+    if blocks.is_empty() {
+        return Err(invalid("Inbox message must contain text or an image"));
+    }
+    if !has_message_shape(&blocks) {
+        return Err(invalid(
+            "An Inbox message is its text followed by its images; edit other bodies as their Page",
+        ));
+    }
+    Ok(MessageBody {
+        title_text: message_title_text(&blocks),
+        nfm: serialize_nfm(&blocks),
+    })
+}
+
+/// Text Blocks, then the images attached to them: the shape a Composer writes and can
+/// edit in place. Images inside the text, or with Blocks of their own, belong to Pages.
+pub(super) fn has_message_shape(blocks: &[NfmBlock]) -> bool {
+    let attachments = blocks
         .iter()
-        .map(|line| {
-            if line.trim().is_empty() {
-                NfmBlock::EmptyBlock {
-                    children: Vec::new(),
-                }
-            } else {
-                NfmBlock::Paragraph {
-                    content: vec![plain_text(line)],
+        .position(|block| matches!(block, NfmBlock::Image { .. }))
+        .unwrap_or(blocks.len());
+    blocks[..attachments]
+        .iter()
+        .all(|block| !contains_image(block))
+        && blocks[attachments..]
+            .iter()
+            .all(|block| matches!(block, NfmBlock::Image { children, .. } if children.is_empty()))
+}
+
+fn contains_image(block: &NfmBlock) -> bool {
+    matches!(block, NfmBlock::Image { .. }) || block_children(block).iter().any(contains_image)
+}
+
+fn block_children(block: &NfmBlock) -> &[NfmBlock] {
+    match block {
+        NfmBlock::Paragraph { children, .. }
+        | NfmBlock::EmptyBlock { children }
+        | NfmBlock::Heading { children, .. }
+        | NfmBlock::BulletListItem { children, .. }
+        | NfmBlock::NumberedListItem { children, .. }
+        | NfmBlock::CheckListItem { children, .. }
+        | NfmBlock::Toggle { children, .. }
+        | NfmBlock::Blockquote { children, .. }
+        | NfmBlock::CodeBlock { children, .. }
+        | NfmBlock::Callout { children, .. }
+        | NfmBlock::Image { children, .. }
+        | NfmBlock::ThreadSection { children, .. }
+        | NfmBlock::Divider { children } => children,
+        _ => &[],
+    }
+}
+
+/// The opening line of the message's text, or of its first image's caption when the
+/// message is only images.
+fn message_title_text(blocks: &[NfmBlock]) -> String {
+    let opening = |blocks: &[NfmBlock]| {
+        crate::domain::nfm::extract_block_lines(blocks)
+            .lines()
+            .map(str::trim)
+            .find(|line| !line.is_empty())
+            .map(str::to_owned)
+    };
+    let text = blocks
+        .iter()
+        .filter(|block| !matches!(block, NfmBlock::Image { .. }))
+        .find_map(|block| opening(std::slice::from_ref(block)));
+    text.or_else(|| {
+        blocks.iter().find_map(|block| match block {
+            NfmBlock::Image { caption, .. } => {
+                let caption = crate::domain::nfm::extract_plain_text(&[NfmBlock::Paragraph {
+                    content: caption.clone(),
                     color: None,
                     children: Vec::new(),
-                }
+                }]);
+                (!caption.is_empty()).then_some(caption)
             }
+            _ => None,
+        })
+    })
+    .unwrap_or_else(|| "Image".to_owned())
+}
+
+/// Plain text as Nested Markdown paragraphs, one per non-empty line, kept literal.
+pub(super) fn text_paragraphs_nfm(text: &str) -> String {
+    let blocks = text
+        .lines()
+        .filter(|line| !line.trim().is_empty())
+        .map(|line| NfmBlock::Paragraph {
+            content: vec![plain_text(line.trim_end())],
+            color: None,
+            children: Vec::new(),
         })
         .collect::<Vec<_>>();
     serialize_nfm(&blocks)
@@ -335,39 +410,6 @@ pub(super) fn message_body_nfm(lines: &[String]) -> String {
 
 pub(super) fn title_markdown(title: &str) -> String {
     crate::domain::nfm::serialize_inline_content_for_adapter(&[plain_text(title)])
-}
-
-/// The message text while the Page body is still plain paragraphs, as the Inbox writes
-/// it. A body made richer on its Page has no plain text and is edited there instead.
-pub(super) fn plain_message_text(nfm: &str) -> Option<String> {
-    let blocks = crate::domain::nfm_parser::parse_nfm(nfm).ok()?;
-    let mut lines = Vec::with_capacity(blocks.len());
-    for block in &blocks {
-        match block {
-            NfmBlock::EmptyBlock { children } if children.is_empty() => lines.push(String::new()),
-            NfmBlock::Paragraph {
-                content,
-                color: None,
-                children,
-            } if children.is_empty() => {
-                let mut line = String::new();
-                for item in content {
-                    match item {
-                        NfmInlineContent::Text { text, styles }
-                            if *styles == NfmStyleSet::default() =>
-                        {
-                            line.push_str(text);
-                        }
-                        NfmInlineContent::LineBreak => line.push('\n'),
-                        _ => return None,
-                    }
-                }
-                lines.push(line);
-            }
-            _ => return None,
-        }
-    }
-    Some(lines.join("\n"))
 }
 
 /// A label for the message until it is named: its opening words, cut to a
@@ -626,13 +668,13 @@ pub(super) fn send_message(
     provenance: Option<&AgentTurnProvenance>,
     page_id: &str,
     document_id: &str,
-    text: &str,
+    body: &str,
     title: Option<&str>,
     project_id: Option<&str>,
 ) -> Result<ProjectWorkspaceApplyOutcome, StoreError> {
     validate_id("page_id", page_id)?;
     validate_id("document_id", document_id)?;
-    let message = message_page(text, title)?;
+    let message = message_page(body, title)?;
     let mut source = entry_source(connection, library_id, context, provenance)?;
     let inbox_project = capture_scope(connection, library_id, &source, project_id)?;
     // A Project's Inbox already names its Project; the label names it only when the

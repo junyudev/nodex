@@ -44,10 +44,11 @@ intents, and selection.
   root.
 - A message sent to a Project's Inbox becomes a Page in that Project's Database,
   in Triage, with the Project's Page key. It is on the Project's Board at once.
-- The whole message becomes the Page body, line for line, and the stream bubble
-  shows exactly that body. An edit made in the Page, by the user or an Agent,
-  shows in the stream as it lands, as does a rename, move or deletion made
-  anywhere else. The Page title is only a label for Board, List,
+- The whole message becomes the Page body as written in Nested Markdown, and the
+  stream bubble renders that body as the Page holds it now, images included; see
+  [Message Content Behavior](./message-content-behavior.md). An edit made in the
+  Page, by the user or an Agent, shows in the stream as it lands, as does a
+  rename, move or deletion made anywhere else. The Page title is only a label for Board, List,
   search, tabs, and new chats. The stream does not show it; `Open page` in the
   message menu opens the Page.
 - A sender may give the title. Otherwise Core labels the Page with a provisional
@@ -56,7 +57,7 @@ intents, and selection.
   a short name in the message's language. A title the user or an earlier
   suggestion has changed is never replaced.
 - A message is saved whether or not any suggestion runtime is available. The
-  composer accepts plain text. `Enter` sends, and `Shift+Enter` inserts a line
+  composer accepts text, read as Nested Markdown. `Enter` sends, and `Shift+Enter` inserts a line
   break.
 - Drafts belong to the current Profile, Inbox and window. Submitting preserves a
   recoverable capture before clearing that draft, so a failed earlier send never
@@ -91,8 +92,9 @@ back. While it is rewritten, what Nodex made of the old text steps aside.
   including when another view updates the message while its editor is open.
 - Saving the body, updating a provisional title and withdrawing suggestions about
   the old text are one atomic operation.
-- A message whose Page holds richer content, or more than the stream shows, is
-  edited as its Page: its row offers `Edit as Page` instead.
+- A message whose Page no longer has the message shape, text followed by images,
+  or holds more than the stream shows, is edited as its Page: its row offers
+  `Edit as Page` instead.
 - Handled messages are a record of what was decided and are not edited from
   History.
 

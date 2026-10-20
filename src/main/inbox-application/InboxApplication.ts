@@ -303,7 +303,7 @@ export const make = Effect.gen(function* () {
         kind: "send_inbox_message",
         page_id: parsed.pageId,
         document_id: parsed.documentId,
-        text: parsed.text,
+        body: parsed.body,
         project_id: parsed.scope.kind === "project" ? parsed.scope.projectId : null,
         expected_store_epoch: parsed.storeEpoch,
       },
@@ -348,8 +348,8 @@ export const make = Effect.gen(function* () {
       kind: "edit_inbox_message",
       page_id: parsed.pageId,
       basis: inboxPageBasisToCore(parsed.basis),
-      original_text: parsed.originalText,
-      text: parsed.text,
+      original_body: parsed.originalBody,
+      body: parsed.body,
     });
   });
 

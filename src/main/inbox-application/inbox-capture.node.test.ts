@@ -19,7 +19,7 @@ it.effect("replays a capture after a lost reply and retires it when its Page was
         issuedAt: Date.now(),
         storeEpoch: summary.storeEpoch,
         scope: LIBRARY_INBOX,
-        text: "Research this later; keep the next draft intact.",
+        body: "Research this later; keep the next draft intact.",
       };
       // Deliberately discard the first response as a renderer disconnect would.
       yield* inbox.send(input);
@@ -47,7 +47,7 @@ it.effect("keeps a post-commit visibility refusal uncertain and recovers the sam
         issuedAt: Date.now(),
         storeEpoch: summary.storeEpoch,
         scope: LIBRARY_INBOX,
-        text: "Preserve this captured thought after a lost visibility read",
+        body: "Preserve this captured thought after a lost visibility read",
       };
       const read = vi.spyOn(client, "libraryRead").mockRejectedValueOnce(
         new CoreModuleResponseError({
@@ -81,13 +81,13 @@ it.effect("refuses to change a captured intent while reusing its identity", () =
         issuedAt: Date.now(),
         storeEpoch: summary.storeEpoch,
         scope: LIBRARY_INBOX,
-        text: "The first captured thought",
+        body: "The first captured thought",
       };
       yield* inbox.send(input);
-      yield* Effect.flip(inbox.send({ ...input, text: "A different thought" }));
+      yield* Effect.flip(inbox.send({ ...input, body: "A different thought" }));
       const window = yield* inbox.window({ scope: LIBRARY_INBOX, filter: "inbox" });
       assert.strictEqual(window.items.length, 1);
-      assert.strictEqual(window.items[0]?.body, input.text);
+      assert.strictEqual(window.items[0]?.body, input.body);
     }),
   ),
 );

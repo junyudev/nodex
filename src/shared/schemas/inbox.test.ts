@@ -39,10 +39,10 @@ describe("Inbox boundary contracts", () => {
       documentId: "document-a",
       issuedAt: Date.now(),
       storeEpoch: "epoch-a",
-      text: "中".repeat(21_845),
+      body: "中".repeat(21_845),
     };
     expect(InboxSendInputSchema.safeParse(capture).success).toBe(true);
-    expect(InboxSendInputSchema.safeParse({ ...capture, text: `${capture.text}中` }).success).toBe(
+    expect(InboxSendInputSchema.safeParse({ ...capture, body: `${capture.body}中` }).success).toBe(
       false,
     );
     expect(
@@ -55,8 +55,8 @@ describe("Inbox boundary contracts", () => {
       InboxEditInputSchema.safeParse({
         pageId: "page-b",
         basis,
-        originalText: "Before",
-        text: "After",
+        originalBody: "Before",
+        body: "After",
       }).success,
     ).toBe(false);
   });

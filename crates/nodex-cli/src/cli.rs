@@ -850,7 +850,8 @@ pub enum InboxCommand {
 
 #[derive(Clone, Debug, Args, PartialEq)]
 pub struct InboxSendArgs {
-    /// Message text, kept whole as the Page body. Omitted or - reads redirected stdin.
+    /// Message in Nested Markdown, kept whole as the Page body: text, then any images.
+    /// Omitted or - reads redirected stdin.
     #[arg(value_name = "TEXT")]
     pub text: Option<String>,
     /// Page title; omitted lets Nodex label the message and name it later.

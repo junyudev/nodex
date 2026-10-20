@@ -6740,11 +6740,12 @@
                   "$ref": "#/components/schemas/ProjectWorkspaceInboxPageBasis"
                 },
                 "body": {
-                  "type": "string"
+                  "type": "string",
+                  "description": "The message as the stream shows it, in Nested Markdown: the Page body when it\nfits the stream budget, otherwise the opening of its text as paragraphs."
                 },
                 "body_editable": {
                   "type": "boolean",
-                  "description": "The body is still plain message text that the stream shows whole, so the user\ncan rewrite it in place. Richer or longer bodies are edited as their Page."
+                  "description": "The stream shows the whole body and it still has the message shape, text followed\nby images, so the user can rewrite it in place. Other bodies are edited as their Page."
                 },
                 "body_truncated": {
                   "type": "boolean"
@@ -30428,14 +30429,17 @@
               },
               {
                 "type": "object",
-                "description": "Captures one message as a Page. A Library Inbox message becomes a Page in the\nInbox Database, created on first use; a Project Inbox message becomes a Page in\nthat Project's Database. Agent provenance, when present, becomes immutable source.\nThe whole text becomes the Page body. Without a sender title, Core gives the\nPage a provisional title that the suggestion Agent may later replace.",
+                "description": "Captures one message as a Page. A Library Inbox message becomes a Page in the\nInbox Database, created on first use; a Project Inbox message becomes a Page in\nthat Project's Database. Agent provenance, when present, becomes immutable source.\nThe body is Nested Markdown with the message shape, text followed by images, and\nbecomes the Page body. Without a sender title, Core gives the Page a provisional\ntitle that the suggestion Agent may later replace.",
                 "required": [
                   "page_id",
                   "document_id",
-                  "text",
+                  "body",
                   "kind"
                 ],
                 "properties": {
+                  "body": {
+                    "type": "string"
+                  },
                   "document_id": {
                     "type": "string"
                   },
@@ -30460,9 +30464,6 @@
                       "null"
                     ],
                     "description": "The Project whose Inbox receives the message. Only the Desktop Host chooses;\nan Agent Turn uses its own Project and the command line its bound Project."
-                  },
-                  "text": {
-                    "type": "string"
                   },
                   "title": {
                     "type": [
@@ -30884,13 +30885,16 @@
                 "required": [
                   "page_id",
                   "basis",
-                  "original_text",
-                  "text",
+                  "original_body",
+                  "body",
                   "kind"
                 ],
                 "properties": {
                   "basis": {
                     "$ref": "#/components/schemas/ProjectWorkspaceInboxPageBasis"
+                  },
+                  "body": {
+                    "type": "string"
                   },
                   "kind": {
                     "type": "string",
@@ -30898,13 +30902,10 @@
                       "edit_inbox_message"
                     ]
                   },
-                  "original_text": {
+                  "original_body": {
                     "type": "string"
                   },
                   "page_id": {
-                    "type": "string"
-                  },
-                  "text": {
                     "type": "string"
                   }
                 }
@@ -35834,27 +35835,27 @@
               },
               {
                 "type": "object",
-                "description": "Prepares the user's rewrite of a message still waiting in its Inbox.\n`original_text` is the text the user started from; a message that changed\nsince, or whose body is no longer plain message text, cannot be rewritten.",
+                "description": "Prepares the user's rewrite of a message still waiting in its Inbox.\n`original_body` is the Nested Markdown body the user started from; a message\nthat changed since, or no longer has the message shape, cannot be rewritten.",
                 "required": [
                   "page_id",
-                  "original_text",
-                  "text",
+                  "original_body",
+                  "body",
                   "kind"
                 ],
                 "properties": {
+                  "body": {
+                    "type": "string"
+                  },
                   "kind": {
                     "type": "string",
                     "enum": [
                       "inbox_message_edit"
                     ]
                   },
-                  "original_text": {
+                  "original_body": {
                     "type": "string"
                   },
                   "page_id": {
-                    "type": "string"
-                  },
-                  "text": {
                     "type": "string"
                   }
                 }
@@ -40826,14 +40827,17 @@
           },
           {
             "type": "object",
-            "description": "Captures one message as a Page. A Library Inbox message becomes a Page in the\nInbox Database, created on first use; a Project Inbox message becomes a Page in\nthat Project's Database. Agent provenance, when present, becomes immutable source.\nThe whole text becomes the Page body. Without a sender title, Core gives the\nPage a provisional title that the suggestion Agent may later replace.",
+            "description": "Captures one message as a Page. A Library Inbox message becomes a Page in the\nInbox Database, created on first use; a Project Inbox message becomes a Page in\nthat Project's Database. Agent provenance, when present, becomes immutable source.\nThe body is Nested Markdown with the message shape, text followed by images, and\nbecomes the Page body. Without a sender title, Core gives the Page a provisional\ntitle that the suggestion Agent may later replace.",
             "required": [
               "page_id",
               "document_id",
-              "text",
+              "body",
               "kind"
             ],
             "properties": {
+              "body": {
+                "type": "string"
+              },
               "document_id": {
                 "type": "string"
               },
@@ -40858,9 +40862,6 @@
                   "null"
                 ],
                 "description": "The Project whose Inbox receives the message. Only the Desktop Host chooses;\nan Agent Turn uses its own Project and the command line its bound Project."
-              },
-              "text": {
-                "type": "string"
               },
               "title": {
                 "type": [
@@ -41282,13 +41283,16 @@
             "required": [
               "page_id",
               "basis",
-              "original_text",
-              "text",
+              "original_body",
+              "body",
               "kind"
             ],
             "properties": {
               "basis": {
                 "$ref": "#/components/schemas/ProjectWorkspaceInboxPageBasis"
+              },
+              "body": {
+                "type": "string"
               },
               "kind": {
                 "type": "string",
@@ -41296,13 +41300,10 @@
                   "edit_inbox_message"
                 ]
               },
-              "original_text": {
+              "original_body": {
                 "type": "string"
               },
               "page_id": {
-                "type": "string"
-              },
-              "text": {
                 "type": "string"
               }
             }

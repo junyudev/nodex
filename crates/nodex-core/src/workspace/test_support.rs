@@ -153,6 +153,71 @@ pub(super) fn create_library_page(workspace: &TestWorkspace, page_id: &str, _pro
         .expect("create Page");
 }
 
+/// A Library File of image bytes, as an imported paste or drop leaves it.
+pub(super) fn create_library_image(workspace: &TestWorkspace, file_id: &str) {
+    let bytes = format!("image bytes for {file_id}").into_bytes();
+    let hash = crate::document::sha256(&bytes);
+    let assets = workspace
+        ._directory
+        .path()
+        .canonicalize()
+        .expect("Profile")
+        .join("assets");
+    fs::write(assets.join(format!("{hash}.blob")), &bytes).expect("blob bytes");
+    let (blob_hash, length) = (hash.clone(), bytes.len() as i64);
+    workspace
+        .kernel
+        .writer()
+        .call(move |connection| {
+            connection.execute(
+                "INSERT INTO managed_blobs(content_hash, physical_asset_name, byte_length, created_at) \
+                 VALUES (?1, ?2, ?3, ?4)",
+                rusqlite::params![blob_hash, format!("{blob_hash}.blob"), length, NOW],
+            )?;
+            Ok(())
+        })
+        .expect("managed blob");
+    let library = LibraryModule::new("profile-1", "library-1", &workspace.kernel);
+    let mut library_context = context();
+    library_context.project_id = None;
+    let receipt = format!("receipt:{file_id}");
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .expect("clock")
+        .as_millis() as u64;
+    library
+        .register_prepared_file_blob(
+            &library_context,
+            "epoch-1",
+            &format!("create-{file_id}"),
+            &receipt,
+            &hash,
+            &format!("{hash}.blob"),
+            bytes.len() as u64,
+            now + 60_000,
+        )
+        .expect("prepared blob");
+    library
+        .apply(
+            &library_context,
+            ModuleApplyRequest {
+                contract_version: LIBRARY_CONTRACT_VERSION,
+                operation_id: format!("create-{file_id}"),
+                store_epoch: StoreEpoch("epoch-1".to_owned()),
+                intent: LibraryIntent::ApplyFileChange {
+                    change: nodex_core_contracts::library::LibraryFileChange::Create {
+                        file_id: file_id.to_owned(),
+                        default_name: "shot.png".to_owned(),
+                        mime_type: "image/png".to_owned(),
+                        prepared_blob_receipt_id: receipt,
+                    },
+                    turn_id: None,
+                },
+            },
+        )
+        .expect("create File");
+}
+
 pub(super) fn create_session_thread(
     module: &ProjectWorkspaceModule,
     prefix: &str,

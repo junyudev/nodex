@@ -416,7 +416,7 @@ export class CoreClientSeedAdapter implements ScenarioSeedPort {
   }
 
   async sendInboxMessage(
-    text: string,
+    body: string,
     scope: InboxScope = LIBRARY_INBOX,
   ): Promise<{ readonly pageId: string }> {
     return await runScenarioInbox(
@@ -425,7 +425,7 @@ export class CoreClientSeedAdapter implements ScenarioSeedPort {
         const summary = yield* inbox.summary({ scope });
         const result = yield* inbox.send({
           scope,
-          text,
+          body,
           operationId: createBoundedOperationId("scenario.inbox.send"),
           pageId: createUuidV7(),
           documentId: createUuidV7(),

@@ -197,12 +197,12 @@ pub enum ProjectWorkspaceRead {
         limit: u32,
     },
     /// Prepares the user's rewrite of a message still waiting in its Inbox.
-    /// `original_text` is the text the user started from; a message that changed
-    /// since, or whose body is no longer plain message text, cannot be rewritten.
+    /// `original_body` is the Nested Markdown body the user started from; a message
+    /// that changed since, or no longer has the message shape, cannot be rewritten.
     InboxMessageEdit {
         page_id: String,
-        original_text: String,
-        text: String,
+        original_body: String,
+        body: String,
     },
 }
 
@@ -1714,14 +1714,15 @@ pub enum ProjectWorkspaceIntent {
     /// Captures one message as a Page. A Library Inbox message becomes a Page in the
     /// Inbox Database, created on first use; a Project Inbox message becomes a Page in
     /// that Project's Database. Agent provenance, when present, becomes immutable source.
-    /// The whole text becomes the Page body. Without a sender title, Core gives the
-    /// Page a provisional title that the suggestion Agent may later replace.
+    /// The body is Nested Markdown with the message shape, text followed by images, and
+    /// becomes the Page body. Without a sender title, Core gives the Page a provisional
+    /// title that the suggestion Agent may later replace.
     SendInboxMessage {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         expected_store_epoch: Option<String>,
         page_id: String,
         document_id: String,
-        text: String,
+        body: String,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         title: Option<String>,
         /// The Project whose Inbox receives the message. Only the Desktop Host chooses;
@@ -1803,8 +1804,8 @@ pub enum ProjectWorkspaceIntent {
     EditInboxMessage {
         page_id: String,
         basis: ProjectWorkspaceInboxPageBasis,
-        original_text: String,
-        text: String,
+        original_body: String,
+        body: String,
     },
     UndoInboxDecision {
         undo_token: String,

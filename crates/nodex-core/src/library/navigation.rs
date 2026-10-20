@@ -3819,7 +3819,7 @@ mod tests {
                     expected_store_epoch: None,
                     page_id: "page:inbox".to_owned(),
                     document_id: "document:inbox".to_owned(),
-                    text: "Review the proposal".to_owned(),
+                    body: "Review the proposal".to_owned(),
                     title: None,
                     project_id: None,
                 },

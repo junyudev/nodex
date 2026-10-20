@@ -115,16 +115,16 @@ pub(super) fn read(
         }
         ProjectWorkspaceRead::InboxMessageEdit {
             page_id,
-            original_text,
-            text,
+            original_body,
+            body,
         } => Ok(ProjectWorkspaceReadValue::InboxMessageEdit {
             edit: super::inbox_read::read_message_edit(
                 connection,
                 context,
                 library_id,
                 &page_id,
-                &original_text,
-                &text,
+                &original_body,
+                &body,
             )?,
         }),
         ProjectWorkspaceRead::InboxDispatchOutbox { limit } => {

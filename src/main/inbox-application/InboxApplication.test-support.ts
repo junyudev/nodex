@@ -18,14 +18,14 @@ import type { InboxApplication } from "./InboxApplication";
 /** Uses a caller-owned capture identity even when a test only needs a single send. */
 export const captureInbox = (
   inbox: InboxApplication["Service"],
-  text: string,
+  body: string,
   scope: InboxScope = LIBRARY_INBOX,
 ) =>
   Effect.gen(function* () {
     const summary = yield* inbox.summary({ scope });
     return (yield* inbox.send({
       scope,
-      text,
+      body,
       operationId: createBoundedOperationId("test.inbox.send"),
       pageId: createUuidV7(),
       documentId: createUuidV7(),

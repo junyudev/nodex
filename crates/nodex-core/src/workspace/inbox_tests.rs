@@ -84,7 +84,7 @@ fn send_to(module: &ProjectWorkspaceModule, id: &str, text: &str, project_id: Op
             expected_store_epoch: None,
             page_id: format!("page:{id}"),
             document_id: format!("document:{id}"),
-            text: text.to_owned(),
+            body: text.to_owned(),
             title: None,
             project_id: project_id.map(str::to_owned),
         },
@@ -208,11 +208,9 @@ fn sending_creates_one_hidden_inbox_and_streams_messages_newest_first() {
     );
     assert!(window(module, ProjectWorkspaceInboxWindowFilter::Processed).is_empty());
     let newest = &items[0];
-    // The whole message is the body, including its own blank line; the title only labels it.
-    assert_eq!(
-        newest.body,
-        "Fix the sidebar flicker\n\nIt happens on hover."
-    );
+    // The whole message is the body, as Nested Markdown; Blocks carry their own spacing,
+    // so the blank line between them is not kept. The title only labels it.
+    assert_eq!(newest.body, "Fix the sidebar flicker\nIt happens on hover.");
     assert_eq!(newest.title, "Fix the sidebar flicker");
     assert_eq!(newest.source, ProjectWorkspaceInboxSource::User);
     assert_eq!(newest.location, ProjectWorkspaceInboxLocation::Inbox);
@@ -256,7 +254,7 @@ fn project_selection_preserves_the_profile_inbox() {
                     expected_store_epoch: None,
                     page_id: "page:cross-project".into(),
                     document_id: "document:cross-project".into(),
-                    text: "Shared Profile message".into(),
+                    body: "Shared Profile message".into(),
                     title: None,
                     project_id: None,
                 },
@@ -626,7 +624,7 @@ fn agents_capture_authenticated_provenance_with_a_replay_safe_turn_cap() {
             expected_store_epoch: None,
             page_id: format!("page:{id}"),
             document_id: format!("document:{id}"),
-            text: "The settings buttons are missing accessible labels".into(),
+            body: "The settings buttons are missing accessible labels".into(),
             title: Some("Label the  settings buttons".into()),
             project_id: None,
         }),
@@ -712,7 +710,7 @@ fn command_line_sends_are_labeled_with_their_project() {
         expected_store_epoch: None,
         page_id: format!("page:{id}"),
         document_id: format!("document:{id}"),
-        text: "Benchmark search on the large fixture".into(),
+        body: "Benchmark search on the large fixture".into(),
         title: None,
         project_id: None,
     };
@@ -1052,7 +1050,7 @@ fn agent_send(
                     expected_store_epoch: None,
                     page_id: format!("page:{id}"),
                     document_id: format!("document:{id}"),
-                    text: "A background result".into(),
+                    body: "A background result".into(),
                     title: None,
                     project_id: None,
                 }),
@@ -1389,7 +1387,7 @@ fn only_the_desktop_app_chooses_a_project_inbox() {
                         expected_store_epoch: None,
                         page_id: "page:cli".into(),
                         document_id: "document:cli".into(),
-                        text: "Choose for me".into(),
+                        body: "Choose for me".into(),
                         title: None,
                         project_id: Some(PROJECT.into()),
                     },
@@ -1407,7 +1405,7 @@ fn only_the_desktop_app_chooses_a_project_inbox() {
                 expected_store_epoch: None,
                 page_id: "page:missing".into(),
                 document_id: "document:missing".into(),
-                text: "Nowhere".into(),
+                body: "Nowhere".into(),
                 title: None,
                 project_id: Some("project:missing".into()),
             },
@@ -1661,8 +1659,8 @@ fn one_suggestion_pass_never_mixes_inboxes() {
 fn prepare_edit(
     module: &ProjectWorkspaceModule,
     page_id: &str,
-    original_text: &str,
-    text: &str,
+    original_body: &str,
+    body: &str,
 ) -> Result<ProjectWorkspaceInboxMessageEdit, CoreErrorCode> {
     module
         .read(
@@ -1671,8 +1669,8 @@ fn prepare_edit(
                 contract_version: PROJECT_WORKSPACE_CONTRACT_VERSION,
                 read: ProjectWorkspaceRead::InboxMessageEdit {
                     page_id: page_id.to_owned(),
-                    original_text: original_text.to_owned(),
-                    text: text.to_owned(),
+                    original_body: original_body.to_owned(),
+                    body: body.to_owned(),
                 },
             },
         )
@@ -1746,11 +1744,11 @@ fn rewriting_a_message_follows_the_rules_of_sending_it() {
         module,
         "page:edit",
         &original.body,
-        "\n  \nCompare three onboarding flows  \n\nKeep it read-only.\n\n",
+        "\n  \nCompare three onboarding flows\n\nKeep it read-only.\n\n",
     )
     .expect("prepare edit");
     let sent =
-        super::inbox::message_page("Compare three onboarding flows\n\nKeep it read-only.", None)
+        super::inbox::message_page("Compare three onboarding flows\nKeep it read-only.", None)
             .expect("message page");
     assert_eq!(edit.body_markdown.as_deref(), Some(sent.body_nfm.as_str()));
     // The title is still Core's provisional label, so it follows the new opening words.
@@ -1839,20 +1837,28 @@ fn rewriting_withdraws_suggestions_and_asks_again_for_their_whole_group() {
 }
 
 #[test]
-fn only_plain_waiting_messages_are_rewritten_in_place() {
+fn only_message_shaped_waiting_messages_are_rewritten_in_place() {
     let workspace = seeded_workspace();
     let module = &workspace.module;
     send(module, "rich", "Ship the changelog");
+    send(module, "formatted", "Ship the changelog");
     send(module, "named", "Homepage feels like a dev tool");
     send(module, "kept", "A lovely changelog layout");
     workspace
         .kernel
         .writer()
         .call(|connection| {
-            // Made richer on its Page, and named by an earlier suggestion.
+            // An image moved between paragraphs on its Page leaves the message shape;
+            // formatting alone does not. One was also named by an earlier suggestion.
+            connection.execute(
+                "UPDATE document_materializations SET nfm = \
+                 'Ship the changelog\n<image source=\"nodex://files/shot\">Shot</image>\nThen tell people' \
+                 WHERE document_id = 'document:rich'",
+                [],
+            )?;
             connection.execute(
                 "UPDATE document_materializations SET nfm = '**Ship** the changelog' \
-                 WHERE document_id = 'document:rich'",
+                 WHERE document_id = 'document:formatted'",
                 [],
             )?;
             connection.execute(
@@ -1877,6 +1883,9 @@ fn only_plain_waiting_messages_are_rewritten_in_place() {
         prepare_edit(module, "page:rich", &rich.body, "Ship it"),
         Err(CoreErrorCode::Conflict)
     );
+    let formatted = item(module, "page:formatted");
+    assert!(formatted.body_editable);
+    assert_eq!(formatted.body, "**Ship** the changelog");
     // A handled message is a record of what was decided.
     assert_eq!(
         prepare_edit(
@@ -2025,8 +2034,8 @@ fn atomic_edit_fences_content_and_invalidates_the_complete_request() {
                 ProjectWorkspaceIntent::EditInboxMessage {
                     page_id: "page:a".into(),
                     basis: pages_basis(module, vec!["page:a".into()]).remove(0),
-                    original_text: "Original message".into(),
-                    text: "Original message".into(),
+                    original_body: "Original message".into(),
+                    body: "Original message".into(),
                 },
             ),
         )
@@ -2037,8 +2046,8 @@ fn atomic_edit_fences_content_and_invalidates_the_complete_request() {
     let edit = ProjectWorkspaceIntent::EditInboxMessage {
         page_id: "page:a".into(),
         basis: before.clone(),
-        original_text: "Original message".into(),
-        text: "Revised message".into(),
+        original_body: "Original message".into(),
+        body: "Revised message".into(),
     };
     let result = module
         .apply(&host(), request("edit:atomic", edit.clone()))
@@ -2468,7 +2477,7 @@ fn deleting_a_lost_reply_capture_never_resurrects_its_page_on_replay() {
         expected_store_epoch: Some("epoch-1".into()),
         page_id: "page:lost".into(),
         document_id: "document:lost".into(),
-        text: "A capture with a lost reply".into(),
+        body: "A capture with a lost reply".into(),
         title: None,
         project_id: None,
     };
@@ -3074,4 +3083,91 @@ fn erasing_a_dispatch_member_preserves_unknown_receipts_without_payload() {
             CoreErrorCode::RevisionConflict
         );
     }
+}
+
+fn send_error(module: &ProjectWorkspaceModule, id: &str, body: &str) -> CoreErrorCode {
+    apply_host_error(
+        module,
+        &format!("send:{id}"),
+        ProjectWorkspaceIntent::SendInboxMessage {
+            expected_store_epoch: None,
+            page_id: format!("page:{id}"),
+            document_id: format!("document:{id}"),
+            body: body.to_owned(),
+            title: None,
+            project_id: None,
+        },
+    )
+}
+
+#[test]
+fn a_message_is_written_nested_markdown_and_everyday_text_stays_literal() {
+    let workspace = seeded_workspace();
+    let module = &workspace.module;
+    send(
+        module,
+        "written",
+        "**Ship** the changelog\n- check the links\n- tag the release\nKeep a < b and [draft as typed",
+    );
+    let written = item(module, "page:written");
+    // Typed Markdown is real structure; text that forms no markup stays as written.
+    assert_eq!(
+        written.body,
+        "**Ship** the changelog\n- check the links\n- tag the release\nKeep a \\< b and \\[draft as typed"
+    );
+    assert!(written.body_editable);
+    assert_eq!(written.title, "Ship the changelog");
+}
+
+#[test]
+fn a_message_keeps_its_images_after_its_text() {
+    let workspace = seeded_workspace();
+    let module = &workspace.module;
+    super::test_support::create_library_image(&workspace, "shot");
+    send(
+        module,
+        "pictured",
+        "The banner is cut off\n<image source=\"nodex://files/shot\">Banner</image>",
+    );
+    let pictured = item(module, "page:pictured");
+    assert_eq!(
+        pictured.body,
+        "The banner is cut off\n<image source=\"nodex://files/shot\">Banner</image>"
+    );
+    assert!(pictured.body_editable);
+
+    send(
+        module,
+        "picture",
+        "<image source=\"nodex://files/shot\">Banner</image>",
+    );
+    // A message of images alone is labeled by its first caption.
+    assert_eq!(item(module, "page:picture").title, "Banner");
+
+    assert_eq!(
+        send_error(
+            module,
+            "out-of-shape",
+            "<image source=\"nodex://files/shot\">Banner</image>\nThe banner is cut off",
+        ),
+        CoreErrorCode::InvalidInput
+    );
+    assert_eq!(
+        send_error(module, "empty", "\n  \n"),
+        CoreErrorCode::InvalidInput
+    );
+}
+
+#[test]
+fn a_long_message_streams_its_opening_text_and_is_edited_as_its_page() {
+    let workspace = seeded_workspace();
+    let module = &workspace.module;
+    let line = "A sentence that keeps the message long enough to pass the stream budget.";
+    send(module, "long", &vec![line; 200].join("\n"));
+    let long = item(module, "page:long");
+    assert!(long.body_truncated);
+    assert!(!long.body_editable);
+    // Past the budget the stream shows the opening of the message's text.
+    assert!(long.body.starts_with(&format!("{line} {line}")));
+    assert!(long.body.len() <= 8 * 1024 + 64);
 }

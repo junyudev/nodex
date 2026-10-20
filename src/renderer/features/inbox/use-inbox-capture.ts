@@ -173,7 +173,7 @@ export function useInboxCapture({
       write((current) => ({
         ...changeInboxDraft(
           current,
-          [current.draft, capture.intent.text].filter(Boolean).join("\n\n"),
+          [current.draft, capture.intent.body].filter(Boolean).join("\n\n"),
         ),
         captures: current.captures.filter((entry) => entry.intent.pageId !== capture.intent.pageId),
       })),

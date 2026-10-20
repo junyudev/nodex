@@ -194,10 +194,12 @@ pub struct ProjectWorkspaceInboxItem {
     pub page_id: String,
     pub page_key: Option<String>,
     pub title: String,
+    /// The message as the stream shows it, in Nested Markdown: the Page body when it
+    /// fits the stream budget, otherwise the opening of its text as paragraphs.
     pub body: String,
     pub body_truncated: bool,
-    /// The body is still plain message text that the stream shows whole, so the user
-    /// can rewrite it in place. Richer or longer bodies are edited as their Page.
+    /// The stream shows the whole body and it still has the message shape, text followed
+    /// by images, so the user can rewrite it in place. Other bodies are edited as their Page.
     pub body_editable: bool,
     pub submitted_at: String,
     pub source: ProjectWorkspaceInboxSource,

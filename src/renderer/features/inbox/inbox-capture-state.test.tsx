@@ -139,7 +139,7 @@ describe("Inbox capture ownership", () => {
         await first;
       });
       expect(hook.result.current.draft).toBe("B");
-      expect(hook.result.current.pending[0]?.intent.text).toBe("A");
+      expect(hook.result.current.pending[0]?.intent.body).toBe("A");
       await act(async () => {
         await hook.result.current.retry(hook.result.current.pending[0]!);
       });

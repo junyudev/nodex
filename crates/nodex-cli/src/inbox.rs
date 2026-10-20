@@ -68,7 +68,7 @@ pub(crate) fn send(
                     expected_store_epoch: Some(client.handshake.store_epoch.clone()),
                     page_id: page_id.clone(),
                     document_id: stable_uuid(&operation_id, "inbox-document"),
-                    text,
+                    body: text,
                     title: arguments.title,
                     // Core places the message in the Inbox of the Project this connection binds.
                     project_id: None,
