@@ -407,6 +407,12 @@ output stays unminified; the launcher builds Agent Runtime with
 `build:agent-runtime --development` for the same readable output. The standalone
 `build:agent-runtime` command defaults to production.
 
+Both modes reuse a verified local Agent Runtime bundle when authored sources,
+bundled dependencies, resolver inputs, tools, mode, copied SDK resources, and
+notices match. Output corruption triggers a rebuild. Compilation happens in a
+temporary sibling tree and publishes only a complete bundle, preserving the
+previous output if a rebuild fails.
+
 Package local macOS installers:
 
 ```bash
