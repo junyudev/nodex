@@ -174,7 +174,7 @@
     "fmt": "vp fmt",
     "verify:static": "tsx scripts/ci/verify-static.ts",
     "verify:source": "vp run verify:static && vp run core:fmt && vp run core:clippy && vp run core:test && vp run test && vp run test:stress && vp run test:browser",
-    "verify:runtime:mac": "vp run codex:schemas:verify && vp run test:agent-runtime-conformance && vp run test:browser-runtime-conformance",
+    "verify:runtime:mac": "vp test run --config vitest.node.config.ts scripts/build-native-bridge.macos.test.ts && vp run codex:schemas:verify && vp run test:agent-runtime-conformance && vp run test:browser-runtime-conformance",
     "lint:tailwind:fix": "ESLINT_BETTER_TAILWIND=1 vp lint src/ --fix",
     "postinstall": "vp run electron:prepare && electron-builder install-app-deps && node scripts/ensure-node-pty-permissions.mjs",
     "prepare": "effect-tsgo patch",

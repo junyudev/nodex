@@ -345,7 +345,9 @@ contracts, authority boundaries, build-resource and notices reproducibility,
 Rust, app tests, browser tests, stress contracts, and landing build. Electron
 E2E is an opt-in local diagnostic and is not part of source or release
 certification. `verify:runtime:mac`
-verifies Agent/Desktop Tool schemas and runtime conformance on macOS. Neither
+compiles the Clipboard, DeviceCheck, and Notifications bridges against the pinned
+Electron headers and checks their real Mach-O architecture and deployment target,
+then verifies Agent/Desktop Tool schemas and runtime conformance on macOS. Neither
 proves Apple signing or Sparkle finalization; the signed Apple silicon
 Distribution is that deeper Implementation.
 
@@ -368,11 +370,13 @@ verifies both identities before materializing credentials, carries the
 certificate in the architecture bundle, and then runs the packaged
 process/runtime probes.
 
-Nodex's Clipboard, DeviceCheck, and Sparkle bridges target macOS 15.0. Keep their
+Nodex's Clipboard, DeviceCheck, Notifications, and Sparkle bridges target macOS 15.0. Keep their
 GYP deployment target in `target_conditions`: Electron header defaults can
 override ordinary `xcode_settings` during late condition expansion. After an
 Electron upgrade, rebuild the Apple silicon app and inspect the resulting Mach-O
 minimum versions; an environment variable alone does not enforce this contract.
+Bridge builders verify the compiled minimum before publishing or reusing an output,
+so an incompatible local binary cannot reach signing and notarization.
 
 The signed package gate must preserve the complete vendor signature closure
 under `Contents/Resources/browser-runtime`, including the signed Codex CLI,

@@ -16,6 +16,11 @@ import { createRequire } from "node:module";
 import { homedir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { verifyOwnedNativeBridgePlatform } from "./native-bridge-platform-contract";
+import {
+  NATIVE_RUNTIME_MINIMUM_MACOS,
+  type NativeRuntimeArchitecture,
+} from "./native-runtime-manifest";
 
 interface NativeBridgeBuild {
   readonly architecture: "arm64";
@@ -65,13 +70,12 @@ function toolchainIdentity(environment: NodeJS.ProcessEnv): readonly string[] | 
   }
 }
 
-function verifyBinary(binary: string, architecture: string): string {
+function verifyBinary(binary: string, architecture: NativeRuntimeArchitecture): string {
   const stat = lstatSync(binary);
   if (!stat.isFile() || (stat.mode & 0o111) === 0) {
     throw new Error(`Native bridge must be an executable regular file: ${binary}`);
   }
-  const actual = execFileSync("/usr/bin/lipo", ["-archs", binary], { encoding: "utf8" }).trim();
-  if (actual !== architecture) throw new Error(`Native bridge architecture mismatch: ${actual}`);
+  verifyOwnedNativeBridgePlatform(binary, architecture);
   return digest(binary);
 }
 
@@ -90,7 +94,7 @@ export function buildNativeBridge(input: NativeBridgeBuild): "built" | "reused" 
     file,
     contents: readFileSync(path.join(source, file)),
   }));
-  const environment = { ...process.env, MACOSX_DEPLOYMENT_TARGET: "15.0" };
+  const environment = { ...process.env, MACOSX_DEPLOYMENT_TARGET: NATIVE_RUNTIME_MINIMUM_MACOS };
   const toolchain = toolchainIdentity(environment);
   const identity =
     toolchain === null
