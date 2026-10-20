@@ -1,0 +1,21 @@
+src/renderer/features/floating-composer/floating-composer.browser.test.tsx
+  s_61befdbfc1bda3::t_6938865361d060 203-204,208-211,217
+src/renderer/features/floating-composer/floating-composer.tsx
+  s_61befdbfc1bda3::t_6938865361d060 148
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "01d3d8771bb4b7daca990994e4f9ab7397b09664",
+  "prompts": {},
+  "sessions": {
+    "s_61befdbfc1bda3": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1585c-7bfb-7b90-8054-48511c1b75c7",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
