@@ -1,0 +1,34 @@
+docs/product-specs/workbench-shell.md
+  s_0086d6557a5456::t_a36462c8fcec0d 20
+src/renderer/features/local-conversation/view/shared/auth-controls.tsx
+  s_0086d6557a5456::t_628228b3885d38 37-43,72-74
+  s_0086d6557a5456::t_74ba429ba82742 71
+  s_0086d6557a5456::t_0f1ba703d4ac78 3,13-36,44-70,76,79-81,85,89-90
+src/renderer/features/local-conversation/view/shared/auth-rate-limits.tsx
+  s_0086d6557a5456::t_d4af231c70c629 2-3,15-16,20-21,24-28,33-36,38,41-44,46-48,50-51,54-57,61,64,66-68,70-73,85,90,100,107-110,113,115-118,124,128,130-134,136,139-156,159,166,170-199,209-211,214-224,240-243,257-258,261,289,294,297-298,303-306,311-323,328-329,331-333
+  s_0086d6557a5456::t_9bac8205ffecc8 79,83-84,88-89
+src/renderer/components/workbench/workbench-rail-account-controls.test.tsx
+  s_0086d6557a5456::t_d6a68984d6d2f7 10,61,88,93,98-103,140,143-144
+src/renderer/features/local-conversation/view/shared/auth-rate-limits.test.ts
+  s_0086d6557a5456::t_87bb8e2cc58d15 3,7,13-15,17-18,21-33,42-43,54,56,58-63,66-67,120-121
+  s_0086d6557a5456::t_628228b3885d38 87
+  s_0086d6557a5456::t_c0261536c7a7fe 82-86
+src/renderer/features/local-conversation/view/shared/account-rate-limit-ring.tsx
+  s_0086d6557a5456::t_82a633d1dcf01e 11-12,54-55,79,103,169,177-186
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "cbf5acb197d45a52156ccab2dd497051b1887c30",
+  "prompts": {},
+  "sessions": {
+    "s_0086d6557a5456": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "56ea2746-0c31-4078-afb2-53abcfc6a77c",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
