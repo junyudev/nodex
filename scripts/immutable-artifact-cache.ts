@@ -29,6 +29,8 @@ export const LOCAL_ARTIFACT_CACHE_DIRECTORY = "cache.local";
 export type ImmutableArtifactFamily =
   | "agent-runtime"
   | "browser-runtime"
+  | "electron"
+  | "rust-dev-runtime"
   | "sparkle"
   | "workspace-runtime";
 
@@ -100,6 +102,8 @@ function resolveCacheFamilyRoot(
   input: Pick<ImmutableArtifactPathInput, "cachePath" | "family" | "projectRoot">,
 ): string {
   if (input.cachePath !== undefined) return path.resolve(input.cachePath);
+  const buildCacheDirectory = process.env.NODEX_BUILD_CACHE_DIR?.trim();
+  if (buildCacheDirectory) return path.resolve(buildCacheDirectory, input.family);
   let checkoutRoot = path.resolve(input.projectRoot);
   try {
     // Git lists the primary checkout first; NUL records preserve spaces/newlines in paths.
@@ -465,6 +469,11 @@ function readDirectoryInventory(root: string): DirectoryInventoryEntry[] {
 
 function directoryInventoryJson(contentPath: string): string {
   return `${JSON.stringify({ version: 1, entries: readDirectoryInventory(contentPath) })}\n`;
+}
+
+/** Identifies a complete independent output tree, including contents, modes and internal links. */
+export function immutableDirectoryDigest(directoryPath: string): string {
+  return createHash("sha256").update(directoryInventoryJson(directoryPath)).digest("hex");
 }
 
 async function validateImmutableDirectory(

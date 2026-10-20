@@ -11,6 +11,7 @@ import {
   ensureGeneratedImmutableArtifact,
   ensureImmutableArtifact,
   ensureImmutableDirectory,
+  immutableDirectoryDigest,
   resolveImmutableArtifactPath,
   resolveImmutableDirectoryPath,
 } from "./immutable-artifact-cache";
@@ -39,6 +40,48 @@ afterEach(() => {
 });
 
 describe("immutable artifact cache", () => {
+  test("isolates all runtime families under an explicit build cache root", () => {
+    const root = makeRoot();
+    vi.stubEnv("NODEX_BUILD_CACHE_DIR", root);
+    try {
+      const input = { archiveSha256: HASH, assetName: "runtime.zip", projectRoot: "/repo/nodex" };
+      expect(resolveImmutableArtifactPath({ ...input, family: "electron" })).toBe(
+        path.join(root, "electron", HASH, "runtime.zip"),
+      );
+      expect(resolveImmutableArtifactPath({ ...input, family: "rust-dev-runtime" })).toBe(
+        path.join(root, "rust-dev-runtime", HASH, "runtime.zip"),
+      );
+      expect(
+        resolveImmutableArtifactPath({
+          ...input,
+          family: "electron",
+          cachePath: path.join(root, "explicit"),
+        }),
+      ).toBe(path.join(root, "explicit", HASH, "runtime.zip"));
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
+  test("output identities follow content, mode and link changes while allowing independent clones", () => {
+    const root = makeRoot();
+    const source = path.join(root, "source");
+    const clone = path.join(root, "clone");
+    fs.mkdirSync(source);
+    fs.writeFileSync(path.join(source, "binary"), "runtime", { mode: 0o755 });
+    const identity = immutableDirectoryDigest(source);
+    cloneImmutableDirectory(source, clone);
+    expect(immutableDirectoryDigest(clone)).toBe(identity);
+    fs.chmodSync(path.join(clone, "binary"), 0o644);
+    expect(immutableDirectoryDigest(clone)).not.toBe(identity);
+    fs.chmodSync(path.join(clone, "binary"), 0o755);
+    fs.writeFileSync(path.join(clone, "binary"), "changed");
+    expect(immutableDirectoryDigest(clone)).not.toBe(identity);
+    expect(immutableDirectoryDigest(source)).toBe(identity);
+    fs.symlinkSync("binary", path.join(source, "alias"));
+    expect(immutableDirectoryDigest(source)).not.toBe(identity);
+  });
+
   test("resolves SHA-addressed archives under cache.local by default", () => {
     expect(
       resolveImmutableArtifactPath({

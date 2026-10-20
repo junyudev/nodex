@@ -44,6 +44,9 @@ across worktrees download and extract once. Cross-process locks, verification,
 and atomic publication protect both cache layers. Corrupt entries are rebuilt;
 different pinned versions can coexist.
 
+Set `NODEX_BUILD_CACHE_DIR` to an absolute directory to isolate Nodex cache
+families; an explicit materializer `--cache` selects that family directly.
+
 Materialization creates independent outputs under each worktree's `.generated/`.
 Files use copy-on-write clones where the filesystem supports them, with regular
 copies as a fallback. Editing, signing, or deleting a worktree's runtime cannot
@@ -201,6 +204,13 @@ architecture, selected compiler/SDK, and build environment match. Each reuse che
 the binary's file type, executable mode, SHA-256, and architecture. Missing or damaged
 outputs rebuild in a temporary directory before publication; custom compiler, header,
 or Gyp overrides bypass reuse. These source-derived outputs stay under `.generated`.
+
+`vp run cache:report` reads metadata for the current worktree's build directories
+and known shared caches. Add `--all-worktrees` to include every registered checkout,
+or `--json` for structured output. It excludes Profile directories and symlink
+targets, reports incomplete reads, and never deletes files. Allocated-byte totals
+deduplicate hard links within each directory; filesystem clones can still share
+blocks across entries, so the report is not a reclaimable-space estimate.
 
 The production build remains fail-closed. It hashes the Electron input closure,
 build context, generated resources, and exact `out/` inventory. Packaging and
