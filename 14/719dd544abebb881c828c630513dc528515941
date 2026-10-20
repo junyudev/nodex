@@ -1,0 +1,19 @@
+src/renderer/features/local-conversation/view/shared/user-message-collapse.browser.test.tsx
+  s_61befdbfc1bda3::t_ee5cb893fe39a3 2,4,58-63
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "14719dd544abebb881c828c630513dc528515941",
+  "prompts": {},
+  "sessions": {
+    "s_61befdbfc1bda3": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1585c-7bfb-7b90-8054-48511c1b75c7",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
