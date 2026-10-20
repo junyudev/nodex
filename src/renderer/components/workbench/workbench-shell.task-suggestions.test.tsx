@@ -100,8 +100,10 @@ describe("task suggestions use the owning Workbench draft", () => {
         expect(rendererCommandPayload(ensure[0])?.projectId).toBe(projectId);
         expect(executionCalls()).toEqual([]);
       } finally {
-        body.unmount();
-        message.dispose();
+        await act(async () => {
+          body.unmount();
+          message.dispose();
+        });
       }
     },
   );
@@ -161,8 +163,10 @@ describe("task suggestions use the owning Workbench draft", () => {
       expect(view.queryByLabelText("Prompt")).toBeNull();
       expect(executionCalls()).toEqual([]);
     } finally {
-      body.unmount();
-      message.dispose();
+      await act(async () => {
+        body.unmount();
+        message.dispose();
+      });
     }
   });
 
@@ -262,8 +266,10 @@ describe("task suggestions use the owning Workbench draft", () => {
       );
       expect(executionCalls()).toEqual([]);
     } finally {
-      body.unmount();
-      message.dispose();
+      await act(async () => {
+        body.unmount();
+        message.dispose();
+      });
     }
   });
 });

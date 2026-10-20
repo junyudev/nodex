@@ -105,9 +105,7 @@ describe("an Inbox's place", () => {
     const first = render(<Stream scopeKey="test:handled" items={items} />);
     await scrollTo(650);
     first.unmount();
-    render(
-      <Stream scopeKey="test:handled" items={items.filter((item) => item.pageId !== "m8")} />,
-    );
+    render(<Stream scopeKey="test:handled" items={items.filter((item) => item.pageId !== "m8")} />);
     expect(atBottom()).toBe(true);
   });
 

@@ -48,7 +48,10 @@ import type {
   WorktreeEnvironmentOption,
 } from "@/lib/types";
 import type { PageSearchMetadataSnapshot, PageSearchSnapshot } from "../../../../shared/types";
-import type { AgentRuntimeLaunch } from "../../../../shared/agent-runtime-api";
+import type {
+  AgentRuntimeConversation,
+  AgentRuntimeLaunch,
+} from "../../../../shared/agent-runtime-api";
 import type { LibraryNavigationNode } from "../../../../shared/library-module";
 import type { WorkbenchLayoutSnapshot } from "../../../../shared/workbench-layout";
 import {
@@ -2706,6 +2709,8 @@ export function renderWorkbench({
       const session = Object.values(sessionState)
         .flat()
         .find((session) => session.id === input.sessionId);
+      const rootThreadId = session?.executionRef?.threadId ?? input.threadId;
+      const parentThreadId = input.threadId === rootThreadId ? null : rootThreadId;
       return {
         sessionId: input.sessionId,
         projectId: session?.projectId ?? null,
@@ -2720,21 +2725,27 @@ export function renderWorkbench({
               id: input.threadId,
               projectId: session?.projectId ?? "projectless",
               title: session?.displayTitle ?? "Chat",
+              createdBy: "user",
+              creationSource: "web",
+              providerInstanceId: "codex",
               modelSelection: { instanceId: "codex", model: DEFAULT_TEST_CODEX_MODELS[0]!.model },
               runtimeMode: "full-access",
               interactionMode: "default",
+              branch: null,
               worktreePath: null,
+              activeProviderThreadId: null,
               archivedAt: null,
               deletedAt: null,
               forkedFrom: null,
+              settledOverride: null,
+              settledAt: null,
+              lastVisitedAt: null,
               createdAt: "2026-10-14T00:00:00Z",
               updatedAt: "2026-10-14T00:00:00Z",
               lineage: {
-                rootThreadId: session?.executionRef?.threadId ?? input.threadId,
-                parentThreadId:
-                  input.threadId === session?.executionRef?.threadId
-                    ? null
-                    : (session?.executionRef?.threadId ?? null),
+                rootThreadId,
+                parentThreadId,
+                relationshipToParent: parentThreadId === null ? null : "subagent",
               },
             },
             visibleTurnItems: [],
@@ -2750,9 +2761,13 @@ export function renderWorkbench({
             checkpointScopes: [],
             contextHandoffs: [],
             contextTransfers: [],
+            providerThreads: [],
+            providerSessions: [],
+            providerTurns: [],
+            updatedAt: "2026-10-14T00:00:00Z",
           },
         },
-      };
+      } satisfies AgentRuntimeConversation;
     }
     if (channel === "agent-runtime:activity:read")
       return { sequence: 0, items: [], complete: true };

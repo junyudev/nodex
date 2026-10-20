@@ -723,10 +723,11 @@ For an import investigation, add Vitest 4's
 `--experimental.importDurations.limit=20`; omit profiling from timing comparisons.
 Application and stress CI jobs upload the same per-file/native/suite records on
 success or failure, and static jobs upload command timings. Reusable workflows
-record the checked-out source SHA, including an explicit source override. The timing reporter
-retains React `act` warnings and rejects that sample even if Vitest's individual
-tests passed. Fix missing awaited interaction/subscription boundaries instead
-of accepting or silencing these warnings. Compare trends only
+record the checked-out source SHA, including an explicit source override. Every
+test run rejects React `act` warnings even if its individual tests passed,
+including local runs without timing collection. When enabled, the diagnostics
+also retain those warnings. Fix missing awaited interaction/subscription
+boundaries instead of accepting or silencing them. Compare trends only
 within the same runner/toolchain/scope; ordinary CI does not run repeated full
 benchmarks or enforce a noisy universal wall-time threshold.
 

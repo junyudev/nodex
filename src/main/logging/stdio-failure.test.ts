@@ -90,8 +90,12 @@ describe("terminal logging process boundary", () => {
 
     expect(result.uncaughtExceptions).toBe(0);
     expect(result.stderrErrors).toBe(0);
-    expect(result.pendingStderrBytes).toBeGreaterThan(0);
-    expect(result.pendingStderrBytes).toBeLessThanOrEqual(result.stderrHighWaterMark + 2_048);
+    // The OS may accept queued bytes during file-log shutdown even with an unread pipe.
+    // The contract bounds peak Node buffering while pressure is actually being applied.
+    expect(result.stderrBackpressureObserved).toBe(true);
+    expect(result.peakPendingStderrBytes).toBeGreaterThan(0);
+    expect(result.peakPendingStderrBytes).toBeLessThanOrEqual(result.stderrHighWaterMark + 2_048);
+    expect(result.pendingStderrBytes).toBeLessThanOrEqual(result.peakPendingStderrBytes);
     expect(bytes).toBeLessThanOrEqual(MAX_LOG_BYTES);
     expect(records.some((record) => record.msg === "durable after terminal failure")).toBe(true);
   });
