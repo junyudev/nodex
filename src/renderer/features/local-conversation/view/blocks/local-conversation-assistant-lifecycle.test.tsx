@@ -6,7 +6,7 @@ import type { CodexConversationItem, CodexConversationTurn } from "@/lib/types";
 import { buildTurnRenderModel } from "../../projection/build-turn-render-model";
 import type { ThreadTranscriptBlockModel } from "../../thread-stage-types";
 import { StrictMode } from "react";
-import { waitForStreamdownCodeHighlight } from "@/test/dom";
+import { settleLazyRender } from "@/test/dom";
 import { ThreadBlockRenderer } from "./local-conversation-block-renderer";
 
 vi.mock("../local-conversation-inline-visualization", async () => {
@@ -77,7 +77,7 @@ describe("assistant document lifecycle", () => {
       <Assistant block={assistantDocument("completed", source)} live={false} />,
     );
     try {
-      await waitForStreamdownCodeHighlight(mounted.container);
+      await settleLazyRender();
       const codeButton = mounted.container.querySelector<HTMLButtonElement>(
         '[data-streamdown="code-block-copy-button"]',
       )!;
@@ -140,7 +140,7 @@ ${payload}
         </StrictMode>,
       );
       try {
-        await waitForStreamdownCodeHighlight(mounted.container);
+        await settleLazyRender();
         const button = mounted.container.querySelector<HTMLButtonElement>(
           '[data-streamdown="code-block-copy-button"]',
         )!;
@@ -155,7 +155,7 @@ ${payload}
             <Assistant block={assistantDocument("completed", source)} live={false} />
           </StrictMode>,
         );
-        await waitForStreamdownCodeHighlight(mounted.container);
+        await settleLazyRender();
         expect(mounted.container.querySelector('[data-streamdown="code-block-copy-button"]')).toBe(
           button,
         );
