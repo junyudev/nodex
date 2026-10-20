@@ -2,7 +2,7 @@
 
 ## Scope
 
-This document owns image ingress, draft state, thumbnail presentation, submission, and transcript replay for the thread Composer. Image preview and editing after a thumbnail is opened are owned by [User Attachment Image Editor Behavior](./user-attachment-image-editor-behavior.md). Canonical user-message placement and transcript ordering are owned by [Codex Thread Transcript Behavior](./codex-thread-transcript-behavior.md).
+This document owns image ingress, draft state, thumbnail presentation, submission, and transcript replay for the thread Composer. Image preview and editing after a thumbnail is opened are owned by [User Attachment Image Editor Behavior](./user-attachment-image-editor-behavior.md). Canonical user-message placement and transcript ordering are owned by [Codex Thread Transcript Behavior](./codex-thread-transcript-behavior.md). What a message's text and attachments mean across Composers, Pages, and Agents is owned by [Message Content Behavior](./message-content-behavior.md).
 
 ## Supported image inputs
 
