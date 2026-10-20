@@ -1,16 +1,20 @@
 import { createHash } from "node:crypto";
+import { execFile } from "node:child_process";
 import {
   chmodSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  realpathSync,
   rmSync,
   statSync,
   writeFileSync,
 } from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { promisify } from "node:util";
+import { build } from "esbuild";
 import { afterEach, expect, test } from "vite-plus/test";
 import {
   prepareElectronRuntime,
@@ -101,7 +105,7 @@ test("concurrent worktrees extract once and own independent verified distributio
   await prepareElectronRuntime(first);
   expect(readFileSync(firstExecutable, "utf8")).toBe("electron executable");
   expect(setup.counters()).toEqual({ downloads: 1, extractions: 1 });
-  const packageRoot = path.join(first.projectRoot!, "node_modules/electron");
+  const packageRoot = path.join(first.projectRoot, "node_modules/electron");
   expect(readFileSync(path.join(packageRoot, "path.txt"), "utf8")).toBe(
     "Electron.app/Contents/MacOS/Electron",
   );
@@ -132,7 +136,7 @@ test("retains the previous complete distribution when replacement generation fai
   const setup = fixture();
   const project = setup.project("first");
   const executable = await prepareElectronRuntime(project);
-  const receipt = path.join(project.projectRoot!, "node_modules/electron/.nodex-electron.json");
+  const receipt = path.join(project.projectRoot, "node_modules/electron/.nodex-electron.json");
   rmSync(receipt);
   writeFileSync(setup.cachedExecutable, "damaged cache");
   setup.failExtraction();
@@ -144,9 +148,67 @@ test("requires the installed package to match the exact repository version", asy
   const setup = fixture();
   const project = setup.project("first");
   writeFileSync(
-    path.join(project.projectRoot!, "package.json"),
+    path.join(project.projectRoot, "package.json"),
     JSON.stringify({ devDependencies: { electron: "^44.4.4" } }),
   );
   await expect(prepareElectronRuntime(project)).rejects.toThrow("exact version");
   expect(setup.counters()).toEqual({ downloads: 0, extractions: 0 });
 });
+
+test.each(["cjs", "esm"] as const)(
+  "prepares the caller's project from a %s bundle outside that project",
+  async (format) => {
+    const setup = fixture();
+    const project = setup.project("target");
+    const bundleRoot = path.join(
+      realpathSync(path.dirname(project.projectRoot)),
+      "bundled-evaluation",
+    );
+    const distribution = path.join(bundleRoot, "distribution");
+    mkdirSync(bundleRoot);
+    await project.installer!.extract(setup.archivePath, { dir: distribution });
+    const output = path.join(
+      bundleRoot,
+      ".generated/agent-eval",
+      `prepare.${format === "esm" ? "mjs" : "cjs"}`,
+    );
+    await build({
+      stdin: {
+        contents: `
+          import { cpSync } from "node:fs";
+          import { prepareElectronRuntime } from "./scripts/prepare-electron-runtime";
+          void prepareElectronRuntime({
+            ...${JSON.stringify({ ...project, installer: undefined })},
+            installer: {
+              downloadArtifact: async () => ${JSON.stringify(setup.archivePath)},
+              extract: async (_archive, { dir }) => cpSync(${JSON.stringify(distribution)}, dir, { recursive: true }),
+            },
+          }).then(
+            (executable) => process.stdout.write(executable),
+            (error) => { console.error(error); process.exitCode = 1; },
+          );
+        `,
+        resolveDir: process.cwd(),
+        loader: "ts",
+      },
+      outfile: output,
+      bundle: true,
+      platform: "node",
+      target: "node24",
+      format,
+      logLevel: "silent",
+    });
+    const { stdout } = await promisify(execFile)(process.execPath, [output], {
+      cwd: bundleRoot,
+      timeout: 15_000,
+    });
+    expect(stdout).toBe(
+      path.join(
+        realpathSync(project.projectRoot),
+        "node_modules/electron/dist/Electron.app/Contents/MacOS/Electron",
+      ),
+    );
+    expect(readFileSync(stdout, "utf8")).toBe("electron executable");
+    expect(existsSync(path.join(bundleRoot, "node_modules"))).toBe(false);
+  },
+);
