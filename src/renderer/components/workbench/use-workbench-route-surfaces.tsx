@@ -1,14 +1,12 @@
 import { lazy, type ComponentProps } from "react";
 import { ApplicationSurface } from "@/bootstrap/application-surface";
+import { SettingsRouteShell } from "./workbench-settings-route-shell";
 
 const PendingWorktreeRoute = lazy(async () => ({
   default: (await import("./pending-worktree-route")).PendingWorktreeRoute,
 }));
 const ScheduledRoute = lazy(async () => ({
   default: (await import("@/features/scheduled/scheduled-route")).ScheduledRoute,
-}));
-const SettingsRouteShell = lazy(async () => ({
-  default: (await import("./workbench-settings-route-shell")).SettingsRouteShell,
 }));
 
 type SettingsProps = Omit<ComponentProps<typeof SettingsRouteShell>, "path">;

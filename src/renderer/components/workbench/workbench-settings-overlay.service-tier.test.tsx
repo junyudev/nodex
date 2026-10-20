@@ -1,7 +1,7 @@
 import { describe, expect, test } from "vite-plus/test";
 import { act, fireEvent } from "@testing-library/react";
 import { AppProviders } from "@/app-providers";
-import { render, settleAsyncRender } from "@/test/dom";
+import { render, settleAsyncRender, settleLazyRender } from "@/test/dom";
 import { installWindowApi } from "@/test/browser-globals";
 import { __resetWindowRestoreSettingsForTests } from "@/lib/use-window-restore-settings";
 import { __resetThreadNotificationSettingsForTests } from "@/lib/use-thread-notification-settings";
@@ -142,21 +142,27 @@ describe("SettingsRouteShell service tier", () => {
     installSettingsWindowApi();
 
     const view = renderOverlay();
-    await settleAsyncRender();
+    await settleLazyRender();
 
-    const fastButton = view.getByRole("button", { name: "Fast" });
+    const fastButton = await view.findByRole("button", { name: "Fast" });
     const standardButton = view.getByRole("button", { name: "Standard" });
 
     expect(fastButton.getAttribute("aria-pressed")).toBe("true");
     expect(standardButton.getAttribute("aria-pressed")).toBe("false");
 
-    fireEvent.click(standardButton);
+    await act(async () => {
+      fireEvent.click(standardButton);
+      await Promise.resolve();
+    });
     await settleAsyncRender();
 
     expect(localStorageRef.getItem("nodex-codex-default-service-tier-v1")).toBe(null);
     expect(standardButton.getAttribute("aria-pressed")).toBe("true");
 
-    fireEvent.click(fastButton);
+    await act(async () => {
+      fireEvent.click(fastButton);
+      await Promise.resolve();
+    });
     await settleAsyncRender();
 
     expect(localStorageRef.getItem("nodex-codex-default-service-tier-v1")).toBe("fast");
@@ -174,9 +180,9 @@ describe("SettingsRouteShell service tier", () => {
         backCalls += 1;
       },
     });
-    await settleAsyncRender();
+    await settleLazyRender();
 
-    const autoBranchPrefixInput = view.getByLabelText("Branch prefix");
+    const autoBranchPrefixInput = await view.findByLabelText("Branch prefix");
     await act(async () => {
       autoBranchPrefixInput.focus();
       fireEvent.keyDown(window, { key: "Escape" });

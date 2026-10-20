@@ -81,9 +81,9 @@ function Routes(props: Parameters<typeof useWorkbenchRouteSurfaces>[0]) {
   );
 }
 
-test("loads auxiliary route modules only when their route is presented", async () => {
+test("keeps Settings navigation ready and loads other auxiliary routes when presented", async () => {
   const view = render(<Routes {...input} />);
-  expect(loadedRoutes).toEqual([]);
+  expect(loadedRoutes).toEqual(["settings"]);
 
   await act(async () => {
     view.rerender(

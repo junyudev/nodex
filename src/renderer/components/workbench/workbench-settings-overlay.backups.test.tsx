@@ -1,8 +1,8 @@
 import { describe, expect, vi, test } from "vite-plus/test";
-import { fireEvent, waitFor } from "@testing-library/react";
+import { act, fireEvent, waitFor } from "@testing-library/react";
 import { AppProviders } from "@/app-providers";
 import { installWindowApi } from "@/test/browser-globals";
-import { render, settleAsyncRender } from "@/test/dom";
+import { render, settleAsyncRender, settleLazyRender } from "@/test/dom";
 import type {
   BackupRecord,
   DiagnosticsSettings,
@@ -241,9 +241,9 @@ describe("SettingsRouteShell backups", () => {
     };
 
     const view = await renderOverlay(buildSettingsPath("general-settings"));
-    await settleAsyncRender();
+    await settleLazyRender();
 
-    view.getByText("Crash reports are off.");
+    await view.findByText("Crash reports are off.");
     const toggle = view
       .getByText("Share crash reports")
       .parentElement?.querySelector("[role='switch']");
@@ -256,7 +256,10 @@ describe("SettingsRouteShell backups", () => {
     expect((replayToggle as HTMLButtonElement | null)?.disabled ?? false).toBe(true);
     view.getByText("Session replays require crash reports.");
 
-    fireEvent.click(toggle as Element);
+    await act(async () => {
+      fireEvent.click(toggle as Element);
+      await Promise.resolve();
+    });
     await settleAsyncRender();
 
     expect(diagnosticsUpdates.length).toBe(1);
@@ -272,7 +275,10 @@ describe("SettingsRouteShell backups", () => {
     expect(enabledReplayToggle).not.toBeNull();
     expect((enabledReplayToggle as HTMLButtonElement | null)?.disabled ?? false).toBe(false);
 
-    fireEvent.click(enabledReplayToggle as Element);
+    await act(async () => {
+      fireEvent.click(enabledReplayToggle as Element);
+      await Promise.resolve();
+    });
     await settleAsyncRender();
 
     expect(diagnosticsUpdates.length).toBe(2);
@@ -340,16 +346,19 @@ describe("SettingsRouteShell backups", () => {
     };
 
     const view = await renderOverlay(buildSettingsPath("general-settings"));
-    await settleAsyncRender();
+    await settleLazyRender();
 
-    view.getByText("Managed by NODEX_SENTRY_ENABLED. Environment overrides are active.");
+    await view.findByText("Managed by NODEX_SENTRY_ENABLED. Environment overrides are active.");
     const toggle = view
       .getByText("Share crash reports")
       .parentElement?.querySelector("[role='switch']");
     expect(toggle).not.toBeNull();
     expect((toggle as HTMLButtonElement | null)?.disabled ?? false).toBe(true);
 
-    fireEvent.click(toggle as Element);
+    await act(async () => {
+      fireEvent.click(toggle as Element);
+      await Promise.resolve();
+    });
     await settleAsyncRender();
 
     expect(diagnosticsUpdates.length).toBe(0);
@@ -411,9 +420,9 @@ describe("SettingsRouteShell backups", () => {
     };
 
     const view = await renderOverlay(buildSettingsPath("general-settings"));
-    await settleAsyncRender();
+    await settleLazyRender();
 
-    view.getByText("Product telemetry is off.");
+    await view.findByText("Product telemetry is off.");
     const toggle = view
       .getByText("Share product telemetry")
       .parentElement?.querySelector("[role='switch']");
@@ -426,7 +435,10 @@ describe("SettingsRouteShell backups", () => {
     expect((autoCaptureToggle as HTMLButtonElement | null)?.disabled ?? false).toBe(true);
     view.getByText("Web analytics require product telemetry.");
 
-    fireEvent.click(toggle as Element);
+    await act(async () => {
+      fireEvent.click(toggle as Element);
+      await Promise.resolve();
+    });
     await settleAsyncRender();
 
     expect(telemetryUpdates.length).toBe(1);
@@ -442,7 +454,10 @@ describe("SettingsRouteShell backups", () => {
     expect(enabledAutoCaptureToggle).not.toBeNull();
     expect((enabledAutoCaptureToggle as HTMLButtonElement | null)?.disabled ?? false).toBe(false);
 
-    fireEvent.click(enabledAutoCaptureToggle as Element);
+    await act(async () => {
+      fireEvent.click(enabledAutoCaptureToggle as Element);
+      await Promise.resolve();
+    });
     await settleAsyncRender();
 
     expect(telemetryUpdates.length).toBe(2);
@@ -506,16 +521,19 @@ describe("SettingsRouteShell backups", () => {
     };
 
     const view = await renderOverlay(buildSettingsPath("general-settings"));
-    await settleAsyncRender();
+    await settleLazyRender();
 
-    view.getByText("Managed by NODEX_TELEMETRY_ENABLED. Environment overrides are active.");
+    await view.findByText("Managed by NODEX_TELEMETRY_ENABLED. Environment overrides are active.");
     const toggle = view
       .getByText("Share product telemetry")
       .parentElement?.querySelector("[role='switch']");
     expect(toggle).not.toBeNull();
     expect((toggle as HTMLButtonElement | null)?.disabled ?? false).toBe(true);
 
-    fireEvent.click(toggle as Element);
+    await act(async () => {
+      fireEvent.click(toggle as Element);
+      await Promise.resolve();
+    });
     await settleAsyncRender();
 
     expect(telemetryUpdates.length).toBe(0);
@@ -568,9 +586,9 @@ describe("SettingsRouteShell backups", () => {
     };
 
     const view = await renderOverlay();
-    await settleAsyncRender();
+    await settleLazyRender();
 
-    view.getByText("No snapshots yet.");
+    await view.findByText("No snapshots yet.");
     view.getByText("Optimizing snapshot storage");
     view.getByText("12 historical records remain to be measured before safe trimming.");
   });
@@ -701,11 +719,13 @@ describe("SettingsRouteShell backups", () => {
     };
 
     const view = await renderOverlay();
-    await settleAsyncRender();
-    fireEvent.change(view.getByPlaceholderText("Optional snapshot label"), {
-      target: { value: "Before migration" },
+    await settleLazyRender();
+    const labelInput = await view.findByPlaceholderText("Optional snapshot label");
+    await act(async () => {
+      fireEvent.change(labelInput, { target: { value: "Before migration" } });
+      fireEvent.click(view.getByRole("button", { name: "Create snapshot" }));
+      await Promise.resolve();
     });
-    fireEvent.click(view.getByRole("button", { name: "Create snapshot" }));
 
     await waitFor(() => {
       view.getByRole("button", { name: "Creating…" });
@@ -783,15 +803,24 @@ describe("SettingsRouteShell backups", () => {
     };
 
     const view = await renderOverlay();
-    await settleAsyncRender();
+    await settleLazyRender();
 
-    fireEvent.click(view.getByRole("button", { name: "Delete snapshot Before risky change" }));
+    const deleteSnapshot = await view.findByRole("button", {
+      name: "Delete snapshot Before risky change",
+    });
+    await act(async () => {
+      fireEvent.click(deleteSnapshot);
+      await Promise.resolve();
+    });
     await settleAsyncRender();
 
     view.getByRole("button", { name: "Confirm delete" });
     view.getByRole("button", { name: "Cancel" });
 
-    fireEvent.click(view.getByRole("button", { name: "Confirm delete" }));
+    await act(async () => {
+      fireEvent.click(view.getByRole("button", { name: "Confirm delete" }));
+      await Promise.resolve();
+    });
     await settleAsyncRender();
 
     expect(deletedBackupIds.length).toBe(1);

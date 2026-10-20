@@ -5,7 +5,7 @@ import { AppProviders } from "@/app-providers";
 import { __resetThreadNotificationSettingsForTests } from "@/lib/use-thread-notification-settings";
 import { __resetWindowRestoreSettingsForTests } from "@/lib/use-window-restore-settings";
 import { installWindowApi } from "@/test/browser-globals";
-import { render, settleAsyncRender } from "@/test/dom";
+import { render, settleLazyRender } from "@/test/dom";
 import { SettingsRouteShell } from "./workbench-settings-route-shell";
 import { buildSettingsPath, OPEN_SOURCE_LICENSES_SETTINGS_PATH } from "./workbench-settings-routes";
 
@@ -119,13 +119,14 @@ describe("SettingsRouteShell open source licenses", () => {
     const view = render(
       <SettingsLicensesHarness initialPath={buildSettingsPath("general-settings")} />,
     );
-    await settleAsyncRender();
+    await settleLazyRender();
+    const openLicenses = await view.findByRole("button", { name: "View" });
 
     await act(async () => {
-      fireEvent.click(view.getByRole("button", { name: "View" }));
+      fireEvent.click(openLicenses);
       await Promise.resolve();
     });
-    await settleAsyncRender();
+    await settleLazyRender();
 
     view.getByText("Open source licenses");
     const notices = await view.findByRole("document");
@@ -136,9 +137,9 @@ describe("SettingsRouteShell open source licenses", () => {
       fireEvent.click(view.getByRole("button", { name: "Back to General" }));
       await Promise.resolve();
     });
-    await settleAsyncRender();
+    await settleLazyRender();
 
-    view.getByRole("button", { name: "View" });
+    await view.findByRole("button", { name: "View" });
   });
 
   test("shows an explicit unavailable state when no notice resource exists", async () => {
@@ -147,7 +148,7 @@ describe("SettingsRouteShell open source licenses", () => {
     const view = render(
       <SettingsLicensesHarness initialPath={OPEN_SOURCE_LICENSES_SETTINGS_PATH} />,
     );
-    await settleAsyncRender();
+    await settleLazyRender();
 
     await view.findByText("No third-party notices were found.");
   });

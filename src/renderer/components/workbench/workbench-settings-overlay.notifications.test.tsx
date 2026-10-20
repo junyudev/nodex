@@ -7,7 +7,7 @@ import type {
   UpdateThreadNotificationSettingsInput,
 } from "@/lib/types";
 import { NodexSettingsSection } from "../ui/settings";
-import { ThreadNotificationSettingControl } from "./workbench-settings-route-shell";
+import { ThreadNotificationSettingControl } from "./workbench-settings-controls";
 
 const originalApi = window.api;
 

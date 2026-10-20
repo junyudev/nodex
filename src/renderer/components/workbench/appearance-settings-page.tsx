@@ -26,7 +26,7 @@ import {
   SansFontSizeSettingControl,
   ThemeSettingControl,
   TogglePill,
-} from "./workbench-settings-route-shell";
+} from "./workbench-settings-controls";
 import type { SettingsSectionPageProps } from "./workbench-settings-page-registry";
 import {
   APPEARANCE_ADVANCED_ANCHOR,

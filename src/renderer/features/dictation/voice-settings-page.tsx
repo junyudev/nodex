@@ -18,7 +18,7 @@ import {
   NodexSettingsSection,
 } from "@/components/ui/settings";
 import { ConfigValueDropdown } from "@/components/workbench/config-value-dropdown";
-import { TogglePill } from "@/components/workbench/workbench-settings-route-shell";
+import { TogglePill } from "@/components/workbench/workbench-settings-controls";
 import { toast } from "@/components/ui/toast";
 import {
   DeleteIcon,

@@ -8,6 +8,14 @@ rail, and return context intact. The Settings section rail owns section
 navigation and search only; every section page owns its data,
 loading/empty/error state, validation, and mutations.
 
+Settings navigation, search, and Back to app are available immediately on first
+entry. Only the selected section loads its page code. While that code loads,
+the content surface shows the section heading and a loading status; navigation
+stays interactive. Switching sections immediately selects the new destination,
+and completion of a previous page load never restores the old page. Page-load
+failures stay within the content surface so users can leave or choose another
+section.
+
 The Settings surface reuses Workbench sidebar material and shared UI primitives
 without importing Project-folder semantics, group actions, or resize behavior.
 Each page renders one `main`/`h1` hierarchy with section-level `h2`/region
