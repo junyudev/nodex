@@ -1,0 +1,42 @@
+src/main/logging/logger.ts
+  s_a1f425691cff5d::t_4b81f8040afa2b 3,601,660
+docs/product-specs/backend-logging-spec.md
+  s_a1f425691cff5d::t_59a90e48ba1fc9 67-69
+  s_a1f425691cff5d::t_65799bc676dbc7 30,54,57-60,62-64,66,70,486-489,501-502,514
+CHANGELOG.md
+  s_a1f425691cff5d::t_65799bc676dbc7 62
+  s_a1f425691cff5d::t_649fb27cb8bf26 61
+src/main/bootstrap.ts
+  s_a1f425691cff5d::t_59a90e48ba1fc9 7,39,43-47,336
+  s_a1f425691cff5d::t_4b81f8040afa2b 51,59,305,307,312,314,357
+src/main/logging/testing/stdio-failure-process.ts
+  s_a1f425691cff5d::t_4eee9fcb4577a2 1,34,40
+  s_a1f425691cff5d::t_86033dd5cd7be2 2-33,35-39,41-77
+src/main/logging/terminal-sink.test.ts
+  s_a1f425691cff5d::t_1735d2109fd9e8 1-156
+  s_a1f425691cff5d::t_bbdddac517a359 157-159
+src/main/logging/stdio-failure.test.ts
+  s_a1f425691cff5d::t_27f193ca6da85c 15,26,52-55,68-70
+  s_a1f425691cff5d::t_39dc128d3b6c55 83
+  s_a1f425691cff5d::t_86033dd5cd7be2 1-2,6-7,9,11-14,16-25,27-51,56-67,71-82,84-86,88-89,91-96
+src/main/logging/logger.test.ts
+  s_a1f425691cff5d::t_806a619d2c10a7 98-144
+src/main/logging/terminal-sink.ts
+  s_a1f425691cff5d::t_1735d2109fd9e8 1-2,4,6,8,10-21,24-48,50,52,54-55,57-63,65
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "747912abbdf337973b7c218ae7813b195a95e710",
+  "prompts": {},
+  "sessions": {
+    "s_a1f425691cff5d": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1582a-55cd-7f13-9873-eb35e8e65ea7",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
