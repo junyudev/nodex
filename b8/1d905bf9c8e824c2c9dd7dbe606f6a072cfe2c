@@ -1,0 +1,39 @@
+scripts/build-native-bridge.ts
+  s_61befdbfc1bda3::t_e672091c20f872 19-23,73,78,97
+scripts/native-runtime-manifest.ts
+  s_61befdbfc1bda3::t_e672091c20f872 5,9,29,109-110,131
+scripts/build-native-bridge.macos.test.ts
+  s_61befdbfc1bda3::t_a2c4f0936991c6 1-45
+scripts/native-bridge-platform-contract.ts
+  s_61befdbfc1bda3::t_e672091c20f872 1-31
+scripts/build-sparkle-bridge.ts
+  s_61befdbfc1bda3::t_e672091c20f872 20-21,39,111,184,242
+scripts/build-native-bridge.test.ts
+  s_61befdbfc1bda3::t_e198dedba8bca8 24-25,34-35,49-54,58,150,165,177
+  s_61befdbfc1bda3::t_976695a8d16f76 171-176,178-184
+native/macos-notifications/binding.gyp
+  s_61befdbfc1bda3::t_e672091c20f872 9-13
+docs/development.md
+  s_61befdbfc1bda3::t_e672091c20f872 444
+  s_61befdbfc1bda3::t_9b42ccfa858104 440-443
+package.json
+  s_61befdbfc1bda3::t_ec9f0a273d6a50 177
+docs/release-macos.md
+  s_61befdbfc1bda3::t_ec9f0a273d6a50 348-350,373,378-379
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "b81d905bf9c8e824c2c9dd7dbe606f6a072cfe2c",
+  "prompts": {},
+  "sessions": {
+    "s_61befdbfc1bda3": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1585c-7bfb-7b90-8054-48511c1b75c7",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
