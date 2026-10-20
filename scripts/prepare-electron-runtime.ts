@@ -11,7 +11,6 @@ import {
 } from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
-import { pathToFileURL } from "node:url";
 import {
   cloneImmutableDirectory,
   ensureImmutableDirectory,
@@ -20,7 +19,6 @@ import {
 } from "./immutable-artifact-cache";
 import { replaceOwnedDirectory } from "./replace-owned-directory";
 
-const repositoryRoot = path.resolve(import.meta.dirname, "..");
 const RECEIPT_NAME = ".nodex-electron.json";
 const RECIPE = "dist-v1";
 
@@ -38,7 +36,8 @@ interface ElectronInstaller {
 }
 
 export interface PrepareElectronRuntimeOptions {
-  readonly projectRoot?: string;
+  /** The caller owns the project location, independently of this module's bundled location. */
+  readonly projectRoot: string;
   /** Explicit family root, primarily for isolated verification. */
   readonly cachePath?: string;
   readonly platform?: string;
@@ -96,9 +95,9 @@ function writeAtomic(filePath: string, contents: string): void {
 
 /** Shares verified Electron extraction, while each installation owns independent writable files. */
 export async function prepareElectronRuntime(
-  options: PrepareElectronRuntimeOptions = {},
+  options: PrepareElectronRuntimeOptions,
 ): Promise<string> {
-  const projectRoot = path.resolve(options.projectRoot ?? repositoryRoot);
+  const projectRoot = path.resolve(options.projectRoot);
   const projectRequire = createRequire(path.join(projectRoot, "package.json"));
   const electronPackage = projectRequire.resolve("electron/package.json");
   const packageRoot = path.dirname(electronPackage);
@@ -188,13 +187,4 @@ export async function prepareElectronRuntime(
     throw new Error("Electron distribution was not published.");
   }
   return path.join(packageRoot, "dist", executable);
-}
-
-if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href) {
-  void prepareElectronRuntime().catch((error: unknown) => {
-    process.stderr.write(
-      `${error instanceof Error ? (error.stack ?? error.message) : String(error)}\n`,
-    );
-    process.exitCode = 1;
-  });
 }
