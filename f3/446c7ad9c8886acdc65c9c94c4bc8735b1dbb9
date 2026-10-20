@@ -1,0 +1,33 @@
+docs/product-specs/nfm-editor-attachment-chip-behavior.md
+  s_61befdbfc1bda3::t_8d534495b84970 383-385
+  s_61befdbfc1bda3::t_4bbee49a3b2f8c 4
+  s_61befdbfc1bda3::t_a2d28ddf739c47 380-382,392-394
+  s_61befdbfc1bda3::t_6efce817f3f0d4 379,386-387
+src/renderer/components/board/editor/attachment-chip.browser.test.tsx
+  s_61befdbfc1bda3::t_70648b4f866392 303-304,306,309-329,331,358,366,373
+src/renderer/components/board/editor/attachment-preview.test.tsx
+  s_61befdbfc1bda3::t_86abe495e1de60 3,82,89-91,95,98-100,102-106,108
+  s_61befdbfc1bda3::t_6efce817f3f0d4 61
+  s_61befdbfc1bda3::t_4bbee49a3b2f8c 6,54,57,59,69,83-88,92-94,96-97,101,107,109-114
+src/renderer/components/board/editor/attachment-preview.ts
+  s_61befdbfc1bda3::t_75010c9a28a9ee 134,136,160,169,178
+  s_61befdbfc1bda3::t_6efce817f3f0d4 1,108-110,116,139-140,181,183,185,188,191,193
+src/renderer/components/board/editor/attachment-chip.tsx
+  s_61befdbfc1bda3::t_6efce817f3f0d4 331,379
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "f3446c7ad9c8886acdc65c9c94c4bc8735b1dbb9",
+  "prompts": {},
+  "sessions": {
+    "s_61befdbfc1bda3": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1585c-7bfb-7b90-8054-48511c1b75c7",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
