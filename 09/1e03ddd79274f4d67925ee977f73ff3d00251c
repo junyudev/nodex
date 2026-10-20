@@ -1,0 +1,30 @@
+tests/e2e/inbox-important.spec.ts
+  s_6b365ff37ecf12::t_729179a0c0b6a8 68-72,77-78,80-84,87-98,141,195
+docs/product-specs/inbox-behavior.md
+  s_6b365ff37ecf12::t_10975fb9c80c9f 146-150,244,388
+src/renderer/features/inbox/inbox-important.tsx
+  s_6b365ff37ecf12::t_072af818d815e5 15-18,22,25-26,34-35,40,42-50
+src/renderer/features/inbox/inbox-message.tsx
+  s_6b365ff37ecf12::t_072af818d815e5 168,170,174,185,284-285
+src/renderer/features/inbox/inbox-message.browser.test.tsx
+  s_6b365ff37ecf12::t_c2fa14d6794462 181-213
+  s_6b365ff37ecf12::t_08d4c81e80ea48 214-215
+src/renderer/features/inbox/inbox-triage.test.tsx
+  s_6b365ff37ecf12::t_c2fa14d6794462 517,530,532,535,538-542,545-551,554
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "091e03ddd79274f4d67925ee977f73ff3d00251c",
+  "prompts": {},
+  "sessions": {
+    "s_6b365ff37ecf12": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "b625d98b-bade-4b36-8ce7-98dd0ac8c83f",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
