@@ -30,10 +30,10 @@
   | Review recordings, screenshots, and verification reports                 | `~/repo/nodex/notes.local/artifacts/<slug>/`      |
   | Living plan / ExecPlan                                                   | `~/repo/nodex/notes.local/living-plans/<slug>.md` |
   | Brief plan                                                               | `~/repo/nodex/notes.local/brief-plans/<slug>.md`  |
-  | Shared verified third-party runtime cache                                | `~/repo/nodex/cache.local/`                       |
+  | Shared verified runtime and development build cache                      | `~/repo/nodex/cache.local/`                       |
 
 - Agent launches must pass an absolute `--home`: use the shared `runs.local` directory for new environments and the current path when reopening an existing one. The launcher's no-argument default remains worktree-local. Each writable development home belongs to one worktree; use a separate home for an independent instance or snapshot. See `docs/development.md` for launch commands and Profile ownership.
-- Keep `node_modules`, `.generated`, Rust `target`, build outputs, and source-derived tool caches isolated per worktree. Runtime materialization automatically shares verified third-party archives and extracted trees through the primary checkout's `cache.local`, then creates independent worktree outputs; see `docs/development.md`. Automatic scenario tests retain their harness-managed temporary Profiles.
+- Keep writable `node_modules`, `.generated`, Rust `target`, build outputs, and Profiles isolated per worktree. Preparation owners may reuse verified, immutable third-party runtimes and supported development build bundles through the primary checkout's `cache.local`, then clone independent local outputs. Source build reuse must cover its complete inputs and toolchain, preserve standalone debugging, and bypass unsupported build contexts; see `docs/development.md`. Automatic scenario tests retain their harness-managed temporary Profiles.
 - Keep `runs.local`, `notes.local`, and `cache.local` out of commits. Apply this layout to new worktrees and artifacts; leave existing worktrees and historical artifacts in place unless migration is explicitly requested.
 
 ## Agent skills

@@ -85,7 +85,7 @@
     "clipboard-bridge:build": "tsx scripts/build-clipboard-bridge.ts",
     "notification-bridge:build": "tsx scripts/build-notification-bridge.ts",
     "devicecheck-bridge:build": "tsx scripts/build-devicecheck-bridge.ts",
-    "core:build:dev": "vp run clipboard-bridge:build && vp run devicecheck-bridge:build && vp run notification-bridge:build && vp run appshot-helper:build:dev && vp run dictation-helper:build:dev && vp run core:binaries:build:dev",
+    "core:build:dev": "vp run clipboard-bridge:build && vp run devicecheck-bridge:build && vp run notification-bridge:build && vp run appshot-helper:build:dev && vp run dictation-helper:build:dev && vp run core:binaries:prepare:dev",
     "core:build:mac:arm64": "MACOSX_DEPLOYMENT_TARGET=15.0 cargo build --release --target aarch64-apple-darwin -p nodex-core-server -p nodex-cli -p nodex-browser-profile-helper && tsx scripts/stage-rust-core.ts --target-arch arm64 --out .generated/rust-core-runtime/arm64",
     "core:benchmark:rust": "cargo build --release -p nodex-core-server && NODEX_MEASURE_RUST_CORE_RUNTIME=1 vp test run --config vitest.core-client.config.ts src/main/core-client/rust-core-runtime-benchmark.node.test.ts",
     "core:fixtures:yjs-yrs": "NODEX_GENERATE_YJS_YRS_FIXTURES=1 vp test run --config vitest.node.config.ts src/shared/block-documents/yjs-yrs-fixture-generator.test.ts",
@@ -185,8 +185,9 @@
     "materialize:workspace-runtime:mac:arm64": "tsx scripts/materialize-workspace-runtime.ts --target-arch arm64",
     "test:agent-runtime": "tsx scripts/testing/run-tests.ts agent-runtime",
     "test:agent-runtime:related": "tsx scripts/testing/run-tests.ts agent-runtime --related",
-    "cache:report": "tsx scripts/tooling/cache-report.ts",
-    "electron:prepare": "tsx scripts/prepare-electron-runtime.ts"
+    "electron:prepare": "tsx scripts/prepare-electron-runtime.ts",
+    "core:binaries:prepare:dev": "tsx scripts/rust-dev-runtime.ts",
+    "cache:report": "tsx scripts/tooling/cache-report.ts"
   },
   "dependencies": {
     "@agentclientprotocol/sdk": "1.4.0",

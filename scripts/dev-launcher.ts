@@ -41,6 +41,11 @@ import type { IsolatedRunFailure } from "./isolated-run/IsolatedRun";
 import { getScenario } from "./scenarios/registry";
 import { materializeDevelopmentSeed } from "./scenarios/harness/development-seed";
 import { isolatedElectronArguments } from "./isolated-run/electron-arguments";
+import {
+  rustDevCargoOutputDirectory,
+  rustDevRuntimeExecutable,
+  usesSharedRustDevRuntime,
+} from "./rust-dev-runtime";
 
 export interface DevLauncherArguments {
   readonly home?: string;
@@ -259,6 +264,7 @@ export const createDevLaunchPlan = (input: {
   readonly environment: NodeJS.ProcessEnv;
   readonly home: DevelopmentEnvironmentHome;
   readonly platform: NodeJS.Platform;
+  readonly architecture?: string;
 }): DevLaunchPlan => {
   const electronArguments = isolatedElectronArguments(input.platform);
   const enabledFeatures = resolveDevelopmentFeatureOverrides(input.arguments.enabledFeatures);
@@ -270,6 +276,48 @@ export const createDevLaunchPlan = (input: {
     );
   const usesProfileSnapshot =
     input.arguments.fromProfile !== undefined || input.home.manifest.profileSnapshot !== undefined;
+  const usesSharedNativeRuntime =
+    !input.arguments.build &&
+    usesSharedRustDevRuntime({
+      environment: input.environment,
+      platform: input.platform,
+      architecture: input.architecture ?? process.arch,
+      projectRoot: input.home.repositoryRealpath,
+    });
+  const cargoDevOutput = input.arguments.build
+    ? path.join(input.home.repositoryRealpath, "target/debug")
+    : rustDevCargoOutputDirectory(input.home.repositoryRealpath, input.environment);
+  const usesCustomCargoOutput =
+    cargoDevOutput !== path.join(input.home.repositoryRealpath, "target/debug");
+  const customDevExecutables = usesCustomCargoOutput
+    ? {
+        [NODEX_BROWSER_PROFILE_HELPER_EXECUTABLE_ENV]:
+          input.environment[NODEX_BROWSER_PROFILE_HELPER_EXECUTABLE_ENV] ??
+          path.join(cargoDevOutput, "nodex-browser-profile-helper"),
+        [NODEX_CORE_EXECUTABLE_ENV]:
+          input.environment[NODEX_CORE_EXECUTABLE_ENV] ?? path.join(cargoDevOutput, "nodex-core"),
+      }
+    : {};
+  const managedDevFallbacks =
+    input.arguments.build || usesSharedNativeRuntime
+      ? {}
+      : Object.fromEntries(
+          (
+            [
+              [NODEX_CORE_EXECUTABLE_ENV, "nodex-core"],
+              [NODEX_BROWSER_PROFILE_HELPER_EXECUTABLE_ENV, "nodex-browser-profile-helper"],
+            ] as const
+          )
+            .filter(
+              ([name, binary]) =>
+                input.environment[name] ===
+                rustDevRuntimeExecutable(input.home.repositoryRealpath, binary),
+            )
+            .map(([name, binary]) => [
+              name,
+              usesCustomCargoOutput ? path.join(cargoDevOutput, binary) : undefined,
+            ]),
+        );
   const environment: NodeJS.ProcessEnv = {
     ...input.environment,
     ...developmentFeatureEnvironment(enabledFeatures),
@@ -284,7 +332,19 @@ export const createDevLaunchPlan = (input: {
             "target/release/nodex-core",
           ),
         }
-      : {}),
+      : usesSharedNativeRuntime
+        ? {
+            [NODEX_BROWSER_PROFILE_HELPER_EXECUTABLE_ENV]: rustDevRuntimeExecutable(
+              input.home.repositoryRealpath,
+              "nodex-browser-profile-helper",
+            ),
+            [NODEX_CORE_EXECUTABLE_ENV]: rustDevRuntimeExecutable(
+              input.home.repositoryRealpath,
+              "nodex-core",
+            ),
+          }
+        : customDevExecutables),
+    ...managedDevFallbacks,
     NODEX_HOME: input.home.nodexHome,
     CODEX_HOME: input.home.codexHome,
     NODEX_INITIAL_PROJECTS_DIR: input.home.workspace,
@@ -438,8 +498,20 @@ export const resolveDevelopmentSeedInitialization = (input: {
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 
-const nativeCliExecutable = (home: DevelopmentEnvironmentHome, build: boolean): string =>
-  path.join(home.repositoryRealpath, build ? "target/release/nodex" : "target/debug/nodex");
+export const nativeCliExecutable = (
+  home: DevelopmentEnvironmentHome,
+  build: boolean,
+  environment: NodeJS.ProcessEnv,
+): string => {
+  if (
+    !build &&
+    environment[NODEX_CORE_EXECUTABLE_ENV] ===
+      rustDevRuntimeExecutable(home.repositoryRealpath, "nodex-core")
+  )
+    return rustDevRuntimeExecutable(home.repositoryRealpath, "nodex");
+  if (build) return path.join(home.repositoryRealpath, "target/release/nodex");
+  return path.join(rustDevCargoOutputDirectory(home.repositoryRealpath, environment), "nodex");
+};
 
 /** Core's read-only verdict on whether this build can open a home's Store. */
 export interface DevelopmentStoreCheck {
@@ -486,7 +558,7 @@ const checkDevelopmentStore = (input: {
 }): Effect.Effect<DevelopmentStoreCheck, DevLauncherError> =>
   attemptPromise(async () => {
     const { stdout } = await promisify(execFile)(
-      nativeCliExecutable(input.home, input.build),
+      nativeCliExecutable(input.home, input.build, input.environment),
       ["--json", "profile", "check", "--home", input.home.nodexHome],
       { cwd: input.home.repositoryRealpath, env: input.environment },
     );
@@ -614,7 +686,7 @@ const prepareProfileSnapshot = (input: {
 
     yield* runCommand(
       {
-        command: nativeCliExecutable(current, input.arguments.build),
+        command: nativeCliExecutable(current, input.arguments.build, input.environment),
         args: [
           "--json",
           "profile",

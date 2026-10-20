@@ -57,7 +57,7 @@ an explicit materializer `--cache` still selects that family's directory directl
 Materialization creates independent outputs under each worktree's `.generated/`.
 Files use copy-on-write clones where the filesystem supports them, with regular
 copies as a fallback. Editing, signing, or deleting a worktree's runtime cannot
-change the shared cache or another worktree's files. Core and native bridge builds,
+change the shared cache or another worktree's files. Writable Core and native bridge builds,
 `node_modules`, Rust `target`, Profiles, and other source-derived outputs remain
 isolated per worktree.
 
@@ -212,6 +212,17 @@ architecture, selected compiler/SDK, and build environment match. Each reuse che
 the binary's file type, executable mode, SHA-256, and architecture. Missing or damaged
 outputs rebuild in a temporary directory before publication; custom compiler, header,
 or Gyp overrides bypass reuse. These source-derived outputs stay under `.generated`.
+
+Ordinary macOS arm64 development also shares an immutable Core, CLI, and Browser
+Profile Helper bundle when all source inputs and the supported toolchain/build
+context match. The key includes embedded non-Rust assets. Each worktree receives
+independent executables and adjacent standalone dSYM bundles under
+`.generated/rust-dev-runtime`; the launcher uses those paths consistently for
+the application and seed operations. Writable Cargo targets remain local.
+Full-debug or customized compiler contexts use Cargo's own local outputs.
+Native tests, release builds, and WASM retain their Cargo preparation paths.
+Source and toolchain changes create distinct shared bundles; entries persist
+until explicitly removed.
 
 `vp run cache:report` reads metadata for the current worktree's build directories
 and known shared caches. Add `--all-worktrees` to include every registered checkout,
@@ -605,7 +616,8 @@ The test commands follow production boundaries:
   `debug = "line-tables-only"`, incremental compilation, and separate debug
   artifacts (`split-debuginfo = "unpacked"`). For variable/type debugging, set
   `CARGO_PROFILE_DEV_DEBUG=full CARGO_PROFILE_TEST_DEBUG=full` on the command;
-  Cargo rebuilds the affected profile. Core hashes its executable during startup, so keep debug data outside
+  Cargo rebuilds the affected profile and ordinary dev bypasses shared native
+  reuse. Core hashes its executable during startup, so keep debug data outside
   that executable admission input.
 - `vp run test:stress` runs every catalogued stress owner, including core-client,
   one worker at a time, independently of the ordinary suite.

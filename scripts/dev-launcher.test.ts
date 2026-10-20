@@ -4,6 +4,7 @@ import { describe, expect, test } from "vite-plus/test";
 import type { DevelopmentEnvironmentHome } from "./development-environment-home";
 import {
   createDevLaunchPlan,
+  nativeCliExecutable,
   developmentStoreRejection,
   parseDevelopmentStoreCheck,
   parseDevLauncherArguments,
@@ -120,6 +121,7 @@ describe("dev launcher", () => {
       environment: {},
       home: HOME,
       platform: "darwin",
+      architecture: "arm64",
     });
     expect(plan.mode).toBe("hmr");
     expect(plan.preparation).toContainEqual({
@@ -152,8 +154,18 @@ describe("dev launcher", () => {
       NODEX_INITIAL_PROJECTS_DIR: HOME.workspace,
       NODEX_DEV_ENABLED_FEATURES: "runtime-metrics",
     });
-    expect(plan.environment.NODEX_BROWSER_PROFILE_HELPER_EXECUTABLE).toBeUndefined();
-    expect(plan.environment.NODEX_CORE_EXECUTABLE).toBeUndefined();
+    expect(plan.environment.NODEX_BROWSER_PROFILE_HELPER_EXECUTABLE).toBe(
+      path.join(
+        HOME.repositoryRealpath,
+        ".generated/rust-dev-runtime/bin/nodex-browser-profile-helper",
+      ),
+    );
+    expect(plan.environment.NODEX_CORE_EXECUTABLE).toBe(
+      path.join(HOME.repositoryRealpath, ".generated/rust-dev-runtime/bin/nodex-core"),
+    );
+    expect(nativeCliExecutable(HOME, false, plan.environment)).toBe(
+      path.join(HOME.repositoryRealpath, ".generated/rust-dev-runtime/bin/nodex"),
+    );
   });
 
   test("enables developer overlays only for the requested invocation", () => {
@@ -179,6 +191,91 @@ describe("dev launcher", () => {
     });
     expect(ordinaryLaunch.enabledFeatures).toEqual([]);
     expect(ordinaryLaunch.environment.NODEX_DEV_ENABLED_FEATURES).toBeUndefined();
+  });
+
+  test.each([{ CARGO_PROFILE_DEV_DEBUG: "full" }, { RUSTFLAGS: "-C opt-level=1" }])(
+    "keeps custom native development builds on their Cargo executables: %j",
+    (environment) => {
+      const plan = createDevLaunchPlan({
+        arguments: parseDevLauncherArguments([]),
+        environment,
+        home: HOME,
+        platform: "darwin",
+        architecture: "arm64",
+      });
+      expect(plan.environment.NODEX_CORE_EXECUTABLE).toBeUndefined();
+      expect(plan.environment.NODEX_BROWSER_PROFILE_HELPER_EXECUTABLE).toBeUndefined();
+      expect(nativeCliExecutable(HOME, false, plan.environment)).toBe(
+        path.join(HOME.repositoryRealpath, "target/debug/nodex"),
+      );
+    },
+  );
+
+  test("launches uncached binaries from a custom Cargo target directory", () => {
+    const plan = createDevLaunchPlan({
+      arguments: parseDevLauncherArguments([]),
+      environment: {
+        CARGO_TARGET_DIR: "/tmp/custom-target",
+        NODEX_BROWSER_PROFILE_HELPER_EXECUTABLE: "/tmp/custom-helper",
+      },
+      home: HOME,
+      platform: "darwin",
+      architecture: "arm64",
+    });
+    expect(plan.environment.NODEX_CORE_EXECUTABLE).toBe("/tmp/custom-target/debug/nodex-core");
+    expect(plan.environment.NODEX_BROWSER_PROFILE_HELPER_EXECUTABLE).toBe("/tmp/custom-helper");
+    expect(nativeCliExecutable(HOME, false, plan.environment)).toBe(
+      "/tmp/custom-target/debug/nodex",
+    );
+  });
+
+  test.each([
+    { CARGO_PROFILE_DEV_DEBUG: "full", output: path.join(HOME.repositoryRealpath, "target/debug") },
+    { CARGO_TARGET_DIR: "/tmp/custom-target", output: "/tmp/custom-target/debug" },
+  ])(
+    "reselects Cargo binaries when an inherited managed bundle is bypassed: %j",
+    ({ output, ...custom }) => {
+      const cachedPlan = createDevLaunchPlan({
+        arguments: parseDevLauncherArguments([]),
+        environment: {},
+        home: HOME,
+        platform: "darwin",
+        architecture: "arm64",
+      });
+      const uncachedPlan = createDevLaunchPlan({
+        arguments: parseDevLauncherArguments([]),
+        environment: { ...cachedPlan.environment, ...custom },
+        home: HOME,
+        platform: "darwin",
+        architecture: "arm64",
+      });
+      const usesDefaultOutput = output === path.join(HOME.repositoryRealpath, "target/debug");
+      expect(uncachedPlan.environment.NODEX_CORE_EXECUTABLE).toBe(
+        usesDefaultOutput ? undefined : path.join(output, "nodex-core"),
+      );
+      expect(uncachedPlan.environment.NODEX_BROWSER_PROFILE_HELPER_EXECUTABLE).toBe(
+        usesDefaultOutput ? undefined : path.join(output, "nodex-browser-profile-helper"),
+      );
+      expect(nativeCliExecutable(HOME, false, uncachedPlan.environment)).toBe(
+        path.join(output, "nodex"),
+      );
+    },
+  );
+
+  test("keeps explicit native executable overrides when bypassing a managed bundle", () => {
+    const plan = createDevLaunchPlan({
+      arguments: parseDevLauncherArguments([]),
+      environment: {
+        CARGO_PROFILE_DEV_DEBUG: "full",
+        NODEX_CORE_EXECUTABLE: "/tmp/explicit-core",
+        NODEX_BROWSER_PROFILE_HELPER_EXECUTABLE: "/tmp/explicit-helper",
+      },
+      home: HOME,
+      platform: "darwin",
+      architecture: "arm64",
+    });
+    expect(plan.environment.NODEX_CORE_EXECUTABLE).toBe("/tmp/explicit-core");
+    expect(plan.environment.NODEX_BROWSER_PROFILE_HELPER_EXECUTABLE).toBe("/tmp/explicit-helper");
   });
 
   test("accepts the CDP alias and lets the command line override the environment", () => {
