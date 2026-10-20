@@ -15,7 +15,7 @@ use nodex_core_contracts::events::{
     ResourceKey,
 };
 use nodex_core_contracts::library::{LibraryEvent, LibraryEventKind};
-use nodex_core_contracts::workspace::ProjectWorkspaceEvent;
+use nodex_core_contracts::workspace::{ProjectWorkspaceEvent, ProjectWorkspaceEventKind};
 use rusqlite::{Connection, OptionalExtension};
 
 use super::sqlite::{StoreError, StoreErrorCode};
@@ -37,7 +37,8 @@ pub(crate) fn compile(
     if let Some(project_id) = physical_project_id {
         validate_identity(project_id, "DeliveryAtom physical Project")?;
     }
-    let atoms = match payload {
+    let touches_inbox = touches_inbox_messages(connection, &payload)?;
+    let mut atoms = match payload {
         CoreModuleEventPayload::Library(event) => compile_library(library_id, event)?,
         CoreModuleEventPayload::Database(event) => compile_database(library_id, event),
         CoreModuleEventPayload::OwnedDocument(event) => {
@@ -53,10 +54,72 @@ pub(crate) fn compile(
             compile_store_administration(library_id, event)?
         }
     };
+    if touches_inbox {
+        atoms.push(inbox_messages_changed(library_id));
+    }
     for atom in &atoms {
         validate(atom)?;
     }
     Ok(atoms)
+}
+
+/// The Inbox stream shows its messages' Page bodies, titles and placement, so a commit that
+/// touches one of those Pages changes the Inbox, whichever Module made it. Inbox operations
+/// already announce themselves.
+fn touches_inbox_messages(
+    connection: &Connection,
+    payload: &CoreModuleEventPayload,
+) -> Result<bool, StoreError> {
+    use nodex_core_contracts::document::OwnedDocumentEvent;
+    let pages = match payload {
+        CoreModuleEventPayload::Library(event) => &event.page_ids,
+        CoreModuleEventPayload::Database(event) => &event.page_ids,
+        CoreModuleEventPayload::OwnedDocument(
+            OwnedDocumentEvent::DocumentUpdated { document_id, .. }
+            | OwnedDocumentEvent::DocumentResyncRequired { document_id, .. }
+            | OwnedDocumentEvent::DocumentInvalidated { document_id, .. },
+        ) => {
+            return Ok(connection.query_row(
+                "SELECT EXISTS(SELECT 1 FROM pages page
+                   JOIN inbox_entries entry ON entry.page_id = page.block_id
+                   WHERE page.document_id = ?1)",
+                [document_id],
+                |row| row.get(0),
+            )?);
+        }
+        _ => return Ok(false),
+    };
+    if pages.is_empty() {
+        return Ok(false);
+    }
+    let pages = serde_json::to_string(pages)
+        .map_err(|error| corrupt(&format!("Inbox Page identities: {error}")))?;
+    Ok(connection.query_row(
+        "SELECT EXISTS(SELECT 1 FROM inbox_entries
+           WHERE page_id IN (SELECT value FROM json_each(?1)))",
+        [pages],
+        |row| row.get(0),
+    )?)
+}
+
+fn inbox_messages_changed(library_id: &str) -> DeliveryAtomDraft {
+    atom(
+        DeliveryAtomKind::ProjectWorkspaceChanged,
+        [library(library_id)],
+        DeliveryAtomPayload::ProjectWorkspace {
+            library_id: library_id.to_owned(),
+            event: ProjectWorkspaceEvent {
+                kind: ProjectWorkspaceEventKind::WorkspaceChanged,
+                inbox_changed: true,
+                project_catalog_change: None,
+                project_ids: Vec::new(),
+                session_ids: Vec::new(),
+                thread_ids: Vec::new(),
+                session_summary_scopes: Vec::new(),
+                session_detail_ids: Vec::new(),
+            },
+        },
+    )
 }
 
 pub(crate) fn compile_store_administration(
@@ -1004,6 +1067,94 @@ mod tests {
 
     use super::*;
 
+    /// Every compile consults which Pages are Inbox messages.
+    fn compiler_store() -> Connection {
+        let connection = Connection::open_in_memory().expect("in-memory compiler store");
+        connection
+            .execute_batch(
+                "CREATE TABLE pages(block_id TEXT PRIMARY KEY, document_id TEXT NOT NULL UNIQUE);
+                 CREATE TABLE inbox_entries(page_id TEXT PRIMARY KEY);
+                 INSERT INTO pages VALUES ('page:message', 'document:message'),
+                                          ('page:note', 'document:note');
+                 INSERT INTO inbox_entries VALUES ('page:message');",
+            )
+            .expect("Inbox compiler tables");
+        connection
+    }
+
+    fn announces_inbox_change(atoms: &[DeliveryAtomDraft]) -> bool {
+        atoms.iter().any(|atom| {
+            matches!(
+                &atom.payload,
+                DeliveryAtomPayload::ProjectWorkspace { event, .. } if event.inbox_changed
+            )
+        })
+    }
+
+    fn library_page_event(page_id: &str) -> CoreModuleEventPayload {
+        CoreModuleEventPayload::Library(LibraryEvent {
+            file_revisions: Default::default(),
+            kind: LibraryEventKind::LibraryChanged,
+            page_ids: vec![page_id.to_owned()],
+            database_ids: Vec::new(),
+            view_ids: Vec::new(),
+            parent_keys: Vec::new(),
+            page_file_manifest_invalidations: BTreeMap::new(),
+            page_file_body_usage_revisions: BTreeMap::new(),
+            page_file_content_invalidations: BTreeMap::new(),
+        })
+    }
+
+    fn document_update(document_id: &str) -> CoreModuleEventPayload {
+        CoreModuleEventPayload::OwnedDocument(
+            nodex_core_contracts::document::OwnedDocumentEvent::DocumentUpdated {
+                document_id: document_id.to_owned(),
+                generation: 1,
+                head_seq: 2,
+                update: Vec::new(),
+                page_file_body_usage_changed: false,
+                page_file_reference_change: None,
+            },
+        )
+    }
+
+    #[test]
+    fn edits_to_an_inbox_message_page_announce_an_inbox_change() {
+        let connection = compiler_store();
+        let compile_one =
+            |payload| compile(&connection, "library:test", None, payload).expect("compile atoms");
+        // Its body or title, its lifecycle, and its Database rows are all what the Inbox shows.
+        assert!(announces_inbox_change(&compile_one(document_update(
+            "document:message"
+        ))));
+        assert!(announces_inbox_change(&compile_one(library_page_event(
+            "page:message"
+        ))));
+        assert!(announces_inbox_change(&compile_one(
+            CoreModuleEventPayload::Database(DatabaseEvent {
+                kind: DatabaseEventKind::DatabaseChanged,
+                project_id: Some("project:test".to_owned()),
+                database_ids: Vec::new(),
+                data_source_ids: Vec::new(),
+                page_ids: vec!["page:message".to_owned()],
+                view_ids: Vec::new(),
+                personal_view_changes: Vec::new(),
+            })
+        )));
+    }
+
+    #[test]
+    fn edits_to_other_pages_leave_the_inbox_alone() {
+        let connection = compiler_store();
+        for payload in [
+            document_update("document:note"),
+            library_page_event("page:note"),
+        ] {
+            let atoms = compile(&connection, "library:test", None, payload).expect("compile atoms");
+            assert!(!announces_inbox_change(&atoms));
+        }
+    }
+
     #[test]
     fn library_file_events_require_each_file_without_widening_page_authority() {
         let atoms = compile_library(
@@ -1058,7 +1209,7 @@ mod tests {
 
     #[test]
     fn page_file_invalidations_are_redacted_to_each_page_atom() {
-        let connection = Connection::open_in_memory().expect("in-memory compiler store");
+        let connection = compiler_store();
         let atoms = compile(
             &connection,
             "library:test",
@@ -1128,7 +1279,7 @@ mod tests {
 
     #[test]
     fn page_file_placement_change_becomes_inventory_and_document_atoms() {
-        let connection = Connection::open_in_memory().expect("in-memory compiler store");
+        let connection = compiler_store();
         connection
             .execute_batch(
                 "CREATE TABLE page_read_model( \
@@ -1208,7 +1359,7 @@ mod tests {
 
     #[test]
     fn mixed_database_event_is_split_into_exact_resource_atoms() {
-        let connection = Connection::open_in_memory().expect("in-memory compiler store");
+        let connection = compiler_store();
         let atoms = compile(
             &connection,
             "library:test",
@@ -1237,7 +1388,7 @@ mod tests {
 
     #[test]
     fn personal_database_event_is_view_authorized_without_shared_projection_ids() {
-        let connection = Connection::open_in_memory().expect("in-memory compiler store");
+        let connection = compiler_store();
         let change = DatabasePersonalViewChange::OccurrenceDisclosure {
             view_id: "view:personal".to_owned(),
             target: DatabaseViewDisclosureTarget::Page {
@@ -1281,7 +1432,7 @@ mod tests {
 
     #[test]
     fn canvas_atom_declares_both_document_and_canvas_authority() {
-        let connection = Connection::open_in_memory().expect("in-memory compiler store");
+        let connection = compiler_store();
         connection
             .execute_batch(
                 "CREATE TABLE blocks(id TEXT PRIMARY KEY, type TEXT NOT NULL);

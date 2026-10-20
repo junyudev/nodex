@@ -41,7 +41,9 @@ intents, and selection.
 - A message sent to a Project's Inbox becomes a Page in that Project's Database,
   in Triage, with the Project's Page key. It is on the Project's Board at once.
 - The whole message becomes the Page body, line for line, and the stream bubble
-  shows exactly that body. The Page title is only a label for Board, List,
+  shows exactly that body. An edit made in the Page, by the user or an Agent,
+  shows in the stream as it lands, as does a rename, move or deletion made
+  anywhere else. The Page title is only a label for Board, List,
   search, tabs, and new chats. The stream does not show it; `Open page` in the
   message menu opens the Page.
 - A sender may give the title. Otherwise Core labels the Page with a provisional

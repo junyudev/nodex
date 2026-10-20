@@ -15,7 +15,7 @@ import type {
   UpdateInboxSettingsInput,
 } from "../../../shared/inbox";
 import { DEFAULT_INBOX_SETTINGS, inboxScopeKey } from "../../../shared/inbox";
-import { subscribeInboxChanges, subscribeLibraryChanges } from "@/lib/api";
+import { subscribeInboxChanges } from "@/lib/api";
 import {
   readInboxCounts,
   readInboxChatTargets,
@@ -31,16 +31,28 @@ const INBOX_WINDOW_SIZE = 50;
 export const invalidateInbox = (queryClient: QueryClient) =>
   queryClient.invalidateQueries({ queryKey: queryKeys.inbox.all() });
 
-/** Inbox truth changes through Core events, chat activity, and edits to message Pages. */
+/** A burst of changes, such as typing in a message's Page, refreshes the Inbox once per window. */
+const INBOX_INVALIDATION_COALESCE_MS = 120;
+
+/**
+ * Keeps every Inbox query in the window fresh. Core announces each change to what the Inbox
+ * shows: its own operations, and edits anywhere to a message Page's body, title, lifecycle or
+ * Database rows; Main adds the dispatched chats' activity. The workbench owns the one
+ * subscription per window.
+ */
 export function useInboxInvalidation(): void {
   const queryClient = useQueryClient();
   useEffect(() => {
-    const invalidate = () => void invalidateInbox(queryClient);
-    const unsubscribeInbox = subscribeInboxChanges(invalidate);
-    const unsubscribeLibrary = subscribeLibraryChanges(invalidate);
+    let pending: ReturnType<typeof setTimeout> | null = null;
+    const unsubscribe = subscribeInboxChanges(() => {
+      pending ??= setTimeout(() => {
+        pending = null;
+        void invalidateInbox(queryClient);
+      }, INBOX_INVALIDATION_COALESCE_MS);
+    });
     return () => {
-      unsubscribeInbox();
-      unsubscribeLibrary();
+      unsubscribe();
+      if (pending !== null) clearTimeout(pending);
     };
   }, [queryClient]);
 }

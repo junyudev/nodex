@@ -51,12 +51,7 @@ import {
 import { InboxTriage } from "./inbox-triage";
 import { useInboxCapture } from "./use-inbox-capture";
 import { useInboxActions } from "./use-inbox-actions";
-import {
-  useInboxInvalidation,
-  useInboxSettings,
-  useInboxStream,
-  useInboxSummary,
-} from "./use-inbox";
+import { useInboxSettings, useInboxStream, useInboxSummary } from "./use-inbox";
 
 const STICK_TO_BOTTOM_PX = 160;
 
@@ -248,7 +243,6 @@ export function InboxRoute({
   onOpenSettings,
   visible = true,
 }: InboxRouteProps) {
-  useInboxInvalidation();
   const inboxProjectId = inboxScopeProjectId(scope);
   const projectName = inboxProjectId
     ? (projects.find((project) => project.id === inboxProjectId)?.name ?? "this Project")

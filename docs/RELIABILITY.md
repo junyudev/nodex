@@ -418,6 +418,16 @@ an uncertain result remains awaiting confirmation instead of being blindly
 resubmitted. Inbox deletion removes unsubmitted snapshots but does not recall
 messages already accepted by a chat.
 
+### Inbox freshness
+
+The Inbox stream is a Core read model over Inbox entries and their message Pages.
+Core announces an Inbox change with every commit that touches what the stream
+shows: its own Inbox operations, and any Module's commit to a message Page's
+document, title, lifecycle or Database rows. Main adds the dispatched chats'
+activity. Each window holds one subscription to that announcement and refreshes
+its Inbox queries once per burst of changes; renderers do not subscribe to Page,
+Library or Database streams to guess what changed in the Inbox.
+
 ### Explicit remote Codex conversations
 
 For an explicitly attached remote conversation, the app-server endpoint generation
