@@ -1,7 +1,7 @@
 # NFM Editor Attachment Chip Behavior
 
 Status: Active
-Last Updated: 2026-09-05
+Last Updated: 2026-10-20
 
 This document describes the current pasted-attachment behavior inside the NFM / BlockNote editor.
 
@@ -376,19 +376,22 @@ Linked attachment:
 
 ## Preview Rules
 
-Preview loading follows the attachment resource identity, not the mounted
-popover content. Hover, keyboard focus, or opening the popover may start the
-bounded read. The result remains available while that attachment chip stays
-mounted, so a metadata-only label refresh or closing and reopening the popover
-does not restart the read. A change to source, owner authority, File manifest
-revision, kind, or preview-relevant MIME invalidates the result, and an older
-in-flight result cannot replace the new resource.
+Opening the popover activates its preview read; hover and keyboard focus only
+show attachment metadata. Library File previews retain their loaded content or
+failure while open. Metadata-only label refreshes reuse that result; closing
+releases the preview's content, and reopening reads again unless another open
+preview still retains the same File. Managed-asset previews retain their loaded
+result while the attachment chip stays mounted. A change to source, owner
+authority, File version, kind, or
+preview-relevant MIME invalidates the result, and an older in-flight result
+cannot replace the new resource.
 
 A previewable attachment opens directly into either its retained preview or a
 visible loading state. It never renders an empty preview container between
 those states. A failed read presents `Preview unavailable.` while unsupported
-formats continue to use the truthful no-preview state. Closing and reopening a
-failed preview retries the same resource.
+formats continue to use the truthful no-preview state. Closing the last open
+preview releases a failed Library File read so a later opening retries it.
+Failed managed-asset previews retry when reopened.
 
 ### Saved text
 

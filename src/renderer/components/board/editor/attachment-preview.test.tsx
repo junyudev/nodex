@@ -1,7 +1,9 @@
 import { act, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, test, vi } from "vite-plus/test";
+import { StrictMode } from "react";
 
 import { render } from "@/test/dom";
+import * as assets from "@/lib/assets";
 import { FileReadCache } from "@/lib/file-read-cache";
 import { useAttachmentPreview } from "./attachment-preview";
 import { createFilePlacementRuntime, type FilePlacementRuntime } from "./file-runtime";
@@ -49,12 +51,14 @@ function PreviewHarness({
   source,
   runtime,
   mimeType = "application/json",
+  active = true,
 }: {
   readonly source: string;
-  readonly runtime: FilePlacementRuntime;
+  readonly runtime: FilePlacementRuntime | null;
   readonly mimeType?: string;
+  readonly active?: boolean;
 }) {
-  const { state } = useAttachmentPreview(
+  const state = useAttachmentPreview(
     {
       kind: "file",
       mode: "materialized",
@@ -62,7 +66,7 @@ function PreviewHarness({
       mimeType,
     },
     runtime,
-    true,
+    active,
   );
   if (state.status !== "ready") return <div>{state.status}</div>;
   if (state.preview.type !== "text") return <div>folder</div>;
@@ -75,6 +79,39 @@ function PreviewHarness({
 }
 
 describe("attachment preview lifecycle", () => {
+  test("retains a completed managed preview across reopen under StrictMode", async () => {
+    const read = vi.spyOn(assets, "readManagedAssetPreview").mockResolvedValue({
+      kind: "text",
+      content: "saved preview",
+      truncated: false,
+    });
+    const view = render(
+      <StrictMode>
+        <PreviewHarness source="nodex://assets/asset-1" runtime={null} />
+      </StrictMode>,
+    );
+    try {
+      await view.findByText("saved preview");
+      const completedReadCount = read.mock.calls.length;
+
+      view.rerender(
+        <StrictMode>
+          <PreviewHarness source="nodex://assets/asset-1" runtime={null} active={false} />
+        </StrictMode>,
+      );
+      view.rerender(
+        <StrictMode>
+          <PreviewHarness source="nodex://assets/asset-1" runtime={null} />
+        </StrictMode>,
+      );
+      expect(view.getByText("saved preview")).toBeTruthy();
+      expect(read).toHaveBeenCalledTimes(completedReadCount);
+    } finally {
+      view.unmount();
+      read.mockRestore();
+    }
+  });
+
   test("ignores a stale File response after the attachment identity changes", async () => {
     const firstRead = deferred<Awaited<ReturnType<FilePlacementRuntime["read"]>>>();
     const secondRead = deferred<Awaited<ReturnType<FilePlacementRuntime["read"]>>>();
