@@ -1,0 +1,63 @@
+src/renderer/components/workbench/use-workbench-route-surfaces.test.tsx
+  s_b96f46f7c6bc62::t_4fc40f2dfaf8de 84,86
+src/renderer/components/workbench/workbench-settings-route-shell.loading.test.tsx
+  s_b96f46f7c6bc62::t_bedfbe191296fe 1,8,18,30,37-44,83-108,120,130
+  s_b96f46f7c6bc62::t_f06ed5886696be 2-7,9-17,19-29,31-36,45-82,109-119,121-129,131-173
+src/renderer/components/workbench/backups-settings-page.tsx
+  s_b96f46f7c6bc62::t_9e4e1684b3de83 1-25
+src/renderer/components/workbench/workbench-settings-route-shell.tsx
+  s_b96f46f7c6bc62::t_cdfc8043757b15 1-2,10,37-39,75-92,283-291,293-361
+src/renderer/components/workbench/workbench-settings-overlay.licenses.test.tsx
+  s_b96f46f7c6bc62::t_e9e92745665d6b 8,122-123,126,129,140,142,151
+src/renderer/components/workbench/use-workbench-route-surfaces.tsx
+  s_b96f46f7c6bc62::t_4fc40f2dfaf8de 3
+docs/product-specs/settings-route-behavior.md
+  s_b96f46f7c6bc62::t_4fc40f2dfaf8de 11-18
+src/renderer/components/workbench/workbench-settings-section-pages.loading.test.tsx
+  s_b96f46f7c6bc62::t_ba9e170961d6b2 1-78
+src/renderer/components/workbench/backup-settings-control.tsx
+  s_b96f46f7c6bc62::t_a8e831492bce39 1-330,332-637
+  s_b96f46f7c6bc62::t_13c8d9a1522fbe 331
+src/renderer/components/workbench/workbench-settings-overlay.service-tier.test.tsx
+  s_b96f46f7c6bc62::t_e9e92745665d6b 4,145,147,153-156,162-165,183,185
+src/renderer/components/workbench/agent-settings-page.tsx
+  s_b96f46f7c6bc62::t_ca52bbb0523edb 1-28
+src/renderer/components/workbench/appearance-settings-page.tsx
+  s_b96f46f7c6bc62::t_b13584dbdf7c51 29
+src/renderer/components/workbench/general-settings-page.tsx
+  s_b96f46f7c6bc62::t_8b6648e0289ece 1-178
+src/renderer/components/workbench/git-settings-page.tsx
+  s_b96f46f7c6bc62::t_1b6c29ea28ba32 1-195
+src/renderer/components/workbench/local-environments-settings-section-page.tsx
+  s_b96f46f7c6bc62::t_1ff9b56508fd23 1-29
+src/renderer/components/workbench/page-settings-page.tsx
+  s_b96f46f7c6bc62::t_e55b820461bb6e 1-28
+src/renderer/components/workbench/workbench-settings-controls.tsx
+  s_b96f46f7c6bc62::t_701438a6852810 1-1281
+src/renderer/components/workbench/workbench-settings-overlay.backups.test.tsx
+  s_b96f46f7c6bc62::t_85015642d15348 2,5,244,246,259-262,278-281,349,351,358-361,423,425,438-441,457-460,524,526,533-536,589,591,722-727,806,808-814,820-823
+src/renderer/components/workbench/workbench-settings-overlay.notifications.test.tsx
+  s_b96f46f7c6bc62::t_0944b2861e18c0 10
+src/renderer/components/workbench/workbench-settings-section-pages.tsx
+  s_b96f46f7c6bc62::t_ddadbbf70cc5f3 1-2,4,6-55
+src/renderer/components/workbench/worktrees-settings-page.tsx
+  s_b96f46f7c6bc62::t_d068e3856a55ee 1-11
+src/renderer/features/dictation/voice-settings-page.tsx
+  s_b96f46f7c6bc62::t_d8160b6fb57534 21
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "60cb5ec9c6ddd4a9d9dfd28c2b89c8cca0f8909d",
+  "prompts": {},
+  "sessions": {
+    "s_b96f46f7c6bc62": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a15895-7724-74b3-a8ce-a0c0163c6ea2",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
