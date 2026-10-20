@@ -7,9 +7,10 @@ to satisfy this capability.
 
 `workspace-runtime.lock.json` pins the Apple silicon macOS Python archive, every
 transitive wheel, download sizes and SHA-256 digests. Stage an architecture with
-`vp run materialize:workspace-runtime:mac:arm64`. Downloads use the immutable artifact cache;
-validated files are extracted into a private staging directory and atomically replace
-`.generated/workspace-runtime/<arch>`. A staged manifest records the source lock digest
+`vp run materialize:workspace-runtime:mac:arm64`. Downloads and verified extracted
+bundles use the [shared third-party runtime cache](../../docs/development.md#machine-local-artifact-cache).
+Materialization atomically replaces `.generated/workspace-runtime/<arch>` with an
+independent copy, using copy-on-write where available. A staged manifest records the source lock digest
 and every regular file. Python file aliases are materialized as regular files, so the
 installation contains no symlink-dependent executable paths. Wheel command-line scripts
 are retained as package data; only Python imports and the reported interpreter are public.

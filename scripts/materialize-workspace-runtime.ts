@@ -2,7 +2,6 @@ import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
   chmodSync,
-  copyFileSync,
   cpSync,
   existsSync,
   lstatSync,
@@ -23,7 +22,14 @@ import {
   workspaceRuntimeManifestSchema,
 } from "../src/shared/workspace-dependency-runtime";
 import { readWorkspaceDependencyBundle } from "../src/main/platform/node/WorkspaceDependencyBundle";
-import { ensureImmutableArtifact, resolveImmutableArtifactPath } from "./immutable-artifact-cache";
+import {
+  cloneImmutableDirectory,
+  cloneImmutableFile,
+  ensureImmutableArtifact,
+  ensureImmutableDirectory,
+  resolveImmutableArtifactPath,
+  resolveImmutableDirectoryPath,
+} from "./immutable-artifact-cache";
 import { replaceOwnedDirectory } from "./replace-owned-directory";
 
 const assetSchema = z.strictObject({
@@ -92,16 +98,16 @@ function verifySourceLinks(root: string, directory = root): void {
   }
 }
 
-function copyRuntimeDirectory(source: string, destination: string): void {
-  mkdirSync(destination, { recursive: true });
+function materializeRuntimeAliases(source: string, destination: string): void {
   for (const entry of readdirSync(source, { withFileTypes: true })) {
     const from = path.join(source, entry.name);
     const to = path.join(destination, entry.name);
     if (entry.isDirectory()) {
-      copyRuntimeDirectory(from, to);
+      materializeRuntimeAliases(from, to);
       continue;
     }
-    copyFileSync(from, to);
+    if (!entry.isSymbolicLink()) continue;
+    cloneImmutableFile(from, to);
     chmodSync(to, statSync(from).mode & 0o777);
   }
 }
@@ -133,6 +139,7 @@ export async function materializeWorkspaceRuntime(options: {
   readonly outputPath: string;
   readonly projectRoot?: string;
   readonly lockPath?: string;
+  readonly cachePath?: string;
 }): Promise<void> {
   const repository = options.projectRoot ?? projectRoot;
   const lockPath =
@@ -140,20 +147,35 @@ export async function materializeWorkspaceRuntime(options: {
     path.join(repository, "resources/workspace-runtime/workspace-runtime.lock.json");
   const lock = workspaceRuntimeLockSchema.parse(JSON.parse(readFileSync(lockPath, "utf8")));
   const sourceLockSha256 = digest(lockPath);
+  const licenseRoot = path.join(repository, "resources/workspace-runtime/python-licenses");
+  const licenses = collectWorkspaceRuntimeArtifacts(licenseRoot);
   const output = path.resolve(options.outputPath);
-  const existing = await readWorkspaceDependencyBundle({
-    root: output,
-    platform: "darwin",
-    arch: options.targetArch,
-    node: { executable: "staging", version: "staging" },
-  });
-  if (
-    existing.status === "available" &&
-    existing.distributionId === lock.distributionId &&
-    JSON.parse(readFileSync(path.join(output, WORKSPACE_RUNTIME_MANIFEST), "utf8"))
-      .sourceLockSha256 === sourceLockSha256
-  )
+  const validate = async (root: string): Promise<void> => {
+    const existing = await readWorkspaceDependencyBundle({
+      root,
+      platform: "darwin",
+      arch: options.targetArch,
+      node: { executable: "staging", version: "staging" },
+    });
+    if (existing.status !== "available" || existing.distributionId !== lock.distributionId)
+      throw new Error("Invalid workspace dependency runtime");
+    const manifest = workspaceRuntimeManifestSchema.parse(
+      JSON.parse(readFileSync(path.join(root, WORKSPACE_RUNTIME_MANIFEST), "utf8")),
+    );
+    if (manifest.sourceLockSha256 !== sourceLockSha256)
+      throw new Error("Workspace dependency runtime does not match the source lock");
+    const installedLicenses = manifest.artifacts
+      .filter((artifact) => artifact.path.startsWith("licenses/python/"))
+      .map((artifact) => ({ ...artifact, path: artifact.path.slice("licenses/python/".length) }));
+    if (JSON.stringify(installedLicenses) !== JSON.stringify(licenses))
+      throw new Error("Workspace dependency runtime licenses do not match the committed notices");
+  };
+  try {
+    await validate(output);
     return;
+  } catch {
+    // Replace only this worktree's missing or stale output after verifying the shared source.
+  }
   const target = lock.targets[options.targetArch];
   const download = async (asset: z.infer<typeof assetSchema>) => {
     const destinationPath = resolveImmutableArtifactPath({
@@ -161,6 +183,7 @@ export async function materializeWorkspaceRuntime(options: {
       projectRoot: repository,
       assetName: asset.name,
       archiveSha256: asset.sha256,
+      cachePath: options.cachePath,
     });
     await ensureImmutableArtifact({
       destinationPath,
@@ -174,44 +197,69 @@ export async function materializeWorkspaceRuntime(options: {
     });
     return destinationPath;
   };
-  const pythonArchive = await download(target.python);
-  const wheels: string[] = [];
-  for (const wheel of target.wheels) wheels.push(await download(wheel));
-  mkdirSync(path.dirname(output), { recursive: true });
-  const staging = mkdtempSync(path.join(path.dirname(output), ".workspace-runtime-"));
-  try {
-    const source = path.join(staging, "source");
-    const bundle = path.join(staging, "bundle");
-    unpack(pythonArchive, source);
-    verifySourceLinks(source);
-    copyRuntimeDirectory(source, bundle);
-    const sitePackages = "python/lib/python3.13/site-packages";
-    for (const wheel of wheels) unpack(wheel, path.join(bundle, sitePackages));
-    cpSync(
-      path.join(repository, "resources/workspace-runtime/python-licenses"),
-      path.join(bundle, "licenses/python"),
-      { recursive: true },
-    );
-    const manifest = workspaceRuntimeManifestSchema.parse({
-      schemaVersion: 1,
-      targetPlatform: "darwin",
-      targetArch: options.targetArch,
-      distributionId: lock.distributionId,
-      sourceLockSha256,
-      pythonVersion: lock.pythonVersion,
-      pythonExecutable: "python/bin/python3.13",
-      pythonSitePackages: sitePackages,
-      libraries: target.wheels.map((wheel) => ({ name: wheel.package, version: wheel.version })),
-      artifacts: collectWorkspaceRuntimeArtifacts(bundle),
-    });
-    writeFileSync(
-      path.join(bundle, WORKSPACE_RUNTIME_MANIFEST),
-      `${JSON.stringify(manifest, null, 2)}\n`,
-    );
-    replaceOwnedDirectory(bundle, output);
-  } finally {
-    rmSync(staging, { recursive: true, force: true });
-  }
+  const extractionKey = createHash("sha256")
+    .update(JSON.stringify({ sourceLockSha256, licenses, targetArch: options.targetArch }))
+    .digest("hex");
+  await ensureImmutableDirectory(
+    {
+      destinationPath: resolveImmutableDirectoryPath({
+        family: "workspace-runtime",
+        projectRoot: repository,
+        cachePath: options.cachePath,
+        archiveSha256: extractionKey,
+        directoryName: "bundle-v1",
+      }),
+      label: "Workspace dependency runtime",
+      generate: async (bundle) => {
+        const pythonArchive = await download(target.python);
+        const wheels: string[] = [];
+        for (const wheel of target.wheels) wheels.push(await download(wheel));
+        const source = mkdtempSync(path.join(path.dirname(bundle), ".python-source-"));
+        try {
+          unpack(pythonArchive, source);
+          verifySourceLinks(realpathSync(source));
+          cloneImmutableDirectory(source, bundle);
+          materializeRuntimeAliases(source, bundle);
+          const sitePackages = "python/lib/python3.13/site-packages";
+          for (const wheel of wheels) unpack(wheel, path.join(bundle, sitePackages));
+          cpSync(licenseRoot, path.join(bundle, "licenses/python"), { recursive: true });
+          const manifest = workspaceRuntimeManifestSchema.parse({
+            schemaVersion: 1,
+            targetPlatform: "darwin",
+            targetArch: options.targetArch,
+            distributionId: lock.distributionId,
+            sourceLockSha256,
+            pythonVersion: lock.pythonVersion,
+            pythonExecutable: "python/bin/python3.13",
+            pythonSitePackages: sitePackages,
+            libraries: target.wheels.map((wheel) => ({
+              name: wheel.package,
+              version: wheel.version,
+            })),
+            artifacts: collectWorkspaceRuntimeArtifacts(bundle),
+          });
+          writeFileSync(
+            path.join(bundle, WORKSPACE_RUNTIME_MANIFEST),
+            `${JSON.stringify(manifest, null, 2)}\n`,
+          );
+        } finally {
+          rmSync(source, { recursive: true, force: true });
+        }
+      },
+      validate,
+    },
+    (bundle) => {
+      mkdirSync(path.dirname(output), { recursive: true });
+      const staging = mkdtempSync(path.join(path.dirname(output), ".workspace-runtime-"));
+      try {
+        const localBundle = path.join(staging, "bundle");
+        cloneImmutableDirectory(bundle, localBundle);
+        replaceOwnedDirectory(localBundle, output);
+      } finally {
+        rmSync(staging, { recursive: true, force: true });
+      }
+    },
+  );
 }
 
 async function main(): Promise<void> {

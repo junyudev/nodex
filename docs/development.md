@@ -32,26 +32,31 @@ git -C "$HOME/repo/nodex" worktree add -b codex/board-drag "$HOME/repo/nodex/.ag
 
 ### Machine-local artifact cache
 
-Pinned Browser, Agent, and Sparkle archives are downloaded into
-`<worktree>/cache.local/`. Each archive is addressed by its locked SHA-256,
-verified before use, and published atomically under a cross-process download
-lock. Extracted runtimes, native builds, and other source-derived outputs remain
-isolated under each worktree's `.generated/` directory.
+Pinned Browser, Agent, Sparkle, and workspace dependency archives automatically
+use the Git primary checkout's `cache.local/`, including when invoked from a linked
+worktree. No worktree symlink is needed. Source directories outside a Git checkout
+use their own `cache.local/`. Materializers that accept `--cache` use it as that
+runtime family's cache directory.
+
+Archives are addressed by their locked SHA-256. Verified extracted third-party
+trees are also cached by content identity and extraction recipe, so equal inputs
+across worktrees download and extract once. Cross-process locks, verification,
+and atomic publication protect both cache layers. Corrupt entries are rebuilt;
+different pinned versions can coexist.
+
+Materialization creates independent outputs under each worktree's `.generated/`.
+Files use copy-on-write clones where the filesystem supports them, with regular
+copies as a fallback. Editing, signing, or deleting a worktree's runtime cannot
+change the shared cache or another worktree's files. Core and native bridge builds,
+`node_modules`, Rust `target`, Profiles, and other source-derived outputs remain
+isolated per worktree.
 
 For the shared cache location and task slug, follow
 [Worktrees and local artifacts](../AGENTS.md#worktrees-and-local-artifacts).
-Keep the real cache in the primary checkout. From a new task worktree whose
-`cache.local` does not already exist, link it to that shared cache:
-
-```bash
-ln -s "$HOME/repo/nodex/cache.local" cache.local
-```
-
-The `*.local` ignore rule excludes both the real directory and these links from
-Git. The cache contains no source of truth or credentials and may be deleted at
-any time; the next materialization verifies or downloads the required archives
-again. Do not place `.generated` outputs, test Profiles, logs, or release
-artifacts in `cache.local`.
+The `*.local` ignore rule excludes the cache from Git. It contains no credentials
+and may be deleted at any time; future materialization verifies or downloads the
+required archives and regenerates extracted entries. Keep Profiles, logs,
+source-derived builds, and release artifacts in their designated directories.
 
 Start the desktop app from the task's worktree with an absolute home in the
 primary checkout. For example, a `board-drag` task can use:

@@ -1,13 +1,22 @@
-import { randomUUID } from "node:crypto";
+import { execFileSync } from "node:child_process";
+import { createHash, randomUUID } from "node:crypto";
 import {
+  closeSync,
+  constants,
+  copyFileSync,
+  cpSync,
   createWriteStream,
   existsSync,
   lstatSync,
   mkdirSync,
+  openSync,
   readFileSync,
+  readSync,
   readdirSync,
+  readlinkSync,
   renameSync,
   rmSync,
+  statSync,
   writeFileSync,
 } from "node:fs";
 import path from "node:path";
@@ -36,6 +45,18 @@ export interface ImmutableArtifactPathInput {
   readonly projectRoot: string;
 }
 
+export interface ImmutableDirectoryPathInput extends Omit<ImmutableArtifactPathInput, "assetName"> {
+  /** Include the extraction/transformation recipe version in this name. */
+  readonly directoryName: string;
+}
+
+export interface EnsureImmutableDirectoryInput {
+  readonly destinationPath: string;
+  readonly generate: (temporaryDirectory: string) => Promise<void> | void;
+  readonly label: string;
+  readonly validate: (directoryPath: string) => Promise<void> | void;
+}
+
 export interface EnsureImmutableArtifactInput {
   readonly destinationPath: string;
   readonly expectedSize: number;
@@ -59,6 +80,8 @@ const LOCK_OWNER_FILENAME = "owner.json";
 const LOCK_MISSING_OWNER_GRACE_MS = 5_000;
 const LOCK_POLL_INTERVAL_MS = 100;
 const LOCK_WAIT_TIMEOUT_MS = 30 * 60 * 1_000;
+const DIRECTORY_CONTENT_NAME = "content";
+const DIRECTORY_INVENTORY_NAME = "inventory.json";
 
 function assertAssetName(assetName: string): void {
   if (
@@ -73,16 +96,43 @@ function assertAssetName(assetName: string): void {
   }
 }
 
-/** Resolves one verified archive beneath the machine-local cache family root. */
-export function resolveImmutableArtifactPath(input: ImmutableArtifactPathInput): string {
-  if (!SHA256_PATTERN.test(input.archiveSha256)) {
-    throw new Error(`Invalid immutable artifact SHA-256: ${input.archiveSha256}`);
+function resolveCacheFamilyRoot(
+  input: Pick<ImmutableArtifactPathInput, "cachePath" | "family" | "projectRoot">,
+): string {
+  if (input.cachePath !== undefined) return path.resolve(input.cachePath);
+  let checkoutRoot = path.resolve(input.projectRoot);
+  try {
+    // Git lists the primary checkout first; NUL records preserve spaces/newlines in paths.
+    const firstRecord = execFileSync("git", ["worktree", "list", "--porcelain", "-z"], {
+      cwd: checkoutRoot,
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+      timeout: 5_000,
+    }).split("\0")[0];
+    if (firstRecord?.startsWith("worktree ")) checkoutRoot = firstRecord.slice(9);
+  } catch {
+    // Source archives and disposable non-Git test roots keep a local cache.
   }
+  return path.join(checkoutRoot, LOCAL_ARTIFACT_CACHE_DIRECTORY, input.family);
+}
+
+function assertArchiveSha256(archiveSha256: string): void {
+  if (SHA256_PATTERN.test(archiveSha256)) return;
+  throw new Error(`Invalid immutable artifact SHA-256: ${archiveSha256}`);
+}
+
+/** Resolves a verified archive in the primary checkout's shared download cache. */
+export function resolveImmutableArtifactPath(input: ImmutableArtifactPathInput): string {
+  assertArchiveSha256(input.archiveSha256);
   assertAssetName(input.assetName);
-  const familyRoot = path.resolve(
-    input.cachePath ?? path.join(input.projectRoot, LOCAL_ARTIFACT_CACHE_DIRECTORY, input.family),
-  );
-  return path.join(familyRoot, input.archiveSha256, input.assetName);
+  return path.join(resolveCacheFamilyRoot(input), input.archiveSha256, input.assetName);
+}
+
+/** Resolves a sealed directory entry, namespaced by archive content and recipe version. */
+export function resolveImmutableDirectoryPath(input: ImmutableDirectoryPathInput): string {
+  assertArchiveSha256(input.archiveSha256);
+  assertAssetName(input.directoryName);
+  return path.join(resolveCacheFamilyRoot(input), input.archiveSha256, input.directoryName);
 }
 
 const isErrno = (error: unknown, code: string): error is NodeJS.ErrnoException =>
@@ -154,6 +204,7 @@ function validArtifactExists(
 }
 
 async function acquireCacheLock(input: {
+  readonly allowValidatedResult?: boolean;
   readonly destinationPath: string;
   readonly replaceInvalid: boolean;
   readonly validate: (archivePath: string) => void;
@@ -180,7 +231,10 @@ async function acquireCacheLock(input: {
       if (!isErrno(error, "EEXIST")) throw error;
     }
 
-    if (validArtifactExists(input.destinationPath, input.validate, input.replaceInvalid)) {
+    if (
+      input.allowValidatedResult !== false &&
+      validArtifactExists(input.destinationPath, input.validate, input.replaceInvalid)
+    ) {
       return null;
     }
     if (reclaimLock(lockPath)) continue;
@@ -196,8 +250,7 @@ function removeAbandonedPartialFiles(destinationPath: string): void {
   const prefix = `${path.basename(destinationPath)}.part-`;
   for (const entry of readdirSync(parent, { withFileTypes: true })) {
     if (!entry.name.startsWith(prefix)) continue;
-    if (!entry.isFile() && !entry.isSymbolicLink()) continue;
-    rmSync(path.join(parent, entry.name), { force: true });
+    rmSync(path.join(parent, entry.name), { force: true, recursive: true });
   }
 }
 
@@ -333,4 +386,246 @@ export async function ensureGeneratedImmutableArtifact(
     rmSync(temporaryPath, { force: true });
     lock.release();
   }
+}
+
+type DirectoryInventoryEntry =
+  | { readonly path: string; readonly type: "directory"; readonly mode: number }
+  | {
+      readonly path: string;
+      readonly type: "file";
+      readonly mode: number;
+      readonly size: number;
+      readonly sha256: string;
+    }
+  | { readonly path: string; readonly type: "symlink"; readonly target: string };
+
+function readFileSha256(filePath: string, buffer: Buffer): string {
+  const hash = createHash("sha256");
+  const file = openSync(filePath, "r");
+  try {
+    let size = readSync(file, buffer, 0, buffer.length, null);
+    while (size > 0) {
+      hash.update(buffer.subarray(0, size));
+      size = readSync(file, buffer, 0, buffer.length, null);
+    }
+    return hash.digest("hex");
+  } finally {
+    closeSync(file);
+  }
+}
+
+function assertInternalSymlink(root: string, relativePath: string, target: string): void {
+  const resolvedTarget = path.resolve(root, path.dirname(relativePath), target);
+  const relativeTarget = path.relative(root, resolvedTarget);
+  if (
+    path.isAbsolute(target) ||
+    path.isAbsolute(relativeTarget) ||
+    relativeTarget === ".." ||
+    relativeTarget.startsWith(`..${path.sep}`)
+  ) {
+    throw new Error(`Immutable directory symlink escapes its content root: ${relativePath}`);
+  }
+}
+
+function readDirectoryInventory(root: string): DirectoryInventoryEntry[] {
+  if (!lstatSync(root).isDirectory()) {
+    throw new Error(`Immutable directory content must be a real directory: ${root}`);
+  }
+  const entries: DirectoryInventoryEntry[] = [];
+  const buffer = Buffer.allocUnsafe(1024 * 1024);
+  const visit = (relativePath: string): void => {
+    const absolutePath = path.join(root, relativePath);
+    const stat = lstatSync(absolutePath);
+    if (stat.isSymbolicLink()) {
+      const target = readlinkSync(absolutePath);
+      assertInternalSymlink(root, relativePath, target);
+      entries.push({ path: relativePath, target, type: "symlink" });
+      return;
+    }
+    const mode = stat.mode & 0o777;
+    if (stat.isFile()) {
+      entries.push({
+        mode,
+        path: relativePath,
+        sha256: readFileSha256(absolutePath, buffer),
+        size: stat.size,
+        type: "file",
+      });
+      return;
+    }
+    if (!stat.isDirectory()) {
+      throw new Error(`Unsupported immutable directory entry: ${relativePath}`);
+    }
+    entries.push({ mode, path: relativePath, type: "directory" });
+    for (const name of readdirSync(absolutePath).sort()) visit(path.join(relativePath, name));
+  };
+  visit("");
+  return entries;
+}
+
+function directoryInventoryJson(contentPath: string): string {
+  return `${JSON.stringify({ version: 1, entries: readDirectoryInventory(contentPath) })}\n`;
+}
+
+async function validateImmutableDirectory(
+  entryPath: string,
+  validate: EnsureImmutableDirectoryInput["validate"],
+): Promise<void> {
+  if (!lstatSync(entryPath).isDirectory()) {
+    throw new Error(`Immutable directory cache entry must be a real directory: ${entryPath}`);
+  }
+  const contentPath = path.join(entryPath, DIRECTORY_CONTENT_NAME);
+  const actualInventory = directoryInventoryJson(contentPath);
+  const inventoryPath = path.join(entryPath, DIRECTORY_INVENTORY_NAME);
+  if (
+    !lstatSync(inventoryPath).isFile() ||
+    readFileSync(inventoryPath, "utf8") !== actualInventory
+  ) {
+    throw new Error(`Immutable directory cache inventory mismatch: ${entryPath}`);
+  }
+  await validate(contentPath);
+}
+
+async function validImmutableDirectoryExists(
+  destinationPath: string,
+  validate: EnsureImmutableDirectoryInput["validate"],
+): Promise<boolean> {
+  if (!existsSync(destinationPath)) return false;
+  try {
+    await validateImmutableDirectory(destinationPath, validate);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Publishes a sealed extraction once. Generation, validation and consumption receive its content
+ * directory; consume runs under the cache lock so a repair cannot remove files being cloned.
+ */
+export async function ensureImmutableDirectory(
+  input: EnsureImmutableDirectoryInput,
+  consume?: (directoryPath: string) => Promise<void> | void,
+): Promise<void> {
+  mkdirSync(path.dirname(input.destinationPath), { mode: 0o700, recursive: true });
+  const lock = await acquireCacheLock({
+    allowValidatedResult: false,
+    destinationPath: input.destinationPath,
+    replaceInvalid: true,
+    validate: () => {},
+  });
+  if (!lock)
+    throw new Error(`Failed to acquire immutable directory lock: ${input.destinationPath}`);
+
+  const temporaryPath = `${input.destinationPath}.part-${process.pid}-${randomUUID()}`;
+  try {
+    if (!(await validImmutableDirectoryExists(input.destinationPath, input.validate))) {
+      rmSync(input.destinationPath, { force: true, recursive: true });
+      removeAbandonedPartialFiles(input.destinationPath);
+      mkdirSync(temporaryPath, { mode: 0o700 });
+      const contentPath = path.join(temporaryPath, DIRECTORY_CONTENT_NAME);
+      await input.generate(contentPath);
+      await input.validate(contentPath);
+      writeFileSync(
+        path.join(temporaryPath, DIRECTORY_INVENTORY_NAME),
+        directoryInventoryJson(contentPath),
+        {
+          flag: "wx",
+          mode: 0o600,
+        },
+      );
+      renameSync(temporaryPath, input.destinationPath);
+    }
+    await consume?.(path.join(input.destinationPath, DIRECTORY_CONTENT_NAME));
+  } catch (error) {
+    throw new Error(`Failed to prepare ${input.label}: ${errorChain(error)}`, { cause: error });
+  } finally {
+    rmSync(temporaryPath, { force: true, recursive: true });
+    lock.release();
+  }
+}
+
+/** Makes independent files using a filesystem clone where available, with an ordinary-copy fallback. */
+export function cloneImmutableFile(sourcePath: string, destinationPath: string): void {
+  const source = statSync(sourcePath);
+  if (!source.isFile())
+    throw new Error(`Immutable file source must be a regular file: ${sourcePath}`);
+  try {
+    const destination = statSync(destinationPath);
+    if (source.dev === destination.dev && source.ino === destination.ino) {
+      throw new Error("Immutable file source and destination must be different files");
+    }
+  } catch (error) {
+    if (!isErrno(error, "ENOENT")) throw error;
+  }
+  mkdirSync(path.dirname(destinationPath), { recursive: true });
+  rmSync(destinationPath, { force: true });
+  if (process.platform === "darwin") {
+    // Node 24/libuv 1.51 returns ENOSYS for APFS FICLONE; cp -c uses native clonefile instead.
+    execFileSync("/bin/cp", ["-cp", path.resolve(sourcePath), path.resolve(destinationPath)]);
+    return;
+  }
+  copyFileSync(sourcePath, destinationPath, constants.COPYFILE_FICLONE);
+}
+
+function assertCloneDirectoryTree(root: string, relativePath = ""): void {
+  const absolutePath = path.join(root, relativePath);
+  const stat = lstatSync(absolutePath);
+  if (stat.isSymbolicLink()) {
+    assertInternalSymlink(root, relativePath, readlinkSync(absolutePath));
+    return;
+  }
+  if (stat.isFile()) return;
+  if (!stat.isDirectory())
+    throw new Error(`Unsupported immutable directory entry: ${absolutePath}`);
+  for (const name of readdirSync(absolutePath))
+    assertCloneDirectoryTree(root, path.join(relativePath, name));
+}
+
+function assertEmptyDirectoryDestination(sourcePath: string, destinationPath: string): void {
+  const relativeDestination = path.relative(
+    path.resolve(sourcePath),
+    path.resolve(destinationPath),
+  );
+  if (
+    relativeDestination === "" ||
+    (!path.isAbsolute(relativeDestination) &&
+      relativeDestination !== ".." &&
+      !relativeDestination.startsWith(`..${path.sep}`))
+  ) {
+    throw new Error("Immutable directory destination must be outside its source tree");
+  }
+  try {
+    if (!lstatSync(destinationPath).isDirectory() || readdirSync(destinationPath).length > 0) {
+      throw new Error(
+        `Immutable directory destination must be absent or empty: ${destinationPath}`,
+      );
+    }
+  } catch (error) {
+    if (!isErrno(error, "ENOENT")) throw error;
+  }
+}
+
+/** Clones a tree into an absent or empty directory, preserving modes and internal relative symlinks. */
+export function cloneImmutableDirectory(sourcePath: string, destinationPath: string): void {
+  if (!lstatSync(sourcePath).isDirectory()) {
+    throw new Error(`Immutable directory source must be a real directory: ${sourcePath}`);
+  }
+  assertEmptyDirectoryDestination(sourcePath, destinationPath);
+  assertCloneDirectoryTree(sourcePath);
+  mkdirSync(path.dirname(destinationPath), { recursive: true });
+  if (process.platform === "darwin") {
+    // One native tree clone avoids a subprocess for every runtime file; -c falls back across volumes.
+    execFileSync("/bin/cp", [
+      "-cRpP",
+      `${path.resolve(sourcePath)}${path.sep}`,
+      path.resolve(destinationPath),
+    ]);
+    return;
+  }
+  cpSync(sourcePath, destinationPath, {
+    mode: constants.COPYFILE_FICLONE,
+    recursive: true,
+    verbatimSymlinks: true,
+  });
 }

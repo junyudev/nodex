@@ -66,6 +66,7 @@ describe("materializeBrowserRuntime", () => {
       archivePath,
       lockPath,
       outputPath,
+      projectRootPath: root,
       targetArch: "arm64",
       targetPlatform: "darwin",
     });
@@ -77,17 +78,33 @@ describe("materializeBrowserRuntime", () => {
       archivePath: path.join(root, "missing.tar.gz"),
       lockPath,
       outputPath,
+      projectRootPath: root,
       targetArch: "arm64",
       targetPlatform: "darwin",
     });
     expect(fs.statSync(installedManifestPath).mtimeMs).toBe(firstModifiedAt);
 
+    // A new output can use the verified extraction even when the archive is unavailable.
+    const secondOutput = path.join(root, "second-output");
+    await materializeBrowserRuntime({
+      archivePath: path.join(root, "missing.tar.gz"),
+      lockPath,
+      outputPath: secondOutput,
+      projectRootPath: root,
+      targetArch: "arm64",
+      targetPlatform: "darwin",
+    });
     const clientPath = path.join(outputPath, manifest.browserPlugin.client);
+    const secondClientPath = path.join(secondOutput, manifest.browserPlugin.client);
+    expect(fs.statSync(clientPath).ino).not.toBe(fs.statSync(secondClientPath).ino);
+    const originalClient = fs.readFileSync(secondClientPath);
     fs.appendFileSync(clientPath, "tampered");
+    expect(fs.readFileSync(secondClientPath)).toEqual(originalClient);
     await materializeBrowserRuntime({
       archivePath,
       lockPath,
       outputPath,
+      projectRootPath: root,
       targetArch: "arm64",
       targetPlatform: "darwin",
     });

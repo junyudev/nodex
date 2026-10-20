@@ -15,7 +15,13 @@ import {
   type BrowserRuntimeTargetKey,
   type BrowserRuntimeTargetPlatform,
 } from "./browser-runtime-release-lock";
-import { ensureImmutableArtifact, resolveImmutableArtifactPath } from "./immutable-artifact-cache";
+import {
+  cloneImmutableDirectory,
+  ensureImmutableArtifact,
+  ensureImmutableDirectory,
+  resolveImmutableArtifactPath,
+  resolveImmutableDirectoryPath,
+} from "./immutable-artifact-cache";
 import { replaceOwnedDirectory } from "./replace-owned-directory";
 import {
   assertBrowserRuntimeSourceClosure,
@@ -222,23 +228,46 @@ export async function materializeBrowserRuntime(
         projectRoot,
       }),
   );
-  await ensureImmutableArtifact({
-    destinationPath: archivePath,
-    expectedSize: asset.archiveSize,
-    label: "Browser runtime",
-    replaceInvalid: options.archivePath === undefined,
-    url: asset.url,
-    validate: (candidatePath) => assertArchiveMatches(candidatePath, asset),
-  });
-
   mkdirSync(path.dirname(outputPath), { recursive: true });
   const extractionParent = mkdtempSync(
     path.join(path.dirname(outputPath), ".browser-runtime-materialize-"),
   );
   const extractedRoot = path.join(extractionParent, "source");
-  mkdirSync(extractedRoot);
   try {
-    execFileSync("tar", ["-xzf", archivePath, "-C", extractedRoot]);
+    await ensureImmutableDirectory(
+      {
+        destinationPath: resolveImmutableDirectoryPath({
+          archiveSha256: asset.archiveSha256,
+          cachePath: options.cachePath,
+          directoryName: "browser-source-v1",
+          family: "browser-runtime",
+          projectRoot,
+        }),
+        label: "Browser runtime source",
+        generate: async (sourceRoot) => {
+          await ensureImmutableArtifact({
+            destinationPath: archivePath,
+            expectedSize: asset.archiveSize,
+            label: "Browser runtime",
+            replaceInvalid: options.archivePath === undefined,
+            url: asset.url,
+            validate: (candidatePath) => assertArchiveMatches(candidatePath, asset),
+          });
+          mkdirSync(sourceRoot);
+          execFileSync("tar", ["-xzf", archivePath, "-C", sourceRoot]);
+        },
+        validate: (sourceRoot) => {
+          readVerifiedSource({
+            asset,
+            lock,
+            sourceRoot,
+            targetArch: options.targetArch,
+            targetPlatform: options.targetPlatform,
+          });
+        },
+      },
+      (sourceRoot) => cloneImmutableDirectory(sourceRoot, extractedRoot),
+    );
     const manifest = readVerifiedSource({
       asset,
       lock,

@@ -15,7 +15,13 @@ import {
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { ensureImmutableArtifact, resolveImmutableArtifactPath } from "./immutable-artifact-cache";
+import {
+  cloneImmutableDirectory,
+  ensureImmutableArtifact,
+  ensureImmutableDirectory,
+  resolveImmutableArtifactPath,
+  resolveImmutableDirectoryPath,
+} from "./immutable-artifact-cache";
 import { replaceOwnedDirectory } from "./replace-owned-directory";
 import {
   readSparkleReleaseLock,
@@ -222,68 +228,87 @@ export async function materializeSparkleRuntime(
     // A missing or stale owned output is replaced only after a fresh verified extraction.
   }
 
-  const archivePath = path.resolve(
-    options.archivePath ??
-      resolveImmutableArtifactPath({
-        archiveSha256: lock.archive.sha256,
-        assetName: lock.archive.name,
+  const extractionKey = createHash("sha256").update(JSON.stringify(lock)).digest("hex");
+  await ensureImmutableDirectory(
+    {
+      destinationPath: resolveImmutableDirectoryPath({
+        archiveSha256: extractionKey,
         cachePath: options.cachePath,
+        directoryName: "toolchain-v1",
         family: "sparkle",
         projectRoot,
       }),
+      label: "Sparkle toolchain",
+      generate: async (extractedRoot) => {
+        const archivePath = path.resolve(
+          options.archivePath ??
+            resolveImmutableArtifactPath({
+              archiveSha256: lock.archive.sha256,
+              assetName: lock.archive.name,
+              cachePath: options.cachePath,
+              family: "sparkle",
+              projectRoot,
+            }),
+        );
+        await ensureImmutableArtifact({
+          destinationPath: archivePath,
+          expectedSize: lock.archive.size,
+          label: "Sparkle",
+          replaceInvalid: options.archivePath === undefined,
+          url: lock.archive.url,
+          validate: (candidatePath) => assertArchiveMatches(candidatePath, lock),
+        });
+        mkdirSync(extractedRoot);
+        execFileSync("tar", [
+          "-xJf",
+          archivePath,
+          "-C",
+          extractedRoot,
+          "./Sparkle.framework",
+          "./bin/BinaryDelta",
+          "./bin/generate_appcast",
+          "./bin/generate_keys",
+          "./bin/sign_update",
+          "./LICENSE",
+        ]);
+        // Keep the committed notice and staged notice byte-identical without
+        // retaining upstream-only trailing spaces. The archive itself remains
+        // pinned and verified byte-for-byte before extraction.
+        normalizeLicenseWhitespace(path.join(extractedRoot, "LICENSE"));
+        for (const tool of REQUIRED_TOOLS) chmodSync(path.join(extractedRoot, "bin", tool), 0o755);
+        const manifest: SparkleToolchainManifest = {
+          archiveSha256: lock.archive.sha256,
+          frameworkBundleVersion: lock.framework.bundleVersion,
+          frameworkShortVersion: lock.framework.shortVersion,
+          schemaVersion: 1,
+          sourceCommit: lock.source.commit,
+          version: lock.version,
+        };
+        writeFileSync(
+          path.join(extractedRoot, "sparkle-toolchain.json"),
+          `${JSON.stringify(manifest, null, 2)}\n`,
+          "utf8",
+        );
+      },
+      validate: (candidatePath) => {
+        verifySparkleToolchain(candidatePath, lock);
+      },
+    },
+    (extractedRoot) => {
+      mkdirSync(path.dirname(outputPath), { recursive: true });
+      const extractionParent = mkdtempSync(
+        path.join(path.dirname(outputPath), ".sparkle-materialize-"),
+      );
+      try {
+        const toolchain = path.join(extractionParent, "toolchain");
+        cloneImmutableDirectory(extractedRoot, toolchain);
+        replaceOwnedDirectory(toolchain, outputPath);
+      } finally {
+        rmSync(extractionParent, { force: true, recursive: true });
+      }
+    },
   );
-  await ensureImmutableArtifact({
-    destinationPath: archivePath,
-    expectedSize: lock.archive.size,
-    label: "Sparkle",
-    replaceInvalid: options.archivePath === undefined,
-    url: lock.archive.url,
-    validate: (candidatePath) => assertArchiveMatches(candidatePath, lock),
-  });
-
-  mkdirSync(path.dirname(outputPath), { recursive: true });
-  const extractionParent = mkdtempSync(
-    path.join(path.dirname(outputPath), ".sparkle-materialize-"),
-  );
-  const extractedRoot = path.join(extractionParent, "toolchain");
-  mkdirSync(extractedRoot);
-  try {
-    execFileSync("tar", [
-      "-xJf",
-      archivePath,
-      "-C",
-      extractedRoot,
-      "./Sparkle.framework",
-      "./bin/BinaryDelta",
-      "./bin/generate_appcast",
-      "./bin/generate_keys",
-      "./bin/sign_update",
-      "./LICENSE",
-    ]);
-    // Keep the committed notice and staged notice byte-identical without
-    // retaining upstream-only trailing spaces. The archive itself remains
-    // pinned and verified byte-for-byte before extraction.
-    normalizeLicenseWhitespace(path.join(extractedRoot, "LICENSE"));
-    for (const tool of REQUIRED_TOOLS) chmodSync(path.join(extractedRoot, "bin", tool), 0o755);
-    const manifest: SparkleToolchainManifest = {
-      archiveSha256: lock.archive.sha256,
-      frameworkBundleVersion: lock.framework.bundleVersion,
-      frameworkShortVersion: lock.framework.shortVersion,
-      schemaVersion: 1,
-      sourceCommit: lock.source.commit,
-      version: lock.version,
-    };
-    writeFileSync(
-      path.join(extractedRoot, "sparkle-toolchain.json"),
-      `${JSON.stringify(manifest, null, 2)}\n`,
-      "utf8",
-    );
-    verifySparkleToolchain(extractedRoot, lock);
-    replaceOwnedDirectory(extractedRoot, outputPath);
-    return verifySparkleToolchain(outputPath, lock);
-  } finally {
-    rmSync(extractionParent, { force: true, recursive: true });
-  }
+  return verifySparkleToolchain(outputPath, lock);
 }
 
 function parseCliOptions(argv: readonly string[]): MaterializeSparkleOptions {

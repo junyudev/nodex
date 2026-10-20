@@ -332,17 +332,39 @@ describe("stage-codex-runtime", () => {
     expect(fetchArchive).toHaveBeenCalledTimes(2);
     expect(sha256(readFileSync(cachedArchivePath))).toBe(build.archiveSha256);
 
-    rmSync(input.outputPath, { force: true, recursive: true });
+    // Verified extracted content survives archive eviction and produces independent outputs.
+    rmSync(cachedArchivePath);
+    rmSync(path.join(cachePath, input.lock.upstream.checksumManifest.sha256), {
+      force: true,
+      recursive: true,
+    });
+    const secondOutputPath = path.join(input.root, "second-output");
     const unexpectedFetch = vi.fn(async () => {
-      throw new Error("verified cache should prevent a second download");
+      throw new Error("verified extraction should prevent a second download");
     });
     await stageCodexRuntime(
       stageOptions(input, {
         cachePath,
         fetch: unexpectedFetch,
+        outputPath: secondOutputPath,
         sourceRoot: undefined,
       }),
     );
+    expect(unexpectedFetch).not.toHaveBeenCalled();
+    const firstEntrypoint = path.join(input.outputPath, "agent-runtime/bin/codex");
+    const secondEntrypoint = path.join(secondOutputPath, "agent-runtime/bin/codex");
+    expect(statSync(firstEntrypoint).ino).not.toBe(statSync(secondEntrypoint).ino);
+    writeFileSync(firstEntrypoint, "tampered");
+    expect(readFileSync(secondEntrypoint, "utf8")).toBe("app-server");
+    await stageCodexRuntime(
+      stageOptions(input, {
+        cachePath,
+        fetch: unexpectedFetch,
+        reuseExisting: true,
+        sourceRoot: undefined,
+      }),
+    );
+    expect(readFileSync(firstEntrypoint, "utf8")).toBe("app-server");
     expect(unexpectedFetch).not.toHaveBeenCalled();
   });
 

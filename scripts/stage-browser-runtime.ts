@@ -16,6 +16,7 @@ import type {
 import { resolveBrowserRuntimeBundle } from "../src/main/codex/browser-runtime-bundle";
 import type { BrowserRuntimePlatformArtifactVerifier } from "../src/main/codex/browser-runtime-bundle";
 import { replaceOwnedDirectory } from "./replace-owned-directory";
+import { cloneImmutableDirectory } from "./immutable-artifact-cache";
 
 const EXECUTABLE_RUNTIME_MODE = 0o755;
 const REGULAR_RUNTIME_MODE = 0o644;
@@ -236,13 +237,10 @@ export async function stageBrowserRuntime(
 
   const temporaryParent = fs.mkdtempSync(path.join(runtimeRoot, ".browser-runtime-stage-"));
   const stagedRoot = path.join(temporaryParent, BROWSER_RUNTIME_BUNDLE_DIRECTORY);
-  fs.mkdirSync(stagedRoot);
   try {
+    cloneImmutableDirectory(sourceRoot, stagedRoot);
     for (const artifact of manifest.artifacts) {
-      const sourcePath = path.join(sourceRoot, ...artifact.path.split("/"));
       const destinationPath = path.join(stagedRoot, ...artifact.path.split("/"));
-      fs.mkdirSync(path.dirname(destinationPath), { recursive: true });
-      fs.copyFileSync(sourcePath, destinationPath);
       fs.chmodSync(
         destinationPath,
         artifact.executable ? EXECUTABLE_RUNTIME_MODE : REGULAR_RUNTIME_MODE,

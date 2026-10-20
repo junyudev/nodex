@@ -3,7 +3,6 @@ import { execFileSync } from "node:child_process";
 import {
   chmodSync,
   closeSync,
-  copyFileSync,
   existsSync,
   lstatSync,
   mkdirSync,
@@ -35,7 +34,14 @@ import {
   type AgentRuntimeTargetPlatform,
   type CodexAppServerReleaseLock,
 } from "./agent-runtime-release-lock";
-import { ensureImmutableArtifact, resolveImmutableArtifactPath } from "./immutable-artifact-cache";
+import {
+  cloneImmutableDirectory,
+  cloneImmutableFile,
+  ensureImmutableArtifact,
+  ensureImmutableDirectory,
+  resolveImmutableArtifactPath,
+  resolveImmutableDirectoryPath,
+} from "./immutable-artifact-cache";
 import { replaceOwnedDirectory } from "./replace-owned-directory";
 import { stageBrowserRuntime } from "./stage-browser-runtime";
 import { BROWSER_RUNTIME_BUNDLE_DIRECTORY } from "../src/shared/browser-runtime-metadata";
@@ -170,7 +176,7 @@ function copyRuntimeFile(sourcePath: string, destinationPath: string): void {
   assertRegularFile(sourcePath, relative(dirname(sourcePath), sourcePath));
   const sourceMode = statSync(sourcePath).mode;
   mkdirSync(dirname(destinationPath), { recursive: true });
-  copyFileSync(sourcePath, destinationPath);
+  cloneImmutableFile(sourcePath, destinationPath);
   chmodSync(destinationPath, canonicalRuntimeMode((sourceMode & 0o111) !== 0));
 }
 
@@ -456,83 +462,104 @@ async function resolveSourceRoot(input: {
     return { sourceRoot, cleanup: () => undefined };
   }
 
-  const build = input.lock.builds[input.target.targetKey];
-  const manifest = input.lock.upstream.checksumManifest;
-  const siblingManifestPath = input.archivePath
-    ? join(dirname(resolve(input.archivePath)), manifest.assetName)
-    : undefined;
-  const explicitManifestPath = input.checksumManifestPath
-    ? resolve(input.checksumManifestPath)
-    : siblingManifestPath && existsSync(siblingManifestPath)
-      ? siblingManifestPath
+  const generate = async (extractionRoot: string): Promise<void> => {
+    const build = input.lock.builds[input.target.targetKey];
+    const manifest = input.lock.upstream.checksumManifest;
+    const siblingManifestPath = input.archivePath
+      ? join(dirname(resolve(input.archivePath)), manifest.assetName)
       : undefined;
-  const manifestPath = resolve(
-    explicitManifestPath ??
-      resolveImmutableArtifactPath({
-        archiveSha256: manifest.sha256,
-        assetName: manifest.assetName,
-        cachePath: input.cachePath,
-        family: "agent-runtime",
-        projectRoot: input.projectRoot,
-      }),
-  );
-  if (!explicitManifestPath) {
-    await ensureImmutableArtifact({
-      destinationPath: manifestPath,
-      expectedSize: manifest.size,
-      fetch: input.fetch,
-      label: "Codex checksum manifest",
-      url: manifest.url,
-      validate: (candidatePath) =>
-        validateChecksumManifest({ build, lock: input.lock, manifestPath: candidatePath }),
-    });
-  }
-  validateChecksumManifest({ build, lock: input.lock, manifestPath });
-  const archivePath = resolve(
-    input.archivePath ??
-      resolveImmutableArtifactPath({
-        archiveSha256: build.archiveSha256,
-        assetName: build.assetName,
-        cachePath: input.cachePath,
-        family: "agent-runtime",
-        projectRoot: input.projectRoot,
-      }),
-  );
-  if (input.archivePath) {
-    validateArtifactIdentity({
-      expectedSha256: build.archiveSha256,
-      expectedSize: build.archiveSize,
-      filePath: archivePath,
-      label: "Codex app-server archive",
-    });
-  } else {
-    await ensureImmutableArtifact({
-      destinationPath: archivePath,
-      expectedSize: build.archiveSize,
-      fetch: input.fetch,
-      label: `Codex app-server ${input.target.targetTriple}`,
-      url: build.url,
-      validate: (candidatePath) =>
-        validateArtifactIdentity({
-          expectedSha256: build.archiveSha256,
-          expectedSize: build.archiveSize,
-          filePath: candidatePath,
-          label: "Codex app-server archive",
+    const explicitManifestPath = input.checksumManifestPath
+      ? resolve(input.checksumManifestPath)
+      : siblingManifestPath && existsSync(siblingManifestPath)
+        ? siblingManifestPath
+        : undefined;
+    const manifestPath = resolve(
+      explicitManifestPath ??
+        resolveImmutableArtifactPath({
+          archiveSha256: manifest.sha256,
+          assetName: manifest.assetName,
+          cachePath: input.cachePath,
+          family: "agent-runtime",
+          projectRoot: input.projectRoot,
         }),
-    });
-  }
-  validateArchivePaths(archivePath);
+    );
+    if (!explicitManifestPath) {
+      await ensureImmutableArtifact({
+        destinationPath: manifestPath,
+        expectedSize: manifest.size,
+        fetch: input.fetch,
+        label: "Codex checksum manifest",
+        url: manifest.url,
+        validate: (candidatePath) =>
+          validateChecksumManifest({ build, lock: input.lock, manifestPath: candidatePath }),
+      });
+    }
+    validateChecksumManifest({ build, lock: input.lock, manifestPath });
+    const archivePath = resolve(
+      input.archivePath ??
+        resolveImmutableArtifactPath({
+          archiveSha256: build.archiveSha256,
+          assetName: build.assetName,
+          cachePath: input.cachePath,
+          family: "agent-runtime",
+          projectRoot: input.projectRoot,
+        }),
+    );
+    if (input.archivePath) {
+      validateArtifactIdentity({
+        expectedSha256: build.archiveSha256,
+        expectedSize: build.archiveSize,
+        filePath: archivePath,
+        label: "Codex app-server archive",
+      });
+    } else {
+      await ensureImmutableArtifact({
+        destinationPath: archivePath,
+        expectedSize: build.archiveSize,
+        fetch: input.fetch,
+        label: `Codex app-server ${input.target.targetTriple}`,
+        url: build.url,
+        validate: (candidatePath) =>
+          validateArtifactIdentity({
+            expectedSha256: build.archiveSha256,
+            expectedSize: build.archiveSize,
+            filePath: candidatePath,
+            label: "Codex app-server archive",
+          }),
+      });
+    }
+    validateArchivePaths(archivePath);
 
-  const extractionRoot = mkdtempSync(join(input.extractionParent, "codex-app-server-extract-"));
-  try {
+    mkdirSync(extractionRoot);
     execFileSync(SYSTEM_TAR_PATH, ["-xzf", archivePath, "-C", extractionRoot]);
-    assertExactPackageFileClosure(extractionRoot, input.lock.requiredArtifacts);
+  };
+  const extractionParent = mkdtempSync(join(input.extractionParent, "codex-app-server-extract-"));
+  const extractionRoot = join(extractionParent, "source");
+  try {
+    await ensureImmutableDirectory(
+      {
+        destinationPath: resolveImmutableDirectoryPath({
+          archiveSha256: input.lock.builds[input.target.targetKey].archiveSha256,
+          cachePath: input.cachePath,
+          directoryName: "agent-source-v1",
+          family: "agent-runtime",
+          projectRoot: input.projectRoot,
+        }),
+        label: "Codex app-server source",
+        generate,
+        validate: (sourceRoot) => {
+          assertExactPackageFileClosure(sourceRoot, input.lock.requiredArtifacts);
+          readAndValidatePackageManifest(sourceRoot, input.lock, input.target.targetTriple);
+        },
+      },
+      (sourceRoot) => cloneImmutableDirectory(sourceRoot, extractionRoot),
+    );
     return {
       sourceRoot: extractionRoot,
-      cleanup: () => rmSync(extractionRoot, { recursive: true, force: true }),
+      cleanup: () => rmSync(extractionParent, { recursive: true, force: true }),
     };
   } catch (error) {
-    rmSync(extractionRoot, { recursive: true, force: true });
+    rmSync(extractionParent, { recursive: true, force: true });
     throw error;
   }
 }
@@ -634,10 +661,11 @@ async function stageCodexRuntimeClosure(
       target.targetTriple,
     );
 
+    cloneImmutableDirectory(resolvedSource.sourceRoot, tempRuntimeRoot);
     for (const artifactPath of lock.requiredArtifacts) {
       const sourcePath = join(resolvedSource.sourceRoot, ...artifactPath.split("/"));
       const destinationPath = join(tempRuntimeRoot, ...artifactPath.split("/"));
-      copyRuntimeFile(sourcePath, destinationPath);
+      chmodSync(destinationPath, canonicalRuntimeMode((statSync(sourcePath).mode & 0o111) !== 0));
     }
 
     const noticesRoot = join(tempRuntimeRoot, "third-party", "codex");
