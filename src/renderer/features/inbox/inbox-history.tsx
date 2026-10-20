@@ -35,7 +35,7 @@ function HistoryRow({
   const outcome = describeInboxOutcome(item);
   const target = outcome.open;
   return (
-    <li data-testid="inbox-history-row" className="flex flex-col">
+    <li data-testid="inbox-history-row" data-inbox-page-id={item.pageId} className="flex flex-col">
       <button
         type="button"
         aria-expanded={expanded}

@@ -1,6 +1,7 @@
 import { useLayoutEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import {
+  inboxScopeKey,
   inboxScopeProjectId,
   type InboxItem,
   type InboxScope,
@@ -52,8 +53,8 @@ import { InboxTriage } from "./inbox-triage";
 import { useInboxCapture } from "./use-inbox-capture";
 import { useInboxActions } from "./use-inbox-actions";
 import { useInboxSettings, useInboxStream, useInboxSummary } from "./use-inbox";
-
-const STICK_TO_BOTTOM_PX = 160;
+import { INBOX_STICK_TO_BOTTOM_PX } from "./inbox-viewport";
+import { initialInboxView, initiallyFollowsInbox, useInboxViewport } from "./use-inbox-viewport";
 
 const INBOX_VIEW_ICONS = { inbox: InboxIcon, processed: HistoryIcon } as const;
 
@@ -243,11 +244,14 @@ export function InboxRoute({
   onOpenSettings,
   visible = true,
 }: InboxRouteProps) {
+  const scopeKey = inboxScopeKey(scope);
   const inboxProjectId = inboxScopeProjectId(scope);
   const projectName = inboxProjectId
     ? (projects.find((project) => project.id === inboxProjectId)?.name ?? "this Project")
     : null;
-  const [view, setView] = useState<InboxWindowFilter>("inbox");
+  // Returning to an Inbox lands in the view, and at the place, the reader left.
+  const [view, setView] = useState<InboxWindowFilter>(() => initialInboxView(scopeKey));
+  const [followsInitially] = useState(() => initiallyFollowsInbox(scopeKey));
   const [selected, setSelected] = useState<ReadonlySet<string>>(() => new Set());
   const [manualDrafts, setManualDrafts] = useState<Readonly<Record<string, InboxDispatchDraft>>>(
     {},
@@ -266,7 +270,7 @@ export function InboxRoute({
     stream.items,
   );
   const scrollRef = useRef<HTMLDivElement>(null);
-  const stickToBottomRef = useRef(true);
+  const stickToBottomRef = useRef(followsInitially);
   const contentRef = useRef<HTMLDivElement>(null);
   // The Inbox reads like a conversation, oldest first; History reads newest first.
   const inboxItems = view === "inbox" ? stream.items.toReversed() : [];
@@ -277,6 +281,18 @@ export function InboxRoute({
     inboxItems.map((item) => [item.pageId, item.pageKey ?? "another message"]),
   );
   const selectedItems = inboxItems.filter((item) => selected.has(item.pageId));
+
+  const viewport = useInboxViewport({
+    scopeKey,
+    view,
+    scrollRef,
+    stickToBottomRef,
+    items: stream.items,
+    ready: !stream.isPending,
+    hasNextPage: stream.hasNextPage,
+    isFetchingNextPage: stream.isFetchingNextPage,
+    fetchNextPage: stream.fetchNextPage,
+  });
 
   const following = view === "inbox" && inboxItems.length > 0;
   // While the reader is at the bottom, the Inbox follows new content like a conversation.
@@ -295,11 +311,9 @@ export function InboxRoute({
   }, [following]);
 
   const changeView = (next: InboxWindowFilter) => {
-    stickToBottomRef.current = next === "inbox";
     setSelected(new Set());
     setBulkDraft(null);
     setView(next);
-    if (next === "processed") scrollRef.current?.scrollTo({ top: 0 });
   };
   const toggleSelected = (pageId: string) =>
     setSelected((current) => {
@@ -314,6 +328,7 @@ export function InboxRoute({
   };
   const send = async (intent: InboxSendInput) => {
     stickToBottomRef.current = true;
+    viewport.followLatest("inbox");
     if (view !== "inbox") changeView("inbox");
     return await actions.send(intent);
   };
@@ -450,10 +465,12 @@ export function InboxRoute({
         data-testid="inbox-stream"
         data-inbox-view={view}
         onScroll={(event) => {
+          viewport.onScroll();
           if (view !== "inbox") return;
           const element = event.currentTarget;
           stickToBottomRef.current =
-            element.scrollHeight - element.scrollTop - element.clientHeight < STICK_TO_BOTTOM_PX;
+            element.scrollHeight - element.scrollTop - element.clientHeight <
+            INBOX_STICK_TO_BOTTOM_PX;
         }}
         // Both gutters stay reserved, so a scrollbar appearing never nudges the stream sideways.
         className="flex min-h-0 flex-1 flex-col overflow-y-auto [scrollbar-gutter:stable_both-edges]"

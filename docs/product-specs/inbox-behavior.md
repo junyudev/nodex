@@ -109,6 +109,14 @@ handled. Failed or uncertain delivery and an undone move bring a message back to
 Inbox. Core applies the same membership to the stream windows and to every
 Inbox count.
 
+Returning to an Inbox, after switching tabs or relaunching, lands in the view the
+reader left and at their place in it. Each view keeps its own place: its newest
+messages if the reader was following them, otherwise the message that was at the
+top of the view, even when messages around it were handled or loaded meanwhile.
+A message further back than the first windows loads them to find it; one handled
+since opens the view at its newest messages. Sending a message always shows the
+newest.
+
 Each entry has a user-editable kind and a triage state.
 
 - **Kind:** `note`, `todo`, or `question`. A suggestion may propose a kind, and
