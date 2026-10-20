@@ -1,9 +1,7 @@
-// Pins git behaviour for every repository the suite creates, ahead of the
-// host's ~/.gitconfig. Git for Windows installs with core.autocrlf=true,
-// which checks committed LF files out as CRLF and breaks every byte-exact
-// content assertion; a signing key or a non-default init branch on the
-// developer's machine breaks fixtures the same way. Set as environment so
-// each git child the driver spawns sees it without touching the fixtures.
+// TEST_ENVIRONMENT excludes the host's global/system Git configuration. Pin
+// cross-platform fixture behaviour as well: CRLF conversion or filesystem mode
+// differences must not change byte-exact assertions. Environment entries reach
+// each git child the driver spawns without touching the fixtures.
 const entries: ReadonlyArray<readonly [key: string, value: string]> = [
   ["core.autocrlf", "false"],
   ["core.filemode", "false"],
