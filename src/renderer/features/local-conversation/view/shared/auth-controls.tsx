@@ -1,5 +1,6 @@
 import type { ReactElement } from "react";
 import { useForm, useStore } from "@tanstack/react-form";
+import type { PlanType } from "@nodex/codex-app-server-protocol";
 import { NodexPopover, NodexPopoverContent, NodexPopoverTrigger } from "@/components/ui/popover";
 import { handleFormSubmit } from "@/lib/forms";
 import type {
@@ -9,66 +10,85 @@ import type {
 } from "../../../../lib/types";
 import { RateLimitTooltipSection } from "./auth-rate-limits";
 
-export function renderConnectionAccountTooltipContent(
-  account: NonNullable<CodexAccountSnapshot["account"]>,
-  rateLimits: CodexAccountSnapshot["rateLimits"] | undefined,
-  options?: {
-    onSignOut?: () => void;
-    isSigningOutDisabled?: boolean;
-    rateLimitResetCredits?: CodexAccountSnapshot["rateLimitResetCredits"];
-    onConsumeRateLimitReset?: (
-      input: CodexRateLimitResetInput,
-    ) => Promise<CodexRateLimitResetResult>;
-  },
-) {
-  if (account.type === "apiKey") {
-    return (
-      <div className="flex w-60 flex-col gap-2 p-3">
-        <div className="flex flex-col gap-0.5">
-          <div className="text-xs text-(--foreground-tertiary)">Connected via</div>
-          <div className="text-sm font-medium text-(--foreground)">API key</div>
+const CHATGPT_PLAN_LABELS: Readonly<Record<PlanType, string | null>> = {
+  free: "Free",
+  go: "Go",
+  plus: "Plus",
+  pro: "Pro",
+  prolite: "Pro Lite",
+  promax: "Pro Max",
+  team: "Team",
+  business: "Business",
+  self_serve_business_prolite: "Business",
+  self_serve_business_usage_based: "Business",
+  enterprise: "Enterprise",
+  ent26: "Enterprise",
+  enterprise_cbp_automation: "Enterprise",
+  enterprise_cbp_usage_based: "Enterprise",
+  edu: "Edu",
+  edu_plus: "Edu Plus",
+  edu_pro: "Edu Pro",
+  unknown: null,
+};
+
+/** Names a ChatGPT plan for display, title-casing plans this build does not know yet. */
+function formatChatGptPlan(planType: string): string {
+  const known: Readonly<Record<string, string | null>> = CHATGPT_PLAN_LABELS;
+  const label = Object.hasOwn(known, planType)
+    ? known[planType]
+    : planType
+        .split("_")
+        .filter(Boolean)
+        .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+        .join(" ");
+  return label ? `ChatGPT ${label}` : "ChatGPT";
+}
+
+export function ConnectionAccountCard({
+  account,
+  rateLimits,
+  rateLimitResetCredits,
+  onConsumeRateLimitReset,
+  onSignOut,
+  isSigningOut = false,
+}: {
+  account: NonNullable<CodexAccountSnapshot["account"]>;
+  rateLimits: CodexAccountSnapshot["rateLimits"] | undefined;
+  rateLimitResetCredits?: CodexAccountSnapshot["rateLimitResetCredits"];
+  onConsumeRateLimitReset?: (input: CodexRateLimitResetInput) => Promise<CodexRateLimitResetResult>;
+  onSignOut?: () => void;
+  isSigningOut?: boolean;
+}) {
+  const [title, detail] =
+    account.type === "apiKey"
+      ? ["OpenAI API key", null]
+      : [account.email, formatChatGptPlan(account.planType)];
+
+  return (
+    <div className="flex w-64 flex-col">
+      <div className="flex items-center gap-2 py-2.5 pr-2 pl-3">
+        <div className="min-w-0 flex-1">
+          <div className="text-sm font-medium text-token-foreground">{title}</div>
+          {detail ? (
+            <div className="text-xs text-token-description-foreground">{detail}</div>
+          ) : null}
         </div>
-        <RateLimitTooltipSection
-          rateLimits={rateLimits}
-          quotaResetCredits={options?.rateLimitResetCredits}
-          onQuotaReset={options?.onConsumeRateLimitReset}
-        />
-        {options?.onSignOut && (
+        {onSignOut ? (
           <button
             type="button"
-            className="self-start text-xs text-(--foreground-secondary) hover:text-(--destructive) disabled:opacity-50"
-            onClick={options.onSignOut}
-            disabled={options.isSigningOutDisabled}
+            className="h-6 shrink-0 rounded-md px-1.5 text-xs text-token-text-secondary outline-none hover:bg-token-foreground/5 hover:text-token-foreground focus-visible:ring-2 focus-visible:ring-(--ring)/35 disabled:opacity-40"
+            onClick={onSignOut}
+            disabled={isSigningOut}
           >
             Sign out
           </button>
-        )}
-      </div>
-    );
-  }
-
-  return (
-    <div className="flex w-60 flex-col gap-2 p-3">
-      <div className="flex flex-col gap-0.5">
-        <div className="text-xs text-(--foreground-tertiary)">Connected as</div>
-        <div className="text-sm font-medium text-(--foreground)">{account.email}</div>
-        <div className="text-xs text-(--foreground-secondary)">ChatGPT {account.planType}</div>
+        ) : null}
       </div>
       <RateLimitTooltipSection
         rateLimits={rateLimits}
-        quotaResetCredits={options?.rateLimitResetCredits}
-        onQuotaReset={options?.onConsumeRateLimitReset}
+        quotaResetCredits={rateLimitResetCredits}
+        onQuotaReset={onConsumeRateLimitReset}
       />
-      {options?.onSignOut && (
-        <button
-          type="button"
-          className="self-start text-xs text-(--foreground-secondary) hover:text-(--destructive) disabled:opacity-50"
-          onClick={options.onSignOut}
-          disabled={options.isSigningOutDisabled}
-        >
-          Sign out
-        </button>
-      )}
     </div>
   );
 }

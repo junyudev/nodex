@@ -7,7 +7,7 @@ import { WorkbenchRailAccountControls } from "./workbench-rail-account-controls"
 
 const authenticatedAccount: CodexAccountSnapshot = {
   status: "ready",
-  account: { type: "chatgpt", email: "dev@example.com", planType: "Plus" },
+  account: { type: "chatgpt", email: "dev@example.com", planType: "plus" },
   requiresOpenAiAuth: false,
   pendingLogin: null,
   rateLimits: {
@@ -58,7 +58,7 @@ describe("WorkbenchRailAccountControls", () => {
       </NodexTooltipProvider>,
     );
 
-    const ring = view.getByRole("button", { name: "Usage remaining: 5h 82%, weekly 61%" });
+    const ring = view.getByRole("button", { name: "Usage remaining: 5-hour 82%, weekly 61%" });
     expect(Boolean(ring.querySelector('[data-rate-limit-ring="outer"]'))).toBe(true);
     expect(Boolean(ring.querySelector('[data-rate-limit-ring="inner"]'))).toBe(true);
     expect(textContent(view.container).includes("82% · 61%")).toBe(false);
@@ -85,16 +85,22 @@ describe("WorkbenchRailAccountControls", () => {
       </NodexTooltipProvider>,
     );
 
-    const ring = view.getByRole("button", { name: "Usage remaining: 5h 82%, weekly 61%" });
+    const ring = view.getByRole("button", { name: "Usage remaining: 5-hour 82%, weekly 61%" });
     fireEvent.focus(ring);
 
     await waitFor(() => {
       const bodyText = textContent(view.container.ownerDocument.body);
-      if (!bodyText.includes("dev@example.com") || !bodyText.includes("Usage remaining")) {
+      if (!bodyText.includes("dev@example.com") || !bodyText.includes("ChatGPT Plus")) {
         throw new Error(`Expected account tooltip details, saw: ${bodyText}`);
       }
       expect(refreshCount).toBe(1);
     });
+    const meters = view.getAllByRole("meter");
+    expect(meters.map((meter) => meter.getAttribute("aria-label"))).toEqual([
+      "5-hour usage remaining",
+      "Weekly usage remaining",
+    ]);
+    expect(meters.map((meter) => meter.getAttribute("aria-valuenow"))).toEqual(["82", "61"]);
 
     fireEvent.focus(ring);
     await waitFor(() => {
@@ -131,12 +137,11 @@ describe("WorkbenchRailAccountControls", () => {
     );
 
     fireEvent.focus(view.getByTestId("sidebar-account-rate-limit-ring"));
-    const disclosures = await view.findAllByRole("button", { name: "2 available resets" });
+    const disclosures = await view.findAllByRole("button", { name: "2 quota resets" });
     const disclosure = disclosures.at(-1);
     if (!disclosure) throw new Error("Expected quota-reset disclosure");
-    const rateLimitHeadings = await view.findAllByText("Usage remaining");
-    const rateLimitSection = rateLimitHeadings.at(-1)?.parentElement;
-    expect(rateLimitSection?.contains(disclosure)).toBe(true);
+    const rateLimitSections = await view.findAllByRole("region", { name: "Usage remaining" });
+    expect(rateLimitSections.at(-1)?.contains(disclosure)).toBe(true);
     expect(disclosure.getAttribute("aria-expanded")).toBe("false");
     expect(Boolean(view.queryByRole("button", { name: "Reset quota" }))).toBe(false);
 

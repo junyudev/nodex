@@ -1,4 +1,6 @@
 import { ChevronRightIcon } from "@/components/shared/icons";
+import { RotateCcw } from "@/components/shared/icons/generic-icons";
+import { cn } from "@/lib/utils";
 import { useId, useRef, useState } from "react";
 
 import type {
@@ -10,104 +12,82 @@ import type {
   CodexRateLimitsSnapshot,
 } from "../../../../lib/types";
 
-export interface RateLimitRingWindowView {
+/** One quota window, shared by the rail ring and the account card so their colors agree. */
+export interface RateLimitWindowView {
   label: string;
-  compactLabel: string;
-  ariaLabel: string;
   remainingPercent: number;
   windowDurationMins: number;
+  resetsAtLabel: string | null;
+  color: string;
 }
 
-export interface RateLimitRingViewModel {
-  outer: RateLimitRingWindowView | null;
-  inner: RateLimitRingWindowView | null;
+export interface RateLimitViewModel {
+  /** Shortest window first; at most two. */
+  windows: readonly RateLimitWindowView[];
+  outer: RateLimitWindowView | null;
+  inner: RateLimitWindowView | null;
   ariaLabel: string;
-  summaryLabel: string | null;
   hasLimits: boolean;
 }
+
+const MINUTES_PER_HOUR = 60;
+const MINUTES_PER_DAY = 24 * MINUTES_PER_HOUR;
+const MINUTES_PER_WEEK = 7 * MINUTES_PER_DAY;
+const MS_PER_DAY = MINUTES_PER_DAY * 60 * 1_000;
 
 export function formatRateLimitWindowLabel(windowDurationMins?: number): string | null {
   if (!windowDurationMins || windowDurationMins <= 0) return null;
 
-  const roundedMinutes = Math.round(windowDurationMins);
-  const minutesPerHour = 60;
-  const minutesPerDay = 24 * minutesPerHour;
-  const minutesPerWeek = 7 * minutesPerDay;
-
-  if (roundedMinutes >= minutesPerWeek) {
-    const weeks = Math.max(1, Math.round(roundedMinutes / minutesPerWeek));
-    return weeks === 1 ? "Weekly" : `${weeks}w`;
+  const minutes = Math.round(windowDurationMins);
+  if (minutes >= MINUTES_PER_WEEK) {
+    const weeks = Math.max(1, Math.round(minutes / MINUTES_PER_WEEK));
+    return weeks === 1 ? "Weekly" : `${weeks}-week`;
   }
-
-  if (roundedMinutes >= minutesPerDay) {
-    return `${Math.round(roundedMinutes / minutesPerDay)}d`;
+  if (minutes >= MINUTES_PER_DAY) {
+    const days = Math.round(minutes / MINUTES_PER_DAY);
+    return days === 1 ? "Daily" : `${days}-day`;
   }
-
-  if (roundedMinutes >= minutesPerHour) {
-    return `${Math.round(roundedMinutes / minutesPerHour)}h`;
-  }
-
-  return `${roundedMinutes}m`;
+  if (minutes >= MINUTES_PER_HOUR) return `${Math.round(minutes / MINUTES_PER_HOUR)}-hour`;
+  return `${minutes}-minute`;
 }
 
-export function formatRateLimitWindowCompactLabel(windowDurationMins?: number): string | null {
-  if (!windowDurationMins || windowDurationMins <= 0) return null;
-
-  const roundedMinutes = Math.round(windowDurationMins);
-  const minutesPerHour = 60;
-  const minutesPerDay = 24 * minutesPerHour;
-  const minutesPerWeek = 7 * minutesPerDay;
-
-  if (roundedMinutes >= minutesPerWeek) {
-    const weeks = Math.max(1, Math.round(roundedMinutes / minutesPerWeek));
-    return weeks === 1 ? "wk" : `${weeks}w`;
-  }
-
-  if (roundedMinutes >= minutesPerDay) {
-    return `${Math.round(roundedMinutes / minutesPerDay)}d`;
-  }
-
-  if (roundedMinutes >= minutesPerHour) {
-    return `${Math.round(roundedMinutes / minutesPerHour)}h`;
-  }
-
-  return `${roundedMinutes}m`;
-}
-
+/**
+ * Names a reset moment as precisely as it needs to be: a time today, a weekday and time within
+ * the coming week, otherwise a date.
+ */
 export function formatRateLimitResetLabel(
   resetsAt?: number,
   now: number = Date.now(),
+  locale?: string,
 ): string | null {
   if (!resetsAt) return null;
+  if (resetsAt <= now) return "now";
 
-  const msUntilReset = resetsAt - now;
-  if (msUntilReset <= 0) return "now";
-
-  const sixtyHoursMs = 60 * 60 * 60 * 1000;
-  if (msUntilReset < sixtyHoursMs) {
-    return new Intl.DateTimeFormat(undefined, {
-      hour: "numeric",
-      minute: "2-digit",
-    }).format(resetsAt);
+  const time = { hour: "numeric", minute: "2-digit" } as const;
+  if (new Date(resetsAt).toDateString() === new Date(now).toDateString()) {
+    return new Intl.DateTimeFormat(locale, time).format(resetsAt);
   }
-
-  return new Intl.DateTimeFormat(undefined, {
-    month: "short",
-    day: "numeric",
-  }).format(resetsAt);
+  if (resetsAt - now < 6 * MS_PER_DAY) {
+    return new Intl.DateTimeFormat(locale, { weekday: "short", ...time }).format(resetsAt);
+  }
+  return new Intl.DateTimeFormat(locale, { month: "short", day: "numeric" }).format(resetsAt);
 }
 
 export function formatQuotaResetCreditExpiration(
   expiresAt: number | null,
   locale?: string,
+  now: number = Date.now(),
 ): string {
   if (expiresAt === null) return "Doesn’t expire";
 
-  return new Intl.DateTimeFormat(locale, {
+  const expiresAtMs = expiresAt * 1_000;
+  const sameYear = new Date(expiresAtMs).getFullYear() === new Date(now).getFullYear();
+  const date = new Intl.DateTimeFormat(locale, {
     month: "short",
     day: "numeric",
-    year: "numeric",
-  }).format(expiresAt * 1_000);
+    ...(sameYear ? {} : { year: "numeric" }),
+  }).format(expiresAtMs);
+  return `Expires ${date}`;
 }
 
 export function findAvailableQuotaResetCredit(
@@ -117,94 +97,104 @@ export function findAvailableQuotaResetCredit(
 }
 
 export function formatQuotaResetAvailability(availableCount: number): string {
-  return availableCount === 1 ? "1 available reset" : `${availableCount} available resets`;
+  return availableCount === 1 ? "1 quota reset" : `${availableCount} quota resets`;
 }
 
 export function getRemainingRateLimitPercent(usedPercent: number): number {
   return Math.max(0, Math.min(100, Math.round(100 - usedPercent)));
 }
 
-function buildRateLimitRow(window: CodexRateLimitsSnapshot["primary"]) {
-  if (!window) return null;
-
-  const label = formatRateLimitWindowLabel(window.windowDurationMins);
-  if (!label) return null;
-
-  return {
-    label,
-    remainingPercent: getRemainingRateLimitPercent(window.usedPercent),
-    resetsAtLabel: formatRateLimitResetLabel(window.resetsAt),
-  };
+function resolveQuotaColor(remainingPercent: number, fallback: string): string {
+  if (remainingPercent <= 15) return "var(--red-text)";
+  if (remainingPercent <= 35) return "var(--yellow-text)";
+  return fallback;
 }
 
-function buildRateLimitSummaryPart(window: CodexRateLimitsSnapshot["primary"]): string | null {
-  if (!window) return null;
-  return `${getRemainingRateLimitPercent(window.usedPercent)}%`;
-}
-
-export function formatRateLimitSummary(
-  rateLimits: CodexAccountSnapshot["rateLimits"] | undefined,
-): string | null {
-  if (!rateLimits) return null;
-
-  const parts = [
-    buildRateLimitSummaryPart(rateLimits.primary),
-    buildRateLimitSummaryPart(rateLimits.secondary),
-  ].filter((part): part is string => part !== null);
-  if (parts.length === 0) return null;
-
-  return parts.join(" · ");
-}
-
-function formatRateLimitWindowAriaLabel(label: string): string {
-  if (label === "Weekly") return "weekly";
-  return label;
-}
-
-function buildRateLimitRingWindowView(
+function buildRateLimitWindowView(
   window: CodexRateLimitsSnapshot["primary"],
-): RateLimitRingWindowView | null {
-  if (!window?.windowDurationMins || window.windowDurationMins <= 0) return null;
-
-  const label = formatRateLimitWindowLabel(window.windowDurationMins);
-  const compactLabel = formatRateLimitWindowCompactLabel(window.windowDurationMins);
-  if (!label || !compactLabel) return null;
+  now: number,
+): Omit<RateLimitWindowView, "color"> | null {
+  const label = formatRateLimitWindowLabel(window?.windowDurationMins);
+  if (!window?.windowDurationMins || !label) return null;
 
   return {
     label,
-    compactLabel,
-    ariaLabel: formatRateLimitWindowAriaLabel(label),
     remainingPercent: getRemainingRateLimitPercent(window.usedPercent),
     windowDurationMins: window.windowDurationMins,
+    resetsAtLabel: formatRateLimitResetLabel(window.resetsAt, now),
   };
 }
 
-export function buildRateLimitRingViewModel(
+export function buildRateLimitViewModel(
   rateLimits: CodexAccountSnapshot["rateLimits"] | undefined,
-): RateLimitRingViewModel {
-  const windows = [
-    buildRateLimitRingWindowView(rateLimits?.primary),
-    buildRateLimitRingWindowView(rateLimits?.secondary),
+  now: number = Date.now(),
+): RateLimitViewModel {
+  const sorted = [
+    buildRateLimitWindowView(rateLimits?.primary, now),
+    buildRateLimitWindowView(rateLimits?.secondary, now),
   ]
-    .filter((window): window is RateLimitRingWindowView => window !== null)
+    .filter((window) => window !== null)
     .sort((left, right) => left.windowDurationMins - right.windowDurationMins);
 
-  const outer = windows[0] ?? null;
-  const inner = windows.length > 1 ? (windows[windows.length - 1] ?? null) : null;
-  const ariaParts = [outer, inner]
-    .filter((window): window is RateLimitRingWindowView => window !== null)
-    .map((window) => `${window.ariaLabel} ${window.remainingPercent}%`);
+  const shortest = sorted[0];
+  const longest = sorted.length > 1 ? sorted[sorted.length - 1] : undefined;
+  const outer = shortest
+    ? {
+        ...shortest,
+        color: resolveQuotaColor(shortest.remainingPercent, "var(--color-token-charts-blue)"),
+      }
+    : null;
+  const inner = longest
+    ? {
+        ...longest,
+        color: resolveQuotaColor(longest.remainingPercent, "var(--color-token-charts-green)"),
+      }
+    : null;
+  const windows = [outer, inner].filter((window) => window !== null);
+  const ariaParts = windows.map(
+    (window) => `${window.label.toLowerCase()} ${window.remainingPercent}%`,
+  );
 
   return {
+    windows,
     outer,
     inner,
     ariaLabel:
       ariaParts.length > 0
         ? `Usage remaining: ${ariaParts.join(", ")}`
         : "Usage remaining unavailable",
-    summaryLabel: ariaParts.length > 0 ? ariaParts.join(", ") : null,
-    hasLimits: ariaParts.length > 0,
+    hasLimits: windows.length > 0,
   };
+}
+
+function RateLimitWindowMeter({ window }: { window: RateLimitWindowView }) {
+  return (
+    <div className="flex flex-col gap-1.5">
+      <div className="flex items-baseline gap-1.5 text-xs text-token-description-foreground">
+        <span className="text-sm font-medium text-token-foreground">{window.label}</span>
+        {window.resetsAtLabel ? <span>Resets {window.resetsAtLabel}</span> : null}
+        <span className="ml-auto tabular-nums">
+          <span className="text-sm font-medium text-token-foreground">
+            {window.remainingPercent}%
+          </span>{" "}
+          left
+        </span>
+      </div>
+      <div
+        role="meter"
+        aria-label={`${window.label} usage remaining`}
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuenow={window.remainingPercent}
+        className="h-1 overflow-hidden rounded-full bg-token-foreground/10"
+      >
+        <div
+          className="h-full rounded-full"
+          style={{ width: `${window.remainingPercent}%`, backgroundColor: window.color }}
+        />
+      </div>
+    </div>
+  );
 }
 
 export function RateLimitTooltipSection({
@@ -216,37 +206,22 @@ export function RateLimitTooltipSection({
   quotaResetCredits?: CodexRateLimitResetCreditsSummary | null;
   onQuotaReset?: (input: CodexRateLimitResetInput) => Promise<CodexRateLimitResetResult>;
 }) {
-  const rows = rateLimits
-    ? [buildRateLimitRow(rateLimits.primary), buildRateLimitRow(rateLimits.secondary)].filter(
-        (row): row is NonNullable<ReturnType<typeof buildRateLimitRow>> => row !== null,
-      )
-    : [];
-  const hasQuotaReset = Boolean(quotaResetCredits && onQuotaReset);
-  if (rows.length === 0 && !hasQuotaReset) return null;
+  const { windows } = buildRateLimitViewModel(rateLimits);
+  const hasQuotaReset = Boolean(quotaResetCredits?.availableCount && onQuotaReset);
+  if (windows.length === 0 && !hasQuotaReset) return null;
 
   return (
-    <div className="flex flex-col gap-1.5 border-t border-(--border) pt-2">
-      <div className="text-xs text-(--foreground-tertiary)">Usage remaining</div>
-      <div className="flex flex-col gap-1">
-        {rows.map((row, index) => (
-          <div
-            key={`${row.label}-${index}`}
-            className="grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-x-2"
-          >
-            <div className="min-w-0 text-sm font-medium text-(--foreground)">{row.label}</div>
-            <div className="text-sm text-(--foreground-secondary) tabular-nums">
-              {row.remainingPercent}%
-            </div>
-            <div className="text-sm text-(--foreground-secondary) tabular-nums">
-              {row.resetsAtLabel ?? "Soon"}
-            </div>
-          </div>
-        ))}
-        {quotaResetCredits && onQuotaReset ? (
-          <QuotaResetTooltipSection summary={quotaResetCredits} onReset={onQuotaReset} />
-        ) : null}
-      </div>
-    </div>
+    <section
+      aria-label="Usage remaining"
+      className="flex flex-col gap-3 border-t border-token-border p-3"
+    >
+      {windows.map((window) => (
+        <RateLimitWindowMeter key={window.label} window={window} />
+      ))}
+      {quotaResetCredits && onQuotaReset ? (
+        <QuotaResetTooltipSection summary={quotaResetCredits} onReset={onQuotaReset} />
+      ) : null}
+    </section>
   );
 }
 
@@ -262,6 +237,10 @@ function quotaResetOutcomeMessage(result: CodexRateLimitResetResult): string {
   return `Quota reset. ${remaining} remaining.`;
 }
 
+/**
+ * Spending a reset credit is deliberate: the action stays behind a disclosure so a pointer
+ * crossing the hover card cannot consume one.
+ */
 export function QuotaResetTooltipSection({
   summary,
   onReset,
@@ -275,14 +254,11 @@ export function QuotaResetTooltipSection({
   const attemptRef = useRef<{ idempotencyKey: string; creditId: string | null } | null>(null);
   const contentId = useId();
 
-  if (!summary) return null;
+  // Keep the outcome of spending the last credit visible until the card closes.
+  if (!summary || (summary.availableCount <= 0 && !message)) return null;
 
   const activeCredit = findAvailableQuotaResetCredit(summary);
-  const expiration = activeCredit
-    ? formatQuotaResetCreditExpiration(activeCredit.expiresAt)
-    : summary.availableCount > 0
-      ? "Unavailable"
-      : "—";
+  const expiration = activeCredit ? formatQuotaResetCreditExpiration(activeCredit.expiresAt) : null;
 
   const handleReset = async () => {
     if (pending || summary.availableCount <= 0) return;
@@ -310,45 +286,51 @@ export function QuotaResetTooltipSection({
   };
 
   return (
-    <div className="flex flex-col gap-1">
+    <div className="-mx-1.5 flex flex-col">
       <button
         type="button"
         aria-controls={contentId}
         aria-expanded={expanded}
-        className="flex w-full items-center gap-2 rounded-sm text-left hover:bg-(--foreground)/10 focus-visible:ring-2 focus-visible:ring-(--ring)/35 focus-visible:outline-none py-1 px-0.25"
+        className="flex h-7 items-center gap-2 rounded-md px-1.5 text-left text-sm text-token-foreground outline-none hover:bg-token-foreground/5 focus-visible:ring-2 focus-visible:ring-(--ring)/35"
         onClick={() => setExpanded((current) => !current)}
       >
-        <span className="min-w-0 flex-1 truncate text-sm font-medium text-(--foreground)">
+        <RotateCcw aria-hidden="true" className="size-3.5 shrink-0 text-token-text-secondary" />
+        <span className="min-w-0 flex-1 truncate">
           {formatQuotaResetAvailability(summary.availableCount)}
         </span>
         <ChevronRightIcon
           aria-hidden="true"
-          className={`size-4 shrink-0 text-(--foreground-secondary) transition-transform duration-150 ${expanded ? "rotate-90" : ""}`}
+          className={cn(
+            "size-3.5 shrink-0 text-token-description-foreground",
+            expanded && "rotate-90",
+          )}
         />
       </button>
 
       {expanded ? (
-        <div id={contentId} className="flex flex-col gap-1.5">
-          <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-3 text-xs">
-            <span className="text-(--foreground-tertiary)">Expiry</span>
-            <span className="text-(--foreground-secondary) tabular-nums">{expiration}</span>
+        <div id={contentId} className="flex flex-col gap-1.5 pt-1 pr-1.5 pl-7">
+          <div className="flex items-center gap-2">
+            <span className="min-w-0 flex-1 truncate text-xs text-token-description-foreground tabular-nums">
+              {expiration}
+            </span>
+            <button
+              type="button"
+              disabled={pending || summary.availableCount <= 0}
+              className="h-6 shrink-0 rounded-md bg-token-foreground/5 px-2 text-xs font-medium text-token-foreground outline-none hover:bg-token-foreground/10 focus-visible:ring-2 focus-visible:ring-(--ring)/35 disabled:opacity-40"
+              onClick={() => void handleReset()}
+            >
+              {pending ? "Resetting…" : "Reset quota"}
+            </button>
           </div>
-          <button
-            type="button"
-            disabled={pending || summary.availableCount <= 0}
-            className="h-7 rounded-md bg-(--foreground) px-2.5 text-xs font-medium text-(--background) hover:brightness-95 focus-visible:ring-2 focus-visible:ring-(--ring) focus-visible:outline-none disabled:opacity-40"
-            onClick={() => void handleReset()}
-          >
-            {pending ? "Resetting…" : "Reset quota"}
-          </button>
           {message ? (
             <p
               aria-live="polite"
-              className={
+              className={cn(
+                "m-0 text-xs",
                 message.kind === "error"
-                  ? "m-0 text-xs text-(--destructive)"
-                  : "m-0 text-xs text-(--foreground-secondary)"
-              }
+                  ? "text-token-error-foreground"
+                  : "text-token-text-secondary",
+              )}
             >
               {message.text}
             </p>

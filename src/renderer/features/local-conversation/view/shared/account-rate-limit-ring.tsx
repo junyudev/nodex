@@ -8,8 +8,8 @@ import type {
   CodexRateLimitResetResult,
 } from "../../../../lib/types";
 import { shouldRefreshAccountOnConnectionTooltipOpen } from "./account-tooltip-refresh";
-import { buildRateLimitRingViewModel, type RateLimitRingWindowView } from "./auth-rate-limits";
-import { renderConnectionAccountTooltipContent } from "./auth-controls";
+import { buildRateLimitViewModel, type RateLimitWindowView } from "./auth-rate-limits";
+import { ConnectionAccountCard } from "./auth-controls";
 
 interface AccountRateLimitRingProps {
   account: CodexAccountSnapshot | null;
@@ -34,13 +34,6 @@ function formatDashValue(value: number): string {
   return value.toFixed(3);
 }
 
-function resolveQuotaColor(window: RateLimitRingWindowView | null, fallback: string): string {
-  if (!window) return "var(--sidebar-foreground-tertiary)";
-  if (window.remainingPercent <= 15) return "var(--red-text)";
-  if (window.remainingPercent <= 35) return "var(--yellow-text)";
-  return fallback;
-}
-
 function connectionFallbackLabel(connection: CodexConnectionState): string {
   if (connection.status === "starting")
     return "Agent runtime connecting. Usage remaining unavailable";
@@ -58,13 +51,10 @@ function RateLimitRingSvg({
   inner,
   hasLimits,
 }: {
-  outer: RateLimitRingWindowView | null;
-  inner: RateLimitRingWindowView | null;
+  outer: RateLimitWindowView | null;
+  inner: RateLimitWindowView | null;
   hasLimits: boolean;
 }) {
-  const outerColor = resolveQuotaColor(outer, "var(--color-token-charts-blue)");
-  const innerColor = resolveQuotaColor(inner, "var(--color-token-charts-green)");
-
   return (
     <svg
       viewBox="0 0 28 28"
@@ -86,7 +76,7 @@ function RateLimitRingSvg({
           cx="14"
           cy="14"
           r={OUTER_RING_RADIUS}
-          stroke={outerColor}
+          stroke={outer.color}
           strokeWidth="2.2"
           strokeLinecap="round"
           strokeDasharray={formatDashValue(OUTER_RING_CIRCUMFERENCE)}
@@ -110,7 +100,7 @@ function RateLimitRingSvg({
           cx="14"
           cy="14"
           r={INNER_RING_RADIUS}
-          stroke={innerColor}
+          stroke={inner.color}
           strokeWidth="2"
           strokeLinecap="round"
           strokeDasharray={formatDashValue(INNER_RING_CIRCUMFERENCE)}
@@ -176,26 +166,24 @@ export function AccountRateLimitRing({
 
   if (!authenticatedAccount) return null;
 
-  const viewModel = buildRateLimitRingViewModel(account?.rateLimits);
+  const viewModel = buildRateLimitViewModel(account?.rateLimits);
   const ariaLabel =
     viewModel.hasLimits && connection.status === "connected"
       ? viewModel.ariaLabel
       : connectionFallbackLabel(connection);
-  const tooltipContent = renderConnectionAccountTooltipContent(
-    authenticatedAccount,
-    account?.rateLimits,
-    {
-      onSignOut: () => void handleLogout(),
-      isSigningOutDisabled: isSigningOut,
-      rateLimitResetCredits: account?.rateLimitResetCredits,
-      onConsumeRateLimitReset,
-    },
-  );
-
   return (
     <NodexHoverCard
       ariaLabel="Account and usage details"
-      hoverCardContent={tooltipContent}
+      hoverCardContent={
+        <ConnectionAccountCard
+          account={authenticatedAccount}
+          rateLimits={account?.rateLimits}
+          rateLimitResetCredits={account?.rateLimitResetCredits}
+          onConsumeRateLimitReset={onConsumeRateLimitReset}
+          onSignOut={() => void handleLogout()}
+          isSigningOut={isSigningOut}
+        />
+      }
       placement="right-end"
       onOpenChange={handleTooltipOpenChange}
     >
