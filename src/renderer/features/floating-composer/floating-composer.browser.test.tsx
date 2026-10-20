@@ -200,16 +200,21 @@ describe("FloatingComposer", () => {
     expect(states.at(-1)).toMatchObject({ visible: true });
   });
 
-  test("minimizes from the move handle's menu", async () => {
-    const view = renderHarness();
+  test("keeps its conversation open in the move menu and minimizes from it", async () => {
+    const view = renderHarness({ transcript: <p>Shipped the release notes.</p> });
     await act(async () => {
       await userEvent.click(view.getByRole("textbox", { name: "Prompt" }));
     });
+    await act(async () => {
+      await userEvent.click(view.getByText("Work locally"));
+    });
+    expect(view.getByText("Shipped the release notes.")).toBeTruthy();
     await act(async () => {
       await userEvent.click(view.getByRole("button", { name: "Move composer" }));
     });
     // The menu is portaled; its clicks must reach the item rather than the handle.
     const item = await view.findByRole("menuitem", { name: "Minimize composer" });
+    expect(view.getByText("Shipped the release notes.")).toBeTruthy();
     await act(async () => {
       await userEvent.click(item);
     });
