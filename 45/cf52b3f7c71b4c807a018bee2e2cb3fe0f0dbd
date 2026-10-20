@@ -1,0 +1,21 @@
+src/renderer/components/workbench/workbench-testkit/workbench-shell-harness.tsx
+  s_61befdbfc1bda3::t_ef56f84999896a 4835,4837-4845
+src/renderer/components/workbench/workbench-shell.layout-panel-actions.test.tsx
+  s_61befdbfc1bda3::t_ef56f84999896a 37,1809,2172,2756
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "45cf52b3f7c71b4c807a018bee2e2cb3fe0f0dbd",
+  "prompts": {},
+  "sessions": {
+    "s_61befdbfc1bda3": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1585c-7bfb-7b90-8054-48511c1b75c7",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
