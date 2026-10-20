@@ -10,6 +10,7 @@ import {
   key as messageTargetKey,
 } from "../../features/local-conversation/view/conversation-markdown-targets.test-fixtures";
 import type { ThreadStageActions } from "../../features/local-conversation/thread-stage-types";
+import type { AgentRuntimeConversation } from "../../../shared/agent-runtime-api";
 import { makeAttachedSession } from "./workbench-testkit/workbench-shell-fixtures";
 import {
   waitForLastThreadStageActions,
@@ -355,6 +356,16 @@ describe("created chat Session-bound Workbench navigation", () => {
       initialSelectedSessionId: root.id,
     });
     await settleAsyncRender();
+    const conversations = new Map<string, AgentRuntimeConversation>();
+    const base = mockInvokeImpl;
+    setMockInvokeImpl(async (channel, ...args) => {
+      const result = await base?.(channel, ...args);
+      if (channel === "agent-runtime:session:control" || channel === "agent-runtime:session:read") {
+        const conversation = result as AgentRuntimeConversation;
+        conversations.set(conversation.threadId, conversation);
+      }
+      return result;
+    });
     const open = (await waitForLastThreadStageActions()).onOpenThread as NonNullable<
       ThreadStageActions["onOpenThread"]
     >;
@@ -377,6 +388,11 @@ describe("created chat Session-bound Workbench navigation", () => {
       await Promise.resolve();
     });
     await waitFor(() => expect(getConnectedThreadStagePropsByThreadId("grandchild")).toBeDefined());
+    expect(conversations.get("grandchild")?.snapshot.projection.thread.lineage).toEqual({
+      rootThreadId: "root-thread",
+      parentThreadId: "child",
+      relationshipToParent: "subagent",
+    });
     expect(inspections()).toEqual([
       ["agent-runtime:session:inspect", { sessionId: root.id, threadId: "child" }],
       ["agent-runtime:session:inspect", { sessionId: root.id, threadId: "grandchild" }],

@@ -39,6 +39,7 @@ import type {
   CodexScheduledAutomationUpdateInput,
   CodexSidebarSyncResult,
   CodexSidebarThreadItem,
+  CodexThreadSummary,
   GitReviewSource,
   PageChatItem,
   Project,
@@ -2710,7 +2711,11 @@ export function renderWorkbench({
         .flat()
         .find((session) => session.id === input.sessionId);
       const rootThreadId = session?.executionRef?.threadId ?? input.threadId;
-      const parentThreadId = input.threadId === rootThreadId ? null : rootThreadId;
+      const source = sideChatConversations[input.threadId]?.source as
+        | CodexThreadSummary["source"]
+        | undefined;
+      const parentThreadId =
+        input.threadId === rootThreadId ? null : (source?.parentThreadId ?? rootThreadId);
       return {
         sessionId: input.sessionId,
         projectId: session?.projectId ?? null,
