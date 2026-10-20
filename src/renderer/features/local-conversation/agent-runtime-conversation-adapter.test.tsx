@@ -11,6 +11,7 @@ import {
 import { sessionFirstSubmissionOwner } from "../conversation-launch/session-first-submission-owner";
 import { acquireAgentRuntimeConversationOwner } from "./agent-runtime-conversation-owner";
 import { MaitaiProvider, createMaitaiStore } from "../../lib/maitai";
+import { clearPersistedAtomStoreForTests } from "../../lib/persisted-atom-store";
 import * as presentation from "../../lib/codex-turn-presentation";
 import { TestQueryProvider } from "../../test/query";
 import { NodexTooltipProvider } from "../../components/ui/tooltip";
@@ -121,6 +122,7 @@ beforeEach(() => {
 afterEach(() => {
   vi.restoreAllMocks();
   sessionFirstSubmissionOwner.dispose();
+  clearPersistedAtomStoreForTests();
 });
 
 const codexModel = (slug: string, isDefault = false) => ({
@@ -584,6 +586,65 @@ describe("Agent Runtime Agent switching", () => {
     await switchThread({ instanceId: "codex", model: "model" });
     expect(result.current.provider.kind).toBe("codex");
     await act(async () => unmount());
+  });
+
+  it("restores a model's own options after a round trip and keeps the chat's choice across restart", async () => {
+    vi.spyOn(agentRuntimeRuntime, "catalog").mockResolvedValue([codexProvider, claudeProvider]);
+    vi.spyOn(agentRuntimeRuntime, "control").mockResolvedValue({
+      sessionId: "switch-session",
+      projectId: "project",
+      threadId: "engine-thread",
+      snapshot: {
+        ...finishedCodex("completed"),
+        projection: {
+          ...finishedCodex("completed").projection,
+          thread: {
+            ...finishedCodex("completed").projection.thread,
+            modelSelection: { instanceId: "codex", model: "gpt" },
+          },
+        },
+      } as AgentSnapshot,
+    });
+    vi.spyOn(agentRuntimeRuntime, "subscribe").mockResolvedValue(() => {});
+    const useChat = () =>
+      useAgentRuntimeConversationAdapter({
+        sessionId: "switch-session",
+        executionRef: { runtimeId: "engine", threadId: "engine-thread" },
+        projectId: "project",
+        modelProjectId: "project",
+        instances: configured,
+        onRefresh: async () => {},
+        onOpenThread: () => {},
+        ensureDraft: async () => ({ id: "switch-session" }),
+      });
+    const first = renderHook(useChat, { wrapper: SavedSettingsWorkbench });
+    const { result } = first;
+    await waitFor(() => expect(result.current.state.connection).toBe("ready"));
+    await waitFor(() => expect(result.current.provider.modelCatalog?.loading).toBe(false));
+    await act(async () => {
+      await result.current.actions.onReasoningEffortChange!("high");
+    });
+    await act(async () => {
+      await result.current.provider.modelCatalog!.choose(claudeEntry(result).selection);
+    });
+    expect(result.current.provider.kind).toBe("claude");
+    const gptEntry = result.current.provider.modelCatalog!.entries.find(
+      (entry) => entry.binding.kind === "codex" && entry.model.id === "gpt",
+    )!;
+    await act(async () => {
+      await result.current.provider.modelCatalog!.choose(gptEntry.selection);
+    });
+    // Coming back to Codex starts from the effort last chosen for that model.
+    expect(result.current.selectedEffort).toBe("high");
+    await act(async () => {
+      await result.current.provider.modelCatalog!.choose(claudeEntry(result).selection);
+    });
+    await act(async () => first.unmount());
+    // A new window store reads the same persisted choice, as after a restart.
+    const reopened = renderHook(useChat, { wrapper: SavedSettingsWorkbench });
+    await waitFor(() => expect(reopened.result.current.state.connection).toBe("ready"));
+    await waitFor(() => expect(reopened.result.current.provider.kind).toBe("claude"));
+    await act(async () => reopened.unmount());
   });
 
   it("keeps other Agents listed but unavailable while a reply starts without its session", async () => {

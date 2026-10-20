@@ -204,8 +204,11 @@ In a started chat, the composer's choice applies from the next message the perso
 from it: sending, steering, queueing or editing the last message carries the choice with
 that message, and the Run it starts uses it. Choosing alone changes nothing in the chat,
 so a running reply is never interrupted by a choice. Once a Run has applied the choice the
-chat's own selection shows again; a choice that has not reached a Run stays in that
-window's composer and is not restored after restart.
+chat's own selection shows again. Until then the choice stays with the chat's composer,
+like its prompt draft, across windows and restart; an unstarted chat's Agent and mode
+persist the same way until it starts. Choosing another Agent's model starts from the
+options last chosen for that model, so a round trip between Agents keeps each model's
+effort and speed.
 
 ### Changing Agent in a chat
 

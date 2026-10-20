@@ -1,4 +1,13 @@
-import { agentRuntimeDraftOwner } from "./agent-runtime-draft-owner";
+import {
+  agentRuntimeChoiceKey,
+  agentRuntimeComposerChoicesAtom,
+  agentRuntimeModelOptionMemoryAtom,
+  rememberAgentModelOptions,
+  rememberedAgentModelOptions,
+  withAgentRuntimeComposerChoice,
+  type AgentRuntimeComposerChoice,
+} from "./agent-runtime-composer-choices";
+import { usePersistedAtomValue, useSetPersistedAtom } from "@/lib/maitai";
 import { toast } from "@/components/ui/toast";
 import { nativeIntelligenceIntentOwner } from "../../lib/native-intelligence-intent-owner";
 import { isClaudeEffortLevel, type ClaudeModelSelection } from "../../../shared/claude-models";
@@ -777,12 +786,16 @@ export function useAgentRuntimeConversationAdapter(input: {
     const tier = readAgentRuntimeServiceTier(choice.options);
     if (tier !== undefined) saveServiceTier(tier, "composer_menu");
   };
-  const draftKey = JSON.stringify([input.sessionId, input.modelProjectId]);
-  const draft = useSyncExternalStore(
-    (listener) => agentRuntimeDraftOwner.subscribe(draftKey, listener),
-    () => agentRuntimeDraftOwner.read(draftKey),
-  );
-  const draftMode = draft.interactionMode;
+  // Choices persist beside the Composer's prompt draft, across windows and restart.
+  const choices = usePersistedAtomValue(agentRuntimeComposerChoicesAtom).value;
+  const setChoices = useSetPersistedAtom(agentRuntimeComposerChoicesAtom);
+  const writeChoice = (key: string, patch: Partial<AgentRuntimeComposerChoice>) =>
+    setChoices((current) => withAgentRuntimeComposerChoice(current, key, patch));
+  const modelOptionMemory = usePersistedAtomValue(agentRuntimeModelOptionMemoryAtom).value;
+  const setModelOptionMemory = useSetPersistedAtom(agentRuntimeModelOptionMemoryAtom);
+  const draftKey = agentRuntimeChoiceKey.draft(input.sessionId, input.modelProjectId);
+  const draft = choices[draftKey] ?? {};
+  const draftMode = draft.interactionMode ?? "default";
   const [createdTarget, setCreatedTarget] = useState<
     (AgentRuntimeSessionTarget & { threadId: string }) | null
   >(null);
@@ -862,11 +875,8 @@ export function useAgentRuntimeConversationAdapter(input: {
       (entry) => entry.instanceId === agentRuntimeProviderId(candidate.binding),
     );
   // A started chat's choice for its next message; the chat keeps its own until a message uses it.
-  const choiceKey = targetThreadId ? JSON.stringify(["thread", targetThreadId]) : null;
-  const choice = useSyncExternalStore(
-    (listener) => (choiceKey ? agentRuntimeDraftOwner.subscribe(choiceKey, listener) : () => {}),
-    () => (choiceKey ? agentRuntimeDraftOwner.read(choiceKey).selection : undefined),
-  );
+  const choiceKey = targetThreadId ? agentRuntimeChoiceKey.chat(targetThreadId) : null;
+  const choice = choiceKey ? choices[choiceKey]?.selection : undefined;
   const observedSelection: AgentModelSelection | undefined = observed
     ? {
         binding: bindingFor(observed.modelSelection.instanceId) ?? { kind: "codex" },
@@ -880,11 +890,25 @@ export function useAgentRuntimeConversationAdapter(input: {
         (choice && modelOf(choice)) ?? undefined,
       )
     : null;
-  // A choice the chat has since applied is spent, so a later change elsewhere is not undone.
+  // A choice the chat has since applied is spent, so a later change elsewhere is not undone. Once
+  // the chat is open, the unstarted draft it launched from has nothing left to choose.
+  const spentChoice = Boolean(choiceKey && choice && observed && !nextSelection);
+  const spentDraft = Boolean(observed && choices[draftKey]);
   useEffect(() => {
-    if (choiceKey && choice && observed && !nextSelection)
-      agentRuntimeDraftOwner.write(choiceKey, { selection: undefined });
-  }, [choiceKey, choice, observed, nextSelection]);
+    if (!spentChoice && !spentDraft) return;
+    void setChoices((current) => {
+      const unspent =
+        spentChoice && choiceKey
+          ? withAgentRuntimeComposerChoice(current, choiceKey, { selection: undefined })
+          : current;
+      return spentDraft
+        ? withAgentRuntimeComposerChoice(unspent, draftKey, {
+            selection: undefined,
+            interactionMode: undefined,
+          })
+        : unspent;
+    });
+  }, [spentChoice, spentDraft, choiceKey, draftKey, setChoices]);
   const selection =
     (nextSelection ? choice : undefined) ??
     observedSelection ??
@@ -922,12 +946,19 @@ export function useAgentRuntimeConversationAdapter(input: {
   const currentModel = provider?.models.find((model) => model.slug === selection.model);
   const claudeIntent = resolveRuntimeClaudeIntent(selection, storedIntent, currentModel);
   const chooseModel = async (
-    chosen: AgentModelSelection,
+    requested: AgentModelSelection,
     explicitIntent?: ClaudeModelSelection,
   ) => {
     const chosenModel = catalogState.providers
-      .find((entry) => entry.instanceId === agentRuntimeProviderId(chosen.binding))
-      ?.models.find((model) => model.slug === chosen.model);
+      .find((entry) => entry.instanceId === agentRuntimeProviderId(requested.binding))
+      ?.models.find((model) => model.slug === requested.model);
+    const sameProvider =
+      agentRuntimeProviderId(selection.binding) === agentRuntimeProviderId(requested.binding);
+    // Another Agent's model starts from the options last chosen for it, otherwise its defaults.
+    const chosen =
+      sameProvider || requested.options !== undefined
+        ? requested
+        : { ...requested, options: rememberedAgentModelOptions(modelOptionMemory, requested) };
     const nextIntent =
       explicitIntent ??
       (selection.binding.kind === "claude" &&
@@ -936,8 +967,6 @@ export function useAgentRuntimeConversationAdapter(input: {
       chosen.model !== selection.model
         ? { ...claudeIntent, model: chosen.model }
         : readRuntimeClaudeSelection(chosen));
-    const sameProvider =
-      agentRuntimeProviderId(selection.binding) === agentRuntimeProviderId(chosen.binding);
     const fitted =
       chosen.binding.kind === "claude"
         ? applyRuntimeClaudeIntent(chosen, nextIntent, chosenModel)
@@ -956,12 +985,15 @@ export function useAgentRuntimeConversationAdapter(input: {
     if (chosen.binding.kind === "claude")
       nativeIntelligenceIntentOwner.write(intentKey, nextIntent);
     if (fitted.binding.kind === "codex") rememberCodexChoice(fitted);
-    agentRuntimeDraftOwner.write(choiceKey ?? draftKey, {
-      selection:
-        observed && agentRuntimeModelSelectionsEqual(observed.modelSelection, modelSelection)
-          ? undefined
-          : fitted,
-    });
+    await Promise.all([
+      setModelOptionMemory((current) => rememberAgentModelOptions(current, fitted)),
+      writeChoice(choiceKey ?? draftKey, {
+        selection:
+          observed && agentRuntimeModelSelectionsEqual(observed.modelSelection, modelSelection)
+            ? undefined
+            : fitted,
+      }),
+    ]);
   };
   const prepareFor =
     (kind: AgentBackendBinding["kind"]) =>
@@ -1146,7 +1178,7 @@ export function useAgentRuntimeConversationAdapter(input: {
     },
     onCollaborationModeChange: async (interactionMode) => {
       if (!target) {
-        agentRuntimeDraftOwner.write(draftKey, { interactionMode });
+        await writeChoice(draftKey, { interactionMode });
         return;
       }
       await agentRuntimeRuntime.setModes({ ...target, requestId: createUuidV7(), interactionMode });
