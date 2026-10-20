@@ -233,7 +233,9 @@ within an Agent that keeps one model per chat is refused the same way. The disab
 choice explains why. The Session interface applies the same rule to every message that
 changes Agent, including an Agent's `send_message_to_session`, and refuses it with the same
 reason. The transcript marks each handoff above the Turn that continued it
-with the configured Agent and model names it moved from and to. An unavailable chosen
+with the configured Agent and model names it moved from and to. Its description says what
+it carried — the conversation so far, only the turns that Agent missed, or a merged fork's
+work — and a failed handoff says the Agent may lack the earlier conversation. An unavailable chosen
 Agent fails the message explicitly; the chat never falls back to another Agent.
 
 ## Delegated work in the conversation

@@ -1,5 +1,7 @@
 import { Fragment, useSyncExternalStore, type ReactNode } from "react";
 import { AgentProviderIcon } from "@/components/shared/icons/provider-icons";
+import { NodexTooltip } from "@/components/ui/tooltip";
+import { cn } from "@/lib/utils";
 import type {
   CodexRuntimeNotice,
   CodexRuntimeNoticeAgent,
@@ -45,36 +47,57 @@ function HandoffAgent({ agent }: { readonly agent: CodexRuntimeNoticeAgent }) {
   );
 }
 
+type AgentHandoffNotice = Extract<CodexRuntimeNotice, { kind: "agentHandoff" }>;
+
+const HANDOFF_CARRIED: Record<AgentHandoffNotice["carried"], string> = {
+  conversation: "Carried the conversation so far.",
+  missed: "Carried only the turns this Agent missed.",
+  fork: "Carried the fork's work since it branched from this chat.",
+  checkpoint: "Carried a summary of the conversation so far.",
+  imported: "Carried the imported conversation history.",
+};
+
 /**
- * Where the chat continued on another Agent with the conversation so far. The carried history
- * stays with the Agent Runtime; the transcript already shows it.
+ * Where the chat continued on another Agent. What was carried explains itself on hover and to
+ * screen readers; the carried history stays with the Agent Runtime and the transcript shows it.
  */
-export function AgentHandoffDivider({
-  notice,
-}: {
-  readonly notice: Extract<CodexRuntimeNotice, { kind: "agentHandoff" }>;
-}) {
+export function AgentHandoffDivider({ notice }: { readonly notice: AgentHandoffNotice }) {
   const { to } = notice;
   const from = notice.from.filter(
     (agent) => agent.providerInstanceId !== to.providerInstanceId || agent.model !== to.model,
   );
+  const label = notice.carried === "fork" ? "Fork merged back" : "Context handoff";
+  const detail = notice.failed
+    ? "The handoff failed; the Agent may not have the earlier conversation."
+    : `${HANDOFF_CARRIED[notice.carried]} Longer history stays readable to the Agent.`;
   return (
     <TranscriptDivider data-runtime-notice="agentHandoff">
-      <span>Context handoff</span>
-      <span aria-hidden="true">·</span>
-      {from.map((agent, index) => (
-        <Fragment key={`${agent.providerInstanceId}\0${agent.model ?? ""}`}>
-          {index > 0 ? <span aria-hidden="true">,</span> : null}
-          <HandoffAgent agent={agent} />
-        </Fragment>
-      ))}
-      {from.length > 0 ? (
-        <>
-          <span aria-hidden="true">→</span>
-          <span className="sr-only">to</span>
-        </>
-      ) : null}
-      <HandoffAgent agent={to} />
+      <NodexTooltip tooltipContent={detail}>
+        <span
+          tabIndex={0}
+          className={cn(
+            "inline-flex min-w-0 items-center gap-1 rounded-sm focus-visible:outline-2",
+            notice.failed && "text-token-charts-red",
+          )}
+        >
+          <span>{notice.failed ? `${label} failed` : label}</span>
+          <span aria-hidden="true">·</span>
+          {from.map((agent, index) => (
+            <Fragment key={`${agent.providerInstanceId}\0${agent.model ?? ""}`}>
+              {index > 0 ? <span aria-hidden="true">,</span> : null}
+              <HandoffAgent agent={agent} />
+            </Fragment>
+          ))}
+          {from.length > 0 ? (
+            <>
+              <span aria-hidden="true">→</span>
+              <span className="sr-only">to</span>
+            </>
+          ) : null}
+          <HandoffAgent agent={to} />
+          <span className="sr-only">{detail}</span>
+        </span>
+      </NodexTooltip>
     </TranscriptDivider>
   );
 }

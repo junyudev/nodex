@@ -2054,6 +2054,8 @@ describe("bucketizeTurnItems", () => {
         ...buildItem({}).entry,
         runtimeNotice: {
           kind: "agentHandoff",
+          carried: "conversation",
+          failed: false,
           from: [{ providerInstanceId: "codex", model: "gpt" }],
           to: { providerInstanceId: "claude", model: "sonnet" },
         },

@@ -247,10 +247,19 @@ describe("Runtime message attribution and notices", () => {
       message: "Context handoff to sonnet",
       notice: {
         kind: "agentHandoff",
+        carried: "conversation",
+        failed: false,
         from: [{ providerInstanceId: "codex", model: "gpt" }],
         to: { providerInstanceId: "claude", model: "sonnet" },
       },
     });
+    // Returning to an Agent carries only what it missed; a merged fork carries the fork's work.
+    expect(
+      projectAgentRuntimeItem({ ...handoff, strategy: "delta_since_target_last_seen" }),
+    ).toMatchObject({ notice: { carried: "missed" } });
+    expect(
+      projectAgentRuntimeItem({ ...handoff, strategy: "fork_delta_summary", status: "failed" }),
+    ).toMatchObject({ notice: { carried: "fork", failed: true } });
     // Without recorded source models the Agents still name the handoff.
     expect(projectAgentRuntimeItem(handoff)).toMatchObject({
       notice: { from: [{ providerInstanceId: "codex", model: null }] },

@@ -119,6 +119,17 @@ const notice = (
   notice: detail,
 });
 
+const HANDOFF_CARRIED = {
+  full_thread_summary: "conversation",
+  delta_since_target_last_seen: "missed",
+  fork_delta_summary: "fork",
+  checkpoint_summary: "checkpoint",
+  manual_context: "imported",
+} as const satisfies Record<
+  Extract<AgentTurnItem, { type: "handoff" }>["strategy"],
+  Extract<CodexRuntimeNotice, { kind: "agentHandoff" }>["carried"]
+>;
+
 const NODEX_APP_SERVER = /^nodex[-_ ]?app$/iu;
 /**
  * Runtime execution plumbing: model listing and task polling explain nothing a delegated
@@ -482,6 +493,8 @@ export function projectAgentRuntimeItem(item: AgentTurnItem, cwd = ""): CodexCan
           }));
       return notice(item, `Context handoff to ${to.model ?? to.providerInstanceId}`, {
         kind: "agentHandoff",
+        carried: HANDOFF_CARRIED[item.strategy],
+        failed: item.status === "failed",
         from,
         to,
       });

@@ -412,6 +412,12 @@ export type CodexRuntimeNotice =
   /** The conversation so far was handed to the Agent that runs the following Turn. */
   | {
       readonly kind: "agentHandoff";
+      /**
+       * What it carried: the conversation so far, only the Runs that Agent missed, a fork's work
+       * merged back, a checkpoint summary, or imported history.
+       */
+      readonly carried: "conversation" | "missed" | "fork" | "checkpoint" | "imported";
+      readonly failed: boolean;
       readonly from: readonly CodexRuntimeNoticeAgent[];
       readonly to: CodexRuntimeNoticeAgent;
     }
