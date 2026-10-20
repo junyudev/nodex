@@ -145,7 +145,7 @@ const INTERACTIVE_TARGET_SELECTOR =
 const COMPOSER_INPUT_SELECTOR = "[data-codex-composer='true']";
 /** Portaled UI opened from inside the composer that still counts as the composer. */
 const COMPOSER_FLOATING_UI_SELECTOR =
-  "[data-slot='dropdown-content'], [data-slot='popover-content'], [role='menu'], [role='listbox'], [role='dialog'], [data-radix-popper-content-wrapper]";
+  "[data-slot='dropdown-positioner'], [data-slot='popover-positioner'], [role='menu'], [role='listbox'], [role='dialog']";
 const ATTENTION_LABELS: Record<Exclude<FloatingComposerAttention, "none">, string> = {
   activity: "Running",
   request: "Needs input",
