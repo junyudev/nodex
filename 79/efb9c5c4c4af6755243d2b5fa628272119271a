@@ -1,0 +1,32 @@
+src/renderer/features/inbox/use-inbox-invalidation.test.tsx
+  s_bdf71b9880673e::t_ee18b11c96c1ed 1-53
+docs/product-specs/inbox-behavior.md
+  s_bdf71b9880673e::t_157325fe8b425e 44-46
+docs/RELIABILITY.md
+  s_bdf71b9880673e::t_157325fe8b425e 421-430
+src/renderer/features/inbox/use-inbox.ts
+  s_bdf71b9880673e::t_28cbcbda2eab78 18,34-42,46-52,54-55
+src/renderer/features/inbox/inbox-route.tsx
+  s_bdf71b9880673e::t_28cbcbda2eab78 48
+crates/nodex-core/src/infrastructure/delivery_atom.rs
+  s_bdf71b9880673e::t_14d3e124e8b847 18,40-41,57-59,66-123
+  s_bdf71b9880673e::t_ce321069ef8ca5 1070-1123,1126-1148,1153-1157,1212,1282,1362,1391,1435
+  s_bdf71b9880673e::t_1fee7991606636 1124-1125,1149-1152
+  s_bdf71b9880673e::t_b9998007f5f97e 124
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "79efb9c5c4c4af6755243d2b5fa628272119271a",
+  "prompts": {},
+  "sessions": {
+    "s_bdf71b9880673e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8d936889-1784-495a-8683-8013f2a30b4f",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
