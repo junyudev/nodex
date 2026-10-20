@@ -34,7 +34,7 @@ import {
   executeCommandPaletteCommand,
   getBottomPanelContentSizer,
   getConnectedThreadStagePropsByThreadId,
-  getFilesPreviewInteractionTarget,
+  findFilesPreviewInteractionTarget,
   getHeaderShellSlot,
   getLastTerminalPanelProps,
   getLastThreadStageActions,
@@ -1806,7 +1806,7 @@ describe("workbench session shell / layout-panel-actions", () => {
         JSON.stringify(call[1]).includes('"kind":"files"'),
     ).length;
 
-    await pointerDownAndSettle(await waitFor(() => getFilesPreviewInteractionTarget(screen)));
+    await pointerDownAndSettle(await findFilesPreviewInteractionTarget(screen));
     expect(
       invokeCalls.filter(
         (call) =>
@@ -2169,7 +2169,7 @@ describe("workbench session shell / layout-panel-actions", () => {
     });
     expect(invokeCalls.some((call) => call[0] === "window-session-view:tab-create")).toBe(false);
 
-    await pointerDownAndSettle(await waitFor(() => getFilesPreviewInteractionTarget(screen)));
+    await pointerDownAndSettle(await findFilesPreviewInteractionTarget(screen));
     await waitFor(() => {
       expect(
         invokeCalls.some(
@@ -2753,7 +2753,7 @@ describe("workbench session shell / layout-panel-actions", () => {
         call[0] === "window-session-view:tab-create" &&
         JSON.stringify(call[1]).includes('"kind":"files"'),
     ).length;
-    await pointerDownAndSettle(await waitFor(() => getFilesPreviewInteractionTarget(screen)));
+    await pointerDownAndSettle(await findFilesPreviewInteractionTarget(screen));
     expect(
       invokeCalls.filter(
         (call) =>
