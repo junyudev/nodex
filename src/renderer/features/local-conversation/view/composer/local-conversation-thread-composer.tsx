@@ -189,6 +189,9 @@ import {
   composerFileAttachmentsAtom,
   composerGoalModeActiveAtom,
   composerImageAttachmentsAtom,
+  persistableComposerImages,
+  restoreComposerImages,
+  useComposerImageDraft,
   composerPastedTextAttachmentsAtom,
   composerResetGenerationAtom,
   composerReviewCommentAttachmentsFamily,
@@ -1045,13 +1048,14 @@ function ControlledThreadComposer(
   const browserAnnotationConversationId =
     composerThreadId ?? model.newThreadTarget?.sessionId ?? null;
   const promptDraft = useComposerPromptDraft(composerThreadId);
+  const imageDraft = useComposerImageDraft(composerThreadId);
   const [initialized, setInitialized] = useScopedAtom(composerDraftInitializedAtom);
   const [consumedIntentNonce, setConsumedIntentNonce] = useScopedAtom(
     composerConsumedIntentNonceAtom,
   );
   const [, setFileAttachments] = useScopedAtom(composerFileAttachmentsAtom);
   const [, setAddedFiles] = useScopedAtom(composerAddedFilesAtom);
-  const [, setImageAttachments] = useScopedAtom(composerImageAttachmentsAtom);
+  const [imageAttachments, setImageAttachments] = useScopedAtom(composerImageAttachmentsAtom);
   const [, setAppshotContexts] = useScopedAtom(composerAppshotContextsAtom);
   const [, setPastedTextAttachments] = useScopedAtom(composerPastedTextAttachmentsAtom);
   const [, setGoalModeActive] = useScopedAtom(composerGoalModeActiveAtom);
@@ -1077,7 +1081,16 @@ function ControlledThreadComposer(
   const intent = model.composerIntent ?? model.newThreadComposerIntent ?? null;
 
   useLayoutEffect(() => {
-    if (promptDraft.loadable.status === "loading") return;
+    if (promptDraft.loadable.status === "loading" || imageDraft.loadable.status === "loading")
+      return;
+
+    // A draft's saved images come back with its text; a transfer or intent below replaces them
+    // as it would any draft.
+    if (!initialized) {
+      const restored = restoreComposerImages(imageDraft.images, 0);
+      if (restored.length > 0)
+        setImageAttachments((current) => (current.length > 0 ? current : restored));
+    }
 
     if (
       transfer &&
@@ -1215,6 +1228,8 @@ function ControlledThreadComposer(
     browserAnnotationConversationId,
     composerThreadId,
     composerHandle,
+    imageDraft.images,
+    imageDraft.loadable.status,
     initialized,
     intent,
     model.hostId,
@@ -1242,6 +1257,15 @@ function ControlledThreadComposer(
     },
     [onErrorMessage, promptDraft],
   );
+  // Saved images follow the draft once it is restored, so a reload brings them back with its text.
+  useEffect(() => {
+    if (!initialized || imageDraft.loadable.status !== "ready") return;
+    const saved = persistableComposerImages(imageAttachments);
+    if (JSON.stringify(saved) === JSON.stringify(imageDraft.images)) return;
+    void imageDraft.setImages(saved).catch((error: unknown) => {
+      onErrorMessage(error instanceof Error ? error.message : "Could not save composer images");
+    });
+  }, [imageAttachments, imageDraft, initialized, onErrorMessage]);
   useLayoutEffect(() => {
     submittedDraftCleanupRef.current = {
       clearCompletedDraft,

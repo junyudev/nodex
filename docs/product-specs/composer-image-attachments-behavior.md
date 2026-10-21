@@ -33,7 +33,9 @@ For pasted and dropped File objects, preview reading and local materialization s
 
 Browser `Send to chat` publishes one canonical managed-asset source. The Composer records that value as host-owned materialization metadata; it never relabels the managed URI as an inline data URL or absolute filesystem path. Native hosted image references retain their file ID and the execution host that supplied them when a queued prompt is restored. Their `file-service://` preview source compiles to native image input on that host; display-only pointers without owner evidence and `sediment://` sources remain resolver inputs.
 
-Draft transfer, queued follow-up, completed-draft, image-edit follow-up, and thread-goal paths capture immutable attachment values. Image bytes are session-scoped and are not written to localStorage.
+Draft transfer, queued follow-up, completed-draft, image-edit follow-up, and thread-goal paths capture immutable attachment values.
+
+An unsent draft keeps its images with its text across reloads and restarts, under the same draft identities as the text. Only images whose materialization is ready are kept, and only by reference: the execution host, managed-asset URI, and absolute local path, never the bytes. An image still being saved, or whose saving failed, lasts only as long as the window. A restored image is shown and sent from where it was saved; a draft transfer or image-edit intent replaces restored images as it replaces any draft.
 
 Queue capture adds a durable portability boundary. Main rejects renderer-only object URLs and relative file sources, preserves HTTP sources, and freezes data-image, absolute-file, and file-URL bytes in a private temporary cache. The complete prompt input and captured attachment evidence form an immutable manifest. Core publishes the manifest and attachments as shared Blobs; the queue commit consumes matching prepared receipts and retains the complete closure in one transaction. Capturing or publishing an attachment does not create a Library File.
 

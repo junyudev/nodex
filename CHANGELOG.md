@@ -41,6 +41,7 @@ All notable changes to this project will be documented in this file.
 - Pages open in one steady layout: properties appear as soon as the Page is selected, the title keeps its weight and line breaks, and the body fills in without a placeholder flash.
 - Markdown written with `*` or `+` bullets, `1)` numbers, lists nested with spaces, or tables with short `| - |` rules keeps its lists, nesting and tables in Pages, and a paragraph that merely starts like a list or heading stays a paragraph.
 - The messages you write in a chat show in the same message style as the Inbox: lines you wrote together stay together, bare links are clickable, and long messages collapse the same way.
+- An unsent chat draft keeps its images across a reload or restart, not only its text.
 
 - Scheduled has its own sidebar of upcoming tasks with search, status filters and task actions. Cron tasks open as folders of their runs, runs and Heartbeat chats open without leaving Scheduled, and tasks are created and edited in a focused dialog. A selected task reads as the conversation that set it up, with a reply box for follow-up questions.
 

@@ -25,7 +25,12 @@ import {
   type PersistedLoadable,
   type ScopeHandle,
 } from "@/lib/maitai";
-import type { ComposerImageAttachment } from "./image-attachments/composer-image-attachment-model";
+import {
+  createResolvedComposerImageAttachment,
+  isAbsoluteComposerImagePath,
+  isManagedComposerImageSource,
+  type ComposerImageAttachment,
+} from "./image-attachments/composer-image-attachment-model";
 import type { CodexAppModelContextAttachment } from "../../../../../shared/codex-untrusted-app-input";
 
 export type { ComposerImageAttachment } from "./image-attachments/composer-image-attachment-model";
@@ -127,6 +132,119 @@ export const composerPromptDraftsAtom = persistedAtom<ComposerPromptDraftMap>({
   decode: decodeComposerPromptDraftMap,
   encode: (value) => ({ ...value }),
 });
+
+export const COMPOSER_IMAGE_DRAFTS_STORAGE_KEY = "composer-image-drafts-v1";
+
+/** An image in a saved draft, kept by where it was already saved, never by its bytes. */
+export interface PersistedComposerImage {
+  readonly id: string;
+  readonly filename: string;
+  readonly mimeType: string;
+  readonly hostId: string;
+  readonly managedSource: string | null;
+  readonly localPath: string | null;
+}
+
+export type ComposerImageDraftMap = Record<string, readonly PersistedComposerImage[]>;
+
+const optionalString = (value: unknown): string | null =>
+  typeof value === "string" && value.trim() ? value : null;
+
+function decodePersistedComposerImage(value: unknown): readonly PersistedComposerImage[] {
+  if (!isRecord(value)) return [];
+  const id = optionalString(value.id);
+  const filename = optionalString(value.filename);
+  const mimeType = optionalString(value.mimeType);
+  const hostId = optionalString(value.hostId);
+  const managedSource = optionalString(value.managedSource);
+  const localPath = optionalString(value.localPath);
+  if (!id || !filename || !mimeType || !hostId) return [];
+  if (managedSource && !isManagedComposerImageSource(managedSource)) return [];
+  if (localPath && !isAbsoluteComposerImagePath(localPath)) return [];
+  if (!managedSource && !localPath) return [];
+  return [{ id, filename, mimeType, hostId, managedSource, localPath }];
+}
+
+function decodeComposerImageDraftMap(value: unknown): ComposerImageDraftMap {
+  if (!isRecord(value)) return {};
+  return Object.fromEntries(
+    Object.entries(value).flatMap(([alias, images]) =>
+      alias.trim() && Array.isArray(images)
+        ? [[alias, images.flatMap(decodePersistedComposerImage)] as const]
+        : [],
+    ),
+  );
+}
+
+export const composerImageDraftsAtom = persistedAtom<ComposerImageDraftMap>({
+  debugLabel: "composer-image-drafts",
+  storageKey: COMPOSER_IMAGE_DRAFTS_STORAGE_KEY,
+  defaultValue: {},
+  hydration: "eager",
+  synchronization: "cross-window",
+  optimistic: true,
+  writeFailure: "retain-and-error",
+  decode: decodeComposerImageDraftMap,
+  encode: (value) => ({ ...value }),
+});
+
+/** The draft's images that can come back after a restart: those already saved somewhere. */
+export function persistableComposerImages(
+  attachments: readonly ComposerImageAttachment[],
+): readonly PersistedComposerImage[] {
+  return attachments.flatMap((attachment): PersistedComposerImage[] => {
+    const saved = attachment.materialization;
+    if (attachment.materializationStatus !== "ready" || !saved) return [];
+    if (!saved.managedSource && !saved.localPath) return [];
+    return [
+      {
+        id: attachment.id,
+        filename: attachment.filename,
+        mimeType: attachment.mimeType,
+        hostId: saved.hostId,
+        managedSource: saved.managedSource,
+        localPath: saved.localPath,
+      },
+    ];
+  });
+}
+
+/** A saved draft's images as attachments again, shown from where they were saved. */
+export function restoreComposerImages(
+  images: readonly PersistedComposerImage[],
+  generation: number,
+): readonly ComposerImageAttachment[] {
+  return images.flatMap((image) => {
+    const attachment = createResolvedComposerImageAttachment({
+      value: {
+        id: image.id,
+        filename: image.filename,
+        mimeType: image.mimeType,
+        src: image.managedSource ?? image.localPath ?? "",
+        origin: "restored",
+        localPath: image.localPath,
+        managedSource: image.managedSource,
+        hostId: image.hostId,
+      },
+      id: image.id,
+      generation,
+    });
+    return attachment ? [attachment] : [];
+  });
+}
+
+export function updateComposerImageDrafts(
+  drafts: ComposerImageDraftMap,
+  aliases: readonly string[],
+  images: readonly PersistedComposerImage[],
+): ComposerImageDraftMap {
+  const next = { ...drafts };
+  for (const alias of aliases) {
+    if (images.length === 0) delete next[alias];
+    else next[alias] = images;
+  }
+  return next;
+}
 
 export const activeComposerFocusNonceAtom = scopedAtom<number | null>(RouteScope, null, {
   debugLabel: "active-composer-focus-nonce",
@@ -376,6 +494,35 @@ export function useComposerPromptDraft(
     () => ({ loadable, aliases, prompt, readPrompt, setPrompt, clear }),
     [aliases, clear, loadable, prompt, readPrompt, setPrompt],
   );
+}
+
+export interface ComposerImageDraftController {
+  readonly loadable: PersistedLoadable<ComposerImageDraftMap>;
+  readonly images: readonly PersistedComposerImage[];
+  setImages(images: readonly PersistedComposerImage[]): Promise<void>;
+}
+
+/** The thread Composer's saved images, kept under the same draft identities as its text. */
+export function useComposerImageDraft(
+  threadId: string | null | undefined,
+): ComposerImageDraftController {
+  const composerHandle = useScopeHandle(ComposerScope);
+  const loadable = usePersistedAtomValue(composerImageDraftsAtom);
+  const setDrafts = useSetPersistedAtom(composerImageDraftsAtom);
+  const aliases = useMemo(
+    () => buildComposerPromptAliases(composerHandle.path, threadId),
+    [composerHandle.path, threadId],
+  );
+  const images = useMemo(
+    () => aliases.map((alias) => loadable.value[alias]).find((saved) => saved !== undefined) ?? [],
+    [aliases, loadable.value],
+  );
+  const setImages = useCallback(
+    (next: readonly PersistedComposerImage[]) =>
+      setDrafts((current) => updateComposerImageDrafts(current, aliases, next)),
+    [aliases, setDrafts],
+  );
+  return useMemo(() => ({ loadable, images, setImages }), [images, loadable, setImages]);
 }
 
 function createTransferId(): string {
