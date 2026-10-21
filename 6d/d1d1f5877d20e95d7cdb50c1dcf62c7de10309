@@ -1,0 +1,32 @@
+src/renderer/features/local-conversation/view/composer/composer-image-draft.test.ts
+  s_950dcf4ed6dc42::t_8f426cfd516c6c 1-165
+  s_950dcf4ed6dc42::t_ddfaada63f2ec0 166-194
+src/renderer/features/local-conversation/view/composer/local-conversation-thread-composer.tsx
+  s_950dcf4ed6dc42::t_43b259e1334935 192-194,1051,1058,1084-1093,1231-1232,1260-1268
+src/renderer/features/local-conversation/view/composer/composer-draft-state.ts
+  s_950dcf4ed6dc42::t_7be2e70cef7b94 28-33,136-248,499-516,518-526
+  s_950dcf4ed6dc42::t_594e5d87d03199 517
+  s_950dcf4ed6dc42::t_192671ead3275b 527
+docs/product-specs/composer-image-attachments-behavior.md
+  s_950dcf4ed6dc42::t_3d6a424e5b6d9a 36-38
+tests/e2e/composer-image-drafts.spec.ts
+  s_950dcf4ed6dc42::t_0fcac99203f70f 57
+  s_950dcf4ed6dc42::t_14ac96673f9dce 1-56,58-66,69-83
+  s_950dcf4ed6dc42::t_320aa79c8a0b1e 67-68
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "6dd1d1f5877d20e95d7cdb50c1dcf62c7de10309",
+  "prompts": {},
+  "sessions": {
+    "s_950dcf4ed6dc42": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "447a25ca-824f-4258-9113-30ad561f7686",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
