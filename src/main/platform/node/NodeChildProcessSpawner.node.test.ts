@@ -1,5 +1,6 @@
 import { assert, it } from "@effect/vitest";
 import * as NodeServices from "@effect/platform-node/NodeServices";
+import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import * as Duration from "effect/Duration";
@@ -14,14 +15,26 @@ const processTreeFixture = fileURLToPath(
   new URL("../../../../tests/fixtures/scoped-process-tree.mjs", import.meta.url),
 );
 
+/** The process's one-letter state, or undefined once it has been reaped. */
+function processState(pid: number): string | undefined {
+  if (process.platform === "linux") {
+    return readFileSync(`/proc/${pid}/stat`, "utf8").split(") ")[1]?.[0];
+  }
+  try {
+    return execFileSync("ps", ["-o", "stat=", "-p", String(pid)], { encoding: "utf8" }).trim()[0];
+  } catch {
+    return undefined;
+  }
+}
+
 function isProcessRunning(pid: number): boolean {
   try {
     process.kill(pid, 0);
-    if (process.platform !== "linux") return true;
-    // A container's PID 1 may not reap an orphan immediately. Zombies have
+    // An orphan's new parent (a container's PID 1, or launchd) may not reap it
+    // immediately, and signal 0 still reaches it until then. Zombies have
     // already exited and cannot execute work or retain the child's resources.
-    const state = readFileSync(`/proc/${pid}/stat`, "utf8").split(") ")[1]?.[0];
-    return state !== "Z";
+    const state = processState(pid);
+    return state !== undefined && state !== "Z";
   } catch (error) {
     const code = (error as NodeJS.ErrnoException).code;
     if (code === "ESRCH" || code === "ENOENT") return false;
@@ -34,7 +47,9 @@ function forceCleanup(groupPid: number | undefined): void {
   try {
     process.kill(-groupPid, "SIGKILL");
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ESRCH") return;
+    // macOS answers EPERM for a group whose members have all exited but are not yet reaped.
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code === "ESRCH" || (code === "EPERM" && process.platform === "darwin")) return;
     throw error;
   }
 }
