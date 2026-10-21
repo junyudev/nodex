@@ -25,6 +25,7 @@ import {
   NativePromptImages,
   layer as promptImagesLayer,
 } from "../agent-backend/NativePromptImages";
+import { live as imageFittingLayer } from "../platform/electron/ElectronImageFitting";
 import {
   NativeSessionWorkspace,
   layer as sessionWorkspaceLayer,
@@ -658,7 +659,13 @@ const supervisor = Layer.effectContext(
 
 /** Execution and Profile coordination depend only on Core and native filesystem capabilities. */
 export const runtime = supervisor.pipe(
-  Layer.provideMerge(Layer.mergeAll(promptImagesLayer, sessionWorkspaceLayer, acpProbeLayer)),
+  Layer.provideMerge(
+    Layer.mergeAll(
+      promptImagesLayer.pipe(Layer.provide(imageFittingLayer)),
+      sessionWorkspaceLayer,
+      acpProbeLayer,
+    ),
+  ),
 );
 
 /** Product tool semantics activate after Session, Workbench and automation Modules exist. */

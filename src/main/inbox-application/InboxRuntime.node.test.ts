@@ -13,6 +13,8 @@ import {
 import { testLayer as configLayer } from "../app/MainConfig";
 import { CodexTurnCommands } from "../codex-application/CodexTurnCommands";
 import type { CoreInboxDispatchContext, CoreInboxDispatchWork } from "../core-client/inbox-adapter";
+import { fitPromptImages, type PromptImageBytes } from "../agent-backend/AgentImageFitting";
+import { NativePromptImages } from "../agent-backend/NativePromptImages";
 import { LibraryModule } from "../library-application/LibraryModule";
 import { ProjectWorkspace } from "../project-application/ProjectWorkspace";
 import { ApplicationSettings } from "../settings/ApplicationSettings";
@@ -155,6 +157,8 @@ const inboxError = () =>
 const settingsService = ApplicationSettings.of({
   snapshot: () => Effect.succeed({ inbox: settings }),
 } as unknown as ApplicationSettings["Service"]);
+const FITTED_JPEG = new Uint8Array([255, 216, 255]);
+
 const delivery = (input: {
   runtime: Partial<Runtime>;
   inbox: Partial<InboxApplication["Service"]>;
@@ -164,6 +168,23 @@ const delivery = (input: {
   files?: Readonly<Record<string, { readonly mimeType: string; readonly bytes: Uint8Array }>>;
 }) =>
   makeDelivery.pipe(
+    // Fitting shrinks an oversized image to a small JPEG, as the Electron codec would.
+    Effect.provideService(NativePromptImages, {
+      fit: (images: readonly PromptImageBytes[]) =>
+        Effect.promise(() =>
+          fitPromptImages(images, async () => ({
+            mediaType: "image/jpeg",
+            bytes: FITTED_JPEG,
+          })),
+        ).pipe(
+          Effect.map((fitted) =>
+            fitted.map((image) => ({
+              mediaType: image.mediaType,
+              data: Buffer.from(image.bytes).toString("base64"),
+            })),
+          ),
+        ),
+    } as unknown as NativePromptImages["Service"]),
     Effect.provideService(LibraryModule, {
       readFileBlob: (_routing: unknown, request: { readonly fileId: string }) => {
         const file = input.files?.[request.fileId];
@@ -416,9 +437,11 @@ it.effect("a dispatched chat receives the messages' Library images with their te
       },
     });
     yield* drain;
-    // An image an Agent cannot take, or one no longer in the Library, stays on its Page.
+    // A kind of image an Agent cannot read, or one no longer in the Library, stays on its Page;
+    // an oversized one is fitted rather than left out.
     assert.deepEqual(calls[0]?.message.images, [
       { source: `data:image/png;base64,${Buffer.from(png).toString("base64")}` },
+      { source: `data:image/jpeg;base64,${Buffer.from(FITTED_JPEG).toString("base64")}` },
       { source: `data:image/jpeg;base64,${Buffer.from(png).toString("base64")}` },
     ]);
     assert.strictEqual(calls[0]?.message.text, confirmed.final_text);

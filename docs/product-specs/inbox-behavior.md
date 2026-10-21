@@ -306,9 +306,11 @@ instructions.
   their Page keys.
 - A chat message sent from the Inbox carries the Library images of its messages
   with the text, each image once and in reading order. Core freezes them with
-  the text at confirmation. Up to 20 images within the Agent's image limits are
-  sent; an image the Agent cannot take, or one no longer in the Library, stays on
-  its Page, which the text names.
+  the text at confirmation. Up to 20 images are sent, each fitted to what an
+  Agent takes with one message as
+  [Message Content Behavior](./message-content-behavior.md) describes; an image
+  of a kind an Agent cannot read, or one no longer in the Library, stays on its
+  Page, which the text names.
 - **Send to chat:** a local chat receives the message into its Runtime queue even
   while busy. Its own queue controls when execution starts.
 - **Move to Project:** Core moves every member and records the filing in one

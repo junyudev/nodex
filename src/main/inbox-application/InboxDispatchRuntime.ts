@@ -8,10 +8,8 @@ import * as Stream from "effect/Stream";
 import { parseFileSource } from "../../shared/file-resources";
 import type { CodexPromptImageInput } from "../../shared/types";
 import { createUuidV7FromTimestamp } from "../../shared/uuid-v7";
-import {
-  isNativePromptImageType,
-  NATIVE_PROMPT_IMAGE_LIMITS,
-} from "../agent-backend/NativePromptImages";
+import { AGENT_IMAGE_LIMITS, type PromptImageBytes } from "../agent-backend/AgentImageFitting";
+import { isNativePromptImageType, NativePromptImages } from "../agent-backend/NativePromptImages";
 import { AgentRuntimeApplication } from "../agent-runtime/AgentRuntimeApplication";
 import { CodexTurnCommands } from "../codex-application/CodexTurnCommands";
 import { CODEX_APP_LOCAL_HOST_ID } from "../codex/codex-app-meta-thread-tools";
@@ -52,28 +50,28 @@ export const make = Effect.gen(function* () {
   const runtime = yield* AgentRuntimeApplication;
   const workspace = yield* ProjectWorkspace;
   const library = yield* LibraryModule;
+  const promptImages = yield* NativePromptImages;
   const remoteTurns = yield* Effect.serviceOption(CodexTurnCommands);
   const logger = getLogger({ component: "inbox-dispatch-runtime" });
   const lane = yield* Semaphore.make(1);
 
   /**
-   * The messages' frozen Library images travel inline with their text, in order, as far as an
-   * Agent takes them with one message. The rest stay on their Pages, which the text names.
+   * The messages' frozen Library images travel inline with their text, in order, each fitted to
+   * what an Agent takes with one message. An image that is gone from the Library, or of a kind
+   * an Agent cannot read, stays on its Page, which the text names.
    */
   const images = Effect.fn("InboxDispatchRuntime.images")(function* (work: CoreInboxDispatchWork) {
-    const images: CodexPromptImageInput[] = [];
-    let total = 0;
+    const read: PromptImageBytes[] = [];
     for (const source of work.image_sources) {
       const fileId = parseFileSource(source);
-      if (!fileId || images.length >= NATIVE_PROMPT_IMAGE_LIMITS.count) continue;
+      if (!fileId || read.length >= AGENT_IMAGE_LIMITS.count) continue;
       const file = yield* library
         .readFileBlob({ kind: "library" }, { fileId, source: { kind: "direct" } })
         .pipe(Effect.option);
       if (
         Option.isNone(file) ||
         !isNativePromptImageType(file.value.mimeType) ||
-        file.value.bytes.byteLength > NATIVE_PROMPT_IMAGE_LIMITS.imageBytes ||
-        total + file.value.bytes.byteLength > NATIVE_PROMPT_IMAGE_LIMITS.totalBytes
+        file.value.bytes.byteLength > AGENT_IMAGE_LIMITS.sourceBytes
       ) {
         logger.warn("Inbox handoff leaves an image on its Page", {
           proposalId: work.proposal_id,
@@ -81,12 +79,24 @@ export const make = Effect.gen(function* () {
         });
         continue;
       }
-      total += file.value.bytes.byteLength;
-      images.push({
-        source: `data:${file.value.mimeType};base64,${Buffer.from(file.value.bytes).toString("base64")}`,
+      read.push({
+        mediaType: file.value.mimeType as PromptImageBytes["mediaType"],
+        bytes: file.value.bytes,
       });
     }
-    return images;
+    const fitted = yield* promptImages.fit(read).pipe(
+      Effect.catch(() =>
+        Effect.sync(() => {
+          logger.warn("Inbox handoff leaves its images on their Pages", {
+            proposalId: work.proposal_id,
+          });
+          return [];
+        }),
+      ),
+    );
+    return fitted.map((image): CodexPromptImageInput => ({
+      source: `data:${image.mediaType};base64,${image.data}`,
+    }));
   });
 
   const reconcile = Effect.fn("InboxDispatchRuntime.reconcile")(function* (

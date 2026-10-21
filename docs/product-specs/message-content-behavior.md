@@ -56,6 +56,13 @@ One written message has exactly two projections.
   the same rules everywhere, whether the source is a Composer or a Page sent to
   a chat. Mentions become readable references; images travel as images.
 
+Wherever Nodex sends an image's bytes to an Agent itself, rather than handing the
+Agent a local file, the image is fitted instead of being refused or left out. One
+message carries at most 20 images; each may use 5 MB or an equal share of 20 MB,
+whichever is smaller. An image over its share has its longest edge stepped down
+from 2048px, staying PNG while that fits, so screenshots stay sharp, and
+otherwise becoming JPEG. The original is unchanged where the message keeps it.
+
 ## Message bubbles
 
 Every bubble that shows written content, in the Inbox and in a chat, renders it
