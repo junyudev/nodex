@@ -2,20 +2,12 @@ import type { CSSProperties, ReactNode } from "react";
 import { useLayoutEffect, useRef, useState } from "react";
 import { ChevronDownIcon } from "@/components/shared/icons";
 import { cn } from "../../../../lib/utils";
-import { MarkdownRenderer } from "./markdown/markdown-renderer";
 import { useClippedFocusSafety } from "./use-clipped-focus-safety";
 import { useContentOverflow } from "./use-content-overflow";
 import { resolveUserMessageCollapsedHeightPx } from "./user-message-collapse-layout";
 import { registerContentSearchRevealOwner } from "../../../content-search/content-search-reveal-owner";
 
 export const DEFAULT_USER_MESSAGE_COLLAPSED_LINES = 20;
-
-interface UserMessageTextProps {
-  text: string;
-  collapsedLineCount?: number;
-  cwd?: string | null;
-  projectWorkspacePath?: string | null;
-}
 
 const USER_MESSAGE_COLLAPSED_STYLE: CSSProperties = {
   overflow: "hidden",
@@ -119,24 +111,5 @@ export function UserMessageCollapse({
         </button>
       )}
     </div>
-  );
-}
-
-export function UserMessageText({
-  text,
-  collapsedLineCount = DEFAULT_USER_MESSAGE_COLLAPSED_LINES,
-  cwd,
-  projectWorkspacePath,
-}: UserMessageTextProps) {
-  return (
-    <UserMessageCollapse contentKey={text} collapsedLineCount={collapsedLineCount}>
-      <MarkdownRenderer
-        content={text}
-        preserveLineBreaks
-        cwd={cwd}
-        projectWorkspacePath={projectWorkspacePath}
-        className="codex-markdown-user text-size-chat"
-      />
-    </UserMessageCollapse>
   );
 }

@@ -10,6 +10,7 @@ pub mod fractional_rank;
 pub(crate) mod identity;
 pub mod materialized_inline;
 pub mod nfm;
+pub(crate) mod nfm_markdown_forms;
 pub mod nfm_parser;
 pub mod ordered_position;
 pub mod ordinary_block;

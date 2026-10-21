@@ -1201,7 +1201,7 @@ These invariants cross subsystem boundaries. Narrower domain and feature invaria
 21. There is no catch-all persistence or generic mutation boundary. New durable semantics enter an owning deep Module and its typed Interface.
 22. The Library owns File identity. Pages own relationships and paths; structural moves and copies preserve File IDs without changing shared content or global metadata. File and Page relationship identities remain separate.
 23. Native clipboard descriptors and Main lifecycle state are routing evidence only. Core's durable bundle and cut claim are the sole structural copy and move authority; every non-authoritative path remains portable content.
-24. Written messages are Nested Markdown. Composers, Inbox capture, message bubbles, and Agent input share that one language and its two projections, into a Page body and into Agent input; no surface defines a second message format. The contract is [Message Content Behavior](product-specs/message-content-behavior.md).
+24. Written messages are message text, read into Nested Markdown by the same rules in Core and the renderer. A message's Page body, its bubble, its Composer draft, and what a chat receives from it are projections of that one document, and no surface defines a second message format; see [Message Content Behavior](product-specs/message-content-behavior.md).
 
 ## Codemap
 

@@ -850,7 +850,7 @@ pub enum InboxCommand {
 
 #[derive(Clone, Debug, Args, PartialEq)]
 pub struct InboxSendArgs {
-    /// Message in Nested Markdown, kept whole as the Page body: text, then any images.
+    /// Message text, kept whole as the Page body: Markdown, then any images.
     /// Omitted or - reads redirected stdin.
     #[arg(value_name = "TEXT")]
     pub text: Option<String>,

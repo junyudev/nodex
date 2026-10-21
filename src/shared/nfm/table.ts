@@ -265,7 +265,7 @@ export function splitGfmTableRow(line: string): string[] {
 
 function parseDelimiterCell(value: string): NfmTableAlignment | undefined | null {
   const trimmed = value.trim();
-  if (!/^:?-{3,}:?$/.test(trimmed)) return null;
+  if (!/^:?-+:?$/.test(trimmed)) return null;
   const starts = trimmed.startsWith(":");
   const ends = trimmed.endsWith(":");
   if (starts && ends) return "center";

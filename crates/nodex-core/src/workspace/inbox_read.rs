@@ -364,8 +364,12 @@ pub(super) fn read_message_edit(
             false,
         )
     })?;
-    let original = super::inbox::message_body(original_body).ok();
-    if original.is_none_or(|original| original.nfm != current) {
+    // The rewrite started from the stored body, so it compares as Nested Markdown, not as
+    // message text.
+    let original = crate::domain::nfm_parser::parse_nfm(original_body)
+        .ok()
+        .map(|blocks| crate::domain::nfm::serialize_nfm(&blocks));
+    if original.is_none_or(|original| original != current) {
         return Err(StoreError::new(
             StoreErrorCode::RevisionConflict,
             "This message changed while you were editing it",

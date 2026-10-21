@@ -86,7 +86,10 @@ test("the Inbox composer sends pasted and picked images after the text", async (
       await page.setViewportSize({ width: 1280, height: 800 });
       await page.getByTestId("sidebar-inbox-row-wrapper").getByRole("button").click();
       const composer = page.getByRole("textbox", { name: "Message your Inbox" });
-      await composer.fill("The toolbar is cut off on **narrow** windows");
+      // Written as Markdown: two lines of one paragraph, then a list with `*` bullets.
+      await composer.fill(
+        "The toolbar is cut off on **narrow** windows\nwhen the sidebar is open\n\n* the gear\n* the close button",
+      );
 
       // Paste goes through the real clipboard event path with an image File on it.
       await composer.evaluate((element, base64) => {
@@ -113,6 +116,7 @@ test("the Inbox composer sends pasted and picked images after the text", async (
         .filter({ hasText: "The toolbar is cut off" });
       await expect(message).toBeVisible();
       await expect(message.getByText("narrow", { exact: true })).toBeVisible();
+      await expect(message.getByRole("listitem")).toHaveText(["the gear", "the close button"]);
       const thumbnails = message.getByRole("button", { name: "Open image preview" });
       await expect(thumbnails).toHaveCount(2);
       await expect
@@ -132,7 +136,7 @@ test("the Inbox composer sends pasted and picked images after the text", async (
         await invokeIpc(page, "inbox:window", { scope: { kind: "library" }, filter: "inbox" })
       ).items;
       expect(item?.body).toMatch(
-        /^The toolbar is cut off on \*\*narrow\*\* windows\n<image source="nodex:\/\/files\/[^"]+"><\/image>\n<image source="nodex:\/\/files\/[^"]+"><\/image>$/,
+        /^The toolbar is cut off on \*\*narrow\*\* windows<br>when the sidebar is open\n- the gear\n- the close button\n<image source="nodex:\/\/files\/[^"]+"><\/image>\n<image source="nodex:\/\/files\/[^"]+"><\/image>$/,
       );
       await page.screenshot({ path: path.join(artifacts, "sent.png") });
     },

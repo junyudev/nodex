@@ -1,4 +1,6 @@
 import type { InboxItem } from "../../../shared/inbox";
+import { parseNfm } from "../../../shared/nfm/parser";
+import { writtenMessageText } from "../../../shared/message-content";
 import { CheckmarkIcon, CopyIcon } from "@/components/shared/icons";
 import { toast } from "@/components/ui/toast";
 import { writeTextToClipboard } from "@/lib/clipboard";
@@ -7,14 +9,20 @@ import { useCopyFeedback } from "@/lib/use-copy-feedback";
 import { InboxIconAction } from "./inbox-icon-action";
 import { inboxPageRoutingContext } from "./inbox-presentation";
 
-/** The whole message; a body the stream shows only in part is read from its Page. */
+/**
+ * The whole message as written, with everyday text unescaped; a body the stream shows only in
+ * part is read from its Page.
+ */
 async function inboxMessageText(item: InboxItem): Promise<string> {
-  if (!item.bodyTruncated) return item.body;
-  const page = await loadPageDocumentMaterialization({
-    routingContext: inboxPageRoutingContext(item),
-    pageId: item.pageId,
-  });
-  return page.nfm;
+  const nfm = item.bodyTruncated
+    ? (
+        await loadPageDocumentMaterialization({
+          routingContext: inboxPageRoutingContext(item),
+          pageId: item.pageId,
+        })
+      ).nfm
+    : item.body;
+  return writtenMessageText(parseNfm(nfm));
 }
 
 export function InboxCopyAction({ item }: { readonly item: InboxItem }) {

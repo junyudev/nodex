@@ -44,12 +44,12 @@ intents, and selection.
   root.
 - A message sent to a Project's Inbox becomes a Page in that Project's Database,
   in Triage, with the Project's Page key. It is on the Project's Board at once.
-- The whole message becomes the Page body as written in Nested Markdown, and the
-  stream bubble renders that body as the Page holds it now, images included; see
+- The whole message, read as message text, becomes the Page body, and the stream
+  bubble renders that body as the Page holds it now, images included; see
   [Message Content Behavior](./message-content-behavior.md). An edit made in the
   Page, by the user or an Agent, shows in the stream as it lands, as does a
-  rename, move or deletion made anywhere else. The Page title is only a label for Board, List,
-  search, tabs, and new chats. The stream does not show it; `Open page` in the
+  rename, move or deletion made anywhere else. The Page title is only a label
+  for Board, List, search, tabs, and new chats. The stream does not show it; `Open page` in the
   message menu opens the Page.
 - A sender may give the title. Otherwise Core labels the Page with a provisional
   title: the message's opening words, cut to about 48 columns, where wide
@@ -57,8 +57,8 @@ intents, and selection.
   a short name in the message's language. A title the user or an earlier
   suggestion has changed is never replaced.
 - A message is saved whether or not any suggestion runtime is available. The
-  composer accepts text, read as Nested Markdown, and images by paste, drop, or
-  `Add photos`. `Enter` sends, and `Shift+Enter` inserts a line break.
+  composer accepts message text and images by paste, drop, or `Add photos`.
+  `Enter` sends, and `Shift+Enter` inserts a line break.
 - Each image becomes a Library File as soon as it is added and shows in the row
   above the text; the message is sent once every image is in. A sent message is
   its text followed by its images. An image removed from a draft stays in the

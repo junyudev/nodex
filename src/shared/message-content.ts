@@ -1,5 +1,7 @@
 import { fileSource } from "./file-resources";
 import { parseNfm } from "./nfm/parser";
+import { serializeMessageText } from "./message-text";
+import { serializePlainNfm } from "./nfm/plain-source";
 import { serializeNfm } from "./nfm/serializer";
 import type { NfmBlock, NfmImage } from "./nfm/types";
 
@@ -26,9 +28,16 @@ export function splitMessageContent(blocks: readonly NfmBlock[]): MessageContent
   };
 }
 
-/** The message's text as Nested Markdown, without its attached images: a prompt draft's start. */
-export const messageTextNfm = (nfm: string): string =>
-  serializeNfm([...splitMessageContent(parseNfm(nfm)).text]);
+/**
+ * A stored body as the message text a person reads and edits, falling back to plain Nested
+ * Markdown for the rare body that message text cannot say exactly.
+ */
+export const writtenMessageText = (blocks: readonly NfmBlock[]): string =>
+  serializeMessageText(blocks) ?? serializePlainNfm(blocks);
+
+/** The message's text without its attached images, as written: a prompt draft's start. */
+export const messageTextOf = (nfm: string): string =>
+  writtenMessageText(splitMessageContent(parseNfm(nfm)).text);
 
 /** A Library File attached to a message, as the image Block a Composer writes for it. */
 export const messageImageBlock = (fileId: string): NfmImage => ({
@@ -39,10 +48,10 @@ export const messageImageBlock = (fileId: string): NfmImage => ({
 });
 
 /**
- * A Composer's message as its Nested Markdown body: the text as typed, then its image Blocks,
- * the message shape Core keeps as the Page body.
+ * A Composer's message as the body Core reads: its message text as typed, then its image
+ * Blocks, the message shape Core keeps as the Page body.
  */
-export function composeMessageNfm(text: string, images: readonly NfmImage[]): string {
+export function composeMessageText(text: string, images: readonly NfmImage[]): string {
   const lines = text.replace(/\r\n?/g, "\n").trimEnd();
   return [lines, serializeNfm([...images])].filter(Boolean).join("\n");
 }

@@ -3,7 +3,12 @@ import { useState } from "react";
 import { afterEach, beforeEach, expect, test, vi } from "vite-plus/test";
 import { renderWithMaitai as render } from "../../test/thread-maitai";
 import { TestQueryProvider } from "@/test/query";
-import { EMPTY_INBOX_DRAFT, inboxDraftBody, type InboxDraft } from "./inbox-capture-state";
+import {
+  EMPTY_INBOX_DRAFT,
+  inboxDraftBody,
+  inboxDraftFromBody,
+  type InboxDraft,
+} from "./inbox-capture-state";
 import { InboxComposer } from "./inbox-composer";
 import { InboxMessageEditor } from "./inbox-message-editor";
 import { useInboxImageAccess } from "./use-inbox-image-access";
@@ -119,11 +124,14 @@ test("a removed image leaves the draft, and an image alone can be sent", async (
   expect(send.disabled).toBe(true);
 });
 
+const PICTURED = 'Settings\n<image source="nodex://files/shot" preview-width="320">Toolbar</image>';
+
 const editor = (onSave: (body: string) => Promise<boolean>) =>
   render(
     <TestQueryProvider>
       <InboxMessageEditor
-        body={'Settings\n<image source="nodex://files/shot" preview-width="320">Toolbar</image>'}
+        body={PICTURED}
+        draft={inboxDraftFromBody(PICTURED)!}
         routing={{ kind: "library" }}
         onSave={onSave}
         onCancel={vi.fn()}
@@ -162,4 +170,30 @@ test("a rewrite can drop one of the message's images", async () => {
     await Promise.resolve();
   });
   await waitFor(() => expect(onSave).toHaveBeenCalledWith("Settings"));
+});
+
+test("a rewrite shows the message's text as typed and saves only a change", async () => {
+  const onSave = vi.fn(async () => true);
+  const view = render(
+    <TestQueryProvider>
+      <InboxMessageEditor
+        body={"Keep a \\< b and C:\\\\Users"}
+        draft={inboxDraftFromBody("Keep a \\< b and C:\\\\Users")!}
+        routing={{ kind: "library" }}
+        onSave={onSave}
+        onCancel={vi.fn()}
+      />
+    </TestQueryProvider>,
+  );
+  const text = view.getByRole("textbox", { name: "Edit message" }) as HTMLTextAreaElement;
+  expect(text.value).toBe("Keep a < b and C:\\Users");
+  expect((view.getByRole("button", { name: "Save" }) as HTMLButtonElement).disabled).toBe(true);
+  await act(async () => {
+    fireEvent.change(text, { target: { value: "Keep a < b and C:\\Users, please" } });
+  });
+  await act(async () => {
+    fireEvent.click(view.getByRole("button", { name: "Save" }));
+    await Promise.resolve();
+  });
+  expect(onSave).toHaveBeenCalledWith("Keep a < b and C:\\Users, please");
 });

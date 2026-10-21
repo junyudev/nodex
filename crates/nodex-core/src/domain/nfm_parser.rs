@@ -9,6 +9,7 @@ use super::nfm::{
     NFM_COLORS, NfmBlock, NfmInlineContent, NfmSourceBlock, NfmStyleSet, NfmTableCell,
     NfmTableColumn, NfmTableRow, parse_inline_content, parse_xml_attrs,
 };
+use super::nfm_markdown_forms::{nest_space_indented_list_items, unprotect_paragraph_start};
 use super::ordinary_block::{default_props, quote_props};
 
 #[derive(Debug, Error, PartialEq, Eq)]
@@ -37,16 +38,30 @@ pub struct LocatedNfm {
 }
 
 pub fn parse_nfm(input: &str) -> Result<Vec<NfmBlock>, NfmParseError> {
-    Ok(parse_nfm_with_locations::<false>(input)?.blocks)
+    Ok(parse_nfm_with_locations::<false>(input, false)?.blocks)
+}
+
+/// Message text is Nested Markdown as people write a message: a blank line separates Blocks,
+/// while a single line break stays inside its paragraph or quote, and a bare `http://` or
+/// `https://` URL is a link. `parseMessageText` in `src/shared/message-text.ts` reads it the
+/// same way; `tests/fixtures/nfm/markdown-input.json` holds both to it.
+pub fn parse_message_text(input: &str) -> Result<Vec<NfmBlock>, NfmParseError> {
+    let normalized = input.replace("\r\n", "\n").replace('\r', "\n");
+    let mut blocks = parse_nfm_with_locations::<false>(&normalized, true)?.blocks;
+    super::nfm_markdown_forms::autolink_blocks(&mut blocks);
+    Ok(blocks)
 }
 
 /// Parse the existing grammar with preorder Block locations in the original UTF-8 input.
 /// Standalone blank lines have no Block owner; callout delimiters belong to their parent.
 pub fn parse_nfm_located(input: &str) -> Result<LocatedNfm, NfmParseError> {
-    parse_nfm_with_locations::<true>(input)
+    parse_nfm_with_locations::<true>(input, false)
 }
 
-fn parse_nfm_with_locations<const LOCATED: bool>(input: &str) -> Result<LocatedNfm, NfmParseError> {
+fn parse_nfm_with_locations<const LOCATED: bool>(
+    input: &str,
+    join_lines: bool,
+) -> Result<LocatedNfm, NfmParseError> {
     if input.trim().is_empty() {
         return Ok(LocatedNfm {
             blocks: Vec::new(),
@@ -67,14 +82,53 @@ fn parse_nfm_with_locations<const LOCATED: bool>(input: &str) -> Result<LocatedN
     } else {
         Vec::new()
     };
-    parse_located_lines::<LOCATED>(&lines, &origins)
+    let lines = nest_space_indented_list_items(&lines);
+    let lines: Vec<_> = lines.iter().map(String::as_str).collect();
+    parse_located_lines::<LOCATED>(&lines, &origins, join_lines)
+}
+
+/// Appends a one-line paragraph or quote to the same kind of Block on the line before it.
+fn join_line(previous: &mut NfmBlock, next: &mut NfmBlock) -> bool {
+    match (previous, next) {
+        (
+            NfmBlock::Paragraph {
+                content,
+                color,
+                children,
+            },
+            NfmBlock::Paragraph {
+                content: next_content,
+                color: next_color,
+                ..
+            },
+        )
+        | (
+            NfmBlock::Blockquote {
+                content,
+                color,
+                children,
+            },
+            NfmBlock::Blockquote {
+                content: next_content,
+                color: next_color,
+                ..
+            },
+        ) if color == next_color && children.is_empty() => {
+            content.push(NfmInlineContent::LineBreak);
+            content.append(next_content);
+            true
+        }
+        _ => false,
+    }
 }
 
 fn parse_located_lines<const LOCATED: bool>(
     lines: &[&str],
     origins: &[std::ops::Range<usize>],
+    join_lines: bool,
 ) -> Result<LocatedNfm, NfmParseError> {
-    let mut flat = Vec::new();
+    let mut flat: Vec<FlatBlock> = Vec::new();
+    let mut previous_end = usize::MAX;
     let mut cursor = 0usize;
     while cursor < lines.len() {
         let line = lines[cursor];
@@ -85,8 +139,19 @@ fn parse_located_lines<const LOCATED: bool>(
             continue;
         }
         let mut descendants = Vec::new();
-        let (block, next) =
+        let (mut block, next) =
             parse_block::<LOCATED>(lines, cursor, indent, origins, &mut descendants)?;
+        if join_lines
+            && previous_end == cursor
+            && let Some(previous) = flat.last_mut()
+            && previous.indent == indent
+            && join_line(&mut previous.block, &mut block)
+        {
+            previous_end = next;
+            cursor = next;
+            continue;
+        }
+        previous_end = next;
         let locations = if LOCATED {
             let location = own_source_ranges(&origins[cursor..next], &descendants);
             let mut locations = vec![location];
@@ -287,21 +352,27 @@ fn parse_block<const LOCATED: bool>(
             index + 1,
         ));
     }
-    if let Some(rest) = stripped.strip_prefix("- [")
-        && let Some((state, text)) = rest.split_once("] ")
-        && matches!(state, " " | "x")
+    if let Some(rest) = stripped
+        .strip_prefix(['-', '*', '+'])
+        .and_then(|rest| rest.strip_prefix(" ["))
+        && let Some((state, text)) = rest.split_once(']')
+        && matches!(state, " " | "x" | "X")
+        && text.starts_with(char::is_whitespace)
     {
         return Ok((
             NfmBlock::CheckListItem {
-                checked: state == "x",
-                content: parse_inline_content(text),
+                checked: state != " ",
+                content: parse_inline_content(text.trim_start()),
                 color,
                 children: Vec::new(),
             },
             index + 1,
         ));
     }
-    if let Some(rest) = stripped.strip_prefix("- ") {
+    if let Some(rest) = stripped
+        .strip_prefix(['-', '*', '+'])
+        .and_then(|rest| rest.strip_prefix(' '))
+    {
         return Ok((
             NfmBlock::BulletListItem {
                 content: parse_inline_content(rest),
@@ -311,13 +382,16 @@ fn parse_block<const LOCATED: bool>(
             index + 1,
         ));
     }
-    if let Some((prefix, rest)) = stripped.split_once(". ")
-        && let Ok(start) = prefix.parse::<u64>()
+    let digits = stripped.bytes().take_while(u8::is_ascii_digit).count();
+    if digits > 0
+        && let Some(rest) = stripped[digits..].strip_prefix(['.', ')'])
+        && rest.starts_with(char::is_whitespace)
+        && let Ok(start) = stripped[..digits].parse::<u64>()
     {
         return Ok((
             NfmBlock::NumberedListItem {
                 start: Some(start),
-                content: parse_inline_content(rest),
+                content: parse_inline_content(rest.trim_start()),
                 color,
                 children: Vec::new(),
             },
@@ -336,7 +410,7 @@ fn parse_block<const LOCATED: bool>(
     }
     Ok((
         NfmBlock::Paragraph {
-            content: parse_inline_content(&stripped),
+            content: parse_inline_content(&unprotect_paragraph_start(&stripped)),
             color,
             children: Vec::new(),
         },
@@ -389,7 +463,7 @@ fn parse_callout<const LOCATED: bool>(
     } else {
         &[]
     };
-    let mut parsed = parse_located_lines::<LOCATED>(&inner, inner_origins)?;
+    let mut parsed = parse_located_lines::<LOCATED>(&inner, inner_origins, false)?;
     let blocks = &mut parsed.blocks;
     let content = if matches!(blocks.first(), Some(NfmBlock::Paragraph { .. })) {
         let removed = blocks.remove(0);
@@ -1366,7 +1440,7 @@ fn split_gfm_row(line: &str) -> Vec<String> {
 fn delimiter_alignment(value: &str) -> Option<Option<String>> {
     let trimmed = value.trim();
     let core = trimmed.trim_matches(':');
-    if core.len() < 3 || !core.chars().all(|value| value == '-') {
+    if core.is_empty() || !core.chars().all(|value| value == '-') {
         return None;
     }
     Some(match (trimmed.starts_with(':'), trimmed.ends_with(':')) {
@@ -1469,6 +1543,99 @@ mod tests {
     use crate::domain::nfm::{materialize_nfm, serialize_nfm};
 
     use super::*;
+
+    fn top_level_types(blocks: &[NfmBlock]) -> Vec<&'static str> {
+        blocks
+            .iter()
+            .map(|block| match block {
+                NfmBlock::Paragraph { .. } => "paragraph",
+                NfmBlock::Heading { .. } => "heading",
+                NfmBlock::BulletListItem { .. } => "bulletListItem",
+                NfmBlock::NumberedListItem { .. } => "numberedListItem",
+                NfmBlock::CheckListItem { .. } => "checkListItem",
+                NfmBlock::Blockquote { .. } => "blockquote",
+                NfmBlock::CodeBlock { .. } => "codeBlock",
+                NfmBlock::Table { .. } => "table",
+                NfmBlock::Image { .. } => "image",
+                NfmBlock::Divider { .. } => "divider",
+                NfmBlock::EmptyBlock { .. } => "emptyBlock",
+                _ => "other",
+            })
+            .collect()
+    }
+
+    /// The TypeScript parser is held to the same cases.
+    #[test]
+    fn markdown_input_reads_as_the_shared_canonical_nested_markdown() {
+        let fixture: Value =
+            serde_json::from_str(include_str!("../../tests/fixtures/nfm/markdown-input.json"))
+                .expect("fixture");
+        let cases = fixture["nestedMarkdown"]
+            .as_array()
+            .expect("Nested Markdown cases")
+            .iter()
+            .map(|case| {
+                (
+                    case,
+                    parse_nfm as fn(&str) -> Result<Vec<NfmBlock>, NfmParseError>,
+                )
+            })
+            .chain(
+                fixture["messageText"]
+                    .as_array()
+                    .expect("message text cases")
+                    .iter()
+                    .map(|case| {
+                        (
+                            case,
+                            parse_message_text as fn(&str) -> Result<Vec<NfmBlock>, NfmParseError>,
+                        )
+                    }),
+            );
+        for (case, parse) in cases {
+            let name = case["name"].as_str().expect("name");
+            let nfm = case["nfm"].as_str().expect("nfm");
+            let blocks = parse(case["input"].as_str().expect("input")).expect(name);
+            let types: Vec<&str> = case["types"]
+                .as_array()
+                .expect("types")
+                .iter()
+                .map(|value| value.as_str().expect("type"))
+                .collect();
+            assert_eq!(top_level_types(&blocks), types, "{name}");
+            assert_eq!(serialize_nfm(&blocks), nfm, "{name}");
+            assert_eq!(
+                serialize_nfm(&parse_nfm(nfm).expect(name)),
+                nfm,
+                "{name} is canonical"
+            );
+        }
+    }
+
+    #[test]
+    fn a_paragraph_that_reads_like_a_block_marker_stays_a_paragraph() {
+        for text in [
+            "- not a list",
+            "  + not a list",
+            "3) not a list",
+            "# not a heading",
+            "---",
+        ] {
+            let paragraph = vec![NfmBlock::Paragraph {
+                content: vec![NfmInlineContent::Text {
+                    text: text.to_owned(),
+                    styles: NfmStyleSet::default(),
+                }],
+                color: None,
+                children: Vec::new(),
+            }];
+            assert_eq!(
+                parse_nfm(&serialize_nfm(&paragraph)).expect(text),
+                paragraph,
+                "{text}"
+            );
+        }
+    }
 
     #[test]
     fn agent_config_materializes_and_serializes_execution_preferences() {

@@ -197,8 +197,9 @@ pub enum ProjectWorkspaceRead {
         limit: u32,
     },
     /// Prepares the user's rewrite of a message still waiting in its Inbox.
-    /// `original_body` is the Nested Markdown body the user started from; a message
-    /// that changed since, or no longer has the message shape, cannot be rewritten.
+    /// `original_body` is the stored Nested Markdown body the user started from, and `body`
+    /// the rewrite as message text; a message that changed since, or no longer has the
+    /// message shape, cannot be rewritten.
     InboxMessageEdit {
         page_id: String,
         original_body: String,
@@ -1714,8 +1715,8 @@ pub enum ProjectWorkspaceIntent {
     /// Captures one message as a Page. A Library Inbox message becomes a Page in the
     /// Inbox Database, created on first use; a Project Inbox message becomes a Page in
     /// that Project's Database. Agent provenance, when present, becomes immutable source.
-    /// The body is Nested Markdown with the message shape, text followed by images, and
-    /// becomes the Page body. Without a sender title, Core gives the Page a provisional
+    /// The body is message text with the message shape, text followed by images, and
+    /// becomes the Page body as canonical Nested Markdown. Without a sender title, Core gives the Page a provisional
     /// title that the suggestion Agent may later replace.
     SendInboxMessage {
         #[serde(default, skip_serializing_if = "Option::is_none")]

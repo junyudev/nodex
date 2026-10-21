@@ -38,7 +38,7 @@ describe("Inbox over the real Core transport", () => {
       expect(item).toMatchObject({
         pageId,
         title: "Survey onboarding flows",
-        body: "Survey onboarding flows\nKeep it read-only.",
+        body: "Survey onboarding flows<br>Keep it read-only.",
         source: { kind: "user" },
         location: { kind: "inbox" },
         suggestionState: "pending",

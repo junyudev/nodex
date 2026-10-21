@@ -1,6 +1,7 @@
 import type { NfmBlock, NfmColor } from "./types";
 import { nfmBlockAcceptsChildren } from "./block-children";
 import { resolveOrderedListStarts } from "./ordered-list";
+import { protectParagraphStart } from "./markdown-forms";
 import { serializeInlineContent } from "./serializer-inline";
 import { serializeNfmTable } from "./table";
 import { escapeXmlAttr } from "./xml-attributes";
@@ -25,7 +26,7 @@ function serializeBlocks(blocks: NfmBlock[], indent: number): string[] {
           lines.push(prefix + "<empty-block/>");
           break;
         }
-        lines.push(prefix + text + colorSuffix(block.color));
+        lines.push(prefix + protectParagraphStart(text) + colorSuffix(block.color));
         break;
       }
       case "heading": {
@@ -104,7 +105,7 @@ function serializeBlocks(blocks: NfmBlock[], indent: number): string[] {
         const attrStr = attrs.length ? " " + attrs.join(" ") : "";
         lines.push(prefix + `<callout${attrStr}>`);
         const text = serializeInlineContent(block.content);
-        if (text) lines.push(prefix + "\t" + text);
+        if (text) lines.push(prefix + "\t" + protectParagraphStart(text));
         lines.push(...serializeBlocks(block.children, indent + 1));
         lines.push(prefix + "</callout>");
         break;

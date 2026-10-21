@@ -7,7 +7,7 @@ import type {
   InboxPageBasis,
 } from "../../../shared/inbox";
 import type { Project } from "../../../shared/types";
-import { messageTextNfm } from "../../../shared/message-content";
+import { messageTextOf } from "../../../shared/message-content";
 import { NodexButton } from "@/components/ui/button";
 import { NodexOptionPicker } from "@/components/ui/dropdown";
 import { CompactChevronDownIcon } from "@/components/shared/icons";
@@ -79,8 +79,8 @@ export function draftForInboxItem(item: InboxItem, projectId: string | null): In
   const action = proposal?.action;
   return {
     ...draftFromAction(
-      action ?? { type: "new_chat", projectId, prompt: messageTextNfm(item.body) },
-      messageTextNfm(item.body),
+      action ?? { type: "new_chat", projectId, prompt: messageTextOf(item.body) },
+      messageTextOf(item.body),
     ),
     basis: proposal?.basis ?? [item.basis],
     chat: proposal?.chat ?? null,

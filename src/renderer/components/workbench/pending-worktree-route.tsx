@@ -22,7 +22,7 @@ import {
   CopyMessageActionButton,
   ThreadMessageActionRow,
 } from "@/features/local-conversation/view/shared/thread-message-actions";
-import { UserMessageText } from "@/features/local-conversation/view/shared/user-message-collapse";
+import { MessageText } from "@/components/message/message-document";
 import { THREAD_VISUAL_TOKENS } from "@/features/local-conversation/view/blocks/local-conversation-visual-tokens";
 import {
   pendingWorktreeRouteTransport,
@@ -234,7 +234,7 @@ export function PendingWorktreeRouteView({
                 data-user-message-bubble="true"
                 className={THREAD_VISUAL_TOKENS.userBubble}
               >
-                <UserMessageText text={entry.prompt} />
+                <MessageText text={entry.prompt} />
               </div>
               <ThreadMessageActionRow align="end" className="opacity-100">
                 <CopyMessageActionButton text={entry.prompt} />
@@ -269,7 +269,7 @@ function PendingWorktreeFirstSubmissionSurface({
                 data-user-message-bubble="true"
                 className={THREAD_VISUAL_TOKENS.userBubble}
               >
-                <UserMessageText text={submission.prompt} />
+                <MessageText text={submission.prompt} />
               </div>
             </div>
             <div className="flex items-center gap-2 text-sm text-tertiary" role="status">

@@ -144,8 +144,9 @@ content and SQL for additional metadata. `context`, `ls`, `tree`,
 and `open view` produce validated Nodex deep links.
 
 `inbox send [TEXT]` appends one message to an Inbox from TEXT or redirected
-stdin and starts no work. The text is Nested Markdown and becomes the Page body
-whole: Markdown becomes structure, text that forms no markup stays literal, and
+stdin and starts no work. The text is read as message text and becomes the Page
+body whole: Markdown becomes structure, lines written together stay one
+paragraph until a blank line, text that forms no markup stays literal, and
 images follow the text. `--title` names it, otherwise Nodex labels it and names
 it later. Inside a Project's
 source or managed worktree, or with `--project`, the message lands in that

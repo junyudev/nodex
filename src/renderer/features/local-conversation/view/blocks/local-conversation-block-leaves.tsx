@@ -58,7 +58,7 @@ import {
   type ThreadActivitySummaryTransition,
 } from "../shared/tools/tool-primitives";
 import { ToolActivityIcon, resolveToolActivityEntryIcon } from "../shared/tools/tool-call-icons";
-import { UserMessageText } from "../shared/user-message-collapse";
+import { MessageText } from "@/components/message/message-document";
 import {
   CODEX_THREAD_ACCORDION_TRANSITION,
   CODEX_THREAD_DIVIDER_ENTER_ANIMATE,
@@ -1112,7 +1112,7 @@ export function UserMessageBubble({
           {block.entry.questionReplies.map((reply) => (
             <div key={reply.questionItemId} className="flex flex-col gap-1">
               <div className="truncate text-sm text-token-text-secondary">{reply.question}</div>
-              <UserMessageText
+              <MessageText
                 text={reply.answer}
                 cwd={threadCwd}
                 projectWorkspacePath={projectWorkspacePath}
@@ -1121,11 +1121,7 @@ export function UserMessageBubble({
           ))}
         </div>
       ) : (
-        <UserMessageText
-          text={content}
-          cwd={threadCwd}
-          projectWorkspacePath={projectWorkspacePath}
-        />
+        <MessageText text={content} cwd={threadCwd} projectWorkspacePath={projectWorkspacePath} />
       )}
     </div>
   );

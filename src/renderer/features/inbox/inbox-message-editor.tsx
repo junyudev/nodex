@@ -7,12 +7,8 @@ import {
 } from "@/components/message/message-images-input";
 import { NodexButton } from "@/components/ui/button";
 import type { ContentRoutingContext } from "../../../shared/content-routing-context";
-import {
-  inboxDraftBody,
-  inboxDraftFromBody,
-  isEmptyInboxDraft,
-  type InboxDraft,
-} from "./inbox-capture-state";
+import { parseNfm } from "../../../shared/nfm/parser";
+import { inboxDraftBody, isEmptyInboxDraft, type InboxDraft } from "./inbox-capture-state";
 import { useInboxImageAccess } from "./use-inbox-image-access";
 
 const MAX_TEXTAREA_HEIGHT_PX = 320;
@@ -23,6 +19,7 @@ const MAX_TEXTAREA_HEIGHT_PX = 320;
  */
 export function InboxMessageEditor({
   body,
+  draft: initial,
   currentBody = body,
   routing,
   onSave,
@@ -30,6 +27,8 @@ export function InboxMessageEditor({
 }: {
   /** The message body the rewrite starts from. */
   readonly body: string;
+  /** That body as the composer writes it. */
+  readonly draft: InboxDraft;
   /** The body as it is now, which may have changed elsewhere since the rewrite began. */
   readonly currentBody?: string;
   /** Where images added during the rewrite are imported. */
@@ -38,7 +37,7 @@ export function InboxMessageEditor({
   readonly onSave: (body: string) => Promise<boolean>;
   readonly onCancel: () => void;
 }) {
-  const [draft, setDraft] = useState<InboxDraft>(() => inboxDraftFromBody(body));
+  const [draft, setDraft] = useState<InboxDraft>(initial);
   const [saving, setSaving] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const images = useInboxImageAccess(routing);
@@ -48,7 +47,8 @@ export function InboxMessageEditor({
       setDraft((current) => ({ ...current, images: [...current.images, ...added] })),
   });
   const next = inboxDraftBody(draft);
-  const changed = !isEmptyInboxDraft(draft) && next !== body && !input.importing;
+  // The draft shows text plainly, so it is compared with how it started rather than with `body`.
+  const changed = !isEmptyInboxDraft(draft) && next !== inboxDraftBody(initial) && !input.importing;
 
   useLayoutEffect(() => {
     const textarea = textareaRef.current;
@@ -121,7 +121,11 @@ export function InboxMessageEditor({
             Message changed elsewhere — view current message
           </summary>
           <div className="mt-1">
-            <MessageDocument nfm={currentBody} fileAuthority={images?.readAuthority ?? null} />
+            <MessageDocument
+              blocks={parseNfm(currentBody)}
+              contentKey={currentBody}
+              fileAuthority={images?.readAuthority ?? null}
+            />
           </div>
         </details>
       ) : null}

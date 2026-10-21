@@ -8,12 +8,12 @@ import {
 } from "../../../shared/schemas/inbox";
 import { parseFileSource } from "../../../shared/file-resources";
 import {
-  composeMessageNfm,
+  composeMessageText,
   messageImageBlock,
   splitMessageContent,
 } from "../../../shared/message-content";
 import { parseNfm } from "../../../shared/nfm/parser";
-import { serializeNfm } from "../../../shared/nfm/serializer";
+import { serializeMessageText } from "../../../shared/message-text";
 import { createBoundedOperationId } from "../../../shared/operation-identity";
 import { createUuidV7 } from "../../../shared/uuid-v7";
 
@@ -33,16 +33,22 @@ export const inboxDraftLabel = (draft: InboxDraft): string =>
   draft.text.trim() || (draft.images.length === 1 ? "1 image" : `${draft.images.length} images`);
 
 export const inboxDraftBody = (draft: InboxDraft): string =>
-  composeMessageNfm(
+  composeMessageText(
     draft.text,
     draft.images.map((image) => image.block ?? messageImageBlock(image.fileId)),
   );
 
-/** The draft a message in the message shape is rewritten from: its text, then its images. */
-export function inboxDraftFromBody(body: string): InboxDraft {
+/**
+ * The draft a message in the message shape is rewritten from: its text as written, then its
+ * images. Null when message text cannot say exactly what the body says; that message is edited
+ * as its Page.
+ */
+export function inboxDraftFromBody(body: string): InboxDraft | null {
   const { text, attachments } = splitMessageContent(parseNfm(body));
+  const written = serializeMessageText(text);
+  if (written === null) return null;
   return {
-    text: serializeNfm([...text]),
+    text: written,
     images: attachments.flatMap((block) => {
       const fileId = parseFileSource(block.source);
       return fileId ? [{ fileId, name: "", block }] : [];

@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { createContext, useContext, type ReactNode } from "react";
 import { Link2 } from "@/components/shared/icons/generic-icons";
 import { NodexLogoMarkIcon } from "@/components/shared/icons";
 import { Streamdown } from "streamdown";
@@ -64,24 +64,71 @@ export function NfmRenderer({ content, className, projectWorkspacePath }: NfmRen
 }
 
 /**
+ * How Blocks are spaced: as a Page lays them out, or as a message does, where lines of one
+ * paragraph sit together, paragraphs are a short step apart and headings take the size the
+ * surrounding chat typography gives them.
+ */
+export type NfmDensity = "page" | "message";
+
+const NfmDensityContext = createContext<NfmDensity>("page");
+
+/**
  * Read-only rendering of parsed Nested Markdown Blocks. Library File images resolve through the
- * enclosing File runtime. `--nfm-paragraph-gap` sets the space around each paragraph.
+ * enclosing File runtime.
  */
 export function NfmDocument({
   blocks,
   className,
   projectWorkspacePath,
+  density = "page",
 }: {
   readonly blocks: NfmBlock[];
   readonly className?: string;
   readonly projectWorkspacePath?: string | null;
+  readonly density?: NfmDensity;
 }) {
   return (
-    <div className={cn("nfm-render", MARKDOWN_CONTENT_CLASS_NAME, className)}>
-      <BlockList blocks={blocks} projectWorkspacePath={projectWorkspacePath} />
-    </div>
+    <NfmDensityContext.Provider value={density}>
+      <div className={cn("nfm-render", MARKDOWN_CONTENT_CLASS_NAME, className)}>
+        <BlockList blocks={blocks} projectWorkspacePath={projectWorkspacePath} />
+      </div>
+    </NfmDensityContext.Provider>
   );
 }
+
+const HEADING_SIZES: Record<NfmDensity, Record<1 | 2 | 3 | 4, string>> = {
+  page: {
+    1: "text-[1.875em] font-bold mt-6 mb-2",
+    2: "text-[1.5em] font-semibold mt-5 mb-2",
+    3: "text-[1.25em] font-semibold mt-4 mb-1",
+    4: "text-[1.1em] font-semibold mt-3 mb-1",
+  },
+  message: {
+    1: "mt-[0.75em] mb-[0.25em] first:mt-0",
+    2: "mt-[0.75em] mb-[0.25em] first:mt-0",
+    3: "mt-[0.5em] mb-[0.25em] first:mt-0",
+    4: "mt-[0.5em] mb-[0.25em] first:mt-0",
+  },
+};
+
+const PARAGRAPH_SPACING: Record<NfmDensity, string> = {
+  page: "my-1",
+  message: "[&:not(:first-child)]:mt-[0.5em]",
+};
+
+/** Chat typography for a message's quotes, lists and tables; Pages keep their own. */
+const MESSAGE_STYLES = {
+  quote: "my-[0.5em] first:mt-0 border-s-2 border-gray-300 ps-4 italic",
+  list: "pl-5",
+  numberedItem: "mb-0.5",
+  // Text keeps the spaces it was written with, so an indented line reads indented.
+  text: "whitespace-pre-wrap",
+  // Children of a list item sit under its text; those of other Blocks step in.
+  children: { listItem: "mt-0.5", checkItem: "mt-0.5 pl-6", block: "mt-0.5 pl-5" },
+  table: "my-[0.5em] first:mt-0",
+  cell: "border-b border-token-border px-2 py-1.5 text-left align-top",
+  header: "font-semibold",
+} as const;
 
 /** Where an image source displays from: a Library File through the File runtime, else as is. */
 export function useNfmImage(source: string): {
@@ -162,12 +209,13 @@ function BlockComponent({
   projectWorkspacePath?: string | null;
 }) {
   const colorClass = block.color ? nfmColorClass(block.color) : undefined;
+  const density = useContext(NfmDensityContext);
 
   switch (block.type) {
     case "paragraph":
       return (
-        <div className={cn("my-[var(--nfm-paragraph-gap,0.25rem)] leading-relaxed", colorClass)}>
-          <p>
+        <div className={cn(PARAGRAPH_SPACING[density], "leading-relaxed", colorClass)}>
+          <p className={density === "message" ? MESSAGE_STYLES.text : undefined}>
             <InlineList items={block.content} projectWorkspacePath={projectWorkspacePath} />
           </p>
           <ChildBlocks children={block.children} projectWorkspacePath={projectWorkspacePath} />
@@ -176,12 +224,7 @@ function BlockComponent({
 
     case "heading": {
       const Tag = `h${block.level}` as "h1" | "h2" | "h3" | "h4";
-      const sizes = {
-        1: "text-[1.875em] font-bold mt-6 mb-2",
-        2: "text-[1.5em] font-semibold mt-5 mb-2",
-        3: "text-[1.25em] font-semibold mt-4 mb-1",
-        4: "text-[1.1em] font-semibold mt-3 mb-1",
-      };
+      const sizes = HEADING_SIZES[density];
 
       if (block.isToggleable) {
         return (
@@ -216,10 +259,16 @@ function BlockComponent({
 
     case "bulletListItem":
       return (
-        <ul className="my-0.5 list-disc pl-6">
-          <li className={colorClass}>
+        <ul
+          className={cn("my-0.5 list-disc", density === "message" ? MESSAGE_STYLES.list : "pl-6")}
+        >
+          <li className={cn(density === "message" && MESSAGE_STYLES.text, colorClass)}>
             <InlineList items={block.content} projectWorkspacePath={projectWorkspacePath} />
-            <ChildBlocks children={block.children} projectWorkspacePath={projectWorkspacePath} />
+            <ChildBlocks
+              children={block.children}
+              projectWorkspacePath={projectWorkspacePath}
+              parent="listItem"
+            />
           </li>
         </ul>
       );
@@ -251,11 +300,20 @@ function BlockComponent({
                 </svg>
               )}
             </span>
-            <span className={block.checked ? "line-through opacity-60" : ""}>
+            <span
+              className={cn(
+                block.checked && "line-through opacity-60",
+                density === "message" && MESSAGE_STYLES.text,
+              )}
+            >
               <InlineList items={block.content} projectWorkspacePath={projectWorkspacePath} />
             </span>
           </div>
-          <ChildBlocks children={block.children} projectWorkspacePath={projectWorkspacePath} />
+          <ChildBlocks
+            children={block.children}
+            projectWorkspacePath={projectWorkspacePath}
+            parent="checkItem"
+          />
         </div>
       );
 
@@ -280,7 +338,9 @@ function BlockComponent({
       return (
         <blockquote
           className={cn(
-            "m-2 border-s-[3px] border-current px-[22px] text-[1em] leading-[1.5]",
+            density === "message"
+              ? [MESSAGE_STYLES.quote, MESSAGE_STYLES.text]
+              : "m-2 border-s-[3px] border-current px-[22px] text-[1em] leading-[1.5]",
             colorClass,
           )}
         >
@@ -444,11 +504,21 @@ function NumberedListItemContent({
   projectWorkspacePath?: string | null;
 }) {
   const colorClass = block.color ? nfmColorClass(block.color) : undefined;
+  const density = useContext(NfmDensityContext);
 
   return (
-    <li className={cn("mb-1.5", colorClass)}>
+    <li
+      className={cn(
+        density === "message" ? [MESSAGE_STYLES.numberedItem, MESSAGE_STYLES.text] : "mb-1.5",
+        colorClass,
+      )}
+    >
       <InlineList items={block.content} projectWorkspacePath={projectWorkspacePath} />
-      <ChildBlocks children={block.children} projectWorkspacePath={projectWorkspacePath} />
+      <ChildBlocks
+        children={block.children}
+        projectWorkspacePath={projectWorkspacePath}
+        parent="listItem"
+      />
     </li>
   );
 }
@@ -462,8 +532,15 @@ function NfmTableBlock({
   projectWorkspacePath?: string | null;
   className?: string;
 }) {
+  const message = useContext(NfmDensityContext) === "message";
   return (
-    <div className={cn("nfm-render-table my-3 max-w-full overflow-x-auto", className)}>
+    <div
+      className={cn(
+        "nfm-render-table max-w-full overflow-x-auto",
+        message ? MESSAGE_STYLES.table : "my-3",
+        className,
+      )}
+    >
       <table className="border-collapse text-sm leading-5">
         <tbody>
           {table.rows.map((row, rowIndex) => (
@@ -483,11 +560,15 @@ function NfmTableBlock({
                   <Tag
                     key={columnIndex}
                     className={cn(
-                      "min-w-[120px] max-w-[240px] border border-token-border px-[9px] py-[7px] text-left align-top font-normal",
-                      (table.headerRow && rowIndex === 0) ||
-                        (table.headerColumn && columnIndex === 0)
-                        ? "bg-token-foreground/5"
-                        : "",
+                      message
+                        ? [
+                            MESSAGE_STYLES.cell,
+                            Tag === "th" ? MESSAGE_STYLES.header : "font-normal",
+                          ]
+                        : [
+                            "min-w-[120px] max-w-[240px] border border-token-border px-[9px] py-[7px] text-left align-top font-normal",
+                            Tag === "th" ? "bg-token-foreground/5" : "",
+                          ],
                       color ? nfmColorClass(color) : "",
                     )}
                     style={style}
@@ -513,6 +594,8 @@ function HighlightedCodeBlock({
   language: string;
   className?: string;
 }) {
+  // In a message the language and copy controls wait for the pointer, like the code itself.
+  const message = useContext(NfmDensityContext) === "message";
   const resolvedLanguage = resolveCodeLanguage(language);
   if (resolvedLanguage.id === "mermaid") {
     return <ReadonlyMermaidCodeBlock code={code} className={className} />;
@@ -521,8 +604,14 @@ function HighlightedCodeBlock({
   const fencedCode = `\`\`\`${highlightLanguage}\n${code}\n\`\`\``;
 
   return (
-    <div className={cn("nfm-code-block relative my-2 text-sm", className)}>
-      <div className="absolute top-1 right-1 z-[3]">
+    <div className={cn("nfm-code-block group/code relative my-2 text-sm", className)}>
+      <div
+        className={cn(
+          "absolute top-1 right-1 z-[3]",
+          message &&
+            "opacity-0 transition-opacity group-hover/code:opacity-100 focus-within:opacity-100",
+        )}
+      >
         <CodeBlockReadOnlyHeader languageId={resolvedLanguage.id} code={code} />
       </div>
       <Streamdown plugins={{ code: streamdownCodePlugin }} controls={false} lineNumbers={false}>
@@ -553,13 +642,16 @@ function ReadonlyMermaidCodeBlock({ code, className }: { code: string; className
 function ChildBlocks({
   children,
   projectWorkspacePath,
+  parent = "block",
 }: {
   children: NfmBlock[];
   projectWorkspacePath?: string | null;
+  parent?: keyof (typeof MESSAGE_STYLES)["children"];
 }) {
+  const density = useContext(NfmDensityContext);
   if (!children || children.length === 0) return null;
   return (
-    <div className="mt-1 pl-4">
+    <div className={density === "message" ? MESSAGE_STYLES.children[parent] : "mt-1 pl-4"}>
       <BlockList blocks={children} projectWorkspacePath={projectWorkspacePath} />
     </div>
   );

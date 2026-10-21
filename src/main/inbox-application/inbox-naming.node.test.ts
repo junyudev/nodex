@@ -41,7 +41,8 @@ it.effect("names a provisional title only on the exact Page the Agent read", () 
       assert.deepInclude(window.items[0], {
         pageId,
         title: "Homepage positioning",
-        body: message,
+        // Lines written together stay one paragraph, broken where they were written.
+        body: "Homepage feels like a dev tool.<br>Maybe it should read like a personal assistant?",
       });
       assert.strictEqual(window.items[0]?.proposal?.proposalId, proposalId);
       assert.strictEqual(window.items[0]?.proposal?.state, "open");

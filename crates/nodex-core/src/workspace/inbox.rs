@@ -307,8 +307,7 @@ pub(super) fn message_body(body: &str) -> Result<MessageBody, StoreError> {
     if body.len() > MAX_MESSAGE_BYTES {
         return Err(invalid("Inbox message exceeds its 64 KiB bound"));
     }
-    let normalized = body.replace("\r\n", "\n").replace('\r', "\n");
-    let blocks = crate::domain::nfm_parser::parse_nfm(&normalized).map_err(|error| {
+    let blocks = crate::domain::nfm_parser::parse_message_text(body).map_err(|error| {
         invalid(&format!(
             "Inbox message is not valid Nested Markdown: {error}"
         ))
@@ -327,10 +326,9 @@ pub(super) fn message_body(body: &str) -> Result<MessageBody, StoreError> {
     })
 }
 
-/// Text Blocks, then the images attached to them: the shape a Composer writes and can
-/// edit in place. Images inside the text, or with Blocks of their own, belong to Pages.
-/// Text Blocks followed by Library File images, which is what a Composer writes and can
-/// therefore rewrite exactly.
+/// Text Blocks followed by Library File images: the shape a Composer writes and can
+/// therefore rewrite exactly. Images inside the text, with Blocks of their own, or from
+/// elsewhere belong to Pages.
 pub(super) fn has_message_shape(blocks: &[NfmBlock]) -> bool {
     let attachments = blocks
         .iter()

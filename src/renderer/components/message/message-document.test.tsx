@@ -3,7 +3,8 @@ import { afterEach, beforeEach, expect, test, vi } from "vite-plus/test";
 import type { FileReadAuthority } from "@/lib/library-file-resources";
 import { TestQueryProvider } from "@/test/query";
 import { renderWithMaitai as render } from "../../test/thread-maitai";
-import { MessageDocument } from "./message-document";
+import { parseNfm } from "../../../shared/nfm/parser";
+import { MessageDocument, MessageText } from "./message-document";
 
 const reads = vi.hoisted(() => ({ bytes: vi.fn() }));
 vi.mock("@/lib/library-file-resources", async (original) => ({
@@ -29,17 +30,23 @@ afterEach(() => {
   vi.resetAllMocks();
 });
 
-test("a message reads its Markdown as structure and the rest as typed", () => {
+test("written text reads its Markdown as structure and the rest as typed", () => {
   const view = render(
-    <MessageDocument
-      nfm={"**Ship** the changelog\n- check the links\nKeep a \\< b and \\[draft"}
-      fileAuthority={null}
+    <MessageText
+      text={
+        "**Ship** the changelog\n* check the links\n  * in the footer\nKeep a < b and [draft\nas typed: https://example.com/notes"
+      }
     />,
   );
   expect(view.getByText("Ship")).toBeDefined();
   expect(view.queryByText(/\*\*/)).toBeNull();
-  expect(within(view.getByRole("list")).getByText("check the links")).toBeDefined();
-  expect(view.getByText("Keep a < b and [draft")).toBeDefined();
+  const lists = view.getAllByRole("list");
+  expect(within(lists[0]!).getByText("check the links")).toBeDefined();
+  expect(within(lists[0]!).getByText("in the footer")).toBeDefined();
+  // Lines written together stay one paragraph, broken where they were written.
+  const paragraph = view.getByText(/Keep a < b and \[draft/).closest("p")!;
+  expect(paragraph.querySelector("br")).not.toBeNull();
+  expect(within(paragraph).getByRole("link", { name: "https://example.com/notes" })).toBeDefined();
 });
 
 test("a message shows its attached Library images and opens them", async () => {
@@ -51,7 +58,10 @@ test("a message shows its attached Library images and opens them", async () => {
   const view = render(
     <TestQueryProvider>
       <MessageDocument
-        nfm={'The banner is cut off\n<image source="nodex://files/shot">Banner</image>'}
+        blocks={parseNfm(
+          'The banner is cut off\n<image source="nodex://files/shot">Banner</image>',
+        )}
+        contentKey="pictured"
         fileAuthority={authority}
       />
     </TestQueryProvider>,
@@ -76,7 +86,8 @@ test("a message shows its attached Library images and opens them", async () => {
 test("an image the message cannot read says so instead of loading forever", () => {
   const view = render(
     <MessageDocument
-      nfm={'<image source="nodex://files/shot">Banner</image>'}
+      blocks={parseNfm('<image source="nodex://files/shot">Banner</image>')}
+      contentKey="picture"
       fileAuthority={null}
     />,
   );

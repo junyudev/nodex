@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { FileReadBoundary } from "@/components/board/editor/file-runtime";
 import { NfmDocument, nfmImageAlt, useNfmImage } from "@/components/board/nfm-renderer";
+import { FileLinkWorkspaceProvider } from "@/components/shared/file-link-anchor";
 import {
   ImageErrorTile,
   ImageLoadingTile,
@@ -9,37 +10,71 @@ import {
 import { UserMessageCollapse } from "@/features/local-conversation/view/shared/user-message-collapse";
 import { ImagePreviewDialog } from "@/features/user-attachment-image-editor";
 import type { FileReadAuthority } from "@/lib/library-file-resources";
-import { parseNfm } from "@/lib/nfm/parser";
 import { splitMessageContent } from "../../../shared/message-content";
-import type { NfmImage } from "../../../shared/nfm/types";
+import { parseMessageText } from "../../../shared/message-text";
+import type { NfmBlock, NfmImage } from "../../../shared/nfm/types";
 
 /**
  * A written message, read-only, as a bubble shows it: the images attached to it as thumbnails
- * above its text, and the text collapsed after as many lines as a chat message.
- * `fileAuthority` reads the message's Library Files; without it, images show as unavailable.
+ * above its text, and the text in chat typography, collapsed after as many lines as a chat
+ * message. `contentKey` identifies the message, so an expanded message collapses again when it
+ * changes. `fileAuthority` reads the message's Library Files; without it, images show as
+ * unavailable.
  */
 export function MessageDocument({
-  nfm,
+  blocks,
+  contentKey,
   fileAuthority,
   collapsedLineCount,
 }: {
-  readonly nfm: string;
+  readonly blocks: readonly NfmBlock[];
+  readonly contentKey: string;
   readonly fileAuthority: FileReadAuthority | null;
   readonly collapsedLineCount?: number;
 }) {
-  const { text, attachments } = splitMessageContent(parseNfm(nfm));
+  const { text, attachments } = splitMessageContent(blocks);
   return (
     <FileReadBoundary authority={fileAuthority}>
       <div className="flex min-w-0 flex-col gap-2">
         {attachments.length > 0 ? <MessageImages images={attachments} /> : null}
         {text.length > 0 ? (
-          <UserMessageCollapse contentKey={nfm} collapsedLineCount={collapsedLineCount}>
-            {/* Each typed line is its own paragraph Block, so lines sit as tightly as typed. */}
-            <NfmDocument blocks={[...text]} className="text-size-chat [--nfm-paragraph-gap:0px]" />
+          <UserMessageCollapse contentKey={contentKey} collapsedLineCount={collapsedLineCount}>
+            <NfmDocument
+              blocks={[...text]}
+              density="message"
+              className="codex-markdown codex-markdown-user text-size-chat"
+            />
           </UserMessageCollapse>
         ) : null}
       </div>
     </FileReadBoundary>
+  );
+}
+
+/**
+ * Text someone wrote to an Agent, such as a chat message or a prompt, read as message text.
+ * Relative file links resolve from `cwd`, else the Project workspace.
+ */
+export function MessageText({
+  text,
+  cwd,
+  projectWorkspacePath,
+  collapsedLineCount,
+}: {
+  readonly text: string;
+  readonly cwd?: string | null;
+  readonly projectWorkspacePath?: string | null;
+  readonly collapsedLineCount?: number;
+}) {
+  return (
+    <FileLinkWorkspaceProvider cwd={cwd} workspacePath={projectWorkspacePath}>
+      <MessageDocument
+        blocks={parseMessageText(text)}
+        contentKey={text}
+        fileAuthority={null}
+        collapsedLineCount={collapsedLineCount}
+      />
+    </FileLinkWorkspaceProvider>
   );
 }
 

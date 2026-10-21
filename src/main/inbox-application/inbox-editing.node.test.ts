@@ -12,6 +12,9 @@ it.effect("an edit rewrites the message Page and asks for a fresh suggestion", (
       const { inbox, client } = yield* inboxOverRealCore();
       const original = "Homepage feels like a dev tool.\nMaybe it should read like an assistant?";
       const { pageId } = yield* captureInbox(inbox, original);
+      // A rewrite starts from the body as the Page stores it.
+      const originalBody =
+        "Homepage feels like a dev tool.<br>Maybe it should read like an assistant?";
       const [entry] = yield* inbox.pendingSuggestions(8);
       if (!entry) return assert.fail("Missing pending entry");
       yield* inbox.propose({
@@ -26,13 +29,15 @@ it.effect("an edit rewrites the message Page and asks for a fresh suggestion", (
       });
 
       const rewritten = "The homepage should read like a personal assistant.\nKeep the docs link.";
+      // The Page keeps the written lines as one paragraph with a line break.
+      const stored = "The homepage should read like a personal assistant.<br>Keep the docs link.";
       const basis = inboxPageBasisFromCore(entry.basis);
-      yield* inbox.edit({ pageId, basis, originalBody: original, body: rewritten });
+      yield* inbox.edit({ pageId, basis, originalBody, body: rewritten });
 
       const [item] = (yield* inbox.window({ scope: LIBRARY, filter: "inbox" })).items;
       assert.deepInclude(item, {
         pageId,
-        body: rewritten,
+        body: stored,
         bodyEditable: true,
         // The provisional title follows the new opening words.
         title: "The homepage should read like a personal…",
@@ -57,11 +62,11 @@ it.effect("an edit rewrites the message Page and asks for a fresh suggestion", (
 
       // An edit started from text that has since changed never overwrites it.
       const stale = yield* Effect.flip(
-        inbox.edit({ pageId, basis, originalBody: original, body: "Something else" }),
+        inbox.edit({ pageId, basis, originalBody, body: "Something else" }),
       );
       assert.match(stale.message, /message changed/);
       const [unchanged] = (yield* inbox.window({ scope: LIBRARY, filter: "inbox" })).items;
-      assert.strictEqual(unchanged?.body, rewritten);
+      assert.strictEqual(unchanged?.body, stored);
     }),
   ),
 );

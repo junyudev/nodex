@@ -1738,7 +1738,11 @@ fn rewriting_a_message_follows_the_rules_of_sending_it() {
     );
     let original = item(module, "page:edit");
     assert!(original.body_editable);
-    assert_eq!(original.body, "Survey onboarding flows\nKeep it read-only.");
+    // Lines written together stay one paragraph, broken where they were written.
+    assert_eq!(
+        original.body,
+        "Survey onboarding flows<br>Keep it read-only."
+    );
 
     let edit = prepare_edit(
         module,
@@ -1748,7 +1752,7 @@ fn rewriting_a_message_follows_the_rules_of_sending_it() {
     )
     .expect("prepare edit");
     let sent =
-        super::inbox::message_page("Compare three onboarding flows\nKeep it read-only.", None)
+        super::inbox::message_page("Compare three onboarding flows\n\nKeep it read-only.", None)
             .expect("message page");
     assert_eq!(edit.body_markdown.as_deref(), Some(sent.body_nfm.as_str()));
     // The title is still Core's provisional label, so it follows the new opening words.
@@ -3145,19 +3149,20 @@ fn send_error(module: &ProjectWorkspaceModule, id: &str, body: &str) -> CoreErro
 }
 
 #[test]
-fn a_message_is_written_nested_markdown_and_everyday_text_stays_literal() {
+fn a_message_is_written_as_markdown_and_everyday_text_stays_literal() {
     let workspace = seeded_workspace();
     let module = &workspace.module;
     send(
         module,
         "written",
-        "**Ship** the changelog\n- check the links\n- tag the release\nKeep a < b and [draft as typed",
+        "**Ship** the changelog\n* check the links\n  * in the footer\n* tag the release\nKeep a < b and [draft\nas typed: https://example.com/notes.\n\nThen tell people",
     );
     let written = item(module, "page:written");
-    // Typed Markdown is real structure; text that forms no markup stays as written.
+    // Typed Markdown is real structure, written lines stay together until a blank line, and
+    // text that forms no markup stays as written.
     assert_eq!(
         written.body,
-        "**Ship** the changelog\n- check the links\n- tag the release\nKeep a \\< b and \\[draft as typed"
+        "**Ship** the changelog\n- check the links\n\t- in the footer\n- tag the release\nKeep a \\< b and \\[draft<br>as typed: [https://example.com/notes](https://example.com/notes).\nThen tell people"
     );
     assert!(written.body_editable);
     assert_eq!(written.title, "Ship the changelog");

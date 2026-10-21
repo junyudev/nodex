@@ -1,9 +1,10 @@
 # Nested Markdown
 
-Nested Markdown is Nodex's lossless text projection for Block trees. Standard Markdown covers familiar Blocks and inline formatting; Nodex tags cover product-specific structures that Markdown cannot represent. One literal tab per level expresses Block nesting. Leading spaces remain authored text and are never reinterpreted as nesting.
+Nested Markdown is Nodex's lossless text projection for Block trees. Standard Markdown covers familiar Blocks and inline formatting; Nodex tags cover product-specific structures that Markdown cannot represent. One literal tab per level is the canonical Block nesting. Lines indented with spaces nest under list items as they do in Markdown: a list item nests under the nearest list item before it that is indented less and sits beside one indented the same, and any other line indented under a list item continues that item as its child Block. A list item with no list item before it stays at its tab depth, and any other line without one keeps its leading spaces as authored text.
 
 Use backslashes to escape characters. For example, \* will render as * and not as a bold delimiter.
 These are the characters that should be escaped: \ * ~ ` $ [ ] < > { } | ^
+At the start of a paragraph, `\-`, `\+`, `\#`, `\▶`, `\▼`, a number followed by `\.` or `\)`, and a backslash before a leading space or tab keep the line a paragraph as written instead of a list item, heading, toggle, or indentation. Nodex writes these escapes wherever a paragraph would otherwise read differently, so `\- not a list`, `2024\. was a year`, and `\  indented text` stay text.
 Block types:
 Markdown blocks use a {color="Color"} attribute list to set a block color.
 Text:
@@ -18,9 +19,11 @@ Headings:
 Bulleted list:
 - Rich text {color="Color"}
 	Children
+Markdown's `*` and `+` bullets read as `-`.
 Numbered list:
 1. Rich text {color="Color"}
 	Children
+`1)` reads as `1.`.
 
 Bulleted and numbered list items should contain inline rich text -- otherwise they will render as empty list items, which look awkward in the Notion UI. (The inline text should be rich text -- any other block type will not be rendered inline, but as a child to an empty list item.)
 Empty line:
@@ -76,6 +79,10 @@ Nodex extensions for owning Pages and block-level Page references:
 <page-ref url="nodex://pages/{{PAGE_BLOCK_ID}}" />
 An owning `page` Block is a childless shell whose `uuid` is its stable Page/Block identity. A semantically guarded whole-body replacement may preserve an already-owned Page only at its existing parent and relative position among surviving siblings; it never creates, copies, moves, or removes a Page implicitly. Those operations require Nodex's typed ownership commands. `page-ref` is childless and non-owning in NFM and maps to the canonical `pageRef` editor node.
 
+## Message text
+
+A written message, such as an Inbox message or a chat message, is read as message text: Nested Markdown as people write a message. Consecutive lines of one paragraph, or of one quote, stay one Block joined by line breaks, and a blank line separates Blocks. A bare `http://` or `https://` URL is a link, without its trailing punctuation or an unmatched closing bracket, unless it starts inside a word or code. Callout content keeps one Block per line. Nodex stores the result as canonical Nested Markdown, where those line breaks are `<br>`.
+
 ## Agent wire contract
 
 Agent tools use the full name **Nested Markdown** in descriptions and the compact field name `markdown` on the wire. Exact patches use `oldMarkdown` and `newMarkdown`; `format: "markdown"` selects this representation when an explicit format is required. `fetch` returns complete canonical Nested Markdown by default, and `get_context({ include: { markdownGuide: true } })` returns the extended authoring guide on demand.
@@ -120,6 +127,7 @@ To-do:
 	Children
 - [x] Rich text {color="Color"}
 	Children
+`*` and `+` bullets and `[X]` read as the canonical to-do markers.
 Toggle (collapsed):
 ▶ Rich text {color="Color"}
 	Children
@@ -154,7 +162,7 @@ Nodex supports GitHub-Flavored Markdown pipe table syntax for ordinary editable 
 | Beta | Blocked | 2 |
 
 Pipe table rules:
-- The delimiter row is required and must have the same number of cells as the header row.
+- The delimiter row is required and must have the same number of cells as the header row. Each delimiter cell has at least one hyphen.
 - `:---`, `:---:`, and `---:` set left, center, and right column alignment.
 - Body rows with too few cells are padded with empty cells; extra body cells are ignored by the editor model.
 - Escape literal pipes inside cells as `\|`.

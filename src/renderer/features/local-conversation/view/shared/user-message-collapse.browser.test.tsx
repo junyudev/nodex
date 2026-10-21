@@ -2,9 +2,9 @@ import { act, fireEvent, render, waitFor } from "@testing-library/react";
 import { describe, expect, test } from "vite-plus/test";
 import "../../../../globals.css";
 import { waitForStreamdownCodeHighlight } from "../../../../test/dom";
-import { UserMessageText } from "./user-message-collapse";
+import { MessageText } from "@/components/message/message-document";
 
-describe("UserMessageText browser collapse", () => {
+describe("MessageText browser collapse", () => {
   test("measures real layout and removes clipped links from keyboard navigation", async () => {
     const message = Array.from(
       { length: 60 },
@@ -12,7 +12,7 @@ describe("UserMessageText browser collapse", () => {
     ).join("\n");
     const view = render(
       <div style={{ width: 420 }}>
-        <UserMessageText text={message} collapsedLineCount={5} />
+        <MessageText text={message} collapsedLineCount={5} />
       </div>,
     );
 
@@ -57,7 +57,7 @@ describe("UserMessageText browser collapse", () => {
       Array.from({ length: 30 }, (_, index) => `After code ${index}`).join("\n");
     const view = render(
       <div style={{ width: 420 }}>
-        <UserMessageText text={text} collapsedLineCount={5} />
+        <MessageText text={text} collapsedLineCount={5} />
       </div>,
     );
     await waitForStreamdownCodeHighlight(view.container);

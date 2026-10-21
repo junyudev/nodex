@@ -18,24 +18,61 @@ import { nfmBlockAcceptsChildren } from "./block-children";
 import { normalizeOrderedListStart } from "./ordered-list";
 import { parseInlineContent } from "./parser-inline";
 import { tryParseGfmTable, tryParseNfmTableXml } from "./table";
+import { nestSpaceIndentedListItems, unprotectParagraphStart } from "./markdown-forms";
 import { getXmlAttr } from "./xml-attributes";
 import { parsePageDeepLink } from "../nodex-deeplink";
 
+export interface NfmParseOptions {
+  /**
+   * Message text: consecutive lines of one paragraph, or of one quote, stay one Block with
+   * line breaks, so only a blank line separates them. Callout content keeps one Block per line.
+   */
+  readonly joinLines?: boolean;
+}
+
 /**
- * Parse a Notion-flavored Markdown string into a block tree.
+ * Parse a Nested Markdown string into a block tree.
  */
-export function parseNfm(input: string): NfmBlock[] {
+export function parseNfm(input: string, options: NfmParseOptions = {}): NfmBlock[] {
   if (!input.trim()) return [];
 
-  const lines = input.split("\n");
+  const lines = nestSpaceIndentedListItems(input.split("\n"));
   const rootBlocks: NfmBlock[] = [];
 
   // Stack for tracking nesting: each entry is { indent, block }
   const stack: Array<{ indent: number; block: NfmBlock }> = [];
+  // The last Block added, while it is a one-line paragraph or quote that a next line may join.
+  let joinable: { block: NfmBlock; indent: number; line: number } | null = null;
 
   let i = 0;
 
+  /** Appends this line to the previous one's Block when message text joins them. */
+  function joinLine(
+    type: "paragraph" | "blockquote",
+    content: NfmInlineContent[],
+    color: NfmColor | undefined,
+    indent: number,
+  ): boolean {
+    const previous = joinable;
+    if (
+      !options.joinLines ||
+      !previous ||
+      previous.line !== i - 1 ||
+      previous.indent !== indent ||
+      previous.block.type !== type ||
+      previous.block.color !== color ||
+      previous.block.children.length > 0 ||
+      !("content" in previous.block)
+    )
+      return false;
+    previous.block.content.push({ type: "linebreak" }, ...content);
+    previous.line = i;
+    return true;
+  }
+
   function addBlock(block: NfmBlock, indent: number) {
+    joinable =
+      block.type === "paragraph" || block.type === "blockquote" ? { block, indent, line: i } : null;
     // Pop stack until we find a parent at a lower indent level
     while (stack.length > 0 && stack[stack.length - 1].indent >= indent) {
       stack.pop();
@@ -290,13 +327,13 @@ export function parseNfm(input: string): NfmBlock[] {
       continue;
     }
 
-    // Checkbox: - [ ] or - [x]
-    const checkMatch = stripped.match(/^- \[([ x])\]\s+(.*)$/);
+    // Checkbox: - [ ] or - [x], with any bullet marker
+    const checkMatch = stripped.match(/^[-*+] \[([ xX])\]\s+(.*)$/);
     if (checkMatch) {
       addBlock(
         {
           type: "checkListItem",
-          checked: checkMatch[1] === "x",
+          checked: checkMatch[1] !== " ",
           content: parseInlineContent(checkMatch[2]),
           color,
           children: [],
@@ -307,8 +344,8 @@ export function parseNfm(input: string): NfmBlock[] {
       continue;
     }
 
-    // Bulleted list: - text
-    if (stripped.startsWith("- ")) {
+    // Bulleted list: - text, * text or + text
+    if (/^[-*+] /.test(stripped)) {
       addBlock(
         {
           type: "bulletListItem",
@@ -322,8 +359,8 @@ export function parseNfm(input: string): NfmBlock[] {
       continue;
     }
 
-    // Numbered list: N. text
-    const numMatch = stripped.match(/^(\d+)\.\s+(.*)$/);
+    // Numbered list: N. text or N) text
+    const numMatch = stripped.match(/^(\d+)[.)]\s+(.*)$/);
     if (numMatch) {
       const start = normalizeOrderedListStart(Number.parseInt(numMatch[1], 10));
       addBlock(
@@ -343,6 +380,10 @@ export function parseNfm(input: string): NfmBlock[] {
     // Blockquote: > text
     if (stripped.startsWith("> ") || stripped === ">") {
       const quoteText = stripped === ">" ? "" : stripped.slice(2);
+      if (joinLine("blockquote", parseInlineContent(quoteText), color, indent)) {
+        i++;
+        continue;
+      }
       addBlock(
         {
           type: "blockquote",
@@ -357,10 +398,15 @@ export function parseNfm(input: string): NfmBlock[] {
     }
 
     // Paragraph (default)
+    const paragraph = parseInlineContent(unprotectParagraphStart(stripped));
+    if (joinLine("paragraph", paragraph, color, indent)) {
+      i++;
+      continue;
+    }
     addBlock(
       {
         type: "paragraph",
-        content: parseInlineContent(stripped),
+        content: paragraph,
         color,
         children: [],
       },

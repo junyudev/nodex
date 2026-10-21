@@ -23,7 +23,8 @@ import {
 } from "./inbox-icon-action";
 import { InboxCopyAction } from "./inbox-copy-action";
 import { InboxGroupMembers, type InboxGroupMember } from "./inbox-group-members";
-import { UserMessageText } from "@/features/local-conversation/view/shared/user-message-collapse";
+import { MessageText } from "@/components/message/message-document";
+import { inboxDraftFromBody, type InboxDraft } from "./inbox-capture-state";
 import { InboxMessageEditor } from "./inbox-message-editor";
 import { INBOX_EASE_OUT } from "./inbox-stream-item";
 import { InboxOutcomeLine } from "./inbox-outcome";
@@ -143,7 +144,7 @@ function SuggestionStrip({ proposal }: { readonly proposal: InboxProposal }) {
   return (
     <div data-testid="inbox-suggestion" className="min-w-0 text-token-foreground">
       {isChatAction(action) ? (
-        <UserMessageText text={action.prompt} />
+        <MessageText text={action.prompt} />
       ) : (
         <p className="min-w-0 text-sm leading-snug">{proposal.summary}</p>
       )}
@@ -212,17 +213,20 @@ export function InboxTriage({
 }) {
   const [editing, setEditing] = useState<{
     readonly baseBody: string;
+    readonly draft: InboxDraft;
     readonly basis: InboxPageBasis;
   } | null>(null);
+  // A body the composer can write exactly is rewritten in place; any other is edited as its Page.
+  const rewrite = item.bodyEditable ? inboxDraftFromBody(item.body) : null;
   const model = inboxTriageModel(item, suggestionsEnabled);
   const done = () => void actions.setState([item.pageId], "done");
   const keep = () => void actions.keep([item.pageId]);
   const handleManually = () => onManualDraftChange(draftForInboxItem(item, inboxProjectId));
-  const editAction = item.bodyEditable ? (
+  const editAction = rewrite ? (
     <InboxIconAction
       label="Edit"
       icon={EditIcon}
-      onClick={() => setEditing({ baseBody: item.body, basis: item.basis })}
+      onClick={() => setEditing({ baseBody: item.body, draft: rewrite, basis: item.basis })}
     />
   ) : (
     <InboxIconAction label="Edit as Page" icon={EditIcon} onClick={onEditAsPage} />
@@ -476,6 +480,7 @@ export function InboxTriage({
       editor: (
         <InboxMessageEditor
           body={editing.baseBody}
+          draft={editing.draft}
           currentBody={item.body}
           routing={inboxPageRoutingContext(item)}
           onCancel={() => setEditing(null)}

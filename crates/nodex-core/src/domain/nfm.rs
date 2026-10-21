@@ -4,6 +4,7 @@ use serde_json::{Map, Value};
 use thiserror::Error;
 
 use super::block_materialization::MaterializedBlockNode;
+use super::nfm_markdown_forms::protect_paragraph_start;
 
 pub(crate) const NFM_COLORS: &[&str] = &[
     "gray",
@@ -906,7 +907,11 @@ fn serialize_blocks<const LOCATED: bool>(
                 if text.is_empty() && color.is_none() {
                     lines.push(format!("{prefix}<empty-block/>"));
                 } else {
-                    lines.push(format!("{prefix}{text}{}", color_suffix(color)));
+                    lines.push(format!(
+                        "{prefix}{}{}",
+                        protect_paragraph_start(&text),
+                        color_suffix(color)
+                    ));
                 }
                 append_serialized_children::<LOCATED>(
                     &mut lines,
@@ -1111,7 +1116,7 @@ fn serialize_blocks<const LOCATED: bool>(
                 lines.push(format!("{prefix}<callout{suffix}>"));
                 let text = serialize_inline_content(content);
                 if !text.is_empty() {
-                    lines.push(format!("{prefix}\t{text}"));
+                    lines.push(format!("{prefix}\t{}", protect_paragraph_start(&text)));
                 }
                 append_serialized_children::<LOCATED>(
                     &mut lines,

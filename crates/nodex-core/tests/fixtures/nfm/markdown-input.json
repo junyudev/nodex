@@ -1,0 +1,238 @@
+{
+  "about": "Markdown input both Nested Markdown parsers read. Each nestedMarkdown input parses as Nested Markdown, and each messageText input as message text, to the canonical nfm, whose top-level Blocks have the listed types; the canonical nfm parses back to itself.",
+  "nestedMarkdown": [
+    {
+      "name": "Markdown bullet markers",
+      "input": "* one\n+ two\n- three",
+      "nfm": "- one\n- two\n- three",
+      "types": [
+        "bulletListItem",
+        "bulletListItem",
+        "bulletListItem"
+      ]
+    },
+    {
+      "name": "task markers",
+      "input": "* [ ] open\n+ [X] done",
+      "nfm": "- [ ] open\n- [x] done",
+      "types": [
+        "checkListItem",
+        "checkListItem"
+      ]
+    },
+    {
+      "name": "parenthesized numbers",
+      "input": "1) first\n2) second",
+      "nfm": "1. first\n2. second",
+      "types": [
+        "numberedListItem",
+        "numberedListItem"
+      ]
+    },
+    {
+      "name": "lists nested with two spaces",
+      "input": "- one\n  - nested\n    - deeper\n- two",
+      "nfm": "- one\n\t- nested\n\t\t- deeper\n- two",
+      "types": [
+        "bulletListItem",
+        "bulletListItem"
+      ]
+    },
+    {
+      "name": "lists nested under numbers",
+      "input": "1. first\n   * nested\n2. second",
+      "nfm": "1. first\n\t- nested\n2. second",
+      "types": [
+        "numberedListItem",
+        "numberedListItem"
+      ]
+    },
+    {
+      "name": "indented list after a paragraph",
+      "input": "Things:\n  - a\n  - b",
+      "nfm": "Things:\n- a\n- b",
+      "types": [
+        "paragraph",
+        "bulletListItem",
+        "bulletListItem"
+      ]
+    },
+    {
+      "name": "spaces before text stay text",
+      "input": "  indented text",
+      "nfm": "\\  indented text",
+      "types": [
+        "paragraph"
+      ]
+    },
+    {
+      "name": "fenced code keeps its indentation",
+      "input": "```\n  - not a list\n```",
+      "nfm": "```\n  - not a list\n```",
+      "types": [
+        "codeBlock"
+      ]
+    },
+    {
+      "name": "pipe table with short delimiters",
+      "input": "| a | b |\n| - | :-: |\n| 1 | 2 |",
+      "nfm": "| a | b |\n| --- | :---: |\n| 1 | 2 |",
+      "types": [
+        "table"
+      ]
+    },
+    {
+      "name": "paragraph that starts like a bullet",
+      "input": "\\- not a list",
+      "nfm": "\\- not a list",
+      "types": [
+        "paragraph"
+      ]
+    },
+    {
+      "name": "paragraph that starts like a number",
+      "input": "2024\\. was a year",
+      "nfm": "2024\\. was a year",
+      "types": [
+        "paragraph"
+      ]
+    },
+    {
+      "name": "paragraph that starts like a heading",
+      "input": "\\# not a heading",
+      "nfm": "\\# not a heading",
+      "types": [
+        "paragraph"
+      ]
+    },
+    {
+      "name": "paragraph that reads as a divider",
+      "input": "\\---",
+      "nfm": "\\---",
+      "types": [
+        "paragraph"
+      ]
+    },
+    {
+      "name": "indented paragraph that starts like a bullet",
+      "input": "  \\- not a list",
+      "nfm": "\\  - not a list",
+      "types": [
+        "paragraph"
+      ]
+    },
+    {
+      "name": "a line indented under a list item continues that item",
+      "input": "- item\n  continued under the item\n  - nested\n- next",
+      "nfm": "- item\n\tcontinued under the item\n\t- nested\n- next",
+      "types": [
+        "bulletListItem",
+        "bulletListItem"
+      ]
+    },
+    {
+      "name": "tabs nest any Block",
+      "input": "Plan:\n\tfirst\n\t\tthen",
+      "nfm": "Plan:\n\tfirst\n\t\tthen",
+      "types": [
+        "paragraph"
+      ]
+    }
+  ],
+  "messageText": [
+    {
+      "name": "lines of a paragraph stay one paragraph",
+      "input": "line one\nline two\n\nnext paragraph",
+      "nfm": "line one<br>line two\nnext paragraph",
+      "types": [
+        "paragraph",
+        "paragraph"
+      ]
+    },
+    {
+      "name": "lines of a quote stay one quote",
+      "input": "> quoted\n> lines",
+      "nfm": "> quoted<br>lines",
+      "types": [
+        "blockquote"
+      ]
+    },
+    {
+      "name": "lists start their own Blocks",
+      "input": "Intro:\n- a\n- b\nAfter",
+      "nfm": "Intro:\n- a\n- b\nAfter",
+      "types": [
+        "paragraph",
+        "bulletListItem",
+        "bulletListItem",
+        "paragraph"
+      ]
+    },
+    {
+      "name": "blank lines separate Blocks however many there are",
+      "input": "Title\n\n\n\nBody",
+      "nfm": "Title\nBody",
+      "types": [
+        "paragraph",
+        "paragraph"
+      ]
+    },
+    {
+      "name": "a bare URL is a link without its trailing punctuation",
+      "input": "see https://example.com/a_b?x=1.",
+      "nfm": "see [https://example.com/a_b?x=1](https://example.com/a_b?x=1).",
+      "types": [
+        "paragraph"
+      ]
+    },
+    {
+      "name": "a URL keeps its own parentheses",
+      "input": "(docs: https://example.com/wiki/Foo_(bar))",
+      "nfm": "(docs: [https://example.com/wiki/Foo_(bar)](https://example.com/wiki/Foo_(bar)))",
+      "types": [
+        "paragraph"
+      ]
+    },
+    {
+      "name": "a URL inside a word or code stays text",
+      "input": "foohttps://example.com and `https://example.com`",
+      "nfm": "foohttps://example.com and `https://example.com`",
+      "types": [
+        "paragraph"
+      ]
+    },
+    {
+      "name": "code keeps its blank lines",
+      "input": "```\nfirst\n\nsecond\n```",
+      "nfm": "```\nfirst\n\nsecond\n```",
+      "types": [
+        "codeBlock"
+      ]
+    },
+    {
+      "name": "Windows line endings",
+      "input": "one\r\ntwo",
+      "nfm": "one<br>two",
+      "types": [
+        "paragraph"
+      ]
+    },
+    {
+      "name": "indented lines keep their indentation",
+      "input": "Plan:\n  first, the toolbar\n    then the dialogs\nDone.",
+      "nfm": "Plan:<br>  first, the toolbar<br>    then the dialogs<br>Done.",
+      "types": [
+        "paragraph"
+      ]
+    },
+    {
+      "name": "lines written under a list item continue it",
+      "input": "- item\n  more about it\n  and more\n- next",
+      "nfm": "- item\n\tmore about it<br>and more\n- next",
+      "types": [
+        "bulletListItem",
+        "bulletListItem"
+      ]
+    }
+  ]
+}

@@ -1,11 +1,11 @@
 import { act, fireEvent, waitFor } from "@testing-library/react";
 import { describe, expect, test, vi } from "vite-plus/test";
 import { render } from "@/test/dom";
-import { UserMessageText } from "./user-message-collapse";
+import { MessageText } from "@/components/message/message-document";
 
 vi.mock("@/lib/use-theme", () => ({ useTheme: () => ({ resolved: "dark" }) }));
 
-describe("UserMessageText", () => {
+describe("MessageText", () => {
   test("keeps the full large prompt in its expandable chat occurrence", async () => {
     const scrollHeight = vi
       .spyOn(HTMLElement.prototype, "scrollHeight", "get")
@@ -19,7 +19,7 @@ describe("UserMessageText", () => {
     });
     const text = "A long submitted prompt: " + "bounded text ".repeat(3_000) + " END OF PROMPT";
     try {
-      const view = render(<UserMessageText text={text} />);
+      const view = render(<MessageText text={text} />);
       const disclosure = await view.findByRole("button", { name: "Show more" });
       const occurrence = view.container.querySelector(".codex-markdown-user");
       expect(occurrence?.textContent).toBe(text);

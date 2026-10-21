@@ -9,7 +9,7 @@ import {
   type InboxWindowFilter,
 } from "../../../shared/inbox";
 import type { Project } from "../../../shared/types";
-import { messageTextNfm } from "../../../shared/message-content";
+import { messageTextOf } from "../../../shared/message-content";
 import { extractPlainText } from "../../../shared/nfm/extract-text";
 import {
   ArchiveIcon,
@@ -416,7 +416,7 @@ export function InboxRoute({
   };
 
   const selectedPageIds = selectedItems.map((item) => item.pageId);
-  const combinedText = selectedItems.map((item) => messageTextNfm(item.body)).join("\n");
+  const combinedText = selectedItems.map((item) => messageTextOf(item.body)).join("\n\n");
   const loadEarlier = stream.hasNextPage ? (
     <button
       type="button"

@@ -3,7 +3,7 @@ import { CodexTranscriptReadOwnerContext } from "../normalized-transcript-hooks"
 import type { CodexRealtimeTimelineEntry } from "../projection/normalized-timeline-entries";
 import { useConversationVisualizationContext } from "./inline-visualization-context";
 import { MarkdownRenderer } from "./shared/markdown/markdown-renderer";
-import { UserMessageText } from "./shared/user-message-collapse";
+import { MessageText } from "@/components/message/message-document";
 import { realtimeSearchUnitKey } from "./local-conversation-search-source";
 import { LocalConversationPendingArtifact } from "./local-conversation-pending-artifact";
 
@@ -53,7 +53,7 @@ export function LocalConversationRealtimeItem({
       }
     >
       {item.role === "user" ? (
-        <UserMessageText text={item.text} cwd={cwd} />
+        <MessageText text={item.text} cwd={cwd} />
       ) : (
         <MarkdownRenderer
           content={item.text}
