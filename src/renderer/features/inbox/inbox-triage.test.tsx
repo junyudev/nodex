@@ -496,8 +496,9 @@ describe("InboxTriage", () => {
       fireEvent.click(kind);
       await Promise.resolve();
     });
+    const todo = await screen.findByRole("menuitem", { name: "Todo" });
     await act(async () => {
-      fireEvent.click(await screen.findByRole("menuitem", { name: "Todo" }));
+      fireEvent.click(todo);
       await Promise.resolve();
     });
     expect(onSetKind).toHaveBeenCalledWith("todo");

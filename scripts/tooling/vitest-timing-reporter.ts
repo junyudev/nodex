@@ -25,7 +25,15 @@ export default class TimingReporter implements Reporter {
   async onTestRunEnd(modules: readonly TestModule[], errors: readonly unknown[], reason: string) {
     await this.writeReport(modules, errors, reason);
     if (this.reactActWarnings.length) {
-      throw new Error("React act warnings invalidate this test run; fix the interaction boundary.");
+      // The usual cause of this one: Testing Library turns act off while a findBy*/waitFor polls.
+      const hint = this.reactActWarnings.some((warning) =>
+        /not configured to support act\(/u.test(warning),
+      )
+        ? " An awaited findBy* or waitFor inside act(...) runs with act turned off; find the element first, then act."
+        : "";
+      throw new Error(
+        `React act warnings invalidate this test run; fix the interaction boundary.${hint}`,
+      );
     }
   }
 

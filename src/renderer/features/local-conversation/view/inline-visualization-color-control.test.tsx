@@ -112,8 +112,9 @@ test("closing a screen-color request aborts its capability and rejects a late re
     await act(async () => {
       fireEvent.click(view.getByRole("button", { name: "Choose tint" }));
     });
+    const pickButton = await view.findByRole("button", { name: "Pick color from screen" });
     await act(async () => {
-      fireEvent.click(await view.findByRole("button", { name: "Pick color from screen" }));
+      fireEvent.click(pickButton);
     });
     await waitFor(() => expect(signal).toBeDefined());
     view.unmount();

@@ -233,20 +233,23 @@ test("maps Claude Speed choices to native Fast preferences without changing Code
     fireEvent.click(fast);
   });
   expect(change).toHaveBeenLastCalledWith({ fast: true });
+  const standardItem = await body.findByRole("menuitem", { name: "Standard" });
   await act(async () => {
-    fireEvent.click(await body.findByRole("menuitem", { name: "Standard" }));
+    fireEvent.click(standardItem);
   });
   expect(change).toHaveBeenLastCalledWith({ fast: false });
   expect(onSelectionChange).not.toHaveBeenCalled();
   await act(async () => {
     fireEvent.click(view.getByLabelText("Context 200k"));
   });
+  const oneMillionItem = await within(document.body).findByRole("menuitem", { name: "1m" });
   await act(async () => {
-    fireEvent.click(await within(document.body).findByRole("menuitem", { name: "1m" }));
+    fireEvent.click(oneMillionItem);
   });
   expect(change).toHaveBeenLastCalledWith({ context: "1m" });
+  const defaultItem = await within(document.body).findByRole("menuitem", { name: "Default" });
   await act(async () => {
-    fireEvent.click(await within(document.body).findByRole("menuitem", { name: "Default" }));
+    fireEvent.click(defaultItem);
   });
   expect(change).toHaveBeenLastCalledWith({ context: null });
 });
@@ -300,12 +303,14 @@ test("puts thinking Off in Effort and reenables thinking even when selecting the
     fireEvent.click(view.getByLabelText("Effort Off"));
   });
   const body = within(document.body);
+  const highItem = await body.findByRole("menuitem", { name: "High" });
   await act(async () => {
-    fireEvent.click(await body.findByRole("menuitem", { name: "High" }));
+    fireEvent.click(highItem);
   });
   expect(change).toHaveBeenLastCalledWith({ effort: "high", thinking: true });
+  const offItem = await body.findByRole("menuitem", { name: "Off" });
   await act(async () => {
-    fireEvent.click(await body.findByRole("menuitem", { name: "Off" }));
+    fireEvent.click(offItem);
   });
   expect(change).toHaveBeenLastCalledWith({ thinking: false });
 });
@@ -356,8 +361,9 @@ test("supports reversible thinking for native models without effort levels", asy
   await act(async () => {
     fireEvent.click(view.getByLabelText("Effort Off"));
   });
+  const onItem = await within(document.body).findByRole("menuitem", { name: "On" });
   await act(async () => {
-    fireEvent.click(await within(document.body).findByRole("menuitem", { name: "On" }));
+    fireEvent.click(onItem);
   });
   expect(change).toHaveBeenCalledWith({ thinking: true });
 });

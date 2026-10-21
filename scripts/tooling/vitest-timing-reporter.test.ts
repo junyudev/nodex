@@ -18,6 +18,19 @@ test.each([
   );
 });
 
+test("names the usual cause when act was turned off by a find inside it", async () => {
+  const reporter = new TimingReporter({ suite: "renderer" });
+  reporter.onUserConsoleLog({
+    type: "stderr",
+    content: "The current testing environment is not configured to support act(...)",
+    time: 0,
+    size: 1,
+  });
+  await expect(reporter.onTestRunEnd([], [], "passed")).rejects.toThrow(
+    "find the element first, then act",
+  );
+});
+
 test("accepts a settled run without timing artifacts", async () => {
   const reporter = new TimingReporter({ suite: "renderer" });
   reporter.onUserConsoleLog({
