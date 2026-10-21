@@ -1,0 +1,100 @@
+packages/core-protocol/src/generated.ts
+  s_bdf71b9880673e::t_d3f028718f0ee0 1597,9108
+src/renderer/features/inbox/inbox-presentation.node.test.ts
+  s_bdf71b9880673e::t_788938f4686745 67,297
+  s_bdf71b9880673e::t_dcd42bcac5134b 411
+  s_bdf71b9880673e::t_f748c2162deaa4 6,8-9,231,234-235,308,314,323-410,412-426
+src/renderer/features/inbox/use-inbox-departures.test.tsx
+  s_bdf71b9880673e::t_3b8a0c042348f1 99-126
+  s_bdf71b9880673e::t_a3bcc8e5de39f6 1-98,127
+crates/nodex-core/src/workspace/inbox.rs
+  s_bdf71b9880673e::t_e064a5cd24e0be 27-28,854-928,933-939,1368,1371-1373,1544,1552-1554,1576
+  s_bdf71b9880673e::t_d9ad8a8cd3a75f 929-932
+  s_bdf71b9880673e::t_8eb35bdab1bd1c 1232-1234,1254-1256,1265-1273
+  s_bdf71b9880673e::t_0fa775eb195b27 1574-1575
+src/renderer/features/inbox/inbox-stream-item.tsx
+  s_bdf71b9880673e::t_879d9a13db1244 13-20,24-25
+crates/nodex-core/src/workspace/inbox_read.rs
+  s_bdf71b9880673e::t_c6269d85f8a2cc 676-677,691-697,708
+  s_bdf71b9880673e::t_a440826bc5ea88 22-23
+src/renderer/features/inbox/use-inbox-outcome.ts
+  s_bdf71b9880673e::t_a79905588d9feb 1-40
+crates/nodex-core/src/database/mutation.rs
+  s_bdf71b9880673e::t_ef03e8a2f38a49 298-392
+crates/nodex-core/src/database/mod.rs
+  s_bdf71b9880673e::t_d9ad8a8cd3a75f 50
+src/shared/inbox.ts
+  s_bdf71b9880673e::t_656dc0fabb9a18 92-93
+CONTEXT.md
+  s_bdf71b9880673e::t_35bed227f165f6 485-488,515-519
+crates/nodex-core/src/workspace/page_chat.rs
+  s_bdf71b9880673e::t_8eb35bdab1bd1c 72-89
+packages/core-protocol/openapi.json
+  s_bdf71b9880673e::t_d3f028718f0ee0 6664-6674,37863-37872
+  s_bdf71b9880673e::t_808d84b503497e 37873
+src/renderer/features/inbox/use-inbox-departures.ts
+  s_bdf71b9880673e::t_dcd42bcac5134b 95-98
+  s_bdf71b9880673e::t_3b8a0c042348f1 7,13-14,20-23,37,47,49-53,69,73,77-79,82-88
+  s_bdf71b9880673e::t_4eeba0a12c7d99 1-6,8-12,15-19,24-36,38-46,48,54-68,70-72,74-76,80-81,89-94,99-119
+src/renderer/features/inbox/inbox-triage.test.tsx
+  s_bdf71b9880673e::t_7561d7dd5f9dc3 2,7,561-562,564,566-570,620-622,627,629,642
+  s_bdf71b9880673e::t_a98052a2d22a65 522,524
+  s_bdf71b9880673e::t_5a955af34345c5 427-431
+  s_bdf71b9880673e::t_b5d8f57605e0b1 11,433-440,442-444,446-453
+  s_bdf71b9880673e::t_b862b6f65f6c8c 432,531-560,563,565,573,595-600,617-619,623-626,628,630-641,643-652,656,667,673,675,677
+  s_bdf71b9880673e::t_788938f4686745 272
+src/main/core-client/inbox-adapter.ts
+  s_bdf71b9880673e::t_656dc0fabb9a18 140-142
+src/renderer/features/inbox/inbox-triage.tsx
+  s_bdf71b9880673e::t_305c6a0d8d898a 36,38,191,194-198,229,273-297,299,501,528-529
+  s_bdf71b9880673e::t_598fd37959532d 317,319,324
+  s_bdf71b9880673e::t_4d144327cd96e1 341
+src/renderer/features/inbox/use-inbox-actions.ts
+  s_bdf71b9880673e::t_bb372e1fb82943 4,37-41,59-64,69,88-91,98,163-198,211-216,260-264,291,328-330,337-340,342-346,351,372-375
+src/renderer/features/inbox/inbox-history.tsx
+  s_bdf71b9880673e::t_dcd42bcac5134b 64
+  s_bdf71b9880673e::t_12a19a9d70952b 4,18,20,23-31,35,37,40,42,82,85-89,91-98,100-104,112,123-126,128-132,135-145,147-154,157-158,162-167,170-174,176-184,186-187
+  s_bdf71b9880673e::t_90a011174ed7c3 36,41,127,133-134,146,175,185
+crates/nodex-core/src/workspace/inbox_reliable.rs
+  s_bdf71b9880673e::t_75d9b5e800722f 508,554,620,686,710
+docs/product-specs/inbox-behavior.md
+  s_bdf71b9880673e::t_35bed227f165f6 142-143,145,151-158,164-176,179,189,338-341,362-363
+src/renderer/features/inbox/inbox-presentation.ts
+  s_bdf71b9880673e::t_4aaf38722c921f 12,113-119,122-148,150,152,164-170,174-175,178-179,183,186-187,190-191,205-206,209-261,308-309,312-339,341-343,432-439
+crates/nodex-core-contracts/src/inbox.rs
+  s_bdf71b9880673e::t_c6269d85f8a2cc 13,162-164
+src/renderer/features/inbox/inbox-dispatch-editor.tsx
+  s_bdf71b9880673e::t_598fd37959532d 148-149,193-195,197,202
+src/renderer/features/inbox/inbox-selection.test.tsx
+  s_bdf71b9880673e::t_9d315cf96e0701 163-167
+  s_bdf71b9880673e::t_788938f4686745 49
+tests/e2e/inbox-triage.spec.ts
+  s_bdf71b9880673e::t_3f0c4cf9a59173 92,190
+  s_bdf71b9880673e::t_d36a12b0b06e53 85-91
+crates/nodex-core/src/workspace/inbox_tests.rs
+  s_bdf71b9880673e::t_0fa775eb195b27 1468-1469,1489-1491,1493-1494
+  s_bdf71b9880673e::t_beffa758e6755a 3470-3484,3541,3552,3613
+  s_bdf71b9880673e::t_d9ad8a8cd3a75f 3-6,10-14,17,21-22,24,1274,1276-1284,3155,3253-3331,3333-3469,3485-3540,3542-3551,3553-3612
+  s_bdf71b9880673e::t_ac932844a8d552 3332
+src/renderer/features/inbox/inbox-route.tsx
+  s_bdf71b9880673e::t_598fd37959532d 576,581
+  s_bdf71b9880673e::t_bde5611f42f2ad 282-283,506
+  s_bdf71b9880673e::t_879d9a13db1244 58,261-262,269-275,281,286-289,395,541-546
+  s_bdf71b9880673e::t_90a011174ed7c3 522
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "31303bce828943b9d77795115e8a1a3edb0a83e2",
+  "prompts": {},
+  "sessions": {
+    "s_bdf71b9880673e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8d936889-1784-495a-8683-8013f2a30b4f",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
