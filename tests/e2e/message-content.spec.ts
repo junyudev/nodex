@@ -108,6 +108,15 @@ test("the Inbox composer sends pasted and picked images after the text", async (
       const form = page.getByTestId("inbox-composer");
       await expect(form.getByRole("button", { name: "pasted.png" })).toBeVisible();
       await expect(form.getByRole("button", { name: "picked.png" })).toBeVisible();
+      // A third image, let go of before sending, does not stay behind as an unused File.
+      await page.getByTestId("message-image-picker").setInputFiles({
+        name: "dropped.png",
+        mimeType: "image/png",
+        buffer: Buffer.from(SCREENSHOT_PNG),
+      });
+      await expect(form.getByRole("button", { name: "dropped.png" })).toBeVisible();
+      await form.getByRole("button", { name: "Remove dropped.png" }).click();
+      await expect(form.getByRole("button", { name: "dropped.png" })).toHaveCount(0);
       await page.screenshot({ path: path.join(artifacts, "composer.png") });
 
       await composer.press("Enter");
@@ -139,6 +148,19 @@ test("the Inbox composer sends pasted and picked images after the text", async (
         /^The toolbar is cut off on \*\*narrow\*\* windows<br>when the sidebar is open\n- the gear\n- the close button\n<image source="nodex:\/\/files\/[^"]+"><\/image>\n<image source="nodex:\/\/files\/[^"]+"><\/image>$/,
       );
       await page.screenshot({ path: path.join(artifacts, "sent.png") });
+
+      const filesIn = async (lifecycle: "live" | "trashed") => {
+        const result = await invokeIpc(
+          page,
+          "library-module:read",
+          { kind: "library" },
+          { read: { mode: "files", lifecycle, usage: "all", limit: 50 } },
+        );
+        if (!result.ok || result.value.value.kind !== "files") return [];
+        return result.value.value.value.items.map((file) => file.default_name).sort();
+      };
+      await expect.poll(() => filesIn("trashed")).toEqual(["dropped.png"]);
+      expect(await filesIn("live")).toEqual(["pasted.png", "picked.png"]);
     },
   );
 });

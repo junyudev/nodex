@@ -20,6 +20,11 @@ vi.mock("@/lib/library-file-resources", async (original) => ({
   readAuthorizedFile: files.bytes,
   readFilePresentation: files.metadata,
 }));
+const trash = vi.hoisted(() => vi.fn());
+vi.mock("@/lib/library-file-commands", async (original) => ({
+  ...(await original<typeof import("@/lib/library-file-commands")>()),
+  changeFileLifecycle: trash,
+}));
 vi.mock("@/lib/use-library-navigation", () => ({
   useLibraryMetadata: () => ({ data: { storeEpoch: "epoch", libraryId: "library" } }),
 }));
@@ -30,9 +35,10 @@ beforeEach(() => {
   URL.createObjectURL = vi.fn(() => "blob:shot");
   URL.revokeObjectURL = vi.fn();
   files.importFile.mockResolvedValue({
-    file: { file_id: "shot", default_name: "shot.png" },
+    file: { file_id: "shot", default_name: "shot.png", revision: 1 },
     source: "nodex://files/shot",
   });
+  trash.mockResolvedValue(null);
   files.bytes.mockResolvedValue({ bytes: new Uint8Array([1]), mimeType: "image/png", etag: "e" });
   files.metadata.mockResolvedValue({
     file_id: "shot",
@@ -122,11 +128,52 @@ test("a removed image leaves the draft, and an image alone can be sent", async (
   });
   expect(view.queryByRole("button", { name: "shot.png" })).toBeNull();
   expect(send.disabled).toBe(true);
+  // The draft imported it and let it go, so it goes to Trash rather than lingering unused.
+  expect(trash).toHaveBeenCalledWith(
+    { contentRoutingContext: { kind: "library" }, storeEpoch: "epoch", libraryId: "library" },
+    { file_id: "shot", revision: 1 },
+    "trash",
+  );
+});
+
+test("an image cancelled while it imports goes to Trash once it is in", async () => {
+  let finish!: (value: unknown) => void;
+  files.importFile.mockReturnValue(new Promise((resolve) => (finish = resolve)));
+  const view = render(
+    <TestQueryProvider>
+      <Composer onSend={vi.fn()} />
+    </TestQueryProvider>,
+  );
+  const text = view.getByRole("textbox", { name: "Message your Inbox" });
+  await act(async () => {
+    fireEvent.paste(text, { clipboardData: clipboardWith(screenshot()) });
+    await Promise.resolve();
+  });
+  const remove = await view.findByRole("button", { name: "Remove shot.png" });
+  await act(async () => {
+    fireEvent.click(remove);
+    await Promise.resolve();
+  });
+  await act(async () => {
+    finish({
+      file: { file_id: "shot", default_name: "shot.png", revision: 1 },
+      source: "nodex://files/shot",
+    });
+    await Promise.resolve();
+  });
+  await waitFor(() =>
+    expect(trash).toHaveBeenCalledWith(
+      expect.anything(),
+      { file_id: "shot", revision: 1 },
+      "trash",
+    ),
+  );
+  expect(view.queryByRole("button", { name: "shot.png" })).toBeNull();
 });
 
 const PICTURED = 'Settings\n<image source="nodex://files/shot" preview-width="320">Toolbar</image>';
 
-const editor = (onSave: (body: string) => Promise<boolean>) =>
+const editor = (onSave: (body: string) => Promise<boolean>, onCancel = vi.fn()) =>
   render(
     <TestQueryProvider>
       <InboxMessageEditor
@@ -134,7 +181,7 @@ const editor = (onSave: (body: string) => Promise<boolean>) =>
         draft={inboxDraftFromBody(PICTURED)!}
         routing={{ kind: "library" }}
         onSave={onSave}
-        onCancel={vi.fn()}
+        onCancel={onCancel}
       />
     </TestQueryProvider>,
   );
@@ -162,14 +209,42 @@ test("a rewrite of the text keeps the message's images exactly", async () => {
 test("a rewrite can drop one of the message's images", async () => {
   const onSave = vi.fn(async () => true);
   const view = editor(onSave);
+  const remove = await view.findByRole("button", { name: "Remove shot.png" });
   await act(async () => {
-    fireEvent.click(await view.findByRole("button", { name: "Remove shot.png" }));
+    fireEvent.click(remove);
   });
   await act(async () => {
     fireEvent.click(view.getByRole("button", { name: "Save" }));
     await Promise.resolve();
   });
   await waitFor(() => expect(onSave).toHaveBeenCalledWith("Settings"));
+  // The message still has it until the rewrite lands; the draft did not import it.
+  expect(trash).not.toHaveBeenCalled();
+});
+
+test("an image added during a rewrite goes to Trash when the rewrite is put back", async () => {
+  files.importFile.mockResolvedValue({
+    file: { file_id: "added", default_name: "added.png", revision: 1 },
+    source: "nodex://files/added",
+  });
+  const onCancel = vi.fn();
+  const view = editor(
+    vi.fn(async () => true),
+    onCancel,
+  );
+  const text = view.getByRole("textbox", { name: "Edit message" });
+  await act(async () => {
+    fireEvent.paste(text, { clipboardData: clipboardWith(screenshot()) });
+    await Promise.resolve();
+  });
+  await view.findByRole("button", { name: "added.png" });
+  await act(async () => {
+    fireEvent.click(view.getByRole("button", { name: "Cancel" }));
+    await Promise.resolve();
+  });
+  expect(onCancel).toHaveBeenCalledOnce();
+  expect(trash).toHaveBeenCalledTimes(1);
+  expect(trash).toHaveBeenCalledWith(expect.anything(), { file_id: "added", revision: 1 }, "trash");
 });
 
 test("a rewrite shows the message's text as typed and saves only a change", async () => {

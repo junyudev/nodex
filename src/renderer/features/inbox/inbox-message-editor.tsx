@@ -63,6 +63,12 @@ export function InboxMessageEditor({
     textarea?.setSelectionRange(textarea.value.length, textarea.value.length);
   }, []);
 
+  // Images added during the rewrite go with it when it is put back.
+  const cancel = () => {
+    input.discard(draft.images);
+    onCancel();
+  };
+
   const save = async () => {
     if (!changed || saving) return;
     setSaving(true);
@@ -73,7 +79,7 @@ export function InboxMessageEditor({
     if (event.nativeEvent.isComposing) return;
     if (event.key === "Escape") {
       event.preventDefault();
-      onCancel();
+      cancel();
     } else if (event.key === "Enter" && !event.shiftKey) {
       event.preventDefault();
       void save();
@@ -136,7 +142,7 @@ export function InboxMessageEditor({
           variant="ghost"
           className="ml-auto"
           disabled={saving}
-          onClick={onCancel}
+          onClick={cancel}
         >
           Cancel
         </NodexButton>

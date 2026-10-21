@@ -20,7 +20,11 @@ import {
   type InboxSendInput,
   type InboxSendResult,
 } from "../../../shared/inbox";
-import { inboxCaptureStorageKey } from "./inbox-capture-state";
+import {
+  decodeInboxCaptureState,
+  EMPTY_INBOX_CAPTURE_STATE,
+  inboxCaptureStorageKey,
+} from "./inbox-capture-state";
 import { useInboxCapture, useInboxCaptureState } from "./use-inbox-capture";
 import { useInboxActions } from "./use-inbox-actions";
 import { prepareInboxConfirmation, dispatchInboxEntries } from "@/lib/inbox-runtime";
@@ -226,6 +230,18 @@ describe("Inbox capture ownership", () => {
     } finally {
       reopened.dispose();
     }
+  });
+
+  test("a saved draft still knows which images it imported, so it can discard them later", () => {
+    const draft = {
+      text: "",
+      images: [
+        { fileId: "pasted", name: "pasted.png", importedRevision: 1 },
+        { fileId: "kept", name: "" },
+      ],
+    };
+    const saved = JSON.parse(JSON.stringify({ ...EMPTY_INBOX_CAPTURE_STATE, draft }));
+    expect(decodeInboxCaptureState(saved).draft).toEqual(draft);
   });
 
   test("separates writable window and Inbox scopes", () => {

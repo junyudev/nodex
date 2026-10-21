@@ -61,8 +61,11 @@ intents, and selection.
   `Enter` sends, and `Shift+Enter` inserts a line break.
 - Each image becomes a Library File as soon as it is added and shows in the row
   above the text; the message is sent once every image is in. A sent message is
-  its text followed by its images. An image removed from a draft stays in the
-  Library as an unused File.
+  its text followed by its images. An image the draft imported and then let go
+  of before sending, by removing it, cancelling it while it imports, or
+  cancelling the rewrite it was added to, goes to Trash. It stays in the
+  Library if it changed or came into use anywhere since it was imported. A
+  message's own images are never trashed by a rewrite that drops them.
 - Drafts, with their images, belong to the current Profile, Inbox and window.
   Submitting preserves a recoverable capture before clearing that draft, so a
   failed earlier send never overwrites the next message. Retrying the same

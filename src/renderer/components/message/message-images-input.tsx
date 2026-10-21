@@ -37,11 +37,15 @@ export interface MessageDraftImage {
   readonly name: string;
   /** The image's Block as a message being rewritten has it, written back unchanged. */
   readonly block?: NfmImage;
+  /** The File's revision when this draft imported it; only such an image is discarded with it. */
+  readonly importedRevision?: number;
 }
 
 /** What a Composer needs to take images: where they are imported, and how they are read back. */
 export interface MessageImageAccess {
   readonly importImage: (file: File) => Promise<MessageDraftImage>;
+  /** Moves a File a draft imported to Trash, unless it changed or came into use since. */
+  readonly discardImport: (fileId: string, importedRevision: number) => Promise<void>;
   readonly readAuthority: FileReadAuthority;
 }
 
@@ -54,6 +58,7 @@ interface MessageImageUpload {
 /**
  * Takes images pasted, dropped, or picked into a Composer and imports each as a Library File;
  * `onImported` attaches them to the draft. A local preview stands in while each one imports.
+ * An image the draft imported and then let go of, before it was sent, goes to Trash.
  */
 export function useMessageImageInput({
   access,
@@ -72,18 +77,28 @@ export function useMessageImageInput({
     };
   }, []);
 
+  const discard = (images: readonly MessageDraftImage[], from = access) => {
+    for (const image of images) {
+      if (!from || image.importedRevision === undefined) continue;
+      // Best effort: a File that stays behind is only an unused File in the Library.
+      void from.discardImport(image.fileId, image.importedRevision).catch(() => undefined);
+    }
+  };
+
   const add = (files: readonly File[]): boolean => {
     const images = files.filter(isSupportedComposerImageFile);
     if (!access || images.length === 0) return false;
+    const from = access;
     for (const file of images) {
       const upload = { id: createUuidV7(), name: file.name, url: URL.createObjectURL(file) };
       setUploads((current) => [...current, upload]);
-      void access
+      void from
         .importImage(file)
         .then(
           (image) => {
             previews.current.set(image.fileId, upload.url);
-            if (!cancelled.current.has(upload.id)) onImported([image]);
+            if (cancelled.current.has(upload.id)) discard([image], from);
+            else onImported([image]);
           },
           () => {
             URL.revokeObjectURL(upload.url);
@@ -102,6 +117,7 @@ export function useMessageImageInput({
     uploads,
     importing: uploads.length > 0,
     add,
+    discard,
     cancel: (id: string) => {
       cancelled.current.add(id);
       setUploads((current) => current.filter((entry) => entry.id !== id));
@@ -160,7 +176,10 @@ export function MessageImageRow({
                     document.activeElement instanceof HTMLElement ? document.activeElement : null,
                 })
               }
-              onRemove={() => onRemove(image.fileId)}
+              onRemove={() => {
+                onRemove(image.fileId);
+                input.discard([image]);
+              }}
             />
           ))}
           {input.uploads.map((upload) => (

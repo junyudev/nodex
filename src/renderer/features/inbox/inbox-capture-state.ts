@@ -83,7 +83,13 @@ export const EMPTY_INBOX_CAPTURE_STATE: InboxCaptureState = {
 
 const draftSchema = z.object({
   text: z.string(),
-  images: z.array(z.object({ fileId: z.string().min(1), name: z.string() })),
+  images: z.array(
+    z.object({
+      fileId: z.string().min(1),
+      name: z.string(),
+      importedRevision: z.number().int().nonnegative().optional(),
+    }),
+  ),
 });
 
 const stateSchema = z.object({

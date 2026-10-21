@@ -1,4 +1,5 @@
 import type { MessageImageAccess } from "@/components/message/message-images-input";
+import { changeFileLifecycle } from "@/lib/library-file-commands";
 import { importLibraryFile } from "@/lib/library-file-resources";
 import { useLibraryMetadata } from "@/lib/use-library-navigation";
 import type { ContentRoutingContext } from "../../../shared/content-routing-context";
@@ -22,7 +23,19 @@ export function useInboxImageAccess(routing: ContentRoutingContext): MessageImag
         { kind: "browser_file", file },
         file.name,
       );
-      return { fileId: imported.file.file_id, name: imported.file.default_name };
+      return {
+        fileId: imported.file.file_id,
+        name: imported.file.default_name,
+        importedRevision: imported.file.revision,
+      };
+    },
+    // Core keeps a File that anything uses, and the revision keeps one changed since import.
+    discardImport: async (fileId, importedRevision) => {
+      await changeFileLifecycle(
+        authority,
+        { file_id: fileId, revision: importedRevision },
+        "trash",
+      );
     },
     readAuthority: { ...authority, readSource: { kind: "direct" } },
   };
