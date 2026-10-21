@@ -69,6 +69,24 @@ pub(super) fn insert_initial_page_links(
     Ok(())
 }
 
+/// Adds each Page to an existing Session's Linked chats as part of another decision; Pages
+/// already linked stay as they are.
+pub(super) fn link_pages(
+    connection: &Connection,
+    session_id: &str,
+    page_ids: &[String],
+    linked_at: &str,
+) -> Result<(), StoreError> {
+    for page_id in page_ids {
+        connection.execute(
+            "INSERT OR IGNORE INTO project_session_pages(session_id, page_id, linked_at) \
+             VALUES (?1, ?2, ?3)",
+            params![session_id, page_id, linked_at],
+        )?;
+    }
+    Ok(())
+}
+
 #[allow(clippy::too_many_arguments)]
 pub(super) fn link_page(
     connection: &Connection,

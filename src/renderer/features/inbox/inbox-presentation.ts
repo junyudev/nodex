@@ -10,6 +10,7 @@ import type {
 } from "../../../shared/inbox";
 import type { ContentRoutingContext } from "../../../shared/content-routing-context";
 import { USER_TURN_TIMESTAMP_GAP_MS } from "../local-conversation/projection/conversation-turn-timestamps";
+import type { SessionLiveIndicator } from "@/lib/session-execution";
 
 /** What the strip attached to a message in the Inbox shows: what Nodex made of it. */
 export type InboxTriageModel =
@@ -145,21 +146,46 @@ export interface InboxOutcome {
   readonly open: InboxOutcomeTarget | null;
   /** Kept and done messages can go back to the Inbox; dispatched work cannot be recalled. */
   readonly canReturn: boolean;
+  /**
+   * Whether the user has closed the chat's work, which a finished chat never does for them;
+   * null for messages not handed to a chat.
+   */
+  readonly done: boolean | null;
+  /** Work still under way: being delivered, or its chat working, waiting, or with a new reply. */
+  readonly inProgress: boolean;
 }
 
-export function describeInboxOutcome(item: InboxItem): InboxOutcome {
+const keptLabel = (kind: InboxEntryKind | null) =>
+  kind ? `Kept as ${INBOX_KIND_LABELS[kind].toLowerCase()}` : "Kept";
+
+const KEPT = { icon: "keep", status: null, open: null, canReturn: true, done: null } as const;
+const DONE = { icon: "done", label: "Done", status: null, open: null, canReturn: true } as const;
+
+const chatLabel = (
+  type: "new_chat" | "send_to_chat",
+  delivered: boolean,
+  title: string,
+  projectName: string | null,
+) => {
+  if (type === "send_to_chat") return delivered ? `Sent to “${title}”` : `Sending to “${title}”`;
+  return delivered ? `Started “${title}”` : `Starting a chat in ${projectName ?? "no Project"}`;
+};
+
+const DONE_STATUS: InboxChatStatusPresentation = {
+  label: "Done",
+  tone: "quiet",
+  inProgress: false,
+};
+
+/** `live` is the receiving chat's Runtime activity, when the chat is Runtime-bound. */
+export function describeInboxOutcome(
+  item: InboxItem,
+  live: SessionLiveIndicator | null = null,
+): InboxOutcome {
   if (item.outcome === "kept") {
-    return {
-      icon: "keep",
-      label: item.kind ? `Kept as ${INBOX_KIND_LABELS[item.kind].toLowerCase()}` : "Kept",
-      status: null,
-      open: null,
-      canReturn: true,
-    };
+    return { ...KEPT, label: keptLabel(item.kind), inProgress: false };
   }
-  if (item.outcome === "done") {
-    return { icon: "done", label: "Done", status: null, open: null, canReturn: true };
-  }
+  if (item.outcome === "done") return { ...DONE, done: null, inProgress: false };
   const proposal = item.proposal;
   if (
     proposal &&
@@ -168,30 +194,37 @@ export function describeInboxOutcome(item: InboxItem): InboxOutcome {
       (proposal.state === "dispatching" && proposal.failureKind !== "unknown"))
   ) {
     const chat = proposal.chat;
-    const title = chat?.displayTitle ?? "chat";
     const open: InboxOutcomeTarget | null = chat
       ? { kind: "session", sessionId: chat.sessionId }
       : null;
+    const done = item.state === "done";
+    const label = chatLabel(
+      proposal.action.type,
+      proposal.state === "completed",
+      chat?.displayTitle ?? "chat",
+      proposal.targetProjectName,
+    );
     if (proposal.state === "dispatching") {
       return {
         icon: "pending",
-        label:
-          proposal.action.type === "send_to_chat"
-            ? `Sending to “${title}”`
-            : `Starting a chat in ${proposal.targetProjectName ?? "no Project"}`,
-        status: null,
+        label,
+        status: done ? DONE_STATUS : null,
         open,
         canReturn: false,
+        done,
+        inProgress: !done,
       };
     }
     if (proposal.state === "completed") {
+      const status = done ? DONE_STATUS : describeInboxChatStatus(chat, live);
       return {
         icon: "chat",
-        label:
-          proposal.action.type === "send_to_chat" ? `Sent to “${title}”` : `Started “${title}”`,
-        status: describeInboxChatStatus(chat),
+        label,
+        status,
         open,
         canReturn: false,
+        done,
+        inProgress: status.inProgress,
       };
     }
   }
@@ -205,9 +238,63 @@ export function describeInboxOutcome(item: InboxItem): InboxOutcome {
           ? { kind: "database", databaseId: item.location.databaseId }
           : null,
       canReturn: false,
+      done: null,
+      inProgress: false,
     };
   }
-  return { icon: "inbox", label: "In the Inbox", status: null, open: null, canReturn: false };
+  return {
+    icon: "inbox",
+    label: "In the Inbox",
+    status: null,
+    open: null,
+    canReturn: false,
+    done: null,
+    inProgress: false,
+  };
+}
+
+/** A decision this window just made, described before Core's handled message arrives. */
+export type InboxDecision =
+  | { readonly kind: "keep" }
+  | { readonly kind: "done" }
+  | { readonly kind: "move"; readonly projectName: string | null }
+  | {
+      readonly kind: "chat";
+      readonly type: "new_chat" | "send_to_chat";
+      readonly sessionId: string;
+      /** The receiving chat's title, when it already has one. */
+      readonly chatTitle: string | null;
+      readonly projectName: string | null;
+    };
+
+/** What a message shows in its place in the Inbox between the decision and folding away. */
+export function describeInboxDecision(item: InboxItem, decision: InboxDecision): InboxOutcome {
+  switch (decision.kind) {
+    case "keep":
+      return { ...KEPT, label: keptLabel(inboxEntryKind(item)), inProgress: false };
+    case "done":
+      return { ...DONE, done: null, inProgress: false };
+    case "move":
+      return {
+        icon: "move",
+        label: `Moved to ${decision.projectName ?? "Project"}`,
+        status: null,
+        open: null,
+        canReturn: false,
+        done: null,
+        inProgress: false,
+      };
+    case "chat":
+      return {
+        icon: "pending",
+        label: chatLabel(decision.type, false, decision.chatTitle ?? "chat", decision.projectName),
+        status: null,
+        open: { kind: "session", sessionId: decision.sessionId },
+        canReturn: false,
+        done: false,
+        inProgress: true,
+      };
+  }
 }
 
 export interface InboxActionPresentation {
@@ -254,22 +341,42 @@ export type InboxChatTone = "working" | "attention" | "error" | "quiet";
 export interface InboxChatStatusPresentation {
   readonly label: string;
   readonly tone: InboxChatTone;
+  /** The chat is still working, waiting on the user, or holds a reply they have not read. */
+  readonly inProgress: boolean;
 }
 
-export function describeInboxChatStatus(chat: InboxChat | null): InboxChatStatusPresentation {
-  if (!chat) return { label: "Chat unavailable", tone: "error" };
-  if (chat.archived) return { label: "Archived", tone: "quiet" };
-  const status = chat.status;
-  if (!status) return { label: "Starting", tone: "working" };
-  if (status.activeFlags.includes("waitingOnUserInput")) {
-    return { label: "Needs input", tone: "attention" };
+/**
+ * A Runtime-bound chat reports its live Session activity (`live`); a native chat reports its
+ * Core Thread status. A reply the user has not read keeps either in progress.
+ */
+export function describeInboxChatStatus(
+  chat: InboxChat | null,
+  live: SessionLiveIndicator | null = null,
+): InboxChatStatusPresentation {
+  if (!chat) return { label: "Chat unavailable", tone: "error", inProgress: false };
+  if (chat.archived) return { label: "Archived", tone: "quiet", inProgress: false };
+  if (chat.executionRef) {
+    if (live === "waiting") return { label: "Needs input", tone: "attention", inProgress: true };
+    if (live) return { label: "Working", tone: "working", inProgress: true };
+  } else {
+    const status = chat.status;
+    if (!status) return { label: "Starting", tone: "working", inProgress: true };
+    if (status.activeFlags.includes("waitingOnUserInput")) {
+      return { label: "Needs input", tone: "attention", inProgress: true };
+    }
+    if (status.activeFlags.includes("waitingOnApproval")) {
+      return { label: "Waiting", tone: "working", inProgress: true };
+    }
+    if (status.statusType === "active") {
+      return { label: "Working", tone: "working", inProgress: true };
+    }
+    if (status.statusType === "systemError") {
+      return { label: "Error", tone: "error", inProgress: true };
+    }
   }
-  if (status.activeFlags.includes("waitingOnApproval")) {
-    return { label: "Waiting", tone: "working" };
-  }
-  if (status.statusType === "active") return { label: "Working", tone: "working" };
-  if (status.statusType === "systemError") return { label: "Error", tone: "error" };
-  return chat.unread ? { label: "New reply", tone: "attention" } : { label: "Idle", tone: "quiet" };
+  return chat.unread
+    ? { label: "New reply", tone: "attention", inProgress: true }
+    : { label: "Idle", tone: "quiet", inProgress: false };
 }
 
 export const INBOX_KIND_LABELS: Readonly<Record<InboxEntryKind, string>> = {
@@ -379,4 +486,12 @@ export function inboxBuriedImportant(
   const index = important.findIndex((message) => !inView(message.pageId));
   const message = important[index];
   return message ? { message, position: index + 1, total } : null;
+}
+
+/** A message's time when it was sent today, else its day. */
+export function formatInboxWhen(submittedAt: string, now: Date): string {
+  const date = new Date(submittedAt);
+  return startOfDay(date).getTime() === startOfDay(now).getTime()
+    ? formatInboxTime(submittedAt)
+    : inboxDayLabel(date, now);
 }

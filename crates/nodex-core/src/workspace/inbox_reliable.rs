@@ -505,6 +505,7 @@ fn decide(
     require_live_entries(connection, library_id, pages)?;
     let inbox_scope = require_one_scope(connection, pages)?;
     let action = normalize_action(connection, library_id, inbox_scope.as_deref(), action)?;
+    let statuses = ImpliedStatuses::read(connection, pages)?;
     if let Some(selection) = selection
         && (selection.model_selection.instance_id.trim().is_empty()
             || selection.model_selection.model.trim().is_empty()
@@ -550,7 +551,7 @@ fn decide(
             }
         }
     }
-    let effects = apply_confirmation(
+    let mut effects = apply_confirmation(
         connection,
         library_id,
         proposal_id,
@@ -616,6 +617,7 @@ fn decide(
         }
         _ => {}
     }
+    statuses.follow(connection, library_id, context, operation_id, &mut effects)?;
     Ok(effects)
 }
 fn dispatch_fence(
@@ -681,6 +683,7 @@ fn undo_decision(
     if entry_revisions(connection, &recipe.pages)? != recipe.entry_revisions {
         return Err(conflict("An Inbox message changed after this decision"));
     }
+    let statuses = ImpliedStatuses::read(connection, &recipe.pages)?;
     for (index, token) in recipe.tokens.iter().rev().enumerate() {
         crate::library::undo_inbox_page_in_scope(
             connection,
@@ -704,6 +707,7 @@ fn undo_decision(
     }
     let mut effects = simple_effects("inbox_undo_decision", now);
     effects.page_ids = recipe.pages;
+    statuses.follow(connection, library_id, context, operation_id, &mut effects)?;
     Ok(effects)
 }
 

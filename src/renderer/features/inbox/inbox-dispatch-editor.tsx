@@ -145,7 +145,8 @@ export function InboxDispatchEditor({
   readonly projects: readonly Project[];
   /** The Project whose Inbox holds the messages, or null for the Library Inbox. */
   readonly inboxProjectId?: string | null;
-  readonly onSubmit: (action: InboxDispatchAction) => Promise<boolean>;
+  /** `chat` is the chosen chat when the action sends to one. */
+  readonly onSubmit: (action: InboxDispatchAction, chat: InboxChat | null) => Promise<boolean>;
   readonly onCancel: () => void;
 }) {
   const [draft, setDraft] = useState(() =>
@@ -189,15 +190,16 @@ export function InboxDispatchEditor({
     projectId === null
       ? "No Project"
       : (activeProjects.find((project) => project.id === projectId)?.name ?? "Choose a Project");
+  const chosenChat =
+    chats.find((chat) => chat.sessionId === draft.sessionId) ??
+    (selectedChat?.sessionId === draft.sessionId ? selectedChat : null);
   const chatTitle =
-    chats.find((chat) => chat.sessionId === draft.sessionId)?.displayTitle ??
-    (selectedChat?.sessionId === draft.sessionId ? selectedChat?.displayTitle : null) ??
-    (draft.sessionId ? "Selected chat" : "Choose a chat");
+    chosenChat?.displayTitle ?? (draft.sessionId ? "Selected chat" : "Choose a chat");
 
   const submit = async () => {
     if (!action) return;
     setSubmitting(true);
-    const done = await onSubmit(action);
+    const done = await onSubmit(action, action.type === "send_to_chat" ? chosenChat : null);
     setSubmitting(false);
     if (done) onCancel();
   };

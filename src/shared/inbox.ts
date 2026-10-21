@@ -89,6 +89,8 @@ export interface InboxChat {
   readonly projectName: string | null;
   readonly displayTitle: string;
   readonly threadId: string | null;
+  /** Present for Runtime-bound Sessions, whose status comes from Session activity. */
+  readonly executionRef: { readonly runtimeId: string; readonly threadId: string } | null;
   readonly status: InboxThreadStatus | null;
   readonly unread: boolean;
   readonly archived: boolean;

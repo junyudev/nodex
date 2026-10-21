@@ -10,10 +10,19 @@ export const INBOX_EASE_OUT = [0.2, 0, 0, 1] as const;
  * feels like. Only that fold clips, so a selected card's ring and the focus rings at the edges
  * of its row are never cut while the message is shown.
  */
-export function InboxStreamItem({ children }: { readonly children: ReactNode }) {
+export function InboxStreamItem({
+  children,
+  onHoldChange,
+}: {
+  readonly children: ReactNode;
+  /** Hears the pointer resting on the message and leaving it. */
+  readonly onHoldChange?: (held: boolean) => void;
+}) {
   const present = useIsPresent();
   return (
     <motion.div
+      onPointerEnter={onHoldChange && (() => onHoldChange(true))}
+      onPointerLeave={onHoldChange && (() => onHoldChange(false))}
       layout="position"
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}

@@ -137,6 +137,9 @@ export const inboxChatFromCore = (chat: CoreInboxChat): InboxChat => ({
   projectName: chat.project_name ?? null,
   displayTitle: chat.display_title,
   threadId: chat.thread_id ?? null,
+  executionRef: chat.execution_ref
+    ? { runtimeId: chat.execution_ref.runtime_id, threadId: chat.execution_ref.thread_id }
+    : null,
   status: threadStatusFromCore(chat.status),
   unread: chat.unread,
   archived: chat.archived,

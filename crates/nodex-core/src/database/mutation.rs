@@ -295,6 +295,101 @@ pub(crate) fn apply_as_collaborator(
     })
 }
 
+/// One Page's workflow status moving from what another Module's state implied to what it
+/// implies now.
+pub(crate) struct WorkflowStatusStep<'a> {
+    pub(crate) page_id: &'a str,
+    pub(crate) from: &'a str,
+    pub(crate) to: &'a str,
+}
+
+/// Moves Pages' workflow status along with another Module's decision, inside that decision's
+/// transaction. A Page follows only while its row still shows `from`, so a status someone set
+/// by hand is never overwritten, and only to an option its Status still offers. Returns the
+/// collaborator receipt when any Page moved.
+pub(crate) fn follow_workflow_status(
+    connection: &Connection,
+    library_id: &str,
+    context: &BoundModuleContext,
+    operation_id: &str,
+    steps: &[WorkflowStatusStep<'_>],
+    committed_at: &str,
+) -> Result<Option<DatabaseReceipt>, StoreError> {
+    let status_property = super::property_semantics::STATUS_PROPERTY_ID;
+    let mut edits = Vec::new();
+    for step in steps.iter().filter(|step| step.from != step.to) {
+        let Some((data_source_id, current, revision)) = connection
+            .query_row(
+                "SELECT page.parent_id, value.value_json, COALESCE(value.revision, 0) \
+                 FROM pages page \
+                 JOIN blocks block ON block.id = page.block_id AND block.lifecycle = 'active' \
+                 JOIN data_source_page_memberships membership \
+                   ON membership.data_source_id = page.parent_id \
+                  AND membership.page_block_id = page.block_id AND membership.removed_at IS NULL \
+                 LEFT JOIN data_source_property_values value \
+                   ON value.data_source_id = page.parent_id \
+                  AND value.membership_id = membership.id AND value.property_id = ?2 \
+                 WHERE page.block_id = ?1 AND page.parent_kind = 'data_source'",
+                params![step.page_id, status_property],
+                |row| {
+                    Ok((
+                        row.get::<_, String>(0)?,
+                        row.get::<_, Option<String>>(1)?,
+                        row.get::<_, i64>(2)?,
+                    ))
+                },
+            )
+            .optional()?
+        else {
+            continue;
+        };
+        let current = current
+            .map(|value| parse_json(&value, "Workflow status value"))
+            .transpose()?;
+        if current.as_ref().and_then(Value::as_str) != Some(step.from) {
+            continue;
+        }
+        let Some(property) = property_row(connection, &data_source_id, status_property)? else {
+            continue;
+        };
+        if property.lifecycle != "active"
+            || property.value_type != "select"
+            || !option_config(&property)?
+                .options
+                .iter()
+                .any(|option| option.id == step.to)
+        {
+            continue;
+        }
+        edits.push(DatabasePropertyValueMutation {
+            expected_membership_revision: None,
+            address: DatabasePagePropertyAddress {
+                page_id: step.page_id.to_owned(),
+                data_source_id,
+                property_id: status_property.to_owned(),
+            },
+            edit: DatabasePropertyValueEdit::Replace {
+                expected_value_revision: revision,
+                value: DatabasePropertyValueInput::Select {
+                    option_id: step.to.to_owned(),
+                },
+            },
+        });
+    }
+    if edits.is_empty() {
+        return Ok(None);
+    }
+    apply_as_collaborator(
+        connection,
+        library_id,
+        context,
+        operation_id,
+        &[DatabaseIntent::EditPropertyValues { edits }],
+        committed_at,
+    )
+    .map(Some)
+}
+
 fn validate_request(request: &ModuleApplyRequest<Vec<DatabaseIntent>>) -> Result<(), StoreError> {
     validate_id(&request.operation_id, "operation_id", MAX_ID_LENGTH)?;
     if request.intent.is_empty() || request.intent.len() > MAX_OPERATIONS {

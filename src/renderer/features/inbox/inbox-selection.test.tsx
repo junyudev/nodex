@@ -46,6 +46,7 @@ const chat = (sessionId: string, displayTitle: string): InboxChat => ({
   projectId: "project:A",
   projectName: "Alpha",
   threadId: null,
+  executionRef: null,
   status: null,
   unread: false,
   archived: false,
@@ -159,11 +160,11 @@ describe("Inbox destination and Agent selection", () => {
     });
     expect(screen.getByRole("button", { name: "Chat" }).textContent).toContain("Research findings");
     await click("Send");
-    expect(onSubmit).toHaveBeenCalledWith({
-      type: "send_to_chat",
-      sessionId: "session:old",
-      prompt: "Continue",
-    });
+    // The chosen chat travels with the action, so the message can say where it went.
+    expect(onSubmit).toHaveBeenCalledWith(
+      { type: "send_to_chat", sessionId: "session:old", prompt: "Continue" },
+      expect.objectContaining({ sessionId: "session:old", displayTitle: "Research findings" }),
+    );
   });
 
   test("keeps an unavailable selected Agent and model explicit, and selects real catalog IDs", async () => {

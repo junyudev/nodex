@@ -482,8 +482,10 @@ The edge targets Project Session rather than Codex Thread because a Chat may be
 threadless and Thread attachment may change independently. It also never
 targets a Window Session, Scene, or surface. Open in new chat can create a
 Session and its initial Page edges atomically; explicit Send to chat and Page
-Run Section actions may add the same idempotent edge. Page navigation, Scenes,
-mentions, references, links, and prompt text do not infer one.
+Run Section actions may add the same idempotent edge. Confirming an Inbox chat
+dispatch links its message Pages to the receiving chat in the same transaction.
+Page navigation, Scenes, mentions, references, links, and prompt text do not
+infer one.
 
 Workspace owns the relation and derives bounded Page Chat activity from it,
 Project Sessions, and optional Threads. Execution and unread are orthogonal
@@ -512,6 +514,11 @@ An Inbox entry is the Workspace-owned record beside a message Page. It holds:
 
 An entry is in the Inbox while it still needs the user. A confirmed chat
 dispatch, a move out of the Inbox Database, Keep, or Done hands it to History.
+Work handed to a chat stays in progress until the user marks it done; a chat
+finishing never does. The message Page's workflow status follows the handling,
+Triage while waiting, Build once handed to a chat, Plan when kept or filed,
+Ship when done, but only while it still shows the status the previous handling
+gave it, so a status set by hand is never overwritten.
 Deleting a message erases it: the entry, every suggestion naming it, the Page,
 and its revisions go, with no restore path.
 The entry survives relocation, so History still shows where a message filed into

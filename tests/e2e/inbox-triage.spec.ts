@@ -82,6 +82,14 @@ test("preserves capture and filing decisions while Project counts share the acti
         await page.getByRole("button", { name: "Project", exact: true }).click();
         await page.getByRole("option", { name: "Inbox filing target", exact: true }).click();
         await page.getByRole("button", { name: "Move", exact: true }).click();
+        // Each message first says where it went, in its own place, and only then folds away.
+        await expect(firstRow).toContainText("Moved to Inbox filing target");
+        claim(
+          "A decided message shows its outcome in place before leaving",
+          true,
+          (await firstRow.innerText()).includes("Moved to Inbox filing target"),
+        );
+        await page.screenshot({ path: path.join(artifacts, "decided-in-place.png") });
         await expect(page.getByTestId("inbox-message")).toHaveCount(0);
         const history = await invokeIpc(page, "inbox:window", {
           scope: { kind: "library" },
@@ -179,7 +187,7 @@ test("preserves capture and filing decisions while Project counts share the acti
         );
         await writeFile(
           path.join(artifacts, "README.md"),
-          `# Inbox triage verification\n\nStatus: **${status}**\n\nA fresh disposable Electron Profile captures a message, restores the next draft after reload, edits the original message inline, files two selected messages to a Project, and returns both with one Undo. Opening a message's Page adds a tab beside the Library Inbox instead of leaving it. The destination Inbox has no duplicate capture. A separate Project capture then verifies its count is replaced by row actions on hover and returns when the pointer leaves. The recording uses synthetic content and real renderer/Main/Core operations. Exact expected and actual values are in result.json.\n\nArtifacts: review.webm, page-beside-inbox.png, final.png and hover.png.\n${failure ? `\nFailure: ${failure}\n` : ""}`,
+          `# Inbox triage verification\n\nStatus: **${status}**\n\nA fresh disposable Electron Profile captures a message, restores the next draft after reload, edits the original message inline, files two selected messages to a Project, which each say where they went in place before folding away, and returns both with one Undo. Opening a message's Page adds a tab beside the Library Inbox instead of leaving it. The destination Inbox has no duplicate capture. A separate Project capture then verifies its count is replaced by row actions on hover and returns when the pointer leaves. The recording uses synthetic content and real renderer/Main/Core operations. Exact expected and actual values are in result.json.\n\nArtifacts: review.webm, decided-in-place.png, page-beside-inbox.png, final.png and hover.png.\n${failure ? `\nFailure: ${failure}\n` : ""}`,
         );
       }
     },

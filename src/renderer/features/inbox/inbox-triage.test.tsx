@@ -1,13 +1,14 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { act, fireEvent, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, test, vi } from "vite-plus/test";
 
 import { openNodexMenu, render } from "@/test/dom";
 import { TestQueryProvider } from "@/test/query";
-import type { InboxItem, InboxProposal } from "../../../shared/inbox";
+import type { InboxChat, InboxItem, InboxProposal } from "../../../shared/inbox";
 import type { Project } from "../../../shared/types";
 import { InboxDeleteDialog } from "./inbox-delete-dialog";
 import { draftForInboxItem } from "./inbox-dispatch-editor";
+import { describeInboxDecision } from "./inbox-presentation";
 import { InboxHistory } from "./inbox-history";
 import { InboxMessage, InboxMessageMenu, type InboxMessageMenuHandlers } from "./inbox-message";
 import { NO_ROW_OFFERS } from "./inbox-presentation";
@@ -271,6 +272,7 @@ describe("InboxTriage", () => {
         projectId: null,
         projectName: null,
         threadId: null,
+        executionRef: null,
         status: null,
         unread: false,
         archived: false,
@@ -425,12 +427,33 @@ describe("InboxTriage", () => {
     });
     await click("Start chat");
     await waitFor(() =>
-      expect(commands.confirm).toHaveBeenCalledWith(grouped, {
-        type: "new_chat",
-        projectId: "project:nodex",
-        prompt: "Only list the trade-offs.",
-      }),
+      expect(commands.confirm).toHaveBeenCalledWith(
+        grouped,
+        { type: "new_chat", projectId: "project:nodex", prompt: "Only list the trade-offs." },
+        null,
+      ),
     );
+  });
+
+  test("a message just sent to a chat shows where it went in place of its suggestion", async () => {
+    const onOpenSession = vi.fn();
+    renderTriage({
+      onOpenSession,
+      decided: describeInboxDecision(item(), {
+        kind: "chat",
+        type: "new_chat",
+        sessionId: "session:new",
+        chatTitle: null,
+        projectName: "Nodex",
+      }),
+    });
+    expect(screen.getByText("Starting a chat in Nodex")).toBeTruthy();
+    // What was suggested, and the ways to decide it, are gone: it has been decided.
+    expect(screen.queryByText("Compare both positions.")).toBeNull();
+    expect(screen.queryByRole("button", { name: /Start chat/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Edit" })).toBeNull();
+    await click("Open chat");
+    expect(onOpenSession).toHaveBeenCalledWith("session:new");
   });
 
   test("keep and done clear the message without dispatching it", async () => {
@@ -623,34 +646,60 @@ describe("Importance", () => {
   });
 });
 
+const historyChat = (overrides: Partial<InboxChat> = {}): InboxChat => ({
+  sessionId: "session:1",
+  projectId: "project:nodex",
+  projectName: "Nodex",
+  displayTitle: "Homepage positioning",
+  threadId: "thread:1",
+  executionRef: null,
+  status: { statusType: "idle", activeFlags: [] },
+  unread: false,
+  archived: false,
+  ...overrides,
+});
+
+const delivered = (pageId: string, title: string, chat: InboxChat, done = false) =>
+  item({
+    pageId,
+    title,
+    state: done ? "done" : "open",
+    outcome: "chat",
+    proposal: proposal({ state: "completed", chat }),
+  });
+
+const historyHandlers = () => ({
+  onOpenTarget: vi.fn(),
+  onOpenPage: vi.fn(),
+  onReturn: vi.fn(),
+  onSetDone: vi.fn(),
+  onDelete: vi.fn(),
+});
+
+const rowIds = (container: HTMLElement = document.body) =>
+  within(container)
+    .getAllByTestId("inbox-history-row")
+    .map((row) => row.getAttribute("data-inbox-page-id"));
+
+const historyRow = (pageId: string) =>
+  screen
+    .getAllByTestId("inbox-history-row")
+    .find((row) => row.getAttribute("data-inbox-page-id") === pageId)!;
+
 describe("InboxHistory", () => {
   test("a delivered chat shows its live status and opens the conversation", async () => {
-    const onOpenTarget = vi.fn();
+    const handlers = historyHandlers();
     render(
       <TestQueryProvider>
         <InboxHistory
           items={[
-            item({
-              outcome: "chat",
-              proposal: proposal({
-                state: "completed",
-                chat: {
-                  sessionId: "session:1",
-                  projectId: "project:nodex",
-                  projectName: "Nodex",
-                  displayTitle: "Homepage positioning",
-                  threadId: "thread:1",
-                  status: { statusType: "active", activeFlags: ["waitingOnApproval"] },
-                  unread: false,
-                  archived: false,
-                },
-              }),
-            }),
+            delivered(
+              "page:1",
+              "Homepage positioning",
+              historyChat({ status: { statusType: "active", activeFlags: ["waitingOnApproval"] } }),
+            ),
           ]}
-          onOpenTarget={onOpenTarget}
-          onOpenPage={vi.fn()}
-          onReturn={vi.fn()}
-          onDelete={vi.fn()}
+          {...handlers}
         />
       </TestQueryProvider>,
     );
@@ -661,12 +710,68 @@ describe("InboxHistory", () => {
       await Promise.resolve();
     });
     await click("Open chat");
-    expect(onOpenTarget).toHaveBeenCalledWith({ kind: "session", sessionId: "session:1" });
+    expect(handlers.onOpenTarget).toHaveBeenCalledWith({ kind: "session", sessionId: "session:1" });
+  });
+
+  test("work still under way leads, and the user closes a finished chat's work", async () => {
+    const handlers = historyHandlers();
+    render(
+      <TestQueryProvider>
+        <InboxHistory
+          items={[
+            delivered(
+              "page:working",
+              "Fix the Board header",
+              historyChat({ status: { statusType: "active", activeFlags: [] } }),
+            ),
+            delivered("page:read", "Rename the tab", historyChat()),
+            delivered("page:reply", "Audit empty states", historyChat({ unread: true })),
+            delivered("page:closed", "Ship the digest", historyChat({ unread: true }), true),
+            item({ pageId: "page:kept", title: "A note", state: "kept", outcome: "kept" }),
+          ]}
+          {...handlers}
+        />
+      </TestQueryProvider>,
+    );
+    // A chat that is working or has a reply the user has not read is still in progress; one
+    // that went quiet after they read it, or whose work they closed, is finished.
+    const inProgress = rowIds(screen.getByRole("region", { name: "In progress" }));
+    expect(inProgress).toEqual(["page:working", "page:reply"]);
+    expect(rowIds().filter((id) => !inProgress.includes(id))).toEqual([
+      "page:read",
+      "page:closed",
+      "page:kept",
+    ]);
+    expect(within(historyRow("page:reply")).getByText("New reply")).toBeTruthy();
+
+    const reply = historyRow("page:reply");
+    await act(async () => {
+      fireEvent.click(within(reply).getByRole("button", { expanded: false }));
+      await Promise.resolve();
+    });
+    // Dispatched work cannot return to the Inbox; it can only be closed.
+    expect(within(reply).queryByRole("button", { name: "Return to Inbox" })).toBeNull();
+    await act(async () => {
+      fireEvent.click(within(reply).getByRole("button", { name: "Mark done" }));
+      await Promise.resolve();
+    });
+    expect(handlers.onSetDone).toHaveBeenCalledWith("page:reply", true);
+
+    const closed = historyRow("page:closed");
+    expect(within(closed).getByText("Done")).toBeTruthy();
+    await act(async () => {
+      fireEvent.click(within(closed).getByRole("button", { expanded: false }));
+      await Promise.resolve();
+    });
+    await act(async () => {
+      fireEvent.click(within(closed).getByRole("button", { name: "Reopen" }));
+      await Promise.resolve();
+    });
+    expect(handlers.onSetDone).toHaveBeenCalledWith("page:closed", false);
   });
 
   test("a kept message can return to the Inbox or be deleted", async () => {
-    const onReturn = vi.fn();
-    const onDelete = vi.fn();
+    const handlers = historyHandlers();
     const kept = item({
       state: "kept",
       outcome: "kept",
@@ -674,24 +779,20 @@ describe("InboxHistory", () => {
     });
     render(
       <TestQueryProvider>
-        <InboxHistory
-          items={[kept]}
-          onOpenTarget={vi.fn()}
-          onOpenPage={vi.fn()}
-          onReturn={onReturn}
-          onDelete={onDelete}
-        />
+        <InboxHistory items={[kept]} {...handlers} />
       </TestQueryProvider>,
     );
+    expect(screen.queryByRole("region", { name: "In progress" })).toBeNull();
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { expanded: false }));
       await Promise.resolve();
     });
     expect(screen.getByText("Homepage feels like a dev tool")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Mark done" })).toBeNull();
     await click("Return to Inbox");
-    expect(onReturn).toHaveBeenCalledWith("page:1");
+    expect(handlers.onReturn).toHaveBeenCalledWith("page:1");
     await click("Delete");
-    expect(onDelete).toHaveBeenCalledWith(kept);
+    expect(handlers.onDelete).toHaveBeenCalledWith(kept);
   });
 });
 

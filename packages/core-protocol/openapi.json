@@ -6661,6 +6661,17 @@
                 "display_title": {
                   "type": "string"
                 },
+                "execution_ref": {
+                  "oneOf": [
+                    {
+                      "type": "null"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ProjectWorkspaceSessionExecutionRef",
+                      "description": "Present for Runtime-bound Sessions; their status comes from execution, not `status`."
+                    }
+                  ]
+                },
                 "project_id": {
                   "type": [
                     "string",
@@ -37876,6 +37887,17 @@
           },
           "display_title": {
             "type": "string"
+          },
+          "execution_ref": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ProjectWorkspaceSessionExecutionRef",
+                "description": "Present for Runtime-bound Sessions; their status comes from execution, not `status`."
+              }
+            ]
           },
           "project_id": {
             "type": [

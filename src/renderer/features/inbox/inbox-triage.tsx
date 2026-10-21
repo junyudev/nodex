@@ -30,13 +30,14 @@ import { INBOX_EASE_OUT } from "./inbox-stream-item";
 import { InboxOutcomeLine } from "./inbox-outcome";
 import {
   describeInboxAction,
-  describeInboxOutcome,
   inboxPageRoutingContext,
   inboxRowOffers,
   inboxTriageModel,
   isChatAction,
+  type InboxOutcome,
   type InboxRowOffers,
 } from "./inbox-presentation";
+import { useInboxOutcome } from "./use-inbox-outcome";
 import {
   InboxDispatchEditor,
   draftForInboxItem,
@@ -189,8 +190,14 @@ export function InboxTriage({
   onOpenPage,
   onOpenSession,
   awaitingIndicator = false,
+  decided = null,
 }: {
   readonly item: InboxItem;
+  /**
+   * Where this window just sent the message. The card shows it in place of everything else
+   * until the message folds away, so a decision never makes a message simply vanish.
+   */
+  readonly decided?: InboxOutcome | null;
   /** Shows the spinner of the newest message still waiting for advice. */
   readonly awaitingIndicator?: boolean;
   readonly members?: readonly InboxGroupMember[];
@@ -223,6 +230,7 @@ export function InboxTriage({
   const model = inboxTriageModel(item, suggestionsEnabled);
   const offers = inboxRowOffers(model, { suggestionsEnabled, grouped: groupedWithKey != null });
   const menuNode = menu(offers);
+  const handled = useInboxOutcome(item);
   const done = () => void actions.setState([item.pageId], "done");
   const keep = () => void actions.keep([item.pageId]);
   const handleManually = () => onManualDraftChange(draftForInboxItem(item, inboxProjectId));
@@ -268,7 +276,33 @@ export function InboxTriage({
     />
   );
 
+  const outcomeParts = (
+    outcome: InboxOutcome,
+  ): Omit<InboxTriageParts, "editor" | "messageActions"> => {
+    const target = outcome.open;
+    return {
+      strip: (
+        <Settle id="outcome">
+          <InboxOutcomeLine outcome={outcome} />
+        </Settle>
+      ),
+      actions:
+        target?.kind === "session" && onOpenSession ? (
+          <Row>
+            <InboxIconActions>
+              <InboxIconAction
+                label="Open chat"
+                icon={ThreadIcon}
+                onClick={() => onOpenSession(target.sessionId)}
+              />
+            </InboxIconActions>
+          </Row>
+        ) : null,
+    };
+  };
+
   const parts = (): Omit<InboxTriageParts, "editor" | "messageActions"> => {
+    if (decided) return outcomeParts(decided);
     if (manualDraft) {
       return {
         strip: (
@@ -286,13 +320,14 @@ export function InboxTriage({
               projects={projects}
               inboxProjectId={inboxProjectId}
               onCancel={() => onManualDraftChange(null)}
-              onSubmit={(action) =>
+              onSubmit={(action, chat) =>
                 manualDraft.proposal
-                  ? actions.confirm(manualDraft.proposal, action)
+                  ? actions.confirm(manualDraft.proposal, action, chat)
                   : actions.dispatch(
                       (manualDraft.basis ?? [item.basis]).map((basis) => basis.pageId),
                       action,
                       manualDraft.basis ?? [item.basis],
+                      chat,
                     )
               }
             />
@@ -309,11 +344,7 @@ export function InboxTriage({
             Suggested together with {groupedWithKey} below
           </span>
         ),
-        actions: (
-          <Row>
-            <InboxIconActions>{menuNode}</InboxIconActions>
-          </Row>
-        ),
+        actions: menuOnly,
       };
     }
 
@@ -477,10 +508,7 @@ export function InboxTriage({
           ),
         };
       case "handled":
-        return {
-          strip: <InboxOutcomeLine outcome={describeInboxOutcome(item)} />,
-          actions: menuOnly,
-        };
+        return outcomeParts(handled);
     }
   };
 
@@ -507,7 +535,8 @@ export function InboxTriage({
     });
   }
   // A delivered or failed delivery's text is settled, and a dispatch editor is already open.
-  const editable = !manualDraft && model.kind !== "handled" && model.kind !== "dispatch-failed";
+  const editable =
+    !manualDraft && !decided && model.kind !== "handled" && model.kind !== "dispatch-failed";
   return children({
     editor: null,
     messageActions: (

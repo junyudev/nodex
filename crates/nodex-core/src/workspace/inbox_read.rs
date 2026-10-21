@@ -19,7 +19,8 @@ use nodex_core_contracts::inbox::{
     ProjectWorkspaceInboxSummary, ProjectWorkspaceInboxWindowFilter,
 };
 use nodex_core_contracts::workspace::{
-    CodexThreadActiveFlag, CodexThreadStatusType, ProjectWorkspaceThreadStatus,
+    CodexThreadActiveFlag, CodexThreadStatusType, ProjectWorkspaceSessionExecutionRef,
+    ProjectWorkspaceThreadStatus,
 };
 use rusqlite::types::Value as SqlValue;
 use rusqlite::{Connection, OptionalExtension, params, params_from_iter};
@@ -707,7 +708,8 @@ fn read_chat(
             "SELECT session.id, session.project_id, project.name, session.no_thread_fallback_title, \
                COALESCE(binding.runtime_thread_id,thread.thread_id), thread.thread_name, \
                substr(COALESCE(thread.thread_preview, ''),1,240), \
-               thread.status_type, thread.status_active_flags_json, session.unread, session.archived \
+               thread.status_type, thread.status_active_flags_json, session.unread, session.archived, \
+               binding.runtime_id \
              FROM project_sessions session \
              LEFT JOIN projects project ON project.id = session.project_id \
              LEFT JOIN project_session_execution_bindings binding ON binding.session_id=session.id \
@@ -721,6 +723,13 @@ fn read_chat(
                 let status = row.get::<_, Option<String>>(7)?.map(|status_type| {
                     thread_status(&status_type, &row.get::<_, String>(8)?)
                 }).transpose()?;
+                let execution_ref = row
+                    .get::<_, Option<String>>(11)?
+                    .zip(thread_id.clone())
+                    .map(|(runtime_id, thread_id)| ProjectWorkspaceSessionExecutionRef {
+                        runtime_id,
+                        thread_id,
+                    });
                 Ok(ProjectWorkspaceInboxChat {
                     session_id: row.get(0)?,
                     project_id: row.get(1)?,
@@ -731,6 +740,7 @@ fn read_chat(
                         &row.get::<_, String>(3)?,
                     ),
                     thread_id,
+                    execution_ref,
                     status,
                     unread: row.get::<_, i64>(9)? == 1,
                     archived: row.get::<_, i64>(10)? == 1,

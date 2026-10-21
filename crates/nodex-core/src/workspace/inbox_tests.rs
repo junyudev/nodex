@@ -1,22 +1,27 @@
 use nodex_core_contracts::agent::AgentTurnProvenance;
 use nodex_core_contracts::collection::CollectionWindowRequest;
+use nodex_core_contracts::database::{
+    DatabaseIntent, DatabasePagePropertyAddress, DatabasePropertyValueEdit,
+    DatabasePropertyValueInput, DatabasePropertyValueMutation,
+};
 use nodex_core_contracts::inbox::{
     ProjectWorkspaceInboxDispatchAction, ProjectWorkspaceInboxEntryKind,
     ProjectWorkspaceInboxEntryState, ProjectWorkspaceInboxItem, ProjectWorkspaceInboxLocation,
-    ProjectWorkspaceInboxMessageEdit, ProjectWorkspaceInboxProjectCount,
-    ProjectWorkspaceInboxProposalOrigin, ProjectWorkspaceInboxProposalState,
-    ProjectWorkspaceInboxScope, ProjectWorkspaceInboxSource, ProjectWorkspaceInboxSuggestionInput,
-    ProjectWorkspaceInboxSuggestionState, ProjectWorkspaceInboxSummary,
-    ProjectWorkspaceInboxWindowFilter,
+    ProjectWorkspaceInboxMessageEdit, ProjectWorkspaceInboxOutcome,
+    ProjectWorkspaceInboxProjectCount, ProjectWorkspaceInboxProposalOrigin,
+    ProjectWorkspaceInboxProposalState, ProjectWorkspaceInboxScope, ProjectWorkspaceInboxSource,
+    ProjectWorkspaceInboxSuggestionInput, ProjectWorkspaceInboxSuggestionState,
+    ProjectWorkspaceInboxSummary, ProjectWorkspaceInboxWindowFilter,
 };
 use nodex_core_contracts::workspace::{
-    ProjectWorkspaceIntent, ProjectWorkspaceRead, ProjectWorkspaceReadValue,
+    ProjectSessionIntent, ProjectWorkspaceIntent, ProjectWorkspaceRead, ProjectWorkspaceReadValue,
     ProjectWorkspaceTurnAuthority,
 };
 use nodex_core_contracts::{
-    AdapterKind, BoundModuleContext, CoreErrorCode, ModuleReadRequest,
-    PROJECT_WORKSPACE_CONTRACT_VERSION,
+    AdapterKind, BoundModuleContext, CoreErrorCode, DATABASE_CONTRACT_VERSION, ModuleApplyRequest,
+    ModuleReadRequest, PROJECT_WORKSPACE_CONTRACT_VERSION, StoreEpoch,
 };
+use rusqlite::OptionalExtension;
 
 use super::ProjectWorkspaceModule;
 use super::test_support::{
@@ -1349,7 +1354,17 @@ fn runtime_bound_chats_remain_suggestion_and_dispatch_targets() {
         .chat
         .unwrap();
     assert_eq!(chat.thread_id.as_deref(), Some("thread:runtime-root"));
+    // Its live status comes from the Runtime execution the chat names, not from Core.
     assert_eq!(chat.status, None);
+    assert_eq!(
+        chat.execution_ref
+            .map(|execution| (execution.runtime_id, execution.thread_id)),
+        Some(("runtime:inbox".into(), "thread:runtime-root".into()))
+    );
+    assert_eq!(
+        linked_chats(&workspace, "page:runtime-target"),
+        vec!["session:runtime-source"]
+    );
 }
 
 fn page_parent(workspace: &TestWorkspace, page_id: &str) -> String {
@@ -1533,6 +1548,8 @@ fn filing_into_a_project_keeps_the_message_handled_in_its_own_inbox() {
         panic!("Filed location: {:?}", history[0].location);
     };
     assert_eq!(project_id.as_deref(), Some(PROJECT));
+    // Filed is triaged: the Page waits on the Project's Board as planned work.
+    assert_eq!(status_of(&workspace, "page:task").as_deref(), Some("plan"));
     // Filing is the decision; it does not open again in the Project.
     assert!(
         window_in(
@@ -1552,9 +1569,12 @@ fn filing_into_a_project_keeps_the_message_handled_in_its_own_inbox() {
             state: ProjectWorkspaceInboxEntryState::Open,
         },
     );
+    let reopened = window(module, ProjectWorkspaceInboxWindowFilter::Inbox).remove(0);
+    assert_eq!(reopened.page_id, "page:task");
+    assert_eq!(reopened.outcome, None);
     assert_eq!(
-        window(module, ProjectWorkspaceInboxWindowFilter::Inbox)[0].page_id,
-        "page:task"
+        status_of(&workspace, "page:task").as_deref(),
+        Some("triage")
     );
 }
 
@@ -3311,4 +3331,366 @@ fn a_long_message_streams_its_opening_text_and_is_edited_as_its_page() {
     // Past the budget the stream shows the opening of the message's text.
     assert!(long.body.starts_with(&format!("{line} {line}")));
     assert!(long.body.len() <= 8 * 1024 + 64);
+}
+
+fn linked_chats(workspace: &TestWorkspace, page_id: &str) -> Vec<String> {
+    let page_id = page_id.to_owned();
+    workspace
+        .kernel
+        .readers()
+        .read_default(move |connection| {
+            Ok(connection
+                .prepare(
+                    "SELECT session_id FROM project_session_pages WHERE page_id = ?1 \
+                     ORDER BY session_id",
+                )?
+                .query_map([&page_id], |row| row.get::<_, String>(0))?
+                .collect::<rusqlite::Result<Vec<_>>>()?)
+        })
+        .expect("Linked chats")
+}
+
+fn dispatch(
+    module: &ProjectWorkspaceModule,
+    id: &str,
+    page_ids: &[&str],
+    action: ProjectWorkspaceInboxDispatchAction,
+    session_id: Option<&str>,
+) -> Vec<String> {
+    let page_ids = page_ids
+        .iter()
+        .map(|id| (*id).to_owned())
+        .collect::<Vec<_>>();
+    module
+        .apply(
+            &host(),
+            request(
+                &format!("dispatch:{id}"),
+                ProjectWorkspaceIntent::DispatchInboxEntries {
+                    expected_store_epoch: "epoch-1".into(),
+                    basis: pages_basis(module, page_ids.clone()),
+                    execution_selection: Some(selection()),
+                    proposal_id: format!("proposal:{id}"),
+                    page_ids,
+                    action,
+                    session_id: session_id.map(str::to_owned),
+                },
+            ),
+        )
+        .unwrap_or_else(|error| panic!("dispatch {id}: {}", error.message))
+        .committed
+        .value
+        .affected_session_ids
+}
+
+#[test]
+fn dispatched_messages_become_linked_pages_of_their_chat() {
+    let workspace = seeded_workspace();
+    let module = &workspace.module;
+    create_session_thread(
+        module,
+        "target",
+        "session:target",
+        "thread:target",
+        Some(PROJECT),
+        1,
+    );
+    send(module, "first", "Draft the release notes");
+    send(module, "second", "Include the Inbox changes");
+    send(module, "follow-up", "Also mention the Board");
+
+    // A new chat for a group links every message to it in the same decision.
+    dispatch(
+        module,
+        "new",
+        &["page:first", "page:second"],
+        ProjectWorkspaceInboxDispatchAction::NewChat {
+            project_id: Some(PROJECT.into()),
+            prompt: "Draft the release notes".into(),
+        },
+        Some("session:new"),
+    );
+    assert_eq!(linked_chats(&workspace, "page:first"), vec!["session:new"]);
+    assert_eq!(linked_chats(&workspace, "page:second"), vec!["session:new"]);
+    let ProjectWorkspaceReadValue::PageChatActivitySummaries { summaries, .. } = read_host(
+        module,
+        ProjectWorkspaceRead::PageChatActivitySummaries {
+            page_ids: vec!["page:first".into()],
+        },
+    ) else {
+        panic!("Page Chat activity");
+    };
+    assert_eq!(summaries[0].related_count, 1);
+    assert_eq!(summaries[0].sole_session_id.as_deref(), Some("session:new"));
+
+    // Sending to a chat the Page is already linked to keeps the one edge, and the commit
+    // names the chat so its Pages' activity refreshes.
+    apply_host(
+        module,
+        "link:follow-up",
+        ProjectWorkspaceIntent::MutateSession {
+            session_id: "session:target".into(),
+            intent: ProjectSessionIntent::LinkPage {
+                page_id: "page:follow-up".into(),
+            },
+        },
+    );
+    let sessions = dispatch(
+        module,
+        "send",
+        &["page:follow-up"],
+        ProjectWorkspaceInboxDispatchAction::SendToChat {
+            session_id: "session:target".into(),
+            prompt: "Also mention the Board".into(),
+        },
+        None,
+    );
+    assert_eq!(sessions, vec!["session:target"]);
+    assert_eq!(
+        linked_chats(&workspace, "page:follow-up"),
+        vec!["session:target"]
+    );
+}
+
+fn status_of(workspace: &TestWorkspace, page_id: &str) -> Option<String> {
+    let page_id = page_id.to_owned();
+    workspace
+        .kernel
+        .readers()
+        .read_default(move |connection| {
+            Ok(connection
+                .query_row(
+                    "SELECT json_extract(value.value_json, '$') FROM pages page \
+                     JOIN data_source_page_memberships membership \
+                       ON membership.page_block_id = page.block_id \
+                      AND membership.data_source_id = page.parent_id \
+                      AND membership.removed_at IS NULL \
+                     JOIN data_source_property_values value \
+                       ON value.membership_id = membership.id AND value.property_id = 'status' \
+                     WHERE page.block_id = ?1",
+                    [&page_id],
+                    |row| row.get::<_, Option<String>>(0),
+                )
+                .optional()?
+                .flatten())
+        })
+        .expect("workflow status")
+}
+
+fn set_status_by_hand(workspace: &TestWorkspace, page_id: &str, option_id: &str) {
+    let revision = {
+        let page_id = page_id.to_owned();
+        workspace
+            .kernel
+            .readers()
+            .read_default(move |connection| {
+                Ok(connection.query_row(
+                    "SELECT value.revision FROM data_source_property_values value \
+                     JOIN data_source_page_memberships membership \
+                       ON membership.id = value.membership_id \
+                     WHERE membership.page_block_id = ?1 AND membership.removed_at IS NULL \
+                       AND value.property_id = 'status'",
+                    [&page_id],
+                    |row| row.get::<_, i64>(0),
+                )?)
+            })
+            .expect("status revision")
+    };
+    crate::database::DatabaseModule::new("profile-1", "library-1", &workspace.kernel)
+        .apply(
+            &context(),
+            ModuleApplyRequest {
+                contract_version: DATABASE_CONTRACT_VERSION,
+                operation_id: format!("status:{page_id}:{option_id}"),
+                store_epoch: StoreEpoch("epoch-1".to_owned()),
+                intent: vec![DatabaseIntent::EditPropertyValues {
+                    edits: vec![DatabasePropertyValueMutation {
+                        expected_membership_revision: None,
+                        address: DatabasePagePropertyAddress {
+                            page_id: page_id.to_owned(),
+                            data_source_id: page_parent(workspace, page_id),
+                            property_id: "status".to_owned(),
+                        },
+                        edit: DatabasePropertyValueEdit::Replace {
+                            expected_value_revision: revision,
+                            value: DatabasePropertyValueInput::Select {
+                                option_id: option_id.to_owned(),
+                            },
+                        },
+                    }],
+                }],
+            },
+        )
+        .expect("set status by hand");
+}
+
+fn set_state(
+    module: &ProjectWorkspaceModule,
+    id: &str,
+    page_id: &str,
+    state: ProjectWorkspaceInboxEntryState,
+) {
+    apply_host(
+        module,
+        id,
+        ProjectWorkspaceIntent::SetInboxEntryState {
+            page_ids: vec![page_id.into()],
+            state,
+        },
+    );
+}
+
+fn keep(module: &ProjectWorkspaceModule, page_id: &str) {
+    apply_host(
+        module,
+        &format!("keep:{page_id}"),
+        ProjectWorkspaceIntent::KeepInboxEntries {
+            page_ids: vec![page_id.into()],
+        },
+    );
+}
+
+fn handled_outcome(
+    module: &ProjectWorkspaceModule,
+    page_id: &str,
+) -> Option<ProjectWorkspaceInboxOutcome> {
+    window_in(
+        module,
+        project_scope(),
+        ProjectWorkspaceInboxWindowFilter::Processed,
+    )
+    .into_iter()
+    .find(|item| item.page_id == page_id)
+    .unwrap_or_else(|| panic!("{page_id} is not handled"))
+    .outcome
+}
+
+#[test]
+fn a_messages_status_follows_its_handling_until_someone_else_sets_it() {
+    let workspace = seeded_workspace();
+    let module = &workspace.module;
+    for (id, text) in [
+        ("chat", "Fix the flickering Board header"),
+        ("keep", "The Linear changelog layout is nice"),
+        ("done", "Rename the settings tab"),
+        ("hand", "Audit the empty states"),
+    ] {
+        send_to(module, id, text, Some(PROJECT));
+        assert_eq!(
+            status_of(&workspace, &format!("page:{id}")).as_deref(),
+            Some("triage")
+        );
+    }
+
+    // Work handed to a chat is being built, and stays so when its delivery completes.
+    dispatch(
+        module,
+        "chat",
+        &["page:chat"],
+        ProjectWorkspaceInboxDispatchAction::NewChat {
+            project_id: Some(PROJECT.into()),
+            prompt: "Fix the flickering Board header".into(),
+        },
+        Some("session:chat"),
+    );
+    assert_eq!(status_of(&workspace, "page:chat").as_deref(), Some("build"));
+    let ProjectWorkspaceReadValue::InboxDispatchOutbox { dispatches } = read_host(
+        module,
+        ProjectWorkspaceRead::InboxDispatchOutbox { limit: 8 },
+    ) else {
+        panic!("outbox");
+    };
+    apply_host(
+        module,
+        "complete:chat",
+        ProjectWorkspaceIntent::CompleteInboxDispatch {
+            expected_revision: dispatches[0].revision,
+            message_id: dispatches[0].message_id.clone(),
+            proposal_id: "proposal:chat".into(),
+            dispatched_thread_id: Some("thread:chat".into()),
+        },
+    );
+    assert_eq!(status_of(&workspace, "page:chat").as_deref(), Some("build"));
+
+    // Closing the chat's work ships it, and the message still says which chat did it.
+    set_state(
+        module,
+        "done:chat",
+        "page:chat",
+        ProjectWorkspaceInboxEntryState::Done,
+    );
+    assert_eq!(status_of(&workspace, "page:chat").as_deref(), Some("ship"));
+    assert_eq!(
+        handled_outcome(module, "page:chat"),
+        Some(ProjectWorkspaceInboxOutcome::Chat)
+    );
+    set_state(
+        module,
+        "reopen:chat",
+        "page:chat",
+        ProjectWorkspaceInboxEntryState::Open,
+    );
+    assert_eq!(status_of(&workspace, "page:chat").as_deref(), Some("build"));
+    assert_eq!(
+        handled_outcome(module, "page:chat"),
+        Some(ProjectWorkspaceInboxOutcome::Chat)
+    );
+    assert!(
+        window_in(
+            module,
+            project_scope(),
+            ProjectWorkspaceInboxWindowFilter::Inbox
+        )
+        .iter()
+        .all(|item| item.page_id != "page:chat")
+    );
+
+    // Keeping plans it; returning it to the Inbox brings it back to Triage.
+    keep(module, "page:keep");
+    assert_eq!(status_of(&workspace, "page:keep").as_deref(), Some("plan"));
+    set_state(
+        module,
+        "return:keep",
+        "page:keep",
+        ProjectWorkspaceInboxEntryState::Open,
+    );
+    assert_eq!(
+        status_of(&workspace, "page:keep").as_deref(),
+        Some("triage")
+    );
+
+    set_state(
+        module,
+        "done:done",
+        "page:done",
+        ProjectWorkspaceInboxEntryState::Done,
+    );
+    assert_eq!(status_of(&workspace, "page:done").as_deref(), Some("ship"));
+    set_state(
+        module,
+        "undo:done",
+        "page:done",
+        ProjectWorkspaceInboxEntryState::Open,
+    );
+    assert_eq!(
+        status_of(&workspace, "page:done").as_deref(),
+        Some("triage")
+    );
+
+    // A status set on the Board is the user's; handling the message leaves it alone.
+    set_status_by_hand(&workspace, "page:hand", "review");
+    keep(module, "page:hand");
+    assert_eq!(
+        status_of(&workspace, "page:hand").as_deref(),
+        Some("review")
+    );
+
+    // The Library Inbox's Database follows the same handling.
+    send(module, "loose", "Look into a weekly digest");
+    assert_eq!(
+        status_of(&workspace, "page:loose").as_deref(),
+        Some("triage")
+    );
+    keep(module, "page:loose");
+    assert_eq!(status_of(&workspace, "page:loose").as_deref(), Some("plan"));
 }

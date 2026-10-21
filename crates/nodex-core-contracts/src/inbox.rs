@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
 use crate::collection::CollectionWindow;
-use crate::workspace::ProjectWorkspaceThreadStatus;
+use crate::workspace::{ProjectWorkspaceSessionExecutionRef, ProjectWorkspaceThreadStatus};
 
 /// Which Inbox owns an entry's decision. It is fixed at capture and does not follow
 /// the Page: a message filed into another Project stays in its own Inbox's History.
@@ -159,6 +159,9 @@ pub struct ProjectWorkspaceInboxChat {
     pub project_name: Option<String>,
     pub display_title: String,
     pub thread_id: Option<String>,
+    /// Present for Runtime-bound Sessions; their status comes from execution, not `status`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub execution_ref: Option<ProjectWorkspaceSessionExecutionRef>,
     pub status: Option<ProjectWorkspaceThreadStatus>,
     pub unread: bool,
     pub archived: bool,

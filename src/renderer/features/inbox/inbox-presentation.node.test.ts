@@ -3,7 +3,10 @@ import type { InboxItem, InboxProposal } from "../../../shared/inbox";
 import {
   describeInboxAction,
   describeInboxChatStatus,
+  describeInboxDecision,
   describeInboxOutcome,
+  formatInboxTime,
+  formatInboxWhen,
   groupInboxItemsByDay,
   inboxAwaitingIndicatorPageId,
   inboxBuriedImportant,
@@ -64,6 +67,7 @@ const chat = {
   projectName: "Nodex",
   displayTitle: "Homepage positioning",
   threadId: "thread:1",
+  executionRef: null,
   status: { statusType: "idle" as const, activeFlags: [] },
   unread: true,
   archived: false,
@@ -227,9 +231,11 @@ describe("describeInboxOutcome", () => {
     ).toEqual({
       icon: "chat",
       label: "Started “Homepage positioning”",
-      status: { label: "New reply", tone: "attention" },
+      status: { label: "New reply", tone: "attention", inProgress: true },
       open: { kind: "session", sessionId: "session:1" },
       canReturn: false,
+      done: false,
+      inProgress: true,
     });
     expect(
       describeInboxOutcome(
@@ -291,6 +297,7 @@ describe("describeInboxAction", () => {
       projectName: null,
       displayTitle: "Sidebar polish",
       threadId: "thread:1",
+      executionRef: null,
       status: { statusType: "active" as const, activeFlags: [] },
       unread: false,
       archived: false,
@@ -301,13 +308,13 @@ describe("describeInboxAction", () => {
         { targetProjectName: null, chat: busy },
       ),
     ).toEqual({ verb: "Queue", target: "Send to “Sidebar polish” after it finishes" });
-    expect(describeInboxChatStatus(busy)).toEqual({ label: "Working", tone: "working" });
+    expect(describeInboxChatStatus(busy)).toMatchObject({ label: "Working", tone: "working" });
     expect(
       describeInboxChatStatus({
         ...busy,
         status: { statusType: "active", activeFlags: ["waitingOnApproval"] },
       }),
-    ).toEqual({ label: "Waiting", tone: "working" });
+    ).toMatchObject({ label: "Waiting", tone: "working" });
     expect(
       describeInboxChatStatus({
         ...busy,
@@ -316,7 +323,110 @@ describe("describeInboxAction", () => {
           activeFlags: ["waitingOnApproval", "waitingOnUserInput"],
         },
       }),
-    ).toEqual({ label: "Needs input", tone: "attention" });
+    ).toMatchObject({ label: "Needs input", tone: "attention" });
+  });
+});
+
+describe("chat progress", () => {
+  const runtime = {
+    ...chat,
+    status: null,
+    unread: false,
+    executionRef: { runtimeId: "runtime:1", threadId: "thread:1" },
+  };
+
+  it("reads a Runtime-bound chat's live activity instead of a Thread status it never has", () => {
+    expect(describeInboxChatStatus(runtime, "running")).toEqual({
+      label: "Working",
+      tone: "working",
+      inProgress: true,
+    });
+    expect(describeInboxChatStatus(runtime, "background")).toMatchObject({ label: "Working" });
+    expect(describeInboxChatStatus(runtime, "waiting")).toEqual({
+      label: "Needs input",
+      tone: "attention",
+      inProgress: true,
+    });
+    // Idle, it is finished once its reply has been read.
+    expect(describeInboxChatStatus(runtime, null)).toEqual({
+      label: "Idle",
+      tone: "quiet",
+      inProgress: false,
+    });
+    expect(describeInboxChatStatus({ ...runtime, unread: true }, null)).toEqual({
+      label: "New reply",
+      tone: "attention",
+      inProgress: true,
+    });
+  });
+
+  it("keeps dispatched work in progress until the user closes it, whatever its chat does", () => {
+    const delivered = (state: "open" | "done", live: "running" | null) =>
+      describeInboxOutcome(
+        item({ state, outcome: "chat", proposal: proposal({ state: "completed", chat: runtime }) }),
+        live,
+      );
+    expect(delivered("open", "running")).toMatchObject({ inProgress: true, done: false });
+    expect(delivered("open", null)).toMatchObject({ inProgress: false, done: false });
+    expect(delivered("done", "running")).toMatchObject({
+      label: "Started “Homepage positioning”",
+      status: { label: "Done" },
+      inProgress: false,
+      done: true,
+      canReturn: false,
+    });
+    expect(
+      describeInboxOutcome(item({ proposal: proposal({ state: "dispatching", chat: null }) })),
+    ).toMatchObject({ icon: "pending", inProgress: true, done: false });
+    expect(describeInboxOutcome(item({ state: "kept", outcome: "kept" }))).toMatchObject({
+      inProgress: false,
+      done: null,
+    });
+  });
+});
+
+describe("describeInboxDecision", () => {
+  it("says where a message went before Core's handled message arrives", () => {
+    expect(
+      describeInboxDecision(item(), {
+        kind: "chat",
+        type: "new_chat",
+        sessionId: "session:new",
+        chatTitle: null,
+        projectName: "Nodex",
+      }),
+    ).toMatchObject({
+      icon: "pending",
+      label: "Starting a chat in Nodex",
+      open: { kind: "session", sessionId: "session:new" },
+    });
+    expect(
+      describeInboxDecision(item(), {
+        kind: "chat",
+        type: "send_to_chat",
+        sessionId: "session:1",
+        chatTitle: "Homepage positioning",
+        projectName: null,
+      }).label,
+    ).toBe("Sending to “Homepage positioning”");
+    // The kind it keeps is the one the user set, else the one suggested.
+    expect(
+      describeInboxDecision(item({ proposal: proposal({ kind: "todo" }) }), { kind: "keep" }).label,
+    ).toBe("Kept as todo");
+    expect(describeInboxDecision(item(), { kind: "done" }).label).toBe("Done");
+    expect(describeInboxDecision(item(), { kind: "move", projectName: "Nodex" }).label).toBe(
+      "Moved to Nodex",
+    );
+  });
+});
+
+describe("formatInboxWhen", () => {
+  it("shows a time today and the day otherwise", () => {
+    const now = new Date(2026, 9, 11, 18);
+    expect(formatInboxWhen(new Date(2026, 9, 11, 9, 5).toISOString(), now)).toBe(
+      formatInboxTime(new Date(2026, 9, 11, 9, 5).toISOString()),
+    );
+    expect(formatInboxWhen(new Date(2026, 9, 10, 9).toISOString(), now)).toBe("Yesterday");
   });
 });
 

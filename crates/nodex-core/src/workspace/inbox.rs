@@ -24,8 +24,8 @@ use nodex_core_contracts::{AdapterKind, BoundModuleContext};
 use rusqlite::{Connection, OptionalExtension, params};
 
 use crate::database::{
-    create_database_authority_records, create_page_key_namespace,
-    resolve_page_transfer_data_source_destination,
+    WorkflowStatusStep, create_database_authority_records, create_page_key_namespace,
+    follow_workflow_status, resolve_page_transfer_data_source_destination,
 };
 use crate::domain::derived_records::parse_page_file_source;
 use crate::domain::identity::stable_uuid_v7;
@@ -852,6 +852,92 @@ fn simple_effects(operation_kind: &'static str, now: &str) -> WorkspaceMutationE
 }
 
 // ---------------------------------------------------------------------------
+// Workflow status
+// ---------------------------------------------------------------------------
+
+/// The workflow status a message's handling implies for its Page: Triage while it waits,
+/// Build once its work is handed to a chat, Plan when it is kept or filed, Ship when done.
+fn implied_status(connection: &Connection, page_id: &str) -> Result<String, StoreError> {
+    Ok(connection.query_row(
+        "SELECT CASE entry.state WHEN 'done' THEN 'ship' WHEN 'kept' THEN 'plan' \
+           ELSE CASE WHEN COALESCE(proposal.state, '') IN ('dispatching', 'completed', 'failed') \
+             AND COALESCE(json_extract(proposal.action_json, '$.type'), '') \
+               IN ('new_chat', 'send_to_chat') \
+           THEN 'build' ELSE 'triage' END END \
+         FROM inbox_entries entry \
+         LEFT JOIN inbox_proposals proposal ON proposal.proposal_id = entry.current_proposal_id \
+         WHERE entry.page_id = ?1",
+        [page_id],
+        |row| row.get(0),
+    )?)
+}
+
+/// What each message's handling implied before a decision, so the decision can move the
+/// messages' Pages along with it.
+pub(super) struct ImpliedStatuses(Vec<(String, String)>);
+
+impl ImpliedStatuses {
+    pub(super) fn read(connection: &Connection, page_ids: &[String]) -> Result<Self, StoreError> {
+        page_ids
+            .iter()
+            .map(|page_id| Ok((page_id.clone(), implied_status(connection, page_id)?)))
+            .collect::<Result<_, StoreError>>()
+            .map(Self)
+    }
+
+    /// Moves each Page's status to what its message's handling implies now. A Page whose
+    /// status someone set since keeps it; the Board stays theirs.
+    pub(super) fn follow(
+        self,
+        connection: &Connection,
+        library_id: &str,
+        context: &BoundModuleContext,
+        operation_id: &str,
+        effects: &mut WorkspaceMutationEffects,
+    ) -> Result<(), StoreError> {
+        let after = self
+            .0
+            .iter()
+            .map(|(page_id, _)| implied_status(connection, page_id))
+            .collect::<Result<Vec<_>, _>>()?;
+        let steps = self
+            .0
+            .iter()
+            .zip(&after)
+            .map(|((page_id, from), to)| WorkflowStatusStep { page_id, from, to })
+            .collect::<Vec<_>>();
+        let Some(receipt) = follow_workflow_status(
+            connection,
+            library_id,
+            context,
+            &format!("{operation_id}:inbox-status"),
+            &steps,
+            &effects.committed_at,
+        )?
+        else {
+            return Ok(());
+        };
+        let absorb = |into: &mut Vec<String>, ids: &[String]| {
+            for id in ids {
+                if !into.contains(id) {
+                    into.push(id.clone());
+                }
+            }
+        };
+        absorb(&mut effects.page_ids, &receipt.affected_page_ids);
+        absorb(&mut effects.database_ids, &receipt.affected_database_ids);
+        absorb(
+            &mut effects.data_source_ids,
+            &receipt.affected_data_source_ids,
+        );
+        absorb(&mut effects.view_ids, &receipt.affected_view_ids);
+        absorb(&mut effects.block_ids, &receipt.affected_page_ids);
+        absorb(&mut effects.block_ids, &receipt.affected_database_ids);
+        Ok(())
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Proposals
 // ---------------------------------------------------------------------------
 
@@ -1143,6 +1229,9 @@ fn apply_confirmation(
                 &title,
                 false,
             )?;
+            // The messages become the new chat's Linked Pages, so each Page shows the work it
+            // started for as long as the chat exists.
+            super::page_chat::insert_initial_page_links(connection, session_id, page_ids, now)?;
             start_dispatch(
                 connection,
                 proposal_id,
@@ -1162,7 +1251,9 @@ fn apply_confirmation(
         ProjectWorkspaceInboxDispatchAction::SendToChat {
             session_id: target, ..
         } => {
-            super::session_mutation::require_session(connection, library_id, target)?;
+            let authority =
+                super::session_mutation::require_session(connection, library_id, target)?;
+            super::page_chat::link_pages(connection, target, page_ids, now)?;
             start_dispatch(
                 connection,
                 proposal_id,
@@ -1171,7 +1262,15 @@ fn apply_confirmation(
                 session_thread_id(connection, target)?.as_deref(),
                 now,
             )?;
-            Ok(simple_effects("inbox_confirm_send", now))
+            let mut effects = simple_effects("inbox_confirm_send", now);
+            effects.project_ids = authority.project_id.iter().cloned().collect();
+            effects.change_project_id = authority.project_id.clone();
+            effects.session_ids = vec![target.clone()];
+            effects.thread_ids = authority.thread_id.iter().cloned().collect();
+            effects.session_summary_scopes =
+                vec![project_session_scope(authority.project_id.as_deref())];
+            effects.session_detail_ids = vec![target.clone()];
+            Ok(effects)
         }
     }
 }
@@ -1266,9 +1365,12 @@ pub(super) fn keep_entries(
         request_hash,
         &now,
         |_| {
+            let before = ImpliedStatuses::read(connection, &page_ids)?;
             supersede_open_proposals(connection, &page_ids, "dismissed", &now)?;
             set_entries_state(connection, library_id, &page_ids, "kept", &now)?;
-            Ok(simple_effects("inbox_keep_entries", &now))
+            let mut effects = simple_effects("inbox_keep_entries", &now);
+            before.follow(connection, library_id, context, operation_id, &mut effects)?;
+            Ok(effects)
         },
     )
 }
@@ -1439,6 +1541,7 @@ pub(super) fn set_state(
         request_hash,
         &now,
         |_| {
+            let before = ImpliedStatuses::read(connection, &page_ids)?;
             set_entries_state(
                 connection,
                 library_id,
@@ -1446,7 +1549,9 @@ pub(super) fn set_state(
                 state_literal(state),
                 &now,
             )?;
-            Ok(simple_effects("inbox_set_entry_state", &now))
+            let mut effects = simple_effects("inbox_set_entry_state", &now);
+            before.follow(connection, library_id, context, operation_id, &mut effects)?;
+            Ok(effects)
         },
     )
 }
@@ -1466,7 +1571,9 @@ fn set_entries_state(
     }
     for page_id in page_ids {
         connection.execute(
-            "UPDATE inbox_entries SET state = ?2, outcome=CASE ?2 WHEN 'kept' THEN 'kept' WHEN 'done' THEN 'done' ELSE NULL END, \
+            // Work handed to a chat cannot be recalled; marking it done or not only closes it.
+            "UPDATE inbox_entries SET state = ?2, outcome=CASE WHEN outcome = 'chat' THEN outcome \
+               WHEN ?2 = 'kept' THEN 'kept' WHEN ?2 = 'done' THEN 'done' ELSE NULL END, \
                suggestion_state = CASE WHEN suggestion_state = 'pending' AND ?2 <> 'open' \
                  THEN 'settled' ELSE suggestion_state END, \
                revision = revision + 1, updated_at = ?3 \

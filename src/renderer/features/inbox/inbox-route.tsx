@@ -59,6 +59,7 @@ import { useInboxCapture } from "./use-inbox-capture";
 import { useInboxImageAccess } from "./use-inbox-image-access";
 import { useInboxJump, useInboxMessagesInView } from "./use-inbox-important";
 import { useInboxActions } from "./use-inbox-actions";
+import { useInboxDepartures } from "./use-inbox-departures";
 import { useInboxSettings, useInboxStream, useInboxSummary } from "./use-inbox";
 import { INBOX_STICK_TO_BOTTOM_PX } from "./inbox-viewport";
 import { initialInboxView, initiallyFollowsInbox, useInboxViewport } from "./use-inbox-viewport";
@@ -261,22 +262,36 @@ export function InboxRoute({
   const summary = useInboxSummary(scope);
   useApplicationPending(visible && (stream.isPending || summary.isPending));
   const settings = useInboxSettings();
+  // A message decided here shows where it went in its place before it leaves the Inbox.
+  const departures = useInboxDepartures(view === "inbox" ? stream.items : []);
   const actions = useInboxActions(
     projects,
     scope,
     windowSessionId,
     summary.data?.storeEpoch ?? null,
     stream.items,
+    (pageIds, decision) => {
+      if (view !== "inbox") return;
+      departures.depart(
+        stream.items.filter((item) => pageIds.includes(item.pageId)),
+        decision,
+      );
+    },
   );
   const scrollRef = useRef<HTMLDivElement>(null);
   const stickToBottomRef = useRef(followsInitially);
   const contentRef = useRef<HTMLDivElement>(null);
   // The Inbox reads like a conversation, oldest first; History reads newest first.
-  const inboxItems = view === "inbox" ? stream.items.toReversed() : [];
+  const inboxItems = view === "inbox" ? departures.items.toReversed() : [];
+  // The last messages decided still say where they went before the Inbox reads as clear.
+  const shownItems = view === "inbox" ? inboxItems : stream.items;
   const nowMs = Date.now();
   const entries = streamEntries(inboxItems, nowMs);
   const anchors = groupAnchors(inboxItems);
-  const awaitingPageId = inboxAwaitingIndicatorPageId(inboxItems, settings.suggestionsEnabled);
+  const awaitingPageId = inboxAwaitingIndicatorPageId(
+    inboxItems.filter((item) => !departures.outcomeOf(item.pageId)),
+    settings.suggestionsEnabled,
+  );
   const keysByPage = new Map(
     inboxItems.map((item) => [item.pageId, item.pageKey ?? "another message"]),
   );
@@ -404,6 +419,7 @@ export function InboxRoute({
         inboxProjectId={inboxProjectId}
         suggestionsEnabled={settings.suggestionsEnabled}
         awaitingIndicator={item.pageId === awaitingPageId}
+        decided={departures.outcomeOf(item.pageId)}
         actions={actions}
         manualDraft={manualDrafts[item.pageId] ?? null}
         groupedWithKey={anchor && anchor !== item.pageId ? (keysByPage.get(anchor) ?? null) : null}
@@ -519,7 +535,7 @@ export function InboxRoute({
               </NodexButton>
             </div>
           ) : null}
-          {stream.isPending ? null : stream.items.length === 0 ? (
+          {stream.isPending ? null : shownItems.length === 0 ? (
             stream.error || summary.error ? null : (
               <EmptyState
                 view={view}
@@ -535,6 +551,9 @@ export function InboxRoute({
                 onOpenTarget={openTarget}
                 onOpenPage={onOpenPage}
                 onReturn={(pageId) => void actions.setState([pageId], "open")}
+                onSetDone={(pageId, done) =>
+                  void actions.setState([pageId], done ? "done" : "open")
+                }
                 onDelete={(item) => requestDelete([item])}
               />
               {loadEarlier}
@@ -553,7 +572,12 @@ export function InboxRoute({
                       <ThreadTimestampSeparator sentAtMs={entry.sentAtMs} />
                     </motion.div>
                   ) : (
-                    <InboxStreamItem key={entry.key}>{renderMessage(entry.item)}</InboxStreamItem>
+                    <InboxStreamItem
+                      key={entry.key}
+                      onHoldChange={(held) => departures.hold(entry.item.pageId, held)}
+                    >
+                      {renderMessage(entry.item)}
+                    </InboxStreamItem>
                   ),
                 )}
               </AnimatePresence>
@@ -584,11 +608,12 @@ export function InboxRoute({
                     projects={projects}
                     inboxProjectId={inboxProjectId}
                     onCancel={() => setBulkDraft(null)}
-                    onSubmit={async (action) => {
+                    onSubmit={async (action, chat) => {
                       const done = await actions.dispatch(
                         (bulkDraft.basis ?? []).map((basis) => basis.pageId),
                         action,
                         bulkDraft.basis ?? [],
+                        chat,
                       );
                       if (done) setSelected(new Set());
                       return done;

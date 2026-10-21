@@ -1,6 +1,7 @@
 import { useLayoutEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import type {
+  InboxChat,
   InboxConfirmationDraft,
   InboxDispatchAction,
   InboxEntryKind,
@@ -34,7 +35,11 @@ import {
 } from "@/lib/inbox-runtime";
 import { CoreApiError } from "@/lib/core-api-error";
 import { RendererCommandRejectedError } from "@/lib/renderer-command";
-import { inboxReceiptNeedsReview, readableInboxError } from "./inbox-presentation";
+import {
+  inboxReceiptNeedsReview,
+  readableInboxError,
+  type InboxDecision,
+} from "./inbox-presentation";
 import { invalidateInbox } from "./use-inbox";
 import { useInboxCaptureState } from "./use-inbox-capture";
 
@@ -52,11 +57,17 @@ export interface InboxActions {
     body: string,
     basis: InboxPageBasis,
   ) => Promise<boolean>;
-  readonly confirm: (proposal: InboxProposal, edited?: InboxDispatchAction) => Promise<boolean>;
+  /** `chat` is the chat an edited action sends to, when the editor knows it. */
+  readonly confirm: (
+    proposal: InboxProposal,
+    edited?: InboxDispatchAction,
+    chat?: InboxChat | null,
+  ) => Promise<boolean>;
   readonly dispatch: (
     pageIds: readonly string[],
     action: InboxDispatchAction,
     basis: readonly InboxPageBasis[],
+    chat?: InboxChat | null,
   ) => Promise<boolean>;
   readonly keep: (pageIds: readonly string[]) => Promise<boolean>;
   readonly delete: (pageIds: readonly string[]) => Promise<boolean>;
@@ -76,13 +87,17 @@ const clearedLabel = (outcome: "kept" | "done", count: number): string => {
   return count > 1 ? `Marked ${count} messages done` : "Marked done";
 };
 
-/** Decisions keep their prepared identity across transport failure and renderer restart. */
+/**
+ * Decisions keep their prepared identity across transport failure and renderer restart.
+ * `onDecided` hears each decision once Core has accepted it.
+ */
 export function useInboxActions(
   projects: readonly Project[],
   scope: InboxScope,
   windowSessionId: string,
   storeEpoch: string | null,
   visibleItems: readonly InboxItem[],
+  onDecided: (pageIds: readonly string[], decision: InboxDecision) => void = () => {},
 ): InboxActions {
   const queryClient = useQueryClient();
   const local = useInboxCaptureState(windowSessionId, scope);
@@ -147,7 +162,42 @@ export function useInboxActions(
     return dispatchInboxEntries(input);
   };
 
-  const performDecision = async (draft: InboxConfirmationDraft, key: string) => {
+  const projectName = (projectId: string | null) =>
+    projects.find((project) => project.id === projectId)?.name ?? null;
+  const decisionOf = (
+    action: InboxDispatchAction,
+    sessionId: string,
+    chat: InboxChat | null,
+  ): InboxDecision => {
+    switch (action.type) {
+      case "keep":
+        return { kind: "keep" };
+      case "move_to_project":
+        return { kind: "move", projectName: projectName(action.projectId) };
+      case "new_chat":
+        return {
+          kind: "chat",
+          type: "new_chat",
+          sessionId,
+          chatTitle: null,
+          projectName: projectName(action.projectId),
+        };
+      case "send_to_chat":
+        return {
+          kind: "chat",
+          type: "send_to_chat",
+          sessionId: action.sessionId,
+          chatTitle: chat?.sessionId === action.sessionId ? chat.displayTitle : null,
+          projectName: null,
+        };
+    }
+  };
+
+  const performDecision = async (
+    draft: InboxConfirmationDraft,
+    key: string,
+    chat: InboxChat | null,
+  ) => {
     try {
       const prepared = local.read().decisions[key] ?? (await prepareInboxConfirmation(draft));
       await local.write((state) => ({
@@ -160,6 +210,12 @@ export function useInboxActions(
         decisions: Object.fromEntries(Object.entries(state.decisions).filter(([id]) => id !== key)),
       }));
       const action = draft.action;
+      if (action) {
+        onDecided(
+          draft.basis.map((basis) => basis.pageId),
+          decisionOf(action, prepared.sessionId, chat),
+        );
+      }
       if (result.value.undoToken) {
         const undoToken = result.value.undoToken;
         const operationId = createBoundedOperationId("inbox.undo");
@@ -183,8 +239,6 @@ export function useInboxActions(
           "kept",
           draft.basis.map((basis) => basis.pageId),
         );
-      else if (action?.type === "new_chat" || action?.type === "send_to_chat")
-        toast.success("Handing off to chat");
     } catch (error) {
       if (inboxReceiptNeedsReview(error))
         throw new Error(
@@ -205,7 +259,11 @@ export function useInboxActions(
     }
   };
 
-  const decide = (draft: InboxConfirmationDraft, key = JSON.stringify(draft)): Promise<void> => {
+  const decide = (
+    draft: InboxConfirmationDraft,
+    key = JSON.stringify(draft),
+    chat: InboxChat | null = null,
+  ): Promise<void> => {
     if (local.state.status !== "ready")
       return Promise.reject(
         new Error("Saved decisions are not available yet. Retry after loading."),
@@ -232,7 +290,7 @@ export function useInboxActions(
         new Error("A previous handoff is still unconfirmed. Check it before starting another."),
       );
     setActiveDecisions((current) => [...current, key]);
-    const submission = performDecision(draft, key).finally(() => {
+    const submission = performDecision(draft, key, chat).finally(() => {
       deciding.current.delete(key);
       setActiveDecisions((current) => current.filter((active) => active !== key));
     });
@@ -269,24 +327,30 @@ export function useInboxActions(
       run("The message could not be edited", () =>
         editInboxMessage({ pageId, basis, originalBody, body }),
       ),
-    confirm: (proposal, edited) =>
-      run("The suggestion could not be confirmed", () =>
-        decide({
+    confirm: (proposal, edited, chat) =>
+      run("The suggestion could not be confirmed", () => {
+        const draft: InboxConfirmationDraft = {
           kind: "proposal",
           storeEpoch: storeEpoch ?? "",
           proposalId: proposal.proposalId,
           expectedRevision: proposal.revision,
           basis: proposal.basis,
           action: edited ?? proposal.action,
-        }),
-      ),
-    dispatch: (pageIds, action, basis) =>
+        };
+        return decide(draft, undefined, chat ?? proposal.chat);
+      }),
+    dispatch: (pageIds, action, basis, chat) =>
       run("The message could not be dispatched", () =>
-        decide({ kind: "direct", storeEpoch: storeEpoch ?? "", pageIds, action, basis }),
+        decide(
+          { kind: "direct", storeEpoch: storeEpoch ?? "", pageIds, action, basis },
+          undefined,
+          chat ?? null,
+        ),
       ),
     keep: (pageIds) =>
       run("The message could not be kept", async () => {
         await keepInboxEntries({ pageIds });
+        onDecided(pageIds, { kind: "keep" });
         announceCleared("kept", pageIds);
       }),
     delete: (pageIds) =>
@@ -307,7 +371,10 @@ export function useInboxActions(
     setState: (pageIds, state) =>
       run("The message could not be updated", async () => {
         await setInboxEntryState({ pageIds, state });
-        if (state === "done") announceCleared("done", pageIds);
+        if (state === "done") {
+          onDecided(pageIds, { kind: "done" });
+          announceCleared("done", pageIds);
+        }
       }),
     setKind: (pageId, kind) =>
       run("The message could not be updated", () => setInboxEntryKind({ pageId, kind })),

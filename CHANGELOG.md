@@ -10,6 +10,8 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 
+- A message sent from the Inbox to a chat stays tied to that chat. Its Page shows the chat and its live status on its Board, List and Page, and its status moves from Triage to Build, Plan or Ship as the message is handled, without overriding a status you set yourself. History leads with work still in progress until you mark it done, and a decided message shows where it went before it folds away.
+
 ### Fixed
 
 - Claude Code and OpenCode slash menus retain supported chat actions, including Fork, Side, Merge back and Compact.
@@ -19,6 +21,7 @@ All notable changes to this project will be documented in this file.
 - Starting a chat from a Page or Scheduled uses its selected Agent and model, including when Codex is unavailable.
 - Code blocks in chat replies use dark-theme syntax colors in the dark theme, instead of near-invisible light-theme colors.
 - Context compaction in chats appears as a quiet activity row instead of a divider, says whether the compaction was manual or automatic, reassures you when a long compaction is still working, and no longer reports a stopped compaction as finished.
+- Inbox History shows the live status of chats run by Agent Runtime instead of leaving them at Starting.
 
 ## [0.4.0] - 2026-10-22
 

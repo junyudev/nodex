@@ -1594,6 +1594,7 @@ export interface components {
             readonly items: readonly {
                 readonly archived: boolean;
                 readonly display_title: string;
+                readonly execution_ref?: null | components["schemas"]["ProjectWorkspaceSessionExecutionRef"];
                 readonly project_id?: string | null;
                 readonly project_name?: string | null;
                 readonly session_id: string;
@@ -9111,6 +9112,7 @@ export interface components {
         readonly ProjectWorkspaceInboxChat: {
             readonly archived: boolean;
             readonly display_title: string;
+            readonly execution_ref?: null | components["schemas"]["ProjectWorkspaceSessionExecutionRef"];
             readonly project_id?: string | null;
             readonly project_name?: string | null;
             readonly session_id: string;

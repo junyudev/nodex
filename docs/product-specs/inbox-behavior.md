@@ -139,12 +139,62 @@ Each entry has a user-editable kind and a triage state.
   the user can change it. A kind never authorizes work.
 - **Triage state:** `open`, `kept`, or `done`.
   - Keep dismisses open suggestions and marks the entry `kept`.
-  - Done means it was handled elsewhere.
+  - Done means its work is finished: handled elsewhere, or, for work handed to a
+    chat, closed by the user. A chat finishing never marks it done.
   - `Return to Inbox` in History sets a kept or done entry back to `open`.
+    Work handed to a chat cannot return; `Reopen` only takes back its Done.
 
 History describes the recorded decision. A Page moved elsewhere and then kept
 or marked done still shows Keep or Done and can return to its original Inbox;
 returning does not move its Page.
+
+A message's Page shows its handling on its Board. It waits in Triage; handing
+its work to a chat moves it to Build, keeping or filing it to Plan, and Done to
+Ship. Returning it to the Inbox, reopening it, or undoing the decision moves it
+back the same way. Each step happens only while the Page still shows the status
+the previous handling gave it, and only to a status its Database still offers,
+so a status set on the Board is never overwritten. Delivery does not change it:
+a failed delivery leaves the Page in Build.
+
+The Inbox reads like a conversation: newest at the bottom, resting against the
+composer, with time shown the way a chat shows it. A centered time appears above
+the first message once it is over an hour old, and above any message sent over an
+hour after the one before it. A message's own time appears beneath its checkbox
+and star, on the bubble's side, after the pointer rests on the message for about
+a second, without moving anything; a star never moves it. Once it shows, the
+time is the message's link to its Page: choosing it opens the Page, as
+`Open page` in the menu does. Hidden, it cannot be chosen. A message never
+simply vanishes: once decided, its card first says where it went, in its own
+place: `Starting a chat in <Project>` or `Sending to “<chat>”` with
+`Open chat`, `Moved to <Project>`, `Kept as <kind>`, or `Done`. It folds out of
+the stream after a moment, or soon after the pointer resting on it leaves. Keep,
+Done and filing also offer `Undo` in a toast. A message handled elsewhere simply
+folds away. Clearing the last message shows an `All clear` state with a way to
+History.
+
+History is a dense log, newest first. Work still under way leads under
+`In progress`: messages handed to a chat that is being delivered, working,
+waiting on the user, in error, or holding a reply the user has not read, until
+the user marks their work done. These lines show the day they were sent unless
+it is today. Everything else follows, grouped by day. Each line shows the
+message's Page title and where it went:
+
+- the receiving chat and its live status, or `Done` once the user closed it;
+- the Project it was moved to;
+- `Kept as <kind>`;
+- `Done`.
+
+Expanding a line shows the message, its Page key, and icon buttons:
+
+- `Open chat` or `Open in Project`;
+- `Open page`;
+- `Copy`;
+- `Mark done` or `Reopen`, for work handed to a chat;
+- `Return to Inbox`, for kept or done messages;
+- `Delete`, while the Page is still in its Inbox's Database.
+
+Every count, in the sidebar and on the `Inbox` tab, is the number of messages in
+that Inbox. It is never an unread count.
 
 ## Important messages
 
@@ -174,36 +224,6 @@ The user can mark a message important so it stays within reach while it waits.
 - Each Inbox points only at its own important messages. Handling a message takes
   it off that list, and `Return to Inbox` brings it back with its mark. History
   does not show the mark.
-
-The Inbox reads like a conversation: newest at the bottom, resting against the
-composer, with time shown the way a chat shows it. A centered time appears above
-the first message once it is over an hour old, and above any message sent over an
-hour after the one before it. A message's own time appears beneath its checkbox
-and star, on the bubble's side, after the pointer rests on the message for about
-a second, without moving anything; a star never moves it. Once it shows, the
-time is the message's link to its Page: choosing it opens the Page, as
-`Open page` in the menu does. Hidden, it cannot be chosen. A handled message folds out of the stream. Keep and Done
-confirm with an `Undo` toast; a chat dispatch confirms where it is going.
-Clearing the last message shows an `All clear` state with a way to History.
-
-History is a dense log, newest first and grouped by day. Each line shows the
-message's Page title and where it went:
-
-- the receiving chat and its live status;
-- the Project it was moved to;
-- `Kept as <kind>`;
-- `Done`.
-
-Expanding a line shows the message, its Page key, and icon buttons:
-
-- `Open chat` or `Open in Project`;
-- `Open page`;
-- `Copy`;
-- `Return to Inbox`, for kept or done messages;
-- `Delete`, while the Page is still in its Inbox's Database.
-
-Every count, in the sidebar and on the `Inbox` tab, is the number of messages in
-that Inbox. It is never an unread count.
 
 ## Suggestions
 
@@ -350,6 +370,10 @@ instructions.
   Page, which the text names.
 - **Send to chat:** a local chat receives the message into its Runtime queue even
   while busy. Its own queue controls when execution starts.
+- Both make every message Page a Linked Page of the receiving chat in the same
+  transaction. The Page then shows that chat and its live status on its Board,
+  List and Page for as long as the chat exists, well after the message has left
+  the Inbox.
 - **Move to Project:** Core moves every member and records the filing in one
   transaction. A conflict leaves every Page and Inbox state unchanged. Filing
   is final: the message is kept in History as
@@ -370,7 +394,8 @@ An explicit remote Codex chat retains its remote execution owner. When a send's
 result cannot be established, it remains awaiting confirmation and is not
 automatically sent again. Other local handoffs can continue.
 
-A delivered message's History line shows the chat's title and live status.
+A delivered message's History line shows the chat's title and live status; a
+chat run by Agent Runtime reports its live Session activity.
 Before admission it shows that Nodex is starting or sending to the chat and
 already links to its Session. Failed or uncertain delivery returns to the Inbox
 with its reason and the recovery action appropriate to that result.
