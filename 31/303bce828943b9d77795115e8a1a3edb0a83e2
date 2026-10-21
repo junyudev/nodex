@@ -32,6 +32,7 @@ crates/nodex-core/src/workspace/page_chat.rs
 packages/core-protocol/openapi.json
   s_bdf71b9880673e::t_d3f028718f0ee0 6664-6674,37863-37872
   s_bdf71b9880673e::t_808d84b503497e 37873
+  s_bdf71b9880673e::t_149b6c66846af1 30443,35849,40860
 src/renderer/features/inbox/use-inbox-departures.ts
   s_bdf71b9880673e::t_dcd42bcac5134b 95-98
   s_bdf71b9880673e::t_3b8a0c042348f1 7,13-14,20-23,37,47,49-53,69,73,77-79,82-88
@@ -43,6 +44,8 @@ src/renderer/features/inbox/inbox-triage.test.tsx
   s_bdf71b9880673e::t_b5d8f57605e0b1 11,433-440,442-444,446-453
   s_bdf71b9880673e::t_b862b6f65f6c8c 432,531-560,563,565,573,595-600,617-619,623-626,628,630-641,643-652,656,667,673,675,677
   s_bdf71b9880673e::t_788938f4686745 272
+  s_bdf71b9880673e::t_3c99ffb3523971 578-582,584,601-603,613-616,664
+  s_bdf71b9880673e::t_16a3a43fbec8ce 604-612
 src/main/core-client/inbox-adapter.ts
   s_bdf71b9880673e::t_656dc0fabb9a18 140-142
 src/renderer/features/inbox/inbox-triage.tsx
@@ -76,6 +79,7 @@ crates/nodex-core/src/workspace/inbox_tests.rs
   s_bdf71b9880673e::t_beffa758e6755a 3470-3484,3541,3552,3613
   s_bdf71b9880673e::t_d9ad8a8cd3a75f 3-6,10-14,17,21-22,24,1274,1276-1284,3155,3253-3331,3333-3469,3485-3540,3542-3551,3553-3612
   s_bdf71b9880673e::t_ac932844a8d552 3332
+  s_bdf71b9880673e::t_f21db54aab486f 3252
 src/renderer/features/inbox/inbox-route.tsx
   s_bdf71b9880673e::t_598fd37959532d 576,581
   s_bdf71b9880673e::t_bde5611f42f2ad 282-283,506
