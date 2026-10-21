@@ -1,0 +1,61 @@
+docs/adr/0067-inbox-entries-and-dispatch-proposals.md
+  s_950dcf4ed6dc42::t_e939b255dc92b4 39-40
+crates/nodex-core/src/workspace/inbox_tests.rs
+  s_950dcf4ed6dc42::t_01e89e1accde30 2080-2122
+  s_950dcf4ed6dc42::t_5dff4c3771362d 2079
+crates/nodex-core/schema/migrations/v186_to_v187.sql
+  s_950dcf4ed6dc42::t_e5446627ccffa1 1-3
+packages/core-protocol/openapi.json
+  s_950dcf4ed6dc42::t_745cc3493d059c 38135,38185-38190
+  s_950dcf4ed6dc42::t_2e58aeffb9c4a2 38191
+src/main/inbox-application/InboxDispatchRuntime.ts
+  s_950dcf4ed6dc42::t_96f74334d4743b 63,238
+  s_950dcf4ed6dc42::t_88ce786f11ee4b 8-9,11-14,24,54,59-62,64-91,154-159
+docs/product-specs/inbox-behavior.md
+  s_950dcf4ed6dc42::t_e939b255dc92b4 307-311
+packages/core-protocol/src/generated.ts
+  s_950dcf4ed6dc42::t_745cc3493d059c 9183-9184
+crates/nodex-core/schema/current.sql
+  s_950dcf4ed6dc42::t_4d1b4efb87b92f 4460,4492
+crates/nodex-store-format/src/lib.rs
+  s_950dcf4ed6dc42::t_4d1b4efb87b92f 217-218,220
+  s_950dcf4ed6dc42::t_7be8ff158a836d 219
+crates/nodex-core/src/workspace/inbox_read.rs
+  s_950dcf4ed6dc42::t_334c31267dece6 783-799
+  s_950dcf4ed6dc42::t_54462725e0eb47 1068-1073
+src/main/inbox-application/InboxRuntime.node.test.ts
+  s_950dcf4ed6dc42::t_c39e837b365be0 16,84,163-164,167-174,384-424
+  s_950dcf4ed6dc42::t_68d6a8f9225359 425-427
+crates/nodex-core-contracts/src/inbox.rs
+  s_950dcf4ed6dc42::t_67117deabe97ba 314-315
+crates/nodex-core/src/infrastructure/migration.rs
+  s_950dcf4ed6dc42::t_4d1b4efb87b92f 344-348,2414-2424
+  s_950dcf4ed6dc42::t_983632912a8b6f 2425-2429
+crates/nodex-core/src/workspace/inbox_reliable.rs
+  s_950dcf4ed6dc42::t_96f74334d4743b 50-52
+  s_950dcf4ed6dc42::t_54462725e0eb47 62
+  s_950dcf4ed6dc42::t_334c31267dece6 579,581,608-609
+  s_950dcf4ed6dc42::t_67117deabe97ba 63-65
+src/main/agent-backend/NativePromptImages.ts
+  s_950dcf4ed6dc42::t_88ce786f11ee4b 16-24,33-35,41
+crates/nodex-core/src/workspace/inbox.rs
+  s_950dcf4ed6dc42::t_334c31267dece6 351-363
+packages/core-protocol/src/compatibility.generated.ts
+  s_950dcf4ed6dc42::t_7dd2710ecb9aaf 42-43
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "1ddae9eb1921c31e9a145c98e934bd9766eb4a25",
+  "prompts": {},
+  "sessions": {
+    "s_950dcf4ed6dc42": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "447a25ca-824f-4258-9113-30ad561f7686",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
