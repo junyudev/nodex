@@ -3319,6 +3319,8 @@ export function renderWorkbench({
         needsDecisionCount: 0,
         pendingSuggestionCount: 0,
         dispatchingCount: 0,
+        importantCount: 0,
+        important: [],
       };
     }
     if (channel === "inbox:window") {

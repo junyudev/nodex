@@ -33,7 +33,8 @@ title, through an ordinary Document title write fenced by the Page head it read.
 
 The ProjectWorkspace Module owns the decision records next to that Page:
 
-- **Inbox entry:** source provenance, kind, and triage state.
+- **Inbox entry:** source provenance, kind, the user's importance mark, and
+  triage state.
 - **Dispatch proposal:** a typed, versioned action for one or more entries.
   Each proposal is fenced by the message revisions it was computed from.
 - **Dispatch outbox:** confirmed chat work in the `dispatching` state, with its
@@ -41,9 +42,10 @@ The ProjectWorkspace Module owns the decision records next to that Page:
 - **Suggestion request:** exact scope, membership, Page basis and generation of
   a bounded suggestion or correction.
 
-Kind and triage state describe inbox handling, not Page content, so they are not
-Data Source Properties. Placing the records in Workspace lets one confirmation
-create a Session in the same transaction that records the dispatch.
+Kind, importance and triage state describe inbox handling, not Page content, so
+they are not Data Source Properties; importance is not a Page's priority.
+Placing the records in Workspace lets one confirmation create a Session in the
+same transaction that records the dispatch.
 
 Inbox workflow ownership is split by role:
 

@@ -126,6 +126,8 @@ export interface InboxItem {
   readonly submittedAt: string;
   readonly source: InboxSource;
   readonly kind: InboxEntryKind | null;
+  /** Marked by the user, so the message stays in view while it waits. */
+  readonly important: boolean;
   readonly state: InboxEntryState;
   readonly suggestionState: InboxSuggestionState;
   readonly suggestionError: string | null;
@@ -174,6 +176,17 @@ export interface InboxSummary {
   readonly needsDecisionCount: number;
   readonly pendingSuggestionCount: number;
   readonly dispatchingCount: number;
+  /** Important messages still in the Inbox. */
+  readonly importantCount: number;
+  /** The longest-waiting important messages still in the Inbox, oldest first. */
+  readonly important: readonly InboxImportantMessage[];
+}
+
+/** An important message still waiting, as the stream points back to it. */
+export interface InboxImportantMessage {
+  readonly pageId: string;
+  readonly title: string;
+  readonly submittedAt: string;
 }
 
 /** Messages still waiting in each Inbox, for navigation badges. */
@@ -284,6 +297,11 @@ export interface InboxSetStateInput extends InboxPageIdsInput {
 export interface InboxSetKindInput {
   readonly pageId: string;
   readonly kind: InboxEntryKind | null;
+}
+
+export interface InboxSetImportantInput {
+  readonly pageId: string;
+  readonly important: boolean;
 }
 
 /** Rewrites a waiting message; `originalBody` is the Nested Markdown the user started from. */

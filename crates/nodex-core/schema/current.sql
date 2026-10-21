@@ -4400,6 +4400,7 @@ CREATE TABLE inbox_entries (
   scope_project_id TEXT REFERENCES projects(id) ON DELETE CASCADE CHECK (scope_project_id IS NULL OR length(scope_project_id) BETWEEN 1 AND 512),
   outcome TEXT CHECK (outcome IN ('kept','done','moved','chat')),
   suggestion_request_id TEXT,
+  important INTEGER NOT NULL DEFAULT 0 CHECK (important IN (0, 1)),
   UNIQUE (library_id, seq),
   CHECK (source_kind = 'agent' OR (source_session_id IS NULL AND source_thread_id IS NULL AND source_turn_id IS NULL)),
   CHECK (source_kind <> 'user' OR (source_project_id IS NULL AND source_label IS NULL)),
@@ -4489,7 +4490,7 @@ CREATE TABLE inbox_decision_undo (
   consumed INTEGER NOT NULL DEFAULT 0 CHECK(consumed IN (0,1))
 ) WITHOUT ROWID, STRICT;
 
-PRAGMA user_version = 187;
+PRAGMA user_version = 188;
 
 CREATE TABLE document_recovery_drafts (
     library_id TEXT NOT NULL REFERENCES libraries(id) ON DELETE CASCADE,

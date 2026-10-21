@@ -19,6 +19,7 @@ import type {
   InboxPageIdsInput,
   InboxProposalInput,
   InboxSendInput,
+  InboxSetImportantInput,
   InboxSetKindInput,
   InboxSetStateInput,
   InboxSummaryInput,
@@ -237,6 +238,10 @@ export const InboxSetStateInputSchema = z
 export const InboxSetKindInputSchema = z
   .object({ pageId: id, kind: InboxEntryKindSchema.nullable() })
   .strict() satisfies z.ZodType<InboxSetKindInput>;
+
+export const InboxSetImportantInputSchema = z
+  .object({ pageId: id, important: z.boolean() })
+  .strict() satisfies z.ZodType<InboxSetImportantInput>;
 
 export const InboxAgentBindingSchema = z
   .object({ instanceId: id })

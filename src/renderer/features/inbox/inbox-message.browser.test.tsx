@@ -27,6 +27,7 @@ const waiting: InboxItem = {
   submittedAt: "2026-10-11T10:00:00.000Z",
   source: { kind: "user" },
   kind: null,
+  important: false,
   state: "open",
   suggestionState: "pending",
   suggestionError: null,
@@ -36,10 +37,20 @@ const waiting: InboxItem = {
   revision: 1,
 };
 
+const openNothing = () => undefined;
+
 const actions = new Proxy({} as InboxActions, { get: () => vi.fn(async () => true) });
 
 /** A message as the stream shows it: its triage around the card, in a stream item. */
-function StreamMessage({ item, selected = false }: { item: InboxItem; selected?: boolean }) {
+function StreamMessage({
+  item,
+  selected = false,
+  onOpenPage = openNothing,
+}: {
+  item: InboxItem;
+  selected?: boolean;
+  onOpenPage?: () => void;
+}) {
   return (
     <InboxStreamItem>
       <InboxTriage
@@ -51,7 +62,7 @@ function StreamMessage({ item, selected = false }: { item: InboxItem; selected?:
         manualDraft={null}
         groupedWithKey={null}
         inboxProjectId={null}
-        menu={null}
+        menu={() => null}
         onManualDraftChange={vi.fn()}
         onEditAsPage={vi.fn()}
       >
@@ -62,6 +73,8 @@ function StreamMessage({ item, selected = false }: { item: InboxItem; selected?:
             selectionActive={selected}
             onToggleSelected={vi.fn()}
             onOpenSource={vi.fn()}
+            onOpenPage={onOpenPage}
+            onUnmarkImportant={vi.fn()}
             editor={triage.editor}
             messageActions={triage.messageActions}
             strip={triage.strip}
@@ -175,6 +188,101 @@ test("Copy and Edit wait on the text's bottom-right corner until the message is 
   });
   await expect.poll(() => getComputedStyle(tools).opacity).toBe("1");
   expect(getComputedStyle(tools).pointerEvents).toBe("auto");
+});
+
+/** How visible an element is, through every faded ancestor within its message. */
+const shownOpacity = (element: Element) => {
+  let opacity = 1;
+  for (let node: Element | null = element; node; node = node.parentElement) {
+    opacity *= Number(getComputedStyle(node).opacity);
+    if (node.matches("[data-testid='inbox-message']")) break;
+  }
+  return opacity;
+};
+
+const overlaps = (a: DOMRect, b: DOMRect) =>
+  a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
+
+test("an important message's star keeps its own place beside the bubble, through hover", async () => {
+  render(
+    <Stream>
+      <StreamMessage key="page:1" item={{ ...waiting, important: true }} />
+    </Stream>,
+  );
+  const star = screen.getByRole("button", { name: "Unmark important" });
+  const checkbox = screen.getByRole("checkbox", { name: "Select message" });
+  const bubble = screen.getByTestId("inbox-message-unit").getBoundingClientRect();
+  const glyph = star.querySelector("svg")!;
+  // The user's bubble sits on the right: checkbox, then star, then bubble.
+  const starBox = glyph.getBoundingClientRect();
+  expect(starBox.right).toBeLessThanOrEqual(bubble.left);
+  expect(checkbox.getBoundingClientRect().right).toBeLessThanOrEqual(starBox.left);
+  expect(overlaps(starBox, checkbox.getBoundingClientRect())).toBe(false);
+  // Level with the first line, as the checkbox is.
+  expect(starBox.top + starBox.height / 2).toBeCloseTo(
+    checkbox.getBoundingClientRect().top + checkbox.getBoundingClientRect().height / 2,
+    0,
+  );
+  expect(shownOpacity(glyph)).toBe(1);
+  expect(shownOpacity(checkbox)).toBe(0);
+
+  await act(async () => {
+    await userEvent.hover(screen.getByText("Homepage feels like a dev tool"));
+  });
+  await expect.poll(() => shownOpacity(checkbox)).toBe(1);
+  expect(shownOpacity(glyph)).toBe(1);
+});
+
+test("a message without the mark has no star, even while hovered", async () => {
+  render(
+    <Stream>
+      <StreamMessage key="page:1" item={waiting} />
+    </Stream>,
+  );
+  await act(async () => {
+    await userEvent.hover(screen.getByText("Homepage feels like a dev tool"));
+  });
+  await expect.poll(() => shownOpacity(screen.getByRole("checkbox"))).toBeGreaterThan(0);
+  expect(screen.queryByRole("button", { name: /important/ })).toBeNull();
+});
+
+test("the time keeps its place on the bubble's side whether or not the message is starred", () => {
+  const timeOffset = (item: InboxItem) => {
+    const view = render(
+      <Stream>
+        <StreamMessage key={item.pageId} item={item} />
+      </Stream>,
+    );
+    const bubble = screen.getByTestId("inbox-message-unit").getBoundingClientRect();
+    // Hidden until a lingering hover, it still holds its place.
+    const time = screen.getByLabelText("Open page").getBoundingClientRect();
+    view.unmount();
+    return bubble.left - time.right;
+  };
+  const plain = timeOffset(waiting);
+  expect(plain).toBeGreaterThan(0);
+  expect(timeOffset({ ...waiting, important: true })).toBeCloseTo(plain, 0);
+});
+
+test("the time becomes the message's link to its Page once it shows", async () => {
+  const onOpenPage = vi.fn();
+  render(
+    <Stream>
+      <StreamMessage key="page:1" item={waiting} onOpenPage={onOpenPage} />
+    </Stream>,
+  );
+  // Hidden, it cannot be chosen by accident and is not announced.
+  expect(screen.queryByRole("button", { name: "Open page" })).toBeNull();
+  const time = screen.getByLabelText("Open page");
+  expect(getComputedStyle(time).visibility).toBe("hidden");
+  await act(async () => {
+    await userEvent.hover(screen.getByText("Homepage feels like a dev tool"));
+  });
+  await expect.poll(() => getComputedStyle(time).visibility, { timeout: 3_000 }).toBe("visible");
+  await act(async () => {
+    await userEvent.click(screen.getByRole("button", { name: "Open page" }));
+  });
+  expect(onOpenPage).toHaveBeenCalledOnce();
 });
 
 test("a chat suggestion reads as its prompt: full width, the message's size, why on the decision", async () => {

@@ -20,6 +20,7 @@ import type {
   InboxProposalInput,
   InboxSendInput,
   InboxSendResult,
+  InboxSetImportantInput,
   InboxSetKindInput,
   InboxSetStateInput,
   InboxSummary,
@@ -37,6 +38,7 @@ import {
   InboxPageIdsInputSchema,
   InboxProposalInputSchema,
   InboxSendInputSchema,
+  InboxSetImportantInputSchema,
   InboxSetKindInputSchema,
   InboxSetStateInputSchema,
   InboxSuggestionRequestInputSchema,
@@ -139,6 +141,7 @@ export class InboxApplication extends Context.Service<
     readonly keep: (input: InboxPageIdsInput) => InboxMutation;
     readonly setState: (input: InboxSetStateInput) => InboxMutation;
     readonly setKind: (input: InboxSetKindInput) => InboxMutation;
+    readonly setImportant: (input: InboxSetImportantInput) => InboxMutation;
     readonly requestSuggestion: (input: InboxSuggestionRequestInput) => InboxMutation;
     readonly prepareSuggestions: (limit: number) => InboxEffect<void>;
     readonly suggestionRequests: (
@@ -464,6 +467,17 @@ export const make = Effect.gen(function* () {
     });
   });
 
+  const setImportant = Effect.fn("InboxApplication.setImportant")(function* (
+    input: InboxSetImportantInput,
+  ) {
+    const parsed = yield* parse("set-important", () => InboxSetImportantInputSchema.parse(input));
+    return yield* mutate("set-important", {
+      kind: "set_inbox_entry_important",
+      page_id: parsed.pageId,
+      important: parsed.important,
+    });
+  });
+
   const requestSuggestion = Effect.fn("InboxApplication.requestSuggestion")(function* (
     input: InboxSuggestionRequestInput,
   ) {
@@ -660,6 +674,7 @@ export const make = Effect.gen(function* () {
     keep,
     setState,
     setKind,
+    setImportant,
     requestSuggestion,
     prepareSuggestions,
     suggestionRequests,

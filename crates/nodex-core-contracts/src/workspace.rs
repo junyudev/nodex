@@ -1780,6 +1780,11 @@ pub enum ProjectWorkspaceIntent {
         page_id: String,
         entry_kind: Option<ProjectWorkspaceInboxEntryKind>,
     },
+    /// Only the user marks a message important; a suggestion never does.
+    SetInboxEntryImportant {
+        page_id: String,
+        important: bool,
+    },
     /// Supersedes current open suggestions and asks for a new one.
     PrepareInboxSuggestions {
         request_id: String,

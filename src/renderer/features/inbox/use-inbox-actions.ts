@@ -27,6 +27,7 @@ import {
   requestInboxSuggestion,
   retryInboxDispatch,
   sendInboxMessage,
+  setInboxEntryImportant,
   setInboxEntryKind,
   setInboxEntryState,
   undoInboxDecision,
@@ -61,6 +62,7 @@ export interface InboxActions {
   readonly delete: (pageIds: readonly string[]) => Promise<boolean>;
   readonly setState: (pageIds: readonly string[], state: InboxEntryState) => Promise<boolean>;
   readonly setKind: (pageId: string, kind: InboxEntryKind | null) => Promise<boolean>;
+  readonly setImportant: (pageId: string, important: boolean) => Promise<boolean>;
   readonly requestSuggestion: (
     pageIds: readonly string[],
     basis: readonly InboxPageBasis[],
@@ -309,6 +311,8 @@ export function useInboxActions(
       }),
     setKind: (pageId, kind) =>
       run("The message could not be updated", () => setInboxEntryKind({ pageId, kind })),
+    setImportant: (pageId, important) =>
+      run("The message could not be updated", () => setInboxEntryImportant({ pageId, important })),
     requestSuggestion: (pageIds, basis, refine) =>
       run("A new suggestion could not be requested", () =>
         requestInboxSuggestion({

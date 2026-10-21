@@ -204,6 +204,8 @@ pub struct ProjectWorkspaceInboxItem {
     pub submitted_at: String,
     pub source: ProjectWorkspaceInboxSource,
     pub kind: Option<ProjectWorkspaceInboxEntryKind>,
+    /// The user marked the message important, so it stays in view while it waits.
+    pub important: bool,
     pub state: ProjectWorkspaceInboxEntryState,
     pub suggestion_state: ProjectWorkspaceInboxSuggestionState,
     pub suggestion_error: Option<String>,
@@ -236,6 +238,20 @@ pub struct ProjectWorkspaceInboxSummary {
     pub needs_decision_count: u32,
     pub pending_suggestion_count: u32,
     pub dispatching_count: u32,
+    /// Important messages still in the Inbox.
+    pub important_count: u32,
+    /// The longest-waiting important messages still in the Inbox, oldest first, so one
+    /// out of view can be found without loading the stream back to it.
+    pub important: Vec<ProjectWorkspaceInboxImportantMessage>,
+}
+
+/// An important message still waiting in its Inbox, as the stream points back to it.
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+pub struct ProjectWorkspaceInboxImportantMessage {
+    pub page_id: String,
+    /// The Page title: the sender's own, or the name the suggestion Agent gave it.
+    pub title: String,
+    pub submitted_at: String,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]

@@ -146,12 +146,43 @@ History describes the recorded decision. A Page moved elsewhere and then kept
 or marked done still shows Keep or Done and can return to its original Inbox;
 returning does not move its Page.
 
+## Important messages
+
+What matters most is rarely what is newest, and a stream that reads like a
+conversation lets an important but unhurried message sink behind newer ones.
+The user can mark a message important so it stays within reach while it waits.
+
+- Only the user marks a message important, with `Mark important` in its menu; a
+  suggestion never does. It is one mark, not a priority scale: what is urgent
+  already announces itself. Importance belongs to the Inbox entry, not to the
+  Page, so it is not a Database priority.
+- An important message carries a gold star beside its card, between the card
+  and its checkbox, level with its first line. It stays through hover and
+  selection: the checkbox appears beside it, never over it. A message without
+  the mark shows no star, even while hovered; only `Mark important` in the
+  message menu marks one. Choosing the star takes the mark off, as
+  `Unmark important` in the menu does. The card and its row are unchanged.
+- While an important message waiting in the Inbox is out of view, a pill floats
+  at the top of the stream. Like the selection bar above the composer, it never
+  resizes or shifts the stream. It names the longest-waiting important message
+  out of view by its Page title, how long it has waited, and, when there are
+  several, its place among them, oldest first (`1/3`). Its surface stays opaque
+  under the pointer, so the stream never shows through its words.
+- Choosing the pill brings that message to the middle of the stream and rings it
+  in gold for a moment, loading earlier messages to find it. The pill then names
+  the next important message out of view, or leaves once every one is in view.
+- Each Inbox points only at its own important messages. Handling a message takes
+  it off that list, and `Return to Inbox` brings it back with its mark. History
+  does not show the mark.
+
 The Inbox reads like a conversation: newest at the bottom, resting against the
 composer, with time shown the way a chat shows it. A centered time appears above
 the first message once it is over an hour old, and above any message sent over an
 hour after the one before it. A message's own time appears beneath its checkbox
-after the pointer rests on the message for about a second, without moving
-anything. A handled message folds out of the stream. Keep and Done
+and star, on the bubble's side, after the pointer rests on the message for about
+a second, without moving anything; a star never moves it. Once it shows, the
+time is the message's link to its Page: choosing it opens the Page, as
+`Open page` in the menu does. Hidden, it cannot be chosen. A handled message folds out of the stream. Keep and Done
 confirm with an `Undo` toast; a chat dispatch confirms where it is going.
 Clearing the last message shows an `All clear` state with a way to History.
 
@@ -228,8 +259,11 @@ What Nodex made of a message is not a reply. It is a strip joined to the
 message itself: the message fills the top of one rounded object, and the strip
 sits beneath it inside the same outline. The ways to act sit in one row just
 under that card and exactly as wide, all at its trailing end. The first of its icons
-opens the message menu: `Open page`, `Handle manually`,
-`Suggest again`, `Mark done`, `Kind`, and `Delete`. `Handle manually` opens the dispatch editor
+opens the message menu, which holds only what the row does not already offer, so
+no action appears twice: `Open page`; `Handle manually`, `Suggest again` and
+`Mark done` unless the row shows them (beside a suggestion, `Handle manually`
+stays in the menu, where it changes the suggestion); `Reopen` for a message
+marked done; `Mark important` or `Unmark important`; `Kind`; and `Delete`. `Handle manually` opens the dispatch editor
 in place of the strip, starting from the current suggestion when there is one.
 `Copy` and `Edit` act on the text itself, so they sit on it: in the bottom-right
 corner of the message text, shown while the message is hovered or one of them
@@ -377,7 +411,8 @@ interval. Existing backups are not rewritten.
 
 ## Selecting several messages
 
-Each message is selected with the checkbox beside it, shown on hover or focus.
+Each message is selected with the checkbox beside it, shown on hover or focus,
+just outside an important message's star.
 Selecting messages rings them on their own border, never clipped by the stream,
 and floats a compact bar
 above the composer. Selecting never resizes or shifts the stream: the scroll

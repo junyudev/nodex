@@ -425,6 +425,27 @@ const DISPATCH_PATHS = lineGlyphPaths(
   "M14 3.25l2.25 2.25L14 7.75M14 12.25l2.25 2.25L14 16.75",
 );
 
+// Five points on round joins, so the star reads softly at the house line weight.
+const STAR =
+  "M10 3.55 11.79 8.18 16.75 8.46 12.9 11.59 14.17 16.39 10 13.7 5.83 16.39 7.1 11.59 3.25 8.46 8.21 8.18z";
+
+const IMPORTANT_PATHS = lineGlyphPaths(STAR);
+
+const IMPORTANT_FILLED_PATHS = lineGlyphPaths(STAR).map((path) => ({
+  ...path,
+  fill: "currentColor",
+}));
+
+/** Marking something important: an outlined star. */
+export function ImportantIcon(props: CanonicalIconProps) {
+  return <CanonicalGlyph {...props} paths={IMPORTANT_PATHS} />;
+}
+
+/** Something the user marked important: the same star, filled. */
+export function ImportantFilledIcon(props: CanonicalIconProps) {
+  return <CanonicalGlyph {...props} paths={IMPORTANT_FILLED_PATHS} />;
+}
+
 /** A thought kept for later: a sheet with its corner turned. */
 export function NoteIcon(props: CanonicalIconProps) {
   return <CanonicalGlyph {...props} paths={NOTE_PATHS} />;

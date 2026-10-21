@@ -3,6 +3,7 @@ import type {
   InboxChat,
   InboxDispatchAction,
   InboxEntryKind,
+  InboxImportantMessage,
   InboxItem,
   InboxProposal,
   InboxWindowFilter,
@@ -67,6 +68,41 @@ export function inboxTriageModel(item: InboxItem, suggestionsEnabled: boolean): 
     };
   }
   return { kind: "undecided" };
+}
+
+/** Which of the message menu's actions a message's action row already shows. */
+export interface InboxRowOffers {
+  readonly done: boolean;
+  readonly handleManually: boolean;
+  readonly suggest: boolean;
+}
+
+export const NO_ROW_OFFERS: InboxRowOffers = { done: false, handleManually: false, suggest: false };
+
+/**
+ * What a message's action row offers beside its menu, so the menu holds only the rest and no
+ * action appears twice. A group member whose suggestion shows on another message offers nothing
+ * but its menu.
+ */
+export function inboxRowOffers(
+  model: InboxTriageModel,
+  input: { readonly suggestionsEnabled: boolean; readonly grouped: boolean },
+): InboxRowOffers {
+  if (input.grouped && model.kind === "suggestion") return NO_ROW_OFFERS;
+  switch (model.kind) {
+    case "suggesting":
+    case "dispatch-failed":
+      return { done: true, handleManually: true, suggest: false };
+    case "suggestion":
+      // Changing a suggestion happens in `Handle manually`, which stays in the menu.
+      return { done: true, handleManually: false, suggest: false };
+    case "suggestion-failed":
+      return { done: true, handleManually: true, suggest: true };
+    case "undecided":
+      return { done: true, handleManually: true, suggest: input.suggestionsEnabled };
+    case "handled":
+      return NO_ROW_OFFERS;
+  }
 }
 
 /** One quiet indicator is enough: only the newest message still waiting for advice shows it. */
@@ -322,3 +358,25 @@ export function inboxTimestampSeparators(
 
 export const formatInboxTime = (submittedAt: string): string =>
   new Date(submittedAt).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+
+/** The important message the stream points back to, with where it stands among them. */
+export interface InboxBuriedImportant {
+  readonly message: InboxImportantMessage;
+  /** Its place among the Inbox's important messages, oldest first, counting from 1. */
+  readonly position: number;
+  readonly total: number;
+}
+
+/**
+ * The longest-waiting important message out of view, or null when every one is in view. What
+ * waits longest is what is easiest to let slip, so it is the one worth pointing back to.
+ */
+export function inboxBuriedImportant(
+  important: readonly InboxImportantMessage[],
+  total: number,
+  inView: (pageId: string) => boolean,
+): InboxBuriedImportant | null {
+  const index = important.findIndex((message) => !inView(message.pageId));
+  const message = important[index];
+  return message ? { message, position: index + 1, total } : null;
+}

@@ -1516,6 +1516,40 @@ pub(super) fn set_kind(
     )
 }
 
+/// Only the user marks a message important; it keeps the mark across Keep, Done and
+/// `Return to Inbox`, and the mark matters only while the message waits in its Inbox.
+#[allow(clippy::too_many_arguments)]
+pub(super) fn set_important(
+    connection: &Connection,
+    library_id: &str,
+    context: &BoundModuleContext,
+    store_epoch: &str,
+    operation_id: &str,
+    request_hash: &str,
+    page_id: &str,
+    important: bool,
+) -> Result<ProjectWorkspaceApplyOutcome, StoreError> {
+    let page_ids = unique_page_ids(std::slice::from_ref(&page_id.to_owned()), 1)?;
+    require_live_entries(connection, library_id, &page_ids)?;
+    let now = sqlite_now(connection)?;
+    run_mutation(
+        connection,
+        context,
+        store_epoch,
+        operation_id,
+        request_hash,
+        &now,
+        |_| {
+            connection.execute(
+                "UPDATE inbox_entries SET important = ?2, revision = revision + 1, updated_at = ?3 \
+                 WHERE page_id = ?1 AND library_id = ?4 AND important <> ?2",
+                params![page_id, i64::from(important), now, library_id],
+            )?;
+            Ok(simple_effects("inbox_set_entry_important", &now))
+        },
+    )
+}
+
 /// The user rewrote a message's text through the Document owner. Suggestions about the
 /// old text are withdrawn, every message they covered waits for a new one, and a title
 /// that still matches the opening words stays provisional so it can be named again.

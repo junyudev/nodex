@@ -172,6 +172,7 @@ export const inboxItemFromCore = (item: CoreInboxItem): InboxItem => ({
   submittedAt: item.submitted_at,
   source: inboxSourceFromCore(item.source),
   kind: item.kind ?? null,
+  important: item.important,
   state: item.state,
   outcome: item.outcome ?? null,
   suggestionState: item.suggestion_state,
@@ -195,6 +196,12 @@ export const inboxSummaryFromCore = (
   needsDecisionCount: summary.needs_decision_count,
   pendingSuggestionCount: summary.pending_suggestion_count,
   dispatchingCount: summary.dispatching_count,
+  importantCount: summary.important_count,
+  important: summary.important.map((message) => ({
+    pageId: message.page_id,
+    title: message.title,
+    submittedAt: message.submitted_at,
+  })),
 });
 
 export const inboxCountsFromCore = (counts: CoreInboxCounts): InboxCounts => ({

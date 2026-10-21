@@ -6,6 +6,8 @@ import {
   describeInboxOutcome,
   groupInboxItemsByDay,
   inboxAwaitingIndicatorPageId,
+  inboxBuriedImportant,
+  inboxRowOffers,
   inboxPageRoutingContext,
   inboxTimestampSeparators,
   inboxTriageModel,
@@ -24,6 +26,7 @@ const item = (overrides: Partial<InboxItem> = {}): InboxItem => ({
   submittedAt: "2026-10-11T10:00:00.000Z",
   source: { kind: "user" },
   kind: null,
+  important: false,
   state: "open",
   suggestionState: "settled",
   suggestionError: null,
@@ -330,5 +333,69 @@ describe("groupInboxItemsByDay", () => {
     );
     expect(sections.map((section) => section.label)).toEqual(["Yesterday", "Today"]);
     expect(sections[1]?.items.map((entry) => entry.pageId)).toEqual(["b", "c"]);
+  });
+});
+
+describe("inboxBuriedImportant", () => {
+  const important = ["page:plan", "page:pricing", "page:review"].map((pageId) => ({
+    pageId,
+    title: pageId,
+    submittedAt: "2026-10-11T10:00:00.000Z",
+  }));
+
+  it("points at the longest-waiting important message out of view", () => {
+    const inView = (pageId: string) => pageId === "page:plan";
+    expect(inboxBuriedImportant(important, 5, inView)).toEqual({
+      message: important[1],
+      position: 2,
+      total: 5,
+    });
+  });
+
+  it("points nowhere while every important message is in view", () => {
+    expect(inboxBuriedImportant(important, 3, () => true)).toBeNull();
+    expect(inboxBuriedImportant([], 0, () => false)).toBeNull();
+  });
+});
+
+describe("inboxRowOffers", () => {
+  const offers = (model: Parameters<typeof inboxRowOffers>[0], grouped = false) =>
+    inboxRowOffers(model, { suggestionsEnabled: true, grouped });
+
+  it("names what the row shows, so the menu can leave it out", () => {
+    expect(offers({ kind: "undecided" })).toEqual({
+      done: true,
+      handleManually: true,
+      suggest: true,
+    });
+    expect(offers({ kind: "suggesting" })).toEqual({
+      done: true,
+      handleManually: true,
+      suggest: false,
+    });
+    expect(offers({ kind: "suggestion-failed", message: "Timed out" })).toEqual({
+      done: true,
+      handleManually: true,
+      suggest: true,
+    });
+    expect(
+      inboxRowOffers({ kind: "undecided" }, { suggestionsEnabled: false, grouped: false }).suggest,
+    ).toBe(false);
+  });
+
+  it("keeps Handle manually in the menu beside a suggestion, where it changes the suggestion", () => {
+    const proposal = { proposalId: "proposal:1" } as InboxProposal;
+    expect(offers({ kind: "suggestion", proposal })).toEqual({
+      done: true,
+      handleManually: false,
+      suggest: false,
+    });
+  });
+
+  it("offers nothing beside the menu for a group member or a handled message", () => {
+    const proposal = { proposalId: "proposal:1" } as InboxProposal;
+    const nothing = { done: false, handleManually: false, suggest: false };
+    expect(offers({ kind: "suggestion", proposal }, true)).toEqual(nothing);
+    expect(offers({ kind: "handled" })).toEqual(nothing);
   });
 });

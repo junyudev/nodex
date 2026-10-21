@@ -6729,6 +6729,7 @@
                 "body_editable",
                 "submitted_at",
                 "source",
+                "important",
                 "state",
                 "suggestion_state",
                 "scope",
@@ -6749,6 +6750,10 @@
                 },
                 "body_truncated": {
                   "type": "boolean"
+                },
+                "important": {
+                  "type": "boolean",
+                  "description": "The user marked the message important, so it stays in view while it waits."
                 },
                 "kind": {
                   "oneOf": [
@@ -30429,7 +30434,7 @@
               },
               {
                 "type": "object",
-                "description": "Captures one message as a Page. A Library Inbox message becomes a Page in the\nInbox Database, created on first use; a Project Inbox message becomes a Page in\nthat Project's Database. Agent provenance, when present, becomes immutable source.\nThe body is Nested Markdown with the message shape, text followed by images, and\nbecomes the Page body. Without a sender title, Core gives the Page a provisional\ntitle that the suggestion Agent may later replace.",
+                "description": "Captures one message as a Page. A Library Inbox message becomes a Page in the\nInbox Database, created on first use; a Project Inbox message becomes a Page in\nthat Project's Database. Agent provenance, when present, becomes immutable source.\nThe body is message text with the message shape, text followed by images, and\nbecomes the Page body as canonical Nested Markdown. Without a sender title, Core gives the Page a provisional\ntitle that the suggestion Agent may later replace.",
                 "required": [
                   "page_id",
                   "document_id",
@@ -30744,6 +30749,29 @@
                     "type": "string",
                     "enum": [
                       "set_inbox_entry_kind"
+                    ]
+                  },
+                  "page_id": {
+                    "type": "string"
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "description": "Only the user marks a message important; a suggestion never does.",
+                "required": [
+                  "page_id",
+                  "important",
+                  "kind"
+                ],
+                "properties": {
+                  "important": {
+                    "type": "boolean"
+                  },
+                  "kind": {
+                    "type": "string",
+                    "enum": [
+                      "set_inbox_entry_important"
                     ]
                   },
                   "page_id": {
@@ -35835,7 +35863,7 @@
               },
               {
                 "type": "object",
-                "description": "Prepares the user's rewrite of a message still waiting in its Inbox.\n`original_body` is the Nested Markdown body the user started from; a message\nthat changed since, or no longer has the message shape, cannot be rewritten.",
+                "description": "Prepares the user's rewrite of a message still waiting in its Inbox.\n`original_body` is the stored Nested Markdown body the user started from, and `body`\nthe rewrite as message text; a message that changed since, or no longer has the\nmessage shape, cannot be rewritten.",
                 "required": [
                   "page_id",
                   "original_body",
@@ -38301,6 +38329,27 @@
           "unknown"
         ]
       },
+      "ProjectWorkspaceInboxImportantMessage": {
+        "type": "object",
+        "description": "An important message still waiting in its Inbox, as the stream points back to it.",
+        "required": [
+          "page_id",
+          "title",
+          "submitted_at"
+        ],
+        "properties": {
+          "page_id": {
+            "type": "string"
+          },
+          "submitted_at": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string",
+            "description": "The Page title: the sender's own, or the name the suggestion Agent gave it."
+          }
+        }
+      },
       "ProjectWorkspaceInboxInteractionMode": {
         "type": "string",
         "enum": [
@@ -38944,7 +38993,9 @@
           "inbox_count",
           "needs_decision_count",
           "pending_suggestion_count",
-          "dispatching_count"
+          "dispatching_count",
+          "important_count",
+          "important"
         ],
         "properties": {
           "database_id": {
@@ -38962,6 +39013,19 @@
           "entry_count": {
             "type": "integer",
             "format": "int32",
+            "minimum": 0
+          },
+          "important": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProjectWorkspaceInboxImportantMessage"
+            },
+            "description": "The longest-waiting important messages still in the Inbox, oldest first, so one\nout of view can be found without loading the stream back to it."
+          },
+          "important_count": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Important messages still in the Inbox.",
             "minimum": 0
           },
           "inbox_count": {
@@ -40835,7 +40899,7 @@
           },
           {
             "type": "object",
-            "description": "Captures one message as a Page. A Library Inbox message becomes a Page in the\nInbox Database, created on first use; a Project Inbox message becomes a Page in\nthat Project's Database. Agent provenance, when present, becomes immutable source.\nThe body is Nested Markdown with the message shape, text followed by images, and\nbecomes the Page body. Without a sender title, Core gives the Page a provisional\ntitle that the suggestion Agent may later replace.",
+            "description": "Captures one message as a Page. A Library Inbox message becomes a Page in the\nInbox Database, created on first use; a Project Inbox message becomes a Page in\nthat Project's Database. Agent provenance, when present, becomes immutable source.\nThe body is message text with the message shape, text followed by images, and\nbecomes the Page body as canonical Nested Markdown. Without a sender title, Core gives the Page a provisional\ntitle that the suggestion Agent may later replace.",
             "required": [
               "page_id",
               "document_id",
@@ -41150,6 +41214,29 @@
                 "type": "string",
                 "enum": [
                   "set_inbox_entry_kind"
+                ]
+              },
+              "page_id": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Only the user marks a message important; a suggestion never does.",
+            "required": [
+              "page_id",
+              "important",
+              "kind"
+            ],
+            "properties": {
+              "important": {
+                "type": "boolean"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "set_inbox_entry_important"
                 ]
               },
               "page_id": {

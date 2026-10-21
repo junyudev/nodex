@@ -506,6 +506,8 @@ An Inbox entry is the Workspace-owned record beside a message Page. It holds:
 - the message's immutable source: the user, an Agent Turn's chat and Project, or
   the command line with an optional Project;
 - a user-editable kind: note, todo, or question;
+- whether the user marked it important, which keeps it within reach while it
+  waits;
 - a triage state: open, kept, or done.
 
 An entry is in the Inbox while it still needs the user. A confirmed chat

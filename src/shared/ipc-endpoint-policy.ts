@@ -399,6 +399,7 @@ type CoreLocalCommitCommandEndpointPolicy =
   | "inbox:delete"
   | "inbox:set-state"
   | "inbox:set-kind"
+  | "inbox:set-important"
   | "inbox:request-suggestion"
   | "inbox:retry-dispatch"
   | "inbox:undo"

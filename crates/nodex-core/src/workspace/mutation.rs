@@ -425,6 +425,18 @@ pub(super) fn apply(
                     page_id,
                     *entry_kind,
                 ),
+                ProjectWorkspaceIntent::SetInboxEntryImportant { page_id, important } => {
+                    super::inbox::set_important(
+                        transaction,
+                        &library_id,
+                        &context,
+                        &store_epoch,
+                        &request.operation_id,
+                        &request_hash,
+                        page_id,
+                        *important,
+                    )
+                }
                 ProjectWorkspaceIntent::ReviseInboxMessage { page_id } => {
                     super::inbox::revise_message(
                         transaction,

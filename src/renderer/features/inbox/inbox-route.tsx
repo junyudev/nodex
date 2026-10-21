@@ -42,18 +42,22 @@ import {
 import { InboxDeleteDialog, type InboxDeleteRequest } from "./inbox-delete-dialog";
 import { InboxHistory } from "./inbox-history";
 import { InboxIconAction } from "./inbox-icon-action";
+import { InboxImportantBar } from "./inbox-important";
 import { InboxMessage, InboxMessageMenu } from "./inbox-message";
 import { INBOX_EASE_OUT, InboxStreamItem } from "./inbox-stream-item";
 import {
   INBOX_VIEW_LABELS,
   inboxAwaitingIndicatorPageId,
+  inboxBuriedImportant,
   inboxTimestampSeparators,
   type InboxOutcomeTarget,
+  type InboxRowOffers,
 } from "./inbox-presentation";
 import { InboxTriage } from "./inbox-triage";
 import { inboxDraftLabel } from "./inbox-capture-state";
 import { useInboxCapture } from "./use-inbox-capture";
 import { useInboxImageAccess } from "./use-inbox-image-access";
+import { useInboxJump, useInboxMessagesInView } from "./use-inbox-important";
 import { useInboxActions } from "./use-inbox-actions";
 import { useInboxSettings, useInboxStream, useInboxSummary } from "./use-inbox";
 import { INBOX_STICK_TO_BOTTOM_PX } from "./inbox-viewport";
@@ -269,7 +273,8 @@ export function InboxRoute({
   const contentRef = useRef<HTMLDivElement>(null);
   // The Inbox reads like a conversation, oldest first; History reads newest first.
   const inboxItems = view === "inbox" ? stream.items.toReversed() : [];
-  const entries = streamEntries(inboxItems, Date.now());
+  const nowMs = Date.now();
+  const entries = streamEntries(inboxItems, nowMs);
   const anchors = groupAnchors(inboxItems);
   const awaitingPageId = inboxAwaitingIndicatorPageId(inboxItems, settings.suggestionsEnabled);
   const keysByPage = new Map(
@@ -284,6 +289,26 @@ export function InboxRoute({
     stickToBottomRef,
     items: stream.items,
     ready: !stream.isPending,
+    hasNextPage: stream.hasNextPage,
+    isFetchingNextPage: stream.isFetchingNextPage,
+    fetchNextPage: stream.fetchNextPage,
+  });
+
+  // An important message out of view is pointed back to, however far back it waits, once the
+  // stream it would be found in has loaded.
+  const important = view === "inbox" && !stream.isPending ? (summary.data?.important ?? []) : [];
+  const importantInView = useInboxMessagesInView(
+    scrollRef,
+    important.map((message) => message.pageId),
+  );
+  const buriedImportant = inboxBuriedImportant(
+    important,
+    summary.data?.importantCount ?? 0,
+    importantInView,
+  );
+  const jump = useInboxJump({
+    scrollRef,
+    stickToBottomRef,
     hasNextPage: stream.hasNextPage,
     isFetchingNextPage: stream.isFetchingNextPage,
     fetchNextPage: stream.fetchNextPage,
@@ -353,9 +378,10 @@ export function InboxRoute({
   const renderMessage = (item: InboxItem) => {
     const proposal = item.proposal;
     const anchor = proposal ? anchors.get(proposal.proposalId) : undefined;
-    const menu = (
+    const menu = (rowOffers: InboxRowOffers) => (
       <InboxMessageMenu
         item={item}
+        rowOffers={rowOffers}
         handlers={{
           onOpenPage: () => onOpenPage(item.pageId),
           onDispatch: () => setManualDraft(item.pageId, draftForInboxItem(item, inboxProjectId)),
@@ -366,6 +392,7 @@ export function InboxRoute({
             ),
           onSetDone: (done) => void actions.setState([item.pageId], done ? "done" : "open"),
           onSetKind: (kind) => void actions.setKind(item.pageId, kind),
+          onSetImportant: (marked) => void actions.setImportant(item.pageId, marked),
           onDelete: () => requestDelete([item]),
         }}
       />
@@ -405,6 +432,9 @@ export function InboxRoute({
             selectionActive={selected.size > 0}
             onToggleSelected={() => toggleSelected(item.pageId)}
             onOpenSource={onOpenSession}
+            onOpenPage={() => onOpenPage(item.pageId)}
+            onUnmarkImportant={() => void actions.setImportant(item.pageId, false)}
+            arrivalToken={jump.arrival.pageId === item.pageId ? jump.arrival.token : null}
             editor={triage.editor}
             messageActions={triage.messageActions}
             strip={triage.strip}
@@ -454,79 +484,82 @@ export function InboxRoute({
       className="flex h-full min-h-0 w-full flex-col"
     >
       {header}
-      <div
-        ref={scrollRef}
-        data-testid="inbox-stream"
-        data-inbox-view={view}
-        onScroll={(event) => {
-          viewport.onScroll();
-          if (view !== "inbox") return;
-          const element = event.currentTarget;
-          stickToBottomRef.current =
-            element.scrollHeight - element.scrollTop - element.clientHeight <
-            INBOX_STICK_TO_BOTTOM_PX;
-        }}
-        // Both gutters stay reserved, so a scrollbar appearing never nudges the stream sideways.
-        className="flex min-h-0 flex-1 flex-col overflow-y-auto [scrollbar-gutter:stable_both-edges]"
-      >
-        {stream.error || summary.error ? (
-          <div
-            role="status"
-            className="mx-auto flex w-full max-w-(--thread-content-max-width) items-center gap-2 px-toolbar py-2 text-sm text-token-description-foreground"
-          >
-            <span>{stream.items.length ? "Couldn’t refresh Inbox" : "Couldn’t load Inbox"}</span>
-            <NodexButton
-              size="xs"
-              variant="ghost"
-              onClick={() => {
-                void stream.retry();
-                void summary.refetch();
-              }}
+      <div className="relative flex min-h-0 flex-1 flex-col">
+        <InboxImportantBar buried={buriedImportant} nowMs={nowMs} onJump={jump.jump} />
+        <div
+          ref={scrollRef}
+          data-testid="inbox-stream"
+          data-inbox-view={view}
+          onScroll={(event) => {
+            viewport.onScroll();
+            if (view !== "inbox") return;
+            const element = event.currentTarget;
+            stickToBottomRef.current =
+              element.scrollHeight - element.scrollTop - element.clientHeight <
+              INBOX_STICK_TO_BOTTOM_PX;
+          }}
+          // Both gutters stay reserved, so a scrollbar appearing never nudges the stream sideways.
+          className="flex min-h-0 flex-1 flex-col overflow-y-auto [scrollbar-gutter:stable_both-edges]"
+        >
+          {stream.error || summary.error ? (
+            <div
+              role="status"
+              className="mx-auto flex w-full max-w-(--thread-content-max-width) items-center gap-2 px-toolbar py-2 text-sm text-token-description-foreground"
             >
-              Retry
-            </NodexButton>
-          </div>
-        ) : null}
-        {stream.isPending ? null : stream.items.length === 0 ? (
-          stream.error || summary.error ? null : (
-            <EmptyState
-              view={view}
-              everUsed={(summary.data?.entryCount ?? 0) > 0}
-              projectName={projectName}
-              onShowHistory={() => changeView("processed")}
-            />
-          )
-        ) : view === "processed" ? (
-          <div className="mx-auto flex w-full max-w-(--thread-content-max-width) flex-col gap-3 px-toolbar py-6">
-            <InboxHistory
-              items={stream.items}
-              onOpenTarget={openTarget}
-              onOpenPage={onOpenPage}
-              onReturn={(pageId) => void actions.setState([pageId], "open")}
-              onDelete={(item) => requestDelete([item])}
-            />
-            {loadEarlier}
-          </div>
-        ) : (
-          <div
-            ref={contentRef}
-            // Like a conversation, a short Inbox rests against the composer.
-            className="mx-auto mt-auto flex w-full max-w-(--thread-content-max-width) flex-col px-toolbar pt-6 pb-3"
-          >
-            {loadEarlier}
-            <AnimatePresence initial={false}>
-              {entries.map((entry) =>
-                entry.kind === "time" ? (
-                  <motion.div key={entry.key} layout="position" exit={{ opacity: 0 }}>
-                    <ThreadTimestampSeparator sentAtMs={entry.sentAtMs} />
-                  </motion.div>
-                ) : (
-                  <InboxStreamItem key={entry.key}>{renderMessage(entry.item)}</InboxStreamItem>
-                ),
-              )}
-            </AnimatePresence>
-          </div>
-        )}
+              <span>{stream.items.length ? "Couldn’t refresh Inbox" : "Couldn’t load Inbox"}</span>
+              <NodexButton
+                size="xs"
+                variant="ghost"
+                onClick={() => {
+                  void stream.retry();
+                  void summary.refetch();
+                }}
+              >
+                Retry
+              </NodexButton>
+            </div>
+          ) : null}
+          {stream.isPending ? null : stream.items.length === 0 ? (
+            stream.error || summary.error ? null : (
+              <EmptyState
+                view={view}
+                everUsed={(summary.data?.entryCount ?? 0) > 0}
+                projectName={projectName}
+                onShowHistory={() => changeView("processed")}
+              />
+            )
+          ) : view === "processed" ? (
+            <div className="mx-auto flex w-full max-w-(--thread-content-max-width) flex-col gap-3 px-toolbar py-6">
+              <InboxHistory
+                items={stream.items}
+                onOpenTarget={openTarget}
+                onOpenPage={onOpenPage}
+                onReturn={(pageId) => void actions.setState([pageId], "open")}
+                onDelete={(item) => requestDelete([item])}
+              />
+              {loadEarlier}
+            </div>
+          ) : (
+            <div
+              ref={contentRef}
+              // Like a conversation, a short Inbox rests against the composer.
+              className="mx-auto mt-auto flex w-full max-w-(--thread-content-max-width) flex-col px-toolbar pt-6 pb-3"
+            >
+              {loadEarlier}
+              <AnimatePresence initial={false}>
+                {entries.map((entry) =>
+                  entry.kind === "time" ? (
+                    <motion.div key={entry.key} layout="position" exit={{ opacity: 0 }}>
+                      <ThreadTimestampSeparator sentAtMs={entry.sentAtMs} />
+                    </motion.div>
+                  ) : (
+                    <InboxStreamItem key={entry.key}>{renderMessage(entry.item)}</InboxStreamItem>
+                  ),
+                )}
+              </AnimatePresence>
+            </div>
+          )}
+        </div>
       </div>
       <div className="relative mx-auto flex w-full max-w-(--thread-content-max-width) shrink-0 flex-col px-toolbar pb-6">
         {/* Selection tools float over the stream, so selecting never resizes or shifts it. */}

@@ -10,13 +10,13 @@ use nodex_core_contracts::inbox::{
     ProjectWorkspaceInboxContextProposal, ProjectWorkspaceInboxContextSession,
     ProjectWorkspaceInboxCounts, ProjectWorkspaceInboxDispatchAction,
     ProjectWorkspaceInboxDispatchContext, ProjectWorkspaceInboxDispatchWork,
-    ProjectWorkspaceInboxEntryState, ProjectWorkspaceInboxItem, ProjectWorkspaceInboxLocation,
-    ProjectWorkspaceInboxMessageEdit, ProjectWorkspaceInboxPageBasis,
-    ProjectWorkspaceInboxProjectCount, ProjectWorkspaceInboxProposal,
-    ProjectWorkspaceInboxProposalOrigin, ProjectWorkspaceInboxProposalState,
-    ProjectWorkspaceInboxScope, ProjectWorkspaceInboxSource, ProjectWorkspaceInboxSuggestionInput,
-    ProjectWorkspaceInboxSuggestionState, ProjectWorkspaceInboxSummary,
-    ProjectWorkspaceInboxWindowFilter,
+    ProjectWorkspaceInboxEntryState, ProjectWorkspaceInboxImportantMessage,
+    ProjectWorkspaceInboxItem, ProjectWorkspaceInboxLocation, ProjectWorkspaceInboxMessageEdit,
+    ProjectWorkspaceInboxPageBasis, ProjectWorkspaceInboxProjectCount,
+    ProjectWorkspaceInboxProposal, ProjectWorkspaceInboxProposalOrigin,
+    ProjectWorkspaceInboxProposalState, ProjectWorkspaceInboxScope, ProjectWorkspaceInboxSource,
+    ProjectWorkspaceInboxSuggestionInput, ProjectWorkspaceInboxSuggestionState,
+    ProjectWorkspaceInboxSummary, ProjectWorkspaceInboxWindowFilter,
 };
 use nodex_core_contracts::workspace::{
     CodexThreadActiveFlag, CodexThreadStatusType, ProjectWorkspaceThreadStatus,
@@ -43,6 +43,7 @@ const MAX_CONTEXT_PROPOSALS: i64 = 20;
 const MAX_CONTEXT_DESCRIPTION_CHARS: usize = 400;
 const MAX_BATCH: u32 = 16;
 const MAX_COUNTED_PROJECTS: i64 = 200;
+const MAX_SUMMARY_IMPORTANT: i64 = 20;
 
 /// The Project an Inbox scope names, validated, or None for the Library Inbox.
 fn scope_project(scope: &ProjectWorkspaceInboxScope) -> Result<Option<&str>, StoreError> {
@@ -68,13 +69,14 @@ pub(super) fn read_summary(
 ) -> Result<ProjectWorkspaceInboxSummary, StoreError> {
     let project_id = scope_project(scope)?;
     let home = scope_home(connection, library_id, project_id)?;
-    let (entry_count, inbox_count, needs_decision_count, pending_suggestion_count) = connection
-        .query_row(
+    let (entry_count, inbox_count, needs_decision_count, pending_suggestion_count, important_count) =
+        connection.query_row(
             &format!(
                 "SELECT count(*), \
                    COALESCE(SUM({IN_INBOX}), 0), \
                    COALESCE(SUM(entry.state = 'open' AND proposal.state = 'open'), 0), \
-                   COALESCE(SUM(entry.state = 'open' AND entry.suggestion_state = 'pending'), 0) \
+                   COALESCE(SUM(entry.state = 'open' AND entry.suggestion_state = 'pending'), 0), \
+                   COALESCE(SUM(entry.important = 1 AND {IN_INBOX}), 0) \
                  FROM inbox_entries entry \
                  JOIN blocks block ON block.id = entry.page_id AND block.lifecycle = 'active' \
                  LEFT JOIN inbox_proposals proposal \
@@ -88,9 +90,35 @@ pub(super) fn read_summary(
                     row.get::<_, i64>(1)?,
                     row.get::<_, i64>(2)?,
                     row.get::<_, i64>(3)?,
+                    row.get::<_, i64>(4)?,
                 ))
             },
         )?;
+    let important = connection
+        .prepare(&format!(
+            "SELECT entry.page_id, COALESCE(materialization.title, ''), entry.submitted_at \
+             FROM inbox_entries entry \
+             JOIN blocks block ON block.id = entry.page_id AND block.lifecycle = 'active' \
+             JOIN pages page ON page.block_id = entry.page_id \
+             LEFT JOIN document_materializations materialization \
+               ON materialization.document_id = page.document_id \
+             LEFT JOIN inbox_proposals proposal \
+               ON proposal.proposal_id = entry.current_proposal_id \
+             WHERE entry.library_id = ?1 AND entry.scope_project_id IS ?2 \
+               AND entry.important = 1 AND {IN_INBOX} \
+             ORDER BY entry.seq ASC LIMIT ?3"
+        ))?
+        .query_map(
+            params![library_id, project_id, MAX_SUMMARY_IMPORTANT],
+            |row| {
+                Ok(ProjectWorkspaceInboxImportantMessage {
+                    page_id: row.get(0)?,
+                    title: row.get(1)?,
+                    submitted_at: row.get(2)?,
+                })
+            },
+        )?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
     let dispatching_count = connection.query_row(
         "SELECT count(DISTINCT proposal.proposal_id) FROM inbox_proposals proposal \
          JOIN inbox_proposal_pages link ON link.proposal_id = proposal.proposal_id \
@@ -108,6 +136,8 @@ pub(super) fn read_summary(
         needs_decision_count: count(needs_decision_count)?,
         pending_suggestion_count: count(pending_suggestion_count)?,
         dispatching_count: count(dispatching_count)?,
+        important_count: count(important_count)?,
+        important,
     })
 }
 
@@ -501,6 +531,11 @@ fn read_item(
             submitted_at: row.submitted_at.clone(),
             source: source(&row),
             kind: parse_kind(row.kind.as_deref())?,
+            important: connection.query_row(
+                "SELECT important FROM inbox_entries WHERE page_id=?1",
+                [page_id],
+                |row| row.get::<_, bool>(0),
+            )?,
             state: parse_state(&row.state)?,
             suggestion_state: parse_suggestion_state(&row.suggestion_state)?,
             suggestion_error: row.suggestion_error.clone(),

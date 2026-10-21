@@ -1068,6 +1068,10 @@ export interface IpcApi extends AgentRuntimeIpcApi {
     args: [input: import("./inbox").InboxSetKindInput];
     result: CoreLocalCommitResult<void>;
   };
+  "inbox:set-important": {
+    args: [input: import("./inbox").InboxSetImportantInput];
+    result: CoreLocalCommitResult<void>;
+  };
   "inbox:request-suggestion": {
     args: [input: import("./inbox").InboxSuggestionRequestInput];
     result: CoreLocalCommitResult<void>;

@@ -4,6 +4,8 @@ import {
   CheckmarkIcon,
   DeleteIcon,
   DispatchIcon,
+  ImportantFilledIcon,
+  ImportantIcon,
   PageIcon,
   AskAiIcon,
   TagsIcon,
@@ -16,11 +18,18 @@ import {
   NodexDropdownSummarySubmenuItem,
 } from "@/components/ui/dropdown";
 import { NodexButton } from "@/components/ui/button";
+import { NodexTooltip } from "@/components/ui/tooltip";
 import { NodexCheckbox } from "@/components/ui/settings";
 import { cn } from "@/lib/utils";
 import { INBOX_KIND_ICONS } from "./inbox-icon-action";
+import { InboxArrivalRing, InboxImportantStar } from "./inbox-important";
 import { InboxMessageDocument } from "./inbox-message-document";
-import { INBOX_KIND_LABELS, formatInboxTime, inboxEntryKind } from "./inbox-presentation";
+import {
+  INBOX_KIND_LABELS,
+  formatInboxTime,
+  inboxEntryKind,
+  type InboxRowOffers,
+} from "./inbox-presentation";
 
 export interface InboxMessageMenuHandlers {
   readonly onOpenPage: () => void;
@@ -28,16 +37,22 @@ export interface InboxMessageMenuHandlers {
   readonly onSuggestAgain: () => void;
   readonly onSetDone: (done: boolean) => void;
   readonly onSetKind: (kind: InboxEntryKind) => void;
+  readonly onSetImportant: (important: boolean) => void;
   readonly onDelete: () => void;
 }
 
-/** The message's less frequent actions: the first icon in its row, ahead of the others. */
+/**
+ * The message's less frequent actions: the first icon in its row, ahead of the others. It holds
+ * only what the row does not already offer, so no action appears twice.
+ */
 export function InboxMessageMenu({
   item,
   handlers,
+  rowOffers,
 }: {
   readonly item: InboxItem;
   readonly handlers: InboxMessageMenuHandlers;
+  readonly rowOffers: InboxRowOffers;
 }) {
   const done = item.state === "done";
   const kind = inboxEntryKind(item);
@@ -59,13 +74,15 @@ export function InboxMessageMenu({
       <NodexDropdownItem leftSlot={<PageIcon className="icon-xs" />} onSelect={handlers.onOpenPage}>
         Open page
       </NodexDropdownItem>
-      <NodexDropdownItem
-        leftSlot={<DispatchIcon className="icon-xs" />}
-        onSelect={handlers.onDispatch}
-      >
-        Handle manually
-      </NodexDropdownItem>
-      {item.state === "open" ? (
+      {rowOffers.handleManually ? null : (
+        <NodexDropdownItem
+          leftSlot={<DispatchIcon className="icon-xs" />}
+          onSelect={handlers.onDispatch}
+        >
+          Handle manually
+        </NodexDropdownItem>
+      )}
+      {item.state === "open" && !rowOffers.suggest ? (
         <NodexDropdownItem
           leftSlot={<AskAiIcon className="icon-xs" />}
           onSelect={handlers.onSuggestAgain}
@@ -73,12 +90,28 @@ export function InboxMessageMenu({
           Suggest again
         </NodexDropdownItem>
       ) : null}
-      <NodexDropdownItem
-        leftSlot={<CheckmarkIcon className="icon-xs" />}
-        onSelect={() => handlers.onSetDone(!done)}
-      >
-        {done ? "Reopen" : "Mark done"}
-      </NodexDropdownItem>
+      {done || !rowOffers.done ? (
+        <NodexDropdownItem
+          leftSlot={<CheckmarkIcon className="icon-xs" />}
+          onSelect={() => handlers.onSetDone(!done)}
+        >
+          {done ? "Reopen" : "Mark done"}
+        </NodexDropdownItem>
+      ) : null}
+      {item.state === "open" ? (
+        <NodexDropdownItem
+          leftSlot={
+            item.important ? (
+              <ImportantFilledIcon className="icon-xs" />
+            ) : (
+              <ImportantIcon className="icon-xs" />
+            )
+          }
+          onSelect={() => handlers.onSetImportant(!item.important)}
+        >
+          {item.important ? "Unmark important" : "Mark important"}
+        </NodexDropdownItem>
+      ) : null}
       {/* What kind of thought it is only steers suggestions, so it is corrected here, not shown. */}
       <NodexDropdownSummarySubmenuItem
         label="Kind"
@@ -123,6 +156,9 @@ export function InboxMessage({
   selectionActive,
   onToggleSelected,
   onOpenSource,
+  onOpenPage,
+  onUnmarkImportant,
+  arrivalToken = null,
   editor,
   messageActions,
   strip,
@@ -134,6 +170,11 @@ export function InboxMessage({
   readonly selectionActive: boolean;
   readonly onToggleSelected: () => void;
   readonly onOpenSource: (sessionId: string) => void;
+  /** Opens the message's Page; its time is the link. */
+  readonly onOpenPage: () => void;
+  readonly onUnmarkImportant: () => void;
+  /** Set while the reader has just been brought to this message; changes on every arrival. */
+  readonly arrivalToken?: number | null;
   /** Takes the message text's place while the user rewrites it. */
   readonly editor: React.ReactNode;
   /** Copy and Edit, shown on the text's bottom-right corner while the message is hovered or focused. */
@@ -144,11 +185,18 @@ export function InboxMessage({
   readonly actions: React.ReactNode;
 }) {
   const fromUser = item.source.kind === "user";
-  const checkbox = (
-    <span className="relative mt-1.5 flex size-6 shrink-0 items-center justify-center">
+  // The checkbox and, beside the bubble, an important message's star. The time hangs beneath on
+  // the bubble's side, so a star never moves it.
+  const gutter = (
+    <span
+      className={cn(
+        "relative mt-1.5 flex shrink-0 items-center gap-1",
+        fromUser ? "flex-row" : "flex-row-reverse",
+      )}
+    >
       <span
         className={cn(
-          "flex transition-opacity",
+          "flex size-6 items-center justify-center transition-opacity",
           selected || selectionActive
             ? "opacity-100"
             : "opacity-0 group-hover/message:opacity-100 focus-within:opacity-100",
@@ -160,17 +208,23 @@ export function InboxMessage({
           onCheckedChange={onToggleSelected}
         />
       </span>
-      {/* The exact time surfaces only after a lingering hover, and takes no room. */}
-      <time
-        dateTime={item.submittedAt}
-        className={cn(
-          "pointer-events-none absolute top-full mt-1 text-[11px] whitespace-nowrap text-token-description-foreground opacity-0 transition-opacity duration-200 select-none",
-          "group-hover/message:opacity-100 group-hover/message:delay-1000",
-          fromUser ? "right-0" : "left-0",
-        )}
-      >
-        {formatInboxTime(item.submittedAt)}
-      </time>
+      <InboxImportantStar important={item.important} onUnmark={onUnmarkImportant} />
+      {/* The exact time surfaces only after a lingering hover and takes no room. It is the
+          message's link to its Page, so it can be chosen only once it shows. */}
+      <NodexTooltip tooltipContent="Open page" side="bottom">
+        <button
+          type="button"
+          aria-label="Open page"
+          onClick={onOpenPage}
+          className={cn(
+            "cursor-interaction invisible absolute top-full mt-1 text-[11px] whitespace-nowrap text-token-description-foreground opacity-0 transition-[opacity,visibility] duration-200 select-none hover:text-token-foreground hover:underline",
+            "group-hover/message:visible group-hover/message:opacity-100 group-hover/message:delay-1000",
+            fromUser ? "right-0" : "left-0",
+          )}
+        >
+          <time dateTime={item.submittedAt}>{formatInboxTime(item.submittedAt)}</time>
+        </button>
+      </NodexTooltip>
     </span>
   );
 
@@ -208,7 +262,7 @@ export function InboxMessage({
           fromUser ? "justify-end" : "flex-row-reverse justify-end",
         )}
       >
-        {checkbox}
+        {gutter}
         <div
           className={cn(
             "flex max-w-[80%] min-w-[min(18rem,80%)] flex-col gap-1.5",
@@ -220,7 +274,7 @@ export function InboxMessage({
           <div
             data-testid="inbox-message-unit"
             className={cn(
-              "flex flex-col overflow-hidden rounded-(--inbox-card-radius) border",
+              "relative flex flex-col overflow-hidden rounded-(--inbox-card-radius) border",
               fromUser ? "border-background-user-message" : "border-token-border",
               selected && "outline-2 -outline-offset-1 outline-token-focus-border",
             )}
@@ -255,6 +309,7 @@ export function InboxMessage({
                 {strip}
               </div>
             )}
+            <InboxArrivalRing token={arrivalToken} />
           </div>
           {actions == null ? null : (
             <div data-testid="inbox-actions" className="pl-1">

@@ -1618,6 +1618,8 @@ export interface components {
                  */
                 readonly body_editable: boolean;
                 readonly body_truncated: boolean;
+                /** @description The user marked the message important, so it stays in view while it waits. */
+                readonly important: boolean;
                 readonly kind?: null | components["schemas"]["ProjectWorkspaceInboxEntryKind"];
                 readonly location: components["schemas"]["ProjectWorkspaceInboxLocation"];
                 readonly outcome?: null | components["schemas"]["ProjectWorkspaceInboxOutcome"];
@@ -7375,6 +7377,11 @@ export interface components {
                 readonly kind: "set_inbox_entry_kind";
                 readonly page_id: string;
             } | {
+                readonly important: boolean;
+                /** @enum {string} */
+                readonly kind: "set_inbox_entry_important";
+                readonly page_id: string;
+            } | {
                 /** @enum {string} */
                 readonly kind: "prepare_inbox_suggestions";
                 /** Format: int32 */
@@ -9214,6 +9221,13 @@ export interface components {
         };
         /** @enum {string} */
         readonly ProjectWorkspaceInboxFailureKind: "rejected" | "unavailable" | "unknown";
+        /** @description An important message still waiting in its Inbox, as the stream points back to it. */
+        readonly ProjectWorkspaceInboxImportantMessage: {
+            readonly page_id: string;
+            readonly submitted_at: string;
+            /** @description The Page title: the sender's own, or the name the suggestion Agent gave it. */
+            readonly title: string;
+        };
         /** @enum {string} */
         readonly ProjectWorkspaceInboxInteractionMode: "default" | "plan";
         /** @description Where a message's Page lives, relative to the Inbox that received it. */
@@ -9377,6 +9391,16 @@ export interface components {
             readonly dispatching_count: number;
             /** Format: int32 */
             readonly entry_count: number;
+            /**
+             * @description The longest-waiting important messages still in the Inbox, oldest first, so one
+             *     out of view can be found without loading the stream back to it.
+             */
+            readonly important: readonly components["schemas"]["ProjectWorkspaceInboxImportantMessage"][];
+            /**
+             * Format: int32
+             * @description Important messages still in the Inbox.
+             */
+            readonly important_count: number;
             /**
              * Format: int32
              * @description Messages still in the Inbox; the user's goal is to bring this to zero.
@@ -9844,6 +9868,11 @@ export interface components {
             readonly entry_kind?: null | components["schemas"]["ProjectWorkspaceInboxEntryKind"];
             /** @enum {string} */
             readonly kind: "set_inbox_entry_kind";
+            readonly page_id: string;
+        } | {
+            readonly important: boolean;
+            /** @enum {string} */
+            readonly kind: "set_inbox_entry_important";
             readonly page_id: string;
         } | {
             /** @enum {string} */

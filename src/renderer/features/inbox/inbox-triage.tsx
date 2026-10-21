@@ -32,8 +32,10 @@ import {
   describeInboxAction,
   describeInboxOutcome,
   inboxPageRoutingContext,
+  inboxRowOffers,
   inboxTriageModel,
   isChatAction,
+  type InboxRowOffers,
 } from "./inbox-presentation";
 import {
   InboxDispatchEditor,
@@ -203,8 +205,8 @@ export function InboxTriage({
   readonly manualDraft: InboxDispatchDraft | null;
   /** Set when this message's suggestion is shown on a newer message of the same group. */
   readonly groupedWithKey: string | null;
-  /** The message's menu, the first of the action row's icons. */
-  readonly menu: ReactNode;
+  /** The message's menu, the first of the action row's icons; it leaves out what the row offers. */
+  readonly menu: (offers: InboxRowOffers) => ReactNode;
   readonly onManualDraftChange: (draft: InboxDispatchDraft | null) => void;
   /** Opens the message's Page, where a body too rich or long to rewrite in place is edited. */
   readonly onEditAsPage: () => void;
@@ -219,6 +221,8 @@ export function InboxTriage({
   // A body the composer can write exactly is rewritten in place; any other is edited as its Page.
   const rewrite = item.bodyEditable ? inboxDraftFromBody(item.body) : null;
   const model = inboxTriageModel(item, suggestionsEnabled);
+  const offers = inboxRowOffers(model, { suggestionsEnabled, grouped: groupedWithKey != null });
+  const menuNode = menu(offers);
   const done = () => void actions.setState([item.pageId], "done");
   const keep = () => void actions.keep([item.pageId]);
   const handleManually = () => onManualDraftChange(draftForInboxItem(item, inboxProjectId));
@@ -232,14 +236,16 @@ export function InboxTriage({
     <InboxIconAction label="Edit as Page" icon={EditIcon} onClick={onEditAsPage} />
   );
   const keepAction = <InboxIconAction label="Keep" icon={ArchiveIcon} onClick={keep} />;
-  const doneAction = <InboxIconAction label="Mark done" icon={CheckmarkIcon} onClick={done} />;
+  const doneAction = offers.done ? (
+    <InboxIconAction label="Mark done" icon={CheckmarkIcon} onClick={done} />
+  ) : null;
   const copyAction = <InboxCopyAction item={item} />;
-  const handleManuallyAction = (
+  const handleManuallyAction = offers.handleManually ? (
     <InboxIconAction label="Handle manually" icon={DispatchIcon} onClick={handleManually} />
-  );
+  ) : null;
   const menuOnly = (
     <Row>
-      <InboxIconActions>{menu}</InboxIconActions>
+      <InboxIconActions>{menuNode}</InboxIconActions>
     </Row>
   );
 
@@ -305,7 +311,7 @@ export function InboxTriage({
         ),
         actions: (
           <Row>
-            <InboxIconActions>{menu}</InboxIconActions>
+            <InboxIconActions>{menuNode}</InboxIconActions>
           </Row>
         ),
       };
@@ -320,7 +326,7 @@ export function InboxTriage({
           actions: (
             <Row>
               <InboxIconActions>
-                {menu}
+                {menuNode}
                 {doneAction}
                 {handleManuallyAction}
               </InboxIconActions>
@@ -354,7 +360,7 @@ export function InboxTriage({
           actions: (
             <Row>
               <InboxIconActions>
-                {menu}
+                {menuNode}
                 {proposal.action.type === "keep" ? null : keepAction}
                 {doneAction}
               </InboxIconActions>
@@ -379,12 +385,14 @@ export function InboxTriage({
           actions: (
             <Row>
               <InboxIconActions>
-                {menu}
-                <InboxIconAction
-                  label="Retry"
-                  icon={RetryIcon}
-                  onClick={() => void actions.requestSuggestion([item.pageId], [item.basis])}
-                />
+                {menuNode}
+                {offers.suggest ? (
+                  <InboxIconAction
+                    label="Retry"
+                    icon={RetryIcon}
+                    onClick={() => void actions.requestSuggestion([item.pageId], [item.basis])}
+                  />
+                ) : null}
                 {keepAction}
                 {doneAction}
                 {handleManuallyAction}
@@ -407,7 +415,7 @@ export function InboxTriage({
           actions: (
             <Row>
               <InboxIconActions>
-                {menu}
+                {menuNode}
                 {model.proposal.failureKind === "unknown" ? (
                   model.proposal.chat && onOpenSession ? (
                     <InboxIconAction
@@ -425,15 +433,15 @@ export function InboxTriage({
                 )}
                 {keepAction}
                 {doneAction}
-                {model.proposal.failureKind === "unknown" ? (
+                {model.proposal.failureKind !== "unknown" ? (
+                  handleManuallyAction
+                ) : offers.handleManually ? (
                   <InboxIconAction
                     label="Send again"
                     icon={DispatchIcon}
                     onClick={handleManually}
                   />
-                ) : (
-                  handleManuallyAction
-                )}
+                ) : null}
               </InboxIconActions>
             </Row>
           ),
@@ -445,8 +453,8 @@ export function InboxTriage({
           actions: (
             <Row>
               <InboxIconActions>
-                {menu}
-                {suggestionsEnabled ? (
+                {menuNode}
+                {offers.suggest ? (
                   <InboxIconAction
                     label="Suggest"
                     icon={AskAiIcon}
@@ -456,13 +464,15 @@ export function InboxTriage({
                 {keepAction}
                 {doneAction}
               </InboxIconActions>
-              <Decision
-                label="Handle manually"
-                target={null}
-                icon={DispatchIcon}
-                variant="ghost"
-                onClick={handleManually}
-              />
+              {offers.handleManually ? (
+                <Decision
+                  label="Handle manually"
+                  target={null}
+                  icon={DispatchIcon}
+                  variant="ghost"
+                  onClick={handleManually}
+                />
+              ) : null}
             </Row>
           ),
         };

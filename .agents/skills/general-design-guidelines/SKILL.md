@@ -235,6 +235,9 @@ Active/selected items must be **unmistakable** without being garish:
   also its accessible name, and gather them at the row's trailing edge.
 - Reuse one glyph per action kind everywhere that action is offered, chosen, or
   reported, so icons teach themselves.
+- A row's overflow menu holds only what the row does not already show, so no
+  action appears twice. Derive the row and the menu from one description of what
+  the row offers, so they cannot drift apart.
 
 ### Selection and transient bars must not move content
 
@@ -247,6 +250,14 @@ Active/selected items must be **unmistakable** without being garish:
 - Draw selection inside the element, for example
   `outline-2 -outline-offset-1`, rather than with an outer ring. An ancestor that
   uses `overflow-hidden` for collapse animations will clip an outer ring.
+- A floating bar or pill stays opaque in every state. Hover tokens such as
+  `bg-token-list-hover-background` are translucent tints: replacing the surface
+  with one lets the content beneath show through the bar's words. Layer the tint
+  over the surface instead, for example
+  `hover:bg-[linear-gradient(var(--color-token-list-hover-background),var(--color-token-list-hover-background))]`.
+- A persistent mark on an item, such as a star or flag, keeps its own place and
+  stays visible through hover and selection. Controls that hover reveals, such as
+  a selection checkbox, appear beside it, never on top of it.
 
 ### Chips and compact tokens
 

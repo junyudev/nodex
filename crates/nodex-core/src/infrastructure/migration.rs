@@ -346,6 +346,11 @@ const MIGRATION_STEPS: &[MigrationStep] = &[
         to_revision: 187,
         apply: migrate_v186_to_v187,
     },
+    MigrationStep {
+        from_revision: 187,
+        to_revision: 188,
+        apply: migrate_v187_to_v188,
+    },
 ];
 
 fn resolve_migration_path(
@@ -2422,6 +2427,22 @@ fn migrate_v186_to_v187(
         params![context.source_revision, context.target_revision, context.source_schema_fingerprint,
             context.target_schema_fingerprint, context.backup_name, context.completed_at_unix_ms,
             r#"{"inbox_handoff_images":true}"#],
+    )?;
+    connection.pragma_update(None, "user_version", context.target_revision)?;
+    Ok(())
+}
+
+/// Inbox entries carry the user's importance mark.
+fn migrate_v187_to_v188(
+    connection: &Connection,
+    context: &MigrationContext,
+) -> Result<(), StoreError> {
+    connection.execute_batch(include_str!("../../schema/migrations/v187_to_v188.sql"))?;
+    connection.execute(
+        "INSERT INTO core_store_migration_history(source_revision,target_revision,source_schema_fingerprint,target_schema_fingerprint,backup_name,completed_at_unix_ms,evidence_json) VALUES (?1,?2,?3,?4,?5,?6,?7)",
+        params![context.source_revision, context.target_revision, context.source_schema_fingerprint,
+            context.target_schema_fingerprint, context.backup_name, context.completed_at_unix_ms,
+            r#"{"inbox_entries_important":true}"#],
     )?;
     connection.pragma_update(None, "user_version", context.target_revision)?;
     Ok(())
@@ -7272,6 +7293,79 @@ mod tests {
             serde_json::from_str::<serde_json::Value>(&options).unwrap()["model"],
             "moonshot/kimi-k3"
         );
+    }
+
+    #[test]
+    fn inbox_importance_migration_leaves_waiting_messages_unmarked() {
+        use crate::infrastructure::store::SqliteStoreKernel;
+        use crate::workspace::ProjectWorkspaceModule;
+        use nodex_core_contracts::workspace::ProjectWorkspaceIntent;
+        use nodex_core_contracts::{
+            AdapterKind, BoundModuleContext, LibraryId, ModuleApplyRequest,
+            PROJECT_WORKSPACE_CONTRACT_VERSION, ProfileId, StoreEpoch,
+        };
+
+        let profile = tempdir().expect("Profile");
+        install_intermediate_fixture(profile.path(), 187);
+        // Current capture writes the same entry closure as v187, which has no importance.
+        let predecessor = SqliteStoreKernel::open_test(profile.path()).expect("v187 runtime");
+        let (profile_id, library_id, epoch): (String, String, String) = predecessor
+            .readers()
+            .read_default(|connection| {
+                Ok(connection.query_row(
+                    "SELECT profile_id,id,(SELECT store_epoch FROM block_store_metadata) FROM libraries",
+                    [],
+                    |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+                )?)
+            })
+            .unwrap();
+        let module = ProjectWorkspaceModule::new(&profile_id, &library_id, &predecessor).unwrap();
+        module.seed_rootless_default_project_for_test();
+        module
+            .apply(
+                &BoundModuleContext {
+                    editor_history_owner: None,
+                    profile_id: ProfileId(profile_id.clone()),
+                    library_id: LibraryId(library_id.clone()),
+                    project_id: None,
+                    connection_id: "connection:inbox-importance-migration".into(),
+                    adapter: AdapterKind::ElectronHost,
+                },
+                ModuleApplyRequest {
+                    contract_version: PROJECT_WORKSPACE_CONTRACT_VERSION,
+                    operation_id: format!("send:waiting:{}", random_uuid_v7().unwrap()),
+                    store_epoch: StoreEpoch(epoch.clone()),
+                    intent: ProjectWorkspaceIntent::SendInboxMessage {
+                        expected_store_epoch: Some(epoch),
+                        page_id: "page:waiting".into(),
+                        document_id: "document:waiting".into(),
+                        body: "Still waiting for the user".into(),
+                        title: None,
+                        project_id: None,
+                    },
+                },
+            )
+            .expect("v187 capture");
+        drop(module);
+        drop(predecessor);
+
+        let store = SqliteStoreKernel::open(profile.path()).expect("upgrade Inbox entries");
+        assert_eq!(store.preparation().migrated_from_version, Some(187));
+        store
+            .readers()
+            .read_default(|connection| {
+                validate_current_store(connection)?;
+                assert_eq!(
+                    connection.query_row(
+                        "SELECT important FROM inbox_entries WHERE page_id = 'page:waiting'",
+                        [],
+                        |row| row.get::<_, i64>(0),
+                    )?,
+                    0
+                );
+                Ok(())
+            })
+            .expect("waiting messages start unmarked");
     }
 
     #[test]

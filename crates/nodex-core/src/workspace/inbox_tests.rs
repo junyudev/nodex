@@ -481,6 +481,89 @@ fn keep_dismisses_suggestions_and_states_filter_the_stream() {
     assert_eq!(item.suggestion_error.as_deref(), Some("Model unavailable"));
 }
 
+fn set_important(module: &ProjectWorkspaceModule, id: &str, important: bool) {
+    apply_host(
+        module,
+        &format!("important:{id}:{important}"),
+        ProjectWorkspaceIntent::SetInboxEntryImportant {
+            page_id: format!("page:{id}"),
+            important,
+        },
+    );
+}
+
+fn important_ids(summary: &ProjectWorkspaceInboxSummary) -> Vec<&str> {
+    summary
+        .important
+        .iter()
+        .map(|message| message.page_id.as_str())
+        .collect()
+}
+
+#[test]
+fn important_messages_stay_findable_while_they_wait_in_their_own_inbox() {
+    let workspace = seeded_workspace();
+    let module = &workspace.module;
+    send(module, "plan", "Plan the quarter before the week fills up");
+    send(module, "lunch", "Book lunch");
+    send(module, "pricing", "Rethink onboarding pricing");
+    send_to(module, "board", "Tidy the Board columns", Some(PROJECT));
+    assert_eq!(summary(module).important_count, 0);
+
+    set_important(module, "pricing", true);
+    set_important(module, "plan", true);
+    set_important(module, "board", true);
+    let library = summary(module);
+    assert_eq!(library.important_count, 2);
+    // Oldest first: the message that has waited longest leads.
+    assert_eq!(important_ids(&library), ["page:plan", "page:pricing"]);
+    assert_eq!(
+        library.important[0].title,
+        "Plan the quarter before the week fills up"
+    );
+    let marked = window(module, ProjectWorkspaceInboxWindowFilter::Inbox)
+        .into_iter()
+        .filter(|item| item.important)
+        .map(|item| item.page_id)
+        .collect::<Vec<_>>();
+    assert_eq!(marked, ["page:pricing", "page:plan"]);
+    // Each Inbox points only at its own important messages.
+    assert_eq!(
+        important_ids(&summary_in(module, project_scope())),
+        ["page:board"]
+    );
+
+    // Handling a message takes it off the list; returning it brings the mark back with it.
+    apply_host(
+        module,
+        "keep:plan",
+        ProjectWorkspaceIntent::KeepInboxEntries {
+            page_ids: vec!["page:plan".into()],
+        },
+    );
+    assert_eq!(important_ids(&summary(module)), ["page:pricing"]);
+    assert!(window(module, ProjectWorkspaceInboxWindowFilter::Processed)[0].important);
+    apply_host(
+        module,
+        "return:plan",
+        ProjectWorkspaceIntent::SetInboxEntryState {
+            page_ids: vec!["page:plan".into()],
+            state: ProjectWorkspaceInboxEntryState::Open,
+        },
+    );
+    assert_eq!(
+        important_ids(&summary(module)),
+        ["page:plan", "page:pricing"]
+    );
+
+    set_important(module, "pricing", false);
+    // Repeating a mark changes nothing.
+    set_important(module, "plan", true);
+    let library = summary(module);
+    assert_eq!(library.important_count, 1);
+    assert_eq!(important_ids(&library), ["page:plan"]);
+}
+
 #[test]
 fn user_dispatch_to_a_started_chat_carries_its_thread() {
     let workspace = seeded_workspace();

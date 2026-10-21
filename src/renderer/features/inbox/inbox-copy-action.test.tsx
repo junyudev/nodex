@@ -24,6 +24,7 @@ const item = (overrides: Partial<InboxItem> = {}): InboxItem => ({
   submittedAt: "2026-10-11T10:00:00.000Z",
   source: { kind: "user" },
   kind: null,
+  important: false,
   state: "open",
   suggestionState: "settled",
   suggestionError: null,

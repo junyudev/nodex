@@ -117,6 +117,7 @@ export const live: Layer.Layer<
     yield* command("inbox:delete", (_, input) => committed(inbox.delete(input)));
     yield* command("inbox:set-state", (_, input) => committed(inbox.setState(input)));
     yield* command("inbox:set-kind", (_, input) => committed(inbox.setKind(input)));
+    yield* command("inbox:set-important", (_, input) => committed(inbox.setImportant(input)));
     yield* command("inbox:request-suggestion", (_, input) =>
       committed(inbox.requestSuggestion(input)),
     );

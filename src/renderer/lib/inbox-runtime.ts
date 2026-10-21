@@ -9,6 +9,7 @@ import type {
   InboxPageIdsInput,
   InboxProposalInput,
   InboxSendInput,
+  InboxSetImportantInput,
   InboxSetKindInput,
   InboxSetStateInput,
   InboxSummaryInput,
@@ -44,6 +45,7 @@ type InboxCommandChannel =
   | "inbox:delete"
   | "inbox:set-state"
   | "inbox:set-kind"
+  | "inbox:set-important"
   | "inbox:request-suggestion"
   | "inbox:retry-dispatch"
   | "inbox:undo";
@@ -56,6 +58,7 @@ const keepCommand = inboxCommand("inbox.keep", "inbox:keep");
 const deleteCommand = inboxCommand("inbox.delete", "inbox:delete");
 const setStateCommand = inboxCommand("inbox.set-state", "inbox:set-state");
 const setKindCommand = inboxCommand("inbox.set-kind", "inbox:set-kind");
+const setImportantCommand = inboxCommand("inbox.set-important", "inbox:set-important");
 const requestSuggestionCommand = inboxCommand(
   "inbox.request-suggestion",
   "inbox:request-suggestion",
@@ -93,6 +96,8 @@ export const setInboxEntryState = (input: InboxSetStateInput) =>
   invokeLocalCommitCommand(setStateCommand, input);
 export const setInboxEntryKind = (input: InboxSetKindInput) =>
   invokeLocalCommitCommand(setKindCommand, input);
+export const setInboxEntryImportant = (input: InboxSetImportantInput) =>
+  invokeLocalCommitCommand(setImportantCommand, input);
 export const requestInboxSuggestion = (input: InboxSuggestionRequestInput) =>
   invokeLocalCommitCommand(requestSuggestionCommand, input);
 export const retryInboxDispatch = (input: InboxProposalInput) =>

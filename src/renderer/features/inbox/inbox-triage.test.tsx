@@ -9,7 +9,8 @@ import type { Project } from "../../../shared/types";
 import { InboxDeleteDialog } from "./inbox-delete-dialog";
 import { draftForInboxItem } from "./inbox-dispatch-editor";
 import { InboxHistory } from "./inbox-history";
-import { InboxMessage, InboxMessageMenu } from "./inbox-message";
+import { InboxMessage, InboxMessageMenu, type InboxMessageMenuHandlers } from "./inbox-message";
+import { NO_ROW_OFFERS } from "./inbox-presentation";
 import { InboxTriage } from "./inbox-triage";
 import type { InboxActions } from "./use-inbox-actions";
 
@@ -49,6 +50,7 @@ const item = (overrides: Partial<InboxItem> = {}): InboxItem => ({
   submittedAt: "2026-10-11T10:00:00.000Z",
   source: { kind: "user" },
   kind: "question",
+  important: false,
   state: "open",
   suggestionState: "settled",
   suggestionError: null,
@@ -71,6 +73,7 @@ const actions = (): InboxActions => ({
   delete: vi.fn(async () => true),
   setState: vi.fn(async () => true),
   setKind: vi.fn(async () => true),
+  setImportant: vi.fn(async () => true),
   requestSuggestion: vi.fn(async () => true),
   retryDispatch: vi.fn(async () => true),
 });
@@ -91,7 +94,7 @@ const renderTriage = (
         manualDraft={null}
         groupedWithKey={null}
         inboxProjectId={null}
-        menu={null}
+        menu={() => null}
         onManualDraftChange={vi.fn()}
         onEditAsPage={vi.fn()}
         {...overrides}
@@ -151,7 +154,7 @@ describe("InboxTriage", () => {
           manualDraft={null}
           groupedWithKey={null}
           inboxProjectId={null}
-          menu={null}
+          menu={() => null}
           onManualDraftChange={onManualDraftChange}
           onEditAsPage={vi.fn()}
         >
@@ -194,7 +197,7 @@ describe("InboxTriage", () => {
         actions={commands}
         manualDraft={null}
         groupedWithKey={null}
-        menu={null}
+        menu={() => null}
         onManualDraftChange={vi.fn()}
         onEditAsPage={vi.fn()}
       >
@@ -468,7 +471,7 @@ describe("InboxTriage", () => {
   ])("the message menu stays reachable in the strip for %s", (_state, message) => {
     renderTriage({
       item: message,
-      menu: <button type="button" aria-label="Message actions" />,
+      menu: () => <button type="button" aria-label="Message actions" />,
     });
     expect(screen.getByRole("button", { name: "Message actions" })).toBeTruthy();
   });
@@ -478,12 +481,14 @@ describe("InboxTriage", () => {
     render(
       <InboxMessageMenu
         item={item({ kind: null })}
+        rowOffers={NO_ROW_OFFERS}
         handlers={{
           onOpenPage: vi.fn(),
           onDispatch: vi.fn(),
           onSuggestAgain: vi.fn(),
           onSetDone: vi.fn(),
           onSetKind,
+          onSetImportant: vi.fn(),
           onDelete: vi.fn(),
         }}
       />,
@@ -502,6 +507,119 @@ describe("InboxTriage", () => {
       await Promise.resolve();
     });
     expect(onSetKind).toHaveBeenCalledWith("todo");
+  });
+});
+
+const menuHandlers = (overrides: Partial<InboxMessageMenuHandlers> = {}) => ({
+  onOpenPage: vi.fn(),
+  onDispatch: vi.fn(),
+  onSuggestAgain: vi.fn(),
+  onSetDone: vi.fn(),
+  onSetKind: vi.fn(),
+  onSetImportant: vi.fn(),
+  onDelete: vi.fn(),
+  ...overrides,
+});
+
+const menuItems = () =>
+  screen.getAllByRole("menuitem").map((entry) => entry.textContent?.trim() ?? "");
+
+describe("The message menu", () => {
+  const triageWithMenu = (message: InboxItem) =>
+    renderTriage({
+      item: message,
+      menu: (rowOffers) => (
+        <InboxMessageMenu item={message} rowOffers={rowOffers} handlers={menuHandlers()} />
+      ),
+    });
+
+  test("leaves out what the row already offers", async () => {
+    triageWithMenu(item({ proposal: null, suggestionState: "settled" }));
+    expect(screen.getByRole("button", { name: "Mark done" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Handle manually" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Suggest" })).toBeTruthy();
+    await openNodexMenu(screen.getByRole("button", { name: "Message actions" }));
+    await screen.findByRole("menuitem", { name: "Open page" });
+    const entries = menuItems();
+    expect(entries).not.toContain("Mark done");
+    expect(entries).not.toContain("Handle manually");
+    expect(entries).not.toContain("Suggest again");
+  });
+
+  test("keeps Handle manually beside a suggestion, where it changes the suggestion", async () => {
+    triageWithMenu(item());
+    expect(screen.queryByRole("button", { name: "Handle manually" })).toBeNull();
+    await openNodexMenu(screen.getByRole("button", { name: "Message actions" }));
+    await screen.findByRole("menuitem", { name: "Handle manually" });
+    expect(menuItems()).not.toContain("Mark done");
+    expect(menuItems()).toContain("Suggest again");
+  });
+});
+
+describe("Importance", () => {
+  const message = (
+    important: boolean,
+    handlers: { onUnmarkImportant?: () => void; onOpenPage?: () => void } = {},
+  ) => (
+    <TestQueryProvider>
+      <InboxMessage
+        item={item({ important })}
+        selected={false}
+        selectionActive={false}
+        onToggleSelected={vi.fn()}
+        onOpenSource={vi.fn()}
+        onOpenPage={handlers.onOpenPage ?? vi.fn()}
+        onUnmarkImportant={handlers.onUnmarkImportant ?? vi.fn()}
+        editor={null}
+        messageActions={null}
+        strip={null}
+        actions={<span>Row</span>}
+      />
+    </TestQueryProvider>
+  );
+  const chooseFromMenu = async (important: boolean, name: string) => {
+    const onSetImportant = vi.fn();
+    render(
+      <InboxMessageMenu
+        item={item({ important })}
+        rowOffers={NO_ROW_OFFERS}
+        handlers={menuHandlers({ onSetImportant })}
+      />,
+    );
+    await openNodexMenu(screen.getByRole("button", { name: "Message actions" }));
+    await act(async () => {
+      fireEvent.click(await screen.findByRole("menuitem", { name }));
+      await Promise.resolve();
+    });
+    return onSetImportant;
+  };
+
+  test("a waiting message is marked important from its menu", async () => {
+    expect(await chooseFromMenu(false, "Mark important")).toHaveBeenCalledExactlyOnceWith(true);
+  });
+
+  test("the same menu takes the mark off", async () => {
+    expect(await chooseFromMenu(true, "Unmark important")).toHaveBeenCalledExactlyOnceWith(false);
+  });
+
+  test("only an important message has a star, and the star takes the mark off", async () => {
+    const onUnmarkImportant = vi.fn();
+    const view = render(message(true, { onUnmarkImportant }));
+    await click("Unmark important");
+    expect(onUnmarkImportant).toHaveBeenCalledOnce();
+
+    view.rerender(message(false, { onUnmarkImportant }));
+    await waitFor(() =>
+      expect(screen.queryByRole("button", { name: "Unmark important" })).toBeNull(),
+    );
+    expect(screen.queryByRole("button", { name: "Mark important" })).toBeNull();
+  });
+
+  test("a message's time opens its Page", async () => {
+    const onOpenPage = vi.fn();
+    render(message(false, { onOpenPage }));
+    await click("Open page");
+    expect(onOpenPage).toHaveBeenCalledOnce();
   });
 });
 
@@ -621,6 +739,8 @@ describe("InboxMessage source navigation", () => {
             selectionActive={false}
             onToggleSelected={vi.fn()}
             onOpenSource={onOpenSource}
+            onOpenPage={vi.fn()}
+            onUnmarkImportant={vi.fn()}
             editor={null}
             messageActions={null}
             strip={null}
@@ -652,6 +772,8 @@ describe("InboxMessage source navigation", () => {
           selectionActive={false}
           onToggleSelected={vi.fn()}
           onOpenSource={onOpenSource}
+          onOpenPage={vi.fn()}
+          onUnmarkImportant={vi.fn()}
           editor={null}
           messageActions={null}
           strip={null}
