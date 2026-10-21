@@ -1,0 +1,37 @@
+src/renderer/features/inbox/inbox-message-editor.tsx
+  s_950dcf4ed6dc42::t_ed0e95d64b2cd8 66-71,82,145
+src/renderer/components/message/message-images-input.tsx
+  s_950dcf4ed6dc42::t_eb5451baa67565 40-41,47-48,61,80-87,91,95,100-101,120,179-182
+src/renderer/features/inbox/inbox-composer.test.tsx
+  s_950dcf4ed6dc42::t_31d00660900866 165-169,231-234
+  s_950dcf4ed6dc42::t_95909e25144aaf 152,154,212,214
+  s_950dcf4ed6dc42::t_ae2b3a6d56d81e 23-27,38,41,131-151,153,155-164,170-171,176,184,221-230,235-247
+src/renderer/features/inbox/inbox-capture-state.test.tsx
+  s_950dcf4ed6dc42::t_ac4280b14241d4 23-27,235-244
+  s_950dcf4ed6dc42::t_0a8bfcab75ec8e 245-246
+tests/e2e/message-content.spec.ts
+  s_950dcf4ed6dc42::t_812d06b5332ca8 111-119,151-162
+  s_950dcf4ed6dc42::t_02da71cb45ecfb 163
+src/renderer/features/inbox/inbox-capture-state.ts
+  s_950dcf4ed6dc42::t_eb5451baa67565 86-92
+src/renderer/features/inbox/use-inbox-image-access.ts
+  s_950dcf4ed6dc42::t_eb5451baa67565 2,26-38
+docs/product-specs/inbox-behavior.md
+  s_950dcf4ed6dc42::t_ffddc2f5457887 64-68
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "7e80db81d2f2675f7a89c2e9823039e13fef65d1",
+  "prompts": {},
+  "sessions": {
+    "s_950dcf4ed6dc42": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "447a25ca-824f-4258-9113-30ad561f7686",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
