@@ -37,7 +37,6 @@ export interface ComposerImageAttachmentController {
   ): void;
   remove(id: string): void;
   clear(): void;
-  open(id: string): void;
 }
 
 export function readComposerImageFileAsDataUrl(file: File): Promise<string> {
@@ -128,7 +127,6 @@ export function useComposerImageAttachments(input: {
   readonly scopeKey?: string;
   readonly enabled: boolean;
   readonly onError: (message: string) => void;
-  readonly onOpen: (id: string) => void;
   readonly onRemove?: (id: string) => void;
   readonly adapters?: Partial<ComposerImageAttachmentAdapters>;
 }): ComposerImageAttachmentController {
@@ -331,7 +329,6 @@ export function useComposerImageAttachments(input: {
       generationRef.current += 1;
       latestRef.current.setAttachments(() => []);
     },
-    open: (id: string) => latestRef.current.onOpen(id),
   });
   implementationRef.current = {
     addFiles,
@@ -340,7 +337,6 @@ export function useComposerImageAttachments(input: {
     syncResolvedImages,
     remove: implementationRef.current.remove,
     clear: implementationRef.current.clear,
-    open: implementationRef.current.open,
   };
   const controllerRef = useRef<ComposerImageAttachmentController | null>(null);
   controllerRef.current ??= {
@@ -350,7 +346,6 @@ export function useComposerImageAttachments(input: {
     syncResolvedImages: (...args) => implementationRef.current.syncResolvedImages(...args),
     remove: (...args) => implementationRef.current.remove(...args),
     clear: () => implementationRef.current.clear(),
-    open: (...args) => implementationRef.current.open(...args),
   };
   return controllerRef.current;
 }

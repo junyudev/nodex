@@ -11,7 +11,7 @@ const PNG = Buffer.from(
   "base64",
 );
 
-test("a chat draft keeps its pasted image across a reload", async ({}, testInfo) => {
+test("a chat draft keeps its pasted image across a reload, and it opens to view before edit", async ({}, testInfo) => {
   test.setTimeout(120_000);
   const artifacts =
     process.env.NODEX_MESSAGE_CONTENT_ARTIFACT_DIR ?? testInfo.outputPath("composer-image-drafts");
@@ -77,6 +77,25 @@ test("a chat draft keeps its pasted image across a reload", async ({}, testInfo)
       .toBe(192);
     await expect(composer).toHaveText("Why is this cut off?");
     await page.screenshot({ path: path.join(artifacts, "restored-draft.png") });
+
+    // Opening the thumbnail shows the image; editing is a deliberate step from there.
+    await restored.click();
+    const preview = page.getByRole("dialog", { name: "Image preview" });
+    await expect(preview).toBeVisible();
+    await expect
+      .poll(() =>
+        preview
+          .getByRole("img", { name: "toolbar.png" })
+          .evaluate((image: HTMLImageElement) => (image.complete ? image.naturalWidth : 0)),
+      )
+      .toBe(192);
+    const editor = page.getByRole("tabpanel", { name: "User attachment" });
+    await expect(editor).toHaveCount(0);
+    await page.screenshot({ path: path.join(artifacts, "draft-image-preview.png") });
+    await preview.getByRole("button", { name: "Edit image" }).click();
+    await expect(preview).toBeHidden();
+    await expect(editor.getByRole("toolbar", { name: "Image tools" })).toBeVisible();
+    await page.screenshot({ path: path.join(artifacts, "draft-image-editor.png") });
   } finally {
     await harness.close();
   }

@@ -55,7 +55,7 @@ Visible attachments occupy the Composer attachment slot above the prompt. The ro
 - a real remote upload may show a labeled progress overlay; local managed-asset materialization never pretends to be an upload
 - adding and removing thumbnails is an immediate state switch with no thumbnail-specific animation
 
-Composer thumbnails always open the right-panel image editor directly, regardless of the transcript's shared image-click policy; they never create a Composer-owned lightbox. Transcript images continue to open the shared preview dialog and expose its Edit action. Disabled editing still allows transcript preview. The Composer thumbnail keeps focus when opening fails, while the right-panel tab owns subsequent focus behavior.
+A Composer thumbnail opens the shared preview dialog, as a transcript image does, so looking at a draft image never starts an edit. The preview steps across the draft's images in Composer order, and its `Edit image` action opens the right-panel image editor for the image on screen. Closing the preview returns focus to the thumbnail; once the editor opens, its right-panel tab owns focus.
 
 ## Submission and execution host
 

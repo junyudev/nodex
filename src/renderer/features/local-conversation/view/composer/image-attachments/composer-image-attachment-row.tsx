@@ -1,5 +1,6 @@
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import {
+  ImagePreviewDialog,
   openUserAttachmentImagePreview,
   type ImageEditComposerTarget,
   type ImageEditorFeaturePolicy,
@@ -14,16 +15,16 @@ import { ComposerImageAttachmentThumbnail } from "./composer-image-attachment-th
 export interface ComposerImageAttachmentRowProps {
   readonly attachments: readonly ComposerImageAttachment[];
   readonly children?: ReactNode;
-  readonly controller: Pick<ComposerImageAttachmentController, "open" | "remove">;
+  readonly controller: Pick<ComposerImageAttachmentController, "remove">;
   readonly hasVisibleNonImageAttachments: boolean;
+  /** Opens the previewed image in the image editor; without it the preview has no Edit action. */
+  readonly onEdit?: (attachment: ComposerImageAttachment) => void;
 }
 
 function buildPreviewOptions(input: {
   readonly attachment: ComposerImageAttachment;
   readonly attachmentCount: number;
   readonly composerTarget: ImageEditComposerTarget;
-  readonly entrypoint: "image_click" | "lightbox_edit_button";
-  readonly openInEditor: boolean;
   readonly policy: ImageEditorFeaturePolicy;
   readonly projectId: string | null;
   readonly threadId: string | null;
@@ -36,7 +37,7 @@ function buildPreviewOptions(input: {
     composerTarget: input.composerTarget,
     ...(input.attachment.src.startsWith("data:image/") ? { dataUrl: input.attachment.src } : {}),
     downloadSrc: input.attachment.src,
-    entrypoint: input.entrypoint,
+    entrypoint: "lightbox_edit_button" as const,
     imageSource: "uploaded" as const,
     ...(input.attachment.materialization
       ? {
@@ -49,7 +50,7 @@ function buildPreviewOptions(input: {
             : {}),
         }
       : {}),
-    openInEditor: input.openInEditor,
+    openInEditor: true,
     policy: input.policy,
     previewSrc: input.attachment.src,
     projectId: input.projectId,
@@ -59,6 +60,7 @@ function buildPreviewOptions(input: {
   };
 }
 
+/** Opens a draft image in the image editor, as the Edit action of its preview does. */
 export async function openComposerImageAttachment(input: {
   readonly attachment: ComposerImageAttachment;
   readonly attachmentCount: number;
@@ -67,13 +69,7 @@ export async function openComposerImageAttachment(input: {
   readonly projectId: string | null;
   readonly threadId: string | null;
 }): Promise<boolean> {
-  return openUserAttachmentImagePreview(
-    buildPreviewOptions({
-      ...input,
-      entrypoint: "image_click",
-      openInEditor: true,
-    }),
-  );
+  return openUserAttachmentImagePreview(buildPreviewOptions(input));
 }
 
 export function ComposerImageAttachmentRow({
@@ -81,9 +77,20 @@ export function ComposerImageAttachmentRow({
   children,
   controller,
   hasVisibleNonImageAttachments,
+  onEdit,
 }: ComposerImageAttachmentRowProps) {
   const size = resolveComposerImageAttachmentSize(hasVisibleNonImageAttachments);
   const previewEnabled = attachments.length > 0;
+  const [preview, setPreview] = useState<{
+    readonly id: string;
+    readonly finalFocus: HTMLElement | null;
+  } | null>(null);
+  const index = preview ? attachments.findIndex((attachment) => attachment.id === preview.id) : -1;
+  const previewed = attachments[index];
+  const showAt = (next: number) => {
+    const attachment = attachments[next];
+    return preview && attachment ? () => setPreview({ ...preview, id: attachment.id }) : undefined;
+  };
 
   return (
     <div className="hide-scrollbar w-full overflow-x-auto p-px">
@@ -94,12 +101,42 @@ export function ComposerImageAttachmentRow({
             attachment={attachment}
             previewEnabled={previewEnabled}
             size={size}
-            onOpen={controller.open}
+            onOpen={(id) =>
+              setPreview({
+                id,
+                finalFocus:
+                  document.activeElement instanceof HTMLElement ? document.activeElement : null,
+              })
+            }
             onRemove={controller.remove}
           />
         ))}
         {children}
       </div>
+      {preview && previewed ? (
+        <ImagePreviewDialog
+          open
+          onOpenChange={(open) => {
+            if (!open) setPreview(null);
+          }}
+          finalFocus={() => {
+            preview.finalFocus?.focus();
+            return false;
+          }}
+          src={previewed.src}
+          downloadFileName={previewed.filename}
+          alt={previewed.filename}
+          allowLocalPath
+          analytics={{
+            availableImageCount: attachments.length,
+            entrypoint: "image_click",
+            imageSource: "uploaded",
+          }}
+          onPreviousImage={showAt(index - 1)}
+          onNextImage={showAt(index + 1)}
+          onEditImage={onEdit ? () => onEdit(previewed) : undefined}
+        />
+      ) : null}
     </div>
   );
 }

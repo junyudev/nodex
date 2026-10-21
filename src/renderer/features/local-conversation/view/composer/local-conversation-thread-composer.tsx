@@ -1489,12 +1489,8 @@ function HydratedThreadComposer({
     });
   const imageAttachmentsRef = useRef(imageAttachments);
   imageAttachmentsRef.current = imageAttachments;
-  const handleOpenComposerImage = useCallback(
-    (attachmentId: string) => {
-      const attachment = imageAttachmentsRef.current.find(
-        (candidate) => candidate.id === attachmentId,
-      );
-      if (!attachment) return;
+  const handleEditComposerImage = useCallback(
+    (attachment: ComposerImageAttachment) => {
       void openComposerImageAttachment({
         attachment,
         attachmentCount: imageAttachmentsRef.current.length,
@@ -1512,7 +1508,6 @@ function HydratedThreadComposer({
     scopeKey: composerScopeKey,
     enabled: imageInputSupported,
     onError: (message) => onErrorMessage(message),
-    onOpen: handleOpenComposerImage,
     onRemove: (attachmentId) => {
       if (isImageEditComposerAttachmentId(attachmentId)) {
         removeImageEditComposerAttachment(imageEditComposerChannelId, attachmentId);
@@ -4147,6 +4142,7 @@ function HydratedThreadComposer({
                     attachments={imageAttachments}
                     controller={imageAttachmentController}
                     hasVisibleNonImageAttachments={hasVisibleNonImageAttachments}
+                    onEdit={handleEditComposerImage}
                   >
                     <ComposerAppModelContextAttachments
                       attachments={appModelContext.attachments}

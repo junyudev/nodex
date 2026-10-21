@@ -36,7 +36,6 @@ function renderController(input: {
       setAttachments,
       enabled: input.enabled ?? true,
       onError: input.onError ?? vi.fn(),
-      onOpen: vi.fn(),
       adapters: {
         createId: () => `image-${++id}`,
         readFileAsDataUrl: input.readFileAsDataUrl,
@@ -284,7 +283,6 @@ describe("useComposerImageAttachments", () => {
           scopeKey,
           enabled: true,
           onError: vi.fn(),
-          onOpen: vi.fn(),
           adapters: {
             createId: () => `image-${++id}`,
             readFileAsDataUrl: () => read.promise,
