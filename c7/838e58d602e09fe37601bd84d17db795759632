@@ -1,0 +1,19 @@
+src/renderer/features/local-conversation/view/composer/image-attachments/composer-image-attachment-thumbnail.tsx
+  s_950dcf4ed6dc42::t_b6f3361d9ea940 68-77
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "c7838e58d602e09fe37601bd84d17db795759632",
+  "prompts": {},
+  "sessions": {
+    "s_950dcf4ed6dc42": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "447a25ca-824f-4258-9113-30ad561f7686",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
