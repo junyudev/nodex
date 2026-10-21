@@ -1,0 +1,172 @@
+docs/product-specs/agent-interface-behavior.md
+  s_950dcf4ed6dc42::t_c6535bd82d2686 263-264
+src/shared/message-content.test.ts
+  s_950dcf4ed6dc42::t_ce6bbb3426a92f 3,5,39,44,54,64
+  s_950dcf4ed6dc42::t_c0d617376328a8 38,40
+src/shared/nfm/agent-guide.ts
+  s_950dcf4ed6dc42::t_a055569c68d659 11,29
+  s_950dcf4ed6dc42::t_42b7af3b0d834f 4,8,26
+crates/nodex-core/src/domain/nfm_markdown_forms.rs
+  s_950dcf4ed6dc42::t_078819aa78080e 58-62,83,85-98,126-129,131-133,137,139,142,145-149,162
+  s_950dcf4ed6dc42::t_9720ba7f203067 1-2,5-7,10-32,38-57,63-82,84,99-101,106-125,130,134-136,138,140-141,143-144,150-161,163-173,310
+  s_950dcf4ed6dc42::t_0ce3669714c098 33-37,102-105
+  s_950dcf4ed6dc42::t_db2d4a9719e745 3-4,8-9,174-309
+src/renderer/features/inbox/inbox-copy-action.tsx
+  s_950dcf4ed6dc42::t_e16be94167577f 2,12-15,17-24
+  s_950dcf4ed6dc42::t_832b2db0272731 3,25
+crates/nodex-core/src/domain/mod.rs
+  s_950dcf4ed6dc42::t_381119d7f68e4a 13
+src/shared/message-text.ts
+  s_950dcf4ed6dc42::t_6025f5fc7ad149 136
+  s_950dcf4ed6dc42::t_e79d00fd08db4b 89
+  s_950dcf4ed6dc42::t_15c1ad7b9c80ae 154-157,160-162
+  s_950dcf4ed6dc42::t_6e74f66781f1d3 151,153,158-159,163
+  s_950dcf4ed6dc42::t_36b30b364a8e1e 121-124,130
+  s_950dcf4ed6dc42::t_7e3089e872822e 39
+  s_950dcf4ed6dc42::t_46e6ce6e9672ca 1-38,40-88,90-120,125-129,131-135,137-150,152,164
+src/shared/nfm/table.ts
+  s_950dcf4ed6dc42::t_a542e9e781a450 268
+src/renderer/components/board/nfm-renderer.tsx
+  s_950dcf4ed6dc42::t_d3e60a67281812 1,66-74,77,83,88,91-95,99-117,212,217,227
+  s_950dcf4ed6dc42::t_c97bc6bc51194d 597-598
+  s_950dcf4ed6dc42::t_3227fa10fee4d8 124-127,218,265,267-271,303-308,312-316,342,510-515,517-521,645,649,654
+  s_950dcf4ed6dc42::t_f949ae8706cb60 118
+  s_950dcf4ed6dc42::t_717ece0b8e4dbe 119-120,122-123,128-132,341,343,507
+  s_950dcf4ed6dc42::t_10a789e324baf6 121
+  s_950dcf4ed6dc42::t_18c6f5aec4fcfd 262-264,535,537-543,563-571,607-614,651
+src/renderer/components/message/message-document.browser.test.tsx
+  s_950dcf4ed6dc42::t_14d3f0c37c7364 1-48
+src/shared/nfm/plain-source.ts
+  s_950dcf4ed6dc42::t_d4c317050ed32e 5-7
+  s_950dcf4ed6dc42::t_9be5fa27094fd4 1-4,8-39
+src/renderer/components/message/message-document.test.tsx
+  s_950dcf4ed6dc42::t_ce6bbb3426a92f 6-7,33,35-38,43-49,61-64,89-90
+src/renderer/components/message/message-document.tsx
+  s_950dcf4ed6dc42::t_3d91ad94c87be0 4,14-15,19-22,25-26,30-31,35,41-46,54-77
+  s_950dcf4ed6dc42::t_c95c81fea54aac 78-80
+src/renderer/components/workbench/pending-worktree-route.tsx
+  s_950dcf4ed6dc42::t_87c98ddac59edb 25,237,272
+src/shared/nfm/markdown-input.test.ts
+  s_950dcf4ed6dc42::t_41db657729596d 1-3,5-17,22-34,47,54-56,69
+  s_950dcf4ed6dc42::t_6025f5fc7ad149 4,18-21,35-46,48-53,57-68
+src/renderer/features/local-conversation/view/shared/user-message-collapse.browser.test.tsx
+  s_950dcf4ed6dc42::t_87c98ddac59edb 5,7,15
+  s_950dcf4ed6dc42::t_b139cfed918823 60
+src/renderer/features/local-conversation/view/blocks/local-conversation-block-leaves.tsx
+  s_950dcf4ed6dc42::t_87c98ddac59edb 61,1115,1124
+docs/references/nested-markdown-spec.md
+  s_950dcf4ed6dc42::t_fcea81d6ec43c6 3,7
+  s_950dcf4ed6dc42::t_330f4c5a7b78ff 22,26,82-85,130,165
+crates/nodex-core-contracts/src/workspace.rs
+  s_950dcf4ed6dc42::t_d58f07c8d7d8db 200-202
+  s_950dcf4ed6dc42::t_c6535bd82d2686 1718-1719
+docs/product-specs/message-content-behavior.md
+  s_950dcf4ed6dc42::t_9fa9135c90463f 11,15-18,20,26-34,38-41,43-44,54,61-72,78-81
+  s_950dcf4ed6dc42::t_fcea81d6ec43c6 21-25,45-47
+src/renderer/features/local-conversation/view/local-conversation-realtime-item.tsx
+  s_950dcf4ed6dc42::t_87c98ddac59edb 6,56
+src/main/core-client/inbox-workspace.node.test.ts
+  s_950dcf4ed6dc42::t_37248b2b4c453c 41
+src/renderer/features/inbox/inbox-message-editor.tsx
+  s_950dcf4ed6dc42::t_9fed7d5c8c2d40 40,50
+  s_950dcf4ed6dc42::t_33fab84437e4b2 51
+  s_950dcf4ed6dc42::t_e7183e2e45df7b 10-11,22,30-31,124-128
+crates/nodex-core/tests/fixtures/nfm/markdown-input.json
+  s_950dcf4ed6dc42::t_4ecb70547f8aca 1,3-62,64-118,216-218,236-238
+  s_950dcf4ed6dc42::t_83b1e59fab0c38 63,119-136,219-235
+  s_950dcf4ed6dc42::t_6025f5fc7ad149 2,137-215
+src/shared/message-content.ts
+  s_950dcf4ed6dc42::t_832b2db0272731 3,32-33,35-40,51-52,54
+  s_950dcf4ed6dc42::t_9fed7d5c8c2d40 4,31,34
+src/shared/nfm/serializer.ts
+  s_950dcf4ed6dc42::t_a542e9e781a450 4,29,108
+docs/CLI.md
+  s_950dcf4ed6dc42::t_c6535bd82d2686 147-149
+crates/nodex-core/src/workspace/inbox_read.rs
+  s_950dcf4ed6dc42::t_526957cd38c23e 367-372
+src/shared/nfm/markdown-forms.ts
+  s_950dcf4ed6dc42::t_a542e9e781a450 8
+  s_950dcf4ed6dc42::t_e4ca320796a2ab 1-7,9-23,25-38,44-60,62,70-83,88-89,91,95-99,101
+  s_950dcf4ed6dc42::t_c97bc6bc51194d 24
+  s_950dcf4ed6dc42::t_82458df9027202 39-43,61,63-69,84-87,90,92-94,100
+src/renderer/features/local-conversation/view/shared/user-message-collapse.test.tsx
+  s_950dcf4ed6dc42::t_87c98ddac59edb 4,8,22
+tests/e2e/message-content.spec.ts
+  s_950dcf4ed6dc42::t_8fce70ef604027 89-92,119,139
+docs/adr/0016-agent-interface-budgets-the-common-path.md
+  s_950dcf4ed6dc42::t_42b7af3b0d834f 95
+  s_950dcf4ed6dc42::t_a055569c68d659 41
+crates/nodex-core/src/domain/nfm.rs
+  s_950dcf4ed6dc42::t_2553b83b78a5aa 7
+  s_950dcf4ed6dc42::t_381119d7f68e4a 910-914,1119
+crates/nodex-cli/src/cli.rs
+  s_950dcf4ed6dc42::t_c6535bd82d2686 853
+src/shared/nodex-app-tools/inbox-schema.ts
+  s_950dcf4ed6dc42::t_c6535bd82d2686 15
+src/main/inbox-application/inbox-editing.node.test.ts
+  s_950dcf4ed6dc42::t_846d4a7fd55cef 15-17,35,65
+  s_950dcf4ed6dc42::t_37248b2b4c453c 32-33,40,69
+crates/nodex-core/src/domain/nfm_parser.rs
+  s_950dcf4ed6dc42::t_1e4fc8268fa4c4 1547-1569,1596-1597,1599-1639
+  s_950dcf4ed6dc42::t_976c65ea8f6fa4 1573-1576,1583-1587,1594-1595,1598
+  s_950dcf4ed6dc42::t_e137d5fa166afd 41-52,58,61-64,87-122,128,130-131,142,144-154,466
+  s_950dcf4ed6dc42::t_381119d7f68e4a 12,85-86,355-360,364-365,372-375,385-389,394,413,1443
+  s_950dcf4ed6dc42::t_0ce3669714c098 1570-1572,1577-1582,1588-1593
+src/renderer/features/inbox/inbox-capture-state.ts
+  s_950dcf4ed6dc42::t_832b2db0272731 11,16,36,41-46,48-49,51
+docs/ARCHITECTURE.md
+  s_950dcf4ed6dc42::t_c6535bd82d2686 1204
+CHANGELOG.md
+  s_950dcf4ed6dc42::t_0ce3669714c098 42-43
+src/renderer/features/inbox/inbox-dispatch-editor.tsx
+  s_950dcf4ed6dc42::t_832b2db0272731 10,82-83
+crates/nodex-core/src/workspace/inbox_tests.rs
+  s_950dcf4ed6dc42::t_0ce3669714c098 1742-1745
+  s_950dcf4ed6dc42::t_ce4135f5dc7bde 3152,3158,3161-3162,3165
+  s_950dcf4ed6dc42::t_e27827b89ce579 1741,1755
+src/renderer/features/inbox/inbox-composer.test.tsx
+  s_950dcf4ed6dc42::t_ce6bbb3426a92f 6-11,127-128,133-134,181
+  s_950dcf4ed6dc42::t_c0d617376328a8 174-180,182-199
+agent-skills/nodex/references/nested-markdown.md
+  s_950dcf4ed6dc42::t_42b7af3b0d834f 4
+  s_950dcf4ed6dc42::t_a055569c68d659 8
+src/shared/message-text.test.ts
+  s_950dcf4ed6dc42::t_ef707909c9ec52 14-16
+  s_950dcf4ed6dc42::t_6e4c90d512bcf6 1-13,17-41
+crates/nodex-core/src/workspace/inbox.rs
+  s_950dcf4ed6dc42::t_526957cd38c23e 310,329-331
+src/shared/nfm/parser.ts
+  s_950dcf4ed6dc42::t_6820493e9338ae 25-27,29-32,34,36,44-45,49-72,74-75,383-386,401-405,409
+  s_950dcf4ed6dc42::t_e137d5fa166afd 28
+  s_950dcf4ed6dc42::t_a542e9e781a450 21,39,330-331,336,347-348,362-363
+src/main/inbox-application/inbox-naming.node.test.ts
+  s_950dcf4ed6dc42::t_9e6ce4fef5fdd9 44-45
+src/shared/nfm/plain-source.test.ts
+  s_950dcf4ed6dc42::t_662c93ef8bf701 1-34
+src/renderer/features/inbox/inbox-message-document.tsx
+  s_950dcf4ed6dc42::t_3d91ad94c87be0 2,12-13
+docs/product-specs/inbox-behavior.md
+  s_950dcf4ed6dc42::t_d374fb120ce391 51-52
+  s_950dcf4ed6dc42::t_c6535bd82d2686 47-48
+  s_950dcf4ed6dc42::t_d58f07c8d7d8db 60-61
+src/renderer/features/inbox/inbox-triage.tsx
+  s_950dcf4ed6dc42::t_e7183e2e45df7b 26-27,147,216,219-220,225,229,483
+src/renderer/features/inbox/inbox-route.tsx
+  s_950dcf4ed6dc42::t_832b2db0272731 12,419
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "260b041f1251742aaf5b02143fdd4a8c71659dac",
+  "prompts": {},
+  "sessions": {
+    "s_950dcf4ed6dc42": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "447a25ca-824f-4258-9113-30ad561f7686",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
