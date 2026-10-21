@@ -1,0 +1,19 @@
+CHANGELOG.md
+  s_950dcf4ed6dc42::t_ec5e05464ca524 44
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "649a9f38922d4849bc1163741da494dc9cd2d091",
+  "prompts": {},
+  "sessions": {
+    "s_950dcf4ed6dc42": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "447a25ca-824f-4258-9113-30ad561f7686",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
