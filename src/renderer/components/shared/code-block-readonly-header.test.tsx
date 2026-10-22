@@ -17,7 +17,7 @@ describe("CodeBlockReadOnlyHeader", () => {
     });
     const view = render(
       <NodexTooltipProvider>
-        <CodeBlockReadOnlyHeader languageId="coq" code="Check nat." />
+        <CodeBlockReadOnlyHeader language="coq" code="Check nat." />
       </NodexTooltipProvider>,
     );
 

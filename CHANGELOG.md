@@ -10,6 +10,8 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- Code blocks in chat replies use dark-theme syntax colors in the dark theme, instead of near-invisible light-theme colors.
+
 ## [0.4.0] - 2026-10-22
 
 ### Added

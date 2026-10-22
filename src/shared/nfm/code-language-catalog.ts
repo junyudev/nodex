@@ -135,11 +135,15 @@ for (const language of CODE_LANGUAGE_CATALOG) {
   }
 }
 
+/** Matches an ID, label, alias, or extension; unlike normalization, a miss stays observable. */
+export function findCodeLanguage(value: unknown): CodeLanguage | null {
+  if (typeof value !== "string") return null;
+  const id = codeLanguageIdByLookupToken.get(normalizeLookupToken(value));
+  return id === undefined ? null : codeLanguageById.get(id)!;
+}
+
 export function normalizeCodeLanguageId(value: unknown): string {
-  if (typeof value !== "string") return "text";
-  const token = normalizeLookupToken(value);
-  if (!token) return "text";
-  return codeLanguageIdByLookupToken.get(token) ?? "text";
+  return findCodeLanguage(value)?.id ?? "text";
 }
 
 export function resolveCodeLanguage(value: unknown): CodeLanguage {

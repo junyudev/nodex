@@ -223,7 +223,7 @@ describe("compiled assistant display and native Find", () => {
         ).toBe(units[0]!.key);
         expect(root.querySelector("button mark")).toBeNull();
         const button = root.querySelector<HTMLButtonElement>(
-          '[data-streamdown="code-block-copy-button"]',
+          "[data-nfm-code-block-readonly-header] button",
         )!;
         await act(async () => {
           button.focus();
@@ -237,7 +237,7 @@ describe("compiled assistant display and native Find", () => {
           await Promise.resolve();
         });
         await waitFor(() =>
-          expect(root.querySelector('[data-streamdown="code-block-copy-button"]')).toBe(button),
+          expect(root.querySelector("[data-nfm-code-block-readonly-header] button")).toBe(button),
         );
         expect(document.activeElement).toBe(button);
         await waitFor(() =>

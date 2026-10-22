@@ -2,7 +2,7 @@ import { describe, expect, test } from "vite-plus/test";
 import { act, waitFor } from "@testing-library/react";
 import { NodexTooltipProvider } from "@/components/ui/tooltip";
 import { renderWithMaitai as render } from "../../../../../test/thread-maitai";
-import { settleAsyncRender, waitForStreamdownCodeHighlight } from "../../../../../test/dom";
+import { settleAsyncRender, waitForCodeHighlight } from "../../../../../test/dom";
 import { MarkdownRenderer } from "./markdown-renderer";
 
 const FENCED_TYPESCRIPT_CODE = [
@@ -118,22 +118,21 @@ describe("MarkdownRenderer", () => {
   test("keeps fenced code blocks on the highlighted code-block renderer path", async () => {
     const { container } = render(<MarkdownRenderer content={FENCED_TYPESCRIPT_MARKDOWN} />);
 
-    await waitForStreamdownCodeHighlight(container);
+    await waitForCodeHighlight(container);
 
-    expect(container.querySelector('[data-streamdown="code-block"]') !== null).toBe(true);
-    const code = container.querySelector('[data-streamdown="code-block"] code');
+    expect(container.querySelector("[data-readonly-code-block]") !== null).toBe(true);
+    const code = container.querySelector("[data-readonly-code-block] code");
     expect(code !== null).toBe(true);
     expect(code?.querySelectorAll(":scope > span").length).toBe(6);
-    expect(code?.querySelector(':scope > span > span[style*="--sdm-c"]') !== null).toBe(true);
+    expect(code?.querySelector(':scope > span > span[style*="--shiki-light"]') !== null).toBe(true);
+    expect(container.querySelector("[data-readonly-code-block] .inline-markdown") === null).toBe(
+      true,
+    );
     expect(
-      container.querySelector('[data-streamdown="code-block"] .inline-markdown') === null,
-    ).toBe(true);
-    expect(container.querySelector('[data-streamdown="code-block-copy-button"]') !== null).toBe(
-      true,
-    );
-    expect(container.querySelector('[data-streamdown="code-block-download-button"]') === null).toBe(
-      true,
-    );
+      [...container.querySelectorAll("[data-nfm-code-block-readonly-header] button")].map(
+        (button) => button.getAttribute("aria-label"),
+      ),
+    ).toEqual(["Copy code to clipboard"]);
   });
 
   test("copies fenced code through the Nodex clipboard fallback with line breaks intact", async () => {
@@ -162,10 +161,10 @@ describe("MarkdownRenderer", () => {
     try {
       const { container } = render(<MarkdownRenderer content={FENCED_TYPESCRIPT_MARKDOWN} />);
 
-      await waitForStreamdownCodeHighlight(container);
+      await waitForCodeHighlight(container);
 
       const copyButton = container.querySelector<HTMLButtonElement>(
-        '[data-streamdown="code-block-copy-button"]',
+        "[data-nfm-code-block-readonly-header] button",
       );
       expect(copyButton !== null).toBe(true);
 

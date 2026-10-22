@@ -1,7 +1,6 @@
 import { createContext, useContext, type ReactNode } from "react";
 import { Link2 } from "@/components/shared/icons/generic-icons";
 import { NodexLogoMarkIcon } from "@/components/shared/icons";
-import { Streamdown } from "streamdown";
 import {
   InlineMarkdownCode,
   INLINE_MARKDOWN_HEADING_CLASS_NAME,
@@ -32,13 +31,13 @@ import { formatThreadMentionShortUuid } from "@/lib/nfm/thread-mention-display";
 import { formatDateMentionPlainText } from "@/lib/nfm/date-mention";
 import { cn } from "@/lib/utils";
 import { NodexTooltip } from "@/components/ui/tooltip";
-import { streamdownCodePlugin } from "@/lib/markdown/markdown-code-highlighter";
 import { DateMentionInlineVisual } from "./date-mention-inline-visual";
 import { ThreadMentionInlineVisual } from "./thread-mention-inline-visual";
 import { PageMentionInlineVisual } from "./page-mention-inline-visual";
 import { InlineReferenceVisual } from "./inline-reference-visual";
 import { AttachmentResourceIcon } from "./attachment-resource-icon";
 import { CodeBlockReadOnlyHeader } from "@/components/shared/code-block-readonly-header";
+import { ReadonlyCodeBlock } from "@/components/shared/readonly-code-block";
 import { MermaidCodePreview } from "@/components/board/editor/mermaid-code-preview";
 import { useTheme } from "@/lib/use-theme";
 import { resolveCodeLanguage } from "../../../shared/nfm/code-language-catalog";
@@ -596,28 +595,17 @@ function HighlightedCodeBlock({
 }) {
   // In a message the language and copy controls wait for the pointer, like the code itself.
   const message = useContext(NfmDensityContext) === "message";
-  const resolvedLanguage = resolveCodeLanguage(language);
-  if (resolvedLanguage.id === "mermaid") {
+  const languageId = resolveCodeLanguage(language).id;
+  if (languageId === "mermaid") {
     return <ReadonlyMermaidCodeBlock code={code} className={className} />;
   }
-  const highlightLanguage = resolvedLanguage.shikiLanguage ?? "text";
-  const fencedCode = `\`\`\`${highlightLanguage}\n${code}\n\`\`\``;
-
   return (
-    <div className={cn("nfm-code-block group/code relative my-2 text-sm", className)}>
-      <div
-        className={cn(
-          "absolute top-1 right-1 z-[3]",
-          message &&
-            "opacity-0 transition-opacity group-hover/code:opacity-100 focus-within:opacity-100",
-        )}
-      >
-        <CodeBlockReadOnlyHeader languageId={resolvedLanguage.id} code={code} />
-      </div>
-      <Streamdown plugins={{ code: streamdownCodePlugin }} controls={false} lineNumbers={false}>
-        {fencedCode}
-      </Streamdown>
-    </div>
+    <ReadonlyCodeBlock
+      code={code}
+      language={languageId}
+      revealActions={message ? "hover" : "always"}
+      className={cn("my-2", className)}
+    />
   );
 }
 
@@ -632,7 +620,7 @@ function ReadonlyMermaidCodeBlock({ code, className }: { code: string; className
       )}
     >
       <div className="absolute top-1 right-1 z-[3]">
-        <CodeBlockReadOnlyHeader languageId="mermaid" code={code} />
+        <CodeBlockReadOnlyHeader language="mermaid" code={code} />
       </div>
       <MermaidCodePreview source={code} theme={theme} />
     </figure>

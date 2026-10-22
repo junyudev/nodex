@@ -1,13 +1,8 @@
-import { useEffect, useState, type CSSProperties } from "react";
-import type { HighlightResult, HighlightOptions } from "@streamdown/code";
-import { streamdownCodePlugin } from "./markdown-code-highlighter";
-import { NFM_CODE_THEME_PAIR } from "../syntax-highlighting";
-import { MarkdownCodeCopyButton } from "./markdown-code-copy-button";
+import { useEffect, useState } from "react";
+import { ReadonlyCodeBlock } from "@/components/shared/readonly-code-block";
 import { MarkdownMermaid } from "./markdown-public-leaves";
 import type { ConversationMathToken } from "./conversation-math";
 
-const themes: HighlightOptions["themes"] = [...NFM_CODE_THEME_PAIR];
-/** The shared highlighter supplies tokens directly, with no parser or vendor provider around the leaf. */
 export function ConversationCode({
   text,
   language,
@@ -17,69 +12,8 @@ export function ConversationCode({
   readonly language: string;
   readonly incomplete: boolean;
 }) {
-  const [highlighted, setHighlighted] = useState<{
-    text: string;
-    language: string;
-    result: HighlightResult;
-  } | null>(null);
-  useEffect(() => {
-    if (language === "mermaid") return;
-    let active = true;
-    const accept = (result: HighlightResult) => {
-      if (active) setHighlighted({ text, language, result });
-    };
-    const result = streamdownCodePlugin.highlight(
-      { code: text, language: language as HighlightOptions["language"], themes },
-      accept,
-    );
-    if (result) accept(result);
-    return () => {
-      active = false;
-    };
-  }, [text, language]);
   if (language === "mermaid") return <MarkdownMermaid source={text} incomplete={incomplete} />;
-  const result =
-    highlighted?.text === text && highlighted.language === language ? highlighted.result : null;
-  return (
-    <div
-      className="relative my-3 overflow-hidden rounded-lg bg-token-text-code-block-background"
-      data-streamdown="code-block"
-    >
-      <div data-content-search-skip="true">
-        <span data-streamdown="code-block-header">{language}</span>
-        <div data-streamdown="code-block-actions">
-          <MarkdownCodeCopyButton text={text} disabled={incomplete} />
-        </div>
-      </div>
-      <div data-streamdown="code-block-body">
-        <pre className="overflow-x-auto">
-          <code>
-            {result
-              ? result.tokens.map((line, lineIndex) => (
-                  <span key={lineIndex}>
-                    {line.map((token, index) => (
-                      <span
-                        key={index}
-                        style={
-                          {
-                            "--sdm-c": token.color,
-                            "--sdm-tbg": token.bgColor,
-                            ...token.htmlStyle,
-                          } as CSSProperties
-                        }
-                      >
-                        {token.content}
-                      </span>
-                    ))}
-                    {lineIndex < result.tokens.length - 1 ? "\n" : ""}
-                  </span>
-                ))
-              : text}
-          </code>
-        </pre>
-      </div>
-    </div>
-  );
+  return <ReadonlyCodeBlock code={text} language={language} incomplete={incomplete} />;
 }
 
 type Katex = typeof import("katex");

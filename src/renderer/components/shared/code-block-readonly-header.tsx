@@ -1,58 +1,43 @@
-import { CheckmarkIcon, CopyIcon } from "@/components/shared/icons";
 import {
-  codeBlockActionButtonClassName,
   codeBlockActionDividerClassName,
   codeBlockActionSurfaceClassName,
 } from "@/components/shared/code-block-action-chrome";
-import { NodexTooltip } from "@/components/ui/tooltip";
-import { writeTextToClipboard } from "@/lib/clipboard";
+import { CodeBlockCopyButton } from "@/components/shared/code-block-copy-button";
+import { resolveReadonlyCodeLanguage } from "@/lib/code-block-presentation";
 import { cn } from "@/lib/utils";
-import { useTransientFeedback } from "@/components/shared/use-transient-feedback";
-import { resolveCodeLanguage } from "../../../shared/nfm/code-language-catalog";
 
 export function CodeBlockReadOnlyHeader({
-  languageId,
+  language,
   code,
+  disabled = false,
 }: {
-  readonly languageId: string;
+  /** A catalog ID or an authored fence info token. */
+  readonly language: string;
   readonly code: string;
+  /** An unfinished streaming fence cannot be copied. */
+  readonly disabled?: boolean;
 }) {
-  const copyFeedback = useTransientFeedback();
-  const language = resolveCodeLanguage(languageId);
-
-  const copy = async () => {
-    if (!(await writeTextToClipboard(code))) return;
-    copyFeedback.show();
-  };
+  const resolved = resolveReadonlyCodeLanguage(language);
 
   return (
     <div
       role="toolbar"
       aria-label="Code block read-only actions"
       data-nfm-code-block-readonly-header
-      data-language-id={language.id}
+      data-language-id={resolved.id}
       className={cn(
-        "pointer-events-auto flex h-7 max-w-[180px] items-center gap-1 rounded-md px-1.5 text-xs",
+        "pointer-events-auto flex h-7 max-w-[180px] items-center gap-1 rounded-md px-1.5 font-sans text-xs",
         codeBlockActionSurfaceClassName,
       )}
     >
       <span className="min-w-0 max-w-[118px] truncate px-0.5 text-[var(--foreground-secondary)]">
-        {language.label}
+        {resolved.label}
       </span>
       <span
         aria-hidden="true"
         className={cn("h-4 w-px shrink-0", codeBlockActionDividerClassName)}
       />
-      <NodexTooltip tooltipContent={copyFeedback.visible ? "Copied" : "Copy code"}>
-        <button
-          type="button"
-          aria-label="Copy code to clipboard"
-          className={cn(codeBlockActionButtonClassName, "shrink-0")}
-          onClick={() => void copy()}
-        >
-          {copyFeedback.visible ? <CheckmarkIcon /> : <CopyIcon />}
-        </button>
-      </NodexTooltip>
+      <CodeBlockCopyButton text={code} disabled={disabled} />
     </div>
   );
 }

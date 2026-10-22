@@ -55,17 +55,17 @@ export async function openNodexMenu(trigger: HTMLElement) {
   await settleAsyncRender();
 }
 
-export async function waitForStreamdownCodeHighlight(node: ParentNode) {
+export async function waitForCodeHighlight(node: ParentNode) {
   await waitFor(() => {
-    // Streamdown's lazy fallback also has color variables, with an inherited color.
-    const highlightedCode = Array.from(node.querySelectorAll<HTMLElement>("pre code span")).some(
-      (token) => {
-        const color = token.style.getPropertyValue("--sdm-c").trim();
-        return color !== "" && color !== "inherit";
-      },
-    );
+    // Before Shiki resolves, and for unsupported grammars, code renders without a theme color.
+    const highlightedCode = Array.from(
+      node.querySelectorAll<HTMLElement>("[data-readonly-code-block] code span"),
+    ).some((token) => {
+      const color = token.style.getPropertyValue("--shiki-light").trim();
+      return color !== "" && color !== "inherit";
+    });
     if (!highlightedCode) {
-      throw new Error("Expected Streamdown code block highlighting to finish.");
+      throw new Error("Expected code block highlighting to finish.");
     }
   });
 }

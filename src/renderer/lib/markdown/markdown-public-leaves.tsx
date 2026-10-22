@@ -1,5 +1,4 @@
 import {
-  useContext,
   useEffect,
   useId,
   useLayoutEffect,
@@ -8,9 +7,9 @@ import {
   type ComponentProps,
   type ReactNode,
 } from "react";
-import { CodeBlock, StreamdownContext, type Components } from "streamdown";
+import type { Components } from "streamdown";
 import type { Element } from "hast";
-import { MarkdownCodeCopyButton } from "./markdown-code-copy-button";
+import { ReadonlyCodeBlock } from "@/components/shared/readonly-code-block";
 import {
   FileMarkdownImageFrame,
   useFileMarkdownImagePresentation,
@@ -63,7 +62,6 @@ export function MarkdownCodeBlock({
   readonly node: Element;
   readonly incomplete: boolean;
 }) {
-  const context = useContext(StreamdownContext);
   const code = node.children.find(
     (child): child is Element => child.type === "element" && child.tagName === "code",
   );
@@ -74,24 +72,8 @@ export function MarkdownCodeBlock({
       /language-([^\s]+)/u,
     )?.[1] ?? "text";
   const text = htmlText(code).replace(/\n$/u, "");
-  const meta = typeof code.properties.metastring === "string" ? code.properties.metastring : "";
   if (language === "mermaid") return <MarkdownMermaid source={text} incomplete={incomplete} />;
-  const showCopy =
-    context.controls === true ||
-    (context.controls !== false &&
-      context.controls.code !== false &&
-      (typeof context.controls.code !== "object" || context.controls.code.copy !== false));
-  return (
-    <CodeBlock
-      code={text}
-      language={language}
-      isIncomplete={incomplete}
-      lineNumbers={context.lineNumbers && !/\bnoLineNumbers\b/u.test(meta)}
-      startLine={Number(meta.match(/startLine=(\d+)/u)?.[1] ?? 1)}
-    >
-      {showCopy ? <MarkdownCodeCopyButton text={text} disabled={incomplete} /> : null}
-    </CodeBlock>
-  );
+  return <ReadonlyCodeBlock code={text} language={language} incomplete={incomplete} />;
 }
 
 export function MarkdownMermaid({

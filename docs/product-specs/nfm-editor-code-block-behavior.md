@@ -83,7 +83,9 @@ Formatting distinguishes unsupported, unchanged, failed, and changed results. Un
 
 ## Read-only presentation
 
-Read-only BlockNote and NFM previews resolve the same language catalog and use the same surface geometry and syntax grammar. They are always unwrapped and show only the language label and Copy. They never mount Language, More, Wrap, Format, or another mutation controller.
+Read-only BlockNote previews keep the editable surface geometry. NFM previews, thread messages and Markdown documents share one read-only Code presentation: the same 10px surface, background token, 22px code inset, Code typography and Shiki theme pair, with a symmetric 24px vertical inset because no editable Action Bar row is reserved. Every read-only presentation is unwrapped and shows only the read-only header, containing the language label and Copy, inset 4px from the top and end edge. It never mounts Language, More, Wrap, Format, or another mutation controller. In message and document surfaces the header appears on hover, while focus is within it, and always on coarse-pointer devices.
+
+NFM previews label languages through the catalog. Markdown surfaces label catalog languages the same way and keep any other authored language name, which is still offered to Shiki's own grammar aliases. Each token carries both themes and resolves from the document color scheme, so the contrast rule above holds in every read-only presentation. Copy writes the authored source; an unfinished streaming fence cannot be copied, a failed write can retry, and success feedback lasts two seconds.
 
 ## Verification boundary
 

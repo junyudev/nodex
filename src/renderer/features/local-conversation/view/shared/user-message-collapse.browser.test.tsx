@@ -1,7 +1,7 @@
 import { act, fireEvent, render, waitFor } from "@testing-library/react";
 import { describe, expect, test } from "vite-plus/test";
 import "../../../../globals.css";
-import { waitForStreamdownCodeHighlight } from "../../../../test/dom";
+import { waitForCodeHighlight } from "../../../../test/dom";
 import { MessageText } from "@/components/message/message-document";
 
 describe("MessageText browser collapse", () => {
@@ -60,12 +60,12 @@ describe("MessageText browser collapse", () => {
         <MessageText text={text} collapsedLineCount={5} />
       </div>,
     );
-    await waitForStreamdownCodeHighlight(view.container);
+    await waitForCodeHighlight(view.container);
     await view.findByRole("button", { name: "Show more" });
     await act(async () => {
       await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
     });
-    const code = view.container.querySelector<HTMLElement>('[data-streamdown="code-block"]');
+    const code = view.container.querySelector<HTMLElement>("[data-readonly-code-block]");
     const clip = code?.closest(".codex-markdown-user")?.parentElement?.parentElement;
     if (!code || !clip) throw new Error("Expected a mounted code block and clipping viewport");
     await waitFor(() =>

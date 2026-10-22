@@ -95,7 +95,7 @@ const holdReviewFrame = async (page: Page) => {
 };
 const readChatTypography = async (page: Page) => {
   await expect(
-    page.locator('[data-content-search-unit-key] [data-streamdown="code-block-body"] pre'),
+    page.locator("[data-content-search-unit-key] [data-readonly-code-block] pre"),
   ).toBeAttached();
   await expect(page.locator('[data-codex-composer="true"]')).toBeAttached();
   return page.evaluate(() => {
@@ -106,9 +106,7 @@ const readChatTypography = async (page: Page) => {
     };
     const prose = requireElement("[data-content-search-unit-key] .codex-markdown p");
     const composer = requireElement('[data-codex-composer="true"]');
-    const code = requireElement(
-      '[data-content-search-unit-key] [data-streamdown="code-block-body"] pre',
-    );
+    const code = requireElement("[data-content-search-unit-key] [data-readonly-code-block] pre");
     const proseStyle = getComputedStyle(prose);
     const codeStyle = getComputedStyle(code);
     const composerStyle = getComputedStyle(composer);
@@ -242,7 +240,7 @@ test("persists typography across real conversation, Page, settings and Electron 
       page.getByRole("heading", { name: "Typography heading", exact: true }),
     ).toBeVisible();
     await expect(
-      page.locator('[data-content-search-unit-key] [data-streamdown="code-block-body"] pre'),
+      page.locator("[data-content-search-unit-key] [data-readonly-code-block] pre"),
     ).toHaveText("Conversation code uses the code preference.");
     await command({ type: "complete" });
     await expect(page.getByRole("button", { name: "Stop", exact: true })).toHaveCount(0);

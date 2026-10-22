@@ -15,7 +15,7 @@ function copyNode(node: Node, output: HTMLElement): void {
   }
   if (!(node instanceof Element)) return;
   const tag = node.tagName.toLowerCase();
-  if (node.getAttribute("data-streamdown") === "code-block") {
+  if (node.hasAttribute("data-readonly-code-block")) {
     const source = node.querySelector("code");
     if (!source) return;
     const pre = document.createElement("pre");

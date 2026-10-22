@@ -54,7 +54,7 @@ export function UserMessageCollapse({
         visibleLineCount: visibleLines,
         rootTopPx: bounds.top,
         physicalScale: clip.offsetHeight === 0 ? 1 : bounds.height / clip.offsetHeight,
-        codeBlocks: [...clip.querySelectorAll('[data-streamdown="code-block"]')].map((element) =>
+        codeBlocks: [...clip.querySelectorAll("[data-readonly-code-block]")].map((element) =>
           element.getBoundingClientRect(),
         ),
       })}px`;

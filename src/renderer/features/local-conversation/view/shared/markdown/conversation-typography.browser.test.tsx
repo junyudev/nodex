@@ -69,13 +69,13 @@ describe("conversation typography in the renderer build", () => {
     await view.findByRole("heading", { name: "First heading" });
     await waitFor(() =>
       expect(
-        requireElement(view.container, '[data-streamdown="code-block-body"] pre').textContent,
+        requireElement(view.container, "[data-readonly-code-block] pre").textContent,
       ).toContain("blockValue"),
     );
     const paragraph = requireElement(view.container, "p");
     const inline = requireElement(view.container, ".inline-markdown");
     const table = requireElement(view.container, "table");
-    const code = requireElement(view.container, '[data-streamdown="code-block-body"] pre');
+    const code = requireElement(view.container, "[data-readonly-code-block] pre");
 
     expect(font(paragraph)).toMatchObject({ size: 14, line: 22.75, weight: "430" });
     expect(font(paragraph).family).toContain("Georgia");

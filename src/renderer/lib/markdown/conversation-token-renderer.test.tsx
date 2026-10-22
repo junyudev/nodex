@@ -75,13 +75,13 @@ describe("the mounted conversation token document", () => {
     const source = `${code("first")}\n\n${code("second")}`;
     const view = render(message(source, false));
     try {
-      const [first, second] = view.getAllByRole("button", { name: "Copy code" });
+      const [first, second] = view.getAllByRole("button", { name: "Copy code to clipboard" });
       await act(async () => {
         second!.focus();
         await Promise.resolve();
       });
       view.rerender(message(`${code("inserted")}\n\n${source}`, false));
-      const controls = view.getAllByRole("button", { name: "Copy code" });
+      const controls = view.getAllByRole("button", { name: "Copy code to clipboard" });
       expect(controls[1]).toBe(first);
       expect(controls[2]).toBe(second);
       expect(document.activeElement).toBe(second);
@@ -158,7 +158,7 @@ describe("the mounted conversation token document", () => {
     const source = `\`\`\`text\n${payload}\n\`\`\`\n\ntail`;
     const view = render(message(source));
     try {
-      const copy = view.getByRole("button", { name: "Copy code" });
+      const copy = view.getByRole("button", { name: "Copy code to clipboard" });
       await act(async () => {
         copy.focus();
         fireEvent.click(copy);

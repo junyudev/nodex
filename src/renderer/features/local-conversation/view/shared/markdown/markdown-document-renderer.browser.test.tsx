@@ -40,7 +40,7 @@ describe("typed Markdown committed rendering in Chromium", () => {
         ),
       );
       const button = view.container.querySelector<HTMLButtonElement>(
-        '[data-streamdown="code-block-copy-button"]',
+        "[data-nfm-code-block-readonly-header] button",
       )!;
       expect(button.disabled).toBe(false);
       await act(async () => {
@@ -60,7 +60,7 @@ describe("typed Markdown committed rendering in Chromium", () => {
       );
       expect(view.container.querySelector("[data-markdown-segment]")).toBe(first);
       expect(first.hasAttribute("data-sd-animate")).toBe(false);
-      expect(view.container.querySelector('[data-streamdown="code-block-copy-button"]')).toBe(
+      expect(view.container.querySelector("[data-nfm-code-block-readonly-header] button")).toBe(
         button,
       );
       expect(document.activeElement).toBe(button);

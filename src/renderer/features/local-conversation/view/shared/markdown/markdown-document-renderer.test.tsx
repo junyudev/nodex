@@ -3,7 +3,7 @@ import { act, fireEvent, waitFor } from "@testing-library/react";
 import { StrictMode } from "react";
 import { renderWithMaitai as render } from "@/test/thread-maitai";
 import { NodexTooltipProvider } from "@/components/ui/tooltip";
-import { settleLazyRender, waitForStreamdownCodeHighlight } from "@/test/dom";
+import { settleLazyRender, waitForCodeHighlight } from "@/test/dom";
 import { MarkdownRenderer } from "./markdown-renderer";
 import { markdownSyntaxEngine } from "@/lib/markdown/markdown-syntax";
 
@@ -43,7 +43,7 @@ describe("typed Markdown document through the public rich provider", () => {
         );
         await settleLazyRender();
         const copy = view.container.querySelector<HTMLButtonElement>(
-          '[data-streamdown="code-block-copy-button"]',
+          "[data-nfm-code-block-readonly-header] button",
         )!;
         await act(async () => {
           fireEvent.click(copy);
@@ -117,7 +117,7 @@ describe("typed Markdown document through the public rich provider", () => {
     );
     await settleLazyRender();
     const codeButton = view.container.querySelector<HTMLButtonElement>(
-      '[data-streamdown="code-block-copy-button"]',
+      "[data-nfm-code-block-readonly-header] button",
     )!;
     await act(async () => {
       codeButton.focus();
@@ -132,12 +132,12 @@ describe("typed Markdown document through the public rich provider", () => {
     );
     await waitFor(() =>
       expect(
-        view.container.querySelector('[data-streamdown="code-block"] code')?.textContent?.trim(),
+        view.container.querySelector("[data-readonly-code-block] code")?.textContent?.trim(),
       ).toBe("other"),
     );
     expect(view.container.querySelector("strong")?.textContent).toBe("other");
     expect(view.getByAltText("other").getAttribute("src")).toBe("https://example.com/b.png");
-    expect(view.container.querySelector('[data-streamdown="code-block-copy-button"]')).toBe(
+    expect(view.container.querySelector("[data-nfm-code-block-readonly-header] button")).toBe(
       codeButton,
     );
     expect(document.activeElement).toBe(codeButton);
@@ -166,12 +166,11 @@ describe("typed Markdown document through the public rich provider", () => {
         <MarkdownRenderer content={"```ts\nconst answer = 42"} parseIncompleteMarkdown />
       </NodexTooltipProvider>,
     );
-    await waitForStreamdownCodeHighlight(view.container);
-    expect(
-      view.container
-        .querySelector('[data-streamdown="code-block"]')
-        ?.getAttribute("data-incomplete"),
-    ).toBe("true");
+    await waitForCodeHighlight(view.container);
+    expect(view.getByRole("button", { name: "Copy code to clipboard" })).toHaveProperty(
+      "disabled",
+      true,
+    );
   });
   test("retains embedded image load state and DOM identity when streaming completes", async () => {
     const content = "Before ![retained](https://example.com/image.png) after";

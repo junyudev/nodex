@@ -1,6 +1,9 @@
 import { useLayoutEffect, useRef, useState } from "react";
 import { CheckmarkIcon, CopyIcon } from "@/components/shared/icons";
-import { writeTextToClipboard } from "../clipboard";
+import { codeBlockActionButtonClassName } from "@/components/shared/code-block-action-chrome";
+import { NodexTooltip } from "@/components/ui/tooltip";
+import { writeTextToClipboard } from "@/lib/clipboard";
+import { cn } from "@/lib/utils";
 
 interface CopyLifetime {
   readonly text: string;
@@ -17,8 +20,8 @@ async function copyCode(text: string): Promise<boolean> {
   }
 }
 
-/** The public button has one authored-source writer, including the desktop clipboard fallback. */
-export function MarkdownCodeCopyButton({
+/** Copies authored source through the desktop clipboard fallback; feedback is bound to that source. */
+export function CodeBlockCopyButton({
   text,
   disabled,
 }: {
@@ -53,19 +56,16 @@ export function MarkdownCodeCopyButton({
     }, 2_000);
   };
   return (
-    <button
-      type="button"
-      data-streamdown="code-block-copy-button"
-      className="inline-flex size-7 items-center justify-center rounded-sm text-token-text-secondary hover:bg-token-list-hover-background disabled:opacity-50"
-      disabled={disabled}
-      aria-label={copied ? "Copied code" : "Copy code"}
-      onClick={() => void onCopy()}
-    >
-      {copied ? (
-        <CheckmarkIcon className="size-3.5" aria-hidden />
-      ) : (
-        <CopyIcon className="size-3.5" aria-hidden />
-      )}
-    </button>
+    <NodexTooltip tooltipContent={copied ? "Copied" : "Copy code"}>
+      <button
+        type="button"
+        className={cn(codeBlockActionButtonClassName, "shrink-0")}
+        disabled={disabled}
+        aria-label={copied ? "Copied code" : "Copy code to clipboard"}
+        onClick={() => void onCopy()}
+      >
+        {copied ? <CheckmarkIcon aria-hidden /> : <CopyIcon aria-hidden />}
+      </button>
+    </NodexTooltip>
   );
 }

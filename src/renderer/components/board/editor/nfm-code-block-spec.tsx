@@ -58,7 +58,7 @@ function NfmCodeBlockSurface({
         className="pointer-events-none absolute top-1 right-1 z-[2]"
       >
         {readOnlyCode === undefined ? null : (
-          <CodeBlockReadOnlyHeader languageId={language} code={readOnlyCode} />
+          <CodeBlockReadOnlyHeader language={language} code={readOnlyCode} />
         )}
       </div>
       <div

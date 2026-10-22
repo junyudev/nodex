@@ -6,7 +6,7 @@ import {
   setDateMentionClockStoreForTest,
 } from "@/lib/nfm/date-mention-clock";
 import { renderWithMaitai as render } from "../../test/thread-maitai";
-import { settleAsyncRender, textContent, waitForStreamdownCodeHighlight } from "../../test/dom";
+import { settleAsyncRender, textContent, waitForCodeHighlight } from "../../test/dom";
 import { NfmRenderer } from "./nfm-renderer";
 
 let restoreDateMentionClockStore: (() => void) | null = null;
@@ -73,13 +73,13 @@ describe("NfmRenderer", () => {
     expect(inlineCode?.textContent).toBe("inline code");
   });
 
-  test("renders code blocks through Streamdown's code block renderer", async () => {
+  test("renders code blocks through the shared read-only code block", async () => {
     const { container } = render(<NfmRenderer content={"```ts\nconst answer = 42\n```"} />);
-    await waitForStreamdownCodeHighlight(container);
+    await waitForCodeHighlight(container);
 
-    expect(container.querySelector('[data-streamdown="code-block"]')).not.toBeNull();
-    expect(container.querySelector('[data-language="tsx"]')).not.toBeNull();
-    expect(container.querySelector('[data-streamdown="code-block-actions"]') === null).toBe(true);
+    expect(
+      container.querySelector('[data-readonly-code-block][data-language="typescript"]'),
+    ).not.toBeNull();
     expect(
       container.querySelector(
         '[data-nfm-code-block-readonly-header][data-language-id="typescript"]',
@@ -89,12 +89,16 @@ describe("NfmRenderer", () => {
     expect(textContent(container).includes("const")).toBe(true);
   });
 
-  test("falls back to plain code rendering for unknown languages without custom shiki HTML", async () => {
+  test("presents unknown languages as catalog plain text", async () => {
     const { container } = render(<NfmRenderer content={"```madeuplang\nhello()\n```"} />);
     await settleAsyncRender();
 
-    expect(container.querySelector('[data-streamdown="code-block"]')).not.toBeNull();
-    expect(container.querySelector('pre[style*="--shiki-dark-bg"]') === null).toBe(true);
+    expect(
+      container.querySelector('[data-readonly-code-block][data-language="text"]'),
+    ).not.toBeNull();
+    expect(container.querySelector("[data-nfm-code-block-readonly-header]")?.textContent).toContain(
+      "Plain Text",
+    );
     expect(textContent(container).includes("hello()")).toBe(true);
   });
 

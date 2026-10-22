@@ -406,18 +406,12 @@
 
 /* ===== Code Block Theme Overrides ===== */
 /* BlockNote core hardcodes dark bg (#161616) on code blocks. Override it with our shared code-block surface. */
-:is(
-  .bn-root .bn-block-content[data-content-type="codeBlock"] [data-nfm-code-block-surface],
-  .codex-markdown [data-streamdown="code-block"],
-  .codex-markdown-plan [data-streamdown="code-block"],
-  .nfm-code-block [data-streamdown="code-block"]
-) {
-  --nfm-code-block-padding: 24px;
-  --nfm-code-block-radius: 10px;
+.bn-root .bn-block-content[data-content-type="codeBlock"] [data-nfm-code-block-surface] {
+  position: relative;
   background: var(--code-block-bg);
   color: var(--foreground);
   border: 0;
-  border-radius: var(--nfm-code-block-radius);
+  border-radius: 10px;
   overflow: hidden;
 }
 
@@ -426,10 +420,6 @@
   /* The product surface owns the backdrop; clear the vendored host default so its
      translucent token composites against the editor's matching color scheme. */
   background: transparent;
-}
-
-.bn-root .bn-block-content[data-content-type="codeBlock"] [data-nfm-code-block-surface] {
-  position: relative;
 }
 
 /* Ensure Shiki pre elements inside code blocks inherit our background */
@@ -536,10 +526,6 @@
   background-color: color-mix(in srgb, var(--color-chart-blue) 36%, transparent);
   color: color-mix(in srgb, var(--app-color-text-on-accent) 55%, transparent);
   opacity: 1;
-}
-
-.nfm-code-block {
-  color: var(--foreground);
 }
 
 /* Enclosed Blocks own one semantic surface around content and direct children. */
@@ -1559,187 +1545,6 @@
   line-height: inherit;
 }
 
-.codex-markdown pre {
-  overflow-x: auto;
-  max-width: 100%;
-  border: 1px solid var(--border);
-  background: var(--background-secondary);
-  border-radius: 8px;
-  padding: 0.5rem;
-}
-
-.codex-markdown pre code {
-  background: transparent;
-  padding: 0;
-  border-radius: 0;
-}
-
-.codex-markdown [data-streamdown="code-block"],
-.codex-markdown-plan [data-streamdown="code-block"],
-.nfm-code-block [data-streamdown="code-block"] {
-  position: relative;
-  gap: 0;
-  padding: 0;
-}
-
-.codex-markdown [data-streamdown="code-block-header"],
-.codex-markdown-plan [data-streamdown="code-block-header"],
-.nfm-code-block [data-streamdown="code-block-header"] {
-  position: absolute;
-  top: 8px;
-  left: 18px;
-  z-index: 2;
-  height: auto;
-  margin: 0;
-  padding: 0;
-  font-size: 0.8em;
-  line-height: 1.2;
-  color: var(--foreground-tertiary);
-  opacity: 0;
-  pointer-events: none;
-}
-
-.codex-markdown [data-streamdown="code-block"]:hover [data-streamdown="code-block-header"],
-.codex-markdown [data-streamdown="code-block"]:focus-within [data-streamdown="code-block-header"],
-.codex-markdown-plan [data-streamdown="code-block"]:hover [data-streamdown="code-block-header"],
-.codex-markdown-plan
-  [data-streamdown="code-block"]:focus-within
-  [data-streamdown="code-block-header"],
-.nfm-code-block [data-streamdown="code-block"]:hover [data-streamdown="code-block-header"],
-.nfm-code-block [data-streamdown="code-block"]:focus-within [data-streamdown="code-block-header"] {
-  opacity: 0.5;
-}
-
-.codex-markdown [data-streamdown="code-block-body"],
-.codex-markdown-plan [data-streamdown="code-block-body"],
-.nfm-code-block [data-streamdown="code-block-body"] {
-  padding: var(--nfm-code-block-padding);
-  border: 0;
-  border-radius: 0;
-  background: transparent;
-  font-size: 85%;
-}
-
-.nfm-code-block [data-streamdown="code-block-body"] {
-  padding: 36px 22px 24px;
-  font-family: var(--font-mono);
-  font-size: var(--codex-chat-code-font-size);
-  line-height: 20px;
-}
-
-.codex-markdown [data-streamdown="code-block-body"],
-.codex-markdown-plan [data-streamdown="code-block-body"] {
-  font-family: var(--font-mono);
-  font-size: var(--codex-chat-code-font-size);
-  line-height: max(1.5em, 20px);
-}
-
-.codex-markdown [data-streamdown="code-block-header"],
-.codex-markdown-plan [data-streamdown="code-block-header"] {
-  font-family: var(--font-sans);
-  font-size: var(--text-sm);
-  line-height: var(--text-sm--line-height);
-}
-
-.codex-markdown [data-streamdown="code-block"] pre,
-.codex-markdown-plan [data-streamdown="code-block"] pre,
-.nfm-code-block [data-streamdown="code-block"] pre {
-  background: transparent !important;
-  border: 0;
-  max-width: none;
-  padding: 0;
-  margin: 0;
-  font-size: inherit;
-}
-
-.codex-markdown [data-streamdown="code-block"] code,
-.codex-markdown-plan [data-streamdown="code-block"] code,
-.nfm-code-block [data-streamdown="code-block"] code {
-  font-size: inherit;
-}
-
-.codex-markdown [data-streamdown="code-block"] code > span,
-.codex-markdown-plan [data-streamdown="code-block"] code > span,
-.nfm-code-block [data-streamdown="code-block"] code > span {
-  display: block;
-  min-height: 1lh;
-}
-
-.codex-markdown [data-streamdown="code-block"] code > span > span,
-.codex-markdown-plan [data-streamdown="code-block"] code > span > span,
-.nfm-code-block [data-streamdown="code-block"] code > span > span {
-  color: var(--sdm-c, inherit);
-  background: var(--sdm-tbg, transparent);
-}
-
-.dark .codex-markdown [data-streamdown="code-block"] code > span > span,
-.dark .codex-markdown-plan [data-streamdown="code-block"] code > span > span,
-.dark .nfm-code-block [data-streamdown="code-block"] code > span > span {
-  color: var(--shiki-dark, var(--sdm-c, inherit));
-  background: var(--shiki-dark-bg, var(--sdm-tbg, transparent));
-}
-
-.codex-markdown [data-streamdown="code-block"] > div:has(> [data-streamdown="code-block-actions"]),
-.codex-markdown-plan
-  [data-streamdown="code-block"]
-  > div:has(> [data-streamdown="code-block-actions"]),
-.nfm-code-block [data-streamdown="code-block"] > div:has(> [data-streamdown="code-block-actions"]) {
-  display: contents;
-}
-
-.codex-markdown [data-streamdown="code-block-actions"],
-.codex-markdown-plan [data-streamdown="code-block-actions"],
-.nfm-code-block [data-streamdown="code-block-actions"] {
-  position: absolute;
-  top: 8px;
-  right: 10px;
-  z-index: 3;
-  display: flex;
-  gap: 2px;
-  padding: 2px;
-  border: 0;
-  border-radius: var(--radius-md);
-  background: color-mix(in srgb, var(--foreground) 6%, transparent);
-  opacity: 0;
-  backdrop-filter: blur(8px);
-  transition: none;
-}
-
-.codex-markdown [data-streamdown="code-block"]:hover [data-streamdown="code-block-actions"],
-.codex-markdown [data-streamdown="code-block"]:focus-within [data-streamdown="code-block-actions"],
-.codex-markdown-plan [data-streamdown="code-block"]:hover [data-streamdown="code-block-actions"],
-.codex-markdown-plan
-  [data-streamdown="code-block"]:focus-within
-  [data-streamdown="code-block-actions"],
-.nfm-code-block [data-streamdown="code-block"]:hover [data-streamdown="code-block-actions"],
-.nfm-code-block [data-streamdown="code-block"]:focus-within [data-streamdown="code-block-actions"] {
-  opacity: 1;
-}
-
-.codex-markdown [data-streamdown="code-block-copy-button"],
-.codex-markdown-plan [data-streamdown="code-block-copy-button"],
-.nfm-code-block [data-streamdown="code-block-copy-button"] {
-  display: inline-flex;
-  width: 24px;
-  height: 24px;
-  align-items: center;
-  justify-content: center;
-  padding: 0;
-  border-radius: var(--radius-sm);
-  color: var(--foreground-tertiary);
-  transition: none;
-}
-
-.codex-markdown [data-streamdown="code-block-copy-button"]:hover,
-.codex-markdown [data-streamdown="code-block-copy-button"]:focus-visible,
-.codex-markdown-plan [data-streamdown="code-block-copy-button"]:hover,
-.codex-markdown-plan [data-streamdown="code-block-copy-button"]:focus-visible,
-.nfm-code-block [data-streamdown="code-block-copy-button"]:hover,
-.nfm-code-block [data-streamdown="code-block-copy-button"]:focus-visible {
-  background: color-mix(in srgb, var(--foreground) 8%, transparent);
-  color: var(--foreground);
-}
-
 .codex-markdown .katex-display {
   overflow-x: auto;
   overflow-y: hidden;
@@ -1753,10 +1558,6 @@
 
 .codex-markdown-plan {
   color: var(--foreground);
-}
-
-.codex-markdown-plan pre {
-  margin: 0.5rem 0 1rem;
 }
 
 .codex-tool-code {

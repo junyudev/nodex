@@ -1,7 +1,7 @@
 import { act, fireEvent, render, waitFor } from "@testing-library/react";
 import { describe, expect, test, vi } from "vite-plus/test";
 import { StrictMode } from "react";
-import { MarkdownCodeCopyButton } from "./markdown-code-copy-button";
+import { CodeBlockCopyButton } from "./code-block-copy-button";
 
 const content = "alpha\n\n\n\nbeta\u2028gamma\u2029delta";
 
@@ -17,7 +17,7 @@ function withClipboard(writeText: (text: string) => Promise<void>) {
 function copyButton(text = content, disabled = false) {
   return (
     <StrictMode>
-      <MarkdownCodeCopyButton text={text} disabled={disabled} />
+      <CodeBlockCopyButton text={text} disabled={disabled} />
     </StrictMode>
   );
 }
@@ -35,13 +35,15 @@ describe("the public authored-code Copy control", () => {
     const restore = withClipboard(writeText);
     const view = render(copyButton());
     try {
-      const button = view.getByRole("button", { name: "Copy code" });
+      const button = view.getByRole("button", { name: "Copy code to clipboard" });
       await click(button);
       await waitFor(() => expect(view.getByRole("button", { name: "Copied code" })).toBe(button));
       await click(button);
       expect(writeText).toHaveBeenCalledExactlyOnceWith(content);
       view.rerender(copyButton("new source"));
-      await waitFor(() => expect(view.getByRole("button", { name: "Copy code" })).toBe(button));
+      await waitFor(() =>
+        expect(view.getByRole("button", { name: "Copy code to clipboard" })).toBe(button),
+      );
       view.rerender(copyButton());
       await click(button);
       await waitFor(() => expect(writeText).toHaveBeenCalledTimes(2));
@@ -67,7 +69,7 @@ describe("the public authored-code Copy control", () => {
     Object.defineProperty(document, "execCommand", { configurable: true, value: execCommand });
     const view = render(copyButton());
     try {
-      const button = view.getByRole("button", { name: "Copy code" });
+      const button = view.getByRole("button", { name: "Copy code to clipboard" });
       await act(async () => {
         button.focus();
       });
@@ -95,7 +97,7 @@ describe("the public authored-code Copy control", () => {
     Object.defineProperty(document, "execCommand", { configurable: true, value: () => false });
     const view = render(copyButton(content, true));
     try {
-      const button = view.getByRole("button", { name: "Copy code" });
+      const button = view.getByRole("button", { name: "Copy code to clipboard" });
       expect((button as HTMLButtonElement).disabled).toBe(true);
       await click(button);
       expect(writeText).not.toHaveBeenCalled();
@@ -125,7 +127,7 @@ describe("the public authored-code Copy control", () => {
     const restore = withClipboard(writeText);
     const view = render(copyButton());
     try {
-      const button = view.getByRole("button", { name: "Copy code" });
+      const button = view.getByRole("button", { name: "Copy code to clipboard" });
       await click(button);
       await click(button);
       expect(writeText).toHaveBeenCalledExactlyOnceWith(content);
