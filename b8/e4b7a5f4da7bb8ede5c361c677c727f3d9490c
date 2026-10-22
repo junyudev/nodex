@@ -1,0 +1,19 @@
+src/renderer/lib/inline-visualization/inline-visualization-calendar.ts
+  s_8d47191f83c144::t_e42c6076a29332 13,19
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "b8e4b7a5f4da7bb8ede5c361c677c727f3d9490c",
+  "prompts": {},
+  "sessions": {
+    "s_8d47191f83c144": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a162a4-b5ba-77e1-9bfd-eea3430138ce",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
