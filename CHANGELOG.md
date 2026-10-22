@@ -6,6 +6,14 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+### Changed
+
+### Fixed
+
+## [0.4.0] - 2026-10-22
+
+### Added
+
 - Home and Space separate chats and Projects from content browsing while remembering each destination. The navigation rail remains available with the sidebar hidden, and each split panel has an Open tabs chooser with live titles and counts.
 
 - An Inbox above New chat captures thoughts, todos and questions as Pages without first choosing a Project, and opens them as tabs beside itself. A suggestion Agent names messages and always proposes a concrete next step for confirmation, with exact targets and grouped scope visible. Drafts and confirmed inputs survive interrupted replies, edits preserve concurrent changes, and grouped filing has one atomic Undo. Busy chats receive confirmed messages into their own queue. Settings reuse available models while refreshing. Handled messages leave for History, and a message sent by mistake can be deleted for good. Agents and `nodex inbox send` can leave messages in the Inbox of the Project they work in. Messages are written in Markdown and can carry pasted, dropped or picked images, and the stream shows each message with its formatting and images. A message marked important stays within reach: while it is out of view, the Inbox points back to it with how long it has waited.
