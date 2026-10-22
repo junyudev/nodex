@@ -1,0 +1,51 @@
+src/renderer/features/local-conversation/view/connected-thread-stage.test.tsx
+  s_815d4298362b02::t_5b159aa37b3aae 40,1002-1039,1041-1118,1335,1407,1459,1491-1498,1511,1531-1532,1534
+  s_815d4298362b02::t_7917447d4ba745 1040
+  s_815d4298362b02::t_f7e8cbe927e259 1499-1510,1512-1522,1524-1530,1533,1557
+src/renderer/features/local-conversation/view/conversation-task-dialog.test.tsx
+  s_815d4298362b02::t_1363ec04f3905e 123
+src/renderer/features/local-conversation/local-conversation-store.ts
+  s_815d4298362b02::t_7e5bb0af756212 9070,9474,9504-9505
+  s_815d4298362b02::t_305127908df341 9506-9508
+src/renderer/features/local-conversation/use-background-subagent-rows.test.tsx
+  s_815d4298362b02::t_2bf10fe52c0ac8 129
+src/renderer/features/local-conversation/native-conversation-history-adapter.ts
+  s_815d4298362b02::t_7e5bb0af756212 44
+src/renderer/features/local-conversation/agent-runtime-conversation-adapter.test.tsx
+  s_815d4298362b02::t_a5b950075a3270 1020,1023-1035,1037,1058-1065,1069
+  s_815d4298362b02::t_3992b14dab9454 1068
+src/main/codex-application/CodexThreadDirectory.ts
+  s_815d4298362b02::t_d645339397aa07 152-153
+src/renderer/features/local-conversation/agent-runtime-conversation-adapter.ts
+  s_815d4298362b02::t_7e5bb0af756212 230-232
+src/renderer/features/local-conversation/view/connected-thread-stage.tsx
+  s_815d4298362b02::t_d7d3c24e6d2962 1527
+  s_815d4298362b02::t_7e5bb0af756212 381,387,1524-1526,1528-1531,1539
+CHANGELOG.md
+  s_815d4298362b02::t_d645339397aa07 13
+docs/product-specs/agent-runtime-behavior.md
+  s_815d4298362b02::t_d645339397aa07 115-120
+src/renderer/features/local-conversation/conversation-runtime.ts
+  s_815d4298362b02::t_d42693d1b74538 61
+  s_815d4298362b02::t_7e5bb0af756212 88-89
+src/renderer/features/local-conversation/view/codex-thread-navigation-marker.test.tsx
+  s_815d4298362b02::t_c7953740f649c7 172
+src/renderer/features/local-conversation/view/local-conversation-timeline-image.test.tsx
+  s_815d4298362b02::t_fa2f2bab54dc6c 116
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "e7b1d4d6b56a3b4de90a43c8e03482069c7c7881",
+  "prompts": {},
+  "sessions": {
+    "s_815d4298362b02": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1640e-f2bd-7b93-9ce6-465dbad52c59",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
