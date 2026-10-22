@@ -218,6 +218,7 @@ export interface AcpAdapterV2Flavor {
   readonly onSessionConfigurationUpdate?: (
     configOptions: ReadonlyArray<EffectAcpSchema.SessionConfigOption>,
     modeState: AcpSessionModeState | undefined,
+    supportsImagePrompts?: boolean,
   ) => Effect.Effect<void>;
   readonly onUrlElicitation?: (input: {
     readonly elicitationId: string;
@@ -5950,14 +5951,6 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
         yield* Ref.set(activeSessionId, started.sessionId);
         yield* Ref.set(activeSessionSetup, started);
         rememberTerminalEnvironment(started.sessionId, yield* readMcpContext(input.threadId));
-        // Initial native configuration is observable even when fixed execution
-        // settings require no mutation and therefore emit no update notification.
-        yield* (
-          flavor.onSessionConfigurationUpdate?.(
-            yield* runtime.getConfigOptions,
-            yield* runtime.getModeState,
-          ) ?? Effect.void
-        );
         const capabilities = negotiatedCapabilities(flavor.capabilities, started);
         const canLoadSession = started.initializeResult.agentCapabilities?.loadSession === true;
         const canResumeSession =
@@ -5967,6 +5960,15 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
           negotiatedImage:
             started.initializeResult.agentCapabilities?.promptCapabilities?.image === true,
         });
+        // Publish negotiated prompt support with the initial configuration;
+        // option-only notifications leave this handshake result unchanged.
+        yield* (
+          flavor.onSessionConfigurationUpdate?.(
+            yield* runtime.getConfigOptions,
+            yield* runtime.getModeState,
+            supportsImagePrompts,
+          ) ?? Effect.void
+        );
 
         const activateSession = Effect.fnUntraced(function* (
           sessionId: string,

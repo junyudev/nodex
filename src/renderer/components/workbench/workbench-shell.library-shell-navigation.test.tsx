@@ -33,6 +33,8 @@ import {
   renderWorkbench,
   rendererCommandPayload,
   agentRuntimeLaunchCalls,
+  mockInvokeImpl,
+  setMockInvokeImpl,
   startTurnCalls,
   setInvokeCalls,
   setPageChatItems,
@@ -666,83 +668,100 @@ describe("workbench session shell / library-shell-navigation", () => {
     expect(pageStageProps?.sessionThread).toMatchObject({ threadId: "engine:runtime-page" });
   });
 
-  test("page-stage editor can start a new thread in the current blank session", async () => {
-    const session = makeBlankSession({
-      id: "session:alpha:card-empty",
-      tabs: [
-        {
-          id: "card-tab",
-          sessionId: "session:alpha:card-empty",
-          projectId: "alpha",
-          kind: "page_stage",
-          title: "Card One",
-          panelId: "right",
-          config: {
-            routingContext: { kind: "project", projectId: "alpha" },
-            pageId: "card-1",
-            titleSnapshot: "Card One",
+  test.each(["codex", "claudeAgent", "opencode"])(
+    "page-stage editor starts a new thread with the available %s Agent",
+    async (driver) => {
+      const session = makeBlankSession({
+        id: "session:alpha:card-empty",
+        tabs: [
+          {
+            id: "card-tab",
+            sessionId: "session:alpha:card-empty",
+            projectId: "alpha",
+            kind: "page_stage",
+            title: "Card One",
+            panelId: "right",
+            config: {
+              routingContext: { kind: "project", projectId: "alpha" },
+              pageId: "card-1",
+              titleSnapshot: "Card One",
+            },
           },
-        },
-      ],
-      panels: makePanels({
-        rightTabIds: ["card-tab"],
-        rightActiveTabId: "card-tab",
-      }),
-    });
-
-    renderWorkbench({
-      sessionsByProject: { alpha: [session] },
-    });
-    await settleAsyncRender();
-    await settleAsyncRender();
-
-    const pageStageProps = (globalThis as { __lastPageStageProps?: Record<string, unknown> })
-      .__lastPageStageProps;
-    expect(pageStageProps?.sessionId).toBe("session:alpha:card-empty");
-    expect(pageStageProps?.canStartThreadInSession).toBe(true);
-    const startThread = pageStageProps?.onStartNewSessionThreadFromEditor as
-      | ((input: {
-          projectId: string;
-          targetSessionId?: string;
-          prompt: string;
-        }) => Promise<{ threadId: string; sessionId?: string }>)
-      | undefined;
-    if (!startThread) {
-      throw new Error("missing page-stage start-thread callback");
-    }
-
-    let result: { threadId: string; sessionId?: string } | null = null;
-    await act(async () => {
-      result = await startThread({
-        projectId: "alpha",
-        targetSessionId: "session:alpha:card-empty",
-        prompt: "Send selected blocks",
+        ],
+        panels: makePanels({
+          rightTabIds: ["card-tab"],
+          rightActiveTabId: "card-tab",
+        }),
       });
-      await Promise.resolve();
-    });
-    await settleAsyncRender();
 
-    expect(JSON.stringify(result)).toBe(
-      JSON.stringify({
-        threadId: "engine:session:alpha:card-empty",
+      renderWorkbench({
+        sessionsByProject: { alpha: [session] },
+      });
+      const base = mockInvokeImpl;
+      if (!base) throw new Error("Expected Runtime transport");
+      const instanceId = driver === "codex" ? "codex" : `${driver}:configured`;
+      setMockInvokeImpl(async (channel, ...args) => {
+        const value = await base(channel, ...args);
+        return channel === "agent-runtime:providers:read"
+          ? (value as Record<string, unknown>[]).map((provider) => ({
+              ...provider,
+              instanceId,
+              driver,
+            }))
+          : value;
+      });
+      await settleAsyncRender();
+      await settleAsyncRender();
+
+      const pageStageProps = (globalThis as { __lastPageStageProps?: Record<string, unknown> })
+        .__lastPageStageProps;
+      expect(pageStageProps?.sessionId).toBe("session:alpha:card-empty");
+      expect(pageStageProps?.canStartThreadInSession).toBe(true);
+      const startThread = pageStageProps?.onStartNewSessionThreadFromEditor as
+        | ((input: {
+            projectId: string;
+            targetSessionId?: string;
+            prompt: string;
+          }) => Promise<{ threadId: string; sessionId?: string }>)
+        | undefined;
+      if (!startThread) {
+        throw new Error("missing page-stage start-thread callback");
+      }
+
+      let result: { threadId: string; sessionId?: string } | null = null;
+      await act(async () => {
+        result = await startThread({
+          projectId: "alpha",
+          targetSessionId: "session:alpha:card-empty",
+          prompt: "Send selected blocks",
+        });
+        await Promise.resolve();
+      });
+      await settleAsyncRender();
+
+      expect(JSON.stringify(result)).toBe(
+        JSON.stringify({
+          threadId: "engine:session:alpha:card-empty",
+          sessionId: "session:alpha:card-empty",
+        }),
+      );
+      expect(agentRuntimeLaunchCalls).toHaveLength(1);
+      // Launch links the Page in its binding transaction; a rejected launch leaves no link.
+      expect(invokeCalls.some((call) => call[0] === "page-chats:link")).toBe(false);
+      const startInput = agentRuntimeLaunchCalls[0]!;
+      expect(isUuidV7(startInput.launchId)).toBe(true);
+      expect(isUuidV7(startInput.message.messageId)).toBe(true);
+      expect(startInput).toMatchObject({
+        projectId: "alpha",
         sessionId: "session:alpha:card-empty",
-      }),
-    );
-    expect(agentRuntimeLaunchCalls).toHaveLength(1);
-    // Launch links the Page in its binding transaction; a rejected launch leaves no link.
-    expect(invokeCalls.some((call) => call[0] === "page-chats:link")).toBe(false);
-    const startInput = agentRuntimeLaunchCalls[0]!;
-    expect(isUuidV7(startInput.launchId)).toBe(true);
-    expect(isUuidV7(startInput.message.messageId)).toBe(true);
-    expect(startInput).toMatchObject({
-      projectId: "alpha",
-      sessionId: "session:alpha:card-empty",
-      message: { text: "Send selected blocks" },
-      initialPageIds: ["card-1"],
-      runInTarget: "localProject",
-    });
-    expect(invokeCalls.some((call) => call[0] === "project-sessions:create")).toBe(false);
-  });
+        message: { text: "Send selected blocks" },
+        initialPageIds: ["card-1"],
+        runInTarget: "localProject",
+        modelSelection: { instanceId },
+      });
+      expect(invokeCalls.some((call) => call[0] === "project-sessions:create")).toBe(false);
+    },
+  );
 
   test("projects Session-anchored Linked chats into Page Stage and unlinks explicitly", async () => {
     const session = makeBlankSession({

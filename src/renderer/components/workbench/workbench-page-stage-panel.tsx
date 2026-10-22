@@ -10,14 +10,12 @@ import type {
   PageStageSessionSnapshot,
 } from "@/components/board/page-stage/types";
 import { NodexButton } from "@/components/ui/button";
-import { useCodexThreadSettings } from "@/lib/use-codex-thread-settings";
-import { useCodexServiceTierSettings } from "@/lib/use-codex-service-tier-settings";
 import { useWorkbenchWindowOwner } from "@/lib/use-workbench-window-state";
 import {
   captureCodexTurnPresentation,
   readCodexSubmissionPresentation,
 } from "@/lib/codex-turn-presentation";
-import { launchAgentRuntimeSession } from "@/lib/agent-runtime-session-launch";
+import { useAgentRuntimeSessionLaunch } from "@/lib/use-agent-runtime-session-launch";
 import { agentRuntimeRuntime } from "@/lib/agent-runtime-runtime";
 import { agentRuntimePromptImages } from "@/lib/agent-runtime-prompt";
 import { prepareAgentMessage } from "../../../shared/agent-prompt";
@@ -197,8 +195,7 @@ export function PageStageSessionTab({
     throw new Error("Project Page Stage requires a Project route");
   const pageAccessProjectId = tab.config.routingContext.projectId;
   const workbenchOwner = useWorkbenchWindowOwner();
-  const { settings: threadSettings } = useCodexThreadSettings();
-  const { serviceTierSettings } = useCodexServiceTierSettings();
+  const launchAgentRuntimeSession = useAgentRuntimeSessionLaunch();
   const queryClient = useQueryClient();
   const relatedChatsQuery = useInfiniteQuery({
     ...pageChatWindowQueryOptions({
@@ -331,7 +328,8 @@ export function PageStageSessionTab({
           promptInput,
           title: input.threadName,
           initialPageIds: [tab.config.pageId],
-          codexDefaults: { ...threadSettings, serviceTier: serviceTierSettings.serviceTier },
+          onSelectionResolved: (backend) =>
+            sessionFirstSubmissionOwner.update(submission.launchId, { backend }),
           presentationTicket,
           launchIdentity: {
             launchId: submission.launchId,
@@ -355,8 +353,7 @@ export function PageStageSessionTab({
     },
     [
       workbenchOwner,
-      threadSettings,
-      serviceTierSettings.serviceTier,
+      launchAgentRuntimeSession,
       onEnsureDefaultDraftSessionForProject,
       onRefreshSessions,
       tab.config.pageId,
@@ -617,7 +614,9 @@ export function PageStageSessionTab({
                     { images: true, agentConfigs: true },
                   )),
                   images: agentRuntimePromptImages(materializedInput),
-                  agentConfigs: materializedInput?.agentConfigs ?? [],
+                  ...(materializedInput?.agentConfigs !== undefined
+                    ? { agentConfigs: materializedInput.agentConfigs }
+                    : {}),
                 },
               });
             }}

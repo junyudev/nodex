@@ -33,7 +33,7 @@ import type {
   AgentChatWorktreeConsumer,
   AgentChatWorktreeSource,
 } from "../codex-application/AgentChatWorktrees";
-import { resolveAgentRuntimeAgentConfig } from "./AgentRuntimeAgentConfig";
+import { resolveAgentRuntimeAgentConfig } from "../../shared/agent-runtime-agent-config";
 import { generateSessionTitle } from "./AgentRuntimeSessionTitle";
 import { splitCodexPromptAgentConfigLines } from "../../shared/codex-prompt-preparation";
 import { appendAgentAppContext, hasAgentAppContext } from "../../shared/agent-prompt";
@@ -50,6 +50,7 @@ import type {
   AgentRuntimeLaunchResult,
   AgentRuntimeSessionTarget,
   AgentRuntimeConversation,
+  AgentRuntimeControlInput,
 } from "../../shared/agent-runtime-api";
 export type {
   AgentRuntimeMessage,
@@ -59,6 +60,7 @@ export type {
 } from "../../shared/agent-runtime-api";
 import { agentExecutionThreadId } from "../../shared/agent-runtime-api";
 import { agentRuntimeAgentSwitchRefusal } from "../../shared/agent-runtime-agent-switch";
+import { agentRuntimeImageInputUnavailableReason } from "../../shared/agent-runtime-image-input";
 import {
   agentRuntimeForkSource,
   agentRuntimeMergeableRun,
@@ -178,6 +180,11 @@ const hash = (value: unknown) =>
 const commandId = (kind: string, identity: unknown) => `nodex:${kind}:${hash(identity)}`;
 const launchThreadId = (launchId: string, sessionId: string) =>
   agentExecutionThreadId(hash({ launchId, sessionId }));
+const messageAgentConfigs = (message: AgentRuntimeMessage) =>
+  message.agentConfigs ?? splitCodexPromptAgentConfigLines(message.text).agentConfigs;
+const hasImageInputs = (message: AgentRuntimeMessage) =>
+  (message.images?.length ?? 0) > 0 ||
+  message.attachments?.some((attachment) => attachment.type === "image") === true;
 /** A fork reads as its source conversation; an untitled source gets a neutral name. */
 export const forkTitle = (sourceTitle: string | null) => {
   const trimmed = sourceTitle?.trim() ?? "";
@@ -648,24 +655,48 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
   });
   const dispatch = (connection: AgentRuntimeApplicationConnection, command: AgentCommand) =>
     connection.request("command.dispatch", command);
-  const prepareAgentConfig = Effect.fn("AgentRuntimeApplication.prepareAgentConfig")(function* (
+  const prepareMessageInput = Effect.fn("AgentRuntimeApplication.prepareMessageInput")(function* (
     connection: AgentRuntimeApplicationConnection,
     message: AgentRuntimeMessage,
     modelSelection: CreateThread["modelSelection"],
     interactionMode: CreateThread["interactionMode"],
+    retainsImages = false,
   ) {
-    const configs =
-      message.agentConfigs ?? splitCodexPromptAgentConfigLines(message.text).agentConfigs;
-    if (configs.length === 0) return { message, hasConfig: false };
-    const providers = yield* connection.request("providers.read", {});
-    return yield* Effect.try(() =>
-      resolveAgentRuntimeAgentConfig({
-        message,
-        modelSelection: message.modelSelection ?? modelSelection,
-        interactionMode: message.interactionMode ?? interactionMode,
-        providers,
-      }),
+    const configs = messageAgentConfigs(message);
+    const requiresImageSupport = retainsImages || hasImageInputs(message);
+    if (configs.length === 0 && !requiresImageSupport) return { message, hasConfig: false };
+    const providers = yield* connection.request(
+      "providers.read",
+      configs.length > 0
+        ? {}
+        : {
+            instanceIds: [(message.modelSelection ?? modelSelection).instanceId],
+          },
     );
+    const prepared =
+      configs.length === 0
+        ? { message, hasConfig: false }
+        : yield* Effect.try(() =>
+            resolveAgentRuntimeAgentConfig({
+              message,
+              modelSelection: message.modelSelection ?? modelSelection,
+              interactionMode: message.interactionMode ?? interactionMode,
+              providers,
+            }),
+          );
+    if (requiresImageSupport) {
+      const selected = prepared.message.modelSelection ?? modelSelection;
+      const provider = providers.find((provider) => provider.instanceId === selected.instanceId);
+      const model = provider?.models.find((model) => model.slug === selected.model);
+      const reason = agentRuntimeImageInputUnavailableReason(model);
+      if (reason)
+        return yield* new AgentRuntimeApplicationError({
+          operation: "images",
+          message: reason,
+          admissionRejected: true,
+        });
+    }
+    return prepared;
   });
   const prepareMessage = Effect.fn("AgentRuntimeApplication.prepareMessage")(function* (
     connection: AgentRuntimeApplicationConnection,
@@ -879,7 +910,7 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
     if (input.runInTarget === "newWorktree" && !options.prepareWorkspace)
       return yield* failure("workspace", "Worktree preparation is unavailable");
     // Invalid input is refused before any product or execution state exists.
-    const prepared = yield* prepareAgentConfig(
+    const prepared = yield* prepareMessageInput(
       connection,
       input.message,
       input.modelSelection,
@@ -1389,7 +1420,7 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
       const refusal = agentRuntimeAgentSwitchRefusal(control.projection);
       if (refusal) return yield* failure("message", refusal);
     }
-    const prepared = yield* prepareAgentConfig(
+    const prepared = yield* prepareMessageInput(
       connection,
       input.message,
       loaded.thread.modelSelection,
@@ -1576,11 +1607,34 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
         });
       case "edit": {
         yield* assertMessage(input.message);
-        const prepared = yield* prepareAgentConfig(
+        // An omitted attachment replacement retains the queued message's images.
+        // Only a model/config change needs this bounded preview for admission.
+        const retained =
+          input.message.attachments === undefined &&
+          !input.message.images?.length &&
+          (input.message.modelSelection !== undefined ||
+            messageAgentConfigs(input.message).length > 0)
+            ? yield* connection.request("thread.queued-preview", {
+                threadId: loaded.threadId,
+                runId: input.runId,
+              })
+            : null;
+        const retainsImages = (retained?.images.length ?? 0) > 0;
+        const imageEdit = retainsImages || hasImageInputs(input.message);
+        const queued = imageEdit
+          ? (yield* connection.request("thread.control", {
+              threadId: loaded.threadId,
+              runId: input.runId,
+            })).projection.runs.find((run) => run.id === input.runId && run.status === "queued")
+          : undefined;
+        if (imageEdit && !queued)
+          return yield* failure("queue", "The queued Run is no longer available for editing");
+        const prepared = yield* prepareMessageInput(
           connection,
           input.message,
-          loaded.thread.modelSelection,
-          loaded.thread.interactionMode,
+          queued?.modelSelection ?? loaded.thread.modelSelection,
+          queued?.interactionMode ?? loaded.thread.interactionMode,
+          retainsImages,
         );
         yield* assertMessage(prepared.message);
         const message = yield* prepareMessage(connection, loaded.threadId, prepared.message);
@@ -2014,14 +2068,17 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
           Effect.map(conversation),
         ),
       ),
-    control: (target: AgentRuntimeSessionTarget) =>
+    control: (target: AgentRuntimeControlInput) =>
       owned(
         "control",
         Effect.gen(function* () {
+          if (target.runId !== undefined && !validId(target.runId))
+            return yield* failure("control", "Run identity is invalid");
           const connection = yield* options.connect;
           const loaded = yield* targetInfo(connection, target);
           const snapshot = yield* connection.request("thread.control", {
             threadId: loaded.threadId,
+            ...(target.runId === undefined ? {} : { runId: target.runId }),
           });
           return {
             sessionId: loaded.binding.session_id,

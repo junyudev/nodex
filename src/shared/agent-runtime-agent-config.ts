@@ -1,24 +1,29 @@
 import type { AgentRuntimeOperations } from "@nodex/agent-runtime/contracts";
-import type { AgentRuntimeMessage } from "../../shared/agent-runtime-api";
+import type { AgentRuntimeMessage } from "./agent-runtime-api";
 import {
   buildAgentConfigProfile,
   mergeAgentConfigs,
   parseAgentConfigMode,
   type AgentConfigModel,
-} from "../../shared/codex-agent-config";
-import { splitCodexPromptAgentConfigLines } from "../../shared/codex-prompt-preparation";
+} from "./codex-agent-config";
+import { splitCodexPromptAgentConfigLines } from "./codex-prompt-preparation";
 
 type Selection = NonNullable<AgentRuntimeMessage["modelSelection"]>;
 type Mode = "default" | "plan";
 type Provider = AgentRuntimeOperations["providers.read"]["output"][number];
 
-/** Resolve document preferences using the execution process's current catalog, without a settings writer. */
-export function resolveAgentRuntimeAgentConfig(input: {
-  readonly message: AgentRuntimeMessage;
+/** Resolve document preferences against the selected Agent's catalog without changing settings. */
+export function resolveAgentRuntimeAgentConfig<
+  Message extends Pick<AgentRuntimeMessage, "text" | "agentConfigs">,
+>(input: {
+  readonly message: Message;
   readonly modelSelection: Selection;
   readonly interactionMode: Mode;
   readonly providers: readonly Provider[];
-}): { readonly message: AgentRuntimeMessage; readonly hasConfig: boolean } {
+}): {
+  readonly message: Message & Pick<AgentRuntimeMessage, "modelSelection" | "interactionMode">;
+  readonly hasConfig: boolean;
+} {
   const parsed =
     input.message.agentConfigs === undefined
       ? splitCodexPromptAgentConfigLines(input.message.text)

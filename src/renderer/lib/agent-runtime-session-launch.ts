@@ -1,11 +1,16 @@
 import type { AgentRuntimeLaunchResult, AgentRuntimeLaunch } from "../../shared/agent-runtime-api";
-import type { CodexPromptInput, CodexThreadSettings, CodexServiceTier } from "../../shared/types";
+import type { CodexPromptInput } from "../../shared/types";
+import type { AgentBackendBinding } from "../../shared/agent-backend";
 import { createUuidV7 } from "../../shared/uuid-v7";
-import { prepareAgentMessage } from "../../shared/agent-prompt";
-import { applyAgentRuntimeOptionIntent } from "../../shared/agent-runtime-provider";
 import { readPastedTextAttachment } from "./api";
 import { agentRuntimeRuntime, type AgentRuntimeRendererTransport } from "./agent-runtime-runtime";
-import { agentRuntimePromptImages } from "./agent-runtime-prompt";
+import { agentRuntimePromptImages, prepareAgentRuntimeMessage } from "./agent-runtime-prompt";
+import {
+  agentRuntimeProviderBackendKind,
+  defaultAgentRuntimeModelSelection,
+  requireAgentRuntimeModelSelection,
+  type AgentRuntimeCodexDefaults,
+} from "./agent-runtime-model-selection";
 
 /** Programmatic launches use the same Session operation as the shared composer. */
 export async function launchAgentRuntimeSession(
@@ -16,9 +21,9 @@ export async function launchAgentRuntimeSession(
     readonly promptInput?: CodexPromptInput;
     readonly initialPageIds?: readonly string[];
     readonly title?: string;
-    readonly codexDefaults?: Pick<CodexThreadSettings, "model" | "reasoningEffort"> & {
-      readonly serviceTier?: CodexServiceTier;
-    };
+    readonly codexDefaults?: AgentRuntimeCodexDefaults;
+    readonly modelSelection?: AgentRuntimeLaunch["modelSelection"];
+    readonly onSelectionResolved?: (kind: AgentBackendBinding["kind"]) => void;
     readonly interactionMode?: AgentRuntimeLaunch["interactionMode"];
     readonly runInTarget?: AgentRuntimeLaunch["runInTarget"];
     readonly runInEnvironmentPath?: AgentRuntimeLaunch["runInEnvironmentPath"];
@@ -31,41 +36,28 @@ export async function launchAgentRuntimeSession(
   transport: AgentRuntimeRendererTransport = agentRuntimeRuntime,
 ): Promise<AgentRuntimeLaunchResult> {
   const providers = await transport.catalog();
-  const provider = providers.find(
-    (value) =>
-      value.instanceId === "codex" &&
-      value.enabled &&
-      value.installed &&
-      value.status !== "error" &&
-      value.status !== "disabled",
+  const { provider, model, selection } = requireAgentRuntimeModelSelection(
+    providers,
+    input.modelSelection ?? defaultAgentRuntimeModelSelection(providers, input.codexDefaults),
   );
-  const model =
-    provider?.models.find((value) => value.slug === input.codexDefaults?.model) ??
-    provider?.models.find((value) => value.isDefault) ??
-    provider?.models[0];
-  if (!provider || !model)
-    throw new Error("Choose an available Agent model before starting this chat");
-  const prepared = await prepareAgentMessage(
-    input.prompt,
-    input.promptInput,
+  const kind = agentRuntimeProviderBackendKind(provider);
+  input.onSelectionResolved?.(kind);
+  const prepared = await prepareAgentRuntimeMessage(
+    {
+      model,
+      provider,
+      modelSelection: selection,
+      kind,
+      text: input.prompt,
+      promptInput: input.promptInput,
+    },
     (file) => readPastedTextAttachment({ file }),
-    { images: true, agentConfigs: true },
   );
   const identity = input.launchIdentity ?? {
     launchId: createUuidV7(),
     messageId: createUuidV7(),
     acceptedAt: Date.now(),
   };
-  const options = applyAgentRuntimeOptionIntent(
-    model.capabilities?.optionDescriptors ?? [],
-    undefined,
-    {
-      ...(input.codexDefaults?.reasoningEffort
-        ? { reasoningEffort: input.codexDefaults.reasoningEffort }
-        : {}),
-      serviceTier: input.codexDefaults?.serviceTier ?? null,
-    },
-  );
   return await transport.launch({
     sessionId: input.sessionId,
     projectId: input.projectId,
@@ -74,11 +66,7 @@ export async function launchAgentRuntimeSession(
     title: input.title?.trim() || input.prompt.slice(0, 120) || "New chat",
     initialPageIds: input.initialPageIds,
     presentationTicket: input.presentationTicket,
-    modelSelection: {
-      instanceId: provider.instanceId,
-      model: model.slug,
-      ...(options.length ? { options } : {}),
-    },
+    modelSelection: selection,
     interactionMode: input.interactionMode ?? "default",
     runInTarget: input.runInTarget ?? "localProject",
     runInEnvironmentPath: input.runInEnvironmentPath,
@@ -87,7 +75,7 @@ export async function launchAgentRuntimeSession(
       messageId: identity.messageId,
       ...prepared,
       images: agentRuntimePromptImages(input.promptInput),
-      ...(input.promptInput ? { agentConfigs: input.promptInput.agentConfigs ?? [] } : {}),
+      ...(input.promptInput?.agentConfigs ? { agentConfigs: input.promptInput.agentConfigs } : {}),
     },
   });
 }

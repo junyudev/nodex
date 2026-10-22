@@ -289,12 +289,26 @@ const mergeProviderModels = (
   const previousBySlug = new Map(previousModels.map((model) => [model.slug, model] as const));
   const mergedModels = nextModels.map((model) => {
     const previousModel = previousBySlug.get(model.slug);
-    if (!previousModel || hasModelCapabilities(model) || !hasModelCapabilities(previousModel)) {
+    if (!previousModel) return model;
+    const optionDescriptors =
+      hasModelCapabilities(model) || !hasModelCapabilities(previousModel)
+        ? model.capabilities?.optionDescriptors
+        : previousModel.capabilities?.optionDescriptors;
+    // Missing current metadata is unknown, including a removed custom declaration.
+    // Live option-only ACP updates retain their negotiated input support at their owner.
+    const inputModalities = model.capabilities?.inputModalities;
+    if (
+      optionDescriptors === model.capabilities?.optionDescriptors &&
+      inputModalities === model.capabilities?.inputModalities
+    )
       return model;
-    }
     return {
       ...model,
-      capabilities: previousModel.capabilities,
+      capabilities: {
+        ...model.capabilities,
+        ...(optionDescriptors === undefined ? {} : { optionDescriptors }),
+        ...(inputModalities === undefined ? {} : { inputModalities }),
+      },
     };
   });
   const nextSlugs = new Set(nextModels.map((model) => model.slug));

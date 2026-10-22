@@ -2,7 +2,7 @@ import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 
 import { ProjectId, ThreadId, TrimmedNonEmptyString, TrimmedString } from "./baseSchemas.ts";
-import { ProviderOptionDescriptor } from "./model.ts";
+import { ModelCapabilities, ProviderOptionDescriptor } from "./model.ts";
 import { ProviderInstanceId } from "./providerInstance.ts";
 
 const AcpRegistryAgentId = TrimmedNonEmptyString.check(
@@ -280,6 +280,7 @@ export const AcpRegistryProbeResult = Schema.Struct({
   authMethods: Schema.Array(AcpRegistryProbeAuthMethod).check(Schema.isMaxLength(32)),
   models: Schema.Array(AcpRegistryProbeModel).check(Schema.isMaxLength(256)),
   currentModelId: Schema.NullOr(AcpRegistryProbeText),
+  inputModalities: ModelCapabilities.fields.inputModalities,
   // Non-model session config options and session modes, pre-mapped onto T3's
   // provider option descriptors so model capabilities can carry them directly.
   configOptions: Schema.Array(ProviderOptionDescriptor).check(Schema.isMaxLength(16)),

@@ -62,6 +62,9 @@ export interface AgentRuntimeSessionTarget {
   readonly threadId?: string;
 }
 
+/** Retains one exact Run's control metadata without reading its transcript. */
+export type AgentRuntimeControlInput = AgentRuntimeSessionTarget & { readonly runId?: string };
+
 export interface AgentRuntimeLaunchResult {
   readonly sessionId: string;
   readonly projectId: string | null;
@@ -270,7 +273,7 @@ export interface AgentRuntimeIpcApi {
     result: AgentRuntimeConversation;
   };
   "agent-runtime:session:control": {
-    args: [target: AgentRuntimeSessionTarget];
+    args: [target: AgentRuntimeControlInput];
     result: AgentRuntimeConversation;
   };
   "agent-runtime:session:inspect": {

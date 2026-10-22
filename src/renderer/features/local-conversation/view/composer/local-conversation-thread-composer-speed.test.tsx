@@ -5377,3 +5377,59 @@ describe("ThreadComposer speed menu", () => {
     expect(resolutions).toEqual([]);
   });
 });
+
+test("sends a restored image with a vision config while the selected Runtime model is text-only", async () => {
+  resetStorage();
+  const send = vi.fn<ThreadStageActions["onSendPrompt"]>(async () => {});
+  const errors: string[] = [];
+  const model = buildModel().availableModels[0]!;
+  const prompt = '<agent-config model="vision" />\nDescribe this image';
+  const images = [{ source: "data:image/png;base64,aW1hZ2U=", caption: "diagram.png" }];
+  const view = await renderComposer(
+    {
+      availableModels: [
+        { ...model, id: "text-only", model: "text-only", inputModalities: ["text"] },
+        { ...model, id: "vision", model: "vision", inputModalities: ["text", "image"] },
+      ],
+      selectedModel: "text-only",
+      executionProfile: { modelId: "text-only", reasoningEffort: "high", serviceTier: null },
+      provider: {
+        kind: "codex",
+        label: "Codex",
+        selection: "codex",
+        options: [],
+        select: () => {},
+        commands: [],
+        controls: { images: false },
+        imageInputUnavailableReason: "This model does not support image attachments.",
+        error: null,
+      },
+      composerIntent: {
+        prompt,
+        focusNonce: 1,
+        promptInput: { text: prompt, images },
+      },
+    },
+    { onSendPrompt: send },
+    undefined,
+    (message) => {
+      if (message) errors.push(message);
+    },
+  );
+  try {
+    expect(await view.findByRole("button", { name: "diagram.png" })).toBeDefined();
+    await submitCurrentComposerDraft(view);
+    await waitFor(() => expect(send).toHaveBeenCalledOnce());
+    const [sentPrompt, options] = send.mock.calls[0]!;
+    expect(options?.promptInput?.images).toEqual(images);
+    const { splitCodexPromptAgentConfigLines } =
+      await import("../../../../../shared/codex-prompt-preparation");
+    expect(
+      options?.promptInput?.agentConfigs ??
+        splitCodexPromptAgentConfigLines(sentPrompt).agentConfigs,
+    ).toEqual([{ model: "vision" }]);
+    expect(errors).toEqual([]);
+  } finally {
+    await act(async () => view.unmount());
+  }
+});

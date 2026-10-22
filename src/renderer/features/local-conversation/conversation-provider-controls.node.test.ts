@@ -18,3 +18,13 @@ test("native controls require a positive advertised capability", () => {
     supportsConversationProviderControl({ kind: "claude", controls: { images: true } }, "images"),
   ).toBe(true);
 });
+
+test("explicit Runtime capabilities override native Codex defaults", () => {
+  expect(supportsConversationProviderControl({ kind: "codex" }, "images")).toBe(true);
+  expect(
+    supportsConversationProviderControl({ kind: "codex", controls: { images: false } }, "images"),
+  ).toBe(false);
+  expect(
+    supportsConversationProviderControl({ kind: "codex", controls: { images: true } }, "images"),
+  ).toBe(true);
+});

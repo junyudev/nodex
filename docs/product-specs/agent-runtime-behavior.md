@@ -163,8 +163,14 @@ message first admits a conversation rewind to just before that message's Run and
 for that exact Run to become rolled back before submitting replacement content; every
 later Run leaves the conversation with it. The replacement keeps the original message's
 images and app context, and is compiled before the rewind so a message the Agent cannot
-accept discards nothing. Queued or active work and native background tasks block editing.
-Only Providers whose native rollback truncates at an earlier Turn offer editing.
+accept discards nothing. Document Agent config is resolved during this preflight so
+image admission uses the effective model before history changes. Queued or active
+work and native background tasks block editing.
+Only Providers that explicitly advertise native rollback to an earlier Turn offer
+editing, including Codex, Claude and both native OpenCode versions. Resetting an ACP
+session alone does not grant historical message editing. The capability belongs to
+the Agent whose conversation is being rewound; the replacement message can select
+another Agent.
 Conversation rewind leaves workspace files intact and can proceed without a Git file
 checkpoint. Repeated commands retain their original
 Run and message identity; reusing an identity for another target fails.
@@ -206,6 +212,28 @@ overwrite each other, and options a newly chosen model does not offer fall back 
 defaults. A new Codex chat starts from the user's saved Codex model, effort and speed.
 Fast in a Runtime chat changes that chat's own speed rather than the saved default. Goal
 mode is not offered for Runtime chats.
+
+Page and Scheduled actions that start a chat use its saved draft Agent, model, options
+and interaction mode, scoped to that Session and Project. Without a draft choice they
+use the saved Codex model when available, then another available Agent's default model.
+An explicitly chosen unavailable Agent or model fails with a request to choose again;
+it never silently redirects the message to another Agent.
+
+Image input follows the selected model's reported input modalities. Native model
+catalogs and ACP's negotiated prompt capability supply that knowledge. Missing
+knowledge remains unknown, distinct from an explicit text-only model; neither admits
+image input. The composer explains the difference when an image is added or sent,
+and a refreshed catalog or a later handshake can enable or withdraw support without
+losing model options. A pending model change checks the model that will receive the
+next message. Text messages remain available while image capability is unknown.
+Explicit Runtime controls override native presentation defaults.
+
+Queue editing checks the queued Run's captured model rather than a later composer
+choice. Its bounded control read includes that exact Run's metadata without loading
+conversation bodies. The Host resolves document Agent config before checking image
+support, so a document's model override is validated against the model that will
+receive it. Launches, follow-ups and queue edits pass this check before image
+materialization or message admission, including programmatic Page submissions.
 
 In a started chat, the composer's choice applies from the next message the person sends
 from it: sending, steering, queueing or editing the last message carries the choice with

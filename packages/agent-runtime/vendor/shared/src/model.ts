@@ -32,8 +32,10 @@ export interface SelectableModelOption {
 
 export function createModelCapabilities(input: {
   optionDescriptors: ReadonlyArray<ProviderOptionDescriptor>;
+  inputModalities?: ModelCapabilities["inputModalities"];
 }): ModelCapabilities {
   return {
+    ...(input.inputModalities === undefined ? {} : { inputModalities: [...input.inputModalities] }),
     optionDescriptors: input.optionDescriptors.map(cloneDescriptor),
   };
 }
@@ -394,7 +396,10 @@ export function readCustomModelEntries(value: unknown): CustomModelDefinition[] 
       slug,
       name,
       capabilities: capabilities
-        ? createModelCapabilities({ optionDescriptors: capabilities.optionDescriptors ?? [] })
+        ? createModelCapabilities({
+            ...capabilities,
+            optionDescriptors: capabilities.optionDescriptors ?? [],
+          })
         : null,
     });
   }
@@ -407,13 +412,19 @@ export function readCustomModelEntries(value: unknown): CustomModelDefinition[] 
  */
 export function toCustomModelSetting(entry: CustomModelDefinition): CustomModelSetting {
   const descriptors = entry.capabilities?.optionDescriptors ?? [];
+  const inputModalities = entry.capabilities?.inputModalities;
   const name = entry.name !== entry.slug ? entry.name : undefined;
-  if (!name && descriptors.length === 0) return entry.slug;
+  if (!name && descriptors.length === 0 && inputModalities === undefined) return entry.slug;
   return {
     slug: entry.slug,
     ...(name ? { name } : {}),
-    ...(descriptors.length > 0
-      ? { capabilities: createModelCapabilities({ optionDescriptors: descriptors }) }
+    ...(descriptors.length > 0 || inputModalities !== undefined
+      ? {
+          capabilities: createModelCapabilities({
+            optionDescriptors: descriptors,
+            inputModalities,
+          }),
+        }
       : {}),
   };
 }

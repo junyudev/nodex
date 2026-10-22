@@ -64,7 +64,6 @@ const decodeSettings = Schema.decodeSync(AcpRegistrySettings);
 // failed or unauthenticated probes are never cached so a completed sign-in
 // is detected on the next refresh.
 const PROBE_SUCCESS_TTL_MS = 15 * 60 * 1_000;
-const EMPTY_CAPABILITIES = createModelCapabilities({ optionDescriptors: [] });
 const MAINTENANCE = makeManualOnlyProviderMaintenanceCapabilities({
   provider: DRIVER_KIND,
   packageName: null,
@@ -88,18 +87,16 @@ const makeUnsupportedTextGeneration = (): ProviderTextGeneration => {
 };
 
 function modelsFromDiscovery(
-  discovery:
-    | Pick<AcpRegistryLiveConfiguration, "models" | "currentModelId" | "configOptions">
-    | undefined,
+  discovery: AcpRegistryLiveConfiguration | undefined,
   customModels: ReadonlyArray<string>,
 ): ReadonlyArray<ServerProviderModel> {
   const discovered = discovery?.models ?? [];
   // Discovered session config options and modes ride on every model so the
   // composer's generic option controls can drive them per thread.
-  const capabilities =
-    discovery === undefined || discovery.configOptions.length === 0
-      ? EMPTY_CAPABILITIES
-      : createModelCapabilities({ optionDescriptors: discovery.configOptions });
+  const capabilities = createModelCapabilities({
+    optionDescriptors: discovery?.configOptions ?? [],
+    inputModalities: discovery?.inputModalities,
+  });
   const builtInModels: ReadonlyArray<ServerProviderModel> =
     discovered.length === 0
       ? [
@@ -269,7 +266,16 @@ export function applyAcpRegistryLiveConfiguration(
   return {
     ...snapshot,
     status: provider.enabled ? "ready" : provider.status,
-    models: modelsFromDiscovery(configuration, customModels),
+    models: modelsFromDiscovery(
+      {
+        ...configuration,
+        inputModalities:
+          configuration.inputModalities ??
+          provider.models.find((model) => model.capabilities?.inputModalities !== undefined)
+            ?.capabilities?.inputModalities,
+      },
+      customModels,
+    ),
   };
 }
 

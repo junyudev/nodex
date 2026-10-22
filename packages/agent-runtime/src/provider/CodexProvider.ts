@@ -241,6 +241,9 @@ export function mapCodexModelCapabilities(
   }
 
   return createModelCapabilities({
+    inputModalities: model.inputModalities?.filter(
+      (modality) => modality === "text" || modality === "image",
+    ),
     optionDescriptors,
   });
 }

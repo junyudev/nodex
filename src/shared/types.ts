@@ -2827,6 +2827,10 @@ export interface CodexComposerIntent {
   queuedFollowUpEdit?: {
     followUpId: string;
     ledgerRevision: number;
+    /** A Runtime queue edit keeps the queued Run's Agent rather than the next draft's choice. */
+    modelSelection?: NonNullable<
+      import("./agent-runtime-api").AgentRuntimeMessage["modelSelection"]
+    >;
   };
 }
 

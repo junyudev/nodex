@@ -287,6 +287,14 @@ export interface ConversationProviderPresentation {
     readonly images?: boolean;
     readonly stopTask?: boolean;
   };
+  /** Explains unsupported or not-yet-known image capability for the selected model. */
+  readonly imageInputUnavailableReason?: string | null;
+  /** Queue editing uses the Agent and model already captured by that message. */
+  readonly imageInputForSelection?: (
+    selection: NonNullable<
+      import("../../../shared/agent-runtime-api").AgentRuntimeMessage["modelSelection"]
+    >,
+  ) => { readonly supported: boolean; readonly unavailableReason: string | null };
   readonly skills?: readonly CodexComposerSkill[];
   readonly refreshSkills?: () => Promise<void>;
   readonly stopTask?: (taskId: string) => Promise<void>;

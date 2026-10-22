@@ -3,9 +3,12 @@ import type { OrchestrationV2ThreadProjection } from "@t3tools/contracts";
 /** A transcript window is not an index of every entity ever owned by its Runs. */
 export function retainPublicThreadControlClosure(
   projection: OrchestrationV2ThreadProjection,
+  requiredRunId?: string,
 ): OrchestrationV2ThreadProjection {
   const items = projection.visibleTurnItems.map((row) => row.item);
   const runIds = new Set(items.flatMap((item) => (item.runId === null ? [] : [item.runId])));
+  const requiredRun = projection.runs.find((run) => run.id === requiredRunId);
+  if (requiredRun) runIds.add(requiredRun.id);
   const foreground =
     projection.runs.findLast((run) =>
       ["preparing", "starting", "running", "waiting"].includes(run.status),

@@ -11,6 +11,9 @@ const id = z
 export const AgentRuntimeTargetSchema = z
   .object({ sessionId: id, threadId: id.optional() })
   .strict();
+export const AgentRuntimeControlSchema = AgentRuntimeTargetSchema.extend({
+  runId: id.optional(),
+}).strict();
 export const AgentRuntimeOverviewSchema = AgentRuntimeTargetSchema.extend({
   activeCursor: z.string().min(1).max(2048).optional(),
   terminalCursor: z.string().min(1).max(2048).optional(),

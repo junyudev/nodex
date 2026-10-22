@@ -28,6 +28,7 @@ import * as OpenCodeServerOwner from "./OpenCodeServerOwner.ts";
 const OPENCODE_PRESENTATION = {
   displayName: "OpenCode",
   showInteractionModeToggle: false,
+  supportsConversationRollback: true,
 } as const;
 
 class OpenCodeProbeError extends Data.TaggedError("OpenCodeProbeError")<{
@@ -223,6 +224,12 @@ function openCodeCapabilitiesForModel(input: {
       : { id: agent.name, label: titleCaseSlug(agent.name) },
   );
   return createModelCapabilities({
+    inputModalities:
+      input.model.capabilities?.input === undefined
+        ? undefined
+        : (["text", "image"] as const).filter(
+            (modality) => input.model.capabilities.input[modality] === true,
+          ),
     optionDescriptors: [
       ...(variantOptions.length > 0
         ? [
@@ -390,6 +397,7 @@ export interface OpenCode2Model {
    */
   readonly providerName?: string;
   readonly variants: ReadonlyArray<{ readonly id: string }>;
+  readonly capabilities?: { readonly input: ReadonlyArray<string> };
 }
 
 /**
@@ -513,6 +521,9 @@ function openCode2ModelCapabilities(model: OpenCode2Model): ModelCapabilities {
   const variants = model.variants.map((variant) => variant.id);
   const defaultVariant = inferDefaultVariant(model.providerID, variants);
   return createModelCapabilities({
+    inputModalities: model.capabilities?.input.filter(
+      (modality): modality is "text" | "image" => modality === "text" || modality === "image",
+    ),
     optionDescriptors:
       variants.length === 0
         ? []

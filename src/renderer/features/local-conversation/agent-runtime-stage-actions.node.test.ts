@@ -285,7 +285,23 @@ describe("Agent Runtime stage commands", () => {
           throw new Error("Only queued messages are edited here");
         },
       }),
-      transport: { queue, readRunMessage } as unknown as AgentRuntimeRendererTransport,
+      transport: {
+        queue,
+        readRunMessage,
+        control: vi.fn().mockResolvedValue({
+          snapshot: {
+            projection: {
+              runs: [
+                {
+                  id: "run-1",
+                  status: "queued",
+                  modelSelection: { instanceId: "codex", model: "model" },
+                },
+              ],
+            },
+          },
+        }),
+      } as unknown as AgentRuntimeRendererTransport,
       prepare: async (text) => ({ text }),
     });
 

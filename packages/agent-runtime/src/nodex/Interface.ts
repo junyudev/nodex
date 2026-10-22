@@ -418,7 +418,7 @@ export interface AgentRuntimeOperations {
     readonly output: AgentSnapshot;
   };
   readonly "thread.control": {
-    readonly input: { readonly threadId: string };
+    readonly input: { readonly threadId: string; readonly runId?: string };
     readonly output: AgentSnapshot;
   };
   readonly "thread.history": {

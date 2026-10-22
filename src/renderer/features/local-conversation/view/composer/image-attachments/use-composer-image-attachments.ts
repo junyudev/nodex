@@ -126,6 +126,7 @@ export function useComposerImageAttachments(input: {
   readonly setAttachments: SetComposerImageAttachments;
   readonly scopeKey?: string;
   readonly enabled: boolean;
+  readonly unavailableReason?: string | null;
   readonly onError: (message: string) => void;
   readonly onRemove?: (id: string) => void;
   readonly adapters?: Partial<ComposerImageAttachmentAdapters>;
@@ -179,7 +180,9 @@ export function useComposerImageAttachments(input: {
     const supportedFiles = files.filter(isSupportedComposerImageFile);
     if (supportedFiles.length === 0) return;
     if (!latestRef.current.enabled) {
-      latestRef.current.onError(COMPOSER_IMAGE_INPUT_UNSUPPORTED_MESSAGE);
+      latestRef.current.onError(
+        latestRef.current.unavailableReason ?? COMPOSER_IMAGE_INPUT_UNSUPPORTED_MESSAGE,
+      );
       return;
     }
 
@@ -252,7 +255,9 @@ export function useComposerImageAttachments(input: {
   const addResolvedImages = (images: readonly ResolvedComposerImageInput[]) => {
     if (images.length === 0) return;
     if (!latestRef.current.enabled) {
-      latestRef.current.onError(COMPOSER_IMAGE_INPUT_UNSUPPORTED_MESSAGE);
+      latestRef.current.onError(
+        latestRef.current.unavailableReason ?? COMPOSER_IMAGE_INPUT_UNSUPPORTED_MESSAGE,
+      );
       return;
     }
     const generation = generationRef.current;
@@ -293,7 +298,9 @@ export function useComposerImageAttachments(input: {
     images: readonly ResolvedComposerImageInput[],
   ) => {
     if (images.length > 0 && !latestRef.current.enabled) {
-      latestRef.current.onError(COMPOSER_IMAGE_INPUT_UNSUPPORTED_MESSAGE);
+      latestRef.current.onError(
+        latestRef.current.unavailableReason ?? COMPOSER_IMAGE_INPUT_UNSUPPORTED_MESSAGE,
+      );
       return;
     }
     const generation = generationRef.current;

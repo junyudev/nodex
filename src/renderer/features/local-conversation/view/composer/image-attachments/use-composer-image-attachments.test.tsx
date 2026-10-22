@@ -24,6 +24,7 @@ function renderController(input: {
     origin: "paste" | "drop",
   ) => Promise<ComposerImageAttachmentMaterialization>;
   readonly enabled?: boolean;
+  readonly unavailableReason?: string;
   readonly onError?: (message: string) => void;
 }) {
   let id = 0;
@@ -35,6 +36,7 @@ function renderController(input: {
       attachments,
       setAttachments,
       enabled: input.enabled ?? true,
+      unavailableReason: input.unavailableReason,
       onError: input.onError ?? vi.fn(),
       adapters: {
         createId: () => `image-${++id}`,
@@ -196,6 +198,28 @@ describe("useComposerImageAttachments", () => {
     expect(onError).toHaveBeenCalledWith(
       "This model does not support image inputs. Try a different model.",
     );
+    expect(hook.result.current.attachments).toEqual([]);
+  });
+
+  test("explains unknown image capability without reading or attaching the image", async () => {
+    const onError = vi.fn();
+    const readFileAsDataUrl = vi.fn();
+    const reason = "This Agent has not reported image support for this model.";
+    const hook = renderController({
+      enabled: false,
+      unavailableReason: reason,
+      onError,
+      readFileAsDataUrl,
+      materializeFile: vi.fn(),
+    });
+    await act(async () => {
+      await hook.result.current.controller.addFiles(
+        [new File(["image"], "diagram.png", { type: "image/png" })],
+        "paste",
+      );
+    });
+    expect(onError).toHaveBeenCalledWith(reason);
+    expect(readFileAsDataUrl).not.toHaveBeenCalled();
     expect(hook.result.current.attachments).toEqual([]);
   });
 

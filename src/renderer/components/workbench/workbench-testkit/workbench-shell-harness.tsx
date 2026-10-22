@@ -2650,6 +2650,7 @@ export function renderWorkbench({
     generatedAt: 1,
   });
   mockInvokeImpl = async (channel, ...args) => {
+    if (channel === "persisted-atom:sync-request") return { revision: 0, values: {} };
     if (channel === "agent-runtime:providers:read")
       return [
         {

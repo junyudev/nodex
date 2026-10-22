@@ -10,6 +10,9 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- OpenCode chats offer editing of earlier messages, rewinding the conversation before continuing from the edit.
+- Image attachments follow the selected Agent model's capabilities, with a clear explanation when support is unavailable or not yet known.
+- Starting a chat from a Page or Scheduled uses its selected Agent and model, including when Codex is unavailable.
 - Code blocks in chat replies use dark-theme syntax colors in the dark theme, instead of near-invisible light-theme colors.
 
 ## [0.4.0] - 2026-10-22

@@ -219,13 +219,19 @@ const make = Effect.gen(function* () {
 
   const publishLiveConfiguration: AcpRegistryRuntimeCoordinator["Service"]["publishLiveConfiguration"] =
     (instanceId, configuration) =>
-      Ref.update(liveConfigurationByInstance, (current) =>
-        new Map(current).set(instanceId, configuration),
-      ).pipe(
-        Effect.andThen(
+      Ref.modify(liveConfigurationByInstance, (current) => {
+        const inputModalities =
+          configuration.inputModalities ?? current.get(instanceId)?.inputModalities;
+        const next = {
+          ...configuration,
+          ...(inputModalities === undefined ? {} : { inputModalities }),
+        };
+        return [next, new Map(current).set(instanceId, next)];
+      }).pipe(
+        Effect.flatMap((next) =>
           PubSub.publish(liveConfigurationUpdates, {
             instanceId,
-            configuration,
+            configuration: next,
           }),
         ),
         Effect.asVoid,

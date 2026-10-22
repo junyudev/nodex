@@ -102,6 +102,51 @@ async function chooseTaskAction(screen: WorkbenchScreen, taskId: string, action:
 }
 
 describe("workbench session shell / automations-conversation", () => {
+  test("replies about a scheduled task using the available OpenCode Agent", async () => {
+    const screen = renderWorkbench({
+      sessionsByProject: { alpha: [makeBlankSession({ id: "session:alpha:scheduled-reply" })] },
+      scheduledAutomations: [
+        makeScheduledAutomation({
+          id: "task-reply",
+          kind: "cron",
+          projectId: "alpha",
+          name: "Review task",
+          targetSessionId: null,
+        }),
+      ],
+    });
+    const base = mockInvokeImpl;
+    if (!base) throw new Error("Expected Runtime transport");
+    setMockInvokeImpl(async (channel, ...args) => {
+      const value = await base(channel, ...args);
+      return channel === "agent-runtime:providers:read"
+        ? (value as Record<string, unknown>[]).map((provider) => ({
+            ...provider,
+            instanceId: "opencode:configured",
+            driver: "opencode",
+          }))
+        : value;
+    });
+    await openScheduled(screen);
+    await click(
+      within(taskRow(screen, "task-reply")).getByRole("button", { name: /Review task/u }),
+    );
+    const reply = await screen.findByRole("textbox", { name: "Reply about this task" });
+    await act(async () => {
+      fireEvent.change(reply, { target: { value: "Include the integration tests." } });
+      await Promise.resolve();
+    });
+    await click(screen.getByRole("button", { name: "Send reply" }));
+    await waitFor(() => expect(agentRuntimeLaunchCalls).toHaveLength(1));
+    expect(agentRuntimeLaunchCalls[0]).toMatchObject({
+      projectId: "alpha",
+      modelSelection: { instanceId: "opencode:configured" },
+      message: { text: expect.stringContaining("Include the integration tests.") },
+    });
+    await waitFor(() => expect(screen.queryByTestId("scheduled-route")).toBeNull());
+    expect(screen.getByTestId("scheduled-sidebar")).not.toBeNull();
+  });
+
   test("surfaces pending heartbeat handoff failure from the app-level coordinator", async () => {
     renderWorkbench();
 

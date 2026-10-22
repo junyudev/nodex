@@ -118,6 +118,7 @@ const setup = (
           name: "Model A",
           isDefault: true,
           capabilities: {
+            inputModalities: ["text", "image"],
             optionDescriptors: [
               {
                 id: "reasoningEffort",
@@ -136,6 +137,7 @@ const setup = (
           slug: "model-b",
           name: "Model B",
           capabilities: {
+            inputModalities: ["text"],
             optionDescriptors: [
               { id: "reasoningEffort", type: "select", options: [{ id: "low", isDefault: true }] },
               {
@@ -598,6 +600,25 @@ const setup = (
         const value = snapshots.get((input as { threadId: string }).threadId);
         if (!value) return yield* Effect.fail(new Error("Thread missing"));
         return value as AgentRuntimeOperations[M]["output"];
+      }
+      if (method === "thread.queued-preview") {
+        const request = input as AgentRuntimeOperations["thread.queued-preview"]["input"];
+        const projection = snapshots.get(request.threadId)?.projection;
+        const run = projection?.runs.find(
+          (run) => run.id === request.runId && run.status === "queued",
+        );
+        const message = projection?.messages.find((message) => message.id === run?.userMessageId);
+        return (
+          run && message
+            ? {
+                threadId: request.threadId,
+                runId: run.id,
+                messageId: message.id,
+                text: message.text,
+                images: message.attachments.filter((attachment) => attachment.type === "image"),
+              }
+            : null
+        ) as AgentRuntimeOperations[M]["output"];
       }
       if (method === "project.close")
         return { closedBindings: 2 } as AgentRuntimeOperations[M]["output"];
@@ -1119,6 +1140,11 @@ it.effect("control reads retain Session ownership without hydrating transcript h
     assert.isTrue(fixture.calls.some((call) => call.method === "thread.control"));
     assert.isFalse(fixture.calls.some((call) => call.method === "thread.snapshot"));
     assert.isFalse(fixture.calls.some((call) => call.method === "thread.history"));
+    yield* owner.control({ ...target, runId: "queued:exact" });
+    assert.deepEqual(fixture.calls.at(-1)!.input, {
+      threadId: opened.threadId,
+      runId: "queued:exact",
+    });
     fixture.snapshots.set("foreign", snapshot("foreign"));
     const before = fixture.calls.filter((call) => call.method === "thread.control").length;
     assert.equal(
@@ -1224,6 +1250,11 @@ it.effect(
       assert.isFalse(
         fixture.calls.some(
           (call) => call.method === "thread.snapshot" || call.method === "thread.history",
+        ),
+      );
+      assert.isFalse(
+        fixture.calls.some(
+          (call) => call.method === "thread.control" || call.method === "providers.read",
         ),
       );
     }),
@@ -2145,6 +2176,238 @@ it.effect("a preparation interrupted by a restart fails readably instead of wait
 );
 
 it.effect(
+  "rejects image launches before binding or materialization using the final configured model",
+  () =>
+    Effect.gen(function* () {
+      for (const message of [
+        { modelSelection: { instanceId: "codex", model: "model-b" } },
+        { modelSelection: { instanceId: "codex", model: "unknown" } },
+        { agentConfigs: [{ model: "model-b" }] },
+      ]) {
+        let materialized = 0;
+        const fixture = setup({
+          prepareImages: () =>
+            Effect.sync(() => {
+              materialized += 1;
+              return [{ mediaType: "image/png", data: "aW1hZ2U=" }];
+            }),
+        });
+        const owner = yield* fixture.owner;
+        const result = yield* owner
+          .launch({
+            ...launch,
+            modelSelection: { instanceId: "codex", model: "model-a" },
+            message: {
+              messageId: "refused-image",
+              text: "Read it",
+              images: [{ source: "nodex-asset:private" }],
+              ...message,
+            },
+          })
+          .pipe(Effect.result);
+        assert.equal(result._tag, "Failure");
+        if (result._tag === "Failure") assert.match(result.failure.message, /image/i);
+        assert.equal(materialized, 0);
+        assert.equal(fixture.applied.length, 0);
+        assert.equal(fixture.bindings.size, 0);
+        assert.equal(fixture.commands.size, 0);
+      }
+    }),
+);
+
+it.effect("admits images when Agent config selects vision from a text-only default", () =>
+  Effect.gen(function* () {
+    let materialized = 0;
+    const fixture = setup({
+      prepareImages: () =>
+        Effect.sync(() => {
+          materialized += 1;
+          return [{ mediaType: "image/png", data: "aW1hZ2U=" }];
+        }),
+    });
+    const owner = yield* fixture.owner;
+    yield* owner.launch({
+      ...launch,
+      modelSelection: { instanceId: "codex", model: "model-b" },
+      message: {
+        messageId: "configured-vision",
+        text: "Read it",
+        agentConfigs: [{ model: "model-a" }],
+        images: [{ source: "nodex-asset:diagram" }],
+      },
+    });
+    const dispatched = [...fixture.commands.values()].find(
+      (command) => command.type === "message.dispatch",
+    );
+    assert.equal(dispatched?.type, "message.dispatch");
+    if (dispatched?.type !== "message.dispatch") throw new Error("Expected admitted message");
+    assert.equal(dispatched.modelSelection?.model, "model-a");
+    assert.equal(dispatched.attachments[0]?.type, "image");
+    assert.equal(materialized, 1);
+    assert.equal(fixture.bindings.size, 1);
+  }),
+);
+
+it.effect(
+  "rejects follow-up image sources and persisted image references for the requested model",
+  () =>
+    Effect.gen(function* () {
+      let materialized = 0;
+      const fixture = setup({
+        prepareImages: () =>
+          Effect.sync(() => {
+            materialized += 1;
+            return [{ mediaType: "image/png", data: "aW1hZ2U=" }];
+          }),
+      });
+      const owner = yield* fixture.owner;
+      const created = yield* owner.launch({
+        ...launch,
+        modelSelection: { instanceId: "codex", model: "model-a" },
+      });
+      const initialCommands = fixture.commands.size;
+      for (const attachment of [
+        { images: [{ source: "nodex-asset:private" }] },
+        {
+          attachments: [
+            { type: "image", id: "owned", name: "Image", mimeType: "image/png", sizeBytes: 10 },
+          ],
+        },
+      ]) {
+        const result = yield* owner
+          .message({
+            sessionId: created.sessionId,
+            message: {
+              messageId: "refused-follow-up",
+              text: "Read it",
+              modelSelection: { instanceId: "codex", model: "model-b" },
+              ...attachment,
+            },
+          })
+          .pipe(Effect.result);
+        assert.equal(result._tag, "Failure");
+      }
+      assert.equal(materialized, 0);
+      assert.equal(fixture.commands.size, initialCommands);
+      assert.isFalse(fixture.calls.some((call) => call.method === "attachments.persist"));
+    }),
+);
+
+it.effect(
+  "validates an image queue edit against its exact Run model, independently of the Thread default",
+  () =>
+    Effect.gen(function* () {
+      let materialized = 0;
+      const fixture = setup({
+        prepareImages: () =>
+          Effect.sync(() => {
+            materialized += 1;
+            return [{ mediaType: "image/png", data: "aW1hZ2U=" }];
+          }),
+      });
+      const owner = yield* fixture.owner;
+      const created = yield* owner.launch({
+        ...launch,
+        modelSelection: { instanceId: "codex", model: "model-a" },
+      });
+      const original = fixture.snapshots.get(created.threadId)!;
+      const run = {
+        id: "queued-image",
+        userMessageId: "queued-message",
+        status: "queued",
+        ordinal: 2,
+        modelSelection: { instanceId: "codex", model: "model-b" },
+        interactionMode: "default",
+      };
+      fixture.snapshots.set(created.threadId, {
+        ...original,
+        projection: { ...original.projection, runs: [run as never] },
+      });
+      const edit = {
+        sessionId: created.sessionId,
+        requestId: "image-edit",
+        action: "edit" as const,
+        runId: run.id,
+        message: {
+          messageId: run.userMessageId,
+          text: "Read it",
+          images: [{ source: "nodex-asset:private" }],
+        },
+      };
+      assert.equal((yield* owner.queue(edit).pipe(Effect.result))._tag, "Failure");
+      assert.equal(materialized, 0);
+      assert.isTrue(
+        fixture.calls.some(
+          (call) =>
+            call.method === "thread.control" && (call.input as { runId?: string }).runId === run.id,
+        ),
+      );
+      fixture.snapshots.set(created.threadId, {
+        ...original,
+        projection: {
+          ...original.projection,
+          thread: { ...original.projection.thread, modelSelection: run.modelSelection },
+          runs: [{ ...run, modelSelection: { instanceId: "codex", model: "model-a" } } as never],
+        },
+      });
+      yield* owner.queue({ ...edit, requestId: "image-edit-supported" });
+      assert.equal(materialized, 1);
+    }),
+);
+
+it.effect("refuses a queued model change that would retain incompatible images", () =>
+  Effect.gen(function* () {
+    const fixture = setup();
+    const owner = yield* fixture.owner;
+    const created = yield* owner.launch({
+      ...launch,
+      modelSelection: { instanceId: "codex", model: "model-a" },
+    });
+    const original = fixture.snapshots.get(created.threadId)!;
+    const run = {
+      id: "queued-retained",
+      userMessageId: "queued-message",
+      status: "queued",
+      ordinal: 2,
+      modelSelection: { instanceId: "codex", model: "model-a" },
+      interactionMode: "default",
+    };
+    fixture.snapshots.set(created.threadId, {
+      ...original,
+      projection: {
+        ...original.projection,
+        runs: [run as never],
+        messages: [
+          {
+            id: run.userMessageId,
+            text: "Read it",
+            attachments: [
+              { type: "image", id: "owned", name: "Image", mimeType: "image/png", sizeBytes: 10 },
+            ],
+          } as never,
+        ],
+      },
+    });
+    const before = fixture.commands.size;
+    const result = yield* owner
+      .queue({
+        sessionId: created.sessionId,
+        requestId: "retained-edit",
+        action: "edit",
+        runId: run.id,
+        message: {
+          messageId: run.userMessageId,
+          text: "Use text model",
+          modelSelection: { instanceId: "codex", model: "model-b" },
+        },
+      })
+      .pipe(Effect.result);
+    assert.equal(result._tag, "Failure");
+    assert.equal(fixture.commands.size, before);
+  }),
+);
+
+it.effect(
   "owned images are persisted after Thread admission and scoped detail keeps its bound target",
   () =>
     Effect.gen(function* () {
@@ -2159,6 +2422,7 @@ it.effect(
       const owner = yield* fixture.owner;
       const result = yield* owner.launch({
         ...launch,
+        modelSelection: { instanceId: "codex", model: "model-a" },
         message: {
           messageId: "image-message",
           text: "",

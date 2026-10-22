@@ -1,5 +1,6 @@
 import type {
   AgentRuntimeConversation,
+  AgentRuntimeControlInput,
   AgentRuntimeInspection,
   AgentRuntimeOverviewInput,
   AgentRuntimeLaunch,
@@ -162,7 +163,7 @@ const moveSession = defineRendererCommand({
 export interface AgentRuntimeRendererTransport {
   readonly launch: (input: AgentRuntimeLaunch) => Promise<AgentRuntimeLaunchResult>;
   readonly read: (target: AgentRuntimeSessionTarget) => Promise<AgentRuntimeConversation>;
-  readonly control: (target: AgentRuntimeSessionTarget) => Promise<AgentRuntimeConversation>;
+  readonly control: (target: AgentRuntimeControlInput) => Promise<AgentRuntimeConversation>;
   readonly inspect: (target: AgentRuntimeSessionTarget) => Promise<AgentRuntimeInspection>;
   readonly overview: (
     input: AgentRuntimeOverviewInput,

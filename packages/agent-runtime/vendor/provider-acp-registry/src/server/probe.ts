@@ -171,12 +171,14 @@ export interface AcpRegistryLiveConfiguration {
   readonly models: ReadonlyArray<AcpRegistryProbeModel>;
   readonly currentModelId: string | null;
   readonly configOptions: AcpRegistryProbeResult["configOptions"];
+  readonly inputModalities?: AcpRegistryProbeResult["inputModalities"];
 }
 
 /** Normalizes volatile session configuration using the same bounds as discovery probes. */
 export function normalizeAcpRegistryLiveConfiguration(
   configOptions: ReadonlyArray<EffectAcpSchema.SessionConfigOption>,
   modeState?: Parameters<typeof acpProviderOptionDescriptors>[0]["modeState"],
+  supportsImagePrompts?: boolean,
 ): AcpRegistryLiveConfiguration {
   const modelOption = configOptions.find(
     (option) => option.category === "model" && option.type === "select",
@@ -187,6 +189,9 @@ export function normalizeAcpRegistryLiveConfiguration(
       : null;
   const models = normalizeModels(configOptions);
   return {
+    ...(supportsImagePrompts === undefined
+      ? {}
+      : { inputModalities: supportsImagePrompts ? (["text", "image"] as const) : (["text"] as const) }),
     models,
     currentModelId: models.some((model) => model.id === boundedCurrentModelId)
       ? boundedCurrentModelId
@@ -249,6 +254,7 @@ export function acpRegistryProbeResult(
   const liveConfiguration = normalizeAcpRegistryLiveConfiguration(
     started.sessionSetupResult.configOptions ?? [],
     parseSessionModeState(started.sessionSetupResult),
+    started.initializeResult.agentCapabilities?.promptCapabilities?.image === true,
   );
   return AcpRegistryProbeResult.make({
     instanceId,

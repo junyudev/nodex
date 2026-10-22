@@ -468,6 +468,7 @@ describe("AcpRegistryAdapterV2", () => {
         },
       });
       const configuration = yield* Deferred.await(configurationPublished);
+      assert.deepEqual(configuration.inputModalities, ["text"]);
       assert.equal(configuration.currentModelId, "default");
       assert.deepInclude(configuration.models[0], {
         id: "default",

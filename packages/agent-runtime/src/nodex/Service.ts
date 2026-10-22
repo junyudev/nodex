@@ -209,7 +209,7 @@ const AgentRequest = Schema.Union([
   request("providers.configure", Schema.Struct({ providers: ProviderInstanceConfigMap })),
   request("attachments.persist", PersistChatAttachmentsInput),
   request("thread.read", Schema.Struct({ threadId: ThreadId })),
-  request("thread.control", Schema.Struct({ threadId: ThreadId })),
+  request("thread.control", Schema.Struct({ threadId: ThreadId, runId: Schema.optional(RunId) })),
   request(
     "providers.read",
     Schema.Struct({
@@ -683,12 +683,14 @@ export const make = Effect.fn("AgentRuntime.makeService")(function* (
         const snapshot = yield* orchestrator.getThreadSnapshotWindow(input.input.threadId, {
           rowLimit: input.method === "thread.control" ? 0 : THREAD_HISTORY_SNAPSHOT_ROW_LIMIT,
           controlOnly: input.method === "thread.control",
+          requiredRunId: input.method === "thread.control" ? input.input.runId : undefined,
           userTurnLimit: THREAD_HISTORY_PAGE_POLICY.maxUserTurns,
         });
         return yield* encodeSnapshot(
           buildBoundedThreadStreamSnapshot({
             ...snapshot,
             compactTurnItems: true,
+            requiredRunId: input.method === "thread.control" ? input.input.runId : undefined,
           }),
         );
       }

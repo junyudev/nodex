@@ -231,7 +231,7 @@ it.live(
           const control = (yield* runtime.handle({
             id: "controls",
             method: "thread.control",
-            input: { threadId: "thread:content" },
+            input: { threadId: "thread:content", runId: "run:absent" },
           })) as AgentSnapshot;
           expect(control.projection.thread.id).toBe("thread:content");
           expect(control.projection.turnItems).toHaveLength(0);

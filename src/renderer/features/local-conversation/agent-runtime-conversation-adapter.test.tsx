@@ -27,6 +27,7 @@ import { CODEX_DEFAULT_SERVICE_TIER_STORAGE_KEY } from "../../lib/codex-service-
 import { openCodeSetupRuntime } from "../../lib/opencode-setup-runtime";
 import type { OpenCodeSetupState } from "../../../shared/opencode-setup";
 import { readyExecutable, setupState } from "../opencode-setup/opencode-setup.test-fixtures";
+import { supportsConversationProviderControl } from "./conversation-provider-controls";
 
 function RuntimeWorkbench({ children }: PropsWithChildren) {
   const [store] = useState(createMaitaiStore);
@@ -1128,6 +1129,108 @@ describe("Agent Runtime conversation adapter", () => {
   });
 });
 
+describe("Agent Runtime image capabilities", () => {
+  const imageProvider = {
+    ...provider,
+    models: [
+      {
+        slug: "vision",
+        name: "Vision",
+        isCustom: false,
+        isDefault: true,
+        capabilities: { optionDescriptors: [], inputModalities: ["text", "image"] },
+      },
+      {
+        slug: "text",
+        name: "Text",
+        isCustom: false,
+        capabilities: { optionDescriptors: [], inputModalities: ["text"] },
+      },
+      { slug: "unknown", name: "Unknown", isCustom: true, capabilities: null },
+    ],
+  } as unknown as AgentRuntimeProvider;
+
+  it("uses the next message's model for image controls and refuses images before sending", async () => {
+    vi.spyOn(agentRuntimeRuntime, "catalog").mockResolvedValue([imageProvider]);
+    vi.spyOn(agentRuntimeRuntime, "control").mockResolvedValue({
+      sessionId: "image-capability-session",
+      projectId: "project",
+      threadId: "engine-thread",
+      snapshot: {
+        ...snapshot,
+        projection: {
+          ...snapshot.projection,
+          thread: {
+            ...snapshot.projection.thread,
+            modelSelection: { instanceId: "codex", model: "vision" },
+          },
+        },
+      },
+    });
+    vi.spyOn(agentRuntimeRuntime, "subscribe").mockResolvedValue(() => {});
+    const send = vi.spyOn(agentRuntimeRuntime, "message").mockResolvedValue({ sequence: 1 });
+    const { result, unmount } = renderHook(
+      () =>
+        useAgentRuntimeConversationAdapter({
+          sessionId: "image-capability-session",
+          executionRef: { runtimeId: "engine", threadId: "engine-thread" },
+          projectId: "project",
+          modelProjectId: "project",
+          instances,
+          onRefresh: async () => {},
+          onOpenThread: () => {},
+          ensureDraft: async () => ({ id: "image-capability-session" }),
+        }),
+      { wrapper: RuntimeWorkbench },
+    );
+    await waitFor(() => expect(result.current.state.connection).toBe("ready"));
+    await waitFor(() => expect(result.current.provider.modelCatalog?.loading).toBe(false));
+    expect(supportsConversationProviderControl(result.current.provider, "images")).toBe(true);
+    const entries = result.current.provider.modelCatalog!.entries;
+    expect(entries.find((entry) => entry.model.id === "text")?.model.inputModalities).toEqual([
+      "text",
+    ]);
+    expect(
+      entries.find((entry) => entry.model.id === "unknown")?.model.inputModalities,
+    ).not.toContain("image");
+    const images = [{ source: "data:image/png;base64,aGVsbG8=" }];
+    for (const model of ["text", "unknown"]) {
+      await act(async () => {
+        await result.current.provider.modelCatalog!.choose({ binding: { kind: "codex" }, model });
+      });
+      expect(supportsConversationProviderControl(result.current.provider, "images")).toBe(false);
+      await act(async () => {
+        await expect(
+          result.current.actions.onSendPrompt!("Inspect this", {
+            promptInput: { text: "Inspect this", images },
+          }),
+        ).rejects.toThrow(model === "text" ? "does not support image" : "has not reported image");
+      });
+      expect(send).not.toHaveBeenCalled();
+    }
+    await act(async () => {
+      await result.current.actions.onSendPrompt!("Text still works");
+    });
+    expect(send.mock.calls[0]![0].message.modelSelection).toMatchObject({
+      instanceId: "codex",
+      model: "unknown",
+    });
+    await act(async () => {
+      await result.current.provider.modelCatalog!.choose({
+        binding: { kind: "codex" },
+        model: "vision",
+      });
+    });
+    await act(async () => {
+      await result.current.actions.onSendPrompt!("Inspect this", {
+        promptInput: { text: "Inspect this", images },
+      });
+    });
+    expect(send.mock.calls[1]![0].message.images).toEqual(images);
+    await act(async () => unmount());
+  });
+});
+
 describe("Host OpenCode setup", () => {
   it("reloads the catalog once OpenCode is ready without replacing the chosen model", async () => {
     const binding = { kind: "opencode", instanceConfigId: "opencode-default" } as const;
@@ -1204,4 +1307,500 @@ describe("Host OpenCode setup", () => {
     expect(result.current.selectedModel).toBe("gpt-mini");
     await act(async () => unmount());
   });
+});
+
+describe("Agent Runtime sent-message editing capabilities", () => {
+  it.each([
+    { driver: "opencode", supportsConversationRollback: true, editable: true },
+    { driver: "acp", supportsConversationRollback: undefined, editable: false },
+    { driver: "acp", supportsConversationRollback: false, editable: false },
+  ])(
+    "requires an explicit historical rewind capability: $driver/$supportsConversationRollback",
+    async ({ driver, supportsConversationRollback, editable }) => {
+      const binding =
+        driver === "opencode"
+          ? { kind: "opencode" as const, instanceConfigId: "edit-capability-agent" }
+          : {
+              kind: "acp" as const,
+              agentDefinitionId: "reset-only",
+              instanceConfigId: "edit-capability-agent",
+            };
+      const instanceId = agentRuntimeProviderId(binding)!;
+      vi.spyOn(agentRuntimeRuntime, "catalog").mockResolvedValue([
+        {
+          ...provider,
+          instanceId,
+          driver,
+          supportsConversationRollback,
+        } as AgentRuntimeProvider,
+      ]);
+      vi.spyOn(agentRuntimeRuntime, "control").mockResolvedValue({
+        sessionId: "edit-capability-session",
+        projectId: "project",
+        threadId: "engine-thread",
+        snapshot: {
+          ...snapshot,
+          projection: {
+            ...snapshot.projection,
+            thread: {
+              ...snapshot.projection.thread,
+              modelSelection: { instanceId, model: "model" },
+            },
+          },
+        } as AgentSnapshot,
+      });
+      vi.spyOn(agentRuntimeRuntime, "subscribe").mockResolvedValue(() => {});
+      const { result, unmount } = renderHook(
+        () =>
+          useAgentRuntimeConversationAdapter({
+            sessionId: "edit-capability-session",
+            executionRef: { runtimeId: "engine", threadId: "engine-thread" },
+            projectId: "project",
+            modelProjectId: "project",
+            instances: [{ binding, enabled: true, label: "Editing capability test" }],
+            onRefresh: async () => {},
+            onOpenThread: () => {},
+            ensureDraft: async () => ({ id: "edit-capability-session" }),
+          }),
+        { wrapper: RuntimeWorkbench },
+      );
+      try {
+        await waitFor(() => expect(result.current.state.connection).toBe("ready"));
+        await waitFor(() => expect(result.current.provider.modelCatalog?.loading).toBe(false));
+        await waitFor(() =>
+          expect(result.current.state.view?.capabilityFlags.canEditUserTurns).toBe(editable),
+        );
+      } finally {
+        await act(async () => unmount());
+      }
+    },
+  );
+});
+
+describe("Agent Runtime effective image capability", () => {
+  it("refreshes image support after a live ACP handshake without replacing the model's options", async () => {
+    const binding = {
+      kind: "acp" as const,
+      agentDefinitionId: "image-negotiation",
+      instanceConfigId: "live-image-negotiation",
+    };
+    const instanceId = agentRuntimeProviderId(binding)!;
+    const sessionId = "live-image-negotiation-session";
+    const options = [{ id: "effort", value: "high" }];
+    const liveProvider = (inputModalities?: ("text" | "image")[]) =>
+      ({
+        ...provider,
+        instanceId,
+        driver: "acpRegistry",
+        models: [
+          {
+            slug: "model",
+            name: "Model",
+            isCustom: false,
+            capabilities: {
+              ...(inputModalities ? { inputModalities } : {}),
+              optionDescriptors: [
+                {
+                  id: "effort",
+                  label: "Effort",
+                  type: "select",
+                  options: [{ id: "high", label: "High" }],
+                },
+              ],
+            },
+          },
+        ],
+      }) as AgentRuntimeProvider;
+    let catalog = liveProvider();
+    vi.spyOn(agentRuntimeRuntime, "catalog").mockImplementation(async () => [catalog]);
+    vi.spyOn(agentRuntimeRuntime, "control").mockResolvedValue({
+      sessionId,
+      projectId: "project",
+      threadId: "engine-thread",
+      snapshot: {
+        ...snapshot,
+        projection: {
+          ...snapshot.projection,
+          thread: {
+            ...snapshot.projection.thread,
+            modelSelection: { instanceId, model: "model", options },
+          },
+        },
+      },
+    });
+    const listeners = new Set<(event: AgentRuntimeSessionEvent) => void>();
+    vi.spyOn(agentRuntimeRuntime, "subscribe").mockImplementation(async (_input, listener) => {
+      listeners.add(listener);
+      return () => listeners.delete(listener);
+    });
+    const send = vi.spyOn(agentRuntimeRuntime, "message").mockResolvedValue({ sequence: 1 });
+    const configured = [{ binding, enabled: true, label: "ACP" }];
+    const { result, unmount } = renderHook(
+      () =>
+        useAgentRuntimeConversationAdapter({
+          sessionId,
+          executionRef: { runtimeId: "engine", threadId: "engine-thread" },
+          projectId: "project",
+          modelProjectId: "project",
+          instances: configured,
+          onRefresh: async () => {},
+          onOpenThread: () => {},
+          ensureDraft: async () => ({ id: sessionId }),
+        }),
+      { wrapper: RuntimeWorkbench },
+    );
+    const handshake = async (sequence: number) => {
+      await act(async () => {
+        for (const listener of listeners)
+          listener({
+            type: "event",
+            subscriptionId: "live-images",
+            sessionId,
+            threadId: "engine-thread",
+            event: {
+              sequence,
+              commandId: null,
+              event: {
+                id: `handshake:${sequence}`,
+                type: sequence === 2 ? "provider-session.attached" : "provider-session.updated",
+                threadId: "engine-thread",
+                occurredAt: "2026-10-22T00:00:00.000Z",
+                payload: {
+                  id: "live-acp-session",
+                  providerInstanceId: instanceId,
+                  driver: "acpRegistry",
+                  status: "ready",
+                  cwd: "/workspace",
+                  model: "model",
+                  capabilities: { sessions: { supportsProviderSwitchingViaHandoff: true } },
+                  createdAt: "2026-10-22T00:00:00.000Z",
+                  updatedAt: `2026-10-22T00:00:0${sequence}.000Z`,
+                  lastError: null,
+                },
+              },
+            },
+          } as unknown as AgentRuntimeSessionEvent);
+        await Promise.resolve();
+      });
+    };
+    const promptInput = {
+      text: "Inspect this",
+      images: [{ source: "data:image/png;base64,aW1hZ2U=" }],
+    };
+    try {
+      await waitFor(() => expect(result.current.state.connection).toBe("ready"));
+      await waitFor(() => expect(result.current.provider.modelCatalog?.loading).toBe(false));
+      expect(result.current.provider.controls?.images).toBe(false);
+      expect(result.current.provider.imageInputUnavailableReason).toContain("has not reported");
+      catalog = liveProvider(["text", "image"]);
+      await handshake(2);
+      await waitFor(() => expect(result.current.provider.controls?.images).toBe(true));
+      expect(result.current.provider.modelCatalog?.selected.options).toEqual(options);
+      await act(async () => {
+        await result.current.actions.onSendPrompt!(promptInput.text, { promptInput });
+      });
+      expect(send).toHaveBeenCalledOnce();
+      catalog = liveProvider(["text"]);
+      await handshake(3);
+      await waitFor(() => expect(result.current.provider.controls?.images).toBe(false));
+      expect(result.current.provider.modelCatalog?.selected.options).toEqual(options);
+      await act(async () => {
+        await expect(
+          result.current.actions.onSendPrompt!(promptInput.text, { promptInput }),
+        ).rejects.toThrow("does not support image");
+      });
+      expect(send).toHaveBeenCalledOnce();
+    } finally {
+      await act(async () => unmount());
+    }
+  });
+
+  it("edits a queued vision message after choosing a text-only model for the next message", async () => {
+    const sessionId = "queued-image-capability-session";
+    const imageProvider = {
+      ...provider,
+      models: [
+        {
+          slug: "vision",
+          name: "Vision",
+          isCustom: false,
+          capabilities: { inputModalities: ["text", "image"] },
+        },
+        {
+          slug: "text-only",
+          name: "Text only",
+          isCustom: false,
+          capabilities: { inputModalities: ["text"] },
+        },
+      ],
+    } as AgentRuntimeProvider;
+    const conversation = {
+      sessionId,
+      projectId: "project",
+      threadId: "engine-thread",
+      snapshot: {
+        ...snapshot,
+        projection: {
+          ...snapshot.projection,
+          thread: {
+            ...snapshot.projection.thread,
+            modelSelection: { instanceId: "codex", model: "vision" },
+          },
+          runs: [
+            {
+              id: "queued-vision-run",
+              threadId: "engine-thread",
+              ordinal: 1,
+              providerInstanceId: "codex",
+              providerThreadId: null,
+              rootNodeId: null,
+              activeAttemptId: null,
+              userMessageId: "queued-vision-message",
+              modelSelection: { instanceId: "codex", model: "vision" },
+              status: "queued",
+              requestedAt: "2026-10-22T00:00:00.000Z",
+              startedAt: null,
+              completedAt: null,
+              checkpointId: null,
+              contextHandoffId: null,
+            },
+          ],
+        },
+      } as AgentSnapshot,
+    };
+    vi.spyOn(agentRuntimeRuntime, "catalog").mockResolvedValue([imageProvider]);
+    vi.spyOn(agentRuntimeRuntime, "control").mockResolvedValue(conversation);
+    vi.spyOn(agentRuntimeRuntime, "read").mockResolvedValue(conversation);
+    vi.spyOn(agentRuntimeRuntime, "subscribe").mockResolvedValue(() => {});
+    vi.mocked(agentRuntimeRuntime.readQueuePage).mockResolvedValue({
+      snapshotSequence: 1,
+      entries: [
+        {
+          runId: "queued-vision-run",
+          userMessageId: "queued-vision-message",
+          userItemId: "queued-vision-item",
+          queuePosition: 1,
+          held: false,
+          requestedAt: "2026-10-22T00:00:00.000Z",
+        },
+      ],
+      nextCursor: null,
+      nextRunId: null,
+    });
+    vi.mocked(agentRuntimeRuntime.readQueuedPreview).mockResolvedValue({
+      threadId: "engine-thread",
+      runId: "queued-vision-run",
+      messageId: "queued-vision-message",
+      text: "Inspect this",
+      images: [],
+    });
+    vi.mocked(agentRuntimeRuntime.readRunMessage).mockResolvedValue({
+      id: "queued-vision-message",
+      threadId: "engine-thread",
+      role: "user",
+      runId: "queued-vision-run",
+      nodeId: null,
+      streaming: false,
+      text: "Inspect this",
+      attachments: [],
+      createdAt: "2026-10-22T00:00:00.000Z",
+      updatedAt: "2026-10-22T00:00:00.000Z",
+      createdBy: "user",
+      creationSource: "web",
+    });
+    const edit = vi.spyOn(agentRuntimeRuntime, "queue").mockResolvedValue({ sequence: 1 });
+    const { result, unmount } = renderHook(
+      () =>
+        useAgentRuntimeConversationAdapter({
+          sessionId,
+          executionRef: { runtimeId: "engine", threadId: "engine-thread" },
+          projectId: "project",
+          modelProjectId: "project",
+          instances,
+          onRefresh: async () => {},
+          onOpenThread: () => {},
+          ensureDraft: async () => ({ id: sessionId }),
+        }),
+      { wrapper: RuntimeWorkbench },
+    );
+    let releaseTranscript: (() => void) | undefined;
+    try {
+      await waitFor(() => expect(result.current.state.connection).toBe("ready"));
+      await waitFor(() => expect(result.current.provider.modelCatalog?.loading).toBe(false));
+      await act(async () => {
+        releaseTranscript = result.current.runtime
+          .transcriptReadOwner?.("engine-thread")
+          ?.subscribeStructure(() => {});
+        await Promise.resolve();
+      });
+      await waitFor(() =>
+        expect(result.current.state.view?.queuedFollowUps?.entries[0]?.followUpId).toBe(
+          "queued-vision-run",
+        ),
+      );
+      await act(async () => {
+        await result.current.provider.modelCatalog!.choose({
+          binding: { kind: "codex" },
+          model: "text-only",
+        });
+      });
+      expect(result.current.provider.controls?.images).toBe(false);
+      const images = [{ source: "data:image/png;base64,aW1hZ2U=" }];
+      await act(async () => {
+        await expect(
+          result.current.actions.onReplaceQueuedFollowUp!(
+            "engine-thread",
+            "queued-vision-run",
+            1,
+            "Inspect this updated image",
+            { promptInput: { text: "Inspect this updated image", images } },
+          ),
+        ).resolves.toBe(true);
+      });
+      expect(edit).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: "edit",
+          runId: "queued-vision-run",
+          message: expect.objectContaining({ text: "Inspect this updated image", images }),
+        }),
+      );
+      expect(edit.mock.calls[0]![0]).toHaveProperty("message");
+      const edited = edit.mock.calls[0]![0];
+      expect(edited.action === "edit" && edited.message.modelSelection).toBeUndefined();
+      expect(result.current.selectedModel).toBe("text-only");
+    } finally {
+      await act(async () => {
+        releaseTranscript?.();
+        unmount();
+      });
+    }
+  });
+});
+
+describe("Agent Runtime sent-image edit admission", () => {
+  it.each([
+    { currentModel: "vision", configuredModel: "text-only", accepted: false },
+    { currentModel: "text-only", configuredModel: "vision", accepted: true },
+  ])(
+    "checks the configured $configuredModel model before rewinding a sent image from $currentModel",
+    async ({ currentModel, configuredModel, accepted }) => {
+      const sessionId = `sent-image-edit-${configuredModel}`;
+      const target = { sessionId, threadId: "engine-thread" };
+      const providers = [
+        {
+          ...provider,
+          supportsConversationRollback: true,
+          models: [
+            {
+              slug: "vision",
+              name: "Vision",
+              isCustom: false,
+              capabilities: { inputModalities: ["text", "image"] },
+            },
+            {
+              slug: "text-only",
+              name: "Text only",
+              isCustom: false,
+              capabilities: { inputModalities: ["text"] },
+            },
+          ],
+        },
+      ] as AgentRuntimeProvider[];
+      vi.spyOn(agentRuntimeRuntime, "catalog").mockResolvedValue(providers);
+      vi.spyOn(agentRuntimeRuntime, "control").mockResolvedValue({
+        ...target,
+        projectId: "project",
+        snapshot: {
+          ...snapshot,
+          projection: {
+            ...snapshot.projection,
+            thread: {
+              ...snapshot.projection.thread,
+              modelSelection: { instanceId: "codex", model: currentModel },
+            },
+          },
+        },
+      });
+      vi.spyOn(agentRuntimeRuntime, "subscribe").mockResolvedValue(() => {});
+      const images = [{ source: "/attachments/chart.png", caption: "chart.png" }];
+      const acquired = acquireAgentRuntimeConversationOwner(target);
+      vi.spyOn(acquired.owner, "readSentMessage").mockResolvedValue({
+        message: {
+          id: "sent-image-message",
+          threadId: target.threadId,
+          runId: "sent-image-run",
+          nodeId: null,
+          role: "user",
+          text: "Inspect this",
+          attachments: [
+            {
+              type: "image",
+              id: "sent-image-attachment",
+              name: "chart.png",
+              mimeType: "image/png",
+              sizeBytes: 10,
+            },
+          ],
+          streaming: false,
+          createdBy: "user",
+          creationSource: "web",
+          createdAt: "2026-10-22T00:00:00.000Z",
+          updatedAt: "2026-10-22T00:00:00.000Z",
+        },
+        images,
+      });
+      const rollback = vi
+        .spyOn(agentRuntimeRuntime, "rollback")
+        .mockResolvedValue({ rolledBack: true });
+      const send = vi.spyOn(agentRuntimeRuntime, "message");
+      if (accepted) send.mockResolvedValue({ sequence: 1 });
+      else send.mockRejectedValue(new Error("This model does not support image attachments."));
+      const { result, unmount } = renderHook(
+        () =>
+          useAgentRuntimeConversationAdapter({
+            sessionId,
+            executionRef: { runtimeId: "engine", threadId: target.threadId },
+            projectId: "project",
+            modelProjectId: "project",
+            instances,
+            onRefresh: async () => {},
+            onOpenThread: () => {},
+            ensureDraft: async () => ({ id: sessionId }),
+          }),
+        { wrapper: RuntimeWorkbench },
+      );
+      // This is the same raw config form accepted by splitCodexPromptAgentConfigLines.
+      const message = `<agent-config model="${configuredModel}" />\nInspect this again`;
+      try {
+        await waitFor(() => expect(result.current.state.connection).toBe("ready"));
+        await waitFor(() => expect(result.current.provider.modelCatalog?.loading).toBe(false));
+        await act(async () => {
+          const editing = result.current.actions.onEditUserTurn!({
+            threadId: target.threadId,
+            turnId: "sent-image-run",
+            message,
+          });
+          if (accepted) await editing;
+          else await expect(editing).rejects.toThrow("does not support image");
+        });
+        if (accepted) {
+          expect(rollback).toHaveBeenCalledOnce();
+          expect(send).toHaveBeenCalledWith(
+            expect.objectContaining({
+              ...target,
+              message: expect.objectContaining({ images }),
+            }),
+          );
+          expect(rollback.mock.invocationCallOrder[0]).toBeLessThan(
+            send.mock.invocationCallOrder[0]!,
+          );
+        } else {
+          expect(rollback).not.toHaveBeenCalled();
+          expect(send).not.toHaveBeenCalled();
+        }
+      } finally {
+        await act(async () => unmount());
+      }
+    },
+  );
 });

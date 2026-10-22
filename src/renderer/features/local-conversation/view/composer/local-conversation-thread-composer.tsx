@@ -28,6 +28,7 @@ import type {
 import type { ComposerPickedFile } from "../../../../../shared/ipc-api";
 import { DEFAULT_CODEX_HOST_ID } from "../../../../../shared/codex-host";
 import { codexImageFileIdFromSource } from "../../../../../shared/codex-image-input";
+import { splitCodexPromptAgentConfigLines } from "../../../../../shared/codex-prompt-preparation";
 import { dedupeCodexLiveFileAttachments } from "../../../../../shared/codex-live-file-attachments";
 import { useCodexServiceTierSettings } from "@/lib/use-codex-service-tier-settings";
 import { useCommandKeymapState } from "@/lib/use-command-keymap-state";
@@ -1481,12 +1482,19 @@ function HydratedThreadComposer({
     getImageEditDraftSnapshot,
     getImageEditDraftSnapshot,
   );
+  const queuedImageInput = queuedFollowUpEdit?.modelSelection
+    ? model.provider?.imageInputForSelection?.(queuedFollowUpEdit.modelSelection)
+    : undefined;
+  const imageInputUnavailableReason = queuedImageInput
+    ? queuedImageInput.unavailableReason
+    : model.provider?.imageInputUnavailableReason;
   const imageInputSupported =
-    supportsConversationProviderControl(model.provider, "images") &&
-    resolveImageInputSupport({
-      models: model.availableModels,
-      selectedModel: model.selectedModel,
-    });
+    queuedImageInput?.supported ??
+    (supportsConversationProviderControl(model.provider, "images") &&
+      resolveImageInputSupport({
+        models: model.availableModels,
+        selectedModel: model.selectedModel,
+      }));
   const imageAttachmentsRef = useRef(imageAttachments);
   imageAttachmentsRef.current = imageAttachments;
   const handleEditComposerImage = useCallback(
@@ -1507,6 +1515,7 @@ function HydratedThreadComposer({
     setAttachments: setImageAttachments,
     scopeKey: composerScopeKey,
     enabled: imageInputSupported,
+    unavailableReason: imageInputUnavailableReason,
     onError: (message) => onErrorMessage(message),
     onRemove: (attachmentId) => {
       if (isImageEditComposerAttachmentId(attachmentId)) {
@@ -2095,10 +2104,6 @@ function HydratedThreadComposer({
       pausedQueueResolution?: "resume" | "clear";
     }): Promise<boolean> => {
       if (hasPendingPastedTextAttachments) return false;
-      if (!imageInputSupported && (imageAttachments.length > 0 || input.imageEditIntent)) {
-        onErrorMessage("Remove images or switch models to send this message");
-        return false;
-      }
       const executionHostId = model.isCloudNewThreadTarget ? null : model.hostId;
       const intentImageAttachments = input.imageEditIntent
         ? buildComposerImageEditAttachments({
@@ -2139,6 +2144,23 @@ function HydratedThreadComposer({
         attachments: effectiveAttachmentState,
         executionHostId,
       });
+      const hasAgentConfig =
+        (
+          promptInput?.agentConfigs ??
+          splitCodexPromptAgentConfigLines(promptInput?.text ?? nextPrompt).agentConfigs
+        ).length > 0;
+      // Document preferences may select a different model. Runtime preparation validates
+      // that effective model before submitting or rewinding the conversation.
+      if (
+        !imageInputSupported &&
+        !hasAgentConfig &&
+        (effectiveImageAttachments.length > 0 || input.imageEditIntent)
+      ) {
+        onErrorMessage(
+          imageInputUnavailableReason ?? "Remove images or switch models to send this message",
+        );
+        return false;
+      }
       const hasPromptAttachments = promptInput !== undefined || hasAppModelContextInput;
       const target = model.newThreadTarget;
       const goalActionAvailable =
@@ -2472,6 +2494,7 @@ function HydratedThreadComposer({
       imageAttachments,
       imageEditDraft,
       imageInputSupported,
+      imageInputUnavailableReason,
       intelligenceController,
       model.activeTurn,
       model.composerShell,

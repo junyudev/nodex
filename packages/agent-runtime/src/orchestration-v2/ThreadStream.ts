@@ -54,10 +54,12 @@ type ThreadSnapshotStreamItem = Extract<
 export function boundedSnapshotResponseFields(input: {
   readonly bounded: BoundedProjectionResult;
   readonly compactTurnItems: boolean;
+  readonly requiredRunId?: string | undefined;
 }) {
   const { bounded } = input;
   const publicProjection = retainPublicThreadControlClosure(
     projectThreadProjectionForWire(bounded.projection),
+    input.requiredRunId,
   );
   const compactProjection = input.compactTurnItems
     ? omitLocalVisibleTurnItems(publicProjection)
@@ -91,6 +93,7 @@ export function buildBoundedThreadStreamSnapshot(input: {
   readonly compactTurnItems?: boolean;
   readonly hasEarlierHistory?: boolean | undefined;
   readonly latestLocalTurnOrdinal?: number | null | undefined;
+  readonly requiredRunId?: string | undefined;
 }): ThreadSnapshotStreamItem {
   const bounded = buildBoundedThreadProjection({
     snapshotSequence: input.snapshotSequence,
@@ -104,6 +107,7 @@ export function buildBoundedThreadStreamSnapshot(input: {
     ...boundedSnapshotResponseFields({
       bounded,
       compactTurnItems: input.compactTurnItems === true,
+      requiredRunId: input.requiredRunId,
     }),
   };
 }

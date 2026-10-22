@@ -21,7 +21,7 @@ import type {
 } from "@/features/local-conversation";
 import type { ThreadOpenSubagentPayload } from "@/features/local-conversation/thread-stage-types";
 import { CODEX_CLIENT_THREAD_ID_PREFIX } from "../../shared/codex-client-thread";
-import { launchAgentRuntimeSession } from "./agent-runtime-session-launch";
+import { useAgentRuntimeSessionLaunch } from "./use-agent-runtime-session-launch";
 import { agentRuntimeRuntime } from "./agent-runtime-runtime";
 import { createUuidV7 } from "../../shared/uuid-v7";
 import { prepareAgentMessage } from "../../shared/agent-prompt";
@@ -236,6 +236,7 @@ export function useWorkbenchSessionCommands({
   setProcessManagerOpen,
 }: WorkbenchSessionCommandsInput) {
   const queryClient = useQueryClient();
+  const launchAgentRuntimeSession = useAgentRuntimeSessionLaunch();
   const panelControllerRef = useRef(controller);
   panelControllerRef.current = controller;
   const subagentSelectionRequestRef = useRef(0);
@@ -453,7 +454,9 @@ export function useWorkbenchSessionCommands({
                 messageId: createUuidV7(),
                 ...prepared,
                 images: agentRuntimePromptImages(context.promptInput),
-                agentConfigs: context.promptInput.agentConfigs ?? [],
+                ...(context.promptInput.agentConfigs !== undefined
+                  ? { agentConfigs: context.promptInput.agentConfigs }
+                  : {}),
               },
             });
           },
@@ -472,7 +475,9 @@ export function useWorkbenchSessionCommands({
                   messageId: createUuidV7(),
                   ...prepared,
                   images: agentRuntimePromptImages(context.promptInput),
-                  agentConfigs: context.promptInput.agentConfigs ?? [],
+                  ...(context.promptInput.agentConfigs !== undefined
+                    ? { agentConfigs: context.promptInput.agentConfigs }
+                    : {}),
                 },
               });
             } else
@@ -507,6 +512,7 @@ export function useWorkbenchSessionCommands({
       resolveChatSessionById,
       resolveChatSessionForThread,
       sessionCatalog,
+      launchAgentRuntimeSession,
     ],
   );
 
@@ -1216,7 +1222,12 @@ export function useWorkbenchSessionCommands({
         throw error;
       }
     },
-    [ensureDefaultDraftSessionForProject, refreshProjectSessions, selectSession],
+    [
+      ensureDefaultDraftSessionForProject,
+      refreshProjectSessions,
+      selectSession,
+      launchAgentRuntimeSession,
+    ],
   );
 
   const openProcessOutputInCurrentSession = useCallback(

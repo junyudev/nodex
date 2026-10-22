@@ -10,6 +10,8 @@ import * as HttpClient from "effect/http/HttpClient";
 import * as HttpClientResponse from "effect/http/HttpClientResponse";
 import { vi } from "vitest";
 import { makeOpenCodeCatalog, openOpenCodeCatalog } from "./OpenCodeCatalog.ts";
+import { loadOpenCode2Catalog } from "../../vendor/provider-opencode/src/server/openCode2Catalog.ts";
+import * as OpenCode2Client from "@t3tools/provider-opencode/server/v2/OpenCode2Client";
 
 const directory = "/exact/workspace";
 const model = (id: string, enabled = true) => ({
@@ -183,6 +185,20 @@ const input = {
   profileDirectory: "/unused/profile",
   environment: {},
 };
+
+it.effect("retains V2 input capabilities through the provider status catalog loader", () => {
+  const f = fixture();
+  return Effect.gen(function* () {
+    const opencode = yield* OpenCode2Client.make;
+    const { client } = yield* opencode.connect({
+      baseUrl: input.serverUrl,
+      password: input.serverPassword,
+    });
+    const models = yield* loadOpenCode2Catalog(client, directory);
+    assert.isAbove(models.length, 0);
+    for (const listed of models) assert.deepEqual(listed.capabilities?.input, ["text", "image"]);
+  }).pipe(Effect.provide(f.layer));
+});
 
 it.live(
   "reads V2 workspace models, variants, modalities and configured defaults without a local CLI",

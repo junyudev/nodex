@@ -123,6 +123,8 @@ function canonicalSelectionsToLegacyObject(
 }
 
 export const ModelCapabilities = Schema.Struct({
+  /** Absent means unknown. An advertised list is authoritative, including text-only. */
+  inputModalities: Schema.optional(Schema.Array(Schema.Literals(["text", "image"]))),
   optionDescriptors: Schema.optional(Schema.Array(ProviderOptionDescriptor)),
 });
 export type ModelCapabilities = typeof ModelCapabilities.Type;

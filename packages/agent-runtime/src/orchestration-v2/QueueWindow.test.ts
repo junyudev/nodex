@@ -20,6 +20,7 @@ import * as ProjectionStore from "./ProjectionStore.ts";
 import * as ProviderAdapterRegistry from "./ProviderAdapterRegistry.ts";
 import * as ProviderReplayHarness from "./testkit/ProviderReplayHarness.ts";
 import type * as ProviderAdapter from "@t3tools/provider-core/server/ProviderAdapter";
+import { buildBoundedThreadStreamSnapshot } from "./ThreadStream.ts";
 
 const instanceId = ProviderInstanceId.make("codex");
 const adapter = {
@@ -68,6 +69,7 @@ it.effect(
           commandId: CommandId.make(`queue:${index}`),
           threadId,
           messageId: MessageId.make(`message:${index}`),
+          modelSelection: { instanceId, model: `model-${index}` },
           text: `Queued ${index} ${"body".repeat(1000)}`,
           attachments:
             index === 6
@@ -97,6 +99,23 @@ it.effect(
       assert.isNotNull(first.nextCursor);
       assert.isNotNull(first.nextRunId);
       const firstRun = RunId.make(first.entries[0]!.runId);
+      const exactControl = yield* store.getThreadSnapshotWindow(threadId, {
+        rowLimit: 0,
+        controlOnly: true,
+        requiredRunId: firstRun,
+      });
+      const exactSnapshot = buildBoundedThreadStreamSnapshot({
+        ...exactControl,
+        requiredRunId: firstRun,
+      });
+      assert.equal(
+        exactSnapshot.projection.runs.find((run) => run.id === firstRun)?.modelSelection.model,
+        `model-${first.entries[0]!.userMessageId.split(":").at(-1)}`,
+      );
+      assert.isAtMost(exactSnapshot.projection.runs.length, 3);
+      assert.lengthOf(exactSnapshot.projection.turnItems, 0);
+      assert.lengthOf(exactSnapshot.projection.visibleTurnItems, 0);
+      assert.lengthOf(exactSnapshot.projection.messages, 0);
       const previewParse = vi.spyOn(JSON, "parse");
       try {
         const preview = yield* store.getQueuedRunPreview(threadId, firstRun);
