@@ -1,0 +1,139 @@
+packages/agent-runtime/src/provider/OpenCodeConversationCapabilities.test.ts
+  s_534dff6e177f2d::t_1cb3e74dac620e 1-122
+src/main/agent-runtime/AgentRuntimeApplication.node.test.ts
+  s_534dff6e177f2d::t_a81459aeac3d0b 121,140,604-622,1143-1147,1255-1259,2178-2409,2425
+src/renderer/features/local-conversation/agent-runtime-conversation-adapter.test.tsx
+  s_534dff6e177f2d::t_e0b6c2ec838600 30,1132-1233,1311-1806
+src/renderer/features/local-conversation/agent-runtime-stage-actions.node.test.ts
+  s_534dff6e177f2d::t_41dbb225a6f30a 288-304
+src/renderer/features/local-conversation/thread-stage-types.ts
+  s_534dff6e177f2d::t_64acb00cac0501 290-297
+src/renderer/features/local-conversation/view/composer/local-conversation-thread-composer-speed.test.tsx
+  s_534dff6e177f2d::t_6acba97913de7b 5380-5435
+src/renderer/lib/agent-runtime-prompt.ts
+  s_534dff6e177f2d::t_0204bfc1e98221 2,4-68
+src/shared/agent-runtime-image-input.ts
+  s_815d4298362b02::t_544e75ea950464 1-28
+src/shared/types.ts
+  s_534dff6e177f2d::t_6bfaf30788d198 2830-2833
+packages/agent-runtime/src/nodex/Interface.ts
+  s_020e56a074e5e7::t_f155f66e8bf658 421
+packages/agent-runtime/src/nodex/OpenCodeCatalog.test.ts
+  s_9ec69f9c98d157::t_fa633debed0496 13-14,189-202
+packages/agent-runtime/src/orchestration-v2/Adapters/AcpRegistryAdapterV2.test.ts
+  s_6e834c415566c4::t_5d5b1d06383707 471
+packages/agent-runtime/src/provider/CodexProvider.ts
+  s_6e834c415566c4::t_e82e5a74445ab1 244-246
+packages/agent-runtime/src/provider/ModelInputCapabilities.test.ts
+  s_020e56a074e5e7::t_b82de456b1ec79 1-178
+packages/agent-runtime/src/provider/ProviderRegistry.ts
+  s_0791654d0bb843::t_de69be501f58f6 292-303,307-311
+packages/agent-runtime/src/provider/model-manifest.json
+  s_020e56a074e5e7::t_e65762490f5439 51,105,138,197,256,310,383,422,470,539,566
+packages/agent-runtime/vendor/contracts/src/acpRegistry.ts
+  s_bdf71b9880673e::t_00d8c2247440b1 5,283
+packages/agent-runtime/vendor/contracts/src/model.ts
+  s_bdf71b9880673e::t_79ebe1c6ccd3bd 126-127
+packages/agent-runtime/vendor/provider-acp-registry/src/server/AcpRegistryRuntimeCoordinator.ts
+  s_020e56a074e5e7::t_e07957937588fc 222-231,234
+packages/agent-runtime/vendor/provider-acp-registry/src/server/adapter.ts
+  s_020e56a074e5e7::t_c4a1d461ec74b9 234,237
+packages/agent-runtime/vendor/provider-acp-registry/src/server/driver.ts
+  s_020e56a074e5e7::t_30a049b81427ff 90,96-99,269-278
+packages/agent-runtime/vendor/provider-acp-registry/src/server/probe.ts
+  s_020e56a074e5e7::t_24d9f43dc6d5ed 174,181,192-194,257
+packages/agent-runtime/vendor/provider-acp/src/server/adapter.ts
+  s_020e56a074e5e7::t_f2f16de41d0c06 221,5963-5971
+packages/agent-runtime/vendor/provider-opencode/src/server/openCode2Catalog.ts
+  s_bdf71b9880673e::t_d53c6950d839ff 62
+packages/agent-runtime/vendor/provider-opencode/src/server/status.ts
+  s_020e56a074e5e7::t_5a0a67f3fc948e 31,227-232,400,524-526
+packages/agent-runtime/vendor/shared/src/model.ts
+  s_020e56a074e5e7::t_ce2fb0ce661e1f 35,38,399-402,415,417,421-427
+src/renderer/components/workbench/workbench-shell.automations-conversation.test.tsx
+  s_020e56a074e5e7::t_02367d8d17f96d 105-149
+src/renderer/components/workbench/workbench-shell.library-shell-navigation.test.tsx
+  s_020e56a074e5e7::t_2182ae30135321 36-37,671-688,690-695,697-729,731-738,740,742-755,757-764
+src/renderer/features/local-conversation/conversation-provider-controls.ts
+  s_9d064470fb7e30::t_b151302b98785b 7-8,10
+src/renderer/lib/agent-runtime-model-selection.ts
+  s_020e56a074e5e7::t_aa9c9f837d8300 1-70
+src/renderer/lib/agent-runtime-session-launch.node.test.ts
+  s_020e56a074e5e7::t_c7eb0674150aef 5-172,186-197
+src/renderer/lib/agent-runtime-session-launch.ts
+  s_020e56a074e5e7::t_9e4d2d4b0fc672 2-3,7-13,24-26,39-41,43-53,69,78
+src/renderer/lib/use-agent-runtime-session-launch.ts
+  s_020e56a074e5e7::t_1b505541eba759 1-46
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "b6852b61aad1cb1b2f79084132a9af1df08db150",
+  "prompts": {},
+  "sessions": {
+    "s_020e56a074e5e7": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a16369-09ce-73d2-b36e-73b9a8aae6ea",
+        "model": "unknown"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_0791654d0bb843": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1640f-3ec4-74a3-9df1-3f5f49d88d16",
+        "model": "unknown"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_534dff6e177f2d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "3c849fb5-8039-4cfb-9db5-e88711b21310",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_6e834c415566c4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1640f-0beb-7c91-afbe-6ef57daad6b5",
+        "model": "unknown"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_815d4298362b02": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1640e-f2bd-7b93-9ce6-465dbad52c59",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_9d064470fb7e30": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a163fd-bf2e-7bf3-89e6-5a0c6b08e3b3",
+        "model": "unknown"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_9ec69f9c98d157": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a16410-82e2-7de1-99b8-3da9c80a455c",
+        "model": "unknown"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_bdf71b9880673e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8d936889-1784-495a-8683-8013f2a30b4f",
+        "model": "unknown"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
