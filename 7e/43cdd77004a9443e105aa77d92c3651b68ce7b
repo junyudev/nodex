@@ -1,0 +1,19 @@
+src/renderer/features/local-conversation/view/connected-thread-stage.test.tsx
+  s_8d47191f83c144::t_062acbff544696 29-33,48-49,64-70
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "7e43cdd77004a9443e105aa77d92c3651b68ce7b",
+  "prompts": {},
+  "sessions": {
+    "s_8d47191f83c144": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a162a4-b5ba-77e1-9bfd-eea3430138ce",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
