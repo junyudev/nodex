@@ -158,6 +158,8 @@ jobs:
     needs: publish
     runs-on: macos-26
     environment: homebrew-tap
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -173,6 +175,7 @@ jobs:
       - name: Generate and publish cask
         env:
           GH_TOKEN: ${{ secrets.homebrew_github_token }}
+          HOMEBREW_GITHUB_API_TOKEN: ${{ github.token }}
           HOMEBREW_TAP: junyudev/tap
           HOMEBREW_TAP_REPO: junyudev/homebrew-tap
         shell: bash
@@ -219,6 +222,8 @@ jobs:
           fi
 
       - name: Smoke install published cask
+        env:
+          HOMEBREW_GITHUB_API_TOKEN: ${{ github.token }}
         shell: bash
         run: |
           set -euo pipefail
