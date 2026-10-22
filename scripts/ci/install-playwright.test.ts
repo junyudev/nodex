@@ -68,3 +68,22 @@ test("user cancellation prevents fallback installation", async () => {
   ).toBe(130);
   expect(calls).toBe(1);
 });
+
+test("refuses fallback when timed-out system dependencies could not be stopped", async () => {
+  let calls = 0;
+  const exit = await installPlaywrightChromium({
+    platform: "linux",
+    signal: new AbortController().signal,
+    timeoutMs: 1,
+    execute: async (command) => {
+      calls++;
+      expect(command.privilegedCancellation).toBe(true);
+      await new Promise<void>((resolve) =>
+        command.signal!.addEventListener("abort", () => resolve(), { once: true }),
+      );
+      throw new Error("root-owned package manager is still running");
+    },
+  });
+  expect(exit).toBe(1);
+  expect(calls).toBe(1);
+});

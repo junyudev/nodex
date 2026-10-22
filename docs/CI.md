@@ -61,6 +61,13 @@ the correct runtime. Application cells do not regenerate third-party notices or
 other build resources; the generated static contract and real build/package
 flows own those artifacts.
 
+Linux Chromium setup bounds system dependency installation to eight minutes.
+Before a timed-out install may retry browser-only, its owned process groups,
+including root-owned package-manager descendants, must stop. Cleanup uses
+noninteractive `sudo` only for that installer and fails closed if ownership or
+termination cannot be verified; cancellation errors never permit a fallback.
+The browser suite still validates the installed Chromium and host libraries.
+
 CI implementation changes are routed by the same ownership rule. Ordinary
 workflow orchestration runs CI contracts only; changing
 `_app-tests.yml`, `_rust-checks.yml`, or `_static-checks.yml` additionally runs

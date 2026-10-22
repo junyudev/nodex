@@ -24,6 +24,7 @@ export async function installPlaywrightChromium(options: {
           "chromium",
         ],
         signal: AbortSignal.any([options.signal, deadline.signal]),
+        privilegedCancellation: withDependencies,
       });
       if (options.signal.aborted) return 130;
       if (!deadline.signal.aborted) return result.exitCode;
@@ -31,6 +32,9 @@ export async function installPlaywrightChromium(options: {
       process.stderr.write(
         "Playwright system dependency installation timed out; retrying browser installation.\n",
       );
+    } catch (error) {
+      process.stderr.write(`Playwright installation could not finish safely: ${String(error)}\n`);
+      return 1;
     } finally {
       clearTimeout(timer);
     }
