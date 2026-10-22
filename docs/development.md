@@ -16,6 +16,12 @@ Nodex pins Node `24.15.0` in `.node-version` and pnpm `12.3.4` in
 `vite-plus` development dependency pins the project toolchain independently of
 the globally installed launcher version.
 
+Upgrade `vite-plus` and the `@voidzero-dev/vite-plus-core` alias together across
+workspace manifests and overrides. Keep Vitest, its browser provider, and the
+major-5 utility overrides aligned with the version reported by
+`vp toolchain vitest`; install dependencies and run `vp pm audit --level low`
+after refreshing those pins.
+
 The install lifecycle prepares pinned Electron, then runs `electron-builder install-app-deps`, which rebuilds
 `node-pty` for Electron. Do not run `vp rebuild` for it: that can replace the
 Electron-compatible binary with a host-Node binary. SQLite and collaborative
