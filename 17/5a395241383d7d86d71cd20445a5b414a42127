@@ -1,0 +1,22 @@
+.github/workflows/_promote-release.yml
+  s_8d47191f83c144::t_8f07fad7316c00 161-162
+  s_8d47191f83c144::t_0d255f14731cd3 178,225-226
+docs/release-macos.md
+  s_8d47191f83c144::t_8f07fad7316c00 207-212
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "175a395241383d7d86d71cd20445a5b414a42127",
+  "prompts": {},
+  "sessions": {
+    "s_8d47191f83c144": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a162a4-b5ba-77e1-9bfd-eea3430138ce",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
