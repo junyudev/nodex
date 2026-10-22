@@ -1,0 +1,25 @@
+CHANGELOG.md
+  s_8d47191f83c144::t_0dfd079c8f9c67 9-16
+Cargo.lock
+  s_8d47191f83c144::t_82ddcb5e140ae4 1059,1075,1101,1133,1144,1160,1187,1199,1218,1225
+Cargo.toml
+  s_8d47191f83c144::t_85cd40ba1b2d35 17
+package.json
+  s_8d47191f83c144::t_996ab63ac049dd 3
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "fc3b77b532a0b8c584598b5a59d525ddc20d3f16",
+  "prompts": {},
+  "sessions": {
+    "s_8d47191f83c144": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a162a4-b5ba-77e1-9bfd-eea3430138ce",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
