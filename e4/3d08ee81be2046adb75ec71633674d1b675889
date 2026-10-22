@@ -1,0 +1,32 @@
+docs/CI.md
+  s_8d47191f83c144::t_9bb7e7b3d5a73b 64-70
+scripts/tooling/process.ts
+  s_8d47191f83c144::t_477de454adf448 14-15,75-81,90-106,108-109,111-131,133-136,141-142,180,196,198-202,204-205,209-219,235-242
+  s_8d47191f83c144::t_7e663637d83772 107,110
+  s_8d47191f83c144::t_9bb7e7b3d5a73b 82-89,132,137-140,206-208
+scripts/tooling/process.test.ts
+  s_8d47191f83c144::t_9bb7e7b3d5a73b 8-26,105-118,120-136,148-162,165,168,180-192,221-222,224
+  s_8d47191f83c144::t_72b27f0e21819f 1,27-37,119,206,212-214
+  s_8d47191f83c144::t_d7f6bbc07e5786 137-147,163-164,166-167,169-179,193-205,207-211,215-220
+  s_8d47191f83c144::t_d17d49482091bb 38-39,223,225
+scripts/ci/install-playwright.test.ts
+  s_8d47191f83c144::t_7e663637d83772 71-89
+scripts/ci/install-playwright.ts
+  s_8d47191f83c144::t_477de454adf448 27,35-37
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "e43d08ee81be2046adb75ec71633674d1b675889",
+  "prompts": {},
+  "sessions": {
+    "s_8d47191f83c144": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a162a4-b5ba-77e1-9bfd-eea3430138ce",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
