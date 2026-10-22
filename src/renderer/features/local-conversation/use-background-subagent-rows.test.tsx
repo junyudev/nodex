@@ -126,6 +126,7 @@ function fixture(kind: ConversationRuntime["kind"] = "claude") {
       return () => bucket.delete(listener);
     },
     retain: () => () => {},
+    loadHistory: async () => {},
     resume: vi.fn(async () => {}),
     role: () => "follower",
     attachment: () => ({ status: "attached" }),

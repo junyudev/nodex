@@ -1198,21 +1198,24 @@ describe("Agent Runtime conversation adapter", () => {
       transcript?.readItem(JSON.stringify(["agent-run", answer.threadId, answer.runId]), answer.id),
     ).toBeNull();
   });
-  it("opens a child through its root Session and releases only the child's bounded owner", async () => {
+  it("retries a child read through its root Session and releases only the child's bounded owner", async () => {
     vi.spyOn(agentRuntimeRuntime, "catalog").mockResolvedValue([provider]);
     const read = vi.spyOn(agentRuntimeRuntime, "read");
-    const control = vi.spyOn(agentRuntimeRuntime, "control").mockResolvedValue({
-      sessionId: "root-session",
-      projectId: "project",
-      threadId: "child-thread",
-      snapshot: {
-        ...snapshot,
-        projection: {
-          ...snapshot.projection,
-          thread: { ...snapshot.projection.thread, id: "child-thread" },
+    const control = vi
+      .spyOn(agentRuntimeRuntime, "control")
+      .mockRejectedValueOnce(new Error("History unavailable"))
+      .mockResolvedValue({
+        sessionId: "root-session",
+        projectId: "project",
+        threadId: "child-thread",
+        snapshot: {
+          ...snapshot,
+          projection: {
+            ...snapshot.projection,
+            thread: { ...snapshot.projection.thread, id: "child-thread" },
+          },
         },
-      },
-    });
+      });
     const release = vi.fn();
     vi.spyOn(agentRuntimeRuntime, "subscribe").mockResolvedValue(release);
     const open = vi.fn();
@@ -1233,9 +1236,18 @@ describe("Agent Runtime conversation adapter", () => {
         }),
       { wrapper: RuntimeWorkbench },
     );
+    await waitFor(() => expect(result.current.state.connection).toBe("failed"));
+    await act(async () => {
+      await result.current.runtime.loadHistory("root-thread");
+    });
+    expect(control).toHaveBeenCalledTimes(1);
+    await act(async () => {
+      await result.current.runtime.loadHistory("child-thread");
+    });
     await waitFor(() => expect(result.current.state.connection).toBe("ready"));
     expect(read).not.toHaveBeenCalled();
-    expect(control).toHaveBeenCalledExactlyOnceWith({
+    expect(control).toHaveBeenCalledTimes(2);
+    expect(control).toHaveBeenLastCalledWith({
       sessionId: "root-session",
       threadId: "child-thread",
     });

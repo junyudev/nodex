@@ -41,6 +41,7 @@ export function createNativeConversationHistoryRuntime(input: {
     primaryRequest: () => null,
     children: () => noChildren,
     retain: (id) => (matches(id) ? retain() : () => {}),
+    loadHistory: (id) => (matches(id) ? owner.refresh() : Promise.resolve()),
     resume: (id) => (matches(id) ? owner.refresh() : Promise.resolve()),
     markRead: async (id) => {
       if (matches(id)) await workspaceSessionCommands.markUnread(sessionId, { unread: false });

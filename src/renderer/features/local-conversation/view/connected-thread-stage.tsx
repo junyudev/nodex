@@ -408,14 +408,13 @@ function ConnectedThreadStageBody({
       onRetryThreadAttachment: async (threadId) => {
         onErrorMessage(null);
         if (readOnly) {
-          if (runtime.kind === "codex")
-            await manager.hydrateReadOnlyHistory(threadId).catch(() => null);
+          await runtime.loadHistory(threadId).catch(() => null);
           return;
         }
         await runtime.resume(threadId).catch(() => null);
       },
     }),
-    [actions, onErrorMessage, runtime, readOnly, manager],
+    [actions, onErrorMessage, runtime, readOnly],
   );
 
   const body = useMemo(
@@ -1273,7 +1272,6 @@ function ConnectedThreadStageContent({
   const resumeState = useConversationResumeState(activeThreadId);
   const attachmentState = useConversationAttachmentState(activeThreadId);
   const streamRole = useConversationStreamRole(activeThreadId);
-  const historyManager = useCodexAppServerManagerForConversationId(activeThreadId, preferredHostId);
   const [writerRetryPending, setWriterRetryPending] = useState(false);
   const writerConflict = isLocalConversationWriterConflict(attachmentState) || writerRetryPending;
   const summaryFields = useConversationSummaryFields(activeThreadId);
@@ -1552,12 +1550,15 @@ function ConnectedThreadStageContent({
   useEffect(() => {
     if (!activeThreadId || !threadLifecycleActive || connection.status !== "connected") return;
     if (!childControlsUnavailable && !writerConflict) return;
-    if (runtime.kind !== "codex") return;
     const historyIds = [activeThreadId, parentThreadId].filter((id): id is string => id !== null);
-    void Promise.all(historyIds.map((id) => historyManager.hydrateReadOnlyHistory(id))).catch(
-      (cause: unknown) =>
-        setErrorMessage(cause instanceof Error ? cause.message : "Could not load thread history"),
-    );
+    let current = true;
+    void Promise.all(historyIds.map((id) => runtime.loadHistory(id))).catch((cause: unknown) => {
+      if (current)
+        setErrorMessage(cause instanceof Error ? cause.message : "Could not load thread history");
+    });
+    return () => {
+      current = false;
+    };
   }, [
     activeThreadId,
     parentThreadId,
@@ -1565,8 +1566,7 @@ function ConnectedThreadStageContent({
     connection.status,
     childControlsUnavailable,
     writerConflict,
-    historyManager,
-    runtime.kind,
+    runtime,
   ]);
 
   const ownsRemoteHostedPipHost =

@@ -113,6 +113,7 @@ function metadataRuntime(state: ReturnType<typeof nativeImageTimelineFixture>["s
     primaryRequest: () => null,
     children: () => [],
     retain: () => () => {},
+    loadHistory: async () => {},
     resume: async () => {},
     markRead: async () => {},
     setPresented: async () => {},

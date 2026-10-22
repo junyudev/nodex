@@ -169,6 +169,7 @@ it("does not claim navigation ownership for Side Chat or runtime override surfac
     primaryRequest: () => null,
     children: () => [],
     retain: () => () => {},
+    loadHistory: async () => {},
     resume: async () => {},
     markRead: async () => {},
     setPresented: async () => {},

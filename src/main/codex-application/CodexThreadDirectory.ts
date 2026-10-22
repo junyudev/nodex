@@ -149,8 +149,8 @@ export class CodexThreadDirectory extends Context.Service<
   CodexThreadDirectory,
   {
     /**
-     * Resolves and, when necessary, materializes inside the Thread's causal lane.
-     * Callers must run this admission boundary before acquiring that same non-reentrant lane.
+     * Reads workspace context for an already registered native Thread without materializing it.
+     * Agent Runtime history belongs to its bound Session and never enters this directory.
      */
     readonly prepareHistoryHydration: (threadId: string) => Effect.Effect<
       {

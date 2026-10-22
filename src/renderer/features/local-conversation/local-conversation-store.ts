@@ -9069,6 +9069,7 @@ export function useConversationRuntime(
         const interest = manager.retainActiveConversation(id, { foreground });
         return () => interest[Symbol.dispose]();
       },
+      loadHistory: (id) => manager.hydrateReadOnlyHistory(id),
       resume: async (id) => {
         await requestLocalConversationResume(id, manager.getHostId());
       },
@@ -9472,7 +9473,7 @@ export function useConversationSubset(
       if (threadIds.length === 0) {
         return () => {};
       }
-      if (runtime && runtime.kind !== "codex") {
+      if (runtime) {
         const unsubs = threadIds.map((threadId) => runtime.subscribe(threadId, listener));
         return () => {
           for (const unsubscribe of unsubs) unsubscribe();
@@ -9502,12 +9503,11 @@ export function useConversationSubset(
       let hasConversation = false;
       const conversations: Record<string, CodexConversationSnapshot> = {};
       for (const threadId of threadIds) {
-        const conversation =
-          runtime && runtime.kind !== "codex"
-            ? runtime.read(threadId)
-            : (
-                registry.getMaybeForConversationId(threadId) ?? registry.getDefault()
-              ).readConversation(threadId);
+        const conversation = runtime
+          ? runtime.read(threadId)
+          : (
+              registry.getMaybeForConversationId(threadId) ?? registry.getDefault()
+            ).readConversation(threadId);
         if (!conversation) {
           continue;
         }

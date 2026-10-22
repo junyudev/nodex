@@ -58,6 +58,7 @@ export interface ConversationRuntime {
   readonly delegatedTasks?: ConversationDelegatedTaskPort;
   /** Present where the execution owner holds asynchronous questions; native chats use their manager. */
   readonly asyncQuestions?: ConversationAsyncQuestionPort;
+  /** Provider presentation only; reads and lifecycle must use this runtime's owner ports. */
   readonly kind: "codex" | "claude" | "acp" | "opencode";
   readonly hostId: string;
   /** App-owned execution descendants share this Core Session. Native observation IDs do not. */
@@ -84,6 +85,8 @@ export interface ConversationRuntime {
    * output; the transcript then shows it in place. Absent where items arrive complete.
    */
   readonly readItemDetail?: (threadId: string | null, itemId: string) => Promise<void>;
+  /** Loads readable history through this owner without resuming execution or acquiring a writer. */
+  readonly loadHistory: (threadId: string) => Promise<void>;
   readonly resume: (threadId: string) => Promise<void>;
   readonly markRead: (threadId: string) => Promise<void>;
   readonly setPresented: (threadId: string, surfaceId: string, presented: boolean) => Promise<void>;

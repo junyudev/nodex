@@ -112,6 +112,12 @@ transcript cache. Text changes notify only the affected item. Older windows pres
 resident items. Releasing the last transcript reader clears body caches; retained
 controls continue observing metadata until their last reader releases. Captured fork ancestry identifies the source of inherited history.
 
+Read-only history loading, retry and child observations use the conversation's
+current owner, including for archived chats and provider-spawned subagents. The
+Agent kind selects presentation, not the history store. Runtime Thread identities
+stay inside the bound Session's Runtime reads; opening their history never requires
+a native Thread registration or acquires an execution writer.
+
 Selected-text side chats create independent product Sessions and prefill a draft.
 Explicit side-chat prompts submit immediately through the same launch owner. Neither
 route copies parent history. Panel remounts resolve the Session's cached canonical

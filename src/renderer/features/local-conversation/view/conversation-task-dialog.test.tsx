@@ -120,6 +120,7 @@ const fixture = () => {
   const observations = new Map(rows.map((row) => [row.threadId, conversation(row.threadId, 1)]));
   const resume = vi.fn(async () => {});
   const runtime: ConversationRuntime = {
+    loadHistory: async () => {},
     kind: "claude",
     hostId: "local",
     read: (id) => (id === "parent" ? parent : id ? (observations.get(id) ?? null) : null),

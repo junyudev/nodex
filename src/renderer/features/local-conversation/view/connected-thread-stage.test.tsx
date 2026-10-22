@@ -37,6 +37,7 @@ import type {
   ConversationProviderPresentation,
 } from "../thread-stage-types";
 import { ConversationRuntimeContext, type ConversationRuntime } from "../conversation-runtime";
+import type { LocalConversationAttachmentState } from "../conversation-attachment-state";
 import { NativeConversationHistoryOwner } from "../native-conversation-history-owner";
 import { createNativeConversationHistoryRuntime } from "../native-conversation-history-adapter";
 import type { FloatingComposerPlacement } from "@/features/floating-composer/floating-composer";
@@ -1009,6 +1010,123 @@ test("imported native history pages remain readable without a Composer or execut
 });
 
 describe("ConnectedThreadStage archived resume behavior", () => {
+  test.each(["child", "archived", "unavailable"] as const)(
+    "loads readonly Runtime Codex history through its Session owner (%s)",
+    async (surface) => {
+      invokeCalls = [];
+      const summary = {
+        ...buildThreadSummary(surface === "archived"),
+        source: surface === "child" ? { parentThreadId: "engine-parent" } : null,
+      };
+      const conversation = withCanonicalState(
+        buildConversation(summary.threadId, { statusType: "idle", source: summary.source }),
+      );
+      const loadHistory = vi.fn(async () => {});
+      const attachment = { status: "attached" } as const;
+      const connection = { status: "connected", retries: 0 } as const;
+      const children: ReturnType<ConversationRuntime["children"]> = [];
+      const runtime: ConversationRuntime = {
+        kind: "codex",
+        hostId: "local",
+        sessionId: "runtime-session",
+        read: (id) => (id === summary.threadId ? conversation : null),
+        subscribe: () => () => {},
+        children: () => children,
+        attachment: () => attachment,
+        connection: () => connection,
+        role: () => "follower",
+        primaryRequest: () => null,
+        retain: () => () => {},
+        loadHistory,
+        resume: vi.fn(async () => {}),
+        markRead: async () => {},
+        setPresented: async () => {},
+      };
+      const view = await renderStage(summary, {
+        runtime,
+        backgroundAgentDetail: surface === "child",
+        executionAvailable: surface !== "unavailable",
+      });
+      await waitFor(() => expect(loadHistory).toHaveBeenCalledWith(summary.threadId));
+      if (surface !== "archived") await view.findByText("Remove the redundant transitions.");
+      expect(runtime.resume).not.toHaveBeenCalled();
+      expect(
+        invokeCalls.filter((call) =>
+          ["codex:thread:history-hydration:prepare", "codex:thread:resume:prepare"].includes(
+            call.channel,
+          ),
+        ),
+      ).toEqual([]);
+      await act(async () => view.unmount());
+    },
+  );
+
+  test.each(["codex", "claude"] as const)(
+    "retries readonly history through its current owner (%s)",
+    async (kind) => {
+      invokeCalls = [];
+      const summary = buildThreadSummary(false);
+      const conversation = withCanonicalState(
+        buildConversation(summary.threadId, { statusType: "idle" }),
+      );
+      let attachment: LocalConversationAttachmentState = {
+        status: "failed",
+        message: "History is temporarily unavailable",
+      };
+      const listeners = new Set<() => void>();
+      const loadHistory = vi.fn(async () => {});
+      const connection = { status: "connected", retries: 0 } as const;
+      const children: ReturnType<ConversationRuntime["children"]> = [];
+      const runtime: ConversationRuntime = {
+        kind,
+        hostId: "local",
+        sessionId: "runtime-session",
+        read: (id) => (id === summary.threadId ? conversation : null),
+        subscribe: (_id, listener) => {
+          listeners.add(listener);
+          return () => {
+            listeners.delete(listener);
+          };
+        },
+        children: () => children,
+        attachment: () => attachment,
+        connection: () => connection,
+        role: () => "follower",
+        primaryRequest: () => null,
+        retain: () => () => {},
+        loadHistory,
+        resume: vi.fn(async () => {}),
+        markRead: async () => {},
+        setPresented: async () => {},
+      };
+      const view = await renderStage(summary, { runtime, executionAvailable: false });
+      await view.findByText("History is temporarily unavailable");
+      await waitFor(() => expect(loadHistory).toHaveBeenCalledWith(summary.threadId));
+      loadHistory.mockClear();
+      loadHistory.mockImplementation(async () => {
+        attachment = { status: "attached" };
+        for (const listener of listeners) listener();
+      });
+      await act(async () => {
+        fireEvent.click(view.getByRole("button", { name: "Retry" }));
+        await Promise.resolve();
+      });
+      await waitFor(() =>
+        expect(view.queryByText("History is temporarily unavailable")).toBeNull(),
+      );
+      expect(loadHistory).toHaveBeenCalledExactlyOnceWith(summary.threadId);
+      expect(runtime.resume).not.toHaveBeenCalled();
+      expect(
+        invokeCalls.filter((call) =>
+          ["codex:thread:history-hydration:prepare", "codex:thread:resume:prepare"].includes(
+            call.channel,
+          ),
+        ),
+      ).toEqual([]);
+      await act(async () => view.unmount());
+    },
+  );
+
   test("a steady text stream does not rebuild body chrome across 5000 resident Turns", async () => {
     installAsyncRequestAnimationFrame();
     const bodyModule = await import("../projection/build-thread-body-model");
@@ -1225,6 +1343,7 @@ describe("ConnectedThreadStage archived resume behavior", () => {
         role: () => "follower",
         primaryRequest: () => null,
         retain: () => () => {},
+        loadHistory: async () => {},
         resume: vi.fn(async () => {}),
         markRead: async () => {},
         setPresented: async () => {},
@@ -1305,6 +1424,7 @@ describe("ConnectedThreadStage archived resume behavior", () => {
         role: () => "follower",
         primaryRequest: () => null,
         retain: () => () => {},
+        loadHistory: async () => {},
         resume: async () => {},
         markRead: async () => {},
         setPresented: async () => {},
@@ -1351,6 +1471,7 @@ describe("ConnectedThreadStage archived resume behavior", () => {
       role: () => "follower",
       primaryRequest: () => null,
       retain: () => () => {},
+      loadHistory: async () => {},
       resume: vi.fn(async () => {}),
       markRead: async () => {},
       setPresented: async () => {},
@@ -1402,6 +1523,7 @@ describe("ConnectedThreadStage archived resume behavior", () => {
         role: () => "follower",
         primaryRequest: () => null,
         retain: () => () => {},
+        loadHistory: async () => {},
         resume: vi.fn(async () => {}),
         markRead: async () => {},
         setPresented: async () => {},
@@ -1433,47 +1555,50 @@ describe("ConnectedThreadStage archived resume behavior", () => {
     },
   );
 
-  test("shared child selectors subscribe to native observations and release their owner on unmount", async () => {
-    const { useConversationSubset } = await import("../local-conversation-store");
-    const childId = "agent-task:thread:review";
-    const ids = [childId];
-    let child = buildConversation(childId, { threadName: "Review", statusType: "active" });
-    const listeners = new Set<() => void>();
-    const subscribe = vi.fn((id: string | null, listener: () => void) => {
-      expect(id).toBe(childId);
-      listeners.add(listener);
-      return () => {
-        listeners.delete(listener);
-      };
-    });
-    const runtime = {
-      kind: "claude",
-      read: (id: string | null) => (id === childId ? child : null),
-      subscribe,
-    } as unknown as ConversationRuntime;
-    function ChildProbe() {
-      const observations = useConversationSubset(ids);
-      return (
-        <output role="status">
-          {observations[childId]?.threadName}:{observations[childId]?.statusType}
-        </output>
+  test.each(["claude", "codex"] as const)(
+    "shared child selectors keep the runtime observation owner (%s)",
+    async (kind) => {
+      const { useConversationSubset } = await import("../local-conversation-store");
+      const childId = "agent-task:thread:review";
+      const ids = [childId];
+      let child = buildConversation(childId, { threadName: "Review", statusType: "active" });
+      const listeners = new Set<() => void>();
+      const subscribe = vi.fn((id: string | null, listener: () => void) => {
+        expect(id).toBe(childId);
+        listeners.add(listener);
+        return () => {
+          listeners.delete(listener);
+        };
+      });
+      const runtime = {
+        kind,
+        read: (id: string | null) => (id === childId ? child : null),
+        subscribe,
+      } as unknown as ConversationRuntime;
+      function ChildProbe() {
+        const observations = useConversationSubset(ids);
+        return (
+          <output role="status">
+            {observations[childId]?.threadName}:{observations[childId]?.statusType}
+          </output>
+        );
+      }
+      const view = render(
+        <ConversationRuntimeContext.Provider value={runtime}>
+          <ChildProbe />
+        </ConversationRuntimeContext.Provider>,
       );
-    }
-    const view = render(
-      <ConversationRuntimeContext.Provider value={runtime}>
-        <ChildProbe />
-      </ConversationRuntimeContext.Provider>,
-    );
-    expect(view.getByRole("status").textContent).toBe("Review:active");
-    expect(listeners.size).toBe(1);
-    await act(async () => {
-      child = { ...child, statusType: "idle" };
-      for (const listener of [...listeners]) listener();
-    });
-    expect(view.getByRole("status").textContent).toBe("Review:idle");
-    view.unmount();
-    expect(listeners.size).toBe(0);
-  });
+      expect(view.getByRole("status").textContent).toBe("Review:active");
+      expect(listeners.size).toBe(1);
+      await act(async () => {
+        child = { ...child, statusType: "idle" };
+        for (const listener of [...listeners]) listener();
+      });
+      expect(view.getByRole("status").textContent).toBe("Review:idle");
+      view.unmount();
+      expect(listeners.size).toBe(0);
+    },
+  );
   test.each([false, true])(
     "loads earlier native messages through the shared history owner without a Codex resume (full=%s)",
     async (windowFull) => {
@@ -1496,6 +1621,7 @@ describe("ConnectedThreadStage archived resume behavior", () => {
         primaryRequest: () => null,
         children: () => emptyChildren,
         retain: () => () => {},
+        loadHistory: async () => {},
         resume: vi.fn(async () => {}),
         markRead: async () => {},
         setPresented: async () => {},

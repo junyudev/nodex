@@ -237,6 +237,9 @@ export function createAgentRuntimeConversationRuntime(
     readItemDetail: async (id, itemId) => {
       if (matches(id)) await owner!.readItem(itemId);
     },
+    loadHistory: async (id) => {
+      if (matches(id)) await owner!.resume();
+    },
     resume: async () => {
       await owner?.resume();
     },
