@@ -10,13 +10,13 @@ function installCalendar(style: string, videoIcon: string) {
       /[&<>"']/g,
       (char) =>
         (
-          ({
+          {
             "&": "&amp;",
             "<": "&lt;",
             ">": "&gt;",
             '"': "&quot;",
             "'": "&#39;",
-          }) as Record<string, string>
+          } as Record<string, string>
         )[char]!,
     );
   const minutes = (value: unknown) => {
