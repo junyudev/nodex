@@ -26,7 +26,11 @@ import type {
 } from "../../../lib/types";
 import { withCanonicalState } from "../../../test/canonical-conversation-fixture";
 import type { ConversationCoordinationHost } from "../../../../shared/codex-client-coordination";
-import type { CodexAppServerManager } from "../local-conversation-store";
+import {
+  __resetLocalConversationStoreForTests,
+  LocalConversationProvider,
+  type CodexAppServerManager,
+} from "../local-conversation-store";
 import type {
   ThreadStageActions,
   ThreadStageRouteInput,
@@ -41,6 +45,8 @@ import { CodexConversationEntityDocument } from "../../../../shared/codex-conver
 import { createCodexCanonicalHydratedConversationState } from "../../../../shared/codex-conversation-state/codex-conversation-state";
 import { mutateCodexConversationFrameTextDeltas } from "../../../../shared/codex-conversation-state/codex-frame-text-delta";
 import type { CodexTranscriptTextChange } from "../../../../shared/codex-transcript-projection";
+// Load the fixed stage graph during collection, before any test owns an async act scope.
+import { ConnectedThreadStage } from "./connected-thread-stage";
 
 let invokeCalls: Array<{
   channel: string;
@@ -55,10 +61,13 @@ beforeEach(() => {
   const previousApi = window.api;
   installWindowApi({
     ...previousApi,
-    invoke: async (channel: string, ...args: unknown[]) =>
-      channel === "codex:thread-handoffs:list"
-        ? { revision: 0, operations: [] }
-        : await previousApi?.invoke(channel, ...args),
+    invoke: async (channel: string, ...args: unknown[]) => {
+      if (channel === "codex:thread-handoffs:list") return { revision: 0, operations: [] };
+      if (channel === "thread-execution:location") {
+        return { hostId: "local", cwd: "/tmp/project", managedWorktreePath: null };
+      }
+      return await previousApi?.invoke(channel, ...args);
+    },
   });
   readStateWrites = [];
   overviewChild = false;
@@ -556,9 +565,6 @@ async function renderStage(
     skillsControlProbe?: boolean;
   } = {},
 ) {
-  const { __resetLocalConversationStoreForTests, LocalConversationProvider } =
-    await import("../local-conversation-store");
-  const { ConnectedThreadStage } = await import("./connected-thread-stage");
   __resetLocalConversationStoreForTests();
 
   const view = render(
@@ -635,9 +641,6 @@ function SkillsReloadProbe() {
 async function renderPrimaryAndAuxiliaryThread(
   auxiliaryMode: "background-detail" | "interactive-background" | "side-chat",
 ) {
-  const { __resetLocalConversationStoreForTests, LocalConversationProvider } =
-    await import("../local-conversation-store");
-  const { ConnectedThreadStage } = await import("./connected-thread-stage");
   __resetLocalConversationStoreForTests();
 
   const rootSummary = {
@@ -729,9 +732,6 @@ async function renderPrimaryAndAuxiliaryThread(
 async function renderNewThreadHome(overrides?: {
   threadStartProgress?: ThreadStageRouteInput["threadStartProgress"];
 }) {
-  const { __resetLocalConversationStoreForTests, LocalConversationProvider } =
-    await import("../local-conversation-store");
-  const { ConnectedThreadStage } = await import("./connected-thread-stage");
   __resetLocalConversationStoreForTests();
   installWindowApi({
     invoke: async (channel: string, ...args: unknown[]) => {
