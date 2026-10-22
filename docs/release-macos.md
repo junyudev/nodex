@@ -204,6 +204,12 @@ source without weakening version or checksum conflict rejection. It audits the
 registered cask by its fully qualified tap name because current Homebrew rejects
 file-path arguments to `brew audit`.
 
+The Homebrew job supplies its read-only GitHub Actions token through
+`HOMEBREW_GITHUB_API_TOKEN` for authenticated API reads during both online audit
+and smoke installation. The tap-scoped write token remains the separate
+`GH_TOKEN` used by the publish step for Git authentication; Homebrew API reads
+must not depend on that token or anonymous rate limits.
+
 Distribution imports the Developer ID certificate into a per-job local
 keychain using a random keychain password, grants non-interactive Apple tool
 access with that keychain password, masks the generated password before any
