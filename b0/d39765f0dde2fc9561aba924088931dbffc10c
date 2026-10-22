@@ -1,0 +1,20 @@
+src/renderer/features/local-conversation/view/shared/markdown/budgeted-markdown-renderer.test.tsx
+  s_8d47191f83c144::t_d40a81f65fe64c 2-3
+  s_8d47191f83c144::t_3b76d4235fbcff 55,60-61
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "b0d39765f0dde2fc9561aba924088931dbffc10c",
+  "prompts": {},
+  "sessions": {
+    "s_8d47191f83c144": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a162a4-b5ba-77e1-9bfd-eea3430138ce",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
