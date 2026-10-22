@@ -1,5 +1,6 @@
 import { describe, expect, test, vi } from "vite-plus/test";
-import { render, settleAsyncRender } from "../../../../../test/dom";
+import { renderWithAppMaitai as render } from "@/test/app-maitai";
+import { settleLazyRender } from "@/test/dom";
 
 const richRenderCalls = vi.hoisted(() => vi.fn());
 
@@ -51,20 +52,12 @@ describe("BudgetedMarkdownRenderer", () => {
         sourceAriaLabel="Large line source"
       />,
     );
-    await settleAsyncRender();
+    await settleLazyRender();
 
     expect(richRenderCalls).not.toHaveBeenCalled();
     expect(bytes.container.textContent).toContain("Rich preview is unavailable for large content.");
     expect(lines.container.textContent).toContain("Rich preview is unavailable for large content.");
-    expect(
-      bytes.container.querySelector(
-        "[data-source-viewer='true'], [aria-label='Loading Large byte source']",
-      ),
-    ).not.toBeNull();
-    expect(
-      lines.container.querySelector(
-        "[data-source-viewer='true'], [aria-label='Loading Large line source']",
-      ),
-    ).not.toBeNull();
+    expect(bytes.getByRole("region", { name: "Large byte source" })).toBeTruthy();
+    expect(lines.getByRole("region", { name: "Large line source" })).toBeTruthy();
   });
 });
