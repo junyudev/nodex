@@ -64,6 +64,16 @@ Electron Main -> nodex.db / Yrs transaction reconstruction
 Core Modules -> Electron / renderer / transport presentation
 ```
 
+### Proposed optional cloud account extension
+
+[ADR 0070](adr/0070-optional-cloud-account-and-subscription-authority.md) and
+[Nodex Account and Subscription Behavior](product-specs/nodex-account-and-subscription-behavior.md)
+describe an unimplemented Clerk/Stripe integration. The proposal gives Nodex
+Cloud authority over first-party subscription access and usage while Main
+owns the optional Profile account connection. Core content, native provider
+accounts and Agent Runtime execution retain their existing owners. This
+proposal is not part of the current runtime graph or startup dependencies.
+
 ## Domain and authority model
 
 The canonical vocabulary and full domain invariants live in [CONTEXT.md](../CONTEXT.md). This section records only the ownership relationships needed to navigate the system.

@@ -1,5 +1,13 @@
 # Product Specifications
 
+## Proposed
+
+| Spec | Status | Last Updated | Summary |
+| --- | --- | --- | --- |
+| [nodex-account-and-subscription-behavior.md](nodex-account-and-subscription-behavior.md) | Proposed | 2026-10-22 | Optional Clerk account, Stripe subscription, server-owned model capacity, and preservation of local Profiles and native Agent logins |
+
+## Active
+
 | Spec                                                                                     | Status | Last Updated | Summary                                                                                                                                                                   |
 | ---------------------------------------------------------------------------------------- | ------ | ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | [page-files-behavior.md](page-files-behavior.md)                                         | Active | 2026-09-05   | Page-local File paths, body occurrences, deduplicated inventory, relationship operations, history, and resource lifecycle                                                 |

@@ -875,6 +875,33 @@ explicitly invalidate the same worker-owned read plane.
   for storage/transport mechanics.
 - Say **Card** only for visual structures such as Board or request cards.
 
+## Proposed cloud account vocabulary
+
+These terms belong to the unimplemented
+[Nodex Account proposal](docs/product-specs/nodex-account-and-subscription-behavior.md).
+They do not change the current Profile or native Agent account model.
+
+### Nodex Account
+
+A Nodex Account identifies a person using optional Nodex cloud capabilities
+across local Profiles. It does not own a local Profile or its Library.
+
+### Nodex Subscription
+
+A Nodex Subscription is an Account's recurring purchase of Nodex-provided
+capabilities and included usage for defined service periods.
+
+### Usage Grant
+
+A Usage Grant is a fixed amount of an Account's included model capacity,
+available for a specified service period. Unused capacity expires with that
+period unless the plan explicitly provides otherwise.
+
+### Usage Reservation
+
+A Usage Reservation sets aside capacity from a Usage Grant for one model
+request until its actual consumption or non-execution is established.
+
 ## Code orientation
 
 Shared domain Interfaces live under `src/shared/`; SQLite Implementations live
