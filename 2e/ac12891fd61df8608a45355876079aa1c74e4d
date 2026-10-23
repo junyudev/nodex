@@ -1,0 +1,139 @@
+src/renderer/features/local-conversation/agent-runtime-conversation-owner.ts
+  s_9d064470fb7e30::t_6d082656c84228 475
+  s_9d064470fb7e30::t_fce2195353ab8f 253,456-458,470,472-473,587-588,661,696
+  s_9d064470fb7e30::t_48796de0b3ebd9 485-487,491
+  s_9d064470fb7e30::t_59d1ba2e267ad8 39,259,455,459,462-466,468-469,471,476,479-480,490,560,815-850,858-859,866
+  s_9d064470fb7e30::t_6d10ac17e9dc40 584-586
+src/renderer/features/local-conversation/view/local-conversation-turn-virtualization.ts
+  s_9d064470fb7e30::t_7be7ac57a94062 410-433
+src/renderer/features/local-conversation/agent-runtime-conversation-adapter.ts
+  s_9d064470fb7e30::t_b4e37338f7d87d 197-205
+src/renderer/features/local-conversation/thread-stage-types.ts
+  s_9d064470fb7e30::t_0fe2e2afbb3d44 1201
+docs/ARCHITECTURE.md
+  s_9d064470fb7e30::t_fe6e16997d0dc9 994-997
+src/renderer/features/local-conversation/view/local-conversation-thread-scroll-controller.test.tsx
+  s_9d064470fb7e30::t_12f08ad278cbf4 552,554,561
+src/renderer/features/local-conversation/agent-runtime-conversation-adapter.test.tsx
+  s_9d064470fb7e30::t_2daaa857d3e4d1 5-7,1022-1028
+  s_9d064470fb7e30::t_8457ef99bc9129 8,12,17-20,929-933,936-947,949-950,952,955-956,958-961,1018-1021
+  s_9d064470fb7e30::t_6d082656c84228 934-935,951,953-954,957
+  s_9d064470fb7e30::t_b4e37338f7d87d 4,962-1017
+  s_9d064470fb7e30::t_6d10ac17e9dc40 948
+src/renderer/features/local-conversation/native-conversation-history-adapter.test.tsx
+  s_9d064470fb7e30::t_13ec9e9281e7e9 4,7-45,94-159
+src/renderer/features/local-conversation/view/automatic-history.browser.test.tsx
+  s_9d064470fb7e30::t_f86d2b6372c65f 75,251,264,377,383-386,407-412,414-424
+  s_9d064470fb7e30::t_caf8d4a7ed168f 1-74,76-250,252-263,265-376,430-585
+  s_9d064470fb7e30::t_ab5f259c0430c0 378-382,387-406,413,425-429
+src/renderer/features/local-conversation/conversation-runtime-hooks.ts
+  s_9d064470fb7e30::t_911e2da5d6edc1 54
+  s_9d064470fb7e30::t_1ce5e740c285e1 6,19-53
+src/renderer/features/local-conversation/native-conversation-history-owner.ts
+  s_9d064470fb7e30::t_76d1c04a637e21 3-16,31-38,50-55,93-99,102-112,114-136,138-206,208-210,212-222,224
+docs/product-specs/agent-runtime-behavior.md
+  s_9d064470fb7e30::t_fe6e16997d0dc9 110-117,121-123
+src/renderer/features/local-conversation/view/local-conversation-thread-body-owner.tsx
+  s_9d064470fb7e30::t_bf3ab0cc6a6421 1373
+  s_9d064470fb7e30::t_0fe2e2afbb3d44 71,501,560
+  s_9d064470fb7e30::t_93d460818b2add 122,1372,1375
+src/renderer/features/local-conversation/native-conversation-history-owner.node.test.ts
+  s_9d064470fb7e30::t_1648c25c27397e 3,60-73,92-93,97,102-106,118,121-122,126-161,163-185,187-188,190-194,196,198-205,208-238,241-243,247-291,293-317
+CHANGELOG.md
+  s_9d064470fb7e30::t_fe6e16997d0dc9 13-14
+src/renderer/features/local-conversation/view/local-conversation-history-gap.test.tsx
+  s_9d064470fb7e30::t_acd45f69288656 69-80
+src/renderer/features/local-conversation/view/local-conversation-thread-body.tsx
+  s_9d064470fb7e30::t_bf3ab0cc6a6421 324
+  s_9d064470fb7e30::t_0fe2e2afbb3d44 143
+src/renderer/features/local-conversation/view/local-conversation-virtualized-turn-list.tsx
+  s_9d064470fb7e30::t_546afaec8353f4 2004-2012,2028-2029,2031-2036
+  s_9d064470fb7e30::t_3405db042476e1 331,342,355,363,979-990,998,1000,1007,1010-1011,1013,1124,1154
+  s_9d064470fb7e30::t_12f08ad278cbf4 815
+  s_9d064470fb7e30::t_a48f1de9bf00a9 814
+  s_84bf5c78324d85::t_41dd926153e596 834
+  s_9d064470fb7e30::t_df9ca8bdc0966b 327-330,332-341,343-354,356-361,751,810-813,816-833,1026-1033,1182,1449,1454,1476-1483,1804-1810
+  s_9d064470fb7e30::t_52e284bb1f5f02 991-997
+  s_9d064470fb7e30::t_2d290e4b3e22ac 2030
+  s_9d064470fb7e30::t_acd45f69288656 2477-2481
+  s_9d064470fb7e30::t_95dc3c439f4fb0 275,2016,2068-2070
+  s_9d064470fb7e30::t_7be7ac57a94062 46,1556-1560,1650-1657,1671
+  s_933c6b8564f335::t_baf1973a3de5f4 1811
+docs/product-specs/agent-backend-behavior.md
+  s_9d064470fb7e30::t_fe6e16997d0dc9 127-132
+src/renderer/features/local-conversation/conversation-runtime.ts
+  s_9d064470fb7e30::t_f607c2d86f6847 12-22
+  s_9d064470fb7e30::t_ee0c9b6f904247 66-67
+src/renderer/features/local-conversation/view/local-conversation-thread-scroll-controller.tsx
+  s_9d064470fb7e30::t_a48f1de9bf00a9 78,483-487,901,935
+src/renderer/features/local-conversation/view/connected-thread-stage.tsx
+  s_9d064470fb7e30::t_5c727515c2742d 78,454
+  s_9d064470fb7e30::t_bf3ab0cc6a6421 469,502
+  s_9d064470fb7e30::t_0fe2e2afbb3d44 535
+src/renderer/features/local-conversation/view/local-conversation-turn-virtualization.test.ts
+  s_9d064470fb7e30::t_d347efb88126ae 13,37-63
+  s_9d064470fb7e30::t_750726f18f7ca3 64
+src/renderer/features/local-conversation/native-conversation-history-adapter.ts
+  s_9d064470fb7e30::t_d40d22573fe468 44-55
+src/renderer/features/local-conversation/agent-runtime-conversation-owner.node.test.ts
+  s_9d064470fb7e30::t_d847c664b7885d 1557
+  s_9d064470fb7e30::t_48796de0b3ebd9 1348,1355,1403,1475-1478,1480-1481,1483-1493
+  s_9d064470fb7e30::t_7f64e2ce95ad63 1450-1472,1508,1514-1525,1536-1541,1546-1551
+  s_9d064470fb7e30::t_a90d2971822bba 18,279,281-284,1297,1344-1346,1349,1356-1379,1383-1402,1404-1449,1509-1513,1526-1535,1542-1545,1552-1555
+  s_9d064470fb7e30::t_6d10ac17e9dc40 280,1473-1474,1479,1482,1494-1507,1556
+src/renderer/features/local-conversation/view/local-conversation-history-gap.tsx
+  s_9d064470fb7e30::t_acd45f69288656 50,65,67-73
+src/renderer/features/local-conversation/view/connected-thread-stage.test.tsx
+  s_9d064470fb7e30::t_59337c91e1cd4a 1666-1679,1681-1689,1701-1737,1741-1774
+  s_9d064470fb7e30::t_753783ebf4465d 1490,1492,1612-1620,1634,1638-1640
+  s_9d064470fb7e30::t_a72391ae36b20a 1680,1690-1700,1738-1740
+  s_9d064470fb7e30::t_d9be01d4ecaf59 1598-1600,1602-1611,1621-1622,1626-1630,1632,1636-1637,1641,1653-1654,1663
+  s_69afea56824b4b::t_45a3998d387b99 1664-1665
+docs/product-specs/codex-thread-transcript-behavior.md
+  s_9d064470fb7e30::t_fe6e16997d0dc9 93
+src/renderer/features/local-conversation/local-conversation-store.test.tsx
+  s_9d064470fb7e30::t_c3779ba6169617 3210-3286
+src/renderer/features/local-conversation/local-conversation-store.ts
+  s_9d064470fb7e30::t_d9be01d4ecaf59 9051-9069,9104
+  s_9d064470fb7e30::t_0fe2e2afbb3d44 403,9047-9048,9070,9103
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "2eac12891fd61df8608a45355876079aa1c74e4d",
+  "prompts": {},
+  "sessions": {
+    "s_69afea56824b4b": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a16882-d813-7dd2-badd-5c2341d81394",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_84bf5c78324d85": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a12db9-d235-78f1-acd4-d3520bbf1dfe",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_933c6b8564f335": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f341c490-2c55-46dd-9754-29069ab2a35a",
+        "model": "unknown"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_9d064470fb7e30": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a163fd-bf2e-7bf3-89e6-5a0c6b08e3b3",
+        "model": "gpt-6-astra"
+      },
+      "human_author": null
+    }
+  }
+}
