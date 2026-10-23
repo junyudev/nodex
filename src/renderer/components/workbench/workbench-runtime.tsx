@@ -18,7 +18,7 @@ import { useResolvedReducedMotion } from "@/lib/use-reduced-motion";
 import { PanelTabPresentationRegistry } from "./panel-tab-presentation-registry";
 import { WorkbenchSidebar, type WorkbenchSidebarBodyProps } from "./workbench-sidebar";
 import { WorkbenchAppRail } from "./workbench-app-rail";
-import { WorkbenchRailAccountControls } from "./workbench-rail-account-controls";
+import { WorkbenchRailFoot } from "./workbench-rail-account-controls";
 import { WorkbenchTitlebarProvider } from "./workbench-titlebar-context";
 import { WorkspaceTabsControl } from "./workspace-tabs-control";
 import {
@@ -4874,7 +4874,7 @@ export function WorkbenchRuntime({
                         onScheduled={() => openAutomations()}
                         onPlugins={() => showUnavailableProduct("Plugins")}
                         footer={
-                          <WorkbenchRailAccountControls
+                          <WorkbenchRailFoot
                             onOpenSettings={openSettings}
                             account={codexAccount}
                             connection={codexConnection}

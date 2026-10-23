@@ -2,6 +2,7 @@ import { describe, expect, test } from "vite-plus/test";
 import { act, fireEvent, waitFor } from "@testing-library/react";
 import { NodexTooltipProvider } from "@/components/ui/tooltip";
 import type { CodexAccountSnapshot } from "@/lib/types";
+import type { UsageReading } from "@/lib/usage-meter";
 import { render, textContent } from "@/test/dom";
 import { WorkbenchRailAccountControls } from "./workbench-rail-account-controls";
 
@@ -44,8 +45,49 @@ const signedOutAccount: CodexAccountSnapshot = {
   rateLimits: null,
 };
 
+function codexMeter(container: HTMLElement): HTMLElement {
+  const meter = container.querySelector<HTMLElement>('[data-usage-meter="codex"]');
+  if (!meter) throw new Error("Expected the Codex usage meter");
+  return meter;
+}
+
+const HOUR = 60 * 60_000;
+
+function claudeReading(overrides: Partial<UsageReading> = {}): UsageReading {
+  return {
+    provider: "claude",
+    key: "claude:dev@example.com|",
+    title: "Claude",
+    account: "dev@example.com",
+    plan: "Claude Max",
+    metered: true,
+    windows: [
+      {
+        id: "five_hour",
+        label: "5-hour",
+        usedPercent: 88,
+        resetsAt: Date.now() + 2 * HOUR,
+        durationMins: 300,
+        scope: "account",
+      },
+      {
+        id: "seven_day",
+        label: "Weekly",
+        usedPercent: 30,
+        resetsAt: Date.now() + 72 * HOUR,
+        durationMins: 7 * 24 * 60,
+        scope: "account",
+      },
+    ],
+    observedAt: Date.now() - 2 * HOUR,
+    readFailed: false,
+    refresh: "afterReply",
+    ...overrides,
+  };
+}
+
 describe("WorkbenchRailAccountControls", () => {
-  test("renders authenticated quota as a double ring without the old text chip", async () => {
+  test("draws the Codex account as one ring for the window that runs out first", async () => {
     const view = render(
       <NodexTooltipProvider>
         <WorkbenchRailAccountControls
@@ -58,10 +100,9 @@ describe("WorkbenchRailAccountControls", () => {
       </NodexTooltipProvider>,
     );
 
-    const ring = view.getByRole("button", { name: "Usage remaining: 5-hour 82%, weekly 61%" });
-    expect(Boolean(ring.querySelector('[data-rate-limit-ring="outer"]'))).toBe(true);
-    expect(Boolean(ring.querySelector('[data-rate-limit-ring="inner"]'))).toBe(true);
-    expect(textContent(view.container).includes("82% · 61%")).toBe(false);
+    const ring = view.getByRole("button", { name: "Codex usage: 61% left in weekly window" });
+    expect(ring.querySelectorAll("[data-usage-ring-arc]")).toHaveLength(1);
+    expect(textContent(view.container).includes("61%")).toBe(false);
   });
 
   test("shows existing account details on focus and refreshes once while opening", async () => {
@@ -85,7 +126,7 @@ describe("WorkbenchRailAccountControls", () => {
       </NodexTooltipProvider>,
     );
 
-    const ring = view.getByRole("button", { name: "Usage remaining: 5-hour 82%, weekly 61%" });
+    const ring = view.getByRole("button", { name: "Codex usage: 61% left in weekly window" });
     fireEvent.focus(ring);
 
     await waitFor(() => {
@@ -136,7 +177,7 @@ describe("WorkbenchRailAccountControls", () => {
       </NodexTooltipProvider>,
     );
 
-    fireEvent.focus(view.getByTestId("sidebar-account-rate-limit-ring"));
+    fireEvent.focus(codexMeter(view.container));
     const disclosures = await view.findAllByRole("button", { name: "2 quota resets" });
     const disclosure = disclosures.at(-1);
     if (!disclosure) throw new Error("Expected quota-reset disclosure");
@@ -196,7 +237,7 @@ describe("WorkbenchRailAccountControls", () => {
       </NodexTooltipProvider>,
     );
 
-    expect(Boolean(view.queryByTestId("sidebar-account-rate-limit-ring"))).toBe(false);
+    expect(view.container.querySelector("[data-usage-meter]")).toBe(null);
     expect(Boolean(view.getByRole("button", { name: "Settings" }))).toBe(true);
     fireEvent.click(view.getByRole("button", { name: "Sign in" }));
 
@@ -227,7 +268,7 @@ describe("WorkbenchRailAccountControls", () => {
     const labels = () =>
       view.getAllByRole("button").map((button) => button.getAttribute("aria-label"));
 
-    expect(Boolean(view.queryByTestId("sidebar-account-rate-limit-ring"))).toBe(false);
+    expect(view.container.querySelector("[data-usage-meter]")).toBe(null);
     expect(labels()).toEqual(["Loading Codex account", "Settings"]);
 
     view.rerender(renderControls(signedOutAccount));
@@ -261,5 +302,76 @@ describe("WorkbenchRailAccountControls", () => {
       await Promise.resolve();
     });
     await waitFor(() => expect(refreshCount).toBe(1));
+  });
+  test("adds a Claude meter that shows how old its reading is and reads nothing when opened", async () => {
+    let refreshCount = 0;
+    const view = render(
+      <NodexTooltipProvider>
+        <WorkbenchRailAccountControls
+          onOpenSettings={() => undefined}
+          account={authenticatedAccount}
+          connection={{ status: "connected", retries: 0 }}
+          onRefreshAccount={async () => {
+            refreshCount += 1;
+            return authenticatedAccount;
+          }}
+          onLogout={async () => undefined}
+          claudeUsage={[claudeReading()]}
+        />
+      </NodexTooltipProvider>,
+    );
+
+    expect(view.getAllByRole("button").map((button) => button.getAttribute("aria-label"))).toEqual([
+      "Codex usage: 61% left in weekly window",
+      "Claude usage: 12% left in 5-hour window, read 2 h ago",
+      "Settings",
+    ]);
+    const claude = view.container.querySelector<HTMLElement>('[data-usage-meter="claude"]');
+    if (!claude) throw new Error("Expected the Claude usage meter");
+    expect(claude.hasAttribute("data-usage-stale")).toBe(true);
+
+    fireEvent.focus(claude);
+    const card = await waitFor(() => {
+      const found = view.container.ownerDocument.querySelector('[data-usage-card="claude"]');
+      if (!found) throw new Error("Expected the Claude usage card");
+      return found;
+    });
+    expect(textContent(card).includes("dev@example.com")).toBe(true);
+    expect(textContent(card).includes("Claude Max")).toBe(false);
+    expect(textContent(card).includes("Account limits · read on this computer 2 h ago")).toBe(true);
+    expect(textContent(card).includes("Updates when Claude replies in Nodex.")).toBe(true);
+    expect(
+      [...card.querySelectorAll('[role="meter"]')].map((meter) =>
+        meter.getAttribute("aria-valuenow"),
+      ),
+    ).toEqual(["12", "70"]);
+    expect(Boolean(card.querySelector("button"))).toBe(false);
+    expect(refreshCount).toBe(0);
+  });
+
+  test("an unread Claude account says so instead of showing a level", async () => {
+    const view = render(
+      <NodexTooltipProvider>
+        <WorkbenchRailAccountControls
+          onOpenSettings={() => undefined}
+          claudeUsage={[claudeReading({ windows: [], observedAt: null })]}
+        />
+      </NodexTooltipProvider>,
+    );
+
+    const claude = view.getByRole("button", { name: "Claude usage not read yet" });
+    expect(claude.querySelector("[data-usage-ring-arc]")).toBe(null);
+    expect(claude.querySelector('[data-usage-ring-track="dotted"]')).not.toBe(null);
+    fireEvent.focus(claude);
+    await waitFor(() => {
+      const bodyText = textContent(view.container.ownerDocument.body);
+      if (
+        !bodyText.includes("Not read on this computer yet") ||
+        !bodyText.includes("Updates when Claude replies in Nodex.")
+      ) {
+        throw new Error(`Expected the unread explanation, saw: ${bodyText}`);
+      }
+    });
+    expect(view.queryAllByRole("meter")).toHaveLength(0);
   });
 });

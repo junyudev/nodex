@@ -320,3 +320,101 @@ it.effect("retries an account read that failed until the account is known", () =
     }),
   ).pipe(Effect.provide(TestClock.layer())),
 );
+
+it.effect(
+  "keeps the last usage reading through a failed read and folds sparse updates into it",
+  () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const events = yield* PubSub.unbounded<CodexEndpointEvent>();
+        const state = { email: "agent@example.com", rateLimitsFail: false };
+        const gateway = {
+          localHostId: "local",
+          events: Stream.fromPubSub(events),
+          connectionChanges: () => Stream.empty,
+          awaitReady: () => Effect.void,
+          requestLocal: (method: string) =>
+            Effect.suspend((): Effect.Effect<unknown, Error> => {
+              if (method === "account/read")
+                return Effect.succeed({
+                  account: { type: "chatgpt", email: state.email, planType: "pro" },
+                  requiresOpenaiAuth: false,
+                });
+              if (method !== "account/rateLimits/read")
+                return Effect.fail(new Error(`Unexpected request: ${method}`));
+              if (state.rateLimitsFail) return Effect.fail(new Error("usage service unavailable"));
+              return Effect.succeed({
+                ordinaryUsageAllowed: true,
+                rateLimits: {
+                  limitId: "codex",
+                  primary: { usedPercent: 25, windowDurationMins: 300, resetsAt: 1_800_000_000 },
+                  secondary: {
+                    usedPercent: 40,
+                    windowDurationMins: 10_080,
+                    resetsAt: 1_800_500_000,
+                  },
+                },
+                rateLimitsByLimitId: null,
+                rateLimitResetCredits: null,
+              });
+            }),
+        } as unknown as CodexGateway["Service"];
+        const context = yield* Layer.buildWithScope(
+          accountLive({ pollInterval: "60 seconds" }).pipe(
+            Layer.provide(
+              Layer.merge(Layer.succeed(CodexGateway, gateway), executionHostAuthStateLive),
+            ),
+          ),
+          yield* Scope.Scope,
+        );
+        const account = Context.get(context, CodexAccount);
+        const snapshot = SubscriptionRef.get(account.snapshot);
+        const settle = Effect.gen(function* () {
+          for (let attempt = 0; attempt < 20; attempt += 1) yield* Effect.yieldNow;
+        });
+        yield* TestClock.setTime(1_000_000);
+
+        const first = yield* account.refresh;
+        assert.strictEqual(first.rateLimits?.primary?.usedPercent, 25);
+        assert.strictEqual(first.rateLimitsUpdatedAt, 1_000_000);
+        assert.isFalse(first.rateLimitsReadFailed);
+
+        // A failed poll keeps the reading and says it could not refresh it.
+        state.rateLimitsFail = true;
+        yield* TestClock.adjust("60 seconds");
+        yield* settle;
+        const failed = yield* snapshot;
+        assert.strictEqual(failed.rateLimits?.secondary?.usedPercent, 40);
+        assert.strictEqual(failed.rateLimitsUpdatedAt, 1_000_000);
+        assert.isTrue(failed.rateLimitsReadFailed);
+
+        // A sparse update changes only what it names, and counts as a fresh reading.
+        const notify = (rateLimits: unknown) =>
+          PubSub.publish(events, {
+            kind: "notification",
+            hostId: "local",
+            generation: 1,
+            value: { method: "account/rateLimits/updated", params: { rateLimits } },
+          } as CodexEndpointEvent);
+        yield* notify({ limitId: "codex", primary: { usedPercent: 50, windowDurationMins: 300 } });
+        yield* settle;
+        const merged = yield* snapshot;
+        assert.strictEqual(merged.rateLimits?.primary?.usedPercent, 50);
+        assert.strictEqual(merged.rateLimits?.secondary?.usedPercent, 40);
+        assert.strictEqual(merged.rateLimitsUpdatedAt, 1_060_000);
+        assert.isFalse(merged.rateLimitsReadFailed);
+
+        // Another metered limit's update never replaces this account's windows.
+        yield* notify({ limitId: "other", primary: { usedPercent: 99, windowDurationMins: 300 } });
+        yield* settle;
+        assert.strictEqual((yield* snapshot).rateLimits?.primary?.usedPercent, 50);
+
+        // A different account never inherits the previous account's reading.
+        state.email = "other@example.com";
+        const switched = yield* account.refresh;
+        assert.isNull(switched.rateLimits);
+        assert.isNull(switched.rateLimitsUpdatedAt);
+        assert.isTrue(switched.rateLimitsReadFailed);
+      }),
+    ),
+);

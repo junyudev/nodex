@@ -97,10 +97,18 @@ export interface AgentRuntimeApplicationOptions {
   /** Serves the last live provider catalog while execution is stopped. */
   readonly providerCatalog?: {
     readonly lastKnown: Effect.Effect<AgentRuntimeOperations["providers.read"]["output"] | null>;
+    readonly saved: Effect.Effect<AgentRuntimeOperations["providers.read"]["output"] | null>;
     readonly record: (
       providers: AgentRuntimeOperations["providers.read"]["output"],
     ) => Effect.Effect<void>;
   };
+  /**
+   * Runs `effect` only while execution already runs, holding it until the effect settles; null
+   * when it is stopped. It never starts execution.
+   */
+  readonly whileRunning?: <A, E, R>(
+    effect: Effect.Effect<A, E, R>,
+  ) => Effect.Effect<A | null, E | unknown, R>;
   /** Acquired before mutation admission; lifecycle delivery spans physical runtime generations. */
   readonly subscribeExecutionChanges?: Effect.Effect<
     Stream.Stream<void, unknown>,
@@ -2306,6 +2314,30 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
           // Only a whole catalog stands in for the process while it is stopped.
           if (options.providerCatalog && !named) yield* options.providerCatalog.record(providers);
           return providers;
+        }),
+      ),
+    /**
+     * The catalog Nodex already knows, without starting execution: a running process answers
+     * live (and the answer is kept), a stopped one is represented by the kept catalog, and null
+     * means nothing current is known yet.
+     */
+    knownCatalog: () =>
+      owned(
+        "catalog",
+        Effect.gen(function* () {
+          const live = options.whileRunning
+            ? yield* options.whileRunning(
+                Effect.gen(function* () {
+                  const connection = yield* options.connect;
+                  return yield* connection.request("providers.read", {});
+                }),
+              )
+            : null;
+          if (live) {
+            if (options.providerCatalog) yield* options.providerCatalog.record(live);
+            return live;
+          }
+          return options.providerCatalog ? yield* options.providerCatalog.saved : null;
         }),
       ),
     history: (

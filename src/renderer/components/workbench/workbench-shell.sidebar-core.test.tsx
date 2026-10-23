@@ -28,6 +28,7 @@ import {
   getSidebarSection,
   getThreadRow,
   getThreadRowTitles,
+  waitForThreadRow,
   installMotionEnabledMatchMediaForTest,
   installReducedMotionMatchMediaForTest,
   invokeCalls,
@@ -87,8 +88,10 @@ describe("workbench session shell / sidebar-core", () => {
         });
       try {
         await settleAsyncRender();
+        // The Project's Sessions load asynchronously; wait for the row instead of one macrotask.
+        const row = await waitForThreadRow(view.container, `${kind} source`);
         await act(async () => {
-          fireEvent.contextMenu(getThreadRow(view.container, `${kind} source`));
+          fireEvent.contextMenu(row);
           await Promise.resolve();
         });
         await waitFor(() => expect(menu).toHaveBeenCalledOnce());

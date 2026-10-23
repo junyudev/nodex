@@ -17,8 +17,10 @@ Gateway. See [Agent Runtime behavior](agent-runtime-behavior.md).
 Observing Sessions does not start the separate native Codex account/catalog endpoint.
 Account actions, native catalogs, history searches and explicit remote operations acquire
 it on demand. Native account state follows the ready connection, and a failed account read
-is retried every minute until the account is known, so the usage ring returns once the
-account service is reachable again; ordinary Session
+is retried every minute until the account is known, so the usage meter returns once the
+account service is reachable again. A known account's usage is read every minute; a failed read
+keeps the previous reading and marks it as not refreshed, and partial usage updates change only
+the windows they name. Ordinary Session
 creation and messaging always use the Session's Runtime binding.
 
 The shared conversation surface provides rich prompts, streamed text and tool activity,

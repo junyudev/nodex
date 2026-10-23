@@ -194,6 +194,8 @@ export interface AgentRuntimeRendererTransport {
   readonly catalog: (
     input?: AgentRuntimeOperations["providers.read"]["input"],
   ) => Promise<AgentRuntimeOperations["providers.read"]["output"]>;
+  /** What Nodex already knows about providers; never starts execution. */
+  readonly knownCatalog: () => Promise<AgentRuntimeOperations["providers.read"]["output"] | null>;
   readonly history: (input: AgentRuntimeHistoryInput) => Promise<AgentHistoryPage>;
   readonly readQueuePage: (input: AgentRuntimeQueueReadInput) => Promise<AgentRuntimeQueuePage>;
   readonly readQueuedPreview: (input: AgentRuntimeRunInput) => Promise<AgentRuntimeQueuedPreview>;
@@ -232,6 +234,7 @@ export const agentRuntimeRuntime: AgentRuntimeRendererTransport = {
   retryPreparation: (input) => invokePlainCommand(retryPreparation, input),
   moveSession: (input) => invokePlainCommand(moveSession, input),
   catalog: (input) => invokeRendererQuery("agent-runtime:providers:read", input),
+  knownCatalog: () => invokeRendererQuery("agent-runtime:providers:known"),
   history: (input) => invokeRendererQuery("agent-runtime:session:history", input),
   readQueuePage: (input) => invokeRendererQuery("agent-runtime:session:queue-read", input),
   readQueuedPreview: (input) => invokeRendererQuery("agent-runtime:session:queued-preview", input),

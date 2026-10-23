@@ -7,6 +7,7 @@ All notable changes to this project will be documented in this file.
 ### Added
 
 - Chats offer Fork in the sidebar context menu and Chat actions, with the current directory or a new Git worktree as the destination.
+- Claude subscription usage appears beside Codex at the foot of the navigation rail. Each account gets one ring for the limit that runs out first, and a card lists every window with its reset time and when it was last read. Old, failed or missing readings are labeled as such rather than guessed, and showing them never starts Claude Code or contacts the account.
 
 ### Changed
 
@@ -19,6 +20,7 @@ All notable changes to this project will be documented in this file.
 - Sidebar chats can be dragged into empty or collapsed Sections, including chats that have not started yet, with consistent destination feedback and reliable moves back to Projects, Chats and Pinned.
 - Images sent while steering a running chat remain visible with their message, including after activity is collapsed or the chat is reopened.
 - Codex tool calls retain their action titles, source icons and rich results, including JavaScript calls and image outputs.
+- Codex usage no longer disappears after a single failed refresh or a partial usage update; the last reading stays visible and says how old it is.
 - Claude Code and OpenCode slash menus retain supported chat actions, including Fork, Side, Merge back and Compact.
 - Forking a chat can continue from its latest eligible history without requiring a Git checkpoint, and Claude Code forks retain the selected Agent instance’s native history.
 - OpenCode chats offer editing of earlier messages, rewinding the conversation before continuing from the edit.

@@ -364,6 +364,11 @@ export interface AgentRuntimeIpcApi {
     args: [input?: AgentRuntimeOperations["providers.read"]["input"]];
     result: AgentRuntimeOperations["providers.read"]["output"];
   };
+  /** The catalog Nodex already knows, never starting execution; null before the first live read. */
+  "agent-runtime:providers:known": {
+    args: [];
+    result: AgentRuntimeOperations["providers.read"]["output"] | null;
+  };
   "agent-runtime:session:observe": {
     args: [input: AgentRuntimeObserveInput];
     result: { readonly observed: true };

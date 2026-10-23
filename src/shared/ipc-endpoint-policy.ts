@@ -86,6 +86,7 @@ type QueryEndpointPolicy =
   | "agent-runtime:session:queued-preview"
   | "agent-runtime:session:item"
   | "agent-runtime:providers:read"
+  | "agent-runtime:providers:known"
   | "document-recovery:read"
   | "agent-backend:claude:models"
   | "agent-backend:claude:discover"

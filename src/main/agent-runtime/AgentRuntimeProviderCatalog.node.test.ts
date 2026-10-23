@@ -28,13 +28,15 @@ it.effect("a stopped engine serves the catalog it last served under the same dec
     // The next launch serves the same rows from disk.
     const relaunched = yield* open;
     assert.deepEqual(yield* relaunched.lastKnown, providers);
-    // A running engine answers live.
+    // A running engine answers live, though observers that must not reach it keep the copy.
     declared.running = true;
     assert.isNull(yield* relaunched.lastKnown);
+    assert.deepEqual(yield* relaunched.saved, providers);
     declared.running = false;
     // A changed engine build or provider declaration needs a live read.
     declared.identity = "changed";
     assert.isNull(yield* relaunched.lastKnown);
+    assert.isNull(yield* relaunched.saved);
     assert.isNull(yield* (yield* open).lastKnown);
     // A damaged snapshot never reaches a picker.
     yield* fs.writeFileString(join(home, "provider-catalog.json"), "{not a catalog");

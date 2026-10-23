@@ -1,17 +1,20 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { SettingsGeneralIcon } from "@/components/shared/icons";
 import { UserRound } from "@/components/shared/icons/generic-icons";
-import { OpenAIIcon } from "@/components/shared/icons/provider-icons";
 import { NodexButton } from "@/components/ui/button";
 import { NodexTooltip } from "@/components/ui/tooltip";
 import { WORKBENCH_RAIL_BUTTON_CLASS } from "./workbench-app-rail";
-import { AccountRateLimitRing } from "@/features/local-conversation/view/shared/account-rate-limit-ring";
+import { RailUsageMeter, UsageRingGlyph } from "./workbench-rail-usage-meter";
+import { shouldRefreshAccountOnConnectionTooltipOpen } from "@/features/local-conversation/view/shared/account-tooltip-refresh";
 import { AuthPopover } from "@/features/local-conversation/view/shared/auth-controls";
+import { QuotaResetTooltipSection } from "@/features/local-conversation/view/shared/auth-rate-limits";
 import {
   resolveRailAccountState,
   type RailAccountState,
 } from "@/features/local-conversation/view/shared/rail-account-state";
 import { cn } from "@/lib/utils";
+import { useClaudeUsageReadings } from "@/lib/use-claude-usage-readings";
+import { codexUsageReading, type UsageReading } from "@/lib/usage-meter";
 import type {
   CodexAccountSnapshot,
   CodexConnectionState,
@@ -21,6 +24,8 @@ import type {
 import type { IpcApi } from "../../../shared/ipc-api";
 
 type CodexLoginStartResult = IpcApi["codex:account:login:start"]["result"];
+
+const NO_USAGE_READINGS: readonly UsageReading[] = [];
 
 export interface WorkbenchRailAccountControlsProps {
   onOpenSettings: () => void;
@@ -33,10 +38,12 @@ export interface WorkbenchRailAccountControlsProps {
   onCancelLogin?: (loginId: string) => Promise<unknown>;
   onLogout?: () => Promise<void>;
   onErrorMessage?: (message: string | null) => void;
+  /** Claude subscription accounts, one meter each, read from what Nodex already knows. */
+  claudeUsage?: readonly UsageReading[];
 }
 
 /**
- * Holds the account slot while the Codex account is unknown: a gray Codex mark that breathes
+ * Holds the account slot while the Codex account is unknown: an unread Codex meter that breathes
  * while it loads and rests with a status dot when it cannot load. Either way a click asks again.
  */
 function RailAccountPlaceholder({
@@ -79,19 +86,13 @@ function RailAccountPlaceholder({
         className={cn(WORKBENCH_RAIL_BUTTON_CLASS, "relative")}
         onClick={refresh}
       >
-        <span className="relative inline-flex">
-          <OpenAIIcon
-            className={cn(
-              "size-4.5 text-(--sidebar-foreground-tertiary)",
-              (loading || refreshing) && "animate-pulse motion-reduce:animate-none",
-            )}
+        <span className="inline-flex text-(--sidebar-foreground-tertiary)">
+          <UsageRingGlyph
+            provider="codex"
+            track="dotted"
+            pulse={loading || refreshing}
+            alert={!loading}
           />
-          {loading ? null : (
-            <span
-              aria-hidden="true"
-              className="absolute -top-0.5 -right-0.5 size-1.5 rounded-full bg-(--yellow-text)"
-            />
-          )}
         </span>
       </NodexButton>
     </NodexTooltip>
@@ -99,10 +100,88 @@ function RailAccountPlaceholder({
 }
 
 /**
- * App-wide controls at the foot of the navigation rail: the account control
- * (usage ring when signed in, sign-in when signed out, the gray Codex mark while
- * the account is unknown), then Settings. Settings stays last so it never moves
- * when the account state becomes known.
+ * The signed-in Codex account's meter. Its card adds what only Codex offers: signing out and
+ * spending a quota reset. Opening it asks Codex once for a fresh reading, as Codex also does on
+ * its own every minute.
+ */
+function CodexUsageMeter({
+  account,
+  onRefreshAccount,
+  onConsumeRateLimitReset,
+  onLogout,
+  onErrorMessage,
+}: {
+  readonly account: CodexAccountSnapshot;
+  readonly onRefreshAccount: () => Promise<CodexAccountSnapshot>;
+  readonly onConsumeRateLimitReset?: (
+    input: CodexRateLimitResetInput,
+  ) => Promise<CodexRateLimitResetResult>;
+  readonly onLogout: () => Promise<void>;
+  readonly onErrorMessage?: (message: string | null) => void;
+}) {
+  const [isSigningOut, setIsSigningOut] = useState(false);
+  const refreshInFlightRef = useRef(false);
+  const reading = codexUsageReading(account);
+  if (!reading) return null;
+
+  const handleOpenChange = (isOpen: boolean) => {
+    if (
+      !shouldRefreshAccountOnConnectionTooltipOpen({
+        isOpen,
+        hasAccount: Boolean(account.account),
+        refreshInFlight: refreshInFlightRef.current,
+      })
+    )
+      return;
+    refreshInFlightRef.current = true;
+    void onRefreshAccount()
+      .catch(() => {})
+      .finally(() => {
+        refreshInFlightRef.current = false;
+      });
+  };
+  const handleLogout = async () => {
+    setIsSigningOut(true);
+    onErrorMessage?.(null);
+    try {
+      await onLogout();
+    } catch (error) {
+      onErrorMessage?.(error instanceof Error ? error.message : "Logout failed");
+    } finally {
+      setIsSigningOut(false);
+    }
+  };
+
+  return (
+    <RailUsageMeter
+      reading={reading}
+      onOpenChange={handleOpenChange}
+      action={
+        <button
+          type="button"
+          className="h-6 shrink-0 rounded-md px-1.5 text-xs text-token-text-secondary outline-none hover:bg-token-foreground/5 hover:text-token-foreground focus-visible:ring-2 focus-visible:ring-(--ring)/35 disabled:opacity-40"
+          onClick={() => void handleLogout()}
+          disabled={isSigningOut}
+        >
+          Sign out
+        </button>
+      }
+    >
+      {account.rateLimitResetCredits && onConsumeRateLimitReset ? (
+        <QuotaResetTooltipSection
+          summary={account.rateLimitResetCredits}
+          onReset={onConsumeRateLimitReset}
+        />
+      ) : null}
+    </RailUsageMeter>
+  );
+}
+
+/**
+ * App-wide controls at the foot of the navigation rail: the Codex account control (its usage
+ * meter when signed in, sign-in when signed out, an unread Codex meter while the account is
+ * unknown), one usage meter per Claude subscription account, then Settings. Settings stays last
+ * so it never moves when the account state becomes known.
  */
 export function WorkbenchRailAccountControls({
   onOpenSettings,
@@ -115,10 +194,11 @@ export function WorkbenchRailAccountControls({
   onCancelLogin,
   onLogout,
   onErrorMessage,
+  claudeUsage = NO_USAGE_READINGS,
 }: WorkbenchRailAccountControlsProps) {
   const [loginBusy, setLoginBusy] = useState(false);
   const accountState = resolveRailAccountState(account ?? null, connection);
-  const showQuotaRing = Boolean(
+  const showUsageMeter = Boolean(
     accountState.kind === "signedIn" && connection && onRefreshAccount && onLogout,
   );
   const showSignIn = Boolean(
@@ -176,16 +256,14 @@ export function WorkbenchRailAccountControls({
       className="mt-auto flex flex-col items-center gap-2"
     >
       <div data-workbench-rail-account="" className="contents">
-        {showQuotaRing && connection && onRefreshAccount && onLogout ? (
+        {showUsageMeter && account && onRefreshAccount && onLogout ? (
           <span className="inline-flex animate-in duration-200 fade-in-0 zoom-in-90 motion-reduce:animate-none">
-            <AccountRateLimitRing
-              account={account ?? null}
-              connection={connection}
+            <CodexUsageMeter
+              account={account}
               onRefreshAccount={onRefreshAccount}
               onConsumeRateLimitReset={onConsumeRateLimitReset}
               onLogout={onLogout}
               onErrorMessage={onErrorMessage}
-              className="h-9 w-9"
             />
           </span>
         ) : showSignIn && onCancelLogin ? (
@@ -211,6 +289,14 @@ export function WorkbenchRailAccountControls({
         ) : accountState.kind === "loading" || accountState.kind === "unavailable" ? (
           <RailAccountPlaceholder state={accountState} onRefreshAccount={onRefreshAccount} />
         ) : null}
+        {claudeUsage.map((reading) => (
+          <span
+            key={reading.key}
+            className="inline-flex animate-in duration-200 fade-in-0 zoom-in-90 motion-reduce:animate-none"
+          >
+            <RailUsageMeter reading={reading} />
+          </span>
+        ))}
       </div>
       <NodexTooltip tooltipContent="Settings" side="right">
         <NodexButton
@@ -225,4 +311,12 @@ export function WorkbenchRailAccountControls({
       </NodexTooltip>
     </div>
   );
+}
+
+/**
+ * The rail foot with Claude usage read from what Nodex already knows. Kept as its own leaf so a new
+ * reading re-renders only these controls.
+ */
+export function WorkbenchRailFoot(props: Omit<WorkbenchRailAccountControlsProps, "claudeUsage">) {
+  return <WorkbenchRailAccountControls {...props} claudeUsage={useClaudeUsageReadings()} />;
 }

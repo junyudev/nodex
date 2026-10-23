@@ -199,6 +199,9 @@ export const live = Layer.effectDiscard(
     yield* ipc.handleQuery("agent-runtime:providers:read", (event, value) =>
       handle(event, Inputs.AgentRuntimeCatalogSchema, value ?? {}, application.catalog),
     );
+    yield* ipc.handleQuery("agent-runtime:providers:known", (event) =>
+      authorize(event).pipe(Effect.andThen(application.knownCatalog())),
+    );
     yield* ipc.handleControl("agent-runtime:session:unobserve", (event, value) =>
       handle(event, Inputs.AgentRuntimeUnobserveSchema, value, (input) =>
         release(keyOf(event.sender.id, input.subscriptionId)).pipe(

@@ -1,3 +1,4 @@
+import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import type { ClientRequestResponsesByMethod } from "@nodex/effect-codex-app-server/rpc";
 import type * as Duration from "effect/Duration";
@@ -20,10 +21,12 @@ import type { CodexRuntimeError } from "../codex-runtime/CodexRuntimeError";
 import {
   emptyAccountRateLimitState,
   loadingAccountSnapshot,
+  mergeRateLimitsUpdate,
   signedOutAccountSnapshot,
   parseAccountIdentity,
   parseRateLimitResetCreditsSummary,
   parseRateLimitsSnapshot,
+  type AccountRateLimitState,
 } from "./CodexAccountState";
 
 export interface CodexAccountOptions {
@@ -95,17 +98,31 @@ export const live = (
           ? (value as Readonly<Record<string, unknown>>)
           : undefined;
 
-      const readRateLimits = Effect.fn("CodexAccount.readRateLimits")(function* () {
+      /**
+       * Reads the account's usage windows. A failed read keeps the reading `kept` holds, marked
+       * as failed, so the meter shows its age instead of pretending the limits vanished.
+       */
+      const readRateLimits = Effect.fn("CodexAccount.readRateLimits")(function* (
+        kept: AccountRateLimitState,
+      ) {
         const response = yield* gateway
           .requestLocal("account/rateLimits/read", {})
           .pipe(Effect.orElseSucceed(() => null));
-        if (response === null) return emptyAccountRateLimitState();
+        if (response === null) return { ...kept, rateLimitsReadFailed: true };
         return {
           rateLimits: parseRateLimitsSnapshot(response.rateLimits ?? null),
           rateLimitResetCredits: parseRateLimitResetCreditsSummary(
             response.rateLimitResetCredits ?? null,
           ),
-        };
+          rateLimitsUpdatedAt: yield* Clock.currentTimeMillis,
+          rateLimitsReadFailed: false,
+        } satisfies AccountRateLimitState;
+      });
+      const keptRateLimitState = (current: CodexAccountSnapshot): AccountRateLimitState => ({
+        rateLimits: current.rateLimits ?? null,
+        rateLimitResetCredits: current.rateLimitResetCredits ?? null,
+        rateLimitsUpdatedAt: current.rateLimitsUpdatedAt ?? null,
+        rateLimitsReadFailed: current.rateLimitsReadFailed ?? false,
       });
 
       const load = Effect.gen(function* () {
@@ -115,8 +132,18 @@ export const live = (
         if ((yield* Ref.get(authGeneration)) !== generation)
           return yield* SubscriptionRef.get(snapshot);
         const account = parseAccountIdentity(response.account ?? null);
+        const before = yield* SubscriptionRef.get(snapshot);
+        // Only the same account's earlier reading may stand in for a failed read.
+        const sameAccount =
+          account?.type === "chatgpt" &&
+          before.account?.type === "chatgpt" &&
+          before.account.email === account.email;
         const rateLimitState =
-          account?.type === "chatgpt" ? yield* readRateLimits() : emptyAccountRateLimitState();
+          account?.type === "chatgpt"
+            ? yield* readRateLimits(
+                sameAccount ? keptRateLimitState(before) : emptyAccountRateLimitState(),
+              )
+            : emptyAccountRateLimitState();
         const currentGeneration = yield* Ref.get(authGeneration);
         if (currentGeneration !== generation) return yield* SubscriptionRef.get(snapshot);
         const previous = yield* SubscriptionRef.get(snapshot);
@@ -168,7 +195,9 @@ export const live = (
       });
 
       const refreshRateLimits = Effect.gen(function* () {
-        const rateLimitState = yield* readRateLimits();
+        const rateLimitState = yield* readRateLimits(
+          keptRateLimitState(yield* SubscriptionRef.get(snapshot)),
+        );
         return yield* SubscriptionRef.modify(snapshot, (current) => {
           const next = { ...current, ...rateLimitState };
           return [next, next];
@@ -192,10 +221,18 @@ export const live = (
           if (event.kind !== "notification") return Effect.void;
           if (event.value.method === "account/rateLimits/updated") {
             const params = asRecord(event.value.params);
-            return SubscriptionRef.update(snapshot, (current) => ({
-              ...current,
-              rateLimits: parseRateLimitsSnapshot(params?.rateLimits ?? null),
-            }));
+            const update = parseRateLimitsSnapshot(params?.rateLimits ?? null);
+            if (!update) return Effect.void;
+            return Clock.currentTimeMillis.pipe(
+              Effect.flatMap((now) =>
+                SubscriptionRef.update(snapshot, (current) => ({
+                  ...current,
+                  rateLimits: mergeRateLimitsUpdate(current.rateLimits, update),
+                  rateLimitsUpdatedAt: now,
+                  rateLimitsReadFailed: false,
+                })),
+              ),
+            );
           }
           if (event.value.method === "account/login/completed") {
             return SubscriptionRef.update(snapshot, (current) => ({

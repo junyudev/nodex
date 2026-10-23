@@ -1469,6 +1469,38 @@ it.effect("listing models while execution is stopped never starts it; refresh al
   }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
 );
 
+it.effect("usage observers read the known catalog without ever starting execution", () =>
+  Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem;
+    const declared = { identity: "declared", running: false };
+    const providerCatalog = yield* makeProviderCatalog({
+      home: yield* fs.makeTempDirectoryScoped({ prefix: "nodex-catalog-" }),
+      identity: Effect.sync(() => declared.identity),
+      running: Effect.sync(() => declared.running),
+    });
+    const fixture = setup({
+      providerCatalog,
+      whileRunning: (effect) => (declared.running ? effect : Effect.succeed(null)),
+    });
+    const owner = yield* fixture.owner;
+    const reads = () => fixture.calls.filter((call) => call.method === "providers.read").length;
+    // Stopped with nothing kept: nothing is known, and nothing is started to find out.
+    assert.isNull(yield* owner.knownCatalog());
+    assert.equal(reads(), 0);
+    // Running: the live answer is served and kept for later stopped reads.
+    declared.running = true;
+    const live = yield* owner.knownCatalog();
+    assert.equal(reads(), 1);
+    declared.running = false;
+    assert.deepEqual(yield* owner.knownCatalog(), live);
+    assert.equal(reads(), 1);
+    // A changed provider declaration makes the kept copy unknown again.
+    declared.identity = "changed";
+    assert.isNull(yield* owner.knownCatalog());
+    assert.equal(reads(), 1);
+  }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+);
+
 it.effect(
   "accepted Session deletion retains durable cleanup on disconnect and restart settles it once",
   () =>

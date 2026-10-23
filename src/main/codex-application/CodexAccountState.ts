@@ -12,8 +12,7 @@ export const loadingAccountSnapshot = (): CodexAccountSnapshot => ({
   account: null,
   requiresOpenAiAuth: false,
   pendingLogin: null,
-  rateLimits: null,
-  rateLimitResetCredits: null,
+  ...emptyAccountRateLimitState(),
 });
 
 /** A known signed-out account: after logout, or when the host requires login. */
@@ -23,10 +22,41 @@ export const signedOutAccountSnapshot = (): CodexAccountSnapshot => ({
   requiresOpenAiAuth: true,
 });
 
-export const emptyAccountRateLimitState = (): Pick<
+/** Everything a usage read decides about the account, including when it last succeeded. */
+export type AccountRateLimitState = Pick<
   CodexAccountSnapshot,
-  "rateLimits" | "rateLimitResetCredits"
-> => ({ rateLimits: null, rateLimitResetCredits: null });
+  "rateLimits" | "rateLimitResetCredits" | "rateLimitsUpdatedAt" | "rateLimitsReadFailed"
+>;
+
+export function emptyAccountRateLimitState(): AccountRateLimitState {
+  return {
+    rateLimits: null,
+    rateLimitResetCredits: null,
+    rateLimitsUpdatedAt: null,
+    rateLimitsReadFailed: false,
+  };
+}
+
+/**
+ * Folds a sparse `account/rateLimits/updated` notification into the windows last read: omitted
+ * values keep what was known, and an update for another metered limit leaves this one alone.
+ */
+export function mergeRateLimitsUpdate(
+  previous: CodexRateLimitsSnapshot | null | undefined,
+  update: CodexRateLimitsSnapshot | null,
+): CodexRateLimitsSnapshot | null {
+  if (!update) return previous ?? null;
+  if (!previous) return update;
+  if (update.limitId && previous.limitId && update.limitId !== previous.limitId) return previous;
+  return {
+    limitId: previous.limitId ?? update.limitId,
+    limitName: update.limitName ?? previous.limitName,
+    primary: update.primary ?? previous.primary,
+    secondary: update.secondary ?? previous.secondary,
+    credits: update.credits ?? previous.credits,
+    planType: update.planType ?? previous.planType,
+  };
+}
 
 const normalizeTimestamp = (value: unknown): number => {
   if (typeof value !== "number" || !Number.isFinite(value)) return Date.now();

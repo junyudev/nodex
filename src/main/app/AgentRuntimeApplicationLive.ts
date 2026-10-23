@@ -206,6 +206,17 @@ const supervisor = Layer.effectContext(
     const product = yield* makeApplication({
       connect: Deferred.await(ready).pipe(Effect.flatMap((runtime) => runtime.get())),
       providerCatalog,
+      whileRunning: (effect) =>
+        Deferred.await(ready).pipe(
+          Effect.flatMap((runtime) =>
+            runtime.retained(
+              Effect.gen(function* () {
+                if ((yield* runtime.inspect) === null) return null;
+                return yield* effect;
+              }),
+            ),
+          ),
+        ),
       projectless: {
         engineProjectId: `nodex:projectless:${core.identity.profileId}`,
         workspaceRoot: projectlessWorkspaceRoot,

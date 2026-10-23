@@ -53,14 +53,23 @@ export const make = Effect.fn("AgentRuntimeProviderCatalog.make")(function* (opt
     yield* Ref.set(memory, loaded);
     return loaded;
   });
+  /** The kept catalog when it still describes the current declaration, running or not. */
+  const saved = Effect.gen(function* () {
+    const identity = yield* options.identity;
+    const snapshot = yield* stored;
+    return snapshot.identity === identity ? snapshot.providers : null;
+  }).pipe(Effect.catchCause(() => Effect.succeed(null)));
   return {
     /** The catalog to serve without starting execution, or null when only a live read will do. */
     lastKnown: Effect.gen(function* () {
       if (yield* options.running) return null;
-      const identity = yield* options.identity;
-      const snapshot = yield* stored;
-      return snapshot.identity === identity ? snapshot.providers : null;
+      return yield* saved;
     }).pipe(Effect.catchCause(() => Effect.succeed(null))),
+    /**
+     * The kept catalog even while a process runs, for observers that must not reach it, such
+     * as usage meters that settle for the last reading rather than start execution.
+     */
+    saved,
     /** Keeps what a live process just served for the next stopped read. */
     record: (providers: Providers) =>
       writes

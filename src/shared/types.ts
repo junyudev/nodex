@@ -2057,6 +2057,10 @@ export interface CodexAccountSnapshot {
   } | null;
   rateLimits?: CodexRateLimitsSnapshot | null;
   rateLimitResetCredits?: CodexRateLimitResetCreditsSummary | null;
+  /** Epoch milliseconds when `rateLimits` was last read or pushed; null before any reading. */
+  rateLimitsUpdatedAt?: number | null;
+  /** The latest read failed; the previous reading, if any, is kept rather than cleared. */
+  rateLimitsReadFailed?: boolean;
 }
 
 export interface CodexRateLimitResetResult {
