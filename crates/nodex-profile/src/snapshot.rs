@@ -49,7 +49,7 @@ fn estimate(
         |source| Path::new(&source.database_path).to_owned(),
     );
     if files::exists(&database)? {
-        total = std::fs::metadata(database)?.len();
+        total = std::fs::metadata(&database)?.len();
     }
     for fingerprint in files::inventory(
         &home.join("userdata"),
@@ -74,6 +74,15 @@ fn estimate(
         })
         .map(Ok)
         .unwrap_or_else(|| offline_history_sources(profile))?;
+    let required = if files::exists(&database)? {
+        let connection = rusqlite::Connection::open_with_flags(
+            &database,
+            rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY,
+        )?;
+        native_requirements(&connection)?
+    } else {
+        BTreeMap::new()
+    };
     let mut seen = BTreeSet::new();
     for native in &histories {
         let Some(path) = &native.home_path else {
@@ -83,7 +92,15 @@ fn estimate(
             continue;
         }
         if native.driver == "claudeAgent" {
-            for file in claude_history::inventory(Path::new(path))?.values() {
+            let ids = histories
+                .iter()
+                .filter(|other| {
+                    other.driver == native.driver && other.home_path == native.home_path
+                })
+                .filter_map(|other| required.get(&other.provider_instance_id))
+                .flat_map(|(_, ids)| ids.iter().cloned())
+                .collect();
+            for file in claude_history::inventory(Path::new(path), &ids)?.values() {
                 total = total.saturating_add(file.fingerprint.length());
             }
             continue;
@@ -502,7 +519,7 @@ fn capture_claude(source: &Path, destination: &Path, required: &BTreeSet<String>
         return Ok(());
     }
     files::require_directory(source)?;
-    let before = claude_history::inventory(source)?;
+    let before = claude_history::inventory(source, required)?;
     let mut found = BTreeSet::new();
     for (relative, file) in &before {
         // Projects contain native transcripts and delegated transcript trees, not account files.
@@ -537,7 +554,7 @@ fn capture_claude(source: &Path, destination: &Path, required: &BTreeSet<String>
             "Claude native transcripts are incomplete for captured Sessions",
         ));
     }
-    if before != claude_history::inventory(source)? {
+    if before != claude_history::inventory(source, required)? {
         return Err(invalid("Claude native history changed during capture"));
     }
     Ok(())
@@ -834,11 +851,13 @@ mod tests {
         let staged = tempfile::tempdir().unwrap();
         let input = fixture(source.path());
         let claude = source.path().join("private-claude-account");
-        let target = claude.join(format!(
+        let relative = std::path::PathBuf::from(format!(
             "projects/workspace/{CLAUDE_ID}/subagents/agent-child.jsonl"
         ));
-        let relative = Path::new("projects/workspace/fork/subagents/agent-child.jsonl");
-        let alias = claude.join(relative);
+        let alias = claude.join(&relative);
+        let target = claude.join("projects/workspace/parent/subagents/agent-child.jsonl");
+        files::private_directory(target.parent().unwrap()).unwrap();
+        fs::rename(&alias, &target).unwrap();
         files::private_directory(alias.parent().unwrap()).unwrap();
         symlink(&target, &alias).unwrap();
         assert!(

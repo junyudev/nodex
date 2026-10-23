@@ -1,5 +1,5 @@
 //! Claude forks share delegated transcripts through contained file aliases.
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -81,13 +81,60 @@ fn collect(
     Ok(())
 }
 
-/// Records resolved source identities so capture can materialize aliases and verify them again.
-pub(crate) fn inventory(root: &Path) -> Result<BTreeMap<PathBuf, HistoryFile>> {
+fn session_component(id: &str) -> Result<()> {
+    let mut parts = Path::new(id).components();
+    if id.len() > 512
+        || !matches!(parts.next(), Some(std::path::Component::Normal(_)))
+        || parts.next().is_some()
+    {
+        return Err(invalid(
+            "Claude native Session identity is not a path component",
+        ));
+    }
+    Ok(())
+}
+
+/// Captures only this Profile's native Sessions and their delegated/file-history trees.
+/// Fork transcripts already contain their inherited messages. Delegated aliases retain
+/// their resolved source identity without pulling in the parent's unrelated history.
+pub(crate) fn inventory(
+    root: &Path,
+    required: &BTreeSet<String>,
+) -> Result<BTreeMap<PathBuf, HistoryFile>> {
     let mut output = BTreeMap::new();
-    for name in ["projects", "file-history"] {
-        let directory = root.join(name);
+    for id in required {
+        session_component(id)?;
+        let directory = root.join("file-history").join(id);
         if files::exists(&directory)? {
+            files::require_directory(&root.join("file-history"))?;
             collect(root, &directory, &mut output, 0)?;
+        }
+    }
+    let projects = root.join("projects");
+    if required.is_empty() || !files::exists(&projects)? {
+        return Ok(output);
+    }
+    files::require_directory(&projects)?;
+    for (index, project) in fs::read_dir(&projects)?.enumerate() {
+        if index >= 100_000 {
+            return Err(invalid("Claude history has too many projects"));
+        }
+        let project = project?;
+        if !project.file_type()?.is_dir() {
+            continue;
+        }
+        for id in required {
+            let transcript = project.path().join(format!("{id}.jsonl"));
+            if files::exists(&transcript)? {
+                output.insert(
+                    files::relative_path(root, &transcript)?,
+                    history_file(root, &transcript)?,
+                );
+            }
+            let directory = project.path().join(id);
+            if files::exists(&directory)? {
+                collect(root, &directory, &mut output, 0)?;
+            }
         }
     }
     Ok(output)
@@ -119,7 +166,10 @@ mod tests {
                 files::create_file(&target).unwrap();
             }
             symlink(&target, &link).unwrap();
-            assert!(inventory(&home).is_err(), "{target_kind}");
+            assert!(
+                inventory(&home, &BTreeSet::from(["fork".into()])).is_err(),
+                "{target_kind}"
+            );
         }
     }
 
@@ -139,9 +189,41 @@ mod tests {
             .join("projects/project/fork/subagents/agent-child.jsonl");
         files::private_directory(link.parent().unwrap()).unwrap();
         symlink(&targets[0], &link).unwrap();
-        let before = inventory(home.path()).unwrap();
+        let before = inventory(home.path(), &BTreeSet::from(["fork".into()])).unwrap();
         fs::remove_file(&link).unwrap();
         symlink(&targets[1], &link).unwrap();
-        assert_ne!(before, inventory(home.path()).unwrap());
+        assert_ne!(
+            before,
+            inventory(home.path(), &BTreeSet::from(["fork".into()])).unwrap()
+        );
+    }
+
+    #[test]
+    fn includes_session_file_history_but_ignores_unrelated_session_writes() {
+        let home = tempfile::tempdir().unwrap();
+        let selected = home.path().join("projects/project/fork.jsonl");
+        let backup = home.path().join("file-history/fork/abc@v1");
+        let unrelated = home.path().join("projects/project/parent.jsonl");
+        for path in [&selected, &backup, &unrelated] {
+            files::create_file(path).unwrap();
+        }
+        let required = BTreeSet::from(["fork".into()]);
+        let before = inventory(home.path(), &required).unwrap();
+        assert_eq!(before.len(), 2);
+        fs::write(&unrelated, b"another session is running").unwrap();
+        assert_eq!(before, inventory(home.path(), &required).unwrap());
+        fs::write(&backup, b"changed checkpoint").unwrap();
+        assert_ne!(before, inventory(home.path(), &required).unwrap());
+        let before = inventory(home.path(), &required).unwrap();
+        fs::write(&selected, b"selected session changed").unwrap();
+        assert_ne!(before, inventory(home.path(), &required).unwrap());
+    }
+
+    #[test]
+    fn rejects_session_id_path_traversal() {
+        let home = tempfile::tempdir().unwrap();
+        for id in ["", ".", "..", "../other", "/outside", "first/second"] {
+            assert!(inventory(home.path(), &BTreeSet::from([id.into()])).is_err());
+        }
     }
 }

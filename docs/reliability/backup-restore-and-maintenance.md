@@ -24,8 +24,12 @@ catalog must remain unchanged through capture. Missing provider configuration
 fails the backup rather than guessing an account directory. Profiles predating
 that catalog retain their verified active Codex home behavior.
 
-Claude fork aliases may select the same named delegated transcript within the
-authorized native history tree. Capture verifies the resolved regular file and
+Claude capture includes the Profile's required native Session transcripts,
+delegated transcript trees, and file-history checkpoints. Other Sessions in a
+shared account home are outside this closure and may continue writing. Forked
+transcripts carry their inherited messages without requiring the parent
+transcript. Claude fork aliases may select the same named delegated transcript
+within the authorized native history tree. Capture verifies the resolved regular file and
 its stable inventory, then materializes independent regular files in the backup.
 Aliases to another account, credentials, directories or other file types are
 rejected; other Profile files retain their ordinary no-symlink policy.
