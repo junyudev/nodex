@@ -10,6 +10,7 @@ All notable changes to this project will be documented in this file.
 - Codex chats suggest a next message after a reply, even when you switch away. Accept a suggestion with Tab, Right Arrow or Enter, then edit or send it normally. Show predictions in General settings controls the feature across windows and restart.
 - Chats offer Fork in the sidebar context menu and Chat actions, with the current directory or a new Git worktree as the destination.
 - Claude subscription usage appears beside Codex at the foot of the navigation rail. Each account gets one ring for the limit that runs out first, and a card lists every window with its reset time and when it was last read. Old, failed or missing readings are labeled as such rather than guessed, and showing them never starts Claude Code or contacts the account.
+- Sign in to an optional Nodex Account from Settings through your browser, while Nodex and your existing Codex and Claude sign-ins keep working without one.
 
 ### Changed
 

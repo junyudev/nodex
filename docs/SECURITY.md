@@ -578,7 +578,18 @@ read through the authenticated Profile and exact execution identity boundary.
 - Stable asset URI scheme avoids embedding brittle absolute local URLs.
 - Native provider requests retain exact request and process-generation correlation. Nodex content access does not depend on a Project permission preset.
 - Codex user-input auto-resolution never infers or selects an answer. Main may end an inactive ordinary request with the protocol’s empty answer object after the bounded foreground/background timeout; any request-card interaction snoozes that timeout, and explicit renderer submission remains the only path that can send answer content. App-server disconnect clears renderer-memory request drafts and rejects the old inbound generation, so a reused JSON-RPC scalar id cannot recover secret freeform content or receive a late response from the previous process.
-- Codex authentication is owned by the selected native Codex home and its app-server auth protocol. Renderer and Core never receive plaintext authentication material, and Nodex does not maintain a parallel application credential store. External-agent imports intentionally omit authentication and connection state; each backend must establish those secrets through its own authority boundary.
+- Codex authentication is owned by the selected native Codex home and its app-server auth protocol. Renderer and Core never receive plaintext authentication material, and Nodex does not maintain a parallel store of native Codex credentials. External-agent imports intentionally omit authentication and connection state; each backend must establish those secrets through its own authority boundary.
+- The optional Nodex account has a separate Profile-scoped Main owner. Public
+  browser OAuth uses S256 PKCE, a random state and a temporary loopback callback.
+  Token requests are bounded, reject redirects and remain at the configured
+  HTTPS issuer. Only a verified user-info response may establish identity;
+  that identity alone supplies no paid-service authority. Trusted renderer IPC
+  exposes semantic commands and public snapshots, never tokens or authenticated
+  fetch. Credentials use `SecretEncryption` and a private Profile-bound file,
+  with no plaintext fallback, provider-home copying or content backup inclusion.
+  Cancellation and account changes retire the generation; uncommitted issued
+  credentials receive bounded revocation cleanup. Local work does not depend
+  on account availability. See [Nodex Account Login](product-specs/nodex-account-login-behavior.md).
 - Codex and Claude conversation imports require a trusted renderer, an exact native conversation identity and the previewed canonical history home. Claude sources also retain the selected profile identity. The Runtime verifies the physical source home and copies bounded visible history and supported media into its own store, then continues through its own native conversation. Source execution, native ancestry references, authentication, queues and pending approvals are never adopted. Import failures cannot turn a retained execution binding into an empty new chat. Stable request identities reconcile retries without mutating or deleting source history; a changed captured history prefix is rejected. Completed receipts remain usable without the source.
 - Copy setup is a separate trusted-renderer workflow backed by expiring opaque scan ids. It offers configuration and Agent resources without conversation admission. Source homes are canonicalized. Native file copies never replace a target, reject symlinks, stage directory trees before rename, and do not copy SQLite/WAL/SHM files. Config translation allowlists passive settings, removes literal MCP environment/header/token material, and omits authentication, approval, sandbox, and connection state.
 - Application tools use a verified Profile connection and captured execution

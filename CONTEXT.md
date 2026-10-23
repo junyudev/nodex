@@ -82,6 +82,14 @@ with its own process lock, SQLite store, browser session, and preferences. Each
 Profile owns exactly one Library. Profile is not a Block and is not inferred
 from any Project.
 
+### Nodex Account Connection
+
+A Nodex Account Connection is a Profile's optional connection to a verified
+Clerk identity, identified by issuer and subject. It does not own the Profile
+or Library and is independent of native Agent authentication. Main owns its
+credentials and lifecycle; renderer observes public state. See
+[Nodex Account Login](docs/product-specs/nodex-account-login-behavior.md).
+
 ### Library
 
 Library is the durable content scope. `libraryId` is the ownership coordinate

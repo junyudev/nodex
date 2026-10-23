@@ -26,6 +26,8 @@ flowchart LR
     Agent --> Claude["Native Claude Code via Agent SDK"]
     Agent --> OpenCode["Native OpenCode via HTTP/SSE SDK"]
     Main --> Accounts["Native account and host capabilities"]
+    Main --> NodexAccount["Optional Nodex account connection"]
+    NodexAccount --> Clerk["Clerk OAuth identity"]
     Main --> Host["OS, filesystem, Browser, Terminal, Git"]
     Renderer --> Scene["Renderer-owned live Scenes"]
     Scene --> Catalog["Main-persisted Window Session catalog"]
@@ -64,15 +66,18 @@ Electron Main -> nodex.db / Yrs transaction reconstruction
 Core Modules -> Electron / renderer / transport presentation
 ```
 
-### Proposed optional cloud account extension
+### Optional Nodex account connection
 
-[ADR 0070](adr/0070-optional-cloud-account-and-subscription-authority.md) and
-[Nodex Account and Subscription Behavior](product-specs/nodex-account-and-subscription-behavior.md)
-describe an unimplemented Clerk/Stripe integration. The proposal gives Nodex
-Cloud authority over first-party subscription access and usage while Main
-owns the optional Profile account connection. Core content, native provider
-accounts and Agent Runtime execution retain their existing owners. This
-proposal is not part of the current runtime graph or startup dependencies.
+Main owns the optional Profile-scoped Nodex account connection and its OAuth
+resource lifecycle. Clerk owns cloud identity; the Node/Electron platform
+boundary verifies identity and stores credentials privately. Renderer receives
+only semantic commands and revisioned public observations. Core content and
+native Agent accounts remain independent, and cloud availability cannot gate
+local startup or content access. See [Nodex Account Login](product-specs/nodex-account-login-behavior.md).
+
+[ADR 0070](adr/0070-optional-cloud-account-and-subscription-authority.md) records
+the proposed future cloud subscription and usage authority. Billing, paid
+model admission and the cloud Account mapping are not current runtime owners.
 
 ## Domain and authority model
 

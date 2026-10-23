@@ -84,6 +84,16 @@ function projectNameTerms({
 export const APPEARANCE_ADVANCED_ANCHOR = "advanced";
 
 export const SETTINGS_SEARCH_PANELS = {
+  account: {
+    title: "Account",
+    subtitle: "Optional. Everything local works without signing in.",
+    groups: [
+      {
+        title: "Nodex Account",
+        entries: [entry("Sign in"), entry("Sign out")],
+      },
+    ],
+  },
   "general-settings": {
     title: "General",
     subtitle: "App-wide shell behavior and notifications.",
@@ -760,6 +770,9 @@ export function shouldExpandAppearanceAdvanced(query: string | undefined): boole
 }
 
 export const SETTINGS_SEARCH_CATALOG = {
+  account: {
+    messages: materializePanelSearchMessages(SETTINGS_SEARCH_PANELS.account),
+  },
   "general-settings": {
     messages: materializePanelSearchMessages(SETTINGS_SEARCH_PANELS["general-settings"]),
   },

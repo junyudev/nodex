@@ -1,7 +1,7 @@
 # Nodex Account and Subscription Behavior
 
-- Status: Proposed; design only, not implemented
-- Last updated: 2026-10-22
+- Status: Proposed subscription and model access; native login implemented separately
+- Last updated: 2026-10-23
 - Decision: [ADR 0070](../adr/0070-optional-cloud-account-and-subscription-authority.md)
 
 ## Purpose and first release
@@ -19,8 +19,11 @@ mid-cycle plan changes, cloud content sync and standalone cloud CLI commands
 are outside this first release. No model subscription is sold until a usable
 first-party execution path passes the delivery gates below.
 
-This document specifies the proposed integration. Existing product documents
-continue to describe shipped behavior until their implementation is changed.
+This document specifies the full proposed integration. The identity-only
+Desktop slice is implemented separately in [Nodex Account Login](nodex-account-login-behavior.md):
+it verifies the Clerk identity directly with user-info, without a cloud Account
+database or billing authority. The cloud verification, subscription and model
+access contracts below remain proposed until their delivery gates pass.
 
 ## Product invariants
 

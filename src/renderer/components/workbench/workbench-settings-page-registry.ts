@@ -8,6 +8,7 @@ import type {
 } from "./workbench-settings-routes";
 
 export type SettingsPageKey =
+  | "account"
   | "general"
   | "appearance"
   | "voice"

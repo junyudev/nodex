@@ -18,6 +18,26 @@ Profile home resolves in this order:
 3. `server.home` in `~/.nodex/config.toml`;
 4. the default `~/.nodex` home.
 
+## Nodex account
+
+The optional Desktop account connection reads `NODEX_CLERK_ISSUER` and
+`NODEX_CLERK_CLIENT_ID` from the captured process environment. Both are public
+deployment values, not user secrets or TOML preferences. Restart Desktop after
+changing them. Without both values, local work remains available and sign-in
+is unavailable. A malformed value is reported by Account settings without
+making Core depend on a cloud connection.
+
+Configure a public Clerk OAuth application with PKCE required, opaque access
+tokens, consent enabled, scopes `openid profile email offline_access` and
+redirect URI `http://127.0.0.1/callback`. The desktop chooses an ephemeral port.
+No Clerk secret key or OAuth client secret belongs in the Desktop environment.
+
+Credentials are encrypted under `${NODEX_HOME}/account/credentials.enc`, bound
+to the Profile, issuer and client. They are separate from native Agent homes
+and content backups. The test-only `NODEX_TEST_CLERK_LOOPBACK=1` flag permits a
+`127.0.0.1` HTTP issuer in unpackaged fixtures; packaged builds always require
+HTTPS. See [Nodex Account Login](product-specs/nodex-account-login-behavior.md).
+
 ## Composer prediction assignments
 
 Composer predictions default on. **Settings → General → Composer → Show predictions**

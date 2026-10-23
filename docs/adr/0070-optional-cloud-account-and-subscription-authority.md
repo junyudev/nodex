@@ -1,9 +1,14 @@
 # ADR 0070: Optional cloud accounts and server-owned subscription access
 
-- Status: Proposed; design only, not implemented
+- Status: Proposed cloud subscription authority; native login implemented separately
 - Date: 2026-10-22
 - Owners: Nodex maintainers
 - Preserves: [ADR 0068](0068-agent-runtime-execution-authority.md)
+
+The native identity-only slice is implemented under
+[Nodex Account Login](../product-specs/nodex-account-login-behavior.md).
+The cloud Account mapping, subscription and paid-model authority in this ADR
+remain proposed; native login alone grants none of those capabilities.
 
 Nodex needs an optional first-party account through which a person can buy and
 use Nodex-provided model capacity. A local Profile already owns its Library,

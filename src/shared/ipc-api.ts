@@ -1350,6 +1350,14 @@ export interface IpcApi extends AgentRuntimeIpcApi {
     result: CodexHomeSettingsSnapshot;
   };
   "settings:opencode-agents:get": { args: []; result: OpenCodeAgentSettings };
+  "nodex-account:read": { args: []; result: import("./nodex-account").NodexAccountSnapshot };
+  "nodex-account:sign-in": { args: []; result: import("./nodex-account").NodexAccountSnapshot };
+  "nodex-account:cancel-sign-in": {
+    args: [];
+    result: import("./nodex-account").NodexAccountSnapshot;
+  };
+  "nodex-account:sign-out": { args: []; result: import("./nodex-account").NodexAccountSnapshot };
+  "nodex-account:refresh": { args: []; result: import("./nodex-account").NodexAccountSnapshot };
   "opencode-setup:read": {
     args: [];
     result: import("./opencode-setup").OpenCodeSetupState;
@@ -2938,6 +2946,7 @@ export interface IpcApi extends AgentRuntimeIpcApi {
 export type IpcArgs<Channel extends keyof IpcApi> = IpcApi[Channel]["args"];
 
 export interface IpcEvents {
+  "nodex-account:changed": import("./nodex-account").NodexAccountSnapshot;
   "opencode-setup:changed": import("./opencode-setup").OpenCodeSetupState;
   "codex:realtime-voice:event": import("./codex-realtime-voice").CodexRealtimeVoiceEvent;
   "dictation:microphone-relinquish": { readonly sessionId: string };

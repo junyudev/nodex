@@ -17,10 +17,12 @@ import {
   SettingsLocalEnvironmentsIcon,
   SettingsWorktreeIcon,
 } from "../shared/icons";
+import { UserRound } from "../shared/icons/generic-icons";
 import { SETTINGS_SEARCH_CATALOG } from "./workbench-settings-search-catalog";
 import type { SettingsPageKey } from "./workbench-settings-page-registry";
 
 export type SettingsSectionId =
+  | "account"
   | "general-settings"
   | "agent-import"
   | "appearance"
@@ -71,6 +73,14 @@ export const SETTINGS_SECTION_GROUP_ORDER: readonly SettingsSectionGroupKey[] = 
 ];
 
 export const SETTINGS_SECTIONS: SettingsSectionDefinition[] = [
+  {
+    id: "account",
+    label: "Account",
+    pageKey: "account",
+    icon: UserRound,
+    groupKey: "personal",
+    searchMessages: SETTINGS_SEARCH_CATALOG.account.messages,
+  },
   {
     id: "general-settings",
     label: "General",
@@ -210,5 +220,9 @@ export function resolveVisibleSettingsSections(): SettingsSectionDefinition[] {
 export function resolveDefaultSettingsSectionId(
   sections: readonly SettingsSectionDefinition[] = resolveVisibleSettingsSections(),
 ): SettingsSectionId {
-  return sections[0]?.id ?? "general-settings";
+  return (
+    sections.find((section) => section.id === "general-settings")?.id ??
+    sections[0]?.id ??
+    "general-settings"
+  );
 }

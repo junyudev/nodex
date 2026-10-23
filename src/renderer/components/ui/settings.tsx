@@ -87,7 +87,7 @@ export function NodexCheckbox({
 }
 
 export interface NodexSettingsRowProps {
-  label: string;
+  label: ReactNode;
   description?: ReactNode;
   className?: string;
   size?: "default" | "compact";
