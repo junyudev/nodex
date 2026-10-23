@@ -1,6 +1,6 @@
 //! Execution capture participates in the Store's single Backup publication transaction.
 use std::collections::{BTreeMap, BTreeSet};
-use std::io::{BufRead, BufReader, Write};
+use std::io::{BufRead, BufReader, Read, Write};
 use std::path::Path;
 
 use nodex_core::administration::{
@@ -60,11 +60,22 @@ fn estimate(
     {
         total = total.saturating_add(fingerprint.length());
     }
+    let histories = source
+        .map(|source| {
+            source
+                .native_histories
+                .iter()
+                .map(|native| NativeHistorySource {
+                    provider_instance_id: native.provider_instance_id.clone(),
+                    driver: native.driver.clone(),
+                    home_path: native.home_path.clone(),
+                })
+                .collect()
+        })
+        .map(Ok)
+        .unwrap_or_else(|| offline_history_sources(profile))?;
     let mut seen = BTreeSet::new();
-    for native in source
-        .map(|source| source.native_histories.as_slice())
-        .unwrap_or_default()
-    {
+    for native in &histories {
         let Some(path) = &native.home_path else {
             continue;
         };
@@ -89,6 +100,111 @@ fn estimate(
         }
     }
     Ok(total)
+}
+
+#[derive(Deserialize)]
+struct ProviderCatalog {
+    version: u32,
+    identity: String,
+    providers: Vec<CatalogProvider>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct CatalogProvider {
+    instance_id: String,
+    driver: String,
+    continuation: Option<CatalogContinuation>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct CatalogContinuation {
+    group_key: String,
+}
+
+fn continuation_home(continuation: Option<&CatalogContinuation>, prefix: &str) -> Result<String> {
+    let home = continuation
+        .and_then(|continuation| continuation.group_key.strip_prefix(prefix))
+        .ok_or_else(|| invalid("Provider history catalog has no valid continuation home"))?;
+    if !Path::new(home).is_absolute()
+        || Path::new(home).components().any(|part| {
+            matches!(
+                part,
+                std::path::Component::ParentDir | std::path::Component::CurDir
+            )
+        })
+    {
+        return Err(invalid(
+            "Provider history catalog has no valid continuation home",
+        ));
+    }
+    Ok(home.to_owned())
+}
+
+/// The stopped Runtime's catalog retains the exact physical continuation home, not account secrets.
+fn offline_history_sources(profile: &Path) -> Result<Vec<NativeHistorySource>> {
+    let path = profile.join("agent-runtime/provider-catalog.json");
+    if !files::exists(&path)? {
+        return Ok(vec![NativeHistorySource {
+            provider_instance_id: "codex".into(),
+            driver: "codex".into(),
+            home_path: Some(
+                codex::source_codex_home(profile)?
+                    .to_string_lossy()
+                    .into_owned(),
+            ),
+        }]);
+    }
+    const MAX_BYTES: usize = 16 * 1024 * 1024;
+    let mut bytes = Vec::new();
+    files::read_file(&path)?
+        .take((MAX_BYTES + 1) as u64)
+        .read_to_end(&mut bytes)?;
+    if bytes.len() > MAX_BYTES {
+        return Err(invalid("Provider history catalog exceeds its byte bound"));
+    }
+    let catalog: ProviderCatalog = serde_json::from_slice(&bytes)
+        .map_err(|_| invalid("Provider history catalog is malformed"))?;
+    if catalog.version != 1
+        || catalog.identity.len() != 64
+        || !catalog
+            .identity
+            .bytes()
+            .all(|byte| byte.is_ascii_hexdigit())
+        || catalog.providers.len() > 256
+    {
+        return Err(invalid(
+            "Provider history catalog is invalid or unsupported",
+        ));
+    }
+    catalog
+        .providers
+        .into_iter()
+        .map(|provider| {
+            let home_path = match provider.driver.as_str() {
+                "codex" => Some(continuation_home(
+                    provider.continuation.as_ref(),
+                    "codex:home:",
+                )?),
+                "claudeAgent" => Some(continuation_home(
+                    provider.continuation.as_ref(),
+                    "claude:home:",
+                )?),
+                "acpRegistry" | "opencode" => None,
+                _ => {
+                    return Err(invalid(
+                        "Provider history catalog has an unsupported driver",
+                    ));
+                }
+            };
+            Ok(NativeHistorySource {
+                provider_instance_id: provider.instance_id,
+                driver: provider.driver,
+                home_path,
+            })
+        })
+        .collect()
 }
 
 fn capture(request: ProfileSnapshotCapture<'_>) -> Result<bool> {
@@ -145,22 +261,24 @@ fn capture(request: ProfileSnapshotCapture<'_>) -> Result<bool> {
     let connection = rusqlite::Connection::open(home.join("agent-runtime.sqlite"))?;
     validate_session_roots(&connection, request.required)?;
     let required = native_requirements(&connection)?;
-    let sources = live
-        .map(|snapshot| snapshot.native_histories.clone())
-        .unwrap_or_else(|| {
-            vec![NativeHistorySource {
-                provider_instance_id: "codex".into(),
-                driver: "codex".into(),
-                home_path: Some(
-                    request
-                        .source_profile
-                        .join("agent")
-                        .to_string_lossy()
-                        .into_owned(),
-                ),
-            }]
-        });
+    let catalog = request
+        .source_profile
+        .join("agent-runtime/provider-catalog.json");
+    let catalog_before = if live.is_none() && files::exists(&catalog)? {
+        Some(files::fingerprint(&catalog)?)
+    } else {
+        None
+    };
+    let sources = match live {
+        Some(snapshot) => snapshot.native_histories.clone(),
+        None => offline_history_sources(request.source_profile)?,
+    };
     let manifest = capture_native_histories(&home, request.target_profile, &sources, &required)?;
+    if let Some(before) = catalog_before
+        && files::fingerprint(&catalog)? != before
+    {
+        return Err(invalid("Provider history catalog changed during capture"));
+    }
     files::create_file(&home.join("native-history/manifest.json"))?
         .write_all(&serde_json::to_vec(&manifest)?)?;
     files::create_file(&home.join("snapshot.json"))?.write_all(&serde_json::to_vec(&captured)?)?;
@@ -577,6 +695,131 @@ mod tests {
                 thread_id: format!("thread:{kind}"),
             })
             .into()
+    }
+
+    fn write_catalog(profile: &Path, input: &ProfileSnapshotSource) {
+        let providers: Vec<_> = input.native_histories.iter().map(|provider| {
+            let key = match provider.driver.as_str() {
+                "codex" => format!("codex:home:{}", provider.home_path.as_ref().unwrap()),
+                "claudeAgent" => format!("claude:home:{}", provider.home_path.as_ref().unwrap()),
+                _ => format!("external:instance:{}", provider.provider_instance_id),
+            };
+            json!({"instanceId":provider.provider_instance_id,"driver":provider.driver,"continuation":{"groupKey":key}})
+        }).collect();
+        fs::write(
+            profile.join("agent-runtime/provider-catalog.json"),
+            json!({
+                "version":1,"identity":"a".repeat(64),"providers":providers
+            })
+            .to_string(),
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn offline_backup_uses_recorded_provider_homes_without_credentials() {
+        let source = tempfile::tempdir().unwrap();
+        let staged = tempfile::tempdir().unwrap();
+        let input = fixture(source.path());
+        write_catalog(source.path(), &input);
+        assert!(
+            capture(ProfileSnapshotCapture {
+                source_profile: source.path(),
+                staging_profile: staged.path(),
+                target_profile: source.path(),
+                source: None,
+                required: &required()
+            })
+            .unwrap()
+        );
+        let home = staged.path().join("agent-runtime");
+        let manifest: NativeHistoryManifest =
+            serde_json::from_slice(&fs::read(home.join("native-history/manifest.json")).unwrap())
+                .unwrap();
+        assert_eq!(manifest.providers.len(), 3);
+        for provider in manifest
+            .providers
+            .iter()
+            .filter(|provider| provider.relative_home.is_some())
+        {
+            let captured = home.join(provider.relative_home.as_ref().unwrap());
+            let relative = if provider.driver == "codex" {
+                format!("sessions/rollout-{CODEX_ID}.jsonl")
+            } else {
+                format!("projects/workspace/{CLAUDE_ID}.jsonl")
+            };
+            let original = input
+                .native_histories
+                .iter()
+                .find(|source| source.provider_instance_id == provider.provider_instance_id)
+                .unwrap();
+            assert_eq!(
+                fs::read(captured.join(&relative)).unwrap(),
+                fs::read(Path::new(original.home_path.as_ref().unwrap()).join(&relative)).unwrap()
+            );
+            assert!(!captured.join("auth.json").exists());
+            assert!(!captured.join(".credentials.json").exists());
+            assert_eq!(provider.required_thread_count, 1);
+        }
+        assert!(!home.join("provider-catalog.json").exists());
+    }
+
+    #[test]
+    fn offline_backup_rejects_invalid_catalogs_and_incomplete_native_history() {
+        for failure in [
+            "version",
+            "driver",
+            "prefix",
+            "relative",
+            "missing-provider",
+            "missing-history",
+        ] {
+            let source = tempfile::tempdir().unwrap();
+            let staged = tempfile::tempdir().unwrap();
+            let input = fixture(source.path());
+            write_catalog(source.path(), &input);
+            let path = source.path().join("agent-runtime/provider-catalog.json");
+            let mut catalog: serde_json::Value =
+                serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+            match failure {
+                "version" => catalog["version"] = json!(2),
+                "driver" => catalog["providers"][1]["driver"] = json!("unknown"),
+                "prefix" => {
+                    catalog["providers"][1]["continuation"]["groupKey"] =
+                        json!("codex:home:/somewhere")
+                }
+                "relative" => {
+                    catalog["providers"][1]["continuation"]["groupKey"] =
+                        json!("claude:home:relative")
+                }
+                "missing-provider" => {
+                    catalog["providers"].as_array_mut().unwrap().remove(1);
+                }
+                "missing-history" => fs::remove_file(source.path().join(format!(
+                    "private-claude-account/projects/workspace/{CLAUDE_ID}.jsonl"
+                )))
+                .unwrap(),
+                _ => unreachable!(),
+            }
+            fs::write(&path, catalog.to_string()).unwrap();
+            assert!(
+                capture(ProfileSnapshotCapture {
+                    source_profile: source.path(),
+                    staging_profile: staged.path(),
+                    target_profile: source.path(),
+                    source: None,
+                    required: &required()
+                })
+                .is_err(),
+                "{failure}"
+            );
+            assert!(
+                !staged
+                    .path()
+                    .join("agent-runtime/native-history/manifest.json")
+                    .exists()
+            );
+        }
     }
 
     #[test]

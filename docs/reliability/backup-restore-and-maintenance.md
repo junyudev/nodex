@@ -17,6 +17,13 @@ and attachment bytes are included independently of bounded UI projections.
 Native history files and their source inventory must remain stable throughout
 capture; account configuration and authentication files are excluded.
 
+When Desktop is stopped, backup holds the execution writer lease and reads the
+last recorded provider catalog's exact continuation homes. Driver and catalog
+versions must be supported, every required native session must exist, and the
+catalog must remain unchanged through capture. Missing provider configuration
+fails the backup rather than guessing an account directory. Profiles predating
+that catalog retain their verified active Codex home behavior.
+
 Codex and Claude keep their native continuation IDs. Restored history lives in
 the Profile's managed history closure, while authentication comes from the
 configured account. ACP/OpenCode canonical transcripts are preserved, but their
