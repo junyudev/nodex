@@ -53,8 +53,9 @@ export function resolveCodexRequestServiceTier<T extends { serviceTier?: CodexSe
   return defaultServiceTier;
 }
 
-export function buildCodexServiceTierRequestOverride(serviceTier: CodexServiceTier): {
-  serviceTier?: string;
+/** Omission inherits the Thread tier; an explicit Standard selection clears it. */
+export function buildCodexServiceTierRequestOverride(serviceTier: CodexServiceTier | undefined): {
+  serviceTier?: CodexServiceTier;
 } {
-  return serviceTier ? { serviceTier } : {};
+  return serviceTier !== undefined ? { serviceTier } : {};
 }

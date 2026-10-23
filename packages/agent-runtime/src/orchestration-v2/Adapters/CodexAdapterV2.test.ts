@@ -537,6 +537,33 @@ describe("CodexAdapterV2 runtime policy", () => {
     }),
   );
 
+  it.effect("keeps concurrent Codex Threads on their selected Fast and Standard tiers", () =>
+    Effect.gen(function* () {
+      const requests = yield* Effect.all(
+        ["fast", "default"].map((serviceTier) =>
+          CodexAdapterV2.buildCodexTurnStartParams({
+            nativeThreadId: `native-${serviceTier}`,
+            codexInput: [{ type: "text", text: "Continue" }],
+            runtimePolicy: { runtimeMode: "full-access", interactionMode: "default", cwd: null },
+            modelSelection: {
+              instanceId: ProviderInstanceId.make("codex"),
+              model: "gpt-6-sol",
+              options: [{ id: "serviceTier", value: serviceTier }],
+            },
+          }),
+        ),
+        { concurrency: 2 },
+      );
+      assert.deepEqual(
+        requests.map(({ threadId, model, serviceTier }) => ({ threadId, model, serviceTier })),
+        [
+          { threadId: "native-fast", model: "gpt-6-sol", serviceTier: "fast" },
+          { threadId: "native-default", model: "gpt-6-sol", serviceTier: "default" },
+        ],
+      );
+    }),
+  );
+
   it.effect("compiles per-turn Codex model options and cwd from their owning inputs", () =>
     Effect.gen(function* () {
       const params = yield* CodexAdapterV2.buildCodexTurnStartParams({

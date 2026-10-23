@@ -1390,14 +1390,15 @@ export function useAgentRuntimeConversationAdapter(input: {
     provider?.models.find((model) => model.slug === selectedModel)?.capabilities
       ?.optionDescriptors ?? [];
   const serviceTierDescriptor = modelOptions.find((option) => option.id === "serviceTier");
+  const chosenServiceTier = readAgentRuntimeServiceTier(selection.options);
   const selectedServiceTier =
-    readAgentRuntimeServiceTier(selection.options) ??
-    readAgentRuntimeServiceTier(
-      serviceTierDescriptor?.type === "select" && serviceTierDescriptor.currentValue
-        ? [{ id: "serviceTier", value: serviceTierDescriptor.currentValue }]
-        : undefined,
-    ) ??
-    null;
+    chosenServiceTier !== undefined
+      ? chosenServiceTier
+      : (readAgentRuntimeServiceTier(
+          serviceTierDescriptor?.type === "select" && serviceTierDescriptor.currentValue
+            ? [{ id: "serviceTier", value: serviceTierDescriptor.currentValue }]
+            : undefined,
+        ) ?? null);
   const configOptions: import("../../../shared/agent-conversation").AgentSessionConfigOption[] =
     modelOptions.map((option) => {
       const chosen = selection.options?.find((value) => value.id === option.id)?.value;

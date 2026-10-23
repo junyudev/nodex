@@ -2697,6 +2697,72 @@ describe("local-conversation-store", () => {
     }
   });
 
+  test.each([undefined, null, "fast"])(
+    "native control retains an explicit service tier %s",
+    async (serviceTier) => {
+      const {
+        __resetLocalConversationStoreForTests,
+        LocalConversationProvider,
+        useCodexAppServerControl,
+      } = await import("./local-conversation-store");
+      const { createMaitaiStore, MaitaiProvider } = await import("../../lib/maitai");
+      resetLocalConversationStoreTestHarness(__resetLocalConversationStoreForTests);
+      const controlRef: { current: ReturnType<typeof useCodexAppServerControl> | null } = {
+        current: null,
+      };
+      function Probe() {
+        const control = useCodexAppServerControl("tier-thread", "remote-host");
+        useLayoutEffect(() => {
+          controlRef.current = control;
+          return () => {
+            controlRef.current = null;
+          };
+        }, [control]);
+        return null;
+      }
+      const view = render(
+        createElement(MaitaiProvider, {
+          store: createMaitaiStore(),
+          children: createElement(
+            LocalConversationProvider,
+            null,
+            createElement(NativeFixtureRegistration),
+            createElement(Probe),
+          ),
+        }),
+      );
+      await settleAsyncRender();
+      if (!fixtureGetManager) throw new Error("Peer fixture unavailable");
+      const manager = trackNativeTestManager(fixtureGetManager("remote-host"));
+      const start = vi.spyOn(manager, "startTurn").mockResolvedValue(undefined);
+      const edit = vi.spyOn(manager, "editUserTurn").mockResolvedValue({ threadId: "tier-thread" });
+      const enqueue = vi.spyOn(manager, "enqueueQueuedFollowUp").mockResolvedValue(undefined);
+      try {
+        await act(async () => {
+          const control = controlRef.current;
+          if (!control) throw new Error("Control fixture unavailable");
+          await control.startTurn("tier-thread", "Continue", { serviceTier });
+          await control.editUserTurn("tier-thread", "turn", "Replace", { serviceTier });
+          await control.enqueueQueuedFollowUp("tier-thread", "Next", { serviceTier });
+        });
+        for (const options of [
+          start.mock.calls[0]?.[2],
+          edit.mock.calls[0]?.[3],
+          enqueue.mock.calls[0]?.[2],
+        ]) {
+          if (serviceTier === undefined) expect(options).not.toHaveProperty("serviceTier");
+          else expect(options).toHaveProperty("serviceTier", serviceTier);
+        }
+      } finally {
+        start.mockRestore();
+        edit.mockRestore();
+        enqueue.mockRestore();
+        await act(async () => view.unmount());
+        resetLocalConversationStoreTestHarness(__resetLocalConversationStoreForTests);
+      }
+    },
+  );
+
   test("captured control keeps its source host across overlapping native Thread IDs", async () => {
     const {
       __resetLocalConversationStoreForTests,

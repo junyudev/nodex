@@ -9916,7 +9916,7 @@ export function useCodexAppServerControl(
         model: opts?.model,
         reasoningEffort: opts?.reasoningEffort,
         ...(opts?.promptInput ? { promptInput: opts.promptInput } : {}),
-        ...buildCodexServiceTierRequestOverride(opts?.serviceTier ?? null),
+        ...buildCodexServiceTierRequestOverride(opts?.serviceTier),
       };
       return targetManager.startTurn(
         threadId,
@@ -9991,7 +9991,7 @@ export function useCodexAppServerControl(
         collaborationMode: opts?.collaborationMode ?? undefined,
         ...(opts?.untrustedAppMessage ? { untrustedAppMessage: opts.untrustedAppMessage } : {}),
         ...(opts?.promptInput ? { promptInput: opts.promptInput } : {}),
-        ...buildCodexServiceTierRequestOverride(opts?.serviceTier ?? null),
+        ...buildCodexServiceTierRequestOverride(opts?.serviceTier),
       };
       return { options: turnOpts, presentationTicket };
     },
@@ -10111,7 +10111,7 @@ export function useCodexAppServerControl(
         threadId,
         turnId,
         message,
-        buildCodexServiceTierRequestOverride(opts?.serviceTier ?? null),
+        buildCodexServiceTierRequestOverride(opts?.serviceTier),
         presentationTicket,
       );
     },

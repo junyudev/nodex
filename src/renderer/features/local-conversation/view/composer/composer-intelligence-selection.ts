@@ -8,16 +8,20 @@ export function deriveComposerIntelligenceSelection(
   model: ThreadFooterModel,
   defaultServiceTier: CodexServiceTier,
 ): ComposerIntelligenceSelection {
+  const kind = model.provider?.kind ?? "codex";
+  // Only undefined inherits; null explicitly selects Standard.
+  const serviceTier =
+    [
+      model.provider?.serviceTier,
+      model.conversation?.latestThreadSettings?.serviceTier,
+      model.executionProfile?.serviceTier,
+      defaultServiceTier,
+    ].find((tier) => tier !== undefined) ?? null;
   return {
-    kind: model.provider?.kind ?? "codex",
+    kind,
     model: model.selectedModel,
     reasoningEffort: model.provider?.kind === "acp" ? "none" : model.selectedReasoningEffort,
-    serviceTier:
-      model.provider && model.provider.kind !== "codex"
-        ? null
-        : model.provider?.serviceTier !== undefined
-          ? model.provider.serviceTier
-          : (model.conversation?.latestThreadSettings?.serviceTier ?? defaultServiceTier),
+    serviceTier: kind === "codex" ? serviceTier : null,
   };
 }
 

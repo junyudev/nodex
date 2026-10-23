@@ -649,6 +649,208 @@ describe("Agent Runtime Codex controls", () => {
     await act(async () => next.unmount());
   });
 
+  it("keeps overlapping chat launches on their independently selected speed", async () => {
+    vi.spyOn(agentRuntimeRuntime, "catalog").mockResolvedValue([codexProvider]);
+    let finishFirst!: () => void;
+    const firstLaunch = new Promise<void>((resolve) => {
+      finishFirst = resolve;
+    });
+    const launch = vi.spyOn(agentRuntimeRuntime, "launch").mockImplementation(async (request) => {
+      if (request.sessionId === "fast-draft") await firstLaunch;
+      return { sessionId: request.sessionId, projectId: "project", threadId: request.sessionId };
+    });
+    vi.spyOn(agentRuntimeRuntime, "control").mockResolvedValue({
+      sessionId: "launched",
+      projectId: "project",
+      threadId: "engine-thread",
+      snapshot,
+    });
+    vi.spyOn(agentRuntimeRuntime, "subscribe").mockResolvedValue(() => {});
+    const mount = (sessionId: string) =>
+      renderHook(
+        () =>
+          useAgentRuntimeConversationAdapter({
+            sessionId,
+            projectId: "project",
+            modelProjectId: "project",
+            instances,
+            onRefresh: async () => {},
+            onOpenThread: () => {},
+            ensureDraft: async () => ({ id: sessionId }),
+          }),
+        { wrapper: SavedSettingsWorkbench },
+      );
+    const fast = mount("fast-draft");
+    let pendingLaunch: Promise<void> | undefined;
+    let standard: ReturnType<typeof mount> | undefined;
+    try {
+      await waitFor(() => expect(fast.result.current.selectedModel).toBe("gpt"));
+      await act(async () => {
+        await fast.result.current.actions.onIntelligenceSelectionChange!({
+          kind: "codex",
+          model: "gpt",
+          reasoningEffort: "high",
+          serviceTier: "fast",
+        });
+        pendingLaunch = fast.result.current.actions.onStartThreadForSession!({
+          projectId: "project",
+          sessionId: "fast-draft",
+          prompt: "Fast task",
+        });
+      });
+      await waitFor(() => expect(launch).toHaveBeenCalledTimes(1));
+      standard = mount("standard-draft");
+      const current = standard;
+      await waitFor(() => expect(current.result.current.selectedModel).toBe("gpt"));
+      await act(async () => {
+        await current.result.current.actions.onIntelligenceSelectionChange!({
+          kind: "codex",
+          model: "gpt",
+          reasoningEffort: "high",
+          serviceTier: null,
+        });
+      });
+      expect(fast.result.current.provider.serviceTier).toBe("fast");
+      expect(current.result.current.provider.serviceTier).toBeNull();
+      await act(async () => {
+        await current.result.current.actions.onStartThreadForSession!({
+          projectId: "project",
+          sessionId: "standard-draft",
+          prompt: "Standard task",
+        });
+        finishFirst();
+        await pendingLaunch;
+      });
+      expect(
+        launch.mock.calls.map(([request]) => ({
+          sessionId: request.sessionId,
+          tier: request.modelSelection.options?.find((option) => option.id === "serviceTier")
+            ?.value,
+        })),
+      ).toEqual([
+        { sessionId: "fast-draft", tier: "fast" },
+        { sessionId: "standard-draft", tier: "default" },
+      ]);
+    } finally {
+      await act(async () => {
+        finishFirst();
+        await pendingLaunch;
+        fast.unmount();
+        standard?.unmount();
+      });
+    }
+  });
+
+  it("restores each chat's pending speed despite other chats and a Fast catalog default", async () => {
+    const fastCatalog = {
+      ...codexProvider,
+      models: codexProvider.models.map((model) => ({
+        ...model,
+        capabilities: {
+          ...model.capabilities,
+          optionDescriptors: model.capabilities?.optionDescriptors?.map((option) =>
+            option.id === "serviceTier" ? { ...option, currentValue: "fast" } : option,
+          ),
+        },
+      })),
+    } as AgentRuntimeProvider;
+    vi.spyOn(agentRuntimeRuntime, "catalog").mockResolvedValue([fastCatalog]);
+    vi.spyOn(agentRuntimeRuntime, "control").mockImplementation(async (target) => ({
+      ...target,
+      projectId: "project",
+      threadId: target.threadId!,
+      snapshot: {
+        ...snapshot,
+        projection: {
+          ...snapshot.projection,
+          thread: {
+            ...snapshot.projection.thread,
+            id: target.threadId!,
+            modelSelection: {
+              instanceId: "codex",
+              model: "gpt",
+              options: [
+                { id: "reasoningEffort", value: "high" },
+                { id: "serviceTier", value: target.threadId === "speed-a" ? "fast" : "default" },
+              ],
+            },
+          },
+        },
+      } as AgentSnapshot,
+    }));
+    vi.spyOn(agentRuntimeRuntime, "subscribe").mockResolvedValue(() => {});
+    const message = vi.spyOn(agentRuntimeRuntime, "message").mockResolvedValue({ sequence: 1 });
+    const mount = (threadId: string) =>
+      renderHook(
+        () =>
+          useAgentRuntimeConversationAdapter({
+            sessionId: `session-${threadId}`,
+            executionRef: { runtimeId: "engine", threadId },
+            projectId: "project",
+            modelProjectId: "project",
+            instances,
+            onRefresh: async () => {},
+            onOpenThread: () => {},
+            ensureDraft: async () => ({ id: `session-${threadId}` }),
+          }),
+        { wrapper: SavedSettingsWorkbench },
+      );
+    for (const [threadId, tier] of [
+      ["speed-a", null],
+      ["speed-b", "fast"],
+    ] as const) {
+      const chat = mount(threadId);
+      try {
+        await waitFor(() => expect(chat.result.current.state.connection).toBe("ready"));
+        await waitFor(() => expect(chat.result.current.provider.modelCatalog?.loading).toBe(false));
+        expect(chat.result.current.provider.serviceTier).toBe(
+          threadId === "speed-a" ? "fast" : null,
+        );
+        await act(async () => {
+          await chat.result.current.actions.onIntelligenceSelectionChange!({
+            kind: "codex",
+            model: "gpt",
+            reasoningEffort: "high",
+            serviceTier: tier,
+          });
+        });
+        expect(chat.result.current.provider.serviceTier).toBe(tier);
+      } finally {
+        await act(async () => chat.unmount());
+      }
+    }
+    for (const [threadId, tier] of [
+      ["speed-a", null],
+      ["speed-b", "fast"],
+    ] as const) {
+      const chat = mount(threadId);
+      try {
+        await waitFor(() => expect(chat.result.current.state.connection).toBe("ready"));
+        await waitFor(() => expect(chat.result.current.provider.modelCatalog?.loading).toBe(false));
+        expect(chat.result.current.provider.serviceTier).toBe(tier);
+        await act(async () => {
+          await chat.result.current.actions.onSendPrompt!("Continue");
+        });
+        expect(message.mock.lastCall?.[0]).toMatchObject({
+          sessionId: `session-${threadId}`,
+          threadId,
+          message: {
+            modelSelection: {
+              instanceId: "codex",
+              model: "gpt",
+              options: [
+                { id: "reasoningEffort", value: "high" },
+                { id: "serviceTier", value: tier ?? "default" },
+              ],
+            },
+          },
+        });
+      } finally {
+        await act(async () => chat.unmount());
+      }
+    }
+  });
+
   it("names a bound chat by its Session, not by the prompt its engine Thread started from", async () => {
     vi.spyOn(agentRuntimeRuntime, "catalog").mockResolvedValue([codexProvider]);
     vi.spyOn(agentRuntimeRuntime, "control").mockResolvedValue({

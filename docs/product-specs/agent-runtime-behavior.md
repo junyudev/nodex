@@ -270,8 +270,13 @@ and service tier, Claude effort with its thinking, speed and context choices. A 
 effort and speed change from the composer is one choice, so concurrent choices never
 overwrite each other, and options a newly chosen model does not offer fall back to its
 defaults. A new Codex chat starts from the user's saved Codex model, effort and speed.
-Fast in a Runtime chat changes that chat's own speed rather than the saved default. Goal
-mode is not offered for Runtime chats.
+The latest Codex choice also supplies the starting model, effort and speed for later
+new chats. Goal mode is not offered for Runtime chats.
+
+Each Thread retains its own speed, including a pending choice for its next message,
+when another chat changes speed or starts concurrently. Returning to a chat restores
+that choice across windows and restart. An explicit Standard tier takes precedence
+over saved preferences and native model defaults; only an unspecified tier inherits.
 
 Page and Scheduled actions that start a chat use its saved draft Agent, model, options
 and interaction mode, scoped to that Session and Project. Without a draft choice they

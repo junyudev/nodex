@@ -62,14 +62,15 @@ describe("codex-service-tier-settings", () => {
 
     expect(toServiceTierReportingValue(null)).toBe("standard");
     expect(toServiceTierReportingValue("fast")).toBe("fast");
-    expect(JSON.stringify(buildCodexServiceTierRequestOverride(null))).toBe(JSON.stringify({}));
-    expect(JSON.stringify(buildCodexServiceTierRequestOverride("fast"))).toBe(
-      JSON.stringify({ serviceTier: "fast" }),
-    );
-
     expect(resolveCodexRequestServiceTier(undefined, "fast")).toBe("fast");
     expect(resolveCodexRequestServiceTier({}, "fast")).toBe("fast");
     expect(resolveCodexRequestServiceTier({ serviceTier: null }, "fast")).toBe(null);
     expect(resolveCodexRequestServiceTier({ serviceTier: "fast" }, null)).toBe("fast");
+  });
+
+  test("distinguishes inheriting a Thread tier from explicitly clearing Fast", () => {
+    expect(buildCodexServiceTierRequestOverride(undefined)).toEqual({});
+    expect(buildCodexServiceTierRequestOverride(null)).toEqual({ serviceTier: null });
+    expect(buildCodexServiceTierRequestOverride("fast")).toEqual({ serviceTier: "fast" });
   });
 });
