@@ -2,10 +2,6 @@ import type { ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { cn } from "@/lib/utils";
 import { useFloatingComposerHeaderSlot } from "@/features/floating-composer/floating-composer-header-slot";
-import {
-  RIGHT_PANEL_COMPOSER_ACCESSORY_FROSTED_SURFACE_CLASS,
-  RIGHT_PANEL_COMPOSER_ACCESSORY_INLINE_INSET_CLASS,
-} from "./right-panel-composer-presentation";
 
 interface ComposerContextRailSlotProps {
   visible: boolean;
@@ -50,9 +46,7 @@ export function ComposerContextRail({ children, className }: ComposerContextRail
       data-composer-lower-status-row="true"
       data-composer-context-rail="true"
       className={cn(
-        RIGHT_PANEL_COMPOSER_ACCESSORY_INLINE_INSET_CLASS,
-        RIGHT_PANEL_COMPOSER_ACCESSORY_FROSTED_SURFACE_CLASS,
-        "-mb-4.5 flex flex-nowrap items-center gap-2 overflow-hidden rounded-t-2xl border-x border-t border-token-border/80 px-2 pt-2 pb-[27px] select-none electron:relative electron:top-1 electron:px-1.5 electron:pt-1.5",
+        "relative mx-[var(--right-panel-composer-accessory-inline-inset,13px)] -mb-[calc(var(--radius-2xl)+4px)] flex min-w-0 flex-nowrap items-center gap-2 overflow-clip rounded-t-2xl bg-background-composer-action-bar px-1 pt-[5px] pb-[calc(var(--radius-2xl)+9px)] select-none supports-[corner-shape:superellipse(1.5)]:[corner-shape:var(--codex-corner-shape)]",
         className,
       )}
     >

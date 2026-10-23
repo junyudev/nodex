@@ -1,4 +1,11 @@
-import { useCallback, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
+import {
+  COMPOSER_PICKER_ITEM_CLASS_NAME,
+  handleInlineComposerPickerKeyDown,
+  handleComposerPickerSearchKeyDown,
+  type InlineComposerPickerPresentation,
+} from "./inline-composer-picker";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivitySpinnerIcon,
   BranchStatusIcon,
@@ -13,9 +20,12 @@ import {
   NodexDropdownSearchInput,
   NodexDropdownSection,
   NodexDropdownSectionLabel,
+  NodexDropdownSeparator,
 } from "@/components/ui/dropdown";
 import { NodexButton } from "@/components/ui/button";
-import { getGitWorkerClient } from "@/lib/api";
+import { cn } from "@/lib/utils";
+import { useDebouncedValue } from "@/lib/use-debounced-value";
+import { loadComposerWorkingTreeChanges } from "../../composer-git-context";
 import type { CodexPendingWorktreeStartingState } from "../../../../../shared/codex-pending-worktree";
 import type { BranchSelectorState } from "./branch-selector-state";
 
@@ -40,6 +50,7 @@ function isStartingStateSelected(
 }
 
 export function WorktreeStartingStatePopover({
+  inline,
   cwd,
   state,
   startingState,
@@ -52,6 +63,7 @@ export function WorktreeStartingStatePopover({
   onRefresh,
   onChange,
 }: {
+  inline?: InlineComposerPickerPresentation;
   cwd: string | null;
   state: BranchSelectorState;
   startingState: CodexPendingWorktreeStartingState;
@@ -64,25 +76,37 @@ export function WorktreeStartingStatePopover({
   onRefresh: () => Promise<void>;
   onChange: (state: CodexPendingWorktreeStartingState) => void;
 }) {
-  const [open, setOpen] = useState(defaultOpen);
+  const [localOpen, setLocalOpen] = useState(defaultOpen);
+  const open = inline?.open ?? localOpen;
+  const setOpen = inline?.onOpenChange ?? setLocalOpen;
   const [query, setQuery] = useState("");
-  const [, setStatusLoading] = useState(false);
+  const debouncedQuery = useDebouncedValue(query, 300);
+  const settledQuery = query ? debouncedQuery : "";
+  const searchPending = query !== settledQuery;
   const [hasLocalChanges, setHasLocalChanges] = useState(false);
   const currentBranch = state.currentBranch ?? state.defaultBranch ?? state.branches[0] ?? "HEAD";
   const localBranches = useMemo(
     () =>
       filterValues(
-        [currentBranch, ...state.branches.filter((branch) => branch !== currentBranch)],
-        query,
+        [
+          ...new Set(
+            [state.defaultBranch, currentBranch, ...state.branches].filter(
+              (branch): branch is string => Boolean(branch),
+            ),
+          ),
+        ],
+        settledQuery,
       ),
-    [currentBranch, query, state.branches],
+    [currentBranch, settledQuery, state.branches, state.defaultBranch],
   );
   const remoteBranchRefs = useMemo(
     () =>
       state.remoteBranchRefs.filter((remoteRef) =>
-        remoteBranchName(remoteRef).toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()),
+        remoteBranchName(remoteRef)
+          .toLocaleLowerCase()
+          .includes(settledQuery.trim().toLocaleLowerCase()),
       ),
-    [query, state.remoteBranchRefs],
+    [settledQuery, state.remoteBranchRefs],
   );
   const triggerLabel =
     startingState.type === "working-tree" ? `${currentBranch} (current)` : startingState.branchName;
@@ -92,27 +116,14 @@ export function WorktreeStartingStatePopover({
       setHasLocalChanges(false);
       return;
     }
-    setStatusLoading(true);
     try {
       if (loadLocalChanges) {
         setHasLocalChanges(await loadLocalChanges(cwd));
         return;
       }
-      const result = await getGitWorkerClient().request({
-        method: "status-summary",
-        params: { cwd, includeUntrackedFiles: true },
-      });
-      if (result.type !== "success") {
-        setHasLocalChanges(false);
-        return;
-      }
-      setHasLocalChanges(
-        result.stagedCount + result.unstagedCount + (result.untrackedCount ?? 0) > 0,
-      );
+      setHasLocalChanges(await loadComposerWorkingTreeChanges(cwd));
     } catch {
       setHasLocalChanges(false);
-    } finally {
-      setStatusLoading(false);
     }
   }, [cwd, loadLocalChanges]);
 
@@ -129,16 +140,154 @@ export function WorktreeStartingStatePopover({
       }
       void refresh();
     },
-    [refresh],
+    [refresh, setOpen],
   );
+
+  const inlineOpen = inline?.open === true;
+  useEffect(() => {
+    if (inlineOpen) void refresh();
+  }, [inlineOpen, refresh]);
+
+  useEffect(() => {
+    if (!open) setQuery("");
+  }, [open]);
 
   const choose = useCallback(
     (next: CodexPendingWorktreeStartingState) => {
+      if (searchPending || branchLoading || branchError) return;
       onChange(next);
       setOpen(false);
     },
-    [onChange],
+    [branchError, branchLoading, onChange, searchPending, setOpen],
   );
+
+  const pickerContent = (
+    <div
+      data-composer-picker="branch"
+      aria-label={repositoryName ? `Branches in ${repositoryName}` : undefined}
+      className={cn("flex flex-col gap-1.5 overflow-hidden", inline ? "w-full" : "w-72")}
+      onKeyDownCapture={(event) => handleInlineComposerPickerKeyDown(event, inline)}
+    >
+      <NodexDropdownSearchInput
+        autoFocus={Boolean(inline)}
+        aria-label="Search repository branches"
+        placeholder="Search branches…"
+        value={query}
+        onChange={(event) => setQuery(event.currentTarget.value)}
+        onKeyDown={(event) =>
+          handleComposerPickerSearchKeyDown(event, searchPending || branchLoading || branchError)
+        }
+      />
+      {inline ? <NodexDropdownSeparator /> : null}
+      <div className="vertical-scroll-fade-mask flex max-h-[200px] flex-col overflow-y-auto">
+        {hasLocalChanges &&
+        currentBranch.toLocaleLowerCase().includes(settledQuery.trim().toLocaleLowerCase()) ? (
+          <div className="flex flex-col">
+            <NodexDropdownSectionLabel>Local file state</NodexDropdownSectionLabel>
+            <NodexDropdownItem
+              data-composer-picker-option="true"
+              className={COMPOSER_PICKER_ITEM_CLASS_NAME}
+              disabled={searchPending || branchLoading || branchError}
+              leftSlot={<BranchStatusIcon className="icon-xs" />}
+              rightSlot={
+                startingState.type === "working-tree" ? <CheckmarkIcon className="icon-xs" /> : null
+              }
+              closeOnClick={false}
+              onSelect={() => choose({ type: "working-tree" })}
+            >
+              <span className="flex flex-col">
+                <span>{currentBranch}</span>
+                <span className="text-token-description-foreground">with local code changes</span>
+              </span>
+            </NodexDropdownItem>
+          </div>
+        ) : null}
+
+        <NodexDropdownSectionLabel>Local branches</NodexDropdownSectionLabel>
+        {branchLoading ? (
+          <div className="flex h-full items-center justify-center">
+            <ActivitySpinnerIcon className="icon-xxs" />
+          </div>
+        ) : branchError ? (
+          <div className="flex h-full flex-col items-center justify-center gap-1 text-sm text-token-error-foreground">
+            <span>Error loading branches</span>
+            <NodexButton
+              aria-label="Retry loading branches"
+              variant="ghost"
+              size="icon"
+              className="text-token-description-foreground"
+              onClick={() => void refresh()}
+            >
+              <RetryIcon className="icon-xxs" />
+            </NodexButton>
+          </div>
+        ) : (
+          <NodexDropdownSection className="flex flex-col">
+            {localBranches.map((branch) => {
+              const candidate = { type: "branch", branchName: branch } as const;
+              return (
+                <NodexDropdownItem
+                  data-composer-picker-option="true"
+                  className={COMPOSER_PICKER_ITEM_CLASS_NAME}
+                  disabled={searchPending || branchLoading || branchError}
+                  key={branch}
+                  leftSlot={<BranchStatusIcon className="icon-xs" />}
+                  rightSlot={
+                    isStartingStateSelected(startingState, candidate) ? (
+                      <CheckmarkIcon className="icon-xs" />
+                    ) : null
+                  }
+                  closeOnClick={false}
+                  onSelect={() => choose(candidate)}
+                >
+                  {branch}
+                </NodexDropdownItem>
+              );
+            })}
+            {localBranches.length === 0 && remoteBranchRefs.length === 0 ? (
+              <NodexDropdownMessage compact>No branches found</NodexDropdownMessage>
+            ) : null}
+            {remoteBranchRefs.length > 0 ? (
+              <>
+                <NodexDropdownSectionLabel className="mt-1">
+                  Remote branches
+                </NodexDropdownSectionLabel>
+                {remoteBranchRefs.map((remoteRef) => {
+                  const candidate = {
+                    type: "branch",
+                    branchName: remoteBranchName(remoteRef),
+                    remoteRef,
+                  } as const;
+                  return (
+                    <NodexDropdownItem
+                      data-composer-picker-option="true"
+                      className={COMPOSER_PICKER_ITEM_CLASS_NAME}
+                      disabled={searchPending || branchLoading || branchError}
+                      key={remoteRef}
+                      leftSlot={<BranchStatusIcon className="icon-xs" />}
+                      rightSlot={
+                        isStartingStateSelected(startingState, candidate) ? (
+                          <CheckmarkIcon className="icon-xs" />
+                        ) : null
+                      }
+                      closeOnClick={false}
+                      onSelect={() => choose(candidate)}
+                    >
+                      {candidate.branchName}
+                    </NodexDropdownItem>
+                  );
+                })}
+              </>
+            ) : null}
+          </NodexDropdownSection>
+        )}
+      </div>
+    </div>
+  );
+
+  if (inline) {
+    return inline.open && inline.container ? createPortal(pickerContent, inline.container) : null;
+  }
 
   return (
     <NodexDropdownMenu
@@ -171,114 +320,8 @@ export function WorktreeStartingStatePopover({
           <span className="max-w-40 truncate">{triggerLabel}</span>
         </NodexDropdownButtonTrigger>
       }
-      contentClassName="p-0"
     >
-      <div className="flex w-72 flex-col gap-1.5 overflow-hidden">
-        <NodexDropdownSearchInput
-          autoFocus={false}
-          aria-label="Search repository branches"
-          placeholder={`Search ${repositoryName?.trim() || "repository"} branches`}
-          value={query}
-          onChange={(event) => setQuery(event.currentTarget.value)}
-          onKeyDown={(event) => {
-            if (event.key !== "Enter") return;
-            event.preventDefault();
-            setOpen(false);
-          }}
-        />
-        <div className="vertical-scroll-fade-mask flex h-[200px] flex-col gap-1.5 overflow-y-auto">
-          {hasLocalChanges ? (
-            <div className="flex flex-col">
-              <NodexDropdownSectionLabel>Local file state</NodexDropdownSectionLabel>
-              <NodexDropdownItem
-                leftSlot={<BranchStatusIcon className="icon-xs" />}
-                rightSlot={
-                  startingState.type === "working-tree" ? (
-                    <CheckmarkIcon className="icon-xs" />
-                  ) : null
-                }
-                subText="with local code changes"
-                onSelect={() => choose({ type: "working-tree" })}
-              >
-                {currentBranch}
-              </NodexDropdownItem>
-            </div>
-          ) : null}
-
-          <NodexDropdownSectionLabel>
-            {remoteBranchRefs.length > 0 ? "Local branches" : "Branches"}
-          </NodexDropdownSectionLabel>
-          {branchLoading ? (
-            <div className="flex h-full items-center justify-center">
-              <ActivitySpinnerIcon className="icon-xxs" />
-            </div>
-          ) : branchError ? (
-            <div className="flex h-full flex-col items-center justify-center gap-1 text-sm text-token-error-foreground">
-              <span>Error loading branches</span>
-              <NodexButton
-                aria-label="Retry loading branches"
-                variant="ghost"
-                size="icon"
-                className="text-token-description-foreground"
-                onClick={() => void refresh()}
-              >
-                <RetryIcon className="icon-xxs" />
-              </NodexButton>
-            </div>
-          ) : (
-            <NodexDropdownSection className="flex flex-col">
-              {localBranches.map((branch) => {
-                const candidate = { type: "branch", branchName: branch } as const;
-                return (
-                  <NodexDropdownItem
-                    key={branch}
-                    leftSlot={<BranchStatusIcon className="icon-xs" />}
-                    rightSlot={
-                      isStartingStateSelected(startingState, candidate) ? (
-                        <CheckmarkIcon className="icon-xs" />
-                      ) : null
-                    }
-                    onSelect={() => choose(candidate)}
-                  >
-                    {branch}
-                  </NodexDropdownItem>
-                );
-              })}
-              {localBranches.length === 0 && remoteBranchRefs.length === 0 ? (
-                <NodexDropdownMessage compact>No branches found</NodexDropdownMessage>
-              ) : null}
-              {remoteBranchRefs.length > 0 ? (
-                <>
-                  <NodexDropdownSectionLabel className="mt-1">
-                    Remote branches
-                  </NodexDropdownSectionLabel>
-                  {remoteBranchRefs.map((remoteRef) => {
-                    const candidate = {
-                      type: "branch",
-                      branchName: remoteBranchName(remoteRef),
-                      remoteRef,
-                    } as const;
-                    return (
-                      <NodexDropdownItem
-                        key={remoteRef}
-                        leftSlot={<BranchStatusIcon className="icon-xs" />}
-                        rightSlot={
-                          isStartingStateSelected(startingState, candidate) ? (
-                            <CheckmarkIcon className="icon-xs" />
-                          ) : null
-                        }
-                        onSelect={() => choose(candidate)}
-                      >
-                        {candidate.branchName}
-                      </NodexDropdownItem>
-                    );
-                  })}
-                </>
-              ) : null}
-            </NodexDropdownSection>
-          )}
-        </div>
-      </div>
+      {pickerContent}
     </NodexDropdownMenu>
   );
 }

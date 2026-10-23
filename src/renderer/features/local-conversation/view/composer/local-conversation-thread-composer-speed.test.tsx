@@ -4762,8 +4762,8 @@ describe("ThreadComposer speed menu", () => {
     expect(lowerStatusRow?.contains(projectSelector)).toBe(true);
     expect(formFooter?.contains(projectSelector)).toBe(false);
     expect(lowerText.indexOf("Nodex") >= 0).toBe(true);
-    expect(lowerText.indexOf("Work locally") >= 0).toBe(true);
-    expect(lowerText.indexOf("Nodex") < lowerText.indexOf("Work locally")).toBe(true);
+    expect(lowerText.indexOf("This computer") >= 0).toBe(true);
+    expect(lowerText.indexOf("Nodex") < lowerText.indexOf("This computer")).toBe(true);
   });
 
   test("hides the lower status row after a new-chat tab materializes a conversation", async () => {

@@ -1,4 +1,4 @@
-import { expect, test, type Locator, type Page } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 import {
   chooseComposerModel,
   openComposerModelPicker,
@@ -37,21 +37,6 @@ const invoke = async <Result>(page: Page, channel: string, ...args: unknown[]): 
 
 const runGit = (cwd: string, args: readonly string[]): string =>
   execFileSync("git", [...args], { cwd, encoding: "utf8" }).trim();
-
-const chevronGeometry = async (trigger: Locator) =>
-  await trigger
-    .locator("svg")
-    .last()
-    .evaluate((element) => {
-      const style = getComputedStyle(element);
-      const bounds = element.getBoundingClientRect();
-      return {
-        width: bounds.width,
-        height: bounds.height,
-        cssWidth: style.width,
-        cssHeight: style.height,
-      };
-    });
 
 test("runs a Claude Code chat in a new worktree environment and continues it with its options after restart", async () => {
   // Two isolated cold startups have their own 60s readiness deadline, in addition to the workflow.
@@ -215,26 +200,12 @@ test("runs a Claude Code chat in a new worktree environment and continues it wit
       .locator('[data-codex-composer="true"][contenteditable="true"]:visible')
       .first();
     await composer.fill("Native Claude lifecycle");
-    const startIn = page.getByRole("button", { name: "Start in", exact: true });
-    await expect(startIn).toHaveText("Work locally");
-    const codexChevron = await chevronGeometry(startIn);
+    const location = page.getByRole("button", { name: "Location", exact: true });
+    await expect(location).toHaveText("This computer");
     await chooseComposerModel(page, "Claude Opus 5", "Claude Opus 5");
     await page.keyboard.press("Escape");
-    await expect(startIn).toBeEnabled();
-    await expect(startIn).toHaveText("Work locally");
-    const claudeChevron = await chevronGeometry(startIn);
-    expect(claudeChevron).toEqual(codexChevron);
-    expect(claudeChevron.width).toBeGreaterThan(0);
-    expect(claudeChevron.height).toBeGreaterThan(0);
-    const geometryEvidence = JSON.stringify({ codex: codexChevron, claude: claudeChevron });
-    writeFileSync(
-      test.info().outputPath("shared-location-chevron-geometry.json"),
-      geometryEvidence,
-    );
-    await test.info().attach("shared-location-chevron-geometry", {
-      body: geometryEvidence,
-      contentType: "application/json",
-    });
+    await expect(location).toBeEnabled();
+    await expect(location).toHaveText("This computer");
     await expect(composer).toHaveText("Native Claude lifecycle");
     await openComposerModelPicker(page);
     const sonnet = page.getByRole("option", { name: "Claude Sonnet 5.5", exact: true });
@@ -255,18 +226,21 @@ test("runs a Claude Code chat in a new worktree environment and continues it wit
     await page.keyboard.press("Escape");
     await page.keyboard.press("Escape");
     await expect(page.getByRole("button", { name: "Speed Fast", exact: true })).toHaveCount(0);
-    await expect(startIn).toHaveText("Work locally");
-    await expect(startIn).toBeEnabled();
-    await startIn.click();
-    const newWorktree = page.locator('[data-new-chat-start-in-option="newWorktree"]');
+    await expect(location).toHaveText("This computer");
+    await expect(location).toBeEnabled();
+    await page.getByRole("button", { name: "Configure local environment", exact: true }).click();
+    const newWorktree = page.getByRole("switch", { name: "New worktree", exact: true });
     await expect(newWorktree).toBeEnabled();
-    await newWorktree.click();
-    await expect(startIn).toHaveText("New worktree");
-    await page.getByRole("button", { name: "Select worktree environment", exact: true }).click();
+    await newWorktree.check();
+    await expect(newWorktree).toBeChecked();
+    await page.getByRole("menuitem", { name: /^Environment:/u }).click();
+    await page.getByRole("textbox", { name: "Search environments", exact: true }).fill("Claude");
     await page.getByRole("menuitem", { name: "Claude lifecycle", exact: true }).click();
     await expect(
-      page.getByRole("button", { name: "Select worktree environment", exact: true }),
-    ).toContainText("Claude lifecycle");
+      page.getByRole("menuitem", { name: "Environment: Claude lifecycle", exact: true }),
+    ).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(newWorktree).toHaveCount(0);
     await page.getByRole("button", { name: "Send prompt", exact: true }).click();
     await expect
       .poll(

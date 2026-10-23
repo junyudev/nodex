@@ -185,14 +185,17 @@ async function composeWorktreeChat(page: Page, projectId: string, prompt: string
   await expect(composer).toBeVisible({ timeout: 20_000 });
   await composer.fill(prompt);
   await expect(composer).toHaveText(prompt);
-  await page.getByRole("button", { name: "Start in" }).click();
-  await page.locator('[data-new-chat-start-in-option="newWorktree"]').click();
+  await page.getByRole("button", { name: "Configure local environment", exact: true }).click();
+  const newWorktree = page.getByRole("switch", { name: "New worktree", exact: true });
+  await newWorktree.check();
+  await expect(newWorktree).toBeChecked();
   await expect(composer).toHaveText(prompt);
-  await expect(page.getByRole("button", { name: "Select starting state" })).toContainText("main");
-  await expect(page.getByRole("button", { name: "Select worktree environment" })).toContainText(
-    "E2E Environment",
-    { timeout: 20_000 },
-  );
+  await expect(page.getByRole("menuitem", { name: "Branch: main", exact: true })).toBeVisible();
+  await expect(
+    page.getByRole("menuitem", { name: "Environment: E2E Environment", exact: true }),
+  ).toBeVisible({ timeout: 20_000 });
+  await page.keyboard.press("Escape");
+  await expect(newWorktree).toHaveCount(0);
   const sendButton = page.getByRole("button", { name: "Send prompt" });
   await expect(sendButton).toBeEnabled({ timeout: 20_000 });
   return sendButton;
@@ -215,9 +218,15 @@ async function agentSession(page: Page, projectId: string): Promise<ProjectSessi
   return session!;
 }
 
-async function sendWorktreeChat(harness: ElectronScenarioHarness, fixture: WorktreeFixture) {
+async function sendWorktreeChat(
+  harness: ElectronScenarioHarness,
+  fixture: WorktreeFixture,
+  reviewDraft?: () => Promise<void>,
+) {
   const prompt = "Report the current working directory.";
-  await (await composeWorktreeChat(fixture.page, fixture.projectId, prompt)).click();
+  const sendButton = await composeWorktreeChat(fixture.page, fixture.projectId, prompt);
+  await reviewDraft?.();
+  await sendButton.click();
   await expect(fixture.page.getByText("The task completed successfully.").first()).toBeVisible({
     timeout: 45_000,
   });
@@ -288,7 +297,56 @@ test("creates a new-worktree chat through the Composer and runs it there", async
   try {
     const fixture = await openWorktreeProject(harness, "ndx-wt-ui-");
     fixtureRoot = fixture.fixtureRoot;
-    const { worktreeGitRoot } = await sendWorktreeChat(harness, fixture);
+    runGit(fixture.sourceRoot, ["checkout", "-qb", "feature/review"]);
+    fs.writeFileSync(path.join(fixture.sourceRoot, "review-branch.txt"), "selected branch\n");
+    runGit(fixture.sourceRoot, ["add", "review-branch.txt"]);
+    runGit(fixture.sourceRoot, ["commit", "-m", "Prepare an alternate starting branch"]);
+    runGit(fixture.sourceRoot, ["checkout", "-q", "main"]);
+    const { page } = fixture;
+    const { worktreeGitRoot } = await sendWorktreeChat(harness, fixture, async () => {
+      const configure = page.getByRole("button", {
+        name: "Configure local environment",
+        exact: true,
+      });
+      await configure.click();
+      await page.getByRole("menuitem", { name: "Branch: main", exact: true }).click();
+      await page
+        .getByRole("textbox", { name: "Search repository branches", exact: true })
+        .fill("feature/review");
+      await page.getByRole("menuitem", { name: "feature/review", exact: true }).click();
+      await expect(
+        page.getByRole("menuitem", { name: "Branch: feature/review", exact: true }),
+      ).toBeVisible();
+      // Selecting the draft's starting branch must leave the source checkout alone.
+      expect(runGit(fixture.sourceRoot, ["branch", "--show-current"])).toBe("main");
+      expect(runGit(fixture.sourceRoot, ["status", "--porcelain"])).toBe("");
+
+      const environment = page.getByRole("menuitem", { name: /^Environment:/u });
+      await environment.click();
+      await page.getByRole("menuitem", { name: "Back to chat settings", exact: true }).click();
+      await expect(environment).toHaveAccessibleName("Environment: E2E Environment");
+      await environment.click();
+      const search = page.getByRole("textbox", { name: "Search environments", exact: true });
+      await search.fill("missing environment");
+      await expect(page.getByText("No environments found", { exact: true })).toBeVisible();
+      await search.clear();
+      await page.getByRole("menuitem", { name: "Work without environment", exact: true }).click();
+      await expect(environment).toHaveAccessibleName("Environment: No environment");
+      await environment.click();
+      await search.fill("E2E");
+      await page.getByRole("menuitem", { name: "E2E Environment", exact: true }).click();
+      await expect(environment).toHaveAccessibleName("Environment: E2E Environment");
+      await page.keyboard.press("Escape");
+      await expect(environment).toHaveCount(0);
+      await expect(configure).toBeFocused();
+      await expect(page.locator('[contenteditable="true"][aria-label="Do anything"]')).toHaveText(
+        "Report the current working directory.",
+      );
+    });
+    expect(fs.readFileSync(path.join(worktreeGitRoot, "review-branch.txt"), "utf8")).toBe(
+      "selected branch\n",
+    );
+    expect(fs.existsSync(path.join(fixture.sourceRoot, "review-branch.txt"))).toBe(false);
     // The Environment's setup ran in the new worktree before the message.
     await expect(fixture.page.getByText("Preparing workspace").first()).toBeVisible();
     expect(runGit(worktreeGitRoot, ["status", "--porcelain"])).toBe("");

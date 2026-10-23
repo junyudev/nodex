@@ -125,4 +125,29 @@ describe("environment selector popover", () => {
     await openMenu(view);
     expect(document.body.textContent).toContain("Environment · nodex");
   });
+  test("does not show an empty state alongside the sole matching default environment", async () => {
+    const view = render(
+      <NodexTooltipProvider>
+        <EnvironmentSelectorPopover
+          busy={false}
+          configs={[config("default.toml", "Development")]}
+          defaultPath="default.toml"
+          onRefresh={async () => {}}
+          onSelect={() => true}
+          onOpenSettings={() => {}}
+        />
+      </NodexTooltipProvider>,
+    );
+    await openMenu(view);
+    expect(view.getByRole("menuitem", { name: "Development" })).toBeTruthy();
+    expect(view.queryByText("No environments found")).toBeNull();
+    await act(async () => {
+      fireEvent.change(view.getByRole("textbox", { name: "Search environments" }), {
+        target: { value: "Development" },
+      });
+      await Promise.resolve();
+    });
+    expect(view.getByRole("menuitem", { name: "Development" })).toBeTruthy();
+    expect(view.queryByText("No environments found")).toBeNull();
+  });
 });

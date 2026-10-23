@@ -7,6 +7,7 @@ import {
   NodexDropdownContent,
   NodexDropdownItem,
   NodexDropdownFlyoutSubmenuItem,
+  NodexDropdownSearchInput,
 } from "./dropdown";
 import { settleAsyncRender } from "@/test/dom";
 
@@ -52,36 +53,43 @@ describe("menu editable keyboard ownership", () => {
   });
 });
 
-test("menu items retain typeahead and unhandled input Escape dismisses", async () => {
-  const onOpenChange = vi.fn();
-  render(
-    <NodexDropdownRoot defaultOpen onOpenChange={onOpenChange}>
-      <NodexDropdownTrigger>
-        <button>Open</button>
-      </NodexDropdownTrigger>
-      <NodexDropdownPortal>
-        <NodexDropdownContent>
-          <NodexDropdownItem>Alpha</NodexDropdownItem>
-          <NodexDropdownItem>Beta</NodexDropdownItem>
-          <textarea aria-label="Notes" />
-        </NodexDropdownContent>
-      </NodexDropdownPortal>
-    </NodexDropdownRoot>,
-  );
-  await settleAsyncRender();
-  await act(async () => {
-    const alpha = screen.getByRole("menuitem", { name: "Alpha" });
-    alpha.focus();
-    fireEvent.keyDown(alpha, { key: "b" });
-    await Promise.resolve();
-  });
-  expect(document.activeElement).toBe(screen.getByRole("menuitem", { name: "Beta" }));
-  await act(async () => {
-    const input = screen.getByRole("textbox");
-    input.focus();
-    expect(fireEvent.keyDown(input, { key: "n" })).toBe(true);
-    fireEvent.keyDown(input, { key: "Escape" });
-    await Promise.resolve();
-  });
-  expect(onOpenChange).toHaveBeenCalledWith(false);
-});
+test.each(["textarea", "search"])(
+  "menu items retain typeahead and unhandled %s Escape dismisses",
+  async (inputKind) => {
+    const onOpenChange = vi.fn();
+    render(
+      <NodexDropdownRoot defaultOpen onOpenChange={onOpenChange}>
+        <NodexDropdownTrigger>
+          <button>Open</button>
+        </NodexDropdownTrigger>
+        <NodexDropdownPortal>
+          <NodexDropdownContent>
+            <NodexDropdownItem>Alpha</NodexDropdownItem>
+            <NodexDropdownItem>Beta</NodexDropdownItem>
+            {inputKind === "search" ? (
+              <NodexDropdownSearchInput aria-label="Search" />
+            ) : (
+              <textarea aria-label="Notes" />
+            )}
+          </NodexDropdownContent>
+        </NodexDropdownPortal>
+      </NodexDropdownRoot>,
+    );
+    await settleAsyncRender();
+    await act(async () => {
+      const alpha = screen.getByRole("menuitem", { name: "Alpha" });
+      alpha.focus();
+      fireEvent.keyDown(alpha, { key: "b" });
+      await Promise.resolve();
+    });
+    expect(document.activeElement).toBe(screen.getByRole("menuitem", { name: "Beta" }));
+    await act(async () => {
+      const input = screen.getByRole("textbox");
+      input.focus();
+      expect(fireEvent.keyDown(input, { key: "n" })).toBe(true);
+      fireEvent.keyDown(input, { key: "Escape" });
+      await Promise.resolve();
+    });
+    expect(onOpenChange).toHaveBeenCalledWith(false);
+  },
+);

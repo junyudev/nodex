@@ -20,31 +20,45 @@ focused renderer components and seeded worktree surfaces.
 
 ## Composer contract
 
-`Work in` is the Composer's execution-target menu. For a Project with a primary
-Git source it offers `Local` and `New worktree`; targets that are unavailable for
-the selected Project or host stay disabled instead of failing after submit. The
-selected target is Composer draft state and does not mutate Git.
+The new-chat Composer has one attached context rail: Project and Location on
+the left, and `Configure local environment` on the right. Project selection
+opens above the rail, supports search and `New project`, and allows clearing
+the Project from the menu or the icon's pointer-hover action. Location remains
+`This computer` for both local and worktree execution; its searchable picker
+lists only execution locations supported by the current runtime.
 
-For one source folder, the worktree row is labelled `New worktree`. For a
-multi-source Project it is labelled `New worktree · <primary repository>` and
-its secondary text says `Work locally in 1 other folder` or
-`Work locally in N other folders`. Only the primary Git source is copied into a
-new worktree. Other Project roots remain direct source roots for the new Chat.
-The trigger and menu use the shared dropdown portal, roving keyboard focus,
-selected checkmark, disabled semantics, and focus restoration.
+`Configure local environment` opens a compact menu containing `New worktree`,
+`Branch`, and `Environment`. The worktree switch stays in the open menu and
+changes Composer draft state without mutating Git. It is disabled when the
+selected Project does not have an available primary Git source. Only that
+primary source is copied into a new worktree; other Project roots remain direct
+source roots for the new Chat, as explained by the switch's tooltip.
 
-Selecting `New worktree` reveals two adjacent Composer controls:
+Changing the selected Project or its primary source starts the draft in local
+mode and clears its starting-state choice. Reselecting the same Project keeps
+the draft; saved Environment choices remain workspace-scoped.
 
-- The starting-state control chooses the current working tree, a local branch,
-  or a remote branch. A working-tree choice includes tracked, staged, binary,
-  ignored-included, and untracked local changes. A remote choice preserves both
-  its display branch name and full remote ref; opening the menu never creates a
-  source-repository branch.
-- The Environment control chooses one valid Environment or `Work without
-  environment`. It is titled `Environment`, or `Environment · <repository>`
-  when the repository name disambiguates a multi-root Project. It exposes
-  loading, load-error, empty, default, selected, and needs-attention states and
-  ends with `Environment settings`.
+With worktree off, `Branch` opens the local branch switcher and selecting or
+creating a branch changes the source checkout. With worktree on, `Branch`
+opens a page inside the configuration menu that chooses the current working
+tree, a local branch, or a remote branch without changing the source checkout.
+A working-tree choice includes tracked, staged, binary, ignored-included, and
+untracked local changes. A remote choice preserves both its display branch
+name and full remote ref; opening the menu never creates a source-repository
+branch.
+
+`Environment` remains visible while worktree is off, displays `No environment`,
+and is disabled with the explanation `Enable worktree to choose an environment`.
+With worktree on, it opens a searchable page inside the same configuration menu.
+That page chooses one valid Environment or `Work without environment`, exposes
+loading, load-error, empty, default, selected, and needs-attention states, and
+ends with `Environment settings`, or `Set up project` when no configurations exist.
+
+Both configuration pages have a Back action. Back, Escape, and successful
+selection return to the configuration menu and focus the originating row;
+Escape from the configuration menu closes it and restores focus to the gear.
+Closing and reopening starts at the configuration menu with cleared search.
+The shared floating primitives own portal placement and keyboard interaction.
 
 Submit freezes one immutable launch descriptor containing the host, primary and
 additional source roots, starting state, resolved Environment path, prompt and
@@ -283,7 +297,8 @@ output instead.
 
 The implementation owners are:
 
-- `src/renderer/features/local-conversation/view/shared/new-chat-start-in-selector.tsx`
+- `src/renderer/features/local-conversation/view/composer/configure-local-environment-popover.tsx`
+- `src/renderer/features/local-conversation/view/composer/new-chat-location-selector.tsx`
 - `src/renderer/features/local-conversation/view/shared/worktree-starting-state-popover.tsx`
 - `src/renderer/features/local-conversation/view/shared/environment-selector-popover.tsx`
 - `src/renderer/components/workbench/pending-worktree-route.tsx`

@@ -2568,12 +2568,11 @@ describe("ConnectedThreadStage new-chat home", () => {
         throw new Error("Expected Codex composer placeholder.");
       }
     });
-    const branchTrigger = view.getByLabelText("Switch branch");
-    expect(branchTrigger !== null).toBe(true);
-    expect(branchTrigger.hasAttribute("title")).toBe(false);
+    expect(view.getByRole("button", { name: "Location" })).toBeTruthy();
+    expect(view.queryByLabelText("Switch branch")).toBeNull();
     expect(lowerStatusRow !== null).toBe(true);
     expect(externalFooterSlot?.contains(lowerStatusRow)).toBe(true);
-    expect(renderedText.includes("Work locally")).toBe(true);
+    expect(renderedText.includes("This computer")).toBe(true);
     expect(renderedText.includes("Start a new thread")).toBe(false);
     expect(renderedText.includes("Connect Codex web")).toBe(false);
     expect(renderedText.includes("Send to cloud")).toBe(false);

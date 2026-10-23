@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { LocalStatusIcon } from "@/components/shared/icons";
 import type { ThreadFooterModel, ThreadStageActions } from "../../thread-stage-types";
 import {
   EMPTY_BRANCH_SELECTOR_STATE,
@@ -8,16 +7,13 @@ import {
   resolveBranchSelectorCwd,
   type BranchSelectorState,
 } from "../shared/branch-selector-state";
-import {
-  BranchSelectorPopover,
-  EnvironmentSelectorPopover,
-  getGitWorkerClient,
-} from "./local-conversation-thread-composer-deps";
+import { changeComposerBranch } from "../../composer-git-context";
+import { ConfigureLocalEnvironmentPopover } from "./configure-local-environment-popover";
+import { ComposerContextControls } from "./composer-context-controls";
 import { useGitBranchState } from "@/lib/use-git-branch-state";
 import { ComposerContextRail } from "../composer-context-rail";
 import { NewChatProjectSelector } from "./new-chat-project-selector";
-import { NewChatStartInSelector } from "./new-chat-start-in-selector";
-import { WorktreeStartingStatePopover } from "../shared/worktree-starting-state-popover";
+import { NewChatLocationSelector } from "./new-chat-location-selector";
 
 interface ThreadComposerStatusStripProps {
   model: ThreadFooterModel;
@@ -142,8 +138,8 @@ function ThreadComposerStatusStripContent({
     setBranchState(parseBranchSelectorState(branchStateData));
   }, [branchCwd, branchStateData]);
 
-  const handleCheckoutBranch = useCallback(
-    async (branch: string) => {
+  const handleChangeBranch = useCallback(
+    async (branch: string, create: boolean) => {
       const requestedCwd = branchCwd;
       if (!requestedCwd) return false;
       const requestId = branchMutationRequestIdRef.current + 1;
@@ -159,17 +155,23 @@ function ThreadComposerStatusStripContent({
       setIsBranchBusy(true);
       onErrorMessage(null);
       try {
-        const result = await getGitWorkerClient().request({
-          method: "checkout-branch",
-          params: { cwd: requestedCwd, branch },
+        const nextState = await changeComposerBranch({
+          cwd: requestedCwd,
+          branch,
+          create,
         });
         if (!isCurrentRequest()) return false;
-        if (result.type === "error") throw new Error(result.errorMessage);
-        setBranchState(parseBranchSelectorState(result.value));
+        setBranchState(parseBranchSelectorState(nextState));
         return true;
       } catch (error) {
         if (isCurrentRequest()) {
-          onErrorMessage(error instanceof Error ? error.message : "Could not switch branches");
+          onErrorMessage(
+            error instanceof Error
+              ? error.message
+              : create
+                ? "Could not create branch"
+                : "Could not switch branches",
+          );
         }
         return false;
       } finally {
@@ -179,47 +181,13 @@ function ThreadComposerStatusStripContent({
     [branchCwd, onErrorMessage],
   );
 
-  const handleCreateBranch = useCallback(
-    async (branch: string) => {
-      const requestedCwd = branchCwd;
-      if (!requestedCwd) return false;
-      const requestId = branchMutationRequestIdRef.current + 1;
-      branchMutationRequestIdRef.current = requestId;
-      const isCurrentRequest = () =>
-        isBranchSelectorMutationCurrent({
-          activeRequestId: branchMutationRequestIdRef.current,
-          requestId,
-          activeCwd: branchCwdRef.current,
-          requestedCwd,
-        });
-
-      setIsBranchBusy(true);
-      onErrorMessage(null);
-      try {
-        const result = await getGitWorkerClient().request({
-          method: "create-branch",
-          params: { cwd: requestedCwd, branch },
-        });
-        if (!isCurrentRequest()) return false;
-        if (result.type === "error") throw new Error(result.errorMessage);
-        setBranchState(parseBranchSelectorState(result.value));
-        return true;
-      } catch (error) {
-        if (isCurrentRequest()) {
-          onErrorMessage(error instanceof Error ? error.message : "Could not create branch");
-        }
-        return false;
-      } finally {
-        if (isCurrentRequest()) setIsBranchBusy(false);
-      }
-    },
-    [branchCwd, onErrorMessage],
-  );
+  const handleCheckoutBranch = (branch: string) => handleChangeBranch(branch, false);
+  const handleCreateBranch = (branch: string) => handleChangeBranch(branch, true);
 
   return (
     <ComposerContextRail className={className}>
       {contextRailLeadingContent}
-      <div className="order-2 flex min-w-0 flex-1 flex-nowrap items-center gap-1">
+      <ComposerContextControls>
         {showNewChatProjectSelector && model.newThreadProjectSelector ? (
           <NewChatProjectSelector
             model={model.newThreadProjectSelector}
@@ -227,84 +195,31 @@ function ThreadComposerStatusStripContent({
             disabled={projectSelectorDisabled}
           />
         ) : null}
-        {showNewChatStartInSelector && model.newThreadStartInSelector ? (
-          <NewChatStartInSelector
+        <NewChatLocationSelector disabled={projectSelectorDisabled} />
+      </ComposerContextControls>
+      {showNewChatStartInSelector && model.newThreadStartInSelector ? (
+        <div className="order-3 flex shrink-0">
+          <ConfigureLocalEnvironmentPopover
+            key={branchCwd ?? "projectless"}
             model={model.newThreadStartInSelector}
             actions={actions}
-            disabled={projectSelectorDisabled}
-            worktreeAvailable={worktreeAvailable}
-          />
-        ) : (
-          <span className="inline-flex h-7 items-center gap-1 px-1.5 text-sm/4.5 text-(--foreground-tertiary)">
-            <LocalStatusIcon className="size-3.5 shrink-0" />
-            <span className="max-w-40 truncate text-sm">Work locally</span>
-          </span>
-        )}
-        {showNewChatStartInSelector &&
-        model.newThreadStartInSelector &&
-        model.newThreadStartInSelector.environmentAvailable !== false &&
-        model.newThreadStartInSelector.target.runInTarget === "newWorktree" ? (
-          <EnvironmentSelectorPopover
-            configs={model.newThreadStartInSelector.environments}
-            selectedPath={model.newThreadStartInSelector.selectedEnvironmentPath}
-            defaultPath={model.newThreadStartInSelector.defaultEnvironmentPath}
-            needsAttention={model.newThreadStartInSelector.environmentNeedsAttention}
-            repairConfigPath={model.newThreadStartInSelector.environmentRepairConfigPath}
-            repositoryName={model.newThreadStartInSelector.repositoryName}
-            showRepositoryName={
-              (model.newThreadStartInSelector.additionalSourceFolderCount ?? 0) > 0
-            }
-            busy={model.newThreadStartInSelector.environmentsLoading}
-            error={model.newThreadStartInSelector.environmentsError}
-            disabled={projectSelectorDisabled || model.newThreadStartInSelector.disabled}
-            onRefresh={() => actions.onRefreshNewThreadStartInEnvironments?.() ?? Promise.resolve()}
-            onSelect={(environmentPath) => {
-              actions.onNewThreadStartInEnvironmentChange?.(environmentPath);
-              return true;
-            }}
-            onOpenSettings={(configPath) =>
-              actions.onOpenNewThreadLocalEnvironmentsSettings?.(configPath)
-            }
-            triggerClassName="text-token-text-tertiary hover:text-token-foreground"
-          />
-        ) : null}
-        {showNewChatStartInSelector &&
-        model.newThreadStartInSelector?.target.runInTarget === "newWorktree" ? (
-          <WorktreeStartingStatePopover
             cwd={branchCwd}
-            state={branchState}
-            startingState={selectedNewWorktreeStartingState}
+            branchState={branchState}
+            branchBusy={isBranchBusy}
             branchLoading={
               branchStateLoading ||
               (branchStateFetching && branchState === EMPTY_BRANCH_SELECTOR_STATE)
             }
             branchError={branchStateError}
-            repositoryName={model.newThreadStartInSelector.repositoryName}
-            disabled={projectSelectorDisabled || model.newThreadStartInSelector.disabled}
-            onRefresh={handleRefreshBranchState}
-            onChange={(worktreeStartingState) => {
-              actions.onNewThreadStartInTargetChange?.({
-                ...model.newThreadStartInSelector!.target,
-                worktreeStartingState,
-              });
-            }}
+            startingState={selectedNewWorktreeStartingState}
+            worktreeAvailable={worktreeAvailable}
+            disabled={projectSelectorDisabled}
+            onRefreshBranches={handleRefreshBranchState}
+            onCheckoutBranch={handleCheckoutBranch}
+            onCreateBranch={handleCreateBranch}
           />
-        ) : (
-          <BranchSelectorPopover
-            cwd={branchCwd}
-            state={branchState}
-            busy={isBranchBusy}
-            loading={
-              branchStateLoading ||
-              (branchStateFetching && branchState === EMPTY_BRANCH_SELECTOR_STATE)
-            }
-            error={branchStateError}
-            onRefresh={handleRefreshBranchState}
-            onCheckout={handleCheckoutBranch}
-            onCreate={handleCreateBranch}
-          />
-        )}
-      </div>
+        </div>
+      ) : null}
     </ComposerContextRail>
   );
 }

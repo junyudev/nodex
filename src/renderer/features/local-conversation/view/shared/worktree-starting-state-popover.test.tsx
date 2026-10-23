@@ -45,7 +45,7 @@ describe("worktree starting-state popover", () => {
     expect(document.body.textContent).toContain("Local branches");
     expect(document.body.textContent).toContain("Remote branches");
     expect(view.getByLabelText("Search repository branches").getAttribute("placeholder")).toBe(
-      "Search nodex branches",
+      "Search branches…",
     );
 
     await act(async () => {

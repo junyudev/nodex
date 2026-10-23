@@ -25,6 +25,7 @@ import type {
   ThreadSummaryPanelScheduledAutomationRow,
 } from "@/features/local-conversation/thread-stage-types";
 import { useAgentInstances } from "@/features/local-conversation/use-agent-instances";
+import { useNewChatExecutionDraft } from "@/features/local-conversation/use-new-chat-execution-draft";
 import { useWorkbenchWindowOwner } from "@/lib/use-workbench-window-state";
 import { buildSettingsPath } from "./workbench-settings-routes";
 import { useLocalEnvironmentConfigs } from "@/lib/use-local-environment-queries";
@@ -39,11 +40,9 @@ import type { ComposerEnterBehavior } from "@/lib/composer-enter-behavior";
 import type {
   CodexComposerIntent,
   CodexCollaborationModeKind,
-  PageRunInTarget,
   Project,
   CodexThreadSummary,
 } from "@/lib/types";
-import type { CodexPendingWorktreeStartingState } from "../../../shared/codex-pending-worktree";
 import type { WorkbenchSessionRenderProjection } from "@/lib/workbench-session-presentation";
 import {
   normalizeProjectPrimaryWorkspaceRoot,
@@ -220,11 +219,6 @@ function SharedConnectedSessionThread({
   onCommitMaterializedProjectDraft?: SessionThreadCommands["onCommitMaterializedProjectDraft"];
 }) {
   const attachedSummary = agent.summary;
-  const [selectedNewThreadRunInTarget, setSelectedNewThreadRunInTarget] =
-    useState<PageRunInTarget>("localProject");
-  const [selectedNewThreadStartingState, setSelectedNewThreadStartingState] = useState<
-    CodexPendingWorktreeStartingState | undefined
-  >(undefined);
   const [environmentSelections, setEnvironmentSelections] = useState(
     readLocalEnvironmentSelections,
   );
@@ -239,6 +233,16 @@ function SharedConnectedSessionThread({
   const startInSelectorProject = summary ? project : selectedNewThreadProject;
   const newThreadEnvironmentWorkspaceRoot = projectWorkspaceRootOrNull(startInSelectorProject);
   const effectiveProjectId = summary ? session.projectId : (selectedNewThreadProject?.id ?? null);
+  const executionDraft = useNewChatExecutionDraft({
+    sessionId: session.id,
+    projectId: effectiveProjectId,
+    workspaceRoot: newThreadEnvironmentWorkspaceRoot,
+    onProjectChange: setSelectedNewThreadProjectId,
+  });
+  const {
+    runInTarget: selectedNewThreadRunInTarget,
+    worktreeStartingState: selectedNewThreadStartingState,
+  } = executionDraft.target;
   const environmentAvailable = provider?.kind !== "acp";
   const environmentConfigsQuery = useLocalEnvironmentConfigs(effectiveProjectId ?? "", {
     enabled: environmentAvailable && selectedNewThreadRunInTarget === "newWorktree",
@@ -317,13 +321,7 @@ function SharedConnectedSessionThread({
   useEffect(() => {
     if (summary) return;
     setSelectedNewThreadProjectId(session.projectId);
-    setSelectedNewThreadRunInTarget("localProject");
-    setSelectedNewThreadStartingState(undefined);
   }, [session.id, session.projectId, summary, setSelectedNewThreadProjectId]);
-
-  useEffect(() => {
-    setSelectedNewThreadStartingState(undefined);
-  }, [effectiveProjectId, newThreadEnvironmentWorkspaceRoot]);
 
   useEffect(() => {
     if (selectedNewThreadProjectId === null) return;
@@ -408,13 +406,10 @@ function SharedConnectedSessionThread({
   const actions = composeNativeThreadStageActions(
     {
       onQueueingEnabledChange,
-      onNewThreadProjectChange: setSelectedNewThreadProjectId,
+      onNewThreadProjectChange: executionDraft.changeProject,
       onRequestNewChatProjectCreate: onRequestProjectPickerOpen,
       onStartNewChatWithPrompt,
-      onNewThreadStartInTargetChange: (target) => {
-        setSelectedNewThreadRunInTarget(target.runInTarget);
-        setSelectedNewThreadStartingState(target.worktreeStartingState);
-      },
+      onNewThreadStartInTargetChange: executionDraft.changeTarget,
       onNewThreadStartInEnvironmentChange: changeNewThreadEnvironment,
       onRefreshNewThreadStartInEnvironments: refreshNewThreadEnvironments,
       onOpenNewThreadLocalEnvironmentsSettings: (configPath) =>

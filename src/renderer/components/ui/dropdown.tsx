@@ -1164,13 +1164,18 @@ export const NodexDropdownInput = forwardRef<HTMLInputElement, ComponentPropsWit
           className,
         )}
         onKeyDown={(event) => {
-          event.stopPropagation();
           if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "a") {
+            event.stopPropagation();
             event.preventDefault();
             event.currentTarget.select();
             return;
           }
           onKeyDown?.(event);
+          // Text editing stays local; an unhandled Escape belongs to the menu owner.
+          const composing = event.nativeEvent.isComposing || event.nativeEvent.keyCode === 229;
+          if (event.key !== "Escape" || event.defaultPrevented || composing) {
+            event.stopPropagation();
+          }
         }}
         {...props}
       />

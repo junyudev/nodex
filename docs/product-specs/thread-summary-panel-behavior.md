@@ -94,8 +94,10 @@ after success.
 
 Branch and execution-location selectors are full-row controls: the selected value
 appears once in the row label and the trailing icon communicates only menu
-affordance. The attached-Chat menu is titled `Continue in`; the new-Chat
-composer continues to use `Start in`.
+affordance. The attached-Chat menu is titled `Continue in`. The new-chat
+Composer separates `Location` from `Configure local environment`, whose
+worktree, branch, and Environment controls follow
+[Worktree Creation Behavior](codex-worktree-creation-behavior.md).
 
 For an attached local Codex or Claude Chat, `Continue in` opens the actual
 execution handoff workflow. Confirming moves the same Chat, native conversation

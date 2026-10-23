@@ -1,4 +1,12 @@
-import { useCallback, useMemo, useState, type FormEvent, type ReactElement } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type FormEvent,
+  type ReactElement,
+} from "react";
 import {
   BranchStatusIcon,
   CheckmarkIcon,
@@ -30,6 +38,12 @@ import {
 } from "@/components/ui/dropdown";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
+import { appScope, useScopeHandle } from "@/lib/maitai";
+import { openModal, type ModalCloseProps } from "@/lib/modal-registry";
+import {
+  COMPOSER_PICKER_ITEM_CLASS_NAME,
+  handleComposerPickerSearchKeyDown,
+} from "./inline-composer-picker";
 
 export interface BranchSelectorPopoverState {
   currentBranch: string | null;
@@ -122,13 +136,16 @@ export function BranchSelectorPopover({
   side = "top",
   align = "start",
   sideOffset,
-  contentWidth = "panel",
+  contentWidth = "menu",
   contentClassName,
 }: BranchSelectorPopoverProps) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
-  const [createDialogOpen, setCreateDialogOpen] = useState(false);
-  const [createBranchName, setCreateBranchName] = useState("");
+  const appHandle = useScopeHandle(appScope);
+  const pendingCreateRef = useRef<Omit<CreateBranchDialogProps, "onClose"> | null>(null);
+  useEffect(() => {
+    if (!open) setSearch("");
+  }, [open]);
 
   const filteredBranches = useMemo(
     () => filterBranches(state.branches, search),
@@ -150,11 +167,15 @@ export function BranchSelectorPopover({
 
   const handleBranchSelect = useCallback(
     async (branch: string) => {
+      if (branch === state.currentBranch) {
+        setOpen(false);
+        return;
+      }
       const didCheckout = await onCheckout(branch);
       if (!didCheckout) return;
       setOpen(false);
     },
-    [onCheckout],
+    [onCheckout, state.currentBranch],
   );
 
   const existingBranchNames = useMemo(
@@ -166,29 +187,16 @@ export function BranchSelectorPopover({
       ]),
     [state.branches, state.currentBranch, state.defaultBranch],
   );
-  const createBranchValue = createBranchName.trim();
-  const createBranchValidation = validateCreateBranchName(createBranchName, existingBranchNames);
-  const createBranchCanSubmit = Boolean(onCreate && createBranchValidation === null && !busy);
-
   const handleOpenCreateDialog = useCallback(() => {
-    if (!onCreate) return;
-    setCreateBranchName(search.trim());
+    if (!onCreate || !cwd) return;
+    pendingCreateRef.current = {
+      cwd,
+      initialName: search.trim(),
+      existingBranchNames,
+      onCreate,
+    };
     setOpen(false);
-    setCreateDialogOpen(true);
-  }, [onCreate, search]);
-
-  const handleCreateSubmit = useCallback(
-    async (event?: FormEvent<HTMLFormElement>) => {
-      event?.preventDefault();
-      if (!createBranchCanSubmit || !onCreate) return;
-
-      const didCreate = await onCreate(createBranchValue);
-      if (!didCreate) return;
-      setCreateDialogOpen(false);
-      setCreateBranchName("");
-    },
-    [createBranchCanSubmit, createBranchValue, onCreate],
-  );
+  }, [cwd, existingBranchNames, onCreate, search]);
 
   const activeSelectedBranch = selectedBranch?.trim() || null;
   const currentBranch = activeSelectedBranch ?? state.currentBranch;
@@ -238,15 +246,30 @@ export function BranchSelectorPopover({
         triggerTooltipContent={renderTrigger ? undefined : triggerTitle}
         contentWidth={contentWidth}
         contentClassName={contentClassName}
+        finalFocus={() => {
+          const pending = pendingCreateRef.current;
+          if (!pending) return true;
+          pendingCreateRef.current = null;
+          openModal(appHandle, CreateBranchDialog, pending);
+          return false;
+        }}
       >
-        <div className="flex w-full flex-col gap-1.5 overflow-hidden">
+        <div
+          data-composer-picker="local-branch"
+          className="flex w-72 max-w-full flex-col gap-1.5 overflow-hidden"
+        >
           <NodexDropdownSearchInput
             autoFocus={false}
+            aria-label="Search branches"
             placeholder="Search branches"
             value={search}
             onChange={(event) => setSearch(event.currentTarget.value)}
             onKeyDown={(event) => {
-              if (event.key !== "Enter") return;
+              if (event.nativeEvent.isComposing || event.nativeEvent.keyCode === 229) return;
+              if (event.key !== "Enter") {
+                handleComposerPickerSearchKeyDown(event, busy || loading || error);
+                return;
+              }
 
               event.preventDefault();
               const action = resolveBranchSearchEnterAction({
@@ -282,57 +305,90 @@ export function BranchSelectorPopover({
           <>
             <NodexDropdownSeparator />
             <NodexDropdownItem
+              className={COMPOSER_PICKER_ITEM_CLASS_NAME}
               disabled={!canCreateBranch}
               onSelect={handleOpenCreateDialog}
               leftSlot={<PlusIcon className="size-4 shrink-0" />}
             >
-              Create and checkout new branch…
+              Create and checkout new branch
             </NodexDropdownItem>
           </>
         ) : null}
       </NodexDropdownMenu>
-
-      <NodexDialog
-        open={createDialogOpen}
-        onOpenChange={(nextOpen) => {
-          setCreateDialogOpen(nextOpen);
-          if (!nextOpen) setCreateBranchName("");
-        }}
-      >
-        <NodexDialogContent size="compact" showCloseButton={false}>
-          <NodexDialogForm onSubmit={(event) => void handleCreateSubmit(event)}>
-            <NodexDialogHeader>
-              <NodexDialogTitle>Create and checkout branch</NodexDialogTitle>
-              <NodexDialogDescription>
-                Create a new branch from the current checkout and switch to it.
-              </NodexDialogDescription>
-            </NodexDialogHeader>
-            <NodexDialogBody className="gap-2">
-              <Input
-                autoFocus
-                aria-label="Branch name"
-                placeholder="new-branch"
-                value={createBranchName}
-                onChange={(event) => setCreateBranchName(event.currentTarget.value)}
-              />
-              {createBranchValidation === "trailing-slash" ? (
-                <p className="text-xs text-token-charts-red">Branch name cannot end with “/”.</p>
-              ) : createBranchValidation === "exists" ? (
-                <p className="text-xs text-token-charts-red">Branch already exists.</p>
-              ) : null}
-            </NodexDialogBody>
-            <NodexDialogFooter>
-              <NodexDialogAction onClick={() => setCreateDialogOpen(false)}>
-                Close
-              </NodexDialogAction>
-              <NodexDialogAction tone="primary" type="submit" disabled={!createBranchCanSubmit}>
-                Create and checkout
-              </NodexDialogAction>
-            </NodexDialogFooter>
-          </NodexDialogForm>
-        </NodexDialogContent>
-      </NodexDialog>
     </>
+  );
+}
+
+interface CreateBranchDialogProps extends ModalCloseProps {
+  cwd: string;
+  initialName: string;
+  existingBranchNames: ReadonlySet<string>;
+  onCreate: (branch: string) => Promise<boolean>;
+}
+
+function CreateBranchDialog(props: CreateBranchDialogProps) {
+  return <CreateBranchDialogContent key={props.cwd} {...props} />;
+}
+
+function CreateBranchDialogContent({
+  initialName,
+  existingBranchNames,
+  onCreate,
+  onClose,
+}: CreateBranchDialogProps) {
+  const [createBranchName, setCreateBranchName] = useState(initialName);
+  const [busy, setBusy] = useState(false);
+  const createBranchValue = createBranchName.trim();
+  const createBranchValidation = validateCreateBranchName(createBranchName, existingBranchNames);
+  const createBranchCanSubmit = createBranchValidation === null && !busy;
+  const handleCreateSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!createBranchCanSubmit) return;
+    setBusy(true);
+    try {
+      if (await onCreate(createBranchValue)) onClose();
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <NodexDialog
+      open
+      onOpenChange={(nextOpen) => {
+        if (!nextOpen) onClose();
+      }}
+    >
+      <NodexDialogContent size="compact" showCloseButton={false}>
+        <NodexDialogForm onSubmit={(event) => void handleCreateSubmit(event)}>
+          <NodexDialogHeader>
+            <NodexDialogTitle>Create and checkout branch</NodexDialogTitle>
+            <NodexDialogDescription>
+              Create a new branch from the current checkout and switch to it.
+            </NodexDialogDescription>
+          </NodexDialogHeader>
+          <NodexDialogBody className="gap-2">
+            <Input
+              autoFocus
+              aria-label="Branch name"
+              placeholder="new-branch"
+              value={createBranchName}
+              onChange={(event) => setCreateBranchName(event.currentTarget.value)}
+            />
+            {createBranchValidation === "trailing-slash" ? (
+              <p className="text-xs text-token-charts-red">Branch name cannot end with “/”.</p>
+            ) : createBranchValidation === "exists" ? (
+              <p className="text-xs text-token-charts-red">Branch already exists.</p>
+            ) : null}
+          </NodexDialogBody>
+          <NodexDialogFooter>
+            <NodexDialogAction onClick={onClose}>Close</NodexDialogAction>
+            <NodexDialogAction tone="primary" type="submit" disabled={!createBranchCanSubmit}>
+              Create and checkout
+            </NodexDialogAction>
+          </NodexDialogFooter>
+        </NodexDialogForm>
+      </NodexDialogContent>
+    </NodexDialog>
   );
 }
 
@@ -359,13 +415,22 @@ function NodexDropdownScrollBranchList({
     <div className="vertical-scroll-fade-mask flex h-[200px] flex-col gap-1.5 overflow-y-auto">
       <NodexDropdownSectionLabel>Branches</NodexDropdownSectionLabel>
       {loading ? (
-        <NodexDropdownItem disabled leftSlot={<ActivitySpinnerIcon className="icon-xxs" />}>
+        <NodexDropdownItem
+          className={COMPOSER_PICKER_ITEM_CLASS_NAME}
+          disabled
+          leftSlot={<ActivitySpinnerIcon className="icon-xxs" />}
+        >
           Loading branches…
         </NodexDropdownItem>
       ) : error ? (
         <NodexDropdownSection className="flex flex-col gap-1">
           <NodexDropdownSectionLabel>Unable to load branches</NodexDropdownSectionLabel>
-          <NodexDropdownItem onSelect={() => void onRetry()}>Retry</NodexDropdownItem>
+          <NodexDropdownItem
+            className={COMPOSER_PICKER_ITEM_CLASS_NAME}
+            onSelect={() => void onRetry()}
+          >
+            Retry
+          </NodexDropdownItem>
         </NodexDropdownSection>
       ) : filteredBranches.length === 0 ? (
         <NodexDropdownMessage compact>{emptyBranchMessage}</NodexDropdownMessage>
@@ -373,8 +438,11 @@ function NodexDropdownScrollBranchList({
         <NodexDropdownSection className="flex flex-col">
           {filteredBranches.map((branch) => (
             <NodexDropdownItem
+              data-composer-picker-option="true"
+              className={COMPOSER_PICKER_ITEM_CLASS_NAME}
               key={branch}
               disabled={busy}
+              closeOnClick={false}
               onSelect={() => {
                 void onBranchSelect(branch);
               }}

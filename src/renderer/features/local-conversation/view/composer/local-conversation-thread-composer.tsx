@@ -4144,8 +4144,7 @@ function HydratedThreadComposer({
           className={cn(
             "relative flex flex-col",
             // A floating composer's frame draws the surface.
-            !isFloatingComposer &&
-              "composer-surface-chrome bg-token-input-background/90 backdrop-blur-lg electron:dark:bg-token-dropdown-background",
+            !isFloatingComposer && "composer-surface-chrome bg-background-composer-surface",
             floatingComposerSingleLine
               ? "overflow-visible rounded-full"
               : cn("overflow-y-auto", !isFloatingComposer && "composer-multiline-surface"),

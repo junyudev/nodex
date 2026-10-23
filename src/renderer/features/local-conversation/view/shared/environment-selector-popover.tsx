@@ -1,4 +1,11 @@
-import { useCallback, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
+import {
+  COMPOSER_PICKER_ITEM_CLASS_NAME,
+  handleInlineComposerPickerKeyDown,
+  handleComposerPickerSearchKeyDown,
+  type InlineComposerPickerPresentation,
+} from "./inline-composer-picker";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Star } from "@/components/shared/icons/generic-icons";
 import { ActivitySpinnerIcon, CheckmarkIcon, ConfigStatusIcon } from "@/components/shared/icons";
 import {
@@ -8,12 +15,15 @@ import {
   NodexDropdownMenu,
   NodexDropdownSection,
   NodexDropdownTitle,
+  NodexDropdownSearchInput,
+  NodexDropdownSeparator,
 } from "@/components/ui/dropdown";
 import { NodexTooltip } from "@/components/ui/tooltip";
 import type { WorktreeEnvironmentConfigRecord, WorktreeEnvironmentOption } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 interface EnvironmentSelectorPopoverProps {
+  inline?: InlineComposerPickerPresentation;
   configs?: WorktreeEnvironmentConfigRecord[];
   options?: WorktreeEnvironmentOption[];
   selectedPath?: string | null;
@@ -40,7 +50,31 @@ function pathEquals(left: string | null | undefined, right: string | null | unde
   );
 }
 
+export function resolveEnvironmentSelectorLabel({
+  configs,
+  selectedPath,
+  busy,
+  error,
+  needsAttention,
+}: {
+  configs: readonly WorktreeEnvironmentConfigRecord[];
+  selectedPath?: string | null;
+  busy: boolean;
+  error: boolean;
+  needsAttention: boolean;
+}): string {
+  if (busy) return "Loading environments…";
+  if (error || needsAttention) return "Needs attention";
+  const selected = configs.find(
+    (config) => config.state === "success" && pathEquals(config.configPath, selectedPath),
+  );
+  return (
+    selected?.name ?? (selectedPath?.trim() ? "Selected environment unavailable" : "No environment")
+  );
+}
+
 export function EnvironmentSelectorPopover({
+  inline,
   configs,
   options,
   selectedPath,
@@ -58,7 +92,13 @@ export function EnvironmentSelectorPopover({
   showRepositoryName = false,
   defaultOpen = false,
 }: EnvironmentSelectorPopoverProps) {
-  const [open, setOpen] = useState(defaultOpen);
+  const [localOpen, setLocalOpen] = useState(defaultOpen);
+  const open = inline?.open ?? localOpen;
+  const setOpen = inline?.onOpenChange ?? setLocalOpen;
+  const [search, setSearch] = useState("");
+  useEffect(() => {
+    if (!open) setSearch("");
+  }, [open]);
   const normalizedSelectedPath = selectedPath?.trim() || "";
   const resolvedConfigs = useMemo<WorktreeEnvironmentConfigRecord[]>(
     () =>
@@ -86,17 +126,20 @@ export function EnvironmentSelectorPopover({
   );
   const defaultConfig =
     successfulConfigs.find((config) => pathEquals(config.configPath, defaultPath)) ?? null;
-  const listedConfigs = defaultConfig
+  const remainingConfigs = defaultConfig
     ? successfulConfigs.filter((config) => config.configPath !== defaultConfig.configPath)
     : successfulConfigs;
-  const selectedConfig = successfulConfigs.find((config) =>
-    pathEquals(config.configPath, normalizedSelectedPath),
-  );
-  const triggerLabel = busy
-    ? "Loading environments…"
-    : needsAttention
-      ? "Needs attention"
-      : (selectedConfig?.name ?? "No environment");
+  const matchesSearch = (config: WorktreeEnvironmentConfigRecord) =>
+    config.name?.toLocaleLowerCase().includes(search.trim().toLocaleLowerCase());
+  const listedConfigs = remainingConfigs.filter(matchesSearch);
+  const visibleDefaultConfig = defaultConfig && matchesSearch(defaultConfig) ? defaultConfig : null;
+  const triggerLabel = resolveEnvironmentSelectorLabel({
+    configs: resolvedConfigs,
+    selectedPath,
+    busy,
+    error,
+    needsAttention,
+  });
   const isDisabled = disabled;
 
   const handleOpenChange = useCallback(
@@ -105,7 +148,7 @@ export function EnvironmentSelectorPopover({
       if (!nextOpen) return;
       void onRefresh();
     },
-    [onRefresh],
+    [onRefresh, setOpen],
   );
 
   const handleSelect = useCallback(
@@ -114,13 +157,123 @@ export function EnvironmentSelectorPopover({
       if (!applied) return;
       setOpen(false);
     },
-    [onSelect],
+    [onSelect, setOpen],
   );
 
   const title =
     showRepositoryName && repositoryName?.trim()
       ? `Environment · ${repositoryName.trim()}`
       : "Environment";
+
+  const pickerContent = (
+    <div
+      data-composer-picker="environment"
+      className={cn("flex flex-col overflow-hidden", inline ? "w-full" : "w-64")}
+      onKeyDownCapture={(event) => handleInlineComposerPickerKeyDown(event, inline)}
+    >
+      {!inline ? <NodexDropdownTitle>{title}</NodexDropdownTitle> : null}
+      <NodexDropdownSearchInput
+        autoFocus={Boolean(inline)}
+        value={search}
+        aria-label="Search environments"
+        placeholder="Search environments…"
+        onChange={(event) => setSearch(event.currentTarget.value)}
+        onKeyDown={(event) => handleComposerPickerSearchKeyDown(event, busy || error)}
+      />
+      <NodexDropdownSeparator />
+      <div className="vertical-scroll-fade-mask flex max-h-[220px] flex-col overflow-y-auto">
+        {!busy && !error ? (
+          <NodexDropdownItem
+            data-composer-picker-option={!search.trim()}
+            className={COMPOSER_PICKER_ITEM_CLASS_NAME}
+            closeOnClick={false}
+            onSelect={() => void handleSelect(null)}
+            rightSlot={
+              normalizedSelectedPath.length === 0 && !needsAttention ? (
+                <CheckmarkIcon className="icon-xs shrink-0" />
+              ) : null
+            }
+          >
+            Work without environment
+          </NodexDropdownItem>
+        ) : null}
+
+        {visibleDefaultConfig ? (
+          <NodexDropdownItem
+            data-composer-picker-option="true"
+            className={COMPOSER_PICKER_ITEM_CLASS_NAME}
+            closeOnClick={false}
+            onSelect={() => void handleSelect(visibleDefaultConfig.configPath)}
+            rightSlot={
+              pathEquals(visibleDefaultConfig.configPath, normalizedSelectedPath) ? (
+                <CheckmarkIcon className="icon-xs shrink-0" />
+              ) : null
+            }
+          >
+            <span className="flex min-w-0 items-center gap-2">
+              <NodexTooltip tooltipContent="Default environment">
+                <Star className="icon-xxs shrink-0 text-token-description-foreground" />
+              </NodexTooltip>
+              <span className="truncate">{visibleDefaultConfig.name}</span>
+            </span>
+          </NodexDropdownItem>
+        ) : null}
+
+        {busy ? (
+          <div className="flex items-center justify-center py-4">
+            <ActivitySpinnerIcon className="icon-xxs" />
+          </div>
+        ) : error ? (
+          <NodexDropdownMessage compact tone="error">
+            Error loading environments
+          </NodexDropdownMessage>
+        ) : listedConfigs.length > 0 ? (
+          <NodexDropdownSection className="flex flex-col">
+            {listedConfigs.map((config) => (
+              <NodexDropdownItem
+                data-composer-picker-option="true"
+                className={COMPOSER_PICKER_ITEM_CLASS_NAME}
+                closeOnClick={false}
+                key={config.configPath}
+                onSelect={() => void handleSelect(config.configPath)}
+                rightSlot={
+                  pathEquals(config.configPath, normalizedSelectedPath) ? (
+                    <CheckmarkIcon className="icon-xs shrink-0" />
+                  ) : null
+                }
+              >
+                <span className="min-w-0 truncate">{config.name}</span>
+              </NodexDropdownItem>
+            ))}
+          </NodexDropdownSection>
+        ) : visibleDefaultConfig ? null : search.trim() ? (
+          <NodexDropdownMessage compact>No environments found</NodexDropdownMessage>
+        ) : resolvedConfigs.length > 0 && successfulConfigs.length === 0 ? (
+          <NodexDropdownMessage compact tone="error">
+            Needs attention
+          </NodexDropdownMessage>
+        ) : (
+          <NodexDropdownMessage compact>No environments found</NodexDropdownMessage>
+        )}
+
+        <NodexDropdownItem
+          className={COMPOSER_PICKER_ITEM_CLASS_NAME}
+          closeOnClick={false}
+          onSelect={() => {
+            void onOpenSettings(repairConfigPath);
+            setOpen(false);
+          }}
+          leftSlot={<ConfigStatusIcon className="icon-xs shrink-0" />}
+        >
+          {resolvedConfigs.length === 0 ? "Set up project" : "Environment settings"}
+        </NodexDropdownItem>
+      </div>
+    </div>
+  );
+
+  if (inline) {
+    return inline.open && inline.container ? createPortal(pickerContent, inline.container) : null;
+  }
 
   return (
     <NodexDropdownMenu
@@ -147,85 +300,8 @@ export function EnvironmentSelectorPopover({
           </span>
         </NodexDropdownButtonTrigger>
       }
-      contentClassName="p-0"
     >
-      <div className="flex w-64 flex-col overflow-hidden">
-        <NodexDropdownTitle>{title}</NodexDropdownTitle>
-        <div className="vertical-scroll-fade-mask flex max-h-[220px] flex-col overflow-y-auto">
-          {!busy && !error ? (
-            <NodexDropdownItem
-              onSelect={() => void handleSelect(null)}
-              rightSlot={
-                normalizedSelectedPath.length === 0 && !needsAttention ? (
-                  <CheckmarkIcon className="icon-xs shrink-0" />
-                ) : null
-              }
-            >
-              Work without environment
-            </NodexDropdownItem>
-          ) : null}
-
-          {defaultConfig ? (
-            <NodexDropdownItem
-              onSelect={() => void handleSelect(defaultConfig.configPath)}
-              rightSlot={
-                pathEquals(defaultConfig.configPath, normalizedSelectedPath) ? (
-                  <CheckmarkIcon className="icon-xs shrink-0" />
-                ) : null
-              }
-            >
-              <span className="flex min-w-0 items-center gap-2">
-                <NodexTooltip tooltipContent="Default environment">
-                  <Star className="icon-xxs shrink-0 text-token-description-foreground" />
-                </NodexTooltip>
-                <span className="truncate">{defaultConfig.name}</span>
-              </span>
-            </NodexDropdownItem>
-          ) : null}
-
-          {busy ? (
-            <div className="flex items-center justify-center py-4">
-              <ActivitySpinnerIcon className="icon-xxs" />
-            </div>
-          ) : error ? (
-            <NodexDropdownMessage compact tone="error">
-              Error loading environments
-            </NodexDropdownMessage>
-          ) : listedConfigs.length > 0 ? (
-            <NodexDropdownSection className="flex flex-col">
-              {listedConfigs.map((config) => (
-                <NodexDropdownItem
-                  key={config.configPath}
-                  onSelect={() => void handleSelect(config.configPath)}
-                  rightSlot={
-                    pathEquals(config.configPath, normalizedSelectedPath) ? (
-                      <CheckmarkIcon className="icon-xs shrink-0" />
-                    ) : null
-                  }
-                >
-                  <span className="min-w-0 truncate">{config.name}</span>
-                </NodexDropdownItem>
-              ))}
-            </NodexDropdownSection>
-          ) : resolvedConfigs.length > 0 ? (
-            <NodexDropdownMessage compact tone="error">
-              Needs attention
-            </NodexDropdownMessage>
-          ) : (
-            <NodexDropdownMessage compact>No environments found</NodexDropdownMessage>
-          )}
-
-          <NodexDropdownItem
-            onSelect={() => {
-              void onOpenSettings(repairConfigPath);
-              setOpen(false);
-            }}
-            leftSlot={<ConfigStatusIcon className="icon-xs shrink-0" />}
-          >
-            Environment settings
-          </NodexDropdownItem>
-        </div>
-      </div>
+      {pickerContent}
     </NodexDropdownMenu>
   );
 }
