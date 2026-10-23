@@ -10,6 +10,8 @@ import type { CodexQueuedMessageFollowerParams } from "./codex-queued-message-fo
 /** Transport carries a prepared native request; owners must not reconstruct it from composer text. */
 export interface ConversationFollowerTurnStart {
   request: TurnStartParams;
+  /** Revalidated by the owner immediately before admitting the new turn. */
+  expectedFailedTurnId?: string;
   context?: {
     localTurnMetadata?: unknown;
     attachments?: unknown;

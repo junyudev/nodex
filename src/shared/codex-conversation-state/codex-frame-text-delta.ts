@@ -3,6 +3,7 @@ import {
   type CodexTranscriptAcceptedMutationContext,
 } from "../codex-transcript-projection";
 import { produce, type Draft } from "immer";
+import { recoverCodexProviderRetry } from "./codex-provider-recovery";
 import {
   residentConversationTurnEntries,
   residentConversationTurns,
@@ -310,6 +311,8 @@ export function mutateCodexConversationFrameTextDeltas(
       changed = true;
     }
     const result = reduceCodexFrameTextDeltaItems(turn.items, update);
+    if (result.disposition === "applied" && update.delta.length > 0)
+      changed = recoverCodexProviderRetry(turn.items, context.now) || changed;
     const item = turn.items[result.itemIndex];
     if (result.items !== turn.items && item) {
       const key = codexTranscriptMutationItemKey(state, entry.address, item.id);

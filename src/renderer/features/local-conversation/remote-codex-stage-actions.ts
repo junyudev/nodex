@@ -53,6 +53,9 @@ export function createRemoteCodexStageActions(input: {
     onInterruptTurn: async (turnId) => {
       await control.interruptTurn(threadId, turnId);
     },
+    onContinueAfterFailure: async (turnId) => {
+      await control.continueFailedTurn(threadId, turnId, control.captureSubmissionPresentation());
+    },
     onResumeInterruptedTurn: async () => {
       await control.resumeInterruptedTurn(
         threadId,

@@ -10,7 +10,7 @@ export interface ThreadAgentBodyCollapsePresentation {
 }
 
 /**
- * Keeps complete user messages visible while historical agent activity is collapsed.
+ * Keeps user messages and request recovery visible while historical activity is collapsed.
  * Expanded presentation preserves the canonical unit order instead of maintaining
  * a second transcript ordering model.
  */
@@ -34,7 +34,11 @@ export function projectAgentBodyCollapsePresentation(
     }
 
     expandedUnits.push(unit);
-    if (unit.kind === "entry" && unit.block.type === "userMessage") {
+    if (
+      unit.kind === "entry" &&
+      (unit.block.type === "userMessage" ||
+        ("entry" in unit.block && unit.block.entry.recovery !== undefined))
+    ) {
       persistentUnits.push(unit);
       continue;
     }

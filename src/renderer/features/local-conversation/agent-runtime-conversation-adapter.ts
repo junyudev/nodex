@@ -76,7 +76,7 @@ import {
   type AgentRuntimeConversationOwner,
   type AgentRuntimeConversationOwnerSnapshot,
 } from "./agent-runtime-conversation-owner";
-import type { ConversationRuntime } from "./conversation-runtime";
+import type { ConversationContentSource, ConversationRuntime } from "./conversation-runtime";
 import type { ThreadStageActions, ConversationProviderPresentation } from "./thread-stage-types";
 import type { AgentModelPickerEntry } from "../../components/shared/agent-runtime/agent-model-picker";
 import { sessionFirstSubmissionOwner } from "../conversation-launch/session-first-submission-owner";
@@ -93,6 +93,8 @@ import {
 } from "./agent-runtime-delegated-tasks";
 import { agentRuntimeBackgroundStatus } from "./agent-runtime-composer-status";
 import { useOpenCodeModelSetup } from "../opencode-setup/use-opencode-setup";
+import { useAgentSettingsNavigation } from "@/lib/agent-settings-navigation";
+import type { AgentRuntimeRun } from "./agent-runtime-transcript-projection";
 import {
   agentRuntimeActivityStore,
   useAgentRuntimeConnectionState,
@@ -317,6 +319,17 @@ export function projectAgentRuntimeModel(
   };
 }
 
+// Actions are reconstructed on render; one observed source admits one continuation at a time.
+const failureContinuations = new WeakMap<ConversationContentSource, Promise<void>>();
+
+function latestRuntimeRun(runs: readonly AgentRuntimeRun[]): AgentRuntimeRun | undefined {
+  return runs.reduce<AgentRuntimeRun | undefined>(
+    (previous, run) =>
+      run.status !== "queued" && (!previous || run.ordinal > previous.ordinal) ? run : previous,
+    undefined,
+  );
+}
+
 /** Shared editor controls address the exact Session/Thread/Run observed by the read owner. */
 export function createAgentRuntimeStageActions(input: {
   readonly target: () => AgentRuntimeSessionTarget | null;
@@ -349,6 +362,7 @@ export function createAgentRuntimeStageActions(input: {
   ) => Promise<void>;
   /** The Agent and model the person chose for the chat's next message, when it changes them. */
   readonly nextSelection?: () => AgentRuntimeMessage["modelSelection"] | null;
+  readonly manageProvider?: (instanceId: string) => void;
 }): Partial<ThreadStageActions> {
   const transport = input.transport ?? agentRuntimeRuntime;
   // A choice travels with the message that uses it; the Runtime applies it to that message's Run.
@@ -367,13 +381,15 @@ export function createAgentRuntimeStageActions(input: {
     intent?: "steer",
     submitted?: WorkbenchSubmitPresentation,
     appMessage?: import("../../../shared/codex-untrusted-app-input").CodexUntrustedAppMessage,
+    admission?: { readonly assertCurrent: () => void; readonly messageId: string },
   ) => {
     const target = requireTarget();
-    const messageId = createUuidV7();
+    const messageId = admission?.messageId ?? createUuidV7();
     const presentationTicket = target.threadId
       ? await input.capturePresentation?.({ kind: "thread", threadId: target.threadId }, submitted)
       : undefined;
     const prepared = await input.prepare(text, promptInput, appMessage);
+    admission?.assertCurrent();
     const owner = input.owner();
     const accepted = await transport.message({
       ...target,
@@ -392,6 +408,64 @@ export function createAgentRuntimeStageActions(input: {
     // The Composer clears when this resolves; the sent message is on screen by then.
     await owner?.whenObserved?.(accepted.sequence);
   };
+  const continueAfterFailure = async (turnId: string): Promise<void> => {
+    const target = { ...requireTarget() };
+    const owner = input.owner();
+    const source = owner?.contentSource?.();
+    if (!owner || !source) throw new Error("Open the conversation before continuing");
+    const existing = failureContinuations.get(source);
+    if (existing) return existing;
+    const continueCurrent = async () => {
+      const assertCurrent = () => {
+        const current = requireTarget();
+        if (
+          current.sessionId !== target.sessionId ||
+          current.threadId !== target.threadId ||
+          input.owner() !== owner ||
+          !source.isCurrent()
+        )
+          throw new Error("Conversation source changed");
+        const snapshot = owner.getSnapshot();
+        const runs = snapshot.conversation?.snapshot.projection.runs ?? [];
+        const latest = latestRuntimeRun(runs);
+        if (
+          latest?.id !== turnId ||
+          latest.status !== "failed" ||
+          runs.some((run) =>
+            ["queued", "preparing", "starting", "running", "waiting"].includes(run.status),
+          ) ||
+          (snapshot.view?.requests.length ?? 0) > 0
+        )
+          throw new Error("This turn can no longer be continued");
+      };
+      assertCurrent();
+      await dispatch(
+        "Continue from where you left off.",
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        { assertCurrent, messageId: `continue:${turnId}` },
+      );
+    };
+    const pending = continueCurrent().finally(() => {
+      failureContinuations.delete(source);
+    });
+    failureContinuations.set(source, pending);
+    return pending;
+  };
+  const manageFailedProvider = input.manageProvider
+    ? (turnId: string) => {
+        requireTarget();
+        const owner = input.owner();
+        if (!owner?.contentSource?.()?.isCurrent()) throw new Error("Conversation source changed");
+        const runs = owner.getSnapshot().conversation?.snapshot.projection.runs ?? [];
+        const latest = latestRuntimeRun(runs);
+        if (latest?.id !== turnId || latest.status !== "failed")
+          throw new Error("This turn is no longer the latest failure");
+        input.manageProvider!(latest.modelSelection.instanceId);
+      }
+    : undefined;
   const respond = async (
     requestId: string | number,
     response: Pick<Parameters<AgentRuntimeRendererTransport["respond"]>[0], "decision" | "answers">,
@@ -525,6 +599,8 @@ export function createAgentRuntimeStageActions(input: {
         options?.submittedPresentation,
         options?.untrustedAppMessage,
       ),
+    onContinueAfterFailure: continueAfterFailure,
+    onManageFailedProvider: manageFailedProvider,
     onEditUserTurn: async (request) => {
       const target = exactTarget(request.threadId);
       const owner = input.owner();
@@ -754,6 +830,7 @@ export function useAgentRuntimeConversationAdapter(input: {
     };
   }, [catalogRequest, input.instances]);
   const bindingFor = (instanceId: string) => agentRuntimeBinding(instanceId, input.instances);
+  const openAgentSettings = useAgentSettingsNavigation();
   useEffect(() => {
     agentRuntimeDelegatedTasks.publishLabels(
       new Map(
@@ -1056,6 +1133,18 @@ export function useAgentRuntimeConversationAdapter(input: {
     if (!candidate.binding) throw new Error("The queued message's Agent is unavailable");
     return prepareFor({ ...candidate, binding: candidate.binding })(text, promptInput, appMessage);
   };
+  const latestRun = latestRuntimeRun(projection?.runs ?? []);
+  const failedProvider =
+    latestRun?.status === "failed" ? bindingFor(latestRun.modelSelection.instanceId) : undefined;
+  const manageProvider =
+    openAgentSettings && failedProvider && failedProvider.kind !== "codex"
+      ? (instanceId: string) => {
+          const binding = bindingFor(instanceId);
+          if (!binding || binding.kind === "codex")
+            throw new Error("This Agent's settings are unavailable");
+          openAgentSettings(binding.kind);
+        }
+      : undefined;
   const actions: Partial<ThreadStageActions> = {
     onCaptureSubmissionPresentation: () => readCodexSubmissionPresentation(workbenchOwner),
     ...createAgentRuntimeStageActions({
@@ -1070,6 +1159,7 @@ export function useAgentRuntimeConversationAdapter(input: {
         await input.onOpenThread(result.threadId, { runtimeSessionId: result.sessionId });
       },
       nextSelection: () => nextSelection,
+      manageProvider,
     }),
     onOpenThread: (threadId, context) =>
       input.onOpenThread(threadId, {

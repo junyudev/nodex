@@ -79,6 +79,8 @@ function resolveGlobalActivityState(
   }
   if (!input.isLatestTurn) return { state: { type: "none" }, reason: "not-latest-turn" };
   if (!input.isTurnInProgress) return { state: { type: "none" }, reason: "turn-settled" };
+  if (input.agentItems.some((item) => "entry" in item && item.entry.recovery?.state === "retrying"))
+    return { state: { type: "none" }, reason: "provider-recovery" };
   if (input.isExploring) return { state: { type: "exploring" }, reason: "exploring" };
   if (isIncompleteBlock(input.proposedPlanItem)) {
     return { state: { type: "planning" }, reason: "planning" };
@@ -169,6 +171,7 @@ function resolveThinkingFallback(input: {
   const isActivitySliceClosed = isThreadActivitySliceClosed(mainSlice);
   const hasActivityUnits = parentInput.activityUnits.length > 0;
   const postAssistantThinking =
+    global.reason !== "provider-recovery" &&
     parentInput.isLatestTurn &&
     parentInput.isTurnInProgress &&
     isActivitySliceClosed &&

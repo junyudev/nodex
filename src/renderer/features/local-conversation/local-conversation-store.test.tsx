@@ -1,3 +1,4 @@
+import { agentActivityV2CommandApprovalRequest } from "../../../shared/codex-conversation-state/test-fixtures/agent-activity-v2-request-family-corpus";
 import {
   buildThreadFromConversation,
   buildRevertResponseFromConversation,
@@ -14459,6 +14460,203 @@ describe("local-conversation-store", () => {
     } finally {
       resumeThreadResult = null;
       manager.destroy();
+    }
+  });
+
+  describe("failed-turn continuation", () => {
+    const failedConversation = () =>
+      withCanonicalState({
+        ...buildConversation("thread-1", "project-1"),
+        statusType: "idle",
+        statusActiveFlags: [],
+        turns: [
+          { threadId: "thread-1", turnId: "turn-failed", status: "failed", itemIds: [], items: [] },
+        ],
+      });
+
+    const setup = async (snapshot = failedConversation(), nativeQueuePending = false) => {
+      const { CodexAppServerManager, __resetLocalConversationStoreForTests } =
+        await import("./local-conversation-store");
+      resetLocalConversationStoreTestHarness(__resetLocalConversationStoreForTests);
+      nativeSupportsThreadQueue = nativeQueuePending;
+      if (nativeQueuePending)
+        serverQueueRequestHandler = async (method) => {
+          if (method !== "thread/queue/list")
+            throw new Error(`Unexpected queue mutation: ${method}`);
+          return {
+            data: [
+              {
+                id: "pending",
+                clientUserMessageId: "pending-client",
+                input: [{ type: "text", text: "Queued task", text_elements: [] }],
+              },
+            ],
+            nextCursor: null,
+          };
+        };
+      resumeThreadResult = snapshot;
+      resumeThreadRole = "owner";
+      ownerTurnStartError = null;
+      followerActionError = null;
+      followerActionResult = null;
+      const manager = trackNativeTestManager(new CodexAppServerManager("local"));
+      await manager.requestThreadStreamResume("thread-1");
+      invokeRecords = [];
+      return manager;
+    };
+    const starts = () =>
+      invokeRecords.filter((record) => record.channel === "codex:turn:native:execute");
+
+    test("starts one new continuation message without replaying or rolling back the failed turn", async () => {
+      const manager = await setup();
+      try {
+        await Promise.all([
+          manager.continueFailedTurn("thread-1", "turn-failed"),
+          manager.continueFailedTurn("thread-1", "turn-failed"),
+        ]);
+        expect(starts()).toHaveLength(1);
+        const turns = residentConversationTurns(
+          manager.readConversation("thread-1")?.canonicalState,
+        );
+        expect(turns.map((turn) => turn.status)).toEqual(["failed", "inProgress"]);
+        expect(turns.at(-1)?.params.input).toEqual([
+          { type: "text", text: "Continue from where you left off.", text_elements: [] },
+        ]);
+        expect(
+          recordedNativeRequests().some(
+            (record) =>
+              (record.args[0] as { request?: { method?: string } } | undefined)?.request?.method ===
+              "thread/revert",
+          ),
+        ).toBe(false);
+        await expect(manager.continueFailedTurn("thread-1", "turn-failed")).rejects.toThrow(
+          "latest failed turn",
+        );
+        expect(starts()).toHaveLength(1);
+      } finally {
+        resumeThreadResult = null;
+        manager.destroy();
+      }
+    });
+
+    test("refuses native queued work without clearing or submitting it", async () => {
+      const manager = await setup(failedConversation(), true);
+      try {
+        await expect(manager.continueFailedTurn("thread-1", "turn-failed")).rejects.toThrow(
+          "Resolve queued messages",
+        );
+        expect(starts()).toHaveLength(0);
+        expect(manager.readConversation("thread-1")?.queuedFollowUps.entries).toHaveLength(1);
+      } finally {
+        serverQueueRequestHandler = null;
+        resumeThreadResult = null;
+        manager.destroy();
+      }
+    });
+
+    for (const invalid of ["stale", "completed", "active", "pending"] as const) {
+      test(`rejects ${invalid} continuation before preparing a request`, async () => {
+        const snapshot = failedConversation();
+        const canonical = snapshot.canonicalState!;
+        const manager = await setup({
+          ...snapshot,
+          ...(invalid === "completed"
+            ? { turns: snapshot.turns.map((turn) => ({ ...turn, status: "completed" as const })) }
+            : {}),
+          ...(invalid === "active" ? { statusType: "active" as const } : {}),
+          canonicalState: {
+            ...canonical,
+            ...(invalid === "pending"
+              ? {
+                  requests: [
+                    {
+                      ...agentActivityV2CommandApprovalRequest,
+                      params: {
+                        ...agentActivityV2CommandApprovalRequest.params,
+                        threadId: "thread-1",
+                        turnId: "turn-failed",
+                      },
+                    },
+                  ],
+                }
+              : {}),
+          },
+        });
+        try {
+          await expect(
+            manager.continueFailedTurn(
+              "thread-1",
+              invalid === "stale" ? "older-turn" : "turn-failed",
+            ),
+          ).rejects.toThrow();
+          expect(
+            invokeRecords.some((record) => record.channel === "codex:turn:native:prepare"),
+          ).toBe(false);
+          expect(starts()).toHaveLength(0);
+        } finally {
+          resumeThreadResult = null;
+          manager.destroy();
+        }
+      });
+    }
+
+    for (const ownerAdvanced of [false, true]) {
+      test(`forwards the failed turn identity and rechecks it at the owner: advanced=${ownerAdvanced}`, async () => {
+        const follower = await setup();
+        const { CodexAppServerManager } = await import("./local-conversation-store");
+        dispatchTestThreadStreamStateChanged(follower, {
+          hostId: "local",
+          conversationId: "thread-1",
+          sourceClientId: "continuation-owner",
+          change: {
+            type: "snapshot",
+            revision: 999,
+            conversationState: follower.readConversation("thread-1")!.canonicalState!,
+          },
+        });
+        await flushAsyncWork();
+        const snapshot = failedConversation();
+        resumeThreadResult = ownerAdvanced
+          ? withCanonicalState({
+              ...snapshot,
+              turns: [
+                {
+                  threadId: "thread-1",
+                  turnId: "new-turn",
+                  status: "completed",
+                  itemIds: [],
+                  items: [],
+                },
+              ],
+            })
+          : snapshot;
+        const owner = trackNativeTestManager(new CodexAppServerManager("local"));
+        await owner.requestThreadStreamResume("thread-1");
+        let forwardedTurnId: string | undefined;
+        followerActionHandler = async (input) => {
+          const action = input as {
+            request: import("../../../shared/codex-thread-follower-request").NativeConversationFollowerRequest;
+          };
+          if (action.request.method === "thread-follower-start-turn")
+            forwardedTurnId = action.request.params.turnStart.expectedFailedTurnId;
+          return (await owner.handleThreadFollowerRequest(action.request)).result;
+        };
+        invokeRecords = [];
+        try {
+          if (ownerAdvanced)
+            await expect(follower.continueFailedTurn("thread-1", "turn-failed")).rejects.toThrow(
+              "latest failed turn",
+            );
+          else await follower.continueFailedTurn("thread-1", "turn-failed");
+          expect(forwardedTurnId).toBe("turn-failed");
+          expect(starts()).toHaveLength(ownerAdvanced ? 0 : 1);
+        } finally {
+          followerActionHandler = null;
+          resumeThreadResult = null;
+          owner.destroy();
+          follower.destroy();
+        }
+      });
     }
   });
 

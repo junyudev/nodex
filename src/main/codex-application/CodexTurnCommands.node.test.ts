@@ -183,6 +183,7 @@ const makeHarness = (input: {
     const queueReads: ThreadQueueListParams[] = [];
     const queueLocks = new QueuedMessageLocks();
     const queued = {
+      readMessageState: Effect.succeed({}),
       recordAcceptedSend: (identity: { conversationId: string; messageId: string }) => {
         events.push(`queue-accepted:${identity.messageId}`);
         queueLocks.recordAccepted(identity);
@@ -1534,6 +1535,132 @@ for (const retry of [false, true])
       yield* Scope.close(harness.scope, Exit.void);
     }),
   );
+
+const failedTurnContinuationFixture = () => {
+  const initialState = conversationFixture("thread-a", [turnFixture("failed-turn", "failed")]);
+  const preparedPlan: CodexTurnStartPlan = {
+    ...plan(1),
+    canonicalParams: {
+      ...initialState.turns[0]!.params,
+      permissions: null,
+      sandboxPolicy: { type: "readOnly", networkAccess: false },
+      runtimeWorkspaceRoots: [],
+      attachments: [],
+      commentAttachments: [],
+    },
+  };
+  return { initialState, preparedPlan };
+};
+
+for (const ownerAdvanced of [false, true]) {
+  it.effect(
+    `failed-turn continuation revalidates the Main owner before admission: advanced=${ownerAdvanced}`,
+    () =>
+      Effect.gen(function* () {
+        const harness = yield* makeHarness({
+          ...failedTurnContinuationFixture(),
+          request: () => Effect.succeed(response()),
+        });
+        try {
+          const prepared = yield* harness.commands.prepareNativeStart(
+            "thread-a",
+            "Continue from where you left off.",
+          );
+          if (ownerAdvanced)
+            harness.aggregate.acceptCanonicalState(
+              conversationFixture("thread-a", [turnFixture("newer-turn")]),
+            );
+          const result = yield* harness
+            .dispatchFollower(OWNER_HOST, {
+              method: "thread-follower-start-turn",
+              params: {
+                conversationId: "thread-a",
+                turnStart: { ...prepared, expectedFailedTurnId: "failed-turn" },
+              },
+            })
+            .pipe(Effect.result);
+          assert.strictEqual(result._tag, ownerAdvanced ? "Failure" : "Success");
+          assert.strictEqual(harness.requests(), ownerAdvanced ? 0 : 1);
+          assert.strictEqual(harness.events.includes("admit"), !ownerAdvanced);
+        } finally {
+          yield* Scope.close(harness.scope, Exit.void);
+        }
+      }),
+  );
+}
+
+it.effect("failed-turn continuation refuses pending native queue messages", () =>
+  Effect.gen(function* () {
+    const harness = yield* makeHarness({
+      ...failedTurnContinuationFixture(),
+      appServerVersion: "0.162.0-alpha.17.2",
+      queueList: () =>
+        Effect.succeed({
+          data: [{ id: "queued", clientUserMessageId: "queued-client", input: [] }],
+          nextCursor: null,
+        }),
+      request: () => Effect.succeed(response()),
+    });
+    try {
+      const prepared = yield* harness.commands.prepareNativeStart(
+        "thread-a",
+        "Continue from where you left off.",
+      );
+      const result = yield* harness
+        .dispatchFollower(OWNER_HOST, {
+          method: "thread-follower-start-turn",
+          params: {
+            conversationId: "thread-a",
+            turnStart: { ...prepared, expectedFailedTurnId: "failed-turn" },
+          },
+        })
+        .pipe(Effect.result);
+      assert.strictEqual(result._tag, "Failure");
+      assert.strictEqual(harness.requests(), 0);
+      assert.isFalse(harness.events.includes("admit"));
+    } finally {
+      yield* Scope.close(harness.scope, Exit.void);
+    }
+  }),
+);
+
+it.effect("failed-turn continuation admits only one of two concurrent follower requests", () =>
+  Effect.gen(function* () {
+    const harness = yield* makeHarness({
+      ...failedTurnContinuationFixture(),
+      request: () => Effect.succeed(response()),
+    });
+    try {
+      const first = yield* harness.commands.prepareNativeStart(
+        "thread-a",
+        "Continue from where you left off.",
+      );
+      const second = yield* harness.commands.prepareNativeStart(
+        "thread-a",
+        "Continue from where you left off.",
+      );
+      const outcomes = yield* Effect.all(
+        [first, second].map((prepared) =>
+          harness
+            .dispatchFollower(OWNER_HOST, {
+              method: "thread-follower-start-turn",
+              params: {
+                conversationId: "thread-a",
+                turnStart: { ...prepared, expectedFailedTurnId: "failed-turn" },
+              },
+            })
+            .pipe(Effect.result),
+        ),
+        { concurrency: "unbounded" },
+      );
+      assert.deepEqual(outcomes.map((result) => result._tag).sort(), ["Failure", "Success"]);
+      assert.strictEqual(harness.requests(), 1);
+      assert.strictEqual(harness.events.filter((event) => event === "admit").length, 1);
+    } finally {
+      yield* Scope.close(harness.scope, Exit.void);
+    }
+  }),
+);
 
 for (const change of ["changeOwner", "retire", "reconnect"] as const) {
   it.effect(`rejects a consumed preparation after ${change} during title scheduling`, () =>

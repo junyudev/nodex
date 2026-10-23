@@ -69,7 +69,7 @@ export function projectCodexItemViewToTranscriptEntry(
     steeringTargetTurnStartedAtMs: item.steeringTargetTurnStartedAtMs,
     acceptedUserMessageItemId: item.acceptedUserMessageItemId,
     additionalDetails: item.additionalDetails,
-    willRetry: item.willRetry,
+    recovery: item.recovery,
     asyncQuestion: item.asyncQuestion,
     questionReplies: item.questionReplies,
     userInputQuestions: item.userInputQuestions,

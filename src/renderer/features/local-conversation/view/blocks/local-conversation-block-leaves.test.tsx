@@ -29,14 +29,13 @@ import {
   ThreadGeneratedImageGalleryBlock,
   ThreadMcpServerElicitationBlock,
   ThreadPlanCardBlock,
-  ThreadStreamErrorBlock,
-  ThreadSystemErrorBlock,
   ThreadTurnDiffBlock,
   ThreadWorktreeInitBlock,
   UserMessageBubble,
   buildThreadWorktreeInitActivities,
 } from "./local-conversation-block-leaves";
 import { ThreadBlockRenderer } from "./local-conversation-block-renderer";
+import { ConversationRecoveryActionsProvider } from "../conversation-recovery-actions";
 import { HookFeedbackSettingsNavigationProvider } from "../hook-feedback-settings-navigation";
 import type {
   ThreadAgentActivityGroupBlockModel,
@@ -1974,96 +1973,100 @@ describe("ThreadBlockRenderer subagent activity block", () => {
   });
 });
 
-describe("ThreadStreamErrorBlock", () => {
-  beforeEach(() => {
-    installElementScrollHeight(96);
-    installMeasuredResizeObserver({ blockSize: 96, inlineSize: 320 });
+describe("conversation recovery leaves", () => {
+  function errorBlock(state: "retrying" | "recovered" | "failed"): ThreadTranscriptBlockModel {
+    return {
+      id: "error:turn-1",
+      turnId: "turn-1",
+      createdAt: 1,
+      updatedAt: 1,
+      searchableText: "Provider disconnected",
+      type: state === "failed" ? "systemError" : "streamError",
+      status: state === "retrying" ? "inProgress" : state === "failed" ? "failed" : "completed",
+      entry: {
+        threadId: "thread-1",
+        turnId: "turn-1",
+        itemId: "error:turn-1",
+        type: "error",
+        kind: "systemEvent",
+        markdownText: "Provider disconnected",
+        additionalDetails: "Request ID: request-1",
+        recovery: {
+          state,
+          reason: "connection",
+          attempt: 2,
+          maxAttempts: 5,
+          retryAt: null,
+          updatedAt: 1,
+        },
+        createdAt: 1,
+        updatedAt: 1,
+      },
+    };
+  }
+
+  test("updates the mounted retry row on recovery and keeps expanded diagnostics available", async () => {
+    const view = render(
+      <TooltipProvider>
+        <ThreadBlockRenderer block={errorBlock("retrying")} isLatestTurn isStreamingTurn />
+      </TooltipProvider>,
+    );
+    const disclosure = await view.findByRole("button", { name: "Reconnecting · 2/5" });
+    expect(view.queryByRole("region", { name: "Recovery diagnostics" })).toBeNull();
+    await act(async () => {
+      fireEvent.click(disclosure);
+    });
+    const diagnostics = view.getByRole("region", { name: "Recovery diagnostics" });
+    expect(diagnostics.textContent).toContain("Request ID: request-1");
+    view.rerender(
+      <TooltipProvider>
+        <ThreadBlockRenderer block={errorBlock("recovered")} isLatestTurn isStreamingTurn />
+      </TooltipProvider>,
+    );
+    expect(
+      view.getByRole("button", { name: "Connection restored" }).getAttribute("aria-expanded"),
+    ).toBe("true");
+    expect(view.queryByRole("button", { name: /Reconnecting/ })).toBeNull();
+    view.rerender(
+      <TooltipProvider>
+        <ThreadBlockRenderer block={errorBlock("failed")} isLatestTurn isStreamingTurn={false} />
+      </TooltipProvider>,
+    );
+    expect(
+      view
+        .getByRole("button", { name: "Connection could not be restored" })
+        .getAttribute("aria-expanded"),
+    ).toBe("true");
+    expect(view.getByRole("region", { name: "Recovery diagnostics" }).textContent).toContain(
+      "Request ID: request-1",
+    );
   });
 
-  test("renders a Codex-style reconnect row inside the thread body and expands details on demand", async () => {
-    const { container, getByText } = render(
-      <ThreadStreamErrorBlock
-        block={{
-          id: "error:turn-1",
-          turnId: "turn-1",
-          createdAt: 1,
-          updatedAt: 1,
-          searchableText: "Reconnecting... 2/5",
-          type: "streamError",
-          status: "inProgress",
-          entry: {
-            threadId: "thread-1",
-            turnId: "turn-1",
-            itemId: "error:turn-1",
-            entryId: "error:turn-1",
-            type: "error",
-            kind: "systemEvent",
-            semanticKind: "streamError",
-            status: "inProgress",
-            markdownText: "Reconnecting... 2/5",
-            additionalDetails: "Network error: connection dropped while streaming.",
-            willRetry: true,
-            createdAt: 1,
-            updatedAt: 1,
-          },
-        }}
-        isLatestTurn
-        isStreamingTurn
-      />,
+  test("continues the exact failed turn through its conversation action owner", async () => {
+    const continueAfterFailure = vi.fn(async (_turnId: string) => {});
+    const view = render(
+      <TooltipProvider>
+        <ConversationRecoveryActionsProvider onContinueAfterFailure={continueAfterFailure}>
+          <ThreadBlockRenderer block={errorBlock("failed")} isLatestTurn isStreamingTurn={false} />
+        </ConversationRecoveryActionsProvider>
+      </TooltipProvider>,
     );
-
-    getByText("Reconnecting... 2/5");
-    expect(Boolean(container.querySelector(".loading-shimmer-pure-text"))).toBe(false);
-    expect(
-      Boolean(
-        container.textContent?.includes("Network error: connection dropped while streaming."),
-      ),
-    ).toBe(false);
-
-    fireEvent.click(getByText("Reconnecting... 2/5"));
-    await settleAsyncRender();
-
-    expect(
-      Boolean(
-        container.textContent?.includes("Network error: connection dropped while streaming."),
-      ),
-    ).toBe(true);
-  });
-});
-
-describe("ThreadSystemErrorBlock", () => {
-  test("renders the Codex-style terminal system error row without generic banner chrome", () => {
-    const { container, getByText } = render(
-      <ThreadSystemErrorBlock
-        block={{
-          id: "error:turn-2",
-          turnId: "turn-2",
-          createdAt: 1,
-          updatedAt: 1,
-          searchableText: "Failed to reconnect to the stream.",
-          type: "systemError",
-          status: "failed",
-          entry: {
-            threadId: "thread-1",
-            turnId: "turn-2",
-            itemId: "error:turn-2",
-            entryId: "error:turn-2",
-            type: "error",
-            kind: "systemEvent",
-            semanticKind: "systemError",
-            status: "failed",
-            markdownText: "Failed to reconnect to the stream.",
-            createdAt: 1,
-            updatedAt: 1,
-          },
-        }}
-        isLatestTurn={false}
-        isStreamingTurn={false}
-      />,
+    await act(async () => {
+      fireEvent.click(view.getByRole("button", { name: "Continue" }));
+    });
+    expect(continueAfterFailure).toHaveBeenCalledExactlyOnceWith("turn-1");
+    view.rerender(
+      <TooltipProvider>
+        <ConversationRecoveryActionsProvider onContinueAfterFailure={continueAfterFailure}>
+          <ThreadBlockRenderer
+            block={errorBlock("failed")}
+            isLatestTurn={false}
+            isStreamingTurn={false}
+          />
+        </ConversationRecoveryActionsProvider>
+      </TooltipProvider>,
     );
-
-    getByText("Failed to reconnect to the stream.");
-    expect(Boolean(container.querySelector(".uppercase"))).toBe(false);
+    expect(view.queryByRole("button", { name: "Continue" })).toBeNull();
   });
 });
 

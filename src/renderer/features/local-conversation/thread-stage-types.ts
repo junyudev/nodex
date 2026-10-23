@@ -466,6 +466,10 @@ export interface ThreadStageActions {
   onSteerPrompt: (input: Omit<CodexSteerTurnInput, "threadId">) => Promise<void>;
   onInterruptTurn: (turnId?: string) => Promise<void>;
   onResumeInterruptedTurn?: () => Promise<void>;
+  /** Continues only the exact latest failed Turn, without replaying its original request. */
+  onContinueAfterFailure?: (turnId: string) => Promise<void>;
+  /** Opens settings for the Agent that owns the exact latest failed Turn. */
+  onManageFailedProvider?: (turnId: string) => void;
   onRespondUserInput: (
     requestId: CodexProtocolRequestId,
     answers: Record<string, string[]>,
@@ -939,6 +943,7 @@ export type ThreadGlobalActivityReason =
   | "assistant-visible-output"
   | "active-web-search"
   | "active-dynamic-summary"
+  | "provider-recovery"
   | "assistant-in-progress"
   | "active-tool"
   | "between-activities";

@@ -24,6 +24,10 @@ import {
 import { projectAgentRuntimeSubagentDisplay } from "../../../shared/agent-runtime-subagent-display";
 import { agentMessageDisplayText } from "../../../shared/agent-prompt";
 import type { CodexTranscriptTurnDetails } from "../../../shared/codex-transcript-projection";
+import {
+  conversationRecoveryReason,
+  type ConversationRecovery,
+} from "../../../shared/conversation-recovery";
 
 export type AgentRuntimeThread = AgentSnapshot["projection"]["thread"];
 export type AgentRuntimeRun = AgentSnapshot["projection"]["runs"][number];
@@ -397,6 +401,56 @@ function notificationNotice(
   }
 }
 
+function runtimeRecoveryState(
+  item: Extract<AgentTurnItem, { type: "error" }>,
+): ConversationRecovery["state"] {
+  if (item.status === "cancelled" || item.status === "interrupted") return "stopped";
+  if (!item.retry) return "failed";
+  if (isLive(item.status)) return "retrying";
+  if (item.status === "completed" || item.status === "idle") return "recovered";
+  return "failed";
+}
+
+function runtimeRecoveryReason(
+  failure: Extract<AgentTurnItem, { type: "error" }>["failure"],
+): ConversationRecovery["reason"] {
+  // An unclassified provider code is not evidence of a connection failure.
+  if (failure.code !== null) return conversationRecoveryReason(failure.code);
+  if (failure.class === "transport_error") return "connection";
+  if (failure.class === "usage_limit") return "usage_limit";
+  return "unknown";
+}
+
+/** Retry metadata survives resolution; the item's current status owns recovery. */
+function projectRuntimeRecovery(
+  item: Extract<AgentTurnItem, { type: "error" }>,
+): ConversationRecovery {
+  const state = runtimeRecoveryState(item);
+  const updatedAt = agentRuntimeTime(item.updatedAt);
+  const delay = item.retry?.retryDelayMs;
+  return {
+    state,
+    reason: runtimeRecoveryReason(item.failure),
+    attempt: item.retry?.attempt ?? null,
+    maxAttempts: item.retry?.maxAttempts ?? null,
+    retryAt: state === "retrying" && updatedAt !== null && delay != null ? updatedAt + delay : null,
+    updatedAt,
+  };
+}
+
+function runtimeFailureDetails(
+  failure: Extract<AgentTurnItem, { type: "error" }>["failure"],
+): string | null {
+  const resetAt = agentRuntimeTime(failure.resetAt);
+  const details = [
+    failure.code === null ? null : `Code: ${failure.code}`,
+    resetAt === null ? null : `Usage resets: ${new Date(resetAt).toUTCString()}`,
+  ]
+    .filter((line) => line !== null)
+    .join("\n");
+  return details || null;
+}
+
 /**
  * A presentation conversion only. Provider requests and execution remain engine-owned.
  * Hidden execution bookkeeping projects to null and never occupies a transcript slot.
@@ -588,9 +642,9 @@ export function projectAgentRuntimeItem(item: AgentTurnItem, cwd = ""): CodexCan
         type: "error",
         id,
         message: item.failure.message,
-        willRetry: item.retry !== undefined,
+        recovery: projectRuntimeRecovery(item),
         errorInfo: null,
-        additionalDetails: null,
+        additionalDetails: runtimeFailureDetails(item.failure),
       };
     case "notification":
       return notice(item, item.summary, notificationNotice(item.source, item.outcome));

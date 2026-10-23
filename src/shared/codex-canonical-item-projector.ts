@@ -1067,16 +1067,23 @@ function projectCanonicalItemViews(
         },
       ];
     case "error":
-      if (!item.willRetry && shouldHidePolicyError(item)) return [];
+      if (item.recovery.state === "failed" && shouldHidePolicyError(item)) return [];
       return [
         {
           ...buildBaseView(item, context),
           normalizedKind: "systemEvent",
-          semanticKind: item.willRetry ? "streamError" : "systemError",
-          status: item.willRetry ? "inProgress" : "failed",
-          markdownText: projectErrorMessage(item.message, item.willRetry),
+          semanticKind: item.recovery.state === "failed" ? "systemError" : "streamError",
+          status:
+            item.recovery.state === "retrying"
+              ? "inProgress"
+              : item.recovery.state === "recovered"
+                ? "completed"
+                : item.recovery.state === "stopped"
+                  ? "interrupted"
+                  : "failed",
+          markdownText: projectErrorMessage(item.message, item.recovery.state === "retrying"),
           additionalDetails: item.additionalDetails,
-          willRetry: item.willRetry,
+          recovery: item.recovery,
         },
       ];
     case "automaticApprovalReview": {

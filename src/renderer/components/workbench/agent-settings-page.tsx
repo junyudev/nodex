@@ -11,13 +11,13 @@ import type { SettingsSectionPageProps } from "./workbench-settings-page-registr
 export function AgentSettingsPage({ open }: SettingsSectionPageProps) {
   return (
     <SettingsPageSurface title="Agents">
-      <SectionBlock title="OpenCode">
+      <SectionBlock id="opencode" title="OpenCode">
         <OpenCodeAgentSettingsControl open={open} />
       </SectionBlock>
-      <SectionBlock title="Claude Code">
+      <SectionBlock id="claude" title="Claude Code">
         <ClaudeAgentSettingsControl open={open} />
       </SectionBlock>
-      <SectionBlock title="ACP">
+      <SectionBlock id="acp" title="ACP">
         <AcpAgentSettingsControl open={open} />
       </SectionBlock>
       <SectionBlock title="Codex">

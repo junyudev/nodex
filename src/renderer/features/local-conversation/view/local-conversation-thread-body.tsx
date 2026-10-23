@@ -16,6 +16,7 @@ import {
   LocalConversationThreadScrollLayout,
   useLocalConversationThreadScrollController,
 } from "./local-conversation-thread-scroll-controller";
+import { ConversationRecoveryActionsProvider } from "./conversation-recovery-actions";
 import { HookFeedbackSettingsNavigationProvider } from "./hook-feedback-settings-navigation";
 import { ConversationImageAssetProvider } from "./conversation-image-asset-context";
 import { ConversationToolOutputProvider } from "./conversation-tool-output-context";
@@ -249,22 +250,27 @@ function LocalConversationThreadBodyScopedRoot(props: LocalConversationThreadBod
               readToolOutput={props.readToolOutput}
               conversationId={model.threadId}
             >
-              <EnsureLocalConversationThreadScrollController>
-                {model.threadId ? (
-                  <AttachedLocalConversationThreadBody
-                    key={model.threadId}
-                    {...props}
-                    conversationId={model.threadId}
-                    resolveHistoryImage={props.resolveHistoryImage}
-                  />
-                ) : (
-                  <LocalConversationThreadBodyLayout
-                    {...props}
-                    initialRestoreSnapshot={EMPTY_LOCAL_CONVERSATION_THREAD_RESTORE_SNAPSHOT}
-                    onRestoreSnapshotChange={ignoreRestoreSnapshotUpdate}
-                  />
-                )}
-              </EnsureLocalConversationThreadScrollController>
+              <ConversationRecoveryActionsProvider
+                onContinueAfterFailure={props.actions.onContinueAfterFailure}
+                onManageFailedProvider={props.actions.onManageFailedProvider}
+              >
+                <EnsureLocalConversationThreadScrollController>
+                  {model.threadId ? (
+                    <AttachedLocalConversationThreadBody
+                      key={model.threadId}
+                      {...props}
+                      conversationId={model.threadId}
+                      resolveHistoryImage={props.resolveHistoryImage}
+                    />
+                  ) : (
+                    <LocalConversationThreadBodyLayout
+                      {...props}
+                      initialRestoreSnapshot={EMPTY_LOCAL_CONVERSATION_THREAD_RESTORE_SNAPSHOT}
+                      onRestoreSnapshotChange={ignoreRestoreSnapshotUpdate}
+                    />
+                  )}
+                </EnsureLocalConversationThreadScrollController>
+              </ConversationRecoveryActionsProvider>
             </ConversationToolOutputProvider>
           </ConversationImageAssetProvider>
         </HookFeedbackSettingsNavigationProvider>

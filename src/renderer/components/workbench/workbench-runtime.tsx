@@ -59,7 +59,15 @@ import {
   type ContentSearchOpenRequest,
 } from "@/features/content-search/content-search-context";
 import { ContentSearchSurface } from "@/features/content-search/content-search-surface";
-import { buildSettingsPath, resolveBrowserSettingsDestination } from "./workbench-settings-routes";
+import {
+  buildSettingsAnchorPath,
+  buildSettingsPath,
+  resolveBrowserSettingsDestination,
+} from "./workbench-settings-routes";
+import {
+  AgentSettingsNavigationProvider,
+  type AgentSettingsKind,
+} from "@/lib/agent-settings-navigation";
 import type { BrowserSettingsDestination } from "./workbench-settings-routes";
 import {
   buildCodexHooksSettingsPath,
@@ -1718,15 +1726,22 @@ export function WorkbenchRuntime({
   );
 
   const openSettingsAt = useCallback(
-    (sectionId: Parameters<typeof buildSettingsPath>[0]) => {
+    (sectionId: Parameters<typeof buildSettingsPath>[0], anchor?: string) => {
       closePendingWorktreeRoute();
       setAutomationsPath(null);
       setReopenStableWorktreeAfterSettingsId(null);
       setReopenPendingWorktreeAfterSettingsClientThreadId(null);
       setLocalEnvironmentSettingsInitial(null);
-      setSettingsPath(buildSettingsPath(sectionId));
+      setSettingsPath(
+        anchor ? buildSettingsAnchorPath(sectionId, anchor) : buildSettingsPath(sectionId),
+      );
     },
     [closePendingWorktreeRoute, setAutomationsPath, setSettingsPath],
+  );
+
+  const openAgentSettings = useCallback(
+    (kind: AgentSettingsKind) => openSettingsAt("agent", kind),
+    [openSettingsAt],
   );
 
   const openKeyboardShortcutsSettings = useCallback(() => {
@@ -4698,7 +4713,7 @@ export function WorkbenchRuntime({
     sidebarArchivePendingKeys,
   };
 
-  return (
+  const workbench = (
     <PageTitleProjectionProvider currentLibraryId={currentLibraryId} store={pageTitleStore}>
       {currentLibraryId ? <ContentRecoveryObserver libraryId={currentLibraryId} /> : null}
       <span role="status" aria-live="polite" className="sr-only">
@@ -5001,5 +5016,11 @@ export function WorkbenchRuntime({
         </NodexTooltipProvider>
       </HeaderActionProvider>
     </PageTitleProjectionProvider>
+  );
+
+  return (
+    <AgentSettingsNavigationProvider openAgentSettings={openAgentSettings}>
+      {workbench}
+    </AgentSettingsNavigationProvider>
   );
 }

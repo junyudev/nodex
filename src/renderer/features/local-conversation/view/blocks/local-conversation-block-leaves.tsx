@@ -67,7 +67,8 @@ import {
   CODEX_THREAD_DIVIDER_ENTER_ANIMATE,
   CODEX_THREAD_DIVIDER_ENTER_INITIAL,
 } from "../shared/thread-motion";
-import { useMeasuredElementHeight } from "../shared/use-measured-element-height";
+import { ConversationRecoverySurface } from "../shared/conversation-recovery-surface";
+import { useConversationRecoveryActions } from "../conversation-recovery-actions";
 import { CodexShimmerProvider, CodexShimmerText } from "../shared/codex-shimmer-text";
 import { AnsweredUserInputBlock } from "../composer/request-cards/answered-user-input-block";
 import { UserAttachmentStrip } from "../shared/user-message-attachments";
@@ -338,10 +339,8 @@ function renderCollapsedActivityEntry({
         {...sharedProps}
       />
     );
-  if (entry.type === "streamError")
-    return <ThreadStreamErrorBlock block={entry as ThreadTranscriptBlockModel} {...sharedProps} />;
-  if (entry.type === "systemError")
-    return <ThreadSystemErrorBlock block={entry as ThreadTranscriptBlockModel} {...sharedProps} />;
+  if (entry.type === "streamError" || entry.type === "systemError")
+    return <ThreadRecoveryBlock block={entry as ThreadTranscriptBlockModel} {...sharedProps} />;
   if (entry.type === "contextCompaction")
     return (
       <ThreadContextCompactionBlock block={entry as ThreadTranscriptBlockModel} {...sharedProps} />
@@ -1503,74 +1502,27 @@ export function ThreadContextCompactionBlock({ block }: ThreadLeafBlockProps) {
   return <ContextCompactionSurface compaction={compaction} />;
 }
 
-export function ThreadStreamErrorBlock({ block }: ThreadLeafBlockProps) {
-  if (block.type !== "streamError") return null;
-
-  return <ThreadStreamErrorContent block={block} />;
-}
-
-function ThreadStreamErrorContent({ block }: { block: ThreadTranscriptBlockModel }) {
-  const [isExpanded, setIsExpanded] = useState(false);
-  const details = block.entry.additionalDetails?.trim() ?? "";
-  const hasDetails = details.length > 0;
-  const { elementHeightPx, elementRef } = useMeasuredElementHeight();
-  const isOpen = hasDetails && isExpanded;
-
+export function ThreadRecoveryBlock({
+  block,
+  isLatestTurn,
+  isStreamingTurn,
+}: ThreadLeafBlockProps) {
+  const { onContinueAfterFailure, onManageFailedProvider, continuationState } =
+    useConversationRecoveryActions();
+  const turnId = block.turnId;
   return (
-    <div className="flex min-w-0 flex-col">
-      <div
-        className={cn(
-          "group flex min-w-0 items-start gap-1",
-          hasDetails ? "cursor-interaction" : "cursor-default",
-        )}
-        onClick={() => {
-          if (!hasDetails) return;
-          setIsExpanded((current) => !current);
-        }}
-      >
-        <div className="text-size-chat min-w-0 whitespace-pre-wrap text-token-description-foreground/80">
-          {block.entry.markdownText ?? "Reconnecting..."}
-        </div>
-        {hasDetails ? (
-          <ChevronRightIcon
-            className={cn(
-              "text-token-input-placeholder-foreground icon-2xs mt-0.5 shrink-0 transition-all duration-300 opacity-0 group-hover:opacity-100",
-              isOpen && "rotate-90 opacity-100",
-            )}
-          />
-        ) : null}
-      </div>
-      <motion.div
-        initial={false}
-        animate={{
-          height: isOpen ? elementHeightPx : 0,
-          opacity: isOpen ? 1 : 0,
-        }}
-        transition={CODEX_THREAD_ACCORDION_TRANSITION}
-        className={isOpen ? "overflow-visible" : "overflow-hidden"}
-        style={{ pointerEvents: isOpen ? "auto" : "none" }}
-      >
-        <div ref={elementRef}>
-          {isOpen ? (
-            <div className="mt-1 flex flex-col gap-1">
-              <div className="text-size-chat whitespace-pre-wrap text-token-description-foreground/80">
-                {details}
-              </div>
-            </div>
-          ) : null}
-        </div>
-      </motion.div>
-    </div>
-  );
-}
-
-export function ThreadSystemErrorBlock({ block }: ThreadLeafBlockProps) {
-  if (block.type !== "systemError") return null;
-
-  return (
-    <div className="text-size-chat flex w-full wrap-anywhere text-token-description-foreground/80">
-      {block.entry.markdownText ?? "Thread hit an error"}
-    </div>
+    <ConversationRecoverySurface
+      entry={block.entry}
+      isLatestTurn={isLatestTurn}
+      isStreamingTurn={isStreamingTurn}
+      onManageProvider={
+        onManageFailedProvider && turnId ? () => onManageFailedProvider(turnId) : undefined
+      }
+      continuationState={continuationState?.turnId === turnId ? continuationState : undefined}
+      onContinue={
+        onContinueAfterFailure && turnId ? () => onContinueAfterFailure(turnId) : undefined
+      }
+    />
   );
 }
 

@@ -9,6 +9,7 @@ import type { Thread, ThreadItem } from "@nodex/codex-app-server-protocol/v2";
 import { createCodexQueuedFollowUp } from "../codex-queued-follow-up-state";
 import {
   createCodexCanonicalConversationState,
+  mergeCodexCanonicalTurnState,
   type CodexCanonicalConversationState,
   type CodexCanonicalSteeringUserMessageItem,
   type CodexCanonicalTurnParams,
@@ -193,6 +194,210 @@ function reduceLifecycle(
 ): CodexCanonicalConversationState {
   return reduceCodexConversationEvent(state, lifecycleEvent(notification), context);
 }
+
+describe("provider recovery lifecycle", () => {
+  function session(items: ThreadItem[] = []) {
+    let state = buildState(items);
+    let sequence = 0;
+    const send = (notification: ServerNotification) => {
+      state = reduceCodexConversationEvent(
+        state,
+        { type: "notification", notification },
+        { now: () => 100 + sequence, createId: () => `notice-${++sequence}` },
+      );
+    };
+    const fail = (message = "Reconnecting 1/5", willRetry = true) =>
+      send({
+        method: "error",
+        params: {
+          threadId: THREAD_ID,
+          turnId: TURN_ID,
+          error: {
+            message,
+            codexErrorInfo: { responseStreamDisconnected: { httpStatusCode: null } },
+            additionalDetails: "The upstream response stream disconnected.",
+            misalignment: null,
+          },
+          willRetry,
+        },
+      });
+    return {
+      send,
+      fail,
+      state: () => state,
+      errors: () => state.turns[0]!.items.filter((item) => item.type === "error"),
+    };
+  }
+
+  const message: Extract<ThreadItem, { type: "agentMessage" }> = {
+    type: "agentMessage",
+    id: "answer",
+    text: "",
+    phase: "commentary",
+    memoryCitation: null,
+    delivery: null,
+    questions: null,
+  };
+
+  test("updates one pending retry and opens another occurrence only after recovery", () => {
+    const f = session([message]);
+    f.fail();
+    const id = f.errors()[0]!.id;
+    f.fail("Reconnecting 2/5");
+    expect(f.errors()).toHaveLength(1);
+    expect(f.errors()[0]).toMatchObject({
+      id,
+      message: "Reconnecting 2/5",
+      recovery: { state: "retrying", reason: "connection", attempt: 2, maxAttempts: 5 },
+    });
+    f.fail("Waiting for the provider");
+    f.fail("Waiting for the provider");
+    expect(f.errors()[0]!.recovery).toMatchObject({ attempt: 2, maxAttempts: 5 });
+    f.send({
+      method: "item/agentMessage/delta",
+      params: { threadId: THREAD_ID, turnId: TURN_ID, itemId: message.id, delta: "Resumed" },
+    });
+    expect(f.errors()[0]!.recovery.state).toBe("recovered");
+    f.fail("Waiting for the provider");
+    expect(f.errors()).toHaveLength(2);
+    expect(f.errors()[1]!.id).not.toBe(id);
+    expect(f.errors()[1]!.recovery).toMatchObject({
+      state: "retrying",
+      attempt: null,
+      maxAttempts: null,
+    });
+    f.fail("Waiting for the provider");
+    expect(f.errors()[1]!.recovery.attempt).toBeNull();
+  });
+
+  test("new model tools recover the stream while local completion and empty text do not", () => {
+    const command = buildCommand("running-command");
+    const f = session([command, message]);
+    f.fail();
+    f.send({
+      method: "item/started",
+      params: { threadId: THREAD_ID, turnId: TURN_ID, item: command, startedAtMs: 100 },
+    });
+    expect(f.errors()[0]!.recovery.state).toBe("retrying");
+    f.send({
+      method: "item/completed",
+      params: {
+        threadId: THREAD_ID,
+        turnId: TURN_ID,
+        item: buildCommand(command.id, "completed", 10),
+        completedAtMs: 110,
+      },
+    });
+    f.send({
+      method: "item/agentMessage/delta",
+      params: { threadId: THREAD_ID, turnId: TURN_ID, itemId: message.id, delta: "" },
+    });
+    expect(f.errors()[0]!.recovery.state).toBe("retrying");
+    f.send({
+      method: "item/started",
+      params: {
+        threadId: THREAD_ID,
+        turnId: TURN_ID,
+        item: { ...buildCommand("user-command"), source: "userShell" },
+        startedAtMs: 120,
+      },
+    });
+    expect(f.errors()[0]!.recovery.state).toBe("retrying");
+    f.send({
+      method: "item/started",
+      params: {
+        threadId: THREAD_ID,
+        turnId: TURN_ID,
+        item: buildCommand("next-model-command"),
+        startedAtMs: 130,
+      },
+    });
+    expect(f.errors()[0]!.recovery.state).toBe("recovered");
+  });
+
+  test.each(["completed", "interrupted", "failed"] as const)(
+    "settles an unresolved retry on a %s turn without duplicating the row",
+    (status) => {
+      const f = session();
+      f.fail("Reconnecting 3/5");
+      const id = f.errors()[0]!.id;
+      f.send({
+        method: "turn/completed",
+        params: {
+          threadId: THREAD_ID,
+          turn: {
+            id: TURN_ID,
+            rootTurnId: null,
+            status,
+            itemsView: "full",
+            items: [],
+            error:
+              status === "failed"
+                ? {
+                    message: "The provider could not resume.",
+                    codexErrorInfo: "serverOverloaded",
+                    additionalDetails: "Please try again shortly.",
+                    misalignment: null,
+                  }
+                : null,
+            startedAt: 1,
+            completedAt: 2,
+            durationMs: 1_000,
+          },
+        },
+      });
+      expect(f.errors()).toHaveLength(1);
+      expect(f.errors()[0]).toMatchObject({
+        id,
+        recovery: {
+          state:
+            status === "completed" ? "recovered" : status === "interrupted" ? "stopped" : "failed",
+          attempt: 3,
+          maxAttempts: 5,
+          retryAt: null,
+        },
+      });
+      if (status === "failed")
+        expect(f.errors()[0]).toMatchObject({
+          message: "The provider could not resume.",
+          additionalDetails: "Please try again shortly.",
+          recovery: { reason: "overloaded" },
+        });
+      f.fail("Reconnecting 4/5");
+      expect(f.errors()).toHaveLength(1);
+      expect(f.errors()[0]!.recovery.state).not.toBe("retrying");
+      expect(f.state().turns[0]!.status).toBe(status);
+    },
+  );
+
+  test("a non-retryable error terminates the active retry with its original progress", () => {
+    const f = session();
+    f.fail("Reconnecting 5/5");
+    const id = f.errors()[0]!.id;
+    f.fail("No more attempts are available.", false);
+    expect(f.errors()).toHaveLength(1);
+    expect(f.errors()[0]).toMatchObject({
+      id,
+      message: "No more attempts are available.",
+      recovery: { state: "failed", attempt: 5, maxAttempts: 5 },
+    });
+  });
+
+  test("a terminal reconnect snapshot settles a retry whose completion notification was missed", () => {
+    const f = session();
+    f.fail();
+    const current = f.state().turns[0]!;
+    const merged = mergeCodexCanonicalTurnState(current, {
+      ...current,
+      items: [],
+      status: "completed",
+      completedAtMs: 250,
+    });
+    const error = merged.items.find((item) => item.type === "error");
+    expect(error?.recovery).toMatchObject({ state: "recovered", updatedAt: 250 });
+    expect(f.errors()[0]!.recovery.state).toBe("retrying");
+  });
+});
 
 test("external environment membership is thread-scoped, idempotent, and excludes the managed runtime", () => {
   const update = (

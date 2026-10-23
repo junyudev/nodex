@@ -1,4 +1,5 @@
 import { castDraft, type Draft } from "immer";
+import { codexRecoveryFromError } from "./codex-provider-recovery";
 import type { TurnStartParams } from "@nodex/codex-app-server-protocol/v2";
 import type { TurnEnvironmentParams } from "@nodex/codex-app-server-protocol/v2/TurnEnvironmentParams";
 import type {
@@ -94,7 +95,12 @@ export function mutateCodexTurnStartRejection(
         id: input.failureItemId,
         type: "error",
         message,
-        willRetry: false,
+        recovery: codexRecoveryFromError({
+          message,
+          errorInfo: null,
+          willRetry: false,
+          updatedAt: null,
+        }),
         errorInfo: null,
         additionalDetails: null,
       });

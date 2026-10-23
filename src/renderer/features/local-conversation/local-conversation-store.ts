@@ -1,3 +1,4 @@
+import { assertCodexFailedTurnContinuation } from "../../../shared/codex-conversation-state/codex-failed-turn-continuation";
 import { useConversationRuntimeOverride, type ConversationRuntime } from "./conversation-runtime";
 import {
   useConversationRuntimeValue,
@@ -2131,6 +2132,10 @@ export class CodexAppServerManager {
   private readonly conversationRemovedCallbacks = new Set<(threadId: string) => void>();
   private readonly attachmentStateByThreadId = new Map<string, LocalConversationAttachmentState>();
   private readonly interruptedTurnResumesInFlightByThreadId = new Map<string, Promise<unknown>>();
+  private readonly failedTurnContinuationsInFlightByThreadId = new Map<
+    string,
+    { readonly turnId: string; readonly operation: Promise<unknown> }
+  >();
   private readonly ownerHistoryOperationsByThread = new Map<string, Promise<void>>();
   private readonly ownerHistoryReadBarriers = new Set<string>();
   private readonly historyPageLoadsInFlightByTarget = new Map<
@@ -3084,6 +3089,7 @@ export class CodexAppServerManager {
         canonicalParams: prepared.params,
         execution: prepared,
         turnContext: turnStart.context,
+        expectedFailedTurnId: turnStart.expectedFailedTurnId,
         request: (submission) =>
           this.executePreparedNativeTurn(turnStart, prepared.request, submission),
       });
@@ -3539,6 +3545,7 @@ export class CodexAppServerManager {
     this.attachmentStateByThreadId.clear();
     this.attachmentCallbacks.clear();
     this.interruptedTurnResumesInFlightByThreadId.clear();
+    this.failedTurnContinuationsInFlightByThreadId.clear();
     this.ownerHiddenLifecycleItemTypesByConversationId.clear();
 
     this.terminalInputBuffers.clear();
@@ -5646,6 +5653,57 @@ export class CodexAppServerManager {
     }
   }
 
+  async continueFailedTurn(
+    threadId: string,
+    expectedTurnId: string,
+    opts?: CodexTurnStartOptions,
+    presentationTicket?: CodexTurnPresentationTicket,
+  ): Promise<unknown> {
+    const existing = this.failedTurnContinuationsInFlightByThreadId.get(threadId);
+    if (existing) {
+      if (existing.turnId !== expectedTurnId)
+        throw new Error("Only the latest failed turn can be continued");
+      return await existing.operation;
+    }
+    const operation = this.continueFailedTurnAsOwner(
+      threadId,
+      expectedTurnId,
+      opts,
+      presentationTicket,
+    );
+    this.failedTurnContinuationsInFlightByThreadId.set(threadId, {
+      turnId: expectedTurnId,
+      operation,
+    });
+    try {
+      return await operation;
+    } finally {
+      if (this.failedTurnContinuationsInFlightByThreadId.get(threadId)?.operation === operation)
+        this.failedTurnContinuationsInFlightByThreadId.delete(threadId);
+    }
+  }
+
+  private async continueFailedTurnAsOwner(
+    threadId: string,
+    expectedTurnId: string,
+    opts?: CodexTurnStartOptions,
+    presentationTicket?: CodexTurnPresentationTicket,
+  ): Promise<unknown> {
+    if (!this.conversationsById.has(threadId)) await this.requestThreadStreamResume(threadId);
+    assertCodexFailedTurnContinuation(
+      this.conversationsById.get(threadId)?.canonicalState,
+      expectedTurnId,
+    );
+    return await this.startTurnAsOwnerLocalTransaction(
+      threadId,
+      "Continue from where you left off.",
+      opts,
+      presentationTicket,
+      undefined,
+      expectedTurnId,
+    );
+  }
+
   private async resumeInterruptedTurnAsOwner(
     threadId: string,
     opts?: CodexTurnStartOptions,
@@ -5737,6 +5795,7 @@ export class CodexAppServerManager {
     opts?: CodexTurnStartOptions,
     presentationTicket?: CodexTurnPresentationTicket,
     submissionIdentity?: RendererTurnSubmissionIdentity,
+    expectedFailedTurnId?: string,
   ): Promise<unknown> {
     await this.settingsUpdates.get(threadId);
     const promptInput = opts?.promptInput;
@@ -5774,6 +5833,7 @@ export class CodexAppServerManager {
         inheritThreadSettings: true,
       },
     });
+    if (expectedFailedTurnId !== undefined) request.expectedFailedTurnId = expectedFailedTurnId;
     try {
       const role = this.streamState.getRole(threadId);
       if (role?.role === "follower") {
@@ -5794,6 +5854,7 @@ export class CodexAppServerManager {
         canonicalParams: prepared.params,
         execution: prepared,
         turnContext: request.context,
+        expectedFailedTurnId: request.expectedFailedTurnId,
         optimisticNotifyMode: "sync",
         request: (submission) =>
           this.executePreparedNativeTurn(request, prepared.request, submission),
@@ -5819,18 +5880,32 @@ export class CodexAppServerManager {
     readonly canonicalParams: CodexCanonicalLiveTurnParams;
     readonly execution: CodexPreparedTurnExecution;
     readonly turnContext?: ConversationFollowerTurnStart["context"];
+    readonly expectedFailedTurnId?: string;
     readonly request: (submission: OwnerTurnRequestContext) => Promise<TurnStartResponse | unknown>;
     readonly onOptimisticCommitted?: () => void;
     readonly optimisticNotifyMode?: ConversationNotifyMode;
   }): Promise<unknown> {
     const { threadId, clientUserMessageId, canonicalParams } = input;
     using lifetime = this.observeOwnerActionLifetime(threadId, "turn submission");
+    if (input.expectedFailedTurnId !== undefined) {
+      await this.queuedMessages.loadMessages(threadId);
+      if (this.isServerQueueEnabled(threadId)) await this.serverQueuedMessages.refresh(threadId);
+      lifetime.assertCurrent();
+      if (
+        (this.queuedMessages.readMessages(threadId)?.length ?? 0) > 0 ||
+        (this.isServerQueueEnabled(threadId) &&
+          this.serverQueuedMessages.read(threadId)?.length !== 0)
+      )
+        throw new Error("Resolve queued messages before continuing Nodex");
+    }
     const observedAtMs = Date.now();
     const conversation = this.conversationsById.get(threadId);
     if (!conversation) {
       this.handleOwnerReducerUnavailable(threadId);
       throw new Error(`Canonical conversation state unavailable for '${threadId}'`);
     }
+    if (input.expectedFailedTurnId !== undefined)
+      assertCodexFailedTurnContinuation(conversation.canonicalState, input.expectedFailedTurnId);
     if (conversation.canonicalState?.unconfirmedTurnSubmissions?.length)
       throw new Error("A previous turn submission is awaiting confirmation");
     if (
@@ -7979,6 +8054,7 @@ export class CodexAppServerManager {
     this.cancelPendingConversationResumes();
     this.attachmentStateByThreadId.clear();
     this.interruptedTurnResumesInFlightByThreadId.clear();
+    this.failedTurnContinuationsInFlightByThreadId.clear();
     this.conversationsById.clear();
     for (const owner of this.transcriptReadOwners.values()) owner.dispose();
     this.transcriptReadOwners.clear();
@@ -9878,6 +9954,27 @@ export function useCodexAppServerControl(
     [managerForConversation, workbenchOwner],
   );
 
+  const continueFailedTurn = useCallback(
+    async (
+      threadId: string,
+      expectedTurnId: string,
+      submittedPresentation?: WorkbenchSubmitPresentation,
+    ) => {
+      const presentationTicket = await captureCodexTurnPresentation(
+        workbenchOwner,
+        { kind: "thread", threadId },
+        submittedPresentation,
+      );
+      return await managerForConversation(threadId).continueFailedTurn(
+        threadId,
+        expectedTurnId,
+        {},
+        presentationTicket,
+      );
+    },
+    [managerForConversation, workbenchOwner],
+  );
+
   const prepareFollowUpInput = useCallback(
     async (
       threadId: string,
@@ -10261,6 +10358,7 @@ export function useCodexAppServerControl(
     unarchiveThread,
     startTurn,
     resumeInterruptedTurn,
+    continueFailedTurn,
     enqueueQueuedFollowUp,
     sendCapturedFollowUp,
     removeQueuedFollowUp,

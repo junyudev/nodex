@@ -12,7 +12,7 @@ import {
 
 function buildEntryUnit(
   id: string,
-  type: "exec" | "userMessage" | "contextCompaction",
+  type: "exec" | "userMessage" | "contextCompaction" | "streamError" | "systemError",
   entryOverrides: Partial<CodexConversationItem> = {},
 ): ThreadAgentRenderUnit {
   const entry: CodexConversationItem = {
@@ -45,6 +45,32 @@ function buildEntryUnit(
 }
 
 describe("agent body collapse presentation", () => {
+  test("keeps recovery outside collapsed work without counting it as an agent message", () => {
+    const exec = buildEntryUnit("exec", "exec");
+    const states = ["retrying", "recovered", "failed", "stopped"] as const;
+    for (const state of states) {
+      const recovery = buildEntryUnit(
+        "recovery",
+        state === "failed" ? "systemError" : "streamError",
+        {
+          recovery: {
+            state,
+            reason: "unknown",
+            attempt: null,
+            maxAttempts: null,
+            retryAt: null,
+            updatedAt: null,
+          },
+        },
+      );
+      const presentation = projectAgentBodyCollapsePresentation([exec, recovery]);
+      expect(presentation.persistentUnits).toEqual([recovery]);
+      expect(presentation.collapsibleUnits).toEqual([exec]);
+      expect(countAgentBodyUnits(presentation.collapsibleUnits)).toBe(1);
+      expect(projectAgentBodyCollapsePresentation([recovery]).canCollapse).toBe(false);
+    }
+  });
+
   test("never collapses work that is only one context compaction", () => {
     const compaction = buildEntryUnit("compaction", "contextCompaction");
     const steeringMessage = buildEntryUnit("steering", "userMessage", {

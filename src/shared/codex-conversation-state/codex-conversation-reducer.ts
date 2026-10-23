@@ -1,4 +1,5 @@
 import { enablePatches, produceWithPatches, type Draft, type Patch } from "immer";
+import { isCodexRecoveryModelOutput, recoverCodexProviderRetry } from "./codex-provider-recovery";
 import {
   appendCodexAcceptedServerQueueSubmission,
   equalCodexQueueValue,
@@ -574,6 +575,8 @@ function mutateItemStarted(
   if (state.id !== threadId) return;
   const turn = resolveLifecycleTurnDraft(state, notification, context);
   if (!turn) return;
+  if (isCodexRecoveryModelOutput(item) && !turn.items.some((existing) => existing.id === item.id))
+    recoverCodexProviderRetry(turn.items, context.now);
   (turn.completedItemIds ??= {})[item.id] = false;
   turn.hookRuns ??= [];
   const hasMatchingPendingSteer =

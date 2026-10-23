@@ -36,6 +36,7 @@ import { openCodeSetupRuntime } from "../../lib/opencode-setup-runtime";
 import type { OpenCodeSetupState } from "../../../shared/opencode-setup";
 import { readyExecutable, setupState } from "../opencode-setup/opencode-setup.test-fixtures";
 import { supportsConversationProviderControl } from "./conversation-provider-controls";
+import { AgentSettingsNavigationProvider } from "../../lib/agent-settings-navigation";
 import { renderWithMaitai } from "../../test/thread-maitai";
 import { LocalConversationTestQueryProvider } from "./view/local-conversation-test-query.test-fixtures";
 import { LocalConversationTurnEntry } from "./view/local-conversation-turn-entry";
@@ -173,6 +174,106 @@ const codexProvider = {
   ...provider,
   models: [codexModel("gpt", true), codexModel("gpt-mini")],
 } as unknown as AgentRuntimeProvider;
+
+describe("Agent Runtime failed-provider settings", () => {
+  it.each(["configured", "missing-configuration", "codex", "no-window-navigation"] as const)(
+    "keeps the failed Agent's settings authority with %s",
+    async (scenario) => {
+      const binding = { kind: "claude" as const, instanceConfigId: "failed-settings" };
+      const instanceId = agentRuntimeProviderId(binding)!;
+      const modelSelection = {
+        instanceId: scenario === "codex" ? "codex" : instanceId,
+        model: "model",
+      };
+      const failedSnapshot = {
+        ...snapshot,
+        projection: {
+          ...snapshot.projection,
+          thread: {
+            ...snapshot.projection.thread,
+            modelSelection,
+            activeProviderThreadId: "provider-thread",
+          },
+          runs: [{ id: "failed-run", ordinal: 1, status: "failed", modelSelection }],
+          providerThreads: [
+            {
+              id: "provider-thread",
+              appThreadId: "engine-thread",
+              providerInstanceId: modelSelection.instanceId,
+              providerSessionId: null,
+              nativeThreadRef: { driver: "claude", nativeId: "native", strength: "strong" },
+            },
+          ],
+        },
+      } as unknown as AgentSnapshot;
+      const sessionId = `failed-settings-${scenario}`;
+      const configuredInstances =
+        scenario === "missing-configuration" ? [] : [{ binding, label: "Claude", enabled: true }];
+      const conversation = {
+        sessionId,
+        projectId: "project",
+        threadId: "engine-thread",
+        snapshot: failedSnapshot,
+      };
+      vi.spyOn(agentRuntimeRuntime, "catalog").mockResolvedValue([
+        provider,
+        { ...provider, instanceId, driver: "claude", displayName: "Claude" },
+      ]);
+      vi.spyOn(agentRuntimeRuntime, "control").mockResolvedValue(conversation);
+      vi.spyOn(agentRuntimeRuntime, "read").mockResolvedValue(conversation);
+      vi.spyOn(agentRuntimeRuntime, "subscribe").mockResolvedValue(() => {});
+      const openAgentSettings = vi.fn();
+      const wrapper = ({ children }: PropsWithChildren) => (
+        <RuntimeWorkbench>
+          {scenario === "no-window-navigation" ? (
+            children
+          ) : (
+            <AgentSettingsNavigationProvider openAgentSettings={openAgentSettings}>
+              {children}
+            </AgentSettingsNavigationProvider>
+          )}
+        </RuntimeWorkbench>
+      );
+      const { result, unmount } = renderHook(
+        () => {
+          const adapter = useAgentRuntimeConversationAdapter({
+            sessionId,
+            executionRef: { runtimeId: "engine", threadId: "engine-thread" },
+            projectId: "project",
+            modelProjectId: "project",
+            instances: configuredInstances,
+            onRefresh: async () => {},
+            onOpenThread: () => {},
+            ensureDraft: async () => ({ id: sessionId }),
+          });
+          const transcript = adapter.runtime.transcriptReadOwner?.("engine-thread");
+          useEffect(() => transcript?.subscribeStructure(() => {}), [transcript]);
+          return adapter;
+        },
+        { wrapper },
+      );
+      await waitFor(() => expect(result.current.state.connection).toBe("ready"));
+      await waitFor(() => expect(result.current.provider.modelCatalog?.loading).toBe(false));
+      if (scenario === "configured") {
+        await act(async () => {
+          await result.current.provider.modelCatalog!.choose({
+            binding: { kind: "codex" },
+            model: "model",
+          });
+        });
+        expect(result.current.runtime.kind).toBe("codex");
+        await act(async () => {
+          result.current.actions.onManageFailedProvider!("failed-run");
+        });
+        expect(openAgentSettings).toHaveBeenCalledExactlyOnceWith("claude");
+      } else {
+        expect(result.current.actions.onManageFailedProvider).toBeUndefined();
+        expect(openAgentSettings).not.toHaveBeenCalled();
+      }
+      await act(async () => unmount());
+    },
+  );
+});
 
 describe("Agent Runtime response fork entrypoint", () => {
   it.each(["claude", "opencode"] as const)(

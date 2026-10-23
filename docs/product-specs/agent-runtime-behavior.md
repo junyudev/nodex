@@ -40,6 +40,25 @@ history, title, model selection, queue, Run status or delegated tasks. Delegated
 remain within the bound root's lineage and do not implicitly create ordinary sidebar
 Sessions.
 
+## Request recovery and continuation
+
+Providers own automatic request retries. Nodex retains their reported cause, attempt,
+limit and next attempt time and presents the shared
+[request recovery states](codex-thread-transcript-behavior.md) in the conversation.
+A retry record is historical evidence after its item completes, fails or stops; it
+does not keep an ended request retrying. Unknown provider errors do not establish a
+network failure, and retryability alone does not establish an active retry.
+
+Continue on the latest failed reply submits a new follow-up asking the Agent to
+continue from where it left off, with the existing conversation context. It does not
+rewind history or replay the original request. Only the current conversation owner
+can admit it: the selected Run must still be the latest failed Run, with no active
+or queued work and no pending information request. These conditions are checked
+again after message preparation, before submission. A changed Session, Thread or
+content source rejects the stale action. Repeated activation shares the pending
+submission until its acceptance is observed, including across view reconstruction;
+a preparation failure releases it for another attempt.
+
 ## Profile access and execution identity
 
 Every Agent has full read and write access to the current Profile's Projects, Pages

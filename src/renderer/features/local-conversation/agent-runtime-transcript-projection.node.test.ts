@@ -67,6 +67,106 @@ const message = (
   ...overrides,
 });
 
+describe("Runtime request recovery", () => {
+  const failure = {
+    class: "provider_error",
+    code: "api_error_unknown",
+    message: "Claude API unknown.",
+    retryable: true,
+  } as const;
+  const error = (
+    overrides: Partial<Extract<AgentTurnItem, { type: "error" }>> = {},
+  ): Extract<AgentTurnItem, { type: "error" }> => ({
+    ...base,
+    type: "error",
+    status: "running",
+    completedAt: null,
+    failure,
+    retry: { attempt: 2, maxAttempts: 10, retryDelayMs: 1200 },
+    ...overrides,
+  });
+
+  test("preserves provider retry progress without guessing an unknown cause", () => {
+    expect(projectAgentRuntimeItem(error())).toEqual({
+      type: "error",
+      id: "item",
+      message: failure.message,
+      recovery: {
+        state: "retrying",
+        reason: "unknown",
+        attempt: 2,
+        maxAttempts: 10,
+        retryAt: Date.parse(at) + 1200,
+        updatedAt: Date.parse(at),
+      },
+      errorInfo: null,
+      additionalDetails: "Code: api_error_unknown",
+    });
+  });
+
+  test.each([
+    ["pending", "retrying"],
+    ["running", "retrying"],
+    ["waiting", "retrying"],
+    ["completed", "recovered"],
+    ["idle", "recovered"],
+    ["failed", "failed"],
+    ["cancelled", "stopped"],
+    ["interrupted", "stopped"],
+  ] as const)("%s retry history projects as %s", (status, state) => {
+    expect(projectAgentRuntimeItem(error({ status }))).toMatchObject({
+      recovery: {
+        state,
+        attempt: 2,
+        maxAttempts: 10,
+        retryAt: state === "retrying" ? Date.parse(at) + 1200 : null,
+      },
+    });
+  });
+
+  test("retryability alone never invents an automatic retry", () => {
+    expect(projectAgentRuntimeItem(error({ retry: undefined }))).toMatchObject({
+      recovery: { state: "failed", attempt: null, maxAttempts: null, retryAt: null },
+    });
+    expect(
+      projectAgentRuntimeItem(
+        error({ retry: { attempt: 1, maxAttempts: null, retryDelayMs: null } }),
+      ),
+    ).toMatchObject({
+      recovery: { state: "retrying", attempt: 1, maxAttempts: null, retryAt: null },
+    });
+  });
+
+  test.each([
+    [{ ...failure, code: "api_error_529" }, "overloaded"],
+    [{ ...failure, code: "api_error_429" }, "rate_limit"],
+    [{ ...failure, code: "authentication_failed" }, "authentication"],
+    [{ ...failure, class: "transport_error" }, "unknown"],
+    [{ ...failure, code: null, class: "transport_error" }, "connection"],
+    [{ ...failure, code: null, class: "usage_limit" }, "usage_limit"],
+  ] as const)("uses reported provider classification %j", (reported, reason) => {
+    expect(projectAgentRuntimeItem(error({ failure: reported }))).toMatchObject({
+      recovery: { reason },
+    });
+  });
+
+  test("terminal failures retain the cause and reset time for diagnostic details", () => {
+    const resetAt = "2026-10-15T01:00:00.000Z";
+    expect(
+      projectAgentRuntimeItem(
+        error({
+          status: "failed",
+          failure: { ...failure, class: "usage_limit", code: null, retryable: false, resetAt },
+        }),
+      ),
+    ).toMatchObject({
+      message: failure.message,
+      recovery: { state: "failed", reason: "usage_limit", retryAt: null },
+      additionalDetails: "Usage resets: Thu, 15 Oct 2026 01:00:00 GMT",
+    });
+  });
+});
+
 describe("Runtime application tool presentation", () => {
   test("every provider spelling of the application server resolves to nodex_app", () => {
     expect(parseAgentRuntimeToolName("mcp__nodex_app__search")).toEqual({

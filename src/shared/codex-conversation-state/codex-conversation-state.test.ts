@@ -1,3 +1,4 @@
+import { assertCodexFailedTurnContinuation } from "./codex-failed-turn-continuation";
 import { describe, expect, test } from "vite-plus/test";
 import type { ServerRequest } from "@nodex/codex-app-server-protocol";
 import type {
@@ -964,6 +965,75 @@ describe("protocol-backed canonical conversation state", () => {
     expect(anchored.map((turn) => turn.turnId).join(",")).toBe(
       "turn-a,turn-b,turn-c,turn-d,turn-e",
     );
+  });
+
+  test("hydrates terminal failures once and merges them into the live retry occurrence", () => {
+    const template = buildAgentActivityV2CorpusThread([]).turns[0]!;
+    const failed = hydrateCanonicalFixtureTurns([
+      {
+        ...template,
+        status: "failed",
+        completedAt: 10,
+        error: {
+          message: "Request failed",
+          codexErrorInfo: "other",
+          additionalDetails: null,
+          misalignment: null,
+        },
+      },
+    ]).turns[0]!;
+    const errors = failed.items.filter((item) => item.type === "error");
+    expect(errors).toHaveLength(1);
+    expect(errors[0]?.recovery).toMatchObject({
+      state: "failed",
+      attempt: null,
+      updatedAt: 10_000,
+    });
+    expect(
+      mergeCodexCanonicalTurnState(failed, failed).items.filter((item) => item.type === "error"),
+    ).toHaveLength(1);
+
+    const retry = {
+      ...failed,
+      status: "inProgress" as const,
+      error: null,
+      items: [
+        {
+          ...errors[0]!,
+          id: "live-retry",
+          recovery: {
+            ...errors[0]!.recovery,
+            state: "retrying" as const,
+            attempt: 2,
+            maxAttempts: 5,
+          },
+        },
+      ],
+    };
+    const merged = mergeCodexCanonicalTurnState(retry, failed);
+    const mergedErrors = merged.items.filter((item) => item.type === "error");
+    expect(mergedErrors).toHaveLength(1);
+    expect(mergedErrors[0]).toMatchObject({
+      id: "live-retry",
+      recovery: { state: "failed", attempt: 2, maxAttempts: 5 },
+    });
+  });
+
+  test("failed-turn continuation refuses an unconfirmed server queue delivery", () => {
+    const template = buildAgentActivityV2CorpusThread([]).turns[0]!;
+    const state = hydrateCanonicalFixtureTurns([{ ...template, status: "failed", error: null }]);
+    expect(() =>
+      assertCodexFailedTurnContinuation(
+        {
+          ...state,
+          threadRuntimeStatus: { type: "idle" },
+          unconfirmedServerQueueMessages: [
+            { id: "pending-queue", clientUserMessageId: "pending-client", input: [] },
+          ],
+        },
+        template.id,
+      ),
+    ).toThrow("pending thread action");
   });
 
   test("merges lifecycle metadata monotonically without reopening terminal items", () => {

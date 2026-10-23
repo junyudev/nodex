@@ -1,4 +1,5 @@
 import { produce, type Draft } from "immer";
+import { settleCodexProviderRecovery } from "./codex-provider-recovery";
 import {
   residentConversationTurns,
   residentConversationTurnEntries,
@@ -143,6 +144,7 @@ export function mutateCodexConversationTurnLifecycle(
     durationMs: update.turn.durationMs,
     completedAtMs: protocolSecondsToMilliseconds(update.turn.completedAt),
   });
+  settleCodexProviderRecovery(turn, update.turn, update.observedAtMs);
   const planContent =
     turn.status === "completed"
       ? (turn.items.findLast((item) => item.type === "plan")?.text.trim() ?? "")

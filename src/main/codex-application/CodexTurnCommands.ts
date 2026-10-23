@@ -1,3 +1,4 @@
+import { assertCodexFailedTurnContinuation } from "../../shared/codex-conversation-state/codex-failed-turn-continuation";
 import type {
   CodexInspectedTurnStart,
   CodexTurnStartRejection,
@@ -195,6 +196,7 @@ export interface CodexTurnCommandsService {
   readonly executePreparedNativeStart: (
     request: TurnStartParams,
     executingPeerClientId?: string,
+    expectedFailedTurnId?: string,
   ) => Effect.Effect<TurnStartResponse, CodexTurnCommandsError>;
   readonly releasePreparedNativeStart: (clientUserMessageId: string) => void;
   readonly start: (
@@ -531,6 +533,7 @@ export const make: Effect.Effect<
       readonly responseItems?: ClientRequestParamsByMethod["thread/inject_items"]["items"];
       readonly passiveContext?: CodexVisualizationPassiveContext;
       readonly serverQueuedSubmission?: QueuedSubmission;
+      readonly expectedFailedTurnId?: string;
     },
   ) =>
     projectLifecycle.runExclusive(
@@ -606,6 +609,38 @@ export const make: Effect.Effect<
         });
 
         return yield* Effect.gen(function* () {
+          if (options.expectedFailedTurnId !== undefined) {
+            const messages = yield* queued.readMessageState;
+            if (messages[plan.threadId]?.length)
+              return yield* commandError(
+                "start",
+                plan.threadId,
+                new Error("Resolve queued messages before continuing Nodex"),
+              );
+            const capability = yield* capabilities.forHost(options.connection.manager.hostId);
+            yield* Effect.try(options.assertCurrentOwner);
+            if (capability.generation !== options.connection.nativeGeneration)
+              return yield* commandError(
+                "start",
+                plan.threadId,
+                new Error("Conversation queue connection changed"),
+              );
+            if (capability.flags.threadQueue && current?.ephemeral !== true) {
+              const queue = yield* gateway.requestOnHost(
+                options.connection.manager.hostId,
+                "thread/queue/list",
+                { threadId: plan.threadId, cursor: null, limit: 1 },
+                { ...turnConnectionFence(options.connection), priority: "interactive" },
+              );
+              yield* Effect.try(options.assertCurrentOwner);
+              if (queue.data.length > 0 || queue.nextCursor !== null)
+                return yield* commandError(
+                  "start",
+                  plan.threadId,
+                  new Error("Resolve queued messages before continuing Nodex"),
+                );
+            }
+          }
           transaction.launch = yield* authority.begin(plan.threadId);
           transaction.presentationLaunch = yield* presentation.begin(
             plan.presentationClaim,
@@ -614,6 +649,13 @@ export const make: Effect.Effect<
           );
           yield* Effect.try(options.assertCurrentOwner);
           if (!plan.rendererOwnsState && canonicalParams) {
+            if (options.expectedFailedTurnId !== undefined)
+              yield* Effect.try(() =>
+                assertCodexFailedTurnContinuation(
+                  conversations.current(plan.threadId)?.readCanonicalState(),
+                  options.expectedFailedTurnId!,
+                ),
+              );
             transaction.previousRuntimeStatus = conversations
               .current(plan.threadId)
               ?.readCanonicalState()?.threadRuntimeStatus;
@@ -1874,7 +1916,7 @@ export const make: Effect.Effect<
           }),
         );
       }).pipe(Effect.mapError((cause) => commandError("start", operation.request.threadId, cause))),
-    executePreparedNativeStart: (request, executingPeerClientId) =>
+    executePreparedNativeStart: (request, executingPeerClientId, expectedFailedTurnId) =>
       Effect.gen(function* () {
         const entry = yield* readNativePreparation(request, true);
         const plan = yield* entry.lock.withPermit(
@@ -1941,6 +1983,7 @@ export const make: Effect.Effect<
                 assertCurrentOwner,
                 responseItems,
                 serverQueuedSubmission: entry.context?.serverQueuedSubmission,
+                expectedFailedTurnId,
                 passiveContext:
                   !plan.rendererOwnsState && entry.injection !== "complete"
                     ? entry.context?.passiveContext

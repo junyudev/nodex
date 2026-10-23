@@ -460,7 +460,14 @@ describe("projectCodexCanonicalTurnItemViews", () => {
         type: "error",
         id: "error",
         message: "Failure",
-        willRetry: false,
+        recovery: {
+          state: "failed",
+          reason: "unknown",
+          attempt: null,
+          maxAttempts: null,
+          retryAt: null,
+          updatedAt: null,
+        },
         errorInfo: null,
         additionalDetails: null,
       },
@@ -1065,6 +1072,44 @@ describe("subagent activity lifecycle", () => {
       expect(views[0]).toMatchObject({
         status,
         subagentActivity: { agentThreadId: "child", displayStatus, isMessage },
+      });
+    },
+  );
+});
+
+describe("provider recovery projection", () => {
+  test.each([
+    ["retrying", "streamError", "inProgress"],
+    ["recovered", "streamError", "completed"],
+    ["failed", "systemError", "failed"],
+    ["stopped", "streamError", "interrupted"],
+  ] as const)(
+    "preserves %s independently from retained retry metadata",
+    (state, semanticKind, status) => {
+      const recovery = {
+        state,
+        reason: "unknown" as const,
+        attempt: 2,
+        maxAttempts: 10,
+        retryAt: null,
+        updatedAt: 1234,
+      };
+      const [view] = project([
+        {
+          id: "retry-1",
+          type: "error",
+          message: "Claude API unknown.",
+          errorInfo: null,
+          additionalDetails: "Code: unknown",
+          recovery,
+        },
+      ]);
+      expect(view).toMatchObject({
+        itemId: "retry-1",
+        semanticKind,
+        status,
+        recovery,
+        additionalDetails: "Code: unknown",
       });
     },
   );

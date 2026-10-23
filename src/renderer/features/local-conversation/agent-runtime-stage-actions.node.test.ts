@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vite-plus/test";
 import type { AgentRuntimeConversationOwnerSnapshot } from "./agent-runtime-conversation-owner";
 import type { AgentRuntimeRendererTransport } from "../../lib/agent-runtime-runtime";
+import type { AgentRuntimeRun } from "./agent-runtime-transcript-projection";
 import { createAgentRuntimeStageActions } from "./agent-runtime-conversation-adapter";
 
 function fixture() {
@@ -19,6 +20,8 @@ function fixture() {
   const openFork = vi.fn().mockResolvedValue(undefined);
   const rollback = vi.fn().mockResolvedValue({ rolledBack: true });
   const prepare = vi.fn(async (text: string) => ({ text: `Prepared ${text}` }));
+  let sourceCurrent = true;
+  const source = { identity: "source", isCurrent: () => sourceCurrent };
   let state = {
     view: {
       requests: [
@@ -38,6 +41,7 @@ function fixture() {
   } as unknown as AgentRuntimeConversationOwnerSnapshot;
   const owner = {
     getSnapshot: () => state,
+    contentSource: () => source,
     nextQueuePage: async () => {},
     previousQueuePage: async () => {},
     queueBoundary: () => null,
@@ -86,6 +90,18 @@ function fixture() {
     rollback,
     owner,
     actions,
+    retireSource: () => {
+      sourceCurrent = false;
+    },
+    setRuns: (
+      runs: readonly (Pick<AgentRuntimeRun, "id" | "ordinal" | "status"> &
+        Partial<Pick<AgentRuntimeRun, "modelSelection">>)[],
+    ) => {
+      state = {
+        ...state,
+        conversation: { snapshot: { projection: { runs } } },
+      } as unknown as AgentRuntimeConversationOwnerSnapshot;
+    },
     sessionQuestion: () => {
       state = {
         ...state,
@@ -119,6 +135,203 @@ function fixture() {
 }
 
 describe("Agent Runtime stage commands", () => {
+  it("opens the failed Run's provider settings independently of the next selected Agent", () => {
+    const f = fixture();
+    f.setRuns([
+      {
+        id: "old",
+        ordinal: 1,
+        status: "failed",
+        modelSelection: { instanceId: "old", model: "m" },
+      },
+      {
+        id: "failed",
+        ordinal: 2,
+        status: "failed",
+        modelSelection: { instanceId: "claude-original", model: "m" },
+      },
+    ]);
+    const manageProvider = vi.fn();
+    const actions = createAgentRuntimeStageActions({
+      target: () => f.target,
+      owner: () => f.owner,
+      prepare: f.prepare,
+      manageProvider,
+      nextSelection: () => ({ instanceId: "opencode-next", model: "other" }),
+    });
+
+    actions.onManageFailedProvider!("failed");
+
+    expect(manageProvider).toHaveBeenCalledExactlyOnceWith("claude-original");
+    expect(f.prepare).not.toHaveBeenCalled();
+    expect(f.message).not.toHaveBeenCalled();
+    expect(f.actions.onManageFailedProvider).toBeUndefined();
+  });
+
+  it.each(["source", "newer-run", "running"] as const)(
+    "rejects an obsolete provider settings action after a %s change",
+    (change) => {
+      const f = fixture();
+      const manageProvider = vi.fn();
+      f.setRuns([
+        {
+          id: "failed",
+          ordinal: 1,
+          status: "failed",
+          modelSelection: { instanceId: "claude", model: "m" },
+        },
+      ]);
+      const actions = createAgentRuntimeStageActions({
+        target: () => f.target,
+        owner: () => f.owner,
+        prepare: f.prepare,
+        manageProvider,
+      });
+      if (change === "source") f.retireSource();
+      if (change === "newer-run") f.setRuns([{ id: "newer", ordinal: 2, status: "failed" }]);
+      if (change === "running") f.setRuns([{ id: "failed", ordinal: 1, status: "running" }]);
+
+      expect(() => actions.onManageFailedProvider!("failed")).toThrow();
+      expect(manageProvider).not.toHaveBeenCalled();
+    },
+  );
+
+  it("continues the latest failed Run as a new message with its existing conversation", async () => {
+    const f = fixture();
+    f.clearRequests();
+    f.setRuns([{ id: "failed", ordinal: 4, status: "failed" }]);
+
+    await f.actions.onContinueAfterFailure!("failed");
+
+    expect(f.message).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({
+        ...f.target,
+        message: expect.objectContaining({ text: "Prepared Continue from where you left off." }),
+      }),
+    );
+    expect(f.rollback).not.toHaveBeenCalled();
+    expect(f.owner.readSentMessage).not.toHaveBeenCalled();
+  });
+
+  it.each(["completed", "running", "queued", "requests", "newer-failure"] as const)(
+    "does not continue an obsolete failure when the conversation has %s",
+    async (change) => {
+      const f = fixture();
+      f.clearRequests();
+      f.setRuns([{ id: "failed", ordinal: 4, status: "failed" }]);
+      if (change === "requests") f.sessionQuestion();
+      else
+        f.setRuns([
+          { id: "failed", ordinal: 4, status: "failed" },
+          {
+            id: "newer",
+            ordinal: 5,
+            status: change === "newer-failure" ? "failed" : change,
+          },
+        ]);
+
+      await expect(f.actions.onContinueAfterFailure!("failed")).rejects.toThrow(
+        "can no longer be continued",
+      );
+      expect(f.message).not.toHaveBeenCalled();
+      expect(f.prepare).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each(["source", "target", "run", "requests"] as const)(
+    "rechecks the %s at admission after preparing a continuation",
+    async (change) => {
+      const f = fixture();
+      f.clearRequests();
+      f.setRuns([{ id: "failed", ordinal: 4, status: "failed" }]);
+      let finishPreparation: (value: { text: string }) => void = () => {};
+      const prepared = new Promise<{ text: string }>((resolve) => {
+        finishPreparation = resolve;
+      });
+      f.prepare.mockImplementation(() => prepared);
+      const continuing = f.actions.onContinueAfterFailure!("failed");
+      await vi.waitFor(() => expect(f.prepare).toHaveBeenCalledOnce());
+      if (change === "source") f.retireSource();
+      if (change === "target") f.target.threadId = "another-thread";
+      if (change === "run") f.setRuns([{ id: "failed", ordinal: 4, status: "running" }]);
+      if (change === "requests") f.sessionQuestion();
+      finishPreparation({ text: "Continue from where you left off." });
+
+      await expect(continuing).rejects.toThrow(
+        change === "source" || change === "target"
+          ? "source changed"
+          : "can no longer be continued",
+      );
+      expect(f.message).not.toHaveBeenCalled();
+    },
+  );
+
+  it("deduplicates continuation across rerendered actions until the sent message is observed", async () => {
+    const f = fixture();
+    f.clearRequests();
+    f.setRuns([{ id: "failed", ordinal: 4, status: "failed" }]);
+    let finishObservation: () => void = () => {};
+    const observed = new Promise<void>((resolve) => {
+      finishObservation = resolve;
+    });
+    const whenObserved = vi.fn(() => observed);
+    const owner = { ...f.owner, whenObserved };
+    const createActions = () =>
+      createAgentRuntimeStageActions({
+        target: () => f.target,
+        owner: () => owner,
+        transport: { message: f.message } as unknown as AgentRuntimeRendererTransport,
+        prepare: f.prepare,
+      });
+    const first = createActions().onContinueAfterFailure!("failed");
+    await vi.waitFor(() => expect(whenObserved).toHaveBeenCalledWith(8));
+    const repeated = createActions().onContinueAfterFailure!("failed");
+    finishObservation();
+    await Promise.all([first, repeated]);
+    expect(f.message).toHaveBeenCalledOnce();
+    expect(f.prepare).toHaveBeenCalledOnce();
+  });
+
+  it("uses one admission identity for the same failure from independently observed sources", async () => {
+    const first = fixture();
+    const second = fixture();
+    for (const f of [first, second]) {
+      f.clearRequests();
+      f.setRuns([{ id: "failed", ordinal: 4, status: "failed" }]);
+    }
+    await Promise.all([
+      first.actions.onContinueAfterFailure!("failed"),
+      second.actions.onContinueAfterFailure!("failed"),
+    ]);
+
+    expect(first.message.mock.calls[0]![0].message.messageId).toBe("continue:failed");
+    expect(second.message.mock.calls[0]![0].message.messageId).toBe("continue:failed");
+  });
+
+  it("retains a rejected continuation's identity when the user retries it", async () => {
+    const f = fixture();
+    f.clearRequests();
+    f.setRuns([{ id: "failed", ordinal: 4, status: "failed" }]);
+    f.message.mockRejectedValue(new Error("The command was rejected"));
+    await expect(f.actions.onContinueAfterFailure!("failed")).rejects.toThrow("rejected");
+    await expect(f.actions.onContinueAfterFailure!("failed")).rejects.toThrow("rejected");
+
+    expect(f.message.mock.calls.map(([request]) => request.message.messageId)).toEqual([
+      "continue:failed",
+      "continue:failed",
+    ]);
+  });
+
+  it("allows another continuation attempt after preparation fails", async () => {
+    const f = fixture();
+    f.clearRequests();
+    f.setRuns([{ id: "failed", ordinal: 4, status: "failed" }]);
+    f.prepare.mockRejectedValueOnce(new Error("Could not prepare the message"));
+    await expect(f.actions.onContinueAfterFailure!("failed")).rejects.toThrow("Could not prepare");
+    await f.actions.onContinueAfterFailure!("failed");
+    expect(f.message).toHaveBeenCalledOnce();
+  });
+
   it("admits captured app follow-ups through the engine queue with their original input", async () => {
     const f = fixture();
     const appMessage = {

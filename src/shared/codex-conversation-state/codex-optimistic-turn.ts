@@ -1,4 +1,5 @@
 import { produce, type Draft } from "immer";
+import { codexRecoveryFromError } from "./codex-provider-recovery";
 import { mutateCodexTurnExecution, type CodexPreparedTurnExecution } from "./codex-turn-execution";
 import {
   residentConversationTurnEntries,
@@ -269,7 +270,12 @@ export function mutateCodexCanonicalOptimisticTurnFailure(
     id: errorItemId,
     type: "error",
     message,
-    willRetry: false,
+    recovery: codexRecoveryFromError({
+      message,
+      errorInfo: null,
+      willRetry: false,
+      updatedAt: null,
+    }),
     errorInfo: null,
     additionalDetails: null,
   });

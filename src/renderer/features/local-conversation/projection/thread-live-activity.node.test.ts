@@ -99,6 +99,33 @@ function parentInput(
 }
 
 describe("resolveThreadParentActivityPresentation", () => {
+  it("lets an active recovery row replace generic thinking, then restores thinking after recovery", () => {
+    const retry: ThreadTranscriptBlockModel = {
+      ...reasoning(""),
+      type: "streamError",
+      entry: {
+        ...reasoning("").entry,
+        recovery: {
+          state: "retrying",
+          reason: "unknown",
+          attempt: null,
+          maxAttempts: null,
+          retryAt: null,
+          updatedAt: null,
+        },
+      },
+    };
+    const input = parentInput({
+      agentItems: [retry],
+      assistantItem: { ...reasoning("Preparing a change"), type: "assistantMessage" },
+    });
+    const pending = resolveThreadParentActivityPresentation(input);
+    expect(pending.global.reason).toBe("provider-recovery");
+    expect(pending.fallback.isVisible).toBe(false);
+    retry.entry.recovery = { ...retry.entry.recovery!, state: "recovered" };
+    expect(resolveThreadParentActivityPresentation(input).fallback.isVisible).toBe(true);
+  });
+
   it("assigns a reasoning-only turn to the standalone fallback", () => {
     const result = resolveThreadParentActivityPresentation(
       parentInput({

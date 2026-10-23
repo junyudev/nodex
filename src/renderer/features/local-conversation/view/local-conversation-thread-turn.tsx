@@ -162,7 +162,7 @@ function renderAgentUnits(
     return (
       <div
         key={resolveThreadBlockRenderKey(unit.block)}
-        className={hasTargets ? "outline-none" : undefined}
+        className={cn("empty:hidden", hasTargets && "outline-none")}
         tabIndex={hasTargets ? -1 : undefined}
         {...unit.targetAttributes}
       >

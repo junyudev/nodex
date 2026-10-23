@@ -54,6 +54,8 @@ import { isCodexProtocolThreadItem } from "../codex-protocol-thread-item";
 import type { CodexQueuedFollowUp } from "../codex-queued-follow-up-state";
 import { normalizeCodexServiceTier } from "../codex-service-tier";
 import type { CodexItemStatus } from "../types";
+import type { ConversationRecovery } from "../conversation-recovery";
+import { settleCodexProviderRecovery } from "./codex-provider-recovery";
 import type {
   CodexCanonicalHistoryTopology,
   CodexHistoryTurnItemsPagination,
@@ -387,12 +389,12 @@ export interface CodexCanonicalWorktreeInitItem {
   readonly setup: CodexCanonicalWorktreeInitSetup | null;
 }
 
-/** Exact app-side `X1` submission error row; it is not an app-server ThreadItem. */
+/** Conversation-owned failure and recovery occurrence; it is not an app-server ThreadItem. */
 export interface CodexCanonicalTurnErrorItem {
   readonly type: "error";
   readonly id: string;
   readonly message: string;
-  readonly willRetry: boolean;
+  readonly recovery: ConversationRecovery;
   readonly errorInfo: CodexErrorInfo | null;
   readonly additionalDetails: string | null;
 }
@@ -1278,7 +1280,7 @@ export function createCodexCanonicalTurnState(
 ): CodexCanonicalTurnState {
   const { id, items, startedAt, completedAt, ...header } = turn;
 
-  return {
+  const canonical: CodexCanonicalTurnState = {
     ...header,
     turnId: id,
     items: items.map((item) => materializeCodexCanonicalProtocolItem(item)),
@@ -1289,6 +1291,10 @@ export function createCodexCanonicalTurnState(
     finalAssistantStartedAtMs: null,
     lifecycleStatusByItemId: buildCodexInitialItemLifecycleStatusById(items, header.status),
   };
+  if (turn.status !== "failed" || !turn.error) return canonical;
+  return produce(canonical, (draft) => {
+    settleCodexProviderRecovery(draft, turn, canonical.completedAtMs ?? null);
+  });
 }
 
 function buildCodexInitialItemLifecycleStatusById(
@@ -1367,7 +1373,7 @@ function mergeCodexCanonicalHydratedItems(
   incomingItems: readonly CodexCanonicalItem[],
 ): readonly CodexCanonicalItem[] {
   let items: readonly CodexCanonicalItem[] = incomingItems;
-  if (existingItems.some((item) => item.type === "steeringUserMessage")) {
+  if (existingItems.some((item) => item.type === "steeringUserMessage" || item.type === "error")) {
     const incomingById = new Map(incomingItems.map((item) => [item.id, item]));
     items = mergeCodexCanonicalHistoryItems(
       existingItems.map((item) =>
@@ -1602,9 +1608,18 @@ export function mergeCodexCanonicalTurnState(
       incoming.lifecycleStatusByItemId,
     ),
   };
+  // A reconnect snapshot can be the only evidence that the retrying Turn ended.
+  const settled =
+    merged.status !== "inProgress" &&
+    (merged.status === "failed" ||
+      merged.items.some((item) => item.type === "error" && item.recovery.state === "retrying"))
+      ? produce(merged, (draft) => {
+          settleCodexProviderRecovery(draft, merged, merged.completedAtMs ?? null);
+        })
+      : merged;
   return existing.items.some((item) => item.type === "steeringUserMessage")
-    ? reconcileCodexHydratedSteering(merged, itemsPagination)
-    : merged;
+    ? reconcileCodexHydratedSteering(settled, itemsPagination)
+    : settled;
 }
 
 function mergeCodexLifecycleStatusByItemId(

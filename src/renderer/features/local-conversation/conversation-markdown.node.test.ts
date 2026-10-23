@@ -190,4 +190,61 @@ describe("renderConversationMarkdown", () => {
     expect(markdown.endsWith(`${longMessage}\n`)).toBe(true);
     expect(markdown.length).toBeGreaterThan(80_500);
   });
+
+  test("exports a recovered request with its settled status and original provider diagnostics", () => {
+    const markdown = renderConversationMarkdown({
+      title: "Recovered request",
+      turns: [
+        entry([
+          item("recovery", {
+            semanticKind: "streamError",
+            markdownText: "Retrying request",
+            rawItem: { type: "error", message: "Claude API unknown." },
+            additionalDetails: "Code: unknown",
+            recovery: {
+              state: "recovered",
+              reason: "unknown",
+              attempt: 2,
+              maxAttempts: null,
+              retryAt: null,
+              updatedAt: 1,
+            },
+          }),
+        ]),
+      ],
+    });
+
+    expect(markdown).toContain(
+      "> Request resumed\n>\n> Claude API unknown.\n>\n> Code: unknown\n>\n> State: recovered\n> Reason: unknown\n> Retry: Attempt 2",
+    );
+    expect(markdown).not.toContain("Stream error");
+  });
+
+  test("exports a terminal recovery with its cause and preserves ordinary error export", () => {
+    const markdown = renderConversationMarkdown({
+      title: "Request failure",
+      turns: [
+        entry([
+          item("failure", {
+            semanticKind: "systemError",
+            markdownText: "Session token expired",
+            recovery: {
+              state: "failed",
+              reason: "authentication",
+              attempt: null,
+              maxAttempts: null,
+              retryAt: null,
+              updatedAt: 1,
+            },
+          }),
+          item("ordinary", { semanticKind: "systemError", markdownText: "Workspace missing" }),
+        ]),
+      ],
+    });
+
+    expect(markdown).toContain(
+      "> Sign-in required\n>\n> Session token expired\n>\n> State: failed\n> Reason: authentication",
+    );
+    expect(markdown).toContain("> System error\n>\n> Workspace missing");
+  });
 });

@@ -1,6 +1,10 @@
 import type { CodexConversationItem } from "@/lib/types";
 import type { VisibleConversationTurnEntry } from "./selectors";
 import { delegatedTaskMarkdownLines } from "./delegated-task-presentation";
+import {
+  recoveryDiagnosticText,
+  recoveryStatusLabel,
+} from "./projection/conversation-recovery-presentation";
 
 export interface ConversationMarkdownInput {
   cwd?: string | null;
@@ -419,10 +423,14 @@ function renderSystemEvent(item: CodexConversationItem, cwd: string | null): str
         `Reason: ${asString(raw.reason) ?? "unknown"}`,
       ]);
     case "systemError":
+      if (item.recovery)
+        return titledLines(recoveryStatusLabel(item.recovery), [recoveryDiagnosticText(item)]);
       return item.markdownText?.trim()
         ? `System error\n\n${escapeDetailsTags(item.markdownText)}`
         : null;
     case "streamError":
+      if (item.recovery)
+        return titledLines(recoveryStatusLabel(item.recovery), [recoveryDiagnosticText(item)]);
       return titledLines("Stream error", [item.markdownText, item.additionalDetails]);
     case "worktreeInit":
       return titledLines("Worktree initialization", ["Worktree: created"]);

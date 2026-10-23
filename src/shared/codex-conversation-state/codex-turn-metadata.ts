@@ -1,4 +1,5 @@
 import { produce, type Draft } from "immer";
+import { mutateCodexProviderError, recoverCodexProviderRetry } from "./codex-provider-recovery";
 import {
   residentConversationTurns,
   residentConversationTurnEntries,
@@ -364,7 +365,7 @@ function replaceResolvedTurnItem(
   conversationId: string,
   turnId: string,
   observedAtMs: number,
-  update: (items: Draft<CodexCanonicalItem>[]) => void,
+  update: (items: Draft<CodexCanonicalItem>[], turn: Draft<CodexCanonicalTurnState>) => void,
 ): CodexTurnMetadataResult {
   if (state.id !== conversationId) return result(state, "foreignConversation");
   const resolved = resolveMetadataTurn(state, turnId, observedAtMs);
@@ -372,7 +373,7 @@ function replaceResolvedTurnItem(
   const entry = residentConversationTurnEntries(resolved.state)[resolved.index]!;
   const turn = conversationTurnDraft(state, entry.address)!;
   turn.hookRuns ??= [];
-  update(turn.items);
+  update(turn.items, turn);
   return result(state, "applied", true);
 }
 
@@ -384,6 +385,7 @@ function applyCodexConversationTurnPlan(
 ): CodexTurnMetadataResult {
   const { threadId, turnId, explanation, plan } = notification.params;
   return replaceResolvedTurnItem(state, threadId, turnId, observedAtMs, (items) => {
+    recoverCodexProviderRetry(items, () => observedAtMs);
     items.push({ id: itemId, type: "todo-list", explanation, plan });
   });
 }
@@ -469,14 +471,15 @@ function applyCodexConversationError(
   observedAtMs: number,
 ): CodexTurnMetadataResult {
   const { threadId, turnId, error, willRetry } = notification.params;
-  return replaceResolvedTurnItem(state, threadId, turnId, observedAtMs, (items) => {
-    items.push({
+  return replaceResolvedTurnItem(state, threadId, turnId, observedAtMs, (items, turn) => {
+    if (turn.status !== "inProgress") return;
+    mutateCodexProviderError(items, {
       id: itemId,
-      type: "error",
       message: error.message,
       willRetry,
       errorInfo: error.codexErrorInfo,
       additionalDetails: error.additionalDetails,
+      updatedAt: observedAtMs,
     });
   });
 }

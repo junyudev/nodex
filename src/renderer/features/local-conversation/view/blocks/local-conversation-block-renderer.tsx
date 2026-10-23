@@ -15,9 +15,8 @@ import {
   ThreadPlanCardBlock,
   ThreadPlanImplementationBlock,
   ThreadReasoningBlock,
-  ThreadStreamErrorBlock,
+  ThreadRecoveryBlock,
   ThreadSubagentActivityInlineGroupBlock,
-  ThreadSystemErrorBlock,
   ThreadSystemBannerBlock,
   ThreadTurnDiffBlock,
   ThreadToolSurfaceBlock,
@@ -456,19 +455,9 @@ export function ThreadBlockRenderer({
     );
   }
 
-  if (block.type === "streamError") {
+  if (block.type === "streamError" || block.type === "systemError") {
     return (
-      <ThreadStreamErrorBlock
-        block={block}
-        isLatestTurn={isLatestTurn}
-        isStreamingTurn={isStreamingTurn}
-      />
-    );
-  }
-
-  if (block.type === "systemError") {
-    return (
-      <ThreadSystemErrorBlock
+      <ThreadRecoveryBlock
         block={block}
         isLatestTurn={isLatestTurn}
         isStreamingTurn={isStreamingTurn}

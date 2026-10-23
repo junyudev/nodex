@@ -286,13 +286,21 @@ export const install = Effect.gen(function* () {
               hostId,
               cause: new Error("Native turn targets another conversation"),
             });
+          const { expectedFailedTurnId } = yield* Schema.decodeUnknownEffect(
+            Schema.Struct({ expectedFailedTurnId: Schema.optionalKey(Schema.String) }),
+          )(params.turnStart);
           const operation = {
             request: native as TurnStartParams,
+            expectedFailedTurnId,
             context: record(params.turnStart)
               ?.context as import("../../shared/codex-thread-follower-request").ConversationFollowerTurnStart["context"],
           };
           const prepared = yield* turns.inspectPreparedNativeStart(operation);
-          const result = yield* turns.executePreparedNativeStart(prepared.request);
+          const result = yield* turns.executePreparedNativeStart(
+            prepared.request,
+            undefined,
+            expectedFailedTurnId,
+          );
           if (operation.context?.serverQueuedSubmission)
             yield* queued
               .reconcileAcceptedAsOwner(hostId, threadId)

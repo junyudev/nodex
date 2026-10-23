@@ -3321,7 +3321,7 @@ export interface CodexItemView extends CodexCommandExecutionAttachmentFields {
   steeringTargetTurnStartedAtMs?: number | null;
   acceptedUserMessageItemId?: string;
   additionalDetails?: string | null;
-  willRetry?: boolean;
+  recovery?: import("./conversation-recovery").ConversationRecovery;
   asyncQuestion?: import("./codex-async-user-input").CodexAsyncQuestion;
   questionReplies?: import("./codex-async-user-input").CodexAsyncQuestionReply[];
   userInputQuestions?: CodexUserInputQuestion[];
@@ -3380,7 +3380,7 @@ export interface CodexTranscriptEntry extends CodexCommandExecutionAttachmentFie
   steeringTargetTurnStartedAtMs?: number | null;
   acceptedUserMessageItemId?: string;
   additionalDetails?: string | null;
-  willRetry?: boolean;
+  recovery?: import("./conversation-recovery").ConversationRecovery;
   asyncQuestion?: import("./codex-async-user-input").CodexAsyncQuestion;
   questionReplies?: import("./codex-async-user-input").CodexAsyncQuestionReply[];
   userInputQuestions?: CodexUserInputQuestion[];
