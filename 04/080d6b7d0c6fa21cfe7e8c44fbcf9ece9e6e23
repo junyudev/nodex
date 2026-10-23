@@ -1,0 +1,105 @@
+CHANGELOG.md
+  s_e6a9f802ff4027::t_508ebe5d64f4f4 9-10,15-16
+docs/product-specs/agent-runtime-behavior.md
+  s_e6a9f802ff4027::t_e8a0f224ea640c 121,126-149
+docs/product-specs/workbench-shell.md
+  s_e6a9f802ff4027::t_8c65a57f4facbb 229
+packages/agent-runtime/src/nodex/Interface.ts
+  s_534dff6e177f2d::t_a0c60b72791593 424-427
+packages/agent-runtime/src/nodex/Runtime.test.ts
+  s_534dff6e177f2d::t_c1b474d7348708 139,167-169,180-185
+packages/agent-runtime/src/nodex/Service.ts
+  s_534dff6e177f2d::t_87581a8192d062 213-216,685-686,870
+packages/agent-runtime/src/orchestration-v2/Adapters/ClaudeAdapterV2.ts
+  s_534dff6e177f2d::t_4a14bff46d62d1 21,435,444,663,671-683,725,989-993,998,1000-1002,1036-1038,1043,4282-4284,9055-9057
+packages/agent-runtime/src/orchestration-v2/Adapters/ClaudeAgentSdkInstanceHistory.test.ts
+  s_534dff6e177f2d::t_76e74cdd7e9af7 1-169
+packages/agent-runtime/src/orchestration-v2/Orchestrator.ts
+  s_534dff6e177f2d::t_d87225cff65fd6 132,307-310,910,916,926-928,931-942,3694,3767,5775,5779,11851-11860
+packages/agent-runtime/src/orchestration-v2/ThreadFork.head.test.ts
+  s_e6a9f802ff4027::t_0cf158411a4aec 1-268
+packages/agent-runtime/src/orchestration-v2/ThreadForkService.ts
+  s_534dff6e177f2d::t_926e390a13324a 40-47,49
+packages/agent-runtime/src/provider/ClaudeSessionStore.sdk.test.ts
+  s_534dff6e177f2d::t_c8278acb702b34 18,70,233,237
+packages/agent-runtime/src/provider/ClaudeSessionStore.ts
+  s_534dff6e177f2d::t_dc488452d23d65 23,66,84,97,100,112-113,128,135,139,169,183,210,213,233,235,262
+scripts/scenarios/runtime/scripted-opencode-agent.mjs
+  s_e6a9f802ff4027::t_cb2b83bc77ff4b 248-255,295-297
+src/main/agent-runtime/AgentRuntimeApplication.node.test.ts
+  s_e6a9f802ff4027::t_3c75ec86331dc5 528-536,1808-1815,2543-2550,2619-2702
+src/main/agent-runtime/AgentRuntimeApplication.ts
+  s_534dff6e177f2d::t_494c362595ea59 1262-1270,1294,1303
+src/renderer/components/workbench/session-context-menu-model.test.ts
+  s_534dff6e177f2d::t_4afc8a0a9c3fdd 83-113
+src/renderer/components/workbench/session-context-menu-model.ts
+  s_534dff6e177f2d::t_553f55ce785c9e 12,17,28-29,59,121-122,124-150,291
+src/renderer/components/workbench/use-workbench-sidebar-controller.ts
+  s_e6a9f802ff4027::t_df381b01493643 59,74,80-81,114,168,319,324,775-823,826-845,973,1011-1017,1025-1028,1047,1056
+src/renderer/components/workbench/workbench-runtime.tsx
+  s_534dff6e177f2d::t_47d3c3a2c178f7 2047,2086,4391,4552
+src/renderer/components/workbench/workbench-session-thread-route.tsx
+  s_534dff6e177f2d::t_5e5987ca2b76bd 16,119,167,442-449,846,874,905
+src/renderer/components/workbench/workbench-shell.project-agent-dock.test.tsx
+  s_534dff6e177f2d::t_7c0876881ced91 17,21-22,62-111
+src/renderer/components/workbench/workbench-shell.sidebar-core.test.tsx
+  s_534dff6e177f2d::t_f6343528ebe6f4 2,9-14,44-119
+src/renderer/features/local-conversation/agent-runtime-conversation-adapter.test.tsx
+  s_534dff6e177f2d::t_38f726bfde0d2c 31-38,169-340
+src/renderer/features/local-conversation/thread-stage-types.ts
+  s_534dff6e177f2d::t_4e2dafa6d746e5 89-95,535,1197
+src/renderer/features/local-conversation/view/blocks/local-conversation-block-leaves.test.tsx
+  s_534dff6e177f2d::t_3638fe39c392b1 1477-1526
+src/renderer/features/local-conversation/view/composer/slash-command-menu/slash-command-registry.test.tsx
+  s_534dff6e177f2d::t_2e1c83582eddfc 1,9,65-234,329,331-335,544
+src/renderer/features/local-conversation/view/composer/slash-command-menu/slash-command-registry.tsx
+  s_534dff6e177f2d::t_ef9c903e576271 80-85,114,157,163,206-213,258,389-394,397-408,504,510,515-517,519,521-522
+src/renderer/features/local-conversation/view/connected-thread-stage.test.tsx
+  s_e6a9f802ff4027::t_bbbec7515c7be3 159-166,571-572,579,617,626-628,1281-1335
+src/renderer/features/local-conversation/view/connected-thread-stage.tsx
+  s_534dff6e177f2d::t_c1fedb4d1329a2 24-25,242,248,254-266,301-304,306-316,1633
+src/renderer/features/local-conversation/view/local-conversation-stage-header.test.tsx
+  s_534dff6e177f2d::t_a8ab7df84238e1 47-87
+src/renderer/features/local-conversation/view/local-conversation-stage-header.tsx
+  s_534dff6e177f2d::t_660fb8420b8df1 13,35,54-55,61-62,179,189-221
+src/renderer/lib/session-execution.test.ts
+  s_534dff6e177f2d::t_883a6e98ab2e0d 6,53-76
+src/renderer/lib/session-execution.ts
+  s_e6a9f802ff4027::t_9805f51af267b9 84-113
+src/renderer/lib/session-fork.test.ts
+  s_534dff6e177f2d::t_afb715e17f7a44 1-21
+tests/e2e/agent-runtime-agent-switch.spec.ts
+  s_534dff6e177f2d::t_ae47a6dcbc9261 221-226
+tests/e2e/agent-runtime-fork-actions.spec.ts
+  s_534dff6e177f2d::t_e15b3e52b978b5 1-363
+scripts/scenarios/harness/electron-e2e-harness.test.ts
+  s_e6a9f802ff4027::t_eed0b5c9e1f8ac 1-37
+scripts/scenarios/harness/electron-e2e-harness.ts
+  s_e6a9f802ff4027::t_8a7717ec196408 193-194,196-198
+src/renderer/lib/session-fork.ts
+  s_e6a9f802ff4027::t_78b1c878a828db 1-22
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "04080d6b7d0c6fa21cfe7e8c44fbcf9ece9e6e23",
+  "prompts": {},
+  "sessions": {
+    "s_534dff6e177f2d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "3c849fb5-8039-4cfb-9db5-e88711b21310",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_e6a9f802ff4027": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5f20b6d1-459e-4a51-9724-8815f5608b02",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
