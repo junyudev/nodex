@@ -1,0 +1,55 @@
+src/renderer/features/local-conversation/view/composer/configure-local-environment-popover.tsx
+  s_5526ae1e4136d2::t_61cf32e6dc41cf 1,3-9,11-12,14,18,20-26,28-33,35-47,49-52,55,58-63,65-101,103-119,121-250,252-301,303-334,336,338,340-343
+src/renderer/features/local-conversation/view/composer/new-chat-location-selector.tsx
+  s_5526ae1e4136d2::t_ad980628a12ad3 1-67
+src/renderer/features/local-conversation/view/composer/new-chat-project-selector.tsx
+  s_5526ae1e4136d2::t_512a476de9756e 1,10,30,49-50,94-149,189,219,231
+tests/e2e/claude-backend-lifecycle.spec.ts
+  s_2814d3a536e7ad::t_59058790bb6126 1,203-204,207-208,229-232,234-237,240-243
+docs/product-specs/codex-worktree-creation-behavior.md
+  s_2814d3a536e7ad::t_ab3a8d85953160 23-61,300-301
+docs/product-specs/thread-summary-panel-behavior.md
+  s_2814d3a536e7ad::t_8dba6da5f509d2 97-100
+src/renderer/features/local-conversation/view/composer/composer-context-controls.test.tsx
+  s_2814d3a536e7ad::t_926b41849c7826 1-145
+src/renderer/features/local-conversation/view/composer/local-conversation-thread-composer-speed.test.tsx
+  s_2814d3a536e7ad::t_9f5734286e0ce4 4765-4766
+src/renderer/features/local-conversation/view/composer/local-conversation-thread-composer-status-strip.tsx
+  s_2814d3a536e7ad::t_2007eb166f8987 10-12,16,141-142,158-161,164,168-174,184-185,190,198-203,207-208,214-219,221-222
+src/renderer/features/local-conversation/view/connected-thread-stage.test.tsx
+  s_2814d3a536e7ad::t_89a222e8f649a4 2445-2446,2449
+src/renderer/features/local-conversation/view/shared/branch-selector-popover.tsx
+  s_2814d3a536e7ad::t_333956b756f5d1 1-9,41-46,139,144-148,170-173,178,191-197,199,249-255,257-260,263,268-272,308,313,322-394,418-422,428-433,441-442,445
+src/renderer/features/local-conversation/view/shared/environment-selector-popover.test.tsx
+  s_2814d3a536e7ad::t_8c98241f6f71ac 128-152
+src/renderer/features/local-conversation/view/shared/environment-selector-popover.tsx
+  s_2814d3a536e7ad::t_00c70a7f2a3d5e 1-8,18-19,26,53-75,77,95-101,129,132-142,151,160,168-277,304
+src/renderer/features/local-conversation/view/shared/inline-composer-picker.ts
+  s_2814d3a536e7ad::t_d4719a61a3463d 1-48
+src/renderer/features/local-conversation/view/shared/worktree-starting-state-popover.tsx
+  s_2814d3a536e7ad::t_44845901b3064d 1-8,23,26-28,53,66,79-81,83-85,91-98,100,105-107,109,124,143,146-154,157,161,164-291,324
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "ce5152ed2e18edf3fa444cda79541117088167bc",
+  "prompts": {},
+  "sessions": {
+    "s_2814d3a536e7ad": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "667a5743-dba3-4077-97a1-608d0ecf4ae6",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_5526ae1e4136d2": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a16870-8121-7531-bf97-12c80b737866",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
