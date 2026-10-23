@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { openWorkbenchSettings } from "./support/workbench-settings";
 import { AGENT_RUNTIME_CODEX_THREAD_SOURCE } from "@nodex/agent-runtime/contracts";
 import { randomUUID } from "node:crypto";
 import fs from "node:fs";
@@ -27,7 +28,7 @@ const isPrediction = (request: ScriptedModelRequest): boolean =>
   request.isGenerationRequest() && request.isThreadSource("composer_predictions");
 
 const openComposerSettings = async (page: Page) => {
-  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  await openWorkbenchSettings(page);
   await page.getByRole("link", { name: "General", exact: true }).click();
   const control = page.getByRole("switch", { name: "Show predictions", exact: true });
   await expect(control).toBeVisible();

@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { openWorkbenchSettings } from "./support/workbench-settings";
 import {
   chooseComposerModel,
   openComposerModelPicker,
@@ -132,7 +133,7 @@ test("runs a Claude Code chat in a new worktree environment and continues it wit
         },
       ],
     });
-    await page.getByRole("button", { name: "Settings", exact: true }).click();
+    await openWorkbenchSettings(page);
     await page.getByRole("link", { name: "Agent", exact: true }).click();
     const claudeSettings = page.getByRole("region", { name: "Claude Code", exact: true });
     await claudeSettings.getByRole("button", { name: "Add variable", exact: true }).click();

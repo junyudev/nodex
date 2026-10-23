@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { openWorkbenchSettings } from "./support/workbench-settings";
 import { existsSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
@@ -128,7 +129,7 @@ test("imports Claude history as an independent executable copy with a replacemen
       const launches = () =>
         observations().filter((entry) => entry.type === "launch" && entry.persistent);
 
-      await page.getByRole("button", { name: "Settings", exact: true }).click();
+      await openWorkbenchSettings(page);
       await page.getByRole("link", { name: "Agent", exact: true }).click();
       const setupSource = page.getByRole("button", { name: "Other Codex home", exact: true });
       await setupSource.scrollIntoViewIfNeeded();

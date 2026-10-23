@@ -1,6 +1,6 @@
 import "./workbench-testkit/workbench-shell-harness";
 import { describe, test, expect } from "vite-plus/test";
-import { settleAsyncRender, settleLazyRender, textContent } from "../../test/dom";
+import { openNodexMenu, settleAsyncRender, settleLazyRender, textContent } from "../../test/dom";
 import { act, fireEvent, waitFor, within } from "@testing-library/react";
 import { THREAD_QUEUE_FOLLOW_UPS_STORAGE_KEY } from "@/lib/thread-composer-follow-up-mode";
 import { COMPOSER_ENTER_BEHAVIOR_STORAGE_KEY } from "@/lib/composer-enter-behavior";
@@ -156,15 +156,13 @@ describe("workbench session shell / routes-threads", () => {
     },
   );
 
-  test("opens settings as a full-window route shell from the sidebar settings button", async () => {
+  test("opens settings as a full-window route shell from the account menu", async () => {
     const screen = renderWorkbench();
     await settleAsyncRender();
     await settleAsyncRender();
 
-    const settingsButton = screen.getByRole("button", { name: "Settings" });
-    if (!(settingsButton instanceof HTMLElement)) {
-      throw new Error("Expected a sidebar settings button");
-    }
+    await openNodexMenu(screen.getByRole("button", { name: "Account and settings" }));
+    const settingsButton = screen.getByRole("menuitem", { name: "Settings" });
     expect(screen.container.querySelector('[aria-label="Manage workspaces"]')).toBe(null);
 
     await act(async () => {
@@ -401,12 +399,9 @@ describe("workbench session shell / routes-threads", () => {
       });
       const fullWidthBeforeSettings = rightPanel.style.width;
 
-      const settingsButton = screen.getByRole("button", { name: "Settings" });
-      if (!(settingsButton instanceof HTMLElement)) {
-        throw new Error("Expected a sidebar settings button");
-      }
+      await openNodexMenu(screen.getByRole("button", { name: "Account and settings" }));
       await act(async () => {
-        fireEvent.click(settingsButton);
+        fireEvent.click(screen.getByRole("menuitem", { name: "Settings" }));
         await Promise.resolve();
       });
       await settleAsyncRender();

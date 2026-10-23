@@ -44,7 +44,18 @@ export function selectNodexAccountSnapshot(
 
 export const nodexAccountQueryOptions = queryOptions({
   queryKey: nodexAccountQueryKey,
-  queryFn: () => invokeRendererQuery("nodex-account:read"),
+  queryFn: async ({ client }) => {
+    const revision =
+      client.getQueryData<NodexAccountSnapshot>(nodexAccountQueryKey)?.revision ?? -1;
+    try {
+      return await invokeRendererQuery("nodex-account:read");
+    } catch (error) {
+      const current = client.getQueryData<NodexAccountSnapshot>(nodexAccountQueryKey);
+      if (current && current.revision > revision) return current;
+      throw error;
+    }
+  },
+  networkMode: "always",
   refetchOnWindowFocus: false,
   retry: false,
   structuralSharing: (current, next) =>

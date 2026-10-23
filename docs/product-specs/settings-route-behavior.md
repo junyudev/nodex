@@ -50,11 +50,16 @@ keyed by page key rather than by route slug.
 
 The desktop groups are:
 
-- Personal: General, Appearance, Agent, Keyboard shortcuts, Inbox.
+- Personal: Account, General, Appearance, Voice, Agent, Keyboard shortcuts, Inbox.
 - Integrations: Browser, Computer use.
 - Coding: Conversations, Hooks, Git, Environments, Worktrees.
 - Workspace: Pages.
-- Data & recovery: Backups.
+- Data & recovery: Data controls, Backups.
+
+Account owns the optional Nodex identity and its connection controls, following
+[Nodex Account Login](nodex-account-login-behavior.md). The rail avatar menu
+and the Account page observe the same Profile account state. Native Agent
+authentication remains separate.
 
 The Worktrees section follows
 [Codex Managed Worktree Lifecycle Behavior](codex-managed-worktree-lifecycle-behavior.md)

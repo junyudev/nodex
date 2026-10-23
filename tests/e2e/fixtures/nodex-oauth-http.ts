@@ -49,7 +49,9 @@ const readForm = async (request: IncomingMessage): Promise<URLSearchParams> => {
 };
 
 /** A real loopback OAuth peer: Main still owns discovery, PKCE, callbacks and encrypted storage. */
-export async function startNodexOAuthHttpFixture(): Promise<NodexOAuthHttpFixture> {
+export async function startNodexOAuthHttpFixture(
+  options: { imageUrl?: string } = {},
+): Promise<NodexOAuthHttpFixture> {
   const codes = new Map<string, AuthorizationCode>();
   const accessTokens = new Map<string, Grant>();
   const refreshTokens = new Map<string, Grant>();
@@ -165,7 +167,10 @@ export async function startNodexOAuthHttpFixture(): Promise<NodexOAuthHttpFixtur
       const token = request.headers.authorization?.replace(/^Bearer /u, "") ?? "";
       const grant = accessTokens.get(token);
       if (!grant || grant.revoked) return sendJson(response, 401, { error: "invalid_token" });
-      return sendJson(response, 200, IDENTITY);
+      return sendJson(response, 200, {
+        ...IDENTITY,
+        ...(options.imageUrl ? { picture: options.imageUrl } : {}),
+      });
     }
     if (request.method === "POST" && url.pathname === "/revoke") {
       const form = await readForm(request);

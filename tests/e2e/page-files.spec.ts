@@ -1,3 +1,4 @@
+import { openWorkbenchSettings } from "./support/workbench-settings";
 import { createHash } from "node:crypto";
 import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
@@ -162,7 +163,7 @@ test("copies portable File references by default and local blob paths when enabl
         .poll(() => application.evaluate(({ clipboard }) => clipboard.readText()))
         .toMatch(/nodex:\/\/files\//u);
 
-      await page.getByRole("button", { name: "Settings", exact: true }).click();
+      await openWorkbenchSettings(page);
       const localPathSwitch = page.getByRole("switch", {
         name: "Copy file references as local paths",
       });

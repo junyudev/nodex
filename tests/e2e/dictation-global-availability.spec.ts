@@ -1,3 +1,4 @@
+import { openWorkbenchSettings } from "./support/workbench-settings";
 import { expect, test, type Page } from "@playwright/test";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
@@ -31,11 +32,11 @@ const readGlobalShortcuts = async (page: Page) =>
   });
 
 const openVoice = async (page: Page): Promise<void> => {
-  const settings = page.getByTestId("settings-route-shell");
-  const settingsButton = page.getByRole("button", { name: "Settings", exact: true });
-  await expect(settings.or(settingsButton).first()).toBeVisible();
-  if (!(await settings.isVisible())) await settingsButton.click();
-  await settings.getByRole("link", { name: "Voice", exact: true }).click();
+  await openWorkbenchSettings(page);
+  await page
+    .getByTestId("settings-route-shell")
+    .getByRole("link", { name: "Voice", exact: true })
+    .click();
 };
 
 test("keeps Voice configuration available when dictation capture is disabled", async ({}, testInfo) => {

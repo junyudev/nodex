@@ -1,3 +1,4 @@
+import { openWorkbenchSettings } from "./support/workbench-settings";
 import type { DictationRecordingMetadata } from "../../src/shared/dictation-history";
 import { expect, test } from "@playwright/test";
 import { ElectronScenarioHarness } from "../../scripts/scenarios/harness/electron-e2e-harness";
@@ -65,7 +66,7 @@ test("shows the persisted dictation route and performance evidence in Voice sett
       });
       await api.invoke("codex:dictation:history:set-diagnostics", { id, diagnostics });
     }, diagnostics);
-    await page.getByRole("button", { name: "Settings", exact: true }).click();
+    await openWorkbenchSettings(page);
     await page
       .getByTestId("settings-route-shell")
       .getByRole("link", { name: "Voice", exact: true })

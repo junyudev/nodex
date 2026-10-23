@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { openWorkbenchSettings } from "./support/workbench-settings";
 import type { AgentTurnItem } from "@nodex/agent-runtime/contracts";
 import { randomUUID } from "node:crypto";
 import fs from "node:fs";
@@ -332,7 +333,7 @@ respect_system_proxy = false
         expect(fs.existsSync(assistantImagePath)).toBe(false);
         const requestsBeforeImport = modelServer.requests().length;
         let page = await harness.launch();
-        await page.getByRole("button", { name: "Settings", exact: true }).click();
+        await openWorkbenchSettings(page);
         await page.getByRole("link", { name: "Conversations", exact: true }).click();
         await page
           .getByRole("textbox", { name: "Conversation link or ID", exact: true })

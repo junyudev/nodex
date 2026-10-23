@@ -1,3 +1,4 @@
+import { openWorkbenchSettings } from "./support/workbench-settings";
 import { expect, test } from "@playwright/test";
 import { createHash } from "node:crypto";
 import fs from "node:fs";
@@ -118,7 +119,7 @@ test("isolates Profile settings without replacing the launcher HOME", async () =
     expect(activeHome.resolvedHomePath).toBe(fs.realpathSync(harness.profile.codexHome));
     expect(activeHome.restartRequired).toBe(false);
     const selectedHome = path.join(harness.profile.runRoot, "selected-codex-home");
-    await page.getByRole("button", { name: "Settings", exact: true }).click();
+    await openWorkbenchSettings(page);
     await page.getByRole("link", { name: "Agent", exact: true }).click();
     const homeInput = page.getByRole("textbox", { name: "Codex home", exact: true });
     await homeInput.fill(selectedHome);

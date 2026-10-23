@@ -1,3 +1,4 @@
+import { openWorkbenchSettings } from "./support/workbench-settings";
 import { expect, test, type Page } from "@playwright/test";
 import { openProjectBoard } from "../../scripts/scenarios/harness/project-board-ui";
 import { appendFile, mkdir, stat, writeFile } from "node:fs/promises";
@@ -32,7 +33,7 @@ interface EvidenceClaim {
 }
 
 const openAppearance = async (page: Page, advanced = true) => {
-  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  await openWorkbenchSettings(page);
   await page.getByRole("link", { name: "Appearance", exact: true }).click();
   await expect(page.getByRole("radiogroup", { name: "Mode", exact: true })).toBeVisible();
   if (!advanced) return;

@@ -41,8 +41,9 @@ function renderAccount(snapshot: NodexAccountSnapshot) {
 }
 
 async function clickAction(label: string) {
+  const action = await screen.findByRole("button", { name: label });
   await act(async () => {
-    fireEvent.click(await screen.findByRole("button", { name: label }));
+    fireEvent.click(action);
     await Promise.resolve();
   });
 }
@@ -131,7 +132,7 @@ describe("Account settings", () => {
     expect(account.invoke).toHaveBeenLastCalledWith("nodex-account:sign-out");
   });
 
-  test("shows a reauthentication action with one session message and a safe transport failure", async () => {
+  test("allows reauthentication without claiming an absent identity and keeps failures safe", async () => {
     const account = renderAccount(signedOut);
     await screen.findByRole("button", { name: "Sign in" });
     await act(async () => {
@@ -143,10 +144,11 @@ describe("Account settings", () => {
       });
       await Promise.resolve();
     });
-    await screen.findByRole("button", { name: "Sign in again" });
-    expect(screen.getByRole("status").textContent).toBe(
-      "Session ended. Sign in again to continue.",
-    );
+    const signInAgain = await screen.findByRole("button", { name: "Sign in again" });
+    expect(signInAgain.hasAttribute("disabled")).toBe(false);
+    expect(screen.queryByText("Signed in")).toBeNull();
+    expect(screen.getByText("Nodex Account")).toBeDefined();
+    expect(screen.getByRole("status").textContent).toBe("Your session ended. Sign in again.");
     expect(screen.queryByRole("alert")).toBeNull();
 
     account.invoke.mockRejectedValue(new Error("private IPC diagnostic"));

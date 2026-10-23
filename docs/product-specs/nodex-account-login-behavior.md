@@ -6,9 +6,9 @@
 ## Scope
 
 Desktop can optionally connect a local Profile to a Clerk identity from
-Settings → Account. Local startup, content, backups, export and local CLI
-operations remain independent of that connection. Codex, Claude Code and
-other native Agent accounts keep their existing homes and authentication.
+the rail's account menu or Settings → Account. Local startup, content, backups,
+export and local CLI operations remain independent of that connection. Codex,
+Claude Code and other native Agent accounts keep their existing homes and authentication.
 
 This slice supplies sign-in, identity display, refresh, encrypted persistence
 and sign-out. It does not enable purchases, grant model capacity, upload the
@@ -16,6 +16,26 @@ Library or introduce a cloud Account database. The current identity is the
 pair `(issuer, subject)`. A future cloud service maps that pair to its own
 Account ID and independently verifies access before authorizing spending; see
 the [subscription proposal](nodex-account-and-subscription-behavior.md).
+
+## Account entry points
+
+The bottom rail avatar opens an account menu beside the rail. Settings remains
+available in every account state, including an unconfigured or offline build.
+When an identity is remembered, the menu begins with that identity and opens
+Account settings from its header. Its account actions follow the current
+connection: sign in, cancel the pending browser login, sign in again, or sign
+out. These actions only affect the Nodex connection.
+
+The menu and Account page use the same identity and avatar presentation. An
+available HTTPS profile image is preferred; an unavailable image falls back to
+initials. The rail shows the Nodex icon when no account identity is available.
+Sign-out removes the prior identity from both surfaces. The menu supports keyboard navigation,
+outside dismissal, Escape and focus restoration through the shared menu
+primitive. Settings navigation preserves the Workbench return route.
+
+Native Codex login and quota controls remain separate. The Nodex menu does not
+present a subscription plan, remaining quota or purchasing action before those
+capabilities have a cloud authority.
 
 ## Ownership and public Interface
 
@@ -29,9 +49,11 @@ start or cancel sign-in, refresh identity and sign out. They cannot choose an
 issuer, supply a token, read a credential file or invoke arbitrary authenticated
 requests. Snapshots contain a monotonic revision, configuration availability,
 auth status, identity, connection availability, persistence mode and a bounded
-error code. Renderer owners reject older query and command responses after a
-newer observation. Leaving Account settings only releases its subscription;
-it does not cancel a browser login.
+error code. The avatar menu and Account settings share the same identity,
+pending action and error state. Renderer owners reject older query and command
+responses, including read failures, after a newer observation. Local status
+reads, cancellation and sign-out remain callable while the renderer is offline.
+Closing the menu or leaving Account settings does not cancel a browser login.
 
 ## Browser sign-in
 

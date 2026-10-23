@@ -1,5 +1,5 @@
 import { useRef, useState } from "react";
-import { SettingsGeneralIcon } from "@/components/shared/icons";
+import { NodexAccountMenu } from "@/features/nodex-account/nodex-account-menu";
 import { UserRound } from "@/components/shared/icons/generic-icons";
 import { NodexButton } from "@/components/ui/button";
 import { NodexTooltip } from "@/components/ui/tooltip";
@@ -29,6 +29,8 @@ const NO_USAGE_READINGS: readonly UsageReading[] = [];
 
 export interface WorkbenchRailAccountControlsProps {
   onOpenSettings: () => void;
+  onOpenAccountSettings: () => void;
+  settingsShortcutLabel?: string;
   account?: CodexAccountSnapshot | null;
   connection?: CodexConnectionState;
   onRefreshAccount?: () => Promise<CodexAccountSnapshot>;
@@ -180,11 +182,13 @@ function CodexUsageMeter({
 /**
  * App-wide controls at the foot of the navigation rail: the Codex account control (its usage
  * meter when signed in, sign-in when signed out, an unread Codex meter while the account is
- * unknown), one usage meter per Claude subscription account, then Settings. Settings stays last
- * so it never moves when the account state becomes known.
+ * unknown), one usage meter per Claude subscription account, then the Nodex Account menu.
+ * The menu stays last so it never moves when provider account state becomes known.
  */
 export function WorkbenchRailAccountControls({
   onOpenSettings,
+  onOpenAccountSettings,
+  settingsShortcutLabel,
   account,
   connection,
   onRefreshAccount,
@@ -298,17 +302,12 @@ export function WorkbenchRailAccountControls({
           </span>
         ))}
       </div>
-      <NodexTooltip tooltipContent="Settings" side="right">
-        <NodexButton
-          variant="ghost"
-          size="icon"
-          aria-label="Settings"
-          className={WORKBENCH_RAIL_BUTTON_CLASS}
-          onClick={onOpenSettings}
-        >
-          <SettingsGeneralIcon className="icon-sm" />
-        </NodexButton>
-      </NodexTooltip>
+      <NodexAccountMenu
+        onOpenSettings={onOpenSettings}
+        onOpenAccountSettings={onOpenAccountSettings}
+        settingsShortcutLabel={settingsShortcutLabel}
+        className={WORKBENCH_RAIL_BUTTON_CLASS}
+      />
     </div>
   );
 }

@@ -1,10 +1,40 @@
 import { describe, expect, test } from "vite-plus/test";
-import { act, fireEvent, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, waitFor } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import type { ReactElement } from "react";
 import { NodexTooltipProvider } from "@/components/ui/tooltip";
 import type { CodexAccountSnapshot } from "@/lib/types";
 import type { UsageReading } from "@/lib/usage-meter";
-import { render, textContent } from "@/test/dom";
+import { nodexAccountQueryKey } from "@/lib/nodex-account-runtime";
+import { installWindowApi } from "@/test/browser-globals";
+import { textContent } from "@/test/dom";
+import type { NodexAccountSnapshot } from "../../../shared/nodex-account";
 import { WorkbenchRailAccountControls } from "./workbench-rail-account-controls";
+
+function renderRail(ui: ReactElement) {
+  const snapshot: NodexAccountSnapshot = {
+    revision: 0,
+    configured: false,
+    status: "signed-out",
+    account: null,
+    connection: "unavailable",
+    persistence: null,
+    error: null,
+  };
+  installWindowApi({
+    invoke: async () => snapshot,
+    on: () => () => undefined,
+  });
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false, gcTime: Infinity, staleTime: Infinity } },
+  });
+  client.setQueryData(nodexAccountQueryKey, snapshot);
+  return render(ui, {
+    wrapper: ({ children }) => (
+      <QueryClientProvider client={client}>{children}</QueryClientProvider>
+    ),
+  });
+}
 
 const authenticatedAccount: CodexAccountSnapshot = {
   status: "ready",
@@ -88,10 +118,11 @@ function claudeReading(overrides: Partial<UsageReading> = {}): UsageReading {
 
 describe("WorkbenchRailAccountControls", () => {
   test("draws the Codex account as one ring for the window that runs out first", async () => {
-    const view = render(
+    const view = renderRail(
       <NodexTooltipProvider>
         <WorkbenchRailAccountControls
           onOpenSettings={() => undefined}
+          onOpenAccountSettings={() => undefined}
           account={authenticatedAccount}
           connection={{ status: "connected", retries: 0 }}
           onRefreshAccount={async () => authenticatedAccount}
@@ -107,10 +138,11 @@ describe("WorkbenchRailAccountControls", () => {
 
   test("shows existing account details on focus and refreshes once while opening", async () => {
     let refreshCount = 0;
-    const view = render(
+    const view = renderRail(
       <NodexTooltipProvider>
         <WorkbenchRailAccountControls
           onOpenSettings={() => undefined}
+          onOpenAccountSettings={() => undefined}
           account={authenticatedAccount}
           connection={{ status: "connected", retries: 0 }}
           onRefreshAccount={async () => {
@@ -127,7 +159,10 @@ describe("WorkbenchRailAccountControls", () => {
     );
 
     const ring = view.getByRole("button", { name: "Codex usage: 61% left in weekly window" });
-    fireEvent.focus(ring);
+    await act(async () => {
+      fireEvent.focus(ring);
+      await Promise.resolve();
+    });
 
     await waitFor(() => {
       const bodyText = textContent(view.container.ownerDocument.body);
@@ -143,7 +178,10 @@ describe("WorkbenchRailAccountControls", () => {
     ]);
     expect(meters.map((meter) => meter.getAttribute("aria-valuenow"))).toEqual(["82", "61"]);
 
-    fireEvent.focus(ring);
+    await act(async () => {
+      fireEvent.focus(ring);
+      await Promise.resolve();
+    });
     await waitFor(() => {
       expect(refreshCount).toBe(1);
     });
@@ -151,10 +189,11 @@ describe("WorkbenchRailAccountControls", () => {
 
   test("keeps quota resets collapsed and reuses the attempt key after a transport failure", async () => {
     const attempts: Array<{ idempotencyKey: string; creditId?: string | null }> = [];
-    const view = render(
+    const view = renderRail(
       <NodexTooltipProvider>
         <WorkbenchRailAccountControls
           onOpenSettings={() => undefined}
+          onOpenAccountSettings={() => undefined}
           account={authenticatedAccount}
           connection={{ status: "connected", retries: 0 }}
           onRefreshAccount={async () => authenticatedAccount}
@@ -177,7 +216,10 @@ describe("WorkbenchRailAccountControls", () => {
       </NodexTooltipProvider>,
     );
 
-    fireEvent.focus(codexMeter(view.container));
+    await act(async () => {
+      fireEvent.focus(codexMeter(view.container));
+      await Promise.resolve();
+    });
     const disclosures = await view.findAllByRole("button", { name: "2 quota resets" });
     const disclosure = disclosures.at(-1);
     if (!disclosure) throw new Error("Expected quota-reset disclosure");
@@ -219,10 +261,11 @@ describe("WorkbenchRailAccountControls", () => {
 
   test("shows sign-in in the quota slot for signed-out accounts", async () => {
     let chatGptLoginCount = 0;
-    const view = render(
+    const view = renderRail(
       <NodexTooltipProvider>
         <WorkbenchRailAccountControls
           onOpenSettings={() => undefined}
+          onOpenAccountSettings={() => undefined}
           account={signedOutAccount}
           connection={{ status: "connected", retries: 0 }}
           onRefreshAccount={async () => signedOutAccount}
@@ -238,22 +281,29 @@ describe("WorkbenchRailAccountControls", () => {
     );
 
     expect(view.container.querySelector("[data-usage-meter]")).toBe(null);
-    expect(Boolean(view.getByRole("button", { name: "Settings" }))).toBe(true);
-    fireEvent.click(view.getByRole("button", { name: "Sign in" }));
+    expect(Boolean(view.getByRole("button", { name: "Account and settings" }))).toBe(true);
+    await act(async () => {
+      fireEvent.click(view.getByRole("button", { name: "Sign in" }));
+      await Promise.resolve();
+    });
 
     const chatGptLogin = await view.findByRole("button", { name: "Sign in with ChatGPT" });
-    fireEvent.click(chatGptLogin);
+    await act(async () => {
+      fireEvent.click(chatGptLogin);
+      await Promise.resolve();
+    });
 
     await waitFor(() => {
       expect(chatGptLoginCount).toBe(1);
     });
   });
 
-  test("keeps Settings last while the account slot hydrates above it", () => {
+  test("keeps the Nodex account menu last while the account slot hydrates above it", () => {
     const renderControls = (account: typeof signedOutAccount | null) => (
       <NodexTooltipProvider>
         <WorkbenchRailAccountControls
           onOpenSettings={() => undefined}
+          onOpenAccountSettings={() => undefined}
           account={account}
           connection={{ status: "connected", retries: 0 }}
           onRefreshAccount={async () => signedOutAccount}
@@ -264,24 +314,25 @@ describe("WorkbenchRailAccountControls", () => {
         />
       </NodexTooltipProvider>
     );
-    const view = render(renderControls(null));
+    const view = renderRail(renderControls(null));
     const labels = () =>
       view.getAllByRole("button").map((button) => button.getAttribute("aria-label"));
 
     expect(view.container.querySelector("[data-usage-meter]")).toBe(null);
-    expect(labels()).toEqual(["Loading Codex account", "Settings"]);
+    expect(labels()).toEqual(["Loading Codex account", "Account and settings"]);
 
     view.rerender(renderControls(signedOutAccount));
-    expect(labels()).toEqual(["Sign in", "Settings"]);
+    expect(labels()).toEqual(["Sign in", "Account and settings"]);
   });
 
   test("says why an unknown account cannot load and asks again when clicked", async () => {
     let refreshCount = 0;
     const unreachable: CodexAccountSnapshot = { ...signedOutAccount, status: "unavailable" };
-    const view = render(
+    const view = renderRail(
       <NodexTooltipProvider>
         <WorkbenchRailAccountControls
           onOpenSettings={() => undefined}
+          onOpenAccountSettings={() => undefined}
           account={unreachable}
           connection={{ status: "connected", retries: 0 }}
           onRefreshAccount={async () => {
@@ -305,10 +356,11 @@ describe("WorkbenchRailAccountControls", () => {
   });
   test("adds a Claude meter that shows how old its reading is and reads nothing when opened", async () => {
     let refreshCount = 0;
-    const view = render(
+    const view = renderRail(
       <NodexTooltipProvider>
         <WorkbenchRailAccountControls
           onOpenSettings={() => undefined}
+          onOpenAccountSettings={() => undefined}
           account={authenticatedAccount}
           connection={{ status: "connected", retries: 0 }}
           onRefreshAccount={async () => {
@@ -324,13 +376,16 @@ describe("WorkbenchRailAccountControls", () => {
     expect(view.getAllByRole("button").map((button) => button.getAttribute("aria-label"))).toEqual([
       "Codex usage: 61% left in weekly window",
       "Claude usage: 12% left in 5-hour window, read 2 h ago",
-      "Settings",
+      "Account and settings",
     ]);
     const claude = view.container.querySelector<HTMLElement>('[data-usage-meter="claude"]');
     if (!claude) throw new Error("Expected the Claude usage meter");
     expect(claude.hasAttribute("data-usage-stale")).toBe(true);
 
-    fireEvent.focus(claude);
+    await act(async () => {
+      fireEvent.focus(claude);
+      await Promise.resolve();
+    });
     const card = await waitFor(() => {
       const found = view.container.ownerDocument.querySelector('[data-usage-card="claude"]');
       if (!found) throw new Error("Expected the Claude usage card");
@@ -350,10 +405,11 @@ describe("WorkbenchRailAccountControls", () => {
   });
 
   test("an unread Claude account says so instead of showing a level", async () => {
-    const view = render(
+    const view = renderRail(
       <NodexTooltipProvider>
         <WorkbenchRailAccountControls
           onOpenSettings={() => undefined}
+          onOpenAccountSettings={() => undefined}
           claudeUsage={[claudeReading({ windows: [], observedAt: null })]}
         />
       </NodexTooltipProvider>,
@@ -362,7 +418,10 @@ describe("WorkbenchRailAccountControls", () => {
     const claude = view.getByRole("button", { name: "Claude usage not read yet" });
     expect(claude.querySelector("[data-usage-ring-arc]")).toBe(null);
     expect(claude.querySelector('[data-usage-ring-track="dotted"]')).not.toBe(null);
-    fireEvent.focus(claude);
+    await act(async () => {
+      fireEvent.focus(claude);
+      await Promise.resolve();
+    });
     await waitFor(() => {
       const bodyText = textContent(view.container.ownerDocument.body);
       if (

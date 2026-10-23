@@ -1,3 +1,4 @@
+import { openWorkbenchSettings } from "./support/workbench-settings";
 import { expect, test, type Page } from "@playwright/test";
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
@@ -85,7 +86,7 @@ const readGeometry = async (page: Page) =>
     const railButtons = Array.from(navigation.querySelectorAll("button"));
     return {
       rail: { width: railBounds.width, top: railBounds.top },
-      // The account control appears above Settings only once the account state is known.
+      // The native account control appears above the Nodex menu once its state is known.
       buttons: railButtons
         .filter((button) => !button.closest("[data-workbench-rail-account]"))
         .map((button) => {
@@ -184,7 +185,7 @@ const readOverflow = async (page: Page) =>
   });
 
 const selectAppearance = async (page: Page, mode: "Light" | "Dark") => {
-  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  await openWorkbenchSettings(page);
   await page.getByRole("link", { name: "Appearance", exact: true }).click();
   const choice = page.getByRole("radio", { name: mode, exact: true });
   await choice.locator("..").click();
@@ -327,7 +328,7 @@ test("keeps Home and Space navigation, tabs and chrome across Settings and resta
                 { label: "Space", width: 36, height: 36 },
                 { label: "Scheduled", width: 36, height: 36 },
                 { label: "Plugins", width: 36, height: 36 },
-                { label: "Settings", width: 36, height: 36 },
+                { label: "Account and settings", width: 36, height: 36 },
               ],
               railFootBottomInset: 8,
               headerHeight: 44,
@@ -818,7 +819,7 @@ test("keeps Home and Space navigation, tabs and chrome across Settings and resta
           await page.mouse.move(1200, 740);
           await expect(content(page)).toBeVisible();
 
-          await page.getByRole("button", { name: "Settings", exact: true }).click();
+          await openWorkbenchSettings(page);
           await expect(page.getByRole("link", { name: "General", exact: true })).toBeVisible();
           await page.getByRole("button", { name: "Back to app", exact: true }).click();
           await expectSpacePage();
@@ -890,7 +891,7 @@ test("keeps Home and Space navigation, tabs and chrome across Settings and resta
               inboxVisible: await page.getByTestId("inbox-route").isVisible(),
             },
           );
-          await page.getByRole("button", { name: "Settings", exact: true }).click();
+          await openWorkbenchSettings(page);
           await expect(page.getByRole("link", { name: "General", exact: true })).toBeVisible();
           claim(
             "Settings opened from Inbox retains the Home destination",

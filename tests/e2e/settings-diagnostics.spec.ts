@@ -1,3 +1,4 @@
+import { openWorkbenchSettings } from "./support/workbench-settings";
 import { expect, test, type Locator, type Page } from "@playwright/test";
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
@@ -95,7 +96,7 @@ test("renders and toggles App server diagnostics in General settings", async ({}
     page = await harness.launch();
     page.on("pageerror", (error) => rendererErrors.push(error.message));
     await page.setViewportSize({ width: 1280, height: 800 });
-    await page.getByRole("button", { name: "Settings", exact: true }).click();
+    await openWorkbenchSettings(page);
     await page.getByRole("link", { name: "Appearance", exact: true }).click();
     const darkMode = page.getByRole("radio", { name: "Dark", exact: true });
     await darkMode.locator("..").click();

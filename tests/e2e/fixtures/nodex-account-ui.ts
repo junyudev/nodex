@@ -1,3 +1,4 @@
+import { openWorkbenchSettings } from "../support/workbench-settings";
 import { expect, type ElectronApplication, type Page } from "@playwright/test";
 import type { IpcApi } from "../../../src/shared/ipc-api";
 import {
@@ -26,8 +27,7 @@ export const expectNodexAccount = async (
 
 export const openNodexAccount = async (page: Page): Promise<void> => {
   const account = page.getByRole("link", { name: "Account", exact: true });
-  if (!(await account.isVisible()))
-    await page.getByRole("button", { name: "Settings", exact: true }).click();
+  if (!(await account.isVisible())) await openWorkbenchSettings(page);
   await account.click();
 };
 

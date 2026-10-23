@@ -343,6 +343,7 @@ import {
 } from "../../../shared/workbench-commands";
 import {
   createCommandKeymapState,
+  formatCommandShortcutLabel,
   matchesKeyboardEventToCommand,
   type CommandKeymapState,
 } from "../../../shared/command-keybindings";
@@ -4974,6 +4975,13 @@ export function WorkbenchRuntime({
                         footer={
                           <WorkbenchRailFoot
                             onOpenSettings={openSettings}
+                            onOpenAccountSettings={() => openSettingsAt("account")}
+                            settingsShortcutLabel={formatCommandShortcutLabel(
+                              commandKeymapState ??
+                                createCommandKeymapState({}, isMacPlatform ? "macOS" : "windows"),
+                              "settings",
+                              "CmdOrCtrl+,",
+                            )}
                             account={codexAccount}
                             connection={codexConnection}
                             onRefreshAccount={codexAccountActions.refreshAccount}

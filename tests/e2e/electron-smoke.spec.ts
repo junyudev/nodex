@@ -1,3 +1,4 @@
+import { openWorkbenchSettings } from "./support/workbench-settings";
 import type { BlockTransferDataSourcePlacement } from "../../src/shared/block-transfer";
 import { readTestClipboard, writeTestClipboardImage } from "./clipboard";
 import { selectEditorBlockRange } from "./support/select-editor-block-range";
@@ -3544,7 +3545,7 @@ test.describe("parallel functional Electron smoke", () => {
 
       const project = await createConvergenceProject(page, "Native DnD smoke", workspace);
       const listViewId = await createConvergenceListView(page, project);
-      await page.getByRole("button", { name: "Settings", exact: true }).click();
+      await openWorkbenchSettings(page);
       await page
         .getByTestId("settings-route-shell")
         .getByRole("link", { name: "Pages", exact: true })

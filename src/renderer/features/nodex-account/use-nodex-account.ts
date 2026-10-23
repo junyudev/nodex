@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useEffect } from "react";
+import { useMutation, useMutationState, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { NodexAccountErrorCode, NodexAccountSnapshot } from "../../../shared/nodex-account";
 import {
   nodexAccountActions,
@@ -10,10 +10,16 @@ import {
   type NodexAccountAction,
 } from "@/lib/nodex-account-runtime";
 
+const accountMutationKey = ["nodexAccount", "action"] as const;
+
+interface AccountMutationInput {
+  action: NodexAccountAction;
+  observedRevision: number;
+}
+
 /** Projects Main's Profile account without owning credentials or login lifetime. */
 export function useNodexAccount(open: boolean) {
   const queryClient = useQueryClient();
-  const [failure, setFailure] = useState<NodexAccountErrorCode | "transport" | null>(null);
 
   useEffect(() => {
     if (!open) return;
@@ -23,13 +29,14 @@ export function useNodexAccount(open: boolean) {
       queryClient.setQueryData<NodexAccountSnapshot>(nodexAccountQueryKey, (current) =>
         selectNodexAccountSnapshot(current, snapshot),
       );
-      setFailure(snapshot.error);
     });
   }, [open, queryClient]);
 
   const query = useQuery({ ...nodexAccountQueryOptions, enabled: open });
   const mutation = useMutation({
-    mutationFn: (action: NodexAccountAction) => nodexAccountActions[action](),
+    mutationKey: accountMutationKey,
+    networkMode: "always",
+    mutationFn: ({ action }: AccountMutationInput) => nodexAccountActions[action](),
     retry: false,
     onSuccess: (snapshot) => {
       const current = queryClient.getQueryData<NodexAccountSnapshot>(nodexAccountQueryKey);
@@ -37,10 +44,35 @@ export function useNodexAccount(open: boolean) {
       queryClient.setQueryData<NodexAccountSnapshot>(nodexAccountQueryKey, (current) =>
         selectNodexAccountSnapshot(current, snapshot),
       );
-      setFailure(snapshot.error);
     },
-    onError: () => setFailure("transport"),
   });
+
+  const mutations = useMutationState({
+    filters: { mutationKey: accountMutationKey, exact: true },
+    select: (entry) => ({
+      status: entry.state.status,
+      input: entry.state.variables as AccountMutationInput | undefined,
+    }),
+  });
+  const pending = mutations.find((entry) => entry.status === "pending")?.input?.action ?? null;
+  const latest = mutations.at(-1);
+  const transportFailed =
+    latest?.status === "error" &&
+    (query.data?.revision ?? -1) <= (latest.input?.observedRevision ?? -1);
+  const failure: NodexAccountErrorCode | "transport" | null = pending
+    ? null
+    : transportFailed || (query.isError && query.data)
+      ? "transport"
+      : (query.data?.error ?? null);
+
+  const act = (action: NodexAccountAction) => {
+    if (queryClient.isMutating({ mutationKey: accountMutationKey, exact: true }) > 0) return;
+    mutation.mutate({
+      action,
+      observedRevision:
+        queryClient.getQueryData<NodexAccountSnapshot>(nodexAccountQueryKey)?.revision ?? -1,
+    });
+  };
 
   return {
     snapshot: query.data,
@@ -48,15 +80,13 @@ export function useNodexAccount(open: boolean) {
     failed: query.isError && !query.data,
     failure,
     retrying: query.isFetching,
-    pending: mutation.isPending ? mutation.variables : null,
-    act: (action: NodexAccountAction) => {
-      if (mutation.isPending) return;
-      setFailure(null);
-      mutation.mutate(action);
-    },
+    pending,
+    act,
     retry: () => {
-      mutation.reset();
-      setFailure(null);
+      if (query.data) {
+        act("refresh");
+        return;
+      }
       void query.refetch();
     },
   };

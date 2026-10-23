@@ -1,3 +1,4 @@
+import { openWorkbenchSettings } from "./support/workbench-settings";
 import { expect, test, type Page } from "@playwright/test";
 import { createHash } from "node:crypto";
 import { mkdir, readFile, unlink, writeFile } from "node:fs/promises";
@@ -34,12 +35,11 @@ const readAudio = (page: Page, id: string) =>
   }, id);
 
 const openVoice = async (page: Page): Promise<void> => {
-  const settings = page.getByTestId("settings-route-shell");
-  const settingsButton = page.getByRole("button", { name: "Settings", exact: true });
-  // The restored Settings scene and the ordinary workbench mount asynchronously.
-  await expect(settings.or(settingsButton).first()).toBeVisible();
-  if (!(await settings.isVisible())) await settingsButton.click();
-  await settings.getByRole("link", { name: "Voice", exact: true }).click();
+  await openWorkbenchSettings(page);
+  await page
+    .getByTestId("settings-route-shell")
+    .getByRole("link", { name: "Voice", exact: true })
+    .click();
 };
 
 test("transcribes a selected WebM into Voice history without microphone access", async ({}, testInfo) => {
