@@ -1474,6 +1474,56 @@ describe("ThreadWorktreeInitBlock", () => {
   });
 });
 
+describe("fork origin presentation", () => {
+  test.each([
+    { sourceConversationTitle: null, expectedLabel: "Forked from another chat" },
+    { sourceConversationTitle: "  ", expectedLabel: "Forked from another chat" },
+    { sourceConversationTitle: "Source chat", expectedLabel: "Forked from Source chat" },
+  ])(
+    "renders a compact origin for $sourceConversationTitle",
+    ({ sourceConversationTitle, expectedLabel }) => {
+      const { container, getByText, queryByRole } = render(
+        <ThreadBlockRenderer
+          block={{
+            id: "fork-1",
+            turnId: "turn-1",
+            createdAt: 1,
+            updatedAt: 1,
+            searchableText: "Forked conversation",
+            type: "forkedFromConversation",
+            status: "completed",
+            entry: {
+              threadId: "child-thread",
+              turnId: "turn-1",
+              itemId: "fork-1",
+              type: "forkedFromConversation",
+              kind: "systemEvent",
+              semanticKind: "forkedFromConversation",
+              status: "completed",
+              rawItem: {
+                type: "forkedFromConversation",
+                id: "fork-1",
+                sourceConversationId: "parent-thread",
+                sourceConversationTitle,
+                sourceExecutionId: "source-execution",
+                historyVisible: true,
+              },
+              createdAt: 1,
+              updatedAt: 1,
+            },
+          }}
+          isLatestTurn={false}
+          isStreamingTurn={false}
+        />,
+      );
+
+      getByText(expectedLabel);
+      expect(container.querySelector("pre")).toBeNull();
+      expect(queryByRole("button", { name: /copy/i })).toBeNull();
+    },
+  );
+});
+
 describe("ThreadContextCompactionBlock", () => {
   test("renders the completed Codex divider row", () => {
     const { container, getByText } = render(

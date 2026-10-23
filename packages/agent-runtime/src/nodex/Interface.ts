@@ -421,6 +421,10 @@ export interface AgentRuntimeOperations {
     readonly input: { readonly threadId: string; readonly runId?: string };
     readonly output: AgentSnapshot;
   };
+  readonly "thread.fork-source": {
+    readonly input: { readonly threadId: string; readonly runId?: string };
+    readonly output: string | null;
+  };
   readonly "thread.history": {
     readonly input: {
       readonly threadId: string;

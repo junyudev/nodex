@@ -44,6 +44,47 @@ function buildActions(): ThreadStageActions {
 }
 
 describe("ThreadStageHeader", () => {
+  test.each(["claude", "opencode"] as const)(
+    "offers a working Fork chat action for a %s Runtime conversation",
+    async (kind) => {
+      const { ThreadStageHeader } = await import("./local-conversation-stage-header");
+      const onForkThread = vi.fn(async (_target: "local" | "newWorktree") => {});
+      const actions = { ...buildActions(), onForkThread };
+      const view = render(
+        <ThreadStageHeader
+          model={buildModel()}
+          actions={actions}
+          onErrorMessage={() => {}}
+          provider={{
+            kind,
+            label: kind === "claude" ? "Claude Code" : "OpenCode",
+            selection: `${kind}:work`,
+            options: [],
+            select: () => {},
+            commands: [],
+            error: null,
+          }}
+        />,
+      );
+
+      await openNodexMenu(view.getByRole("button", { name: "Chat actions" }));
+      await act(async () => {
+        fireEvent.keyDown(view.getByRole("menuitem", { name: /^Fork$/u }), {
+          key: "ArrowRight",
+        });
+        await Promise.resolve();
+      });
+      await settleAsyncRender();
+      const fork = view.getByRole("menuitem", { name: "Fork chat" });
+      expect(fork.getAttribute("aria-disabled")).not.toBe("true");
+      await act(async () => {
+        fireEvent.click(fork);
+        await Promise.resolve();
+      });
+      expect(onForkThread).toHaveBeenCalledExactlyOnceWith("local");
+    },
+  );
+
   test("requests a native generated title only after its explicit menu action", async () => {
     const { ThreadStageHeader } = await import("./local-conversation-stage-header");
     const generateTitle = vi.fn(async () => "Generated task title");

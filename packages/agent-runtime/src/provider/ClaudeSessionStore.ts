@@ -20,8 +20,7 @@ const suffix = (key: SessionKey) => {
   validateSegment(key.sessionId);
   if (key.subpath === undefined) return [`${key.sessionId}.jsonl`];
   const parts = key.subpath.split("/").map(validateSegment);
-  if (parts.length > 32)
-    throw new Error("Restored Claude subagent history exceeds its path bound.");
+  if (parts.length > 32) throw new Error("Claude subagent history exceeds its path bound.");
   return [key.sessionId, ...parts.slice(0, -1), `${parts.at(-1)!}.jsonl`];
 };
 
@@ -64,7 +63,7 @@ async function directory(
     });
     if (stat === null) return null;
     if (!stat.isDirectory() || stat.isSymbolicLink())
-      throw new Error("Restored Claude history must use real directories.");
+      throw new Error("Claude history must use real directories.");
   }
   return selected;
 }
@@ -82,7 +81,7 @@ async function read(
   try {
     const stat = await handle.stat();
     if (!stat.isFile() || stat.nlink !== 1 || stat.size > MAX_SESSION_BYTES)
-      throw new Error("Restored Claude transcript exceeds its safe native resume boundary.");
+      throw new Error("Claude transcript exceeds its safe native resume boundary.");
     const text = await handle.readFile({ encoding: "utf8" });
     const entries: SessionStoreEntry[] = [];
     for (const line of text.split("\n")) {
@@ -95,10 +94,10 @@ async function read(
         typeof entry.type !== "string" ||
         ("uuid" in entry && entry.uuid !== undefined && typeof entry.uuid !== "string")
       )
-        throw new Error("Restored Claude transcript contains an invalid native entry.");
+        throw new Error("Claude transcript contains an invalid native entry.");
       entries.push(entry as SessionStoreEntry);
       if (entries.length > MAX_RECORDS)
-        throw new Error("Restored Claude transcript exceeds its native record boundary.");
+        throw new Error("Claude transcript exceeds its native record boundary.");
     }
     return {
       entries,
@@ -110,8 +109,8 @@ async function read(
   }
 }
 
-/** SDK-local mirror and temporary resume materialization; the configured account remains the auth owner. */
-export function createClaudeRestoredSessionStores() {
+/** Instance-scoped native history for standalone SDK operations and restored-session mirrors. */
+export function createClaudeSessionStores() {
   const stores = new Map<string, SessionStore>();
   const lanes = new Map<string, Promise<void>>();
   const indices = new Map<string, { stamp: string; records: number; uuids: Map<string, string> }>();
@@ -126,18 +125,18 @@ export function createClaudeRestoredSessionStores() {
         const entries = await store.load(key);
         // The SDK otherwise falls back to the auth home's history before spawning the CLI.
         if (key.subpath === undefined && key.sessionId === sessionId && !entries?.length)
-          throw new Error("Restored Claude session history is unavailable.");
+          throw new Error("Claude session history is unavailable.");
         return entries;
       },
     };
   };
   return (home: string, requiredSessionId?: string): SessionStore => {
     if (!path.isAbsolute(home) || path.normalize(home) !== home)
-      throw new Error("Restored Claude history requires an absolute managed path.");
+      throw new Error("Claude history requires an absolute managed path.");
     const cached = stores.get(home);
     if (cached !== undefined) return requireSession(cached, requiredSessionId);
     if (stores.size >= 256)
-      throw new Error("Restored Claude history configuration exceeds its instance boundary.");
+      throw new Error("Claude history configuration exceeds its instance boundary.");
     const locate = async (key: SessionKey, create = false) => {
       const tail = suffix(key);
       const project = await directory(home, ["projects", key.projectKey], create);
@@ -167,7 +166,7 @@ export function createClaudeRestoredSessionStores() {
       const listed = await fs.opendir(projects);
       for await (const entry of listed) {
         if (++count > MAX_PROJECTS)
-          throw new Error("Restored Claude project lookup exceeds its metadata boundary.");
+          throw new Error("Claude project lookup exceeds its metadata boundary.");
         if (!entry.isDirectory()) continue;
         validateSegment(entry.name);
         const folder = await directory(home, ["projects", entry.name, ...tail.slice(0, -1)]);
@@ -181,8 +180,7 @@ export function createClaudeRestoredSessionStores() {
           },
         );
         if (!exists) continue;
-        if (selected !== null)
-          throw new Error("Restored Claude session has ambiguous project ownership.");
+        if (selected !== null) throw new Error("Claude session has ambiguous project ownership.");
         selected = candidate;
       }
       return selected;
@@ -209,10 +207,10 @@ export function createClaudeRestoredSessionStores() {
         try {
           const stat = await metadata.stat();
           if (!stat.isFile() || stat.nlink !== 1 || stat.size > 64 * 1024)
-            throw new Error("Restored Claude subagent metadata is invalid.");
+            throw new Error("Claude subagent metadata is invalid.");
           const value: unknown = JSON.parse(await metadata.readFile({ encoding: "utf8" }));
           if (typeof value !== "object" || value === null || Array.isArray(value))
-            throw new Error("Restored Claude subagent metadata is invalid.");
+            throw new Error("Claude subagent metadata is invalid.");
           return [...result.entries, { ...value, type: "agent_metadata" }];
         } finally {
           await metadata.close();
@@ -232,9 +230,9 @@ export function createClaudeRestoredSessionStores() {
           const listed = await fs.opendir(current);
           for await (const entry of listed) {
             if (++inspected > MAX_RECORDS)
-              throw new Error("Restored Claude subagent roster exceeds its metadata boundary.");
+              throw new Error("Claude subagent roster exceeds its metadata boundary.");
             if (entry.isSymbolicLink())
-              throw new Error("Restored Claude subagent history must not contain symbolic links.");
+              throw new Error("Claude subagent history must not contain symbolic links.");
             const file = path.join(current, entry.name);
             if (entry.isDirectory()) {
               pending.push(file);
@@ -261,7 +259,7 @@ export function createClaudeRestoredSessionStores() {
           .then(async () => {
             const file = (await locate(key)) ?? (await locate(key, true));
             if (file === null)
-              throw new Error("Restored Claude history could not create its project directory.");
+              throw new Error("Claude history could not create its project directory.");
             const stat = await fs.lstat(file).catch((cause: unknown) => {
               if (absent(cause)) return null;
               throw cause;

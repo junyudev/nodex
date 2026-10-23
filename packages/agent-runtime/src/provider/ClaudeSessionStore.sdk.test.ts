@@ -15,7 +15,7 @@ import {
   ClaudeAgentSdkQueryRunner,
   layerQueryRunner,
 } from "../orchestration-v2/Adapters/ClaudeAdapterV2.ts";
-import { createClaudeRestoredSessionStores } from "./ClaudeRestoredSessionStore.ts";
+import { createClaudeSessionStores } from "./ClaudeSessionStore.ts";
 
 const sessionId = "11111111-1111-7111-8111-111111111111";
 const nativePeer = `
@@ -67,7 +67,7 @@ it.live.each(["durable", "rejected"] as const)(
       const cwd = path.join(root, "workspace");
       const peer = path.join(root, "peer.mjs");
       const evidence = path.join(root, "evidence.json");
-      const store = createClaudeRestoredSessionStores()(home);
+      const store = createClaudeSessionStores()(home);
       const key = { projectKey: "captured-project", sessionId };
       yield* Effect.promise(async () => {
         await Promise.all([mkdir(home), mkdir(auth), mkdir(cwd)]);
@@ -230,13 +230,11 @@ it.live(
       const result = yield* query.messages.pipe(Stream.runHead, Effect.result);
       expect(result._tag).toBe("Failure");
       if (result._tag !== "Failure") return;
-      expect(String(result.failure.cause)).toContain(
-        "Restored Claude session history is unavailable",
-      );
+      expect(String(result.failure.cause)).toContain("Claude session history is unavailable");
       yield* Effect.promise(async () => {
         await expect(readFile(evidence)).rejects.toMatchObject({ code: "ENOENT" });
         expect(
-          await createClaudeRestoredSessionStores()(home).load({
+          await createClaudeSessionStores()(home).load({
             projectKey: "account-project",
             sessionId,
           }),

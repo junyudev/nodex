@@ -3,6 +3,7 @@ import {
   hasSessionConversation,
   resolveSessionExecution,
   resolveSessionExecutionLocation,
+  resolveSessionForkAvailability,
   resolveSessionMarkdownExport,
   resolveSessionPageSendTarget,
   resolveSessionProjectMove,
@@ -49,6 +50,30 @@ const nativeClaude: SessionExecutionSource = {
 };
 
 describe("Session execution projection", () => {
+  test("forks Runtime and remote Codex conversations while leaving imported local history passive", () => {
+    expect(resolveSessionForkAvailability(resolveSessionExecution(runtime))).toEqual({
+      available: true,
+      source: { sessionId: "session-1", threadId: "root-1" },
+    });
+    expect(resolveSessionForkAvailability(resolveSessionExecution(nativeCodex))).toEqual({
+      available: true,
+      source: { sessionId: "session-1", threadId: "codex-1" },
+    });
+    const localCodex = {
+      ...nativeCodex,
+      thread: { ...nativeCodex.thread!, executionHostId: "local" },
+    };
+    const remoteClaude = {
+      ...nativeClaude,
+      thread: { ...nativeClaude.thread!, executionHostId: "ssh-host" },
+    };
+    for (const session of [localCodex, nativeClaude, remoteClaude, base]) {
+      const availability = resolveSessionForkAvailability(resolveSessionExecution(session));
+      expect(availability.available).toBe(false);
+      expect(availability.available ? null : availability.reason).toBeTruthy();
+    }
+  });
+
   test("classifies Runtime, native and unstarted Sessions by their execution owner", () => {
     expect(resolveSessionExecution(runtime)).toEqual({
       kind: "runtime",

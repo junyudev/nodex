@@ -218,7 +218,12 @@ test("merges a fork's finished work back into the chat it came from with that ch
   await withAgentPeers(testInfo, "agent-merge-back", async ({ page, sessionId, send, records }) => {
     await send("Remember the codeword ORCHID", "Codex child report", 1);
     await runSlashCommand(page, "fork");
-    await page.getByRole("button", { name: /Fork conversation/u }).click();
+    await page
+      .getByRole("button", {
+        name: "Fork chat Continue this conversation in a new chat",
+        exact: true,
+      })
+      .click();
     // The fork opens with the source's history and continues on its own.
     await expect.poll(() => visibleSession(page), { timeout: 30_000 }).not.toBe(sessionId);
     await send("Explore an alternative", "Codex child report", 2);

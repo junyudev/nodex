@@ -28,6 +28,14 @@ import { openCodeSetupRuntime } from "../../lib/opencode-setup-runtime";
 import type { OpenCodeSetupState } from "../../../shared/opencode-setup";
 import { readyExecutable, setupState } from "../opencode-setup/opencode-setup.test-fixtures";
 import { supportsConversationProviderControl } from "./conversation-provider-controls";
+import { renderWithMaitai } from "../../test/thread-maitai";
+import { LocalConversationTestQueryProvider } from "./view/local-conversation-test-query.test-fixtures";
+import { LocalConversationTurnEntry } from "./view/local-conversation-turn-entry";
+import { selectNormalizedConversationTurnEntries } from "./normalized-transcript-selectors";
+import {
+  isCodexRealtimeTimelineEntry,
+  projectNormalizedTimelineEntries,
+} from "./projection/normalized-timeline-entries";
 
 function RuntimeWorkbench({ children }: PropsWithChildren) {
   const [store] = useState(createMaitaiStore);
@@ -157,6 +165,178 @@ const codexProvider = {
   ...provider,
   models: [codexModel("gpt", true), codexModel("gpt-mini")],
 } as unknown as AgentRuntimeProvider;
+
+describe("Agent Runtime response fork entrypoint", () => {
+  it.each(["claude", "opencode"] as const)(
+    "forks a completed %s response from its exact Run and opens the accepted Session",
+    async (kind) => {
+      const binding = { kind, instanceConfigId: "fork-test" };
+      const instanceId = agentRuntimeProviderId(binding);
+      if (!instanceId) throw new Error("Expected the configured Agent Instance");
+      const configured = [{ binding, label: kind, enabled: true }];
+      const sessionId = `${kind}-response-fork`;
+      const answer: AgentTurnItem = {
+        id: `${kind}-answer`,
+        threadId: "engine-thread",
+        runId: `${kind}-completed-run`,
+        nodeId: null,
+        providerThreadId: null,
+        providerTurnId: null,
+        nativeItemRef: null,
+        parentItemId: null,
+        ordinal: 1,
+        status: "completed",
+        title: null,
+        startedAt: "2026-10-14T00:00:00Z",
+        completedAt: "2026-10-14T00:00:00Z",
+        updatedAt: "2026-10-14T00:00:00Z",
+        type: "assistant_message",
+        messageId: `${kind}-message`,
+        text: "The review is complete.",
+        streaming: false,
+      };
+      const conversation = {
+        sessionId,
+        projectId: "project",
+        threadId: "engine-thread",
+        snapshot: {
+          ...snapshot,
+          projection: {
+            ...snapshot.projection,
+            thread: {
+              ...snapshot.projection.thread,
+              modelSelection: { instanceId, model: "model" },
+            },
+            runs: [
+              {
+                id: answer.runId!,
+                threadId: answer.threadId,
+                ordinal: 1,
+                providerInstanceId: instanceId,
+                modelSelection: { instanceId, model: "model" },
+                providerThreadId: null,
+                userMessageId: `${kind}-user-message`,
+                rootNodeId: null,
+                activeAttemptId: null,
+                status: "completed" as const,
+                requestedAt: "2026-10-14T00:00:00Z",
+                startedAt: "2026-10-14T00:00:00Z",
+                completedAt: "2026-10-14T00:00:00Z",
+                checkpointId: null,
+                contextHandoffId: null,
+              },
+            ],
+            visibleTurnItems: [
+              {
+                position: 0,
+                visibility: "local" as const,
+                sourceThreadId: answer.threadId,
+                sourceItemId: answer.id,
+                item: answer,
+              },
+            ],
+          },
+        },
+      };
+      vi.spyOn(agentRuntimeRuntime, "catalog").mockResolvedValue([
+        { ...provider, instanceId, driver: kind, displayName: kind },
+      ]);
+      vi.spyOn(agentRuntimeRuntime, "control").mockResolvedValue(conversation);
+      vi.spyOn(agentRuntimeRuntime, "read").mockResolvedValue(conversation);
+      vi.spyOn(agentRuntimeRuntime, "subscribe").mockResolvedValue(() => {});
+      const accepted = {
+        sourceSessionId: sessionId,
+        sessionId: `${kind}-fork`,
+        projectId: "project",
+        threadId: "fork-thread",
+      };
+      const fork = vi.spyOn(agentRuntimeRuntime, "fork").mockResolvedValue(accepted);
+      const onOpenThread = vi.fn();
+      const { result, unmount } = renderHook(
+        () => {
+          const adapter = useAgentRuntimeConversationAdapter({
+            sessionId,
+            executionRef: { runtimeId: "engine", threadId: "engine-thread" },
+            projectId: "project",
+            modelProjectId: "project",
+            instances: configured,
+            onRefresh: async () => {},
+            onOpenThread,
+            ensureDraft: async () => ({ id: sessionId }),
+          });
+          const transcript = adapter.runtime.transcriptReadOwner!("engine-thread");
+          useEffect(() => transcript?.subscribeStructure(() => {}), [transcript]);
+          return { adapter, transcript };
+        },
+        { wrapper: RuntimeWorkbench },
+      );
+      await waitFor(() => {
+        expect(result.current.adapter.state.connection).toBe("ready");
+        expect(result.current.transcript?.readStructure()?.turns).toHaveLength(1);
+        expect(
+          result.current.transcript?.readItem(
+            JSON.stringify(["agent-run", answer.threadId, answer.runId]),
+            answer.id,
+          ),
+        ).toMatchObject({ type: "agentMessage", text: answer.text });
+      });
+      const { adapter, transcript } = result.current;
+      if (!transcript) throw new Error("Expected Runtime transcript");
+      const structure = transcript.readStructure()!;
+      const { entries } = projectNormalizedTimelineEntries({
+        owner: transcript,
+        structure,
+        entries: selectNormalizedConversationTurnEntries({
+          owner: transcript,
+          structure,
+          conversation: adapter.state.view,
+        }),
+      });
+      const entry = entries[0];
+      if (!entry || isCodexRealtimeTimelineEntry(entry))
+        throw new Error("Expected completed response entry");
+      const view = renderWithMaitai(
+        <NodexTooltipProvider>
+          <ConversationRuntimeContext value={adapter.runtime}>
+            <CodexTranscriptReadOwnerContext value={transcript}>
+              <LocalConversationTurnEntry
+                conversationId="engine-thread"
+                entry={entry}
+                cwd="/workspace"
+                canEditTurnUserPrefix={false}
+                canForkTurn={adapter.state.view!.capabilityFlags.canForkFromTurn}
+                onForkTurnMessage={adapter.actions.onForkFromTurn}
+              />
+            </CodexTranscriptReadOwnerContext>
+          </ConversationRuntimeContext>
+        </NodexTooltipProvider>,
+        { wrapper: LocalConversationTestQueryProvider },
+      );
+      try {
+        const action = await view.findByRole("button", { name: "Fork chat from here" });
+        expect(action.hasAttribute("disabled")).toBe(false);
+        await act(async () => {
+          fireEvent.click(action);
+          await Promise.resolve();
+        });
+        await waitFor(() => expect(fork).toHaveBeenCalledOnce());
+        expect(fork.mock.calls[0]![0]).toMatchObject({
+          source: { sessionId, threadId: "engine-thread" },
+          sourceRunId: answer.runId,
+          environment: "same-directory",
+        });
+        expect(onOpenThread).toHaveBeenCalledWith(accepted.threadId, {
+          runtimeSessionId: accepted.sessionId,
+        });
+      } finally {
+        await act(async () => {
+          view.unmount();
+          unmount();
+        });
+      }
+    },
+  );
+});
 
 function SavedSettingsWorkbench({ children }: PropsWithChildren) {
   return (

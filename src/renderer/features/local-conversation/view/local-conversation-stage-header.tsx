@@ -10,6 +10,7 @@ import {
   SlashModelIcon,
   SlashStatusIcon,
   ProjectTaskIcon,
+  ForkIcon,
 } from "@/components/shared/icons";
 import {
   NodexDropdownFlyoutSubmenuItem,
@@ -31,6 +32,7 @@ import type {
   ThreadStageHeaderModel,
 } from "../thread-stage-types";
 import { useOpenNativeRuntimeDiagnostics } from "@/components/shared/agent-runtime/native-runtime-diagnostics";
+import { sessionForkDestinations } from "@/lib/session-fork";
 
 interface ThreadStageHeaderProps {
   model: ThreadStageHeaderModel;
@@ -49,11 +51,15 @@ function ThreadStageHeaderComponent({
 }: ThreadStageHeaderProps) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [generatingTitle, setGeneratingTitle] = useState(false);
+  const [forking, setForking] = useState(false);
+  const forkInFlight = useRef(false);
   const pendingModal = useRef<(() => void) | null>(null);
   const canRenameThread = Boolean(model.threadId && actions.onRequestRenameThread);
   const canArchiveThread = Boolean(model.threadId && actions.onArchiveThread);
   const canTogglePin = Boolean(model.threadId && actions.onToggleThreadPin);
   const canGenerateTitle = Boolean(model.threadId && provider?.generateTitle);
+  const canForkThread = Boolean(model.threadId && actions.onForkThread);
+  const hasNewWorkActions = canForkThread || model.showSideChatAction;
   const opensSubagents = provider?.controls?.subagents === true;
   const canOpenNativeTasks = Boolean(
     model.threadId &&
@@ -170,7 +176,7 @@ function ThreadStageHeaderComponent({
               {model.pinned ? "Unpin" : "Pin"}
             </NodexDropdownItem>
           ) : null}
-          {hasIdentityActions && model.showSideChatAction ? <NodexDropdownSeparator /> : null}
+          {hasIdentityActions && hasNewWorkActions ? <NodexDropdownSeparator /> : null}
           {model.showSideChatAction ? (
             <NodexDropdownItem
               leftSlot={<SidePanelSideChatIcon className={menuIconClassName} />}
@@ -180,7 +186,39 @@ function ThreadStageHeaderComponent({
               New side chat
             </NodexDropdownItem>
           ) : null}
-          {hasIdentityActions || model.showSideChatAction ? <NodexDropdownSeparator /> : null}
+          {canForkThread ? (
+            <NodexDropdownFlyoutSubmenuItem
+              label="Fork"
+              leftSlot={<ForkIcon className={menuIconClassName} />}
+              contentMotion="none"
+            >
+              {(
+                model.forkDestinations ??
+                sessionForkDestinations({ isWorktree: false, canCreateWorktree: false })
+              ).map((destination) => (
+                <NodexDropdownItem
+                  key={destination.target}
+                  disabled={forking}
+                  onSelect={() => {
+                    if (forkInFlight.current) return;
+                    forkInFlight.current = true;
+                    setForking(true);
+                    void handleAction(async () => {
+                      try {
+                        await actions.onForkThread?.(destination.target);
+                      } finally {
+                        forkInFlight.current = false;
+                        setForking(false);
+                      }
+                    }, "Failed to fork chat");
+                  }}
+                >
+                  {destination.label}
+                </NodexDropdownItem>
+              ))}
+            </NodexDropdownFlyoutSubmenuItem>
+          ) : null}
+          {hasIdentityActions || hasNewWorkActions ? <NodexDropdownSeparator /> : null}
           <NodexDropdownFlyoutSubmenuItem
             label="Copy"
             leftSlot={<CopyIcon className={menuIconClassName} />}

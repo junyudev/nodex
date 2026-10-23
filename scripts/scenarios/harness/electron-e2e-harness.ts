@@ -190,9 +190,12 @@ export async function launchNodexElectronApplication(
 ): Promise<ElectronApplication> {
   const executablePath =
     input.executablePath ?? (await prepareElectronRuntime({ projectRoot: repositoryRoot }));
-  // Exercise the app's initialize identity, not an inherited host-client override.
+  // Each scenario owns its renderer build and initialize identity. Explicit launch overrides
+  // below remain available for scenarios that intentionally exercise a development server.
   const inheritedEnvironment = Object.fromEntries(
-    Object.entries(process.env).filter(([key]) => key !== "CODEX_INTERNAL_ORIGINATOR_OVERRIDE"),
+    Object.entries(process.env).filter(
+      ([key]) => key !== "CODEX_INTERNAL_ORIGINATOR_OVERRIDE" && key !== "ELECTRON_RENDERER_URL",
+    ),
   );
   return await electron.launch({
     executablePath,

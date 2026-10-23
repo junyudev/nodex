@@ -37,14 +37,16 @@ export class ThreadForkPlanError extends Schema.TaggedError<ThreadForkPlanError>
  * `waiting` is provider-finished with checkpoint capture still pending.
  * In-progress and rolled-back runs are not forkable.
  */
+export const forkableSourceRunStatuses: ReadonlyArray<OrchestrationV2Run["status"]> = [
+  "completed",
+  "waiting",
+  "failed",
+  "interrupted",
+  "cancelled",
+];
+
 export function isForkableSourceRunStatus(status: OrchestrationV2Run["status"]): boolean {
-  return (
-    status === "completed" ||
-    status === "waiting" ||
-    status === "failed" ||
-    status === "interrupted" ||
-    status === "cancelled"
-  );
+  return forkableSourceRunStatuses.includes(status);
 }
 
 export function forkableSourceRunStatusError(

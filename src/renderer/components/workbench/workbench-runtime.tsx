@@ -2044,6 +2044,7 @@ export function WorkbenchRuntime({
   useRegisterFileLocationNavigator(presentLibraryTarget);
 
   const sidebarController = useWorkbenchSidebarController({
+    browserViewScopeId: windowSessionId,
     projects,
     projectlessSessions,
     knownSessions,
@@ -2082,6 +2083,7 @@ export function WorkbenchRuntime({
     moveSidebarThreadForSidebar,
     openRenameSessionDialog,
     openSessionContextMenu,
+    forkSession,
     prefetchSidebarSession,
     refreshProjectSessions,
     resolveForkLocalEnvironmentConfigPath,
@@ -4386,6 +4388,7 @@ export function WorkbenchRuntime({
             composerEnterBehavior={composerEnterBehavior}
             onQueueingEnabledChange={handleThreadQueueFollowUpsEnabledChange}
             onOpenThread={openAttachedThreadSession}
+            onForkSession={forkSession}
             commandKeymapState={commandKeymapState}
             isMac={isMacPlatform}
           />
@@ -4546,6 +4549,7 @@ export function WorkbenchRuntime({
           onOpenTurnDiffFileInSidePanel: openTurnDiffFileInSidePanel,
           turnDiffHoverPreviewDisabled: activeSessionPanelModel.sidePanelOpen,
           onForkSessionFromTurn: forkSessionFromTurn,
+          onForkSession: forkSession,
           onForkFromTurnIntoWorktree: forkSessionFromTurnIntoWorktree,
           searchOpenTick: threadSearchOpenTick,
           summaryPanelMounted: threadSummaryPanelMounted,

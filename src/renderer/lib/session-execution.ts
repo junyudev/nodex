@@ -81,6 +81,36 @@ export function sessionExecutionThreadId(session: SessionExecutionSource | null)
   return execution.kind === "unstarted" ? null : execution.rootThreadId;
 }
 
+export type SessionForkAvailability =
+  | {
+      readonly available: true;
+      readonly source: { readonly sessionId: string; readonly threadId: string };
+    }
+  | { readonly available: false; readonly reason: string };
+
+/** Forks stay with the Session's execution owner; imported local history is passive. */
+export function resolveSessionForkAvailability(
+  execution: SessionExecution,
+): SessionForkAvailability {
+  if (
+    execution.kind === "runtime" ||
+    (execution.kind === "native" &&
+      execution.hostId !== "local" &&
+      isCodexAgentBackendBinding(execution.backendBinding))
+  )
+    return {
+      available: true,
+      source: { sessionId: execution.sessionId, threadId: execution.rootThreadId },
+    };
+  return {
+    available: false,
+    reason:
+      execution.kind === "unstarted"
+        ? "Send a message before forking this chat."
+        : "This imported conversation has no execution owner. Open a new chat to continue.",
+  };
+}
+
 /** Runtime-bound Sessions read live status and location from their execution owner. */
 export function runtimeSessionTarget(
   session: Pick<SessionExecutionSource, "id" | "executionRef"> | null | undefined,

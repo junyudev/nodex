@@ -1,11 +1,17 @@
 import "./workbench-testkit/workbench-shell-harness";
-import { describe, test, expect } from "vite-plus/test";
+import { describe, test, expect, vi } from "vite-plus/test";
 import { settleAsyncRender, textContent } from "../../test/dom";
 import { act, fireEvent, waitFor, within } from "@testing-library/react";
 import { getBoardProjectStore } from "@/lib/board-store";
 import { MotionGlobalConfig } from "motion";
 import { type CodexSidebarThreadItem } from "@/lib/types";
 import { __getNodexToastSnapshotForTests } from "@/components/ui/toast";
+import * as nativeContextMenu from "@/lib/native-context-menu";
+import type { NativeContextMenuItem } from "../../../shared/native-context-menu";
+import type {
+  AgentRuntimeConversation,
+  AgentRuntimeForkInput,
+} from "../../../shared/agent-runtime-api";
 import {
   makeAttachedSession,
   makePanelLayout,
@@ -35,6 +41,82 @@ import {
   setRequestThreadStreamSnapshotImpl,
 } from "./workbench-testkit/workbench-shell-harness";
 describe("workbench session shell / sidebar-core", () => {
+  test.each(["claude", "opencode"] as const)(
+    "forks the right-clicked %s Runtime chat and opens the accepted Session",
+    async (kind) => {
+      const source = makeAttachedSession({
+        id: `session:${kind}:fork-source`,
+        threadId: `thread-${kind}-fork-source`,
+        title: `${kind} source`,
+        tabs: [],
+      });
+      const view = renderWorkbench({
+        sessionsByProject: { alpha: [makeSession(), source] },
+      });
+      const base = mockInvokeImpl;
+      if (!base) throw new Error("Expected Runtime transport fixture");
+      setMockInvokeImpl(async (channel, ...args) => {
+        const result = await base(channel, ...args);
+        if (channel !== "agent-runtime:session:control") return result;
+        const conversation = result as AgentRuntimeConversation;
+        return {
+          ...conversation,
+          snapshot: {
+            ...conversation.snapshot,
+            projection: {
+              ...conversation.snapshot.projection,
+              thread: {
+                ...conversation.snapshot.projection.thread,
+                modelSelection: { instanceId: `${kind}:work`, model: `${kind}-model` },
+              },
+            },
+          },
+        } satisfies AgentRuntimeConversation;
+      });
+      const flatten = (items: readonly NativeContextMenuItem[]): NativeContextMenuItem[] =>
+        items.flatMap((item) =>
+          item.type === "submenu" ? [item, ...flatten(item.submenu)] : [item],
+        );
+      const menu = vi
+        .spyOn(nativeContextMenu, "showNativeContextMenu")
+        .mockImplementation(async (items) => {
+          const choice = flatten(items).find(
+            (item) => item.type !== "separator" && item.label === "Fork chat",
+          );
+          return choice && choice.type !== "separator" ? choice.id : null;
+        });
+      try {
+        await settleAsyncRender();
+        await act(async () => {
+          fireEvent.contextMenu(getThreadRow(view.container, `${kind} source`));
+          await Promise.resolve();
+        });
+        await waitFor(() => expect(menu).toHaveBeenCalledOnce());
+        expect(flatten(menu.mock.calls[0]![0])).toContainEqual(
+          expect.objectContaining({ label: "Fork chat", enabled: true }),
+        );
+        await waitFor(() =>
+          expect(
+            invokeCalls.filter(([channel]) => channel === "agent-runtime:session:fork"),
+          ).toHaveLength(1),
+        );
+        const request = invokeCalls.find(
+          ([channel]) => channel === "agent-runtime:session:fork",
+        )![1] as AgentRuntimeForkInput;
+        expect(request).toMatchObject({
+          source: { sessionId: source.id, threadId: source.executionRef!.threadId },
+          environment: "same-directory",
+        });
+        expect(request.sourceRunId).toBeUndefined();
+        await waitFor(() =>
+          expect(getMountedSessionIds(view.container)).toContain(request.sessionId),
+        );
+      } finally {
+        menu.mockRestore();
+      }
+    },
+  );
+
   test("settles Motion without impersonating reduced-motion preferences", () => {
     expect(window.matchMedia("(prefers-reduced-motion: reduce)").matches).toBe(false);
     expect(MotionGlobalConfig.skipAnimations).toBe(true);

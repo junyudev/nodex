@@ -245,6 +245,14 @@ const server = createServer(async (request, response) => {
       model: body.model,
       variant: body.variant,
       agent: body.agent,
+      priorPromptTexts: stored.messages
+        .filter((entry) => entry.info.role === "user")
+        .map((entry) =>
+          entry.parts
+            .filter((part) => part.type === "text")
+            .map((part) => part.text)
+            .join("\n"),
+        ),
       text: body.parts
         .filter((part) => part.type === "text")
         .map((part) => part.text)
@@ -284,7 +292,9 @@ const server = createServer(async (request, response) => {
     return;
   }
   if (segments[2] === "fork") {
-    const at = stored.messages.findIndex((entry) => entry.info.id === body.messageID);
+    const at = body.messageID
+      ? stored.messages.findIndex((entry) => entry.info.id === body.messageID)
+      : stored.messages.length - 1;
     return json(
       response,
       createSession(

@@ -14,9 +14,12 @@ import {
   renderWorkbench,
   rendererCommandPayload,
   agentRuntimeLaunchCalls,
+  getMountedSessionIds,
 } from "./workbench-testkit/workbench-shell-harness";
 import type { ProjectAgentDockPendingWorktreeEntry } from "@/lib/project-agent-dock-model";
 import type { ProjectCreateInput } from "@/lib/types";
+import type { ThreadStageActions } from "@/features/local-conversation/thread-stage-types";
+import type { AgentRuntimeForkInput } from "../../../shared/agent-runtime-api";
 
 function pendingWorktree(
   overrides: Partial<ProjectAgentDockPendingWorktreeEntry> = {},
@@ -56,6 +59,56 @@ function pendingWorktree(
 }
 
 describe("workbench session shell / Project Agent Dock", () => {
+  test("forks the Dock's selected chat from its head and opens the accepted Session", async () => {
+    const source = makeAttachedSession({
+      id: "session:alpha:dock-fork-source",
+      threadId: "thread-dock-fork-source",
+      title: "Dock fork source",
+    });
+    const screen = renderWorkbench({
+      projects: [makeProject()],
+      sessionsByProject: { alpha: [source] },
+      initialSelectedSessionId: null,
+    });
+    await settleAsyncRender();
+    await settleAsyncRender();
+    await openProjectBoard(screen);
+    await act(async () => {
+      fireEvent.click(screen.getByLabelText("Connected chat: New chat"));
+      await Promise.resolve();
+    });
+    const picker = await screen.findByRole("listbox", { name: "Project chats" });
+    await act(async () => {
+      fireEvent.click(within(picker).getByRole("option", { name: /Dock fork source/u }));
+      await Promise.resolve();
+    });
+    const fork = await waitFor(() => {
+      const dock = (
+        globalThis as {
+          __lastConnectedThreadComposerDockProps?: { actions?: ThreadStageActions };
+        }
+      ).__lastConnectedThreadComposerDockProps;
+      const action = dock?.actions?.onForkThread;
+      expect(action).toBeTypeOf("function");
+      if (!action) throw new Error("Expected the selected Dock chat's head-fork action");
+      return action;
+    });
+    await act(async () => {
+      await fork("local");
+    });
+    const requests = invokeCalls.filter(([channel]) => channel === "agent-runtime:session:fork");
+    expect(requests).toHaveLength(1);
+    const request = requests[0]![1] as AgentRuntimeForkInput;
+    expect(request).toMatchObject({
+      source: { sessionId: source.id, threadId: source.executionRef!.threadId },
+      environment: "same-directory",
+    });
+    expect(request.sourceRunId).toBeUndefined();
+    await waitFor(() =>
+      expect(getMountedSessionIds(screen.container)).toContain(request.sessionId),
+    );
+  });
+
   test("keeps surface creation in the Project tab strip instead of the Database toolbar", async () => {
     const screen = renderWorkbench({
       projects: [makeProject()],

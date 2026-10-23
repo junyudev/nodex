@@ -118,10 +118,34 @@ route copies parent history. Panel remounts resolve the Session's cached canonic
 binding, and closing the panel keeps its product chat.
 Local imported native conversations use the same independent side-chat route while
 their history stays passive. Runtime forks retain the selected source Run and prepare
-the chosen workspace and environment before binding the new Session; they do not
+the chosen workspace and environment for the new Session; they do not
 resume an imported native conversation or hydrate history to choose a workspace.
 Native forks use the source Run's captured native incarnation. If its provider binding
 has since changed, the fork carries the bounded source prefix through portable history.
+
+Started Runtime chats offer Fork from both the sidebar context menu and the header's
+Chat actions menu, including Claude Code and OpenCode. Both menus use the same Session
+fork command. Fork chat keeps the current directory; a managed worktree labels it
+Fork chat in same worktree. Fork chat in new worktree appears only when the local
+execution directory has a Git repository. A normal fork does not require Git.
+The composer also offers `/fork`. These chat-level actions ask the Runtime for the
+latest forkable Run, independently of which transcript page is loaded; the reply's
+Fork chat from here action instead retains its explicit historical Run boundary.
+The Runtime selects the newest completed, waiting, failed, interrupted or cancelled
+Run, skipping active, queued and rolled-back Runs without requiring a file checkpoint.
+The Host resolves that source before creating a destination Session and refuses a
+chat with no eligible source without leaving an empty destination behind.
+Claude forks and native subagent history lookups use the selected Agent instance's
+history directory. Restored Profile history takes precedence when present, and
+standalone history operations never change the process-wide account environment.
+
+Slash commands expose supported Nodex actions across Agents rather than filtering
+them by Agent name. Fork, Merge back, Side, Compact, Project and other shared actions
+appear when their owning callbacks and conversation state permit them. Agent-native
+commands supplement those actions without replacing an available Nodex action with
+the same name. Status and MCP use the selected Agent's inspector; Codex-specific
+controls remain scoped to their actual capabilities. Side opens an independent
+chat and does not imply inherited fork history.
 
 A fork can bring its work back into the chat it was forked from with Merge back (`/merge`)
 or `merge_session_back`. The fork's newest finished Run is merged: a reply still working in

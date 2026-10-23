@@ -9,10 +9,12 @@ import type { FileLinkOpenerId } from "../../../shared/file-link-openers";
 import {
   resolveSessionExecution,
   resolveSessionExecutionLocation,
+  resolveSessionForkAvailability,
   resolveSessionMarkdownExport,
   resolveSessionProjectMove,
   type SessionExecutionLocation,
 } from "@/lib/session-execution";
+import { sessionForkDestinations, type SessionForkDestination } from "@/lib/session-fork";
 
 export const SESSION_CONTEXT_MENU_MOVE_TO_PROJECT_PREFIX = "session.moveToProject:";
 export const SESSION_CONTEXT_MENU_MOVE_TO_SECTION_PREFIX = "session.moveToSection:";
@@ -23,6 +25,8 @@ export const SESSION_CONTEXT_MENU_ACTION_IDS = {
   removeFromProject: "session.removeFromProject",
   rename: "session.rename",
   archive: "archive-thread",
+  fork: "session.fork",
+  forkInNewWorktree: "session.forkInNewWorktree",
   markUnread: "session.markUnread",
   copyWorkingDirectory: "session.copyWorkingDirectory",
   copyDeeplink: "session.copyDeeplink",
@@ -52,6 +56,7 @@ export interface SessionContextMenuInput {
   openInTargets?: readonly SessionContextMenuOpenInTarget[];
   /** Runtime location comes from its execution owner; native location defaults to Core metadata. */
   location?: SessionExecutionLocation | null;
+  forkDestinations?: readonly SessionForkDestination[];
 }
 
 export function sessionMoveToProjectActionId(projectId: string): SessionContextMenuActionId {
@@ -113,11 +118,36 @@ export function buildSessionContextMenuItems(
   const markdownExport = resolveSessionMarkdownExport(execution);
   // Native non-Codex history exports from its open conversation, not from the Session menu.
   const offersMarkdownExport = execution.kind !== "native" || markdownExport !== null;
-  const cwd =
-    (input.location === undefined
+  const location =
+    input.location === undefined
       ? resolveSessionExecutionLocation(execution, null)
-      : input.location
-    )?.cwd ?? null;
+      : input.location;
+  const cwd = location?.cwd ?? null;
+  const forkItems: NativeContextMenuItem[] = resolveSessionForkAvailability(execution).available
+    ? [
+        {
+          id: "session.forkMenu",
+          type: "submenu",
+          label: "Fork",
+          iconKey: "fork",
+          submenu: (
+            input.forkDestinations ??
+            sessionForkDestinations({
+              isWorktree: Boolean(location?.managedWorktreePath),
+              canCreateWorktree: false,
+            })
+          ).map((destination) => ({
+            id:
+              destination.target === "newWorktree"
+                ? SESSION_CONTEXT_MENU_ACTION_IDS.forkInNewWorktree
+                : SESSION_CONTEXT_MENU_ACTION_IDS.fork,
+            label: destination.label,
+            enabled: true,
+            iconKey: destination.target === "newWorktree" ? "worktree" : "fork",
+          })),
+        },
+      ]
+    : [];
   const currentProject = input.projects?.find((project) => project.id === session.projectId);
   const projectMoveItems: NativeContextMenuItem[] = canMoveProject
     ? (input.projects ?? [])
@@ -258,6 +288,7 @@ export function buildSessionContextMenuItems(
       iconKey: "archive",
       accelerator: "Shift+CommandOrControl+A",
     },
+    ...(forkItems.length > 0 ? [{ type: "separator" as const }, ...forkItems] : []),
     { type: "separator" },
     ...organizationItems,
     { type: "separator" },

@@ -211,6 +211,10 @@ const AgentRequest = Schema.Union([
   request("thread.read", Schema.Struct({ threadId: ThreadId })),
   request("thread.control", Schema.Struct({ threadId: ThreadId, runId: Schema.optional(RunId) })),
   request(
+    "thread.fork-source",
+    Schema.Struct({ threadId: ThreadId, runId: Schema.optional(RunId) }),
+  ),
+  request(
     "providers.read",
     Schema.Struct({
       refresh: Schema.optional(Schema.Boolean),
@@ -678,6 +682,8 @@ export const make = Effect.fn("AgentRuntime.makeService")(function* (
             ...(input.input.location === undefined ? {} : { location: input.input.location }),
           })
           .pipe(Effect.flatMap(encodeShell));
+      case "thread.fork-source":
+        return yield* orchestrator.getThreadForkSource(input.input.threadId, input.input.runId);
       case "thread.control":
       case "thread.snapshot": {
         const snapshot = yield* orchestrator.getThreadSnapshotWindow(input.input.threadId, {
@@ -861,6 +867,7 @@ export const make = Effect.fn("AgentRuntime.makeService")(function* (
       case "shell.read":
       case "thread.snapshot":
       case "thread.control":
+      case "thread.fork-source":
       case "run.outcome":
       case "thread.history":
       case "thread.item":

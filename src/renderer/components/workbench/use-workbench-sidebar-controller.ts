@@ -56,6 +56,7 @@ import type {
   Project,
   ProjectSession as ProjectSessionDomain,
 } from "@/lib/types";
+import type { ProjectSessionForkTarget } from "../../../shared/types";
 import {
   isCodexSidebarThreadContainerId,
   type CodexSidebarThreadMoveInput,
@@ -70,11 +71,14 @@ import { copySessionConversationMarkdown } from "@/lib/session-conversation-mark
 import {
   resolveSessionExecution,
   resolveSessionExecutionLocation,
+  resolveSessionForkAvailability,
   resolveSessionProjectMove,
   runtimeExecutionLocation,
   type SessionExecutionLocation,
 } from "@/lib/session-execution";
 import { threadExecutionLocationQueryOptions } from "@/lib/use-session-execution";
+import { gitRepositoryIdentityQueryOptions } from "@/lib/query-options";
+import { sessionForkDestinations } from "@/lib/session-fork";
 import { agentRuntimeRuntime } from "@/lib/agent-runtime-runtime";
 import { createUuidV7 } from "../../../shared/uuid-v7";
 import { readFileLinkOpener } from "@/lib/file-link-opener-settings";
@@ -107,6 +111,7 @@ interface WorkbenchSidebarControllerInput {
   readonly knownSessions: readonly ProjectSession[];
   readonly activeProject: Project | null;
   readonly activeSessionId: string | null;
+  readonly browserViewScopeId: string;
   readonly activeSessions: readonly ProjectSession[];
   readonly pendingSessionOpen?: {
     readonly projectId: string | null;
@@ -160,6 +165,7 @@ export function useWorkbenchSidebarController({
   knownSessions,
   activeProject,
   activeSessionId,
+  browserViewScopeId,
   activeSessions,
   pendingSessionOpen,
   pendingWorktreeClientThreadId,
@@ -310,12 +316,12 @@ export function useWorkbenchSidebarController({
   }, [catalog.active, warmProjectSessionDbViewBoards]);
 
   const resolveForkLocalEnvironmentConfigPath = useCallback(
-    async (workspaceRoot: string | null | undefined): Promise<string | null> => {
+    async (workspaceRoot: string | null | undefined, hostId = "local"): Promise<string | null> => {
       return await loadLocalEnvironmentConfigSelection({
         workspaceRoot,
         selectionsByWorkspace: readLocalEnvironmentSelections(),
         loadCandidates: async (resolvedWorkspaceRoot) =>
-          await listWorktreeEnvironmentConfigsForWorkspace("local", resolvedWorkspaceRoot),
+          await listWorktreeEnvironmentConfigsForWorkspace(hostId, resolvedWorkspaceRoot),
       });
     },
     [],
@@ -766,8 +772,77 @@ export function useWorkbenchSidebarController({
     [queryClient],
   );
 
+  const forkSession = useCallback(
+    async (
+      session: ProjectSessionDomain,
+      input: { readonly target: ProjectSessionForkTarget; readonly sourceThreadId?: string },
+    ): Promise<void> => {
+      const execution = resolveSessionExecution(session);
+      const availability = resolveSessionForkAvailability(execution);
+      if (!availability.available) throw new Error(availability.reason);
+      const sourceThreadId = input.sourceThreadId ?? availability.source.threadId;
+      let localEnvironmentConfigPath: string | null = null;
+      if (input.target === "newWorktree") {
+        const sourceCwd =
+          execution.kind === "runtime" && sourceThreadId !== execution.rootThreadId
+            ? (
+                await agentRuntimeRuntime.inspect({
+                  sessionId: session.id,
+                  threadId: sourceThreadId,
+                })
+              ).thread.worktreePath
+            : (await readSessionLocation(session))?.cwd;
+        localEnvironmentConfigPath = await resolveForkLocalEnvironmentConfigPath(
+          sourceCwd,
+          execution.kind === "native" ? execution.hostId : "local",
+        );
+      }
+      const result = await catalog.fork(session, {
+        target: input.target,
+        sourceThreadId,
+        browserViewScopeId,
+        ...(input.target === "newWorktree" ? { localEnvironmentConfigPath } : {}),
+      });
+      if ("pendingWorktreeId" in result) {
+        setPendingWorktreeClientThreadId(result.clientThreadId);
+        return;
+      }
+      closePendingWorktreeRoute();
+      selectSession(result.session);
+    },
+    [
+      browserViewScopeId,
+      catalog,
+      closePendingWorktreeRoute,
+      readSessionLocation,
+      resolveForkLocalEnvironmentConfigPath,
+      selectSession,
+      setPendingWorktreeClientThreadId,
+    ],
+  );
+
   const handleSessionContextMenuAction = useCallback(
     async (session: ProjectSessionDomain, actionId: string) => {
+      if (
+        actionId === SESSION_CONTEXT_MENU_ACTION_IDS.fork ||
+        actionId === SESSION_CONTEXT_MENU_ACTION_IDS.forkInNewWorktree
+      ) {
+        try {
+          await forkSession(session, {
+            target:
+              actionId === SESSION_CONTEXT_MENU_ACTION_IDS.forkInNewWorktree
+                ? "newWorktree"
+                : "local",
+          });
+        } catch (error) {
+          toast.danger("Couldn’t fork chat", {
+            description: `${session.displayTitle || session.noThreadFallbackTitle}: ${
+              error instanceof Error ? error.message : String(error)
+            }`,
+          });
+        }
+        return;
+      }
       const moveTargetSectionId = readSessionMoveToSectionActionId(actionId);
       if (moveTargetSectionId) {
         await workspaceSidebarCommands.moveItem({
@@ -895,6 +970,7 @@ export function useWorkbenchSidebarController({
       appHandle,
       catalog,
       copySessionText,
+      forkSession,
       moveSidebarThreadInputForSidebar,
       onOpenProjectSessionInNewWindow,
       openRenameSessionDialog,
@@ -932,6 +1008,13 @@ export function useWorkbenchSidebarController({
           ? [{ id: option.id, label: option.label, iconUrl: FILE_LINK_OPENER_ICON_URLS[option.id] }]
           : [];
       });
+      const execution = resolveSessionExecution(session);
+      const repository =
+        execution.kind === "runtime" && location?.cwd
+          ? await queryClient
+              .fetchQuery(gitRepositoryIdentityQueryOptions(location.cwd))
+              .catch(() => null)
+          : null;
       const items = buildSessionContextMenuItems({
         session,
         projects,
@@ -939,6 +1022,10 @@ export function useWorkbenchSidebarController({
         directSectionId,
         openInTargets,
         location,
+        forkDestinations: sessionForkDestinations({
+          isWorktree: Boolean(location?.managedWorktreePath),
+          canCreateWorktree: repository !== null,
+        }),
       });
 
       beginContextMenu(session.id);
@@ -957,6 +1044,7 @@ export function useWorkbenchSidebarController({
       finishContextMenu,
       handleSessionContextMenuAction,
       projects,
+      queryClient,
       readSessionLocation,
     ],
   );
@@ -965,6 +1053,7 @@ export function useWorkbenchSidebarController({
     archiveSession,
     archiveSidebarThreadItem,
     archiveSidebarThreadItemQuiet,
+    forkSession,
     handlePendingWorktreeTitleDoubleClick,
     handleSessionTitleDoubleClick,
     markSidebarThreadItemRead,

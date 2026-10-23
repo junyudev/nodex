@@ -18,6 +18,7 @@ import { NodexTooltip } from "@/components/ui/tooltip";
 import { SendIcon } from "@/components/shared/icons/generic-icons";
 import {
   ChevronRightIcon,
+  ForkIcon,
   GoalTargetIcon,
   HooksIcon,
   QueuePendingInfoIcon,
@@ -1719,6 +1720,20 @@ export function ThreadSystemErrorBlock({ block }: ThreadLeafBlockProps) {
     <div className="text-size-chat flex w-full wrap-anywhere text-token-description-foreground/80">
       {block.entry.markdownText ?? "Thread hit an error"}
     </div>
+  );
+}
+
+export function ThreadForkedFromConversationBlock({ block }: ThreadLeafBlockProps) {
+  if (block.type !== "forkedFromConversation") return null;
+
+  const sourceTitle = asRecord(block.entry.rawItem)?.sourceConversationTitle;
+  const sourceLabel = typeof sourceTitle === "string" ? sourceTitle.trim() : "";
+
+  return (
+    <TranscriptDivider>
+      <ForkIcon className="icon-2xs shrink-0" />
+      <span className="truncate">Forked from {sourceLabel || "another chat"}</span>
+    </TranscriptDivider>
   );
 }
 

@@ -8,6 +8,7 @@ import {
   ThreadAssistantActionsBlock,
   ThreadAssistantBodyBlock,
   ThreadContextCompactionBlock,
+  ThreadForkedFromConversationBlock,
   ThreadGeneratedImageGalleryBlock,
   ThreadImageViewBlock,
   ThreadMcpServerElicitationBlock,
@@ -424,6 +425,16 @@ export function ThreadBlockRenderer({
   if (block.type === "planImplementation") {
     return (
       <ThreadPlanImplementationBlock
+        block={block}
+        isLatestTurn={isLatestTurn}
+        isStreamingTurn={isStreamingTurn}
+      />
+    );
+  }
+
+  if (block.type === "forkedFromConversation") {
+    return (
+      <ThreadForkedFromConversationBlock
         block={block}
         isLatestTurn={isLatestTurn}
         isStreamingTurn={isStreamingTurn}

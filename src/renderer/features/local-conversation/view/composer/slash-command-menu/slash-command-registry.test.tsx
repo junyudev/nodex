@@ -1,4 +1,4 @@
-import { fireEvent, waitFor } from "@testing-library/react";
+import { act, fireEvent, waitFor } from "@testing-library/react";
 import { describe, expect, test, vi } from "vite-plus/test";
 import { installWindowApi } from "@/test/browser-globals";
 import { render } from "@/test/dom";
@@ -6,6 +6,7 @@ import { queryKeys } from "@/lib/query-keys";
 import { createTestQueryClient, TestQueryProvider } from "@/test/query";
 import type { ThreadFooterModel, ThreadStageActions } from "../../../thread-stage-types";
 import { buildComposerSlashCommands } from "./slash-command-registry";
+import { ExpandedSlashCommandDialog } from "./expanded-slash-command-dialog";
 
 function buildModel(): ThreadFooterModel {
   return {
@@ -61,6 +62,176 @@ function buildActions(): ThreadStageActions {
 }
 
 describe("buildComposerSlashCommands", () => {
+  test.each(["claude", "opencode"] as const)(
+    "hides unavailable app commands and preserves native commands without replacing %s app actions",
+    async (kind) => {
+      const onOpenSideChat = vi.fn(async () => undefined);
+      const onSendPrompt = vi.fn(async () => undefined);
+      const commands = buildComposerSlashCommands({
+        model: {
+          ...buildModel(),
+          provider: {
+            kind,
+            label: kind,
+            selection: `${kind}:work`,
+            options: [],
+            select: () => {},
+            commands: [
+              { name: "side", description: "Native side command", inputHint: null },
+              { name: "scan", description: "Scan this workspace", inputHint: null },
+            ],
+            error: null,
+          },
+        },
+        actions: { ...buildActions(), onOpenSideChat, onSendPrompt },
+        serviceTier: null,
+        setServiceTier: () => undefined,
+        openExpandedDialog: () => undefined,
+        onPetToggle: () => undefined,
+        activateGoalMode: () => undefined,
+      });
+      const view = render(
+        <ExpandedSlashCommandDialog
+          commands={commands}
+          composerText=""
+          onSelect={(command) => void command.onSelect?.({ source: "dialog" })}
+          onClose={() => {}}
+        />,
+      );
+
+      expect(view.queryByRole("button", { name: /^Compact\b/u })).toBeNull();
+      expect(view.queryByRole("button", { name: /^Merge back\b/u })).toBeNull();
+      expect(commands.filter((command) => command.id === "side")).toHaveLength(1);
+      await act(async () => {
+        fireEvent.click(view.getByRole("button", { name: /^Side\b/u }));
+        await Promise.resolve();
+      });
+      expect(onOpenSideChat).toHaveBeenCalledOnce();
+      expect(onSendPrompt).not.toHaveBeenCalled();
+      await act(async () => {
+        fireEvent.click(view.getByRole("button", { name: /^scan\b/u }));
+        await Promise.resolve();
+      });
+      expect(onSendPrompt).toHaveBeenCalledExactlyOnceWith("/scan");
+    },
+  );
+
+  test.each(["claude", "opencode"] as const)(
+    "keeps supported common conversation commands actionable for %s",
+    async (kind) => {
+      const onCompactThread = vi.fn(async () => undefined);
+      const onMergeForkBack = vi.fn(async () => undefined);
+      const onOpenSideChat = vi.fn(async () => undefined);
+      const onSendPrompt = vi.fn(async () => undefined);
+      const commands = buildComposerSlashCommands({
+        model: {
+          ...buildModel(),
+          provider: {
+            kind,
+            label: kind,
+            selection: `${kind}:work`,
+            options: [],
+            select: () => {},
+            commands: [],
+            error: null,
+          },
+        },
+        actions: {
+          ...buildActions(),
+          onCompactThread,
+          onMergeForkBack,
+          onOpenSideChat,
+          onSendPrompt,
+        },
+        serviceTier: null,
+        setServiceTier: () => undefined,
+        openExpandedDialog: () => undefined,
+        onPetToggle: () => undefined,
+        activateGoalMode: () => undefined,
+      });
+      const view = render(
+        <ExpandedSlashCommandDialog
+          commands={commands}
+          composerText=""
+          onSelect={(command) => void command.onSelect?.({ source: "dialog" })}
+          onClose={() => {}}
+        />,
+      );
+
+      for (const label of [/^Compact\b/u, /^Merge back\b/u, /^Side\b/u]) {
+        const command = view.getByRole("button", { name: label });
+        expect(command.hasAttribute("disabled")).toBe(false);
+        await act(async () => {
+          fireEvent.click(command);
+          await Promise.resolve();
+        });
+      }
+      expect(onCompactThread).toHaveBeenCalledExactlyOnceWith("thread_1");
+      expect(onMergeForkBack).toHaveBeenCalledOnce();
+      expect(onOpenSideChat).toHaveBeenCalledOnce();
+      expect(onSendPrompt).not.toHaveBeenCalled();
+    },
+  );
+
+  test.each(["claude", "opencode"] as const)(
+    "offers a selectable /fork menu for %s without requiring a loaded latest Turn",
+    async (kind) => {
+      const onForkThread = vi.fn(async (_target: "local" | "newWorktree") => undefined);
+      const onSendPrompt = vi.fn(async () => undefined);
+      const actions = { ...buildActions(), onForkThread, onSendPrompt };
+      const commands = buildComposerSlashCommands({
+        model: {
+          ...buildModel(),
+          body: { ...buildModel().body, latestTurnId: null },
+          provider: {
+            kind,
+            label: kind,
+            selection: `${kind}:work`,
+            options: [],
+            select: () => {},
+            commands: [],
+            error: null,
+          },
+        },
+        actions,
+        serviceTier: null,
+        setServiceTier: () => undefined,
+        openExpandedDialog: () => undefined,
+        onPetToggle: () => undefined,
+        activateGoalMode: () => undefined,
+      });
+      const close = vi.fn();
+      const view = render(
+        <ExpandedSlashCommandDialog
+          commands={commands}
+          composerText=""
+          onSelect={(command) => void command.onSelect?.({ source: "dialog" })}
+          onClose={close}
+        />,
+      );
+
+      await act(async () => {
+        fireEvent.change(view.getByRole("textbox", { name: "Search" }), {
+          target: { value: "fork" },
+        });
+        await Promise.resolve();
+      });
+      const fork = view.getByRole("button", { name: /^Fork\b/u });
+      expect(fork.hasAttribute("disabled")).toBe(false);
+      await act(async () => {
+        fireEvent.click(fork);
+        await Promise.resolve();
+      });
+      await act(async () => {
+        fireEvent.click(view.getByRole("button", { name: /^Fork chat/u }));
+        await Promise.resolve();
+      });
+      await waitFor(() => expect(onForkThread).toHaveBeenCalledExactlyOnceWith("local"));
+      expect(close).toHaveBeenCalledOnce();
+      expect(onSendPrompt).not.toHaveBeenCalled();
+    },
+  );
+
   test("routes native status and MCP commands to the live runtime inspector", async () => {
     const onOpenStatusPanel = vi.fn();
     const onSendPrompt = vi.fn();
@@ -155,10 +326,13 @@ describe("buildComposerSlashCommands", () => {
     }).find((command) => command.id === "fork");
     const close = vi.fn();
     const view = render(<>{fork?.Content?.({ close, back: () => undefined })}</>);
-    const row = view.getByRole("button", { name: /Fork conversation/u });
+    const row = view.getByRole("button", { name: /Fork chat/u });
     // A prevented mousedown keeps focus in the Composer, which would otherwise close the menu.
-    expect(fireEvent.mouseDown(row)).toBe(false);
-    fireEvent.click(row);
+    await act(async () => {
+      expect(fireEvent.mouseDown(row)).toBe(false);
+      fireEvent.click(row);
+      await Promise.resolve();
+    });
     await waitFor(() => expect(close).toHaveBeenCalledOnce());
     expect(onForkFromTurn).toHaveBeenCalledWith({
       threadId: "thread_1",
@@ -367,6 +541,7 @@ describe("buildComposerSlashCommands", () => {
       label: "Codex",
       serviceTier: null,
       controls: { goals: false },
+      commands: [],
     } as unknown as NonNullable<ThreadFooterModel["provider"]>;
     const commands = buildComposerSlashCommands({
       model: buildNewThreadModel({

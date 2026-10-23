@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, expect, it } from "vitest";
 import * as ClaudeSdk from "@anthropic-ai/claude-agent-sdk";
-import { createClaudeRestoredSessionStores } from "./ClaudeRestoredSessionStore.ts";
+import { createClaudeSessionStores } from "./ClaudeSessionStore.ts";
 
 const id = "11111111-1111-7111-8111-111111111111";
 const key = { projectKey: "old-project", sessionId: id };
@@ -12,7 +12,7 @@ const fixture = async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "nodex-claude-store-"));
   roots.push(root);
   await mkdir(path.join(root, "projects", key.projectKey), { recursive: true });
-  return { root, store: createClaudeRestoredSessionStores()(root) };
+  return { root, store: createClaudeSessionStores()(root) };
 };
 afterEach(async () => {
   await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
@@ -98,7 +98,7 @@ it("serializes concurrent mirrors, deduplicates retries, and supports the real S
 
 it("requires captured history for managed resume and counts entries without UUIDs toward admission", async () => {
   const { root, store } = await fixture();
-  const required = createClaudeRestoredSessionStores()(root, id);
+  const required = createClaudeSessionStores()(root, id);
   await expect(required.load(key)).rejects.toThrow("history is unavailable");
   await store.append(key, [{ type: "user", message: { content: "captured" } }]);
   expect(await required.load(key)).toEqual([{ type: "user", message: { content: "captured" } }]);

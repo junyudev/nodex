@@ -86,6 +86,13 @@ export interface SessionThreadCommands {
     readonly message: string;
     readonly collaborationMode: CodexCollaborationModeKind;
   }) => Promise<void>;
+  readonly onForkSession?: (
+    session: ProjectSession,
+    input: {
+      readonly target: "local" | "newWorktree";
+      readonly sourceThreadId?: string;
+    },
+  ) => Promise<void>;
 }
 
 export interface NewChatProjectSelectorModel {
@@ -525,6 +532,7 @@ export interface ThreadStageActions {
   }) => Promise<void>;
   onEditUserTurn: (input: { threadId: string; turnId: string; message: string }) => Promise<void>;
   onForkFromTurn: (input: { threadId: string; turnId: string; message: string }) => Promise<void>;
+  onForkThread?: (target: "local" | "newWorktree") => Promise<void>;
   /** Present in a fork: brings its newest finished work into the chat it was forked from. */
   onMergeForkBack?: () => Promise<void>;
   onCompactThread?: (threadId: string) => Promise<void>;
@@ -1186,6 +1194,7 @@ export interface ThreadStageHeaderModel {
     copyConversationMarkdown?: string;
   };
   showSideChatAction?: boolean;
+  forkDestinations?: readonly import("../../lib/session-fork").SessionForkDestination[];
 }
 
 export type ThreadSummaryPanelMode = "hidden" | "pinned" | "popover";

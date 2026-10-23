@@ -129,6 +129,7 @@ import {
   subagentThreadTitle,
 } from "@t3tools/provider-core/server/subagentProjection";
 import {
+  forkableSourceRunStatuses,
   forkableSourceRunStatusError,
   isForkableSourceRunStatus,
   ThreadForkServiceV2,
@@ -303,6 +304,10 @@ export interface OrchestratorV2Shape {
   readonly getThreadProjection: (
     threadId: ThreadId,
   ) => Effect.Effect<OrchestrationV2ThreadProjection, OrchestratorV2Error>;
+  readonly getThreadForkSource: (
+    threadId: ThreadId,
+    runId?: RunId,
+  ) => Effect.Effect<RunId | null, OrchestratorV2Error>;
   readonly getCheckpointContext: (
     threadId: ThreadId,
   ) => Effect.Effect<ProjectionCheckpointContext, OrchestratorV2Error>;
@@ -902,12 +907,13 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       .getHandoffHistory({ threadId, budget: contextHandoffService.historyBudget, ...input })
       .pipe(Effect.mapError((cause) => new OrchestratorProjectionError({ threadId, cause })));
 
-  const readSourcePointControl = Effect.fnUntraced(function* (
+  const readSourcePointRun = Effect.fnUntraced(function* (
     threadId: ThreadId,
     sourcePoint: Extract<
       OrchestrationV2Command,
       { type: "thread.fork" | "thread.merge_back" }
     >["sourcePoint"],
+    operation: "fork" | "merge_back",
   ) {
     const records = yield* projectionStore
       .getThreadRecords(threadId, ["runs"], {
@@ -917,10 +923,23 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
           ? { runIds: [sourcePoint.runId] }
           : sourcePoint.type === "checkpoint"
             ? { runCheckpointId: sourcePoint.checkpointId }
-            : { runStatuses: ["completed"], runHasCheckpoint: true }),
+            : operation === "fork"
+              ? { runStatuses: forkableSourceRunStatuses }
+              : { runStatuses: ["completed"], runHasCheckpoint: true }),
       })
       .pipe(Effect.mapError((cause) => new OrchestratorProjectionError({ threadId, cause })));
-    const source = records.runs[0];
+    return records.runs[0];
+  });
+
+  const readSourcePointControl = Effect.fnUntraced(function* (
+    threadId: ThreadId,
+    sourcePoint: Extract<
+      OrchestrationV2Command,
+      { type: "thread.fork" | "thread.merge_back" }
+    >["sourcePoint"],
+    operation: "fork" | "merge_back",
+  ) {
+    const source = yield* readSourcePointRun(threadId, sourcePoint, operation);
     const projection = yield* projectionStore
       .getMessageDispatchProjection({
         threadId,
@@ -3672,6 +3691,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
     const { projection: sourceProjection, sourceRun } = yield* readSourcePointControl(
       command.sourceThreadId,
       command.sourcePoint,
+      "fork",
     );
     if (sourceRun === null) {
       return yield* new OrchestratorDispatchError({
@@ -3744,6 +3764,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
     const { projection: sourceProjection, sourceRun } = yield* readSourcePointControl(
       command.sourceThreadId,
       command.sourcePoint,
+      "merge_back",
     );
     const targetProjection = yield* projectionStore
       .getThreadRecords(command.targetThreadId, ["contextTransfers"], {
@@ -5751,11 +5772,11 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
             )?.providerTurnId ??
             undefined);
       if (pendingForkTransfer !== undefined) {
-        if (sourceRun === null || sourceProviderThread === undefined) {
+        if (sourceRun === null) {
           return yield* new OrchestratorDispatchError({
             commandId: command.commandId,
             commandType: command.type,
-            cause: `Pending fork transfer ${pendingForkTransfer.id} has no resolvable source provider thread.`,
+            cause: `Pending fork transfer ${pendingForkTransfer.id} has no resolvable source Run.`,
           });
         }
         if (pendingForkTransfer.sourceProviderInstanceId === null) {
@@ -11827,6 +11848,16 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       projectionStore
         .getThreadProjection(threadId)
         .pipe(Effect.mapError((cause) => new OrchestratorProjectionError({ threadId, cause }))),
+    getThreadForkSource: (threadId, runId) =>
+      readSourcePointRun(
+        threadId,
+        runId === undefined ? { type: "latest_stable" } : { type: "run", runId },
+        "fork",
+      ).pipe(
+        Effect.map((run) =>
+          run !== undefined && isForkableSourceRunStatus(run.status) ? run.id : null,
+        ),
+      ),
     getCheckpointContext: (threadId) =>
       projectionStore
         .getCheckpointContext(threadId)

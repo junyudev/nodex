@@ -77,6 +77,12 @@ export function buildComposerSlashCommands(input: BuildSlashCommandsInput): Comp
   const canUseGoal = canUseComposerGoal(input.model, input.actions);
   const isSideConversation = input.model.conversation?.source?.sideConversation === true;
   const latestTurnId = input.model.body.latestTurnId;
+  const provider = input.model.provider;
+  const isCodex = !provider || provider.kind === "codex";
+  const inspectNativeRuntime =
+    !isCodex && provider?.diagnostics && input.actions.onOpenStatusPanel && threadId
+      ? () => input.actions.onOpenStatusPanel?.(threadId)
+      : undefined;
   const commands: ComposerSlashCommand[] = [
     {
       id: "compact",
@@ -105,6 +111,7 @@ export function buildComposerSlashCommands(input: BuildSlashCommandsInput): Comp
       group: "Commands",
       icon: <FastModeIcon className={iconClassName} />,
       requiresEmptyComposer: true,
+      isVisible: isCodex,
       onSelect: async () => {
         // A conversation that owns its speed changes its own selection, not the saved default.
         const owned = input.model.provider?.serviceTier;
@@ -147,12 +154,13 @@ export function buildComposerSlashCommands(input: BuildSlashCommandsInput): Comp
       icon: <SettingsWorktreeIcon className={iconClassName} />,
       requiresEmptyComposer: true,
       isVisible: canUseExistingThread && !isSideConversation,
-      isEnabled: Boolean(threadId && latestTurnId),
+      isEnabled: Boolean(threadId && (input.actions.onForkThread || latestTurnId)),
       Content: (props) => (
         <ForkCommandContent
           threadId={threadId}
           turnId={latestTurnId}
           onForkFromTurn={input.actions.onForkFromTurn}
+          onForkThread={input.actions.onForkThread}
           {...props}
         />
       ),
@@ -195,7 +203,14 @@ export function buildComposerSlashCommands(input: BuildSlashCommandsInput): Comp
       group: "Commands",
       icon: <SlashMcpIcon className={iconClassName} />,
       requiresEmptyComposer: true,
-      Content: (props) => <McpCommandContent threadId={threadId} {...props} />,
+      isVisible: isCodex || Boolean(inspectNativeRuntime),
+      ...(inspectNativeRuntime
+        ? { onSelect: inspectNativeRuntime }
+        : {
+            Content: (props: ComposerSlashCommandContentProps) => (
+              <McpCommandContent threadId={threadId} {...props} />
+            ),
+          }),
     },
     {
       id: "memories",
@@ -240,7 +255,7 @@ export function buildComposerSlashCommands(input: BuildSlashCommandsInput): Comp
     {
       id: "side",
       title: "Side",
-      description: "Start a side conversation in an ephemeral fork",
+      description: "Open an independent chat beside this one",
       group: "Commands",
       icon: <SlashSideIcon className={iconClassName} />,
       requiresEmptyComposer: true,
@@ -371,51 +386,26 @@ export function buildComposerSlashCommands(input: BuildSlashCommandsInput): Comp
     },
   ];
 
-  const provider = input.model.provider;
-  if (!provider || provider.kind === "codex") return commands;
-  const sharedCommands = commands.filter((command) =>
-    ["model", "reasoning", "plan-mode", "pet", "expanded-slash-command-dialog"].includes(
-      command.id,
-    ),
+  if (!provider) return commands;
+  // App commands advertise their own semantic capability above. Provider identity must not
+  // hide common chat actions; native commands fill only names the app cannot currently offer.
+  const nativeCommands = provider.commands.filter(
+    (command) =>
+      !commands.some((shared) => shared.id === command.name && shared.isVisible !== false),
   );
-  if (provider.diagnostics && input.actions.onOpenStatusPanel && threadId) {
-    const inspect = () => input.actions.onOpenStatusPanel?.(threadId);
-    sharedCommands.push(
-      {
-        id: "status",
-        title: "Status",
-        description: "Inspect the native runtime",
-        group: "Commands",
-        icon: <SlashStatusIcon className={iconClassName} />,
-        requiresEmptyComposer: true,
-        onSelect: inspect,
-      },
-      {
-        id: "mcp",
-        title: "MCP",
-        description: "Inspect native MCP servers",
-        group: "Commands",
-        icon: <SlashMcpIcon className={iconClassName} />,
-        requiresEmptyComposer: true,
-        onSelect: inspect,
-      },
-    );
-  }
   return [
-    ...sharedCommands,
-    ...provider.commands
-      .filter((command) => !sharedCommands.some((shared) => shared.id === command.name))
-      .map((command): ComposerSlashCommand => ({
-        id: command.name,
-        title: command.name,
-        description: command.description,
-        group: "Commands",
-        icon: <SendIcon className={iconClassName} />,
-        onSelectFromInlineSlash: (selection) => selection.replaceTrigger(`/${command.name} `),
-        onSelect: async () => {
-          await input.actions.onSendPrompt(`/${command.name}`);
-        },
-      })),
+    ...commands.filter((command) => !nativeCommands.some((native) => native.name === command.id)),
+    ...nativeCommands.map((command): ComposerSlashCommand => ({
+      id: command.name,
+      title: command.name,
+      description: command.description,
+      group: "Commands",
+      icon: <SendIcon className={iconClassName} />,
+      onSelectFromInlineSlash: (selection) => selection.replaceTrigger(`/${command.name} `),
+      onSelect: async () => {
+        await input.actions.onSendPrompt(`/${command.name}`);
+      },
+    })),
   ];
 }
 
@@ -511,22 +501,25 @@ function ForkCommandContent({
   threadId,
   turnId,
   onForkFromTurn,
+  onForkThread,
   close,
 }: ComposerSlashCommandContentProps & {
   threadId: string | null | undefined;
   turnId: string | null | undefined;
   onForkFromTurn: ThreadStageActions["onForkFromTurn"];
+  onForkThread?: ThreadStageActions["onForkThread"];
 }) {
   return (
     <CommandPanel>
       <CommandPanelRow
-        title="Fork conversation"
-        description="Create a new branch from the latest turn"
-        disabled={!threadId || !turnId}
+        title="Fork chat"
+        description="Continue this conversation in a new chat"
+        disabled={!threadId || (!onForkThread && !turnId)}
         onClick={async () => {
-          if (!threadId || !turnId) return;
+          if (!threadId || (!onForkThread && !turnId)) return;
           await runCommand("Failed to fork thread", async () => {
-            await onForkFromTurn({ threadId, turnId, message: "" });
+            if (onForkThread) await onForkThread("local");
+            else if (turnId) await onForkFromTurn({ threadId, turnId, message: "" });
             close();
           });
         }}

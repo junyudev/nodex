@@ -18,7 +18,7 @@ import {
 import { isWorkspaceImagePreviewPath } from "@t3tools/shared/filePreview";
 import { normalizeClaudeTurnTokenUsage } from "../../provider/ClaudeTurnTokenUsage.ts";
 import { loadClaudeAgentSdk } from "../../provider/ClaudeAgentSdk.ts";
-import { createClaudeRestoredSessionStores } from "../../provider/ClaudeRestoredSessionStore.ts";
+import { createClaudeSessionStores } from "../../provider/ClaudeSessionStore.ts";
 import type {
   CanUseTool,
   HookCallback,
@@ -432,6 +432,7 @@ export class ClaudeAgentSdkQueryRunner extends Context.Service<
 >()("t3/orchestration-v2/Adapters/ClaudeAdapterV2/ClaudeAgentSdkQueryRunner") {}
 
 export interface ClaudeAgentSdkSessionForkInput {
+  readonly configDirectory?: string;
   readonly restoredHistoryPath?: string;
   readonly sessionId: string;
   readonly options: ForkSessionOptions;
@@ -440,6 +441,7 @@ export interface ClaudeAgentSdkSessionForkInput {
 }
 
 export interface ClaudeAgentSdkSubagentLookupInput {
+  readonly configDirectory?: string;
   readonly restoredHistoryPath?: string;
   readonly sessionId: string;
   readonly agentId: string;
@@ -658,7 +660,7 @@ export function makeClaudeAgentSdkProtocolLogger(input: {
 export const layerQueryRunner: Layer.Layer<
   ClaudeAgentSdkQueryRunner,
   never,
-  Crypto.Crypto | ProviderEventLoggers.ProviderEventLoggers
+  Crypto.Crypto | FileSystem.FileSystem | Path.Path | ProviderEventLoggers.ProviderEventLoggers
 > = Layer.effect(
   ClaudeAgentSdkQueryRunner,
   Effect.gen(function* () {
@@ -666,7 +668,19 @@ export const layerQueryRunner: Layer.Layer<
     const crypto = yield* Crypto.Crypto;
     const { native: nativeEventLogger } = yield* ProviderEventLoggers.ProviderEventLoggers;
     const agentScope = yield* AgentScope;
-    const restoredStores = createClaudeRestoredSessionStores();
+    const sessionStores = createClaudeSessionStores();
+    const fileSystem = yield* FileSystem.FileSystem;
+    const path = yield* Path.Path;
+    const standaloneHistoryPath = Effect.fnUntraced(function* (
+      input: { readonly restoredHistoryPath?: string; readonly configDirectory?: string },
+      cwd: string | null,
+    ) {
+      if (input.restoredHistoryPath !== undefined) return input.restoredHistoryPath;
+      if (input.configDirectory === undefined) return undefined;
+      // A configured account home may be a symlink. Restored Profile history
+      // keeps its stricter managed-path validation instead of following aliases.
+      return yield* fileSystem.realPath(path.resolve(cwd ?? ".", input.configDirectory));
+    });
 
     return ClaudeAgentSdkQueryRunner.of({
       allocateSessionId: crypto
@@ -708,7 +722,7 @@ export const layerQueryRunner: Layer.Layer<
         const sessionStore =
           restoredHistoryPath === undefined
             ? undefined
-            : restoredStores(restoredHistoryPath, input.options.resume);
+            : sessionStores(restoredHistoryPath, input.options.resume);
         const queryOptions =
           sessionStore === undefined
             ? nativeOptions
@@ -972,13 +986,20 @@ export const layerQueryRunner: Layer.Layer<
             options: input.options,
           },
         });
+        // Standalone SDK operations do not inherit query({ env }). Bind their
+        // storage explicitly so concurrent Claude instances never share history.
+        const historyPath = yield* standaloneHistoryPath(input, input.options.dir ?? null).pipe(
+          Effect.mapError((cause) => queryRunnerError(cause, "forkSession")),
+        );
         const result = yield* Effect.tryPromise({
           try: async () =>
             (await loadClaudeAgentSdk()).forkSession(input.sessionId, {
               ...input.options,
-              ...(input.restoredHistoryPath === undefined
+              ...(historyPath === undefined
                 ? {}
-                : { sessionStore: restoredStores(input.restoredHistoryPath, input.sessionId) }),
+                : {
+                    sessionStore: sessionStores(historyPath, input.sessionId),
+                  }),
             }),
           catch: (cause) => queryRunnerError(cause, "forkSession"),
         });
@@ -1012,13 +1033,14 @@ export const layerQueryRunner: Layer.Layer<
           });
           // The CLI stamps every message of a subagent's transcript with the
           // tool call that launched it; one message is enough.
+          const historyPath = yield* standaloneHistoryPath(input, input.dir).pipe(
+            Effect.mapError((cause) => queryRunnerError(cause, "getSubagentMessages")),
+          );
           const messages = yield* Effect.tryPromise({
             try: async () =>
               (await loadClaudeAgentSdk()).getSubagentMessages(input.sessionId, input.agentId, {
                 ...(input.dir === null ? {} : { dir: input.dir }),
-                ...(input.restoredHistoryPath === undefined
-                  ? {}
-                  : { sessionStore: restoredStores(input.restoredHistoryPath) }),
+                ...(historyPath === undefined ? {} : { sessionStore: sessionStores(historyPath) }),
                 limit: 1,
               }),
             catch: (cause) => queryRunnerError(cause, "getSubagentMessages"),
@@ -4257,6 +4279,9 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
           }
           const launchToolUseId = yield* queryRunner
             .subagentLaunchToolUseId({
+              ...(adapterOptions.environment.CLAUDE_CONFIG_DIR === undefined
+                ? {}
+                : { configDirectory: adapterOptions.environment.CLAUDE_CONFIG_DIR }),
               ...(adapterOptions.settings.restoredHistoryPath === undefined
                 ? {}
                 : { restoredHistoryPath: adapterOptions.settings.restoredHistoryPath }),
@@ -9027,6 +9052,9 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
                 ...(upToMessageId === undefined ? {} : { upToMessageId }),
               };
               const forked = yield* queryRunner.forkSession({
+                ...(adapterOptions.environment.CLAUDE_CONFIG_DIR === undefined
+                  ? {}
+                  : { configDirectory: adapterOptions.environment.CLAUDE_CONFIG_DIR }),
                 ...(adapterOptions.settings.restoredHistoryPath === undefined
                   ? {}
                   : { restoredHistoryPath: adapterOptions.settings.restoredHistoryPath }),

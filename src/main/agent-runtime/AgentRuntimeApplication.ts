@@ -1259,6 +1259,15 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
       return yield* failure("fork", "Session is already bound to another fork request");
     if (input.environment === "worktree" && !options.prepareWorkspace)
       return yield* failure("workspace", "Worktree preparation is unavailable");
+    const existing = yield* connection.request("thread.read", { threadId });
+    const sourceRunId = existing
+      ? null
+      : yield* connection.request("thread.fork-source", {
+          threadId: source.threadId,
+          ...(input.sourceRunId === undefined ? {} : { runId: input.sourceRunId }),
+        });
+    if (!existing && sourceRunId === null)
+      return yield* failure("fork", "This chat has no finished Run to fork from");
     // The product Session is admitted before any Thread or worktree exists.
     const scope = yield* lifecycle.runExclusive(
       projectId,
@@ -1282,8 +1291,7 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
         return scope;
       }),
     );
-    const existing = yield* connection.request("thread.read", { threadId });
-    if (!existing)
+    if (sourceRunId !== null)
       yield* dispatch(connection, {
         type: "thread.fork",
         commandId: commandId("fork-thread", {
@@ -1292,9 +1300,7 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
         }),
         sourceThreadId: source.threadId,
         targetThreadId: threadId,
-        sourcePoint: input.sourceRunId
-          ? { type: "run", runId: input.sourceRunId }
-          : { type: "latest_stable" },
+        sourcePoint: { type: "run", runId: sourceRunId },
         rootPolicy: "independent_root",
         title,
         createdBy: provenance ? "agent" : "user",

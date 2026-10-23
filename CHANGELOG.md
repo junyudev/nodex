@@ -6,10 +6,14 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- Chats offer Fork in the sidebar context menu and Chat actions, with the current directory or a new Git worktree as the destination.
+
 ### Changed
 
 ### Fixed
 
+- Claude Code and OpenCode slash menus retain supported chat actions, including Fork, Side, Merge back and Compact.
+- Forking a chat can continue from its latest eligible history without requiring a Git checkpoint, and Claude Code forks retain the selected Agent instance’s native history.
 - OpenCode chats offer editing of earlier messages, rewinding the conversation before continuing from the edit.
 - Image attachments follow the selected Agent model's capabilities, with a clear explanation when support is unavailable or not yet known.
 - Starting a chat from a Page or Scheduled uses its selected Agent and model, including when Codex is unavailable.

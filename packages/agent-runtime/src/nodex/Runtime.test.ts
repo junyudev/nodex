@@ -136,6 +136,7 @@ it.live("deletes a shared attachment only after its last live Session is deleted
             },
           ],
         })) as { readonly attachments: ReadonlyArray<{ readonly id: string }> };
+        expect(yield* request("thread.fork-source", { threadId: "thread:source" })).toBeNull();
         const image = persisted.attachments[0]!;
         const file = path.join(home, "userdata", "attachments", `${image.id}.png`);
         yield* request("command.dispatch", {
@@ -163,6 +164,9 @@ it.live("deletes a shared attachment only after its last live Session is deleted
           }),
           Effect.timeout("10 seconds"),
         )) as { readonly runId: string };
+        expect(yield* request("thread.fork-source", { threadId: "thread:source" })).toBe(
+          outcome.runId,
+        );
         yield* request("command.dispatch", {
           type: "thread.fork",
           commandId: "fork:source",
@@ -173,6 +177,12 @@ it.live("deletes a shared attachment only after its last live Session is deleted
           createdBy: "user",
           creationSource: "web",
         });
+        expect(
+          yield* request("thread.fork-source", {
+            threadId: "thread:fork",
+            runId: outcome.runId,
+          }),
+        ).toBeNull();
         const cleanupSettled = (commandId: string) =>
           Effect.sync(() => {
             const reader = new DatabaseSync(runtime.identity.databasePath, { readOnly: true });

@@ -525,6 +525,15 @@ const setup = (
           status: active?.status ?? "idle",
         } as AgentRuntimeOperations[M]["output"];
       }
+      if (method === "thread.fork-source") {
+        const request = input as AgentRuntimeOperations["thread.fork-source"]["input"];
+        const runs = snapshots.get(request.threadId)?.projection.runs ?? [];
+        return (runs.findLast(
+          (run) =>
+            (request.runId === undefined || run.id === request.runId) &&
+            ["completed", "waiting", "failed", "interrupted", "cancelled"].includes(run.status),
+        )?.id ?? null) as AgentRuntimeOperations[M]["output"];
+      }
       if (method === "thread.rollback") {
         const request = input as AgentRuntimeOperations["thread.rollback"]["input"];
         const current = snapshots.get(request.threadId)!;
@@ -1796,6 +1805,14 @@ it.effect(
       const fixture = setup();
       const owner = yield* fixture.owner;
       const source = yield* owner.launch(launch);
+      const sourceSnapshot = fixture.snapshots.get(source.threadId)!;
+      fixture.snapshots.set(source.threadId, {
+        ...sourceSnapshot,
+        projection: {
+          ...sourceSnapshot.projection,
+          runs: [{ id: "run:source", ordinal: 1, status: "completed" } as never],
+        },
+      });
       const fork = yield* owner.fork({
         source: { sessionId: source.sessionId },
         sessionId: "session:fork",
@@ -2523,6 +2540,14 @@ it.effect("Session forks bind a distinct root while inspection and overview rema
     });
     const owner = yield* fixture.owner;
     const source = yield* owner.launch(launch);
+    const sourceSnapshot = fixture.snapshots.get(source.threadId)!;
+    fixture.snapshots.set(source.threadId, {
+      ...sourceSnapshot,
+      projection: {
+        ...sourceSnapshot.projection,
+        runs: [{ id: "run:source", ordinal: 1, status: "completed" } as never],
+      },
+    });
     const before = fixture.calls.filter((call) => call.method === "thread.snapshot").length;
     yield* owner.inspect({ sessionId: source.sessionId });
     fixture.state.missingSessionLookupError = coreRuntimeError({
@@ -2588,6 +2613,90 @@ it.effect("Session forks bind a distinct root while inspection and overview rema
       "/worktrees/fork/packages/app",
     );
     assert.equal(fixture.calls.filter((call) => call.method === "thread.snapshot").length, before);
+  }),
+);
+
+it.effect.each([undefined, "run:missing", "run:active"])(
+  "rejects an unavailable fork source %s before creating a Session",
+  (sourceRunId) =>
+    Effect.gen(function* () {
+      const fixture = setup();
+      const owner = yield* fixture.owner;
+      const source = yield* owner.launch(launch);
+      const current = fixture.snapshots.get(source.threadId)!;
+      fixture.snapshots.set(source.threadId, {
+        ...current,
+        projection: {
+          ...current.projection,
+          runs:
+            sourceRunId === undefined
+              ? []
+              : [{ id: "run:active", ordinal: 1, status: "running" } as never],
+        },
+      });
+      const mutations = fixture.applied.length;
+      const commands = fixture.commands.size;
+      const result = yield* owner
+        .fork({
+          source: { sessionId: source.sessionId },
+          sessionId: "session:invalid-fork",
+          requestId: "fork:invalid",
+          acceptedAt: launch.acceptedAt,
+          environment: "same-directory",
+          ...(sourceRunId === undefined ? {} : { sourceRunId }),
+        })
+        .pipe(Effect.result);
+      assert.equal(result._tag, "Failure");
+      assert.equal(fixture.applied.length, mutations);
+      assert.equal(fixture.commands.size, commands);
+      assert.isFalse(fixture.bindings.has("session:invalid-fork"));
+    }),
+);
+
+it.effect("head forks freeze the Runtime-selected non-Git source before binding the Session", () =>
+  Effect.gen(function* () {
+    const fixture = setup();
+    const owner = yield* fixture.owner;
+    const source = yield* owner.launch(launch);
+    const current = fixture.snapshots.get(source.threadId)!;
+    fixture.snapshots.set(source.threadId, {
+      ...current,
+      projection: {
+        ...current.projection,
+        runs: [
+          { id: "run:old", ordinal: 1, status: "completed", checkpointId: "checkpoint:old" },
+          { id: "run:head", ordinal: 2, status: "interrupted", checkpointId: null },
+          { id: "run:queued", ordinal: 3, status: "queued", checkpointId: null },
+        ] as never,
+      },
+    });
+    const before = fixture.calls.length;
+    const orderBefore = fixture.order.length;
+    const fork = yield* owner.fork({
+      source: { sessionId: source.sessionId },
+      sessionId: "session:head-fork",
+      requestId: "fork:head",
+      acceptedAt: launch.acceptedAt,
+      environment: "same-directory",
+    });
+    assert.deepInclude(
+      [...fixture.commands.values()].find((command) => command.type === "thread.fork"),
+      { sourcePoint: { type: "run", runId: "run:head" } },
+    );
+    assert.equal(fixture.bindings.get(fork.sessionId)?.runtime_thread_id, fork.threadId);
+    const order = fixture.order.slice(orderBefore);
+    assert.isBelow(order.indexOf("thread.fork-source"), order.indexOf("core.bind"));
+    assert.deepEqual(
+      fixture.calls.slice(before).filter((call) => call.method === "thread.fork-source"),
+      [{ method: "thread.fork-source", input: { threadId: source.threadId } }],
+    );
+    assert.isFalse(
+      fixture.calls
+        .slice(before)
+        .some((call) =>
+          ["thread.snapshot", "thread.history", "thread.control"].includes(call.method),
+        ),
+    );
   }),
 );
 

@@ -13,6 +13,7 @@ import {
 } from "@/features/local-conversation";
 import type { FloatingComposerPlacement } from "@/features/floating-composer/floating-composer";
 import { composeNativeThreadStageActions } from "@/features/local-conversation/native-thread-stage-actions";
+import { resolveSessionExecution, resolveSessionForkAvailability } from "@/lib/session-execution";
 import { useOpenNativeRuntimeDiagnostics } from "@/components/shared/agent-runtime/native-runtime-diagnostics";
 import type {
   NewChatStartInSelectorModel,
@@ -115,6 +116,7 @@ function SharedConnectedSessionThread({
   newThreadStartBlockedReason,
   projectDraftId,
   onForkFromTurnIntoWorktree,
+  onForkSession,
 }: {
   agent: Pick<
     ReturnType<typeof useAgentRuntimeConversationAdapter>,
@@ -162,6 +164,7 @@ function SharedConnectedSessionThread({
   onOpenSummaryGitReview: ThreadStageActions["onOpenSummaryGitReview"];
   turnDiffHoverPreviewDisabled: boolean;
   onForkSessionFromTurn?: SessionThreadCommands["onForkSessionFromTurn"];
+  onForkSession?: SessionThreadCommands["onForkSession"];
   onForkFromTurnIntoWorktree: (input: {
     threadId: string;
     targetTurnId: string;
@@ -436,6 +439,14 @@ function SharedConnectedSessionThread({
     },
     {
       ...agent.actions,
+      ...(summary &&
+      onForkSession &&
+      resolveSessionForkAvailability(resolveSessionExecution(session)).available
+        ? {
+            onForkThread: (target: "local" | "newWorktree") =>
+              onForkSession(session, { target, sourceThreadId: summary.threadId }),
+          }
+        : {}),
       onOpenMcpAppSidePanel,
       onOpenSideChat,
       onOpenPlanInSidePanel,
@@ -832,6 +843,7 @@ export function ProjectSessionThreadComposerDock({
   onOpenTurnDiffReview,
   onOpenTurnDiffFileInSidePanel,
   onForkSessionFromTurn,
+  onForkSession,
   commandKeymapState,
   isMac,
 }: {
@@ -859,6 +871,7 @@ export function ProjectSessionThreadComposerDock({
   readonly onOpenTurnDiffReview?: ConnectedSessionThreadProps["onOpenTurnDiffReview"];
   readonly onOpenTurnDiffFileInSidePanel?: ConnectedSessionThreadProps["onOpenTurnDiffFileInSidePanel"];
   readonly onForkSessionFromTurn?: ConnectedSessionThreadProps["onForkSessionFromTurn"];
+  readonly onForkSession?: ConnectedSessionThreadProps["onForkSession"];
   readonly commandKeymapState?: CommandKeymapState | null;
   readonly isMac: boolean;
 }) {
@@ -889,6 +902,7 @@ export function ProjectSessionThreadComposerDock({
       onOpenSummaryGitReview={undefined}
       turnDiffHoverPreviewDisabled
       onForkSessionFromTurn={onForkSessionFromTurn}
+      onForkSession={onForkSession}
       onForkFromTurnIntoWorktree={noOpAsync}
       searchOpenTick={0}
       summaryPanelMounted={false}

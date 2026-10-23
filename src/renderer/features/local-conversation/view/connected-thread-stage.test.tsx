@@ -156,8 +156,14 @@ function createConnectedThreadStageQueryClient() {
   return client;
 }
 
-function ConnectedThreadStageQueryProvider({ children }: { readonly children: ReactNode }) {
-  const [client] = useState(createConnectedThreadStageQueryClient);
+function ConnectedThreadStageQueryProvider({
+  children,
+  client: providedClient,
+}: {
+  readonly children: ReactNode;
+  readonly client?: ReturnType<typeof createTestQueryClient>;
+}) {
+  const [client] = useState(() => providedClient ?? createConnectedThreadStageQueryClient());
   return <TestQueryProvider client={client}>{children}</TestQueryProvider>;
 }
 
@@ -562,13 +568,15 @@ async function renderStage(
     summaryPanelOpen?: boolean;
     onOpenThread?: ThreadStageActions["onOpenThread"];
     onOpenSubagentsPanel?: ThreadStageActions["onOpenSubagentsPanel"];
+    onForkThread?: ThreadStageActions["onForkThread"];
+    queryClient?: ReturnType<typeof createTestQueryClient>;
     skillsControlProbe?: boolean;
   } = {},
 ) {
   __resetLocalConversationStoreForTests();
 
   const view = render(
-    <ConnectedThreadStageQueryProvider>
+    <ConnectedThreadStageQueryProvider client={options.queryClient}>
       <ThreadStageScope>
         <TooltipProvider>
           <LocalConversationProvider>
@@ -606,6 +614,7 @@ async function renderStage(
                 actions={{
                   ...buildActions(),
                   ...(options.onOpenThread ? { onOpenThread: options.onOpenThread } : {}),
+                  ...(options.onForkThread ? { onForkThread: options.onForkThread } : {}),
                   ...(options.onOpenSubagentsPanel
                     ? { onOpenSubagentsPanel: options.onOpenSubagentsPanel }
                     : {}),
@@ -614,7 +623,9 @@ async function renderStage(
             </ConversationRuntimeContext.Provider>
           </LocalConversationProvider>
           {options.skillsControlProbe ? <SkillsReloadProbe /> : null}
-          {options.onOpenSubagentsPanel ? <SelectedAppShellHeaderContent /> : null}
+          {options.onOpenSubagentsPanel || options.onForkThread ? (
+            <SelectedAppShellHeaderContent />
+          ) : null}
           {options.summaryPanelOpen ? <NodexModalHost /> : null}
         </TooltipProvider>
       </ThreadStageScope>
@@ -1264,6 +1275,61 @@ describe("ConnectedThreadStage archived resume behavior", () => {
           ].includes(call.channel),
         ),
       ).toEqual([]);
+    },
+  );
+
+  test.each(["local", "remote"])(
+    "Fork destinations bind cached repository identity to the local execution host (%s)",
+    async (hostId) => {
+      const queryClient = createConnectedThreadStageQueryClient();
+      queryClient.setQueryData(queryKeys.codexComposerPlugins.list(["/tmp/project"], hostId), []);
+      queryClient.setQueryData(queryKeys.codexComposerSkills.list(["/tmp/project"], hostId), []);
+      queryClient.setQueryData(queryKeys.git.repositoryIdentity("/tmp/project"), {
+        repositoryRoot: "/tmp/project",
+        ownerRepo: null,
+      });
+      const conversation = withCanonicalState(
+        buildConversation("thread_active", { statusType: "idle" }),
+      );
+      const emptyChildren: ReturnType<ConversationRuntime["children"]> = [];
+      const attachment = { status: "attached" } as const;
+      const connection = { status: "connected", retries: 0 } as const;
+      const runtime: ConversationRuntime = {
+        kind: "codex",
+        hostId,
+        read: (id) => (id === conversation.threadId ? conversation : null),
+        subscribe: () => () => {},
+        children: () => emptyChildren,
+        attachment: () => attachment,
+        connection: () => connection,
+        role: () => "follower",
+        primaryRequest: () => null,
+        retain: () => () => {},
+        resume: async () => {},
+        markRead: async () => {},
+        setPresented: async () => {},
+      };
+      const onForkThread = vi.fn(async () => {});
+      const view = await renderStage(
+        { ...buildThreadSummary(false), executionHostId: hostId },
+        { queryClient, runtime, onForkThread },
+      );
+      await openNodexMenu(view.getByRole("button", { name: "Chat actions" }));
+      await act(async () => {
+        fireEvent.keyDown(view.getByRole("menuitem", { name: /^Fork$/u }), {
+          key: "ArrowRight",
+        });
+        await Promise.resolve();
+      });
+      const fork = await view.findByRole("menuitem", { name: "Fork chat" });
+      expect(view.queryByRole("menuitem", { name: "Fork chat in new worktree" }) !== null).toBe(
+        hostId === "local",
+      );
+      await act(async () => {
+        fireEvent.click(fork);
+        await Promise.resolve();
+      });
+      await waitFor(() => expect(onForkThread).toHaveBeenCalledExactlyOnceWith("local"));
     },
   );
 

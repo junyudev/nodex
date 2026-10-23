@@ -80,6 +80,37 @@ function flattenActionIds(items: ReturnType<typeof buildSessionContextMenuItems>
 }
 
 describe("session context menu model", () => {
+  test("offers an enabled Fork chat action for a Runtime Session", () => {
+    const items = buildSessionContextMenuItems({
+      session: makeSession({
+        executionRef: { runtimeId: "runtime-1", threadId: "root-1" },
+      }),
+    });
+
+    const fork = items.find((item) => item.type === "submenu" && item.label === "Fork");
+    expect(fork).toMatchObject({ type: "submenu", label: "Fork" });
+    expect(fork?.type === "submenu" ? fork.submenu : []).toContainEqual(
+      expect.objectContaining({ label: "Fork chat", enabled: true }),
+    );
+  });
+
+  test("offers the supplied worktree destinations for a Runtime Session", () => {
+    const items = buildSessionContextMenuItems({
+      session: makeSession({
+        executionRef: { runtimeId: "runtime-1", threadId: "root-1" },
+      }),
+      forkDestinations: [
+        { target: "local", label: "Fork chat in same worktree" },
+        { target: "newWorktree", label: "Fork chat in new worktree" },
+      ],
+    });
+    const fork = items.find((item) => item.type === "submenu" && item.label === "Fork");
+    expect(fork?.type === "submenu" ? fork.submenu : []).toMatchObject([
+      { id: "session.fork", label: "Fork chat in same worktree", enabled: true },
+      { id: "session.forkInNewWorktree", label: "Fork chat in new worktree", enabled: true },
+    ]);
+  });
+
   test("matches the sidebar-native menu grouping and action order", () => {
     const items = buildSessionContextMenuItems({
       session: makeAttachedSession(),

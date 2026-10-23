@@ -21,6 +21,8 @@ import {
   type ReactNode,
 } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { gitRepositoryIdentityQueryOptions } from "@/lib/query-options";
+import { sessionForkDestinations } from "@/lib/session-fork";
 import {
   AppShellHeaderContentRegistrar,
   ConversationSkillsReloadRegistrar,
@@ -237,17 +239,31 @@ function resolveConnectedStageActiveThreadId(input: ConnectedThreadStageInput): 
 
 function ConnectedThreadStageHeader({
   activeThreadId,
+  isWorktree,
   input,
   actions,
   onErrorMessage,
 }: {
   activeThreadId: string | null;
+  isWorktree: boolean;
   input: ConnectedThreadStageInput;
   actions: ThreadStageActions;
   onErrorMessage: (message: string | null) => void;
 }) {
   const summaryFields = useConversationSummaryFields(activeThreadId);
-  const cwd = useConversationCwd(activeThreadId);
+  const activeSummary =
+    input.activeThreadSummary?.threadId === activeThreadId ? input.activeThreadSummary : null;
+  const cwd = useConversationCwd(activeThreadId) ?? activeSummary?.cwd ?? null;
+  const canUseLocalRepository = Boolean(
+    actions.onForkThread &&
+    cwd &&
+    (activeSummary?.executionHostId ?? DEFAULT_CODEX_HOST_ID) === DEFAULT_CODEX_HOST_ID,
+  );
+  const repositoryIdentity = useQuery({
+    ...gitRepositoryIdentityQueryOptions(cwd ?? ""),
+    enabled: canUseLocalRepository,
+    retry: false,
+  });
   const parentConversationId = useConversationParentThreadId(activeThreadId);
   const title = resolveThreadTitle(input, summaryFields, activeThreadId);
   const handleCopyConversationMarkdown = useCallback(async () => {
@@ -282,8 +298,22 @@ function ConnectedThreadStageHeader({
       showSideChatAction: Boolean(
         activeThreadId && !input.sideChatContext && actions.onOpenSideChat,
       ),
+      forkDestinations: sessionForkDestinations({
+        isWorktree,
+        canCreateWorktree: canUseLocalRepository && Boolean(repositoryIdentity.data),
+      }),
     }),
-    [activeThreadId, actions.onOpenSideChat, cwd, input, summaryFields, title],
+    [
+      activeThreadId,
+      actions.onOpenSideChat,
+      cwd,
+      input,
+      summaryFields,
+      title,
+      isWorktree,
+      canUseLocalRepository,
+      repositoryIdentity.data,
+    ],
   );
 
   return (
@@ -1600,6 +1630,7 @@ function ConnectedThreadStageContent({
   const threadHeaderContent = ownsAppShellHeader ? (
     <ConnectedThreadStageHeader
       activeThreadId={activeThreadId}
+      isWorktree={activeThreadIsManagedWorktree}
       input={input}
       actions={actions}
       onErrorMessage={setErrorMessage}
