@@ -394,11 +394,13 @@ function renderSystemEvent(item: CodexConversationItem, cwd: string | null): str
       return titledLines("Remote task created", [
         `Task ID: ${asString(raw.taskId) ?? item.itemId}`,
       ]);
-    case "contextCompaction":
+    case "contextCompaction": {
+      const status = item.contextCompaction?.status ?? "completed";
       return titledLines("Context compaction", [
         `Source: ${item.contextCompaction?.source ?? "automatic"}`,
-        item.contextCompaction?.completed ? "Status: completed" : "Status: running",
+        `Status: ${status === "inProgress" ? "running" : status}`,
       ]);
+    }
     case "personalityChanged":
       return titledLines("Personality changed", [
         `Personality: ${asString(raw.personality) ?? "unknown"}`,

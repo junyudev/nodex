@@ -1433,7 +1433,11 @@ export function makeConversationEntityStateRegistry(): ConversationEntityStateRe
         const before = aggregate.document.canonicalState;
         if (!before) return null;
         const mutation = aggregate.document.mutate((draft) =>
-          mutateCodexCanonicalInProgressSyntheticItem(draft, pendingManualCompaction, observedAtMs),
+          mutateCodexCanonicalInProgressSyntheticItem(
+            draft,
+            { ...pendingManualCompaction, startedAtMs: observedAtMs },
+            observedAtMs,
+          ),
         );
         if (!mutation) return null;
         const after = mutation.after;

@@ -96,6 +96,9 @@ const OrchestrationV2CreationFields = {
 export const OrchestrationV2NativeRefStrength = Schema.Literals(["strong", "weak", "none"]);
 export type OrchestrationV2NativeRefStrength = typeof OrchestrationV2NativeRefStrength.Type;
 
+export const OrchestrationV2CompactionTrigger = Schema.Literals(["manual", "automatic"]);
+export type OrchestrationV2CompactionTrigger = typeof OrchestrationV2CompactionTrigger.Type;
+
 export const OrchestrationV2ProviderRef = Schema.Struct({
   driver: ProviderDriverKind,
   nativeId: Schema.NullOr(TrimmedNonEmptyString),
@@ -1707,6 +1710,8 @@ export const OrchestrationV2TurnItem = Schema.Union([
     ...OrchestrationV2TurnItemBaseFields,
     type: Schema.Literal("compaction"),
     driver: Schema.NullOr(ProviderDriverKind),
+    /** A compaction requested by a maintenance `/compact` Run is manual. */
+    trigger: Schema.optional(OrchestrationV2CompactionTrigger),
     summary: Schema.optional(Schema.String),
     beforeTokenCount: Schema.optional(NonNegativeInt),
     afterTokenCount: Schema.optional(NonNegativeInt),
@@ -2496,6 +2501,8 @@ export const OrchestrationV2TurnItemJson = Schema.Union([
     ...OrchestrationV2TurnItemJsonBaseFields,
     type: Schema.Literal("compaction"),
     driver: Schema.NullOr(ProviderDriverKind),
+    /** A compaction requested by a maintenance `/compact` Run is manual. */
+    trigger: Schema.optional(OrchestrationV2CompactionTrigger),
     summary: Schema.optional(Schema.String),
     beforeTokenCount: Schema.optional(NonNegativeInt),
     afterTokenCount: Schema.optional(NonNegativeInt),

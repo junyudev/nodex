@@ -1790,6 +1790,7 @@ test("follower manual compaction is native on the owner and classifies the follo
     id: "pending-manual-context-compaction",
     completed: false,
     source: "manual",
+    startedAtMs: expect.any(Number),
   });
   dispatchCodexAppServerMessage("native-notification", {
     type: "nativeNotification",
@@ -1810,6 +1811,7 @@ test("follower manual compaction is native on the owner and classifies the follo
   expect(items().find((item) => item.id === "actual-compaction")).toMatchObject({
     source: "manual",
     completed: false,
+    startedAtMs: 1,
   });
   expect(items().some((item) => item.id === "pending-manual-context-compaction")).toBe(false);
   await waitFor(() =>

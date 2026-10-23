@@ -1514,6 +1514,113 @@ layer("ProviderEventIngestorV2", (it) => {
     }),
   );
 
+  it.effect("marks a compaction manual only when its Run asked for /compact", () =>
+    Effect.gen(function* () {
+      const now = yield* DateTime.now;
+      const eventSink = yield* EventSink.EventSinkV2;
+      const projectionStore = yield* ProjectionStore.ProjectionStoreV2;
+      const ingestor = yield* ProviderEventIngestor.ProviderEventIngestorV2;
+      const idAllocator = yield* IdAllocator.IdAllocatorV2;
+      const threadEvent = yield* threadCreatedEvent(now);
+      const threadId = threadEvent.threadId;
+      const providerSessionId = yield* idAllocator.allocate.providerSession({
+        providerInstanceId: modelSelection.instanceId,
+        threadId,
+      });
+      const seedRun = Effect.fnUntraced(function* (ordinal: number, text: string) {
+        const runId = RunId.make(`run:compaction:${ordinal}`);
+        const messageId = MessageId.make(`message:compaction:${ordinal}`);
+        yield* eventSink.write({
+          events: [
+            {
+              id: yield* idAllocator.allocate.event({ threadId }),
+              type: "message.updated",
+              threadId,
+              occurredAt: now,
+              payload: {
+                createdBy: "user",
+                creationSource: "web",
+                id: messageId,
+                threadId,
+                runId,
+                nodeId: null,
+                role: "user",
+                text,
+                attachments: [],
+                streaming: false,
+                createdAt: now,
+                updatedAt: now,
+              },
+            },
+            {
+              id: yield* idAllocator.allocate.event({ threadId }),
+              type: "run.created",
+              threadId,
+              occurredAt: now,
+              payload: {
+                id: runId,
+                threadId,
+                ordinal,
+                providerInstanceId: modelSelection.instanceId,
+                modelSelection,
+                providerThreadId: null,
+                userMessageId: messageId,
+                rootNodeId: null,
+                activeAttemptId: null,
+                status: "running",
+                requestedAt: now,
+                startedAt: now,
+                completedAt: null,
+                checkpointId: null,
+                contextHandoffId: null,
+              },
+            },
+          ],
+        });
+        return runId;
+      });
+      const compaction = (id: string, runId: RunId, ordinal: number): OrchestrationV2TurnItem => ({
+        id: TurnItemId.make(id),
+        threadId,
+        runId,
+        nodeId: null,
+        providerThreadId: null,
+        providerTurnId: null,
+        nativeItemRef: null,
+        parentItemId: null,
+        ordinal,
+        status: "completed",
+        title: "Context compacted",
+        startedAt: now,
+        completedAt: now,
+        updatedAt: now,
+        type: "compaction",
+        driver: CODEX_DRIVER,
+      });
+
+      yield* eventSink.write({ events: [threadEvent] });
+      const manualRun = yield* seedRun(1, " /Compact ");
+      const ordinaryRun = yield* seedRun(2, "Refactor the parser");
+      const manual = compaction("turn-item:manual-compaction", manualRun, 1);
+      const automatic = compaction("turn-item:automatic-compaction", ordinaryRun, 2);
+      for (const turnItem of [manual, automatic]) {
+        yield* ingestor.ingestNormalized({
+          providerSessionId,
+          providerInstanceId: modelSelection.instanceId,
+          threadId,
+          event: { type: "turn_item.updated", driver: CODEX_DRIVER, turnItem },
+        });
+      }
+
+      const trigger = (itemId: TurnItemId) =>
+        projectionStore
+          .getTurnItem({ threadId, itemId })
+          .pipe(Effect.map((item) => (item?.type === "compaction" ? item.trigger : null)));
+      assert.equal(yield* trigger(manual.id), "manual");
+      assert.equal(yield* trigger(automatic.id), "automatic");
+    }),
+  );
+
   it.effect("routes provider-owned child artifacts to their child app thread", () =>
     Effect.gen(function* () {
       const now = yield* DateTime.now;

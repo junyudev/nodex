@@ -8,6 +8,10 @@ import {
 } from "./codex-async-user-input";
 import type { TurnStatus } from "@nodex/codex-app-server-protocol/v2/TurnStatus";
 import {
+  formatCodexContextCompactionLabel,
+  resolveCodexContextCompactionStatus,
+} from "./codex-context-compaction-presentation";
+import {
   buildCodexFileChangeFromProtocol,
   buildCodexFileChangeMap,
   isCodexVisualizationPath,
@@ -189,11 +193,11 @@ export function doesCodexCanonicalItemProjectionChangeWithTurnStatus(
         item.status === "inProgress" &&
         (beforeStatus === "interrupted") !== (afterStatus === "interrupted")
       );
-    case "contextCompaction":
-      return (
-        (item.completed ?? true) === false &&
-        (beforeStatus === "inProgress") !== (afterStatus === "inProgress")
-      );
+    case "contextCompaction": {
+      const statusIn = (turnStatus: TurnStatus) =>
+        resolveCodexContextCompactionStatus({ completed: item.completed, turnStatus });
+      return statusIn(beforeStatus) !== statusIn(afterStatus);
+    }
     default:
       return false;
   }
@@ -1202,19 +1206,22 @@ function projectCanonicalItemViews(
         },
       ];
     case "contextCompaction": {
-      const completed = context.turnStatus !== "inProgress" || (item.completed ?? true);
+      const status = resolveCodexContextCompactionStatus({
+        completed: item.completed,
+        turnStatus: context.turnStatus,
+      });
+      const source = item.source ?? "automatic";
       return [
         {
           ...buildBaseView(item, context),
           normalizedKind: "systemEvent",
           semanticKind: "contextCompaction",
-          status: completed ? "completed" : "inProgress",
-          markdownText: completed
-            ? "Context automatically compacted"
-            : "Automatically compacting context",
+          status,
+          markdownText: formatCodexContextCompactionLabel({ status, source }),
           contextCompaction: {
-            completed,
-            source: item.source ?? "automatic",
+            status,
+            source,
+            startedAtMs: status === "inProgress" ? (item.startedAtMs ?? null) : null,
           },
         },
       ];

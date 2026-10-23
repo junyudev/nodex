@@ -372,20 +372,22 @@ function projectUpdate(
     ];
   }
   if (update.kind === "compaction") {
+    const status =
+      update.status === "in_progress"
+        ? "inProgress"
+        : update.status === "failed" || update.status === "cancelled"
+          ? "interrupted"
+          : "completed";
     return [
       {
         ...common,
         kind: "systemEvent",
         semanticKind: "contextCompaction",
-        status:
-          update.status === "in_progress"
-            ? "inProgress"
-            : update.status === "failed"
-              ? "failed"
-              : "completed",
+        status,
         contextCompaction: {
-          completed: update.status !== "in_progress",
+          status,
           source: update.trigger === "manual" ? "manual" : "automatic",
+          startedAtMs: null,
         },
         markdownText: update.summary,
       },

@@ -237,7 +237,7 @@ function ThreadTurnBody({
   const shouldAllowAgentBodyCollapse =
     !turn.voiceWorkActivity &&
     turn.hasRenderableAgentBodyUnits &&
-    agentBodyCollapsePresentation.collapsibleUnits.length > 0;
+    agentBodyCollapsePresentation.canCollapse;
   const effectiveAgentBodyCollapsed = shouldAllowAgentBodyCollapse ? agentBodyCollapsed : false;
   const reducedMotion = useResolvedReducedMotion();
   const agentBodyMotion = resolveCodexThreadAgentBodyMotion(reducedMotion);

@@ -1524,74 +1524,122 @@ describe("fork origin presentation", () => {
   );
 });
 
+function buildContextCompactionBlock(
+  contextCompaction: NonNullable<CodexConversationItem["contextCompaction"]>,
+): Parameters<typeof ThreadContextCompactionBlock>[0]["block"] {
+  return {
+    id: "compact-1",
+    turnId: "turn-1",
+    createdAt: 1,
+    updatedAt: 1,
+    searchableText: "",
+    type: "contextCompaction",
+    status: contextCompaction.status,
+    entry: {
+      threadId: "thread-1",
+      turnId: "turn-1",
+      itemId: "compact-1",
+      type: "context_compaction",
+      kind: "systemEvent",
+      semanticKind: "contextCompaction",
+      status: contextCompaction.status,
+      contextCompaction,
+      createdAt: 1,
+      updatedAt: 1,
+    },
+  };
+}
+
 describe("ThreadContextCompactionBlock", () => {
-  test("renders the completed Codex divider row", () => {
+  test("renders a finished compaction as an activity row without a divider rule", () => {
     const { container, getByText } = render(
       <ThreadContextCompactionBlock
-        block={{
-          id: "compact-1",
-          turnId: "turn-1",
-          createdAt: 1,
-          updatedAt: 1,
-          searchableText: "Context automatically compacted",
-          type: "contextCompaction",
+        block={buildContextCompactionBlock({
           status: "completed",
-          entry: {
-            threadId: "thread-1",
-            turnId: "turn-1",
-            itemId: "compact-1",
-            type: "context_compaction",
-            kind: "systemEvent",
-            semanticKind: "contextCompaction",
-            status: "completed",
-            markdownText: "Context automatically compacted",
-            createdAt: 1,
-            updatedAt: 1,
-          },
-        }}
+          source: "automatic",
+          startedAtMs: null,
+        })}
         isLatestTurn={false}
         isStreamingTurn={false}
       />,
     );
 
     getByText("Context automatically compacted");
-    expect(Boolean(container.querySelector(".loading-shimmer-pure-text"))).toBe(false);
-    expect(container.querySelectorAll(".border-current\\/20").length).toBe(2);
-    expect(Boolean(container.querySelector("svg"))).toBe(true);
+    expect(container.querySelector(".loading-shimmer-pure-text")).toBeNull();
+    expect(container.querySelector(".border-t")).toBeNull();
+    expect(container.querySelector("svg")).not.toBeNull();
   });
 
-  test("renders the in-progress Codex shimmer row", () => {
-    const { container, getByText } = render(
+  test.each([
+    [{ status: "completed", source: "manual" } as const, "Context compacted"],
+    [{ status: "interrupted", source: "automatic" } as const, "Compaction interrupted"],
+  ])("names a %j compaction", (compaction, label) => {
+    const { getByText } = render(
       <ThreadContextCompactionBlock
-        block={{
-          id: "compact-2",
-          turnId: "turn-1",
-          createdAt: 1,
-          updatedAt: 1,
-          searchableText: "Automatically compacting context",
-          type: "contextCompaction",
-          status: "inProgress",
-          entry: {
-            threadId: "thread-1",
-            turnId: "turn-1",
-            itemId: "compact-2",
-            type: "context_compaction",
-            kind: "systemEvent",
-            semanticKind: "contextCompaction",
-            status: "inProgress",
-            markdownText: "Automatically compacting context",
-            createdAt: 1,
-            updatedAt: 1,
-          },
-        }}
-        isLatestTurn={true}
-        isStreamingTurn={true}
+        block={buildContextCompactionBlock({ ...compaction, startedAtMs: null })}
+        isLatestTurn={false}
+        isStreamingTurn={false}
       />,
     );
 
-    getByText("Automatically compacting context", { selector: ".loading-shimmer-pure-text" });
-    expect(Boolean(container.querySelector(".loading-shimmer-pure-text"))).toBe(true);
-    expect(Boolean(container.querySelector("svg"))).toBe(false);
+    getByText(label);
+  });
+
+  test("reassures after a compaction has been running for ten seconds", async () => {
+    vi.useFakeTimers({
+      toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval", "Date"],
+    });
+    try {
+      vi.setSystemTime(100_000);
+      const { getByText } = render(
+        <ThreadContextCompactionBlock
+          block={buildContextCompactionBlock({
+            status: "inProgress",
+            source: "automatic",
+            startedAtMs: 96_000,
+          })}
+          isLatestTurn={true}
+          isStreamingTurn={true}
+        />,
+      );
+
+      getByText("Compacting context", { selector: ".loading-shimmer-pure-text" });
+      await act(async () => {
+        vi.advanceTimersByTime(6_000);
+        await Promise.resolve();
+      });
+      getByText("Compacting context · This can take a few minutes", {
+        selector: ".loading-shimmer-pure-text",
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test("describes compaction as conversation optimization at the Steps detail level", () => {
+    localStorage.setItem(
+      THREAD_SETTINGS_STORAGE_KEY,
+      JSON.stringify({ detailLevel: "STEPS_PROSE" }),
+    );
+    try {
+      const { getByText } = render(
+        <CodexThreadSettingsProvider>
+          <ThreadContextCompactionBlock
+            block={buildContextCompactionBlock({
+              status: "completed",
+              source: "automatic",
+              startedAtMs: null,
+            })}
+            isLatestTurn={false}
+            isStreamingTurn={false}
+          />
+        </CodexThreadSettingsProvider>,
+      );
+
+      getByText("Optimized the conversation");
+    } finally {
+      localStorage.removeItem(THREAD_SETTINGS_STORAGE_KEY);
+    }
   });
 });
 

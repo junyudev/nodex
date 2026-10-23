@@ -552,6 +552,8 @@ export type CodexCanonicalContextCompactionItem = Extract<
 > & {
   readonly completed?: boolean;
   readonly source?: "automatic" | "manual";
+  /** App wall clock when a live compaction started; replayed history has none. */
+  readonly startedAtMs?: number | null;
 };
 export type CodexCanonicalImageGenerationItem = Extract<
   ThreadItem,

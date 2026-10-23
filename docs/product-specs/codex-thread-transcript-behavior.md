@@ -546,11 +546,13 @@ MCP and dynamic app-server tool calls are specialized `toolCall` rows with canon
 - A completed empty-prompt spawn is suppressed when all its nonempty receivers are represented by named same-Turn activity/background rows. Prompted, running and partly covered spawns remain visible. A final same-Turn event settles to Done when its background row is done and no later event exists, including interrupted events. Unrepresented named background rows append a real null-anchor inline activity group even when raw groups already exist; this group renders at the activity end and contributes to collapse and active-state decisions.
 - Background rows, summary, overview and mentions consume one shared row contract. Names never fall back to raw Thread IDs; blank/default roles are omitted. Runtime active wins over stale agent/Turn failures, while close and system errors hide the row; explicit notLoaded is Done. The detailed state and messaging rules live in [Codex Subagent Behavior](codex-subagent-behavior.md).
 - The composer portal does not mount a duplicate subagent panel or Stop all. Available child Threads can resume and accept input independently of resident parent history, spawn events, or the parent's current Turn. Child detail uses its actual execution availability and archive state; missing connections and follower ownership retain their normal controls. Avatars retain their stable theme-aware identity across status changes. Thread Summary presentation is owned by [Thread Summary Panel Behavior](thread-summary-panel-behavior.md).
-- Context compaction renders as a dedicated compact divider row instead of a generic system banner:
-  - in progress: `Automatically compacting context` with Codex shimmer text
-  - completed: `Context automatically compacted` with the compact completion icon
+- Context compaction renders as a standalone activity row in the Turn's work: the compaction icon and a muted summary, with no divider rule and no disclosure. It is never folded into an activity group, and a Turn whose only collapsible work is one compaction row shows that row instead of a collapsed work toggle.
+  - The Turn settles the row: a completed Turn shows it completed; an unfinished compaction is running while its Turn is in progress and interrupted once the Turn ends any other way.
+  - running: `Compacting context` with Codex shimmer text; a live compaction still running ten seconds after it started becomes `Compacting context · This can take a few minutes`. Replayed history has no start time and never shows the delay notice.
+  - interrupted: `Compaction interrupted`
+  - completed: `Context compacted` for a manual compaction, otherwise `Context automatically compacted`
+  - At the `Steps` detail level (`STEPS_PROSE`), the same states read `Optimizing the conversation`, `Optimization interrupted`, and `Optimized the conversation`; a completed manual compaction still reads `Context compacted`.
 - Session-backed reopen/bootstrap preserves the same context-compaction rows, including compaction boundaries that split replayed history across pre-compaction and post-compaction turns.
-  - the row stays in the post-assistant transcript lane rather than the grouped agent-body lane
 - Poor-network retry errors render inside the mounted transcript as inline error rows instead of replacing the whole thread shell:
   - retryable error notifications materialize canonical `streamError` rows, for example `Reconnecting... 2/5`
   - non-retryable error notifications materialize canonical `systemError` rows

@@ -214,9 +214,7 @@ test("two windows share an Agent chat's queue, Stop and Main commands, then cont
       .poll(() => readLog().filter((entry) => entry.method === "thread/compact/start").length)
       .toBe(1);
     for (const page of [first, second])
-      await expect(page.getByText("Context automatically compacted", { exact: true })).toHaveCount(
-        1,
-      );
+      await expect(page.getByText("Context compacted", { exact: true })).toHaveCount(1);
 
     const closed = first.waitForEvent("close");
     const ownerWindow = await harness.application.browserWindow(first);

@@ -1,6 +1,8 @@
 import type { ThreadAgentRenderUnit, ThreadWorkedForBlockModel } from "../thread-stage-types";
 
 export interface ThreadAgentBodyCollapsePresentation {
+  /** False when collapsing would hide nothing but a lone context compaction row. */
+  canCollapse: boolean;
   collapsibleUnits: ThreadAgentRenderUnit[];
   expandedUnits: readonly ThreadAgentRenderUnit[];
   persistentUnits: ThreadAgentRenderUnit[];
@@ -50,7 +52,14 @@ export function projectAgentBodyCollapsePresentation(
     collapsibleUnits.push(unit);
   }
 
+  const [onlyUnit] = collapsibleUnits;
+  const isLoneContextCompaction =
+    collapsibleUnits.length === 1 &&
+    onlyUnit?.kind === "entry" &&
+    onlyUnit.block.type === "contextCompaction";
+
   return {
+    canCollapse: collapsibleUnits.length > 0 && !isLoneContextCompaction,
     collapsibleUnits,
     expandedUnits: options.extractWorkedFor === true ? expandedUnits : units,
     persistentUnits,

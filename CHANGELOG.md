@@ -18,6 +18,7 @@ All notable changes to this project will be documented in this file.
 - Image attachments follow the selected Agent model's capabilities, with a clear explanation when support is unavailable or not yet known.
 - Starting a chat from a Page or Scheduled uses its selected Agent and model, including when Codex is unavailable.
 - Code blocks in chat replies use dark-theme syntax colors in the dark theme, instead of near-invisible light-theme colors.
+- Context compaction in chats appears as a quiet activity row instead of a divider, says whether the compaction was manual or automatic, reassures you when a long compaction is still working, and no longer reports a stopped compaction as finished.
 
 ## [0.4.0] - 2026-10-22
 

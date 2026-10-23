@@ -827,6 +827,7 @@ describe("canonical item lifecycle reducer", () => {
     expect(stored?.type).toBe("contextCompaction");
     expect(stored && "source" in stored ? stored.source : null).toBe("manual");
     expect(stored && "completed" in stored ? stored.completed : null).toBe(false);
+    expect(stored && "startedAtMs" in stored ? stored.startedAtMs : null).toBe(9000);
     expect(consumedSourceCount).toBe(1);
     expect(next.lastInjectedPassiveContextKey).toBe("confirmed-before-compaction");
   });

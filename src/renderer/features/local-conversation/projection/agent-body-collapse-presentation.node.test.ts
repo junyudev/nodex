@@ -12,7 +12,7 @@ import {
 
 function buildEntryUnit(
   id: string,
-  type: "exec" | "userMessage",
+  type: "exec" | "userMessage" | "contextCompaction",
   entryOverrides: Partial<CodexConversationItem> = {},
 ): ThreadAgentRenderUnit {
   const entry: CodexConversationItem = {
@@ -20,7 +20,12 @@ function buildEntryUnit(
     turnId: "turn-1",
     itemId: id,
     type: type === "userMessage" ? "user_message" : "command_execution",
-    kind: type === "userMessage" ? "userMessage" : "commandExecution",
+    kind:
+      type === "userMessage"
+        ? "userMessage"
+        : type === "contextCompaction"
+          ? "systemEvent"
+          : "commandExecution",
     semanticKind: type,
     createdAt: 1,
     updatedAt: 1,
@@ -40,6 +45,23 @@ function buildEntryUnit(
 }
 
 describe("agent body collapse presentation", () => {
+  test("never collapses work that is only one context compaction", () => {
+    const compaction = buildEntryUnit("compaction", "contextCompaction");
+    const steeringMessage = buildEntryUnit("steering", "userMessage", {
+      steeringStatus: "accepted",
+    });
+
+    expect(projectAgentBodyCollapsePresentation([compaction]).canCollapse).toBe(false);
+    expect(projectAgentBodyCollapsePresentation([compaction, steeringMessage]).canCollapse).toBe(
+      false,
+    );
+    expect(
+      projectAgentBodyCollapsePresentation([compaction, buildEntryUnit("exec", "exec")])
+        .canCollapse,
+    ).toBe(true);
+    expect(projectAgentBodyCollapsePresentation([]).canCollapse).toBe(false);
+  });
+
   test("keeps only steering and hook-feedback user messages persistent", () => {
     const exec = buildEntryUnit("exec", "exec");
     const ordinaryUserMessage = buildEntryUnit("ordinary-user", "userMessage");

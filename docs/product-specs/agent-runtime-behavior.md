@@ -182,7 +182,8 @@ details provide those bodies. Long text appears as a bounded preview with a trun
 marker; full copy and export use explicit full-item reads. A control envelope that
 cannot fit fails explicitly rather than exceeding the transport budget.
 
-Compaction admits one durable maintenance Run per request. Editing any sent user
+Compaction admits one durable maintenance Run per request; compaction items recorded in
+that Run are manual, and every other compaction is automatic. Editing any sent user
 message first admits a conversation rewind to just before that message's Run and waits
 for that exact Run to become rolled back before submitting replacement content; every
 later Run leaves the conversation with it. The replacement keeps the original message's

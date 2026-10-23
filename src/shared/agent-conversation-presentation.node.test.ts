@@ -347,8 +347,9 @@ test("preserves failure, compaction source and independent token accounting", ()
   const projected = projectAgentConversation({ ...source, snapshot }, summary);
   expect(projected.turns[0]).toMatchObject({ status: "failed", errorMessage: "Failed" });
   expect(projected.turns[0]?.items[1]?.contextCompaction).toEqual({
-    completed: true,
+    status: "completed",
     source: "manual",
+    startedAtMs: null,
   });
   expect(projected.latestTokenUsageInfo).toMatchObject({
     last: { totalTokens: 100, cachedInputTokens: 30, cacheWriteInputTokens: 40, outputTokens: 20 },

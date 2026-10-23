@@ -7057,6 +7057,7 @@ export class CodexAppServerManager {
     const { assertCurrent } = lifetime;
     try {
       this.manualCompactions.register(threadId);
+      const observedAtMs = Date.now();
       this.historyClient.updateConversation(threadId, (draft) =>
         mutateCodexCanonicalInProgressSyntheticItem(
           draft,
@@ -7065,8 +7066,9 @@ export class CodexAppServerManager {
             id: "pending-manual-context-compaction",
             completed: false,
             source: "manual",
+            startedAtMs: observedAtMs,
           },
-          Date.now(),
+          observedAtMs,
         ),
       );
       await this.nativeAppServer.request("thread/compact/start", { threadId });

@@ -775,7 +775,7 @@ describe("scoped canonical lifecycle projection diff", () => {
     expect(result.changedRawOwnerIds).toEqual([]);
     expect(byId.get(command.id)?.status).toBe("interrupted");
     expect(byId.get(mcp.id)?.mcpToolCall?.completed).toBe(true);
-    expect(byId.get(compaction.id)?.contextCompaction?.completed).toBe(true);
+    expect(byId.get(compaction.id)?.contextCompaction?.status).toBe("interrupted");
     expect(byId.get(review.id)?.status).toBe("completed");
     expect(byId.get(review.id)?.markdownText).not.toBe(
       currentViews.find((view) => view.itemId === review.id)?.markdownText,

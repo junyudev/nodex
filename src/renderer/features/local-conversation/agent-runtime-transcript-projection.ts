@@ -452,7 +452,8 @@ export function projectAgentRuntimeItem(item: AgentTurnItem, cwd = ""): CodexCan
         type: "contextCompaction",
         id,
         completed: status === "completed",
-        source: "automatic",
+        source: item.trigger === "manual" ? "manual" : "automatic",
+        startedAtMs: agentRuntimeTime(item.startedAt),
       };
     case "todo_list":
       return {

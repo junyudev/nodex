@@ -590,6 +590,7 @@ function mutateItemStarted(
     nextItem = {
       ...item,
       completed: false,
+      startedAtMs: notification.params.startedAtMs,
       source:
         context.consumeContextCompactionSource?.() ??
         context.contextCompactionSource ??

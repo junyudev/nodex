@@ -7,6 +7,7 @@ import {
   type OrchestrationV2Run,
   type OrchestrationV2ProviderTurn,
   type OrchestrationV2Subagent,
+  type OrchestrationV2TurnItem,
   type OrchestrationV2ThreadProjection,
   type ModelSelection,
   type RuntimeMode,
@@ -36,6 +37,7 @@ import * as ProviderAdapter from "@t3tools/provider-core/server/ProviderAdapter"
 import { makeProviderFailureTurnItem } from "@t3tools/provider-core/server/failure";
 import * as ThreadCommandExecutor from "./ThreadCommandExecutor.ts";
 import { stripUnservedToolOutputImageBytes } from "./toolOutputImageBytes.ts";
+import { isNativeCompactCommand } from "./nativeMaintenanceCommand.ts";
 
 export class ProviderEventNormalizeError extends Schema.TaggedError<ProviderEventNormalizeError>()(
   "ProviderEventNormalizeError",
@@ -319,6 +321,24 @@ export const layer: Layer.Layer<
     const analytics = yield* ProviderTurnAnalytics;
     const agentScope = yield* AgentScope;
     const completedTurnAnalytics = new Set<string>();
+
+    /** Providers do not say why they compacted; the Run that asked for it does. */
+    const withCompactionTrigger = Effect.fn("ProviderEventIngestor.withCompactionTrigger")(
+      function* (turnItem: OrchestrationV2TurnItem) {
+        if (turnItem.type !== "compaction") return turnItem;
+        const message =
+          turnItem.runId === null
+            ? undefined
+            : yield* projections.getRunMessage(turnItem.threadId, turnItem.runId);
+        return {
+          ...turnItem,
+          trigger:
+            message !== undefined && isNativeCompactCommand(message)
+              ? ("manual" as const)
+              : ("automatic" as const),
+        };
+      },
+    );
 
     const makeDomainEvent = (
       input: ProviderEventIngestInput,
@@ -644,7 +664,9 @@ export const layer: Layer.Layer<
               yield* makeDomainEvent(input, {
                 type: "turn-item.updated",
                 threadId: input.event.turnItem.threadId,
-                payload: stripUnservedToolOutputImageBytes(input.event.turnItem),
+                payload: stripUnservedToolOutputImageBytes(
+                  yield* withCompactionTrigger(input.event.turnItem),
+                ),
                 runId: input.event.turnItem.runId,
                 nodeId: input.event.turnItem.nodeId,
               }),

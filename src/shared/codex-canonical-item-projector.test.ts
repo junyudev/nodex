@@ -321,6 +321,34 @@ describe("projectCodexCanonicalTurnItemViews", () => {
     expect(viewCount("compaction")).toBe(1);
   });
 
+  test("settles context compaction from its Turn and exposes the start only while running", () => {
+    const running: CodexCanonicalItem = {
+      type: "contextCompaction",
+      id: "compaction",
+      completed: false,
+      source: "manual",
+      startedAtMs: 900,
+    };
+    const projectCompaction = (turnStatus: "inProgress" | "completed" | "interrupted") =>
+      project([running], { turnStatus })[0];
+
+    expect(projectCompaction("inProgress")).toMatchObject({
+      status: "inProgress",
+      markdownText: "Compacting context",
+      contextCompaction: { status: "inProgress", source: "manual", startedAtMs: 900 },
+    });
+    expect(projectCompaction("interrupted")).toMatchObject({
+      status: "interrupted",
+      markdownText: "Compaction interrupted",
+      contextCompaction: { status: "interrupted", source: "manual", startedAtMs: null },
+    });
+    expect(projectCompaction("completed")).toMatchObject({
+      status: "completed",
+      markdownText: "Context compacted",
+      contextCompaction: { status: "completed", source: "manual", startedAtMs: null },
+    });
+  });
+
   test("retains injected function output in canonical state without creating transcript UI", () => {
     const item = materializeCodexCanonicalProtocolItem({
       type: "functionCallOutput",

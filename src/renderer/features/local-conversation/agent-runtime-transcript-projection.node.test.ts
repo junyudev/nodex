@@ -353,3 +353,27 @@ describe("Runtime user messages", () => {
     });
   });
 });
+
+describe("Runtime context compaction", () => {
+  const compaction = (
+    overrides: Partial<Extract<AgentTurnItem, { type: "compaction" }>>,
+  ): Extract<AgentTurnItem, { type: "compaction" }> => ({
+    ...base,
+    type: "compaction",
+    driver: "codex",
+    ...overrides,
+  });
+
+  test("keeps the Run's trigger and live start for the compaction row", () => {
+    expect(projectAgentRuntimeItem(compaction({ trigger: "manual" }))).toEqual({
+      type: "contextCompaction",
+      id: "item",
+      completed: true,
+      source: "manual",
+      startedAtMs: Date.parse(at),
+    });
+    expect(
+      projectAgentRuntimeItem(compaction({ status: "running", completedAt: null })),
+    ).toMatchObject({ completed: false, source: "automatic" });
+  });
+});

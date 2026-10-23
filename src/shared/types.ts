@@ -3185,8 +3185,10 @@ export type CodexDelegatedTaskView = Omit<
 >;
 
 export interface CodexContextCompactionView {
-  completed: boolean;
-  source: "automatic" | "manual";
+  status: import("./codex-context-compaction-presentation").CodexContextCompactionStatus;
+  source: import("./codex-context-compaction-presentation").CodexContextCompactionSource;
+  /** Present only while a live compaction was observed starting; history has no start time. */
+  startedAtMs: number | null;
 }
 
 export type CodexMcpToolCallContentBlock =
