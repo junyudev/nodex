@@ -1,0 +1,95 @@
+src/renderer/components/shared/icons/activity-icons.tsx
+  s_e6a9f802ff4027::t_bdb63d71deb94e 122-152
+src/renderer/features/local-conversation/conversation-markdown.ts
+  s_e6a9f802ff4027::t_74a8d861dfa943 397-398,401,403
+src/renderer/features/local-conversation/view/local-conversation-thread-turn.tsx
+  s_e6a9f802ff4027::t_262c5c635635a8 240
+packages/agent-runtime/src/orchestration-v2/RestartContinuation.ts
+  s_e6a9f802ff4027::t_c03f6e90b64740 16
+src/renderer/features/local-conversation/local-conversation-native-stream.jsdom.test.ts
+  s_e6a9f802ff4027::t_44b81aa03044a9 1793,1814
+src/shared/types.ts
+  s_e6a9f802ff4027::t_c91ae05b37daf6 3184-3187
+packages/agent-runtime/src/orchestration-v2/Orchestrator.ts
+  s_e6a9f802ff4027::t_11ff6f35af4fec 137,3907-3909,3927-3929
+src/shared/codex-conversation-state/codex-conversation-reducer.ts
+  s_e6a9f802ff4027::t_0c41a36e1caf05 593
+src/shared/agent-conversation-presentation.ts
+  s_e6a9f802ff4027::t_dd1bc226009fb2 375-380,386,388,390
+src/renderer/features/local-conversation/view/shared/context-compaction-surface.tsx
+  s_e6a9f802ff4027::t_012e39f91b5ac2 8
+  s_e6a9f802ff4027::t_7a52537bd94dba 21,28,34,48,52,73
+  s_e6a9f802ff4027::t_763708f6ba82de 1-7,9-20,22-27,29-33,35-47,49-51,53-72,74-78
+src/renderer/features/local-conversation/view/blocks/local-conversation-block-leaves.tsx
+  s_e6a9f802ff4027::t_75e2f5ad41a1d6 32-33,237,1608-1609,1611
+CHANGELOG.md
+  s_e6a9f802ff4027::t_68668db57ef3e6 14
+src/renderer/features/local-conversation/local-conversation-store.ts
+  s_e6a9f802ff4027::t_f0c0f8bdbdb46d 7060,7069,7071
+packages/agent-runtime/src/orchestration-v2/nativeMaintenanceCommand.ts
+  s_e6a9f802ff4027::t_c03f6e90b64740 1-20
+src/shared/codex-context-compaction-presentation.test.ts
+  s_e6a9f802ff4027::t_3d2a15035a05dd 1-34,39,41-42,46-49
+  s_e6a9f802ff4027::t_40606556324da2 35-38
+  s_e6a9f802ff4027::t_7a52537bd94dba 40,43-45
+src/renderer/features/local-conversation/view/blocks/local-conversation-block-leaves.test.tsx
+  s_e6a9f802ff4027::t_1d107cfc190777 1477-1502,1504,1507,1509-1511,1518-1520,1523-1527,1529-1531,1535-1568,1570-1592
+  s_e6a9f802ff4027::t_7a52537bd94dba 1569
+src/shared/codex-context-compaction-presentation.ts
+  s_e6a9f802ff4027::t_8527a44660ef68 1-24,27-32,34-37,39-41,43-44,46-47
+  s_e6a9f802ff4027::t_7a52537bd94dba 25-26,33,38,42,45
+src/shared/agent-conversation-presentation.node.test.ts
+  s_e6a9f802ff4027::t_5c6669ff14ba22 350,352
+packages/agent-runtime/src/orchestration-v2/ProviderEventIngestor.ts
+  s_e6a9f802ff4027::t_2b883539522d0d 10,40,325-342,667-669
+src/renderer/features/local-conversation/agent-runtime-transcript-projection.node.test.ts
+  s_e6a9f802ff4027::t_5e2e83697406b7 356-379
+src/main/codex-application/internal/ConversationEntityState.ts
+  s_e6a9f802ff4027::t_f0c0f8bdbdb46d 1436-1440
+src/renderer/features/local-conversation/agent-runtime-transcript-projection.ts
+  s_e6a9f802ff4027::t_dd1bc226009fb2 456
+  s_e6a9f802ff4027::t_774d4da4cb0707 455
+docs/product-specs/codex-thread-transcript-behavior.md
+  s_e6a9f802ff4027::t_8c04a0428a4aca 549-553
+  s_e6a9f802ff4027::t_7a52537bd94dba 554
+src/shared/codex-conversation-state/codex-conversation-state.ts
+  s_e6a9f802ff4027::t_f0c0f8bdbdb46d 555-556
+src/shared/codex-conversation-state/codex-lifecycle-projection-diff.test.ts
+  s_e6a9f802ff4027::t_5362b455079f99 778
+docs/product-specs/agent-runtime-behavior.md
+  s_e6a9f802ff4027::t_7755b8585a4e6b 161-162
+src/renderer/features/local-conversation/projection/agent-body-collapse-presentation.node.test.ts
+  s_e6a9f802ff4027::t_0304c6d2033bda 15,23-28,48-64
+src/shared/codex-canonical-item-projector.ts
+  s_e6a9f802ff4027::t_0f9db74c1b6134 196-200
+  s_e6a9f802ff4027::t_62f7c45f20b19b 11-13,1209-1213,1219-1220,1222-1224
+  s_e6a9f802ff4027::t_293fac3dae7cfd 10
+src/shared/codex-canonical-item-projector.test.ts
+  s_e6a9f802ff4027::t_3e9ffcbe18871e 324-351
+packages/agent-runtime/src/orchestration-v2/ProviderEventIngestor.test.ts
+  s_e6a9f802ff4027::t_ce75aa4db9c368 1517-1623
+src/shared/codex-conversation-state/codex-conversation-reducer.test.ts
+  s_e6a9f802ff4027::t_5c6669ff14ba22 830
+tests/e2e/codex-conversation-multiwindow.spec.ts
+  s_e6a9f802ff4027::t_5373d6e957d803 217
+src/renderer/features/local-conversation/projection/agent-body-collapse-presentation.ts
+  s_e6a9f802ff4027::t_262c5c635635a8 4-5,55-60,62
+packages/agent-runtime/vendor/contracts/src/orchestrationV2.ts
+  s_e6a9f802ff4027::t_76991f9be0fd48 99-101,1713-1714,2504-2505
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "f686bf8fb59bc161bb2c1a4375d7c36fb2ac3edb",
+  "prompts": {},
+  "sessions": {
+    "s_e6a9f802ff4027": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5f20b6d1-459e-4a51-9724-8815f5608b02",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
