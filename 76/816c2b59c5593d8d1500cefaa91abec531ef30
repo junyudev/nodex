@@ -1,0 +1,23 @@
+crates/nodex-profile/src/claude_history.rs
+  s_82957c2d2298ff::t_997126dec337c1 2,84-103,105-107,109,113-139,169-172,192,195-227
+crates/nodex-profile/src/snapshot.rs
+  s_82957c2d2298ff::t_4fdcdf5c9160f5 52,77-85,95-103,522,557,854,857-860
+docs/reliability/backup-restore-and-maintenance.md
+  s_82957c2d2298ff::t_87450965b1900d 27-32
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "76816c2b59c5593d8d1500cefaa91abec531ef30",
+  "prompts": {},
+  "sessions": {
+    "s_82957c2d2298ff": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a16890-25de-78c3-9415-c0f67a5213d3",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
