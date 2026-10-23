@@ -113,6 +113,68 @@ describe("Runtime application tool presentation", () => {
     });
   });
 
+  test("completed file inspections use their image path even when history omits tool output", () => {
+    const read = {
+      ...tool("Read"),
+      title: "Read /workspace/rail-states-light.png",
+      viewedImagePath: "/workspace/rail-states-light.png",
+      input: { file_path: "/workspace/rail-states-light.png" },
+    };
+    const output = {
+      type: "image",
+      file: {
+        type: "image/png",
+        originalSize: 13675,
+        dimensions: { originalWidth: 760, originalHeight: 236 },
+        sizeBytes: 13675,
+      },
+    };
+    for (const result of [{ output }, { output: undefined, outputOmitted: true }]) {
+      expect(projectAgentRuntimeItem({ ...read, ...result })).toEqual({
+        type: "imageView",
+        id: read.id,
+        path: read.viewedImagePath,
+      });
+    }
+  });
+
+  test.each(["pending", "running", "waiting", "failed", "cancelled", "interrupted"] as const)(
+    "%s image reads keep their tool lifecycle and inspectable result",
+    (status) => {
+      const read = {
+        ...tool("Read", status),
+        viewedImagePath: "/workspace/reference.png",
+        title: "Read /workspace/reference.png",
+        input: { file_path: "/workspace/reference.png" },
+        output: status === "failed" ? "File does not exist" : undefined,
+      };
+      expect(projectAgentRuntimeItem(read)).toMatchObject({
+        type: "dynamicToolCall",
+        displayTitle: read.title,
+        arguments: read.input,
+        status: ["pending", "running", "waiting"].includes(status) ? "inProgress" : "failed",
+        contentItems: read.output === undefined ? null : [{ type: "inputText", text: read.output }],
+      });
+    },
+  );
+
+  test("file arguments alone do not turn ordinary tools into image inspections", () => {
+    const read = {
+      ...tool("Read"),
+      title: "Read /workspace/README.md",
+      input: { file_path: "/workspace/README.md" },
+      output: "Documentation",
+    };
+    expect(projectAgentRuntimeItem(read)).toMatchObject({
+      type: "dynamicToolCall",
+      displayTitle: read.title,
+      contentItems: [{ type: "inputText", text: "Documentation" }],
+    });
+    expect(
+      projectAgentRuntimeItem({ ...tool("Write"), input: { file_path: "/workspace/output.png" } }),
+    ).toMatchObject({ type: "dynamicToolCall", tool: "Write" });
+  });
+
   test("runtime MCP calls retain native identity, metadata and typed result images through projection", () => {
     const source = buildAgentRuntimeToolResultImageSource({
       sourceThreadId: "parent",

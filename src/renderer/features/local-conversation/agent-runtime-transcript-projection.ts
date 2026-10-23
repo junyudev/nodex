@@ -507,6 +507,9 @@ export function projectAgentRuntimeItem(item: AgentTurnItem, cwd = ""): CodexCan
     case "file_search":
       return notice(item, item.pattern ? `Search files: ${item.pattern}` : "Search files");
     case "dynamic_tool": {
+      // File inspections use the provider's path, independently of retained tool-result bytes.
+      if (item.status === "completed" && item.viewedImagePath)
+        return { type: "imageView", id, path: item.viewedImagePath };
       const { namespace, tool } = parseAgentRuntimeToolName(item.toolName);
       const toolStatus = status === "inProgress" || status === "completed" ? status : "failed";
       if (item.mcpToolCall && namespace !== "nodex_app")

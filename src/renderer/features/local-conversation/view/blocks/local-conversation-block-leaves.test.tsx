@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vite-plus/test";
-import { act, fireEvent, waitFor } from "@testing-library/react";
+import { act, fireEvent, waitFor, within } from "@testing-library/react";
+import type { AgentTurnItem } from "@nodex/agent-runtime/contracts";
 import type { CodexConversationItem } from "../../../../lib/types";
 import { NodexTooltipProvider as TooltipProvider } from "../../../../components/ui/tooltip";
 import {
@@ -15,13 +16,17 @@ import { THREAD_SETTINGS_STORAGE_KEY } from "../../../../lib/codex-thread-settin
 import { COMPOSER_ENTER_BEHAVIOR_STORAGE_KEY } from "../../../../lib/composer-enter-behavior";
 import { CodexThreadSettingsProvider } from "../../../../lib/use-codex-thread-settings";
 import { buildCodexFileChangeMap } from "../../../../../shared/codex-file-change";
+import { buildAppFilesystemUrl } from "../../../../../shared/app-protocol";
+import { projectCodexCanonicalTurnItemViews } from "../../../../../shared/codex-canonical-item-projector";
+import { projectCodexItemViewToTranscriptEntry } from "../../../../../shared/codex-transcript-entry-projection";
 import { applyContentSearchDomMarks } from "../../../content-search/content-search-dom";
+import { projectAgentRuntimeItem } from "../../agent-runtime-transcript-projection";
+import { buildRendererItemStream } from "../../projection/build-renderer-item-stream";
 import {
   ThreadContextCompactionBlock,
   ThreadAgentActivityGroupBlock,
   ThreadAssistantBodyBlock,
   ThreadGeneratedImageGalleryBlock,
-  ThreadImageViewBlock,
   ThreadMcpServerElicitationBlock,
   ThreadPlanCardBlock,
   ThreadStreamErrorBlock,
@@ -2068,43 +2073,89 @@ describe("image-view and completed elicitation leaves", () => {
     installMeasuredResizeObserver({ blockSize: 72, inlineSize: 320 });
   });
 
-  test("keeps turn-wide inspected images behind a default-collapsed gallery disclosure", async () => {
-    const imageOne = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg'/%3E";
-    const imageTwo =
-      "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg'%3E%3Cpath/%3E%3C/svg%3E";
-    const { container } = render(
-      <ThreadImageViewBlock
-        block={{
-          id: "image-view-1",
-          turnId: "turn-1",
-          createdAt: 1,
-          updatedAt: 2,
-          searchableText: `${imageOne}\n${imageTwo}`,
-          type: "imageView",
-          status: "completed",
-          imageViewPaths: [imageOne, imageTwo],
-          entry: {
-            threadId: "thread-1",
-            turnId: "turn-1",
-            itemId: "image-view-1",
-            type: "imageView",
-            kind: "systemEvent",
-            semanticKind: "imageView",
-            status: "completed",
-            rawItem: { id: "image-view-1", type: "imageView", path: imageOne },
-            createdAt: 1,
-            updatedAt: 1,
-          },
-        }}
-        isLatestTurn
-        isStreamingTurn={false}
-      />,
+  test("projects completed runtime image reads into a collapsed gallery with navigable previews", async () => {
+    const paths = ["/workspace/rail-states-light.png", "/workspace/rail-states-dark.png"];
+    const at = "2026-10-23T00:00:00.000Z";
+    const items = paths.map((path, ordinal) =>
+      projectAgentRuntimeItem({
+        id: `read-${ordinal}`,
+        threadId: "thread-1",
+        runId: "turn-1",
+        nodeId: null,
+        providerThreadId: null,
+        providerTurnId: null,
+        nativeItemRef: null,
+        parentItemId: null,
+        ordinal,
+        status: "completed",
+        title: `Read ${path}`,
+        startedAt: at,
+        completedAt: at,
+        updatedAt: at,
+        type: "dynamic_tool",
+        toolName: "Read",
+        viewedImagePath: path,
+        input: { file_path: path },
+        output: { type: "image", file: { type: "image/png", sizeBytes: 128 } },
+      } satisfies AgentTurnItem),
+    );
+    const views = projectCodexCanonicalTurnItemViews({
+      threadId: "thread-1",
+      turnId: "turn-1",
+      items: items.flatMap((item) => item ?? []),
+      observedAtMs: 1,
+      turnStatus: "completed",
+    });
+    const blocks = buildRendererItemStream({
+      entries: views.map((view, index) =>
+        projectCodexItemViewToTranscriptEntry(view, "replay", index),
+      ),
+      requests: [],
+      turnStatus: "completed",
+    });
+    expect(blocks).toHaveLength(1);
+    const block = blocks[0];
+    if (block?.type !== "imageView")
+      throw new Error("Expected completed reads to form an image gallery");
+    const view = render(
+      <TestQueryProvider>
+        <ThreadBlockRenderer block={block} isLatestTurn isStreamingTurn={false} />
+      </TestQueryProvider>,
     );
 
-    expect(container.querySelectorAll('button[aria-label="Inspected image"]').length).toBe(0);
-    fireEvent.click(container.querySelector('button[aria-expanded="false"]') as HTMLElement);
-    await settleAsyncRender();
-    expect(container.querySelectorAll('button[aria-label="Inspected image"]').length).toBe(2);
+    expect(view.queryAllByRole("button", { name: "Inspected image" })).toHaveLength(0);
+    await act(async () => {
+      fireEvent.click(view.getByRole("button", { name: "Viewed 2 images" }));
+      await Promise.resolve();
+    });
+    const thumbnails = await view.findAllByRole("button", { name: "Inspected image" });
+    expect(thumbnails).toHaveLength(2);
+    expect(
+      thumbnails.map((thumbnail) => within(thumbnail).getByRole("img").getAttribute("src")),
+    ).toEqual(paths.map(buildAppFilesystemUrl));
+
+    await act(async () => {
+      fireEvent.click(thumbnails[0]!);
+      await Promise.resolve();
+    });
+    const preview = await view.findByRole("dialog", { name: "Image preview" });
+    expect(within(preview).getByRole("img", { name: "Inspected image" }).getAttribute("src")).toBe(
+      buildAppFilesystemUrl(paths[0]!),
+    );
+    await act(async () => {
+      fireEvent.click(within(preview).getByRole("button", { name: "Next image" }));
+      await Promise.resolve();
+    });
+    await waitFor(() => {
+      expect(
+        within(preview).getByRole("img", { name: "Inspected image" }).getAttribute("src"),
+      ).toBe(buildAppFilesystemUrl(paths[1]!));
+    });
+    await act(async () => {
+      fireEvent.click(within(preview).getByRole("button", { name: "Close image preview" }));
+      await Promise.resolve();
+    });
+    await waitFor(() => expect(view.queryByRole("dialog", { name: "Image preview" })).toBeNull());
   });
 
   test("renders generated images and pending output in the dedicated preview gallery", async () => {

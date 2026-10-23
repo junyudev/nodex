@@ -798,6 +798,39 @@ describe("Agent Runtime keyed transcript reads", () => {
     expect(owner.contentSource()).toBeNull();
     owner.dispose();
   });
+  test("image reads become view activity on completion and survive compact history reconnects", async () => {
+    const read: Extract<AgentTurnItem, { type: "dynamic_tool" }> = {
+      ...base("image-read", 1),
+      type: "dynamic_tool",
+      status: "running",
+      completedAt: null,
+      toolName: "Read",
+      title: "Read /workspace/reference.png",
+      viewedImagePath: "/workspace/reference.png",
+      input: { file_path: "/workspace/reference.png" },
+      outputOmitted: true,
+    };
+    const { owner, wire, release } = await open(conversation([read]));
+    try {
+      const entityKey = owner.readOwner.readStructure()!.turnEntityKeys[0]!;
+      expect(owner.readOwner.readItem(entityKey, read.id)).toMatchObject({
+        type: "dynamicToolCall",
+        status: "inProgress",
+      });
+      const completed = { ...read, status: "completed" as const, completedAt: at };
+      wire.emit(event(completed));
+      const image = { type: "imageView", id: read.id, path: read.viewedImagePath };
+      expect(owner.readOwner.readItem(entityKey, read.id)).toEqual(image);
+      vi.spyOn(wire.port, "read").mockResolvedValue(conversation([completed]));
+      wire.reset();
+      await owner.resume();
+      expect(owner.readOwner.readItem(entityKey, read.id)).toEqual(image);
+      expect(wire.port.item).not.toHaveBeenCalled();
+    } finally {
+      release();
+      owner.dispose();
+    }
+  });
   test("keeps asynchronous questions beside the Composer and routes replies to their request", async () => {
     const { owner, wire, release } = await open(conversation([assistant()]));
     const question = {

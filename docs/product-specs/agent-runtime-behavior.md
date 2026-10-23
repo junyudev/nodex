@@ -357,6 +357,13 @@ will start the Agent again on its own, the composer says so in one line, such as
 for 2 background tasks · resumes automatically", with Stop for every live subagent. The line
 belongs to the Session's root conversation; an opened subagent shows its own Runs.
 
+Completed image-file reads, including Claude Code `Read`, appear as image-view activity.
+Consecutive reads share one collapsed `Viewed N images` row; expanding it loads thumbnails
+from the recorded file paths and opens the shared image preview. This remains available
+when history omits tool output. Running, failed, interrupted and cancelled reads retain
+their tool status and details rather than claiming the image was viewed. Ordinary file
+reads and tools that return image content retain their own tool presentation.
+
 Lifecycle hooks, automatic reviews, cited memory and the files a command read are Turn
 metadata: they reach the reply's hook indicator and footer details as in any chat, and a
 hook that blocks a prompt explains itself beside that prompt. Context a hook injected for
