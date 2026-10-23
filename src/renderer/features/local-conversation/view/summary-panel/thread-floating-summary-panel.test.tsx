@@ -22,7 +22,8 @@ import type {
 import { NodexTooltipProvider } from "../../../../components/ui/tooltip";
 import { buildCodexFileChangeMap } from "../../../../../shared/codex-file-change";
 import { buildReviewFileSafety } from "../../../../../shared/review-file-safety";
-import { render, textContent } from "../../../../test/dom";
+import { textContent } from "../../../../test/dom";
+import { renderWithAppMaitai as render } from "../../../../test/app-maitai";
 import { TestQueryProvider } from "../../../../test/query";
 import type { ThreadPlanSidePanelTarget, ThreadStageActions } from "../../thread-stage-types";
 import { projectNativeTaskRows } from "../../native-task-presentation";

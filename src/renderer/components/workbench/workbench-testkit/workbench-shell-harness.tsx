@@ -54,6 +54,7 @@ import type {
   AgentRuntimeLaunch,
 } from "../../../../shared/agent-runtime-api";
 import type { LibraryNavigationNode } from "../../../../shared/library-module";
+import type { ProjectSessionsChangeEvent } from "../../../../shared/ipc-api";
 import type { WorkbenchLayoutSnapshot } from "../../../../shared/workbench-layout";
 import {
   DEFAULT_SIDEBAR_COLLAPSIBLE_SECTIONS,
@@ -251,6 +252,7 @@ export let mockThreadStartProgress: unknown = null;
 export let mockConversationHasVisibleTurn = true;
 export let codexHostMessageListener: ((message: CodexHostMessage) => void) | null = null;
 const codexEventListeners = new Set<(event: CodexEvent) => void>();
+const projectSessionListeners = new Set<(event: ProjectSessionsChangeEvent) => void>();
 export let pendingWorktreeWarningListener:
   | ((event: CodexPendingWorktreeWarningEvent) => void)
   | null = null;
@@ -898,7 +900,10 @@ vi.mock("@/lib/api", () => {
     }),
     subscribeCommandKeymapChanges: () => () => undefined,
     subscribeProjectChanges: () => () => undefined,
-    subscribeProjectSessionChanges: () => () => undefined,
+    subscribeProjectSessionChanges: (listener: (event: ProjectSessionsChangeEvent) => void) => {
+      projectSessionListeners.add(listener);
+      return () => projectSessionListeners.delete(listener);
+    },
     subscribeAgentRuntimeSessionEvents: () => () => undefined,
     subscribeCodexEvents: (listener: (event: CodexEvent) => void) => {
       codexEventListeners.add(listener);
@@ -2563,6 +2568,38 @@ export function renderWorkbench({
       ? { ...sessionsByProject, [projectlessSessionStateKey]: projectlessSessions }
       : sessionsByProject;
   let workspaceCommitSeq = 1;
+  // Catalog and built-in sidebar windows have separate query keys. Real Workspace
+  // mutations publish invalidations so each active window observes the commit.
+  const publishProjectSessionChanges = (previous: typeof sessionState): void => {
+    const changedScopes = [
+      ...new Set([...Object.keys(previous), ...Object.keys(sessionState)]),
+    ].filter((scope) => previous[scope] !== sessionState[scope]);
+    if (changedScopes.length === 0) return;
+    const before = new Map(
+      Object.values(previous)
+        .flat()
+        .map((session) => [session.id, session]),
+    );
+    const after = new Map(
+      Object.values(sessionState)
+        .flat()
+        .map((session) => [session.id, session]),
+    );
+    const sessionIds = [...new Set([...before.keys(), ...after.keys()])].filter(
+      (id) => before.get(id) !== after.get(id),
+    );
+    if (sessionIds.length === 0) return;
+    const event: ProjectSessionsChangeEvent = {
+      summaryScopes: changedScopes.map((scope) =>
+        scope === projectlessSessionStateKey
+          ? { kind: "projectless" }
+          : { kind: "project", projectId: scope },
+      ),
+      detailInvalidation: { kind: "sessions", sessionIds },
+      changeType: "update",
+    };
+    for (const listener of projectSessionListeners) listener(event);
+  };
   const workspaceReceipts = new Map<
     string,
     { readonly fingerprint: string; readonly result: unknown }
@@ -2581,8 +2618,12 @@ export function renderWorkbench({
       return replay.result;
     }
 
+    const previousSessionState = sessionState;
     const mutation = mutate();
-    if (mutation.changed) workspaceCommitSeq += 1;
+    if (mutation.changed) {
+      workspaceCommitSeq += 1;
+      publishProjectSessionChanges(previousSessionState);
+    }
     const result = {
       ok: true as const,
       value: mutation.value,
@@ -2689,6 +2730,7 @@ export function renderWorkbench({
       agentRuntimeLaunchCalls.push(input);
       const key = input.projectId ?? projectlessSessionStateKey;
       const threadId = `engine:${input.sessionId}`;
+      const previousSessionState = sessionState;
       workspaceCommitSeq += 1;
       sessionState = {
         ...sessionState,
@@ -2705,6 +2747,7 @@ export function renderWorkbench({
         ),
       };
       defaultDraftSessionIds.delete(key);
+      publishProjectSessionChanges(previousSessionState);
       return { sessionId: input.sessionId, projectId: input.projectId, threadId };
     }
     if (channel === "agent-runtime:session:control" || channel === "agent-runtime:session:read") {
@@ -2824,12 +2867,15 @@ export function renderWorkbench({
       if (!source?.executionRef) throw new Error("Source conversation is unavailable");
       const sessionId = input.sessionId;
       const threadId = `fork-thread:${input.requestId}`;
+      const previousSessionState = sessionState;
       const session = createMockSession({
         sessionId,
         projectId: source.projectId,
         noThreadFallbackTitle: `${source.displayTitle} fork`,
       });
       session.executionRef = { runtimeId: "runtime:test", threadId };
+      workspaceCommitSeq += 1;
+      publishProjectSessionChanges(previousSessionState);
       return { sessionId, projectId: source.projectId, threadId };
     }
     if (channel === "agent-runtime:session:overview")
@@ -3526,6 +3572,7 @@ export function renderWorkbench({
 
       const projectId = "alpha";
       const projectSessions = sessionState[projectId] ?? [];
+      const previousSessionState = sessionState;
       const session = makeAttachedSession({
         id: `session:${projectId}:${threadId}`,
         projectId,
@@ -3539,6 +3586,8 @@ export function renderWorkbench({
         ...sessionState,
         [projectId]: sortProjectSessionsForTest([...projectSessions, session]),
       };
+      workspaceCommitSeq += 1;
+      publishProjectSessionChanges(previousSessionState);
       return session;
     }
     if (channel === "codex:threads:pinned:set") {
@@ -4694,6 +4743,7 @@ beforeEach(() => {
   mockConversationHasVisibleTurn = true;
   codexHostMessageListener = null;
   codexEventListeners.clear();
+  projectSessionListeners.clear();
   pendingWorktreeWarningListener = null;
   mockInvokeImpl = null;
   requestPageCreateFromContextMock.mockReset();
