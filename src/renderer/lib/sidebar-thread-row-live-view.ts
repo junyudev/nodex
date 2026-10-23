@@ -1,6 +1,7 @@
 import type { ThreadExecutionLocationView } from "../../shared/codex-thread-handoff";
 import type { CodexSidebarThreadItem } from "../../shared/types";
 import type { SessionLiveIndicator } from "./session-execution";
+import { resolveSidebarRowStatus, type SidebarRowStatus } from "./sidebar-status";
 
 export interface SidebarThreadRowRuntimeFacts {
   readonly indicator: SessionLiveIndicator | null;
@@ -14,6 +15,12 @@ export interface SidebarThreadRowLiveView {
   /** No foreground Run, but delegated or background work is live or will resume the chat. */
   readonly background: boolean;
   readonly needsAttention: boolean;
+  /** The single trailing status the row shows. */
+  readonly status: SidebarRowStatus | null;
+}
+
+function withStatus(view: Omit<SidebarThreadRowLiveView, "status">): SidebarThreadRowLiveView {
+  return { ...view, status: resolveSidebarRowStatus({ ...view, unread: view.item.unread }) };
 }
 
 /**
@@ -25,12 +32,12 @@ export function projectSidebarThreadRowLiveView(
   runtime: SidebarThreadRowRuntimeFacts | null,
 ): SidebarThreadRowLiveView {
   if (!runtime)
-    return {
+    return withStatus({
       item,
       running: item.statusType === "active",
       background: false,
       needsAttention: item.needsAttention === true,
-    };
+    });
   const located = runtime.location
     ? {
         ...item,
@@ -44,10 +51,10 @@ export function projectSidebarThreadRowLiveView(
           : ({ kind: "local-checkout" } as const),
       }
     : item;
-  return {
+  return withStatus({
     item: located,
     running: runtime.indicator === "running",
     background: runtime.indicator === "background",
     needsAttention: item.needsAttention === true || runtime.indicator === "waiting",
-  };
+  });
 }

@@ -991,7 +991,7 @@ describe("workbench session shell / sidebar-core", () => {
     expect(pinButton?.querySelector("svg")?.getAttribute("viewBox")).toBe("0 0 20 20");
   });
 
-  test("sidebar pin slot treats Database View as ordinary, reserves unread rows, and protects long titles", async () => {
+  test("sidebar pin slot treats Database View as ordinary, keeps pinning for unread rows, and protects long titles", async () => {
     const unread = makeAttachedSession({
       id: "session:alpha:unread",
       title: "Unread target",
@@ -1030,7 +1030,7 @@ describe("workbench session shell / sidebar-core", () => {
     expect(unreadRow.querySelector("[data-app-action-sidebar-thread-pin-slot]") !== null).toBe(
       true,
     );
-    expect(unreadRow.querySelector("[data-app-action-sidebar-thread-pin-session]") === null).toBe(
+    expect(unreadRow.querySelector("[data-app-action-sidebar-thread-pin-session]") !== null).toBe(
       true,
     );
 

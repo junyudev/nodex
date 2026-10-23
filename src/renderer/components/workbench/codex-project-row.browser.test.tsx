@@ -106,6 +106,61 @@ describe("CodexProjectRow interaction chrome in Chromium", () => {
     expect(getComputedStyle(disclosure).opacity).toBe("1");
   });
 
+  test("summarizes a collapsed Project's unread chats at its trailing edge until hover", async () => {
+    const renderRow = (expanded: boolean) => (
+      <TestQueryProvider>
+        <NodexHoverCardProvider>
+          <NodexTooltipProvider>
+            <div className="w-72">
+              <CodexProjectRow
+                project={PROJECT}
+                activity={{
+                  projectId: PROJECT.id,
+                  taskCount: 3,
+                  waitingCount: 0,
+                  unreadCount: 1,
+                  activeCount: 1,
+                }}
+                activityStore={QUIET_ACTIVITY}
+                active={false}
+                expanded={expanded}
+                hoverCardOpen={false}
+                onActivate={() => undefined}
+                onSelectProject={() => undefined}
+                onStartNewChat={() => undefined}
+                onUpdateProject={async () => null}
+                onArchiveProject={async () => ({ kind: "not-found" })}
+              />
+            </div>
+          </NodexTooltipProvider>
+        </NodexHoverCardProvider>
+      </TestQueryProvider>
+    );
+    const view = render(renderRow(false));
+    const row = view.container.querySelector<HTMLElement>("[data-app-action-sidebar-project-row]");
+    if (!row) throw new Error("Expected Project row");
+    const dot = view.getByRole("img", { name: "Unread chats" });
+    const painted = (element: Element) =>
+      element.checkVisibility({ opacityProperty: true, visibilityProperty: true });
+    await act(async () => {
+      await userEvent.unhover(row);
+    });
+    expect(painted(dot)).toBe(true);
+    expect(view.queryByRole("status")).toBeNull();
+    expect(
+      row.getBoundingClientRect().right - dot.getBoundingClientRect().right,
+    ).toBeLessThanOrEqual(8);
+
+    await act(async () => {
+      await userEvent.hover(row);
+    });
+    expect(painted(dot)).toBe(false);
+    expect(painted(view.getByRole("button", { name: "Start new chat in Alpha" }))).toBe(true);
+
+    view.rerender(renderRow(true));
+    expect(view.queryByRole("img", { name: "Unread chats" })).toBeNull();
+  });
+
   test("shares the trailing space between the Inbox count and pointer or keyboard actions", async () => {
     const onStartNewChat = vi.fn();
     const view = render(

@@ -34,6 +34,7 @@ describe("projectSidebarThreadRowLiveView", () => {
       running: true,
       background: false,
       needsAttention: false,
+      status: "running",
     });
   });
 

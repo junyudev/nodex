@@ -5,7 +5,7 @@ import { NodexHoverCardProvider } from "@/components/ui/hover-card";
 import { NodexTooltipProvider } from "@/components/ui/tooltip";
 import { render, textContent } from "@/test/dom";
 import type { CodexSidebarThreadItem } from "@/lib/types";
-import { CodexSidebarThreadRow } from "./codex-sidebar";
+import { CodexSidebarSection, CodexSidebarThreadRow } from "./codex-sidebar";
 import { createAgentRuntimeActivityStore } from "@/lib/agent-runtime-session-activity";
 import { queryKeys } from "@/lib/query-keys";
 import { createTestQueryClient, TestQueryProvider } from "@/test/query";
@@ -103,6 +103,18 @@ describe("codex sidebar thread hover card", () => {
     expect(hoverCardText.includes("2d")).toBe(true);
     expect(hoverCardText.includes("nodex")).toBe(true);
     expect(hoverCardText.includes("feat/thread-tools")).toBe(true);
+  });
+
+  test("marks an unread chat beside its age", async () => {
+    await act(async () => {
+      renderOpenThreadHoverCard(makeThreadItem({ unread: true }));
+    });
+
+    const hoverCard = document.body.querySelector<HTMLElement>('[role="dialog"]')!;
+    const age = hoverCard.querySelector("time")!;
+    const dot = hoverCard.querySelector("[data-app-action-sidebar-thread-hover-card-unread]");
+    expect(dot).not.toBeNull();
+    expect(dot?.parentElement).toBe(age.parentElement);
   });
 
   test("uses Chat as the projectless fallback label", async () => {
@@ -273,9 +285,22 @@ describe("codex sidebar thread row", () => {
     );
     expect(row().dataset.appActionSidebarThreadRunning).toBe("false");
     await push({ type: "upsert", sequence: 3, activity: activity("waiting") });
-    await waitFor(() => expect(view.getByLabelText("Needs attention")).not.toBeNull());
+    const describedRow = () =>
+      view.queryByRole("button", {
+        name: "X Plan Codex terminal reverse engineer",
+        description: "Needs attention",
+      });
+    await waitFor(() =>
+      expect(
+        row().querySelector("[data-app-action-sidebar-thread-status='attention']"),
+      ).not.toBeNull(),
+    );
+    expect(describedRow()).not.toBeNull();
     await push({ type: "remove", sequence: 4, sessionId: "session-test" });
-    await waitFor(() => expect(view.queryByLabelText("Needs attention")).toBeNull());
+    await waitFor(() =>
+      expect(row().querySelector("[data-app-action-sidebar-thread-status]")).toBeNull(),
+    );
+    expect(describedRow()).toBeNull();
   });
 
   test("shows the worktree glyph without changing the row accessible name", async () => {
@@ -352,6 +377,66 @@ describe("codex sidebar thread row", () => {
     ).not.toBeNull();
   });
 
+  test("puts a nested row's unread dot after its title and keeps hover pinning", async () => {
+    let view!: ReturnType<typeof render>;
+    await act(async () => {
+      view = render(
+        <NodexTooltipProvider>
+          <CodexSidebarThreadRow
+            item={makeThreadItem({ unread: true })}
+            grouped
+            active={false}
+            onSelect={() => {}}
+            onArchive={() => {}}
+            onTogglePinned={() => {}}
+          />
+        </NodexTooltipProvider>,
+      );
+    });
+
+    const row = view.getByRole("button", {
+      name: "X Plan Codex terminal reverse engineer",
+      description: "Unread",
+    });
+    const main = row.querySelector("[data-app-action-sidebar-thread-main]")!;
+    const title = main.querySelector("[data-thread-title]")!;
+    const status = row.querySelector("[data-app-action-sidebar-thread-status='unread']");
+    expect(status).not.toBeNull();
+    expect(main.contains(status)).toBe(true);
+    expect(title.compareDocumentPosition(status!) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0);
+    expect(
+      row.querySelector(
+        "[data-app-action-sidebar-thread-action-rail] [data-app-action-sidebar-thread-pin-session]",
+      ),
+    ).not.toBeNull();
+  });
+
+  test("shows only the spinner while an unread chat is still running", async () => {
+    let view!: ReturnType<typeof render>;
+    await act(async () => {
+      view = render(
+        <NodexTooltipProvider>
+          <CodexSidebarThreadRow
+            item={makeThreadItem({ unread: true, statusType: "active" })}
+            active={false}
+            onSelect={() => {}}
+          />
+        </NodexTooltipProvider>,
+      );
+    });
+
+    const row = view.getByRole("button", {
+      name: "X Plan Codex terminal reverse engineer",
+      description: "Unread",
+    });
+    const statuses = row.querySelectorAll("[data-app-action-sidebar-thread-status]");
+    expect(
+      Array.from(statuses, (status) =>
+        status.getAttribute("data-app-action-sidebar-thread-status"),
+      ),
+    ).toEqual(["running"]);
+  });
+
   test("renders the running indicator without row time metadata", async () => {
     let container!: HTMLElement;
 
@@ -371,7 +456,7 @@ describe("codex sidebar thread row", () => {
       "[data-app-action-sidebar-thread-row]",
     ) as HTMLElement | null;
     expect(row?.dataset.appActionSidebarThreadRunning).toBe("true");
-    expect(row?.querySelector("[data-app-action-sidebar-thread-running-indicator]")).not.toBeNull();
+    expect(row?.querySelector("[data-app-action-sidebar-thread-status='running']")).not.toBeNull();
     expect(row?.querySelector("[data-app-action-sidebar-thread-elapsed]")).toBeNull();
   });
 
@@ -490,5 +575,33 @@ describe("codex sidebar thread row", () => {
       (actionRail as HTMLElement).querySelector("[data-app-action-sidebar-thread-archive]") !==
         null,
     ).toBe(true);
+  });
+});
+
+describe("codex sidebar section", () => {
+  test("summarizes chats at the header's end only while collapsed", async () => {
+    const section = (collapsed: boolean) => (
+      <CodexSidebarSection
+        heading="Focus"
+        collapsed={collapsed}
+        onToggle={() => {}}
+        status={<span data-testid="section-status" />}
+      >
+        <div />
+      </CodexSidebarSection>
+    );
+    let view!: ReturnType<typeof render>;
+    await act(async () => {
+      view = render(section(false));
+    });
+    expect(view.queryByTestId("section-status")).toBeNull();
+
+    await act(async () => {
+      view.rerender(section(true));
+    });
+    const toggle = view.getByRole("button", { name: "Focus" });
+    const status = view.getByTestId("section-status");
+    expect(toggle.contains(status)).toBe(false);
+    expect(toggle.compareDocumentPosition(status) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0);
   });
 });

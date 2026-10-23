@@ -293,6 +293,13 @@ export const SEMANTIC_UTILITY_PROFILE: readonly SemanticUtilityProfile[] = [
     consumers: ["agent-task"],
   },
   {
+    id: "bg-info-solid",
+    selector: ".bg-info-solid",
+    tokenDependencies: ["--color-background-info-solid"],
+    collisionStrategy: "exact",
+    consumers: ["agent-task"],
+  },
+  {
     id: "bg-text-info",
     selector: ".bg-text-info",
     tokenDependencies: ["--color-text-info"],

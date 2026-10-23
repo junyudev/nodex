@@ -7,7 +7,15 @@ import type {
   Ref,
   ReactNode,
 } from "react";
-import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
+import {
+  forwardRef,
+  useEffect,
+  useId,
+  useImperativeHandle,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { AnimatePresence, motion } from "motion/react";
 import { useSortable } from "@dnd-kit/sortable";
@@ -25,7 +33,6 @@ import {
   SessionPinFilledIcon,
   SessionPinIcon,
   SettingsGeneralIcon,
-  ActivitySpinnerIcon,
   ChevronDownIcon,
   WorktreeStatusIcon,
 } from "@/components/shared/icons";
@@ -68,6 +75,8 @@ import {
   type SidebarThreadRowLiveView,
 } from "@/lib/sidebar-thread-row-live-view";
 import { runtimeSessionTarget, SESSION_LIVE_INDICATOR_LABELS } from "@/lib/session-execution";
+import { SidebarStatusIndicator } from "./sidebar-status-indicator";
+import { resolveSidebarGroupStatus } from "@/lib/sidebar-status";
 import { cn } from "@/lib/utils";
 import {
   workspaceProjectCommands,
@@ -343,6 +352,7 @@ export function CodexSidebarSection({
   collapsed: boolean;
   onToggle: () => void;
   onMove?: (direction: -1 | 1) => void;
+  /** Shown only while collapsed. */
   status?: ReactNode;
   headingButtonRef?: Ref<HTMLButtonElement>;
   headingButtonProps?: ComponentPropsWithoutRef<"button">;
@@ -383,7 +393,6 @@ export function CodexSidebarSection({
                   }}
                 >
                   <span className="min-w-0 truncate">{heading}</span>
-                  {status}
                   <ChevronDownIcon
                     className={cn(
                       CODEX_SIDEBAR_DISCLOSURE_CHEVRON_CLASS,
@@ -396,6 +405,8 @@ export function CodexSidebarSection({
               {actions ? (
                 <div className={CODEX_SIDEBAR_SECTION_ACTIONS_CLASS}>{actions}</div>
               ) : null}
+              {/* A collapsed Section summarizes its chats at the header's end. */}
+              {collapsed && status ? <div className="me-0.5 shrink-0">{status}</div> : null}
             </div>
           </div>
         </div>
@@ -820,6 +831,70 @@ export const CodexProjectActionsMenu = forwardRef<
 });
 
 const NO_RUNTIME_SESSIONS: readonly ProjectRuntimeSessionFacts[] = [];
+
+/** One dot or spinner for a collapsed Project: chats to read or answer outrank work in progress. */
+function CollapsedProjectStatus({
+  activity,
+  runtimeSessions,
+  activityStore,
+}: {
+  activity: ProjectActivitySummary | null | undefined;
+  runtimeSessions: readonly ProjectRuntimeSessionFacts[];
+  activityStore?: AgentRuntimeActivityStore;
+}) {
+  // Only Runtime Sessions need live activity; Core already summarizes native chats.
+  return runtimeSessions.length > 0 ? (
+    <RuntimeCollapsedProjectStatus
+      activity={activity}
+      runtimeSessions={runtimeSessions}
+      activityStore={activityStore}
+    />
+  ) : (
+    <CollapsedProjectStatusIndicator activity={activity} />
+  );
+}
+
+function RuntimeCollapsedProjectStatus({
+  activity,
+  runtimeSessions,
+  activityStore,
+}: {
+  activity: ProjectActivitySummary | null | undefined;
+  runtimeSessions: readonly ProjectRuntimeSessionFacts[];
+  activityStore?: AgentRuntimeActivityStore;
+}) {
+  return (
+    <CollapsedProjectStatusIndicator
+      activity={mergeRuntimeProjectActivity(
+        activity,
+        runtimeSessions,
+        useAgentRuntimeActivities(activityStore),
+      )}
+    />
+  );
+}
+
+function CollapsedProjectStatusIndicator({
+  activity,
+}: {
+  activity: ProjectActivitySummary | null | undefined;
+}) {
+  const status = activity
+    ? resolveSidebarGroupStatus({
+        needsReading: activity.waitingCount + activity.unreadCount > 0,
+        running: activity.activeCount > 0,
+      })
+    : null;
+  if (!status) return null;
+  return (
+    <span className="pe-0.5" data-app-action-sidebar-project-status={status}>
+      <SidebarStatusIndicator
+        status={status}
+        label={status === "unread" ? "Unread chats" : undefined}
+      />
+    </span>
+  );
+}
 
 function CodexProjectHoverCardContent({
   project,
@@ -1252,15 +1327,29 @@ export function CodexProjectRow({
             }
             actions={
               <div className="grid items-center">
-                {inboxCount > 0 ? (
+                {inboxCount > 0 || !expanded ? (
                   <span
-                    aria-label={`${inboxCount} in ${project.name}'s Inbox`}
                     className={cn(
-                      "pointer-events-none col-start-1 row-start-1 justify-self-end pr-1.5 text-xs text-token-description-foreground tabular-nums group-hover/folder-row:invisible group-focus-within/folder-row:invisible",
+                      "pointer-events-none col-start-1 row-start-1 flex items-center gap-1.5 justify-self-end group-hover/folder-row:invisible group-focus-within/folder-row:invisible",
                       projectActionsMenuOpen && "invisible",
                     )}
                   >
-                    {inboxCount}
+                    {inboxCount > 0 ? (
+                      <span
+                        aria-label={`${inboxCount} in ${project.name}'s Inbox`}
+                        className="text-xs text-token-description-foreground tabular-nums last:pr-1.5"
+                      >
+                        {inboxCount}
+                      </span>
+                    ) : null}
+                    {/* Only a collapsed Project summarizes its chats; an open one shows them. */}
+                    {!expanded ? (
+                      <CollapsedProjectStatus
+                        activity={activity}
+                        runtimeSessions={runtimeSessions}
+                        activityStore={activityStore}
+                      />
+                    ) : null}
                   </span>
                 ) : null}
                 <div className="col-start-1 row-start-1 flex gap-1">
@@ -1520,6 +1609,13 @@ function CodexSidebarThreadHoverCard({
         {recencyAt !== null ? (
           <div className="flex shrink-0 items-center gap-1 text-xs leading-5 text-token-description-foreground">
             <RelativeThreadAge recencyAt={recencyAt} />
+            {item.unread ? (
+              <span
+                aria-hidden="true"
+                className="h-1.5 w-1.5 rounded-full bg-chart-blue"
+                data-app-action-sidebar-thread-hover-card-unread=""
+              />
+            ) : null}
           </div>
         ) : null}
       </div>
@@ -1704,7 +1800,15 @@ function CodexSidebarThreadRowView({
   const pinButtonLabel = item.pinned ? "Unpin chat" : "Pin chat";
   const title = item.title;
   const archiveDisabled = item.disabled || archivePending;
-  const { running, background, needsAttention } = live;
+  const { running, needsAttention, status } = live;
+  // The trailing slot shows one status; the description keeps unread news even under a spinner.
+  const statusDescription = needsAttention
+    ? SESSION_LIVE_INDICATOR_LABELS.waiting
+    : item.unread
+      ? "Unread"
+      : null;
+  const statusDescriptionId = useId();
+  const titleId = useId();
   const showRestingPinnedButton = showPinSlot && item.pinned;
   const showRailPinSlot = showPinSlot && !showRestingPinnedButton;
   const showActionRail = showRailPinSlot || showArchiveAction;
@@ -1777,6 +1881,8 @@ function CodexSidebarThreadRowView({
       tabIndex={0}
       aria-current={active ? "page" : undefined}
       aria-disabled={item.disabled || undefined}
+      aria-labelledby={titleId}
+      aria-describedby={statusDescription ? statusDescriptionId : undefined}
       onPointerEnter={() => {
         if (!item.disabled) onPreview?.();
       }}
@@ -1798,20 +1904,15 @@ function CodexSidebarThreadRowView({
         onSelect();
       }}
     >
+      {statusDescription ? (
+        <span id={statusDescriptionId} className="sr-only">
+          {statusDescription}
+        </span>
+      ) : null}
       <div className="contents">
         <div className="flex h-full w-full items-center px-row-x text-sm leading-4">
-          {grouped ? (
-            <div className="w-4 shrink-0">
-              <div className="relative flex items-center justify-center">
-                {item.unread || needsAttention ? (
-                  <span
-                    className="size-1.5 rounded-full bg-token-charts-blue"
-                    aria-label={needsAttention ? "Needs attention" : "Unread"}
-                  />
-                ) : null}
-              </div>
-            </div>
-          ) : null}
+          {/* Nested rows keep the Project's leading column so titles align under its name. */}
+          {grouped ? <div className="w-4 shrink-0" aria-hidden="true" /> : null}
           <div
             className={cn("flex min-w-0 flex-1 items-center", grouped && "ml-1.5 pl-0.5")}
             data-app-action-sidebar-thread-main=""
@@ -1821,6 +1922,7 @@ function CodexSidebarThreadRowView({
               data-thread-title-trigger="true"
             >
               <span
+                id={titleId}
                 className="min-w-0 flex-1 truncate select-none"
                 data-thread-title="true"
                 draggable={false}
@@ -1836,6 +1938,7 @@ function CodexSidebarThreadRowView({
             <div
               className={cn(
                 "ms-[3px] flex items-center justify-end gap-1 group-focus-visible:min-w-12 group-hover:min-w-12 group-has-[:focus-visible]:min-w-12",
+                status && "min-w-[26px]",
                 contextMenuOpen && "min-w-12",
                 // The resting pin stays interactive beside the overlaid archive action.
                 showRestingPinnedButton &&
@@ -1844,20 +1947,6 @@ function CodexSidebarThreadRowView({
                 showRestingPinnedButton && showArchiveAction && contextMenuOpen && "pr-7",
               )}
             >
-              {!grouped && (item.unread || needsAttention) ? (
-                <span
-                  className={cn(
-                    "relative flex size-5 shrink-0 items-center justify-center",
-                    showActionRail &&
-                      "group-focus-visible:hidden group-has-[:focus-visible]:hidden group-hover:hidden",
-                    contextMenuOpen && "hidden",
-                  )}
-                  aria-label={needsAttention ? "Needs attention" : "Unread"}
-                  data-app-action-sidebar-thread-unread-indicator=""
-                >
-                  <span className="size-1.5 rounded-full bg-token-charts-blue" />
-                </span>
-              ) : null}
               {showRestingPinnedButton ? (
                 <button
                   type="button"
@@ -1875,32 +1964,17 @@ function CodexSidebarThreadRowView({
                   <SessionPinFilledIcon />
                 </button>
               ) : null}
-              {running ? (
+              {status ? (
                 <span
                   className={cn(
-                    "relative -mr-1 flex size-5 shrink-0 items-center justify-center text-token-foreground/70",
+                    "-me-1 flex shrink-0",
                     showActionRail &&
                       "group-focus-visible:hidden group-has-[:focus-visible]:hidden group-hover:hidden",
                     contextMenuOpen && "hidden",
                   )}
-                  data-app-action-sidebar-thread-running-indicator=""
+                  data-app-action-sidebar-thread-status={status}
                 >
-                  <ActivitySpinnerIcon className="icon-xs shrink-0" animationDurationMs={2_000} />
-                </span>
-              ) : null}
-              {background ? (
-                <span
-                  role="img"
-                  aria-label={SESSION_LIVE_INDICATOR_LABELS.background}
-                  className={cn(
-                    "relative -mr-1 flex size-5 shrink-0 items-center justify-center text-token-description-foreground/70",
-                    showActionRail &&
-                      "group-focus-visible:hidden group-has-[:focus-visible]:hidden group-hover:hidden",
-                    contextMenuOpen && "hidden",
-                  )}
-                  data-app-action-sidebar-thread-background-indicator=""
-                >
-                  <ActivitySpinnerIcon className="icon-xs shrink-0" animationDurationMs={5_000} />
+                  <SidebarStatusIndicator status={status} />
                 </span>
               ) : null}
             </div>
@@ -1917,27 +1991,23 @@ function CodexSidebarThreadRowView({
                 className="flex h-5 w-5 shrink-0 items-center justify-center"
                 data-app-action-sidebar-thread-pin-slot=""
               >
-                {item.unread ? (
-                  <span aria-hidden="true" className="block h-5 w-5" />
-                ) : (
-                  <button
-                    type="button"
-                    aria-label={pinButtonLabel}
-                    className={cn(
-                      CODEX_SIDEBAR_THREAD_PIN_BUTTON_CLASS,
-                      !item.pinned &&
-                        "opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100 group-has-[:focus-visible]:opacity-100 data-[state=open]:opacity-100",
-                    )}
-                    data-state={contextMenuOpen ? "open" : "closed"}
-                    data-app-action-sidebar-thread-pin-session=""
-                    onPointerDown={stopCodexSidebarRowActionPropagation}
-                    onMouseDown={stopCodexSidebarRowActionPropagation}
-                    onKeyDown={stopCodexSidebarRowActionPropagation}
-                    onClick={handleTogglePinnedClick}
-                  >
-                    {item.pinned ? <SessionPinFilledIcon /> : <SessionPinIcon />}
-                  </button>
-                )}
+                <button
+                  type="button"
+                  aria-label={pinButtonLabel}
+                  className={cn(
+                    CODEX_SIDEBAR_THREAD_PIN_BUTTON_CLASS,
+                    !item.pinned &&
+                      "opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100 group-has-[:focus-visible]:opacity-100 data-[state=open]:opacity-100",
+                  )}
+                  data-state={contextMenuOpen ? "open" : "closed"}
+                  data-app-action-sidebar-thread-pin-session=""
+                  onPointerDown={stopCodexSidebarRowActionPropagation}
+                  onMouseDown={stopCodexSidebarRowActionPropagation}
+                  onKeyDown={stopCodexSidebarRowActionPropagation}
+                  onClick={handleTogglePinnedClick}
+                >
+                  {item.pinned ? <SessionPinFilledIcon /> : <SessionPinIcon />}
+                </button>
               </div>
             ) : null}
             {showArchiveAction ? (

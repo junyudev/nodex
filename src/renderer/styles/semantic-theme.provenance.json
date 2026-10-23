@@ -1,12 +1,12 @@
 {
   "schemaVersion": 1,
   "refVersion": "26.1007.30912",
-  "profileSha256": "2f2f3629d8ce4172566c73e9151df2a967f1810ff921bd6cf835027c32128f88",
+  "profileSha256": "713bd7dd9bcb10b298cbfe7d308783d3f0fd4078e043ce52031652c050ac6bff",
   "generatorVersion": 3,
   "artifacts": [
     {
       "path": "src/renderer/styles/semantic-theme-contract.generated.json",
-      "sha256": "6216a1008b55bd905f996222495f7341e5e22855b5fd8e959d40229205a3c7e0"
+      "sha256": "1678679092f479ad6101fef48cbad0eccdfe89478663d397b8aa7efcff2f0c21"
     },
     {
       "path": "src/renderer/styles/theme-extracted-foundation.generated.css",
@@ -22,7 +22,7 @@
     },
     {
       "path": "src/renderer/styles/theme-semantic-utilities.generated.css",
-      "sha256": "3a467281940b2f2a77799847cfa593d13da75c18a0e14e0495da78540f449c94"
+      "sha256": "de662dbf1425ef3a0bdbf23397b3ee9cc0d6f21627584ac07478dcdab5847f66"
     }
   ]
 }

@@ -12,7 +12,6 @@ import { SortableContext, useSortable, verticalListSortingStrategy } from "@dnd-
 
 import {
   ArchiveIcon,
-  ActivitySpinnerIcon,
   CloseIcon,
   NewChatIcon,
   PlusIcon,
@@ -68,6 +67,8 @@ import {
   type SidebarSectionRootDndPayload,
 } from "./sidebar-section-root-dnd";
 import { SidebarDropIndicator } from "./sidebar-drop-indicator";
+import { SidebarStatusIndicator } from "./sidebar-status-indicator";
+import { resolveSidebarGroupStatus } from "@/lib/sidebar-status";
 import { SidebarSectionNameDialog } from "./sidebar-section-name-dialog";
 import {
   isSidebarSectionSessionDragDisabled,
@@ -88,6 +89,27 @@ const sectionItemsQueryKey = (sectionId: string) => [
   sectionId,
   "items",
 ];
+
+/** A collapsed Section summarizes its chats with the same dot or spinner as a chat row. */
+function CustomSectionStatus({
+  section,
+}: {
+  section: Pick<SidebarSectionSummary, "hasRunning" | "hasUnread">;
+}) {
+  const status = resolveSidebarGroupStatus({
+    needsReading: section.hasUnread,
+    running: section.hasRunning,
+  });
+  if (!status) return null;
+  return (
+    <span className="flex" data-sidebar-section-status={status}>
+      <SidebarStatusIndicator
+        status={status}
+        label={status === "unread" ? "Unread chats" : undefined}
+      />
+    </span>
+  );
+}
 
 function SectionRootSortable({
   section,
@@ -507,20 +529,7 @@ export function SidebarCustomSections({
                         headingButtonRef={headingButtonRef}
                         headingButtonProps={headingButtonProps}
                         dropIndicator={dropIndicator}
-                        status={
-                          section.hasRunning ? (
-                            <ActivitySpinnerIcon
-                              className="icon-2xs shrink-0 text-token-foreground/70"
-                              animationDurationMs={2_000}
-                            />
-                          ) : section.hasUnread ? (
-                            <span
-                              className="size-1.5 shrink-0 rounded-full bg-token-foreground/55"
-                              aria-label="Has unread chats"
-                              data-sidebar-section-unread="true"
-                            />
-                          ) : null
-                        }
+                        status={<CustomSectionStatus section={section} />}
                         actions={
                           <>
                             <CodexSidebarActionButton

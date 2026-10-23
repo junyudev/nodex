@@ -204,6 +204,10 @@
     background-color: var(--color-control-thumb-on-accent);
   }
 
+  .bg-info-solid {
+    background-color: var(--color-background-info-solid);
+  }
+
   .bg-primary-solid {
     background-color: var(--color-background-primary-solid);
   }

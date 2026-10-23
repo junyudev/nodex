@@ -1,6 +1,5 @@
 import { useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
 import {
-  ActivitySpinnerIcon,
   ArchiveIcon,
   AutomationMoreIcon,
   AutomationPauseIcon,
@@ -31,6 +30,8 @@ import {
   NodexDialogTitle,
 } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
+import { resolveSidebarRowStatus } from "@/lib/sidebar-status";
+import { SidebarStatusIndicator } from "@/components/workbench/sidebar-status-indicator";
 import type { CodexScheduledAutomation } from "@/lib/types";
 import {
   CODEX_SIDEBAR_THREAD_ROW_CLASS,
@@ -129,19 +130,15 @@ function TaskActionsMenu({
 }
 
 function StatusSlot({ running, unread }: { running: boolean; unread: boolean }) {
-  if (running) {
-    return (
-      <span className="flex size-5 shrink-0 items-center justify-center text-token-foreground/70">
-        <ActivitySpinnerIcon className="icon-xs" animationDurationMs={2_000} />
-        <span className="sr-only">Running</span>
-      </span>
-    );
-  }
-  if (!unread) return null;
+  const status = resolveSidebarRowStatus({
+    unread,
+    running,
+    background: false,
+    needsAttention: false,
+  });
+  if (!status) return null;
   return (
-    <span className="flex size-5 shrink-0 items-center justify-center" aria-label="Unread">
-      <span className="size-2 rounded-full bg-token-charts-blue" />
-    </span>
+    <SidebarStatusIndicator status={status} label={status === "unread" ? "Unread" : undefined} />
   );
 }
 

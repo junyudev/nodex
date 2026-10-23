@@ -92,6 +92,13 @@
       ]
     },
     {
+      "id": "bg-info-solid",
+      "selector": ".bg-info-solid",
+      "dependencies": [
+        "--color-background-info-solid"
+      ]
+    },
+    {
       "id": "bg-text-info",
       "selector": ".bg-text-info",
       "dependencies": [
