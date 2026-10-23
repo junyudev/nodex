@@ -1,0 +1,127 @@
+src/shared/agent-runtime-subagent-display.ts
+  s_69afea56824b4b::t_668c2f21081073 1-31
+src/renderer/features/local-conversation/agent-runtime-conversation-owner.ts
+  s_69afea56824b4b::t_668c2f21081073 23,1532,1537-1539,1554
+src/renderer/features/local-conversation/agent-runtime-transcript-projection.ts
+  s_69afea56824b4b::t_668c2f21081073 17,425-426,436
+  s_69afea56824b4b::t_f28abfad34f169 417-418
+src/renderer/features/local-conversation/agent-runtime-subagent-overview.node.test.ts
+  s_69afea56824b4b::t_75263113634d7e 49-61
+src/renderer/features/local-conversation/delegated-task-presentation.ts
+  s_69afea56824b4b::t_5e66b2f451b0cc 33-74
+tests/e2e/fixtures/codex-subagent-app-server.mjs
+  s_69afea56824b4b::t_50100d334aa242 60
+src/renderer/features/local-conversation/view/blocks/local-conversation-block-leaves.tsx
+  s_69afea56824b4b::t_6fd58be5e56ff9 737,739,745
+  s_69afea56824b4b::t_d3fcbdd2335a0d 40-43,640,746-750,754-772,775-779
+  s_69afea56824b4b::t_b398f9ab067967 738,740-744
+  s_69afea56824b4b::t_6b70b706b07c07 32,110,141,169,634,636-639,642-643,645,647,684,704,714,720,730-736,751-753,773
+src/renderer/features/local-conversation/projection/agent-activity-v2-summary.ts
+  s_69afea56824b4b::t_9471af3ed2df0b 14,154-157
+src/renderer/features/local-conversation/delegated-task-presentation.node.test.ts
+  s_69afea56824b4b::t_43cf246f9e55fe 1-28
+  s_69afea56824b4b::t_14754b22397751 29-41
+src/renderer/features/local-conversation/agent-runtime-subagent-overview.ts
+  s_69afea56824b4b::t_668c2f21081073 7,32-69
+src/renderer/features/local-conversation/projection/build-renderer-item-stream.ts
+  s_69afea56824b4b::t_557ef457b0c755 96-99,192-199,204-207,209-235,734-737,740-745,776,783-784
+  s_69afea56824b4b::t_9471af3ed2df0b 7,770-775,782,785
+  s_69afea56824b4b::t_968f12fccce005 200-203,208
+src/renderer/features/local-conversation/thread-stage-types.ts
+  s_69afea56824b4b::t_557ef457b0c755 747-748
+src/renderer/features/local-conversation/normalized-transcript-hooks.tsx
+  s_69afea56824b4b::t_a0eb625ef55190 11-12,225-236
+docs/product-specs/agent-runtime-behavior.md
+  s_69afea56824b4b::t_723f49d9f70209 313-315,328-329
+  s_69afea56824b4b::t_b6885e1503cada 309-312,316-327,330-335
+src/renderer/components/ui/hover-card.tsx
+  s_69afea56824b4b::t_3d73ca12ee0a14 85,103,199-200,206-209
+src/renderer/features/local-conversation/projection/delegated-task-read-query.ts
+  s_69afea56824b4b::t_a0eb625ef55190 1-35
+  s_69afea56824b4b::t_4869c7ab6ea1ab 36-39
+src/renderer/features/local-conversation/view/shared/subagent-activity-inline.tsx
+  s_69afea56824b4b::t_d3fcbdd2335a0d 46-51,56-62,64-66,190,195,220
+  s_69afea56824b4b::t_c781ce85f5eca0 2-15,74-78,80-88,90,92-119,123-189,191-194,196-219,221-228
+  s_69afea56824b4b::t_7bdfc7e3be4c7b 55,120-122
+  s_69afea56824b4b::t_d82963eafb9ccd 79
+  s_69afea56824b4b::t_3d73ca12ee0a14 1,89,91
+  s_69afea56824b4b::t_3871db01cd01db 16-45,52-54,63,67-73
+src/renderer/features/local-conversation/agent-runtime-transcript-projection.node.test.ts
+  s_69afea56824b4b::t_75263113634d7e 159-176
+src/renderer/features/local-conversation/projection/delegated-task-read-query.node.test.ts
+  s_69afea56824b4b::t_43cf246f9e55fe 1-56
+  s_69afea56824b4b::t_d2406ffd4a3961 57-68
+src/shared/agent-runtime-subagent-display.node.test.ts
+  s_69afea56824b4b::t_668c2f21081073 1-40
+src/renderer/features/local-conversation/view/blocks/local-conversation-block-leaves.test.tsx
+  s_69afea56824b4b::t_f2d4c637e6cc40 1829-1852
+src/renderer/features/local-conversation/view/shared/delegated-task-row.test.tsx
+  s_69afea56824b4b::t_f20394cadc8cf0 2,4,14,69,73,75-76,78,81-91,93,96,107-114,116,127,131-132,137-144,146,159-226
+  s_69afea56824b4b::t_1bdb3bc810925e 227
+src/renderer/features/local-conversation/agent-runtime-conversation-owner.node.test.ts
+  s_69afea56824b4b::t_75263113634d7e 1637-1675,1677-1695
+  s_69afea56824b4b::t_fc08ea809333f0 1676
+src/shared/codex-conversation-state/codex-conversation-state.ts
+  s_69afea56824b4b::t_668c2f21081073 458-459
+tests/e2e/subagents.spec.ts
+  s_69afea56824b4b::t_7fcbf63d49c94c 401
+  s_69afea56824b4b::t_8b0d654322106e 54-57,64,254
+  s_69afea56824b4b::t_50100d334aa242 246-249,262-263,272-276,298-302,328-339,348-358,370-377,390-393,395-397,404-407,412-419
+  s_69afea56824b4b::t_6122437b9b9d7c 236-245,250-253,255-256,260-261,264,266-267,277,282-283,285-293,295-297,303-306,308-310,315-322,359-369,378-387,389,394,398-400,402-403,408-411,420-423
+  s_69afea56824b4b::t_9c9c7504132ebc 284,307,388
+  s_69afea56824b4b::t_0885785f66fc2b 324-327
+  s_69afea56824b4b::t_a536a8387e69a9 257-259,278-281
+  s_69afea56824b4b::t_33ed8105b12827 265,344-347
+  s_69afea56824b4b::t_092b12837b8e7d 323
+  s_69afea56824b4b::t_97eeaeb783688b 268-271,311,340-343
+  s_69afea56824b4b::t_ead942e88661e4 294,312-314
+  s_69afea56824b4b::t_a45b3e39155fbd 424-426
+docs/product-specs/codex-thread-transcript-behavior.md
+  s_69afea56824b4b::t_b6885e1503cada 546-550
+src/renderer/components/ui/hover-card.test.tsx
+  s_69afea56824b4b::t_7b3d738b591497 34,40,49,101-142
+  s_69afea56824b4b::t_763ccdb1707644 143,145-173
+  s_5526ae1e4136d2::t_c5291a08f5c53b 144
+src/renderer/features/local-conversation/projection/build-renderer-item-stream.node.test.ts
+  s_69afea56824b4b::t_a8b31cd119e5c8 1316-1421
+src/renderer/features/local-conversation/projection/build-turn-render-model.node.test.ts
+  s_69afea56824b4b::t_e135621587df6d 1275-1307
+src/renderer/features/local-conversation/view/blocks/local-conversation-block-renderer.tsx
+  s_69afea56824b4b::t_5804ed46c9bf4a 65,97,200,224,319
+src/renderer/features/local-conversation/view/local-conversation-thread-body-owner.tsx
+  s_69afea56824b4b::t_0b9793a3dbdd6a 1408
+src/renderer/features/local-conversation/view/local-conversation-thread-turn.tsx
+  s_69afea56824b4b::t_07f4d747f3ed6c 82,225,288,315
+src/renderer/features/local-conversation/view/local-conversation-timeline-subagent.tsx
+  s_69afea56824b4b::t_3291071cdc4fc9 17,22,47-52
+src/renderer/features/local-conversation/view/local-conversation-turn-entry.tsx
+  s_69afea56824b4b::t_862f5d19311e25 63,93,235,296,346
+src/renderer/features/local-conversation/view/local-conversation-virtualized-turn-list.tsx
+  s_69afea56824b4b::t_d0a3c19e0d3b7c 257,424,458,534,588,622,1858
+src/renderer/features/local-conversation/view/shared/delegated-task-row.tsx
+  s_69afea56824b4b::t_915d09c511921d 1,13,18,22,28,30,32,35,37,39,45-47,49-58,60-61,68-84,90-174
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "c23d7d919acc7ee187bd52701be53916c0722293",
+  "prompts": {},
+  "sessions": {
+    "s_5526ae1e4136d2": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a16870-8121-7531-bf97-12c80b737866",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_69afea56824b4b": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a16882-d813-7dd2-badd-5c2341d81394",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
