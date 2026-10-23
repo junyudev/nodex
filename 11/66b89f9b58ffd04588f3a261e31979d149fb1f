@@ -1,0 +1,156 @@
+src/main/agent-runtime/AgentRuntimeApplication.node.test.ts
+  s_8f256f787bdd1d::t_f162346e3b16b1 337,797-818
+  s_8f256f787bdd1d::t_0463cd5a481a4c 721-722
+  s_76ea05845c4dbe::t_34dac578cd33f5 819
+packages/agent-runtime/src/nodex/NativeInteraction.ts
+  s_8f256f787bdd1d::t_c8babd3c0f0b0c 93,383-387,389-393,395-398,405-407,409-410,427,430,558-559,641,645,656
+  s_8f256f787bdd1d::t_e4bc2aa3195d7a 31-34,95-110,120,399-402,408,412,417,651-654,657-662,735
+  s_8f256f787bdd1d::t_4e8960aead6560 637-640
+  s_82957c2d2298ff::t_8273bc575599bd 403-404
+src/main/agent-runtime/AgentRuntimeSupervisor.node.test.ts
+  s_8f256f787bdd1d::t_f162346e3b16b1 290-310
+src/shared/codex-composer-prediction.ts
+  s_8f256f787bdd1d::t_c71016ac6b9e5f 34
+src/main/agent-runtime/AgentRuntimeSessionPredictions.node.test.ts
+  s_8f256f787bdd1d::t_7de75512f4d5be 1-23,25-29,31,33-37,39-41,43-131,139-145,150-156,162-163,180-214,216-226
+  s_8f256f787bdd1d::t_95dbe8ff874e29 24,30,32,42,215
+  s_8f256f787bdd1d::t_5252fe6a1b318e 38,132-138,146-149,157-161,164-179
+src/main/agent-runtime/AgentRuntimeSessionPredictions.ts
+  s_8f256f787bdd1d::t_212faa0851bbee 62
+  s_8f256f787bdd1d::t_0244a3249971ba 1-20,22-60,63-87,90-95
+  s_8f256f787bdd1d::t_1202cefaf3c13b 21,61,88-89
+tests/e2e/composer-predictions.spec.ts
+  s_8f256f787bdd1d::t_68b2ce96378a1c 143
+  s_8f256f787bdd1d::t_8b557cffd85049 1-52,57-59,61-94,122-142,144-161,163-164,166,172-191,194-215,220-224,229-241,243-249,254-262,264,273-283
+  s_8f256f787bdd1d::t_993a5b564e8bd3 53-56,193,263
+  s_8f256f787bdd1d::t_a38dedda6e7993 60,95-121
+  s_8f256f787bdd1d::t_0b406093552d5d 216-219,225-228,250-253
+  s_8f256f787bdd1d::t_a8e7e139d85a50 167-171
+  s_8f256f787bdd1d::t_983554f41b4f7e 162,165,242,265-272
+  s_8f256f787bdd1d::t_f2ec15ba660f81 192
+src/main/app/ConversationApplicationLive.ts
+  s_8f256f787bdd1d::t_87f13989293ff1 9-10,425,431-438
+docs/product-specs/composer-prediction-behavior.md
+  s_8f256f787bdd1d::t_4aeb29e15c5f71 31,74
+  s_8f256f787bdd1d::t_6f1e0a3a80092b 3,10-12,29,71-73
+  s_8f256f787bdd1d::t_58a5d3b0f0687a 4-6,13-14,32,75-76
+docs/ARCHITECTURE.md
+  s_8f256f787bdd1d::t_6f1e0a3a80092b 795-797
+docs/CONFIGURATION.md
+  s_8f256f787bdd1d::t_6f1e0a3a80092b 23-37
+CHANGELOG.md
+  s_8f256f787bdd1d::t_6f1e0a3a80092b 9
+packages/agent-runtime/src/nodex/NativeInteraction.test.ts
+  s_8f256f787bdd1d::t_c522c9fccef8ad 462-503
+  s_8f256f787bdd1d::t_b54c33fb3ca566 133-137,157,222-228,230-232,356-359,365-379,412-417,419-436
+  s_8f256f787bdd1d::t_1202cefaf3c13b 122-126,229
+  s_8f256f787bdd1d::t_4e8960aead6560 380-411,418
+  s_8f256f787bdd1d::t_02832837540d28 437,504-505
+  s_8f256f787bdd1d::t_300fdf31061cde 438
+src/main/agent-runtime/AgentRuntimeSupervisor.ts
+  s_8f256f787bdd1d::t_0463cd5a481a4c 406-409
+src/main/codex-application/CodexComposerPredictionDefaults.ts
+  s_8f256f787bdd1d::t_c71016ac6b9e5f 1-23
+src/renderer/features/local-conversation/view/composer/use-composer-prediction.ts
+  s_8f256f787bdd1d::t_d37531df77a7ee 2,7,28,44-46,95-96,99
+scripts/scenarios/runtime/scripted-model-server.test.ts
+  s_8f256f787bdd1d::t_e8cfc57d30884c 314,341,345-347,349-362,364-380
+  s_8f256f787bdd1d::t_6bedb585d9b804 348,363,459-461
+  s_8f256f787bdd1d::t_b17ae347d11cc7 381-382
+src/main/codex-application/CodexComposerPrediction.node.test.ts
+  s_8f256f787bdd1d::t_d37531df77a7ee 1205-1237,1265-1266
+  s_8f256f787bdd1d::t_1b16cf6179eafc 990,1006
+  s_8f256f787bdd1d::t_fddaee13928f2e 1184-1204,1238-1239
+scripts/scenarios/runtime/scripted-model-server.ts
+  s_8f256f787bdd1d::t_55fa4ee2e07994 49-50,554,653-654,656
+  s_8f256f787bdd1d::t_a3f7c96b0511ee 557-571,655,657-659
+src/main/codex-application/CodexComposerPrediction.ts
+  s_8f256f787bdd1d::t_8c82c8833e66fd 544-546,552-557,569
+  s_8f256f787bdd1d::t_c71016ac6b9e5f 83,87-89,177-179,182-185,662,666,671,678
+  s_8f256f787bdd1d::t_d37531df77a7ee 180-181,547-551,558-568,667-670
+src/main/agent-runtime/AgentRuntimeApplication.ts
+  s_8f256f787bdd1d::t_0463cd5a481a4c 95-96,1927-1928
+src/main/app/AgentRuntimeApplicationLive.ts
+  s_8f256f787bdd1d::t_87f13989293ff1 88-90,301-305,311-315
+  s_8f256f787bdd1d::t_0463cd5a481a4c 211-213,306-310
+docs/product-specs/settings-route-behavior.md
+  s_8f256f787bdd1d::t_a910224455c823 181-186
+src/main/codex-application/CodexComposerPredictionDefaults.node.test.ts
+  s_8f256f787bdd1d::t_2312438985f1ff 1-34
+src/main/host-runtime/AppUpdateRuntime.test.ts
+  s_8f256f787bdd1d::t_a53e838ec2bd59 1,108
+src/main/host-runtime/ApplicationSchedulers.test.ts
+  s_8f256f787bdd1d::t_29cad15469436e 341
+src/main/ipc/handlers/ApplicationSettingsIpc.test.ts
+  s_8f256f787bdd1d::t_a9b6585bbfb75b 95,97-105,156-157,206-229
+src/main/ipc/handlers/ApplicationSettingsIpc.ts
+  s_8f256f787bdd1d::t_f49f1b6b8667b6 1-4,11,78,197-206,626-646
+src/main/settings/ApplicationSettings.test-support.ts
+  s_8f256f787bdd1d::t_f3eef4beca909f 2,12,17
+src/main/settings/ApplicationSettings.test.ts
+  s_8f256f787bdd1d::t_7c7e0937284914 15-16,40-69
+src/main/settings/ApplicationSettings.ts
+  s_8f256f787bdd1d::t_d2ef58080802ce 1,13-14,77,95,120,157,173,271,332-334,354-355,412,430-431,444-448
+src/main/settings/application-settings-persistence.ts
+  s_8f256f787bdd1d::t_a599318a63b968 1-5,110,1432-1450
+src/renderer/components/workbench/general-settings-page.tsx
+  s_8f256f787bdd1d::t_cb90dede212d46 7,97-102
+src/renderer/components/workbench/workbench-settings-controls.tsx
+  s_8f256f787bdd1d::t_cf22b56927cc92 53,409-440
+src/renderer/components/workbench/workbench-settings-search-catalog.ts
+  s_8f256f787bdd1d::t_9d749eda45690c 159-162
+src/renderer/features/local-conversation/composer-prediction-settings.test.tsx
+  s_8f256f787bdd1d::t_222387029dfe24 1-5,7-8,11-22,25-171
+src/renderer/features/local-conversation/composer-prediction-settings.ts
+  s_8f256f787bdd1d::t_2cdfe9b09d3422 1-18,20-27,29,31-96,99-118,121-124
+src/renderer/features/local-conversation/local-conversation-store.test.tsx
+  s_8f256f787bdd1d::t_fc26b917aed738 2262
+src/renderer/features/local-conversation/view/composer/use-composer-prediction.test.tsx
+  s_8f256f787bdd1d::t_432474660b8c29 6-7,23-28,30-43,225,235-237,246,262-264
+src/renderer/lib/electron-renderer-transport.ts
+  s_8f256f787bdd1d::t_0ebc7151efa260 364-371
+src/renderer/lib/latest-returned-value-owner.node.test.ts
+  s_8f256f787bdd1d::t_ccbe11f2a2daad 27-51
+src/renderer/lib/latest-returned-value-owner.ts
+  s_8f256f787bdd1d::t_b2ec8f7d29ca76 20,125-126,130-136
+src/renderer/lib/renderer-transport.ts
+  s_8f256f787bdd1d::t_7b111d104202d9 23-27
+src/shared/composer-prediction-settings.ts
+  s_8f256f787bdd1d::t_b9941e3c7da400 1-8
+src/shared/ipc-api.ts
+  s_8f256f787bdd1d::t_772ca476a85a54 1464-1471,2993
+src/shared/ipc-endpoint-policy.ts
+  s_8f256f787bdd1d::t_5cd9eff5c4fc6b 250,655
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "1166b89f9b58ffd04588f3a261e31979d149fb1f",
+  "prompts": {},
+  "sessions": {
+    "s_76ea05845c4dbe": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a168f2-6a34-76e2-a474-5d967969d752",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_82957c2d2298ff": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a16890-25de-78c3-9415-c0f67a5213d3",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_8f256f787bdd1d": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1688c-b921-7ed3-8c57-4feee8e41112",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
