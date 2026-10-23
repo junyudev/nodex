@@ -16,6 +16,7 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- Sidebar chats can be dragged into empty or collapsed Sections, including chats that have not started yet, with consistent destination feedback and reliable moves back to Projects, Chats and Pinned.
 - Images sent while steering a running chat remain visible with their message, including after activity is collapsed or the chat is reopened.
 - Codex tool calls retain their action titles, source icons and rich results, including JavaScript calls and image outputs.
 - Claude Code and OpenCode slash menus retain supported chat actions, including Fork, Side, Merge back and Compact.

@@ -228,6 +228,7 @@ mod tests {
             ProjectWorkspaceRead::TaskWindow {
                 project_id: Some("project:a".to_owned()),
                 include_archived: Some(false),
+                placement_scope: Default::default(),
                 window: nodex_core_contracts::collection::CollectionWindowRequest {
                     after: None,
                     first: Some(5),

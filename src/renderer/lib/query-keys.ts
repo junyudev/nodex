@@ -1,5 +1,8 @@
 import { DEFAULT_CODEX_HOST_ID } from "../../shared/codex-host";
-import type { ProtocolMcpResourceReadParams } from "../../shared/types";
+import type {
+  ProjectSessionSummaryWindowInput,
+  ProtocolMcpResourceReadParams,
+} from "../../shared/types";
 import type { ContentRoutingContext } from "../../shared/content-routing-context";
 import type {
   WorkspaceDirectoryEntriesInput,
@@ -143,8 +146,13 @@ export const queryKeys = {
   },
   projectSessions: {
     all: () => ["projectSessions"] as const,
-    summaries: (projectId: string | null) =>
-      ["projectSessions", "summaries", normalizeNullable(projectId)] as const,
+    summaries: (
+      projectId: string | null,
+      placementScope: NonNullable<ProjectSessionSummaryWindowInput["placementScope"]> = "all",
+    ) =>
+      placementScope === "builtin"
+        ? (["projectSessions", "summaries", normalizeNullable(projectId), "builtin"] as const)
+        : (["projectSessions", "summaries", normalizeNullable(projectId)] as const),
     detail: (sessionId: string) => ["projectSessions", "detail", sessionId] as const,
   },
   projectActivity: {

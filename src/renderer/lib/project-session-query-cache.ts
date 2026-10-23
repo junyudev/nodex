@@ -222,7 +222,6 @@ export async function invalidateProjectSessionScope(
         queryKey: queryKeys.projectSessions.summaries(
           scope.kind === "project" ? scope.projectId : null,
         ),
-        exact: true,
       }),
     );
   }

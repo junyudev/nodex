@@ -166,6 +166,7 @@ import {
 import {
   projectSessionProjectionsByProject,
   useWorkbenchSessionCatalog,
+  useWorkbenchSessionCollections,
 } from "@/lib/use-workbench-session-catalog";
 import {
   createWorkbenchSceneNavigator,
@@ -690,6 +691,13 @@ export function WorkbenchRuntime({
     !projectAgentDockSessionQuery.data.archived
       ? projectAgentDockSessionQuery.data
       : null;
+  const sidebarSessionCollections = useWorkbenchSessionCollections({
+    projects,
+    expandedProjectIds,
+    activeProjectId: sessionCatalog.activeProjectId,
+    resolveScene: sessionCatalog.resolveScene,
+    placementScope: "builtin",
+  });
   const sessionCollectionsByProject = sessionCatalog.collectionsByProject;
   const projectlessSessionCollection = sessionCatalog.projectlessCollection;
   const sessionsByProject = useMemo<Record<string, ProjectSession[]>>(
@@ -2054,6 +2062,7 @@ export function WorkbenchRuntime({
     pendingSessionOpen,
     pendingWorktreeClientThreadId,
     catalog: sessionCatalog,
+    sidebarCollections: sidebarSessionCollections,
     window: workbenchWindow,
     panelController,
     codexControl: workbenchCodexControl,
@@ -4616,8 +4625,8 @@ export function WorkbenchRuntime({
     activeSessionId: activeSession?.id ?? null,
     activePendingClientThreadId: pendingWorktreeClientThreadId,
     contextMenuSessionId,
-    sessionCollectionsByProject,
-    projectlessSessionCollection,
+    sessionCollectionsByProject: sidebarSessionCollections.collectionsByProject,
+    projectlessSessionCollection: sidebarSessionCollections.projectlessCollection,
     sidebarThreadModel,
     pendingStableWorktrees,
     expandedProjectIds,
@@ -4626,8 +4635,8 @@ export function WorkbenchRuntime({
     projectsSectionCollapsed,
     chatsSectionCollapsed,
     sidebarCollapsibleSections: sidebarState.sections,
-    onLoadMoreTaskWindow: loadMoreProjectSessionSummaries,
-    onRetryTaskWindow: sessionCatalog.retryCollection,
+    onLoadMoreTaskWindow: sidebarSessionCollections.loadMore,
+    onRetryTaskWindow: sidebarSessionCollections.retryCollection,
     width: sidebarWidth,
     getWindowZoom,
     onResizeWidth: applySidebarWidth,

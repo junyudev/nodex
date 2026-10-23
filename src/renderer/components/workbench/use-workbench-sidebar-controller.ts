@@ -44,6 +44,7 @@ import {
 import type {
   WorkbenchSessionCatalog,
   WorkbenchSessionCatalogWindowPort,
+  WorkbenchSessionCollections,
   WorkbenchSessionPlacement,
 } from "@/lib/use-workbench-session-catalog";
 import type { WorkbenchPanelController } from "@/lib/use-workbench-panel-controller";
@@ -59,6 +60,7 @@ import type {
 import type { ProjectSessionForkTarget } from "../../../shared/types";
 import {
   isCodexSidebarThreadContainerId,
+  readCodexSidebarThreadContainerLocation,
   type CodexSidebarThreadMoveInput,
   type CodexSidebarThreadMovePlacement,
   type CodexSidebarThreadMoveSuccess,
@@ -90,6 +92,8 @@ import {
 } from "@/lib/workspace-catalog-commands";
 import { isCodexAgentBackendBinding } from "../../../shared/agent-backend";
 import { resolveSidebarThreadMutationAuthority } from "./sidebar-thread-backend-routing";
+import { readSidebarSectionContainerId } from "../../../shared/sidebar-sections";
+import { moveSidebarSectionSession, resolveSidebarDropSession } from "./sidebar-session-drop";
 
 type ProjectSession = WorkbenchSessionRenderProjection;
 type SidebarState = Pick<
@@ -119,6 +123,7 @@ interface WorkbenchSidebarControllerInput {
   } | null;
   readonly pendingWorktreeClientThreadId: string | null;
   readonly catalog: WorkbenchSessionCatalog;
+  readonly sidebarCollections: WorkbenchSessionCollections;
   readonly window: WorkbenchSessionCatalogWindowPort;
   readonly panelController: WorkbenchPanelController;
   readonly codexControl: ReturnType<typeof useCodexAppServerControl>;
@@ -170,6 +175,7 @@ export function useWorkbenchSidebarController({
   pendingSessionOpen,
   pendingWorktreeClientThreadId,
   catalog,
+  sidebarCollections,
   window: workbenchWindow,
   panelController,
   codexControl,
@@ -196,10 +202,13 @@ export function useWorkbenchSidebarController({
 
   const refreshProjectSessions = useCallback(
     async (projectId: string | null) => {
-      const presentations = await catalog.refresh(projectId);
+      const [presentations] = await Promise.all([
+        catalog.refresh(projectId),
+        sidebarCollections.refresh(projectId),
+      ]);
       return presentations.map(presentWorkbenchSession);
     },
-    [catalog],
+    [catalog, sidebarCollections],
   );
 
   const moveSidebarThreadInputForSidebar = useCallback(
@@ -212,7 +221,10 @@ export function useWorkbenchSidebarController({
           const scopeIds = new Set([result.source.projectId, result.destination.projectId]);
           await Promise.all(
             [...scopeIds].map(async (projectId) => {
-              await catalog.refreshThrough(projectId, result.projectionRevision);
+              await Promise.all([
+                catalog.refreshThrough(projectId, result.projectionRevision),
+                sidebarCollections.refreshThrough(projectId, result.projectionRevision),
+              ]);
             }),
           );
           return result;
@@ -224,24 +236,18 @@ export function useWorkbenchSidebarController({
 
       return await submitMove(initialInput);
     },
-    [catalog],
+    [catalog, sidebarCollections],
   );
 
-  const moveSidebarThreadForSidebar = useCallback(
+  const moveNativeSidebarThreadForSidebar = useCallback(
     async (drop: SidebarThreadDropRequest): Promise<SidebarThreadDropCommit | null> => {
       if (
+        drop.threadId === null ||
         !isCodexSidebarThreadContainerId(drop.sourceContainerId) ||
         !isCodexSidebarThreadContainerId(drop.targetContainerId)
       ) {
         throw new Error("Invalid sidebar thread move container");
       }
-      const sidebarItem = [...sidebarThreadModel.threadItemsByKey.values()].find(
-        (candidate) => candidate.threadId === drop.threadId,
-      );
-      if (!sidebarItem || resolveSidebarThreadMutationAuthority(sidebarItem).kind !== "codex") {
-        return null;
-      }
-
       const placement: CodexSidebarThreadMovePlacement = drop.useDefaultOrder
         ? { beforeThreadId: null, useDefaultOrder: true }
         : drop.afterThreadId !== undefined
@@ -265,7 +271,48 @@ export function useWorkbenchSidebarController({
             projectionRevision: result.projectionRevision,
           };
     },
-    [moveSidebarThreadInputForSidebar, sidebarThreadModel.threadItemsByKey],
+    [moveSidebarThreadInputForSidebar],
+  );
+
+  const moveSidebarThreadForSidebar = useCallback(
+    async (drop: SidebarThreadDropRequest): Promise<SidebarThreadDropCommit | null> => {
+      const targetSectionId = readSidebarSectionContainerId(drop.targetContainerId);
+      const sourceSectionId = readSidebarSectionContainerId(drop.sourceContainerId);
+      if (targetSectionId === null && sourceSectionId === null) {
+        const item = [...sidebarThreadModel.threadItemsByKey.values()].find(
+          (candidate) => candidate.threadId === drop.threadId,
+        );
+        if (!item || resolveSidebarThreadMutationAuthority(item).kind !== "codex") return null;
+        return await moveNativeSidebarThreadForSidebar(drop);
+      }
+
+      const session = await resolveSidebarDropSession(drop, knownSessions, catalog);
+      if (session === null) throw new Error("That chat is not available");
+
+      await moveSidebarSectionSession({
+        drop,
+        session,
+        moveNativeThread: moveNativeSidebarThreadForSidebar,
+      });
+      const targetLocation = isCodexSidebarThreadContainerId(drop.targetContainerId)
+        ? readCodexSidebarThreadContainerLocation(drop.targetContainerId)
+        : null;
+      const scopes = new Set([session.projectId]);
+      if (targetLocation !== null) scopes.add(targetLocation.projectId);
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: SIDEBAR_SECTIONS_QUERY_KEY }),
+        ...[...scopes].map((projectId) => refreshProjectSessions(projectId)),
+      ]);
+      return null;
+    },
+    [
+      catalog,
+      knownSessions,
+      moveNativeSidebarThreadForSidebar,
+      queryClient,
+      refreshProjectSessions,
+      sidebarThreadModel.threadItemsByKey,
+    ],
   );
 
   const mergeSessionInState = useCallback(

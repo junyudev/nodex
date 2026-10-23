@@ -3,8 +3,8 @@ use nodex_core_contracts::collection::{
 };
 use nodex_core_contracts::workspace::{
     CodexThreadActiveFlag, CodexThreadStatusType, ProjectWorkspaceSessionExecutionRef,
-    ProjectWorkspaceSessionSummary, ProjectWorkspaceTaskSummary, ProjectWorkspaceTaskThreadSummary,
-    ProjectWorkspaceThreadStatus,
+    ProjectWorkspaceSessionSummary, ProjectWorkspaceTaskPlacementScope,
+    ProjectWorkspaceTaskSummary, ProjectWorkspaceTaskThreadSummary, ProjectWorkspaceThreadStatus,
 };
 use rusqlite::types::Value as SqlValue;
 use rusqlite::{Connection, params, params_from_iter};
@@ -44,6 +44,7 @@ pub(super) fn read_task_window(
     commit_head: i64,
     project_id: Option<&str>,
     include_archived: bool,
+    placement_scope: ProjectWorkspaceTaskPlacementScope,
     request: &CollectionWindowRequest,
 ) -> Result<CollectionWindow<ProjectWorkspaceTaskSummary>, StoreError> {
     read_task_window_in_scope(
@@ -53,6 +54,7 @@ pub(super) fn read_task_window(
         project_id,
         false,
         include_archived,
+        placement_scope,
         request,
     )
 }
@@ -71,6 +73,7 @@ pub(super) fn read_pinned_task_window(
         None,
         true,
         include_archived,
+        ProjectWorkspaceTaskPlacementScope::All,
         request,
     )
 }
@@ -83,6 +86,7 @@ fn read_task_window_in_scope(
     project_id: Option<&str>,
     pinned_only: bool,
     include_archived: bool,
+    placement_scope: ProjectWorkspaceTaskPlacementScope,
     request: &CollectionWindowRequest,
 ) -> Result<CollectionWindow<ProjectWorkspaceTaskSummary>, StoreError> {
     if !pinned_only && let Some(project_id) = project_id {
@@ -99,10 +103,11 @@ fn read_task_window_in_scope(
     }
     let normalized = normalize_request(request)?;
     let fingerprint = cursor::query_fingerprint(&(
-        "workspace_task_window_v4",
+        "workspace_task_window_v5",
         project_id,
         pinned_only,
         include_archived,
+        placement_scope,
     ))?;
     let subject = CollectionCursorSubject {
         kind: if pinned_only {
@@ -154,6 +159,17 @@ fn read_task_window_in_scope(
             .map_err(|_| invalid("Workspace task window size is invalid"))?,
     ));
     let limit_parameter = parameters.len();
+    let placement_predicate = match placement_scope {
+        ProjectWorkspaceTaskPlacementScope::All => "",
+        ProjectWorkspaceTaskPlacementScope::Builtin => {
+            "AND NOT EXISTS (SELECT 1 FROM workspace_sidebar_section_items item \
+               JOIN workspace_sidebar_sections section \
+                 ON section.library_id = item.library_id \
+                AND section.section_id = item.section_id \
+               WHERE item.session_id = session.id AND item.library_id = ?2 \
+                 AND section.kind = 'custom' AND section.lifecycle = 'active')"
+        }
+    };
     let sql = format!(
         "WITH task_rows AS (\
            SELECT {TASK_SUMMARY_COLUMNS}, \
@@ -187,7 +203,8 @@ fn read_task_window_in_scope(
                  AND project.lifecycle <> 'archived'\
              )) \
              AND (?3 = 1 OR session.archived = 0) \
-             AND (thread.thread_id IS NULL OR thread.parent_thread_id IS NULL)\
+             AND (thread.thread_id IS NULL OR thread.parent_thread_id IS NULL) \
+             {placement_predicate}\
          ) \
          SELECT * FROM task_rows {cursor_predicate} \
          ORDER BY pin_bucket, lane_order, session_id LIMIT ?{limit_parameter}"
@@ -370,14 +387,14 @@ mod tests {
     };
     use nodex_core_contracts::workspace::{
         ProjectSessionIntent, ProjectWorkspaceIntent, ProjectWorkspaceRead,
-        ProjectWorkspaceReadValue, ProjectWorkspaceThreadLane,
-        ProjectWorkspaceThreadMoveMetadataPatch, ProjectWorkspaceThreadPatch,
-        ProjectWorkspaceThreadPlacement,
+        ProjectWorkspaceReadValue, ProjectWorkspaceSidebarSectionItemRef,
+        ProjectWorkspaceThreadLane, ProjectWorkspaceThreadMoveMetadataPatch,
+        ProjectWorkspaceThreadPatch, ProjectWorkspaceThreadPlacement,
     };
 
     use super::*;
     use crate::workspace::test_support::{
-        apply, create_project, create_session_thread, read, seeded_workspace,
+        apply, context, create_project, create_session_thread, read, seeded_workspace,
     };
 
     fn task_window(
@@ -386,11 +403,28 @@ mod tests {
         after: Option<String>,
         first: u32,
     ) -> CollectionWindow<ProjectWorkspaceTaskSummary> {
+        task_window_with_placement(
+            workspace,
+            project_id,
+            after,
+            first,
+            ProjectWorkspaceTaskPlacementScope::All,
+        )
+    }
+
+    fn task_window_with_placement(
+        workspace: &crate::workspace::test_support::TestWorkspace,
+        project_id: Option<&str>,
+        after: Option<String>,
+        first: u32,
+        placement_scope: ProjectWorkspaceTaskPlacementScope,
+    ) -> CollectionWindow<ProjectWorkspaceTaskSummary> {
         let ProjectWorkspaceReadValue::TaskWindow { tasks } = read(
             &workspace.module,
             ProjectWorkspaceRead::TaskWindow {
                 project_id: project_id.map(str::to_owned),
                 include_archived: Some(false),
+                placement_scope,
                 window: CollectionWindowRequest {
                     after,
                     first: Some(first),
@@ -400,6 +434,165 @@ mod tests {
             panic!("task window read");
         };
         tasks
+    }
+
+    #[test]
+    fn builtin_task_windows_filter_section_placements_before_paging_and_scope_cursors() {
+        let workspace = seeded_workspace();
+        let module = &workspace.module;
+        apply(
+            module,
+            "create-section",
+            ProjectWorkspaceIntent::CreateSidebarSection {
+                section_id: "section:work".to_owned(),
+                name: "Work".to_owned(),
+                initial_item: None,
+            },
+        );
+        for index in 0..51 {
+            apply(
+                module,
+                &format!("create-section-draft-{index}"),
+                ProjectWorkspaceIntent::CreateSessionInSidebarSection {
+                    session_id: format!("session:draft:{index}"),
+                    section_id: "section:work".to_owned(),
+                    title: format!("Section draft {index}"),
+                    initial_page_ids: vec![],
+                },
+            );
+        }
+        for name in ["inbox", "other"] {
+            create_session_thread(
+                module,
+                &format!("create-{name}"),
+                &format!("session:{name}"),
+                &format!("thread:{name}"),
+                Some("project:default"),
+                100,
+            );
+            apply(
+                module,
+                &format!("move-{name}-to-chats"),
+                ProjectWorkspaceIntent::MoveThread {
+                    thread_id: format!("thread:{name}"),
+                    source: ProjectWorkspaceThreadLane::Project {
+                        project_id: "project:default".to_owned(),
+                    },
+                    target: ProjectWorkspaceThreadLane::Projectless,
+                    placement: ProjectWorkspaceThreadPlacement::Start,
+                    metadata: ProjectWorkspaceThreadMoveMetadataPatch::default(),
+                    workspace_transition: None,
+                    runtime_workspace_roots: None,
+                },
+            );
+        }
+
+        let generic_first = task_window(&workspace, None, None, 50);
+        assert_eq!(generic_first.items.len(), 50);
+        assert!(generic_first.next_cursor.is_some());
+        let generic_next = task_window(&workspace, None, generic_first.next_cursor.clone(), 50);
+        let all_ids = generic_first
+            .items
+            .iter()
+            .chain(&generic_next.items)
+            .map(|task| task.session.id.as_str())
+            .collect::<Vec<_>>();
+        assert_eq!(all_ids.len(), 53);
+        assert!(all_ids.contains(&"session:inbox"));
+        assert!(all_ids.contains(&"session:draft:50"));
+
+        let builtin = task_window_with_placement(
+            &workspace,
+            None,
+            None,
+            50,
+            ProjectWorkspaceTaskPlacementScope::Builtin,
+        );
+        assert_eq!(builtin.items.len(), 2);
+        assert!(builtin.next_cursor.is_none());
+        assert!(
+            builtin
+                .items
+                .iter()
+                .any(|task| task.session.id == "session:inbox")
+        );
+        let first = task_window_with_placement(
+            &workspace,
+            None,
+            None,
+            1,
+            ProjectWorkspaceTaskPlacementScope::Builtin,
+        );
+        let next = task_window_with_placement(
+            &workspace,
+            None,
+            first.next_cursor.clone(),
+            1,
+            ProjectWorkspaceTaskPlacementScope::Builtin,
+        );
+        assert_eq!(next.items.len(), 1);
+        assert_ne!(first.items[0].session.id, next.items[0].session.id);
+        assert!(next.next_cursor.is_none());
+        for (placement_scope, after) in [
+            (ProjectWorkspaceTaskPlacementScope::All, first.next_cursor),
+            (
+                ProjectWorkspaceTaskPlacementScope::Builtin,
+                generic_first.next_cursor,
+            ),
+        ] {
+            assert!(
+                module
+                    .read(
+                        &context(),
+                        nodex_core_contracts::ModuleReadRequest {
+                            contract_version:
+                                nodex_core_contracts::PROJECT_WORKSPACE_CONTRACT_VERSION,
+                            read: ProjectWorkspaceRead::TaskWindow {
+                                project_id: None,
+                                include_archived: Some(false),
+                                placement_scope,
+                                window: CollectionWindowRequest {
+                                    after,
+                                    first: Some(1)
+                                },
+                            },
+                        }
+                    )
+                    .is_err()
+            );
+        }
+
+        // Project-scoped pickers retain direct Section Sessions too.
+        create_session_thread(
+            module,
+            "create-project-chat",
+            "session:project",
+            "thread:project",
+            Some("project:default"),
+            200,
+        );
+        apply(module, "place-project-chat", ProjectWorkspaceIntent::MoveSidebarSectionItem {
+            item: ProjectWorkspaceSidebarSectionItemRef::Session { session_id: "session:project".to_owned() },
+            section_id: Some("section:work".to_owned()),
+            placement: nodex_core_contracts::workspace::ProjectWorkspaceSidebarSectionItemPlacement::End,
+        });
+        assert_eq!(
+            task_window(&workspace, Some("project:default"), None, 50)
+                .items
+                .len(),
+            1
+        );
+        assert!(
+            task_window_with_placement(
+                &workspace,
+                Some("project:default"),
+                None,
+                50,
+                ProjectWorkspaceTaskPlacementScope::Builtin
+            )
+            .items
+            .is_empty()
+        );
     }
 
     #[test]

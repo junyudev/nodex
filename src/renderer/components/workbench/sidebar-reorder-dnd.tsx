@@ -5,6 +5,7 @@ import {
   KeyboardSensor,
   pointerWithin,
   PointerSensor,
+  useDndContext,
   useSensor,
   useSensors,
   type CollisionDetection,
@@ -15,7 +16,7 @@ import {
   type DragStartEvent,
 } from "@dnd-kit/core";
 import { sortableKeyboardCoordinates } from "@dnd-kit/sortable";
-import { useCallback, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import {
   PINNED_PROJECT_CONTAINER_ID,
@@ -83,6 +84,33 @@ type ActiveSidebarDrag =
       sectionId: string;
       zoom: number;
     };
+
+interface SidebarDragCollision {
+  activeId: DragMoveEvent["active"]["id"];
+  collisions: DragMoveEvent["collisions"];
+  over: DragMoveEvent["over"];
+  pointerY: number | null;
+}
+
+function resolveSidebarDragFrame<Event extends DragMoveEvent>(
+  event: Event,
+  collision: SidebarDragCollision | null,
+): { event: Event; pointerY: number | null } {
+  if (collision === null || collision.activeId !== event.active.id) {
+    return { event, pointerY: null };
+  }
+  return {
+    event: { ...event, collisions: collision.collisions, over: collision.over },
+    pointerY: collision.pointerY,
+  };
+}
+
+function SidebarDragMeasurementObserver({ onRemeasure }: { onRemeasure: () => void }) {
+  const { droppableRects } = useDndContext();
+  // Remeasuring an unchanged target does not emit dnd-kit's onDragOver event.
+  useLayoutEffect(onRemeasure, [droppableRects, onRemeasure]);
+  return null;
+}
 
 function readWindowZoom(event: Event): number {
   if (typeof window === "undefined") return 1;
@@ -269,7 +297,8 @@ export function SidebarReorderDndProvider({
   const [activeDrag, setActiveDrag] = useState<ActiveSidebarDrag | null>(null);
   const [pendingThreadDrops, setPendingThreadDrops] = useState<PendingSidebarThreadDrop[]>([]);
   const canonicalThreadLanesRef = useRef<SidebarThreadCanonicalLanes>(EMPTY_CANONICAL_THREAD_LANES);
-  const pointerYRef = useRef<number | null>(null);
+  const latestCollisionRef = useRef<SidebarDragCollision | null>(null);
+  const lastDragEventRef = useRef<DragMoveEvent | null>(null);
   const destinationControllerRef = useRef<SidebarThreadReorderController | null>(null);
   const updatePendingThreadDrops = useCallback(
     (update: (current: PendingSidebarThreadDrop[]) => PendingSidebarThreadDrop[]) => {
@@ -287,9 +316,8 @@ export function SidebarReorderDndProvider({
     () => createSidebarThreadCollisionDetection(homeContainerIdByThreadId),
     [homeContainerIdByThreadId],
   );
-  const collisionDetection = useCallback<CollisionDetection>(
+  const detectCollision = useCallback<CollisionDetection>(
     (args) => {
-      pointerYRef.current = args.pointerCoordinates?.y ?? null;
       if (readSidebarGroupDndPayload(args.active.data.current)) {
         return sidebarProjectCollisionDetection(args);
       }
@@ -322,19 +350,48 @@ export function SidebarReorderDndProvider({
     [threadCollisionDetection],
   );
 
+  const collisionDetection = useCallback<CollisionDetection>(
+    (args) => {
+      const collisions = detectCollision(args);
+      const overId = collisions[0]?.id;
+      const container = args.droppableContainers.find((candidate) => candidate.id === overId);
+      const rect = overId === undefined ? undefined : args.droppableRects.get(overId);
+      // dnd-kit keeps event.over.rect until the over ID changes, even after remeasurement.
+      // Capture pointer and target geometry together so preview and drop share one boundary.
+      latestCollisionRef.current = {
+        activeId: args.active.id,
+        collisions,
+        pointerY: args.pointerCoordinates?.y ?? null,
+        over:
+          container && rect
+            ? {
+                id: container.id,
+                data: container.data,
+                disabled: container.disabled,
+                rect: { ...rect },
+              }
+            : null,
+      };
+      return collisions;
+    },
+    [detectCollision],
+  );
+
   const cancelDestinationController = useCallback((event?: DragCancelEvent | DragEndEvent) => {
     destinationControllerRef.current?.handleDragCancel?.(event);
     destinationControllerRef.current = null;
   }, []);
 
   const resetGestureState = useCallback(() => {
-    pointerYRef.current = null;
+    latestCollisionRef.current = null;
+    lastDragEventRef.current = null;
     setActiveDrag(null);
   }, []);
 
   const handleDragStart = useCallback(
     (event: DragStartEvent) => {
-      pointerYRef.current = null;
+      latestCollisionRef.current = null;
+      lastDragEventRef.current = null;
       cancelDestinationController();
       clearTextSelection();
 
@@ -385,10 +442,12 @@ export function SidebarReorderDndProvider({
   );
 
   const refreshDragTarget = useCallback(
-    (event: DragMoveEvent | DragOverEvent) => {
+    (sensorEvent: DragMoveEvent | DragOverEvent) => {
+      lastDragEventRef.current = sensorEvent;
+      const { event, pointerY } = resolveSidebarDragFrame(sensorEvent, latestCollisionRef.current);
       const projectPayload = readSidebarGroupDndPayload(event.active.data.current);
       if (projectPayload) {
-        projectPayload.controller.handleDragOver?.(event, pointerYRef.current);
+        projectPayload.controller.handleDragOver?.(event, pointerY);
         const itemTarget = projectItemTargetDetails(event.over?.data.current);
         const nextDestinationController =
           itemTarget?.controller !== projectPayload.controller ? itemTarget?.controller : null;
@@ -396,18 +455,17 @@ export function SidebarReorderDndProvider({
           cancelDestinationController();
           destinationControllerRef.current = nextDestinationController ?? null;
         }
-        nextDestinationController?.handleDragOver?.(event, pointerYRef.current);
+        nextDestinationController?.handleDragOver?.(event, pointerY);
         return;
       }
       const sectionPayload = readSidebarSectionRootDndPayload(event.active.data.current);
       if (sectionPayload) {
-        sectionPayload.controller.handleDragOver?.(event, pointerYRef.current);
+        sectionPayload.controller.handleDragOver?.(event, pointerY);
         return;
       }
 
       const activePayload = readSidebarThreadDndPayload(event.active.data.current);
       if (activePayload?.kind !== "sidebar-item") return;
-      const pointerY = pointerYRef.current;
       activePayload.controller.handleDragOver?.(event, pointerY);
 
       const overPayload = readSidebarThreadDndPayload(event.over?.data.current);
@@ -429,6 +487,11 @@ export function SidebarReorderDndProvider({
     },
     [cancelDestinationController],
   );
+
+  const refreshMeasuredTarget = useCallback(() => {
+    const event = lastDragEventRef.current;
+    if (event !== null) refreshDragTarget(event);
+  }, [refreshDragTarget]);
 
   const handleDragCancel = useCallback(
     (event: DragCancelEvent) => {
@@ -456,8 +519,8 @@ export function SidebarReorderDndProvider({
   );
 
   const handleDragEnd = useCallback(
-    (event: DragEndEvent) => {
-      const pointerY = pointerYRef.current;
+    (sensorEvent: DragEndEvent) => {
+      const { event, pointerY } = resolveSidebarDragFrame(sensorEvent, latestCollisionRef.current);
       const destinationController = destinationControllerRef.current;
       destinationControllerRef.current = null;
       resetGestureState();
@@ -592,6 +655,7 @@ export function SidebarReorderDndProvider({
           onDragCancel={handleDragCancel}
           onDragEnd={handleDragEnd}
         >
+          <SidebarDragMeasurementObserver onRemeasure={refreshMeasuredTarget} />
           {children}
           {overlay}
         </DndContext>

@@ -51,3 +51,26 @@ export function listAllSidebarSectionItems(sectionId: string): Promise<SidebarSe
 export function readSidebarSectionItemPlacement(item: SidebarSectionItemRef) {
   return invokeRendererQuery("sidebar-sections:item:placement", item);
 }
+
+export async function readSidebarPinnedSessionOrder(): Promise<{
+  readonly orderRevision: string;
+  readonly sessionIds: readonly string[];
+}> {
+  let orderRevision: string | null = null;
+  const items = await collectKeysetPages(async (after) => {
+    const window = await invokeRendererQuery("sidebar:builtin-order:list", "pinned_sessions", {
+      after,
+      first: SIDEBAR_SECTION_PAGE_SIZE,
+    });
+    if (orderRevision !== null && orderRevision !== window.orderRevision) {
+      throw new Error("Pinned chat order changed. Try the move again.");
+    }
+    orderRevision = window.orderRevision;
+    return window;
+  });
+  if (orderRevision === null) throw new Error("Pinned chat order is unavailable");
+  return {
+    orderRevision,
+    sessionIds: items.flatMap((item) => (item.kind === "session" ? [item.sessionId] : [])),
+  };
+}

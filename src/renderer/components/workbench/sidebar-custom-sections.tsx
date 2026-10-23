@@ -69,6 +69,7 @@ import {
 import { SidebarDropIndicator } from "./sidebar-drop-indicator";
 import { SidebarStatusIndicator } from "./sidebar-status-indicator";
 import { resolveSidebarGroupStatus } from "@/lib/sidebar-status";
+import { sessionExecutionThreadId } from "@/lib/session-execution";
 import { SidebarSectionNameDialog } from "./sidebar-section-name-dialog";
 import {
   isSidebarSectionSessionDragDisabled,
@@ -77,7 +78,7 @@ import {
 } from "./sidebar-section-item-dnd";
 import {
   SidebarThreadSortableItem,
-  useSidebarThreadDropContainer,
+  SidebarThreadDropContainer,
   useSidebarThreadReorderController,
   type SidebarThreadReorderController,
 } from "./sidebar-thread-reorder";
@@ -173,6 +174,7 @@ function SectionSessionDraggable({
   itemIds,
   nextItemId,
   sectionId,
+  sessionId,
   threadId,
   threadKey,
   children,
@@ -182,6 +184,7 @@ function SectionSessionDraggable({
   readonly itemIds?: string[];
   readonly nextItemId?: string | null;
   readonly sectionId: string;
+  readonly sessionId: string;
   readonly threadId: string | null;
   readonly threadKey: string;
   readonly children: ReactNode;
@@ -194,6 +197,7 @@ function SectionSessionDraggable({
       itemId={itemId}
       itemIds={itemIds}
       nextItemId={nextItemId}
+      sessionId={sessionId}
       threadId={threadId}
       threadKey={threadKey}
       sortableId={itemId}
@@ -203,27 +207,6 @@ function SectionSessionDraggable({
       {children}
     </SidebarThreadSortableItem>
   );
-}
-
-function SectionDropTarget({
-  children,
-  containerId,
-  itemIds,
-}: {
-  readonly children: (dropIndicator: ReactNode) => ReactNode;
-  readonly containerId: string;
-  readonly itemIds: string[];
-}) {
-  const target = useSidebarThreadDropContainer({
-    acceptProjectDrop: true,
-    beforeItemId: itemIds[0],
-    containerId,
-    itemIds: itemIds.length > 0 ? itemIds : undefined,
-    targetProjectKind: "local",
-  });
-  const active = target.isOver && (target.projectDragActive || target.threadDragActive);
-
-  return <div ref={target.setNodeRef}>{children(active ? <SidebarDropIndicator /> : null)}</div>;
 }
 
 export function useSidebarSectionsCatalog() {
@@ -365,7 +348,8 @@ function SectionDirectItems({
                     itemIds={allItemIds}
                     nextItemId={nextItemId}
                     sectionId={section.sectionId}
-                    threadId={item.session.thread?.threadId ?? null}
+                    sessionId={item.session.id}
+                    threadId={sessionExecutionThreadId(item.session)}
                     threadKey={getThreadKey(item.session.id)}
                   >
                     {renderSession(item.session)}
@@ -516,83 +500,84 @@ export function SidebarCustomSections({
               {rootReorder.dropIndicatorIndex === index ? <SidebarDropIndicator /> : null}
               <SectionRootSortable section={section} controller={rootReorder.controller}>
                 {({ headingButtonProps, headingButtonRef }) => (
-                  <SectionDropTarget
+                  <SidebarThreadDropContainer
+                    acceptProjectDrop
+                    className="-mb-4 pb-4"
                     containerId={sidebarSectionContainerId(section.sectionId)}
+                    beforeItemId={items[0]?.placementId}
                     itemIds={items.map((item) => item.placementId)}
+                    targetProjectKind="local"
                   >
-                    {(dropIndicator) => (
-                      <CodexSidebarSection
-                        heading={section.name ?? "Untitled section"}
-                        collapsed={collapsed}
-                        onToggle={() => onSetCollapsed(disclosureId, !collapsed)}
-                        onMove={(direction) => void reorder(index, direction)}
-                        headingButtonRef={headingButtonRef}
-                        headingButtonProps={headingButtonProps}
-                        dropIndicator={dropIndicator}
-                        status={<CustomSectionStatus section={section} />}
-                        actions={
-                          <>
-                            <CodexSidebarActionButton
-                              label={`New chat in ${section.name ?? "section"}`}
-                              onClick={() => {
-                                void workspaceSidebarCommands
-                                  .createSession({
-                                    sectionId: section.sectionId,
-                                  })
-                                  .then(async (session) => {
-                                    await refresh();
-                                    await onThreadsChanged?.();
-                                    onSelectSession(session);
-                                  })
-                                  .catch(() => toast.danger("Couldn’t create chat in section"));
-                              }}
-                            >
-                              <NewChatIcon />
-                            </CodexSidebarActionButton>
-                            <SectionActions
-                              section={section}
-                              onRename={() => setRenameSection(section)}
-                              onArchiveAll={() => setArchiveSection(section)}
-                              archiveDisabled={itemQuery?.isPending ?? true}
-                              onDelete={() => {
-                                void workspaceSidebarCommands
-                                  .delete(section.sectionId, {
-                                    expectedRevision: section.revision,
-                                  })
-                                  .then(async () => {
-                                    await refresh();
-                                    toast.info("Section deleted", {
-                                      action: {
-                                        label: "Undo",
-                                        onClick: () => {
-                                          void workspaceSidebarCommands
-                                            .restore(section.sectionId, {
-                                              expectedRevision: section.revision + 1,
-                                            })
-                                            .then(refresh);
-                                        },
+                    <CodexSidebarSection
+                      heading={section.name ?? "Untitled section"}
+                      collapsed={collapsed}
+                      onToggle={() => onSetCollapsed(disclosureId, !collapsed)}
+                      onMove={(direction) => void reorder(index, direction)}
+                      headingButtonRef={headingButtonRef}
+                      headingButtonProps={headingButtonProps}
+                      status={<CustomSectionStatus section={section} />}
+                      actions={
+                        <>
+                          <CodexSidebarActionButton
+                            label={`New chat in ${section.name ?? "section"}`}
+                            onClick={() => {
+                              void workspaceSidebarCommands
+                                .createSession({
+                                  sectionId: section.sectionId,
+                                })
+                                .then(async (session) => {
+                                  await refresh();
+                                  await onThreadsChanged?.();
+                                  onSelectSession(session);
+                                })
+                                .catch(() => toast.danger("Couldn’t create chat in section"));
+                            }}
+                          >
+                            <NewChatIcon />
+                          </CodexSidebarActionButton>
+                          <SectionActions
+                            section={section}
+                            onRename={() => setRenameSection(section)}
+                            onArchiveAll={() => setArchiveSection(section)}
+                            archiveDisabled={itemQuery?.isPending ?? true}
+                            onDelete={() => {
+                              void workspaceSidebarCommands
+                                .delete(section.sectionId, {
+                                  expectedRevision: section.revision,
+                                })
+                                .then(async () => {
+                                  await refresh();
+                                  toast.info("Section deleted", {
+                                    action: {
+                                      label: "Undo",
+                                      onClick: () => {
+                                        void workspaceSidebarCommands
+                                          .restore(section.sectionId, {
+                                            expectedRevision: section.revision + 1,
+                                          })
+                                          .then(refresh);
                                       },
-                                    });
-                                  })
-                                  .catch(() => toast.danger("Couldn’t delete section"));
-                              }}
-                            />
-                          </>
-                        }
-                      >
-                        <SectionDirectItems
-                          catalog={catalog}
-                          getThreadKey={getThreadKey}
-                          items={items}
-                          loading={itemQuery?.isPending ?? false}
-                          onThreadsChanged={onThreadsChanged}
-                          renderProject={renderProject}
-                          renderSession={renderSession}
-                          section={section}
-                        />
-                      </CodexSidebarSection>
-                    )}
-                  </SectionDropTarget>
+                                    },
+                                  });
+                                })
+                                .catch(() => toast.danger("Couldn’t delete section"));
+                            }}
+                          />
+                        </>
+                      }
+                    >
+                      <SectionDirectItems
+                        catalog={catalog}
+                        getThreadKey={getThreadKey}
+                        items={items}
+                        loading={itemQuery?.isPending ?? false}
+                        onThreadsChanged={onThreadsChanged}
+                        renderProject={renderProject}
+                        renderSession={renderSession}
+                        section={section}
+                      />
+                    </CodexSidebarSection>
+                  </SidebarThreadDropContainer>
                 )}
               </SectionRootSortable>
             </Fragment>

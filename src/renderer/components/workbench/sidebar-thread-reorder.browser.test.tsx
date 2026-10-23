@@ -1,13 +1,15 @@
 import { act, fireEvent, waitFor } from "@testing-library/react";
-import { useMemo, useState } from "react";
+import { useDndContext } from "@dnd-kit/core";
+import { useLayoutEffect, useMemo, useState, type CSSProperties } from "react";
 import { describe, expect, test, vi } from "vite-plus/test";
 import { NodexHoverCardProvider } from "@/components/ui/hover-card";
 import { NodexTooltipProvider } from "@/components/ui/tooltip";
 import type { CodexSidebarThreadItem, Project } from "@/lib/types";
 import { renderWithMaitai as render } from "../../test/thread-maitai";
 import { TestQueryProvider } from "../../test/query";
-import { CodexProjectRow, CodexSidebarThreadRow } from "./codex-sidebar";
+import { CodexProjectRow, CodexSidebarSection, CodexSidebarThreadRow } from "./codex-sidebar";
 import {
+  SidebarThreadDropContainer,
   SidebarThreadReorderRows,
   SidebarThreadSortableRows,
   SidebarThreadSortableContext,
@@ -20,6 +22,7 @@ import {
   type SidebarThreadReorderController,
 } from "./sidebar-thread-reorder";
 import { SidebarReorderDndProvider } from "./sidebar-reorder-dnd";
+import "../../globals.css";
 
 const PROJECT: Project = {
   id: "project-beta",
@@ -148,6 +151,185 @@ function SessionReorderHarness({ onCommit }: { onCommit: (orderedSessionIds: str
   );
 }
 
+function SectionDropRows({ containerId, keys }: { containerId: string; keys: string[] }) {
+  const reorder = useSidebarThreadReorderController({ visibleThreadKeys: keys });
+  return (
+    <div role="list" aria-label={`${containerId} chats`}>
+      <SidebarThreadSortableRows
+        containerId={containerId}
+        getItemId={(key) => key}
+        getSessionId={(key) => `session-${key}`}
+        getThreadId={(key) => (key === "draft" ? null : `thread-${key}`)}
+        itemIds={keys}
+        visibleThreadKeys={keys}
+        sortableThreadKeysInDisplayOrder={reorder.displayedVisibleThreadKeys}
+        controller={reorder.controller}
+        dropIndicatorTarget={reorder.dropIndicatorTarget}
+        sourceProjectKind="local"
+        targetProjectKind="local"
+        renderThread={(key) => (
+          <div data-testid={`section-chat-${key}`} style={{ height: 40 }}>
+            {key}
+          </div>
+        )}
+      />
+    </div>
+  );
+}
+
+function RemeasuredSectionTarget({ offset }: { offset: number }) {
+  const { droppableRects, measureDroppableContainers } = useDndContext();
+  useLayoutEffect(() => {
+    if (offset === 0) return;
+    measureDroppableContainers([]);
+  }, [measureDroppableContainers, offset]);
+  return (
+    <div style={{ paddingTop: offset }}>
+      <SectionDropRows containerId="section:target" keys={["alpha", "beta"]} />
+      <output hidden data-testid="measured-alpha-top">
+        {droppableRects.get("alpha")?.top}
+      </output>
+    </div>
+  );
+}
+
+function RemeasuredSectionDropHarness({
+  offset,
+  onDrop,
+}: {
+  offset: number;
+  onDrop: (drop: SidebarThreadDropRequest) => void;
+}) {
+  return (
+    <SidebarReorderDndProvider
+      onThreadDrop={(drop) => {
+        onDrop(drop);
+        return null;
+      }}
+    >
+      <div style={{ width: 240 }}>
+        <SectionDropRows containerId="chats" keys={["draft"]} />
+        <RemeasuredSectionTarget offset={offset} />
+      </div>
+    </SidebarReorderDndProvider>
+  );
+}
+
+function ExpandingSectionDropHarness({
+  expanded,
+  onDrop,
+}: {
+  expanded: boolean;
+  onDrop: (drop: SidebarThreadDropRequest) => void;
+}) {
+  return (
+    <SidebarReorderDndProvider
+      onThreadDrop={(drop) => {
+        onDrop(drop);
+        return null;
+      }}
+    >
+      <div style={{ width: 240 }}>
+        <SectionDropRows containerId="chats" keys={["draft"]} />
+        <SidebarThreadDropContainer containerId="section:expanding" targetProjectKind="local">
+          <CodexSidebarSection
+            heading="Expanding section"
+            collapsed={!expanded}
+            onToggle={() => {}}
+          >
+            <div style={{ height: 20 }} />
+          </CodexSidebarSection>
+        </SidebarThreadDropContainer>
+        <SectionDropRows containerId="section:target" keys={["alpha", "beta"]} />
+      </div>
+    </SidebarReorderDndProvider>
+  );
+}
+
+function ThreadlessSectionDropHarness({
+  collapsed = false,
+  empty = false,
+  onDrop,
+}: {
+  collapsed?: boolean;
+  empty?: boolean;
+  onDrop: (drop: SidebarThreadDropRequest) => void;
+}) {
+  return (
+    <SidebarReorderDndProvider
+      getThreadIdByThreadKey={(key) => (key === "draft" ? null : `thread-${key}`)}
+      onThreadDrop={(drop) => {
+        onDrop(drop);
+        return null;
+      }}
+    >
+      <div
+        style={
+          {
+            width: 240,
+            "--color-token-list-hover-background": "rgba(13, 13, 13, 0.08)",
+            "--color-token-text-link-foreground": "rgb(58, 131, 247)",
+          } as CSSProperties
+        }
+      >
+        <SectionDropRows containerId="chats" keys={["draft"]} />
+        <div data-testid="section-drop-surface" style={{ marginTop: 24 }}>
+          <SidebarThreadDropContainer containerId="section:target" targetProjectKind="local">
+            <CodexSidebarSection heading="Target section" collapsed={collapsed} onToggle={() => {}}>
+              <SectionDropRows containerId="section:target" keys={empty ? [] : ["alpha", "beta"]} />
+            </CodexSidebarSection>
+          </SidebarThreadDropContainer>
+        </div>
+      </div>
+    </SidebarReorderDndProvider>
+  );
+}
+
+async function moveSectionPointer(pointerId: number, x: number, y: number) {
+  await act(async () => {
+    fireEvent.pointerMove(document, {
+      buttons: 1,
+      clientX: x,
+      clientY: y,
+      isPrimary: true,
+      pointerId,
+      pointerType: "mouse",
+    });
+    await Promise.resolve();
+  });
+}
+
+async function startSectionPointerDrag(source: HTMLElement, pointerId: number) {
+  const rect = source.getBoundingClientRect();
+  const x = rect.left + rect.width / 2;
+  const y = rect.top + rect.height / 2;
+  await act(async () => {
+    fireEvent.pointerDown(source, {
+      button: 0,
+      clientX: x,
+      clientY: y,
+      isPrimary: true,
+      pointerId,
+      pointerType: "mouse",
+    });
+    await Promise.resolve();
+  });
+  await moveSectionPointer(pointerId, x, y + 8);
+}
+
+async function finishSectionPointerDrag(pointerId: number, cancel = false) {
+  await act(async () => {
+    if (cancel) fireEvent.keyDown(document, { code: "Escape", key: "Escape" });
+    fireEvent.pointerUp(document, {
+      button: 0,
+      isPrimary: true,
+      pointerId,
+      pointerType: "mouse",
+    });
+    await Promise.resolve();
+  });
+}
+
 function SemanticThreadRows({ threadKeys }: { threadKeys: string[] }) {
   const pendingDrops = usePendingSidebarThreadDrops();
   const canonicalLanes = useMemo(
@@ -233,6 +415,231 @@ function readRenderedThreadKeys(list: HTMLElement): string[] {
 }
 
 describe("sidebar thread reorder in Chromium", () => {
+  test("keeps the row insertion boundary current while an earlier section expands", async () => {
+    const drops: SidebarThreadDropRequest[] = [];
+    const onDrop = (drop: SidebarThreadDropRequest) => drops.push(drop);
+    const view = render(<ExpandingSectionDropHarness expanded={false} onDrop={onDrop} />);
+    const pointerId = 23;
+    const alpha = view.getByTestId("section-chat-alpha");
+    const beta = view.getByTestId("section-chat-beta");
+    const list = view.getByRole("list", { name: "section:target chats" });
+    const initialRect = alpha.getBoundingClientRect();
+    const x = initialRect.left + initialRect.width / 2;
+    const y = initialRect.top + 30;
+
+    try {
+      await startSectionPointerDrag(view.getByTestId("section-chat-draft"), pointerId);
+      await moveSectionPointer(pointerId, x, y);
+      await waitFor(() => {
+        expect(
+          list.querySelector("[role='presentation']")?.nextElementSibling?.contains(beta),
+        ).toBe(true);
+      });
+
+      // An earlier disclosure moves the row without resizing it or moving the pointer.
+      // Use the product animation; the fixture never requests a dnd-kit remeasurement.
+      await act(async () => {
+        view.rerender(<ExpandingSectionDropHarness expanded onDrop={onDrop} />);
+        await Promise.resolve();
+      });
+      await waitFor(() => {
+        expect(alpha.getBoundingClientRect().top).toBe(initialRect.top + 24);
+        expect(alpha.getBoundingClientRect().height).toBe(initialRect.height);
+        const indicator = list.querySelector<HTMLElement>("[role='presentation']");
+        expect(indicator?.nextElementSibling?.contains(alpha)).toBe(true);
+        expect(indicator?.getBoundingClientRect().top).toBe(alpha.getBoundingClientRect().top);
+      });
+      await finishSectionPointerDrag(pointerId);
+      await waitFor(() => {
+        expect(drops).toHaveLength(1);
+        expect(drops[0]).toMatchObject({
+          sessionId: "session-draft",
+          targetContainerId: "section:target",
+          beforeItemId: "alpha",
+        });
+      });
+    } finally {
+      await finishSectionPointerDrag(pointerId, true);
+      view.unmount();
+    }
+  });
+
+  test("uses a remeasured target midpoint for preview and drop without changing the hovered row", async () => {
+    const drops: SidebarThreadDropRequest[] = [];
+    const onDrop = (drop: SidebarThreadDropRequest) => drops.push(drop);
+    const view = render(<RemeasuredSectionDropHarness offset={0} onDrop={onDrop} />);
+    const pointerId = 22;
+    const alpha = view.getByTestId("section-chat-alpha");
+    const beta = view.getByTestId("section-chat-beta");
+    const list = view.getByRole("list", { name: "section:target chats" });
+    const initialRect = alpha.getBoundingClientRect();
+    const x = initialRect.left + initialRect.width / 2;
+    const y = initialRect.top + 30;
+
+    try {
+      await startSectionPointerDrag(view.getByTestId("section-chat-draft"), pointerId);
+      await moveSectionPointer(pointerId, x, y);
+      await waitFor(() => {
+        expect(
+          list.querySelector("[role='presentation']")?.nextElementSibling?.contains(beta),
+        ).toBe(true);
+      });
+
+      // The same row still contains the pointer, but layout moves its midpoint past it.
+      // dnd-kit's remeasurement replaces its Rect without changing the over ID.
+      await act(async () => {
+        view.rerender(<RemeasuredSectionDropHarness offset={20} onDrop={onDrop} />);
+        await Promise.resolve();
+      });
+      await waitFor(() => {
+        expect(alpha.getBoundingClientRect().top).toBe(initialRect.top + 20);
+        expect(Number(view.getByTestId("measured-alpha-top").textContent)).toBe(
+          alpha.getBoundingClientRect().top,
+        );
+      });
+      await waitFor(() => {
+        const indicator = list.querySelector<HTMLElement>("[role='presentation']");
+        expect(indicator?.nextElementSibling?.contains(alpha)).toBe(true);
+        expect(indicator?.getBoundingClientRect().top).toBe(alpha.getBoundingClientRect().top);
+      });
+      await finishSectionPointerDrag(pointerId);
+      await waitFor(() => {
+        expect(drops).toHaveLength(1);
+        expect(drops[0]).toMatchObject({
+          sessionId: "session-draft",
+          targetContainerId: "section:target",
+          beforeItemId: "alpha",
+        });
+      });
+    } finally {
+      await finishSectionPointerDrag(pointerId, true);
+      view.unmount();
+    }
+  });
+
+  test("moves a threadless Session through section hover and exact row insertion feedback", async () => {
+    const drops: SidebarThreadDropRequest[] = [];
+    const view = render(<ThreadlessSectionDropHarness onDrop={(drop) => drops.push(drop)} />);
+    const pointerId = 20;
+    const source = view.getByTestId("section-chat-draft");
+    const surface = view.getByTestId("section-drop-surface");
+    const container = surface.firstElementChild as HTMLElement;
+    const list = view.getByRole("list", { name: "section:target chats" });
+    const header = view.getByRole("button", { name: "Target section" });
+    const alpha = view.getByTestId("section-chat-alpha");
+    const beta = view.getByTestId("section-chat-beta");
+    const x = header.getBoundingClientRect().left + header.getBoundingClientRect().width / 2;
+
+    try {
+      await startSectionPointerDrag(source, pointerId);
+      await moveSectionPointer(pointerId, x, header.getBoundingClientRect().top + 8);
+      await waitFor(() => {
+        expect(container.dataset.sidebarDropTarget).toBe("true");
+        expect(getComputedStyle(container).backgroundColor).toBe("rgba(13, 13, 13, 0.08)");
+        expect(list.querySelector("[role='presentation']")).toBeNull();
+      });
+
+      await moveSectionPointer(pointerId, x, alpha.getBoundingClientRect().top + 4);
+      await waitFor(() => {
+        const indicator = list.querySelector<HTMLElement>("[role='presentation']");
+        expect(indicator).not.toBeNull();
+        expect(indicator?.nextElementSibling?.contains(alpha)).toBe(true);
+        expect(indicator!.getBoundingClientRect().top).toBe(alpha.getBoundingClientRect().top);
+        expect(getComputedStyle(indicator!, "::before").backgroundColor).toBe("rgb(58, 131, 247)");
+        expect(container.dataset.sidebarDropTarget).toBeUndefined();
+      });
+
+      await moveSectionPointer(pointerId, x, alpha.getBoundingClientRect().bottom - 4);
+      await waitFor(() => {
+        const indicator = list.querySelector<HTMLElement>("[role='presentation']");
+        expect(indicator?.nextElementSibling?.contains(beta)).toBe(true);
+        expect(indicator!.getBoundingClientRect().top).toBe(beta.getBoundingClientRect().top);
+      });
+      await finishSectionPointerDrag(pointerId, true);
+      await waitFor(() => {
+        expect(list.querySelector("[role='presentation']")).toBeNull();
+        expect(container.dataset.sidebarDropTarget).toBeUndefined();
+        expect(drops).toEqual([]);
+      });
+
+      await startSectionPointerDrag(view.getByTestId("section-chat-draft"), pointerId);
+      await moveSectionPointer(pointerId, x, alpha.getBoundingClientRect().bottom - 4);
+      await waitFor(() => {
+        expect(
+          list.querySelector("[role='presentation']")?.nextElementSibling?.contains(beta),
+        ).toBe(true);
+      });
+      await finishSectionPointerDrag(pointerId);
+      await waitFor(() => {
+        expect(drops).toHaveLength(1);
+        expect(drops[0]).toMatchObject({
+          sessionId: "session-draft",
+          threadId: null,
+          sourceContainerId: "chats",
+          targetContainerId: "section:target",
+          beforeItemId: "beta",
+        });
+        expect(list.querySelector("[role='presentation']")).toBeNull();
+        expect(container.dataset.sidebarDropTarget).toBeUndefined();
+      });
+    } finally {
+      await finishSectionPointerDrag(pointerId, true);
+      view.unmount();
+    }
+  });
+
+  test.each([
+    { collapsed: false, empty: true },
+    { collapsed: true, empty: false },
+  ])(
+    "accepts threadless Session drops on a section with $collapsed collapsed and $empty empty",
+    async ({ collapsed, empty }) => {
+      const drops: SidebarThreadDropRequest[] = [];
+      const view = render(
+        <ThreadlessSectionDropHarness
+          collapsed={collapsed}
+          empty={empty}
+          onDrop={(drop) => drops.push(drop)}
+        />,
+      );
+      const pointerId = 21;
+      const surface = view.getByTestId("section-drop-surface");
+      const container = surface.firstElementChild as HTMLElement;
+      const header = view.getByRole("button", { name: "Target section" });
+      const rect = header.getBoundingClientRect();
+
+      try {
+        await startSectionPointerDrag(view.getByTestId("section-chat-draft"), pointerId);
+        await moveSectionPointer(pointerId, rect.left + rect.width / 2, rect.top + 8);
+        await waitFor(() => expect(container.dataset.sidebarDropTarget).toBe("true"));
+        await finishSectionPointerDrag(pointerId, true);
+        await waitFor(() => {
+          expect(container.dataset.sidebarDropTarget).toBeUndefined();
+          expect(surface.querySelector("[role='presentation']")).toBeNull();
+          expect(drops).toEqual([]);
+        });
+
+        await startSectionPointerDrag(view.getByTestId("section-chat-draft"), pointerId);
+        await moveSectionPointer(pointerId, rect.left + rect.width / 2, rect.top + 8);
+        await waitFor(() => expect(container.dataset.sidebarDropTarget).toBe("true"));
+        await finishSectionPointerDrag(pointerId);
+        await waitFor(() => {
+          expect(drops).toHaveLength(1);
+          expect(drops[0]).toMatchObject({
+            sessionId: "session-draft",
+            threadId: null,
+            targetContainerId: "section:target",
+          });
+          expect(container.dataset.sidebarDropTarget).toBeUndefined();
+          expect(header.getAttribute("aria-expanded")).toBe(String(!collapsed));
+        });
+      } finally {
+        await finishSectionPointerDrag(pointerId, true);
+        view.unmount();
+      }
+    },
+  );
+
   test("reorders a persisted pre-thread New Chat by Session identity", async () => {
     const committedSessionOrders: string[][] = [];
     const view = render(

@@ -7,6 +7,7 @@ import type { IpcMainInvokeEvent } from "electron";
 import { vi } from "vite-plus/test";
 import { createBoundedOperationId } from "../../../shared/operation-identity";
 import type { Project, ProjectUpdateCommandInput } from "../../../shared/types";
+import type { BuiltinSidebarReorderCommandInput } from "../../../shared/workspace-catalog-commands";
 import { testLayer as mainConfigLayer } from "../../app/MainConfig";
 import { CodexProjectSessionFork } from "../../codex-application/CodexProjectSessionFork";
 import { CodexSidebarSectionSync } from "../../codex-application/CodexSidebarSectionSync";
@@ -91,7 +92,24 @@ it.effect("owns Project and Project Session ingress with the Main Scope", () =>
       on: () => Effect.die("unused"),
     });
     const updateInputs: ProjectUpdateCommandInput[] = [];
+    const pinnedOrderInputs: BuiltinSidebarReorderCommandInput[] = [];
     const workspace = ProjectWorkspace.of({
+      listBuiltinSidebarOrder: () =>
+        Effect.succeed({
+          orderRevision: "pins:3",
+          items: [
+            { kind: "session", sessionId: "session:draft", title: "New chat" },
+            { kind: "session", sessionId: "session:attached", title: "Chat" },
+          ],
+          nextCursor: null,
+          hasMore: false,
+          projectionRevision: 17,
+        }),
+      reorderBuiltinSidebarItems: (command: BuiltinSidebarReorderCommandInput) =>
+        Effect.sync(() => {
+          pinnedOrderInputs.push(command);
+          return { value: undefined, apply: applied };
+        }),
       updateProject: (input: ProjectUpdateCommandInput) => {
         if (input.projectId === "project:missing") {
           return Effect.fail(
@@ -156,7 +174,7 @@ it.effect("owns Project and Project Session ingress with the Main Scope", () =>
       scope,
     );
 
-    assert.strictEqual(handlers.size, 43);
+    assert.strictEqual(handlers.size, 45);
     assert.isTrue(handlers.has("projects:create"));
     assert.isTrue(handlers.has("projects:update"));
     assert.isTrue(handlers.has("project-sessions:fork"));
@@ -165,6 +183,39 @@ it.effect("owns Project and Project Session ingress with the Main Scope", () =>
     assert.isTrue(handlers.has("page-chats:list"));
     assert.isTrue(handlers.has("page-chats:link"));
     assert.isTrue(handlers.has("page-chats:unlink"));
+
+    const pinnedOrder = yield* handlers.get("sidebar:builtin-order:list")!(
+      rendererEvent(17),
+      "pinned_sessions",
+    );
+    assert.deepEqual(pinnedOrder, {
+      orderRevision: "pins:3",
+      items: [
+        { kind: "session", sessionId: "session:draft", title: "New chat" },
+        { kind: "session", sessionId: "session:attached", title: "Chat" },
+      ],
+      nextCursor: null,
+      hasMore: false,
+      projectionRevision: 17,
+    });
+    const pinnedCommand: BuiltinSidebarReorderCommandInput = {
+      operationId: createBoundedOperationId("workspace.session.reorder-pinned", 1_800_000_000_000),
+      payload: {
+        lane: "pinned_sessions",
+        expectedOrderRevision: "pins:3",
+        itemIds: ["session:attached", "session:draft"],
+      },
+    };
+    const pinnedResult = yield* handlers.get("sidebar:builtin-order:reorder")!(
+      rendererEvent(17),
+      pinnedCommand,
+    );
+    assert.deepEqual(pinnedOrderInputs, [pinnedCommand]);
+    assert.deepEqual(pinnedResult, {
+      ok: true,
+      value: undefined,
+      localCommit: { status: "committed", commit: applied.commit, delivery: null },
+    });
 
     const input = {
       operationId: createBoundedOperationId("workspace.project.rename", 1_800_000_000_000),

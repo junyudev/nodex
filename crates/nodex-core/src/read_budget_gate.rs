@@ -683,6 +683,7 @@ fn read_budget_gate_large_fixture() {
                 read: ProjectWorkspaceRead::TaskWindow {
                     project_id: Some(PROJECT_ID.to_owned()),
                     include_archived: Some(false),
+                    placement_scope: Default::default(),
                     window: CollectionWindowRequest {
                         after: None,
                         first: Some(200),
@@ -714,6 +715,7 @@ fn read_budget_gate_large_fixture() {
                 read: ProjectWorkspaceRead::TaskWindow {
                     project_id: Some(PROJECT_ID.to_owned()),
                     include_archived: Some(false),
+                    placement_scope: Default::default(),
                     window: CollectionWindowRequest {
                         after: Some(workspace_cursor),
                         first: Some(200),

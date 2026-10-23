@@ -123,6 +123,13 @@ export const workspaceCatalogCommandDefinitions = {
     owner: "workbench-session-catalog",
     protocol: receiptFenced("pending"),
   }),
+  sessionReorderPinned: defineLocalCommitRendererCommand({
+    key: "workspace.session.reorder-pinned",
+    channel: "sidebar:builtin-order:reorder",
+    authority: "core",
+    owner: "workbench-session-catalog",
+    protocol: receiptFenced("pending"),
+  }),
   sessionArchive: defineLocalCommitRendererCommand({
     key: "workspace.session.archive",
     channel: "project-sessions:archive",
@@ -223,6 +230,7 @@ const {
   sessionReorder: sessionReorderCommand,
   sessionSetPinned: sessionSetPinnedCommand,
   sessionSetPinnedOrder: sessionSetPinnedOrderCommand,
+  sessionReorderPinned: sessionReorderPinnedCommand,
   sessionArchive: sessionArchiveCommand,
   sessionUnarchive: sessionUnarchiveCommand,
   sessionMarkUnread: sessionMarkUnreadCommand,
@@ -343,6 +351,13 @@ export const workspaceSessionCommands = {
       await invokeLocalCommitCommand(sessionSetPinnedOrderCommand, {
         operationId: operation("session.set-pinned-order"),
         payload: { projectId, ...input },
+      })
+    ).value,
+  reorderPinned: async (expectedOrderRevision: string, sessionIds: readonly string[]) =>
+    (
+      await invokeLocalCommitCommand(sessionReorderPinnedCommand, {
+        operationId: operation("session.reorder-pinned"),
+        payload: { lane: "pinned_sessions", expectedOrderRevision, itemIds: sessionIds },
       })
     ).value,
   archive: async (sessionId: string) =>

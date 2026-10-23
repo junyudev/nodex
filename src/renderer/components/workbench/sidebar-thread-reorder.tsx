@@ -63,6 +63,7 @@ const disableSidebarThreadLayoutAnimation: AnimateLayoutChanges = () => false;
 
 export interface SidebarThreadDndThread {
   containerId: string;
+  sessionId?: string;
   dragOverlay: ReactNode;
   getNextThreadId?: () => string | null;
   getNextThreadKey?: () => string | null;
@@ -102,7 +103,8 @@ export interface SidebarThreadDropRequest {
   sourceContainerId: string;
   targetContainerId: string;
   targetItemIds?: string[];
-  threadId: string;
+  sessionId?: string;
+  threadId: string | null;
   useDefaultOrder?: true;
 }
 
@@ -149,6 +151,7 @@ export type SidebarThreadDropPolicy =
 
 export interface SidebarThreadDropPolicyInput {
   homeContainerId: string | null;
+  sessionId?: string;
   sourceContainerId: string;
   sourceProjectKind?: SidebarThreadProjectKind;
   targetContainerId: string;
@@ -234,6 +237,7 @@ function isCloudContainerId(containerId: string | null): boolean {
 
 export function resolveSidebarThreadDropPolicy({
   homeContainerId,
+  sessionId,
   sourceContainerId,
   sourceProjectKind,
   targetContainerId,
@@ -267,7 +271,12 @@ export function resolveSidebarThreadDropPolicy({
     return { status: "blocked", reason: "reorder-only-source" };
   }
   if (threadId === null) {
-    return { status: "blocked", reason: "pending-cross-container" };
+    if (sessionId && readSidebarSectionContainerId(targetContainerId)) {
+      return { status: "allowed" };
+    }
+    if (!sessionId || readSidebarSectionContainerId(sourceContainerId) === null) {
+      return { status: "blocked", reason: "pending-cross-container" };
+    }
   }
   if (targetContainerId === "pinned" || isProjectContainerId(targetContainerId)) {
     return { status: "allowed" };
@@ -275,7 +284,9 @@ export function resolveSidebarThreadDropPolicy({
   if (readSidebarSectionContainerId(targetContainerId)) return { status: "allowed" };
   if (
     targetContainerId === "chats" &&
-    (isProjectContainerId(sourceContainerId) || sourceContainerId === "pinned")
+    (isProjectContainerId(sourceContainerId) ||
+      sourceContainerId === "pinned" ||
+      readSidebarSectionContainerId(sourceContainerId) !== null)
   ) {
     return { status: "allowed" };
   }
@@ -427,6 +438,8 @@ export function resolveSidebarThreadExternalDropTarget(
       overPayload,
       activePayload.thread.containerId,
     );
+    // Container feedback represents entering another lane, never a hidden reorder.
+    if (targetContainerId === activePayload.thread.containerId) return null;
     const beforeItemId = overPayload.beforeItemId;
     const target: SidebarThreadResolvedExternalDropTarget = {
       beforeThreadId: null,
@@ -477,7 +490,7 @@ export function resolveSidebarThreadExternalDropTarget(
     targetThread.getNextThreadId?.() ??
     resolveTargetThreadId(nextThreadKey, getThreadIdByThreadKey);
   const beforeThreadId = placement === "before" ? targetThread.threadId : nextThreadId;
-  const targetItemId = overPayload.itemIds?.find((itemId) => itemId === String(event.over?.id));
+  const targetItemId = overPayload.itemId;
   const beforeItemId =
     targetItemId === undefined
       ? undefined
@@ -508,7 +521,6 @@ function isUnchangedSidebarThreadDrop(
   target: SidebarThreadResolvedExternalDropTarget,
   activeItemId?: string,
 ): boolean {
-  if (activeThread.threadId === null) return false;
   if (activeThread.containerId !== target.targetContainerId) return false;
   if (target.useDefaultOrder) return true;
   if (
@@ -523,6 +535,7 @@ function isUnchangedSidebarThreadDrop(
     );
   }
 
+  if (activeThread.threadId === null) return false;
   const activeThreadId = activeThread.threadId;
   if (target.beforeThreadId === activeThreadId || target.afterThreadId === activeThreadId) {
     return true;
@@ -733,6 +746,7 @@ function isSidebarThreadTargetAllowed({
           ? null
           : (homeContainerIdByThreadId.get(activeThread.threadId) ?? null),
       sourceContainerId: activeThread.containerId,
+      sessionId: activeThread.sessionId,
       sourceProjectKind: activeThread.sourceProjectKind,
       targetContainerId: target.containerId,
       targetProjectKind: target.targetProjectKind,
@@ -954,7 +968,25 @@ export function dispatchSidebarThreadDragEnd({
   const dropTarget = resolvedDropTarget;
   const activeThread = activePayload.thread;
   activePayload.controller.handleDragCancel?.(event);
-  if (activeThread.threadId === null) return "cancelled";
+  const drop: SidebarThreadDropRequest = {
+    beforeThreadId: dropTarget.beforeThreadId,
+    ...(dropTarget.afterThreadId === undefined ? {} : { afterThreadId: dropTarget.afterThreadId }),
+    sourceContainerId: activeThread.containerId,
+    targetContainerId: dropTarget.targetContainerId,
+    threadId: activeThread.threadId,
+    ...(activeThread.sessionId === undefined ? {} : { sessionId: activeThread.sessionId }),
+    ...(dropTarget.beforeItemId === undefined ? {} : { beforeItemId: dropTarget.beforeItemId }),
+    ...(dropTarget.insertAtEnd ? { insertAtEnd: true } : {}),
+    ...(dropTarget.useDefaultOrder ? { useDefaultOrder: true } : {}),
+    ...(activePayload.itemId === undefined ? {} : { itemId: activePayload.itemId }),
+    ...(dropTarget.targetItemIds === undefined ? {} : { targetItemIds: dropTarget.targetItemIds }),
+  };
+  if (activeThread.threadId === null) {
+    void Promise.resolve()
+      .then(() => onThreadDrop(drop))
+      .catch(onError);
+    return "moved";
+  }
 
   const optimisticDrop: PendingSidebarThreadDrop = {
     beforeThreadId: dropTarget.beforeThreadId,
@@ -975,24 +1007,7 @@ export function dispatchSidebarThreadDragEnd({
   ]);
 
   void Promise.resolve()
-    .then(() =>
-      onThreadDrop({
-        beforeThreadId: dropTarget.beforeThreadId,
-        ...(dropTarget.afterThreadId === undefined
-          ? {}
-          : { afterThreadId: dropTarget.afterThreadId }),
-        sourceContainerId: activeThread.containerId,
-        targetContainerId: dropTarget.targetContainerId,
-        threadId: activeThread.threadId as string,
-        ...(dropTarget.beforeItemId === undefined ? {} : { beforeItemId: dropTarget.beforeItemId }),
-        ...(dropTarget.insertAtEnd ? { insertAtEnd: true } : {}),
-        ...(dropTarget.useDefaultOrder ? { useDefaultOrder: true } : {}),
-        ...(activePayload.itemId === undefined ? {} : { itemId: activePayload.itemId }),
-        ...(dropTarget.targetItemIds === undefined
-          ? {}
-          : { targetItemIds: dropTarget.targetItemIds }),
-      }),
-    )
+    .then(() => onThreadDrop(drop))
     .then((commit) => {
       updatePendingThreadDrops((current) =>
         commit === null
@@ -1162,6 +1177,7 @@ function useSidebarThreadDropContainerRegistration({
               ? null
               : (homeContainerIdByThreadId.get(activeThread.threadId) ?? null),
           sourceContainerId: activeThread.containerId,
+          sessionId: activeThread.sessionId,
           sourceProjectKind: activeThread.sourceProjectKind,
           targetContainerId,
           targetProjectKind,
@@ -1176,6 +1192,9 @@ function useSidebarThreadDropContainerRegistration({
     id,
     data: payload,
     disabled: !(acceptProjectDrop && projectDragActive) && policy?.status !== "allowed",
+    // Disclosure animations move later rows without resizing them. Invalidate all
+    // targets as this container resizes, including while the pointer is stationary.
+    resizeObserverConfig: { updateMeasurementsFor: [], timeout: 0 },
   });
   const isExternalThreadDropTarget =
     policy?.status === "allowed" && activeThread?.containerId !== targetContainerId;
@@ -1259,25 +1278,31 @@ export function SidebarThreadDropContainer({
   acceptProjectDrop = false,
   activeClassName,
   activeNode,
+  beforeItemId,
   children,
   className,
   containerId,
+  itemIds,
   projectDropZone,
   targetProjectKind,
 }: {
   acceptProjectDrop?: boolean;
   activeClassName?: string;
   activeNode?: ReactNode;
+  beforeItemId?: string | null;
   children: ReactNode;
   className?: string;
   containerId: string;
+  itemIds?: string[];
   projectDropZone?: SidebarThreadProjectDropZone;
   targetProjectKind?: SidebarThreadProjectKind;
 }) {
   const { isExternalThreadDropTarget, isOver, projectDragActive, setNodeRef } =
     useSidebarThreadDropContainerRegistration({
       acceptProjectDrop,
+      beforeItemId,
       containerId,
+      itemIds,
       preserveSourceProjectLane: false,
       projectDropZone,
       targetProjectKind,
@@ -1295,6 +1320,7 @@ export function SidebarThreadDropContainer({
       )}
       data-sidebar-project-drop-zone={projectDropZone}
       data-sidebar-project-kind={targetProjectKind}
+      data-sidebar-drop-target={active ? "true" : undefined}
     >
       {children}
       {active ? activeNode : null}
@@ -1421,6 +1447,7 @@ export function SidebarThreadSortableItem({
   itemIds,
   nextItemId,
   nextThreadKey,
+  sessionId,
   sourceProjectKind,
   sortableId,
   targetProjectKind,
@@ -1440,6 +1467,7 @@ export function SidebarThreadSortableItem({
   itemIds?: string[];
   nextItemId?: string | null;
   nextThreadKey?: string | null;
+  sessionId?: string;
   sourceProjectKind?: SidebarThreadProjectKind;
   sortableId?: string;
   targetProjectKind?: SidebarThreadProjectKind;
@@ -1468,6 +1496,7 @@ export function SidebarThreadSortableItem({
       nextItemId,
       thread: {
         containerId: resolvedContainerId,
+        sessionId,
         dragOverlay: dragOverlay ?? children,
         getNextThreadId,
         getNextThreadKey,
@@ -1492,6 +1521,7 @@ export function SidebarThreadSortableItem({
       nextThreadKey,
       resolvedContainerId,
       resolvedThreadId,
+      sessionId,
       sourceProjectKind,
       targetProjectKind,
       threadKey,
@@ -1537,6 +1567,7 @@ export function SidebarThreadDropIndicator() {
 export function SidebarThreadReorderRows({
   containerId,
   getItemId,
+  getSessionId,
   getThreadId,
   itemIds,
   visibleThreadKeys,
@@ -1549,6 +1580,7 @@ export function SidebarThreadReorderRows({
 }: {
   containerId?: string;
   getItemId?: (threadKey: string) => string | undefined;
+  getSessionId?: (threadKey: string) => string | null | undefined;
   getThreadId?: (threadKey: string) => string | null;
   itemIds?: string[];
   visibleThreadKeys: string[];
@@ -1576,6 +1608,7 @@ export function SidebarThreadReorderRows({
     <SidebarThreadSortableRows
       containerId={containerId}
       getItemId={getItemId}
+      getSessionId={getSessionId}
       getThreadId={getThreadId}
       itemIds={itemIds}
       visibleThreadKeys={displayedThreadKeys}
@@ -1593,6 +1626,7 @@ export function SidebarThreadReorderRows({
 export function SidebarThreadSortableRows({
   containerId,
   getItemId,
+  getSessionId,
   getThreadId = DEFAULT_GET_THREAD_ID,
   itemIds,
   visibleThreadKeys,
@@ -1606,6 +1640,7 @@ export function SidebarThreadSortableRows({
 }: {
   containerId?: string;
   getItemId?: (threadKey: string) => string | undefined;
+  getSessionId?: (threadKey: string) => string | null | undefined;
   getThreadId?: (threadKey: string) => string | null;
   itemIds?: string[];
   visibleThreadKeys: string[];
@@ -1659,6 +1694,7 @@ export function SidebarThreadSortableRows({
               containerId={containerId}
               threadKey={threadKey}
               threadId={getThreadId(threadKey)}
+              sessionId={getSessionId?.(threadKey) ?? undefined}
               controller={controller}
               dragOverlay={renderDragOverlay?.(threadKey)}
               getNextThreadId={() => resolveTargetThreadId(nextRealThreadKey, getThreadId)}

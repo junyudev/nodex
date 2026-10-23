@@ -624,6 +624,7 @@ mod tests {
             ProjectWorkspaceRead::TaskWindow {
                 project_id: binding.project_id.clone(),
                 include_archived: Some(false),
+                placement_scope: Default::default(),
                 window: nodex_core_contracts::collection::CollectionWindowRequest {
                     first: Some(10),
                     after: None,

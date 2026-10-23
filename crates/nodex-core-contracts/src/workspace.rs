@@ -16,7 +16,15 @@ use crate::inbox::{
 };
 use crate::{ModuleMutationReceipt, ModuleName, VersionedModuleContract};
 
-pub const PROJECT_WORKSPACE_CONTRACT_VERSION: u32 = 41;
+pub const PROJECT_WORKSPACE_CONTRACT_VERSION: u32 = 42;
+
+#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum ProjectWorkspaceTaskPlacementScope {
+    #[default]
+    All,
+    Builtin,
+}
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 #[serde(tag = "kind", rename_all = "snake_case")]
@@ -55,6 +63,8 @@ pub enum ProjectWorkspaceRead {
     TaskWindow {
         project_id: Option<String>,
         include_archived: Option<bool>,
+        #[serde(default)]
+        placement_scope: ProjectWorkspaceTaskPlacementScope,
         window: CollectionWindowRequest,
     },
     SidebarOverview {

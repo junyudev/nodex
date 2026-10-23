@@ -252,6 +252,7 @@ type QueryEndpointPolicy =
   | "sidebar-sections:item:placement"
   | "sidebar-sections:items:list"
   | "sidebar-sections:list"
+  | "sidebar:builtin-order:list"
   | "terminal-session:snapshot"
   | "thread-terminal-snapshot"
   | "window-sessions:bootstrap"
@@ -444,7 +445,8 @@ type CoreLocalCommitCommandEndpointPolicy =
   | "sidebar-sections:restore"
   | "sidebar-sections:sessions:archive-all"
   | "sidebar-sections:sessions:create"
-  | "sidebar-sections:sessions:reorder";
+  | "sidebar-sections:sessions:reorder"
+  | "sidebar:builtin-order:reorder";
 
 type MainRevisionCommandEndpointPolicy =
   | "persisted-atom:update"

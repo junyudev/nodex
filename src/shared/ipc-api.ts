@@ -128,6 +128,8 @@ import type {
   LibraryBlockPropertyMutationRequestV2,
 } from "./block-property-mutations-v2";
 import type {
+  BuiltinSidebarLane,
+  BuiltinSidebarOrderWindow,
   SidebarSectionItemWindow,
   SidebarSectionItemWindowInput,
   SidebarSectionItemRef,
@@ -473,6 +475,7 @@ import type {
   ProjectSessionReorderCommandInput,
   ProjectSessionUnreadCommandInput,
   ProjectSessionUpdateCommandInput,
+  BuiltinSidebarReorderCommandInput,
   SidebarSectionCreateCommandInput,
   SidebarSectionDeleteCommandInput,
   SidebarSectionMoveItemCommandInput,
@@ -1112,6 +1115,14 @@ export interface IpcApi extends AgentRuntimeIpcApi {
   "projects:set-lifecycle": {
     args: [command: ProjectLifecycleCommandInput];
     result: CoreLocalCommitResult<ProjectLifecycleCommittedValue, ProjectLifecycleCommandRejected>;
+  };
+  "sidebar:builtin-order:list": {
+    args: [lane: BuiltinSidebarLane, input?: Pick<SidebarSectionWindowInput, "after" | "first">];
+    result: BuiltinSidebarOrderWindow;
+  };
+  "sidebar:builtin-order:reorder": {
+    args: [command: BuiltinSidebarReorderCommandInput];
+    result: CoreLocalCommitResult<void>;
   };
   "sidebar-sections:list": {
     args: [input?: SidebarSectionWindowInput];

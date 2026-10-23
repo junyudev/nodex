@@ -695,6 +695,7 @@ export const make: Effect.Effect<ProjectWorkspaceService, never, CoreModules | S
         kind: "task_window",
         project_id: projectId,
         include_archived: input?.includeArchived ?? false,
+        placement_scope: input?.placementScope ?? "all",
         window: { after: input?.after ?? null, first: input?.first },
       });
       return yield* evaluate("session.window", () => {

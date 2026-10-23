@@ -10,6 +10,7 @@ import type {
   ProjectSession,
   ProjectSessionSummary,
   ProjectSessionSummaryWindow,
+  ProjectSessionSummaryWindowInput,
 } from "../../shared/types";
 import type { WorkbenchLocation } from "../../shared/workbench-layout";
 import { materializeInitialWorkbenchSessionView } from "../../shared/workbench-session-view";
@@ -30,6 +31,7 @@ vi.mock("./api", () => ({
 
 import {
   useWorkbenchSessionCatalog,
+  useWorkbenchSessionCollections,
   type WorkbenchSessionCatalogWindowPort,
 } from "./use-workbench-session-catalog";
 import { queryKeys } from "./query-keys";
@@ -196,6 +198,110 @@ function legacyWorkspaceSessionArgs(channel: string, payload: Record<string, unk
 }
 
 describe("useWorkbenchSessionCatalog", () => {
+  test("pages and refreshes built-in sidebar lanes independently from the complete picker", async () => {
+    const section = makeSummary("section-chat", "alpha");
+    const visible = makeSummary("visible-chat", "alpha");
+    const next = makeSummary("next-visible-chat", "alpha");
+    const moved = makeSummary("moved-into-sidebar", "alpha");
+    let revision = 1;
+    invokeMock.mockImplementation(
+      async (
+        channel: string,
+        projectId: string | null,
+        input: ProjectSessionSummaryWindowInput,
+      ) => {
+        expect(channel).toBe("workspace:tasks:list");
+        if (projectId === null) return makeWindow([]);
+        if (input.placementScope === "all")
+          return makeWindow([section, visible], { projectionRevision: revision });
+        expect(input.placementScope).toBe("builtin");
+        if (revision === 2) return makeWindow([moved, visible], { projectionRevision: revision });
+        if (input.after) {
+          expect(input.after).toBe("builtin-next");
+          return makeWindow([next]);
+        }
+        return makeWindow([visible], { nextCursor: "builtin-next", hasMore: true });
+      },
+    );
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false, gcTime: Infinity } },
+    });
+    const window = makeWindowPort({ kind: "project", projectId: "alpha" });
+    const projects = [makeProject("alpha")];
+    const expandedProjectIds = new Set(["alpha"]);
+    const wrapper = ({ children }: PropsWithChildren) => (
+      <QueryClientProvider client={client}>{children}</QueryClientProvider>
+    );
+    const hook = renderHook(
+      () => {
+        const catalog = useWorkbenchSessionCatalog({ projects, expandedProjectIds, window });
+        const sidebar = useWorkbenchSessionCollections({
+          projects,
+          expandedProjectIds,
+          activeProjectId: "alpha",
+          resolveScene: catalog.resolveScene,
+          placementScope: "builtin",
+        });
+        return { catalog, sidebar };
+      },
+      { wrapper },
+    );
+    try {
+      await waitFor(() =>
+        expect(
+          hook.result.current.sidebar.collectionsByProject.alpha.projections.map((item) => item.id),
+        ).toEqual([visible.id]),
+      );
+      expect(
+        hook.result.current.catalog.collectionsByProject.alpha.projections.map((item) => item.id),
+      ).toEqual([section.id, visible.id]);
+      await act(async () => {
+        await hook.result.current.sidebar.loadMore("alpha");
+      });
+      await waitFor(() =>
+        expect(
+          hook.result.current.sidebar.collectionsByProject.alpha.projections.map((item) => item.id),
+        ).toEqual([visible.id, next.id]),
+      );
+      expect(
+        hook.result.current.catalog.collectionsByProject.alpha.projections.map((item) => item.id),
+      ).toEqual([section.id, visible.id]);
+      revision = 2;
+      await act(async () => {
+        await hook.result.current.sidebar.refreshThrough("alpha", revision);
+      });
+      await waitFor(() =>
+        expect(
+          hook.result.current.sidebar.collectionsByProject.alpha.projections.map((item) => item.id),
+        ).toEqual([moved.id, visible.id]),
+      );
+      expect(
+        client.getQueryData<ProjectSessionSummaryWindow>(
+          queryKeys.projectSessions.summaries("alpha"),
+        )?.projectionRevision,
+      ).toBe(1);
+      await act(async () => {
+        await hook.result.current.sidebar.retryCollection("alpha");
+      });
+      expect(
+        client.getQueryData<ProjectSessionSummaryWindow>(
+          queryKeys.projectSessions.summaries("alpha", "builtin"),
+        )?.projectionRevision,
+      ).toBe(2);
+      await act(async () => {
+        await hook.result.current.catalog.refresh("alpha");
+      });
+      expect(
+        client
+          .getQueryData<ProjectSessionSummaryWindow>(queryKeys.projectSessions.summaries("alpha"))
+          ?.items.map((item) => item.id),
+      ).toEqual([section.id, visible.id]);
+    } finally {
+      hook.unmount();
+      client.clear();
+    }
+  });
+
   test("keeps a Runtime Session's persisted Review while hydrating its catalog", async () => {
     const session = makeAttachedSession({
       id: "session:runtime-review",

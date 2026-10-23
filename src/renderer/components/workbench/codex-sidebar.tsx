@@ -345,7 +345,6 @@ export function CodexSidebarSection({
   headingButtonRef,
   headingButtonProps,
   actions,
-  dropIndicator,
   children,
 }: {
   heading: string;
@@ -357,7 +356,6 @@ export function CodexSidebarSection({
   headingButtonRef?: Ref<HTMLButtonElement>;
   headingButtonProps?: ComponentPropsWithoutRef<"button">;
   actions?: ReactNode;
-  dropIndicator?: ReactNode;
   children: ReactNode;
 }) {
   return (
@@ -410,7 +408,6 @@ export function CodexSidebarSection({
             </div>
           </div>
         </div>
-        {dropIndicator}
         <AnimatePresence initial={false}>
           {!collapsed ? (
             <motion.div
@@ -1229,6 +1226,7 @@ export function CodexProjectRow({
   return (
     <div
       ref={projectRowRef}
+      data-sidebar-drop-target={projectDropActive ? "true" : undefined}
       className={cn(
         "group/cwd relative flex flex-col",
         activeProjectDrag && "opacity-20",

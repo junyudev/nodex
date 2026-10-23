@@ -1153,6 +1153,8 @@ export interface ProjectSessionListOptions {
 }
 
 export interface ProjectSessionSummaryWindowInput extends ProjectSessionListOptions {
+  /** Builtin sidebar lanes exclude direct custom Section placements before pagination. */
+  placementScope?: CoreProtocolComponents["schemas"]["ProjectWorkspaceTaskPlacementScope"];
   after?: string | null;
   first?: number;
 }

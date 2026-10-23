@@ -24,7 +24,11 @@ export function resolveSidebarSectionItemPlacement(
   items: readonly SidebarSectionItem[],
   beforePlacementId: string | null | undefined,
 ): SidebarSectionItemPlacement {
-  if (beforePlacementId === null || beforePlacementId === undefined) return { kind: "end" };
+  if (beforePlacementId === null) return { kind: "end" };
+  if (beforePlacementId === undefined) {
+    const firstItem = items[0];
+    return firstItem ? { kind: "before", item: sidebarSectionItemRef(firstItem) } : { kind: "end" };
+  }
   const beforeItem = items.find((item) => item.placementId === beforePlacementId);
   return beforeItem ? { kind: "before", item: sidebarSectionItemRef(beforeItem) } : { kind: "end" };
 }

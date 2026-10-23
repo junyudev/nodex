@@ -8,9 +8,10 @@ import {
 } from "../contracts";
 
 export const SIDEBAR_CUSTOM_SECTIONS_SCENARIO_ID = "sidebar/custom-sections" as const;
-export const SIDEBAR_CUSTOM_SECTIONS_SCENARIO_REVISION = 2 as const;
+export const SIDEBAR_CUSTOM_SECTIONS_SCENARIO_REVISION = 3 as const;
 
 const SECTION_KEY = "workSection";
+const EMPTY_SECTION_KEY = "emptySection";
 const RUNNING_SESSION_KEY = "runningSession";
 const FIRST_DRAFT_KEY = "firstDraft";
 const INBOX_PROJECT_KEY = "inboxProject";
@@ -19,6 +20,7 @@ const SEEDED_DRAFT_COUNT = 51;
 
 interface SidebarCustomSectionsScenarioFacts extends ScenarioFacts {
   readonly sectionId: string;
+  readonly emptySectionId: string;
   readonly directItemCount: number;
   readonly effectiveSessionCount: number;
   readonly hasRunning: boolean;
@@ -41,6 +43,7 @@ export const requireSidebarCustomSectionsFacts = (
     envelope.scenarioRevision !== SIDEBAR_CUSTOM_SECTIONS_SCENARIO_REVISION ||
     !isRecord(value) ||
     typeof value.sectionId !== "string" ||
+    typeof value.emptySectionId !== "string" ||
     typeof value.directItemCount !== "number" ||
     typeof value.effectiveSessionCount !== "number" ||
     typeof value.hasRunning !== "boolean" ||
@@ -66,6 +69,7 @@ const materialize = async (
   if (!project.defaultDatabaseViewId) {
     throw new Error("sidebar/custom-sections Project has no default Database View");
   }
+  const emptySection = await port.createSidebarSection({ name: "Later" });
   const section = await port.createSidebarSection({
     name: "Work",
     initialItem: { kind: "project", projectId: project.id },
@@ -138,6 +142,7 @@ const materialize = async (
     pageIdsByKey: {},
     entityIdsByKey: {
       [SECTION_KEY]: section.sectionId,
+      [EMPTY_SECTION_KEY]: emptySection.sectionId,
       [RUNNING_SESSION_KEY]: running.sessionId,
       [FIRST_DRAFT_KEY]: firstDraft.id,
       [INBOX_PROJECT_KEY]: inboxProject.id,
@@ -159,10 +164,16 @@ const inspect = async (
   manifest: ScenarioManifest,
 ): Promise<SidebarCustomSectionsScenarioFacts> => {
   const sectionId = requireEntityId(manifest, SECTION_KEY);
+  const emptySectionId = requireEntityId(manifest, EMPTY_SECTION_KEY);
   const sections = await port.listSidebarSections();
   const section = sections.find((candidate) => candidate.sectionId === sectionId);
+  const emptySection = sections.find((candidate) => candidate.sectionId === emptySectionId);
   const itemWindow = await port.listSidebarSectionItems(sectionId);
   if (
+    !emptySection ||
+    emptySection.name !== "Later" ||
+    emptySection.directItemCount !== 0 ||
+    emptySection.effectiveSessionCount !== 0 ||
     !section ||
     section.name !== "Work" ||
     section.directItemCount !== SEEDED_DRAFT_COUNT + 2 ||
@@ -180,6 +191,7 @@ const inspect = async (
     scenarioId: manifest.scenarioId,
     scenarioRevision: manifest.scenarioRevision,
     sectionId,
+    emptySectionId,
     directItemCount: section.directItemCount,
     effectiveSessionCount: section.effectiveSessionCount,
     hasRunning: section.hasRunning,

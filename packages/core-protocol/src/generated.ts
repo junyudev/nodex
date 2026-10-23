@@ -8360,6 +8360,7 @@ export interface components {
                 readonly include_archived?: boolean | null;
                 /** @enum {string} */
                 readonly kind: "task_window";
+                readonly placement_scope?: components["schemas"]["ProjectWorkspaceTaskPlacementScope"];
                 readonly project_id?: string | null;
                 readonly window: components["schemas"]["CollectionWindowRequest"];
             } | {
@@ -10268,6 +10269,8 @@ export interface components {
             readonly root_thread_id: string;
             readonly source_epoch: string;
         };
+        /** @enum {string} */
+        readonly ProjectWorkspaceTaskPlacementScope: "all" | "builtin";
         readonly ProjectWorkspaceTaskSummary: {
             readonly session: components["schemas"]["ProjectWorkspaceSessionSummary"];
             readonly thread?: null | components["schemas"]["ProjectWorkspaceTaskThreadSummary"];

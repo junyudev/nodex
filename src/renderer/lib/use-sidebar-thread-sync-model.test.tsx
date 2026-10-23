@@ -281,6 +281,8 @@ describe("useSidebarThreadSyncModel", () => {
     const queryClient = createTestQueryClient();
     queryClient.setQueryData(queryKeys.projectSessions.summaries("beta"), []);
     queryClient.setQueryData(queryKeys.projectSessions.summaries(null), []);
+    queryClient.setQueryData(queryKeys.projectSessions.summaries("beta", "builtin"), []);
+    queryClient.setQueryData(queryKeys.projectSessions.summaries(null, "builtin"), []);
     queryClient.setQueryData(queryKeys.projectSessions.detail("session-beta"), {});
     render(
       createElement(TestQueryProvider, {
@@ -315,6 +317,14 @@ describe("useSidebarThreadSyncModel", () => {
       ).toBe(true);
       expect(
         queryClient.getQueryState(queryKeys.projectSessions.summaries(null))?.isInvalidated,
+      ).toBe(true);
+      expect(
+        queryClient.getQueryState(queryKeys.projectSessions.summaries("beta", "builtin"))
+          ?.isInvalidated,
+      ).toBe(true);
+      expect(
+        queryClient.getQueryState(queryKeys.projectSessions.summaries(null, "builtin"))
+          ?.isInvalidated,
       ).toBe(true);
       expect(
         queryClient.getQueryState(queryKeys.projectSessions.detail("session-beta"))?.isInvalidated,

@@ -68,6 +68,7 @@ function makeSidebarThreadPayload({
   getNextThreadKey,
   getPreviousThreadId,
   itemId,
+  sessionId,
   sourceProjectKind = "local",
   targetProjectKind = "local",
   threadId,
@@ -79,6 +80,7 @@ function makeSidebarThreadPayload({
   getNextThreadKey?: () => string | null;
   getPreviousThreadId?: () => string | null;
   itemId?: string;
+  sessionId?: string;
   sourceProjectKind?: "local" | "remote";
   targetProjectKind?: "local" | "remote";
   threadId: string | null;
@@ -94,6 +96,7 @@ function makeSidebarThreadPayload({
       getNextThreadId,
       getNextThreadKey,
       getPreviousThreadId,
+      sessionId,
       sourceProjectKind,
       targetProjectKind,
       threadId,
@@ -248,6 +251,39 @@ describe("cross-container sidebar thread targeting", () => {
     expect(afterTarget?.beforeThreadId).toBe("thread-gamma");
     expect(Boolean(afterTarget?.insertAtEnd)).toBe(false);
   });
+
+  test.each([
+    { pointerY: 4, beforeItemId: "session-beta" },
+    { pointerY: 26, beforeItemId: "session-gamma" },
+  ])(
+    "keeps the Session insertion anchor at pointer Y $pointerY when sortable IDs are Thread keys",
+    ({ pointerY, beforeItemId }) => {
+      const targetPayload = {
+        ...makeSidebarThreadPayload({
+          containerId: "project:beta",
+          controller: { handleDragEnd() {} },
+          itemId: "session-beta",
+          sessionId: "session-beta",
+          threadId: "thread-beta",
+          threadKey: "local:thread-beta",
+        }),
+        itemIds: ["session-beta", "session-gamma"],
+        nextItemId: "session-gamma",
+      };
+      const target = resolveSidebarThreadExternalDropTarget(
+        makeRichDragEndEvent({
+          activePayload,
+          overId: "local:thread-beta",
+          overPayload: targetPayload,
+        }),
+        pointerY,
+        () => null,
+      );
+
+      expect(target?.beforeItemId).toBe(beforeItemId);
+      expect(target?.targetItemIds).toEqual(["session-beta", "session-gamma"]);
+    },
+  );
 
   test("uses a Project row inside a mixed Section as an exact insertion anchor", () => {
     const targetController = { handleDragEnd() {} };
@@ -566,6 +602,60 @@ describe("sidebar thread allowed-target policy", () => {
     );
   });
 
+  test("allows durable drafts into Sections without treating pending rows as Sessions", () => {
+    expect(
+      policy({ threadId: null, sessionId: "session-draft", targetContainerId: "section:work" }),
+    ).toEqual({ status: "allowed" });
+    expect(policy({ threadId: null, targetContainerId: "section:work" })).toEqual({
+      status: "blocked",
+      reason: "pending-cross-container",
+    });
+    expect(
+      policy({ threadId: null, sessionId: "session-draft", targetContainerId: "chats" }),
+    ).toEqual({ status: "blocked", reason: "pending-cross-container" });
+  });
+
+  test("allows attached chats to leave a custom Section for each local destination", () => {
+    for (const targetContainerId of ["chats", "pinned", "project:beta", "section:later"]) {
+      expect(policy({ sourceContainerId: "section:work", targetContainerId })).toEqual({
+        status: "allowed",
+      });
+    }
+  });
+
+  test("lets durable Section drafts leave without enabling pending or builtin-to-builtin moves", () => {
+    for (const targetContainerId of ["chats", "pinned", "project:beta", "project-pinned:beta"]) {
+      expect(
+        policy({
+          sourceContainerId: "section:work",
+          targetContainerId,
+          threadId: null,
+          sessionId: "session-draft",
+        }),
+      ).toEqual({ status: "allowed" });
+      expect(
+        policy({ sourceContainerId: "section:work", targetContainerId, threadId: null }),
+      ).toEqual({ status: "blocked", reason: "pending-cross-container" });
+      expect(
+        policy({
+          sourceContainerId: "project:alpha",
+          targetContainerId,
+          threadId: null,
+          sessionId: "session-draft",
+        }),
+      ).toEqual({ status: "blocked", reason: "pending-cross-container" });
+    }
+    expect(
+      policy({
+        sourceContainerId: "section:work",
+        targetContainerId: "project:remote",
+        targetProjectKind: "remote",
+        threadId: null,
+        sessionId: "session-draft",
+      }).status,
+    ).toBe("blocked");
+  });
+
   test("blocks reorder-only, mismatched, remote, cloud, and unsupported targets", () => {
     const reasons = [
       policy({ sourceContainerId: "reorder-only:alpha" }),
@@ -588,6 +678,107 @@ describe("sidebar thread allowed-target policy", () => {
 });
 
 describe("cross-container drag completion", () => {
+  test.each(["thread-beta", null])(
+    "cancels a same-Section container drop without insertion feedback for Thread %s",
+    async (threadId) => {
+      const drops: unknown[] = [];
+      const activePayload = makeSidebarThreadPayload({
+        containerId: "section:work",
+        controller: { handleDragEnd() {} },
+        itemId: "placement-beta",
+        sessionId: "session-beta",
+        threadId,
+        threadKey: "local:beta",
+      });
+      const disposition = dispatchSidebarThreadDragEnd({
+        destinationController: null,
+        event: makeRichDragEndEvent({
+          activePayload,
+          overId: "sidebar-thread-container:section:work",
+          overPayload: {
+            kind: "sidebar-thread-container",
+            containerId: "section:work",
+            beforeItemId: "placement-alpha",
+            itemIds: ["placement-alpha", "placement-beta"],
+          },
+        }),
+        getThreadIdByThreadKey: () => null,
+        homeContainerIdByThreadId: new Map(),
+        onError: (error) => {
+          throw error;
+        },
+        onThreadDrop: (drop) => {
+          drops.push(drop);
+          return null;
+        },
+        pointerY: 4,
+        updatePendingThreadDrops() {},
+      });
+      await Promise.resolve();
+      expect(disposition).toBe("cancelled");
+      expect(drops).toEqual([]);
+    },
+  );
+
+  test.each([
+    ["section:later", false],
+    ["chats", false],
+    ["pinned", false],
+    ["project:beta", true],
+  ] as const)(
+    "moves a Section draft to %s by Session identity without a Thread projection",
+    async (targetContainerId, useDefaultOrder) => {
+      const drops: unknown[] = [];
+      const errors: unknown[] = [];
+      let pendingUpdates = 0;
+      const activePayload = makeSidebarThreadPayload({
+        containerId: "section:work",
+        controller: { handleDragEnd() {} },
+        sessionId: "session-draft",
+        threadId: null,
+        threadKey: "draft",
+      });
+      const disposition = dispatchSidebarThreadDragEnd({
+        destinationController: null,
+        event: makeRichDragEndEvent({
+          activePayload,
+          overId: targetContainerId,
+          overPayload: {
+            kind: "sidebar-thread-container",
+            containerId: targetContainerId,
+            beforeItemId: "placement-first",
+          },
+        }),
+        getThreadIdByThreadKey: () => null,
+        homeContainerIdByThreadId: new Map(),
+        onError: (error) => errors.push(error),
+        onThreadDrop: (drop) => {
+          drops.push(drop);
+          return null;
+        },
+        pointerY: 4,
+        updatePendingThreadDrops: () => {
+          pendingUpdates += 1;
+        },
+      });
+      await Promise.resolve();
+      expect(disposition).toBe("moved");
+      expect(drops).toEqual([
+        {
+          beforeThreadId: null,
+          beforeItemId: "placement-first",
+          sessionId: "session-draft",
+          sourceContainerId: "section:work",
+          targetContainerId,
+          threadId: null,
+          ...(useDefaultOrder ? { useDefaultOrder: true } : {}),
+        },
+      ]);
+      expect(pendingUpdates).toBe(0);
+      expect(errors).toEqual([]);
+    },
+  );
+
   test("keeps pinned same-controller reorders on the pinned order owner", () => {
     let dragEndCount = 0;
     let dragCancelCount = 0;

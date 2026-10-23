@@ -262,6 +262,7 @@ pub(super) fn read(
         ProjectWorkspaceRead::TaskWindow {
             project_id,
             include_archived,
+            placement_scope,
             window,
         } => Ok(ProjectWorkspaceReadValue::TaskWindow {
             tasks: super::task_window::read_task_window(
@@ -270,6 +271,7 @@ pub(super) fn read(
                 commit_head,
                 project_id.as_deref(),
                 include_archived.unwrap_or(false),
+                placement_scope,
                 &window,
             )?,
         }),
@@ -1071,6 +1073,7 @@ mod tests {
             ProjectWorkspaceRead::TaskWindow {
                 project_id: Some("project-1".to_owned()),
                 include_archived: Some(true),
+                placement_scope: Default::default(),
                 window: CollectionWindowRequest {
                     after: None,
                     first: Some(50),
@@ -1101,6 +1104,7 @@ mod tests {
             ProjectWorkspaceRead::TaskWindow {
                 project_id: None,
                 include_archived: None,
+                placement_scope: Default::default(),
                 window: CollectionWindowRequest {
                     after: None,
                     first: Some(50),

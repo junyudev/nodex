@@ -1,4 +1,5 @@
 import { assert, it } from "@effect/vitest";
+import { CORE_CLIENT_REQUIREMENTS } from "@nodex/core-protocol";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
@@ -150,6 +151,58 @@ const open = (modules: CoreModules["Service"]) =>
     );
     return { scope, workspace };
   });
+
+it.effect("keeps Session directories complete and scopes sidebar pages explicitly", () =>
+  Effect.gen(function* () {
+    const contract = CORE_CLIENT_REQUIREMENTS.modules.find(
+      (entry) => entry.module === "project_workspace",
+    );
+    if (!contract) throw new Error("Workspace contract is missing");
+    const observed: Array<Parameters<CoreModuleClients["workspace"]["read"]>[0]> = [];
+    const reads: CoreModuleClients["workspace"]["read"] = (input) => {
+      if (input.kind !== "task_window") return Effect.die("Unexpected Core read");
+      observed.push(input);
+      return Effect.succeed({
+        contract_version: contract.contract_version,
+        store_epoch: "epoch:catalog",
+        commit_head: 7,
+        value: {
+          kind: "task_window",
+          tasks: {
+            items: [],
+            next_cursor: null,
+            authority: { projection_revision: 7 },
+          },
+        },
+      } satisfies ProjectWorkspaceReadSnapshot);
+    };
+    const { scope, workspace } = yield* open(core(reads));
+    yield* workspace.listProjectSessionSummaryWindow("project:one");
+    const sidebar = yield* workspace.listProjectSessionSummaryWindow(null, {
+      placementScope: "builtin",
+      after: "sidebar-cursor",
+      first: 50,
+    });
+    assert.deepEqual(observed, [
+      {
+        kind: "task_window",
+        project_id: "project:one",
+        include_archived: false,
+        placement_scope: "all",
+        window: { after: null, first: undefined },
+      },
+      {
+        kind: "task_window",
+        project_id: null,
+        include_archived: false,
+        placement_scope: "builtin",
+        window: { after: "sidebar-cursor", first: 50 },
+      },
+    ]);
+    assert.equal(sidebar.projectionRevision, 7);
+    yield* Scope.close(scope, Exit.void);
+  }),
+);
 
 it.effect(
   "Thread admission distinguishes Core rejection, lost replies, and committed readback failure",

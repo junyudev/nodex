@@ -25,6 +25,7 @@ import type {
   ProjectWindow,
   ProjectSession,
   ProjectSessionSummaryWindow,
+  ProjectSessionSummaryWindowInput,
   WorktreeEnvironmentConfigRecord,
   WorktreeEnvironmentOption,
   WorktreeEnvironmentSettingsSnapshot,
@@ -127,13 +128,17 @@ export function boardByProjectQueryOptions(projectId: string) {
   });
 }
 
-export function projectSessionSummariesQueryOptions(projectId: string | null) {
-  const queryKey = queryKeys.projectSessions.summaries(projectId);
+export function projectSessionSummariesQueryOptions(
+  projectId: string | null,
+  placementScope: NonNullable<ProjectSessionSummaryWindowInput["placementScope"]> = "all",
+) {
+  const queryKey = queryKeys.projectSessions.summaries(projectId, placementScope);
   return queryOptions({
     queryKey,
     queryFn: async ({ client, queryKey: activeQueryKey }): Promise<ProjectSessionSummaryWindow> => {
       const incoming = (await invoke("workspace:tasks:list", projectId, {
         first: 50,
+        placementScope,
       })) as ProjectSessionSummaryWindow;
       return preferNewestProjectSessionSummaryWindow(
         client.getQueryData<ProjectSessionSummaryWindow>(activeQueryKey),

@@ -79,7 +79,7 @@ import {
 } from "@/lib/codex-sidebar-thread-sync";
 import { buildLibraryMoveOperation } from "@/lib/library-operations";
 import { projectActivitySummariesQueryOptions } from "@/lib/query-options";
-import { runtimeSessionTarget } from "@/lib/session-execution";
+import { runtimeSessionTarget, sessionExecutionThreadId } from "@/lib/session-execution";
 import {
   listExpandedVisibleProjectGroupIds,
   listReopenableVisibleProjectGroupIds,
@@ -257,6 +257,7 @@ function SidebarProjectGroupRowsContent({
 
 function SidebarPinnedThreadRowsContent({
   containerId,
+  getSessionId,
   getThreadId,
   visibleThreadKeys,
   itemsByKey,
@@ -265,6 +266,7 @@ function SidebarPinnedThreadRowsContent({
   renderThread,
 }: {
   containerId: "pinned";
+  getSessionId: (threadKey: string) => string | null;
   getThreadId: (threadKey: string) => string | null;
   visibleThreadKeys: string[];
   itemsByKey: ReadonlyMap<string, CodexSidebarThreadItem>;
@@ -287,7 +289,13 @@ function SidebarPinnedThreadRowsContent({
       <div className="flex flex-col" role="list" aria-label={ariaLabel}>
         <SidebarThreadReorderRows
           containerId={containerId}
+          getSessionId={getSessionId}
+          getItemId={(threadKey) => getSessionId(threadKey) ?? undefined}
           getThreadId={getThreadId}
+          itemIds={optimisticThreadKeys.flatMap((threadKey) => {
+            const sessionId = getSessionId(threadKey);
+            return sessionId === null ? [] : [sessionId];
+          })}
           visibleThreadKeys={optimisticThreadKeys}
           sortableThreadKeys={optimisticThreadKeys.filter((threadKey) => {
             const item = itemsByKey.get(threadKey);
@@ -386,66 +394,65 @@ function SidebarThreadContainerRowsContent({
   });
 
   return (
-    <SidebarThreadDropContainer containerId={containerId} targetProjectKind="local">
-      <SidebarPaginatedItems
-        items={displayedThreadKeys}
-        getKey={(threadKey) => threadKey}
-        maxItems={CODEX_SIDEBAR_PROJECTLESS_THREAD_MAX_ITEMS}
-        expanded={expanded}
-        onExpandedChange={onExpandedChange}
-        forcedVisibleKey={forcedVisibleKey}
-        suppressedKeys={suppressedKeys}
-        hasMoreAtSource={hasMoreAtSource}
-        onLoadMore={onLoadMore}
-      >
-        {(pagination, pager) => (
-          <div className="isolate flex flex-col [contain:layout]">
-            <div className="flex flex-col" role="list" aria-label="Chats">
-              {pagination.visibleItems.length > 0 ? (
-                <SidebarThreadSortableRows
-                  containerId={containerId}
-                  getItemId={(threadKey) => getSessionId(threadKey) ?? undefined}
-                  getThreadId={getThreadId}
-                  itemIds={reorder.displayedVisibleThreadKeys.flatMap((threadKey) => {
-                    const sessionId = getSessionId(threadKey);
-                    return sessionId === null ? [] : [sessionId];
-                  })}
-                  visibleThreadKeys={pagination.visibleItems}
-                  sortableThreadKeysInDisplayOrder={reorder.displayedVisibleThreadKeys}
-                  controller={reorder.controller}
-                  dropIndicatorTarget={reorder.dropIndicatorTarget}
-                  renderThread={renderThread}
-                  renderDragOverlay={(threadKey) => {
-                    const item = itemsByKey.get(threadKey);
-                    if (!item) return null;
-                    return (
-                      <div className="flex h-[var(--height-token-nav-row)] max-w-80 items-center gap-2 px-2 text-base text-token-foreground">
-                        <span className="flex size-5 shrink-0 items-center justify-center">
-                          <ThreadIcon className="icon-xs" />
-                        </span>
-                        <span className="min-w-0 truncate">{item.title}</span>
-                      </div>
-                    );
-                  }}
-                  sourceProjectKind="local"
-                  targetProjectKind="local"
-                />
-              ) : null}
-              {pagination.visibleItems.length === 0 || collectionState.kind === "error" ? (
-                <SidebarSessionCollectionFallback
-                  state={collectionState}
-                  loadingText="Loading chats..."
-                  emptyText="No projectless chats"
-                  placement="section"
-                  onRetry={onRetry}
-                />
-              ) : null}
-              {pager}
-            </div>
+    <SidebarPaginatedItems
+      items={displayedThreadKeys}
+      getKey={(threadKey) => threadKey}
+      maxItems={CODEX_SIDEBAR_PROJECTLESS_THREAD_MAX_ITEMS}
+      expanded={expanded}
+      onExpandedChange={onExpandedChange}
+      forcedVisibleKey={forcedVisibleKey}
+      suppressedKeys={suppressedKeys}
+      hasMoreAtSource={hasMoreAtSource}
+      onLoadMore={onLoadMore}
+    >
+      {(pagination, pager) => (
+        <div className="isolate flex flex-col [contain:layout]">
+          <div className="flex flex-col" role="list" aria-label="Chats">
+            {pagination.visibleItems.length > 0 ? (
+              <SidebarThreadSortableRows
+                containerId={containerId}
+                getSessionId={getSessionId}
+                getItemId={(threadKey) => getSessionId(threadKey) ?? undefined}
+                getThreadId={getThreadId}
+                itemIds={reorder.displayedVisibleThreadKeys.flatMap((threadKey) => {
+                  const sessionId = getSessionId(threadKey);
+                  return sessionId === null ? [] : [sessionId];
+                })}
+                visibleThreadKeys={pagination.visibleItems}
+                sortableThreadKeysInDisplayOrder={reorder.displayedVisibleThreadKeys}
+                controller={reorder.controller}
+                dropIndicatorTarget={reorder.dropIndicatorTarget}
+                renderThread={renderThread}
+                renderDragOverlay={(threadKey) => {
+                  const item = itemsByKey.get(threadKey);
+                  if (!item) return null;
+                  return (
+                    <div className="flex h-[var(--height-token-nav-row)] max-w-80 items-center gap-2 px-2 text-base text-token-foreground">
+                      <span className="flex size-5 shrink-0 items-center justify-center">
+                        <ThreadIcon className="icon-xs" />
+                      </span>
+                      <span className="min-w-0 truncate">{item.title}</span>
+                    </div>
+                  );
+                }}
+                sourceProjectKind="local"
+                targetProjectKind="local"
+              />
+            ) : null}
+            {pagination.visibleItems.length === 0 || collectionState.kind === "error" ? (
+              <SidebarSessionCollectionFallback
+                state={collectionState}
+                loadingText="Loading chats..."
+                emptyText="No projectless chats"
+                placement="section"
+                onRetry={onRetry}
+              />
+            ) : null}
+            {pager}
           </div>
-        )}
-      </SidebarPaginatedItems>
-    </SidebarThreadDropContainer>
+        </div>
+      )}
+    </SidebarPaginatedItems>
   );
 }
 
@@ -632,7 +639,13 @@ function SidebarProjectThreadRowsContent({
             <SidebarThreadDropContainer containerId={pinnedContainerId} targetProjectKind="local">
               <SidebarThreadSortableRows
                 containerId={pinnedContainerId}
+                getSessionId={getSessionId}
+                getItemId={(threadKey) => getSessionId(threadKey) ?? undefined}
                 getThreadId={getThreadId}
+                itemIds={pinnedReorder.displayedVisibleThreadKeys.flatMap((threadKey) => {
+                  const sessionId = getSessionId(threadKey);
+                  return sessionId === null ? [] : [sessionId];
+                })}
                 visibleThreadKeys={visiblePinnedThreadKeys}
                 sortableThreadKeysInDisplayOrder={pinnedReorder.displayedVisibleThreadKeys}
                 controller={pinnedReorder.controller}
@@ -646,6 +659,7 @@ function SidebarProjectThreadRowsContent({
             <SidebarThreadDropContainer containerId={regularContainerId} targetProjectKind="local">
               <SidebarThreadSortableRows
                 containerId={regularContainerId}
+                getSessionId={getSessionId}
                 getItemId={(threadKey) => getSessionId(threadKey) ?? undefined}
                 getThreadId={getThreadId}
                 itemIds={regularReorder.displayedVisibleThreadKeys.flatMap((threadKey) => {
@@ -905,7 +919,7 @@ function SidebarThreadOrganizerSections({
         return true;
       })
       .map((session): CodexSidebarThreadItem => {
-        const threadId = session.thread?.threadId ?? session.id;
+        const threadId = sessionExecutionThreadId(session) ?? session.id;
         const hostId = session.thread?.executionHostId ?? "local";
         const local = hostId === "local";
         const managedWorktreePath = session.thread?.managedWorktreePath ?? null;
@@ -959,7 +973,7 @@ function SidebarThreadOrganizerSections({
       const session = item.sessionId
         ? sessionsById.get(item.sessionId)
         : sessionsByThreadId.get(item.threadId);
-      return session?.thread?.threadId ?? null;
+      return sessionExecutionThreadId(session ?? null);
     },
     [model.threadItemsByKey, sessionsById, sessionsByThreadId, sidebarThreadItemsByKey],
   );
@@ -1571,6 +1585,7 @@ function SidebarThreadOrganizerSections({
       return (
         <div
           ref={pinnedDropTarget.setNodeRef}
+          data-sidebar-drop-target={pinnedDropTarget.isOver ? "true" : undefined}
           className={cn(
             "-my-4 px-row-x",
             pinnedDropTarget.projectDragActive &&
@@ -1593,6 +1608,7 @@ function SidebarThreadOrganizerSections({
     return (
       <div
         ref={pinnedDropTarget.setNodeRef}
+        data-sidebar-drop-target={pinnedDropTarget.isOver ? "true" : undefined}
         className={cn(
           "relative",
           pinnedDropTarget.isExternalThreadDropTarget &&
@@ -1608,6 +1624,7 @@ function SidebarThreadOrganizerSections({
           {visiblePinnedStandaloneThreadKeys.length > 0 ? (
             <SidebarPinnedThreadRowsContent
               containerId="pinned"
+              getSessionId={getSidebarSessionId}
               getThreadId={getSidebarRealThreadId}
               visibleThreadKeys={visiblePinnedStandaloneThreadKeys}
               itemsByKey={sidebarThreadItemsByKey}
@@ -1686,40 +1703,46 @@ function SidebarThreadOrganizerSections({
           readsProjectWindow: true,
         })}
       </CodexSidebarSection>
-      <CodexSidebarSection
-        heading="Chats"
-        collapsed={chatsSectionCollapsed}
-        onToggle={onToggleChatsSectionCollapsed}
-        actions={
-          <CodexSidebarActionButton
-            label="New projectless chat"
-            data-app-action-sidebar-projectless-new-chat=""
-            onClick={() => void onStartNewChatInProject(null)}
-          >
-            <NewChatIcon />
-          </CodexSidebarActionButton>
-        }
+      <SidebarThreadDropContainer
+        containerId="chats"
+        targetProjectKind="local"
+        className="-mb-4 pb-4"
       >
-        <SidebarThreadContainerRowsContent
-          containerId="chats"
-          threadKeys={projectlessThreadKeys}
-          getSessionId={getSidebarSessionId}
-          getThreadId={getSidebarRealThreadId}
-          itemsByKey={sidebarThreadItemsByKey}
-          expanded={projectlessThreadListExpanded}
-          onExpandedChange={setProjectlessThreadListExpanded}
-          forcedVisibleKey={activeThreadKey}
-          suppressedKeys={sidebarArchivePendingKeys}
-          collectionState={projectlessSessionCollection.state}
-          hasMoreAtSource={projectlessSessionCollection.hasMore}
-          onLoadMore={() => onLoadMoreTaskWindow(null)}
-          onRetry={() => onRetryTaskWindow(null)}
-          onVisibleSessionOrderChange={(orderedSessionIds) =>
-            onReorderSessions(null, orderedSessionIds)
+        <CodexSidebarSection
+          heading="Chats"
+          collapsed={chatsSectionCollapsed}
+          onToggle={onToggleChatsSectionCollapsed}
+          actions={
+            <CodexSidebarActionButton
+              label="New projectless chat"
+              data-app-action-sidebar-projectless-new-chat=""
+              onClick={() => void onStartNewChatInProject(null)}
+            >
+              <NewChatIcon />
+            </CodexSidebarActionButton>
           }
-          renderThread={renderThreadRow}
-        />
-      </CodexSidebarSection>
+        >
+          <SidebarThreadContainerRowsContent
+            containerId="chats"
+            threadKeys={projectlessThreadKeys}
+            getSessionId={getSidebarSessionId}
+            getThreadId={getSidebarRealThreadId}
+            itemsByKey={sidebarThreadItemsByKey}
+            expanded={projectlessThreadListExpanded}
+            onExpandedChange={setProjectlessThreadListExpanded}
+            forcedVisibleKey={activeThreadKey}
+            suppressedKeys={sidebarArchivePendingKeys}
+            collectionState={projectlessSessionCollection.state}
+            hasMoreAtSource={projectlessSessionCollection.hasMore}
+            onLoadMore={() => onLoadMoreTaskWindow(null)}
+            onRetry={() => onRetryTaskWindow(null)}
+            onVisibleSessionOrderChange={(orderedSessionIds) =>
+              onReorderSessions(null, orderedSessionIds)
+            }
+            renderThread={renderThreadRow}
+          />
+        </CodexSidebarSection>
+      </SidebarThreadDropContainer>
     </>
   );
 
@@ -1910,7 +1933,6 @@ export function ProjectSessionSidebar({
             placement: resolveSidebarSectionItemPlacement(targetItems, drop.beforeItemId),
           })
           .then(async () => {
-            onSetSidebarSectionCollapsed(`custom:${sectionId}`, false);
             await queryClient.invalidateQueries({ queryKey: SIDEBAR_SECTIONS_QUERY_KEY });
           })
           .catch(() => toast.danger("Failed to move project to section"));
@@ -1922,12 +1944,7 @@ export function ProjectSessionSidebar({
         });
       }
     },
-    [
-      onSetProjectPinned,
-      onSetSidebarSectionCollapsed,
-      queryClient,
-      sectionCatalog.itemsBySectionId,
-    ],
+    [onSetProjectPinned, queryClient, sectionCatalog.itemsBySectionId],
   );
   const handleLibraryMove = useCallback(
     async ({
@@ -2024,53 +2041,6 @@ export function ProjectSessionSidebar({
     (threadKey: string) => sidebarThreadIdByKey.get(threadKey) ?? null,
     [sidebarThreadIdByKey],
   );
-  const handleSidebarThreadDrop = useCallback(
-    async (drop: SidebarThreadDropRequest): Promise<SidebarThreadDropCommit | null> => {
-      const targetSectionId = readSidebarSectionContainerId(drop.targetContainerId);
-      const sourceSectionId = readSidebarSectionContainerId(drop.sourceContainerId);
-      const session = knownSidebarSessions.find(
-        (candidate) => candidate.thread?.threadId === drop.threadId,
-      );
-      if (!session || (!targetSectionId && !sourceSectionId)) {
-        return await onMoveSidebarThread(drop);
-      }
-
-      if (targetSectionId) {
-        const targetItems = sectionCatalog.itemsBySectionId.get(targetSectionId) ?? [];
-        await workspaceSidebarCommands.moveItem({
-          item: { kind: "session", sessionId: session.id },
-          sectionId: targetSectionId,
-          placement: resolveSidebarSectionItemPlacement(targetItems, drop.beforeItemId),
-        });
-        onSetSidebarSectionCollapsed(`custom:${targetSectionId}`, false);
-        await queryClient.invalidateQueries({ queryKey: SIDEBAR_SECTIONS_QUERY_KEY });
-        await onThreadsChanged?.();
-        return null;
-      }
-
-      const sourceItems = sectionCatalog.itemsBySectionId.get(sourceSectionId as string) ?? [];
-      const directPlacement = sourceItems.some(
-        (item) => item.kind === "session" && item.session.id === session.id,
-      );
-      if (directPlacement) {
-        await workspaceSidebarCommands.moveItem({
-          item: { kind: "session", sessionId: session.id },
-          sectionId: null,
-          placement: { kind: "end" },
-        });
-        await queryClient.invalidateQueries({ queryKey: SIDEBAR_SECTIONS_QUERY_KEY });
-      }
-      return await onMoveSidebarThread(drop);
-    },
-    [
-      knownSidebarSessions,
-      onMoveSidebarThread,
-      onSetSidebarSectionCollapsed,
-      onThreadsChanged,
-      queryClient,
-      sectionCatalog.itemsBySectionId,
-    ],
-  );
 
   return (
     <WorkbenchSidebarFrame
@@ -2127,7 +2097,7 @@ export function ProjectSessionSidebar({
               onProjectError={reportSidebarProjectReorderError}
               onProjectDrop={handleProjectDrop}
               onThreadError={reportSidebarThreadReorderError}
-              onThreadDrop={handleSidebarThreadDrop}
+              onThreadDrop={onMoveSidebarThread}
               onLibraryMove={handleLibraryMove}
             >
               <SidebarThreadOrganizerSections

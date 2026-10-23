@@ -52,7 +52,12 @@ describe("sidebar Section item DnD placement", () => {
     ).toEqual({ kind: "before", item: { kind: "session", sessionId: "session-alpha" } });
   });
 
-  test("falls back to the end when the target is the container or a stale placement", () => {
+  test("starts at the first mixed item for a container drop and preserves explicit end boundaries", () => {
+    expect(resolveSidebarSectionItemPlacement([projectItem, sessionItem], undefined)).toEqual({
+      kind: "before",
+      item: { kind: "project", projectId: "project-alpha" },
+    });
+    expect(resolveSidebarSectionItemPlacement([], undefined)).toEqual({ kind: "end" });
     expect(resolveSidebarSectionItemPlacement([projectItem], null)).toEqual({ kind: "end" });
     expect(resolveSidebarSectionItemPlacement([projectItem], "missing")).toEqual({ kind: "end" });
   });
