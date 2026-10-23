@@ -42,7 +42,6 @@ import {
   hydrateLocalPersistedHistoryOccurrence,
   searchLocalPersistedHistory,
   prepareLocalConversationPromptRailNavigation,
-  requestLocalConversationHistoryPage,
 } from "../local-conversation-store";
 import {
   selectVisibleConversationTurnEntries,
@@ -69,6 +68,7 @@ import type {
   ThreadStageActions,
 } from "../thread-stage-types";
 import type { LocalConversationAttachmentState } from "../conversation-attachment-state";
+import type { ConversationHistoryPort } from "../conversation-runtime";
 import { buildThreadUserMessageNavigationItems } from "../projection/thread-user-message-navigation-items";
 import {
   buildTurnTimestampMarkers,
@@ -116,14 +116,10 @@ import {
 import { formatBoundedWorktreeOutput } from "../../../../shared/worktree-output";
 import type { CodexPromptRailReveal } from "../../../../shared/codex-prompt-rail-history";
 import type {
-  CodexHistoryBoundaryRef,
   CodexHistoryRow,
   CodexHistoryTurnItemsPagination,
 } from "../../../../shared/codex-conversation-state/codex-history-topology";
-import {
-  createCodexConversationHistoryTurnItemsRef,
-  type CodexConversationHistoryTurnItemsRef,
-} from "../../../../shared/codex-conversation-history-page";
+import { createCodexConversationHistoryTurnItemsRef } from "../../../../shared/codex-conversation-history-page";
 import {
   codexConversationTurnHasUserMessage,
   resolveEditableUserTurnIds,
@@ -502,9 +498,8 @@ interface LocalConversationThreadBodyOwnerProps {
   firstSubmissionTurn?: CodexConversationTurn | null;
   turnPagination: CodexConversationTurnPagination | null;
   historyRows?: readonly CodexHistoryRow[];
-  conversationEntityGeneration?: number;
+  history?: ConversationHistoryPort;
   historyTopologyGeneration?: number;
-  historyMutationRevision?: number;
   turnItemsPaginationById?: Readonly<Record<string, CodexHistoryTurnItemsPagination>>;
   requests: CodexConversationServerRequest[];
   canonicalRequests: CodexCanonicalServerRequest[];
@@ -562,9 +557,8 @@ export function LocalConversationThreadBodyOwner({
   firstSubmissionTurn,
   turnPagination,
   historyRows: canonicalHistoryRows,
-  conversationEntityGeneration,
+  history,
   historyTopologyGeneration,
-  historyMutationRevision,
   turnItemsPaginationById,
   requests,
   canonicalRequests,
@@ -867,53 +861,6 @@ export function LocalConversationThreadBodyOwner({
       }));
     },
     [onRestoreSnapshotChange],
-  );
-
-  const handleLoadHistoryBoundary = useCallback(
-    async (boundary: CodexHistoryBoundaryRef) => {
-      const targetThreadId = threadId ?? body.threadId;
-      if (
-        !targetThreadId ||
-        conversationEntityGeneration === undefined ||
-        historyMutationRevision === undefined
-      ) {
-        return;
-      }
-      const result = await requestLocalConversationHistoryPage(
-        {
-          threadId: targetThreadId,
-          expectedConversationGeneration: conversationEntityGeneration,
-          expectedHistoryMutationRevision: historyMutationRevision,
-          target: { kind: "turnBoundary", boundary },
-        },
-        hostId,
-      );
-      return result.status;
-    },
-    [body.threadId, conversationEntityGeneration, historyMutationRevision, hostId, threadId],
-  );
-  const handleLoadHistoryTurnItems = useCallback(
-    async (items: CodexConversationHistoryTurnItemsRef) => {
-      const targetThreadId = threadId ?? body.threadId;
-      if (
-        !targetThreadId ||
-        conversationEntityGeneration === undefined ||
-        historyMutationRevision === undefined
-      ) {
-        return;
-      }
-      const result = await requestLocalConversationHistoryPage(
-        {
-          threadId: targetThreadId,
-          expectedConversationGeneration: conversationEntityGeneration,
-          expectedHistoryMutationRevision: historyMutationRevision,
-          target: { kind: "turnItems", items },
-        },
-        hostId,
-      );
-      return result.status;
-    },
-    [body.threadId, conversationEntityGeneration, historyMutationRevision, hostId, threadId],
   );
 
   const searchSource = useMemo(
@@ -1422,9 +1369,10 @@ export function LocalConversationThreadBodyOwner({
                 latestTurnSynchronousMeasurementKey={body.latestTurnId ?? body.turnCount}
                 onLatestTurnRestoreStateChange={handleLatestTurnRestoreStateChange}
                 onRestoreStateChange={handleVirtualizedTurnRestoreStateChange}
-                onLoadHistoryBoundary={handleLoadHistoryBoundary}
+                onLoadHistoryBoundary={history?.loadBoundary}
+                historyRequestSource={history}
                 historyTurnItemsRefs={historyTurnItemsRefs}
-                onLoadHistoryTurnItems={handleLoadHistoryTurnItems}
+                onLoadHistoryTurnItems={history?.loadTurnItems}
                 scrollElement={scrollElement}
                 onApiChange={(api) => {
                   searchReads.setListApi(api);

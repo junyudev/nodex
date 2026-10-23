@@ -991,7 +991,10 @@ conversations. A failure settles that lifecycle and explicit retry starts a new 
 ownership and recovery contract lives in
 [Thread Owner/Follower Streaming](product-specs/codex-thread-owner-follower-streaming.md).
 
-Conversation history belongs to the owning manager's canonical document. Sparse islands reference
+Shared transcript presentation requests history through its conversation runtime's owner-bound
+capability; provider labels do not select a history transport. Runtime and native-import adapters
+retain their own cursor and reader lifetimes. For native Codex conversations, history belongs to
+the owning manager's canonical document. Sparse islands reference
 stable entity keys whose values are direct Turns; display overlays do not become mutation targets.
 Turn and item loads execute through the manager's native client. Boundary requests revalidate the
 captured cursor after I/O, and item requests belong to the exact pagination object and manager

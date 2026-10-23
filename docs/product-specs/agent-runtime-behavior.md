@@ -107,13 +107,20 @@ open for user input; native Codex inactivity controls belong to their own execut
 
 Launch returns execution identity without transcript bodies. Controls acquire only
 execution metadata and observe control events. Activating a transcript reader opens
-one bounded history window and publishes canonical items into the keyed
-transcript cache. Text changes notify only the affected item. Older windows preserve
-resident items. Releasing the last transcript reader clears body caches; retained
+one bounded history page and publishes canonical items into the keyed
+transcript cache. Text changes notify only the affected item. Scrolling near an unloaded
+history boundary automatically requests older pages through the current conversation
+owner. Requests are serialized and reconsider viewport demand after each page; short or
+hidden pages may continue until the gap moves out of reach or history is exhausted.
+Older pages preserve resident items and the visible reading anchor, including when a page
+adds earlier messages inside an already visible Turn. Page failures expose a retry at that gap while the loaded transcript and Composer remain usable. Missing or
+repeated continuation cursors fail the page instead of looping. Releasing the last transcript reader clears body caches; retained
 controls continue observing metadata until their last reader releases. Captured fork ancestry identifies the source of inherited history.
 
 Read-only history loading, retry and child observations use the conversation's
-current owner, including for archived chats and provider-spawned subagents. The
+current owner, including for archived chats and provider-spawned subagents. Viewport
+pagination uses that same owner and validates its current history boundary; a released
+reader cannot publish a late page into a replacement reader. The
 Agent kind selects presentation, not the history store. Runtime Thread identities
 stay inside the bound Session's Runtime reads; opening their history never requires
 a native Thread registration or acquires an execution writer.

@@ -15,6 +15,7 @@ import {
   type AgentRuntimeReadTransport,
 } from "./agent-runtime-conversation-owner";
 import { hasDurableCanonicalFirstSubmission } from "../conversation-launch/session-first-submission-owner";
+import type { CodexHistoryBoundaryRef } from "../../../shared/codex-conversation-state/codex-history-topology";
 
 const target = { sessionId: "session", threadId: "thread" };
 const at = "2026-10-14T00:00:00.000Z";
@@ -273,6 +274,12 @@ async function open(initial: AgentRuntimeConversation, pages: readonly AgentHist
   const release = owner.readOwner.subscribeStructure(() => {});
   await owner.resume();
   return { owner, wire, release };
+}
+
+function historyBoundary(owner: AgentRuntimeConversationOwner): CodexHistoryBoundaryRef {
+  const gap = owner.readOwner.readStructure()?.timeline?.find((entry) => entry.kind === "gap");
+  if (gap?.kind !== "gap" || !gap.newerBoundary) throw new Error("Expected older history");
+  return gap.newerBoundary;
 }
 
 const retiredAt = "2026-10-14T00:00:05.000Z";
@@ -1287,7 +1294,7 @@ describe("Agent Runtime keyed transcript reads", () => {
         ),
         pages,
       );
-      for (const _page of pages) await owner.loadOlder();
+      for (const _page of pages) await owner.loadHistoryBoundary(historyBoundary(owner));
       const structure = owner.readOwner.readStructure()!;
       const entityKey = structure.turnEntityKeys[0]!;
       expect(structure.turns[0]!.itemIds).toHaveLength(count);
@@ -1334,16 +1341,218 @@ describe("Agent Runtime keyed transcript reads", () => {
     const entityKey = owner.readOwner.readStructure()!.turnEntityKeys[0]!;
     const before = owner.readOwner.readItem(entityKey, "command:599");
     const readItem = vi.spyOn(owner.readOwner, "readItem");
-    const first = owner.loadOlder();
-    const second = owner.loadOlder();
+    const boundary = historyBoundary(owner);
+    const first = owner.loadHistoryBoundary(boundary);
+    const second = owner.loadHistoryBoundary(boundary);
     expect(first).toBe(second);
-    await first;
+    expect(owner.getSnapshot().view?.turnPagination?.isLoadingOlder).toBe(true);
+    await expect(first).resolves.toBe("applied");
     expect(wire.port.history).toHaveBeenCalledOnce();
     expect(readItem.mock.calls.every(([, id]) => older.some((item) => item.id === id))).toBe(true);
     expect(owner.readOwner.readStructure()!.turns[0]!.itemIds).toHaveLength(600);
     expect(owner.readOwner.readItem(entityKey, "command:599")).toBe(before);
     expect(owner.getSnapshot().view?.turnPagination?.hasLoadedOldest).toBe(true);
+    expect(owner.getSnapshot().view?.turnPagination?.isLoadingOlder).toBe(false);
     release();
+  });
+
+  test("rejects obsolete and foreign history boundaries before issuing a read", async () => {
+    const { owner, wire, release } = await open(conversation([command(10)], "older"), [
+      { snapshotSequence: 1, items: [row(command(0))], nextCursor: null, hasMoreHistory: false },
+    ]);
+    const boundary = historyBoundary(owner);
+    const invalid: CodexHistoryBoundaryRef[] = [
+      { ...boundary, generation: boundary.generation + 1 },
+      { ...boundary, islandId: "foreign" },
+      { ...boundary, edge: "newer" },
+      { ...boundary, boundaryId: "foreign" },
+      { ...boundary, progressKey: "previous" },
+      { ...boundary, handle: { ...boundary.handle, cursor: "previous" } },
+      { ...boundary, handle: { ...boundary.handle, oldestLoadedTurnId: "foreign" } },
+      { ...boundary, handle: { ...boundary.handle, source: "timeline" } },
+    ];
+    for (const candidate of invalid)
+      await expect(owner.loadHistoryBoundary(candidate)).resolves.toBe("stale");
+    expect(wire.port.history).not.toHaveBeenCalled();
+    await expect(owner.loadHistoryBoundary(boundary)).resolves.toBe("applied");
+    await expect(owner.loadHistoryBoundary(boundary)).resolves.toBe("stale");
+    expect(wire.port.history).toHaveBeenCalledExactlyOnceWith({ ...target, cursor: "older" });
+    release();
+  });
+
+  test("an older-page failure rejects locally and a retry preserves the attached transcript", async () => {
+    const { owner, wire, release } = await open(conversation([command(10)], "older"));
+    const failure = new Error("History unavailable");
+    vi.mocked(wire.port.history)
+      .mockRejectedValueOnce(failure)
+      .mockResolvedValueOnce({
+        snapshotSequence: 1,
+        items: [row(command(0))],
+        nextCursor: null,
+        hasMoreHistory: false,
+      });
+    const structure = owner.readOwner.readStructure();
+    const boundary = historyBoundary(owner);
+    await expect(owner.loadHistoryBoundary(boundary)).rejects.toBe(failure);
+    expect(owner.readOwner.readStructure()).toBe(structure);
+    expect(owner.getSnapshot()).toMatchObject({
+      connection: "ready",
+      error: null,
+      historyLoading: false,
+    });
+    expect(owner.getSnapshot().view?.turnPagination?.isLoadingOlder).toBe(false);
+    await expect(owner.loadHistoryBoundary(boundary)).resolves.toBe("applied");
+    expect(owner.getSnapshot()).toMatchObject({ connection: "ready", error: null });
+    expect(wire.port.read).toHaveBeenCalledOnce();
+    expect(wire.port.history).toHaveBeenCalledTimes(2);
+    release();
+  });
+
+  test.each([
+    { nextCursor: "older", hasMoreHistory: true },
+    { nextCursor: "older", hasMoreHistory: false },
+    { nextCursor: null, hasMoreHistory: true },
+    { nextCursor: "earlier", hasMoreHistory: false },
+    { nextCursor: "", hasMoreHistory: true },
+  ])("rejects a stalled or invalid continuation: %j", async (continuation) => {
+    const { owner, wire, release } = await open(conversation([command(10)], "older"), [
+      { snapshotSequence: 1, items: [row(command(0))], ...continuation },
+    ]);
+    const structure = owner.readOwner.readStructure();
+    await expect(owner.loadHistoryBoundary(historyBoundary(owner))).rejects.toThrow("History");
+    expect(owner.readOwner.readStructure()).toBe(structure);
+    expect(historyBoundary(owner).handle.cursor).toBe("older");
+    expect(owner.getSnapshot()).toMatchObject({ error: null, historyLoading: false });
+    expect(wire.port.history).toHaveBeenCalledOnce();
+    release();
+  });
+
+  test("advancing empty and duplicate-only pages keep their continuation without losing resident items", async () => {
+    const resident = command(10);
+    const { owner, wire, release } = await open(conversation([resident], "older"), [
+      { snapshotSequence: 1, items: [], nextCursor: "earlier", hasMoreHistory: true },
+      { snapshotSequence: 1, items: [row(resident)], nextCursor: "oldest", hasMoreHistory: true },
+      { snapshotSequence: 1, items: [row(command(0))], nextCursor: null, hasMoreHistory: false },
+    ]);
+    const entityKey = owner.readOwner.readStructure()!.turnEntityKeys[0]!;
+    const body = owner.readOwner.readItem(entityKey, resident.id);
+    for (const cursor of ["older", "earlier", "oldest"]) {
+      expect(historyBoundary(owner).handle.cursor).toBe(cursor);
+      await expect(owner.loadHistoryBoundary(historyBoundary(owner))).resolves.toBe("applied");
+    }
+    expect(owner.readOwner.readItem(entityKey, resident.id)).toBe(body);
+    expect(owner.readOwner.readStructure()!.turns[0]!.itemIds).toEqual(["command:0", "command:10"]);
+    expect(owner.getSnapshot().view?.turnPagination?.hasLoadedOldest).toBe(true);
+    expect(wire.port.history).toHaveBeenCalledTimes(3);
+    release();
+  });
+
+  test("rejects a cursor cycle across empty pages without admitting content and permits a corrected retry", async () => {
+    const { owner, wire, release } = await open(conversation([command(10)], "older"), [
+      { snapshotSequence: 1, items: [], nextCursor: "earlier", hasMoreHistory: true },
+      { snapshotSequence: 1, items: [row(command(0))], nextCursor: "older", hasMoreHistory: true },
+      { snapshotSequence: 1, items: [row(command(5))], nextCursor: null, hasMoreHistory: false },
+    ]);
+    await expect(owner.loadHistoryBoundary(historyBoundary(owner))).resolves.toBe("applied");
+    const structure = owner.readOwner.readStructure();
+    const boundary = historyBoundary(owner);
+    await expect(owner.loadHistoryBoundary(boundary)).rejects.toThrow("repeated an earlier page");
+    expect(owner.readOwner.readStructure()).toBe(structure);
+    expect(historyBoundary(owner).handle.cursor).toBe("earlier");
+    expect(owner.getSnapshot()).toMatchObject({ error: null, connection: "ready" });
+    await expect(owner.loadHistoryBoundary(boundary)).resolves.toBe("applied");
+    expect(owner.readOwner.readStructure()!.turns[0]!.itemIds).toEqual(["command:5", "command:10"]);
+    expect(wire.port.history).toHaveBeenCalledTimes(3);
+    release();
+  });
+
+  test.each([
+    { historyCursor: null, hasMoreHistory: true },
+    { historyCursor: "older", hasMoreHistory: false },
+    { historyCursor: "", hasMoreHistory: true },
+    { hasMoreHistory: true },
+    { historyCursor: "older" },
+  ])(
+    "a malformed initial continuation fails attachment instead of publishing an inert gap: %j",
+    async (continuation) => {
+      const initial = conversation([command(10)]);
+      const { historyCursor: _cursor, hasMoreHistory: _hasMore, ...snapshot } = initial.snapshot;
+      const { owner, wire, release } = await open({
+        ...initial,
+        snapshot: { ...snapshot, ...continuation },
+      });
+      expect(owner.getSnapshot()).toMatchObject({
+        connection: "failed",
+        error: "History continuation is invalid",
+      });
+      expect(owner.readOwner.readStructure()).toBeNull();
+      expect(wire.port.history).not.toHaveBeenCalled();
+      expect(wire.port.subscribe).not.toHaveBeenCalled();
+      release();
+    },
+  );
+
+  test("omitted history continuation opens a complete transcript", async () => {
+    const initial = conversation([command(10)]);
+    const { historyCursor: _cursor, hasMoreHistory: _hasMore, ...snapshot } = initial.snapshot;
+    const { owner, wire, release } = await open({ ...initial, snapshot });
+    expect(owner.getSnapshot()).toMatchObject({ connection: "ready", error: null });
+    expect(owner.readOwner.readStructure()?.historyComplete).toBe(true);
+    expect(owner.readOwner.readStructure()?.timeline?.some((entry) => entry.kind === "gap")).toBe(
+      false,
+    );
+    expect(wire.port.history).not.toHaveBeenCalled();
+    expect(wire.port.subscribe).toHaveBeenCalledOnce();
+    release();
+  });
+
+  test("a retired page cannot populate a new reader or clear its pending request at the same cursor", async () => {
+    const { owner, wire, release } = await open(conversation([command(10)], "older"));
+    let completeOld!: (page: AgentHistoryPage) => void;
+    let completeCurrent!: (page: AgentHistoryPage) => void;
+    vi.mocked(wire.port.history)
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            completeOld = resolve;
+          }),
+      )
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            completeCurrent = resolve;
+          }),
+      );
+    const retiredBoundary = historyBoundary(owner);
+    const retired = owner.loadHistoryBoundary(retiredBoundary);
+    await vi.waitFor(() => expect(wire.port.history).toHaveBeenCalledTimes(1));
+    release();
+    const releaseCurrent = owner.readOwner.subscribeStructure(() => {});
+    await owner.resume();
+    await expect(owner.loadHistoryBoundary(retiredBoundary)).resolves.toBe("stale");
+    const currentBoundary = historyBoundary(owner);
+    const current = owner.loadHistoryBoundary(currentBoundary);
+    await vi.waitFor(() => expect(wire.port.history).toHaveBeenCalledTimes(2));
+    completeOld({
+      snapshotSequence: 1,
+      items: [row(command(0))],
+      nextCursor: null,
+      hasMoreHistory: false,
+    });
+    await expect(retired).resolves.toBe("stale");
+    expect(owner.readOwner.readStructure()!.turns[0]!.itemIds).toEqual(["command:10"]);
+    expect(owner.loadHistoryBoundary(currentBoundary)).toBe(current);
+    expect(owner.getSnapshot().historyLoading).toBe(true);
+    completeCurrent({
+      snapshotSequence: 1,
+      items: [row(command(5))],
+      nextCursor: null,
+      hasMoreHistory: false,
+    });
+    await expect(current).resolves.toBe("applied");
+    expect(owner.readOwner.readStructure()!.turns[0]!.itemIds).toEqual(["command:5", "command:10"]);
+    expect(owner.getSnapshot().historyLoading).toBe(false);
+    releaseCurrent();
   });
 
   test("full item detail hydrates only its address and leaves siblings stable", async () => {

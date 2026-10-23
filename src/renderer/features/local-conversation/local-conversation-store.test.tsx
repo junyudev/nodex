@@ -3207,6 +3207,83 @@ describe("local-conversation-store", () => {
     }
   });
 
+  test("history capabilities retain the selected entity lifetime across replacement", async () => {
+    const {
+      LocalConversationProvider,
+      useConversationRuntime,
+      __resetLocalConversationStoreForTests,
+    } = await import("./local-conversation-store");
+    resetLocalConversationStoreTestHarness(__resetLocalConversationStoreForTests);
+    const observed: {
+      manager?: CodexAppServerManagerInstance;
+      runtime?: import("./conversation-runtime").ConversationRuntime;
+    } = {};
+    function Probe() {
+      observed.manager = useDefaultCodexAppServerManager();
+      observed.runtime = useConversationRuntime("thread-history-port");
+      return null;
+    }
+    const view = render(createElement(LocalConversationProvider, null, createElement(Probe)));
+    await settleAsyncRender();
+    const manager = observed.manager!;
+    const runtime = observed.runtime!;
+    let snapshot: CodexConversationSnapshot | null = {
+      ...buildConversation("thread-history-port", "project-1"),
+      conversationEntityGeneration: 4,
+      historyMutationRevision: 8,
+    };
+    const read = vi
+      .spyOn(manager, "readConversation")
+      .mockImplementation((id) => (id === "thread-history-port" ? snapshot : null));
+    const request = vi
+      .spyOn(manager, "requestHistoryPage")
+      .mockResolvedValue({ status: "applied" });
+    const boundary = {
+      generation: 2,
+      islandId: "tail",
+      edge: "older" as const,
+      boundaryId: "tail:older",
+      progressKey: "page-2",
+      handle: { cursor: "page-2", oldestLoadedTurnId: "turn-5" },
+    };
+    try {
+      expect(runtime.history?.("missing-thread")).toBeNull();
+      const original = runtime.history!("thread-history-port")!;
+      expect(await original.loadBoundary(boundary)).toBe("applied");
+      expect(request).toHaveBeenLastCalledWith({
+        threadId: "thread-history-port",
+        expectedConversationGeneration: 4,
+        expectedHistoryMutationRevision: 8,
+        target: { kind: "turnBoundary", boundary },
+      });
+      snapshot = { ...snapshot, conversationEntityGeneration: 5, historyMutationRevision: 0 };
+      request.mockClear();
+      expect(await original.loadBoundary(boundary)).toBe("stale");
+      expect(request).not.toHaveBeenCalled();
+      const replacement = runtime.history!("thread-history-port")!;
+      const items = {
+        turnId: "turn-5",
+        expectedTopologyGeneration: 2,
+        edge: "older" as const,
+        progressKey: "items-2",
+      };
+      expect(await replacement.loadTurnItems!(items)).toBe("applied");
+      expect(request).toHaveBeenLastCalledWith({
+        threadId: "thread-history-port",
+        expectedConversationGeneration: 5,
+        expectedHistoryMutationRevision: 0,
+        target: { kind: "turnItems", items },
+      });
+      snapshot = null;
+      expect(await replacement.loadBoundary(boundary)).toBe("stale");
+      expect(request).toHaveBeenCalledTimes(1);
+    } finally {
+      read.mockRestore();
+      request.mockRestore();
+      view.unmount();
+    }
+  });
+
   test("hydrates native account and catalog only after explicit demand", async () => {
     invokeCalls = [];
     hostMessageListener = null;

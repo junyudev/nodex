@@ -10,6 +10,7 @@ import {
   resolveInitialVirtualizedTurnViewportState,
   resolveMeasuredVisibleAnchorKey,
   resolveRenderedRangeForPendingScrollTarget,
+  resolveRetainedContentRange,
   resolveResponseSpacerBottomViewportOverflowPx,
   resolveResponseSpacerHeightPx,
   resolveRestoredDistanceWithoutResponseSpacer,
@@ -32,6 +33,34 @@ function buildLayout(heightsPx: number[]) {
     gapPx: 12,
   });
 }
+
+describe("history row retention", () => {
+  test("retains resident content through a large prepend without anchoring to the unchanged gap", () => {
+    const previousTurnKeys = ["gap", "a", "b", "c"];
+    const layout = buildVirtualizedTurnLayout({
+      entries: ["gap", "older-1", "older-2", "older-3", "a", "b", "c"].map((turnKey) => ({
+        turnKey,
+        type: turnKey === "gap" ? "gap" : "content",
+        estimatedHeightPx: 100,
+      })),
+      gapPx: 12,
+    });
+    expect(
+      resolveRetainedContentRange({
+        previousTurnKeys,
+        previousRange: { startIndex: 0, endIndex: 3 },
+        layout,
+      }),
+    ).toEqual({ startIndex: 4, endIndex: 6 });
+    expect(
+      resolveRetainedContentRange({
+        previousTurnKeys: layout.turnKeys,
+        previousRange: { startIndex: 4, endIndex: 6 },
+        layout,
+      }),
+    ).toBeNull();
+  });
+});
 
 describe("measured content bottom following", () => {
   test("requires current follow intent, zero response space and the physical 24px boundary", () => {

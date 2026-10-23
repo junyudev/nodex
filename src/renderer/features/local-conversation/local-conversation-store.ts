@@ -400,6 +400,7 @@ import {
   codexConversationHistoryPageRequestKey,
   isCodexConversationHistoryTurnItemsRefCurrent,
   type CodexConversationHistoryPageRequest,
+  type CodexConversationHistoryPageTarget,
 } from "../../../shared/codex-conversation-history-page";
 import { applyCodexLifecycleProjectionDiff } from "../../../shared/codex-conversation-state/codex-lifecycle-projection-diff";
 import { buildCodexTurnOccurrenceKey } from "../../../shared/codex-turn-identity";
@@ -9043,10 +9044,30 @@ export function useConversationRuntime(
 ): ConversationRuntime {
   const override = useConversationRuntimeOverride();
   const manager = useCodexAppServerManagerForConversationId(conversationId, preferredHostId);
-  const codex = useMemo<ConversationRuntime>(
-    () => ({
+  const codex = useMemo<ConversationRuntime>(() => {
+    return {
       kind: "codex",
       hostId: manager.getHostId(),
+      history: (id) => {
+        const generation = manager.readConversation(id)?.conversationEntityGeneration;
+        if (generation === undefined) return null;
+        const loadPage = async (target: CodexConversationHistoryPageTarget) => {
+          const snapshot = manager.readConversation(id);
+          if (!snapshot || snapshot.conversationEntityGeneration !== generation)
+            return "stale" as const;
+          const result = await manager.requestHistoryPage({
+            threadId: id,
+            expectedConversationGeneration: generation,
+            expectedHistoryMutationRevision: snapshot.historyMutationRevision ?? 0,
+            target,
+          });
+          return result.status;
+        };
+        return {
+          loadBoundary: (boundary) => loadPage({ kind: "turnBoundary", boundary }),
+          loadTurnItems: (items) => loadPage({ kind: "turnItems", items }),
+        };
+      },
       subscribe: (id, listener) => {
         const releases = [manager.subscribeConnection(listener)];
         if (id)
@@ -9079,9 +9100,8 @@ export function useConversationRuntime(
       setPresented: async (id, surface, presented) => {
         await setLocalConversationThreadPresented(id, surface, presented, manager.getHostId());
       },
-    }),
-    [manager],
-  );
+    };
+  }, [manager]);
   return override ?? codex;
 }
 
@@ -9188,15 +9208,6 @@ export function setLocalConversationThreadPresented(
     threadId,
     surfaceId,
     presented,
-  );
-}
-
-export function requestLocalConversationHistoryPage(
-  request: CodexConversationHistoryPageRequest,
-  hostId?: string | null,
-): Promise<LocalHistoryPageResult> {
-  return getLocalConversationManagerForConversation(request.threadId, hostId).requestHistoryPage(
-    request,
   );
 }
 

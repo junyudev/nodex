@@ -274,12 +274,6 @@ export interface ConversationProviderPresentation {
   readonly readToolOutput?: (
     reference: import("../../../shared/agent-tool-output").AgentToolOutputReference,
   ) => Promise<import("../../../shared/agent-tool-output").AgentToolOutput>;
-  readonly history?: {
-    readonly windowFull?: boolean;
-    readonly hasOlder: boolean;
-    readonly loading: boolean;
-    readonly loadOlder: () => Promise<void>;
-  };
   readonly controls?: {
     readonly steer?: boolean;
 
@@ -1204,9 +1198,8 @@ export interface ThreadBodySurfaceModel {
   firstSubmissionTurn?: CodexConversationTurn | null;
   turnPagination?: CodexConversationTurnPagination | null;
   historyRows?: readonly import("../../../shared/codex-conversation-state/codex-history-topology").CodexHistoryRow[];
-  conversationEntityGeneration?: number;
+  history?: import("./conversation-runtime").ConversationHistoryPort;
   historyTopologyGeneration?: number;
-  historyMutationRevision?: number;
   turnItemsPaginationById?: Readonly<
     Record<
       string,

@@ -75,6 +75,7 @@ export interface LocalConversationThreadScrollControllerValue {
   addUserScrollListener: (listener: ThreadUserScrollListener) => () => void;
   clearPendingLatestTurnSubmitPlacement: () => void;
   consumePendingLatestTurnSubmitPlacement: () => PendingLatestTurnSubmitPlacement | null;
+  hasPendingLatestTurnSubmitPlacement: () => boolean;
   getLastScrollDistanceFromBottomPx: () => number;
   getScrollElement: () => HTMLDivElement | null;
   getScrollDistanceFromBottomPx: () => number;
@@ -478,6 +479,11 @@ function LocalConversationThreadScrollControllerProvider({ children }: { childre
     pendingLatestTurnSubmitPlacementRef.current = null;
     return placement;
   }, []);
+
+  const hasPendingLatestTurnSubmitPlacement = useCallback(
+    () => pendingLatestTurnSubmitPlacementRef.current !== null,
+    [],
+  );
 
   const clearPendingLatestTurnSubmitPlacement = useCallback(() => {
     pendingLatestTurnSubmitPlacementRef.current = null;
@@ -892,6 +898,7 @@ function LocalConversationThreadScrollControllerProvider({ children }: { childre
       adjustForMeasuredTurnHeightDelta,
       clearPendingLatestTurnSubmitPlacement,
       consumePendingLatestTurnSubmitPlacement,
+      hasPendingLatestTurnSubmitPlacement,
       getLastScrollDistanceFromBottomPx,
       getScrollDistanceFromBottomPx,
       getScrollElement,
@@ -925,6 +932,7 @@ function LocalConversationThreadScrollControllerProvider({ children }: { childre
       adjustForMeasuredTurnHeightDelta,
       clearPendingLatestTurnSubmitPlacement,
       consumePendingLatestTurnSubmitPlacement,
+      hasPendingLatestTurnSubmitPlacement,
       getLastScrollDistanceFromBottomPx,
       getScrollDistanceFromBottomPx,
       getScrollElement,

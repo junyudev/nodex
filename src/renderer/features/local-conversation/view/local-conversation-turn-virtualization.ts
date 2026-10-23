@@ -407,6 +407,30 @@ function stringArraysAreEqual(left: readonly string[], right: readonly string[])
   return left.every((value, index) => value === right[index]);
 }
 
+/** Keep resident content mounted while a new history layout replaces its old row indexes. */
+export function resolveRetainedContentRange({
+  previousTurnKeys,
+  previousRange,
+  layout,
+}: {
+  previousTurnKeys: readonly string[];
+  previousRange: VisibleTurnRange;
+  layout: VirtualizedTurnLayout;
+}): VisibleTurnRange | null {
+  if (stringArraysAreEqual(previousTurnKeys, layout.turnKeys)) return null;
+  let startIndex = Infinity;
+  let endIndex = 0;
+  for (let index = previousRange.startIndex; index < previousRange.endIndex; index++) {
+    const key = previousTurnKeys[index];
+    if (key === undefined || layout.gapKeys.has(key)) continue;
+    const nextIndex = layout.turnIndexByKey.get(key);
+    if (nextIndex === undefined) continue;
+    startIndex = Math.min(startIndex, nextIndex);
+    endIndex = Math.max(endIndex, nextIndex + 1);
+  }
+  return endIndex === 0 ? null : { startIndex, endIndex };
+}
+
 export function resolveInitialVirtualizedTurnViewportState({
   distanceFromBottomPx,
   initialRestoreState,

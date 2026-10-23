@@ -549,13 +549,16 @@ describe("LocalConversationThreadScrollLayout", () => {
       await Promise.resolve();
     });
 
+    expect(activeController.hasPendingLatestTurnSubmitPlacement()).toBe(false);
     const placement = activeController.prepareLatestTurnSubmitPlacement();
+    expect(activeController.hasPendingLatestTurnSubmitPlacement()).toBe(true);
     expect(placement?.distanceFromBottomPx ?? 0).toBe(280);
     expect(placement?.scrollHeightPx ?? 0).toBe(1000);
     expect(placement?.shouldPlaceLatestTurn ?? false).toBe(true);
     expect(
       activeController.consumePendingLatestTurnSubmitPlacement()?.distanceFromBottomPx ?? 0,
     ).toBe(280);
+    expect(activeController.hasPendingLatestTurnSubmitPlacement()).toBe(false);
     expect(activeController.consumePendingLatestTurnSubmitPlacement() === null).toBe(true);
   });
 

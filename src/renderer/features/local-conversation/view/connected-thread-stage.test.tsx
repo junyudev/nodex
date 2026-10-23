@@ -988,16 +988,11 @@ test("imported native history pages remain readable without a Composer or execut
       select: () => {},
       commands: [],
       error: null,
-      history: { hasOlder: true, loading: false, loadOlder: owner.loadOlder },
     },
   });
   await view.findByText("Imported answer 2");
   expect(view.container.querySelector('[contenteditable="true"]')).toBeNull();
   expect(runtime.role(summary.threadId)).toBe("follower");
-  await act(async () => {
-    fireEvent.click(view.getByRole("button", { name: "Load earlier messages" }));
-    await Promise.resolve();
-  });
   await view.findByText("Imported answer 1");
   expect(read).toHaveBeenNthCalledWith(2, {
     threadId: summary.threadId,
@@ -1492,8 +1487,9 @@ describe("ConnectedThreadStage archived resume behavior", () => {
     });
     await openNodexMenu(view.getByRole("button", { name: "Chat actions" }));
     expect(view.queryByRole("menuitem", { name: "Tasks" })).toBeNull();
+    const subagents = await view.findByRole("menuitem", { name: "Subagents" });
     await act(async () => {
-      fireEvent.click(await view.findByRole("menuitem", { name: "Subagents" }));
+      fireEvent.click(subagents);
       await Promise.resolve();
     });
     await waitFor(() => expect(openTasks).toHaveBeenCalledExactlyOnceWith());
@@ -1599,22 +1595,50 @@ describe("ConnectedThreadStage archived resume behavior", () => {
       expect(listeners.size).toBe(0);
     },
   );
-  test.each([false, true])(
-    "loads earlier native messages through the shared history owner without a Codex resume (full=%s)",
-    async (windowFull) => {
+  test.each(["codex", "claude"] as const)(
+    "automatically reads earlier messages through the current %s owner",
+    async (kind) => {
       invokeCalls = [];
-      const conversation = withCanonicalState(
-        buildConversation("thread_active", { statusType: "idle" }),
-      );
+      const boundary = {
+        generation: 7,
+        islandId: "runtime",
+        edge: "older" as const,
+        boundaryId: "runtime:older",
+        progressKey: "older-page",
+        handle: { cursor: "older-page", oldestLoadedTurnId: null },
+      };
+      let conversation: CodexConversationSnapshot = {
+        ...buildConversation("thread_active", { statusType: "idle" }),
+        historyRows: [
+          {
+            kind: "gap",
+            key: "runtime:gap",
+            estimatedHeightPx: 144,
+            olderBoundary: null,
+            newerBoundary: boundary,
+          },
+        ],
+      };
+      const listeners = new Set<() => void>();
       const emptyChildren: ReturnType<ConversationRuntime["children"]> = [];
       const attachment = { status: "attached" } as const;
       const connection = { status: "connected", retries: 0 } as const;
-      const loadOlder = vi.fn(async () => {});
+      const loadBoundary = vi.fn(async () => {
+        conversation = { ...conversation, historyRows: [] };
+        for (const listener of listeners) listener();
+        return "applied" as const;
+      });
       const runtime: ConversationRuntime = {
-        kind: "claude",
+        kind,
         hostId: "local",
+        history: (id) => (id === "thread_active" ? { loadBoundary } : null),
         read: (id) => (id === "thread_active" ? conversation : null),
-        subscribe: () => () => {},
+        subscribe: (_id, listener) => {
+          listeners.add(listener);
+          return () => {
+            listeners.delete(listener);
+          };
+        },
         attachment: () => attachment,
         connection: () => connection,
         role: () => "follower",
@@ -1626,29 +1650,8 @@ describe("ConnectedThreadStage archived resume behavior", () => {
         markRead: async () => {},
         setPresented: async () => {},
       };
-      const view = await renderStage(buildThreadSummary(false), {
-        runtime,
-        provider: {
-          kind: "claude",
-          label: "Claude",
-          selection: "claude:work",
-          options: [],
-          select: () => {},
-          commands: [],
-          error: null,
-          history: { hasOlder: true, loading: false, windowFull, loadOlder },
-        },
-      });
-      const button = await view.findByRole("button", {
-        name: windowFull ? "History window full" : "Load earlier messages",
-      });
-      if (windowFull) expect((button as HTMLButtonElement).disabled).toBe(true);
-      await act(async () => {
-        fireEvent.click(button);
-      });
-      await waitFor(() => {
-        expect(loadOlder).toHaveBeenCalledTimes(windowFull ? 0 : 1);
-      });
+      const view = await renderStage(buildThreadSummary(false), { runtime });
+      await waitFor(() => expect(loadBoundary).toHaveBeenCalledExactlyOnceWith(boundary));
       expect(runtime.resume).not.toHaveBeenCalled();
       expect(
         invokeCalls.filter((call) =>
@@ -1657,6 +1660,118 @@ describe("ConnectedThreadStage archived resume behavior", () => {
           ),
         ),
       ).toEqual([]);
+      view.unmount();
+    },
+  );
+  test.each(["conversationEntityGeneration", "historyTopologyGeneration"] as const)(
+    "rebinds history when %s changes without waiting for the previous reader",
+    async (generationField) => {
+      const boundary = {
+        generation: 1,
+        islandId: "runtime",
+        edge: "older" as const,
+        boundaryId: "runtime:older",
+        progressKey: "older-page",
+        handle: { cursor: "older-page", oldestLoadedTurnId: null },
+      };
+      const gap = {
+        kind: "gap" as const,
+        key: "runtime:gap",
+        estimatedHeightPx: 144 as const,
+        olderBoundary: null,
+        newerBoundary: boundary,
+      };
+      let conversation: CodexConversationSnapshot = {
+        ...buildConversation("thread_active", { statusType: "idle" }),
+        conversationEntityGeneration: 1,
+        historyTopologyGeneration: 1,
+        historyRows: [gap],
+      };
+      const pendingPage = () => {
+        let resolve = (_status: "applied" | "stale") => {};
+        let reject = (_cause: Error) => {};
+        const promise = new Promise<"applied" | "stale">((accept, fail) => {
+          resolve = accept;
+          reject = fail;
+        });
+        return { promise, resolve, reject };
+      };
+      const oldPage = pendingPage();
+      const currentPage = pendingPage();
+      const loadOld = vi.fn(() => oldPage.promise);
+      const loadCurrent = vi.fn(() => currentPage.promise);
+      const bindHistory = vi.fn((id: string) => {
+        if (id !== "thread_active") return null;
+        const loadBoundary = conversation[generationField] === 1 ? loadOld : loadCurrent;
+        return { loadBoundary };
+      });
+      const listeners = new Set<() => void>();
+      const emptyChildren: ReturnType<ConversationRuntime["children"]> = [];
+      const attachment = { status: "attached" } as const;
+      const connection = { status: "connected", retries: 0 } as const;
+      const runtime: ConversationRuntime = {
+        kind: "codex",
+        hostId: "local",
+        history: bindHistory,
+        read: (id) => (id === "thread_active" ? conversation : null),
+        subscribe: (_id, listener) => {
+          listeners.add(listener);
+          return () => {
+            listeners.delete(listener);
+          };
+        },
+        attachment: () => attachment,
+        connection: () => connection,
+        role: () => "follower",
+        primaryRequest: () => null,
+        children: () => emptyChildren,
+        retain: () => () => {},
+        loadHistory: async () => {},
+        resume: async () => {},
+        markRead: async () => {},
+        setPresented: async () => {},
+      };
+      const view = await renderStage(buildThreadSummary(false), { runtime });
+      try {
+        await waitFor(() => expect(loadOld).toHaveBeenCalledExactlyOnceWith(boundary));
+        const currentBoundary =
+          generationField === "historyTopologyGeneration"
+            ? { ...boundary, generation: 2 }
+            : boundary;
+        await act(async () => {
+          conversation = {
+            ...conversation,
+            [generationField]: 2,
+            historyRows: [{ ...gap, newerBoundary: currentBoundary }],
+          };
+          for (const listener of listeners) listener();
+          await Promise.resolve();
+        });
+        await waitFor(() => expect(loadCurrent).toHaveBeenCalledExactlyOnceWith(currentBoundary));
+        await act(async () => {
+          oldPage.reject(new Error("The retired reader failed"));
+          await Promise.resolve();
+        });
+        await settleAsyncRender();
+        expect(view.queryByRole("button", { name: "Try again" })).toBeNull();
+        expect(view.getByText("Loading history")).not.toBeNull();
+        await act(async () => {
+          conversation = { ...conversation, historyRows: [] };
+          for (const listener of listeners) listener();
+          currentPage.resolve("applied");
+          await Promise.resolve();
+        });
+        await waitFor(() => expect(view.queryByText("Loading history")).toBeNull());
+        expect(loadOld).toHaveBeenCalledOnce();
+        expect(loadCurrent).toHaveBeenCalledOnce();
+      } finally {
+        await act(async () => {
+          oldPage.resolve("stale");
+          currentPage.resolve("stale");
+          view.unmount();
+          await Promise.resolve();
+        });
+      }
     },
   );
   test("follows the conversation while its view is retained and releases it on unmount", async () => {

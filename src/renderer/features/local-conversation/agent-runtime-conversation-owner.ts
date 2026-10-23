@@ -36,6 +36,7 @@ import {
 } from "../../../shared/codex-transcript-projection";
 import {
   CODEX_HISTORY_GAP_ESTIMATED_HEIGHT_PX,
+  type CodexHistoryBoundaryRef,
   type CodexHistoryRow,
 } from "../../../shared/codex-conversation-state/codex-history-topology";
 import { CodexTranscriptReadOwner } from "./normalized-transcript-read-owner";
@@ -249,12 +250,13 @@ export class AgentRuntimeConversationOwner {
   #sequence = 0;
   readonly #observers = new Set<{ readonly sequence: number; readonly resolve: () => void }>();
   #cursor: string | null = null;
+  readonly #historyCursors = new Set<string>();
   #transcriptActive = false;
   #transcriptHydrated = false;
   #readMode: "control" | "transcript" | null = null;
   #releaseEvents: (() => void) | null = null;
   #opening: Promise<void> | null = null;
-  #historyRequest: Promise<void> | null = null;
+  #historyRequest: Promise<"applied" | "stale"> | null = null;
   #disposed = false;
   #supportsUserTurnEdits = false;
   #contentSource: ConversationContentSource | null = null;
@@ -450,29 +452,43 @@ export class AgentRuntimeConversationOwner {
       this.#restart();
     await this.#opening;
   };
-  readonly loadOlder = (): Promise<void> => {
+  /** A viewport intent reads only its current source boundary; failures stay with that gap. */
+  readonly loadHistoryBoundary = (
+    boundary: CodexHistoryBoundaryRef,
+  ): Promise<"applied" | "stale"> => {
+    if (!this.#isCurrentHistoryBoundary(boundary)) return Promise.resolve("stale");
     if (this.#historyRequest) return this.#historyRequest;
-    if (!this.#cursor || !this.#transcriptActive || this.#disposed) return Promise.resolve();
     const generation = this.#generation;
-    const cursor = this.#cursor;
-    this.#patch({ historyLoading: true });
-    const pending = this.#transport
-      .history({ ...this.#target, cursor })
+    const cursor = boundary.handle.cursor;
+    const isCurrent = () =>
+      generation === this.#generation && this.#isCurrentHistoryBoundary(boundary);
+    const pending = Promise.resolve()
+      .then(() => (isCurrent() ? this.#transport.history({ ...this.#target, cursor }) : null))
       .then((page) => {
-        if (generation !== this.#generation || !this.#transcriptActive) return;
-        if (page.hasMoreHistory && page.nextCursor === cursor)
-          throw new Error("History cursor did not advance");
+        if (!page || !isCurrent()) return "stale" as const;
+        if (page.nextCursor === cursor) throw new Error("History cursor did not advance");
+        if (page.hasMoreHistory !== (page.nextCursor !== null) || page.nextCursor?.trim() === "")
+          throw new Error("History continuation is invalid");
+        if (page.nextCursor !== null && this.#historyCursors.has(page.nextCursor))
+          throw new Error("History cursor repeated an earlier page");
         this.#prepend(page);
+        if (page.nextCursor !== null) this.#historyCursors.add(page.nextCursor);
+        return "applied" as const;
       })
       .catch((cause: unknown) => {
-        if (generation === this.#generation) this.#patch({ error: messageOf(cause) });
+        if (!isCurrent()) return "stale" as const;
+        throw cause;
       })
       .finally(() => {
         if (this.#historyRequest !== pending) return;
         this.#historyRequest = null;
-        if (generation === this.#generation) this.#patch({ historyLoading: false });
+        if (generation !== this.#generation) return;
+        this.#patch({ historyLoading: false });
+        this.#publishView();
       });
     this.#historyRequest = pending;
+    this.#patch({ historyLoading: true });
+    this.#publishView();
     return pending;
   };
   /** Explicit detail hydrates one addressed item, never its siblings or the whole Turn. */
@@ -541,7 +557,7 @@ export class AgentRuntimeConversationOwner {
     this.#historyRequest = null;
     this.#releaseEvents?.();
     this.#releaseEvents = null;
-    this.#patch({ connection: "connecting", error: null });
+    this.#patch({ connection: "connecting", error: null, historyLoading: false });
     const pending = (
       transcript ? this.#transport.read(this.#target) : this.#transport.control(this.#target)
     )
@@ -565,7 +581,11 @@ export class AgentRuntimeConversationOwner {
         this.#sequence = conversation.snapshot.snapshotSequence;
         this.#settleObservers();
         if (transcript) {
-          this.#cursor = conversation.snapshot.historyCursor ?? null;
+          const cursor = conversation.snapshot.historyCursor ?? null;
+          const hasMoreHistory = conversation.snapshot.hasMoreHistory ?? false;
+          if (hasMoreHistory !== (cursor !== null) || cursor?.trim() === "")
+            throw new Error("History continuation is invalid");
+          this.#cursor = cursor;
           this.#historyGeneration += 1;
         }
         this.#requests.clear();
@@ -638,6 +658,7 @@ export class AgentRuntimeConversationOwner {
 
   #reset(snapshot: AgentSnapshot): void {
     this.#clearTranscript();
+    if (this.#cursor !== null) this.#historyCursors.add(this.#cursor);
     const changes = this.#admit(snapshot.projection.visibleTurnItems, true);
     const turnsByKey: Record<string, CodexTranscriptSnapshot["turnsByKey"][string]> = {};
     const itemsByKey: Record<string, CodexCanonicalItem> = {};
@@ -672,6 +693,7 @@ export class AgentRuntimeConversationOwner {
   }
   #clearTranscript(): void {
     this.#transcriptHydrated = false;
+    this.#historyCursors.clear();
     this.#items.clear();
     this.#liveItemsByRun.clear();
     this.#residentTaskIds.clear();
@@ -790,6 +812,42 @@ export class AgentRuntimeConversationOwner {
     this.#queueRequest = request;
     return request;
   }
+  #historyBoundary(): CodexHistoryBoundaryRef | null {
+    if (!this.#cursor) return null;
+    return {
+      generation: this.#historyGeneration,
+      islandId: "agent-runtime",
+      edge: "older",
+      boundaryId: "agent-runtime:older",
+      progressKey: this.#cursor,
+      handle: {
+        source: "ordinary",
+        cursor: this.#cursor,
+        oldestLoadedTurnId: this.#turnKeys[0] ?? null,
+      },
+    };
+  }
+  #isCurrentHistoryBoundary(boundary: CodexHistoryBoundaryRef): boolean {
+    if (
+      this.#disposed ||
+      !this.#transcriptActive ||
+      !this.#transcriptHydrated ||
+      this.#state.connection !== "ready"
+    )
+      return false;
+    const current = this.#historyBoundary();
+    return (
+      current !== null &&
+      boundary.generation === current.generation &&
+      boundary.islandId === current.islandId &&
+      boundary.edge === current.edge &&
+      boundary.boundaryId === current.boundaryId &&
+      boundary.progressKey === current.progressKey &&
+      boundary.handle.source === current.handle.source &&
+      boundary.handle.cursor === current.handle.cursor &&
+      boundary.handle.oldestLoadedTurnId === current.handle.oldestLoadedTurnId
+    );
+  }
   #timeline(): readonly CodexHistoryRow[] {
     const content: CodexHistoryRow[] = this.#turnKeys.map((entityKey) => ({
       kind: "content",
@@ -797,25 +855,15 @@ export class AgentRuntimeConversationOwner {
       turnKey: entityKey,
       entityKey,
     }));
-    if (!this.#cursor) return content;
+    const boundary = this.#historyBoundary();
+    if (!boundary) return content;
     return [
       {
         kind: "gap",
         key: `agent-history:${this.#historyGeneration}`,
         estimatedHeightPx: CODEX_HISTORY_GAP_ESTIMATED_HEIGHT_PX,
         olderBoundary: null,
-        newerBoundary: {
-          generation: this.#historyGeneration,
-          islandId: "agent-runtime",
-          edge: "older",
-          boundaryId: "agent-runtime:older",
-          progressKey: this.#cursor,
-          handle: {
-            source: "ordinary",
-            cursor: this.#cursor,
-            oldestLoadedTurnId: this.#turnKeys[0] ?? null,
-          },
-        },
+        newerBoundary: boundary,
       },
       ...content,
     ];

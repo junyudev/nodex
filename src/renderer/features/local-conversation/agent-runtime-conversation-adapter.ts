@@ -194,6 +194,15 @@ export function createAgentRuntimeConversationRuntime(
     subscribeChildObservations: (_id, listener) => owner?.subscribe(listener) ?? (() => {}),
     transcriptReadOwner: (id) => (matches(id) ? owner!.readOwner : null),
     contentSource: (id) => (matches(id) ? owner!.contentSource() : null),
+    history: (id) => {
+      if (!matches(id)) return null;
+      const source = owner!.contentSource();
+      if (!source) return null;
+      return {
+        loadBoundary: (boundary) =>
+          source.isCurrent() ? owner!.loadHistoryBoundary(boundary) : Promise.resolve("stale"),
+      };
+    },
     attachment: (id) => {
       if (!matches(id)) return { status: "idle" };
       const state = owner!.getSnapshot();
@@ -1461,13 +1470,6 @@ export function useAgentRuntimeConversationAdapter(input: {
         })) ?? [],
     refreshSkills: async () => {
       refreshCatalog();
-    },
-    history: {
-      hasOlder: Boolean(state.view?.turnPagination?.olderCursor),
-      loading: state.historyLoading,
-      loadOlder: async () => {
-        await owner?.loadOlder();
-      },
     },
     // Only a blocking provider state is a composer error; warnings such as an unchecked status or
     // a model that needs a newer CLI belong to provider settings.

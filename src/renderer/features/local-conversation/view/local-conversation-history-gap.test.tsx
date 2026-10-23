@@ -66,6 +66,18 @@ function select(input: {
 }
 
 describe("local conversation history gap controller", () => {
+  test("admits one automatic item page per viewport revision and starts fresh for a new reader", async () => {
+    const first = createLocalConversationHistoryRequestGate();
+    const load = async () => "applied";
+    expect(first.request("cursor:1", load, 3)).toBe(true);
+    await Promise.resolve();
+    expect(first.request("cursor:2", load, 3)).toBe(false);
+    expect(first.request("cursor:2", load, 4)).toBe(true);
+    const next = createLocalConversationHistoryRequestGate();
+    expect(next.request("cursor:1", load, 3)).toBe(true);
+    await Promise.resolve();
+  });
+
   test("retries one failed item boundary explicitly without restarting a neighboring request", async () => {
     const gate = createLocalConversationHistoryRequestGate();
     const updates: unknown[] = [];

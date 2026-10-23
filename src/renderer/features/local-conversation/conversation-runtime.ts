@@ -9,6 +9,17 @@ import type { AgentBackendBinding } from "../../../shared/agent-backend";
 import type { LocalConversationAttachmentState } from "./conversation-attachment-state";
 import type { CodexTranscriptReadOwner } from "./normalized-transcript-read-owner";
 import type { AsyncQuestionDelivery, AsyncQuestionRuntime } from "./async-question-runtime";
+import type { CodexHistoryBoundaryRef } from "../../../shared/codex-conversation-state/codex-history-topology";
+import type { CodexConversationHistoryTurnItemsRef } from "../../../shared/codex-conversation-history-page";
+
+/** Viewport demand addresses the publishing owner; native read envelopes stay in its Adapter. */
+export interface ConversationHistoryPort {
+  readonly loadBoundary: (boundary: CodexHistoryBoundaryRef) => Promise<"applied" | "stale">;
+  /** Present only where individual Turns can also contain unloaded item pages. */
+  readonly loadTurnItems?: (
+    items: CodexConversationHistoryTurnItemsRef,
+  ) => Promise<"applied" | "stale">;
+}
 
 /** Optional questions answered beside the ordinary Composer, through the execution owner. */
 export interface ConversationAsyncQuestionPort {
@@ -52,6 +63,8 @@ export interface ConversationDelegatedTaskPort {
 
 /** Product conversation reads and lifecycle; protocol ownership stays in each Adapter. */
 export interface ConversationRuntime {
+  /** Captures the selected history reader's lifetime without changing execution retention. */
+  readonly history?: (threadId: string) => ConversationHistoryPort | null;
   /** Present where work can run on several configured Agents. */
   readonly agentLabels?: ConversationAgentLabelPort;
   /** Present only where delegated tasks have an execution owner that can stop them. */

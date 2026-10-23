@@ -1,15 +1,25 @@
 import type { AgentConversationSnapshot } from "../../../shared/agent-conversation";
 import { projectAgentConversation } from "../../../shared/agent-conversation-presentation";
-import type { CodexConversationSnapshot, CodexThreadSummary } from "../../../shared/types";
+import {
+  availableCodexHistoryBoundary,
+  createCodexHistoryIslandTopology,
+  exhaustedCodexHistoryBoundary,
+  flattenCodexHistoryTopology,
+  readCurrentCodexHistoryBoundary,
+  type CodexCanonicalHistoryTopology,
+  type CodexHistoryBoundaryRef,
+} from "../../../shared/codex-conversation-state/codex-history-topology";
+import type {
+  CodexConversationSnapshot,
+  CodexConversationTurn,
+  CodexThreadSummary,
+} from "../../../shared/types";
 import { agentBackendRuntime } from "../../lib/agent-backend-runtime";
 
 export interface NativeConversationHistorySnapshot {
   readonly view: CodexConversationSnapshot | null;
   readonly loading: boolean;
   readonly error: string | null;
-  readonly cursor: string | null;
-  readonly hasOlder: boolean;
-  readonly windowFull: boolean;
 }
 
 type ReadHistory = (input: {
@@ -18,30 +28,31 @@ type ReadHistory = (input: {
   readonly limit?: number;
 }) => Promise<AgentConversationSnapshot>;
 
+type HistoryPageResult = "applied" | "stale";
+type HistoryRequest = {
+  readonly epoch: number;
+  readonly generation: number;
+  readonly boundary: CodexHistoryBoundaryRef | null;
+  readonly promise: Promise<HistoryPageResult>;
+};
+
 const empty = (): NativeConversationHistorySnapshot => ({
   view: null,
   loading: false,
   error: null,
-  cursor: null,
-  hasOlder: false,
-  windowFull: false,
 });
-
-const HISTORY_TURN_LIMIT = 200;
-const HISTORY_ITEM_LIMIT = 500;
-const HISTORY_BYTE_LIMIT = 1024 * 1024;
-
-const exceedsWindow = (turns: CodexConversationSnapshot["turns"]) =>
-  turns.length > HISTORY_TURN_LIMIT ||
-  turns.reduce((total, turn) => total + turn.items.length, 0) > HISTORY_ITEM_LIMIT ||
-  new TextEncoder().encode(JSON.stringify(turns)).byteLength > HISTORY_BYTE_LIMIT;
 
 /** A retained native history source offers only bounded reads, never execution or subscriptions. */
 export class NativeConversationHistoryOwner {
   #summary: CodexThreadSummary;
   #state = empty();
   #leases = 0;
-  #request: Promise<void> | null = null;
+  #epoch = 0;
+  #generation = 0;
+  #mutationRevision = 0;
+  #request: HistoryRequest | null = null;
+  #topology: CodexCanonicalHistoryTopology<CodexConversationTurn> | null = null;
+  #seenCursors = new Set<string>();
   #listeners = new Set<() => void>();
   constructor(
     summary: CodexThreadSummary,
@@ -79,78 +90,138 @@ export class NativeConversationHistoryOwner {
     return () => {
       if (released) return;
       released = true;
-      this.#leases = Math.max(0, this.#leases - 1);
-      if (this.#leases === 0) this.#publish(empty());
+      this.#leases -= 1;
+      if (this.#leases !== 0) return;
+      this.#epoch += 1;
+      this.#request = null;
+      this.#topology = null;
+      this.#seenCursors.clear();
+      this.#publish(empty());
     };
   };
-  readonly refresh = (): Promise<void> => this.#load(false);
-  readonly loadOlder = (): Promise<void> => {
-    if (!this.#state.hasOlder || !this.#state.cursor || this.#state.windowFull)
-      return Promise.resolve();
-    return this.#load(true);
+  readonly refresh = (): Promise<void> =>
+    (this.#request?.promise ?? this.#load(null)).then(() => {});
+
+  readonly loadBoundary = (boundary: CodexHistoryBoundaryRef): Promise<HistoryPageResult> => {
+    if (!this.#isCurrentBoundary(boundary)) return Promise.resolve("stale");
+    if (this.#request) {
+      return this.#request.boundary && this.#isCurrentBoundary(this.#request.boundary)
+        ? this.#request.promise
+        : Promise.resolve("stale");
+    }
+    return this.#load(boundary);
   };
-  #load(older: boolean): Promise<void> {
-    if (this.#request) return this.#request;
-    if (this.#leases === 0) return Promise.resolve();
-    const before = older ? this.#state.cursor : null;
-    this.#publish({ ...this.#state, loading: true, error: null });
-    this.#request = this.read({
-      threadId: this.#summary.threadId,
-      ...(before ? { before } : {}),
-      limit: 50,
-    })
-      .then((snapshot) => {
-        if (this.#leases === 0) return;
-        if (snapshot.threadId !== this.#summary.threadId)
-          throw new Error("Native history returned another Thread");
-        const projected = projectAgentConversation({ snapshot }, this.#summary);
-        const turns = older
-          ? [
-              ...new Map([
-                ...projected.turns.map((turn) => [turn.turnId, turn] as const),
-                ...(this.#state.view?.turns ?? []).map((turn) => [turn.turnId, turn] as const),
-              ]).values(),
-            ]
-          : projected.turns;
-        if (exceedsWindow(turns)) {
-          if (!older) throw new Error("Native history page exceeds the conversation window");
-          this.#publish({ ...this.#state, loading: false, windowFull: true });
-          return;
-        }
-        this.#publish({
-          view: {
-            ...projected,
-            turns,
-            requests: [],
-            canonicalRequests: [],
-            capabilityFlags: {
-              ...projected.capabilityFlags,
-              canEditUserTurns: false,
-              canForkFromTurn: false,
-            },
-          },
-          loading: false,
-          error: null,
-          cursor: snapshot.history?.cursor ?? null,
-          hasOlder: snapshot.history?.hasOlder === true,
-          windowFull:
-            turns.length >= HISTORY_TURN_LIMIT ||
-            turns.reduce((total, turn) => total + turn.items.length, 0) >= HISTORY_ITEM_LIMIT,
-        });
-      })
-      .catch((cause: unknown) => {
-        if (this.#leases === 0) return;
-        this.#publish({
-          ...this.#state,
-          loading: false,
-          error: cause instanceof Error ? cause.message : "Native history is unavailable",
-        });
-      })
-      .finally(() => {
-        this.#request = null;
-      });
-    return this.#request;
+
+  #isCurrentBoundary(boundary: CodexHistoryBoundaryRef): boolean {
+    if (!this.#topology || boundary.edge !== "older") return false;
+    const current = readCurrentCodexHistoryBoundary(this.#topology, boundary);
+    return (
+      current !== null && current.handle.oldestLoadedTurnId === boundary.handle.oldestLoadedTurnId
+    );
   }
+
+  #isCurrentRequest(request: HistoryRequest): boolean {
+    return this.#leases > 0 && this.#epoch === request.epoch && this.#request === request;
+  }
+
+  #load(boundary: CodexHistoryBoundaryRef | null): Promise<HistoryPageResult> {
+    if (this.#leases === 0) return Promise.resolve("stale");
+    const request: HistoryRequest = {
+      epoch: this.#epoch,
+      generation: boundary?.generation ?? ++this.#generation,
+      boundary,
+      // Admission happens before I/O; a lease released in this turn never starts a stale read.
+      promise: Promise.resolve().then(() => this.#readPage(request)),
+    };
+    this.#request = request;
+    this.#publish({ ...this.#state, loading: true, error: null });
+    return request.promise;
+  }
+
+  async #readPage(request: HistoryRequest): Promise<HistoryPageResult> {
+    const { boundary } = request;
+    try {
+      if (!this.#isCurrentRequest(request)) return "stale";
+      const snapshot = await this.read({
+        threadId: this.#summary.threadId,
+        ...(boundary ? { before: boundary.handle.cursor } : {}),
+        // Main also bounds native records and reply bytes independently for every physical page.
+        limit: 50,
+      });
+      if (!this.#isCurrentRequest(request)) return "stale";
+      if (boundary && !this.#isCurrentBoundary(boundary)) return "stale";
+      if (snapshot.threadId !== this.#summary.threadId)
+        throw new Error("Native history returned another Thread");
+      const cursor = snapshot.history?.hasOlder ? snapshot.history.cursor : null;
+      if (snapshot.history?.hasOlder && !cursor?.trim())
+        throw new Error("Native history cursor is unavailable");
+      if (boundary && cursor && this.#seenCursors.has(cursor))
+        throw new Error("Native history cursor did not advance");
+      const projected = projectAgentConversation({ snapshot }, this.#summary);
+      const turns = boundary
+        ? [
+            ...new Map([
+              ...projected.turns.map((turn) => [turn.turnId, turn] as const),
+              ...(this.#state.view?.turns ?? []).map((turn) => [turn.turnId, turn] as const),
+            ]).values(),
+          ]
+        : projected.turns;
+      const entities = turns.map((turn) => {
+        if (turn.turnId === null || turn.turnId.trim().length === 0)
+          throw new Error("Native history Turn identity is unavailable");
+        return { key: turn.turnId, turn };
+      });
+      const islandId = `native-history:${this.#summary.threadId}`;
+      // Hidden native records may advance the cursor without projecting any visible Turns.
+      const result = createCodexHistoryIslandTopology({
+        generation: request.generation,
+        islandId,
+        entries: entities.map(({ key }) => ({ key, value: key })),
+        entities,
+        olderBoundary: cursor
+          ? availableCodexHistoryBoundary(`${islandId}:older`, {
+              cursor,
+              oldestLoadedTurnId: entities[0]?.key ?? null,
+            })
+          : exhaustedCodexHistoryBoundary(`${islandId}:older`),
+        newerBoundary: exhaustedCodexHistoryBoundary(`${islandId}:newer`),
+      });
+      if (!result.ok) throw new Error(result.error.message);
+      this.#topology = result.topology;
+      if (!boundary) this.#seenCursors.clear();
+      if (cursor) this.#seenCursors.add(cursor);
+      this.#mutationRevision += 1;
+      this.#publish({
+        view: {
+          ...projected,
+          turns,
+          historyRows: flattenCodexHistoryTopology(result.topology),
+          historyTopologyGeneration: result.topology.generation,
+          historyMutationRevision: this.#mutationRevision,
+          requests: [],
+          canonicalRequests: [],
+          capabilityFlags: {
+            ...projected.capabilityFlags,
+            canEditUserTurns: false,
+            canForkFromTurn: false,
+          },
+        },
+        loading: false,
+        error: null,
+      });
+      return "applied";
+    } catch (cause: unknown) {
+      if (!this.#isCurrentRequest(request)) return "stale";
+      const error = cause instanceof Error ? cause : new Error("Native history is unavailable");
+      this.#publish({ ...this.#state, loading: false, error: boundary ? null : error.message });
+      // The viewport owns retry for this gap; readable history remains attached.
+      if (boundary) throw error;
+      return "stale";
+    } finally {
+      if (this.#request === request) this.#request = null;
+    }
+  }
+
   #publish(state: NativeConversationHistorySnapshot): void {
     this.#state = state;
     for (const listener of this.#listeners) listener();

@@ -124,9 +124,12 @@ inventing live process diagnostics.
 An imported native Session without a Runtime execution reference opens the shared
 transcript as a passive history scene. It has no Composer or execution controls.
 Readers of the same Session share one cold page; older pages preserve resident Turn
-identities. The renderer retains at most 200 Turns, 500 items and 1 MiB of transcript
-bodies, and stops paging when another page would exceed that window. Closing the last
-reader clears the window. Starting another conversation uses an explicit new Session
+identities and the visible reading position. Approaching the unloaded boundary loads
+another bounded page automatically. Browsing can continue through the full native
+history without a cumulative resident-content cutoff. A failed page offers a retry at
+its gap and leaves the loaded transcript readable. Closing the last reader clears
+resident bodies and invalidates outstanding reads, including if another reader opens
+the same Session before the old read settles. Starting another conversation uses an explicit new Session
 and ordinary Runtime admission.
 
 ## Native intake

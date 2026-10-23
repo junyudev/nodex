@@ -140,9 +140,8 @@ function LocalConversationThreadBodyLayout({
                   firstSubmissionTurn={model.firstSubmissionTurn}
                   turnPagination={model.turnPagination ?? null}
                   historyRows={model.historyRows}
-                  conversationEntityGeneration={model.conversationEntityGeneration}
+                  history={model.history}
                   historyTopologyGeneration={model.historyTopologyGeneration}
-                  historyMutationRevision={model.historyMutationRevision}
                   turnItemsPaginationById={model.turnItemsPaginationById}
                   requests={model.requests}
                   canonicalRequests={model.canonicalRequests ?? []}
@@ -322,9 +321,8 @@ export const LocalConversationThreadBody = memo(
     left.model.firstSubmissionTurn === right.model.firstSubmissionTurn &&
     left.model.turnPagination === right.model.turnPagination &&
     left.model.historyRows === right.model.historyRows &&
-    left.model.conversationEntityGeneration === right.model.conversationEntityGeneration &&
+    left.model.history === right.model.history &&
     left.model.historyTopologyGeneration === right.model.historyTopologyGeneration &&
-    left.model.historyMutationRevision === right.model.historyMutationRevision &&
     left.model.turnItemsPaginationById === right.model.turnItemsPaginationById &&
     left.model.requests === right.model.requests &&
     left.model.canonicalRequests === right.model.canonicalRequests &&

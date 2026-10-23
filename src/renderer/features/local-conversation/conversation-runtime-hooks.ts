@@ -3,7 +3,7 @@ import type {
   CodexConversationSnapshot,
 } from "../../../shared/types";
 import { useExternalSelector } from "../../lib/use-external-store-selector";
-import { useCallback } from "react";
+import { useCallback, useState } from "react";
 import type { ConversationRuntime } from "./conversation-runtime";
 import { isVisibleNativeTaskMembership } from "./native-task-presentation";
 
@@ -15,6 +15,42 @@ interface ConversationRuntimeTaskObservation {
 }
 
 const EMPTY_TASK_OBSERVATIONS: readonly ConversationRuntimeTaskObservation[] = [];
+
+function bindHistoryReader(
+  runtime: ConversationRuntime,
+  threadId: string | null,
+  entityGeneration: number | undefined,
+  topologyGeneration: number | undefined,
+) {
+  return {
+    runtime,
+    threadId,
+    entityGeneration,
+    topologyGeneration,
+    port: threadId ? (runtime.history?.(threadId) ?? undefined) : undefined,
+  };
+}
+
+/** History request state follows reader replacement without releasing execution or the viewport. */
+export function useConversationRuntimeHistory(
+  runtime: ConversationRuntime,
+  threadId: string | null,
+  snapshot: CodexConversationSnapshot | null,
+) {
+  const entityGeneration = snapshot?.conversationEntityGeneration;
+  const topologyGeneration = snapshot?.historyTopologyGeneration;
+  const [reader, setReader] = useState(() =>
+    bindHistoryReader(runtime, threadId, entityGeneration, topologyGeneration),
+  );
+  if (
+    reader.runtime !== runtime ||
+    reader.threadId !== threadId ||
+    reader.entityGeneration !== entityGeneration ||
+    reader.topologyGeneration !== topologyGeneration
+  )
+    setReader(bindHistoryReader(runtime, threadId, entityGeneration, topologyGeneration));
+  return reader.port;
+}
 
 function subscribeTaskObservations(
   runtime: ConversationRuntime,

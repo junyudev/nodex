@@ -41,6 +41,18 @@ export function createNativeConversationHistoryRuntime(input: {
     primaryRequest: () => null,
     children: () => noChildren,
     retain: (id) => (matches(id) ? retain() : () => {}),
+    history: (id) => {
+      const generation = matches(id)
+        ? owner.getSnapshot().view?.historyTopologyGeneration
+        : undefined;
+      if (generation === undefined) return null;
+      return {
+        loadBoundary: (boundary) =>
+          owner.getSnapshot().view?.historyTopologyGeneration === generation
+            ? owner.loadBoundary(boundary)
+            : Promise.resolve("stale"),
+      };
+    },
     loadHistory: (id) => (matches(id) ? owner.refresh() : Promise.resolve()),
     resume: (id) => (matches(id) ? owner.refresh() : Promise.resolve()),
     markRead: async (id) => {
@@ -82,12 +94,6 @@ export function useNativeConversationHistoryAdapter(input: {
     },
     commands: [],
     error: state.error,
-    history: {
-      hasOlder: state.hasOlder,
-      loading: state.loading,
-      windowFull: state.windowFull,
-      loadOlder: owner.loadOlder,
-    },
     resolveHistoryImage: (reference) =>
       agentBackendRuntime.historyImage({
         threadId: summary.threadId,

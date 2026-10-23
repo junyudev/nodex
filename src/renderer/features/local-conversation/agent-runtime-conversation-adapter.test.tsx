@@ -1,15 +1,23 @@
 import { act, fireEvent, render, renderHook, waitFor } from "@testing-library/react";
 import { StrictMode, useEffect, useState, type PropsWithChildren } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
-import type { AgentSnapshot, AgentTurnItem } from "@nodex/agent-runtime/contracts";
+import type {
+  AgentHistoryPage,
+  AgentSnapshot,
+  AgentTurnItem,
+} from "@nodex/agent-runtime/contracts";
 import type { AgentRuntimeSessionEvent } from "../../../shared/agent-runtime-api";
 import { agentRuntimeRuntime } from "../../lib/agent-runtime-runtime";
 import {
+  createAgentRuntimeConversationRuntime,
   useAgentRuntimeConversationAdapter,
   type AgentRuntimeProvider,
 } from "./agent-runtime-conversation-adapter";
 import { sessionFirstSubmissionOwner } from "../conversation-launch/session-first-submission-owner";
-import { acquireAgentRuntimeConversationOwner } from "./agent-runtime-conversation-owner";
+import {
+  acquireAgentRuntimeConversationOwner,
+  AgentRuntimeConversationOwner,
+} from "./agent-runtime-conversation-owner";
 import { MaitaiProvider, createMaitaiStore } from "../../lib/maitai";
 import { clearPersistedAtomStoreForTests } from "../../lib/persisted-atom-store";
 import * as presentation from "../../lib/codex-turn-presentation";
@@ -918,6 +926,106 @@ describe("Agent Runtime background status", () => {
 });
 
 describe("Agent Runtime conversation adapter", () => {
+  it("routes history to its bound Thread and keeps page failures out of attachment state", async () => {
+    const target = { sessionId: "history-session", threadId: "engine-thread" };
+    const read = vi.spyOn(agentRuntimeRuntime, "read").mockResolvedValue({
+      ...target,
+      projectId: "project",
+      snapshot: { ...snapshot, historyCursor: "older", hasMoreHistory: true },
+    });
+    vi.spyOn(agentRuntimeRuntime, "subscribe").mockResolvedValue(() => {});
+    const failure = new Error("Page unavailable");
+    const history = vi
+      .spyOn(agentRuntimeRuntime, "history")
+      .mockRejectedValueOnce(failure)
+      .mockResolvedValueOnce({
+        snapshotSequence: 1,
+        items: [],
+        nextCursor: null,
+        hasMoreHistory: false,
+      });
+    const owner = new AgentRuntimeConversationOwner(target);
+    const release = owner.readOwner.subscribeStructure(() => {});
+    try {
+      await owner.resume();
+      const runtime = createAgentRuntimeConversationRuntime("codex", target, owner);
+      const gap = owner.readOwner.readStructure()?.timeline?.find((entry) => entry.kind === "gap");
+      if (gap?.kind !== "gap" || !gap.newerBoundary) throw new Error("Expected older history");
+      const boundary = gap.newerBoundary;
+      expect(runtime.history!("foreign-thread")).toBeNull();
+      expect(history).not.toHaveBeenCalled();
+      const historyPort = runtime.history!(target.threadId)!;
+      await expect(historyPort.loadBoundary(boundary)).rejects.toBe(failure);
+      expect(runtime.attachment(target.threadId)).toEqual({ status: "attached" });
+      expect(owner.getSnapshot().error).toBeNull();
+      await expect(historyPort.loadBoundary(boundary)).resolves.toBe("applied");
+      expect(history).toHaveBeenLastCalledWith({ ...target, cursor: "older" });
+      expect(history).toHaveBeenCalledTimes(2);
+      expect(read).toHaveBeenCalledOnce();
+    } finally {
+      release();
+    }
+  });
+
+  it("retires the bound history port when its reader reconnects even while an old page is pending", async () => {
+    const target = { sessionId: "history-session", threadId: "engine-thread" };
+    vi.spyOn(agentRuntimeRuntime, "read").mockResolvedValue({
+      ...target,
+      projectId: "project",
+      snapshot: { ...snapshot, historyCursor: "older", hasMoreHistory: true },
+    });
+    let notify!: (event: AgentRuntimeSessionEvent) => void;
+    vi.spyOn(agentRuntimeRuntime, "subscribe").mockImplementation(async (_target, listener) => {
+      notify = listener;
+      return () => {};
+    });
+    let completeOld!: (page: AgentHistoryPage) => void;
+    const oldPage = new Promise<AgentHistoryPage>((resolve) => {
+      completeOld = resolve;
+    });
+    const complete: AgentHistoryPage = {
+      snapshotSequence: 1,
+      items: [],
+      nextCursor: null,
+      hasMoreHistory: false,
+    };
+    const history = vi
+      .spyOn(agentRuntimeRuntime, "history")
+      .mockReturnValueOnce(oldPage)
+      .mockResolvedValueOnce(complete);
+    const owner = new AgentRuntimeConversationOwner(target);
+    const runtime = createAgentRuntimeConversationRuntime("codex", target, owner);
+    expect(runtime.history!(target.threadId)).toBeNull();
+    const release = owner.readOwner.subscribeStructure(() => {});
+    try {
+      await owner.resume();
+      const oldPort = runtime.history!(target.threadId)!;
+      const oldGap = owner.readOwner
+        .readStructure()
+        ?.timeline?.find((entry) => entry.kind === "gap");
+      if (oldGap?.kind !== "gap" || !oldGap.newerBoundary)
+        throw new Error("Expected older history");
+      const pending = oldPort.loadBoundary(oldGap.newerBoundary);
+      await waitFor(() => expect(history).toHaveBeenCalledOnce());
+      notify({ type: "reset-required", ...target, reason: "delivery-gap" });
+      expect(runtime.history!(target.threadId)).toBeNull();
+      await owner.resume();
+      const gap = owner.readOwner.readStructure()?.timeline?.find((entry) => entry.kind === "gap");
+      if (gap?.kind !== "gap" || !gap.newerBoundary) throw new Error("Expected older history");
+      const currentPort = runtime.history!(target.threadId)!;
+      expect(currentPort).not.toBe(oldPort);
+      await expect(oldPort.loadBoundary(gap.newerBoundary)).resolves.toBe("stale");
+      expect(history).toHaveBeenCalledOnce();
+      await expect(currentPort.loadBoundary(gap.newerBoundary)).resolves.toBe("applied");
+      expect(history).toHaveBeenCalledTimes(2);
+      completeOld(complete);
+      await expect(pending).resolves.toBe("stale");
+    } finally {
+      completeOld(complete);
+      release();
+    }
+  });
+
   it("shares Claude draft intent across presentations and restores unsupported preferences on switching back", async () => {
     const binding = { kind: "claude" as const, instanceConfigId: "intent-claude" };
     const configured = [{ binding, enabled: true, label: "Claude" }];

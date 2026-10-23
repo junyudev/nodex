@@ -47,6 +47,7 @@ export function createLocalConversationHistoryRequestGate() {
   const failed = new Set<string>();
   const listeners = new Set<() => void>();
   let retained: ReadonlySet<string> | null = null;
+  let lastViewportRevision: number | null = null;
   let state: LocalConversationHistoryRequestGateState = { failed: new Set(), loading: new Set() };
   const isCurrent = (key: string) => retained === null || retained.has(key);
   const publish = () => {
@@ -61,8 +62,15 @@ export function createLocalConversationHistoryRequestGate() {
     state = { failed: new Set(failed), loading };
     for (const listener of listeners) listener();
   };
-  const request = (key: string, load: () => Promise<unknown>) => {
+  const request = (key: string, load: () => Promise<unknown>, viewportRevision?: number) => {
     if (!isCurrent(key) || active.has(key) || stopped.has(key)) return false;
+    if (
+      viewportRevision !== undefined &&
+      lastViewportRevision !== null &&
+      viewportRevision <= lastViewportRevision
+    )
+      return false;
+    if (viewportRevision !== undefined) lastViewportRevision = viewportRevision;
     active.add(key);
     publish();
     const fail = () => {

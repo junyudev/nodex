@@ -75,6 +75,7 @@ import {
   useLocalConversationAccount,
   useLocalConversationConnection,
 } from "../local-conversation-store";
+import { useConversationRuntimeHistory } from "../conversation-runtime-hooks";
 import { LocalConversationFooter } from "./local-conversation-footer";
 import { EnsureLocalConversationThreadScrollController } from "./local-conversation-thread-scroll-controller";
 import type { FloatingComposerPlacement } from "@/features/floating-composer/floating-composer";
@@ -450,6 +451,7 @@ function ConnectedThreadStageBody({
     ],
   );
 
+  const history = useConversationRuntimeHistory(runtime, activeThreadId, conversationSnapshot);
   const model = useMemo<ThreadBodySurfaceModel>(
     () => ({
       skills: input.provider?.skills,
@@ -464,9 +466,8 @@ function ConnectedThreadStageBody({
       firstSubmissionTurn,
       turnPagination: conversationSnapshot?.turnPagination ?? null,
       historyRows: conversationSnapshot?.historyRows,
-      conversationEntityGeneration: conversationSnapshot?.conversationEntityGeneration,
+      history,
       historyTopologyGeneration: conversationSnapshot?.historyTopologyGeneration,
-      historyMutationRevision: conversationSnapshot?.historyMutationRevision,
       turnItemsPaginationById: conversationSnapshot?.turnItemsPaginationById,
       requests,
       canonicalRequests: bodyPresentation.canonicalRequests,
@@ -498,9 +499,8 @@ function ConnectedThreadStageBody({
       conversationSnapshot?.latestThreadSettings?.model,
       conversationSnapshot?.turnPagination,
       conversationSnapshot?.historyRows,
-      conversationSnapshot?.conversationEntityGeneration,
+      history,
       conversationSnapshot?.historyTopologyGeneration,
-      conversationSnapshot?.historyMutationRevision,
       conversationSnapshot?.turnItemsPaginationById,
       bodyPresentation.canonicalRequests,
       cwd,
@@ -532,33 +532,7 @@ function ConnectedThreadStageBody({
       onErrorMessage={onErrorMessage}
       contentShiftX={contentShiftX}
       footer={footer}
-      leadingContent={
-        <>
-          {input.provider?.history?.hasOlder ? (
-            <button
-              type="button"
-              className="mx-auto my-2 cursor-interaction px-3 py-1 text-sm text-token-description-foreground hover:text-token-foreground disabled:opacity-50"
-              disabled={input.provider.history.loading || input.provider.history.windowFull}
-              onClick={() => {
-                void input.provider?.history
-                  ?.loadOlder()
-                  .catch((cause: unknown) =>
-                    onErrorMessage(
-                      cause instanceof Error ? cause.message : "Could not load earlier messages",
-                    ),
-                  );
-              }}
-            >
-              {input.provider.history.windowFull
-                ? "History window full"
-                : input.provider.history.loading
-                  ? "Loading…"
-                  : "Load earlier messages"}
-            </button>
-          ) : null}
-          {leadingContent}
-        </>
-      }
+      leadingContent={leadingContent}
       resolveHistoryImage={input.provider?.resolveHistoryImage}
       resolveRuntimeAttachment={input.provider?.resolveRuntimeAttachment}
       readToolOutput={input.provider?.readToolOutput}
