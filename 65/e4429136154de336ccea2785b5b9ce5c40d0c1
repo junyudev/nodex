@@ -1,0 +1,26 @@
+crates/nodex-profile/src/codex.rs
+  s_82957c2d2298ff::t_fecbc8f207b874 209
+crates/nodex-profile/src/snapshot.rs
+  s_82957c2d2298ff::t_fecbc8f207b874 3,63-76,78,105-125,140-170,174-183,206,748,759,772
+  s_82957c2d2298ff::t_51289c2c76acac 126-139,171-173,184,265,281
+  s_82957c2d2298ff::t_cf70d1faf0fa9b 278-279,700-736,743-744,746,776,780,782,799-800,819,821,824
+  s_82957c2d2298ff::t_0e17a09cf764f8 185-205,207-209,264,266-275,277,280,737-742,745,747,749-758,760-771,773-775,777-779,781,783-798,801-818,820,822-823
+docs/reliability/backup-restore-and-maintenance.md
+  s_82957c2d2298ff::t_cf70d1faf0fa9b 20-26
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "65e4429136154de336ccea2785b5b9ce5c40d0c1",
+  "prompts": {},
+  "sessions": {
+    "s_82957c2d2298ff": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a16890-25de-78c3-9415-c0f67a5213d3",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
