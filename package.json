@@ -216,7 +216,7 @@
     "rrule": "2.8.1",
     "smol-toml": "1.9.1",
     "socks-proxy-agent": "8.0.5",
-    "stream-json": "3.6.0",
+    "stream-json": "3.7.0",
     "uuid": "14.0.0",
     "y-protocols": "1.0.7",
     "yjs": "13.6.32"
@@ -295,7 +295,7 @@
     "babel-plugin-react-compiler": "1.0.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
-    "dompurify": "3.4.16",
+    "dompurify": "3.4.17",
     "electron": "44.4.4",
     "electron-builder": "26.15.3",
     "electron-builder-squirrel-windows": "26.15.3",
