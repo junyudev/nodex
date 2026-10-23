@@ -1,0 +1,99 @@
+src/main/app/AgentRuntimeApplicationLive.ts
+  s_2814d3a536e7ad::t_38d79cee7ed86d 209-219
+src/renderer/components/workbench/workbench-runtime.tsx
+  s_2814d3a536e7ad::t_4aad134f566fa9 21,4877
+src/main/agent-runtime/AgentRuntimeProviderCatalog.node.test.ts
+  s_2814d3a536e7ad::t_82fc6506bcb3cb 31,34,39
+src/renderer/components/workbench/workbench-rail-account-controls.test.tsx
+  s_2814d3a536e7ad::t_1284578e3d03c9 339-340,368-371
+  s_2814d3a536e7ad::t_f08ef4f568c848 5,48-88,90,103-105,129,180,240,271,306-323,329-338,342-367,372-376
+  s_2814d3a536e7ad::t_f4985ee8cf92c3 324-328,341
+src/shared/agent-runtime-api.ts
+  s_2814d3a536e7ad::t_3273d532de765a 367-371
+src/main/agent-runtime/AgentRuntimeApplication.ts
+  s_2814d3a536e7ad::t_b091417f086d9c 100,105-111,2319-2340
+  s_2814d3a536e7ad::t_b57206f41c06a8 2341-2342
+src/renderer/lib/query-keys.ts
+  s_2814d3a536e7ad::t_b14b3c747d0d35 26
+src/renderer/lib/agent-runtime-runtime.ts
+  s_2814d3a536e7ad::t_3273d532de765a 197-198,237
+src/renderer/components/workbench/workbench-rail-usage-meter.tsx
+  s_2814d3a536e7ad::t_f4985ee8cf92c3 72-76,141,268-269,311-313
+  s_2814d3a536e7ad::t_cf735dc84a5b6d 123
+  s_2814d3a536e7ad::t_7071df409b6703 1-9,12-71,77-122,124-127,129-140,142-164,168-183,185-201,232-235,237,245-266,270-271,273-275,290-310,314-337,339,349-352,354-358,360-364,366,369-375,377-380
+  s_2814d3a536e7ad::t_21d2461e23638d 10,128,165-167,184,236,238-244,276-279,281,283-289
+  s_2814d3a536e7ad::t_c7e09a37effec7 202-231
+  s_2814d3a536e7ad::t_a298ae75fb0346 11,267,280,282
+  s_2814d3a536e7ad::t_e386f8074c7d86 338,340-348,353,359,365,367-368,376
+  s_2814d3a536e7ad::t_27447e599c3fca 272
+src/renderer/features/local-conversation/view/shared/auth-rate-limits.test.ts
+  s_2814d3a536e7ad::t_66a53284b36b4b 8
+src/main/codex-application/CodexAccount.node.test.ts
+  s_2814d3a536e7ad::t_9d4bc58a77bbcf 323,346,359,367,376,381,390,406,411,420
+  s_2814d3a536e7ad::t_f4985ee8cf92c3 324-345,347-358,360-366,368-375,377-380,382-389,391-405,407-410,412-419
+CHANGELOG.md
+  s_2814d3a536e7ad::t_66bfe97a97350e 10,23
+docs/product-specs/agent-backend-behavior.md
+  s_2814d3a536e7ad::t_66bfe97a97350e 20-23
+src/renderer/lib/use-claude-usage-readings.ts
+  s_2814d3a536e7ad::t_a3e4c66d817690 3,14-15,40-43,51-52,60-62,66-67,69-80,82,102,104
+  s_2814d3a536e7ad::t_82f2af1e484a43 1,68
+  s_2814d3a536e7ad::t_3d12a6f235440e 2,4-13,16-39,44-50,53-59,63-65,81,83-101,103,105
+src/renderer/components/workbench/workbench-shell.sidebar-core.test.tsx
+  s_2814d3a536e7ad::t_c79d24d7f38372 31,91-92,94
+src/renderer/lib/usage-meter.node.test.ts
+  s_2814d3a536e7ad::t_a298ae75fb0346 15,125-132
+  s_2814d3a536e7ad::t_f4985ee8cf92c3 158,299-301
+  s_2814d3a536e7ad::t_a28a23f2b06a00 1-14,16-124,133-157,159-298,302-359
+src/renderer/features/local-conversation/view/shared/auth-controls.tsx
+  s_2814d3a536e7ad::t_dab6c7287743ff 5
+src/main/agent-runtime/AgentRuntimeApplication.node.test.ts
+  s_2814d3a536e7ad::t_82fc6506bcb3cb 1472-1503
+src/main/agent-runtime/AgentRuntimeProviderCatalog.ts
+  s_2814d3a536e7ad::t_cda145966193c5 56-61,66,68-72
+docs/product-specs/workbench-shell.md
+  s_2814d3a536e7ad::t_c7e09a37effec7 21
+src/renderer/lib/usage-meter.ts
+  s_2814d3a536e7ad::t_f384220068b488 1-2,4-44,50-161,166-226,229-237,241-243,245-250,253,256-257,268-303,305-343,348-367,382-426
+  s_2814d3a536e7ad::t_a298ae75fb0346 258-267
+  s_2814d3a536e7ad::t_b1e8ed24af8fa9 3,304
+  s_2814d3a536e7ad::t_f4985ee8cf92c3 45-49,162-165,344-347,368-381
+  s_2814d3a536e7ad::t_ef7ff839949dd9 227-228,238-240,244,251-252,254-255
+src/shared/types.ts
+  s_2814d3a536e7ad::t_7003a1f63b6ff6 2060-2063
+src/shared/ipc-endpoint-policy.ts
+  s_2814d3a536e7ad::t_3273d532de765a 89
+docs/product-specs/agent-runtime-behavior.md
+  s_2814d3a536e7ad::t_66bfe97a97350e 581-583
+src/main/codex-application/CodexAccountState.ts
+  s_2814d3a536e7ad::t_7003a1f63b6ff6 15,25-26,28-59
+src/main/codex-application/CodexAccount.ts
+  s_2814d3a536e7ad::t_4a4b7c3f3ea606 1,24,29,101-107,111,117-125,135-140,142-146,198-200,224-235
+src/renderer/components/workbench/workbench-rail-account-controls.tsx
+  s_2814d3a536e7ad::t_6fb445ced922db 1,7-8,10,17,41-42,46,89-94
+  s_2814d3a536e7ad::t_86f67cbae07c2e 28-29,197
+  s_2814d3a536e7ad::t_4aad134f566fa9 16,315-321
+  s_2814d3a536e7ad::t_92bcb66852fd2e 103-184,201,259,261-262,292-299,322
+src/renderer/lib/use-claude-usage-readings.test.tsx
+  s_2814d3a536e7ad::t_c8c398b01cf78f 1-8,11-47,55-60,66-153,155-156,161-163,165-166,173-177,179,198-199,202
+  s_2814d3a536e7ad::t_82f2af1e484a43 9-10,154,157-160,164,167-172,178,180-197,200-201
+  s_2814d3a536e7ad::t_f4985ee8cf92c3 48-54,61-65
+src/main/ipc/handlers/AgentRuntimeIpc.ts
+  s_2814d3a536e7ad::t_3273d532de765a 202-204
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "1dbdea1e9522652dd5a9e1abfbc66912d681a0f5",
+  "prompts": {},
+  "sessions": {
+    "s_2814d3a536e7ad": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "667a5743-dba3-4077-97a1-608d0ecf4ae6",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
