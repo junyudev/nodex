@@ -403,6 +403,10 @@ export const make = Effect.fn("AgentRuntimeSupervisor.make")(function* <Requirem
   });
   return {
     get,
+    /** Only an already-running generation; reading never starts or recovers a process. */
+    currentConnection: Ref.get(state).pipe(
+      Effect.map((current) => current.current?.connection ?? null),
+    ),
     /**
      * The process when it runs or its stopped store may hold live or pending work; null when
      * durable evidence proves there is nothing to resume, so recovery never starts it for nothing.

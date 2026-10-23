@@ -50,6 +50,7 @@ import { useCodexServiceTierSettings } from "../../lib/use-codex-service-tier-se
 import { useCodexThreadSettings } from "../../lib/use-codex-thread-settings";
 import { useDesktopNotificationAuthorization } from "@/lib/desktop-notification-authorization";
 import { useThreadNotificationSettings } from "../../lib/use-thread-notification-settings";
+import { useComposerPredictionSettings } from "@/features/local-conversation/composer-prediction-settings";
 import { useWindowRestoreSettings } from "../../lib/use-window-restore-settings";
 import { isDiagnosticsSettings } from "../../../shared/diagnostics/diagnostics-settings";
 import { isTelemetrySettings } from "../../../shared/diagnostics/telemetry-settings";
@@ -402,6 +403,38 @@ export function ServiceTierSettingControl() {
         { value: "fast", label: "Fast" },
       ]}
     />
+  );
+}
+
+export function ComposerPredictionSettingControl() {
+  const {
+    settings,
+    isLoading,
+    isSaving,
+    error: loadError,
+    updateSettings,
+  } = useComposerPredictionSettings();
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const error = saveError ?? (loadError ? "Could not load prediction settings." : null);
+  return (
+    <div className="flex items-center gap-2">
+      {error ? (
+        <span role="alert" className="max-w-72 text-xs text-danger">
+          {error}
+        </span>
+      ) : null}
+      <NodexSwitch
+        ariaLabel="Show predictions"
+        checked={settings.enabled}
+        disabled={isLoading || isSaving || Boolean(loadError)}
+        onCheckedChange={(enabled) => {
+          setSaveError(null);
+          void updateSettings({ enabled }).catch(() =>
+            setSaveError("Could not save prediction settings."),
+          );
+        }}
+      />
+    </div>
   );
 }
 

@@ -80,11 +80,13 @@ export class CodexComposerPrediction extends Context.Service<
 >()("nodex/main/codex-application/CodexComposerPrediction") {}
 
 export interface CodexComposerPredictionOptions {
-  /** null means an unassigned or unavailable configuration, independently of native support. */
+  /** null disables inference, independently of native support. */
   readonly configurationForHost: (
     hostId: string,
   ) => Effect.Effect<CodexComposerPredictionConfiguration | null>;
-  readonly configurationSource?: "environment";
+  readonly configurationSource?: (hostId: string) => CodexComposerPredictionAvailability["source"];
+  /** Preference changes invalidate admitted work even without a mounted Composer. */
+  readonly configurationChanges?: Stream.Stream<unknown>;
   readonly timeoutMs?: number;
 }
 interface Entry {
@@ -172,7 +174,15 @@ export const make = (
       });
     });
     const clear = Effect.fn("CodexComposerPrediction.clear")(
-      (input?: CodexComposerPredictionClearInput) => clearEntries(input),
+      (input?: CodexComposerPredictionClearInput) =>
+        clearEntries(input).pipe(
+          Effect.andThen(
+            Option.isSome(application) &&
+              (input?.hostId === undefined || input.hostId === gateway.localHostId)
+              ? application.value.clearPredictions(input?.threadId).pipe(Effect.ignore)
+              : Effect.void,
+          ),
+        ),
     );
     yield* Effect.addFinalizer(() => clearEntries());
     const watchAuthLease = Effect.fn("CodexComposerPrediction.watchAuthLease")(function* (
@@ -521,32 +531,6 @@ export const make = (
     const request = Effect.fn("CodexComposerPrediction.request")(function* (
       input: CodexComposerPredictionInput,
     ) {
-      if (input.hostId === gateway.localHostId) {
-        const found = yield* runtimeThread(input.threadId, application).pipe(
-          Effect.mapError((cause) => fail("request-failed", input.threadId, cause)),
-        );
-        if (found) {
-          const configuration = yield* options.configurationForHost(input.hostId);
-          if (
-            !configuration?.is_enabled ||
-            !configuration.prompt.trim() ||
-            input.latestTurnId === null
-          )
-            return null;
-          return yield* found.connection
-            .request("native.prediction.request", {
-              threadId: input.threadId,
-              latestRunId: input.latestTurnId,
-              generationTrigger: input.generationTrigger,
-              configuration,
-            })
-            .pipe(
-              Effect.map((result) => result as CodexComposerPredictionResult | null),
-              Effect.mapError((cause) => fail("request-failed", input.threadId, cause)),
-            );
-        }
-      }
-
       const key = JSON.stringify([input.hostId, input.threadId, input.latestTurnId]);
       const admission = {
         key,
@@ -557,6 +541,32 @@ export const make = (
       };
       admissions.add(admission);
       const admitted = Effect.gen(function* () {
+        if (input.hostId === gateway.localHostId && Option.isSome(application)) {
+          const configuration = yield* options.configurationForHost(input.hostId);
+          if (!admission.current) return yield* Effect.interrupt;
+          if (
+            !configuration?.is_enabled ||
+            !configuration.prompt.trim() ||
+            input.latestTurnId === null
+          )
+            return null;
+          const found = yield* runtimeThread(input.threadId, application).pipe(
+            Effect.mapError((cause) => fail("request-failed", input.threadId, cause)),
+          );
+          if (!admission.current) return yield* Effect.interrupt;
+          if (found)
+            return yield* found.connection
+              .request("native.prediction.request", {
+                threadId: input.threadId,
+                latestRunId: input.latestTurnId,
+                generationTrigger: input.generationTrigger,
+                configuration,
+              })
+              .pipe(
+                Effect.map((result) => result as CodexComposerPredictionResult | null),
+                Effect.mapError((cause) => fail("request-failed", input.threadId, cause)),
+              );
+        }
         const capturedLease = yield* authState.captureBackendLease(input.hostId);
         if (!admission.current || capturedLease.aborted) return yield* Effect.interrupt;
         yield* watchAuthLease(input.hostId, capturedLease);
@@ -649,29 +659,23 @@ export const make = (
       const configuration = yield* options.configurationForHost(hostId);
       return {
         enabled: configuration?.is_enabled === true && configuration.prompt.trim().length > 0,
-        source: configuration ? (options.configurationSource ?? null) : null,
+        source: configuration ? (options.configurationSource?.(hostId) ?? null) : null,
         scope: hostId,
       };
     });
-    return CodexComposerPrediction.of({
-      request,
-      clear: (input) =>
-        clear(input).pipe(
-          Effect.andThen(
-            Option.isSome(application) && (!input || input.hostId === gateway.localHostId)
-              ? application.value.clearPredictions(input?.threadId).pipe(Effect.ignore)
-              : Effect.void,
-          ),
-        ),
-      availability,
-    });
+    if (options.configurationChanges)
+      yield* options.configurationChanges.pipe(
+        Stream.runForEach(() => clear()),
+        Effect.forkScoped({ startImmediately: true }),
+      );
+    return CodexComposerPrediction.of({ request, clear, availability });
   });
 
 export const NODEX_COMPOSER_PREDICTION_CONFIG_ENV = "NODEX_COMPOSER_PREDICTION_CONFIG";
 const hostConfiguration = Schema.Struct({
   hosts: Schema.Record(CodexComposerPredictionHost, CodexComposerPredictionConfiguration),
 });
-/** MainConfig captures these host-scoped assignments once; absent assignments remain unknown/off. */
+/** MainConfig captures optional host overrides once; product defaults are resolved separately. */
 export const readCodexComposerPredictionEnvironment = Effect.fn(
   "readCodexComposerPredictionEnvironment",
 )(function* (environment: Readonly<Record<string, string>>) {

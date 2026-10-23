@@ -2260,8 +2260,7 @@ describe("local-conversation-store", () => {
           generationTrigger: "live",
         }),
       );
-      const { writeComposerPredictionsEnabled } = await import("./composer-prediction-settings");
-      writeComposerPredictionsEnabled(false);
+      composerPredictionEnabled = false;
       const disabledTurn = {
         ...buildThreadFromConversation(resumeThreadResult).turns[0]!,
         id: "disabled-turn",
@@ -2291,10 +2290,7 @@ describe("local-conversation-store", () => {
       expect(
         invokeRecords.filter((record) => record.channel === "codex:composer-prediction:request"),
       ).toHaveLength(1);
-      writeComposerPredictionsEnabled(true);
     } finally {
-      const { writeComposerPredictionsEnabled } = await import("./composer-prediction-settings");
-      writeComposerPredictionsEnabled(true);
       composerPredictionEnabled = false;
       release();
       await resume.catch(() => {});

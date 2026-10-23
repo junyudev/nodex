@@ -46,6 +46,8 @@ export interface ScriptedModelExchange {
 }
 
 export interface ScriptedModelServerInput {
+  /** Explicit background behavior takes precedence over the standard non-interactive replies. */
+  readonly backgroundExchanges?: readonly ScriptedModelExchange[];
   readonly exchanges: readonly ScriptedModelExchange[];
   readonly maximumRequestBytes?: number;
   readonly maximumTranscriptCharacters?: number;
@@ -549,7 +551,23 @@ export const standardCodexBackgroundExchanges = (): readonly ScriptedModelExchan
       ]);
     },
   },
+  composerPredictionFallback(),
 ];
+
+const composerPredictionFallback = (): ScriptedModelExchange => ({
+  name: "automatic Composer prediction",
+  expectedCalls: 0,
+  maximumCalls: Number.POSITIVE_INFINITY,
+  match: (request) => request.isThreadSource("composer_predictions"),
+  respond: (_request, callIndex) => {
+    const id = `scripted-background-prediction-${callIndex}`;
+    return responses.stream([
+      responses.created(id),
+      responses.assistantMessage(`${id}-message`, '{"suggestion":null}', "final_answer"),
+      responses.completed(id, true),
+    ]);
+  },
+});
 
 const validateExchange = (exchange: ScriptedModelExchange): ExchangeRuntime => {
   const expectedCalls = exchange.expectedCalls ?? 1;
@@ -632,12 +650,13 @@ export class ScriptedModelServer {
   }
 
   static async start(input: ScriptedModelServerInput): Promise<ScriptedModelServer> {
-    // Codex can start title-generation and approval-review Turns beside the user Turn. Handle
-    // those known background families before scenario exchanges because their prompts can quote
-    // the user's input and would otherwise satisfy broad scenario matchers accidentally.
-    const exchanges = [...standardCodexBackgroundExchanges(), ...input.exchanges].map(
-      validateExchange,
-    );
+    // Background forks inherit user input. Reserve them before broad scenario matchers, while
+    // letting a scenario explicitly replace the standard non-interactive background responses.
+    const exchanges = [
+      ...(input.backgroundExchanges ?? []),
+      ...standardCodexBackgroundExchanges(),
+      ...input.exchanges,
+    ].map(validateExchange);
     const maximumRequestBytes = input.maximumRequestBytes ?? DEFAULT_MAXIMUM_REQUEST_BYTES;
     const maximumTranscriptCharacters =
       input.maximumTranscriptCharacters ?? DEFAULT_MAXIMUM_TRANSCRIPT_CHARACTERS;

@@ -1640,7 +1640,7 @@ function HydratedThreadComposer({
       model.conversation.ephemeral !== true &&
       !model.conversation.archived &&
       !model.isThreadRunning &&
-      latestTurnStatus !== "inProgress" &&
+      latestTurnStatus === "completed" &&
       model.conversation.statusType !== "active" &&
       !model.body.showThreadStartProgressPanel &&
       (model.body.emptyState.type === "none" || model.body.emptyState.type === "emptyThread"),

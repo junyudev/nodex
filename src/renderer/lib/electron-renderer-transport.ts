@@ -361,6 +361,14 @@ export function createElectronRendererTransport(bridge: ElectronRendererBridge):
         callback(payload);
       });
     },
+    subscribeComposerPredictionSettingsChanges(callback) {
+      return bridge.on("composer-prediction-settings-changed", (...args: unknown[]) => {
+        const payload = args[0] as
+          | import("../../shared/composer-prediction-settings").ComposerPredictionSettings
+          | undefined;
+        if (payload) callback(payload);
+      });
+    },
     subscribeAgentSettingsChanges(callback) {
       return bridge.on("agent-settings-changed", callback);
     },

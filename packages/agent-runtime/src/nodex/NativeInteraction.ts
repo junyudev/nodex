@@ -28,6 +28,10 @@ import type {
 } from "./Interface.ts";
 
 const fail = (message: string) => Effect.fail(new Error(message));
+interface PredictionAdmission {
+  readonly threadId: string;
+  current: boolean;
+}
 const voiceMethods = new Set([
   "thread/realtime/started",
   "thread/realtime/sdp",
@@ -86,8 +90,24 @@ export const make = Effect.fn("NativeInteraction.make")(function* (
   const nativeInputSources = new Set<string>();
   const predictions = new Map<
     string,
-    { source: AgentNativeSource | null; fiber: Fiber.Fiber<unknown, Error> }
+    { readSource: () => AgentNativeSource | null; fiber: Fiber.Fiber<unknown, Error> }
   >();
+  const predictionAdmissions = new Set<PredictionAdmission>();
+  const retirePredictionAdmissions = (threadId?: string) => {
+    for (const admission of predictionAdmissions)
+      if (threadId === undefined || admission.threadId === threadId) admission.current = false;
+  };
+  const clearPredictions = Effect.fn("NativeInteraction.clearPredictions")(function* (
+    threadId?: string,
+  ) {
+    // A replacement can be waiting for an older physical fork before it owns a cache entry.
+    retirePredictionAdmissions(threadId);
+    const removed = [...predictions].filter(
+      ([key]) => threadId === undefined || JSON.parse(key)[0] === threadId,
+    );
+    for (const [key] of removed) predictions.delete(key);
+    yield* Effect.forEach(removed, ([, entry]) => Fiber.interrupt(entry.fiber), { discard: true });
+  });
   for (const eventType of [
     "run.created",
     "thread.archived",
@@ -97,6 +117,7 @@ export const make = Effect.fn("NativeInteraction.make")(function* (
     yield* events.stream({ eventType, afterSequence: observationCursor }).pipe(
       Stream.runForEach(({ event }) =>
         Effect.gen(function* () {
+          retirePredictionAdmissions(event.threadId);
           for (const [key, entry] of predictions) {
             if (JSON.parse(key)[0] !== event.threadId) continue;
             predictions.delete(key);
@@ -359,22 +380,42 @@ export const make = Effect.fn("NativeInteraction.make")(function* (
   const prepare = (input: { threadId: string; claimId: string }) =>
     voicePermit.withPermit(prepareClaim(input));
 
-  const predict = Effect.fn("NativeInteraction.predict")(function* (input: AgentPredictionInput) {
+  const predictionCurrent = Effect.fn("NativeInteraction.predictionCurrent")(function* (
+    input: AgentPredictionInput,
+    source: AgentNativeSource | null,
+  ) {
+    const shell = yield* store.getThreadShell(ThreadId.make(input.threadId));
+    if (
+      !shell ||
+      shell.latestRunId !== input.latestRunId ||
+      shell.status !== "completed" ||
+      shell.activeRunId !== null ||
+      shell.lineage.parentThreadId !== null ||
+      shell.lineage.rootThreadId !== input.threadId
+    )
+      return false;
+    return source === null || (yield* current(source));
+  });
+
+  const predictAdmitted = Effect.fn("NativeInteraction.predictAdmitted")(function* (
+    input: AgentPredictionInput,
+    admission: PredictionAdmission,
+  ) {
     const key = JSON.stringify([input.threadId, input.latestRunId]);
     const existing = predictions.get(key);
-    if (
-      existing &&
-      (existing.source === null ||
-        ((yield* current(existing.source)) &&
-          (yield* store.getThreadShell(ThreadId.make(input.threadId)))?.latestRunId ===
-            input.latestRunId))
-    )
-      return yield* Fiber.join(existing.fiber);
+    if (existing) {
+      const reusable = yield* predictionCurrent(input, existing.readSource());
+      // Clearing a preference or starting a Run may retire admission during the source read.
+      if (!admission.current || predictions.get(key) !== existing) return null;
+      if (reusable) return yield* Fiber.join(existing.fiber);
+    }
     if (existing) yield* Fiber.interrupt(existing.fiber);
+    if (!admission.current) return null;
     for (const [oldKey, entry] of predictions)
       if (oldKey.startsWith(JSON.stringify([input.threadId]).slice(0, -1) + ",")) {
         predictions.delete(oldKey);
         yield* Fiber.interrupt(entry.fiber);
+        if (!admission.current) return null;
       }
     let source: AgentNativeSource | null = null;
     const run = Effect.gen(function* () {
@@ -384,10 +425,10 @@ export const make = Effect.fn("NativeInteraction.make")(function* (
           ? input.configuration.live_sample_rate
           : input.configuration.catch_up_sample_rate;
       if ((yield* Random.next) >= (rate ?? input.configuration.sample_rate ?? 1)) return null;
+      if (!(yield* predictionCurrent(input, null))) return null;
       const resolved = yield* resolve(input.threadId);
       source = resolved.source;
-      const shell = yield* store.getThreadShell(resolved.thread.id);
-      if (shell?.latestRunId !== input.latestRunId || shell.activeRunId !== null) return null;
+      if (!(yield* predictionCurrent(input, source))) return null;
       const boundary = yield* store.getNativeForkBoundary(
         resolved.thread.id,
         RunId.make(input.latestRunId),
@@ -515,7 +556,8 @@ export const make = Effect.fn("NativeInteraction.make")(function* (
                 done = true;
                 if (p.turn?.status !== "completed")
                   return yield* Deferred.fail(completed, new Error("Prediction Turn failed"));
-                yield* assertCurrent(source!);
+                if (!(yield* predictionCurrent(input, source)))
+                  return yield* Deferred.fail(completed, new Error("Prediction source retired"));
                 const parsed = yield* Effect.try(() => JSON.parse(text) as { suggestion: unknown });
                 if (parsed.suggestion !== null && typeof parsed.suggestion !== "string")
                   return yield* Deferred.fail(completed, new Error("Invalid prediction output"));
@@ -593,27 +635,33 @@ export const make = Effect.fn("NativeInteraction.make")(function* (
         }),
       );
     });
-    const entry: { source: AgentNativeSource | null; fiber: Fiber.Fiber<unknown, Error> } = {
-      source,
+    const entry: {
+      readSource: () => AgentNativeSource | null;
+      fiber: Fiber.Fiber<unknown, Error>;
+    } = {
+      readSource: () => source,
       fiber: yield* run.pipe(
         Effect.mapError((cause) => (cause instanceof Error ? cause : new Error(String(cause)))),
         Effect.onExit((exit) => {
-          if (Exit.isFailure(exit)) predictions.delete(key);
+          if (Exit.isFailure(exit) && predictions.get(key) === entry) predictions.delete(key);
           return Effect.void;
         }),
         Effect.forkIn(owner, { startImmediately: false }),
       ),
     };
+    if (!admission.current) {
+      yield* Fiber.interrupt(entry.fiber);
+      return null;
+    }
     predictions.set(key, entry);
-    // Source is captured during the owned inference, not when constructing a lazy Effect.
-    const result = yield* Fiber.join(entry.fiber).pipe(
-      Effect.ensuring(
-        Effect.sync(() => {
-          entry.source = source;
-        }),
-      ),
+    return yield* Fiber.join(entry.fiber);
+  });
+  const predict = Effect.fn("NativeInteraction.predict")(function* (input: AgentPredictionInput) {
+    const admission: PredictionAdmission = { threadId: input.threadId, current: true };
+    predictionAdmissions.add(admission);
+    return yield* predictAdmitted(input, admission).pipe(
+      Effect.ensuring(Effect.sync(() => predictionAdmissions.delete(admission))),
     );
-    return result;
   });
   return {
     prepare,
@@ -685,14 +733,6 @@ export const make = Effect.fn("NativeInteraction.make")(function* (
     }),
     release,
     predict,
-    clearPredictions: (threadId?: string) =>
-      Effect.forEach(
-        [...predictions].filter(([key]) => !threadId || JSON.parse(key)[0] === threadId),
-        ([key, entry]) => {
-          predictions.delete(key);
-          return Fiber.interrupt(entry.fiber);
-        },
-        { discard: true },
-      ),
+    clearPredictions,
   };
 });

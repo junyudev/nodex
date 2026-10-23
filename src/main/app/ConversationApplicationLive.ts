@@ -6,6 +6,8 @@ import {
   make as makeCodexComposerPrediction,
   readCodexComposerPredictionEnvironment,
 } from "../codex-application/CodexComposerPrediction";
+import { resolveComposerPredictionConfiguration } from "../codex-application/CodexComposerPredictionDefaults";
+import { ApplicationSettings } from "../settings/ApplicationSettings";
 
 import {
   CodexNativeThreadLookup,
@@ -420,13 +422,20 @@ const structuredThreadTitle = Layer.unwrap(
 const composerPrediction = Layer.unwrap(
   Effect.gen(function* () {
     const config = yield* MainConfig;
+    const settings = yield* ApplicationSettings;
     const hosts = yield* readCodexComposerPredictionEnvironment(config.environment);
     return Layer.effect(
       CodexComposerPrediction,
       makeCodexComposerPrediction({
         configurationForHost: (hostId) =>
-          Effect.succeed(Object.hasOwn(hosts, hostId) ? hosts[hostId]! : null),
-        configurationSource: "environment",
+          settings.snapshot().pipe(
+            Effect.map(({ composerPredictions }) =>
+              resolveComposerPredictionConfiguration(hosts, composerPredictions.enabled, hostId),
+            ),
+            Effect.orElseSucceed(() => null),
+          ),
+        configurationSource: (hostId) => (Object.hasOwn(hosts, hostId) ? "environment" : "default"),
+        configurationChanges: settings.composerPredictionSettingsChanges,
       }),
     );
   }),

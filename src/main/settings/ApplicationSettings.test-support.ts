@@ -1,4 +1,5 @@
 import * as Effect from "effect/Effect";
+import * as Stream from "effect/Stream";
 import { ApplicationSettings, type ApplicationSettingsSnapshot } from "./ApplicationSettings";
 
 export function makeTestApplicationSettings(input?: {
@@ -8,10 +9,12 @@ export function makeTestApplicationSettings(input?: {
   readonly pullRequestInstructions?: string;
 }): ApplicationSettings["Service"] {
   return ApplicationSettings.of({
+    composerPredictionSettingsChanges: Stream.empty,
     openCodeLaunchConfiguration: () => Effect.die("Unused OpenCode launch configuration"),
     claudeLaunchConfiguration: () => Effect.die("Unused Claude launch configuration"),
     snapshot: () =>
       Effect.succeed({
+        composerPredictions: { enabled: true },
         developer: { detailLevel: input?.detailLevel ?? "STEPS_COMMANDS" },
         git: {
           branchPrefix: input?.branchPrefix ?? "codex/",

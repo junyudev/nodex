@@ -987,7 +987,7 @@ it.effect("concurrent callers share a failure and a later explicit request can r
 );
 
 it.effect(
-  "host assignments stay off until explicitly configured and never disclose inference prompts",
+  "explicit host configuration can withhold predictions without disclosing inference prompts",
   () =>
     Effect.scoped(
       Effect.gen(function* () {
@@ -1003,7 +1003,7 @@ it.effect(
         const owner = yield* provide(
           make({
             configurationForHost: (hostId) => Effect.succeed(hosts[hostId] ?? null),
-            configurationSource: "environment",
+            configurationSource: () => "environment",
           }),
           gateway,
           registry,
@@ -1181,6 +1181,62 @@ it.effect.each(["account-mutation", "logout", "host-generation"] as const)(
     ),
 );
 
+it.effect("disabled local predictions do not resolve or start a Runtime", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const events = yield* PubSub.unbounded<CodexEndpointEvent>();
+      const { gateway, calls } = fixture(events);
+      const registry = yield* makeRegistry;
+      const owner = yield* provide(
+        make({ configurationForHost: () => Effect.succeed(null) }),
+        gateway,
+        registry,
+      ).pipe(
+        Effect.provideService(AgentRuntimeApplication, {
+          nativeThread: () => Effect.die("Disabled predictions must remain cold"),
+        } as unknown as AgentRuntimeApplication["Service"]),
+      );
+      assert.isNull(yield* owner.request(input));
+      assert.deepEqual(calls, []);
+    }),
+  ),
+);
+
+it.effect(
+  "a Profile preference change clears Runtime work and cancels pending local admission",
+  () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const events = yield* PubSub.unbounded<CodexEndpointEvent>();
+        const changes = yield* PubSub.unbounded<void>();
+        const started = yield* Deferred.make<void>();
+        const cleared = yield* Deferred.make<void>();
+        const { gateway, calls } = fixture(events);
+        const registry = yield* makeRegistry;
+        const owner = yield* provide(
+          make({
+            configurationForHost: () =>
+              Deferred.succeed(started, undefined).pipe(Effect.andThen(Effect.never)),
+            configurationChanges: Stream.fromPubSub(changes),
+          }),
+          gateway,
+          registry,
+        ).pipe(
+          Effect.provideService(AgentRuntimeApplication, {
+            nativeThread: () => Effect.die("Retired admission must not reach Runtime"),
+            clearPredictions: () => Deferred.succeed(cleared, undefined).pipe(Effect.asVoid),
+          } as unknown as AgentRuntimeApplication["Service"]),
+        );
+        const pending = yield* owner.request(input).pipe(Effect.forkChild);
+        yield* Deferred.await(started);
+        yield* PubSub.publish(changes, undefined);
+        yield* Deferred.await(cleared);
+        assert.isTrue(Exit.isFailure(yield* Fiber.await(pending)));
+        assert.deepEqual(calls, []);
+      }),
+    ),
+);
+
 it.effect("clears Runtime prediction caches only for local or global scope", () =>
   Effect.scoped(
     Effect.gen(function* () {
@@ -1206,7 +1262,8 @@ it.effect("clears Runtime prediction caches only for local or global scope", () 
       yield* owner.clear({ hostId: "local", threadId: "parent" });
       yield* owner.clear({ hostId: "local" });
       yield* owner.clear();
-      assert.deepEqual(cleared, ["parent", undefined, undefined]);
+      yield* owner.clear({});
+      assert.deepEqual(cleared, ["parent", undefined, undefined, undefined]);
     }),
   ),
 );

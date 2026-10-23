@@ -17,7 +17,7 @@ export interface LatestReturnedValueOwner<Value extends object, Input = Value> {
   readonly getSnapshot: () => LatestReturnedValueSnapshot<Value>;
   readonly subscribe: (listener: () => void) => () => void;
   /** Reads canonical state without allowing a pre-intent response to overwrite newer intent. */
-  readonly readCanonical: () => Promise<Value>;
+  readonly readCanonical: (options?: { readonly signal?: AbortSignal }) => Promise<Value>;
   /** Presents the complete desired value synchronously, before entering the transport Port. */
   readonly update: (input: Input) => Promise<Value>;
   /** Completes only the current presentation token; stale handoffs are ignored. */
@@ -122,11 +122,18 @@ export function createLatestReturnedValueOwner<Value extends object, Input = Val
     refreshSnapshot();
   };
 
-  const readCanonical = async (): Promise<Value> => {
+  const readCanonical = async (options?: { readonly signal?: AbortSignal }): Promise<Value> => {
+    const signal = options?.signal;
     const readStartedWithIntent = activeIntent !== null;
     const readGeneration = intentSequence;
     const value = await port.read();
-    if (readStartedWithIntent || readGeneration !== intentSequence || activeIntent) return value;
+    if (
+      signal?.aborted ||
+      readStartedWithIntent ||
+      readGeneration !== intentSequence ||
+      activeIntent
+    )
+      return value;
     stableValue = value;
     stableIntentSequence = intentSequence;
     presentedValue = value;

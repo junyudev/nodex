@@ -92,6 +92,8 @@ export interface AgentRuntimeApplicationConnection {
 
 export interface AgentRuntimeApplicationOptions {
   readonly connect: Effect.Effect<AgentRuntimeApplicationConnection, unknown>;
+  /** Transient cleanup may use a live generation but must never start a cold Runtime. */
+  readonly currentConnection: Effect.Effect<AgentRuntimeApplicationConnection | null, unknown>;
   /** Lets product-only draft deletion leave an unused Profile runtime cold. */
   readonly runtimeExists?: Effect.Effect<boolean, unknown>;
   /** Serves the last live provider catalog while execution is stopped. */
@@ -1922,8 +1924,8 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
       owned(
         "prediction-clear",
         Effect.gen(function* () {
-          if (options.runtimeExists && !(yield* options.runtimeExists)) return;
-          const connection = yield* options.connect;
+          const connection = yield* options.currentConnection;
+          if (!connection) return;
           yield* connection.request(
             "native.prediction.clear",
             threadId === undefined ? {} : { threadId },

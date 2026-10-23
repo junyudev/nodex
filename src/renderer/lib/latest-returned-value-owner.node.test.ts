@@ -24,6 +24,31 @@ function operationIds() {
 }
 
 describe("LatestReturnedValueOwner", () => {
+  it("does not materialize a cancelled read after a newer canonical read", async () => {
+    const stale = deferred<Setting>();
+    let reads = 0;
+    const owner = createLatestReturnedValueOwner({
+      initialValue: setting("initial"),
+      equals: (left, right) => left.mode === right.mode,
+      operationId: operationIds(),
+      project: (_current, desired: Setting) => desired,
+      port: {
+        read: () => (++reads === 1 ? stale.promise : Promise.resolve(setting("current"))),
+        update: async (desired) => desired,
+      },
+      semanticKey: "settings.update",
+      owner: "settings",
+      scopeKind: "application",
+    });
+    const controller = new AbortController();
+    const initialRead = owner.readCanonical({ signal: controller.signal });
+    controller.abort();
+    await owner.readCanonical();
+    stale.resolve(setting("old"));
+    await initialRead;
+    expect(owner.getSnapshot().value).toEqual(setting("current"));
+  });
+
   it("presents complete intent before transport and settles only its matching render", async () => {
     const request = deferred<Setting>();
     const trace = createRendererCausalTrace({ enabled: true });

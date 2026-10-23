@@ -20,12 +20,21 @@ Profile home resolves in this order:
 
 ## Composer prediction assignments
 
-Composer predictions are off until a host has an explicit assignment. The Main startup
-boundary reads `NODEX_COMPOSER_PREDICTION_CONFIG` from its captured environment as a JSON
-object with a `hosts` map. Keys are exact Codex host IDs; an unlisted host has no assignment.
-This value belongs to the selected Desktop process and is not a TOML or renderer setting.
-Restart Desktop after changing it. Invalid JSON, missing required fields, or sampling rates
-outside `[0, 1]` fail startup rather than enabling an incomplete configuration.
+Composer predictions default on. **Settings → General → Composer → Show predictions**
+stores the Profile preference as `server.composer_predictions_enabled` in its configuration.
+Main broadcasts successful changes to all windows. Turning it off cancels pending generation
+and clears cached suggestions across hosts, including when no Composer is open.
+
+The built-in prompt predicts a concise follow-up in the user's language, using the chat's
+model with low reasoning effort, and permits no suggestion when the next step is unclear.
+Generation is an additional model request using the selected chat's account.
+
+For advanced overrides, the Main startup boundary reads `NODEX_COMPOSER_PREDICTION_CONFIG`
+from its captured environment as a JSON object with a `hosts` map. Keys are exact Codex host
+IDs; unlisted hosts use the built-in configuration. The Profile switch gates both defaults
+and overrides. This environment value belongs to the selected Desktop process; restart
+Desktop after changing it. Invalid JSON, missing required fields, or sampling rates outside
+`[0, 1]` fail startup rather than enabling an incomplete configuration.
 
 For example, a disabled local assignment has this shape:
 

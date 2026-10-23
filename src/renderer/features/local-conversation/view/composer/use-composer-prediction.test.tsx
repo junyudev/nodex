@@ -3,7 +3,8 @@ import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import type { CodexComposerPredictionResult } from "../../../../../shared/codex-composer-prediction";
-import { writeComposerPredictionsEnabled } from "../../composer-prediction-settings";
+import { resetComposerPredictionSettingsOwnersForTests } from "../../composer-prediction-settings";
+import { installWindowApi } from "../../../../test/browser-globals";
 import { predictionResult } from "./composer-prediction.test-fixtures";
 import { useComposerPrediction } from "./use-composer-prediction";
 import { ConversationRuntimeContext, type ConversationRuntime } from "../../conversation-runtime";
@@ -19,8 +20,27 @@ vi.mock("../../local-conversation-operations", () => ({
 vi.mock("../../../../lib/statsig-telemetry", () => ({ logTelemetryEvent: mocks.telemetry }));
 
 const clients: QueryClient[] = [];
+const preferenceListeners = new Set<(settings: { enabled: boolean }) => void>();
+let preference = true;
+const writeComposerPredictionsEnabled = (enabled: boolean) => {
+  preference = enabled;
+  for (const listener of preferenceListeners) listener({ enabled });
+};
 beforeEach(() => {
-  localStorage.clear();
+  preference = true;
+  preferenceListeners.clear();
+  resetComposerPredictionSettingsOwnersForTests();
+  installWindowApi({
+    invoke: async (channel: string) => {
+      if (channel === "settings:composer-predictions:get") return { enabled: preference };
+      throw new Error(`Unexpected setting: ${channel}`);
+    },
+    on: (channel: string, callback: (settings: { enabled: boolean }) => void) => {
+      if (channel !== "composer-prediction-settings-changed") return () => {};
+      preferenceListeners.add(callback);
+      return () => preferenceListeners.delete(callback);
+    },
+  });
   mocks.available = false;
   mocks.telemetry.mockReset();
   mocks.operation.mockReset();
@@ -202,7 +222,7 @@ it("rejects a late old-turn response after the composer target changes", async (
   expect(hook.result.current.prediction?.sourceTurnId).toBe("next-turn");
 });
 
-it("clears both Renderer and Main caches when the local preference is disabled", async () => {
+it("clears Renderer caches when the Profile preference is disabled", async () => {
   mocks.available = true;
   const hook = mount();
   await waitFor(() => expect(hook.result.current.prediction?.sourceTurnId).toBe("source-turn"));
@@ -212,9 +232,9 @@ it("clears both Renderer and Main caches when the local preference is disabled",
     await Promise.resolve();
   });
   expect(hook.result.current.prediction).toBeNull();
-  await waitFor(() =>
-    expect(mocks.operation).toHaveBeenCalledWith("codex:composer-prediction:clear"),
-  );
+  expect(
+    clients[0]?.getQueryData(["composer_prediction", "local", ["root", "source-turn"]]),
+  ).toBeUndefined();
   await act(async () => {
     writeComposerPredictionsEnabled(true);
     await Promise.resolve();
@@ -223,7 +243,7 @@ it("clears both Renderer and Main caches when the local preference is disabled",
   await waitFor(() => expect(hook.result.current.prediction?.sourceTurnId).toBe("source-turn"));
 });
 
-it("clears the host cache immediately when preference is disabled during an ineligible Turn", async () => {
+it("clears cached previews when preference is disabled during an ineligible Turn", async () => {
   mocks.available = true;
   const hook = mount();
   await waitFor(() => expect(hook.result.current.prediction?.sourceTurnId).toBe("source-turn"));
@@ -239,9 +259,9 @@ it("clears the host cache immediately when preference is disabled during an inel
     writeComposerPredictionsEnabled(false);
     await Promise.resolve();
   });
-  await waitFor(() =>
-    expect(mocks.operation).toHaveBeenCalledWith("codex:composer-prediction:clear"),
-  );
+  expect(
+    clients[0]?.getQueryData(["composer_prediction", "local", ["root", "source-turn"]]),
+  ).toBeUndefined();
   expect(requests()).toHaveLength(1);
 });
 

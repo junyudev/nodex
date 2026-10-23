@@ -45,7 +45,6 @@ import {
   type ConversationResumePreparationOptions,
 } from "../../../shared/codex-conversation-state/codex-resume-request";
 import { codexThreadNavigation } from "./codex-thread-navigation";
-import { readComposerPredictionsEnabled } from "./composer-prediction-settings";
 import { projectCanonicalHistoryPresentation } from "./canonical-history-presentation";
 import { CodexItemTimelineIndex } from "../../../shared/codex-conversation-state/codex-item-timeline-index";
 import {
@@ -2918,7 +2917,6 @@ export class CodexAppServerManager {
       const conversation = this.conversationsById.get(threadId);
       return (
         !this.destroyed &&
-        readComposerPredictionsEnabled() &&
         this.hostId !== "durable" &&
         this.streamState.getRole(threadId)?.role === "owner" &&
         conversation !== undefined &&

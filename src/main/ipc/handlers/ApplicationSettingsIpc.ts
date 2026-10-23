@@ -1,9 +1,14 @@
+import {
+  COMPOSER_PREDICTION_SETTINGS_CHANGED_CHANNEL,
+  ComposerPredictionSettingsSchema,
+} from "../../../shared/composer-prediction-settings";
 import { OpenCodeAgentSettingsUpdateSchema } from "../../../shared/opencode-agent-settings";
 import { UpdateInboxSettingsInputSchema } from "../../../shared/schemas/inbox";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
 import * as Semaphore from "effect/Semaphore";
+import * as Stream from "effect/Stream";
 import type { IpcMainInvokeEvent } from "electron";
 import { z } from "zod";
 import type { IpcApi } from "../../../shared/ipc-api";
@@ -70,6 +75,7 @@ type SettingsReadChannel =
   | "settings:telemetry:get"
   | "settings:thread-notifications:get"
   | "settings:window-restore:get"
+  | "settings:composer-predictions:get"
   | "settings:inbox:get";
 
 const BackupUpdate = z
@@ -188,6 +194,16 @@ export const live: Layer.Layer<
     const menus = yield* ApplicationMenuRuntime;
     const schedulers = yield* StoreAdministrationSchedulerRuntime;
     const windows = yield* WindowRuntime;
+    yield* applicationSettings.composerPredictionSettingsChanges.pipe(
+      Stream.runForEach((settings) =>
+        Effect.sync(() => {
+          safeBroadcastToWindows(windows.all(), COMPOSER_PREDICTION_SETTINGS_CHANGED_CHANNEL, [
+            settings,
+          ]);
+        }),
+      ),
+      Effect.forkScoped({ startImmediately: true }),
+    );
     const keybindingMutations = yield* Semaphore.make(1);
     const codexHomeMutations = yield* Semaphore.make(1);
     const authorize = (event: IpcMainInvokeEvent, capability: string) =>
@@ -603,6 +619,27 @@ export const live: Layer.Layer<
             "update-window-restore-settings",
             { type: "update-window-restore", input: parsed },
             (value) => value.windowRestore,
+          ),
+        ),
+      ),
+    );
+    yield* handleRead(
+      "settings:composer-predictions:get",
+      "Composer prediction settings",
+      (value) => value.composerPredictions,
+    );
+    yield* ipc.handlePlainCommand("settings:composer-predictions:update", (event, input: unknown) =>
+      authorize(event, "Composer prediction settings").pipe(
+        Effect.andThen(
+          parse("parse-composer-prediction-settings", () =>
+            ComposerPredictionSettingsSchema.parse(input),
+          ),
+        ),
+        Effect.flatMap((parsed) =>
+          update(
+            "update-composer-prediction-settings",
+            { type: "update-composer-predictions", input: parsed },
+            (value) => value.composerPredictions,
           ),
         ),
       ),

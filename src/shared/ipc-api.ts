@@ -1461,6 +1461,14 @@ export interface IpcApi extends AgentRuntimeIpcApi {
     args: [input: UpdateAppUpdateSettingsInput];
     result: AppUpdateSettings;
   };
+  "settings:composer-predictions:get": {
+    args: [];
+    result: import("./composer-prediction-settings").ComposerPredictionSettings;
+  };
+  "settings:composer-predictions:update": {
+    args: [input: import("./composer-prediction-settings").ComposerPredictionSettings];
+    result: import("./composer-prediction-settings").ComposerPredictionSettings;
+  };
   "settings:window-restore:get": { args: []; result: WindowRestoreSettings };
   "settings:inbox:get": { args: []; result: import("./inbox").InboxSettings };
   "settings:inbox:update": {
@@ -2982,6 +2990,7 @@ export interface IpcEvents {
   "chrome-control-settings-changed": ChromeControlRuntimeSnapshot;
   "claude-agent-settings-changed": void;
   "agent-settings-changed": void;
+  "composer-prediction-settings-changed": import("./composer-prediction-settings").ComposerPredictionSettings;
   "desktop-notification:action": DesktopNotificationActionInvocation;
   "electron-window:focus-changed": { isFocused: boolean };
   "electron-window-opaque-surface-changed": {

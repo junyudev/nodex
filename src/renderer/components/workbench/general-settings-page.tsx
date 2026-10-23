@@ -4,6 +4,7 @@ import { CodexRequestDiagnostics } from "@/features/local-conversation/codex-req
 import { AppUpdateSettingsControl } from "./app-update-settings-control";
 import {
   ComposerEnterBehaviorControl,
+  ComposerPredictionSettingControl,
   CopyFileReferencesAsLocalPathsSettingControl,
   DiagnosticsSettingControl,
   FileLinkOpenerSettingControl,
@@ -93,6 +94,12 @@ export function GeneralSettingsPage({
       </SectionBlock>
 
       <SectionBlock id="composer" title="Composer">
+        <SettingRow
+          label="Show predictions"
+          description="Suggest your next message after an agent replies."
+        >
+          <ComposerPredictionSettingControl />
+        </SettingRow>
         <SettingRow
           label="Thread detail"
           description="Choose how much command output to show in threads."

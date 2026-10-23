@@ -334,6 +334,7 @@ const setup = (
       calls.push({ method, input });
       order.push(method);
       if (method === "providers.read") return providers as AgentRuntimeOperations[M]["output"];
+      if (method === "native.prediction.clear") return null as AgentRuntimeOperations[M]["output"];
       if (method === "command.receipt") {
         const request = input as AgentRuntimeOperations["command.receipt"]["input"];
         const admitted = commands.get(request.commandId);
@@ -717,7 +718,8 @@ const setup = (
     }).pipe(Effect.mapError((cause) => new ProjectWorkspaceError({ operation: method, cause })));
   const owner = make({
     ...options,
-    connect: Effect.sync(connection),
+    connect: options.connect ?? Effect.sync(connection),
+    currentConnection: options.currentConnection ?? Effect.sync(connection),
     projectless: options.projectless ?? {
       engineProjectId: "profile:projectless",
       workspaceRoot: "/tasks",
@@ -791,6 +793,29 @@ const awaitCommand = (fixture: ReturnType<typeof setup>, type: AgentCommand["typ
     }
     return yield* Effect.die(new Error(`${type} was never dispatched`));
   });
+
+it.effect("clears transient predictions only on an already-running connection", () =>
+  Effect.gen(function* () {
+    const connect = Effect.die(new Error("Prediction cleanup must not start execution"));
+    const cold = setup({
+      runtimeExists: Effect.succeed(true),
+      currentConnection: Effect.succeed(null),
+      connect,
+    });
+    const coldOwner = yield* cold.owner;
+    yield* coldOwner.clearPredictions();
+    yield* coldOwner.clearPredictions("thread:root");
+    assert.deepEqual(cold.calls, []);
+    const running = setup({ connect });
+    const runningOwner = yield* running.owner;
+    yield* runningOwner.clearPredictions("thread:root");
+    yield* runningOwner.clearPredictions();
+    assert.deepEqual(running.calls, [
+      { method: "native.prediction.clear", input: { threadId: "thread:root" } },
+      { method: "native.prediction.clear", input: {} },
+    ]);
+  }),
+);
 
 it.effect("creates and binds an absent product Session before dispatch and reuses its launch", () =>
   Effect.gen(function* () {

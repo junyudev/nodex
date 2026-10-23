@@ -85,6 +85,9 @@ import { CodexRendererPresentationRegistry } from "../codex-application/CodexRen
 import { createOperationId } from "../core-runtime/operation-identity";
 import { ProjectWorkspace } from "../project-application/ProjectWorkspace";
 import { run as runSessionNotifications } from "../agent-runtime/AgentRuntimeSessionNotifications";
+import { run as runSessionPredictions } from "../agent-runtime/AgentRuntimeSessionPredictions";
+import { readCodexComposerPredictionEnvironment } from "../codex-application/CodexComposerPrediction";
+import { resolveComposerPredictionConfiguration } from "../codex-application/CodexComposerPredictionDefaults";
 import { make as makeQuiescence, reportsNoWork } from "../agent-runtime/AgentRuntimeQuiescence";
 import { CodexLocalLaunch, CodexPlatform } from "./CodexApplicationLive";
 import { CodexTurnPresentation } from "../codex-application/CodexTurnPresentation";
@@ -205,6 +208,9 @@ const supervisor = Layer.effectContext(
     });
     const product = yield* makeApplication({
       connect: Deferred.await(ready).pipe(Effect.flatMap((runtime) => runtime.get())),
+      currentConnection: Deferred.await(ready).pipe(
+        Effect.flatMap((runtime) => runtime.currentConnection),
+      ),
       providerCatalog,
       whileRunning: (effect) =>
         Deferred.await(ready).pipe(
@@ -291,6 +297,21 @@ const supervisor = Layer.effectContext(
         Effect.orElseSucceed(() => true),
       ),
       publish: (event) => applicationEvents.publish({ kind: "threadNotification", value: event }),
+    }).pipe(Effect.forkScoped);
+    const predictionHosts = yield* readCodexComposerPredictionEnvironment(config.environment);
+    yield* runSessionPredictions({
+      transitions: activity.transitions,
+      configuration: settings.snapshot().pipe(
+        Effect.map(({ composerPredictions }) =>
+          resolveComposerPredictionConfiguration(
+            predictionHosts,
+            composerPredictions.enabled,
+            "local",
+          ),
+        ),
+        Effect.orElseSucceed(() => null),
+      ),
+      configurationChanges: settings.composerPredictionSettingsChanges,
     }).pipe(Effect.forkScoped);
     // Keyed by generation identity: callers hold the supervisor's usage-tracking view of a process.
     const prepared = new WeakMap<AgentRuntimeIdentity, AgentRuntimeConfiguration>();

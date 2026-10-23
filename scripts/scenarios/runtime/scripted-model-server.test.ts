@@ -311,7 +311,7 @@ describe("ScriptedModelServer", () => {
     expect(request("guardian_review", "guardian").subagentKind()).toBe("guardian");
   });
 
-  test("accepts only the known Codex title and guardian background request families", async () => {
+  test("accepts the known Codex background request families", async () => {
     await withScriptedModelServer({ exchanges: [] }, async (server) => {
       const request = async (
         threadSource: string,
@@ -338,7 +338,46 @@ describe("ScriptedModelServer", () => {
         ]),
       ).toBe(200);
       expect(await request("guardian_review", [], "guardian")).toBe(200);
+      expect(await request("composer_predictions", [])).toBe(200);
     });
+  });
+
+  test("uses an explicit prediction exchange before the default no-suggestion response", async () => {
+    await withScriptedModelServer(
+      {
+        backgroundExchanges: [
+          {
+            name: "explicit prediction",
+            match: (request) => request.isThreadSource("composer_predictions"),
+            respond: responses.stream([
+              responses.created("explicit-prediction"),
+              responses.assistantMessage(
+                "explicit-prediction-message",
+                '{"suggestion":"PREDICTION_OK"}',
+                "final_answer",
+              ),
+              responses.completed("explicit-prediction", true),
+            ]),
+          },
+        ],
+        exchanges: [],
+      },
+      async (server) => {
+        const request = () =>
+          postJson(`${server.baseUrl}/v1/responses`, {
+            client_metadata: {
+              "x-codex-turn-metadata": JSON.stringify({ thread_source: "composer_predictions" }),
+            },
+            input: [],
+          });
+
+        expect((await request()).body).toContain("PREDICTION_OK");
+        const fallback = await request();
+        expect(fallback.status).toBe(200);
+        expect(fallback.body).toContain('\\"suggestion\\":null');
+        expect(server.requests()).toHaveLength(2);
+      },
+    );
   });
 
   test("returns valid structured metadata for a native WebSocket title request", async () => {
@@ -417,6 +456,9 @@ describe("ScriptedModelServer", () => {
             "Generate a concise UI title for this task whose prompt contains USER_MARKER",
           ),
         ).toContain("Scripted task");
+        expect(await request("composer_predictions", "USER_MARKER")).toContain(
+          '\\"suggestion\\":null',
+        );
         expect(await request("user", "USER_MARKER")).toContain("USER_OK");
       },
     );

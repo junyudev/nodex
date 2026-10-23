@@ -92,8 +92,17 @@ it.effect("owns the complete application settings ingress with the Main Scope", 
     const schedulers = StoreAdministrationSchedulerRuntime.of({
       configureBackup: () => Effect.void,
     } as unknown as StoreAdministrationSchedulerRuntime["Service"]);
+    const broadcasts: Array<{ channel: string; value: unknown }> = [];
     const windows = WindowRuntime.of({
-      all: () => [],
+      all: () => [
+        {
+          isDestroyed: () => false,
+          webContents: {
+            isDestroyed: () => false,
+            send: (channel: string, value: unknown) => broadcasts.push({ channel, value }),
+          },
+        },
+      ],
       has: () => true,
     } as unknown as WindowRuntime["Service"]);
     const scope = yield* Scope.make();
@@ -144,6 +153,8 @@ it.effect("owns the complete application settings ingress with the Main Scope", 
       "settings:codex-developer:update",
       "settings:codex-home:get",
       "settings:codex-home:update",
+      "settings:composer-predictions:get",
+      "settings:composer-predictions:update",
       "settings:diagnostics:get",
       "settings:diagnostics:update",
       "settings:git:get",
@@ -192,6 +203,30 @@ it.effect("owns the complete application settings ingress with the Main Scope", 
         "Failure",
       );
     }
+    assert.deepEqual(yield* handlers.get("settings:composer-predictions:get")!(event), {
+      enabled: true,
+    });
+    assert.strictEqual(
+      (yield* Effect.result(
+        handlers.get("settings:composer-predictions:update")!(untrustedEvent, { enabled: false }),
+      ))._tag,
+      "Failure",
+    );
+    assert.strictEqual(
+      (yield* Effect.result(
+        handlers.get("settings:composer-predictions:update")!(event, { enabled: "false" }),
+      ))._tag,
+      "Failure",
+    );
+    assert.deepEqual(
+      yield* handlers.get("settings:composer-predictions:update")!(event, { enabled: false }),
+      { enabled: false },
+    );
+    yield* Effect.yieldNow;
+    assert.deepEqual(
+      broadcasts.filter(({ channel }) => channel === "composer-prediction-settings-changed"),
+      [{ channel: "composer-prediction-settings-changed", value: { enabled: false } }],
+    );
     assert.strictEqual(providerRefreshes, 0);
     for (const channel of [
       "settings:claude-agents:update",

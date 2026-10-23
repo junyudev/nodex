@@ -338,6 +338,7 @@ const buildHarness = (input: {
             Layer.succeed(
               ApplicationSettings,
               ApplicationSettings.of({
+                composerPredictionSettingsChanges: Stream.empty,
                 openCodeLaunchConfiguration: () =>
                   Effect.die("Unused OpenCode launch configuration"),
                 claudeLaunchConfiguration: () => Effect.die("Unused Claude launch configuration"),

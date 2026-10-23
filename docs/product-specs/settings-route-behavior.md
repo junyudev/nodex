@@ -178,6 +178,12 @@ CSS shimmer and loading-placeholder media rules continue to honor the operating
 system directly. The preference is app-scoped presentation, persists in renderer
 storage, and is neither Window Session layout nor main-process state.
 
+General > Composer includes `Show predictions`, enabled by default. It controls
+next-message predictions across the current Profile and synchronizes immediately
+between windows. Turning it off cancels pending predictions and clears their
+cached previews; text already accepted into a draft stays editable. The preference
+persists in Profile settings and applies without restarting the app.
+
 General also owns application update preferences. Automatic checks remain a
 boolean preference. The channel is `stable` or `nightly`; Stable is the
 recommended default for stable builds, while Nightly builds default to Nightly

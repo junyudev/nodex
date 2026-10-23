@@ -156,6 +156,10 @@ export const SETTINGS_SEARCH_PANELS = {
             "Show commands, collapse output.",
             "Show commands and expand output.",
           ]),
+          entry("Show predictions", "Suggest your next message after an agent replies.", [
+            "autocomplete",
+            "suggestions",
+          ]),
           entry("Spellcheck", "Inline text correction for editable writing surfaces."),
           entry("Auto-link while typing", "Turn typed URLs into links as you finish the token."),
           entry(

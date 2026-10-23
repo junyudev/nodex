@@ -20,6 +20,11 @@ export interface RendererTransport {
   subscribeAgentRuntimeConnectionChanges?: (
     callback: (state: import("../../shared/agent-runtime-api").AgentRuntimeConnectionState) => void,
   ) => () => void;
+  subscribeComposerPredictionSettingsChanges: (
+    callback: (
+      settings: import("../../shared/composer-prediction-settings").ComposerPredictionSettings,
+    ) => void,
+  ) => () => void;
   subscribeAgentSettingsChanges: (callback: () => void) => () => void;
   subscribeOpenCodeSetupChanges: (
     callback: (state: import("../../shared/opencode-setup").OpenCodeSetupState) => void,

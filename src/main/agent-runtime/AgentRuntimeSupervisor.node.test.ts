@@ -287,6 +287,27 @@ const idleSupervisor = (
 const released = (f: Effect.Success<typeof fixture>, index: number) =>
   Deferred.isDone(f.generations[index]!.released);
 
+it.effect("reading the current connection never starts or revives a quiet process", () =>
+  Effect.gen(function* () {
+    const f = yield* fixture;
+    const supervisor = yield* idleSupervisor(f, []);
+    assert.isNull(yield* supervisor.currentConnection);
+    assert.equal(f.generations.length, 0);
+    const running = yield* supervisor.get();
+    assert.strictEqual(yield* supervisor.currentConnection, running);
+    yield* TestClock.adjust("3 minutes");
+    assert.isTrue(yield* released(f, 0));
+    assert.isNull(yield* supervisor.currentConnection);
+    assert.equal(f.generations.length, 1);
+    const replacement = yield* supervisor.get();
+    assert.strictEqual(yield* supervisor.currentConnection, replacement);
+    assert.notStrictEqual(replacement, running);
+    yield* supervisor.close;
+    assert.isNull(yield* supervisor.currentConnection);
+    assert.equal(f.generations.length, 2);
+  }).pipe(Effect.scoped),
+);
+
 it.effect("stops a quiet generation without work and restarts it for the next request", () =>
   Effect.gen(function* () {
     const f = yield* fixture;

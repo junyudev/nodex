@@ -12,6 +12,8 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import * as Effect from "effect/Effect";
 import * as Result from "effect/Result";
+import * as Stream from "effect/Stream";
+import * as Fiber from "effect/Fiber";
 import { parse as parseToml } from "smol-toml";
 import { afterEach, describe } from "vite-plus/test";
 import {
@@ -35,6 +37,36 @@ afterEach(() => {
 });
 
 describe("ApplicationSettings", () => {
+  it.effect("persists Profile predictions and publishes only successful effective changes", () =>
+    Effect.gen(function* () {
+      const { root, settingsPath } = fixture('[plugin]\nname = "keep"\n');
+      const input = { environment: {}, hostHomeDirectory: root, settingsPath };
+      const settings = yield* makeApplicationSettings(input);
+      assert.deepEqual((yield* settings.snapshot()).composerPredictions, { enabled: true });
+      const changes = yield* settings.composerPredictionSettingsChanges.pipe(
+        Stream.take(2),
+        Stream.runCollect,
+        Effect.forkScoped,
+      );
+      yield* Effect.yieldNow;
+      yield* settings.update({ type: "update-composer-predictions", input: { enabled: false } });
+      yield* settings.update({ type: "update-composer-predictions", input: { enabled: false } });
+      const reopened = yield* makeApplicationSettings(input);
+      assert.deepEqual((yield* reopened.snapshot()).composerPredictions, { enabled: false });
+      const malformed = yield* Effect.result(
+        settings.update({
+          type: "update-composer-predictions",
+          input: { enabled: "yes" as unknown as boolean },
+        }),
+      );
+      assert.strictEqual(malformed._tag, "Failure");
+      assert.deepEqual((yield* settings.snapshot()).composerPredictions, { enabled: false });
+      yield* settings.update({ type: "update-composer-predictions", input: { enabled: true } });
+      assert.deepEqual(yield* Fiber.join(changes), [{ enabled: false }, { enabled: true }]);
+      assert.deepEqual(parseToml(readFileSync(settingsPath, "utf8")).plugin, { name: "keep" });
+    }),
+  );
+
   it.effect(
     "retains the existing Profile conversation home but leaves empty legacy directories unpinned",
     () =>

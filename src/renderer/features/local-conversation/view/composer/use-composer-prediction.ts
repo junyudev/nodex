@@ -1,13 +1,10 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { CodexComposerPredictionResult } from "../../../../../shared/codex-composer-prediction";
 import { logTelemetryEvent } from "../../../../lib/statsig-telemetry";
 import { useConversationRuntimeOverride } from "../../conversation-runtime";
 import { runConversationOperation } from "../../local-conversation-operations";
-import {
-  readComposerPredictionsEnabled,
-  subscribeComposerPredictionsEnabled,
-} from "../../composer-prediction-settings";
+import { useComposerPredictionSettings } from "../../composer-prediction-settings";
 import type { ComposerPredictionInteraction } from "./composer-prediction-plugin";
 
 export interface ComposerPredictionSubmission {
@@ -28,7 +25,7 @@ const reportInteraction = (
     model: prediction.model,
   });
 
-/** Catch-up consumes the same Main cache as background completion, without owning native inference. */
+/** Catch-up shares the execution owner's cache with background completion. */
 export function useComposerPrediction({
   hostId,
   threadId,
@@ -44,10 +41,9 @@ export function useComposerPrediction({
 }) {
   const override = useConversationRuntimeOverride();
   const queryClient = useQueryClient();
-  const enabledPreference = useSyncExternalStore(
-    subscribeComposerPredictionsEnabled,
-    readComposerPredictionsEnabled,
-  );
+  const preference = useComposerPredictionSettings();
+  const enabledPreference =
+    !preference.isLoading && !preference.error && preference.settings.enabled;
   const allowed = eligible && (!override || override.kind === "codex") && threadId !== null;
   const availability = useQuery({
     queryKey: ["composer_prediction_availability", hostId],
@@ -96,10 +92,11 @@ export function useComposerPrediction({
     refetchOnWindowFocus: true,
   });
   useEffect(() => {
-    if (enabledPreference || override) return;
+    if (enabledPreference) return;
+    queryClient.removeQueries({ queryKey: ["composer_prediction_availability", hostId] });
     queryClient.removeQueries({ queryKey: ["composer_prediction", hostId] });
     interactionRef.current = null;
-  }, [enabledPreference, hostId, override, queryClient]);
+  }, [enabledPreference, hostId, queryClient]);
 
   const onInteraction = useCallback(
     (interaction: ComposerPredictionInteraction) => {

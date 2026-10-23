@@ -1,3 +1,4 @@
+import * as Stream from "effect/Stream";
 import { assert, it } from "@effect/vitest";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
@@ -104,6 +105,7 @@ const buildHarness = (input: {
     } as unknown as ElectronWindowHost["Service"]);
     const scope = yield* Scope.make();
     const settings = ApplicationSettings.of({
+      composerPredictionSettingsChanges: Stream.empty,
       openCodeLaunchConfiguration: () => Effect.die("Unused OpenCode launch configuration"),
       claudeLaunchConfiguration: () => Effect.die("Unused Claude launch configuration"),
       snapshot: () =>

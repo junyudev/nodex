@@ -1,4 +1,5 @@
 import { assert, it } from "@effect/vitest";
+import type { OrchestrationV2ShellThreadStatus } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 import * as PubSub from "effect/PubSub";
 import * as Stream from "effect/Stream";
@@ -119,12 +120,22 @@ const fixture = Effect.fnUntraced(function* () {
   };
   const thread = {
     id: "thread",
-    lineage: { rootThreadId: "thread", parentThreadId: null, relationshipToParent: null },
+    lineage: {
+      rootThreadId: "thread",
+      parentThreadId: null as string | null,
+      relationshipToParent: null,
+    },
     executionHandoff: null as { operationId: string; recoveryRequired: boolean } | null,
     activeProviderThreadId: "provider-thread",
     modelSelection: { instanceId: "codex", model: "parent-model" },
     archivedAt: null,
     deletedAt: null,
+  };
+  const shell = {
+    ...thread,
+    latestRunId: "run",
+    status: "completed" as OrchestrationV2ShellThreadStatus,
+    activeRunId: null as string | null,
   };
   const providerThread = {
     id: "provider-thread",
@@ -145,7 +156,7 @@ const fixture = Effect.fnUntraced(function* () {
   ).pipe(
     Effect.provideService(ProjectionStoreV2, {
       getThread: () => Effect.succeed(thread),
-      getThreadShell: () => Effect.succeed({ latestRunId: "run", activeRunId: null }),
+      getThreadShell: () => Effect.succeed(shell),
       getThreadRecords: (
         _id: unknown,
         _fields: unknown,
@@ -209,6 +220,20 @@ const fixture = Effect.fnUntraced(function* () {
     publish,
     retire: () => {
       generation++;
+    },
+    replaceRun: (runId: string) => {
+      shell.latestRunId = runId;
+      shell.activeRunId = runId;
+    },
+    runStatus: (status: OrchestrationV2ShellThreadStatus) => {
+      shell.status = status;
+    },
+    asChild: () => {
+      shell.lineage = {
+        rootThreadId: "parent",
+        parentThreadId: "parent",
+        relationshipToParent: null,
+      };
     },
     holdWorkspace: () => {
       thread.executionHandoff = { operationId: "move", recoveryRequired: false };
@@ -333,10 +358,104 @@ it.effect(
         assert.equal(f.pins(), 0);
         assert.equal(f.helpers.size, 0);
         assert.equal(f.requests.filter((entry) => entry.method === "turn/start").length, 1);
-        assert.deepEqual(yield* f.api.predict(prediction), result);
+        assert.deepEqual(
+          yield* f.api.predict({ ...prediction, generationTrigger: "catch-up" }),
+          result,
+        );
         assert.equal(f.requests.filter((entry) => entry.method === "turn/start").length, 1);
       }),
     ),
+);
+
+it.effect("does not open a provider for a child or superseded completed Run", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const child = yield* fixture();
+      child.asChild();
+      assert.isNull(yield* child.api.predict(prediction));
+      assert.equal(child.opened(), 0);
+      const superseded = yield* fixture();
+      superseded.replaceRun("run:next");
+      assert.isNull(yield* superseded.api.predict(prediction));
+      assert.equal(superseded.opened(), 0);
+    }),
+  ),
+);
+
+it.effect.each([
+  { status: "failed" as const },
+  { status: "interrupted" as const },
+  { status: "queued" as const },
+])("does not predict a $status Run through live or catch-up admission", ({ status }) =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const f = yield* fixture();
+      f.runStatus(status);
+      assert.isNull(yield* f.api.predict(prediction));
+      assert.isNull(yield* f.api.predict({ ...prediction, generationTrigger: "catch-up" }));
+      assert.equal(f.opened(), 0);
+      assert.deepEqual(f.requests, []);
+    }),
+  ),
+);
+
+it.effect("joins an in-flight background prediction when its Composer requests catch-up", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const f = yield* fixture();
+      const entered = yield* Deferred.make<void>();
+      const accepted = yield* Deferred.make<unknown>();
+      f.startAck(
+        Deferred.succeed(entered, undefined).pipe(Effect.andThen(Deferred.await(accepted))),
+      );
+      const live = yield* f.api.predict(prediction).pipe(Effect.forkScoped);
+      yield* Deferred.await(entered);
+      const catchUp = yield* f.api
+        .predict({ ...prediction, generationTrigger: "catch-up" })
+        .pipe(Effect.forkScoped);
+      yield* f.publish("item/completed", {
+        threadId: "helper",
+        turnId: "prediction-turn",
+        item: { type: "agentMessage", text: '{"suggestion":"Continue"}' },
+      });
+      yield* f.publish("turn/completed", {
+        threadId: "helper",
+        turn: { id: "prediction-turn", status: "completed" },
+      });
+      yield* Deferred.succeed(accepted, { turn: { id: "prediction-turn" } });
+      assert.deepEqual(yield* Fiber.join(catchUp), yield* Fiber.join(live));
+      assert.equal(f.requests.filter((entry) => entry.method === "turn/start").length, 1);
+      assert.equal(f.pins(), 0);
+      assert.equal(f.helpers.size, 0);
+    }),
+  ),
+);
+
+it.effect("rejects a prediction that completes after its source Run was superseded", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const f = yield* fixture();
+      const entered = yield* Deferred.make<void>();
+      f.startAck(
+        Deferred.succeed(entered, undefined).pipe(Effect.as({ turn: { id: "prediction-turn" } })),
+      );
+      const result = yield* f.api.predict(prediction).pipe(Effect.result, Effect.forkScoped);
+      yield* Deferred.await(entered);
+      f.replaceRun("run:next");
+      yield* f.publish("item/completed", {
+        threadId: "helper",
+        turnId: "prediction-turn",
+        item: { type: "agentMessage", text: '{"suggestion":"Stale"}' },
+      });
+      yield* f.publish("turn/completed", {
+        threadId: "helper",
+        turn: { id: "prediction-turn", status: "completed" },
+      });
+      assert.equal((yield* Fiber.join(result))._tag, "Failure");
+      assert.equal(f.pins(), 0);
+      assert.equal(f.helpers.size, 0);
+    }),
+  ),
 );
 
 it.effect("holds fork cleanup through a canceled physical acknowledgement", () =>
@@ -360,6 +479,50 @@ it.effect("holds fork cleanup through a canceled physical acknowledgement", () =
       assert.equal(f.pins(), 0);
     }),
   ),
+);
+
+it.effect.each([
+  { scope: "matching Thread", threadId: "thread", cancelled: true },
+  { scope: "all Threads", threadId: undefined, cancelled: true },
+  { scope: "unrelated Thread", threadId: "other-thread", cancelled: false },
+])(
+  "a clear for $scope fences only matching replacements awaiting an old fork acknowledgement",
+  ({ threadId, cancelled }) =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const f = yield* fixture();
+        const entered = yield* Deferred.make<void>();
+        const accepted = yield* Deferred.make<unknown>();
+        f.forkAck(
+          Deferred.succeed(entered, undefined).pipe(Effect.andThen(Deferred.await(accepted))),
+        );
+        const original = yield* f.api.predict(prediction).pipe(Effect.exit, Effect.forkScoped);
+        yield* Deferred.await(entered);
+        f.retire();
+        // The replacement must first retire the old physical fork, whose acknowledgement is late.
+        const replacement = yield* f.api
+          .predict({ ...prediction, generationTrigger: "catch-up" })
+          .pipe(Effect.exit, Effect.forkScoped({ startImmediately: true }));
+        const cleared = yield* f.api
+          .clearPredictions(threadId)
+          .pipe(Effect.forkScoped({ startImmediately: true }));
+        f.forkAck(Effect.succeed({ thread: { id: "helper" } }));
+        yield* Deferred.succeed(accepted, { thread: { id: "helper" } });
+        yield* Fiber.join(cleared);
+        yield* Fiber.join(original);
+        yield* Fiber.join(replacement);
+        assert.equal(
+          f.requests.filter(({ method }) => method === "thread/fork").length,
+          cancelled ? 1 : 2,
+        );
+        assert.equal(
+          f.requests.filter(({ method }) => method === "turn/start").length,
+          cancelled ? 0 : 1,
+        );
+        assert.equal(f.pins(), 0);
+        assert.equal(f.helpers.size, 0);
+      }),
+    ),
 );
 
 it.effect("retains late Turn acknowledgement cleanup after logical cancellation", () =>

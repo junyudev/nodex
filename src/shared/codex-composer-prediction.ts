@@ -31,6 +31,6 @@ export type CodexComposerPredictionClearInput =
 
 export interface CodexComposerPredictionAvailability {
   readonly enabled: boolean;
-  readonly source: "environment" | null;
+  readonly source: "default" | "environment" | null;
   readonly scope: string;
 }

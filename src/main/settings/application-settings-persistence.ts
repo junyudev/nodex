@@ -1,4 +1,9 @@
 import {
+  ComposerPredictionSettingsSchema,
+  DEFAULT_COMPOSER_PREDICTION_SETTINGS,
+  type ComposerPredictionSettings,
+} from "../../shared/composer-prediction-settings";
+import {
   presentOpenCodeInstances,
   readStoredOpenCodeInstances,
   resolveOpenCodeLaunchConfiguration,
@@ -102,6 +107,7 @@ interface ServerTomlConfig {
   app_updates_auto_check_enabled?: boolean;
   app_updates_channel?: "stable" | "nightly";
   window_restore_policy?: WindowRestorePolicy;
+  composer_predictions_enabled?: boolean;
   inbox_suggestions_enabled?: boolean;
   inbox_suggestion_agent?: string;
   inbox_suggestion_model?: string;
@@ -1422,4 +1428,23 @@ export function updateWindowRestoreSettings(
 
   writeTomlConfig(profileSettingsPath, nextToml);
   return getWindowRestoreSettings(source);
+}
+
+export function getComposerPredictionSettings(
+  source: ApplicationSettingsDocumentSource,
+): ComposerPredictionSettings {
+  const enabled = loadProfileServerTomlConfig(source).composer_predictions_enabled;
+  return typeof enabled === "boolean" ? { enabled } : DEFAULT_COMPOSER_PREDICTION_SETTINGS;
+}
+
+export function updateComposerPredictionSettings(
+  input: ComposerPredictionSettings,
+  source: ApplicationSettingsDocumentSource,
+): ComposerPredictionSettings {
+  const { enabled } = ComposerPredictionSettingsSchema.parse(input);
+  writeProfileServerTomlConfig(source, {
+    ...loadProfileServerTomlConfig(source),
+    composer_predictions_enabled: enabled,
+  });
+  return { enabled };
 }

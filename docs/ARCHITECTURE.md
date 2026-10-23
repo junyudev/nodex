@@ -792,6 +792,9 @@ Core identity without creating a second Thread or transcript writer. Voice and c
 prediction use the same managed native Session through finite Runtime capabilities;
 Main retains account policy, media ownership and renderer routing. Their owners acquire
 after the Runtime facade, before protocol consumers, within the same Main Scope.
+Composer prediction policy belongs to Main's Profile settings. Background preparation
+consumes the existing Session activity projection and shares Runtime's native prediction
+owner with renderer catch-up; it does not introduce another execution observer or cache.
 The detailed contract is [Agent Runtime behavior](product-specs/agent-runtime-behavior.md).
 
 Inbox confirmation freezes the source versions, complete message, target and execution

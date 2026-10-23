@@ -1,14 +1,18 @@
 # Composer prediction behavior
 
-Composer predictions suggest a next user message for a ready root Codex Thread. Generation
-requires an enabled host-scoped assignment; absence is unknown/off. The configuration
-boundary and sampling fields are documented in [Configuration](../CONFIGURATION.md#composer-prediction-assignments).
+Composer predictions suggest a next user message for a ready root Codex Thread. They default
+enabled through a Main-owned Profile preference, with a built-in prompt and optional host
+overrides. The configuration boundary and sampling fields are documented in
+[Configuration](../CONFIGURATION.md#composer-prediction-assignments).
 
 ## Generation and lifetime
 
-A latest Turn completion can request a live prediction from the current root
-conversation's execution owner. A ready, connected, idle Composer can request the same
-latest Turn through catch-up. Background generation does not require an empty editor. Side Chats,
+A successful root Run completion requests a live prediction through Main's existing Session
+activity projection, even when its Composer is not mounted. This uses the completion's exact
+Runtime connection and never starts a cold Runtime. Failed, interrupted, archived, delegated,
+or still-busy conversations do not generate a follow-up. A ready, connected, idle Composer
+can request the same latest successfully completed Turn through catch-up; reopening a failed or
+interrupted reply does not generate a suggestion. Background generation does not require an empty editor. Side Chats,
 ephemeral Threads and unsupported conversation modes do not generate predictions.
 
 Agent Runtime owns local prediction requests and helper calls on the Session's managed
@@ -23,9 +27,10 @@ explicit request can try again. Changing the latest Turn
 removes the old request. A new parent Turn, host generation retirement, account mutation,
 logout, authentication failure or explicit clear cancels pending work and invalidates
 cached results. Configuration availability is local and does not start a connection.
-Remote cancellation also covers configuration and authentication waits before a request
+Cancellation also covers configuration and authentication waits before a request
 enters the cache, so disabling predictions or replacing an account cannot create a late helper.
-Remote clears preserve requests admitted for unrelated hosts and Threads.
+Local cancellation also retires replacement requests waiting for an older helper's cleanup.
+Scoped clears preserve requests admitted for unrelated hosts and Threads.
 
 Generation first resumes the parent to obtain its effective model, provider, effort,
 service tier and collaboration mode. Plan mode, non-OpenAI providers, excluded models and
@@ -64,8 +69,10 @@ Accepted text remains ordinary editable content. A subsequent successful submiss
 whether that accepted text was edited or replaced; failed or queued sends do not become a
 successful submission outcome.
 
-The local prediction preference defaults enabled; host assignment availability still defaults
-off. Changing the local preference clears every host's prediction cache even when no Composer
-is mounted. Disabling it also hides its ghost without changing Composer text. Host- and
-Thread-scoped clear operations remain available. Same-text result metadata updates preserve
+**Settings → General → Composer → Show predictions** controls the Profile preference and
+persists across restart. Main publishes successful changes to every window and clears every
+host's prediction cache even when no Composer is mounted. Disabling it also hides its ghost
+without changing Composer text. Clearing uses only a running execution process and never wakes
+a stopped Runtime, even when it has saved history. Re-enabling allows catch-up on the current
+completed work. Host- and Thread-scoped clear operations remain available. Same-text result metadata updates preserve
 the existing decoration, and mention metadata uses the ordinary Composer mention pipeline.

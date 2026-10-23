@@ -1,3 +1,4 @@
+import type { ComposerPredictionSettings } from "../../shared/composer-prediction-settings";
 import type {
   OpenCodeAgentSettings,
   UpdateOpenCodeAgentSettingsInput,
@@ -9,6 +10,8 @@ import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Ref from "effect/Ref";
+import * as PubSub from "effect/PubSub";
+import * as Stream from "effect/Stream";
 import * as Schema from "effect/Schema";
 import * as Semaphore from "effect/Semaphore";
 import {
@@ -71,6 +74,7 @@ import {
   getTelemetrySettings,
   getThreadNotificationSettings,
   getWindowRestoreSettings,
+  getComposerPredictionSettings,
   getInboxSettings,
   resetCommandKeybindings,
   updateAppUpdateSettings,
@@ -88,6 +92,7 @@ import {
   updateTelemetrySettings,
   updateThreadNotificationSettings,
   updateWindowRestoreSettings,
+  updateComposerPredictionSettings,
   updateInboxSettings,
   type ApplicationSettingsDocumentSource,
 } from "./application-settings-persistence";
@@ -112,6 +117,7 @@ export interface ApplicationSettingsSnapshot {
   readonly appUpdate: AppUpdateSettings;
   readonly windowRestore: WindowRestoreSettings;
   readonly inbox: InboxSettings;
+  readonly composerPredictions: ComposerPredictionSettings;
 }
 
 export type ApplicationSettingsCommand =
@@ -148,6 +154,7 @@ export type ApplicationSettingsCommand =
   | { readonly type: "reset-command-keybindings" }
   | { readonly type: "update-app-update"; readonly input: UpdateAppUpdateSettingsInput }
   | { readonly type: "update-window-restore"; readonly input: UpdateWindowRestoreSettingsInput }
+  | { readonly type: "update-composer-predictions"; readonly input: ComposerPredictionSettings }
   | { readonly type: "update-inbox"; readonly input: UpdateInboxSettingsInput };
 
 export class ApplicationSettingsError extends Schema.TaggedError<ApplicationSettingsError>()(
@@ -163,6 +170,7 @@ export class ApplicationSettingsConflictError extends Schema.TaggedError<Applica
 export class ApplicationSettings extends Context.Service<
   ApplicationSettings,
   {
+    readonly composerPredictionSettingsChanges: Stream.Stream<ComposerPredictionSettings>;
     readonly openCodeLaunchConfiguration: (
       instanceId: string,
     ) => Effect.Effect<ReturnType<typeof getOpenCodeLaunchConfiguration>, ApplicationSettingsError>;
@@ -260,6 +268,7 @@ function makeSnapshot(
     appUpdate: getAppUpdateSettings(snapshotSource, buildDefaultChannel),
     windowRestore: getWindowRestoreSettings(snapshotSource),
     inbox: getInboxSettings(snapshotSource),
+    composerPredictions: getComposerPredictionSettings(snapshotSource),
   };
 }
 
@@ -320,6 +329,9 @@ function applyCommand(
     case "update-window-restore":
       updateWindowRestoreSettings(command.input, source);
       return;
+    case "update-composer-predictions":
+      updateComposerPredictionSettings(command.input, source);
+      return;
     case "update-inbox":
       updateInboxSettings(command.input, source);
       return;
@@ -339,6 +351,8 @@ export const make = Effect.fn("ApplicationSettings.make")(function* (input: {
     ...(input.secretEncryption ? { secretEncryption: input.secretEncryption } : {}),
   };
   const writes = yield* Semaphore.make(1);
+  const composerPredictionChanges = yield* PubSub.unbounded<ComposerPredictionSettings>();
+  yield* Effect.addFinalizer(() => PubSub.shutdown(composerPredictionChanges));
   // The native runtime keeps one home for this Main lifetime; saved changes apply after restart.
   const activeCodexHome = yield* Ref.make<
     | {
@@ -395,6 +409,7 @@ export const make = Effect.fn("ApplicationSettings.make")(function* (input: {
   });
 
   return ApplicationSettings.of({
+    composerPredictionSettingsChanges: Stream.fromPubSub(composerPredictionChanges),
     openCodeLaunchConfiguration: (instanceId) =>
       writes.withPermits(1)(
         attempt("opencode-launch-configuration", () =>
@@ -412,9 +427,8 @@ export const make = Effect.fn("ApplicationSettings.make")(function* (input: {
     update: (command, options = {}) =>
       writes.withPermits(1)(
         Effect.gen(function* () {
-          const { revision: actualRevision } = yield* readUnlocked(
-            options.buildDefaultChannel ?? "stable",
-          );
+          const { revision: actualRevision, composerPredictions: previousComposerPredictions } =
+            yield* readUnlocked(options.buildDefaultChannel ?? "stable");
           if (
             options.expectedRevision !== undefined &&
             actualRevision !== options.expectedRevision
@@ -427,7 +441,11 @@ export const make = Effect.fn("ApplicationSettings.make")(function* (input: {
           yield* attempt(command.type, () =>
             applyCommand(source, command, options.buildDefaultChannel ?? "stable"),
           );
-          return yield* readUnlocked(options.buildDefaultChannel ?? "stable");
+          const snapshot = yield* readUnlocked(options.buildDefaultChannel ?? "stable");
+          if (snapshot.composerPredictions.enabled !== previousComposerPredictions.enabled) {
+            yield* PubSub.publish(composerPredictionChanges, snapshot.composerPredictions);
+          }
+          return snapshot;
         }),
       ),
   });
