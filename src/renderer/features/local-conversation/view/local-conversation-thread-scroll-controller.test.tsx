@@ -562,6 +562,44 @@ describe("LocalConversationThreadScrollLayout", () => {
     expect(activeController.consumePendingLatestTurnSubmitPlacement() === null).toBe(true);
   });
 
+  test("layout reads preserve the pending native user displacement", async () => {
+    const fixture = await renderNativeFindController();
+    const displacements: Array<[number, number | undefined]> = [];
+    const unsubscribe = fixture.controller.addUserScrollListener((distance, previous) =>
+      displacements.push([distance, previous]),
+    );
+    try {
+      await act(async () => {
+        fixture.viewport.dispatchEvent(new Event("scroll"));
+        fixture.viewport.dispatchEvent(new WheelEvent("wheel", { deltaY: -8 }));
+        fixture.viewport.scrollTop = -108;
+        expect(fixture.controller.getScrollDistanceFromBottomPx()).toBe(108);
+        expect(fixture.controller.getLastScrollDistanceFromBottomPx()).toBe(100);
+        fixture.viewport.dispatchEvent(new Event("scroll"));
+        await Promise.resolve();
+      });
+      expect(displacements).toEqual([[108, 100]]);
+      expect(fixture.controller.getScrollMode()).toBe("user");
+    } finally {
+      unsubscribe();
+      await fixture.dispose();
+    }
+  });
+
+  test("unchanged layout compensation does not interrupt native scrolling", async () => {
+    const fixture = await renderNativeFindController();
+    try {
+      await act(async () => {
+        fixture.controller.compensateScrollToDistanceFromBottomPx(100);
+        await Promise.resolve();
+      });
+      expect(fixture.scrollWrites).toEqual([]);
+      expect(fixture.controller.getLastScrollDistanceFromBottomPx()).toBe(100);
+    } finally {
+      await fixture.dispose();
+    }
+  });
+
   test("keeps native Find active through the old settle window and resumes after layout writes", async () => {
     const fixture = await renderNativeFindController();
     try {
@@ -595,13 +633,15 @@ describe("LocalConversationThreadScrollLayout", () => {
       expect(fixture.controller.getScrollMode()).toBe("programmaticFind");
       expect(fixture.controller.nativeFindTurnKey).toBe("find-turn");
 
+      const writesBeforePreservingLayout = fixture.scrollWrites.length;
       await act(async () => {
         fixture.controller.preserveScrollPositionForNextLayout();
         fixture.setScrollHeight(2_100);
         await settleAsyncRender();
         await settleAsyncRender();
       });
-      expect(fixture.scrollWrites.at(-1)).toEqual({ behavior: "auto", top: -280 });
+      expect(fixture.scrollWrites).toHaveLength(writesBeforePreservingLayout);
+      expect(fixture.viewport.scrollTop).toBe(-280);
       expect(fixture.findScrolls).toHaveLength(4);
 
       await act(async () => {

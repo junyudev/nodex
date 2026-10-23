@@ -19,6 +19,7 @@ All notable changes to this project will be documented in this file.
 ### Fixed
 
 - Chats distinguish automatic retries, recovery and terminal failures, retain error details for inspection, and let you continue a failed reply without replaying the original request.
+- Scrolling up in a chat keeps your reading position instead of reattaching to the bottom during layout updates.
 - Sidebar chats can be dragged into empty or collapsed Sections, including chats that have not started yet, with consistent destination feedback and reliable moves back to Projects, Chats and Pinned.
 - Images sent while steering a running chat remain visible with their message, including after activity is collapsed or the chat is reopened.
 - Codex tool calls retain their action titles, source icons and rich results, including JavaScript calls and image outputs.

@@ -337,10 +337,9 @@ function LocalConversationThreadScrollControllerProvider({ children }: { childre
         element,
         distanceFromBottomPx,
       );
-      element.scrollTo({
-        behavior,
-        top: nextDistanceFromBottomPx === 0 ? 0 : -nextDistanceFromBottomPx,
-      });
+      const top = nextDistanceFromBottomPx === 0 ? 0 : -nextDistanceFromBottomPx;
+      // Even a no-op native write can interrupt an in-flight browser scroll.
+      if (element.scrollTop !== top) element.scrollTo({ behavior, top });
       const actual = getThreadScrollDistanceFromBottomPx(element);
       roundedScrollRequestRef.current =
         behavior === "instant" &&
@@ -407,9 +406,8 @@ function LocalConversationThreadScrollControllerProvider({ children }: { childre
   const getScrollDistanceFromBottomPx = useCallback(() => {
     const element = scrollElementRef.current;
     if (element === null) return lastScrollDistanceFromBottomPxRef.current;
-    const distanceFromBottomPx = getThreadScrollDistanceFromBottomPx(element);
-    lastScrollDistanceFromBottomPxRef.current = distanceFromBottomPx;
-    return distanceFromBottomPx;
+    // Geometry consumers must not consume the delta awaiting the native scroll event.
+    return getThreadScrollDistanceFromBottomPx(element);
   }, []);
 
   const getUnroundedScrollDistanceFromBottomPx = useCallback((fallback: number) => {
