@@ -51,14 +51,17 @@ const createSubagentHarness = async (
   return harness;
 };
 
-const startSubagentScenario = async (harness: ElectronScenarioHarness): Promise<Page> => {
+const startSubagentScenario = async (
+  harness: ElectronScenarioHarness,
+  prompt = "Coordinate the bounded subagent scenario",
+): Promise<Page> => {
   const page = await harness.launch();
   const scene = await openNewChatDraft(page);
   const composer = scene.locator('[data-codex-composer="true"][aria-label="Do anything"]');
   const sendButton = scene.getByRole("button", { name: "Send prompt" });
   try {
     await expect(composer).toBeVisible();
-    await composer.fill("Coordinate the bounded subagent scenario");
+    await composer.fill(prompt);
     await expect(sendButton).toBeEnabled();
   } catch (error) {
     await attachComposerFailureEvidence(page, test.info());
@@ -227,6 +230,197 @@ test("stopping the root stops each active child once and settles every subagent 
     expect(new Set(childInterrupts).size).toBe(childInterrupts.length);
     expect(childInterrupts).toHaveLength(5);
   } finally {
+    await harness.close();
+  }
+});
+
+test("keeps delegated work compact while hover and direct navigation expose each child", async () => {
+  test.setTimeout(120_000);
+  const artifacts = process.env.NODEX_SUBAGENT_PRESENTATION_ARTIFACT_DIR;
+  if (artifacts) fs.mkdirSync(artifacts, { recursive: true });
+  const claims: { name: string; expected: unknown; actual: unknown }[] = [];
+  const claim = (name: string, expected: unknown, actual: unknown): void => {
+    claims.push({ name, expected, actual });
+    expect(actual, name).toEqual(expected);
+  };
+  const selectedName = "Interaction details and keyboard accessibility";
+  const harness = await createSubagentHarness("subagent-presentation", {
+    NODEX_FAKE_SUBAGENT_SELECTED_NAME: selectedName,
+  });
+  let recording = false;
+  let status: "passed" | "failed" = "failed";
+  let failure: string | null = null;
+  try {
+    const page = await startSubagentScenario(
+      harness,
+      "Review the project architecture and interaction details.",
+    );
+    await page.setViewportSize({ width: 1440, height: 960 });
+    await page.emulateMedia({ colorScheme: "light" });
+    const summaryToggle = page.getByRole("button", { name: /^Toggle (pinned )?summary$/u }).first();
+    if ((await summaryToggle.getAttribute("aria-pressed")) === "true") await summaryToggle.click();
+    await expect(summaryToggle).toHaveAttribute("aria-pressed", "false");
+    const group = page.getByTestId("delegated-task-group");
+    const overflow = group.getByRole("button", { name: "Show all 17 subagents", exact: true });
+    const investigator = group.getByRole("button", { name: selectedName, exact: true });
+    const hover = page.getByRole("dialog", { name: `${selectedName} details`, exact: true });
+    await expect(overflow).toBeVisible({ timeout: 30_000 });
+    await expect(group).toHaveAttribute("aria-label", /13 done/u);
+    claim("Consecutive delegated tasks share one activity group", 1, await group.count());
+    await expect(investigator).toBeVisible();
+    const avatarSeed = await group
+      .getByLabel(selectedName, { exact: true })
+      .locator("img")
+      .getAttribute("data-subagent-avatar-seed");
+    claim(
+      "The name budget leaves all remaining children reachable",
+      "15 more",
+      await overflow.innerText(),
+    );
+    const screenshot = async (name: string): Promise<void> => {
+      if (!artifacts) return;
+      // Assertions establish the state; let finite panel/theme motion settle for review images.
+      await page.waitForTimeout(500);
+      await page.screenshot({ path: path.join(artifacts, name) });
+    };
+    await screenshot("light.png");
+    if (artifacts) await group.screenshot({ path: path.join(artifacts, "activity-light.png") });
+    if (artifacts) {
+      await page.screencast.start({
+        path: path.join(artifacts, "review.webm"),
+        size: { width: 1440, height: 960 },
+        annotate: { position: "bottom", fontSize: 14 },
+      });
+      recording = true;
+    }
+
+    await page.mouse.move(180, 450);
+    await investigator.hover();
+    await expect(hover).toBeVisible();
+    await expect(hover.getByText(/Codex.*GPT-5\.5/u)).toBeVisible();
+    claim(
+      "Hover exposes the executing Agent and model",
+      true,
+      await hover.getByText(/Codex.*GPT-5\.5/u).isVisible(),
+    );
+    await hover.hover();
+    await expect(hover).toBeVisible();
+    claim("The pointer can enter the detail layer", true, await hover.isVisible());
+    await screenshot("hover.png");
+    if (artifacts) await hover.screenshot({ path: path.join(artifacts, "hover-details.png") });
+    if (artifacts) await page.waitForTimeout(800);
+    await page.keyboard.press("Escape");
+    await expect(hover).toHaveCount(0);
+    claim("Escape dismisses the hover details", 0, await hover.count());
+    // Escape restores the trigger's focus; leave it before testing a new keyboard entry.
+    await investigator.press("Tab");
+    await page.keyboard.press("Shift+Tab");
+    await expect(hover).toBeVisible();
+    claim("Keyboard focus exposes the same task details", true, await hover.isVisible());
+    await page.keyboard.press("Escape");
+    await investigator.click();
+    const detail = page.locator('[data-subagents-side-panel-tab^="subagents:"]');
+    await expect(detail).toHaveAttribute("data-subagents-selected-hydration", "ready", {
+      timeout: 30_000,
+    });
+    await expect(hover).toHaveCount(0);
+    // Keep the pointer on the trigger beyond its opening delay: navigation must not reopen it.
+    await page.waitForTimeout(900);
+    await expect(hover).toHaveCount(0);
+    claim("Opening the child keeps hover details dismissed", 0, await hover.count());
+    await expect(
+      detail.getByText("Checking the selected child history.", { exact: true }),
+    ).toBeVisible();
+    claim(
+      "Clicking a task name opens its own child transcript",
+      true,
+      await detail.getByText("Checking the selected child history.", { exact: true }).isVisible(),
+    );
+    claim(
+      "Child inspection does not create a second Composer",
+      0,
+      await detail.locator('[data-codex-composer="true"]').count(),
+    );
+    claim(
+      "The selected child retains its avatar identity",
+      avatarSeed,
+      await detail
+        .locator("[data-subagent-avatar-seed]")
+        .first()
+        .getAttribute("data-subagent-avatar-seed"),
+    );
+    claim(
+      "Inspecting a child does not resume native execution",
+      [],
+      readRpcEntries(harness).filter(
+        (entry) =>
+          entry.method === "thread/resume" &&
+          typeof entry.params.threadId === "string" &&
+          childThreadIds.has(entry.params.threadId),
+      ),
+    );
+    await screenshot("child.png");
+    if (artifacts) await page.waitForTimeout(800);
+    await detail.getByRole("button", { name: "Back to subagents" }).click();
+    const { panel, active, done } = overviewSections(page);
+    await expect(panel).toBeVisible();
+    await page.getByRole("button", { name: "Close Subagents tab", exact: true }).click();
+    await expect(panel).toHaveCount(0);
+    await overflow.click();
+    await expect(panel).toBeVisible();
+    await expect(active.getByRole("heading", { name: "Active · 4" })).toBeVisible();
+    await expect(done.getByRole("heading", { name: "Done · 13" })).toBeVisible();
+    claim(
+      "The overflow opens the complete subagent overview",
+      { active: "Active · 4", done: "Done · 13" },
+      {
+        active: await active.getByRole("heading").innerText(),
+        done: await done.getByRole("heading").innerText(),
+      },
+    );
+    await screenshot("final.png");
+    if (artifacts) await page.waitForTimeout(1_000);
+    if (recording) {
+      await page.screencast.stop();
+      recording = false;
+    }
+    await page.getByRole("button", { name: "Close Subagents tab", exact: true }).click();
+    await page.emulateMedia({ colorScheme: "dark" });
+    await expect(page.locator("html")).toHaveClass(/dark/u);
+    await screenshot("dark.png");
+    if (artifacts) await group.screenshot({ path: path.join(artifacts, "activity-dark.png") });
+    await page.setViewportSize({ width: 820, height: 720 });
+    await expect(page.locator("[data-app-shell-width-class]")).toHaveAttribute(
+      "data-app-shell-width-class",
+      "medium",
+    );
+    await expect(investigator).toBeVisible();
+    const horizontalOverflow = await group.evaluate(
+      (element) => element.scrollWidth - element.clientWidth,
+    );
+    claim("The activity group stays inside a narrow conversation", true, horizontalOverflow <= 1);
+    await screenshot("narrow.png");
+    status = "passed";
+    if (artifacts) fs.rmSync(path.join(artifacts, "failure.png"), { force: true });
+  } catch (error) {
+    failure = error instanceof Error ? error.message : String(error);
+    if (artifacts)
+      await harness.page
+        .screenshot({ path: path.join(artifacts, "failure.png") })
+        .catch(() => undefined);
+    throw error;
+  } finally {
+    if (recording) await harness.page.screencast.stop();
+    if (artifacts) {
+      fs.writeFileSync(
+        path.join(artifacts, "result.json"),
+        `${JSON.stringify({ status, fixture: "fresh isolated Electron Profile; deterministic Codex peer starts 17 consecutive children through Agent Runtime", claims, failure }, null, 2)}\n`,
+      );
+      fs.writeFileSync(
+        path.join(artifacts, "README.md"),
+        `# Subagent presentation review\n\nStatus: **${status}**\n\nThe native recording starts after the disposable Profile and delegated work are ready. It follows hover, pointer entry into task details, keyboard focus, direct navigation to the child transcript, return, and overflow navigation to all 17 children. The child is read without resuming execution.\n\n- review.webm: native interaction recording.\n- light.png and dark.png: compact activity group in both themes.\n- hover.png: task details and model metadata.\n- child.png: the selected child transcript.\n- final.png: overflow opens the complete overview.\n- narrow.png: the group at 820 px window width.\n- result.json: exact expected and actual values for the verified claims.\n\nNo production Profile or user content was accessed.\n${failure ? `\nFailure: ${failure}\n` : ""}`,
+      );
+    }
     await harness.close();
   }
 });

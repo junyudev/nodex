@@ -46,6 +46,19 @@ const page = (
 });
 
 describe("Runtime subagent overview", () => {
+  it("opens native paths under their readable name and preserves explicit task titles", () => {
+    const native = { ...task, origin: "provider_native" as const, title: "/root/ui_audit" };
+    expect(projectAgentRuntimeSubagent(native)).toMatchObject({
+      threadId: "child",
+      displayName: "Ui audit",
+      actorName: "Ui audit",
+    });
+    expect(projectAgentRuntimeSubagent({ ...native, origin: "app_owned" })).toMatchObject({
+      displayName: "/root/ui_audit",
+    });
+    expect(native.title).toBe("/root/ui_audit");
+  });
+
   it("opens app-owned children while native observation IDs cannot acquire Thread controls", () => {
     expect(projectAgentRuntimeSubagent(task)).toMatchObject({
       threadId: "child",

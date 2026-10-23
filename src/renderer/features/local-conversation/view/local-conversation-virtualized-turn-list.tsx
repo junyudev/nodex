@@ -254,6 +254,7 @@ interface LocalConversationVirtualizedTurnListProps {
   onOpenTurnDiffFileInSidePanel?: ThreadStageActions["onOpenTurnDiffFileInSidePanel"];
   onOpenSideChat?: ThreadStageActions["onOpenSideChat"];
   onOpenThread?: ThreadStageActions["onOpenThread"];
+  onOpenSubagentsPanel?: ThreadStageActions["onOpenSubagentsPanel"];
   onOpenSummaryScheduledAutomation?: ThreadStageActions["onOpenSummaryScheduledAutomation"];
   onOpenMcpAppSidePanel?: ThreadStageActions["onOpenMcpAppSidePanel"];
   onOpenPlanInSidePanel?: ThreadStageActions["onOpenPlanInSidePanel"];
@@ -420,6 +421,7 @@ interface MeasuredTurnProps {
   onOpenTurnDiffFileInSidePanel?: ThreadStageActions["onOpenTurnDiffFileInSidePanel"];
   onOpenSideChat?: ThreadStageActions["onOpenSideChat"];
   onOpenThread?: ThreadStageActions["onOpenThread"];
+  onOpenSubagentsPanel?: ThreadStageActions["onOpenSubagentsPanel"];
   onOpenSummaryScheduledAutomation?: ThreadStageActions["onOpenSummaryScheduledAutomation"];
   onOpenMcpAppSidePanel?: ThreadStageActions["onOpenMcpAppSidePanel"];
   onOpenPlanInSidePanel?: ThreadStageActions["onOpenPlanInSidePanel"];
@@ -453,6 +455,7 @@ function MeasuredTurnComponent({
   onOpenTurnDiffFileInSidePanel,
   onOpenSideChat,
   onOpenThread,
+  onOpenSubagentsPanel,
   onOpenSummaryScheduledAutomation,
   onOpenMcpAppSidePanel,
   onOpenPlanInSidePanel,
@@ -528,6 +531,7 @@ function MeasuredTurnComponent({
           onOpenTurnDiffFileInSidePanel={onOpenTurnDiffFileInSidePanel}
           onOpenSideChat={onOpenSideChat}
           onOpenThread={onOpenThread}
+          onOpenSubagentsPanel={onOpenSubagentsPanel}
           onOpenSummaryScheduledAutomation={onOpenSummaryScheduledAutomation}
           onOpenMcpAppSidePanel={onOpenMcpAppSidePanel}
           onOpenPlanInSidePanel={onOpenPlanInSidePanel}
@@ -581,6 +585,7 @@ const MeasuredTurn = memo(
     left.onOpenTurnDiffFileInSidePanel === right.onOpenTurnDiffFileInSidePanel &&
     left.onOpenSideChat === right.onOpenSideChat &&
     left.onOpenThread === right.onOpenThread &&
+    left.onOpenSubagentsPanel === right.onOpenSubagentsPanel &&
     left.onOpenSummaryScheduledAutomation === right.onOpenSummaryScheduledAutomation &&
     left.onOpenMcpAppSidePanel === right.onOpenMcpAppSidePanel &&
     left.onOpenPlanInSidePanel === right.onOpenPlanInSidePanel &&
@@ -614,6 +619,7 @@ function LocalConversationVirtualizedTurnListCore({
   onOpenTurnDiffFileInSidePanel,
   onOpenSideChat,
   onOpenThread,
+  onOpenSubagentsPanel,
   onOpenSummaryScheduledAutomation,
   onOpenMcpAppSidePanel,
   onOpenPlanInSidePanel,
@@ -1849,6 +1855,7 @@ function LocalConversationVirtualizedTurnListCore({
               onOpenTurnDiffFileInSidePanel={onOpenTurnDiffFileInSidePanel}
               onOpenSideChat={onOpenSideChat}
               onOpenThread={onOpenThread}
+              onOpenSubagentsPanel={onOpenSubagentsPanel}
               onOpenSummaryScheduledAutomation={onOpenSummaryScheduledAutomation}
               onOpenMcpAppSidePanel={onOpenMcpAppSidePanel}
               onOpenPlanInSidePanel={onOpenPlanInSidePanel}

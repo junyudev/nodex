@@ -1313,3 +1313,109 @@ describe("subagent lifecycle projection", () => {
     expect(messageOnly.some((item) => item.type === "multiAgentAction")).toBe(true);
   });
 });
+
+function delegatedTaskEntry(
+  id: string,
+  status: NonNullable<CodexConversationItem["delegatedTask"]>["status"] = "running",
+): CodexConversationItem {
+  return buildEntry({
+    itemId: id,
+    type: "delegatedTask",
+    kind: "systemEvent",
+    semanticKind: "delegatedTask",
+    delegatedTask: {
+      taskId: id,
+      childThreadId: `child-${id}`,
+      ownerRunId: "turn_1",
+      providerInstanceId: "codex",
+      title: `Task ${id}`,
+      prompt: `Investigate ${id}`,
+      status,
+      summary: null,
+    },
+  });
+}
+
+function delegatedGroups(entries: CodexConversationItem[]) {
+  return buildRendererItemStream({ entries, requests: [] }).filter(
+    (item): item is ThreadTranscriptBlockModel => item.type === "delegatedTask",
+  );
+}
+
+const taskIds = (group: ThreadTranscriptBlockModel) =>
+  (group.delegatedTaskEntries ?? [group.entry]).map((entry) => entry.delegatedTask?.taskId);
+
+describe("delegated task activity groups", () => {
+  test("groups adjacent tasks at their first occurrence and retains their search metadata", () => {
+    const entries = [delegatedTaskEntry("a"), delegatedTaskEntry("b"), delegatedTaskEntry("c")];
+    const [group] = delegatedGroups(entries);
+    expect(delegatedGroups(entries)).toHaveLength(1);
+    expect(group?.id).toBe("a");
+    expect(taskIds(group!)).toEqual(["a", "b", "c"]);
+    expect(group?.searchableText).toContain("Investigate c");
+    expect(entries.map((entry) => entry.itemId)).toEqual(["a", "b", "c"]);
+  });
+
+  test("messages, hidden raw items, and Turn boundaries break groups without reordering", () => {
+    const entries = [
+      delegatedTaskEntry("a"),
+      buildEntry({ itemId: "commentary", markdownText: "Now checking the result" }),
+      delegatedTaskEntry("b"),
+      buildEntry({
+        itemId: "hidden",
+        kind: "reasoning",
+        semanticKind: "reasoning",
+        markdownText: "",
+      }),
+      delegatedTaskEntry("c"),
+      { ...delegatedTaskEntry("d"), turnId: "turn_2" },
+    ];
+    expect(delegatedGroups(entries).map(taskIds)).toEqual([["a"], ["b"], ["c"], ["d"]]);
+    expect(buildRendererItemStream({ entries, requests: [] }).map((item) => item.id)).toEqual([
+      "a",
+      "commentary",
+      "b",
+      "c",
+      "d",
+    ]);
+  });
+
+  test("updates duplicate task evidence in first-seen order without moving the anchor", () => {
+    const first = delegatedTaskEntry("a");
+    const final = { ...delegatedTaskEntry("a", "failed"), itemId: "a-later", updatedAt: 10 };
+    const [group] = delegatedGroups([first, delegatedTaskEntry("b", "completed"), final]);
+    expect(group?.id).toBe("a");
+    expect(taskIds(group!)).toEqual(["a", "b"]);
+    expect(group?.delegatedTaskEntries?.map((entry) => entry.delegatedTask?.status)).toEqual([
+      "failed",
+      "completed",
+    ]);
+    expect(group?.updatedAt).toBe(10);
+    expect(
+      buildRendererItemStreamProjection({
+        entries: [first, delegatedTaskEntry("b", "completed"), final],
+        requests: [],
+      }).subagentActivityState,
+    ).toEqual({ hasActivity: true, hasActiveActivity: false });
+  });
+
+  test("live tasks prevent automatic collapse and do not also appear as fallback subagents", () => {
+    const entries = [delegatedTaskEntry("a", "completed"), delegatedTaskEntry("b", "waiting")];
+    const projection = buildRendererItemStreamProjection({
+      entries,
+      requests: [],
+      turnKey: "turn_1",
+      backgroundAgents: [backgroundAgent("child-a")],
+    });
+    expect(projection.items.map((item) => item.type)).toEqual(["delegatedTask"]);
+    expect(projection.subagentActivityState).toEqual({
+      hasActivity: true,
+      hasActiveActivity: true,
+    });
+    const settled = buildRendererItemStreamProjection({
+      entries: [delegatedTaskEntry("a", "completed"), delegatedTaskEntry("b", "stopped")],
+      requests: [],
+    });
+    expect(settled.subagentActivityState).toEqual({ hasActivity: true, hasActiveActivity: false });
+  });
+});

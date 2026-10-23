@@ -82,6 +82,7 @@ export interface NodexHoverCardProps {
   hoverCardContent: ReactNode;
   ariaLabel: string;
   disabled?: boolean;
+  dismissOnReferencePress?: boolean;
   open?: boolean;
   defaultOpen?: boolean;
   onOpenChange?: (open: boolean) => void;
@@ -99,6 +100,7 @@ export function NodexHoverCard({
   hoverCardContent,
   ariaLabel,
   disabled = false,
+  dismissOnReferencePress = false,
   open,
   defaultOpen = false,
   onOpenChange,
@@ -194,12 +196,17 @@ export function NodexHoverCard({
   const hover = useHover(context, {
     delay: localDelay ?? groupDelay,
     enabled: !disabled,
+    // Activation cancels pending hover; require a fresh entry before showing it again.
+    move: !dismissOnReferencePress,
     handleClose: safePolygon({
       buffer: NODEX_HOVER_CARD_SAFE_POLYGON_BUFFER,
     }),
   });
   const focus = useFocus(context, { enabled: !disabled });
-  const dismiss = useDismiss(context, { enabled: !disabled });
+  const dismiss = useDismiss(context, {
+    enabled: !disabled,
+    referencePress: dismissOnReferencePress,
+  });
   const role = useRole(context, {
     enabled: !disabled,
     role: "dialog",

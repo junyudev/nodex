@@ -1,6 +1,7 @@
 import { describe, expect, test, vi } from "vite-plus/test";
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import type { ReactNode } from "react";
+import { toast } from "@/components/ui/toast";
 import { NodexTooltipProvider } from "../../../../components/ui/tooltip";
 import type { CodexDelegatedTaskView } from "../../../../../shared/types";
 import {
@@ -10,7 +11,7 @@ import {
   type AgentRuntimeTaskStopTransport,
 } from "../../agent-runtime-delegated-tasks";
 import { ConversationRuntimeContext, type ConversationRuntime } from "../../conversation-runtime";
-import { DelegatedTaskRow, RuntimeNoticeRow } from "./delegated-task-row";
+import { DelegatedTaskGroup, RuntimeNoticeRow } from "./delegated-task-row";
 
 const task: CodexDelegatedTaskView = {
   taskId: "task",
@@ -65,28 +66,34 @@ function setup() {
 }
 
 describe("Delegated task row", () => {
-  test("names the task and who runs it, then keeps Stopping until the task settles", async () => {
+  test("reveals metadata on focus and keeps Stopping until the task settles", async () => {
     const { transport, wrap, finishStop } = setup();
     const onOpenThread = vi.fn();
     const membership = { threadId: "child", thread: { model: "opus" } } as never;
-    const view = render(
+    const row = (current: CodexDelegatedTaskView) =>
       wrap(
-        <DelegatedTaskRow
-          task={task}
+        <DelegatedTaskGroup
+          tasks={[current]}
           parentThreadId="root"
-          membership={membership}
+          childMemberships={[membership]}
           onOpenThread={onOpenThread}
         />,
-      ),
-    );
-    expect(screen.getByRole("button", { name: "Audit auth, Running" })).toBeTruthy();
-    expect(screen.getByText("· Claude Opus 5.5")).toBeTruthy();
-
+      );
+    const view = render(row(task));
+    expect(screen.getByRole("status", { name: "Subagents is working" })).toBeTruthy();
+    expect(screen.queryByText("Claude Opus 5.5")).toBeNull();
     await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: "Stop Audit auth" }));
+      screen.getByRole("button", { name: "Audit auth" }).focus();
       await Promise.resolve();
     });
-    expect(await screen.findByRole("button", { name: "Audit auth, Stopping…" })).toBeTruthy();
+    const details = await screen.findByRole("dialog", { name: "Audit auth details" });
+    expect(within(details).getByText("Claude Opus 5.5")).toBeTruthy();
+    expect(within(details).getByText("Audit the auth module")).toBeTruthy();
+    await act(async () => {
+      fireEvent.click(within(details).getByRole("button", { name: "Stop Audit auth" }));
+      await Promise.resolve();
+    });
+    expect(await screen.findByRole("status", { name: "Subagents is stopping…" })).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Stop Audit auth" })).toBeNull();
     expect(transport.stop).toHaveBeenCalledWith({
       sessionId: "session",
@@ -97,23 +104,16 @@ describe("Delegated task row", () => {
       finishStop();
       await Promise.resolve();
     });
-    // The accepted request alone does not prove the task stopped.
-    expect(screen.getByRole("button", { name: "Audit auth, Stopping…" })).toBeTruthy();
-
-    view.rerender(
-      wrap(
-        <DelegatedTaskRow
-          task={{ ...task, status: "stopped" }}
-          parentThreadId="root"
-          membership={membership}
-          onOpenThread={onOpenThread}
-        />,
-      ),
-    );
-    expect(await screen.findByRole("button", { name: "Audit auth, Stopped" })).toBeTruthy();
-
+    expect(screen.getByRole("status", { name: "Subagents is stopping…" })).toBeTruthy();
+    view.rerender(row({ ...task, status: "stopped" }));
+    expect(await screen.findByRole("status", { name: "Subagents stopped" })).toBeTruthy();
     await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: "Open Audit auth" }));
+      fireEvent.keyDown(screen.getByRole("button", { name: "Audit auth" }), { key: "Escape" });
+      await Promise.resolve();
+    });
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Audit auth" }));
       await Promise.resolve();
     });
     expect(onOpenThread).toHaveBeenCalledWith(
@@ -124,20 +124,26 @@ describe("Delegated task row", () => {
     );
   });
 
-  test("a provider-native task stops through its owning parent Run", async () => {
+  test("an observation keeps its instructions reachable and stops through the owning parent Run", async () => {
     const { transport, wrap } = setup();
     render(
       wrap(
-        <DelegatedTaskRow
-          task={{ ...task, childThreadId: null }}
+        <DelegatedTaskGroup
+          tasks={[{ ...task, childThreadId: null, summary: "Checking access boundaries" }]}
           parentThreadId="root"
-          membership={undefined}
         />,
       ),
     );
-    expect(screen.queryByRole("button", { name: "Open Audit auth" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Audit auth" })).toBeNull();
     await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: "Stop Audit auth" }));
+      screen.getByText("Audit auth").focus();
+      await Promise.resolve();
+    });
+    const details = await screen.findByRole("dialog", { name: "Audit auth details" });
+    expect(within(details).getByText("Audit the auth module")).toBeTruthy();
+    expect(within(details).getByText("Checking access boundaries")).toBeTruthy();
+    await act(async () => {
+      fireEvent.click(within(details).getByRole("button", { name: "Stop Audit auth" }));
       await Promise.resolve();
     });
     expect(transport.stopTask).toHaveBeenCalledWith(
@@ -148,6 +154,75 @@ describe("Delegated task row", () => {
         taskId: "task",
       }),
     );
+  });
+
+  test("restores Stop and the current task state when the request fails", async () => {
+    const { transport, wrap } = setup();
+    const reportError = vi.spyOn(toast, "danger").mockImplementation(() => ({ close: () => {} }));
+    vi.mocked(transport.stop).mockRejectedValueOnce(new Error("Agent disconnected"));
+    render(
+      wrap(<DelegatedTaskGroup tasks={[task]} parentThreadId="root" onOpenThread={vi.fn()} />),
+    );
+    await act(async () => {
+      screen.getByRole("button", { name: "Audit auth" }).focus();
+      await Promise.resolve();
+    });
+    const stop = await screen.findByRole("button", { name: "Stop Audit auth" });
+    await act(async () => {
+      fireEvent.click(stop);
+      await Promise.resolve();
+    });
+    expect(await screen.findByRole("status", { name: "Subagents is working" })).toBeTruthy();
+    expect(await screen.findByRole("button", { name: "Stop Audit auth" })).toBeTruthy();
+    expect(reportError).toHaveBeenCalledWith("Agent disconnected");
+    reportError.mockRestore();
+  });
+
+  test("exposes mixed outcomes and opens all overflow tasks without changing a named target", async () => {
+    const { wrap } = setup();
+    const onOpenThread = vi.fn();
+    const onOpenSubagentsPanel = vi.fn();
+    const tasks = [
+      task,
+      {
+        ...task,
+        taskId: "second",
+        childThreadId: "second-child",
+        title: "Review UI",
+        status: "failed" as const,
+      },
+      ...Array.from({ length: 3 }, (_, i) => ({
+        ...task,
+        taskId: `extra-${i}`,
+        childThreadId: `extra-child-${i}`,
+        title: `Extra ${i}`,
+        status: "completed" as const,
+      })),
+    ];
+    render(
+      wrap(
+        <DelegatedTaskGroup
+          tasks={tasks}
+          parentThreadId="root"
+          onOpenThread={onOpenThread}
+          onOpenSubagentsPanel={onOpenSubagentsPanel}
+        />,
+      ),
+    );
+    expect(
+      screen.getByRole("status", { name: "Subagents — 1 failed · 1 working · 3 done" }),
+    ).toBeTruthy();
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Show all 5 subagents" }));
+      await Promise.resolve();
+    });
+    expect(onOpenSubagentsPanel).toHaveBeenCalledTimes(1);
+    expect(onOpenThread).not.toHaveBeenCalled();
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Review UI" }));
+      await Promise.resolve();
+    });
+    expect(onOpenThread).toHaveBeenCalledWith("second-child", expect.anything());
   });
 
   test("a report opens the one subagent it names", async () => {

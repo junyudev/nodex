@@ -4,6 +4,7 @@ import type {
   AgentSubagentOverviewItem,
 } from "@nodex/agent-runtime/contracts";
 import type { CodexSubagentOverviewRow, CodexSubagentOverviewWindow } from "../../../shared/types";
+import { projectAgentRuntimeSubagentDisplay } from "../../../shared/agent-runtime-subagent-display";
 import { agentRuntimeTime } from "./agent-runtime-transcript-projection";
 
 /** A task record as its metadata event reports it. */
@@ -28,41 +29,44 @@ const newerFirst = (left: AgentSubagentOverviewItem, right: AgentSubagentOvervie
 export const projectAgentRuntimeSubagent = (
   task: AgentSubagentOverviewItem,
   agentLabel: string | null = null,
-): CodexSubagentOverviewRow => ({
-  threadId: task.childThreadId ?? task.id,
-  parentThreadId: task.threadId,
-  parentTurnKey: task.runId,
-  displayName: task.title ?? "Subagent",
-  actorName: task.title,
-  agentRole: null,
-  agentLabel,
-  spawnModel: task.modelSelection?.model ?? task.model,
-  objective: null,
-  status:
-    task.status === "waiting"
-      ? "waiting"
-      : ["pending", "running"].includes(task.status)
-        ? "active"
-        : "done",
-  statusSummary:
-    task.status === "failed"
-      ? "Failed"
-      : task.status === "interrupted"
-        ? "Stopped"
-        : task.status === "cancelled"
-          ? "Cancelled"
-          : null,
-  startedAtMs: agentRuntimeTime(task.startedAt),
-  lastActivityAtMs: agentRuntimeTime(task.updatedAt),
-  completedAtMs: agentRuntimeTime(task.completedAt),
-  recencyAtMs: agentRuntimeTime(task.updatedAt) ?? 0,
-  diffStats: null,
-  canOpen: task.childThreadId !== null,
-  // An application-owned child stops through its own conversation; a native one through its Run.
-  canStop: isLive(task.status) && (task.childThreadId !== null || task.runId !== null),
-  canInteract: task.origin === "app_owned" && task.childThreadId !== null,
-  showInlineActivity: task.childThreadId !== null,
-});
+): CodexSubagentOverviewRow => {
+  const { displayName } = projectAgentRuntimeSubagentDisplay(task);
+  return {
+    threadId: task.childThreadId ?? task.id,
+    parentThreadId: task.threadId,
+    parentTurnKey: task.runId,
+    displayName: displayName ?? "Subagent",
+    actorName: displayName,
+    agentRole: null,
+    agentLabel,
+    spawnModel: task.modelSelection?.model ?? task.model,
+    objective: null,
+    status:
+      task.status === "waiting"
+        ? "waiting"
+        : ["pending", "running"].includes(task.status)
+          ? "active"
+          : "done",
+    statusSummary:
+      task.status === "failed"
+        ? "Failed"
+        : task.status === "interrupted"
+          ? "Stopped"
+          : task.status === "cancelled"
+            ? "Cancelled"
+            : null,
+    startedAtMs: agentRuntimeTime(task.startedAt),
+    lastActivityAtMs: agentRuntimeTime(task.updatedAt),
+    completedAtMs: agentRuntimeTime(task.completedAt),
+    recencyAtMs: agentRuntimeTime(task.updatedAt) ?? 0,
+    diffStats: null,
+    canOpen: task.childThreadId !== null,
+    // An application-owned child stops through its own conversation; a native one through its Run.
+    canStop: isLive(task.status) && (task.childThreadId !== null || task.runId !== null),
+    canInteract: task.origin === "app_owned" && task.childThreadId !== null,
+    showInlineActivity: task.childThreadId !== null,
+  };
+};
 
 export function projectAgentRuntimeSubagentOverview(
   rootThreadId: string,

@@ -14,6 +14,7 @@ import type {
 import { projectCodexCanonicalTurnViews } from "../../../shared/codex-canonical-item-projector";
 import { projectCodexItemViewToTranscriptEntry } from "../../../shared/codex-transcript-entry-projection";
 import { buildAgentRuntimeAttachmentSource } from "../../../shared/agent-runtime-attachments";
+import { projectAgentRuntimeSubagentDisplay } from "../../../shared/agent-runtime-subagent-display";
 import { agentMessageDisplayText } from "../../../shared/agent-prompt";
 import type { CodexTranscriptTurnDetails } from "../../../shared/codex-transcript-projection";
 
@@ -413,14 +414,16 @@ export function projectAgentRuntimeItem(item: AgentTurnItem, cwd = ""): CodexCan
         durationMs,
       };
     }
-    case "subagent":
+    case "subagent": {
+      const display = projectAgentRuntimeSubagentDisplay(item);
       return {
         type: "delegatedTask",
         id,
         taskId: item.subagentId,
         ownerRunId: item.runId,
         childThreadId: item.childThreadId,
-        title: item.title?.trim() || firstLine(item.prompt) || "Subagent",
+        title: display.displayName || firstLine(item.prompt) || "Subagent",
+        ...(display.agentPath ? { agentPath: display.agentPath } : {}),
         providerInstanceId: item.providerInstanceId,
         status: agentRuntimeDelegatedTaskStatus(item.status),
         prompt: item.prompt,
@@ -430,6 +433,7 @@ export function projectAgentRuntimeItem(item: AgentTurnItem, cwd = ""): CodexCan
             : (item.result ?? item.progress)
           )?.trim() || null,
       };
+    }
     case "thread_created":
       return {
         type: "subAgentActivity",

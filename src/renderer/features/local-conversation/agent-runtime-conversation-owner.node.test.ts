@@ -1634,6 +1634,65 @@ test("native observations without child Threads never acquire navigable child me
   release();
 });
 
+test("child navigation uses readable native names and follows later nickname metadata", async () => {
+  const initial = conversation([]);
+  const task: AgentSnapshot["projection"]["subagents"][number] = {
+    id: "native-task",
+    threadId: target.threadId,
+    runId: "run",
+    parentNodeId: "node",
+    origin: "provider_native",
+    createdBy: "agent",
+    driver: "codex",
+    providerInstanceId: "codex",
+    providerThreadId: null,
+    childThreadId: "child",
+    nativeTaskRef: null,
+    prompt: "",
+    title: "/root/reference_bundle",
+    model: null,
+    status: "running",
+    result: null,
+    startedAt: at,
+    completedAt: null,
+    updatedAt: at,
+  };
+  const { owner, wire, release } = await open({
+    ...initial,
+    snapshot: {
+      ...initial.snapshot,
+      projection: { ...initial.snapshot.projection, subagents: [task] },
+    },
+  });
+  expect(owner.children()[0]).toMatchObject({
+    threadId: "child",
+    displayName: "Reference bundle",
+    actorName: "Reference bundle",
+    thread: { displayName: "Reference bundle" },
+  });
+  expect(owner.getSnapshot().conversation!.snapshot.projection.subagents[0]?.title).toBe(
+    "/root/reference_bundle",
+  );
+  vi.mocked(wire.port.read).mockClear();
+  wire.emit({
+    sequence: 2,
+    commandId: null,
+    event: {
+      id: "nickname",
+      threadId: target.threadId,
+      occurredAt: at,
+      type: "subagent.updated",
+      payload: { ...task, title: "Ada" },
+    },
+  });
+  expect(owner.children()[0]).toMatchObject({
+    displayName: "Ada",
+    thread: { displayName: "Ada" },
+  });
+  expect(wire.port.read).not.toHaveBeenCalled();
+  release();
+});
+
 test("bounds implicit control metadata across ten thousand task and Run updates", async () => {
   const fixture = transport(conversation([]));
   const owner = new AgentRuntimeConversationOwner(target, fixture.port);

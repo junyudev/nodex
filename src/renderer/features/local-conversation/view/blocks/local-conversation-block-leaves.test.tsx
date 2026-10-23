@@ -1826,6 +1826,30 @@ describe("ThreadBlockRenderer proposed-plan block", () => {
 });
 
 describe("ThreadBlockRenderer subagent activity block", () => {
+  test("keeps an interrupted event explicit in its keyboard-accessible details", async () => {
+    const block = buildSubagentActivityInlineGroupBlock();
+    const first = block.subagentActivityRows![0]!;
+    const view = render(
+      <ThreadBlockRenderer
+        block={{
+          ...block,
+          subagentActivityStatusLabel: "interrupted",
+          subagentActivityRows: [{ ...first, activityStatus: "interrupted", status: "done" }],
+        }}
+        isLatestTurn
+        isStreamingTurn={false}
+        onOpenThread={vi.fn()}
+      />,
+    );
+    expect(view.getByRole("status", { name: "Subagents was interrupted" })).toBeTruthy();
+    await act(async () => {
+      view.getByRole("button", { name: first.displayName }).focus();
+      await Promise.resolve();
+    });
+    expect(await view.findByRole("dialog", { name: `${first.displayName} details` })).toBeTruthy();
+    expect(view.getByText("Interrupted")).toBeTruthy();
+  });
+
   test("renders message markers without creating lifecycle avatars or navigation", () => {
     for (const displayName of [null, "Scout"]) {
       const block = buildSubagentActivityInlineGroupBlock();

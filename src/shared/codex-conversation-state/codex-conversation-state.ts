@@ -455,6 +455,8 @@ export interface CodexCanonicalDelegatedTaskItem {
   /** The task's own conversation. Provider-native observations have none. */
   readonly childThreadId: string | null;
   readonly title: string;
+  /** Native task identity retained as detail, separate from its readable title. */
+  readonly agentPath?: string;
   readonly providerInstanceId: string;
   readonly status: CodexDelegatedTaskStatus;
   /** Bounded instruction preview from the transcript window. */

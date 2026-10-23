@@ -744,6 +744,8 @@ export interface ThreadTranscriptBlockModel extends ThreadRenderKeyedBlockFields
   subagentActivityAnchorItemId?: string | null;
   subagentActivityRows?: ThreadSubagentActivityInlineRowModel[];
   subagentActivityStatusLabel?: string;
+  /** Consecutive delegated tasks retain their individual item addresses behind the first anchor. */
+  delegatedTaskEntries?: readonly CodexConversationItem[];
 }
 
 export interface ThreadUserAttachmentStripBlockModel extends ThreadRenderKeyedBlockFields {

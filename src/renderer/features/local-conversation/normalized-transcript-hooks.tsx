@@ -8,7 +8,8 @@ import {
 } from "react";
 import { useCodexAppServerManagerForConversationId } from "./local-conversation-store";
 import { useConversationRuntimeOverride } from "./conversation-runtime";
-import type { CodexConversationTurn } from "../../../shared/types";
+import type { CodexConversationItem, CodexConversationTurn } from "../../../shared/types";
+import { createDelegatedTaskReadQuery } from "./projection/delegated-task-read-query";
 import type { ThreadTranscriptBlockModel } from "./thread-stage-types";
 import {
   CodexTranscriptReadOwner,
@@ -221,6 +222,18 @@ export function useCodexTranscriptBlock(
   );
   if (!item) return block;
   return { ...block, entry: item, status: item.status, updatedAt: item.updatedAt };
+}
+
+/** Task state changes replace addressed entries without rebuilding the Turn's structural model. */
+export function useCodexTranscriptDelegatedTaskEntries(entries: readonly CodexConversationItem[]) {
+  const owner = useContext(CodexTranscriptReadOwnerContext);
+  const entityKey = useContext(CodexTranscriptTurnEntityContext);
+  const presentationStatus = useContext(CodexTranscriptTurnStatusContext);
+  const query = useMemo(
+    () => createDelegatedTaskReadQuery(owner, entityKey, entries, presentationStatus),
+    [entries, entityKey, owner, presentationStatus],
+  );
+  return useSyncExternalStore(query.subscribe, query.read);
 }
 
 /** The compact thinking label is a separate keyed consumer from the complete Turn model. */

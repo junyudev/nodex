@@ -20,6 +20,7 @@ import type {
   CodexPromptInput,
 } from "../../../shared/types";
 import { buildAgentRuntimeAttachmentSource } from "../../../shared/agent-runtime-attachments";
+import { projectAgentRuntimeSubagentDisplay } from "../../../shared/agent-runtime-subagent-display";
 import {
   CODEX_INTERRUPTED_STEER_REASON,
   EMPTY_CODEX_QUEUED_FOLLOW_UP_PROJECTION,
@@ -1528,13 +1529,14 @@ export class AgentRuntimeConversationOwner {
     this.#children = (this.#state.conversation?.snapshot.projection.subagents ?? []).map((task) => {
       const retained = previous.get(task.childThreadId ?? task.id);
       if (changedTaskIds && !changedTaskIds.has(task.id) && retained) return retained;
+      const { displayName } = projectAgentRuntimeSubagentDisplay(task);
       return {
         threadId: task.childThreadId ?? task.id,
         parentThreadId: this.#target.threadId,
         role: "backgroundChild",
-        displayName: task.title,
-        actorName: task.title ?? "Agent",
-        thread: { displayName: task.title, model: task.model },
+        displayName,
+        actorName: displayName ?? "Agent",
+        thread: { displayName, model: task.model },
         statusType:
           task.status === "failed"
             ? "systemError"
@@ -1549,7 +1551,7 @@ export class AgentRuntimeConversationOwner {
               task: {
                 id: task.id,
                 bornTurnSequence: null,
-                description: task.title ?? "Agent",
+                description: displayName ?? "Agent",
                 status:
                   task.status === "waiting"
                     ? ("paused" as const)

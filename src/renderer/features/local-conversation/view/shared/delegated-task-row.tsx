@@ -1,4 +1,4 @@
-import { useEffect, useState, useSyncExternalStore } from "react";
+import { useEffect, useSyncExternalStore } from "react";
 import { toast } from "@/components/ui/toast";
 import { InfoIcon, StopIcon, TerminalActivityIcon } from "@/components/shared/icons";
 import { cn } from "@/lib/utils";
@@ -10,136 +10,164 @@ import type {
 import { useConversationRuntimeOverride } from "../../conversation-runtime";
 import {
   canStopDelegatedTask,
+  delegatedTaskGroupStatusLabel,
   delegatedTaskStatusLabel,
   isDelegatedTaskLive,
   resolveDelegatedTaskRowStatus,
   runtimeNoticeTone,
+  type DelegatedTaskRowStatus,
 } from "../../delegated-task-presentation";
 import type { ThreadStageActions } from "../../thread-stage-types";
-import { CodexShimmerText } from "./codex-shimmer-text";
 import { SubagentGlyphIcon } from "./subagent-avatar";
-import { ThreadActivityShell, ThreadRichActivityHeader } from "./tools/tool-primitives";
+import { SubagentActivityDetails, SubagentActivityInline } from "./subagent-activity-inline";
 
 const noSubscription = () => () => {};
 const actionClassName =
   "shrink-0 cursor-interaction rounded-sm px-1 text-xs text-token-text-tertiary hover:text-token-foreground focus-visible:outline-2 focus-visible:outline-offset-2 disabled:cursor-default disabled:opacity-60";
 
-/** One delegated task: who runs it, its live status, and the actions its owner allows. */
-export function DelegatedTaskRow({
+function DelegatedTaskDetails({
   task,
-  parentThreadId,
+  status,
   membership,
-  onOpenThread,
+  onStop,
 }: {
   task: CodexDelegatedTaskView;
-  parentThreadId: string;
+  status: DelegatedTaskRowStatus;
   membership: CodexConversationChildMembership | undefined;
-  onOpenThread?: ThreadStageActions["onOpenThread"];
+  onStop: (() => void) | undefined;
 }) {
-  const runtime = useConversationRuntimeOverride();
-  const port = runtime?.delegatedTasks;
-  const labels = runtime?.agentLabels;
+  const labels = useConversationRuntimeOverride()?.agentLabels;
   const model = membership?.thread?.model ?? null;
   const agent = useSyncExternalStore(
     labels?.subscribe ?? noSubscription,
     () => labels?.label(task.providerInstanceId, model) ?? null,
   );
-  const stopRequested = useSyncExternalStore(
-    port?.subscribe ?? noSubscription,
-    () => port?.isStopping(task.taskId) ?? false,
-  );
-  const live = isDelegatedTaskLive(task.status);
-  useEffect(() => {
-    if (!live && stopRequested) port?.settle(task.taskId);
-  }, [live, port, stopRequested, task.taskId]);
-  const [expanded, setExpanded] = useState(false);
-  const status = resolveDelegatedTaskRowStatus(task.status, stopRequested);
-  const childThreadId = task.childThreadId;
-  const stop = () => {
-    if (!port) return;
-    void port.stop(parentThreadId, task).catch((cause: unknown) => {
-      toast.danger(cause instanceof Error ? cause.message : "Could not stop this subagent");
-    });
-  };
-  const open = () => {
-    if (!childThreadId || !onOpenThread) return;
-    void onOpenThread(childThreadId, {
-      subagent: {
-        agentRole: null,
-        conversationId: childThreadId,
-        diffStats: null,
-        displayName: task.title,
-        spawnModel: model,
-        status: task.status === "waiting" ? "waiting" : live ? "active" : "done",
-        statusSummary: task.summary,
-      },
-    });
-  };
-  const details = [task.prompt.trim(), task.summary?.trim()].filter(Boolean);
+  const details = task.childThreadId
+    ? [task.summary?.trim() || task.prompt.trim()].filter(Boolean)
+    : [...new Set([task.prompt.trim(), task.summary?.trim()].filter(Boolean))];
   return (
-    <ThreadActivityShell
-      testId="delegated-task-row"
-      header={
-        <ThreadRichActivityHeader
-          accessibleLabel={`${task.title}, ${delegatedTaskStatusLabel(status)}`}
-          disclosure={
-            details.length > 0
-              ? { expanded, onToggle: () => setExpanded((current) => !current) }
-              : undefined
-          }
-          icon={<SubagentGlyphIcon className="icon-xs shrink-0 text-token-conversation-body" />}
-          summary={
-            <span className="min-w-0 truncate">
-              <CodexShimmerText active={status === "running"}>{task.title}</CodexShimmerText>
-              {agent ? <span className="text-token-text-tertiary">{` · ${agent}`}</span> : null}
-            </span>
-          }
-          accessory={
-            <span className="flex shrink-0 items-center gap-1">
-              <span
-                className={cn(
-                  "text-xs whitespace-nowrap",
-                  status === "failed" ? "text-token-charts-red" : "text-token-text-tertiary",
-                )}
-                data-delegated-task-status={status}
-              >
-                {delegatedTaskStatusLabel(status)}
-              </span>
-              {port && canStopDelegatedTask(task) && status !== "stopping" ? (
-                <button
-                  type="button"
-                  aria-label={`Stop ${task.title}`}
-                  className={actionClassName}
-                  onClick={stop}
-                >
-                  Stop
-                </button>
-              ) : null}
-              {childThreadId && onOpenThread ? (
-                <button
-                  type="button"
-                  aria-label={`Open ${task.title}`}
-                  className={actionClassName}
-                  onClick={open}
-                >
-                  Open
-                </button>
-              ) : null}
-            </span>
-          }
-        />
-      }
-      body={
-        expanded ? (
-          <div className="flex flex-col gap-1 pt-1 pl-5 text-size-chat text-token-text-secondary">
+    <SubagentActivityDetails
+      name={task.title}
+      status={delegatedTaskStatusLabel(status)}
+      statusTone={status === "failed" ? "danger" : "neutral"}
+      description={
+        details.length > 0 ? (
+          <div className="flex max-h-56 flex-col gap-2 overflow-y-auto overscroll-contain">
             {details.map((detail) => (
-              <p key={detail} className="line-clamp-6 break-words whitespace-pre-wrap">
+              <p
+                key={detail}
+                className={cn(
+                  "break-words whitespace-pre-wrap",
+                  task.childThreadId && "line-clamp-4",
+                )}
+              >
                 {detail}
               </p>
             ))}
           </div>
-        ) : null
+        ) : undefined
       }
+      metadata={agent}
+      path={task.agentPath ?? membership?.agentPath}
+      startedAtMs={membership?.createdAtMs}
+      action={
+        onStop ? (
+          <button
+            type="button"
+            aria-label={`Stop ${task.title}`}
+            className={cn(actionClassName, "inline-flex items-center gap-1")}
+            onClick={onStop}
+          >
+            <StopIcon className="icon-xxs" />
+            Stop
+          </button>
+        ) : undefined
+      }
+    />
+  );
+}
+
+/** Runtime tasks share the native activity's quiet visual grammar, with current task states. */
+export function DelegatedTaskGroup({
+  tasks,
+  parentThreadId,
+  childMemberships,
+  onOpenThread,
+  onOpenSubagentsPanel,
+}: {
+  tasks: readonly CodexDelegatedTaskView[];
+  parentThreadId: string;
+  childMemberships?: readonly CodexConversationChildMembership[];
+  onOpenThread?: ThreadStageActions["onOpenThread"];
+  onOpenSubagentsPanel?: ThreadStageActions["onOpenSubagentsPanel"];
+}) {
+  const port = useConversationRuntimeOverride()?.delegatedTasks;
+  // A primitive snapshot records every addressed Stop request without allocating per read.
+  const stopping = useSyncExternalStore(port?.subscribe ?? noSubscription, () =>
+    tasks.map((task) => (port?.isStopping(task.taskId) ? "1" : "0")).join(""),
+  );
+  useEffect(() => {
+    tasks.forEach((task, index) => {
+      if (!isDelegatedTaskLive(task.status) && stopping[index] === "1") port?.settle(task.taskId);
+    });
+  }, [port, stopping, tasks]);
+  const statuses = tasks.map((task, index) =>
+    resolveDelegatedTaskRowStatus(task.status, stopping[index] === "1"),
+  );
+  const memberships = new Map(
+    childMemberships?.map((membership) => [membership.threadId, membership]),
+  );
+  const items = tasks.map((task, index) => {
+    const membership = memberships.get(task.childThreadId ?? task.taskId);
+    const model = membership?.thread?.model ?? null;
+    const status = statuses[index] ?? task.status;
+    const childThreadId = task.childThreadId;
+    const onOpen =
+      childThreadId && onOpenThread
+        ? () => {
+            void onOpenThread(childThreadId, {
+              subagent: {
+                agentRole: null,
+                conversationId: childThreadId,
+                diffStats: null,
+                displayName: task.title,
+                spawnModel: model,
+                status:
+                  task.status === "waiting"
+                    ? "waiting"
+                    : isDelegatedTaskLive(task.status)
+                      ? "active"
+                      : "done",
+                statusSummary: task.summary,
+              },
+            });
+          }
+        : undefined;
+    const onStop =
+      port && canStopDelegatedTask(task) && status !== "stopping"
+        ? () => {
+            void port.stop(parentThreadId, task).catch((cause: unknown) => {
+              toast.danger(cause instanceof Error ? cause.message : "Could not stop this subagent");
+            });
+          }
+        : undefined;
+    return {
+      id: task.taskId,
+      name: task.title,
+      seed: task.childThreadId ?? task.taskId,
+      onOpen,
+      details: (
+        <DelegatedTaskDetails task={task} status={status} membership={membership} onStop={onStop} />
+      ),
+    };
+  });
+  return (
+    <SubagentActivityInline
+      items={items}
+      statusLabel={delegatedTaskGroupStatusLabel(statuses)}
+      statusTone={statuses.includes("failed") ? "danger" : "neutral"}
+      onOpenAll={onOpenSubagentsPanel}
+      testId="delegated-task-group"
     />
   );
 }

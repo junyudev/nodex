@@ -14,10 +14,12 @@ export function LocalConversationTimelineSubagent({
   entry,
   backgroundAgentRows = emptyRows,
   onOpenThread,
+  onOpenSubagentsPanel,
 }: {
   readonly entry: CodexTimelineTurnEntry;
   readonly backgroundAgentRows?: readonly ThreadComposerShellBackgroundAgentRowModel[];
   readonly onOpenThread?: ThreadStageActions["onOpenThread"];
+  readonly onOpenSubagentsPanel?: ThreadStageActions["onOpenSubagentsPanel"];
 }) {
   const owner = useContext(CodexTranscriptReadOwnerContext);
   const query = useMemo(
@@ -42,7 +44,12 @@ export function LocalConversationTimelineSubagent({
       data-native-subagent-item-id={entry.timelineWholeItem?.itemId}
       data-content-search-skip="true"
     >
-      <SubagentActivityInlineRows rows={rows} onOpenThread={onOpenThread} sourceRoot={owner.key} />
+      <SubagentActivityInlineRows
+        rows={rows}
+        onOpenThread={onOpenThread}
+        onOpenSubagentsPanel={onOpenSubagentsPanel}
+        sourceRoot={owner.key}
+      />
     </div>
   );
 }

@@ -29,7 +29,7 @@ import { CodexTranscriptTurnEntityContext } from "../../normalized-transcript-ho
 import { useConversationVisualizationContext } from "../inline-visualization-context";
 import { AutomaticApprovalReviewSurface } from "../shared/automatic-approval-review-surface";
 import { MultiAgentActionSurface } from "../shared/multi-agent-action-surface";
-import { DelegatedTaskRow, RuntimeNoticeRow } from "../shared/delegated-task-row";
+import { DelegatedTaskGroup, RuntimeNoticeRow } from "../shared/delegated-task-row";
 import { AgentHandoffDivider, TranscriptDivider } from "../shared/transcript-divider";
 import { ContextCompactionSurface } from "../shared/context-compaction-surface";
 import { ImageViewSurface } from "../shared/image-view-surface";
@@ -37,8 +37,10 @@ import { GeneratedImageGallery } from "../shared/generated-image-gallery";
 import { CompletedRequestActivitySurface } from "../shared/completed-request-activity-surface";
 import { PlanMessage } from "../shared/plan-message";
 import { ReasoningSurface } from "../shared/reasoning-surface";
-import { SubagentAvatar } from "../shared/subagent-avatar";
-import { getSubagentActivityDisplayBudget } from "../shared/subagent-activity-presentation";
+import {
+  SubagentActivityDetails,
+  SubagentActivityInline,
+} from "../shared/subagent-activity-inline";
 import { TurnDiffSurface } from "../shared/turn-diff-surface";
 import {
   CopyMessageActionButton,
@@ -81,7 +83,6 @@ import type { ReviewOpenIntent } from "@/features/review/model/review-view-state
 import { resolveCodexThreadDetailLevel } from "../../../../lib/codex-thread-settings";
 import { logAssistantStreamingDebugState } from "../../../../lib/assistant-streaming-debug";
 import { useCodexThreadSettings } from "../../../../lib/use-codex-thread-settings";
-import { useResolvedReducedMotion } from "../../../../lib/use-reduced-motion";
 import { cn } from "../../../../lib/utils";
 import { DEFAULT_CODEX_HOST_ID } from "../../../../../shared/codex-host";
 import { resolveCompletedMcpServerElicitationView } from "../../projection/mcp-server-elicitation-view";
@@ -106,6 +107,7 @@ import { composerEnterBehaviorAtom } from "@/lib/composer-enter-behavior-atom";
 import { useScopedAtomValue } from "@/lib/maitai";
 import {
   useCodexTranscriptBlock,
+  useCodexTranscriptDelegatedTaskEntries,
   CodexTranscriptReasoningSummary,
 } from "../../normalized-transcript-hooks";
 
@@ -136,6 +138,7 @@ export interface ThreadLeafBlockProps {
   onOpenTurnDiffFileInSidePanel?: ThreadStageActions["onOpenTurnDiffFileInSidePanel"];
   onOpenSideChat?: ThreadStageActions["onOpenSideChat"];
   onOpenThread?: ThreadStageActions["onOpenThread"];
+  onOpenSubagentsPanel?: ThreadStageActions["onOpenSubagentsPanel"];
   onOpenSummaryScheduledAutomation?: ThreadStageActions["onOpenSummaryScheduledAutomation"];
   onOpenMcpAppSidePanel?: ThreadStageActions["onOpenMcpAppSidePanel"];
   onOpenPlanInSidePanel?: ThreadStageActions["onOpenPlanInSidePanel"];
@@ -163,6 +166,7 @@ export interface ThreadSpecialBlockProps {
   onOpenTurnDiffFileInSidePanel?: ThreadStageActions["onOpenTurnDiffFileInSidePanel"];
   onOpenSideChat?: ThreadStageActions["onOpenSideChat"];
   onOpenThread?: ThreadStageActions["onOpenThread"];
+  onOpenSubagentsPanel?: ThreadStageActions["onOpenSubagentsPanel"];
   onOpenSummaryScheduledAutomation?: ThreadStageActions["onOpenSummaryScheduledAutomation"];
   onOpenMcpAppSidePanel?: ThreadStageActions["onOpenMcpAppSidePanel"];
   onOpenPlanInSidePanel?: ThreadStageActions["onOpenPlanInSidePanel"];
@@ -627,17 +631,20 @@ export function ThreadDelegatedTaskBlock({
   block,
   childMemberships,
   onOpenThread,
+  onOpenSubagentsPanel,
 }: ThreadLeafBlockProps) {
-  const task = block.type === "delegatedTask" ? block.entry.delegatedTask : undefined;
-  if (!task) return null;
+  const entries = useCodexTranscriptDelegatedTaskEntries(
+    block.delegatedTaskEntries ?? [block.entry],
+  );
+  if (block.type !== "delegatedTask") return null;
+  const tasks = entries.flatMap((entry) => (entry.delegatedTask ? [entry.delegatedTask] : []));
   return (
-    <DelegatedTaskRow
-      task={task}
+    <DelegatedTaskGroup
+      tasks={tasks}
       parentThreadId={block.entry.threadId}
-      membership={childMemberships?.find(
-        (membership) => membership.threadId === (task.childThreadId ?? task.taskId),
-      )}
+      childMemberships={childMemberships}
       onOpenThread={onOpenThread}
+      onOpenSubagentsPanel={onOpenSubagentsPanel}
     />
   );
 }
@@ -671,54 +678,10 @@ function resolveSubagentActivityStatusLabel(
   return "started working";
 }
 
-function SubagentActivityInlineAvatar({
-  animateEntrance,
-  onAnimationEnd,
-  onClick,
-  row,
-}: {
-  animateEntrance: boolean;
-  onAnimationEnd: () => void;
-  onClick?: () => void;
-  row: ThreadSubagentActivityInlineRowModel;
-}) {
-  const content = <SubagentAvatar seed={row.conversationId} className="size-4" />;
-  const className = cn(
-    "subagent-activity-chip inline-flex shrink-0 items-center justify-center rounded-full",
-    onClick && "cursor-interaction focus-visible:outline-2 focus-visible:outline-offset-2",
-  );
-
-  if (!onClick) {
-    return (
-      <span
-        className={className}
-        data-animate-entrance={animateEntrance ? "" : undefined}
-        onAnimationEnd={animateEntrance ? onAnimationEnd : undefined}
-      >
-        {content}
-      </span>
-    );
-  }
-
-  return (
-    <NodexTooltip tooltipContent={row.displayName}>
-      <button
-        type="button"
-        aria-label={row.displayName}
-        className={className}
-        data-animate-entrance={animateEntrance ? "" : undefined}
-        onAnimationEnd={animateEntrance ? onAnimationEnd : undefined}
-        onClick={onClick}
-      >
-        {content}
-      </button>
-    </NodexTooltip>
-  );
-}
-
 export function ThreadSubagentActivityInlineGroupBlock({
   block,
   onOpenThread,
+  onOpenSubagentsPanel,
   hostId,
 }: ThreadLeafBlockProps) {
   const rows =
@@ -738,6 +701,7 @@ export function ThreadSubagentActivityInlineGroupBlock({
       rows={rows}
       statusLabel={block.subagentActivityStatusLabel}
       onOpenThread={onOpenThread}
+      onOpenSubagentsPanel={onOpenSubagentsPanel}
       sourceRoot={hostId ? { hostId, threadId: block.entry.threadId } : undefined}
     />
   );
@@ -747,39 +711,15 @@ export function SubagentActivityInlineRows({
   rows,
   statusLabel: suppliedStatusLabel,
   onOpenThread,
+  onOpenSubagentsPanel,
   sourceRoot,
 }: {
   readonly rows: readonly ThreadSubagentActivityInlineRowModel[];
   readonly statusLabel?: string;
   readonly onOpenThread?: ThreadStageActions["onOpenThread"];
+  readonly onOpenSubagentsPanel?: ThreadStageActions["onOpenSubagentsPanel"];
   readonly sourceRoot?: { readonly hostId: string; readonly threadId: string };
 }) {
-  const reducedMotion = useResolvedReducedMotion();
-  const [seenConversationIds, setSeenConversationIds] = useState<ReadonlySet<string>>(
-    () => new Set(rows.map((row) => row.conversationId)),
-  );
-  const markAnimationComplete = useCallback((conversationId: string) => {
-    setSeenConversationIds((current) => {
-      if (current.has(conversationId)) return current;
-      const next = new Set(current);
-      next.add(conversationId);
-      return next;
-    });
-  }, []);
-
-  useEffect(() => {
-    if (!reducedMotion) return;
-    setSeenConversationIds((current) => {
-      const next = new Set(current);
-      for (const row of rows) next.add(row.conversationId);
-      return next.size === current.size ? current : next;
-    });
-  }, [reducedMotion, rows]);
-
-  if (rows.length === 0) return null;
-
-  const { avatarCount, namedCount, hiddenCount } = getSubagentActivityDisplayBudget(rows.length);
-  const visibleRows = rows.slice(0, avatarCount);
   const statusLabel = suppliedStatusLabel ?? resolveSubagentActivityStatusLabel(rows);
   const sentenceStatus =
     statusLabel === "interrupted"
@@ -787,88 +727,56 @@ export function SubagentActivityInlineRows({
         ? "was interrupted"
         : "were interrupted"
       : statusLabel;
-  const openRow = (row: ThreadSubagentActivityInlineRowModel) => {
-    if (!onOpenThread || !row.canOpen) return undefined;
-    return () => {
-      void onOpenThread(row.conversationId, {
-        ...(sourceRoot ? { hostId: sourceRoot.hostId, sourceRoot } : {}),
-        subagent: {
-          agentRole: row.agentRole,
-          conversationId: row.conversationId,
-          diffStats: row.diffStats,
-          displayName: row.displayName,
-          showInlineActivity: true,
-          spawnModel: row.spawnModel,
-          status: row.status,
-          statusSummary: row.statusSummary,
-          ...(row.canInteract === true ? { canInteract: true } : {}),
-        },
-      });
-    };
-  };
-
+  const items = rows.map((row) => ({
+    id: row.conversationId,
+    name: row.displayName,
+    seed: row.conversationId,
+    details: (
+      <SubagentActivityDetails
+        name={row.displayName}
+        status={
+          row.status === "done" && row.activityStatus === "interrupted"
+            ? "Interrupted"
+            : row.status === "active"
+              ? "Working"
+              : row.status === "waiting"
+                ? "Waiting"
+                : "Done"
+        }
+        description={
+          row.statusSummary ? (
+            <p className="line-clamp-4 break-words">{row.statusSummary}</p>
+          ) : undefined
+        }
+        metadata={[row.agentRole, row.spawnModel].filter(Boolean).join(" · ") || null}
+      />
+    ),
+    onOpen:
+      onOpenThread && row.canOpen
+        ? () => {
+            void onOpenThread(row.conversationId, {
+              ...(sourceRoot ? { hostId: sourceRoot.hostId, sourceRoot } : {}),
+              subagent: {
+                agentRole: row.agentRole,
+                conversationId: row.conversationId,
+                diffStats: row.diffStats,
+                displayName: row.displayName,
+                showInlineActivity: true,
+                spawnModel: row.spawnModel,
+                status: row.status,
+                statusSummary: row.statusSummary,
+                ...(row.canInteract === true ? { canInteract: true } : {}),
+              },
+            });
+          }
+        : undefined,
+  }));
   return (
-    <div className="min-w-0 text-size-chat relative overflow-visible py-0">
-      <div
-        aria-label={`Subagents ${sentenceStatus}`}
-        aria-live="polite"
-        role="status"
-        className="flex min-w-0 items-start gap-1.5 text-base leading-5 text-token-conversation-body select-none"
-        data-testid="subagent-activity-inline-group"
-      >
-        <span className="inline-flex h-5 shrink-0 items-center gap-1.5">
-          {visibleRows.map((row, index) => (
-            <SubagentActivityInlineAvatar
-              key={row.conversationId}
-              row={row}
-              animateEntrance={!reducedMotion && !seenConversationIds.has(row.conversationId)}
-              onAnimationEnd={() => markAnimationComplete(row.conversationId)}
-              onClick={index < namedCount ? undefined : openRow(row)}
-            />
-          ))}
-        </span>
-        <span className="min-w-0 break-words">
-          {rows.slice(0, namedCount).map((row, index) => {
-            const onClick = openRow(row);
-            const separator =
-              index === 0
-                ? ""
-                : rows.length === 2 || (rows.length === 3 && index === 2)
-                  ? " and "
-                  : ", ";
-            return (
-              <span key={row.conversationId}>
-                {separator}
-                {onClick ? (
-                  <span
-                    role="button"
-                    tabIndex={0}
-                    className="inline cursor-interaction rounded-sm text-start hover:text-token-foreground focus-visible:outline-2 focus-visible:outline-offset-0"
-                    onClick={onClick}
-                    onKeyDown={(event) => {
-                      if (event.key !== "Enter" && event.key !== " ") return;
-                      event.preventDefault();
-                      if (event.key === "Enter") onClick();
-                    }}
-                    onKeyUp={(event) => {
-                      if (event.key !== " ") return;
-                      event.preventDefault();
-                      onClick();
-                    }}
-                  >
-                    {row.displayName}
-                  </span>
-                ) : (
-                  row.displayName
-                )}
-              </span>
-            );
-          })}
-          {hiddenCount > 0 ? ` and ${hiddenCount} more` : null}
-          {` ${sentenceStatus}`}
-        </span>
-      </div>
-    </div>
+    <SubagentActivityInline
+      items={items}
+      statusLabel={sentenceStatus}
+      onOpenAll={onOpenSubagentsPanel}
+    />
   );
 }
 

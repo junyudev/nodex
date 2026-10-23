@@ -156,6 +156,24 @@ describe("Runtime delegated task rows", () => {
       projectAgentRuntimeItem(task("completed", { title: "Audit", result: "No issues" })),
     ).toMatchObject({ title: "Audit", summary: "No issues" });
   });
+
+  test("native path titles become readable names without losing their detail identity", () => {
+    const native = task("running", {
+      driver: "codex",
+      origin: "provider_native",
+      title: "/root/reference_bundle",
+    });
+    expect(projectAgentRuntimeItem(native)).toMatchObject({
+      title: "Reference bundle",
+      agentPath: "/root/reference_bundle",
+      taskId: "task",
+      childThreadId: "child",
+    });
+    const titled = projectAgentRuntimeItem({ ...native, origin: "app_owned" });
+    expect(titled).toMatchObject({ title: "/root/reference_bundle" });
+    expect(titled).not.toHaveProperty("agentPath");
+    expect(native.title).toBe("/root/reference_bundle");
+  });
 });
 
 describe("Runtime message attribution and notices", () => {

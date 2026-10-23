@@ -62,6 +62,7 @@ interface ThreadBlockRendererProps {
   onOpenTurnDiffFileInSidePanel?: ThreadStageActions["onOpenTurnDiffFileInSidePanel"];
   onOpenSideChat?: ThreadStageActions["onOpenSideChat"];
   onOpenThread?: ThreadStageActions["onOpenThread"];
+  onOpenSubagentsPanel?: ThreadStageActions["onOpenSubagentsPanel"];
   onOpenSummaryScheduledAutomation?: ThreadStageActions["onOpenSummaryScheduledAutomation"];
   onOpenMcpAppSidePanel?: ThreadStageActions["onOpenMcpAppSidePanel"];
   onOpenPlanInSidePanel?: ThreadStageActions["onOpenPlanInSidePanel"];
@@ -93,6 +94,7 @@ export function ThreadBlockRenderer({
   onOpenTurnDiffFileInSidePanel,
   onOpenSideChat,
   onOpenThread,
+  onOpenSubagentsPanel,
   onOpenSummaryScheduledAutomation,
   onOpenMcpAppSidePanel,
   onOpenPlanInSidePanel,
@@ -195,6 +197,7 @@ export function ThreadBlockRenderer({
         isStreamingTurn={isStreamingTurn}
         childMemberships={childMemberships}
         onOpenThread={onOpenThread}
+        onOpenSubagentsPanel={onOpenSubagentsPanel}
       />
     );
   }
@@ -218,6 +221,7 @@ export function ThreadBlockRenderer({
         isLatestTurn={isLatestTurn}
         isStreamingTurn={isStreamingTurn}
         onOpenThread={onOpenThread}
+        onOpenSubagentsPanel={onOpenSubagentsPanel}
       />
     );
   }
@@ -312,6 +316,7 @@ export function ThreadBlockRenderer({
               onOpenTurnDiffFileInSidePanel={onOpenTurnDiffFileInSidePanel}
               onOpenSideChat={onOpenSideChat}
               onOpenThread={onOpenThread}
+              onOpenSubagentsPanel={onOpenSubagentsPanel}
               onOpenMcpAppSidePanel={onOpenMcpAppSidePanel}
               onOpenPlanInSidePanel={onOpenPlanInSidePanel}
               onClosePlanSidePanel={onClosePlanSidePanel}

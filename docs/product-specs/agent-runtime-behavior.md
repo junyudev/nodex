@@ -306,15 +306,33 @@ Agent fails the message explicitly; the chat never falls back to another Agent.
 
 ## Delegated work in the conversation
 
-Product surfaces call delegated children subagents. Each one appears in the parent Run that
-created it as one row: its title, the configured Agent label and model that run it, and its
-current status — running, waiting, stopping, stopped, cancelled, failed or done. A subagent a
-provider spawned itself takes the name the provider gives it, such as a Codex agent nickname. The row
-updates in place from the task's own item and metadata events; it never reads the child's
-history. An application-owned subagent can be opened; any live subagent can be stopped from
-its row. Stop shows Stopping immediately and keeps it until the subagent reports how it
-ended. A provider-native subagent is stopped through its owning parent Run. An
-application-owned subagent's own conversation ends with a Stopped marker.
+Product surfaces call delegated children subagents. Consecutive subagent items in the same
+parent Run form a compact activity row: stable avatars, readable names and current status.
+Messages and other raw items break groups, including hidden items; a group retains its first
+anchor and first-seen task order when metadata changes. A task appears once within its group.
+Up to three names appear; larger groups show the first two and an overflow count, with at
+most four avatars. Long names truncate, with their full wording available in details. The
+overflow opens the Subagents overview.
+
+Names, avatars and overview entries share the same task identity. Provider-supplied names
+and user titles retain their wording; a Codex-native agent path supplies a readable final
+segment while the full path stays in details. Names never change merely because a task's
+status changes. The row reports running, waiting, stopping, stopped, cancelled, failed or
+done, with a compact count summary when states differ. Failure and stopping remain visible
+without hover and are not presented as successful completion.
+
+Hovering or focusing a task reveals its full name, current status, available task description
+or progress, configured Agent/model and original agent path. The floating surface can be
+entered and dismissed without moving the transcript. Clicking an openable name goes directly
+to its child conversation. Tasks without a child conversation remain inspectable without
+offering a false navigation action. Openable tasks keep complete descriptions in their child
+conversation; tasks without one retain their complete descriptions in the details surface.
+
+Presentation updates in place from the task's own item and metadata events; neither grouping
+nor hover reads child history. Stop is available from the task's information surface when
+its owner permits it, shows Stopping immediately, and keeps that state until the subagent
+reports how it ended. A provider-native subagent is stopped through its owning parent Run.
+An application-owned subagent's own conversation ends with a Stopped marker.
 
 Input the user did not type names its sender: Sent by another agent links to the sending
 conversation, and messages Nodex sends itself say so. Steered and queued input carries a

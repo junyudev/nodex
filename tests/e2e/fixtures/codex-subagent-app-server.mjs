@@ -57,7 +57,7 @@ const activeDefinitions = [
   },
   {
     id: scenarioThreadId("000000000202"),
-    name: "Deep investigator",
+    name: process.env.NODEX_FAKE_SUBAGENT_SELECTED_NAME ?? "Deep investigator",
     preview: "Trace the selected-only hydration path",
     status: { type: "active", activeFlags: [] },
     parentThreadId: rootThreadId,

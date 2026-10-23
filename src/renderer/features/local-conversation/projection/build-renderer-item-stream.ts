@@ -4,6 +4,7 @@ import { buildCodexCanonicalRequestIdentityKey } from "../../../../shared/codex-
 import { resolveCodexFileChangeActivity } from "../../../../shared/codex-file-change-activity";
 import { normalizeMultiAgentActionPayload } from "../../../../shared/codex-transcript-special-items";
 import { stripCodexRemarkDirectiveLines } from "../../../../shared/codex-remark-directives";
+import { isDelegatedTaskLive } from "../delegated-task-presentation";
 import type { CodexTurnScopedConversationRequest } from "../conversation-request-helpers";
 import type {
   ThreadOpenSubagentStatus,
@@ -92,6 +93,10 @@ function resolveSearchableText(entry: CodexConversationItem): string {
     stringifyValue(entry.dynamicToolCall?.contentItems),
     entry.mcpToolCall?.pluginId ?? "",
     entry.mcpToolCall?.mcpAppResourceUri ?? "",
+    entry.delegatedTask?.title ?? "",
+    entry.delegatedTask?.agentPath ?? "",
+    entry.delegatedTask?.prompt ?? "",
+    entry.delegatedTask?.summary ?? "",
     stringifyValue(entry.fileChange),
     stringifyValue(entry.toolCall?.args),
     stringifyValue(entry.toolCall?.result),
@@ -182,6 +187,50 @@ interface SubagentActivityGroup {
 interface ProjectedTranscriptEntry {
   block: ThreadTranscriptBlockModel | null;
   subagentActivity: SubagentActivity | null;
+}
+
+/** Group only adjacent task occurrences; even a hidden raw item preserves the chronology boundary. */
+function groupDelegatedTasks(
+  entries: readonly ProjectedTranscriptEntry[],
+): ProjectedTranscriptEntry[] {
+  const groups: ProjectedTranscriptEntry[] = [];
+  for (const projected of entries) {
+    const block = projected.block;
+    const task = block?.type === "delegatedTask" ? block.entry.delegatedTask : undefined;
+    if (!block || !task) {
+      groups.push(projected);
+      continue;
+    }
+    const previous = groups.at(-1)?.block;
+    if (
+      previous?.type !== "delegatedTask" ||
+      !previous.entry.delegatedTask ||
+      previous.turnId !== block.turnId ||
+      previous.entry.threadId !== block.entry.threadId
+    ) {
+      groups.push(projected);
+      continue;
+    }
+
+    const members = new Map(
+      (previous.delegatedTaskEntries ?? [previous.entry]).map((entry) => [
+        entry.delegatedTask!.taskId,
+        entry,
+      ]),
+    );
+    members.set(task.taskId, block.entry);
+    const delegatedTaskEntries = [...members.values()];
+    groups[groups.length - 1] = {
+      subagentActivity: null,
+      block: {
+        ...previous,
+        updatedAt: Math.max(previous.updatedAt, block.updatedAt),
+        searchableText: delegatedTaskEntries.map(resolveSearchableText).join("\n"),
+        delegatedTaskEntries,
+      },
+    };
+  }
+  return groups;
 }
 
 function normalizeSubagentConversationId(agentThreadId: string): string {
@@ -682,11 +731,18 @@ export function buildRendererItemStreamProjection(
       };
     },
   );
-  const transcriptBlocks = resolveSubagentActivityGroups(projectedTranscriptEntries, input);
+  const transcriptBlocks = resolveSubagentActivityGroups(
+    groupDelegatedTasks(projectedTranscriptEntries),
+    input,
+  );
   // Raw lifecycle membership owns fallback exclusion even when its name is not renderable.
   const representedIds = new Set(
-    projectedTranscriptEntries.flatMap(({ subagentActivity }) =>
-      subagentActivity ? [subagentActivity.agentThreadId] : [],
+    projectedTranscriptEntries.flatMap(({ subagentActivity, block }) =>
+      subagentActivity
+        ? [subagentActivity.agentThreadId]
+        : block?.entry.delegatedTask?.childThreadId
+          ? [block.entry.delegatedTask.childThreadId]
+          : [],
     ),
   );
   const fallback = buildFallbackSubagentBlock(input, representedIds);
@@ -711,13 +767,22 @@ export function buildRendererItemStreamProjection(
       !visibleRecipients.has(block.entry.subagentActivity.agentThreadId),
   );
   const rows = groups.flatMap((group) => group.subagentActivityRows ?? []);
+  const tasks = new Map(
+    projectedTranscriptEntries.flatMap(({ block }) =>
+      block?.entry.delegatedTask
+        ? [[block.entry.delegatedTask.taskId, block.entry.delegatedTask] as const]
+        : [],
+    ),
+  );
   const requestBlocks = input.requests.map((request) => buildPendingRequestBlock(request));
 
   return {
     items: [...visibleBlocks, ...requestBlocks],
     subagentActivityState: {
-      hasActivity: rows.length > 0,
-      hasActiveActivity: rows.some((row) => row.status !== "done"),
+      hasActivity: rows.length > 0 || tasks.size > 0,
+      hasActiveActivity:
+        rows.some((row) => row.status !== "done") ||
+        [...tasks.values()].some((task) => isDelegatedTaskLive(task.status)),
     },
   };
 }

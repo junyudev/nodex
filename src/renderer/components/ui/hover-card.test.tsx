@@ -31,11 +31,13 @@ function HoverCardHarness({
   children,
   defaultOpen,
   disabled,
+  dismissOnReferencePress,
   onOpenChange,
 }: {
   children?: ReactNode;
   defaultOpen?: boolean;
   disabled?: boolean;
+  dismissOnReferencePress?: boolean;
   onOpenChange?: (open: boolean) => void;
 }) {
   return (
@@ -44,6 +46,7 @@ function HoverCardHarness({
         ariaLabel="Project details"
         defaultOpen={defaultOpen}
         disabled={disabled}
+        dismissOnReferencePress={dismissOnReferencePress}
         hoverCardContent={children ?? <button type="button">Open project</button>}
         onOpenChange={onOpenChange}
       >
@@ -92,6 +95,79 @@ describe("NodexHoverCard", () => {
     fireEvent.mouseEnter(reference, { clientX: 50, clientY: 15 });
     await advanceTimers(100);
 
+    expect(view.getByRole("dialog", { name: "Project details" })).not.toBeNull();
+  });
+
+  test("activating a reference cancels hover and requires a new pointer entry", async () => {
+    const view = render(<HoverCardHarness dismissOnReferencePress />);
+    const reference = view.getByRole("button", { name: "Project row" });
+
+    await act(async () => {
+      fireEvent.mouseEnter(reference);
+      await Promise.resolve();
+    });
+    await advanceTimers(350);
+    await act(async () => {
+      fireEvent.click(reference);
+      await Promise.resolve();
+    });
+    await advanceTimers(700);
+    expect(view.queryByRole("dialog", { name: "Project details" })).toBeNull();
+
+    await act(async () => {
+      fireEvent.mouseMove(reference);
+      await Promise.resolve();
+    });
+    await advanceTimers(700);
+    expect(view.queryByRole("dialog", { name: "Project details" })).toBeNull();
+
+    await act(async () => {
+      fireEvent.mouseLeave(reference);
+      fireEvent.mouseEnter(reference);
+      await Promise.resolve();
+    });
+    await advanceTimers(700);
+    expect(view.getByRole("dialog", { name: "Project details" })).not.toBeNull();
+
+    await act(async () => {
+      fireEvent.click(reference);
+      await Promise.resolve();
+    });
+    expect(view.queryByRole("dialog", { name: "Project details" })).toBeNull();
+    await act(async () => {
+      fireEvent.mouseMove(reference);
+      await Promise.resolve();
+    });
+    await advanceTimers(700);
+    expect(view.queryByRole("dialog", { name: "Project details" })).toBeNull();
+  });
+
+  test("an activated reference can reveal details again after keyboard focus leaves", async () => {
+    const view = render(
+      <>
+        <HoverCardHarness dismissOnReferencePress />
+        <button type="button">After card</button>
+      </>,
+    );
+    const reference = view.getByRole("button", { name: "Project row" });
+    await act(async () => {
+      reference.focus();
+      await Promise.resolve();
+    });
+    expect(view.getByRole("dialog", { name: "Project details" })).not.toBeNull();
+
+    await act(async () => {
+      fireEvent.click(reference);
+      await Promise.resolve();
+    });
+    await advanceTimers(700);
+    expect(view.queryByRole("dialog", { name: "Project details" })).toBeNull();
+
+    await act(async () => {
+      view.getByRole("button", { name: "After card" }).focus();
+      reference.focus();
+      await Promise.resolve();
+    });
     expect(view.getByRole("dialog", { name: "Project details" })).not.toBeNull();
   });
 

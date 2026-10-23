@@ -1272,3 +1272,36 @@ describe("buildTurnRenderModel", () => {
     ).toBe("none,handoff_1,patch_live");
   });
 });
+
+test("a working sibling keeps a delegated group active after its first task finishes", () => {
+  const items = (["completed", "running"] as const).map((status, index): CodexConversationItem => ({
+    threadId: "thread_1",
+    turnId: "turn_1",
+    itemId: `task-${index}`,
+    type: "delegatedTask",
+    kind: "systemEvent",
+    semanticKind: "delegatedTask",
+    status: status === "running" ? "inProgress" : "completed",
+    createdAt: index,
+    updatedAt: index,
+    delegatedTask: {
+      taskId: `task-${index}`,
+      ownerRunId: "turn_1",
+      childThreadId: `child-${index}`,
+      title: `Task ${index}`,
+      providerInstanceId: "codex",
+      status,
+      prompt: "Inspect the change",
+      summary: null,
+    },
+  }));
+  const model = buildTurnRenderModel({
+    turn: buildTurn({ items, itemIds: items.map((item) => item.itemId) }),
+    requests: [],
+    isLatestTurn: true,
+    isStreamingTurn: true,
+  });
+  expect(model.liveActivity.fallback.isVisible).toBe(false);
+  expect(model.defaultAgentBodyCollapsed).toBe(false);
+  expect(model.agentBodyUnits).toHaveLength(1);
+});

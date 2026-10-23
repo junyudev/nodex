@@ -60,6 +60,7 @@ interface LocalConversationTurnEntryProps {
   onOpenTurnDiffFileInSidePanel?: ThreadStageActions["onOpenTurnDiffFileInSidePanel"];
   onOpenSideChat?: ThreadStageActions["onOpenSideChat"];
   onOpenThread?: ThreadStageActions["onOpenThread"];
+  onOpenSubagentsPanel?: ThreadStageActions["onOpenSubagentsPanel"];
   onOpenSummaryScheduledAutomation?: ThreadStageActions["onOpenSummaryScheduledAutomation"];
   onOpenMcpAppSidePanel?: ThreadStageActions["onOpenMcpAppSidePanel"];
   onOpenPlanInSidePanel?: ThreadStageActions["onOpenPlanInSidePanel"];
@@ -89,6 +90,7 @@ function LocalConversationTurnEntryComponent({
   onOpenTurnDiffFileInSidePanel,
   onOpenSideChat,
   onOpenThread,
+  onOpenSubagentsPanel,
   onOpenSummaryScheduledAutomation,
   onOpenMcpAppSidePanel,
   onOpenPlanInSidePanel,
@@ -230,6 +232,7 @@ function LocalConversationTurnEntryComponent({
             onOpenTurnDiffFileInSidePanel={onOpenTurnDiffFileInSidePanel}
             onOpenSideChat={onOpenSideChat}
             onOpenThread={onOpenThread}
+            onOpenSubagentsPanel={onOpenSubagentsPanel}
             onOpenSummaryScheduledAutomation={onOpenSummaryScheduledAutomation}
             onOpenMcpAppSidePanel={onOpenMcpAppSidePanel}
             onOpenPlanInSidePanel={onOpenPlanInSidePanel}
@@ -290,6 +293,7 @@ function LocalConversationTurnEntrySurface(props: LocalConversationTurnEntryProp
         entry={entry}
         backgroundAgentRows={props.backgroundAgentRows}
         onOpenThread={props.onOpenThread}
+        onOpenSubagentsPanel={props.onOpenSubagentsPanel}
       />
     );
   }
@@ -339,6 +343,7 @@ export const LocalConversationTurnEntry = memo(
     left.onOpenTurnDiffFileInSidePanel === right.onOpenTurnDiffFileInSidePanel &&
     left.onOpenSideChat === right.onOpenSideChat &&
     left.onOpenThread === right.onOpenThread &&
+    left.onOpenSubagentsPanel === right.onOpenSubagentsPanel &&
     left.onOpenMcpAppSidePanel === right.onOpenMcpAppSidePanel &&
     left.onOpenPlanInSidePanel === right.onOpenPlanInSidePanel &&
     left.onClosePlanSidePanel === right.onClosePlanSidePanel &&

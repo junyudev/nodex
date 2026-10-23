@@ -11,6 +11,7 @@ import { resolveCodexPatchSuccess } from "../../../../shared/codex-file-change";
 import { isCodexWebSearchActivityInProgress } from "../../../../shared/codex-web-search";
 import { type ThreadClassifiableActivityItem } from "./agent-activity-v2";
 import { describeWebSearchAction } from "../web-search-display";
+import { isDelegatedTaskLive } from "../delegated-task-presentation";
 
 export type ThreadAgentActivityApprovalFailure = {
   id: string;
@@ -150,6 +151,10 @@ export function isThreadAgentActivityItemInProgress(
   const item = activityItem.item;
   if (!("entry" in item)) return item.status === "working";
   switch (item.type) {
+    case "delegatedTask":
+      return (item.delegatedTaskEntries ?? [item.entry]).some(
+        (entry) => entry.delegatedTask && isDelegatedTaskLive(entry.delegatedTask.status),
+      );
     case "exec":
       return (
         item.entry.executionStatus !== "interrupted" &&

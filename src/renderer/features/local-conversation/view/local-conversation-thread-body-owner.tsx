@@ -1405,6 +1405,7 @@ export function LocalConversationThreadBodyOwner({
                 onOpenTurnDiffFileInSidePanel={actions.onOpenTurnDiffFileInSidePanel}
                 onOpenSideChat={actions.onOpenSideChat}
                 onOpenThread={actions.onOpenThread}
+                onOpenSubagentsPanel={actions.onOpenSubagentsPanel}
                 onOpenSummaryScheduledAutomation={actions.onOpenSummaryScheduledAutomation}
                 onOpenMcpAppSidePanel={actions.onOpenMcpAppSidePanel}
                 onOpenPlanInSidePanel={actions.onOpenPlanInSidePanel}
