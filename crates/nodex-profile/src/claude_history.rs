@@ -50,13 +50,27 @@ fn history_file(root: &Path, path: &Path) -> Result<HistoryFile> {
     })
 }
 
+fn insert(
+    root: &Path,
+    path: &Path,
+    output: &mut BTreeMap<PathBuf, HistoryFile>,
+    max_files: usize,
+) -> Result<()> {
+    if output.len() >= max_files {
+        return Err(invalid("Claude history has too many files"));
+    }
+    output.insert(files::relative_path(root, path)?, history_file(root, path)?);
+    Ok(())
+}
+
 fn collect(
     root: &Path,
     directory: &Path,
     output: &mut BTreeMap<PathBuf, HistoryFile>,
+    max_files: usize,
     depth: usize,
 ) -> Result<()> {
-    if depth > 32 || output.len() >= 100_000 {
+    if depth > 32 {
         return Err(invalid("Claude history exceeds its filesystem bounds"));
     }
     files::require_directory(directory)?;
@@ -67,15 +81,37 @@ fn collect(
         }
         let path = entry.path();
         if entry.file_type()?.is_dir() {
-            collect(root, &path, output, depth + 1)?;
+            collect(root, &path, output, max_files, depth + 1)?;
             continue;
         }
-        output.insert(
-            files::relative_path(root, &path)?,
-            history_file(root, &path)?,
-        );
-        if output.len() > 100_000 {
-            return Err(invalid("Claude history has too many files"));
+        insert(root, &path, output, max_files)?;
+    }
+    Ok(())
+}
+
+fn collect_project(
+    root: &Path,
+    directory: &Path,
+    required: &BTreeSet<String>,
+    output: &mut BTreeMap<PathBuf, HistoryFile>,
+    max_files: usize,
+) -> Result<()> {
+    files::require_directory(directory)?;
+    for entry in fs::read_dir(directory)? {
+        let entry = entry?;
+        let name = entry.file_name();
+        let Some(name) = name.to_str() else {
+            continue;
+        };
+        if required.contains(name) {
+            collect(root, &entry.path(), output, max_files, 0)?;
+            continue;
+        }
+        if name
+            .strip_suffix(".jsonl")
+            .is_some_and(|id| required.contains(id))
+        {
+            insert(root, &entry.path(), output, max_files)?;
         }
     }
     Ok(())
@@ -101,13 +137,21 @@ pub(crate) fn inventory(
     root: &Path,
     required: &BTreeSet<String>,
 ) -> Result<BTreeMap<PathBuf, HistoryFile>> {
+    inventory_with_file_limit(root, required, 100_000)
+}
+
+fn inventory_with_file_limit(
+    root: &Path,
+    required: &BTreeSet<String>,
+    max_files: usize,
+) -> Result<BTreeMap<PathBuf, HistoryFile>> {
     let mut output = BTreeMap::new();
     for id in required {
         session_component(id)?;
         let directory = root.join("file-history").join(id);
         if files::exists(&directory)? {
             files::require_directory(&root.join("file-history"))?;
-            collect(root, &directory, &mut output, 0)?;
+            collect(root, &directory, &mut output, max_files, 0)?;
         }
     }
     let projects = root.join("projects");
@@ -123,19 +167,7 @@ pub(crate) fn inventory(
         if !project.file_type()?.is_dir() {
             continue;
         }
-        for id in required {
-            let transcript = project.path().join(format!("{id}.jsonl"));
-            if files::exists(&transcript)? {
-                output.insert(
-                    files::relative_path(root, &transcript)?,
-                    history_file(root, &transcript)?,
-                );
-            }
-            let directory = project.path().join(id);
-            if files::exists(&directory)? {
-                collect(root, &directory, &mut output, 0)?;
-            }
-        }
+        collect_project(root, &project.path(), required, &mut output, max_files)?;
     }
     Ok(output)
 }
@@ -225,5 +257,50 @@ mod tests {
         for id in ["", ".", "..", "../other", "/outside", "first/second"] {
             assert!(inventory(home.path(), &BTreeSet::from([id.into()])).is_err());
         }
+    }
+
+    #[test]
+    fn bounds_top_level_transcripts_across_projects() {
+        let home = tempfile::tempdir().unwrap();
+        for project in ["first", "second", "third"] {
+            files::create_file(
+                &home
+                    .path()
+                    .join(format!("projects/{project}/selected.jsonl")),
+            )
+            .unwrap();
+        }
+        let required = BTreeSet::from(["selected".into()]);
+        assert_eq!(
+            inventory_with_file_limit(home.path(), &required, 3)
+                .unwrap()
+                .len(),
+            3
+        );
+        assert!(inventory_with_file_limit(home.path(), &required, 2).is_err());
+    }
+
+    #[test]
+    fn shares_one_file_bound_across_transcripts_delegated_history_and_checkpoints() {
+        let home = tempfile::tempdir().unwrap();
+        for relative in [
+            "projects/project/selected.jsonl",
+            "projects/project/selected/subagents/agent-child.jsonl",
+            "file-history/selected/abc@v1",
+            "projects/project/unrelated.jsonl",
+            "projects/project/unrelated/subagents/agent-other.jsonl",
+            "file-history/unrelated/abc@v1",
+        ] {
+            files::create_file(&home.path().join(relative)).unwrap();
+        }
+        files::private_directory(&home.path().join("projects/project/selected/empty")).unwrap();
+        let required = BTreeSet::from(["selected".into()]);
+        assert_eq!(
+            inventory_with_file_limit(home.path(), &required, 3)
+                .unwrap()
+                .len(),
+            3
+        );
+        assert!(inventory_with_file_limit(home.path(), &required, 2).is_err());
     }
 }
