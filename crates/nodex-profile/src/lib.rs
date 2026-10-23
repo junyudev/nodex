@@ -1,6 +1,7 @@
 //! Profile provisioning composes persistence owners before publishing a new home.
 #![forbid(unsafe_code)]
 
+mod claude_history;
 mod codex;
 mod control;
 mod execution;

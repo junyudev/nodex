@@ -24,6 +24,12 @@ catalog must remain unchanged through capture. Missing provider configuration
 fails the backup rather than guessing an account directory. Profiles predating
 that catalog retain their verified active Codex home behavior.
 
+Claude fork aliases may select the same named delegated transcript within the
+authorized native history tree. Capture verifies the resolved regular file and
+its stable inventory, then materializes independent regular files in the backup.
+Aliases to another account, credentials, directories or other file types are
+rejected; other Profile files retain their ordinary no-symlink policy.
+
 Codex and Claude keep their native continuation IDs. Restored history lives in
 the Profile's managed history closure, while authentication comes from the
 configured account. ACP/OpenCode canonical transcripts are preserved, but their

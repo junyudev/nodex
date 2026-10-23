@@ -12,7 +12,7 @@ use sha2::{Digest, Sha256};
 
 use crate::control::{ExecutionSnapshot, NativeHistorySource, SnapshotLease};
 use crate::files::{self, invalid};
-use crate::{ProfileCloneError, Result, codex, execution};
+use crate::{ProfileCloneError, Result, claude_history, codex, execution};
 
 pub struct ExecutionProfileSnapshotParticipant;
 
@@ -82,6 +82,12 @@ fn estimate(
         if !seen.insert((native.driver.clone(), path.clone())) {
             continue;
         }
+        if native.driver == "claudeAgent" {
+            for file in claude_history::inventory(Path::new(path))?.values() {
+                total = total.saturating_add(file.fingerprint.length());
+            }
+            continue;
+        }
         let (directories, names): (&[&str], &[&str]) = match native.driver.as_str() {
             "codex" => (
                 &["sessions", "archived_sessions", "attachments"],
@@ -92,7 +98,6 @@ fn estimate(
                     "goals_1.sqlite",
                 ],
             ),
-            "claudeAgent" => (&["projects", "file-history"], &[]),
             _ => continue,
         };
         for fingerprint in files::inventory(Path::new(path), directories, names)?.values() {
@@ -497,9 +502,9 @@ fn capture_claude(source: &Path, destination: &Path, required: &BTreeSet<String>
         return Ok(());
     }
     files::require_directory(source)?;
-    let before = files::inventory(source, &["projects", "file-history"], &[])?;
+    let before = claude_history::inventory(source)?;
     let mut found = BTreeSet::new();
-    for relative in before.keys() {
+    for (relative, file) in &before {
         // Projects contain native transcripts and delegated transcript trees, not account files.
         let subagent_metadata = relative
             .components()
@@ -516,23 +521,23 @@ fn capture_claude(source: &Path, destination: &Path, required: &BTreeSet<String>
         {
             continue;
         }
-        let source_path = source.join(relative);
+        let source_path = &file.path;
         if let Some(id) = relative
             .file_stem()
             .and_then(|stem| stem.to_str())
             .filter(|id| required.contains(*id))
         {
-            validate_claude_session(&source_path, id)?;
+            validate_claude_session(source_path, id)?;
             found.insert(id.to_owned());
         }
-        files::copy_file(&source_path, &destination.join(relative))?;
+        files::copy_file(source_path, &destination.join(relative))?;
     }
     if !required.is_subset(&found) {
         return Err(invalid(
             "Claude native transcripts are incomplete for captured Sessions",
         ));
     }
-    if before != files::inventory(source, &["projects", "file-history"], &[])? {
+    if before != claude_history::inventory(source)? {
         return Err(invalid("Claude native history changed during capture"));
     }
     Ok(())
@@ -820,6 +825,41 @@ mod tests {
                     .exists()
             );
         }
+    }
+
+    #[test]
+    fn materializes_claude_fork_transcript_aliases_as_independent_files() {
+        use std::os::unix::fs::symlink;
+        let source = tempfile::tempdir().unwrap();
+        let staged = tempfile::tempdir().unwrap();
+        let input = fixture(source.path());
+        let claude = source.path().join("private-claude-account");
+        let target = claude.join(format!(
+            "projects/workspace/{CLAUDE_ID}/subagents/agent-child.jsonl"
+        ));
+        let relative = Path::new("projects/workspace/fork/subagents/agent-child.jsonl");
+        let alias = claude.join(relative);
+        files::private_directory(alias.parent().unwrap()).unwrap();
+        symlink(&target, &alias).unwrap();
+        assert!(
+            capture(ProfileSnapshotCapture {
+                source_profile: source.path(),
+                staging_profile: staged.path(),
+                target_profile: source.path(),
+                source: Some(&input),
+                required: &required()
+            })
+            .unwrap()
+        );
+        let home = staged
+            .path()
+            .join("agent-runtime/native-history")
+            .join(hex::encode(Sha256::digest(b"claude-work")));
+        let copied = home.join(relative);
+        assert!(fs::symlink_metadata(&copied).unwrap().is_file());
+        assert_eq!(fs::read(&copied).unwrap(), fs::read(&target).unwrap());
+        fs::remove_file(&target).unwrap();
+        assert!(!fs::read(copied).unwrap().is_empty());
     }
 
     #[test]
