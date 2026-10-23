@@ -1,0 +1,29 @@
+crates/nodex-profile/src/snapshot.rs
+  s_82957c2d2298ff::t_f1b70667b7ed6a 15,85-90,505,507,524,530,533,540
+  s_82957c2d2298ff::t_b1ae4ae8219a8e 830-854,857-859
+  s_82957c2d2298ff::t_827f8fe34c71da 855-856,860-864
+crates/nodex-profile/src/claude_history.rs
+  s_82957c2d2298ff::t_f1b70667b7ed6a 1-101,116
+  s_82957c2d2298ff::t_b1ae4ae8219a8e 102-115
+  s_82957c2d2298ff::t_dadfb126a07f9c 117-147
+docs/reliability/backup-restore-and-maintenance.md
+  s_82957c2d2298ff::t_b1ae4ae8219a8e 27-32
+crates/nodex-profile/src/lib.rs
+  s_82957c2d2298ff::t_92ed2f108829b6 4
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "52f45aa8448f46ad2090c86a591aa142acbbc189",
+  "prompts": {},
+  "sessions": {
+    "s_82957c2d2298ff": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a16890-25de-78c3-9415-c0f67a5213d3",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
