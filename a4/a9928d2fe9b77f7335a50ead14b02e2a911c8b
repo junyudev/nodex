@@ -1,0 +1,48 @@
+src/renderer/features/local-conversation/agent-runtime-conversation-adapter.test.tsx
+  s_f022232fe11d71::t_88fe4b89c43a8b 798-801,806-808,822-825
+  s_f022232fe11d71::t_b20670d8742cc9 652-797,802-805,809-821,826-853
+src/renderer/lib/codex-service-tier-settings.node.test.ts
+  s_f022232fe11d71::t_aafe03a47265d6 70-74
+  s_f022232fe11d71::t_d8e63748b5e8c0 75
+docs/product-specs/codex-thread-transcript-behavior.md
+  s_f022232fe11d71::t_c06dc053a7c262 680
+src/renderer/features/local-conversation/view/composer/composer-intelligence-selection.test.ts
+  s_f022232fe11d71::t_92c3b8b1b3924e 89,96
+  s_f022232fe11d71::t_88fe4b89c43a8b 80-88,90-95
+  s_f022232fe11d71::t_b20670d8742cc9 50-79
+packages/agent-runtime/src/orchestration-v2/Adapters/CodexAdapterV2.test.ts
+  s_f022232fe11d71::t_2bd5c8b5d7154e 540-566
+src/renderer/features/local-conversation/local-conversation-store.ts
+  s_f022232fe11d71::t_aafe03a47265d6 9919,9994,10114
+src/renderer/features/local-conversation/local-conversation-store.test.tsx
+  s_f022232fe11d71::t_69bb022e943d46 2738
+  s_f022232fe11d71::t_ad865d137a010a 2709,2765
+  s_f022232fe11d71::t_88fe4b89c43a8b 2700-2708,2710-2713,2721-2737,2739-2764
+  s_f022232fe11d71::t_c8a0b4c82c3a64 2714-2720
+src/renderer/features/local-conversation/view/composer/composer-intelligence-selection.ts
+  s_f022232fe11d71::t_db7a6e0e38153d 11-19,21,24
+src/renderer/lib/codex-service-tier-settings.ts
+  s_f022232fe11d71::t_aafe03a47265d6 56-58,60
+src/renderer/features/local-conversation/agent-runtime-conversation-adapter.ts
+  s_f022232fe11d71::t_92c3b8b1b3924e 1393,1395-1401
+docs/product-specs/agent-runtime-behavior.md
+  s_f022232fe11d71::t_aafe03a47265d6 276-279
+  s_f022232fe11d71::t_ad865d137a010a 273-274
+  s_f022232fe11d71::t_881958afbc7ef4 275
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "a4a9928d2fe9b77f7335a50ead14b02e2a911c8b",
+  "prompts": {},
+  "sessions": {
+    "s_f022232fe11d71": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a16942-97ae-7100-9977-c207f09b1bdb",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
