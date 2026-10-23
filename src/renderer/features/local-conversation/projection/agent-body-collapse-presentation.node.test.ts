@@ -62,7 +62,7 @@ describe("agent body collapse presentation", () => {
     expect(projectAgentBodyCollapsePresentation([]).canCollapse).toBe(false);
   });
 
-  test("keeps only steering and hook-feedback user messages persistent", () => {
+  test("keeps complete user messages persistent regardless of delivery path", () => {
     const exec = buildEntryUnit("exec", "exec");
     const ordinaryUserMessage = buildEntryUnit("ordinary-user", "userMessage");
     const steeringMessage = buildEntryUnit("steering", "userMessage", {
@@ -71,15 +71,28 @@ describe("agent body collapse presentation", () => {
     const hookFeedbackMessage = buildEntryUnit("hook-feedback", "userMessage", {
       hookFeedback: true,
     });
-    const units = [exec, steeringMessage, ordinaryUserMessage, hookFeedbackMessage];
+    const runtimeSteer = buildEntryUnit("runtime-steer", "userMessage", {
+      userInputIntent: "steer",
+    });
+    const promotedSteer = buildEntryUnit("promoted-steer", "userMessage", {
+      userInputIntent: "promotedToSteer",
+    });
+    const messages = [
+      steeringMessage,
+      ordinaryUserMessage,
+      hookFeedbackMessage,
+      runtimeSteer,
+      promotedSteer,
+    ];
+    const units = [exec, ...messages];
 
     const presentation = projectAgentBodyCollapsePresentation(units);
 
     expect(presentation.expandedUnits).toBe(units);
-    expect(presentation.collapsibleUnits).toEqual([exec, ordinaryUserMessage]);
-    expect(presentation.persistentUnits).toEqual([steeringMessage, hookFeedbackMessage]);
+    expect(presentation.collapsibleUnits).toEqual([exec]);
+    expect(presentation.persistentUnits).toEqual(messages);
     expect(presentation.workedForItem).toBeNull();
-    expect(countAgentBodyUnits(presentation.collapsibleUnits)).toBe(2);
+    expect(countAgentBodyUnits(presentation.collapsibleUnits)).toBe(1);
   });
 
   test("extracts worked time as the sole collapse label source", () => {

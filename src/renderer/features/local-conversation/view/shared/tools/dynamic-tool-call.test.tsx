@@ -1,12 +1,17 @@
 import { describe, expect, test, vi } from "vite-plus/test";
 import { act, fireEvent } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import type { ReactElement } from "react";
+import { useEffect, useState, type ReactElement } from "react";
 import type { CodexTranscriptEntry } from "../../../../../lib/types";
 import { render, textContent } from "../../../../../test/dom";
 import { DynamicToolCall, DynamicToolCallSummary } from "./dynamic-tool-call";
 import type { CodexAppHandoffOperation } from "../../../../../../shared/codex-thread-handoff";
 import { buildThreadHandoffOperation } from "../../../../../test/thread-handoff-fixture";
+import { NodexTooltipProvider as TooltipProvider } from "../../../../../components/ui/tooltip";
+import {
+  ConversationRuntimeContext,
+  type ConversationRuntime,
+} from "../../../conversation-runtime";
 
 import {
   createThreadHandoffStore,
@@ -120,6 +125,81 @@ async function renderHandoff(
 }
 
 describe("DynamicToolCall", () => {
+  test("hydrated output replaces a failed detail read in an open activity", async () => {
+    const runtime = {
+      readItemDetail: async () => {
+        throw new Error("Read failed");
+      },
+    } as unknown as ConversationRuntime;
+    let hydrate: () => void = () => undefined;
+    function Harness() {
+      const [outputOmitted, setOutputOmitted] = useState(true);
+      useEffect(() => {
+        hydrate = () => setOutputOmitted(false);
+      }, []);
+      return (
+        <TooltipProvider>
+          <ConversationRuntimeContext.Provider value={runtime}>
+            <DynamicToolCall
+              item={buildDynamicEntry({
+                namespace: "node_repl",
+                tool: "js",
+                arguments: { title: "Inspect package metadata", code: "console.log('ready')" },
+                outputOmitted,
+                contentItems: outputOmitted ? null : [{ type: "inputText", text: "ready" }],
+              })}
+            />
+          </ConversationRuntimeContext.Provider>
+        </TooltipProvider>
+      );
+    }
+    const view = renderWithQueryClient(<Harness />);
+    await act(async () => {
+      fireEvent.click(view.getByRole("button", { name: "Inspect package metadata" }));
+      await Promise.resolve();
+    });
+    expect((await view.findByRole("alert")).textContent).toBe("Unable to load tool output");
+    await act(async () => {
+      hydrate();
+      await Promise.resolve();
+    });
+    expect(view.queryByRole("alert")).toBeNull();
+    expect(view.getByText("ready")).toBeTruthy();
+  });
+
+  test("script activities keep their title and reveal code and typed media only when opened", async () => {
+    const imageUrl = "data:image/png;base64,aW1hZ2U=";
+    const audioUrl = "data:audio/wav;base64,YXVkaW8=";
+    const view = renderWithQueryClient(
+      <TooltipProvider>
+        <DynamicToolCall
+          item={buildDynamicEntry({
+            namespace: "node_repl",
+            tool: "js",
+            arguments: { title: "  Inspect\n package metadata ", code: "console.log('ready')" },
+            contentItems: [
+              { type: "inputText", text: "ready" },
+              { type: "inputImage", imageUrl },
+              { type: "inputAudio", audioUrl },
+            ],
+          })}
+        />
+      </TooltipProvider>,
+    );
+    const toggle = view.getByRole("button", { name: "Inspect package metadata" });
+    expect(toggle.getAttribute("aria-expanded")).toBe("false");
+    expect(view.queryByRole("img", { name: "Tool output" })).toBeNull();
+    await act(async () => {
+      fireEvent.click(toggle);
+      await Promise.resolve();
+    });
+    expect(view.getByText("console.log('ready')")).toBeTruthy();
+    expect(view.getByText("ready")).toBeTruthy();
+    expect(view.getByRole("img", { name: "Tool output" }).getAttribute("src")).toBe(imageUrl);
+    expect(view.container.querySelector("audio")?.getAttribute("src")).toBe(audioUrl);
+    expect(view.getByRole("button", { name: "Show raw tool call output" })).toBeTruthy();
+  });
+
   test("renders navigable Codex app thread rows through the registry renderer", async () => {
     const openedThreads: string[] = [];
     const { getByRole } = render(

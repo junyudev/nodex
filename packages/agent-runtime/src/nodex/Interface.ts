@@ -449,7 +449,7 @@ export interface AgentRuntimeOperations {
       readonly itemId: string;
       readonly attachmentId: string;
     };
-    readonly output: { readonly path: string } | null;
+    readonly output: { readonly path: string } | { readonly dataUrl: string } | null;
   };
   readonly "thread.item.full": {
     readonly input: {

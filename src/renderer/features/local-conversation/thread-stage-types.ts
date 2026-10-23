@@ -27,7 +27,6 @@ import type {
   CodexConversationCapabilityFlags,
   CodexConversationChildMembership,
   CodexConversationItem,
-  CodexUserAttachment,
   CodexConversationLiveRequest,
   CodexConversationResumeState,
   CodexConversationServerRequest,
@@ -748,16 +747,6 @@ export interface ThreadTranscriptBlockModel extends ThreadRenderKeyedBlockFields
   delegatedTaskEntries?: readonly CodexConversationItem[];
 }
 
-export interface ThreadUserAttachmentStripBlockModel extends ThreadRenderKeyedBlockFields {
-  id: string;
-  turnId: string | null;
-  createdAt: number;
-  updatedAt: number;
-  searchableText: string;
-  type: "userAttachmentStrip";
-  attachments: CodexUserAttachment[];
-}
-
 export interface ThreadGeneratedImageGalleryItemModel {
   id: string;
   previewSrc?: string;
@@ -935,7 +924,6 @@ export type ThreadBlockModel =
   | ThreadTranscriptBlockModel
   | ThreadAssistantActionsBlockModel
   | ThreadGeneratedImageGalleryBlockModel
-  | ThreadUserAttachmentStripBlockModel
   | ThreadWorkedForBlockModel
   | ThreadAgentActivityGroupBlockModel;
 

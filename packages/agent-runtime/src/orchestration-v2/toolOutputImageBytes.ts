@@ -127,9 +127,21 @@ function strip(
 export function stripUnservedToolOutputImageBytes(
   item: OrchestrationV2TurnItem,
 ): OrchestrationV2TurnItem {
-  if (item.type !== "dynamic_tool" || typeof item.output !== "object" || item.output === null) {
+  if (item.type !== "dynamic_tool") {
     return item;
   }
   const output = strip(item.output, undefined, { output: item.output, served: undefined }, 0);
-  return output === item.output ? item : { ...item, output };
+  const result = item.mcpToolCall?.result;
+  const strippedResult =
+    result == null
+      ? result
+      : (strip(result, undefined, { output: result, served: undefined }, 0) as typeof result);
+  if (output === item.output && strippedResult === result) return item;
+  return {
+    ...item,
+    ...(output === item.output ? {} : { output }),
+    ...(item.mcpToolCall === undefined || strippedResult === undefined
+      ? {}
+      : { mcpToolCall: { ...item.mcpToolCall, result: strippedResult } }),
+  };
 }

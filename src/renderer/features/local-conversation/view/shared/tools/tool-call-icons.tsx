@@ -3,6 +3,7 @@ import { Sparkles } from "@/components/shared/icons/generic-icons";
 import { cloneElement, useEffect, useState, type ReactElement, type ReactNode } from "react";
 import type {
   CodexCommandAction,
+  CodexDynamicToolCallView,
   CodexMcpServerElicitationRequest,
   CodexTranscriptEntry,
   ProtocolAppInfo,
@@ -348,7 +349,7 @@ export function resolveMcpSourceIcon(
       ? "browser-use"
       : source.key === "computer-use" || source.key.startsWith("native-app:")
         ? "computer-use"
-        : source.key === "server:node_repl"
+        : source.key === "server:node_repl" || source.key === "server:cua_repl"
           ? "node-repl"
           : "connector";
   if (source.logoUrl || source.logoUrlDark) {
@@ -361,6 +362,13 @@ export function resolveMcpSourceIcon(
     };
   }
   return semanticToolIcon(fallbackIcon);
+}
+
+export function resolveDynamicToolFallbackIcon(
+  call: CodexDynamicToolCallView,
+): ToolActivityIconDescriptor {
+  if (call.tool === "js") return semanticToolIcon("node-repl");
+  return semanticToolIcon(call.namespace === "codex_app" ? "app" : "plugin");
 }
 
 export function resolveMcpElicitationIcon(
@@ -450,8 +458,7 @@ export function resolveToolActivityEntryIcon(
       return semanticToolIcon("settings");
     }
     if (registryEntry?.rendererKind === "chromeTabContext") return resolveWebSearchIcon();
-    if (call.namespace === "codex_app") return semanticToolIcon("app");
-    return semanticToolIcon("plugin");
+    return resolveDynamicToolFallbackIcon(call);
   }
   return null;
 }

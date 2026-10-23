@@ -472,7 +472,8 @@ describe("Agent Runtime stage commands", () => {
   it("sends prepared follow-ups and steering to the explicit descendant within its Session", async () => {
     const f = fixture();
     await f.actions.onSendPrompt!("next");
-    await f.actions.onSteerPrompt!({ prompt: "adjust" });
+    const images = [{ source: "data:image/png;base64,aW1hZ2U=", caption: "diagram.png" }];
+    await f.actions.onSteerPrompt!({ prompt: "adjust", promptInput: { text: "adjust", images } });
     expect(f.message.mock.calls[0]![0]).toMatchObject({
       ...f.target,
       message: { text: "Prepared next" },
@@ -480,7 +481,7 @@ describe("Agent Runtime stage commands", () => {
     expect(f.message.mock.calls[1]![0]).toMatchObject({
       ...f.target,
       intent: "steer",
-      message: { text: "Prepared adjust" },
+      message: { text: "Prepared adjust", images },
     });
     expect(f.message.mock.calls[0]![0].message.messageId).not.toBe(
       f.message.mock.calls[1]![0].message.messageId,

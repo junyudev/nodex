@@ -22,7 +22,6 @@ import {
   GoalTargetIcon,
   HooksIcon,
   QueuePendingInfoIcon,
-  QueueSteerIcon,
 } from "@/components/shared/icons";
 import { MarkdownRenderer } from "../shared/markdown/markdown-renderer";
 import { CodexTranscriptTurnEntityContext } from "../../normalized-transcript-hooks";
@@ -780,11 +779,6 @@ export function SubagentActivityInlineRows({
   );
 }
 
-export function ThreadUserAttachmentStripBlock({ block }: ThreadSpecialBlockProps) {
-  if (block.type !== "userAttachmentStrip") return null;
-  return <UserAttachmentStrip attachments={block.attachments} />;
-}
-
 /**
  * Rewrites a sent message in place of its bubble. Sending rewinds the conversation to just
  * before this message and continues from the rewritten one; keys follow the Composer.
@@ -888,16 +882,7 @@ function UserMessageEditForm({
   );
 }
 
-const USER_INPUT_INTENT_LABEL = {
-  queued: { label: "Queued", tooltip: "Queued behind the active turn" },
-  steer: { label: "Steer", tooltip: "Steered the active turn" },
-  promotedToSteer: {
-    label: "Steer",
-    tooltip: "Originally queued, then promoted to steer the active turn",
-  },
-} as const;
-
-/** Who sent input the user did not type, and how it entered execution. */
+/** Attribute messages sent by another source and input delivered from the queue. */
 function UserMessageDeliveryMarkers({
   entry,
   onOpenThread,
@@ -906,8 +891,8 @@ function UserMessageDeliveryMarkers({
   onOpenThread?: ThreadLeafBlockProps["onOpenThread"];
 }) {
   const origin = entry.userMessageOrigin;
-  const intent = entry.userInputIntent ? USER_INPUT_INTENT_LABEL[entry.userInputIntent] : null;
-  if (!origin && !intent) return null;
+  const queued = entry.userInputIntent === "queued";
+  if (!origin && !queued) return null;
   const senderThreadId = origin?.kind === "agent" ? origin.senderThreadId : null;
   const originLabel =
     origin?.kind === "agent"
@@ -937,12 +922,9 @@ function UserMessageDeliveryMarkers({
           <span>{originLabel}</span>
         )
       ) : null}
-      {intent ? (
-        <NodexTooltip tooltipContent={intent.tooltip}>
-          <span className="inline-flex items-center gap-1">
-            {entry.userInputIntent === "queued" ? null : <QueueSteerIcon className="icon-2xs" />}
-            {intent.label}
-          </span>
+      {queued ? (
+        <NodexTooltip tooltipContent="Queued behind the active turn">
+          <span>Queued</span>
         </NodexTooltip>
       ) : null}
     </div>
@@ -1008,7 +990,7 @@ export function UserMessageBubble({
     },
     [block.entry.threadId, block.turnId, onEditUserTurn, setEditDraft],
   );
-  const messageBubble = (
+  const messageBubble = hasMessageContent ? (
     <div
       data-user-message-bubble="true"
       data-client-user-message-id={
@@ -1034,7 +1016,7 @@ export function UserMessageBubble({
         <MessageText text={content} cwd={threadCwd} projectWorkspacePath={projectWorkspacePath} />
       )}
     </div>
-  );
+  ) : null;
 
   return (
     <div
@@ -1045,6 +1027,7 @@ export function UserMessageBubble({
       )}
       data-content-search-unit-key={block.searchUnitKey}
     >
+      <UserAttachmentStrip attachments={block.entry.userAttachments ?? []} />
       <div className="group flex w-full flex-col items-end justify-end gap-1">
         <UserMessageDeliveryMarkers entry={block.entry} onOpenThread={onOpenThread} />
         {isEditing ? (

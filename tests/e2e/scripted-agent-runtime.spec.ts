@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 import {
   AGENT_RUNTIME_CODEX_THREAD_SOURCE,
   type AgentSubagentOverview,
@@ -549,12 +549,185 @@ test("edits an earlier message and continues from it without the later Turns", a
   );
 });
 
-test("opens a loopback page through the real in-app Browser runtime", async () => {
+test("keeps a pasted image visible when steering a running Turn and after restart", async ({}, testInfo) => {
+  test.setTimeout(150_000);
+  const token = randomUUID();
+  const prompt = `Start reviewing the note ${token}`;
+  const steer = `Use this swatch for the note ${token}`;
+  const final = `Swatch received ${token}`;
+  let releaseInitialResponse = () => {};
+  const initialResponse = new Promise<void>((resolve) => {
+    releaseInitialResponse = resolve;
+  });
+  let releaseSteeredResponse = () => {};
+  const steeredResponse = new Promise<void>((resolve) => {
+    releaseSteeredResponse = resolve;
+  });
+  const expectImage = async (page: Page) => {
+    const image = page.locator("[data-thread-turn-id]").getByRole("img");
+    await expect(image).toHaveCount(1);
+    await expect(image).toBeVisible();
+    await expect
+      .poll(() => image.evaluate((element: HTMLImageElement) => element.naturalWidth))
+      .toBeGreaterThan(0);
+  };
+
+  await withScriptedModelServer(
+    {
+      exchanges: [
+        {
+          name: "hold the initial generation while the user steers",
+          match: (request) =>
+            request.isThreadSource(AGENT_RUNTIME_CODEX_THREAD_SOURCE) &&
+            request.hasUserInputText(prompt) &&
+            !request.hasUserInputText(steer),
+          respond: async () => {
+            await initialResponse;
+            return responses.stream([
+              responses.created(`response_initial_${token}`),
+              responses.assistantMessage(
+                `message_initial_${token}`,
+                "Reviewing the note.",
+                "commentary",
+              ),
+              responses.completed(`response_initial_${token}`, true),
+            ]);
+          },
+        },
+        {
+          name: "receive the steering message and its image in the same Run",
+          match: (request) =>
+            request.isThreadSource(AGENT_RUNTIME_CODEX_THREAD_SOURCE) &&
+            request.hasUserInputText(steer),
+          respond: async (request) => {
+            expect(hasInputImage(request)).toBe(true);
+            await steeredResponse;
+            return responses.stream([
+              responses.created(`response_steer_${token}`),
+              responses.assistantMessage(`message_steer_${token}`, final, "final_answer"),
+              responses.completed(`response_steer_${token}`, true),
+            ]);
+          },
+        },
+        ...standardCodexBackgroundExchanges(),
+      ],
+    },
+    async (modelServer) => {
+      const harness = await ElectronScenarioHarness.create({
+        label: "scripted-agent-steer-image",
+        cwd: repositoryRoot,
+        prepareAgentRuntime: false,
+        retention: process.env.NODEX_KEEP_SCENARIO_PROFILES === "1" ? "keep" : "dispose",
+        environment: {
+          ...modelServer.loopbackEnvironment(),
+          NODEX_LOG_CONSOLE: "0",
+          NODEX_LOG_FILE: "1",
+          OPENAI_API_KEY: "nodex-scripted-model-test-key",
+        },
+      });
+      fs.writeFileSync(
+        path.join(harness.profile.codexHome, "config.toml"),
+        scriptedCodexConfig(modelServer.baseUrl),
+        { encoding: "utf8", mode: 0o600 },
+      );
+      try {
+        const page = await harness.launch();
+        await setAgentExecutionProfile(page, { preferredModelId: "gpt-5.5" });
+        const draft = await createAgentSmokeDraft(
+          page,
+          harness.profile.initialProjectsDirectory,
+          "Steering with an image",
+        );
+        const threadId = await sendAgentPrompt(page, draft.projectSessionId, prompt);
+        const target = { sessionId: draft.projectSessionId, threadId };
+        await modelServer.waitForRequest(
+          (request) =>
+            request.isThreadSource(AGENT_RUNTIME_CODEX_THREAD_SOURCE) &&
+            request.hasUserInputText(prompt),
+        );
+        await expect
+          .poll(
+            async () =>
+              (await readRuntimeConversation(page, target)).snapshot.projection.runs.at(-1)?.status,
+          )
+          .toBe("running");
+        const composer = page
+          .locator('[data-codex-composer="true"][aria-label="Ask for follow-up changes"]')
+          .first();
+        await composer.fill(steer);
+        await composer.evaluate((element, base64) => {
+          const bytes = Uint8Array.from(atob(base64), (character) => character.charCodeAt(0));
+          const clipboardData = new DataTransfer();
+          clipboardData.items.add(new File([bytes], "swatch.png", { type: "image/png" }));
+          element.dispatchEvent(
+            new ClipboardEvent("paste", { clipboardData, bubbles: true, cancelable: true }),
+          );
+        }, swatchPngBase64());
+        await expect(page.getByRole("img", { name: "User attachment" })).toHaveCount(1);
+        if (await page.getByRole("button", { name: "Queue follow-up" }).isVisible()) {
+          await composer.press("ControlOrMeta+Enter");
+        } else {
+          await page.getByRole("button", { name: "Steer follow-up" }).click();
+        }
+        // A click starts asynchronous image preparation. Wait for admission before
+        // releasing the initial response, or it could finish and start a second Run.
+        await expect(composer).toHaveText("", { timeout: 20_000 });
+        const bubble = page.locator("[data-user-message-bubble='true']", { hasText: steer });
+        await expect(bubble).toBeVisible();
+        await expectImage(page);
+        const admitted = await readRuntimeConversation(page, target);
+        expect(admitted.snapshot.projection.runs).toHaveLength(1);
+        expect(admitted.snapshot.projection.runs[0]?.status).toBe("running");
+        releaseInitialResponse();
+        await modelServer.waitForRequest(
+          (request) =>
+            request.isThreadSource(AGENT_RUNTIME_CODEX_THREAD_SOURCE) &&
+            request.hasUserInputText(steer),
+        );
+        const active = await readRuntimeConversation(page, target);
+        expect(active.snapshot.projection.runs).toHaveLength(1);
+        expect(active.snapshot.projection.runs[0]?.status).toBe("running");
+        releaseSteeredResponse();
+        const completed = await waitForRuntimeCompletedAgentTurn(page, target);
+        expect(completed.snapshot.projection.runs).toHaveLength(1);
+        await waitForFinalMarker(page, final);
+        await expect(bubble).toBeVisible();
+        await expectImage(page);
+        await testInfo.attach("steered-image", {
+          body: await page.screenshot(),
+          contentType: "image/png",
+        });
+
+        const reopened = await harness.restart();
+        await expect(reopened.getByText(final, { exact: true }).last()).toBeVisible({
+          timeout: 30_000,
+        });
+        await expect(
+          reopened.locator("[data-user-message-bubble='true']", { hasText: steer }),
+        ).toBeVisible();
+        await expectImage(reopened);
+      } catch (error) {
+        const logs = await readBoundedElectronRuntimeLogs(harness.profile);
+        throw new Error(
+          `${error instanceof Error ? error.message : String(error)}\n\nElectron runtime logs:\n${logs}`,
+          { cause: error },
+        );
+      } finally {
+        releaseInitialResponse();
+        releaseSteeredResponse();
+        await harness.close();
+      }
+    },
+  );
+});
+
+test("opens a loopback page through the real in-app Browser runtime", async ({}, testInfo) => {
   test.setTimeout(120_000);
   const token = randomUUID();
   const promptMarker = `SCRIPTED_BROWSER_PROMPT_${token}`;
   const pageMarker = `SCRIPTED_BROWSER_PAGE_${token}`;
   const finalMarker = `SCRIPTED_BROWSER_OK_${token}`;
+  const toolTitle = "Open the page and show a color swatch";
   const searchCallId = `search_browser_${token.replaceAll("-", "")}`;
   const callId = `call_browser_${token.replaceAll("-", "")}`;
   const fixture = await startBrowserHttpFixture(pageMarker);
@@ -586,6 +759,7 @@ const agent = await setupBrowserRuntime();
 const iab = await agent.browsers.get("iab");
 const tab = await iab.tabs.new();
 await tab.goto(${JSON.stringify(fixture.url)});
+await nodeRepl.emitImage(Buffer.from(${JSON.stringify(swatchPngBase64())}, "base64"));
 nodeRepl.write(JSON.stringify({ title: await tab.title(), url: await tab.url() }));
 `;
 
@@ -635,7 +809,7 @@ nodeRepl.write(JSON.stringify({ title: await tab.title(), url: await tab.url() }
                 responses.functionCall(
                   callId,
                   invocation.name,
-                  { code: browserCode, timeout_ms: 30_000 },
+                  { code: browserCode, title: toolTitle, timeout_ms: 30_000 },
                   invocation.namespace,
                 ),
                 responses.completed(`response_browser_tool_${token}`),
@@ -650,7 +824,9 @@ nodeRepl.write(JSON.stringify({ title: await tab.title(), url: await tab.url() }
             respond: async (request) => {
               const output = request.toolCallOutput(callId);
               if (!JSON.stringify(output).includes(pageMarker)) {
-                throw new Error(`Browser output did not contain ${pageMarker}`);
+                throw new Error(
+                  `Browser output did not contain ${pageMarker}: ${JSON.stringify(output).slice(0, 4_000)}`,
+                );
               }
               await finalResponseGate;
               return responses.stream([
@@ -740,6 +916,45 @@ nodeRepl.write(JSON.stringify({ title: await tab.title(), url: await tab.url() }
           expect(fixture.requests.filter((request) => request === "/browser-smoke")).toHaveLength(
             1,
           );
+          await page
+            .getByRole("navigation", { name: "App navigation" })
+            .getByRole("button", {
+              name: "Home",
+              exact: true,
+            })
+            .click();
+          await page
+            .locator(`[data-app-action-sidebar-thread-id="${draft.projectSessionId}"]`)
+            .click();
+          await waitForFinalMarker(page, finalMarker);
+          const activity = page.getByRole("button", { name: /^Worked for/u });
+          if (
+            (await activity.count()) > 0 &&
+            (await activity.getAttribute("aria-expanded")) !== "true"
+          )
+            await activity.click();
+          const groupBody = page.getByTestId("agent-activity-group-body");
+          if (
+            (await groupBody.count()) > 0 &&
+            (await groupBody.getAttribute("aria-hidden")) === "true"
+          )
+            await groupBody.locator("..").getByRole("button").first().click();
+          const tool = page.getByRole("button", {
+            name: toolTitle,
+            exact: true,
+          });
+          await expect(tool, await page.locator("body").ariaSnapshot()).toBeVisible();
+          await tool.click();
+          const image = page.getByRole("img", { name: "Tool output", exact: true });
+          await expect(image).toHaveCount(1);
+          await expect(image).toBeVisible();
+          await expect
+            .poll(() => image.evaluate((element: HTMLImageElement) => element.naturalWidth))
+            .toBeGreaterThan(0);
+          await testInfo.attach("javascript-tool-result", {
+            body: await page.screenshot(),
+            contentType: "image/png",
+          });
         } catch (error) {
           const logs = await readBoundedElectronRuntimeLogs(harness.profile);
           throw new Error(

@@ -1,5 +1,9 @@
 import type { AgentSnapshot, AgentTurnItem } from "@nodex/agent-runtime/contracts";
-import type { CommandAction, UserInput } from "@nodex/codex-app-server-protocol/v2";
+import type {
+  CommandAction,
+  DynamicToolCallOutputContentItem,
+  UserInput,
+} from "@nodex/codex-app-server-protocol/v2";
 import type { CodexCanonicalHookRun } from "../../../shared/codex-conversation-state/codex-conversation-state";
 import type {
   CodexCanonicalItem,
@@ -13,7 +17,10 @@ import type {
 } from "../../../shared/types";
 import { projectCodexCanonicalTurnViews } from "../../../shared/codex-canonical-item-projector";
 import { projectCodexItemViewToTranscriptEntry } from "../../../shared/codex-transcript-entry-projection";
-import { buildAgentRuntimeAttachmentSource } from "../../../shared/agent-runtime-attachments";
+import {
+  buildAgentRuntimeAttachmentSource,
+  buildAgentRuntimeToolResultImageSource,
+} from "../../../shared/agent-runtime-attachments";
 import { projectAgentRuntimeSubagentDisplay } from "../../../shared/agent-runtime-subagent-display";
 import { agentMessageDisplayText } from "../../../shared/agent-prompt";
 import type { CodexTranscriptTurnDetails } from "../../../shared/codex-transcript-projection";
@@ -107,6 +114,113 @@ function jsonValue(value: unknown): JsonValue {
   if (Array.isArray(value)) return value.map(jsonValue);
   if (typeof value !== "object" || value === null) return null;
   return Object.fromEntries(Object.entries(value).map(([key, entry]) => [key, jsonValue(entry)]));
+}
+
+/** Preserve typed media and the complete MCP result used by application-tool renderers. */
+function dynamicToolOutputContent(
+  item: Extract<AgentTurnItem, { type: "dynamic_tool" }>,
+): DynamicToolCallOutputContentItem[] | null {
+  const result = item.outputOmitted ? null : item.mcpToolCall?.result;
+  const output = result?.content ?? item.output;
+  if (output === undefined) return null;
+  const values = Array.isArray(output) ? output : [output];
+  const content = values.map((value, contentIndex): DynamicToolCallOutputContentItem => {
+    const source = () =>
+      buildAgentRuntimeToolResultImageSource({
+        sourceThreadId: item.threadId,
+        itemId: item.id,
+        contentIndex,
+      });
+    if (value === null || typeof value !== "object" || Array.isArray(value))
+      return {
+        type: "inputText",
+        text: typeof value === "string" ? value : JSON.stringify(jsonValue(value)),
+      };
+    const block = value as Record<string, unknown>;
+    if ((block.type === "inputText" || block.type === "text") && typeof block.text === "string")
+      return { type: "inputText", text: block.text };
+    if (block.type === "image") return { type: "inputImage", imageUrl: source() };
+    if (block.type === "inputImage")
+      return {
+        type: "inputImage",
+        imageUrl: typeof block.imageUrl === "string" ? block.imageUrl : source(),
+      };
+    if (block.type === "inputAudio" && typeof block.audioUrl === "string")
+      return { type: "inputAudio", audioUrl: block.audioUrl };
+    if (
+      block.type === "audio" &&
+      typeof block.data === "string" &&
+      typeof block.mimeType === "string"
+    )
+      return { type: "inputAudio", audioUrl: `data:${block.mimeType};base64,${block.data}` };
+    return { type: "inputText", text: JSON.stringify(jsonValue(value)) };
+  });
+  if (result?.structuredContent == null) return content;
+  const text = JSON.stringify(result.structuredContent);
+  return [
+    { type: "inputText", text },
+    ...content.filter((block) => block.type !== "inputText" || block.text !== text),
+  ];
+}
+
+/** Runtime keeps native MCP identity and content; row identity belongs to the runtime item. */
+function projectRuntimeMcpToolCall(
+  item: Extract<AgentTurnItem, { type: "dynamic_tool" }>,
+  status: "inProgress" | "completed" | "failed",
+  durationMs: number | null,
+): Extract<CodexCanonicalItem, { type: "mcpToolCall" }> {
+  const call = item.mcpToolCall!;
+  const app = call.appContext;
+  return {
+    type: "mcpToolCall",
+    id: item.id,
+    nativeCallId: call.id,
+    server: call.server,
+    tool: call.tool,
+    status,
+    arguments: jsonValue(call.arguments),
+    appContext: app
+      ? {
+          connectorId: app.connectorId,
+          linkId: app.linkId ?? null,
+          resourceUri: app.resourceUri ?? null,
+          appName: app.appName ?? null,
+          actionName: app.actionName ?? null,
+        }
+      : null,
+    mcpAppUi: call.mcpAppUi ? { ...call.mcpAppUi } : null,
+    ...(call.mcpAppResourceUri ? { mcpAppResourceUri: call.mcpAppResourceUri } : {}),
+    pluginId: call.pluginId ?? null,
+    readOnlyHint: call.readOnlyHint ?? null,
+    result: call.result
+      ? {
+          content: call.result.content.map((content, contentIndex) => {
+            const value = jsonValue(content);
+            if (
+              value === null ||
+              typeof value !== "object" ||
+              Array.isArray(value) ||
+              value.type !== "image"
+            )
+              return value;
+            return {
+              ...value,
+              data: "",
+              source: buildAgentRuntimeToolResultImageSource({
+                sourceThreadId: item.threadId,
+                itemId: item.id,
+                contentIndex,
+              }),
+            };
+          }),
+          structuredContent: jsonValue(call.result.structuredContent),
+          _meta: jsonValue(call.result._meta),
+        }
+      : null,
+    error: call.error ? { message: call.error.message } : null,
+    durationMs: call.durationMs ?? durationMs,
+    ...(item.outputOmitted ? { outputOmitted: true } : {}),
+  };
 }
 
 const notice = (
@@ -394,22 +508,19 @@ export function projectAgentRuntimeItem(item: AgentTurnItem, cwd = ""): CodexCan
       return notice(item, item.pattern ? `Search files: ${item.pattern}` : "Search files");
     case "dynamic_tool": {
       const { namespace, tool } = parseAgentRuntimeToolName(item.toolName);
+      const toolStatus = status === "inProgress" || status === "completed" ? status : "failed";
+      if (item.mcpToolCall && namespace !== "nodex_app")
+        return projectRuntimeMcpToolCall(item, toolStatus, durationMs);
       return {
         type: "dynamicToolCall",
         id,
         namespace,
         tool,
+        displayTitle: item.title,
+        ...(item.outputOmitted ? { outputOmitted: true } : {}),
         arguments: jsonValue(item.input),
-        status: status === "inProgress" || status === "completed" ? status : "failed",
-        contentItems:
-          item.output === undefined
-            ? null
-            : [
-                {
-                  type: "inputText",
-                  text: typeof item.output === "string" ? item.output : JSON.stringify(item.output),
-                },
-              ],
+        status: toolStatus,
+        contentItems: dynamicToolOutputContent(item),
         success: status === "inProgress" ? null : status === "completed",
         durationMs,
       };

@@ -1033,28 +1033,123 @@ describe("LocalConversationTurnEntry", () => {
     );
 
     const strip = view.container.querySelector("[data-user-attachment-strip]");
-    const bubble = view.container.querySelector(
-      '[data-content-search-unit-key="turn_images:user:0"]',
-    );
+    const bubble = view.getByText("Inspect these images").closest("[data-user-message-bubble]");
     if (!(strip instanceof HTMLElement) || !(bubble instanceof HTMLElement)) {
       throw new Error("expected attachment strip and user bubble");
     }
 
-    expect(Boolean(strip.textContent?.includes("notes.md"))).toBe(true);
-    expect(Boolean(bubble.textContent?.includes("Inspect these images"))).toBe(true);
+    expect(view.getByText("notes.md")).toBeTruthy();
     expect(Boolean(strip.compareDocumentPosition(bubble) & Node.DOCUMENT_POSITION_FOLLOWING)).toBe(
       true,
     );
     expect(strip.querySelector("img") !== null).toBe(true);
 
     const previewTrigger = view.getByLabelText("Open image preview");
-    fireEvent.click(previewTrigger);
+    await act(async () => {
+      fireEvent.click(previewTrigger);
+      await settleAsyncRender();
+    });
     const preview = document.body.querySelector('[data-slot="codex-dialog-content"] img');
     if (!(preview instanceof HTMLImageElement)) {
       throw new Error("expected image preview dialog");
     }
     expect(preview.src.startsWith("data:image/png;base64")).toBe(true);
   });
+
+  test.each([
+    { source: "native pending", steeringStatus: "pending" as const },
+    { source: "native accepted", steeringStatus: "accepted" as const },
+    { source: "Runtime steer", userInputIntent: "steer" as const },
+    { source: "promoted queue", userInputIntent: "promotedToSteer" as const },
+  ])(
+    "keeps $source image messages visible through completion and activity collapse",
+    async (delivery) => {
+      const { LocalConversationTurnEntry } = await import("./local-conversation-turn-entry");
+      const turnId = "turn_steering_images";
+      const imageSource = "data:image/png;base64,aW1hZ2U=";
+      const imageMessage = buildUserEntry(turnId, "image-steer", "", {
+        ...("steeringStatus" in delivery
+          ? { type: "steeringUserMessage", steeringStatus: delivery.steeringStatus }
+          : { userInputIntent: delivery.userInputIntent }),
+        userAttachments: [
+          {
+            type: "image",
+            id: "image-steer:image",
+            source: imageSource,
+            sourceKind: "inline-image",
+            caption: "Steering diagram",
+          },
+        ],
+      });
+      const activity: CodexConversationItem = {
+        threadId: "thread_1",
+        turnId,
+        itemId: "image-work",
+        type: "command_execution",
+        kind: "commandExecution",
+        semanticKind: "exec",
+        createdAt: 2,
+        updatedAt: 2,
+        status: "completed",
+        commandActions: [{ type: "read", command: "", name: "diagram.ts", path: "diagram.ts" }],
+        toolCall: { subtype: "command", toolName: "exec_command", args: {} },
+      };
+      const turn: CodexConversationTurn = {
+        ...buildTurn(turnId, "Inspect the diagram", "Reviewed"),
+        durationMs: 125_000,
+        itemIds: [`${turnId}_user`, "image-work", "image-steer", `${turnId}_assistant`],
+        items: [
+          buildUserEntry(turnId, `${turnId}_user`, "Inspect the diagram"),
+          activity,
+          imageMessage,
+          buildAssistantEntry(turnId, `${turnId}_assistant`, "Reviewed", {
+            assistantPhase: "final_answer",
+            status: "completed",
+          }),
+        ],
+      };
+      const renderTurn = (running: boolean, collapsed: boolean) =>
+        createElement(
+          TooltipProvider,
+          null,
+          createElement(LocalConversationTurnEntry, {
+            conversationId: "thread_1",
+            entry: buildVisibleTurnEntry(
+              { ...turn, status: running ? "inProgress" : "completed" },
+              [],
+              running,
+            ),
+            cwd: "/tmp/project",
+            canEditTurnUserPrefix: false,
+            canForkTurn: true,
+            persistedCollapsed: collapsed,
+          }),
+        );
+      const view = render(renderTurn(true, false));
+      expect((await view.findByRole("img", { name: "User attachment" })).getAttribute("src")).toBe(
+        imageSource,
+      );
+      expect(view.getAllByRole("button", { name: "Open image preview" })).toHaveLength(1);
+
+      await act(async () => {
+        view.rerender(renderTurn(false, true));
+        await settleAsyncRender();
+      });
+      expect(
+        view.getByRole("button", { name: /Worked for 2m 5s/ }).getAttribute("aria-expanded"),
+      ).toBe("false");
+      expect(view.getByRole("img", { name: "User attachment" }).getAttribute("src")).toBe(
+        imageSource,
+      );
+      await act(async () => {
+        fireEvent.click(view.getByRole("button", { name: "Open image preview" }));
+        await settleAsyncRender();
+      });
+      expect(
+        document.body.querySelector('[data-slot="codex-dialog-content"] img')?.getAttribute("src"),
+      ).toBe(imageSource);
+    },
+  );
 
   test("renders assistant before later exec rows inside the agent body when exec arrives after it", async () => {
     const stableRequests: [] = [];

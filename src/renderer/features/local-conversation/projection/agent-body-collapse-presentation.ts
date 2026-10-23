@@ -9,20 +9,10 @@ export interface ThreadAgentBodyCollapsePresentation {
   workedForItem: ThreadWorkedForBlockModel | null;
 }
 
-function isCollapsePersistentUnit(unit: ThreadAgentRenderUnit): boolean {
-  if (unit.kind !== "entry" || unit.block.type !== "userMessage") return false;
-
-  const steeringStatus = unit.block.entry.steeringStatus;
-  return (
-    (steeringStatus !== undefined && steeringStatus !== null) ||
-    unit.block.entry.hookFeedback === true
-  );
-}
-
 /**
- * Keeps steering and hook-feedback messages visible while historical agent
- * activity is collapsed. Expanded presentation preserves the canonical unit
- * order instead of maintaining a second transcript ordering model.
+ * Keeps complete user messages visible while historical agent activity is collapsed.
+ * Expanded presentation preserves the canonical unit order instead of maintaining
+ * a second transcript ordering model.
  */
 export function projectAgentBodyCollapsePresentation(
   units: readonly ThreadAgentRenderUnit[],
@@ -44,7 +34,7 @@ export function projectAgentBodyCollapsePresentation(
     }
 
     expandedUnits.push(unit);
-    if (isCollapsePersistentUnit(unit)) {
+    if (unit.kind === "entry" && unit.block.type === "userMessage") {
       persistentUnits.push(unit);
       continue;
     }

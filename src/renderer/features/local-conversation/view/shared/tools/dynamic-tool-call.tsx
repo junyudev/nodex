@@ -15,11 +15,23 @@ import {
   type NodexDynamicToolPresentationIcon,
 } from "../../../projection/tool-metadata/nodex-dynamic-tool-call-presentation";
 import { CodexShimmerText } from "../codex-shimmer-text";
+import { useToolCallOutputDetail } from "./use-tool-call-output-detail";
+import { buildTextPreview, INLINE_TEXT_PREVIEW_MAX_CHARS } from "../../../../../lib/text-preview";
 import type { ToolComponentProps } from "./get-tool-component";
 import { AutomationUpdatePage } from "./automation-update-page";
-import { ThreadActivityDisclosure, ThreadRichActivityHeader } from "./tool-primitives";
+import {
+  ThreadActivityDisclosure,
+  ThreadRichActivityHeader,
+  ToolJsonDetail,
+} from "./tool-primitives";
+import { ToolCallCodePanel, ToolCallRawDialog } from "./tool-call-inspection";
+import { ToolOutputImage } from "./tool-output-image";
 import { NodexDynamicToolChangePreview } from "./nodex-dynamic-tool-change-preview";
-import { ToolActivityIcon, semanticToolIcon } from "./tool-call-icons";
+import {
+  ToolActivityIcon,
+  resolveDynamicToolFallbackIcon,
+  semanticToolIcon,
+} from "./tool-call-icons";
 import {
   ActivitySpinnerIcon,
   AppActivityIcon,
@@ -659,8 +671,7 @@ function DynamicToolFallbackLabel({
   call: CodexDynamicToolCallView;
   variant?: DynamicToolCallRenderVariant;
 }) {
-  const isCodexApp = call.namespace === "codex_app";
-  const showIcon = isCodexApp && variant !== "summary-text";
+  const showIcon = variant !== "summary-text";
   const label = resolveDynamicToolFallbackLabel(call);
   const content = (
     <span
@@ -672,9 +683,7 @@ function DynamicToolFallbackLabel({
         showIcon && "flex min-w-0 items-center gap-2",
       )}
     >
-      {showIcon ? (
-        <AppActivityIcon className="icon-xs shrink-0 text-token-text-secondary" aria-hidden />
-      ) : null}
+      {showIcon ? <ToolActivityIcon descriptor={resolveDynamicToolFallbackIcon(call)} /> : null}
       <CodexShimmerText active={!call.completed} className={cn(showIcon && "min-w-0 truncate")}>
         {label}
       </CodexShimmerText>
@@ -685,9 +694,100 @@ function DynamicToolFallbackLabel({
 
   return (
     <ThreadRichActivityHeader
-      icon={isCodexApp ? <ToolActivityIcon descriptor={semanticToolIcon("app")} /> : null}
+      icon={<ToolActivityIcon descriptor={resolveDynamicToolFallbackIcon(call)} />}
       summary={<DynamicToolFallbackLabel call={call} variant="summary-text" />}
     />
+  );
+}
+
+/** Unregistered tools retain one compact activity and an inspectable typed result. */
+function DynamicToolFallbackDetails({ item }: ToolComponentProps) {
+  const { error: outputError, available: outputAvailable } = useToolCallOutputDetail(
+    item,
+    true,
+    item.dynamicToolCall?.outputOmitted,
+  );
+  const [rawOpen, setRawOpen] = useState(false);
+  const call = item.dynamicToolCall!;
+  const args = call.arguments;
+  const code =
+    call.tool === "js" && args !== null && typeof args === "object" && !Array.isArray(args)
+      ? args.code
+      : null;
+  const codeText = typeof code === "string" ? code : null;
+  return (
+    <div className="flex min-w-0 flex-col gap-1">
+      <div className="truncate text-xs text-token-description-foreground">
+        {[call.namespace, call.tool].filter(Boolean).join(".")}
+      </div>
+      {codeText !== null ? (
+        <ToolCallCodePanel
+          title="javascript"
+          preview={buildTextPreview(codeText, INLINE_TEXT_PREVIEW_MAX_CHARS)}
+          getCopyText={() => codeText}
+          getFullText={() => codeText}
+        />
+      ) : (
+        <ToolJsonDetail label="Arguments" value={call.arguments} />
+      )}
+      {outputError ? (
+        <p role="alert">{outputError}</p>
+      ) : call.outputOmitted ? (
+        <p className="text-token-description-foreground">
+          {outputAvailable ? "Loading output…" : "Tool output unavailable"}
+        </p>
+      ) : (
+        (call.contentItems ?? []).map((content, index) =>
+          content.type === "inputImage" ? (
+            <ToolOutputImage key={index} source={content.imageUrl} />
+          ) : content.type === "inputAudio" ? (
+            <audio key={index} src={content.audioUrl} controls preload="metadata" />
+          ) : (
+            <ToolCallCodePanel
+              key={index}
+              title="Output"
+              preview={buildTextPreview(content.text, INLINE_TEXT_PREVIEW_MAX_CHARS)}
+              getCopyText={() => content.text}
+              getFullText={() => content.text}
+            />
+          ),
+        )
+      )}
+      {!call.outputOmitted ? (
+        <ToolCallRawDialog
+          open={rawOpen}
+          onOpenChange={setRawOpen}
+          title={`Raw ${[call.namespace, call.tool].filter(Boolean).join(".")} tool call`}
+          triggerLabel="Show raw tool call output"
+          getRawValue={() =>
+            item.rawItem ?? {
+              type: "dynamicToolCall",
+              id: call.callId,
+              namespace: call.namespace,
+              tool: call.tool,
+              arguments: call.arguments,
+              status: call.status,
+              durationMs: call.durationMs,
+              success: call.success,
+              contentItems: call.contentItems,
+            }
+          }
+        />
+      ) : null}
+    </div>
+  );
+}
+
+function DynamicToolFallbackRow({ item }: ToolComponentProps) {
+  const call = item.dynamicToolCall!;
+  return (
+    <ThreadActivityDisclosure
+      icon={<ToolActivityIcon descriptor={resolveDynamicToolFallbackIcon(call)} />}
+      summary={<DynamicToolFallbackLabel call={call} variant="summary-text" />}
+      status={!call.completed ? "running" : call.success === false ? "failed" : "completed"}
+    >
+      {(expanded) => (expanded ? <DynamicToolFallbackDetails item={item} /> : null)}
+    </ThreadActivityDisclosure>
   );
 }
 
@@ -737,5 +837,5 @@ export function DynamicToolCall({
     });
   }
 
-  return content ?? <DynamicToolFallbackLabel call={call} />;
+  return content ?? <DynamicToolFallbackRow item={item} />;
 }

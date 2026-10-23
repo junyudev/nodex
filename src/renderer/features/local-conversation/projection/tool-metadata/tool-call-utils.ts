@@ -35,3 +35,13 @@ export function humanizeIdentifier(value: string): string {
     .map((part) => `${part[0]?.toUpperCase() ?? ""}${part.slice(1).toLowerCase()}`)
     .join(" ");
 }
+
+/** Script tools author their activity title; other tools' title arguments are input data. */
+export function resolveScriptToolTitle(tool: string, argumentsValue: unknown): string | null {
+  if (tool.trim().toLowerCase() !== "js") return null;
+  const rawTitle = asRecord(argumentsValue)?.title;
+  if (typeof rawTitle !== "string") return null;
+  const title = rawTitle.trim().replace(/\s+/g, " ");
+  if (!title) return null;
+  return title.length <= 80 ? title : `${title.slice(0, 79).trimEnd()}…`;
+}

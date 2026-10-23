@@ -449,6 +449,7 @@ export function codexBackgroundCommandDetail(item: {
 }
 
 export interface CodexDynamicToolProjection extends McpToolPresentation {
+  readonly mcpToolCall?: Extract<CodexDynamicToolItem, { readonly type: "mcpToolCall" }>;
   readonly toolName: string;
   readonly title?: string;
   readonly input: unknown;
@@ -499,7 +500,11 @@ export const projectCodexDynamicToolItem = Effect.fn("CodexAdapterV2.projectDyna
     item: CodexDynamicToolItem,
   ): Effect.fn.Return<CodexDynamicToolProjection, never, Crypto.Crypto> {
     const output =
-      item.type === "mcpToolCall" ? codexMcpToolOutput(item) : codexDynamicToolOutput(item);
+      item.type === "mcpToolCall"
+        ? item.server === "nodex_app"
+          ? codexMcpToolOutput(item)
+          : undefined
+        : codexDynamicToolOutput(item);
     const toolName =
       item.type === "mcpToolCall"
         ? `${item.server}.${item.tool}`
@@ -509,6 +514,7 @@ export const projectCodexDynamicToolItem = Effect.fn("CodexAdapterV2.projectDyna
     const title = dynamicToolTitle(toolName, item.arguments) ?? presentation.title;
     const projection: CodexDynamicToolProjection = {
       ...presentation,
+      ...(item.type === "mcpToolCall" ? { mcpToolCall: item } : {}),
       toolName,
       ...(title ? { title } : {}),
       input: item.arguments,
@@ -4072,8 +4078,8 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
                   ? artifacts.turnItem
                   : {
                       ...artifacts.turnItem,
-                      // The full CallToolResult the app replays, beside the app.
-                      output: { [MCP_APP_OUTPUT_KEY]: reference, result: item.result },
+                      // The captured app is derived metadata; its result stays in mcpToolCall.
+                      output: { [MCP_APP_OUTPUT_KEY]: reference },
                     };
               yield* emitProviderEvent({
                 type: "node.updated",

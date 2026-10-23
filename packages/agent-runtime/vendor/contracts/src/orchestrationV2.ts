@@ -1,6 +1,7 @@
 import { OrchestrationMessageContext } from "./composerContext.ts";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
+import { V2ItemCompletedNotification__ThreadItem } from "@nodex/effect-codex-app-server/schema";
 import * as SchemaAST from "effect/SchemaAST";
 import * as SchemaGetter from "effect/SchemaGetter";
 import * as SchemaTransformation from "effect/SchemaTransformation";
@@ -1578,6 +1579,14 @@ const OrchestrationV2SecretRequestFields = {
   secretStatus: OrchestrationV2SecretRequestStatus,
 } as const;
 
+// Retain Codex's generated MCP payload, including typed content and provider metadata.
+const CodexMcpToolCall = V2ItemCompletedNotification__ThreadItem.pipe(
+  Schema.refine(
+    (item): item is Extract<typeof V2ItemCompletedNotification__ThreadItem.Type, { readonly type: "mcpToolCall" }> =>
+      item.type === "mcpToolCall",
+  ),
+);
+
 export const OrchestrationV2TurnItem = Schema.Union([
   Schema.Struct({
     ...OrchestrationV2TurnItemBaseFields,
@@ -1780,6 +1789,7 @@ export const OrchestrationV2TurnItem = Schema.Union([
   Schema.Struct({
     ...OrchestrationV2TurnItemBaseFields,
     type: Schema.Literal("dynamic_tool"),
+    mcpToolCall: Schema.optional(CodexMcpToolCall),
     toolName: Schema.NullOr(TrimmedNonEmptyString),
     viewedImagePath: Schema.optional(TrimmedNonEmptyString),
     input: Schema.Unknown,
@@ -2568,6 +2578,7 @@ export const OrchestrationV2TurnItemJson = Schema.Union([
   Schema.Struct({
     ...OrchestrationV2TurnItemJsonBaseFields,
     type: Schema.Literal("dynamic_tool"),
+    mcpToolCall: Schema.optional(CodexMcpToolCall),
     toolName: Schema.NullOr(TrimmedNonEmptyString),
     viewedImagePath: Schema.optional(TrimmedNonEmptyString),
     input: Schema.Unknown,

@@ -20,7 +20,6 @@ import {
   ThreadSystemErrorBlock,
   ThreadSystemBannerBlock,
   ThreadTurnDiffBlock,
-  ThreadUserAttachmentStripBlock,
   ThreadToolSurfaceBlock,
   ThreadUserInputResponseCard,
   ThreadUserBubbleBlock,
@@ -122,16 +121,6 @@ export function ThreadBlockRenderer({
         onOpenSummaryScheduledAutomation={onOpenSummaryScheduledAutomation}
         onOpenMcpAppSidePanel={onOpenMcpAppSidePanel}
         turnDiffHoverPreviewDisabled={turnDiffHoverPreviewDisabled}
-      />
-    );
-  }
-
-  if (block.type === "userAttachmentStrip") {
-    return (
-      <ThreadUserAttachmentStripBlock
-        block={block}
-        isLatestTurn={isLatestTurn}
-        isStreamingTurn={isStreamingTurn}
       />
     );
   }

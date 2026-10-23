@@ -48,6 +48,55 @@ function outputOf(item: OrchestrationV2TurnItem): unknown {
 }
 
 describe("stripUnservedToolOutputImageBytes", () => {
+  it("retains servable MCP content images without a duplicate output and strips oversized bodies", () => {
+    const item: OrchestrationV2TurnItem = {
+      ...itemBase,
+      type: "dynamic_tool",
+      toolName: "node_repl.js",
+      input: {},
+      mcpToolCall: {
+        type: "mcpToolCall",
+        id: "native-tool",
+        server: "node_repl",
+        tool: "js",
+        status: "completed",
+        arguments: {},
+        result: {
+          content: [
+            { type: "text", text: "Screenshot" },
+            { type: "image", mimeType: "image/png", data: PNG_BASE64 },
+            {
+              type: "image",
+              mimeType: "image/png",
+              data: "A".repeat(MAX_TOOL_OUTPUT_IMAGE_BASE64_LENGTH + 4),
+            },
+          ],
+          _meta: { source: "browser" },
+        },
+      },
+    };
+    const stripped = stripUnservedToolOutputImageBytes(item);
+    expect(stripped).toMatchObject({
+      mcpToolCall: {
+        result: {
+          content: [
+            { type: "text", text: "Screenshot" },
+            { type: "image", mimeType: "image/png", data: PNG_BASE64 },
+            {
+              type: "image",
+              mimeType: "image/png",
+              sizeBytes: ((MAX_TOOL_OUTPUT_IMAGE_BASE64_LENGTH + 4) / 4) * 3,
+            },
+          ],
+          _meta: { source: "browser" },
+        },
+      },
+    });
+    expect(stripped.type === "dynamic_tool" ? stripped.output : "wrong type").toBeUndefined();
+    const images = stripped.type === "dynamic_tool" ? stripped.mcpToolCall?.result?.content : [];
+    expect(images?.[2]).not.toHaveProperty("data");
+  });
+
   it("replaces the base64 of Claude's structured Read result with its measured size", () => {
     const item = toolItem({
       type: "image",

@@ -292,7 +292,10 @@ const AgentRequest = Schema.Union([
       threadId: ThreadId,
       sourceThreadId: Schema.optional(ThreadId),
       itemId: TurnItemId,
-      attachmentId: ChatAttachmentId,
+      attachmentId: Schema.Union([
+        ChatAttachmentId,
+        Schema.String.check(Schema.isPattern(/^tool-result:(0|[1-9]\d*)$/)),
+      ]),
     }),
   ),
   request(

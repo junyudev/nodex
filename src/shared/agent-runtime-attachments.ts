@@ -37,3 +37,15 @@ export function parseAgentRuntimeAttachmentSource(
     return null;
   }
 }
+
+/** The original result-content position is stable even when history omits the image bytes. */
+export const buildAgentRuntimeToolResultImageSource = (reference: {
+  readonly sourceThreadId: string;
+  readonly itemId: string;
+  readonly contentIndex: number;
+}): string =>
+  buildAgentRuntimeAttachmentSource({
+    sourceThreadId: reference.sourceThreadId,
+    itemId: reference.itemId,
+    attachmentId: `tool-result:${reference.contentIndex}`,
+  });

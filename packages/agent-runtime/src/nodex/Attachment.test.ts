@@ -78,6 +78,8 @@ it.live("resolves only a visible image's exact item and captured fork prefix acr
               ["item:captured", "run:1", "user_message"],
               ["item:late", "run:2", "assistant_message"],
               ["item:text", "run:1", "assistant_message"],
+              ["item:tool", "run:1", "dynamic_tool"],
+              ["item:tool-late", "run:2", "dynamic_tool"],
             ] as const) {
               const payload = {
                 id,
@@ -102,6 +104,26 @@ it.live("resolves only a visible image's exact item and captured fork prefix acr
                   ? { inputIntent: "turn_start", createdBy: "user", creationSource: "web" }
                   : { streaming: false }),
                 attachments: id === "item:text" ? [] : [image],
+                ...(type === "dynamic_tool"
+                  ? {
+                      toolName: "node_repl.js",
+                      input: {},
+                      mcpToolCall: {
+                        type: "mcpToolCall",
+                        id: `native:${id}`,
+                        server: "node_repl",
+                        tool: "js",
+                        status: "completed",
+                        arguments: {},
+                        result: {
+                          content: [
+                            { type: "text", text: "Screenshot" },
+                            { type: "image", mimeType: "image/png", data: "AQID" },
+                          ],
+                        },
+                      },
+                    }
+                  : {}),
               };
               db.prepare(
                 `INSERT INTO orchestration_v2_projection_turn_items (turn_item_id,thread_id,run_id,ordinal,type,status,updated_at,payload_json) VALUES (?, 'thread:source', ?, 1, ?, 'completed', ?, ?)`,
@@ -133,6 +155,16 @@ it.live("resolves only a visible image's exact item and captured fork prefix acr
         expect(
           (yield* query("thread:fork", "item:captured", "../../private").pipe(Effect.result))._tag,
         ).toBe("Failure");
+        const toolImage = { dataUrl: "data:image/png;base64,AQID" };
+        expect(yield* query("thread:source", "item:tool", "tool-result:1")).toEqual(toolImage);
+        expect(yield* query("thread:fork", "item:tool", "tool-result:1")).toEqual(toolImage);
+        expect(yield* query("thread:fork", "item:tool-late", "tool-result:1")).toBeNull();
+        expect(yield* query("thread:foreign", "item:tool", "tool-result:1")).toBeNull();
+        expect(yield* query("thread:source", "item:tool", "tool-result:0")).toBeNull();
+        expect(yield* query("thread:source", "item:tool", "tool-result:2")).toBeNull();
+        expect(
+          yield* query("thread:fork", "item:tool", "tool-result:1", "thread:foreign"),
+        ).toBeNull();
         yield* fs.remove(expected.path);
         expect(yield* query("thread:source", "item:captured")).toBeNull();
       }).pipe(

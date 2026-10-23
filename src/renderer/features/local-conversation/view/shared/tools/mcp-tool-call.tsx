@@ -11,6 +11,7 @@ import type {
   ProtocolListMcpServerStatusResponse,
 } from "../../../../../lib/types";
 import type { ThreadStageActions } from "../../../thread-stage-types";
+import { useToolCallOutputDetail } from "./use-tool-call-output-detail";
 import { useMcpResource, useMcpServerStatuses } from "../../../../../lib/use-mcp-queries";
 import { cn } from "../../../../../lib/utils";
 import {
@@ -33,6 +34,7 @@ import { McpCapabilityViewFrame } from "./mcp-capability-view-frame";
 import { useThreadMcpApps } from "./mcp-apps-context";
 import { ToolCallCodePanel, ToolCallRawDialog } from "./tool-call-inspection";
 import { WebMcpToolActivity } from "./webmcp-tool-activity";
+import { ToolOutputImage } from "./tool-output-image";
 import {
   buildMcpAppSidePanelInput,
   isMcpAppHtmlTooLarge,
@@ -284,11 +286,7 @@ function McpContentBlock({ block, textValue, textPreview }: BudgetedMcpContentBl
 
     return (
       <div className="flex flex-col gap-0.5">
-        <img
-          className="max-h-48 w-max max-w-full gap-0.5 rounded-md object-contain"
-          src={`data:${block.mimeType};base64,${block.data}`}
-          alt=""
-        />
+        <ToolOutputImage source={block.source ?? `data:${block.mimeType};base64,${block.data}`} />
         {textValue && textPreview?.kind === "omitted" ? (
           <ToolCallCodePanel
             title="annotations"
@@ -569,25 +567,39 @@ export function McpToolCall({
   const bodyId = useId();
   const payload = item.mcpToolCall ?? null;
   const [isExpanded, setIsExpanded] = useState(false);
+  const { error: outputError, available: outputAvailable } = useToolCallOutputDetail(
+    item,
+    isExpanded,
+    payload?.outputOmitted,
+  );
   const [isRawDialogOpen, setIsRawDialogOpen] = useControllableBoolean(
     rawDialogOpen,
     onRawDialogOpenChange,
   );
   const { elementHeightPx, elementRef } = useMeasuredElementHeight();
   const hasSuccessfulResult = payload?.result?.type === "success";
+  // Runtime call IDs identify another execution owner; its rows cannot read the native gateway's
+  // catalog or widgets. Typed results remain inspectable until that owner exposes resource reads.
+  const canReadNativeResources = typeof asRecord(item.rawItem)?.nativeCallId !== "string";
   const mcpApps = useThreadMcpApps();
   const { data: statusData } = useMcpServerStatuses({
-    enabled: Boolean(payload && hasSuccessfulResult),
+    enabled: Boolean(canReadNativeResources && payload && hasSuccessfulResult),
   });
   const mcpServerStatuses = statusData ?? EMPTY_MCP_SERVER_STATUSES;
 
   const resourceUri = useMemo(
-    () => (payload ? resolveMcpAppResourceUri({ payload, mcpServerStatuses }) : null),
-    [payload, mcpServerStatuses],
+    () =>
+      canReadNativeResources && payload
+        ? resolveMcpAppResourceUri({ payload, mcpServerStatuses })
+        : null,
+    [canReadNativeResources, payload, mcpServerStatuses],
   );
   const resourceScopeUri = useMemo(
-    () => (payload ? resolveMcpAppResourceScopeUri({ payload, mcpServerStatuses }) : null),
-    [payload, mcpServerStatuses],
+    () =>
+      canReadNativeResources && payload
+        ? resolveMcpAppResourceScopeUri({ payload, mcpServerStatuses })
+        : null,
+    [canReadNativeResources, payload, mcpServerStatuses],
   );
   const resourceParams = useMemo(
     () =>
@@ -682,19 +694,28 @@ export function McpToolCall({
               />
             ) : null}
             <div id={bodyId}>
-              <McpResultBody
-                payload={payload}
-                threadId={item.threadId}
-                resourceUri={resourceUri}
-                hasResourceScope={resourceScopeUri !== null}
-                resource={renderableResource}
-                resourceLoading={resourceLoading}
-                resourceError={resourceError}
-                mcpServerStatuses={mcpServerStatuses}
-                rawDialogOpen={isRawDialogOpen}
-                onRawDialogOpenChange={setIsRawDialogOpen}
-                onOpenMcpAppSidePanel={onOpenMcpAppSidePanel}
-              />
+              {payload.outputOmitted ? (
+                <p
+                  className="text-token-description-foreground"
+                  role={outputError ? "alert" : "status"}
+                >
+                  {outputError ?? (outputAvailable ? "Loading output…" : "Tool output unavailable")}
+                </p>
+              ) : (
+                <McpResultBody
+                  payload={payload}
+                  threadId={item.threadId}
+                  resourceUri={resourceUri}
+                  hasResourceScope={resourceScopeUri !== null}
+                  resource={renderableResource}
+                  resourceLoading={resourceLoading}
+                  resourceError={resourceError}
+                  mcpServerStatuses={mcpServerStatuses}
+                  rawDialogOpen={isRawDialogOpen}
+                  onRawDialogOpenChange={setIsRawDialogOpen}
+                  onOpenMcpAppSidePanel={onOpenMcpAppSidePanel}
+                />
+              )}
             </div>
           </>
         ) : null}

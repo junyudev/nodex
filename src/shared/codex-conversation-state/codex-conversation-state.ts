@@ -580,15 +580,35 @@ export type CodexCanonicalCollabAgentToolCallItem = Extract<
   readonly receiverThreads: readonly CodexCanonicalCollabReceiverThread[];
 };
 
+export type CodexCanonicalDynamicToolCallItem = Extract<ThreadItem, { type: "dynamicToolCall" }> & {
+  /** An execution owner may supply a semantic label independently of the tool identity. */
+  readonly displayTitle?: string | null;
+  readonly outputOmitted?: boolean;
+};
+
+export type CodexCanonicalMcpToolCallItem = Extract<ThreadItem, { type: "mcpToolCall" }> & {
+  /** Runtime row identity is separate from the provider call used to authorize MCP resources. */
+  readonly nativeCallId?: string;
+  readonly outputOmitted?: boolean;
+};
+
 /** Generated items that require app-owned display enrichment after ingress. */
 export type CodexCanonicalGeneratedItem =
   | Exclude<
       ThreadItem,
       {
-        type: "imageGeneration" | "collabAgentToolCall" | "contextCompaction" | "userMessage";
+        type:
+          | "imageGeneration"
+          | "collabAgentToolCall"
+          | "contextCompaction"
+          | "userMessage"
+          | "dynamicToolCall"
+          | "mcpToolCall";
       }
     >
   | CodexCanonicalUserMessageItem
+  | CodexCanonicalDynamicToolCallItem
+  | CodexCanonicalMcpToolCallItem
   | CodexCanonicalImageGenerationItem
   | CodexCanonicalCollabAgentToolCallItem
   | CodexCanonicalContextCompactionItem;

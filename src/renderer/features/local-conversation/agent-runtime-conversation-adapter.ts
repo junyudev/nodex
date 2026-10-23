@@ -1373,7 +1373,7 @@ export function useAgentRuntimeConversationAdapter(input: {
       if (!target) throw new Error("Open the conversation before reading its attachment");
       const result = await agentRuntimeRuntime.attachment({ ...target, ...reference });
       if (!result) throw new Error("Image unavailable");
-      return result.path;
+      return "dataUrl" in result ? result.dataUrl : result.path;
     },
     nativeIntelligence:
       selection.binding.kind === "claude"

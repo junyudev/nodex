@@ -22,7 +22,7 @@ import type {
   CodexScheduledAutomationStatus,
   CodexScheduledAutomationUpdateInput,
 } from "../../../../lib/types";
-import { humanizeIdentifier } from "./tool-call-utils";
+import { humanizeIdentifier, resolveScriptToolTitle } from "./tool-call-utils";
 import { resolveNodexDynamicToolCallPresentation } from "./nodex-dynamic-tool-call-presentation";
 
 const CODEX_APP_NAMESPACE = "codex_app";
@@ -933,6 +933,10 @@ export function resolveDynamicToolLabelFromName(toolName: string): string {
 }
 
 export function resolveDynamicToolFallbackLabel(call: CodexDynamicToolCallView): string {
+  const scriptTitle = resolveScriptToolTitle(call.tool, call.arguments);
+  if (scriptTitle) return scriptTitle;
+  if (call.displayTitle?.trim()) return call.displayTitle.trim();
+  if (call.tool === "js") return call.completed ? "Ran JavaScript" : "Running JavaScript";
   const fallbackLabels = call.completed
     ? DYNAMIC_TOOL_COMPLETED_FALLBACK_LABELS
     : DYNAMIC_TOOL_ACTIVE_FALLBACK_LABELS;
@@ -946,8 +950,9 @@ export function resolveDynamicToolLabel(entry: CodexConversationItem): string {
     const registryEntry = getDynamicToolRegistryEntry(entry.dynamicToolCall);
     const registryLabel = registryEntry?.resolveLabel(entry.dynamicToolCall);
     if (registryLabel) return registryLabel;
+    return resolveDynamicToolFallbackLabel(entry.dynamicToolCall);
   }
-  const toolName = entry.dynamicToolCall?.tool ?? entry.toolCall?.toolName ?? "dynamic_tool";
+  const toolName = entry.toolCall?.toolName ?? "dynamic_tool";
   return resolveDynamicToolLabelFromName(toolName);
 }
 

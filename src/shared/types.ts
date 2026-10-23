@@ -3141,6 +3141,8 @@ export interface CodexDynamicToolCallView {
   contentItems?: ProtocolDynamicToolCallItem["contentItems"];
   success?: ProtocolDynamicToolCallItem["success"];
   durationMs?: ProtocolDynamicToolCallItem["durationMs"];
+  displayTitle?: string | null;
+  outputOmitted?: boolean;
   completed: boolean;
 }
 
@@ -3201,6 +3203,8 @@ export type CodexMcpToolCallContentBlock =
       type: "image";
       data: string;
       mimeType: string;
+      /** Scoped runtime image descriptor; bytes resolve only while its output is visible. */
+      source?: string;
       annotations?: CodexMcpToolCallAnnotations;
     }
   | {
@@ -3253,6 +3257,7 @@ export type CodexMcpToolCallNormalizedResult =
 
 // Renderer-facing normalized MCP state derived from protocol-owned raw tool-call payloads.
 export interface CodexMcpToolCallView {
+  outputOmitted?: boolean;
   callId: ProtocolMcpToolCallItem["id"];
   functionName: string;
   pluginId: ProtocolMcpToolCallItem["pluginId"];

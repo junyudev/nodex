@@ -237,7 +237,7 @@ export interface ThreadActivityDisclosureProps {
   bodyClassName?: string;
   bodyTestId?: string;
   canExpand?: boolean;
-  children: ReactNode;
+  children: ReactNode | ((expanded: boolean) => ReactNode);
   className?: string;
   defaultExpanded?: boolean;
   indentContent?: boolean;
@@ -473,7 +473,7 @@ export function ThreadActivityDisclosure({
         ref={elementRef}
         className={cn("flex flex-col gap-2 pt-2 pb-1", indentContent && "ps-6", bodyClassName)}
       >
-        {children}
+        {typeof children === "function" ? children(expanded) : children}
       </div>
     </motion.div>
   ) : null;

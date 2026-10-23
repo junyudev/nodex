@@ -24,6 +24,7 @@
     "typecheck": "tsc-rs --noEmit"
   },
   "dependencies": {
+    "@nodex/effect-codex-app-server": "workspace:*",
     "effect": "4.0.3"
   },
   "devDependencies": {

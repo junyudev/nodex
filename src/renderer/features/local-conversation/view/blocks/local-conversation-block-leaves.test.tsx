@@ -380,7 +380,7 @@ describe("UserMessageBubble collapse", () => {
     block.entry.userMessageOrigin = { kind: "agent", senderThreadId: "parent-thread" };
     block.entry.userInputIntent = "steer";
     const onOpenThread = vi.fn();
-    const { getByRole, getByText } = render(
+    const { getByRole } = render(
       <TooltipProvider>
         <UserMessageBubble
           block={block}
@@ -390,7 +390,6 @@ describe("UserMessageBubble collapse", () => {
         />
       </TooltipProvider>,
     );
-    expect(getByText("Steer")).toBeTruthy();
     await act(async () => {
       fireEvent.click(getByRole("button", { name: "Open sending conversation" }));
       await Promise.resolve();

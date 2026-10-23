@@ -8,7 +8,7 @@ import {
 import type { CodexThreadHandoffSnapshot } from "../../../../../../shared/codex-thread-handoff";
 import { beforeEach, describe, expect, test } from "vite-plus/test";
 import { act, fireEvent, waitFor } from "@testing-library/react";
-import type { ReactElement } from "react";
+import { useEffect, useState, type ReactElement } from "react";
 import type {
   CodexMcpToolCallView,
   CodexTranscriptEntry,
@@ -27,6 +27,10 @@ import { queryKeys } from "../../../../../lib/query-keys";
 import { CODEX_BROWSER_USE_CHROME_LOGO_DATA_URL } from "../../../../../../shared/codex-mcp-tool-call";
 import { McpToolCall } from "./mcp-tool-call";
 import { WebMcpToolActivity } from "./webmcp-tool-activity";
+import {
+  ConversationRuntimeContext,
+  type ConversationRuntime,
+} from "../../../conversation-runtime";
 import {
   buildMcpAppSidePanelInput,
   resolveMcpWidgetMetadata,
@@ -343,6 +347,40 @@ describe("McpToolCall", () => {
     });
   });
 
+  test("Runtime MCP results stay inspectable without querying another execution owner's resources", async () => {
+    const calls: string[] = [];
+    installWindowApi({
+      invoke: async (channel: string) => {
+        calls.push(channel);
+        throw new Error(`Unexpected cross-owner query: ${channel}`);
+      },
+      on: () => () => {},
+    });
+    const view = renderMcp(
+      <TooltipProvider>
+        <McpToolCall
+          item={buildMcpEntry({
+            rawItem: {
+              type: "mcpToolCall",
+              id: "runtime-call-id",
+              nativeCallId: "native-call-id",
+            },
+            mcpToolCall: buildMcpView({
+              callId: "native-call-id",
+              mcpAppResourceUri: "ui://context7/scoped-docs",
+            }),
+          })}
+        />
+      </TooltipProvider>,
+    );
+    await act(async () => {
+      fireEvent.click(view.getByRole("button", { name: "Resolve library ID" }));
+      await Promise.resolve();
+    });
+    expect(view.getByText("Available Libraries: - Title: Storybook")).toBeTruthy();
+    expect(calls).toEqual([]);
+  });
+
   test("renders the Codex-style collapsed summary text", async () => {
     const { container, getByRole } = renderMcp(
       <TooltipProvider>
@@ -570,29 +608,123 @@ describe("McpToolCall", () => {
     expect(textContent(container).includes("Partial tool content")).toBe(true);
   });
 
-  test("uses the node_repl js title as the standalone MCP label", async () => {
-    const { getByRole } = renderMcp(
-      <TooltipProvider>
+  test.each(["node_repl", "cua_repl"])(
+    "uses the %s script title and terminal identity",
+    async (server) => {
+      const { getByRole, container } = renderMcp(
+        <TooltipProvider>
+          <McpToolCall
+            item={buildMcpEntry({
+              mcpToolCall: buildMcpView({
+                functionName: "node_repl__js",
+                invocation: {
+                  server,
+                  tool: "js",
+                  arguments: {
+                    title: "Inspect package metadata",
+                    code: "JSON.stringify({ ok: true })",
+                  },
+                },
+              }),
+            })}
+          />
+        </TooltipProvider>,
+      );
+      await settleAsyncRender();
+
+      expect(getByRole("button", { name: "Inspect package metadata" })).toBeDefined();
+      expect(container.querySelector("[data-tool-activity-icon='node-repl']")).not.toBeNull();
+    },
+  );
+
+  test("opening withheld MCP output reads only that item and can retry a failed read", async () => {
+    const reads: Array<readonly [string | null, string]> = [];
+    const runtime = {
+      readItemDetail: async (threadId: string | null, itemId: string) => {
+        reads.push([threadId, itemId]);
+        throw new Error("Read failed");
+      },
+    } as unknown as ConversationRuntime;
+    const view = renderMcp(
+      <ConversationRuntimeContext.Provider value={runtime}>
         <McpToolCall
           item={buildMcpEntry({
-            mcpToolCall: buildMcpView({
-              functionName: "node_repl__js",
-              invocation: {
-                server: "node_repl",
-                tool: "js",
-                arguments: {
-                  title: "Inspect package metadata",
-                  code: "JSON.stringify({ ok: true })",
-                },
-              },
-            }),
+            rawItemId: "runtime-call-id",
+            mcpToolCall: buildMcpView({ outputOmitted: true }),
           })}
         />
-      </TooltipProvider>,
+      </ConversationRuntimeContext.Provider>,
     );
-    await settleAsyncRender();
+    expect(reads).toEqual([]);
+    const toggle = view.getByRole("button", { name: "Resolve library ID" });
+    await act(async () => {
+      fireEvent.click(toggle);
+      await Promise.resolve();
+    });
+    expect(reads).toEqual([["thread-1", "runtime-call-id"]]);
+    expect((await view.findByRole("alert")).textContent).toBe("Unable to load tool output");
+    await act(async () => {
+      fireEvent.click(toggle);
+      await Promise.resolve();
+    });
+    await act(async () => {
+      fireEvent.click(toggle);
+      await Promise.resolve();
+    });
+    expect(reads).toEqual([
+      ["thread-1", "runtime-call-id"],
+      ["thread-1", "runtime-call-id"],
+    ]);
+  });
 
-    expect(getByRole("button", { name: "Inspect package metadata" })).toBeDefined();
+  test("an open MCP activity hydrates its completed result and ignores a superseded read failure", async () => {
+    const reads: string[] = [];
+    let rejectRead: (reason: Error) => void = () => undefined;
+    const pendingRead = new Promise<void>((_resolve, reject) => {
+      rejectRead = reject;
+    });
+    const runtime = {
+      readItemDetail: async (_threadId: string | null, itemId: string) => {
+        reads.push(itemId);
+        return pendingRead;
+      },
+    } as unknown as ConversationRuntime;
+    let updateItem: (payload: CodexMcpToolCallView) => void = () => undefined;
+    function Harness() {
+      const [payload, setPayload] = useState(buildMcpView({ completed: false }));
+      useEffect(() => {
+        updateItem = setPayload;
+      }, []);
+      return (
+        <TooltipProvider>
+          <ConversationRuntimeContext.Provider value={runtime}>
+            <McpToolCall item={buildMcpEntry({ mcpToolCall: payload })} />
+          </ConversationRuntimeContext.Provider>
+        </TooltipProvider>
+      );
+    }
+    const view = renderMcp(<Harness />);
+    await act(async () => {
+      fireEvent.click(view.getByRole("button", { name: "Resolve library ID" }));
+      await Promise.resolve();
+    });
+    expect(reads).toEqual([]);
+    await act(async () => {
+      updateItem(buildMcpView({ outputOmitted: true }));
+      await Promise.resolve();
+    });
+    expect(reads).toEqual(["tool-1"]);
+    expect((await view.findByRole("status")).textContent).toBe("Loading output…");
+    await act(async () => {
+      updateItem(buildMcpView());
+      await Promise.resolve();
+    });
+    await act(async () => {
+      rejectRead(new Error("Stale read"));
+      await Promise.resolve();
+    });
+    expect(view.queryByRole("alert")).toBeNull();
+    expect(view.getByText("Available Libraries: - Title: Storybook")).toBeTruthy();
   });
 
   test("preserves MCP acronyms in generic standalone labels", async () => {

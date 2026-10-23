@@ -786,6 +786,8 @@ function projectDynamicToolCall(
     contentItems: item.contentItems,
     success: item.success,
     durationMs: item.durationMs,
+    ...(item.displayTitle ? { displayTitle: item.displayTitle } : {}),
+    ...(item.outputOmitted ? { outputOmitted: true } : {}),
     completed: item.status === "completed" || item.status === "failed",
   };
   return [
@@ -994,7 +996,11 @@ function projectCanonicalItemViews(
           normalizedKind: "toolCall",
           semanticKind: "mcpToolCall",
           status: item.status,
-          mcpToolCall: projectCodexMcpToolCall(item, context.turnStatus),
+          mcpToolCall: {
+            ...projectCodexMcpToolCall(item, context.turnStatus),
+            callId: item.nativeCallId ?? item.id,
+            ...(item.outputOmitted ? { outputOmitted: true } : {}),
+          },
           automationUpdate: projectNativeAutomationUpdate(item),
         },
       ];

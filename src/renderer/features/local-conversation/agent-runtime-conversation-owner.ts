@@ -147,6 +147,8 @@ function retireItem(
       return { ...item, status: "declined" };
     case "dynamicToolCall":
       return { ...item, status: "failed", success: false, durationMs };
+    case "mcpToolCall":
+      return { ...item, status: "failed", durationMs };
     // A provider-native task dies with its Run; an application-owned child reports its own end.
     case "delegatedTask":
       return item.childThreadId === null ? { ...item, status: "stopped" } : item;
@@ -397,7 +399,10 @@ export class AgentRuntimeConversationOwner {
         attachmentId: attachment.id,
       });
       if (!source) throw new Error("An image in this message is no longer available");
-      images.push({ source: source.path, caption: attachment.name });
+      images.push({
+        source: "dataUrl" in source ? source.dataUrl : source.path,
+        caption: attachment.name,
+      });
     }
     return images;
   }

@@ -23,7 +23,6 @@ import type {
   ThreadTurnModel,
   ThreadTurnRenderBuckets,
   ThreadTurnSubagentActivityState,
-  ThreadUserAttachmentStripBlockModel,
   ThreadWorkedForBlockModel,
 } from "../thread-stage-types";
 import { projectThreadActivityPresentation } from "./thread-activity-presentation";
@@ -256,32 +255,6 @@ function buildGeneratedImageGalleryBlock(
     images,
     pendingImageCount: output.pendingImageCount,
   };
-}
-
-function buildUserAttachmentStripBlock(
-  block: ThreadTranscriptBlockModel,
-): ThreadUserAttachmentStripBlockModel | null {
-  const attachments = block.entry.userAttachments ?? [];
-  if (attachments.length === 0) return null;
-
-  return {
-    id: `${block.id}:attachments`,
-    turnId: block.turnId,
-    createdAt: block.createdAt,
-    updatedAt: block.updatedAt,
-    searchableText: "",
-    type: "userAttachmentStrip",
-    attachments,
-  };
-}
-
-function expandUserBlocksWithAttachmentStrips(
-  userItems: ThreadTranscriptBlockModel[],
-): ThreadBlockModel[] {
-  return userItems.flatMap((block) => {
-    const strip = buildUserAttachmentStripBlock(block);
-    return strip ? [strip, block] : [block];
-  });
 }
 
 function buildAssistantMessageActionsModel(
@@ -663,7 +636,7 @@ export function buildTurnViewModel(input: BuildTurnViewModelInput): ThreadTurnMo
     ...(input.voiceWorkActivity && workedForItem ? [workedForItem] : []),
     ...buckets.modelChangedItems,
     ...buckets.preUserItems,
-    ...expandUserBlocksWithAttachmentStrips(buckets.userItems),
+    ...buckets.userItems,
     ...buckets.modelReroutedItems,
   ];
   const assistantAfterBlockIds = new Set(

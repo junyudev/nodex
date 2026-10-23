@@ -77,6 +77,117 @@ function summarizeDynamicValue(value: unknown): unknown {
   };
 }
 
+type McpToolCall = NonNullable<
+  Extract<OrchestrationV2TurnItem, { type: "dynamic_tool" }>["mcpToolCall"]
+>;
+type McpJson = McpToolCall["arguments"];
+
+/** Unknown protocol extensions are retained when small, never an unbounded history body. */
+function mcpCallMetadata(call: McpToolCall) {
+  const { arguments: _arguments, result: _result, ...metadata } = call;
+  if (Buffer.byteLength(JSON.stringify(metadata), "utf8") <= MAX_DYNAMIC_VALUE_BYTES)
+    return metadata;
+  return {
+    type: call.type,
+    id: call.id,
+    server: call.server,
+    tool: call.tool,
+    status: call.status,
+    ...(call.error == null ? {} : { error: { message: truncateDetail(call.error.message) ?? "" } }),
+    transportMetadataTruncated: true,
+  };
+}
+
+function projectMcpCallForWire(call: McpToolCall): McpToolCall {
+  const result = call.result;
+  return {
+    ...mcpCallMetadata(call),
+    arguments: summarizeDynamicValue(call.arguments) as McpJson,
+    ...(result == null
+      ? result === undefined
+        ? {}
+        : { result }
+      : {
+          result: {
+            content: [],
+            ...(result._meta === undefined
+              ? {}
+              : { _meta: summarizeDynamicValue(result._meta) as McpJson }),
+          },
+        }),
+  };
+}
+
+function isMcpJsonRecord(value: McpJson): value is { readonly [key: string]: McpJson } {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+/** Keep original content positions, so an image descriptor resolves the exact recorded block. */
+function boundIndexedToolContent(blocks: ReadonlyArray<McpJson>): McpJson[] {
+  let remainingBytes = MAX_ON_DEMAND_BYTES;
+  const content = blocks.slice(0, 1024).map((block): McpJson => {
+    if (
+      isMcpJsonRecord(block) &&
+      block.type === "inputImage" &&
+      typeof block.imageUrl === "string" &&
+      /^data:image\//iu.test(block.imageUrl)
+    )
+      return { type: "inputImage" };
+    if (isMcpJsonRecord(block) && block.type === "image") {
+      const { data: _data, ...marker } = block;
+      const size = Buffer.byteLength(JSON.stringify(marker), "utf8");
+      if (size > Math.min(remainingBytes, MAX_DYNAMIC_VALUE_BYTES))
+        return {
+          type: "image",
+          ...(typeof block.mimeType === "string"
+            ? { mimeType: truncateDetail(block.mimeType, 256)! }
+            : {}),
+        };
+      remainingBytes -= size;
+      return marker;
+    }
+    const serialized = JSON.stringify(block);
+    const size = Buffer.byteLength(serialized, "utf8");
+    if (size <= remainingBytes) {
+      remainingBytes -= size;
+      return block;
+    }
+    const text = isMcpJsonRecord(block) && typeof block.text === "string" ? block.text : serialized;
+    const truncated = truncateDetail(text, remainingBytes) ?? "";
+    remainingBytes = 0;
+    return { type: "text", text: truncated };
+  });
+  if (content.length !== blocks.length)
+    content.push({ type: "text", text: "… output truncated for transport" });
+  return content;
+}
+
+function projectMcpCallForDetail(call: McpToolCall): McpToolCall {
+  const result = call.result;
+  if (result == null)
+    return {
+      ...mcpCallMetadata(call),
+      arguments: boundDynamicValue(call.arguments) as McpJson,
+      ...(result === undefined ? {} : { result }),
+    };
+  const content = boundIndexedToolContent(result.content);
+  const { content: _content, structuredContent: _structured, _meta: _meta, ...extensions } = result;
+  return {
+    ...mcpCallMetadata(call),
+    arguments: boundDynamicValue(call.arguments) as McpJson,
+    result: {
+      ...(summarizeDynamicValue(extensions) as { readonly [key: string]: McpJson }),
+      content,
+      ...(result._meta === undefined
+        ? {}
+        : { _meta: summarizeDynamicValue(result._meta) as McpJson }),
+      ...(result.structuredContent === undefined
+        ? {}
+        : { structuredContent: boundDynamicValue(result.structuredContent) as McpJson }),
+    },
+  };
+}
+
 export function projectTurnItemForWire(item: OrchestrationV2TurnItem): OrchestrationV2TurnItem {
   switch (item.type) {
     case "user_message":
@@ -119,13 +230,18 @@ export function projectTurnItemForWire(item: OrchestrationV2TurnItem): Orchestra
       return { ...metadata, prompt: "", result: null };
     }
     case "dynamic_tool": {
-      const { output: rawOutput, ...projected } = item;
+      const { output: rawOutput, mcpToolCall, ...projected } = item;
       const output = compactDynamicToolOutput(rawOutput);
       return {
         ...projected,
         input: summarizeDynamicValue(item.input),
         ...(output === undefined ? {} : { output }),
-        ...(hasDynamicValue(rawOutput) ? { outputOmitted: true } : {}),
+        ...(mcpToolCall === undefined ? {} : { mcpToolCall: projectMcpCallForWire(mcpToolCall) }),
+        ...(hasDynamicValue(rawOutput) ||
+        hasDynamicValue(mcpToolCall?.result?.content) ||
+        hasDynamicValue(mcpToolCall?.result?.structuredContent)
+          ? { outputOmitted: true }
+          : {}),
       };
     }
     default:
@@ -161,6 +277,9 @@ function boundDynamicValue(value: unknown): unknown {
  * in order, so clients can load each image by index.
  */
 function boundToolOutput(output: unknown): unknown {
+  if (Array.isArray(output) && output.some((block) => block?.type === "inputImage")) {
+    return boundIndexedToolContent(output);
+  }
   const omitted = omitToolOutputImageData(output);
   const bounded = boundDynamicValue(omitted);
   if (typeof bounded !== "string" || typeof omitted === "string") return bounded;
@@ -197,6 +316,9 @@ export function projectTurnItemForDetail(item: OrchestrationV2TurnItem): Orchest
         ...item,
         input: boundDynamicValue(item.input),
         output: boundToolOutput(item.output),
+        ...(item.mcpToolCall === undefined
+          ? {}
+          : { mcpToolCall: projectMcpCallForDetail(item.mcpToolCall) }),
       };
     case "subagent":
       return {

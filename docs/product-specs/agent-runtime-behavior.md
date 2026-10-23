@@ -227,9 +227,12 @@ that message into its queued Run, including when a Provider assigned the item ID
 
 Images are materialized from explicit attachments, then persisted by the runtime under
 the admitted Thread and message before dispatch. Image URLs resolve on demand from that
-exact visible item and attachment identity. Forked history resolves through its captured
-source Run prefix; later source items are excluded. Resolution returns only the owned
-path, and conversation metadata never hydrates image bytes. Workspace creation and environment
+exact visible item and attachment identity. Each user message owns its attachments in the
+transcript, including steering, queue promotion and image-only input. Collapsing Agent
+activity keeps those complete messages visible, and reopening history preserves their
+image previews. Forked history resolves through its captured source Run prefix; later source
+items are excluded. Resolution returns only the owned path, and conversation metadata never
+hydrates image bytes. Workspace creation and environment
 setup use the same scoped filesystem owner as other native capabilities. The workspace
 is retained when remote creation may have committed without acknowledgement, and its
 managed-worktree ownership is attached only after the durable execution is verified.
@@ -335,9 +338,10 @@ reports how it ended. A provider-native subagent is stopped through its owning p
 An application-owned subagent's own conversation ends with a Stopped marker.
 
 Input the user did not type names its sender: Sent by another agent links to the sending
-conversation, and messages Nodex sends itself say so. Steered and queued input carries a
-Steer or Queued marker. Reported work — a subagent's result, finished background work or a
-restart continuation — appears as a compact row that opens the one subagent it names. When
+conversation, and messages Nodex sends itself say so. Queued input carries a Queued
+marker. Steering appears as an ordinary user message, without an additional delivery label.
+Reported work — a subagent's result, finished background work or a restart continuation —
+appears as a compact row that opens the one subagent it names. When
 a report starts an automatic Run, that row opens the Run's response, so the reason the
 Agent continued is visible before its answer.
 

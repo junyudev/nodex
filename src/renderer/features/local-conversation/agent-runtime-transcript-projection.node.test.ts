@@ -1,5 +1,7 @@
 import { describe, expect, test } from "vite-plus/test";
 import type { AgentTurnItem } from "@nodex/agent-runtime/contracts";
+import { projectCodexCanonicalTurnItemViews } from "../../../shared/codex-canonical-item-projector";
+import { buildAgentRuntimeToolResultImageSource } from "../../../shared/agent-runtime-attachments";
 import {
   isAgentRuntimeItemHidden,
   parseAgentRuntimeToolName,
@@ -89,6 +91,115 @@ describe("Runtime application tool presentation", () => {
       type: "dynamicToolCall",
       namespace: "nodex_app",
       tool: "search",
+    });
+  });
+
+  test("dynamic tool presentation preserves the execution title and typed output content", () => {
+    const contentItems = [
+      { type: "inputText", text: "Image captured" },
+      { type: "inputImage", imageUrl: "data:image/png;base64,aW1hZ2U=" },
+      { type: "inputAudio", audioUrl: "data:audio/wav;base64,YXVkaW8=" },
+    ];
+    expect(
+      projectAgentRuntimeItem({
+        ...tool("node_repl.js"),
+        title: "Inspecting workspace",
+        output: contentItems,
+      }),
+    ).toMatchObject({
+      type: "dynamicToolCall",
+      displayTitle: "Inspecting workspace",
+      contentItems,
+    });
+  });
+
+  test("runtime MCP calls retain native identity, metadata and typed result images through projection", () => {
+    const source = buildAgentRuntimeToolResultImageSource({
+      sourceThreadId: "parent",
+      itemId: "item",
+      contentIndex: 1,
+    });
+    const projected = projectAgentRuntimeItem({
+      ...tool("cua_repl.js"),
+      output: undefined,
+      mcpToolCall: {
+        type: "mcpToolCall",
+        id: "native-call",
+        server: "cua_repl",
+        tool: "js",
+        status: "completed",
+        arguments: { title: "Inspect page", code: "await tab.capture()" },
+        pluginId: "browser-tools",
+        result: {
+          content: [
+            { type: "text", text: "Captured" },
+            { type: "image", mimeType: "image/png" },
+          ],
+          structuredContent: { page: "Example" },
+          _meta: { "codex/toolSurface": { kind: "browserUse", backend: "chrome" } },
+        },
+      },
+    });
+    expect(projected?.type).toBe("mcpToolCall");
+    const view = projectCodexCanonicalTurnItemViews({
+      threadId: "parent",
+      turnId: "parent-run",
+      items: [projected!],
+      observedAtMs: 1,
+      turnStatus: "completed",
+    })[0];
+    expect(view?.itemId).toBe("item");
+    expect(view?.mcpToolCall).toMatchObject({
+      callId: "native-call",
+      pluginId: "browser-tools",
+      invocation: { server: "cua_repl", tool: "js", arguments: { title: "Inspect page" } },
+      source: { kind: "browserUse", backend: "chrome" },
+      result: {
+        type: "success",
+        structuredContent: { page: "Example" },
+        content: [
+          { type: "text", text: "Captured" },
+          { type: "image", source, data: "", mimeType: "image/png" },
+        ],
+      },
+    });
+  });
+
+  test("application MCP tools keep their registered identity and complete media result", () => {
+    const projected = projectAgentRuntimeItem({
+      ...tool("nodex_app.capture"),
+      mcpToolCall: {
+        type: "mcpToolCall",
+        id: "native-call",
+        server: "nodex_app",
+        tool: "capture",
+        status: "completed",
+        arguments: {},
+        result: {
+          content: [
+            { type: "text", text: "Captured" },
+            { type: "image", mimeType: "image/png" },
+          ],
+          structuredContent: { captured: true },
+        },
+      },
+    });
+    expect(projected).toMatchObject({
+      type: "dynamicToolCall",
+      namespace: "nodex_app",
+      tool: "capture",
+      contentItems: [
+        { type: "inputText", text: '{"captured":true}' },
+        { type: "inputText", text: "Captured" },
+        {
+          type: "inputImage",
+          imageUrl: buildAgentRuntimeToolResultImageSource({
+            sourceThreadId: "parent",
+            itemId: "item",
+            contentIndex: 1,
+          }),
+        },
+      ],
     });
   });
 

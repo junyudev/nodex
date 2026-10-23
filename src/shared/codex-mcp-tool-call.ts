@@ -1,5 +1,6 @@
 import type { TurnStatus } from "@nodex/codex-app-server-protocol/v2/TurnStatus";
 import { isCodexBrowserMcpServer } from "./codex-webmcp-tool-call";
+import { parseAgentRuntimeAttachmentSource } from "./agent-runtime-attachments";
 import type {
   CodexMcpToolCallAnnotations,
   CodexMcpToolCallContentBlock,
@@ -156,6 +157,9 @@ export function normalizeCodexMcpToolCallContentBlock(
         type: "image",
         data: record.data,
         mimeType: record.mimeType,
+        ...(typeof record.source === "string" && parseAgentRuntimeAttachmentSource(record.source)
+          ? { source: record.source }
+          : {}),
         annotations,
       };
 

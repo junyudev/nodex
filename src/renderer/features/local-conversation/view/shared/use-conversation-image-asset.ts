@@ -30,7 +30,11 @@ export function useConversationImageAsset(
     queryFn: async () => {
       if (!runtimeReference || !resolveRuntimeAttachment) throw new Error("Image unavailable");
       const path = await resolveRuntimeAttachment(runtimeReference);
-      if (!parseAbsoluteImagePath(path)) throw new Error("Image unavailable");
+      if (
+        !parseAbsoluteImagePath(path) &&
+        !/^data:image\/(?:png|jpeg|gif|webp);base64,/iu.test(path)
+      )
+        throw new Error("Image unavailable");
       return path;
     },
     retry: false,

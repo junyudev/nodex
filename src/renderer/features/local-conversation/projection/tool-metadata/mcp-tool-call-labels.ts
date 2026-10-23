@@ -1,8 +1,6 @@
 import type { CodexMcpToolCallView, ProtocolAppInfo } from "../../../../lib/types";
 import { resolveCodexMcpAppInfo } from "../../../../../shared/codex-mcp-tool-call";
-import { asRecord, humanizeIdentifier } from "./tool-call-utils";
-
-const MCP_TOOL_TITLE_MAX_LENGTH = 80;
+import { asRecord, humanizeIdentifier, resolveScriptToolTitle } from "./tool-call-utils";
 
 const MCP_TOOL_NAME_ACRONYMS: Readonly<Record<string, string>> = {
   api: "API",
@@ -77,17 +75,6 @@ function sentenceCaseMcpToolParts(parts: readonly string[]): string {
       return `${part[0]?.toUpperCase() ?? ""}${part.slice(1)}`;
     })
     .join(" ");
-}
-
-function resolveMcpJsTitle(argumentsValue: unknown): string | null {
-  const argumentsRecord = asRecord(argumentsValue);
-  const rawTitle = argumentsRecord?.title;
-  if (typeof rawTitle !== "string") return null;
-
-  const title = rawTitle.trim().replace(/\s+/g, " ");
-  if (title.length === 0) return null;
-  if (title.length <= MCP_TOOL_TITLE_MAX_LENGTH) return title;
-  return `${title.slice(0, MCP_TOOL_TITLE_MAX_LENGTH - 1).trimEnd()}…`;
 }
 
 function tokenSequencesEqual(left: readonly string[], right: readonly string[]): boolean {
@@ -182,8 +169,10 @@ export function resolveMcpToolActivityLabel(input: {
   const toolKey = toolParts.join("_");
 
   if (toolKey === "js") {
-    const title = resolveMcpJsTitle(payload.invocation.arguments);
-    if (title) return title;
+    return (
+      resolveScriptToolTitle(toolKey, payload.invocation.arguments) ??
+      (completed ? "Ran JavaScript" : "Running JavaScript")
+    );
   }
 
   const [operation, ...subjectParts] = toolParts;

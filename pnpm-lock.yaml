@@ -760,6 +760,9 @@ importers:
 
   packages/agent-runtime/vendor/contracts:
     dependencies:
+      '@nodex/effect-codex-app-server':
+        specifier: workspace:*
+        version: link:../../../effect-codex-app-server
       effect:
         specifier: 4.0.3
         version: 4.0.3

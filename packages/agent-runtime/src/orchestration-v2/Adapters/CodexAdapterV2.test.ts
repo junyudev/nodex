@@ -937,16 +937,45 @@ describe("CodexAdapterV2 dynamic tool projection", () => {
         },
       });
 
-      assert.deepEqual(projection, {
-        toolName: "nodex_app.create_threads",
-        input: {
-          threads: [{ title: "Fixture child", prompt: "fixture child prompt" }],
+      assert.deepEqual(
+        { ...projection, mcpToolCall: undefined },
+        {
+          mcpToolCall: undefined,
+          toolName: "nodex_app.create_threads",
+          input: {
+            threads: [{ title: "Fixture child", prompt: "fixture child prompt" }],
+          },
+          output: {
+            threads: [{ threadId: "thread:mcp:fixture:0" }],
+          },
+          status: "completed",
         },
-        output: {
-          threads: [{ threadId: "thread:mcp:fixture:0" }],
+      );
+    }).pipe(Effect.provide(NodeServices.layer)),
+  );
+
+  it.effect("retains complete MCP content and metadata alongside structured output", () =>
+    Effect.gen(function* () {
+      const call = {
+        type: "mcpToolCall" as const,
+        id: "native-js-call",
+        server: "node_repl",
+        tool: "js",
+        status: "completed" as const,
+        arguments: { title: "Inspect page", code: "capture()" },
+        result: {
+          content: [
+            { type: "text", text: "Captured page" },
+            { type: "image", mimeType: "image/png", data: "AQID" },
+          ],
+          structuredContent: { width: 1200 },
+          _meta: { "codex/toolSurface": { kind: "browser", browser: "chrome" } },
+          extension: { preserved: true },
         },
-        status: "completed",
-      });
+      };
+      const projection = yield* CodexAdapterV2.projectCodexDynamicToolItem(call);
+      assert.deepEqual(projection.mcpToolCall, call);
+      assert.equal(projection.output, undefined);
     }).pipe(Effect.provide(NodeServices.layer)),
   );
 
@@ -7810,7 +7839,8 @@ describe("CodexAdapterV2 post-settle continuation", () => {
             csp: { connectDomains: ["https://api.weather.test"] },
           },
         );
-        assert.deepEqual(output.result, {
+        assert.isUndefined(output.result);
+        assert.deepEqual(item.type === "dynamic_tool" ? item.mcpToolCall?.result : null, {
           content: [{ type: "text", text: "Sunny" }],
           structuredContent: { temp: 21 },
         });

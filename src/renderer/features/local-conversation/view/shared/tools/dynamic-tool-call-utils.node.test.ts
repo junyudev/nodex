@@ -35,6 +35,41 @@ function dynamicCall(overrides: Partial<CodexDynamicToolCallView> = {}): CodexDy
 }
 
 describe("dynamic tool registry", () => {
+  test("script activity labels use bounded authored titles, then lifecycle wording", () => {
+    expect(
+      resolveDynamicToolFallbackLabel(
+        dynamicCall({
+          namespace: "node_repl",
+          tool: "js",
+          arguments: { title: " Inspect\n package metadata " },
+        }),
+      ),
+    ).toBe("Inspect package metadata");
+    expect(
+      resolveDynamicToolFallbackLabel(
+        dynamicCall({
+          tool: "js",
+          arguments: { title: "x".repeat(100) },
+        }),
+      ),
+    ).toBe(`${"x".repeat(79)}…`);
+    expect(
+      resolveDynamicToolFallbackLabel(dynamicCall({ tool: "js", arguments: {}, completed: false })),
+    ).toBe("Running JavaScript");
+    expect(resolveDynamicToolFallbackLabel(dynamicCall({ tool: "js", arguments: {} }))).toBe(
+      "Ran JavaScript",
+    );
+    expect(
+      resolveDynamicToolFallbackLabel(
+        dynamicCall({
+          tool: "inspect",
+          arguments: { title: "Input data" },
+          displayTitle: "Inspecting workspace",
+        }),
+      ),
+    ).toBe("Inspecting workspace");
+  });
+
   test("parses only exact create_thread materialization result variants", () => {
     const threadResult = parseCodexAppCreateThreadResult(
       dynamicCall({

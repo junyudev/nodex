@@ -53,6 +53,120 @@ const base = {
 };
 
 describe("orchestration V2 wire projection", () => {
+  it("persists exact MCP results while history withholds bodies and detail retains indexed image markers", () => {
+    const call = {
+      type: "mcpToolCall" as const,
+      id: "native-js-call",
+      server: "node_repl",
+      tool: "js",
+      status: "completed" as const,
+      arguments: { title: "Inspect page", code: "capture()" },
+      result: {
+        content: [
+          { type: "text", text: "Before" },
+          {
+            type: "image",
+            mimeType: "image/png",
+            data: "AQID",
+            annotations: { audience: ["user"] },
+          },
+          { type: "text", text: "After" },
+        ],
+        structuredContent: { width: 1200 },
+        _meta: { "codex/toolSurface": { kind: "browser", browser: "chrome" } },
+        extension: { retained: true },
+      },
+    };
+    const persisted = decodeTurnItem({ ...base, mcpToolCall: call });
+    expect(decodeTurnItemJson(encodeTurnItemJson(persisted))).toMatchObject({ mcpToolCall: call });
+    const history = projectTurnItemForWire(persisted);
+    expect(history).toMatchObject({
+      outputOmitted: true,
+      mcpToolCall: { result: { content: [], _meta: call.result._meta } },
+    });
+    expect(JSON.stringify(history)).not.toContain("AQID");
+    const detail = projectTurnItemForDetail(persisted);
+    expect(detail).toMatchObject({
+      mcpToolCall: {
+        result: {
+          content: [
+            call.result.content[0],
+            { type: "image", mimeType: "image/png", annotations: { audience: ["user"] } },
+            call.result.content[2],
+          ],
+          structuredContent: call.result.structuredContent,
+          _meta: call.result._meta,
+          extension: call.result.extension,
+        },
+      },
+    });
+    expect(JSON.stringify(detail)).not.toContain("AQID");
+    expect(persisted).toMatchObject({ mcpToolCall: call });
+  });
+
+  it("bounds huge MCP results without shifting later image content positions", () => {
+    const item = decodeTurnItem({
+      ...base,
+      mcpToolCall: {
+        type: "mcpToolCall",
+        id: "native-large",
+        server: "node_repl",
+        tool: "js",
+        status: "completed",
+        arguments: {},
+        result: {
+          content: [
+            { type: "text", text: "x".repeat(400_000) },
+            { type: "image", mimeType: "image/png", data: "AQID" },
+          ],
+        },
+      },
+    });
+    const detail = projectTurnItemForDetail(item);
+    expect(detail).toMatchObject({
+      mcpToolCall: {
+        result: { content: [{ type: "text" }, { type: "image", mimeType: "image/png" }] },
+      },
+    });
+    expect(Buffer.byteLength(JSON.stringify(detail))).toBeLessThan(270_000);
+    expect(JSON.stringify(detail)).toContain("output truncated for transport");
+  });
+
+  it("keeps dynamic result image indexes after truncation and preserves remote image URLs", () => {
+    const output = [
+      { type: "inputText", text: "x".repeat(400_000) },
+      { type: "inputImage", imageUrl: "data:image/png;base64,AQID" },
+    ];
+    expect(projectTurnItemForDetail({ ...base, output })).toMatchObject({
+      output: [{ type: "text" }, { type: "inputImage" }],
+    });
+    const remote = [{ type: "inputImage", imageUrl: "https://example.test/image.png" }];
+    expect(projectTurnItemForDetail({ ...base, output: remote })).toMatchObject({ output: remote });
+    expect(output[1]).toEqual({ type: "inputImage", imageUrl: "data:image/png;base64,AQID" });
+  });
+
+  it("bounds arbitrary protocol metadata without losing required native call identity", () => {
+    const item = decodeTurnItem({
+      ...base,
+      mcpToolCall: {
+        type: "mcpToolCall",
+        id: "native-large-meta",
+        server: "node_repl",
+        tool: "js",
+        status: "completed",
+        arguments: {},
+        futureExtension: "x".repeat(400_000),
+        result: { content: [], futureExtension: "x".repeat(400_000) },
+      },
+    });
+    for (const projected of [projectTurnItemForWire(item), projectTurnItemForDetail(item)]) {
+      expect(decodeTurnItemJson(encodeTurnItemJson(projected))).toMatchObject({
+        mcpToolCall: { id: "native-large-meta", server: "node_repl", tool: "js" },
+      });
+      expect(Buffer.byteLength(JSON.stringify(projected))).toBeLessThan(20_000);
+    }
+  });
+
   it("encodes only task metadata while execution retains giant bodies and delivery state", () => {
     const body = "private task body ".repeat(1_100_000);
     const stored = {
