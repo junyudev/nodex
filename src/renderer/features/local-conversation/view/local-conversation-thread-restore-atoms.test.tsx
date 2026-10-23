@@ -97,6 +97,15 @@ describe("local conversation thread restore atoms", () => {
     expect(normalizeThreadRestoreDistanceFromBottomPx(Number.NaN)).toBe(0);
   });
 
+  test("keeps held viewport displacement inside the bottom follow region", () => {
+    for (const distance of [0, 0.125, 8, 24, 24.01]) {
+      expect(normalizeThreadRestoreDistanceFromBottomPx(distance, "user_hold")).toBe(distance);
+    }
+    expect(normalizeThreadRestoreDistanceFromBottomPx(-8, "user_hold")).toBe(0);
+    expect(normalizeThreadRestoreDistanceFromBottomPx(Number.NaN, "user_hold")).toBe(0);
+    expect(normalizeThreadRestoreDistanceFromBottomPx(8, "user_follow")).toBe(0);
+  });
+
   test("collapses the old latest turn while preserving the MCP App exception window", () => {
     const regularTransition = resolveLatestTurnCollapseTransition({
       entries: [

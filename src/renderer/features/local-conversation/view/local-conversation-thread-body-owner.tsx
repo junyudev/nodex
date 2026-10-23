@@ -856,7 +856,10 @@ export function LocalConversationThreadBodyOwner({
     (state: VirtualizedLatestTurnRestoreState | null, distanceFromBottomPx: number) => {
       onRestoreSnapshotChange((current) => ({
         ...current,
-        distanceFromBottomPx: normalizeThreadRestoreDistanceFromBottomPx(distanceFromBottomPx),
+        distanceFromBottomPx: normalizeThreadRestoreDistanceFromBottomPx(
+          distanceFromBottomPx,
+          state?.followMode,
+        ),
         latestTurn: state,
       }));
     },
@@ -1363,6 +1366,7 @@ export function LocalConversationThreadBodyOwner({
                 turnDiffHoverPreviewDisabled={turnDiffHoverPreviewDisabled}
                 initialScrollOffset={normalizeThreadRestoreDistanceFromBottomPx(
                   initialRestoreSnapshot.distanceFromBottomPx,
+                  initialRestoreSnapshot.latestTurn?.followMode,
                 )}
                 initialRestoreState={initialRestoreSnapshot.virtualizedTurnList}
                 initialLatestTurnRestoreState={initialRestoreSnapshot.latestTurn}

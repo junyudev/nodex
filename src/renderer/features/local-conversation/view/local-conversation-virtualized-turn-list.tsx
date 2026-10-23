@@ -300,6 +300,10 @@ interface LatestTurnHeightChange {
   turnElement: HTMLElement | null;
 }
 
+type LatestTurnHeightChangeHandler = (
+  change: LatestTurnHeightChange,
+) => "followed_bottom" | "preserve_viewport";
+
 interface VirtualizedTurnViewportChange {
   distanceFromBottomPx: number;
   gaps: readonly LocalConversationHistoryGapLayout[];
@@ -367,7 +371,7 @@ interface PendingLayoutEffect {
   turnHeightsByKey: Record<string, number>;
 }
 
-/** Response-space changes during the height callback belong to the same native compensation. */
+/** Latest-Turn following owns placement; otherwise compensate with application-time response space. */
 export function applyLocalConversationTurnMeasurementEffect({
   effect,
   getResponseSpacerHeightPx,
@@ -382,12 +386,16 @@ export function applyLocalConversationTurnMeasurementEffect({
     | "nativeScrollDistanceFromBottomPx"
   >;
   readonly getResponseSpacerHeightPx: () => number;
-  readonly onLatestTurnHeightChange: (change: LatestTurnHeightChange) => void;
+  readonly onLatestTurnHeightChange: LatestTurnHeightChangeHandler;
   readonly restoreScrollDistanceFromBottomPx: () => void;
   readonly compensateScrollToDistanceFromBottomPx: (distance: number) => void;
 }) {
   const responseSpaceHeightBeforeCallbackPx = getResponseSpacerHeightPx();
-  if (effect.latestTurnHeightChange) onLatestTurnHeightChange(effect.latestTurnHeightChange);
+  if (
+    effect.latestTurnHeightChange &&
+    onLatestTurnHeightChange(effect.latestTurnHeightChange) === "followed_bottom"
+  )
+    return;
   if (effect.restoreScrollDistanceFromBottom) {
     restoreScrollDistanceFromBottomPx();
     return;
@@ -421,7 +429,7 @@ interface CoreProps extends Omit<
   retryHistoryBoundary: (boundary: CodexHistoryBoundaryRef) => void;
   historyRows?: readonly CodexHistoryRow[];
   initialScrollOffset: number;
-  onLatestTurnHeightChange: (change: LatestTurnHeightChange) => void;
+  onLatestTurnHeightChange: LatestTurnHeightChangeHandler;
   onViewportChange?: (change: VirtualizedTurnViewportChange) => void;
   preserveMeasuredTurnViewport?: boolean;
   scrollController: LocalConversationThreadScrollControllerValue;
@@ -2091,12 +2099,17 @@ export function LocalConversationVirtualizedTurnList({
   const isLatestTurnInProgress = latest?.isInProgress ?? false;
   const initialRestore =
     initialLatestTurnRestoreState?.turnKey === latestTurnKey ? initialLatestTurnRestoreState : null;
+  const restoredFollowMode =
+    initialLatestTurnRestoreState?.followMode === "user_hold"
+      ? "user_hold"
+      : initialRestore?.followMode;
   const initialFollowMode =
-    isLatestTurnInProgress && (initialScrollOffset ?? 0) <= THREAD_NEAR_BOTTOM_THRESHOLD_PX
+    restoredFollowMode ??
+    (isLatestTurnInProgress && (initialScrollOffset ?? 0) <= THREAD_NEAR_BOTTOM_THRESHOLD_PX
       ? latestTurnPhase === "prework"
         ? "prework_follow"
         : "user_follow"
-      : (initialRestore?.followMode ?? "static");
+      : "static");
   const latestTurnFollowStateRef = useRef<ThreadLatestTurnFollowState>({
     followMode: initialFollowMode,
   });
@@ -2195,22 +2208,12 @@ export function LocalConversationVirtualizedTurnList({
     () =>
       baseScrollController.addUserScrollListener((distance, previous) => {
         hasRestoredInitialScrollRef.current = true;
-        if (
-          distance <= THREAD_NEAR_BOTTOM_THRESHOLD_PX &&
-          responseSpace.getHeightPx() <= THREAD_NEAR_BOTTOM_THRESHOLD_PX &&
-          previous != null &&
-          previous > THREAD_NEAR_BOTTOM_THRESHOLD_PX
-        ) {
-          updateFollowState(
-            { type: "scroll_to_bottom", latestTurnPhase: latestTurnPhaseRef.current },
-            true,
-          );
-          return;
-        }
+        if (previous == null) return;
         updateFollowState({
-          type: "scroll_distance_changed",
+          type: "user_scrolled",
           distanceFromBottomPx: distance,
-          latestTurnPhase: latestTurnPhaseRef.current,
+          previousDistanceFromBottomPx: previous,
+          responseSpacerHeightPx: responseSpace.getHeightPx(),
         });
       }),
     [baseScrollController, responseSpace, updateFollowState],
@@ -2268,18 +2271,16 @@ export function LocalConversationVirtualizedTurnList({
       return;
     }
     if (!baseScrollController.getScrollElement()) return;
-    if (
-      Math.abs(baseScrollController.getScrollDistanceFromBottomPx() - distance) <=
-      THREAD_NEAR_BOTTOM_THRESHOLD_PX
-    ) {
+    const tolerancePx =
+      latestTurnFollowStateRef.current.followMode === "user_hold"
+        ? 1
+        : THREAD_NEAR_BOTTOM_THRESHOLD_PX;
+    if (Math.abs(baseScrollController.getScrollDistanceFromBottomPx() - distance) <= tolerancePx) {
       hasRestoredInitialScrollRef.current = true;
       return;
     }
     baseScrollController.scrollToDistanceFromBottomPx(distance, "instant");
-    if (
-      Math.abs(baseScrollController.getScrollDistanceFromBottomPx() - distance) <=
-      THREAD_NEAR_BOTTOM_THRESHOLD_PX
-    )
+    if (Math.abs(baseScrollController.getScrollDistanceFromBottomPx() - distance) <= tolerancePx)
       hasRestoredInitialScrollRef.current = true;
   }, [baseScrollController]);
   const handleLatestTurnHeightChange = useCallback(
@@ -2289,7 +2290,7 @@ export function LocalConversationVirtualizedTurnList({
       bottomViewportOverflowPx,
       turnElement,
       followContentHeightPx,
-    }: LatestTurnHeightChange) => {
+    }: LatestTurnHeightChange): ReturnType<LatestTurnHeightChangeHandler> => {
       const expected = pendingExpectedLatestTurnHeightPxRef.current;
       if (heightPx !== null) {
         latestTurnHeightPxRef.current = heightPx;
@@ -2323,7 +2324,7 @@ export function LocalConversationVirtualizedTurnList({
         (followMode === "prework_follow" && latestTurnPhaseRef.current === "prework")
       ) {
         baseScrollController.scrollToDistanceFromBottomPx(0, "instant");
-        return;
+        return "followed_bottom";
       }
       const hadResponseSpace = responseSpace.getHeightPx() > THREAD_NEAR_BOTTOM_THRESHOLD_PX;
       if (expected === null) responseSpace.consumeGrowth(heightDeltaPx ?? 0);
@@ -2335,7 +2336,7 @@ export function LocalConversationVirtualizedTurnList({
         !element ||
         !turnElement
       )
-        return;
+        return "preserve_viewport";
       const overflow =
         getBottomViewportOverflowPx({
           scrollElement: element,
@@ -2351,7 +2352,9 @@ export function LocalConversationVirtualizedTurnList({
       if (state.followMode === "prework_follow") {
         responseSpace.clear();
         baseScrollController.scrollToDistanceFromBottomPx(0, "instant");
+        return "followed_bottom";
       }
+      return "preserve_viewport";
     },
     [baseScrollController, responseSpace, updateFollowState],
   );
@@ -2361,7 +2364,7 @@ export function LocalConversationVirtualizedTurnList({
     placementKeyRef.current = placementKey;
     latestTurnPhaseRef.current = latestTurnPhase;
     if (placementKey === null) {
-      updateFollowState({ type: "latest_turn_removed" }, true);
+      if (previousKey !== null) updateFollowState({ type: "latest_turn_removed" }, true);
       responseSpace.clear();
       return;
     }
@@ -2381,8 +2384,8 @@ export function LocalConversationVirtualizedTurnList({
       const placement = baseScrollController.consumePendingLatestTurnSubmitPlacement();
       // Peers and history hydration may append rows; only this window's submit owns placement.
       if (placement === null && !initialPlacement) return;
-      updateFollowState({ type: "latest_turn_placed" }, true);
       if (placement && !placement.shouldPlaceLatestTurn) {
+        updateFollowState({ type: "latest_turn_placed" }, true);
         responseSpace.clear();
         const delta =
           placement.scrollHeightPx === null ? 0 : element.scrollHeight - placement.scrollHeightPx;
@@ -2393,6 +2396,8 @@ export function LocalConversationVirtualizedTurnList({
         return;
       }
       responseSpace.place();
+      // Placement temporarily holds the viewport; the new Turn can then follow its work.
+      updateFollowState({ type: "latest_turn_placed" }, true);
     }
     const previous = latestTurnFollowStateRef.current;
     updateFollowState({

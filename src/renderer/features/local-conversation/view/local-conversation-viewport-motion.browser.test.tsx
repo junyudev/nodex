@@ -15,6 +15,10 @@ import {
   type LocalConversationThreadScrollControllerValue,
 } from "./local-conversation-thread-scroll-controller";
 import { LocalConversationVirtualizedTurnList } from "./local-conversation-virtualized-turn-list";
+import {
+  normalizeThreadRestoreDistanceFromBottomPx,
+  type LocalConversationThreadRestoreSnapshot,
+} from "./local-conversation-thread-view-state";
 import "../../../globals.css";
 
 const originalApi = window.api;
@@ -80,7 +84,11 @@ function entry(index: number, pending = false): VisibleConversationTurnEntry {
   };
 }
 
-function renderThread(initial: VisibleConversationTurnEntry[], reducedMotion: boolean) {
+function renderThread(
+  initial: VisibleConversationTurnEntry[],
+  reducedMotion: boolean,
+  initialRestoreSnapshot?: LocalConversationThreadRestoreSnapshot,
+) {
   localStorage.setItem(REDUCED_MOTION_STORAGE_KEY, reducedMotion ? "on" : "off");
   const store = createMaitaiStore();
   let controller: LocalConversationThreadScrollControllerValue | null = null;
@@ -97,7 +105,10 @@ function renderThread(initial: VisibleConversationTurnEntry[], reducedMotion: bo
     });
     return (
       <div style={{ width: 700, height: 600 }}>
-        <LocalConversationThreadScrollLayout footer={<div style={{ height: footerHeight }} />}>
+        <LocalConversationThreadScrollLayout
+          footer={<div style={{ height: footerHeight }} />}
+          initialRestoreSnapshot={initialRestoreSnapshot}
+        >
           <LocalConversationVirtualizedTurnList
             entries={entries.map((value, index) => ({
               ...value,
@@ -107,7 +118,11 @@ function renderThread(initial: VisibleConversationTurnEntry[], reducedMotion: bo
             threadCwd={null}
             editableTurnIds={new Set()}
             canForkFromTurn={false}
-            initialScrollOffset={0}
+            initialScrollOffset={normalizeThreadRestoreDistanceFromBottomPx(
+              initialRestoreSnapshot?.distanceFromBottomPx ?? 0,
+              initialRestoreSnapshot?.latestTurn?.followMode,
+            )}
+            initialLatestTurnRestoreState={initialRestoreSnapshot?.latestTurn}
             latestTurnSynchronousMeasurementKey={entries.at(-1)?.turnKey}
             scrollElement={scroll.scrollElement}
           />
@@ -176,6 +191,67 @@ async function recordGeometry(
 }
 
 describe("transcript viewport motion in Chromium", () => {
+  test.each(["same latest Turn", "a newly appended peer Turn"])(
+    "restores a small viewport hold across %s and later growth",
+    async (scenario) => {
+      const turns = Array.from({ length: 10 }, (_, index) => entry(index));
+      const latest = turns.at(-1)!;
+      latest.turn = {
+        ...latest.turn,
+        status: "inProgress",
+        firstTurnWorkItemStartedAtMs: 10,
+        items: latest.turn.items.map((item) =>
+          item.kind === "assistantMessage" ? { ...item, assistantPhase: "commentary" } : item,
+        ),
+      };
+      const view = renderThread([], true, {
+        distanceFromBottomPx: 8,
+        latestTurn: {
+          followMode: "user_hold",
+          isLatestTurnInProgress: true,
+          latestTurnFollowContentHeightPx: null,
+          latestTurnHeightPx: null,
+          latestTurnPhase: "prework",
+          turnKey: scenario === "same latest Turn" ? latest.turnKey : turns.at(-2)!.turnKey,
+        },
+        virtualizedTurnList: null,
+      });
+      try {
+        await act(async () => {
+          await settleFrames(8);
+        });
+        expect(view.readController().getScrollMode()).toBe("user");
+        await act(async () => {
+          view.update(turns);
+          await settleFrames(8);
+        });
+        expect(view.readController().getScrollDistanceFromBottomPx()).toBe(8);
+        expect(view.readController().getScrollMode()).toBe("user");
+        const grown = {
+          ...latest,
+          turn: {
+            ...latest.turn,
+            items: latest.turn.items.map((item) =>
+              item.kind === "assistantMessage"
+                ? {
+                    ...item,
+                    markdownText: item.markdownText + "\n\n" + "Work continues. ".repeat(50),
+                  }
+                : item,
+            ),
+          },
+        };
+        await act(async () => {
+          view.update([...turns.slice(0, -1), grown]);
+          await settleFrames(8);
+        });
+        expect(view.readController().getScrollDistanceFromBottomPx()).toBeGreaterThan(0);
+        expect(view.readController().getScrollMode()).toBe("user");
+      } finally {
+        view.dispose();
+      }
+    },
+  );
   test("a measured resize respects the physical viewport after programmatic departure from bottom", async (context) => {
     const turns = Array.from({ length: 10 }, (_, index) => entry(index));
     const view = renderThread(turns, true);
@@ -370,6 +446,58 @@ describe("transcript viewport motion in Chromium", () => {
         initialTop,
         finalTop: latest.getBoundingClientRect().top,
       });
+    } finally {
+      view.dispose();
+    }
+  });
+  test("a newly placed response follows prework after it fills the available space", async () => {
+    const turns = Array.from({ length: 10 }, (_, index) => entry(index));
+    const view = renderThread(turns, true);
+    const pending = entry(10, true);
+    const withPrework = (text: string): VisibleConversationTurnEntry => ({
+      ...pending,
+      turn: {
+        ...pending.turn,
+        firstTurnWorkItemStartedAtMs: 10,
+        items: [
+          ...pending.turn.items,
+          {
+            ...entry(10).turn.items[1]!,
+            assistantPhase: "commentary",
+            markdownText: text,
+          },
+        ],
+      },
+    });
+    try {
+      await act(async () => {
+        await settleFrames(4);
+        view.readController().prepareLatestTurnSubmitPlacement();
+        view.update([...turns, pending]);
+        await settleFrames(4);
+      });
+      expect(view.readController().responseSpacerState?.getHeightPx()).toBeGreaterThan(24);
+      await act(async () => {
+        view.update([...turns, withPrework("Checking the workspace.")]);
+        await settleFrames(4);
+      });
+      expect(view.readController().responseSpacerState?.getHeightPx()).toBeGreaterThan(24);
+      const expandedPrework = Array.from(
+        { length: 30 },
+        (_, index) => `Check ${index + 1}: The workspace is being verified before answering.`,
+      ).join("\n\n");
+      await act(async () => {
+        view.update([...turns, withPrework(expandedPrework)]);
+        await settleFrames(8);
+      });
+      expect(view.readController().responseSpacerState?.getHeightPx()).toBe(0);
+      expect(view.readController().getScrollMode()).toBe("stickToBottom");
+      expect(view.readController().getScrollDistanceFromBottomPx()).toBe(0);
+      await act(async () => {
+        view.update([...turns, withPrework(expandedPrework + "\n\nOne last check is running.")]);
+        await settleFrames(6);
+      });
+      expect(view.readController().getScrollDistanceFromBottomPx()).toBe(0);
     } finally {
       view.dispose();
     }

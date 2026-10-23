@@ -5,6 +5,7 @@ export type ThreadLatestTurnFollowMode =
   | "static"
   | "prework_watch"
   | "prework_follow"
+  | "user_hold"
   | "user_follow";
 
 export const DEFAULT_VIRTUALIZED_TURN_HEIGHT_PX = 280;
@@ -181,9 +182,10 @@ export type ThreadLatestTurnFollowEvent =
   | { type: "hold_viewport" }
   | { type: "latest_turn_removed" }
   | {
-      type: "scroll_distance_changed";
+      type: "user_scrolled";
       distanceFromBottomPx: number;
-      latestTurnPhase: ThreadLatestTurnPhase;
+      previousDistanceFromBottomPx: number;
+      responseSpacerHeightPx: number;
     }
   | {
       type: "scroll_to_bottom";
@@ -725,7 +727,8 @@ export function resolveThreadLatestTurnFollowState(
   }
 
   if (event.type === "latest_turn_phase_changed") {
-    if (state.followMode === "user_follow") return state;
+    // Work phase changes cannot take ownership back from the reader.
+    if (state.followMode === "user_follow" || state.followMode === "user_hold") return state;
     let nextState = state;
     if (event.previousLatestTurnPhase !== "prework" && event.latestTurnPhase === "prework") {
       if (nextState.followMode === "static") {
@@ -748,28 +751,20 @@ export function resolveThreadLatestTurnFollowState(
     return nextState;
   }
 
-  if (
-    event.type === "hold_viewport" ||
-    event.type === "latest_turn_placed" ||
-    event.type === "latest_turn_removed"
-  ) {
+  if (event.type === "hold_viewport") return withFollowMode(state, "user_hold");
+
+  if (event.type === "latest_turn_placed" || event.type === "latest_turn_removed") {
     return withFollowMode(state, "static");
   }
 
-  if (event.type === "scroll_distance_changed") {
-    if (event.distanceFromBottomPx <= THREAD_NEAR_BOTTOM_THRESHOLD_PX) {
-      return state;
-    }
-    if (state.followMode === "prework_follow") {
-      return withFollowMode(state, "prework_watch");
-    }
-    if (state.followMode === "user_follow") {
-      return withFollowMode(
-        state,
-        event.latestTurnPhase === "prework" ? "prework_watch" : "static",
-      );
-    }
-    return state;
+  if (event.type === "user_scrolled") {
+    if (event.distanceFromBottomPx === event.previousDistanceFromBottomPx) return state;
+    // Proximity permits returning to follow; it never overrides movement away from the bottom.
+    const followsBottom =
+      event.distanceFromBottomPx < event.previousDistanceFromBottomPx &&
+      event.distanceFromBottomPx <= THREAD_NEAR_BOTTOM_THRESHOLD_PX &&
+      event.responseSpacerHeightPx <= THREAD_NEAR_BOTTOM_THRESHOLD_PX;
+    return withFollowMode(state, followsBottom ? "user_follow" : "user_hold");
   }
 
   return withFollowMode(state, "user_follow");

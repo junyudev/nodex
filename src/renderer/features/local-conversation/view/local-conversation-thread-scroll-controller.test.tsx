@@ -205,6 +205,42 @@ describe("LocalConversationThreadScrollLayout", () => {
       await settleAsyncRender();
       expect(nearBottomViewport?.scrollTop ?? -1).toBe(0);
       nearBottom.unmount();
+
+      for (const distanceFromBottomPx of [0, 8]) {
+        const heldController: { current: LocalConversationThreadScrollControllerValue | null } = {
+          current: null,
+        };
+        const held = render(
+          <EnsureLocalConversationThreadScrollController>
+            <ControllerProbe onController={(controller) => (heldController.current = controller)} />
+            <LocalConversationThreadScrollLayout
+              initialRestoreSnapshot={{
+                distanceFromBottomPx,
+                latestTurn: {
+                  followMode: "user_hold",
+                  isLatestTurnInProgress: true,
+                  latestTurnFollowContentHeightPx: null,
+                  latestTurnHeightPx: null,
+                  latestTurnPhase: "prework",
+                  turnKey: "held-turn",
+                },
+                virtualizedTurnList: null,
+              }}
+            >
+              <div>Held thread</div>
+            </LocalConversationThreadScrollLayout>
+          </EnsureLocalConversationThreadScrollController>,
+        );
+        try {
+          await settleAsyncRender();
+          expect(heldController.current?.getScrollDistanceFromBottomPx()).toBe(
+            distanceFromBottomPx,
+          );
+          expect(heldController.current?.getScrollMode()).toBe("user");
+        } finally {
+          held.unmount();
+        }
+      }
     } finally {
       if (originalScrollHeight) {
         Object.defineProperty(HTMLElement.prototype, "scrollHeight", originalScrollHeight);
@@ -579,6 +615,29 @@ describe("LocalConversationThreadScrollLayout", () => {
         await Promise.resolve();
       });
       expect(displacements).toEqual([[108, 100]]);
+      expect(fixture.controller.getScrollMode()).toBe("user");
+    } finally {
+      unsubscribe();
+      await fixture.dispose();
+    }
+  });
+
+  test("a zero-displacement scroll event preserves the pending upward gesture at the bottom", async () => {
+    const fixture = await renderNativeFindController();
+    const displacements: Array<[number, number | undefined]> = [];
+    const unsubscribe = fixture.controller.addUserScrollListener((distance, previous) =>
+      displacements.push([distance, previous]),
+    );
+    try {
+      await act(async () => {
+        fixture.controller.jumpToBottom();
+        fixture.viewport.dispatchEvent(new WheelEvent("wheel", { deltaY: -8 }));
+        fixture.viewport.dispatchEvent(new Event("scroll"));
+        fixture.viewport.scrollTop = -8;
+        fixture.viewport.dispatchEvent(new Event("scroll"));
+        await Promise.resolve();
+      });
+      expect(displacements).toEqual([[8, 0]]);
       expect(fixture.controller.getScrollMode()).toBe("user");
     } finally {
       unsubscribe();

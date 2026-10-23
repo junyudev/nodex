@@ -1,6 +1,6 @@
 import { act, render, waitFor } from "@testing-library/react";
 import { cdp, page } from "vite-plus/test/browser";
-import { useLayoutEffect } from "react";
+import { useLayoutEffect, type CSSProperties } from "react";
 import { afterEach, beforeEach, describe, expect, test } from "vite-plus/test";
 import type { AgentSnapshot, AgentTurnItem } from "@nodex/agent-runtime/contracts";
 import type {
@@ -174,7 +174,7 @@ function conversation(
 }
 
 /** Continuation replies can contain work and a final delivery without a new user message. */
-function runtimeFixture() {
+function runtimeFixture(toolWork = false) {
   const items: AgentTurnItem[] = Array.from({ length: 9 }, (_, index) => ({
     ...base(`work:${index}`, index + 1),
     type: "assistant_message",
@@ -184,20 +184,34 @@ function runtimeFixture() {
       "The report is being checked against the current application state. ".repeat(6),
     streaming: false,
   }));
+  if (toolWork) {
+    items.splice(3);
+    items.push(
+      ...Array.from({ length: 24 }, (_, index): AgentTurnItem => ({
+        ...base(`command:${index}`, index + 10),
+        type: "command_execution",
+        input: `echo verification-${index}`,
+        output: "Verification completed.",
+        exitCode: 0,
+      })),
+    );
+  }
   items.push({
-    ...base("report-file", 10),
+    ...base("report-file", 90),
     type: "file_change",
     fileName: "/workspace/report/index.html",
     diffStr:
       "--- a/report/index.html\n+++ b/report/index.html\n@@ -0,0 +1 @@\n+<h1>Review report</h1>",
   });
   const answer = assistant(
-    Array.from(
-      { length: 12 },
-      (_, index) =>
-        `Verification ${index + 1}: ` +
-        "The report and application behavior are consistent. ".repeat(3),
-    ).join("\n\n"),
+    toolWork
+      ? "The report is ready. Verification completed successfully."
+      : Array.from(
+          { length: 12 },
+          (_, index) =>
+            `Verification ${index + 1}: ` +
+            "The report and application behavior are consistent. ".repeat(3),
+        ).join("\n\n"),
   );
   items.push(answer);
   const initial = conversation(items);
@@ -268,7 +282,10 @@ function runtimeFixture() {
   };
 }
 
-function mountRuntime(fixture: ReturnType<typeof runtimeFixture>) {
+function mountRuntime(
+  fixture: ReturnType<typeof runtimeFixture>,
+  { zoom = 1, height = 600 }: { zoom?: number; height?: number } = {},
+) {
   const store = createMaitaiStore();
   let controller: LocalConversationThreadScrollControllerValue | null = null;
   let ready = false;
@@ -288,7 +305,14 @@ function mountRuntime(fixture: ReturnType<typeof runtimeFixture>) {
     return (
       <div
         data-test-viewport-frame="true"
-        style={{ width: 700, height: 600 }}
+        style={
+          {
+            width: 700 / zoom,
+            height: height / zoom,
+            zoom,
+            "--codex-window-zoom": zoom,
+          } as CSSProperties
+        }
         onScrollCapture={() => scroll.getScrollDistanceFromBottomPx()}
       >
         <LocalConversationThreadScrollLayout footer={<div style={{ height: 80 }} />}>
@@ -391,6 +415,73 @@ describe("completed runtime response scroll intent", () => {
       }
       expect(distances.at(-1)).toBeGreaterThan(50);
       expect(view.scroll().getScrollMode()).toBe("user");
+    } finally {
+      view.dispose();
+    }
+  });
+  test("small upward scrolling survives the expansion of completed tool work", async () => {
+    const fixture = runtimeFixture(true);
+    const view = mountRuntime(fixture, { zoom: 1.2, height: 480 });
+    try {
+      await view.settle();
+      await act(async () => {
+        const follow = view.scroll().responseSpacerState;
+        expect(follow).not.toBeNull();
+        follow!.scrollToBottom();
+        await frames(4);
+        fixture.complete();
+        await frames(12);
+      });
+      await view.findByRole("button", { name: "index.html" });
+      await act(async () => {
+        view.getByRole("button", { name: "Edited a file, ran commands" }).click();
+        await frames(10);
+      });
+      const viewport = view.scroll().getScrollElement()!;
+      expect(viewport.scrollHeight).toBeGreaterThan(viewport.clientHeight + 200);
+      expect(view.scroll().getScrollMode()).toBe("stickToBottom");
+      const bounds = viewport.getBoundingClientRect();
+      const iframe = window.frameElement?.getBoundingClientRect();
+      const session: CDPSession = cdp();
+      const nativeDistances: number[] = [];
+      const recordNativeScroll = () => nativeDistances.push(-viewport.scrollTop);
+      viewport.addEventListener("scroll", recordNativeScroll);
+      try {
+        await act(async () => {
+          // Scroll below the tool group's own viewport so the gesture belongs to the thread.
+          await session.send("Input.dispatchMouseEvent", {
+            type: "mouseWheel",
+            x: bounds.left + 20 + (iframe?.left ?? 0),
+            y: bounds.bottom - 130 + (iframe?.top ?? 0),
+            deltaX: 0,
+            deltaY: -8,
+          });
+          await frames(40);
+        });
+        expect(nativeDistances.some((distance) => distance > 0)).toBe(true);
+        expect(-viewport.scrollTop).toBeGreaterThan(0);
+        expect(view.scroll().getScrollMode()).toBe("user");
+      } finally {
+        viewport.removeEventListener("scroll", recordNativeScroll);
+      }
+      await act(async () => {
+        await session.send("Input.dispatchMouseEvent", {
+          type: "mouseWheel",
+          x: bounds.left + 20 + (iframe?.left ?? 0),
+          y: bounds.bottom - 130 + (iframe?.top ?? 0),
+          deltaX: 0,
+          deltaY: 1000,
+        });
+        await frames(10);
+      });
+      expect(view.scroll().getScrollDistanceFromBottomPx()).toBe(0);
+      expect(view.scroll().getScrollMode()).toBe("stickToBottom");
+      await act(async () => {
+        view.getByRole("button", { name: "Edited a file, ran commands" }).click();
+        await frames(40);
+      });
+      expect(view.scroll().getScrollDistanceFromBottomPx()).toBe(0);
+      expect(view.scroll().getScrollMode()).toBe("stickToBottom");
     } finally {
       view.dispose();
     }

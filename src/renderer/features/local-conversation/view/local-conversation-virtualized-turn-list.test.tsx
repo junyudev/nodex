@@ -215,6 +215,7 @@ function buildTurnEntries(texts: readonly string[]): VisibleConversationTurnEntr
 function renderVirtualizedTurnList(input: {
   entries: LocalConversationVirtualizedTurnListEntry[];
   historyRows?: readonly CodexHistoryRow[];
+  initialScrollOffset?: number;
   initialLatestTurnRestoreState?: VirtualizedLatestTurnRestoreState;
   onLatestTurnRestoreStateChange?: (
     state: VirtualizedLatestTurnRestoreState | null,
@@ -236,6 +237,7 @@ function renderVirtualizedTurnList(input: {
           threadCwd="/tmp/project"
           editableTurnIds={new Set()}
           canForkFromTurn={true}
+          initialScrollOffset={input.initialScrollOffset}
           initialLatestTurnRestoreState={input.initialLatestTurnRestoreState}
           onLatestTurnRestoreStateChange={input.onLatestTurnRestoreStateChange}
           onRestoreStateChange={input.onRestoreStateChange}
@@ -264,6 +266,33 @@ function hasFixedHeightClippingAncestor(element: Element): boolean {
 }
 
 describe("turn measurement compensation phases", () => {
+  test("following the latest Turn supersedes the captured measurement anchor", () => {
+    const fixture = createMeasurementResponseSpace();
+    applyLocalConversationTurnMeasurementEffect({
+      effect: {
+        latestTurnHeightChange: {
+          bottomViewportOverflowPx: 708,
+          followContentHeightPx: null,
+          heightDeltaPx: 1000,
+          heightPx: 1320,
+          turnElement: null,
+        },
+        nativeScrollDistanceFromBottomPx: 708,
+        restoreScrollDistanceFromBottom: false,
+      },
+      getResponseSpacerHeightPx: fixture.space.getHeightPx,
+      onLatestTurnHeightChange: () => {
+        fixture.compensate(0);
+        return "followed_bottom";
+      },
+      restoreScrollDistanceFromBottomPx: () => {
+        throw new Error("Following already owns native placement.");
+      },
+      compensateScrollToDistanceFromBottomPx: fixture.compensate,
+    });
+    expect(fixture.writes).toEqual([0]);
+  });
+
   test("uses application-time response space when placement changes after measurement capture", () => {
     const fixture = createMeasurementResponseSpace();
     // Capture a native measurement target while no submit placement space exists.
@@ -286,8 +315,10 @@ describe("turn measurement compensation phases", () => {
         restoreScrollDistanceFromBottom: false,
       },
       getResponseSpacerHeightPx: fixture.space.getHeightPx,
-      onLatestTurnHeightChange: ({ heightDeltaPx }) =>
-        fixture.space.consumeGrowth(heightDeltaPx ?? 0),
+      onLatestTurnHeightChange: ({ heightDeltaPx }) => {
+        fixture.space.consumeGrowth(heightDeltaPx ?? 0);
+        return "preserve_viewport";
+      },
       restoreScrollDistanceFromBottomPx: () => {
         throw new Error("Unexpected history restore.");
       },
@@ -317,8 +348,10 @@ describe("turn measurement compensation phases", () => {
         restoreScrollDistanceFromBottom: true,
       },
       getResponseSpacerHeightPx: fixture.space.getHeightPx,
-      onLatestTurnHeightChange: ({ heightDeltaPx }) =>
-        fixture.space.consumeGrowth(heightDeltaPx ?? 0),
+      onLatestTurnHeightChange: ({ heightDeltaPx }) => {
+        fixture.space.consumeGrowth(heightDeltaPx ?? 0);
+        return "preserve_viewport";
+      },
       restoreScrollDistanceFromBottomPx: () => {
         expect(fixture.space.getHeightPx()).toBe(328);
         fixture.compensate(17);
@@ -517,13 +550,53 @@ describe("LocalConversationVirtualizedTurnList", () => {
     expect(captured).toEqual({
       distanceFromBottomPx: 0,
       state: {
-        followMode: "prework_follow",
+        followMode: "prework_watch",
         isLatestTurnInProgress: true,
         latestTurnFollowContentHeightPx: 320,
-        latestTurnHeightPx: null,
+        latestTurnHeightPx: 480,
         latestTurnPhase: "prework",
         turnKey: "turn_1",
       },
+    });
+  });
+
+  test("restores the user's viewport hold inside the near-bottom follow region", () => {
+    installQueuedRequestAnimationFrame();
+    installTurnBlockSizes({ turn_1: 480 });
+    const latest = buildTurnEntries(["Work is still running."])[0]!;
+    latest.turn = {
+      ...latest.turn,
+      status: "inProgress",
+      firstTurnWorkItemStartedAtMs: 10,
+      items: latest.turn.items.map((item) =>
+        item.kind === "assistantMessage" ? { ...item, assistantPhase: "commentary" } : item,
+      ),
+    };
+    const restored: VirtualizedLatestTurnRestoreState = {
+      followMode: "user_hold",
+      isLatestTurnInProgress: true,
+      latestTurnFollowContentHeightPx: 320,
+      latestTurnHeightPx: 480,
+      latestTurnPhase: "prework",
+      turnKey: "turn_1",
+    };
+    let captured: VirtualizedLatestTurnRestoreState | null = null;
+    const view = renderVirtualizedTurnList({
+      entries: [latest],
+      initialScrollOffset: 8,
+      initialLatestTurnRestoreState: restored,
+      onLatestTurnRestoreStateChange: (state) => {
+        captured = state;
+      },
+    });
+
+    view.unmount();
+
+    expect(captured).toMatchObject({
+      followMode: "user_hold",
+      isLatestTurnInProgress: true,
+      latestTurnPhase: "prework",
+      turnKey: "turn_1",
     });
   });
 
@@ -650,7 +723,7 @@ describe("LocalConversationVirtualizedTurnList", () => {
       turnKey: "turn_1",
       isLatestTurnInProgress: true,
       latestTurnPhase: "prework",
-      followMode: "prework_follow",
+      followMode: "prework_watch",
     });
   });
 

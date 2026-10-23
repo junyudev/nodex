@@ -28,7 +28,10 @@ import {
   type ThreadScrollMode,
   THREAD_NEAR_BOTTOM_THRESHOLD_PX,
 } from "./local-conversation-turn-virtualization";
-import type { LocalConversationThreadRestoreSnapshot } from "./local-conversation-thread-view-state";
+import {
+  normalizeThreadRestoreDistanceFromBottomPx,
+  type LocalConversationThreadRestoreSnapshot,
+} from "./local-conversation-thread-view-state";
 import {
   createLocalConversationNativeFindScroll,
   type LocalConversationNativeFindScroll,
@@ -741,7 +744,7 @@ function LocalConversationThreadScrollControllerProvider({ children }: { childre
         roundedScrollRequestRef.current = null;
       if (isNearBottom) {
         cancelScrollToBottomAnimation();
-        userScrollDirection = null;
+        if (userInitiated) userScrollDirection = null;
       }
       updateScrolledFromBottom(isNearBottom);
       recordScrollDistance(scrollDistanceFromBottomPx, {
@@ -1005,16 +1008,19 @@ export const LocalConversationThreadScrollLayout = forwardRef<
   useLayoutEffect(() => {
     if (!scrollElement || restoredElementRef.current === scrollElement) return;
     restoredElementRef.current = scrollElement;
-    const distanceFromBottomPx = initialRestoreSnapshot?.distanceFromBottomPx ?? 0;
-    if (distanceFromBottomPx > THREAD_NEAR_BOTTOM_THRESHOLD_PX) {
+    const followMode = initialRestoreSnapshot?.latestTurn?.followMode;
+    const distanceFromBottomPx = normalizeThreadRestoreDistanceFromBottomPx(
+      initialRestoreSnapshot?.distanceFromBottomPx ?? 0,
+      followMode,
+    );
+    if (distanceFromBottomPx > 0 || followMode === "user_hold") {
       controller.suppressAutoStickToBottom();
     } else {
       controller.setScrollMode("stickToBottom");
     }
-    controller.scrollToDistanceFromBottomPx(
-      distanceFromBottomPx <= THREAD_NEAR_BOTTOM_THRESHOLD_PX ? 0 : distanceFromBottomPx,
-      "auto",
-    );
+    controller.scrollToDistanceFromBottomPx(distanceFromBottomPx, "auto");
+    // A zero-distance native restore must not take ownership back from the reader.
+    if (followMode === "user_hold") controller.suppressAutoStickToBottom();
   }, [controller, initialRestoreSnapshot, scrollElement]);
 
   useImperativeHandle(

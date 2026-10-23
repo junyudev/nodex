@@ -22,6 +22,7 @@ import {
   resolveVisibleTurnRangeFromBottomDistance,
   shouldShowThreadScrollToBottomControl,
   shouldFollowMeasuredTurnGrowth,
+  shouldAllowResponseSpacerGrowth,
 } from "./local-conversation-turn-virtualization";
 
 function buildLayout(heightsPx: number[]) {
@@ -553,7 +554,7 @@ describe("latest turn follow helpers", () => {
     ).toBe("idle");
   });
 
-  test("matches Codex follow-mode transitions", () => {
+  test("follows growing prework through the final answer until the user scrolls away", () => {
     let state = createThreadLatestTurnFollowState();
     state = resolveThreadLatestTurnFollowState(state, {
       type: "latest_turn_phase_changed",
@@ -577,12 +578,142 @@ describe("latest turn follow helpers", () => {
     expect(state.followMode).toBe("user_follow");
 
     state = resolveThreadLatestTurnFollowState(state, {
-      type: "scroll_distance_changed",
-      latestTurnPhase: "final_answer",
+      type: "user_scrolled",
       distanceFromBottomPx: 40,
+      previousDistanceFromBottomPx: 0,
+      responseSpacerHeightPx: 0,
     });
-    expect(state.followMode).toBe("static");
+    expect(state.followMode).toBe("user_hold");
   });
+
+  test.each(["prework_watch", "prework_follow", "user_follow"] as const)(
+    "a small upward gesture takes control from %s before later content grows",
+    (followMode) => {
+      const held = resolveThreadLatestTurnFollowState(
+        createThreadLatestTurnFollowState({ followMode }),
+        {
+          type: "user_scrolled",
+          distanceFromBottomPx: 0.125,
+          previousDistanceFromBottomPx: 0,
+          responseSpacerHeightPx: 0,
+        },
+      );
+      expect(held.followMode).toBe("user_hold");
+      expect(
+        resolveThreadLatestTurnFollowState(held, {
+          type: "latest_turn_follow_content_changed",
+          latestTurnPhase: "prework",
+          followContentOverflowPx: 100,
+        }),
+      ).toBe(held);
+      expect(
+        resolveThreadLatestTurnFollowState(held, {
+          type: "latest_turn_phase_changed",
+          previousLatestTurnPhase: "prework",
+          latestTurnPhase: "final_answer",
+        }),
+      ).toBe(held);
+    },
+  );
+
+  test.each([
+    [8, 0, 0, "user_follow"],
+    [8, 6, 0, "user_follow"],
+    [30, 24, 24, "user_follow"],
+    [30, 24.001, 0, "user_hold"],
+    [8, 0, 24.001, "user_hold"],
+  ] as const)(
+    "returning from %s to %s with %s response space resolves to %s",
+    (previousDistanceFromBottomPx, distanceFromBottomPx, responseSpacerHeightPx, expected) => {
+      expect(
+        resolveThreadLatestTurnFollowState(
+          createThreadLatestTurnFollowState({ followMode: "user_hold" }),
+          {
+            type: "user_scrolled",
+            distanceFromBottomPx,
+            previousDistanceFromBottomPx,
+            responseSpacerHeightPx,
+          },
+        ).followMode,
+      ).toBe(expected);
+    },
+  );
+
+  test.each(["prework_watch", "user_follow", "user_hold"] as const)(
+    "a position notification without displacement preserves %s",
+    (followMode) => {
+      const state = createThreadLatestTurnFollowState({ followMode });
+      expect(
+        resolveThreadLatestTurnFollowState(state, {
+          type: "user_scrolled",
+          distanceFromBottomPx: 0,
+          previousDistanceFromBottomPx: 0,
+          responseSpacerHeightPx: 0,
+        }),
+      ).toBe(state);
+    },
+  );
+
+  test.each([
+    [
+      "scrolling upward",
+      {
+        type: "user_scrolled",
+        previousDistanceFromBottomPx: 0,
+        distanceFromBottomPx: 8,
+        responseSpacerHeightPx: 0,
+      },
+    ],
+    ["holding the viewport", { type: "hold_viewport" }],
+  ] as const)("%s while idle keeps control when work starts and completes", (_action, event) => {
+    const held = resolveThreadLatestTurnFollowState(createThreadLatestTurnFollowState(), event);
+    expect(held.followMode).toBe("user_hold");
+    for (const [previousLatestTurnPhase, latestTurnPhase] of [
+      ["idle", "prework"],
+      ["prework", "final_answer"],
+      ["final_answer", "idle"],
+      ["idle", "prework"],
+    ] as const) {
+      expect(
+        resolveThreadLatestTurnFollowState(held, {
+          type: "latest_turn_phase_changed",
+          previousLatestTurnPhase,
+          latestTurnPhase,
+        }),
+      ).toBe(held);
+      expect(
+        resolveThreadLatestTurnFollowState(held, {
+          type: "latest_turn_follow_content_changed",
+          latestTurnPhase,
+          followContentOverflowPx: 100,
+        }),
+      ).toBe(held);
+    }
+    expect(shouldAllowResponseSpacerGrowth(held.followMode)).toBe(false);
+  });
+
+  test.each(["latest_turn_placed", "latest_turn_removed"] as const)(
+    "%s resets user control so a newly placed response can follow growing prework",
+    (type) => {
+      let state = resolveThreadLatestTurnFollowState(
+        createThreadLatestTurnFollowState({ followMode: "user_hold" }),
+        { type },
+      );
+      expect(state.followMode).toBe("static");
+      state = resolveThreadLatestTurnFollowState(state, {
+        type: "latest_turn_phase_changed",
+        previousLatestTurnPhase: "idle",
+        latestTurnPhase: "prework",
+      });
+      expect(state.followMode).toBe("prework_watch");
+      state = resolveThreadLatestTurnFollowState(state, {
+        type: "latest_turn_follow_content_changed",
+        latestTurnPhase: "prework",
+        followContentOverflowPx: 100,
+      });
+      expect(state.followMode).toBe("prework_follow");
+    },
+  );
 
   test("resolves response spacer restore and catch-up visibility", () => {
     const placement = buildPendingLatestTurnSubmitPlacement({
@@ -666,10 +797,13 @@ describe("latest turn follow helpers", () => {
   });
 
   test("keeps explicit user follow through prework and idle, and holds it on interaction", () => {
-    const state = resolveThreadLatestTurnFollowState(createThreadLatestTurnFollowState(), {
-      type: "scroll_to_bottom",
-      latestTurnPhase: "prework",
-    });
+    const state = resolveThreadLatestTurnFollowState(
+      createThreadLatestTurnFollowState({ followMode: "user_hold" }),
+      {
+        type: "scroll_to_bottom",
+        latestTurnPhase: "prework",
+      },
+    );
     expect(state.followMode).toBe("user_follow");
     expect(
       resolveThreadLatestTurnFollowState(state, {
@@ -686,7 +820,7 @@ describe("latest turn follow helpers", () => {
       }),
     ).toBe(state);
     expect(resolveThreadLatestTurnFollowState(state, { type: "hold_viewport" }).followMode).toBe(
-      "static",
+      "user_hold",
     );
   });
 });
