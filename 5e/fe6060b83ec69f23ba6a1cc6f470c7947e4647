@@ -1,0 +1,66 @@
+src/renderer/lib/sidebar-thread-row-live-view.test.ts
+  s_e6a9f802ff4027::t_293ebc527eb6bd 37
+src/renderer/lib/sidebar-thread-row-live-view.ts
+  s_e6a9f802ff4027::t_e7ed5ba63438ad 4,18-19,23,35,40,54,59
+  s_e6a9f802ff4027::t_43742780363d4d 22
+  s_e6a9f802ff4027::t_d5871c040ff36e 20-21
+scripts/semantic-theme/profile.ts
+  s_e6a9f802ff4027::t_b05a2f0a2f5420 296-301
+  s_e6a9f802ff4027::t_0eef10021325ab 295
+src/renderer/components/workbench/codex-sidebar.test.tsx
+  s_e6a9f802ff4027::t_0dfac99c887593 290-291,300-302
+  s_e6a9f802ff4027::t_62de5138ba4a3d 380-439,606
+  s_e6a9f802ff4027::t_1f8794af6bae92 108-119
+  s_e6a9f802ff4027::t_fa5b1427fa59c2 288-289,292-298,303,459
+  s_e6a9f802ff4027::t_9a089b76aee781 8,580-605
+  s_e6a9f802ff4027::t_7080041aba207f 607
+src/renderer/styles/semantic-theme.provenance.json
+  s_e6a9f802ff4027::t_60d7c0244ab0d0 4,9,25
+src/renderer/lib/sidebar-status.ts
+  s_e6a9f802ff4027::t_f08a56635d1c24 1-33
+src/renderer/components/workbench/sidebar-status-indicator.tsx
+  s_e6a9f802ff4027::t_dec90e8ff63e42 1-53
+docs/product-specs/workbench-shell.md
+  s_e6a9f802ff4027::t_ba7e8b1b5ca758 13-14,19
+src/renderer/components/workbench/codex-sidebar.tsx
+  s_e6a9f802ff4027::t_34df84d077ce1c 78,1995-2010
+  s_e6a9f802ff4027::t_17fb4782984352 1612-1618
+  s_e6a9f802ff4027::t_129da20b3e4a52 837,845-853,855-881
+  s_e6a9f802ff4027::t_3abb46c77a08a3 1811,1884,1925
+  s_e6a9f802ff4027::t_ac5e5fcab26177 355,408-409
+  s_e6a9f802ff4027::t_7c2e75b0838736 79,835-836,838-844,854,882-898,1330,1333,1337-1352
+  s_e6a9f802ff4027::t_06ea42a1790e03 10-18,1803-1810,1885,1907-1911,1914-1915,1941,1967,1970,1975,1977,1994
+src/renderer/components/workbench/sidebar-custom-sections.tsx
+  s_e6a9f802ff4027::t_ac5e5fcab26177 532
+  s_e6a9f802ff4027::t_44d77823aca4d8 70-71,93-112
+  s_e6a9f802ff4027::t_d6ba6d902ced7b 113
+src/renderer/features/scheduled/scheduled-sidebar.tsx
+  s_e6a9f802ff4027::t_6a864f74317cce 133-139,141
+  s_e6a9f802ff4027::t_43742780363d4d 33-34
+src/renderer/components/workbench/codex-project-row.browser.test.tsx
+  s_e6a9f802ff4027::t_5982bbb12d3532 109-163
+src/renderer/lib/sidebar-status.test.ts
+  s_e6a9f802ff4027::t_293ebc527eb6bd 1-29
+src/renderer/components/workbench/workbench-shell.sidebar-core.test.tsx
+  s_e6a9f802ff4027::t_be3cb9db60284a 912,951
+src/renderer/styles/semantic-theme-contract.generated.json
+  s_e6a9f802ff4027::t_5a34eee02c2ded 93-99
+src/renderer/styles/theme-semantic-utilities.generated.css
+  s_e6a9f802ff4027::t_3d234271b239d4 207-210
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "5efe6060b83ec69f23ba6a1cc6f470c7947e4647",
+  "prompts": {},
+  "sessions": {
+    "s_e6a9f802ff4027": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5f20b6d1-459e-4a51-9724-8815f5608b02",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
