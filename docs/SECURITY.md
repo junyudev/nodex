@@ -232,20 +232,27 @@ read through the authenticated Profile and exact execution identity boundary.
   Discovery and session restoration resolve the exact workspace and configured native owner;
   a missing session or changed profile cannot silently create a replacement conversation.
 
-- ACP Agent definitions are compatibility allowlists, not supply-chain attestations. The current
-  Claude Agent integration launches only an explicitly enabled, user-managed absolute package root
-  and Node executable after canonical path, entry containment, package/version, executable-version,
-  and Node-version checks. The Settings UI states that these checks do not verify package or
-  dependency bytes. The selected credential and proxy policies bound environment inheritance, and
+- ACP instances launch explicitly selected Registry software or a user-managed executable and
+  individual arguments. Logical Agent definitions identify software; they are not launch allowlists
+  or supply-chain attestations. Registry installs use private owned staging, concrete versions,
+  bounded downloads and extraction, atomic publication and installation receipts. Receipts distinguish
+  upstream checksums from locally recorded byte digests; neither a top-level package version nor
+  npm registry integrity metadata attests an immutable installed dependency closure. Local executables
+  remain user-managed and are never deleted by Registry uninstall. Nodex-distributed dependencies
+  retain their separate locked artifact and release-verification contract. See [ADR 0070](adr/0070-configured-acp-agents-and-explicit-management.md).
+  Main is the sole owner of configuration and encrypted environment references; Runtime holds
+  decrypted launch configuration only in memory and rejects configuration persistence through its
+  settings writer. The selected credential and proxy policies bound environment inheritance, and
   unsupported ACP client capabilities remain unadvertised. Advertised filesystem callbacks
   resolve exact paths with bounded reads and writes under the native connection lifetime;
   Project roots are execution locations rather than filesystem permission scopes. Advertised
   terminals share the supervised Agent Runtime, bounded output, cwd and Session lifetime.
   Native permission requests are approved automatically. Standard ACP application calls retain
   their exact Session identity with unknown Run left null, and cancellation closes that source.
-  Whoever can replace the configured package or executable is inside this local-code trust boundary. A future managed ACP distribution must
-  use a separate locked archive, verified dependency closure, private immutable staging, and release
-  provenance path; npm registry integrity metadata alone cannot attest a mutable installed tree.
+  Whoever can replace the configured package or executable is inside this local-code trust boundary.
+  Setup and terminal flows have trusted window ownership, bounded redacted output and cancellation;
+  stale answers cannot complete a replacement flow. Native-history mappings retain a non-secret
+  source identity so account or storage changes cannot reconnect a reused native ID to the wrong chat.
 
 - Boundary validation for typed Core Module and IPC requests.
 - Managed-worktree workers accept only operation-discriminated requests and

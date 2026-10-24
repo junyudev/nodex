@@ -68,6 +68,10 @@ native session's resume identity.
 
 An Agent Instance is a named, Profile-local configuration for one external Agent Backend and its
 native configuration and authentication environment. It is distinct from a connected conversation.
+For ACP, its Agent Definition is the stable logical software identity, while an Installation is
+one concrete version and platform-specific executable closure. Neither a display name nor an
+installation path supplies a new Agent Instance identity. Its saved native storage scope remains
+part of that identity; a different native profile requires a new instance.
 
 ### Model Selection
 

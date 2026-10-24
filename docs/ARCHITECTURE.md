@@ -822,6 +822,13 @@ consumes the existing Session activity projection and shares Runtime's native pr
 owner with renderer catch-up; it does not introduce another execution observer or cache.
 The detailed contract is [Agent Runtime behavior](product-specs/agent-runtime-behavior.md).
 
+ACP instance configuration and encrypted environment references belong to Main. Typed management
+operations delegate installation, authentication, connection probes and native-session work to
+the supervised Runtime. Core remains the product Session admission owner. Runtime receives launch
+configuration in memory and cannot persist a second configuration source. See
+[ACP Agent behavior](product-specs/acp-agent-behavior.md) and
+[ADR 0070](adr/0070-configured-acp-agents-and-explicit-management.md).
+
 Inbox confirmation freezes the source versions, complete message, target and execution
 selection in Core before Main hands the stable command to the Runtime. Durable message
 admission ends the local Inbox handoff; execution progress remains owned by the chat.

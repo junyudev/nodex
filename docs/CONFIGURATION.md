@@ -253,18 +253,29 @@ See [Agent Backend Behavior](product-specs/agent-backend-behavior.md#native-open
 
 ## ACP Agent instances
 
-ACP Agent instances are Profile-local configurations of trusted local code. The current Claude
-Agent integration uses a user-managed package root and Node executable; both paths must be absolute.
-Nodex canonicalizes them at launch and checks the supported package identity, package version,
-entrypoint containment, Node version, and executable-reported Agent version. This is a compatibility
-probe, not a package-integrity or dependency-provenance check. Enabling an instance means that the
-configured local code is trusted to run as the current user.
+ACP Agent instances are named Profile-local configurations of trusted local code. An instance selects
+an official Registry Agent and concrete installation, or a local executable with individual arguments.
+Local executables can use an absolute path or resolve through the explicitly configured PATH.
+Registry distributions support binary, npm and uv where available for the platform. Installing and
+connecting are explicit actions; searching and reading cached state do not install or send tasks.
 
-Each instance separately chooses whether to inherit the host Claude credential profile or use an
-existing isolated home, and whether to inherit standard proxy environment variables. Credential
-secrets are never copied into Profile settings. Disabling or deleting an instance prevents new
-launches; durable Threads retain their explicit backend binding and report the unavailable instance
-instead of silently falling back to another backend.
+Instances independently configure environment values, encrypted secret references, credential-home
+selection and proxy inheritance. Host native profiles and isolated homes are explicit choices; an
+Agent may also use its own configuration arguments to select native storage. Secret values never
+appear in ordinary settings reads or the Runtime settings store. Multiple instances may use the
+same Agent while retaining separate names, launch environments and execution identities.
+
+Enabling an instance trusts its software to run as the current user. Installation receipts describe
+the selected source, version and verified bytes; they do not attest all third-party dependencies.
+Disabling or deleting an instance blocks new admitted work immediately. Already admitted work retains
+its captured configuration, and ordinary edits can remain deferred until idle. Durable conversations
+retain their explicit instance binding and report unavailability rather than selecting another Agent.
+
+Login uses the Agent's advertised protocol or terminal flow, explicit environment credentials, or a
+recheck after external CLI login. For example, Qoder reuses its CLI login state or an explicitly
+configured QODER_PERSONAL_ACCESS_TOKEN. Model IDs come from the actual CLI or negotiated catalog;
+Agents exposing only startup model selection use Local command arguments. Native history and model
+services are available according to negotiated capabilities. See [ACP Agent behavior](product-specs/acp-agent-behavior.md).
 
 A Dock-launched app has no repository cwd and therefore uses environment/user
 configuration. Malformed, oversized, or non-UTF-8 configuration fails closed

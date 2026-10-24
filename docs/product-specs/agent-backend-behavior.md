@@ -91,11 +91,11 @@ The model menu offers host setup only for enabled local profiles using the defau
 executable without an explicit `PATH`; custom executables and external servers keep
 their configured launch rules.
 
-ACP instances use trusted local packages and executables. Compatibility checks verify
-configured package identity, supported version, entrypoint containment, Node version
-and executable-reported version. These checks do not attest package bytes. Credential
-profile and proxy inheritance remain separate explicit configuration choices. Runtime
-catalog discovery and execution share the same configured Provider.
+ACP instances select an explicit Registry installation or local executable and arguments.
+Configuration, authentication, model selection, native history and installation follow
+[ACP Agent behavior](acp-agent-behavior.md). Credential profile, encrypted environment and proxy
+inheritance are explicit instance choices. Passive catalog reads do not install or launch a probe;
+connection discovery and execution use the same configured instance.
 
 ## Existing connected native history
 
