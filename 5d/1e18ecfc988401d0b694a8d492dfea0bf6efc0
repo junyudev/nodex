@@ -1,0 +1,37 @@
+src/shared/acp-agent-settings.ts
+  s_9cccd37e800d7a::t_f9b6313dc09446 140-141,145-146
+src/main/ipc/handlers/ApplicationSettingsIpc.test.ts
+  s_9cccd37e800d7a::t_ad1d05800dd6e4 130,253-265,267-273,275-278
+  s_9cccd37e800d7a::t_25f41e2d37bc24 274
+src/shared/ipc-api.ts
+  s_9cccd37e800d7a::t_f9b6313dc09446 1376-1379
+src/main/agent-runtime/AgentRuntimeProviderConfiguration.ts
+  s_9cccd37e800d7a::t_f9b6313dc09446 8-12,15-41,64,67-69,78-81
+src/main/ipc/handlers/ApplicationSettingsIpc.ts
+  s_9cccd37e800d7a::t_f9b6313dc09446 36-39,427-436,438-441,459-460,462
+  s_9cccd37e800d7a::t_9286c67119a5ef 437,461
+src/main/agent-runtime/AgentRuntimeProviderConfiguration.node.test.ts
+  s_9cccd37e800d7a::t_ad1d05800dd6e4 17,19-20,67-77,91-106
+  s_9cccd37e800d7a::t_2a7742eef0dcac 18,107-108
+src/main/app/AgentRuntimeApplicationLive.ts
+  s_9cccd37e800d7a::t_f9b6313dc09446 639-641
+  s_9cccd37e800d7a::t_b566537a5e5b55 642-648
+src/shared/ipc-endpoint-policy.ts
+  s_9cccd37e800d7a::t_f9b6313dc09446 245
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "5d1e18ecfc988401d0b694a8d492dfea0bf6efc0",
+  "prompts": {},
+  "sessions": {
+    "s_9cccd37e800d7a": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a16d80-f1cc-7471-9f61-cb6ea1bc793d",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
