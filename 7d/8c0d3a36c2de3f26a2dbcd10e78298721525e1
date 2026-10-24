@@ -1,0 +1,59 @@
+packages/agent-runtime/src/orchestration-v2/ProviderTurnControlService.test.ts
+  s_9cccd37e800d7a::t_553ec9a704a571 294
+packages/agent-runtime/src/orchestration-v2/ProviderSessionManager.test.ts
+  s_9cccd37e800d7a::t_553ec9a704a571 2974-2975,2977-2978,2987
+  s_9cccd37e800d7a::t_5a8af3fc2fa707 2976
+packages/agent-runtime/src/orchestration-v2/ProviderSessionManager.ts
+  s_9cccd37e800d7a::t_553ec9a704a571 158-159,453-460,462-469,2392-2393
+  s_9cccd37e800d7a::t_0f377b0d278586 461
+packages/agent-runtime/src/nodex/contracts.ts
+  s_9cccd37e800d7a::t_bceb23a62fadc9 32
+packages/agent-runtime/src/nodex/AcpManagement.ts
+  s_9cccd37e800d7a::t_3f3eb8dfe3963b 322,324-334,336-341,347-348,351-352,362,537-538,550,561-576,578
+  s_9cccd37e800d7a::t_bceb23a62fadc9 722-724,728-729
+  s_9cccd37e800d7a::t_9e82791eae6bc8 44-45,59,124-135,147-151,206,223,264-266,268-269,323,335
+packages/agent-runtime/src/nodex/AcpManagement.integration.test.ts
+  s_9cccd37e800d7a::t_e396abea065a8b 14-26,28-32,35-45,49,53-55
+  s_9cccd37e800d7a::t_9b1fe15d1ba7b2 12,134,177-185
+  s_9cccd37e800d7a::t_518c55c689e518 13,27,33-34,46-48,50-52,129-133
+packages/agent-runtime/src/nodex/AcpManagement.test.ts
+  s_9cccd37e800d7a::t_aa49218644cab8 10,111-192
+  s_9cccd37e800d7a::t_b448ba95c6e9ee 7
+packages/agent-runtime/src/orchestration-v2/EffectWorker.test.ts
+  s_9cccd37e800d7a::t_553ec9a704a571 107
+packages/agent-runtime/src/nodex/AcpFailures.ts
+  s_9cccd37e800d7a::t_4b418c68ca7dd5 2-70
+  s_9cccd37e800d7a::t_6ecbbf00176dfa 1
+packages/agent-runtime/src/nodex/AcpFailureContract.ts
+  s_9cccd37e800d7a::t_bceb23a62fadc9 1-113
+packages/agent-runtime/src/nodex/AcpManagementContract.ts
+  s_9cccd37e800d7a::t_5f916a47be1f0f 3-7,27-39,47,67-70,76
+packages/agent-runtime/src/nodex/Daemon.ts
+  s_9cccd37e800d7a::t_842fe3c6b32233 1,98,103-104
+packages/agent-runtime/src/nodex/Interface.ts
+  s_9cccd37e800d7a::t_0bba16e7e7b236 558-562
+packages/agent-runtime/src/nodex/testing/acp-management-peer.mjs
+  s_9cccd37e800d7a::t_89f5f52fd60a42 25-34
+packages/agent-runtime/vendor/contracts/src/providerSetup.ts
+  s_9cccd37e800d7a::t_008cebcdfb97ce 41-42
+packages/agent-runtime/vendor/provider-acp-registry/src/server/auth.ts
+  s_9cccd37e800d7a::t_b495838f7738c2 168-169
+scripts/testing/acp-management-probe.ts
+  s_9cccd37e800d7a::t_1bb2bed13c76d8 77,85,93-96,242-243,258
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "7d8c0d3a36c2de3f26a2dbcd10e78298721525e1",
+  "prompts": {},
+  "sessions": {
+    "s_9cccd37e800d7a": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a16d80-f1cc-7471-9f61-cb6ea1bc793d",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
