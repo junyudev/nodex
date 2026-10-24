@@ -105,7 +105,16 @@ function resolveCacheFamilyRoot(
   if (input.cachePath !== undefined) return path.resolve(input.cachePath);
   const buildCacheDirectory = process.env.NODEX_BUILD_CACHE_DIR?.trim();
   if (buildCacheDirectory) return path.resolve(buildCacheDirectory, input.family);
-  let checkoutRoot = path.resolve(input.projectRoot);
+  return path.join(
+    resolvePrimaryCheckoutRoot(input.projectRoot),
+    LOCAL_ARTIFACT_CACHE_DIRECTORY,
+    input.family,
+  );
+}
+
+/** Keep task artifacts and shared caches in the primary checkout for linked worktrees. */
+export function resolvePrimaryCheckoutRoot(projectRoot: string): string {
+  let checkoutRoot = path.resolve(projectRoot);
   try {
     // Git lists the primary checkout first; NUL records preserve spaces/newlines in paths.
     const firstRecord = execFileSync("git", ["worktree", "list", "--porcelain", "-z"], {
@@ -118,7 +127,7 @@ function resolveCacheFamilyRoot(
   } catch {
     // Source archives and disposable non-Git test roots keep a local cache.
   }
-  return path.join(checkoutRoot, LOCAL_ARTIFACT_CACHE_DIRECTORY, input.family);
+  return checkoutRoot;
 }
 
 function assertArchiveSha256(archiveSha256: string): void {

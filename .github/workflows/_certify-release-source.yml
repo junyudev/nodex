@@ -86,6 +86,14 @@ jobs:
       - run: vp install --frozen-lockfile
       - uses: ./.github/actions/setup-rust-ci
       - run: vp run verify:runtime:mac
+      - name: Upload ACP runtime evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: certify-acp-runtime-${{ inputs.source_sha }}-${{ github.run_attempt }}
+          path: notes.local/artifacts/acp-runtime-*/runtime.json
+          if-no-files-found: ignore
+          retention-days: 30
       - if: always()
         run: sccache --show-stats || true
 

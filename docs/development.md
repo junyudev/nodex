@@ -883,6 +883,20 @@ diagnostic. On macOS, release/runtime changes additionally run:
 vp run verify:runtime:mac
 ```
 
+This gate includes `test:acp-runtime-conformance` on macOS arm64. It builds the
+standalone Agent Runtime and runs the real Node PTY and public ACP management
+protocol through terminal input, resize, authentication, cancellation, descendant
+cleanup, and shutdown. The probe verifies the staged Node manifest and bundled
+native dependency closure; it does not certify an installed `.app` or signing.
+Each execution creates a fresh owned home under the primary checkout's
+`runs.local/acp-runtime-*` and writes a passed or failed report under
+`notes.local/artifacts/acp-runtime-*/runtime.json`, including the exact Runtime
+directory digest. Other platforms fail this release gate instead of skipping it.
+For a probe against an already built Runtime without rebuilding, run
+`vp exec tsx scripts/testing/probe-acp-runtime.ts --gate --target-platform darwin --target-arch arm64`.
+Manual `--home` and `--report` paths must be absolute and unused; `--pty-only`
+is a narrower dependency check and cannot satisfy the release gate.
+
 `vp run test:all` remains a compatibility alias for `verify:source`; neither
 command proves Apple signing or notarization. Use the
 production-like `Distribution Rehearsal` described in `release-macos.md` for
