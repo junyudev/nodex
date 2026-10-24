@@ -2517,6 +2517,161 @@ describe("AcpAdapterV2", () => {
     }).pipe(Effect.provide(layerTest), Effect.scoped),
   );
 
+  it.live(
+    "isolates a real ACP child crash from another instance with the same native session id",
+    () =>
+      Effect.gen(function* () {
+        const childProcessSpawner = yield* ChildProcessSpawner.ChildProcessSpawner;
+        const path = yield* Path.Path;
+        const selfInvocation = yield* resolveSelfInvocation();
+        const mockAgentPath = yield* path.fromFileUrl(
+          new URL("../../../scripts/acp-mock-agent.ts", import.meta.url),
+        );
+        const runtimePolicy = ProviderAdapter.ProviderAdapterV2RuntimePolicy.make({
+          runtimeMode: "full-access",
+          interactionMode: "default",
+          cwd: process.cwd(),
+        });
+        const open = Effect.fnUntraced(function* (name: "crashing" | "healthy") {
+          const instanceId = ProviderInstanceId.make(`acp-isolated-${name}`);
+          const threadId = ThreadId.make(`thread-acp-isolated-${name}`);
+          const protocolEvents = yield* Queue.unbounded<EffectAcpProtocol.AcpProtocolLogEvent>();
+          let spawned = 0;
+          let nativeRuntime: AcpSessionRuntime.AcpSessionRuntime["Service"] | undefined;
+          const adapter = yield* makeAcpAdapterV2({
+            instanceId,
+            selfInvocation,
+            flavor: {
+              driver: ACP_TEST_DRIVER,
+              capabilities: AcpProviderCapabilitiesV2,
+              makeRuntime: makeMockRuntime({
+                childProcessSpawner,
+                mockAgentPath,
+                protocolEvents,
+                wrapRuntime: (runtime) => {
+                  nativeRuntime = runtime;
+                  return runtime;
+                },
+                environment: (ordinal) => {
+                  spawned = ordinal;
+                  return name === "crashing"
+                    ? { T3_ACP_HANG_PROMPT_FOREVER: "1" }
+                    : {
+                        T3_ACP_EMIT_ELICITATION: "1",
+                        T3_ACP_PROMPT_RESPONSE_TEXT: "healthy response",
+                      };
+                },
+              }),
+            },
+          });
+          const modelSelection = { instanceId, model: "default" } as const;
+          const runtime = yield* adapter.openSession({
+            threadId,
+            providerSessionId: ProviderSessionId.make(`session-acp-isolated-${name}`),
+            modelSelection,
+            runtimePolicy,
+          });
+          const providerThread = yield* runtime.ensureThread({
+            threadId,
+            modelSelection,
+            runtimePolicy,
+          });
+          return {
+            instanceId,
+            threadId,
+            runtime,
+            providerThread,
+            protocolEvents,
+            spawned: () => spawned,
+            crash: () => nativeRuntime!.notify("_test/exit", {}),
+          };
+        });
+        const crashing = yield* open("crashing");
+        const healthy = yield* open("healthy");
+        assert.equal(
+          crashing.providerThread.nativeThreadRef?.nativeId,
+          healthy.providerThread.nativeThreadRef?.nativeId,
+        );
+        assert.notEqual(crashing.providerThread.id, healthy.providerThread.id);
+        const now = yield* DateTime.now;
+        yield* healthy.runtime.startTurn(makeTurnInput({ ...healthy, runtimePolicy, now }));
+        // Wait for the independent process's prompt to be admitted before crashing its peer.
+        yield* Stream.fromQueue(healthy.protocolEvents).pipe(
+          Stream.filter(
+            (event) =>
+              event.direction === "outgoing" && rawProtocolMethod(event) === "session/prompt",
+          ),
+          Stream.runHead,
+        );
+        const readQuestion = healthy.runtime.events.pipe(
+          Stream.filter(
+            (event) =>
+              event.type === "runtime_request.updated" && event.runtimeRequest.status === "pending",
+          ),
+          Stream.runHead,
+          Effect.map(Option.getOrThrow),
+        );
+        const waitingQuestion = yield* readQuestion;
+        yield* crashing.runtime.startTurn(
+          makeTurnInput({
+            ...crashing,
+            runtimePolicy,
+            now,
+            messageText: "hold until native crash",
+          }),
+        );
+        yield* Stream.fromQueue(crashing.protocolEvents).pipe(
+          Stream.filter(
+            (event) =>
+              event.direction === "outgoing" && rawProtocolMethod(event) === "session/prompt",
+          ),
+          Stream.runHead,
+        );
+        yield* crashing.crash();
+        const failed = yield* crashing.runtime.events.pipe(
+          Stream.takeUntil((event) => event.type === "turn.terminal"),
+          Stream.runCollect,
+        );
+        const failure = failed.at(-1);
+        assert.equal(failure?.type === "turn.terminal" ? failure.status : undefined, "failed");
+        for (let ordinal = 1; ordinal <= 2; ordinal++) {
+          if (ordinal === 2)
+            yield* healthy.runtime.startTurn(
+              makeTurnInput({ ...healthy, runtimePolicy, now, ordinal }),
+            );
+          const question = ordinal === 1 ? waitingQuestion : yield* readQuestion;
+          if (question.type !== "runtime_request.updated")
+            return yield* Effect.die("Expected the healthy instance's information request");
+          yield* healthy.runtime.respondToRuntimeRequest({
+            requestId: question.runtimeRequest.id,
+            answers: { approved: true },
+          });
+          const events = yield* healthy.runtime.events.pipe(
+            Stream.takeUntil((event) => event.type === "turn.terminal"),
+            Stream.runCollect,
+          );
+          const terminal = events.at(-1);
+          assert.equal(
+            terminal?.type === "turn.terminal" ? terminal.status : undefined,
+            "completed",
+          );
+          for (const event of events) {
+            if ("providerThreadId" in event)
+              assert.equal(event.providerThreadId, healthy.providerThread.id);
+            if (event.type === "provider_session.updated") {
+              assert.equal(event.providerSession.providerInstanceId, healthy.instanceId);
+              assert.notEqual(event.providerSession.status, "stopped");
+            }
+          }
+        }
+        assert.equal(healthy.spawned(), 1);
+        const methods = yield* pollProtocolMethods(healthy.protocolEvents);
+        assert.notInclude(methods, "session/new");
+        assert.notInclude(methods, "session/cancel");
+        assert.equal(methods.filter((method) => method === "session/prompt").length, 1);
+      }).pipe(Effect.timeout("10 seconds"), Effect.provide(layerTest), Effect.scoped),
+  );
+
   it.live("reaps detached native work when the provider exits before explicit teardown", () =>
     Effect.gen(function* () {
       if ((yield* HostProcess.Platform) !== "linux") return;
