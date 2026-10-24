@@ -9,3 +9,6 @@ runs:
         cache: true
         cache-dependency-path: pnpm-lock.yaml
         run-install: false
+    - name: Verify host Node runtime
+      shell: bash
+      run: node scripts/verify-node-runtime.mts --exact

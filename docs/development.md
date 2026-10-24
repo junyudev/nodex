@@ -11,10 +11,18 @@ dependencies from the repository root:
 vp install --frozen-lockfile
 ```
 
-Nodex pins Node `24.15.0` in `.node-version` and pnpm `12.3.4` in
+Nodex pins Node in `.node-version` and pnpm `12.3.4` in
 `package.json`; Vite+ resolves both declarations for the project. The exact
 `vite-plus` development dependency pins the project toolchain independently of
 the globally installed launcher version.
+
+`.node-version` also defines the minimum supported host Node version in
+`package.json#engines`. The preinstall guard rejects older runtimes or a different major;
+the shared CI setup additionally requires the exact pin before installing dependencies.
+Run `vp run verify:node-runtime` to check both declarations and exercise the running
+Node's DNS, TLS, and Brotli APIs. Update the pin and engine floor together for security
+releases. These checks cover the contributor/build process, not Electron or the signed
+Browser runtime used by Agent execution. See [Node runtime security](SECURITY.md#node-runtime-security).
 
 Upgrade `vite-plus` and the `@voidzero-dev/vite-plus-core` alias together across
 workspace manifests and overrides. Keep Vitest, its browser provider, and the

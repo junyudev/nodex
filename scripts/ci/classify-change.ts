@@ -93,6 +93,9 @@ const isRustDependencyPath = (path: string): boolean =>
   path === "Cargo.lock" || path === "Cargo.toml" || /^crates\/[^/]+\/Cargo\.toml$/u.test(path);
 
 const isJavaScriptDependencyPath = (path: string): boolean =>
+  path === ".node-version" ||
+  path === "scripts/verify-node-runtime.mts" ||
+  path === "scripts/probe-node-security.mjs" ||
   path === ".npmrc" ||
   path === "package.json" ||
   path === "pnpm-lock.yaml" ||

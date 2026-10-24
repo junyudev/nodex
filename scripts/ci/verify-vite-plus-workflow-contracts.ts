@@ -17,6 +17,7 @@ const setupVpCommit = "313600b80b104eadebb9111787d37a2e83e014ca";
 const pinnedSetupVpAction = `voidzero-dev/setup-vp@${setupVpCommit}`;
 const forbiddenSetupActions = ["pnpm/action-setup@", "actions/setup-node@"] as const;
 const pnpmCommandPattern = /\bpnpm(?:\.cmd)?\b/u;
+const nodeCommandPattern = /(?:^|[;&|()\s])node(?:\.exe)?\s/u;
 const vpCommandPattern =
   /(?:^|[;&|()\s])vp(?:\.cmd|\.exe)?\s+(?:build|check|dev|exec|fmt|install|lint|pack|run|test)\b/u;
 const canonicalCheckPattern = /(?:^|[;&|()\s])vp(?:\.cmd|\.exe)?\s+run\s+check(?:\s|$)/u;
@@ -76,6 +77,9 @@ export const verifyCommandSteps = (
     if (pnpmCommandPattern.test(run)) {
       throw new Error(`${stepLabel} invokes pnpm directly; use vp install, vp run, or vp exec`);
     }
+    if (requireSetupBeforeVp && !setupReady && nodeCommandPattern.test(run)) {
+      throw new Error(`${stepLabel} invokes node before ${sharedSetupAction}`);
+    }
     if (!vpCommandPattern.test(run)) continue;
     vpCommandCount += 1;
     if (!requireSetupBeforeVp || setupReady) continue;
@@ -105,7 +109,9 @@ export const verifyStaticCheckSteps = (label: string, steps: readonly UnknownRec
 const verifySharedSetupAction = (): void => {
   const action = readAutomationFile(sharedSetupPath);
   const steps = automationSteps(action, relativeRepositoryPath(sharedSetupPath));
-  if (steps.length !== 1) throw new Error(`${sharedSetupAction} must own one setup step`);
+  if (steps.length !== 2) {
+    throw new Error(`${sharedSetupAction} must set up Vite+ and verify the host Node runtime`);
+  }
 
   const setup = steps[0];
   if (!setup || setup.uses !== pinnedSetupVpAction) {
@@ -120,6 +126,13 @@ const verifySharedSetupAction = (): void => {
   }
   if (inputs["run-install"] !== false) {
     throw new Error(`${sharedSetupAction} must preserve each job's dependency-install ordering`);
+  }
+  const verification = steps[1];
+  if (
+    verification?.shell !== "bash" ||
+    verification.run !== "node scripts/verify-node-runtime.mts --exact"
+  ) {
+    throw new Error(`${sharedSetupAction} must verify the exact Node pin before installation`);
   }
 };
 

@@ -33,6 +33,21 @@ describe("Vite+ CI command ownership", () => {
     );
   });
 
+  test("requires pinned Node even for dependency-free workflow scripts", () => {
+    for (const run of ["node scripts/ci/classify-change.ts", "SOURCE_TREE=abc node -e '0'"]) {
+      expect(() => verifyCommandSteps("workflow.job", [{ run }], true)).toThrow(
+        /invokes node before/u,
+      );
+      expect(() =>
+        verifyCommandSteps(
+          "workflow.job",
+          [{ uses: "./.github/actions/setup-vite-plus" }, { run }],
+          true,
+        ),
+      ).not.toThrow();
+    }
+  });
+
   test("requires the reusable static matrix to own the integrated check", () => {
     expect(() =>
       verifyStaticCheckSteps("workflow.static-contracts", [

@@ -183,6 +183,9 @@ describe("CI change classification", () => {
 
   test("audits every dependency entry point even alongside application changes", () => {
     for (const dependencyPath of [
+      ".node-version",
+      "scripts/verify-node-runtime.mts",
+      "scripts/probe-node-security.mjs",
       ".npmrc",
       "package.json",
       "pnpm-lock.yaml",

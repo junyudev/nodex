@@ -106,6 +106,7 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
           ref: ${{ inputs.source_sha }}
+      - uses: ./.github/actions/setup-vite-plus
       - name: Materialize exact-source certificate
         id: identity
         env:
