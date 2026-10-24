@@ -1,0 +1,52 @@
+src/main/electron-test-runtime.test.ts
+  s_f79dd9d0c7ac54::t_0cfa5084b85023 7
+src/main/settings/ApplicationSettings.test.ts
+  s_f79dd9d0c7ac54::t_cc8ac66ed086a6 14,47,49,56
+  s_f79dd9d0c7ac54::t_2c0fccb80e5eb7 74-113
+tests/e2e/scripted-agent-runtime.spec.ts
+  s_f79dd9d0c7ac54::t_b89740c8df5b19 235
+  s_f79dd9d0c7ac54::t_835d598d5ad6b8 236,924
+CHANGELOG.md
+  s_f79dd9d0c7ac54::t_13b104bbf3bcf3 21,23
+  s_f79dd9d0c7ac54::t_f1a2a4f99b3a3c 24,42-44
+  s_f79dd9d0c7ac54::t_42ea9b0d71fc62 22
+  s_f79dd9d0c7ac54::t_a8472b917b81fb 45
+scripts/semantic-theme/module.test.ts
+  s_f79dd9d0c7ac54::t_cc8ac66ed086a6 50,70
+scripts/ci/icon-inline-svg-baseline.json
+  s_f79dd9d0c7ac54::t_cc8ac66ed086a6 25-28,42-45
+packages/agent-runtime/src/orchestration-v2/Adapters/ClaudeAgentSdkInstanceHistory.test.ts
+  s_f79dd9d0c7ac54::t_cbe6023f2a5910 24-29
+  s_f79dd9d0c7ac54::t_cc8ac66ed086a6 30
+  s_f79dd9d0c7ac54::t_f5fe3f026fcbaa 31,108,130,138,151
+src/main/settings/ApplicationSettings.ts
+  s_f79dd9d0c7ac54::t_cc8ac66ed086a6 173,355-356
+package.json
+  s_f79dd9d0c7ac54::t_d2869d56a93ace 219,298-299,349
+packages/agent-runtime/package.json
+  s_f79dd9d0c7ac54::t_c88378de591c8d 52
+packages/nodex-app-tools-mcp/package.json
+  s_f79dd9d0c7ac54::t_43dc4922ff10b2 12
+pnpm-lock.yaml
+  s_f79dd9d0c7ac54::t_9c27ae6cf192ad 115,181,184,258-259,314,326,490-491,493-494,509,635,638,643-644,650,656,662,736-737,740,772,775,794,800,822,828,853,862,890,902,924,930,964,973,995,1001,1059,1068,1093,1102,1124,1130,1146,1152,1174,1183,1205,1214,1239,1248,1267,1276,1327,1348,1350-1351,5304-5305,5833-5834,5894-5895,6119-6120,6460-6461,7693-7696,8143-8144,8376-8377,8380-8381,8384-8385,8751-8752,8774,8776,8809,8811-8813,8824,8829,9115,9151,9154-9155,9157,9160-9161,9200,9622,9639,9662,9679-9680,11579,11591,11608,11646,11850,11962,11970,12522,12621,12755,12768,12861,12868,12914,13375,13474,13501,13977,13989,14222,14349,14362,14499,14522,14524,14547,14558,14580,14583,14605,14607,14629,14917-14921,15436,15466,15468,15731,15733,15735,15852,15863-15864,15867,15914,15925-15926,15929,15976,15997,16002,16023,16201,16203,16205
+pnpm-workspace.yaml
+  s_f79dd9d0c7ac54::t_ad34d50afccb19 29,140
+tests/e2e/shell-output.spec.ts
+  s_f79dd9d0c7ac54::t_45f350337ec696 190
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "22adaf5330de56302e4449fc181169c3423ed42f",
+  "prompts": {},
+  "sessions": {
+    "s_f79dd9d0c7ac54": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a151d6-b92f-7f41-b4e5-4834cb7752bd",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
