@@ -1,0 +1,44 @@
+packages/agent-runtime/src/nodex/testing/acp-native-history-peer.mjs
+  s_8ba9572f1b48c1::t_94566d3273adde 1-82
+docs/product-specs/acp-agent-behavior.md
+  s_8ba9572f1b48c1::t_94566d3273adde 115-117
+  s_8ba9572f1b48c1::t_026bf35ac9079a 111-114
+packages/agent-runtime/src/nodex/AcpNativeHistory.integration.test.ts
+  s_8ba9572f1b48c1::t_94566d3273adde 1-210
+packages/agent-runtime/src/orchestration-v2/NativeThreadHistory.ts
+  s_8ba9572f1b48c1::t_884d2924389de2 1-85
+packages/agent-runtime/src/nodex/AcpDiscovery.integration.test.ts
+  s_9cccd37e800d7a::t_46ef435ee1d7ab 119-135,151-156
+packages/agent-runtime/src/nodex/AcpManagement.ts
+  s_9cccd37e800d7a::t_59e647d6aef309 727-731
+packages/agent-runtime/src/orchestration-v2/Orchestrator.ts
+  s_9cccd37e800d7a::t_36c3dbb3bf64fb 2336-2338
+packages/agent-runtime/src/orchestration-v2/ProviderTurnStartService.ts
+  s_9cccd37e800d7a::t_4f6b95ece69c65 48,626-627,971-989,1065
+packages/agent-runtime/vendor/contracts/src/orchestrationV2.ts
+  s_9cccd37e800d7a::t_91424f0ee2d494 979-982
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "a0fbcbfdfad603cbd9b895af70b5f48ad7bf2386",
+  "prompts": {},
+  "sessions": {
+    "s_8ba9572f1b48c1": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "cf77dbe9-4c90-42a1-89dd-a69d75865e03",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_9cccd37e800d7a": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a16d80-f1cc-7471-9f61-cb6ea1bc793d",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
