@@ -120,7 +120,10 @@ export default async function restorePackagedRuntimeClosure(context) {
   const appPath = path.join(context.appOutDir, `${context.packager.appInfo.productFilename}.app`);
   assertPackagedAgentRuntimeNative({
     sourceRoot: path.join(projectRoot, "out/agent-runtime/node_modules/node-pty"),
-    packagedRoot: path.join(appPath, "Contents/Resources/app.asar.unpacked/out/agent-runtime/node_modules/node-pty"),
+    packagedRoot: path.join(
+      appPath,
+      "Contents/Resources/app.asar.unpacked/out/agent-runtime/node_modules/node-pty",
+    ),
   });
   const restored = restorePackagedBrowserRuntimeClosure({
     sourceBrowserRoot: path.join(projectRoot, ...stagedBrowserRuntimePath),

@@ -480,7 +480,10 @@ export const applyMacCodeObjectEntitlementPolicy = (options) => {
 
 /** Reseal Nodex-built PTY objects after codesigning without changing vendor manifests. */
 export const refreshSignedAgentRuntimeNativeManifest = (appPath) => {
-  const executionRoot = path.join(appPath, "Contents/Resources/app.asar.unpacked/out/agent-runtime");
+  const executionRoot = path.join(
+    appPath,
+    "Contents/Resources/app.asar.unpacked/out/agent-runtime",
+  );
   const executionManifestPath = path.join(executionRoot, "native-dependencies.json");
   const executionManifest = JSON.parse(readFileSync(executionManifestPath, "utf8"));
   executionManifest.unsignedArtifactDigest ??= executionManifest.artifactDigest;

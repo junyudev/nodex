@@ -478,9 +478,7 @@ it.effect.each(["cancel", "configuration-change"] as const)(
         response: { type: "terminal", data: "current" },
       });
       assert.deepEqual(
-        calls
-          .filter(({ method }) => method === "acp.auth.cancel")
-          .map(({ input }) => input.flowId),
+        calls.filter(({ method }) => method === "acp.auth.cancel").map(({ input }) => input.flowId),
         ["flow-a"],
       );
       assert.equal(calls.at(-1)?.method, "acp.auth.respond");
