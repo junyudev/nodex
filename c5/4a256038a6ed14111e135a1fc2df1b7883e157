@@ -1,0 +1,49 @@
+packages/agent-runtime/scripts/acp-model-agent.ts
+  s_9cccd37e800d7a::t_53db29d46d8f18 1-43,46-66,73-109,111-113,125-129,131-133
+  s_9cccd37e800d7a::t_53783a58d50525 67-69,71-72
+  s_9cccd37e800d7a::t_ea80e343794759 114-121,123-124
+  s_9cccd37e800d7a::t_c8776866a4f678 44-45,70,110,122,130
+packages/agent-runtime/src/orchestration-v2/Adapters/AcpAdapterV2.test.ts
+  s_9cccd37e800d7a::t_53783a58d50525 61-66,371,414,654-663,665-674,676-698,706-724,726-746,748-750,752,758-763,765-767,769-773,775-789,792-794,796-797
+  s_9cccd37e800d7a::t_6d31ca0fce9fc0 606-607
+  s_9cccd37e800d7a::t_ea80e343794759 795
+  s_9cccd37e800d7a::t_3ff3e2aacd78b9 7,604-605,608-618,620-630,632-634,636-649,651-653
+  s_9cccd37e800d7a::t_df0818972f3bfe 753-755,757
+  s_9cccd37e800d7a::t_d5692cfa510761 619,631,635,650,664,675,699-705,725,747,751,756,764,768,774,790-791
+src/main/agent-runtime/AgentRuntimeSessionTitle.ts
+  s_9cccd37e800d7a::t_62bf2293ad10fa 50,52-53
+  s_9cccd37e800d7a::t_64b460f88c7fe6 51
+src/main/agent-runtime/AgentRuntimeSessionTitle.node.test.ts
+  s_9cccd37e800d7a::t_62bf2293ad10fa 1-31,33-35
+  s_9cccd37e800d7a::t_6cd65bff4b2c66 32
+packages/agent-runtime/UPSTREAM.json
+  s_9cccd37e800d7a::t_3ff3e2aacd78b9 5-11
+packages/agent-runtime/vendor/provider-acp-registry/src/server/droidAcp.ts
+  s_9cccd37e800d7a::t_9a2a36ea63aeac 1-84
+packages/agent-runtime/vendor/provider-acp-registry/src/testing.ts
+  s_9cccd37e800d7a::t_261cd7ba49f7fb 20
+packages/agent-runtime/vendor/provider-acp/src/server/AcpSessionRuntime.ts
+  s_9cccd37e800d7a::t_7fd8bbdb02b14d 40,126-127,1960-1961,1994-1999
+packages/agent-runtime/vendor/provider-acp/src/server/adapter.ts
+  s_9cccd37e800d7a::t_691a68a0a0d387 67,81,223,230-237,247,5341-5342,5596,5602,5645,5984,6030-6057,6083-6087
+packages/agent-runtime/vendor/provider-acp/src/server/runtimeModel.ts
+  s_9cccd37e800d7a::t_99c47ea55f898e 397-408,410
+packages/agent-runtime/vendor/provider-acp/src/server/sessionConfig.ts
+  s_9cccd37e800d7a::t_e9454f6625da3a 20-39,67,124,129
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "c54a256038a6ed14111e135a1fc2df1b7883e157",
+  "prompts": {},
+  "sessions": {
+    "s_9cccd37e800d7a": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a16d80-f1cc-7471-9f61-cb6ea1bc793d",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
