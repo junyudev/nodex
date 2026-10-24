@@ -1,0 +1,19 @@
+docs/product-specs/acp-agent-behavior.md
+  s_9cccd37e800d7a::t_1b0dacfde75b86 105-106
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "12a360accf56f74187a5c3400b6fec87e6ab6cdd",
+  "prompts": {},
+  "sessions": {
+    "s_9cccd37e800d7a": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a16d80-f1cc-7471-9f61-cb6ea1bc793d",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
