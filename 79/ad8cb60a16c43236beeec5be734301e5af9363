@@ -1,0 +1,21 @@
+scripts/scenarios/runtime/scripted-acp-agent.ts
+  s_9cccd37e800d7a::t_4f0d05e8c6145e 40-45,100-104,166,184-187,296-307
+tests/e2e/acp-backend-lifecycle.spec.ts
+  s_9cccd37e800d7a::t_5eaba775ea682b 25-30,56-61,108,119,185-194,253,258
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "79ad8cb60a16c43236beeec5be734301e5af9363",
+  "prompts": {},
+  "sessions": {
+    "s_9cccd37e800d7a": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a16d80-f1cc-7471-9f61-cb6ea1bc793d",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
