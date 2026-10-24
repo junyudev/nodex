@@ -3,6 +3,8 @@
 ## Importing native conversations
 
 Settings > Conversations imports Codex and Claude Code conversations as independent Nodex copies.
+Conversations saved by ACP Agents are bound to a chat instead of copied; see
+[ACP Agent behavior](acp-agent-behavior.md#settings-and-composer).
 Browse configured native sources or paste a native conversation ID or a `codex://threads/<id>` link.
 A raw ID searches enabled sources; multiple distinct history directories require an explicit source
 choice. Profiles sharing the same canonical history directory identify the same source conversation.

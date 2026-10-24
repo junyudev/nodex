@@ -128,6 +128,54 @@ providers cannot be disabled, including by direct management calls. Endpoint wri
 refuse busy credential scopes before issuing a native write. Successful changes refresh provider and
 model state.
 
+## Settings and Composer
+
+Settings > Agent lists ACP Agents one row per instance: name, its command or Registry source, one
+status with the next step (Install, Connect, Sign in or Cancel), and an on/off switch that saves
+immediately. Statuses are Ready with the model count once a connection or session has reported the
+Agent's capabilities, Not connected before that, Sign-in required, Installing with real progress,
+Connecting, Not installed, Needs a runner, Unavailable, Not in Registry, Off, or a failure with its
+recovery. Ready never comes from the startup Default alone. Saved changes that wait for current work
+show Changes pending until Main reports them applied; a reconcile failure stays visible with Try
+again. Pending and failed states are re-read only while unsettled and while Settings or a Composer
+observes them.
+
+A row expands in place to Account, Installation, launch configuration, environment variables,
+account storage, proxy and, when advertised, the Agent's model services. Arguments are separate
+verbatim values: an empty field is an empty argument, Enter adds the next one and pasted lines become
+one argument each. Account storage and the logical Agent are fixed after saving. Removing the last
+instance of a Registry Agent offers Also uninstall. Updates install the cached catalog version the
+row showed; a moved catalog asks for another look.
+
+Add Agent offers ACP Registry and Local command. Registry results include unavailable Agents with the
+reason, and choosing one shows the exact package or archive, integrity, runner and private install
+directory before Install and connect. Local command takes a name, executable, arguments, account
+storage and an optional Registry ID for compatibility features. Saving creates the instance; its
+installation and connection continue in Settings after the dialog closes.
+
+Account lists the methods the Agent advertises: Sign in with an Agent method, Open for a terminal
+method, Set for environment variables (adding secret rows to the editor) and Open sign-in page for a
+browser request. Without methods it asks for the Agent's own command line, then Check again. Check
+again is always available and reconnects explicitly. A terminal sign-in runs in place and the account
+is verified after the command exits; Escape belongs to the terminal. Closing the last surface showing
+a sign-in cancels it, including one still starting; reopening reads the current state. A verified
+sign-in answers the Connect that asked for it and connects again when the Agent's models are not yet
+known. Sign out appears only when the Agent supports it; a busy refusal names how many chats must
+stop first.
+
+The model menu lists every connected instance's models with its name, and one setup entry per enabled
+instance that is not usable yet (Sign in, Install, Connect or Unavailable). Each opens the same
+account surface in place; Settings opens the instance. Manage providers opens the selected Agent's
+settings. A chat whose ACP Agent needs sign-in shows Sign in beside the Composer.
+
+Settings > Conversations lists conversations an Agent saved for the chosen Project's folder when the
+Agent can list them, and offers Connect for Agents whose capabilities are not yet known. Import sends
+nothing to the Agent. When the Agent can only resume, Nodex says earlier messages will not be shown
+before importing. Imported conversations reopen as Open. Delete from the Agent is offered only when
+supported and only for conversations not imported, after confirmation. Continuing an imported
+conversation depends on the Agent restoring it; when it cannot, the chat says so instead of starting
+over.
+
 ## Verification
 
 Scripted peers prove both protocol generations, minimal capabilities, installation and auth lifetimes,

@@ -70,7 +70,9 @@ become independent rail entries.
 
 Conversations owns source discovery, destination selection and independent conversation imports
 for Codex and Claude, as described in
-[Native Conversation Import Behavior](native-conversation-connection-behavior.md).
+[Native Conversation Import Behavior](native-conversation-connection-behavior.md), and imports of
+conversations saved by ACP Agents, as described in [ACP Agent behavior](acp-agent-behavior.md).
+Agent owns ACP instance setup, sign-in and model services.
 Agent > Codex owns Copy setup. Setup migration is separate from conversation import and targets
 shared Codex configuration.
 

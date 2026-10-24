@@ -6,6 +6,7 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- ACP Agents can be added from the ACP Registry or as a local command, each with its own account, installation, environment and history. Settings shows each Agent's live state and next step, installs and updates the exact build you reviewed, signs in through the Agent's own method (including an interactive terminal), and imports conversations the Agent saved. The model menu offers setup for Agents that aren't ready yet.
 - Codex and Claude Code conversations can be imported individually or in batches through one workflow, including by pasting a conversation ID or Codex thread link. Each copy retains its visible history and continues as a Nodex chat independently of the original, with a replacement working directory when needed. Setup migration stays separate.
 - Codex chats suggest a next message after a reply, even when you switch away. Accept a suggestion with Tab, Right Arrow or Enter, then edit or send it normally. Show predictions in General settings controls the feature across windows and restart.
 - Chats offer Fork in the sidebar context menu and Chat actions, with the current directory or a new Git worktree as the destination.
