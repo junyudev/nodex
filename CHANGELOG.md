@@ -18,6 +18,10 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- Existing Profiles upgrade without rejecting saved paragraphs that begin with Markdown punctuation, while preserving their content and edit history.
+- Completed undo history no longer stalls background cleanup after a Profile upgrade.
+- Archiving or deleting an Inbox message withdraws its outdated suggestions so other messages keep receiving advice, including after restart.
+- Editing an earlier message across Agents removes the withdrawn context when continuing or switching Agents, including after restart. Forks retain the history they inherited without restoring messages withdrawn before the fork.
 - Chats distinguish automatic retries, recovery and terminal failures, retain error details for inspection, and let you continue a failed reply without replaying the original request.
 - Scrolling up in a chat keeps your reading position instead of reattaching to the bottom during layout updates.
 - Offline Profile backups work with Claude Code and OpenCode chats, preserve required Claude history, and ignore unrelated active Claude sessions.
@@ -34,6 +38,10 @@ All notable changes to this project will be documented in this file.
 - Code blocks in chat replies use dark-theme syntax colors in the dark theme, instead of near-invisible light-theme colors.
 - Context compaction in chats appears as a quiet activity row instead of a divider, says whether the compaction was manual or automatic, reassures you when a long compaction is still working, and no longer reports a stopped compaction as finished.
 - Inbox History shows the live status of chats run by Agent Runtime instead of leaving them at Starting.
+
+### Security
+
+- Updated the desktop runtime and content-processing dependencies to address certificate, sanitization, parsing and request-handling vulnerabilities.
 
 ## [0.4.0] - 2026-10-22
 

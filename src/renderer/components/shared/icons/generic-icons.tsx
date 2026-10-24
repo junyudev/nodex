@@ -15,7 +15,6 @@ import {
   CircleDotIcon as LucideCircleDotIcon,
   CircleX as LucideCircleX,
   ClipboardListIcon as LucideClipboardListIcon,
-  CloudOff as LucideCloudOff,
   ContactRound as LucideContactRound,
   CornerDownLeft as LucideCornerDownLeft,
   Filter as LucideFilter,
@@ -164,10 +163,6 @@ export const CircleX: LucideIconType = /* @__PURE__ */ createGenericIcon(LucideC
 export const ClipboardListIcon: LucideIconType = /* @__PURE__ */ createGenericIcon(
   LucideClipboardListIcon,
   "ClipboardListIcon",
-);
-export const CloudOff: LucideIconType = /* @__PURE__ */ createGenericIcon(
-  LucideCloudOff,
-  "CloudOff",
 );
 export const ContactRound: LucideIconType = /* @__PURE__ */ createGenericIcon(
   LucideContactRound,

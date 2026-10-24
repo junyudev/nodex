@@ -187,9 +187,7 @@ test("real Shell output survives delayed batching and preserves repeated lines a
         expect(query.result.snapshot).toMatch(/^query_/u);
         expect(live[1]).toBe(`${repeatLine}\n${repeatLine}\n`);
         const reopened = await harness.restart();
-        await reopened
-          .locator(`[data-app-action-sidebar-thread-id="${draft.projectSessionId}"]`)
-          .click();
+        await reopened.locator(`[data-app-action-sidebar-thread-id="${threadId}"]`).click();
         await waitForFinalMarker(reopened, final);
         const restored = await shellOutput(reopened);
         expect(restored).toEqual(live);

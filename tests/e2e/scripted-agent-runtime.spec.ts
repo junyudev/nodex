@@ -232,10 +232,8 @@ for (const { rendererCpuRate, unversioned } of [
             try {
               // Cold renderer scheduling must not turn successful history hydration into failure.
               await cdp.send("Emulation.setCPUThrottlingRate", { rate: rendererCpuRate });
-              // A chat that Agent execution owns is listed by its Session.
-              await reopened
-                .locator(`[data-app-action-sidebar-thread-id="${draft.projectSessionId}"]`)
-                .click();
+              // Started chats expose their execution Thread identity in the sidebar.
+              await reopened.locator(`[data-app-action-sidebar-thread-id="${threadId}"]`).click();
               await expect(reopened.getByText(firstReply, { exact: true }).last()).toBeVisible({
                 timeout: 30_000,
               });
@@ -923,9 +921,7 @@ nodeRepl.write(JSON.stringify({ title: await tab.title(), url: await tab.url() }
               exact: true,
             })
             .click();
-          await page
-            .locator(`[data-app-action-sidebar-thread-id="${draft.projectSessionId}"]`)
-            .click();
+          await page.locator(`[data-app-action-sidebar-thread-id="${threadId}"]`).click();
           await waitForFinalMarker(page, finalMarker);
           const activity = page.getByRole("button", { name: /^Worked for/u });
           if (

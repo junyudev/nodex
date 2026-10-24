@@ -47,6 +47,7 @@ const referenceFixture = `
     --color-border: color-mix(in oklab, var(--vscode-foreground) 12%, transparent);
     --color-border-heavy: color-mix(in oklab, var(--vscode-foreground) 20%, transparent);
     --color-background-primary-solid: var(--vscode-foreground);
+    --color-background-info-solid: var(--vscode-charts-blue);
     --color-background-composer-primary: var(--color-background-primary-solid);
     --color-background-user-message: color-mix(in oklab, var(--color-text) 5%, transparent);
     --color-background-tip-badge: var(--vscode-editor-selectionBackground);
@@ -66,6 +67,7 @@ const referenceFixture = `
   .text-secondary { color: var(--color-text-secondary); }
   .border-default { border-color: var(--color-border); }
   .bg-text-info { background-color: var(--color-text-info); }
+  .bg-info-solid { background-color: var(--color-background-info-solid); }
   .bg-text\\/10 { background-color: color-mix(in oklab, var(--color-text) 10%, transparent); }
   .bg-composer-primary { background-color: var(--color-background-composer-primary); }
   .text-composer-primary { color: var(--color-text-composer-primary); }

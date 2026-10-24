@@ -21,6 +21,14 @@ const runnerLayer = layerQueryRunner.pipe(
   ),
 );
 
+// SDK initialization sets these two flags; every account/configuration variable stays fenced.
+const accountEnvironment = () =>
+  Object.fromEntries(
+    Object.entries(process.env).filter(
+      ([key]) => key !== "NoDefaultCurrentDirectoryInExePath" && key !== "CLAUDE_AGENT_SDK_VERSION",
+    ),
+  );
+
 const fixture = Effect.fnUntraced(function* () {
   const root = yield* Effect.acquireRelease(
     Effect.promise(() => mkdtemp(path.join(os.tmpdir(), "nodex-claude-instance-history-"))),
@@ -97,7 +105,7 @@ it.live("forks the same native Session concurrently in each configured instance"
   Effect.gen(function* () {
     const f = yield* fixture();
     const runner = yield* ClaudeAgentSdkQueryRunner;
-    const beforeEnvironment = { ...process.env };
+    const beforeEnvironment = accountEnvironment();
     const homes = f.homes.slice(0, 2);
     const forks = yield* Effect.all(
       homes.map((home, index) =>
@@ -119,7 +127,7 @@ it.live("forks the same native Session concurrently in each configured instance"
         expect(await f.readMessages(homes[1 - index]!, fork.sessionId)).toBeNull();
       }
     });
-    expect(process.env).toEqual(beforeEnvironment);
+    expect(accountEnvironment()).toEqual(beforeEnvironment);
   }).pipe(Effect.provide(runnerLayer)),
 );
 
@@ -127,7 +135,7 @@ it.live("looks up each instance's subagent without changing process-wide configu
   Effect.gen(function* () {
     const f = yield* fixture();
     const runner = yield* ClaudeAgentSdkQueryRunner;
-    const beforeEnvironment = { ...process.env };
+    const beforeEnvironment = accountEnvironment();
     const tools = yield* Effect.all(
       f.homes.slice(0, 2).map((configDirectory) =>
         runner.subagentLaunchToolUseId({
@@ -140,7 +148,7 @@ it.live("looks up each instance's subagent without changing process-wide configu
       { concurrency: "unbounded" },
     );
     expect(tools).toEqual(["tool:alpha", "tool:beta"]);
-    expect(process.env).toEqual(beforeEnvironment);
+    expect(accountEnvironment()).toEqual(beforeEnvironment);
   }).pipe(Effect.provide(runnerLayer)),
 );
 

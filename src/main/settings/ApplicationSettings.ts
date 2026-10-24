@@ -170,6 +170,7 @@ export class ApplicationSettingsConflictError extends Schema.TaggedError<Applica
 export class ApplicationSettings extends Context.Service<
   ApplicationSettings,
   {
+    /** Latest saved preference; slow observers may coalesce intermediate invalidations. */
     readonly composerPredictionSettingsChanges: Stream.Stream<ComposerPredictionSettings>;
     readonly openCodeLaunchConfiguration: (
       instanceId: string,
@@ -351,7 +352,8 @@ export const make = Effect.fn("ApplicationSettings.make")(function* (input: {
     ...(input.secretEncryption ? { secretEncryption: input.secretEncryption } : {}),
   };
   const writes = yield* Semaphore.make(1);
-  const composerPredictionChanges = yield* PubSub.unbounded<ComposerPredictionSettings>();
+  // Observers invalidate predictions and reread settings before admitting new work.
+  const composerPredictionChanges = yield* PubSub.sliding<ComposerPredictionSettings>(1);
   yield* Effect.addFinalizer(() => PubSub.shutdown(composerPredictionChanges));
   // The native runtime keeps one home for this Main lifetime; saved changes apply after restart.
   const activeCodexHome = yield* Ref.make<

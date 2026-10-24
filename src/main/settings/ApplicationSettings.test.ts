@@ -11,6 +11,7 @@ import {
 import { tmpdir } from "node:os";
 import path from "node:path";
 import * as Effect from "effect/Effect";
+import * as Deferred from "effect/Deferred";
 import * as Result from "effect/Result";
 import * as Stream from "effect/Stream";
 import * as Fiber from "effect/Fiber";
@@ -43,13 +44,16 @@ describe("ApplicationSettings", () => {
       const input = { environment: {}, hostHomeDirectory: root, settingsPath };
       const settings = yield* makeApplicationSettings(input);
       assert.deepEqual((yield* settings.snapshot()).composerPredictions, { enabled: true });
+      const disabled = yield* Deferred.make<void>();
       const changes = yield* settings.composerPredictionSettingsChanges.pipe(
+        Stream.tap(() => Deferred.succeed(disabled, undefined)),
         Stream.take(2),
         Stream.runCollect,
         Effect.forkScoped,
       );
       yield* Effect.yieldNow;
       yield* settings.update({ type: "update-composer-predictions", input: { enabled: false } });
+      yield* Deferred.await(disabled);
       yield* settings.update({ type: "update-composer-predictions", input: { enabled: false } });
       const reopened = yield* makeApplicationSettings(input);
       assert.deepEqual((yield* reopened.snapshot()).composerPredictions, { enabled: false });
@@ -65,6 +69,46 @@ describe("ApplicationSettings", () => {
       assert.deepEqual(yield* Fiber.join(changes), [{ enabled: false }, { enabled: true }]);
       assert.deepEqual(parseToml(readFileSync(settingsPath, "utf8")).plugin, { name: "keep" });
     }),
+  );
+
+  it.effect(
+    "keeps settings writable while a slow prediction observer catches up to the latest value",
+    () =>
+      Effect.gen(function* () {
+        const { root, settingsPath } = fixture();
+        const settings = yield* makeApplicationSettings({
+          environment: {},
+          hostHomeDirectory: root,
+          settingsPath,
+        });
+        const observing = yield* Deferred.make<void>();
+        const resume = yield* Deferred.make<void>();
+        const observed: boolean[] = [];
+        const observer = yield* settings.composerPredictionSettingsChanges.pipe(
+          Stream.take(2),
+          Stream.runForEach((value) =>
+            Effect.gen(function* () {
+              observed.push(value.enabled);
+              if (observed.length !== 1) return;
+              yield* Deferred.succeed(observing, undefined);
+              yield* Deferred.await(resume);
+            }),
+          ),
+          Effect.forkScoped({ startImmediately: true }),
+        );
+        yield* settings.update({ type: "update-composer-predictions", input: { enabled: false } });
+        yield* Deferred.await(observing);
+        for (let index = 0; index < 32; index += 1) {
+          yield* settings.update({
+            type: "update-composer-predictions",
+            input: { enabled: index % 2 === 0 },
+          });
+        }
+        assert.deepEqual((yield* settings.snapshot()).composerPredictions, { enabled: false });
+        yield* Deferred.succeed(resume, undefined);
+        yield* Fiber.join(observer);
+        assert.deepEqual(observed, [false, false]);
+      }),
   );
 
   it.effect(
