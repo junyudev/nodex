@@ -76,10 +76,18 @@ async function main() {
   const agentId = args.includes("--agent") ? value("--agent") : undefined;
   if (!homePath || !path.isAbsolute(homePath) || !agentId)
     throw new Error(
-      "Pass --home <absolute development home> --agent <Registry ID> [--exercise --model <ID>] [--authenticate --hold].",
+      "Pass --home <absolute development home> --agent <Registry ID> [--exercise --model <ID>] [--authenticate --hold] [--repair-installation].",
     );
   const home = await openDevelopmentEnvironmentHome({ repositoryRoot: root, home: homePath });
   const reportPath = path.join(home.artifacts, `acp-live-${agentId}.json`);
+  const previous = await readFile(reportPath, "utf8").catch((error: unknown) => {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
+    throw error;
+  });
+  if (previous)
+    await writeFile(path.join(home.artifacts, `acp-live-${agentId}-${Date.now()}.json`), previous, {
+      mode: 0o600,
+    });
   const checks: Record<string, Check> = Object.fromEntries(
     [
       "registry",
@@ -192,6 +200,31 @@ async function main() {
     const instanceId = `live-${agentId}`;
     const existing = await invoke(page, "settings:acp-agents:get");
     const saved = existing.instances.find((entry) => entry.id === instanceId);
+    const prepare = async (expectedVersion?: string) => {
+      const preview = await invoke(page, "acp:install:preview", { agentId });
+      report.installationPreview = preview;
+      if (!preview.available)
+        throw new Error(`Agent installation is unavailable: ${preview.reason}`);
+      if (expectedVersion && preview.version !== expectedVersion)
+        throw new Error(
+          "Repair would change the pinned Agent version. Prepare a separate live environment instead.",
+        );
+      const installed = await waitOperation(
+        await invoke(page, "acp:install:start", {
+          operationId: randomUUID(),
+          agentId,
+          expectedInstallationId: preview.installationId,
+        }),
+      );
+      checks.install = {
+        status: installed.phase === "succeeded" ? "verified" : "failed",
+        detail: installed.result ?? installed.error,
+      };
+      await save();
+      if (installed.phase !== "succeeded" || !installed.result || !("prepared" in installed.result))
+        throw new Error("Registry installation did not succeed; see the report.");
+      return installed.result;
+    };
     if (saved) {
       if (
         saved.credentials.kind !== "isolated-home" ||
@@ -207,27 +240,40 @@ async function main() {
         detail: inspection,
       };
       report.installationId = saved.source.installationId;
-      if (inspection.status !== "ready")
-        throw new Error("The pinned Agent installation is unavailable.");
+      if (inspection.status !== "ready") {
+        if (
+          !args.includes("--repair-installation") ||
+          !("version" in inspection) ||
+          !inspection.version
+        )
+          throw new Error(
+            "The pinned Agent installation is unavailable. Use --repair-installation to prepare the same version again.",
+          );
+        const installed = await prepare(inspection.version);
+        const repaired = {
+          ...saved,
+          source: {
+            ...saved.source,
+            distribution: installed.distribution,
+            installationId: installed.installationId,
+          },
+        };
+        const configured = await invoke(page, "settings:acp-agents:update", {
+          instances: existing.instances.map((entry) =>
+            entry.id === instanceId ? repaired : entry,
+          ),
+        });
+        if (configured.configurationStatus !== "applied")
+          throw new Error("The repaired installation configuration was not applied.");
+        report.installationRepair = {
+          previousInstallationId: saved.source.installationId,
+          installationId: installed.installationId,
+          version: installed.version,
+        };
+        report.installationId = installed.installationId;
+      }
     } else {
-      const preview = await invoke(page, "acp:install:preview", { agentId });
-      report.installationPreview = preview;
-      if (!preview.available)
-        throw new Error(`Agent installation is unavailable: ${preview.reason}`);
-      const installed = await waitOperation(
-        await invoke(page, "acp:install:start", {
-          operationId: randomUUID(),
-          agentId,
-          expectedInstallationId: preview.installationId,
-        }),
-      );
-      checks.install = {
-        status: installed.phase === "succeeded" ? "verified" : "failed",
-        detail: installed.result ?? installed.error,
-      };
-      await save();
-      if (installed.phase !== "succeeded" || !installed.result || !("prepared" in installed.result))
-        throw new Error("Registry installation did not succeed; see the report.");
+      const installed = await prepare();
       await invoke(page, "settings:acp-agents:update", {
         instances: [
           ...existing.instances,
@@ -239,8 +285,8 @@ async function main() {
             source: {
               kind: "registry",
               agentId,
-              distribution: installed.result.distribution,
-              installationId: installed.result.installationId,
+              distribution: installed.distribution,
+              installationId: installed.installationId,
             },
             credentials: { kind: "isolated-home", home: credentialHome },
             proxy: "inherit-host",
@@ -249,6 +295,7 @@ async function main() {
           },
         ],
       });
+      report.installationId = installed.installationId;
     }
     const connect = async () =>
       await waitOperation(
