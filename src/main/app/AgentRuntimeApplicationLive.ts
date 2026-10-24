@@ -1,4 +1,4 @@
-import { acpNativeStorageScope } from "../platform/node/AcpProfilePaths";
+import { acpProviderStorageScopes } from "../platform/node/AcpProfilePaths";
 import { CodexVisualizationState } from "../codex-application/CodexVisualizationState";
 import { codexVisualizationPassiveParts } from "../../shared/codex-visualization-passive-context";
 import { createHash } from "node:crypto";
@@ -515,10 +515,18 @@ const supervisor = Layer.effectContext(
           environment: launch?.environment ?? {},
           homeDirectory: config.homeDirectory,
         });
-        const nativeStorageScope = yield* Effect.tryPromise(() =>
-          acpNativeStorageScope(provider.environment ?? []),
+        const storageScopes = yield* Effect.tryPromise(() =>
+          acpProviderStorageScopes({
+            agentIdentity:
+              configured.source.kind === "registry"
+                ? configured.source.agentId
+                : configured.agentDefinitionId,
+            environment: provider.environment ?? [],
+            homeDirectory: config.homeDirectory,
+            platform: config.platform,
+          }),
         );
-        providers[id] = { ...provider, config: { ...provider.config, nativeStorageScope } };
+        providers[id] = { ...provider, config: { ...provider.config, ...storageScopes } };
       }
       const configuration: AgentRuntimeConfiguration = {
         home: join(config.nodexHome, "agent-runtime"),

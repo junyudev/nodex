@@ -2,7 +2,7 @@ import { afterEach, expect, it } from "vite-plus/test";
 import { mkdtemp, mkdir, symlink, rm, realpath } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { acpNativeStorageScope } from "./AcpProfilePaths";
+import { acpNativeStorageScope, acpProviderStorageScopes } from "./AcpProfilePaths";
 import { acpProviderConfiguration } from "../../agent-runtime/AcpProviderConfiguration";
 import type { AcpAgentInstanceConfig } from "../../../shared/acp-agent-settings";
 const roots: string[] = [];
@@ -55,6 +55,14 @@ it("disabling preserves the canonical native identity while removing resolved cr
     value: "resolved-secret",
     sensitive: true,
   });
+  const scopes = (environment: typeof active.environment) =>
+    acpProviderStorageScopes({
+      agentIdentity: instance.agentDefinitionId,
+      environment,
+      homeDirectory: root,
+      platform: process.platform,
+    });
+  expect(await scopes(disabled.environment)).toEqual(await scopes(active.environment));
 });
 it("recognizes physical profile aliases and excludes token values from native storage identity", async () => {
   const root = await mkdtemp(join(tmpdir(), "nodex-acp-profile-"));
@@ -72,4 +80,133 @@ it("recognizes physical profile aliases and excludes token values from native st
   expect(await scope(physical, "old-token")).not.toBe(
     await scope(join(root, "another"), "old-token"),
   );
+});
+
+const projectScopes = async (
+  root: string,
+  options: {
+    readonly agentIdentity?: string;
+    readonly isolatedHome?: string;
+    readonly variables?: Readonly<Record<string, string>>;
+    readonly inheritedEnvironment?: Readonly<Record<string, string>>;
+    readonly platform?: string;
+  } = {},
+) => {
+  const instance: AcpAgentInstanceConfig = {
+    id: "profile",
+    agentDefinitionId: options.agentIdentity ?? "unknown-agent",
+    displayName: "Agent",
+    enabled: true,
+    source: { kind: "local", executable: "claude-agent-acp", args: [] },
+    credentials: options.isolatedHome
+      ? { kind: "isolated-home", home: options.isolatedHome }
+      : { kind: "inherit-host-profile" },
+    proxy: "isolated",
+    customModels: [],
+    environment: Object.entries(options.variables ?? {}).map(([name, value]) => ({
+      name,
+      value,
+      sensitive: false,
+    })),
+  };
+  const provider = acpProviderConfiguration({
+    instance,
+    homeDirectory: root,
+    inheritedEnvironment: { HOME: root, ...options.inheritedEnvironment },
+    environment: {},
+  });
+  return acpProviderStorageScopes({
+    agentIdentity: instance.agentDefinitionId,
+    environment: provider.environment,
+    homeDirectory: root,
+    platform: options.platform ?? process.platform,
+  });
+};
+
+it("shares an unknown Agent's credentials despite unrelated toolchain and cache directories", async () => {
+  const root = await mkdtemp(join(tmpdir(), "nodex-acp-credential-scope-"));
+  roots.push(root);
+  const first = await projectScopes(root, {
+    variables: { CARGO_HOME: join(root, "cargo-one"), CLAUDE_CONFIG_DIR: join(root, "claude-one") },
+    inheritedEnvironment: { XDG_CACHE_HOME: join(root, "cache-one") },
+  });
+  const second = await projectScopes(root, {
+    variables: { CARGO_HOME: join(root, "cargo-two"), CLAUDE_CONFIG_DIR: join(root, "claude-two") },
+    inheritedEnvironment: { XDG_CACHE_HOME: join(root, "cache-two") },
+  });
+  expect(first.nativeStorageScope).not.toBe(second.nativeStorageScope);
+  expect(first.credentialStorageScope).toBe(second.credentialStorageScope);
+  expect(first.credentialStorageScope).toBe(await realpath(root));
+  const isolated = await projectScopes(root, { isolatedHome: join(root, "isolated") });
+  expect(isolated.credentialStorageScope).not.toBe(first.credentialStorageScope);
+});
+
+it.each([
+  { agentIdentity: "claude-acp", variable: "CLAUDE_CONFIG_DIR", defaultPath: ".claude" },
+  { agentIdentity: "claude-agent-acp", variable: "CLAUDE_CONFIG_DIR", defaultPath: ".claude" },
+  { agentIdentity: "codex-acp", variable: "CODEX_HOME", defaultPath: ".codex" },
+])("coordinates $agentIdentity's explicit native credential root across isolated homes", async ({
+  agentIdentity,
+  variable,
+  defaultPath,
+}) => {
+  const root = await mkdtemp(join(tmpdir(), "nodex-acp-known-credentials-"));
+  roots.push(root);
+  const credentialRoot = join(root, "first", defaultPath);
+  await mkdir(credentialRoot, { recursive: true });
+  const alias = join(root, "credential-alias");
+  await symlink(credentialRoot, alias);
+  const first = await projectScopes(root, { agentIdentity, isolatedHome: join(root, "first") });
+  const second = await projectScopes(root, {
+    agentIdentity,
+    isolatedHome: join(root, "second"),
+    variables: { [variable]: alias },
+  });
+  expect(first.nativeStorageScope).not.toBe(second.nativeStorageScope);
+  expect(first.credentialStorageScope).toBe(second.credentialStorageScope);
+  const separate = await projectScopes(root, {
+    agentIdentity,
+    isolatedHome: join(root, "second"),
+    variables: { [variable]: join(root, "separate-credentials") },
+  });
+  expect(separate.credentialStorageScope).not.toBe(first.credentialStorageScope);
+});
+
+it.each(["opencode", "opencode-v2"])(
+  "coordinates %s credentials by its data root independently of configuration and cache",
+  async (agentIdentity) => {
+    const root = await mkdtemp(join(tmpdir(), "nodex-acp-opencode-credentials-"));
+    roots.push(root);
+    const dataHome = join(root, "shared-data");
+    const scope = (home: string, suffix: string) =>
+      projectScopes(root, {
+        agentIdentity,
+        variables: { OPENCODE_CONFIG_DIR: join(root, `config-${suffix}`) },
+        inheritedEnvironment: {
+          HOME: home,
+          XDG_DATA_HOME: dataHome,
+          XDG_CACHE_HOME: join(root, `cache-${suffix}`),
+        },
+      });
+    const first = await scope(join(root, "first-home"), "one");
+    const second = await scope(join(root, "second-home"), "two");
+    expect(first.nativeStorageScope).not.toBe(second.nativeStorageScope);
+    expect(first.credentialStorageScope).toBe(second.credentialStorageScope);
+    expect(first.credentialStorageScope).toBe(join(await realpath(root), "shared-data", "opencode"));
+  },
+);
+
+it("uses the Windows user profile for an unknown Agent's credential scope", async () => {
+  const root = await mkdtemp(join(tmpdir(), "nodex-acp-windows-credentials-"));
+  roots.push(root);
+  const first = await projectScopes(root, {
+    platform: "win32",
+    inheritedEnvironment: { USERPROFILE: root, HOME: join(root, "shell-one") },
+  });
+  const second = await projectScopes(root, {
+    platform: "win32",
+    inheritedEnvironment: { USERPROFILE: root, HOME: join(root, "shell-two") },
+  });
+  expect(first.credentialStorageScope).toBe(second.credentialStorageScope);
+  expect(first.credentialStorageScope).toBe(await realpath(root));
 });
