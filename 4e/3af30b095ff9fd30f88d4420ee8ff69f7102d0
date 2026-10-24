@@ -142,6 +142,7 @@ docs/product-specs/native-conversation-connection-behavior.md
   s_e940681b372a31::t_638b94c49cfff0 11-12
   s_e940681b372a31::t_803a9bd56ee748 41-44
   s_e940681b372a31::t_f7cac81afd2a5f 13
+  s_e940681b372a31::t_90bc6083f5ebf4 82
 src/main/agent-backend/NativeSessionCatalog.ts
   s_e940681b372a31::t_325e13478624fb 2,8-10,17,47-55,73,133,158-168,170-179,181-184,186-201,248-261,263-267
   s_2a55cc2cb4915a::t_1a9782af638a7c 169,180,185
@@ -160,6 +161,7 @@ src/main/ipc/handlers/NativeSessionCatalogIpc.ts
   s_e940681b372a31::t_e4ca2769b2125a 105-106
 CHANGELOG.md
   s_e940681b372a31::t_abc71af121a393 9
+  s_e940681b372a31::t_4779811292ece7 16
 packages/agent-runtime/src/orchestration-v2/ContextHandoffService.ts
   s_e940681b372a31::t_49642e03c8efed 329-339,342,347-348
   s_e940681b372a31::t_fca35d505ea732 345
@@ -203,6 +205,7 @@ packages/agent-runtime/src/orchestration-v2/ProjectionStore.ts
   s_ea4a4d78b303c7::t_be2a1459d295c9 50,2264,2629-2631,4068,4802,4817,4919,5831-5835,5874,5909,5917-5931,6044,6048,6061,7594
   s_e940681b372a31::t_8e3be5d20bdd12 3737-3738,3743-3744,3746
   s_e940681b372a31::t_bb7fdb23b744c2 3745,9526-9530
+  s_e940681b372a31::t_6d6370b66ab242 5757
 packages/agent-runtime/src/nodex/CodexImportLimits.ts
   s_e940681b372a31::t_35a4b16445e6d6 3
   s_e940681b372a31::t_0fcae9f6b75194 1-2
@@ -224,6 +227,7 @@ packages/agent-runtime/src/nodex/CodexImport.test.ts
   s_e940681b372a31::t_04880fbf9bf8e5 140-141,143,147
   s_e940681b372a31::t_49642e03c8efed 660-662
   s_e940681b372a31::t_8e169775fe96c4 29,40,58,88,100,123,125-127,142,174,182,192,207,209,219-220,224-225,245,247-249,251,259,280-281,308-311,317-318,336,342,348,361,366-367,387,390,407,417,443,459,488,492-493,503,537,550-551,556,568,571,584,594,598-599,611,615-616,620-626,630-631,642,651,674,696-697,702,720-722,751,772-773
+  s_e940681b372a31::t_90bc6083f5ebf4 606
 src/renderer/features/local-conversation/view/shared/imported-markdown-images.test.tsx
   s_e940681b372a31::t_672a4263e90dea 106,134,159
   s_e940681b372a31::t_8de2d2f54f0ffa 1,4-25,40-96,100-105,107-117,119-133,135-158,160-165
@@ -364,6 +368,10 @@ pnpm-lock.yaml
   s_e940681b372a31::t_5015dc4bd8882a 729-731
 packages/agent-runtime/vendor/provider-core/src/server/nativeInteraction.ts
   s_714fc48e1488d7::t_00e9541f1411fa 12-14,20-23
+docs/CONFIGURATION.md
+  s_e940681b372a31::t_90bc6083f5ebf4 113-120
+packages/agent-runtime/src/orchestration-v2/TurnStartReads.test.ts
+  s_e940681b372a31::t_586ebb1e695bd4 859,884,977-1009,1040,1044,1056-1064,1128,1167
 ---
 {
   "schema_version": "authorship/3.0.0",
