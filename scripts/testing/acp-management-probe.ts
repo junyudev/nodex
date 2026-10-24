@@ -192,6 +192,11 @@ export async function probeAcpManagement(input: {
     };
     runtime.stdin.write(`${JSON.stringify(bootstrap)}\n`);
     await within(ready.promise, "Runtime startup", 30_000);
+    await request("acp.operation.read", { operationId: "missing-operation" }).catch(
+      () => undefined,
+    );
+    if (lastFailureReason !== "operation_expired")
+      throw new Error("Runtime lost the structured operation expiry reason");
     const first = await start();
     await respond(first, "secret\r");
     const masked = await wait(
