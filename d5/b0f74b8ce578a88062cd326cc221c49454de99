@@ -1,0 +1,35 @@
+packages/agent-runtime/src/nodex/AcpWireCompatibility.test.ts
+  s_9cccd37e800d7a::t_f1cda590e7c040 1-177
+packages/agent-runtime/src/orchestration-v2/Adapters/AcpAdapterV2.test.ts
+  s_9cccd37e800d7a::t_7b8a0b7e0dbc05 95-100,12959-13414
+packages/agent-runtime/vendor/effect-acp/src/client.ts
+  s_9cccd37e800d7a::t_c7160fd5c585de 65-66,406-409,421-422,1128
+packages/agent-runtime/vendor/effect-acp/src/compat.ts
+  s_9cccd37e800d7a::t_bf0bee7b688f56 321
+packages/agent-runtime/vendor/effect-acp/src/protocol.ts
+  s_9cccd37e800d7a::t_163ad68ac8891e 144-159
+packages/agent-runtime/vendor/provider-acp-registry/src/server/claudeAcp.ts
+  s_9cccd37e800d7a::t_9a7864392bb3a4 1-117
+packages/agent-runtime/vendor/provider-acp/src/server/AcpSessionRuntime.ts
+  s_9cccd37e800d7a::t_dcf3b7df2c873b 1125-1126,2073-2075,2403
+packages/agent-runtime/vendor/provider-acp/src/server/adapter.ts
+  s_9cccd37e800d7a::t_a6a9e25d781bfd 306-308,312,403-404,444-459,1165,1345-1347,1363-1375,1435,1670-1681,1698-1709,2098-2128,2734-2828,2925-2930,3115-3409,3546-3553,3669,3672,4573-4653,4659-4665,4723-4761,4830,4994,5004,5406-5422,5424-5441,5444-5467,5470-5472,5779,5863,6099,6226,6538,6788,6809-6810,6816-6819,6839,6934,6948-6952,7172,7209-7210,7302,7372-7376,7393,7399-7414,7473,7613,7616-7629,7726,7814-7816,8160,8226,8326
+packages/agent-runtime/vendor/provider-acp/src/server/runtimeModel.ts
+  s_9cccd37e800d7a::t_04b51b9be8415a 824,852,923
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "d5b0f74b8ce578a88062cd326cc221c49454de99",
+  "prompts": {},
+  "sessions": {
+    "s_9cccd37e800d7a": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a16d80-f1cc-7471-9f61-cb6ea1bc793d",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
