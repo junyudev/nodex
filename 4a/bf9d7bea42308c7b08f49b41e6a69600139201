@@ -1,0 +1,164 @@
+src/renderer/lib/acp-agents-runtime.ts
+  s_8ba9572f1b48c1::t_0c8154f7148d8b 8-13,15,20-49,52-54,60-63,67-70,74-87,91-113,115-117,119-137
+  s_8ba9572f1b48c1::t_54d7365472670d 16-19,71-73,88-90
+  s_8ba9572f1b48c1::t_4e25338e990ed2 1-2,4-7,14,50-51,55-57,64-66,118
+  s_8ba9572f1b48c1::t_edf4119f8eee85 3,58-59,114
+src/renderer/lib/agent-settings-navigation.tsx
+  s_8ba9572f1b48c1::t_399185e8825ffe 5-6
+src/renderer/features/acp-agents/use-acp-composer-setup.test.tsx
+  s_8ba9572f1b48c1::t_9cfa0b369fa251 1-124
+src/renderer/components/workbench/conversation-import-settings-page.tsx
+  s_8ba9572f1b48c1::t_ee50d5f362da5e 36,183-198,224-229
+src/renderer/lib/agent-environment-policies.ts
+  s_8ba9572f1b48c1::t_54d7365472670d 1-4
+  s_8ba9572f1b48c1::t_dfad2117871174 5,29-33
+  s_8ba9572f1b48c1::t_04f024827e1529 34
+src/renderer/features/acp-agents/acp-agent-setup-dialog.tsx
+  s_8ba9572f1b48c1::t_29a5c892d50a1c 1-18,20-63,65-73,75-95,99-196
+  s_8ba9572f1b48c1::t_54d7365472670d 64,74,96-98
+  s_8ba9572f1b48c1::t_3936d40dd84bbe 19
+src/renderer/components/shared/agent-runtime/agent-model-picker.tsx
+  s_8ba9572f1b48c1::t_3287caacee1cf5 95-96,166,328,334,336,366
+src/renderer/features/acp-agents/acp-agents-owner.test.ts
+  s_8ba9572f1b48c1::t_889285c876fe64 212,225-230
+  s_8ba9572f1b48c1::t_54d7365472670d 166-168,286-298,332-334,435-437,453,468-473,557-559,575-577
+  s_8ba9572f1b48c1::t_6456c4ba631716 1,3-9,11-28,42-165,169-190,193,195-211,213-224,231-255,423,583-584
+  s_8ba9572f1b48c1::t_dadf384407d66e 29-41,191-192,194,256-285,299-331,335-422,424-434,438-452
+  s_8ba9572f1b48c1::t_c2e7209d9aa468 2,10,454-467,474-556,560-574,578-582
+src/renderer/features/acp-agents/acp-agents.test-fixtures.ts
+  s_8ba9572f1b48c1::t_b4ab2854208edb 121-129,132,147,186-189
+  s_8ba9572f1b48c1::t_54d7365472670d 85,159-161
+  s_8ba9572f1b48c1::t_8b4f19d5453b39 18-19,169-173
+  s_8ba9572f1b48c1::t_8e3a48f6c3737d 1-17,20-84,86-120,130-131,133-146,148-151,155-158,162-168,174,182-185,190-205
+  s_8ba9572f1b48c1::t_0fe61ae6b47be4 152-154,175-181
+src/renderer/features/local-conversation/agent-runtime-conversation-adapter.ts
+  s_8ba9572f1b48c1::t_883f5f38eca865 1017-1019
+  s_8ba9572f1b48c1::t_399185e8825ffe 96,1014-1016,1020-1026,1164,1552-1553,1617-1619
+  s_8ba9572f1b48c1::t_54d7365472670d 1620-1639
+src/renderer/features/acp-agents/acp-native-conversations-section.test.tsx
+  s_8ba9572f1b48c1::t_54d7365472670d 64-68,117-121,182-187
+  s_8ba9572f1b48c1::t_e154ccdc258244 1-63,69-116,122-181,188-193
+src/renderer/features/acp-agents/acp-agent-model.ts
+  s_8ba9572f1b48c1::t_fb71ce2eaade2b 514-531
+  s_8ba9572f1b48c1::t_e67723d1fbd59e 547-549
+  s_8ba9572f1b48c1::t_185141279f5753 550-563
+  s_8ba9572f1b48c1::t_746e379e2eaeeb 1-27,31-98,100-109,115-438,448-513
+  s_8ba9572f1b48c1::t_6d63f19f2198f3 439-447
+  s_8ba9572f1b48c1::t_54d7365472670d 28-30,99
+  s_8ba9572f1b48c1::t_72d2a75bbcb849 532-546
+  s_8ba9572f1b48c1::t_9948f43f7ff56d 110-114
+src/renderer/features/acp-agents/acp-auth-terminal.tsx
+  s_8ba9572f1b48c1::t_185141279f5753 6
+  s_8ba9572f1b48c1::t_999407053f9560 1-5,7-85
+src/renderer/components/workbench/workbench-runtime.tsx
+  s_8ba9572f1b48c1::t_e67723d1fbd59e 71
+  s_8ba9572f1b48c1::t_399185e8825ffe 1745-1746
+src/renderer/components/workbench/agent-settings-page.tsx
+  s_8ba9572f1b48c1::t_a906c3ea90ae52 1,12,21
+src/renderer/features/acp-agents/acp-native-conversations-section.tsx
+  s_8ba9572f1b48c1::t_3c38fe9fd6e810 2-12,14-15,21-37,42-139,142-170,177-178,183-184,192-200,202,222,235-245,250-251,260-282,284-294,299-301,306-308,311,313,315,319-320,322-325,327-335,337,339,341-347,353,355-357,443-445
+  s_8ba9572f1b48c1::t_98c09b362b0e63 13,201,223-234,351
+  s_8ba9572f1b48c1::t_ab478a5578c154 1
+  s_8ba9572f1b48c1::t_54d7365472670d 16-20,38-41,140-141,246-249,295-298,316-318
+  s_8ba9572f1b48c1::t_dd49848b9d523d 171-176,179-182,185-191,203-221,252-259,283,302-305,309-310,312,314,321,326,336,338,340,348-350,352,354,358-442
+src/renderer/features/acp-agents/acp-agent-add-dialog.tsx
+  s_8ba9572f1b48c1::t_54d7365472670d 2-7,348-351,359-361
+  s_8ba9572f1b48c1::t_15c41711b66608 21
+  s_8ba9572f1b48c1::t_f60bc9df0be66a 188-189
+  s_8ba9572f1b48c1::t_8312f1511c6e02 297
+  s_8ba9572f1b48c1::t_7bdb978a14e62b 1,8-20,22-44,46,48-187,190-296,298-347,352-358,362-475,477-482,484-500,502-535,544-582,584-715
+  s_8ba9572f1b48c1::t_1c9574322bec65 45,47,476,483,501,536-543,583
+src/renderer/features/acp-agents/acp-agents-owner.ts
+  s_8ba9572f1b48c1::t_39ba0ad107260d 18-20,23,26-27,106-114,116-127,130-132,903-920
+  s_8ba9572f1b48c1::t_1cd76c6d62517d 3,42,44,68-77,79-80,150-167,215,311,324-332,334-350,352-356,360,362-369,372-373,375,393-407,436-441,567-593,598-604,640,642-644,648-652,657,659,662-665,667,673,678,680-682,685-686,688-690,692,694-699,701,703,710,715-735,766,771-775,777-784,815-817,822-826,832-841,847-852,856-858,860,876-883,901
+  s_8ba9572f1b48c1::t_54d7365472670d 32-35,100-103,115,181-185,357-359,515-518,789-796
+  s_8ba9572f1b48c1::t_11ac7fb63cf673 742-746
+  s_8ba9572f1b48c1::t_8312f1511c6e02 86,143-144,479,785-788
+  s_8ba9572f1b48c1::t_6d63f19f2198f3 606-609,614-618,623-638
+  s_8ba9572f1b48c1::t_3fdb0ebfb0b938 1-2,4-17,21-22,24-25,28-31,36-41,43,45-67,78,81-85,87-99,104-105,128-129,133-142,145-149,168-180,186-214,216-310,312-323,333,351,361,370-371,374,376-392,408-435,442-478,480-514,519-566,594-597,605,610-613,619-622,639,641,645-647,653-656,658,660-661,666,668-672,674-677,679,683-684,687,691,693,700,702,704-709,711-714,736-741,747-765,767-770,776,797-814,818-821,827-831,842-846,853-855,859,861-875,884-900,902,921-923
+src/renderer/features/acp-agents/acp-agents-settings-section.test.tsx
+  s_8ba9572f1b48c1::t_f814d5e0e1de15 1-142,160-161,164-167,209-218,222-226,230-234,236-280
+  s_8ba9572f1b48c1::t_54d7365472670d 156-158,219-221,227-229,235
+  s_8ba9572f1b48c1::t_10c365ebdca517 146-148
+  s_8ba9572f1b48c1::t_fc7686c61939c4 143-145,149-155,159,162-163,168-208
+src/renderer/features/acp-agents/acp-agent-detail.tsx
+  s_8ba9572f1b48c1::t_8bb24bf3368a41 1-9,12-56,62-68,70-78,80-104,106-107,119-122,124-128,130-185,187-189,195-219,224,226-370,372,374,376,378-405
+  s_8ba9572f1b48c1::t_eb4a3a7691b8ed 57-61,129
+  s_8ba9572f1b48c1::t_c565ec7e7493a2 371,373,375,377
+  s_8ba9572f1b48c1::t_981570e0594685 11,117
+  s_8ba9572f1b48c1::t_2143a6a6f143ee 10,123,220-223,225
+  s_8ba9572f1b48c1::t_fcd50583fd5874 69,79,105,108-116,118,186,190-194
+src/renderer/features/local-conversation/use-agent-instances.ts
+  s_8ba9572f1b48c1::t_1c2738ad51f53a 52
+src/renderer/features/acp-agents/acp-agent-model.test.ts
+  s_8ba9572f1b48c1::t_1923f4880f2b1d 13,173-174
+  s_8ba9572f1b48c1::t_6ef3d2357eca5a 1-3,5-10,12,14-40,44-172,175-184,188-220,253-254
+  s_8ba9572f1b48c1::t_72d2a75bbcb849 4,221-229,233-242
+  s_8ba9572f1b48c1::t_54d7365472670d 41-43,185-187,230-232
+  s_8ba9572f1b48c1::t_185141279f5753 11,243-252
+src/renderer/features/acp-agents/acp-agent-draft.test.ts
+  s_8ba9572f1b48c1::t_1f8ee00f26227e 1-46
+src/renderer/features/acp-agents/acp-agents-settings-section.tsx
+  s_8ba9572f1b48c1::t_54d7365472670d 103
+  s_8ba9572f1b48c1::t_eb4a3a7691b8ed 107-111,223-232
+  s_8ba9572f1b48c1::t_dfd78e070edae9 1-14,16-19,21-102,104-106,112-222,233-256
+  s_8ba9572f1b48c1::t_e67723d1fbd59e 15
+  s_8ba9572f1b48c1::t_3936d40dd84bbe 20
+src/renderer/features/opencode-setup/opencode-install-dialog.browser.test.tsx
+  s_8ba9572f1b48c1::t_3287caacee1cf5 79
+src/renderer/features/acp-agents/acp-agent-actions.ts
+  s_8ba9572f1b48c1::t_0e174a78f9b417 1-31
+src/renderer/features/acp-agents/acp-agent-account.tsx
+  s_8ba9572f1b48c1::t_57aace84e3cb34 1-9,15,250-257,259,267,271-280
+  s_8ba9572f1b48c1::t_c019aad9bf48aa 10-14,16-68,71-249,258,260-266,268-270,281-426,430-449
+  s_8ba9572f1b48c1::t_54d7365472670d 69-70,427-429
+src/renderer/components/shared/agent-runtime/agent-model-picker.test.tsx
+  s_8ba9572f1b48c1::t_3287caacee1cf5 309-317,355-363
+src/renderer/features/acp-agents/acp-agent-draft.ts
+  s_8ba9572f1b48c1::t_9948f43f7ff56d 17-27,32,48,58-60,63,66,69,76,93-96
+  s_8ba9572f1b48c1::t_54d7365472670d 99-102
+  s_8ba9572f1b48c1::t_c0e8ed688aacda 1-16,28-31,33-47,49-57,61-62,64-65,67-68,70-75,77-92,97-98,103-122
+src/renderer/features/acp-agents/use-acp-composer-setup.ts
+  s_8ba9572f1b48c1::t_24c01462da5321 1-82
+src/renderer/features/acp-agents/use-acp-agents.ts
+  s_8ba9572f1b48c1::t_c39c2612e8210f 1-14,17-28
+  s_8ba9572f1b48c1::t_54d7365472670d 15-16
+src/renderer/features/acp-agents/acp-agent-add-dialog.test.tsx
+  s_8ba9572f1b48c1::t_fc7686c61939c4 129-139
+  s_8ba9572f1b48c1::t_3b2b47952b9cad 1-80,84-128,140-148,153-166
+  s_8ba9572f1b48c1::t_54d7365472670d 81-83,149-152
+src/renderer/components/workbench/workbench-settings-search-catalog.ts
+  s_8ba9572f1b48c1::t_a906c3ea90ae52 358,360,362-382
+src/renderer/features/acp-agents/acp-arguments-editor.tsx
+  s_8ba9572f1b48c1::t_54d7365472670d 30-32,50
+  s_8ba9572f1b48c1::t_e1a3064ae169c3 1-29,33-49,51-112
+src/renderer/components/ui/input.tsx
+  s_8ba9572f1b48c1::t_b9249e10c3f811 25-38
+src/renderer/features/acp-agents/acp-status-text.tsx
+  s_8ba9572f1b48c1::t_54d7365472670d 22-24
+  s_8ba9572f1b48c1::t_eb4a3a7691b8ed 13,17-18,28-30
+  s_8ba9572f1b48c1::t_3936d40dd84bbe 1-12,14-16,19-21,25-27,31-34
+src/renderer/features/acp-agents/acp-model-services.tsx
+  s_8ba9572f1b48c1::t_54d7365472670d 19-21,49-50,188-191
+  s_8ba9572f1b48c1::t_af47ad5d1aa5f2 1-18,22-48,51-187,192-285
+src/renderer/features/local-conversation/agent-runtime-conversation-adapter.test.tsx
+  s_8ba9572f1b48c1::t_883f5f38eca865 63
+  s_8ba9572f1b48c1::t_3ab746299cd3d9 2055
+  s_8ba9572f1b48c1::t_54d7365472670d 2028-2030
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "4abf9d7bea42308c7b08f49b41e6a69600139201",
+  "prompts": {},
+  "sessions": {
+    "s_8ba9572f1b48c1": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "cf77dbe9-4c90-42a1-89dd-a69d75865e03",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
