@@ -45,7 +45,7 @@ export const make = Effect.gen(function* () {
       instanceId: string;
       ownerId: string;
       flowId: string;
-      revision: string;
+      configurationDigest: string;
       generation: string;
     }
   >();
@@ -68,7 +68,12 @@ export const make = Effect.gen(function* () {
     });
     if (!providerId)
       return yield* new AcpAgentsError({ message: "ACP Agent identity is unavailable." });
-    return { instanceId: providerId, revision: snapshot.revision };
+    return { instanceId: providerId };
+  });
+  const configurationDigest = Effect.fn("AcpAgents.configurationDigest")(function* (id: string) {
+    const launch = yield* settings.acpLaunchConfiguration(id);
+    // Only the digest survives in memory; credentials never become public flow metadata.
+    return createHash("sha256").update(JSON.stringify(launch)).digest("hex");
   });
   const target = Effect.fn("AcpAgents.target")(function* (input: {
     readonly instanceId: string;
@@ -103,12 +108,13 @@ export const make = Effect.gen(function* () {
       (entry) => entry.id === input.instanceId && entry.enabled,
     );
     const process = yield* connection();
+    const digest = enabled ? yield* configurationDigest(input.instanceId) : null;
     if (
       !saved ||
       !enabled ||
       (input.flowId !== undefined && saved.flowId !== input.flowId) ||
       saved.generation !== process.identity.runtimeGeneration ||
-      saved.revision !== current.revision
+      saved.configurationDigest !== digest
     ) {
       if (saved && saved.generation === process.identity.runtimeGeneration)
         yield* process
@@ -169,7 +175,11 @@ export const make = Effect.gen(function* () {
     result: AcpOperations["acp.operation.read"]["output"],
   ) => {
     const saved = operations.get(key(ownerId, operationId));
-    if (saved) saved.settled = result.phase !== "running";
+    if (saved) {
+      // Runtime may coalesce concurrent starts from different windows into one operation.
+      saved.runtimeId = result.operationId;
+      saved.settled = result.phase !== "running";
+    }
     return { ...result, operationId, instanceId: saved?.instanceId ?? null };
   };
   const methods: Methods = {
@@ -209,7 +219,7 @@ export const make = Effect.gen(function* () {
           ...resolved,
           operationId: op.operationId,
         });
-        return { ...result, operationId: input.operationId, instanceId: input.instanceId };
+        return presentOperation(ownerId, input.operationId, result);
       }),
     "acp.operation.read": (ownerId, input) =>
       Effect.gen(function* () {
@@ -230,6 +240,7 @@ export const make = Effect.gen(function* () {
     "acp.auth.start": (ownerId, input) =>
       Effect.gen(function* () {
         const resolved = yield* instance(input.instanceId);
+        const digest = yield* configurationDigest(input.instanceId);
         const process = yield* connection();
         const result = yield* process.request("acp.auth.start", {
           ...input,
@@ -239,6 +250,7 @@ export const make = Effect.gen(function* () {
         if (result.flowId)
           flows.set(key(ownerId, input.instanceId), {
             ...resolved,
+            configurationDigest: digest,
             ownerId,
             flowId: result.flowId,
             generation: process.identity.runtimeGeneration,

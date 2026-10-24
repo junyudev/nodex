@@ -16,7 +16,13 @@ import { testLayer } from "../app/MainConfig";
 
 const setup = Effect.gen(function* () {
   const calls: { method: string; input: Record<string, unknown> }[] = [];
-  const state = { revision: "one", generation: "generation-one", enabled: true };
+  const state = {
+    revision: "one",
+    generation: "generation-one",
+    enabled: true,
+    secret: "first-secret",
+    coalescedOperation: "",
+  };
   const request = (method: string, input: Record<string, unknown>) =>
     Effect.sync(() => {
       calls.push({ method, input });
@@ -32,7 +38,7 @@ const setup = Effect.gen(function* () {
       if (method === "acp.sessions.list")
         return { sessions: [], nextCursor: null, canLoad: true, canResume: false, canDelete: true };
       return {
-        operationId: input.operationId,
+        operationId: state.coalescedOperation || input.operationId,
         kind: method === "acp.install.start" ? "install" : "connect",
         phase: "running",
         instanceId: input.instanceId ?? null,
@@ -51,6 +57,15 @@ const setup = Effect.gen(function* () {
     } as unknown as AgentRuntimeSupervisor["Service"]),
     Effect.provideService(ApplicationSettings, {
       ...makeTestApplicationSettings(),
+      acpLaunchConfiguration: () =>
+        Effect.succeed({
+          instance: {
+            id: "personal",
+            agentDefinitionId: "qoder",
+            enabled: state.enabled,
+          },
+          environment: { API_KEY: state.secret },
+        } as never),
       snapshot: () =>
         Effect.succeed({
           revision: state.revision,
@@ -107,7 +122,7 @@ it.effect(
         "Failure",
       );
       assert.isFalse(calls.some(({ method }) => method === "acp.auth.respond"));
-      state.revision = "changed";
+      state.secret = "changed-secret";
       assert.equal(
         (yield* Effect.result(agents["acp.auth.respond"]("owner", input)))._tag,
         "Failure",
@@ -115,6 +130,43 @@ it.effect(
       assert.isTrue(calls.some(({ method }) => method === "acp.auth.cancel"));
       assert.isFalse(calls.some(({ method }) => method === "acp.auth.respond"));
     }),
+);
+it.effect("keeps sign-in active when unrelated application settings change", () =>
+  Effect.gen(function* () {
+    const { agents, calls, state } = yield* setup;
+    yield* agents["acp.auth.start"]("owner", { instanceId: "personal" });
+    state.revision = "unrelated-notification-change";
+    yield* agents["acp.auth.respond"]("owner", {
+      instanceId: "personal",
+      flowId: "flow",
+      interactionId: "terminal",
+      response: { type: "terminal", data: "answer" },
+    });
+    assert.isTrue(calls.some(({ method }) => method === "acp.auth.respond"));
+    assert.isFalse(calls.some(({ method }) => method === "acp.auth.cancel"));
+  }),
+);
+it.effect("reads and cancels a coalesced installation through each window's operation", () =>
+  Effect.gen(function* () {
+    const { agents, calls, state } = yield* setup;
+    const first = yield* agents["acp.install.start"]("first-window", {
+      operationId: "first-install",
+      agentId: "qoder",
+    });
+    state.coalescedOperation = String(calls[0]?.input.operationId);
+    const second = yield* agents["acp.install.start"]("second-window", {
+      operationId: "second-install",
+      agentId: "qoder",
+    });
+    assert.equal(first.operationId, "first-install");
+    assert.equal(second.operationId, "second-install");
+    yield* agents["acp.operation.read"]("second-window", { operationId: "second-install" });
+    yield* agents["acp.operation.cancel"]("second-window", { operationId: "second-install" });
+    assert.deepEqual(
+      calls.slice(2).map(({ input }) => input.operationId),
+      [state.coalescedOperation, state.coalescedOperation],
+    );
+  }),
 );
 it.effect("does not replay terminal input across Runtime generations", () =>
   Effect.gen(function* () {
