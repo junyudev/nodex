@@ -121,6 +121,13 @@ interface ImagePreview {
   readonly isCurrent: () => boolean;
 }
 const MediaContext = createContext<MediaContext | null>(null);
+/**
+ * A message may own the media behind some of its Markdown destinations, such as copies made on
+ * import. A replacement renders in place of the authored destination, which is then never loaded.
+ */
+export const ConversationMediaReplacementContext = createContext<
+  ((src: string, alt: string) => ReactNode | undefined) | null
+>(null);
 const WideMediaContext = createContext(false);
 const authorityIds = new WeakMap<object, number>();
 let nextAuthorityId = 0;
@@ -927,9 +934,30 @@ function paragraphMediaSources(props: object): readonly string[] | undefined {
     ? sources
     : undefined;
 }
+function ConversationMarkdownMedia({
+  src,
+  alt,
+  title,
+}: {
+  readonly src?: string;
+  readonly alt?: string;
+  readonly title?: string;
+}) {
+  const replace = useContext(ConversationMediaReplacementContext);
+  const replacement = src ? replace?.(src, alt ?? "") : undefined;
+  return replacement !== undefined ? (
+    replacement
+  ) : (
+    <ConversationMedia src={src} alt={alt} title={title} />
+  );
+}
 export const conversationMediaComponents: Components = {
   img: ({ src, alt, title }) => (
-    <ConversationMedia src={typeof src === "string" ? src : undefined} alt={alt} title={title} />
+    <ConversationMarkdownMedia
+      src={typeof src === "string" ? src : undefined}
+      alt={alt}
+      title={title}
+    />
   ),
   p: (props) => (
     <ConversationMediaParagraph

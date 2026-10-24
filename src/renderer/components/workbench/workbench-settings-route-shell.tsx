@@ -12,6 +12,7 @@ import {
   type SettingsSectionDefinition,
   type SettingsSectionId,
 } from "./workbench-settings-sections";
+import type { SettingsOpenThread } from "./workbench-settings-page-registry";
 import { SETTINGS_PAGE_COMPONENTS } from "./workbench-settings-section-pages";
 import {
   CODEX_SETTINGS_SHELL_STYLE,
@@ -43,7 +44,7 @@ export interface SettingsRouteShellProps {
   onPathChange: (path: string) => void;
   onBackToApp: () => void;
   onRequestProjectPickerOpen: () => void;
-  onOpenThread?: (threadId: string) => void | Promise<void>;
+  onOpenThread?: SettingsOpenThread;
   projects: Project[];
   activeProjectId: string | null;
   initialLocalEnvironmentProjectId?: string | null;

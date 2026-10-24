@@ -739,6 +739,7 @@ export interface ThreadTranscriptBlockModel extends ThreadRenderKeyedBlockFields
     NonNullable<CodexConversationTurn["hookRuns"]>[number]["run"]["source"]
   >;
   imageViewPaths?: string[];
+  unavailableImages?: CodexConversationItem["unavailableImages"];
   subagentActivityAnchorItemId?: string | null;
   subagentActivityRows?: ThreadSubagentActivityInlineRowModel[];
   subagentActivityStatusLabel?: string;

@@ -4,6 +4,7 @@ import * as Schema from "effect/Schema";
 import type { IpcMainInvokeEvent } from "electron";
 import { z } from "zod";
 import { NativeSessionCatalog } from "../../agent-backend/NativeSessionCatalog";
+import { AgentRuntimeApplication } from "../../agent-runtime/AgentRuntimeApplication";
 import { MainConfig } from "../../app/MainConfig";
 import { ElectronIpc, mapElectronIpcHandlers } from "../../platform/electron/ElectronIpc";
 import { requireTrustedAppRendererSender } from "../../platform/electron/TrustedRendererSender";
@@ -27,6 +28,19 @@ const AttachInput = z
     projectId: identity.nullable(),
   })
   .strict();
+const CodexImportPreviewInput = z
+  .object({ reference: z.string().trim().min(1).max(8192) })
+  .strict();
+const CodexImportInput = z
+  .object({
+    requestId: z.uuid(),
+    acceptedAt: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
+    nativeSessionId: z.uuid(),
+    expectedHome: z.string().min(1).max(4096),
+    projectId: identity.nullable(),
+    cwd: z.string().trim().min(1).max(4096),
+  })
+  .strict();
 
 export class NativeSessionCatalogIpcError extends Schema.TaggedError<NativeSessionCatalogIpcError>()(
   "NativeSessionCatalogIpcError",
@@ -36,6 +50,7 @@ export class NativeSessionCatalogIpcError extends Schema.TaggedError<NativeSessi
 export const live = Layer.effectDiscard(
   Effect.gen(function* () {
     const catalog = yield* NativeSessionCatalog;
+    const runtime = yield* AgentRuntimeApplication;
     const config = yield* MainConfig;
     const ipc = yield* ElectronIpc;
     const windows = yield* WindowRuntime;
@@ -73,6 +88,25 @@ export const live = Layer.effectDiscard(
         try: () => AttachInput.parse(input),
         catch: (cause) => new NativeSessionCatalogIpcError({ operation: "attach.input", cause }),
       }).pipe(Effect.flatMap(catalog.attach)),
+    );
+    yield* handleQuery("native-sessions:preview-codex-import", (_, input) =>
+      Effect.try({
+        try: () => CodexImportPreviewInput.parse(input),
+        catch: (cause) =>
+          new NativeSessionCatalogIpcError({ operation: "import.preview.input", cause }),
+      }).pipe(Effect.flatMap(catalog.previewCodexImport)),
+    );
+    yield* handlePlainCommand("native-sessions:import-codex", (_, input) =>
+      Effect.gen(function* () {
+        const parsed = yield* Effect.try({
+          try: () => CodexImportInput.parse(input),
+          catch: (cause) => new NativeSessionCatalogIpcError({ operation: "import.input", cause }),
+        });
+        const completed = yield* runtime.completedCodexImport(parsed);
+        if (completed) return completed;
+        const source = yield* catalog.prepareCodexImport(parsed);
+        return yield* runtime.importCodex({ ...parsed, title: source.title, model: source.model });
+      }),
     );
   }),
 );

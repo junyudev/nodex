@@ -9,9 +9,11 @@ import type {
   CodexCanonicalItem,
   CodexConversationServerRequest,
   CodexDelegatedTaskStatus,
+  CodexImportedMarkdownImage,
   CodexItemStatus,
   CodexConversationTurn,
   CodexRuntimeNotice,
+  CodexUnavailableImage,
   CodexUserMessageInputIntent,
   CodexUserMessageOrigin,
 } from "../../../shared/types";
@@ -455,6 +457,44 @@ function runtimeFailureDetails(
  * A presentation conversion only. Provider requests and execution remain engine-owned.
  * Hidden execution bookkeeping projects to null and never occupies a transcript slot.
  */
+const unavailableImages = (item: AgentTurnItem): readonly CodexUnavailableImage[] =>
+  (item.unavailableImages ?? []).map(({ name, sourcePath }) => ({ name, sourcePath }));
+
+/** Pictures display from the item's owned attachment bytes, never from a recorded locator. */
+function attachmentSource(item: AgentTurnItem, attachmentId: string): string {
+  return buildAgentRuntimeAttachmentSource({
+    sourceThreadId: item.threadId,
+    itemId: item.id,
+    attachmentId,
+  });
+}
+
+function importedMarkdownImages(
+  item: Extract<AgentTurnItem, { type: "assistant_message" }>,
+): readonly CodexImportedMarkdownImage[] {
+  return (item.importedImageLinks ?? []).map(({ sourcePath, attachmentId }) => {
+    const copy =
+      attachmentId === null
+        ? undefined
+        : item.attachments?.find((attachment) => attachment.id === attachmentId);
+    const missing = item.unavailableImages?.find((image) => image.sourcePath === sourcePath);
+    return {
+      sourcePath,
+      name: copy?.name ?? missing?.name ?? (sourcePath.split(/[\\/]/u).at(-1) || "Image"),
+      source: copy ? attachmentSource(item, copy.id) : null,
+    };
+  });
+}
+
+/**
+ * An imported inspection is recognized by its typed picture record (an owned copy or a missing
+ * source), which survives output omission on the wire; its output body is never consulted.
+ */
+const isImportedImageView = (item: Extract<AgentTurnItem, { type: "dynamic_tool" }>) =>
+  item.toolName === "imageView" &&
+  (Boolean(item.unavailableImages?.length) ||
+    Boolean(item.attachments?.some((attachment) => attachment.type === "image")));
+
 export function projectAgentRuntimeItem(item: AgentTurnItem, cwd = ""): CodexCanonicalItem | null {
   if (isAgentRuntimeItemHidden(item)) return null;
   const id = item.id;
@@ -470,12 +510,14 @@ export function projectAgentRuntimeItem(item: AgentTurnItem, cwd = ""): CodexCan
     case "user_message": {
       const origin = userMessageOrigin(item);
       const inputIntent = INPUT_INTENT[item.inputIntent];
+      const missing = unavailableImages(item);
       return {
         type: "userMessage",
         id,
         clientId: item.messageId,
         ...(origin ? { origin } : {}),
         ...(inputIntent ? { inputIntent } : {}),
+        ...(missing.length ? { unavailableImages: missing } : {}),
         content: [
           {
             type: "text",
@@ -486,20 +528,18 @@ export function projectAgentRuntimeItem(item: AgentTurnItem, cwd = ""): CodexCan
             .filter((attachment) => attachment.type === "image")
             .map((attachment): UserInput => ({
               type: "image",
-              url: buildAgentRuntimeAttachmentSource({
-                sourceThreadId: item.threadId,
-                itemId: item.id,
-                attachmentId: attachment.id,
-              }),
+              url: attachmentSource(item, attachment.id),
             })),
         ],
       };
     }
-    case "assistant_message":
+    case "assistant_message": {
+      const importedImages = importedMarkdownImages(item);
       return {
         type: "agentMessage",
         id,
         text: item.text,
+        ...(importedImages.length ? { importedImages } : {}),
         phase: null,
         memoryCitation: item.memoryCitation
           ? {
@@ -510,6 +550,7 @@ export function projectAgentRuntimeItem(item: AgentTurnItem, cwd = ""): CodexCan
         delivery: null,
         questions: null,
       };
+    }
     case "reasoning":
       return { type: "reasoning", id, summary: [item.text], content: [] };
     case "proposed_plan":
@@ -564,6 +605,13 @@ export function projectAgentRuntimeItem(item: AgentTurnItem, cwd = ""): CodexCan
       // File inspections use the provider's path, independently of retained tool-result bytes.
       if (item.status === "completed" && item.viewedImagePath)
         return { type: "imageView", id, path: item.viewedImagePath };
+      if (isImportedImageView(item)) {
+        const copy = item.attachments?.find((attachment) => attachment.type === "image");
+        if (copy) return { type: "imageView", id, path: attachmentSource(item, copy.id) };
+        const missing = unavailableImages(item);
+        if (missing[0])
+          return { type: "imageView", id, path: missing[0].sourcePath, unavailableImages: missing };
+      }
       const { namespace, tool } = parseAgentRuntimeToolName(item.toolName);
       const toolStatus = status === "inProgress" || status === "completed" ? status : "failed";
       if (item.mcpToolCall && namespace !== "nodex_app")

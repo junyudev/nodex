@@ -47,6 +47,7 @@ import * as Stream from "effect/Stream";
 import * as ProviderAdapterRegistry from "../orchestration-v2/ProviderAdapterRegistry.ts";
 import * as ExecutionHost from "@t3tools/provider-core/server/ExecutionHost";
 import { subagentResultForRun } from "@t3tools/provider-core/server/subagentProjection";
+import { imageAvailabilityText } from "@t3tools/provider-core/server/handoffBudget";
 import * as ThreadManagementService from "../orchestration-v2/ThreadManagementService.ts";
 import { isSnoozed } from "../orchestration-v2/threadSnoozePolicy.ts";
 import * as ProviderRegistry from "../provider/ProviderRegistry.ts";
@@ -554,7 +555,13 @@ function jsonText(value: unknown): string {
   }
 }
 
-function turnItemText(item: OrchestrationV2TurnItem): string | null {
+export function turnItemText(item: OrchestrationV2TurnItem): string | null {
+  const text = turnItemContentText(item);
+  const images = imageAvailabilityText(item);
+  return images.length === 0 ? text : [text, ...images].filter(Boolean).join("\n");
+}
+
+function turnItemContentText(item: OrchestrationV2TurnItem): string | null {
   switch (item.type) {
     case "notification":
       return [item.summary, item.detail].filter((part) => part !== undefined).join("\n");

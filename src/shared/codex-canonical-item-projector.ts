@@ -477,10 +477,13 @@ function projectTurnParamsUserView(input: {
     input.params.attachments ?? [],
     itemId,
   );
+  // Turn params carry only sendable input; missing imported pictures live on the opening item.
+  const unavailableImages = input.opening?.unavailableImages ?? [];
   if (
     markdownText.trim().length === 0 &&
     userAttachments.length === 0 &&
-    commentAttachments.length === 0
+    commentAttachments.length === 0 &&
+    unavailableImages.length === 0
   ) {
     return null;
   }
@@ -502,6 +505,7 @@ function projectTurnParamsUserView(input: {
     ...(input.blocked ? { deliveryStatus: "not-sent" as const } : {}),
     ...(commentAttachments.length === 0 ? {} : { commentAttachments: [...commentAttachments] }),
     ...(userAttachments.length === 0 ? {} : { userAttachments }),
+    ...(unavailableImages.length === 0 ? {} : { unavailableImages }),
     ...(input.goalProjection
       ? {}
       : {
@@ -921,6 +925,7 @@ function projectCanonicalItemViews(
           role: "assistant",
           assistantPhase: item.phase ?? undefined,
           markdownText,
+          ...(item.importedImages?.length ? { importedImages: item.importedImages } : {}),
           status,
         },
       ];
@@ -1258,7 +1263,13 @@ function projectCanonicalItemViews(
         ? formatCodexAsyncQuestionReplies(questionReplies)
         : rawText;
       const userAttachments = buildCodexUserAttachmentsFromContent(item.content, item.id);
-      if (markdownText.trim().length === 0 && userAttachments.length === 0) return [];
+      const unavailableImages = item.unavailableImages ?? [];
+      if (
+        markdownText.trim().length === 0 &&
+        userAttachments.length === 0 &&
+        unavailableImages.length === 0
+      )
+        return [];
       return [
         {
           ...buildBaseView(item, context),
@@ -1269,6 +1280,7 @@ function projectCanonicalItemViews(
           markdownText,
           questionReplies,
           ...(userAttachments.length === 0 ? {} : { userAttachments }),
+          ...(unavailableImages.length === 0 ? {} : { unavailableImages }),
           ...(item.origin ? { userMessageOrigin: item.origin } : {}),
           ...(item.inputIntent ? { userInputIntent: item.inputIntent } : {}),
         },
@@ -1306,7 +1318,9 @@ function projectCanonicalItemViews(
           normalizedKind: "systemEvent",
           semanticKind: "imageView",
           status: "completed",
-          imageViewPaths: [item.path],
+          ...(item.unavailableImages?.length
+            ? { imageViewPaths: [], unavailableImages: item.unavailableImages }
+            : { imageViewPaths: [item.path] }),
         },
       ];
     case "enteredReviewMode":
@@ -1357,9 +1371,14 @@ export function projectCodexCanonicalTurnItemViews(
       return;
     }
 
+    const unavailableImages = [
+      ...(previous.unavailableImages ?? []),
+      ...(next.unavailableImages ?? []),
+    ];
     views[views.length - 1] = {
       ...previous,
       imageViewPaths: [...(previous.imageViewPaths ?? []), ...next.imageViewPaths],
+      ...(unavailableImages.length === 0 ? {} : { unavailableImages }),
       updatedAt: next.updatedAt,
     };
     previousRawItemWasImageView = true;

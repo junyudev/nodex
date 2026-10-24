@@ -1,14 +1,17 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
+import type { ClaudeAgentInstanceConfig } from "../../../shared/claude-agent-settings";
 import type {
   NativeSessionAttachInput,
   NativeSessionAttachResult,
   NativeSessionCatalogInput,
-  NativeSessionCatalogPage,
 } from "../../../shared/native-session-catalog";
 import type { ClaudeAgentSettings, ProjectWindow } from "../../../shared/types";
 import {
   attachNativeSession,
+  importCodexThread,
   listNativeSessions,
+  pickCodexThreadImportDirectory,
+  previewCodexThreadImport,
   readNativeSessionProjects,
 } from "../../lib/native-session-catalog";
 import { readClaudeAgentSettings } from "./workbench-settings-overlay-deps";
@@ -16,11 +19,24 @@ import { NodexButton } from "../ui/button";
 import { NodexOptionPicker, NodexSettingsDropdownTrigger } from "../ui/dropdown";
 import { NodexSettingsPageSurface, NodexSettingsRow, NodexSettingsSection } from "../ui/settings";
 import { AgentImportSettingsPage } from "./agent-import-settings-page";
+import {
+  CodexThreadImportSection,
+  type CodexThreadImportRuntime,
+} from "./codex-thread-import-section";
+import {
+  NativeSessionCatalogList,
+  NativeSessionCatalogRow,
+  NativeSessionDestinationPicker,
+  nativeSessionErrorMessage,
+  nativeSessionTitle,
+  useNativeSessionCatalog,
+  type NativeSessionDestinations,
+} from "./native-session-catalog-browser";
+import type { SettingsSectionPageProps } from "./workbench-settings-page-registry";
 
-export interface NativeSessionSettingsRuntime {
+export interface NativeSessionSettingsRuntime extends CodexThreadImportRuntime {
   readonly profiles: () => Promise<ClaudeAgentSettings>;
   readonly projects: (after?: string | null) => Promise<ProjectWindow>;
-  readonly list: (input: NativeSessionCatalogInput) => Promise<NativeSessionCatalogPage>;
   readonly attach: (input: NativeSessionAttachInput) => Promise<NativeSessionAttachResult>;
 }
 
@@ -29,39 +45,29 @@ const defaultRuntime: NativeSessionSettingsRuntime = {
   projects: readNativeSessionProjects,
   list: listNativeSessions,
   attach: attachNativeSession,
+  previewCodexImport: previewCodexThreadImport,
+  importCodex: importCodexThread,
+  pickDirectory: pickCodexThreadImportDirectory,
 };
-const sourceInput = (source: string): NativeSessionCatalogInput =>
-  source === "codex"
-    ? { backendKind: "codex" }
-    : { backendKind: "claude", instanceConfigId: source.slice("claude:".length) };
-const message = (cause: unknown) => (cause instanceof Error ? cause.message : String(cause));
 
 export function NativeSessionSettingsPage({
   open,
+  activeProjectId = null,
+  onOpenThread,
   runtime = defaultRuntime,
-}: {
-  readonly open: boolean;
+}: Pick<SettingsSectionPageProps, "open" | "onOpenThread"> & {
+  readonly activeProjectId?: string | null;
   readonly runtime?: NativeSessionSettingsRuntime;
 }) {
   const [profiles, setProfiles] = useState<ClaudeAgentSettings>({ instances: [] });
   const [projects, setProjects] = useState<ProjectWindow | null>(null);
-  const [source, setSource] = useState("codex");
-  const [projectId, setProjectId] = useState<string | null>(null);
-  const [page, setPage] = useState<NativeSessionCatalogPage | null>(null);
-  const [cursors, setCursors] = useState<(string | undefined)[]>([undefined]);
-  const [loading, setLoading] = useState(false);
-  const [connecting, setConnecting] = useState<string | null>(null);
   const [loadingProjects, setLoadingProjects] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showCopy, setShowCopy] = useState(false);
-  const generation = useRef(0);
 
   useEffect(() => {
     if (!open) return;
     let active = true;
-    setLoading(false);
-    setConnecting(null);
-    setError(null);
     void Promise.all([runtime.profiles(), runtime.projects()]).then(
       ([nextProfiles, nextProjects]) => {
         if (!active) return;
@@ -69,61 +75,108 @@ export function NativeSessionSettingsPage({
         setProjects(nextProjects);
       },
       (cause: unknown) => {
-        if (active) setError(message(cause));
+        if (active) setError(nativeSessionErrorMessage(cause));
       },
     );
     return () => {
       active = false;
-      generation.current += 1;
+      setError(null);
     };
   }, [open, runtime]);
 
-  const sources = [
-    { value: "codex", label: "Codex" },
-    ...profiles.instances
-      .filter((instance) => instance.enabled)
-      .map((instance) => ({
-        value: `claude:${instance.id}`,
-        label: `Claude Code · ${instance.displayName}`,
-      })),
-  ];
-  const busy = loading || connecting !== null;
-
-  const browse = async (cursor?: string, history: (string | undefined)[] = [undefined]) => {
-    if (busy) return;
-    const ownGeneration = ++generation.current;
-    setLoading(true);
-    setError(null);
+  const loadMoreProjects = async () => {
+    if (!projects?.nextCursor || loadingProjects) return;
+    setLoadingProjects(true);
     try {
-      const next = await runtime.list({ ...sourceInput(source), ...(cursor ? { cursor } : {}) });
-      if (generation.current !== ownGeneration) return;
-      setPage(next);
-      setCursors(history);
+      const next = await runtime.projects(projects.nextCursor);
+      setProjects((current) => ({ ...next, items: [...(current?.items ?? []), ...next.items] }));
     } catch (cause) {
-      if (generation.current === ownGeneration) setError(message(cause));
+      setError(nativeSessionErrorMessage(cause));
     } finally {
-      if (generation.current === ownGeneration) setLoading(false);
+      setLoadingProjects(false);
     }
   };
 
-  const connect = async (nativeSessionId: string) => {
-    if (!page || busy) return;
-    const ownGeneration = generation.current;
+  const destinations: NativeSessionDestinations = {
+    window: projects,
+    loadingMore: loadingProjects,
+    loadMore: () => void loadMoreProjects(),
+    defaultProjectId:
+      activeProjectId && projects?.items.some((project) => project.id === activeProjectId)
+        ? activeProjectId
+        : null,
+  };
+  const claudeProfiles = profiles.instances.filter((instance) => instance.enabled);
+
+  return (
+    <NodexSettingsPageSurface title="Conversations">
+      {error ? (
+        <div role="alert" className="text-sm text-danger">
+          {error}
+        </div>
+      ) : null}
+      <CodexThreadImportSection
+        open={open}
+        runtime={runtime}
+        destinations={destinations}
+        onOpenThread={onOpenThread}
+      />
+      {claudeProfiles.length > 0 ? (
+        <ClaudeConnectSection
+          open={open}
+          runtime={runtime}
+          profiles={claudeProfiles}
+          destinations={destinations}
+        />
+      ) : null}
+      <details className="text-sm" onToggle={(event) => setShowCopy(event.currentTarget.open)}>
+        <summary className="cursor-interaction py-2 text-token-text-secondary">
+          Copy data to Codex
+        </summary>
+        {showCopy ? <AgentImportSettingsPage open={open} embedded /> : null}
+      </details>
+    </NodexSettingsPageSurface>
+  );
+}
+
+function ClaudeConnectSection({
+  open,
+  runtime,
+  profiles,
+  destinations,
+}: {
+  open: boolean;
+  runtime: NativeSessionSettingsRuntime;
+  profiles: readonly ClaudeAgentInstanceConfig[];
+  destinations: NativeSessionDestinations;
+}) {
+  const [profileChoice, setProfileChoice] = useState<string | null>(null);
+  const profile = profiles.find((instance) => instance.id === profileChoice) ?? profiles[0]!;
+  const [projectChoice, setProjectChoice] = useState<string | null | undefined>(undefined);
+  const projectId = projectChoice === undefined ? destinations.defaultProjectId : projectChoice;
+  const [connecting, setConnecting] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const catalog = useNativeSessionCatalog(runtime.list, open);
+  const input: NativeSessionCatalogInput = { backendKind: "claude", instanceConfigId: profile.id };
+  const busy = catalog.loading || connecting !== null;
+
+  const connect = async (nativeSessionId: string, expectedHome: string) => {
+    if (busy) return;
     setConnecting(nativeSessionId);
     setError(null);
     try {
       const result = await runtime.attach({
-        ...sourceInput(source),
+        ...input,
         nativeSessionId,
-        expectedHome: page.nativeHome,
+        expectedHome,
         projectId,
       });
-      if (generation.current !== ownGeneration) return;
-      setPage((current) =>
-        current
-          ? {
-              ...current,
-              entries: current.entries.map((entry) =>
+      catalog.update((page) =>
+        page.nativeHome !== expectedHome
+          ? page
+          : {
+              ...page,
+              entries: page.entries.map((entry) =>
                 entry.nativeSessionId === nativeSessionId
                   ? {
                       ...entry,
@@ -132,155 +185,94 @@ export function NativeSessionSettingsPage({
                     }
                   : entry,
               ),
-            }
-          : current,
+            },
       );
     } catch (cause) {
-      if (generation.current === ownGeneration) setError(message(cause));
+      setError(nativeSessionErrorMessage(cause));
     } finally {
-      if (generation.current === ownGeneration) setConnecting(null);
-    }
-  };
-
-  const loadProjects = async () => {
-    if (!projects?.nextCursor || loadingProjects) return;
-    setLoadingProjects(true);
-    try {
-      const next = await runtime.projects(projects.nextCursor);
-      setProjects((current) => ({ ...next, items: [...(current?.items ?? []), ...next.items] }));
-    } catch (cause) {
-      setError(message(cause));
-    } finally {
-      setLoadingProjects(false);
+      setConnecting(null);
     }
   };
 
   return (
-    <NodexSettingsPageSurface title="Connect conversations">
-      <NodexSettingsSection>
-        <NodexSettingsRow label="Agent">
-          <NodexOptionPicker
-            value={source}
-            options={sources}
-            search="filter"
-            disabled={busy}
-            onValueChange={(value) => {
-              generation.current += 1;
-              setSource(value);
-              setPage(null);
-              setCursors([undefined]);
-              setError(null);
-            }}
-            triggerButton={
-              <NodexSettingsDropdownTrigger aria-label="Conversation agent">
-                {sources.find((entry) => entry.value === source)?.label}
-              </NodexSettingsDropdownTrigger>
-            }
-          />
-          <NodexButton size="sm" variant="secondary" disabled={busy} onClick={() => void browse()}>
-            {loading ? "Loading…" : "Browse"}
-          </NodexButton>
-        </NodexSettingsRow>
-        <NodexSettingsRow label="Destination">
-          <NodexOptionPicker
-            value={projectId ?? "projectless"}
-            options={[
-              { value: "projectless", label: "Projectless" },
-              ...(projects?.items ?? []).map((project) => ({
-                value: project.id,
-                label: project.name,
-              })),
-            ]}
-            search="filter"
-            disabled={busy || !projects}
-            onValueChange={(value) => setProjectId(value === "projectless" ? null : value)}
-            triggerButton={
-              <NodexSettingsDropdownTrigger aria-label="Conversation destination">
-                {projects?.items.find((project) => project.id === projectId)?.name ?? "Projectless"}
-              </NodexSettingsDropdownTrigger>
-            }
-          />
-          {projects?.nextCursor ? (
-            <NodexButton
-              size="sm"
-              variant="ghost"
-              disabled={loadingProjects}
-              onClick={() => void loadProjects()}
-            >
-              More projects
-            </NodexButton>
-          ) : null}
-        </NodexSettingsRow>
-      </NodexSettingsSection>
-
-      {page ? (
-        <NodexSettingsSection>
-          <div className="truncate px-3 py-2 text-xs text-token-text-secondary">
-            {page.nativeHome}
-          </div>
-          {page.entries.map((entry) => (
-            <NodexSettingsRow
+    <NodexSettingsSection title="Connect Claude Code">
+      <NodexSettingsRow
+        label="Profile"
+        description="Connected conversations open as read-only history."
+      >
+        <NodexOptionPicker
+          value={profile.id}
+          options={profiles.map((instance) => ({
+            value: instance.id,
+            label: instance.displayName,
+          }))}
+          search="filter"
+          disabled={busy}
+          onValueChange={(value) => {
+            setProfileChoice(value);
+            setError(null);
+            catalog.reset();
+          }}
+          triggerButton={
+            <NodexSettingsDropdownTrigger aria-label="Claude Code profile">
+              {profile.displayName}
+            </NodexSettingsDropdownTrigger>
+          }
+        />
+        <NodexButton
+          size="sm"
+          variant="secondary"
+          disabled={busy}
+          onClick={() => void catalog.browse(input)}
+        >
+          {catalog.loading ? "Loading…" : "Browse"}
+        </NodexButton>
+      </NodexSettingsRow>
+      <NodexSettingsRow label="Destination">
+        <NativeSessionDestinationPicker
+          destinations={destinations}
+          value={projectId}
+          onValueChange={setProjectChoice}
+          disabled={busy}
+          ariaLabel="Connection destination"
+        />
+      </NodexSettingsRow>
+      <NativeSessionCatalogList
+        catalog={catalog}
+        input={input}
+        disabled={busy}
+        emptyMessage="No Claude Code conversations found."
+        renderEntry={(entry, page) => {
+          const title = nativeSessionTitle(entry.title);
+          const connected = Boolean(entry.attachedThreadId);
+          return (
+            <NativeSessionCatalogRow
               key={entry.nativeSessionId}
-              label={entry.title || "Untitled conversation"}
-              description={entry.cwd}
-            >
-              <NodexButton
-                aria-label={`${entry.attachedThreadId ? "Connected" : "Connect"} ${entry.title || "Untitled conversation"}`}
-                size="sm"
-                variant="secondary"
-                disabled={busy || Boolean(entry.attachedThreadId)}
-                onClick={() => void connect(entry.nativeSessionId)}
-              >
-                {connecting === entry.nativeSessionId
-                  ? "Connecting…"
-                  : entry.attachedThreadId
-                    ? "Connected"
-                    : "Connect"}
-              </NodexButton>
-            </NodexSettingsRow>
-          ))}
-          {page.entries.length === 0 ? (
-            <div className="p-3 text-sm text-token-text-secondary">No conversations found.</div>
-          ) : null}
-          {cursors.length > 1 || page.nextCursor ? (
-            <div className="flex justify-end gap-2 p-3">
-              <NodexButton
-                size="sm"
-                variant="ghost"
-                disabled={busy || cursors.length === 1}
-                onClick={() => {
-                  const previous = cursors.slice(0, -1);
-                  void browse(previous.at(-1), previous);
-                }}
-              >
-                Previous
-              </NodexButton>
-              <NodexButton
-                size="sm"
-                variant="ghost"
-                disabled={busy || !page.nextCursor}
-                onClick={() => {
-                  if (!page.nextCursor) return;
-                  void browse(page.nextCursor, [...cursors, page.nextCursor]);
-                }}
-              >
-                Next
-              </NodexButton>
-            </div>
-          ) : null}
-        </NodexSettingsSection>
-      ) : null}
+              entry={entry}
+              action={
+                <NodexButton
+                  aria-label={`${connected ? "Connected" : "Connect"} ${title}`}
+                  size="sm"
+                  variant="secondary"
+                  disabled={busy || connected}
+                  onClick={() => void connect(entry.nativeSessionId, page.nativeHome)}
+                >
+                  {connecting === entry.nativeSessionId
+                    ? "Connecting…"
+                    : connected
+                      ? "Connected"
+                      : "Connect"}
+                </NodexButton>
+              }
+            />
+          );
+        }}
+      />
       {error ? (
-        <div role="alert" className="text-sm text-destructive">
+        <div role="alert" className="px-4 py-3 text-sm text-danger">
           {error}
         </div>
       ) : null}
-      <details className="text-sm" onToggle={(event) => setShowCopy(event.currentTarget.open)}>
-        <summary className="cursor-interaction py-2 text-token-text-secondary">
-          Copy data to Codex…
-        </summary>
-        {showCopy ? <AgentImportSettingsPage open={open} embedded /> : null}
-      </details>
-    </NodexSettingsPageSurface>
+    </NodexSettingsSection>
   );
 }

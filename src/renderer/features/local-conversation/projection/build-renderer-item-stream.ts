@@ -474,18 +474,22 @@ function buildTranscriptBlock(
 
   if (type === "imageView") {
     const imageViewPaths = entry.imageViewPaths ?? [];
-    if (imageViewPaths.length === 0) return null;
+    const unavailableImages = entry.unavailableImages ?? [];
+    if (imageViewPaths.length === 0 && unavailableImages.length === 0) return null;
     return {
       id: entryId,
       turnId: entry.turnId,
       createdAt: entry.createdAt,
       updatedAt: entry.updatedAt,
-      searchableText: imageViewPaths.join("\n"),
+      searchableText: [...imageViewPaths, ...unavailableImages.map((image) => image.name)].join(
+        "\n",
+      ),
       type,
       entry,
       status: "completed",
       isTurnCancelled: turnStatus === "interrupted",
       imageViewPaths,
+      ...(unavailableImages.length === 0 ? {} : { unavailableImages }),
     };
   }
 

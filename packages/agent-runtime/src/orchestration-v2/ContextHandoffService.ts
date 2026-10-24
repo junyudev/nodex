@@ -326,19 +326,26 @@ const makeContextHandoffService = Effect.fn("orchestrationV2.ContextHandoffServi
             input.preparedHistory === undefined
               ? makeLegacyImportSummary(
                   input.preparedHistory?.conversationSummary?.sections ??
-                    input.items.flatMap((item) =>
-                      item.type === "user_message" || item.type === "assistant_message"
-                        ? [
+                    input.items.flatMap((item) => {
+                      if (
+                        item.type !== "user_message" &&
+                        item.type !== "assistant_message" &&
+                        item.type !== "dynamic_tool"
+                      )
+                        return [];
+                      const message = historicalMessage(item);
+                      return message === null
+                        ? []
+                        : [
                             {
                               label:
-                                item.type === "user_message"
+                                message.role === "user"
                                   ? ("User" as const)
                                   : ("Assistant" as const),
-                              body: item.text,
+                              body: message.text,
                             },
-                          ]
-                        : [],
-                    ),
+                          ];
+                    }),
                 )
               : renderHistory(selected.messages, selected.context),
           history: {

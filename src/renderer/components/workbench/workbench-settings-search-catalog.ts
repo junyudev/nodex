@@ -412,19 +412,26 @@ export const SETTINGS_SEARCH_PANELS = {
     ],
   },
   "agent-import": {
-    title: "Connect conversations",
+    title: "Conversations",
     groups: [
       {
         title: "Conversations",
         entries: [
-          entry("Claude Code", "Continue existing native conversations.", ["CLAUDE_CONFIG_DIR"]),
-          entry("Codex", "Continue existing native conversations.", ["CODEX_HOME", ".codex"]),
+          entry("Import from Codex", "Continue a Codex conversation as a new chat.", [
+            "codex://threads",
+            "CODEX_HOME",
+            ".codex",
+          ]),
+          entry("Connect Claude Code", "Open native Claude Code history.", ["CLAUDE_CONFIG_DIR"]),
         ],
       },
       {
         title: "Import preview",
         messages: [
-          "Agent",
+          "Codex conversation link or ID",
+          "Working directory",
+          "Import and open",
+          "Profile",
           "Destination",
           "Projectless",
           "Browse",

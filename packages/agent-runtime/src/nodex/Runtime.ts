@@ -53,6 +53,8 @@ import * as EffectWorker from "../orchestration-v2/EffectWorker.ts";
 import * as Recovery from "../orchestration-v2/ProviderRuntimeRecoveryService.ts";
 import * as ProviderSessions from "../orchestration-v2/ProviderSessionManager.ts";
 import * as ProjectionStore from "../orchestration-v2/ProjectionStore.ts";
+import * as ProviderAdapterRegistry from "../orchestration-v2/ProviderAdapterRegistry.ts";
+import * as ThreadCommandExecutor from "../orchestration-v2/ThreadCommandExecutor.ts";
 import * as Fiber from "effect/Fiber";
 import * as Context from "effect/Context";
 import * as Deferred from "effect/Deferred";
@@ -213,6 +215,8 @@ export const layerEngine = (configuration: AgentRuntimeConfiguration) => {
     Layer.provide(layerServerActivation),
     Layer.provideMerge(layerActivation),
     Layer.provideMerge(ProjectionStore.layer),
+    Layer.provideMerge(ThreadCommandExecutor.layer),
+    Layer.provideMerge(ProviderAdapterRegistry.layerFromProviderInstanceRegistry),
     Layer.provideMerge(layerProjectEnrichment),
     Layer.provideMerge(WorkspacePaths.layer),
     // Rewind anchors on Run ordinals; nothing is written into user repositories.

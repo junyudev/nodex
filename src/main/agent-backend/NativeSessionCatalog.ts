@@ -1,16 +1,20 @@
 import * as Context from "effect/Context";
-import { AGENT_RUNTIME_CODEX_THREAD_SOURCE } from "@nodex/agent-runtime/contracts";
+import { isAgentRuntimeCodexThreadSource } from "@nodex/agent-runtime/contracts";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
 import type { Thread } from "@nodex/codex-app-server-protocol/v2/Thread";
 import type {
+  CodexThreadImportInput,
+  CodexThreadImportPreview,
+  CodexThreadImportPreviewInput,
   NativeSessionAttachInput,
   NativeSessionAttachResult,
   NativeSessionCatalogEntry,
   NativeSessionCatalogInput,
   NativeSessionCatalogPage,
 } from "../../shared/native-session-catalog";
+import { parseCodexThreadImportReference } from "../../shared/codex-thread-import-reference";
 import { nativeSessionCatalogTitle } from "../../shared/native-session-catalog";
 import {
   extractCodexThreadSubagentMetadata,
@@ -40,6 +44,15 @@ export class NativeSessionCatalog extends Context.Service<
     readonly attach: (
       input: NativeSessionAttachInput,
     ) => Effect.Effect<NativeSessionAttachResult, NativeSessionCatalogError>;
+    readonly previewCodexImport: (
+      input: CodexThreadImportPreviewInput,
+    ) => Effect.Effect<CodexThreadImportPreview, NativeSessionCatalogError>;
+    readonly prepareCodexImport: (
+      input: CodexThreadImportInput,
+    ) => Effect.Effect<
+      CodexThreadImportPreview & { readonly model: string | null },
+      NativeSessionCatalogError
+    >;
   }
 >()("nodex/main/agent-backend/NativeSessionCatalog") {}
 
@@ -57,7 +70,7 @@ const isImportableRoot = (thread: Thread): boolean => {
   const metadata = extractCodexThreadSubagentMetadata(thread);
   return (
     !thread.ephemeral &&
-    thread.threadSource !== AGENT_RUNTIME_CODEX_THREAD_SOURCE &&
+    !isAgentRuntimeCodexThreadSource(thread.threadSource) &&
     !metadata.parentThreadId &&
     !metadata.hasAnySubagentSource &&
     !hasCodexSubagentSource(thread.source)
@@ -113,11 +126,11 @@ export const make = Effect.gen(function* () {
         try: () => nativeSessionCwdAvailable(thread.cwd),
         catch: (cause) => fail("catalog.cwd", cause),
       });
-      if (!available) continue;
       entries.push({
         nativeSessionId: thread.id,
         title: nativeSessionCatalogTitle(thread.name?.trim() || thread.preview),
         cwd: thread.cwd,
+        cwdAvailable: available,
         updatedAt: milliseconds(thread.updatedAt),
       });
     }
@@ -139,6 +152,50 @@ export const make = Effect.gen(function* () {
         };
       }),
       nextCursor: response.nextCursor ?? null,
+    };
+  });
+
+  const inspectCodexImport = Effect.fn("NativeSessionCatalog.inspectCodexImport")(function* (
+    reference: string,
+    expectedHome?: string,
+  ) {
+    const nativeSessionId = parseCodexThreadImportReference(reference);
+    if (!nativeSessionId)
+      return yield* fail("import.reference", new Error("Enter a local Codex thread link or ID."));
+    const home = yield* nativeHome();
+    if (expectedHome !== undefined && expectedHome !== home)
+      return yield* fail(
+        "import.home",
+        new Error("The Codex account changed. Look up the conversation again."),
+      );
+    const response = yield* gateway.requestLocal(
+      "thread/read",
+      { threadId: nativeSessionId, includeTurns: false },
+      { priority: "interactive", source: "native_session_import", timeoutMs: 15_000 },
+    );
+    const thread = projectCodexGatewayThreadReadThread(response.thread);
+    if (thread.id !== nativeSessionId || !isImportableRoot(thread))
+      return yield* fail(
+        "import.identity",
+        new Error("Subagent and Nodex-run Codex conversations cannot be imported."),
+      );
+    if ((yield* nativeHome()) !== home)
+      return yield* fail(
+        "import.home",
+        new Error("The Codex account changed. Look up the conversation again."),
+      );
+    const cwdAvailable = yield* Effect.tryPromise({
+      try: () => nativeSessionCwdAvailable(thread.cwd),
+      catch: (cause) => fail("import.cwd", cause),
+    });
+    return {
+      nativeSessionId,
+      nativeHome: home,
+      title: nativeSessionCatalogTitle(thread.name?.trim() || thread.preview),
+      cwd: thread.cwd,
+      cwdAvailable,
+      updatedAt: milliseconds(thread.updatedAt),
+      model: thread.model ?? null,
     };
   });
 
@@ -188,6 +245,26 @@ export const make = Effect.gen(function* () {
   });
 
   return NativeSessionCatalog.of({
+    previewCodexImport: (input) =>
+      inspectCodexImport(input.reference).pipe(
+        Effect.map(({ model: _model, ...preview }) => preview),
+        Effect.mapError((cause) => fail("import.preview", cause)),
+      ),
+    prepareCodexImport: Effect.fn("NativeSessionCatalog.prepareCodexImport")(
+      function* (input: CodexThreadImportInput) {
+        const available = yield* Effect.tryPromise({
+          try: () => nativeSessionCwdAvailable(input.cwd),
+          catch: (cause) => fail("import.cwd", cause),
+        });
+        if (!available)
+          return yield* fail(
+            "import.cwd",
+            new Error("Choose an existing working directory for the imported chat."),
+          );
+        return yield* inspectCodexImport(input.nativeSessionId, input.expectedHome);
+      },
+      Effect.mapError((cause) => fail("import.prepare", cause)),
+    ),
     list: Effect.fn("NativeSessionCatalog.list")(
       function* (input: NativeSessionCatalogInput) {
         if (input.backendKind === "claude") return yield* agents.listClaudeNativeSessions(input);

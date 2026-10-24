@@ -2980,6 +2980,21 @@ export interface CodexUserImageAttachment {
 
 export type CodexUserAttachment = CodexUserFileAttachment | CodexUserImageAttachment;
 
+/** An imported picture whose file was already gone; it is a record, never a loadable source. */
+export interface CodexUnavailableImage {
+  readonly name: string;
+  readonly sourcePath: string;
+}
+
+/** An imported Markdown image destination and the owned copy that replaces it. */
+export interface CodexImportedMarkdownImage {
+  /** The mdast URL: Markdown entities decoded, percent encoding and `file:` kept. */
+  readonly sourcePath: string;
+  readonly name: string;
+  /** The owned copy, or null when the original file was missing at import. */
+  readonly source: string | null;
+}
+
 export type ProtocolThreadItem = CodexAppServerThreadItem;
 export type ProtocolCommandExecutionItem = Extract<
   ProtocolThreadItem,
@@ -3311,6 +3326,8 @@ export interface CodexItemView extends CodexCommandExecutionAttachmentFields {
   hookFeedback?: boolean;
   imageViewPaths?: string[];
   userAttachments?: CodexUserAttachment[];
+  unavailableImages?: readonly CodexUnavailableImage[];
+  importedImages?: readonly CodexImportedMarkdownImage[];
   commentAttachments?: CodexReviewDiffCommentAttachment[];
   deliveryStatus?: "not-sent";
   steeringStatus?: CodexSteeringStatus;
@@ -3370,6 +3387,8 @@ export interface CodexTranscriptEntry extends CodexCommandExecutionAttachmentFie
   hookFeedback?: boolean;
   imageViewPaths?: string[];
   userAttachments?: CodexUserAttachment[];
+  unavailableImages?: readonly CodexUnavailableImage[];
+  importedImages?: readonly CodexImportedMarkdownImage[];
   commentAttachments?: CodexReviewDiffCommentAttachment[];
   deliveryStatus?: "not-sent";
   steeringStatus?: CodexSteeringStatus;

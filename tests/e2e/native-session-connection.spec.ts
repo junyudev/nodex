@@ -112,11 +112,13 @@ test("connects a Claude CLI conversation through the shared chooser and reopens 
 
       await page.getByRole("button", { name: "Settings", exact: true }).click();
       await page.getByRole("link", { name: "Conversations", exact: true }).click();
-      await page.getByRole("button", { name: "Conversation agent" }).click();
-      await page.getByRole("option", { name: "Claude Code · Work" }).click();
-      await page.getByRole("button", { name: "Conversation destination" }).click();
+      await expect(page.getByRole("button", { name: "Claude Code profile" })).toHaveText("Work");
+      await page.getByRole("button", { name: "Connection destination" }).click();
       await page.getByRole("option", { name: AGENT_CLI_PROJECT_NAME, exact: true }).click();
-      await page.getByRole("button", { name: "Browse", exact: true }).click();
+      const claudeSection = page.locator("section").filter({
+        has: page.getByRole("heading", { name: "Connect Claude Code", exact: true }),
+      });
+      await claudeSection.getByRole("button", { name: "Browse", exact: true }).click();
       await expect(
         page.getByRole("button", { name: "Connect Existing CLI conversation" }),
       ).toBeVisible();

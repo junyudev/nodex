@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import {
+  AGENT_RUNTIME_CODEX_IMPORT_MAX_TIMEOUT_MS,
   AGENT_RUNTIME_STRUCTURED_GENERATION_MAX_TIMEOUT_MS,
   type AgentRuntimeBootstrap,
   type AgentHostRequest,
@@ -36,16 +37,16 @@ const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
 const REPLY_GRACE_MS = 5_000;
 
 /**
- * How long the transport waits for a reply. Structured generation runs model work under its own
- * deadline, which may exceed the default, so it is awaited for that deadline and the reply's way
- * back: the runtime's own failure, such as its timeout, then reaches the caller instead of a
- * transport timeout cutting the work short.
+ * Runtime operations with their own deadline need enough time to deliver their result. This
+ * preserves their recoverable failure instead of replacing it with an earlier transport timeout.
  */
 export const agentRuntimeRequestTimeoutMs = <M extends AgentRuntimeMethod>(
   method: M,
   payload: AgentRuntimeOperations[M]["input"],
   defaultMs: number = DEFAULT_REQUEST_TIMEOUT_MS,
 ): number => {
+  if (method === "thread.import-codex")
+    return Math.max(defaultMs, AGENT_RUNTIME_CODEX_IMPORT_MAX_TIMEOUT_MS + REPLY_GRACE_MS);
   if (method !== "text.generate-structured") return defaultMs;
   const budget =
     (payload as AgentRuntimeOperations["text.generate-structured"]["input"]).timeoutMs ??

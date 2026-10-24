@@ -11,6 +11,7 @@ import {
 } from "../orchestration-v2/ProjectionStore.ts";
 import { EffectOutboxV2 } from "../orchestration-v2/EffectOutbox.ts";
 import type { AgentExecutionLocation } from "./Interface.ts";
+import { CODEX_THREAD_IMPORT_OPERATION_PREFIX } from "./CodexImportLimits.ts";
 
 const fail = (message: string) => Effect.fail(new Error(message));
 const identity = (operationId: string, ...parts: string[]) =>
@@ -27,6 +28,10 @@ export const make = Effect.gen(function* () {
   const outbox = yield* EffectOutboxV2;
   const root = Effect.fnUntraced(function* (threadId: string, operationId?: string) {
     const thread = yield* store.getThread(ThreadId.make(threadId));
+    if (thread.executionHandoff?.operationId.startsWith(CODEX_THREAD_IMPORT_OPERATION_PREFIX))
+      return yield* fail(
+        "The conversation's Codex import must finish before changing its execution directory",
+      );
     if (thread.id !== thread.lineage.rootThreadId || thread.deletedAt !== null)
       return yield* fail("A live Session execution root is required");
     if (operationId !== undefined && thread.executionHandoff?.operationId !== operationId)

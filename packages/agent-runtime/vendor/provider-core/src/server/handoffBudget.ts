@@ -15,6 +15,25 @@ export const DEFAULT_HANDOFF_TOKEN_CAP = 16_000;
 export const CONVERSATION_SUMMARY_CHAR_CAP = 32_000;
 export const CONVERSATION_SUMMARY_HEADER =
   "Imported earlier conversation history. Use it as context; do not repeat it unless the user asks.";
+export const HISTORY_IMAGE_CONTEXT = {
+  availablePrefix: "[Image available: ",
+  availableSeparator: "; read this history item's attachment ",
+  availableSuffix: " to inspect it.]",
+  unavailablePrefix: "[Image unavailable: ",
+  unavailableSuffix: "; original source file is missing.]",
+} as const;
+
+/** One machine-readable description shared by bounded handoffs and full history reads. */
+export function imageAvailabilityText(item: OrchestrationV2TurnItem): readonly string[] {
+  const attachments = item.type === "user_message" || item.type === "assistant_message" || item.type === "dynamic_tool"
+    ? item.attachments ?? [] : [];
+  return [
+    ...attachments.filter((attachment) => attachment.type === "image").map((image) =>
+      `${HISTORY_IMAGE_CONTEXT.availablePrefix}${image.name}${HISTORY_IMAGE_CONTEXT.availableSeparator}${image.id}${HISTORY_IMAGE_CONTEXT.availableSuffix}`),
+    ...(item.unavailableImages ?? []).map((image) =>
+      `${HISTORY_IMAGE_CONTEXT.unavailablePrefix}${image.name}${HISTORY_IMAGE_CONTEXT.unavailableSuffix}`),
+  ];
+}
 const HANDOFF_BYTE_CAP = 64_000;
 export const handoffTokenCapConfig = Config.Int("NODEX_CONTEXT_HANDOFF_TOKEN_CAP").pipe(
   Config.withDefault(DEFAULT_HANDOFF_TOKEN_CAP),
@@ -168,9 +187,14 @@ export function historicalMessage(
     case "proposed_plan":
       text = item.markdown;
       break;
+    case "dynamic_tool":
+      if (!item.unavailableImages?.length && !item.attachments?.length) return null;
+      text = item.toolName === "imageView" ? "Viewed image." : item.toolName ?? "Tool image.";
+      break;
     default:
       return null;
   }
+  text = [text, ...imageAvailabilityText(item)].filter(Boolean).join("\n");
   return {
     role: item.type === "user_message" ? "user" : "assistant",
     text,

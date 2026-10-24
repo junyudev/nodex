@@ -23,6 +23,7 @@ import type { ProjectWorkspaceApplyInput, ProjectWorkspaceRead } from "../core-c
 import { ProjectRuntimeLifecycleRuntime } from "../host-runtime/ProjectRuntimeLifecycleRuntime";
 import { ProjectWorkspace, ProjectWorkspaceError } from "../project-application/ProjectWorkspace";
 import type { ProjectSession } from "../../shared/types";
+import type { CodexThreadImportInput } from "../../shared/native-session-catalog";
 import {
   make,
   type AgentRuntimeLaunch,
@@ -41,6 +42,19 @@ const launch: AgentRuntimeLaunch = {
   modelSelection: { instanceId: "claude", model: "claude-sonnet" },
   interactionMode: "default",
   message: { messageId: "message:first", text: "Build it" },
+};
+const codexImport: CodexThreadImportInput & {
+  readonly title: string;
+  readonly model: string | null;
+} = {
+  requestId: "019d0000-0000-7000-8000-000000000002",
+  acceptedAt: 1791993600000,
+  nativeSessionId: "019abcde-1234-7000-8000-123456789abc",
+  expectedHome: "/native/codex",
+  projectId: "project",
+  cwd: "/replacement/imported",
+  title: "Imported task",
+  model: "model-b",
 };
 
 const snapshot = (
@@ -89,6 +103,7 @@ const setup = (
   const bindings = new Map<string, Binding>();
   const snapshots = new Map<string, AgentSnapshot>();
   const commands = new Map<string, AgentCommand>();
+  const imports = new Map<string, AgentRuntimeOperations["thread.import-codex"]["input"]>();
   const calls: Array<{ method: AgentRuntimeMethod; input: unknown }> = [];
   const applied: ProjectWorkspaceApplyInput[] = [];
   const receipt = new Map<string, string>();
@@ -158,8 +173,13 @@ const setup = (
     runtimeId: "engine",
     failMessage: false,
     failThreadCreate: false,
+    failCodexImportBeforeCommit: false,
+    failCodexImportAcknowledgment: false,
+    codexModelsAvailable: true,
+    codexImportSourceHome: codexImport.expectedHome,
     refusedThreadReceipt: false,
     failCore: false,
+    projectWorkspaceRoot: "/workspace" as string | null,
     failCoreAcknowledgment: false,
     failBindingProof: false,
     missingSessionLookupError: null as CoreRuntimeError | null,
@@ -227,7 +247,7 @@ const setup = (
                     project: {
                       id: input.project_id,
                       name: "Project",
-                      primary_workspace_root: "/workspace",
+                      primary_workspace_root: state.projectWorkspaceRoot,
                       lifecycle: state.lifecycle,
                       sources: [{ root: "/workspace", order: 0 }],
                     },
@@ -333,10 +353,50 @@ const setup = (
       );
       calls.push({ method, input });
       order.push(method);
-      if (method === "providers.read") return providers as AgentRuntimeOperations[M]["output"];
+      if (method === "providers.read")
+        return (
+          state.codexModelsAvailable
+            ? providers
+            : providers.map((provider) => ({ ...provider, models: [] }))
+        ) as AgentRuntimeOperations[M]["output"];
+      if (method === "thread.import-codex") {
+        const request = input as AgentRuntimeOperations["thread.import-codex"]["input"];
+        if (state.failCodexImportBeforeCommit) {
+          state.failCodexImportBeforeCommit = false;
+          return yield* Effect.fail(new Error("Runtime stopped before importing history"));
+        }
+        if (!imports.has(request.commandId)) {
+          imports.set(request.commandId, request);
+          const imported = snapshot(request.threadId, request.threadId, request.projectId);
+          snapshots.set(request.threadId, {
+            ...imported,
+            projection: {
+              ...imported.projection,
+              thread: {
+                ...imported.projection.thread,
+                modelSelection: request.modelSelection,
+                worktreePath: request.cwd,
+                historyOrigin: "native_import",
+                executionHandoff: null,
+              },
+            },
+          });
+        }
+        if (state.failCodexImportAcknowledgment) {
+          state.failCodexImportAcknowledgment = false;
+          return yield* Effect.fail(new Error("Runtime reply lost after importing history"));
+        }
+        return { threadId: request.threadId } as AgentRuntimeOperations[M]["output"];
+      }
       if (method === "native.prediction.clear") return null as AgentRuntimeOperations[M]["output"];
       if (method === "command.receipt") {
         const request = input as AgentRuntimeOperations["command.receipt"]["input"];
+        if (imports.has(request.commandId))
+          return {
+            status: "accepted",
+            sequence: 1,
+            error: null,
+          } as AgentRuntimeOperations[M]["output"];
         const admitted = commands.get(request.commandId);
         if (admitted?.type === "thread.create" && state.refusedThreadReceipt)
           return {
@@ -718,6 +778,14 @@ const setup = (
     }).pipe(Effect.mapError((cause) => new ProjectWorkspaceError({ operation: method, cause })));
   const owner = make({
     ...options,
+    codexImportSourceHome:
+      options.codexImportSourceHome ??
+      ((connection) =>
+        Effect.sync(() => {
+          assert.equal(connection.identity.runtimeId, state.runtimeId);
+          order.push("codex.import-source-home");
+          return state.codexImportSourceHome;
+        })),
     connect: options.connect ?? Effect.sync(connection),
     currentConnection: options.currentConnection ?? Effect.sync(connection),
     projectless: options.projectless ?? {
@@ -780,8 +848,318 @@ const setup = (
         ),
     }),
   );
-  return { owner, bindings, snapshots, commands, calls, applied, actors, order, state, cleanups };
+  return {
+    owner,
+    bindings,
+    snapshots,
+    commands,
+    imports,
+    calls,
+    applied,
+    actors,
+    order,
+    state,
+    cleanups,
+  };
 };
+
+it.effect("binds an independent imported chat before reading its history into the Runtime", () =>
+  Effect.gen(function* () {
+    const fixture = setup();
+    const owner = yield* fixture.owner;
+    const result = yield* owner.importCodex(codexImport);
+    assert.equal(result.sessionId, codexImport.requestId);
+    assert.equal(result.projectId, codexImport.projectId);
+    assert.notEqual(result.threadId, codexImport.nativeSessionId);
+    assert.equal(fixture.bindings.get(result.sessionId)?.runtime_thread_id, result.threadId);
+    assert.isBelow(
+      fixture.order.indexOf("codex.import-source-home"),
+      fixture.order.indexOf("providers.read"),
+    );
+    assert.isBelow(
+      fixture.order.indexOf("codex.import-source-home"),
+      fixture.order.indexOf("core.bind"),
+    );
+    assert.isBelow(
+      fixture.order.indexOf("core.bind"),
+      fixture.order.indexOf("thread.import-codex"),
+    );
+    const imported = [...fixture.imports.values()][0]!;
+    assert.deepEqual(imported, {
+      commandId: imported.commandId,
+      threadId: result.threadId,
+      projectId: "project",
+      title: codexImport.title,
+      sourceNativeThreadId: codexImport.nativeSessionId,
+      modelSelection: { instanceId: "codex", model: "model-b" },
+      cwd: codexImport.cwd,
+    });
+    assert.equal(fixture.applied.length, 1);
+    assert.deepEqual(fixture.applied[0]!.intent, {
+      kind: "create_agent_runtime_session",
+      session_id: result.sessionId,
+      project_id: codexImport.projectId,
+      title: codexImport.title,
+      initial_page_ids: [],
+      runtime_id: "engine",
+      runtime_thread_id: result.threadId,
+      launch_request_id: `codex-import:${codexImport.requestId}`,
+    });
+    assert.deepEqual([...fixture.commands.values()], []);
+    assert.isFalse(fixture.calls.some((call) => call.method === "thread.snapshot"));
+  }),
+);
+
+it.effect(
+  "imports projectless history into the selected directory and an available Codex model",
+  () =>
+    Effect.gen(function* () {
+      const fixture = setup();
+      const owner = yield* fixture.owner;
+      const result = yield* owner.importCodex({
+        ...codexImport,
+        projectId: null,
+        model: "retired-model",
+      });
+      const imported = [...fixture.imports.values()][0]!;
+      assert.equal(result.projectId, null);
+      assert.equal(fixture.bindings.get(result.sessionId)?.project_id, null);
+      assert.equal(imported.projectId, "profile:projectless");
+      assert.equal(imported.cwd, codexImport.cwd);
+      assert.deepEqual(imported.modelSelection, { instanceId: "codex", model: "model-a" });
+      assert.deepEqual([...fixture.commands.values()], []);
+    }),
+);
+
+it.effect("Core refusal or missing Codex models admits no Runtime import", () =>
+  Effect.gen(function* () {
+    const refused = setup();
+    refused.state.failCore = true;
+    const refusedOwner = yield* refused.owner;
+    yield* refusedOwner.importCodex(codexImport).pipe(Effect.flip);
+    assert.equal(refused.bindings.size, 0);
+    assert.equal(refused.imports.size, 0);
+    assert.isFalse(refused.calls.some((call) => call.method === "thread.import-codex"));
+    assert.isFalse(refused.calls.some((call) => call.method === "project.upsert"));
+
+    const unavailable = setup();
+    unavailable.state.codexModelsAvailable = false;
+    const unavailableOwner = yield* unavailable.owner;
+    const failure = yield* unavailableOwner.importCodex(codexImport).pipe(Effect.flip);
+    assert.equal(failure.message, "A Codex model is required to import this conversation");
+    assert.equal(unavailable.bindings.size, 0);
+    assert.equal(unavailable.applied.length, 0);
+    assert.equal(unavailable.imports.size, 0);
+    assert.isFalse(unavailable.calls.some((call) => call.method === "thread.import-codex"));
+  }),
+);
+
+it.effect("imports and continues in an explicit directory when its Project has no workspace", () =>
+  Effect.gen(function* () {
+    const fixture = setup();
+    fixture.state.projectWorkspaceRoot = null;
+    const owner = yield* fixture.owner;
+    const imported = yield* owner.importCodex(codexImport);
+    yield* owner.message({
+      sessionId: imported.sessionId,
+      message: { messageId: "continue-import", text: "Continue from this history" },
+    });
+    assert.equal(
+      fixture.snapshots.get(imported.threadId)!.projection.thread.worktreePath,
+      codexImport.cwd,
+    );
+    assert.isTrue(
+      [...fixture.commands.values()].some((command) => command.type === "message.dispatch"),
+    );
+    const fresh = setup();
+    fresh.state.projectWorkspaceRoot = null;
+    const freshOwner = yield* fresh.owner;
+    const refused = yield* freshOwner.launch(launch).pipe(Effect.flip);
+    assert.equal(refused.message, "This Project has no execution workspace");
+    assert.equal(fresh.bindings.size, 0);
+  }),
+);
+
+it.effect(
+  "recovers an uncertain import binding only when its exact durable identity is proven",
+  () =>
+    Effect.gen(function* () {
+      const fixture = setup();
+      fixture.state.failCoreAcknowledgment = true;
+      fixture.state.failBindingProof = true;
+      const owner = yield* fixture.owner;
+      yield* owner.importCodex(codexImport).pipe(Effect.flip);
+      assert.equal(fixture.bindings.size, 1);
+      assert.isFalse(fixture.calls.some((call) => call.method === "thread.import-codex"));
+      assert.isFalse(fixture.calls.some((call) => call.method === "project.upsert"));
+
+      fixture.state.failBindingProof = false;
+      fixture.state.failCoreAcknowledgment = false;
+      const recovered = yield* owner.importCodex(codexImport);
+      assert.equal(
+        recovered.threadId,
+        fixture.bindings.get(codexImport.requestId)?.runtime_thread_id,
+      );
+      assert.equal(fixture.applied.length, 1);
+      assert.equal(fixture.imports.size, 1);
+      assert.deepEqual([...fixture.commands.values()], []);
+    }),
+);
+
+it.effect("rejects another Session's proof of an uncertain import binding", () =>
+  Effect.gen(function* () {
+    const fixture = setup();
+    fixture.state.failCoreAcknowledgment = true;
+    fixture.state.replaceBindingProof = true;
+    const owner = yield* fixture.owner;
+    yield* owner.importCodex(codexImport).pipe(Effect.flip);
+    assert.isFalse(fixture.calls.some((call) => call.method === "thread.import-codex"));
+    assert.deepEqual([...fixture.commands.values()], []);
+  }),
+);
+
+it.effect("retries an uncertain Runtime import with the same command and one destination", () =>
+  Effect.gen(function* () {
+    const fixture = setup();
+    fixture.state.failCodexImportAcknowledgment = true;
+    const owner = yield* fixture.owner;
+    yield* owner.importCodex(codexImport).pipe(Effect.flip);
+    const first = [...fixture.imports.values()][0]!;
+    const result = yield* owner.importCodex(codexImport);
+    assert.equal(result.threadId, first.threadId);
+    assert.equal(fixture.imports.size, 1);
+    assert.equal(fixture.bindings.size, 1);
+    assert.equal(fixture.applied.length, 1);
+    assert.deepEqual(
+      fixture.calls
+        .filter((call) => call.method === "thread.import-codex")
+        .map((call) => call.input),
+      [first, first],
+    );
+    assert.deepEqual([...fixture.commands.values()], []);
+  }),
+);
+
+it.effect.each([
+  { nativeSessionId: "01a0ae8c-a700-7571-a2bd-e305e9c63892" },
+  { expectedHome: "/native/another-codex" },
+  { projectId: "another-project" },
+  { cwd: "/another/imported-directory" },
+])(
+  "refuses to reuse an import request with different source or destination parameters %#",
+  (patch) =>
+    Effect.gen(function* () {
+      const fixture = setup();
+      const owner = yield* fixture.owner;
+      yield* owner.importCodex(codexImport);
+      const failure = yield* owner.importCodex({ ...codexImport, ...patch }).pipe(Effect.flip);
+      assert.equal(failure.message, "This import request already belongs to another conversation");
+      assert.equal(fixture.bindings.size, 1);
+      assert.equal(fixture.applied.length, 1);
+      assert.equal(fixture.imports.size, 1);
+      assert.equal(fixture.calls.filter((call) => call.method === "thread.import-codex").length, 1);
+    }),
+);
+
+it.effect("an interrupted import cannot be opened as an empty chat and remains retryable", () =>
+  Effect.gen(function* () {
+    const fixture = setup();
+    fixture.state.failCodexImportBeforeCommit = true;
+    const owner = yield* fixture.owner;
+    yield* owner.importCodex(codexImport).pipe(Effect.flip);
+    const failure = yield* owner.inspect({ sessionId: codexImport.requestId }).pipe(Effect.flip);
+    assert.equal(failure.message, "This import was interrupted. Retry it from Conversations.");
+    assert.equal(fixture.imports.size, 0);
+    assert.deepEqual([...fixture.commands.values()], []);
+    const result = yield* owner.importCodex(codexImport);
+    assert.equal(result.threadId, fixture.bindings.get(codexImport.requestId)?.runtime_thread_id);
+    assert.equal(fixture.imports.size, 1);
+    assert.equal(fixture.applied.length, 1);
+    assert.deepEqual([...fixture.commands.values()], []);
+  }),
+);
+
+it.effect(
+  "refuses a restored reader from another history home before admitting any import side effects",
+  () =>
+    Effect.gen(function* () {
+      const fixture = setup();
+      fixture.state.codexImportSourceHome = "/profile/agent-runtime/native-history/captured-codex";
+      const owner = yield* fixture.owner;
+      const failure = yield* owner.importCodex(codexImport).pipe(Effect.flip);
+      assert.match(failure.message, /history|home|restored/iu);
+      assert.deepEqual(fixture.order, ["codex.import-source-home"]);
+      assert.equal(fixture.applied.length, 0);
+      assert.equal(fixture.bindings.size, 0);
+      assert.equal(fixture.imports.size, 0);
+      assert.equal(fixture.commands.size, 0);
+      assert.deepEqual(fixture.calls, []);
+    }),
+);
+
+it.effect("recovers a completed import without its source account or a current model catalog", () =>
+  Effect.gen(function* () {
+    const fixture = setup();
+    fixture.state.failCodexImportAcknowledgment = true;
+    const owner = yield* fixture.owner;
+    assert.isNull(yield* owner.completedCodexImport(codexImport));
+    yield* owner.importCodex(codexImport).pipe(Effect.flip);
+    fixture.state.codexModelsAvailable = false;
+    fixture.state.codexImportSourceHome = "/different-or-removed-source";
+    const sourceChecks = fixture.order.filter((step) => step === "codex.import-source-home").length;
+    const callCount = fixture.calls.length;
+    const result = yield* owner.completedCodexImport(codexImport);
+    assert.deepEqual(result, {
+      sessionId: codexImport.requestId,
+      threadId: fixture.bindings.get(codexImport.requestId)!.runtime_thread_id,
+      projectId: codexImport.projectId,
+    });
+    assert.equal(
+      fixture.order.filter((step) => step === "codex.import-source-home").length,
+      sourceChecks,
+    );
+    assert.isFalse(
+      fixture.calls
+        .slice(callCount)
+        .some((call) => call.method === "providers.read" || call.method === "thread.import-codex"),
+    );
+    assert.equal(fixture.applied.length, 1);
+    setExecutionHold(fixture, result!.threadId, true);
+    assert.isNull(yield* owner.completedCodexImport(codexImport));
+    const refused = yield* owner
+      .completedCodexImport({ ...codexImport, cwd: "/changed" })
+      .pipe(Effect.flip);
+    assert.equal(refused.message, "This import request already belongs to another conversation");
+  }),
+);
+
+it.effect(
+  "allows deleting a failed history import while retaining other handoff lifecycle guards",
+  () =>
+    Effect.gen(function* () {
+      const fixture = setup();
+      const owner = yield* fixture.owner;
+      const opened = yield* owner.importCodex(codexImport);
+      const current = fixture.snapshots.get(opened.threadId)!;
+      fixture.snapshots.set(opened.threadId, {
+        ...current,
+        projection: {
+          ...current.projection,
+          thread: {
+            ...current.projection.thread,
+            activeProviderThreadId: null,
+            executionHandoff: { operationId: "codex-import:pending", recoveryRequired: true },
+          },
+        },
+      });
+      const command = { operationId: "delete-import", payload: { sessionId: opened.sessionId } };
+      assert.equal((yield* owner.archiveSession(command).pipe(Effect.result))._tag, "Failure");
+      yield* owner.deleteSession(command);
+      assert.equal(fixture.bindings.size, 0);
+      assert.isNotNull(fixture.snapshots.get(opened.threadId)!.projection.thread.deletedAt);
+      assert.equal(fixture.cleanups.size, 0);
+    }),
+);
 
 /** Background preparation dispatches on its own fiber; yield until the command lands. */
 const awaitCommand = (fixture: ReturnType<typeof setup>, type: AgentCommand["type"]) =>

@@ -199,6 +199,10 @@ import type {
   AgentImportScanInput,
 } from "./agent-import";
 import type {
+  CodexThreadImportInput,
+  CodexThreadImportPreview,
+  CodexThreadImportPreviewInput,
+  CodexThreadImportResult,
   NativeSessionAttachInput,
   NativeSessionAttachResult,
   NativeSessionCatalogInput,
@@ -2325,6 +2329,14 @@ export interface IpcApi extends AgentRuntimeIpcApi {
   "native-sessions:attach": {
     args: [input: NativeSessionAttachInput];
     result: NativeSessionAttachResult;
+  };
+  "native-sessions:preview-codex-import": {
+    args: [input: CodexThreadImportPreviewInput];
+    result: CodexThreadImportPreview;
+  };
+  "native-sessions:import-codex": {
+    args: [input: CodexThreadImportInput];
+    result: CodexThreadImportResult;
   };
   "codex:hooks:list": {
     args: [input: CodexHooksListInput];

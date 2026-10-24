@@ -165,6 +165,8 @@ export type {
   CodexSteerTurnInput,
   CodexSteerTurnResult,
   CodexSteeringStatus,
+  CodexImportedMarkdownImage,
+  CodexUnavailableImage,
   CodexUserAttachment,
   CodexUserFileAttachment,
   CodexUserImageAttachment,

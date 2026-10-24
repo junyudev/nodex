@@ -1,4 +1,5 @@
 import { readExecutionHandoff } from "./ExecutionHandoff.ts";
+import { CODEX_THREAD_IMPORT_OPERATION_PREFIX } from "../nodex/CodexImportLimits.ts";
 import type {
   OrchestrationV2SearchThreadInput,
   OrchestrationV2SearchThreadResult,
@@ -22,6 +23,7 @@ import {
 import {
   ORCHESTRATION_V2_WORKSPACE_PREPARATION_FAILURE_CODE,
   type ChatAttachment,
+  hasImportedThreadHistory,
   CommandId,
   isProviderNativeSubagentThread,
   MessageId,
@@ -692,7 +694,9 @@ export function shouldPrepareLegacyImportHandoff(input: {
   readonly legacyImportItemCount: number;
 }): boolean {
   return (
-    input.historyOrigin === "v1_import" && !input.hasCompletedRun && input.legacyImportItemCount > 0
+    hasImportedThreadHistory(input.historyOrigin) &&
+    !input.hasCompletedRun &&
+    input.legacyImportItemCount > 0
   );
 }
 
@@ -1544,10 +1548,11 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
               includeImported:
                 needsFullContext &&
                 latestCompletedRun !== undefined &&
-                projection.thread.historyOrigin === "v1_import",
+                hasImportedThreadHistory(projection.thread.historyOrigin),
             });
       const legacyImportHistory =
-        projection.thread.historyOrigin === "v1_import" && latestCompletedRun === undefined
+        hasImportedThreadHistory(projection.thread.historyOrigin) &&
+        latestCompletedRun === undefined
           ? yield* readHandoffHistory(threadId, {
               scope: "local",
               runIds: [],
@@ -2536,6 +2541,19 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         cause: `Thread ${command.threadId} is deleted.`,
       });
     }
+    if (
+      command.type === "thread.metadata.update" &&
+      thread.executionHandoff?.operationId.startsWith(CODEX_THREAD_IMPORT_OPERATION_PREFIX) &&
+      (command.executionHandoff !== undefined ||
+        command.worktreePath !== undefined ||
+        command.projectId !== undefined)
+    )
+      return yield* new OrchestratorDispatchError({
+        commandId: command.commandId,
+        commandType: command.type,
+        cause:
+          "The conversation's Codex import must finish before changing its execution directory.",
+      });
     if (command.type === "thread.metadata.update" && command.projectId !== undefined) {
       const target = yield* projects.get(command.projectId).pipe(mapDispatchError(command));
       if (thread.lineage.rootThreadId !== thread.id || Option.isNone(target))
@@ -4337,7 +4355,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
             preparedHistory: yield* readHandoffHistory(input.command.threadId, {
               scope: "conversation",
               runOrdinalTo: targetRun.ordinal,
-              includeImported: input.projection.thread.historyOrigin === "v1_import",
+              includeImported: hasImportedThreadHistory(input.projection.thread.historyOrigin),
             }),
             createdAt: now,
           })
@@ -5358,7 +5376,8 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       const latestCompletedRun = projection.runs.findLast((run) => run.status === "completed");
       const latestHandoffRun = projection.runs.findLast(isHandoffSourceRun);
       const legacyImportHistory =
-        projection.thread.historyOrigin === "v1_import" && latestCompletedRun === undefined
+        hasImportedThreadHistory(projection.thread.historyOrigin) &&
+        latestCompletedRun === undefined
           ? yield* readHandoffHistory(command.threadId, {
               scope: "local",
               runIds: [],
@@ -5917,7 +5936,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
                 projection.thread.forkedFrom?.type === "run"
                   ? projection.thread.forkedFrom.sourceHistoryRevision
                   : undefined,
-              includeImported: sourceProjection.thread.historyOrigin === "v1_import",
+              includeImported: hasImportedThreadHistory(sourceProjection.thread.historyOrigin),
             });
       const portableForkHandoff =
         !requiresPortableFork ||
@@ -5951,8 +5970,10 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
                     }),
                 ),
               );
-      const requiresFullProviderSwitchContext =
-        isProviderSwitch && pendingMergeBackTransfer !== undefined;
+      // Rewind can leave a provider row whose native conversation has been retired.
+      const needsFullContext =
+        ensuredProviderThread.nativeThreadRef === null ||
+        (isProviderSwitch && pendingMergeBackTransfer !== undefined);
       const targetLastCompletedRun =
         targetProviderThread === undefined
           ? null
@@ -5962,19 +5983,19 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       const providerSwitchHistory =
         canResumeAcrossInstances ||
         latestHandoffRun === undefined ||
-        (!isProviderSwitch && (targetLastCompletedRun?.ordinal ?? 0) >= latestHandoffRun.ordinal)
+        (!needsFullContext &&
+          !isProviderSwitch &&
+          (targetLastCompletedRun?.ordinal ?? 0) >= latestHandoffRun.ordinal)
           ? null
           : yield* readHandoffHistory(command.threadId, {
               scope: "conversation",
-              runOrdinalFrom:
-                (requiresFullProviderSwitchContext ? 0 : (targetLastCompletedRun?.ordinal ?? 0)) +
-                1,
+              runOrdinalFrom: (needsFullContext ? 0 : (targetLastCompletedRun?.ordinal ?? 0)) + 1,
               runOrdinalTo: latestHandoffRun.ordinal,
               runStatuses: ["completed", "failed", "interrupted"],
               includeImported:
                 latestCompletedRun !== undefined &&
-                (targetProviderThread === undefined || requiresFullProviderSwitchContext) &&
-                projection.thread.historyOrigin === "v1_import",
+                needsFullContext &&
+                hasImportedThreadHistory(projection.thread.historyOrigin),
             });
       const providerSwitchTransferId =
         providerSwitchHistory === null ||
@@ -5995,10 +6016,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
             threadId: command.threadId,
             providerInstanceId: modelSelection.instanceId,
             capabilities,
-            strategy:
-              targetProviderThread === undefined || requiresFullProviderSwitchContext
-                ? "full_thread_summary"
-                : "delta_context",
+            strategy: needsFullContext ? "full_thread_summary" : "delta_context",
           }),
         );
       }
@@ -6015,10 +6033,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
                 fromProviderInstanceId: latestHandoffRun.providerInstanceId,
                 toProviderInstanceId: modelSelection.instanceId,
                 coveredRunOrdinals: providerSwitchHistory!.coveredRunOrdinals,
-                strategy:
-                  targetProviderThread === undefined || requiresFullProviderSwitchContext
-                    ? "full_thread_summary"
-                    : "delta_since_target_last_seen",
+                strategy: needsFullContext ? "full_thread_summary" : "delta_since_target_last_seen",
                 items: [],
                 preparedHistory: providerSwitchHistory!,
                 createdAt: now,
@@ -6034,7 +6049,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
                 ),
               );
       const legacyImportRecoveryHandoff =
-        isProviderSwitch &&
+        (isProviderSwitch || needsFullContext) &&
         !canResumeAcrossInstances &&
         latestCompletedRun === undefined &&
         (legacyImportHistory?.sourceItemCount ?? 0) > 0
@@ -6451,7 +6466,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
           targetThreadId: command.threadId,
           sourcePoint: contextSourcePointForRun(projection, latestHandoffRun),
           basePoint:
-            requiresFullProviderSwitchContext || targetLastCompletedRun === null
+            needsFullContext || targetLastCompletedRun === null
               ? null
               : contextSourcePointForRun(projection, targetLastCompletedRun),
           sourceProviderInstanceId: latestHandoffRun.providerInstanceId,

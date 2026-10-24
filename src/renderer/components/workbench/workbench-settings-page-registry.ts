@@ -25,6 +25,12 @@ export type SettingsPageKey =
   | "data-controls"
   | "backups";
 
+/** Opens a chat from Settings; an Agent chat may name its Session to skip a Thread lookup. */
+export type SettingsOpenThread = (
+  threadId: string,
+  context?: { readonly runtimeSessionId: string },
+) => void | Promise<void>;
+
 export interface SettingsSectionPageProps {
   activeProjectId: string | null;
   browserAnchor: BrowserSettingsAnchor | null;
@@ -39,7 +45,7 @@ export interface SettingsSectionPageProps {
     destination: BrowserSettingsDestination,
     anchor?: BrowserSettingsAnchor,
   ) => void;
-  onOpenThread?: (threadId: string) => void | Promise<void>;
+  onOpenThread?: SettingsOpenThread;
   onPathChange: (path: string) => void;
   onRequestProjectPickerOpen: () => void;
   onTaskShorthandPagePromotionEnabledChange: (value: boolean) => void;

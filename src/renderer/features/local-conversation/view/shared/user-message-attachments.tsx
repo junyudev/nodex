@@ -1,7 +1,11 @@
 import { useCallback, useEffect, useState } from "react";
 import { Sparkles } from "@/components/shared/icons/generic-icons";
 import { ActivitySpinnerIcon, FileIcon } from "@/components/shared/icons";
-import type { CodexUserAttachment, CodexUserImageAttachment } from "@/lib/types";
+import type {
+  CodexUnavailableImage,
+  CodexUserAttachment,
+  CodexUserImageAttachment,
+} from "@/lib/types";
 import { cn } from "@/lib/utils";
 import {
   ImagePreviewDialog,
@@ -10,6 +14,7 @@ import {
 } from "@/features/user-attachment-image-editor";
 import { useConversationImageAssetContext } from "../conversation-image-asset-context";
 import { useConversationImageAsset } from "./use-conversation-image-asset";
+import { NO_UNAVAILABLE_IMAGES, UnavailableImageChip } from "./unavailable-image";
 
 export function ImageLoadingTile({ label }: { label: string }) {
   return (
@@ -210,7 +215,13 @@ function UserFileAttachmentChip({
   );
 }
 
-export function UserAttachmentStrip({ attachments }: { attachments: CodexUserAttachment[] }) {
+export function UserAttachmentStrip({
+  attachments,
+  unavailableImages = NO_UNAVAILABLE_IMAGES,
+}: {
+  attachments: CodexUserAttachment[];
+  unavailableImages?: readonly CodexUnavailableImage[];
+}) {
   const { composerTarget, conversationId } = useConversationImageAssetContext();
   const [resolvedImages, setResolvedImages] = useState<
     ReadonlyMap<string, ResolvedUserImagePreview>
@@ -237,7 +248,7 @@ export function UserAttachmentStrip({ attachments }: { attachments: CodexUserAtt
     };
   }, []);
 
-  if (attachments.length === 0) return null;
+  if (attachments.length === 0 && unavailableImages.length === 0) return null;
 
   const remoteOnly = attachments.every(
     (attachment) => attachment.type === "image" && attachment.sourceKind === "remote-pointer",
@@ -295,6 +306,9 @@ export function UserAttachmentStrip({ attachments }: { attachments: CodexUserAtt
             />
           );
         })}
+        {unavailableImages.map((image, index) => (
+          <UnavailableImageChip key={`${image.sourcePath}:${index}`} image={image} />
+        ))}
       </div>
       {activeImage && activePreview ? (
         <ImagePreviewDialog

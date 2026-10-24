@@ -18,5 +18,12 @@ export type {
 
 export type * from "./Interface.ts";
 export type { AgentRuntimeBootstrap } from "./Bootstrap.ts";
-export { AGENT_RUNTIME_CODEX_THREAD_SOURCE } from "./CodexThreadSource.ts";
+export {
+  AGENT_RUNTIME_CODEX_THREAD_SOURCE,
+  isAgentRuntimeCodexThreadSource,
+} from "./CodexThreadSource.ts";
 export { AGENT_RUNTIME_STRUCTURED_GENERATION_MAX_TIMEOUT_MS } from "./TextGenerationLimits.ts";
+export {
+  AGENT_RUNTIME_CODEX_IMPORT_MAX_TIMEOUT_MS,
+  CODEX_THREAD_IMPORT_OPERATION_PREFIX,
+} from "./CodexImportLimits.ts";

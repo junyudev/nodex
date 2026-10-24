@@ -83,6 +83,8 @@ function isRenderableAgentItem(item: ThreadRendererItemModel): item is ThreadAge
     case "toolCall":
     case "mcpToolCall":
     case "dynamicToolCall":
+    // Inspected pictures are agent work in sequence, including imported records whose file is gone.
+    case "imageView":
     case "automaticApprovalReview":
     case "multiAgentAction":
     case "subagentActivityInlineGroup":

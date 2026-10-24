@@ -32,6 +32,7 @@ import { DelegatedTaskGroup, RuntimeNoticeRow } from "../shared/delegated-task-r
 import { AgentHandoffDivider, TranscriptDivider } from "../shared/transcript-divider";
 import { ContextCompactionSurface } from "../shared/context-compaction-surface";
 import { ImageViewSurface } from "../shared/image-view-surface";
+import { ImportedMarkdownImagesProvider } from "../shared/imported-markdown-images";
 import { GeneratedImageGallery } from "../shared/generated-image-gallery";
 import { CompletedRequestActivitySurface } from "../shared/completed-request-activity-surface";
 import { PlanMessage } from "../shared/plan-message";
@@ -1026,7 +1027,10 @@ export function UserMessageBubble({
       )}
       data-content-search-unit-key={block.searchUnitKey}
     >
-      <UserAttachmentStrip attachments={block.entry.userAttachments ?? []} />
+      <UserAttachmentStrip
+        attachments={block.entry.userAttachments ?? []}
+        unavailableImages={block.entry.unavailableImages ?? []}
+      />
       <div className="group flex w-full flex-col items-end justify-end gap-1">
         <UserMessageDeliveryMarkers entry={block.entry} onOpenThread={onOpenThread} />
         {isEditing ? (
@@ -1305,32 +1309,34 @@ export function ThreadAssistantBodyBlock({
     >
       <div className="group flex min-w-0 flex-col">
         <div className={THREAD_VISUAL_TOKENS.assistantBody} data-thread-selected-text-target="true">
-          <MarkdownRenderer
-            content={markdownText}
-            dialect="conversation"
-            nativeSource={
-              entityKey
-                ? {
-                    kind: "item",
-                    entityKey,
-                    itemId: block.entry.rawItemId ?? block.entry.itemId,
-                  }
-                : undefined
-            }
-            preserveLineBreaks
-            parseIncompleteMarkdown={isAssistantItemStreaming}
-            animateStreamingText={isAssistantItemStreaming}
-            adaptiveBuffering={
-              block.entry.assistantPhase === "commentary"
-                ? undefined
-                : {
-                    streamId: `${block.entry.threadId}:${block.searchUnitKey ?? block.entry.rawItemId ?? block.entry.itemId}`,
-                  }
-            }
-            cwd={threadCwd}
-            projectWorkspacePath={projectWorkspacePath}
-            visualizationContext={visualizationContext}
-          />
+          <ImportedMarkdownImagesProvider images={block.entry.importedImages}>
+            <MarkdownRenderer
+              content={markdownText}
+              dialect="conversation"
+              nativeSource={
+                entityKey
+                  ? {
+                      kind: "item",
+                      entityKey,
+                      itemId: block.entry.rawItemId ?? block.entry.itemId,
+                    }
+                  : undefined
+              }
+              preserveLineBreaks
+              parseIncompleteMarkdown={isAssistantItemStreaming}
+              animateStreamingText={isAssistantItemStreaming}
+              adaptiveBuffering={
+                block.entry.assistantPhase === "commentary"
+                  ? undefined
+                  : {
+                      streamId: `${block.entry.threadId}:${block.searchUnitKey ?? block.entry.rawItemId ?? block.entry.itemId}`,
+                    }
+              }
+              cwd={threadCwd}
+              projectWorkspacePath={projectWorkspacePath}
+              visualizationContext={visualizationContext}
+            />
+          </ImportedMarkdownImagesProvider>
         </div>
         {createdThreads.length > 0 ? (
           <div className="mt-3">
@@ -1410,7 +1416,12 @@ export function ThreadUserInputResponseCard({ block }: ThreadLeafBlockProps) {
 
 export function ThreadImageViewBlock({ block }: ThreadLeafBlockProps) {
   if (block.type !== "imageView") return null;
-  return <ImageViewSurface imagePaths={block.imageViewPaths ?? []} />;
+  return (
+    <ImageViewSurface
+      imagePaths={block.imageViewPaths ?? []}
+      unavailableImages={block.unavailableImages ?? []}
+    />
+  );
 }
 
 export function ThreadGeneratedImageGalleryBlock({ block }: ThreadSpecialBlockProps) {

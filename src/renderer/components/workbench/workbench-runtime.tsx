@@ -69,6 +69,7 @@ import {
   type AgentSettingsKind,
 } from "@/lib/agent-settings-navigation";
 import type { BrowserSettingsDestination } from "./workbench-settings-routes";
+import type { SettingsOpenThread } from "./workbench-settings-page-registry";
 import {
   buildCodexHooksSettingsPath,
   type CodexHooksSettingsTarget,
@@ -2486,9 +2487,9 @@ export function WorkbenchRuntime({
         navigateScheduled(buildAutomationsPath(), { replace: true });
     },
   };
-  const openSettingsThreadSessionById = useCallback(
-    async (threadId: string) => {
-      const opened = await openAttachedThreadSessionById(threadId);
+  const openSettingsThreadSessionById = useCallback<SettingsOpenThread>(
+    async (threadId, context) => {
+      const opened = await openAttachedThreadSessionById(threadId, context);
       if (!opened) return;
 
       setSettingsPath(null);

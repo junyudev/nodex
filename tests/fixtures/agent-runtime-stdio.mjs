@@ -125,6 +125,10 @@ for await (const line of { [Symbol.asyncIterator]: () => lines }) {
     } });
     continue;
   }
+  if (request.method === "thread.import-codex") {
+    setTimeout(() => success(request.id, { threadId: request.input.threadId }), 500);
+    continue;
+  }
   if (request.method === "text.generate-structured") {
     // Model work answers well after the transport default but inside its own budget.
     setTimeout(() => success(request.id, { title: "Generated" }), request.input.timeoutMs - 200);

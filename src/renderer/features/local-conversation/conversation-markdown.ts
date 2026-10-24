@@ -175,6 +175,11 @@ function renderUserContext(item: CodexConversationItem, cwd: string | null): str
       lines.push(`- ${inlineCode(rewritePath(attachment.source, cwd))}`);
     }
   }
+  if ((item.unavailableImages?.length ?? 0) > 0) {
+    lines.push("Missing when imported:");
+    for (const image of item.unavailableImages ?? [])
+      lines.push(`- ${inlineCode(image.sourcePath)}`);
+  }
   if ((item.commentAttachments?.length ?? 0) > 0) {
     lines.push("Comments:");
     for (const comment of item.commentAttachments ?? []) {
@@ -332,10 +337,14 @@ function renderSystemEvent(item: CodexConversationItem, cwd: string | null): str
         : titledLines("Generated image", [
             `Status: ${item.generatedImage?.status ?? item.status ?? "pending"}`,
           ]);
-    case "imageView":
-      return (item.imageViewPaths?.length ?? 0) === 1
-        ? "Viewed an image"
-        : `Viewed ${item.imageViewPaths?.length ?? 0} images`;
+    case "imageView": {
+      const missing = item.unavailableImages ?? [];
+      const count = (item.imageViewPaths?.length ?? 0) + missing.length;
+      return titledLines(count === 1 ? "Viewed an image" : `Viewed ${count} images`, [
+        missing.length > 0 ? "Missing when imported:" : null,
+        ...missing.map((image) => `- ${inlineCode(image.sourcePath)}`),
+      ]);
+    }
     case "mcpToolCall":
       return renderMcpContent(item);
     case "dynamicToolCall":

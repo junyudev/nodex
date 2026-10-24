@@ -47,6 +47,7 @@ import type {
   RunAttemptId,
 } from "@t3tools/contracts";
 import {
+  hasImportedThreadHistory,
   ChatImageAttachment,
   OrchestrationV2AppThreadJson as OrchestrationV2AppThreadJsonSchema,
   OrchestrationV2CheckpointJson as OrchestrationV2CheckpointJsonSchema,
@@ -99,6 +100,7 @@ import {
   CONVERSATION_SUMMARY_HEADER,
   handoffCoverage,
   historicalMessage,
+  HISTORY_IMAGE_CONTEXT,
   selectHistory,
 } from "@t3tools/provider-core/server/handoffBudget";
 
@@ -504,17 +506,21 @@ export interface ProjectionHandoffHistory {
 function conversationSummaryFromItems(
   items: readonly OrchestrationV2TurnItem[],
 ): NonNullable<ProjectionHandoffHistory["conversationSummary"]> {
-  const messages = items.filter(
-    (
-      item,
-    ): item is Extract<OrchestrationV2TurnItem, { type: "user_message" | "assistant_message" }> =>
-      item.type === "user_message" || item.type === "assistant_message",
-  );
+  const messages = items.flatMap((item) => {
+    if (
+      item.type !== "user_message" &&
+      item.type !== "assistant_message" &&
+      item.type !== "dynamic_tool"
+    )
+      return [];
+    const message = historicalMessage(item);
+    return message === null ? [] : [message];
+  });
   const sections: Array<{ label: "User" | "Assistant"; body: string }> = [];
   let remaining = CONVERSATION_SUMMARY_CHAR_CAP - CONVERSATION_SUMMARY_HEADER.length - 2;
   let truncatedItems = 0;
   for (const message of messages.slice(-256).toReversed()) {
-    const label = message.type === "user_message" ? "User" : "Assistant";
+    const label = message.role === "user" ? "User" : "Assistant";
     if (remaining <= label.length + 2) break;
     const characters = Array.from(message.text);
     const truncated = characters.length + label.length + 2 > remaining;
@@ -2255,7 +2261,7 @@ export function isTurnItemAtOrBeforeRun(input: {
   readonly sourceRunOrdinal: number;
 }): boolean {
   if (input.itemRunId === null) {
-    return input.historyOrigin === "v1_import";
+    return hasImportedThreadHistory(input.historyOrigin);
   }
   const ordinal = input.runOrdinalById.get(input.itemRunId);
   return ordinal !== undefined && ordinal <= input.sourceRunOrdinal;
@@ -2620,7 +2626,9 @@ function itemCountThroughRun(input: {
     return 0;
   }
 
-  let count = input.state.thread.historyOrigin === "v1_import" ? input.state.runlessItemCount : 0;
+  let count = hasImportedThreadHistory(input.state.thread.historyOrigin)
+    ? input.state.runlessItemCount
+    : 0;
   for (const [runId, itemCount] of input.state.itemCountByRunId) {
     const run = input.state.runById.get(runId);
     if (
@@ -3726,11 +3734,16 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
                 payload_json = excluded.payload_json
             `;
             if (event.payload.type === "dynamic_tool" && event.payload.status === "completed") {
+              if (event.payload.attachments !== undefined)
+                yield* sql`DELETE FROM orchestration_v2_projection_attachment_refs WHERE owner_id = ${event.payload.id}`;
               yield* insertAttachmentRefs(
                 event.payload.id,
                 event.payload.threadId,
                 event.payload.runId,
-                threadHtmlRenderAttachmentIds(event.payload.threadId, [event.payload]),
+                [
+                  ...(event.payload.attachments ?? []).map((attachment) => attachment.id),
+                  ...threadHtmlRenderAttachmentIds(event.payload.threadId, [event.payload]),
+                ],
               );
             }
             break;
@@ -4052,7 +4065,7 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
                           SELECT 1
                           FROM orchestration_v2_projection_threads AS source_thread
                           WHERE source_thread.thread_id = item.thread_id
-                            AND json_extract(source_thread.payload_json, '$.historyOrigin') = 'v1_import'
+                            AND json_extract(source_thread.payload_json, '$.historyOrigin') IN ('v1_import', 'native_import')
                         )
                       )
                       OR run.ordinal <= (
@@ -4786,7 +4799,7 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
               AND ${capturedRunVisibility(localWindow.requiredRunId === undefined ? null : (localWindow.requiredHistoryRevision ?? null))}
               AND (${localWindow.requiredRunId ?? null} IS NULL OR run.ordinal <= (SELECT ordinal FROM orchestration_v2_projection_runs
                 WHERE thread_id = ${threadId} AND run_id = ${localWindow.requiredRunId ?? null} LIMIT 1)
-                OR (item.run_id IS NULL AND ${projection.thread.historyOrigin === "v1_import" ? 1 : 0} = 1))
+                OR (item.run_id IS NULL AND ${hasImportedThreadHistory(projection.thread.historyOrigin) ? 1 : 0} = 1))
             LIMIT 1
           `;
         const prefix =
@@ -4801,7 +4814,7 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
                 OR (item.ordinal = ${oldestLocal.item.ordinal} AND item.turn_item_id < ${oldestLocal.sourceItemId}))
               AND ${capturedRunVisibility(localWindow.requiredRunId === undefined ? null : (localWindow.requiredHistoryRevision ?? null))}
               AND (${localWindow.requiredRunId ?? null} IS NULL
-                OR (item.run_id IS NULL AND ${projection.thread.historyOrigin === "v1_import" ? 1 : 0} = 1)
+                OR (item.run_id IS NULL AND ${hasImportedThreadHistory(projection.thread.historyOrigin) ? 1 : 0} = 1)
                 OR run.ordinal <= (SELECT ordinal FROM orchestration_v2_projection_runs
                   WHERE thread_id = ${threadId} AND run_id = ${localWindow.requiredRunId ?? null} LIMIT 1))
             LIMIT 1
@@ -4903,7 +4916,7 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
                 (SELECT ordinal FROM orchestration_v2_projection_turn_items
                   WHERE thread_id = ${forkedFrom.threadId} AND run_id IS NULL
                     AND EXISTS (SELECT 1 FROM orchestration_v2_projection_threads
-                      WHERE thread_id = ${forkedFrom.threadId} AND json_extract(payload_json, '$.historyOrigin') = 'v1_import')
+                      WHERE thread_id = ${forkedFrom.threadId} AND json_extract(payload_json, '$.historyOrigin') IN ('v1_import', 'native_import'))
                   ORDER BY ordinal DESC, turn_item_id DESC LIMIT 1), -1) AS ordinal
             )
             SELECT ordinal, (SELECT turn_item_id FROM orchestration_v2_projection_turn_items
@@ -5741,7 +5754,7 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
                     AND sources.depth < 128
                     AND NOT EXISTS (SELECT 1 FROM json_each(sources.visited) WHERE value = source.thread_id)
                 ) SELECT sources.thread_id, sources.max_run_ordinal, sources.history_revision, sources.depth,
-                  json_extract(thread.payload_json, '$.historyOrigin') = 'v1_import' AS imported
+                  json_extract(thread.payload_json, '$.historyOrigin') IN ('v1_import', 'native_import') AS imported
                 FROM sources INNER JOIN orchestration_v2_projection_threads AS thread ON thread.thread_id = sources.thread_id
                 WHERE sources.depth > 0 ORDER BY sources.depth DESC`;
             if (inherited.some((source) => source.depth === 128))
@@ -5815,7 +5828,11 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
                 OR EXISTS (SELECT 1 FROM json_each(json_extract(handoffs.payload_json, '$.delivery.omittedItemIds')) WHERE value = items.turn_item_id)))`
           }
         `;
-            const supported = sql`items.type IN ('user_message','assistant_message','command_execution','error','run_interrupt_result','file_change','proposed_plan')`;
+            const mediaTool = sql`items.type = 'dynamic_tool' AND
+              (COALESCE(json_array_length(items.payload_json,'$.unavailableImages'),0) > 0
+                OR COALESCE(json_array_length(items.payload_json,'$.attachments'),0) > 0)`;
+            const conversational = sql`(items.type IN ('user_message','assistant_message') OR (${mediaTool}))`;
+            const supported = sql`(items.type IN ('user_message','assistant_message','command_execution','error','run_interrupt_result','file_change','proposed_plan') OR (${mediaTool}))`;
             const range = yield* sql<{
               first_ordinal: number | null;
               last_ordinal: number | null;
@@ -5854,7 +5871,7 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
               conversational: number;
             }>`
           SELECT COUNT(*) AS total, COALESCE(SUM(CASE WHEN ${supported} THEN 1 ELSE 0 END), 0) AS historical,
-            COALESCE(SUM(CASE WHEN items.type IN ('user_message','assistant_message') THEN 1 ELSE 0 END),0) AS conversational
+            COALESCE(SUM(CASE WHEN ${conversational} THEN 1 ELSE 0 END),0) AS conversational
           FROM orchestration_v2_projection_turn_items AS items WHERE ${itemPredicate}
         `;
             const first = yield* sql<{ id: string }>`SELECT items.turn_item_id AS id
@@ -5889,7 +5906,7 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
                 threadId,
                 cause: "Context handoff exceeds the model selection bound.",
               });
-            const text = sql`CASE items.type
+            const contentText = sql`CASE items.type
           WHEN 'user_message' THEN json_extract(items.payload_json, '$.text')
           WHEN 'assistant_message' THEN json_extract(items.payload_json, '$.text')
           WHEN 'command_execution' THEN 'Command: ' || json_extract(items.payload_json, '$.input') || char(10) ||
@@ -5897,7 +5914,21 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
           WHEN 'error' THEN json_extract(items.payload_json, '$.failure.message')
           WHEN 'run_interrupt_result' THEN json_extract(items.payload_json, '$.message')
           WHEN 'file_change' THEN 'File change: ' || json_extract(items.payload_json, '$.fileName')
-          WHEN 'proposed_plan' THEN json_extract(items.payload_json, '$.markdown') END`;
+          WHEN 'proposed_plan' THEN json_extract(items.payload_json, '$.markdown')
+          WHEN 'dynamic_tool' THEN CASE WHEN json_extract(items.payload_json,'$.toolName') = 'imageView'
+            THEN 'Viewed image.' ELSE COALESCE(json_extract(items.payload_json,'$.toolName'),'Tool image.') END END`;
+            const imageText = sql`COALESCE((SELECT group_concat(line, char(10)) FROM (
+              SELECT ${HISTORY_IMAGE_CONTEXT.availablePrefix} || json_extract(value,'$.name') ||
+                ${HISTORY_IMAGE_CONTEXT.availableSeparator} || json_extract(value,'$.id') ||
+                ${HISTORY_IMAGE_CONTEXT.availableSuffix} AS line
+              FROM json_each(items.payload_json,'$.attachments') WHERE json_extract(value,'$.type') = 'image'
+              UNION ALL
+              SELECT ${HISTORY_IMAGE_CONTEXT.unavailablePrefix} || json_extract(value,'$.name') ||
+                ${HISTORY_IMAGE_CONTEXT.unavailableSuffix} AS line
+              FROM json_each(items.payload_json,'$.unavailableImages')
+            )), '')`;
+            const text = sql`COALESCE(${contentText},'') || CASE WHEN ${imageText} = '' THEN ''
+              ELSE CASE WHEN COALESCE(${contentText},'') = '' THEN '' ELSE char(10) END || ${imageText} END`;
             const messageJson = sql`json_object('role', CASE WHEN items.type = 'user_message' THEN 'user' ELSE 'assistant' END,
           'text', ${text}, 'threadId', items.thread_id, 'runId', items.run_id,
           'itemId', items.turn_item_id, 'providerThreadId', items.provider_thread_id,
@@ -6010,11 +6041,11 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
               WITH recent AS MATERIALIZED (
                 SELECT items.turn_item_id AS id, items.ordinal, ${sourceDepth} AS depth, items.type
                 FROM orchestration_v2_projection_turn_items AS items
-                WHERE ${itemPredicate} AND items.type IN ('user_message','assistant_message')
+                WHERE ${itemPredicate} AND ${conversational}
                 ORDER BY ${reverseChronological} LIMIT 256
               ), sizes AS (
                 SELECT recent.*, CASE recent.type WHEN 'user_message' THEN 'User' ELSE 'Assistant' END AS label,
-                  length(json_extract(items.payload_json,'$.text')) AS chars
+                  length(${text}) AS chars
                 FROM recent JOIN orchestration_v2_projection_turn_items AS items ON items.turn_item_id = recent.id
               ), positioned AS (
                 SELECT *, COALESCE(SUM(chars + length(label) + 4) OVER (
@@ -6027,7 +6058,7 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
               ), bodies AS (
                 SELECT admitted.ordinal, admitted.depth, admitted.id, admitted_chars < chars AS truncated,
                   json_object('label', label, 'body', CASE WHEN admitted_chars < chars THEN '... ' ELSE '' END ||
-                    substr(json_extract(items.payload_json,'$.text'), chars - admitted_chars + 1, admitted_chars)) AS payload_json
+                    substr(${text}, chars - admitted_chars + 1, admitted_chars)) AS payload_json
                 FROM admitted JOIN orchestration_v2_projection_turn_items AS items ON items.turn_item_id = admitted.id
                 WHERE admitted_chars >= 0
               ), bounded AS (
@@ -7560,7 +7591,7 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
               OR (source.local = 0 AND source.max_run_ordinal >= 0
                 AND ${capturedRunVisibility(sql`source.history_revision`)}
                 AND (run.ordinal <= source.max_run_ordinal
-                  OR (item.run_id IS NULL AND json_extract(thread.payload_json, '$.historyOrigin') = 'v1_import'))))
+                  OR (item.run_id IS NULL AND json_extract(thread.payload_json, '$.historyOrigin') IN ('v1_import', 'native_import')))))
             AND NOT (item.type = 'run_interrupt_result'
               AND EXISTS (SELECT 1 FROM orchestration_v2_projection_run_attempts AS attempt
                 WHERE attempt.run_id = item.run_id AND attempt.root_node_id = item.node_id AND attempt.status = 'superseded')
@@ -9491,6 +9522,11 @@ export const layerMemory: Layer.Layer<ProjectionStoreV2> = Layer.effect(
             ...new Set([
               ...projection.messages.flatMap((message) =>
                 message.attachments.map((attachment) => attachment.id),
+              ),
+              ...projection.turnItems.flatMap((item) =>
+                item.type === "dynamic_tool"
+                  ? (item.attachments ?? []).map((attachment) => attachment.id)
+                  : [],
               ),
               ...threadHtmlRenderAttachmentIds(
                 threadId,

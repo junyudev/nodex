@@ -481,6 +481,7 @@ it.effect(
           [
             { threadId: "thread", operationId: "keep", recoveryRequired: true },
             { threadId: "orphan", operationId: "missing", recoveryRequired: false },
+            { threadId: "import", operationId: "codex-import:pending", recoveryRequired: true },
           ],
           [{ threadId: "thread", operationId: "terminal", recoveryRequired: true }],
         ],

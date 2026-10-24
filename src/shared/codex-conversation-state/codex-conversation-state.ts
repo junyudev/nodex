@@ -53,7 +53,7 @@ import type { ThreadTokenUsage } from "@nodex/codex-app-server-protocol/v2/Threa
 import { isCodexProtocolThreadItem } from "../codex-protocol-thread-item";
 import type { CodexQueuedFollowUp } from "../codex-queued-follow-up-state";
 import { normalizeCodexServiceTier } from "../codex-service-tier";
-import type { CodexItemStatus } from "../types";
+import type { CodexImportedMarkdownImage, CodexItemStatus, CodexUnavailableImage } from "../types";
 import type { ConversationRecovery } from "../conversation-recovery";
 import { settleCodexProviderRecovery } from "./codex-provider-recovery";
 import type {
@@ -480,6 +480,17 @@ export type CodexUserMessageInputIntent = "queued" | "steer" | "promotedToSteer"
 export type CodexCanonicalUserMessageItem = Extract<ThreadItem, { type: "userMessage" }> & {
   readonly origin?: CodexUserMessageOrigin;
   readonly inputIntent?: CodexUserMessageInputIntent;
+  readonly unavailableImages?: readonly CodexUnavailableImage[];
+};
+
+/** Imported replies render owned copies in place of their original Markdown image files. */
+export type CodexCanonicalAgentMessageItem = Extract<ThreadItem, { type: "agentMessage" }> & {
+  readonly importedImages?: readonly CodexImportedMarkdownImage[];
+};
+
+/** An imported inspection of a missing picture keeps `path` as history only and never loads it. */
+export type CodexCanonicalImageViewItem = Extract<ThreadItem, { type: "imageView" }> & {
+  readonly unavailableImages?: readonly CodexUnavailableImage[];
 };
 
 export interface CodexCanonicalTodoListItem {
@@ -604,11 +615,15 @@ export type CodexCanonicalGeneratedItem =
           | "collabAgentToolCall"
           | "contextCompaction"
           | "userMessage"
+          | "agentMessage"
+          | "imageView"
           | "dynamicToolCall"
           | "mcpToolCall";
       }
     >
   | CodexCanonicalUserMessageItem
+  | CodexCanonicalAgentMessageItem
+  | CodexCanonicalImageViewItem
   | CodexCanonicalDynamicToolCallItem
   | CodexCanonicalMcpToolCallItem
   | CodexCanonicalImageGenerationItem

@@ -5,6 +5,7 @@ import type {
 import type * as DateTime from "effect/DateTime";
 import type * as Brand from "effect/Brand";
 import type {
+  ModelSelection,
   OrchestrationV2Command,
   OrchestrationV2StoredEvent,
   OrchestrationV2ThreadHistoryPage,
@@ -181,6 +182,18 @@ export interface AgentRootActivity {
 }
 
 export interface AgentRuntimeOperations {
+  readonly "thread.import-codex": {
+    readonly input: {
+      readonly commandId: string;
+      readonly threadId: string;
+      readonly projectId: string;
+      readonly title: string;
+      readonly sourceNativeThreadId: string;
+      readonly modelSelection: AgentWire<ModelSelection>;
+      readonly cwd: string;
+    };
+    readonly output: { readonly threadId: string };
+  };
   readonly "execution.handoff.pending": {
     readonly input: { readonly cursor?: string };
     readonly output: AgentWire<

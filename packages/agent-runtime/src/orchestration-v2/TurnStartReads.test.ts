@@ -856,7 +856,7 @@ it.effect.each(["sqlite", "memory"] as const)(
 );
 
 it.effect.each(["sqlite", "memory"] as const)(
-  "restores captured fork ancestry within one delivery budget in %s",
+  "restores imported history and captured fork ancestry within one delivery budget in %s",
   (storage) =>
     Effect.gen(function* () {
       const store = yield* ProjectionStore.ProjectionStoreV2;
@@ -881,6 +881,7 @@ it.effect.each(["sqlite", "memory"] as const)(
           branch: null,
           worktreePath: null,
           activeProviderThreadId: null,
+          ...(threadId === grandparentId ? { historyOrigin: "native_import" as const } : {}),
           lineage: {
             parentThreadId: forkedFrom?.type === "run" ? forkedFrom.threadId : null,
             relationshipToParent: forkedFrom === null ? null : "fork",
@@ -973,6 +974,39 @@ it.effect.each(["sqlite", "memory"] as const)(
         return { runId, itemId };
       });
       yield* putThread(grandparentId);
+      const importedItemId = TurnItemId.make("ancestry:imported-opening");
+      yield* store.apply({
+        id: EventId.make("ancestry:imported-opening"),
+        type: "turn-item.updated",
+        threadId: grandparentId,
+        occurredAt: now,
+        payload: {
+          id: importedItemId,
+          threadId: grandparentId,
+          runId: null,
+          nodeId: null,
+          providerThreadId: null,
+          providerTurnId: null,
+          nativeItemRef: null,
+          parentItemId: null,
+          ordinal: 0,
+          status: "completed",
+          title: null,
+          startedAt: now,
+          completedAt: now,
+          updatedAt: now,
+          type: "user_message",
+          messageId: MessageId.make("ancestry:imported-message"),
+          inputIntent: "turn_start",
+          createdBy: "user",
+          creationSource: "web",
+          text: "Use the original design as the starting point.",
+          attachments: [],
+          unavailableImages: [
+            { name: "design.png", sourcePath: "design.png", reason: "source_missing" },
+          ],
+        },
+      });
       const inheritedGrandparent = yield* putRun(grandparentId, 1);
       yield* putThread(parentId, {
         type: "run",
@@ -1003,9 +1037,11 @@ it.effect.each(["sqlite", "memory"] as const)(
         threadId: childId,
         runOrdinalTo: 3,
         runStatuses: ["completed"] as const,
+        includeConversationSummary: true,
         budget: 16_000,
       };
       const expected = [
+        importedItemId,
         inheritedGrandparent.itemId,
         inheritedParent.itemId,
         forkBoundary.itemId,
@@ -1016,6 +1052,15 @@ it.effect.each(["sqlite", "memory"] as const)(
       assert.deepEqual(
         history.history.messages.map((message) => message.itemId),
         expected,
+      );
+      assert.include(
+        history.history.messages[0]?.text ?? "",
+        "[Image unavailable: design.png; original source file is missing.]",
+      );
+      assert.isTrue(
+        history.conversationSummary?.sections.some((section) =>
+          section.body.includes("Image unavailable: design.png"),
+        ) ?? false,
       );
       const delta = yield* store.getHandoffHistory({
         ...input,
@@ -1080,7 +1125,7 @@ it.effect.each(["sqlite", "memory"] as const)(
         (yield* store.getHandoffHistory({ ...input, runOrdinalTo: 0 })).history.messages.map(
           (message) => message.itemId,
         ),
-        expected.slice(0, 3),
+        expected.slice(0, 4),
       );
       assert.deepEqual(
         (yield* store.getHandoffHistory({ ...input, runOrdinalFrom: 2 })).history.messages.map(
@@ -1119,7 +1164,7 @@ it.effect.each(["sqlite", "memory"] as const)(
           ...input,
           excludeDelivered: { providerThreadId: providerId, nativeThreadId: "native:old" },
         })).history.messages.map((message) => message.itemId),
-        expected.slice(1),
+        expected.filter((id) => id !== inheritedGrandparent.itemId),
       );
       assert.deepEqual(
         (yield* store.getHandoffHistory({

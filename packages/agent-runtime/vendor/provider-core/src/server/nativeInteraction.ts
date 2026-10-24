@@ -9,11 +9,18 @@ import type {
   ThreadResumeParams, ThreadResumeResponse, ThreadForkParams, ThreadForkResponse,
   TurnStartParams, TurnStartResponse, TurnInterruptParams, TurnInterruptResponse,
   ThreadUnsubscribeParams, ThreadUnsubscribeResponse, ExperimentalFeatureListParams, ExperimentalFeatureListResponse,
+  ThreadReadParams, ThreadReadResponse, ThreadTurnsListParams, ThreadTurnsListResponse,
+  ThreadItemsListParams, ThreadItemsListResponse,
+  ThreadTimelineListParams, ThreadTimelineListResponse,
 } from "@nodex/codex-app-server-protocol/v2";
 import type { ProviderAdapterV2Error } from "./ProviderAdapter.ts";
 
 /** Finite native capabilities on the Session's existing client; never a transport RPC. */
 export interface CodexNativeMethods {
+  "thread/read": [ThreadReadParams, ThreadReadResponse];
+  "thread/turns/list": [ThreadTurnsListParams, ThreadTurnsListResponse];
+  "thread/items/list": [ThreadItemsListParams, ThreadItemsListResponse];
+  "thread/timeline/list": [ThreadTimelineListParams, ThreadTimelineListResponse];
   "thread/realtime/start": [ThreadRealtimeStartParams, ThreadRealtimeStartResponse];
   "thread/realtime/stop": [ThreadRealtimeStopParams, ThreadRealtimeStopResponse];
   "thread/realtime/appendText": [ThreadRealtimeAppendTextParams, ThreadRealtimeAppendTextResponse];

@@ -21,6 +21,7 @@ export interface NativeSessionCatalogEntry {
   readonly nativeSessionId: string;
   readonly title: string;
   readonly cwd: string;
+  readonly cwdAvailable?: boolean;
   readonly updatedAt: number;
   readonly attachedThreadId?: string;
   readonly attachedSessionId?: string;
@@ -44,4 +45,33 @@ export interface NativeSessionAttachResult {
   readonly sessionId: string;
   readonly threadId: string;
   readonly alreadyAttached: boolean;
+}
+
+export interface CodexThreadImportPreviewInput {
+  readonly reference: string;
+}
+
+export interface CodexThreadImportPreview {
+  readonly nativeSessionId: string;
+  readonly nativeHome: string;
+  readonly title: string;
+  readonly cwd: string;
+  readonly cwdAvailable: boolean;
+  readonly updatedAt: number;
+}
+
+/** A retry retains its request identity and all selected import parameters. */
+export interface CodexThreadImportInput {
+  readonly requestId: string;
+  readonly acceptedAt: number;
+  readonly nativeSessionId: string;
+  readonly expectedHome: string;
+  readonly projectId: string | null;
+  readonly cwd: string;
+}
+
+export interface CodexThreadImportResult {
+  readonly sessionId: string;
+  readonly threadId: string;
+  readonly projectId: string | null;
 }

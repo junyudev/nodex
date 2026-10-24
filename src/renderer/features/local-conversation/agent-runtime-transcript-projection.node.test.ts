@@ -1,13 +1,22 @@
 import { describe, expect, test } from "vite-plus/test";
 import type { AgentTurnItem } from "@nodex/agent-runtime/contracts";
 import { projectCodexCanonicalTurnItemViews } from "../../../shared/codex-canonical-item-projector";
-import { buildAgentRuntimeToolResultImageSource } from "../../../shared/agent-runtime-attachments";
+import { projectCodexItemViewToTranscriptEntry } from "../../../shared/codex-transcript-entry-projection";
+import {
+  buildAgentRuntimeAttachmentSource,
+  buildAgentRuntimeToolResultImageSource,
+} from "../../../shared/agent-runtime-attachments";
 import {
   isAgentRuntimeItemHidden,
   parseAgentRuntimeToolName,
+  projectAgentRuntimeExportTurns,
   projectAgentRuntimeHookRun,
   projectAgentRuntimeItem,
+  type AgentRuntimeThread,
 } from "./agent-runtime-transcript-projection";
+import { buildRendererItemStream } from "./projection/build-renderer-item-stream";
+import { bucketizeTurnItems } from "./projection/bucketize-turn-items";
+import { buildTurnViewModel } from "./projection/build-turn-view-model";
 
 const at = "2026-10-15T00:00:00.000Z";
 const base = {
@@ -377,6 +386,208 @@ describe("Runtime application tool presentation", () => {
     }
     expect(projectAgentRuntimeItem(tool("nodex_app.task_send"))).not.toBeNull();
     expect(projectAgentRuntimeItem(tool("other.task_status"))).not.toBeNull();
+  });
+});
+
+describe("Runtime imported images", () => {
+  const thread = {
+    id: base.threadId,
+    projectId: "project",
+    title: "Imported chat",
+    createdBy: "user",
+    creationSource: "web",
+    providerInstanceId: "codex",
+    modelSelection: { instanceId: "codex", model: "gpt" },
+    runtimeMode: "full-access",
+    interactionMode: "default",
+    branch: null,
+    worktreePath: "/replacement",
+    activeProviderThreadId: null,
+    historyOrigin: "native_import",
+    lineage: { parentThreadId: null, relationshipToParent: null, rootThreadId: base.threadId },
+    forkedFrom: null,
+    createdAt: at,
+    updatedAt: at,
+    archivedAt: null,
+    settledOverride: null,
+    settledAt: null,
+    lastVisitedAt: null,
+    deletedAt: null,
+  } satisfies AgentRuntimeThread;
+  const image = {
+    type: "image" as const,
+    id: "copied-image",
+    name: "copied.png",
+    mimeType: "image/png",
+    sizeBytes: 20,
+  };
+  const projectHistory = (items: readonly AgentTurnItem[]) => {
+    const canonical = items.flatMap((item) => projectAgentRuntimeItem(item) ?? []);
+    const views = projectCodexCanonicalTurnItemViews({
+      threadId: base.threadId,
+      turnId: null,
+      items: canonical,
+      observedAtMs: Date.parse(at),
+      turnStatus: "completed",
+    });
+    return {
+      canonical,
+      views,
+      entries: views.map((view, sequence) =>
+        projectCodexItemViewToTranscriptEntry(view, "replay", sequence),
+      ),
+    };
+  };
+  const exportHistory = (items: readonly AgentTurnItem[]) =>
+    projectAgentRuntimeExportTurns(
+      thread,
+      items.map((item, position) => ({
+        position,
+        visibility: "local",
+        sourceThreadId: item.threadId,
+        sourceItemId: item.id,
+        item,
+      })),
+      [],
+    );
+
+  test.each(["", "Continue"])(
+    "retains opening missing-image metadata when turn params rebuild the user message %j",
+    (text) => {
+      const unavailable = { name: "missing.png", sourcePath: "/removed/missing.png" };
+      const item = message({
+        runId: null,
+        text,
+        attachments: [],
+        unavailableImages: [{ ...unavailable, reason: "source_missing" }],
+      });
+      const turns = exportHistory([item]);
+
+      expect(turns).toHaveLength(1);
+      expect(turns[0]?.clientUserMessageId).toBe(item.messageId);
+      expect(turns[0]?.items).toHaveLength(1);
+      expect(turns[0]?.items[0]).toMatchObject({
+        rawItemId: item.id,
+        kind: "userMessage",
+        markdownText: text,
+        unavailableImages: [unavailable],
+      });
+      expect(turns[0]?.items[0]?.userAttachments ?? []).toEqual([]);
+    },
+  );
+
+  test.each(["copied", "missing"] as const)(
+    "keeps an imported %s image inspection through completed-turn rendering when output is omitted",
+    (availability) => {
+      const unavailable = { name: "viewed.png", sourcePath: "/removed/viewed.png" };
+      const itemId = `view:${availability}`;
+      const ownedSource = buildAgentRuntimeAttachmentSource({
+        sourceThreadId: base.threadId,
+        itemId,
+        attachmentId: image.id,
+      });
+      const turns = exportHistory([
+        message({ runId: null }),
+        {
+          ...base,
+          type: "dynamic_tool",
+          toolName: "imageView",
+          id: itemId,
+          runId: null,
+          ordinal: 2,
+          input: { path: unavailable.sourcePath },
+          outputOmitted: true,
+          ...(availability === "copied"
+            ? { attachments: [image] }
+            : { unavailableImages: [{ ...unavailable, reason: "source_missing" as const }] }),
+        },
+        {
+          ...base,
+          type: "assistant_message",
+          id: "reply",
+          messageId: "reply",
+          runId: null,
+          ordinal: 3,
+          text: "Done",
+          streaming: false,
+        },
+      ]);
+      expect(turns).toHaveLength(1);
+      const turn = turns[0]!;
+      const items = buildRendererItemStream({
+        entries: turn.items,
+        requests: [],
+        turnStatus: "completed",
+      });
+      const inspection = items.find((item) => item.type === "imageView");
+      const expected = {
+        type: "imageView",
+        imageViewPaths: availability === "copied" ? [ownedSource] : [],
+        ...(availability === "missing" ? { unavailableImages: [unavailable] } : {}),
+      };
+      expect(inspection).toMatchObject(expected);
+
+      const buckets = bucketizeTurnItems({ items, turnStatus: "completed" });
+      expect(
+        buckets.agentItems.map((item) => item.id),
+        "bucketizer dropped the inspection",
+      ).toContain(itemId);
+      const model = buildTurnViewModel({
+        turnId: turn.turnId,
+        turn,
+        buckets,
+        isLatestTurn: true,
+        isStreamingTurn: false,
+        isBlocked: false,
+      });
+      expect(model.blocks.find((block) => block.type === "imageView")).toMatchObject(expected);
+    },
+  );
+
+  test("carries assistant Markdown image bindings through history with decoded entity keys and owned targets", () => {
+    const sourcePath = "entity&image.png";
+    const missingPath = "removed&image.png";
+    const text = "![Saved](entity&amp;image.png)\n![Missing](removed&amp;image.png)";
+    const ownedSource = buildAgentRuntimeAttachmentSource({
+      sourceThreadId: base.threadId,
+      itemId: base.id,
+      attachmentId: image.id,
+    });
+    const importedImages = [
+      { sourcePath, name: image.name, source: ownedSource },
+      { sourcePath: missingPath, name: "removed.png", source: null },
+    ];
+    const { canonical, views, entries } = projectHistory([
+      {
+        ...base,
+        runId: null,
+        type: "assistant_message",
+        messageId: "assistant:imported",
+        text,
+        streaming: false,
+        attachments: [image],
+        importedImageLinks: [
+          { sourcePath, attachmentId: image.id },
+          { sourcePath: missingPath, attachmentId: null },
+        ],
+        unavailableImages: [
+          { name: "removed.png", sourcePath: missingPath, reason: "source_missing" },
+        ],
+      },
+    ]);
+
+    expect(canonical[0]).toMatchObject({ type: "agentMessage", text, importedImages });
+    expect(views).toHaveLength(1);
+    expect(views[0]).toMatchObject({
+      normalizedKind: "assistantMessage",
+      markdownText: text,
+      importedImages,
+    });
+    expect(entries[0]).toMatchObject({
+      kind: "assistantMessage",
+      markdownText: text,
+      importedImages,
+    });
   });
 });
 

@@ -8,6 +8,7 @@ import * as Effect from "effect/Effect";
 
 import type { PendingOrchestrationEffectV2 } from "./EffectOutbox.ts";
 import type * as IdAllocator from "@t3tools/provider-core/server/IdAllocator";
+import { CODEX_THREAD_IMPORT_OPERATION_PREFIX } from "../nodex/CodexImportLimits.ts";
 
 export interface ThreadDeletionPlan {
   readonly events: ReadonlyArray<OrchestrationV2DomainEvent>;
@@ -61,6 +62,14 @@ export const planThreadDeletion = Effect.fn("ThreadDeletion.planThreadDeletion")
     occurredAt: now,
     payload: {
       ...projection.thread,
+      ...(projection.thread.historyOrigin === "native_import" &&
+      projection.thread.executionHandoff?.operationId.startsWith(
+        CODEX_THREAD_IMPORT_OPERATION_PREFIX,
+      ) &&
+      projection.thread.activeProviderThreadId === null &&
+      projection.runs.length === 0
+        ? { executionHandoff: null }
+        : {}),
       deletedAt: projection.thread.deletedAt ?? now,
       titleRegeneration: null,
       updatedAt: now,

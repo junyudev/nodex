@@ -4,7 +4,10 @@ import {
   ImagePreviewDialog,
   resolveImageDisplaySource,
 } from "@/features/user-attachment-image-editor";
+import type { CodexUnavailableImage } from "@/lib/types";
+import { parseAgentRuntimeAttachmentSource } from "../../../../../shared/agent-runtime-attachments";
 import { ThreadActivityShell, ThreadRichActivityHeader } from "./tools/tool-primitives";
+import { NO_UNAVAILABLE_IMAGES, UnavailableImageTile } from "./unavailable-image";
 import { useConversationImageAsset } from "./use-conversation-image-asset";
 
 function InspectedImageButton({
@@ -108,13 +111,41 @@ function InspectedImageThumbnail({
   );
 }
 
-export function ImageViewSurface({ imagePaths }: { imagePaths: readonly string[] }) {
+function imageViewSummary(viewed: number, missing: number): string {
+  const total = viewed + missing;
+  const summary = total === 1 ? "Viewed an image" : `Viewed ${total} images`;
+  if (missing === 0) return summary;
+  if (viewed > 0) return `${summary} · ${missing} missing`;
+  return `${summary} · ${total === 1 ? "file" : "files"} missing`;
+}
+
+/** Owned runtime copies resolve to bytes first; the preview dialog only loads direct sources. */
+function InspectedImagePreview({
+  source,
+  ...props
+}: Omit<Parameters<typeof ImagePreviewDialog>[0], "src" | "alt" | "open"> & {
+  source: string;
+}) {
+  const runtime = parseAgentRuntimeAttachmentSource(source) !== null;
+  const asset = useConversationImageAsset(runtime ? source : "", { shouldLoadFileDataUrl: true });
+  const src = runtime ? asset.previewSrc : source;
+  if (!src) return null;
+  return <ImagePreviewDialog {...props} open src={src} alt="Inspected image" allowLocalPath />;
+}
+
+export function ImageViewSurface({
+  imagePaths,
+  unavailableImages = NO_UNAVAILABLE_IMAGES,
+}: {
+  imagePaths: readonly string[];
+  unavailableImages?: readonly CodexUnavailableImage[];
+}) {
   const [expanded, setExpanded] = useState(false);
   const [openIndex, setOpenIndex] = useState<number | null>(null);
   const previewTriggerRef = useRef<HTMLButtonElement | null>(null);
   const sources = imagePaths;
-  const canExpand = sources.length > 0;
-  const summary = sources.length === 1 ? "Viewed an image" : `Viewed ${sources.length} images`;
+  const canExpand = sources.length + unavailableImages.length > 0;
+  const summary = imageViewSummary(sources.length, unavailableImages.length);
   const handleOpenChange = (open: boolean) => {
     if (!open) setOpenIndex(null);
   };
@@ -165,6 +196,9 @@ export function ImageViewSurface({ imagePaths }: { imagePaths: readonly string[]
                       }}
                     />
                   ))}
+                  {unavailableImages.map((image, index) => (
+                    <UnavailableImageTile key={`${image.sourcePath}:${index}`} image={image} />
+                  ))}
                 </div>
               </div>
             </div>
@@ -172,12 +206,9 @@ export function ImageViewSurface({ imagePaths }: { imagePaths: readonly string[]
         }
       />
       {activeSource ? (
-        <ImagePreviewDialog
-          open
+        <InspectedImagePreview
+          source={activeSource}
           onOpenChange={handleOpenChange}
-          src={activeSource}
-          alt="Inspected image"
-          allowLocalPath
           finalFocus={() => {
             previewTriggerRef.current?.focus();
             return false;

@@ -35,6 +35,7 @@ import * as SqlClient from "effect/sql/SqlClient";
 
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { rollbackThread } from "../../nodex/Rollback.ts";
+import { importHistoryEvents } from "../../nodex/CodexImportHistory.ts";
 import { ThreadManagementService } from "../ThreadManagementService.ts";
 import * as IdAllocator from "@t3tools/provider-core/server/IdAllocator";
 import * as CheckpointStore from "../../checkpointing/CheckpointStore.ts";
@@ -617,7 +618,7 @@ describe("orchestration v2 provider switching", () => {
   );
 
   it.live.each([0, 1, 2])(
-    "rewinds across Agents without reviving discarded native history after restart (case %s)",
+    "rewinds native and imported chats across Agents without reviving discarded history after restart (case %s)",
     (scenario) =>
       Effect.scoped(
         Effect.gen(function* () {
@@ -738,6 +739,40 @@ describe("orchestration v2 provider switching", () => {
               branch: null,
               worktreePath: null,
             });
+            if (injected) {
+              const sink = yield* EventSink.EventSinkV2;
+              const imported = yield* orchestrator.getThreadProjection(threadId);
+              const now = yield* DateTime.now;
+              yield* sink.write({
+                events: [
+                  {
+                    id: EventId.make("rewind:imported-root"),
+                    type: "thread.metadata-updated",
+                    threadId,
+                    occurredAt: now,
+                    payload: { ...imported.thread, historyOrigin: "native_import" },
+                  },
+                  ...importHistoryEvents({
+                    threadId,
+                    ordinal: 0,
+                    fallbackAt: now,
+                    entry: {
+                      turnId: "imported-source-turn",
+                      startedAtMs: null,
+                      completedAtMs: null,
+                      item: {
+                        type: "userMessage",
+                        id: "imported-source-opening",
+                        clientId: null,
+                        content: [
+                          { type: "text", text: "IMPORTED_SOURCE_CONSTRAINT", text_elements: [] },
+                        ],
+                      },
+                    },
+                  }),
+                ],
+              });
+            }
             yield* send(1, "FIRST_CONSTRAINT", CODEX_MODEL_SELECTION);
             yield* send(2, "DISCARDED_SECOND_MESSAGE", CODEX_MODEL_SELECTION);
             const before = yield* send(3, "DISCARDED_CLAUDE_MESSAGE", CLAUDE_MODEL_SELECTION);
@@ -831,7 +866,26 @@ describe("orchestration v2 provider switching", () => {
               reopened.providerThreads.find((thread) => thread.id === initial.id)?.status,
               "closed",
             );
-            yield* send(4, "REPLACEMENT_ON_CLAUDE", CLAUDE_MODEL_SELECTION);
+            if (injected)
+              assert.isNull(
+                reopened.providerThreads.find(
+                  (thread) => thread.id === reopened.thread.activeProviderThreadId,
+                )?.nativeThreadRef,
+              );
+            const continued = yield* send(4, "REPLACEMENT_ON_CLAUDE", CLAUDE_MODEL_SELECTION);
+            if (injected) {
+              const replacement = (yield* Ref.get(capturedTurns)).at(-1)!;
+              assert.include(
+                nativeHistories.get(replacement.nativeThreadId!)!.join("\n"),
+                "IMPORTED_SOURCE_CONSTRAINT",
+              );
+              assert.equal(
+                continued.contextHandoffs.find(
+                  (handoff) => handoff.targetRunId === continued.runs[3]?.id,
+                )?.strategy,
+                "full_thread_summary",
+              );
+            }
             const after = yield* send(5, "RETURN_TO_CODEX", CODEX_MODEL_SELECTION);
             const turns = yield* Ref.get(capturedTurns);
             assert.notEqual(turns.at(-1)?.nativeThreadId, initial.nativeThreadRef?.nativeId);

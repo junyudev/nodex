@@ -224,6 +224,28 @@ it.live("distinguishes a known remote refusal from an uncertain transport timeou
   }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
 );
 
+it.live("awaits a history import past the ordinary request timeout", () =>
+  Effect.gen(function* () {
+    const connection = yield* acquireAgentRuntimeProcess({
+      executable: process.execPath,
+      entryPath,
+      configuration: { home: "/tmp", cwd: "/tmp", providers: {} },
+      requestTimeoutMs: 200,
+      host: () => Effect.succeed({ sequence: 9 }),
+    });
+    const result = yield* connection.request("thread.import-codex", {
+      commandId: "import:one",
+      threadId: "thread:one",
+      projectId: "project:one",
+      title: "Imported chat",
+      sourceNativeThreadId: "native:one",
+      cwd: "/tmp",
+      modelSelection: { instanceId: "codex", model: "model" },
+    });
+    assert.deepEqual(result, { threadId: "thread:one" });
+  }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+);
+
 it.live(
   "Session-only tool calls preserve null Run and native retirement reaches the lifecycle channel",
   () =>

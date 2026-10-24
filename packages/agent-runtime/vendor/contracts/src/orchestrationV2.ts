@@ -37,7 +37,7 @@ import {
   TrimmedNonEmptyString,
   TurnItemId,
 } from "./baseSchemas.ts";
-import { ChatAttachment } from "./chatAttachment.ts";
+import { ChatAttachment, ChatAttachmentId } from "./chatAttachment.ts";
 import {
   OrchestrationGetFullThreadDiffInput,
   OrchestrationGetFullThreadDiffResult,
@@ -86,7 +86,10 @@ export const OrchestrationV2CreationSource = Schema.Literals([
 ]);
 export type OrchestrationV2CreationSource = typeof OrchestrationV2CreationSource.Type;
 
-export const OrchestrationV2ThreadHistoryOrigin = Schema.Literals(["native", "v1_import"]);
+export const OrchestrationV2ThreadHistoryOrigin = Schema.Literals(["native", "v1_import", "native_import"]);
+export const hasImportedThreadHistory = (
+  origin: typeof OrchestrationV2ThreadHistoryOrigin.Type | undefined,
+): boolean => origin === "v1_import" || origin === "native_import";
 export type OrchestrationV2ThreadHistoryOrigin = typeof OrchestrationV2ThreadHistoryOrigin.Type;
 
 const OrchestrationV2CreationFields = {
@@ -1461,7 +1464,28 @@ export const OrchestrationV2UserMessageInputIntent = Schema.Literals([
 export type OrchestrationV2UserMessageInputIntent =
   typeof OrchestrationV2UserMessageInputIntent.Type;
 
+/** An imported image whose original bytes no longer exist; never a readable attachment. */
+export const OrchestrationV2UnavailableImage = Schema.Struct({
+  name: TrimmedNonEmptyString.check(Schema.isMaxLength(255)),
+  sourcePath: TrimmedNonEmptyString.check(Schema.isMaxLength(4096)),
+  reason: Schema.Literal("source_missing"),
+});
+export type OrchestrationV2UnavailableImage = typeof OrchestrationV2UnavailableImage.Type;
+
+/**
+ * Rebind a historical Markdown image to its independent attachment, or an unavailable record.
+ * sourcePath is a Markdown-decoded URL: escapes/entities are decoded, while percent encoding
+ * and the file: scheme remain unchanged. Renderers decode Markdown escapes/entities before
+ * matching this locator, and never reopen it.
+ */
+export const OrchestrationV2ImportedImageLink = Schema.Struct({
+  sourcePath: TrimmedNonEmptyString.check(Schema.isMaxLength(4096)),
+  attachmentId: Schema.NullOr(ChatAttachmentId),
+});
+export type OrchestrationV2ImportedImageLink = typeof OrchestrationV2ImportedImageLink.Type;
+
 const OrchestrationV2TurnItemBaseFields = {
+  unavailableImages: Schema.optional(Schema.Array(OrchestrationV2UnavailableImage)),
   toolNonExecutionKind: Schema.optional(Schema.String),
   toolSurface: Schema.optional(ToolActivitySurface),
   toolIcon: Schema.optional(ToolActivityIcon),
@@ -1621,6 +1645,7 @@ export const OrchestrationV2TurnItem = Schema.Union([
     messageId: MessageId,
     text: Schema.String,
     attachments: Schema.optional(Schema.Array(ChatAttachment)),
+    importedImageLinks: Schema.optional(Schema.Array(OrchestrationV2ImportedImageLink)),
     streaming: Schema.Boolean,
     memoryCitation: Schema.optional(OrchestrationV2MemoryCitation),
   }),
@@ -1799,6 +1824,7 @@ export const OrchestrationV2TurnItem = Schema.Union([
   Schema.Struct({
     ...OrchestrationV2TurnItemBaseFields,
     type: Schema.Literal("dynamic_tool"),
+    attachments: Schema.optional(Schema.Array(ChatAttachment)),
     mcpToolCall: Schema.optional(CodexMcpToolCall),
     toolName: Schema.NullOr(TrimmedNonEmptyString),
     viewedImagePath: Schema.optional(TrimmedNonEmptyString),
@@ -2413,6 +2439,7 @@ export const OrchestrationV2TurnItemJson = Schema.Union([
     messageId: MessageId,
     text: Schema.String,
     attachments: Schema.optional(Schema.Array(ChatAttachment)),
+    importedImageLinks: Schema.optional(Schema.Array(OrchestrationV2ImportedImageLink)),
     streaming: Schema.Boolean,
     memoryCitation: Schema.optional(OrchestrationV2MemoryCitation),
   }),
@@ -2588,6 +2615,7 @@ export const OrchestrationV2TurnItemJson = Schema.Union([
   Schema.Struct({
     ...OrchestrationV2TurnItemJsonBaseFields,
     type: Schema.Literal("dynamic_tool"),
+    attachments: Schema.optional(Schema.Array(ChatAttachment)),
     mcpToolCall: Schema.optional(CodexMcpToolCall),
     toolName: Schema.NullOr(TrimmedNonEmptyString),
     viewedImagePath: Schema.optional(TrimmedNonEmptyString),

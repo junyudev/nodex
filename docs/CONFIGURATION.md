@@ -110,11 +110,14 @@ leaves native configuration bytes intact. Nodex tasks use full native execution 
 only an explicit native configuration edit updates Codex settings. Nodex desktop plugins use a
 distinct namespace per Profile and are enabled only in its chats.
 
-Sharing a native home does not add all native conversations to the Nodex sidebar. **Settings >
-Conversations** explicitly associates selected root conversations in the active home with this Profile,
-preserving their native IDs and chosen Project. Supported copies from another directory create independent chats;
-unsupported native history reports a failure and leaves the source intact. Import receipts remain
-in the Nodex Profile.
+Sharing a native home does not add all native conversations to the Nodex sidebar. In **Settings >
+Conversations**, importing a Codex conversation creates an independent Nodex chat with copied history
+and its own execution identity. Choose a Project or Projectless destination and an existing working
+directory; a missing source directory requires a replacement. Continuing the copy leaves the source
+conversation unchanged. Existing native connections retain their original identities and read-only
+history. The separate Copy data to Codex workflow retains its native association and conversion
+semantics. Import receipts remain in the Nodex Profile. See
+[Native Conversation Connection Behavior](product-specs/native-conversation-connection-behavior.md).
 
 ## Claude Code instances
 

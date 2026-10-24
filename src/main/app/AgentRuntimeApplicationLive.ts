@@ -32,7 +32,9 @@ import {
 } from "../agent-backend/NativeSessionWorkspace";
 import {
   AgentRuntimeApplication,
+  AgentRuntimeApplicationError,
   make as makeApplication,
+  type AgentRuntimeApplicationConnection,
 } from "../agent-runtime/AgentRuntimeApplication";
 import { AgentChatWorktrees } from "../codex-application/AgentChatWorktrees";
 import { make as makeHost } from "../agent-runtime/AgentRuntimeHost";
@@ -77,6 +79,7 @@ import {
 import { acquireAgentRuntimeProcess } from "../platform/node/AgentRuntimeProcess";
 import { AcpAgentLaunchProbe, live as acpProbeLayer } from "../platform/node/AcpAgentLaunchProbe";
 import { codexAccountHistoryEnvironment } from "../platform/node/CodexAccountHome";
+import { canonicalNativeSessionHome } from "../platform/node/NativeSessionCatalogPaths";
 import { shellQuote } from "../platform/node/NodexCliShell";
 import { openCodeExecutableEnvironment } from "../platform/node/OpenCodeExecutable";
 import { ApplicationSettings } from "../settings/ApplicationSettings";
@@ -206,11 +209,44 @@ const supervisor = Layer.effectContext(
     const ensureProjectlessWorkspaceRoot = fs.makeDirectory(projectlessWorkspaceRoot, {
       recursive: true,
     });
+    // Keyed by generation identity: callers hold the supervisor's usage-tracking view of a process.
+    const prepared = new WeakMap<AgentRuntimeIdentity, AgentRuntimeConfiguration>();
+    const preparedEnvironment = new WeakMap<
+      AgentRuntimeIdentity,
+      Readonly<Record<string, string | undefined>>
+    >();
+    const physicalNativeHistories = (connection: AgentRuntimeApplicationConnection) =>
+      Effect.try(() => {
+        const configuration = prepared.get(connection.identity);
+        const environment = preparedEnvironment.get(connection.identity);
+        if (!configuration || !environment)
+          throw new Error("Physical provider configuration is unavailable");
+        return nativeHistorySources({
+          configuration,
+          environment,
+          homeDirectory: config.homeDirectory,
+          codexHome: platform.accountHome.sharedHome,
+        });
+      });
     const product = yield* makeApplication({
       connect: Deferred.await(ready).pipe(Effect.flatMap((runtime) => runtime.get())),
       currentConnection: Deferred.await(ready).pipe(
         Effect.flatMap((runtime) => runtime.currentConnection),
       ),
+      codexImportSourceHome: (connection) =>
+        Effect.gen(function* () {
+          const histories = yield* physicalNativeHistories(connection);
+          const source = histories.find((history) => history.providerInstanceId === "codex");
+          const sourceHome = source?.driver === "codex" ? source.homePath : null;
+          if (!sourceHome)
+            return yield* new AgentRuntimeApplicationError({
+              operation: "import",
+              message: "Codex history configuration is unavailable",
+            });
+          // Active account and restored history homes are frozen for this Main lifetime, so
+          // provider refresh cannot replace this source after import admission.
+          return yield* Effect.tryPromise(() => canonicalNativeSessionHome(sourceHome));
+        }),
       providerCatalog,
       whileRunning: (effect) =>
         Deferred.await(ready).pipe(
@@ -329,12 +365,6 @@ const supervisor = Layer.effectContext(
       ),
       configurationChanges: settings.composerPredictionSettingsChanges,
     }).pipe(Effect.forkScoped);
-    // Keyed by generation identity: callers hold the supervisor's usage-tracking view of a process.
-    const prepared = new WeakMap<AgentRuntimeIdentity, AgentRuntimeConfiguration>();
-    const preparedEnvironment = new WeakMap<
-      AgentRuntimeIdentity,
-      Readonly<Record<string, string | undefined>>
-    >();
     const drivers = new Map<string, string>();
     const readProviderAuth = yield* makeProviderAuthentication();
     const readConfiguration = Effect.gen(function* () {
@@ -665,19 +695,7 @@ const supervisor = Layer.effectContext(
           yield* fs.copyFile(source.databasePath, databasePath);
           return { ...source, databasePath };
         }),
-      nativeHistories: (connection) =>
-        Effect.try(() => {
-          const configuration = prepared.get(connection.identity);
-          const environment = preparedEnvironment.get(connection.identity);
-          if (!configuration || !environment)
-            throw new Error("Physical provider configuration is unavailable");
-          return nativeHistorySources({
-            configuration,
-            environment,
-            homeDirectory: config.homeDirectory,
-            codexHome: platform.accountHome.sharedHome,
-          });
-        }),
+      nativeHistories: physicalNativeHistories,
     });
     // Managed worktree listing and retention learn about Agent chats from here on.
     yield* (yield* AgentChatWorktrees).register(product.worktreeChats);

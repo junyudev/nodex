@@ -26,6 +26,18 @@ export const make = Effect.gen(function* () {
       ...(input.sourceThreadId === undefined ? {} : { sourceThreadId: input.sourceThreadId }),
     });
     if (!item) return null;
+    const attachment =
+      item.type === "user_message" ||
+      item.type === "assistant_message" ||
+      item.type === "dynamic_tool"
+        ? item.attachments?.find(
+            (entry) => entry.type === "image" && entry.id === input.attachmentId,
+          )
+        : undefined;
+    if (attachment?.type === "image") {
+      const path = resolveAttachmentPath({ attachmentsDir: config.attachmentsDir, attachment });
+      return path !== null && (yield* fs.exists(path)) ? { path } : null;
+    }
     if (item.type === "dynamic_tool") {
       const match = /^tool-result:(0|[1-9]\d*)$/.exec(input.attachmentId);
       if (!match) return null;
@@ -55,16 +67,6 @@ export const make = Effect.gen(function* () {
       if (!image?.data || image.data.length > MAX_TOOL_OUTPUT_IMAGE_BASE64_LENGTH) return null;
       return { dataUrl: `data:${image.mimeType};base64,${image.data}` };
     }
-    if (item.type !== "user_message" && item.type !== "assistant_message") return null;
-    const image = item.attachments?.find(
-      (attachment) => attachment.type === "image" && attachment.id === input.attachmentId,
-    );
-    if (!image || image.type !== "image") return null;
-    const path = resolveAttachmentPath({
-      attachmentsDir: config.attachmentsDir,
-      attachment: image,
-    });
-    if (path === null || !(yield* fs.exists(path))) return null;
-    return { path };
+    return null;
   });
 });

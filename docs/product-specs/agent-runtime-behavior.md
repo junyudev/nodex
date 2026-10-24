@@ -40,6 +40,31 @@ history, title, model selection, queue, Run status or delegated tasks. Delegated
 remain within the bound root's lineage and do not implicitly create ordinary sidebar
 Sessions.
 
+## Imported Codex chats
+
+Importing an existing Codex conversation creates a separate Runtime root and product Session.
+Core admits its immutable execution binding before Runtime import effects. The Runtime owns the
+copied visible transcript and all subsequent Runs; the original native conversation never becomes
+the destination's execution identity. Imported history is historical content, not previously
+executed Runtime Runs or pending work. The destination's next message continues through an
+independent native conversation with the ordinary portable context handoff. The handoff remains
+bounded, and omitted history stays available through Runtime history reads. Native hidden state,
+live tools, queues, approvals and goals are not adopted or replayed.
+
+Imported user images, local images in assistant Markdown and image-view files use Runtime-owned
+attachments when their bytes are available. Missing original image files remain explicit
+unavailable-image records rather than readable attachments. They preserve the historical message
+or activity, remain visible in history reads, and tell the continuing Agent that those image bytes
+could not be recovered. A missing image does not block the rest of the import or resolve later
+through the original source path.
+
+Import source reads and history publication are bounded. A failed or interrupted capture cannot
+silently become a complete import or an empty new conversation. Stable import requests retain
+their source and destination across retries, including uncertain Core replies. A completed copy
+has no dependency on the source's native history, ancestry or lifecycle: deleting the original
+does not remove its Runtime transcript or prevent the next Run. The complete behavior and chooser
+contract live in [Native Conversation Connection Behavior](native-conversation-connection-behavior.md).
+
 ## Request recovery and continuation
 
 Providers own automatic request retries. Nodex retains their reported cause, attempt,
@@ -115,7 +140,7 @@ message that starts a Run and once per change; a steer, a queued message or a me
 already carries app data leaves it for later, and a response's private content never travels.
 Page editor submissions use that same interface. New submissions promote the chosen
 Session with its Page links, model options and workspace configuration; existing
-sections resolve a bound Session before sending. Imported native history does not
+sections resolve a bound Session before sending. Connected read-only native history does not
 acquire an execution owner when a section is sent.
 Every command resolves the Session's immutable root before accessing an engine Thread;
 explicit targets resolve their own Session and Thread identity. Responses carry the exact pending request
@@ -148,10 +173,10 @@ Selected-text side chats create independent product Sessions and prefill a draft
 Explicit side-chat prompts submit immediately through the same launch owner. Neither
 route copies parent history. Panel remounts resolve the Session's cached canonical
 binding, and closing the panel keeps its product chat.
-Local imported native conversations use the same independent side-chat route while
+Connected local native conversations use the same independent side-chat route while
 their history stays passive. Runtime forks retain the selected source Run and prepare
 the chosen workspace and environment for the new Session; they do not
-resume an imported native conversation or hydrate history to choose a workspace.
+resume a connected read-only native conversation or hydrate history to choose a workspace.
 Native forks use the source Run's captured native incarnation. If its provider binding
 has since changed, the fork carries the bounded source prefix through portable history.
 

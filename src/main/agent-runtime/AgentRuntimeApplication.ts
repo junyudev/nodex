@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { CODEX_THREAD_IMPORT_OPERATION_PREFIX } from "@nodex/agent-runtime/contracts";
 import type { NativeSessionWorkspace } from "../agent-backend/NativeSessionWorkspace";
 import type { components } from "@nodex/core-protocol";
 import type {
@@ -61,6 +62,7 @@ export type {
 import { agentExecutionThreadId } from "../../shared/agent-runtime-api";
 import { agentRuntimeAgentSwitchRefusal } from "../../shared/agent-runtime-agent-switch";
 import { agentRuntimeImageInputUnavailableReason } from "../../shared/agent-runtime-image-input";
+import type { CodexThreadImportInput } from "../../shared/native-session-catalog";
 import {
   agentRuntimeForkSource,
   agentRuntimeMergeableRun,
@@ -94,6 +96,10 @@ export interface AgentRuntimeApplicationOptions {
   readonly connect: Effect.Effect<AgentRuntimeApplicationConnection, unknown>;
   /** Transient cleanup may use a live generation but must never start a cold Runtime. */
   readonly currentConnection: Effect.Effect<AgentRuntimeApplicationConnection | null, unknown>;
+  /** Canonical history home from the exact physical Codex configuration used by this lease. */
+  readonly codexImportSourceHome?: (
+    connection: AgentRuntimeApplicationConnection,
+  ) => Effect.Effect<string, unknown>;
   /** Lets product-only draft deletion leave an unused Profile runtime cold. */
   readonly runtimeExists?: Effect.Effect<boolean, unknown>;
   /** Serves the last live provider catalog while execution is stopped. */
@@ -168,6 +174,7 @@ const failure = (operation: string, message: string, cause?: unknown) =>
     ...(cause === undefined ? {} : { cause }),
   });
 const AGENT_OPERATION_FAILED = "Agent operation could not be completed";
+const CODEX_IMPORT_LAUNCH_PREFIX = CODEX_THREAD_IMPORT_OPERATION_PREFIX;
 
 /**
  * Why an Agent operation failed. A failure from beneath this Module carries a generic message
@@ -190,6 +197,20 @@ const hash = (value: unknown) =>
 const commandId = (kind: string, identity: unknown) => `nodex:${kind}:${hash(identity)}`;
 const launchThreadId = (launchId: string, sessionId: string) =>
   agentExecutionThreadId(hash({ launchId, sessionId }));
+const codexImportIdentity = (input: CodexThreadImportInput) => ({
+  requestId: input.requestId,
+  nativeSessionId: input.nativeSessionId,
+  expectedHome: input.expectedHome,
+  projectId: input.projectId,
+  cwd: input.cwd,
+});
+const codexImportBinding = (input: CodexThreadImportInput, runtimeId: string) => ({
+  session_id: input.requestId,
+  project_id: input.projectId,
+  runtime_id: runtimeId,
+  runtime_thread_id: agentExecutionThreadId(hash({ import: codexImportIdentity(input) })),
+  launch_request_id: `${CODEX_IMPORT_LAUNCH_PREFIX}${input.requestId}`,
+});
 const messageAgentConfigs = (message: AgentRuntimeMessage) =>
   message.agentConfigs ?? splitCodexPromptAgentConfigLines(message.text).agentConfigs;
 const hasImageInputs = (message: AgentRuntimeMessage) =>
@@ -236,7 +257,7 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
     );
   const assertSessionLifecycleAvailable = Effect.fn(
     "AgentRuntimeApplication.assertSessionLifecycleAvailable",
-  )(function* (sessionId: string) {
+  )(function* (sessionId: string, operation: string) {
     if (!validId(sessionId)) return yield* failure("session", "Session identity is invalid");
     yield* authorizeSession(sessionId);
     const found = yield* host(
@@ -251,8 +272,18 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
     const thread = yield* connection.request("thread.read", {
       threadId: found.value.binding.runtime_thread_id,
     });
-    if (thread?.executionHandoff)
-      return yield* failure("session", "The Session workspace requires handoff recovery");
+    if (!thread?.executionHandoff) return;
+    // A failed history capture has no executing native conversation to protect. Its own
+    // Runtime deletion serializes with capture and releases the import seal.
+    if (
+      operation === "delete-session" &&
+      found.value.binding.launch_request_id.startsWith(CODEX_IMPORT_LAUNCH_PREFIX) &&
+      thread.historyOrigin === "native_import" &&
+      thread.executionHandoff.operationId.startsWith(CODEX_IMPORT_LAUNCH_PREFIX) &&
+      thread.activeProviderThreadId === null
+    )
+      return;
+    return yield* failure("session", "The Session workspace requires handoff recovery");
   });
   const withSessionLifecycle = <A, E, R>(
     operation: string,
@@ -261,7 +292,10 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
   ) =>
     withSessionLane(
       sessionId,
-      ownedWrite(operation, assertSessionLifecycleAvailable(sessionId).pipe(Effect.andThen(use))),
+      ownedWrite(
+        operation,
+        assertSessionLifecycleAvailable(sessionId, operation).pipe(Effect.andThen(use)),
+      ),
     );
   const afterCommit = <A, E, R>(
     operationId: string,
@@ -349,6 +383,7 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
   const projectScope = Effect.fn("AgentRuntimeApplication.projectScope")(function* (
     projectId: string | null,
     requireActive: boolean,
+    requireWorkspace = requireActive,
   ) {
     if (projectId === null)
       return {
@@ -366,7 +401,7 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
     )
       return yield* failure("project", "Choose an active Project to run this task");
     const project = result.value.project;
-    if (requireActive && !project.primary_workspace_root)
+    if (requireWorkspace && !project.primary_workspace_root)
       return yield* failure("project", "This Project has no execution workspace");
     return {
       id: project.id,
@@ -435,7 +470,8 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
     yield* lifecycle.runExclusive(
       projectId,
       Effect.gen(function* () {
-        yield* projectScope(projectId, true);
+        // Existing Threads own their execution directory independently of Project placement.
+        yield* projectScope(projectId, true, false);
         const session = yield* host(
           core.workspace.read({ kind: "session", session_id: sessionId }, undefined, projectId),
         );
@@ -567,6 +603,8 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
       threadId: binding.runtime_thread_id,
     });
     if (existing) return existing;
+    if (binding.launch_request_id.startsWith(CODEX_IMPORT_LAUNCH_PREFIX))
+      return yield* failure("import", "This import was interrupted. Retry it from Conversations.");
     const projectId = binding.project_id ?? null;
     const scope = yield* projectScope(projectId, false);
     const session = yield* host(
@@ -1220,6 +1258,130 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
     },
   );
 
+  /** A lost success reply can be recovered after the source or its account is removed. */
+  const completedCodexImport = Effect.fn("AgentRuntimeApplication.completedCodexImport")(function* (
+    input: CodexThreadImportInput,
+  ) {
+    yield* validateCaller();
+    const previous = yield* lookupDestinationBinding(input.requestId);
+    if (!previous) return null;
+    yield* authorizeSession(input.requestId);
+    const connection = yield* options.connect;
+    const expected = codexImportBinding(input, connection.identity.runtimeId);
+    if (!matchesBinding(previous, expected))
+      return yield* failure(
+        "import",
+        "This import request already belongs to another conversation",
+      );
+    const thread = yield* connection.request("thread.read", {
+      threadId: expected.runtime_thread_id,
+    });
+    if (!thread || thread.historyOrigin !== "native_import" || thread.executionHandoff) return null;
+    const receipt = yield* connection.request("command.receipt", {
+      commandId: commandId("import-codex", codexImportIdentity(input)),
+      threadId: expected.runtime_thread_id,
+    });
+    if (receipt?.status !== "accepted") return null;
+    const target = yield* targetInfo(
+      connection,
+      {
+        sessionId: input.requestId,
+        threadId: expected.runtime_thread_id,
+      },
+      true,
+    );
+    return {
+      sessionId: input.requestId,
+      threadId: target.threadId,
+      projectId: target.binding.project_id ?? null,
+    };
+  });
+
+  /** Copies visible history into an independent Session without starting a model Run. */
+  const importCodex = Effect.fn("AgentRuntimeApplication.importCodex")(function* (
+    input: CodexThreadImportInput & { readonly title: string; readonly model: string | null },
+  ) {
+    if (
+      !validId(input.requestId) ||
+      !validId(input.nativeSessionId) ||
+      !Number.isSafeInteger(input.acceptedAt) ||
+      input.acceptedAt < 0 ||
+      !input.title.trim() ||
+      !input.cwd.trim()
+    )
+      return yield* failure("import", "Import identity, title and working directory are required");
+    const connection = yield* options.connect;
+    const sessionId = input.requestId;
+    // The complete request is part of the binding, so a reused request cannot import another
+    // source or silently change the destination while recovering a partial operation.
+    const importIdentity = codexImportIdentity(input);
+    const binding = codexImportBinding(input, connection.identity.runtimeId);
+    const threadId = binding.runtime_thread_id;
+    yield* validateCaller();
+    const previous = yield* lookupDestinationBinding(sessionId);
+    if (previous && !matchesBinding(previous, binding))
+      return yield* failure(
+        "import",
+        "This import request already belongs to another conversation",
+      );
+    if (!options.codexImportSourceHome)
+      return yield* failure("import", "Codex import is unavailable in this Profile.");
+    const sourceHome = yield* options.codexImportSourceHome(connection);
+    if (sourceHome !== input.expectedHome)
+      return yield* failure(
+        "import",
+        "This conversation is in a different Codex history than this Profile uses, so it cannot be imported here.",
+      );
+    const providers = yield* connection.request("providers.read", {});
+    const provider = providers.find((entry) => entry.instanceId === "codex" && entry.enabled);
+    const model =
+      provider?.models.find((entry) => entry.slug === input.model)?.slug ??
+      provider?.models.find((entry) => entry.isDefault)?.slug ??
+      provider?.models[0]?.slug;
+    if (!provider || !model)
+      return yield* failure("import", "A Codex model is required to import this conversation");
+    const scope = yield* lifecycle.runExclusive(
+      input.projectId,
+      Effect.gen(function* () {
+        const project = yield* projectScope(input.projectId, true, false);
+        const scope = { ...project, workspaceRoot: project.workspaceRoot || input.cwd };
+        if (previous) {
+          yield* authorizeSession(sessionId);
+          return scope;
+        }
+        yield* bindExecution({
+          binding,
+          operation: {
+            operationId: createStableOperationId(
+              "agent-runtime.import-codex",
+              input.acceptedAt,
+              importIdentity,
+            ),
+            intent: {
+              kind: "create_agent_runtime_session",
+              ...binding,
+              title: input.title.trim(),
+              initial_page_ids: [],
+            },
+          },
+        });
+        return scope;
+      }),
+    );
+    yield* upsertProject(connection, scope);
+    yield* connection.request("thread.import-codex", {
+      commandId: commandId("import-codex", importIdentity),
+      threadId,
+      projectId: scope.id,
+      title: input.title.trim(),
+      sourceNativeThreadId: input.nativeSessionId,
+      modelSelection: { instanceId: provider.instanceId, model },
+      cwd: input.cwd,
+    });
+    yield* targetInfo(connection, { sessionId, threadId }, true);
+    return { sessionId, threadId, projectId: input.projectId };
+  });
+
   const fork = Effect.fn("AgentRuntimeApplication.fork")(function* (
     input: import("../../shared/agent-runtime-api").AgentRuntimeForkInput,
   ) {
@@ -1282,7 +1444,7 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
     const scope = yield* lifecycle.runExclusive(
       projectId,
       Effect.gen(function* () {
-        const scope = yield* projectScope(projectId, true);
+        const scope = yield* projectScope(projectId, true, false);
         if (previous) return scope;
         yield* bindExecution({
           binding,
@@ -1991,6 +2153,13 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
         }),
       ),
     launch: (input: AgentRuntimeLaunch) => ownedWrite("launch", launch(input).pipe(Effect.scoped)),
+    completedCodexImport: (input: CodexThreadImportInput) =>
+      withSessionLane(input.requestId, owned("import", completedCodexImport(input))),
+    importCodex: (input: Parameters<typeof importCodex>[0]) =>
+      withSessionLane(
+        input.requestId,
+        ownedWrite("import", importCodex(input).pipe(Effect.scoped)),
+      ),
     renameSession: (command: ProjectSessionRenameCommandInput) =>
       ownedWrite("rename-session", workspace.renameProjectSession(command)),
     archiveSession: (command: ProjectSessionArchiveCommandInput) =>
