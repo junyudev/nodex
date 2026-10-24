@@ -226,3 +226,17 @@ it("keeps saved native profile identity stable while permitting tokens and execu
     }).success,
   ).toBe(false);
 });
+
+it("rejects malformed stored profile paths before a native scope can be inferred", () => {
+  for (const environment of [
+    [{ name: "AGENT_CONFIG_DIR", sensitive: false, value: "relative/profile" }],
+    [
+      {
+        name: "AGENT_CONFIG_DIR",
+        sensitive: true,
+        secretRef: "7546d7ee-62d4-4ae2-b8a9-ae447de7f7fb",
+      },
+    ],
+  ])
+    expect(() => readStoredAcpInstances([{ ...instance(), environment }])).toThrow("Invalid saved");
+});
