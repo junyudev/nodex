@@ -343,3 +343,9 @@ An evicted pending inverse cannot make a late Redo reachable; Main recovers the
 exact outcome before releasing its original and resulting capabilities.
 
 Clipboard bundles and history recipes hold normalized retention edges while active. Ending history immediately prevents replay; physical reference removal runs in bounded maintenance slices and conservatively retains content until committed. Local text history separately retains its reachable identities before a pending Document save can delete them, including before its first structural bridge. Repeated typing on the same Block does not create per-keystroke retention writes. Closing the surface releases its set; late updates cannot reactivate it. A consumed, superseded, or explicitly released recipe cannot be replayed. Transport response loss is recovered by idempotent receipt replay and canonical Document synchronization; renderer code does not construct compensation edits.
+
+Terminal history retains its authenticated capability identity and original bytes
+until receipt retention permits collection. Maintenance does not require an
+executable inverse for an already consumed capability or recreate its retention
+roots. Available history still requires a valid inverse before it can retain or
+restore content.

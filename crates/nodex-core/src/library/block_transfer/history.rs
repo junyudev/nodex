@@ -79,6 +79,15 @@ struct Retention {
     files: BTreeSet<String>,
 }
 
+// Terminal artifacts retain their original capability identity, not an executable
+// inverse. Its historical body codec must not decide whether cleanup can progress.
+#[derive(Deserialize)]
+struct TransferHistoryIdentity {
+    project_id: Option<String>,
+    library_id: String,
+    store_epoch: String,
+}
+
 pub(super) struct Prepared {
     pub(super) token: LibraryBlockTransferUndoToken,
     pub(super) symmetric: bool,
@@ -395,7 +404,19 @@ fn import(connection: &Connection, id: &str) -> Result<(), StoreError> {
     if sha256(json.as_bytes()) != value.recipe_hash {
         return Err(corrupt("Transfer history payload hash changed"));
     }
-    let roots = retention(&json, project.as_deref(), &library, &value.store_epoch)?;
+    let roots = if consumed_at.is_some() {
+        let identity: TransferHistoryIdentity = serde_json::from_str(&json)
+            .map_err(|_| corrupt("Transfer history identity is invalid"))?;
+        if identity.project_id != project
+            || identity.library_id != library
+            || identity.store_epoch != value.store_epoch
+        {
+            return Err(corrupt("Transfer history identity is invalid"));
+        }
+        Retention::default()
+    } else {
+        retention(&json, project.as_deref(), &library, &value.store_epoch)?
+    };
     persist(
         connection,
         &Prepared {
@@ -437,6 +458,174 @@ pub(in crate::library) fn import_one(connection: &Connection) -> Result<bool, St
 mod tests {
     use super::*;
     use crate::infrastructure::sqlite::with_immediate_transaction;
+
+    fn import_fixture() -> Connection {
+        let mut connection = Connection::open_in_memory().unwrap();
+        crate::infrastructure::schema::install_current_schema(&mut connection).unwrap();
+        // Storage-codec fixtures intentionally do not create a live content graph.
+        connection
+            .pragma_update(None, "foreign_keys", false)
+            .unwrap();
+        connection
+    }
+
+    fn promotion_body(version: u32) -> String {
+        serde_json::to_string_pretty(&serde_json::json!({
+            "version": version, "mode": "copy", "project_id": "project",
+            "library_id": "library", "store_epoch": "epoch",
+            "source_document_id": "source-document", "source_generation": 1,
+            "source_post_head_seq": null, "source_pre_materialization": null,
+            "roots": [{
+                "source_root_id": "source-block", "result_page_id": "promoted-page",
+                "result_document_id": "promoted-document", "source_block_ids": ["source-block"],
+                "source_root_type": "paragraph", "source_root_properties": []
+            }],
+            "target_guard_hash": "a".repeat(64), "schema_restore": null
+        }))
+        .unwrap()
+    }
+
+    fn insert_import_fixture(connection: &Connection, id: &str, body: &str, consumed: bool) {
+        connection.execute(
+            "INSERT INTO block_transfer_undo_recipes VALUES (?1, 'project', 'library', 'epoch', ?2, ?3, ?4, '2026-09-01T00:00:00.000Z')",
+            params![id, sha256(body.as_bytes()), body, consumed.then_some("2026-09-02T00:00:00.000Z")],
+        ).unwrap();
+    }
+
+    #[test]
+    fn terminal_import_retires_old_codecs_without_reauthorizing_retention() {
+        let mut connection = import_fixture();
+        let body = promotion_body(1);
+        insert_import_fixture(&connection, "a-terminal", &body, true);
+        insert_import_fixture(&connection, "b-available", &promotion_body(4), false);
+        let token = LibraryBlockTransferUndoToken {
+            transfer_operation_id: "a-terminal".into(),
+            recipe_hash: sha256(body.as_bytes()),
+            store_epoch: "epoch".into(),
+        };
+        let cancelled: Result<(), StoreError> = with_immediate_transaction(&mut connection, |tx| {
+            assert!(import_one(tx)?);
+            Err(conflict("cancelled before commit"))
+        });
+        assert_eq!(
+            cancelled.unwrap_err().code,
+            StoreErrorCode::RevisionConflict
+        );
+        assert_eq!(
+            connection
+                .query_row(
+                    "SELECT count(*) FROM block_transfer_undo_recipes",
+                    [],
+                    |row| row.get::<_, i64>(0)
+                )
+                .unwrap(),
+            2
+        );
+        assert_eq!(
+            connection
+                .query_row(
+                    "SELECT count(*) FROM structural_history_recipes",
+                    [],
+                    |row| row.get::<_, i64>(0)
+                )
+                .unwrap(),
+            0
+        );
+
+        assert!(with_immediate_transaction(&mut connection, |tx| import_one(tx)).unwrap());
+        let metadata = connection.query_row(
+            "SELECT project_id, library_id, store_epoch, recipe_hash, state, consumed_at FROM structural_history_recipes WHERE recipe_operation_id = 'a-terminal'",
+            [], |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?, row.get::<_, String>(2)?, row.get::<_, String>(3)?, row.get::<_, String>(4)?, row.get::<_, String>(5)?)),
+        ).unwrap();
+        assert_eq!(
+            metadata,
+            (
+                "project".into(),
+                "library".into(),
+                "epoch".into(),
+                token.recipe_hash.clone(),
+                "consumed".into(),
+                "2026-09-02T00:00:00.000Z".into()
+            )
+        );
+        let payload = connection.prepare("SELECT payload_chunk FROM structural_history_payloads WHERE recipe_operation_id = 'a-terminal' ORDER BY part")
+            .unwrap().query_map([], |row| row.get::<_, String>(0)).unwrap().collect::<rusqlite::Result<Vec<_>>>().unwrap().concat();
+        assert_eq!(payload, body);
+        assert_eq!(
+            read(&connection, "library", &token).unwrap_err().code,
+            StoreErrorCode::RevisionConflict
+        );
+        assert_eq!(connection.query_row("SELECT count(*) FROM structural_retention_members WHERE authority_id = 'a-terminal'", [], |row| row.get::<_, i64>(0)).unwrap(), 0);
+        assert_eq!(connection.query_row("SELECT count(*) FROM structural_history_payload_gc WHERE recipe_operation_id = 'a-terminal'", [], |row| row.get::<_, i64>(0)).unwrap(), 1);
+        let collected = with_immediate_transaction(&mut connection, |tx| {
+            history_payload::collect_one(tx, 2_000_000_000_000)
+        })
+        .unwrap();
+        assert_eq!(collected.bytes, body.len());
+        assert_eq!(
+            read(&connection, "library", &token).unwrap_err().code,
+            StoreErrorCode::RevisionConflict
+        );
+
+        assert!(with_immediate_transaction(&mut connection, |tx| import_one(tx)).unwrap());
+        assert_eq!(connection.query_row("SELECT count(*) FROM structural_retention_members WHERE authority_id = 'b-available'", [], |row| row.get::<_, i64>(0)).unwrap(), 3);
+        assert!(!with_immediate_transaction(&mut connection, |tx| import_one(tx)).unwrap());
+    }
+
+    #[test]
+    fn import_fails_closed_for_corrupt_terminal_identity_and_unknown_available_codecs() {
+        for defect in [
+            "hash",
+            "project_id",
+            "library_id",
+            "store_epoch",
+            "available_codec",
+        ] {
+            let mut connection = import_fixture();
+            let mut body: serde_json::Value = serde_json::from_str(&promotion_body(1)).unwrap();
+            if matches!(defect, "project_id" | "library_id" | "store_epoch") {
+                body[defect] = serde_json::json!("wrong-identity");
+            }
+            let body = serde_json::to_string(&body).unwrap();
+            insert_import_fixture(&connection, "invalid", &body, defect != "available_codec");
+            if defect == "hash" {
+                connection
+                    .execute("DROP TRIGGER block_transfer_undo_recipes_are_immutable", [])
+                    .unwrap();
+                connection
+                    .execute(
+                        "UPDATE block_transfer_undo_recipes SET recipe_hash = ?1",
+                        ["f".repeat(64)],
+                    )
+                    .unwrap();
+            }
+            let error =
+                with_immediate_transaction(&mut connection, |tx| import_one(tx)).unwrap_err();
+            assert_eq!(error.code, StoreErrorCode::StoreCorrupt, "{defect}");
+            assert_eq!(
+                connection
+                    .query_row(
+                        "SELECT count(*) FROM block_transfer_undo_recipes",
+                        [],
+                        |row| row.get::<_, i64>(0)
+                    )
+                    .unwrap(),
+                1,
+                "{defect}"
+            );
+            assert_eq!(
+                connection
+                    .query_row(
+                        "SELECT count(*) FROM structural_history_recipes",
+                        [],
+                        |row| row.get::<_, i64>(0)
+                    )
+                    .unwrap(),
+                0,
+                "{defect}"
+            );
+        }
+    }
 
     #[test]
     fn historical_sparse_positions_decode_only_as_retention_evidence() {
