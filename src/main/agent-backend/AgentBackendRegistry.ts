@@ -3,18 +3,12 @@ import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
-import {
-  ACP_AGENT_DEFINITIONS,
-  type AcpAgentDefinitionId,
-} from "../../shared/acp-agent-definitions";
 import type { AgentBackendBinding } from "../../shared/agent-backend";
 import type { AcpAgentInstanceConfig, ClaudeAgentInstanceConfig } from "../../shared/types";
 import {
   ApplicationSettings,
   type ApplicationSettingsSnapshot,
 } from "../settings/ApplicationSettings";
-
-type SupportedAcpAgentDefinition = (typeof ACP_AGENT_DEFINITIONS)[number];
 
 export type AgentBackendResolution =
   | {
@@ -38,17 +32,15 @@ export type AgentBackendResolution =
       readonly kind: "acp";
       readonly binding: {
         readonly kind: "acp";
-        readonly agentDefinitionId: AcpAgentDefinitionId;
+        readonly agentDefinitionId: string;
         readonly instanceConfigId: string;
       };
       readonly displayName: string;
-      readonly definition: SupportedAcpAgentDefinition;
       readonly instance: AcpAgentInstanceConfig;
     };
 
 export const AgentBackendRegistryFailureReason = Schema.Literals([
   "settings-unavailable",
-  "definition-unavailable",
   "instance-required",
   "instance-unavailable",
   "instance-disabled",
@@ -116,14 +108,6 @@ export const resolveAgentBackendBinding = (
       return unavailable(binding, "instance-disabled", "OpenCode instance is disabled");
     return { kind: "opencode", binding, displayName: instance.displayName, instance };
   }
-  const definition = ACP_AGENT_DEFINITIONS.find(({ id }) => id === binding.agentDefinitionId);
-  if (definition === undefined) {
-    return unavailable(
-      binding,
-      "definition-unavailable",
-      `ACP Agent definition is not supported: ${binding.agentDefinitionId}`,
-    );
-  }
   if (binding.instanceConfigId === null) {
     return unavailable(
       binding,
@@ -146,22 +130,21 @@ export const resolveAgentBackendBinding = (
       `ACP Agent instance is disabled: ${binding.instanceConfigId}`,
     );
   }
-  if (instance.agentDefinitionId !== definition.id) {
+  if (instance.agentDefinitionId !== binding.agentDefinitionId) {
     return unavailable(
       binding,
       "instance-definition-mismatch",
-      "ACP Agent instance belongs to another supported definition",
+      "ACP Agent instance belongs to another Agent definition",
     );
   }
   return {
     kind: "acp",
     binding: {
       kind: "acp",
-      agentDefinitionId: definition.id,
+      agentDefinitionId: instance.agentDefinitionId,
       instanceConfigId: instance.id,
     },
-    displayName: definition.title,
-    definition,
+    displayName: instance.displayName,
     instance,
   };
 };

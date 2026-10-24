@@ -1,3 +1,4 @@
+import type { AcpConversationImportResult } from "../../shared/acp-api";
 import { createHash } from "node:crypto";
 import { NATIVE_THREAD_IMPORT_OPERATION_PREFIX } from "@nodex/agent-runtime/contracts";
 import type { NativeSessionWorkspace } from "../agent-backend/NativeSessionWorkspace";
@@ -1311,6 +1312,117 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
     },
   );
 
+  /** ACP attaches its native execution identity; Core admits the same Session binding contract. */
+  const importAcp = Effect.fn("AgentRuntimeApplication.importAcp")(function* (input: {
+    readonly instanceId: string;
+    readonly projectId: string | null;
+    readonly sessionId: string;
+    readonly requestId: string;
+    readonly acceptedAt: number;
+    readonly cwd: string;
+  }): Effect.fn.Return<AcpConversationImportResult, unknown> {
+    yield* validateCaller();
+    if (
+      !validId(input.requestId) ||
+      !validId(input.sessionId) ||
+      !Number.isSafeInteger(input.acceptedAt) ||
+      input.acceptedAt < 0
+    )
+      return yield* failure("import", "Conversation import identity is invalid");
+    const connection = yield* options.connect;
+    const prepared = yield* connection.request("acp.sessions.prepareImport", {
+      instanceId: input.instanceId,
+      cwd: input.cwd,
+      sessionId: input.sessionId,
+    });
+    const existing = yield* host(
+      core.workspace.read({
+        kind: "agent_runtime_session_binding_by_execution",
+        runtime_id: connection.identity.runtimeId,
+        runtime_thread_id: prepared.threadId,
+      }),
+    );
+    if (existing.value.kind !== "agent_runtime_session_binding")
+      return yield* failure("import", "Session execution metadata is unavailable");
+    if (existing.value.binding && prepared.imported) {
+      yield* authorizeSession(existing.value.binding.session_id);
+      return {
+        sessionId: existing.value.binding.session_id,
+        threadId: prepared.threadId,
+        projectId: existing.value.binding.project_id ?? null,
+      };
+    }
+    const sessionId = existing.value.binding?.session_id ?? input.requestId;
+    const identity = {
+      instanceId: input.instanceId,
+      sourceFingerprint: prepared.sourceFingerprint,
+      nativeSessionId: input.sessionId,
+      cwd: prepared.cwd,
+    };
+    const binding = existing.value.binding ?? {
+      session_id: sessionId,
+      project_id: input.projectId,
+      runtime_id: connection.identity.runtimeId,
+      runtime_thread_id: prepared.threadId,
+      launch_request_id: `nodex:acp-import:${input.requestId}`,
+    };
+    const previous = yield* lookupDestinationBinding(sessionId);
+    if (previous && !matchesBinding(previous, binding))
+      return yield* failure(
+        "import",
+        "This import request already belongs to another conversation",
+      );
+    const providers = yield* connection.request("providers.read", {});
+    const provider = providers.find(
+      (entry) => entry.instanceId === input.instanceId && entry.enabled,
+    );
+    const model =
+      provider?.models.find((entry) => entry.isDefault)?.slug ?? provider?.models[0]?.slug;
+    if (!provider || !model)
+      return yield* importRefusal(
+        "This Agent has no available model. Check Agent settings, then try again.",
+      );
+    const scope = yield* lifecycle.runExclusive(
+      binding.project_id ?? null,
+      Effect.gen(function* () {
+        const project = yield* projectScope(binding.project_id ?? null, true, false);
+        if (previous) {
+          yield* authorizeSession(sessionId);
+          return { ...project, workspaceRoot: project.workspaceRoot || prepared.cwd };
+        }
+        yield* bindExecution({
+          binding,
+          operation: {
+            operationId: createStableOperationId("agent-runtime.import-acp", input.acceptedAt, {
+              ...identity,
+              sessionId,
+            }),
+            intent: {
+              kind: "create_agent_runtime_session",
+              ...binding,
+              title: prepared.title.trim() || "Imported conversation",
+              initial_page_ids: [],
+            },
+          },
+        });
+        return { ...project, workspaceRoot: project.workspaceRoot || prepared.cwd };
+      }),
+    );
+    yield* upsertProject(connection, scope);
+    yield* connection.request("acp.sessions.import", {
+      instanceId: input.instanceId,
+      sourceFingerprint: prepared.sourceFingerprint,
+      cwd: prepared.cwd,
+      commandId: commandId("import-acp", { ...identity, threadId: prepared.threadId }),
+      threadId: prepared.threadId,
+      projectId: scope.id,
+      title: prepared.title,
+      sessionId: input.sessionId,
+      model,
+    });
+    return { sessionId, threadId: prepared.threadId, projectId: binding.project_id ?? null };
+  });
+
   /** A lost success reply can be recovered after the source or its account is removed. */
   const completedNativeImport = Effect.fn("AgentRuntimeApplication.completedNativeImport")(
     function* (input: NativeConversationImportInput) {
@@ -2273,6 +2385,11 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
         }),
       ),
     launch: (input: AgentRuntimeLaunch) => ownedWrite("launch", launch(input).pipe(Effect.scoped)),
+    importAcp: (input: Parameters<typeof importAcp>[0]) =>
+      withSessionLane(
+        `acp:${input.instanceId}:${input.sessionId}:${input.cwd}`,
+        ownedWrite("import-acp", importAcp(input).pipe(Effect.scoped)),
+      ),
     findNativeImports: (input: Parameters<typeof findNativeImports>[0]) =>
       owned("import.find", findNativeImports(input)),
     submitNativeImport: (

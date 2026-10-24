@@ -65,5 +65,7 @@ export const reportsNoWork = (connection: AgentRuntimeProcessConnection) =>
     const activity = yield* connection.request("execution.activity", { limit: 1 });
     if (activity.items.length > 0) return false;
     const handoffs = yield* connection.request("execution.handoff.pending", {});
-    return handoffs.items.length === 0;
+    if (handoffs.items.length > 0) return false;
+    const management = yield* connection.request("acp.activity", {});
+    return management.activeOperations === 0 && management.activeAuthentication === 0;
   });

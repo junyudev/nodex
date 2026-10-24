@@ -1678,24 +1678,11 @@ export type {
   CodexHomeSettingsUpdateInput,
 } from "./codex-home-settings";
 
-export interface AcpAgentInstanceConfig {
-  /** Stable Profile-local identity referenced by AgentBackendBinding.instanceConfigId. */
-  id: string;
-  agentDefinitionId: string;
-  packageRoot: string;
-  nodeExecutable: string;
-  enabled: boolean;
-  credentials: { kind: "inherit-host-profile" } | { kind: "isolated-home"; home: string };
-  proxy: "inherit-host" | "isolated";
-}
-
-export interface AcpAgentSettings {
-  instances: AcpAgentInstanceConfig[];
-}
-
-export interface UpdateAcpAgentSettingsInput {
-  instances: AcpAgentInstanceConfig[];
-}
+export type {
+  AcpAgentInstanceConfig,
+  AcpAgentSettings,
+  UpdateAcpAgentSettingsInput,
+} from "./acp-agent-settings";
 
 export type ManagedWorktreeAvailability =
   | { state: "not-managed" }

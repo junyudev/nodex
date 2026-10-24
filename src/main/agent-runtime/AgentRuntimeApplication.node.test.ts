@@ -216,6 +216,8 @@ const setup = (
     failCodexImportAcknowledgment: false,
     codexModelsAvailable: true,
     nativeImportSourceHome: codexImport.expectedHome,
+    acpSourceFingerprint: "source-one",
+    acpImported: false,
     refusedThreadReceipt: false,
     failCore: false,
     projectWorkspaceRoot: "/workspace" as string | null,
@@ -392,6 +394,21 @@ const setup = (
       );
       calls.push({ method, input });
       order.push(method);
+      if (method === "acp.sessions.prepareImport")
+        return {
+          threadId: `nodex:thread:acp-${state.acpSourceFingerprint}`,
+          sourceFingerprint: state.acpSourceFingerprint,
+          cwd: "/workspace",
+          title: "ACP conversation",
+          canLoad: true,
+          canResume: false,
+          imported: state.acpImported,
+        } as AgentRuntimeOperations[M]["output"];
+      if (method === "acp.sessions.import") {
+        const request = input as AgentRuntimeOperations["acp.sessions.import"]["input"];
+        state.acpImported = true;
+        return { threadId: request.threadId } as AgentRuntimeOperations[M]["output"];
+      }
       if (method === "providers.read")
         return (
           state.codexModelsAvailable
@@ -964,6 +981,88 @@ it.effect("binds an independent imported chat before reading its history into th
     });
     assert.deepEqual([...fixture.commands.values()], []);
     assert.isFalse(fixture.calls.some((call) => call.method === "thread.snapshot"));
+  }),
+);
+
+it.effect(
+  "connects an ACP native session after Core admission and returns the existing product Session on repeated import",
+  () =>
+    Effect.gen(function* () {
+      const instanceId = agentRuntimeProviderId({
+        kind: "acp",
+        agentDefinitionId: "qoder",
+        instanceConfigId: "personal",
+      })!;
+      const fixture = setup({}, [
+        {
+          instanceId,
+          driver: "acpRegistry",
+          enabled: true,
+          models: [{ slug: "native-model", isDefault: true }],
+        },
+      ] as unknown as AgentRuntimeOperations["providers.read"]["output"]);
+      const owner = yield* fixture.owner;
+      const input = {
+        instanceId,
+        sessionId: "native-session",
+        requestId: "import-acp-session",
+        acceptedAt: 10,
+        projectId: "project",
+        cwd: "/workspace",
+      };
+      const result = yield* owner.importAcp(input);
+      assert.deepEqual(result, {
+        sessionId: input.requestId,
+        threadId: "nodex:thread:acp-source-one",
+        projectId: "project",
+      });
+      assert.isBelow(
+        fixture.order.indexOf("core.bind"),
+        fixture.order.indexOf("acp.sessions.import"),
+      );
+      assert.equal(fixture.applied.length, 1);
+      assert.deepEqual([...fixture.commands.values()], []);
+      assert.deepEqual(
+        yield* owner.importAcp({ ...input, requestId: "another-import-request" }),
+        result,
+      );
+      assert.equal(fixture.applied.length, 1);
+      assert.equal(
+        fixture.calls.filter(({ method }) => method === "acp.sessions.import").length,
+        1,
+      );
+    }),
+);
+it.effect("refuses an ACP import request reused after its native source identity changes", () =>
+  Effect.gen(function* () {
+    const instanceId = agentRuntimeProviderId({
+      kind: "acp",
+      agentDefinitionId: "qoder",
+      instanceConfigId: "personal",
+    })!;
+    const fixture = setup({}, [
+      {
+        instanceId,
+        driver: "acpRegistry",
+        enabled: true,
+        models: [{ slug: "native-model", isDefault: true }],
+      },
+    ] as unknown as AgentRuntimeOperations["providers.read"]["output"]);
+    const owner = yield* fixture.owner;
+    const input = {
+      instanceId,
+      sessionId: "native-session",
+      requestId: "import-acp-session",
+      acceptedAt: 10,
+      projectId: "project",
+      cwd: "/workspace",
+    };
+    yield* owner.importAcp(input);
+    fixture.state.acpSourceFingerprint = "another-home";
+    fixture.state.acpImported = false;
+    assert.equal((yield* Effect.result(owner.importAcp(input)))._tag, "Failure");
+    assert.equal(fixture.applied.length, 1);
+    assert.equal(fixture.calls.filter(({ method }) => method === "acp.sessions.import").length, 1);
   }),
 );
 

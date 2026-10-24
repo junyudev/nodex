@@ -426,8 +426,14 @@ describe("ApplicationSettings", () => {
             {
               id: "claude-main",
               agentDefinitionId: "claude-agent-acp",
-              packageRoot: path.join(root, "claude-agent-acp"),
-              nodeExecutable: "/usr/local/bin/node",
+              displayName: "Claude Agent",
+              source: {
+                kind: "local",
+                executable: "/usr/local/bin/node",
+                args: [path.join(root, "claude-agent-acp/dist/index.js")],
+              },
+              environment: [],
+              customModels: [],
               enabled: true,
               credentials: { kind: "isolated-home", home: path.join(root, "claude-home") },
               proxy: "inherit-host",
@@ -440,8 +446,14 @@ describe("ApplicationSettings", () => {
         {
           id: "claude-main",
           agentDefinitionId: "claude-agent-acp",
-          packageRoot: path.join(root, "claude-agent-acp"),
-          nodeExecutable: "/usr/local/bin/node",
+          displayName: "Claude Agent",
+          source: {
+            kind: "local",
+            executable: "/usr/local/bin/node",
+            args: [path.join(root, "claude-agent-acp/dist/index.js")],
+          },
+          environment: [],
+          customModels: [],
           enabled: true,
           credentials: { kind: "isolated-home", home: path.join(root, "claude-home") },
           proxy: "inherit-host",

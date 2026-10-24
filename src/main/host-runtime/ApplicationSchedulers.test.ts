@@ -339,6 +339,7 @@ const buildHarness = (input: {
               ApplicationSettings,
               ApplicationSettings.of({
                 composerPredictionSettingsChanges: Stream.empty,
+                acpLaunchConfiguration: () => Effect.die("Unused ACP launch configuration"),
                 openCodeLaunchConfiguration: () =>
                   Effect.die("Unused OpenCode launch configuration"),
                 claudeLaunchConfiguration: () => Effect.die("Unused Claude launch configuration"),

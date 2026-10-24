@@ -1,7 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import fs from "node:fs";
 import path from "node:path";
-import { pathToFileURL } from "node:url";
 
 import { chooseComposerModel } from "./support/composer-model-picker";
 import { ElectronScenarioHarness } from "../../scripts/scenarios/harness/electron-e2e-harness";
@@ -12,7 +11,9 @@ import { agentRuntimeProviderId } from "../../src/shared/agent-runtime-provider"
 import type { ProjectSession } from "../../src/shared/types";
 
 const repositoryRoot = process.cwd();
-const instanceConfigId = "claude-e2e";
+const instanceConfigId = "acp-personal-e2e";
+const secondInstanceId = "acp-work-e2e";
+const agentDefinitionId = "scripted-agent";
 const protocolSessionId = "acp-electron-e2e-session";
 const liveMessage = "ACP_ELECTRON_LIVE_MESSAGE";
 const restoredMessage = "ACP_ELECTRON_RESTORED_MESSAGE";
@@ -32,46 +33,26 @@ const readObservations = (observationPath: string): readonly AcpObservation[] =>
   }
 };
 
-const prepareScriptedAcpPackage = (input: {
-  readonly packageRoot: string;
-  readonly observationPath: string;
-}): void => {
-  const entryDirectory = path.join(input.packageRoot, "dist");
-  fs.mkdirSync(entryDirectory, { recursive: true });
-  fs.writeFileSync(
-    path.join(input.packageRoot, "package.json"),
-    `${JSON.stringify({
-      name: "@agentclientprotocol/claude-agent-acp",
-      version: "0.73.0",
-      type: "module",
-    })}\n`,
-  );
-  const scriptedAgentUrl = pathToFileURL(
-    path.join(repositoryRoot, "scripts/scenarios/runtime/scripted-acp-agent.ts"),
-  ).href;
-  const scenario = {
-    sessionId: protocolSessionId,
-    sessionLifecycle: {
-      load: true,
-      list: false,
-      delete: false,
-      fork: false,
-      resume: false,
-      close: false,
-      loadReplay: [restoredMessage],
-    },
-    beforePrompt: [liveMessage],
-  };
-  fs.writeFileSync(
-    path.join(entryDirectory, "index.js"),
-    [
-      'if (process.argv.includes("--version")) { console.log("0.73.0"); process.exit(0); }',
-      `process.env.NODEX_SCRIPTED_ACP_SCENARIO = ${JSON.stringify(JSON.stringify(scenario))};`,
-      `process.env.NODEX_SCRIPTED_ACP_OBSERVATION = ${JSON.stringify(input.observationPath)};`,
-      `await import(${JSON.stringify(scriptedAgentUrl)});`,
-    ].join("\n"),
-  );
-};
+const scriptedEnvironment = (observationPath: string, message = liveMessage) => [
+  {
+    name: "NODEX_SCRIPTED_ACP_SCENARIO",
+    sensitive: false as const,
+    value: JSON.stringify({
+      sessionId: protocolSessionId,
+      sessionLifecycle: {
+        load: true,
+        list: false,
+        delete: false,
+        fork: false,
+        resume: false,
+        close: false,
+        loadReplay: [restoredMessage],
+      },
+      beforePrompt: [message],
+    }),
+  },
+  { name: "NODEX_SCRIPTED_ACP_OBSERVATION", sensitive: false as const, value: observationPath },
+];
 
 const invoke = async <Result>(page: Page, channel: string, ...args: unknown[]): Promise<Result> =>
   (await page.evaluate(
@@ -88,9 +69,16 @@ const invoke = async <Result>(page: Page, channel: string, ...args: unknown[]): 
 test("runs a chat on an ACP agent and continues its protocol session after restart", async () => {
   test.setTimeout(120_000);
   const harness = await ElectronScenarioHarness.create({ label: "acp-backend-lifecycle" });
-  const packageRoot = path.join(harness.profile.runRoot, "scripted-acp-package");
   const observationPath = path.join(harness.profile.runRoot, "scripted-acp-observations.json");
-  prepareScriptedAcpPackage({ packageRoot, observationPath });
+  const secondObservationPath = path.join(
+    harness.profile.runRoot,
+    "scripted-acp-work-observations.json",
+  );
+  const source = {
+    kind: "local",
+    executable: process.execPath,
+    args: [path.join(repositoryRoot, "scripts/scenarios/runtime/scripted-acp-agent.ts")],
+  };
 
   try {
     let page = await harness.launch();
@@ -98,15 +86,42 @@ test("runs a chat on an ACP agent and continues its protocol session after resta
       instances: [
         {
           id: instanceConfigId,
-          agentDefinitionId: "claude-agent-acp",
-          packageRoot,
-          nodeExecutable: process.execPath,
+          agentDefinitionId,
+          displayName: "ACP personal",
+          source,
+          environment: scriptedEnvironment(observationPath),
+          customModels: ["scripted-model"],
           enabled: true,
           credentials: { kind: "isolated-home", home: harness.profile.runRoot },
           proxy: "isolated",
         },
+        {
+          id: secondInstanceId,
+          agentDefinitionId,
+          displayName: "ACP work",
+          source,
+          environment: scriptedEnvironment(secondObservationPath, "ACP_WORK_MESSAGE"),
+          customModels: ["scripted-model"],
+          enabled: true,
+          credentials: {
+            kind: "isolated-home",
+            home: path.join(harness.profile.runRoot, "second-profile"),
+          },
+          proxy: "isolated",
+        },
       ],
     });
+
+    for (const instanceId of [instanceConfigId, secondInstanceId]) {
+      const operationId = createUuidV7();
+      await invoke(page, "acp:connection:start", { instanceId, operationId });
+      await expect
+        .poll(
+          async () =>
+            (await invoke<{ phase: string }>(page, "acp:operation:read", { operationId })).phase,
+        )
+        .toBe("succeeded");
+    }
 
     const projects = await invoke<{
       readonly items: readonly {
@@ -143,7 +158,7 @@ test("runs a chat on an ACP agent and continues its protocol session after resta
       .locator('[data-codex-composer="true"][contenteditable="true"]:visible')
       .first();
     await composer.fill("Start the ACP lifecycle scenario");
-    await chooseComposerModel(page, "Claude Agent");
+    await chooseComposerModel(page, "ACP personal scripted-model");
     await expect(composer).toHaveText("Start the ACP lifecycle scenario");
     await page.getByRole("button", { name: "Send prompt", exact: true }).click();
     await expect
@@ -172,7 +187,7 @@ test("runs a chat on an ACP agent and continues its protocol session after resta
     await expect.poll(protocolSession).toEqual({
       provider: agentRuntimeProviderId({
         kind: "acp",
-        agentDefinitionId: "claude-agent-acp",
+        agentDefinitionId,
         instanceConfigId,
       }),
       nativeId: protocolSessionId,
@@ -220,6 +235,55 @@ test("runs a chat on an ACP agent and continues its protocol session after resta
     await expect(page.getByText(liveMessage, { exact: true })).toHaveCount(3);
     await expect(page.getByText(restoredMessage, { exact: true })).toHaveCount(0);
     expect(await protocolSession()).toMatchObject({ nativeId: protocolSessionId });
+
+    // The same native ID and model in another instance remain a distinct account and history.
+    const secondSessionId = createUuidV7();
+    await invoke(page, "project-sessions:create", {
+      operationId: createBoundedOperationId("e2e.acp.second.create"),
+      payload: {
+        sessionId: secondSessionId,
+        input: {
+          projectId: project.id,
+          noThreadFallbackTitle: "ACP work account",
+          initialPageIds: [],
+        },
+      },
+    });
+    const secondProviderId = agentRuntimeProviderId({
+      kind: "acp",
+      agentDefinitionId,
+      instanceConfigId: secondInstanceId,
+    })!;
+    await invoke(page, "agent-runtime:session:launch", {
+      launchId: createUuidV7(),
+      acceptedAt: Date.now(),
+      sessionId: secondSessionId,
+      projectId: project.id,
+      title: "ACP work account",
+      modelSelection: { instanceId: secondProviderId, model: "scripted-model" },
+      interactionMode: "default",
+      message: { messageId: createUuidV7(), text: "Use the work account" },
+    });
+    await expect
+      .poll(
+        () =>
+          readObservations(secondObservationPath).filter(
+            ({ method }) => method === "session/prompt",
+          ).length,
+      )
+      .toBe(1);
+    const second = await invoke<AgentRuntimeConversation>(page, "agent-runtime:session:control", {
+      sessionId: secondSessionId,
+    });
+    expect(second.snapshot.projection.thread.providerInstanceId).toBe(secondProviderId);
+    expect(second.threadId).not.toBe(target.threadId);
+    expect(await protocolSession()).toEqual({
+      provider: agentRuntimeProviderId({ kind: "acp", agentDefinitionId, instanceConfigId }),
+      nativeId: protocolSessionId,
+    });
+    expect(
+      readObservations(observationPath).filter(({ method }) => method === "session/prompt"),
+    ).toHaveLength(1);
   } finally {
     await harness.close();
   }

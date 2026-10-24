@@ -1,3 +1,4 @@
+import { AcpAgentSettingsUpdateSchema } from "../../../shared/acp-agent-settings";
 import {
   COMPOSER_PREDICTION_SETTINGS_CHANGED_CHANNEL,
   ComposerPredictionSettingsSchema,
@@ -22,7 +23,6 @@ import {
   type CommandKeymapState,
 } from "../../../shared/command-keybindings";
 import type {
-  UpdateAcpAgentSettingsInput,
   UpdateBackupSettingsInput,
   UpdateCodexDeveloperInstructionSettingsInput,
   UpdateCodexGitSettingsInput,
@@ -84,30 +84,6 @@ const BackupUpdate = z
     retentionGiB: z.number().int().min(0).max(8_192),
   })
   .strict() satisfies z.ZodType<UpdateBackupSettingsInput>;
-const AcpAgentSettingsUpdate = z
-  .object({
-    instances: z
-      .array(
-        z
-          .object({
-            id: z.string().trim().min(1).max(128),
-            agentDefinitionId: z.string().trim().min(1).max(128),
-            packageRoot: z.string().trim().min(1).max(4_096),
-            nodeExecutable: z.string().trim().min(1).max(4_096),
-            enabled: z.boolean(),
-            credentials: z.discriminatedUnion("kind", [
-              z.object({ kind: z.literal("inherit-host-profile") }).strict(),
-              z
-                .object({ kind: z.literal("isolated-home"), home: z.string().trim().min(1) })
-                .strict(),
-            ]),
-            proxy: z.enum(["inherit-host", "isolated"]),
-          })
-          .strict(),
-      )
-      .max(16),
-  })
-  .strict() satisfies z.ZodType<UpdateAcpAgentSettingsInput>;
 const HistoryUpdate = z
   .object({ retentionCount: z.number().int().nonnegative() })
   .strict() satisfies z.ZodType<UpdateHistorySettingsInput>;
@@ -450,7 +426,7 @@ export const live: Layer.Layer<
     yield* ipc.handlePlainCommand("settings:acp-agents:update", (event, input: unknown) =>
       authorize(event, "ACP Agent settings").pipe(
         Effect.andThen(
-          parse("parse-acp-agent-settings", () => AcpAgentSettingsUpdate.parse(input)),
+          parse("parse-acp-agent-settings", () => AcpAgentSettingsUpdateSchema.parse(input)),
         ),
         Effect.flatMap((parsed) =>
           update(

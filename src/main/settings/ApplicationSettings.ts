@@ -57,6 +57,7 @@ import {
   getOpenCodeLaunchConfiguration,
   updateOpenCodeAgentSettings,
   getAcpAgentSettings,
+  getAcpLaunchConfiguration,
   getClaudeAgentSettings,
   getClaudeLaunchConfiguration,
   getAppUpdateSettings,
@@ -170,6 +171,9 @@ export class ApplicationSettings extends Context.Service<
   {
     /** Latest saved preference; slow observers may coalesce intermediate invalidations. */
     readonly composerPredictionSettingsChanges: Stream.Stream<ComposerPredictionSettings>;
+    readonly acpLaunchConfiguration: (
+      instanceId: string,
+    ) => Effect.Effect<ReturnType<typeof getAcpLaunchConfiguration>, ApplicationSettingsError>;
     readonly openCodeLaunchConfiguration: (
       instanceId: string,
     ) => Effect.Effect<ReturnType<typeof getOpenCodeLaunchConfiguration>, ApplicationSettingsError>;
@@ -396,6 +400,10 @@ export const make = Effect.fn("ApplicationSettings.make")(function* (input: {
 
   return ApplicationSettings.of({
     composerPredictionSettingsChanges: Stream.fromPubSub(composerPredictionChanges),
+    acpLaunchConfiguration: (instanceId) =>
+      writes.withPermits(1)(
+        attempt("acp-launch-configuration", () => getAcpLaunchConfiguration(source, instanceId)),
+      ),
     openCodeLaunchConfiguration: (instanceId) =>
       writes.withPermits(1)(
         attempt("opencode-launch-configuration", () =>

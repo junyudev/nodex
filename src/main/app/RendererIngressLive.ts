@@ -1,3 +1,5 @@
+import * as AcpAgentsIpc from "../ipc/handlers/AcpAgentsIpc";
+import * as AcpAgents from "../acp-agents/AcpAgents";
 import * as CodexFilesystemAssetRuntime from "../host-runtime/CodexFilesystemAssetRuntime";
 import * as FileSearchIpc from "../ipc/handlers/FileSearchIpc";
 import * as WorkspaceTextSearchIpc from "../ipc/handlers/WorkspaceTextSearchIpc";
@@ -109,6 +111,7 @@ export const live = Layer.mergeAll(
   ApplicationSettingsIpc.live,
   AgentBackendIpc.live,
   AgentRuntimeIpc.live,
+  AcpAgentsIpc.live.pipe(Layer.provide(AcpAgents.live)),
   NativeSessionCatalogIpc.live.pipe(Layer.provide(NativeSessionCatalog.live)),
   AutomationIpc.live,
   CodexPendingWorktreeIpc.live,

@@ -1,3 +1,4 @@
+import { acpNativeStorageScope } from "../platform/node/AcpProfilePaths";
 import { CodexVisualizationState } from "../codex-application/CodexVisualizationState";
 import { codexVisualizationPassiveParts } from "../../shared/codex-visualization-passive-context";
 import { createHash } from "node:crypto";
@@ -19,8 +20,7 @@ import { z } from "zod";
 import { agentRuntimeProviderId } from "../../shared/agent-runtime-provider";
 import { codexCliAppServerArgs } from "../../shared/codex-app-server-launch";
 import type { ClaudeAgentInstanceConfig } from "../../shared/types";
-import { CLAUDE_ACP_AGENT_DEFINITION } from "../../shared/acp-agent-definitions";
-import { selectClaudeAcpEnvironment } from "../platform/node/ClaudeAcpEnvironment";
+import { acpProviderConfiguration } from "../agent-runtime/AcpProviderConfiguration";
 import {
   NativePromptImages,
   layer as promptImagesLayer,
@@ -77,7 +77,6 @@ import {
   agentRuntimeNodeExecutable,
 } from "../platform/node/AgentRuntimeEntrypoint";
 import { acquireAgentRuntimeProcess } from "../platform/node/AgentRuntimeProcess";
-import { AcpAgentLaunchProbe, live as acpProbeLayer } from "../platform/node/AcpAgentLaunchProbe";
 import { codexAccountHistoryEnvironment } from "../platform/node/CodexAccountHome";
 import { canonicalNativeSessionHome } from "../platform/node/NativeSessionCatalogPaths";
 import { shellQuote } from "../platform/node/NodexCliShell";
@@ -307,7 +306,6 @@ const supervisor = Layer.effectContext(
     });
     const execute: AgentRuntimeHostToolExecutor = (caller, name, input) =>
       Deferred.await(toolsReady).pipe(Effect.flatMap((tools) => tools(caller, name, input)));
-    const acpProbe = yield* AcpAgentLaunchProbe;
     const projectlessId = `nodex:projectless:${core.identity.profileId}`;
     const activity = yield* SessionActivity.make({
       resolveSessions: yield* SessionActivity.coreSessionResolver,
@@ -508,56 +506,19 @@ const supervisor = Layer.effectContext(
           instanceConfigId: configured.id,
         });
         if (!id) continue;
-        const definition = CLAUDE_ACP_AGENT_DEFINITION;
-        const compatible =
-          configured.enabled && configured.agentDefinitionId === definition.id
-            ? yield* acpProbe
-                .probeUserManagedNodePackage({
-                  packageRoot: configured.packageRoot,
-                  nodeExecutable: configured.nodeExecutable,
-                  expectedPackageName: definition.packageName,
-                  expectedPackageVersion: definition.packageVersion,
-                  entryRelativePath: definition.entryRelativePath,
-                  minimumNodeMajor: definition.minimumNodeMajor,
-                })
-                .pipe(Effect.catch(() => Effect.succeed(null)))
-            : null;
-        const isolatedHome =
-          compatible && configured.credentials.kind === "isolated-home"
-            ? yield* acpProbe.canonicalDirectory(configured.credentials.home)
-            : null;
-        const variables = selectClaudeAcpEnvironment(
-          environment,
-          {
-            credentials: configured.credentials,
-            proxy: configured.proxy,
-          },
-          isolatedHome,
+        const launch = configured.enabled
+          ? yield* settings.acpLaunchConfiguration(configured.id)
+          : null;
+        const provider = acpProviderConfiguration({
+          instance: configured,
+          inheritedEnvironment: environment,
+          environment: launch?.environment ?? {},
+          homeDirectory: config.homeDirectory,
+        });
+        const nativeStorageScope = yield* Effect.tryPromise(() =>
+          acpNativeStorageScope(provider.environment ?? []),
         );
-        providers[id] = {
-          driver: "acpRegistry",
-          displayName: definition.title,
-          enabled: configured.enabled && compatible !== null,
-          environment: Object.entries(variables).flatMap(([name, value]) =>
-            value === undefined
-              ? []
-              : [
-                  {
-                    name,
-                    value,
-                    sensitive: /^(?:ANTHROPIC_|CLAUDE_|AWS_|GOOGLE_|CLOUD_ML_)/u.test(name),
-                  },
-                ],
-          ),
-          config: {
-            source: "local",
-            commandPath: compatible?.nodeExecutable ?? configured.nodeExecutable,
-            commandArgs: [
-              compatible?.entryPath ?? join(configured.packageRoot, definition.entryRelativePath),
-            ],
-            inheritEnvironment: false,
-          },
-        };
+        providers[id] = { ...provider, config: { ...provider.config, nativeStorageScope } };
       }
       const configuration: AgentRuntimeConfiguration = {
         home: join(config.nodexHome, "agent-runtime"),
@@ -737,11 +698,7 @@ const supervisor = Layer.effectContext(
 /** Execution and Profile coordination depend only on Core and native filesystem capabilities. */
 export const runtime = supervisor.pipe(
   Layer.provideMerge(
-    Layer.mergeAll(
-      promptImagesLayer.pipe(Layer.provide(imageFittingLayer)),
-      sessionWorkspaceLayer,
-      acpProbeLayer,
-    ),
+    Layer.mergeAll(promptImagesLayer.pipe(Layer.provide(imageFittingLayer)), sessionWorkspaceLayer),
   ),
 );
 

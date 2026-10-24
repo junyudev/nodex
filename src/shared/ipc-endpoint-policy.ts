@@ -73,6 +73,13 @@ export type IpcCommand<
 
 /** Exact owner-audited groups. Never replace one group with an `Exclude<keyof IpcApi, ...>` remainder. */
 type QueryEndpointPolicy =
+  | "acp:registry:search"
+  | "acp:inspect"
+  | "acp:operation:read"
+  | "acp:auth:read"
+  | "acp:sessions:list"
+  | "acp:sessions:prepareImport"
+  | "acp:modelProviders:list"
   | "agent-runtime:activity:read"
   | "agent-runtime:connection:read"
   | "agent-runtime:session:read"
@@ -460,6 +467,20 @@ type MainRevisionCommandEndpointPolicy =
   | "codex:visualization:interaction:write";
 
 type PlainResultCommandEndpointPolicy =
+  | "acp:install:start"
+  | "acp:registry:uninstall"
+  | "acp:connection:start"
+  | "acp:operation:cancel"
+  | "acp:auth:start"
+  | "acp:auth:respond"
+  | "acp:auth:complete"
+  | "acp:auth:cancel"
+  | "acp:auth:logout"
+  | "acp:urlAuth:accept"
+  | "acp:sessions:delete"
+  | "acp:sessions:import"
+  | "acp:modelProviders:set"
+  | "acp:modelProviders:disable"
   | "agent-runtime:session:launch"
   | "agent-runtime:session:message"
   | "agent-runtime:session:queue-message"

@@ -10,6 +10,7 @@ export function makeTestApplicationSettings(input?: {
 }): ApplicationSettings["Service"] {
   return ApplicationSettings.of({
     composerPredictionSettingsChanges: Stream.empty,
+    acpLaunchConfiguration: () => Effect.die("Unused ACP launch configuration"),
     openCodeLaunchConfiguration: () => Effect.die("Unused OpenCode launch configuration"),
     claudeLaunchConfiguration: () => Effect.die("Unused Claude launch configuration"),
     snapshot: () =>

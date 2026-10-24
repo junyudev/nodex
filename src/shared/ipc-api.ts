@@ -1,3 +1,4 @@
+import type { AcpIpcApi } from "./acp-api";
 import type { AgentRuntimeIpcApi } from "./agent-runtime-api";
 import type { AgentModelCatalog, AgentModelCatalogInput } from "./agent-model-catalog";
 import type {
@@ -712,7 +713,7 @@ export interface RendererDiagnosticsLogInput {
   fields?: Record<string, unknown>;
 }
 
-export interface IpcApi extends AgentRuntimeIpcApi {
+export interface IpcApi extends AgentRuntimeIpcApi, AcpIpcApi {
   "codex:turn-presentation:capture": {
     args: [input: CodexTurnPresentationCaptureInput];
     result: CodexTurnPresentationTicket | undefined;

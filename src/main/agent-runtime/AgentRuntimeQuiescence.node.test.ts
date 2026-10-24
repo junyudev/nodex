@@ -41,19 +41,26 @@ it.effect("a launch starts execution unless evidence matches the stopped store e
   }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
 );
 
-const connection = (activity: number, handoffs: number, fail = false) =>
+const connection = (
+  activity: number,
+  handoffs: number,
+  fail = false,
+  management = { activeOperations: 0, activeAuthentication: 0 },
+) =>
   ({
     request: (method: string) =>
       fail
         ? Effect.fail(new Error("unsupported"))
         : Effect.succeed(
-            method === "execution.activity"
-              ? {
-                  snapshotSequence: 1,
-                  items: Array.from({ length: activity }, () => ({})),
-                  nextCursor: null,
-                }
-              : { items: Array.from({ length: handoffs }, () => ({})), nextCursor: null },
+            method === "acp.activity"
+              ? management
+              : method === "execution.activity"
+                ? {
+                    snapshotSequence: 1,
+                    items: Array.from({ length: activity }, () => ({})),
+                    nextCursor: null,
+                  }
+                : { items: Array.from({ length: handoffs }, () => ({})), nextCursor: null },
           ),
   }) as unknown as AgentRuntimeProcessConnection;
 
@@ -62,6 +69,16 @@ it.effect("execution is quiet only with no live roots and no handoff holds", () 
     assert.isTrue(yield* reportsNoWork(connection(0, 0)));
     assert.isFalse(yield* reportsNoWork(connection(1, 0)));
     assert.isFalse(yield* reportsNoWork(connection(0, 1)));
+    assert.isFalse(
+      yield* reportsNoWork(
+        connection(0, 0, false, { activeOperations: 1, activeAuthentication: 0 }),
+      ),
+    );
+    assert.isFalse(
+      yield* reportsNoWork(
+        connection(0, 0, false, { activeOperations: 0, activeAuthentication: 1 }),
+      ),
+    );
     // An unanswerable report is never treated as quiet by the supervisor.
     assert.isTrue(Exit.isFailure(yield* reportsNoWork(connection(0, 0, true)).pipe(Effect.exit)));
   }),
