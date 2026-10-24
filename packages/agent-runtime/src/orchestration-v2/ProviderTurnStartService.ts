@@ -603,7 +603,10 @@ export const layer: Layer.Layer<
         if (input.willRetry === true) return yield* sessionResult.failure;
         yield* settleStartFailure({
           signal: "provider-session-open-failure",
-          title: "Provider session failed to open",
+          title:
+            providerThread.nativeThreadRef === null
+              ? "Provider session failed to open"
+              : "Original Agent session could not be restored",
           error: sessionResult.failure,
         });
         return;
@@ -914,6 +917,15 @@ export const layer: Layer.Layer<
         );
         if (resumed._tag === "Success") {
           return resumed.success;
+        }
+        if (session.nativeResumeFailurePolicy === "fail") {
+          if (input.willRetry === true) return yield* resumed.failure;
+          yield* settleStartFailure({
+            signal: "provider-native-session-recovery-failure",
+            title: "Original Agent session could not be restored",
+            error: resumed.failure,
+          });
+          return undefined;
         }
 
         yield* Effect.logWarning("Provider resume failed; attempting a fresh native session", {

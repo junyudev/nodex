@@ -112,8 +112,10 @@ function makeTestAdapter(input: {
   readonly refuseStarts?: Ref.Ref<number>;
   readonly failInjectionOnce?: Ref.Ref<boolean>;
   readonly nativeThreadGeneration?: Ref.Ref<number>;
+  readonly failNativeOpen?: boolean;
   readonly failResume?: boolean;
   readonly failResumeOnce?: Ref.Ref<boolean>;
+  readonly nativeResumeFailurePolicy?: ProviderAdapter.ProviderAdapterV2SessionRuntime["nativeResumeFailurePolicy"];
   readonly initialContextUsage?: OrchestrationV2ProviderThread["contextUsage"];
   readonly getModelContextWindow?: (selection: ModelSelection) => number | undefined;
   readonly canReuseContextUsage?: ProviderAdapter.ProviderAdapterV2SessionRuntime["canReuseContextUsage"];
@@ -133,6 +135,13 @@ function makeTestAdapter(input: {
     planSelectionTransition: () => Effect.succeed({ type: "apply_on_next_turn" }),
     openSession: (sessionInput) =>
       Effect.gen(function* () {
+        if (input.failNativeOpen && sessionInput.initialNativeThreadId !== undefined) {
+          return yield* new ProviderAdapter.ProviderAdapterOpenSessionError({
+            driver: input.driver,
+            providerSessionId: sessionInput.providerSessionId,
+            cause: "Original native session is unavailable",
+          });
+        }
         const events = yield* PubSub.unbounded<ProviderAdapter.ProviderAdapterV2Event>();
         const now = yield* DateTime.now;
         const providerSession: OrchestrationV2ProviderSession = {
@@ -153,6 +162,9 @@ function makeTestAdapter(input: {
           driver: input.driver,
           providerSessionId: sessionInput.providerSessionId,
           providerSession,
+          ...(input.nativeResumeFailurePolicy === undefined
+            ? {}
+            : { nativeResumeFailurePolicy: input.nativeResumeFailurePolicy }),
           events: Stream.fromPubSub(events),
           ...(input.getModelContextWindow === undefined
             ? {}
@@ -1789,9 +1801,14 @@ describe("orchestration v2 provider switching", () => {
       ),
   );
 
-  it.live.each(["native", "legacy"] as const)(
-    "starts a replacement native thread as new after the resume fallback with %s attempts",
-    (attempts) =>
+  it.live.each([
+    { attempts: "native", policy: "portable-context", phase: "resume" },
+    { attempts: "legacy", policy: "portable-context", phase: "resume" },
+    { attempts: "native", policy: "fail", phase: "resume" },
+    { attempts: "native", policy: "fail", phase: "open" },
+  ] as const)(
+    "honors $policy native restoration at $phase with $attempts attempts",
+    ({ attempts, policy, phase }) =>
       Effect.scoped(
         Effect.gen(function* () {
           const cwd = yield* checkpointWorkspace("resume-fallback-native-turns");
@@ -1806,14 +1823,22 @@ describe("orchestration v2 provider switching", () => {
               modelSelection: CLAUDE_MODEL_SELECTION,
               responseByRunOrdinal: {},
               capturedTurns,
-              failResumeOnce,
+              ...(policy === "fail"
+                ? phase === "open"
+                  ? { failNativeOpen: true }
+                  : { failResume: true }
+                : { failResumeOnce }),
               nativeThreadGeneration: generation,
+              nativeResumeFailurePolicy: policy,
             }),
           ]);
           yield* Effect.gen(function* () {
             const orchestrator = yield* Orchestrator.OrchestratorV2;
             const worker = yield* EffectWorker.OrchestrationEffectWorkerV2;
-            const runToCompletion = Effect.fn("runToCompletion")(function* (ordinal: number) {
+            const runToCompletion = Effect.fn("runToCompletion")(function* (
+              ordinal: number,
+              expectedStatus: "completed" | "failed" = "completed",
+            ) {
               yield* orchestrator.dispatch({
                 type: "message.dispatch",
                 commandId: CommandId.make(`resume-fallback:${ordinal}`),
@@ -1838,7 +1863,7 @@ describe("orchestration v2 provider switching", () => {
               yield* worker.drain();
               assert.equal(
                 (yield* orchestrator.getThreadProjection(threadId)).runs.at(-1)?.status,
-                "completed",
+                expectedStatus,
               );
             });
             yield* orchestrator.dispatch({
@@ -1886,7 +1911,19 @@ describe("orchestration v2 provider switching", () => {
               });
             }
             yield* Ref.set(failResumeOnce, true);
-            yield* runToCompletion(2);
+            yield* runToCompletion(2, policy === "fail" ? "failed" : "completed");
+            if (policy === "fail") {
+              const failed = yield* orchestrator.getThreadProjection(threadId);
+              assert.equal((yield* Ref.get(capturedTurns)).length, 1);
+              assert.equal(yield* Ref.get(generation), 1);
+              assert.deepEqual(
+                failed.providerThreads[0]?.nativeThreadRef,
+                providerThread.nativeThreadRef,
+              );
+              assert.equal(failed.contextHandoffs.length, 0);
+              assert.equal(failed.contextTransfers.length, 0);
+              return;
+            }
             yield* runToCompletion(3);
 
             const turns = yield* Ref.get(capturedTurns);

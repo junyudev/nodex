@@ -65,7 +65,7 @@ input.on("line", (line) => {
       result({
         protocolVersion: protocol === "v1" ? 1 : 2,
         ...(protocol === "v2"
-          ? { capabilities: {}, info: { name: "model-peer", version: "1.0.0" } }
+          ? { capabilities: { session: {} }, info: { name: "model-peer", version: "1.0.0" } }
           : {
               agentCapabilities: { loadSession: true },
               agentInfo: { name: "model-peer", version: "1.0.0" },
@@ -80,8 +80,18 @@ input.on("line", (line) => {
       result({});
       return;
     case "session/new":
+      result(setup());
+      return;
     case "session/load":
     case "session/resume":
+      if (process.env.NODEX_ACP_FAIL_LOAD === "1") {
+        send({
+          jsonrpc: "2.0",
+          id: request.id,
+          error: { code: -32603, message: "Original native session is unavailable" },
+        });
+        return;
+      }
       result(setup());
       return;
     case "session/set_model":

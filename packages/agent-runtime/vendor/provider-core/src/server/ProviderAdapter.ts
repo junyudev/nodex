@@ -552,6 +552,8 @@ export interface ProviderAdapterV2SessionRuntime {
   readonly nativeGeneration?: number;
   /** A native cancellation ended this incarnation; the manager must retire its credentials and scope. */
   readonly nativeSessionRetired?: Effect.Effect<boolean>;
+  /** An unavailable captured session must fail instead of silently replacing its native identity. */
+  readonly nativeResumeFailurePolicy?: "fail" | "portable-context";
   readonly instanceId: ProviderInstanceId;
   readonly driver: ProviderDriverKind;
   readonly providerSessionId: ProviderSessionId;
