@@ -5,6 +5,7 @@ import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as PubSub from "effect/PubSub";
+import * as Stream from "effect/Stream";
 import { AcpAgents } from "../../acp-agents/AcpAgents";
 import { testLayer } from "../../app/MainConfig";
 import { layer as callbacks, ScopedCallbackRuntime } from "../../app/ScopedCallbackRuntime";
@@ -25,6 +26,7 @@ it.effect(
       const broadcasts: string[] = [];
       let operationPhase = "running";
       const releases = yield* PubSub.unbounded<string>();
+      const changes = yield* PubSub.sliding<void>(1);
       const released = yield* PubSub.subscribe(releases);
       const callbackContext = yield* Layer.build(callbacks);
       const runtime = Context.get(callbackContext, ScopedCallbackRuntime);
@@ -33,6 +35,7 @@ it.effect(
           Layer.provide(
             Layer.mergeAll(
               Layer.succeed(AcpAgents, {
+                changes: Stream.fromPubSub(changes),
                 presentFailure: (error: AgentAcpFailure) =>
                   Effect.succeed({
                     ...error,
@@ -114,6 +117,8 @@ it.effect(
       const read = handlers.get("acp:operation:read")!;
       yield* read(event, { operationId: "operation" });
       assert.deepEqual(broadcasts, []);
+      yield* PubSub.publish(changes, undefined);
+      yield* Effect.yieldNow;
       operationPhase = "succeeded";
       yield* read(event, { operationId: "operation" });
       yield* read(event, { operationId: "operation" });
@@ -142,7 +147,7 @@ it.effect(
       yield* read({ sender: secondSender, senderFrame: frame } as unknown as IpcMainInvokeEvent, {
         operationId: "operation",
       });
-      assert.deepEqual(broadcasts, ["agent-settings-changed", "agent-settings-changed"]);
+      assert.deepEqual(broadcasts, ["agent-settings-changed"]);
       sender.emit("destroyed");
       assert.equal(yield* PubSub.take(released), calls[0]?.ownerId);
       assert.equal(sender.listenerCount("render-process-gone"), 0);

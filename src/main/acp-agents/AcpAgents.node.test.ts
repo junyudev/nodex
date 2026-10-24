@@ -3,6 +3,8 @@ import { assert, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Deferred from "effect/Deferred";
 import * as Fiber from "effect/Fiber";
+import * as Stream from "effect/Stream";
+import * as TestClock from "effect/testing/TestClock";
 import * as FileSystem from "effect/FileSystem";
 import { AcpInputSchemas } from "../../shared/schemas/acp-api";
 import { make } from "./AcpAgents";
@@ -22,6 +24,9 @@ const setup = Effect.gen(function* () {
   const calls: { method: string; input: Record<string, unknown> }[] = [];
   const state = {
     pauseAuthentication: false,
+    operationPhase: "running",
+    authenticationPhase: "waiting",
+    connected: true,
     revision: "one",
     generation: "generation-one",
     enabled: true,
@@ -35,7 +40,7 @@ const setup = Effect.gen(function* () {
       if (method.startsWith("acp.auth."))
         return {
           instanceId: input.instanceId,
-          phase: "waiting",
+          phase: state.authenticationPhase,
           flowId: "flow",
           authorizationUrl: null,
           expiresAt: null,
@@ -46,7 +51,7 @@ const setup = Effect.gen(function* () {
       return {
         operationId: state.coalescedOperation || input.operationId,
         kind: method === "acp.install.start" ? "install" : "connect",
-        phase: "running",
+        phase: state.operationPhase,
         instanceId: input.instanceId ?? null,
         agentId: input.agentId ?? null,
         result: null,
@@ -73,7 +78,7 @@ const setup = Effect.gen(function* () {
     } as unknown as AgentRuntimeApplication["Service"]),
     Effect.provideService(AgentRuntimeSupervisor, {
       get: () => Effect.sync(process),
-      currentConnection: Effect.sync(process),
+      currentConnection: Effect.sync(() => (state.connected ? process() : null)),
       request,
     } as unknown as AgentRuntimeSupervisor["Service"]),
     Effect.provideService(ApplicationSettings, {
@@ -280,5 +285,71 @@ it.effect("cancels authentication that returns after its window closes", () =>
     );
     yield* agents.releaseOwner("owner");
     assert.equal(calls.filter(({ method }) => method === "acp.auth.cancel").length, 1);
+  }),
+);
+
+it.effect(
+  "announces a completed installation after its window closes without renderer polling",
+  () =>
+    Effect.gen(function* () {
+      const { agents, calls, state } = yield* setup;
+      const changes: void[] = [];
+      yield* agents.changes.pipe(
+        Stream.runForEach(() => Effect.sync(() => changes.push(undefined))),
+        Effect.forkScoped({ startImmediately: true }),
+      );
+      yield* agents["acp.install.start"]("window", { agentId: "qoder", operationId: "install" });
+      yield* agents.releaseOwner("window");
+      state.operationPhase = "succeeded";
+      yield* TestClock.adjust("500 millis");
+      assert.equal(changes.length, 1);
+      assert.equal(calls.filter(({ method }) => method === "acp.operation.read").length, 1);
+      yield* agents["acp.operation.read"]("window", { operationId: "install" });
+      yield* TestClock.adjust("1 second");
+      assert.equal(changes.length, 1);
+    }),
+);
+it.effect(
+  "does not announce failed, cancelled or obsolete-generation operations as completed",
+  () =>
+    Effect.gen(function* () {
+      for (const outcome of ["failed", "cancelled", "generation", "disconnected"]) {
+        const { agents, calls, state } = yield* setup;
+        const changes: void[] = [];
+        yield* agents.changes.pipe(
+          Stream.runForEach(() => Effect.sync(() => changes.push(undefined))),
+          Effect.forkScoped({ startImmediately: true }),
+        );
+        yield* agents["acp.install.start"]("window", { agentId: "qoder", operationId: "install" });
+        if (outcome === "generation") state.generation = "replacement";
+        else if (outcome === "disconnected") state.connected = false;
+        else state.operationPhase = outcome;
+        yield* TestClock.adjust("1 second");
+        assert.equal(changes.length, 0);
+        assert.equal(
+          calls.filter(({ method }) => method === "acp.operation.read").length,
+          ["generation", "disconnected"].includes(outcome) ? 0 : 1,
+        );
+      }
+    }),
+);
+it.effect("announces authentication completion without an observing settings modal", () =>
+  Effect.gen(function* () {
+    const { agents, state } = yield* setup;
+    let changes = 0;
+    yield* agents.changes.pipe(
+      Stream.runForEach(() =>
+        Effect.sync(() => {
+          changes += 1;
+        }),
+      ),
+      Effect.forkScoped({ startImmediately: true }),
+    );
+    yield* agents["acp.auth.start"]("window", { instanceId: "personal" });
+    state.authenticationPhase = "succeeded";
+    yield* TestClock.adjust("500 millis");
+    assert.equal(changes, 1);
+    yield* TestClock.adjust("1 second");
+    assert.equal(changes, 1);
   }),
 );

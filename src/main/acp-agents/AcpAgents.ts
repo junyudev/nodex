@@ -6,6 +6,8 @@ import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
+import * as PubSub from "effect/PubSub";
+import * as Stream from "effect/Stream";
 import type { AcpFailure, AcpMethod, AcpOperations } from "../../shared/acp-api";
 import type { AgentAcpFailure } from "@nodex/agent-runtime/contracts";
 import { agentRuntimeProviderId } from "../../shared/agent-runtime-provider";
@@ -30,6 +32,7 @@ type Methods = {
 export class AcpAgents extends Context.Service<
   AcpAgents,
   Methods & {
+    readonly changes: Stream.Stream<void>;
     readonly releaseOwner: (ownerId: string) => Effect.Effect<void>;
     readonly presentFailure: (failure: AgentAcpFailure) => Effect.Effect<AcpFailure>;
   }
@@ -44,6 +47,74 @@ export const make = Effect.gen(function* () {
   const projects = yield* ProjectWorkspace;
   const config = yield* MainConfig;
   const fs = yield* FileSystem.FileSystem;
+  const changes = yield* Effect.acquireRelease(PubSub.sliding<void>(1), PubSub.shutdown);
+  const observationSignals = yield* Effect.acquireRelease(PubSub.sliding<void>(1), PubSub.shutdown);
+  const changed = PubSub.publish(changes, undefined).pipe(Effect.asVoid);
+  type Observation = {
+    readonly key: string;
+    readonly slot?: string;
+    readonly generation: string;
+    readonly phase: string;
+    readonly read: Effect.Effect<{ readonly phase: string }, unknown>;
+    readonly settled?: () => void;
+  };
+  // Operation admission is capped at 256; authentication has one slot per configured instance.
+  const observations = new Map<string, Observation>();
+  const observed = new Set<string>();
+  const observeCompletion = (input: Observation) =>
+    Effect.gen(function* () {
+      if (observed.has(input.key)) return;
+      const slot = input.slot ?? input.key;
+      if (observations.get(slot)?.key === input.key) return;
+      observations.set(slot, input);
+      yield* PubSub.publish(observationSignals, undefined);
+    });
+  const pollObservation = Effect.fn("AcpAgents.pollObservation")(function* (
+    slot: string,
+    observation: Observation,
+  ) {
+    const process = yield* runtime.currentConnection;
+    if (process?.identity.runtimeGeneration !== observation.generation) {
+      if (observations.get(slot) === observation) observations.delete(slot);
+      return;
+    }
+    const result = yield* Effect.result(
+      ["running", "starting", "waiting", "verifying"].includes(observation.phase)
+        ? observation.read
+        : Effect.succeed({ phase: observation.phase }),
+    );
+    if (observations.get(slot) !== observation) return;
+    const current = yield* runtime.currentConnection;
+    if (
+      current?.identity.runtimeGeneration !== observation.generation ||
+      result._tag === "Failure"
+    ) {
+      observations.delete(slot);
+      return;
+    }
+    if (["running", "starting", "waiting", "verifying"].includes(result.success.phase)) return;
+    observations.delete(slot);
+    observation.settled?.();
+    if (observed.size >= 256) observed.delete(observed.values().next().value!);
+    observed.add(observation.key);
+    if (result.success.phase === "succeeded") yield* changed;
+  });
+  const observationSubscription = yield* PubSub.subscribe(observationSignals);
+  yield* Stream.fromSubscription(observationSubscription).pipe(
+    Stream.runForEach(() =>
+      Effect.gen(function* () {
+        while (observations.size > 0) {
+          yield* Effect.sleep("500 millis");
+          yield* Effect.forEach(
+            [...observations],
+            ([slot, observation]) => pollObservation(slot, observation),
+            { concurrency: 8, discard: true },
+          );
+        }
+      }),
+    ),
+    Effect.forkScoped({ startImmediately: true }),
+  );
   const flows = new Map<
     string,
     {
@@ -197,6 +268,22 @@ export const make = Effect.gen(function* () {
       saved.runtimeId = result.operationId;
       saved.settled = result.phase !== "running";
     }
+    const process = yield* runtime.currentConnection;
+    if (saved && process?.identity.runtimeGeneration === saved.generation)
+      yield* observeCompletion({
+        key: `operation:${saved.generation}:${result.operationId}`,
+        generation: saved.generation,
+        phase: result.phase,
+        read: process.request("acp.operation.read", { operationId: result.operationId }),
+        settled: () => {
+          for (const operation of operations.values())
+            if (
+              operation.generation === saved.generation &&
+              operation.runtimeId === result.operationId
+            )
+              operation.settled = true;
+        },
+      });
     return {
       ...result,
       operationId,
@@ -233,7 +320,7 @@ export const make = Effect.gen(function* () {
             message: "Remove Agent instances using this installation before uninstalling it.",
           });
         return yield* runtime.request("acp.registry.uninstall", input);
-      }),
+      }).pipe(Effect.tap(() => changed)),
     "acp.connection.start": (ownerId, input) =>
       Effect.gen(function* () {
         const resolved = yield* target(input);
@@ -300,6 +387,21 @@ export const make = Effect.gen(function* () {
                 ownerId,
                 flowId: result.flowId,
                 generation: process.identity.runtimeGeneration,
+              });
+            if (result.flowId)
+              yield* observeCompletion({
+                key: `auth:${process.identity.runtimeGeneration}:${resolved.instanceId}:${result.flowId}`,
+                slot: `auth:${resolved.instanceId}`,
+                generation: process.identity.runtimeGeneration,
+                phase: result.phase,
+                read: Effect.gen(function* () {
+                  const saved = flows.get(key(ownerId, input.instanceId));
+                  if (!saved || saved.flowId !== result.flowId) return { phase: "cancelled" };
+                  return yield* process.request("acp.auth.read", {
+                    instanceId: resolved.instanceId,
+                    ownerId,
+                  });
+                }),
               });
             return authState(input.instanceId, result);
           }),
@@ -370,7 +472,7 @@ export const make = Effect.gen(function* () {
           input.instanceId,
           yield* process.request("acp.auth.logout", { instanceId: resolved.instanceId }),
         );
-      }),
+      }).pipe(Effect.tap(() => changed)),
     "acp.urlAuth.accept": (_owner, input) =>
       Effect.gen(function* () {
         const resolved = yield* instance(input.instanceId);
@@ -435,7 +537,7 @@ export const make = Effect.gen(function* () {
           baseUrl: input.baseUrl,
           ...(input.headers === undefined ? {} : { headers: input.headers }),
         });
-      }),
+      }).pipe(Effect.tap(() => changed)),
     "acp.modelProviders.disable": (_owner, input) =>
       Effect.gen(function* () {
         const resolved = yield* target(input);
@@ -444,7 +546,7 @@ export const make = Effect.gen(function* () {
           ...resolved,
           providerId: input.providerId,
         });
-      }),
+      }).pipe(Effect.tap(() => changed)),
   };
   const releaseOwner = Effect.fn("AcpAgents.releaseOwner")(function* (ownerId: string) {
     for (const pending of pendingAuthentication.get(ownerId) ?? []) pending.released = true;
@@ -458,6 +560,11 @@ export const make = Effect.gen(function* () {
           .pipe(Effect.ignore);
     }
   });
-  return AcpAgents.of({ ...methods, releaseOwner, presentFailure });
+  return AcpAgents.of({
+    ...methods,
+    releaseOwner,
+    presentFailure,
+    changes: Stream.fromPubSub(changes),
+  });
 });
 export const live = Layer.effect(AcpAgents, make);

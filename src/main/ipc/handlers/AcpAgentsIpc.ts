@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as Stream from "effect/Stream";
 import type { IpcMainInvokeEvent } from "electron";
 import type { z } from "zod";
 import { AcpInputSchemas } from "../../../shared/schemas/acp-api";
@@ -11,7 +12,6 @@ import { isTrustedAppRendererIpcSender } from "../../app-renderer-ipc-authorizat
 import { ElectronIpc } from "../../platform/electron/ElectronIpc";
 import { WindowRuntime } from "../../window-runtime/WindowRuntime";
 import { safeBroadcastToWindows } from "../../ipc-safe-send";
-import type { AcpOperations, AcpResult } from "../../../shared/acp-api";
 import { AgentRuntimeProcessError } from "../../platform/node/AgentRuntimeProcess";
 
 export const live = Layer.effectDiscard(
@@ -21,30 +21,14 @@ export const live = Layer.effectDiscard(
     const config = yield* MainConfig;
     const windows = yield* WindowRuntime;
     const callbacks = yield* ScopedCallbackRuntime;
-    const observedCompletions = new Set<string>();
-    const changed = Effect.sync(() =>
-      safeBroadcastToWindows(windows.all(), "agent-settings-changed", [undefined]),
+    yield* agents.changes.pipe(
+      Stream.runForEach(() =>
+        Effect.sync(() =>
+          safeBroadcastToWindows(windows.all(), "agent-settings-changed", [undefined]),
+        ),
+      ),
+      Effect.forkScoped({ startImmediately: true }),
     );
-    const completed = (id: string, phase: string) =>
-      Effect.gen(function* () {
-        if (phase !== "succeeded" || observedCompletions.has(id)) return;
-        if (observedCompletions.size >= 256) observedCompletions.clear();
-        observedCompletions.add(id);
-        yield* changed;
-      });
-    const operationCompleted = (
-      event: IpcMainInvokeEvent,
-      result: AcpResult<AcpOperations["acp.operation.read"]["output"]>,
-    ) =>
-      result.ok
-        ? completed(`operation:${event.sender.id}:${result.value.operationId}`, result.value.phase)
-        : Effect.void;
-    const authenticationCompleted = (
-      result: AcpResult<AcpOperations["acp.auth.read"]["output"]>,
-    ) =>
-      result.ok
-        ? completed(`auth:${result.value.instanceId}:${result.value.flowId}`, result.value.phase)
-        : Effect.void;
     const owners = new Map<
       number,
       {
@@ -135,17 +119,10 @@ export const live = Layer.effectDiscard(
       handle(event, AcpInputSchemas["acp.install.preview"], input, agents["acp.install.preview"]),
     );
     yield* ipc.handleQuery("acp:operation:read", (event, input) =>
-      handle(
-        event,
-        AcpInputSchemas["acp.operation.read"],
-        input,
-        agents["acp.operation.read"],
-      ).pipe(Effect.tap((result) => operationCompleted(event, result))),
+      handle(event, AcpInputSchemas["acp.operation.read"], input, agents["acp.operation.read"]),
     );
     yield* ipc.handleQuery("acp:auth:read", (event, input) =>
-      handle(event, AcpInputSchemas["acp.auth.read"], input, agents["acp.auth.read"]).pipe(
-        Effect.tap(authenticationCompleted),
-      ),
+      handle(event, AcpInputSchemas["acp.auth.read"], input, agents["acp.auth.read"]),
     );
     yield* ipc.handleQuery("acp:sessions:list", (event, input) =>
       handle(event, AcpInputSchemas["acp.sessions.list"], input, agents["acp.sessions.list"]),
@@ -159,9 +136,7 @@ export const live = Layer.effectDiscard(
       ),
     );
     yield* ipc.handlePlainCommand("acp:install:start", (event, input) =>
-      handle(event, AcpInputSchemas["acp.install.start"], input, agents["acp.install.start"]).pipe(
-        Effect.tap((result) => operationCompleted(event, result)),
-      ),
+      handle(event, AcpInputSchemas["acp.install.start"], input, agents["acp.install.start"]),
     );
     yield* ipc.handlePlainCommand("acp:registry:uninstall", (event, input) =>
       handle(
@@ -169,41 +144,28 @@ export const live = Layer.effectDiscard(
         AcpInputSchemas["acp.registry.uninstall"],
         input,
         agents["acp.registry.uninstall"],
-      ).pipe(Effect.tap((result) => (result.ok ? changed : Effect.void))),
+      ),
     );
     yield* ipc.handlePlainCommand("acp:connection:start", (event, input) =>
-      handle(
-        event,
-        AcpInputSchemas["acp.connection.start"],
-        input,
-        agents["acp.connection.start"],
-      ).pipe(Effect.tap((result) => operationCompleted(event, result))),
+      handle(event, AcpInputSchemas["acp.connection.start"], input, agents["acp.connection.start"]),
     );
     yield* ipc.handlePlainCommand("acp:operation:cancel", (event, input) =>
       handle(event, AcpInputSchemas["acp.operation.cancel"], input, agents["acp.operation.cancel"]),
     );
     yield* ipc.handlePlainCommand("acp:auth:start", (event, input) =>
-      handle(event, AcpInputSchemas["acp.auth.start"], input, agents["acp.auth.start"]).pipe(
-        Effect.tap(authenticationCompleted),
-      ),
+      handle(event, AcpInputSchemas["acp.auth.start"], input, agents["acp.auth.start"]),
     );
     yield* ipc.handlePlainCommand("acp:auth:respond", (event, input) =>
-      handle(event, AcpInputSchemas["acp.auth.respond"], input, agents["acp.auth.respond"]).pipe(
-        Effect.tap(authenticationCompleted),
-      ),
+      handle(event, AcpInputSchemas["acp.auth.respond"], input, agents["acp.auth.respond"]),
     );
     yield* ipc.handlePlainCommand("acp:auth:complete", (event, input) =>
-      handle(event, AcpInputSchemas["acp.auth.complete"], input, agents["acp.auth.complete"]).pipe(
-        Effect.tap(authenticationCompleted),
-      ),
+      handle(event, AcpInputSchemas["acp.auth.complete"], input, agents["acp.auth.complete"]),
     );
     yield* ipc.handlePlainCommand("acp:auth:cancel", (event, input) =>
       handle(event, AcpInputSchemas["acp.auth.cancel"], input, agents["acp.auth.cancel"]),
     );
     yield* ipc.handlePlainCommand("acp:auth:logout", (event, input) =>
-      handle(event, AcpInputSchemas["acp.auth.logout"], input, agents["acp.auth.logout"]).pipe(
-        Effect.tap((result) => (result.ok ? changed : Effect.void)),
-      ),
+      handle(event, AcpInputSchemas["acp.auth.logout"], input, agents["acp.auth.logout"]),
     );
     yield* ipc.handlePlainCommand("acp:urlAuth:accept", (event, input) =>
       handle(event, AcpInputSchemas["acp.urlAuth.accept"], input, agents["acp.urlAuth.accept"]),
@@ -217,7 +179,7 @@ export const live = Layer.effectDiscard(
         AcpInputSchemas["acp.modelProviders.set"],
         input,
         agents["acp.modelProviders.set"],
-      ).pipe(Effect.tap((result) => (result.ok ? changed : Effect.void))),
+      ),
     );
     yield* ipc.handlePlainCommand("acp:modelProviders:disable", (event, input) =>
       handle(
@@ -225,7 +187,7 @@ export const live = Layer.effectDiscard(
         AcpInputSchemas["acp.modelProviders.disable"],
         input,
         agents["acp.modelProviders.disable"],
-      ).pipe(Effect.tap((result) => (result.ok ? changed : Effect.void))),
+      ),
     );
     yield* ipc.handleQuery("acp:sessions:prepareImport", (event, input) =>
       handle(
