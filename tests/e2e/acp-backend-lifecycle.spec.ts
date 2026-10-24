@@ -22,7 +22,12 @@ type AcpObservation =
   | { readonly method: "initialize" }
   | { readonly method: "session/new"; readonly cwd: string }
   | { readonly method: "session/load"; readonly sessionId: string }
-  | { readonly method: "session/prompt"; readonly sessionId: string };
+  | { readonly method: "session/prompt"; readonly sessionId: string }
+  | {
+      readonly method: "session/set_config_option";
+      readonly configId: string;
+      readonly value: string;
+    };
 
 const readObservations = (observationPath: string): readonly AcpObservation[] => {
   try {
@@ -47,6 +52,12 @@ const scriptedEnvironment = (observationPath: string, message = liveMessage) => 
         resume: false,
         close: false,
         loadReplay: [restoredMessage],
+      },
+      sessionConfig: {
+        id: "model",
+        category: "model",
+        currentValue: "default",
+        values: ["default", "scripted-model"],
       },
       beforePrompt: [message],
     }),
@@ -94,7 +105,7 @@ test("runs a chat on an ACP agent and continues its protocol session after resta
           displayName: "ACP personal",
           source,
           environment: scriptedEnvironment(observationPath),
-          customModels: ["scripted-model"],
+          customModels: [],
           enabled: true,
           credentials: { kind: "isolated-home", home: harness.profile.runRoot },
           proxy: "isolated",
@@ -105,7 +116,7 @@ test("runs a chat on an ACP agent and continues its protocol session after resta
           displayName: "ACP work",
           source,
           environment: scriptedEnvironment(secondObservationPath, "ACP_WORK_MESSAGE"),
-          customModels: ["scripted-model"],
+          customModels: [],
           enabled: true,
           credentials: {
             kind: "isolated-home",
@@ -171,6 +182,16 @@ test("runs a chat on an ACP agent and continues its protocol session after resta
           (await invoke<ProjectSession>(page, "project-sessions:get", sessionId)).executionRef,
       )
       .toBeTruthy();
+    await expect
+      .poll(() =>
+        readObservations(observationPath).some(
+          (observation) =>
+            observation.method === "session/set_config_option" &&
+            observation.configId === "model" &&
+            observation.value === "scripted-model",
+        ),
+      )
+      .toBe(true);
     const { executionRef } = await invoke<ProjectSession>(page, "project-sessions:get", sessionId);
     const target = { sessionId, threadId: executionRef!.threadId };
     // The chat runs on the configured ACP agent and keeps its protocol session.
@@ -229,11 +250,12 @@ test("runs a chat on an ACP agent and continues its protocol session after resta
     // The restarted agent process loads the same protocol session before the prompt.
     await expect
       .poll(() => readObservations(observationPath).map(({ method }) => method))
-      .toEqual(["initialize", "session/load", "session/prompt"]);
+      .toEqual(["initialize", "session/load", "session/set_config_option", "session/prompt"]);
     expect(
       readObservations(observationPath).filter(({ method }) => method !== "initialize"),
     ).toEqual([
       { method: "session/load", sessionId: protocolSessionId },
+      { method: "session/set_config_option", configId: "model", value: "scripted-model" },
       { method: "session/prompt", sessionId: protocolSessionId },
     ]);
     await expect(page.getByText(liveMessage, { exact: true })).toHaveCount(3);

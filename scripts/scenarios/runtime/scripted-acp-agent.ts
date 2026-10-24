@@ -37,7 +37,12 @@ const scenarioSchema = z.object({
     .object({ currentModeId: z.string(), availableModeIds: z.array(z.string()).min(1) })
     .optional(),
   sessionConfig: z
-    .object({ id: z.string(), currentValue: z.string(), values: z.array(z.string()).min(1) })
+    .object({
+      id: z.string(),
+      category: z.literal("model").optional(),
+      currentValue: z.string(),
+      values: z.array(z.string()).min(1),
+    })
     .optional(),
   initializeProtocolVersion: z.number().int().optional(),
   beforePrompt: z.array(z.string()).default([]),
@@ -92,7 +97,11 @@ type Observation =
   | { readonly method: "session/delete"; readonly sessionId: string }
   | { readonly method: "session/close"; readonly sessionId: string }
   | { readonly method: "session/set_mode"; readonly modeId: string }
-  | { readonly method: "session/set_config_option"; readonly configId: string }
+  | {
+      readonly method: "session/set_config_option";
+      readonly configId: string;
+      readonly value: string;
+    }
   | { readonly method: "session/prompt"; readonly sessionId: string }
   | { readonly method: "authenticate"; readonly methodId: string }
   | { readonly method: "session/request_permission"; readonly outcome: string }
@@ -154,6 +163,7 @@ export const runScriptedAcpAgent = (): void => {
       (previous, text) => previous.then(() => sendText(client, sessionId, text)),
       Promise.resolve(),
     );
+  let currentConfigValue = scenario.sessionConfig?.currentValue;
   const sessionState = () => ({
     ...(scenario.sessionModes === undefined
       ? {}
@@ -171,7 +181,10 @@ export const runScriptedAcpAgent = (): void => {
               id: scenario.sessionConfig.id,
               name: scenario.sessionConfig.id,
               type: "select" as const,
-              currentValue: scenario.sessionConfig.currentValue,
+              ...(scenario.sessionConfig.category
+                ? { category: scenario.sessionConfig.category }
+                : {}),
+              currentValue: currentConfigValue!,
               options: scenario.sessionConfig.values.map((value) => ({ value, name: value })),
             },
           ],
@@ -280,7 +293,18 @@ export const runScriptedAcpAgent = (): void => {
       return {};
     })
     .onRequest(methods.agent.session.setConfigOption, (context) => {
-      observe({ method: "session/set_config_option", configId: context.params.configId });
+      if (
+        typeof context.params.value !== "string" ||
+        context.params.configId !== scenario.sessionConfig?.id ||
+        !scenario.sessionConfig.values.includes(context.params.value)
+      )
+        throw RequestError.invalidParams("Unknown configuration selection");
+      currentConfigValue = context.params.value;
+      observe({
+        method: "session/set_config_option",
+        configId: context.params.configId,
+        value: context.params.value,
+      });
       return { configOptions: sessionState().configOptions ?? [] };
     })
     .onRequest(methods.agent.session.prompt, (context) => {
