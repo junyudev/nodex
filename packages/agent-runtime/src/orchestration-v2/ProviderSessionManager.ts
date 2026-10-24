@@ -155,6 +155,8 @@ export type ProviderSessionManagerV2Error = typeof ProviderSessionManagerV2Error
 export interface ProviderSessionManagerV2Shape {
   /** Foreground Turns and native background work keep their provider configuration alive. */
   readonly busyInstances: Effect.Effect<ReadonlySet<ProviderInstanceId>>;
+  /** Threads attached to each busy runtime, including native work between foreground Turns. */
+  readonly busyThreads: Effect.Effect<ReadonlyMap<ProviderInstanceId, ReadonlySet<ThreadId>>>;
   /** Snapshot admission requires an explicit idle result from every resident native runtime. */
   readonly isSnapshotIdle: Effect.Effect<boolean>;
   readonly shutdown: Effect.Effect<void>;
@@ -448,6 +450,23 @@ export const layerWithOptions = (
           }),
       );
       const sessions = yield* Ref.make(new Map<string, LiveSessionEntry>());
+      const busyThreads = Effect.gen(function* () {
+        const current = yield* Ref.get(sessions);
+        const busy = new Map<ProviderInstanceId, Set<ThreadId>>();
+        for (const entry of current.values()) {
+          const pendingBackground =
+            entry.runtime.hasPendingBackgroundWork === undefined
+              ? false
+              : yield* entry.runtime.hasPendingBackgroundWork.pipe(
+                  Effect.orElseSucceed(() => true),
+                );
+          if (entry.busyTurns.size === 0 && !pendingBackground) continue;
+          const attached = busy.get(entry.runtime.instanceId) ?? new Set<ThreadId>();
+          for (const threadId of entry.attachedThreadIds) attached.add(threadId);
+          busy.set(entry.runtime.instanceId, attached);
+        }
+        return busy;
+      });
       // Completion proof stays with the original scope close after removing a live entry.
       // A retry cannot infer physical retirement merely from the absent entry.
       const pendingPhysicalCloses = new Map<
@@ -2370,20 +2389,8 @@ export const layerWithOptions = (
           }
           return true;
         }),
-        busyInstances: Effect.gen(function* () {
-          const current = yield* Ref.get(sessions);
-          const busy = new Set<ProviderInstanceId>();
-          for (const entry of current.values()) {
-            const pendingBackground =
-              entry.runtime.hasPendingBackgroundWork === undefined
-                ? false
-                : yield* entry.runtime.hasPendingBackgroundWork.pipe(
-                    Effect.orElseSucceed(() => true),
-                  );
-            if (entry.busyTurns.size > 0 || pendingBackground) busy.add(entry.runtime.instanceId);
-          }
-          return busy;
-        }),
+        busyThreads,
+        busyInstances: busyThreads.pipe(Effect.map((busy) => new Set(busy.keys()))),
         shutdown,
         open: (input) =>
           sessionOpen.withLock(

@@ -165,6 +165,8 @@ export const makeAcpRegistryAuth = Effect.fn("makeAcpRegistryAuth")(function* (o
           name: method.name,
           description: method.description,
           type: method.type === "env_var" ? ("credentials" as const) : method.type,
+          ...(method.envVarNames ? { envVarNames: method.envVarNames } : {}),
+          ...(method.link ? { link: method.link } : {}),
         }));
       knownMethods = { version: inspected.version, methods: advertised };
       return advertised;

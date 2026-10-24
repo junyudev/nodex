@@ -22,7 +22,16 @@ for await (const line of createInterface({ input: process.stdin })) {
       protocolVersion: 2,
       info: { name: "management-fixture", version: "1" },
       capabilities: { session: { delete: {} }, providers: {}, auth: { logout: {} } },
-      authMethods: [{ methodId: "login", name: "Sign in", type: "agent" }],
+      authMethods: [
+        { methodId: "login", name: "Sign in", type: "agent" },
+        {
+          methodId: "env",
+          name: "API key",
+          type: "env_var",
+          vars: [{ name: "MODEL_TOKEN" }],
+          link: "https://example.test/keys",
+        },
+      ],
     });
   else if (method === "auth/login") {
     if (process.env.ACP_MANAGEMENT_AUTH_SUCCESS === "1") write(id, {});

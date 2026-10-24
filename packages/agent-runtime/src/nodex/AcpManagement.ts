@@ -41,7 +41,8 @@ import { ProviderSessionManagerV2 } from "../orchestration-v2/ProviderSessionMan
 import { OrchestratorV2 } from "../orchestration-v2/Orchestrator.ts";
 import { deriveThreadFromProviderThread } from "@t3tools/provider-core/server/IdAllocator";
 import { ProviderPolicy } from "./ProviderConfiguration.ts";
-import type { AgentAcpOperation } from "./AcpManagementContract.ts";
+import { AcpManagementError, acpFailure } from "./AcpFailures.ts";
+import type { AgentAcpFailure, AgentAcpOperation } from "./AcpManagementContract.ts";
 
 const request = <M extends string, S extends Schema.Constraint>(method: M, input: S) =>
   Schema.Struct({ id: Schema.String, method: Schema.Literal(method), input });
@@ -55,6 +56,7 @@ export const Request = Schema.Union([
   request("acp.activity", Schema.Struct({})),
   request("acp.registry.search", AcpRegistrySearchInput),
   request("acp.inspect", Schema.Struct({ instanceId: ProviderInstanceId })),
+  request("acp.install.preview", AcpRegistryPrepareInput),
   request(
     "acp.install.start",
     Schema.Struct({
@@ -119,7 +121,18 @@ export const Request = Schema.Union([
   ),
 ]);
 
-const failure = (message: string) => Effect.fail(new Error(message));
+const failure = (
+  message: string,
+  reason: AgentAcpFailure["reason"] = "invalid_request",
+  affectedThreadIds?: ReadonlyArray<string>,
+) =>
+  Effect.fail(
+    new AcpManagementError({
+      reason,
+      message,
+      ...(affectedThreadIds ? { affectedThreadIds } : {}),
+    }),
+  );
 const encodeAuth = Schema.encodeEffect(Schema.toCodecJson(ProviderAuthState));
 
 /** Volatile, bounded operations own their fibers. Their records contain no executable environment or credentials. */
@@ -131,7 +144,11 @@ export const makeOperations = Effect.gen(function* () {
   );
   const read = Effect.fn("AcpOperations.read")(function* (id: string) {
     const record = (yield* Ref.get(records)).get(id);
-    if (!record) return yield* failure("This ACP operation has expired. Start a new operation.");
+    if (!record)
+      return yield* failure(
+        "This ACP operation has expired. Start a new operation.",
+        "operation_expired",
+      );
     return record.state;
   });
   const change = (id: string, patch: Partial<AgentAcpOperation>) =>
@@ -186,7 +203,7 @@ export const makeOperations = Effect.gen(function* () {
                   ? { phase: "cancelled" }
                   : {
                       phase: "failed",
-                      error: "The ACP operation failed. Check the Agent configuration and retry.",
+                      error: acpFailure(Cause.squash(cause)),
                     },
               ),
             ),
@@ -203,7 +220,7 @@ export const makeOperations = Effect.gen(function* () {
       ),
     cancel: Effect.fn("AcpOperations.cancel")(function* (id: string) {
       const record = (yield* Ref.get(records)).get(id);
-      if (!record) return yield* failure("This ACP operation has expired.");
+      if (!record) return yield* failure("This ACP operation has expired.", "operation_expired");
       if (record.state.phase === "running" && record.fiber) yield* Fiber.interrupt(record.fiber);
       return yield* read(id);
     }),
@@ -244,9 +261,12 @@ export const make = Effect.fn("AcpManagement.make")(function* (
   const instance = Effect.fn("AcpManagement.instance")(function* (id: ProviderInstanceId) {
     const current = (yield* policy.current)[id];
     const desired = (yield* policy.desired)[id];
-    if (!Equal.equals(current, desired) || desired?.enabled === false)
+    if (!desired || desired.enabled === false)
+      return yield* failure("This ACP configuration is disabled or removed.", "disabled");
+    if (!Equal.equals(current, desired))
       return yield* failure(
-        "This ACP configuration is disabled or waiting for active work to finish.",
+        "This ACP configuration is waiting for active work to finish.",
+        "configuration_pending",
       );
     const value = yield* registry.getInstance(id);
     if (value?.driverKind !== "acpRegistry" || !value.acpSessionManagement)
@@ -299,19 +319,37 @@ export const make = Effect.fn("AcpManagement.make")(function* (
         );
       }),
     );
+  const activityForInstances = Effect.fn("AcpManagement.activityForInstances")(function* (
+    ids: ReadonlyArray<ProviderInstanceId>,
+  ) {
+    const live = yield* sessions.busyThreads;
+    const queued = yield* sql<{
+      provider_instance_id: string;
+      thread_id: string;
+    }>`SELECT DISTINCT r.provider_instance_id, json_extract(t.payload_json, '$.lineage.rootThreadId') AS thread_id FROM orchestration_v2_projection_runs r JOIN orchestration_v2_projection_threads t ON t.thread_id = r.thread_id WHERE r.provider_instance_id IN ${sql.in(ids)} AND r.status IN ('queued', 'preparing', 'starting', 'running', 'waiting')`;
+    const nativeThreads = ids.flatMap((id) => [...(live.get(id) ?? [])]);
+    const nativeRoots =
+      nativeThreads.length === 0
+        ? []
+        : yield* sql<{
+            thread_id: string;
+          }>`SELECT DISTINCT json_extract(payload_json, '$.lineage.rootThreadId') AS thread_id FROM orchestration_v2_projection_threads WHERE thread_id IN ${sql.in(nativeThreads)}`;
+    return {
+      busy: queued.length > 0 || ids.some((id) => live.has(id)),
+      threadIds: [...new Set([...queued, ...nativeRoots].map((row) => row.thread_id))],
+    };
+  });
   const assertIdle = Effect.fn("AcpManagement.assertIdle")(function* (
     selected: ProviderInstance,
     checkCredentials = true,
   ) {
     const related = yield* relatedInstances(selected);
-    const busy = yield* sessions.busyInstances;
-    const queued = yield* sql<{
-      provider_instance_id: string;
-    }>`SELECT DISTINCT provider_instance_id FROM orchestration_v2_projection_runs WHERE status IN ('queued', 'preparing', 'starting', 'running', 'waiting')`;
-    const occupied = new Set([...busy, ...queued.map((row) => row.provider_instance_id)]);
-    if (related.some((candidate) => occupied.has(candidate.instanceId)))
+    const activity = yield* activityForInstances(related.map((candidate) => candidate.instanceId));
+    if (activity.busy)
       return yield* failure(
         "This sign-in is in use by active or queued chats. Stop their work before changing it.",
+        "busy",
+        activity.threadIds,
       );
     for (const candidate of related) {
       if (
@@ -321,6 +359,7 @@ export const make = Effect.fn("AcpManagement.make")(function* (
       )
         return yield* failure(
           "Another operation is changing this sign-in. Finish or cancel it first.",
+          "busy",
         );
     }
   });
@@ -495,6 +534,8 @@ export const make = Effect.fn("AcpManagement.make")(function* (
         const config = yield* configuration(request.input.instanceId, true);
         return yield* catalog.inspect(config.settings, config.environment);
       }
+      case "acp.install.preview":
+        return yield* catalog.preview(request.input);
       case "acp.install.start":
         return yield* operations.start(
           {
@@ -506,7 +547,7 @@ export const make = Effect.fn("AcpManagement.make")(function* (
             result: null,
             error: null,
           },
-          `install:${request.input.agentId}:${request.input.distribution ?? "auto"}`,
+          `install:${request.input.agentId}:${request.input.distribution ?? "auto"}:${request.input.expectedInstallationId ?? "unreviewed"}`,
           withWriter(
             catalog.prepare(request.input, (progress) =>
               operations.progress(request.input.operationId, progress),
@@ -517,8 +558,24 @@ export const make = Effect.fn("AcpManagement.make")(function* (
         return yield* operations.read(request.input.operationId);
       case "acp.operation.cancel":
         return yield* operations.cancel(request.input.operationId);
-      case "acp.registry.uninstall":
+      case "acp.registry.uninstall": {
+        const referenced = new Set<ProviderInstanceId>();
+        for (const snapshot of yield* Effect.all([policy.current, policy.desired])) {
+          for (const [id, config] of Object.entries(snapshot)) {
+            if (config.driver !== "acpRegistry") continue;
+            const settings = yield* Schema.decodeUnknownEffect(AcpRegistrySettings)(config.config);
+            if (settings.source === "registry" && settings.agentId === request.input.agentId)
+              referenced.add(ProviderInstanceId.make(id));
+          }
+        }
+        if (referenced.size > 0)
+          return yield* failure(
+            "Remove Agent instances using this installation before uninstalling it.",
+            "busy",
+            (yield* activityForInstances([...referenced])).threadIds,
+          );
         return yield* catalog.uninstallManagedBinary(request.input);
+      }
       case "acp.connection.start": {
         const selected = yield* registry.getInstance(request.input.instanceId);
         if (!selected?.acpSessionManagement?.connect)
@@ -662,11 +719,14 @@ export const make = Effect.fn("AcpManagement.make")(function* (
         return yield* withIdle(request.input.instanceId, (selected) =>
           coordinator.withSessionMutation(
             Effect.gen(function* () {
-              const mapped =
-                yield* sql`SELECT p.provider_thread_id FROM orchestration_v2_projection_provider_threads p JOIN orchestration_v2_projection_threads t ON t.thread_id = p.thread_id WHERE p.provider_instance_id = ${request.input.instanceId} AND json_extract(p.payload_json, '$.nativeThreadRef.nativeId') = ${request.input.sessionId} AND t.deleted_at IS NULL LIMIT 1`;
+              const mapped = yield* sql<{
+                thread_id: string;
+              }>`SELECT json_extract(t.payload_json, '$.lineage.rootThreadId') AS thread_id FROM orchestration_v2_projection_provider_threads p JOIN orchestration_v2_projection_threads t ON t.thread_id = p.thread_id WHERE p.provider_instance_id = ${request.input.instanceId} AND json_extract(p.payload_json, '$.nativeThreadRef.nativeId') = ${request.input.sessionId} AND t.deleted_at IS NULL`;
               if (mapped.length > 0)
                 return yield* failure(
                   "Remove the imported Nodex chat before deleting this native session.",
+                  "busy",
+                  [...new Set(mapped.map((row) => row.thread_id))],
                 );
               yield* selected.acpSessionManagement.deleteSession(request.input);
               return { deleted: true as const };

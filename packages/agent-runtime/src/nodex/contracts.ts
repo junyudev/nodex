@@ -29,3 +29,4 @@ export {
 } from "./NativeImportLimits.ts";
 
 export type * from "./AcpManagementContract.ts";
+export { decodeAgentAcpFailure } from "./AcpFailureContract.ts";

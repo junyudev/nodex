@@ -555,7 +555,11 @@ export type AgentRuntimeResponse =
   | {
       readonly id: string;
       readonly success: false;
-      readonly error: { readonly message: string; readonly tag?: string };
+      readonly error: {
+        readonly message: string;
+        readonly tag?: string;
+        readonly acp?: import("./AcpManagementContract.ts").AgentAcpFailure;
+      };
     };
 
 export interface AgentHostTool {

@@ -38,6 +38,8 @@ export const ProviderAuthMethod = Schema.Struct({
   name: TrimmedNonEmptyString,
   description: Schema.NullOr(Schema.String),
   type: Schema.Literals(["agent", "terminal", "credentials"]),
+  envVarNames: Schema.optionalKey(Schema.Array(SetupOperationId).check(Schema.isMaxLength(16))),
+  link: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(2048))),
 });
 export type ProviderAuthMethod = typeof ProviderAuthMethod.Type;
 

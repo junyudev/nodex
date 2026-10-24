@@ -74,6 +74,7 @@ export async function probeAcpManagement(input: {
     { resolve: (value: unknown) => void; reject: (error: Error) => void }
   >();
   let requestSequence = 0;
+  let lastFailureReason: string | undefined;
   const lines = createInterface({ input: runtime.stdout });
   lines.on("line", (line) => {
     const frame = JSON.parse(line) as {
@@ -81,7 +82,7 @@ export async function probeAcpManagement(input: {
       id?: string;
       success?: boolean;
       output?: unknown;
-      error?: { message?: string };
+      error?: { message?: string; acp?: { reason: string } };
     };
     if (frame.type === "ready") ready.resolve();
     if (!frame.id) return;
@@ -89,7 +90,10 @@ export async function probeAcpManagement(input: {
     if (!request) return;
     pending.delete(frame.id);
     if (frame.success) request.resolve(frame.output);
-    else request.reject(new Error(frame.error?.message ?? "Runtime request failed"));
+    else {
+      lastFailureReason = frame.error?.acp?.reason;
+      request.reject(new Error(frame.error?.message ?? "Runtime request failed"));
+    }
   });
   runtime.on("error", (error) => {
     ready.reject(error);
@@ -235,6 +239,8 @@ export async function probeAcpManagement(input: {
       staleRejected = true;
     }
     if (!staleRejected) throw new Error("Cancelled terminal accepted stale input");
+    if (lastFailureReason !== "invalid_request")
+      throw new Error("Management failure lost its typed recovery reason");
     await request("shutdown", {});
     await within(stopped.promise, "Runtime shutdown");
     const events = observations();
@@ -249,6 +255,7 @@ export async function probeAcpManagement(input: {
       spawn: "pass",
       input: "pass",
       secretRedaction: "pass",
+      typedFailure: "pass",
       resize: "pass",
       eof: "pass",
       zeroExitIsNotAuthenticated: "pass",

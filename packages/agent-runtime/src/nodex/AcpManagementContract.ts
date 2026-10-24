@@ -1,5 +1,10 @@
 import type {
   AcpRegistrySearchInput,
+  AcpRegistryPrepareInput,
+  AcpRegistryInstallPreview,
+  AcpRegistryOperationErrorReason,
+  AcpRegistryProbeAuthMethod,
+  AcpRegistryUrlAuthAction,
   AcpRegistrySearchResult,
   AcpRegistryPrepareResult,
   AcpRegistryProbeResult,
@@ -19,6 +24,19 @@ export interface AgentAcpTarget {
   readonly instanceId: string;
   readonly cwd: string;
 }
+export interface AgentAcpFailure {
+  readonly reason:
+    | AcpRegistryOperationErrorReason
+    | "busy"
+    | "configuration_pending"
+    | "disabled"
+    | "invalid_request"
+    | "operation_expired";
+  readonly message: string;
+  readonly authMethods?: AgentWire<ReadonlyArray<AcpRegistryProbeAuthMethod>>;
+  readonly authAction?: AgentWire<AcpRegistryUrlAuthAction>;
+  readonly affectedThreadIds?: ReadonlyArray<string>;
+}
 export interface AgentAcpOperation {
   readonly operationId: string;
   readonly kind: "install" | "connect";
@@ -26,7 +44,7 @@ export interface AgentAcpOperation {
   readonly instanceId: string | null;
   readonly agentId: string | null;
   readonly result: AgentWire<AcpRegistryPrepareResult | AcpRegistryProbeResult> | null;
-  readonly error: string | null;
+  readonly error: AgentAcpFailure | null;
   readonly progress?: {
     readonly phase: "downloading" | "verifying" | "extracting" | "installing";
     readonly downloadedBytes: number;
@@ -46,11 +64,16 @@ export interface AgentAcpManagementOperations {
     readonly input: { readonly instanceId: string };
     readonly output: AcpRegistryInspection;
   };
+  readonly "acp.install.preview": {
+    readonly input: AgentWire<AcpRegistryPrepareInput>;
+    readonly output: AgentWire<AcpRegistryInstallPreview>;
+  };
   readonly "acp.install.start": {
     readonly input: {
       readonly operationId: string;
       readonly agentId: string;
       readonly distribution?: "auto" | "binary" | "npx" | "uvx";
+      readonly expectedInstallationId?: string;
     };
     readonly output: AgentAcpOperation;
   };

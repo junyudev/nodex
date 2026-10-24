@@ -4,8 +4,10 @@ import * as Deferred from "effect/Deferred";
 import * as Ref from "effect/Ref";
 import * as TestClock from "effect/testing/TestClock";
 import * as Exit from "effect/Exit";
+import { AcpRegistryOperationError } from "@t3tools/contracts";
 import { makeOperations, validateProviderMutation } from "./AcpManagement.ts";
 import type { AgentAcpOperation } from "./AcpManagementContract.ts";
+import { decodeAgentAcpFailure } from "./AcpFailureContract.ts";
 
 const operation = (id: string): AgentAcpOperation => ({
   operationId: id,
@@ -106,3 +108,85 @@ it.effect("enforces required providers and advertised API types before any write
     );
   }),
 );
+
+it.effect(
+  "retains typed authentication recovery without publishing nested failures or terminal secrets",
+  () =>
+    Effect.gen(function* () {
+      const owner = yield* makeOperations;
+      yield* owner.start(
+        operation("auth"),
+        "auth",
+        Effect.fail(
+          new AcpRegistryOperationError({
+            reason: "authentication_failed",
+            message: "SECRET_ERROR",
+            cause: new Error("SECRET_CAUSE"),
+            authMethods: [
+              {
+                id: "env",
+                name: "API key",
+                type: "env_var",
+                description: null,
+                envVarNames: ["MODEL_TOKEN"],
+                link: "https://example.test/keys",
+              },
+              {
+                id: "terminal",
+                name: "Sign in",
+                type: "terminal",
+                description: null,
+                command: "TOKEN=SECRET_COMMAND agent login",
+              },
+            ],
+            authAction: {
+              elicitationId: "browser-flow",
+              url: "https://example.test/login",
+              message: "Sign in",
+            },
+          }),
+        ),
+      );
+      yield* TestClock.adjust("1 millis");
+      const result = yield* owner.read("auth");
+      expect(result.error?.reason).toBe("authentication_failed");
+      expect(result.error?.authMethods?.[0]).toMatchObject({
+        envVarNames: ["MODEL_TOKEN"],
+        link: "https://example.test/keys",
+      });
+      expect(result.error?.authMethods?.[1]?.command).toBeUndefined();
+      expect(result.error?.authAction?.elicitationId).toBe("browser-flow");
+      expect(JSON.stringify(result)).not.toContain("SECRET_");
+      expect(decodeAgentAcpFailure(JSON.parse(JSON.stringify(result.error)))).toEqual(result.error);
+    }),
+);
+
+it("validates recovery data received across the runtime process boundary", () => {
+  const failure = {
+    reason: "busy",
+    message: "Stop this work first.",
+    affectedThreadIds: ["root-thread"],
+    cause: "SECRET_CAUSE",
+    authMethods: [
+      {
+        id: "login",
+        name: "Sign in",
+        description: null,
+        type: "terminal",
+        command: "SECRET_COMMAND",
+      },
+    ],
+  };
+  expect(decodeAgentAcpFailure(failure)).toEqual({
+    reason: "busy",
+    message: failure.message,
+    affectedThreadIds: ["root-thread"],
+    authMethods: [{ id: "login", name: "Sign in", description: null, type: "terminal" }],
+  });
+  expect(decodeAgentAcpFailure({ ...failure, reason: "invented_reason" })).toBeNull();
+  expect(decodeAgentAcpFailure({ ...failure, affectedThreadIds: [42] })).toBeNull();
+  expect(decodeAgentAcpFailure({ ...failure, authMethods: [{ id: "incomplete" }] })).toBeNull();
+  expect(
+    decodeAgentAcpFailure({ ...failure, authAction: { url: "https://example.test/login" } }),
+  ).toBeNull();
+});

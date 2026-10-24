@@ -104,6 +104,7 @@ function layerExecutorFor(input: {
       ProviderSessionManager.ProviderSessionManagerV2.of({
         shutdown: Effect.void,
         busyInstances: Effect.succeed(new Set()),
+        busyThreads: Effect.succeed(new Map()),
         isSnapshotIdle: Effect.succeed(true),
         open: () => Effect.die("unused open"),
         get: () => Effect.succeed(Option.none()),

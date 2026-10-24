@@ -2971,6 +2971,11 @@ it.effect("ProviderSessionManagerV2 defers idle release while background work is
       });
 
       assert.isFalse(yield* manager.isSnapshotIdle);
+      assert.deepEqual(
+        yield* manager.busyThreads,
+        new Map([[modelSelection.instanceId, new Set([threadId])]]),
+      );
+      assert.deepEqual(yield* manager.busyInstances, new Set([modelSelection.instanceId]));
 
       yield* TestClock.adjust("3 seconds");
       yield* Effect.yieldNow;
@@ -2979,6 +2984,7 @@ it.effect("ProviderSessionManagerV2 defers idle release while background work is
 
       yield* Ref.set(pendingWork, false);
       assert.isTrue(yield* manager.isSnapshotIdle);
+      assert.equal((yield* manager.busyThreads).size, 0);
       yield* TestClock.adjust("1 second");
       yield* Effect.yieldNow;
       assert.isTrue(Option.isNone(yield* manager.get(providerSessionId)));

@@ -1,3 +1,4 @@
+import { acpFailure } from "./AcpFailures.ts";
 import * as NodePath from "node:path";
 import * as NodeReadline from "node:readline";
 import * as Effect from "effect/Effect";
@@ -94,11 +95,13 @@ export async function runAgentRuntimeProcess(): Promise<void> {
           if (envelope?.method === "shutdown") await dispose();
         } catch (error) {
           const tag = errorTag(error);
+          const acp = envelope?.method?.startsWith("acp.") ? acpFailure(error) : undefined;
           await write({
             id: envelope?.id ?? "",
             success: false,
             error: {
-              message: error instanceof Error ? error.message : String(error),
+              message: acp?.message ?? (error instanceof Error ? error.message : String(error)),
+              ...(acp ? { acp } : {}),
               ...(tag === undefined ? {} : { tag }),
             },
           });

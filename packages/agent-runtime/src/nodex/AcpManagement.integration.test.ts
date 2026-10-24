@@ -9,6 +9,50 @@ import { fileURLToPath } from "node:url";
 import * as Application from "./Application.ts";
 import { AgentRuntime } from "./Service.ts";
 import type { AgentRuntimeMethod, AgentRuntimeOperations } from "./Interface.ts";
+import { acpFailure } from "./AcpFailures.ts";
+
+it.live("refuses uninstall while even a disabled saved instance owns the installation", () =>
+  Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem;
+    const home = yield* fs.makeTempDirectoryScoped({ prefix: "nodex-acp-uninstall-" });
+    yield* Effect.gen(function* () {
+      const runtime = yield* AgentRuntime;
+      const blocked = yield* runtime
+        .handle({ id: "blocked", method: "acp.registry.uninstall", input: { agentId: "fixture" } })
+        .pipe(Effect.flip);
+      expect(acpFailure(blocked)).toMatchObject({ reason: "busy", affectedThreadIds: [] });
+      yield* runtime.handle({
+        id: "remove",
+        method: "providers.configure",
+        input: { providers: {} },
+      });
+      expect(
+        yield* runtime.handle({
+          id: "unused",
+          method: "acp.registry.uninstall",
+          input: { agentId: "fixture" },
+        }),
+      ).toEqual({ agentId: "fixture", removed: false });
+    }).pipe(
+      Effect.provide(
+        Application.layer(
+          {
+            home,
+            cwd: home,
+            providers: {
+              saved: {
+                driver: "acpRegistry",
+                enabled: false,
+                config: { source: "registry", agentId: "fixture", discovery: "explicit" },
+              },
+            },
+          },
+          () => Effect.void,
+        ),
+      ),
+    );
+  }).pipe(Effect.provide(NodeServices.layer)),
+);
 
 it.live(
   "keeps passive discovery prompt-free and imports native identity without creating work",
@@ -82,6 +126,12 @@ it.live(
           Effect.timeout("10 seconds"),
         );
         expect(settled.phase).toBe("succeeded");
+        const authDetails = yield* call("acp.auth.read", { instanceId, ownerId: "window" });
+        expect(authDetails.methods?.find((method) => method.id === "env")).toMatchObject({
+          type: "credentials",
+          envVarNames: ["MODEL_TOKEN"],
+          link: "https://example.test/keys",
+        });
         expect(settled.result).toMatchObject({
           protocolGeneration: 2,
           agentInfo: { name: "management-fixture", version: "1" },
@@ -124,13 +174,15 @@ it.live(
         expect(snapshot.projection.providerThreads[0]?.status).toBe("not_loaded");
         expect(snapshot.projection.providerThreads[0]?.nativeThreadRef?.nativeId).toBe("native-a");
         expect(yield* methods()).not.toContain("session/prompt");
-        expect(
-          Exit.isFailure(
-            yield* call("acp.sessions.delete", { instanceId, cwd, sessionId: "native-a" }).pipe(
-              Effect.exit,
-            ),
-          ),
-        ).toBe(true);
+        const blockedDelete = yield* call("acp.sessions.delete", {
+          instanceId,
+          cwd,
+          sessionId: "native-a",
+        }).pipe(Effect.flip);
+        expect(acpFailure(blockedDelete)).toMatchObject({
+          reason: "busy",
+          affectedThreadIds: [source.threadId],
+        });
         const before = yield* methods();
         expect(
           Exit.isFailure(
