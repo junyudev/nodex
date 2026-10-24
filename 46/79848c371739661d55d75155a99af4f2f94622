@@ -1,0 +1,106 @@
+src/renderer/features/local-conversation/view/connected-thread-stage.tsx
+  s_6a85e190b135ef::t_ab4d5e3fc87d51 3,1390,1393,1395,1398,1415-1417
+  s_6a85e190b135ef::t_e2c8676ecd51c5 2,4,1387-1388,1391-1392,1394,1396-1397,1399-1401,1403-1414,1418-1421,1640
+src/main/codex-application/CodexProtocolNotificationEffects.ts
+  s_6a85e190b135ef::t_f06c7dc56e40c0 762,765
+  s_6a85e190b135ef::t_20fcb98573d756 755-761,763-764,766-767
+src/renderer/features/local-conversation/conversation-read-state-observer.node.test.ts
+  s_6a85e190b135ef::t_a767d91bdb03c1 71-72,78-79,81-84
+  s_6a85e190b135ef::t_d4180656c2081a 3,163-165,169-172
+  s_6a85e190b135ef::t_a9ab8fe411e052 18,48,51,55,66,73,76,80,87-88,92,96-119
+  s_6a85e190b135ef::t_72e52ce4c26466 1-2,4-17,19-47,53-54,56-65,67-70,122-162,173
+  s_6a85e190b135ef::t_5c4d9abfddf469 49-50,52,74-75,77,85-86,89-91,93-95,120-121,166-168
+  s_6a85e190b135ef::t_c85a0a75905a0f 174-189
+CHANGELOG.md
+  s_6a85e190b135ef::t_ff7703f9f2c7a8 21
+tests/e2e/thread-read-state.spec.ts
+  s_6a85e190b135ef::t_0c8e26b31a7f4b 11,42
+  s_6a85e190b135ef::t_bced794ccd60e0 24
+  s_6a85e190b135ef::t_3e3b08e35129ab 1-10,12-23,25-41,43-70,72-99
+  s_6a85e190b135ef::t_f1c13c5652b9d5 71
+src/renderer/features/local-conversation/local-conversation-deps.ts
+  s_6a85e190b135ef::t_77a845309f3419 2
+src/main/app/AgentRuntimeApplicationLive.ts
+  s_6a85e190b135ef::t_f06c7dc56e40c0 301-302,306,309-312
+  s_6a85e190b135ef::t_20fcb98573d756 299-300,303-305,307-308,313-315
+src/renderer/features/local-conversation/native-conversation-history-owner.node.test.ts
+  s_6a85e190b135ef::t_80730619459cd7 76-94
+src/main/codex-application/CodexProtocolNotificationEffects.node.test.ts
+  s_6a85e190b135ef::t_ca03df3305cb72 63,113-115,311,330-337,347-353
+  s_6a85e190b135ef::t_2f5263be0f35ac 4,312,314-315,317-318,320-321,323-324,326-327,329,338-346
+  s_6a85e190b135ef::t_e7ce3b007c3fab 62,112,313,316,319,322,325,328
+src/renderer/features/local-conversation/conversation-read-state-observer.ts
+  s_6a85e190b135ef::t_0c8e26b31a7f4b 1-2,6,49,51
+  s_6a85e190b135ef::t_b623b2fde7681f 3,18-19,27,40-43,52-56
+  s_6a85e190b135ef::t_77a845309f3419 4-5,7-17,20-26,28-34,36-39,44-48,50,57-82
+  s_6a85e190b135ef::t_5c4d9abfddf469 35
+src/renderer/features/local-conversation/native-conversation-history-owner.ts
+  s_6a85e190b135ef::t_15e9c13f9d138a 78
+src/shared/types.ts
+  s_6a85e190b135ef::t_20fcb98573d756 4829-4830,4832
+  s_6a85e190b135ef::t_f06c7dc56e40c0 4827-4828,4831
+  s_6a85e190b135ef::t_6f102620f3eeac 4826
+src/renderer/features/local-conversation/use-conversation-read-state.ts
+  s_6a85e190b135ef::t_b623b2fde7681f 11,19,24,27-30,43-45,48-52,76,92,106
+  s_6a85e190b135ef::t_77a845309f3419 1-10,12-18,20-23,25-26,31-42,46-47,53-75,77-91,93-105,107-116
+src/renderer/features/local-conversation/thread-stage-types.ts
+  s_6a85e190b135ef::t_a011d0a04c5bf3 4,1300
+src/renderer/features/local-conversation/use-conversation-read-state.test.tsx
+  s_6a85e190b135ef::t_72e52ce4c26466 1-43,47-55,57-85,87-90,127-191,193-204,208-219
+  s_6a85e190b135ef::t_a9ab8fe411e052 44-46,56,94-114,192,205-207
+  s_6a85e190b135ef::t_a767d91bdb03c1 86,91-93,115-126
+  s_6a85e190b135ef::t_198f8c765e230d 220-223
+src/renderer/features/local-conversation/agent-runtime-conversation-adapter.ts
+  s_6a85e190b135ef::t_15e9c13f9d138a 257-262,1358,1361-1372,1376,1388
+  s_6a85e190b135ef::t_493f21fdd51e6b 766
+src/renderer/components/workbench/workbench-session-thread-route.tsx
+  s_6a85e190b135ef::t_15e9c13f9d138a 575,633,636
+src/renderer/components/workbench/workbench-agent-runtime-panels.tsx
+  s_6a85e190b135ef::t_493f21fdd51e6b 61
+  s_6a85e190b135ef::t_15e9c13f9d138a 154
+src/renderer/features/local-conversation/app-server-message-bus.ts
+  s_6a85e190b135ef::t_f06c7dc56e40c0 7,36-39,64,82
+  s_6a85e190b135ef::t_20fcb98573d756 40
+src/renderer/features/local-conversation/local-conversation-host-bridge.ts
+  s_6a85e190b135ef::t_f06c7dc56e40c0 58-59,62
+  s_6a85e190b135ef::t_20fcb98573d756 60-61,63-66
+src/renderer/features/local-conversation/view/connected-thread-stage.test.tsx
+  s_6a85e190b135ef::t_743da291b25443 2377-2380,2393,2402
+  s_6a85e190b135ef::t_ab4d5e3fc87d51 2390,2399
+  s_6a85e190b135ef::t_269cbf150f2e36 386,2332-2376,2381-2389,2391-2392,2394-2398,2400-2401,2403-2412
+src/renderer/features/local-conversation/local-conversation-host-bridge.test.ts
+  s_6a85e190b135ef::t_e7ce3b007c3fab 128,131,165,168,170-175,178-179
+  s_6a85e190b135ef::t_ca03df3305cb72 129-130,132-144,146-147,149-164,166-167,169,176-177,180-182
+  s_6a85e190b135ef::t_2f5263be0f35ac 145,148
+  s_6a85e190b135ef::t_bb46461ad5b985 183-186
+src/main/agent-runtime/AgentRuntimeSessionNotifications.node.test.ts
+  s_6a85e190b135ef::t_ca03df3305cb72 71,97
+  s_6a85e190b135ef::t_e7ce3b007c3fab 72,98,103
+  s_6a85e190b135ef::t_ff6fee85f94460 104-113,128,197
+docs/product-specs/codex-thread-transcript-behavior.md
+  s_6a85e190b135ef::t_f47afaa60f9194 207,209
+  s_6a85e190b135ef::t_743da291b25443 208
+src/renderer/features/local-conversation/agent-runtime-conversation-adapter.test.tsx
+  s_6a85e190b135ef::t_80730619459cd7 11,242,370,490,542,598,630,681,796,876,919,1022,1116,1215,1246-1331,1348-1368,1840,2103
+  s_6a85e190b135ef::t_64af7706757e7a 1332-1347
+  s_6a85e190b135ef::t_c8c953ce07d425 1522,1642,1776,1920,2017,2189,2364,2511
+docs/product-specs/agent-runtime-behavior.md
+  s_6a85e190b135ef::t_f47afaa60f9194 597-598,600-602
+  s_6a85e190b135ef::t_743da291b25443 599
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "4679848c371739661d55d75155a99af4f2f94622",
+  "prompts": {},
+  "sessions": {
+    "s_6a85e190b135ef": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a16ce4-fae4-7582-93f1-fe090e5a06b7",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
