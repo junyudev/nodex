@@ -2,6 +2,7 @@ import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, it } from "@effect/vitest";
 import {
   CheckpointId,
+  CommandId,
   CheckpointScopeId,
   type OrchestrationV2ThreadProjection,
   ProjectId,
@@ -25,6 +26,8 @@ import { ProjectionStoreV2 } from "./ProjectionStore.ts";
 import * as ProjectStore from "./ProjectStore.ts";
 import { ProviderSessionManagerV2 } from "./ProviderSessionManager.ts";
 import { RuntimePolicyV2 } from "./RuntimePolicy.ts";
+
+const requestId = CommandId.make("checkpoint-rewind-request");
 
 it.effect.each([
   "nested",
@@ -84,6 +87,7 @@ it.effect.each([
     };
     const projection = {
       thread: {
+        rollbackRequestId: requestId,
         id: threadId,
         projectId,
         worktreePath: cwd,
@@ -94,6 +98,7 @@ it.effect.each([
       providerSessions: [],
       providerTurns: [],
       nodes: [],
+      contextHandoffs: [],
       attempts: [],
       checkpoints: [{ id: checkpointId, scopeId, status: "ready", appRunOrdinal: null }],
       checkpointScopes: [{ id: scopeId, cwd }],
@@ -185,13 +190,20 @@ it.effect.each([
     );
     if (rejected) {
       const error = yield* service
-        .execute({ threadId, providerThreadId, checkpointId, scopeId, restoreFiles })
+        .execute({ requestId, threadId, providerThreadId, checkpointId, scopeId, restoreFiles })
         .pipe(Effect.flip);
       assert.equal(error.reason, "shared-workspace");
       assert.deepEqual(calls, []);
       assert.equal(yield* fs.readFileString(otherFile), "other thread's uncommitted work");
     } else {
-      yield* service.execute({ threadId, providerThreadId, checkpointId, scopeId, restoreFiles });
+      yield* service.execute({
+        requestId,
+        threadId,
+        providerThreadId,
+        checkpointId,
+        scopeId,
+        restoreFiles,
+      });
       assert.deepEqual(calls, restoreFiles ? ["provider", "files"] : ["provider"]);
       assert.equal(yield* fs.exists(otherFile), !restoreFiles);
     }

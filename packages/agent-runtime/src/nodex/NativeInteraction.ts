@@ -363,6 +363,7 @@ export const make = Effect.fn("NativeInteraction.make")(function* (
         cursor = result.nextCursor;
       }
       const history = yield* store.getHandoffHistory({
+        scope: "conversation",
         threadId: resolved.thread.id,
         budget: 8192,
       });

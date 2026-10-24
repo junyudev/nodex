@@ -405,6 +405,7 @@ export const layerExecutor: Layer.Layer<
             return checkpointRollback
               .execute({
                 threadId: effect.threadId,
+                requestId: effect.commandId,
                 providerThreadId: effect.request.providerThreadId,
                 checkpointId: effect.request.checkpointId,
                 scopeId: effect.request.scopeId,

@@ -401,11 +401,19 @@ export const OrchestrationV2AppThread = Schema.Struct({
   /** Pull request discovered from the thread's current branch. */
   branchPullRequest: Schema.optional(Schema.NullOr(ThreadLinkedPullRequest)),
   activeProviderThreadId: Schema.NullOr(ProviderThreadId),
+  /** Monotonic conversation rewind revision; native contexts do not own this boundary. */
+  historyRevision: Schema.optional(NonNegativeInt),
   historyOrigin: Schema.optional(OrchestrationV2ThreadHistoryOrigin),
   lineage: OrchestrationV2AppThreadLineage,
   forkedFrom: Schema.NullOr(
     Schema.Union([
-      Schema.Struct({ type: Schema.Literal("run"), threadId: ThreadId, runId: RunId }),
+      Schema.Struct({
+        type: Schema.Literal("run"),
+        threadId: ThreadId,
+        runId: RunId,
+        /** The source conversation revision captured by this fork edge. */
+        sourceHistoryRevision: Schema.optional(NonNegativeInt),
+      }),
       Schema.Struct({ type: Schema.Literal("node"), nodeId: NodeId }),
       Schema.Struct({
         type: Schema.Literal("provider_thread"),
@@ -594,6 +602,8 @@ export const OrchestrationV2Run = Schema.Struct({
   rootNodeId: Schema.NullOr(NodeId),
   activeAttemptId: Schema.NullOr(RunAttemptId),
   status: OrchestrationV2RunStatus,
+  /** Immutable revision at which this Run left its conversation. */
+  rolledBackAtRevision: Schema.optional(PositiveInt),
   queuePosition: Schema.optional(Schema.NullOr(PositiveInt)),
   /** Restart recovery holds the queue until the user explicitly resumes it. */
   queueHeld: Schema.optional(Schema.Boolean),

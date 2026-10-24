@@ -2,6 +2,7 @@ import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, it, vi } from "@effect/vitest";
 import {
   CheckpointId,
+  CommandId,
   CheckpointScopeId,
   type OrchestrationV2ThreadProjection,
   ProviderInstanceId,
@@ -46,6 +47,8 @@ const layerCheckpointRollbackService = CheckpointRollbackService.layer.pipe(
   ),
 );
 
+const requestId = CommandId.make("checkpoint-rewind-request");
+
 it.effect("rejects a non-ready checkpoint before opening a session or restoring files", () => {
   const threadId = ThreadId.make("thread:rollback-non-ready");
   const providerThreadId = ProviderThreadId.make("provider-thread:rollback-non-ready");
@@ -58,6 +61,7 @@ it.effect("rejects a non-ready checkpoint before opening a session or restoring 
   const resolveRuntimePolicy = vi.fn(() => Effect.die("runtime policy resolution must not run"));
   const projection = {
     thread: {
+      rollbackRequestId: requestId,
       worktreePath: process.cwd(),
       activeProviderThreadId: providerThreadId,
       modelSelection: { instanceId: providerInstanceId, model: "test-model" },
@@ -93,6 +97,7 @@ it.effect("rejects a non-ready checkpoint before opening a session or restoring 
     const service = yield* CheckpointRollbackService.CheckpointRollbackServiceV2;
     const error = yield* service
       .execute({
+        requestId,
         threadId,
         providerThreadId,
         checkpointId,
@@ -131,6 +136,7 @@ it.effect("rejects a rollback when another provider thread became active", () =>
   const resolveRuntimePolicy = vi.fn(() => Effect.die("runtime policy resolution must not run"));
   const projection = {
     thread: {
+      rollbackRequestId: requestId,
       activeProviderThreadId,
       modelSelection: { instanceId: providerInstanceId, model: "test-model" },
     },
@@ -171,6 +177,7 @@ it.effect("rejects a rollback when another provider thread became active", () =>
     const service = yield* CheckpointRollbackService.CheckpointRollbackServiceV2;
     const error = yield* service
       .execute({
+        requestId,
         threadId,
         providerThreadId: requestedProviderThreadId,
         checkpointId,
@@ -211,6 +218,7 @@ it.effect("rejects a rollback when provider selection changed before execution",
   const resolveRuntimePolicy = vi.fn(() => Effect.die("runtime policy resolution must not run"));
   const projection = {
     thread: {
+      rollbackRequestId: requestId,
       worktreePath: process.cwd(),
       activeProviderThreadId: providerThreadId,
       modelSelection: { instanceId: selectedProviderInstanceId, model: "test-model" },
@@ -252,6 +260,7 @@ it.effect("rejects a rollback when provider selection changed before execution",
     const service = yield* CheckpointRollbackService.CheckpointRollbackServiceV2;
     const error = yield* service
       .execute({
+        requestId,
         threadId,
         providerThreadId,
         checkpointId,
@@ -285,6 +294,7 @@ it.effect("reports a missing provider turn as a structured rollback failure", ()
   const restore = vi.fn(() => Effect.die("checkpoint restore must not run"));
   const projection = {
     thread: {
+      rollbackRequestId: requestId,
       worktreePath: process.cwd(),
       activeProviderThreadId: providerThreadId,
       modelSelection: { instanceId: providerInstanceId, model: "test-model" },
@@ -328,6 +338,7 @@ it.effect("reports a missing provider turn as a structured rollback failure", ()
     const service = yield* CheckpointRollbackService.CheckpointRollbackServiceV2;
     const error = yield* service
       .execute({
+        requestId,
         threadId,
         providerThreadId,
         checkpointId,
@@ -354,6 +365,23 @@ it.effect.each([
   { restoreFiles: false, shared: "worktree" },
   { restoreFiles: true, shared: "historical" },
   { restoreFiles: false, shared: "none", targetOrdinal: 1 },
+  { restoreFiles: false, shared: "none", handoffOnly: true },
+  { restoreFiles: false, shared: "none", unacknowledgedTurn: true },
+  { restoreFiles: false, shared: "none", injectedHandoff: true, targetOrdinal: 1 },
+  {
+    restoreFiles: false,
+    shared: "none",
+    injectedHandoff: true,
+    targetOrdinal: 1,
+    handoffDelivery: "pending",
+  },
+  {
+    restoreFiles: false,
+    shared: "none",
+    injectedHandoff: true,
+    targetOrdinal: 1,
+    handoffDelivery: "missing",
+  },
   // Editing an earlier message rewinds its Run and every later Run.
   { restoreFiles: false, shared: "none", beforeRunId: "run-1" },
   { restoreFiles: false, shared: "none", beforeRunId: "run-2", serialize: true },
@@ -367,6 +395,10 @@ it.effect.each([
     checkpointStatus = "ready",
     beforeRunId,
     serialize = false,
+    handoffOnly = false,
+    unacknowledgedTurn = false,
+    injectedHandoff = false,
+    handoffDelivery = "injected",
   }) => {
     const threadId = ThreadId.make("rewind-files");
     const providerThreadId = ProviderThreadId.make("rewind-provider");
@@ -392,14 +424,28 @@ it.effect.each([
     };
     const projection = {
       thread: {
+        rollbackRequestId: requestId,
+        historyRevision: 7,
         worktreePath: shared === "root" ? null : process.cwd(),
         activeProviderThreadId: providerThreadId,
         modelSelection: { instanceId, model: "test" },
       },
-      providerThreads: [providerThread],
+      providerThreads: [
+        providerThread,
+        ...(handoffOnly
+          ? [
+              {
+                ...providerThread,
+                id: "handoff-only-provider",
+                ownerNodeId: null,
+                lastRunOrdinal: null,
+              },
+            ]
+          : []),
+      ],
       providerSessions: [],
       // Turn 3 remains in the audit history after an earlier rollback.
-      providerTurns: [1, 2, 3].map((ordinal) => ({
+      providerTurns: (unacknowledgedTurn ? [1, 3] : [1, 2, 3]).map((ordinal) => ({
         id: `turn-${ordinal}`,
         providerThreadId,
         runAttemptId: `attempt-${ordinal}`,
@@ -407,6 +453,26 @@ it.effect.each([
         status: "completed",
       })),
       nodes: [],
+      contextHandoffs:
+        handoffOnly || injectedHandoff
+          ? [
+              {
+                id: "handoff-only",
+                toProviderThreadId: injectedHandoff ? providerThreadId : "handoff-only-provider",
+                targetRunId: "run-2",
+                coveredRunOrdinals: { from: 1, to: 2 },
+                ...(handoffDelivery === "missing"
+                  ? {}
+                  : {
+                      delivery: {
+                        nativeThreadId: "handoff-only-native",
+                        status: handoffDelivery,
+                        itemIds: [],
+                      },
+                    }),
+              },
+            ]
+          : [],
       attempts: [1, 2, 3].map((ordinal) => ({ id: `attempt-${ordinal}`, runId: `run-${ordinal}` })),
       checkpoints: [
         {
@@ -422,6 +488,7 @@ it.effect.each([
         ordinal,
         status: ordinal === 3 ? "rolled_back" : "completed",
         rootNodeId: null,
+        providerThreadId,
         activeAttemptId: `attempt-${ordinal}`,
       })),
     } as unknown as OrchestrationV2ThreadProjection;
@@ -444,9 +511,47 @@ it.effect.each([
                 assert.ok(
                   events.some(
                     (event) =>
-                      event.type === "run.updated" && event.payload.status === "rolled_back",
+                      event.type === "run.updated" &&
+                      event.payload.status === "rolled_back" &&
+                      event.payload.rolledBackAtRevision === 8,
                   ),
                 );
+                assert.ok(
+                  events.some(
+                    (event) =>
+                      event.type === "thread.metadata-updated" &&
+                      event.payload.historyRevision === 8 &&
+                      event.payload.rollbackRequestId === undefined,
+                  ),
+                );
+                if (handoffOnly) {
+                  assert.ok(
+                    events.some(
+                      (event) =>
+                        event.type === "provider-thread.updated" &&
+                        event.payload.id === "handoff-only-provider" &&
+                        event.payload.status === "closed",
+                    ),
+                  );
+                  assert.ok(
+                    events.some(
+                      (event) =>
+                        event.type === "context-handoff.updated" &&
+                        event.payload.id === "handoff-only" &&
+                        event.payload.delivery === undefined,
+                    ),
+                  );
+                }
+                if (unacknowledgedTurn || injectedHandoff) {
+                  assert.ok(
+                    events.some(
+                      (event) =>
+                        event.type === "provider-thread.updated" &&
+                        event.payload.nativeThreadRef === null &&
+                        event.payload.id !== providerThreadId,
+                    ),
+                  );
+                }
                 calls.push("projection");
                 return [];
               }),
@@ -498,6 +603,7 @@ it.effect.each([
     return Effect.gen(function* () {
       const service = yield* CheckpointRollbackService.CheckpointRollbackServiceV2;
       const input = {
+        requestId,
         threadId,
         providerThreadId,
         checkpointId,
@@ -539,7 +645,14 @@ it.effect.each([
       }
       if (restoreFiles && shared !== "none") {
         const error = yield* Effect.flip(
-          service.execute({ threadId, providerThreadId, checkpointId, scopeId, restoreFiles }),
+          service.execute({
+            requestId,
+            threadId,
+            providerThreadId,
+            checkpointId,
+            scopeId,
+            restoreFiles,
+          }),
         );
         assert.equal(error.reason, "shared-workspace");
         assert.deepEqual(calls, []);
@@ -548,7 +661,11 @@ it.effect.each([
       yield* service.execute(input);
       assert.deepEqual(
         calls,
-        restoreFiles ? ["provider", "files", "projection"] : ["provider", "projection"],
+        restoreFiles
+          ? ["provider", "files", "projection"]
+          : unacknowledgedTurn || injectedHandoff
+            ? ["projection"]
+            : ["provider", "projection"],
       );
     }).pipe(Effect.provide(layerTest));
   },

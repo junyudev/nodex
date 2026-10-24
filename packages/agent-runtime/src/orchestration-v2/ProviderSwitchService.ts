@@ -105,6 +105,7 @@ export const layer: Layer.Layer<
           const currentProviderThread = projection.providerThreads.find(
             (thread) =>
               thread.id === projection.thread.activeProviderThreadId &&
+              thread.status !== "closed" &&
               thread.providerInstanceId === current.instanceId &&
               thread.nativeThreadRef !== null,
           );

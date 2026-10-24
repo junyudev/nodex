@@ -182,8 +182,8 @@ chat and does not imply inherited fork history.
 A fork can bring its work back into the chat it was forked from with Merge back (`/merge`)
 or `merge_session_back`. The fork's newest finished Run is merged: a reply still working in
 the fork holds the merge, and the source chat must not be running a reply. Merging starts
-nothing and opens the source chat; its next message carries the fork's work since it
-branched as a context handoff, on whichever Agent that message uses, and the transcript
+nothing and opens the source chat; its next message carries only the fork's local work
+through that Run as a context handoff, on whichever Agent that message uses, and the transcript
 marks it as a merged fork. Merging again before that message replaces the earlier merge.
 
 Workbench presentation is captured before asynchronous submission work. Main binds
@@ -229,8 +229,21 @@ session alone does not grant historical message editing. The capability belongs 
 the Agent whose conversation is being rewound; the replacement message can select
 another Agent.
 Conversation rewind leaves workspace files intact and can proceed without a Git file
-checkpoint. Repeated commands retain their original
-Run and message identity; reusing an identity for another target fails.
+checkpoint. Its boundary belongs to the whole chat, including Runs from other Agents.
+The active Agent retains its own native history only through that boundary; any remaining
+retained context is delivered before the replacement message. Other native conversations
+that have seen discarded Runs, directly or through a context handoff, are permanently
+retired. Selecting those Agents again creates a conversation from retained history.
+A fresh conversation in a fork also inherits the source history captured at every fork
+boundary, even when no local Run survives. Messages withdrawn before the fork stay out;
+withdrawing source messages after the fork does not remove that captured context. The
+visible timeline and Agent context use the same captured history. Delivery and history
+budgets apply to the combined conversation.
+A failed rewind leaves the chat history intact; retrying or restarting never revives a
+retired conversation or removes additional retained messages. Context delivery proofs for
+rewound Runs leave with them, so retained context is delivered again when needed.
+Repeated commands retain their original Run and message identity; reusing an identity
+for another target fails.
 Active proposed plans can be implemented in another Project. Recording a created
 Session also works across Projects; the source plan, parent Run and target Session
 retain their exact product identities and content owners.

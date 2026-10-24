@@ -549,6 +549,13 @@ layer("ProviderEventIngestorV2", (it) => {
 
       const projection = yield* projectionStore.getThreadProjection(threadId);
       const runIds = [otherProviderRun, keptRun, abandonedRun, unlocatedRun, rewindingRun];
+      assert.equal(projection.thread.historyRevision, 1);
+      assert.deepEqual(
+        runIds.map(
+          (runId) => projection.runs.find((run) => run.id === runId)?.rolledBackAtRevision,
+        ),
+        [undefined, undefined, 1, 1, undefined],
+      );
       assert.deepEqual(
         runIds.map((runId) => projection.runs.find((run) => run.id === runId)?.status),
         ["completed", "completed", "rolled_back", "rolled_back", "running"],

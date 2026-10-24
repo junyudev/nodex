@@ -492,9 +492,16 @@ export const layer: Layer.Layer<
         "runs",
         "attempts",
         "providerTurns",
+        "providerThreads",
         "nodes",
         "checkpoints",
       ]);
+      if (
+        projection.providerThreads.some(
+          (thread) => thread.id === rewind.providerThreadId && thread.status === "closed",
+        )
+      )
+        return [];
       const runs = runsOffNativeBranch({
         projection,
         providerThreadId: rewind.providerThreadId,
@@ -503,6 +510,7 @@ export const layer: Layer.Layer<
       });
       if (runs.length === 0) return [];
       const now = yield* DateTime.now;
+      const historyRevision = (projection.thread.historyRevision ?? 0) + 1;
       const eventId = () =>
         idAllocator.allocate.event({
           threadId: rewind.threadId,
@@ -534,7 +542,12 @@ export const layer: Layer.Layer<
           ...(rootNode === undefined ? {} : { nodeId: rootNode.id }),
           providerInstanceId: run.providerInstanceId,
           occurredAt: now,
-          payload: { ...run, status: "rolled_back", completedAt: now },
+          payload: {
+            ...run,
+            status: "rolled_back",
+            rolledBackAtRevision: historyRevision,
+            completedAt: now,
+          },
         });
         if (rootNode !== undefined) {
           events.push({
@@ -549,6 +562,13 @@ export const layer: Layer.Layer<
           });
         }
       }
+      events.push({
+        id: yield* eventId(),
+        type: "thread.metadata-updated",
+        threadId: rewind.threadId,
+        occurredAt: now,
+        payload: { ...projection.thread, historyRevision, updatedAt: now },
+      });
       return events;
     });
 
@@ -603,12 +623,12 @@ export const layer: Layer.Layer<
             return input.event.retainedNativeTurnIds === undefined
               ? [updated]
               : [
-                  updated,
                   ...(yield* rollBackRewoundRuns(input, {
                     threadId,
                     providerThreadId: input.event.providerThread.id,
                     retainedNativeTurnIds: new Set(input.event.retainedNativeTurnIds),
                   })),
+                  updated,
                 ];
           }
           case "provider_turn.updated":
@@ -840,10 +860,19 @@ export const layer: Layer.Layer<
               );
             }),
           ),
-          (effect) =>
-            input.event.type === "app_thread.created"
-              ? threadCommands.withLock(input.event.appThread.id, effect)
-              : effect,
+          (effect) => {
+            if (input.event.type === "app_thread.created")
+              return threadCommands.withLock(input.event.appThread.id, effect);
+            if (
+              input.event.type === "provider_thread.updated" &&
+              input.event.retainedNativeTurnIds !== undefined
+            )
+              return threadCommands.withLock(
+                input.event.providerThread.appThreadId ?? input.threadId,
+                effect,
+              );
+            return effect;
+          },
         ),
     });
   }),

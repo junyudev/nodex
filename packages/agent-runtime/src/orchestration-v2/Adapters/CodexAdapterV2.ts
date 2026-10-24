@@ -1,6 +1,6 @@
 import * as BoundedQueue from "@t3tools/shared/BoundedQueue";
 import * as PubSub from "effect/PubSub";
-import { revertCodexThread } from "../../provider/CodexThreadRevert.ts";
+import { revertCodexThread, revertCodexThreadTurns } from "../../provider/CodexThreadRevert.ts";
 import { historyResponseItems } from "@t3tools/provider-core/server/handoffBudget";
 import { makeProviderTextDeltaCoalescer } from "./ProviderTextDeltaCoalescer.ts";
 import {
@@ -7496,8 +7496,25 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
                   ...(yield* threadRuntimeParams(threadInput.providerThread.appThreadId, input)),
                 });
               }
+              const boundaryOrdinal =
+                threadInput.target.type === "provider_turn"
+                  ? threadInput.target.providerTurn.ordinal
+                  : 0;
+              const discardedTurns = threadInput.providerThreadTurns
+                .filter((turn) => isTerminalProviderTurn(turn) && turn.ordinal > boundaryOrdinal)
+                .toSorted((left, right) => left.ordinal - right.ordinal);
+              const discardedTurnIds = discardedTurns.flatMap((turn) =>
+                turn.nativeTurnRef?.nativeId == null ? [] : [turn.nativeTurnRef.nativeId],
+              );
+              if (discardedTurnIds.length !== numTurns) {
+                return yield* new ProviderAdapter.ProviderAdapterRollbackThreadError({
+                  driver: CODEX_PROVIDER,
+                  providerThreadId: threadInput.providerThread.id,
+                  cause: "Cannot safely rewind a Codex Turn without its native identity.",
+                });
+              }
               const response = yield* ensureInitialized.pipe(
-                Effect.andThen(revertCodexThread(client, threadId, numTurns)),
+                Effect.andThen(revertCodexThreadTurns(client, threadId, discardedTurnIds)),
               );
               turnTokenUsageByThread.delete(threadId);
               return {

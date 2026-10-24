@@ -3,7 +3,8 @@ import * as CodexClient from "effect-codex-app-server/client";
 import * as CodexReplay from "effect-codex-app-server/replay";
 import * as Effect from "effect/Effect";
 
-import { revertCodexThread } from "./CodexThreadRevert.ts";
+import * as CodexErrors from "effect-codex-app-server/errors";
+import { revertCodexThread, revertCodexThreadTurns } from "./CodexThreadRevert.ts";
 
 const page = (
   id: number,
@@ -90,4 +91,56 @@ it.effect("rejects repeated cursors instead of looping or reverting incomplete h
     ),
     Effect.scoped,
   ),
+);
+
+it.effect("reconciles a lost revert acknowledgement without removing retained Turns on retry", () =>
+  Effect.gen(function* () {
+    const retained = Array.from({ length: 202 }, (_, index) => `retained-${index}`);
+    let history = ["discarded-last", "discarded-first", ...retained];
+    const reverted: string[] = [];
+    const requests: string[] = [];
+    const limits: number[] = [];
+    const client = {
+      request: (
+        method: string,
+        params: { beforeTurnId?: string; cursor?: string | null; limit?: number },
+      ) =>
+        Effect.gen(function* () {
+          requests.push(method);
+          if (method === "thread/turns/list") {
+            const start = Number(params.cursor ?? 0);
+            const end = start + params.limit!;
+            limits.push(params.limit!);
+            return {
+              data: history.slice(start, end).map((id) => ({ id })),
+              nextCursor: end < history.length ? String(end) : null,
+            };
+          }
+          if (method === "thread/read") return { thread: { id: "thread" } };
+          assert.equal(method, "thread/revert");
+          const boundary = params.beforeTurnId!;
+          reverted.push(boundary);
+          history = history.slice(history.indexOf(boundary) + 1);
+          return yield* CodexErrors.CodexAppServerRequestError.internalError(
+            "lost acknowledgement",
+          );
+        }),
+    } as Pick<CodexClient.CodexAppServerClient["Service"], "request">;
+    const discarded = ["discarded-first", "discarded-last"];
+    const error = yield* revertCodexThreadTurns(client, "thread", discarded).pipe(Effect.flip);
+    assert.equal(error.message, "lost acknowledgement");
+    const result = yield* revertCodexThreadTurns(client, "thread", discarded);
+    assert.equal(result.thread.id, "thread");
+    assert.deepEqual(history, retained);
+    assert.deepEqual(limits, [2, 2, 100, 100]);
+    assert.deepEqual(reverted, ["discarded-first"]);
+    assert.deepEqual(requests, [
+      "thread/turns/list",
+      "thread/revert",
+      "thread/turns/list",
+      "thread/turns/list",
+      "thread/turns/list",
+      "thread/read",
+    ]);
+  }),
 );

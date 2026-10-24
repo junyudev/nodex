@@ -50,6 +50,7 @@ function makeSourceThread(): OrchestrationV2AppThread {
       rootThreadId: sourceThreadId,
     },
     forkedFrom: null,
+    historyRevision: 7,
     createdAt: sourceCreatedAt,
     updatedAt: snoozedAt,
     archivedAt: null,
@@ -156,6 +157,7 @@ it.effect("keeps a fork awake when its source thread is snoozed", () =>
     assert.equal(result.targetThread.branch, sourceThread.branch);
     assert.equal(result.targetThread.worktreePath, sourceThread.worktreePath);
     assert.isNull(result.targetThread.activeProviderThreadId);
+    assert.equal(result.targetThread.historyRevision, 0);
     assert.deepEqual(result.targetThread.lineage, {
       parentThreadId: sourceThreadId,
       relationshipToParent: "fork",
@@ -165,6 +167,7 @@ it.effect("keeps a fork awake when its source thread is snoozed", () =>
       type: "run",
       threadId: sourceThreadId,
       runId: sourceRunId,
+      sourceHistoryRevision: 7,
     });
   }),
 );
@@ -176,6 +179,7 @@ it.effect("forks from a usage-limited failed run", () =>
       type: "run",
       threadId: sourceThreadId,
       runId: sourceRunId,
+      sourceHistoryRevision: 7,
     });
   }),
 );
@@ -194,6 +198,7 @@ it.effect(
         type: "run",
         threadId: sourceThreadId,
         runId: sourceRunId,
+        sourceHistoryRevision: 7,
       });
       assert.equal(result.targetThread.projectId, makeSourceThread().projectId);
       assert.equal(result.targetThread.runtimeMode, makeSourceThread().runtimeMode);

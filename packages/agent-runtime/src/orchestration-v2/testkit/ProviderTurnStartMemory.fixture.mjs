@@ -20,7 +20,7 @@ const providerCore = (file) =>
       root + "/packages/agent-runtime/vendor/provider-core/src/server/" + file + ".ts",
     )
   );
-const [Start, Projection, Run, Sessions, Policy, Id, Sink, Handoff, Git, Project, Auth] =
+const [Start, Projection, Run, Sessions, Policy, Id, Sink, Handoff, Git, Project, Auth, Commands] =
   await Promise.all([
     app("orchestration-v2/ProviderTurnStartService"),
     app("orchestration-v2/ProjectionStore"),
@@ -33,6 +33,7 @@ const [Start, Projection, Run, Sessions, Policy, Id, Sink, Handoff, Git, Project
     app("git/GitWorkflowService"),
     app("project/ProjectService"),
     app("provider/ProviderAuthService"),
+    app("orchestration-v2/ThreadCommandExecutor"),
   ]);
 let current;
 let fullReads = 0;
@@ -52,6 +53,7 @@ const session = {
 const dependencies = Layer.mergeAll(
   Layer.mock(Handoff.ContextHandoffServiceV2)({ historyBudget: 16000 }),
   Id.layer,
+  Commands.layer,
   FileSystem.layerNoop({}),
   Layer.mock(Git.GitWorkflowService)({}),
   Layer.mock(Project.ProjectService)({}),

@@ -26,6 +26,7 @@ import * as Layer from "effect/Layer";
 import * as SqlClient from "effect/sql/SqlClient";
 import * as SqlitePersistence from "../persistence/Sqlite.ts";
 import * as ProjectionStore from "./ProjectionStore.ts";
+import { historyCost } from "@t3tools/provider-core/server/handoffBudget";
 
 const layerDatabase = Layer.mergeAll(
   SqlitePersistence.layerMemory,
@@ -294,6 +295,7 @@ it.effect.each(["sqlite", "memory"] as const)(
       assert.isTrue(context.hasConversation);
       assert.deepEqual(context.turnItems, []);
       const history = yield* store.getHandoffHistory({
+        scope: "local",
         threadId,
         budget: 16000,
         runIds: [oldRunId],
@@ -303,12 +305,17 @@ it.effect.each(["sqlite", "memory"] as const)(
         [item.id],
       );
       assert.equal(
-        (yield* store.getHandoffHistory({ threadId, budget: 16000, runIds: [runId] }))
-          .sourceItemCount,
+        (yield* store.getHandoffHistory({
+          scope: "local",
+          threadId,
+          budget: 16000,
+          runIds: [runId],
+        })).sourceItemCount,
         0,
       );
       assert.equal(
-        (yield* store.getHandoffHistory({ threadId, budget: 16000, runIds: [] })).sourceItemCount,
+        (yield* store.getHandoffHistory({ scope: "local", threadId, budget: 16000, runIds: [] }))
+          .sourceItemCount,
         0,
       );
       // Pairing depends on IDs, not payload decoding or item status.
@@ -377,8 +384,12 @@ it.effect.each(["sqlite", "memory"] as const)(
       yield* putThread({ ...thread, id: other });
       assert.deepEqual((yield* store.getTurnStartContext(other, runId)).messages, []);
       assert.equal(
-        (yield* store.getHandoffHistory({ threadId: other, budget: 16000, runIds: [oldRunId] }))
-          .sourceItemCount,
+        (yield* store.getHandoffHistory({
+          scope: "local",
+          threadId: other,
+          budget: 16000,
+          runIds: [oldRunId],
+        })).sourceItemCount,
         0,
       );
       assert.isFalse((yield* store.getTurnStartContext(other, runId)).hasConversation);
@@ -499,6 +510,7 @@ it.effect.each(["sqlite", "memory"] as const)(
       yield* putRun({ ...source, status: "failed", activeAttemptId: missingAttemptId });
       assert.equal(yield* store.getNativeContextEstimate(estimateInput), 0);
       const retryInput = {
+        scope: "local" as const,
         threadId,
         budget: 16000,
         runStatuses: ["failed"] as const,
@@ -677,6 +689,7 @@ it.effect.each(["sqlite", "memory"] as const)(
               json_set(payload_json,'$.id','cold-summary:'||value,'$.runId',NULL,'$.text',${"EARLIEST_SUMMARY_MARKER " + "x".repeat(65536)}||' LATEST_SUMMARY_MARKER:'||value)
               FROM n,orchestration_v2_projection_turn_items WHERE turn_item_id=${item.id}`;
           const summary = yield* store.getHandoffHistory({
+            scope: "local",
             threadId,
             runIds: [],
             includeImported: true,
@@ -833,6 +846,293 @@ it.effect.each(["sqlite", "memory"] as const)(
       assert.isFalse(reboundBoundary.nativeIncarnationMatches);
       assert.isNull(reboundBoundary.providerThread);
       assert.deepEqual(reboundBoundary.followingProviderTurns, []);
+    }).pipe(
+      Effect.provide(
+        storage === "sqlite"
+          ? layerDatabase
+          : Layer.merge(SqlitePersistence.layerMemory, ProjectionStore.layerMemory),
+      ),
+    ),
+);
+
+it.effect.each(["sqlite", "memory"] as const)(
+  "restores captured fork ancestry within one delivery budget in %s",
+  (storage) =>
+    Effect.gen(function* () {
+      const store = yield* ProjectionStore.ProjectionStoreV2;
+      const now = yield* DateTime.now;
+      const instanceId = ProviderInstanceId.make("codex");
+      const grandparentId = ThreadId.make("ancestry:grandparent");
+      const parentId = ThreadId.make("ancestry:parent");
+      const childId = ThreadId.make("ancestry:child");
+      const providerId = ProviderThreadId.make("ancestry:target-provider");
+      const putThread = Effect.fnUntraced(function* (
+        threadId: ThreadId,
+        forkedFrom: OrchestrationV2AppThread["forkedFrom"] = null,
+      ) {
+        const thread: OrchestrationV2AppThread = {
+          id: threadId,
+          projectId: ProjectId.make("ancestry:project"),
+          title: "Inherited context",
+          providerInstanceId: instanceId,
+          modelSelection: { instanceId, model: "test" },
+          runtimeMode: "full-access",
+          interactionMode: "default",
+          branch: null,
+          worktreePath: null,
+          activeProviderThreadId: null,
+          lineage: {
+            parentThreadId: forkedFrom?.type === "run" ? forkedFrom.threadId : null,
+            relationshipToParent: forkedFrom === null ? null : "fork",
+            rootThreadId: grandparentId,
+          },
+          forkedFrom,
+          createdBy: "user",
+          creationSource: "web",
+          createdAt: now,
+          updatedAt: now,
+          archivedAt: null,
+          settledOverride: null,
+          settledAt: null,
+          lastVisitedAt: null,
+          deletedAt: null,
+        };
+        yield* store.apply({
+          id: EventId.make(`ancestry:create:${threadId}`),
+          type: "thread.created",
+          threadId,
+          occurredAt: now,
+          payload: thread,
+        });
+      });
+      const putRun = Effect.fnUntraced(function* (
+        threadId: ThreadId,
+        ordinal: number,
+        status: OrchestrationV2Run["status"] = "completed",
+        rolledBackAtRevision?: number,
+      ) {
+        const runId = RunId.make(`${threadId}:run:${ordinal}`);
+        const messageId = MessageId.make(`${runId}:message`);
+        const run: OrchestrationV2Run = {
+          id: runId,
+          threadId,
+          ordinal,
+          providerInstanceId: instanceId,
+          modelSelection: { instanceId, model: "test" },
+          providerThreadId: null,
+          userMessageId: messageId,
+          rootNodeId: null,
+          activeAttemptId: null,
+          status,
+          ...(rolledBackAtRevision === undefined ? {} : { rolledBackAtRevision }),
+          requestedAt: now,
+          startedAt: now,
+          completedAt: now,
+          checkpointId: null,
+          contextHandoffId: null,
+        };
+        yield* store.apply({
+          id: EventId.make(`ancestry:run:${runId}:${status}`),
+          type: "run.updated",
+          threadId,
+          runId,
+          occurredAt: now,
+          payload: run,
+        });
+        const itemId = TurnItemId.make(`${runId}:item`);
+        yield* store.apply({
+          id: EventId.make(`ancestry:item:${itemId}:${status}`),
+          type: "turn-item.updated",
+          threadId,
+          runId,
+          occurredAt: now,
+          payload: {
+            id: itemId,
+            threadId,
+            runId,
+            nodeId: null,
+            providerThreadId: null,
+            providerTurnId: null,
+            nativeItemRef: null,
+            parentItemId: null,
+            ordinal,
+            status: "completed",
+            title: null,
+            startedAt: now,
+            completedAt: now,
+            updatedAt: now,
+            type: "user_message",
+            messageId,
+            inputIntent: "turn_start",
+            createdBy: "user",
+            creationSource: "web",
+            text: `${runId}: ${"context ".repeat(25)}`,
+            attachments: [],
+          },
+        });
+        return { runId, itemId };
+      });
+      yield* putThread(grandparentId);
+      const inheritedGrandparent = yield* putRun(grandparentId, 1);
+      yield* putThread(parentId, {
+        type: "run",
+        threadId: grandparentId,
+        runId: inheritedGrandparent.runId,
+        sourceHistoryRevision: 0,
+      });
+      const inheritedParent = yield* putRun(parentId, 1);
+      yield* putRun(parentId, 2, "rolled_back", 1);
+      const forkBoundary = yield* putRun(parentId, 3);
+      yield* putThread(childId, {
+        type: "run",
+        threadId: parentId,
+        runId: forkBoundary.runId,
+        sourceHistoryRevision: 1,
+      });
+      const localFirst = yield* putRun(childId, 1);
+      yield* putRun(childId, 2, "rolled_back");
+      const localLast = yield* putRun(childId, 3);
+      // Later source edits cannot change the prefixes captured by either fork.
+      yield* putRun(grandparentId, 2);
+      yield* putRun(parentId, 4);
+      yield* putRun(grandparentId, 1, "rolled_back", 1);
+      yield* putRun(parentId, 1, "rolled_back", 2);
+      yield* putRun(parentId, 3, "rolled_back", 2);
+      const input = {
+        scope: "conversation" as const,
+        threadId: childId,
+        runOrdinalTo: 3,
+        runStatuses: ["completed"] as const,
+        budget: 16_000,
+      };
+      const expected = [
+        inheritedGrandparent.itemId,
+        inheritedParent.itemId,
+        forkBoundary.itemId,
+        localFirst.itemId,
+        localLast.itemId,
+      ];
+      const history = yield* store.getHandoffHistory(input);
+      assert.deepEqual(
+        history.history.messages.map((message) => message.itemId),
+        expected,
+      );
+      const delta = yield* store.getHandoffHistory({
+        ...input,
+        scope: "local",
+        includeSummary: true,
+      });
+      assert.deepEqual(
+        delta.history.messages.map((message) => message.itemId),
+        [localFirst.itemId, localLast.itemId],
+      );
+      assert.equal(delta.sourceRunCount, 2);
+      const visible = (yield* store.getThreadProjection(childId)).visibleTurnItems;
+      assert.deepEqual(
+        visible.filter((row) => row.item.type === "user_message").map((row) => row.sourceItemId),
+        expected,
+      );
+      assert.deepEqual(
+        (yield* store.getTimelinePage(childId, { view: "activity", limit: 20 })).items
+          .filter((row) => row.item.type === "user_message")
+          .map((row) => row.sourceItemId),
+        expected,
+      );
+      const window = yield* store.getThreadSnapshotWindow(childId, { rowLimit: 20 });
+      assert.deepEqual(
+        window.projection.visibleTurnItems
+          .filter((row) => row.item.type === "user_message")
+          .map((row) => row.sourceItemId),
+        expected,
+      );
+      assert.notEqual(window.hasEarlierHistory, true);
+      if (storage === "sqlite") {
+        const inheritedWindow = yield* store.getThreadSnapshotWindow(childId, {
+          rowLimit: 2,
+          anchorItemId: forkBoundary.itemId,
+          anchorThreadId: parentId,
+          exclusiveAnchor: true,
+          historyOnly: true,
+        });
+        assert.deepEqual(
+          inheritedWindow.projection.visibleTurnItems
+            .filter((row) => row.item.type === "user_message")
+            .map((row) => row.sourceItemId),
+          [inheritedParent.itemId],
+        );
+        assert.isTrue(inheritedWindow.hasEarlierHistory);
+      }
+      assert.isNull(
+        yield* store.getVisibleTurnItem({
+          threadId: childId,
+          itemId: TurnItemId.make(`${parentId}:run:2:item`),
+        }),
+      );
+      assert.equal(
+        (yield* store.getVisibleTurnItem({ threadId: childId, itemId: inheritedParent.itemId }))
+          ?.id,
+        inheritedParent.itemId,
+      );
+      assert.equal((yield* store.getThreadShell(childId))?.visibleItemCount, expected.length + 2);
+      assert.deepEqual(history.coveredRunOrdinals, { from: 1, to: 3 });
+      assert.equal(history.sourceRunCount, 5);
+      assert.deepEqual(
+        (yield* store.getHandoffHistory({ ...input, runOrdinalTo: 0 })).history.messages.map(
+          (message) => message.itemId,
+        ),
+        expected.slice(0, 3),
+      );
+      assert.deepEqual(
+        (yield* store.getHandoffHistory({ ...input, runOrdinalFrom: 2 })).history.messages.map(
+          (message) => message.itemId,
+        ),
+        [localLast.itemId],
+      );
+      yield* store.apply({
+        id: EventId.make("ancestry:delivery"),
+        type: "context-handoff.updated",
+        threadId: childId,
+        occurredAt: now,
+        payload: {
+          id: ContextHandoffId.make("ancestry:delivered"),
+          threadId: childId,
+          targetRunId: localLast.runId,
+          fromProviderThreadIds: [],
+          toProviderThreadId: providerId,
+          coveredRunOrdinals: { from: 1, to: 1 },
+          strategy: "full_thread_summary",
+          status: "ready",
+          summaryMessageId: null,
+          summaryText: "Captured fork context",
+          createdByProviderInstanceId: instanceId,
+          createdAt: now,
+          updatedAt: now,
+          delivery: {
+            nativeThreadId: "native:old",
+            status: "injected",
+            itemIds: [inheritedGrandparent.itemId],
+          },
+        },
+      });
+      assert.deepEqual(
+        (yield* store.getHandoffHistory({
+          ...input,
+          excludeDelivered: { providerThreadId: providerId, nativeThreadId: "native:old" },
+        })).history.messages.map((message) => message.itemId),
+        expected.slice(1),
+      );
+      assert.deepEqual(
+        (yield* store.getHandoffHistory({
+          ...input,
+          excludeDelivered: { providerThreadId: providerId, nativeThreadId: "native:new" },
+        })).history.messages.map((message) => message.itemId),
+        expected,
+      );
+      const bounded = yield* store.getHandoffHistory({ ...input, budget: 1_800 });
+      assert.isAbove(bounded.history.messages.length, 0);
+      assert.isBelow(bounded.history.messages.length, expected.length);
+      assert.equal(bounded.history.omittedItems, expected.length - bounded.history.messages.length);
+      assert.isAtMost(historyCost(bounded.history.messages, bounded.context), 1_800);
     }).pipe(
       Effect.provide(
         storage === "sqlite"

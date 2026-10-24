@@ -11,6 +11,20 @@ type TimelineTurnItem = Pick<OrchestrationV2TurnItem, "type" | "runId" | "nodeId
   readonly inputIntent?: OrchestrationV2UserMessageInputIntent;
 };
 
+/** A fork preserves only Runs present at its captured conversation revision. */
+export function isRunVisibleAtHistoryRevision(
+  run: Pick<OrchestrationV2Run, "status" | "rolledBackAtRevision">,
+  historyRevision?: number,
+): boolean {
+  if (run.status !== "rolled_back") return true;
+  // Unknown historical membership cannot authorize replay of withdrawn content.
+  return (
+    historyRevision !== undefined &&
+    run.rolledBackAtRevision !== undefined &&
+    run.rolledBackAtRevision > historyRevision
+  );
+}
+
 export function isOrchestrationV2SupersededInterrupt(input: {
   readonly item: TimelineTurnItem;
   readonly attempts: ReadonlyArray<TimelineRunAttempt>;

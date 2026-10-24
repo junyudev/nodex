@@ -712,7 +712,8 @@ function rootProviderThreadsForProvider(
       (providerThread) =>
         providerThread.providerInstanceId === providerInstanceId &&
         providerThread.appThreadId === projection.thread.id &&
-        providerThread.ownerNodeId === null,
+        providerThread.ownerNodeId === null &&
+        providerThread.status !== "closed",
     )
     .toSorted(
       (left, right) =>
@@ -887,10 +888,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
 
   const readHandoffHistory = (
     threadId: ThreadId,
-    input: Omit<
-      Parameters<typeof projectionStore.getHandoffHistory>[0],
-      "threadId" | "budget"
-    > = {},
+    input: Omit<Parameters<typeof projectionStore.getHandoffHistory>[0], "threadId" | "budget">,
   ) =>
     projectionStore
       .getHandoffHistory({ threadId, budget: contextHandoffService.historyBudget, ...input })
@@ -1489,7 +1487,9 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
             )
         : null;
       const activeProviderThread = projection.providerThreads.find(
-        (candidate) => candidate.id === projection.thread.activeProviderThreadId,
+        (candidate) =>
+          candidate.id === projection.thread.activeProviderThreadId &&
+          candidate.status !== "closed",
       );
       const canResumeAcrossInstances =
         switchPlan?.instanceChanged === true &&
@@ -1534,9 +1534,10 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       const coveredHistory =
         canResumeAcrossInstances ||
         latestHandoffRun === undefined ||
-        latestHandoffRun.providerInstanceId === queuedRun.providerInstanceId
+        (targetLastCompletedRun?.ordinal ?? 0) >= latestHandoffRun.ordinal
           ? null
           : yield* readHandoffHistory(threadId, {
+              scope: "conversation",
               runOrdinalFrom: (targetLastCompletedRun?.ordinal ?? 0) + 1,
               runOrdinalTo: latestHandoffRun.ordinal,
               runStatuses: ["completed", "failed", "interrupted"],
@@ -1548,6 +1549,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       const legacyImportHistory =
         projection.thread.historyOrigin === "v1_import" && latestCompletedRun === undefined
           ? yield* readHandoffHistory(threadId, {
+              scope: "local",
               runIds: [],
               includeImported: true,
               includeConversationSummary: true,
@@ -4333,6 +4335,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
             strategy: "full_thread_summary",
             items: [],
             preparedHistory: yield* readHandoffHistory(input.command.threadId, {
+              scope: "conversation",
               runOrdinalTo: targetRun.ordinal,
               includeImported: input.projection.thread.historyOrigin === "v1_import",
             }),
@@ -4992,7 +4995,9 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       }
 
       const activeProviderThread = projection.providerThreads.find(
-        (candidate) => candidate.id === projection.thread.activeProviderThreadId,
+        (candidate) =>
+          candidate.id === projection.thread.activeProviderThreadId &&
+          candidate.status !== "closed",
       );
       const activeRun = projection.runs.find(isBlockingRun);
       // A message queued during worktree setup can arrive after that setup failed
@@ -5355,6 +5360,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       const legacyImportHistory =
         projection.thread.historyOrigin === "v1_import" && latestCompletedRun === undefined
           ? yield* readHandoffHistory(command.threadId, {
+              scope: "local",
               runIds: [],
               includeImported: true,
               includeConversationSummary: true,
@@ -5384,7 +5390,9 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       if (
         pendingForkTransfer === undefined &&
         pendingMergeBackTransfer === undefined &&
-        !isProviderSwitch
+        !isProviderSwitch &&
+        (latestHandoffRun === undefined ||
+          (activeProviderThread?.lastRunOrdinal ?? 0) >= latestHandoffRun.ordinal)
       ) {
         const adapter = yield* providerAdapters.get(modelSelection.instanceId).pipe(
           Effect.mapError(
@@ -5903,7 +5911,12 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         !requiresPortableFork || sourceProjection === null || sourceRun === null
           ? null
           : yield* readHandoffHistory(sourceProjection.thread.id, {
+              scope: "conversation",
               runOrdinalTo: sourceRun.ordinal,
+              historyRevision:
+                projection.thread.forkedFrom?.type === "run"
+                  ? projection.thread.forkedFrom.sourceHistoryRevision
+                  : undefined,
               includeImported: sourceProjection.thread.historyOrigin === "v1_import",
             });
       const portableForkHandoff =
@@ -5947,9 +5960,12 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
               .getLastDeliveredRun(command.threadId, targetProviderThread.id)
               .pipe(mapDispatchError(command));
       const providerSwitchHistory =
-        !isProviderSwitch || canResumeAcrossInstances || latestHandoffRun === undefined
+        canResumeAcrossInstances ||
+        latestHandoffRun === undefined ||
+        (!isProviderSwitch && (targetLastCompletedRun?.ordinal ?? 0) >= latestHandoffRun.ordinal)
           ? null
           : yield* readHandoffHistory(command.threadId, {
+              scope: "conversation",
               runOrdinalFrom:
                 (requiresFullProviderSwitchContext ? 0 : (targetLastCompletedRun?.ordinal ?? 0)) +
                 1,
@@ -6112,6 +6128,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         mergeBackSourceProjection === null || mergeBackSourceRun === null
           ? null
           : yield* readHandoffHistory(mergeBackSourceProjection.thread.id, {
+              scope: "local",
               runOrdinalTo: mergeBackSourceRun.ordinal,
               includeSummary: true,
             });
@@ -9896,7 +9913,9 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         }
       }
       const providerThread = projection.providerThreads.find(
-        (candidate) => candidate.id === projection.thread.activeProviderThreadId,
+        (candidate) =>
+          candidate.id === projection.thread.activeProviderThreadId &&
+          candidate.status !== "closed",
       );
       if (providerThread === undefined) {
         return yield* new OrchestratorDispatchError({
@@ -9907,7 +9926,9 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       }
       if (
         command.beforeRunId !== undefined &&
-        (providerThread.pendingBackgroundTasks?.length ?? 0) > 0
+        projection.providerThreads.some(
+          (candidate) => (candidate.pendingBackgroundTasks?.length ?? 0) > 0,
+        )
       )
         return yield* new OrchestratorDispatchError({
           commandId: command.commandId,
@@ -10037,13 +10058,6 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
             commandId: command.commandId,
             commandType: command.type,
             cause: `Cannot roll back to checkpoint ${targetCheckpoint.id}: its provider turn is unavailable.`,
-          });
-        }
-        if (targetProviderTurn.providerThreadId !== providerThread.id) {
-          return yield* new OrchestratorDispatchError({
-            commandId: command.commandId,
-            commandType: command.type,
-            cause: `Cannot roll back provider thread ${providerThread.id} to checkpoint ${targetCheckpoint.id}: target provider turn ${targetProviderTurn.id} belongs to provider thread ${targetProviderTurn.providerThreadId}.`,
           });
         }
       }
@@ -11551,6 +11565,10 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         commandThreadId(command),
         dispatchWithReceiptEffect(command),
       );
+      // Fork capture and source rewind share one revision boundary. The target is new;
+      // use the same source-before-child lock order as parent-owned commands.
+      if (command.type === "thread.fork" && command.sourceThreadId !== command.targetThreadId)
+        return yield* threadDispatch.withLock(command.sourceThreadId, dispatch);
       if (
         command.type !== "message.dispatch" ||
         (command.createdBy !== "user" && command.creationSource !== "mcp")

@@ -33,6 +33,11 @@ import * as Stream from "effect/Stream";
 import * as Schema from "effect/Schema";
 import * as SqlClient from "effect/sql/SqlClient";
 
+import * as NodeServices from "@effect/platform-node/NodeServices";
+import { rollbackThread } from "../../nodex/Rollback.ts";
+import { ThreadManagementService } from "../ThreadManagementService.ts";
+import * as IdAllocator from "@t3tools/provider-core/server/IdAllocator";
+import * as CheckpointStore from "../../checkpointing/CheckpointStore.ts";
 import * as SqlitePersistence from "../../persistence/Sqlite.ts";
 import { CommandPolicyCapabilityUnsupportedError } from "../CommandPolicy.ts";
 import {
@@ -98,6 +103,9 @@ function makeTestAdapter(input: {
   readonly responseByThreadId?: Readonly<Record<string, Readonly<Record<number, string>>>>;
   readonly capturedTurns: Ref.Ref<ReadonlyArray<CapturedTurn>>;
   readonly injectedHistory?: Ref.Ref<ReadonlyArray<unknown>>;
+  readonly rollback?: ProviderAdapter.ProviderAdapterV2SessionRuntime["rollbackThread"];
+  readonly fork?: ProviderAdapter.ProviderAdapterV2SessionRuntime["forkThread"];
+  readonly nativeHistories?: Map<string, string[]>;
   readonly failStartOnce?: Ref.Ref<boolean>;
   /** Starts left to refuse the way Claude does while background work runs. */
   readonly refuseStarts?: Ref.Ref<number>;
@@ -195,13 +203,24 @@ function makeTestAdapter(input: {
           ...(input.injectedHistory === undefined
             ? {}
             : {
-                injectHistory: (history: ProviderAdapter.ProviderAdapterV2HistoricalContext) =>
+                injectHistory: (
+                  history: ProviderAdapter.ProviderAdapterV2HistoricalContext & {
+                    readonly providerThread: OrchestrationV2ProviderThread;
+                  },
+                ) =>
                   Ref.update(input.injectedHistory!, (current) => [
                     ...current,
                     ...historyResponseItems(history.messages, history.context),
                   ]).pipe(
                     Effect.andThen(
                       Effect.gen(function* () {
+                        const nativeId = history.providerThread.nativeThreadRef?.nativeId;
+                        if (nativeId != null && input.nativeHistories !== undefined) {
+                          input.nativeHistories.set(nativeId, [
+                            ...(input.nativeHistories.get(nativeId) ?? []),
+                            ...history.messages.map((message) => message.text),
+                          ]);
+                        }
                         if (
                           input.failInjectionOnce !== undefined &&
                           (yield* Ref.getAndSet(input.failInjectionOnce, false))
@@ -234,6 +253,11 @@ function makeTestAdapter(input: {
                   runId: turnInput.runId,
                   cause: new ClaudeBackgroundWorkBlocksQueryReplacementError(),
                 });
+              const nativeId = turnInput.providerThread.nativeThreadRef?.nativeId;
+              if (nativeId != null && input.nativeHistories !== undefined) {
+                const history = input.nativeHistories.get(nativeId) ?? [];
+                input.nativeHistories.set(nativeId, [...history, turnInput.message.text]);
+              }
               yield* Effect.yieldNow;
               yield* Ref.update(input.capturedTurns, (turns) => [
                 ...turns,
@@ -361,10 +385,12 @@ function makeTestAdapter(input: {
           respondToRuntimeRequest: () => Effect.void,
           readThreadSnapshot: () =>
             unimplemented(input.driver, "readThreadSnapshot unused in provider switch test"),
-          rollbackThread: () =>
-            unimplemented(input.driver, "rollbackThread unused in provider switch test"),
-          forkThread: () =>
-            unimplemented(input.driver, "forkThread unused in provider switch test"),
+          rollbackThread:
+            input.rollback ??
+            (() => unimplemented(input.driver, "rollbackThread unused in provider switch test")),
+          forkThread:
+            input.fork ??
+            (() => unimplemented(input.driver, "forkThread unused in provider switch test")),
         };
         return runtime;
       }),
@@ -390,6 +416,455 @@ const waitForIdle = Effect.fn("ProviderSwitchTest.waitForIdle")(function* (
 });
 
 describe("orchestration v2 provider switching", () => {
+  it.live.each([0, 1])(
+    "preserves inherited fork history when rewinding into a fresh native conversation (retain %s local Runs)",
+    (retainedOrdinal) =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const cwd = yield* checkpointWorkspace("fork-rewind-inherited-context");
+          const sourceThreadId = ThreadId.make("fork-rewind:source");
+          const targetThreadId = ThreadId.make("fork-rewind:target");
+          const capturedTurns = yield* Ref.make<ReadonlyArray<CapturedTurn>>([]);
+          const injectedHistory = yield* Ref.make<ReadonlyArray<unknown>>([]);
+          const generation = yield* Ref.make(0);
+          const nativeHistories = new Map<string, string[]>();
+          const nativeFork: ProviderAdapter.ProviderAdapterV2SessionRuntime["forkThread"] = (
+            input,
+          ) =>
+            Effect.sync(() => {
+              const nativeId = `native-fork:${input.targetThreadId}`;
+              const sourceNativeId = input.sourceProviderThread.nativeThreadRef!.nativeId!;
+              nativeHistories.set(nativeId, [...nativeHistories.get(sourceNativeId)!]);
+              return {
+                ...input.sourceProviderThread,
+                id: ProviderThreadId.make(`provider-thread:${nativeId}`),
+                appThreadId: input.targetThreadId,
+                nativeThreadRef: { driver: CODEX_DRIVER, nativeId, strength: "strong" as const },
+                nativeConversationHeadRef: null,
+                firstRunOrdinal: null,
+                lastRunOrdinal: null,
+                handoffIds: [],
+                forkedFrom: { providerThreadId: input.sourceProviderThread.id },
+              };
+            });
+          const registry = ProviderAdapterRegistry.layerFromAdapters([
+            makeTestAdapter({
+              instanceId: CODEX_MODEL_SELECTION.instanceId,
+              driver: CODEX_DRIVER,
+              capabilities: CodexProviderCapabilitiesV2,
+              modelSelection: CODEX_MODEL_SELECTION,
+              responseByRunOrdinal: {},
+              capturedTurns,
+              nativeHistories,
+              injectedHistory,
+              nativeThreadGeneration: generation,
+              fork: nativeFork,
+            }),
+            makeTestAdapter({
+              instanceId: CLAUDE_MODEL_SELECTION.instanceId,
+              driver: CLAUDE_DRIVER,
+              capabilities: ClaudeProviderCapabilitiesV2,
+              modelSelection: CLAUDE_MODEL_SELECTION,
+              responseByRunOrdinal: {},
+              capturedTurns,
+              nativeHistories,
+            }),
+          ]);
+          const runtime = () =>
+            ProviderReplayHarness.layerWithRegistry(
+              { name: "fork-rewind-inherited-context", runtimePolicyOverride: { cwd } },
+              registry,
+              {
+                databaseLayer: SqlitePersistence.layerFromPath(`${cwd}/runtime.sqlite`).pipe(
+                  Layer.provide(NodeServices.layer),
+                ),
+                checkpointStoreLayer: CheckpointStore.layerWithoutWorkspaceState,
+                recoverOnStartup: true,
+              },
+            );
+          const send = Effect.fn("ForkRewind.send")(function* (
+            threadId: ThreadId,
+            ordinal: number,
+            text: string,
+            selection: ModelSelection,
+          ) {
+            const orchestrator = yield* Orchestrator.OrchestratorV2;
+            const worker = yield* EffectWorker.OrchestrationEffectWorkerV2;
+            yield* orchestrator.dispatch({
+              type: "message.dispatch",
+              commandId: CommandId.make(`${threadId}:send:${ordinal}`),
+              threadId,
+              messageId: MessageId.make(`${threadId}:message:${ordinal}`),
+              createdBy: "user",
+              creationSource: "web",
+              text,
+              attachments: [],
+              modelSelection: selection,
+              dispatchMode: { type: "start_immediately" },
+            });
+            const projection = yield* waitForIdle(threadId);
+            yield* worker.drain();
+            assert.equal(projection.runs.at(-1)?.status, "completed");
+            return yield* orchestrator.getThreadProjection(threadId);
+          });
+          const retiredNativeId = yield* Effect.gen(function* () {
+            const orchestrator = yield* Orchestrator.OrchestratorV2;
+            const worker = yield* EffectWorker.OrchestrationEffectWorkerV2;
+            yield* orchestrator.dispatch({
+              type: "thread.create",
+              commandId: CommandId.make("fork-rewind:create"),
+              threadId: sourceThreadId,
+              projectId,
+              createdBy: "user",
+              creationSource: "web",
+              title: "Fork source",
+              modelSelection: CODEX_MODEL_SELECTION,
+              runtimeMode: "full-access",
+              interactionMode: "default",
+              branch: null,
+              worktreePath: null,
+            });
+            yield* send(sourceThreadId, 1, "INHERITED_PARENT_CONSTRAINT", CODEX_MODEL_SELECTION);
+            yield* orchestrator.dispatch({
+              type: "thread.fork",
+              commandId: CommandId.make("fork-rewind:fork"),
+              sourceThreadId,
+              targetThreadId,
+              sourcePoint: { type: "latest_stable" },
+              title: "Fork target",
+              createdBy: "user",
+              creationSource: "web",
+            });
+            const forked = yield* send(
+              targetThreadId,
+              1,
+              "RETAINED_CHILD_CONSTRAINT",
+              CODEX_MODEL_SELECTION,
+            );
+            assert.equal(
+              forked.contextTransfers.find((transfer) => transfer.type === "fork")?.resolution
+                ?.strategy,
+              "native_fork",
+            );
+            yield* send(sourceThreadId, 2, "LATER_PARENT_MESSAGE", CODEX_MODEL_SELECTION);
+            yield* send(targetThreadId, 2, "DISCARDED_CHILD_CLAUDE", CLAUDE_MODEL_SELECTION);
+            const before = yield* send(
+              targetThreadId,
+              3,
+              "DISCARDED_CHILD_CODEX",
+              CODEX_MODEL_SELECTION,
+            );
+            const nativeId = (yield* Ref.get(capturedTurns)).at(-1)!.nativeThreadId!;
+            assert.include(
+              nativeHistories.get(nativeId)!.join("\n"),
+              "INHERITED_PARENT_CONSTRAINT",
+            );
+            const editedRun = before.runs[retainedOrdinal]!;
+            yield* rollbackThread({
+              threadId: targetThreadId,
+              runId: editedRun.id,
+              requestId: CommandId.make("fork-rewind:edit"),
+            }).pipe(
+              Effect.provide(
+                Layer.mock(ThreadManagementService)({
+                  getReceipt: orchestrator.getReceipt,
+                  getCheckpointContext: orchestrator.getCheckpointContext,
+                  getThreadRecords: orchestrator.getThreadRecords,
+                  dispatch: orchestrator.dispatch,
+                }),
+              ),
+              Effect.provide(IdAllocator.layer),
+            );
+            yield* worker.drain();
+            yield* orchestrator.streamStoredEvents.pipe(
+              Stream.filter(
+                ({ event }) =>
+                  event.type === "run.updated" &&
+                  event.payload.id === editedRun.id &&
+                  event.payload.status === "rolled_back",
+              ),
+              Stream.runHead,
+            );
+            const after = yield* orchestrator.getThreadProjection(targetThreadId);
+            assert.deepEqual(
+              after.runs.map((run) => run.status),
+              retainedOrdinal === 0
+                ? ["rolled_back", "rolled_back", "rolled_back"]
+                : ["completed", "rolled_back", "rolled_back"],
+            );
+            assert.isTrue(
+              after.providerThreads.some(
+                (thread) =>
+                  thread.nativeThreadRef?.nativeId === nativeId && thread.status === "closed",
+              ),
+            );
+            return nativeId;
+          }).pipe(Effect.provide(runtime()), Effect.scoped);
+          yield* Effect.gen(function* () {
+            yield* send(targetThreadId, 4, "REPLACEMENT_CHILD_MESSAGE", CODEX_MODEL_SELECTION);
+            const latest = (yield* Ref.get(capturedTurns)).at(-1)!;
+            assert.notEqual(latest.nativeThreadId, retiredNativeId);
+            const retained = nativeHistories.get(latest.nativeThreadId!)!.join("\n");
+            if (retainedOrdinal === 0) assert.notInclude(retained, "RETAINED_CHILD_CONSTRAINT");
+            else assert.include(retained, "RETAINED_CHILD_CONSTRAINT");
+            assert.notInclude(retained, "DISCARDED_CHILD_CLAUDE");
+            assert.notInclude(retained, "DISCARDED_CHILD_CODEX");
+            assert.notInclude(retained, "LATER_PARENT_MESSAGE");
+            assert.include(retained, "INHERITED_PARENT_CONSTRAINT");
+          }).pipe(Effect.provide(runtime()), Effect.scoped);
+        }),
+      ),
+  );
+
+  it.live.each([0, 1, 2])(
+    "rewinds across Agents without reviving discarded native history after restart (case %s)",
+    (scenario) =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const retainedOrdinal = Math.min(scenario, 1);
+          const injected = scenario === 2;
+          const injectedHistory = yield* Ref.make<ReadonlyArray<unknown>>([]);
+          const claudeGeneration = yield* Ref.make(0);
+          const cwd = yield* checkpointWorkspace(`cross-agent-rewind-${scenario}`);
+          const capturedTurns = yield* Ref.make<ReadonlyArray<CapturedTurn>>([]);
+          const nativeHistories = new Map<string, string[]>();
+          const generation = yield* Ref.make(0);
+          const rollbackFailed = yield* Deferred.make<void>();
+          const allowRetry = yield* Deferred.make<void>();
+          let failRollbackOnce = true;
+          let rollbackAttempts = 0;
+          const rollback: ProviderAdapter.ProviderAdapterV2SessionRuntime["rollbackThread"] = (
+            input,
+          ) =>
+            Effect.gen(function* () {
+              rollbackAttempts += 1;
+              // A failed native mutation must not retire any logical or native conversation.
+              if (failRollbackOnce) {
+                failRollbackOnce = false;
+                yield* Deferred.succeed(rollbackFailed, undefined);
+                yield* Deferred.await(allowRetry);
+                return yield* unimplemented(CLAUDE_DRIVER, "temporary rollback failure");
+              }
+              assert.equal(input.target.type, "thread_start");
+              nativeHistories.set(input.providerThread.nativeThreadRef!.nativeId!, []);
+              return {
+                providerThread: input.providerThread,
+                providerTurns: [],
+                messages: [],
+                runtimeRequests: [],
+              };
+            });
+          const registry = ProviderAdapterRegistry.layerFromAdapters([
+            makeTestAdapter({
+              instanceId: CODEX_MODEL_SELECTION.instanceId,
+              driver: CODEX_DRIVER,
+              capabilities: CodexProviderCapabilitiesV2,
+              modelSelection: CODEX_MODEL_SELECTION,
+              responseByRunOrdinal: {},
+              capturedTurns,
+              nativeHistories,
+              nativeThreadGeneration: generation,
+            }),
+            makeTestAdapter({
+              instanceId: CLAUDE_MODEL_SELECTION.instanceId,
+              driver: CLAUDE_DRIVER,
+              capabilities: ClaudeProviderCapabilitiesV2,
+              modelSelection: CLAUDE_MODEL_SELECTION,
+              responseByRunOrdinal: {},
+              capturedTurns,
+              nativeHistories,
+              nativeThreadGeneration: claudeGeneration,
+              ...(injected ? { injectedHistory } : {}),
+              rollback,
+            }),
+          ]);
+          const runtime = () =>
+            ProviderReplayHarness.layerWithRegistry(
+              { name: `cross-agent-rewind-${retainedOrdinal}`, runtimePolicyOverride: { cwd } },
+              registry,
+              {
+                databaseLayer: SqlitePersistence.layerFromPath(`${cwd}/runtime.sqlite`).pipe(
+                  Layer.provide(NodeServices.layer),
+                ),
+                checkpointStoreLayer: CheckpointStore.layerWithoutWorkspaceState,
+                recoverOnStartup: true,
+              },
+            );
+          const send = Effect.fn("CrossAgentRewind.send")(function* (
+            ordinal: number,
+            text: string,
+            selection: ModelSelection,
+          ) {
+            const orchestrator = yield* Orchestrator.OrchestratorV2;
+            yield* orchestrator.dispatch({
+              type: "message.dispatch",
+              commandId: CommandId.make(`rewind:${ordinal}`),
+              threadId,
+              messageId: MessageId.make(`rewind:${ordinal}`),
+              createdBy: "user",
+              creationSource: "web",
+              text,
+              attachments: [],
+              modelSelection: selection,
+              dispatchMode: { type: "start_immediately" },
+            });
+            yield* orchestrator.streamStoredEvents.pipe(
+              Stream.filter(
+                ({ event }) =>
+                  event.type === "run.updated" &&
+                  event.payload.ordinal === ordinal &&
+                  event.payload.status === "completed",
+              ),
+              Stream.runHead,
+            );
+            const worker = yield* EffectWorker.OrchestrationEffectWorkerV2;
+            yield* worker.drain();
+            return yield* orchestrator.getThreadProjection(threadId);
+          });
+          const initial = yield* Effect.gen(function* () {
+            const orchestrator = yield* Orchestrator.OrchestratorV2;
+            const worker = yield* EffectWorker.OrchestrationEffectWorkerV2;
+            yield* orchestrator.dispatch({
+              type: "thread.create",
+              commandId: CommandId.make("rewind:create"),
+              threadId,
+              projectId,
+              createdBy: "user",
+              creationSource: "web",
+              title: "Cross Agent rewind",
+              modelSelection: CODEX_MODEL_SELECTION,
+              runtimeMode: "full-access",
+              interactionMode: "default",
+              branch: null,
+              worktreePath: null,
+            });
+            yield* send(1, "FIRST_CONSTRAINT", CODEX_MODEL_SELECTION);
+            yield* send(2, "DISCARDED_SECOND_MESSAGE", CODEX_MODEL_SELECTION);
+            const before = yield* send(3, "DISCARDED_CLAUDE_MESSAGE", CLAUDE_MODEL_SELECTION);
+            const editedRun = before.runs[retainedOrdinal]!;
+            yield* rollbackThread({
+              threadId,
+              runId: editedRun.id,
+              requestId: CommandId.make("rewind:edit"),
+            }).pipe(
+              Effect.provide(
+                Layer.mock(ThreadManagementService)({
+                  getReceipt: orchestrator.getReceipt,
+                  getCheckpointContext: orchestrator.getCheckpointContext,
+                  getThreadRecords: orchestrator.getThreadRecords,
+                  dispatch: orchestrator.dispatch,
+                }),
+              ),
+              Effect.provide(IdAllocator.layer),
+            );
+            if (!injected) {
+              yield* Deferred.await(rollbackFailed);
+              const unchanged = yield* orchestrator.getThreadProjection(threadId);
+              assert.deepEqual(
+                unchanged.runs.map((run) => run.status),
+                ["completed", "completed", "completed"],
+              );
+              assert.isFalse(
+                unchanged.providerThreads.some((thread) => thread.status === "closed"),
+              );
+              yield* Deferred.succeed(allowRetry, undefined);
+            }
+            yield* worker.drain();
+            yield* orchestrator.streamStoredEvents.pipe(
+              Stream.filter(
+                ({ event }) =>
+                  event.type === "run.updated" &&
+                  event.payload.id === editedRun.id &&
+                  event.payload.status === "rolled_back",
+              ),
+              Stream.runHead,
+            );
+            const after = yield* orchestrator.getThreadProjection(threadId);
+            assert.deepEqual(
+              after.runs.map((run) => run.status),
+              retainedOrdinal === 0
+                ? ["rolled_back", "rolled_back", "rolled_back"]
+                : ["completed", "rolled_back", "rolled_back"],
+            );
+            assert.equal(rollbackAttempts, injected ? 0 : 2);
+            const oldCodex = after.providerThreads.find(
+              (thread) => thread.driver === CODEX_DRIVER,
+            )!;
+            assert.equal(oldCodex.status, "closed");
+            // A native status notification received late must never revive the retired context.
+            const sink = yield* EventSink.EventSinkV2;
+            yield* sink.write({
+              events: [
+                {
+                  id: EventId.make("rewind:late-native-status"),
+                  type: "provider-thread.updated",
+                  threadId,
+                  occurredAt: yield* DateTime.now,
+                  payload: { ...oldCodex, status: "idle" },
+                },
+              ],
+            });
+            return oldCodex;
+          }).pipe(Effect.provide(runtime()), Effect.scoped);
+          if (retainedOrdinal > 0) {
+            const forkBoundary = yield* Effect.flatMap(ProjectionStore.ProjectionStoreV2, (store) =>
+              store.getNativeForkBoundary(
+                threadId,
+                IdAllocator.derive.run({ threadId, ordinal: 1 }),
+              ),
+            ).pipe(
+              Effect.provide(ProjectionStore.layer),
+              Effect.provide(
+                SqlitePersistence.layerFromPath(`${cwd}/runtime.sqlite`).pipe(
+                  Layer.provide(NodeServices.layer),
+                ),
+              ),
+              Effect.scoped,
+            );
+            assert.isFalse(forkBoundary.nativeIncarnationMatches);
+            assert.isNull(forkBoundary.providerThread);
+          }
+          yield* Effect.gen(function* () {
+            const orchestrator = yield* Orchestrator.OrchestratorV2;
+            const reopened = yield* orchestrator.getThreadProjection(threadId);
+            assert.equal(
+              reopened.providerThreads.find((thread) => thread.id === initial.id)?.status,
+              "closed",
+            );
+            yield* send(4, "REPLACEMENT_ON_CLAUDE", CLAUDE_MODEL_SELECTION);
+            const after = yield* send(5, "RETURN_TO_CODEX", CODEX_MODEL_SELECTION);
+            const turns = yield* Ref.get(capturedTurns);
+            assert.notEqual(turns.at(-1)?.nativeThreadId, initial.nativeThreadRef?.nativeId);
+            assert.equal(yield* Ref.get(generation), 2);
+            const lastNative = nativeHistories.get(turns.at(-1)!.nativeThreadId!)!.join("\n");
+            assert.notInclude(lastNative, "DISCARDED_SECOND_MESSAGE");
+            assert.notInclude(lastNative, "DISCARDED_CLAUDE_MESSAGE");
+            assert.include(lastNative, "REPLACEMENT_ON_CLAUDE");
+            const claudeTurn = turns.find((turn) => turn.text.includes("REPLACEMENT_ON_CLAUDE"))!;
+            const claudeReplacement = nativeHistories.get(claudeTurn.nativeThreadId!)!.join("\n");
+            assert.notInclude(claudeReplacement, "DISCARDED_SECOND_MESSAGE");
+            assert.notInclude(claudeReplacement, "DISCARDED_CLAUDE_MESSAGE");
+            if (injected) {
+              assert.notEqual(claudeTurn.nativeThreadId, turns[2]?.nativeThreadId);
+              assert.equal(yield* Ref.get(claudeGeneration), 2);
+              assert.equal(claudeReplacement.split("FIRST_CONSTRAINT").length - 1, 1);
+            }
+            if (retainedOrdinal === 0) {
+              assert.notInclude(lastNative, "FIRST_CONSTRAINT");
+              assert.notInclude(claudeReplacement, "FIRST_CONSTRAINT");
+            } else {
+              assert.include(lastNative, "FIRST_CONSTRAINT");
+              assert.include(claudeReplacement, "FIRST_CONSTRAINT");
+            }
+            assert.equal(
+              after.providerThreads.find((thread) => thread.id === initial.id)?.status,
+              "closed",
+            );
+          }).pipe(Effect.provide(runtime()), Effect.scoped);
+        }),
+      ),
+  );
+
   it.live(
     "starts a portable provider handoff over large history without hydrating old prompts or oversized items",
     () =>

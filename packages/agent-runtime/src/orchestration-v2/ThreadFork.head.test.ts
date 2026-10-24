@@ -206,6 +206,7 @@ it.effect.each(cases)(
       const fork = yield* orchestrator.getThreadProjection(targetThreadId);
       assert.deepEqual(fork.thread.forkedFrom, {
         type: "run",
+        sourceHistoryRevision: 0,
         threadId: sourceThreadId,
         runId: sourceRunId,
       });
