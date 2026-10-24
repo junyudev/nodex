@@ -1,0 +1,21 @@
+src/main/acp-agents/AcpAgents.node.test.ts
+  s_9cccd37e800d7a::t_093d0e6a9ca352 26-27,46,63-67,106-110,367-444
+src/main/acp-agents/AcpAgents.ts
+  s_9cccd37e800d7a::t_91c203e8f4a20a 131-139,192-196,241,246-255,267,272-277,279-291,309,345-360,378-389
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "7199c4ecc04f937533aef94af961f0c3fe403068",
+  "prompts": {},
+  "sessions": {
+    "s_9cccd37e800d7a": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a16d80-f1cc-7471-9f61-cb6ea1bc793d",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
