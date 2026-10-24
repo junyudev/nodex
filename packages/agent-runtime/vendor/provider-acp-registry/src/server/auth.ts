@@ -42,6 +42,7 @@ export const acpRegistryCredentialBindingKey = (
   settings: AcpRegistrySettings,
   environment: NodeJS.ProcessEnv,
   localExecutable?: string,
+  platform: NodeJS.Platform = process.platform,
 ): string => {
   const identity =
     settings.source === "registry"
@@ -50,7 +51,11 @@ export const acpRegistryCredentialBindingKey = (
   // Native history roots can include unrelated tool directories. They do not
   // prove credential isolation; absent an authoritative scope, share the home.
   const storage =
-    settings.credentialStorageScope ?? environment.HOME ?? environment.USERPROFILE ?? null;
+    settings.credentialStorageScope ??
+    (platform === "win32"
+      ? environment.USERPROFILE ?? environment.HOME
+      : environment.HOME ?? environment.USERPROFILE) ??
+    null;
   return `acp:${createHash("sha256")
     .update(JSON.stringify([identity, storage]))
     .digest("hex")}`;
@@ -415,6 +420,7 @@ export const makeAcpRegistryAuth = Effect.fn("makeAcpRegistryAuth")(function* (o
         options.settings,
         options.environment,
         canonicalExecutable,
+        platform,
       ),
     },
     methods,
