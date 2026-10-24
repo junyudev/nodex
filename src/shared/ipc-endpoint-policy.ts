@@ -75,6 +75,7 @@ export type IpcCommand<
 type QueryEndpointPolicy =
   | "acp:registry:search"
   | "acp:inspect"
+  | "acp:install:preview"
   | "acp:operation:read"
   | "acp:auth:read"
   | "acp:sessions:list"

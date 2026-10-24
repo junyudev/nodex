@@ -1,16 +1,18 @@
 import { assert, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
+import * as Deferred from "effect/Deferred";
+import * as Stream from "effect/Stream";
 import * as Fiber from "effect/Fiber";
 import * as Ref from "effect/Ref";
 import * as SubscriptionRef from "effect/SubscriptionRef";
 import type { AgentRuntimeConnectionState } from "../../shared/agent-runtime-api";
-import { applyProviderSettings } from "./AgentRuntimeProviderConfiguration";
+import { makeProviderSettingsRefresh } from "./AgentRuntimeProviderConfiguration";
 
 const harness = (initial: AgentRuntimeConnectionState) =>
   Effect.gen(function* () {
     const state = yield* SubscriptionRef.make(initial);
     const applied = yield* Ref.make(0);
-    const settle = applyProviderSettings({
+    const settle = yield* makeProviderSettingsRefresh({
       states: SubscriptionRef.changes(state),
       running: SubscriptionRef.get(state).pipe(Effect.map(({ status }) => status === "ready")),
       apply: Ref.update(applied, (count) => count + 1),
@@ -49,5 +51,37 @@ it.effect("never configures a process whose start failed", () =>
     yield* SubscriptionRef.set(state, { status: "failed", message: "Engine exited" });
     yield* Fiber.join(fiber);
     assert.equal(yield* Ref.get(applied), 0);
+  }),
+);
+
+it.effect("applies concurrent saves in one lane and reads the latest saved configuration", () =>
+  Effect.gen(function* () {
+    const firstRead = yield* Deferred.make<void>();
+    const releaseFirst = yield* Deferred.make<void>();
+    const settings = yield* Ref.make({ enabled: true });
+    const applied: boolean[] = [];
+    const refresh = yield* makeProviderSettingsRefresh({
+      states: Stream.succeed({ status: "ready", generation: "one" } as const),
+      running: Effect.succeed(true),
+      apply: Effect.gen(function* () {
+        const captured = yield* Ref.get(settings);
+        if (captured.enabled) {
+          yield* Deferred.succeed(firstRead, undefined);
+          yield* Deferred.await(releaseFirst);
+        }
+        applied.push(captured.enabled);
+        return captured;
+      }),
+    });
+    const first = yield* Effect.forkChild(refresh);
+    yield* Deferred.await(firstRead);
+    yield* Ref.set(settings, { enabled: false });
+    const second = yield* Effect.forkChild(refresh);
+    yield* Effect.yieldNow;
+    assert.deepEqual(applied, []);
+    yield* Deferred.succeed(releaseFirst, undefined);
+    yield* Fiber.join(first);
+    assert.deepEqual(yield* Fiber.join(second), { enabled: false });
+    assert.deepEqual(applied, [true, false]);
   }),
 );

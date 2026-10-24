@@ -80,7 +80,7 @@ const harness = (
             ? Effect.fail(
                 new AgentRuntimeProviderConfigurationError({ cause: "fixture refresh failure" }),
               )
-            : Effect.void;
+            : Effect.succeed({ applied: true, deferredInstanceIds: [] });
         }),
       }),
       Effect.provide(mainConfigLayer({ platform })),

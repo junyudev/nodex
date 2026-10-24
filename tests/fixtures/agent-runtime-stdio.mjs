@@ -33,6 +33,13 @@ for await (const line of { [Symbol.asyncIterator]: () => lines }) {
     process.exitCode = 0;
     break;
   }
+  if (request.method === "acp.auth.logout") {
+    send({ id: request.id, success: false, error: {
+      message: "Stop active work first.", tag: "AcpManagementError",
+      acp: { reason: "busy", message: "Stop active work first.", affectedThreadIds: ["thread:root"], cause: "must-not-cross-transport" },
+    } });
+    continue;
+  }
   if (request.method === "project.read") {
     if (request.input.projectId === "host-native-session" || request.input.projectId === "invalid-native-prepare") {
       pendingHosts.set(request.id, request.id);

@@ -223,6 +223,23 @@ it.live("distinguishes a known remote refusal from an uncertain transport timeou
     );
   }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
 );
+it.live("preserves typed ACP recovery metadata while discarding untrusted failure extras", () =>
+  Effect.gen(function* () {
+    const connection = yield* acquire();
+    const rejected = yield* connection
+      .request("acp.auth.logout", { instanceId: "work" })
+      .pipe(Effect.flip);
+    assert.deepEqual(rejected.acp, {
+      reason: "busy",
+      message: "Stop active work first.",
+      affectedThreadIds: ["thread:root"],
+    });
+    assert.strictEqual(
+      (yield* connection.request("runtime.identity", {})).runtimeId,
+      "fixture-runtime",
+    );
+  }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+);
 
 it.live("awaits a history import past the ordinary request timeout", () =>
   Effect.gen(function* () {

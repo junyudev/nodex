@@ -935,6 +935,20 @@ const setup = (
   };
 };
 
+it.effect("resolves busy execution roots to their existing product Sessions without new work", () =>
+  Effect.gen(function* () {
+    const fixture = setup();
+    const owner = yield* fixture.owner;
+    const created = yield* owner.launch(launch);
+    const commandCount = fixture.commands.size;
+    assert.deepEqual(
+      yield* owner.sessionsForThreads([created.threadId, "missing", created.threadId]),
+      [{ sessionId: launch.sessionId, threadId: created.threadId }],
+    );
+    assert.equal(fixture.commands.size, commandCount);
+  }),
+);
+
 it.effect("binds an independent imported chat before reading its history into the Runtime", () =>
   Effect.gen(function* () {
     const fixture = setup();

@@ -4,7 +4,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { ElectronApplication, Page } from "playwright";
 import type { IpcApi } from "../../src/shared/ipc-api";
-import type { AcpOperations } from "../../src/shared/acp-api";
+import type { AcpIpcApi, AcpOperations, AcpResult } from "../../src/shared/acp-api";
 import { agentRuntimeProviderId } from "../../src/shared/agent-runtime-provider";
 import { createUuidV7 } from "../../src/shared/uuid-v7";
 import { createBoundedOperationId } from "../../src/shared/operation-identity";
@@ -24,11 +24,16 @@ type Check = {
   status: "verified" | "failed" | "blocked" | "unsupported" | "not-run";
   detail?: unknown;
 };
+type InvokeResult<Channel extends keyof IpcApi> = Channel extends keyof AcpIpcApi
+  ? AcpIpcApi[Channel]["result"] extends AcpResult<infer Value>
+    ? Value
+    : never
+  : IpcApi[Channel]["result"];
 const invoke = async <Channel extends keyof IpcApi>(
   page: Page,
   channel: Channel,
   ...args: IpcApi[Channel]["args"]
-): Promise<IpcApi[Channel]["result"]> => {
+): Promise<InvokeResult<Channel>> => {
   let timer: ReturnType<typeof setTimeout> | undefined;
   const request = page.evaluate(
     async ({ channel, encodedArgs }) => {
@@ -42,7 +47,7 @@ const invoke = async <Channel extends keyof IpcApi>(
     { channel, encodedArgs: JSON.stringify(args) },
   ) as Promise<IpcApi[Channel]["result"]>;
   try {
-    return await Promise.race([
+    const result = await Promise.race([
       request,
       new Promise<never>((_resolve, reject) => {
         timer = setTimeout(
@@ -51,6 +56,10 @@ const invoke = async <Channel extends keyof IpcApi>(
         );
       }),
     ]);
+    if (!channel.startsWith("acp:")) return result as InvokeResult<Channel>;
+    const envelope = result as AcpResult<unknown>;
+    if (!envelope.ok) throw new Error(`${envelope.error.reason}: ${envelope.error.message}`);
+    return envelope.value as InvokeResult<Channel>;
   } finally {
     clearTimeout(timer);
   }
@@ -155,6 +164,25 @@ async function main() {
   };
   try {
     page = await launch();
+    if (args.includes("--inspect-session")) {
+      const inspected = await invoke(page, "agent-runtime:session:read", {
+        sessionId: value("--inspect-session")!,
+      });
+      report.inspection = {
+        sessionId: inspected.sessionId,
+        activeProviderThreadId: inspected.snapshot.projection.thread.activeProviderThreadId,
+        nativeSessions: inspected.snapshot.projection.providerThreads.map((thread) => ({
+          id: thread.id,
+          nativeId: thread.nativeThreadRef?.nativeId ?? null,
+        })),
+        assistantMessages: inspected.snapshot.projection.messages
+          .filter((message) => message.role === "assistant")
+          .map((message) => ({ runId: message.runId, text: message.text })),
+        runs: inspected.snapshot.projection.runs.map((run) => ({ id: run.id, status: run.status })),
+      };
+      process.exitCode = 2;
+      return;
+    }
     const registry = await invoke(page, "acp:registry:search", { query: agentId });
     const agent = registry.agents.find((entry) => entry.id === agentId);
     if (!agent) throw new Error(`Registry does not contain exact Agent ID ${agentId}.`);
@@ -182,8 +210,16 @@ async function main() {
       if (inspection.status !== "ready")
         throw new Error("The pinned Agent installation is unavailable.");
     } else {
+      const preview = await invoke(page, "acp:install:preview", { agentId });
+      report.installationPreview = preview;
+      if (!preview.available)
+        throw new Error(`Agent installation is unavailable: ${preview.reason}`);
       const installed = await waitOperation(
-        await invoke(page, "acp:install:start", { operationId: randomUUID(), agentId }),
+        await invoke(page, "acp:install:start", {
+          operationId: randomUUID(),
+          agentId,
+          expectedInstallationId: preview.installationId,
+        }),
       );
       checks.install = {
         status: installed.phase === "succeeded" ? "verified" : "failed",
@@ -226,8 +262,15 @@ async function main() {
     let auth = await invoke(page, "acp:auth:read", { instanceId });
     report.authenticationPhase = auth.phase;
     report.authenticationMethods = auth.methods?.map(({ id, name, type }) => ({ id, name, type }));
-    if (args.includes("--authenticate"))
+    if (args.includes("--authenticate")) {
       auth = await invoke(page, "acp:auth:start", { instanceId });
+      const deadline = Date.now() + 45_000;
+      while (["starting", "verifying"].includes(auth.phase) && Date.now() < deadline) {
+        await delay(250);
+        auth = await invoke(page, "acp:auth:read", { instanceId });
+      }
+      if (auth.phase === "succeeded") connected = await connect();
+    }
     if (auth.phase !== "succeeded" && connected.phase !== "succeeded") {
       checks.authentication = { status: "blocked", detail: { phase: auth.phase, credentialHome } };
       // Auth state may contain one-use links or terminal output. Keep it private and outside evidence logs.
@@ -368,6 +411,10 @@ async function main() {
     report.nativeSession = first.snapshot.projection.providerThreads.map(
       (thread) => thread.nativeThreadRef?.nativeId ?? null,
     );
+    const nativeTimeline: { phase: string; nativeIds: (string | null)[] }[] = [
+      { phase: "first", nativeIds: [...(report.nativeSession as (string | null)[])] },
+    ];
+    report.nativeTimeline = nativeTimeline;
     await invoke(page, "agent-runtime:session:message", {
       ...target,
       message: {
@@ -389,13 +436,25 @@ async function main() {
       ...target,
       runId: running.id,
     });
-    await settled(2);
+    const stoppedState = await settled(2);
+    nativeTimeline.push({
+      phase: "stopped",
+      nativeIds: stoppedState.snapshot.projection.providerThreads.map(
+        (thread) => thread.nativeThreadRef?.nativeId ?? null,
+      ),
+    });
     checks.stop = { status: stopped.stopped ? "verified" : "failed" };
     await invoke(page, "agent-runtime:session:message", {
       ...target,
       message: { messageId: createUuidV7(), text: "Reply CONTINUED and nothing else." },
     });
     const continued = await settled(3);
+    nativeTimeline.push({
+      phase: "continued",
+      nativeIds: continued.snapshot.projection.providerThreads.map(
+        (thread) => thread.nativeThreadRef?.nativeId ?? null,
+      ),
+    });
     checks.continue = {
       status: continued.snapshot.projection.messages.some(
         (message) => message.role === "assistant" && message.text.trim() === "CONTINUED",
@@ -409,6 +468,12 @@ async function main() {
     app = undefined;
     page = await launch();
     const restored = await invoke(page, "agent-runtime:session:read", target);
+    nativeTimeline.push({
+      phase: "restarted",
+      nativeIds: restored.snapshot.projection.providerThreads.map(
+        (thread) => thread.nativeThreadRef?.nativeId ?? null,
+      ),
+    });
     checks.restart = {
       status:
         JSON.stringify(restored.snapshot.projection.messages) ===
@@ -423,6 +488,12 @@ async function main() {
         message: { messageId: createUuidV7(), text: "Reply RESTORED and nothing else." },
       });
       const recovered = await settled(4);
+      nativeTimeline.push({
+        phase: "recovered",
+        nativeIds: recovered.snapshot.projection.providerThreads.map(
+          (thread) => thread.nativeThreadRef?.nativeId ?? null,
+        ),
+      });
       checks.nativeRecovery = {
         status:
           recovered.snapshot.projection.messages.some(

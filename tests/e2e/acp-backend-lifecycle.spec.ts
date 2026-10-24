@@ -61,7 +61,11 @@ const invoke = async <Result>(page: Page, channel: string, ...args: unknown[]): 
       const api = window.api as unknown as {
         invoke(target: string, ...input: unknown[]): Promise<unknown>;
       };
-      return await api.invoke(targetChannel, ...targetArgs);
+      const result = await api.invoke(targetChannel, ...targetArgs);
+      if (!targetChannel.startsWith("acp:")) return result;
+      const envelope = result as { ok: boolean; value?: unknown; error?: { message: string } };
+      if (!envelope.ok) throw new Error(envelope.error?.message ?? "ACP request failed");
+      return envelope.value;
     },
     { targetChannel: channel, targetArgs: args },
   )) as Result;

@@ -1,6 +1,8 @@
 import { AgentRuntimeApplication } from "../agent-runtime/AgentRuntimeApplication";
 import { assert, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
+import * as Deferred from "effect/Deferred";
+import * as Fiber from "effect/Fiber";
 import * as FileSystem from "effect/FileSystem";
 import { AcpInputSchemas } from "../../shared/schemas/acp-api";
 import { make } from "./AcpAgents";
@@ -15,13 +17,17 @@ import { ProjectWorkspace } from "../project-application/ProjectWorkspace";
 import { testLayer } from "../app/MainConfig";
 
 const setup = Effect.gen(function* () {
+  const authenticationStarted = yield* Deferred.make<void>();
+  const authenticationRelease = yield* Deferred.make<void>();
   const calls: { method: string; input: Record<string, unknown> }[] = [];
   const state = {
+    pauseAuthentication: false,
     revision: "one",
     generation: "generation-one",
     enabled: true,
     secret: "first-secret",
     coalescedOperation: "",
+    failure: null as import("@nodex/agent-runtime/contracts").AgentAcpFailure | null,
   };
   const request = (method: string, input: Record<string, unknown>) =>
     Effect.sync(() => {
@@ -44,12 +50,27 @@ const setup = Effect.gen(function* () {
         instanceId: input.instanceId ?? null,
         agentId: input.agentId ?? null,
         result: null,
-        error: null,
+        error: state.failure,
       };
-    });
+    }).pipe(
+      Effect.tap(() =>
+        method === "acp.auth.start" && state.pauseAuthentication
+          ? Deferred.succeed(authenticationStarted, undefined).pipe(
+              Effect.andThen(Deferred.await(authenticationRelease)),
+            )
+          : Effect.void,
+      ),
+    );
   const process = () => ({ identity: { runtimeGeneration: state.generation }, request });
   const agents = yield* make.pipe(
-    Effect.provideService(AgentRuntimeApplication, {} as AgentRuntimeApplication["Service"]),
+    Effect.provideService(AgentRuntimeApplication, {
+      sessionsForThreads: (threadIds: readonly string[]) =>
+        Effect.succeed(
+          threadIds
+            .filter((id) => id === "root")
+            .map((threadId) => ({ sessionId: "chat", threadId })),
+        ),
+    } as unknown as AgentRuntimeApplication["Service"]),
     Effect.provideService(AgentRuntimeSupervisor, {
       get: () => Effect.sync(process),
       currentConnection: Effect.sync(process),
@@ -74,7 +95,9 @@ const setup = Effect.gen(function* () {
           },
         } as ApplicationSettingsSnapshot),
     }),
-    Effect.provideService(AgentRuntimeProviderConfiguration, { refresh: Effect.void }),
+    Effect.provideService(AgentRuntimeProviderConfiguration, {
+      refresh: Effect.succeed({ applied: true, deferredInstanceIds: [] }),
+    }),
     Effect.provideService(ProjectWorkspace, {
       getProject: (id: string) =>
         Effect.succeed(
@@ -88,7 +111,7 @@ const setup = Effect.gen(function* () {
     } as unknown as FileSystem.FileSystem),
     Effect.provide(testLayer()),
   );
-  return { agents, calls, state };
+  return { agents, calls, state, authenticationStarted, authenticationRelease };
 });
 it.effect(
   "resolves public instance and Project identities before sending management requests",
@@ -217,3 +240,45 @@ it("rejects caller-injected owners, launch configuration and working directories
       }).success,
     );
 });
+
+it.effect("maps asynchronous busy failures to existing Nodex conversations", () =>
+  Effect.gen(function* () {
+    const { agents, state } = yield* setup;
+    yield* agents["acp.connection.start"]("window", {
+      instanceId: "personal",
+      operationId: "probe",
+    });
+    state.failure = {
+      reason: "busy",
+      message: "Stop active work first.",
+      affectedThreadIds: ["root"],
+    };
+    const operation = yield* agents["acp.operation.read"]("window", { operationId: "probe" });
+    assert.deepEqual(operation.error, {
+      ...state.failure,
+      affectedSessions: [{ sessionId: "chat", threadId: "root" }],
+    });
+  }),
+);
+
+it.effect("cancels authentication that returns after its window closes", () =>
+  Effect.gen(function* () {
+    const { agents, calls, state, authenticationStarted, authenticationRelease } = yield* setup;
+    state.pauseAuthentication = true;
+    const starting = yield* Effect.forkChild(
+      Effect.result(agents["acp.auth.start"]("owner", { instanceId: "personal" })),
+    );
+    yield* Deferred.await(authenticationStarted);
+    yield* agents.releaseOwner("owner");
+    yield* Deferred.succeed(authenticationRelease, undefined);
+    assert.equal((yield* Fiber.join(starting))._tag, "Failure");
+    assert.deepEqual(
+      calls
+        .filter(({ method }) => method === "acp.auth.cancel")
+        .map(({ input }) => ({ ownerId: input.ownerId, flowId: input.flowId })),
+      [{ ownerId: "owner", flowId: "flow" }],
+    );
+    yield* agents.releaseOwner("owner");
+    assert.equal(calls.filter(({ method }) => method === "acp.auth.cancel").length, 1);
+  }),
+);

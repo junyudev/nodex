@@ -54,7 +54,7 @@ import { AgentRuntimeSessionActivity } from "../agent-runtime/AgentRuntimeSessio
 import {
   AgentRuntimeProviderConfiguration,
   AgentRuntimeProviderConfigurationError,
-  applyProviderSettings,
+  makeProviderSettingsRefresh,
 } from "../agent-runtime/AgentRuntimeProviderConfiguration";
 import { CoreAuthority } from "../core-runtime/CoreAuthority";
 import { BrowserUseRuntime } from "../host-runtime/BrowserUseRuntime";
@@ -630,18 +630,21 @@ const supervisor = Layer.effectContext(
       idle: { after: AGENT_RUNTIME_IDLE_AFTER, quiescent: reportsNoWork },
       quiescence,
     });
-    const refresh = applyProviderSettings({
+    const refresh = (yield* makeProviderSettingsRefresh({
       states: runtime.connectionChanges,
       running: runtime.inspect.pipe(Effect.map((identity) => identity !== null)),
       apply: Effect.gen(function* () {
         const connection = yield* runtime.get();
         const { configuration } = yield* readConfiguration;
-        yield* connection.request("providers.configure", { providers: configuration.providers });
+        const result = yield* connection.request("providers.configure", {
+          providers: configuration.providers,
+        });
         prepared.set(connection.identity, configuration);
+        return result;
       }),
-    }).pipe(
+    })).pipe(
       Effect.mapError((cause) => new AgentRuntimeProviderConfigurationError({ cause })),
-      Effect.asVoid,
+      Effect.map((result) => result ?? { applied: true, deferredInstanceIds: [] }),
     );
     yield* Deferred.succeed(ready, runtime);
     // A held storage lease spans the capture with no request in flight.

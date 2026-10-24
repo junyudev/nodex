@@ -6,7 +6,8 @@ import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
-import type { AcpMethod, AcpOperations } from "../../shared/acp-api";
+import type { AcpFailure, AcpMethod, AcpOperations } from "../../shared/acp-api";
+import type { AgentAcpFailure } from "@nodex/agent-runtime/contracts";
 import { agentRuntimeProviderId } from "../../shared/agent-runtime-provider";
 import { AgentRuntimeSupervisor } from "../agent-runtime/AgentRuntimeSupervisor";
 import { AgentRuntimeProviderConfiguration } from "../agent-runtime/AgentRuntimeProviderConfiguration";
@@ -16,6 +17,9 @@ import { ProjectWorkspace } from "../project-application/ProjectWorkspace";
 
 export class AcpAgentsError extends Schema.TaggedError<AcpAgentsError>()("AcpAgentsError", {
   message: Schema.String,
+  reason: Schema.optional(
+    Schema.Literals(["disabled", "operation_expired", "invalid_request", "busy"]),
+  ),
 }) {}
 type Methods = {
   readonly [Method in AcpMethod]: (
@@ -27,6 +31,7 @@ export class AcpAgents extends Context.Service<
   AcpAgents,
   Methods & {
     readonly releaseOwner: (ownerId: string) => Effect.Effect<void>;
+    readonly presentFailure: (failure: AgentAcpFailure) => Effect.Effect<AcpFailure>;
   }
 >()("nodex/main/acp-agents/AcpAgents") {}
 
@@ -49,6 +54,7 @@ export const make = Effect.gen(function* () {
       generation: string;
     }
   >();
+  const pendingAuthentication = new Map<string, Set<{ released: boolean }>>();
   const operations = new Map<
     string,
     { runtimeId: string; generation: string; instanceId: string | null; settled: boolean }
@@ -60,6 +66,7 @@ export const make = Effect.gen(function* () {
     if (!configured || (!allowDisabled && !configured.enabled))
       return yield* new AcpAgentsError({
         message: "ACP Agent instance is unavailable or disabled.",
+        reason: "disabled",
       });
     const providerId = agentRuntimeProviderId({
       kind: "acp",
@@ -127,6 +134,7 @@ export const make = Effect.gen(function* () {
       flows.delete(key(ownerId, input.instanceId));
       return yield* new AcpAgentsError({
         message: "This sign-in flow is no longer active. Start sign-in again.",
+        reason: "operation_expired",
       });
     }
     return { process, instanceId: saved.instanceId };
@@ -140,6 +148,7 @@ export const make = Effect.gen(function* () {
     if (!saved || saved.generation !== process.identity.runtimeGeneration)
       return yield* new AcpAgentsError({
         message: "This Agent operation is no longer active. Try again.",
+        reason: "operation_expired",
       });
     return { process, operationId: saved.runtimeId, instanceId: saved.instanceId };
   });
@@ -169,20 +178,34 @@ export const make = Effect.gen(function* () {
     });
     return { process, operationId: runtimeId };
   });
-  const presentOperation = (
+  const presentFailure = (failure: AgentAcpFailure) =>
+    application.sessionsForThreads(failure.affectedThreadIds ?? []).pipe(
+      Effect.map((affectedSessions) => ({
+        ...failure,
+        ...(affectedSessions.length ? { affectedSessions } : {}),
+      })),
+      Effect.catch(() => Effect.succeed(failure)),
+    );
+  const presentOperation = Effect.fn("AcpAgents.presentOperation")(function* (
     ownerId: string,
     operationId: string,
     result: AcpOperations["acp.operation.read"]["output"],
-  ) => {
+  ) {
     const saved = operations.get(key(ownerId, operationId));
     if (saved) {
       // Runtime may coalesce concurrent starts from different windows into one operation.
       saved.runtimeId = result.operationId;
       saved.settled = result.phase !== "running";
     }
-    return { ...result, operationId, instanceId: saved?.instanceId ?? null };
-  };
+    return {
+      ...result,
+      operationId,
+      instanceId: saved?.instanceId ?? null,
+      error: result.error ? yield* presentFailure(result.error) : null,
+    };
+  });
   const methods: Methods = {
+    "acp.install.preview": (_owner, input) => runtime.request("acp.install.preview", input),
     "acp.registry.search": (_owner, input) => runtime.request("acp.registry.search", input),
     "acp.inspect": (_owner, input) =>
       Effect.gen(function* () {
@@ -196,7 +219,7 @@ export const make = Effect.gen(function* () {
           ...input,
           operationId: op.operationId,
         });
-        return presentOperation(ownerId, input.operationId, result);
+        return yield* presentOperation(ownerId, input.operationId, result);
       }),
     "acp.registry.uninstall": (_owner, input) =>
       Effect.gen(function* () {
@@ -219,7 +242,7 @@ export const make = Effect.gen(function* () {
           ...resolved,
           operationId: op.operationId,
         });
-        return presentOperation(ownerId, input.operationId, result);
+        return yield* presentOperation(ownerId, input.operationId, result);
       }),
     "acp.operation.read": (ownerId, input) =>
       Effect.gen(function* () {
@@ -227,7 +250,7 @@ export const make = Effect.gen(function* () {
         const result = yield* op.process.request("acp.operation.read", {
           operationId: op.operationId,
         });
-        return presentOperation(ownerId, input.operationId, result);
+        return yield* presentOperation(ownerId, input.operationId, result);
       }),
     "acp.operation.cancel": (ownerId, input) =>
       Effect.gen(function* () {
@@ -235,28 +258,58 @@ export const make = Effect.gen(function* () {
         const result = yield* op.process.request("acp.operation.cancel", {
           operationId: op.operationId,
         });
-        return presentOperation(ownerId, input.operationId, result);
+        return yield* presentOperation(ownerId, input.operationId, result);
       }),
     "acp.auth.start": (ownerId, input) =>
-      Effect.gen(function* () {
-        const resolved = yield* instance(input.instanceId);
-        const digest = yield* configurationDigest(input.instanceId);
-        const process = yield* connection();
-        const result = yield* process.request("acp.auth.start", {
-          ...input,
-          instanceId: resolved.instanceId,
-          ownerId,
-        });
-        if (result.flowId)
-          flows.set(key(ownerId, input.instanceId), {
-            ...resolved,
-            configurationDigest: digest,
-            ownerId,
-            flowId: result.flowId,
-            generation: process.identity.runtimeGeneration,
-          });
-        return authState(input.instanceId, result);
-      }),
+      Effect.acquireUseRelease(
+        Effect.sync(() => {
+          const pending = { released: false };
+          const owned = pendingAuthentication.get(ownerId) ?? new Set();
+          owned.add(pending);
+          pendingAuthentication.set(ownerId, owned);
+          return pending;
+        }),
+        (pending) =>
+          Effect.gen(function* () {
+            const resolved = yield* instance(input.instanceId);
+            const digest = yield* configurationDigest(input.instanceId);
+            const process = yield* connection();
+            const result = yield* process.request("acp.auth.start", {
+              ...input,
+              instanceId: resolved.instanceId,
+              ownerId,
+            });
+            if (pending.released) {
+              if (result.flowId)
+                yield* process
+                  .request("acp.auth.cancel", {
+                    instanceId: resolved.instanceId,
+                    ownerId,
+                    flowId: result.flowId,
+                  })
+                  .pipe(Effect.ignore);
+              return yield* new AcpAgentsError({
+                reason: "operation_expired",
+                message: "This sign-in flow is no longer active. Start sign-in again.",
+              });
+            }
+            if (result.flowId)
+              flows.set(key(ownerId, input.instanceId), {
+                ...resolved,
+                configurationDigest: digest,
+                ownerId,
+                flowId: result.flowId,
+                generation: process.identity.runtimeGeneration,
+              });
+            return authState(input.instanceId, result);
+          }),
+        (pending) =>
+          Effect.sync(() => {
+            const owned = pendingAuthentication.get(ownerId);
+            owned?.delete(pending);
+            if (owned?.size === 0) pendingAuthentication.delete(ownerId);
+          }),
+      ),
     "acp.auth.read": (ownerId, input) =>
       Effect.gen(function* () {
         const existing = flows.get(key(ownerId, input.instanceId));
@@ -394,6 +447,7 @@ export const make = Effect.gen(function* () {
       }),
   };
   const releaseOwner = Effect.fn("AcpAgents.releaseOwner")(function* (ownerId: string) {
+    for (const pending of pendingAuthentication.get(ownerId) ?? []) pending.released = true;
     const process = yield* runtime.currentConnection;
     const owned = [...flows.entries()].filter(([, flow]) => flow.ownerId === ownerId);
     for (const [entry, flow] of owned) {
@@ -404,6 +458,6 @@ export const make = Effect.gen(function* () {
           .pipe(Effect.ignore);
     }
   });
-  return AcpAgents.of({ ...methods, releaseOwner });
+  return AcpAgents.of({ ...methods, releaseOwner, presentFailure });
 });
 export const live = Layer.effect(AcpAgents, make);

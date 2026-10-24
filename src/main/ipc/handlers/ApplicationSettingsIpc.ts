@@ -1,4 +1,5 @@
 import { AcpAgentSettingsUpdateSchema } from "../../../shared/acp-agent-settings";
+import { agentRuntimeProviderId } from "../../../shared/agent-runtime-provider";
 import {
   COMPOSER_PREDICTION_SETTINGS_CHANGED_CHANNEL,
   ComposerPredictionSettingsSchema,
@@ -208,9 +209,7 @@ export const live: Layer.Layer<
     ) =>
       applicationSettings.update(command).pipe(
         Effect.tap(() =>
-          command.type === "update-acp-agents" ||
-          command.type === "update-claude-agents" ||
-          command.type === "update-opencode-agents"
+          command.type === "update-claude-agents" || command.type === "update-opencode-agents"
             ? runtimeProviders.refresh.pipe(
                 Effect.catch(() =>
                   Effect.logWarning(
@@ -429,17 +428,44 @@ export const live: Layer.Layer<
           parse("parse-acp-agent-settings", () => AcpAgentSettingsUpdateSchema.parse(input)),
         ),
         Effect.flatMap((parsed) =>
-          update(
-            "update-acp-agent-settings",
-            { type: "update-acp-agents", input: parsed },
-            (value) => value.acpAgents,
-          ).pipe(
-            Effect.tap(() =>
-              Effect.sync(() =>
-                safeBroadcastToWindows(windows.all(), "agent-settings-changed", [undefined]),
+          Effect.gen(function* () {
+            const previous = yield* applicationSettings.snapshot();
+            const saved = yield* applicationSettings.update({
+              type: "update-acp-agents",
+              input: parsed,
+            });
+            const result = yield* Effect.result(runtimeProviders.refresh);
+            const deferred = new Set(
+              result._tag === "Success" ? result.success.deferredInstanceIds : [],
+            );
+            const instances = [...previous.acpAgents.instances, ...saved.acpAgents.instances];
+            const deferredInstanceIds = [
+              ...new Set(
+                instances
+                  .filter((instance) =>
+                    deferred.has(
+                      agentRuntimeProviderId({
+                        kind: "acp",
+                        agentDefinitionId: instance.agentDefinitionId,
+                        instanceConfigId: instance.id,
+                      })!,
+                    ),
+                  )
+                  .map(({ id }) => id),
               ),
-            ),
-          ),
+            ];
+            safeBroadcastToWindows(windows.all(), "agent-settings-changed", [undefined]);
+            return {
+              ...saved.acpAgents,
+              deferredInstanceIds,
+              configurationStatus:
+                result._tag === "Failure"
+                  ? ("failed" as const)
+                  : deferredInstanceIds.length
+                    ? ("deferred" as const)
+                    : ("applied" as const),
+            };
+          }).pipe(Effect.mapError(settingsError("update-acp-agent-settings"))),
         ),
       ),
     );

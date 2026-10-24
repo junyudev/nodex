@@ -29,11 +29,18 @@ const response = z.discriminatedUnion("type", [
 export const AcpInputSchemas = {
   "acp.registry.search": z.object({ query: z.string().trim().max(120) }).strict(),
   "acp.inspect": z.object(instance).strict(),
+  "acp.install.preview": z
+    .object({ agentId: id, distribution: z.enum(["auto", "binary", "npx", "uvx"]).optional() })
+    .strict(),
   "acp.install.start": z
     .object({
       operationId: id,
       agentId: id,
       distribution: z.enum(["auto", "binary", "npx", "uvx"]).optional(),
+      expectedInstallationId: z
+        .string()
+        .regex(/^[a-f0-9]{64}$/u)
+        .optional(),
     })
     .strict(),
   "acp.registry.uninstall": z.object({ agentId: id }).strict(),

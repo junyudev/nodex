@@ -2354,6 +2354,31 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
           Effect.flatMap((connection) => connection.request("text.generate-structured", input)),
         ),
       ),
+    sessionsForThreads: (threadIds: readonly string[]) =>
+      owned(
+        "resolve-thread-sessions",
+        Effect.gen(function* () {
+          const connection = yield* options.currentConnection;
+          if (!connection) return [];
+          const bindings = yield* Effect.forEach(
+            [...new Set(threadIds)].slice(0, 128),
+            (threadId) =>
+              Effect.gen(function* () {
+                const reply = yield* host(
+                  core.workspace.read({
+                    kind: "agent_runtime_session_binding_by_execution",
+                    runtime_id: connection.identity.runtimeId,
+                    runtime_thread_id: threadId,
+                  }),
+                );
+                if (reply.value.kind !== "agent_runtime_session_binding" || !reply.value.binding)
+                  return null;
+                return { sessionId: reply.value.binding.session_id, threadId };
+              }),
+          );
+          return bindings.filter((binding) => binding !== null);
+        }),
+      ),
     resolveSession: (sessionId: string) =>
       owned(
         "resolve",

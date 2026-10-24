@@ -1,3 +1,4 @@
+import { decodeAgentAcpFailure, type AgentAcpFailure } from "@nodex/agent-runtime/contracts";
 import { randomUUID } from "node:crypto";
 import {
   AGENT_RUNTIME_NATIVE_IMPORT_MAX_TIMEOUT_MS,
@@ -67,7 +68,19 @@ const replySchema = z.discriminatedUnion("success", [
   z.object({
     id: z.string(),
     success: z.literal(false),
-    error: z.object({ message: z.string(), tag: z.string().optional() }),
+    error: z.object({
+      message: z.string(),
+      tag: z.string().optional(),
+      acp: z
+        .unknown()
+        .transform((value, context) => {
+          const failure = decodeAgentAcpFailure(value);
+          if (failure) return failure;
+          context.addIssue({ code: "custom", message: "Invalid ACP failure envelope" });
+          return z.NEVER;
+        })
+        .optional(),
+    }),
   }),
 ]);
 const hostIdentitySchema = z.object({
@@ -208,6 +221,11 @@ export class AgentRuntimeProcessError extends Schema.TaggedError<AgentRuntimePro
     message: Schema.String,
     /** The engine failure's tag when the engine rejected a request. */
     engineTag: Schema.optional(Schema.String),
+    acp: Schema.optional(
+      Schema.declare<AgentAcpFailure>(
+        (value): value is AgentAcpFailure => decodeAgentAcpFailure(value) !== null,
+      ),
+    ),
     cause: Schema.optional(Schema.Defect()),
   },
 ) {}
@@ -364,6 +382,7 @@ export const acquireAgentRuntimeProcess = Effect.fn("AgentRuntimeProcess.acquire
           reason: "rejected",
           message: reply.data.error.message,
           ...(reply.data.error.tag === undefined ? {} : { engineTag: reply.data.error.tag }),
+          ...(reply.data.error.acp === undefined ? {} : { acp: reply.data.error.acp }),
         }),
       );
       return;

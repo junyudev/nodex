@@ -21,6 +21,11 @@ import {
 } from "../../settings/ApplicationSettings";
 import { DesktopNotificationRuntime } from "../../host-runtime/DesktopNotificationRuntime";
 import { ApplicationSettingsIpcError, live } from "./ApplicationSettingsIpc";
+import { agentRuntimeProviderId } from "../../../shared/agent-runtime-provider";
+import {
+  AgentRuntimeProviderConfigurationError,
+  type ProviderConfigurationResult,
+} from "../../agent-runtime/AgentRuntimeProviderConfiguration";
 
 type Handler = (
   event: IpcMainInvokeEvent,
@@ -31,6 +36,8 @@ it.effect("owns the complete application settings ingress with the Main Scope", 
   Effect.gen(function* () {
     const handlers = new Map<string, Handler>();
     let providerRefreshes = 0;
+    let providerResult: ProviderConfigurationResult = { applied: true, deferredInstanceIds: [] };
+    let providerFailure = false;
     const settingsRoot = mkdtempSync(path.join(tmpdir(), "nodex-application-settings-ipc-"));
     const settingsPath = path.join(settingsRoot, "config.toml");
     const settings = yield* makeApplicationSettings({
@@ -88,8 +95,11 @@ it.effect("owns the complete application settings ingress with the Main Scope", 
             Layer.succeed(ApplicationMenuRuntime, menus),
             Layer.succeed(ApplicationSettings, settings),
             Layer.succeed(AgentRuntimeProviderConfiguration, {
-              refresh: Effect.sync(() => {
+              refresh: Effect.suspend(() => {
                 providerRefreshes += 1;
+                return providerFailure
+                  ? Effect.fail(new AgentRuntimeProviderConfigurationError({ cause: "offline" }))
+                  : Effect.succeed(providerResult);
               }),
             }),
             Layer.succeed(DictationRuntime, dictation),
@@ -209,6 +219,47 @@ it.effect("owns the complete application settings ingress with the Main Scope", 
     ] as const)
       yield* handlers.get(channel)!(event, { instances: [] });
     assert.strictEqual(providerRefreshes, 3);
+    const acpInstance = {
+      id: "acp-work",
+      agentDefinitionId: "generic",
+      displayName: "Work",
+      enabled: true,
+      source: { kind: "local", executable: "generic", args: [] },
+      environment: [],
+      customModels: [],
+      credentials: { kind: "isolated-home", home: settingsRoot },
+      proxy: "isolated",
+    };
+    providerResult = {
+      applied: false,
+      deferredInstanceIds: [
+        agentRuntimeProviderId({
+          kind: "acp",
+          agentDefinitionId: "generic",
+          instanceConfigId: "acp-work",
+        })!,
+      ],
+    };
+    const deferred = yield* handlers.get("settings:acp-agents:update")!(event, {
+      instances: [acpInstance],
+    });
+    assert.deepEqual(deferred, {
+      instances: [acpInstance],
+      deferredInstanceIds: ["acp-work"],
+      configurationStatus: "deferred",
+    });
+    assert.isFalse(readFileSync(settingsPath, "utf8").includes("deferredInstanceIds"));
+    providerFailure = true;
+    const failed = yield* handlers.get("settings:acp-agents:update")!(event, {
+      instances: [acpInstance],
+    });
+    assert.deepEqual(failed, {
+      instances: [acpInstance],
+      deferredInstanceIds: [],
+      configurationStatus: "failed",
+    });
+    providerFailure = false;
+    providerResult = { applied: true, deferredInstanceIds: [] };
     const rejectedShortcut = (yield* handlers.get("set-codex-command-keybinding")!(
       event,
       "globalDictationHold",

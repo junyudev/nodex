@@ -12,6 +12,8 @@ import { ElectronIpc } from "../../platform/electron/ElectronIpc";
 import { makeTestElectronIpc } from "../../platform/electron/ElectronIpc.test-support";
 import { WindowRuntime } from "../../window-runtime/WindowRuntime";
 import { live } from "./AcpAgentsIpc";
+import type { AgentAcpFailure } from "@nodex/agent-runtime/contracts";
+import { AgentRuntimeProcessError } from "../../platform/node/AgentRuntimeProcess";
 
 type Handler = (event: IpcMainInvokeEvent, input: unknown) => Effect.Effect<unknown, unknown>;
 it.effect(
@@ -20,6 +22,8 @@ it.effect(
     Effect.gen(function* () {
       const handlers = new Map<string, Handler>();
       const calls: { ownerId: string; input: unknown }[] = [];
+      const broadcasts: string[] = [];
+      let operationPhase = "running";
       const releases = yield* PubSub.unbounded<string>();
       const released = yield* PubSub.subscribe(releases);
       const callbackContext = yield* Layer.build(callbacks);
@@ -29,6 +33,25 @@ it.effect(
           Layer.provide(
             Layer.mergeAll(
               Layer.succeed(AcpAgents, {
+                presentFailure: (error: AgentAcpFailure) =>
+                  Effect.succeed({
+                    ...error,
+                    affectedSessions: [{ sessionId: "chat", threadId: "root" }],
+                  }),
+                "acp.operation.read": () =>
+                  Effect.succeed({ operationId: "operation", phase: operationPhase }),
+                "acp.modelProviders.set": () =>
+                  Effect.fail(
+                    new AgentRuntimeProcessError({
+                      reason: "rejected",
+                      message: "Busy",
+                      acp: {
+                        reason: "busy",
+                        message: "Stop active work first.",
+                        affectedThreadIds: ["root"],
+                      },
+                    }),
+                  ),
                 "acp.auth.start": (ownerId: string, input: unknown) =>
                   Effect.sync(() => {
                     calls.push({ ownerId, input });
@@ -48,7 +71,16 @@ it.effect(
                 }),
               ),
               Layer.succeed(WindowRuntime, {
-                has: (id: number) => id === 1,
+                has: (id: number) => id === 1 || id === 2,
+                all: () => [
+                  {
+                    isDestroyed: () => false,
+                    webContents: {
+                      isDestroyed: () => false,
+                      send: (channel: string) => broadcasts.push(channel),
+                    },
+                  },
+                ],
               } as unknown as WindowRuntime["Service"]),
               Layer.succeed(ScopedCallbackRuntime, runtime),
               testLayer(),
@@ -72,15 +104,45 @@ it.effect(
         ...event,
         senderFrame: { url: "https://foreign.example" },
       } as IpcMainInvokeEvent;
-      assert.equal(
-        (yield* Effect.result(start(foreign, { instanceId: "personal" })))._tag,
-        "Failure",
-      );
-      assert.equal(
-        (yield* Effect.result(start(event, { instanceId: "personal", ownerId: "forged" })))._tag,
-        "Failure",
-      );
+      const unauthorized = (yield* start(foreign, { instanceId: "personal" })) as { ok: boolean };
+      const forged = (yield* start(event, { instanceId: "personal", ownerId: "forged" })) as {
+        ok: boolean;
+      };
+      assert.isFalse(unauthorized.ok);
+      assert.isFalse(forged.ok);
       assert.equal(calls.length, 2);
+      const read = handlers.get("acp:operation:read")!;
+      yield* read(event, { operationId: "operation" });
+      assert.deepEqual(broadcasts, []);
+      operationPhase = "succeeded";
+      yield* read(event, { operationId: "operation" });
+      yield* read(event, { operationId: "operation" });
+      assert.deepEqual(broadcasts, ["agent-settings-changed"]);
+      const refusal = yield* handlers.get("acp:modelProviders:set")!(event, {
+        instanceId: "personal",
+        providerId: "model",
+        apiType: "openai",
+        baseUrl: "https://models.example.test",
+      });
+      assert.deepEqual(refusal, {
+        ok: false,
+        error: {
+          reason: "busy",
+          message: "Stop active work first.",
+          affectedThreadIds: ["root"],
+          affectedSessions: [{ sessionId: "chat", threadId: "root" }],
+        },
+      });
+      assert.deepEqual(broadcasts, ["agent-settings-changed"]);
+      const secondSender = Object.assign(new EventEmitter(), {
+        id: 2,
+        mainFrame: frame,
+        getType: () => "window",
+      });
+      yield* read({ sender: secondSender, senderFrame: frame } as unknown as IpcMainInvokeEvent, {
+        operationId: "operation",
+      });
+      assert.deepEqual(broadcasts, ["agent-settings-changed", "agent-settings-changed"]);
       sender.emit("destroyed");
       assert.equal(yield* PubSub.take(released), calls[0]?.ownerId);
       assert.equal(sender.listenerCount("render-process-gone"), 0);

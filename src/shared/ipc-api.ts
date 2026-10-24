@@ -1383,7 +1383,7 @@ export interface IpcApi extends AgentRuntimeIpcApi, AcpIpcApi {
   "settings:acp-agents:get": { args: []; result: AcpAgentSettings };
   "settings:acp-agents:update": {
     args: [input: UpdateAcpAgentSettingsInput];
-    result: AcpAgentSettings;
+    result: import("./acp-agent-settings").AcpAgentSettingsUpdateResult;
   };
   "agent-backend:model-catalog:read": {
     args: [input: AgentModelCatalogInput];
