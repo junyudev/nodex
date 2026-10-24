@@ -1,0 +1,245 @@
+src/renderer/features/local-conversation/view/shared/subagent-activity-inline.tsx
+  s_7eabc49aecb9a6::t_e846f3f4e155d9 6,11-12,147-152
+src/renderer/features/local-conversation/local-conversation-store.ts
+  s_7eabc49aecb9a6::t_57f1b9b3f2ea51 9522-9525
+src/renderer/features/local-conversation/view/composer/composer-subagent-mention.browser.test.tsx
+  s_7eabc49aecb9a6::t_a6e09dbfdbf8bf 1-62
+src/renderer/features/local-conversation/view/composer/composer-add-context-menu.test.tsx
+  s_7eabc49aecb9a6::t_dbd8e9a8086778 10,24
+src/renderer/lib/use-document-theme.ts
+  s_7eabc49aecb9a6::t_0c2f4ef2b2bdeb 10,24
+src/renderer/features/local-conversation/native-task-presentation.ts
+  s_7eabc49aecb9a6::t_1b9252c58fd2ea 25
+docs/product-specs/agent-runtime-behavior.md
+  s_7eabc49aecb9a6::t_2840d6b064c9b3 530-533
+src/renderer/features/local-conversation/view/shared/delegated-task-row.tsx
+  s_7eabc49aecb9a6::t_e846f3f4e155d9 21,121,157,178-184
+tests/e2e/subagents.spec.ts
+  s_7eabc49aecb9a6::t_aeff4ce1396551 8,274-276,286-290,323-326,332-335,419-424,430-448,471-475,481-485
+  s_7eabc49aecb9a6::t_a3d951716eba95 238,271-273,277-285,384-385,416-418,427-429,449,469-470,476-480,486,505
+  s_7eabc49aecb9a6::t_59c802b43084c5 302-312,327-331,455
+  s_7eabc49aecb9a6::t_1b604e30056053 450
+  s_7eabc49aecb9a6::t_430a6c22b6ae24 457
+src/renderer/features/local-conversation/view/local-conversation-stage-header.tsx
+  s_7eabc49aecb9a6::t_a6e09dbfdbf8bf 118,120
+  s_7eabc49aecb9a6::t_57f1b9b3f2ea51 36,117,119,121-122,344
+src/shared/codex-subagent-row-model.test.ts
+  s_7eabc49aecb9a6::t_4bf8e97ca13394 78-98
+  s_7eabc49aecb9a6::t_d7b0d8abec79b5 99-105
+src/renderer/features/local-conversation/view/summary-panel/thread-floating-summary-panel.tsx
+  s_7eabc49aecb9a6::t_dbd8e9a8086778 111,579-583,659-664
+  s_7eabc49aecb9a6::t_25d77ab8c918bd 665
+src/renderer/features/local-conversation/view/connected-thread-stage.tsx
+  s_7eabc49aecb9a6::t_57f1b9b3f2ea51 75,270-274,304,321
+src/renderer/features/local-conversation/view/blocks/local-conversation-block-leaves.tsx
+  s_7eabc49aecb9a6::t_072b04ff80f752 731
+src/renderer/features/local-conversation/projection/build-renderer-item-stream.node.test.ts
+  s_7eabc49aecb9a6::t_0cce7d1aae7029 596,615,720,739,1102,1129-1146
+  s_7eabc49aecb9a6::t_c1853a579a11c1 1147-1148
+src/renderer/features/local-conversation/agent-runtime-subagent-overview.node.test.ts
+  s_7eabc49aecb9a6::t_4bf8e97ca13394 49-67
+  s_7eabc49aecb9a6::t_fb6dc14e493668 68-71
+src/renderer/features/local-conversation/agent-runtime-subagent-overview.ts
+  s_7eabc49aecb9a6::t_1b9252c58fd2ea 36
+src/renderer/features/local-conversation/use-background-subagent-rows.ts
+  s_7eabc49aecb9a6::t_1b9252c58fd2ea 17
+src/renderer/features/local-conversation/view/shared/subagent-avatar.node.test.ts
+  s_7eabc49aecb9a6::t_13f3a5565e5e6d 2-6,8-41,43-53,55-65,68-79,81-84
+src/renderer/features/local-conversation/view/composer/composer-prompt-editor.tsx
+  s_7eabc49aecb9a6::t_1cf5a8da864cc4 45,379-398,400-407,409-413,465,522
+  s_7eabc49aecb9a6::t_a6e09dbfdbf8bf 399,408
+  s_7eabc49aecb9a6::t_5bde1a10b3db3b 466-470,472-473,475-499,501-502,504-514,519,521
+src/renderer/features/local-conversation/view/shared/subagent-avatar.tsx
+  s_7eabc49aecb9a6::t_0c2f4ef2b2bdeb 2-65,71,83-104,107,110,117-123,167
+src/renderer/features/local-conversation/thread-stage-types.ts
+  s_7eabc49aecb9a6::t_1b9252c58fd2ea 664
+  s_7eabc49aecb9a6::t_57f1b9b3f2ea51 1179
+src/renderer/features/local-conversation/view/shared/delegated-task-row.test.tsx
+  s_7eabc49aecb9a6::t_06b2ee0f335139 69-88
+  s_7eabc49aecb9a6::t_8676679ee08319 250,262
+src/renderer/features/local-conversation/view/subagents-panel/subagents-panel.test.tsx
+  s_7eabc49aecb9a6::t_4bf8e97ca13394 37
+src/renderer/features/local-conversation/view/local-conversation-stage-header.test.tsx
+  s_7eabc49aecb9a6::t_06b2ee0f335139 47-70
+src/renderer/features/local-conversation/projection/build-renderer-item-stream.ts
+  s_7eabc49aecb9a6::t_1b9252c58fd2ea 290-291,684
+src/main/codex-application/CodexSubagentDirectoryProjection.ts
+  s_7eabc49aecb9a6::t_1b9252c58fd2ea 101
+src/renderer/features/local-conversation/native-task-presentation.node.test.ts
+  s_7eabc49aecb9a6::t_4bf8e97ca13394 1-40
+  s_7eabc49aecb9a6::t_76b800b310359e 41-45
+src/shared/types.ts
+  s_7eabc49aecb9a6::t_1b9252c58fd2ea 4527-4528
+docs/product-specs/codex-subagent-behavior.md
+  s_7eabc49aecb9a6::t_2840d6b064c9b3 36-38
+  s_7eabc49aecb9a6::t_742bdaee9b2485 4,26-35,39-58
+  s_7eabc49aecb9a6::t_7b50de1d51bb44 59
+src/renderer/features/local-conversation/view/subagents-panel/subagents-panel.tsx
+  s_7eabc49aecb9a6::t_dbd8e9a8086778 20,130-134
+src/shared/codex-subagent-row-model.ts
+  s_7eabc49aecb9a6::t_1b9252c58fd2ea 22-23,604
+src/renderer/features/local-conversation/view/composer/composer-add-context-menu.tsx
+  s_7eabc49aecb9a6::t_e846f3f4e155d9 161-163
+  s_7eabc49aecb9a6::t_dbd8e9a8086778 154-159,166-171,185
+  s_7eabc49aecb9a6::t_67b23bf46745da 186,1050
+src/renderer/features/local-conversation/view/composer/composer-prompt-editor.test.tsx
+  s_7eabc49aecb9a6::t_06b2ee0f335139 4,655,658-665,667-685
+  s_7eabc49aecb9a6::t_8676679ee08319 656-657,666
+  s_7eabc49aecb9a6::t_fdcd6d4e22c865 686-687
+src/renderer/assets/subagent-avatars/00-honeycomb-dark.svg
+  s_7eabc49aecb9a6::t_29dbb0fda58fea 1-16
+src/renderer/assets/subagent-avatars/00-honeycomb-light.svg
+  s_7eabc49aecb9a6::t_4dd74fa6f07c53 1-16
+src/renderer/assets/subagent-avatars/01-twin-dark.svg
+  s_7eabc49aecb9a6::t_0258c7ba205584 1-11
+src/renderer/assets/subagent-avatars/01-twin-light.svg
+  s_7eabc49aecb9a6::t_425f760c60c526 1-11
+src/renderer/assets/subagent-avatars/02-swirl-dark.svg
+  s_7eabc49aecb9a6::t_192f371a8cf171 1-13
+src/renderer/assets/subagent-avatars/02-swirl-light.svg
+  s_7eabc49aecb9a6::t_1a7890cd3c6629 1-13
+src/renderer/assets/subagent-avatars/03-lotus-dark.svg
+  s_7eabc49aecb9a6::t_b2329a6eb2019c 1-14
+src/renderer/assets/subagent-avatars/03-lotus-light.svg
+  s_7eabc49aecb9a6::t_b35b3819ede8dc 1-14
+src/renderer/assets/subagent-avatars/04-clover-dark.svg
+  s_7eabc49aecb9a6::t_dad8ebda1ca82a 1-14
+src/renderer/assets/subagent-avatars/04-clover-light.svg
+  s_7eabc49aecb9a6::t_80f709c34542e5 1-14
+src/renderer/assets/subagent-avatars/05-arch-dark.svg
+  s_7eabc49aecb9a6::t_dc3a865dc57f8f 1-12
+src/renderer/assets/subagent-avatars/05-arch-light.svg
+  s_7eabc49aecb9a6::t_d77d230eb695df 1-12
+src/renderer/assets/subagent-avatars/06-halo-dark.svg
+  s_7eabc49aecb9a6::t_3bfd7e4f36379f 1-11
+src/renderer/assets/subagent-avatars/06-halo-light.svg
+  s_7eabc49aecb9a6::t_c92dea865c0cc3 1-11
+src/renderer/assets/subagent-avatars/07-triad-dark.svg
+  s_7eabc49aecb9a6::t_055416cc8a3a1a 1-13
+src/renderer/assets/subagent-avatars/07-triad-light.svg
+  s_7eabc49aecb9a6::t_4df4d7cf6eba6a 1-13
+src/renderer/assets/subagent-avatars/08-whirl-dark.svg
+  s_7eabc49aecb9a6::t_4668f8a8e1e78c 1-15
+src/renderer/assets/subagent-avatars/08-whirl-light.svg
+  s_7eabc49aecb9a6::t_d39aabeb331c4f 1-15
+src/renderer/assets/subagent-avatars/09-flame-dark.svg
+  s_7eabc49aecb9a6::t_f081575d08cc96 1-12
+src/renderer/assets/subagent-avatars/09-flame-light.svg
+  s_7eabc49aecb9a6::t_67217df426f795 1-12
+src/renderer/assets/subagent-avatars/10-scallop-dark.svg
+  s_7eabc49aecb9a6::t_3cebcdd996c8cd 1-15
+src/renderer/assets/subagent-avatars/10-scallop-light.svg
+  s_7eabc49aecb9a6::t_44df84786f55e1 1-15
+src/renderer/assets/subagent-avatars/11-moth-dark.svg
+  s_7eabc49aecb9a6::t_4d8da57b9635ec 1-14
+src/renderer/assets/subagent-avatars/11-moth-light.svg
+  s_7eabc49aecb9a6::t_531e829b53da69 1-14
+src/renderer/assets/subagent-avatars/12-spark-dark.svg
+  s_7eabc49aecb9a6::t_37d50fc1751cec 1-11
+src/renderer/assets/subagent-avatars/12-spark-light.svg
+  s_7eabc49aecb9a6::t_073a9cd4a8cc79 1-11
+src/renderer/assets/subagent-avatars/13-octagram-dark.svg
+  s_7eabc49aecb9a6::t_a6a81f9fd27b4e 1-12
+src/renderer/assets/subagent-avatars/13-octagram-light.svg
+  s_7eabc49aecb9a6::t_aabf75b08663da 1-12
+src/renderer/assets/subagent-avatars/14-hexa-dark.svg
+  s_7eabc49aecb9a6::t_1a953789c0215c 1-11
+src/renderer/assets/subagent-avatars/14-hexa-light.svg
+  s_7eabc49aecb9a6::t_9558aabde21049 1-11
+src/renderer/assets/subagent-avatars/15-drop-dark.svg
+  s_7eabc49aecb9a6::t_393ac637efd29b 1-11
+src/renderer/assets/subagent-avatars/15-drop-light.svg
+  s_7eabc49aecb9a6::t_dbb44209ffe416 1-11
+src/renderer/assets/subagent-avatars/16-sprout-dark.svg
+  s_7eabc49aecb9a6::t_0bec8260cd93c1 1-12
+src/renderer/assets/subagent-avatars/16-sprout-light.svg
+  s_7eabc49aecb9a6::t_4c21ead4f5fc38 1-12
+src/renderer/assets/subagent-avatars/17-trillium-dark.svg
+  s_7eabc49aecb9a6::t_66ffddd1988585 1-16
+src/renderer/assets/subagent-avatars/17-trillium-light.svg
+  s_7eabc49aecb9a6::t_a7a7e177a3b838 1-16
+src/renderer/assets/subagent-avatars/18-quincunx-dark.svg
+  s_7eabc49aecb9a6::t_0252a29bdb595f 1-14
+src/renderer/assets/subagent-avatars/18-quincunx-light.svg
+  s_7eabc49aecb9a6::t_040e4e7af3c7e5 1-14
+src/renderer/assets/subagent-avatars/19-atom-dark.svg
+  s_7eabc49aecb9a6::t_e696069df94699 1-13
+src/renderer/assets/subagent-avatars/19-atom-light.svg
+  s_7eabc49aecb9a6::t_c3e5f3e598c254 1-13
+src/renderer/assets/subagent-avatars/20-gem-dark.svg
+  s_7eabc49aecb9a6::t_03b3d7b3cc657f 1-12
+src/renderer/assets/subagent-avatars/20-gem-light.svg
+  s_7eabc49aecb9a6::t_8b1c6525c85c57 1-12
+src/renderer/assets/subagent-avatars/21-saturn-dark.svg
+  s_7eabc49aecb9a6::t_d90f5f2781fcdb 1-12
+src/renderer/assets/subagent-avatars/21-saturn-light.svg
+  s_7eabc49aecb9a6::t_670c52cf245cf0 1-12
+src/renderer/assets/subagent-avatars/22-compass-dark.svg
+  s_7eabc49aecb9a6::t_fef54ab2182903 1-11
+src/renderer/assets/subagent-avatars/22-compass-light.svg
+  s_7eabc49aecb9a6::t_22fd16da979bad 1-11
+src/renderer/assets/subagent-avatars/23-succulent-dark.svg
+  s_7eabc49aecb9a6::t_c7ec1b8ee0ecfd 1-24
+src/renderer/assets/subagent-avatars/23-succulent-light.svg
+  s_7eabc49aecb9a6::t_d05cd6b9e52af1 1-24
+src/renderer/assets/subagent-avatars/24-sun-dark.svg
+  s_7eabc49aecb9a6::t_2118a7e421a197 1-18
+src/renderer/assets/subagent-avatars/24-sun-light.svg
+  s_7eabc49aecb9a6::t_8174148c86874a 1-18
+src/renderer/assets/subagent-avatars/25-ammonite-dark.svg
+  s_7eabc49aecb9a6::t_f02e20387945a1 1-11
+src/renderer/assets/subagent-avatars/25-ammonite-light.svg
+  s_7eabc49aecb9a6::t_4291aa0d6feb37 1-11
+src/renderer/assets/subagent-avatars/26-seal-dark.svg
+  s_7eabc49aecb9a6::t_a90220adab9cb0 1-12
+src/renderer/assets/subagent-avatars/26-seal-light.svg
+  s_7eabc49aecb9a6::t_6b02d82b2157bb 1-12
+src/renderer/assets/subagent-avatars/27-blossom-dark.svg
+  s_7eabc49aecb9a6::t_7d348f75254c4b 1-15
+src/renderer/assets/subagent-avatars/27-blossom-light.svg
+  s_7eabc49aecb9a6::t_3bd467f646af9a 1-15
+src/renderer/assets/subagent-avatars/28-cradle-dark.svg
+  s_7eabc49aecb9a6::t_8489b45afc8798 1-11
+src/renderer/assets/subagent-avatars/28-cradle-light.svg
+  s_7eabc49aecb9a6::t_f0cdff9838245b 1-11
+src/renderer/assets/subagent-avatars/29-trinity-dark.svg
+  s_7eabc49aecb9a6::t_7a362665430e6d 1-12
+src/renderer/assets/subagent-avatars/29-trinity-light.svg
+  s_7eabc49aecb9a6::t_02572944135857 1-12
+src/renderer/assets/subagent-avatars/30-rosette-dark.svg
+  s_7eabc49aecb9a6::t_071c163633b717 1-15
+src/renderer/assets/subagent-avatars/30-rosette-light.svg
+  s_7eabc49aecb9a6::t_7e2dc5bb1fdc81 1-15
+src/renderer/assets/subagent-avatars/31-duo-dark.svg
+  s_7eabc49aecb9a6::t_8031fa066d00c3 1-11
+src/renderer/assets/subagent-avatars/31-duo-light.svg
+  s_7eabc49aecb9a6::t_0463cfa6d111dc 1-11
+src/renderer/features/local-conversation/projection/build-composer-shell-model.node.test.ts
+  s_7eabc49aecb9a6::t_836ed891bee5dd 168
+src/renderer/features/local-conversation/projection/build-turn-render-model.node.test.ts
+  s_7eabc49aecb9a6::t_2627913d600deb 118
+src/renderer/features/local-conversation/view/blocks/local-conversation-block-leaves.test.tsx
+  s_7eabc49aecb9a6::t_325af3f10436ca 196,208,220,232
+src/renderer/features/local-conversation/view/composer/local-conversation-thread-composer-speed.test.tsx
+  s_7eabc49aecb9a6::t_1bb2780b2723d5 3188
+src/renderer/features/local-conversation/view/local-conversation-created-subagent-entry.test.tsx
+  s_7eabc49aecb9a6::t_8040250383272a 199
+src/renderer/features/local-conversation/view/shared/subagent-avatar.test.tsx
+  s_7eabc49aecb9a6::t_9b8549dbf7eaf0 1-48
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "8f2ebc83c5b964c7a2c7727ae32640984a0b0ad5",
+  "prompts": {},
+  "sessions": {
+    "s_7eabc49aecb9a6": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a16938-c228-7be3-8387-ad94e36ec483",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
