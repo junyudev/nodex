@@ -35,6 +35,8 @@ retain captured launch configuration. Disabling or removing an instance immediat
 work across direct submission, queue append, delegation and Automation. Existing admitted work
 continues with its captured configuration unless cancelled. Pending ordinary edits apply after the
 instance is idle; an unavailable instance never silently falls back to another Agent.
+Current configuration status can be queried without starting an idle Runtime or probing an Agent.
+Pending state ends when the saved configuration is applied; a failed refresh is not reported as applied.
 
 ## Authentication and connection
 
