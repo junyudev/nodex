@@ -108,7 +108,13 @@ Native history lists use the Agent's pagination and workspace context. Import fi
 a Core product Session, then materializes a Runtime Thread with an idempotent native mapping and
 without a prompt. The mapping includes a non-secret source fingerprint, so the same native ID in
 another storage or account scope cannot reconnect to the old chat. Renaming or upgrading an instance
-does not invalidate an unchanged native source.
+does not invalidate an unchanged native source. The imported provider Thread remains `not_loaded`
+until the Agent restores it. Its native import metadata retains the verified load and resume
+capabilities, so an empty transcript can explain whether earlier messages load when continuing or
+whether only the Agent's context can resume. Reading or reopening the chat does not load it.
+The first successful restoration saves replayed messages as ancestry, atomically with leaving
+`not_loaded`. These messages retain stable identities across retries and restarts, do not create Runs,
+and are not sent back as prompts.
 
 Restoration uses advertised v1 load, v1 resume or v2 resume/replay. A resume-only Agent can continue
 its context without supplying earlier transcript replay; Nodex saves its subsequent history from

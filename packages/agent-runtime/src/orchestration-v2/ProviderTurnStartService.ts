@@ -45,6 +45,7 @@ import * as RunExecutionService from "./RunExecutionService.ts";
 import * as RuntimePolicy from "./RuntimePolicy.ts";
 import { ThreadCommandExecutor } from "./ThreadCommandExecutor.ts";
 import { restartCancelledBackgroundWorkNote } from "./RestartBackgroundNote.ts";
+import { nativeThreadHistoryEvents } from "./NativeThreadHistory.ts";
 
 export class ProviderTurnStartError extends Schema.TaggedError<ProviderTurnStartError>()(
   "ProviderTurnStartError",
@@ -622,8 +623,8 @@ export const layer: Layer.Layer<
       const session = sessionResult.success;
       // Only the provider's own thread load fails the run on the last attempt;
       // store, id and handoff failures around it keep their typed errors.
-      const loadFromProvider = (
-        load: Effect.Effect<OrchestrationV2ProviderThread, ProviderAdapter.ProviderAdapterV2Error>,
+      const loadFromProvider = <A>(
+        load: Effect.Effect<A, ProviderAdapter.ProviderAdapterV2Error>,
       ) =>
         Effect.gen(function* () {
           const loaded = yield* Effect.result(load);
@@ -967,6 +968,25 @@ export const layer: Layer.Layer<
       if (!(yield* isCurrentAttemptInStatus("starting"))) {
         return;
       }
+      // The first native restoration already collected replay in the adapter.
+      // Commit it with the existing start transition so cancellation/retries cannot
+      // expose a loaded marker without its history, or attach old messages to this Run.
+      let importedHistory: ReadonlyArray<OrchestrationV2DomainEvent> = [];
+      if (
+        providerThread.status === "not_loaded" &&
+        providerThread.nativeMetadata?.nativeImport?.canLoad === true &&
+        session.providerSession.capabilities.threads.canReadThreadSnapshot
+      ) {
+        const nativeSnapshot = yield* loadFromProvider(
+          session.readThreadSnapshot({ providerThread: loadedProviderThread }),
+        );
+        if (nativeSnapshot === undefined) return;
+        importedHistory = nativeThreadHistoryEvents({
+          providerThread: loadedProviderThread,
+          messages: nativeSnapshot.messages,
+          idAllocator,
+        });
+      }
       const now = yield* DateTime.now;
       // Only started runs reached the provider-thread update below. Queued runs and
       // failures during session setup cannot establish a new telemetry selection.
@@ -1042,6 +1062,7 @@ export const layer: Layer.Layer<
         startedAt: now,
       };
       const events: Array<OrchestrationV2DomainEvent> = [
+        ...importedHistory,
         {
           id: yield* idAllocator.allocate.event({
             threadId: projection.thread.id,

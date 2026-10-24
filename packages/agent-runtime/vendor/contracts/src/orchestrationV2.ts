@@ -976,6 +976,10 @@ export const OrchestrationV2ProviderThreadNativeMetadata = Schema.Struct({
   modelSelection: Schema.optional(ModelSelection),
   title: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
   updatedAt: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
+  /** Capabilities captured when attaching native history; loading state belongs to the provider thread. */
+  nativeImport: Schema.optional(
+    Schema.Struct({ canLoad: Schema.Boolean, canResume: Schema.Boolean }),
+  ),
   /** Version 2 scopes provider-derived item ids by provider instance. */
   itemIdentityVersion: Schema.optional(Schema.Literal(2)),
 });

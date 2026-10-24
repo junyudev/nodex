@@ -2333,6 +2333,9 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       branch: command.branch,
       worktreePath: command.worktreePath,
       activeProviderThreadId: null,
+      ...(command.importedNativeThread === undefined
+        ? {}
+        : { historyOrigin: "native_import" as const }),
       lineage: {
         parentThreadId: null,
         relationshipToParent: null,

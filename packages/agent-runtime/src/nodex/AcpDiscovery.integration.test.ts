@@ -114,9 +114,25 @@ it.live(
       yield* fs.writeFileString(state, JSON.stringify({ models: ["first"] }));
       yield* run(connect);
       expect((yield* run(read)).models.map((model) => model.slug)).toEqual(["first", "custom"]);
-      yield* fs.writeFileString(state, JSON.stringify({ fail: true }));
       yield* run(
         Effect.gen(function* () {
+          yield* call("acp.auth.start", { instanceId, ownerId: "settings", methodId: "key" });
+          const signedIn = yield* call("acp.auth.read", { instanceId, ownerId: "settings" }).pipe(
+            Effect.repeat({
+              until: (value) => value.phase === "succeeded" || value.phase === "failed",
+              schedule: Schedule.spaced("20 millis"),
+            }),
+            Effect.timeout("10 seconds"),
+          );
+          expect(signedIn.phase).toBe("succeeded");
+          expect((yield* read).auth.status).toBe("authenticated");
+        }),
+      );
+      yield* run(
+        Effect.gen(function* () {
+          // Native credentials can expire without the Nodex launch configuration changing.
+          expect((yield* read).auth.status).toBe("authenticated");
+          yield* fs.writeFileString(state, JSON.stringify({ fail: true }));
           const failure = yield* connect;
           expect(failure).toMatchObject({
             phase: "failed",
@@ -132,6 +148,12 @@ it.live(
             models: [],
           });
           expect(JSON.stringify(provider)).not.toContain(token);
+          expect(
+            (yield* call("providers.read", { refresh: true, instanceIds: [instanceId] }))[0],
+          ).toMatchObject({
+            discovery: { status: "failed" },
+            auth: { status: "unauthenticated", label: "API key" },
+          });
         }),
       );
       const callsAfterFailure = yield* fs.readFileString(log);

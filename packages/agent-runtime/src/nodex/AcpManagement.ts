@@ -724,7 +724,11 @@ export const make = Effect.fn("AcpManagement.make")(function* (
                   nativeId: input.sessionId,
                   strength: "strong",
                 },
-                metadata: { itemIdentityVersion: 2, title: input.title },
+                metadata: {
+                  itemIdentityVersion: 2,
+                  title: input.title,
+                  nativeImport: { canLoad: prepared.canLoad, canResume: prepared.canResume },
+                },
               },
               createdBy: "user",
               creationSource: "web",
