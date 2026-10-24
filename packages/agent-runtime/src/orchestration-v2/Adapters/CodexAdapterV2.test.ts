@@ -11,6 +11,7 @@ import {
   CheckpointId,
   CodexSettings,
   EnvironmentId,
+  EventId,
   MessageId,
   type ModelSelection,
   NodeId,
@@ -61,6 +62,7 @@ import * as ProviderEventLoggers from "@t3tools/provider-core/server/ProviderEve
 import * as IdAllocator from "@t3tools/provider-core/server/IdAllocator";
 import * as EffectWorker from "../EffectWorker.ts";
 import * as Orchestrator from "../Orchestrator.ts";
+import * as ProjectionStore from "../ProjectionStore.ts";
 import * as ProviderReplayHarness from "../testkit/ProviderReplayHarness.ts";
 import * as ProviderAdapter from "@t3tools/provider-core/server/ProviderAdapter";
 import type * as ProviderContinuationRequests from "@t3tools/provider-core/server/ProviderContinuationRequests";
@@ -3526,15 +3528,14 @@ describe("CodexAdapterV2 post-settle continuation", () => {
           ],
         });
         const harness = yield* makeCodexReplayHarness(transcript);
-        yield* harness.runtime.startTurn(
-          makeCodexTestTurnInput({
-            threadId: harness.threadId,
-            providerThread: harness.providerThread,
-            now: yield* DateTime.now,
-            attemptId: RunAttemptId.make("turn-metadata-attempt"),
-            text: "Review it.",
-          }),
-        );
+        const turnInput = makeCodexTestTurnInput({
+          threadId: harness.threadId,
+          providerThread: harness.providerThread,
+          now: yield* DateTime.now,
+          attemptId: RunAttemptId.make("turn-metadata-attempt"),
+          text: "Review it.",
+        });
+        yield* harness.runtime.startTurn(turnInput);
         yield* harness.firstTerminal;
         const latest = new Map<string, OrchestrationV2TurnItem>();
         for (const event of harness.events)
@@ -3564,10 +3565,61 @@ describe("CodexAdapterV2 post-settle continuation", () => {
           entries: [{ path: "MEMORY.md", lineStart: 2, lineEnd: 4, note: "Convention." }],
           threadIds: [],
         });
+        // Feed actual Adapter output to the outcome reader: assistant item identity is not root identity.
+        const store = yield* ProjectionStore.ProjectionStoreV2;
+        const now = yield* DateTime.now;
+        const common = { threadId: turnInput.threadId, occurredAt: now };
+        yield* store.apply({
+          ...common,
+          id: EventId.make("outcome:thread"),
+          type: "thread.created",
+          payload: turnInput.appThread,
+        });
+        yield* store.apply({
+          ...common,
+          id: EventId.make("outcome:run"),
+          type: "run.created",
+          payload: {
+            id: turnInput.runId,
+            threadId: turnInput.threadId,
+            ordinal: turnInput.runOrdinal,
+            providerInstanceId: turnInput.providerThread.providerInstanceId,
+            modelSelection: turnInput.modelSelection,
+            providerThreadId: turnInput.providerThread.id,
+            userMessageId: turnInput.message.messageId,
+            rootNodeId: turnInput.rootNodeId,
+            activeAttemptId: turnInput.attemptId,
+            status: "completed",
+            requestedAt: now,
+            startedAt: now,
+            completedAt: now,
+            checkpointId: null,
+            contextHandoffId: null,
+          },
+        });
+        for (const [index, event] of harness.events.entries()) {
+          const base = { ...common, id: EventId.make(`outcome:item:${index}`) };
+          if (event.type === "node.updated")
+            yield* store.apply({ ...base, type: "node.updated", payload: event.node });
+          if (event.type === "turn_item.updated")
+            yield* store.apply({ ...base, type: "turn-item.updated", payload: event.turnItem });
+        }
+        const outcome = yield* store.getRunOutcome({
+          threadId: turnInput.threadId,
+          runId: turnInput.runId,
+        });
+        assert.isDefined(reply);
+        assert.notStrictEqual(reply?.nodeId, turnInput.rootNodeId);
+        assert.strictEqual(outcome?.finalAssistantItemId, reply?.id);
       }),
     ).pipe(
       Effect.provide(
-        Layer.mergeAll(IdAllocator.layer, McpProviderSessions.layer, NodeServices.layer),
+        Layer.mergeAll(
+          IdAllocator.layer,
+          McpProviderSessions.layer,
+          NodeServices.layer,
+          ProjectionStore.layerMemory,
+        ),
       ),
     ),
   );

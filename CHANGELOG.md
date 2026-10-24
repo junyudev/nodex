@@ -18,6 +18,7 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- Chat completion notifications include the Agent’s reply after execution ends and preserve readable content from Markdown, including code blocks.
 - Existing Profiles upgrade without rejecting saved paragraphs that begin with Markdown punctuation, while preserving their content and edit history.
 - Completed undo history no longer stalls background cleanup after a Profile upgrade.
 - Archiving or deleting an Inbox message withdraws its outdated suggestions so other messages keep receiving advice, including after restart.

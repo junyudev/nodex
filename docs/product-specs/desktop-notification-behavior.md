@@ -168,8 +168,12 @@ each occurrence by family, host, conversation, and strict scalar request ID, so
 numeric `73`, textual `"73"`, and equal public IDs in different conversations
 cannot replace or resolve one another.
 
-Main converts title and body to bounded single-line plain text, removing
-script/style blocks, HTML tags, Markdown decoration, and excess whitespace.
+Main converts title and body to single-line plain text at native delivery.
+Markdown structure is preserved until parsing, so fenced code, readable link
+labels, and text after code blocks survive. Citation payloads, directive
+attributes, script/style blocks, HTML tags, and excess whitespace are removed.
+The reply's plain text is submitted to the operating system, which controls its
+visible preview; notification presentation adds no fixed character limit.
 It caps native buttons at four, uses `timeoutType: "never"` for
 question notifications, enables reply for turn notifications only, and uses
 the Nodex notification sound on macOS when the packaged resource can be
@@ -275,8 +279,12 @@ title is the Session title, and its host is the local host.
   does not notify. Live delegated or background work, or a delegated result
   that will wake the root, is a pending continuation for every terminal state;
   a queued follow-up that starts next suppresses completed and failed but not
-  interrupted. The body is the Run's final reply, read only when turn policy
-  could show the notification. Delegated children never notify on their own.
+  interrupted. The body is the ended Run's last root assistant reply, read from its durable
+  outcome by exact Run identity only when turn policy could show the notification.
+  This remains available after native execution authority is released, including
+  failed or interrupted Runs. A newer Run or child reply cannot supply its body;
+  an absent reply uses the ordinary completion fallback. Missed terminal status
+  is also read from that outcome. Delegated children never notify on their own.
 - `question`: the root starts waiting for an information answer or gains
   another pending question. One notification represents the waiting episode
   and is withdrawn when the root stops waiting.

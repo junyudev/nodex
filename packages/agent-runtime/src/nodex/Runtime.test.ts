@@ -164,6 +164,17 @@ it.live("deletes a shared attachment only after its last live Session is deleted
           }),
           Effect.timeout("10 seconds"),
         )) as { readonly runId: string };
+        expect(
+          yield* request("run.outcome", { threadId: "thread:source", runId: outcome.runId }),
+        ).toEqual(outcome);
+        expect(
+          yield* request("thread.authority", { threadId: "thread:source", runId: outcome.runId }),
+        ).toBeNull();
+        for (const invalid of [
+          { threadId: "thread:source" },
+          { threadId: "thread:source", runId: outcome.runId, messageId: "message:source" },
+        ])
+          expect(yield* request("run.outcome", invalid).pipe(Effect.isFailure)).toBe(true);
         expect(yield* request("thread.fork-source", { threadId: "thread:source" })).toBe(
           outcome.runId,
         );

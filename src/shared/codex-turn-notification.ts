@@ -75,10 +75,8 @@ export function parseCodexHeartbeatAssistantMessage(
 
   return {
     decision: rawDecision,
-    visibleText: normalizeDesktopNotificationText(withoutHeartbeat),
-    notificationMessage: normalizeDesktopNotificationText(
-      readXmlishTagValue(range.body, "message"),
-    ),
+    visibleText: withoutHeartbeat.trim() || null,
+    notificationMessage: readXmlishTagValue(range.body, "message"),
   };
 }
 

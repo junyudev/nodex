@@ -220,14 +220,14 @@ it.effect.each(storageCases)(
           userMessageId: MessageId.make("message:newer"),
         },
       });
-      assert.deepEqual(yield* store.getRunOutcome(threadId, messageId), {
+      assert.deepEqual(yield* store.getRunOutcome({ threadId, messageId }), {
         runId,
         status: "running",
         completedAt: null,
         finalAssistantItemId: null,
       });
-      assert.isNull(yield* store.getRunOutcome(ThreadId.make("foreign"), messageId));
-      assert.isNull(yield* store.getRunOutcome(threadId, MessageId.make("missing")));
+      assert.isNull(yield* store.getRunOutcome({ threadId: ThreadId.make("foreign"), messageId }));
+      assert.isNull(yield* store.getRunOutcome({ threadId, messageId: MessageId.make("missing") }));
     }).pipe(Effect.provide(storeLayer)),
 );
 
@@ -241,19 +241,139 @@ it.effect(
       yield* Effect.forEach(fixtureEvents(now), (event) => store.apply(event), { discard: true });
       const giant = "x".repeat(2 * 1024 * 1024);
       yield* sql`UPDATE orchestration_v2_projection_messages SET payload_json=json_set(payload_json,'$.text',${giant}) WHERE message_id=${messageId}`;
+      yield* sql`INSERT INTO orchestration_v2_projection_nodes(node_id,thread_id,run_id,parent_node_id,root_node_id,kind,status,payload_json)
+      VALUES('answer-node',${threadId},${runId},${nodeId},${nodeId},'assistant_message','completed','{}'),
+        ('native-child',${threadId},${runId},'child-root','child-root','assistant_message','completed','{}')`;
       yield* sql`INSERT INTO orchestration_v2_projection_turn_items(turn_item_id,thread_id,run_id,node_id,ordinal,type,status,updated_at,payload_json)
-      VALUES('root-answer',${threadId},${runId},${nodeId},1,'assistant_message','completed',${DateTime.formatIso(now)},json_object('text',${giant})),
+      VALUES('root-answer',${threadId},${runId},'answer-node',1,'assistant_message','completed',${DateTime.formatIso(now)},json_object('text',${giant})),
         ('native-child-answer',${threadId},${runId},'native-child',2,'assistant_message','completed',${DateTime.formatIso(now)},json_object('text',${giant}))`;
       yield* sql`UPDATE orchestration_v2_projection_runs SET status='completed',completed_at=${DateTime.formatIso(now)} WHERE run_id=${runId}`;
-      assert.deepEqual(yield* store.getRunOutcome(threadId, messageId), {
+      const expected = {
         runId,
         status: "completed",
         completedAt: DateTime.formatIso(now),
         finalAssistantItemId: TurnItemId.make("root-answer"),
-      });
+      } satisfies ProjectionStore.ProjectionRunOutcome;
+      assert.deepEqual(yield* store.getRunOutcome({ threadId, messageId }), expected);
+      // Run lookup remains usable without a user-message body or provider session.
+      yield* sql`UPDATE orchestration_v2_projection_messages SET payload_json='invalid body' WHERE message_id=${messageId}`;
+      yield* sql`DELETE FROM orchestration_v2_projection_provider_threads WHERE thread_id=${threadId}`;
+      assert.deepEqual(yield* store.getRunOutcome({ threadId, runId }), expected);
     }).pipe(
       Effect.provide(ProjectionStore.layer.pipe(Layer.provideMerge(SqlitePersistence.layerMemory))),
     ),
+);
+
+it.effect.each(storageCases)(
+  "$storage: Run outcomes retain their own root reply and expose rollback settlement through either key",
+  ({ storeLayer }) =>
+    Effect.gen(function* () {
+      const store = yield* ProjectionStore.ProjectionStoreV2;
+      const now = yield* DateTime.now;
+      const events = fixtureEvents(now);
+      yield* Effect.forEach(events, (event) => store.apply(event), { discard: true });
+      const runEvent = events.find((event) => event.type === "run.created")!;
+      const newerRunId = RunId.make("run:newer");
+      yield* store.apply({
+        ...runEvent,
+        id: EventId.make("newer-run"),
+        payload: {
+          ...runEvent.payload,
+          id: newerRunId,
+          ordinal: 2,
+          userMessageId: MessageId.make("message:newer"),
+        },
+      });
+      const replies = [
+        { id: "first-root-reply", runId, rootNodeId: nodeId, ordinal: 1 },
+        { id: "final-root-reply", runId, rootNodeId: nodeId, ordinal: 2 },
+        { id: "child-reply", runId, rootNodeId: NodeId.make("child-root"), ordinal: 3 },
+        { id: "next-run-reply", runId: newerRunId, rootNodeId: nodeId, ordinal: 4 },
+        { id: "old-attempt-reply", runId, rootNodeId: NodeId.make("old-attempt"), ordinal: 5 },
+      ];
+      yield* Effect.forEach(
+        replies,
+        (reply) =>
+          Effect.gen(function* () {
+            const replyNodeId = NodeId.make(`node:${reply.id}`);
+            // Providers project each assistant message as its own node under the attempt root.
+            yield* store.apply({
+              id: EventId.make(`node-event:${reply.id}`),
+              type: "node.updated",
+              threadId,
+              occurredAt: now,
+              payload: {
+                id: replyNodeId,
+                threadId,
+                runId: reply.runId,
+                parentNodeId: reply.rootNodeId,
+                rootNodeId: reply.rootNodeId,
+                kind: "assistant_message",
+                status: "completed",
+                countsForRun: false,
+                providerThreadId,
+                providerTurnId,
+                nativeItemRef: null,
+                runtimeRequestId: null,
+                checkpointScopeId: null,
+                startedAt: now,
+                completedAt: now,
+              },
+            });
+            yield* store.apply({
+              id: EventId.make(`event:${reply.id}`),
+              type: "turn-item.updated",
+              threadId,
+              occurredAt: now,
+              payload: {
+                runId: reply.runId,
+                ordinal: reply.ordinal,
+                nodeId: replyNodeId,
+                id: TurnItemId.make(reply.id),
+                threadId,
+                providerThreadId,
+                providerTurnId,
+                nativeItemRef: null,
+                parentItemId: null,
+                status: "completed",
+                title: null,
+                startedAt: now,
+                completedAt: now,
+                updatedAt: now,
+                type: "assistant_message",
+                messageId: MessageId.make(`message:${reply.id}`),
+                text: reply.id,
+                streaming: false,
+              },
+            });
+          }),
+        { discard: true },
+      );
+      for (const status of [
+        "completed",
+        "failed",
+        "interrupted",
+        "cancelled",
+        "rolled_back",
+      ] as const) {
+        yield* store.apply({
+          ...runEvent,
+          id: EventId.make(`settled:${status}`),
+          type: "run.updated",
+          payload: { ...runEvent.payload, status, activeAttemptId: null, completedAt: now },
+        });
+        const expected = {
+          runId,
+          status,
+          completedAt: DateTime.formatIso(now),
+          finalAssistantItemId: TurnItemId.make("final-root-reply"),
+        };
+        assert.deepEqual(yield* store.getRunOutcome({ threadId, runId }), expected);
+        assert.deepEqual(yield* store.getRunOutcome({ threadId, messageId }), expected);
+      }
+      assert.isNull(yield* store.getRunOutcome({ threadId: ThreadId.make("foreign"), runId }));
+      assert.isNull(yield* store.getRunOutcome({ threadId, runId: RunId.make("missing") }));
+    }).pipe(Effect.provide(storeLayer)),
 );
 
 it.effect.each(storageCases)(

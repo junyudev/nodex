@@ -38,18 +38,31 @@ const harness = (options: {
   readonly turnMayShow?: boolean;
   readonly settings?: Partial<ThreadNotificationSettings>;
   readonly runStatus?: string;
+  readonly reply?: string | null;
+  readonly outcomeUnavailable?: boolean;
 }) => {
   const requests: string[] = [];
+  const outcomeInputs: unknown[] = [];
   const connection = {
     identity: { runtimeId: "runtime", runtimeGeneration: "1" },
-    request: (method: string) =>
+    request: (method: string, input: unknown) =>
       Effect.sync(() => {
         requests.push(method);
-        if (method === "thread.authority")
-          return { userMessageId: "message:user", status: options.runStatus ?? "completed" };
-        if (method === "run.outcome") return { finalAssistantItemId: "item:reply" };
+        if (method === "thread.authority") return null;
+        if (method === "run.outcome") {
+          outcomeInputs.push(input);
+          return options.outcomeUnavailable
+            ? null
+            : {
+                status: options.runStatus ?? "completed",
+                finalAssistantItemId: options.reply === null ? null : "item:reply",
+              };
+        }
         if (method === "thread.item")
-          return { type: "assistant_message", text: "Done. The board is updated." };
+          return {
+            type: "assistant_message",
+            text: options.reply ?? "Done. The board is updated.",
+          };
         throw new Error(`Unexpected ${method}`);
       }),
   } as unknown as AgentRuntimeProcessConnection;
@@ -83,7 +96,7 @@ const harness = (options: {
         handle(event);
       },
     });
-  return { deliver, requests, unread, events, shown, dismissed };
+  return { deliver, requests, outcomeInputs, unread, events, shown, dismissed };
 };
 const transition = (
   before: Activity | null,
@@ -91,22 +104,23 @@ const transition = (
   endedRun: AgentRuntimeActivityTransition["endedRun"] = null,
 ) => ({ sessionId: "session:a", rootThreadId: "thread:a", before, after, endedRun });
 
-it.effect("a finished foreground Run marks an unseen Session unread and shows its reply", () =>
-  Effect.gen(function* () {
-    const h = harness({});
-    yield* h.deliver([
-      transition(activity("running"), null, { runId: "run:1", status: "completed" }),
-    ]);
-    assert.deepEqual(h.unread, ["session:a"]);
-    assert.strictEqual(h.shown.length, 1);
-    assert.include(h.shown[0]!, {
-      id: "turn-run:1",
-      kind: "turn-complete",
-      title: "Refine the board",
-      body: "Done. The board is updated.",
-      conversationId: "thread:a",
-    });
-  }),
+it.effect.each(["completed", "failed", "interrupted", "cancelled"] as const)(
+  "%s Run shows its persisted reply after native authority is released",
+  (status) =>
+    Effect.gen(function* () {
+      const h = harness({ runStatus: status });
+      yield* h.deliver([transition(activity("running"), null, { runId: "run:1", status })]);
+      assert.deepEqual(h.unread, ["session:a"]);
+      assert.strictEqual(h.shown.length, 1);
+      assert.include(h.shown[0]!, {
+        id: "turn-run:1",
+        kind: "turn-complete",
+        title: "Refine the board",
+        body: "Done. The board is updated.",
+        conversationId: "thread:a",
+      });
+      assert.deepEqual(h.outcomeInputs, [{ threadId: "thread:a", runId: "run:1" }]);
+    }),
 );
 
 it.effect("an automatic wake Run after delegated results notifies once it finishes", () =>
@@ -153,6 +167,7 @@ it.effect("a missed terminal status is read once from the Runtime", () =>
     const event = h.events[0];
     assert.isTrue(event?.type === "turn-completed" && event.status === "failed");
     assert.strictEqual(h.shown.length, 1);
+    assert.deepEqual(h.requests, ["run.outcome", "thread.item"]);
   }),
 );
 
@@ -171,5 +186,43 @@ it.effect("a new question asks for input and its resolution withdraws the notifi
       body: "Answer 1 question to proceed.",
     });
     assert.deepEqual(h.dismissed, [{ occurrenceId: h.shown[0]!.occurrenceId! }]);
+  }),
+);
+
+it.effect.each([{ reply: null }, { outcomeUnavailable: true }])(
+  "a known terminal Run without a readable reply retains completion fallback",
+  (options) =>
+    Effect.gen(function* () {
+      const h = harness(options);
+      yield* h.deliver([
+        transition(activity("running"), null, { runId: "run:1", status: "completed" }),
+      ]);
+      assert.strictEqual(h.shown[0]?.body, "Nodex finished a turn.");
+      assert.deepEqual(h.requests, ["run.outcome"]);
+    }),
+);
+
+it.effect.each([{ outcomeUnavailable: true }, { runStatus: "rolled_back" }])(
+  "a missing terminal observation does not notify an unknown or rolled-back Run",
+  (options) =>
+    Effect.gen(function* () {
+      const h = harness(options);
+      yield* h.deliver([transition(activity("running"), null, { runId: "run:1", status: null })]);
+      assert.deepEqual(h.events, []);
+      assert.deepEqual(h.unread, []);
+      assert.deepEqual(h.requests, ["run.outcome"]);
+    }),
+);
+
+it.effect("the ended Run's heartbeat decision still suppresses completion", () =>
+  Effect.gen(function* () {
+    const h = harness({
+      reply: "Quiet update.\n<heartbeat><decision>DONT_NOTIFY</decision></heartbeat>",
+    });
+    yield* h.deliver([
+      transition(activity("running"), null, { runId: "run:1", status: "completed" }),
+    ]);
+    assert.strictEqual(h.events.length, 1);
+    assert.deepEqual(h.shown, []);
   }),
 );

@@ -1,5 +1,6 @@
 import * as Effect from "effect/Effect";
 import * as Stream from "effect/Stream";
+import type { AgentRuntimeOperations } from "@nodex/agent-runtime/contracts";
 import { DEFAULT_CODEX_HOST_ID } from "../../shared/codex-host";
 import type {
   CodexNotificationConversationFacts,
@@ -48,42 +49,35 @@ export const runtimeQuestionRequestId = (transition: {
 export const run = Effect.fn("AgentRuntimeSessionNotifications.run")(function* (
   options: AgentRuntimeSessionNotificationOptions,
 ) {
-  const finalReply = (transition: AgentRuntimeActivityTransition, runId: string) =>
-    Effect.gen(function* () {
-      const { connection, rootThreadId } = transition;
-      const authority = yield* connection.request("thread.authority", {
-        threadId: rootThreadId,
+  // A settled Run is durable history; native execution authority may already be gone.
+  const readOutcome = (transition: AgentRuntimeActivityTransition, runId: string) =>
+    transition.connection
+      .request("run.outcome", {
+        threadId: transition.rootThreadId,
         runId,
-      });
-      if (!authority) return null;
-      const outcome = yield* connection.request("run.outcome", {
-        threadId: rootThreadId,
-        messageId: authority.userMessageId,
-      });
+      })
+      .pipe(Effect.catchCause(() => Effect.succeed(null)));
+  const finalReply = (
+    transition: AgentRuntimeActivityTransition,
+    outcome: AgentRuntimeOperations["run.outcome"]["output"],
+  ) =>
+    Effect.gen(function* () {
       if (!outcome?.finalAssistantItemId) return null;
-      const item = yield* connection.request("thread.item", {
-        threadId: rootThreadId,
+      const item = yield* transition.connection.request("thread.item", {
+        threadId: transition.rootThreadId,
         itemId: outcome.finalAssistantItemId,
       });
       return item?.type === "assistant_message" ? item.text : null;
     }).pipe(Effect.catchCause(() => Effect.succeed(null)));
-  const endedStatus = (transition: AgentRuntimeActivityTransition, runId: string) =>
-    transition.endedRun?.status
-      ? Effect.succeed(transition.endedRun.status)
-      : transition.connection
-          .request("thread.authority", { threadId: transition.rootThreadId, runId })
-          .pipe(
-            Effect.map((authority) => authority?.status ?? null),
-            Effect.catchCause(() => Effect.succeed(null)),
-          );
-
   const observe = (transition: AgentRuntimeActivityTransition) =>
     Effect.gen(function* () {
       const { before, after, rootThreadId, sessionId } = transition;
       const endedRun = transition.endedRun;
-      const status = endedRun
-        ? terminalStatus(yield* endedStatus(transition, endedRun.runId))
-        : null;
+      const outcome =
+        endedRun && endedRun.status === null
+          ? yield* readOutcome(transition, endedRun.runId)
+          : undefined;
+      const status = terminalStatus(endedRun?.status ?? outcome?.status ?? null);
       const questionStarted =
         after?.status === "waiting" &&
         (before?.status !== "waiting" || after.pendingRequestCount > before.pendingRequestCount);
@@ -119,7 +113,10 @@ export const run = Effect.fn("AgentRuntimeSessionNotifications.run")(function* (
           (after?.status === "running" && status !== "interrupted");
         const lastAgentMessage =
           !hasPendingContinuation && (yield* options.turnMayShow)
-            ? yield* finalReply(transition, endedRun.runId)
+            ? yield* finalReply(
+                transition,
+                outcome === undefined ? yield* readOutcome(transition, endedRun.runId) : outcome,
+              )
             : null;
         options.publish({
           type: "turn-completed",

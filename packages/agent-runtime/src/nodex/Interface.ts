@@ -277,7 +277,9 @@ export interface AgentRuntimeOperations {
     readonly output: { readonly closedBindings: number };
   };
   readonly "run.outcome": {
-    readonly input: { readonly threadId: string; readonly messageId: string };
+    readonly input: AgentWire<
+      import("../orchestration-v2/ProjectionStore.ts").ProjectionRunOutcomeQuery
+    >;
     readonly output: AgentWire<
       import("../orchestration-v2/ProjectionStore.ts").ProjectionRunOutcome
     > | null;

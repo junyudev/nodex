@@ -633,6 +633,10 @@ export interface ProjectionRunOutcome {
   readonly completedAt: string | null;
   readonly finalAssistantItemId: TurnItemId | null;
 }
+export type ProjectionRunOutcomeQuery = { readonly threadId: ThreadId } & (
+  | { readonly runId: RunId; readonly messageId?: never }
+  | { readonly messageId: MessageId; readonly runId?: never }
+);
 type SubagentOverviewPhase = "active" | "terminal";
 const encodeSubagentOverviewCursor = (
   threadId: ThreadId,
@@ -910,10 +914,9 @@ export interface ProjectionStoreV2Shape {
   readonly getThreadShell: (
     threadId: ThreadId,
   ) => Effect.Effect<OrchestrationV2ThreadShell | null, ProjectionStoreV2Error>;
-  /** Resolves one submitted message without retaining or decoding its transcript. */
+  /** Durable Run result, including rollback settlement; no live provider or body read. */
   readonly getRunOutcome: (
-    threadId: ThreadId,
-    messageId: MessageId,
+    query: ProjectionRunOutcomeQuery,
   ) => Effect.Effect<ProjectionRunOutcome | null, ProjectionStoreV2Error>;
   readonly getThread: (
     threadId: ThreadId,
@@ -9038,7 +9041,9 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
         )
         .pipe(Effect.mapError((cause) => new ProjectionStoreReadError({ threadId, cause })));
 
-    const getRunOutcome: ProjectionStoreV2Shape["getRunOutcome"] = (threadId, messageId) =>
+    // Assistant items own separate execution nodes. Their root identifies the current attempt;
+    // provider Thread identity alone also matches superseded attempts and delegated work.
+    const getRunOutcome: ProjectionStoreV2Shape["getRunOutcome"] = (query) =>
       sql<{
         run_id: string;
         status: OrchestrationV2Run["status"];
@@ -9049,13 +9054,24 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
           (SELECT item.turn_item_id FROM orchestration_v2_projection_turn_items item
             WHERE item.thread_id = run.thread_id AND item.run_id = run.run_id
               AND item.type = 'assistant_message'
-              AND item.node_id = json_extract(run.payload_json, '$.rootNodeId')
+              AND EXISTS (
+                SELECT 1 FROM orchestration_v2_projection_nodes node
+                WHERE node.node_id = item.node_id AND node.thread_id = run.thread_id
+                  AND node.run_id = run.run_id
+                  AND node.root_node_id = json_extract(run.payload_json, '$.rootNodeId')
+              )
             ORDER BY item.ordinal DESC, item.turn_item_id DESC LIMIT 1) AS final_assistant_item_id
-        FROM orchestration_v2_projection_messages message
-        JOIN orchestration_v2_projection_runs run ON run.run_id = message.run_id
-        WHERE message.message_id = ${messageId} AND message.thread_id = ${threadId}
-          AND message.role = 'user' AND run.thread_id = ${threadId}
-          AND json_extract(run.payload_json, '$.userMessageId') = ${messageId}
+        FROM orchestration_v2_projection_runs run
+        WHERE run.thread_id = ${query.threadId}
+          AND ${
+            query.runId !== undefined
+              ? sql`run.run_id = ${query.runId}`
+              : sql`run.run_id = (
+                  SELECT message.run_id FROM orchestration_v2_projection_messages message
+                  WHERE message.message_id = ${query.messageId} AND message.thread_id = ${query.threadId}
+                    AND message.role = 'user'
+                ) AND json_extract(run.payload_json, '$.userMessageId') = ${query.messageId}`
+          }
         LIMIT 1
       `.pipe(
         Effect.map((rows) =>
@@ -9071,7 +9087,9 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
                     : TurnItemId.make(rows[0].final_assistant_item_id),
               },
         ),
-        Effect.mapError((cause) => new ProjectionStoreReadError({ threadId, cause })),
+        Effect.mapError(
+          (cause) => new ProjectionStoreReadError({ threadId: query.threadId, cause }),
+        ),
       );
 
     return {
@@ -10560,22 +10578,33 @@ export const layerMemory: Layer.Layer<ProjectionStoreV2> = Layer.effect(
             executionHandoff,
           };
         }),
-      getRunOutcome: (threadId, messageId) =>
+      getRunOutcome: (query) =>
         Ref.get(replayState).pipe(
           Effect.map(({ projections }) => {
-            const projection = projections.get(threadId);
-            const message = projection?.messages.find(
-              (value) => value.id === messageId && value.role === "user",
-            );
-            const run = projection?.runs.find(
-              (value) => value.id === message?.runId && value.userMessageId === messageId,
+            const projection = projections.get(query.threadId);
+            const message =
+              query.messageId === undefined
+                ? null
+                : projection?.messages.find(
+                    (value) => value.id === query.messageId && value.role === "user",
+                  );
+            const run = projection?.runs.find((value) =>
+              query.runId !== undefined
+                ? value.id === query.runId
+                : value.id === message?.runId && value.userMessageId === query.messageId,
             );
             if (!projection || !run) return null;
+            const replyNodeIds = new Set(
+              projection.nodes
+                .filter((node) => node.runId === run.id && node.rootNodeId === run.rootNodeId)
+                .map((node) => node.id),
+            );
             const final = projection.turnItems
               .filter(
                 (item) =>
                   item.runId === run.id &&
-                  item.nodeId === run.rootNodeId &&
+                  item.nodeId !== null &&
+                  replyNodeIds.has(item.nodeId) &&
                   item.type === "assistant_message",
               )
               .toSorted(

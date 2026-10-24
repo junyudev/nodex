@@ -173,9 +173,8 @@ export function resolveCodexTurnNotificationBody(
 ): string {
   const heartbeat = event.heartbeatAssistantMessage;
   return (
-    normalizeDesktopNotificationText(
-      heartbeat?.notificationMessage ?? heartbeat?.visibleText ?? event.lastAgentMessage,
-    ) ?? "Nodex finished a turn."
+    (heartbeat?.notificationMessage ?? heartbeat?.visibleText ?? event.lastAgentMessage)?.trim() ||
+    "Nodex finished a turn."
   );
 }
 

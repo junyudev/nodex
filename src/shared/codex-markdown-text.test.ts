@@ -3,6 +3,9 @@ import { projectCodexMarkdownToPlainText as project } from "./codex-markdown-tex
 import sourceCases from "./fixtures/codex-markdown-source-text.json";
 
 describe("compact Markdown text", () => {
+  it("separates words at explicit Markdown and HTML line breaks", () => {
+    expect(project("First  \nSecond<br>Third<br />Fourth")).toBe("First Second Third Fourth");
+  });
   it.each(sourceCases)("normalizes source text: $source", ({ source, text }) => {
     expect(project(source)).toBe(text);
   });

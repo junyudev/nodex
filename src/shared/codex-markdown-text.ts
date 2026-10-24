@@ -85,7 +85,9 @@ function unclosedHiddenElement(value: string): string | null {
 }
 
 function extractMarkdownText(node: Nodes): string {
+  if (node.type === "break") return " ";
   if (node.type === "html") {
+    if (/^<br\s*\/?\s*>$/i.test(node.value.trim())) return " ";
     if (/^(?:<!--(?:(?!-->)[\s\S])*-->\s*)+$/.test(node.value.trim())) return "";
     const html = parse(node.value);
     for (const element of html.querySelectorAll("script, style")) element.remove();

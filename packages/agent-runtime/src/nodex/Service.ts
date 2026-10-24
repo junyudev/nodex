@@ -231,7 +231,21 @@ const AgentRequest = Schema.Union([
     }),
   ),
   request("thread.authority", Schema.Struct({ threadId: ThreadId, runId: RunId })),
-  request("run.outcome", Schema.Struct({ threadId: ThreadId, messageId: MessageId })),
+  request(
+    "run.outcome",
+    Schema.Union([
+      Schema.Struct({
+        threadId: ThreadId,
+        messageId: MessageId,
+        runId: Schema.optionalKey(Schema.Never),
+      }),
+      Schema.Struct({
+        threadId: ThreadId,
+        runId: RunId,
+        messageId: Schema.optionalKey(Schema.Never),
+      }),
+    ]),
+  ),
   request("command.dispatch", OrchestrationV2Command),
   request("command.receipt", Schema.Struct({ commandId: CommandId, threadId: ThreadId })),
   request("thread.compact", Schema.Struct({ threadId: ThreadId, requestId: CommandId })),
@@ -531,7 +545,7 @@ export const make = Effect.fn("AgentRuntime.makeService")(function* (
         return { closedBindings };
       }
       case "run.outcome":
-        return yield* projections.getRunOutcome(input.input.threadId, input.input.messageId);
+        return yield* projections.getRunOutcome(input.input);
       case "project.activity":
         return yield* projections.getProjectExecutionActivity(input.input.projectId);
       case "project.roots":

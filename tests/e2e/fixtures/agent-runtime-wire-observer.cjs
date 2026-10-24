@@ -6,6 +6,7 @@ if (log && /[/\\]agent-runtime[/\\]entry\.mjs$/u.test(entry)) {
   record({ type: "engine.started", executable: process.execPath, version: process.version });
   const emit = process.stdin.emit;
   const authorityReads = new Set();
+  const completionReads = new Map();
   let buffer = "";
   // Observe the production transport without starting stdin or changing delivery.
   process.stdin.emit = function (event, ...args) {
@@ -19,6 +20,10 @@ if (log && /[/\\]agent-runtime[/\\]entry\.mjs$/u.test(entry)) {
           if (typeof message.method === "string") record({ type: "request", method: message.method });
           if (message.method === "events.observe") record({ type: "observation", id: message.id, input: message.input });
           if (message.method === "thread.authority") authorityReads.add(message.id);
+          if (message.method === "run.outcome" || message.method === "thread.item") {
+            completionReads.set(message.id, message.method);
+            record({ type: "completion.request", method: message.method, input: message.input });
+          }
           if (message.type === "host.result" && message.success === false)
             record({ type: "host.failure", error: message.error });
         } catch { /* The real decoder owns malformed input. */ }
@@ -41,6 +46,10 @@ if (log && /[/\\]agent-runtime[/\\]entry\.mjs$/u.test(entry)) {
         if (message.type === "event.error") record({ type: "engine.event-error", subscriptionId: message.subscriptionId, message: message.message });
         if (authorityReads.delete(message.id))
           record({ type: "authority.proof", output: message.output });
+        if (completionReads.has(message.id)) {
+          record({ type: "completion.response", method: completionReads.get(message.id), output: message.output, error: message.error });
+          completionReads.delete(message.id);
+        }
       } catch { /* The transport owns output validation. */ }
     }
     return write.call(this, chunk, ...args);

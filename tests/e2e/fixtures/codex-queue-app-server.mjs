@@ -167,7 +167,9 @@ const completeTurn = (turnId, status) => {
     const reply = {
       type: "agentMessage",
       id: `reply-${turnId}`,
-      text: "The task completed successfully.",
+      text: process.env.NODEX_FAKE_CODEX_FINAL_REPLY_PATH
+        ? fs.readFileSync(process.env.NODEX_FAKE_CODEX_FINAL_REPLY_PATH, "utf8")
+        : "The task completed successfully.",
       phase: "final_answer",
       delivery: null,
       memoryCitation: null,
