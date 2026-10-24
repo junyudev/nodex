@@ -1,0 +1,31 @@
+packages/agent-runtime/src/nodex/AcpManagement.integration.test.ts
+  s_9cccd37e800d7a::t_3996a556c7fcc6 372-374,391,395,404-412,416-423,471-474
+packages/agent-runtime/vendor/provider-acp-registry/src/server/auth.ts
+  s_2468ca63a6174e::t_3c347aced3702e 50-51,53
+packages/agent-runtime/vendor/provider-acp-registry/src/settings.ts
+  s_2468ca63a6174e::t_329ea5b3bc7524 17
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "b02037f94a6caf2729c510dc02dacecb3547ff5e",
+  "prompts": {},
+  "sessions": {
+    "s_2468ca63a6174e": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a16d84-9a90-7502-bf89-36dc3142716b",
+        "model": "unknown"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_9cccd37e800d7a": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a16d80-f1cc-7471-9f61-cb6ea1bc793d",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
