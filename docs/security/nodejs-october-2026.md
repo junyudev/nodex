@@ -27,6 +27,11 @@ lock distributes Python, not another Node installation. Existing prepared-build
 and Agent Runtime cache identities already include the actual host Node version;
 prepared Electron builds also include `.node-version` among their inputs.
 
+The final source-certificate job emits JSON with Python's standard library and
+does not install a project runtime or touch its dependency cache. Its existing
+protected-main prerequisite and certificate schema are preserved. The other six
+ambient-Node jobs now use the shared pinned setup.
+
 ## Published artifact evidence
 
 Downloaded [Nodex-0.4.0-arm64.zip](https://github.com/junyudev/nodex/releases/download/v0.4.0/Nodex-0.4.0-arm64.zip)

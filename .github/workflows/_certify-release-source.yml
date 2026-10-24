@@ -106,7 +106,6 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
           ref: ${{ inputs.source_sha }}
-      - uses: ./.github/actions/setup-vite-plus
       - name: Materialize exact-source certificate
         id: identity
         env:
@@ -117,19 +116,25 @@ jobs:
           test "$(git rev-parse HEAD)" = "${SOURCE_SHA}"
           source_tree="$(git rev-parse 'HEAD^{tree}')"
           echo "source_tree=${source_tree}" >> "${GITHUB_OUTPUT}"
-          # shellcheck disable=SC2016
-          SOURCE_TREE="${source_tree}" node -e '
-            const fs = require("node:fs");
-            fs.writeFileSync(process.argv[1], `${JSON.stringify({
-              schemaVersion: 1,
-              sourceSha: process.env.SOURCE_SHA,
-              sourceTree: process.env.SOURCE_TREE,
-              workflowRunId: process.env.GITHUB_RUN_ID,
-              workflowRunAttempt: Number(process.env.GITHUB_RUN_ATTEMPT),
-              repository: process.env.GITHUB_REPOSITORY,
-              issuedAt: new Date().toISOString(),
-            }, null, 2)}\n`);
-          ' "${RUNNER_TEMP}/source-certification.json"
+          # Certificate emission needs no project runtime, dependency code or cache.
+          SOURCE_TREE="${source_tree}" python3 - "${RUNNER_TEMP}/source-certification.json" <<'PY'
+          import datetime
+          import json
+          import os
+          import pathlib
+          import sys
+
+          certificate = {
+              "schemaVersion": 1,
+              "sourceSha": os.environ["SOURCE_SHA"],
+              "sourceTree": os.environ["SOURCE_TREE"],
+              "workflowRunId": os.environ["GITHUB_RUN_ID"],
+              "workflowRunAttempt": int(os.environ["GITHUB_RUN_ATTEMPT"]),
+              "repository": os.environ["GITHUB_REPOSITORY"],
+              "issuedAt": datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z"),
+          }
+          pathlib.Path(sys.argv[1]).write_text(json.dumps(certificate, indent=2) + "\n", encoding="utf-8")
+          PY
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: nodex-source-certification-${{ inputs.source_sha }}
