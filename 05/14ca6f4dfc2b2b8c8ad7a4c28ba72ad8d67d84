@@ -1,0 +1,31 @@
+packages/agent-runtime/src/nodex/AcpRegistryInstallation.test.ts
+  s_9cccd37e800d7a::t_0a1b4b7b85fcae 268-270
+packages/agent-runtime/vendor/provider-acp-registry/src/server/AcpRegistrySupport.ts
+  s_74cb07b04fcdc2::t_88322c48f25efb 1192,1195-1200,1219,1233,1351
+packages/agent-runtime/vendor/provider-acp-registry/src/server/testing/AcpRegistrySupport.npm.fixture.sh
+  s_74cb07b04fcdc2::t_24db13a4d3ae21 5-6,10
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "0514ca6f4dfc2b2b8c8ad7a4c28ba72ad8d67d84",
+  "prompts": {},
+  "sessions": {
+    "s_74cb07b04fcdc2": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a16c5e-90b2-7e40-92fb-3de257969ffd",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_9cccd37e800d7a": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a16d80-f1cc-7471-9f61-cb6ea1bc793d",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
