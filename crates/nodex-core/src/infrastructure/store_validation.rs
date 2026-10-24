@@ -297,7 +297,12 @@ fn validate_current_document_projections(connection: &Connection) -> Result<(), 
 
 /// Validates semantic authority encoded by the current Store contract.
 pub(crate) fn validate_store_semantics(connection: &Connection) -> Result<(), StoreError> {
-    validate_store_semantics_for_view_contract(connection, DatabaseViewStorageContract::V6, true)
+    validate_store_semantics_for_view_contract(
+        connection,
+        DatabaseViewStorageContract::V6,
+        true,
+        CURRENT_DOCUMENT_MATERIALIZATION_DERIVATION_VERSION,
+    )
 }
 
 /// Validates semantic authority while decoding versioned storage envelopes
@@ -306,14 +311,21 @@ pub(crate) fn validate_migration_source_semantics(
     connection: &Connection,
     view_contract: DatabaseViewStorageContract,
     has_library_files: bool,
+    materialization_derivation_version: i64,
 ) -> Result<(), StoreError> {
-    validate_store_semantics_for_view_contract(connection, view_contract, has_library_files)
+    validate_store_semantics_for_view_contract(
+        connection,
+        view_contract,
+        has_library_files,
+        materialization_derivation_version,
+    )
 }
 
 fn validate_store_semantics_for_view_contract(
     connection: &Connection,
     view_contract: DatabaseViewStorageContract,
     has_library_files: bool,
+    materialization_derivation_version: i64,
 ) -> Result<(), StoreError> {
     let started_at = Instant::now();
     validate_codex_thread_timestamp_invariants(connection)?;
@@ -338,7 +350,7 @@ fn validate_store_semantics_for_view_contract(
     validate_structural_edit_evidence(connection, has_library_files)?;
     validate_document_version_retention_index(connection)?;
     validate_block_retention_state(connection)?;
-    validate_document_materialization_derivation(connection)?;
+    validate_document_materialization_derivation(connection, materialization_derivation_version)?;
     tracing::info!(
         durationMs = duration_millis(started_at.elapsed()),
         "Semantic Store validation completed"
@@ -1073,11 +1085,14 @@ fn validate_structural_edit_evidence(
     expect_zero(invalid_members, "invalid structural retention members")
 }
 
-fn validate_document_materialization_derivation(connection: &Connection) -> Result<(), StoreError> {
+fn validate_document_materialization_derivation(
+    connection: &Connection,
+    expected_version: i64,
+) -> Result<(), StoreError> {
     let stale: i64 = connection.query_row(
         "SELECT count(*) FROM document_materializations \
          WHERE materialization_derivation_version <> ?1",
-        [CURRENT_DOCUMENT_MATERIALIZATION_DERIVATION_VERSION],
+        [expected_version],
         |row| row.get(0),
     )?;
     expect_zero(stale, "Document materializations from an older derivation")

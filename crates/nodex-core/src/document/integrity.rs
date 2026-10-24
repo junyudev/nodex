@@ -6,23 +6,65 @@ use yrs::{ReadTxn, StateVector, Transact, Update};
 use crate::infrastructure::document_repository::{DocumentHeadRow, DocumentReadRepository};
 use crate::infrastructure::sqlite::{StoreError, StoreErrorCode};
 
+use super::persistence::persist_nfm_derivation_upgrade;
+
 use super::{
-    BlockDocumentSchema, CURRENT_DOCUMENT_MATERIALIZATION_DERIVATION_VERSION,
-    DocumentMaterialization, MAX_DOCUMENT_UPDATE_BYTES, create_compatible_document,
-    decode_block_document, decode_state_vector_v1, has_pending_dependencies,
-    materialize_decoded_document,
+    BlockDocumentSchema, DocumentMaterialization, MAX_DOCUMENT_UPDATE_BYTES,
+    create_compatible_document, decode_block_document, decode_state_vector_v1,
+    has_pending_dependencies, materialize_decoded_document,
 };
 
 /// Reconstructs every live Yjs Document from durable updates and proves that its
 /// persisted state vector and materialization are exact.
 pub(crate) fn validate_restore_documents(connection: &Connection) -> Result<usize, StoreError> {
+    validate_documents_for_store_revision(
+        connection,
+        nodex_store_format::CURRENT_STORE_VERSION.into(),
+    )
+}
+
+/// A derived projection is checked with the rules that wrote it, never with a
+/// newer serializer. Revisions 187/188 wrote both known encodings under v2.
+pub(crate) fn validate_documents_for_store_revision(
+    connection: &Connection,
+    store_revision: i64,
+) -> Result<usize, StoreError> {
     let repository = DocumentReadRepository::new(connection);
     let heads = repository.live_yjs_heads()?;
     for head in &heads {
         let reconstructed = reconstruct_live_yjs_document(&repository, head)?;
-        assert_persisted_materialization(&repository, head, &reconstructed)?;
+        assert_persisted_materialization(&repository, head, &reconstructed, store_revision)?;
     }
     Ok(heads.len())
+}
+
+/// Upgrades the NFM encoding after exact source validation. All other derived
+/// fields were proven identical; canonical history, identity indexes, and
+/// owner-scoped references/search/assets keep their existing state and times.
+pub(crate) fn upgrade_document_nfm_derivation(
+    connection: &Connection,
+) -> Result<usize, StoreError> {
+    let repository = DocumentReadRepository::new(connection);
+    let heads = repository.live_yjs_heads()?;
+    for head in &heads {
+        let materialization = reconstruct_live_yjs_document(&repository, head)?;
+        persist_nfm_derivation_upgrade(connection, head, &materialization.nfm)?;
+    }
+    Ok(heads.len())
+}
+
+pub(crate) fn materialization_derivation_for_store_revision(
+    store_revision: i64,
+) -> Result<i64, StoreError> {
+    match store_revision {
+        130..=188 => Ok(2),
+        189 => Ok(3),
+        _ => Err(StoreError::new(
+            StoreErrorCode::UnsupportedSchema,
+            format!("Store v{store_revision} has no registered Document derivation"),
+            false,
+        )),
+    }
 }
 
 fn reconstruct_live_yjs_document(
@@ -110,6 +152,7 @@ fn assert_persisted_materialization(
     repository: &DocumentReadRepository<'_>,
     head: &DocumentHeadRow,
     actual: &DocumentMaterialization,
+    store_revision: i64,
 ) -> Result<(), StoreError> {
     let persisted = repository
         .materialization(&head.id)?
@@ -124,6 +167,17 @@ fn assert_persisted_materialization(
         [&head.id],
         |row| row.get::<_, i64>(0),
     )?;
+    let current_nfm_matches = store_revision >= 187 && persisted.nfm == actual.nfm;
+    let nfm_matches = if current_nfm_matches || store_revision >= 189 {
+        current_nfm_matches
+    } else {
+        let legacy =
+            crate::domain::nfm::materialize_nfm_before_paragraph_protection(&actual.block_tree)
+                .map_err(|error| {
+                    corrupt(format!("Document {} predecessor NFM: {error}", head.id))
+                })?;
+        persisted.nfm == legacy.nfm
+    };
     let mismatched_fields = [
         (persisted.generation != head.generation, "generation"),
         (persisted.projected_seq != head.head_seq, "projected_seq"),
@@ -133,14 +187,14 @@ fn assert_persisted_materialization(
         ),
         (persisted.title != actual.title, "title"),
         (persisted.rich_title != rich_title, "rich_title"),
-        (persisted.nfm != actual.nfm, "nfm"),
+        (!nfm_matches, "nfm"),
         (persisted.plain_text != actual.plain_text, "plain_text"),
         (persisted.preview != actual.preview, "preview"),
         (persisted.block_tree != block_tree, "block_tree"),
         (persisted.references != references, "references"),
         (persisted.asset_refs != asset_refs, "asset_refs"),
         (
-            derivation_version != CURRENT_DOCUMENT_MATERIALIZATION_DERIVATION_VERSION,
+            derivation_version != materialization_derivation_for_store_revision(store_revision)?,
             "materialization_derivation_version",
         ),
     ]
@@ -215,6 +269,26 @@ mod tests {
     use crate::infrastructure::store::SqliteStoreKernel;
 
     use super::*;
+
+    #[test]
+    fn every_published_store_has_an_explicit_document_derivation() {
+        for format in nodex_store_format::PUBLISHED_STORE_FORMATS {
+            materialization_derivation_for_store_revision(format.revision.into()).unwrap();
+        }
+        assert_eq!(
+            materialization_derivation_for_store_revision(
+                nodex_store_format::CURRENT_STORE_VERSION.into()
+            )
+            .unwrap(),
+            crate::document::CURRENT_DOCUMENT_MATERIALIZATION_DERIVATION_VERSION,
+        );
+        assert!(
+            materialization_derivation_for_store_revision(
+                i64::from(nodex_store_format::CURRENT_STORE_VERSION) + 1
+            )
+            .is_err()
+        );
+    }
 
     #[test]
     fn fresh_store_has_exact_restore_documents() {

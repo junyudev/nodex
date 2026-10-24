@@ -242,6 +242,19 @@ pub enum NfmMaterializationError {
 pub fn materialize_nfm(
     block_tree: &[MaterializedBlockNode],
 ) -> Result<NfmMaterialization, NfmMaterializationError> {
+    materialize_nfm_with_paragraph_protection::<true>(block_tree)
+}
+
+/// Exact predecessor encoding, used only to prove persisted projections before upgrade.
+pub(crate) fn materialize_nfm_before_paragraph_protection(
+    block_tree: &[MaterializedBlockNode],
+) -> Result<NfmMaterialization, NfmMaterializationError> {
+    materialize_nfm_with_paragraph_protection::<false>(block_tree)
+}
+
+fn materialize_nfm_with_paragraph_protection<const PROTECT_PARAGRAPHS: bool>(
+    block_tree: &[MaterializedBlockNode],
+) -> Result<NfmMaterialization, NfmMaterializationError> {
     let blocks = block_tree
         .iter()
         .map(materialize_block)
@@ -249,7 +262,9 @@ pub fn materialize_nfm(
     let nfm = if semantic_empty_document_root(block_tree).is_some() {
         String::new()
     } else {
-        serialize_nfm(&blocks)
+        serialize_blocks::<false, PROTECT_PARAGRAPHS>(&blocks, 0)
+            .0
+            .join("\n")
     };
     let plain_text = extract_plain_text(&blocks);
     let preview = build_preview(&plain_text);
@@ -269,11 +284,11 @@ pub struct NfmSourceBlock {
 }
 
 pub fn serialize_nfm(blocks: &[NfmBlock]) -> String {
-    serialize_blocks::<false>(blocks, 0).0.join("\n")
+    serialize_blocks::<false, true>(blocks, 0).0.join("\n")
 }
 
 pub fn serialize_nfm_located(blocks: &[NfmBlock]) -> (String, Vec<NfmSourceBlock>) {
-    let (lines, locations) = serialize_blocks::<true>(blocks, 0);
+    let (lines, locations) = serialize_blocks::<true, true>(blocks, 0);
     let nfm = lines.join("\n");
     let mut offsets = Vec::with_capacity(lines.len() + 1);
     let mut offset = 0;
@@ -882,7 +897,7 @@ fn resolve_table_alignment(rows: &[Vec<Value>], column_index: usize) -> Option<S
     Some(first.to_owned())
 }
 
-fn serialize_blocks<const LOCATED: bool>(
+fn serialize_blocks<const LOCATED: bool, const PROTECT_PARAGRAPHS: bool>(
     blocks: &[NfmBlock],
     indent: usize,
 ) -> (Vec<String>, Vec<NfmSourceBlock>) {
@@ -909,11 +924,15 @@ fn serialize_blocks<const LOCATED: bool>(
                 } else {
                     lines.push(format!(
                         "{prefix}{}{}",
-                        protect_paragraph_start(&text),
+                        if PROTECT_PARAGRAPHS {
+                            protect_paragraph_start(&text)
+                        } else {
+                            text
+                        },
                         color_suffix(color)
                     ));
                 }
-                append_serialized_children::<LOCATED>(
+                append_serialized_children::<LOCATED, PROTECT_PARAGRAPHS>(
                     &mut lines,
                     &mut locations,
                     &mut child_ranges,
@@ -923,7 +942,7 @@ fn serialize_blocks<const LOCATED: bool>(
             }
             NfmBlock::EmptyBlock { children } => {
                 lines.push(format!("{prefix}<empty-block/>"));
-                append_serialized_children::<LOCATED>(
+                append_serialized_children::<LOCATED, PROTECT_PARAGRAPHS>(
                     &mut lines,
                     &mut locations,
                     &mut child_ranges,
@@ -950,7 +969,7 @@ fn serialize_blocks<const LOCATED: bool>(
                     serialize_inline_content(content),
                     color_suffix(color)
                 ));
-                append_serialized_children::<LOCATED>(
+                append_serialized_children::<LOCATED, PROTECT_PARAGRAPHS>(
                     &mut lines,
                     &mut locations,
                     &mut child_ranges,
@@ -968,7 +987,7 @@ fn serialize_blocks<const LOCATED: bool>(
                     serialize_inline_content(content),
                     color_suffix(color)
                 ));
-                append_serialized_children::<LOCATED>(
+                append_serialized_children::<LOCATED, PROTECT_PARAGRAPHS>(
                     &mut lines,
                     &mut locations,
                     &mut child_ranges,
@@ -988,7 +1007,7 @@ fn serialize_blocks<const LOCATED: bool>(
                     serialize_inline_content(content),
                     color_suffix(color)
                 ));
-                append_serialized_children::<LOCATED>(
+                append_serialized_children::<LOCATED, PROTECT_PARAGRAPHS>(
                     &mut lines,
                     &mut locations,
                     &mut child_ranges,
@@ -1008,7 +1027,7 @@ fn serialize_blocks<const LOCATED: bool>(
                     serialize_inline_content(content),
                     color_suffix(color)
                 ));
-                append_serialized_children::<LOCATED>(
+                append_serialized_children::<LOCATED, PROTECT_PARAGRAPHS>(
                     &mut lines,
                     &mut locations,
                     &mut child_ranges,
@@ -1028,7 +1047,7 @@ fn serialize_blocks<const LOCATED: bool>(
                     serialize_inline_content(content),
                     color_suffix(color)
                 ));
-                append_serialized_children::<LOCATED>(
+                append_serialized_children::<LOCATED, PROTECT_PARAGRAPHS>(
                     &mut lines,
                     &mut locations,
                     &mut child_ranges,
@@ -1046,7 +1065,7 @@ fn serialize_blocks<const LOCATED: bool>(
                     serialize_inline_content(content),
                     color_suffix(color)
                 ));
-                append_serialized_children::<LOCATED>(
+                append_serialized_children::<LOCATED, PROTECT_PARAGRAPHS>(
                     &mut lines,
                     &mut locations,
                     &mut child_ranges,
@@ -1063,7 +1082,7 @@ fn serialize_blocks<const LOCATED: bool>(
                 lines.push(format!("{prefix}{fence}{language}"));
                 lines.extend(code.split('\n').map(|line| format!("{prefix}{line}")));
                 lines.push(format!("{prefix}{fence}"));
-                append_serialized_children::<LOCATED>(
+                append_serialized_children::<LOCATED, PROTECT_PARAGRAPHS>(
                     &mut lines,
                     &mut locations,
                     &mut child_ranges,
@@ -1116,9 +1135,16 @@ fn serialize_blocks<const LOCATED: bool>(
                 lines.push(format!("{prefix}<callout{suffix}>"));
                 let text = serialize_inline_content(content);
                 if !text.is_empty() {
-                    lines.push(format!("{prefix}\t{}", protect_paragraph_start(&text)));
+                    lines.push(format!(
+                        "{prefix}\t{}",
+                        if PROTECT_PARAGRAPHS {
+                            protect_paragraph_start(&text)
+                        } else {
+                            text
+                        }
+                    ));
                 }
-                append_serialized_children::<LOCATED>(
+                append_serialized_children::<LOCATED, PROTECT_PARAGRAPHS>(
                     &mut lines,
                     &mut locations,
                     &mut child_ranges,
@@ -1146,7 +1172,7 @@ fn serialize_blocks<const LOCATED: bool>(
                     attrs.join(" "),
                     serialize_inline_content(caption)
                 ));
-                append_serialized_children::<LOCATED>(
+                append_serialized_children::<LOCATED, PROTECT_PARAGRAPHS>(
                     &mut lines,
                     &mut locations,
                     &mut child_ranges,
@@ -1218,7 +1244,7 @@ fn serialize_blocks<const LOCATED: bool>(
                     format!(" {}", attrs.join(" "))
                 };
                 lines.push(format!("{prefix}<thread-section{suffix} />"));
-                append_serialized_children::<LOCATED>(
+                append_serialized_children::<LOCATED, PROTECT_PARAGRAPHS>(
                     &mut lines,
                     &mut locations,
                     &mut child_ranges,
@@ -1228,7 +1254,7 @@ fn serialize_blocks<const LOCATED: bool>(
             }
             NfmBlock::Divider { children } => {
                 lines.push(format!("{prefix}---"));
-                append_serialized_children::<LOCATED>(
+                append_serialized_children::<LOCATED, PROTECT_PARAGRAPHS>(
                     &mut lines,
                     &mut locations,
                     &mut child_ranges,
@@ -1254,7 +1280,7 @@ fn serialize_blocks<const LOCATED: bool>(
     (lines, locations)
 }
 
-fn append_serialized_children<const LOCATED: bool>(
+fn append_serialized_children<const LOCATED: bool, const PROTECT_PARAGRAPHS: bool>(
     lines: &mut Vec<String>,
     locations: &mut Vec<NfmSourceBlock>,
     child_ranges: &mut Vec<std::ops::Range<usize>>,
@@ -1265,7 +1291,8 @@ fn append_serialized_children<const LOCATED: bool>(
         return;
     }
     let offset = lines.len();
-    let (child_lines, child_locations) = serialize_blocks::<LOCATED>(children, indent);
+    let (child_lines, child_locations) =
+        serialize_blocks::<LOCATED, PROTECT_PARAGRAPHS>(children, indent);
     lines.extend(child_lines);
     if !LOCATED {
         return;

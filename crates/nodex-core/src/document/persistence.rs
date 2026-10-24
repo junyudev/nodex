@@ -1560,6 +1560,41 @@ pub(crate) fn persist_materialization(
     replace_page_reference_projection(connection, document_id, &materialization.references, now)
 }
 
+/// An NFM encoding change does not change Block identity, text, references or
+/// user modification times. Refresh only the projections that contain its bytes.
+pub(crate) fn persist_nfm_derivation_upgrade(
+    connection: &Connection,
+    head: &DocumentHeadRow,
+    nfm: &str,
+) -> Result<(), StoreError> {
+    let changed = connection.execute(
+        "UPDATE document_materializations SET nfm=?1, materialization_derivation_version=?2
+         WHERE document_id=?3 AND generation=?4 AND projected_seq=?5 AND schema_version=?6",
+        params![
+            nfm,
+            CURRENT_DOCUMENT_MATERIALIZATION_DERIVATION_VERSION,
+            head.id,
+            head.generation,
+            head.head_seq,
+            head.schema_version
+        ],
+    )?;
+    if changed != 1 {
+        return Err(corrupt(
+            "NFM derivation upgrade requires a materialization at the exact Document head",
+        ));
+    }
+    connection.execute(
+        "UPDATE page_read_model SET description_length=?1,has_description=?2 WHERE document_id=?3",
+        params![
+            i64::try_from(nfm.len()).map_err(|_| internal("Page description length overflow"))?,
+            i64::from(!nfm.trim().is_empty()),
+            head.id
+        ],
+    )?;
+    Ok(())
+}
+
 /// Rebuilds a schema-derived materialization without turning retained, unowned
 /// recovery Documents back into visible reference sources. Their full
 /// materialization remains durable for Undo/restore; only owner-scoped reverse

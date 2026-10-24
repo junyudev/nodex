@@ -16,7 +16,10 @@ use serde_json::{Map, Value, json};
 use sha2::{Digest, Sha256};
 
 use crate::database::repair_scheduled_page_indexes;
-use crate::document::integrity::validate_restore_documents;
+use crate::document::integrity::{
+    materialization_derivation_for_store_revision, upgrade_document_nfm_derivation,
+    validate_documents_for_store_revision, validate_restore_documents,
+};
 use crate::document::{
     migrate_block_children_contract, repair_document_schema_projections,
     validate_block_children_migration_source,
@@ -351,6 +354,11 @@ const MIGRATION_STEPS: &[MigrationStep] = &[
         to_revision: 188,
         apply: migrate_v187_to_v188,
     },
+    MigrationStep {
+        from_revision: 188,
+        to_revision: 189,
+        apply: migrate_v188_to_v189,
+    },
 ];
 
 fn resolve_migration_path(
@@ -612,9 +620,10 @@ fn validate_migration_source(
         connection,
         view_contract,
         source_revision >= LIBRARY_FILES_STORE_REVISION,
+        materialization_derivation_for_store_revision(source_revision)?,
     )?;
     if source_revision >= CURRENT_DOCUMENT_SCHEMA_REVISION {
-        validate_restore_documents(connection)?;
+        validate_documents_for_store_revision(connection, source_revision)?;
     } else {
         validate_block_children_migration_source(connection)?;
     }
@@ -2448,6 +2457,25 @@ fn migrate_v187_to_v188(
     Ok(())
 }
 
+/// Derivation changes are Store format changes even when the canonical Yrs
+/// schema is unchanged. The source was proven before the migration backup.
+fn migrate_v188_to_v189(
+    connection: &Connection,
+    context: &MigrationContext,
+) -> Result<(), StoreError> {
+    connection.execute_batch(include_str!("../../schema/migrations/v188_to_v189.sql"))?;
+    let rebuilt = upgrade_document_nfm_derivation(connection)?;
+    validate_restore_documents(connection)?;
+    connection.execute(
+        "INSERT INTO core_store_migration_history(source_revision,target_revision,source_schema_fingerprint,target_schema_fingerprint,backup_name,completed_at_unix_ms,evidence_json) VALUES (?1,?2,?3,?4,?5,?6,?7)",
+        params![context.source_revision, context.target_revision, context.source_schema_fingerprint,
+            context.target_schema_fingerprint, context.backup_name, context.completed_at_unix_ms,
+            json!({"document_materialization_derivation": 3, "rebuilt_documents": rebuilt}).to_string()],
+    )?;
+    connection.pragma_update(None, "user_version", context.target_revision)?;
+    Ok(())
+}
+
 fn migrate_v184_to_v185(
     connection: &Connection,
     context: &MigrationContext,
@@ -3032,6 +3060,10 @@ fn test_current_store_template() -> Result<&'static Mutex<Connection>, StoreErro
         .get()
         .ok_or_else(|| corrupt("Test Store template was not initialized"))
 }
+
+#[cfg(test)]
+#[path = "migration_derivation_tests.rs"]
+mod derivation_tests;
 
 #[cfg(test)]
 mod tests {
@@ -4233,7 +4265,7 @@ mod tests {
         install_intermediate_fixture(home, 148);
     }
 
-    fn install_intermediate_fixture(home: &Path, target_revision: i64) {
+    pub(super) fn install_intermediate_fixture(home: &Path, target_revision: i64) {
         install_v136_fixture(home);
         let mut connection = open_writer(&home.join("nodex.db")).expect("v136 writer");
         with_schema_rebuild_transaction(&mut connection, |transaction| {
@@ -6094,12 +6126,31 @@ mod tests {
         connection
             .execute("DELETE FROM local_commit_visibility_context", [])
             .expect("finish fixture maintenance writes");
+        super::derivation_tests::rewrite_as_predecessor(&connection, 151);
         validate_migration_source(&connection, 151).expect("valid v151 File source");
+        let block_ownership = |connection: &Connection| {
+            connection
+                .prepare("SELECT block_id,document_id FROM document_block_index ORDER BY block_id")
+                .unwrap()
+                .query_map([], |row| {
+                    Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+                })
+                .unwrap()
+                .collect::<rusqlite::Result<Vec<_>>>()
+                .unwrap()
+        };
+        let predecessor_ownership = block_ownership(&connection);
+        assert!(!predecessor_ownership.is_empty());
 
         let preparation = prepare_profile_store(&mut connection, directory.path())
             .expect("migrate v151 Page File");
         assert_eq!(preparation.migrated_from_version, Some(151));
         validate_current_store(&connection).expect("valid current File Store");
+        assert_eq!(
+            block_ownership(&connection),
+            predecessor_ownership,
+            "Retained unowned Documents must not claim the live owner's Block index"
+        );
 
         let empty_canvas_version: i64 = connection
             .query_row(
@@ -7346,6 +7397,13 @@ mod tests {
                 },
             )
             .expect("v187 capture");
+        predecessor
+            .writer()
+            .call(|connection| {
+                super::derivation_tests::rewrite_as_predecessor(connection, 187);
+                Ok(())
+            })
+            .unwrap();
         drop(module);
         drop(predecessor);
 
@@ -7588,6 +7646,7 @@ mod tests {
                 )?;
                 Ok(())
             })?;
+            super::derivation_tests::rewrite_as_predecessor(connection, 184);
             validate_migration_source(connection, 184)
         }).expect("valid historical Inbox closure");
         drop(module);

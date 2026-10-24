@@ -203,18 +203,24 @@ new epoch.
 
 Yrs is the authority for Document content during migration. If a migration
 changes the interpretation of derived materialization records, Core validates
-the Yrs update chain and state vector before the transaction, rebuilds the
-current materialization, Block index, Page references, Page read model, search,
-and asset projections through the ordinary Document projection writer inside
-that transaction, repairs scheduled-Page lifecycle and metadata coordinates
-through the ordinary Database projection writer, then performs the exact current
-projection checks afterward.
+the Yrs update chain, state vector, and exact persisted projections against their
+published source derivation before the transaction. It rebuilds affected fields
+through the owning Document or Database persistence boundary, then performs the
+exact current projection checks afterward. A serializer-only change preserves
+unaffected indexes, references, search, assets, and modification times. The Block
+identity index stays unchanged when the canonical tree is unchanged; retained
+recovery Documents can contain Block IDs currently indexed under another Document.
+
 Retained unowned Documents keep restore-grade materialization and index state
 without leaking through owner-scoped projections. Migration checkpoints cover
 only Documents with current Block ownership; retained unowned Documents preserve
 their recovery data without acquiring new current-content checkpoints. The
 materialization derivation version is independent from the Document schema
-version so future derived-record changes can add an explicit rebuild step.
+version. Every persisted derivation change, including serializer escaping, must
+advance that version and the Store revision together, retain an exact predecessor
+validator for the supported source window, and add an atomic projection rebuild.
+Offline Profile-clone validation uses the same source contract as startup; it
+never rewrites the source or substitutes current rendering for source integrity.
 
 Unknown, future, ambiguous, drifted, partially migrated, or damaged inventories
 fail closed before backup or mutation. Reopening a current Store validates its

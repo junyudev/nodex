@@ -238,7 +238,7 @@ CREATE TABLE document_materializations (
       block_tree_json TEXT NOT NULL,
       references_json TEXT NOT NULL DEFAULT '[]',
       asset_refs_json TEXT NOT NULL DEFAULT '[]',
-      updated_at TEXT NOT NULL, materialization_derivation_version INTEGER NOT NULL DEFAULT 2 CHECK (materialization_derivation_version >= 1),
+      updated_at TEXT NOT NULL, materialization_derivation_version INTEGER NOT NULL DEFAULT 3 CHECK (materialization_derivation_version >= 1),
       CHECK (json_valid(block_tree_json) AND json_type(block_tree_json) = 'array'),
       CHECK (json_valid(title_rich_json) AND json_type(title_rich_json) = 'array'),
       CHECK (length(title_rich_hash) = 64),
@@ -4490,7 +4490,7 @@ CREATE TABLE inbox_decision_undo (
   consumed INTEGER NOT NULL DEFAULT 0 CHECK(consumed IN (0,1))
 ) WITHOUT ROWID, STRICT;
 
-PRAGMA user_version = 188;
+PRAGMA user_version = 189;
 
 CREATE TABLE document_recovery_drafts (
     library_id TEXT NOT NULL REFERENCES libraries(id) ON DELETE CASCADE,

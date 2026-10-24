@@ -30,7 +30,7 @@ const REUSABLE_TEMPLATE_OWNER_TYPE: &str = "reusable_template_source";
 /// This is deliberately independent from `DocumentMaterialization::schema_version`:
 /// the latter describes the Yrs document shape, while this value describes the
 /// interpretation of its derived records.
-pub(crate) const CURRENT_DOCUMENT_MATERIALIZATION_DERIVATION_VERSION: i64 = 2;
+pub(crate) const CURRENT_DOCUMENT_MATERIALIZATION_DERIVATION_VERSION: i64 = 3;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
