@@ -57,15 +57,37 @@ export const make = Effect.gen(function* () {
     readonly phase: string;
     readonly read: Effect.Effect<{ readonly phase: string }, unknown>;
     readonly settled?: () => void;
+    readonly released?: () => void;
   };
   // Operation admission is capped at 256; authentication has one slot per configured instance.
   const observations = new Map<string, Observation>();
   const observed = new Set<string>();
+  const isPendingPhase = (phase: string) =>
+    ["running", "starting", "waiting", "verifying"].includes(phase);
+  const recordCompletion = (observation: Observation, phase: string) =>
+    Effect.gen(function* () {
+      observation.settled?.();
+      if (observed.size >= 256) observed.delete(observed.values().next().value!);
+      observed.add(observation.key);
+      if (phase === "succeeded") yield* changed;
+    });
+  const releaseObservation = (slot: string, observation: Observation) => {
+    if (observations.get(slot) !== observation) return;
+    observations.delete(slot);
+    observation.released?.();
+  };
   const observeCompletion = (input: Observation) =>
     Effect.gen(function* () {
       if (observed.has(input.key)) return;
       const slot = input.slot ?? input.key;
       if (observations.get(slot)?.key === input.key) return;
+      const previous = observations.get(slot);
+      if (previous) releaseObservation(slot, previous);
+      if (!isPendingPhase(input.phase)) {
+        input.released?.();
+        yield* recordCompletion(input, input.phase);
+        return;
+      }
       observations.set(slot, input);
       yield* PubSub.publish(observationSignals, undefined);
     });
@@ -75,29 +97,22 @@ export const make = Effect.gen(function* () {
   ) {
     const process = yield* runtime.currentConnection;
     if (process?.identity.runtimeGeneration !== observation.generation) {
-      if (observations.get(slot) === observation) observations.delete(slot);
+      releaseObservation(slot, observation);
       return;
     }
-    const result = yield* Effect.result(
-      ["running", "starting", "waiting", "verifying"].includes(observation.phase)
-        ? observation.read
-        : Effect.succeed({ phase: observation.phase }),
-    );
+    const result = yield* Effect.result(observation.read);
     if (observations.get(slot) !== observation) return;
     const current = yield* runtime.currentConnection;
     if (
       current?.identity.runtimeGeneration !== observation.generation ||
       result._tag === "Failure"
     ) {
-      observations.delete(slot);
+      releaseObservation(slot, observation);
       return;
     }
-    if (["running", "starting", "waiting", "verifying"].includes(result.success.phase)) return;
-    observations.delete(slot);
-    observation.settled?.();
-    if (observed.size >= 256) observed.delete(observed.values().next().value!);
-    observed.add(observation.key);
-    if (result.success.phase === "succeeded") yield* changed;
+    if (isPendingPhase(result.success.phase)) return;
+    releaseObservation(slot, observation);
+    yield* recordCompletion(observation, result.success.phase);
   });
   const observationSubscription = yield* PubSub.subscribe(observationSignals);
   yield* Stream.fromSubscription(observationSubscription).pipe(
@@ -115,16 +130,18 @@ export const make = Effect.gen(function* () {
     ),
     Effect.forkScoped({ startImmediately: true }),
   );
-  const flows = new Map<
-    string,
-    {
-      instanceId: string;
-      ownerId: string;
-      flowId: string;
-      configurationDigest: string;
-      generation: string;
-    }
-  >();
+  type AuthenticationFlow = {
+    instanceId: string;
+    ownerId: string;
+    flowId: string;
+    configurationDigest: string;
+    generation: string;
+  };
+  const flows = new Map<string, AuthenticationFlow>();
+  const releaseFlow = (flowKey: string, flow: AuthenticationFlow | undefined) => {
+    // Async cleanup owns its captured flow, never a replacement sign-in in the same window.
+    if (flow && flows.get(flowKey) === flow) flows.delete(flowKey);
+  };
   const pendingAuthentication = new Map<string, Set<{ released: boolean }>>();
   const operations = new Map<
     string,
@@ -188,7 +205,8 @@ export const make = Effect.gen(function* () {
     ownerId: string,
     input: { readonly instanceId: string; readonly flowId?: string },
   ) {
-    const saved = flows.get(key(ownerId, input.instanceId));
+    const flowKey = key(ownerId, input.instanceId);
+    const saved = flows.get(flowKey);
     if (saved && input.flowId !== undefined && saved.flowId !== input.flowId)
       return yield* new AcpAgentsError({
         message: "This sign-in flow is no longer active. Start sign-in again.",
@@ -214,13 +232,13 @@ export const make = Effect.gen(function* () {
             ownerId,
           })
           .pipe(Effect.ignore);
-      flows.delete(key(ownerId, input.instanceId));
+      releaseFlow(flowKey, saved);
       return yield* new AcpAgentsError({
         message: "This sign-in flow is no longer active. Start sign-in again.",
         reason: "operation_expired",
       });
     }
-    return { process, instanceId: saved.instanceId };
+    return { process, instanceId: saved.instanceId, flow: saved };
   });
   const operationTarget = Effect.fn("AcpAgents.operationTarget")(function* (
     ownerId: string,
@@ -418,6 +436,8 @@ export const make = Effect.gen(function* () {
             const resolved = yield* instance(input.instanceId);
             const digest = yield* configurationDigest(input.instanceId);
             const process = yield* connection();
+            const flowKey = key(ownerId, input.instanceId);
+            const previous = flows.get(flowKey);
             const result = yield* process.request("acp.auth.start", {
               ...input,
               instanceId: resolved.instanceId,
@@ -437,29 +457,33 @@ export const make = Effect.gen(function* () {
                 message: "This sign-in flow is no longer active. Start sign-in again.",
               });
             }
-            if (result.flowId)
-              flows.set(key(ownerId, input.instanceId), {
+            if (!result.flowId) releaseFlow(flowKey, previous);
+            else {
+              const flow = {
                 ...resolved,
                 configurationDigest: digest,
                 ownerId,
                 flowId: result.flowId,
                 generation: process.identity.runtimeGeneration,
-              });
-            if (result.flowId)
+              };
+              if (["starting", "waiting", "verifying"].includes(result.phase))
+                flows.set(flowKey, flow);
+              else releaseFlow(flowKey, previous);
               yield* observeCompletion({
                 key: `auth:${process.identity.runtimeGeneration}:${resolved.instanceId}:${result.flowId}`,
                 slot: `auth:${resolved.instanceId}`,
                 generation: process.identity.runtimeGeneration,
                 phase: result.phase,
                 read: Effect.gen(function* () {
-                  const saved = flows.get(key(ownerId, input.instanceId));
-                  if (!saved || saved.flowId !== result.flowId) return { phase: "cancelled" };
+                  if (flows.get(flowKey) !== flow) return { phase: "cancelled" };
                   return yield* process.request("acp.auth.read", {
                     instanceId: resolved.instanceId,
                     ownerId,
                   });
                 }),
+                released: () => releaseFlow(flowKey, flow),
               });
+            }
             return authState(input.instanceId, result);
           }),
         (pending) =>
@@ -518,7 +542,7 @@ export const make = Effect.gen(function* () {
           instanceId: resolved.instanceId,
           ownerId,
         });
-        flows.delete(key(ownerId, input.instanceId));
+        releaseFlow(key(ownerId, input.instanceId), resolved.flow);
         return authState(input.instanceId, result);
       }),
     "acp.auth.logout": (_owner, input) =>
@@ -610,7 +634,7 @@ export const make = Effect.gen(function* () {
     const process = yield* runtime.currentConnection;
     const owned = [...flows.entries()].filter(([, flow]) => flow.ownerId === ownerId);
     for (const [entry, flow] of owned) {
-      flows.delete(entry);
+      releaseFlow(entry, flow);
       if (process && flow.generation === process.identity.runtimeGeneration)
         yield* process
           .request("acp.auth.cancel", { instanceId: flow.instanceId, flowId: flow.flowId, ownerId })

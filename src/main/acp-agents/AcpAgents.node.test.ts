@@ -21,11 +21,19 @@ import { testLayer } from "../app/MainConfig";
 const setup = Effect.gen(function* () {
   const authenticationStarted = yield* Deferred.make<void>();
   const authenticationRelease = yield* Deferred.make<void>();
+  const cancellationStarted = yield* Deferred.make<void>();
+  const cancellationRelease = yield* Deferred.make<void>();
+  const authenticationReadStarted = yield* Deferred.make<void>();
+  const authenticationReadRelease = yield* Deferred.make<void>();
   const calls: { method: string; input: Record<string, unknown> }[] = [];
   const state = {
     rejectOperations: false,
     flowId: "flow",
     pauseAuthentication: false,
+    pauseCancellation: false,
+    pauseAuthenticationRead: false,
+    rejectAuthenticationRead: false,
+    instanceIds: ["personal", "work"],
     operationPhase: "running",
     authenticationPhase: "waiting",
     connected: true,
@@ -72,6 +80,25 @@ const setup = Effect.gen(function* () {
             )
           : Effect.void,
       ),
+      Effect.tap(() =>
+        method === "acp.auth.cancel" && state.pauseCancellation
+          ? Deferred.succeed(cancellationStarted, undefined).pipe(
+              Effect.andThen(Deferred.await(cancellationRelease)),
+            )
+          : Effect.void,
+      ),
+      Effect.tap(() =>
+        method === "acp.auth.read" && state.pauseAuthenticationRead
+          ? Deferred.succeed(authenticationReadStarted, undefined).pipe(
+              Effect.andThen(Deferred.await(authenticationReadRelease)),
+            )
+          : Effect.void,
+      ),
+      Effect.tap(() =>
+        method === "acp.auth.read" && state.rejectAuthenticationRead
+          ? Effect.fail(new Error("Agent instance was removed"))
+          : Effect.void,
+      ),
     );
   const process = () => ({ identity: { runtimeGeneration: state.generation }, request });
   const agents = yield* make.pipe(
@@ -103,7 +130,7 @@ const setup = Effect.gen(function* () {
         Effect.succeed({
           revision: state.revision,
           acpAgents: {
-            instances: ["personal", "work"].map((id) => ({
+            instances: state.instanceIds.map((id) => ({
               id,
               agentDefinitionId: "qoder",
               enabled: state.enabled,
@@ -127,7 +154,17 @@ const setup = Effect.gen(function* () {
     } as unknown as FileSystem.FileSystem),
     Effect.provide(testLayer()),
   );
-  return { agents, calls, state, authenticationStarted, authenticationRelease };
+  return {
+    agents,
+    calls,
+    state,
+    authenticationStarted,
+    authenticationRelease,
+    cancellationStarted,
+    cancellationRelease,
+    authenticationReadStarted,
+    authenticationReadRelease,
+  };
 });
 it.effect(
   "resolves public instance and Project identities before sending management requests",
@@ -398,6 +435,120 @@ it.effect("rejects delayed responses to an older sign-in without cancelling the 
       response: { type: "terminal", data: "current" },
     });
     assert.equal(calls.filter(({ method }) => method === "acp.auth.respond").length, 1);
+    assert.equal(calls.at(-1)?.input.flowId, "flow-b");
+  }),
+);
+
+it.effect.each(["cancel", "configuration-change"] as const)(
+  "preserves a new sign-in when the previous flow's %s cancellation returns late",
+  (reason) =>
+    Effect.gen(function* () {
+      const { agents, calls, state, cancellationStarted, cancellationRelease } = yield* setup;
+      state.flowId = "flow-a";
+      yield* agents["acp.auth.start"]("window", { instanceId: "personal" });
+      state.pauseCancellation = true;
+      if (reason === "configuration-change") state.secret = "new-secret";
+      const cancelling = yield* Effect.forkChild(
+        Effect.result(
+          reason === "cancel"
+            ? agents["acp.auth.cancel"]("window", {
+                instanceId: "personal",
+                flowId: "flow-a",
+              })
+            : agents["acp.auth.respond"]("window", {
+                instanceId: "personal",
+                flowId: "flow-a",
+                interactionId: "terminal",
+                response: { type: "terminal", data: "old" },
+              }),
+        ),
+      );
+      yield* Deferred.await(cancellationStarted);
+      state.flowId = "flow-b";
+      yield* agents["acp.auth.start"]("window", { instanceId: "personal" });
+      yield* Deferred.succeed(cancellationRelease, undefined);
+      assert.equal(
+        (yield* Fiber.join(cancelling))._tag,
+        reason === "cancel" ? "Success" : "Failure",
+      );
+      yield* agents["acp.auth.respond"]("window", {
+        instanceId: "personal",
+        flowId: "flow-b",
+        interactionId: "terminal",
+        response: { type: "terminal", data: "current" },
+      });
+      assert.deepEqual(
+        calls
+          .filter(({ method }) => method === "acp.auth.cancel")
+          .map(({ input }) => input.flowId),
+        ["flow-a"],
+      );
+      assert.equal(calls.at(-1)?.method, "acp.auth.respond");
+      assert.equal(calls.at(-1)?.input.flowId, "flow-b");
+    }),
+);
+
+it.effect("does not retain completed sign-ins after repeatedly removing their instances", () =>
+  Effect.gen(function* () {
+    const { agents, calls, state } = yield* setup;
+    for (let index = 0; index < 100; index += 1) {
+      const instanceId = `instance-${index}`;
+      state.instanceIds = [instanceId];
+      state.flowId = `flow-${index}`;
+      state.authenticationPhase = index % 2 === 0 ? "succeeded" : "failed";
+      yield* agents["acp.auth.start"]("window", { instanceId });
+      state.instanceIds = [];
+    }
+    yield* agents.releaseOwner("window");
+    assert.equal(calls.filter(({ method }) => method === "acp.auth.cancel").length, 0);
+  }),
+);
+
+it.effect.each(["succeeded", "failed", "cancelled", "removed", "generation"])(
+  "releases an observed sign-in after it becomes %s",
+  (outcome) =>
+    Effect.gen(function* () {
+      const { agents, calls, state } = yield* setup;
+      yield* agents["acp.auth.start"]("window", { instanceId: "personal" });
+      if (outcome === "removed") {
+        state.instanceIds = [];
+        state.rejectAuthenticationRead = true;
+      } else if (outcome === "generation") state.generation = "replacement";
+      else state.authenticationPhase = outcome;
+      yield* TestClock.adjust("500 millis");
+      if (["succeeded", "failed", "cancelled"].includes(outcome)) {
+        state.secret = "changed-after-completion";
+        const current = yield* agents["acp.auth.read"]("window", { instanceId: "personal" });
+        assert.equal(current.phase, outcome);
+      }
+      state.generation = "generation-one";
+      yield* agents.releaseOwner("window");
+      assert.equal(calls.filter(({ method }) => method === "acp.auth.cancel").length, 0);
+    }),
+);
+
+it.effect("keeps a new sign-in when the previous observer returns a late terminal state", () =>
+  Effect.gen(function* () {
+    const { agents, calls, state, authenticationReadStarted, authenticationReadRelease } =
+      yield* setup;
+    state.flowId = "flow-a";
+    yield* agents["acp.auth.start"]("window", { instanceId: "personal" });
+    state.pauseAuthenticationRead = true;
+    state.authenticationPhase = "succeeded";
+    const ticking = yield* Effect.forkChild(TestClock.adjust("500 millis"));
+    yield* Deferred.await(authenticationReadStarted);
+    state.flowId = "flow-b";
+    state.authenticationPhase = "waiting";
+    yield* agents["acp.auth.start"]("window", { instanceId: "personal" });
+    yield* Deferred.succeed(authenticationReadRelease, undefined);
+    yield* Fiber.join(ticking);
+    yield* agents["acp.auth.respond"]("window", {
+      instanceId: "personal",
+      flowId: "flow-b",
+      interactionId: "terminal",
+      response: { type: "terminal", data: "current" },
+    });
+    assert.equal(calls.at(-1)?.method, "acp.auth.respond");
     assert.equal(calls.at(-1)?.input.flowId, "flow-b");
   }),
 );
