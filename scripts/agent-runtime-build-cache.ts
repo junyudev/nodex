@@ -17,6 +17,8 @@ import { fileURLToPath } from "node:url";
 import { immutableDirectoryDigest } from "./immutable-artifact-cache";
 import { type NodeBuildMode } from "../config/node-build-optimization";
 
+import type { AgentRuntimeNative } from "./agent-runtime-native";
+
 const implementationPath = fileURLToPath(import.meta.url);
 const ignoredDirectories = new Set([
   ".cache",
@@ -186,6 +188,7 @@ export interface AgentRuntimeBuildIdentity {
   readonly sdk: string;
   readonly mode: NodeBuildMode;
   readonly inputs: readonly string[];
+  readonly native: AgentRuntimeNative;
 }
 
 export function agentRuntimeBuildIdentity(input: AgentRuntimeBuildIdentity): string {
@@ -239,6 +242,11 @@ export function agentRuntimeBuildIdentity(input: AgentRuntimeBuildIdentity): str
         .filter(Boolean)
         .map((path) => [path, dependencyLinks(path)]),
       sdk: [input.sdk, immutableDirectoryDigest(input.sdk)],
+      native: [
+        input.native.identity,
+        immutableDirectoryDigest(input.native.packageRoot),
+        digest(readFileSync(input.native.manifestPath)),
+      ],
     }),
   );
 }

@@ -19,6 +19,7 @@ import { fileURLToPath } from "node:url";
 import { inspectOfficialAgentSkillsArtifact } from "./official-agent-skills-artifact.mjs";
 import { BUNDLED_ELECTRON_MAIN_DEPENDENCIES } from "../config/electron-main-runtime-closure";
 import { NODEX_ACCOUNT_BUILD_VARIABLES } from "../config/nodex-account-build";
+import { resolveAgentRuntimeNode, type AgentRuntimeNode } from "./agent-runtime-native";
 import { buildAgentRuntime } from "./build-agent-runtime";
 import { nodeBuildOptimizationArguments } from "../config/node-build-optimization";
 import { parseReleaseIdentity, type ReleaseIdentity } from "./release/model";
@@ -381,6 +382,13 @@ const outputInventory = (root: string): FileDigest[] => {
   }
   const requiredExecutionOutputs = [
     "out/agent-runtime/entry.mjs",
+    "out/agent-runtime/native-dependencies.json",
+    "out/agent-runtime/node_modules/node-pty/package.json",
+    "out/agent-runtime/node_modules/node-pty/lib/index.js",
+    ...(process.platform === "darwin"
+      ? ["out/agent-runtime/node_modules/node-pty/build/Release/spawn-helper"]
+      : []),
+    "out/agent-runtime/node_modules/node-pty/build/Release/pty.node",
     "out/agent-runtime/LICENSE.t3code",
     "out/agent-runtime/node_modules/@anthropic-ai/claude-agent-sdk/package.json",
     "out/agent-runtime/node_modules/@anthropic-ai/claude-agent-sdk/sdk.mjs",
@@ -388,6 +396,15 @@ const outputInventory = (root: string): FileDigest[] => {
   for (const required of requiredExecutionOutputs)
     if (!files.some((file) => file.path === required && file.size > 0))
       throw new Error(`Prepared execution output is missing: ${required}`);
+  const nativeManifest = JSON.parse(
+    readFileSync(path.join(root, "out/agent-runtime/native-dependencies.json"), "utf8"),
+  ) as { node: AgentRuntimeNode };
+  const executionNode = resolveAgentRuntimeNode(root);
+  for (const key of ["sha256", "modules", "platform", "architecture"] as const)
+    if (nativeManifest.node?.[key] !== executionNode[key])
+      throw new Error(
+        "Prepared execution native dependency targets a different staged Node; rebuild before packaging.",
+      );
   assertMainDependenciesAreBundled(root, files);
   return files;
 };
@@ -522,7 +539,14 @@ function runProductionBuild(): void {
     process.env.NODEX_AGENT_SKILLS_REQUIRE_PREGENERATED === "1"
       ? "agent-skills:verify"
       : "agent-skills:generate";
-  for (const script of [agentSkillsCommand, "build-resources:prepare", "sync:icons"]) {
+  const runtimePreparation =
+    process.platform === "darwin" ? ["stage:codex-runtime:mac:cached"] : [];
+  for (const script of [
+    ...runtimePreparation,
+    agentSkillsCommand,
+    "build-resources:prepare",
+    "sync:icons",
+  ]) {
     execFileSync("pnpm", ["--silent", "run", script], {
       cwd: repositoryRoot,
       stdio: "inherit",

@@ -430,6 +430,30 @@ notices match. Output corruption triggers a rebuild. Compilation happens in a
 temporary sibling tree and publishes only a complete bundle, preserving the
 previous output if a rebuild fails.
 
+ACP terminal sign-in uses a separate `node-pty` build for the verified staged Node.
+The macOS production build prepares that pinned runtime from the verified cache first.
+`build:agent-runtime` materializes it under
+`.generated/agent-runtime-native/<platform>-<arch>/` from a private source copy and
+packages its JavaScript, native addon and helpers inside
+`out/agent-runtime/node_modules/node-pty/`. Its receipt includes source, dependency,
+Node ABI, toolchain and artifact identities. The root Electron dependency is never
+rebuilt or shared with this execution process. macOS packaging verifies the copied
+closure before signing and reseals its separate manifest afterward.
+
+After staging the runtime and building the bundle, verify terminal sign-in through
+its public management protocol with a disposable home:
+
+```bash
+vp exec tsx scripts/testing/probe-acp-runtime.ts --target-platform darwin --target-arch arm64 --home "$HOME/repo/nodex/runs.local/acp-terminal-probe" --report "$HOME/repo/nodex/notes.local/artifacts/acp-terminal-probe/report.json"
+```
+
+Use `--pty-only` to verify the native Adapter before management integration. Both
+modes require a matching host and staged Node; missing binaries or failed checks
+exit unsuccessfully. The full probe covers input, resize, EOF, credential recheck,
+cancellation and descendant cleanup. A successful terminal exit alone does not
+establish authentication. macOS arm64 is the verified release target; Linux and
+Windows require the same probe on their actual hosts before support is claimed.
+
 Package local macOS installers:
 
 ```bash
@@ -893,8 +917,8 @@ ELECTRON_RUN_AS_NODE=1 ./node_modules/.bin/electron -p "process.versions.modules
 ```
 
 Different values are expected. Do not try to make one `node-pty` binary serve
-both runtimes; keep native-addon work on Electron-owned test and application
-paths. Rust Core tests and binaries are independent of this Node ABI boundary.
+both runtimes. Keep the root addon on Electron-owned test and application
+paths; the execution runtime builds its independent copy as described above. Rust Core tests and binaries are independent of this Node ABI boundary.
 
 ## Related Technical Docs
 

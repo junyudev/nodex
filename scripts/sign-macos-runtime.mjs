@@ -13,6 +13,7 @@ import {
 } from "node:fs";
 import path from "node:path";
 
+import { agentRuntimeNativeDigest } from "./agent-runtime-native-inventory.mjs";
 import { signAsync } from "@electron/osx-sign";
 import { BROWSER_RUNTIME_SCHEMA_VERSION } from "../src/shared/browser-runtime-schema.mjs";
 import { parseCodexAppServerReleaseLock } from "../src/shared/codex-app-server-release-lock.mjs";
@@ -477,6 +478,18 @@ export const applyMacCodeObjectEntitlementPolicy = (options) => {
   };
 };
 
+/** Reseal Nodex-built PTY objects after codesigning without changing vendor manifests. */
+export const refreshSignedAgentRuntimeNativeManifest = (appPath) => {
+  const executionRoot = path.join(appPath, "Contents/Resources/app.asar.unpacked/out/agent-runtime");
+  const executionManifestPath = path.join(executionRoot, "native-dependencies.json");
+  const executionManifest = JSON.parse(readFileSync(executionManifestPath, "utf8"));
+  executionManifest.unsignedArtifactDigest ??= executionManifest.artifactDigest;
+  executionManifest.artifactDigest = agentRuntimeNativeDigest(
+    path.join(executionRoot, "node_modules/node-pty"),
+  );
+  writeManifestAtomically(executionManifestPath, executionManifest);
+};
+
 export const sign = async (options) => {
   const signOptions = applyMacCodeObjectEntitlementPolicy(applyMacSigningMode(options));
   if (signOptions.platform !== "darwin") {
@@ -496,6 +509,7 @@ export const sign = async (options) => {
       matchesIgnore(baseIgnore, filePath),
   });
 
+  refreshSignedAgentRuntimeNativeManifest(signOptions.app);
   refreshSignedNativeRuntimeManifest(signOptions.app);
   refreshSignedBrowserRuntimeManifest(signOptions.app);
   refreshSignedSparkleRuntimeManifest(signOptions.app);

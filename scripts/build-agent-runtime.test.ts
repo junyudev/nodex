@@ -14,8 +14,11 @@ import {
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterEach, beforeEach, expect, test, vi } from "vite-plus/test";
+import { materializeAgentRuntimeNative } from "./agent-runtime-native";
+import { immutableDirectoryDigest } from "./immutable-artifact-cache";
 import { buildAgentRuntime } from "./build-agent-runtime";
 
+vi.mock("./agent-runtime-native", () => ({ materializeAgentRuntimeNative: vi.fn() }));
 vi.mock("node:child_process", () => ({ execFileSync: vi.fn() }));
 vi.mock("node:fs", async (importOriginal) => {
   const fs = await importOriginal<typeof import("node:fs")>();
@@ -35,6 +38,23 @@ function write(path: string, contents: string): void {
 }
 
 beforeEach(() => {
+  vi.mocked(materializeAgentRuntimeNative).mockImplementation((root) => ({
+    packageRoot: join(root, ".generated/agent-runtime-native/node_modules/node-pty"),
+    manifestPath: join(root, ".generated/agent-runtime-native/manifest.json"),
+    identity: "native-build",
+    artifactDigest: immutableDirectoryDigest(
+      join(root, ".generated/agent-runtime-native/node_modules/node-pty"),
+    ),
+    node: {
+      executable: "node",
+      sha256: "digest",
+      version: "24.15.0",
+      modules: "137",
+      napi: "10",
+      platform: "darwin",
+      architecture: "arm64",
+    },
+  }));
   bundles = 0;
   failBuild = false;
   duringBuild = undefined;
@@ -84,6 +104,10 @@ function fixture() {
   const root = mkdtempSync(join(tmpdir(), "nodex-agent-bundle-"));
   roots.push(root);
   const sources = {
+    ".generated/agent-runtime-native/manifest.json": '{"identity":"native-build"}',
+    ".generated/agent-runtime-native/node_modules/node-pty/package.json": '{"version":"1.1.0"}',
+    ".generated/agent-runtime-native/node_modules/node-pty/build/Release/pty.node":
+      "native runtime addon",
     "package.json": '{"name":"nodex"}',
     "pnpm-lock.yaml": "lockfileVersion: 9",
     "pnpm-workspace.yaml": "packages: [packages/*]",
@@ -122,6 +146,8 @@ test("reuses unchanged verified bundles and copied SDK contents without invoking
 });
 
 test.each([
+  ".generated/agent-runtime-native/manifest.json",
+  ".generated/agent-runtime-native/node_modules/node-pty/build/Release/pty.node",
   "packages/agent-runtime/src/nodex/entry.ts",
   "packages/agent-runtime/src/nodex/added.ts",
   "packages/agent-runtime/vendor/new-package/package.json",

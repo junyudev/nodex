@@ -24,6 +24,7 @@ import {
   readAgentRuntimeBuildReceipt,
   withAgentRuntimeBuildLock,
 } from "./agent-runtime-build-cache";
+import { materializeAgentRuntimeNative } from "./agent-runtime-native";
 import { immutableDirectoryDigest } from "./immutable-artifact-cache";
 
 const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -48,8 +49,9 @@ function buildLockedAgentRuntime(root: string, mode: NodeBuildMode): "built" | "
   const require = createRequire(join(root, "package.json"));
   const binary = require.resolve("esbuild/bin/esbuild");
   const sdk = dirname(require.resolve("@anthropic-ai/claude-agent-sdk"));
+  const native = materializeAgentRuntimeNative(root);
   const identityFor = (inputs: readonly string[]) =>
-    agentRuntimeBuildIdentity({ root, binary, sdk, mode, inputs });
+    agentRuntimeBuildIdentity({ root, binary, sdk, mode, inputs, native });
   const receipt = readAgentRuntimeBuildReceipt(receiptPath);
   const reusable = canReuseAgentRuntimeBuild(root);
   if (reusable && receipt) {
@@ -94,6 +96,7 @@ function buildLockedAgentRuntime(root: string, mode: NodeBuildMode): "built" | "
             ...nodeBuildOptimizationArguments(mode),
             "--external:@anthropic-ai/claude-agent-sdk",
             "--external:@ff-labs/fff-node",
+            "--external:node-pty",
             '--banner:js=import { createRequire as nodexCreateRequire } from "node:module"; const require = nodexCreateRequire(import.meta.url);',
             `--outdir=${temporaryOutput}`,
             "--out-extension:.js=.mjs",
@@ -108,6 +111,8 @@ function buildLockedAgentRuntime(root: string, mode: NodeBuildMode): "built" | "
     const packagedSdk = join(temporaryOutput, "node_modules/@anthropic-ai/claude-agent-sdk");
     mkdirSync(dirname(packagedSdk), { recursive: true });
     cpSync(sdk, packagedSdk, { recursive: true });
+    cpSync(native.packageRoot, join(temporaryOutput, "node_modules/node-pty"), { recursive: true });
+    cpSync(native.manifestPath, join(temporaryOutput, "native-dependencies.json"));
     for (const notice of ["LICENSE.t3code", "UPSTREAM.json"])
       cpSync(join(root, "packages/agent-runtime", notice), join(temporaryOutput, notice));
     if (readFileSync(join(temporaryOutput, "entry.mjs")).length === 0) {

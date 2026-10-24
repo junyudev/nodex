@@ -5,6 +5,7 @@ type SigningPolicyResult<T> = Omit<T, "optionsForFile"> & {
   readonly optionsForFile: (filePath: string) => PerFileSignOptions;
 };
 
+export function refreshSignedAgentRuntimeNativeManifest(appPath: string): void;
 export function refreshSignedWorkspaceRuntimeManifest(appPath: string): void;
 export function isWorkspaceRuntimeData(appPath: string, filePath: string): boolean;
 export function isPreservedBrowserRuntimeVendorCode(appPath: string, filePath: string): boolean;

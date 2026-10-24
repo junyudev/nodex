@@ -4,10 +4,23 @@ import path from "node:path";
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { afterEach, describe, expect, test, vi } from "vite-plus/test";
+import { resolveAgentRuntimeNode } from "./agent-runtime-native";
 import {
   recordPreparedElectronBuild,
   verifyPreparedElectronBuild,
 } from "./prepared-electron-build";
+
+vi.mock("./agent-runtime-native", () => ({
+  resolveAgentRuntimeNode: vi.fn(() => ({
+    executable: "/staged/node",
+    sha256: "node-sha",
+    modules: "137",
+    napi: "10",
+    version: "24.21.0",
+    platform: process.platform,
+    architecture: process.arch,
+  })),
+}));
 
 const temporaryRoots: string[] = [];
 
@@ -129,6 +142,13 @@ const makeFixture = (): {
     "tsconfig.web.json",
     "out/main/bootstrap.js",
     "out/agent-runtime/entry.mjs",
+    "out/agent-runtime/native-dependencies.json",
+    "out/agent-runtime/node_modules/node-pty/package.json",
+    "out/agent-runtime/node_modules/node-pty/lib/index.js",
+    ...(process.platform === "darwin"
+      ? ["out/agent-runtime/node_modules/node-pty/build/Release/spawn-helper"]
+      : []),
+    "out/agent-runtime/node_modules/node-pty/build/Release/pty.node",
     "out/agent-runtime/LICENSE.t3code",
     "out/agent-runtime/node_modules/@anthropic-ai/claude-agent-sdk/package.json",
     "out/agent-runtime/node_modules/@anthropic-ai/claude-agent-sdk/sdk.mjs",
@@ -144,6 +164,10 @@ const makeFixture = (): {
     path.join(repositoryRoot, "package.json"),
     `${JSON.stringify({ name: "nodex", version: "1.2.3" })}\n`,
     "utf8",
+  );
+  fs.writeFileSync(
+    path.join(repositoryRoot, "out/agent-runtime/native-dependencies.json"),
+    JSON.stringify({ node: resolveAgentRuntimeNode(repositoryRoot) }),
   );
   writeAgentSkillsArtifact(repositoryRoot);
   return {
@@ -341,4 +365,14 @@ describe("prepared Electron build", () => {
       "inputs changed while the production build was running",
     );
   });
+});
+
+test("rejects reuse when native execution output targets an older staged Node", () => {
+  const fixture = makeFixture();
+  recordPreparedElectronBuild(fixture);
+  vi.mocked(resolveAgentRuntimeNode).mockReturnValueOnce({
+    ...resolveAgentRuntimeNode(fixture.repositoryRoot),
+    sha256: "new-node",
+  });
+  expect(() => verifyPreparedElectronBuild(fixture)).toThrow("different staged Node");
 });

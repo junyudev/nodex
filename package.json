@@ -209,7 +209,7 @@
     "mime-db": "1.52.0",
     "mime-types": "^2.1.35",
     "node-html-parser": "7.0.1",
-    "node-pty": "^1.1.0",
+    "node-pty": "1.1.0",
     "pdfjs-dist": "5.4.296",
     "prettier": "3.8.3",
     "react-colorful": "5.8.1",

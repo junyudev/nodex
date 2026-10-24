@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import { constants, copyFileSync, lstatSync, readFileSync } from "node:fs";
 import path from "node:path";
 
+import { assertPackagedAgentRuntimeNative } from "./agent-runtime-native-inventory.mjs";
 import { BROWSER_RUNTIME_SCHEMA_VERSION } from "../src/shared/browser-runtime-schema.mjs";
 
 const manifestFilename = "browser-runtime-manifest.json";
@@ -117,6 +118,10 @@ export default async function restorePackagedRuntimeClosure(context) {
   if (context.electronPlatformName !== "darwin") return;
   const projectRoot = context.packager.projectDir;
   const appPath = path.join(context.appOutDir, `${context.packager.appInfo.productFilename}.app`);
+  assertPackagedAgentRuntimeNative({
+    sourceRoot: path.join(projectRoot, "out/agent-runtime/node_modules/node-pty"),
+    packagedRoot: path.join(appPath, "Contents/Resources/app.asar.unpacked/out/agent-runtime/node_modules/node-pty"),
+  });
   const restored = restorePackagedBrowserRuntimeClosure({
     sourceBrowserRoot: path.join(projectRoot, ...stagedBrowserRuntimePath),
     packagedBrowserRoot: path.join(appPath, ...packagedBrowserRuntimePath),
