@@ -137,8 +137,10 @@ export type AcpAgentInstanceConfig = Omit<AcpAgentInstanceInput, "environment"> 
 export interface AcpAgentSettings {
   instances: AcpAgentInstanceConfig[];
 }
-/** Application status is a save receipt, never persisted Profile configuration. */
-export interface AcpAgentSettingsUpdateResult extends AcpAgentSettings {
+/** Execution application status is read from the running owner, never persisted as settings. */
+export interface AcpAgentConfigurationStatus {
   readonly deferredInstanceIds: readonly string[];
   readonly configurationStatus: "applied" | "deferred" | "failed";
 }
+export interface AcpAgentSettingsUpdateResult
+  extends AcpAgentSettings, AcpAgentConfigurationStatus {}

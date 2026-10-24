@@ -1,5 +1,4 @@
 import { AcpAgentSettingsUpdateSchema } from "../../../shared/acp-agent-settings";
-import { agentRuntimeProviderId } from "../../../shared/agent-runtime-provider";
 import {
   COMPOSER_PREDICTION_SETTINGS_CHANGED_CHANNEL,
   ComposerPredictionSettingsSchema,
@@ -34,7 +33,10 @@ import type {
   UpdateWindowRestoreSettingsInput,
 } from "../../../shared/types";
 import { MainConfig } from "../../app/MainConfig";
-import { AgentRuntimeProviderConfiguration } from "../../agent-runtime/AgentRuntimeProviderConfiguration";
+import {
+  AgentRuntimeProviderConfiguration,
+  acpConfigurationStatus,
+} from "../../agent-runtime/AgentRuntimeProviderConfiguration";
 import { resolveCodexHome } from "../../codex/codex-home";
 import { inspectCodexAccountHome } from "../../platform/node/CodexAccountHome";
 import { isTrustedAppRendererIpcSender } from "../../app-renderer-ipc-authorization";
@@ -422,6 +424,21 @@ export const live: Layer.Layer<
       ),
     );
     yield* handleRead("settings:acp-agents:get", "ACP Agent settings", (value) => value.acpAgents);
+    yield* ipc.handleQuery("settings:acp-agents:configuration-status", (event) =>
+      authorize(event, "ACP Agent settings").pipe(
+        Effect.andThen(
+          Effect.gen(function* () {
+            const result = yield* Effect.result(runtimeProviders.refresh);
+            const current = yield* applicationSettings.snapshot();
+            return acpConfigurationStatus(
+              current.acpAgents.instances,
+              result._tag === "Success" ? result.success : null,
+            );
+          }),
+        ),
+        Effect.mapError(settingsError("read-acp-agent-configuration-status")),
+      ),
+    );
     yield* ipc.handlePlainCommand("settings:acp-agents:update", (event, input: unknown) =>
       authorize(event, "ACP Agent settings").pipe(
         Effect.andThen(
@@ -435,35 +452,14 @@ export const live: Layer.Layer<
               input: parsed,
             });
             const result = yield* Effect.result(runtimeProviders.refresh);
-            const deferred = new Set(
-              result._tag === "Success" ? result.success.deferredInstanceIds : [],
-            );
             const instances = [...previous.acpAgents.instances, ...saved.acpAgents.instances];
-            const deferredInstanceIds = [
-              ...new Set(
-                instances
-                  .filter((instance) =>
-                    deferred.has(
-                      agentRuntimeProviderId({
-                        kind: "acp",
-                        agentDefinitionId: instance.agentDefinitionId,
-                        instanceConfigId: instance.id,
-                      })!,
-                    ),
-                  )
-                  .map(({ id }) => id),
-              ),
-            ];
             safeBroadcastToWindows(windows.all(), "agent-settings-changed", [undefined]);
             return {
               ...saved.acpAgents,
-              deferredInstanceIds,
-              configurationStatus:
-                result._tag === "Failure"
-                  ? ("failed" as const)
-                  : deferredInstanceIds.length
-                    ? ("deferred" as const)
-                    : ("applied" as const),
+              ...acpConfigurationStatus(
+                instances,
+                result._tag === "Success" ? result.success : null,
+              ),
             };
           }).pipe(Effect.mapError(settingsError("update-acp-agent-settings"))),
         ),

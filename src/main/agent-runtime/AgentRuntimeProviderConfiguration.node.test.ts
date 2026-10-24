@@ -14,8 +14,10 @@ const harness = (initial: AgentRuntimeConnectionState) =>
     const applied = yield* Ref.make(0);
     const settle = yield* makeProviderSettingsRefresh({
       states: SubscriptionRef.changes(state),
-      running: SubscriptionRef.get(state).pipe(Effect.map(({ status }) => status === "ready")),
-      apply: Ref.update(applied, (count) => count + 1),
+      current: SubscriptionRef.get(state).pipe(
+        Effect.map((current) => (current.status === "ready" ? current : null)),
+      ),
+      apply: () => Ref.update(applied, (count) => count + 1),
     });
     return { state, applied, settle };
   });
@@ -62,16 +64,17 @@ it.effect("applies concurrent saves in one lane and reads the latest saved confi
     const applied: boolean[] = [];
     const refresh = yield* makeProviderSettingsRefresh({
       states: Stream.succeed({ status: "ready", generation: "one" } as const),
-      running: Effect.succeed(true),
-      apply: Effect.gen(function* () {
-        const captured = yield* Ref.get(settings);
-        if (captured.enabled) {
-          yield* Deferred.succeed(firstRead, undefined);
-          yield* Deferred.await(releaseFirst);
-        }
-        applied.push(captured.enabled);
-        return captured;
-      }),
+      current: Effect.succeed({ generation: "one" }),
+      apply: () =>
+        Effect.gen(function* () {
+          const captured = yield* Ref.get(settings);
+          if (captured.enabled) {
+            yield* Deferred.succeed(firstRead, undefined);
+            yield* Deferred.await(releaseFirst);
+          }
+          applied.push(captured.enabled);
+          return captured;
+        }),
     });
     const first = yield* Effect.forkChild(refresh);
     yield* Deferred.await(firstRead);
@@ -84,4 +87,22 @@ it.effect("applies concurrent saves in one lane and reads the latest saved confi
     assert.deepEqual(yield* Fiber.join(second), { enabled: false });
     assert.deepEqual(applied, [true, false]);
   }),
+);
+
+it.effect(
+  "does not restart an engine that exits between its ready event and the passive lookup",
+  () =>
+    Effect.gen(function* () {
+      let applied = false;
+      const refresh = yield* makeProviderSettingsRefresh({
+        states: Stream.succeed({ status: "ready", generation: "old" } as const),
+        current: Effect.succeed(null),
+        apply: () =>
+          Effect.sync(() => {
+            applied = true;
+          }),
+      });
+      assert.isUndefined(yield* refresh);
+      assert.isFalse(applied);
+    }),
 );

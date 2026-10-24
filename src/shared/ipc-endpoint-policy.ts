@@ -242,6 +242,7 @@ type QueryEndpointPolicy =
   | "read-file-metadata"
   | "settings:app-updates:get"
   | "settings:acp-agents:get"
+  | "settings:acp-agents:configuration-status"
   | "settings:claude-agents:get"
   | "settings:opencode-agents:get"
   | "opencode-setup:read"

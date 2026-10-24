@@ -1381,6 +1381,10 @@ export interface IpcApi extends AgentRuntimeIpcApi, AcpIpcApi {
     result: ClaudeAgentSettings;
   };
   "settings:acp-agents:get": { args: []; result: AcpAgentSettings };
+  "settings:acp-agents:configuration-status": {
+    args: [];
+    result: import("./acp-agent-settings").AcpAgentConfigurationStatus;
+  };
   "settings:acp-agents:update": {
     args: [input: UpdateAcpAgentSettingsInput];
     result: import("./acp-agent-settings").AcpAgentSettingsUpdateResult;

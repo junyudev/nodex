@@ -636,16 +636,16 @@ const supervisor = Layer.effectContext(
     });
     const refresh = (yield* makeProviderSettingsRefresh({
       states: runtime.connectionChanges,
-      running: runtime.inspect.pipe(Effect.map((identity) => identity !== null)),
-      apply: Effect.gen(function* () {
-        const connection = yield* runtime.get();
-        const { configuration } = yield* readConfiguration;
-        const result = yield* connection.request("providers.configure", {
-          providers: configuration.providers,
-        });
-        prepared.set(connection.identity, configuration);
-        return result;
-      }),
+      current: runtime.currentConnection,
+      apply: (connection) =>
+        Effect.gen(function* () {
+          const { configuration } = yield* readConfiguration;
+          const result = yield* connection.request("providers.configure", {
+            providers: configuration.providers,
+          });
+          prepared.set(connection.identity, configuration);
+          return result;
+        }),
     })).pipe(
       Effect.mapError((cause) => new AgentRuntimeProviderConfigurationError({ cause })),
       Effect.map((result) => result ?? { applied: true, deferredInstanceIds: [] }),

@@ -127,6 +127,7 @@ it.effect("owns the complete application settings ingress with the Main Scope", 
       "codex-command-keymap-state",
       "reset-codex-command-keybindings",
       "set-codex-command-keybinding",
+      "settings:acp-agents:configuration-status",
       "settings:acp-agents:get",
       "settings:acp-agents:update",
       "settings:backup:get",
@@ -249,7 +250,32 @@ it.effect("owns the complete application settings ingress with the Main Scope", 
       configurationStatus: "deferred",
     });
     assert.isFalse(readFileSync(settingsPath, "utf8").includes("deferredInstanceIds"));
+    const savedBytes = readFileSync(settingsPath, "utf8");
+    const broadcastsBeforeStatus = broadcasts.length;
+    assert.deepEqual(yield* handlers.get("settings:acp-agents:configuration-status")!(event), {
+      deferredInstanceIds: ["acp-work"],
+      configurationStatus: "deferred",
+    });
+    providerResult = { applied: true, deferredInstanceIds: [] };
+    assert.deepEqual(yield* handlers.get("settings:acp-agents:configuration-status")!(event), {
+      deferredInstanceIds: [],
+      configurationStatus: "applied",
+    });
+    assert.equal(readFileSync(settingsPath, "utf8"), savedBytes);
+    assert.equal(broadcasts.length, broadcastsBeforeStatus);
     providerFailure = true;
+    assert.deepEqual(yield* handlers.get("settings:acp-agents:configuration-status")!(event), {
+      deferredInstanceIds: [],
+      configurationStatus: "failed",
+    });
+    const refreshesBeforeUntrusted = providerRefreshes;
+    assert.equal(
+      (yield* Effect.result(
+        handlers.get("settings:acp-agents:configuration-status")!(untrustedEvent),
+      ))._tag,
+      "Failure",
+    );
+    assert.equal(providerRefreshes, refreshesBeforeUntrusted);
     const failed = yield* handlers.get("settings:acp-agents:update")!(event, {
       instances: [acpInstance],
     });
