@@ -70,6 +70,7 @@ import * as Configuration from "../config.ts";
 import { persistChatAttachments } from "../assets/PersistChatAttachments.ts";
 import * as ProviderConfiguration from "./ProviderConfiguration.ts";
 import * as StorageSnapshot from "./StorageSnapshot.ts";
+import * as AcpManagement from "./AcpManagement.ts";
 import * as Environment from "../environment/ServerEnvironment.ts";
 import { buildBoundedThreadStreamSnapshot } from "../orchestration-v2/ThreadStream.ts";
 import {
@@ -109,6 +110,7 @@ const NativeSource = Schema.Struct({
 });
 const VoiceClaim = { claimId: Schema.String, source: NativeSource };
 const AgentRequest = Schema.Union([
+  ...AcpManagement.Request.members,
   request("thread.import-native", NativeImport.NativeImportInput),
   request("native-imports.find", NativeImport.NativeImportsFindInput),
   request("execution.handoff.pending", Schema.Struct({ cursor: Schema.optional(Schema.String) })),
@@ -459,6 +461,8 @@ export const make = Effect.fn("AgentRuntime.makeService")(function* (
   const storageSnapshot = yield* StorageSnapshot.make(identity, providerConfiguration).pipe(
     Effect.provideService(Scope.Scope, processScope),
   );
+  const acp = yield* AcpManagement.make(storageSnapshot.withWriter);
+  const providerPolicy = yield* ProviderConfiguration.ProviderPolicy;
   const textGeneration = yield* TextGeneration;
   const nativeInteraction = yield* NativeInteraction.make(identity.runtimeGeneration, notify).pipe(
     Effect.provide(NativeRuntimePolicy.layerFromProjectStore),
@@ -487,6 +491,30 @@ export const make = Effect.fn("AgentRuntime.makeService")(function* (
     input: typeof AgentRequest.Type,
   ) {
     switch (input.method) {
+      case "acp.activity":
+      case "acp.registry.search":
+      case "acp.install.preview":
+      case "acp.inspect":
+      case "acp.install.start":
+      case "acp.registry.uninstall":
+      case "acp.connection.start":
+      case "acp.operation.read":
+      case "acp.operation.cancel":
+      case "acp.auth.read":
+      case "acp.auth.start":
+      case "acp.auth.respond":
+      case "acp.auth.complete":
+      case "acp.auth.cancel":
+      case "acp.auth.logout":
+      case "acp.urlAuth.accept":
+      case "acp.sessions.list":
+      case "acp.sessions.prepareImport":
+      case "acp.sessions.import":
+      case "acp.sessions.delete":
+      case "acp.modelProviders.list":
+      case "acp.modelProviders.set":
+      case "acp.modelProviders.disable":
+        return yield* acp.execute(input);
       case "thread.import-native":
         return yield* importNative(input.input);
       case "native-imports.find":
@@ -623,10 +651,16 @@ export const make = Effect.fn("AgentRuntime.makeService")(function* (
       case "native.prediction.clear":
         yield* nativeInteraction.clearPredictions(input.input.threadId);
         return null;
-      case "text.generate-structured":
+      case "text.generate-structured": {
+        const target = (yield* providerPolicy.admission)[input.input.modelSelection.instanceId];
+        if (!target || target.enabled === false)
+          return yield* Effect.fail(
+            new Error("This Agent is disabled. Enable it before starting a utility request."),
+          );
         if (!textGeneration.generateStructured)
           return yield* Effect.fail(new Error("Structured generation is unavailable"));
         return yield* textGeneration.generateStructured(input.input);
+      }
       case "thread.read":
         return yield* orchestrator
           .getThreadShell(input.input.threadId)
@@ -655,7 +689,7 @@ export const make = Effect.fn("AgentRuntime.makeService")(function* (
       case "shutdown":
         return { stopped: true };
       case "command.dispatch": {
-        const result = yield* orchestrator.dispatch(input.input);
+        const result = yield* threads.dispatch(input.input);
         return { sequence: result.sequence };
       }
       case "command.receipt": {
@@ -878,6 +912,16 @@ export const make = Effect.fn("AgentRuntime.makeService")(function* (
     const input = yield* decodeRequest(value);
     // New operations participate in the writer fence unless explicitly proven read-only.
     switch (input.method) {
+      case "acp.activity":
+      case "acp.registry.search":
+      case "acp.install.preview":
+      case "acp.inspect":
+      case "acp.operation.read":
+      case "acp.operation.cancel":
+      case "acp.auth.read":
+      case "acp.auth.respond":
+      case "acp.auth.cancel":
+      case "acp.urlAuth.accept":
       case "storage.snapshot.acquire":
       case "storage.snapshot.release":
       case "thread.read":
