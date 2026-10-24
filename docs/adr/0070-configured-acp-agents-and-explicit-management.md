@@ -4,7 +4,7 @@
 - Date: 2026-10-24
 - Owners: Nodex maintainers
 - Refines: [ADR 0068](0068-agent-runtime-execution-authority.md)
-- Supersedes: the fixed ACP definition allowlist, stable-v1-only restriction and future third-party installation policy in [ADR 0056](0056-native-codex-and-capability-negotiated-agent-backends.md)
+- Supersedes: the fixed ACP definition allowlist, stable-v1-only and scheduled-execution restrictions, and future third-party installation policy in [ADR 0056](0056-native-codex-and-capability-negotiated-agent-backends.md)
 
 ## Context
 
@@ -49,6 +49,13 @@ configuration in memory and rejects attempts to persist another copy through its
 Desired admission policy applies immediately when an instance is disabled or removed. Captured
 execution configuration remains available to work already admitted until it finishes or is cancelled;
 it cannot authorize a new direct submission, delegation, queue append or utility request.
+
+Scheduled work uses the same configured ACP binding and Session admission as interactive work.
+Definitions retain the exact instance and logical Agent; a Heartbeat retains its target Session's
+binding. The Host validates the current instance before execution, including when a cached catalog
+still describes an instance that was disabled or removed. An unavailable instance fails admission
+without selecting another Agent. The detailed contract remains in
+[Scheduled route behavior](../product-specs/scheduled-route-behavior.md).
 
 The client supports stable v1 and the repository's pinned v2 schema through generation-aware adapters.
 This does not promise compatibility with future drafts. Advertised capabilities determine methods,
