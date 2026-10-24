@@ -35,8 +35,7 @@ fn workspace_policy(read: &ProjectWorkspaceRead) -> ReadBudgetPolicy {
     match read {
         // Atomic queue updates operate on one complete application-owned message document.
         ProjectWorkspaceRead::QueuedMessageState => ReadBudgetPolicy::LargeObject,
-        ProjectWorkspaceRead::LocalCodexThreadIds { .. }
-        | ProjectWorkspaceRead::ThreadReadState { .. }
+        ProjectWorkspaceRead::ThreadReadState { .. }
         | ProjectWorkspaceRead::ProjectWindow { .. }
         | ProjectWorkspaceRead::SessionWindow { .. }
         | ProjectWorkspaceRead::TaskWindow { .. }

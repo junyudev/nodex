@@ -6,11 +6,7 @@ import {
 import { CodexConversationPeerRuntime } from "../platform/node/CodexConversationPeerRuntime";
 import { ScopedCallbackRuntime } from "./ScopedCallbackRuntime";
 import { ApplicationSettings } from "../settings/ApplicationSettings";
-import {
-  CodexHomeContinuity,
-  live as codexHomeContinuityLive,
-} from "../codex-application/CodexHomeContinuity";
-import { initializeCodexHomeContinuity } from "../platform/node/CodexHomeContinuity";
+import { createCodexHomeDirectory, writeCodexHomeReceipt } from "../platform/node/CodexHomeReceipt";
 import {
   assertCodexAccountHomeIdentity,
   codexAccountHomeEnvironment,
@@ -91,7 +87,6 @@ import { resolveCodexProcessEnvironment } from "../platform/node/CodexProcessEnv
 import { nodexCliShellLaunchArgs, prepareNodexCliShell } from "../platform/node/NodexCliShell";
 import { ProjectWorkspace } from "../project-application/ProjectWorkspace";
 import { AppProtocolRuntime } from "../host-runtime/AppProtocolRuntime";
-import { CoreModules } from "../core-runtime/CoreModules";
 import { MainConfig } from "./MainConfig";
 import { MainApplicationError } from "./MainExit";
 import {
@@ -156,6 +151,17 @@ const platform: Layer.Layer<CodexPlatform, MainApplicationError, MainConfig | Ap
           }),
         catch: (cause) =>
           new MainApplicationError({ phase: "startup", operation: "resolve-codex-account", cause }),
+      });
+      yield* Effect.try({
+        try: () => {
+          createCodexHomeDirectory(accountHome.sharedHome);
+          writeCodexHomeReceipt({
+            profileHome: config.nodexHome,
+            codexHome: accountHome.sharedHome,
+          });
+        },
+        catch: (cause) =>
+          new MainApplicationError({ phase: "startup", operation: "prepare-codex-home", cause }),
       });
       return CodexPlatform.of({
         runtime,
@@ -223,69 +229,6 @@ const localLaunch = Layer.effect(
 
 const requestInbox = Layer.effect(CodexApplicationRequestInbox, makeCodexApplicationRequestInbox);
 
-const continuity = Layer.unwrap(
-  Effect.gen(function* () {
-    const config = yield* MainConfig;
-    const codex = yield* CodexPlatform;
-    const settings = yield* ApplicationSettings;
-    const snapshot = yield* settings
-      .snapshot()
-      .pipe(
-        Effect.mapError(
-          (cause) =>
-            new MainApplicationError({ phase: "startup", operation: "read-codex-home", cause }),
-        ),
-      );
-    const previous = yield* Effect.try({
-      try: () =>
-        initializeCodexHomeContinuity({
-          profileHome: config.nodexHome,
-          selectedHome: codex.codexHome,
-          hasConfiguredHome: Boolean(snapshot.codexHome.homePath),
-          hasInheritedCodexHome: Boolean(config.environment.CODEX_HOME?.trim()),
-        }),
-      catch: (cause) =>
-        new MainApplicationError({
-          phase: "startup",
-          operation: "read-codex-home-continuity",
-          cause,
-        }),
-    });
-    return codexHomeContinuityLive({
-      profileHome: config.nodexHome,
-      currentHome: codex.codexHome,
-      processConfig: {
-        hostId: "local",
-        generation: 0,
-        command: codex.runtime.binaryPath,
-        args: codexCliAppServerArgs(config.environment),
-        env: {
-          ...config.environment,
-          PATH: [...codex.runtime.additionalSearchPaths, config.environmentPath ?? ""]
-            .filter(Boolean)
-            .join(config.platform === "win32" ? ";" : ":"),
-        },
-        forceTermination: "2 seconds",
-      },
-    }).pipe(
-      Layer.tap((context) =>
-        Context.get(context, CodexHomeContinuity)
-          .activate(codex.codexHome, previous.previousHome)
-          .pipe(
-            Effect.mapError(
-              (cause) =>
-                new MainApplicationError({
-                  phase: "startup",
-                  operation: "validate-codex-home-continuity",
-                  cause,
-                }),
-            ),
-          ),
-      ),
-    );
-  }),
-).pipe(Layer.provideMerge(Layer.merge(platform, CodexSessionTransport.nodeLive)));
-
 const attestation = Layer.unwrap(
   Effect.gen(function* () {
     const config = yield* MainConfig;
@@ -330,8 +273,6 @@ const runtime = Layer.unwrap(
     const config = yield* MainConfig;
     const codex = yield* CodexPlatform;
     const codexAttestation = yield* CodexAttestation;
-    // Continuity activation precedes this runtime layer. Account links are applied
-    // only after the selected shared home has retained every bound native session.
     const accountHome = yield* Effect.try({
       try: () =>
         prepareCodexAccountHome({
@@ -417,7 +358,8 @@ const conversationEntities = conversationEntityMapLive;
 const conversations = codexConversationsLive.pipe(Layer.provideMerge(conversationEntities));
 const appToolInvocations = Layer.effect(AppToolInvocationInbox, makeAppToolInvocationInbox);
 const foundations = Layer.mergeAll(
-  continuity,
+  platform,
+  CodexSessionTransport.nodeLive,
   attestation,
   requestInbox,
   appToolInvocations,
@@ -476,7 +418,6 @@ const applicationServices = Layer.mergeAll(
 export const live: Layer.Layer<
   | CodexPlatform
   | CodexLocalLaunch
-  | CodexHomeContinuity
   | CodexAttestation
   | AppToolInvocationInbox
   | CodexApplicationRequestInbox
@@ -505,7 +446,6 @@ export const live: Layer.Layer<
   | AppProtocolRuntime
   | CodexThreadHostResolver
   | ProjectWorkspace
-  | CoreModules
   | ApplicationSettings
   | CodexConversationPeerRuntime
   | ScopedCallbackRuntime

@@ -5,7 +5,6 @@ import type {
 } from "../../shared/opencode-agent-settings";
 import type { InboxSettings, UpdateInboxSettingsInput } from "../../shared/inbox";
 import { createHash } from "node:crypto";
-import { dirname } from "node:path";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -52,7 +51,6 @@ import type {
   WindowRestoreSettings,
 } from "../../shared/types";
 import { MainConfig } from "../app/MainConfig";
-import { initializeCodexHomeContinuity } from "../platform/node/CodexHomeContinuity";
 import { SecretEncryption, type SecretEncryptionAdapter } from "../platform/SecretEncryption";
 import {
   getOpenCodeAgentSettings,
@@ -371,23 +369,9 @@ export const make = Effect.fn("ApplicationSettings.make")(function* (input: {
   const readUnlocked = Effect.fn("ApplicationSettings.readUnlocked")(function* (
     buildDefaultChannel: AppUpdateSettings["channel"] = "stable",
   ) {
-    let snapshot = yield* attempt("read", () => makeSnapshot(source, buildDefaultChannel));
+    const snapshot = yield* attempt("read", () => makeSnapshot(source, buildDefaultChannel));
     const previousHome = yield* Ref.get(activeCodexHome);
     if (previousHome === undefined) {
-      const continuity = yield* attempt("initialize-codex-home", () =>
-        initializeCodexHomeContinuity({
-          profileHome: dirname(source.settingsPath),
-          selectedHome: snapshot.codexHome.resolvedHomePath,
-          hasConfiguredHome: Boolean(snapshot.codexHome.homePath),
-          hasInheritedCodexHome: Boolean(source.environment.CODEX_HOME?.trim()),
-        }),
-      );
-      if (continuity.pinLegacyHome) {
-        yield* attempt("retain-codex-history", () =>
-          updateCodexHomeSettings({ homePath: continuity.codexHome }, source),
-        );
-        snapshot = yield* attempt("read", () => makeSnapshot(source, buildDefaultChannel));
-      }
       yield* Ref.set(activeCodexHome, {
         home: snapshot.codexHome.resolvedHomePath,
         account: snapshot.codexHome.resolvedAccountHomePath,

@@ -34,8 +34,6 @@ import type {
 } from "../../../shared/types";
 import { MainConfig } from "../../app/MainConfig";
 import { AgentRuntimeProviderConfiguration } from "../../agent-runtime/AgentRuntimeProviderConfiguration";
-import { readActionableErrorMessage } from "../../actionable-error-message";
-import { CodexHomeContinuity } from "../../codex-application/CodexHomeContinuity";
 import { resolveCodexHome } from "../../codex/codex-home";
 import { inspectCodexAccountHome } from "../../platform/node/CodexAccountHome";
 import { isTrustedAppRendererIpcSender } from "../../app-renderer-ipc-authorization";
@@ -175,7 +173,6 @@ export const live: Layer.Layer<
   | ApplicationMenuRuntime
   | ApplicationSettings
   | AgentRuntimeProviderConfiguration
-  | CodexHomeContinuity
   | DictationRuntime
   | DesktopNotificationRuntime
   | StoreAdministrationSchedulerRuntime
@@ -186,7 +183,6 @@ export const live: Layer.Layer<
   Effect.gen(function* () {
     const applicationSettings = yield* ApplicationSettings;
     const runtimeProviders = yield* AgentRuntimeProviderConfiguration;
-    const codexHomeContinuity = yield* CodexHomeContinuity;
     const config = yield* MainConfig;
     const dictation = yield* DictationRuntime;
     const notifications = yield* DesktopNotificationRuntime;
@@ -440,17 +436,6 @@ export const live: Layer.Layer<
                   platform: config.platform,
                 }),
               );
-              yield* codexHomeContinuity
-                .assertChange(target.resolvedHomePath)
-                .pipe(
-                  Effect.mapError((cause) =>
-                    settingsError("validate-codex-home-continuity")(
-                      new Error(
-                        `Cannot use ${target.resolvedHomePath}. Current chats remain in ${current.activeHomePath}. ${readActionableErrorMessage(cause, { fallback: "The selected directory could not be validated." })}`,
-                      ),
-                    ),
-                  ),
-                );
               return yield* update(
                 "update-codex-home-settings",
                 { type: "update-codex-home", input: parsed },

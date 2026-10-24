@@ -10,7 +10,6 @@ pub(crate) use inbox::reliable::discard_replaced_dispatches as discard_replaced_
 mod inbox_read;
 #[cfg(test)]
 mod inbox_tests;
-mod local_codex_thread_ids;
 mod managed_worktree_lifecycle;
 mod managed_worktree_window;
 mod mutation;

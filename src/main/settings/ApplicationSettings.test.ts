@@ -3,7 +3,7 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
-  realpathSync,
+  readdirSync,
   rmSync,
   symlinkSync,
   writeFileSync,
@@ -111,27 +111,22 @@ describe("ApplicationSettings", () => {
       }),
   );
 
-  it.effect(
-    "retains the existing Profile conversation home but leaves empty legacy directories unpinned",
-    () =>
+  it.effect.each(["default", "environment"] as const)(
+    "uses the %s Codex home without modifying Profile history or native configuration",
+    (source) =>
       Effect.gen(function* () {
         const { root, settingsPath } = fixture('[plugin]\nname = "keep"\n');
+        const hostHomeDirectory = path.join(root, "user");
+        const nativeHome =
+          source === "default"
+            ? path.join(hostHomeDirectory, ".codex")
+            : path.join(root, "inherited-codex");
         const legacyHome = path.join(root, "agent");
         mkdirSync(path.join(legacyHome, "sessions"), { recursive: true });
-        const empty = yield* makeApplicationSettings({
-          environment: {},
-          hostHomeDirectory: path.join(root, "user"),
-          settingsPath,
-        });
-        const emptySnapshot = yield* empty.snapshot();
-        assert.strictEqual(emptySnapshot.codexHome.source, "default");
-        assert.strictEqual(
-          emptySnapshot.codexHome.resolvedHomePath,
-          path.join(root, "user", ".codex"),
-        );
-        const before = readFileSync(settingsPath);
+        mkdirSync(nativeHome, { recursive: true });
+        const rolloutPath = path.join(legacyHome, "sessions", "rollout-retained.jsonl");
         writeFileSync(
-          path.join(legacyHome, "sessions", "rollout-retained.jsonl"),
+          rolloutPath,
           `${JSON.stringify({
             type: "session_meta",
             payload: {
@@ -142,23 +137,48 @@ describe("ApplicationSettings", () => {
             },
           })}\n`,
         );
-        const retained = yield* makeApplicationSettings({
-          environment: {},
-          hostHomeDirectory: path.join(root, "user"),
+        const nativeConfigPath = path.join(nativeHome, "config.toml");
+        const nativeHooksPath = path.join(nativeHome, "hooks.json");
+        const legacyConfigPath = path.join(legacyHome, "config.toml");
+        const legacyHooksPath = path.join(legacyHome, "hooks.json");
+        writeFileSync(nativeConfigPath, 'model = "shared-model"\n');
+        writeFileSync(nativeHooksPath, '{"hooks":{"SessionStart":[]}}\n');
+        writeFileSync(legacyConfigPath, 'model = "profile-model"\n');
+        writeFileSync(legacyHooksPath, '{"hooks":{"Stop":[]}}\n');
+        const files = [
+          settingsPath,
+          rolloutPath,
+          nativeConfigPath,
+          nativeHooksPath,
+          legacyConfigPath,
+          legacyHooksPath,
+        ];
+        const contentsBefore = files.map((file) => readFileSync(file));
+        const entriesBefore = readdirSync(root, { recursive: true, encoding: "utf8" }).sort(
+          (a, b) => a.localeCompare(b),
+        );
+        const settings = yield* makeApplicationSettings({
+          environment: source === "environment" ? { CODEX_HOME: nativeHome } : {},
+          hostHomeDirectory,
           settingsPath,
         });
-        const snapshot = yield* retained.snapshot();
-        const canonicalLegacyHome = realpathSync(legacyHome);
-        assert.strictEqual(snapshot.codexHome.activeHomePath, canonicalLegacyHome);
-        assert.strictEqual(snapshot.codexHome.source, "settings");
+        const snapshot = yield* settings.snapshot();
+        assert.strictEqual(snapshot.codexHome.homePath, "");
+        assert.strictEqual(snapshot.codexHome.resolvedHomePath, nativeHome);
+        assert.strictEqual(snapshot.codexHome.activeHomePath, nativeHome);
+        assert.strictEqual(snapshot.codexHome.source, source);
         assert.isFalse(snapshot.codexHome.restartRequired);
-        const document = parseToml(readFileSync(settingsPath, "utf8")) as {
-          server: { codex_home: string };
-          plugin: { name: string };
-        };
-        assert.strictEqual(document.server.codex_home, canonicalLegacyHome);
-        assert.strictEqual(document.plugin.name, "keep");
-        assert.notDeepEqual(readFileSync(settingsPath), before);
+        assert.deepEqual(yield* settings.snapshot(), snapshot);
+        assert.deepEqual(
+          files.map((file) => readFileSync(file)),
+          contentsBefore,
+        );
+        assert.deepEqual(
+          readdirSync(root, { recursive: true, encoding: "utf8" }).sort((a, b) =>
+            a.localeCompare(b),
+          ),
+          entriesBefore,
+        );
       }),
   );
 

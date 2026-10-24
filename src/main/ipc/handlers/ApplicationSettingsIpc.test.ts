@@ -9,9 +9,6 @@ import { assert, it } from "@effect/vitest";
 import type { IpcMainInvokeEvent } from "electron";
 import { testLayer as mainConfigLayer } from "../../app/MainConfig";
 import { AgentRuntimeProviderConfiguration } from "../../agent-runtime/AgentRuntimeProviderConfiguration";
-import { CodexHomeContinuity } from "../../codex-application/CodexHomeContinuity";
-import { CodexHomeContinuityError } from "../../platform/node/CodexHomeContinuity";
-import { toElectronIpcRendererError } from "../../platform/electron/electron-ipc-error";
 import { ApplicationMenuRuntime } from "../../host-runtime/ApplicationMenuRuntime";
 import { DictationRuntime } from "../../host-runtime/DictationRuntime";
 import { StoreAdministrationSchedulerRuntime } from "../../host-runtime/StoreAdministrationSchedulerRuntime";
@@ -54,28 +51,6 @@ it.effect("owns the complete application settings ingress with the Main Scope", 
       bindHistory: () => Effect.succeed(1),
       publishHistory: () => Effect.void,
     });
-    const guardedHomes: string[] = [];
-    let rejectHomeChange = false;
-    let homeAdmissionsInFlight = 0;
-    let peakHomeAdmissions = 0;
-    const homeContinuity = CodexHomeContinuity.of({
-      assertChange: (targetHome) =>
-        Effect.gen(function* () {
-          guardedHomes.push(targetHome);
-          homeAdmissionsInFlight += 1;
-          peakHomeAdmissions = Math.max(peakHomeAdmissions, homeAdmissionsInFlight);
-          yield* Effect.yieldNow;
-          homeAdmissionsInFlight -= 1;
-          if (rejectHomeChange) {
-            return yield* new CodexHomeContinuityError({
-              targetHome,
-              threadId: "missing-chat",
-              cause: new Error("The selected Codex directory is missing an existing chat."),
-            });
-          }
-        }),
-      activate: () => Effect.void,
-    });
     let keymapAdmissionsInFlight = 0;
     let peakKeymapAdmissions = 0;
     const dictation = DictationRuntime.of({
@@ -117,7 +92,6 @@ it.effect("owns the complete application settings ingress with the Main Scope", 
                 providerRefreshes += 1;
               }),
             }),
-            Layer.succeed(CodexHomeContinuity, homeContinuity),
             Layer.succeed(DictationRuntime, dictation),
             Layer.succeed(DesktopNotificationRuntime, {
               authorization: {
@@ -289,31 +263,43 @@ it.effect("owns the complete application settings ingress with the Main Scope", 
     assert.strictEqual(savedHome.activeHomePath, home.activeHomePath);
     assert.strictEqual(savedHome.resolvedHomePath, path.join(settingsRoot, "codex"));
     assert.isTrue(savedHome.restartRequired);
-    assert.deepEqual(guardedHomes, [path.join(settingsRoot, "codex")]);
-    yield* Effect.all(
-      [
-        handlers.get("settings:codex-home:update")!(event, {
-          homePath: path.join(settingsRoot, "one"),
-        }),
-        handlers.get("settings:codex-home:update")!(event, {
-          homePath: path.join(settingsRoot, "two"),
-        }),
-      ],
-      { concurrency: "unbounded" },
-    );
-    assert.strictEqual(peakHomeAdmissions, 1);
-    rejectHomeChange = true;
-    const beforeRejectedHome = readFileSync(settingsPath);
-    const rejectedHome = yield* Effect.result(
-      handlers.get("settings:codex-home:update")!(event, {
-        homePath: path.join(settingsRoot, "missing"),
-      }),
-    );
-    assert.strictEqual(rejectedHome._tag, "Failure");
-    if (rejectedHome._tag === "Failure") {
-      assert.include(toElectronIpcRendererError(rejectedHome.failure).message, home.activeHomePath);
+    const restartedSettings = yield* makeApplicationSettings({
+      environment: {},
+      hostHomeDirectory: settingsRoot,
+      settingsPath,
+    });
+    const restartedHome = (yield* restartedSettings.snapshot()).codexHome;
+    assert.strictEqual(restartedHome.activeHomePath, savedHome.resolvedHomePath);
+    assert.isFalse(restartedHome.restartRequired);
+
+    const beforeInvalidHome = readFileSync(settingsPath);
+    for (const input of [
+      { homePath: "relative" },
+      { homePath: path.join(settingsRoot, "codex"), accountHomePath: "relative" },
+      {
+        homePath: path.join(settingsRoot, "codex"),
+        accountHomePath: path.join(settingsRoot, "codex", "account"),
+      },
+    ]) {
+      const rejectedHome = yield* Effect.result(
+        handlers.get("settings:codex-home:update")!(event, input),
+      );
+      assert.strictEqual(rejectedHome._tag, "Failure");
+      assert.deepEqual(readFileSync(settingsPath), beforeInvalidHome);
     }
-    assert.deepEqual(readFileSync(settingsPath), beforeRejectedHome);
+
+    const resetHome = (yield* handlers.get("settings:codex-home:update")!(event, {
+      homePath: "",
+    })) as {
+      activeHomePath: string;
+      resolvedHomePath: string;
+      source: string;
+      restartRequired: boolean;
+    };
+    assert.strictEqual(resetHome.activeHomePath, home.activeHomePath);
+    assert.strictEqual(resetHome.resolvedHomePath, path.join(settingsRoot, ".codex"));
+    assert.strictEqual(resetHome.source, "default");
+    assert.isFalse(resetHome.restartRequired);
 
     yield* Scope.close(scope, Exit.void);
     assert.strictEqual(handlers.size, 0);

@@ -12,6 +12,8 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 
+- Codex reuses the user's native home, including configuration and hooks, without selecting a separate directory from Profile history. Changing the Codex home takes effect after restart; native conversations enter the sidebar only when explicitly connected.
+
 - Chats automatically load earlier messages as you scroll up, preserve your reading position, and offer retries beside any history that could not load. Imported conversations can be browsed beyond the previous history-window limit.
 
 - A message sent from the Inbox to a chat stays tied to that chat. Its Page shows the chat and its live status on its Board, List and Page, and its status moves from Triage to Build, Plan or Ship as the message is handled, without overriding a status you set yourself. History leads with work still in progress until you mark it done, and a decided message shows where it went before it folds away.

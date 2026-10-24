@@ -36,8 +36,10 @@ Reopening uses the native recovery and bounded presentation rules in
 
 ## Account and history directories
 
-Codex has one active local account. Its native home owns shared configuration and conversation
-history. An optional independent account directory owns authentication and the account's model
+Codex has one active local account. Its native home defaults to the user's `~/.codex` and owns
+shared configuration, hooks and conversation history. Sharing that directory does not add
+conversations to the Nodex sidebar; connecting a conversation remains an explicit action.
+An optional independent account directory owns authentication and the account's model
 cache while retaining access to that same history. Saving either directory applies after restarting
 Nodex. Selecting another account therefore keeps the saved conversation IDs; it does not move or
 duplicate conversations. Simultaneous local accounts for different chats are not supported.
@@ -50,9 +52,10 @@ Native account caches remain private; CLI name indexes are not synchronized betw
 Independent account directories are supported on macOS and Linux. Windows uses the direct native
 home and rejects account-directory overlays explicitly.
 
-Home changes still require every local Codex chat bound to this Nodex Profile to be readable in the
-selected history home. Account changes retain the history home and do not bypass that continuity
-check. Configuration and launch precedence are defined in [Configuration](../CONFIGURATION.md).
+Home changes select the destination's configuration and history without copying conversations.
+Connected native conversations remain readable only when they exist in the active home.
+Account changes retain the history home. Configuration and launch precedence are defined in
+[Configuration](../CONFIGURATION.md).
 
 ## Copying agent data
 

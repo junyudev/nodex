@@ -79,9 +79,9 @@ Its home resolves in this order:
 
 Use **Agent > Configuration > Codex home** to choose an absolute or `~/` path. Clearing
 the field restores environment/default resolution. The control shows the active directory;
-saved changes apply after restarting Nodex. Switching directories requires all local Codex chats
-already associated with this Profile to remain readable in the destination. The check uses the
-official app-server and does not run a model request. It rejects a switch that would strand chats.
+saved changes apply after restarting Nodex. Changing the home selects that directory's native
+configuration and history. Nodex does not move history between homes; connected native
+conversations are readable only when their history exists in the active home.
 
 **Account directory** selects an independent native login while retaining the Codex home's
 configuration and conversation history. It is stored as `server.codex_account_home`; clearing it
@@ -99,12 +99,11 @@ Nodex supplies that SQLite fallback when none is inherited; an explicit native `
 configuration takes precedence. CLI name indexes remain local to each account; native conversation
 IDs and paginated history remain shared.
 
-Profiles with history in their previous `${NODEX_HOME}/agent` directory retain that directory as
-an explicit setting. Nodex does not move native history between homes or copy credentials.
-New Profiles reuse the native home by default. Development launchers explicitly select their own
+Profiles reuse the native home by default. Files under `${NODEX_HOME}/agent` do not select a
+Codex home or change the Profile's settings. Development launchers explicitly select their own
 disposable Codex home.
 
-The native home owns login, configuration, skills, plugins, and conversation persistence. Nodex
+The native home owns login, configuration, hooks, skills, plugins, and conversation persistence. Nodex
 owns its helper resources, import receipts, and desktop tool source copies under
 `${NODEX_HOME}/runtime/agent`. Startup supplies missing feature defaults as process options and
 leaves native configuration bytes intact. Nodex tasks use full native execution access;

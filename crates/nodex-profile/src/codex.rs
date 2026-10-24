@@ -204,8 +204,8 @@ struct ActiveHomeReceipt {
     codex_home: PathBuf,
 }
 
-/// Desktop publishes the active native home only after checking its bound chats.
-/// Profiles from earlier versions still keep their history under `agent`.
+/// Desktop records the active native home so Profile snapshots capture their bound chats.
+/// Profiles without a receipt use their self-contained history under `agent`.
 pub(crate) fn source_codex_home(profile: &Path) -> Result<PathBuf> {
     let path = profile.join("runtime/agent/codex-home.json");
     if !files::exists(&path)? {

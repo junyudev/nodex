@@ -146,16 +146,6 @@ pub(super) fn read(
                 )?,
             },
         ),
-        ProjectWorkspaceRead::LocalCodexThreadIds { window } => {
-            Ok(ProjectWorkspaceReadValue::LocalCodexThreadIds {
-                thread_ids: super::local_codex_thread_ids::read_window(
-                    connection,
-                    library_id,
-                    commit_head,
-                    &window,
-                )?,
-            })
-        }
         ProjectWorkspaceRead::ThreadReadState {
             identity_key,
             window,

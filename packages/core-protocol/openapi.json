@@ -8008,30 +8008,6 @@
           }
         }
       },
-      "CollectionWindow_String": {
-        "type": "object",
-        "required": [
-          "items",
-          "authority"
-        ],
-        "properties": {
-          "authority": {
-            "$ref": "#/components/schemas/CollectionWindowAuthority"
-          },
-          "items": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          },
-          "next_cursor": {
-            "type": [
-              "string",
-              "null"
-            ]
-          }
-        }
-      },
       "CollectionWindow_ThreadUnreadEntry": {
         "type": "object",
         "required": [
@@ -34888,24 +34864,6 @@
               {
                 "type": "object",
                 "required": [
-                  "window",
-                  "kind"
-                ],
-                "properties": {
-                  "kind": {
-                    "type": "string",
-                    "enum": [
-                      "local_codex_thread_ids"
-                    ]
-                  },
-                  "window": {
-                    "$ref": "#/components/schemas/CollectionWindowRequest"
-                  }
-                }
-              },
-              {
-                "type": "object",
-                "required": [
                   "kind"
                 ],
                 "properties": {
@@ -49914,24 +49872,6 @@
                           },
                           "thread": {
                             "$ref": "#/components/schemas/ProjectWorkspaceThread"
-                          }
-                        }
-                      },
-                      {
-                        "type": "object",
-                        "required": [
-                          "thread_ids",
-                          "kind"
-                        ],
-                        "properties": {
-                          "kind": {
-                            "type": "string",
-                            "enum": [
-                              "local_codex_thread_ids"
-                            ]
-                          },
-                          "thread_ids": {
-                            "$ref": "#/components/schemas/CollectionWindow_String"
                           }
                         }
                       },

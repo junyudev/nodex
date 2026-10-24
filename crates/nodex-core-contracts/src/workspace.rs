@@ -16,7 +16,7 @@ use crate::inbox::{
 };
 use crate::{ModuleMutationReceipt, ModuleName, VersionedModuleContract};
 
-pub const PROJECT_WORKSPACE_CONTRACT_VERSION: u32 = 42;
+pub const PROJECT_WORKSPACE_CONTRACT_VERSION: u32 = 43;
 
 #[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 #[serde(rename_all = "snake_case")]
@@ -29,9 +29,6 @@ pub enum ProjectWorkspaceTaskPlacementScope {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum ProjectWorkspaceRead {
-    LocalCodexThreadIds {
-        window: CollectionWindowRequest,
-    },
     QueuedMessageState,
     ThreadReadState {
         identity_key: String,
@@ -223,9 +220,6 @@ pub enum ProjectWorkspaceReadValue {
     CodexThreadSession {
         thread: Box<ProjectWorkspaceThread>,
         session: ProjectWorkspaceSessionSummary,
-    },
-    LocalCodexThreadIds {
-        thread_ids: CollectionWindow<String>,
     },
     QueuedMessageState {
         state: std::collections::BTreeMap<String, Vec<serde_json::Value>>,
