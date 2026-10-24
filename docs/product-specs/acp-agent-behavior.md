@@ -43,7 +43,9 @@ encrypted secret store and are never copied into Runtime settings or installatio
 
 Operations bind their instance, owner, configuration and Runtime lifetime. Closing an authentication
 flow cancels its interaction and owned terminal. Closing an installation observer allows installation
-to continue. Expired, cancelled and superseded answers cannot complete another flow. Shared native
+to continue. Main observes completion independently of the originating window and refreshes connected
+catalog consumers after successful installation, connection or authentication. Expired, cancelled and
+superseded answers cannot complete another flow. Shared native
 credential scopes coordinate login, logout and model-service writes with active work.
 
 Explicit connection can create a temporary native session to discover the Agent's capabilities,
@@ -62,6 +64,7 @@ use the native model method when config options are absent. Literal auto/default
 advertised models. Explicit custom IDs are submitted for Agent validation. A rejected or unavailable
 selection cannot become an apparently successful switch or send the task with a different model.
 Agents without a model API use their configured startup model and cannot promise a live switch.
+Their catalog exposes only the startup selection; an explicit unsupported model fails before a prompt.
 
 Boolean, select and grouped configuration choices, modes and live command updates use the existing
 Composer. Empty protocol values remain selectable through reversible presentation keys. Model
@@ -96,7 +99,10 @@ does not invalidate an unchanged native source.
 Restoration uses advertised v1 load, v1 resume or v2 resume/replay. A resume-only Agent can continue
 its context without supplying earlier transcript replay; Nodex saves its subsequent history from
 that point. Stored Nodex history remains passive and paged. Missing native sessions fail restoration
-instead of creating a replacement and replaying previous work. Fork, close and delete are offered
+and retain the captured native identity and saved Nodex history. The current Run fails without a
+replacement native session or portable prompt replay; starting a separate conversation is an explicit
+user action. This applies both when opening a saved session and when continuing after cancellation.
+Fork, close and delete are offered
 only when supported. Product chat deletion does not implicitly delete native history, and mapped
 native history is protected from direct deletion.
 
