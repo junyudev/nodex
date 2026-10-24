@@ -1,0 +1,24 @@
+docs/product-specs/nfm-editor-structural-editing-behavior.md
+  s_f79dd9d0c7ac54::t_b48ab2cdfdfe4f 346-351
+crates/nodex-core/src/library/block_transfer/history.rs
+  s_f79dd9d0c7ac54::t_0e65a5c451305f 82-90,407-419
+  s_f79dd9d0c7ac54::t_63fa81691db987 510,526,528,545,563
+  s_f79dd9d0c7ac54::t_38e3fadff91aae 462-509,511-525,527,529-544,546-551,553,571,573,575-576,579,588,606,609,615,628
+  s_f79dd9d0c7ac54::t_22b30e6c9a3b18 552,554-562,564-570,572,574,577-578,580-587,589-605,607-608,610-614,616-627,629
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "4e31fde1062d6ee4931a18c9adeea014da1d53c3",
+  "prompts": {},
+  "sessions": {
+    "s_f79dd9d0c7ac54": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a151d6-b92f-7f41-b4e5-4834cb7752bd",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
