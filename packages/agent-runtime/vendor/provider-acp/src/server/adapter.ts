@@ -1547,13 +1547,6 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
             sessionId: sessionId ?? null,
           };
         };
-        const prepareClaimableTerminalEnvironment = (mcpContext: AcpMcpContext): void => {
-          pendingTerminalEnvironment = {
-            environment: mcpContext.processEnvironment,
-            claimUnknownSession: true,
-            sessionId: null,
-          };
-        };
         const rememberTerminalEnvironment = (
           sessionId: string,
           mcpContext: AcpMcpContext,
