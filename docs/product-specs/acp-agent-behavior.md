@@ -48,8 +48,11 @@ Operations bind their instance, owner, configuration and Runtime lifetime. Closi
 flow cancels its interaction and owned terminal. Closing an installation observer allows installation
 to continue. Main observes completion independently of the originating window and refreshes connected
 catalog consumers after successful installation, connection or authentication. Expired, cancelled and
-superseded answers cannot complete another flow. Shared native
-credential scopes coordinate login, logout and model-service writes with active work.
+superseded answers cannot complete another flow. Credential coordination is separate from native
+history identity. Each instance claims its canonical home and supported potential credential roots;
+intersecting claims within the same source coordinate login, logout and model-service writes with
+active work. Logical labels and unrelated toolchain or cache directories cannot remove those claims.
+Independent isolated homes with no shared credential roots can authenticate concurrently.
 
 Explicit connection can create a temporary native session to discover the Agent's capabilities,
 commands, models and configuration. It creates no Nodex Session or Run and sends no prompt. Search,
