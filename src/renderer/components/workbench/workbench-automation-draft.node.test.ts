@@ -479,3 +479,22 @@ test("builds a projectless local task without borrowing a directory or Project",
   draft.executionEnvironment = "worktree";
   expect(validateWorkbenchAutomationDraft(draft).canSave).toBe(false);
 });
+
+test("an ACP task keeps its exact instance and sends only options its model advertises", () => {
+  const draft = createWorkbenchAutomationDraftFromCreateInput({
+    kind: "cron",
+    backendBinding: { kind: "acp", agentDefinitionId: "qoder-cli", instanceConfigId: "qoder-work" },
+    name: "Nightly triage",
+    prompt: "Triage new issues",
+  });
+  // No model is chosen for an ACP Agent; Codex's effort default never applies to it.
+  expect(draft).toMatchObject({ model: "", reasoningEffort: "" });
+  expect(validateWorkbenchAutomationDraft(draft).missingRequirements).toContain("model");
+  draft.model = "dfmodel";
+  expect(buildCodexScheduledAutomationCreateInput({ draft })).toMatchObject({
+    backendBinding: { kind: "acp", agentDefinitionId: "qoder-cli", instanceConfigId: "qoder-work" },
+    model: "dfmodel",
+    reasoningEffort: null,
+    serviceTier: null,
+  });
+});

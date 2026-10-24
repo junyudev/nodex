@@ -22,16 +22,66 @@ const discovery = vi.hoisted(() =>
 vi.mock("@/features/local-conversation/use-claude-model-catalog", () => ({
   useClaudeModelCatalog: discovery,
 }));
-vi.mock("@/lib/workbench-settings-runtime", () => ({
-  readClaudeAgentSettings: async () => ({
+vi.mock("@/features/local-conversation/use-agent-instances", () => ({
+  useAgentInstances: () => ({
+    loading: false,
+    error: null,
+    refresh: () => {},
     instances: [
-      { id: "gateway", displayName: "Gateway", enabled: true },
-      { id: "disabled", displayName: "Disabled profile", enabled: false },
+      { binding: { kind: "claude", instanceConfigId: "gateway" }, label: "Gateway", enabled: true },
+      {
+        binding: { kind: "claude", instanceConfigId: "disabled" },
+        label: "Disabled profile",
+        enabled: false,
+      },
+      { binding: { kind: "opencode", instanceConfigId: "open" }, label: "OpenCode", enabled: true },
+      {
+        binding: { kind: "acp", agentDefinitionId: "scripted-agent", instanceConfigId: "acp-work" },
+        label: "ACP work",
+        enabled: true,
+      },
     ],
   }),
 }));
-vi.mock("@/lib/renderer-transport", () => ({
-  resolveRendererTransport: () => ({ subscribeClaudeAgentSettingsChanges: () => () => {} }),
+const acpModels = vi.hoisted(() =>
+  vi.fn((binding: { kind: string }) =>
+    binding.kind === "acp"
+      ? {
+          loading: false,
+          discovered: true,
+          models: [
+            {
+              id: "scripted-fast",
+              model: "scripted-fast",
+              displayName: "scripted-fast",
+              description: "",
+              hidden: false,
+              supportedReasoningEfforts: [],
+              defaultReasoningEffort: "default",
+              inputModalities: [],
+              isDefault: false,
+            },
+            {
+              id: "scripted-deep",
+              model: "scripted-deep",
+              displayName: "scripted-deep",
+              description: "",
+              hidden: false,
+              supportedReasoningEfforts: [
+                { reasoningEffort: "low", description: "Low" },
+                { reasoningEffort: "high", description: "High" },
+              ],
+              defaultReasoningEffort: "low",
+              inputModalities: [],
+              isDefault: false,
+            },
+          ],
+        }
+      : { loading: false, discovered: false, models: [] },
+  ),
+);
+vi.mock("@/features/acp-agents/use-acp-automation-models", () => ({
+  useAcpAutomationModels: acpModels,
 }));
 
 test("scheduled tasks select the exact enabled Claude profile, concrete model and advertised effort", async () => {
@@ -100,4 +150,64 @@ test("scheduled tasks select the exact enabled Claude profile, concrete model an
   await click(await body.findByLabelText("Agent Gateway"));
   await click(await body.findByRole("menuitem", { name: "Gateway" }));
   expect(changed).toHaveBeenCalledTimes(acceptedChanges);
+});
+
+test("scheduled tasks can run an ACP instance with its exact advertised model and options", async () => {
+  const changed = vi.fn();
+  function Editor() {
+    const [draft, setDraft] = useState<WorkbenchAutomationDraft>({
+      ...createWorkbenchAutomationDraft(),
+      projectId: "project",
+      model: "gpt-model",
+      reasoningEffort: "high",
+      serviceTier: "fast",
+    });
+    return (
+      <AutomationIntelligenceDropdown
+        draft={draft}
+        codexModels={[]}
+        disabled={false}
+        onChange={(next) => {
+          changed(next);
+          setDraft(next);
+        }}
+      />
+    );
+  }
+  const view = renderWithMaitai(
+    <NodexTooltipProvider delay={0}>
+      <Editor />
+    </NodexTooltipProvider>,
+  );
+  const body = within(view.container.ownerDocument.body);
+  const click = async (element: HTMLElement) =>
+    act(async () => {
+      fireEvent.click(element);
+      await Promise.resolve();
+    });
+  await click(view.getByRole("button", { name: "Agent intelligence" }));
+  await click(await body.findByLabelText("Agent Codex"));
+  // OpenCode isn't scheduled here; enabled Claude profiles and ACP instances are.
+  expect(body.queryByRole("menuitem", { name: "OpenCode" })).toBeNull();
+  await click(await body.findByRole("menuitem", { name: "ACP work" }));
+  expect(changed.mock.lastCall?.[0]).toMatchObject({
+    backendBinding: {
+      kind: "acp",
+      agentDefinitionId: "scripted-agent",
+      instanceConfigId: "acp-work",
+    },
+    model: "",
+    reasoningEffort: "",
+    serviceTier: "",
+  });
+  await click(await body.findByLabelText("Model Default model"));
+  await click(await body.findByRole("menuitem", { name: /scripted.deep/iu }));
+  expect(changed.mock.lastCall?.[0]).toMatchObject({
+    model: "scripted-deep",
+    reasoningEffort: "low",
+  });
+  await click(await body.findByLabelText(/^Model /u));
+  await click(await body.findByRole("menuitem", { name: /scripted.fast/iu }));
+  // A model without effort options sends none rather than a value the Agent never offered.
+  expect(changed.mock.lastCall?.[0]).toMatchObject({ model: "scripted-fast", reasoningEffort: "" });
 });

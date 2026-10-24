@@ -89,7 +89,9 @@ function withNewChatEachRun(
     reasoningEffort:
       draft.backendBinding.kind === "claude"
         ? "default"
-        : DEFAULT_WORKBENCH_AUTOMATION_REASONING_EFFORT,
+        : draft.backendBinding.kind === "acp"
+          ? ""
+          : DEFAULT_WORKBENCH_AUTOMATION_REASONING_EFFORT,
   };
   return codexModels.length > 0
     ? resolveWorkbenchAutomationDraftModelSettings({ draft: next, models: codexModels })

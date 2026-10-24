@@ -1,4 +1,3 @@
-import { useEffect, useState } from "react";
 import { AgentIntelligenceDropdown } from "@/components/shared/agent-runtime/agent-intelligence-dropdown";
 import {
   NodexDropdownMenu,
@@ -6,43 +5,21 @@ import {
   NodexDropdownSelectedIcon,
   NodexSettingsDropdownTrigger,
 } from "@/components/ui/dropdown";
-import { readClaudeAgentSettings } from "@/lib/workbench-settings-runtime";
-import { resolveRendererTransport } from "@/lib/renderer-transport";
+import { useAgentInstances } from "@/features/local-conversation/use-agent-instances";
+import { useAcpAutomationModels } from "@/features/acp-agents/use-acp-automation-models";
 import { projectNativeModelOption } from "@/lib/native-model-option";
 import { resolveNativeIntelligenceSelection } from "@/lib/native-intelligence-selection";
 import { isClaudeEffortLevel } from "../../../shared/claude-models";
 import { useClaudeModelCatalog } from "@/features/local-conversation/use-claude-model-catalog";
 import type { AgentModelOption } from "../../../shared/types";
-import type { ClaudeAgentSettings } from "../../../shared/claude-agent-settings";
 import type { AgentBackendBinding } from "../../../shared/agent-backend";
 import {
   resolveWorkbenchAutomationDraftModelSettings,
   type WorkbenchAutomationDraft,
 } from "./workbench-automation-draft";
 
-const useAutomationProfiles = () => {
-  const [profiles, setProfiles] = useState<ClaudeAgentSettings["instances"]>([]);
-  useEffect(() => {
-    let disposed = false;
-    let generation = 0;
-    const reload = () => {
-      const requested = ++generation;
-      void readClaudeAgentSettings().then(
-        (settings) => {
-          if (!disposed && requested === generation && settings) setProfiles(settings.instances);
-        },
-        () => {},
-      );
-    };
-    const unsubscribe = resolveRendererTransport().subscribeClaudeAgentSettingsChanges(reload);
-    reload();
-    return () => {
-      disposed = true;
-      unsubscribe();
-    };
-  }, []);
-  return profiles;
-};
+const bindingValue = (binding: AgentBackendBinding) =>
+  binding.kind === "codex" ? "codex" : `${binding.kind}:${binding.instanceConfigId ?? ""}`;
 
 export function AutomationIntelligenceDropdown({
   draft,
@@ -55,8 +32,11 @@ export function AutomationIntelligenceDropdown({
   readonly disabled: boolean;
   readonly onChange: (draft: WorkbenchAutomationDraft) => void;
 }) {
-  const profiles = useAutomationProfiles();
-  const isClaude = draft.backendBinding.kind === "claude";
+  const { instances } = useAgentInstances();
+  const binding = draft.backendBinding;
+  const isClaude = binding.kind === "claude";
+  const isAcp = binding.kind === "acp";
+  const acp = useAcpAutomationModels(binding);
   const selectedInstance =
     draft.backendBinding.kind === "claude" ? draft.backendBinding.instanceConfigId : null;
   const catalog = useClaudeModelCatalog(
@@ -76,34 +56,58 @@ export function AutomationIntelligenceDropdown({
     ? catalog.options.map((option) =>
         projectNativeModelOption(option, option.value === catalog.discovery?.intelligence.model),
       )
-    : codexModels;
-  const selection = isClaude ? `claude:${selectedInstance}` : "codex";
-  const label = isClaude
-    ? (profiles.find((profile) => profile.id === selectedInstance)?.displayName ??
-      selectedInstance ??
-      "Claude")
-    : "Codex";
+    : isAcp
+      ? acp.models
+      : codexModels;
+  const selection = bindingValue(binding);
+  // Claude profiles and ACP instances the user turned on; OpenCode isn't scheduled here.
+  const scheduled = instances.filter(
+    (instance) =>
+      instance.enabled && (instance.binding.kind === "claude" || instance.binding.kind === "acp"),
+  );
+  const current = instances.find((instance) => bindingValue(instance.binding) === selection);
+  const label =
+    binding.kind === "codex"
+      ? "Codex"
+      : (current?.label ?? (isAcp ? "Unavailable Agent" : (selectedInstance ?? "Claude")));
   const options = [
     { value: "codex", label: "Codex" },
-    ...profiles
-      .filter((profile) => profile.enabled)
-      .map((profile) => ({ value: `claude:${profile.id}`, label: profile.displayName })),
+    ...scheduled.map((instance) => ({
+      value: bindingValue(instance.binding),
+      label: instance.label,
+    })),
   ];
   const selectBackend = (value: string) => {
     if (value === selection) return;
     const backendBinding: AgentBackendBinding =
       value === "codex"
         ? { kind: "codex" }
-        : { kind: "claude", instanceConfigId: value.slice("claude:".length) };
+        : (scheduled.find((instance) => bindingValue(instance.binding) === value)?.binding ?? {
+            kind: "codex",
+          });
     const next = {
       ...draft,
       backendBinding,
+      // An ACP instance runs its exact advertised model; its controls come with that model.
       model: backendBinding.kind === "claude" ? "default" : "",
-      reasoningEffort: backendBinding.kind === "claude" ? "default" : "medium",
+      reasoningEffort:
+        backendBinding.kind === "claude"
+          ? "default"
+          : backendBinding.kind === "acp"
+            ? ""
+            : "medium",
       serviceTier: "",
       localEnvironmentConfigPath: "",
     };
     onChange(resolveWorkbenchAutomationDraftModelSettings({ draft: next, models: codexModels }));
+  };
+  /** An ACP model either names one of its advertised effort values or none at all. */
+  const acpEffort = (model: string, effort: string) => {
+    const efforts = acp.models.find((option) => option.id === model)?.supportedReasoningEfforts;
+    if (!efforts?.length) return "";
+    return efforts.some((option) => option.reasoningEffort === effort)
+      ? effort
+      : (acp.models.find((option) => option.id === model)?.defaultReasoningEffort ?? "");
   };
   if (draft.kind === "heartbeat")
     return (
@@ -126,7 +130,7 @@ export function AutomationIntelligenceDropdown({
         ))}
       </NodexDropdownMenu>
     );
-  return (
+  const dropdown = (
     <AgentIntelligenceDropdown
       disabled={disabled}
       models={models}
@@ -138,19 +142,33 @@ export function AutomationIntelligenceDropdown({
         select: selectBackend,
       }}
       selection={{
-        kind: isClaude ? "claude" : "codex",
-        model: isClaude ? intelligence.model : draft.model || "default",
-        reasoningEffort: isClaude ? intelligence.effort : draft.reasoningEffort || "medium",
-        serviceTier: isClaude ? null : draft.serviceTier === "fast" ? "fast" : null,
+        kind: binding.kind,
+        model: isClaude ? intelligence.model : isAcp ? draft.model : draft.model || "default",
+        reasoningEffort: isClaude
+          ? intelligence.effort
+          : isAcp
+            ? draft.reasoningEffort || "default"
+            : draft.reasoningEffort || "medium",
+        serviceTier: isClaude || isAcp ? null : draft.serviceTier === "fast" ? "fast" : null,
       }}
-      onSelectionChange={(next, change) =>
+      onSelectionChange={(next, change) => {
+        const model = change === "model" ? next.model : draft.model;
         onChange({
           ...draft,
-          model: change === "model" ? next.model : draft.model,
-          reasoningEffort: next.reasoningEffort,
-          serviceTier: isClaude ? "" : (next.serviceTier ?? ""),
-        })
-      }
+          model,
+          reasoningEffort: isAcp ? acpEffort(model, next.reasoningEffort) : next.reasoningEffort,
+          serviceTier: isClaude || isAcp ? "" : (next.serviceTier ?? ""),
+        });
+      }}
     />
+  );
+  if (!isAcp || acp.loading || acp.discovered) return dropdown;
+  return (
+    <span className="flex min-w-0 flex-col items-end gap-1">
+      {dropdown}
+      <span className="text-xs text-token-description-foreground">
+        Connect {label} in Settings to choose its model.
+      </span>
+    </span>
   );
 }

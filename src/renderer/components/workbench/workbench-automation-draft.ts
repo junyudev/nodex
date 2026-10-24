@@ -75,6 +75,15 @@ function normalizeExecutionEnvironment(
   return executionEnvironment === "local" ? "local" : "worktree";
 }
 
+/** Claude uses its own default; an ACP model sends only options it advertises. */
+function defaultAutomationReasoningEffort(
+  binding: AgentBackendBinding,
+): CodexScheduledAutomationReasoningEffort | "" {
+  if (binding.kind === "claude") return "default";
+  if (binding.kind === "acp") return "";
+  return DEFAULT_WORKBENCH_AUTOMATION_REASONING_EFFORT;
+}
+
 export function createCodexScheduledAutomationId(
   randomUUID: (() => string) | undefined = globalThis.crypto?.randomUUID?.bind(globalThis.crypto),
 ): string {
@@ -124,10 +133,7 @@ export function createWorkbenchAutomationDraft(
         : "",
     reasoningEffort:
       kind === "cron"
-        ? (automation?.reasoningEffort ??
-          (backendBinding.kind === "claude"
-            ? "default"
-            : DEFAULT_WORKBENCH_AUTOMATION_REASONING_EFFORT))
+        ? (automation?.reasoningEffort ?? defaultAutomationReasoningEffort(backendBinding))
         : "",
     serviceTier: kind === "cron" ? (automation?.serviceTier ?? "") : "",
     cwds: kind === "cron" ? [...(automation?.cwds ?? [])] : [],
@@ -157,10 +163,7 @@ export function createWorkbenchAutomationDraftFromCreateInput(
       kind === "cron" ? (input.model ?? (backendBinding.kind === "claude" ? "default" : "")) : "",
     reasoningEffort:
       kind === "cron"
-        ? (input.reasoningEffort ??
-          (backendBinding.kind === "claude"
-            ? "default"
-            : DEFAULT_WORKBENCH_AUTOMATION_REASONING_EFFORT))
+        ? (input.reasoningEffort ?? defaultAutomationReasoningEffort(backendBinding))
         : "",
     serviceTier: kind === "cron" ? (input.serviceTier ?? "") : "",
     cwds: kind === "cron" ? [...(input.cwds ?? [])] : [],
