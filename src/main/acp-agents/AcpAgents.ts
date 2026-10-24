@@ -128,7 +128,15 @@ export const make = Effect.gen(function* () {
   const pendingAuthentication = new Map<string, Set<{ released: boolean }>>();
   const operations = new Map<
     string,
-    { runtimeId: string; generation: string; instanceId: string | null; settled: boolean }
+    {
+      runtimeId: string;
+      generation: string;
+      instanceId: string | null;
+      settled: boolean;
+      requestIdentity: string;
+      pending: number;
+      accepted: boolean;
+    }
   >();
   const key = (ownerId: string, id: string) => JSON.stringify([ownerId, id]);
   const instance = Effect.fn("AcpAgents.instance")(function* (id: string, allowDisabled = false) {
@@ -181,6 +189,11 @@ export const make = Effect.gen(function* () {
     input: { readonly instanceId: string; readonly flowId?: string },
   ) {
     const saved = flows.get(key(ownerId, input.instanceId));
+    if (saved && input.flowId !== undefined && saved.flowId !== input.flowId)
+      return yield* new AcpAgentsError({
+        message: "This sign-in flow is no longer active. Start sign-in again.",
+        reason: "operation_expired",
+      });
     const current = yield* settings.snapshot();
     const enabled = current.acpAgents.instances.some(
       (entry) => entry.id === input.instanceId && entry.enabled,
@@ -190,7 +203,6 @@ export const make = Effect.gen(function* () {
     if (
       !saved ||
       !enabled ||
-      (input.flowId !== undefined && saved.flowId !== input.flowId) ||
       saved.generation !== process.identity.runtimeGeneration ||
       saved.configurationDigest !== digest
     ) {
@@ -226,10 +238,21 @@ export const make = Effect.gen(function* () {
   const operationIdentity = Effect.fn("AcpAgents.operationIdentity")(function* (
     ownerId: string,
     operationId: string,
+    requestIdentity: string,
     instanceId: string | null = null,
   ) {
     const process = yield* connection();
     const operationKey = key(ownerId, operationId);
+    const existing = operations.get(operationKey);
+    if (existing?.generation === process.identity.runtimeGeneration) {
+      if (existing.requestIdentity !== requestIdentity)
+        return yield* new AcpAgentsError({
+          reason: "invalid_request",
+          message: "This operation ID belongs to another Agent request.",
+        });
+      existing.pending += 1;
+      return { process, operationId: existing.runtimeId, record: existing, operationKey };
+    }
     if (!operations.has(operationKey) && operations.size >= 256) {
       for (const [entry, operation] of operations) {
         if (operation.settled || operation.generation !== process.identity.runtimeGeneration)
@@ -241,14 +264,31 @@ export const make = Effect.gen(function* () {
         });
     }
     const runtimeId = createHash("sha256").update(operationKey).digest("hex");
-    operations.set(operationKey, {
+    const record = {
       runtimeId,
       generation: process.identity.runtimeGeneration,
       instanceId,
       settled: false,
-    });
-    return { process, operationId: runtimeId };
+      requestIdentity,
+      pending: 1,
+      accepted: false,
+    };
+    operations.set(operationKey, record);
+    return { process, operationId: runtimeId, record, operationKey };
   });
+  const finishOperationStart = (operation: {
+    record: { pending: number; accepted: boolean };
+    operationKey: string;
+  }) =>
+    Effect.sync(() => {
+      operation.record.pending -= 1;
+      if (
+        !operation.record.accepted &&
+        operation.record.pending === 0 &&
+        operations.get(operation.operationKey) === operation.record
+      )
+        operations.delete(operation.operationKey);
+    });
   const presentFailure = (failure: AgentAcpFailure) =>
     application.sessionsForThreads(failure.affectedThreadIds ?? []).pipe(
       Effect.map((affectedSessions) => ({
@@ -266,6 +306,7 @@ export const make = Effect.gen(function* () {
     if (saved) {
       // Runtime may coalesce concurrent starts from different windows into one operation.
       saved.runtimeId = result.operationId;
+      saved.accepted = true;
       saved.settled = result.phase !== "running";
     }
     const process = yield* runtime.currentConnection;
@@ -301,12 +342,22 @@ export const make = Effect.gen(function* () {
       }),
     "acp.install.start": (ownerId, input) =>
       Effect.gen(function* () {
-        const op = yield* operationIdentity(ownerId, input.operationId);
-        const result = yield* op.process.request("acp.install.start", {
-          ...input,
-          operationId: op.operationId,
-        });
-        return yield* presentOperation(ownerId, input.operationId, result);
+        const op = yield* operationIdentity(
+          ownerId,
+          input.operationId,
+          JSON.stringify([
+            "install",
+            input.agentId,
+            input.distribution ?? "auto",
+            input.expectedInstallationId ?? null,
+          ]),
+        );
+        return yield* op.process
+          .request("acp.install.start", { ...input, operationId: op.operationId })
+          .pipe(
+            Effect.flatMap((result) => presentOperation(ownerId, input.operationId, result)),
+            Effect.ensuring(finishOperationStart(op)),
+          );
       }),
     "acp.registry.uninstall": (_owner, input) =>
       Effect.gen(function* () {
@@ -324,12 +375,18 @@ export const make = Effect.gen(function* () {
     "acp.connection.start": (ownerId, input) =>
       Effect.gen(function* () {
         const resolved = yield* target(input);
-        const op = yield* operationIdentity(ownerId, input.operationId, input.instanceId);
-        const result = yield* op.process.request("acp.connection.start", {
-          ...resolved,
-          operationId: op.operationId,
-        });
-        return yield* presentOperation(ownerId, input.operationId, result);
+        const op = yield* operationIdentity(
+          ownerId,
+          input.operationId,
+          JSON.stringify(["connect", resolved.instanceId, resolved.cwd]),
+          input.instanceId,
+        );
+        return yield* op.process
+          .request("acp.connection.start", { ...resolved, operationId: op.operationId })
+          .pipe(
+            Effect.flatMap((result) => presentOperation(ownerId, input.operationId, result)),
+            Effect.ensuring(finishOperationStart(op)),
+          );
       }),
     "acp.operation.read": (ownerId, input) =>
       Effect.gen(function* () {

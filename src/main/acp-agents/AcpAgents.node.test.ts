@@ -23,6 +23,8 @@ const setup = Effect.gen(function* () {
   const authenticationRelease = yield* Deferred.make<void>();
   const calls: { method: string; input: Record<string, unknown> }[] = [];
   const state = {
+    rejectOperations: false,
+    flowId: "flow",
     pauseAuthentication: false,
     operationPhase: "running",
     authenticationPhase: "waiting",
@@ -41,7 +43,7 @@ const setup = Effect.gen(function* () {
         return {
           instanceId: input.instanceId,
           phase: state.authenticationPhase,
-          flowId: "flow",
+          flowId: state.flowId,
           authorizationUrl: null,
           expiresAt: null,
           message: null,
@@ -58,6 +60,11 @@ const setup = Effect.gen(function* () {
         error: state.failure,
       };
     }).pipe(
+      Effect.tap(() =>
+        state.rejectOperations && ["acp.install.start", "acp.connection.start"].includes(method)
+          ? Effect.fail(new Error("Rejected start"))
+          : Effect.void,
+      ),
       Effect.tap(() =>
         method === "acp.auth.start" && state.pauseAuthentication
           ? Deferred.succeed(authenticationStarted, undefined).pipe(
@@ -96,7 +103,11 @@ const setup = Effect.gen(function* () {
         Effect.succeed({
           revision: state.revision,
           acpAgents: {
-            instances: [{ id: "personal", agentDefinitionId: "qoder", enabled: state.enabled }],
+            instances: ["personal", "work"].map((id) => ({
+              id,
+              agentDefinitionId: "qoder",
+              enabled: state.enabled,
+            })),
           },
         } as ApplicationSettingsSnapshot),
     }),
@@ -351,5 +362,83 @@ it.effect("announces authentication completion without an observing settings mod
     assert.equal(changes, 1);
     yield* TestClock.adjust("1 second");
     assert.equal(changes, 1);
+  }),
+);
+
+it.effect("rejects delayed responses to an older sign-in without cancelling the current flow", () =>
+  Effect.gen(function* () {
+    const { agents, calls, state } = yield* setup;
+    state.flowId = "flow-a";
+    yield* agents["acp.auth.start"]("window", { instanceId: "personal" });
+    state.flowId = "flow-b";
+    yield* agents["acp.auth.start"]("window", { instanceId: "personal" });
+    const stale = { instanceId: "personal", flowId: "flow-a" };
+    for (const operation of [
+      agents["acp.auth.respond"]("window", {
+        ...stale,
+        interactionId: "terminal",
+        response: { type: "terminal", data: "old" },
+      }),
+      agents["acp.auth.complete"]("window", {
+        ...stale,
+        callbackUrl: "https://callback.example.test/return",
+      }),
+      agents["acp.auth.cancel"]("window", stale),
+    ]) {
+      const result = yield* Effect.result(operation);
+      assert.equal(result._tag, "Failure");
+      if (result._tag === "Failure")
+        assert.propertyVal(result.failure, "reason", "operation_expired");
+    }
+    assert.equal(calls.filter(({ method }) => method === "acp.auth.cancel").length, 0);
+    yield* agents["acp.auth.respond"]("window", {
+      instanceId: "personal",
+      flowId: "flow-b",
+      interactionId: "terminal",
+      response: { type: "terminal", data: "current" },
+    });
+    assert.equal(calls.filter(({ method }) => method === "acp.auth.respond").length, 1);
+    assert.equal(calls.at(-1)?.input.flowId, "flow-b");
+  }),
+);
+
+it.effect("keeps the accepted operation's identity when a conflicting request reuses its ID", () =>
+  Effect.gen(function* () {
+    const { agents, calls, state } = yield* setup;
+    state.operationPhase = "succeeded";
+    yield* agents["acp.connection.start"]("window", {
+      instanceId: "personal",
+      operationId: "probe",
+    });
+    const conflict = yield* Effect.result(
+      agents["acp.connection.start"]("window", { instanceId: "work", operationId: "probe" }),
+    );
+    assert.equal(conflict._tag, "Failure");
+    assert.equal(calls.filter(({ method }) => method === "acp.connection.start").length, 1);
+    const read = yield* agents["acp.operation.read"]("window", { operationId: "probe" });
+    const cancel = yield* agents["acp.operation.cancel"]("window", { operationId: "probe" });
+    assert.equal(read.instanceId, "personal");
+    assert.equal(cancel.instanceId, "personal");
+    assert.equal(read.phase, "succeeded");
+    assert.equal(cancel.phase, "succeeded");
+    assert.equal(calls.at(-1)?.input.operationId, calls[0]?.input.operationId);
+  }),
+);
+it.effect("releases a rejected start's operation reservation", () =>
+  Effect.gen(function* () {
+    const { agents, state } = yield* setup;
+    state.rejectOperations = true;
+    assert.equal(
+      (yield* Effect.result(
+        agents["acp.connection.start"]("window", { instanceId: "personal", operationId: "probe" }),
+      ))._tag,
+      "Failure",
+    );
+    state.rejectOperations = false;
+    const accepted = yield* agents["acp.connection.start"]("window", {
+      instanceId: "work",
+      operationId: "probe",
+    });
+    assert.equal(accepted.instanceId, "work");
   }),
 );
