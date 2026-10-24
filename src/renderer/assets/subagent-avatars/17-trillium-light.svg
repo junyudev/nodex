@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" viewBox="0 0 16 16">
+  <defs>
+    <linearGradient id="17-trillium-light-a" x1="3" x2="13" y1="1.5" y2="14.5" gradientUnits="userSpaceOnUse"><stop stop-color="#FFC184"/><stop offset="1" stop-color="#FF8519"/></linearGradient>
+    <linearGradient id="17-trillium-light-b" x1="3" x2="13" y1="1.5" y2="14.5" gradientUnits="userSpaceOnUse"><stop stop-color="#FFC184"/><stop offset="1" stop-color="#FFA049"/></linearGradient>
+    <radialGradient id="17-trillium-light-glaze" cx="4.6" cy="3.4" r="9" gradientUnits="userSpaceOnUse"><stop stop-color="#fff" stop-opacity="0.42"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></radialGradient>
+    <clipPath id="17-trillium-light-clip"><path d="M8.26 7.85Q11.915 8.28 13.369 4.9Q9.714 4.47 8.26 7.85Z"/><path d="M8 8.3Q5.8 11.25 8 14.2Q10.2 11.25 8 8.3Z"/><path d="M7.74 7.85Q6.286 4.47 2.631 4.9Q4.085 8.28 7.74 7.85Z"/><path d="M8 7.7Q12.8 4.35 8 1Q3.2 4.35 8 7.7Z"/><path d="M8.26 8.15Q8.761 13.982 14.062 11.5Q13.561 5.668 8.26 8.15Z"/><path d="M7.74 8.15Q2.439 5.668 1.938 11.5Q7.239 13.982 7.74 8.15Z"/><circle cx="8" cy="8" r="1.6"/></clipPath>
+  </defs>
+  <g opacity="0.78"><path d="M8.26 7.85Q11.915 8.28 13.369 4.9Q9.714 4.47 8.26 7.85Z" fill="url(#17-trillium-light-b)" stroke="#fff" stroke-opacity=".85" stroke-width=".5" stroke-linejoin="round"/></g>
+  <g opacity="0.78"><path d="M8 8.3Q5.8 11.25 8 14.2Q10.2 11.25 8 8.3Z" fill="url(#17-trillium-light-b)" stroke="#fff" stroke-opacity=".85" stroke-width=".5" stroke-linejoin="round"/></g>
+  <g opacity="0.78"><path d="M7.74 7.85Q6.286 4.47 2.631 4.9Q4.085 8.28 7.74 7.85Z" fill="url(#17-trillium-light-b)" stroke="#fff" stroke-opacity=".85" stroke-width=".5" stroke-linejoin="round"/></g>
+  <g opacity="0.92"><path d="M8 7.7Q12.8 4.35 8 1Q3.2 4.35 8 7.7Z" fill="url(#17-trillium-light-a)" stroke="#fff" stroke-opacity=".85" stroke-width=".5" stroke-linejoin="round"/></g>
+  <g opacity="0.92"><path d="M8.26 8.15Q8.761 13.982 14.062 11.5Q13.561 5.668 8.26 8.15Z" fill="url(#17-trillium-light-a)" stroke="#fff" stroke-opacity=".85" stroke-width=".5" stroke-linejoin="round"/></g>
+  <g opacity="0.92"><path d="M7.74 8.15Q2.439 5.668 1.938 11.5Q7.239 13.982 7.74 8.15Z" fill="url(#17-trillium-light-a)" stroke="#fff" stroke-opacity=".85" stroke-width=".5" stroke-linejoin="round"/></g>
+  <g opacity="1"><circle cx="8" cy="8" r="1.6" fill="#DD640A" stroke="#fff" stroke-opacity=".85" stroke-width=".5" stroke-linejoin="round"/></g>
+  <rect width="16" height="16" fill="url(#17-trillium-light-glaze)" clip-path="url(#17-trillium-light-clip)"/>
+</svg>

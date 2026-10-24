@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" viewBox="0 0 16 16">
+  <defs>
+    <linearGradient id="05-arch-light-a" x1="3" x2="13" y1="1.5" y2="14.5" gradientUnits="userSpaceOnUse"><stop stop-color="#92C3FF"/><stop offset="1" stop-color="#3176F0"/></linearGradient>
+    <linearGradient id="05-arch-light-b" x1="3" x2="13" y1="1.5" y2="14.5" gradientUnits="userSpaceOnUse"><stop stop-color="#92C3FF"/><stop offset="1" stop-color="#5D99F7"/></linearGradient>
+    <radialGradient id="05-arch-light-glaze" cx="4.6" cy="3.4" r="9" gradientUnits="userSpaceOnUse"><stop stop-color="#fff" stop-opacity="0.42"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></radialGradient>
+    <clipPath id="05-arch-light-clip"><path d="M1.6 10.2A6.4 6.4 0 0 1 14.4 10.2L11 10.2A3 3 0 0 0 5 10.2Z"/><path d="M5.4 10.2A2.6 2.6 0 0 1 10.6 10.2Z"/><rect x="1.6" y="11.3" width="12.8" height="2.4" rx="1.2"/></clipPath>
+  </defs>
+  <g opacity="0.92"><path d="M1.6 10.2A6.4 6.4 0 0 1 14.4 10.2L11 10.2A3 3 0 0 0 5 10.2Z" fill="url(#05-arch-light-a)" stroke="#fff" stroke-opacity=".85" stroke-width=".5" stroke-linejoin="round"/></g>
+  <g opacity="1"><path d="M5.4 10.2A2.6 2.6 0 0 1 10.6 10.2Z" fill="#2258D2" stroke="#fff" stroke-opacity=".85" stroke-width=".5" stroke-linejoin="round"/></g>
+  <g opacity="0.78"><rect x="1.6" y="11.3" width="12.8" height="2.4" rx="1.2" fill="url(#05-arch-light-b)" stroke="#fff" stroke-opacity=".85" stroke-width=".5" stroke-linejoin="round"/></g>
+  <rect width="16" height="16" fill="url(#05-arch-light-glaze)" clip-path="url(#05-arch-light-clip)"/>
+</svg>

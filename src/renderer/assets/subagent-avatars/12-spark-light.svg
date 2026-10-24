@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" viewBox="0 0 16 16">
+  <defs>
+    <linearGradient id="12-spark-light-a" x1="3" x2="13" y1="1.5" y2="14.5" gradientUnits="userSpaceOnUse"><stop stop-color="#C8B2FF"/><stop offset="1" stop-color="#8857F6"/></linearGradient>
+    <linearGradient id="12-spark-light-b" x1="3" x2="13" y1="1.5" y2="14.5" gradientUnits="userSpaceOnUse"><stop stop-color="#C8B2FF"/><stop offset="1" stop-color="#A580FA"/></linearGradient>
+    <radialGradient id="12-spark-light-glaze" cx="4.6" cy="3.4" r="9" gradientUnits="userSpaceOnUse"><stop stop-color="#fff" stop-opacity="0.42"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></radialGradient>
+    <clipPath id="12-spark-light-clip"><path d="M8 1Q9.3 6.7 15 8Q9.3 9.3 8 15Q6.7 9.3 1 8Q6.7 6.7 8 1Z"/><path d="M8 5.4Q8.5 7.5 10.6 8Q8.5 8.5 8 10.6Q7.5 8.5 5.4 8Q7.5 7.5 8 5.4Z" transform="rotate(45 8 8)"/></clipPath>
+  </defs>
+  <g opacity="0.92"><path d="M8 1Q9.3 6.7 15 8Q9.3 9.3 8 15Q6.7 9.3 1 8Q6.7 6.7 8 1Z" fill="url(#12-spark-light-a)" stroke="#fff" stroke-opacity=".85" stroke-width=".5" stroke-linejoin="round"/></g>
+  <g opacity="1"><path d="M8 5.4Q8.5 7.5 10.6 8Q8.5 8.5 8 10.6Q7.5 8.5 5.4 8Q7.5 7.5 8 5.4Z" transform="rotate(45 8 8)" fill="#6A3BE4" stroke="#fff" stroke-opacity=".85" stroke-width=".5" stroke-linejoin="round"/></g>
+  <rect width="16" height="16" fill="url(#12-spark-light-glaze)" clip-path="url(#12-spark-light-clip)"/>
+</svg>

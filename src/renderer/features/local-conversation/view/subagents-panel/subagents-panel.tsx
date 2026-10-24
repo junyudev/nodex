@@ -17,7 +17,7 @@ import type {
   CodexSubagentOverviewWindow,
 } from "../../../../../shared/types";
 import { useCodexAppServerControl } from "../../local-conversation-store";
-import { SubagentAvatar } from "../shared/subagent-avatar";
+import { SubagentAvatar, SubagentGlyphIcon } from "../shared/subagent-avatar";
 
 const ACTIVE_CLOCK_INTERVAL_MS = 1_000;
 const OVERVIEW_INVALIDATION_COALESCE_MS = 50;
@@ -127,7 +127,11 @@ function SubagentOverviewRowView({
     "flex min-h-10 min-w-0 flex-1 items-start gap-3 rounded-lg px-2 py-2 text-left hover:bg-token-bg-secondary focus-visible:bg-token-bg-secondary focus-visible:outline-2 focus-visible:outline-offset-2";
   const content = (
     <>
-      <SubagentAvatar seed={row.threadId} className="size-6 shrink-0" />
+      {row.identityThreadId === null ? (
+        <SubagentGlyphIcon className="size-6 shrink-0" />
+      ) : (
+        <SubagentAvatar seed={row.identityThreadId} className="size-6 shrink-0" />
+      )}
       <span className="min-w-0 flex-1">
         <span className="flex min-w-0 items-baseline gap-2 text-sm">
           <span className="min-w-0 flex-1 truncate text-token-foreground">

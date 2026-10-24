@@ -527,6 +527,10 @@ child metadata come from bounded engine readers. A task overview admits four act
 terminal tasks initially, with independent continuation cursors. It omits prompts,
 results, item bodies and native workflow payloads. Native task observations without an
 application-owned child Thread never acquire Thread navigation or command authority.
+Visual identity follows the shared [subagent identity contract](codex-subagent-behavior.md#visual-identity).
+The durable child Thread ID supplies the avatar seed across activity, summary,
+overview, child navigation and mentions. A task with no child Thread shows the
+generic subagent glyph; its task ID remains a row/control key, never an avatar seed.
 The Subagents panel shows each subagent's Agent label and model and can stop any live
 subagent the same way its transcript row does. Task metadata events update the pages already
 loaded in place, so later status changes never discard pages the user loaded; a newer report

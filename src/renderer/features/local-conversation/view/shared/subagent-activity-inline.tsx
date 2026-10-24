@@ -3,12 +3,13 @@ import { NodexHoverCard, NodexHoverCardProvider } from "@/components/ui/hover-ca
 import { useResolvedReducedMotion } from "@/lib/use-reduced-motion";
 import { cn } from "@/lib/utils";
 import { getSubagentActivityDisplayBudget } from "./subagent-activity-presentation";
-import { SubagentAvatar } from "./subagent-avatar";
+import { SubagentAvatar, SubagentGlyphIcon } from "./subagent-avatar";
 
 export interface SubagentActivityInlineItem {
   readonly id: string;
   readonly name: string;
-  readonly seed: string;
+  /** An observed task has no identity avatar until its child Thread is known. */
+  readonly seed: string | null;
   readonly details: ReactNode;
   readonly onOpen?: () => void;
 }
@@ -143,7 +144,12 @@ export function SubagentActivityInline({
               "data-animate-entrance": animateEntrance ? "" : undefined,
               onAnimationEnd: animateEntrance ? () => markSeen(item.id) : undefined,
             };
-            const avatar = <SubagentAvatar seed={item.seed} className="size-4" />;
+            const avatar =
+              item.seed === null ? (
+                <SubagentGlyphIcon className="size-4" />
+              ) : (
+                <SubagentAvatar seed={item.seed} className="size-4" />
+              );
             return (
               <SubagentActivityHover key={item.id} item={item}>
                 {index >= namedCount && item.onOpen ? (

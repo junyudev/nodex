@@ -34,6 +34,7 @@ function buildRow(
 ): CodexSubagentOverviewRow {
   return {
     threadId: `${status}-${index}`,
+    identityThreadId: `${status}-${index}`,
     parentThreadId: "root",
     displayName: `${status} ${index}`,
     actorName: `Agent ${index}`,

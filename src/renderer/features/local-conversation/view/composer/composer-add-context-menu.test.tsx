@@ -7,6 +7,7 @@ type MentionRow = Parameters<typeof buildComposerSubagentMentionCandidates>[1][n
 function row(conversationId: string, overrides: Partial<MentionRow> = {}): MentionRow {
   return {
     conversationId,
+    identityThreadId: conversationId,
     parentConversationId: "root",
     canInteract: true,
     displayName: "Scout",
@@ -20,6 +21,7 @@ describe("subagent mention provider", () => {
     const rows = [
       row("older-child", { displayName: " @ Scout " }),
       row("readonly-child", { canInteract: false }),
+      row("task-observation", { identityThreadId: null }),
       row("grandchild", { parentConversationId: "older-child" }),
       row("other-root", { parentConversationId: "other" }),
       row("unnamed", { displayName: "  " }),

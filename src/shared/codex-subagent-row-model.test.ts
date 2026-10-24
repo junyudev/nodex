@@ -75,6 +75,34 @@ function rows(
 }
 
 describe("shared subagent row contract", () => {
+  test("keeps child identity separate from task observation keys", () => {
+    expect(rows([activity("active")])[0]).toMatchObject({
+      conversationId: "child",
+      identityThreadId: "child",
+    });
+    const observed = rows([], undefined, {
+      childMemberships: [
+        {
+          threadId: "observation-key",
+          parentThreadId: "root",
+          role: "backgroundChild",
+          displayName: "Review",
+          task: {
+            id: "native-task",
+            bornTurnSequence: null,
+            description: "Review",
+            status: "running",
+          },
+        },
+      ],
+    });
+    expect(observed[0]).toMatchObject({
+      conversationId: "observation-key",
+      identityThreadId: null,
+      canInteract: false,
+    });
+  });
+
   test("available child metadata remains interactive without spawn history or after a later parent Turn", () => {
     const child: SubagentConversation = {
       turns: [],

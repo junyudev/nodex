@@ -1,29 +1,74 @@
 import type { ComponentPropsWithoutRef } from "react";
-import avatar0Dark from "@/assets/subagent-avatars/avatar-0-dark.svg";
-import avatar0Light from "@/assets/subagent-avatars/avatar-0-light.svg";
-import avatar1Dark from "@/assets/subagent-avatars/avatar-1-dark.svg";
-import avatar1Light from "@/assets/subagent-avatars/avatar-1-light.svg";
-import avatar2Dark from "@/assets/subagent-avatars/avatar-2-dark.svg";
-import avatar2Light from "@/assets/subagent-avatars/avatar-2-light.svg";
-import avatar3Dark from "@/assets/subagent-avatars/avatar-3-dark.svg";
-import avatar3Light from "@/assets/subagent-avatars/avatar-3-light.svg";
-import avatar4Dark from "@/assets/subagent-avatars/avatar-4-dark.svg";
-import avatar4Light from "@/assets/subagent-avatars/avatar-4-light.svg";
-import avatar5Dark from "@/assets/subagent-avatars/avatar-5-dark.svg";
-import avatar5Light from "@/assets/subagent-avatars/avatar-5-light.svg";
-import avatar6Dark from "@/assets/subagent-avatars/avatar-6-dark.svg";
-import avatar6Light from "@/assets/subagent-avatars/avatar-6-light.svg";
-import avatar7Dark from "@/assets/subagent-avatars/avatar-7-dark.svg";
-import avatar7Light from "@/assets/subagent-avatars/avatar-7-light.svg";
-import avatar8Dark from "@/assets/subagent-avatars/avatar-8-dark.svg";
-import avatar8Light from "@/assets/subagent-avatars/avatar-8-light.svg";
-import avatar9Dark from "@/assets/subagent-avatars/avatar-9-dark.svg";
-import avatar9Light from "@/assets/subagent-avatars/avatar-9-light.svg";
+import avatar0Dark from "@/assets/subagent-avatars/00-honeycomb-dark.svg";
+import avatar0Light from "@/assets/subagent-avatars/00-honeycomb-light.svg";
+import avatar1Dark from "@/assets/subagent-avatars/01-twin-dark.svg";
+import avatar1Light from "@/assets/subagent-avatars/01-twin-light.svg";
+import avatar2Dark from "@/assets/subagent-avatars/02-swirl-dark.svg";
+import avatar2Light from "@/assets/subagent-avatars/02-swirl-light.svg";
+import avatar3Dark from "@/assets/subagent-avatars/03-lotus-dark.svg";
+import avatar3Light from "@/assets/subagent-avatars/03-lotus-light.svg";
+import avatar4Dark from "@/assets/subagent-avatars/04-clover-dark.svg";
+import avatar4Light from "@/assets/subagent-avatars/04-clover-light.svg";
+import avatar5Dark from "@/assets/subagent-avatars/05-arch-dark.svg";
+import avatar5Light from "@/assets/subagent-avatars/05-arch-light.svg";
+import avatar6Dark from "@/assets/subagent-avatars/06-halo-dark.svg";
+import avatar6Light from "@/assets/subagent-avatars/06-halo-light.svg";
+import avatar7Dark from "@/assets/subagent-avatars/07-triad-dark.svg";
+import avatar7Light from "@/assets/subagent-avatars/07-triad-light.svg";
+import avatar8Dark from "@/assets/subagent-avatars/08-whirl-dark.svg";
+import avatar8Light from "@/assets/subagent-avatars/08-whirl-light.svg";
+import avatar9Dark from "@/assets/subagent-avatars/09-flame-dark.svg";
+import avatar9Light from "@/assets/subagent-avatars/09-flame-light.svg";
+import avatar10Dark from "@/assets/subagent-avatars/10-scallop-dark.svg";
+import avatar10Light from "@/assets/subagent-avatars/10-scallop-light.svg";
+import avatar11Dark from "@/assets/subagent-avatars/11-moth-dark.svg";
+import avatar11Light from "@/assets/subagent-avatars/11-moth-light.svg";
+import avatar12Dark from "@/assets/subagent-avatars/12-spark-dark.svg";
+import avatar12Light from "@/assets/subagent-avatars/12-spark-light.svg";
+import avatar13Dark from "@/assets/subagent-avatars/13-octagram-dark.svg";
+import avatar13Light from "@/assets/subagent-avatars/13-octagram-light.svg";
+import avatar14Dark from "@/assets/subagent-avatars/14-hexa-dark.svg";
+import avatar14Light from "@/assets/subagent-avatars/14-hexa-light.svg";
+import avatar15Dark from "@/assets/subagent-avatars/15-drop-dark.svg";
+import avatar15Light from "@/assets/subagent-avatars/15-drop-light.svg";
+import avatar16Dark from "@/assets/subagent-avatars/16-sprout-dark.svg";
+import avatar16Light from "@/assets/subagent-avatars/16-sprout-light.svg";
+import avatar17Dark from "@/assets/subagent-avatars/17-trillium-dark.svg";
+import avatar17Light from "@/assets/subagent-avatars/17-trillium-light.svg";
+import avatar18Dark from "@/assets/subagent-avatars/18-quincunx-dark.svg";
+import avatar18Light from "@/assets/subagent-avatars/18-quincunx-light.svg";
+import avatar19Dark from "@/assets/subagent-avatars/19-atom-dark.svg";
+import avatar19Light from "@/assets/subagent-avatars/19-atom-light.svg";
+import avatar20Dark from "@/assets/subagent-avatars/20-gem-dark.svg";
+import avatar20Light from "@/assets/subagent-avatars/20-gem-light.svg";
+import avatar21Dark from "@/assets/subagent-avatars/21-saturn-dark.svg";
+import avatar21Light from "@/assets/subagent-avatars/21-saturn-light.svg";
+import avatar22Dark from "@/assets/subagent-avatars/22-compass-dark.svg";
+import avatar22Light from "@/assets/subagent-avatars/22-compass-light.svg";
+import avatar23Dark from "@/assets/subagent-avatars/23-succulent-dark.svg";
+import avatar23Light from "@/assets/subagent-avatars/23-succulent-light.svg";
+import avatar24Dark from "@/assets/subagent-avatars/24-sun-dark.svg";
+import avatar24Light from "@/assets/subagent-avatars/24-sun-light.svg";
+import avatar25Dark from "@/assets/subagent-avatars/25-ammonite-dark.svg";
+import avatar25Light from "@/assets/subagent-avatars/25-ammonite-light.svg";
+import avatar26Dark from "@/assets/subagent-avatars/26-seal-dark.svg";
+import avatar26Light from "@/assets/subagent-avatars/26-seal-light.svg";
+import avatar27Dark from "@/assets/subagent-avatars/27-blossom-dark.svg";
+import avatar27Light from "@/assets/subagent-avatars/27-blossom-light.svg";
+import avatar28Dark from "@/assets/subagent-avatars/28-cradle-dark.svg";
+import avatar28Light from "@/assets/subagent-avatars/28-cradle-light.svg";
+import avatar29Dark from "@/assets/subagent-avatars/29-trinity-dark.svg";
+import avatar29Light from "@/assets/subagent-avatars/29-trinity-light.svg";
+import avatar30Dark from "@/assets/subagent-avatars/30-rosette-dark.svg";
+import avatar30Light from "@/assets/subagent-avatars/30-rosette-light.svg";
+import avatar31Dark from "@/assets/subagent-avatars/31-duo-dark.svg";
+import avatar31Light from "@/assets/subagent-avatars/31-duo-light.svg";
 import { useDocumentTheme } from "@/lib/use-document-theme";
 import { cn } from "@/lib/utils";
 
 const SUBAGENT_AVATAR_HASH_MODULUS = 2_147_483_647;
 
+/** Bank order and capacity are part of the identity contract; do not sort or shuffle. */
 export const SUBAGENT_AVATAR_ASSETS = [
   { dark: avatar0Dark, light: avatar0Light },
   { dark: avatar1Dark, light: avatar1Light },
@@ -35,15 +80,45 @@ export const SUBAGENT_AVATAR_ASSETS = [
   { dark: avatar7Dark, light: avatar7Light },
   { dark: avatar8Dark, light: avatar8Light },
   { dark: avatar9Dark, light: avatar9Light },
+  { dark: avatar10Dark, light: avatar10Light },
+  { dark: avatar11Dark, light: avatar11Light },
+  { dark: avatar12Dark, light: avatar12Light },
+  { dark: avatar13Dark, light: avatar13Light },
+  { dark: avatar14Dark, light: avatar14Light },
+  { dark: avatar15Dark, light: avatar15Light },
+  { dark: avatar16Dark, light: avatar16Light },
+  { dark: avatar17Dark, light: avatar17Light },
+  { dark: avatar18Dark, light: avatar18Light },
+  { dark: avatar19Dark, light: avatar19Light },
+  { dark: avatar20Dark, light: avatar20Light },
+  { dark: avatar21Dark, light: avatar21Light },
+  { dark: avatar22Dark, light: avatar22Light },
+  { dark: avatar23Dark, light: avatar23Light },
+  { dark: avatar24Dark, light: avatar24Light },
+  { dark: avatar25Dark, light: avatar25Light },
+  { dark: avatar26Dark, light: avatar26Light },
+  { dark: avatar27Dark, light: avatar27Light },
+  { dark: avatar28Dark, light: avatar28Light },
+  { dark: avatar29Dark, light: avatar29Light },
+  { dark: avatar30Dark, light: avatar30Light },
+  { dark: avatar31Dark, light: avatar31Light },
 ] as const;
 
-/** Matches the deterministic zero-based avatar mapping used by Codex Electron. */
+/** Derives a slot from the persisted thread ID, without assignment state or collision avoidance. */
 export function resolveSubagentAvatarIndex(seed: string): number {
   let hash = 0;
+  // Deliberately hash UTF-16 code units, including both halves of surrogate pairs.
   for (let index = 0; index < seed.length; index += 1) {
     hash = (hash * 31 + seed.charCodeAt(index)) % SUBAGENT_AVATAR_HASH_MODULUS;
   }
   return hash % SUBAGENT_AVATAR_ASSETS.length;
+}
+
+export function resolveSubagentAvatarAsset(seed: string): {
+  readonly dark: string;
+  readonly light: string;
+} {
+  return SUBAGENT_AVATAR_ASSETS[resolveSubagentAvatarIndex(seed)] ?? SUBAGENT_AVATAR_ASSETS[0];
 }
 
 export function SubagentGlyphIcon({ className }: { className?: string }) {
@@ -89,7 +164,7 @@ export interface SubagentAvatarProps extends Omit<
 export function SubagentAvatar({ seed, className, ...props }: SubagentAvatarProps) {
   const resolvedTheme = useDocumentTheme();
   const index = resolveSubagentAvatarIndex(seed);
-  const asset = SUBAGENT_AVATAR_ASSETS[index] ?? SUBAGENT_AVATAR_ASSETS[0];
+  const asset = resolveSubagentAvatarAsset(seed);
 
   return (
     <img

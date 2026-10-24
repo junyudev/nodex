@@ -14,6 +14,7 @@ function toBackgroundRow(row: CodexSubagentOverviewRow): CodexSubagentRow | null
   if (row.status === "unknown") return null;
   return {
     conversationId: row.threadId,
+    identityThreadId: row.identityThreadId,
     parentConversationId: row.parentThreadId ?? "",
     parentTurnKey: row.parentTurnKey ?? null,
     displayName: row.displayName,

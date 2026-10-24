@@ -3185,6 +3185,7 @@ describe("ThreadComposer speed menu", () => {
       [
         {
           conversationId: "child",
+          identityThreadId: "child",
           parentConversationId: "thread_1",
           parentTurnKey: "older-turn",
           displayName: "@Scout",

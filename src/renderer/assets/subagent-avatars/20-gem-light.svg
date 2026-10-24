@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" viewBox="0 0 16 16">
+  <defs>
+    <linearGradient id="20-gem-light-a" x1="3" x2="13" y1="1.5" y2="14.5" gradientUnits="userSpaceOnUse"><stop stop-color="#C8B2FF"/><stop offset="1" stop-color="#8857F6"/></linearGradient>
+    <linearGradient id="20-gem-light-b" x1="3" x2="13" y1="1.5" y2="14.5" gradientUnits="userSpaceOnUse"><stop stop-color="#C8B2FF"/><stop offset="1" stop-color="#A580FA"/></linearGradient>
+    <radialGradient id="20-gem-light-glaze" cx="4.6" cy="3.4" r="9" gradientUnits="userSpaceOnUse"><stop stop-color="#fff" stop-opacity="0.42"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></radialGradient>
+    <clipPath id="20-gem-light-clip"><path d="M4.576 2.624Q5 2.2 5.6 2.2L10.4 2.2Q11 2.2 11.424 2.624L14.176 5.376Q14.6 5.8 14 5.8L2 5.8Q1.4 5.8 1.824 5.376Z"/><path d="M1.771 6.272Q1.4 5.8 2 5.8L14 5.8Q14.6 5.8 14.229 6.272L8.371 13.728Q8 14.2 7.629 13.728Z"/><path d="M7.778 2.533Q8 2.2 8.222 2.533L10.178 5.467Q10.4 5.8 10.227 6.161L8.173 10.439Q8 10.8 7.827 10.439L5.773 6.161Q5.6 5.8 5.822 5.467Z"/></clipPath>
+  </defs>
+  <g opacity="0.78"><path d="M4.576 2.624Q5 2.2 5.6 2.2L10.4 2.2Q11 2.2 11.424 2.624L14.176 5.376Q14.6 5.8 14 5.8L2 5.8Q1.4 5.8 1.824 5.376Z" fill="url(#20-gem-light-b)" stroke="#fff" stroke-opacity=".85" stroke-width=".5" stroke-linejoin="round"/></g>
+  <g opacity="0.92"><path d="M1.771 6.272Q1.4 5.8 2 5.8L14 5.8Q14.6 5.8 14.229 6.272L8.371 13.728Q8 14.2 7.629 13.728Z" fill="url(#20-gem-light-a)" stroke="#fff" stroke-opacity=".85" stroke-width=".5" stroke-linejoin="round"/></g>
+  <g opacity="1"><path d="M7.778 2.533Q8 2.2 8.222 2.533L10.178 5.467Q10.4 5.8 10.227 6.161L8.173 10.439Q8 10.8 7.827 10.439L5.773 6.161Q5.6 5.8 5.822 5.467Z" fill="#6A3BE4" stroke="#fff" stroke-opacity=".85" stroke-width=".5" stroke-linejoin="round"/></g>
+  <rect width="16" height="16" fill="url(#20-gem-light-glaze)" clip-path="url(#20-gem-light-clip)"/>
+</svg>

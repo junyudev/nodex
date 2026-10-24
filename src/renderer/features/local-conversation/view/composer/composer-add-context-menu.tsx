@@ -151,12 +151,24 @@ export function buildComposerSubagentMentionCandidates(
   activeConversationId: string | null,
   rows: readonly Pick<
     ThreadComposerShellBackgroundAgentRowModel,
-    "conversationId" | "parentConversationId" | "canInteract" | "displayName" | "agentRole"
+    | "conversationId"
+    | "identityThreadId"
+    | "parentConversationId"
+    | "canInteract"
+    | "displayName"
+    | "agentRole"
   >[],
-): ComposerContextSuggestionCandidate<ComposerPromptMentionInput>[] {
+): ComposerContextSuggestionCandidate<
+  ComposerPromptMentionInput & { readonly conversationId: string }
+>[] {
   if (activeConversationId === null) return [];
   return rows.flatMap((row) => {
-    if (!row.canInteract || row.parentConversationId !== activeConversationId) return [];
+    if (
+      !row.canInteract ||
+      row.identityThreadId === null ||
+      row.parentConversationId !== activeConversationId
+    )
+      return [];
     const displayName = row.displayName.trim().replace(/^@/u, "").trim();
     if (!displayName) return [];
     return [
@@ -170,8 +182,8 @@ export function buildComposerSubagentMentionCandidates(
           kind: "agent",
           name: displayName.toLowerCase(),
           displayName,
-          conversationId: row.conversationId,
-          path: `agent://${row.conversationId}`,
+          conversationId: row.identityThreadId,
+          path: `agent://${row.identityThreadId}`,
         },
       },
     ];
@@ -1035,12 +1047,7 @@ const ComposerAddContextRootMenuContent = forwardRef<
         ...candidate,
         value: { kind: "mention", mention: candidate.value },
       },
-      icon: (
-        <SubagentAvatar
-          seed={candidate.value.conversationId ?? candidate.id}
-          className="size-4 shrink-0"
-        />
-      ),
+      icon: <SubagentAvatar seed={candidate.value.conversationId} className="size-3.5 shrink-0" />,
       active: false,
     }));
     const threadSuggestions = normalizedQuery

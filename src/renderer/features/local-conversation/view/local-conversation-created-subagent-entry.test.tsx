@@ -196,6 +196,7 @@ describe("native dedicated creation and subagent leaves", () => {
     const retain = fixture.owner.subscribeStructure(() => {});
     const row: ThreadComposerShellBackgroundAgentRowModel = {
       conversationId: "child",
+      identityThreadId: "child",
       parentConversationId: "thread",
       parentTurnKey: "one",
       displayName: "Verified reviewer",

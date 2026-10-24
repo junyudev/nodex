@@ -18,7 +18,7 @@ import {
   type DelegatedTaskRowStatus,
 } from "../../delegated-task-presentation";
 import type { ThreadStageActions } from "../../thread-stage-types";
-import { SubagentGlyphIcon } from "./subagent-avatar";
+import { SubagentAvatar, SubagentGlyphIcon } from "./subagent-avatar";
 import { SubagentActivityDetails, SubagentActivityInline } from "./subagent-activity-inline";
 
 const noSubscription = () => () => {};
@@ -118,7 +118,7 @@ export function DelegatedTaskGroup({
     childMemberships?.map((membership) => [membership.threadId, membership]),
   );
   const items = tasks.map((task, index) => {
-    const membership = memberships.get(task.childThreadId ?? task.taskId);
+    const membership = task.childThreadId ? memberships.get(task.childThreadId) : undefined;
     const model = membership?.thread?.model ?? null;
     const status = statuses[index] ?? task.status;
     const childThreadId = task.childThreadId;
@@ -154,7 +154,7 @@ export function DelegatedTaskGroup({
     return {
       id: task.taskId,
       name: task.title,
-      seed: task.childThreadId ?? task.taskId,
+      seed: task.childThreadId,
       onOpen,
       details: (
         <DelegatedTaskDetails task={task} status={status} membership={membership} onStop={onStop} />
@@ -175,8 +175,13 @@ export function DelegatedTaskGroup({
 function RuntimeNoticeIcon({ notice }: { notice: CodexRuntimeNotice | undefined }) {
   const className = "icon-xs shrink-0";
   if (notice?.kind === "stopped") return <StopIcon className={className} />;
-  if (notice?.kind === "report" && notice.source === "subagent")
-    return <SubagentGlyphIcon className={className} />;
+  if (notice?.kind === "report" && notice.source === "subagent") {
+    return notice.childThreadId ? (
+      <SubagentAvatar seed={notice.childThreadId} className={className} />
+    ) : (
+      <SubagentGlyphIcon className={className} />
+    );
+  }
   if (notice?.kind === "report" && notice.source === "command")
     return <TerminalActivityIcon className={className} />;
   return <InfoIcon className={className} />;

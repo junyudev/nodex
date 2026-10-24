@@ -593,6 +593,7 @@ describe("buildRendererItemStream", () => {
       backgroundAgents: [
         {
           conversationId: "thread-child-1",
+          identityThreadId: "thread-child-1",
           parentConversationId: "thread-root",
           parentTurnKey: "turn_1",
           displayName: "Scout",
@@ -611,6 +612,7 @@ describe("buildRendererItemStream", () => {
         },
         {
           conversationId: "thread-child-2",
+          identityThreadId: "thread-child-2",
           parentConversationId: "thread-root",
           parentTurnKey: "turn_1",
           displayName: "Reviewer",
@@ -715,6 +717,7 @@ describe("buildRendererItemStream", () => {
       backgroundAgents: [
         {
           conversationId: "thread-child-other-parent",
+          identityThreadId: "thread-child-other-parent",
           parentConversationId: "thread-root",
           parentTurnKey: "turn_0",
           displayName: "Migrated",
@@ -733,6 +736,7 @@ describe("buildRendererItemStream", () => {
         },
         {
           conversationId: "thread-child-waiting",
+          identityThreadId: "thread-child-waiting",
           parentConversationId: "thread-root",
           parentTurnKey: "turn_1",
           displayName: "Waiting",
@@ -1095,6 +1099,7 @@ function activityEntry(id: string, overrides: Partial<Activity> = {}): CodexConv
 function backgroundAgent(id: string, overrides: Partial<BackgroundAgent> = {}): BackgroundAgent {
   return {
     conversationId: id,
+    identityThreadId: id,
     parentConversationId: "thread_1",
     parentTurnKey: "turn_1",
     displayName: id.toUpperCase(),
@@ -1121,6 +1126,26 @@ function activityGroups(items: ReturnType<typeof buildRendererItemStream>) {
 }
 
 describe("subagent lifecycle projection", () => {
+  test("retains child identity and explicit task-only absence through activity and fallback rows", () => {
+    const items = buildRendererItemStream({
+      entries: [activityEntry("child"), activityEntry("observed")],
+      requests: [],
+      turnKey: "turn_1",
+      backgroundAgents: [
+        backgroundAgent("observed", { identityThreadId: null }),
+        backgroundAgent("fallback", { identityThreadId: null }),
+      ],
+    });
+    const rows = activityGroups(items).flatMap((group) => group.subagentActivityRows ?? []);
+    expect(
+      rows.map(({ conversationId, identityThreadId }) => ({ conversationId, identityThreadId })),
+    ).toEqual([
+      { conversationId: "child", identityThreadId: "child" },
+      { conversationId: "observed", identityThreadId: null },
+      { conversationId: "fallback", identityThreadId: null },
+    ]);
+  });
+
   test("uses named background rows without anchors, including legacy rows and partial raw coverage", () => {
     const projection = buildRendererItemStreamProjection({
       entries: [activityEntry("a", { displayStatus: "completed" })],

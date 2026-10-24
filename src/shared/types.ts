@@ -4524,6 +4524,8 @@ export type CodexSubagentOverviewStatus = "active" | "waiting" | "done" | "unkno
  * selected child is the sole boundary that may attach its sparse history.
  */
 export interface CodexSubagentOverviewRow {
+  /** Durable child identity; null for task observations without a child Thread. */
+  identityThreadId: string | null;
   parentTurnKey?: string | null;
   conversationId?: string;
   parentConversationId?: string;

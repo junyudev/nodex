@@ -33,6 +33,7 @@ export const projectAgentRuntimeSubagent = (
   const { displayName } = projectAgentRuntimeSubagentDisplay(task);
   return {
     threadId: task.childThreadId ?? task.id,
+    identityThreadId: task.childThreadId,
     parentThreadId: task.threadId,
     parentTurnKey: task.runId,
     displayName: displayName ?? "Subagent",

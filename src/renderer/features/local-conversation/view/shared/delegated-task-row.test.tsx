@@ -66,6 +66,26 @@ function setup() {
 }
 
 describe("Delegated task row", () => {
+  test("assigns identity only to a child Thread and keeps it through task state and title changes", () => {
+    const { wrap } = setup();
+    const row = (current: CodexDelegatedTaskView) =>
+      wrap(<DelegatedTaskGroup tasks={[current]} parentThreadId="root" />);
+    const view = render(row({ ...task, childThreadId: null }));
+    expect(view.container.querySelector("[data-subagent-avatar-seed]")).toBeNull();
+
+    view.rerender(row(task));
+    const avatar = view.container.querySelector<HTMLImageElement>(
+      '[data-subagent-avatar-seed="child"]',
+    );
+    expect(avatar).not.toBeNull();
+    const source = avatar?.getAttribute("src");
+    view.rerender(row({ ...task, title: "Review complete", status: "completed" }));
+    expect(view.container.querySelector("[data-subagent-avatar-seed]")?.getAttribute("src")).toBe(
+      source,
+    );
+    expect(screen.getByRole("status", { name: "Subagents finished" })).toBeTruthy();
+  });
+
   test("reveals metadata on focus and keeps Stopping until the task settles", async () => {
     const { transport, wrap, finishStop } = setup();
     const onOpenThread = vi.fn();
@@ -227,7 +247,7 @@ describe("Delegated task row", () => {
 
   test("a report opens the one subagent it names", async () => {
     const onOpenThread = vi.fn();
-    render(
+    const view = render(
       <RuntimeNoticeRow
         message='Subagent "Audit" finished'
         notice={{
@@ -239,6 +259,7 @@ describe("Delegated task row", () => {
         onOpenThread={onOpenThread}
       />,
     );
+    expect(view.container.querySelector('[data-subagent-avatar-seed="child"]')).not.toBeNull();
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: 'Open Subagent "Audit" finished' }));
       await Promise.resolve();

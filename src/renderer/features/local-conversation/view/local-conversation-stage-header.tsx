@@ -33,6 +33,7 @@ import type {
 } from "../thread-stage-types";
 import { useOpenNativeRuntimeDiagnostics } from "@/components/shared/agent-runtime/native-runtime-diagnostics";
 import { sessionForkDestinations } from "@/lib/session-fork";
+import { SubagentAvatar } from "./shared/subagent-avatar";
 
 interface ThreadStageHeaderProps {
   model: ThreadStageHeaderModel;
@@ -113,6 +114,12 @@ function ThreadStageHeaderComponent({
         className="inline-flex min-w-[2ch] flex-1 items-center overflow-hidden font-sans text-base leading-6 text-token-foreground electron:font-medium"
       >
         <span className="min-w-0 truncate">{model.title}</span>
+        {model.threadId && model.subagentName ? (
+          <span className="ms-1 inline-flex min-w-0 max-w-1/2 shrink-0 items-center gap-1 font-medium">
+            <SubagentAvatar seed={model.threadId} className="icon-2xs" />
+            <span className="truncate">{model.subagentName}</span>
+          </span>
+        ) : null}
       </span>
       {showThreadActions ? (
         <NodexDropdownMenu
@@ -334,6 +341,7 @@ export const ThreadStageHeader = memo(
     left.model.projectId === right.model.projectId &&
     left.model.sessionId === right.model.sessionId &&
     left.model.threadId === right.model.threadId &&
+    left.model.subagentName === right.model.subagentName &&
     left.model.cwd === right.model.cwd &&
     left.model.pinned === right.model.pinned &&
     left.model.shortcuts === right.model.shortcuts &&

@@ -46,6 +46,29 @@ const page = (
 });
 
 describe("Runtime subagent overview", () => {
+  it("assigns identity only when a durable child exists and retains it across metadata changes", () => {
+    const pending = { ...task, childThreadId: null };
+    expect(projectAgentRuntimeSubagent(pending)).toMatchObject({
+      threadId: "task",
+      identityThreadId: null,
+      canOpen: false,
+    });
+    const child = projectAgentRuntimeSubagent(task);
+    const updated = projectAgentRuntimeSubagent({
+      ...task,
+      title: "Updated review",
+      model: "another-model",
+      status: "completed",
+    });
+    expect(child.identityThreadId).toBe("child");
+    expect(updated.identityThreadId).toBe(child.identityThreadId);
+    expect(updated).toMatchObject({
+      threadId: "child",
+      displayName: "Updated review",
+      status: "done",
+    });
+  });
+
   it("opens native paths under their readable name and preserves explicit task titles", () => {
     const native = { ...task, origin: "provider_native" as const, title: "/root/ui_audit" };
     expect(projectAgentRuntimeSubagent(native)).toMatchObject({

@@ -1,6 +1,7 @@
 import { act, fireEvent, render, waitFor } from "@testing-library/react";
 import { createRef } from "react";
 import { describe, expect, test, vi } from "vite-plus/test";
+import { resolveSubagentAvatarAsset } from "../shared/subagent-avatar";
 import {
   appendComposerDictationText,
   buildPromptDoc,
@@ -649,6 +650,39 @@ describe("ComposerPromptEditor", () => {
       editor.querySelector("[sites-project-mention-path='sites-project://site-1']"),
     ).not.toBeNull();
     expect(editorRef.current?.getPersistedText()).toBe(value);
+  });
+
+  test("rebuilds a subagent mention's identity from its target after restoring the draft", async () => {
+    const value =
+      "Ask [@Scout](agent://child-thread), [@Reviewer](subagent://other-child) and [@Chat](thread://ordinary-chat)";
+    const { editor, editorRef, onChange } = renderPromptEditor({ value });
+    const avatarSources = (threadId: string) =>
+      [...editor.querySelectorAll(`[data-subagent-avatar-seed="${threadId}"] img`)].map((image) =>
+        image.getAttribute("src"),
+      );
+    const asset = resolveSubagentAvatarAsset("child-thread");
+    expect(avatarSources("child-thread")).toEqual([asset.light, asset.dark]);
+    expect(avatarSources("other-child")).toHaveLength(2);
+    expect(avatarSources("ordinary-chat")).toEqual([]);
+    expect(editorRef.current?.getPersistedText()).toBe(value);
+    expect(onChange).not.toHaveBeenCalled();
+
+    await act(async () => {
+      editorRef.current?.insertMention({
+        kind: "agent",
+        name: "renamed",
+        displayName: "Renamed",
+        conversationId: "child-thread",
+        path: "agent://child-thread",
+      });
+      await Promise.resolve();
+    });
+    const mention = editor.querySelector('[agent-mention-name="renamed"]');
+    expect([...mention!.querySelectorAll("img")].map((image) => image.getAttribute("src"))).toEqual(
+      [asset.light, asset.dark],
+    );
+    expect(editorRef.current?.getPersistedText()).not.toContain(asset.light);
+    expect(editorRef.current?.getPersistedText()).not.toContain(asset.dark);
   });
 
   test("copies atomic mentions using their persisted prompt representation", () => {

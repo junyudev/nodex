@@ -728,7 +728,7 @@ export function SubagentActivityInlineRows({
   const items = rows.map((row) => ({
     id: row.conversationId,
     name: row.displayName,
-    seed: row.conversationId,
+    seed: row.identityThreadId,
     details: (
       <SubagentActivityDetails
         name={row.displayName}

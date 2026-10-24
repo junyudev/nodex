@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" viewBox="0 0 16 16">
+  <defs>
+    <linearGradient id="02-swirl-dark-a" x1="3" x2="13" y1="1.5" y2="14.5" gradientUnits="userSpaceOnUse"><stop stop-color="#FFAAA4"/><stop offset="1" stop-color="#E4484A"/></linearGradient>
+    <linearGradient id="02-swirl-dark-b" x1="3" x2="13" y1="1.5" y2="14.5" gradientUnits="userSpaceOnUse"><stop stop-color="#FFAAA4"/><stop offset="1" stop-color="#F07473"/></linearGradient>
+    <radialGradient id="02-swirl-dark-glaze" cx="4.6" cy="3.4" r="9" gradientUnits="userSpaceOnUse"><stop stop-color="#fff" stop-opacity="0.28"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></radialGradient>
+    <clipPath id="02-swirl-dark-clip"><path d="M8 8L8 1.3A3.35 3.35 0 0 1 8 8Z" transform="rotate(0 8 8)"/><path d="M8 8L8 1.3A3.35 3.35 0 0 1 8 8Z" transform="rotate(90 8 8)"/><path d="M8 8L8 1.3A3.35 3.35 0 0 1 8 8Z" transform="rotate(180 8 8)"/><path d="M8 8L8 1.3A3.35 3.35 0 0 1 8 8Z" transform="rotate(270 8 8)"/></clipPath>
+  </defs>
+  <g opacity="0.92"><path d="M8 8L8 1.3A3.35 3.35 0 0 1 8 8Z" transform="rotate(0 8 8)" fill="url(#02-swirl-dark-a)" stroke="#661A1A" stroke-width=".5" stroke-linejoin="round"/></g>
+  <g opacity="0.88"><path d="M8 8L8 1.3A3.35 3.35 0 0 1 8 8Z" transform="rotate(90 8 8)" fill="url(#02-swirl-dark-b)" stroke="#661A1A" stroke-width=".5" stroke-linejoin="round"/></g>
+  <g opacity="0.92"><path d="M8 8L8 1.3A3.35 3.35 0 0 1 8 8Z" transform="rotate(180 8 8)" fill="url(#02-swirl-dark-a)" stroke="#661A1A" stroke-width=".5" stroke-linejoin="round"/></g>
+  <g opacity="0.88"><path d="M8 8L8 1.3A3.35 3.35 0 0 1 8 8Z" transform="rotate(270 8 8)" fill="url(#02-swirl-dark-b)" stroke="#661A1A" stroke-width=".5" stroke-linejoin="round"/></g>
+  <rect width="16" height="16" fill="url(#02-swirl-dark-glaze)" clip-path="url(#02-swirl-dark-clip)"/>
+</svg>

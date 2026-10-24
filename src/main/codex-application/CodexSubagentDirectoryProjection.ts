@@ -98,6 +98,7 @@ function membershipFor(
 export function projectSubagentRowToOverview(row: CodexSubagentRow): CodexSubagentOverviewRow {
   return {
     conversationId: row.conversationId,
+    identityThreadId: row.identityThreadId,
     parentConversationId: row.parentConversationId,
     parentTurnKey: row.parentTurnKey,
     displayName: row.displayName,

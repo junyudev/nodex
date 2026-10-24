@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" viewBox="0 0 16 16">
+  <defs>
+    <linearGradient id="27-blossom-dark-a" x1="3" x2="13" y1="1.5" y2="14.5" gradientUnits="userSpaceOnUse"><stop stop-color="#FFADD5"/><stop offset="1" stop-color="#D93E8D"/></linearGradient>
+    <linearGradient id="27-blossom-dark-b" x1="3" x2="13" y1="1.5" y2="14.5" gradientUnits="userSpaceOnUse"><stop stop-color="#FFADD5"/><stop offset="1" stop-color="#EA70AD"/></linearGradient>
+    <radialGradient id="27-blossom-dark-glaze" cx="4.6" cy="3.4" r="9" gradientUnits="userSpaceOnUse"><stop stop-color="#fff" stop-opacity="0.28"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></radialGradient>
+    <clipPath id="27-blossom-dark-clip"><circle cx="8" cy="4.3" r="3"/><circle cx="11.519" cy="6.857" r="3"/><circle cx="10.175" cy="10.993" r="3"/><circle cx="5.825" cy="10.993" r="3"/><circle cx="4.481" cy="6.857" r="3"/><circle cx="8" cy="8" r="2"/></clipPath>
+  </defs>
+  <g opacity="0.88"><circle cx="8" cy="4.3" r="3" fill="url(#27-blossom-dark-b)" stroke="#621540" stroke-width=".5" stroke-linejoin="round"/></g>
+  <g opacity="0.88"><circle cx="11.519" cy="6.857" r="3" fill="url(#27-blossom-dark-b)" stroke="#621540" stroke-width=".5" stroke-linejoin="round"/></g>
+  <g opacity="0.88"><circle cx="10.175" cy="10.993" r="3" fill="url(#27-blossom-dark-b)" stroke="#621540" stroke-width=".5" stroke-linejoin="round"/></g>
+  <g opacity="0.88"><circle cx="5.825" cy="10.993" r="3" fill="url(#27-blossom-dark-b)" stroke="#621540" stroke-width=".5" stroke-linejoin="round"/></g>
+  <g opacity="0.88"><circle cx="4.481" cy="6.857" r="3" fill="url(#27-blossom-dark-b)" stroke="#621540" stroke-width=".5" stroke-linejoin="round"/></g>
+  <g opacity="1"><circle cx="8" cy="8" r="2" fill="#FFDCEC" stroke="#621540" stroke-width=".5" stroke-linejoin="round"/></g>
+  <rect width="16" height="16" fill="url(#27-blossom-dark-glaze)" clip-path="url(#27-blossom-dark-clip)"/>
+</svg>

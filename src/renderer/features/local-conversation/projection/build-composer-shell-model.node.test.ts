@@ -165,6 +165,7 @@ function row(
 ): ThreadComposerShellBackgroundAgentRowModel {
   return {
     conversationId,
+    identityThreadId: conversationId,
     parentConversationId,
     canInteract: false,
     displayName: conversationId === "grandchild" ? "Reviewer" : "Worker",

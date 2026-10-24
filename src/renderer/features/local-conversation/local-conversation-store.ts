@@ -9519,6 +9519,10 @@ export function useConversationParentThreadId(threadId: string | null): string |
   );
 }
 
+export function useConversationAgentNickname(threadId: string | null): string | null {
+  return useCodexConversationValue(threadId, (conversation) => conversation?.agentNickname ?? null);
+}
+
 export function useConversationPrimaryRequest(
   threadId: string | null,
 ): CodexConversationLiveRequest | null {

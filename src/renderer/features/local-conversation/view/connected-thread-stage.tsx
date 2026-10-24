@@ -72,6 +72,7 @@ import {
   useCodexDictationState,
   useCodexAppServerManagerForConversationId,
   useConversationParentThreadId,
+  useConversationAgentNickname,
   useLocalConversationAccount,
   useLocalConversationConnection,
 } from "../local-conversation-store";
@@ -266,6 +267,11 @@ function ConnectedThreadStageHeader({
     retry: false,
   });
   const parentConversationId = useConversationParentThreadId(activeThreadId);
+  const agentNickname = useConversationAgentNickname(activeThreadId);
+  const subagentName =
+    (parentConversationId ?? activeSummary?.source?.parentThreadId)
+      ? agentNickname?.trim().replace(/^@/u, "").trim() || null
+      : null;
   const title = resolveThreadTitle(input, summaryFields, activeThreadId);
   const handleCopyConversationMarkdown = useCallback(async () => {
     if (!activeThreadId) return;
@@ -295,6 +301,7 @@ function ConnectedThreadStageHeader({
       title,
       cwd,
       pinned: input.threadPinned,
+      subagentName,
       shortcuts: input.threadActionShortcuts,
       showSideChatAction: Boolean(
         activeThreadId && !input.sideChatContext && actions.onOpenSideChat,
@@ -311,6 +318,7 @@ function ConnectedThreadStageHeader({
       input,
       summaryFields,
       title,
+      subagentName,
       isWorktree,
       canUseLocalRepository,
       repositoryIdentity.data,

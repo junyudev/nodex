@@ -7,7 +7,7 @@ let observer: MutationObserver | null = null;
 
 export function readDocumentTheme(): DocumentTheme {
   if (typeof document === "undefined") return "light";
-  return document.documentElement.classList.contains("dark") ? "dark" : "light";
+  return document.documentElement.dataset.theme === "dark" ? "dark" : "light";
 }
 
 function subscribe(listener: () => void): () => void {
@@ -21,7 +21,7 @@ function subscribe(listener: () => void): () => void {
       listeners.forEach((currentListener) => currentListener());
     });
     observer.observe(document.documentElement, {
-      attributeFilter: ["class"],
+      attributeFilter: ["data-theme"],
       attributes: true,
     });
   }

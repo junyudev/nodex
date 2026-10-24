@@ -5,7 +5,7 @@ import { ElectronScenarioHarness } from "../../scripts/scenarios/harness/electro
 import { prepareScenarioCodexAppServerRuntimeSync } from "../../scripts/scenarios/runtime/agent-runtime-fixture";
 import { attachComposerFailureEvidence } from "./support/composer-failure-evidence";
 import { openNewChatDraft } from "./support/new-chat-draft";
-import { openSubagentsPanel } from "./support/subagents-panel";
+import { openSubagentsPanel, openSummaryPanel } from "./support/subagents-panel";
 
 const repositoryRoot = process.cwd();
 const scenarioThreadTimestampHex = Date.now().toString(16).padStart(12, "0");
@@ -235,7 +235,7 @@ test("stopping the root stops each active child once and settles every subagent 
 });
 
 test("keeps delegated work compact while hover and direct navigation expose each child", async () => {
-  test.setTimeout(120_000);
+  test.setTimeout(180_000);
   const artifacts = process.env.NODEX_SUBAGENT_PRESENTATION_ARTIFACT_DIR;
   if (artifacts) fs.mkdirSync(artifacts, { recursive: true });
   const claims: { name: string; expected: unknown; actual: unknown }[] = [];
@@ -268,10 +268,26 @@ test("keeps delegated work compact while hover and direct navigation expose each
     await expect(group).toHaveAttribute("aria-label", /13 done/u);
     claim("Consecutive delegated tasks share one activity group", 1, await group.count());
     await expect(investigator).toBeVisible();
-    const avatarSeed = await group
-      .getByLabel(selectedName, { exact: true })
-      .locator("img")
-      .getAttribute("data-subagent-avatar-seed");
+    const identity = async (avatar: Locator) => {
+      await expect(avatar).toBeVisible();
+      await expect
+        .poll(() =>
+          avatar.evaluate((image: HTMLImageElement) => image.complete && image.naturalWidth > 0),
+        )
+        .toBe(true);
+      return {
+        seed: await avatar.getAttribute("data-subagent-avatar-seed"),
+        index: await avatar.getAttribute("data-subagent-avatar-index"),
+        src: await avatar.getAttribute("src"),
+      };
+    };
+    const inlineAvatar = group.getByLabel(selectedName, { exact: true }).locator("img");
+    const lightIdentity = await identity(inlineAvatar);
+    claim(
+      "The inline group displays at most four identities",
+      4,
+      await group.locator("img[data-subagent-avatar-seed]").count(),
+    );
     claim(
       "The name budget leaves all remaining children reachable",
       "15 more",
@@ -283,8 +299,18 @@ test("keeps delegated work compact while hover and direct navigation expose each
       await page.waitForTimeout(500);
       await page.screenshot({ path: path.join(artifacts, name) });
     };
+    if (artifacts) {
+      // Finish first-launch guidance before recording the feature under review.
+      const setupNotice = page.getByRole("alert").filter({ hasText: "Global dictation is ready." });
+      await setupNotice.waitFor({ state: "visible", timeout: 8_000 }).catch(() => undefined);
+      if (await setupNotice.isVisible()) {
+        await setupNotice.getByRole("button", { name: "Dismiss notification" }).click();
+        await expect(setupNotice).toHaveCount(0);
+      }
+      await group.screenshot({ path: path.join(artifacts, "activity-light.png") });
+    }
+    // Restore a full-viewport capture after any element crop before the native recorder starts.
     await screenshot("light.png");
-    if (artifacts) await group.screenshot({ path: path.join(artifacts, "activity-light.png") });
     if (artifacts) {
       await page.screencast.start({
         path: path.join(artifacts, "review.webm"),
@@ -294,6 +320,19 @@ test("keeps delegated work compact while hover and direct navigation expose each
       recording = true;
     }
 
+    const summary = await openSummaryPanel(page);
+    claim(
+      "The summary reconstructs the same child identity",
+      lightIdentity,
+      await identity(
+        summary
+          .locator(`img[data-subagent-avatar-seed=${JSON.stringify(lightIdentity.seed)}]`)
+          .first(),
+      ),
+    );
+    await screenshot("summary.png");
+    await summaryToggle.click();
+    await expect(summaryToggle).toHaveAttribute("aria-pressed", "false");
     await page.mouse.move(180, 450);
     await investigator.hover();
     await expect(hover).toBeVisible();
@@ -307,7 +346,6 @@ test("keeps delegated work compact while hover and direct navigation expose each
     await expect(hover).toBeVisible();
     claim("The pointer can enter the detail layer", true, await hover.isVisible());
     await screenshot("hover.png");
-    if (artifacts) await hover.screenshot({ path: path.join(artifacts, "hover-details.png") });
     if (artifacts) await page.waitForTimeout(800);
     await page.keyboard.press("Escape");
     await expect(hover).toHaveCount(0);
@@ -343,11 +381,8 @@ test("keeps delegated work compact while hover and direct navigation expose each
     );
     claim(
       "The selected child retains its avatar identity",
-      avatarSeed,
-      await detail
-        .locator("[data-subagent-avatar-seed]")
-        .first()
-        .getAttribute("data-subagent-avatar-seed"),
+      lightIdentity,
+      await identity(detail.locator("img[data-subagent-avatar-seed]").first()),
     );
     claim(
       "Inspecting a child does not resume native execution",
@@ -378,17 +413,48 @@ test("keeps delegated work compact while hover and direct navigation expose each
         done: await done.getByRole("heading").innerText(),
       },
     );
+    claim(
+      "Overview and inline activity use the same child identity",
+      lightIdentity,
+      await identity(
+        active
+          .getByRole("button", { name: `Open subagent ${selectedName}`, exact: true })
+          .locator("img[data-subagent-avatar-seed]"),
+      ),
+    );
     await screenshot("final.png");
+    if (artifacts) await page.waitForTimeout(1_000);
+    await page.emulateMedia({ colorScheme: "dark" });
+    await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
+    const darkIdentity = await identity(inlineAvatar);
+    claim(
+      "Theme changes preserve the child seed and bank index",
+      { seed: lightIdentity.seed, index: lightIdentity.index },
+      { seed: darkIdentity.seed, index: darkIdentity.index },
+    );
+    claim(
+      "Dark appearance loads the separate dark artwork",
+      true,
+      darkIdentity.src !== lightIdentity.src,
+    );
+    claim(
+      "Dark overview and inline activity retain identical artwork",
+      darkIdentity,
+      await identity(
+        active
+          .getByRole("button", { name: `Open subagent ${selectedName}`, exact: true })
+          .locator("img[data-subagent-avatar-seed]"),
+      ),
+    );
+    await screenshot("dark.png");
     if (artifacts) await page.waitForTimeout(1_000);
     if (recording) {
       await page.screencast.stop();
       recording = false;
     }
-    await page.getByRole("button", { name: "Close Subagents tab", exact: true }).click();
-    await page.emulateMedia({ colorScheme: "dark" });
-    await expect(page.locator("html")).toHaveClass(/dark/u);
-    await screenshot("dark.png");
+    // Element screenshots can temporarily resize the capture surface; keep them outside video.
     if (artifacts) await group.screenshot({ path: path.join(artifacts, "activity-dark.png") });
+    await page.getByRole("button", { name: "Close Subagents tab", exact: true }).click();
     await page.setViewportSize({ width: 820, height: 720 });
     await expect(page.locator("[data-app-shell-width-class]")).toHaveAttribute(
       "data-app-shell-width-class",
@@ -400,6 +466,24 @@ test("keeps delegated work compact while hover and direct navigation expose each
     );
     claim("The activity group stays inside a narrow conversation", true, horizontalOverflow <= 1);
     await screenshot("narrow.png");
+    await page.emulateMedia({ colorScheme: "light" });
+    await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
+    claim(
+      "Returning to light restores the exact original artwork",
+      lightIdentity,
+      await identity(inlineAvatar),
+    );
+    const restarted = await harness.restart();
+    await restarted.setViewportSize({ width: 1440, height: 960 });
+    await restarted.emulateMedia({ colorScheme: "light" });
+    const restoredGroup = restarted.getByTestId("delegated-task-group");
+    await expect(restoredGroup).toBeVisible({ timeout: 30_000 });
+    claim(
+      "Restart reconstructs the same identity from persisted child metadata",
+      lightIdentity,
+      await identity(restoredGroup.getByLabel(selectedName, { exact: true }).locator("img")),
+    );
+    if (artifacts) await restarted.screenshot({ path: path.join(artifacts, "restart.png") });
     status = "passed";
     if (artifacts) fs.rmSync(path.join(artifacts, "failure.png"), { force: true });
   } catch (error) {
@@ -418,7 +502,7 @@ test("keeps delegated work compact while hover and direct navigation expose each
       );
       fs.writeFileSync(
         path.join(artifacts, "README.md"),
-        `# Subagent presentation review\n\nStatus: **${status}**\n\nThe native recording starts after the disposable Profile and delegated work are ready. It follows hover, pointer entry into task details, keyboard focus, direct navigation to the child transcript, return, and overflow navigation to all 17 children. The child is read without resuming execution.\n\n- review.webm: native interaction recording.\n- light.png and dark.png: compact activity group in both themes.\n- hover.png: task details and model metadata.\n- child.png: the selected child transcript.\n- final.png: overflow opens the complete overview.\n- narrow.png: the group at 820 px window width.\n- result.json: exact expected and actual values for the verified claims.\n\nNo production Profile or user content was accessed.\n${failure ? `\nFailure: ${failure}\n` : ""}`,
+        `# Subagent presentation review\n\nStatus: **${status}**\n\nThe native recording starts after the disposable Profile and delegated work are ready. It follows hover, pointer entry into task details, keyboard focus, direct navigation to the child transcript, return, overflow navigation to all 17 children, and a theme change. The child is read without resuming execution. Identity and artwork are compared across inline activity, detail and overview; a separate application restart verifies restoration from persisted child metadata.\n\n- review.webm: native interaction recording.\n- light.png and dark.png: activity and overview in both themes.\n- hover.png: task details and model metadata.\n- child.png: the selected child transcript.\n- final.png: overflow opens the complete overview.\n- narrow.png: the group at 820 px window width.\n- restart.png: restored conversation and identities after application restart.\n- result.json: exact expected and actual values for the verified claims.\n\nNo production Profile or user content was accessed.\n${failure ? `\nFailure: ${failure}\n` : ""}`,
       );
     }
     await harness.close();

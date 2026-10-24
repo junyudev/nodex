@@ -44,6 +44,30 @@ function buildActions(): ThreadStageActions {
 }
 
 describe("ThreadStageHeader", () => {
+  test("keeps a named child Thread's avatar through title and nickname changes", async () => {
+    const { ThreadStageHeader } = await import("./local-conversation-stage-header");
+    const actions = buildActions();
+    const onErrorMessage = () => {};
+    const header = (model: ThreadStageHeaderModel) => (
+      <ThreadStageHeader model={model} actions={actions} onErrorMessage={onErrorMessage} />
+    );
+    const view = render(header(buildModel({ subagentName: "Scout" })));
+    const avatar = view.container.querySelector<HTMLImageElement>(
+      '[data-subagent-avatar-seed="thread_1"]',
+    );
+    expect(avatar).not.toBeNull();
+    const src = avatar?.getAttribute("src");
+    expect(view.getByText("Scout")).toBeTruthy();
+
+    view.rerender(header(buildModel({ title: "Updated task", subagentName: "Researcher" })));
+    expect(view.getByText("Researcher")).toBeTruthy();
+    expect(view.queryByText("Scout")).toBeNull();
+    expect(avatar?.getAttribute("src")).toBe(src);
+
+    view.rerender(header(buildModel()));
+    expect(view.container.querySelector("[data-subagent-avatar-seed]")).toBeNull();
+  });
+
   test.each(["claude", "opencode"] as const)(
     "offers a working Fork chat action for a %s Runtime conversation",
     async (kind) => {

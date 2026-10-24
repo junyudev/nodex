@@ -287,6 +287,8 @@ export function resolveSubagentActivityRows(input: {
     return [
       {
         conversationId,
+        identityThreadId:
+          backgroundAgent === undefined ? conversationId : backgroundAgent.identityThreadId,
         canOpen: backgroundAgent !== undefined || activity.displayStatus === "active",
         ...(backgroundAgent?.canInteract === true ? { canInteract: true } : {}),
         displayName,
@@ -679,6 +681,7 @@ function buildFallbackSubagentBlock(
     )
     .map((agent) => ({
       conversationId: agent.conversationId,
+      identityThreadId: agent.identityThreadId,
       displayName: agent.displayName,
       canOpen: true,
       agentRole: agent.agentRole,

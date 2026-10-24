@@ -22,6 +22,7 @@ export const projectNativeTaskRows = (
     const active = membership.statusType === "active" || conversation?.statusType === "active";
     return {
       conversationId: membership.threadId,
+      identityThreadId: membership.task === undefined ? membership.threadId : null,
       parentConversationId: membership.parentThreadId,
       parentTurnKey: null,
       displayName: membership.displayName ?? membership.thread?.displayName ?? "Task",

@@ -661,6 +661,7 @@ export interface ThreadWorkedForBlockModel extends ThreadRenderKeyedBlockFields 
 export type ThreadSubagentActivityStatus = "started" | "updated" | "interrupted" | "done";
 
 export interface ThreadSubagentActivityInlineRowModel {
+  identityThreadId: string | null;
   canOpen: boolean;
   /** Only verified directory eligibility selects an interactive child task tab. */
   canInteract?: boolean;
@@ -1175,6 +1176,7 @@ export interface ThreadStageHeaderModel {
   title: string;
   cwd: string | null;
   pinned?: boolean;
+  subagentName?: string | null;
   shortcuts?: {
     togglePin?: string;
     rename?: string;

@@ -42,6 +42,7 @@ import {
   handleComposerFilePaste,
   type ComposerPastedFiles,
 } from "./image-attachments/composer-image-data-transfer";
+import { resolveSubagentAvatarAsset } from "../shared/subagent-avatar";
 
 export type ComposerPromptMentionKind =
   | "agent"
@@ -375,6 +376,41 @@ function parseSitesProjectMentionDom(element: HTMLElement): ComposerPromptMentio
   });
 }
 
+/** Identity is rebuilt from the persisted target; asset URLs never enter the draft. */
+function buildSubagentMentionIcon(attrs: ComposerPromptMentionAttrs): DOMOutputSpec | null {
+  if (attrs.kind !== "agent") return null;
+  const pathThreadId = /^(?:agent|subagent):\/\/(.+)$/u.exec(attrs.path)?.[1];
+  const threadId = attrs.conversationId || pathThreadId;
+  if (!threadId) return null;
+  const asset = resolveSubagentAvatarAsset(threadId);
+  return [
+    "span",
+    {
+      "aria-hidden": "true",
+      "data-subagent-avatar-seed": threadId,
+      class: "relative h-[1lh] w-3.5 shrink-0",
+    },
+    [
+      "img",
+      {
+        src: asset.light,
+        alt: "",
+        draggable: "false",
+        class: "absolute top-1/2 size-3.5 -translate-y-1/2 [html[data-theme=dark]_&]:hidden",
+      },
+    ],
+    [
+      "img",
+      {
+        src: asset.dark,
+        alt: "",
+        draggable: "false",
+        class: "absolute top-1/2 hidden size-3.5 -translate-y-1/2 [html[data-theme=dark]_&]:block",
+      },
+    ],
+  ];
+}
+
 function buildMentionDom(node: ProseMirrorNode): DOMOutputSpec {
   const attrs = node.attrs as ComposerPromptMentionAttrs;
   const label = mentionLabel(attrs);
@@ -426,62 +462,64 @@ function buildMentionDom(node: ProseMirrorNode): DOMOutputSpec {
     }
   }
 
-  const icon: DOMOutputSpec = attrs.iconUrl
-    ? attrs.iconUrlDark && attrs.iconUrlDark !== attrs.iconUrl
-      ? [
-          "span",
-          {
-            "aria-hidden": "true",
-            class: "relative h-[1lh] w-4 shrink-0",
-          },
-          [
-            "img",
+  const icon: DOMOutputSpec =
+    buildSubagentMentionIcon(attrs) ??
+    (attrs.iconUrl
+      ? attrs.iconUrlDark && attrs.iconUrlDark !== attrs.iconUrl
+        ? [
+            "span",
             {
-              src: attrs.iconUrlDark,
-              alt: "",
-              draggable: "false",
-              referrerpolicy: "no-referrer",
-              class:
-                "icon-xs absolute top-1/2 hidden -translate-y-1/2 rounded-2xs object-contain dark:block",
+              "aria-hidden": "true",
+              class: "relative h-[1lh] w-4 shrink-0",
             },
-          ],
-          [
-            "img",
+            [
+              "img",
+              {
+                src: attrs.iconUrlDark,
+                alt: "",
+                draggable: "false",
+                referrerpolicy: "no-referrer",
+                class:
+                  "icon-xs absolute top-1/2 hidden -translate-y-1/2 rounded-2xs object-contain dark:block",
+              },
+            ],
+            [
+              "img",
+              {
+                src: attrs.iconUrl,
+                alt: "",
+                draggable: "false",
+                referrerpolicy: "no-referrer",
+                class:
+                  "icon-xs absolute top-1/2 -translate-y-1/2 rounded-2xs object-contain dark:hidden",
+              },
+            ],
+          ]
+        : [
+            "span",
             {
-              src: attrs.iconUrl,
-              alt: "",
-              draggable: "false",
-              referrerpolicy: "no-referrer",
-              class:
-                "icon-xs absolute top-1/2 -translate-y-1/2 rounded-2xs object-contain dark:hidden",
+              "aria-hidden": "true",
+              class: "relative h-[1lh] w-4 shrink-0",
             },
-          ],
-        ]
+            [
+              "img",
+              {
+                src: attrs.iconUrl,
+                alt: "",
+                draggable: "false",
+                referrerpolicy: "no-referrer",
+                class: "icon-xs absolute top-1/2 -translate-y-1/2 rounded-2xs object-contain",
+              },
+            ],
+          ]
       : [
           "span",
           {
             "aria-hidden": "true",
-            class: "relative h-[1lh] w-4 shrink-0",
+            class: "relative h-[1lh] w-4 shrink-0 text-center text-[10px] leading-[1lh]",
           },
-          [
-            "img",
-            {
-              src: attrs.iconUrl,
-              alt: "",
-              draggable: "false",
-              referrerpolicy: "no-referrer",
-              class: "icon-xs absolute top-1/2 -translate-y-1/2 rounded-2xs object-contain",
-            },
-          ],
-        ]
-    : [
-        "span",
-        {
-          "aria-hidden": "true",
-          class: "relative h-[1lh] w-4 shrink-0 text-center text-[10px] leading-[1lh]",
-        },
-        "",
-      ];
+          "",
+        ]);
 
   return [
     "span",

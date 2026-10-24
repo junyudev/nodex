@@ -108,7 +108,7 @@ import {
 import { ThreadSummaryCreatePullRequestDialog } from "./thread-summary-create-pull-request-dialog";
 import { ThreadSummaryBranchSetupDialog } from "./thread-summary-branch-setup-dialog";
 import { ThreadSummaryPanelToggleButton } from "./thread-summary-panel-toggle";
-import { SubagentAvatar } from "../shared/subagent-avatar";
+import { SubagentAvatar, SubagentGlyphIcon } from "../shared/subagent-avatar";
 import { CodexShimmerText } from "../shared/codex-shimmer-text";
 import {
   buildMcpAppSidePanelInput,
@@ -576,7 +576,11 @@ function BackgroundSubagentRowLabel({ row }: { row: ThreadComposerShellBackgroun
   const active = row.status === "active";
   return (
     <span className="flex min-w-0 items-center gap-1.5">
-      <SubagentAvatar seed={row.conversationId} className="icon-sm pointer-events-none" />
+      {row.identityThreadId === null ? (
+        <SubagentGlyphIcon className="size-3.5 shrink-0" />
+      ) : (
+        <SubagentAvatar seed={row.identityThreadId} className="size-3.5 pointer-events-none" />
+      )}
       <span className="min-w-0 truncate font-medium">{row.displayName}</span>
       {active ? (
         <CodexShimmerText
@@ -652,9 +656,13 @@ function BackgroundSubagentCompactStrip({
   const content = (
     <>
       <span className="flex shrink-0 items-center gap-1.5">
-        {model.displayRows.map((row) => (
-          <SubagentAvatar key={row.conversationId} seed={row.conversationId} className="size-4" />
-        ))}
+        {model.displayRows.map((row) =>
+          row.identityThreadId === null ? (
+            <SubagentGlyphIcon key={row.conversationId} className="size-3.5 shrink-0" />
+          ) : (
+            <SubagentAvatar key={row.conversationId} seed={row.identityThreadId} />
+          ),
+        )}
       </span>
       {model.workingCount > 0 ? (
         <span className="text-base whitespace-nowrap text-token-foreground">

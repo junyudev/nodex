@@ -115,6 +115,7 @@ function buildBackgroundAgent(
 ): ThreadComposerShellBackgroundAgentRowModel {
   return {
     conversationId: "thread_child",
+    identityThreadId: "thread_child",
     parentConversationId: "thread_1",
     parentTurnKey: "turn_1",
     displayName: "Scout",

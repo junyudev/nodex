@@ -1,7 +1,7 @@
 # Codex Subagent Behavior
 
 Status: Active
-Last Updated: 2026-10-19
+Last Updated: 2026-10-24
 
 ## Intent and ownership
 
@@ -22,6 +22,40 @@ independently decide visible row state. This document owns those rules and root
 lifecycle behavior. [Thread Transcript Behavior](codex-thread-transcript-behavior.md)
 owns the activity leaves, and [Owner/Follower Streaming](codex-thread-owner-follower-streaming.md)
 owns canonical transcript attachment.
+
+## Visual identity
+
+Every identified child uses one of 32 ordered identities, each with separate light
+and dark SVG artwork. The renderer derives its index from the child Thread ID:
+start at zero, then for each JavaScript UTF-16 code unit compute
+`hash = (hash * 31 + codeUnit) % 2147483647`; the index is `hash % 32`.
+The array order is stable. Names, roles, models, parent order and execution state
+never enter this calculation. Different Threads may receive the same identity;
+there is no collision avoidance or per-parent allocation pool.
+
+For application-owned execution, the seed is Nodex's durable child Thread ID,
+not its provider's native reference; changing providers does not change visual
+identity. Native remote conversations use their canonical child Thread ID.
+The execution owner persists Thread identity. The renderer reconstructs the
+avatar from that identity after navigation, hydration and restart; no icon ID,
+random choice or allocation table is persisted. An activity without a known
+child Thread uses the generic subagent glyph until identity is available,
+rather than assigning an avatar from a task ID or display name. Changing the
+bank's order or capacity changes the mapping and must be treated as an identity
+change, not a transparent resource addition.
+
+Inline activity, summary, overview, selected detail, child tabs and titles,
+composer candidates and inserted agent mentions share this identity. Avatars
+are decorative, non-draggable images; adjacent names and accessible controls
+provide the label. Running, waiting, completion and errors use separate status
+indicators and never recolor or animate the identity artwork.
+
+The resolved document `data-theme` selects the artwork: `dark` uses dark assets;
+every other value uses light assets. Switching appearance preserves the index.
+Inline groups show at most four 16px avatars; summaries and composer candidates
+use 14px, child tabs use 18px, and overview rows and detail headers use 24px.
+These display budgets do not constrain the identity bank or hide the remaining
+children from the overview.
 
 ## Discovery and overview
 

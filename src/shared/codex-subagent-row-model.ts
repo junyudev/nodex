@@ -19,6 +19,8 @@ export interface CodexSubagentRow {
   /** Current child metadata is available; parent transcript events confer no capability. */
   canInteract: boolean;
   conversationId: string;
+  /** Durable child identity; task observations without a child have no identity avatar. */
+  identityThreadId: string | null;
   parentConversationId: string;
   parentTurnKey: string | null;
   displayName: string;
@@ -599,6 +601,7 @@ export function buildBackgroundSubagentRows(
     return [
       {
         conversationId: membership.threadId,
+        identityThreadId: membership.task === undefined ? membership.threadId : null,
         parentConversationId: membership.parentThreadId,
         parentTurnKey: reference.parentTurnKey,
         displayName,

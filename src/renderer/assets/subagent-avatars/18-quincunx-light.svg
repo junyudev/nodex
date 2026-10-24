@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" viewBox="0 0 16 16">
+  <defs>
+    <linearGradient id="18-quincunx-light-a" x1="3" x2="13" y1="1.5" y2="14.5" gradientUnits="userSpaceOnUse"><stop stop-color="#FF9F98"/><stop offset="1" stop-color="#F24C47"/></linearGradient>
+    <linearGradient id="18-quincunx-light-b" x1="3" x2="13" y1="1.5" y2="14.5" gradientUnits="userSpaceOnUse"><stop stop-color="#FF9F98"/><stop offset="1" stop-color="#F8716B"/></linearGradient>
+    <radialGradient id="18-quincunx-light-glaze" cx="4.6" cy="3.4" r="9" gradientUnits="userSpaceOnUse"><stop stop-color="#fff" stop-opacity="0.42"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></radialGradient>
+    <clipPath id="18-quincunx-light-clip"><circle cx="4" cy="4" r="2.5"/><circle cx="12" cy="4" r="2.5"/><circle cx="4" cy="12" r="2.5"/><circle cx="12" cy="12" r="2.5"/><circle cx="8" cy="8" r="2.9"/></clipPath>
+  </defs>
+  <g opacity="0.92"><circle cx="4" cy="4" r="2.5" fill="url(#18-quincunx-light-a)" stroke="#fff" stroke-opacity=".85" stroke-width=".5" stroke-linejoin="round"/></g>
+  <g opacity="0.92"><circle cx="12" cy="4" r="2.5" fill="url(#18-quincunx-light-a)" stroke="#fff" stroke-opacity=".85" stroke-width=".5" stroke-linejoin="round"/></g>
+  <g opacity="0.92"><circle cx="4" cy="12" r="2.5" fill="url(#18-quincunx-light-a)" stroke="#fff" stroke-opacity=".85" stroke-width=".5" stroke-linejoin="round"/></g>
+  <g opacity="0.92"><circle cx="12" cy="12" r="2.5" fill="url(#18-quincunx-light-a)" stroke="#fff" stroke-opacity=".85" stroke-width=".5" stroke-linejoin="round"/></g>
+  <g opacity="1"><circle cx="8" cy="8" r="2.9" fill="#D13631" stroke="#fff" stroke-opacity=".85" stroke-width=".5" stroke-linejoin="round"/></g>
+  <rect width="16" height="16" fill="url(#18-quincunx-light-glaze)" clip-path="url(#18-quincunx-light-clip)"/>
+</svg>

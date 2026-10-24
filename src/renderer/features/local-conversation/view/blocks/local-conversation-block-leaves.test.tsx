@@ -193,6 +193,7 @@ function buildSubagentActivityInlineGroupBlock(): ThreadTranscriptBlockModel {
       {
         canOpen: true,
         conversationId: "thread-child-1",
+        identityThreadId: "thread-child-1",
         displayName: "Scout",
         agentRole: null,
         spawnModel: null,
@@ -204,6 +205,7 @@ function buildSubagentActivityInlineGroupBlock(): ThreadTranscriptBlockModel {
       {
         canOpen: true,
         conversationId: "thread-child-2",
+        identityThreadId: "thread-child-2",
         displayName: "Reviewer",
         agentRole: null,
         spawnModel: null,
@@ -215,6 +217,7 @@ function buildSubagentActivityInlineGroupBlock(): ThreadTranscriptBlockModel {
       {
         canOpen: true,
         conversationId: "thread-child-3",
+        identityThreadId: "thread-child-3",
         displayName: "Builder",
         agentRole: null,
         spawnModel: null,
@@ -226,6 +229,7 @@ function buildSubagentActivityInlineGroupBlock(): ThreadTranscriptBlockModel {
       {
         canOpen: true,
         conversationId: "thread-child-4",
+        identityThreadId: "thread-child-4",
         displayName: "Tester",
         agentRole: null,
         spawnModel: null,

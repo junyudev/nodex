@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" viewBox="0 0 16 16">
+  <defs>
+    <linearGradient id="10-scallop-dark-a" x1="3" x2="13" y1="1.5" y2="14.5" gradientUnits="userSpaceOnUse"><stop stop-color="#FFAAA4"/><stop offset="1" stop-color="#E4484A"/></linearGradient>
+    <linearGradient id="10-scallop-dark-b" x1="3" x2="13" y1="1.5" y2="14.5" gradientUnits="userSpaceOnUse"><stop stop-color="#FFAAA4"/><stop offset="1" stop-color="#F07473"/></linearGradient>
+    <radialGradient id="10-scallop-dark-glaze" cx="4.6" cy="3.4" r="9" gradientUnits="userSpaceOnUse"><stop stop-color="#fff" stop-opacity="0.28"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></radialGradient>
+    <clipPath id="10-scallop-dark-clip"><ellipse cx="4.882" cy="10.6" rx="3.6" ry="1.8" transform="rotate(-150 4.882 10.6)"/><ellipse cx="11.118" cy="10.6" rx="3.6" ry="1.8" transform="rotate(-30 11.118 10.6)"/><ellipse cx="5.65" cy="8.33" rx="4.7" ry="1.9" transform="rotate(-120 5.65 8.33)"/><ellipse cx="10.35" cy="8.33" rx="4.7" ry="1.9" transform="rotate(-60 10.35 8.33)"/><ellipse cx="8" cy="7.2" rx="5.2" ry="2" transform="rotate(-90 8 7.2)"/><path d="M6.027 12.245Q6.3 11.6 7 11.6L9 11.6Q9.7 11.6 9.973 12.245L10.527 13.555Q10.8 14.2 10.1 14.2L5.9 14.2Q5.2 14.2 5.473 13.555Z"/></clipPath>
+  </defs>
+  <g opacity="0.92"><ellipse cx="4.882" cy="10.6" rx="3.6" ry="1.8" transform="rotate(-150 4.882 10.6)" fill="url(#10-scallop-dark-a)" stroke="#661A1A" stroke-width=".5" stroke-linejoin="round"/></g>
+  <g opacity="0.92"><ellipse cx="11.118" cy="10.6" rx="3.6" ry="1.8" transform="rotate(-30 11.118 10.6)" fill="url(#10-scallop-dark-a)" stroke="#661A1A" stroke-width=".5" stroke-linejoin="round"/></g>
+  <g opacity="0.88"><ellipse cx="5.65" cy="8.33" rx="4.7" ry="1.9" transform="rotate(-120 5.65 8.33)" fill="url(#10-scallop-dark-b)" stroke="#661A1A" stroke-width=".5" stroke-linejoin="round"/></g>
+  <g opacity="0.88"><ellipse cx="10.35" cy="8.33" rx="4.7" ry="1.9" transform="rotate(-60 10.35 8.33)" fill="url(#10-scallop-dark-b)" stroke="#661A1A" stroke-width=".5" stroke-linejoin="round"/></g>
+  <g opacity="0.92"><ellipse cx="8" cy="7.2" rx="5.2" ry="2" transform="rotate(-90 8 7.2)" fill="url(#10-scallop-dark-a)" stroke="#661A1A" stroke-width=".5" stroke-linejoin="round"/></g>
+  <g opacity="1"><path d="M6.027 12.245Q6.3 11.6 7 11.6L9 11.6Q9.7 11.6 9.973 12.245L10.527 13.555Q10.8 14.2 10.1 14.2L5.9 14.2Q5.2 14.2 5.473 13.555Z" fill="#FFD9D6" stroke="#661A1A" stroke-width=".5" stroke-linejoin="round"/></g>
+  <rect width="16" height="16" fill="url(#10-scallop-dark-glaze)" clip-path="url(#10-scallop-dark-clip)"/>
+</svg>
