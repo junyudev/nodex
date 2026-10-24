@@ -426,7 +426,7 @@ export const ORCHESTRATOR_REPLAY_FIXTURES: ReadonlyArray<OrchestratorReplayFixtu
       {
         driver: ProviderDriverKind.make("acpRegistry"),
         transcriptFile: new URL("./acp_elicitation/registry_transcript.ndjson", import.meta.url),
-        modelSelection: ACP_REGISTRY_MODEL_SELECTION,
+        modelSelection: { ...ACP_REGISTRY_MODEL_SELECTION, model: "default" },
         assertOutput: assertPlanQuestionsOutput,
       },
     ],

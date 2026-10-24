@@ -394,9 +394,10 @@ export const PI_MODEL_SELECTION = {
   model: "openrouter/deepseek/deepseek-v4-flash",
 } satisfies ModelSelection;
 
+// Registry replay transcripts advertise this native model; Default is only valid without a model API.
 export const ACP_REGISTRY_MODEL_SELECTION = {
   instanceId: ProviderInstanceId.make("acpRegistry"),
-  model: "default",
+  model: "grok-build",
 } satisfies ModelSelection;
 
 function createThreadCommand(input: {
