@@ -517,10 +517,6 @@ const supervisor = Layer.effectContext(
         });
         const storageScopes = yield* Effect.tryPromise(() =>
           acpProviderStorageScopes({
-            agentIdentity:
-              configured.source.kind === "registry"
-                ? configured.source.agentId
-                : configured.agentDefinitionId,
             environment: provider.environment ?? [],
             homeDirectory: config.homeDirectory,
             platform: config.platform,

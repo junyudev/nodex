@@ -7,7 +7,6 @@ type ProfileEnvironment = readonly {
   readonly sensitive: boolean;
 }[];
 type CredentialScopeInput = {
-  readonly agentIdentity: string;
   readonly environment: ProfileEnvironment;
   readonly homeDirectory: string;
   readonly platform: string;
@@ -30,9 +29,7 @@ export async function canonicalAcpProfilePath(path: string): Promise<string> {
     }
   }
 }
-export async function acpNativeStorageScope(
-  environment: ProfileEnvironment,
-): Promise<string> {
+export async function acpNativeStorageScope(environment: ProfileEnvironment): Promise<string> {
   const directories = environment.filter(
     ({ name, sensitive, value }) =>
       !sensitive &&
@@ -49,8 +46,8 @@ export async function acpNativeStorageScope(
   return JSON.stringify(normalized.sort(([left], [right]) => left.localeCompare(right)));
 }
 
-/** Only a declared Agent's credential root proves account isolation; toolchain/cache roots do not. */
-export async function acpCredentialStorageScope(input: CredentialScopeInput): Promise<string> {
+/** Possible credential roots only expand conflicts; neither labels nor toolchain paths prove isolation. */
+export async function acpCredentialStorageScopes(input: CredentialScopeInput): Promise<string[]> {
   const directory = (name: string) =>
     input.environment.find(
       (entry) =>
@@ -61,28 +58,22 @@ export async function acpCredentialStorageScope(input: CredentialScopeInput): Pr
   const home =
     (input.platform === "win32" ? directory("USERPROFILE") : directory("HOME")) ??
     input.homeDirectory;
-  let root = home;
-  switch (input.agentIdentity) {
-    case "claude-acp":
-    case "claude-agent-acp":
-      root = directory("CLAUDE_CONFIG_DIR") ?? join(home, ".claude");
-      break;
-    case "codex-acp":
-      root = directory("CODEX_HOME") ?? join(home, ".codex");
-      break;
-    case "opencode":
-    case "opencode-v2":
-      // OpenCode stores credentials under its data root, independently of OPENCODE_CONFIG_DIR.
-      root = join(directory("XDG_DATA_HOME") ?? join(home, ".local", "share"), "opencode");
-      break;
-  }
-  return canonicalAcpProfilePath(root);
+  // These are the credential roots supported by the native account owners, not arbitrary *_HOMEs.
+  // OpenCode credentials use its data root, independently of OPENCODE_CONFIG_DIR.
+  const roots = [
+    home,
+    directory("CLAUDE_CONFIG_DIR") ?? join(home, ".claude"),
+    directory("CODEX_HOME") ?? join(home, ".codex"),
+    join(directory("XDG_DATA_HOME") ?? join(home, ".local", "share"), "opencode"),
+  ];
+  const claims = await Promise.all(roots.map(canonicalAcpProfilePath));
+  return [...new Set(claims)].sort();
 }
 
 export async function acpProviderStorageScopes(input: CredentialScopeInput) {
-  const [nativeStorageScope, credentialStorageScope] = await Promise.all([
+  const [nativeStorageScope, credentialStorageScopes] = await Promise.all([
     acpNativeStorageScope(input.environment),
-    acpCredentialStorageScope(input),
+    acpCredentialStorageScopes(input),
   ]);
-  return { nativeStorageScope, credentialStorageScope };
+  return { nativeStorageScope, credentialStorageScopes };
 }
