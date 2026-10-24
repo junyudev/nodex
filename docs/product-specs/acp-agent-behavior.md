@@ -59,6 +59,12 @@ Independent isolated homes with no shared credential roots can authenticate conc
 Explicit connection can create a temporary native session to discover the Agent's capabilities,
 commands, models and configuration. It creates no Nodex Session or Run and sends no prompt. Search,
 passive inspection, cached catalog reads and stored-history browsing do not perform this probe.
+Installation readiness and sign-in are separate from discovery. The instance reports discovery as
+unknown, ready or failed; unknown discovery offers no inferred models. Verified models, commands,
+native capabilities and failed authentication survive an idle Runtime restart. Effective executable,
+launch arguments, native profile or environment changes invalidate that state without starting an
+Agent. An Agent without a model API offers its startup Default only after a real session confirms
+that capability. Saved metadata excludes login URLs and masks echoed environment secrets.
 
 ## Models and execution
 

@@ -69,6 +69,9 @@ export const hydrateCachedProvider = (input: {
   readonly cachedProvider: ServerProvider;
   readonly fallbackProvider: ServerProvider;
 }): ServerProvider => {
+  // ACP owns a configuration-bound discovery cache. Its current driver snapshot
+  // already restored it; a second cache must not resurrect another launch recipe.
+  if (input.fallbackProvider.driver === "acpRegistry") return input.fallbackProvider;
   if (!isCachedProviderCorrelated(input)) {
     return input.fallbackProvider;
   }

@@ -292,6 +292,15 @@ export const ServerProvider = Schema.Struct({
   version: Schema.NullOr(TrimmedNonEmptyString),
   status: ServerProviderState,
   auth: ServerProviderAuth,
+  // ACP discovery is independent of executable readiness and sign-in. Only a
+  // real session can establish the model API and replace its saved inventory.
+  discovery: Schema.optionalKey(
+    Schema.Struct({
+      status: Schema.Literals(["unknown", "ready", "failed"]),
+      checkedAt: IsoDateTime,
+      supportsModelSelection: Schema.optionalKey(Schema.Boolean),
+    }),
+  ),
   checkedAt: IsoDateTime,
   message: Schema.optional(TrimmedNonEmptyString),
   // Optional for back-compat: every legacy producer omits this field and

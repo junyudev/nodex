@@ -223,19 +223,6 @@ export function upsertProviderWorkspaceSnapshot(
 }
 
 const shouldRetainMissingProviderModels = (provider: ServerProvider): boolean => {
-  if (provider.driver === ProviderDriverKind.make("acpRegistry")) {
-    // ACP Registry discovery probes return the agent's complete inventory, so
-    // a completed probe (ready and authenticated) replaces the model list —
-    // otherwise agents that rename or collapse models leave stale entries
-    // pinned forever through the snapshot cache. Readiness-only and failed
-    // probe snapshots only know the "default" placeholder and stay partial.
-    return !(
-      provider.installed &&
-      provider.status === "ready" &&
-      provider.auth.status === "authenticated"
-    );
-  }
-
   const isAntigravity = provider.driver === ProviderDriverKind.make("antigravity");
   const isCodex = provider.driver === ProviderDriverKind.make("codex");
   if (!isAntigravity && !isCodex && provider.driver !== ProviderDriverKind.make("opencode")) {
@@ -353,6 +340,9 @@ export const mergeProviderSnapshot = (
   previousProvider: ServerProvider | undefined,
   nextProvider: ServerProvider,
 ): ServerProvider => {
+  // The ACP driver owns complete, configuration-bound discovery state. Never
+  // infer inventory completeness from authentication or merge stale model rows.
+  if (nextProvider.driver === "acpRegistry") return nextProvider;
   if (!previousProvider) {
     return nextProvider;
   }
@@ -574,6 +564,7 @@ export const layer = Layer.effect(
 
     const persistProvider = (provider: ServerProvider) =>
       Effect.gen(function* () {
+        if (provider.driver === "acpRegistry") return;
         // Persist every instance — the file name is the instance id, so
         // multi-instance setups (e.g. `codex_personal`, `codex_work`) each
         // get their own cache. We resolve the path fresh so snapshots

@@ -77,6 +77,7 @@ export const makeAcpRegistryAuth = Effect.fn("makeAcpRegistryAuth")(function* (o
   readonly cwd: string;
   readonly environment: NodeJS.ProcessEnv;
   readonly secretValues?: ReadonlyArray<string>;
+  readonly knownMethods?: Effect.Effect<ReadonlyArray<ProviderAuthMethod> | undefined>;
   readonly onChanged: (authenticated: boolean) => Effect.Effect<void>;
   readonly makeRuntime?: (
     spawn: AcpSessionRuntime.AcpSpawnInput,
@@ -200,7 +201,7 @@ export const makeAcpRegistryAuth = Effect.fn("makeAcpRegistryAuth")(function* (o
     }),
   );
 
-  const methods = Option.isSome(coordinator)
+  const discover = Option.isSome(coordinator)
     ? coordinator.value
         .runBackgroundProbe(agentKey, discoverMethods)
         .pipe(
@@ -216,6 +217,11 @@ export const makeAcpRegistryAuth = Effect.fn("makeAcpRegistryAuth")(function* (o
           ),
         )
     : discoverMethods;
+  const methods = options.knownMethods
+    ? options.knownMethods.pipe(
+        Effect.flatMap((known) => (known === undefined ? discover : Effect.succeed(known))),
+      )
+    : discover;
 
   const runTerminal = Effect.fnUntraced(function* (
     resolved: AcpRegistrySupport.ResolvedAcpRegistryAgent,
@@ -430,6 +436,8 @@ export const makeAcpRegistryAuth = Effect.fn("makeAcpRegistryAuth")(function* (o
       platform,
     ),
     methods,
+    ...(options.knownMethods ? { initialMethods: (yield* options.knownMethods) ?? [] } : {}),
+    discoverMethodsOnCreate: options.settings.discovery !== "explicit",
     ...(options.settings.authMethodId ? { defaultMethodId: options.settings.authMethodId } : {}),
     authenticate,
     logout: signOut,

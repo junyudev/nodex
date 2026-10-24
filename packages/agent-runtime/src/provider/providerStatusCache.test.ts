@@ -43,6 +43,30 @@ const makeProvider = (
 });
 
 it.layer(NodeServices.layer)("providerStatusCache", (it) => {
+  it("keeps ACP discovery authoritative instead of hydrating an unrelated launch inventory", () => {
+    const driver = ProviderDriverKind.make("acpRegistry");
+    const cachedProvider = makeProvider(driver, {
+      discovery: { status: "ready", checkedAt: "2026-04-11T00:00:00.000Z" },
+      models: [{ slug: "retired", name: "Retired", isCustom: false, capabilities: null }],
+      auth: { status: "authenticated" },
+    });
+    const fallbackProvider = makeProvider(driver, {
+      discovery: { status: "unknown", checkedAt: "2026-04-12T00:00:00.000Z" },
+      auth: { status: "unknown" },
+    });
+    assert.deepEqual(hydrateCachedProvider({ cachedProvider, fallbackProvider }), fallbackProvider);
+    const verified = {
+      ...fallbackProvider,
+      discovery: { status: "ready" as const, checkedAt: fallbackProvider.checkedAt },
+      nativeSessions: { canList: true, canLoad: true, canResume: false },
+      configurableProviders: true,
+    };
+    assert.deepEqual(
+      hydrateCachedProvider({ cachedProvider, fallbackProvider: verified }),
+      verified,
+    );
+  });
+
   it.effect("logs structural diagnostics without retaining invalid cache contents", () => {
     const messages: Array<unknown> = [];
     const logger = Logger.make<unknown, void>((options) => {

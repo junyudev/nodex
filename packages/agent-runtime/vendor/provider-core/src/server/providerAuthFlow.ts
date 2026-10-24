@@ -63,9 +63,12 @@ export const make = Effect.fn("ProviderAuthFlow.make")(function* (options: {
   readonly instanceId: ProviderInstanceId;
   readonly credentialBinding: NonNullable<ProviderAuth.ProviderAuthController["credentialBinding"]>;
   readonly methods: Effect.Effect<ReadonlyArray<ProviderAuthMethod>, ProviderSetupError>;
+  readonly initialMethods?: ReadonlyArray<ProviderAuthMethod>;
   readonly defaultMethodId?: string;
   /** Stored account profiles can change the advertised methods after auth/logout. */
   readonly refreshMethodsAfterAuth?: boolean;
+  /** Explicit-connection Agents must not start a process just to publish readiness. */
+  readonly discoverMethodsOnCreate?: boolean;
   /** Fail with ProviderSetupError containing safe text for the user, never native token data. */
   readonly authenticate: (
     methodId: string,
@@ -87,6 +90,7 @@ export const make = Effect.fn("ProviderAuthFlow.make")(function* (options: {
     message: null,
     interaction: null,
     credentialOwner: options.credentialBinding.owner,
+    ...(options.initialMethods ? { methods: options.initialMethods } : {}),
   };
   const snapshot = yield* SubscriptionRef.make({ owner: null as string | null, state: empty });
   let active: Flow | undefined;
@@ -141,7 +145,7 @@ export const make = Effect.fn("ProviderAuthFlow.make")(function* (options: {
       })),
     ),
   );
-  yield* refreshMethods.pipe(Effect.forkIn(scope));
+  if (options.discoverMethodsOnCreate !== false) yield* refreshMethods.pipe(Effect.forkIn(scope));
 
   const controller: ProviderAuth.ProviderAuthController = {
     credentialBinding: options.credentialBinding,
