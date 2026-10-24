@@ -62,6 +62,8 @@ export class AcpClient extends Context.Service<
   AcpClient,
   {
     readonly raw: AcpClientRaw;
+    /** Wire generation determined from the initialize response shape, not its version number. */
+    readonly protocolGeneration: Effect.Effect<1 | 2 | undefined>;
     readonly agent: {
       /**
        * Initializes the ACP session and negotiates capabilities.
@@ -401,7 +403,10 @@ function normalizeConfigOption(
   option: AcpSchemaV2.SessionConfigOption,
 ): AcpSchema.SessionConfigOption | undefined {
   if (option.type === "boolean") {
-    const known = option as Extract<AcpSchemaV2.SessionConfigOption, { readonly type: "boolean" }>;
+    // The response union can admit a legacy-shaped option on a v2 session.
+    // Validate the v2 branch before exposing an actionable option.
+    if (!Schema.is(AcpSchemaV2.SessionConfigOption.members[1])(option)) return undefined;
+    const known = option;
     return {
       type: "boolean",
       id: known.configId,
@@ -413,7 +418,8 @@ function normalizeConfigOption(
     };
   }
   if (option.type === "select") {
-    const known = option as Extract<AcpSchemaV2.SessionConfigOption, { readonly type: "select" }>;
+    if (!Schema.is(AcpSchemaV2.SessionConfigOption.members[0])(option)) return undefined;
+    const known = option;
     return {
       type: "select",
       id: known.configId,
@@ -1119,6 +1125,7 @@ export const make = Effect.fn("effect-acp/AcpClient.make")(function* (
   }).pipe(Effect.provideService(RpcClient.Protocol, transport.clientProtocol));
 
   return AcpClient.of({
+    protocolGeneration: Effect.sync(() => negotiatedProtocolGeneration),
     raw: {
       notifications: transport.incoming,
       request: transport.request,

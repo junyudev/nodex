@@ -1122,6 +1122,8 @@ function isAcpAuthenticationRequired(error: EffectAcpErrors.AcpError): boolean {
 }
 
 export interface AcpSessionRuntimeStartResult {
+  /** Absent only for injected runtimes that do not expose negotiated wire capabilities. */
+  readonly protocolGeneration?: 1 | 2 | undefined;
   readonly sessionId: string;
   readonly initializeResult: EffectAcpSchema.InitializeResponse;
   readonly sessionSetupResult:
@@ -2068,6 +2070,9 @@ export const make = (
         const nextState = {
           sessionId,
           initializeResult: current.initializeResult,
+          ...(current.protocolGeneration === undefined
+            ? {}
+            : { protocolGeneration: current.protocolGeneration }),
           sessionSetupResult,
           modelConfigId: nextModelConfigId,
         } satisfies AcpStartedState;
@@ -2395,6 +2400,7 @@ export const make = (
       const nextState = {
         sessionId,
         initializeResult,
+        protocolGeneration: yield* acp.protocolGeneration,
         sessionSetupResult,
         modelConfigId: extractModelConfigId(sessionSetupResult),
       } satisfies AcpStartedState;

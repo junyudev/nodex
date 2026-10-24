@@ -92,6 +92,12 @@ import {
   registerMistralVibeAcpExtensions,
 } from "@t3tools/provider-acp-registry/testing";
 
+import {
+  extractClaudeSubagentUpdate,
+  extractClaudeSubagentSessionEvent,
+  isClaudeProvisionalSubagentTool,
+} from "../../../vendor/provider-acp-registry/src/server/claudeAcp.ts";
+
 const layerHost = TestProviderHost.layer().pipe(Layer.provide(NodeServices.layer));
 
 const layerTest = Layer.mergeAll(
@@ -12949,4 +12955,460 @@ describe("acpPostSettleMonitorPromptShouldSuppress", () => {
       acpPostSettleMonitorPromptShouldSuppress({ taskId: "task-failed", status: "failed" }),
     );
   });
+});
+
+/** A real ACP transport with controlled foreground and native-child notifications. */
+const makeClaudeWorkHarness = (generation: 1 | 2 = 2) =>
+  Effect.gen(function* () {
+    const childProcessSpawner = yield* ChildProcessSpawner.ChildProcessSpawner;
+    const path = yield* Path.Path;
+    const selfInvocation = yield* resolveSelfInvocation();
+    const mockAgentPath = yield* path.fromFileUrl(
+      new URL("../../../scripts/acp-mock-agent.ts", import.meta.url),
+    );
+    type RuntimeService = AcpSessionRuntime.AcpSessionRuntime["Service"];
+    let update: Parameters<RuntimeService["handleSessionUpdate"]>[0] | undefined;
+    let runtimeInput: AcpAdapterV2RuntimeInput | undefined;
+    let killed = 0;
+    let nativeRuntime: RuntimeService | undefined;
+    const accepted = yield* Deferred.make<void>();
+    const promptGate = yield* Deferred.make<EffectAcpSchema.PromptResponse>();
+    const offered = yield* Queue.unbounded<unknown>();
+    const makeRuntime = makeMockRuntime({
+      childProcessSpawner,
+      mockAgentPath,
+      ownDetachedProcessGroup: true,
+      wrapRuntime: (runtime) => {
+        nativeRuntime = runtime;
+        return {
+          ...runtime,
+          start: () =>
+            runtime
+              .start()
+              .pipe(
+                Effect.map((setup) => ({
+                  ...setup,
+                  protocolGeneration: generation,
+                  initializeResult: { ...setup.initializeResult, protocolVersion: 2 },
+                })),
+              ),
+          handleSessionUpdate: (handler) =>
+            Effect.sync(() => {
+              update = handler;
+            }).pipe(Effect.andThen(runtime.handleSessionUpdate(handler))),
+          prompt: () =>
+            Deferred.succeed(accepted, undefined).pipe(Effect.andThen(Deferred.await(promptGate))),
+          terminateProcessGroup: Effect.sync(() => {
+            killed += 1;
+          }).pipe(Effect.andThen(runtime.terminateProcessGroup!)),
+        };
+      },
+    });
+    const instanceId = ProviderInstanceId.make("claude-native-work");
+    const adapter = yield* makeAcpAdapterV2({
+      instanceId,
+      selfInvocation,
+      continuationRequests: {
+        offer: (request) => Queue.offer(offered, request).pipe(Effect.asVoid),
+      },
+      flavor: {
+        driver: ACP_TEST_DRIVER,
+        capabilities: AcpProviderCapabilitiesV2,
+        followAgentWorkState: true,
+        extractSubagentUpdate: extractClaudeSubagentUpdate,
+        isProvisionalSubagentTool: isClaudeProvisionalSubagentTool,
+        extractSubagentSessionEvent: extractClaudeSubagentSessionEvent,
+        makeRuntime: (input) => {
+          runtimeInput = input;
+          return makeRuntime(input);
+        },
+      },
+    });
+    const threadId = ThreadId.make("thread-claude-native-work");
+    const runtimePolicy = ProviderAdapter.ProviderAdapterV2RuntimePolicy.make({
+      runtimeMode: "full-access",
+      interactionMode: "default",
+      cwd: process.cwd(),
+    });
+    const modelSelection = { instanceId, model: "default" } as const;
+    const runtime = yield* adapter.openSession({
+      threadId,
+      providerSessionId: ProviderSessionId.make("session-claude-native-work"),
+      modelSelection,
+      runtimePolicy,
+    });
+    const providerThread = yield* runtime.ensureThread({ threadId, modelSelection, runtimePolicy });
+    const events: Array<ProviderAdapter.ProviderAdapterV2Event> = [];
+    const questions =
+      yield* Queue.unbounded<
+        Extract<
+          import("@t3tools/contracts").OrchestrationV2TurnItem,
+          { type: "user_input_request" }
+        >
+      >();
+    const terminal =
+      yield* Queue.unbounded<
+        Extract<ProviderAdapter.ProviderAdapterV2Event, { type: "turn.terminal" }>
+      >();
+    yield* runtime.events.pipe(
+      Stream.runForEach((event) =>
+        Effect.sync(() => {
+          events.push(event);
+        }).pipe(
+          Effect.andThen(
+            event.type === "turn_item.updated" &&
+              event.turnItem.type === "user_input_request" &&
+              event.turnItem.status === "waiting"
+              ? Queue.offer(questions, event.turnItem)
+              : Effect.void,
+          ),
+          Effect.andThen(
+            event.type === "turn.terminal" ? Queue.offer(terminal, event) : Effect.void,
+          ),
+        ),
+      ),
+      Effect.forkScoped,
+    );
+    const send = (notification: EffectAcpSchema.SessionNotification) =>
+      Effect.suspend(() => update!(notification)).pipe(Effect.andThen(Effect.yieldNow));
+    const root = providerThread.nativeThreadRef!.nativeId!;
+    const start = (ordinal = 1, continuation = false) =>
+      Effect.gen(function* () {
+        const turn = makeTurnInput({
+          threadId,
+          providerThread,
+          instanceId,
+          runtimePolicy,
+          ordinal,
+          ...(continuation
+            ? ({ messageCreatedBy: "agent", messageCreationSource: "provider" } as const)
+            : {}),
+          now: yield* DateTime.now,
+        });
+        yield* runtime.startTurn(turn);
+        yield* Deferred.await(accepted);
+        return turn;
+      });
+    const state = (state: "running" | "idle", stopReason?: string) =>
+      send({
+        sessionId: root,
+        update:
+          state === "running"
+            ? { sessionUpdate: "state_update", state }
+            : {
+                sessionUpdate: "state_update",
+                state,
+                ...(stopReason === undefined ? {} : { stopReason }),
+              },
+      });
+    const delegate = (
+      child: string,
+      delegation: string,
+      parent = root,
+      prompt = "Research the task",
+    ) =>
+      send({
+        sessionId: child,
+        update: {
+          sessionUpdate: "_t3_unknown",
+          originalSessionUpdate: "session_message",
+          raw: {
+            messageId: delegation,
+            senderSessionId: parent,
+            content: [{ type: "text", text: prompt }],
+          },
+        },
+      });
+    const childState = (child: string, state: "running" | "idle", parent = root) =>
+      send({
+        sessionId: parent,
+        update: {
+          sessionUpdate: "_t3_unknown",
+          originalSessionUpdate: "subagent_update",
+          raw: {
+            sessionId: child,
+            state: { state, ...(state === "idle" ? { stopReason: "end_turn" } : {}) },
+          },
+        },
+      });
+    const agentTool = (id: string) =>
+      send({
+        sessionId: root,
+        update: {
+          sessionUpdate: "tool_call",
+          toolCallId: id,
+          name: "Agent",
+          title: "Research",
+          status: "completed",
+          rawInput: { prompt: "Research the task", run_in_background: true },
+        },
+      });
+    return {
+      runtime,
+      providerThread,
+      root,
+      events,
+      terminal,
+      offered,
+      questions,
+      start,
+      send,
+      state,
+      delegate,
+      childState,
+      agentTool,
+      ask: Effect.suspend(() => nativeRuntime!.request("_test/ask-elicitation", {})),
+      accept: send({
+        sessionId: root,
+        update: {
+          sessionUpdate: "user_message_chunk",
+          content: { type: "text", text: "test prompt" },
+        },
+      }),
+      acknowledge: Deferred.succeed(promptGate, { stopReason: "end_turn" }).pipe(
+        Effect.andThen(Effect.yieldNow),
+      ),
+      killed: () => killed,
+      terminate: () =>
+        runtimeInput!.onTermination!(
+          new EffectAcpErrors.AcpTransportError({
+            detail: "Native transport closed",
+            cause: "test",
+          }),
+        ),
+    };
+  });
+
+describe("Claude ACP native work", () => {
+  it.effect(
+    "keeps idle work open for a native question and attaches post-settle questions through one continuation",
+    () =>
+      Effect.gen(function* () {
+        const h = yield* makeClaudeWorkHarness();
+        yield* h.start();
+        yield* h.accept;
+        yield* h.ask;
+        const question = yield* Queue.take(h.questions);
+        assert.equal(question.runId, null);
+        assert.equal(question.providerTurnId, null);
+        yield* h.state("idle", "end_turn");
+        assert.isTrue(Option.isNone(yield* Queue.poll(h.terminal)));
+        yield* h.runtime.respondToRuntimeRequest({
+          requestId: question.requestId,
+          answers: { destination: ["archive"] },
+        });
+        assert.equal((yield* Queue.take(h.terminal)).status, "completed");
+        yield* h.ask;
+        yield* Queue.take(h.offered);
+        assert.isTrue(Option.isNone(yield* Queue.poll(h.questions)));
+        yield* h.start(2, true);
+        const followup = yield* Queue.take(h.questions);
+        assert.equal(followup.runId, null);
+        assert.equal(followup.providerTurnId, null);
+        yield* h.runtime.respondToRuntimeRequest({
+          requestId: followup.requestId,
+          answers: { destination: ["continue"] },
+        });
+        assert.equal((yield* Queue.take(h.terminal)).status, "completed");
+        assert.isTrue(Option.isNone(yield* Queue.poll(h.offered)));
+      }).pipe(Effect.provide(layerTest), Effect.scoped),
+  );
+
+  it.effect(
+    "projects a native idle error as failed work without waiting for the prompt response",
+    () =>
+      Effect.gen(function* () {
+        const h = yield* makeClaudeWorkHarness();
+        yield* h.start();
+        yield* h.accept;
+        yield* h.send({
+          sessionId: h.root,
+          update: {
+            sessionUpdate: "state_update",
+            state: "idle",
+            stopReason: "error",
+            error: { code: -32603, message: "The native execution failed" },
+          },
+        });
+        const terminal = yield* Queue.take(h.terminal);
+        assert.equal(terminal.status, "failed");
+        assert.equal(terminal.failure?.message, "The native execution failed");
+      }).pipe(Effect.provide(layerTest), Effect.scoped),
+  );
+
+  it.effect("ignores the Claude extension on numeric-version-2 v1 sessions", () =>
+    Effect.gen(function* () {
+      const h = yield* makeClaudeWorkHarness(1);
+      yield* h.start();
+      yield* h.agentTool("task-1");
+      yield* h.delegate("child-1", "task-1");
+      yield* h.acknowledge;
+      assert.equal((yield* Queue.take(h.terminal)).status, "completed");
+      assert.equal(h.events.filter((event) => event.type === "subagent.updated").length, 0);
+      assert.equal(h.runtime.hasPendingBackgroundWork, undefined);
+    }).pipe(Effect.provide(layerTest), Effect.scoped),
+  );
+
+  it.effect(
+    "settles foreground work independently while projecting nested native child output with accurate lineage",
+    () =>
+      Effect.gen(function* () {
+        const h = yield* makeClaudeWorkHarness();
+        const turn = yield* h.start();
+        // Idle from session startup cannot settle a prompt before the agent accepts it.
+        yield* h.state("idle", "end_turn");
+        assert.equal(h.events.filter((event) => event.type === "turn.terminal").length, 0);
+        yield* h.state("running");
+        yield* h.accept;
+        // Child frames can arrive before the delegation tool has a complete input.
+        yield* h.delegate("child-1", "task-1");
+        yield* h.send({
+          sessionId: "child-1",
+          update: {
+            sessionUpdate: "agent_message_chunk",
+            content: { type: "text", text: "Child research" },
+          },
+        });
+        yield* h.agentTool("task-1");
+        yield* h.delegate("grandchild-1", "nested-1", "child-1");
+        yield* h.send({
+          sessionId: "grandchild-1",
+          update: {
+            sessionUpdate: "tool_call",
+            toolCallId: "read-1",
+            title: "Read file",
+            kind: "read",
+            status: "in_progress",
+          },
+        });
+        yield* h.acknowledge;
+        assert.equal(h.events.filter((event) => event.type === "turn.terminal").length, 0);
+        yield* h.state("idle", "end_turn");
+        assert.equal((yield* Queue.take(h.terminal)).status, "completed");
+        assert.isTrue(yield* h.runtime.hasPendingBackgroundWork!);
+        const task = h.events
+          .flatMap((event) => (event.type === "subagent.updated" ? [event.subagent] : []))
+          .at(-1)!;
+        assert.equal(task.runId, turn.runId);
+        assert.equal(task.status, "running");
+        const childTool = h.events
+          .flatMap((event) =>
+            event.type === "turn_item.updated" && event.turnItem.title === "Read file"
+              ? [event.turnItem]
+              : [],
+          )
+          .at(-1)!;
+        assert.equal(childTool.threadId, task.childThreadId);
+        assert.equal(childTool.runId, null);
+        assert.equal(childTool.providerTurnId, null);
+        assert.isTrue(
+          h.events.some(
+            (event) =>
+              event.type === "message.updated" &&
+              event.message.threadId === task.childThreadId &&
+              event.message.text === "Child research",
+          ),
+        );
+        yield* h.childState("child-1", "idle");
+        assert.isTrue(yield* h.runtime.hasPendingBackgroundWork!);
+        yield* h.childState("grandchild-1", "idle", "child-1");
+        assert.isFalse(yield* h.runtime.hasPendingBackgroundWork!);
+        const finished = h.events
+          .flatMap((event) => (event.type === "subagent.updated" ? [event.subagent] : []))
+          .at(-1)!;
+        assert.equal(finished.status, "completed");
+        assert.equal(finished.childThreadId, task.childThreadId);
+        // A later explicit delegation reuses the child thread and transfers its run ownership.
+        const next = yield* h.start(2);
+        yield* h.state("running");
+        yield* h.accept;
+        yield* h.delegate("child-1", "followup-1", h.root, "Continue the research");
+        yield* h.childState("child-1", "running");
+        const resumed = h.events
+          .flatMap((event) => (event.type === "subagent.updated" ? [event.subagent] : []))
+          .at(-1)!;
+        assert.equal(resumed.childThreadId, task.childThreadId);
+        assert.equal(resumed.runId, next.runId);
+        assert.equal(resumed.status, "running");
+        assert.isTrue(
+          h.events.some(
+            (event) =>
+              event.type === "message.updated" &&
+              event.message.threadId === task.childThreadId &&
+              event.message.role === "user" &&
+              event.message.text === "Continue the research",
+          ),
+        );
+        yield* h.childState("child-1", "idle");
+        yield* h.state("idle", "end_turn");
+        yield* Queue.take(h.terminal);
+      }).pipe(Effect.provide(layerTest), Effect.scoped),
+  );
+
+  it.effect(
+    "fails live native children when their transport exits after foreground completion",
+    () =>
+      Effect.gen(function* () {
+        const h = yield* makeClaudeWorkHarness();
+        yield* h.start();
+        yield* h.state("running");
+        yield* h.accept;
+        yield* h.agentTool("task-1");
+        yield* h.delegate("child-1", "task-1");
+        yield* h.acknowledge;
+        yield* h.state("idle", "end_turn");
+        yield* Queue.take(h.terminal);
+        yield* h.terminate();
+        yield* Effect.yieldNow;
+        assert.isTrue(yield* h.runtime.nativeSessionRetired!);
+        assert.isFalse(yield* h.runtime.hasPendingBackgroundWork!);
+        assert.equal(
+          h.events
+            .flatMap((event) => (event.type === "subagent.updated" ? [event.subagent.status] : []))
+            .at(-1),
+          "failed",
+        );
+      }).pipe(Effect.provide(layerTest), Effect.scoped),
+  );
+
+  it.effect(
+    "hard Stop revokes native callbacks and contains child work even after prompt acknowledgement",
+    () =>
+      Effect.gen(function* () {
+        const h = yield* makeClaudeWorkHarness();
+        yield* h.start();
+        yield* h.state("running");
+        yield* h.accept;
+        yield* h.agentTool("task-1");
+        yield* h.delegate("child-1", "task-1");
+        yield* h.acknowledge;
+        const running = h.events.find(
+          (event) =>
+            event.type === "provider_turn.updated" && event.providerTurn.status === "running",
+        );
+        assert.isDefined(running);
+        if (running?.type !== "provider_turn.updated") return;
+        yield* h.runtime.interruptTurn({
+          providerThread: h.providerThread,
+          providerTurnId: running.providerTurn.id,
+          requestRuntimeRestart: true,
+        });
+        assert.equal((yield* Queue.take(h.terminal)).status, "interrupted");
+        assert.equal(h.killed(), 1);
+        assert.isTrue(yield* h.runtime.nativeSessionRetired!);
+        assert.isFalse(yield* h.runtime.hasPendingBackgroundWork!);
+        const count = h.events.length;
+        yield* h.send({
+          sessionId: "child-1",
+          update: {
+            sessionUpdate: "agent_message_chunk",
+            content: { type: "text", text: "Late child mutation" },
+          },
+        });
+        yield* h.state("running");
+        yield* h.accept;
+        assert.equal(h.events.length, count);
+        assert.isTrue(Option.isNone(yield* Queue.poll(h.offered)));
+      }).pipe(Effect.provide(layerTest), Effect.scoped),
+  );
 });

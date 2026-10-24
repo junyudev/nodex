@@ -821,6 +821,7 @@ export function canonicalItemTypeFromAcpToolKind(kind: string | undefined): Tool
 function makeToolCallState(
   input: {
     readonly toolCallId: string;
+    readonly name?: string | null | undefined;
     readonly title?: string | null | undefined;
     readonly kind?: EffectAcpSchema.ToolKind | null | undefined;
     readonly status?: EffectAcpSchema.ToolCallStatus | null | undefined;
@@ -848,6 +849,7 @@ function makeToolCallState(
       ? title
       : undefined;
   const data: Record<string, unknown> = { toolCallId };
+  if (input.name != null) data.name = input.name;
   if (kind) {
     data.kind = kind;
   }
@@ -918,6 +920,7 @@ function parseTypedToolCallState(
   return makeToolCallState(
     {
       toolCallId: event.toolCallId,
+      name: event.name,
       title: event.title,
       kind: event.kind,
       status: event.status,

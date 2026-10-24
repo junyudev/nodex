@@ -141,7 +141,22 @@ interface AcpOutgoingWriterState {
 }
 
 const decodeSessionUpdate = Schema.decodeUnknownEffect(
-  Schema.Union([AcpSchema.UpdateSessionNotification, AcpSchemaV1.SessionNotification]),
+  Schema.Union([
+    // Native foreground failures include details beyond the generated idle shape.
+    Schema.Struct({
+      ...AcpSchema.UpdateSessionNotification.fields,
+      update: Schema.Struct({
+        sessionUpdate: Schema.Literal("state_update"),
+        state: Schema.Literal("idle"),
+        stopReason: Schema.optionalKey(Schema.NullOr(AcpSchema.StopReason)),
+        usage: Schema.optionalKey(Schema.NullOr(AcpSchema.Usage)),
+        error: Schema.optionalKey(Schema.NullOr(AcpSchema.Error)),
+        _meta: AcpSchema.UpdateSessionNotification.fields._meta,
+      }),
+    }),
+    AcpSchema.UpdateSessionNotification,
+    AcpSchemaV1.SessionNotification,
+  ]),
 );
 const decodeElicitationComplete = Schema.decodeUnknownEffect(
   AcpSchema.CompleteElicitationNotification,
