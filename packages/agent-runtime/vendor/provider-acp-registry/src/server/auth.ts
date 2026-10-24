@@ -47,19 +47,10 @@ export const acpRegistryCredentialBindingKey = (
     settings.source === "registry"
       ? ["registry", settings.agentId]
       : ["local", localExecutable ?? settings.commandPath];
+  // Native history roots can include unrelated tool directories. They do not
+  // prove credential isolation; absent an authoritative scope, share the home.
   const storage =
-    settings.nativeStorageScope ??
-    Object.entries(environment)
-      .filter(
-        ([name]) =>
-          name === "HOME" ||
-          name === "USERPROFILE" ||
-          name === "APPDATA" ||
-          name === "LOCALAPPDATA" ||
-          name.endsWith("_HOME") ||
-          name.endsWith("_CONFIG_DIR"),
-      )
-      .sort(([left], [right]) => left.localeCompare(right));
+    settings.credentialStorageScope ?? environment.HOME ?? environment.USERPROFILE ?? null;
   return `acp:${createHash("sha256")
     .update(JSON.stringify([identity, storage]))
     .digest("hex")}`;

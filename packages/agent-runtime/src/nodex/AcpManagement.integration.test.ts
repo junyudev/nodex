@@ -369,9 +369,9 @@ it.live(
   30_000,
 );
 
-it.live(
-  "coordinates shared native sign-ins across local instances while allowing isolated stores",
-  () =>
+it.live.each([true, false])(
+  "coordinates shared sign-ins independently of native roots with projected scope: %s",
+  (projectedScope) =>
     Effect.gen(function* () {
       const fs = yield* FileSystem.FileSystem;
       const home = yield* fs.makeTempDirectoryScoped({ prefix: "nodex-acp-auth-owner-" });
@@ -388,9 +388,11 @@ it.live(
             fileURLToPath(new URL("./testing/acp-management-peer.mjs", import.meta.url)),
           ],
           nativeStorageScope: home,
+          ...(projectedScope ? { credentialStorageScope: home } : {}),
           agentIdentity: "same-logical-agent",
         },
         environment: [
+          { name: "HOME", value: home, sensitive: false },
           { name: "ACP_MANAGEMENT_LOG", value: log, sensitive: false },
           { name: "ACP_MANAGEMENT_STATE", value: `${home}/state.json`, sensitive: false },
         ],
@@ -399,11 +401,26 @@ it.live(
         first: common,
         second: {
           ...common,
-          config: { ...common.config, agentIdentity: "another-local-definition" },
+          config: {
+            ...common.config,
+            agentIdentity: "another-local-definition",
+            nativeStorageScope: `${home}/different-tool-roots`,
+          },
+          environment: [
+            ...common.environment,
+            { name: "CARGO_HOME", value: `${home}/cargo-other`, sensitive: false },
+          ],
         },
         isolated: {
           ...common,
-          config: { ...common.config, nativeStorageScope: `${home}/isolated` },
+          config: {
+            ...common.config,
+            nativeStorageScope: `${home}/isolated`,
+            ...(projectedScope ? { credentialStorageScope: `${home}/isolated` } : {}),
+          },
+          environment: common.environment.map((entry) =>
+            entry.name === "HOME" ? { ...entry, value: `${home}/isolated` } : entry,
+          ),
         },
       };
       yield* Effect.gen(function* () {
@@ -451,7 +468,10 @@ it.live(
         expect(
           (yield* call("acp.auth.read", { instanceId: "first", ownerId: "window-one" })).phase,
         ).not.toBe("failed");
-        const hidden = yield* call("acp.auth.read", { instanceId: "first", ownerId: "window-two" });
+        const hidden = yield* call("acp.auth.read", {
+          instanceId: "first",
+          ownerId: "window-two",
+        });
         expect(hidden.flowId).toBeNull();
         expect(
           Exit.isFailure(
