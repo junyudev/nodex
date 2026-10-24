@@ -620,4 +620,28 @@ describe("ACP Agents owner", () => {
     );
     expect(main.runtime.connect).toHaveBeenCalledOnce();
   });
+
+  test("uninstalling waits out the post-install reservation but not chats using the Agent", async () => {
+    const { main, owner } = setup();
+    await settleAll();
+    const reserved = { ok: false as const, error: { reason: "busy" as const, message: "busy" } };
+    main.runtime.uninstall
+      .mockResolvedValueOnce(reserved)
+      .mockResolvedValueOnce(ok({ agentId: "qoder-cli", removed: true }));
+    const done = owner.uninstall("qoder-cli");
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(await done).toMatchObject({ ok: true });
+    expect(main.runtime.uninstall).toHaveBeenCalledTimes(2);
+
+    main.runtime.uninstall.mockClear().mockResolvedValue({
+      ok: false,
+      error: {
+        reason: "busy",
+        message: "busy",
+        affectedSessions: [{ sessionId: "s", threadId: "t" }],
+      },
+    });
+    expect(await owner.uninstall("qoder-cli")).toMatchObject({ ok: false });
+    expect(main.runtime.uninstall).toHaveBeenCalledOnce();
+  });
 });

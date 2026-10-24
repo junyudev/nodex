@@ -1,6 +1,7 @@
 import { useState, type ReactNode } from "react";
 import { AgentEnvironmentEditor } from "@/components/workbench/agent-environment-editor";
 import { NodexButton } from "@/components/ui/button";
+import { toast } from "@/components/ui/toast";
 import { NodexOptionPicker, NodexSettingsDropdownTrigger } from "@/components/ui/dropdown";
 import { Input, Textarea } from "@/components/ui/input";
 import { NodexCheckbox, NodexSettingsRow } from "@/components/ui/settings";
@@ -140,9 +141,16 @@ export function AcpAgentDetail({
       setRemoveError(outcome.message);
       return;
     }
+    // The instance is gone either way; uninstalling finishes in the background and reports only
+    // a refusal, since this row no longer exists to show it.
     if (source.kind === "registry" && uninstallToo && !sharedInstall) {
-      const result = await owner.uninstall(source.agentId);
-      if (!result.ok) setRemoveError(acpFailureText(result.error, "uninstall"));
+      const name = instance.displayName;
+      void owner.uninstall(source.agentId).then((result) => {
+        if (!result.ok)
+          toast.danger(`Couldn't uninstall ${name}`, {
+            description: acpFailureText(result.error, "uninstall"),
+          });
+      });
     }
     setSaving(false);
     onRemoved();

@@ -89,6 +89,10 @@ export interface AcpAgentsOwner {
   readonly connect: (instanceId: string) => void;
   readonly cancel: (instanceId: string) => void;
   readonly dismiss: (instanceId: string) => void;
+  /**
+   * Removes Nodex's installed files for an Agent no instance uses. Right after installing, the
+   * Runtime briefly reserves them; that refusal names no chats and is retried a few times.
+   */
   readonly uninstall: (agentId: string) => Promise<AcpResult<unknown>>;
   readonly readAuth: (instanceId: string) => void;
   readonly signIn: (instanceId: string, methodId?: string) => void;
@@ -148,6 +152,9 @@ interface JournalEntry {
 const OPERATION_POLL_MS = 500;
 const AUTH_POLL_MS = 300;
 const TERMINAL_CHUNK = 4_096;
+/** The Runtime's post-install reservation is bounded; four tries span it. */
+const UNINSTALL_ATTEMPTS = 4;
+const UNINSTALL_RETRY_MS = 10_000;
 /** Pending changes apply as soon as the Agent goes idle; a failed reconcile retries slower. */
 const CONFIGURATION_POLL_MS = { deferred: 2_000, failed: 10_000 } as const;
 
@@ -825,7 +832,19 @@ export function createAcpAgentsOwner(input: {
         setActivity(instanceId, undefined);
     },
     uninstall: async (agentId) => {
-      const result = await settle(() => runtime.uninstall({ agentId }));
+      let result = await settle(() => runtime.uninstall({ agentId }));
+      for (
+        let attempt = 1;
+        attempt < UNINSTALL_ATTEMPTS &&
+        !result.ok &&
+        result.error.reason === "busy" &&
+        !result.error.affectedSessions?.length &&
+        !result.error.affectedThreadIds?.length;
+        attempt += 1
+      ) {
+        await new Promise((resolve) => setTimeout(resolve, UNINSTALL_RETRY_MS));
+        result = await settle(() => runtime.uninstall({ agentId }));
+      }
       if (result.ok)
         for (const instance of snapshot.settings?.instances ?? [])
           if (instance.source.kind === "registry" && instance.source.agentId === agentId)
