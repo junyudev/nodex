@@ -1,0 +1,47 @@
+packages/agent-runtime/src/nodex/AcpRegistryInstallation.test.ts
+  s_9cccd37e800d7a::t_9721d75aeb1e37 171-195,206-208,212-216,221,225-227,231-234,239-241,245-247,251-253,257-261
+  s_9cccd37e800d7a::t_7e64b971024b66 108,114-127
+  s_9cccd37e800d7a::t_e12a3fd118f844 196-205,209-211,217-220,222-224,228,230,235-238,242-244,248,250,254-256
+  s_9cccd37e800d7a::t_309f190eed6648 297,331
+  s_9cccd37e800d7a::t_ff22ccdb7972fd 229
+  s_9cccd37e800d7a::t_6082227675b240 249
+packages/agent-runtime/src/nodex/AcpRegistryCatalog.test.ts
+  s_9cccd37e800d7a::t_3118178cc07e4b 1-26,28-41,43-101,103-105,107-108,110-117,119-123,125-149,151-152,154-169,173,175-214,216-217,249-262,267-289,291-297
+  s_9cccd37e800d7a::t_acb4aef08b19d7 170,172,235-239,242-246
+  s_9cccd37e800d7a::t_c76feff8d6ae72 42,218-234,240-241,247-248
+  s_9cccd37e800d7a::t_546c4ab00e98dd 27,102,106,109,118,124,150,153,171,174,215,263-266,290
+packages/agent-runtime/src/provider/ModelInputCapabilities.test.ts
+  s_9cccd37e800d7a::t_05df9f04688779 120-126
+packages/agent-runtime/vendor/contracts/src/acpRegistry.ts
+  s_9cccd37e800d7a::t_a2f8593e22b789 59-68,79-81,93,97-114
+packages/agent-runtime/vendor/provider-acp-registry/src/server/AcpRegistrySupport.ts
+  s_87899c56a25134::t_c408a07ecd3cf8 12-13,462,496-500,514-516,737,742,744,760-772,1444-1445,1673-1696,1699-1701,1703-1707,1710-1716,1731,1740-1769,1773-1809,1815-1823,1863-1866,1885,1889,1891-1893,1998-2011,2057-2063,2271
+packages/agent-runtime/vendor/provider-acp-registry/src/server/auth.test.ts
+  s_87899c56a25134::t_f5c7d1efd930e0 46,53,151
+packages/agent-runtime/vendor/provider-acp-registry/src/server/driver.test.ts
+  s_87899c56a25134::t_d90e79e189a2d7 38,54,101,139,188,198,209,223,250,309,347,422,451
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "6b0aabd3acf91e89e1e66f30347b91ec961ae2cb",
+  "prompts": {},
+  "sessions": {
+    "s_87899c56a25134": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a16d84-d1d8-70e1-921d-68a1936d9ffe",
+        "model": "unknown"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_9cccd37e800d7a": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a16d80-f1cc-7471-9f61-cb6ea1bc793d",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
