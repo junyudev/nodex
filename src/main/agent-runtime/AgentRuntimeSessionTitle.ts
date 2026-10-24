@@ -47,6 +47,10 @@ export const generateSessionTitle = Effect.fn("AgentRuntimeSessionTitle.generate
   const prompt = buildThreadTitleGenerationPrompt(input.prompt);
   if (!prompt) return null;
   const providers = yield* connection.request("providers.read", {});
+  const provider = providers.find(
+    (candidate) => candidate.instanceId === input.modelSelection.instanceId,
+  );
+  if (provider?.supportsTextGeneration === false) return null;
   const output = yield* connection.request("text.generate-structured", {
     cwd: input.cwd,
     prompt,

@@ -4,6 +4,7 @@ import {
   normalizeDevinSessionUpdate,
   normalizeDevinToolCall,
   extractDevinSubagentUpdate,
+  extractDroidElicitationForm,
 } from "@t3tools/provider-acp-registry/testing";
 // @effect-diagnostics nodeBuiltinImport:off
 import * as NodeChildProcess from "node:child_process";
@@ -57,7 +58,12 @@ import type * as EffectAcpSchema from "effect-acp/compat";
 import * as TestProviderHost from "@t3tools/provider-testing/TestProviderHost";
 import * as McpProviderSessions from "@t3tools/provider-core/server/McpProviderSessions";
 import * as AcpSessionRuntime from "@t3tools/provider-acp/server/AcpSessionRuntime";
-import { ACP_SESSION_MODE_OPTION_ID } from "@t3tools/provider-acp/server/sessionConfig";
+import {
+  ACP_SESSION_MODE_OPTION_ID,
+  ACP_EMPTY_OPTION_VALUE,
+  acpOptionSelectionValue,
+  acpProviderOptionDescriptors,
+} from "@t3tools/provider-acp/server/sessionConfig";
 import * as IdAllocator from "@t3tools/provider-core/server/IdAllocator";
 import * as ProviderAdapter from "@t3tools/provider-core/server/ProviderAdapter";
 import type * as ProviderContinuationRequests from "@t3tools/provider-core/server/ProviderContinuationRequests";
@@ -362,6 +368,7 @@ const waitForPublishedProcessIds = (
 function makeMockRuntime(input: {
   readonly childProcessSpawner: ChildProcessSpawner.ChildProcessSpawner["Service"];
   readonly mockAgentPath: string;
+  readonly customModels?: ReadonlyArray<string>;
   readonly environment?:
     | Readonly<Record<string, string>>
     | ((runtimeOrdinal: number) => Readonly<Record<string, string>>);
@@ -404,6 +411,7 @@ function makeMockRuntime(input: {
       const context = yield* Layer.build(
         AcpSessionRuntime.layer({
           ...runtimeInput,
+          ...(input.customModels === undefined ? {} : { customModels: input.customModels }),
           ...(input.cancelBehavior === undefined ? {} : { cancelBehavior: input.cancelBehavior }),
           ...(input.ownDetachedProcessGroup === undefined
             ? {}
@@ -593,6 +601,200 @@ function makeTurnInput(input: {
 }
 
 describe("AcpAdapterV2", () => {
+  it("maps complete Droid choice forms and preserves custom answers", () => {
+    const request = {
+      sessionId: "droid-session",
+      requestId: "droid-question",
+      mode: "form" as const,
+      message: "Choose a storage mode",
+      requestedSchema: {
+        type: "object" as const,
+        properties: {
+          question_1: {
+            type: "string",
+            title: "Storage",
+            description: "Where should data live?",
+            oneOf: [
+              { const: "option_1", title: "Local" },
+              { const: "other", title: "Other" },
+            ],
+          },
+          question_1_other: { type: "string" },
+        },
+        required: ["question_1"],
+      },
+    };
+    const form = extractDroidElicitationForm(request);
+    assert.isDefined(form);
+    assert.deepEqual(
+      form?.questions.map((question) => question.id),
+      ["question_1"],
+    );
+    assert.deepEqual(
+      form?.questions[0]?.options.map((choice) => choice.value),
+      ["option_1"],
+    );
+    assert.deepEqual(form?.respond({ question_1: "option_1" }), {
+      action: "accept",
+      content: { question_1: "option_1" },
+    });
+    assert.deepEqual(form?.respond({ question_1: "A shared workspace" }), {
+      action: "accept",
+      content: { question_1: "other", question_1_other: "A shared workspace" },
+    });
+    assert.deepEqual(form?.respond({}), { action: "cancel" });
+    assert.isUndefined(
+      extractDroidElicitationForm({
+        ...request,
+        requestedSchema: { ...request.requestedSchema, required: [] },
+      }),
+    );
+  });
+
+  it("preserves empty and reserved-looking ACP choices without collisions", () => {
+    const values = ["", ACP_EMPTY_OPTION_VALUE, "_t3/value:literal", "ordinary"];
+    const descriptors = acpProviderOptionDescriptors({
+      configOptions: [
+        {
+          id: "context",
+          name: "Context",
+          type: "select",
+          currentValue: "",
+          options: values.map((value) => ({ value, name: value || "Empty" })),
+        },
+      ],
+      modeState: undefined,
+    });
+    const descriptor = descriptors[0];
+    assert.equal(descriptor?.type, "select");
+    if (descriptor?.type !== "select") return;
+    assert.equal(descriptor.currentValue, ACP_EMPTY_OPTION_VALUE);
+    assert.equal(new Set(descriptor.options.map((choice) => choice.id)).size, values.length);
+    assert.deepEqual(
+      descriptor.options.map((choice) => acpOptionSelectionValue(choice.id)),
+      values,
+    );
+  });
+
+  it.live.each([
+    { api: "legacy", protocol: "v1" },
+    { api: "config", protocol: "v1" },
+    { api: "config", protocol: "v1-numeric2" },
+    { api: "config", protocol: "v2" },
+    { api: "both", protocol: "v1" },
+  ])(
+    "applies exact model IDs and reversible switches through $protocol $api",
+    ({ api, protocol }) =>
+      Effect.gen(function* () {
+        const instanceId = ProviderInstanceId.make(`model-${api}-${protocol}`);
+        const threadId = ThreadId.make(`thread-model-${api}-${protocol}`);
+        const protocolEvents = yield* Queue.unbounded<EffectAcpProtocol.AcpProtocolLogEvent>();
+        const adapter = yield* makeAcpAdapterV2({
+          instanceId,
+          selfInvocation: yield* resolveSelfInvocation(),
+          flavor: {
+            driver: ACP_TEST_DRIVER,
+            capabilities: AcpProviderCapabilitiesV2,
+            customModels: ["custom-model", "rejected"],
+            makeRuntime: makeMockRuntime({
+              childProcessSpawner: yield* ChildProcessSpawner.ChildProcessSpawner,
+              mockAgentPath: yield* (yield* Path.Path).fromFileUrl(
+                new URL("../../../scripts/acp-model-agent.ts", import.meta.url),
+              ),
+              environment: { NODEX_ACP_MODEL_API: api, NODEX_ACP_MODEL_PROTOCOL: protocol },
+              customModels: ["custom-model", "rejected"],
+              protocolEvents,
+            }),
+          },
+        });
+        const runtimePolicy = ProviderAdapter.ProviderAdapterV2RuntimePolicy.make({
+          runtimeMode: "full-access",
+          interactionMode: "default",
+          cwd: process.cwd(),
+        });
+        const modelSelection = { instanceId, model: "model-a" } as const;
+        const runtime = yield* adapter.openSession({
+          threadId,
+          providerSessionId: ProviderSessionId.make(`session-${api}-${protocol}`),
+          modelSelection,
+          runtimePolicy,
+        });
+        const providerThread = yield* runtime.ensureThread({
+          threadId,
+          modelSelection,
+          runtimePolicy,
+        });
+        const now = yield* DateTime.now;
+        const models = ["model-b", "model-a", "auto", "default", "custom-model"];
+        for (const [index, model] of models.entries()) {
+          yield* Queue.clear(protocolEvents);
+          const selection = {
+            instanceId,
+            model,
+            ...(api === "legacy"
+              ? {}
+              : { options: [{ id: "context", value: ACP_EMPTY_OPTION_VALUE }] }),
+          };
+          yield* runtime.startTurn(
+            makeTurnInput({
+              threadId,
+              providerThread,
+              instanceId,
+              runtimePolicy,
+              now,
+              ordinal: index + 1,
+              modelSelection: selection,
+            }),
+          );
+          const events = yield* runtime.events.pipe(
+            Stream.takeUntil((event) => event.type === "turn.terminal"),
+            Stream.runCollect,
+          );
+          const terminal = events.at(-1);
+          assert.equal(
+            terminal?.type === "turn.terminal" ? terminal.status : undefined,
+            "completed",
+          );
+          const wire = yield* Queue.takeAll(protocolEvents);
+          const requests = wire.filter((event) => event.direction === "outgoing");
+          const method = api === "legacy" ? "session/set_model" : "session/set_config_option";
+          const modelRequest = requests.find(
+            (event) =>
+              rawProtocolMethod(event) === method &&
+              (api === "legacy" || rawProtocolRequestParam(event, "configId") === "model"),
+          );
+          assert.equal(
+            rawProtocolRequestParam(modelRequest!, api === "legacy" ? "modelId" : "value"),
+            model,
+          );
+          if (api !== "legacy" && index === 0) {
+            const context = requests.find(
+              (event) =>
+                rawProtocolMethod(event) === method &&
+                rawProtocolRequestParam(event, "configId") === "context",
+            );
+            assert.equal(rawProtocolRequestParam(context!, "value"), "");
+          }
+        }
+        yield* Queue.clear(protocolEvents);
+        const rejected = yield* Effect.exit(
+          runtime.startTurn(
+            makeTurnInput({
+              threadId,
+              providerThread,
+              instanceId,
+              runtimePolicy,
+              now,
+              ordinal: 6,
+              modelSelection: { instanceId, model: "rejected" },
+            }),
+          ),
+        );
+        assert.isTrue(Exit.isFailure(rejected));
+        assert.notInclude(yield* pollProtocolMethods(protocolEvents), "session/prompt");
+      }).pipe(Effect.timeout("20 seconds"), Effect.provide(layerTest), Effect.scoped),
+  );
+
   it.live.each(["failed", "recovered", "completed", "cancelled"] as const)(
     "projects Mistral retry notices and their %s outcome",
     (outcome) =>

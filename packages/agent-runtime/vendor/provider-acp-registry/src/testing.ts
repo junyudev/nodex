@@ -17,6 +17,7 @@ export {
   normalizeDevinToolCall,
 } from "./server/devinAcp.ts";
 export { extractCopilotSubagentUpdate, makeCopilotSubagentRouting } from "./server/copilotAcp.ts";
+export { extractDroidElicitationForm } from "./server/droidAcp.ts";
 export {
   acpRegistryProbeFailure,
   acpRegistryProbeResult,

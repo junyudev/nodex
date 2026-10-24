@@ -64,6 +64,7 @@ import {
   acpContentBlockDisplayText,
   embeddedTerminalIdsFromSessionUpdate,
   extractMcpToolCallIdentity,
+  findModelConfigOption,
   mergeToolCallState,
   parseSessionUpdateEvent,
   toolCallVisibleOutputChanged,
@@ -77,7 +78,7 @@ import {
   resolveEmbeddedTerminalContent,
   type AcpClientTerminals,
 } from "./clientTerminals.ts";
-import { ACP_SESSION_MODE_OPTION_ID } from "./sessionConfig.ts";
+import { ACP_SESSION_MODE_OPTION_ID, acpOptionSelectionValue } from "./sessionConfig.ts";
 import * as AcpSessionRuntime from "./AcpSessionRuntime.ts";
 import {
   acpPromptWithInstructions,
@@ -219,12 +220,21 @@ export interface AcpAdapterV2Flavor {
     configOptions: ReadonlyArray<EffectAcpSchema.SessionConfigOption>,
     modeState: AcpSessionModeState | undefined,
     supportsImagePrompts?: boolean,
+    modelState?: EffectAcpSchema.SessionModelState | null,
   ) => Effect.Effect<void>;
   readonly onUrlElicitation?: (input: {
     readonly elicitationId: string;
     readonly url: string;
     readonly message: string;
   }) => Effect.Effect<boolean>;
+  readonly extractElicitationForm?: (request: EffectAcpSchema.CreateElicitationRequest) =>
+    | {
+        readonly questions: ReadonlyArray<OrchestrationV2UserInputQuestion>;
+        readonly respond: (
+          answers: ProviderUserInputAnswers,
+        ) => EffectAcpSchema.CreateElicitationResponse;
+      }
+    | undefined;
   readonly withRuntimeStartup?: <A, E, R>(effect: Effect.Effect<A, E, R>) => Effect.Effect<A, E, R>;
   readonly makeRuntime: (
     input: AcpAdapterV2RuntimeInput,
@@ -234,6 +244,7 @@ export interface AcpAdapterV2Flavor {
     ChildProcessSpawner.ChildProcessSpawner | Crypto.Crypto | Scope.Scope
   >;
   readonly resolveModelId?: (selection: ModelSelection) => string | undefined;
+  readonly customModels?: ReadonlyArray<string>;
   /**
    * Replaces the default model application on session setup. Returns the model
    * the session now runs on. Antigravity resolves its provider-default alias
@@ -5327,6 +5338,8 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
                 flavor.onSessionConfigurationUpdate?.(
                   yield* runtime.getConfigOptions,
                   yield* runtime.getModeState,
+                  undefined,
+                  (yield* Ref.get(activeSessionSetup))?.sessionSetupResult.models,
                 ) ?? Effect.void
               );
             }
@@ -5580,12 +5593,13 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
               }
               const requestedSchema = unknownRecord(params.requestedSchema);
               const properties = unknownRecord(requestedSchema?.properties) ?? {};
+              const extracted = flavor.extractElicitationForm?.(params);
               const nativeSessionId =
                 "sessionId" in params && typeof params.sessionId === "string"
                   ? params.sessionId
                   : undefined;
               const elicitationScopeId = nativeSessionId ?? `request:${transportRequestId}`;
-              const questions = Object.entries(properties).map(
+              const questions = extracted?.questions ?? Object.entries(properties).map(
                 ([id, property], index): OrchestrationV2UserInputQuestion => {
                   const record = unknownRecord(property);
                   const enumValues = Array.isArray(record?.enum)
@@ -5628,7 +5642,7 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
               const response =
                 userInput.answers === null
                   ? ({ action: "cancel" } as const)
-                  : ({
+                  : extracted?.respond(userInput.answers) ?? ({
                       action: "accept",
                       content: elicitationContent(
                         userInput.answers,
@@ -5967,6 +5981,7 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
             yield* runtime.getConfigOptions,
             yield* runtime.getModeState,
             supportsImagePrompts,
+            started.sessionSetupResult.models,
           ) ?? Effect.void
         );
 
@@ -6012,17 +6027,34 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
               startResult,
               modelSelection,
             });
-          } else if (
-            requestedModel.length > 0 &&
-            requestedModel !== "auto" &&
-            requestedModel !== "default"
-          ) {
-            const hasModelConfig =
-              startResult.sessionSetupResult.configOptions?.some(
-                (option) => option.category === "model",
-              ) === true;
-            if (hasModelConfig) {
-              yield* runtime.setModel(requestedModel);
+          } else if (requestedModel.length > 0) {
+            const modelOption = findModelConfigOption(yield* runtime.getConfigOptions);
+            const modelState = startResult.sessionSetupResult.models;
+            const isCustomModel = flavor.customModels?.includes(requestedModel) === true;
+            if (modelOption !== undefined) {
+              yield* runtime.setConfigOption(modelOption.id, requestedModel);
+              const applied = findModelConfigOption(yield* runtime.getConfigOptions)?.currentValue;
+              if (applied !== undefined && applied !== requestedModel) {
+                return yield* EffectAcpErrors.AcpRequestError.invalidParams(
+                  "ACP model selection rejected",
+                  { requestedModel, appliedModel: applied },
+                );
+              }
+              appliedModel = requestedModel;
+            } else if (modelState != null) {
+              if (
+                !isCustomModel &&
+                !modelState.availableModels.some((model) => model.modelId === requestedModel)
+              ) {
+                return yield* EffectAcpErrors.AcpRequestError.invalidParams(
+                  "ACP model selection unavailable",
+                  { requestedModel },
+                );
+              }
+              if (modelState.currentModelId !== requestedModel) {
+                yield* runtime.setSessionModel(requestedModel);
+              }
+              appliedModel = requestedModel;
             }
           }
           // Same-runtime switches compare against this stored setup, so keep
@@ -6048,7 +6080,11 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
               };
             });
           }
-          const optionSelections = modelSelection.options ?? [];
+          const optionSelections = (modelSelection.options ?? []).map((selection) =>
+            typeof selection.value === "string"
+              ? { ...selection, value: acpOptionSelectionValue(selection.value) }
+              : selection,
+          );
           const configOptions = yield* runtime.getConfigOptions;
           const availableConfigIds = new Set(configOptions.map((option) => option.id));
           const hasNativeConfigWithSyntheticModeId = availableConfigIds.has(

@@ -2,5 +2,11 @@
   "repository": "https://github.com/pingdotgg/t3code",
   "revision": "5753207d",
   "scope": "V2 Agent Runtime, provider adapters, dependency closure and replay verification",
-  "license": "MIT"
+  "license": "MIT",
+  "patches": [
+    {
+      "revision": "2c592a1086ff593293358529a1975dde308edeaf",
+      "scope": "ACP legacy model selection, session choice mapping, Droid elicitation and standalone Node PTY behavior"
+    }
+  ]
 }

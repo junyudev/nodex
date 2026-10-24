@@ -17,6 +17,26 @@ import type { AcpSessionModeState } from "./runtimeModel.ts";
 /** Synthetic descriptor ID for agents that expose modes outside config options. */
 export const ACP_SESSION_MODE_OPTION_ID = "_t3/session-mode";
 
+/** Nonempty UI choice keys preserve the protocol's valid empty-string selection. */
+export const ACP_EMPTY_OPTION_VALUE = "_t3/empty";
+const ACP_ESCAPED_OPTION_PREFIX = "_t3/value:";
+
+export const acpOptionSelectionValue = (value: string): string => {
+  if (value === ACP_EMPTY_OPTION_VALUE) return "";
+  if (value.startsWith(ACP_ESCAPED_OPTION_PREFIX)) return value.slice(ACP_ESCAPED_OPTION_PREFIX.length);
+  return value;
+};
+
+const optionChoiceId = (value: string): string | undefined => {
+  if (value === "") return ACP_EMPTY_OPTION_VALUE;
+  const id = boundedOpaqueValue(value, MAX_TEXT_LENGTH);
+  if (id === undefined) return undefined;
+  if (id === ACP_EMPTY_OPTION_VALUE || id.startsWith(ACP_ESCAPED_OPTION_PREFIX)) {
+    return `${ACP_ESCAPED_OPTION_PREFIX}${id}`;
+  }
+  return id;
+};
+
 const MAX_OPTION_DESCRIPTORS = 16;
 const MAX_OPTION_CHOICES = 64;
 const MAX_TEXT_LENGTH = 256;
@@ -44,7 +64,7 @@ function selectChoices(
   const seen = new Set<string>();
   const choices: Array<ProviderOptionChoice> = [];
   for (const candidate of candidates) {
-    const id = boundedOpaqueValue(candidate.value, MAX_TEXT_LENGTH);
+    const id = optionChoiceId(candidate.value);
     if (id === undefined || seen.has(id)) continue;
     seen.add(id);
     const description = boundedText(candidate.description, MAX_DESCRIPTION_LENGTH);
@@ -101,12 +121,12 @@ export function acpProviderOptionDescriptors(input: {
     if (option.category === "thought_level") {
       mirroredModeChoiceSets.push(new Set(choices.map((choice) => choice.id)));
     }
-    const currentValue = option.currentValue;
+    const currentValue = optionChoiceId(option.currentValue);
     descriptors.push({
       ...base,
       type: "select",
       options: choices,
-      ...(currentValue && choices.some((choice) => choice.id === currentValue)
+      ...(currentValue !== undefined && choices.some((choice) => choice.id === currentValue)
         ? { currentValue }
         : {}),
     });

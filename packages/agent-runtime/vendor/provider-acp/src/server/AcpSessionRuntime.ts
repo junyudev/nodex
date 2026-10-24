@@ -37,6 +37,7 @@ import {
   collectSessionConfigOptionValues,
   decideToolCallUpdateEmission,
   extractModelConfigId,
+  findModelConfigOption,
   findSessionConfigOption,
   mergeToolCallState,
   toolCallProgressLength,
@@ -122,6 +123,8 @@ export interface AcpSessionRuntimeOptions {
     readonly version: string;
   };
   readonly authMethodId?: string;
+  /** Explicit custom model IDs are validated by the agent rather than its advertised catalog. */
+  readonly customModels?: ReadonlyArray<string>;
   /**
    * Call `authenticate` right after `initialize` instead of waiting for an
    * auth-required error. Antigravity selects its credential source (Google
@@ -1954,7 +1957,8 @@ export const make = (
       value: string | boolean,
     ): Effect.Effect<void, EffectAcpErrors.AcpError> =>
       Effect.gen(function* () {
-        const configOption = findSessionConfigOption(yield* Ref.get(configOptionsRef), configId);
+        const configOptions = yield* Ref.get(configOptionsRef);
+        const configOption = findSessionConfigOption(configOptions, configId);
         if (!configOption) {
           return;
         }
@@ -1985,6 +1989,12 @@ export const make = (
         }
         const allowedValues = collectSessionConfigOptionValues(configOption);
         if (allowedValues.includes(value)) {
+          return;
+        }
+        if (
+          configOption === findModelConfigOption(configOptions) &&
+          options.customModels?.includes(value)
+        ) {
           return;
         }
         return yield* new EffectAcpErrors.AcpRequestError({
