@@ -75,6 +75,10 @@ export async function probeAcpManagement(input: {
   >();
   let requestSequence = 0;
   let lastFailureReason: string | undefined;
+  const expectFailureReason = (expected: string) => {
+    if (lastFailureReason !== expected)
+      throw new Error(`Management failure lost its typed ${expected} recovery reason`);
+  };
   const lines = createInterface({ input: runtime.stdout });
   lines.on("line", (line) => {
     const frame = JSON.parse(line) as {
@@ -195,8 +199,7 @@ export async function probeAcpManagement(input: {
     await request("acp.operation.read", { operationId: "missing-operation" }).catch(
       () => undefined,
     );
-    if (lastFailureReason !== "operation_expired")
-      throw new Error("Runtime lost the structured operation expiry reason");
+    expectFailureReason("operation_expired");
     const first = await start();
     await respond(first, "secret\r");
     const masked = await wait(
@@ -244,8 +247,7 @@ export async function probeAcpManagement(input: {
       staleRejected = true;
     }
     if (!staleRejected) throw new Error("Cancelled terminal accepted stale input");
-    if (lastFailureReason !== "invalid_request")
-      throw new Error("Management failure lost its typed recovery reason");
+    expectFailureReason("invalid_request");
     await request("shutdown", {});
     await within(stopped.promise, "Runtime shutdown");
     const events = observations();
