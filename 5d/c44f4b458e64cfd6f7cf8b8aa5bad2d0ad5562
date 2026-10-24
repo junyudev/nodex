@@ -1,0 +1,26 @@
+crates/nodex-core/src/workspace/inbox_tests.rs
+  s_f79dd9d0c7ac54::t_dd450c26d75b37 3225-3229,3236-3239,3276-3279,3310-3314,3335-3338,3340-3369,3371-3396,3400
+  s_f79dd9d0c7ac54::t_92e5a1e0b11ac7 3118-3224,3230-3235,3240-3275,3280-3309,3315-3334,3339,3370,3397-3399
+  s_f79dd9d0c7ac54::t_6f34a8643f9b09 3401-3405
+crates/nodex-core/src/workspace/inbox_reliable.rs
+  s_f79dd9d0c7ac54::t_a2431d7f583c6f 950-953,971-974,1016-1021,1029-1034
+  s_f79dd9d0c7ac54::t_4933e6b5828579 776-783,890-892,943-949,954-970,975-988
+docs/product-specs/inbox-behavior.md
+  s_f79dd9d0c7ac54::t_f0e862cb8ddd63 237-242
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "5dc44f4b458e64cfd6f7cf8b8aa5bad2d0ad5562",
+  "prompts": {},
+  "sessions": {
+    "s_f79dd9d0c7ac54": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a151d6-b92f-7f41-b4e5-4834cb7752bd",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
