@@ -1,0 +1,23 @@
+src/renderer/lib/codex-sidebar-pagination.ts
+  s_1ebddc5feb019d::t_71e709a453af94 41-46,48-49,54,58
+src/renderer/lib/codex-sidebar-pagination.node.test.ts
+  s_1ebddc5feb019d::t_dc1758f38f54e7 104-138,140,143,148-149
+docs/product-specs/workbench-shell.md
+  s_1ebddc5feb019d::t_33f3e1cf8a6303 19
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "3cf745cf21ce005150e168d2c9ae5f1a10bf9bb4",
+  "prompts": {},
+  "sessions": {
+    "s_1ebddc5feb019d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "927a8b0c-afa8-449b-b016-aac4217751c5",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
