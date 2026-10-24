@@ -1,0 +1,30 @@
+packages/agent-runtime/src/nodex/testing/acp-queued-peer.mjs
+  s_9cccd37e800d7a::t_7b1055e4586a0a 1-29,31-60,62-69
+  s_9cccd37e800d7a::t_9c6d215365b32c 30,61
+packages/agent-runtime/src/nodex/Service.ts
+  s_9cccd37e800d7a::t_675902b5d8b0f7 496,917
+  s_9cccd37e800d7a::t_48c8bcc1187240 73,113,464-465,494-495,497-517,654-659,663,692,915-916,918-924
+packages/agent-runtime/src/nodex/ProviderAdmission.integration.test.ts
+  s_9cccd37e800d7a::t_340e515230d5f3 58,79,94,148,199-212
+  s_9cccd37e800d7a::t_7b1055e4586a0a 1-43,100,104,107,109,124,134-135,139,141,144,146,175-198,213-236
+  s_9cccd37e800d7a::t_9c6d215365b32c 87-92,149-167
+  s_9cccd37e800d7a::t_4cbedc0f14acad 59-78,93
+  s_9cccd37e800d7a::t_a2f28745d5f818 131
+  s_9cccd37e800d7a::t_f60247d1abc504 44-57,80-86,95-99,101-103,105-106,108,110-123,125-130,132-133,136-138,140,142-143,145,147,168-174
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "b4c704931c565745f29db4eb2414bf5b1572e137",
+  "prompts": {},
+  "sessions": {
+    "s_9cccd37e800d7a": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a16d80-f1cc-7471-9f61-cb6ea1bc793d",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
