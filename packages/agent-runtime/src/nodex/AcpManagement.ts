@@ -159,6 +159,21 @@ export const makeOperations = Effect.gen(function* () {
     });
   return {
     read,
+    withInactiveInstallation: <A, E, R>(agentId: string, task: Effect.Effect<A, E, R>) =>
+      lane.withPermit(
+        Effect.gen(function* () {
+          const active = [...(yield* Ref.get(records)).values()].some(
+            ({ state }) =>
+              state.phase === "running" && state.kind === "install" && state.agentId === agentId,
+          );
+          if (active)
+            return yield* failure(
+              "Wait for this Agent installation to finish before uninstalling.",
+              "busy",
+            );
+          return yield* task;
+        }),
+      ),
     active: Ref.get(records).pipe(
       Effect.map(
         (records) =>
@@ -574,7 +589,10 @@ export const make = Effect.fn("AcpManagement.make")(function* (
             "busy",
             (yield* activityForInstances([...referenced])).threadIds,
           );
-        return yield* catalog.uninstallManagedBinary(request.input);
+        return yield* operations.withInactiveInstallation(
+          request.input.agentId,
+          catalog.uninstallManagedBinary(request.input),
+        );
       }
       case "acp.connection.start": {
         const selected = yield* registry.getInstance(request.input.instanceId);

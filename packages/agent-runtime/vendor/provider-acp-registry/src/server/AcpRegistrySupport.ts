@@ -565,7 +565,7 @@ export interface AcpRegistryCatalogOptions {
 const INSTALL_LOCK_RETRY_COUNT = 300;
 const INSTALL_LOCK_RETRY_DELAY = "100 millis";
 const INSTALL_LOCK_STALE_MS = 5 * 60 * 1_000;
-const PREPARED_BINARY_RESERVATION_MS = 30 * 1_000;
+const PREPARED_INSTALLATION_RESERVATION_MS = 30 * 1_000;
 
 function isAlreadyExists(error: PlatformError.PlatformError): boolean {
   return error.reason._tag === "AlreadyExists";
@@ -681,7 +681,7 @@ export const makeAcpRegistryCatalog = Effect.fn("AcpRegistryCatalog.make")(funct
   const registryRevision = yield* Ref.make(0);
   const registrySemaphore = yield* Semaphore.make(1);
   const installSemaphore = yield* Semaphore.make(1);
-  const preparedBinaryReservations = yield* Ref.make<ReadonlyMap<string, number>>(new Map());
+  const preparedInstallationReservations = yield* Ref.make<ReadonlyMap<string, number>>(new Map());
 
   const managerBinDirectory = Effect.fn("AcpRegistryCatalog.managerBinDirectory")(function* (
     runner: string,
@@ -770,40 +770,40 @@ export const makeAcpRegistryCatalog = Effect.fn("AcpRegistryCatalog.make")(funct
     };
   });
 
-  const reservePreparedBinary = Effect.fn("AcpRegistryCatalog.reservePreparedBinary")(function* (
-    agentId: string,
-  ) {
-    const now = yield* Clock.currentTimeMillis;
-    yield* Ref.update(preparedBinaryReservations, (current) => {
-      const next = new Map(Array.from(current).filter(([, expiresAt]) => expiresAt > now));
-      next.set(agentId, now + PREPARED_BINARY_RESERVATION_MS);
-      return next;
-    });
-  });
+  const reservePreparedInstallation = Effect.fn("AcpRegistryCatalog.reservePreparedInstallation")(
+    function* (agentId: string) {
+      const now = yield* Clock.currentTimeMillis;
+      yield* Ref.update(preparedInstallationReservations, (current) => {
+        const next = new Map(Array.from(current).filter(([, expiresAt]) => expiresAt > now));
+        next.set(agentId, now + PREPARED_INSTALLATION_RESERVATION_MS);
+        return next;
+      });
+    },
+  );
 
-  const consumePreparedBinaryReservation = (agentId: string) =>
-    Ref.update(preparedBinaryReservations, (current) => {
+  const consumePreparedInstallationReservation = (agentId: string) =>
+    Ref.update(preparedInstallationReservations, (current) => {
       if (!current.has(agentId)) return current;
       const next = new Map(current);
       next.delete(agentId);
       return next;
     });
 
-  const hasPreparedBinaryReservation = Effect.fn("AcpRegistryCatalog.hasPreparedBinaryReservation")(
-    function* (agentId: string) {
-      const now = yield* Clock.currentTimeMillis;
-      return yield* Ref.modify(preparedBinaryReservations, (current) => {
-        const expiresAt = current.get(agentId);
-        if (expiresAt === undefined || expiresAt <= now) {
-          if (expiresAt === undefined) return [false, current] as const;
-          const next = new Map(current);
-          next.delete(agentId);
-          return [false, next] as const;
-        }
-        return [true, current] as const;
-      });
-    },
-  );
+  const hasPreparedInstallationReservation = Effect.fn(
+    "AcpRegistryCatalog.hasPreparedInstallationReservation",
+  )(function* (agentId: string) {
+    const now = yield* Clock.currentTimeMillis;
+    return yield* Ref.modify(preparedInstallationReservations, (current) => {
+      const expiresAt = current.get(agentId);
+      if (expiresAt === undefined || expiresAt <= now) {
+        if (expiresAt === undefined) return [false, current] as const;
+        const next = new Map(current);
+        next.delete(agentId);
+        return [false, next] as const;
+      }
+      return [true, current] as const;
+    });
+  });
 
   const assertHttpsUrl = Effect.fn("AcpRegistryCatalog.assertHttpsUrl")(function* (
     value: string,
@@ -1813,26 +1813,30 @@ export const makeAcpRegistryCatalog = Effect.fn("AcpRegistryCatalog.make")(funct
       )
         return yield* new AcpRegistryError({
           reason: "install_failed",
-          detail: "The Agent distribution changed. Refresh its installation preview before installing.",
+          detail:
+            "The Agent distribution changed. Refresh its installation preview before installing.",
         });
-      if (distribution.kind === "binary") {
-        // A PATH executable can be a different version with different ACP
-        // capabilities. Only an explicit command override opts into that copy.
-        yield* installSemaphore.withPermits(1)(
-          installBinary(agent, distribution.binaryTarget!, onProgress).pipe(
-            Effect.tap(() => reservePreparedBinary(agent.id)),
-          ),
-        );
-      } else {
-        yield* (
-          onProgress?.({ phase: "installing", downloadedBytes: 0, totalBytes: null }) ?? Effect.void
-        );
-        yield* installSemaphore.withPermits(1)(
-          ensureGlobalPackage(agent, distribution.kind, distribution.packageName!, hostEnvironment),
-        );
-      }
       const installationId = yield* installSemaphore.withPermits(1)(
-        recordInstallation(agent, distribution.kind),
+        Effect.gen(function* () {
+          if (distribution.kind === "binary") {
+            // Only an explicit command override opts into an executable on PATH.
+            yield* installBinary(agent, distribution.binaryTarget!, onProgress);
+          } else {
+            yield* (
+              onProgress?.({ phase: "installing", downloadedBytes: 0, totalBytes: null }) ??
+                Effect.void
+            );
+            yield* ensureGlobalPackage(
+              agent,
+              distribution.kind,
+              distribution.packageName!,
+              hostEnvironment,
+            );
+          }
+          const installationId = yield* recordInstallation(agent, distribution.kind);
+          yield* reservePreparedInstallation(agent.id);
+          return installationId;
+        }),
       );
       return {
         agentId: agent.id,
@@ -1919,7 +1923,6 @@ export const makeAcpRegistryCatalog = Effect.fn("AcpRegistryCatalog.make")(funct
             if (paths === undefined) {
               return { status: "unsupported", agentId, version: agent.version } as const;
             }
-            yield* consumePreparedBinaryReservation(agent.id);
             const exists = yield* fileSystem
               .exists(paths.executablePath)
               .pipe(Effect.orElseSucceed(() => false));
@@ -2109,7 +2112,7 @@ export const makeAcpRegistryCatalog = Effect.fn("AcpRegistryCatalog.make")(funct
       } else {
         const target = distribution.binaryTarget!;
         command = yield* installSemaphore.withPermits(1)(
-          (settings.discovery === "explicit"
+          settings.discovery === "explicit"
             ? Effect.gen(function* () {
                 const paths = binaryPaths(agent, target);
                 if (
@@ -2134,8 +2137,7 @@ export const makeAcpRegistryCatalog = Effect.fn("AcpRegistryCatalog.make")(funct
                   ),
                 );
               })
-            : installBinary(agent, target)
-          ).pipe(Effect.tap(() => consumePreparedBinaryReservation(agent.id))),
+            : installBinary(agent, target),
         );
         args = distribution.args;
       }
@@ -2197,11 +2199,18 @@ export const makeAcpRegistryCatalog = Effect.fn("AcpRegistryCatalog.make")(funct
               );
             });
             if (isReferenced) {
-              yield* consumePreparedBinaryReservation(safeAgentId);
-              return { agentId: safeAgentId, removed: false };
+              yield* consumePreparedInstallationReservation(safeAgentId);
+              return yield* new AcpRegistryError({
+                reason: "busy",
+                detail: "This Agent installation is referenced by a configured instance.",
+              });
             }
-            if (yield* hasPreparedBinaryReservation(safeAgentId)) {
-              return { agentId: safeAgentId, removed: false };
+            if (yield* hasPreparedInstallationReservation(safeAgentId)) {
+              return yield* new AcpRegistryError({
+                reason: "busy",
+                detail:
+                  "This Agent installation has just been prepared. Retry after setup finishes.",
+              });
             }
             const agentRoot = path.join(installsDirectory, safeAgentId);
             const existed = yield* fileSystem.exists(agentRoot).pipe(

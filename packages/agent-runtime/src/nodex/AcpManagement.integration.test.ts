@@ -5,11 +5,88 @@ import * as FileSystem from "effect/FileSystem";
 import * as Path from "effect/Path";
 import * as Schedule from "effect/Schedule";
 import * as Exit from "effect/Exit";
+import * as FetchHttpClient from "effect/http/FetchHttpClient";
 import { fileURLToPath } from "node:url";
 import * as Application from "./Application.ts";
 import { AgentRuntime } from "./Service.ts";
 import type { AgentRuntimeMethod, AgentRuntimeOperations } from "./Interface.ts";
 import { acpFailure } from "./AcpFailures.ts";
+
+it.live(
+  "rejects uninstall during installation and while the prepared files await configuration",
+  () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const home = yield* fs.makeTempDirectoryScoped({ prefix: "nodex-acp-install-lease-" });
+      const downloadStarted = Promise.withResolvers<void>();
+      const releaseDownload = Promise.withResolvers<void>();
+      const target = `${process.platform === "win32" ? "windows" : process.platform}-${process.arch === "arm64" ? "aarch64" : "x86_64"}`;
+      const registry = JSON.stringify({
+        version: "1.0.0",
+        agents: [
+          {
+            id: "fixture",
+            name: "Fixture",
+            description: "Installation",
+            version: "1",
+            distribution: {
+              binary: { [target]: { archive: "https://fixture.test/agent.bin", cmd: "agent" } },
+            },
+          },
+        ],
+      });
+      const fetch: typeof globalThis.fetch = async (input) => {
+        const url = String(input);
+        if (url.endsWith("/registry.json")) return new Response(registry);
+        if (url !== "https://fixture.test/agent.bin") throw new Error("Unexpected test request");
+        downloadStarted.resolve();
+        await releaseDownload.promise;
+        return new Response("#!/bin/sh\nexit 0\n");
+      };
+      yield* Effect.gen(function* () {
+        const runtime = yield* AgentRuntime;
+        const install = yield* runtime.handle({
+          id: "install",
+          method: "acp.install.start",
+          input: { operationId: "install", agentId: "fixture", distribution: "binary" },
+        });
+        expect(install).toMatchObject({ phase: "running" });
+        yield* Effect.promise(() => downloadStarted.promise).pipe(Effect.timeout("5 seconds"));
+        const uninstall = runtime.handle({
+          id: "uninstall",
+          method: "acp.registry.uninstall",
+          input: { agentId: "fixture" },
+        });
+        const busy = yield* uninstall.pipe(Effect.flip, Effect.timeout("1 second"));
+        expect(acpFailure(busy).reason).toBe("busy");
+        releaseDownload.resolve();
+        const completed = yield* runtime
+          .handle({ id: "read", method: "acp.operation.read", input: { operationId: "install" } })
+          .pipe(
+            Effect.repeat({
+              until: (result) => (result as { phase: string }).phase !== "running",
+              schedule: Schedule.spaced("20 millis"),
+            }),
+            Effect.timeout("5 seconds"),
+          );
+        expect(completed).toMatchObject({ phase: "succeeded", result: { prepared: true } });
+        expect(acpFailure(yield* uninstall.pipe(Effect.flip)).reason).toBe("busy");
+        expect(yield* fs.exists(`${home}/tools/fixture`)).toBe(true);
+        expect(
+          yield* runtime.handle({
+            id: "absent",
+            method: "acp.registry.uninstall",
+            input: { agentId: "missing" },
+          }),
+        ).toEqual({ agentId: "missing", removed: false });
+      }).pipe(
+        Effect.provide(Application.layer({ home, cwd: home, providers: {} }, () => Effect.void)),
+        Effect.provideService(FetchHttpClient.Fetch, fetch),
+        Effect.ensuring(Effect.sync(() => releaseDownload.resolve())),
+      );
+    }).pipe(Effect.provide(NodeServices.layer)),
+  20_000,
+);
 
 it.live("refuses uninstall while even a disabled saved instance owns the installation", () =>
   Effect.gen(function* () {

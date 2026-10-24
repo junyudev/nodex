@@ -15,6 +15,7 @@ import * as Fiber from "effect/Fiber";
 import * as ChildProcess from "effect/process/ChildProcess";
 import * as ChildProcessSpawner from "effect/process/ChildProcessSpawner";
 import * as Stream from "effect/Stream";
+import * as TestClock from "effect/testing/TestClock";
 import * as HttpClient from "effect/http/HttpClient";
 import * as HttpClientResponse from "effect/http/HttpClientResponse";
 import { fileURLToPath } from "node:url";
@@ -260,7 +261,7 @@ it.live(
 );
 
 for (const distribution of ["npx", "uvx"] as const) {
-  it.live(
+  it.effect(
     `prepares ${distribution} in its private root and launches without reinstalling`,
     () =>
       Effect.gen(function* () {
@@ -358,6 +359,7 @@ for (const distribution of ["npx", "uvx"] as const) {
           expect(output).toBe(process.execPath);
         }
         expect(yield* fs.readFileString(log)).toBe(installationLog);
+        yield* TestClock.adjust("31 seconds");
         expect((yield* catalog.uninstallManagedBinary({ agentId: "example-agent" })).removed).toBe(
           true,
         );
@@ -469,4 +471,118 @@ for (const distribution of ["npx", "uvx"] as const) {
       20_000,
     );
   }
+}
+
+for (const distribution of ["binary", "npx", "uvx"] as const) {
+  it.effect(
+    `protects ${distribution} publication from queued uninstall until its preparation lease expires`,
+    () =>
+      Effect.gen(function* () {
+        const fs = yield* FileSystem.FileSystem;
+        const home = yield* fs.makeTempDirectoryScoped({ prefix: "nodex-acp-install-uninstall-" });
+        const bin = `${home}/bin`;
+        const log = `${home}/commands.log`;
+        yield* fs.makeDirectory(bin);
+        yield* fs.writeFileString(log, "");
+        for (const tool of ["npm", "uv"]) {
+          yield* fs.copyFile(
+            fileURLToPath(
+              new URL(
+                `../../vendor/provider-acp-registry/src/server/testing/AcpRegistrySupport.${tool}.fixture.sh`,
+                import.meta.url,
+              ),
+            ),
+            `${bin}/${tool}`,
+          );
+          yield* fs.chmod(`${bin}/${tool}`, 0o755);
+        }
+        const environment = {
+          ...process.env,
+          PATH: `${bin}:${process.env.PATH ?? ""}`,
+          FAKE_NPM_LOG: log,
+          FAKE_UV_LOG: log,
+          FAKE_NPM_MANIFEST: JSON.stringify({
+            name: "@example/acp",
+            version: "1.2.3",
+            bin: { "example-agent": "dist/cli.js" },
+          }),
+        };
+        const metadata =
+          distribution === "binary"
+            ? binary()
+            : distribution === "npx"
+              ? { npx: { package: "@example/acp@1.2.3" } }
+              : { uvx: { package: "fast-agent-acp==0.10.1" } };
+        const started = yield* Deferred.make<void>();
+        const release = yield* Deferred.make<void>();
+        const actualSpawner = yield* ChildProcessSpawner.ChildProcessSpawner;
+        const spawner = {
+          ...actualSpawner,
+          spawn: (command: Parameters<typeof actualSpawner.spawn>[0]) =>
+            actualSpawner.spawn(command).pipe(
+              Effect.tap(() => Deferred.succeed(started, undefined)),
+              Effect.map((child) => ({
+                ...child,
+                exitCode: Deferred.await(release).pipe(Effect.andThen(child.exitCode)),
+              })),
+            ),
+        };
+        const client = HttpClient.make((request) =>
+          request.url === registryUrl
+            ? Effect.succeed(HttpClientResponse.fromWeb(request, new Response(registry(metadata))))
+            : Deferred.succeed(started, undefined).pipe(
+                Effect.andThen(Deferred.await(release)),
+                Effect.as(HttpClientResponse.fromWeb(request, new Response("#!/bin/sh\nexit 0\n"))),
+              ),
+        );
+        const catalog = yield* Catalog.makeAcpRegistryCatalog({
+          cacheDir: home,
+          toolsDir: `${home}/tools`,
+          registryUrl,
+        }).pipe(
+          Effect.provideService(HttpClient.HttpClient, client),
+          Effect.provideService(HostProcess.Environment, environment),
+          Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
+        );
+        const preparing = yield* catalog
+          .prepare({ agentId: "example-agent", distribution })
+          .pipe(Effect.forkScoped);
+        yield* Deferred.await(started);
+        const uninstalling = yield* catalog
+          .uninstallManagedBinary({ agentId: "example-agent" })
+          .pipe(Effect.result, Effect.forkScoped({ startImmediately: true }));
+        expect(uninstalling.pollUnsafe()).toBeUndefined();
+        yield* Deferred.succeed(release, undefined);
+        const prepared = yield* Fiber.join(preparing);
+        const blocked = yield* Fiber.join(uninstalling);
+        expect(blocked._tag).toBe("Failure");
+        if (blocked._tag === "Failure") expect(blocked.failure.reason).toBe("busy");
+        expect(
+          (yield* catalog.inspect(settings(prepared.installationId), environment)).status,
+        ).toBe("ready");
+        const resolved = yield* catalog.resolve(
+          settings(prepared.installationId),
+          home,
+          environment,
+        );
+        expect(yield* fs.exists(resolved.spawn.command)).toBe(true);
+        expect(
+          (yield* catalog.uninstallManagedBinary({ agentId: "example-agent" }).pipe(Effect.flip))
+            .reason,
+        ).toBe("busy");
+        yield* TestClock.adjust("31 seconds");
+        expect(yield* catalog.uninstallManagedBinary({ agentId: "example-agent" })).toEqual({
+          agentId: "example-agent",
+          removed: true,
+        });
+        expect(
+          (yield* catalog.inspect(settings(prepared.installationId), environment)).status,
+        ).toBe("unprepared");
+        expect(yield* catalog.uninstallManagedBinary({ agentId: "example-agent" })).toEqual({
+          agentId: "example-agent",
+          removed: false,
+        });
+      }).pipe(Effect.provide(platform)),
+    20_000,
+  );
 }

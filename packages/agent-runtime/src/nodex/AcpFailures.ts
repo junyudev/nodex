@@ -8,7 +8,6 @@ export class AcpManagementError extends Schema.TaggedError<AcpManagementError>()
   {
     reason: Schema.Literals([
       ...AcpRegistryOperationErrorReason.literals,
-      "busy",
       "configuration_pending",
       "disabled",
       "invalid_request",
@@ -20,6 +19,7 @@ export class AcpManagementError extends Schema.TaggedError<AcpManagementError>()
 ) {}
 
 const messages: Partial<Record<AgentAcpFailure["reason"], string>> = {
+  busy: "This Agent installation is in use. Retry after setup finishes.",
   authentication_failed: "Sign in to this Agent, then check the connection again.",
   registry_unavailable: "The Agent catalog is unavailable. Retry when it is reachable.",
   runner_unavailable: "Install the required package runner before installing this Agent.",

@@ -344,6 +344,7 @@ export const AcpRegistryProbeResult = Schema.Struct({
 export type AcpRegistryProbeResult = typeof AcpRegistryProbeResult.Type;
 
 export const AcpRegistryOperationErrorReason = Schema.Literals([
+  "busy",
   "agent_not_configured",
   "agent_not_found",
   "archive_invalid",
