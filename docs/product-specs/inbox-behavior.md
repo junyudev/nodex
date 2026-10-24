@@ -234,6 +234,12 @@ members, up to sixteen, rather than being split by the automatic batch size.
 Each request and response is fenced by its identity and the Page revisions it
 read; an old success or failure cannot replace a newer request.
 
+Suggestions cover only open messages whose Pages are active. Archiving or
+deleting a Page withdraws the whole request or unconfirmed proposal that
+included it; its remaining open messages wait for fresh advice. A late success
+or failure cannot restore that advice or hold up other requests, including
+after a restart. Restoring an archived message lets it receive fresh advice.
+
 The suggestion Agent receives bounded message text and eligible routing
 candidates, including relevant chat previews. Its prompt asks only for a
 structured proposal. It uses the shared Agent Runtime utility policy, which is

@@ -773,6 +773,14 @@ fn settle_request(
     if state != "pending" || actual != generation {
         return Err(conflict("This suggestion request has been replaced"));
     }
+    let stale = connection.query_row(
+        &format!("SELECT EXISTS(SELECT 1 FROM ({STALE_REQUESTS}) WHERE request_id=?2)"),
+        params![library_id, id],
+        |row| row.get::<_, bool>(0),
+    )?;
+    if stale {
+        return Err(conflict("This suggestion request is no longer current"));
+    }
     let pages = request_pages(connection, id)?;
     let basis: Vec<ProjectWorkspaceInboxPageBasis> =
         serde_json::from_str(&json).map_err(|_| corrupt("Suggestion basis is invalid"))?;
@@ -879,7 +887,9 @@ pub(in crate::workspace) fn read_requests(
     limit: u32,
 ) -> Result<Vec<ProjectWorkspaceInboxSuggestionRequest>, StoreError> {
     require_host(context)?;
-    let rows=connection.prepare("SELECT request_id,generation,mode,basis_json,proposal_id,expected_revision,correction FROM inbox_suggestion_requests WHERE library_id=?1 AND state='pending' ORDER BY created_at,request_id LIMIT ?2")?.query_map(params![library_id,i64::from(limit.clamp(1,16))],|r|Ok((r.get::<_,String>(0)?,r.get::<_,i64>(1)?,r.get::<_,String>(2)?,r.get::<_,String>(3)?,r.get::<_,Option<String>>(4)?,r.get::<_,Option<i64>>(5)?,r.get::<_,Option<String>>(6)?)))?.collect::<rusqlite::Result<Vec<_>>>()?;
+    // Library and Document mutations can land between preparation and this read. Filter
+    // before windowing so an unavailable member cannot occupy the queue's first slot.
+    let rows=connection.prepare(&format!("SELECT request_id,generation,mode,basis_json,proposal_id,expected_revision,correction FROM inbox_suggestion_requests WHERE library_id=?1 AND state='pending' AND request_id NOT IN ({STALE_REQUESTS}) ORDER BY created_at,request_id LIMIT ?2"))?.query_map(params![library_id,i64::from(limit.clamp(1,16))],|r|Ok((r.get::<_,String>(0)?,r.get::<_,i64>(1)?,r.get::<_,String>(2)?,r.get::<_,String>(3)?,r.get::<_,Option<String>>(4)?,r.get::<_,Option<i64>>(5)?,r.get::<_,Option<String>>(6)?)))?.collect::<rusqlite::Result<Vec<_>>>()?;
     let mut output = Vec::new();
     let mut encoded_bytes = 0;
     for request in rows.into_iter().map(
@@ -930,8 +940,52 @@ pub(in crate::workspace) fn read_requests(
     Ok(output)
 }
 
-const STALE_ADVICE: &str = "SELECT DISTINCT proposal.proposal_id FROM inbox_proposals proposal,json_each(proposal.basis_json) basis LEFT JOIN pages page ON page.block_id=json_extract(basis.value,'$.page_id') LEFT JOIN documents document ON document.id=page.document_id LEFT JOIN blocks block ON block.id=page.block_id WHERE proposal.library_id=?1 AND proposal.state='open' AND (document.id IS NULL OR document.generation<>json_extract(basis.value,'$.generation') OR document.head_seq<>json_extract(basis.value,'$.head_seq') OR block.placement_revision<>json_extract(basis.value,'$.placement_revision'))";
-const STALE_REQUESTS: &str = "SELECT DISTINCT request.request_id FROM inbox_suggestion_requests request,json_each(request.basis_json) basis LEFT JOIN pages page ON page.block_id=json_extract(basis.value,'$.page_id') LEFT JOIN documents document ON document.id=page.document_id LEFT JOIN blocks block ON block.id=page.block_id WHERE request.library_id=?1 AND request.state IN ('pending','failed') AND (document.id IS NULL OR document.generation<>json_extract(basis.value,'$.generation') OR document.head_seq<>json_extract(basis.value,'$.head_seq') OR block.placement_revision<>json_extract(basis.value,'$.placement_revision'))";
+// Workspace owns suggestion eligibility, including changes made through Library and
+// Document. A group is current only while every member is available and still owns
+// the same advice/request. Preparation retires stale groups atomically; reads and
+// settlement use the same request fence without making Library write Inbox state.
+const STALE_ADVICE: &str = "
+    SELECT DISTINCT proposal.proposal_id
+    FROM inbox_proposals proposal
+    LEFT JOIN json_each(proposal.basis_json) basis
+    LEFT JOIN inbox_proposal_pages member
+      ON member.proposal_id=proposal.proposal_id
+      AND member.page_id=json_extract(basis.value,'$.page_id')
+    LEFT JOIN inbox_entries entry ON entry.page_id=member.page_id
+    LEFT JOIN pages page ON page.block_id=member.page_id
+    LEFT JOIN documents document ON document.id=page.document_id
+    LEFT JOIN blocks block ON block.id=member.page_id
+    WHERE proposal.library_id=?1 AND proposal.state='open' AND (
+        entry.library_id IS NOT proposal.library_id
+        OR entry.state IS NOT 'open'
+        OR entry.current_proposal_id IS NOT proposal.proposal_id
+        OR block.lifecycle IS NOT 'active'
+        OR document.id IS NULL
+        OR document.generation IS NOT json_extract(basis.value,'$.generation')
+        OR document.head_seq IS NOT json_extract(basis.value,'$.head_seq')
+        OR block.placement_revision IS NOT json_extract(basis.value,'$.placement_revision')
+    )";
+const STALE_REQUESTS: &str = "
+    SELECT DISTINCT request.request_id
+    FROM inbox_suggestion_requests request
+    LEFT JOIN json_each(request.basis_json) basis
+    LEFT JOIN inbox_suggestion_request_pages member
+      ON member.request_id=request.request_id
+      AND member.page_id=json_extract(basis.value,'$.page_id')
+    LEFT JOIN inbox_entries entry ON entry.page_id=member.page_id
+    LEFT JOIN pages page ON page.block_id=member.page_id
+    LEFT JOIN documents document ON document.id=page.document_id
+    LEFT JOIN blocks block ON block.id=member.page_id
+    WHERE request.library_id=?1 AND request.state IN ('pending','failed') AND (
+        entry.library_id IS NOT request.library_id
+        OR entry.state IS NOT 'open'
+        OR entry.suggestion_request_id IS NOT request.request_id
+        OR block.lifecycle IS NOT 'active'
+        OR document.id IS NULL
+        OR document.generation IS NOT json_extract(basis.value,'$.generation')
+        OR document.head_seq IS NOT json_extract(basis.value,'$.head_seq')
+        OR block.placement_revision IS NOT json_extract(basis.value,'$.placement_revision')
+    )";
 fn needs_preparation(connection: &Connection, library_id: &str) -> Result<bool, StoreError> {
     let waiting:bool=connection.query_row("SELECT EXISTS(SELECT 1 FROM inbox_entries entry JOIN blocks block ON block.id=entry.page_id AND block.lifecycle='active' WHERE entry.library_id=?1 AND entry.state='open' AND entry.suggestion_state='pending' AND entry.suggestion_request_id IS NULL)",[library_id],|r|r.get(0))?;
     if waiting {
@@ -959,6 +1013,12 @@ fn reconcile_advice(
         .collect::<rusqlite::Result<Vec<_>>>()?;
     for id in proposals {
         invalidate(connection, &proposal_page_ids(connection, &id)?, now)?;
+        // Page collection can already have removed every member through foreign keys.
+        connection.execute(
+            "UPDATE inbox_proposals SET state='superseded',revision=revision+1,updated_at=?2 \
+             WHERE proposal_id=?1 AND state='open'",
+            params![id, now],
+        )?;
     }
     let requests = connection
         .prepare(STALE_REQUESTS)?
@@ -966,6 +1026,12 @@ fn reconcile_advice(
         .collect::<rusqlite::Result<Vec<_>>>()?;
     for id in requests {
         invalidate(connection, &request_pages(connection, &id)?, now)?;
+        connection.execute(
+            "UPDATE inbox_suggestion_requests \
+             SET state='superseded',generation=generation+1,updated_at=?2 \
+             WHERE request_id=?1 AND state IN ('pending','failed')",
+            params![id, now],
+        )?;
     }
     Ok(())
 }

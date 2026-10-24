@@ -3115,6 +3115,294 @@ fn stale_failure_cannot_hide_new_document_content_from_suggestions() {
     assert_eq!(requests(module)[0].request_id, "request:after-failure");
 }
 
+fn change_message_lifecycle(workspace: &TestWorkspace, page_id: &str, change: &str) {
+    use nodex_core_contracts::LIBRARY_CONTRACT_VERSION;
+    use nodex_core_contracts::library::{
+        LibraryIntent, LibraryPageLifecycleMutation, LibraryRead, LibraryReadValue,
+    };
+
+    let library = crate::library::LibraryModule::new("profile-1", "library-1", &workspace.kernel);
+    let LibraryReadValue::PageLifecyclePreflight { value } = library
+        .read(
+            &host(),
+            ModuleReadRequest {
+                contract_version: LIBRARY_CONTRACT_VERSION,
+                read: LibraryRead::PageLifecyclePreflight {
+                    page_id: page_id.into(),
+                },
+            },
+        )
+        .expect("Page lifecycle preflight")
+        .value
+    else {
+        panic!("Page lifecycle preflight")
+    };
+    let page = value.page.expect("message Page");
+    let mutation = match change {
+        "archive" => LibraryPageLifecycleMutation::ArchivePage {
+            page_id: page_id.into(),
+            expected_metadata_revision: page.metadata_revision,
+        },
+        "unarchive" => LibraryPageLifecycleMutation::UnarchivePage {
+            page_id: page_id.into(),
+            expected_metadata_revision: page.metadata_revision,
+        },
+        "delete" => LibraryPageLifecycleMutation::DeletePage {
+            page_id: page_id.into(),
+            expected_metadata_revision: page.metadata_revision,
+            expected_parent_revision: page.parent_revision,
+            parent_document_head: None,
+        },
+        _ => panic!("unsupported lifecycle change"),
+    };
+    library
+        .apply(
+            &host(),
+            ModuleApplyRequest {
+                contract_version: LIBRARY_CONTRACT_VERSION,
+                operation_id: format!("{change}:{page_id}"),
+                store_epoch: StoreEpoch("epoch-1".into()),
+                intent: LibraryIntent::ApplyPageLifecycle {
+                    mutation: Box::new(mutation),
+                },
+            },
+        )
+        .expect("change message Page lifecycle");
+}
+
+fn reopen_inbox_workspace(workspace: TestWorkspace) -> TestWorkspace {
+    let TestWorkspace {
+        _directory,
+        kernel,
+        module,
+    } = workspace;
+    drop(module);
+    drop(kernel);
+    let kernel = crate::infrastructure::store::SqliteStoreKernel::open_test(_directory.path())
+        .expect("reopen Profile");
+    let module =
+        ProjectWorkspaceModule::new("profile-1", "library-1", &kernel).expect("reopen Workspace");
+    TestWorkspace {
+        _directory,
+        kernel,
+        module,
+    }
+}
+
+fn keep_request(
+    request: &nodex_core_contracts::inbox::ProjectWorkspaceInboxSuggestionRequest,
+    error: Option<&str>,
+) -> ProjectWorkspaceIntent {
+    use nodex_core_contracts::inbox::ProjectWorkspaceInboxSuggestedDispatch;
+    ProjectWorkspaceIntent::SettleInboxSuggestion {
+        request_id: request.request_id.clone(),
+        generation: request.generation,
+        titles: vec![],
+        suggestions: if error.is_some() {
+            vec![]
+        } else {
+            vec![ProjectWorkspaceInboxSuggestedDispatch {
+                proposal_id: format!("proposal:{}", request.request_id),
+                page_ids: request.page_ids.clone(),
+                action: ProjectWorkspaceInboxDispatchAction::Keep,
+                entry_kind: None,
+                summary: "Keep these messages as notes".into(),
+                rationale: None,
+            }]
+        },
+        produced_by: None,
+        error: error.map(str::to_owned),
+    }
+}
+
+#[test]
+fn unavailable_suggestion_members_never_block_later_requests_even_across_restart() {
+    for change in ["archive", "delete"] {
+        let workspace = seeded_workspace();
+        let module = &workspace.module;
+        send(module, "a", "First grouped message");
+        send(module, "b", "Still needs a suggestion");
+        grouped_request(
+            module,
+            "request:old",
+            vec!["page:a".into(), "page:b".into()],
+        );
+        let old = requests(module).remove(0);
+        send(module, "c", "Later independent message");
+        grouped_request(module, "request:later", vec!["page:c".into()]);
+
+        // The Page changes after the Agent received its request, outside the Inbox.
+        change_message_lifecycle(&workspace, "page:a", change);
+        for (operation, error) in [
+            ("late-success", None),
+            ("late-failure", Some("Unavailable")),
+        ] {
+            assert_eq!(
+                apply_host_error(module, operation, keep_request(&old, error)),
+                CoreErrorCode::Conflict,
+            );
+        }
+        let first_request = |module: &ProjectWorkspaceModule| {
+            let ProjectWorkspaceReadValue::InboxSuggestionRequests { requests } = read_host(
+                module,
+                ProjectWorkspaceRead::InboxSuggestionRequests { limit: 1 },
+            ) else {
+                panic!("suggestion requests")
+            };
+            requests.into_iter().next().expect("next eligible request")
+        };
+        // Filtering precedes LIMIT and does not depend on a preparation mutation.
+        assert_eq!(first_request(module).request_id, "request:later");
+        let workspace = reopen_inbox_workspace(workspace);
+        let module = &workspace.module;
+        let later = first_request(module);
+        assert_eq!(later.request_id, "request:later");
+        apply_host(module, "settle:later", keep_request(&later, None));
+        apply_host(
+            module,
+            "prepare:survivor",
+            ProjectWorkspaceIntent::PrepareInboxSuggestions {
+                request_id: "request:survivor".into(),
+                limit: 8,
+            },
+        );
+        let survivor = first_request(module);
+        assert_eq!(survivor.request_id, "request:survivor");
+        assert_eq!(survivor.page_ids, vec!["page:b"]);
+        assert_eq!(survivor.context.entries[0].body, "Still needs a suggestion");
+        apply_host(module, "settle:survivor", keep_request(&survivor, None));
+        assert!(requests(module).is_empty());
+        assert_eq!(
+            count(
+                &workspace,
+                "SELECT count(*) FROM inbox_suggestion_requests WHERE request_id='request:old' AND state='superseded' AND generation=2"
+            ),
+            1,
+        );
+
+        if change != "archive" {
+            continue;
+        }
+        change_message_lifecycle(&workspace, "page:a", "unarchive");
+        apply_host(
+            module,
+            "prepare:restored",
+            ProjectWorkspaceIntent::PrepareInboxSuggestions {
+                request_id: "request:restored".into(),
+                limit: 8,
+            },
+        );
+        assert_eq!(first_request(module).page_ids, vec!["page:a"]);
+        assert_eq!(
+            apply_host_error(module, "late:after-restore", keep_request(&old, None)),
+            CoreErrorCode::Conflict,
+        );
+    }
+}
+
+#[test]
+fn unavailable_members_retire_failed_requests_and_settled_group_advice() {
+    for failed in [false, true] {
+        let workspace = seeded_workspace();
+        let module = &workspace.module;
+        send(module, "a", "Archive this message");
+        send(module, "b", "Keep this message available");
+        grouped_request(
+            module,
+            "request:group",
+            vec!["page:a".into(), "page:b".into()],
+        );
+        let group = requests(module).remove(0);
+        apply_host(
+            module,
+            "settle:group",
+            keep_request(&group, failed.then_some("Unavailable")),
+        );
+        change_message_lifecycle(&workspace, "page:a", "archive");
+        apply_host(
+            module,
+            "prepare:remaining",
+            ProjectWorkspaceIntent::PrepareInboxSuggestions {
+                request_id: "request:remaining".into(),
+                limit: 8,
+            },
+        );
+        let remaining = requests(module).remove(0);
+        assert_eq!(remaining.request_id, "request:remaining");
+        assert_eq!(remaining.page_ids, vec!["page:b"]);
+        let b = window(module, ProjectWorkspaceInboxWindowFilter::Inbox).remove(0);
+        assert!(b.proposal.is_none());
+        assert_eq!(
+            b.suggestion_state,
+            ProjectWorkspaceInboxSuggestionState::Pending
+        );
+        apply_host(module, "settle:remaining", keep_request(&remaining, None));
+        assert!(requests(module).is_empty());
+    }
+}
+
+#[test]
+fn collected_pages_retire_empty_and_partial_suggestion_groups_once() {
+    for (settled, remaining) in [(false, false), (false, true), (true, false), (true, true)] {
+        let workspace = seeded_workspace();
+        let module = &workspace.module;
+        send(module, "a", "Delete and collect this message");
+        let mut pages = vec!["page:a".into()];
+        if remaining {
+            send(module, "b", "This member still needs advice");
+            pages.push("page:b".into());
+        }
+        grouped_request(module, "request:group", pages);
+        let group = requests(module).remove(0);
+        if settled {
+            apply_host(module, "settle:group", keep_request(&group, None));
+        }
+        change_message_lifecycle(&workspace, "page:a", "delete");
+        workspace
+            .kernel
+            .writer()
+            .call(|connection| {
+                crate::document::run_block_retention_pass(connection, 0)?;
+                Ok(())
+            })
+            .expect("collect deleted Page");
+        assert_eq!(
+            count(
+                &workspace,
+                "SELECT count(*) FROM inbox_entries WHERE page_id='page:a'"
+            ),
+            0
+        );
+        assert!(requests(module).is_empty());
+        apply_host(
+            module,
+            "prepare:collected",
+            ProjectWorkspaceIntent::PrepareInboxSuggestions {
+                request_id: "request:remaining".into(),
+                limit: 8,
+            },
+        );
+        let current = requests(module);
+        assert_eq!(current.len(), usize::from(remaining));
+        if remaining {
+            assert_eq!(current[0].page_ids, vec!["page:b"]);
+        }
+        let next = module
+            .apply(
+                &host(),
+                request(
+                    "prepare:no-more-reconciliation",
+                    ProjectWorkspaceIntent::PrepareInboxSuggestions {
+                        request_id: "request:unused".into(),
+                        limit: 8,
+                    },
+                ),
+            )
+            .expect("reconciled groups need no further preparation");
+        assert!(next.event.is_none());
+    }
+}
+
 #[test]
 fn outbox_byte_budget_never_splits_a_frozen_handoff() {
     let workspace = seeded_workspace();
