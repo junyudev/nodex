@@ -1189,21 +1189,15 @@ export const makeAcpRegistryCatalog = Effect.fn("AcpRegistryCatalog.make")(funct
       packageSpec: string,
       managerPath: string,
       environment: NodeJS.ProcessEnv,
+      installRoot: string,
     ) {
       const packageIdentity = parseNpxPackageSpec(packageSpec);
-      const commandOptions = {
-        env: environment,
-        timeout: PACKAGE_QUERY_TIMEOUT,
-        truncatedOutputReason: "install_failed" as const,
-      } as const;
-      const globalRoot = yield* runCommand(managerPath, ["root", "--global"], commandOptions).pipe(
-        Effect.flatMap((output) => parsePackageManagerPath(managerPath, output)),
-      );
-      const globalPrefix = yield* runCommand(
-        managerPath,
-        ["prefix", "--global"],
-        commandOptions,
-      ).pipe(Effect.flatMap((output) => parsePackageManagerPath(managerPath, output)));
+      // npm redacts UUID-shaped segments even from `root` and `prefix` stdout.
+      // The explicit private prefix owns the filesystem layout, including on Windows.
+      const globalRoot =
+        platform === "win32"
+          ? path.join(installRoot, "node_modules")
+          : path.join(installRoot, "lib", "node_modules");
       const packageRoot = path.join(globalRoot, ...packageIdentity.name.split("/"));
       const manifestPath = path.join(packageRoot, "package.json");
       const manifestInfo = yield* fileSystem.stat(manifestPath).pipe(Effect.option);
@@ -1222,7 +1216,7 @@ export const makeAcpRegistryCatalog = Effect.fn("AcpRegistryCatalog.make")(funct
       }
       const commandName = npmCommandName(agent, packageIdentity.name, manifest.value);
       if (commandName === undefined) return Option.none<AcpRegistryPackageInstallReceipt>();
-      const binDirectory = platform === "win32" ? globalPrefix : path.join(globalPrefix, "bin");
+      const binDirectory = packageBinDirectory(installRoot, "npx");
       const executablePath = resolveExecutable(
         commandName,
         platform,
@@ -1236,7 +1230,7 @@ export const makeAcpRegistryCatalog = Effect.fn("AcpRegistryCatalog.make")(funct
             distribution: "npx" as const,
             packageSpec,
             managerPath,
-            installRoot: globalPrefix,
+            installRoot,
             binDirectory,
             executablePath,
             packageRoot,
@@ -1354,7 +1348,7 @@ export const makeAcpRegistryCatalog = Effect.fn("AcpRegistryCatalog.make")(funct
           },
         );
         const installed = yield* distribution === "npx"
-          ? discoverNpmGlobalPackage(agent, packageSpec, managerPath, packageEnvironment)
+          ? discoverNpmGlobalPackage(agent, packageSpec, managerPath, packageEnvironment, candidate)
           : discoverUvGlobalPackage(agent, packageSpec, managerPath, packageEnvironment);
         if (
           Option.isNone(installed) ||

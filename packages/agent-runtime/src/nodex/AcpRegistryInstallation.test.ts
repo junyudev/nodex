@@ -265,7 +265,9 @@ for (const distribution of ["npx", "uvx"] as const) {
     () =>
       Effect.gen(function* () {
         const fs = yield* FileSystem.FileSystem;
-        const home = yield* fs.makeTempDirectoryScoped({ prefix: `nodex-acp-${distribution}-` });
+        const root = yield* fs.makeTempDirectoryScoped({ prefix: `nodex-acp-${distribution}-` });
+        const home = `${root}/12345678-1234-4234-8234-123456789012`;
+        yield* fs.makeDirectory(home);
         const tool = distribution === "npx" ? "npm" : "uv";
         const bin = `${home}/bin`;
         const log = `${home}/commands.log`;

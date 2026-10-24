@@ -2,11 +2,12 @@
 printf '%s\n' "$*" >> "$FAKE_NPM_LOG"
 prefix="${npm_config_prefix:-$FAKE_NPM_PREFIX}"
 if [ "$1" = "root" ] && [ "$2" = "--global" ]; then
-  printf '%s\n' "$prefix/lib/node_modules"
+  # npm redacts UUID-shaped tokens from command output, including filesystem paths.
+  printf '%s\n' "$prefix/lib/node_modules" | sed -E 's/[[:xdigit:]]{8}-[[:xdigit:]]{4}-[[:xdigit:]]{4}-[[:xdigit:]]{4}-[[:xdigit:]]{12}/***/g'
   exit 0
 fi
 if [ "$1" = "prefix" ] && [ "$2" = "--global" ]; then
-  printf '%s\n' "$prefix"
+  printf '%s\n' "$prefix" | sed -E 's/[[:xdigit:]]{8}-[[:xdigit:]]{4}-[[:xdigit:]]{4}-[[:xdigit:]]{4}-[[:xdigit:]]{12}/***/g'
   exit 0
 fi
 if [ "$1" = "install" ] && [ "$2" = "--global" ]; then
