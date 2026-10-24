@@ -1,0 +1,74 @@
+packages/agent-runtime/src/nodex/NodePtyAdapter.ts
+  s_8ba9572f1b48c1::t_d67e346b2a4cac 137-149
+  s_8ba9572f1b48c1::t_59b33343505321 1-136,150-276
+docs/development.md
+  s_9cccd37e800d7a::t_1437f1df2c2b45 433-456,916-917
+package.json
+  s_9cccd37e800d7a::t_97820f299a91d6 212
+packages/agent-runtime/package.json
+  s_9cccd37e800d7a::t_6516d517ca2314 51
+packages/agent-runtime/scripts/acp-pty-probe-worker.ts
+  s_9cccd37e800d7a::t_9865cdc3ccc58e 1-115
+packages/agent-runtime/src/nodex/NodePtyAdapter.test.ts
+  s_9cccd37e800d7a::t_380e5618b65137 1-219
+pnpm-lock.yaml
+  s_9cccd37e800d7a::t_bb05d5e557ae98 237,732-734
+scripts/agent-runtime-build-cache.ts
+  s_9cccd37e800d7a::t_54cca0ab5e2605 20-21,191,245-249
+scripts/agent-runtime-native-inventory.d.mts
+  s_9cccd37e800d7a::t_d206e6a664a88c 1-12
+scripts/agent-runtime-native-inventory.mjs
+  s_9cccd37e800d7a::t_457907345f2fed 1-48
+scripts/agent-runtime-native-inventory.test.ts
+  s_9cccd37e800d7a::t_a58067f4ea3151 1-31
+scripts/agent-runtime-native.test.ts
+  s_9cccd37e800d7a::t_58894d3d0ec547 1-141
+scripts/agent-runtime-native.ts
+  s_9cccd37e800d7a::t_14c530529542fc 1-265
+scripts/build-agent-runtime.test.ts
+  s_9cccd37e800d7a::t_7b61882c65b660 17-18,21,41-57,107-110,149-150
+scripts/build-agent-runtime.ts
+  s_9cccd37e800d7a::t_c9b6262c931afa 27,52,54,99,114-115
+scripts/prepared-electron-build.test.ts
+  s_9cccd37e800d7a::t_7968e4881e69bd 6-7,13-24,145-151,168-171,348-357
+scripts/prepared-electron-build.ts
+  s_9cccd37e800d7a::t_5866bfb692fe5a 21,380-386,394-402,537-544
+scripts/restore-packaged-runtime-closure.mjs
+  s_9cccd37e800d7a::t_a2bb681186a4f6 6,121-124
+scripts/sign-macos-runtime.d.mts
+  s_9cccd37e800d7a::t_ed3d00cbe9dbc3 8
+scripts/sign-macos-runtime.mjs
+  s_9cccd37e800d7a::t_26d246f2df8d33 16,481-492,512
+scripts/sign-macos-runtime.test.ts
+  s_9cccd37e800d7a::t_9a6821b83de379 17,380-399
+scripts/testing/acp-management-probe.ts
+  s_9cccd37e800d7a::t_a03664f5c3a1b9 1-249
+scripts/testing/fixtures/acp-terminal-agent.mjs
+  s_9cccd37e800d7a::t_74eaaac98d49e6 1-97
+scripts/testing/probe-acp-runtime.ts
+  s_9cccd37e800d7a::t_eb230415c84933 1-83
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "73fd23ee4cacce27522e5f0f80416dee8708fb7c",
+  "prompts": {},
+  "sessions": {
+    "s_8ba9572f1b48c1": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "cf77dbe9-4c90-42a1-89dd-a69d75865e03",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_9cccd37e800d7a": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a16d80-f1cc-7471-9f61-cb6ea1bc793d",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
