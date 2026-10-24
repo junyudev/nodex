@@ -102,6 +102,8 @@ that point. Stored Nodex history remains passive and paged. Missing native sessi
 and retain the captured native identity and saved Nodex history. The current Run fails without a
 replacement native session or portable prompt replay; starting a separate conversation is an explicit
 user action. This applies both when opening a saved session and when continuing after cancellation.
+Recognized missing-history errors stop after one restoration attempt; unknown startup failures retain
+bounded retries.
 Fork, close and delete are offered
 only when supported. Product chat deletion does not implicitly delete native history, and mapped
 native history is protected from direct deletion.
