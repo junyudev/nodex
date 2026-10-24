@@ -1,4 +1,5 @@
 export {
+  getWindowFocusState,
   subscribeCodexEvents,
   subscribeCodexHostMessages,
   subscribeWindowFocusChanges,

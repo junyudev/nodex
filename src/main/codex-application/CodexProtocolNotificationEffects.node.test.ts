@@ -1,6 +1,7 @@
 import { CodexVisualizationState, CodexVisualizationStateError } from "./CodexVisualizationState";
 import type { CodexHeartbeatDecision } from "../../shared/codex-turn-notification";
 import type { ConversationStreamRole } from "../../shared/codex-conversation-stream";
+import type { CodexHostMessage } from "../../shared/types";
 import { assert, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Context from "effect/Context";
@@ -58,6 +59,8 @@ it.effect("drains only Main-owned prose before applying terminal product consequ
     let widgetClearFailure = false;
     const deliveredDecisions: Array<CodexHeartbeatDecision | null> = [];
     const deliveredHosts: string[] = [];
+    const completions: Extract<CodexHostMessage, { type: "threadReadActivity" }>[] = [];
+    const completionConsequences: string[][] = [];
     const targetChanges: {
       type: "createdThreadTargetChanged";
       hostId: string;
@@ -106,6 +109,10 @@ it.effect("drains only Main-owned prose before applying terminal product consequ
           CodexApplicationEventHub.of({
             events: Stream.empty,
             publish: (event) => {
+              if (event.kind === "hostMessage" && event.value.type === "threadReadActivity") {
+                completions.push(event.value);
+                completionConsequences.push([...trace]);
+              }
               if (event.kind === "codex" && event.value.type === "createdThreadTargetChanged")
                 targetChanges.push(event.value);
               if (event.kind === "threadNotification" && event.value.type === "turn-completed") {
@@ -301,6 +308,49 @@ it.effect("drains only Main-owned prose before applying terminal product consequ
     assert.deepEqual(trace, ["browser", "pip", "queue-terminal:false:0", "durable:remote-a:7"]);
     assert.deepEqual(deliveredDecisions, [null, null, null]);
     assert.deepEqual(deliveredHosts, ["remote-a", "remote-a", "remote-a"]);
+    assert.deepEqual(completions, [
+      {
+        type: "threadReadActivity",
+        hostId: "remote-a",
+        conversationId: "thread-a",
+        activity: { type: "turn-completed", turnId: "turn-a" },
+      },
+      {
+        type: "threadReadActivity",
+        hostId: "remote-a",
+        conversationId: "thread-a",
+        activity: { type: "turn-completed", turnId: "turn-a" },
+      },
+      {
+        type: "threadReadActivity",
+        hostId: "remote-a",
+        conversationId: "thread-a",
+        activity: { type: "turn-completed", turnId: "turn-a" },
+      },
+    ]);
+    assert.isTrue(completionConsequences.every((steps) => steps.at(-1) === "durable:remote-a:7"));
+
+    const completionEntered = yield* Deferred.make<void>();
+    const releaseCompletion = yield* Deferred.make<void>();
+    durableGate = Deferred.succeed(completionEntered, undefined).pipe(
+      Effect.andThen(Deferred.await(releaseCompletion)),
+    );
+    const retiredCompletion = yield* service
+      .apply({
+        hostId: "remote-a",
+        generation: 7,
+        notification,
+        occurrenceId: "completion-before-reconnect",
+        occurrenceToken: 94,
+      })
+      .pipe(Effect.forkChild);
+    yield* Deferred.await(completionEntered);
+    manager.generation = 8;
+    yield* Deferred.succeed(releaseCompletion, undefined);
+    yield* Fiber.join(retiredCompletion);
+    assert.strictEqual(completions.length, 3);
+    manager.generation = 7;
+    durableGate = Effect.void;
 
     trace.length = 0;
     conversations

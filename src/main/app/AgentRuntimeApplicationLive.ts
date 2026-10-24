@@ -296,7 +296,23 @@ const supervisor = Layer.effectContext(
         ),
         Effect.orElseSucceed(() => true),
       ),
-      publish: (event) => applicationEvents.publish({ kind: "threadNotification", value: event }),
+      publish: (event) => {
+        applicationEvents.publish({ kind: "threadNotification", value: event });
+        // Session notifications finish their unread write before publishing read activity.
+        if (event.type === "turn-completed" || event.type === "user-input-requested")
+          applicationEvents.publish({
+            kind: "hostMessage",
+            value: {
+              type: "threadReadActivity",
+              hostId: event.hostId,
+              conversationId: event.conversation.conversationId,
+              activity:
+                event.type === "turn-completed"
+                  ? { type: "turn-completed", turnId: event.turnId }
+                  : { type: "request" },
+            },
+          });
+      },
     }).pipe(Effect.forkScoped);
     const predictionHosts = yield* readCodexComposerPredictionEnvironment(config.environment);
     yield* runSessionPredictions({

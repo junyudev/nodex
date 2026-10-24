@@ -68,6 +68,8 @@ const harness = (options: {
   } as unknown as AgentRuntimeProcessConnection;
   const unread: string[] = [];
   const events: CodexThreadNotificationEvent[] = [];
+  const unreadAtCompletion: string[][] = [];
+  const unreadAtQuestion: string[][] = [];
   const shown: DesktopNotificationPayload[] = [];
   const dismissed: DesktopNotificationHideSelector[] = [];
   // The shared native owner decides policy and copy exactly as for Codex conversations.
@@ -92,11 +94,23 @@ const harness = (options: {
       markUnread: (sessionId) => Effect.sync(() => unread.push(sessionId)),
       turnMayShow: Effect.succeed(options.turnMayShow ?? true),
       publish: (event) => {
+        if (event.type === "turn-completed") unreadAtCompletion.push([...unread]);
+        if (event.type === "user-input-requested") unreadAtQuestion.push([...unread]);
         events.push(event);
         handle(event);
       },
     });
-  return { deliver, requests, outcomeInputs, unread, events, shown, dismissed };
+  return {
+    deliver,
+    requests,
+    outcomeInputs,
+    unread,
+    unreadAtCompletion,
+    unreadAtQuestion,
+    events,
+    shown,
+    dismissed,
+  };
 };
 const transition = (
   before: Activity | null,
@@ -111,6 +125,7 @@ it.effect.each(["completed", "failed", "interrupted", "cancelled"] as const)(
       const h = harness({ runStatus: status });
       yield* h.deliver([transition(activity("running"), null, { runId: "run:1", status })]);
       assert.deepEqual(h.unread, ["session:a"]);
+      assert.deepEqual(h.unreadAtCompletion, [["session:a"]]);
       assert.strictEqual(h.shown.length, 1);
       assert.include(h.shown[0]!, {
         id: "turn-run:1",
@@ -179,6 +194,7 @@ it.effect("a new question asks for input and its resolution withdraws the notifi
       transition(activity("waiting"), activity("running")),
     ]);
     assert.deepEqual(h.unread, ["session:a"]);
+    assert.deepEqual(h.unreadAtQuestion, [["session:a"]]);
     assert.strictEqual(h.shown.length, 1);
     assert.include(h.shown[0]!, {
       kind: "question",

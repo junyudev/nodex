@@ -752,6 +752,19 @@ export const make: Effect.Effect<
               )
                 return;
               const notification = input.notification;
+              if (
+                notification.method === "turn/completed" &&
+                notification.params.turn.status !== "inProgress"
+              )
+                events.publish({
+                  kind: "hostMessage",
+                  value: {
+                    type: "threadReadActivity",
+                    hostId: input.hostId,
+                    conversationId: notification.params.threadId,
+                    activity: { type: "turn-completed", turnId: notification.params.turn.id },
+                  },
+                });
               const item =
                 notification.method === "item/completed" ? notification.params.item : null;
               const metadataChanged =

@@ -73,6 +73,25 @@ const deferredPage = () => {
 };
 afterEach(() => vi.restoreAllMocks());
 
+test("Session unread changes update retained native history without reloading its Turns", async () => {
+  const read = vi.fn().mockResolvedValue(page(2, "older"));
+  const owner = new NativeConversationHistoryOwner({ ...summary, hasUnreadTurn: true }, read);
+  const release = owner.retain();
+  try {
+    await owner.refresh();
+    expect(owner.getSnapshot().view?.hasUnreadTurn).toBe(true);
+    const turns = owner.getSnapshot().view!.turns;
+    owner.updateSummary({ ...summary, hasUnreadTurn: false });
+    expect(owner.getSnapshot().view?.hasUnreadTurn).toBe(false);
+    owner.updateSummary({ ...summary, hasUnreadTurn: true });
+    expect(owner.getSnapshot().view?.hasUnreadTurn).toBe(true);
+    expect(owner.getSnapshot().view?.turns).toBe(turns);
+    expect(read).toHaveBeenCalledOnce();
+  } finally {
+    release();
+  }
+});
+
 test("concurrent readers share one bounded cold page and final release drops all bodies", async () => {
   const read = vi.spyOn(agentBackendRuntime, "history").mockResolvedValue(page(2, "older"));
   const first = acquireNativeConversationHistoryOwner("product-session", summary);

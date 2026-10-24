@@ -8,6 +8,7 @@ import type {
 } from "@nodex/agent-runtime/contracts";
 import type { AgentRuntimeSessionEvent } from "../../../shared/agent-runtime-api";
 import { agentRuntimeRuntime } from "../../lib/agent-runtime-runtime";
+import { workspaceSessionCommands } from "../../lib/workspace-catalog-commands";
 import {
   createAgentRuntimeConversationRuntime,
   useAgentRuntimeConversationAdapter,
@@ -238,6 +239,7 @@ describe("Agent Runtime failed-provider settings", () => {
         () => {
           const adapter = useAgentRuntimeConversationAdapter({
             sessionId,
+            sessionUnread: false,
             executionRef: { runtimeId: "engine", threadId: "engine-thread" },
             projectId: "project",
             modelProjectId: "project",
@@ -365,6 +367,7 @@ describe("Agent Runtime response fork entrypoint", () => {
         () => {
           const adapter = useAgentRuntimeConversationAdapter({
             sessionId,
+            sessionUnread: false,
             executionRef: { runtimeId: "engine", threadId: "engine-thread" },
             projectId: "project",
             modelProjectId: "project",
@@ -484,6 +487,7 @@ describe("Agent Runtime Codex controls", () => {
       () =>
         useAgentRuntimeConversationAdapter({
           sessionId: "saved-draft",
+          sessionUnread: false,
           projectId: "project",
           modelProjectId: "project",
           instances,
@@ -535,6 +539,7 @@ describe("Agent Runtime Codex controls", () => {
       () =>
         useAgentRuntimeConversationAdapter({
           sessionId: "early-draft",
+          sessionUnread: false,
           projectId: "project",
           modelProjectId: "project",
           instances,
@@ -590,6 +595,7 @@ describe("Agent Runtime Codex controls", () => {
       () =>
         useAgentRuntimeConversationAdapter({
           sessionId: "early-draft",
+          sessionUnread: false,
           projectId: "project",
           modelProjectId: "project",
           instances,
@@ -621,6 +627,7 @@ describe("Agent Runtime Codex controls", () => {
         () =>
           useAgentRuntimeConversationAdapter({
             sessionId,
+            sessionUnread: false,
             projectId: "project",
             modelProjectId: "project",
             instances,
@@ -671,6 +678,7 @@ describe("Agent Runtime Codex controls", () => {
         () =>
           useAgentRuntimeConversationAdapter({
             sessionId,
+            sessionUnread: false,
             projectId: "project",
             modelProjectId: "project",
             instances,
@@ -785,6 +793,7 @@ describe("Agent Runtime Codex controls", () => {
         () =>
           useAgentRuntimeConversationAdapter({
             sessionId: `session-${threadId}`,
+            sessionUnread: false,
             executionRef: { runtimeId: "engine", threadId },
             projectId: "project",
             modelProjectId: "project",
@@ -864,6 +873,7 @@ describe("Agent Runtime Codex controls", () => {
       ({ sessionTitle }: { sessionTitle: string }) =>
         useAgentRuntimeConversationAdapter({
           sessionId: "titled-session",
+          sessionUnread: false,
           sessionTitle,
           executionRef: { runtimeId: "engine", threadId: "engine-thread" },
           projectId: "project",
@@ -906,6 +916,7 @@ describe("Agent Runtime Codex controls", () => {
       () =>
         useAgentRuntimeConversationAdapter({
           sessionId: "codex-session",
+          sessionUnread: false,
           executionRef: { runtimeId: "engine", threadId: "engine-thread" },
           projectId: "project",
           modelProjectId: "project",
@@ -1008,6 +1019,7 @@ describe("Agent Runtime Agent switching", () => {
       () =>
         useAgentRuntimeConversationAdapter({
           sessionId: "switch-session",
+          sessionUnread: false,
           executionRef: { runtimeId: "engine", threadId: "engine-thread" },
           projectId: "project",
           modelProjectId: "project",
@@ -1101,6 +1113,7 @@ describe("Agent Runtime Agent switching", () => {
     const useChat = () =>
       useAgentRuntimeConversationAdapter({
         sessionId: "switch-session",
+        sessionUnread: false,
         executionRef: { runtimeId: "engine", threadId: "engine-thread" },
         projectId: "project",
         modelProjectId: "project",
@@ -1199,6 +1212,7 @@ describe("Agent Runtime background status", () => {
       () =>
         useAgentRuntimeConversationAdapter({
           sessionId: "background-session",
+          sessionUnread: false,
           executionRef: { runtimeId: "engine", threadId: "engine-thread" },
           projectId: "project",
           modelProjectId: "project",
@@ -1229,6 +1243,129 @@ describe("Agent Runtime background status", () => {
 });
 
 describe("Agent Runtime conversation adapter", () => {
+  it.each(["root", "child"] as const)(
+    "projects Session unread changes only onto its root chat while viewing the %s",
+    async (kind) => {
+      const threadId = kind === "root" ? "engine-thread" : "child-thread";
+      const sessionId = `unread-${kind}-session`;
+      const conversation = {
+        sessionId,
+        threadId,
+        projectId: "project",
+        snapshot: {
+          ...snapshot,
+          projection: {
+            ...snapshot.projection,
+            thread: {
+              ...snapshot.projection.thread,
+              id: threadId,
+              lineage: {
+                ...snapshot.projection.thread.lineage,
+                parentThreadId: kind === "child" ? "engine-thread" : null,
+              },
+            },
+          },
+        },
+      };
+      vi.spyOn(agentRuntimeRuntime, "catalog").mockResolvedValue([provider]);
+      const control = vi.spyOn(agentRuntimeRuntime, "control").mockResolvedValue(conversation);
+      const subscribe = vi.spyOn(agentRuntimeRuntime, "subscribe").mockResolvedValue(() => {});
+      const { result, rerender, unmount } = renderHook(
+        ({ unread }) =>
+          useAgentRuntimeConversationAdapter({
+            sessionId,
+            sessionUnread: unread,
+            executionRef: { runtimeId: "engine", threadId: "engine-thread" },
+            threadId,
+            projectId: "project",
+            modelProjectId: "project",
+            instances,
+            onRefresh: async () => {},
+            onOpenThread: () => {},
+            ensureDraft: async () => ({ id: sessionId }),
+          }),
+        { wrapper: RuntimeWorkbench, initialProps: { unread: true } },
+      );
+      try {
+        await waitFor(() => expect(result.current.state.connection).toBe("ready"));
+        expect(result.current.summary?.hasUnreadTurn).toBe(kind === "root");
+        const runtime = result.current.runtime;
+        const execution = runtime.read(threadId);
+        await act(async () => rerender({ unread: false }));
+        expect(result.current.summary?.hasUnreadTurn).toBe(false);
+        await act(async () => rerender({ unread: true }));
+        expect(result.current.summary?.hasUnreadTurn).toBe(kind === "root");
+        expect(result.current.runtime).toBe(runtime);
+        expect(runtime.read(threadId)).toBe(execution);
+        expect(control).toHaveBeenCalledOnce();
+        expect(subscribe).toHaveBeenCalledOnce();
+      } finally {
+        await act(async () => unmount());
+      }
+    },
+  );
+
+  it.each(["root", "child"] as const)(
+    "admits a Session read only for its hydrated root while viewing the %s",
+    async (kind) => {
+      const threadId = kind === "root" ? "engine-thread" : "child-thread";
+      const target = { sessionId: "read-session", threadId };
+      vi.spyOn(agentRuntimeRuntime, "control").mockResolvedValue({
+        ...target,
+        projectId: "project",
+        snapshot: {
+          ...snapshot,
+          projection: {
+            ...snapshot.projection,
+            thread: {
+              ...snapshot.projection.thread,
+              id: threadId,
+              lineage: {
+                ...snapshot.projection.thread.lineage,
+                parentThreadId: kind === "child" ? "engine-thread" : null,
+              },
+            },
+          },
+        },
+      });
+      vi.spyOn(agentRuntimeRuntime, "subscribe").mockResolvedValue(() => {});
+      const markUnread = vi.spyOn(workspaceSessionCommands, "markUnread").mockResolvedValue({
+        id: target.sessionId,
+        projectId: "project",
+        noThreadFallbackTitle: "Task",
+        displayTitle: "Task",
+        order: 0,
+        pinned: false,
+        pinnedOrder: null,
+        archived: false,
+        archivedAt: null,
+        unread: false,
+        thread: null,
+        executionRef: { runtimeId: "engine", threadId: "engine-thread" },
+        createdAt: snapshot.projection.thread.createdAt,
+        updatedAt: snapshot.projection.thread.updatedAt,
+      });
+      const owner = new AgentRuntimeConversationOwner(target);
+      const runtime = createAgentRuntimeConversationRuntime("codex", target, owner);
+      await runtime.markRead(threadId);
+      expect(markUnread).not.toHaveBeenCalled();
+      const release = owner.retain();
+      try {
+        await owner.resume();
+        await runtime.markRead("unrelated-thread");
+        expect(markUnread).not.toHaveBeenCalled();
+        await runtime.markRead(threadId);
+        if (kind === "child") {
+          expect(markUnread).not.toHaveBeenCalled();
+          return;
+        }
+        expect(markUnread).toHaveBeenCalledExactlyOnceWith(target.sessionId, { unread: false });
+      } finally {
+        release();
+      }
+    },
+  );
+
   it("routes history to its bound Thread and keeps page failures out of attachment state", async () => {
     const target = { sessionId: "history-session", threadId: "engine-thread" };
     const read = vi.spyOn(agentRuntimeRuntime, "read").mockResolvedValue({
@@ -1382,6 +1519,7 @@ describe("Agent Runtime conversation adapter", () => {
     const useDraft = () =>
       useAgentRuntimeConversationAdapter({
         sessionId: "shared-claude-intent-draft",
+        sessionUnread: false,
         projectId: "project",
         modelProjectId: "project",
         instances: configured,
@@ -1501,6 +1639,7 @@ describe("Agent Runtime conversation adapter", () => {
       () => {
         const adapter = useAgentRuntimeConversationAdapter({
           sessionId: child.sessionId,
+          sessionUnread: false,
           executionRef: { runtimeId: "engine", threadId: "root-thread" },
           threadId: child.threadId,
           projectId: "project",
@@ -1634,6 +1773,7 @@ describe("Agent Runtime conversation adapter", () => {
       () =>
         useAgentRuntimeConversationAdapter({
           sessionId: "root-session",
+          sessionUnread: false,
           executionRef: { runtimeId: "engine", threadId: "root-thread" },
           threadId: "child-thread",
           projectId: "project",
@@ -1697,6 +1837,7 @@ describe("Agent Runtime conversation adapter", () => {
       () =>
         useAgentRuntimeConversationAdapter({
           sessionId: "draft",
+          sessionUnread: false,
           projectId: "project",
           modelProjectId: "project",
           instances,
@@ -1776,6 +1917,7 @@ describe("Agent Runtime image capabilities", () => {
       () =>
         useAgentRuntimeConversationAdapter({
           sessionId: "image-capability-session",
+          sessionUnread: false,
           executionRef: { runtimeId: "engine", threadId: "engine-thread" },
           projectId: "project",
           modelProjectId: "project",
@@ -1872,6 +2014,7 @@ describe("Host OpenCode setup", () => {
       () =>
         useAgentRuntimeConversationAdapter({
           sessionId: "opencode-setup-draft",
+          sessionUnread: false,
           projectId: "project",
           modelProjectId: "project",
           instances: configured,
@@ -1957,6 +2100,7 @@ describe("Agent Runtime sent-message editing capabilities", () => {
         () =>
           useAgentRuntimeConversationAdapter({
             sessionId: "edit-capability-session",
+            sessionUnread: false,
             executionRef: { runtimeId: "engine", threadId: "engine-thread" },
             projectId: "project",
             modelProjectId: "project",
@@ -2042,6 +2186,7 @@ describe("Agent Runtime effective image capability", () => {
       () =>
         useAgentRuntimeConversationAdapter({
           sessionId,
+          sessionUnread: false,
           executionRef: { runtimeId: "engine", threadId: "engine-thread" },
           projectId: "project",
           modelProjectId: "project",
@@ -2216,6 +2361,7 @@ describe("Agent Runtime effective image capability", () => {
       () =>
         useAgentRuntimeConversationAdapter({
           sessionId,
+          sessionUnread: false,
           executionRef: { runtimeId: "engine", threadId: "engine-thread" },
           projectId: "project",
           modelProjectId: "project",
@@ -2362,6 +2508,7 @@ describe("Agent Runtime sent-image edit admission", () => {
         () =>
           useAgentRuntimeConversationAdapter({
             sessionId,
+            sessionUnread: false,
             executionRef: { runtimeId: "engine", threadId: target.threadId },
             projectId: "project",
             modelProjectId: "project",

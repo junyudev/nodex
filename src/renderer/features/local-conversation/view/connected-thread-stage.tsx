@@ -1,4 +1,7 @@
 import { useConversationBodyPresentation } from "../use-conversation-body-presentation";
+import { useConversationReadState } from "../use-conversation-read-state";
+import type { ConversationReadActivityToken } from "../conversation-read-state-observer";
+import { subscribeCodexAppServerMessage } from "../app-server-message-bus";
 import { ConversationTaskDialog } from "./conversation-task-dialog";
 import { ConversationRuntimeContext } from "../conversation-runtime";
 import { useCodexConversationTranscriptStructure } from "../normalized-transcript-hooks";
@@ -1381,22 +1384,41 @@ function ConnectedThreadStageContent({
     primaryRequest,
   );
   const threadLifecycleActive = routeActive || activeThreadHasRuntimeWork;
-  const newestCanonicalRequest = conversation?.canonicalRequests?.at(-1) ?? null;
+  const latestRequestId =
+    conversation?.canonicalRequests?.at(-1)?.id ?? requests.at(-1)?.requestId ?? null;
   const latestTurn = turns.at(-1) ?? null;
-  const latestTurnKey = latestTurn
-    ? buildCodexTurnOccurrenceKey(latestTurn.turnId, turns.length - 1, latestTurn.entityKey)
-    : null;
-  const markActiveConversationAsRead = useCallback(
-    (requireWindowFocus: boolean) => {
-      if (!routeActive || !threadBodyVisible || !activeThreadId || !conversation?.hasUnreadTurn)
-        return;
-      if (requireWindowFocus && typeof document !== "undefined" && !document.hasFocus()) return;
-      void runtime.markRead(activeThreadId).catch(() => {});
-    },
-    [activeThreadId, conversation?.hasUnreadTurn, runtime, routeActive, threadBodyVisible],
+  const [activityToken, setActivityToken] = useState<ConversationReadActivityToken | null>(null);
+  useEffect(
+    () =>
+      subscribeCodexAppServerMessage("thread-read-activity", (event) => {
+        if (event.hostId !== runtime.hostId || event.conversationId !== activeThreadId) return;
+        setActivityToken({
+          hostId: event.hostId,
+          threadId: event.conversationId,
+          activity: event.activity,
+        });
+      }),
+    [activeThreadId, runtime.hostId],
   );
-  const markActiveConversationAsReadOnFocus = useEffectEvent(() => {
-    markActiveConversationAsRead(true);
+  // Session unread belongs to Core; execution snapshots intentionally do not own it.
+  const hasUnreadTurn =
+    conversation?.hasUnreadTurn ?? input.activeThreadSummary?.hasUnreadTurn ?? false;
+  const { onReadInteraction } = useConversationReadState({
+    identity: activeThreadId ? JSON.stringify([runtime.hostId, activeThreadId]) : null,
+    active: routeActive && threadBodyVisible && (!runtimeSession || conversation !== null),
+    hasConversation: conversation !== null,
+    hasUnreadTurn,
+    hasPersistedUnreadTurn: input.activeThreadSummary?.hasUnreadTurn ?? false,
+    latestRequestId,
+    latestTurnId: latestTurn?.turnId ?? null,
+    latestTurnStatus: latestTurn?.status ?? null,
+    activityToken:
+      activityToken?.hostId === runtime.hostId && activityToken.threadId === activeThreadId
+        ? activityToken
+        : null,
+    onMarkRead: () => {
+      if (activeThreadId) void runtime.markRead(activeThreadId).catch(() => {});
+    },
   });
   const summaryPanelContentProps = useMemo(
     () => ({
@@ -1472,23 +1494,6 @@ function ConnectedThreadStageContent({
     presentation === "primary" && routeActive && !isSideChat && !backgroundAgentDetail,
     preferredHostId,
   );
-
-  useEffect(() => {
-    void latestTurn?.status;
-    void latestTurnKey;
-    void newestCanonicalRequest;
-    const handleFocus = () => markActiveConversationAsReadOnFocus();
-    window.addEventListener("focus", handleFocus);
-    if (document.hasFocus()) handleFocus();
-    return () => window.removeEventListener("focus", handleFocus);
-  }, [
-    activeThreadId,
-    latestTurn?.status,
-    latestTurnKey,
-    newestCanonicalRequest,
-    routeActive,
-    threadBodyVisible,
-  ]);
 
   useEffect(() => {
     if (!input.activeThreadId || input.isNewThreadTab) {
@@ -1632,7 +1637,7 @@ function ConnectedThreadStageContent({
       ) : null}
       {ownsAppShellHeader ? <AppShellHeaderContentRegistrar content={threadHeaderContent} /> : null}
       <LocalConversationStageScreen
-        onReadInteraction={() => markActiveConversationAsRead(false)}
+        onReadInteraction={onReadInteraction}
         header={null}
         body={
           <ConnectedThreadStageBody

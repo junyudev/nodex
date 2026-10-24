@@ -75,6 +75,7 @@ export class NativeConversationHistoryOwner {
           threadName: summary.threadName,
           cwd: summary.cwd,
           archived: summary.archived,
+          hasUnreadTurn: summary.hasUnreadTurn,
         },
       });
   };

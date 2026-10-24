@@ -594,6 +594,12 @@ execution process; while none runs, the snapshot is empty and complete. Finished
 Runs and new questions mark unseen Sessions unread and raise
 [desktop notifications](desktop-notification-behavior.md#agent-runtime-sessions).
 
+The root chat displays Core Session unread state independently of execution history and uses
+the shared [conversation read rules](codex-thread-transcript-behavior.md#conversation-read-state).
+Accepted completion and new questions reach visible chat observers after their unread write, so reading the
+current chat clears its indicator even when the Session projection arrives later. Viewing a
+delegated child never clears its root Session's unread state.
+
 ## Execution process supervision
 
 Main supervises one execution process per Profile and publishes its connection state to every

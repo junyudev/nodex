@@ -125,6 +125,65 @@ describe("local conversation host bridge", () => {
     ]);
   });
 
+  test("delivers settled read activity after its read-state change without treating raw ingress as completion", () => {
+    const received: unknown[] = [];
+    subscribeCodexAppServerMessage("thread-read-state-changed", (event) => received.push(event));
+    subscribeCodexAppServerMessage("thread-read-activity", (event) => received.push(event));
+    startLocalConversationHostBridge();
+    fixture.listener?.({
+      type: "nativeNotification",
+      hostId: "remote-host",
+      generation: 7,
+      occurrenceId: "completion-1",
+      occurrenceToken: 1,
+      notification: {
+        method: "turn/completed",
+        params: {
+          threadId: "thread",
+          turn: {
+            id: "turn",
+            rootTurnId: null,
+            status: "completed",
+            items: [],
+            itemsView: "full",
+            error: null,
+            startedAt: 1,
+            completedAt: 2,
+            durationMs: 1000,
+          },
+        },
+      },
+    });
+    expect(received).toEqual([]);
+    fixture.listener?.({
+      type: "threadReadStateChanged",
+      hostId: "remote-host",
+      conversationId: "thread",
+      hasUnreadTurn: true,
+    });
+    fixture.listener?.({
+      type: "threadReadActivity",
+      hostId: "remote-host",
+      conversationId: "thread",
+      activity: { type: "turn-completed", turnId: "turn" },
+    });
+    fixture.listener?.({
+      type: "threadReadActivity",
+      hostId: "local",
+      conversationId: "root",
+      activity: { type: "request" },
+    });
+    expect(received).toEqual([
+      { hostId: "remote-host", conversationId: "thread", hasUnreadTurn: true },
+      {
+        hostId: "remote-host",
+        conversationId: "thread",
+        activity: { type: "turn-completed", turnId: "turn" },
+      },
+      { hostId: "local", conversationId: "root", activity: { type: "request" } },
+    ]);
+  });
+
   test("keeps the host subscription alive until its final consumer releases", () => {
     const first = startLocalConversationHostBridge();
     const second = startLocalConversationHostBridge();

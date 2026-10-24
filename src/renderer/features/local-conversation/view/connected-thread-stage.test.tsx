@@ -383,6 +383,7 @@ vi.mock("../local-conversation-deps", () => ({
     };
   },
   subscribeCodexEvents: () => () => undefined,
+  getWindowFocusState: async () => document.hasFocus(),
   subscribeWindowFocusChanges: () => () => {},
 }));
 
@@ -2328,6 +2329,87 @@ describe("ConnectedThreadStage archived resume behavior", () => {
 });
 
 describe("ConnectedThreadStage read-state control plane", () => {
+  function createSessionReadRuntime(summary: CodexThreadSummary) {
+    const conversation = buildConversation(summary.threadId);
+    const connection = { status: "connected", retries: 0 } as const;
+    const children: ReturnType<ConversationRuntime["children"]> = [];
+    const markRead = vi.fn(async () => {});
+    const runtime: ConversationRuntime = {
+      kind: "codex",
+      hostId: "local",
+      sessionId: "runtime-session",
+      read: (id) => (id === summary.threadId ? conversation : null),
+      subscribe: () => () => {},
+      children: () => children,
+      attachment: () => ({ status: "attached" }),
+      connection: () => connection,
+      role: () => "follower",
+      primaryRequest: () => null,
+      retain: () => () => {},
+      loadHistory: async () => {},
+      resume: async () => {},
+      markRead,
+      setPresented: async () => {},
+    };
+    return { runtime, markRead };
+  }
+
+  test.each([
+    { routeActive: true, threadBodyVisible: true, expectedReads: 1 },
+    { routeActive: false, threadBodyVisible: true, expectedReads: 0 },
+    { routeActive: true, threadBodyVisible: false, expectedReads: 0 },
+  ])("reads Session unread only in the visible active transcript: %j", async (options) => {
+    installAsyncRequestAnimationFrame();
+    const focus = vi.spyOn(document, "hasFocus").mockReturnValue(true);
+    const summary = { ...buildThreadSummary(false), hasUnreadTurn: true };
+    const { runtime, markRead } = createSessionReadRuntime(summary);
+    const view = await renderStage(summary, { ...options, runtime });
+    try {
+      await waitFor(() => expect(markRead).toHaveBeenCalledTimes(options.expectedReads));
+      if (options.expectedReads) expect(markRead).toHaveBeenCalledWith(summary.threadId);
+      expect(runtime.read(summary.threadId)?.hasUnreadTurn).toBeUndefined();
+    } finally {
+      await act(async () => view.unmount());
+      focus.mockRestore();
+    }
+  });
+
+  test.each([
+    { type: "turn-completed", turnId: "turn_ready" } as const,
+    { type: "request" } as const,
+  ])("acknowledges %j while Session unread is still catching up", async (activity) => {
+    installAsyncRequestAnimationFrame();
+    const focus = vi.spyOn(document, "hasFocus").mockReturnValue(true);
+    const summary = { ...buildThreadSummary(false), hasUnreadTurn: false };
+    const { runtime, markRead } = createSessionReadRuntime(summary);
+    const view = await renderStage(summary, { runtime });
+    const { dispatchCodexAppServerMessage } = await import("../app-server-message-bus");
+    try {
+      expect(markRead).not.toHaveBeenCalled();
+      await act(async () => {
+        dispatchCodexAppServerMessage("thread-read-activity", {
+          hostId: "remote",
+          conversationId: summary.threadId,
+          activity,
+        });
+        await settleAsyncRender();
+      });
+      expect(markRead).not.toHaveBeenCalled();
+      await act(async () => {
+        dispatchCodexAppServerMessage("thread-read-activity", {
+          hostId: "local",
+          conversationId: summary.threadId,
+          activity,
+        });
+        await settleAsyncRender();
+      });
+      await waitFor(() => expect(markRead).toHaveBeenCalledExactlyOnceWith(summary.threadId));
+    } finally {
+      await act(async () => view.unmount());
+      focus.mockRestore();
+    }
+  });
+
   test("marks newly active unread work as read while the thread viewport is focused", async () => {
     installAsyncRequestAnimationFrame();
     invokeCalls = [];

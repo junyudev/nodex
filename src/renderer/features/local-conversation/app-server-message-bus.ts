@@ -4,6 +4,7 @@ import type {
   CodexSharedObject,
 } from "../../lib/types";
 import type {
+  CodexHostMessage,
   CodexNativeNotificationMessage,
   CodexNativeRequestMessage,
 } from "../../../shared/types";
@@ -32,6 +33,11 @@ export interface CodexThreadReadStateChangedEvent {
   hasUnreadTurn: boolean;
 }
 
+export type CodexThreadReadActivityEvent = Omit<
+  Extract<CodexHostMessage, { type: "threadReadActivity" }>,
+  "type"
+>;
+
 export interface CodexThreadArchivedEvent {
   hostId: string;
   conversationId: string;
@@ -55,6 +61,7 @@ interface CodexAppServerMessageMap {
   "client-status-changed": CodexClientStatusChangedEvent;
   "thread-title-updated": CodexThreadTitleUpdatedEvent;
   "thread-read-state-changed": CodexThreadReadStateChangedEvent;
+  "thread-read-activity": CodexThreadReadActivityEvent;
   "thread-archived": CodexThreadArchivedEvent;
   "thread-deleted": CodexThreadDeletedEvent;
   "native-notification": CodexNativeNotificationMessage;
@@ -72,6 +79,7 @@ const listenersByType: {
   "client-status-changed": new Set(),
   "thread-title-updated": new Set(),
   "thread-read-state-changed": new Set(),
+  "thread-read-activity": new Set(),
   "thread-archived": new Set(),
   "thread-deleted": new Set(),
   "native-notification": new Set(),

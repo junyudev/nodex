@@ -1,7 +1,7 @@
 import type { HookStats } from "./projection/hook-stats";
 import type { WorkspaceSearchContext } from "@/lib/workspace-search-context";
 import type { WorkbenchSubmitPresentation } from "../../../shared/nodex-app-tools/workbench";
-import type { ReactNode } from "react";
+import type { ReactEventHandler, ReactNode } from "react";
 import type { ThreadGoal, FeedbackUploadParams } from "@nodex/codex-app-server-protocol/v2";
 import type { ThreadMemoryMode } from "@nodex/codex-app-server-protocol";
 import type {
@@ -1297,7 +1297,7 @@ export interface ThreadStageScreenProps {
   footer?: ReactNode;
   floatingContent?: ReactNode;
   contentShiftX?: number;
-  onReadInteraction?: () => void;
+  onReadInteraction?: ReactEventHandler<HTMLDivElement>;
 }
 
 export interface ThreadBodyUiStateOverrides {

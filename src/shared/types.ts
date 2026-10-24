@@ -4824,6 +4824,13 @@ export type CodexHostMessage =
       hasUnreadTurn: boolean;
     }
   | {
+      /** Accepted read activity, independent of loaded history and status projections. */
+      type: "threadReadActivity";
+      hostId: string;
+      conversationId: string;
+      activity: { type: "turn-completed"; turnId: string } | { type: "request" };
+    }
+  | {
       type: "threadArchived";
       hostId: string;
       conversationId: string;

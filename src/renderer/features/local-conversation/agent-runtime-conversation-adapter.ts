@@ -254,8 +254,12 @@ export function createAgentRuntimeConversationRuntime(
     resume: async () => {
       await owner?.resume();
     },
-    markRead: async () => {
-      if (target) await workspaceSessionCommands.markUnread(target.sessionId, { unread: false });
+    markRead: async (id) => {
+      if (!target || !matches(id)) return;
+      const thread = owner!.getSnapshot().conversation?.snapshot.projection.thread;
+      // Delegated children share the Session, but viewing one does not read its root chat.
+      if (!thread || thread.lineage.rootThreadId !== id) return;
+      await workspaceSessionCommands.markUnread(target.sessionId, { unread: false });
     },
     // Main's unread and notification policy reads the same presentation registry as native chats.
     setPresented: async (id, surfaceId, presented) => {
@@ -759,6 +763,7 @@ export function createAgentRuntimeStageActions(input: {
 export function useAgentRuntimeConversationAdapter(input: {
   readonly sessionId: string;
   readonly sessionTitle?: string;
+  readonly sessionUnread: boolean;
   readonly workspaceRoot?: string | null;
   readonly executionRef?: { readonly runtimeId: string; readonly threadId: string } | null;
   /** A child uses its root Session binding and a distinct engine Thread. */
@@ -1350,16 +1355,25 @@ export function useAgentRuntimeConversationAdapter(input: {
       : null,
     owner,
   );
-  // Core names the chat; the engine Thread keeps the prompt it started from as its own title.
+  // Core owns the root chat's title and unread state independently of execution history.
   const view = state.view;
   const sessionTitle = input.sessionTitle;
-  const titledView = useMemo(
-    () => (view && sessionTitle ? { ...view, threadName: sessionTitle } : view),
-    [view, sessionTitle],
+  const rootThreadId = input.executionRef?.threadId ?? createdTarget?.threadId ?? null;
+  const sessionUnread = targetThreadId === rootThreadId && input.sessionUnread === true;
+  const sessionView = useMemo(
+    () =>
+      view
+        ? {
+            ...view,
+            ...(sessionTitle ? { threadName: sessionTitle } : {}),
+            hasUnreadTurn: sessionUnread,
+          }
+        : null,
+    [view, sessionTitle, sessionUnread],
   );
   // Mount the keyed transcript reader before the first query completes; unknown execution is notLoaded.
   const summary: CodexThreadSummary | null =
-    titledView ??
+    sessionView ??
     (targetThreadId
       ? {
           threadId: targetThreadId,
@@ -1371,6 +1385,7 @@ export function useAgentRuntimeConversationAdapter(input: {
           cwd: input.workspaceRoot ?? null,
           statusType: "notLoaded",
           statusActiveFlags: [],
+          hasUnreadTurn: sessionUnread,
           archived: false,
           createdAt: 0,
           updatedAt: 0,

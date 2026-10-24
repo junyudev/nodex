@@ -58,6 +58,7 @@ export function AgentRuntimeChildPanel(input: {
   const agent = useAgentRuntimeConversationAdapter({
     sessionId: input.session.id,
     sessionTitle: input.title,
+    sessionUnread: input.session.unread,
     workspaceRoot: projectWorkspaceRootOrNull(input.project),
     executionRef: input.session.executionRef,
     threadId: input.threadId,
@@ -150,6 +151,7 @@ export function AgentRuntimeSideChatPanel(input: {
     useAgentRuntimeConversationAdapter({
       sessionId: session.id,
       sessionTitle: input.title,
+      sessionUnread: session.unread,
       workspaceRoot: projectWorkspaceRootOrNull(input.project),
       executionRef: session.executionRef,
       projectId: session.projectId,

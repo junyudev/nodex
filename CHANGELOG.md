@@ -18,6 +18,7 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- Unread dots clear when you view a chat or its reply finishes in the foreground, without switching away and back. Manually marked unread chats stay unread until new activity or interaction.
 - Chat completion notifications include the Agent’s reply after execution ends and preserve readable content from Markdown, including code blocks.
 - Existing Profiles upgrade without rejecting saved paragraphs that begin with Markdown punctuation, while preserving their content and edit history.
 - Completed undo history no longer stalls background cleanup after a Profile upgrade.

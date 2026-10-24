@@ -55,6 +55,15 @@ function applyHostMessage(message: CodexHostMessage): void {
     return;
   }
 
+  if (message.type === "threadReadActivity") {
+    dispatchCodexAppServerMessage("thread-read-activity", {
+      hostId: message.hostId,
+      conversationId: message.conversationId,
+      activity: message.activity,
+    });
+    return;
+  }
+
   if (message.type === "threadArchived") {
     dispatchCodexAppServerMessage("thread-archived", {
       hostId: message.hostId,

@@ -572,6 +572,7 @@ function ConnectedRuntimeSessionThread(props: ConnectedSessionThreadProps) {
   const adapter = useAgentRuntimeConversationAdapter({
     sessionId: props.session.id,
     sessionTitle: props.session.displayTitle,
+    sessionUnread: props.session.unread,
     workspaceRoot: projectWorkspaceRootOrNull(props.project),
     executionRef: props.session.executionRef,
     projectId: props.session.projectId,
@@ -629,9 +630,10 @@ function useNativeHistorySummary({ session, thread }: NativeHistorySessionThread
       ...thread,
       source: null,
       threadName: thread.threadName ?? session.displayTitle,
+      hasUnreadTurn: session.unread,
       cwd: thread.cwd ?? null,
     }),
-    [thread, session.displayTitle],
+    [thread, session.displayTitle, session.unread],
   );
 }
 
