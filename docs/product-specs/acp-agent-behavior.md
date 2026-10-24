@@ -26,6 +26,9 @@ progress, cancellation and retry; duplicate operation IDs do not repeat the work
 published atomically only when ready. Failed or interrupted staging cannot become an installed receipt.
 Available installations continue working when the catalog is offline. Uninstall never removes local
 executables or an installation used by admitted work.
+An active installation, a saved configuration reference or a preparation reservation blocks uninstall
+with a busy result. Preparation reserves the completed installation briefly until configuration takes
+ownership; an unclaimed reservation expires so it does not prevent later cleanup.
 
 Updates select a new installation without changing an instance's identity. Active and queued work
 retain captured launch configuration. Disabling or removing an instance immediately blocks new
