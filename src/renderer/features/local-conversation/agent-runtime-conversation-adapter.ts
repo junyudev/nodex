@@ -94,6 +94,10 @@ import {
 import { agentRuntimeBackgroundStatus } from "./agent-runtime-composer-status";
 import { useOpenCodeModelSetup } from "../opencode-setup/use-opencode-setup";
 import { useAcpComposerSetup } from "../acp-agents/use-acp-composer-setup";
+import {
+  acpImportedHistoryEmptyState,
+  acpPendingImportedHistory,
+} from "../acp-agents/acp-agent-model";
 import { useAgentSettingsNavigation } from "@/lib/agent-settings-navigation";
 import type { AgentRuntimeRun } from "./agent-runtime-transcript-projection";
 import {
@@ -1497,6 +1501,8 @@ export function useAgentRuntimeConversationAdapter(input: {
       workLocally,
     });
   };
+  // An imported native conversation stays empty until its Agent restores it on the next message.
+  const pendingImport = acpPendingImportedHistory(projection);
   const presentation: ConversationProviderPresentation = {
     resolveRuntimeAttachment: async (reference) => {
       if (!target) throw new Error("Open the conversation before reading its attachment");
@@ -1531,6 +1537,9 @@ export function useAgentRuntimeConversationAdapter(input: {
     kind: selection.binding.kind,
     ...(selection.binding.kind === "codex" ? { serviceTier: selectedServiceTier } : {}),
     label: provider?.displayName ?? (selection.binding.kind === "codex" ? "Codex" : "Agent"),
+    emptyHistory: pendingImport
+      ? acpImportedHistoryEmptyState(provider?.displayName ?? "the Agent", pendingImport)
+      : null,
     selection: agentRuntimeProviderId(selection.binding) ?? "",
     options: [],
     select: () => {},

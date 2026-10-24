@@ -210,7 +210,7 @@ export function AcpAgentsSettingsSection({
     <NodexSettingsSection id="acp" title="ACP Agents">
       <NodexSettingsRow
         label="Agent Client Protocol"
-        description="Install Agents from the ACP Registry or run your own command. Each instance keeps its own account, models and history."
+        description="Install Agents from the ACP Registry or run your own command. Instances that share account storage share the Agent's sign-in and history."
       >
         <NodexButton
           id={ACP_ADD_AGENT_ID}

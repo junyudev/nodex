@@ -259,6 +259,8 @@ export interface ConversationProviderStatus {
 /** Capabilities vary by provider; the stage, timeline, editor and request UI are shared. */
 export interface ConversationProviderPresentation {
   readonly status?: ConversationProviderStatus | null;
+  /** What an empty transcript means here, such as imported history the Agent hasn't restored. */
+  readonly emptyHistory?: { readonly title: string; readonly description: string } | null;
   readonly modelCatalog?: import("@/components/shared/agent-runtime/agent-model-picker").AgentModelCatalogPresentation;
   readonly nativeIntelligence?: import("@/components/shared/agent-runtime/agent-intelligence-dropdown").AgentNativeIntelligencePresentation;
   readonly diagnostics?: () => Promise<

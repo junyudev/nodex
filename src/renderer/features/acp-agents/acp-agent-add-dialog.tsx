@@ -108,13 +108,14 @@ function StorageField({
             {
               value: "shared",
               label: "Shared with your user account",
-              subText: "Uses the Agent's existing login, like its own command line.",
+              subText: "Uses the Agent's existing sign-in and history, like its own command line.",
               allowWrap: true,
             },
             {
               value: "separate",
               label: "Separate folder",
-              subText: "A different login and history for this instance only.",
+              subText:
+                "Gives this instance its own home folder for the Agent's sign-in and history.",
               allowWrap: true,
             },
           ]}

@@ -138,12 +138,13 @@ model state.
 
 Settings > Agent lists ACP Agents one row per instance: name, its command or Registry source, one
 status with the next step (Install, Connect, Sign in or Cancel), and an on/off switch that saves
-immediately. Statuses are Ready with the model count once a connection or session has reported the
-Agent's capabilities, Not connected before that, Sign-in required, Installing with real progress,
-Connecting, Not installed, Needs a runner, Unavailable, Not in Registry, Off, or a failure with its
-recovery. Ready never comes from the startup Default alone. Saved changes that wait for current work
+immediately. Statuses follow the instance's discovery state: Ready with the model count (or Startup
+model for an Agent without a model API) once discovery is ready, Not connected while it is unknown,
+and Couldn't connect when it failed. Sign-in required, Installing with real progress, Connecting, Not
+installed, Needs a runner, Unavailable, Not in Registry, Off, or a failure with its recovery take
+precedence. Installation and sign-in alone never show Ready. Saved changes that wait for current work
 show Changes pending until Main reports them applied; a reconcile failure stays visible with Try
-again. Pending and failed states are re-read only while unsettled and while Settings or a Composer
+again. Pending and failed states are re-read only while unsettled and while an ACP Settings surface
 observes them.
 
 A row expands in place to Account, Installation, launch configuration, environment variables,
@@ -178,9 +179,11 @@ Settings > Conversations lists conversations an Agent saved for the chosen Proje
 Agent can list them, and offers Connect for Agents whose capabilities are not yet known. Import sends
 nothing to the Agent. When the Agent can only resume, Nodex says earlier messages will not be shown
 before importing. Imported conversations reopen as Open. Delete from the Agent is offered only when
-supported and only for conversations not imported, after confirmation. Continuing an imported
-conversation depends on the Agent restoring it; when it cannot, the chat says so instead of starting
-over.
+supported and only for conversations not imported, after confirmation. Until the Agent restores an
+imported conversation, its empty transcript is titled Imported from the Agent and says to send a
+message to continue, adding that the Agent will try to restore earlier messages, or that it keeps
+their context without showing them. Continuing depends on the Agent restoring the conversation; when
+it cannot, the chat says so instead of starting over.
 
 ## Verification
 

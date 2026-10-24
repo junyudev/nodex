@@ -6,6 +6,7 @@ import {
   fakeAcpRuntime,
   memoryJournal,
   ok,
+  discovered,
   operation,
   providerSnapshot,
   registryInstance,
@@ -552,6 +553,7 @@ describe("ACP Agents owner", () => {
         instanceId: acpProviderId(qoder)!,
         auth: { status: "unknown" },
         models: [{ slug: "dfmodel", name: "DeepSeek", isCustom: false, capabilities: null }],
+        ...discovered(),
       }),
     ]);
     main.runtime.startAuth.mockResolvedValueOnce(

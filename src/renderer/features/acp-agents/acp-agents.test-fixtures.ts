@@ -82,6 +82,19 @@ export const authState = (patch: Partial<AcpAuthState> = {}): AcpAuthState => ({
   ...patch,
 });
 
+/** The Runtime's record that a real connection reported the Agent's capabilities. */
+export const discovered = (
+  patch: { readonly supportsModelSelection?: boolean; readonly status?: "ready" | "failed" } = {},
+) => ({
+  discovery: {
+    status: patch.status ?? ("ready" as const),
+    checkedAt: "2026-10-25T00:00:00.000Z",
+    ...(patch.supportsModelSelection === undefined
+      ? {}
+      : { supportsModelSelection: patch.supportsModelSelection }),
+  },
+});
+
 export const providerSnapshot = (patch: Partial<AcpProviderSnapshot> = {}): AcpProviderSnapshot =>
   ({
     instanceId: "acp_x",

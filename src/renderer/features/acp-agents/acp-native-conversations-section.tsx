@@ -15,8 +15,10 @@ import type { AcpAgentInstanceConfig } from "../../../shared/acp-agent-settings"
 import { createUuidV7 } from "../../../shared/uuid-v7";
 import {
   acpFailureText,
+  acpProviderDiscovered,
   type AcpNativeSession,
   type AcpNativeSessionPage,
+  type AcpProviderSnapshot,
 } from "./acp-agent-model";
 import type { AcpAgentsOwner } from "./acp-agents-owner";
 import { acpAgentsOwner, useAcpAgents } from "./use-acp-agents";
@@ -47,9 +49,10 @@ const importRequest = (key: string) => {
   return created;
 };
 
+/** Listing is known once a real connection reported the Agent's session capabilities. */
 const listable = (
   instance: AcpAgentInstanceConfig,
-  canList: boolean | undefined,
+  provider: AcpProviderSnapshot | undefined,
 ): {
   readonly ok: boolean;
   readonly reason: string | null;
@@ -58,9 +61,9 @@ const listable = (
 } =>
   !instance.enabled
     ? { ok: false, reason: "Off", needsConnection: false }
-    : canList === undefined
+    : !provider || !acpProviderDiscovered(provider)
       ? { ok: false, reason: "Not connected", needsConnection: true }
-      : canList
+      : provider.nativeSessions?.canList
         ? { ok: true, reason: null, needsConnection: false }
         : { ok: false, reason: "Doesn't list conversations", needsConnection: false };
 
@@ -384,7 +387,7 @@ export function AcpNativeConversationsSection({
   const instances = snapshot.settings?.instances ?? [];
   const candidates = instances.map((instance) => ({
     instance,
-    ...listable(instance, snapshot.providers.get(instance.id)?.nativeSessions?.canList),
+    ...listable(instance, snapshot.providers.get(instance.id)),
   }));
   const [chosen, setChosen] = useState<string | null>(null);
   const instance =

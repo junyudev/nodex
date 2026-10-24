@@ -2058,6 +2058,93 @@ describe("Host OpenCode setup", () => {
   });
 });
 
+describe("Agent Runtime imported native history", () => {
+  it.each([
+    {
+      capabilities: { canLoad: true, canResume: false },
+      description:
+        "Send a message to continue. ACP personal will try to restore the earlier messages.",
+    },
+    {
+      capabilities: { canLoad: false, canResume: true },
+      description:
+        "Send a message to continue. ACP personal keeps the earlier context, but its messages can't be shown here.",
+    },
+  ])(
+    "explains history the Agent hasn't restored yet ($capabilities)",
+    async ({ capabilities, description }) => {
+      const binding = {
+        kind: "acp" as const,
+        agentDefinitionId: "scripted-agent",
+        instanceConfigId: "acp-personal",
+      };
+      const instanceId = agentRuntimeProviderId(binding)!;
+      const modelSelection = { instanceId, model: "default" };
+      const imported = {
+        ...snapshot,
+        projection: {
+          ...snapshot.projection,
+          thread: {
+            ...snapshot.projection.thread,
+            modelSelection,
+            activeProviderThreadId: "imported-thread",
+          },
+          providerThreads: [
+            {
+              id: "imported-thread",
+              appThreadId: "engine-thread",
+              providerInstanceId: instanceId,
+              providerSessionId: null,
+              status: "not_loaded",
+              nativeThreadRef: { driver: "acpRegistry", nativeId: "native", strength: "strong" },
+              nativeMetadata: { nativeImport: capabilities },
+            },
+          ],
+        },
+      } as unknown as AgentSnapshot;
+      const conversation = {
+        sessionId: "imported-session",
+        projectId: "project",
+        threadId: "engine-thread",
+        snapshot: imported,
+      };
+      vi.spyOn(agentRuntimeRuntime, "catalog").mockResolvedValue([
+        provider,
+        { ...provider, instanceId, driver: "acpRegistry", displayName: "ACP personal" },
+      ]);
+      vi.spyOn(agentRuntimeRuntime, "control").mockResolvedValue(conversation);
+      vi.spyOn(agentRuntimeRuntime, "read").mockResolvedValue(conversation);
+      vi.spyOn(agentRuntimeRuntime, "subscribe").mockResolvedValue(() => {});
+      const { result, unmount } = renderHook(
+        () => {
+          const adapter = useAgentRuntimeConversationAdapter({
+            sessionId: "imported-session",
+            sessionUnread: false,
+            executionRef: { runtimeId: "engine", threadId: "engine-thread" },
+            projectId: "project",
+            modelProjectId: "project",
+            instances: [{ binding, label: "ACP personal", enabled: true }],
+            onRefresh: async () => {},
+            onOpenThread: () => {},
+            ensureDraft: async () => ({ id: "imported-session" }),
+          });
+          const transcript = adapter.runtime.transcriptReadOwner?.("engine-thread");
+          useEffect(() => transcript?.subscribeStructure(() => {}), [transcript]);
+          return adapter;
+        },
+        { wrapper: RuntimeWorkbench },
+      );
+      await waitFor(() =>
+        expect(result.current.provider.emptyHistory).toEqual({
+          title: "Imported from ACP personal",
+          description,
+        }),
+      );
+      await act(async () => unmount());
+    },
+  );
+});
+
 describe("Agent Runtime sent-message editing capabilities", () => {
   it.each([
     { driver: "opencode", supportsConversationRollback: true, editable: true },

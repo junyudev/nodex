@@ -5,6 +5,7 @@ import { renderWithAppMaitai } from "@/test/app-maitai";
 import { acpProviderId, type AcpNativeSession } from "./acp-agent-model";
 import { createAcpAgentsOwner } from "./acp-agents-owner";
 import {
+  discovered,
   fakeAcpRuntime,
   memoryJournal,
   ok,
@@ -44,6 +45,7 @@ function mount(
         canLoad: capabilities.canLoad,
         canResume: capabilities.canResume,
       },
+      ...discovered(),
     }),
   ]);
   main.runtime.listSessions.mockResolvedValue(
@@ -168,6 +170,7 @@ describe("ACP native conversations", () => {
       providerSnapshot({
         instanceId: acpProviderId(qoder)!,
         nativeSessions: { canList: false, canLoad: false, canResume: false },
+        ...discovered(),
       }),
     ]);
     const owner = createAcpAgentsOwner({
@@ -204,6 +207,7 @@ describe("ACP native conversations", () => {
         providerSnapshot({
           instanceId: acpProviderId(qoder)!,
           nativeSessions: { canList: true, canLoad: true, canResume: false },
+          ...discovered(),
         }),
       ]);
       return ok({

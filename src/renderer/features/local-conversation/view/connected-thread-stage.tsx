@@ -430,6 +430,9 @@ function ConnectedThreadStageBody({
     [actions, onErrorMessage, runtime, readOnly],
   );
 
+  // Compared by value: the provider rebuilds its presentation object on every render.
+  const emptyHistoryTitle = input.provider?.emptyHistory?.title;
+  const emptyHistoryDescription = input.provider?.emptyHistory?.description;
   const body = useMemo(
     () =>
       buildThreadBodyModel({
@@ -447,8 +450,14 @@ function ConnectedThreadStageBody({
         threadStartProgress: input.threadStartProgress,
         firstSubmissionActive,
         readOnly,
+        emptyHistory:
+          emptyHistoryTitle === undefined || emptyHistoryDescription === undefined
+            ? null
+            : { title: emptyHistoryTitle, description: emptyHistoryDescription },
       }),
     [
+      emptyHistoryTitle,
+      emptyHistoryDescription,
       activeThreadId,
       attachmentState,
       archived,

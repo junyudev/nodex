@@ -742,6 +742,28 @@ describe("buildThreadBodyModel", () => {
     }
   });
 
+  test("an empty conversation can explain its own history, without a prompt when read-only", () => {
+    const input = {
+      activeThreadId: "thread_1",
+      conversation: buildConversation({ turns: [], resumeState: "resumed" }),
+      parentTurns: [],
+      isNewThreadTab: false,
+      newThreadTarget: null,
+      isCloudNewThreadTarget: false,
+      threadStartProgress: null,
+      emptyHistory: { title: "Imported from Qoder", description: "Send a message to continue." },
+    } as const;
+    expect(buildThreadBodyModel(input).emptyState).toEqual({
+      type: "emptyThread",
+      title: "Imported from Qoder",
+      description: "Send a message to continue.",
+    });
+    expect(buildThreadBodyModel({ ...input, readOnly: true }).emptyState).toMatchObject({
+      title: "Imported from Qoder",
+      description: "",
+    });
+  });
+
   test("keeps local-project start progress silent for a resumed empty thread", () => {
     const model = buildThreadBodyModel({
       activeThreadId: "thread_1",

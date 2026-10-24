@@ -465,30 +465,40 @@ export function acpInstanceStatus(input: {
     case "ready":
       break;
   }
-  const connected =
-    activity?.phase === "succeeded" && activity.kind === "connect" && activity.result
-      ? activity.result
-      : null;
   if (provider?.auth.status === "unauthenticated")
     return status("sign-in", "Sign-in required", "default", "sign-in");
   if (provider?.status === "error")
     return status("failed", "Error", "danger", "connect", provider.message ?? null);
-  if (provider && acpProviderDiscovered(provider))
-    return status("ready", "Ready", "info", null, modelCount(provider.models.length));
-  if (connected && "models" in connected)
-    return status("ready", "Ready", "info", null, modelCount(connected.models.length));
-  return status("not-connected", "Not connected", "muted", "connect");
+  switch (provider?.discovery?.status) {
+    case "ready":
+      return status(
+        "ready",
+        "Ready",
+        "info",
+        null,
+        provider.discovery.supportsModelSelection === false
+          ? "Startup model"
+          : modelCount(provider.models.length),
+      );
+    case "failed":
+      return status(
+        "failed",
+        "Couldn't connect",
+        "danger",
+        "connect",
+        provider.message ?? "Check the Agent's command and try again.",
+      );
+    default:
+      return status("not-connected", "Not connected", "muted", "connect");
+  }
 }
 
 /**
- * Whether the Runtime learned this Agent's capabilities from a real connection or session.
- * Before that, its only model is the startup Default it offers so a chat can still begin.
+ * Whether a real connection or session reported this Agent's capabilities. Installation and
+ * sign-in don't prove it; until then the Agent offers no models.
  */
 export const acpProviderDiscovered = (provider: AcpProviderSnapshot): boolean =>
-  provider.nativeSessions !== undefined ||
-  provider.models.some(
-    (model) => !model.isCustom && !(model.slug === "default" && model.name === "Default"),
-  );
+  provider.discovery?.status === "ready";
 
 export const ACP_STATUS_ACTION_LABELS: Record<Exclude<AcpStatusAction, null>, string> = {
   install: "Install",
@@ -532,21 +542,17 @@ export function acpRegistryIconUrl(icon: string | null): string | null {
 }
 
 /**
- * What the model menu offers for an enabled ACP instance whose models aren't usable yet, read
- * from the Runtime's last known state only. Null when its models are already listed.
+ * What the model menu offers for an enabled ACP instance whose models aren't usable yet, from the
+ * Runtime's provider state, which also records a refused Connect. Null once its models are known.
  */
 export function acpComposerSetupHint(
   provider: AcpProviderSnapshot | undefined,
-  activity?: AcpActivity,
 ): { readonly hint: string; readonly tone: "default" | "danger" } | null {
   if (!provider || !provider.enabled) return null;
-  // This window's latest Connect is newer evidence than the Runtime's last known account.
-  const refused =
-    activity?.phase === "failed" && activity.failure?.reason === "authentication_failed";
-  if (refused || provider.auth.status === "unauthenticated")
-    return { hint: "Sign in", tone: "default" };
+  if (provider.auth.status === "unauthenticated") return { hint: "Sign in", tone: "default" };
   if (!provider.installed) return { hint: "Install", tone: "default" };
   if (provider.status === "error") return { hint: "Unavailable", tone: "danger" };
+  if (provider.discovery?.status === "failed") return { hint: "Connect", tone: "danger" };
   if (!acpProviderDiscovered(provider)) return { hint: "Connect", tone: "default" };
   return null;
 }
@@ -567,3 +573,40 @@ export function acpTerminalDelta(
   if (unseen < 0 || unseen > output.length) return { reset: true, data: output };
   return { reset: false, data: unseen === 0 ? "" : output.slice(output.length - unseen) };
 }
+
+interface ImportProjection {
+  readonly thread: { readonly activeProviderThreadId: string | null } | null;
+  readonly providerThreads: readonly {
+    readonly id: string;
+    readonly status: string;
+    readonly nativeMetadata?: {
+      readonly nativeImport?: { readonly canLoad: boolean; readonly canResume: boolean };
+    } | null;
+  }[];
+}
+
+/**
+ * An imported native conversation the Agent hasn't restored yet: its active provider thread is
+ * still not loaded. Restoration changes that status, so the state ends without a second owner.
+ */
+export function acpPendingImportedHistory(
+  projection: ImportProjection | null | undefined,
+): { readonly canLoad: boolean; readonly canResume: boolean } | null {
+  const activeId = projection?.thread?.activeProviderThreadId;
+  if (!activeId) return null;
+  const active = projection.providerThreads.find((row) => row.id === activeId);
+  return active?.status === "not_loaded" ? (active.nativeMetadata?.nativeImport ?? null) : null;
+}
+
+/** What an empty imported transcript means; continuing asks the Agent to restore it. */
+export const acpImportedHistoryEmptyState = (
+  agent: string,
+  imported: { readonly canLoad: boolean; readonly canResume: boolean },
+): { readonly title: string; readonly description: string } => ({
+  title: `Imported from ${agent}`,
+  description: imported.canLoad
+    ? `Send a message to continue. ${agent} will try to restore the earlier messages.`
+    : imported.canResume
+      ? `Send a message to continue. ${agent} keeps the earlier context, but its messages can't be shown here.`
+      : "Send a message to continue.",
+});

@@ -37,6 +37,8 @@ export interface ThreadBodyModelInput {
   } | null;
   firstSubmissionActive?: boolean;
   readOnly?: boolean;
+  /** Replaces the generic empty transcript when the conversation explains its own history. */
+  emptyHistory?: { readonly title: string; readonly description: string } | null;
 }
 
 export interface ThreadBodyConversationPresentation extends Pick<
@@ -366,8 +368,10 @@ export function buildThreadBodyModel(input: ThreadBodyModelInput): ThreadBodyMod
       showThreadStartProgressPanel: false,
       emptyState: {
         type: "emptyThread",
-        title: "No messages yet",
-        description: input.readOnly ? "" : "Send a prompt to begin.",
+        title: input.emptyHistory?.title ?? "No messages yet",
+        description: input.readOnly
+          ? ""
+          : (input.emptyHistory?.description ?? "Send a prompt to begin."),
       },
     };
   }

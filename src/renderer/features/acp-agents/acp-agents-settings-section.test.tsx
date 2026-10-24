@@ -8,6 +8,7 @@ import { AcpAgentsSettingsSection } from "./acp-agents-settings-section";
 import { acpProviderId } from "./acp-agent-model";
 import {
   authState,
+  discovered,
   fakeAcpRuntime,
   localInstance,
   memoryJournal,
@@ -57,6 +58,7 @@ describe("ACP Agents settings", () => {
           { slug: "qfmodel", name: "Qwen", isCustom: false, capabilities: null },
           { slug: "dfmodel", name: "DeepSeek", isCustom: false, capabilities: null },
         ],
+        ...discovered(),
       }),
     ]);
     main.runtime.inspect.mockImplementation(async ({ instanceId }) =>

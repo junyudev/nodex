@@ -3,6 +3,8 @@ import {
   acpCommandLine,
   acpComposerSetupHint,
   acpFailureCopy,
+  acpImportedHistoryEmptyState,
+  acpPendingImportedHistory,
   acpInstanceName,
   acpInstanceStatus,
   acpProgressText,
@@ -15,6 +17,7 @@ import {
 } from "./acp-agent-model";
 import {
   localInstance,
+  discovered,
   providerSnapshot,
   readyInspection,
   registryAgent,
@@ -92,7 +95,8 @@ describe("ACP instance status", () => {
     expect(status({ status: "unsupported" } as never)).toMatchObject({ kind: "unsupported" });
   });
 
-  test("the startup Default alone doesn't make an unconnected Agent ready", () => {
+  test("discovery, not installation or sign-in, makes an Agent ready", () => {
+    const model = { slug: "qfmodel", name: "Qwen", isCustom: false, capabilities: null };
     const startup = {
       slug: "default",
       name: "Default",
@@ -101,23 +105,37 @@ describe("ACP instance status", () => {
       capabilities: null,
     };
     const base = { instance: localInstance(), inspection: ready, activity: undefined };
+    // Installed and signed in, but nothing has connected yet.
     expect(
-      acpInstanceStatus({ ...base, provider: providerSnapshot({ models: [startup] }) }),
+      acpInstanceStatus({
+        ...base,
+        provider: providerSnapshot({ auth: { status: "authenticated" }, models: [model] }),
+      }),
     ).toMatchObject({ kind: "not-connected", action: "connect" });
-    expect(acpComposerSetupHint(providerSnapshot({ models: [startup] }))).toEqual({
-      hint: "Connect",
-      tone: "default",
-    });
-    // A real connection reports session capabilities, even for an Agent without a model API.
+    // A real session confirmed the Agent has no model API.
     expect(
       acpInstanceStatus({
         ...base,
         provider: providerSnapshot({
           models: [startup],
-          nativeSessions: { canList: true, canLoad: true, canResume: false },
+          ...discovered({ supportsModelSelection: false }),
         }),
       }),
-    ).toMatchObject({ kind: "ready", detail: "1 model" });
+    ).toMatchObject({ kind: "ready", detail: "Startup model" });
+    expect(
+      acpInstanceStatus({
+        ...base,
+        provider: providerSnapshot({
+          message: "spawn ENOENT",
+          ...discovered({ status: "failed" }),
+        }),
+      }),
+    ).toMatchObject({
+      kind: "failed",
+      label: "Couldn't connect",
+      detail: "spawn ENOENT",
+      action: "connect",
+    });
   });
 
   test("an installed Agent is ready only after the Runtime learned its models", () => {
@@ -134,6 +152,7 @@ describe("ACP instance status", () => {
             { slug: "qfmodel", name: "Qwen", isCustom: false, capabilities: null },
             { slug: "dfmodel", name: "DeepSeek", isCustom: false, capabilities: null },
           ],
+          ...discovered(),
         }),
       }),
     ).toMatchObject({ kind: "ready", detail: "2 models" });
@@ -252,7 +271,20 @@ describe("ACP presentation helpers", () => {
 describe("ACP composer setup", () => {
   test("only unusable enabled instances are offered, with their next step", () => {
     const model = { slug: "m", name: "M", isCustom: false, capabilities: null };
-    expect(acpComposerSetupHint(providerSnapshot({ models: [model] }))).toBeNull();
+    expect(acpComposerSetupHint(providerSnapshot({ models: [model], ...discovered() }))).toBeNull();
+    // A refused Connect is recorded on the provider, so every window offers sign-in.
+    expect(
+      acpComposerSetupHint(
+        providerSnapshot({
+          auth: { status: "unauthenticated" },
+          ...discovered({ status: "failed" }),
+        }),
+      ),
+    ).toEqual({ hint: "Sign in", tone: "default" });
+    expect(acpComposerSetupHint(providerSnapshot(discovered({ status: "failed" })))).toEqual({
+      hint: "Connect",
+      tone: "danger",
+    });
     expect(acpComposerSetupHint(providerSnapshot({ enabled: false }))).toBeNull();
     expect(
       acpComposerSetupHint(
@@ -278,5 +310,48 @@ describe("ACP sign-in terminal output", () => {
     expect(acpTerminalDelta(11, "Login: ok\r\n", 11)).toEqual({ reset: false, data: "" });
     // 40 characters were produced but the bounded tail keeps 10.
     expect(acpTerminalDelta(11, "0123456789", 51)).toEqual({ reset: true, data: "0123456789" });
+  });
+});
+
+describe("ACP imported history", () => {
+  const projection = (status: string, nativeImport?: { canLoad: boolean; canResume: boolean }) => ({
+    thread: { activeProviderThreadId: "imported" },
+    providerThreads: [
+      {
+        id: "older",
+        status: "not_loaded",
+        nativeMetadata: { nativeImport: { canLoad: true, canResume: false } },
+      },
+      { id: "imported", status, nativeMetadata: nativeImport ? { nativeImport } : null },
+    ],
+  });
+
+  test("only the active provider thread's unrestored import counts", () => {
+    expect(
+      acpPendingImportedHistory(projection("not_loaded", { canLoad: false, canResume: true })),
+    ).toEqual({
+      canLoad: false,
+      canResume: true,
+    });
+    // Restoration moves the thread on; the metadata alone no longer means anything is pending.
+    expect(
+      acpPendingImportedHistory(projection("idle", { canLoad: true, canResume: false })),
+    ).toBeNull();
+    expect(acpPendingImportedHistory(projection("not_loaded"))).toBeNull();
+    expect(
+      acpPendingImportedHistory({ thread: { activeProviderThreadId: null }, providerThreads: [] }),
+    ).toBeNull();
+  });
+
+  test("the empty transcript says whether earlier messages can come back", () => {
+    expect(acpImportedHistoryEmptyState("Qoder", { canLoad: true, canResume: false })).toEqual({
+      title: "Imported from Qoder",
+      description: "Send a message to continue. Qoder will try to restore the earlier messages.",
+    });
+    expect(
+      acpImportedHistoryEmptyState("Qoder", { canLoad: false, canResume: true }).description,
+    ).toBe(
+      "Send a message to continue. Qoder keeps the earlier context, but its messages can't be shown here.",
+    );
   });
 });
