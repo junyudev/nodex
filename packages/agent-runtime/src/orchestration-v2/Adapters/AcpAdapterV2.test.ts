@@ -2403,6 +2403,72 @@ describe("AcpAdapterV2", () => {
       }).pipe(Effect.provide(layerTest), Effect.scoped),
   );
 
+  it.live.each(["v1", "v2"] as const)(
+    "marks a known missing attached %s session as non-retryable without replacing it",
+    (protocol) =>
+      Effect.gen(function* () {
+        const instanceId = ProviderInstanceId.make(`acp-missing-attached-${protocol}`);
+        const threadId = ThreadId.make(`thread-missing-attached-${protocol}`);
+        const protocolEvents = yield* Queue.unbounded<EffectAcpProtocol.AcpProtocolLogEvent>();
+        const adapter = yield* makeAcpAdapterV2({
+          instanceId,
+          selfInvocation: yield* resolveSelfInvocation(),
+          flavor: {
+            driver: ACP_TEST_DRIVER,
+            capabilities: AcpProviderCapabilitiesV2,
+            makeRuntime: makeMockRuntime({
+              childProcessSpawner: yield* ChildProcessSpawner.ChildProcessSpawner,
+              mockAgentPath: yield* (yield* Path.Path).fromFileUrl(
+                new URL("../../../scripts/acp-model-agent.ts", import.meta.url),
+              ),
+              environment: { NODEX_ACP_MODEL_PROTOCOL: protocol, NODEX_ACP_FAIL_LOAD: "missing" },
+              protocolEvents,
+            }),
+          },
+        });
+        const runtimePolicy = ProviderAdapter.ProviderAdapterV2RuntimePolicy.make({
+          runtimeMode: "full-access",
+          interactionMode: "default",
+          cwd: process.cwd(),
+        });
+        const modelSelection = { instanceId, model: "model-a" };
+        const runtime = yield* adapter.openSession({
+          threadId,
+          providerSessionId: ProviderSessionId.make(`missing-attached-${protocol}`),
+          modelSelection,
+          runtimePolicy,
+        });
+        const providerThread = yield* runtime.ensureThread({
+          threadId,
+          modelSelection,
+          runtimePolicy,
+        });
+        const captured = {
+          ...providerThread,
+          nativeThreadRef: {
+            ...providerThread.nativeThreadRef!,
+            nativeId: "original-native-session",
+          },
+        };
+        yield* pollProtocolMethods(protocolEvents);
+        const failure = yield* runtime
+          .resumeThread({ providerThread: captured, modelSelection, runtimePolicy })
+          .pipe(Effect.flip);
+        assert.equal(failure._tag, "ProviderAdapterResumeThreadError");
+        if (failure._tag === "ProviderAdapterResumeThreadError") assert.isFalse(failure.retryable);
+        assert.equal(captured.nativeThreadRef.nativeId, "original-native-session");
+        const methods = yield* pollProtocolMethods(protocolEvents);
+        assert.equal(
+          methods.filter(
+            (method) => method === (protocol === "v1" ? "session/load" : "session/resume"),
+          ).length,
+          1,
+        );
+        assert.notInclude(methods, "session/new");
+        assert.notInclude(methods, "session/prompt");
+      }).pipe(Effect.provide(layerTest), Effect.scoped),
+  );
+
   it.live("cleans detached fixtures when an assertion aborts the test scope", () =>
     Effect.gen(function* () {
       if ((yield* HostProcess.Platform) !== "linux") return;

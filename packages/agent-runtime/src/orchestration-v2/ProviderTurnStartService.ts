@@ -61,11 +61,18 @@ const refusedBeforePrompt = (error: unknown): boolean =>
   Predicate.isTagged(error, "ClaudeBackgroundWorkBlocksQueryReplacementError") ||
   (Predicate.hasProperty(error, "cause") && refusedBeforePrompt(error.cause));
 
+const permanentNativeRecoveryFailure = (error: unknown): boolean =>
+  ((Predicate.isTagged(error, "ProviderAdapterOpenSessionError") ||
+    Predicate.isTagged(error, "ProviderAdapterResumeThreadError")) &&
+    Predicate.hasProperty(error, "retryable") &&
+    error.retryable === false) ||
+  (Predicate.hasProperty(error, "cause") && permanentNativeRecoveryFailure(error.cause));
+
 export interface ProviderTurnStartServiceV2Shape {
   /**
-   * Starts the run's provider turn. When `willRetry` is true, a session open
-   * failure is returned so the caller can retry. Otherwise the run is settled
-   * as failed.
+   * Starts the run's provider turn. Retryable startup failures return to the
+   * worker while `willRetry` is true. Known permanent recovery failures and
+   * exhausted retries settle the run as failed.
    */
   readonly start: (input: {
     readonly threadId: ThreadId;
@@ -600,7 +607,8 @@ export const layer: Layer.Layer<
           });
         });
       if (sessionResult._tag === "Failure") {
-        if (input.willRetry === true) return yield* sessionResult.failure;
+        if (input.willRetry === true && !permanentNativeRecoveryFailure(sessionResult.failure))
+          return yield* sessionResult.failure;
         yield* settleStartFailure({
           signal: "provider-session-open-failure",
           title:
@@ -620,7 +628,8 @@ export const layer: Layer.Layer<
         Effect.gen(function* () {
           const loaded = yield* Effect.result(load);
           if (loaded._tag === "Success") return loaded.success;
-          if (input.willRetry === true) return yield* loaded.failure;
+          if (input.willRetry === true && !permanentNativeRecoveryFailure(loaded.failure))
+            return yield* loaded.failure;
           yield* settleStartFailure({
             signal: "provider-thread-load-failure",
             title: "Provider turn failed to start",
@@ -919,7 +928,8 @@ export const layer: Layer.Layer<
           return resumed.success;
         }
         if (session.nativeResumeFailurePolicy === "fail") {
-          if (input.willRetry === true) return yield* resumed.failure;
+          if (input.willRetry === true && !permanentNativeRecoveryFailure(resumed.failure))
+            return yield* resumed.failure;
           yield* settleStartFailure({
             signal: "provider-native-session-recovery-failure",
             title: "Original Agent session could not be restored",

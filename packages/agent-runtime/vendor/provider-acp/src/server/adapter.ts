@@ -44,6 +44,7 @@ import * as FileSystem from "effect/FileSystem";
 import * as Fiber from "effect/Fiber";
 import * as Option from "effect/Option";
 import * as Ref from "effect/Ref";
+import * as Schema from "effect/Schema";
 import * as Scope from "effect/Scope";
 import * as Semaphore from "effect/Semaphore";
 import * as Stream from "effect/Stream";
@@ -457,6 +458,16 @@ export type AcpSubagentSessionEvent =
       readonly delegationId: string;
       readonly prompt: string;
     };
+
+// Only classify the observed permanent native-history rejection. Other internal
+// errors, missing capabilities and transport failures retain the caller's retry policy.
+const acpNativeSessionIsMissing = (cause: unknown): boolean =>
+  Schema.is(EffectAcpErrors.AcpRequestError)(cause) &&
+  (cause.method === "session/load" || cause.method === "session/resume") &&
+  cause.code === -32603 &&
+  Schema.is(
+    Schema.Struct({ details: Schema.Literal("No previous sessions found for this project.") }),
+  )(cause.data);
 
 export interface AcpAdapterV2SubagentUpdate {
   readonly nativeTaskId: string;
@@ -7731,6 +7742,7 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
                 Effect.mapError(
                   (cause) =>
                     new ProviderAdapter.ProviderAdapterResumeThreadError({
+                      ...(acpNativeSessionIsMissing(cause) ? { retryable: false } : {}),
                       driver,
                       providerSessionId: input.providerSessionId,
                       providerThreadId: threadInput.providerThread.id,
@@ -8362,6 +8374,7 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
           Effect.mapError(
             (cause) =>
               new ProviderAdapter.ProviderAdapterOpenSessionError({
+                ...(acpNativeSessionIsMissing(cause) ? { retryable: false } : {}),
                 driver,
                 providerSessionId: input.providerSessionId,
                 cause,

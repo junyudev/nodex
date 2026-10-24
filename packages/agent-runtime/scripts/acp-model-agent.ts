@@ -93,6 +93,23 @@ input.on("line", (line) => {
       return;
     case "session/load":
     case "session/resume":
+      if (["missing", "temporary"].includes(process.env.NODEX_ACP_FAIL_LOAD ?? "")) {
+        send({
+          jsonrpc: "2.0",
+          id: request.id,
+          error: {
+            code: -32603,
+            message: "Internal error",
+            data: {
+              details:
+                process.env.NODEX_ACP_FAIL_LOAD === "missing"
+                  ? "No previous sessions found for this project."
+                  : "Temporary session storage failure.",
+            },
+          },
+        });
+        return;
+      }
       if (process.env.NODEX_ACP_FAIL_LOAD === "1") {
         send({
           jsonrpc: "2.0",
