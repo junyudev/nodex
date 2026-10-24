@@ -1,0 +1,77 @@
+packages/agent-runtime/src/orchestration-v2/ProjectionStore.ts
+  s_f79dd9d0c7ac54::t_4d18dcb42adb01 452-453,477,5674-5677,9971-9972
+  s_f79dd9d0c7ac54::t_95c9b940bcc019 1882-1883,2561-2562,2586,2613,2615,2622-2627,2690-2694,8445-8446,8450-8451,8514,8518-8521,8525-8526,8536,8715,8729,8850
+  s_f79dd9d0c7ac54::t_53b901783ab5e4 7532,7534-7535,7540-7541,7558,7984-7988
+  s_f79dd9d0c7ac54::t_ec728938390213 2264,3976,4035,4038,4700,4748-4749,4783,4799,4895,4928
+  s_f79dd9d0c7ac54::t_317d2eaf9141ef 8923,8932,9012,9022
+  s_f79dd9d0c7ac54::t_95472857853e6b 5646,5648,5673,5830,8522-8524,9969-9970,10061-10064
+  s_f79dd9d0c7ac54::t_8e8c2fb2191dd7 84,457-458,474-476,478-483,800,1612-1618,1623,2271-2275,2322,2790-2795,3393-3396,3454,5510,5563,5715-5762,5764,5766-5767,5782-5796,5798,5800,5821-5822,5859,5862,5902,5904,5908,5915,5918,5937,5939,5968-5969,5974,5985,5990-5993,6008,6011,6018,6025,6031-6032,7711,7715,9883,10022-10060,10066-10073,10075-10161
+packages/agent-runtime/src/orchestration-v2/TurnStartReads.test.ts
+  s_f79dd9d0c7ac54::t_147b0b54ca1f82 1026-1027,1032-1033,1038-1059,1061-1062
+  s_f79dd9d0c7ac54::t_bf5d4e2ab8d24a 1037,1065
+  s_f79dd9d0c7ac54::t_9a79958487c521 29,298,308-313,317-318,387-392,513,692,857-884,886-1025,1028-1031,1034-1036,1060,1063-1064,1066-1124
+  s_f79dd9d0c7ac54::t_ea8d0ed6b47b33 885
+  s_f79dd9d0c7ac54::t_183841fc9eb53b 1125-1143
+packages/agent-runtime/src/orchestration-v2/Orchestrator.ts
+  s_f79dd9d0c7ac54::t_4d18dcb42adb01 715-716,891,1490-1492,1537,1540,1552,4338,4998-5000,5363,5393-5395,5914,5916-5919,5963-5965,5968,6131,9916-9918,9929-9931,11568-11571
+docs/product-specs/agent-runtime-behavior.md
+  s_f79dd9d0c7ac54::t_4d18dcb42adb01 185-186,232-246
+packages/agent-runtime/src/orchestration-v2/testkit/ProviderTurnStartMemory.fixture.mjs
+  s_f79dd9d0c7ac54::t_4d18dcb42adb01 23,36,56
+packages/agent-runtime/src/nodex/NativeInteraction.ts
+  s_f79dd9d0c7ac54::t_52830384724f72 366
+packages/agent-runtime/src/orchestration-v2/Adapters/CodexAdapterV2.ts
+  s_f79dd9d0c7ac54::t_a5443d8646d45e 3,7499-7515,7517
+packages/agent-runtime/src/orchestration-v2/CheckpointRestoreSafety.test.ts
+  s_f79dd9d0c7ac54::t_8f4b189f2ff034 5,30-31,90,101,193,199-206
+packages/agent-runtime/src/orchestration-v2/CheckpointRollbackService.test.ts
+  s_f79dd9d0c7ac54::t_8d5c7dc089bdc3 5,50-51,64,100,139,180,221,263,297,341,368-384,398-401,427-428,433-445,448,456-475,491,514-524,527-554,606,648-655,664-668
+packages/agent-runtime/src/orchestration-v2/CheckpointRollbackService.ts
+  s_f79dd9d0c7ac54::t_42d347b94e7051 3,74,117,133,135-137,139-144,255-266,268-271,273-283,285-316,346-374,384-388,406-419,430-435,452-466
+packages/agent-runtime/src/orchestration-v2/EffectWorker.ts
+  s_f79dd9d0c7ac54::t_6a99eb81c4ee30 408
+packages/agent-runtime/src/orchestration-v2/ProviderEventIngestor.test.ts
+  s_f79dd9d0c7ac54::t_56aa57a512c55a 552-558
+packages/agent-runtime/src/orchestration-v2/ProviderEventIngestor.ts
+  s_f79dd9d0c7ac54::t_999781b7877048 495,499-504,513,545-550,565-571,631,863-875
+packages/agent-runtime/src/orchestration-v2/ProviderSwitchService.ts
+  s_f79dd9d0c7ac54::t_bae984404b2ee5 108
+packages/agent-runtime/src/orchestration-v2/ProviderTurnStartService.ts
+  s_f79dd9d0c7ac54::t_ea53ca3860ab01 46,95,112,632-633,635-672,674-687,690-779,795,798,882-892,1154
+packages/agent-runtime/src/orchestration-v2/ThreadFork.head.test.ts
+  s_f79dd9d0c7ac54::t_eb95044c49ee6f 209
+packages/agent-runtime/src/orchestration-v2/ThreadForkService.test.ts
+  s_f79dd9d0c7ac54::t_a6b761182045ff 53,160,170,182,201
+packages/agent-runtime/src/orchestration-v2/ThreadForkService.ts
+  s_f79dd9d0c7ac54::t_ef764059c4dfaf 99,113
+packages/agent-runtime/src/orchestration-v2/runtimeLayer.ts
+  s_f79dd9d0c7ac54::t_fd954112840f55 154
+packages/agent-runtime/src/orchestration-v2/testkit/ProviderReplayHarness.ts
+  s_f79dd9d0c7ac54::t_4e0790202643a9 398
+packages/agent-runtime/src/orchestration-v2/testkit/ProviderSwitch.integration.test.ts
+  s_f79dd9d0c7ac54::t_da28e201beda5f 36-40,106-108,206-210,217-223,256-260,388-393,419-867
+packages/agent-runtime/src/provider/CodexThreadRevert.test.ts
+  s_f79dd9d0c7ac54::t_74365e52cfff88 6-7,95-146
+packages/agent-runtime/src/provider/CodexThreadRevert.ts
+  s_f79dd9d0c7ac54::t_f842721242b938 43-81
+packages/agent-runtime/vendor/contracts/src/orchestrationV2.ts
+  s_f79dd9d0c7ac54::t_829647ec96878f 404-405,410-416,605-606
+packages/agent-runtime/vendor/shared/src/orchestrationV2Timeline.ts
+  s_f79dd9d0c7ac54::t_e75acc4523f64c 14-27
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "84db0ab0acc6e56aa4789bd156ee51e1c59bfeca",
+  "prompts": {},
+  "sessions": {
+    "s_f79dd9d0c7ac54": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a151d6-b92f-7f41-b4e5-4834cb7752bd",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
