@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Security
+
+- Updated npm HTTP client dependencies to fix response-handling denial of service and integrity-check bypasses. Electron and the signed Browser execution runtime still require independent security updates.
+
 ### Added
 
 - Codex chats suggest a next message after a reply, even when you switch away. Accept a suggestion with Tab, Right Arrow or Enter, then edit or send it normally. Show predictions in General settings controls the feature across windows and restart.

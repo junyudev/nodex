@@ -102,6 +102,12 @@ export const STATIC_CHECKS: readonly StaticCheck[] = [
     name: "version surfaces",
   },
   {
+    command: ["run", "verify:node-runtime"],
+    group: "dependency-security",
+    id: "node-runtime-security",
+    name: "host Node version and security regression probes",
+  },
+  {
     command: ["pm", "audit", "--level", "low"],
     group: "dependency-security",
     id: "dependency-security",

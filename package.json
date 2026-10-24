@@ -10,6 +10,8 @@
   ],
   "main": "out/main/bootstrap.js",
   "scripts": {
+    "preinstall": "node scripts/verify-node-runtime.mts",
+    "verify:node-runtime": "node scripts/verify-node-runtime.mts && node scripts/probe-node-security.mjs",
     "generate:code-languages": "node scripts/generate-code-language-artifacts.mjs",
     "test": "tsx scripts/testing/run-tests.ts standard",
     "test:unit": "tsx scripts/testing/run-tests.ts unit",
@@ -349,7 +351,7 @@
     "zod": "4.4.3"
   },
   "engines": {
-    "node": ">=24.15.0 <25"
+    "node": ">=24.22.1 <25"
   },
   "packageManager": "pnpm@12.3.4"
 }

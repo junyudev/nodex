@@ -43,6 +43,7 @@ jobs:
             fi
           fi
           echo "base_sha=${base_sha}" >> "${GITHUB_OUTPUT}"
+      - uses: ./.github/actions/setup-vite-plus
       - name: Classify the landed change
         env:
           BASE_SHA: ${{ steps.base.outputs.base_sha }}
@@ -124,6 +125,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      - uses: ./.github/actions/setup-vite-plus
       - name: Require every selected main gate
         env:
           CI_GATE_PLAN_JSON: ${{ needs.classify.outputs.plan }}

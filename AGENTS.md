@@ -66,7 +66,7 @@ It ships as an Electron desktop app plus a CLI/HTTP API backed by SQLite.
 ## Runtime and Tooling
 
 - Package manager: pnpm
-- Development runtime: Node 24.15.0
+- Development runtime: the exact Node version in `.node-version`; `package.json#engines` has the same minimum. Run `vp run verify:node-runtime` after changing either declaration. Electron and the signed Browser/Agent execution runtime have independent Node versions; see `docs/SECURITY.md`.
 - Native addon: `node-pty` is rebuilt for Electron by `postinstall`; host Node and Electron have different ABIs even when they report the same Node version.
 - Engineering control plane: Vite+ with TypeScript 7, Oxlint, Oxfmt, and Vitest; Playwright for Chromium and Electron E2E
 - Language: TypeScript (`strict` mode)

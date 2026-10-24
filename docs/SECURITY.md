@@ -109,6 +109,37 @@ read through the authenticated Profile and exact execution identity boundary.
   this chain; review it before changing the logger's message construction or
   adding `sprintf-js` to runtime dependencies.
 
+### Node runtime security
+
+Treat host Node, Electron's embedded Node, and the signed Browser execution
+closure as separate patch owners. The Agent Runtime, Browser/Computer Use tools,
+and workspace Node tools use the verified Browser closure, including in ordinary
+development. Changing `.node-version` does not update those processes.
+
+`.node-version` is the contributor/CI pin and the minimum in `package.json#engines`.
+The dependency-free preinstall guard rejects unsupported hosts and verifies
+pin/engine consistency when lifecycle scripts are enabled.
+Every workflow that invokes host `node` uses
+the shared Vite+ setup, which verifies the exact version before dependency scripts.
+The dependency-security gate runs `vp run verify:node-runtime` in addition to the
+registry audit. Pin and probe changes select that gate. npm-installed Undici
+copies are patched separately, preserving their consumer's major version.
+
+For every Node security release, record each executable's owner, actual version
+or signed artifact identity, affected APIs, and reachable input paths. Run
+`node scripts/probe-node-security.mjs` with each candidate executable and retain
+its JSON output. These safe, offline probes provide regression evidence for
+DNS/TLS and a Brotli API marker; they are not an exploit or complete CVE test.
+The Brotli library version alone is insufficient because Node backports fixes.
+
+Do not replace a binary inside the signed Browser closure or weaken its manifest,
+compatibility, or signature checks. Upgrade it through its owning release workflow.
+Electron upgrades require their own release-note review and native/packaged tests;
+an unchanged Node version can contain backports, and a newer Electron version is
+not proof of a Node fix. Record unresolved vendor runtimes explicitly and do not
+describe a host-toolchain update as a fully patched desktop release. See the
+[October 2026 assessment](security/nodejs-october-2026.md) for evidence and remaining work.
+
 ### Release supply chain
 
 - Pull-request CI has only `contents: read`, does not bind a GitHub environment,
