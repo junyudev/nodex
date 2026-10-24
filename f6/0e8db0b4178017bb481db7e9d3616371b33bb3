@@ -1,0 +1,52 @@
+packages/agent-runtime/src/nodex/AcpManagement.integration.test.ts
+  s_9cccd37e800d7a::t_1cdc6dd6a39988 323
+  s_9cccd37e800d7a::t_70f4eb846d111a 324-326
+packages/agent-runtime/scripts/acp-model-agent.ts
+  s_9cccd37e800d7a::t_fa352cecb4912d 4
+  s_9cccd37e800d7a::t_d138b99b38f5a1 10
+  s_9cccd37e800d7a::t_711991aad709ae 11-13,64-68
+packages/agent-runtime/src/provider/ModelInputCapabilities.test.ts
+  s_9cccd37e800d7a::t_c0018fbc21c703 104,143-173,177,196-201
+  s_9cccd37e800d7a::t_1dd5d7a6dcd8e3 9-12
+packages/agent-runtime/src/orchestration-v2/Adapters/AcpAdapterV2.test.ts
+  s_9cccd37e800d7a::t_d138b99b38f5a1 838-889,938
+  s_9cccd37e800d7a::t_bfa90bc9cd93e1 890-937,939-942
+packages/agent-runtime/src/nodex/AcpModelAdmission.integration.test.ts
+  s_9cccd37e800d7a::t_e4b20c58c0fdbf 1-12,18,158-159
+  s_9cccd37e800d7a::t_1cdc6dd6a39988 13-17,19-157
+  s_9cccd37e800d7a::t_1f70211b68c36f 160-161
+packages/agent-runtime/vendor/contracts/src/acpRegistry.ts
+  s_9cccd37e800d7a::t_524b5930fa0711 317
+packages/agent-runtime/vendor/provider-acp-registry/src/server/AcpRegistryRuntimeCoordinator.test.ts
+  s_9cccd37e800d7a::t_d958e79d379e8c 148,154
+packages/agent-runtime/vendor/provider-acp-registry/src/server/adapter.ts
+  s_9cccd37e800d7a::t_d74e3a1b171b04 203
+packages/agent-runtime/vendor/provider-acp-registry/src/server/auth.test.ts
+  s_9cccd37e800d7a::t_00ca0d4b4fd2fc 228-233
+packages/agent-runtime/vendor/provider-acp-registry/src/server/auth.ts
+  s_9cccd37e800d7a::t_a6a4db6c2489a3 13,23,40,44,47-49,81-92,423-427
+packages/agent-runtime/vendor/provider-acp-registry/src/server/driver.test.ts
+  s_9cccd37e800d7a::t_26204ede14341e 9,69,116,130,155,177,268,309-341,343-352,354,356-361,438
+packages/agent-runtime/vendor/provider-acp-registry/src/server/driver.ts
+  s_9cccd37e800d7a::t_60f55066957749 101,118-122
+packages/agent-runtime/vendor/provider-acp-registry/src/server/probe.ts
+  s_9cccd37e800d7a::t_11ddd2cf00df0e 206,231
+packages/agent-runtime/vendor/provider-acp/src/server/adapter.ts
+  s_9cccd37e800d7a::t_46ed3627497ede 247-248,6594-6598
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "f60e8db0b4178017bb481db7e9d3616371b33bb3",
+  "prompts": {},
+  "sessions": {
+    "s_9cccd37e800d7a": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a16d80-f1cc-7471-9f61-cb6ea1bc793d",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
