@@ -35,6 +35,7 @@ function catalogWithInspection(
   inspection: AcpRegistrySupport.AcpRegistryInspection,
 ): AcpRegistrySupport.AcpRegistryCatalog["Service"] {
   return {
+    preview: () => Effect.die("unused preview"),
     search: () => Effect.die("unused search"),
     prepare: () => Effect.die("unused prepare"),
     inspect: () => Effect.succeed(inspection),
@@ -50,6 +51,7 @@ describe("acpRegistrySnapshotReadiness", () => {
       settings: decodeSettings({ agentId: "test-agent" }),
       checkedAt: "2026-08-13T10:00:00.000Z",
       inspection: {
+        latestVersion: null,
         status: "ready",
         agentId: "test-agent",
         version: "1.0.0",
@@ -96,6 +98,7 @@ describe("acpRegistrySnapshotReadiness", () => {
       settings: decodeSettings({ agentId: "test-agent" }),
       checkedAt: "2026-08-13T10:00:00.000Z",
       inspection: {
+        latestVersion: null,
         status: "ready",
         agentId: "test-agent",
         version: "1.0.0",
@@ -133,6 +136,7 @@ describe("acpRegistrySnapshotReadiness", () => {
       settings: decodeSettings({ agentId: "test-agent" }),
       checkedAt: "2026-08-13T10:00:00.000Z",
       inspection: {
+        latestVersion: null,
         status: "ready",
         agentId: "test-agent",
         version: "1.0.0",
@@ -181,6 +185,7 @@ describe("acpRegistrySnapshotReadiness", () => {
   it("maps registry inspection status to provider readiness", () => {
     expect(
       acpRegistrySnapshotReadiness({
+        latestVersion: null,
         status: "ready",
         agentId: "gemini-cli",
         version: "1.2.3",
@@ -190,6 +195,7 @@ describe("acpRegistrySnapshotReadiness", () => {
 
     expect(
       acpRegistrySnapshotReadiness({
+        latestVersion: null,
         status: "missing_runner",
         agentId: "gemini-cli",
         version: "1.2.3",
@@ -200,6 +206,7 @@ describe("acpRegistrySnapshotReadiness", () => {
 
     expect(
       acpRegistrySnapshotReadiness({
+        latestVersion: null,
         status: "missing_runner",
         version: null,
         distribution: "local",
@@ -213,6 +220,7 @@ describe("acpRegistrySnapshotReadiness", () => {
 
     expect(
       acpRegistrySnapshotReadiness({
+        latestVersion: null,
         status: "unprepared",
         agentId: "zed-agent",
         version: "2.0.0",
@@ -239,6 +247,7 @@ describe("acpRegistrySnapshotReadiness", () => {
       }),
       checkedAt: "2026-08-13T10:00:00.000Z",
       inspection: {
+        latestVersion: null,
         status: "ready",
         agentId: "test-agent",
         version: "1.0.0",
@@ -297,6 +306,7 @@ describe("acpRegistrySnapshotReadiness", () => {
       settings: decodeSettings({ agentId: "test-agent" }),
       checkedAt: "2026-08-13T10:00:00.000Z",
       inspection: {
+        latestVersion: null,
         status: "ready",
         agentId: "test-agent",
         version: "1.0.0",
@@ -334,6 +344,7 @@ describe("acpRegistrySnapshotReadiness", () => {
         }),
         checkedAt: "2026-08-13T10:00:00.000Z",
         inspection: {
+          latestVersion: null,
           status: "ready",
           agentId: "test-agent",
           version: source === "local" ? null : "1.0.0",
@@ -408,6 +419,7 @@ describe("acpRegistrySnapshotReadiness", () => {
         Effect.provideService(
           AcpRegistrySupport.AcpRegistryCatalog,
           catalogWithInspection({
+            latestVersion: null,
             status: "ready",
             agentId: "test-agent",
             version: "1.0.0",
@@ -436,6 +448,7 @@ describe("acpRegistrySnapshotReadiness", () => {
         Effect.provideService(
           AcpRegistrySupport.AcpRegistryCatalog,
           catalogWithInspection({
+            latestVersion: null,
             status: "ready",
             agentId: "test-agent",
             version: "1.0.0",

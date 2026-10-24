@@ -9,6 +9,8 @@ import {
   type AcpRegistrySearchInput,
   type AcpRegistrySearchResult,
   type AcpRegistryDistribution as AcpRegistryDistributionKind,
+  type AcpRegistryDistributionAvailability,
+  type AcpRegistryInstallPreview,
 } from "@t3tools/contracts";
 import type { AcpRegistryDistributionPreference } from "../settings.ts";
 import type { AcpRegistrySettings } from "../settings.ts";
@@ -457,7 +459,7 @@ export interface ResolvedAcpRegistryAgent {
   readonly spawn: AcpSessionRuntime.AcpSpawnInput;
 }
 
-export type AcpRegistryInspection =
+type AcpRegistryInstallationInspection =
   | { readonly status: "unconfigured" }
   | { readonly status: "not_found"; readonly agentId: string }
   | {
@@ -491,6 +493,11 @@ export type AcpRegistryInspection =
       readonly documentationUrl?: string;
     };
 
+export type AcpRegistryInspection = AcpRegistryInstallationInspection & {
+  /** Most recently cached catalog version; passive inspection never refreshes the network. */
+  readonly latestVersion: string | null;
+};
+
 export interface AcpRegistryInstallProgress {
   readonly phase: "downloading" | "verifying" | "extracting" | "installing";
   readonly downloadedBytes: number;
@@ -504,6 +511,9 @@ export class AcpRegistryCatalog extends Context.Service<
     readonly search: (
       input: AcpRegistrySearchInput,
     ) => Effect.Effect<AcpRegistrySearchResult, AcpRegistryError>;
+    readonly preview: (
+      input: AcpRegistryPrepareInput,
+    ) => Effect.Effect<AcpRegistryInstallPreview, AcpRegistryError>;
     readonly prepare: (
       input: AcpRegistryPrepareInput,
       onProgress?: Progress,
@@ -724,14 +734,14 @@ export const makeAcpRegistryCatalog = Effect.fn("AcpRegistryCatalog.make")(funct
         reason: "install_failed",
         detail: "The selected ACP installation does not match this Agent configuration.",
       });
-    return receipt.agent;
+    return receipt;
   });
   const recordInstallation = Effect.fn("AcpRegistryCatalog.recordInstallation")(
     function* (agent: AcpRegistryAgent, distribution: AcpRegistryDistributionKind) {
       const content = JSON.stringify({ agent, distribution });
-      const installationId = yield* sha256Hex(new TextEncoder().encode(content));
+      const { installationId, receiptPath } = yield* installationIdentity(agent, distribution);
       yield* fileSystem.makeDirectory(installationsDirectory, { recursive: true });
-      const destination = path.join(installationsDirectory, `${installationId}.json`);
+      const destination = receiptPath;
       const temporary = `${destination}.pending`;
       yield* fileSystem.writeFileString(temporary, content, { mode: 0o600 });
       yield* fileSystem.rename(temporary, destination);
@@ -746,6 +756,19 @@ export const makeAcpRegistryCatalog = Effect.fn("AcpRegistryCatalog.make")(funct
         }),
     ),
   );
+
+  const installationIdentity = Effect.fnUntraced(function* (
+    agent: AcpRegistryAgent,
+    distribution: AcpRegistryDistributionKind,
+  ) {
+    const installationId = yield* sha256Hex(
+      new TextEncoder().encode(JSON.stringify({ agent, distribution })),
+    );
+    return {
+      installationId,
+      receiptPath: path.join(installationsDirectory, `${installationId}.json`),
+    };
+  });
 
   const reservePreparedBinary = Effect.fn("AcpRegistryCatalog.reservePreparedBinary")(function* (
     agentId: string,
@@ -1418,7 +1441,8 @@ export const makeAcpRegistryCatalog = Effect.fn("AcpRegistryCatalog.make")(funct
   const binaryPaths = (agent: AcpRegistryAgent, target: typeof AcpRegistryBinaryTarget.Type) => {
     const commandSegments = normalizeRegistryCommandPath(target.cmd);
     if (platformTarget === undefined || commandSegments === undefined) return undefined;
-    const installRoot = path.join(agentInstallRoot(agent), platformTarget);
+    const targetIdentity = Hex.encode(sha256(new TextEncoder().encode(JSON.stringify(target))));
+    const installRoot = path.join(agentInstallRoot(agent), platformTarget, targetIdentity);
     return {
       commandSegments,
       installRoot,
@@ -1646,15 +1670,50 @@ export const makeAcpRegistryCatalog = Effect.fn("AcpRegistryCatalog.make")(funct
     return agent;
   });
 
+  const distributionAvailability = (
+    agent: AcpRegistryAgent,
+    environment: NodeJS.ProcessEnv = hostEnvironment,
+  ): ReadonlyArray<AcpRegistryDistributionAvailability> =>
+    (["binary", "npx", "uvx"] as const).flatMap((kind) => {
+      if (agent.distribution[kind] === undefined) return [];
+      const selected = resolveAcpRegistryDistribution({ agent, preference: kind, platformTarget });
+      const archive = selected?.binaryTarget?.archive;
+      const format = archive === undefined ? "raw" : archiveKind(archive);
+      const runner =
+        packageManagerFor(kind) ??
+        (format === "raw" ? null : format === "zip" && platform !== "win32" ? "unzip" : "tar");
+      const reason =
+        selected === undefined
+          ? "unsupported_platform"
+          : selected.binaryTarget && binaryPaths(agent, selected.binaryTarget) === undefined
+            ? "unsupported_distribution"
+            : runner !== null && resolveExecutable(runner, platform, environment) === undefined
+              ? "runner_unavailable"
+              : null;
+      return [{ kind, available: reason === null, runner, reason }];
+    });
+
+  const selectDistribution = (
+    agent: AcpRegistryAgent,
+    preference: AcpRegistryDistributionPreference,
+    environment: NodeJS.ProcessEnv = hostEnvironment,
+  ) =>
+    resolveAcpRegistryDistribution({
+      agent,
+      preference:
+        preference === "auto"
+          ? (distributionAvailability(agent, environment).find((entry) => entry.available)?.kind ??
+            "auto")
+          : preference,
+      platformTarget,
+    });
+
   const compatibleDistribution = Effect.fn("AcpRegistryCatalog.compatibleDistribution")(function* (
     agent: AcpRegistryAgent,
     preference: AcpRegistryDistributionPreference,
+    environment: NodeJS.ProcessEnv = hostEnvironment,
   ) {
-    const distribution = resolveAcpRegistryDistribution({
-      agent,
-      preference,
-      platformTarget,
-    });
+    const distribution = selectDistribution(agent, preference, environment);
     if (distribution === undefined) {
       return yield* new AcpRegistryError({
         reason: platformTarget === undefined ? "unsupported_platform" : "unsupported_distribution",
@@ -1668,20 +1727,8 @@ export const makeAcpRegistryCatalog = Effect.fn("AcpRegistryCatalog.make")(funct
     Effect.gen(function* () {
       const registry = yield* refreshRegistry();
       const ranked = registry.agents.flatMap((agent) => {
-        const distribution = resolveAcpRegistryDistribution({
-          agent,
-          preference: "auto",
-          platformTarget,
-        });
         const rank = searchRank(agent, input.query);
-        const packageManager =
-          distribution === undefined ? undefined : packageManagerFor(distribution.kind);
-        const packageManagerAvailable =
-          packageManager === undefined ||
-          resolveExecutable(packageManager, platform, hostEnvironment) !== undefined;
-        return distribution === undefined || rank === undefined || !packageManagerAvailable
-          ? []
-          : [{ agent, distribution, rank }];
+        return rank === undefined ? [] : [{ agent, rank }];
       });
       ranked.sort(
         (left, right) =>
@@ -1690,23 +1737,74 @@ export const makeAcpRegistryCatalog = Effect.fn("AcpRegistryCatalog.make")(funct
           compareText(left.agent.id, right.agent.id),
       );
       return {
-        agents: ranked.slice(0, MAX_SEARCH_RESULTS).map(({ agent, distribution }) => ({
-          id: agent.id,
-          name: agent.name,
-          version: agent.version,
-          description: agent.description,
-          authors: agent.authors ?? [],
-          license: agent.license ?? null,
-          website: agent.website ?? null,
-          repository: agent.repository ?? null,
-          icon: agent.icon ?? null,
-          distribution: distribution.kind,
-          integrity:
-            distribution.kind === "binary" && distribution.binaryTarget?.sha256 !== undefined
-              ? "sha256"
-              : "registry",
-        })),
+        agents: ranked.slice(0, MAX_SEARCH_RESULTS).map(({ agent }) => {
+          const distributions = distributionAvailability(agent);
+          const recommended = distributions.find((entry) => entry.available);
+          const distribution = recommended
+            ? resolveAcpRegistryDistribution({
+                agent,
+                preference: recommended.kind,
+                platformTarget,
+              })
+            : undefined;
+          return {
+            id: agent.id,
+            name: agent.name,
+            version: agent.version,
+            description: agent.description,
+            authors: agent.authors ?? [],
+            license: agent.license ?? null,
+            website: agent.website ?? null,
+            repository: agent.repository ?? null,
+            icon: agent.icon ?? null,
+            distributions,
+            distribution: distribution?.kind ?? null,
+            integrity:
+              distribution === undefined
+                ? null
+                : distribution.binaryTarget?.sha256 !== undefined
+                  ? "sha256"
+                  : "registry",
+          };
+        }),
       } satisfies AcpRegistrySearchResult;
+    });
+
+  const preview: AcpRegistryCatalog["Service"]["preview"] = (input) =>
+    Effect.gen(function* () {
+      const agent = yield* findAgent(yield* loadCachedRegistry(), input.agentId);
+      const distribution = yield* compatibleDistribution(agent, input.distribution ?? "auto");
+      const availability = distributionAvailability(agent).find(
+        (entry) => entry.kind === distribution.kind,
+      )!;
+      const binary = distribution.binaryTarget;
+      const binaryRoot = binary ? binaryPaths(agent, binary)?.installRoot : undefined;
+      if (binary && binaryRoot === undefined)
+        return yield* new AcpRegistryError({
+          reason: "unsupported_distribution",
+          detail: "The selected Agent distribution does not have a valid executable path.",
+        });
+      const identity = yield* installationIdentity(agent, distribution.kind);
+      return {
+        agentId: agent.id,
+        installationId: identity.installationId,
+        version: agent.version,
+        distribution: distribution.kind,
+        integrity: binary?.sha256 === undefined ? "registry" : "sha256",
+        sha256: binary?.sha256 ?? null,
+        packageSpec: distribution.packageName ?? null,
+        archiveUrl: binary?.archive ?? null,
+        installDirectory:
+          binaryRoot ?? packageInstallRoot(agent, distribution.kind as "npx" | "uvx"),
+        receiptPath: identity.receiptPath,
+        runner: availability.runner,
+        runnerPath:
+          availability.runner === null
+            ? null
+            : (resolveExecutable(availability.runner, platform, hostEnvironment) ?? null),
+        available: availability.available,
+        reason: availability.reason,
+      } satisfies AcpRegistryInstallPreview;
     });
 
   const prepare: AcpRegistryCatalog["Service"]["prepare"] = (input, onProgress) =>
@@ -1714,6 +1812,15 @@ export const makeAcpRegistryCatalog = Effect.fn("AcpRegistryCatalog.make")(funct
       const registry = yield* refreshRegistry();
       const agent = yield* findAgent(registry, input.agentId);
       const distribution = yield* compatibleDistribution(agent, input.distribution ?? "auto");
+      if (
+        input.expectedInstallationId !== undefined &&
+        input.expectedInstallationId !==
+          (yield* installationIdentity(agent, distribution.kind)).installationId
+      )
+        return yield* new AcpRegistryError({
+          reason: "install_failed",
+          detail: "The Agent distribution changed. Refresh its installation preview before installing.",
+        });
       if (distribution.kind === "binary") {
         // A PATH executable can be a different version with different ACP
         // capabilities. Only an explicit command override opts into that copy.
@@ -1753,7 +1860,10 @@ export const makeAcpRegistryCatalog = Effect.fn("AcpRegistryCatalog.make")(funct
         )
       : Effect.void;
 
-  const inspect: AcpRegistryCatalog["Service"]["inspect"] = (settings, environment) =>
+  const inspectInstallation = (
+    settings: AcpRegistrySettings,
+    environment?: NodeJS.ProcessEnv,
+  ): Effect.Effect<AcpRegistryInstallationInspection, AcpRegistryError> =>
     Effect.gen(function* () {
       if (settings.source === "local") {
         const command = settings.commandPath.trim();
@@ -1772,15 +1882,15 @@ export const makeAcpRegistryCatalog = Effect.fn("AcpRegistryCatalog.make")(funct
       if (agentId.length === 0) return { status: "unconfigured" } as const;
       const pinned = yield* installedAgent(settings);
       const agent =
-        pinned ??
+        pinned?.agent ??
         (yield* loadCachedRegistry()).agents.find((candidate) => candidate.id === agentId);
       if (agent === undefined) return { status: "not_found", agentId } as const;
       const documentationUrl = agent.website ?? agent.repository;
-      const distribution = resolveAcpRegistryDistribution({
+      const distribution = selectDistribution(
         agent,
-        preference: settings.distribution,
-        platformTarget,
-      });
+        pinned?.distribution ?? settings.distribution,
+        environment,
+      );
       if (distribution === undefined) {
         return { status: "unsupported", agentId, version: agent.version } as const;
       }
@@ -1885,6 +1995,20 @@ export const makeAcpRegistryCatalog = Effect.fn("AcpRegistryCatalog.make")(funct
           } as const);
     });
 
+  const inspect: AcpRegistryCatalog["Service"]["inspect"] = (settings, environment) =>
+    Effect.gen(function* () {
+      const inspection = yield* inspectInstallation(settings, environment);
+      const cached =
+        settings.source === "local"
+          ? undefined
+          : yield* loadCachedRegistry().pipe(Effect.orElseSucceed(() => undefined));
+      return {
+        ...inspection,
+        latestVersion:
+          cached?.agents.find((agent) => agent.id === settings.agentId)?.version ?? null,
+      };
+    });
+
   const applyAgentEnvironment = (
     settings: AcpRegistrySettings,
     environment: NodeJS.ProcessEnv,
@@ -1930,9 +2054,13 @@ export const makeAcpRegistryCatalog = Effect.fn("AcpRegistryCatalog.make")(funct
           detail: "ACP Registry provider requires a registry agent ID.",
         });
       }
-      const agent =
-        (yield* installedAgent(settings)) ?? (yield* findAgent(yield* loadRegistry(), agentId));
-      const distribution = yield* compatibleDistribution(agent, settings.distribution);
+      const pinned = yield* installedAgent(settings);
+      const agent = pinned?.agent ?? (yield* findAgent(yield* loadRegistry(), agentId));
+      const distribution = yield* compatibleDistribution(
+        agent,
+        pinned?.distribution ?? settings.distribution,
+        environment,
+      );
 
       let command: string;
       let args: ReadonlyArray<string>;
@@ -2140,6 +2268,7 @@ export const makeAcpRegistryCatalog = Effect.fn("AcpRegistryCatalog.make")(funct
 
   return AcpRegistryCatalog.of({
     search,
+    preview,
     prepare,
     inspect,
     resolve,

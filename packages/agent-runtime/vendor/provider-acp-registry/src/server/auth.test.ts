@@ -43,12 +43,14 @@ const resolved: AcpRegistrySupport.ResolvedAcpRegistryAgent = {
 const catalog: AcpRegistrySupport.AcpRegistryCatalog["Service"] = {
   inspect: () =>
     Effect.succeed({
+      latestVersion: null,
       status: "ready",
       agentId: "test-agent",
       version: "1.0.0",
       distribution: "binary",
     }),
   resolve: () => Effect.succeed(resolved),
+  preview: () => Effect.die("unused preview"),
   search: () => Effect.die("unused"),
   prepare: () => Effect.die("unused"),
   uninstallManagedBinary: () => Effect.die("unused"),
@@ -146,6 +148,7 @@ const makeHarness = (
         ...catalog,
         inspect: () =>
           Effect.sync(() => ({
+            latestVersion: null,
             status: "ready" as const,
             agentId: "test-agent",
             version,

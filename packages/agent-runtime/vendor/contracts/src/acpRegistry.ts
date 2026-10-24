@@ -56,6 +56,16 @@ export type AcpRegistrySearchInput = typeof AcpRegistrySearchInput.Type;
 
 const AcpRegistryUrl = Schema.String.check(Schema.isMaxLength(2_048));
 
+export const AcpRegistryDistributionAvailability = Schema.Struct({
+  kind: AcpRegistryDistribution,
+  available: Schema.Boolean,
+  runner: Schema.NullOr(Schema.Literals(["npm", "uv", "tar", "unzip"])),
+  reason: Schema.NullOr(
+    Schema.Literals(["unsupported_platform", "unsupported_distribution", "runner_unavailable"]),
+  ),
+});
+export type AcpRegistryDistributionAvailability = typeof AcpRegistryDistributionAvailability.Type;
+
 export const AcpRegistrySearchAgent = Schema.Struct({
   id: AcpRegistryAgentId,
   name: TrimmedNonEmptyString.check(Schema.isMaxLength(160)),
@@ -66,8 +76,9 @@ export const AcpRegistrySearchAgent = Schema.Struct({
   website: Schema.NullOr(AcpRegistryUrl),
   repository: Schema.NullOr(AcpRegistryUrl),
   icon: Schema.NullOr(AcpRegistryUrl),
-  distribution: AcpRegistryDistribution,
-  integrity: AcpRegistryIntegrity,
+  distribution: Schema.NullOr(AcpRegistryDistribution),
+  integrity: Schema.NullOr(AcpRegistryIntegrity),
+  distributions: Schema.Array(AcpRegistryDistributionAvailability).check(Schema.isMaxLength(3)),
 });
 export type AcpRegistrySearchAgent = typeof AcpRegistrySearchAgent.Type;
 
@@ -79,8 +90,27 @@ export type AcpRegistrySearchResult = typeof AcpRegistrySearchResult.Type;
 export const AcpRegistryPrepareInput = Schema.Struct({
   agentId: AcpRegistryAgentId,
   distribution: Schema.optionalKey(Schema.Literals(["auto", "binary", "npx", "uvx"])),
+  expectedInstallationId: Schema.optionalKey(Schema.String.check(Schema.isPattern(/^[a-f0-9]{64}$/u))),
 });
 export type AcpRegistryPrepareInput = typeof AcpRegistryPrepareInput.Type;
+
+export const AcpRegistryInstallPreview = Schema.Struct({
+  agentId: AcpRegistryAgentId,
+  installationId: Schema.String.check(Schema.isPattern(/^[a-f0-9]{64}$/u)),
+  version: TrimmedNonEmptyString.check(Schema.isMaxLength(128)),
+  distribution: AcpRegistryDistribution,
+  integrity: AcpRegistryIntegrity,
+  sha256: Schema.NullOr(Schema.String.check(Schema.isPattern(/^[a-f0-9]{64}$/iu))),
+  packageSpec: Schema.NullOr(Schema.String.check(Schema.isMaxLength(256))),
+  archiveUrl: Schema.NullOr(AcpRegistryUrl),
+  installDirectory: Schema.String.check(Schema.isMaxLength(4_096)),
+  receiptPath: Schema.String.check(Schema.isMaxLength(4_096)),
+  runner: AcpRegistryDistributionAvailability.fields.runner,
+  runnerPath: Schema.NullOr(Schema.String.check(Schema.isMaxLength(4_096))),
+  available: Schema.Boolean,
+  reason: AcpRegistryDistributionAvailability.fields.reason,
+});
+export type AcpRegistryInstallPreview = typeof AcpRegistryInstallPreview.Type;
 
 export const AcpRegistryPrepareResult = Schema.Struct({
   agentId: AcpRegistryAgentId,

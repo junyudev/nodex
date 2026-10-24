@@ -117,7 +117,13 @@ describe("ACP negotiated image support", () => {
       continuationKey: "acp-images",
       settings: Schema.decodeUnknownSync(AcpRegistrySettings)({ agentId: "test" }),
       checkedAt: "2026-10-22T00:00:00.000Z",
-      inspection: { status: "ready", agentId: "test", version: "1", distribution: "npx" },
+      inspection: {
+        latestVersion: null,
+        status: "ready",
+        agentId: "test",
+        version: "1",
+        distribution: "npx",
+      },
       probe: { probe, slashCommands: [], skills: [] },
     });
   };

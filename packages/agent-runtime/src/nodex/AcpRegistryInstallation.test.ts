@@ -105,11 +105,26 @@ it.live(
       expect(yield* catalog.inspect(settings(first.installationId))).toMatchObject({
         status: "ready",
         version: "1.2.3",
+        latestVersion: "2.0.0",
       });
       expect((yield* catalog.resolve(settings(first.installationId), home)).spawn.command).toBe(
         firstLaunch.spawn.command,
       );
       expect(downloads).toBe(2);
+      yield* fs.remove(`${home}/acp-registry/registry.json`);
+      const restarted = yield* Catalog.makeAcpRegistryCatalog({
+        cacheDir: home,
+        toolsDir: `${home}/tools`,
+        registryUrl,
+      }).pipe(
+        Effect.provideService(HttpClient.HttpClient, client),
+        Effect.provideService(HostProcess.Environment, process.env),
+      );
+      expect(yield* restarted.inspect(settings(first.installationId))).toMatchObject({
+        status: "ready",
+        version: "1.2.3",
+        latestVersion: null,
+      });
     }).pipe(Effect.provide(platform)),
   20_000,
 );
@@ -153,6 +168,97 @@ it.live(
   20_000,
 );
 
+it.live(
+  "keeps same-version binary sources separate and matches each preview to its installed bytes",
+  () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const home = yield* fs.makeTempDirectoryScoped({ prefix: "nodex-acp-binary-identity-" });
+      const firstBytes = "#!/bin/sh\nprintf first\n";
+      const secondBytes = "#!/bin/sh\nprintf second\n";
+      const secondArchiveUrl = `${archiveUrl}?revision=2`;
+      let revision = 1;
+      let downloads = 0;
+      const metadata = () => ({
+        binary: {
+          "linux-x86_64": {
+            archive: revision === 1 ? archiveUrl : secondArchiveUrl,
+            cmd: "agent",
+            sha256: createHash("sha256")
+              .update(revision === 1 ? firstBytes : secondBytes)
+              .digest("hex"),
+          },
+        },
+      });
+      const client = HttpClient.make((request) =>
+        Effect.sync(() => {
+          if (request.url !== registryUrl) downloads++;
+          return HttpClientResponse.fromWeb(
+            request,
+            new Response(
+              request.url === registryUrl
+                ? registry(metadata())
+                : request.url === archiveUrl
+                  ? firstBytes
+                  : secondBytes,
+            ),
+          );
+        }),
+      );
+      const catalog = yield* Catalog.makeAcpRegistryCatalog({
+        cacheDir: home,
+        toolsDir: `${home}/tools`,
+        registryUrl,
+      }).pipe(
+        Effect.provideService(HttpClient.HttpClient, client),
+        Effect.provideService(HostProcess.Environment, process.env),
+      );
+      yield* catalog.search({ query: "example-agent" });
+      const firstPreview = yield* catalog.preview({
+        agentId: "example-agent",
+        distribution: "binary",
+      });
+      const first = yield* catalog.prepare({
+        agentId: "example-agent",
+        distribution: "binary",
+        expectedInstallationId: firstPreview.installationId,
+      });
+      const firstLaunch = yield* catalog.resolve(settings(first.installationId), home);
+      expect(first.installationId).toBe(firstPreview.installationId);
+      expect(firstLaunch.spawn.command).toBe(
+        yield* fs.realPath(`${firstPreview.installDirectory}/agent`),
+      );
+      expect(yield* fs.exists(firstPreview.receiptPath)).toBe(true);
+
+      revision = 2;
+      yield* catalog.search({ query: "example-agent" });
+      const secondPreview = yield* catalog.preview({
+        agentId: "example-agent",
+        distribution: "binary",
+      });
+      expect(secondPreview.version).toBe(firstPreview.version);
+      expect(secondPreview.installDirectory).not.toBe(firstPreview.installDirectory);
+      const second = yield* catalog.prepare({
+        agentId: "example-agent",
+        distribution: "binary",
+        expectedInstallationId: secondPreview.installationId,
+      });
+      const secondLaunch = yield* catalog.resolve(settings(second.installationId), home);
+      expect(second.installationId).toBe(secondPreview.installationId);
+      expect(secondLaunch.spawn.command).toBe(
+        yield* fs.realPath(`${secondPreview.installDirectory}/agent`),
+      );
+      expect(yield* fs.exists(secondPreview.receiptPath)).toBe(true);
+      expect(yield* fs.readFileString(secondLaunch.spawn.command)).toBe(secondBytes);
+      expect(yield* fs.readFileString(firstLaunch.spawn.command)).toBe(firstBytes);
+      expect((yield* catalog.resolve(settings(first.installationId), home)).spawn.command).toBe(
+        firstLaunch.spawn.command,
+      );
+      expect(downloads).toBe(2);
+    }).pipe(Effect.provide(platform)),
+  20_000,
+);
+
 for (const distribution of ["npx", "uvx"] as const) {
   it.live(
     `prepares ${distribution} in its private root and launches without reinstalling`,
@@ -188,7 +294,7 @@ for (const distribution of ["npx", "uvx"] as const) {
         };
         const distributionMetadata =
           distribution === "npx"
-            ? { npx: { package: "@example/acp@1.2.3", args: ["--acp"] } }
+            ? { ...binary(), npx: { package: "@example/acp@1.2.3", args: ["--acp"] } }
             : { uvx: { package: "fast-agent-acp==0.10.1", args: ["--acp"] } };
         let online = true;
         const client = HttpClient.make((request) =>
@@ -222,6 +328,7 @@ for (const distribution of ["npx", "uvx"] as const) {
           home,
           environment,
         );
+        expect(launched.distribution).toBe(distribution);
         expect(launched.spawn.command.startsWith(`${home}/tools/example-agent/1.2.3/`)).toBe(true);
         expect(launched.spawn.args).toEqual(["--acp"]);
         if (distribution === "npx") {
