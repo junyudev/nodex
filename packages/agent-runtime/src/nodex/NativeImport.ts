@@ -1,15 +1,8 @@
 import { Buffer } from "node:buffer";
-import { randomUUID } from "node:crypto";
 import * as nodePath from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { fromMarkdown } from "mdast-util-from-markdown";
-import type {
-  ThreadItemEntry,
-  ThreadItemsListResponse,
-  ThreadTurnsListResponse,
-  ThreadTimelineListResponse,
-} from "@nodex/codex-app-server-protocol/v2";
-import type { CodexNativeInteraction } from "@t3tools/provider-core/server/nativeInteraction";
+import type { ThreadItemEntry } from "@nodex/codex-app-server-protocol/v2";
 import {
   CommandId,
   EventId,
@@ -20,7 +13,6 @@ import {
   type OrchestrationV2UnavailableImage,
   type UploadChatImageAttachment,
   ProjectId,
-  ProviderSessionId,
   ThreadId,
 } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
@@ -32,40 +24,72 @@ import * as Schema from "effect/Schema";
 import * as SqlClient from "effect/sql/SqlClient";
 import { EventSinkV2 } from "../orchestration-v2/EventSink.ts";
 import { ProjectionStoreV2 } from "../orchestration-v2/ProjectionStore.ts";
-import { ProviderSessionManagerV2 } from "../orchestration-v2/ProviderSessionManager.ts";
 import { ProviderAdapterRegistryV2 } from "../orchestration-v2/ProviderAdapterRegistry.ts";
+import { ProviderSessionManagerV2 } from "../orchestration-v2/ProviderSessionManager.ts";
 import { ThreadCommandExecutor } from "../orchestration-v2/ThreadCommandExecutor.ts";
 import { persistChatAttachments } from "../assets/PersistChatAttachments.ts";
-import { importHistoryEvents, importIdentity } from "./CodexImportHistory.ts";
-import { isAgentRuntimeCodexThreadSource } from "./CodexThreadSource.ts";
+import { importHistoryEvents, importIdentity } from "./NativeImportHistory.ts";
+import { openCodexImportSource } from "./CodexImportSource.ts";
+import { openClaudeImportSource } from "./ClaudeImportSource.ts";
 import {
-  AGENT_RUNTIME_CODEX_IMPORT_MAX_TIMEOUT_MS,
-  CODEX_THREAD_IMPORT_OPERATION_PREFIX,
-} from "./CodexImportLimits.ts";
+  AGENT_RUNTIME_NATIVE_IMPORT_MAX_TIMEOUT_MS,
+  NATIVE_THREAD_IMPORT_OPERATION_PREFIX,
+} from "./NativeImportLimits.ts";
 
-export const CodexImportInput = Schema.Struct({
+export const NativeImportInput = Schema.Struct({
   commandId: CommandId,
   threadId: ThreadId,
   projectId: ProjectId,
   title: Schema.NonEmptyString,
+  backendKind: Schema.Literals(["codex", "claude"]),
+  sourceHome: Schema.NonEmptyString,
   sourceNativeThreadId: Schema.NonEmptyString,
   modelSelection: ModelSelection,
   cwd: Schema.NonEmptyString,
 });
-type Input = typeof CodexImportInput.Type;
+export const NativeImportsFindInput = Schema.Struct({
+  backendKind: Schema.Literals(["codex", "claude"]),
+  sourceHome: Schema.NonEmptyString,
+  nativeThreadIds: Schema.Array(Schema.NonEmptyString).check(Schema.isMaxLength(100)),
+});
+
+export const makeFind = Effect.gen(function* () {
+  const sql = yield* SqlClient.SqlClient;
+  return Effect.fn("NativeImport.find")(function* (input: typeof NativeImportsFindInput.Type) {
+    if (input.nativeThreadIds.length === 0) return { imports: [] };
+    const rows = yield* sql<{
+      readonly source_native_thread_id: string;
+      readonly thread_id: string;
+    }>`
+      SELECT imports.source_native_thread_id, imports.thread_id FROM orchestration_v2_native_imports imports
+      JOIN orchestration_v2_projection_threads threads ON threads.thread_id = imports.thread_id
+      WHERE imports.backend_kind = ${input.backendKind} AND imports.source_home = ${input.sourceHome}
+        AND ${sql.in("imports.source_native_thread_id", input.nativeThreadIds)}
+        AND imports.phase = 'complete' AND threads.deleted_at IS NULL
+      ORDER BY imports.created_at ASC`;
+    return {
+      imports: rows.map((row) => ({
+        sourceNativeThreadId: row.source_native_thread_id,
+        threadId: row.thread_id,
+      })),
+    };
+  });
+});
+type Input = typeof NativeImportInput.Type;
 type Journal = {
   readonly command_id: string;
   readonly request_json: string;
   readonly phase: "prepared" | "history" | "complete";
   readonly boundary_item_id: string | null;
   readonly boundary_turn_id: string | null;
-  readonly history_mode: "legacy" | "paginated" | null;
+  readonly history_mode: "legacy" | "paginated" | "claude" | null;
   readonly source_cwd: string | null;
+  readonly source_revision: string | null;
   readonly history_cursor: string | null;
   readonly item_count: number;
 };
 const fail = (message: string) => Effect.fail(new Error(message));
-const requestCodec = Schema.toCodecJson(CodexImportInput);
+const requestCodec = Schema.toCodecJson(NativeImportInput);
 const encodeRequest = Schema.encodeSync(requestCodec);
 const decodeRequest = Schema.decodeUnknownSync(requestCodec);
 export const make = Effect.gen(function* () {
@@ -79,22 +103,25 @@ export const make = Effect.gen(function* () {
   const path = yield* Path.Path;
   const config = yield* ServerConfig;
   const read = (threadId: ThreadId) => sql<Journal>`
-    SELECT command_id, request_json, phase, boundary_item_id, boundary_turn_id, history_mode, source_cwd,
-      history_cursor, item_count FROM orchestration_v2_codex_imports WHERE thread_id = ${threadId}`;
+    SELECT command_id, request_json, phase, boundary_item_id, boundary_turn_id, history_mode, source_cwd, source_revision,
+      history_cursor, item_count FROM orchestration_v2_native_imports WHERE thread_id = ${threadId}`;
 
-  const run = Effect.fn("CodexImport.run")(function* (requested: Input) {
+  const run = Effect.fn("NativeImport.run")(function* (requested: Input) {
     const existing = (yield* read(requested.threadId))[0];
     const input = existing ? decodeRequest(JSON.parse(existing.request_json)) : requested;
     if (
       existing &&
       (existing.command_id !== requested.commandId ||
         input.sourceNativeThreadId !== requested.sourceNativeThreadId ||
+        input.backendKind !== requested.backendKind ||
+        input.sourceHome !== requested.sourceHome ||
         input.projectId !== requested.projectId ||
         input.cwd !== requested.cwd)
     )
       return yield* fail("This import identity already belongs to another request.");
     const previousThread = existing ? yield* store.getThread(input.threadId) : null;
-    if (previousThread?.deletedAt) return yield* fail("The import destination was deleted.");
+    if (previousThread?.deletedAt)
+      return yield* fail("The unfinished chat for this import was deleted.");
     if (existing?.phase === "complete") return { threadId: input.threadId };
     if (!nodePath.isAbsolute(input.cwd))
       return yield* fail("Choose an absolute working directory.");
@@ -103,9 +130,15 @@ export const make = Effect.gen(function* () {
       return yield* fail("The working directory is no longer available. Choose another folder.");
     const requestJson = JSON.stringify(encodeRequest(input));
     const adapter = yield* registry.get(input.modelSelection.instanceId);
-    if (adapter.driver !== "codex") return yield* fail("Codex import requires a Codex Agent.");
+    if (adapter.driver !== (input.backendKind === "claude" ? "claudeAgent" : "codex"))
+      return yield* fail("The destination Agent must match the source conversation.");
+    if (
+      !nodePath.isAbsolute(input.sourceHome) ||
+      nodePath.normalize(input.sourceHome) !== input.sourceHome
+    )
+      return yield* fail("Import requires an absolute captured source home.");
     const now = yield* DateTime.now;
-    const operationId = `${CODEX_THREAD_IMPORT_OPERATION_PREFIX}${input.commandId}`;
+    const operationId = `${NATIVE_THREAD_IMPORT_OPERATION_PREFIX}${input.commandId}`;
     if (!existing) {
       const destination = yield* sql`SELECT thread_id FROM orchestration_v2_projection_threads
         WHERE thread_id = ${input.threadId} LIMIT 1`;
@@ -140,14 +173,14 @@ export const make = Effect.gen(function* () {
       };
       yield* sql.withTransaction(
         Effect.gen(function* () {
-          yield* sql`INSERT INTO orchestration_v2_codex_imports
-          (thread_id, command_id, request_json, phase, created_at, updated_at)
-          VALUES (${input.threadId}, ${input.commandId}, ${requestJson}, 'prepared',
+          yield* sql`INSERT INTO orchestration_v2_native_imports
+          (thread_id, command_id, request_json, backend_kind, source_home, source_native_thread_id, phase, created_at, updated_at)
+          VALUES (${input.threadId}, ${input.commandId}, ${requestJson}, ${input.backendKind}, ${input.sourceHome}, ${input.sourceNativeThreadId}, 'prepared',
             ${DateTime.formatIso(now)}, ${DateTime.formatIso(now)})`;
           yield* sink.write({
             events: [
               {
-                id: EventId.make(`codex-import:admit:${importIdentity(input.commandId)}`),
+                id: EventId.make(`native-import:admit:${importIdentity(input.commandId)}`),
                 type: "thread.created",
                 threadId: input.threadId,
                 occurredAt: now,
@@ -160,135 +193,50 @@ export const make = Effect.gen(function* () {
     }
     let journal = (yield* read(input.threadId))[0]!;
     const current = yield* store.getThread(input.threadId);
-    if (current.deletedAt !== null) return yield* fail("The import destination was deleted.");
+    if (current.deletedAt !== null)
+      return yield* fail("The unfinished chat for this import was deleted.");
     if (journal.phase === "complete") return { threadId: input.threadId };
     if (current.executionHandoff?.operationId !== operationId)
       return yield* fail("The import no longer owns its destination conversation.");
-    const runtimePolicy = {
-      runtimeMode: "full-access" as const,
-      interactionMode: "default" as const,
-      cwd: input.cwd,
-    };
-    const sourceSessionId = ProviderSessionId.make(
-      `codex-import:${importIdentity(input.threadId)}`,
-    );
-    let sourceClosed = false;
-    const closeSource = Effect.fn("CodexImport.closeSource")(function* () {
-      if (sourceClosed) return;
-      yield* sessions.close(sourceSessionId);
-      const closedAt = yield* DateTime.now;
-      yield* sink.write({
-        events: [
-          {
-            id: EventId.make(randomUUID()),
-            type: "provider-session.detached",
-            threadId: input.threadId,
-            occurredAt: closedAt,
-            payload: {
-              providerSessionId: sourceSessionId,
-              detachedAt: closedAt,
-              reason: "Codex import history reader released",
-            },
-          },
-        ],
-      });
-      sourceClosed = true;
-    });
-    const session = yield* Effect.acquireRelease(
-      sessions.open({
-        threadId: input.threadId,
-        providerSessionId: sourceSessionId,
-        modelSelection: input.modelSelection,
-        runtimePolicy,
-      }),
-      () => closeSource().pipe(Effect.orDie),
-    );
-    const native = session.codexNative;
-    if (!native) return yield* fail("The Codex Agent does not expose native import capabilities.");
-    yield* native.initialize;
+    const source = yield* input.backendKind === "codex"
+      ? openCodexImportSource(input)
+      : openClaudeImportSource(input);
     if (journal.phase === "prepared") {
-      const source = (yield* native.request("thread/read", {
-        threadId: input.sourceNativeThreadId,
-        includeTurns: false,
-      })).thread;
-      if (source.id !== input.sourceNativeThreadId)
-        return yield* fail("Codex returned a different source conversation.");
-      if (!nodePath.isAbsolute(source.cwd))
-        return yield* fail("This Codex conversation has no working directory to import.");
-      if (source.parentThreadId || isAgentRuntimeCodexThreadSource(source.threadSource))
-        return yield* fail("Subagent and Nodex-run Codex conversations cannot be imported.");
-      if (source.ephemeral || source.status.type === "active")
-        return yield* fail(
-          "This Codex conversation is still running. Import it after it finishes.",
-        );
-      if (source.historyMode === "paginated")
-        yield* assertOrdinaryHistory(native, input.sourceNativeThreadId);
-      const latest = yield* native.request("thread/turns/list", {
-        threadId: input.sourceNativeThreadId,
-        limit: 1,
-        sortDirection: "desc",
-        itemsView: "full",
-      });
-      const turn = latest.data[0];
-      if (turn?.status === "inProgress")
-        return yield* fail(
-          "This Codex conversation is still running. Import it after it finishes.",
-        );
-      const boundary = turn?.items.at(-1);
-      if (turn && !boundary)
-        return yield* fail("Codex could not read the latest turn of this conversation.");
-      yield* sql`UPDATE orchestration_v2_codex_imports SET phase = 'history',
-        boundary_item_id = ${boundary?.id ?? null}, boundary_turn_id = ${turn?.id ?? null},
-        history_mode = ${source.historyMode}, source_cwd = ${source.cwd} WHERE thread_id = ${input.threadId}`;
+      const captured = yield* source.capture();
+      yield* sql`UPDATE orchestration_v2_native_imports SET phase = 'history',
+        boundary_item_id = ${captured.boundaryItemId}, boundary_turn_id = ${captured.boundaryTurnId},
+        history_mode = ${captured.historyMode}, source_cwd = ${captured.sourceCwd}, source_revision = ${captured.sourceRevision} WHERE thread_id = ${input.threadId}`;
       journal = (yield* read(input.threadId))[0]!;
     }
-    const nativeId = input.sourceNativeThreadId;
     if (journal.source_cwd === null)
-      return yield* fail("The import's captured source directory is unavailable.");
+      return yield* fail("The original conversation’s history folder is no longer available.");
     let cursor = journal.history_cursor;
     let ordinal = journal.item_count;
     const seen = new Set<string>();
     do {
-      const nativePage: ThreadItemsListResponse | ThreadTurnsListResponse =
-        journal.boundary_item_id === null
-          ? { data: [], nextCursor: null, backwardsCursor: null }
-          : journal.history_mode === "legacy"
-            ? yield* native.request("thread/turns/list", {
-                threadId: nativeId,
-                cursor,
-                limit: 20,
-                sortDirection: "asc",
-                itemsView: "full",
-              })
-            : yield* native.request("thread/items/list", {
-                threadId: nativeId,
-                cursor,
-                limit: 50,
-                sortDirection: "asc",
-              });
-      const entries: ThreadItemEntry[] =
-        journal.history_mode === "legacy"
-          ? (nativePage as ThreadTurnsListResponse).data.flatMap((turn) =>
-              turn.items.map((item) => ({
-                turnId: turn.id,
-                item,
-                startedAtMs: turn.startedAt === null ? null : turn.startedAt * 1000,
-                completedAtMs: turn.completedAt === null ? null : turn.completedAt * 1000,
-              })),
-            )
-          : (nativePage as ThreadItemsListResponse).data;
+      const nativePage = yield* source.page(
+        {
+          boundaryItemId: journal.boundary_item_id,
+          boundaryTurnId: journal.boundary_turn_id,
+          historyMode: journal.history_mode!,
+          sourceCwd: journal.source_cwd,
+          sourceRevision: journal.source_revision,
+        },
+        cursor,
+      );
+      const entries = nativePage.data;
       const boundaryIndex = entries.findIndex(
         (entry) =>
           entry.item.id === journal.boundary_item_id && entry.turnId === journal.boundary_turn_id,
       );
       if (journal.boundary_item_id !== null && nativePage.nextCursor === null && boundaryIndex < 0)
-        return yield* fail("This Codex conversation changed while its history was being copied.");
+        return yield* fail("The source conversation changed while its history was being copied.");
       const page = {
         data: boundaryIndex < 0 ? entries : entries.slice(0, boundaryIndex + 1),
         nextCursor: boundaryIndex >= 0 ? null : nativePage.nextCursor,
       };
       if (page.nextCursor !== null && (page.nextCursor === cursor || seen.has(page.nextCursor)))
-        return yield* fail("Codex import history repeated a continuation cursor.");
+        return yield* fail("Import history repeated a continuation cursor.");
       if (page.nextCursor !== null) seen.add(page.nextCursor);
       if (Buffer.byteLength(JSON.stringify(page.data), "utf8") > 8 * 1024 * 1024)
         return yield* fail("Part of this conversation is too large to import.");
@@ -306,6 +254,7 @@ export const make = Effect.gen(function* () {
         events.push(
           ...importHistoryEvents({
             threadId: input.threadId,
+            driver: adapter.driver,
             entry,
             ordinal: ++ordinal,
             fallbackAt: now,
@@ -316,12 +265,12 @@ export const make = Effect.gen(function* () {
         );
       }
       const completed = page.nextCursor === null;
-      if (completed) yield* closeSource();
+      if (completed) yield* source.close;
       const completedAt = yield* DateTime.now;
       yield* sql.withTransaction(
         Effect.gen(function* () {
           if (events.length > 0) yield* sink.write({ events });
-          yield* sql`UPDATE orchestration_v2_codex_imports SET
+          yield* sql`UPDATE orchestration_v2_native_imports SET
           history_cursor = ${page.nextCursor}, item_count = ${ordinal},
           updated_at = ${DateTime.formatIso(completedAt)} WHERE thread_id = ${input.threadId}`;
           if (!completed) return;
@@ -329,12 +278,12 @@ export const make = Effect.gen(function* () {
           const completion = yield* sink.commitCommand({
             commandId: input.commandId,
             threadId: input.threadId,
-            commandType: "thread.import-codex",
+            commandType: "thread.import-native",
             acceptedAt: completedAt,
             effects: [],
             events: [
               {
-                id: EventId.make(`codex-import:complete:${importIdentity(input.commandId)}`),
+                id: EventId.make(`native-import:complete:${importIdentity(input.commandId)}`),
                 type: "thread.metadata-updated",
                 threadId: input.threadId,
                 occurredAt: completedAt,
@@ -344,12 +293,12 @@ export const make = Effect.gen(function* () {
           });
           if (
             completion.receipt.threadId !== input.threadId ||
-            completion.receipt.commandType !== "thread.import-codex" ||
+            completion.receipt.commandType !== "thread.import-native" ||
             completion.receipt.status !== "accepted" ||
             !completion.committed
           )
             return yield* fail("The import command identity already belongs to another operation.");
-          yield* sql`UPDATE orchestration_v2_codex_imports SET phase = 'complete'
+          yield* sql`UPDATE orchestration_v2_native_imports SET phase = 'complete'
           WHERE thread_id = ${input.threadId}`;
         }),
       );
@@ -362,10 +311,12 @@ export const make = Effect.gen(function* () {
     commands
       .withLock(input.threadId, Effect.scoped(run(input)))
       .pipe(
-        Effect.timeout(AGENT_RUNTIME_CODEX_IMPORT_MAX_TIMEOUT_MS),
+        Effect.timeout(AGENT_RUNTIME_NATIVE_IMPORT_MAX_TIMEOUT_MS),
         Effect.provideService(FileSystem.FileSystem, fs),
         Effect.provideService(Path.Path, path),
         Effect.provideService(ServerConfig, config),
+        Effect.provideService(EventSinkV2, sink),
+        Effect.provideService(ProviderSessionManagerV2, sessions),
       );
 });
 
@@ -402,33 +353,7 @@ function hasUncopiedMedia(entry: ThreadItemEntry): boolean {
   return false;
 }
 
-const assertOrdinaryHistory = Effect.fn("CodexImport.assertOrdinaryHistory")(function* (
-  native: CodexNativeInteraction,
-  threadId: string,
-) {
-  let cursor: string | null = null;
-  const seen = new Set<string>();
-  do {
-    const page: ThreadTimelineListResponse = yield* native.request("thread/timeline/list", {
-      threadId,
-      cursor,
-      limit: 100,
-    });
-    if (
-      page.activeRealtimeSessionAtPageStart ||
-      page.data.some((entry) => entry.type === "realtime")
-    )
-      return yield* fail("Voice conversations cannot yet be copied into Nodex.");
-    if (Buffer.byteLength(JSON.stringify(page), "utf8") > 8 * 1024 * 1024)
-      return yield* fail("Part of this conversation is too large to import.");
-    if (page.nextCursor !== null && (page.nextCursor === cursor || seen.has(page.nextCursor)))
-      return yield* fail("Codex import timeline repeated a continuation cursor.");
-    cursor = page.nextCursor;
-    if (cursor !== null) seen.add(cursor);
-  } while (cursor !== null);
-});
-
-const persistImages = Effect.fn("CodexImport.persistImages")(function* (
+const persistImages = Effect.fn("NativeImport.persistImages")(function* (
   input: Input,
   entry: ThreadItemEntry,
   sourceCwd: string,
@@ -438,7 +363,9 @@ const persistImages = Effect.fn("CodexImport.persistImages")(function* (
     entry.item.type === "userMessage"
       ? entry.item.content
       : entry.item.type === "imageView"
-        ? [{ type: "localImage" as const, path: entry.item.path }]
+        ? entry.item.path.startsWith("data:image/")
+          ? [{ type: "image" as const, url: entry.item.path }]
+          : [{ type: "localImage" as const, path: entry.item.path }]
         : entry.item.type === "agentMessage"
           ? localMarkdownImagePaths(entry.item.text).map((path) => ({
               type: "localImage" as const,
@@ -538,7 +465,7 @@ const persistImages = Effect.fn("CodexImport.persistImages")(function* (
       : yield* persistChatAttachments({
           threadId: input.threadId,
           messageId: MessageId.make(
-            `codex-import:${importIdentity(input.threadId, entry.turnId, entry.item.id)}`,
+            `native-import:${importIdentity(input.threadId, entry.turnId, entry.item.id)}`,
           ),
           attachments: images,
         });

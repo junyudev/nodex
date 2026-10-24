@@ -11,12 +11,10 @@ import {
   parseMcpAppSandboxPartition,
   parseMcpAppSandboxSourceUrl,
 } from "../../src/shared/mcp-app/mcp-app-sandbox-contract";
-import type {
-  NativeSessionAttachResult,
-  NativeSessionCatalogPage,
-} from "../../src/shared/native-session-catalog";
+import type { NativeSessionCatalogPage } from "../../src/shared/native-session-catalog";
 import type { ProjectSession } from "../../src/shared/types";
 import { invokeIpc } from "./support/agent-smoke-harness";
+import { seedNativeHistoryBinding } from "./support/native-history-binding";
 import { nativeReadOnlyBenchmarkEnvironment } from "./support/native-transcript-benchmark-preflight";
 import {
   resolveNativeVisualizationFixtureRuntime,
@@ -349,15 +347,11 @@ test("retains native HTML guests across real Thread navigation and releases dele
     expect(path.resolve(catalog.nativeHome)).toBe(path.resolve(harness.profile.codexHome));
     const sessions: ProjectSession[] = [];
     for (const fixture of nativeFixtures) {
-      expect(catalog.entries.some((entry) => entry.nativeSessionId === fixture.threadId)).toBe(
-        true,
+      const entry = catalog.entries.find(
+        (candidate) => candidate.nativeSessionId === fixture.threadId,
       );
-      const attached = (await invokeIpc(page, "native-sessions:attach", {
-        backendKind: "codex",
-        nativeSessionId: fixture.threadId,
-        expectedHome: catalog.nativeHome,
-        projectId: null,
-      })) as NativeSessionAttachResult;
+      if (!entry) throw new Error("Native visualization fixture was not found in the catalog.");
+      const attached = await seedNativeHistoryBinding(harness.profile, catalog.nativeHome, entry);
       expect(attached.threadId).toBe(fixture.threadId);
       const session = (await invokeIpc(
         page,

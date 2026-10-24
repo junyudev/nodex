@@ -29,7 +29,7 @@ export const SETTINGS_PAGE_COMPONENTS: SettingsPageComponentRegistry = {
     default: (await import("./agent-settings-page")).AgentSettingsPage,
   })),
   import: lazy(async () => ({
-    default: (await import("./native-session-settings-page")).NativeSessionSettingsPage,
+    default: (await import("./conversation-import-settings-page")).ConversationImportSettingsPage,
   })),
   page: lazy(async () => ({
     default: (await import("./page-settings-page")).PageSettingsPage,

@@ -50,7 +50,7 @@ import { HostBridge } from "./HostBridge.ts";
 import * as Authority from "./Authority.ts";
 import * as NativeInteraction from "./NativeInteraction.ts";
 import * as ExecutionLocation from "./ExecutionLocation.ts";
-import * as CodexImport from "./CodexImport.ts";
+import * as NativeImport from "./NativeImport.ts";
 import * as NativeRuntimePolicy from "../orchestration-v2/RuntimePolicy.ts";
 import { TextGeneration } from "../textGeneration/TextGeneration.ts";
 import { make as makeThreadAttachmentReader } from "./Attachment.ts";
@@ -109,7 +109,8 @@ const NativeSource = Schema.Struct({
 });
 const VoiceClaim = { claimId: Schema.String, source: NativeSource };
 const AgentRequest = Schema.Union([
-  request("thread.import-codex", CodexImport.CodexImportInput),
+  request("thread.import-native", NativeImport.NativeImportInput),
+  request("native-imports.find", NativeImport.NativeImportsFindInput),
   request("execution.handoff.pending", Schema.Struct({ cursor: Schema.optional(Schema.String) })),
   request(
     "execution.handoff.hold",
@@ -463,7 +464,8 @@ export const make = Effect.fn("AgentRuntime.makeService")(function* (
     Effect.provide(NativeRuntimePolicy.layerFromProjectStore),
   );
   const executionLocation = yield* ExecutionLocation.make;
-  const importCodex = yield* CodexImport.make;
+  const importNative = yield* NativeImport.make;
+  const findNativeImports = yield* NativeImport.makeFind;
   const readAuthority = yield* Authority.make;
   const readNativeSessionAuthority = yield* Authority.makeNativeSession;
   const configuration = yield* Configuration.ServerConfig;
@@ -485,8 +487,10 @@ export const make = Effect.fn("AgentRuntime.makeService")(function* (
     input: typeof AgentRequest.Type,
   ) {
     switch (input.method) {
-      case "thread.import-codex":
-        return yield* importCodex(input.input);
+      case "thread.import-native":
+        return yield* importNative(input.input);
+      case "native-imports.find":
+        return yield* findNativeImports(input.input);
       case "execution.handoff.pending":
         return yield* projections.getExecutionHandoffs(input.input.cursor);
       case "execution.handoff.hold":

@@ -1,5 +1,5 @@
 import { readExecutionHandoff } from "./ExecutionHandoff.ts";
-import { CODEX_THREAD_IMPORT_OPERATION_PREFIX } from "../nodex/CodexImportLimits.ts";
+import { NATIVE_THREAD_IMPORT_OPERATION_PREFIX } from "../nodex/NativeImportLimits.ts";
 import type {
   OrchestrationV2SearchThreadInput,
   OrchestrationV2SearchThreadResult,
@@ -2543,7 +2543,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
     }
     if (
       command.type === "thread.metadata.update" &&
-      thread.executionHandoff?.operationId.startsWith(CODEX_THREAD_IMPORT_OPERATION_PREFIX) &&
+      thread.executionHandoff?.operationId.startsWith(NATIVE_THREAD_IMPORT_OPERATION_PREFIX) &&
       (command.executionHandoff !== undefined ||
         command.worktreePath !== undefined ||
         command.projectId !== undefined)

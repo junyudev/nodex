@@ -613,7 +613,6 @@ const agentImport = Layer.unwrap(
     return Layer.effect(
       AgentImportRuntime,
       makeAgentImportRuntime({
-        runtimeStateHome: platform.runtimeStateHome,
         codexHome: platform.codexHome,
       }),
     );

@@ -1,147 +1,82 @@
-import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import * as path from "node:path";
+import type { ExternalAgentConfigMigrationItem } from "@nodex/codex-app-server-protocol/v2/ExternalAgentConfigMigrationItem";
 import { assert, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Stream from "effect/Stream";
 import type { AgentImportProgress } from "../../shared/agent-import";
-import {
-  CodexAppServerCapabilities,
-  createCodexAppServerCapabilitySnapshot,
-} from "../codex-runtime/CodexAppServerCapabilities";
 import { CodexGateway } from "../codex-runtime/CodexGateway";
 import { make } from "./AgentImportRuntime";
 import { CodexApplicationEventHub, type CodexApplicationEvent } from "./CodexApplicationEventHub";
 import { CodexExternalAgentImportRuntime } from "./CodexExternalAgentImportRuntime";
-import { CodexSidebarSyncRuntime } from "./CodexSidebarSyncRuntime";
-import { CodexThreadDirectory, CodexThreadDirectoryError } from "./CodexThreadDirectory";
-import { ThreadCreationRuntime } from "./ThreadCreationRuntime";
-import { transparentThreadCreationRuntime } from "./ThreadCreationRuntime.test-support";
-import { CodexThreadTitlePersistence } from "./CodexThreadTitlePersistence";
-
-const SOURCE_THREAD_ID = "019c0000-0000-7000-8000-000000000003";
-const TARGET_THREAD_ID = "019c0000-0000-7000-8000-000000000004";
-
-interface ImportHarnessOptions {
-  readonly codexHome?: string;
-  readonly onObserveMetadata?: CodexThreadDirectory["Service"]["observeMetadata"];
-  readonly onAcceptImport?: CodexThreadDirectory["Service"]["acceptImportResult"];
-  readonly returnsTranscript?: boolean;
-  readonly parentThreadId?: string;
-}
 
 const temporaryRoot = Effect.acquireRelease(
-  Effect.sync(() => mkdtempSync(path.join(tmpdir(), "nodex-agent-import-"))),
+  Effect.sync(() => mkdtempSync(path.join(tmpdir(), "nodex-agent-setup-import-"))),
   (root) => Effect.sync(() => rmSync(root, { force: true, recursive: true })),
 );
 
-const prepareSession = (root: string) => {
-  const sourceHome = path.join(root, "source", ".codex-import");
-  const runtimeStateHome = path.join(root, "target", "agent");
-  const cwd = path.join(root, "workspace");
-  mkdirSync(path.join(sourceHome, "sessions"), { recursive: true });
-  mkdirSync(runtimeStateHome, { recursive: true });
-  mkdirSync(cwd, { recursive: true });
-  writeFileSync(
-    path.join(sourceHome, "session_index.jsonl"),
-    `${JSON.stringify({ id: SOURCE_THREAD_ID, thread_name: "Imported conversation" })}\n`,
-  );
-  writeFileSync(
-    path.join(sourceHome, "sessions", "rollout.jsonl"),
-    `${JSON.stringify({
-      payload: { cwd, id: SOURCE_THREAD_ID },
-      type: "session_meta",
-    })}\n`,
-  );
-  return { cwd, runtimeStateHome, sourceHome };
+const write = (file: string, contents: string) => {
+  mkdirSync(path.dirname(file), { recursive: true });
+  writeFileSync(file, contents);
 };
 
-const makeHarness = (runtimeStateHome: string, cwd: string, options: ImportHarnessOptions = {}) => {
-  const requests: Array<{
-    readonly method: string;
-    readonly params: unknown;
-    readonly scheduling: unknown;
-  }> = [];
-  const acceptedImports: unknown[] = [];
-  const titles: unknown[] = [];
-  const events: CodexApplicationEvent[] = [];
-  let sidebarSyncs = 0;
-
-  const capability = createCodexAppServerCapabilitySnapshot({
-    hostId: "local",
-    generation: 13,
-    userAgent: "codex-app-server/0.145.0-alpha.15",
+const prepareSource = (root: string) => {
+  const sourceHome = path.join(root, "source", ".codex");
+  const codexHome = path.join(root, "target", ".codex");
+  const rollout = JSON.stringify({
+    type: "session_meta",
+    payload: { id: "019c0000-0000-7000-8000-000000000003", cwd: path.join(root, "missing") },
   });
-  const requestLocal = ((method: string, params: unknown, scheduling: unknown) =>
-    Effect.sync(() => {
-      requests.push({ method, params, scheduling });
-      if (method === "thread/fork" || method === "thread/read") {
-        return {
-          cwd,
-          thread: {
-            cwd,
-            historyMode: "paginated",
-            id: method === "thread/read" ? SOURCE_THREAD_ID : TARGET_THREAD_ID,
-            parentThreadId: options.parentThreadId ?? null,
-            name: null,
-            turns: options.returnsTranscript ? [{ id: "poison-turn", items: [] }] : [],
-          },
-        };
-      }
-      if (method === "thread/delete") return {};
-      throw new Error(`Unexpected local request: ${method}`);
-    })) as CodexGateway["Service"]["requestLocal"];
+  const sessionPath = path.join(sourceHome, "sessions", "rollout.jsonl");
+  const archivePath = path.join(sourceHome, "archived_sessions", "rollout.jsonl");
+  write(sessionPath, rollout);
+  write(archivePath, rollout);
+  mkdirSync(codexHome, { recursive: true });
+  return { sourceHome, codexHome, sessionPath, archivePath, rollout };
+};
+
+const makeHarness = (
+  codexHome: string,
+  sourceHome: string,
+  migrations: readonly ExternalAgentConfigMigrationItem[] = [],
+) => {
+  const requests: Array<{ readonly method: string; readonly params: unknown }> = [];
+  const externalImports: Array<readonly ExternalAgentConfigMigrationItem[]> = [];
+  const events: CodexApplicationEvent[] = [];
+  const unsupported = () => Effect.die(new Error("Unexpected setup import gateway operation"));
   const gateway = CodexGateway.of({
     events: Stream.empty,
     localHostId: "local",
-    requestLocal,
-  } as unknown as CodexGateway["Service"]);
-  const directory = CodexThreadDirectory.of({
-    observeMetadata:
-      options.onObserveMetadata ??
-      ((input) =>
-        Effect.sync(() => {
-          acceptedImports.push(input);
-          return {} as never;
-        })),
-    acceptImportResult:
-      options.onAcceptImport ??
-      ((input) =>
-        Effect.sync(() => {
-          acceptedImports.push(input);
-          return {} as never;
-        })),
-  } as CodexThreadDirectory["Service"]);
-  const titlePersistence = CodexThreadTitlePersistence.of({
-    setRequired: (input: Parameters<CodexThreadTitlePersistence["Service"]["setRequired"]>[0]) =>
+    promoteQueuedCatalogPage: unsupported(),
+    requestLocal: ((method: string, params: unknown) =>
       Effect.sync(() => {
-        titles.push(input);
-        return true;
-      }),
-  } as unknown as CodexThreadTitlePersistence["Service"]);
-  const sidebar = CodexSidebarSyncRuntime.of({
-    sync: () =>
-      Effect.sync(() => {
-        sidebarSyncs += 1;
-        return {} as never;
-      }),
-  } as unknown as CodexSidebarSyncRuntime["Service"]);
-
+        requests.push({ method, params });
+        if (method === "externalAgentConfig/detect") return { items: migrations };
+        if (method === "config/batchWrite") return {};
+        throw new Error(`Unexpected setup import request: ${method}`);
+      })) as CodexGateway["Service"]["requestLocal"],
+    requestOnHost: unsupported,
+    requestRawOnHost: unsupported,
+    requestForThread: unsupported,
+    requestRawForThread: unsupported,
+    notifyLocal: unsupported,
+    connection: unsupported,
+    connectionChanges: () => Stream.die(new Error("Unexpected setup import gateway subscription")),
+    awaitReady: unsupported,
+    reconcileHost: unsupported,
+    removeHost: unsupported,
+    restartHost: unsupported,
+  });
   return {
-    acceptedImports,
-    events,
     requests,
-    sidebarSyncs: () => sidebarSyncs,
-    titles,
-    runtime: make({ runtimeStateHome, codexHome: options.codexHome ?? runtimeStateHome }).pipe(
-      Effect.provideService(
-        CodexAppServerCapabilities,
-        CodexAppServerCapabilities.of({
-          forHost: () => Effect.succeed(capability),
-          forThread: () => Effect.succeed(capability),
-          isCurrent: () => Effect.succeed(true),
-        }),
-      ),
+    externalImports,
+    events,
+    runtime: make({
+      codexHome,
+      sourceHomes: { codex: sourceHome, "claude-code": sourceHome },
+    }).pipe(
+      Effect.provideService(CodexGateway, gateway),
       Effect.provideService(
         CodexApplicationEventHub,
         CodexApplicationEventHub.of({
@@ -151,238 +86,139 @@ const makeHarness = (runtimeStateHome: string, cwd: string, options: ImportHarne
       ),
       Effect.provideService(
         CodexExternalAgentImportRuntime,
-        CodexExternalAgentImportRuntime.of({ run: () => Effect.die("unused") }),
+        CodexExternalAgentImportRuntime.of({
+          run: (items) =>
+            Effect.sync(() => {
+              externalImports.push(items);
+              return {
+                importId: "external-setup",
+                itemTypeResults: items.map(({ itemType, cwd }) => ({
+                  itemType,
+                  failures: [],
+                  successes: [{ itemType, cwd, source: null, target: null, title: null }],
+                })),
+              };
+            }),
+        }),
       ),
-      Effect.provideService(CodexGateway, gateway),
-      Effect.provideService(CodexSidebarSyncRuntime, sidebar),
-      Effect.provideService(CodexThreadDirectory, directory),
-      Effect.provideService(ThreadCreationRuntime, transparentThreadCreationRuntime),
-      Effect.provideService(CodexThreadTitlePersistence, titlePersistence),
     ),
   };
 };
 
-it.effect("imports a native rollout through the canonical services and records it once", () =>
+it.effect("copies selected setup without importing or changing conversations from that home", () =>
   Effect.scoped(
     Effect.gen(function* () {
       const root = yield* temporaryRoot;
-      const source = prepareSession(root);
-      const harness = makeHarness(source.runtimeStateHome, source.cwd);
+      const source = prepareSource(root);
+      write(path.join(source.sourceHome, "AGENTS.md"), "Use the shared project conventions.\n");
+      write(path.join(source.sourceHome, "skills", "review", "SKILL.md"), "Review a change.\n");
+      const harness = makeHarness(source.codexHome, source.sourceHome);
       const runtime = yield* harness.runtime;
-
       const scan = yield* runtime.scan("codex", source.sourceHome);
-      const sessionItem = scan.items.find((item) => item.kind === "sessions");
-      assert.isDefined(sessionItem);
-      const result = yield* runtime.apply({ scanId: scan.scanId, itemIds: [sessionItem.id] });
-
-      assert.deepEqual(result.importedThreadIds, [TARGET_THREAD_ID]);
       assert.deepEqual(
-        harness.requests.map(({ method }) => method),
-        ["thread/fork"],
+        scan.items.map(({ kind }) => kind),
+        ["instructions", "skills"],
       );
-      assert.deepEqual(harness.requests[0]?.scheduling, {
-        expectedHostId: "local",
-        expectedGeneration: 13,
+
+      const result = yield* runtime.apply({
+        scanId: scan.scanId,
+        itemIds: scan.items.map(({ id }) => id),
       });
-      assert.strictEqual(harness.acceptedImports.length, 1);
-      assert.deepEqual(harness.titles, [
-        { name: "Imported conversation", normalization: "trim", threadId: TARGET_THREAD_ID },
-      ]);
-      assert.strictEqual(harness.sidebarSyncs(), 1);
+      assert.deepEqual(
+        result.outcomes.map(({ successCount }) => successCount),
+        [1, 1],
+      );
+      assert.strictEqual(
+        readFileSync(path.join(source.codexHome, "AGENTS.md"), "utf8"),
+        "Use the shared project conventions.\n",
+      );
+      assert.strictEqual(
+        readFileSync(
+          path.join(path.dirname(source.codexHome), ".agents", "skills", "review", "SKILL.md"),
+          "utf8",
+        ),
+        "Review a change.\n",
+      );
+      assert.strictEqual(readFileSync(source.sessionPath, "utf8"), source.rollout);
+      assert.strictEqual(readFileSync(source.archivePath, "utf8"), source.rollout);
+      assert.isFalse(existsSync(path.join(source.codexHome, "sessions")));
+      assert.deepEqual(harness.requests, []);
+      assert.deepEqual(harness.externalImports, []);
       const progress = harness.events.flatMap((event): AgentImportProgress[] =>
         event.kind === "agentImportProgress" ? [event.value] : [],
       );
       assert.isFalse(progress[0]?.completed ?? true);
       assert.isTrue(progress.at(-1)?.completed ?? false);
-
-      const ledger = JSON.parse(
-        readFileSync(
-          path.join(source.runtimeStateHome, "imports", "session-imports-v1.json"),
-          "utf8",
-        ),
-      ) as { readonly sessions: ReadonlyArray<{ readonly targetThreadId: string }> };
-      assert.deepEqual(
-        ledger.sessions.map(({ targetThreadId }) => targetThreadId),
-        [TARGET_THREAD_ID],
+      const retry = yield* Effect.flip(
+        runtime.apply({ scanId: scan.scanId, itemIds: scan.items.map(({ id }) => id) }),
       );
-      const consumed = yield* Effect.flip(
-        runtime.apply({ scanId: scan.scanId, itemIds: [sessionItem.id] }),
-      );
-      assert.strictEqual(consumed.reason, "expired-scan");
-      const secondScan = yield* runtime.scan("codex", source.sourceHome);
-      assert.isFalse(secondScan.items.some((item) => item.kind === "sessions"));
-      assert.strictEqual(secondScan.skippedAlreadyImportedSessions, 1);
-    }),
-  ),
-);
-
-it.effect("deletes a fork when canonical materialization fails", () =>
-  Effect.scoped(
-    Effect.gen(function* () {
-      const root = yield* temporaryRoot;
-      const source = prepareSession(root);
-      const harness = makeHarness(source.runtimeStateHome, source.cwd, {
-        onAcceptImport: () =>
-          Effect.fail(
-            new CodexThreadDirectoryError({
-              operation: "materialize",
-              threadId: TARGET_THREAD_ID,
-              cause: new Error("projection failed"),
-            }),
-          ),
-      });
-      const runtime = yield* harness.runtime;
-      const scan = yield* runtime.scan("codex", source.sourceHome);
-      const sessionItem = scan.items.find((item) => item.kind === "sessions");
-      assert.isDefined(sessionItem);
-
-      const result = yield* runtime.apply({ scanId: scan.scanId, itemIds: [sessionItem.id] });
-
-      assert.deepEqual(
-        harness.requests.map(({ method }) => method),
-        ["thread/fork", "thread/delete"],
-      );
-      assert.deepEqual(result.importedThreadIds, []);
-      assert.strictEqual(result.outcomes[0]?.failureCount, 1);
-      assert.match(result.outcomes[0]?.messages[0] ?? "", /projection failed/u);
-      assert.strictEqual(harness.sidebarSyncs(), 0);
+      assert.strictEqual(retry.reason, "expired-scan");
+      assert.deepEqual((yield* runtime.scan("codex", source.sourceHome)).items, []);
     }),
   ),
 );
 
 it.effect(
-  "attaches native conversations in the active home without forking or copying configuration",
+  "leaves active-home configuration and history unchanged when there is nothing to copy",
   () =>
     Effect.scoped(
       Effect.gen(function* () {
         const root = yield* temporaryRoot;
-        const source = prepareSession(root);
-        const configPath = path.join(source.sourceHome, "config.toml");
-        const config = "# Existing native preferences\nmodel = 'native-model'\n";
-        writeFileSync(configPath, config);
-        const harness = makeHarness(source.runtimeStateHome, source.cwd, {
-          codexHome: source.sourceHome,
-        });
+        const source = prepareSource(root);
+        const config = "model = 'native-model'\n";
+        write(path.join(source.sourceHome, "config.toml"), config);
+        const harness = makeHarness(source.sourceHome, source.sourceHome);
         const runtime = yield* harness.runtime;
-        const scan = yield* runtime.scan("codex", source.sourceHome);
-        assert.deepEqual(
-          scan.items.map((item) => item.kind),
-          ["sessions"],
+        assert.deepEqual((yield* runtime.scan("codex")).items, []);
+        assert.strictEqual(
+          readFileSync(path.join(source.sourceHome, "config.toml"), "utf8"),
+          config,
         );
-        const result = yield* runtime.apply({ scanId: scan.scanId, itemIds: [scan.items[0]!.id] });
-        assert.deepEqual(result.importedThreadIds, [SOURCE_THREAD_ID]);
-        assert.deepEqual(
-          harness.requests.map((request) => request.method),
-          ["thread/read"],
-        );
-        assert.deepEqual(harness.requests[0]?.params, {
-          threadId: SOURCE_THREAD_ID,
-          includeTurns: false,
-        });
-        assert.strictEqual(readFileSync(configPath, "utf8"), config);
-        assert.deepEqual(harness.titles, []);
-        const ledger = JSON.parse(
-          readFileSync(
-            path.join(source.runtimeStateHome, "imports", "session-imports-v1.json"),
-            "utf8",
-          ),
-        );
-        assert.strictEqual(ledger.sessions[0].targetThreadId, SOURCE_THREAD_ID);
-        const next = yield* runtime.scan("codex", source.sourceHome);
-        assert.strictEqual(next.items.length, 0);
-        assert.strictEqual(next.skippedAlreadyImportedSessions, 1);
+        assert.strictEqual(readFileSync(source.sessionPath, "utf8"), source.rollout);
+        assert.deepEqual(harness.requests, []);
       }),
     ),
 );
 
-it.effect("never deletes native history when attachment fails", () =>
+it.effect("submits only Claude setup categories even when detection includes conversations", () =>
   Effect.scoped(
     Effect.gen(function* () {
       const root = yield* temporaryRoot;
-      const source = prepareSession(root);
-      const harness = makeHarness(source.runtimeStateHome, source.cwd, {
-        codexHome: source.sourceHome,
-        onObserveMetadata: () =>
-          Effect.fail(
-            new CodexThreadDirectoryError({
-              operation: "materialize",
-              threadId: SOURCE_THREAD_ID,
-              cause: new Error("projection failed"),
-            }),
-          ),
-      });
+      const source = prepareSource(root);
+      const instructions: ExternalAgentConfigMigrationItem = {
+        itemType: "AGENTS_MD",
+        description: "Instructions",
+        cwd: null,
+        details: null,
+      };
+      const sessions: ExternalAgentConfigMigrationItem = {
+        itemType: "SESSIONS",
+        description: "Conversations",
+        cwd: null,
+        details: null,
+      };
+      const harness = makeHarness(source.codexHome, source.sourceHome, [sessions, instructions]);
       const runtime = yield* harness.runtime;
-      const scan = yield* runtime.scan("codex", source.sourceHome);
-      const result = yield* runtime.apply({ scanId: scan.scanId, itemIds: [scan.items[0]!.id] });
+      const scan = yield* runtime.scan("claude-code");
       assert.deepEqual(
-        harness.requests.map((request) => request.method),
-        ["thread/read"],
+        scan.items.map(({ kind }) => kind),
+        ["instructions"],
       );
-      assert.deepEqual(result.importedThreadIds, []);
-      assert.strictEqual(result.outcomes[0]?.failureCount, 1);
-      assert.strictEqual(harness.sidebarSyncs(), 0);
-    }),
-  ),
-);
-
-it.effect("offers root conversations and refuses to attach an orphan subagent", () =>
-  Effect.scoped(
-    Effect.gen(function* () {
-      const root = yield* temporaryRoot;
-      const source = prepareSession(root);
-      writeFileSync(
-        path.join(source.sourceHome, "sessions", "child.jsonl"),
-        `${JSON.stringify({
-          type: "session_meta",
-          payload: {
-            id: "child",
-            cwd: source.cwd,
-            source: { subagent: { thread_spawn: { parent_thread_id: SOURCE_THREAD_ID } } },
-          },
-        })}\n`,
+      const rejected = yield* Effect.flip(
+        runtime.apply({ scanId: scan.scanId, itemIds: ["sessions"] }),
       );
-      const harness = makeHarness(source.runtimeStateHome, source.cwd, {
-        codexHome: source.sourceHome,
-        parentThreadId: "unowned-parent",
+      assert.strictEqual(rejected.reason, "apply-failed");
+      assert.deepEqual(harness.externalImports, []);
+      const result = yield* runtime.apply({
+        scanId: scan.scanId,
+        itemIds: scan.items.map(({ id }) => id),
       });
-      const runtime = yield* harness.runtime;
-      const scan = yield* runtime.scan("codex", source.sourceHome);
-      assert.strictEqual(scan.items[0]?.count, 1);
-      const result = yield* runtime.apply({ scanId: scan.scanId, itemIds: [scan.items[0]!.id] });
-      assert.deepEqual(result.importedThreadIds, []);
-      assert.strictEqual(result.outcomes[0]?.failureCount, 1);
-      assert.match(result.outcomes[0]?.messages[0] ?? "", /Attach the parent conversation/u);
-      assert.strictEqual(harness.acceptedImports.length, 0);
-      assert.deepEqual(
-        harness.requests.map((request) => request.method),
-        ["thread/read"],
-      );
-    }),
-  ),
-);
-
-it.effect("rejects and deletes an import response that carries transcript history", () =>
-  Effect.scoped(
-    Effect.gen(function* () {
-      const root = yield* temporaryRoot;
-      const source = prepareSession(root);
-      const harness = makeHarness(source.runtimeStateHome, source.cwd, {
-        returnsTranscript: true,
-      });
-      const runtime = yield* harness.runtime;
-      const scan = yield* runtime.scan("codex", source.sourceHome);
-      const sessionItem = scan.items.find((item) => item.kind === "sessions");
-      assert.isDefined(sessionItem);
-
-      const result = yield* runtime.apply({ scanId: scan.scanId, itemIds: [sessionItem.id] });
-
+      assert.deepEqual(harness.externalImports, [[instructions]]);
+      assert.strictEqual(result.outcomes[0]?.successCount, 1);
       assert.deepEqual(
         harness.requests.map(({ method }) => method),
-        ["thread/fork", "thread/delete"],
+        ["externalAgentConfig/detect"],
       );
-      assert.strictEqual(harness.acceptedImports.length, 0);
-      assert.deepEqual(result.importedThreadIds, []);
-      assert.match(result.outcomes[0]?.messages[0] ?? "", /metadata-only paginated history/u);
     }),
   ),
 );

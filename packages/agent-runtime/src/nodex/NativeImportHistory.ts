@@ -23,13 +23,14 @@ export function importHistoryEvents(input: {
   readonly threadId: ThreadId;
   readonly entry: ThreadItemEntry;
   readonly ordinal: number;
+  readonly driver?: ProviderDriverKind;
   readonly fallbackAt: DateTime.Utc;
   readonly attachments?: readonly ChatAttachment[];
   readonly unavailableImages?: readonly OrchestrationV2UnavailableImage[];
   readonly importedImageLinks?: readonly OrchestrationV2ImportedImageLink[];
 }): readonly OrchestrationV2DomainEvent[] {
   const { threadId, entry, ordinal } = input;
-  const driver = ProviderDriverKind.make("codex");
+  const driver = ProviderDriverKind.make(input.driver ?? "codex");
   const item = entry.item;
   const key = importIdentity(threadId, entry.turnId, item.id);
   const at = DateTime.makeUnsafe(
@@ -37,7 +38,7 @@ export function importHistoryEvents(input: {
   );
   const base = {
     ...(input.unavailableImages?.length ? { unavailableImages: input.unavailableImages } : {}),
-    id: TurnItemId.make(`codex-import:${key}`),
+    id: TurnItemId.make(`native-import:${key}`),
     threadId,
     runId: null,
     nodeId: null,
@@ -60,7 +61,7 @@ export function importHistoryEvents(input: {
   let turnItem: OrchestrationV2TurnItem;
   const events: OrchestrationV2DomainEvent[] = [];
   if (item.type === "userMessage" || item.type === "agentMessage") {
-    const messageId = MessageId.make(`codex-import:${key}`);
+    const messageId = MessageId.make(`native-import:${key}`);
     const text =
       item.type === "agentMessage"
         ? item.text
@@ -73,7 +74,7 @@ export function importHistoryEvents(input: {
             })
             .join("\n");
     events.push({
-      id: EventId.make(`codex-import:message:${key}`),
+      id: EventId.make(`native-import:message:${key}`),
       type: "message.updated",
       threadId,
       occurredAt: at,
@@ -157,15 +158,26 @@ export function importHistoryEvents(input: {
       ...base,
       type: "dynamic_tool",
       toolName: "imageView",
-      input: { path: item.path },
-      output: { type: "imageView", sourcePath: item.path },
+      input: item.path.startsWith("data:") ? {} : { path: item.path },
+      output: {
+        type: "imageView",
+        ...(item.path.startsWith("data:") ? {} : { sourcePath: item.path }),
+      },
       ...(attachments.length > 0 ? { attachments } : {}),
+    };
+  } else if (item.type === "functionCallOutput") {
+    turnItem = {
+      ...base,
+      type: "dynamic_tool",
+      toolName: item.name,
+      input: item.namespace === null ? {} : { namespace: item.namespace },
+      output: item.output,
     };
   } else {
     turnItem = { ...base, type: "dynamic_tool", toolName: item.type, input: {}, output: item };
   }
   events.push({
-    id: EventId.make(`codex-import:item:${key}`),
+    id: EventId.make(`native-import:item:${key}`),
     type: "turn-item.updated",
     threadId,
     occurredAt: at,

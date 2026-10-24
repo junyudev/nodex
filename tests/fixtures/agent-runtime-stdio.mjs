@@ -125,7 +125,7 @@ for await (const line of { [Symbol.asyncIterator]: () => lines }) {
     } });
     continue;
   }
-  if (request.method === "thread.import-codex") {
+  if (request.method === "thread.import-native") {
     setTimeout(() => success(request.id, { threadId: request.input.threadId }), 500);
     continue;
   }

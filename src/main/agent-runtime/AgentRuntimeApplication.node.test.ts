@@ -23,9 +23,12 @@ import type { ProjectWorkspaceApplyInput, ProjectWorkspaceRead } from "../core-c
 import { ProjectRuntimeLifecycleRuntime } from "../host-runtime/ProjectRuntimeLifecycleRuntime";
 import { ProjectWorkspace, ProjectWorkspaceError } from "../project-application/ProjectWorkspace";
 import type { ProjectSession } from "../../shared/types";
-import type { CodexThreadImportInput } from "../../shared/native-session-catalog";
+import { agentRuntimeProviderId } from "../../shared/agent-runtime-provider";
+import type { NativeConversationImportInput } from "../../shared/native-session-catalog";
 import {
   make,
+  AgentRuntimeApplicationError,
+  type AgentRuntimeApplication,
   type AgentRuntimeLaunch,
   type AgentRuntimeApplicationConnection,
 } from "./AgentRuntimeApplication";
@@ -43,10 +46,11 @@ const launch: AgentRuntimeLaunch = {
   interactionMode: "default",
   message: { messageId: "message:first", text: "Build it" },
 };
-const codexImport: CodexThreadImportInput & {
+const codexImport: NativeConversationImportInput & {
   readonly title: string;
   readonly model: string | null;
 } = {
+  backendKind: "codex",
   requestId: "019d0000-0000-7000-8000-000000000002",
   acceptedAt: 1791993600000,
   nativeSessionId: "019abcde-1234-7000-8000-123456789abc",
@@ -56,6 +60,39 @@ const codexImport: CodexThreadImportInput & {
   title: "Imported task",
   model: "model-b",
 };
+
+/** Tests consume the same admission outcome as renderer callers, with a prepared source fixture. */
+const unwrapImported = (
+  outcome: import("../../shared/native-session-catalog").NativeConversationImportOutcome,
+) => {
+  if (outcome.kind === "not_admitted")
+    return Effect.fail(
+      new AgentRuntimeApplicationError({
+        operation: "import",
+        message: outcome.message,
+        admissionRejected: true,
+      }),
+    );
+  const { kind: _kind, ...result } = outcome;
+  return Effect.succeed(result);
+};
+const importConversation = (
+  owner: AgentRuntimeApplication["Service"],
+  input: NativeConversationImportInput & { readonly title: string; readonly model: string | null },
+) =>
+  owner
+    .submitNativeImport(input, Effect.succeed({ title: input.title, model: input.model }))
+    .pipe(Effect.flatMap(unwrapImported));
+const recoverCompletedImport = (
+  owner: AgentRuntimeApplication["Service"],
+  input: NativeConversationImportInput,
+) =>
+  owner
+    .submitNativeImport(
+      input,
+      Effect.fail(new Error("Completed recovery must not read the source")),
+    )
+    .pipe(Effect.flatMap(unwrapImported));
 
 const snapshot = (
   threadId: string,
@@ -99,11 +136,12 @@ const setExecutionHold = (fixture: ReturnType<typeof setup>, threadId: string, h
 
 const setup = (
   options: Partial<import("./AgentRuntimeApplication").AgentRuntimeApplicationOptions> = {},
+  additionalProviders: AgentRuntimeOperations["providers.read"]["output"] = [],
 ) => {
   const bindings = new Map<string, Binding>();
   const snapshots = new Map<string, AgentSnapshot>();
   const commands = new Map<string, AgentCommand>();
-  const imports = new Map<string, AgentRuntimeOperations["thread.import-codex"]["input"]>();
+  const imports = new Map<string, AgentRuntimeOperations["thread.import-native"]["input"]>();
   const calls: Array<{ method: AgentRuntimeMethod; input: unknown }> = [];
   const applied: ProjectWorkspaceApplyInput[] = [];
   const receipt = new Map<string, string>();
@@ -165,6 +203,7 @@ const setup = (
         },
       ],
     },
+    ...additionalProviders,
   ] as unknown as AgentRuntimeOperations["providers.read"]["output"];
   const state = {
     archived: false,
@@ -176,7 +215,7 @@ const setup = (
     failCodexImportBeforeCommit: false,
     failCodexImportAcknowledgment: false,
     codexModelsAvailable: true,
-    codexImportSourceHome: codexImport.expectedHome,
+    nativeImportSourceHome: codexImport.expectedHome,
     refusedThreadReceipt: false,
     failCore: false,
     projectWorkspaceRoot: "/workspace" as string | null,
@@ -359,8 +398,24 @@ const setup = (
             ? providers
             : providers.map((provider) => ({ ...provider, models: [] }))
         ) as AgentRuntimeOperations[M]["output"];
-      if (method === "thread.import-codex") {
-        const request = input as AgentRuntimeOperations["thread.import-codex"]["input"];
+      if (method === "native-imports.find") {
+        const query = input as AgentRuntimeOperations["native-imports.find"]["input"];
+        return {
+          imports: [...imports.values()]
+            .filter(
+              (entry) =>
+                entry.backendKind === query.backendKind &&
+                entry.sourceHome === query.sourceHome &&
+                query.nativeThreadIds.includes(entry.sourceNativeThreadId),
+            )
+            .map((entry) => ({
+              sourceNativeThreadId: entry.sourceNativeThreadId,
+              threadId: entry.threadId,
+            })),
+        } as AgentRuntimeOperations[M]["output"];
+      }
+      if (method === "thread.import-native") {
+        const request = input as AgentRuntimeOperations["thread.import-native"]["input"];
         if (state.failCodexImportBeforeCommit) {
           state.failCodexImportBeforeCommit = false;
           return yield* Effect.fail(new Error("Runtime stopped before importing history"));
@@ -778,13 +833,13 @@ const setup = (
     }).pipe(Effect.mapError((cause) => new ProjectWorkspaceError({ operation: method, cause })));
   const owner = make({
     ...options,
-    codexImportSourceHome:
-      options.codexImportSourceHome ??
+    nativeImportSourceHome:
+      options.nativeImportSourceHome ??
       ((connection) =>
         Effect.sync(() => {
           assert.equal(connection.identity.runtimeId, state.runtimeId);
           order.push("codex.import-source-home");
-          return state.codexImportSourceHome;
+          return state.nativeImportSourceHome;
         })),
     connect: options.connect ?? Effect.sync(connection),
     currentConnection: options.currentConnection ?? Effect.sync(connection),
@@ -867,7 +922,7 @@ it.effect("binds an independent imported chat before reading its history into th
   Effect.gen(function* () {
     const fixture = setup();
     const owner = yield* fixture.owner;
-    const result = yield* owner.importCodex(codexImport);
+    const result = yield* importConversation(owner, codexImport);
     assert.equal(result.sessionId, codexImport.requestId);
     assert.equal(result.projectId, codexImport.projectId);
     assert.notEqual(result.threadId, codexImport.nativeSessionId);
@@ -882,7 +937,7 @@ it.effect("binds an independent imported chat before reading its history into th
     );
     assert.isBelow(
       fixture.order.indexOf("core.bind"),
-      fixture.order.indexOf("thread.import-codex"),
+      fixture.order.indexOf("thread.import-native"),
     );
     const imported = [...fixture.imports.values()][0]!;
     assert.deepEqual(imported, {
@@ -890,6 +945,8 @@ it.effect("binds an independent imported chat before reading its history into th
       threadId: result.threadId,
       projectId: "project",
       title: codexImport.title,
+      backendKind: "codex",
+      sourceHome: codexImport.expectedHome,
       sourceNativeThreadId: codexImport.nativeSessionId,
       modelSelection: { instanceId: "codex", model: "model-b" },
       cwd: codexImport.cwd,
@@ -903,10 +960,105 @@ it.effect("binds an independent imported chat before reading its history into th
       initial_page_ids: [],
       runtime_id: "engine",
       runtime_thread_id: result.threadId,
-      launch_request_id: `codex-import:${codexImport.requestId}`,
+      launch_request_id: `native-import:${codexImport.requestId}`,
     });
     assert.deepEqual([...fixture.commands.values()], []);
     assert.isFalse(fixture.calls.some((call) => call.method === "thread.snapshot"));
+  }),
+);
+
+it.effect(
+  "imports Claude with its own execution Agent and recovers a completed receipt after its source profile disappears",
+  () =>
+    Effect.gen(function* () {
+      const instanceConfigId = "personal";
+      const instanceId = agentRuntimeProviderId({ kind: "claude", instanceConfigId })!;
+      const fixture = setup({}, [
+        {
+          instanceId,
+          driver: "claudeAgent",
+          enabled: true,
+          installed: true,
+          status: "ready",
+          models: [{ slug: "claude-sonnet", name: "Sonnet", isDefault: true }],
+        },
+      ] as unknown as AgentRuntimeOperations["providers.read"]["output"]);
+      fixture.state.nativeImportSourceHome = "/native/claude";
+      const input = {
+        ...codexImport,
+        backendKind: "claude" as const,
+        instanceConfigId,
+        expectedHome: "/native/claude",
+        model: null,
+      };
+      const owner = yield* fixture.owner;
+      const result = yield* importConversation(owner, input);
+      const imported = [...fixture.imports.values()][0]!;
+      assert.equal(imported.backendKind, "claude");
+      assert.equal(imported.sourceHome, "/native/claude");
+      assert.deepEqual(imported.modelSelection, { instanceId, model: "claude-sonnet" });
+      assert.notEqual(result.threadId, input.nativeSessionId);
+      const copies = yield* owner.findNativeImports({
+        backendKind: "claude",
+        sourceHome: input.expectedHome,
+        nativeThreadIds: [input.nativeSessionId],
+      });
+      assert.deepEqual(copies, [
+        {
+          nativeSessionId: input.nativeSessionId,
+          importedSessionId: result.sessionId,
+          importedThreadId: result.threadId,
+        },
+      ]);
+      assert.deepEqual(
+        yield* owner.findNativeImports({
+          backendKind: "codex",
+          sourceHome: input.expectedHome,
+          nativeThreadIds: [input.nativeSessionId],
+        }),
+        [],
+      );
+      const calls = fixture.calls.length;
+      const homeReads = fixture.order.filter((item) => item === "codex.import-source-home").length;
+      fixture.state.nativeImportSourceHome = "/removed-profile";
+      fixture.state.codexModelsAvailable = false;
+      assert.deepEqual(yield* recoverCompletedImport(owner, input), result);
+      assert.equal(
+        fixture.order.filter((item) => item === "codex.import-source-home").length,
+        homeReads,
+      );
+      assert.isFalse(
+        fixture.calls
+          .slice(calls)
+          .some(
+            (call) => call.method === "providers.read" || call.method === "thread.import-native",
+          ),
+      );
+      assert.equal(fixture.imports.size, 1);
+    }),
+);
+
+it.effect("an empty Profile can browse native sources without starting an execution process", () =>
+  Effect.gen(function* () {
+    let connections = 0;
+    const fixture = setup({
+      runtimeExists: Effect.succeed(false),
+      currentConnection: Effect.succeed(null),
+      connect: Effect.sync(() => {
+        connections++;
+        throw new Error("Cold runtime must stay cold");
+      }),
+    });
+    const owner = yield* fixture.owner;
+    assert.deepEqual(
+      yield* owner.findNativeImports({
+        backendKind: "claude",
+        sourceHome: "/native/claude",
+        nativeThreadIds: [codexImport.nativeSessionId],
+      }),
+      [],
+    );
+    assert.equal(connections, 0);
   }),
 );
 
@@ -916,7 +1068,7 @@ it.effect(
     Effect.gen(function* () {
       const fixture = setup();
       const owner = yield* fixture.owner;
-      const result = yield* owner.importCodex({
+      const result = yield* importConversation(owner, {
         ...codexImport,
         projectId: null,
         model: "retired-model",
@@ -936,21 +1088,24 @@ it.effect("Core refusal or missing Codex models admits no Runtime import", () =>
     const refused = setup();
     refused.state.failCore = true;
     const refusedOwner = yield* refused.owner;
-    yield* refusedOwner.importCodex(codexImport).pipe(Effect.flip);
+    yield* importConversation(refusedOwner, codexImport).pipe(Effect.flip);
     assert.equal(refused.bindings.size, 0);
     assert.equal(refused.imports.size, 0);
-    assert.isFalse(refused.calls.some((call) => call.method === "thread.import-codex"));
+    assert.isFalse(refused.calls.some((call) => call.method === "thread.import-native"));
     assert.isFalse(refused.calls.some((call) => call.method === "project.upsert"));
 
     const unavailable = setup();
     unavailable.state.codexModelsAvailable = false;
     const unavailableOwner = yield* unavailable.owner;
-    const failure = yield* unavailableOwner.importCodex(codexImport).pipe(Effect.flip);
-    assert.equal(failure.message, "A Codex model is required to import this conversation");
+    const failure = yield* importConversation(unavailableOwner, codexImport).pipe(Effect.flip);
+    assert.equal(
+      failure.message,
+      "This Agent has no available model. Check Agent settings, then try again.",
+    );
     assert.equal(unavailable.bindings.size, 0);
     assert.equal(unavailable.applied.length, 0);
     assert.equal(unavailable.imports.size, 0);
-    assert.isFalse(unavailable.calls.some((call) => call.method === "thread.import-codex"));
+    assert.isFalse(unavailable.calls.some((call) => call.method === "thread.import-native"));
   }),
 );
 
@@ -959,7 +1114,7 @@ it.effect("imports and continues in an explicit directory when its Project has n
     const fixture = setup();
     fixture.state.projectWorkspaceRoot = null;
     const owner = yield* fixture.owner;
-    const imported = yield* owner.importCodex(codexImport);
+    const imported = yield* importConversation(owner, codexImport);
     yield* owner.message({
       sessionId: imported.sessionId,
       message: { messageId: "continue-import", text: "Continue from this history" },
@@ -988,14 +1143,14 @@ it.effect(
       fixture.state.failCoreAcknowledgment = true;
       fixture.state.failBindingProof = true;
       const owner = yield* fixture.owner;
-      yield* owner.importCodex(codexImport).pipe(Effect.flip);
+      yield* importConversation(owner, codexImport).pipe(Effect.flip);
       assert.equal(fixture.bindings.size, 1);
-      assert.isFalse(fixture.calls.some((call) => call.method === "thread.import-codex"));
+      assert.isFalse(fixture.calls.some((call) => call.method === "thread.import-native"));
       assert.isFalse(fixture.calls.some((call) => call.method === "project.upsert"));
 
       fixture.state.failBindingProof = false;
       fixture.state.failCoreAcknowledgment = false;
-      const recovered = yield* owner.importCodex(codexImport);
+      const recovered = yield* importConversation(owner, codexImport);
       assert.equal(
         recovered.threadId,
         fixture.bindings.get(codexImport.requestId)?.runtime_thread_id,
@@ -1012,8 +1167,8 @@ it.effect("rejects another Session's proof of an uncertain import binding", () =
     fixture.state.failCoreAcknowledgment = true;
     fixture.state.replaceBindingProof = true;
     const owner = yield* fixture.owner;
-    yield* owner.importCodex(codexImport).pipe(Effect.flip);
-    assert.isFalse(fixture.calls.some((call) => call.method === "thread.import-codex"));
+    yield* importConversation(owner, codexImport).pipe(Effect.flip);
+    assert.isFalse(fixture.calls.some((call) => call.method === "thread.import-native"));
     assert.deepEqual([...fixture.commands.values()], []);
   }),
 );
@@ -1023,18 +1178,18 @@ it.effect("retries an uncertain Runtime import with the same command and one des
     const fixture = setup();
     fixture.state.failCodexImportAcknowledgment = true;
     const owner = yield* fixture.owner;
-    yield* owner.importCodex(codexImport).pipe(Effect.flip);
+    yield* importConversation(owner, codexImport).pipe(Effect.flip);
     const first = [...fixture.imports.values()][0]!;
-    const result = yield* owner.importCodex(codexImport);
+    const result = yield* importConversation(owner, codexImport);
     assert.equal(result.threadId, first.threadId);
     assert.equal(fixture.imports.size, 1);
     assert.equal(fixture.bindings.size, 1);
     assert.equal(fixture.applied.length, 1);
     assert.deepEqual(
       fixture.calls
-        .filter((call) => call.method === "thread.import-codex")
+        .filter((call) => call.method === "thread.import-native")
         .map((call) => call.input),
-      [first, first],
+      [first],
     );
     assert.deepEqual([...fixture.commands.values()], []);
   }),
@@ -1045,19 +1200,26 @@ it.effect.each([
   { expectedHome: "/native/another-codex" },
   { projectId: "another-project" },
   { cwd: "/another/imported-directory" },
+  { backendKind: "claude" as const, instanceConfigId: "personal" },
+  { instanceConfigId: "different-profile" },
 ])(
   "refuses to reuse an import request with different source or destination parameters %#",
   (patch) =>
     Effect.gen(function* () {
       const fixture = setup();
       const owner = yield* fixture.owner;
-      yield* owner.importCodex(codexImport);
-      const failure = yield* owner.importCodex({ ...codexImport, ...patch }).pipe(Effect.flip);
+      yield* importConversation(owner, codexImport);
+      const failure = yield* importConversation(owner, { ...codexImport, ...patch }).pipe(
+        Effect.flip,
+      );
       assert.equal(failure.message, "This import request already belongs to another conversation");
       assert.equal(fixture.bindings.size, 1);
       assert.equal(fixture.applied.length, 1);
       assert.equal(fixture.imports.size, 1);
-      assert.equal(fixture.calls.filter((call) => call.method === "thread.import-codex").length, 1);
+      assert.equal(
+        fixture.calls.filter((call) => call.method === "thread.import-native").length,
+        1,
+      );
     }),
 );
 
@@ -1066,12 +1228,12 @@ it.effect("an interrupted import cannot be opened as an empty chat and remains r
     const fixture = setup();
     fixture.state.failCodexImportBeforeCommit = true;
     const owner = yield* fixture.owner;
-    yield* owner.importCodex(codexImport).pipe(Effect.flip);
+    yield* importConversation(owner, codexImport).pipe(Effect.flip);
     const failure = yield* owner.inspect({ sessionId: codexImport.requestId }).pipe(Effect.flip);
     assert.equal(failure.message, "This import was interrupted. Retry it from Conversations.");
     assert.equal(fixture.imports.size, 0);
     assert.deepEqual([...fixture.commands.values()], []);
-    const result = yield* owner.importCodex(codexImport);
+    const result = yield* importConversation(owner, codexImport);
     assert.equal(result.threadId, fixture.bindings.get(codexImport.requestId)?.runtime_thread_id);
     assert.equal(fixture.imports.size, 1);
     assert.equal(fixture.applied.length, 1);
@@ -1084,9 +1246,9 @@ it.effect(
   () =>
     Effect.gen(function* () {
       const fixture = setup();
-      fixture.state.codexImportSourceHome = "/profile/agent-runtime/native-history/captured-codex";
+      fixture.state.nativeImportSourceHome = "/profile/agent-runtime/native-history/captured-codex";
       const owner = yield* fixture.owner;
-      const failure = yield* owner.importCodex(codexImport).pipe(Effect.flip);
+      const failure = yield* importConversation(owner, codexImport).pipe(Effect.flip);
       assert.match(failure.message, /history|home|restored/iu);
       assert.deepEqual(fixture.order, ["codex.import-source-home"]);
       assert.equal(fixture.applied.length, 0);
@@ -1102,13 +1264,12 @@ it.effect("recovers a completed import without its source account or a current m
     const fixture = setup();
     fixture.state.failCodexImportAcknowledgment = true;
     const owner = yield* fixture.owner;
-    assert.isNull(yield* owner.completedCodexImport(codexImport));
-    yield* owner.importCodex(codexImport).pipe(Effect.flip);
+    yield* importConversation(owner, codexImport).pipe(Effect.flip);
     fixture.state.codexModelsAvailable = false;
-    fixture.state.codexImportSourceHome = "/different-or-removed-source";
+    fixture.state.nativeImportSourceHome = "/different-or-removed-source";
     const sourceChecks = fixture.order.filter((step) => step === "codex.import-source-home").length;
     const callCount = fixture.calls.length;
-    const result = yield* owner.completedCodexImport(codexImport);
+    const result = yield* recoverCompletedImport(owner, codexImport);
     assert.deepEqual(result, {
       sessionId: codexImport.requestId,
       threadId: fixture.bindings.get(codexImport.requestId)!.runtime_thread_id,
@@ -1121,14 +1282,17 @@ it.effect("recovers a completed import without its source account or a current m
     assert.isFalse(
       fixture.calls
         .slice(callCount)
-        .some((call) => call.method === "providers.read" || call.method === "thread.import-codex"),
+        .some((call) => call.method === "providers.read" || call.method === "thread.import-native"),
     );
     assert.equal(fixture.applied.length, 1);
     setExecutionHold(fixture, result!.threadId, true);
-    assert.isNull(yield* owner.completedCodexImport(codexImport));
-    const refused = yield* owner
-      .completedCodexImport({ ...codexImport, cwd: "/changed" })
-      .pipe(Effect.flip);
+    assert.equal(
+      (yield* recoverCompletedImport(owner, codexImport).pipe(Effect.result))._tag,
+      "Failure",
+    );
+    const refused = yield* recoverCompletedImport(owner, { ...codexImport, cwd: "/changed" }).pipe(
+      Effect.flip,
+    );
     assert.equal(refused.message, "This import request already belongs to another conversation");
   }),
 );
@@ -1139,7 +1303,7 @@ it.effect(
     Effect.gen(function* () {
       const fixture = setup();
       const owner = yield* fixture.owner;
-      const opened = yield* owner.importCodex(codexImport);
+      const opened = yield* importConversation(owner, codexImport);
       const current = fixture.snapshots.get(opened.threadId)!;
       fixture.snapshots.set(opened.threadId, {
         ...current,
@@ -1148,7 +1312,7 @@ it.effect(
           thread: {
             ...current.projection.thread,
             activeProviderThreadId: null,
-            executionHandoff: { operationId: "codex-import:pending", recoveryRequired: true },
+            executionHandoff: { operationId: "native-import:pending", recoveryRequired: true },
           },
         },
       });
@@ -3809,4 +3973,156 @@ it.effect(
       assert.equal(dispatched("message:steer").text, "Also this");
       assert.deepEqual(marked, ["state:1"]);
     }),
+);
+
+const importPreparationRefusal = () =>
+  new AgentRuntimeApplicationError({
+    operation: "import",
+    message: "Choose an existing working directory for the imported chat.",
+    admissionRejected: true,
+  });
+const preparedImport = Effect.succeed({ title: codexImport.title, model: codexImport.model });
+
+it.effect(
+  "proves a validation refusal before admission, then accepts corrected parameters as a new request",
+  () =>
+    Effect.gen(function* () {
+      const fixture = setup();
+      const owner = yield* fixture.owner;
+      const first = yield* owner.submitNativeImport(
+        codexImport,
+        Effect.fail(importPreparationRefusal()),
+      );
+      assert.deepEqual(first, {
+        kind: "not_admitted",
+        message: importPreparationRefusal().message,
+      });
+      assert.equal(fixture.bindings.size, 0);
+      assert.equal(fixture.imports.size, 0);
+      const corrected = {
+        ...codexImport,
+        requestId: "019d0000-0000-7000-8000-000000000003",
+        cwd: "/corrected/workspace",
+      };
+      const result = yield* owner.submitNativeImport(corrected, preparedImport);
+      assert.equal(result.kind, "imported");
+      assert.equal([...fixture.imports.values()][0]?.cwd, corrected.cwd);
+      assert.equal(fixture.bindings.size, 1);
+    }),
+);
+
+it.effect("source/model/Project validation is definitive only before the binding attempt", () =>
+  Effect.gen(function* () {
+    for (const change of [
+      (fixture: ReturnType<typeof setup>) => {
+        fixture.state.nativeImportSourceHome = "/different-history";
+      },
+      (fixture: ReturnType<typeof setup>) => {
+        fixture.state.codexModelsAvailable = false;
+      },
+      (fixture: ReturnType<typeof setup>) => {
+        fixture.state.lifecycle = "archived";
+      },
+    ]) {
+      const fixture = setup();
+      change(fixture);
+      const owner = yield* fixture.owner;
+      assert.equal(
+        (yield* owner.submitNativeImport(codexImport, preparedImport)).kind,
+        "not_admitted",
+      );
+      assert.equal(fixture.bindings.size, 0);
+    }
+    const fixture = setup();
+    const owner = yield* fixture.owner;
+    assert.equal(
+      (yield* owner
+        .submitNativeImport(codexImport, Effect.fail(new Error("Source transport disconnected")))
+        .pipe(Effect.result))._tag,
+      "Failure",
+    );
+    fixture.state.failCore = true;
+    assert.equal(
+      (yield* owner.submitNativeImport(codexImport, preparedImport).pipe(Effect.result))._tag,
+      "Failure",
+    );
+    assert.equal(fixture.bindings.size, 0);
+  }),
+);
+
+it.effect(
+  "partial or complete admission never returns not_admitted, even when later validation fails",
+  () =>
+    Effect.gen(function* () {
+      const fixture = setup();
+      const owner = yield* fixture.owner;
+      fixture.state.failCodexImportBeforeCommit = true;
+      assert.equal(
+        (yield* owner.submitNativeImport(codexImport, preparedImport).pipe(Effect.result))._tag,
+        "Failure",
+      );
+      assert.equal(fixture.bindings.size, 1);
+      assert.equal(
+        (yield* owner
+          .submitNativeImport(codexImport, Effect.fail(importPreparationRefusal()))
+          .pipe(Effect.result))._tag,
+        "Failure",
+      );
+      fixture.state.failCodexImportBeforeCommit = false;
+      const completed = yield* owner.submitNativeImport(codexImport, preparedImport);
+      assert.equal(completed.kind, "imported");
+      assert.deepEqual(
+        yield* owner.submitNativeImport(codexImport, Effect.fail(importPreparationRefusal())),
+        completed,
+      );
+      assert.equal(
+        (yield* owner
+          .submitNativeImport({ ...codexImport, cwd: "/changed" }, preparedImport)
+          .pipe(Effect.result))._tag,
+        "Failure",
+      );
+      assert.equal(fixture.imports.size, 1);
+    }),
+);
+
+it.effect(
+  "serializes the no-binding rejection proof with a concurrent attempt of the same request",
+  () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const fixture = setup();
+        const owner = yield* fixture.owner;
+        const started = yield* Deferred.make<void>();
+        const release = yield* Deferred.make<void>();
+        let secondPrepared = false;
+        const first = yield* owner
+          .submitNativeImport(
+            codexImport,
+            Effect.gen(function* () {
+              yield* Deferred.succeed(started, undefined);
+              yield* Deferred.await(release);
+              return yield* importPreparationRefusal();
+            }),
+          )
+          .pipe(Effect.forkChild);
+        yield* Deferred.await(started);
+        const second = yield* owner
+          .submitNativeImport(
+            codexImport,
+            Effect.sync(() => {
+              secondPrepared = true;
+              return { title: codexImport.title, model: codexImport.model };
+            }),
+          )
+          .pipe(Effect.forkChild);
+        yield* Effect.yieldNow;
+        assert.equal(secondPrepared, false);
+        assert.equal(fixture.bindings.size, 0);
+        yield* Deferred.succeed(release, undefined);
+        assert.equal((yield* Fiber.join(first)).kind, "not_admitted");
+        assert.equal((yield* Fiber.join(second)).kind, "imported");
+        assert.equal(fixture.bindings.size, 1);
+        assert.equal(fixture.imports.size, 1);
+      }),
+    ),
 );

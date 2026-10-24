@@ -53,6 +53,14 @@ describe("workbench settings search catalog", () => {
     expect(hasSectionResult("collect unreferenced tombstone", "backups")).toBe(true);
   });
 
+  test("finds conversation import under Conversations and setup copying under Agents", () => {
+    expect(hasSectionResult("codex://threads", "agent-import")).toBe(true);
+    expect(hasSectionResult("Import conversations", "agent-import")).toBe(true);
+    expect(hasSectionResult("MCP servers", "agent")).toBe(true);
+    expect(hasSectionResult("MCP servers", "agent-import")).toBe(false);
+    expect(hasSectionResult("AGENTS.md", "agent")).toBe(true);
+  });
+
   test("uses runtime project names as hidden local-environment terms", () => {
     const results = searchCatalog("Docs Space");
 

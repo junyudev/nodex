@@ -1,8 +1,3 @@
-import { createUuidV7 } from "../../shared/uuid-v7";
-import type {
-  NativeSessionAttachResult,
-  NativeSessionBackendKind,
-} from "../../shared/native-session-catalog";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
@@ -316,29 +311,6 @@ export interface ProjectWorkspaceService {
   readonly getThread: (
     threadId: string,
   ) => ProjectWorkspaceEffect<DesktopProjectWorkspaceThread | null>;
-  readonly readNativeSessionBindings: (input: {
-    readonly backendKind: NativeSessionBackendKind;
-    readonly nativeHome: string;
-    readonly nativeSessionIds: readonly string[];
-  }) => ProjectWorkspaceEffect<
-    readonly {
-      readonly nativeSessionId: string;
-      readonly threadId: string;
-      readonly sessionId: string | null;
-      readonly projectId: string | null;
-    }[]
-  >;
-  readonly attachNativeSession: (input: {
-    readonly backendKind: NativeSessionBackendKind;
-    readonly instanceConfigId?: string;
-    readonly nativeSessionId: string;
-    readonly nativeHome: string;
-    readonly projectId: string | null;
-    readonly title: string;
-    readonly cwd: string;
-    readonly createdAt: number;
-    readonly updatedAt: number;
-  }) => ProjectWorkspaceEffect<NativeSessionAttachResult>;
   readonly readThreadBackendSession: (
     threadId: string,
   ) => ProjectWorkspaceEffect<DesktopProjectWorkspaceThreadBackendSession | null>;
@@ -1724,64 +1696,6 @@ export const make: Effect.Effect<ProjectWorkspaceService, never, CoreModules | S
         },
       ),
       getThread,
-      readNativeSessionBindings: Effect.fn("ProjectWorkspace.readNativeSessionBindings")(
-        function* (input) {
-          const snapshot = yield* read("native.sessions.bindings", {
-            kind: "native_session_bindings",
-            backend_kind: input.backendKind,
-            native_home: input.nativeHome,
-            native_session_ids: [...input.nativeSessionIds],
-          });
-          return expectVariant(snapshot, "native_session_bindings").bindings.map((binding) => ({
-            nativeSessionId: binding.native_session_id,
-            threadId: binding.thread_id,
-            sessionId: binding.session_id ?? null,
-            projectId: binding.project_id ?? null,
-          }));
-        },
-      ),
-      attachNativeSession: Effect.fn("ProjectWorkspace.attachNativeSession")(function* (input) {
-        if (input.backendKind === "claude" && !input.instanceConfigId)
-          return yield* projectWorkspaceError(
-            "native.sessions.attach",
-            new Error("Choose a Claude profile"),
-          );
-        const candidateSessionId = createUuidV7();
-        const threadId = input.backendKind === "codex" ? input.nativeSessionId : createUuidV7();
-        const applied = yield* apply("native.sessions.attach", {
-          kind: "attach_native_session",
-          session_id: candidateSessionId,
-          thread_id: threadId,
-          project_id: input.projectId,
-          backend_binding:
-            input.backendKind === "codex"
-              ? { kind: "codex" }
-              : { kind: "claude", instance_config_id: input.instanceConfigId! },
-          native_session_id: input.nativeSessionId,
-          native_home: input.nativeHome,
-          title: input.title,
-          cwd: input.cwd,
-          created_at: input.createdAt,
-          updated_at: input.updatedAt,
-        });
-        const [sessionId, ...unexpected] = applied.outcome.affected_session_ids;
-        if (!sessionId || unexpected.length)
-          return yield* projectWorkspaceError(
-            "native.sessions.attach",
-            new Error("Native attachment did not return one Session"),
-          );
-        const session = yield* requireSession(sessionId);
-        if (!session.thread?.threadId)
-          return yield* projectWorkspaceError(
-            "native.sessions.attach",
-            new Error("Native attachment has no Thread"),
-          );
-        return {
-          sessionId,
-          threadId: session.thread.threadId,
-          alreadyAttached: sessionId !== candidateSessionId,
-        };
-      }),
       readThreadBackendSession,
       bindThreadBackendSession,
       clearThreadBackendSession,

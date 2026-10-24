@@ -23,8 +23,8 @@ export interface NativeSessionCatalogEntry {
   readonly cwd: string;
   readonly cwdAvailable?: boolean;
   readonly updatedAt: number;
-  readonly attachedThreadId?: string;
-  readonly attachedSessionId?: string;
+  readonly importedThreadId?: string;
+  readonly importedSessionId?: string;
 }
 
 export interface NativeSessionCatalogPage {
@@ -33,25 +33,17 @@ export interface NativeSessionCatalogPage {
   readonly nextCursor: string | null;
 }
 
-export interface NativeSessionAttachInput {
+export interface NativeConversationImportPreviewInput {
+  readonly reference: string;
+  readonly backendKind?: NativeSessionBackendKind;
+  readonly instanceConfigId?: string;
+}
+
+export interface NativeConversationImportPreview {
   readonly backendKind: NativeSessionBackendKind;
   readonly instanceConfigId?: string;
-  readonly nativeSessionId: string;
-  readonly expectedHome: string;
-  readonly projectId: string | null;
-}
-
-export interface NativeSessionAttachResult {
-  readonly sessionId: string;
-  readonly threadId: string;
-  readonly alreadyAttached: boolean;
-}
-
-export interface CodexThreadImportPreviewInput {
-  readonly reference: string;
-}
-
-export interface CodexThreadImportPreview {
+  readonly importedThreadId?: string;
+  readonly importedSessionId?: string;
   readonly nativeSessionId: string;
   readonly nativeHome: string;
   readonly title: string;
@@ -60,8 +52,14 @@ export interface CodexThreadImportPreview {
   readonly updatedAt: number;
 }
 
+export interface NativeConversationImportPreviewResult {
+  readonly matches: readonly NativeConversationImportPreview[];
+}
+
 /** A retry retains its request identity and all selected import parameters. */
-export interface CodexThreadImportInput {
+export interface NativeConversationImportInput {
+  readonly backendKind: NativeSessionBackendKind;
+  readonly instanceConfigId?: string;
   readonly requestId: string;
   readonly acceptedAt: number;
   readonly nativeSessionId: string;
@@ -70,8 +68,13 @@ export interface CodexThreadImportInput {
   readonly cwd: string;
 }
 
-export interface CodexThreadImportResult {
+export interface NativeConversationImportResult {
   readonly sessionId: string;
   readonly threadId: string;
   readonly projectId: string | null;
 }
+
+/** Only a proved refusal before destination admission releases an accepted retry identity. */
+export type NativeConversationImportOutcome =
+  | (NativeConversationImportResult & { readonly kind: "imported" })
+  | { readonly kind: "not_admitted"; readonly message: string };

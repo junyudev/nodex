@@ -770,9 +770,11 @@ the operating-system user environment; installing an executable never changes in
 ownership or a conversation's runtime binding. See [Agent Backend Behavior](product-specs/agent-backend-behavior.md).
 
 Native conversation discovery belongs to Main's backend-neutral catalog. Provider Adapters read
-native metadata; Core atomically owns connection to a Nodex Session, destination and immutable
-native recovery identity. Authentication location never substitutes for history identity. See
-[Native Conversation Connection Behavior](product-specs/native-conversation-connection-behavior.md).
+native metadata and capture the exact canonical source history identity. Core owns the imported
+Session and immutable Runtime binding; the Runtime owns independent copied history, media and import
+receipts. Source identity never becomes the copy's native execution identity. Existing connected
+native history remains passive. Authentication location never substitutes for history identity. See
+[Native Conversation Import Behavior](product-specs/native-conversation-connection-behavior.md).
 
 ### Agent Runtime conversation ownership
 

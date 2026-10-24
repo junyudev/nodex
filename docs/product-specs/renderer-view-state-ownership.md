@@ -104,6 +104,12 @@ One mounted `ComposerScope` represents one writable form owner. The primary Thre
 The following seams are not migration-by-default candidates. Maitai may expose a
 read-only bridge only when scoped atom composition needs one.
 
+Native conversation imports have one renderer-window lifecycle owner for accepted requests,
+in-flight submission deduplication, recovery rows and returned copy identities. Leaving Settings
+does not end an attempt or hide its settlement. A newer authoritative catalog read can supersede
+a completed copy; Main and the Runtime retain durable admission and receipt authority. See
+[Native Conversation Import Behavior](native-conversation-connection-behavior.md).
+
 | Module or store                                                                                      | Authority                                                                                                                            | Disposition                                                                                                                                                                                                                                                                                  |
 | ---------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `local-conversation-store.ts`                                                                        | Codex conversation, execution, requests, streaming, reconnect, and owner/follower coordination                                       | Keep deep Module; never mirror writable snapshots                                                                                                                                                                                                                                            |

@@ -24,6 +24,6 @@ export {
 } from "./CodexThreadSource.ts";
 export { AGENT_RUNTIME_STRUCTURED_GENERATION_MAX_TIMEOUT_MS } from "./TextGenerationLimits.ts";
 export {
-  AGENT_RUNTIME_CODEX_IMPORT_MAX_TIMEOUT_MS,
-  CODEX_THREAD_IMPORT_OPERATION_PREFIX,
-} from "./CodexImportLimits.ts";
+  AGENT_RUNTIME_NATIVE_IMPORT_MAX_TIMEOUT_MS,
+  NATIVE_THREAD_IMPORT_OPERATION_PREFIX,
+} from "./NativeImportLimits.ts";

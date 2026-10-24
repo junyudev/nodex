@@ -1,18 +1,16 @@
-import { createHash, randomUUID } from "node:crypto";
-import { constants as fsConstants, createReadStream, existsSync } from "node:fs";
+import { randomUUID } from "node:crypto";
+import { constants as fsConstants, existsSync } from "node:fs";
 import {
   chmod,
   copyFile,
   lstat,
   mkdir,
-  open,
   readFile,
   readdir,
   realpath,
   rename,
   rm,
   stat,
-  writeFile,
 } from "node:fs/promises";
 import { homedir } from "node:os";
 import * as path from "node:path";
@@ -20,7 +18,6 @@ import { parse as parseToml } from "smol-toml";
 import type { ExternalAgentConfigImportCompletedNotification } from "@nodex/codex-app-server-protocol/v2/ExternalAgentConfigImportCompletedNotification";
 import type { ExternalAgentConfigMigrationItem } from "@nodex/codex-app-server-protocol/v2/ExternalAgentConfigMigrationItem";
 import type { ExternalAgentConfigMigrationItemType } from "@nodex/codex-app-server-protocol/v2/ExternalAgentConfigMigrationItemType";
-import type { ThreadForkResponse } from "@nodex/codex-app-server-protocol/v2/ThreadForkResponse";
 import type { ClientRequestParamsByMethod } from "@nodex/effect-codex-app-server/rpc";
 import * as Data from "effect/Data";
 import * as Effect from "effect/Effect";
@@ -33,29 +30,11 @@ import type {
   AgentImportScan,
   AgentImportSourceKind,
 } from "../../shared/agent-import";
-import { resolveCodexCanonicalHydratedCwd } from "../../shared/codex-conversation-state/codex-conversation-state";
-import {
-  extractCodexThreadSubagentMetadata,
-  hasCodexSubagentSource,
-} from "../../shared/codex-subagent-metadata";
 import { CodexApplicationEventHub } from "../codex-application/CodexApplicationEventHub";
 import { CodexExternalAgentImportRuntime } from "../codex-application/CodexExternalAgentImportRuntime";
-import { CodexSidebarSyncRuntime } from "../codex-application/CodexSidebarSyncRuntime";
-import { CodexThreadDirectory } from "../codex-application/CodexThreadDirectory";
-import { ThreadCreationRuntime } from "../codex-application/ThreadCreationRuntime";
-import { CodexThreadTitlePersistence } from "../codex-application/CodexThreadTitlePersistence";
-import { CodexAppServerCapabilities } from "../codex-runtime/CodexAppServerCapabilities";
-import { CodexGateway, codexGatewayGenerationFence } from "../codex-runtime/CodexGateway";
-import { getLogger } from "../logging/logger";
-import { buildCodexThreadConfig } from "./codex-thread-config";
-import { projectCodexGatewayThreadReadThread } from "../codex-runtime/CodexGatewayProtocolProjection";
+import { CodexGateway } from "../codex-runtime/CodexGateway";
 
 const SCAN_TTL_MS = 10 * 60 * 1_000;
-const SESSION_LOOKBACK_MS = 30 * 24 * 60 * 60 * 1_000;
-const MAX_SESSION_FILES = 50;
-const MAX_SESSION_DISCOVERY_FILES = 5_000;
-const SESSION_HEADER_READ_BYTES = 256 * 1_024;
-
 const SOURCE_LABELS: Record<AgentImportSourceKind, string> = {
   "claude-code": "Claude Code",
   codex: "Codex",
@@ -68,26 +47,25 @@ const ITEM_LABELS: Record<AgentImportItemKind, string> = {
   memory: "Memory",
   mcpServers: "MCP servers",
   plugins: "Plugins",
-  sessions: "Recent conversations",
-  settings: "Safe settings",
+  settings: "Settings",
   skills: "Skills",
   subagents: "Subagents",
 };
 
 const CLAUDE_ITEM_DESCRIPTIONS: Record<AgentImportItemKind, string> = {
-  commands: "Convert missing Claude Code commands into Nodex agent skills.",
-  hooks: "Import hooks only where Nodex has no conflicting hook setup.",
-  instructions: "Import Claude instructions without replacing existing Nodex instructions.",
-  memory: "Import detected memory entries without replacing existing Nodex memory.",
-  mcpServers: "Import missing MCP server definitions. Connections may require reauthorization.",
-  plugins: "Import selected local and marketplace plugins.",
-  sessions: "Convert recent Claude Code conversations into Nodex-owned thread history.",
-  settings: "Translate supported, missing Claude Code settings into native agent configuration.",
-  skills: "Import missing skills without replacing existing Nodex skills.",
-  subagents: "Import missing subagent definitions without replacing existing definitions.",
+  commands: "Convert Claude Code commands into Codex skills, keeping existing skills.",
+  hooks: "Convert Claude Code hooks when Codex has no hooks.json yet.",
+  instructions: "Convert CLAUDE.md into AGENTS.md when Codex doesn't have one yet.",
+  memory: "Copy Claude Code project memory that Codex doesn't have yet.",
+  mcpServers:
+    "Add MCP servers Codex doesn't have yet. Credentials, headers, and env values are left out; some servers may need sign-in.",
+  plugins: "Install plugins enabled in Claude Code, adding their marketplaces to Codex.",
+  settings: "Translate supported Claude Code settings that Codex doesn't have yet.",
+  skills: "Copy Claude Code skills that Codex doesn't have yet.",
+  subagents: "Convert Claude Code subagents that Codex doesn't have yet.",
 };
 
-const DEFAULT_SELECTED_KINDS = new Set<AgentImportItemKind>(["instructions", "sessions", "skills"]);
+const DEFAULT_SELECTED_KINDS = new Set<AgentImportItemKind>(["instructions", "skills"]);
 
 const SAFE_CONFIG_KEYS = [
   "features",
@@ -106,15 +84,6 @@ const SAFE_CONFIG_KEYS = [
   "web_search",
 ] as const;
 
-export interface NativeSessionCandidate {
-  readonly sourceHome: string;
-  readonly sourcePath: string;
-  readonly sourceContentSha256: string;
-  readonly sourceThreadId: string;
-  readonly cwd: string;
-  readonly title: string | null;
-}
-
 interface NativeCopyCandidate {
   readonly sourcePath: string;
   readonly targetPath: string;
@@ -128,8 +97,7 @@ export interface ConfigEditCandidate {
 }
 
 type PendingImportItemPayload =
-  | { readonly type: "claude"; readonly migrationItem: ExternalAgentConfigMigrationItem }
-  | { readonly type: "sessions"; readonly sessions: readonly NativeSessionCandidate[] }
+  | { readonly type: "claude"; readonly migrationItem: SetupMigrationItem }
   | { readonly type: "copies"; readonly copies: readonly NativeCopyCandidate[] }
   | { readonly type: "config"; readonly edits: readonly ConfigEditCandidate[] };
 
@@ -149,39 +117,15 @@ export interface PendingImportScan {
   readonly itemsById: ReadonlyMap<string, PendingImportItem>;
 }
 
-interface SessionImportLedgerEntry {
-  readonly sourceKind: AgentImportSourceKind;
-  readonly sourcePath: string;
-  readonly sourceContentSha256: string;
-  readonly targetThreadId: string;
-  readonly importedAt: number;
-}
-
-interface SessionImportLedger {
-  readonly version: 1;
-  readonly sessions: readonly SessionImportLedgerEntry[];
-}
-
-interface NativeScanResult {
-  readonly items: readonly PendingImportItem[];
-  readonly skippedAlreadyImportedSessions: number;
-}
-
 export interface AgentImportFileConfiguration {
   readonly codexHome: string;
-  readonly runtimeStateHome: string;
   readonly sourceHomes?: Partial<Record<AgentImportSourceKind, string>>;
 }
 
 interface AgentImportEffectServices {
-  readonly capabilities: CodexAppServerCapabilities["Service"];
   readonly events: CodexApplicationEventHub["Service"];
   readonly externalImport: CodexExternalAgentImportRuntime["Service"];
   readonly gateway: CodexGateway["Service"];
-  readonly sidebarSync: CodexSidebarSyncRuntime["Service"];
-  readonly threadDirectory: CodexThreadDirectory["Service"];
-  readonly threadStarts: ThreadCreationRuntime["Service"];
-  readonly threadTitles: CodexThreadTitlePersistence["Service"];
 }
 
 class AgentImportOperationError extends Data.TaggedError("AgentImportOperationError")<{
@@ -201,12 +145,16 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function isAgentImportSourceKind(value: unknown): value is AgentImportSourceKind {
-  return value === "claude-code" || value === "codex";
+type SetupMigrationItem = ExternalAgentConfigMigrationItem & {
+  readonly itemType: Exclude<ExternalAgentConfigMigrationItemType, "SESSIONS">;
+};
+
+function isSetupMigrationItem(item: ExternalAgentConfigMigrationItem): item is SetupMigrationItem {
+  return item.itemType !== "SESSIONS";
 }
 
-function mapExternalItemKind(itemType: ExternalAgentConfigMigrationItemType): AgentImportItemKind {
-  const kinds: Record<ExternalAgentConfigMigrationItemType, AgentImportItemKind> = {
+function mapExternalItemKind(itemType: SetupMigrationItem["itemType"]): AgentImportItemKind {
+  const kinds: Record<SetupMigrationItem["itemType"], AgentImportItemKind> = {
     AGENTS_MD: "instructions",
     COMMANDS: "commands",
     CONFIG: "settings",
@@ -214,14 +162,13 @@ function mapExternalItemKind(itemType: ExternalAgentConfigMigrationItemType): Ag
     MCP_SERVER_CONFIG: "mcpServers",
     MEMORY: "memory",
     PLUGINS: "plugins",
-    SESSIONS: "sessions",
     SKILLS: "skills",
     SUBAGENTS: "subagents",
   };
   return kinds[itemType];
 }
 
-function migrationItemCount(item: ExternalAgentConfigMigrationItem): number {
+function migrationItemCount(item: SetupMigrationItem): number {
   if (!item.details) return 1;
   const kind = mapExternalItemKind(item.itemType);
   const collections: Partial<Record<AgentImportItemKind, readonly unknown[]>> = {
@@ -230,7 +177,6 @@ function migrationItemCount(item: ExternalAgentConfigMigrationItem): number {
     memory: item.details.memory,
     mcpServers: item.details.mcpServers,
     plugins: item.details.plugins,
-    sessions: item.details.sessions,
     skills: item.details.skills,
     subagents: item.details.subagents,
   };
@@ -264,248 +210,6 @@ async function canonicalizeDirectoryIfPresent(directoryPath: string): Promise<st
     if (code === "ENOENT") return path.resolve(directoryPath);
     throw error;
   }
-}
-
-async function hashFile(filePath: string): Promise<string> {
-  const digest = createHash("sha256");
-  await new Promise<void>((resolve, reject) => {
-    const stream = createReadStream(filePath);
-    stream.on("data", (chunk) => digest.update(chunk));
-    stream.on("error", reject);
-    stream.on("end", resolve);
-  });
-  return digest.digest("hex");
-}
-
-async function readFilePrefix(filePath: string, maxBytes: number): Promise<string> {
-  const handle = await open(filePath, "r");
-  try {
-    const buffer = Buffer.alloc(maxBytes);
-    const { bytesRead } = await handle.read(buffer, 0, maxBytes, 0);
-    return buffer.subarray(0, bytesRead).toString("utf8");
-  } finally {
-    await handle.close();
-  }
-}
-
-function parseSessionHeader(raw: string): {
-  readonly sourceThreadId: string;
-  readonly cwd: string;
-} | null {
-  for (const line of raw.split(/\r?\n/u)) {
-    const trimmed = line.trim();
-    if (!trimmed) continue;
-    let parsed: unknown;
-    try {
-      parsed = JSON.parse(trimmed);
-    } catch {
-      continue;
-    }
-    if (!isRecord(parsed) || parsed.type !== "session_meta" || !isRecord(parsed.payload)) {
-      continue;
-    }
-    if (
-      hasCodexSubagentSource(parsed.payload.source) ||
-      extractCodexThreadSubagentMetadata(parsed.payload).parentThreadId !== null
-    )
-      return null;
-    const sourceThreadId = typeof parsed.payload.id === "string" ? parsed.payload.id.trim() : "";
-    const cwd = typeof parsed.payload.cwd === "string" ? parsed.payload.cwd.trim() : "";
-    if (!sourceThreadId || !path.isAbsolute(cwd)) return null;
-    return { cwd: path.resolve(cwd), sourceThreadId };
-  }
-  return null;
-}
-
-async function readSessionIndex(home: string): Promise<Map<string, string>> {
-  const indexPath = path.join(home, "session_index.jsonl");
-  let raw: string;
-  try {
-    raw = await readFile(indexPath, "utf8");
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") return new Map();
-    throw error;
-  }
-
-  const titles = new Map<string, string>();
-  for (const line of raw.split(/\r?\n/u)) {
-    if (!line.trim()) continue;
-    try {
-      const entry = JSON.parse(line) as unknown;
-      if (!isRecord(entry) || typeof entry.id !== "string") continue;
-      const title =
-        typeof entry.thread_name === "string"
-          ? entry.thread_name.trim()
-          : typeof entry.name === "string"
-            ? entry.name.trim()
-            : "";
-      if (title) titles.set(entry.id, title);
-    } catch {
-      continue;
-    }
-  }
-  return titles;
-}
-
-async function collectRecentJsonlFiles(root: string, cutoff: number): Promise<string[]> {
-  if (!existsSync(root)) return [];
-  const discovered: Array<{ filePath: string; modifiedAt: number }> = [];
-  const pending = [root];
-  let visited = 0;
-
-  while (pending.length > 0 && visited < MAX_SESSION_DISCOVERY_FILES) {
-    const current = pending.pop();
-    if (!current) break;
-    const entries = await readdir(current, { withFileTypes: true });
-    for (const entry of entries) {
-      visited += 1;
-      if (visited > MAX_SESSION_DISCOVERY_FILES) break;
-      if (entry.isSymbolicLink()) continue;
-      const entryPath = path.join(current, entry.name);
-      if (entry.isDirectory()) {
-        pending.push(entryPath);
-        continue;
-      }
-      if (!entry.isFile() || path.extname(entry.name) !== ".jsonl") continue;
-      const metadata = await stat(entryPath);
-      if (metadata.mtimeMs < cutoff) continue;
-      discovered.push({ filePath: entryPath, modifiedAt: metadata.mtimeMs });
-    }
-  }
-
-  return discovered
-    .sort((left, right) => right.modifiedAt - left.modifiedAt)
-    .slice(0, MAX_SESSION_FILES)
-    .map(({ filePath }) => filePath);
-}
-
-function sessionLedgerPath(runtimeStateHome: string): string {
-  return path.join(runtimeStateHome, "imports", "session-imports-v1.json");
-}
-
-function parseSessionLedger(value: unknown): SessionImportLedger {
-  if (!isRecord(value) || value.version !== 1 || !Array.isArray(value.sessions)) {
-    return { version: 1, sessions: [] };
-  }
-  const sessions = value.sessions.flatMap((entry): SessionImportLedgerEntry[] => {
-    if (!isRecord(entry)) return [];
-    if (!isAgentImportSourceKind(entry.sourceKind)) return [];
-    if (
-      typeof entry.sourcePath !== "string" ||
-      typeof entry.sourceContentSha256 !== "string" ||
-      typeof entry.targetThreadId !== "string" ||
-      typeof entry.importedAt !== "number"
-    ) {
-      return [];
-    }
-    return [
-      {
-        importedAt: entry.importedAt,
-        sourceContentSha256: entry.sourceContentSha256,
-        sourceKind: entry.sourceKind,
-        sourcePath: entry.sourcePath,
-        targetThreadId: entry.targetThreadId,
-      },
-    ];
-  });
-  return { version: 1, sessions };
-}
-
-async function readSessionLedger(runtimeStateHome: string): Promise<SessionImportLedger> {
-  try {
-    return parseSessionLedger(
-      JSON.parse(await readFile(sessionLedgerPath(runtimeStateHome), "utf8")),
-    );
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
-      return { version: 1, sessions: [] };
-    }
-    throw error;
-  }
-}
-
-async function writeSessionLedger(
-  runtimeStateHome: string,
-  entries: readonly SessionImportLedgerEntry[],
-): Promise<void> {
-  const targetPath = sessionLedgerPath(runtimeStateHome);
-  const targetDirectory = path.dirname(targetPath);
-  await mkdir(targetDirectory, { recursive: true, mode: 0o700 });
-  const temporaryPath = path.join(targetDirectory, `.session-imports-${randomUUID()}.tmp`);
-  try {
-    await writeFile(
-      temporaryPath,
-      `${JSON.stringify({ version: 1, sessions: entries }, null, 2)}\n`,
-      {
-        encoding: "utf8",
-        mode: 0o600,
-      },
-    );
-    await rename(temporaryPath, targetPath);
-    await chmod(targetPath, 0o600);
-  } finally {
-    await rm(temporaryPath, { force: true });
-  }
-}
-
-function hasImportedSession(
-  ledger: SessionImportLedger,
-  sourceKind: AgentImportSourceKind,
-  session: NativeSessionCandidate,
-): boolean {
-  return ledger.sessions.some(
-    (entry) =>
-      entry.sourceKind === sourceKind &&
-      entry.sourcePath === session.sourcePath &&
-      entry.sourceContentSha256 === session.sourceContentSha256,
-  );
-}
-
-async function discoverSessions(input: {
-  readonly sourceHome: string;
-  readonly sourceKind: AgentImportSourceKind;
-  readonly runtimeStateHome: string;
-  readonly now: number;
-}): Promise<{ sessions: NativeSessionCandidate[]; skipped: number }> {
-  const [ledger, titles] = await Promise.all([
-    readSessionLedger(input.runtimeStateHome),
-    readSessionIndex(input.sourceHome),
-  ]);
-  const roots = [
-    path.join(input.sourceHome, "sessions"),
-    path.join(input.sourceHome, "archived_sessions"),
-  ];
-  const discovered = (
-    await Promise.all(
-      roots.map((root) => collectRecentJsonlFiles(root, input.now - SESSION_LOOKBACK_MS)),
-    )
-  )
-    .flat()
-    .slice(0, MAX_SESSION_FILES);
-  const sessions: NativeSessionCandidate[] = [];
-  let skipped = 0;
-
-  for (const sourcePath of discovered) {
-    const canonicalSourcePath = await realpath(sourcePath);
-    const header = parseSessionHeader(
-      await readFilePrefix(canonicalSourcePath, SESSION_HEADER_READ_BYTES),
-    );
-    if (!header) continue;
-    const session: NativeSessionCandidate = {
-      sourceHome: input.sourceHome,
-      cwd: header.cwd,
-      sourceContentSha256: await hashFile(canonicalSourcePath),
-      sourcePath: canonicalSourcePath,
-      sourceThreadId: header.sourceThreadId,
-      title: titles.get(header.sourceThreadId) ?? null,
-    };
-    if (hasImportedSession(ledger, input.sourceKind, session)) {
-      skipped += 1;
-      continue;
-    }
-    sessions.push(session);
-  }
-  return { sessions, skipped };
 }
 
 function toJsonCompatible(value: unknown): unknown {
@@ -577,14 +281,14 @@ function buildMcpConfigEdits(
 }
 
 async function revalidateConfigEdits(
-  runtimeStateHome: string,
+  codexHome: string,
   edits: readonly ConfigEditCandidate[],
 ): Promise<{
   readonly edits: readonly ConfigEditCandidate[];
   readonly successCount: number;
   readonly skippedCount: number;
 }> {
-  const targetConfig = await readTomlRecord(path.join(runtimeStateHome, "config.toml"));
+  const targetConfig = await readTomlRecord(path.join(codexHome, "config.toml"));
   const accepted: ConfigEditCandidate[] = [];
   let successCount = 0;
   let skippedCount = 0;
@@ -748,30 +452,10 @@ async function copyImportCandidate(
 
 async function scanNativeHome(input: {
   readonly sourceHome: string;
-  readonly sourceKind: "codex";
-  readonly runtimeStateHome: string;
   readonly codexHome: string;
-  readonly now: number;
-}): Promise<NativeScanResult> {
-  const sessions = await discoverSessions(input);
-  const items: PendingImportItem[] =
-    sessions.sessions.length === 0
-      ? []
-      : [
-          createPendingItem({
-            count: sessions.sessions.length,
-            description:
-              input.sourceHome === input.codexHome
-                ? "Add recent Codex conversations to Nodex."
-                : "Copy recent conversations into the active Codex home.",
-            kind: "sessions",
-            label: ITEM_LABELS.sessions,
-            payload: { sessions: sessions.sessions, type: "sessions" },
-          }),
-        ];
-  if (input.sourceHome === input.codexHome) {
-    return { items, skippedAlreadyImportedSessions: sessions.skipped };
-  }
+}): Promise<readonly PendingImportItem[]> {
+  if (input.sourceHome === input.codexHome) return [];
+  const items: PendingImportItem[] = [];
   const targetSkillsHome = path.join(path.dirname(input.codexHome), ".agents", "skills");
   const sourceSkillsHomes = [
     path.join(input.sourceHome, "skills"),
@@ -802,7 +486,7 @@ async function scanNativeHome(input: {
     items.push(
       createPendingItem({
         count: instructions.length,
-        description: "Import AGENTS.md only when Nodex does not already own one.",
+        description: "Copy AGENTS.md, which your Codex home doesn't have yet.",
         kind: "instructions",
         label: ITEM_LABELS.instructions,
         payload: { copies: instructions, type: "copies" },
@@ -813,7 +497,7 @@ async function scanNativeHome(input: {
     items.push(
       createPendingItem({
         count: skills.length,
-        description: `Import ${skills.length} missing skill${skills.length === 1 ? "" : "s"} without replacing existing skills.`,
+        description: "Copy skills that Codex doesn't have yet.",
         kind: "skills",
         label: ITEM_LABELS.skills,
         payload: { copies: skills, type: "copies" },
@@ -824,7 +508,8 @@ async function scanNativeHome(input: {
     items.push(
       createPendingItem({
         count: safeConfigEdits.length,
-        description: "Import model-independent preferences that are absent from the Nodex config.",
+        description:
+          "Add preferences your Codex config doesn't have yet. Model, provider, and permission settings are not copied.",
         kind: "settings",
         label: ITEM_LABELS.settings,
         payload: { edits: safeConfigEdits, type: "config" },
@@ -839,7 +524,7 @@ async function scanNativeHome(input: {
       createPendingItem({
         count: serverCount,
         description:
-          "Import missing MCP server definitions. Credentials and OAuth state are never copied.",
+          "Add MCP servers Codex doesn't have yet. Credentials, headers, and env values are left out; some servers may need sign-in.",
         kind: "mcpServers",
         label: ITEM_LABELS.mcpServers,
         payload: { edits: mcpConfigEdits, type: "config" },
@@ -850,7 +535,7 @@ async function scanNativeHome(input: {
     items.push(
       createPendingItem({
         count: subagents.length,
-        description: "Import missing subagent definitions without replacing local definitions.",
+        description: "Copy subagents that your Codex home doesn't have yet.",
         kind: "subagents",
         label: ITEM_LABELS.subagents,
         payload: { copies: subagents, type: "copies" },
@@ -861,7 +546,7 @@ async function scanNativeHome(input: {
     items.push(
       createPendingItem({
         count: hooks.length,
-        description: "Import hooks only when Nodex does not already own a hooks file.",
+        description: "Copy hooks.json, which your Codex home doesn't have yet.",
         kind: "hooks",
         label: ITEM_LABELS.hooks,
         payload: { copies: hooks, type: "copies" },
@@ -869,7 +554,7 @@ async function scanNativeHome(input: {
     );
   }
 
-  return { items, skippedAlreadyImportedSessions: sessions.skipped };
+  return items;
 }
 
 function outcomeFromExternalResult(
@@ -897,14 +582,11 @@ function outcomeFromExternalResult(
  */
 class AgentImportOperations {
   private readonly codexHome: string;
-  private readonly runtimeStateHome: string;
   private readonly services: AgentImportEffectServices;
   private readonly resolveSourceHome: (sourceKind: AgentImportSourceKind) => string;
-  private readonly logger = getLogger({ component: "agent-import" });
 
   constructor(options: AgentImportFileConfiguration, services: AgentImportEffectServices) {
     this.codexHome = path.resolve(options.codexHome);
-    this.runtimeStateHome = path.resolve(options.runtimeStateHome);
     this.services = services;
     this.resolveSourceHome = (sourceKind) =>
       options.sourceHomes?.[sourceKind] ??
@@ -954,12 +636,13 @@ class AgentImportOperations {
     const targetHome = await canonicalizeDirectoryIfPresent(this.codexHome);
 
     let items: readonly PendingImportItem[];
-    let skippedAlreadyImportedSessions = 0;
     if (sourceKind === "claude-code") {
-      const nativeMigrations = claudeMigrations.filter(
-        (migrationItem) =>
-          migrationItem.itemType !== "CONFIG" && migrationItem.itemType !== "MCP_SERVER_CONFIG",
-      );
+      const nativeMigrations = claudeMigrations
+        .filter(isSetupMigrationItem)
+        .filter(
+          (migrationItem) =>
+            migrationItem.itemType !== "CONFIG" && migrationItem.itemType !== "MCP_SERVER_CONFIG",
+        );
       const [settings, localSettings, targetConfig] = await Promise.all([
         readJsonRecord(path.join(sourceHome, "settings.json")),
         readJsonRecord(path.join(sourceHome, "settings.local.json")),
@@ -994,15 +677,7 @@ class AgentImportOperations {
               }),
             ];
     } else {
-      const result = await scanNativeHome({
-        now,
-        runtimeStateHome: this.runtimeStateHome,
-        codexHome: targetHome,
-        sourceHome,
-        sourceKind,
-      });
-      items = result.items;
-      skippedAlreadyImportedSessions = result.skippedAlreadyImportedSessions;
+      items = await scanNativeHome({ codexHome: targetHome, sourceHome });
     }
 
     const scanId = randomUUID();
@@ -1018,7 +693,6 @@ class AgentImportOperations {
         label,
       })),
       scanId,
-      skippedAlreadyImportedSessions,
       sourceHome,
       sourceKind,
       sourceLabel: SOURCE_LABELS[sourceKind],
@@ -1041,7 +715,7 @@ class AgentImportOperations {
         if (selectedIds.length === 0) throw new Error("Select at least one item to import");
         return selectedIds.map((itemId) => {
           const item = pendingScan.itemsById.get(itemId);
-          if (!item) throw new Error("The selected import item does not belong to this scan");
+          if (!item) throw new Error("The selection no longer matches this scan. Scan again.");
           return item;
         });
       },
@@ -1061,9 +735,6 @@ class AgentImportOperations {
         pendingScan.scan.sourceKind === "claude-code"
           ? yield* this.applyClaudeItems(importId, pendingScan, selectedItems, startedAt)
           : yield* this.applyNativeItems(importId, pendingScan, selectedItems, startedAt);
-      if (result.importedThreadIds.length > 0) {
-        yield* this.services.sidebarSync.sync({ policy: "force", reason: "host-message" });
-      }
       return result;
     }).pipe(Effect.mapError((cause) => operationError("apply", cause)));
   }
@@ -1093,7 +764,7 @@ class AgentImportOperations {
                     !completedTypes.has(item.payload.migrationItem.itemType),
                 );
                 this.emitProgress({
-                  activeItemLabel: activeItem?.label ?? "Importing Claude Code data",
+                  activeItemLabel: activeItem?.label ?? "Importing Claude Code setup",
                   completed: false,
                   completedItems: Math.min(completedTypes.size, claudeItems.length),
                   importId,
@@ -1103,43 +774,6 @@ class AgentImportOperations {
               }),
             )
           : { importId, itemTypeResults: [] };
-      const importedThreadIds = completed.itemTypeResults.flatMap((result) =>
-        result.itemType === "SESSIONS"
-          ? result.successes.flatMap((success) => (success.target ? [success.target] : []))
-          : [],
-      );
-      yield* Effect.forEach(
-        importedThreadIds,
-        (threadId) =>
-          this.services.threadDirectory
-            .resolve({
-              threadId,
-              fidelity: "metadata",
-              hostId: this.services.gateway.localHostId,
-            })
-            .pipe(
-              Effect.flatMap((entry) =>
-                entry
-                  ? Effect.void
-                  : Effect.fail(
-                      operationError(
-                        "apply",
-                        new Error("Imported Thread was not found: " + threadId),
-                      ),
-                    ),
-              ),
-              Effect.catch((cause) =>
-                Effect.sync(() => {
-                  this.logger.warn("Could not materialize an imported Claude Code Thread", {
-                    threadId,
-                    error: cause,
-                  });
-                }),
-              ),
-            ),
-        { concurrency: 1, discard: true },
-      );
-
       const externalOutcomes = claudeItems.map((item) => {
         if (item.payload.type !== "claude") return outcomeFromExternalResult(item, undefined);
         const migrationItem = item.payload.migrationItem;
@@ -1158,9 +792,7 @@ class AgentImportOperations {
           sourceKind: "claude-code",
           totalItems: selectedItems.length,
         });
-        nativeOutcomes.push(
-          yield* this.applyNativeItem("claude-code", item, importedThreadIds, startedAt),
-        );
+        nativeOutcomes.push(yield* this.applyNativeItem(item));
       }
       const outcomes = selectedItems.map((item) => {
         const outcome =
@@ -1172,7 +804,6 @@ class AgentImportOperations {
       const result: AgentImportResult = {
         completedAt: startedAt,
         importId,
-        importedThreadIds,
         outcomes,
         sourceKind: "claude-code",
         sourceLabel: pendingScan.scan.sourceLabel,
@@ -1191,7 +822,6 @@ class AgentImportOperations {
   ) {
     return Effect.gen({ self: this }, function* () {
       const outcomes: AgentImportItemOutcome[] = [];
-      const importedThreadIds: string[] = [];
       for (const [index, item] of selectedItems.entries()) {
         this.emitProgress({
           activeItemLabel: item.label,
@@ -1201,19 +831,11 @@ class AgentImportOperations {
           sourceKind: pendingScan.scan.sourceKind,
           totalItems: selectedItems.length,
         });
-        outcomes.push(
-          yield* this.applyNativeItem(
-            pendingScan.scan.sourceKind,
-            item,
-            importedThreadIds,
-            startedAt,
-          ),
-        );
+        outcomes.push(yield* this.applyNativeItem(item));
       }
       const result: AgentImportResult = {
         completedAt: startedAt,
         importId,
-        importedThreadIds,
         outcomes,
         sourceKind: pendingScan.scan.sourceKind,
         sourceLabel: pendingScan.scan.sourceLabel,
@@ -1224,21 +846,7 @@ class AgentImportOperations {
     });
   }
 
-  private applyNativeItem(
-    sourceKind: AgentImportSourceKind,
-    item: PendingImportItem,
-    importedThreadIds: string[],
-    startedAt: number,
-  ): Effect.Effect<AgentImportItemOutcome> {
-    if (item.payload.type === "sessions") {
-      return this.importSessions(
-        sourceKind,
-        item,
-        item.payload.sessions,
-        importedThreadIds,
-        startedAt,
-      );
-    }
+  private applyNativeItem(item: PendingImportItem): Effect.Effect<AgentImportItemOutcome> {
     if (item.payload.type === "copies") {
       const copies = item.payload.copies;
       return Effect.tryPromise(() => this.importCopies(item, copies)).pipe(
@@ -1281,197 +889,6 @@ class AgentImportOperations {
       messages: ["Unsupported native import item"],
       skippedCount: 0,
       successCount: 0,
-    });
-  }
-
-  private importSessions(
-    sourceKind: AgentImportSourceKind,
-    item: PendingImportItem,
-    sessions: readonly NativeSessionCandidate[],
-    importedThreadIds: string[],
-    startedAt: number,
-  ): Effect.Effect<AgentImportItemOutcome> {
-    return Effect.gen({ self: this }, function* () {
-      const ledger = yield* Effect.tryPromise(() => readSessionLedger(this.runtimeStateHome));
-      const nextEntries = [...ledger.sessions];
-      const messages: string[] = [];
-      let successCount = 0;
-      let skippedCount = 0;
-
-      for (const session of sessions) {
-        yield* Effect.gen({ self: this }, function* () {
-          if (hasImportedSession({ version: 1, sessions: nextEntries }, sourceKind, session)) {
-            skippedCount += 1;
-            return;
-          }
-          const currentHash = yield* Effect.tryPromise(() => hashFile(session.sourcePath));
-          if (currentHash !== session.sourceContentSha256) {
-            return yield* Effect.fail(
-              operationError(
-                "apply",
-                new Error(
-                  (session.title ?? session.sourceThreadId) + ": source changed after scanning",
-                ),
-              ),
-            );
-          }
-          const targetThreadId = yield* this.importSession(session);
-          importedThreadIds.push(targetThreadId);
-          nextEntries.push({
-            importedAt: startedAt,
-            sourceContentSha256: session.sourceContentSha256,
-            sourceKind,
-            sourcePath: session.sourcePath,
-            targetThreadId,
-          });
-          successCount += 1;
-        }).pipe(
-          Effect.catch((cause) =>
-            Effect.sync(() => {
-              messages.push(this.errorMessage(cause));
-            }),
-          ),
-        );
-      }
-      if (successCount > 0) {
-        yield* Effect.tryPromise(() => writeSessionLedger(this.runtimeStateHome, nextEntries)).pipe(
-          Effect.catch((cause) =>
-            Effect.sync(() => {
-              messages.push(this.errorMessage(cause));
-            }),
-          ),
-        );
-      }
-      return {
-        failureCount: messages.length,
-        itemId: item.id,
-        kind: item.kind,
-        label: item.label,
-        messages,
-        skippedCount,
-        successCount,
-      };
-    }).pipe(Effect.catch((cause) => Effect.succeed(this.failedItemOutcome(item, cause))));
-  }
-
-  private importSession(session: NativeSessionCandidate) {
-    return Effect.gen({ self: this }, function* () {
-      const capability = yield* this.services.capabilities.forHost(
-        this.services.gateway.localHostId,
-      );
-      if (!capability.flags.paginatedHistory) {
-        return yield* Effect.fail(
-          operationError(
-            "apply",
-            new Error("Native session import requires bounded paginated history support"),
-          ),
-        );
-      }
-
-      const activeHome = yield* Effect.tryPromise(() =>
-        canonicalizeDirectoryIfPresent(this.codexHome),
-      );
-      if (session.sourceHome === activeHome) {
-        // Native history is already in the active home. Attach its metadata without
-        // creating a fork, resuming another client's live turn, or deleting its history.
-        const response = yield* this.services.gateway.requestLocal(
-          "thread/read",
-          { threadId: session.sourceThreadId, includeTurns: false },
-          codexGatewayGenerationFence(capability),
-        );
-        if (response.thread.id !== session.sourceThreadId) {
-          return yield* Effect.fail(
-            operationError("apply", new Error("Codex returned a different conversation identity")),
-          );
-        }
-        if (extractCodexThreadSubagentMetadata(response.thread).parentThreadId !== null) {
-          return yield* Effect.fail(
-            operationError(
-              "apply",
-              new Error("Attach the parent conversation to access this subagent."),
-            ),
-          );
-        }
-        yield* this.services.threadDirectory.observeMetadata({
-          thread: projectCodexGatewayThreadReadThread(response.thread),
-          inferredInitialProjectId: null,
-          executionHostId: capability.hostId,
-        });
-        return response.thread.id;
-      }
-
-      let createdThreadId: string | null = null;
-      const cwd = existsSync(session.cwd) ? session.cwd : homedir();
-      const operation = Effect.gen({ self: this }, function* () {
-        const response = (yield* this.services.gateway.requestLocal(
-          "thread/fork",
-          {
-            cwd,
-            excludeTurns: true,
-            path: session.sourcePath,
-            threadId: session.sourceThreadId,
-            threadSource: "user",
-            config: buildCodexThreadConfig({
-              nativeAppTools: capability.nativeAppTools,
-            }) as ClientRequestParamsByMethod["thread/fork"]["config"],
-          },
-          codexGatewayGenerationFence(capability),
-        )) as unknown as ThreadForkResponse;
-        const threadId = response.thread.id.trim();
-        if (!threadId) {
-          return yield* Effect.fail(
-            operationError("apply", new Error("Imported rollout did not return a Thread id")),
-          );
-        }
-        createdThreadId = threadId;
-        if (response.thread.historyMode !== "paginated" || response.thread.turns.length !== 0) {
-          return yield* Effect.fail(
-            operationError(
-              "apply",
-              new Error("Imported rollout violated the metadata-only paginated history contract"),
-            ),
-          );
-        }
-        const effectiveCwd =
-          resolveCodexCanonicalHydratedCwd({
-            fallbackCwd: cwd,
-            requestedCwd: cwd,
-            responseCwd: response.cwd,
-            threadCwd: response.thread.cwd,
-          }) ?? cwd;
-        yield* this.services.threadDirectory.acceptImportResult({
-          response: {
-            ...response,
-            thread: { ...response.thread, cwd: effectiveCwd },
-          },
-          capability,
-          executionHostId: this.services.gateway.localHostId,
-          fallbackCwd: effectiveCwd,
-        });
-        if (session.title && !response.thread.name?.trim()) {
-          yield* this.services.threadTitles.setRequired({
-            threadId,
-            name: session.title,
-            normalization: "trim",
-          });
-        }
-        return threadId;
-      });
-      return yield* this.services.threadStarts
-        .materialize(capability.hostId, capability.generation, operation, (threadId) => threadId)
-        .pipe(
-          Effect.onError(() =>
-            createdThreadId
-              ? this.services.gateway
-                  .requestLocal(
-                    "thread/delete",
-                    { threadId: createdThreadId },
-                    codexGatewayGenerationFence(capability),
-                  )
-                  .pipe(Effect.ignore)
-              : Effect.void,
-          ),
-        );
     });
   }
 
@@ -1547,6 +964,4 @@ export const agentImportInternals = {
   SAFE_CONFIG_KEYS,
   buildMcpConfigEdits,
   buildSafeConfigEdits,
-  parseSessionHeader,
-  parseSessionLedger,
 };

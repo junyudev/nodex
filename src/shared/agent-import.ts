@@ -9,8 +9,7 @@ export type AgentImportItemKind =
   | "subagents"
   | "hooks"
   | "commands"
-  | "memory"
-  | "sessions";
+  | "memory";
 
 export interface AgentImportScanInput {
   readonly sourceKind: AgentImportSourceKind;
@@ -32,7 +31,6 @@ export interface AgentImportScan {
   readonly sourceHome: string;
   readonly expiresAt: number;
   readonly items: readonly AgentImportScanItem[];
-  readonly skippedAlreadyImportedSessions: number;
 }
 
 export interface AgentImportApplyInput {
@@ -57,7 +55,6 @@ export interface AgentImportResult {
   readonly startedAt: number;
   readonly completedAt: number;
   readonly outcomes: readonly AgentImportItemOutcome[];
-  readonly importedThreadIds: readonly string[];
 }
 
 export interface AgentImportProgress {

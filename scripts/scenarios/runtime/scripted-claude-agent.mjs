@@ -296,6 +296,24 @@ for await (const line of createInterface({ input: process.stdin })) {
       result();
       continue;
     }
+    if (JSON.stringify(incoming.message.content).includes("Verify imported copy continuation")) {
+      const message = {
+        id: `import-check-${randomUUID()}`,
+        role: "assistant",
+        model,
+        content: [{ type: "text", text: "Independent Claude copy continued" }],
+        usage: { input_tokens: 12, output_tokens: 4 },
+      };
+      send({
+        type: "assistant",
+        session_id: sessionId,
+        uuid: record("assistant", message),
+        parent_tool_use_id: null,
+        message,
+      });
+      result();
+      continue;
+    }
     if (incoming.message.content === "Wait for cancellation") continue;
     if (incoming.message.content === "Verify thinking disabled") {
       if (permissionMode !== "default") throw new Error("Expected native manual permission mode");

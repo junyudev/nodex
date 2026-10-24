@@ -182,17 +182,32 @@ export interface AgentRootActivity {
 }
 
 export interface AgentRuntimeOperations {
-  readonly "thread.import-codex": {
+  readonly "thread.import-native": {
     readonly input: {
       readonly commandId: string;
       readonly threadId: string;
       readonly projectId: string;
       readonly title: string;
+      readonly backendKind: "codex" | "claude";
+      readonly sourceHome: string;
       readonly sourceNativeThreadId: string;
       readonly modelSelection: AgentWire<ModelSelection>;
       readonly cwd: string;
     };
     readonly output: { readonly threadId: string };
+  };
+  readonly "native-imports.find": {
+    readonly input: {
+      readonly backendKind: "codex" | "claude";
+      readonly sourceHome: string;
+      readonly nativeThreadIds: readonly string[];
+    };
+    readonly output: {
+      readonly imports: readonly {
+        readonly sourceNativeThreadId: string;
+        readonly threadId: string;
+      }[];
+    };
   };
   readonly "execution.handoff.pending": {
     readonly input: { readonly cursor?: string };

@@ -233,15 +233,26 @@ const supervisor = Layer.effectContext(
       currentConnection: Deferred.await(ready).pipe(
         Effect.flatMap((runtime) => runtime.currentConnection),
       ),
-      codexImportSourceHome: (connection) =>
+      nativeImportSourceHome: (connection, input) =>
         Effect.gen(function* () {
           const histories = yield* physicalNativeHistories(connection);
-          const source = histories.find((history) => history.providerInstanceId === "codex");
-          const sourceHome = source?.driver === "codex" ? source.homePath : null;
+          const providerId =
+            input.backendKind === "codex"
+              ? agentRuntimeProviderId({ kind: "codex" })
+              : input.instanceConfigId
+                ? agentRuntimeProviderId({
+                    kind: "claude",
+                    instanceConfigId: input.instanceConfigId,
+                  })
+                : null;
+          const source = histories.find((history) => history.providerInstanceId === providerId);
+          const expectedDriver = input.backendKind === "codex" ? "codex" : "claudeAgent";
+          const sourceHome = source?.driver === expectedDriver ? source.homePath : null;
           if (!sourceHome)
             return yield* new AgentRuntimeApplicationError({
               operation: "import",
-              message: "Codex history configuration is unavailable",
+              message: "Native history configuration is unavailable",
+              admissionRejected: true,
             });
           // Active account and restored history homes are frozen for this Main lifetime, so
           // provider refresh cannot replace this source after import admission.

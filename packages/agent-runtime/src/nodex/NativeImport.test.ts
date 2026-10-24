@@ -32,13 +32,15 @@ import { layer as commandsLayer } from "../orchestration-v2/ThreadCommandExecuto
 import { OrchestratorV2 } from "../orchestration-v2/Orchestrator.ts";
 import { EventSinkV2 } from "../orchestration-v2/EventSink.ts";
 import { CodexProviderCapabilitiesV2 } from "../orchestration-v2/Adapters/CodexAdapterV2.ts";
+import { ClaudeProviderCapabilitiesV2 } from "../orchestration-v2/Adapters/ClaudeAdapterV2.ts";
 import * as Harness from "../orchestration-v2/testkit/ProviderReplayHarness.ts";
 import {
-  CodexImportInput,
+  NativeImportInput,
   localMarkdownImagePaths,
   make,
+  makeFind,
   resolveMarkdownImagePath,
-} from "./CodexImport.ts";
+} from "./NativeImport.ts";
 import * as ExecutionLocation from "./ExecutionLocation.ts";
 import * as Attachment from "./Attachment.ts";
 import { turnItemText } from "../mcp/OrchestratorMcpService.ts";
@@ -52,7 +54,16 @@ const adapter: Adapter.ProviderAdapterV2["Service"] = {
   openSession: () => Effect.die("The import never starts a native execution"),
 };
 const database = Sqlite.layerMemory;
-const registry = Registry.layerSingle(adapter);
+const claudeInstanceId = ProviderInstanceId.make("claude");
+const registry = Registry.layerFromAdapters([
+  adapter,
+  {
+    ...adapter,
+    instanceId: claudeInstanceId,
+    driver: ProviderDriverKind.make("claudeAgent"),
+    getCapabilities: () => Effect.succeed(ClaudeProviderCapabilitiesV2),
+  },
+]);
 const config = Layer.effect(
   ServerConfig.ServerConfig,
   Harness.makeReplayServerConfig("codex-import"),
@@ -68,11 +79,13 @@ const layer = Harness.layerWithRegistry({ name: "codex-import" }, registry, {
   Layer.provideMerge(NodeServices.layer),
 );
 const input = (id = "copy") =>
-  CodexImportInput.make({
+  NativeImportInput.make({
     commandId: CommandId.make(`import:${id}`),
     threadId: ThreadId.make(`thread:${id}`),
     projectId: ProjectId.make("project:imports"),
     title: "Imported chat",
+    backendKind: "codex",
+    sourceHome: process.cwd(),
     sourceNativeThreadId: "native:source",
     modelSelection: { instanceId, model: "gpt-5.4" },
     cwd: process.cwd(),
@@ -383,7 +396,7 @@ it.effect("resumes a partial import without duplicate history or an empty destin
       (yield* location
         .hold({
           threadId: target.threadId,
-          operationId: `codex-import:${target.commandId}`,
+          operationId: `native-import:${target.commandId}`,
           action: "release",
         })
         .pipe(Effect.result))._tag,
@@ -781,4 +794,436 @@ it.effect("keeps unreadable images as an import error instead of declaring them 
     assert.isNotNull(copied.thread.executionHandoff);
     assert.equal(copied.turnItems.length, 0);
   }).pipe(Effect.provide(layer)),
+);
+
+const claudeSourceId = "11111111-1111-7111-8111-111111111111";
+const claudeFixture = Effect.fn("NativeImportTest.claudeFixture")(function* (
+  id: string,
+  count = 2,
+) {
+  const fs = yield* FileSystem.FileSystem;
+  const path = yield* Path.Path;
+  const home = yield* fs.makeTempDirectoryScoped({ prefix: "claude-import-" });
+  const project = path.join(home, "projects", "original-project");
+  yield* fs.makeDirectory(project, { recursive: true });
+  const file = path.join(project, `${claudeSourceId}.jsonl`);
+  const png = "iVBORw0KGgo=";
+  const entries = Array.from({ length: count }, (_, index) => ({
+    type: index % 2 === 0 ? "user" : "assistant",
+    uuid: `message-${index}`,
+    parentUuid: index === 0 ? null : `message-${index - 1}`,
+    sessionId: claudeSourceId,
+    cwd: path.join(home, "missing-workspace"),
+    timestamp: new Date(1_700_000_000_000 + index * 1000).toISOString(),
+    message: {
+      role: index % 2 === 0 ? "user" : "assistant",
+      content:
+        index === 0
+          ? [
+              { type: "text", text: "CLAUDE_ORIGINAL_CONSTRAINT" },
+              { type: "image", source: { type: "base64", media_type: "image/png", data: png } },
+            ]
+          : [{ type: "text", text: `Reply ${index} ![Reference](missing-image.png)` }],
+    },
+  }));
+  const sourceText = entries.map((entry) => JSON.stringify(entry)).join("\n") + "\n";
+  yield* fs.writeFileString(file, sourceText);
+  return {
+    file,
+    sourceText,
+    entries,
+    png,
+    target: NativeImportInput.make({
+      ...input(id),
+      backendKind: "claude",
+      sourceHome: home,
+      sourceNativeThreadId: claudeSourceId,
+      modelSelection: { instanceId: claudeInstanceId, model: "claude-sonnet-4-6" },
+    }),
+  };
+});
+
+it.effect(
+  "copies real Claude SDK history from its captured home, owns images, and starts fresh after source deletion",
+  () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const source = yield* claudeFixture("claude-copy");
+      const importThread = yield* make;
+      const find = yield* makeFind;
+      yield* importThread(source.target);
+      assert.equal(yield* fs.readFileString(source.file), source.sourceText);
+      const store = yield* ProjectionStoreV2;
+      const copied = yield* store.getThreadProjection(source.target.threadId);
+      assert.deepEqual(
+        copied.messages.map((message) => message.text),
+        ["CLAUDE_ORIGINAL_CONSTRAINT", "Reply 1 ![Reference](missing-image.png)"],
+      );
+      assert.equal(copied.runs.length, 0);
+      assert.equal(copied.providerThreads.length, 0);
+      assert.isTrue(copied.turnItems.every((item) => item.nativeItemRef?.driver === "claudeAgent"));
+      const request = copied.turnItems.find((item) => item.type === "user_message");
+      const reply = copied.turnItems.find((item) => item.type === "assistant_message");
+      if (request?.type !== "user_message" || reply?.type !== "assistant_message")
+        return assert.fail("Missing imported messages");
+      assert.equal(request.attachments.length, 1);
+      assert.deepEqual(reply.unavailableImages, [
+        { name: "missing-image.png", sourcePath: "missing-image.png", reason: "source_missing" },
+      ]);
+      assert.deepEqual(
+        (yield* find({
+          backendKind: "claude",
+          sourceHome: source.target.sourceHome,
+          nativeThreadIds: [claudeSourceId],
+        })).imports,
+        [{ sourceNativeThreadId: claudeSourceId, threadId: source.target.threadId }],
+      );
+      assert.deepEqual(
+        (yield* find({
+          backendKind: "codex",
+          sourceHome: source.target.sourceHome,
+          nativeThreadIds: [claudeSourceId],
+        })).imports,
+        [],
+      );
+      assert.deepEqual(
+        (yield* find({
+          backendKind: "claude",
+          sourceHome: process.cwd(),
+          nativeThreadIds: [claudeSourceId],
+        })).imports,
+        [],
+      );
+      yield* fs.remove(source.file);
+      const reopened = yield* make;
+      yield* reopened(source.target);
+      const readAttachment = yield* Attachment.make;
+      const owned = yield* readAttachment({
+        threadId: source.target.threadId,
+        itemId: request.id,
+        attachmentId: request.attachments[0]!.id,
+      });
+      assert.isTrue(owned !== null && "path" in owned);
+      if (owned && "path" in owned)
+        assert.equal(Buffer.from(yield* fs.readFile(owned.path)).toString("base64"), source.png);
+      const writer = yield* OrchestratorV2;
+      yield* writer.dispatch({
+        type: "message.dispatch",
+        commandId: CommandId.make("send:claude-copy"),
+        threadId: source.target.threadId,
+        messageId: MessageId.make("message:claude-copy"),
+        text: "Continue",
+        attachments: [],
+        createdBy: "user",
+        creationSource: "web",
+        dispatchMode: { type: "defer_start" },
+      });
+      const continued = yield* store.getThreadProjection(source.target.threadId);
+      assert.isTrue(continued.providerThreads.every((thread) => thread.nativeThreadRef === null));
+      assert.isTrue(
+        continued.contextHandoffs.some(
+          (handoff) =>
+            handoff.summaryText.includes("CLAUDE_ORIGINAL_CONSTRAINT") &&
+            handoff.summaryText.includes("Image unavailable: missing-image.png"),
+        ),
+      );
+    }).pipe(Effect.provide(layer)),
+);
+
+it.effect("fences Claude retry against rewritten captured history and excludes later appends", () =>
+  Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem;
+    const source = yield* claudeFixture("claude-resume", 28);
+    const failingImage = `${source.target.sourceHome}/missing-workspace/missing-image.png`;
+    let reads = 0;
+    const interrupted = yield* make.pipe(
+      Effect.provideService(FileSystem.FileSystem, {
+        ...fs,
+        stat: (path) =>
+          path === failingImage && ++reads > 12
+            ? Effect.fail(
+                PlatformError.systemError({
+                  _tag: "PermissionDenied",
+                  module: "FileSystem",
+                  method: "stat",
+                  pathOrDescriptor: path,
+                }),
+              )
+            : fs.stat(path),
+      }),
+    );
+    assert.equal((yield* interrupted(source.target).pipe(Effect.result))._tag, "Failure");
+    const store = yield* ProjectionStoreV2;
+    assert.equal((yield* store.getThreadProjection(source.target.threadId)).messages.length, 25);
+    const find = yield* makeFind;
+    assert.deepEqual(
+      (yield* find({
+        backendKind: "claude",
+        sourceHome: source.target.sourceHome,
+        nativeThreadIds: [claudeSourceId],
+      })).imports,
+      [],
+    );
+    const rewritten = source.sourceText.replace(
+      "CLAUDE_ORIGINAL_CONSTRAINT",
+      "REWRITTEN_CONSTRAINT",
+    );
+    yield* fs.writeFileString(source.file, rewritten);
+    const retry = yield* make;
+    assert.equal((yield* retry(source.target).pipe(Effect.result))._tag, "Failure");
+    assert.equal((yield* store.getThreadProjection(source.target.threadId)).messages.length, 25);
+    assert.isNotNull((yield* store.getThread(source.target.threadId)).executionHandoff);
+    const appended = {
+      ...source.entries.at(-1)!,
+      uuid: "message-appended",
+      parentUuid: "message-27",
+      message: { role: "assistant", content: [{ type: "text", text: "APPENDED_AFTER_CAPTURE" }] },
+    };
+    yield* fs.writeFileString(source.file, source.sourceText + JSON.stringify(appended) + "\n");
+    yield* retry(source.target);
+    const copied = yield* store.getThreadProjection(source.target.threadId);
+    assert.equal(copied.messages.length, 28);
+    assert.isFalse(
+      copied.messages.some((message) => message.text.includes("APPENDED_AFTER_CAPTURE")),
+    );
+    assert.isNull(copied.thread.executionHandoff);
+  }).pipe(Effect.provide(layer)),
+);
+
+it.effect(
+  "retains Claude thinking, tool results, unknown text records, and tool images as passive owned history",
+  () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const source = yield* claudeFixture("claude-tools");
+      const records = [
+        source.entries[0],
+        {
+          ...source.entries[1],
+          message: {
+            role: "assistant",
+            content: [
+              { type: "thinking", thinking: "Inspect the local image", signature: "signature" },
+              {
+                type: "tool_use",
+                id: "read-image",
+                name: "Read",
+                input: { file_path: "/original/image.png" },
+              },
+              { type: "future_record", text: "PRESERVED_UNKNOWN_TEXT" },
+            ],
+          },
+        },
+        {
+          ...source.entries[0],
+          uuid: "message-2",
+          parentUuid: "message-1",
+          message: {
+            role: "user",
+            content: [
+              {
+                type: "tool_result",
+                tool_use_id: "read-image",
+                content: [
+                  { type: "text", text: "TOOL_OUTPUT_CONSTRAINT" },
+                  {
+                    type: "image",
+                    source: { type: "base64", media_type: "image/png", data: source.png },
+                  },
+                ],
+              },
+            ],
+          },
+        },
+        {
+          ...source.entries[1],
+          uuid: "message-3",
+          parentUuid: "message-2",
+          message: { role: "assistant", content: [{ type: "text", text: "Finished inspection" }] },
+        },
+      ];
+      const before = records.map((record) => JSON.stringify(record)).join("\n") + "\n";
+      yield* fs.writeFileString(source.file, before);
+      const importThread = yield* make;
+      yield* importThread(source.target);
+      assert.equal(yield* fs.readFileString(source.file), before);
+      const store = yield* ProjectionStoreV2;
+      const copied = yield* store.getThreadProjection(source.target.threadId);
+      assert.deepEqual(
+        copied.messages.map((message) => message.text),
+        ["CLAUDE_ORIGINAL_CONSTRAINT", "Finished inspection"],
+      );
+      assert.isTrue(
+        copied.turnItems.some(
+          (item) => item.type === "reasoning" && item.text === "Inspect the local image",
+        ),
+      );
+      assert.isTrue(
+        copied.turnItems.some(
+          (item) =>
+            item.type === "dynamic_tool" &&
+            item.toolName === "Read" &&
+            JSON.stringify(item.output).includes("read-image"),
+        ),
+      );
+      assert.isTrue(
+        copied.turnItems.some(
+          (item) =>
+            item.type === "dynamic_tool" &&
+            item.toolName === "tool_result" &&
+            JSON.stringify(item.output).includes("TOOL_OUTPUT_CONSTRAINT"),
+        ),
+      );
+      assert.isTrue(
+        copied.turnItems.some(
+          (item) =>
+            item.type === "dynamic_tool" &&
+            item.toolName === "future_record" &&
+            JSON.stringify(item.output).includes("PRESERVED_UNKNOWN_TEXT"),
+        ),
+      );
+      const image = copied.turnItems.find(
+        (item) => item.type === "dynamic_tool" && item.toolName === "imageView",
+      );
+      if (image?.type !== "dynamic_tool") return assert.fail("Missing copied tool image");
+      assert.equal(image.attachments?.length, 1);
+      yield* fs.remove(source.file);
+      const readAttachment = yield* Attachment.make;
+      const owned = yield* readAttachment({
+        threadId: source.target.threadId,
+        itemId: image.id,
+        attachmentId: image.attachments![0]!.id,
+      });
+      assert.isTrue(owned !== null && "path" in owned);
+      if (owned && "path" in owned)
+        assert.equal(Buffer.from(yield* fs.readFile(owned.path)).toString("base64"), source.png);
+      assert.equal(copied.runs.length, 0);
+      assert.equal(copied.providerThreads.length, 0);
+    }).pipe(Effect.provide(layer)),
+);
+
+it.effect(
+  "isolates identical Claude session IDs by captured source home and never opens an absent account's history",
+  () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const first = yield* claudeFixture("claude-account-a");
+      const second = yield* claudeFixture("claude-account-b");
+      yield* fs.writeFileString(
+        second.file,
+        second.sourceText.replace("CLAUDE_ORIGINAL_CONSTRAINT", "OTHER_ACCOUNT_CONSTRAINT"),
+      );
+      const importThread = yield* make;
+      yield* importThread(first.target);
+      yield* importThread(second.target);
+      const store = yield* ProjectionStoreV2;
+      assert.equal(
+        (yield* store.getThreadProjection(first.target.threadId)).messages[0]?.text,
+        "CLAUDE_ORIGINAL_CONSTRAINT",
+      );
+      assert.equal(
+        (yield* store.getThreadProjection(second.target.threadId)).messages[0]?.text,
+        "OTHER_ACCOUNT_CONSTRAINT",
+      );
+      assert.equal(
+        (yield* importThread({ ...first.target, sourceHome: second.target.sourceHome }).pipe(
+          Effect.result,
+        ))._tag,
+        "Failure",
+      );
+      yield* fs.remove(first.file);
+      const absent = {
+        ...first.target,
+        commandId: CommandId.make("import:claude-absent"),
+        threadId: ThreadId.make("thread:claude-absent"),
+      };
+      assert.equal((yield* importThread(absent).pipe(Effect.result))._tag, "Failure");
+      assert.isNotNull((yield* store.getThread(absent.threadId)).executionHandoff);
+      assert.equal((yield* store.getThreadProjection(absent.threadId)).messages.length, 0);
+    }).pipe(Effect.provide(layer)),
+);
+
+it.effect(
+  "rejects unreadable Claude content returned by the real SDK while accepting an empty message",
+  () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const source = yield* claudeFixture("claude-unreadable-content");
+      const writeContent = (content: unknown) =>
+        fs.writeFileString(
+          source.file,
+          [source.entries[0], { ...source.entries[1], message: { role: "assistant", content } }]
+            .map((entry) => JSON.stringify(entry))
+            .join("\n") + "\n",
+        );
+      yield* writeContent({ type: "future_envelope", text: "VISIBLE_CONTENT_MUST_NOT_DISAPPEAR" });
+      const importThread = yield* make;
+      const rejected = yield* importThread(source.target).pipe(Effect.result);
+      assert.equal(rejected._tag, "Failure");
+      if (rejected._tag !== "Failure") return;
+      assert.equal(
+        String(rejected.failure),
+        "Error: A message in this conversation has no readable content.",
+      );
+      const store = yield* ProjectionStoreV2;
+      assert.isNotNull((yield* store.getThread(source.target.threadId)).executionHandoff);
+      assert.equal((yield* store.getThreadProjection(source.target.threadId)).messages.length, 0);
+      yield* writeContent([]);
+      yield* importThread(source.target);
+      const copied = yield* store.getThreadProjection(source.target.threadId);
+      assert.isNull(copied.thread.executionHandoff);
+      assert.deepEqual(
+        copied.messages.map((message) => message.text),
+        ["CLAUDE_ORIGINAL_CONSTRAINT"],
+      );
+    }).pipe(Effect.provide(layer)),
+);
+
+it.effect.each(["mixed root", "child root"] as const)(
+  "uses real Claude SDK root eligibility for a %s without modifying its source",
+  (kind) =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const source = yield* claudeFixture(`claude-${kind.replace(" ", "-")}`);
+      const child = source.entries.map((entry, index) => ({
+        ...entry,
+        uuid: `child-${index}`,
+        parentUuid: index === 0 ? "message-0" : `child-${index - 1}`,
+        isSidechain: true,
+        agentId: "delegated-child",
+        message: { role: entry.type, content: [{ type: "text", text: `CHILD_ONLY_${index}` }] },
+      }));
+      const records = kind === "mixed root" ? [...source.entries, ...child] : child;
+      const original = records.map((entry) => JSON.stringify(entry)).join("\n") + "\n";
+      yield* fs.writeFileString(source.file, original);
+      const importThread = yield* make;
+      const result = yield* importThread(source.target).pipe(Effect.result);
+      assert.equal(yield* fs.readFileString(source.file), original);
+      const store = yield* ProjectionStoreV2;
+      const copied = yield* store.getThreadProjection(source.target.threadId);
+      assert.equal(copied.runs.length, 0);
+      assert.equal(copied.providerThreads.length, 0);
+      if (kind === "child root") {
+        assert.equal(result._tag, "Failure");
+        assert.isNotNull(copied.thread.executionHandoff);
+        assert.equal(copied.messages.length, 0);
+        const find = yield* makeFind;
+        assert.deepEqual(
+          (yield* find({
+            backendKind: "claude",
+            sourceHome: source.target.sourceHome,
+            nativeThreadIds: [claudeSourceId],
+          })).imports,
+          [],
+        );
+        return;
+      }
+      assert.equal(result._tag, "Success");
+      assert.isNull(copied.thread.executionHandoff);
+      assert.deepEqual(
+        copied.messages.map((message) => message.text),
+        ["CLAUDE_ORIGINAL_CONSTRAINT", "Reply 1 ![Reference](missing-image.png)"],
+      );
+      assert.isFalse(copied.turnItems.some((item) => JSON.stringify(item).includes("CHILD_ONLY_")));
+    }).pipe(Effect.provide(layer)),
 );

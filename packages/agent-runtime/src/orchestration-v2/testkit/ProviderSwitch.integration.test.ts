@@ -35,7 +35,7 @@ import * as SqlClient from "effect/sql/SqlClient";
 
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { rollbackThread } from "../../nodex/Rollback.ts";
-import { importHistoryEvents } from "../../nodex/CodexImportHistory.ts";
+import { importHistoryEvents } from "../../nodex/NativeImportHistory.ts";
 import { ThreadManagementService } from "../ThreadManagementService.ts";
 import * as IdAllocator from "@t3tools/provider-core/server/IdAllocator";
 import * as CheckpointStore from "../../checkpointing/CheckpointStore.ts";

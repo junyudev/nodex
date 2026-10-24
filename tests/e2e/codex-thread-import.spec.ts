@@ -13,7 +13,7 @@ import {
   withScriptedModelServer,
 } from "../../scripts/scenarios/runtime/scripted-model-server";
 import type { IpcApi } from "../../src/shared/ipc-api";
-import type { CodexThreadImportResult } from "../../src/shared/native-session-catalog";
+import type { NativeConversationImportResult } from "../../src/shared/native-session-catalog";
 import { createCodexThreadImportFixtureClient } from "./support/codex-thread-import-fixture";
 import { resolveNativeVisualizationFixtureRuntime } from "./support/native-visualization-history-fixture";
 import {
@@ -47,7 +47,10 @@ const nativeRequests = (
         .map((line) => JSON.parse(line))
     : [];
 
-const importedHistory = async (page: Page, { sessionId, threadId }: CodexThreadImportResult) => {
+const importedHistory = async (
+  page: Page,
+  { sessionId, threadId }: NativeConversationImportResult,
+) => {
   const target = { sessionId, threadId };
   const conversation = await readRuntimeConversation(page, target);
   const items = new Map<string, AgentTurnItem>();
@@ -332,20 +335,19 @@ respect_system_proxy = false
         await page.getByRole("button", { name: "Settings", exact: true }).click();
         await page.getByRole("link", { name: "Conversations", exact: true }).click();
         await page
-          .getByRole("textbox", { name: "Codex conversation link or ID", exact: true })
+          .getByRole("textbox", { name: "Conversation link or ID", exact: true })
           .fill(`codex://threads/${sourceId}`);
         const form = page.getByRole("group", { name: title, exact: true });
+        const selection = page.getByRole("group", { name: "Import selection", exact: true });
         await expect(form).toBeVisible();
+        await expect(form.getByText("Folder missing", { exact: true })).toBeVisible();
         await expect(
-          form.getByText("Folder not found. Choose a replacement to import.", { exact: true }),
-        ).toBeVisible();
-        await expect(
-          form.getByRole("button", { name: "Import and open", exact: true }),
+          selection.getByRole("button", { name: "Import and open", exact: true }),
         ).toBeDisabled();
         const dismissNotification = page.getByRole("button", { name: "Dismiss notification" });
         if (await dismissNotification.count()) await dismissNotification.first().click();
         await page.screenshot({ path: testInfo.outputPath("codex-import-missing-cwd.png") });
-        await form.getByRole("button", { name: "Import destination", exact: true }).click();
+        await selection.getByRole("button", { name: "Import destination", exact: true }).click();
         await page.getByRole("option", { name: "Projectless", exact: true }).click();
         await harness.application.evaluate(({ dialog }, selectedPath) => {
           const original = dialog.showOpenDialog;
@@ -356,7 +358,7 @@ respect_system_proxy = false
         }, replacementCwd);
         await form.getByRole("button", { name: "Choose folder", exact: true }).click();
         await expect(form.getByText(replacementCwd, { exact: true })).toBeVisible();
-        await form.getByRole("button", { name: "Import and open", exact: true }).click();
+        await selection.getByRole("button", { name: "Import and open", exact: true }).click();
         await expect(page.getByText(sourceReply, { exact: true }).last()).toBeVisible({
           timeout: 30_000,
         });
@@ -376,11 +378,15 @@ respect_system_proxy = false
           page.locator(`[data-app-action-sidebar-thread-id="${imported.threadId}"]`),
         ).toBeVisible();
         expect(imported.threadId).not.toBe(sourceId);
-        const preview = await invoke(page, "native-sessions:preview-codex-import", {
+        const previews = await invoke(page, "native-sessions:preview-import", {
           reference: sourceId,
+          backendKind: "codex",
         });
+        const preview = previews.matches[0];
+        if (!preview) throw new Error("Imported source is missing from preview");
         expect(preview.cwdAvailable).toBe(false);
         const retryInput = {
+          backendKind: "codex" as const,
           requestId: imported.sessionId,
           acceptedAt: Date.now(),
           nativeSessionId: sourceId,
@@ -388,7 +394,10 @@ respect_system_proxy = false
           projectId: null,
           cwd: replacementCwd,
         };
-        expect(await invoke(page, "native-sessions:import-codex", retryInput)).toEqual(imported);
+        expect(await invoke(page, "native-sessions:import", retryInput)).toEqual({
+          kind: "imported",
+          ...imported,
+        });
         const history = await importedHistory(page, imported);
         await testInfo.attach("codex-import-history.json", {
           body: JSON.stringify(history, null, 2),
@@ -462,7 +471,10 @@ respect_system_proxy = false
         const sourceReadsBeforeRetry = nativeRequests(log).filter(
           (request) => request.params?.threadId === sourceId,
         ).length;
-        expect(await invoke(page, "native-sessions:import-codex", retryInput)).toEqual(imported);
+        expect(await invoke(page, "native-sessions:import", retryInput)).toEqual({
+          kind: "imported",
+          ...imported,
+        });
         page = await harness.restart();
         expect(await importedHistory(page, imported)).toEqual(history);
         await expect(page.getByText(sourceReply, { exact: true }).last()).toBeVisible({

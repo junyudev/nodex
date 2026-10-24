@@ -199,12 +199,10 @@ import type {
   AgentImportScanInput,
 } from "./agent-import";
 import type {
-  CodexThreadImportInput,
-  CodexThreadImportPreview,
-  CodexThreadImportPreviewInput,
-  CodexThreadImportResult,
-  NativeSessionAttachInput,
-  NativeSessionAttachResult,
+  NativeConversationImportInput,
+  NativeConversationImportPreviewResult,
+  NativeConversationImportPreviewInput,
+  NativeConversationImportOutcome,
   NativeSessionCatalogInput,
   NativeSessionCatalogPage,
 } from "./native-session-catalog";
@@ -2326,17 +2324,13 @@ export interface IpcApi extends AgentRuntimeIpcApi {
     args: [input: NativeSessionCatalogInput];
     result: NativeSessionCatalogPage;
   };
-  "native-sessions:attach": {
-    args: [input: NativeSessionAttachInput];
-    result: NativeSessionAttachResult;
+  "native-sessions:preview-import": {
+    args: [input: NativeConversationImportPreviewInput];
+    result: NativeConversationImportPreviewResult;
   };
-  "native-sessions:preview-codex-import": {
-    args: [input: CodexThreadImportPreviewInput];
-    result: CodexThreadImportPreview;
-  };
-  "native-sessions:import-codex": {
-    args: [input: CodexThreadImportInput];
-    result: CodexThreadImportResult;
+  "native-sessions:import": {
+    args: [input: NativeConversationImportInput];
+    result: NativeConversationImportOutcome;
   };
   "codex:hooks:list": {
     args: [input: CodexHooksListInput];

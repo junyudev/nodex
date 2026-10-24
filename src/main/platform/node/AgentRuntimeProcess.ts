@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import {
-  AGENT_RUNTIME_CODEX_IMPORT_MAX_TIMEOUT_MS,
+  AGENT_RUNTIME_NATIVE_IMPORT_MAX_TIMEOUT_MS,
   AGENT_RUNTIME_STRUCTURED_GENERATION_MAX_TIMEOUT_MS,
   type AgentRuntimeBootstrap,
   type AgentHostRequest,
@@ -45,8 +45,8 @@ export const agentRuntimeRequestTimeoutMs = <M extends AgentRuntimeMethod>(
   payload: AgentRuntimeOperations[M]["input"],
   defaultMs: number = DEFAULT_REQUEST_TIMEOUT_MS,
 ): number => {
-  if (method === "thread.import-codex")
-    return Math.max(defaultMs, AGENT_RUNTIME_CODEX_IMPORT_MAX_TIMEOUT_MS + REPLY_GRACE_MS);
+  if (method === "thread.import-native")
+    return Math.max(defaultMs, AGENT_RUNTIME_NATIVE_IMPORT_MAX_TIMEOUT_MS + REPLY_GRACE_MS);
   if (method !== "text.generate-structured") return defaultMs;
   const budget =
     (payload as AgentRuntimeOperations["text.generate-structured"]["input"]).timeoutMs ??

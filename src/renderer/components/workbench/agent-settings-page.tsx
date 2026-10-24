@@ -1,6 +1,7 @@
 import { ClaudeAgentSettingsControl } from "./claude-agent-settings-control";
 import { OpenCodeAgentSettingsControl } from "./opencode-agent-settings-control";
 import { CodexHomeSettingsControl } from "./codex-home-settings-control";
+import { CodexSetupImportControl } from "./codex-setup-import-control";
 import { AcpAgentSettingsControl } from "./acp-agent-settings-control";
 import {
   NodexSettingsPageSurface as SettingsPageSurface,
@@ -20,8 +21,9 @@ export function AgentSettingsPage({ open }: SettingsSectionPageProps) {
       <SectionBlock id="acp" title="ACP">
         <AcpAgentSettingsControl open={open} />
       </SectionBlock>
-      <SectionBlock title="Codex">
+      <SectionBlock id="codex" title="Codex">
         <CodexHomeSettingsControl open={open} />
+        <CodexSetupImportControl open={open} />
       </SectionBlock>
     </SettingsPageSurface>
   );

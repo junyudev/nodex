@@ -45,9 +45,14 @@ export class ClaudeNativeCatalog extends Context.Service<
     readonly nativeSessionInfo: (input: {
       readonly instanceConfigId: string;
       readonly nativeSessionId: string;
-      readonly expectedHome: string;
+      readonly expectedHome?: string;
     }) => Effect.Effect<
-      SDKSessionInfo & { readonly cwd: string; readonly nativeHome: string },
+      | (SDKSessionInfo & {
+          readonly cwd: string;
+          readonly nativeHome: string;
+          readonly cwdAvailable: boolean;
+        })
+      | null,
       AgentRuntimeError
     >;
     readonly models: (
@@ -145,7 +150,7 @@ export const make = Effect.gen(function* () {
           .strict()
           .parse(JSON.parse(Buffer.from(input.cursor, "base64url").toString("utf8")));
         if (cursor.home !== scope.nativeHome || cursor.instance !== input.instanceConfigId)
-          throw new Error("The Claude profile changed. Refresh the session list.");
+          throw new Error("The Claude Code profile changed. Refresh to see its conversations.");
         return cursor.offset;
       },
       catch: (cause) => failure("catalog cursor", cause),
@@ -154,7 +159,8 @@ export const make = Effect.gen(function* () {
     if ((yield* nativeHome(input.instanceConfigId)) !== scope.nativeHome)
       return yield* failure(
         "catalog",
-        new Error("The Claude profile changed. Refresh the session list."),
+        new Error("The Claude Code profile changed. Refresh to see its conversations."),
+        "resource-not-found",
       );
     const candidates = yield* Effect.forEach(
       sessions.slice(0, 50),
@@ -170,7 +176,6 @@ export const make = Effect.gen(function* () {
             try: () => nativeSessionCwdAvailable(session.cwd!),
             catch: (cause) => failure("catalog working directory", cause),
           });
-          if (!available) return null;
           return {
             nativeSessionId: session.sessionId,
             title: nativeSessionCatalogTitle(
@@ -178,6 +183,7 @@ export const make = Effect.gen(function* () {
               "Claude conversation",
             ),
             cwd: session.cwd,
+            cwdAvailable: available,
             updatedAt: session.lastModified,
           };
         }),
@@ -201,19 +207,21 @@ export const make = Effect.gen(function* () {
   const nativeSessionInfo = Effect.fn("ClaudeNativeCatalog.nativeSessionInfo")(function* (input: {
     readonly instanceConfigId: string;
     readonly nativeSessionId: string;
-    readonly expectedHome: string;
+    readonly expectedHome?: string;
   }) {
     const scope = yield* nativeScope(input.instanceConfigId);
-    if (scope.nativeHome !== input.expectedHome)
+    if (input.expectedHome !== undefined && scope.nativeHome !== input.expectedHome)
       return yield* failure(
         "attachment",
-        new Error("The Claude profile changed. Refresh the session list."),
+        new Error("The Claude Code profile changed. Refresh to see its conversations."),
+        "resource-not-found",
       );
     const info = yield* sdk.sessionInfo(scope.input, input.nativeSessionId);
-    if (!info || info.sessionId !== input.nativeSessionId || !info.cwd || !isAbsolute(info.cwd))
+    if (!info) return null;
+    if (info.sessionId !== input.nativeSessionId || !info.cwd || !isAbsolute(info.cwd))
       return yield* failure(
-        "attachment",
-        new Error("This native conversation is no longer available."),
+        "import",
+        new Error("This conversation has no recorded working folder, so it can’t be imported."),
         "resource-not-found",
       );
     const cwd = info.cwd;
@@ -221,17 +229,13 @@ export const make = Effect.gen(function* () {
       try: () => nativeSessionCwdAvailable(cwd),
       catch: (cause) => failure("working directory", cause),
     });
-    if (!available)
-      return yield* failure(
-        "working directory",
-        new Error("The native working directory is unavailable."),
-      );
     if ((yield* nativeHome(input.instanceConfigId)) !== scope.nativeHome)
       return yield* failure(
         "attachment",
-        new Error("The Claude profile changed. Refresh the session list."),
+        new Error("The Claude Code profile changed. Refresh to see its conversations."),
+        "resource-not-found",
       );
-    return { ...info, cwd, nativeHome: scope.nativeHome };
+    return { ...info, cwd, nativeHome: scope.nativeHome, cwdAvailable: available };
   });
   const exclusive = <A, E, R>(id: string, action: Effect.Effect<A, E, R>) =>
     Effect.scoped(

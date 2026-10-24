@@ -9,8 +9,6 @@ import type { ClientRequestResponsesByMethod } from "@nodex/effect-codex-app-ser
 import type { DevelopmentFeatureSlug } from "../../src/shared/development-features";
 import type { CodexRendererHostContext } from "../../src/shared/codex-renderer-resume";
 import type {
-  NativeSessionAttachInput,
-  NativeSessionAttachResult,
   NativeSessionCatalogEntry,
   NativeSessionCatalogPage,
 } from "../../src/shared/native-session-catalog";
@@ -18,6 +16,10 @@ import type { ProjectSession, ProjectSessionSummaryWindow } from "../../src/shar
 import { ElectronScenarioHarness } from "../../scripts/scenarios/harness/electron-e2e-harness";
 import { installPrivateFile, resolveRegularPrivateFileSource } from "../../scripts/private-file";
 import { invokeIpc } from "./support/agent-smoke-harness";
+import {
+  seedNativeHistoryBinding,
+  type SeededNativeHistoryBinding,
+} from "./support/native-history-binding";
 import {
   installTranscriptPortProbe,
   readTranscriptPortEvidence,
@@ -59,12 +61,10 @@ interface FindSample {
 }
 interface NativeAttachmentEvidence {
   readonly catalogBefore: NativeSessionCatalogEntry;
-  first?: NativeSessionAttachResult;
-  repeated?: NativeSessionAttachResult;
+  seeded?: SeededNativeHistoryBinding;
   catalogAfter?: NativeSessionCatalogEntry;
   binding?: Pick<ProjectSession, "id" | "projectId" | "thread">;
   boundSessionIds?: readonly string[];
-  classification?: "already-materialized" | "startup-sync-race" | "explicit-connection";
 }
 
 async function measureFind(page: Page, corpus: "short" | "long", failurePath: string) {
@@ -339,35 +339,15 @@ test("benchmarks native paginated history without running a model Turn", async (
       const entry = catalog.entries.find((value) => value.nativeSessionId === corpus.threadId);
       if (!entry) throw new Error("Official native metadata was not adopted into the catalog");
       attachmentEvidence = { catalogBefore: entry };
-      const attachInput: NativeSessionAttachInput = {
-        backendKind: "codex",
-        nativeSessionId: corpus.threadId,
-        expectedHome: catalog.nativeHome,
-        projectId: null,
-      };
-      const attached = (await invokeIpc(
-        page,
-        "native-sessions:attach",
-        attachInput,
-      )) as NativeSessionAttachResult;
-      attachmentEvidence.first = attached;
+      const attached = await seedNativeHistoryBinding(harness.profile, catalog.nativeHome, entry);
+      attachmentEvidence.seeded = attached;
       expect(attached.threadId).toBe(corpus.threadId);
-      if (entry.attachedThreadId) expect(entry.attachedThreadId).toBe(corpus.threadId);
-      if (entry.attachedSessionId) {
-        expect(attached.alreadyAttached).toBe(true);
-        expect(attached.sessionId).toBe(entry.attachedSessionId);
-      }
-      attachmentEvidence.classification = entry.attachedSessionId
-        ? "already-materialized"
-        : attached.alreadyAttached
-          ? "startup-sync-race"
-          : "explicit-connection";
       const binding = (await invokeIpc(
         page,
         "project-sessions:get",
         attached.sessionId,
       )) as ProjectSession | null;
-      if (!binding) throw new Error("Native connection did not return a durable Session");
+      if (!binding) throw new Error("Native history fixture did not return a durable Session");
       attachmentEvidence.binding = {
         id: binding.id,
         projectId: binding.projectId,
@@ -383,13 +363,6 @@ test("benchmarks native paginated history without running a model Turn", async (
         executionHostId: "local",
         cwd: corpus.workspace,
       });
-      const repeated = (await invokeIpc(
-        page,
-        "native-sessions:attach",
-        attachInput,
-      )) as NativeSessionAttachResult;
-      attachmentEvidence.repeated = repeated;
-      expect(repeated).toEqual({ ...attached, alreadyAttached: true });
       const catalogAfter = (await invokeIpc(page, "native-sessions:list", {
         backendKind: "codex",
       })) as NativeSessionCatalogPage;
@@ -399,10 +372,7 @@ test("benchmarks native paginated history without running a model Turn", async (
       );
       expect(nativeEntries).toHaveLength(1);
       attachmentEvidence.catalogAfter = nativeEntries[0];
-      expect(nativeEntries[0]).toMatchObject({
-        attachedThreadId: corpus.threadId,
-        attachedSessionId: attached.sessionId,
-      });
+      expect(nativeEntries[0]).toEqual(entry);
       const tasks = (await invokeIpc(page, "workspace:tasks:list", null, {
         first: 50,
         includeArchived: true,
@@ -418,7 +388,7 @@ test("benchmarks native paginated history without running a model Turn", async (
       await page.getByText(binding.displayTitle, { exact: true }).first().click();
       const last = `Synthetic history ${String(corpus.turnCount - 1).padStart(4, "0")}`;
       await expect(page.getByText(last, { exact: true })).toBeVisible({ timeout: 60_000 });
-      // Imported local history is read in bounded pages; it is never resumed for execution.
+      // Existing native history is read in bounded pages; it is never resumed for execution.
       expect((await readTranscriptPortEvidence(page)).resumeStates).not.toContain("resumed");
       const before = await processEvidence(harness);
       lastProcessEvidence = before;

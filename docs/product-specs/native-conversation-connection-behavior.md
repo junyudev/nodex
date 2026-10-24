@@ -1,19 +1,26 @@
-# Native Conversation Connection Behavior
+# Native Conversation Import Behavior
 
-## Importing Codex conversations
+## Importing native conversations
 
-Settings > Conversations provides Import from Codex and Connect Claude Code sections.
-In Import from Codex, browse individual conversations or paste a `codex://threads/<id>` link or
-native Thread ID. Preview resolves that exact local conversation in the active Codex history home.
-Choose a Project or Projectless destination and an existing working directory, then import it.
-A missing source working directory does not prevent history discovery or preview; choose an
-available directory for the imported chat. Catalog metadata is paginated, including older history.
+Settings > Conversations imports Codex and Claude Code conversations as independent Nodex copies.
+Browse configured native sources or paste a native conversation ID or a `codex://threads/<id>` link.
+A raw ID searches enabled sources; multiple distinct history directories require an explicit source
+choice. Profiles sharing the same canonical history directory identify the same source conversation.
+Single selection and batch selection use the same import operation. Every selected conversation has
+its own retry identity and completion result. A completed copy is offered for opening by default;
+an explicit new copy has a new request identity.
+
+Choose a Project or Projectless destination and an existing working directory. A missing source
+working directory does not prevent discovery or preview; choose an available replacement for the
+copy. Catalog metadata is paginated, including older history. No import silently falls back to a
+home directory.
 The destination Project may have no configured workspace. The imported chat owns its selected
 execution directory; importing does not add or change a Project workspace source.
 
 Import creates a separate Nodex Session and Agent Runtime root Thread. It copies the source's
 complete supported visible history into the Runtime's history store and opens an ordinary chat
-with a composer. The next message starts new work through the Runtime and its own native
+with a composer and the source Agent selected. The existing model menu can change the Agent.
+The next message starts new work through the Runtime and its own native
 conversation. Earlier conversation context uses the same bounded portable handoff as changing
 Agent; hidden model state, prompt caches, active execution, queued work, pending approvals and
 authentication are not transferred. History capture does not replay tool calls or start a model
@@ -35,43 +42,27 @@ visible inherited history in the copy. Import does not connect the source to a N
 
 An import request retains its selected source, destination, directory and request identity for
 retry. Retrying that request returns the same destination instead of creating another chat.
+An uncertain result retains that request when the user changes selection or leaves Settings. Only
+a confirmed rejection before destination admission releases it for corrected parameters; error
+wording never determines whether a new attempt is safe.
 An interrupted import cannot be recovered as an empty executable chat; it must finish importing
 or report that the same request needs retrying. An unfinished import can also be deleted without
-affecting its source. A changed active history home invalidates preview
+affecting its source. To start over after deleting an unfinished copy, reopen the Nodex window.
+A changed active history home invalidates preview
 and admission. Before creating the destination, Nodex verifies that the Runtime's physical
-Codex history home matches the previewed home. A restored Profile using its captured Codex
+history home matches the previewed home. Claude capture uses the exact selected native directory
+without launching or resuming the source session. A restored Profile using its captured Codex
 history cannot import from a different active history home. Completed-import retries remain
-independent of that source check. Runtime-owned native conversations are not offered as import sources.
+independent of that source check. Codex conversations identified as Runtime-owned are not offered
+as import sources. Claude roots use the SDK's native history identity; SDK-created roots can also
+be copied. Subagent histories are not independent import sources.
 
-## Connecting native history
+## Existing connected history
 
-Claude Code retains the Connect workflow: select an enabled profile, browse native conversations,
-choose a Project or Projectless destination, then connect one conversation. Existing connected
-Codex conversations also retain their read-only native-history behavior. Connecting does not
-submit a prompt, start a model request, replay messages, or fork history.
-
-Codex discovery reads active persistent root conversations from the active native home through the
-official app-server. Claude discovery uses the official Agent SDK with the selected profile's
-environment. Subagent conversations are not independently admitted as root chats. Connecting
-native history requires its original workspace and exact native identity to remain available.
-
-Core admits the Nodex Session, Thread, destination and native identity together. Repeated
-connections return the existing chat. Claude profiles that share a canonical native history
-directory also share the same conversation identity. Connecting an existing chat to another
-Project is rejected; moving an existing chat remains a separate explicit operation.
-The chat retains its native working directory as its execution workspace. Connecting it to a
-Project records content ownership and the chat's workspace relationship; it does not add or
-change a Project workspace source. Every Agent can access the current Profile's content independently
-of Project ownership or workspace location.
-
-Codex retains its native Thread ID. Claude retains its native session UUID separately from the
-Nodex Thread ID and binds it to the canonical native history directory. Changing a profile's
-history directory cannot redirect a saved chat to another conversation with the same UUID.
-Existing bindings acquire their native directory when their saved identity is first verified.
-Native history remains authoritative; connecting does not create a replacement transcript store.
-A connected local conversation opens as read-only history in bounded pages, without a composer:
-new work in Nodex starts a Runtime chat, and Nodex never resumes the native conversation locally.
-Reopening uses the native recovery and bounded presentation rules in
+Previously connected native conversations retain their saved identity and passive history reader.
+They are not silently converted into independent copies or allowed to execute against the source.
+New imports use the Runtime copy path; Settings no longer offers a separate read-only Connect action.
+Reopening an existing connection follows the bounded presentation rules in
 [Agent Backend Behavior](agent-backend-behavior.md) and
 [Codex Transcript Behavior](codex-thread-transcript-behavior.md).
 
@@ -79,7 +70,7 @@ Reopening uses the native recovery and bounded presentation rules in
 
 Codex has one active local account. Its native home defaults to the user's `~/.codex` and owns
 shared configuration, hooks and conversation history. Sharing that directory does not add
-conversations to the Nodex sidebar; importing or connecting a conversation remains an explicit action.
+conversations to the Nodex sidebar; importing a conversation remains an explicit action.
 An optional independent account directory owns authentication and the account's model
 cache while retaining access to that same history. Saving either directory applies after restarting
 Nodex. Selecting another account therefore keeps the saved conversation IDs; it does not move or
@@ -98,11 +89,12 @@ Connected native conversations remain readable only when they exist in the activ
 Account changes retain the history home. Configuration and launch precedence are defined in
 [Configuration](../CONFIGURATION.md).
 
-## Copying agent data
+## Copying Agent setup
 
-The optional Copy data to Codex workflow is distinct from connecting a native conversation.
-It copies supported setup and can convert Claude history into Codex conversations or import
-supported history from another Codex home. Its source and conversion destination are explicit.
-Same-home Codex association preserves native IDs; supported cross-home copies create independent
-native conversations. Unsupported history reports a failure and leaves its source unchanged.
-Copying data never supplies Claude native recovery identity or copies authentication secrets.
+Copy setup in Settings > Agent > Codex copies supported configuration, instructions, skills, hooks and related Agent
+resources to Codex. It does not offer or import conversations. Conversation
+history enters Nodex exclusively through the shared independent-copy workflow.
+
+Codex setup is the native configuration also used by the Codex app and CLI. Copying setup preserves
+conflicting destination values and never copies authentication secrets. Setup scanning and applying
+cannot acquire a conversation execution owner or add a native conversation to the sidebar.

@@ -1,3 +1,0 @@
-/** Import pages are durable, so a timed-out request resumes from its saved boundary. */
-export const AGENT_RUNTIME_CODEX_IMPORT_MAX_TIMEOUT_MS = 120_000;
-export const CODEX_THREAD_IMPORT_OPERATION_PREFIX = "codex-import:";

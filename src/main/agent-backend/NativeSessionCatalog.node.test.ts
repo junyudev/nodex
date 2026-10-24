@@ -5,25 +5,22 @@ import { assert, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import type { Thread } from "@nodex/codex-app-server-protocol/v2/Thread";
 import type {
-  CodexThreadImportInput,
-  NativeSessionAttachInput,
-  NativeSessionAttachResult,
+  NativeConversationImportInput,
   NativeSessionCatalogInput,
   NativeSessionCatalogPage,
 } from "../../shared/native-session-catalog";
-import { AgentBackendApplication } from "./AgentBackendApplication";
-import { make } from "./NativeSessionCatalog";
+import { ClaudeNativeCatalog } from "./claude/ClaudeNativeCatalog";
+import { make, type NativeSessionCatalogError } from "./NativeSessionCatalog";
 import { CodexGateway } from "../codex-runtime/CodexGateway";
 import { ApplicationSettings } from "../settings/ApplicationSettings";
-import { ProjectWorkspace } from "../project-application/ProjectWorkspace";
-import type { DesktopProjectWorkspaceThread } from "../core-client/project-workspace-adapter";
 
 const SESSION_ID = "019d0000-0000-7000-8000-000000000001";
 const importInput = (
   home: string,
   cwd: string,
-  patch: Partial<CodexThreadImportInput> = {},
-): CodexThreadImportInput => ({
+  patch: Partial<NativeConversationImportInput> = {},
+): NativeConversationImportInput => ({
+  backendKind: "codex",
   requestId: "019d0000-0000-7000-8000-000000000002",
   acceptedAt: 20_000,
   nativeSessionId: SESSION_ID,
@@ -58,7 +55,9 @@ const harness = (
     readonly threads?: readonly Thread[];
     readonly readThread?: Thread;
     readonly nextCursor?: string;
-    readonly durableThreads?: readonly DesktopProjectWorkspaceThread[];
+    readonly claudeProfiles?: readonly { id: string; home: string }[];
+    readonly brokenClaudeProfile?: string;
+    readonly codexReadFailure?: Error;
     readonly afterRead?: () => void;
     readonly claudePage?: NativeSessionCatalogPage;
   } = {},
@@ -69,20 +68,22 @@ const harness = (
   mkdirSync(cwd, { recursive: true });
   let activeHome = home;
   const requests: Array<{ method: string; params: unknown }> = [];
-  const admissions: Parameters<ProjectWorkspace["Service"]["attachNativeSession"]>[0][] = [];
   const claudeLists: NativeSessionCatalogInput[] = [];
-  const claudeAttachments: NativeSessionAttachInput[] = [];
-  const result: NativeSessionAttachResult = {
-    sessionId: "nodex-session",
-    threadId: SESSION_ID,
-    alreadyAttached: false,
-  };
   const settings = {
-    snapshot: () => Effect.succeed({ codexHome: { activeHomePath: activeHome } }),
+    snapshot: () =>
+      Effect.succeed({
+        codexHome: { activeHomePath: activeHome },
+        claudeAgents: {
+          instances: (options.claudeProfiles ?? []).map((profile) => ({
+            id: profile.id,
+            enabled: true,
+          })),
+        },
+      }),
   } as unknown as ApplicationSettings["Service"];
   const gateway = {
     requestLocal: (method: string, params: unknown) =>
-      Effect.sync(() => {
+      Effect.try(() => {
         requests.push({ method, params });
         if (method === "thread/list")
           return {
@@ -90,62 +91,55 @@ const harness = (
             nextCursor: options.nextCursor ?? null,
           };
         if (method === "thread/read") {
+          if (options.codexReadFailure) throw options.codexReadFailure;
           options.afterRead?.();
           return { thread: options.readThread ?? nativeThread(cwd) };
         }
         throw new Error(`Unexpected native operation: ${method}`);
       }),
   } as unknown as CodexGateway["Service"];
-  const workspace = {
-    readNativeSessionBindings: () =>
-      Effect.succeed(
-        (options.durableThreads ?? [])
-          .filter(
-            (thread) =>
-              thread.backendBinding.kind === "codex" && thread.executionHostId === "local",
-          )
-          .map((thread) => ({
-            nativeSessionId: thread.threadId,
-            threadId: thread.threadId,
-            sessionId: thread.sessionId,
-            projectId: thread.projectId,
-          })),
-      ),
-    attachNativeSession: (
-      input: Parameters<ProjectWorkspace["Service"]["attachNativeSession"]>[0],
-    ) =>
-      Effect.sync(() => {
-        admissions.push(input);
-        return result;
-      }),
-  } as unknown as ProjectWorkspace["Service"];
-  const agents = {
-    listClaudeNativeSessions: (input: NativeSessionCatalogInput) =>
+  const claude = {
+    nativeCatalog: (input: NativeSessionCatalogInput) =>
       Effect.sync(() => {
         claudeLists.push(input);
         return options.claudePage ?? { nativeHome: home, entries: [], nextCursor: null };
       }),
-    attachClaudeNativeSession: (input: NativeSessionAttachInput) =>
-      Effect.sync(() => {
-        claudeAttachments.push(input);
-        return result;
+    nativeSessionInfo: (input: {
+      instanceConfigId: string;
+      nativeSessionId: string;
+      expectedHome?: string;
+    }) =>
+      Effect.try(() => {
+        if (input.instanceConfigId === options.brokenClaudeProfile)
+          throw new Error("Claude profile is unavailable");
+        const profile = options.claudeProfiles?.find(
+          (profile) => profile.id === input.instanceConfigId,
+        );
+        if (!profile || input.nativeSessionId !== SESSION_ID) return null;
+        if (input.expectedHome !== undefined && input.expectedHome !== profile.home)
+          throw new Error("Changed home");
+        return {
+          sessionId: SESSION_ID,
+          nativeHome: profile.home,
+          cwd: join(root, "old-claude-workspace"),
+          cwdAvailable: false,
+          summary: "Claude conversation",
+          lastModified: 25_000,
+        };
       }),
-  } as unknown as AgentBackendApplication["Service"];
+  } as unknown as ClaudeNativeCatalog["Service"];
   return {
     home,
     cwd,
     requests,
-    admissions,
     claudeLists,
-    claudeAttachments,
     setActiveHome: (next: string) => {
       activeHome = next;
     },
     catalog: make.pipe(
-      Effect.provideService(AgentBackendApplication, agents),
+      Effect.provideService(ClaudeNativeCatalog, claude),
       Effect.provideService(ApplicationSettings, settings),
       Effect.provideService(CodexGateway, gateway),
-      Effect.provideService(ProjectWorkspace, workspace),
     ),
   };
 };
@@ -168,14 +162,6 @@ it.effect("pages persistent Codex roots without loading history or starting a ru
           }),
           nativeThread(join(root, "missing"), { id: "missing-workspace" }),
         ],
-        durableThreads: [
-          {
-            threadId: SESSION_ID,
-            sessionId: "existing-session",
-            backendBinding: { kind: "codex" },
-            executionHostId: "local",
-          },
-        ] as DesktopProjectWorkspaceThread[],
         nextCursor: "next-native-page",
       });
       const catalog = yield* fixture.catalog;
@@ -189,8 +175,6 @@ it.effect("pages persistent Codex roots without loading history or starting a ru
             cwd,
             cwdAvailable: true,
             updatedAt: 20_000,
-            attachedThreadId: SESSION_ID,
-            attachedSessionId: "existing-session",
           },
           {
             nativeSessionId: "missing-workspace",
@@ -214,7 +198,6 @@ it.effect("pages persistent Codex roots without loading history or starting a ru
         sourceKinds: ["cli", "vscode", "exec", "appServer", "unknown"],
         archived: false,
       });
-      assert.equal(fixture.admissions.length, 0);
     }),
   ),
 );
@@ -229,21 +212,23 @@ it.effect("previews a local thread link even when its original workspace is unav
       symlinkSync(fixture.home, alias, "dir");
       fixture.setActiveHome(alias);
       const catalog = yield* fixture.catalog;
-      const preview = yield* catalog.previewCodexImport({
+      const preview = yield* catalog.previewImport({
         reference: `codex://threads/${SESSION_ID.toUpperCase()}?hostId=local`,
       });
-      assert.deepEqual(preview, {
-        nativeSessionId: SESSION_ID,
-        nativeHome: fixture.home,
-        title: "CLI conversation",
-        cwd,
-        cwdAvailable: false,
-        updatedAt: 20_000,
-      });
+      assert.deepEqual(preview.matches, [
+        {
+          backendKind: "codex",
+          nativeSessionId: SESSION_ID,
+          nativeHome: fixture.home,
+          title: "CLI conversation",
+          cwd,
+          cwdAvailable: false,
+          updatedAt: 20_000,
+        },
+      ]);
       assert.deepEqual(fixture.requests, [
         { method: "thread/read", params: { threadId: SESSION_ID, includeTurns: false } },
       ]);
-      assert.equal(fixture.admissions.length, 0);
     }),
   ),
 );
@@ -260,11 +245,10 @@ it.effect("rejects remote and malformed import references before reading native 
         `https://example.com/threads/${SESSION_ID}`,
         "codex://threads/not-a-thread",
       ]) {
-        const failure = yield* catalog.previewCodexImport({ reference }).pipe(Effect.flip);
-        assert.equal(failure.message, "Enter a local Codex thread link or ID.");
+        const failure = yield* catalog.previewImport({ reference }).pipe(Effect.flip);
+        assert.equal(failure.message, "Enter a local conversation link or ID.");
       }
       assert.equal(fixture.requests.length, 0);
-      assert.equal(fixture.admissions.length, 0);
     }),
   ),
 );
@@ -278,8 +262,9 @@ it.effect("prepares a missing-workspace import with an explicit existing replace
         readThread: nativeThread(sourceCwd, { model: "gpt-5.4" }),
       });
       const catalog = yield* fixture.catalog;
-      const source = yield* catalog.prepareCodexImport(importInput(fixture.home, fixture.cwd));
+      const source = yield* catalog.prepareImport(importInput(fixture.home, fixture.cwd));
       assert.deepEqual(source, {
+        backendKind: "codex",
         nativeSessionId: SESSION_ID,
         nativeHome: fixture.home,
         title: "CLI conversation",
@@ -291,7 +276,6 @@ it.effect("prepares a missing-workspace import with an explicit existing replace
       assert.deepEqual(fixture.requests, [
         { method: "thread/read", params: { threadId: SESSION_ID, includeTurns: false } },
       ]);
-      assert.equal(fixture.admissions.length, 0);
     }),
   ),
 );
@@ -306,15 +290,15 @@ it.effect("requires a real replacement directory before preparing an import", ()
       const catalog = yield* fixture.catalog;
       for (const cwd of ["", "relative-workspace", join(root, "missing"), file]) {
         const failure = yield* catalog
-          .prepareCodexImport(importInput(fixture.home, cwd))
+          .prepareImport(importInput(fixture.home, cwd))
           .pipe(Effect.flip);
         assert.equal(
           failure.message,
-          "Choose an existing working directory for the imported chat.",
+          "This folder is no longer available. Refresh and choose another one.",
         );
+        assert.equal(failure.admissionRejected, true);
       }
       assert.equal(fixture.requests.length, 0);
-      assert.equal(fixture.admissions.length, 0);
     }),
   ),
 );
@@ -326,11 +310,10 @@ it.effect("rejects a stale import home before reading the source conversation", 
       const fixture = harness(root);
       const catalog = yield* fixture.catalog;
       const failure = yield* catalog
-        .prepareCodexImport(importInput(join(root, "previous-home"), fixture.cwd))
+        .prepareImport(importInput(join(root, "previous-home"), fixture.cwd))
         .pipe(Effect.flip);
-      assert.equal(failure.message, "The Codex account changed. Look up the conversation again.");
+      assert.equal(failure.message, "The Codex home changed. Refresh or paste the link again.");
       assert.equal(fixture.requests.length, 0);
-      assert.equal(fixture.admissions.length, 0);
     }),
   ),
 );
@@ -345,16 +328,15 @@ it.effect.each(["preview", "prepare"] as const)(
         mkdirSync(otherHome);
         const fixture = harness(root, { afterRead: () => fixture.setActiveHome(otherHome) });
         const catalog = yield* fixture.catalog;
-        const inspection =
+        const inspection: Effect.Effect<unknown, NativeSessionCatalogError> =
           operation === "preview"
-            ? catalog.previewCodexImport({ reference: SESSION_ID })
-            : catalog.prepareCodexImport(importInput(fixture.home, fixture.cwd));
+            ? catalog.previewImport({ reference: SESSION_ID })
+            : catalog.prepareImport(importInput(fixture.home, fixture.cwd));
         const failure = yield* inspection.pipe(Effect.flip);
-        assert.equal(failure.message, "The Codex account changed. Look up the conversation again.");
+        assert.equal(failure.message, "The Codex home changed. Refresh or paste the link again.");
         assert.deepEqual(fixture.requests, [
           { method: "thread/read", params: { threadId: SESSION_ID, includeTurns: false } },
         ]);
-        assert.equal(fixture.admissions.length, 0);
       }),
     ),
 );
@@ -375,184 +357,154 @@ it.effect.each([
       });
       const catalog = yield* fixture.catalog;
       const previewFailure = yield* catalog
-        .previewCodexImport({ reference: SESSION_ID })
+        .previewImport({ reference: SESSION_ID })
         .pipe(Effect.flip);
       const prepareFailure = yield* catalog
-        .prepareCodexImport(importInput(fixture.home, fixture.cwd))
+        .prepareImport(importInput(fixture.home, fixture.cwd))
         .pipe(Effect.flip);
       assert.equal(
         previewFailure.message,
-        "Subagent and Nodex-run Codex conversations cannot be imported.",
+        "This is a subagent conversation or one Nodex runs itself, so it can’t be imported.",
       );
       assert.equal(prepareFailure.message, previewFailure.message);
       assert.deepEqual(fixture.requests, [
         { method: "thread/read", params: { threadId: SESSION_ID, includeTurns: false } },
         { method: "thread/read", params: { threadId: SESSION_ID, includeTurns: false } },
       ]);
-      assert.equal(fixture.admissions.length, 0);
     }),
   ),
 );
 
-it.effect("admits the original native ID after an exact metadata-only read", () =>
+it.effect("keeps ambiguous native IDs separate by Agent and physical home", () =>
   Effect.scoped(
     Effect.gen(function* () {
       const root = yield* temporaryRoot;
-      const fixture = harness(root);
-      const alias = join(root, "native-alias");
-      symlinkSync(fixture.home, alias, "dir");
-      fixture.setActiveHome(alias);
-      const catalog = yield* fixture.catalog;
-      const result = yield* catalog.attach({
-        backendKind: "codex",
-        nativeSessionId: SESSION_ID,
-        expectedHome: fixture.home,
-        projectId: "selected-project",
+      const fixture = harness(root, {
+        claudeProfiles: [
+          { id: "personal", home: "/claude/personal" },
+          { id: "alias", home: "/claude/personal" },
+          { id: "work", home: "/claude/work" },
+        ],
       });
-      assert.equal(result.threadId, SESSION_ID);
-      assert.deepEqual(fixture.requests, [
-        { method: "thread/read", params: { threadId: SESSION_ID, includeTurns: false } },
-      ]);
-      assert.deepEqual(fixture.admissions, [
-        {
-          backendKind: "codex",
-          nativeSessionId: SESSION_ID,
-          nativeHome: fixture.home,
-          projectId: "selected-project",
-          title: "CLI conversation",
-          cwd: fixture.cwd,
-          createdAt: 10_000,
-          updatedAt: 20_000,
-        },
-      ]);
+      const catalog = yield* fixture.catalog;
+      const result = yield* catalog.previewImport({ reference: SESSION_ID });
+      assert.deepEqual(
+        result.matches.map((match) => [
+          match.backendKind,
+          match.instanceConfigId,
+          match.nativeHome,
+        ]),
+        [
+          ["codex", undefined, fixture.home],
+          ["claude", "personal", "/claude/personal"],
+          ["claude", "work", "/claude/work"],
+        ],
+      );
+      const selected = yield* catalog.previewImport({
+        reference: SESSION_ID,
+        backendKind: "claude",
+        instanceConfigId: "work",
+      });
+      assert.equal(selected.matches.length, 1);
+      assert.equal(selected.matches[0]?.instanceConfigId, "work");
+      assert.equal(selected.matches[0]?.cwdAvailable, false);
+      const source = yield* catalog.prepareImport(
+        importInput("/claude/work", fixture.cwd, {
+          backendKind: "claude",
+          instanceConfigId: "work",
+        }),
+      );
+      assert.equal(source.cwd, join(root, "old-claude-workspace"));
+      assert.equal(source.cwdAvailable, false);
+      assert.equal(source.model, null);
+    }),
+  ),
+);
+
+it.effect("a Codex link never guesses a Claude source with the same ID", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const root = yield* temporaryRoot;
+      const fixture = harness(root, {
+        claudeProfiles: [{ id: "personal", home: "/claude/personal" }],
+      });
+      const catalog = yield* fixture.catalog;
+      const result = yield* catalog.previewImport({ reference: `CODEX://threads/${SESSION_ID}` });
+      assert.equal(result.matches.length, 1);
+      assert.equal(result.matches[0]?.backendKind, "codex");
+      const rejected = yield* catalog
+        .previewImport({ reference: `CODEX://threads/${SESSION_ID}`, backendKind: "claude" })
+        .pipe(Effect.result);
+      assert.equal(rejected._tag, "Failure");
     }),
   ),
 );
 
 it.effect(
-  "bounds native titles without breaking Unicode or the original conversation identity",
+  "automatic lookup keeps available sources usable while explicit source failures remain visible",
   () =>
     Effect.scoped(
       Effect.gen(function* () {
         const root = yield* temporaryRoot;
-        const title = `${"x".repeat(1999)}🙂 trailing title`;
-        const thread = nativeThread(join(root, "workspace"), { name: title });
-        const fixture = harness(root, { threads: [thread], readThread: thread });
-        const catalog = yield* fixture.catalog;
-        const page = yield* catalog.list({ backendKind: "codex" });
-        yield* catalog.attach({
-          backendKind: "codex",
-          nativeSessionId: SESSION_ID,
-          expectedHome: fixture.home,
-          projectId: null,
+        const fixture = harness(root, {
+          codexReadFailure: new Error("Codex unavailable"),
+          brokenClaudeProfile: "broken",
+          claudeProfiles: [
+            { id: "broken", home: "/claude/broken" },
+            { id: "personal", home: "/claude/personal" },
+          ],
         });
-        assert.equal(page.entries[0]?.title, "x".repeat(1999));
-        assert.equal(fixture.admissions[0]?.title, page.entries[0]?.title);
-        assert.equal(fixture.admissions[0]?.nativeSessionId, SESSION_ID);
-      }),
-    ),
-);
-
-it.effect("rejects a stale home before issuing native requests", () =>
-  Effect.scoped(
-    Effect.gen(function* () {
-      const root = yield* temporaryRoot;
-      const fixture = harness(root);
-      const catalog = yield* fixture.catalog;
-      const result = yield* catalog
-        .attach({
-          backendKind: "codex",
-          nativeSessionId: SESSION_ID,
-          expectedHome: join(root, "previous-home"),
-          projectId: null,
-        })
-        .pipe(Effect.result);
-      assert.equal(result._tag, "Failure");
-      assert.equal(fixture.requests.length, 0);
-      assert.equal(fixture.admissions.length, 0);
-    }),
-  ),
-);
-
-it.effect("revalidates the home after native metadata lookup", () =>
-  Effect.scoped(
-    Effect.gen(function* () {
-      const root = yield* temporaryRoot;
-      const otherHome = join(root, "other-home");
-      mkdirSync(otherHome);
-      const fixture = harness(root, { afterRead: () => fixture.setActiveHome(otherHome) });
-      const catalog = yield* fixture.catalog;
-      const result = yield* catalog
-        .attach({
-          backendKind: "codex",
-          nativeSessionId: SESSION_ID,
-          expectedHome: fixture.home,
-          projectId: null,
-        })
-        .pipe(Effect.result);
-      assert.equal(result._tag, "Failure");
-      assert.equal(fixture.requests.length, 1);
-      assert.equal(fixture.admissions.length, 0);
-    }),
-  ),
-);
-
-it.effect(
-  "refuses sidechains, transient sessions and missing native workspaces at attachment",
-  () =>
-    Effect.scoped(
-      Effect.gen(function* () {
-        const root = yield* temporaryRoot;
-        for (const patch of [
-          { parentThreadId: "parent" },
-          { source: { subAgent: "compact" } },
-          { ephemeral: true },
-          { cwd: join(root, "missing-workspace") },
-          { id: "different-native-id" },
-        ] as Partial<Thread>[]) {
-          const fixture = harness(root, {
-            readThread: nativeThread(join(root, "workspace"), patch),
-          });
-          const catalog = yield* fixture.catalog;
-          const result = yield* catalog
-            .attach({
-              backendKind: "codex",
-              nativeSessionId: SESSION_ID,
-              expectedHome: fixture.home,
-              projectId: null,
+        const catalog = yield* fixture.catalog;
+        const result = yield* catalog.previewImport({ reference: SESSION_ID });
+        assert.equal(result.matches.length, 1);
+        assert.equal(result.matches[0]?.instanceConfigId, "personal");
+        assert.equal(
+          (yield* catalog
+            .previewImport({ reference: SESSION_ID, backendKind: "codex" })
+            .pipe(Effect.result))._tag,
+          "Failure",
+        );
+        assert.equal(
+          (yield* catalog
+            .previewImport({
+              reference: SESSION_ID,
+              backendKind: "claude",
+              instanceConfigId: "broken",
             })
-            .pipe(Effect.result);
-          assert.equal(result._tag, "Failure");
-          assert.equal(fixture.admissions.length, 0);
-        }
+            .pipe(Effect.result))._tag,
+          "Failure",
+        );
+        assert.equal(
+          (yield* catalog
+            .previewImport({
+              reference: `codex://threads/${SESSION_ID}`,
+              instanceConfigId: "personal",
+            })
+            .pipe(Effect.result))._tag,
+          "Failure",
+        );
+        const empty = yield* harness(root, { codexReadFailure: new Error("Codex unavailable") })
+          .catalog;
+        assert.equal(
+          (yield* empty.previewImport({ reference: SESSION_ID }).pipe(Effect.result))._tag,
+          "Failure",
+        );
       }),
     ),
 );
 
-it.effect("uses the selected Claude instance through the same catalog interface", () =>
+it.effect("classifies a removed native history home as a validation refusal", () =>
   Effect.scoped(
     Effect.gen(function* () {
       const root = yield* temporaryRoot;
       const fixture = harness(root);
+      fixture.setActiveHome(join(root, "removed-source-home"));
       const catalog = yield* fixture.catalog;
-      const listInput = {
-        backendKind: "claude" as const,
-        instanceConfigId: "personal",
-        cursor: "50",
-      };
-      const attachInput = {
-        backendKind: "claude" as const,
-        instanceConfigId: "personal",
-        nativeSessionId: "claude-native-id",
-        expectedHome: fixture.home,
-        projectId: "selected-project",
-      };
-      yield* catalog.list(listInput);
-      yield* catalog.attach(attachInput);
-      assert.deepEqual(fixture.claudeLists, [listInput]);
-      assert.deepEqual(fixture.claudeAttachments, [attachInput]);
+      const refusal = yield* catalog
+        .prepareImport(importInput(fixture.home, fixture.cwd))
+        .pipe(Effect.flip);
+      assert.equal(refusal.admissionRejected, true);
       assert.equal(fixture.requests.length, 0);
-      assert.equal(fixture.admissions.length, 0);
     }),
   ),
 );

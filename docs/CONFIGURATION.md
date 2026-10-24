@@ -111,13 +111,13 @@ only an explicit native configuration edit updates Codex settings. Nodex desktop
 distinct namespace per Profile and are enabled only in its chats.
 
 Sharing a native home does not add all native conversations to the Nodex sidebar. In **Settings >
-Conversations**, importing a Codex conversation creates an independent Nodex chat with copied history
+Conversations**, importing a Codex or Claude conversation creates an independent Nodex chat with copied history
 and its own execution identity. Choose a Project or Projectless destination and an existing working
 directory; a missing source directory requires a replacement. Continuing the copy leaves the source
 conversation unchanged. Existing native connections retain their original identities and read-only
-history. The separate Copy data to Codex workflow retains its native association and conversion
-semantics. Import receipts remain in the Nodex Profile. See
-[Native Conversation Connection Behavior](product-specs/native-conversation-connection-behavior.md).
+history. Setup migration copies supported configuration and Agent resources to the shared Codex
+configuration; it does not import conversation history. Import receipts remain in the Nodex Profile. See
+[Native Conversation Import Behavior](product-specs/native-conversation-connection-behavior.md).
 
 ## Claude Code instances
 
@@ -129,9 +129,10 @@ accounts or gateways. An optional absolute or `~/` config directory sets `CLAUDE
 that instance without changing HOME or copying credentials. Run `claude auth login` with the same
 config directory to sign in. Restart the task connection after changing executable or account paths.
 
-Use **Settings > Conversations** to connect existing Claude Code conversations from the selected
-profile to a Project or projectless chat. The native UUID and history directory remain bound to the
-chat across restarts; changing the profile's directory cannot redirect that chat to another history.
+Use **Settings > Conversations** to import independent copies of Claude Code conversations from
+enabled profiles into a Project or projectless chat. The copy retains the source profile as its Agent
+and starts its own native session when continued. Imported history and media belong to the Nodex
+Profile and remain available after the source conversation is removed.
 
 The official Claude Agent SDK loads user, project, and local configuration, including instructions,
 skills, hooks, and MCP servers. Nodex stores instance identity, display name, executable,

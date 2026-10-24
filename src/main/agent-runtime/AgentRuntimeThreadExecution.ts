@@ -1,6 +1,6 @@
 import * as path from "node:path";
 import { createHash } from "node:crypto";
-import { CODEX_THREAD_IMPORT_OPERATION_PREFIX } from "@nodex/agent-runtime/contracts";
+import { NATIVE_THREAD_IMPORT_OPERATION_PREFIX } from "@nodex/agent-runtime/contracts";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
@@ -290,7 +290,7 @@ export const make = Effect.gen(function* () {
           .pipe(Effect.mapError((cause) => error("recover", "", cause)));
         for (const pending of page.items) {
           // History capture owns this seal; only its durable import journal can complete it.
-          if (pending.operationId.startsWith(CODEX_THREAD_IMPORT_OPERATION_PREFIX)) continue;
+          if (pending.operationId.startsWith(NATIVE_THREAD_IMPORT_OPERATION_PREFIX)) continue;
           if (retained.has(JSON.stringify([pending.threadId, pending.operationId]))) continue;
           yield* connection
             .request("execution.handoff.quiesce", {

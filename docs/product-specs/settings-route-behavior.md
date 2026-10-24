@@ -63,9 +63,11 @@ for root preferences, automatic retention, grouped inventory, and safe removal.
 Browser subsections and detail pages remain children of Browser and do not
 become independent rail entries.
 
-Conversations owns the shared native Agent chooser, destination selection and explicit connection
-workflow described in [Native Conversation Connection Behavior](native-conversation-connection-behavior.md).
-The optional Copy data to Codex workflow remains visibly separate from continuing native conversations.
+Conversations owns source discovery, destination selection and independent conversation imports
+for Codex and Claude, as described in
+[Native Conversation Import Behavior](native-conversation-connection-behavior.md).
+Agent > Codex owns Copy setup. Setup migration is separate from conversation import and targets
+shared Codex configuration.
 
 General owns Permissions, general behavior, Composer, Files & links, Notifications, and app-server
 request diagnostics. Request diagnostics are captured only while the General page is open and show

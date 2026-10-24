@@ -97,10 +97,12 @@ and executable-reported version. These checks do not attest package bytes. Crede
 profile and proxy inheritance remain separate explicit configuration choices. Runtime
 catalog discovery and execution share the same configured Provider.
 
-## Imported native history
+## Existing connected native history
 
-Connecting an existing native conversation binds its exact native Session and history
-Profile to a Nodex Session. Reading an imported Claude or OpenCode conversation is a
+Existing native connections bind their exact native Session and history Profile to a Nodex
+Session. New Codex and Claude imports create independent executable Runtime copies, as specified in
+[Native Conversation Import Behavior](native-conversation-connection-behavior.md). Reading an
+existing connected Claude or OpenCode conversation is a
 passive, paged observation. It does not acquire a product execution owner, submit a
 prompt, create a native conversation, or subscribe to an obsolete execution stack.
 
@@ -123,7 +125,7 @@ resident bodies; native transcripts remain owned by the Provider. Inspection rep
 the saved Provider binding, native Session, native home and execution folder without
 inventing live process diagnostics.
 
-An imported native Session without a Runtime execution reference opens the shared
+An existing connected native Session without a Runtime execution reference opens the shared
 transcript as a passive history scene. It has no Composer or execution controls.
 Readers of the same Session share one cold page; older pages preserve resident Turn
 identities and the visible reading position. Approaching the unloaded boundary loads

@@ -13,17 +13,10 @@ import { MainConfig } from "../app/MainConfig";
 import { CodexGitProbe } from "../codex-application/CodexGitProbe";
 import { AgentRuntimeApplication } from "../agent-runtime/AgentRuntimeApplication";
 import { loadCodexWorktreeShellEnvironmentAtGitPath } from "../codex/codex-worktree-shell-environment";
-import { nativeSessionCatalogTitle } from "../../shared/native-session-catalog";
 import { projectNativeModelOption } from "../../shared/native-model-option";
 import { agentRuntimeProviderId } from "../../shared/agent-runtime-provider";
 import type { AgentBackendBinding } from "../../shared/agent-backend";
 import type { AgentModelCatalog, AgentModelCatalogInput } from "../../shared/agent-model-catalog";
-import type {
-  NativeSessionCatalogInput,
-  NativeSessionCatalogPage,
-  NativeSessionAttachInput,
-  NativeSessionAttachResult,
-} from "../../shared/native-session-catalog";
 import type {
   ClaudeModelCatalogInput,
   ClaudeDiscoveryInput,
@@ -54,12 +47,6 @@ export class AgentBackendApplicationError extends Schema.TaggedError<AgentBacken
 export class AgentBackendApplication extends Context.Service<
   AgentBackendApplication,
   {
-    readonly listClaudeNativeSessions: (
-      input: NativeSessionCatalogInput,
-    ) => Effect.Effect<NativeSessionCatalogPage, AgentBackendApplicationError>;
-    readonly attachClaudeNativeSession: (
-      input: NativeSessionAttachInput,
-    ) => Effect.Effect<NativeSessionAttachResult, AgentBackendApplicationError>;
     readonly modelCatalog: (
       input: AgentModelCatalogInput,
     ) => Effect.Effect<AgentModelCatalog, AgentBackendApplicationError>;
@@ -149,68 +136,6 @@ export const make = Effect.gen(function* () {
     });
   });
   return AgentBackendApplication.of({
-    listClaudeNativeSessions: (input) =>
-      ownFailure(
-        "native.sessions.list",
-        Effect.gen(function* () {
-          if (input.backendKind !== "claude" || !input.instanceConfigId)
-            return yield* fail("native.sessions.list", new Error("Choose a Claude profile"));
-          yield* backends.resolve({ kind: "claude", instanceConfigId: input.instanceConfigId });
-          const page = yield* claudeSessions.nativeCatalog({
-            instanceConfigId: input.instanceConfigId,
-            ...(input.cursor ? { cursor: input.cursor } : {}),
-          });
-          const bindings = yield* workspace.readNativeSessionBindings({
-            backendKind: "claude",
-            nativeHome: page.nativeHome,
-            nativeSessionIds: page.entries.map((entry) => entry.nativeSessionId),
-          });
-          const attached = new Map(bindings.map((binding) => [binding.nativeSessionId, binding]));
-          return {
-            ...page,
-            entries: page.entries.map((entry) => {
-              const binding = attached.get(entry.nativeSessionId);
-              return {
-                ...entry,
-                ...(binding
-                  ? {
-                      attachedThreadId: binding.threadId,
-                      ...(binding.sessionId ? { attachedSessionId: binding.sessionId } : {}),
-                    }
-                  : {}),
-              };
-            }),
-          };
-        }),
-      ),
-    attachClaudeNativeSession: (input) =>
-      ownFailure(
-        "native.sessions.attach",
-        Effect.gen(function* () {
-          if (input.backendKind !== "claude" || !input.instanceConfigId)
-            return yield* fail("native.sessions.attach", new Error("Choose a Claude profile"));
-          yield* backends.resolve({ kind: "claude", instanceConfigId: input.instanceConfigId });
-          const info = yield* claudeSessions.nativeSessionInfo({
-            instanceConfigId: input.instanceConfigId,
-            nativeSessionId: input.nativeSessionId,
-            expectedHome: input.expectedHome,
-          });
-          return yield* workspace.attachNativeSession({
-            backendKind: "claude",
-            instanceConfigId: input.instanceConfigId,
-            nativeSessionId: info.sessionId,
-            nativeHome: info.nativeHome,
-            projectId: input.projectId,
-            title: nativeSessionCatalogTitle(
-              info.customTitle || info.summary,
-              "Claude conversation",
-            ),
-            cwd: info.cwd,
-            createdAt: info.createdAt ?? info.lastModified,
-            updatedAt: info.lastModified,
-          });
-        }),
-      ),
     modelCatalog: (input) =>
       ownFailure(
         "model-catalog.read",

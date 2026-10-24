@@ -5,11 +5,13 @@ import * as Layer from "effect/Layer";
 import * as Scope from "effect/Scope";
 import type { IpcMainInvokeEvent } from "electron";
 import type {
-  CodexThreadImportInput,
-  NativeSessionAttachInput,
+  NativeConversationImportInput,
   NativeSessionCatalogInput,
 } from "../../../shared/native-session-catalog";
-import { NativeSessionCatalog } from "../../agent-backend/NativeSessionCatalog";
+import {
+  NativeSessionCatalog,
+  type NativeSessionCatalogError,
+} from "../../agent-backend/NativeSessionCatalog";
 import { AgentRuntimeApplication } from "../../agent-runtime/AgentRuntimeApplication";
 import { testLayer as mainConfigLayer } from "../../app/MainConfig";
 import { ElectronIpc } from "../../platform/electron/ElectronIpc";
@@ -31,6 +33,13 @@ vi.mock("../../agent-backend/NativeSessionCatalog", async () => {
 vi.mock("../../agent-runtime/AgentRuntimeApplication", async () => {
   const Context = await import("effect/Context");
   return {
+    AgentRuntimeApplicationError: class extends Error {
+      readonly admissionRejected?: true;
+      constructor(input: { message: string; admissionRejected?: true }) {
+        super(input.message);
+        this.admissionRejected = input.admissionRejected;
+      }
+    },
     AgentRuntimeApplication: class extends Context.Service<unknown, unknown>()(
       "test/AgentRuntimeApplication",
     ) {},
@@ -60,11 +69,12 @@ const makeFixture = Effect.fn("NativeSessionCatalogIpc.testFixture")(function* (
     on: () => Effect.void,
   });
   const listed: NativeSessionCatalogInput[] = [];
-  const attached: NativeSessionAttachInput[] = [];
-  const prepared: CodexThreadImportInput[] = [];
-  const imported: Parameters<AgentRuntimeApplication["Service"]["importCodex"]>[0][] = [];
-  const state = { completed: false };
+  const prepared: NativeConversationImportInput[] = [];
+  const imported: Array<NativeConversationImportInput & { title: string; model: string | null }> =
+    [];
+  const state = { completed: false, preparationFailure: null as "validation" | "transport" | null };
   const source = {
+    backendKind: "codex" as const,
     nativeSessionId: "019abcde-1234-7000-8000-123456789abc",
     nativeHome: "/native-home",
     title: "Source chat",
@@ -74,21 +84,22 @@ const makeFixture = Effect.fn("NativeSessionCatalogIpc.testFixture")(function* (
     model: "model",
   };
   const catalog = NativeSessionCatalog.of({
-    previewCodexImport: () => Effect.succeed(source),
-    prepareCodexImport: (input) =>
-      Effect.sync(() => {
+    previewImport: () => Effect.succeed({ matches: [source] }),
+    prepareImport: (input) =>
+      Effect.gen(function* () {
         prepared.push(input);
+        if (state.preparationFailure)
+          return yield* Effect.fail(
+            Object.assign(new Error("Source unavailable"), {
+              ...(state.preparationFailure === "validation" ? { admissionRejected: true } : {}),
+            }) as NativeSessionCatalogError,
+          );
         return source;
       }),
     list: (input) =>
       Effect.sync(() => {
         listed.push(input);
         return { nativeHome: "/native-home", entries: [], nextCursor: null };
-      }),
-    attach: (input) =>
-      Effect.sync(() => {
-        attached.push(input);
-        return { sessionId: "nodex-session", threadId: "nodex-thread", alreadyAttached: false };
       }),
   });
   yield* Layer.buildWithScope(
@@ -98,27 +109,31 @@ const makeFixture = Effect.fn("NativeSessionCatalogIpc.testFixture")(function* (
           mainConfigLayer(),
           Layer.succeed(NativeSessionCatalog, catalog),
           Layer.succeed(AgentRuntimeApplication, {
-            completedCodexImport: (input: CodexThreadImportInput) =>
-              Effect.succeed(
-                state.completed
-                  ? {
-                      sessionId: input.requestId,
-                      threadId: "runtime-thread",
-                      projectId: input.projectId,
-                    }
-                  : null,
-              ),
-            importCodex: (
-              input: Parameters<AgentRuntimeApplication["Service"]["importCodex"]>[0],
+            findNativeImports: () => Effect.succeed([]),
+            submitNativeImport: (
+              input: NativeConversationImportInput,
+              prepare: Effect.Effect<{ title: string; model: string | null }, unknown>,
             ) =>
-              Effect.sync(() => {
-                imported.push(input);
+              Effect.gen(function* () {
+                if (!state.completed) {
+                  const metadata = yield* prepare;
+                  imported.push({ ...input, title: metadata.title, model: metadata.model });
+                }
                 return {
+                  kind: "imported" as const,
                   sessionId: input.requestId,
                   threadId: "runtime-thread",
                   projectId: input.projectId,
                 };
-              }),
+              }).pipe(
+                Effect.catch((cause) =>
+                  cause instanceof Error &&
+                  "admissionRejected" in cause &&
+                  cause.admissionRejected === true
+                    ? Effect.succeed({ kind: "not_admitted" as const, message: cause.message })
+                    : Effect.fail(cause),
+                ),
+              ),
           } as unknown as AgentRuntimeApplication["Service"]),
           Layer.succeed(ElectronIpc, ipc),
           Layer.succeed(
@@ -133,56 +148,12 @@ const makeFixture = Effect.fn("NativeSessionCatalogIpc.testFixture")(function* (
     yield* Scope.Scope,
   );
   const list = handlers.get("native-sessions:list");
-  const attach = handlers.get("native-sessions:attach");
-  const importCodex = handlers.get("native-sessions:import-codex");
-  const preview = handlers.get("native-sessions:preview-codex-import");
-  if (!list || !attach || !importCodex || !preview)
+  const importNative = handlers.get("native-sessions:import");
+  const preview = handlers.get("native-sessions:preview-import");
+  if (!list || !importNative || !preview)
     throw new Error("Native conversation IPC handlers are unavailable.");
-  return { list, attach, listed, attached, importCodex, preview, prepared, imported, state };
+  return { list, listed, importNative, preview, prepared, imported, state };
 });
-
-it.effect("validates exact native catalog inputs before admitting a connection", () =>
-  Effect.scoped(
-    Effect.gen(function* () {
-      const fixture = yield* makeFixture();
-      const event = trustedEvent();
-      const input: NativeSessionAttachInput = {
-        backendKind: "claude",
-        instanceConfigId: "personal",
-        nativeSessionId: "native-uuid",
-        expectedHome: "/native-home",
-        projectId: "selected-project",
-      };
-      const cursor = "x".repeat(6000);
-      yield* fixture.list(event, {
-        backendKind: "claude",
-        instanceConfigId: "personal",
-        cursor,
-      });
-      yield* fixture.attach(event, input);
-      assert.deepEqual(fixture.listed, [
-        { backendKind: "claude", instanceConfigId: "personal", cursor },
-      ]);
-      assert.deepEqual(fixture.attached, [input]);
-      for (const malformed of [
-        { ...input, backendKind: "acp" },
-        { ...input, projectId: undefined },
-        { ...input, cwd: "/renderer-chosen-workspace" },
-        { ...input, expectedHome: "" },
-      ]) {
-        assert.equal((yield* fixture.attach(event, malformed).pipe(Effect.result))._tag, "Failure");
-      }
-      assert.equal(
-        (yield* fixture
-          .list(event, { backendKind: "codex", cursor: "x".repeat(8193) })
-          .pipe(Effect.result))._tag,
-        "Failure",
-      );
-      assert.equal(fixture.attached.length, 1);
-      assert.equal(fixture.listed.length, 1);
-    }),
-  ),
-);
 
 it.effect(
   "imports only validated source metadata and recovers completed copies without rereading the source",
@@ -190,7 +161,8 @@ it.effect(
     Effect.scoped(
       Effect.gen(function* () {
         const fixture = yield* makeFixture();
-        const input: CodexThreadImportInput = {
+        const input: NativeConversationImportInput = {
+          backendKind: "codex",
           requestId: "019d0000-0000-7000-8000-000000000002",
           acceptedAt: 1,
           nativeSessionId: "019abcde-1234-7000-8000-123456789abc",
@@ -205,21 +177,24 @@ it.effect(
           { ...input, expectedHome: "" },
           { ...input, acceptedAt: -1 },
           { ...input, title: "Untrusted title" },
+          { ...input, backendKind: "claude" },
+          { ...input, instanceConfigId: "wrong" },
         ])
           assert.equal(
-            (yield* fixture.importCodex(trustedEvent(), malformed).pipe(Effect.result))._tag,
+            (yield* fixture.importNative(trustedEvent(), malformed).pipe(Effect.result))._tag,
             "Failure",
           );
         assert.equal(
-          (yield* fixture.importCodex(trustedEvent({ subframe: true }), input).pipe(Effect.result))
+          (yield* fixture.importNative(trustedEvent({ subframe: true }), input).pipe(Effect.result))
             ._tag,
           "Failure",
         );
         assert.equal(fixture.prepared.length, 0);
-        yield* fixture.importCodex(trustedEvent(), input);
+        yield* fixture.importNative(trustedEvent(), input);
         assert.deepEqual(fixture.imported, [{ ...input, title: "Source chat", model: "model" }]);
         fixture.state.completed = true;
-        assert.deepEqual(yield* fixture.importCodex(trustedEvent(), input), {
+        assert.deepEqual(yield* fixture.importNative(trustedEvent(), input), {
+          kind: "imported",
           sessionId: input.requestId,
           threadId: "runtime-thread",
           projectId: null,
@@ -249,4 +224,32 @@ it.effect(
         assert.equal(fixture.listed.length, 0);
       }),
     ),
+);
+
+it.effect("passes only typed source validation refusals through the admission outcome", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const fixture = yield* makeFixture();
+      const input: NativeConversationImportInput = {
+        backendKind: "codex",
+        requestId: "019d0000-0000-7000-8000-000000000002",
+        acceptedAt: 1,
+        nativeSessionId: "019abcde-1234-7000-8000-123456789abc",
+        expectedHome: "/native-home",
+        projectId: null,
+        cwd: "/replacement",
+      };
+      fixture.state.preparationFailure = "validation";
+      assert.deepEqual(yield* fixture.importNative(trustedEvent(), input), {
+        kind: "not_admitted",
+        message: "Source unavailable",
+      });
+      fixture.state.preparationFailure = "transport";
+      assert.equal(
+        (yield* fixture.importNative(trustedEvent(), input).pipe(Effect.result))._tag,
+        "Failure",
+      );
+      assert.equal(fixture.imported.length, 0);
+    }),
+  ),
 );

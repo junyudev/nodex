@@ -233,11 +233,13 @@ it.live("awaits a history import past the ordinary request timeout", () =>
       requestTimeoutMs: 200,
       host: () => Effect.succeed({ sequence: 9 }),
     });
-    const result = yield* connection.request("thread.import-codex", {
+    const result = yield* connection.request("thread.import-native", {
       commandId: "import:one",
       threadId: "thread:one",
       projectId: "project:one",
       title: "Imported chat",
+      backendKind: "codex",
+      sourceHome: "/native/codex",
       sourceNativeThreadId: "native:one",
       cwd: "/tmp",
       modelSelection: { instanceId: "codex", model: "model" },

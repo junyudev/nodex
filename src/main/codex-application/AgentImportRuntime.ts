@@ -17,14 +17,9 @@ import {
   type AgentImportFileConfiguration,
   type PendingImportScan,
 } from "../codex/agent-import-operations";
-import { CodexAppServerCapabilities } from "../codex-runtime/CodexAppServerCapabilities";
 import { CodexGateway } from "../codex-runtime/CodexGateway";
 import { CodexApplicationEventHub } from "./CodexApplicationEventHub";
 import { CodexExternalAgentImportRuntime } from "./CodexExternalAgentImportRuntime";
-import { CodexSidebarSyncRuntime } from "./CodexSidebarSyncRuntime";
-import { CodexThreadDirectory } from "./CodexThreadDirectory";
-import { ThreadCreationRuntime } from "./ThreadCreationRuntime";
-import { CodexThreadTitlePersistence } from "./CodexThreadTitlePersistence";
 
 export class AgentImportRuntimeError extends Data.TaggedError("AgentImportRuntimeError")<{
   readonly reason: "apply-failed" | "closed" | "concurrent-import" | "expired-scan" | "scan-failed";
@@ -78,26 +73,13 @@ export const make = (
 ): Effect.Effect<
   AgentImportRuntime["Service"],
   never,
-  | CodexAppServerCapabilities
-  | CodexApplicationEventHub
-  | CodexExternalAgentImportRuntime
-  | CodexGateway
-  | CodexSidebarSyncRuntime
-  | CodexThreadDirectory
-  | ThreadCreationRuntime
-  | CodexThreadTitlePersistence
-  | Scope.Scope
+  CodexApplicationEventHub | CodexExternalAgentImportRuntime | CodexGateway | Scope.Scope
 > =>
   Effect.gen(function* () {
     const operations = makeAgentImportOperations(options, {
-      capabilities: yield* CodexAppServerCapabilities,
       events: yield* CodexApplicationEventHub,
       externalImport: yield* CodexExternalAgentImportRuntime,
       gateway: yield* CodexGateway,
-      sidebarSync: yield* CodexSidebarSyncRuntime,
-      threadDirectory: yield* CodexThreadDirectory,
-      threadStarts: yield* ThreadCreationRuntime,
-      threadTitles: yield* CodexThreadTitlePersistence,
     });
     const state = yield* Ref.make<AgentImportState>({
       applying: false,
