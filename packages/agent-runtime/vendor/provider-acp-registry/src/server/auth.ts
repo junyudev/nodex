@@ -10,6 +10,7 @@ import type { AcpRegistrySettings } from "../settings.ts";
 import * as Crypto from "effect/Crypto";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
+import * as FileSystem from "effect/FileSystem";
 import * as Exit from "effect/Exit";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
@@ -19,6 +20,7 @@ import * as ChildProcessSpawner from "effect/process/ChildProcessSpawner";
 import type * as AcpSchema from "effect-acp/compat";
 
 import * as PtyAdapter from "@t3tools/shared/PtyAdapter";
+import { SpawnExecutableResolution } from "@t3tools/shared/shell";
 import * as ProviderAuthFlow from "@t3tools/provider-core/server/providerAuthFlow";
 import {
   normalizeAcpRegistryAuthMethods,
@@ -35,14 +37,16 @@ type Runtime = Pick<
 > &
   Partial<Pick<AcpSessionRuntime.AcpSessionRuntime["Service"], "closeSession" | "deleteSession">>;
 
-/** Logical Agent and canonical native store determine shared credential ownership. */
+/** A local executable shares credential ownership even when instances have different display identities. */
 export const acpRegistryCredentialBindingKey = (
   settings: AcpRegistrySettings,
   environment: NodeJS.ProcessEnv,
+  localExecutable?: string,
 ): string => {
   const identity =
-    settings.agentIdentity ??
-    (settings.source === "registry" ? settings.agentId : settings.commandPath);
+    settings.source === "registry"
+      ? ["registry", settings.agentId]
+      : ["local", localExecutable ?? settings.commandPath];
   const storage =
     settings.nativeStorageScope ??
     Object.entries(environment)
@@ -74,6 +78,18 @@ export const makeAcpRegistryAuth = Effect.fn("makeAcpRegistryAuth")(function* (o
   ) => Effect.Effect<Runtime, ProviderSetupError, Scope.Scope>;
 }) {
   const catalog = yield* AcpRegistrySupport.AcpRegistryCatalog;
+  const fs = yield* FileSystem.FileSystem;
+  const executableResolver = yield* SpawnExecutableResolution;
+  const platform = yield* HostProcess.Platform;
+  const localExecutable =
+    options.settings.source === "local"
+      ? (executableResolver(options.settings.commandPath, platform, options.environment) ??
+        options.settings.commandPath)
+      : undefined;
+  const canonicalExecutable =
+    localExecutable === undefined
+      ? undefined
+      : yield* fs.realPath(localExecutable).pipe(Effect.orElseSucceed(() => localExecutable));
   const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
   const crypto = yield* Crypto.Crypto;
   const pty = yield* Effect.serviceOption(PtyAdapter.PtyAdapter);
@@ -404,7 +420,11 @@ export const makeAcpRegistryAuth = Effect.fn("makeAcpRegistryAuth")(function* (o
     // Main supplies the canonical storage scope; shared profiles coordinate across instances.
     credentialBinding: {
       owner: "provider",
-      key: acpRegistryCredentialBindingKey(options.settings, options.environment),
+      key: acpRegistryCredentialBindingKey(
+        options.settings,
+        options.environment,
+        canonicalExecutable,
+      ),
     },
     methods,
     ...(options.settings.authMethodId ? { defaultMethodId: options.settings.authMethodId } : {}),

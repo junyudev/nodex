@@ -225,14 +225,12 @@ it.effect("keeps local credentials separate from a matching registry agent ID", 
       decodeSettings({ source: "local", commandPath: "/different/agent" }),
       ProviderInstanceId.make("test-agent"),
     );
-    assert.deepEqual(registry.controller.credentialBinding, {
-      owner: "provider",
-      key: "acp:test-agent",
-    });
-    assert.deepEqual(local.controller.credentialBinding, {
-      owner: "provider",
-      key: "acp:local:test-agent",
-    });
+    assert.equal(registry.controller.credentialBinding?.owner, "provider");
+    assert.equal(local.controller.credentialBinding?.owner, "provider");
+    assert.notEqual(
+      registry.controller.credentialBinding?.key,
+      local.controller.credentialBinding?.key,
+    );
   }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
 );
 

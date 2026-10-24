@@ -6,6 +6,7 @@ import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 
 import * as AcpRegistrySupport from "./AcpRegistrySupport.ts";
+import { normalizeAcpRegistryLiveConfiguration } from "./probe.ts";
 import {
   acpRegistrySnapshotReadiness,
   applyAcpRegistryAvailableCommands,
@@ -65,6 +66,7 @@ describe("acpRegistrySnapshotReadiness", () => {
           icon: null,
           authMethods: [],
           models: [],
+          supportsModelSelection: false,
           currentModelId: null,
           configOptions: [],
           sessionManagement: noSessionManagement,
@@ -111,6 +113,7 @@ describe("acpRegistrySnapshotReadiness", () => {
           icon: null,
           authMethods: [{ id: "browser", name: "Browser", description: null, type: "agent" }],
           models: [],
+          supportsModelSelection: false,
           currentModelId: null,
           configOptions: [],
           sessionManagement: noSessionManagement,
@@ -124,7 +127,7 @@ describe("acpRegistrySnapshotReadiness", () => {
     expect(
       applyAcpRegistryLiveConfiguration(
         snapshot,
-        { models: [], currentModelId: null, configOptions: [] },
+        { models: [], supportsModelSelection: false, currentModelId: null, configOptions: [] },
         [],
       ).auth.status,
     ).toBe("unknown");
@@ -149,6 +152,7 @@ describe("acpRegistrySnapshotReadiness", () => {
           icon: null,
           authMethods: [],
           models: [{ id: "probe-model", name: "Probe model", description: null }],
+          supportsModelSelection: true,
           currentModelId: "probe-model",
           configOptions: [],
           sessionManagement: {
@@ -170,6 +174,7 @@ describe("acpRegistrySnapshotReadiness", () => {
         provider,
         {
           models: [{ id: "live-model", name: "Live model", description: null }],
+          supportsModelSelection: true,
           currentModelId: "live-model",
           configOptions: [],
         },
@@ -260,6 +265,7 @@ describe("acpRegistrySnapshotReadiness", () => {
           icon: null,
           authMethods: [],
           models: [{ id: "gpt-discovered", name: "GPT Discovered", description: null }],
+          supportsModelSelection: true,
           currentModelId: "gpt-discovered",
           configOptions: [],
           sessionManagement: noSessionManagement,
@@ -300,37 +306,59 @@ describe("acpRegistrySnapshotReadiness", () => {
     ]);
   });
 
-  it("keeps a default model only when the agent advertises none", () => {
-    const snapshot = buildCheckedAcpRegistrySnapshot({
-      ...identity,
-      settings: decodeSettings({ agentId: "test-agent" }),
-      checkedAt: "2026-08-13T10:00:00.000Z",
-      inspection: {
-        latestVersion: null,
-        status: "ready",
-        agentId: "test-agent",
-        version: "1.0.0",
-        distribution: "uvx",
-      },
-      probe: {
-        probe: {
-          instanceId: identity.instanceId,
-          ready: true,
-          icon: null,
-          authMethods: [],
-          models: [],
-          currentModelId: null,
-          configOptions: [],
-          sessionManagement: noSessionManagement,
+  it.each(["none", "config", "legacy"] as const)(
+    "projects custom models from %s capability rather than catalog length",
+    (api) => {
+      const configuration = normalizeAcpRegistryLiveConfiguration(
+        api === "config"
+          ? [
+              {
+                id: "model",
+                category: "model",
+                type: "select",
+                name: "Model",
+                currentValue: "model-a",
+                options: [],
+              },
+            ]
+          : [],
+        undefined,
+        undefined,
+        api === "legacy" ? { currentModelId: "model-a", availableModels: [] } : undefined,
+      );
+      expect(configuration.models).toEqual([]);
+      expect(configuration.supportsModelSelection).toBe(api !== "none");
+      const snapshot = buildCheckedAcpRegistrySnapshot({
+        ...identity,
+        settings: decodeSettings({ agentId: "test-agent", customModels: ["custom-model"] }),
+        checkedAt: "2026-08-13T10:00:00.000Z",
+        inspection: {
+          latestVersion: null,
+          status: "ready",
+          agentId: "test-agent",
+          version: "1.0.0",
+          distribution: "uvx",
         },
-        slashCommands: [],
-        skills: [],
-      },
-    });
+        probe: {
+          probe: {
+            instanceId: identity.instanceId,
+            ready: true,
+            icon: null,
+            authMethods: [],
+            ...configuration,
+            sessionManagement: noSessionManagement,
+          },
+          slashCommands: [],
+          skills: [],
+        },
+      });
 
-    expect(snapshot.models.map((model) => model.slug)).toEqual(["default"]);
-    expect(snapshot.models[0]?.isDefault).toBe(true);
-  });
+      expect(snapshot.models.map((model) => model.slug)).toEqual(
+        api === "none" ? ["default"] : ["custom-model"],
+      );
+      if (api === "none") expect(snapshot.models[0]?.isDefault).toBe(true);
+    },
+  );
 
   it.each(["registry", "local"] as const)(
     "reports failed authentication after successful %s inspection",
@@ -407,6 +435,7 @@ describe("acpRegistrySnapshotReadiness", () => {
                 icon: null,
                 authMethods: [],
                 models: [{ id: "agent-model", name: "Agent Model", description: null }],
+                supportsModelSelection: true,
                 currentModelId: "agent-model",
                 configOptions: [],
                 sessionManagement: noSessionManagement,

@@ -320,7 +320,10 @@ it.live(
       };
       const providers = {
         first: common,
-        second: common,
+        second: {
+          ...common,
+          config: { ...common.config, agentIdentity: "another-local-definition" },
+        },
         isolated: {
           ...common,
           config: { ...common.config, nativeStorageScope: `${home}/isolated` },

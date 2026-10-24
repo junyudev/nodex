@@ -145,11 +145,13 @@ describe("AcpRegistryRuntimeCoordinator", () => {
       const received: Array<AcpRegistryLiveConfiguration> = [];
       const first = {
         models: [{ id: "sonnet", name: "Sonnet", description: null }],
+        supportsModelSelection: true,
         currentModelId: "sonnet",
         configOptions: [],
       } satisfies AcpRegistryLiveConfiguration;
       const replacement = {
         models: [{ id: "opus", name: "Opus", description: null }],
+        supportsModelSelection: true,
         currentModelId: "opus",
         configOptions: [],
       } satisfies AcpRegistryLiveConfiguration;

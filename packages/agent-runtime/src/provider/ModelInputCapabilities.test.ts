@@ -6,7 +6,10 @@ import {
   toCustomModelSetting,
 } from "@t3tools/shared/model";
 import { AcpRegistrySettings } from "@t3tools/provider-acp-registry/settings";
-import { acpRegistryProbeResult } from "../../vendor/provider-acp-registry/src/server/probe.ts";
+import {
+  acpRegistryProbeResult,
+  normalizeAcpRegistryLiveConfiguration,
+} from "../../vendor/provider-acp-registry/src/server/probe.ts";
 import {
   applyAcpRegistryLiveConfiguration,
   buildCheckedAcpRegistrySnapshot,
@@ -98,7 +101,7 @@ describe("model input capability authority", () => {
   });
 });
 
-describe("ACP negotiated image support", () => {
+describe("ACP negotiated model capabilities", () => {
   const instanceId = ProviderInstanceId.make("acp-images");
   const snapshot = (image: boolean | undefined) => {
     const probe = acpRegistryProbeResult(instanceId, {
@@ -137,9 +140,41 @@ describe("ACP negotiated image support", () => {
     },
   );
 
+  it.each(["none", "config", "legacy"] as const)(
+    "projects custom choices from %s support even when the catalog is empty",
+    (api) => {
+      const configuration = normalizeAcpRegistryLiveConfiguration(
+        api === "config"
+          ? [
+              {
+                id: "model",
+                category: "model",
+                type: "select",
+                name: "Model",
+                currentValue: "model-a",
+                options: [],
+              },
+            ]
+          : [],
+        undefined,
+        undefined,
+        api === "legacy" ? { currentModelId: "model-a", availableModels: [] } : undefined,
+      );
+      expect(configuration.models).toEqual([]);
+      expect(configuration.supportsModelSelection).toBe(api !== "none");
+      const catalog = applyAcpRegistryLiveConfiguration(snapshot(false), configuration, [
+        "custom-model",
+      ]);
+      expect(catalog.models.map((model) => model.slug)).toEqual(
+        api === "none" ? ["default"] : ["custom-model"],
+      );
+    },
+  );
+
   it("preserves negotiated support through an option-only update and replaces it on a new handshake", () => {
     const configuration = {
       models: [{ id: "live", name: "Live", description: null }],
+      supportsModelSelection: true,
       currentModelId: "live",
       configOptions: [],
     };
@@ -158,7 +193,12 @@ describe("ACP negotiated image support", () => {
     () =>
       Effect.gen(function* () {
         const coordinator = yield* AcpRegistryRuntimeCoordinator.AcpRegistryRuntimeCoordinator;
-        const configuration = { models: [], currentModelId: null, configOptions: [] };
+        const configuration = {
+          models: [],
+          supportsModelSelection: false,
+          currentModelId: null,
+          configOptions: [],
+        };
         yield* coordinator.publishLiveConfiguration(instanceId, {
           ...configuration,
           inputModalities: ["text", "image"],

@@ -244,6 +244,8 @@ export interface AcpAdapterV2Flavor {
   >;
   readonly resolveModelId?: (selection: ModelSelection) => string | undefined;
   readonly customModels?: ReadonlyArray<string>;
+  /** Synthetic catalog entry for the CLI's startup model, used only when no model API exists. */
+  readonly startupModelId?: string;
   /**
    * Replaces the default model application on session setup. Returns the model
    * the session now runs on. Antigravity resolves its provider-default alias
@@ -6589,6 +6591,11 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
                 yield* runtime.setSessionModel(requestedModel);
               }
               appliedModel = requestedModel;
+            } else if (requestedModel !== flavor.startupModelId) {
+              return yield* EffectAcpErrors.AcpRequestError.invalidParams(
+                "This Agent cannot select a model through ACP. Use its startup model.",
+                { requestedModel },
+              );
             }
           }
           // Same-runtime switches compare against this stored setup, so keep

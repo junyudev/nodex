@@ -98,7 +98,7 @@ function modelsFromDiscovery(
     inputModalities: discovery?.inputModalities,
   });
   const builtInModels: ReadonlyArray<ServerProviderModel> =
-    discovered.length === 0
+    discovered.length === 0 && discovery?.supportsModelSelection !== true
       ? [
           {
             slug: "default",
@@ -115,7 +115,11 @@ function modelsFromDiscovery(
           ...(model.id === discovery?.currentModelId ? { isDefault: true } : {}),
           capabilities,
         }));
-  return providerModelsFromSettings(builtInModels, customModels, capabilities);
+  return providerModelsFromSettings(
+    builtInModels,
+    discovery?.supportsModelSelection === false ? [] : customModels,
+    capabilities,
+  );
 }
 
 export function acpRegistrySnapshotReadiness(

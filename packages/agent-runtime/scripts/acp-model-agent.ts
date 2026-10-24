@@ -1,12 +1,16 @@
 #!/usr/bin/env node
 // @effect-diagnostics nodeBuiltinImport:off
 import { createInterface } from "node:readline";
+import { appendFileSync } from "node:fs";
 
 // A real stdio peer for model negotiation. v1 and v2 intentionally advertise
 // different wire shapes so the numeric version cannot select the wrong codec.
 const api = process.env.NODEX_ACP_MODEL_API ?? "config";
 const protocol = process.env.NODEX_ACP_MODEL_PROTOCOL ?? "v1";
-const modelIds = ["default", "auto", "model-a", "model-b"];
+const modelIds =
+  process.env.NODEX_ACP_MODEL_EMPTY_CATALOG === "1"
+    ? []
+    : ["default", "auto", "model-a", "model-b"];
 let model = "model-a";
 let option = "nonempty";
 
@@ -57,6 +61,11 @@ input.on("line", (line) => {
     params?: Record<string, unknown>;
   };
   if (request.id === undefined) return;
+  if (process.env.NODEX_ACP_MODEL_REQUEST_LOG)
+    appendFileSync(
+      process.env.NODEX_ACP_MODEL_REQUEST_LOG,
+      `${JSON.stringify({ method: request.method, params: request.params })}\n`,
+    );
   const result = (value: unknown) => send({ jsonrpc: "2.0", id: request.id, result: value });
   const invalid = () =>
     send({ jsonrpc: "2.0", id: request.id, error: { code: -32602, message: "model rejected" } });

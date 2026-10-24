@@ -203,6 +203,7 @@ export interface AcpRegistryAvailableCommands {
 }
 
 export interface AcpRegistryLiveConfiguration {
+  readonly supportsModelSelection: boolean;
   readonly models: ReadonlyArray<AcpRegistryProbeModel>;
   readonly currentModelId: string | null;
   readonly configOptions: AcpRegistryProbeResult["configOptions"];
@@ -227,6 +228,7 @@ export function normalizeAcpRegistryLiveConfiguration(
         : null;
   const models = normalizeModels(configOptions, modelState);
   return {
+    supportsModelSelection: modelOption !== undefined || modelState != null,
     ...(supportsImagePrompts === undefined
       ? {}
       : {

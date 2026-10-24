@@ -314,6 +314,7 @@ export const AcpRegistryProbeResult = Schema.Struct({
   ready: Schema.Literal(true),
   icon: Schema.NullOr(AcpRegistryUrl),
   authMethods: Schema.Array(AcpRegistryProbeAuthMethod).check(Schema.isMaxLength(32)),
+  supportsModelSelection: Schema.Boolean,
   models: Schema.Array(AcpRegistryProbeModel).check(Schema.isMaxLength(256)),
   currentModelId: Schema.NullOr(AcpRegistryProbeText),
   inputModalities: ModelCapabilities.fields.inputModalities,

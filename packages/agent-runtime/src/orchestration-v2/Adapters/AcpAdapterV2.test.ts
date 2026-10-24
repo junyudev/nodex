@@ -835,6 +835,111 @@ describe("AcpAdapterV2", () => {
       }).pipe(Effect.timeout("20 seconds"), Effect.provide(layerTest), Effect.scoped),
   );
 
+  it.live.each([
+    { api: "none", protocol: "v1" },
+    { api: "none", protocol: "v2" },
+    { api: "config", protocol: "v1" },
+    { api: "config", protocol: "v2" },
+    { api: "legacy", protocol: "v1" },
+  ])(
+    "distinguishes a startup model from an empty advertised $protocol $api catalog",
+    ({ api, protocol }) =>
+      Effect.gen(function* () {
+        const instanceId = ProviderInstanceId.make(`empty-${api}-${protocol}`);
+        const threadId = ThreadId.make(`thread-empty-${api}-${protocol}`);
+        const protocolEvents = yield* Queue.unbounded<EffectAcpProtocol.AcpProtocolLogEvent>();
+        const adapter = yield* makeAcpAdapterV2({
+          instanceId,
+          selfInvocation: yield* resolveSelfInvocation(),
+          flavor: {
+            driver: ACP_TEST_DRIVER,
+            capabilities: AcpProviderCapabilitiesV2,
+            startupModelId: "default",
+            customModels: ["custom-model"],
+            makeRuntime: makeMockRuntime({
+              childProcessSpawner: yield* ChildProcessSpawner.ChildProcessSpawner,
+              mockAgentPath: yield* (yield* Path.Path).fromFileUrl(
+                new URL("../../../scripts/acp-model-agent.ts", import.meta.url),
+              ),
+              environment: {
+                NODEX_ACP_MODEL_API: api,
+                NODEX_ACP_MODEL_PROTOCOL: protocol,
+                NODEX_ACP_MODEL_EMPTY_CATALOG: "1",
+              },
+              customModels: ["custom-model"],
+              protocolEvents,
+            }),
+          },
+        });
+        const runtimePolicy = ProviderAdapter.ProviderAdapterV2RuntimePolicy.make({
+          runtimeMode: "full-access",
+          interactionMode: "default",
+          cwd: process.cwd(),
+        });
+        const modelSelection = { instanceId, model: api === "none" ? "default" : "custom-model" };
+        const runtime = yield* adapter.openSession({
+          threadId,
+          providerSessionId: ProviderSessionId.make(`session-empty-${api}-${protocol}`),
+          modelSelection,
+          runtimePolicy,
+        });
+        const providerThread = yield* runtime.ensureThread({
+          threadId,
+          modelSelection,
+          runtimePolicy,
+        });
+        yield* runtime.startTurn(
+          makeTurnInput({
+            threadId,
+            providerThread,
+            instanceId,
+            runtimePolicy,
+            now: yield* DateTime.now,
+            ordinal: 1,
+            modelSelection,
+          }),
+        );
+        const events = yield* runtime.events.pipe(
+          Stream.takeUntil((event) => event.type === "turn.terminal"),
+          Stream.runCollect,
+        );
+        const terminal = events.at(-1);
+        assert.equal(terminal?.type === "turn.terminal" ? terminal.status : undefined, "completed");
+        const methods = yield* pollProtocolMethods(protocolEvents);
+        assert.include(methods, "session/prompt");
+        if (api !== "none") {
+          assert.include(
+            methods,
+            api === "legacy" ? "session/set_model" : "session/set_config_option",
+          );
+          return;
+        }
+        assert.notInclude(methods, "session/set_model");
+        assert.notInclude(methods, "session/set_config_option");
+        for (const model of ["custom-model", "auto", "model-a"]) {
+          yield* Queue.clear(protocolEvents);
+          assert.isTrue(
+            Exit.isFailure(
+              yield* runtime
+                .startTurn(
+                  makeTurnInput({
+                    threadId,
+                    providerThread,
+                    instanceId,
+                    runtimePolicy,
+                    now: yield* DateTime.now,
+                    ordinal: 2,
+                    modelSelection: { instanceId, model },
+                  }),
+                )
+                .pipe(Effect.exit),
+            ),
+          );
+          assert.notInclude(yield* pollProtocolMethods(protocolEvents), "session/prompt");
+        }
+      }).pipe(Effect.timeout("20 seconds"), Effect.provide(layerTest), Effect.scoped),
+  );
+
   it.live.each(["failed", "recovered", "completed", "cancelled"] as const)(
     "projects Mistral retry notices and their %s outcome",
     (outcome) =>
