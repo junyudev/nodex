@@ -614,7 +614,7 @@ export const layer: Layer.Layer<
           title:
             providerThread.nativeThreadRef === null
               ? "Provider session failed to open"
-              : "Original Agent session could not be restored",
+              : "The Agent couldn't reopen this conversation",
           error: sessionResult.failure,
         });
         return;
@@ -932,7 +932,7 @@ export const layer: Layer.Layer<
             return yield* resumed.failure;
           yield* settleStartFailure({
             signal: "provider-native-session-recovery-failure",
-            title: "Original Agent session could not be restored",
+            title: "The Agent couldn't reopen this conversation",
             error: resumed.failure,
           });
           return undefined;

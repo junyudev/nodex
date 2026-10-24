@@ -6576,7 +6576,7 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
               const applied = findModelConfigOption(yield* runtime.getConfigOptions)?.currentValue;
               if (applied !== undefined && applied !== requestedModel) {
                 return yield* EffectAcpErrors.AcpRequestError.invalidParams(
-                  "ACP model selection rejected",
+                  "The Agent didn't switch to this model. Choose another model.",
                   { requestedModel, appliedModel: applied },
                 );
               }
@@ -6587,7 +6587,7 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
                 !modelState.availableModels.some((model) => model.modelId === requestedModel)
               ) {
                 return yield* EffectAcpErrors.AcpRequestError.invalidParams(
-                  "ACP model selection unavailable",
+                  "The Agent doesn't offer this model. Choose another model.",
                   { requestedModel },
                 );
               }
@@ -6597,7 +6597,7 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
               appliedModel = requestedModel;
             } else if (requestedModel !== flavor.startupModelId) {
               return yield* EffectAcpErrors.AcpRequestError.invalidParams(
-                "This Agent cannot select a model through ACP. Use its startup model.",
+                "This Agent doesn't let Nodex choose a model. Use Default, or set the model in its startup arguments.",
                 { requestedModel },
               );
             }
