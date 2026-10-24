@@ -60,9 +60,10 @@ import * as Context from "effect/Context";
 import * as Deferred from "effect/Deferred";
 import * as ServerActivation from "../serverActivation.ts";
 import * as ProviderConfiguration from "./ProviderConfiguration.ts";
+import { NodePtyAdapterLive } from "./NodePtyAdapter.ts";
 import type { AgentRuntimeConfiguration } from "./Interface.ts";
 
-const layerPlatform = Layer.merge(NodeServices.layer, FetchHttpClient.layer);
+const layerPlatform = Layer.mergeAll(NodeServices.layer, FetchHttpClient.layer, NodePtyAdapterLive);
 const drivers: ReadonlyArray<
   AnyProviderDriver<CodexDriverEnv | ClaudeDriverEnv | AcpRegistryDriverEnv | OpenCodeDriverEnv>
 > = [CodexDriver, ClaudeDriver, AcpRegistryDriver, OpenCodeDriver];

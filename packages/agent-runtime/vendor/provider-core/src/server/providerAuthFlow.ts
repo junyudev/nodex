@@ -159,8 +159,8 @@ export const make = Effect.fn("ProviderAuthFlow.make")(function* (options: {
           }),
         );
         const result = yield* Effect.gen(function* () {
-          yield* stopOwnedSessions;
           yield* stopSessions;
+          yield* stopOwnedSessions;
           yield* update;
           yield* refreshMethods;
         }).pipe(Effect.exit);
@@ -278,7 +278,7 @@ export const make = Effect.fn("ProviderAuthFlow.make")(function* (options: {
                 operation: "start",
                 detail: "The provider did not advertise this sign-in method.",
               });
-            yield* stopSessions.pipe(Effect.ensuring(stopOwnedSessions));
+            yield* stopSessions.pipe(Effect.andThen(stopOwnedSessions));
             yield* options.authenticate(methodId, {
               flowId: id,
               expiresAt: flow.expiresAt,
@@ -470,7 +470,7 @@ export const make = Effect.fn("ProviderAuthFlow.make")(function* (options: {
         const result = yield* Effect.gen(function* () {
           if (flow?.responseFiber) yield* Fiber.interrupt(flow.responseFiber);
           if (flow?.fiber) yield* Fiber.interrupt(flow.fiber);
-          yield* stopSessions.pipe(Effect.ensuring(stopOwnedSessions));
+          yield* stopSessions.pipe(Effect.andThen(stopOwnedSessions));
           const message = yield* options.logout;
           if (options.refreshMethodsAfterAuth) yield* refreshMethods;
           return message;

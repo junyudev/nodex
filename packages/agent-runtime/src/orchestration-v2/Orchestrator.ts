@@ -1383,12 +1383,11 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         failedRun?.id === options?.endedRunId &&
         failedRun?.workspacePreparation?.type === "worktree" &&
         projection.thread.worktreePath === null;
-      // A project can turn a provider off while a message waits in the queue,
-      // including between a run ending and this check, or while the queue is
-      // held and someone clicks resume. Neither path may start that run. Only
-      // an explicit turn-off holds the queue: an instance with no settings
-      // entry was already admitted when the message was queued.
-      const settings = yield* serverSettings.getSettings.pipe(Effect.orDie);
+      // A host can retain the configuration captured by already-admitted work
+      // while disabling new requests. Standalone project policy still applies.
+      const settings = yield* (
+        serverSettings.getAdmittedWorkSettings ?? serverSettings.getSettings
+      ).pipe(Effect.orDie);
       const projectOverride =
         settings.projectSettingsOverrides[projection.thread.projectId]?.providerInstances?.[
           queuedRun.providerInstanceId

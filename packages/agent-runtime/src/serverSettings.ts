@@ -196,6 +196,8 @@ export class ServerSettingsService extends Context.Service<
 
     /** Read the current settings. */
     readonly getSettings: Effect.Effect<ServerSettings, ServerSettingsError>;
+    /** Captured configuration for previously admitted queue work, when supplied by the host. */
+    readonly getAdmittedWorkSettings?: Effect.Effect<ServerSettings, ServerSettingsError>;
 
     /** Patch settings and persist. Returns the new full settings object. */
     readonly updateSettings: (

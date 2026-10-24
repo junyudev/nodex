@@ -1,3 +1,4 @@
+import type { AgentAcpManagementOperations } from "./AcpManagementContract.ts";
 import type {
   HostTurnIdentity,
   HostNativeSessionIdentity,
@@ -181,7 +182,7 @@ export interface AgentRootActivity {
   readonly updatedAt: string;
 }
 
-export interface AgentRuntimeOperations {
+export interface AgentRuntimeOperations extends AgentAcpManagementOperations {
   readonly "thread.import-native": {
     readonly input: {
       readonly commandId: string;

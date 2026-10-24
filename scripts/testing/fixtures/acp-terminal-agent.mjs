@@ -26,6 +26,13 @@ if (process.argv.includes("login")) {
   };
   process.stdout.write("READY\n");
   lines.on("line", (line) => {
+    if (line === "secret") {
+      const secret = process.env.NODEX_PTY_FIXTURE_TOKEN;
+      if (!secret) throw new Error("Missing secret fixture");
+      process.stdout.write(`TOKEN:${secret.slice(0, 12)}`);
+      setTimeout(() => process.stdout.write(`${secret.slice(12)}\nSECRET_DONE\n`), 150);
+      return;
+    }
     if (line === "size") {
       process.stdout.write(
         `SIZE:${process.stdout.columns}:${process.stdout.rows}\n`,

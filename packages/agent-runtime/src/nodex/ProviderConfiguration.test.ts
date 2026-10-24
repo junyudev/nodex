@@ -17,7 +17,7 @@ import { effectiveSettings, makePolicy, makeWithPorts } from "./ProviderConfigur
 import * as ServerSettings from "../serverSettings.ts";
 
 it.effect(
-  "named provider enablement follows the applied map and defers policy changes with native ownership",
+  "disabling stops new admission immediately while native configuration remains captured",
   () =>
     Effect.gen(function* () {
       const id = ProviderInstanceId.make("claude_named");
@@ -34,11 +34,17 @@ it.effect(
         Effect.provide(ServerSettings.layerTest()),
       );
       const settings = effectiveSettings(stored, policy);
+      yield* stored.updateSettings({
+        projectSettingsOverrides: {
+          [projectId]: { providerInstances: { [id]: { enabled: true } } },
+        },
+      });
       const busy = yield* Ref.make<ReadonlySet<ProviderInstanceId>>(new Set([id]));
       const configuration = yield* makeWithPorts(initial, {
         busyInstances: Ref.get(busy),
         closeIdleInstance: () => Effect.void,
         reconcile: policy.replace,
+        admission: policy.setDesired,
       });
       expect(
         resolveProjectProviderInstanceEnabled(yield* settings.getSettings, projectId, id),
@@ -49,7 +55,7 @@ it.effect(
       );
       expect(
         resolveProjectProviderInstanceEnabled(yield* settings.getSettings, projectId, id),
-      ).toBe(true);
+      ).toBe(false);
       yield* Ref.set(busy, new Set());
       yield* TestClock.adjust("1 second");
       expect(
@@ -164,4 +170,33 @@ it.effect(
       yield* Scope.close(owner, Exit.void);
       expect(changes).toEqual([{}, initial, {}]);
     }),
+);
+
+it.effect("refuses both provider settings write paths without persisting secrets", () =>
+  Effect.gen(function* () {
+    const policy = yield* makePolicy({});
+    const stored = yield* ServerSettings.ServerSettingsService.pipe(
+      Effect.provide(ServerSettings.layerTest()),
+    );
+    const settings = effectiveSettings(stored, policy);
+    const id = ProviderInstanceId.make("private_agent");
+    const before = yield* stored.getSettings;
+    const outcome = yield* settings
+      .updateSettings({
+        providerInstances: {
+          [id]: {
+            driver: ProviderDriverKind.make("acpRegistry"),
+            environment: [{ name: "TOKEN", value: "private-secret", sensitive: true }],
+          },
+        },
+      })
+      .pipe(Effect.exit);
+    expect(Exit.isFailure(outcome)).toBe(true);
+    expect(yield* stored.getSettings).toEqual(before);
+    const mutation = yield* settings
+      .updateProviderInstance({ operation: "remove", instanceId: id })
+      .pipe(Effect.exit);
+    expect(Exit.isFailure(mutation)).toBe(true);
+    expect(yield* stored.getSettings).toEqual(before);
+  }),
 );

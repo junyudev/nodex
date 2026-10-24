@@ -1,3 +1,4 @@
+import * as HostProcess from "@t3tools/shared/HostProcess";
 import {
   AcpRegistryListProvidersResult,
   AcpRegistryOperationError,
@@ -55,6 +56,33 @@ export function normalizeAcpRegistryWebUrl(value: string): string | undefined {
   return url.protocol === "https:" || url.protocol === "http:" ? url.href : undefined;
 }
 
+/** Removes only the disposable session made by a probe, before its process closes. */
+export const closeAcpRegistryProbeSession = (
+  runtime: Partial<
+    Pick<AcpSessionRuntime.AcpSessionRuntime["Service"], "closeSession" | "deleteSession">
+  >,
+  started: AcpSessionRuntime.AcpSessionRuntimeStartResult,
+) =>
+  Effect.gen(function* () {
+    const capabilities = started.initializeResult.agentCapabilities?.sessionCapabilities;
+    if (capabilities?.close != null && runtime.closeSession)
+      yield* runtime
+        .closeSession(started.sessionId)
+        .pipe(Effect.timeoutOption("2 seconds"), Effect.ignore);
+    if (capabilities?.delete != null && runtime.deleteSession)
+      yield* runtime
+        .deleteSession(started.sessionId)
+        .pipe(Effect.timeoutOption("2 seconds"), Effect.ignore);
+  });
+
+/** Model service URLs are configuration, not browser authentication actions. */
+const normalizeModelServiceUrl = (value: string): string | undefined => {
+  const normalized = normalizeAcpRegistryWebUrl(value);
+  if (normalized === undefined) return undefined;
+  const url = new URL(normalized);
+  return url.username || url.password ? undefined : normalized;
+};
+
 function modelConfigOptions(
   configOptions: ReadonlyArray<EffectAcpSchema.SessionConfigOption> | null | undefined,
 ): ReadonlyArray<EffectAcpSchema.SessionConfigSelectOption> {
@@ -68,14 +96,21 @@ function modelConfigOptions(
 
 function normalizeModels(
   configOptions: ReadonlyArray<EffectAcpSchema.SessionConfigOption> | null | undefined,
+  modelState?: EffectAcpSchema.SessionModelState | null,
 ): ReadonlyArray<AcpRegistryProbeModel> {
-  // Model discovery is the model config option's base models; ACP has no
-  // other portable model inventory.
-  const candidates = modelConfigOptions(configOptions).map((model) => ({
+  const configuredModels = modelConfigOptions(configOptions).map((model) => ({
     id: model.value,
     name: model.name,
     description: model.description ?? null,
   }));
+  const candidates =
+    configuredModels.length > 0
+      ? configuredModels
+      : (modelState?.availableModels ?? []).map((model) => ({
+          id: model.modelId,
+          name: model.name,
+          description: model.description ?? null,
+        }));
   const seen = new Set<string>();
   const models: Array<AcpRegistryProbeModel> = [];
   for (const candidate of candidates) {
@@ -179,6 +214,7 @@ export function normalizeAcpRegistryLiveConfiguration(
   configOptions: ReadonlyArray<EffectAcpSchema.SessionConfigOption>,
   modeState?: Parameters<typeof acpProviderOptionDescriptors>[0]["modeState"],
   supportsImagePrompts?: boolean,
+  modelState?: EffectAcpSchema.SessionModelState | null,
 ): AcpRegistryLiveConfiguration {
   const modelOption = configOptions.find(
     (option) => option.category === "model" && option.type === "select",
@@ -186,12 +222,18 @@ export function normalizeAcpRegistryLiveConfiguration(
   const boundedCurrentModelId =
     modelOption?.type === "select"
       ? (boundedOpaqueValue(modelOption.currentValue, MAX_ID_LENGTH) ?? null)
-      : null;
-  const models = normalizeModels(configOptions);
+      : modelState?.currentModelId
+        ? (boundedOpaqueValue(modelState.currentModelId, MAX_ID_LENGTH) ?? null)
+        : null;
+  const models = normalizeModels(configOptions, modelState);
   return {
     ...(supportsImagePrompts === undefined
       ? {}
-      : { inputModalities: supportsImagePrompts ? (["text", "image"] as const) : (["text"] as const) }),
+      : {
+          inputModalities: supportsImagePrompts
+            ? (["text", "image"] as const)
+            : (["text"] as const),
+        }),
     models,
     currentModelId: models.some((model) => model.id === boundedCurrentModelId)
       ? boundedCurrentModelId
@@ -255,9 +297,23 @@ export function acpRegistryProbeResult(
     started.sessionSetupResult.configOptions ?? [],
     parseSessionModeState(started.sessionSetupResult),
     started.initializeResult.agentCapabilities?.promptCapabilities?.image === true,
+    "models" in started.sessionSetupResult ? started.sessionSetupResult.models : undefined,
   );
   return AcpRegistryProbeResult.make({
     instanceId,
+    ...(started.protocolGeneration === undefined
+      ? {}
+      : { protocolGeneration: started.protocolGeneration }),
+    ...(started.initializeResult.agentInfo
+      ? {
+          agentInfo: {
+            name: boundedText(started.initializeResult.agentInfo.name, MAX_NAME_LENGTH),
+            version: started.initializeResult.agentInfo.version
+              ? boundedText(started.initializeResult.agentInfo.version, MAX_NAME_LENGTH)
+              : null,
+          },
+        }
+      : {}),
     ready: true,
     icon,
     authMethods: normalizeAcpRegistryAuthMethods(started.initializeResult.authMethods, spawn),
@@ -340,6 +396,9 @@ export const probeAcpRegistryConfiguration = Effect.fn("AcpRegistryProbe.probeCo
       );
       const runtimeContext = yield* Layer.build(
         AcpSessionRuntime.layer({
+          ownDetachedProcessGroup: true,
+          ownDescendantProcessGroups: (yield* HostProcess.Platform) === "linux",
+          processGroupPlatform: yield* HostProcess.Platform,
           spawn: resolved.spawn,
           cwd: input.cwd,
           clientCapabilities: {
@@ -422,6 +481,7 @@ export const probeAcpRegistryConfiguration = Effect.fn("AcpRegistryProbe.probeCo
         );
       }
       const started = startResult.success;
+      yield* Effect.addFinalizer(() => closeAcpRegistryProbeSession(runtime, started));
       yield* Deferred.await(commandsAdvertised).pipe(
         Effect.timeoutOption(COMMAND_ADVERTISEMENT_GRACE),
       );
@@ -473,6 +533,9 @@ const makeAcpRegistryManagementRuntime = Effect.fn("AcpRegistryProbe.makeManagem
       .pipe(Effect.mapError(AcpRegistrySupport.toAcpRegistryOperationError));
     const runtimeContext = yield* Layer.build(
       AcpSessionRuntime.layer({
+        ownDetachedProcessGroup: true,
+        ownDescendantProcessGroups: (yield* HostProcess.Platform) === "linux",
+        processGroupPlatform: yield* HostProcess.Platform,
         spawn: resolved.spawn,
         cwd: input.cwd,
         clientCapabilities: {
@@ -684,7 +747,7 @@ export const listAcpRegistryProviders = Effect.fn("AcpRegistryProbe.listProvider
         const currentApiType =
           current == null ? undefined : boundedOpaqueValue(current.apiType, 64);
         const currentBaseUrl =
-          current == null ? undefined : normalizeAcpRegistryWebUrl(current.baseUrl);
+          current == null ? undefined : normalizeModelServiceUrl(current.baseUrl);
         return [
           {
             providerId,

@@ -1,4 +1,10 @@
 import {
+  extractClaudeSubagentUpdate,
+  isClaudeProvisionalSubagentTool,
+  extractClaudeSubagentSessionEvent,
+} from "./claudeAcp.ts";
+import { extractDroidElicitationForm } from "./droidAcp.ts";
+import {
   normalizeDevinSessionUpdate,
   normalizeDevinToolCall,
   extractDevinSubagentUpdate,
@@ -73,16 +79,8 @@ export interface AcpRegistryAdapterV2Options {
   readonly assertComplete?: Effect.Effect<void, EffectAcpErrors.AcpError>;
 }
 
-// ─── Per-agent exceptions ────────────────────────────────────────────────────
-// This adapter serves every ACP registry agent through the plain ACP spec.
-// Agent-specific behavior does not belong here: an agent that needs it gets a
-// dedicated driver (as Grok and Antigravity have). The few exceptions below
-// predate that rule and are small presentation hooks, not permission or tool
-// behavior. Copilot's subagent routing was approved later on the same terms.
-//
-// Agents changing this file: do NOT add another `agentId === "..."` branch,
-// agent table, or agent-specific hook without explicit approval from the
-// maintainer in the conversation. Propose a dedicated driver instead.
+// Extensions are enabled only by an explicitly configured logical Agent identity.
+// Arbitrary local commands always use standard ACP, even when their filenames match.
 
 // Mistral Vibe: its application error code for rate limits (not an ACP code).
 const MISTRAL_VIBE_RATE_LIMITED = -31001;
@@ -159,7 +157,11 @@ function makeAcpRegistryRuntime(
         );
       const context = yield* Layer.build(
         AcpSessionRuntime.layer({
+          ownDetachedProcessGroup: true,
+          ownDescendantProcessGroups: (yield* HostProcess.Platform) === "linux",
+          processGroupPlatform: yield* HostProcess.Platform,
           ...runtimeInput,
+          customModels: options.settings.customModels,
           spawn:
             processEnvironment === undefined
               ? { ...resolved.spawn, extendEnv: options.settings.inheritEnvironment !== false }
@@ -184,22 +186,32 @@ export const makeAcpRegistryAdapterV2 = Effect.fn("makeAcpRegistryAdapterV2")(fu
   const runtimeCoordinator = Option.getOrUndefined(
     yield* Effect.serviceOption(AcpRegistryRuntimeCoordinator.AcpRegistryRuntimeCoordinator),
   );
-  const registryAgentId = options.settings.source === "local" ? "" : options.settings.agentId;
+  const registryAgentId =
+    options.settings.source === "registry"
+      ? options.settings.agentId
+      : (options.settings.agentIdentity ?? "");
   const startupKey =
     options.settings.source === "local" ? `local:${options.instanceId}` : registryAgentId;
   const isDevin = registryAgentId === "devin";
-  // Local installs launch the `copilot` binary directly with no registry id.
-  const isCopilot =
-    registryAgentId === "github-copilot-cli" ||
-    (options.settings.source === "local" &&
-      /^copilot(\.exe|\.cmd)?$/i.test(options.settings.commandPath.split(/[\\/]/).pop() ?? ""));
+  const isCopilot = registryAgentId === "github-copilot-cli";
+  const isClaude = registryAgentId === "claude-acp" || registryAgentId === "claude-agent-acp";
   const copilotRouting = isCopilot ? makeCopilotSubagentRouting() : undefined;
   const flavor: AcpAdapterV2Flavor = {
     driver: ACP_REGISTRY_PROVIDER,
     capabilities: AcpProviderCapabilitiesV2,
+    customModels: options.settings.customModels,
     promptFailure: (cause) => acpRegistryPromptFailure(registryAgentId, cause),
-    // Per-agent exceptions (Mistral Vibe, Devin, Copilot): see the note above
-    // registerMistralVibeAcpExtensions before adding any more.
+    ...(registryAgentId === "factory-droid"
+      ? { extractElicitationForm: extractDroidElicitationForm }
+      : {}),
+    ...(isClaude
+      ? {
+          followAgentWorkState: true,
+          extractSubagentUpdate: extractClaudeSubagentUpdate,
+          isProvisionalSubagentTool: isClaudeProvisionalSubagentTool,
+          extractSubagentSessionEvent: extractClaudeSubagentSessionEvent,
+        }
+      : {}),
     ...(registryAgentId === "mistral-vibe"
       ? { registerExtensions: registerMistralVibeAcpExtensions }
       : {}),
@@ -231,10 +243,20 @@ export const makeAcpRegistryAdapterV2 = Effect.fn("makeAcpRegistryAdapterV2")(fu
               options.instanceId,
               normalizeAcpRegistryCommands(commands),
             ),
-          onSessionConfigurationUpdate: (configOptions, modeState, supportsImagePrompts) =>
+          onSessionConfigurationUpdate: (
+            configOptions,
+            modeState,
+            supportsImagePrompts,
+            modelState,
+          ) =>
             runtimeCoordinator.publishLiveConfiguration(
               options.instanceId,
-              normalizeAcpRegistryLiveConfiguration(configOptions, modeState, supportsImagePrompts),
+              normalizeAcpRegistryLiveConfiguration(
+                configOptions,
+                modeState,
+                supportsImagePrompts,
+                modelState,
+              ),
             ),
           onUrlElicitation: ({ elicitationId, url, message }) => {
             const normalizedUrl = normalizeAcpRegistryWebUrl(url);
@@ -298,8 +320,10 @@ export const AcpRegistryAdapterV2Driver: ProviderAdapterDriver<
       return yield* makeAcpRegistryAdapterV2({
         instanceId: input.instanceId,
         settings: { ...input.config, enabled: input.enabled },
-        environment: yield* mergeProviderInstanceEnvironment(input.environment,
-          input.config.inheritEnvironment === false ? {} : hostEnvironment),
+        environment: yield* mergeProviderInstanceEnvironment(
+          input.environment,
+          input.config.inheritEnvironment === false ? {} : hostEnvironment,
+        ),
         selfInvocation,
         nativeLogging: (threadId) =>
           makeNativeLogger({

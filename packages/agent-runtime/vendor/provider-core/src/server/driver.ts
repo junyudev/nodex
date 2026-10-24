@@ -24,6 +24,7 @@
 import type {
   ProviderConsumeResetCreditOutcome,
   AcpRegistryListSessionsResult,
+  AcpRegistryProbeResult,
   AcpRegistryListProvidersResult,
   AcpRegistryOperationError,
   AcpRegistrySetProviderInput,
@@ -106,6 +107,9 @@ export interface ProviderInstance {
   readonly textGeneration: ProviderTextGeneration;
   readonly auth?: ProviderAuthController;
   readonly acpSessionManagement?: {
+    readonly connect?: (
+      cwd: string,
+    ) => Effect.Effect<AcpRegistryProbeResult, AcpRegistryOperationError>;
     readonly listSessions: (input: {
       readonly cwd: string;
       readonly cursor?: string;

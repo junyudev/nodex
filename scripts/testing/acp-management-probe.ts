@@ -42,6 +42,7 @@ export async function probeAcpManagement(input: {
   rmSync(join(fixtureHome, "observations.jsonl"), { force: true });
   const instanceId = "pty-probe";
   const ownerId = "pty-probe-owner";
+  const injectedSecret = "private-split-token-fixture-394815";
   const runtime = spawn(
     input.node.executable,
     [
@@ -117,7 +118,13 @@ export async function probeAcpManagement(input: {
       method,
     ).finally(() => pending.delete(id));
   };
-  const read = () => request("acp.auth.read", { instanceId, ownerId });
+  const read = async () => {
+    const state = await request("acp.auth.read", { instanceId, ownerId });
+    const visible = JSON.stringify(state);
+    if (visible.includes(injectedSecret) || visible.includes(injectedSecret.slice(0, 12)))
+      throw new Error("A secret escaped through authentication state");
+    return state;
+  };
   const wait = async (predicate: (state: Auth) => boolean, label: string): Promise<Auth> => {
     const end = Date.now() + 20_000;
     while (Date.now() < end) {
@@ -162,7 +169,12 @@ export async function probeAcpManagement(input: {
             NODEX_PTY_FIXTURE_HOME: fixtureHome,
             HOME: fixtureHome,
             PATH: process.env.PATH ?? "",
-          }).map(([name, value]) => ({ name, value, sensitive: false })),
+            NODEX_PTY_FIXTURE_TOKEN: injectedSecret,
+          }).map(([name, value]) => ({
+            name,
+            value,
+            sensitive: name === "NODEX_PTY_FIXTURE_TOKEN",
+          })),
           config: {
             source: "local",
             discovery: "explicit",
@@ -177,6 +189,17 @@ export async function probeAcpManagement(input: {
     runtime.stdin.write(`${JSON.stringify(bootstrap)}\n`);
     await within(ready.promise, "Runtime startup", 30_000);
     const first = await start();
+    await respond(first, "secret\r");
+    const masked = await wait(
+      (state) =>
+        state.interaction?.type === "terminal" && state.interaction.output.includes("SECRET_DONE"),
+      "secret redaction",
+    );
+    if (
+      masked.interaction?.type !== "terminal" ||
+      !masked.interaction.output.includes("TOKEN:[redacted]")
+    )
+      throw new Error("Split secret was not masked");
     await respond(first, "roundtrip\r", { cols: 109, rows: 37 });
     await wait(
       (state) =>
@@ -225,6 +248,7 @@ export async function probeAcpManagement(input: {
       startup: "pass",
       spawn: "pass",
       input: "pass",
+      secretRedaction: "pass",
       resize: "pass",
       eof: "pass",
       zeroExitIsNotAuthenticated: "pass",

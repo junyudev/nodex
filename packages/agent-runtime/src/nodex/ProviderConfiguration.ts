@@ -1,4 +1,8 @@
-import { ProviderInstanceId, type ProviderInstanceConfigMap } from "@t3tools/contracts";
+import {
+  ProviderInstanceId,
+  ServerSettingsError,
+  type ProviderInstanceConfigMap,
+} from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 import * as Equal from "effect/Equal";
 import * as Ref from "effect/Ref";
@@ -9,6 +13,8 @@ import * as SqlClient from "effect/sql/SqlClient";
 import * as Context from "effect/Context";
 import * as Layer from "effect/Layer";
 import * as Stream from "effect/Stream";
+import * as Schema from "effect/Schema";
+import { AcpRegistrySettings } from "@t3tools/provider-acp-registry/settings";
 import type { ServerSettingsService } from "../serverSettings.ts";
 import * as Registry from "../provider/ProviderInstanceRegistryMutator.ts";
 import * as Sessions from "../orchestration-v2/ProviderSessionManager.ts";
@@ -18,7 +24,10 @@ export class ProviderPolicy extends Context.Service<
   ProviderPolicy,
   {
     readonly current: Effect.Effect<ProviderInstanceConfigMap>;
+    readonly desired: Effect.Effect<ProviderInstanceConfigMap>;
     readonly replace: (config: ProviderInstanceConfigMap) => Effect.Effect<void>;
+    readonly admission: Effect.Effect<ProviderInstanceConfigMap>;
+    readonly setDesired: (config: ProviderInstanceConfigMap) => Effect.Effect<void>;
   }
 >()("nodex/agent-runtime/ProviderPolicy") {}
 
@@ -26,8 +35,26 @@ export const makePolicy = Effect.fn("AgentRuntime.makeProviderPolicy")(function*
   initial: ProviderInstanceConfigMap,
 ) {
   const current = yield* Ref.make(initial);
+  const desired = yield* Ref.make(initial);
   return ProviderPolicy.of({
+    admission: Effect.all([Ref.get(current), Ref.get(desired)]).pipe(
+      Effect.map(([applied, wanted]) =>
+        Object.fromEntries(
+          Object.entries(applied).map(([id, entry]) => [
+            id,
+            {
+              ...entry,
+              enabled:
+                wanted[id as ProviderInstanceId]?.enabled ??
+                (wanted[id as ProviderInstanceId] === undefined ? false : (entry.enabled ?? true)),
+            },
+          ]),
+        ),
+      ),
+    ),
+    setDesired: (config) => Ref.set(desired, config),
     current: Ref.get(current),
+    desired: Ref.get(desired),
     replace: (config) => Ref.set(current, config),
   });
 });
@@ -41,13 +68,47 @@ export const effectiveSettings = (
   policy: ProviderPolicy["Service"],
 ): ServerSettingsService["Service"] => {
   const project = (settings: Effect.Success<typeof stored.getSettings>) =>
-    policy.current.pipe(Effect.map((providerInstances) => ({ ...settings, providerInstances })));
+    policy.admission.pipe(
+      Effect.map((providerInstances) => {
+        const disabled = Object.fromEntries(
+          Object.entries(providerInstances)
+            .filter(([, entry]) => entry.enabled === false)
+            .map(([id]) => [id, { enabled: false }]),
+        );
+        const projectSettingsOverrides = Object.fromEntries(
+          Object.entries(settings.projectSettingsOverrides).map(([id, overrides]) => [
+            id,
+            { ...overrides, providerInstances: { ...overrides.providerInstances, ...disabled } },
+          ]),
+        );
+        return { ...settings, providerInstances, projectSettingsOverrides };
+      }),
+    );
   return {
     ...stored,
     getSettings: stored.getSettings.pipe(Effect.flatMap(project)),
+    getAdmittedWorkSettings: Effect.all([stored.getSettings, policy.current]).pipe(
+      Effect.map(([settings, providerInstances]) => ({ ...settings, providerInstances })),
+    ),
     withSettingsSnapshot: (use) =>
       stored.withSettingsSnapshot((settings) => project(settings).pipe(Effect.flatMap(use))),
-    updateSettings: (patch) => stored.updateSettings(patch).pipe(Effect.flatMap(project)),
+    updateSettings: (patch) => {
+      if (patch.providerInstances !== undefined)
+        return Effect.fail(
+          new ServerSettingsError({
+            operation: "write-file",
+            settingsPath: "host-owned-agent-configuration",
+          }),
+        );
+      return stored.updateSettings(patch).pipe(Effect.flatMap(project));
+    },
+    updateProviderInstance: () =>
+      Effect.fail(
+        new ServerSettingsError({
+          operation: "write-file",
+          settingsPath: "host-owned-agent-configuration",
+        }),
+      ),
     streamChanges: stored.streamChanges.pipe(Stream.mapEffect(project)),
     subscribeChanges: stored.subscribeChanges.pipe(
       Effect.map((stream) => stream.pipe(Stream.mapEffect(project))),
@@ -59,6 +120,11 @@ interface ConfigurationPorts {
   readonly busyInstances: Effect.Effect<ReadonlySet<ProviderInstanceId>, Error>;
   readonly closeIdleInstance: (id: ProviderInstanceId) => Effect.Effect<void, Error>;
   readonly reconcile: (config: ProviderInstanceConfigMap) => Effect.Effect<void>;
+  readonly validate?: (
+    current: ProviderInstanceConfigMap,
+    desired: ProviderInstanceConfigMap,
+  ) => Effect.Effect<void, Error>;
+  readonly admission?: (config: ProviderInstanceConfigMap) => Effect.Effect<void>;
 }
 
 /** Keeps configuration closure-owned and retains an active native instance until its work ends. */
@@ -114,7 +180,15 @@ export const makeWithPorts = Effect.fn("AgentRuntime.ProviderConfiguration")(fun
         ),
       ),
     configure: (config: ProviderInstanceConfigMap) =>
-      lane.withPermits(1)(Ref.set(desired, config).pipe(Effect.andThen(refresh))),
+      lane.withPermits(1)(
+        Effect.gen(function* () {
+          const previous = yield* Ref.get(current);
+          if (ports.validate) yield* ports.validate(previous, config);
+          yield* Ref.set(desired, config);
+          if (ports.admission) yield* ports.admission(config);
+          return yield* refresh;
+        }),
+      ),
   };
 });
 
@@ -138,7 +212,7 @@ export const make = Effect.fn("AgentRuntime.makeProviderConfiguration")(function
       const native = yield* sessions.busyInstances;
       const rows = yield* sql<{ readonly provider_instance_id: string }>`
         SELECT DISTINCT provider_instance_id FROM orchestration_v2_projection_runs
-        WHERE status IN ('preparing', 'starting', 'running', 'waiting')
+        WHERE status IN ('queued', 'preparing', 'starting', 'running', 'waiting')
       `;
       return new Set([
         ...native,
@@ -158,5 +232,38 @@ export const make = Effect.fn("AgentRuntime.makeProviderConfiguration")(function
           ),
         ),
     reconcile: (config) => registry.reconcile(config).pipe(Effect.andThen(policy.replace(config))),
+    validate: Effect.fn("ProviderConfiguration.validateNativeScope")(function* (current, desired) {
+      for (const [id, before] of Object.entries(current)) {
+        const after = desired[ProviderInstanceId.make(id)];
+        if (before.driver !== "acpRegistry" || after === undefined || Equal.equals(before, after))
+          continue;
+        const previous = yield* Schema.decodeUnknownEffect(AcpRegistrySettings)(before.config).pipe(
+          Effect.orDie,
+        );
+        const next = yield* Schema.decodeUnknownEffect(AcpRegistrySettings)(after.config).pipe(
+          Effect.orDie,
+        );
+        const scope = (settings: AcpRegistrySettings) => [
+          settings.agentIdentity ??
+            (settings.source === "registry" ? settings.agentId : settings.commandPath),
+          settings.nativeStorageScope,
+        ];
+        if (Equal.equals(scope(previous), scope(next))) continue;
+        const mappings =
+          yield* sql`SELECT provider_thread_id FROM orchestration_v2_projection_provider_threads WHERE provider_instance_id = ${id} LIMIT 1`.pipe(
+            Effect.mapError(
+              (cause) =>
+                new Error("Could not validate the Agent's native storage identity.", { cause }),
+            ),
+          );
+        if (mappings.length > 0)
+          return yield* Effect.fail(
+            new Error(
+              "This Agent owns native conversation history. Create another instance to use a different Agent or credential home.",
+            ),
+          );
+      }
+    }),
+    admission: policy.setDesired,
   });
 });

@@ -27,3 +27,5 @@ export {
   AGENT_RUNTIME_NATIVE_IMPORT_MAX_TIMEOUT_MS,
   NATIVE_THREAD_IMPORT_OPERATION_PREFIX,
 } from "./NativeImportLimits.ts";
+
+export type * from "./AcpManagementContract.ts";

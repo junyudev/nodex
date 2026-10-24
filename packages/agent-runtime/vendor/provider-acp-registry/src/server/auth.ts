@@ -1,3 +1,6 @@
+import { makeAuthOutputRedactor } from "./authOutput.ts";
+import * as HostProcess from "@t3tools/shared/HostProcess";
+import { createHash } from "node:crypto";
 import {
   ProviderSetupError,
   type ProviderAuthMethod,
@@ -17,7 +20,11 @@ import type * as AcpSchema from "effect-acp/compat";
 
 import * as PtyAdapter from "@t3tools/shared/PtyAdapter";
 import * as ProviderAuthFlow from "@t3tools/provider-core/server/providerAuthFlow";
-import { normalizeAcpRegistryAuthMethods, normalizeAcpRegistryWebUrl } from "./probe.ts";
+import {
+  normalizeAcpRegistryAuthMethods,
+  normalizeAcpRegistryWebUrl,
+  closeAcpRegistryProbeSession,
+} from "./probe.ts";
 import * as AcpRegistrySupport from "./AcpRegistrySupport.ts";
 import * as AcpRegistryRuntimeCoordinator from "./AcpRegistryRuntimeCoordinator.ts";
 import * as AcpSessionRuntime from "@t3tools/provider-acp/server/AcpSessionRuntime";
@@ -25,7 +32,34 @@ import * as AcpSessionRuntime from "@t3tools/provider-acp/server/AcpSessionRunti
 type Runtime = Pick<
   AcpSessionRuntime.AcpSessionRuntime["Service"],
   "initialize" | "authenticate" | "start" | "handleElicitation" | "logout"
->;
+> &
+  Partial<Pick<AcpSessionRuntime.AcpSessionRuntime["Service"], "closeSession" | "deleteSession">>;
+
+/** Logical Agent and canonical native store determine shared credential ownership. */
+export const acpRegistryCredentialBindingKey = (
+  settings: AcpRegistrySettings,
+  environment: NodeJS.ProcessEnv,
+): string => {
+  const identity =
+    settings.agentIdentity ??
+    (settings.source === "registry" ? settings.agentId : settings.commandPath);
+  const storage =
+    settings.nativeStorageScope ??
+    Object.entries(environment)
+      .filter(
+        ([name]) =>
+          name === "HOME" ||
+          name === "USERPROFILE" ||
+          name === "APPDATA" ||
+          name === "LOCALAPPDATA" ||
+          name.endsWith("_HOME") ||
+          name.endsWith("_CONFIG_DIR"),
+      )
+      .sort(([left], [right]) => left.localeCompare(right));
+  return `acp:${createHash("sha256")
+    .update(JSON.stringify([identity, storage]))
+    .digest("hex")}`;
+};
 
 /** ACP credentials stay in the agent's own store, using the same launch environment as chat. */
 export const makeAcpRegistryAuth = Effect.fn("makeAcpRegistryAuth")(function* (options: {
@@ -33,6 +67,7 @@ export const makeAcpRegistryAuth = Effect.fn("makeAcpRegistryAuth")(function* (o
   readonly settings: AcpRegistrySettings;
   readonly cwd: string;
   readonly environment: NodeJS.ProcessEnv;
+  readonly secretValues?: ReadonlyArray<string>;
   readonly onChanged: (authenticated: boolean) => Effect.Effect<void>;
   readonly makeRuntime?: (
     spawn: AcpSessionRuntime.AcpSpawnInput,
@@ -62,6 +97,9 @@ export const makeAcpRegistryAuth = Effect.fn("makeAcpRegistryAuth")(function* (o
       Effect.gen(function* () {
         const context = yield* Layer.build(
           AcpSessionRuntime.layer({
+            ownDetachedProcessGroup: true,
+            ownDescendantProcessGroups: (yield* HostProcess.Platform) === "linux",
+            processGroupPlatform: yield* HostProcess.Platform,
             spawn,
             cwd: options.cwd,
             authenticateOnAuthRequired: false,
@@ -182,10 +220,14 @@ export const makeAcpRegistryAuth = Effect.fn("makeAcpRegistryAuth")(function* (o
           failure("start", "Could not open the provider sign-in terminal.", cause),
         ),
       );
+    const redactor = makeAuthOutputRedactor(options.secretValues ?? []);
     const detachData = process.onData((data) => {
-      Queue.offerUnsafe(output, data.slice(-16_384));
+      const safe = redactor.push(data);
+      if (safe) Queue.offerUnsafe(output, safe.slice(-16_384));
     });
     const detachExit = process.onExit(({ exitCode }) => {
+      const remaining = redactor.finish();
+      if (remaining) Queue.offerUnsafe(output, remaining);
       Deferred.doneUnsafe(exited, Effect.succeed(exitCode));
     });
     yield* Effect.addFinalizer(() =>
@@ -193,7 +235,7 @@ export const makeAcpRegistryAuth = Effect.fn("makeAcpRegistryAuth")(function* (o
         detachData();
         detachExit();
         try {
-          process.kill();
+          process.kill("SIGKILL");
         } catch {
           /* The login process may already have exited. */
         }
@@ -285,17 +327,18 @@ export const makeAcpRegistryAuth = Effect.fn("makeAcpRegistryAuth")(function* (o
             // the ACP process reads the credentials its login command persisted.
             const verifiedRuntime = yield* makeRuntime(resolved.spawn);
             yield* context.verifying;
-            yield* verifiedRuntime
-              .start()
-              .pipe(
-                Effect.mapError((cause) =>
-                  failure(
-                    "verify",
-                    "The provider could not create a session after terminal sign-in.",
-                    cause,
-                  ),
+            yield* verifiedRuntime.start().pipe(
+              Effect.tap((started) =>
+                Effect.addFinalizer(() => closeAcpRegistryProbeSession(verifiedRuntime, started)),
+              ),
+              Effect.mapError((cause) =>
+                failure(
+                  "verify",
+                  "The provider could not create a session after terminal sign-in.",
+                  cause,
                 ),
-              );
+              ),
+            );
           } else {
             if (method.type === undefined || method.type === "agent") {
               if (!runtime.authenticate)
@@ -314,17 +357,14 @@ export const makeAcpRegistryAuth = Effect.fn("makeAcpRegistryAuth")(function* (o
             // Legacy env_var methods use the secret-backed environment fields in
             // provider settings. Never send their ID to authenticate.
             yield* context.verifying;
-            yield* runtime
-              .start()
-              .pipe(
-                Effect.mapError((cause) =>
-                  failure(
-                    "verify",
-                    "The provider could not create a session after sign-in.",
-                    cause,
-                  ),
-                ),
-              );
+            yield* runtime.start().pipe(
+              Effect.tap((started) =>
+                Effect.addFinalizer(() => closeAcpRegistryProbeSession(runtime, started)),
+              ),
+              Effect.mapError((cause) =>
+                failure("verify", "The provider could not create a session after sign-in.", cause),
+              ),
+            );
           }
         }),
       );
@@ -359,9 +399,11 @@ export const makeAcpRegistryAuth = Effect.fn("makeAcpRegistryAuth")(function* (o
   ).pipe(Effect.andThen(options.onChanged(false)));
   return yield* ProviderAuthFlow.make({
     instanceId: options.instanceId,
-    // ACP doesn't advertise its credential scope. Conservatively treat all
-    // instances of the same agent on this environment as sharing credentials.
-    credentialBinding: { owner: "provider", key: `acp:${agentKey}` },
+    // Main supplies the canonical storage scope; shared profiles coordinate across instances.
+    credentialBinding: {
+      owner: "provider",
+      key: acpRegistryCredentialBindingKey(options.settings, options.environment),
+    },
     methods,
     ...(options.settings.authMethodId ? { defaultMethodId: options.settings.authMethodId } : {}),
     authenticate,

@@ -78,6 +78,7 @@ export type AcpRegistrySearchResult = typeof AcpRegistrySearchResult.Type;
 
 export const AcpRegistryPrepareInput = Schema.Struct({
   agentId: AcpRegistryAgentId,
+  distribution: Schema.optionalKey(Schema.Literals(["auto", "binary", "npx", "uvx"])),
 });
 export type AcpRegistryPrepareInput = typeof AcpRegistryPrepareInput.Type;
 
@@ -86,6 +87,7 @@ export const AcpRegistryPrepareResult = Schema.Struct({
   version: TrimmedNonEmptyString.check(Schema.isMaxLength(128)),
   distribution: AcpRegistryDistribution,
   prepared: Schema.Literal(true),
+  installationId: Schema.optionalKey(Schema.String.check(Schema.isPattern(/^[a-f0-9]{64}$/u))),
 });
 export type AcpRegistryPrepareResult = typeof AcpRegistryPrepareResult.Type;
 
@@ -273,6 +275,10 @@ export type AcpRegistryProbeModel = typeof AcpRegistryProbeModel.Type;
 
 export const AcpRegistryProbeResult = Schema.Struct({
   instanceId: ProviderInstanceId,
+  protocolGeneration: Schema.optionalKey(Schema.Literals([1, 2])),
+  agentInfo: Schema.optionalKey(
+    Schema.Struct({ name: AcpRegistryProbeText, version: Schema.NullOr(AcpRegistryProbeText) }),
+  ),
   // `ready` is only returned after a disposable ACP session/new probe completes.
   // It does not imply that authentication was passively detected.
   ready: Schema.Literal(true),
