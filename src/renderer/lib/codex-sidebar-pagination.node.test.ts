@@ -101,19 +101,52 @@ describe("paginateCodexSidebarItems", () => {
     expect(result.showPager).toBe(true);
   });
 
-  test("does not charge a forced visible item against the page quota", () => {
+  test("keeps the page unchanged when the forced item is already visible", () => {
+    for (const forcedVisibleKey of ["item-1", "item-5"]) {
+      const result = paginateCodexSidebarItems({
+        items: items(8),
+        getKey: (item) => item,
+        maxItems: CODEX_SIDEBAR_PROJECT_THREAD_MAX_ITEMS,
+        expanded: false,
+        extraPageCount: 1,
+        forcedVisibleKey,
+      });
+
+      expect(JSON.stringify(result.visibleItems)).toBe(
+        JSON.stringify(["item-1", "item-2", "item-3", "item-4", "item-5"]),
+      );
+      expect(result.showPager).toBe(true);
+    }
+  });
+
+  test("offers no pager when the forced item is the only one beyond the page", () => {
+    for (const expanded of [false, true]) {
+      const result = paginateCodexSidebarItems({
+        items: items(6),
+        getKey: (item) => item,
+        maxItems: CODEX_SIDEBAR_PROJECT_THREAD_MAX_ITEMS,
+        expanded,
+        extraPageCount: 1,
+        forcedVisibleKey: "item-6",
+      });
+
+      expect(result.visibleItems.length).toBe(6);
+      expect(result.showPager).toBe(false);
+    }
+  });
+
+  test("offers Show less when collapsing would hide an unforced item", () => {
     const result = paginateCodexSidebarItems({
-      items: items(8),
+      items: items(6),
       getKey: (item) => item,
       maxItems: CODEX_SIDEBAR_PROJECT_THREAD_MAX_ITEMS,
-      expanded: false,
+      expanded: true,
       extraPageCount: 1,
       forcedVisibleKey: "item-1",
     });
 
-    expect(JSON.stringify(result.visibleItems)).toBe(
-      JSON.stringify(["item-1", "item-2", "item-3", "item-4", "item-5", "item-6"]),
-    );
+    expect(result.visibleItems.length).toBe(6);
+    expect(result.hasOverflow).toBe(false);
     expect(result.showPager).toBe(true);
   });
 });

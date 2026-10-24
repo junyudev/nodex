@@ -38,35 +38,23 @@ export function paginateCodexSidebarItems<T>(input: {
     maxItems === null
       ? filteredItems.length
       : maxItems + (input.expanded ? CODEX_SIDEBAR_PAGE_INCREMENT * input.extraPageCount : 0);
-  const forcedVisibleItem = input.forcedVisibleKey
-    ? (filteredItems.find((item) => input.getKey(item) === input.forcedVisibleKey) ?? null)
-    : null;
-  const forcedVisibleKey = forcedVisibleItem === null ? null : input.getKey(forcedVisibleItem);
-  const pageableItems =
-    forcedVisibleItem === null
-      ? filteredItems
-      : filteredItems.filter((item) => input.getKey(item) !== forcedVisibleKey);
-  const visiblePageableItems = pageableItems.slice(0, visibleCount);
-  const visibleItemKeys = new Set([
-    ...visiblePageableItems.map(input.getKey),
-    ...(forcedVisibleKey === null ? [] : [forcedVisibleKey]),
-  ]);
-  const finalVisibleItems = filteredItems.filter((item) => visibleItemKeys.has(input.getKey(item)));
-  const hiddenItems = filteredItems.filter((item) => !visibleItemKeys.has(input.getKey(item)));
+  // The forced item is guaranteed visible without taking a page slot from anything else:
+  // inside the page nothing changes, and beyond it the item joins in list order as one extra row.
+  const isForced = (item: T) => input.getKey(item) === input.forcedVisibleKey;
+  const isVisible = (item: T, index: number) => index < visibleCount || isForced(item);
+  const visibleItems = filteredItems.filter(isVisible);
+  const hiddenItems = filteredItems.filter((item, index) => !isVisible(item, index));
   const hasOverflow = hiddenItems.length > 0;
+  const collapsedPageHidesItems =
+    maxItems !== null && filteredItems.some((item, index) => index >= maxItems && !isForced(item));
   const pagerEnabled = input.pagerEnabled !== false;
 
   return {
     filteredItems,
-    visibleItems: finalVisibleItems,
+    visibleItems,
     hiddenItems,
     visibleCount,
     hasOverflow,
-    showPager: Boolean(
-      pagerEnabled &&
-      maxItems !== null &&
-      pageableItems.length > maxItems &&
-      (input.expanded || hasOverflow),
-    ),
+    showPager: pagerEnabled && collapsedPageHidesItems && (input.expanded || hasOverflow),
   };
 }
