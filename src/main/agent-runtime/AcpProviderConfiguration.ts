@@ -67,7 +67,12 @@ export function acpProviderConfiguration(input: {
   } else {
     environment.HOME ??= input.homeDirectory;
   }
-  Object.assign(environment, input.environment);
+  // A disabled instance still names the same native profile, without resolving its secrets.
+  for (const variable of instance.environment) {
+    if (!variable.sensitive && typeof variable.value === "string")
+      environment[variable.name] = variable.value;
+  }
+  if (instance.enabled) Object.assign(environment, input.environment);
   const source = instance.source;
   return {
     driver: "acpRegistry",
