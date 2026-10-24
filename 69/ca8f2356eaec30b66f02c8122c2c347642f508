@@ -1,0 +1,38 @@
+src/renderer/features/scheduled/scheduled-task-form.tsx
+  s_8ba9572f1b48c1::t_094f13e9505180 92-94
+src/renderer/components/workbench/workbench-automation-intelligence.test.tsx
+  s_8ba9572f1b48c1::t_2d58db2d01a1a8 25-29,31-42,46-84,154-193,199-202,211-212
+  s_8ba9572f1b48c1::t_6bf115d1d24369 194-198,205-208
+  s_8ba9572f1b48c1::t_863c7ef16a2821 203,209
+  s_8ba9572f1b48c1::t_b5e17ecd14b66c 204,210
+  s_8ba9572f1b48c1::t_2f5a51fa68e0ef 213
+src/renderer/components/workbench/workbench-automation-draft.ts
+  s_8ba9572f1b48c1::t_094f13e9505180 78-86
+  s_8ba9572f1b48c1::t_6bf115d1d24369 136,166
+src/renderer/components/workbench/workbench-automation-draft.node.test.ts
+  s_8ba9572f1b48c1::t_6bf115d1d24369 482-500
+src/renderer/features/acp-agents/use-acp-automation-models.ts
+  s_8ba9572f1b48c1::t_35ded5ef5693c2 1-48
+src/renderer/components/workbench/workbench-automation-intelligence.tsx
+  s_8ba9572f1b48c1::t_05e45c2a91dcf3 8,21-22,35-39,59-72,75-78,85-87,91,93,104-111,133,145-152,154-155,158-162,165-173
+  s_8ba9572f1b48c1::t_35ded5ef5693c2 9
+  s_8ba9572f1b48c1::t_6bf115d1d24369 94-98
+docs/product-specs/acp-agent-behavior.md
+  s_8ba9572f1b48c1::t_be69719596b776 176-179
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "69ca8f2356eaec30b66f02c8122c2c347642f508",
+  "prompts": {},
+  "sessions": {
+    "s_8ba9572f1b48c1": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "cf77dbe9-4c90-42a1-89dd-a69d75865e03",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
