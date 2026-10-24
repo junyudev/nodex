@@ -2,7 +2,8 @@ import { createContext, useContext, type ReactNode } from "react";
 import type { AgentBackendBinding } from "../../shared/agent-backend";
 
 export type AgentSettingsKind = Exclude<AgentBackendBinding["kind"], "codex">;
-type OpenAgentSettings = (kind: AgentSettingsKind) => void;
+/** Opens Settings > Agent, at a backend's section or one ACP instance; no kind opens the page. */
+type OpenAgentSettings = (kind?: AgentSettingsKind, instanceId?: string) => void;
 
 const AgentSettingsNavigationContext = createContext<OpenAgentSettings | null>(null);
 

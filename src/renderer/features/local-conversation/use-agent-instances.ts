@@ -49,10 +49,7 @@ export function useAgentInstances() {
                 instanceConfigId: instance.id,
                 agentDefinitionId: instance.agentDefinitionId,
               },
-              label:
-                instance.agentDefinitionId === "claude-agent-acp"
-                  ? "Claude Agent"
-                  : instance.agentDefinitionId,
+              label: instance.displayName,
               enabled: instance.enabled,
             })),
           ],

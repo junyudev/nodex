@@ -306,13 +306,15 @@ test("returns from OpenCode setup to a fresh free-model view without changing th
           { binding: selected.binding, label: "Local", model, selection: selected },
           { binding: work.binding, label: "Work", model, selection: work },
         ],
-        setup: {
-          kind: "opencode",
-          label: "Free OpenCode models",
-          hint: "Install",
-          tone: "default",
-          action: { kind: "open", open },
-        },
+        setups: [
+          {
+            kind: "opencode",
+            label: "Free OpenCode models",
+            hint: "Install",
+            tone: "default",
+            action: { kind: "open", open },
+          },
+        ],
       })}
     />,
   );
@@ -350,13 +352,15 @@ test("routes an OpenCode executable that needs updating to provider settings", a
     <MenuPicker
       catalog={presentation({
         manage,
-        setup: {
-          kind: "opencode",
-          label: "Free OpenCode models",
-          hint: "Update",
-          tone: "default",
-          action: { kind: "settings" },
-        },
+        setups: [
+          {
+            kind: "opencode",
+            label: "Free OpenCode models",
+            hint: "Update",
+            tone: "default",
+            action: { kind: "settings" },
+          },
+        ],
       })}
     />,
   );

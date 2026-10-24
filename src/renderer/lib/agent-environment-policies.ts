@@ -1,4 +1,9 @@
 import {
+  AcpEnvironmentInputSchema,
+  acpEnvironmentNameError,
+} from "../../shared/acp-agent-settings";
+import { AGENT_ENVIRONMENT_LIMIT } from "../../shared/agent-environment";
+import {
   CLAUDE_ENVIRONMENT_LIMIT,
   ClaudeEnvironmentInputSchema,
   claudeEnvironmentNameError,
@@ -20,4 +25,10 @@ export const OPENCODE_ENVIRONMENT_POLICY: AgentEnvironmentPolicy = {
   limit: OPENCODE_ENVIRONMENT_LIMIT,
   nameError: openCodeEnvironmentNameError,
   inputSchema: OpenCodeEnvironmentInputSchema,
+};
+
+export const ACP_ENVIRONMENT_POLICY: AgentEnvironmentPolicy = {
+  limit: AGENT_ENVIRONMENT_LIMIT,
+  nameError: acpEnvironmentNameError,
+  inputSchema: AcpEnvironmentInputSchema,
 };

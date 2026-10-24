@@ -33,6 +33,7 @@ import {
   previewNativeConversationImport,
   readNativeSessionProjects,
 } from "../../lib/native-session-catalog";
+import { AcpNativeConversationsSection } from "@/features/acp-agents/acp-native-conversations-section";
 import { NodexButton } from "../ui/button";
 import { NodexCompactFramedInput } from "../ui/input";
 import { NodexSettingsPageSurface, NodexSettingsSection } from "../ui/settings";
@@ -179,6 +180,22 @@ export function ConversationImportSettingsPage({
   const destinationName = (projectId: string | null) =>
     projectId === null ? "Projectless" : (projectName(projectId) ?? "the chosen Project");
 
+  const destinations = (selected: string | null): ConversationImportDestinations => ({
+    options: [
+      { projectId: null, label: "Projectless" },
+      ...[...new Set([activeProjectId, selected])]
+        .filter((id): id is string => !!id && !loaded.some((project) => project.id === id))
+        .map((projectId) => ({
+          projectId,
+          label: projectName(projectId) ?? "Current Project",
+        })),
+      ...loaded.map((project) => ({ projectId: project.id, label: project.name })),
+    ],
+    hasMore: Boolean(projects?.nextCursor),
+    loadingMore: loadingProjects,
+    loadMore: readMoreProjects,
+  });
+
   return (
     <NodexSettingsPageSurface title="Conversations">
       {profilesError ? (
@@ -204,21 +221,12 @@ export function ConversationImportSettingsPage({
         // The active Project is the default even before, or without, the Project list naming it.
         defaultProjectId={activeProjectId}
         destinationName={destinationName}
-        destinations={(selected) => ({
-          options: [
-            { projectId: null, label: "Projectless" },
-            ...[...new Set([activeProjectId, selected])]
-              .filter((id): id is string => !!id && !loaded.some((project) => project.id === id))
-              .map((projectId) => ({
-                projectId,
-                label: projectName(projectId) ?? "Current Project",
-              })),
-            ...loaded.map((project) => ({ projectId: project.id, label: project.name })),
-          ],
-          hasMore: Boolean(projects?.nextCursor),
-          loadingMore: loadingProjects,
-          loadMore: readMoreProjects,
-        })}
+        destinations={destinations}
+        onOpenThread={onOpenThread}
+      />
+      <AcpNativeConversationsSection
+        defaultProjectId={activeProjectId}
+        destinations={destinations}
         onOpenThread={onOpenThread}
       />
     </NodexSettingsPageSurface>

@@ -76,7 +76,7 @@ function ComposerModelMenu({ owner }: { readonly owner: OpenCodeSetupOwner }) {
             choose: () => {},
             refresh: () => {},
             manage: () => {},
-            setup,
+            setups: setup ? [setup] : [],
           },
         }}
       />

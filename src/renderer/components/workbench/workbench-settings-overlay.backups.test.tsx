@@ -53,7 +53,6 @@ vi.mock("./workbench-settings-overlay-deps", async (importOriginal) => ({
   },
   deleteBackup: async (backupId: string) => await dispatchMockInvoke("backup:delete", backupId),
   readBackupSettings: async () => await dispatchMockInvoke("settings:backup:get"),
-  readAcpAgentSettings: async () => ({ instances: [] }),
   readCodexHomeSettings: async () => ({
     homePath: "",
     resolvedHomePath: "/Users/asc/.codex",
@@ -80,7 +79,6 @@ vi.mock("./workbench-settings-overlay-deps", async (importOriginal) => ({
     await dispatchMockInvoke("agent-import:scan-picked-home", { sourceKind }),
   updateBackupSettings: async (input: unknown) =>
     await dispatchMockInvoke("settings:backup:update", input),
-  updateAcpAgentSettings: async (input: unknown) => input,
   updateCodexPermissionConfigValue: async (...args: unknown[]) =>
     await dispatchMockInvoke("codex:permission:config-value:set", ...args),
   updateCodexPermissionMode: async (...args: unknown[]) =>

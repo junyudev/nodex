@@ -92,7 +92,8 @@ export interface AgentModelCatalogPresentation {
   readonly changeConfig?: (id: string, value: string | boolean) => Promise<void>;
   readonly modes?: AgentSessionModeState | null;
   readonly changeMode?: (modeId: string) => Promise<void>;
-  readonly setup?: AgentModelSetupPresentation | null;
+  /** Runtimes whose models become available after setup; each keeps its own entry. */
+  readonly setups?: readonly AgentModelSetupPresentation[];
 }
 
 function OptionRow({
@@ -162,7 +163,7 @@ export function AgentModelPicker(
     if (next && !open) catalog.reload?.();
     requestOpenChange(next);
   };
-  const setup = catalog.setup ?? null;
+  const setups = catalog.setups ?? [];
   const isCodex = selection.kind === "codex";
   const native = provider?.nativeIntelligence;
   const active = catalog.entries.find(
@@ -324,14 +325,15 @@ export function AgentModelPicker(
       }}
       footer={
         <>
-          {hasHiddenModels || setup ? <NodexDropdownSeparator /> : null}
+          {hasHiddenModels || setups.length > 0 ? <NodexDropdownSeparator /> : null}
           {hasHiddenModels ? (
             <NodexDropdownActionRow disabled={pending} onClick={() => setShowAllModels(true)}>
               Show all models
             </NodexDropdownActionRow>
           ) : null}
-          {setup ? (
+          {setups.map((setup) => (
             <NodexDropdownActionRow
+              key={`${setup.kind}:${setup.label}`}
               className="items-center gap-1.5"
               disabled={pending}
               onClick={() => {
@@ -361,7 +363,7 @@ export function AgentModelPicker(
                 {setup.hint}
               </span>
             </NodexDropdownActionRow>
-          ) : null}
+          ))}
           {hasOptions ? <NodexDropdownSeparator /> : null}
           {(isCodex || selection.kind === "claude") &&
           (reasoningOptions.length > 0 || native?.capabilities.disableThinking) ? (

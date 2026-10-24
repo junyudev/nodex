@@ -60,6 +60,7 @@ const provider = {
   enabled: true,
   installed: true,
   status: "ready",
+  auth: { status: "authenticated" },
   models: [{ slug: "model", name: "Model", isDefault: true, isCustom: false, capabilities: null }],
   skills: [],
   slashCommands: [],
@@ -2024,7 +2025,9 @@ describe("Host OpenCode setup", () => {
         }),
       { wrapper: SavedSettingsWorkbench },
     );
-    await waitFor(() => expect(result.current.provider.modelCatalog?.setup?.hint).toBe("Install"));
+    await waitFor(() =>
+      expect(result.current.provider.modelCatalog?.setups?.[0]?.hint).toBe("Install"),
+    );
     await act(async () => {
       await result.current.provider.modelCatalog!.choose({
         binding: { kind: "codex" },
@@ -2049,7 +2052,7 @@ describe("Host OpenCode setup", () => {
       ).toContain("opencode/glm-free"),
     );
     expect(catalog).toHaveBeenLastCalledWith({ refresh: true });
-    expect(result.current.provider.modelCatalog?.setup).toBeNull();
+    expect(result.current.provider.modelCatalog?.setups).toEqual([]);
     expect(result.current.selectedModel).toBe("gpt-mini");
     await act(async () => unmount());
   });

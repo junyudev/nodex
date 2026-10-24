@@ -22,6 +22,20 @@ export const Input = React.forwardRef<HTMLInputElement, React.ComponentPropsWith
   },
 );
 
+export const Textarea = React.forwardRef<
+  HTMLTextAreaElement,
+  React.ComponentPropsWithoutRef<"textarea">
+>(function Textarea({ className, ...props }, ref) {
+  return (
+    <textarea
+      ref={ref}
+      data-slot="textarea"
+      className={cn(nodexFormInputClassName, "resize-y", className)}
+      {...props}
+    />
+  );
+});
+
 /** Compact identity input with a persistent boundary for dense settings surfaces. */
 export const NodexCompactFramedInput = React.forwardRef<
   HTMLInputElement,

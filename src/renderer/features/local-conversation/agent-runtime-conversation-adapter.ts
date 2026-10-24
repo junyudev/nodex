@@ -93,6 +93,7 @@ import {
 } from "./agent-runtime-delegated-tasks";
 import { agentRuntimeBackgroundStatus } from "./agent-runtime-composer-status";
 import { useOpenCodeModelSetup } from "../opencode-setup/use-opencode-setup";
+import { useAcpComposerSetup } from "../acp-agents/use-acp-composer-setup";
 import { useAgentSettingsNavigation } from "@/lib/agent-settings-navigation";
 import type { AgentRuntimeRun } from "./agent-runtime-transcript-projection";
 import {
@@ -1010,6 +1011,19 @@ export function useAgentRuntimeConversationAdapter(input: {
     observedSelection ??
     draftSelectionFor(catalogState.providers);
   const provider = providerOf(selection);
+  const openSettingsFor = (binding: AgentBackendBinding) => {
+    if (!openAgentSettings) return;
+    if (binding.kind === "codex") openAgentSettings();
+    else if (binding.kind === "acp" && binding.instanceConfigId)
+      openAgentSettings("acp", binding.instanceConfigId);
+    else openAgentSettings(binding.kind);
+  };
+  const acpSetup = useAcpComposerSetup({
+    providers: catalogState.providers,
+    instances: input.instances,
+    selected: selection.binding,
+    openSettings: (instanceId) => openAgentSettings?.("acp", instanceId),
+  });
   const agentSwitchRefusal = projection ? agentRuntimeAgentSwitchRefusal(projection) : null;
   const refusalFor = (candidate: Pick<AgentWire<ModelSelection>, "instanceId" | "model">) =>
     observed
@@ -1147,7 +1161,7 @@ export function useAgentRuntimeConversationAdapter(input: {
           const binding = bindingFor(instanceId);
           if (!binding || binding.kind === "codex")
             throw new Error("This Agent's settings are unavailable");
-          openAgentSettings(binding.kind);
+          openSettingsFor(binding);
         }
       : undefined;
   const actions: Partial<ThreadStageActions> = {
@@ -1535,8 +1549,8 @@ export function useAgentRuntimeConversationAdapter(input: {
       changeConfig,
       runtimeOptions: [],
       chooseRuntime: () => {},
-      manage: () => {},
-      setup: openCodeSetup.setup,
+      manage: () => openSettingsFor(selection.binding),
+      setups: [...(openCodeSetup.setup ? [openCodeSetup.setup] : []), ...acpSetup.setups],
     },
     commands:
       provider?.slashCommands.map((command) => ({
@@ -1600,27 +1614,29 @@ export function useAgentRuntimeConversationAdapter(input: {
             },
           ],
         }
-      : backgroundMessage
-        ? {
-            message: backgroundMessage,
-            ...(activity && activity.activeTaskCount > 0
-              ? {
-                  actions: [
-                    {
-                      label: "Stop",
-                      pendingLabel: "Stopping…",
-                      run: () =>
-                        stopAgentRuntimeBackgroundTasks(
-                          activity.sessionId,
-                          activity.threadId,
-                          agentRuntimeRuntime,
-                        ),
-                    },
-                  ],
-                }
-              : {}),
-          }
-        : null,
+      : acpSetup.status
+        ? acpSetup.status
+        : backgroundMessage
+          ? {
+              message: backgroundMessage,
+              ...(activity && activity.activeTaskCount > 0
+                ? {
+                    actions: [
+                      {
+                        label: "Stop",
+                        pendingLabel: "Stopping…",
+                        run: () =>
+                          stopAgentRuntimeBackgroundTasks(
+                            activity.sessionId,
+                            activity.threadId,
+                            agentRuntimeRuntime,
+                          ),
+                      },
+                    ],
+                  }
+                : {}),
+            }
+          : null,
   };
   return {
     runtime,
