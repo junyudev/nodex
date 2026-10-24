@@ -561,6 +561,23 @@ describe("ACP Agents owner", () => {
     await settleAll();
     expect(owner.getSnapshot().activities.has("qoder-main")).toBe(false);
     expect(status()).toMatchObject({ kind: "ready", detail: "1 model" });
+    // Its models were already known, so nothing else starts.
+    expect(main.runtime.connect).toHaveBeenCalledOnce();
+  });
+
+  test("signing in to an Agent whose models aren't known yet connects to read them", async () => {
+    const { main, owner } = setup();
+    await settleAll();
+    main.runtime.startAuth.mockResolvedValueOnce(
+      ok(authState({ phase: "succeeded", flowId: "f" })),
+    );
+    owner.signIn("qoder-main", "login");
+    await settleAll();
+    expect(main.runtime.connect).toHaveBeenCalledWith({
+      instanceId: "qoder-main",
+      operationId: "op-1",
+    });
+    expect(owner.getSnapshot().activities.get("qoder-main")?.kind).toBe("connect");
   });
 
   test("a failed install stays current through an unrelated sign-in", async () => {
@@ -580,5 +597,25 @@ describe("ACP Agents owner", () => {
     expect(owner.getSnapshot().activities.get("qoder-main")?.failure?.reason).toBe(
       "checksum_mismatch",
     );
+  });
+
+  test("an earlier flow's success read passively is not a new sign-in", async () => {
+    const { main, owner } = setup();
+    await settleAll();
+    main.runtime.connect.mockResolvedValueOnce({
+      ok: false,
+      error: { reason: "authentication_failed", message: "Sign in first" },
+    });
+    owner.connect("qoder-main");
+    await settleAll();
+    main.runtime.readAuth.mockResolvedValueOnce(
+      ok(authState({ phase: "succeeded", flowId: "old" })),
+    );
+    owner.readAuth("qoder-main");
+    await settleAll();
+    expect(owner.getSnapshot().activities.get("qoder-main")?.failure?.reason).toBe(
+      "authentication_failed",
+    );
+    expect(main.runtime.connect).toHaveBeenCalledOnce();
   });
 });

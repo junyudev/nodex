@@ -92,6 +92,34 @@ describe("ACP instance status", () => {
     expect(status({ status: "unsupported" } as never)).toMatchObject({ kind: "unsupported" });
   });
 
+  test("the startup Default alone doesn't make an unconnected Agent ready", () => {
+    const startup = {
+      slug: "default",
+      name: "Default",
+      isCustom: false,
+      isDefault: true,
+      capabilities: null,
+    };
+    const base = { instance: localInstance(), inspection: ready, activity: undefined };
+    expect(
+      acpInstanceStatus({ ...base, provider: providerSnapshot({ models: [startup] }) }),
+    ).toMatchObject({ kind: "not-connected", action: "connect" });
+    expect(acpComposerSetupHint(providerSnapshot({ models: [startup] }))).toEqual({
+      hint: "Connect",
+      tone: "default",
+    });
+    // A real connection reports session capabilities, even for an Agent without a model API.
+    expect(
+      acpInstanceStatus({
+        ...base,
+        provider: providerSnapshot({
+          models: [startup],
+          nativeSessions: { canList: true, canLoad: true, canResume: false },
+        }),
+      }),
+    ).toMatchObject({ kind: "ready", detail: "1 model" });
+  });
+
   test("an installed Agent is ready only after the Runtime learned its models", () => {
     const base = { instance: localInstance(), inspection: ready, activity: undefined };
     expect(acpInstanceStatus({ ...base, provider: undefined })).toMatchObject({

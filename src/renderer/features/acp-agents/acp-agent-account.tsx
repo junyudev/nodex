@@ -328,8 +328,10 @@ export function AcpAgentAccount({
   const failure = activity?.phase === "failed" ? activity.failure : null;
   const methods = acpSignInMethods(state?.methods, failure?.authMethods);
   const urlAction = provider?.auth.action ?? failure?.authAction ?? null;
+  // A newer refusal (the instance's status asks for sign-in) outranks an earlier account read.
   const signedIn =
-    provider?.auth.status === "authenticated" || (state?.phase === "succeeded" && !active);
+    !needsSignIn &&
+    (provider?.auth.status === "authenticated" || (state?.phase === "succeeded" && !active));
   const pending = view?.request === "start" || view?.request === "respond";
   const busy = pending || view?.request === "cancel" || view?.request === "sign-out";
 
@@ -386,16 +388,15 @@ export function AcpAgentAccount({
                 Docs
               </NodexButton>
             ) : null}
-            {needsSignIn ? (
-              <NodexButton
-                size="sm"
-                variant="ghost"
-                disabled={busy || connecting}
-                onClick={() => owner.connect(instance.id)}
-              >
-                Check again
-              </NodexButton>
-            ) : null}
+            {/* Rechecks after signing in elsewhere, such as with the Agent's own command line. */}
+            <NodexButton
+              size="sm"
+              variant="ghost"
+              disabled={busy || connecting}
+              onClick={() => owner.connect(instance.id)}
+            >
+              {connecting ? "Checking…" : "Check again"}
+            </NodexButton>
             {signedIn && provider?.auth.canLogout ? (
               <NodexButton
                 size="sm"

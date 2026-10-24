@@ -8,7 +8,7 @@ import { openModal } from "@/lib/modal-registry";
 import { cn } from "@/lib/utils";
 import type { AcpAgentInstanceConfig } from "../../../shared/acp-agent-settings";
 import { installReviewedVersion } from "./acp-agent-actions";
-import { AcpAgentAddDialog } from "./acp-agent-add-dialog";
+import { ACP_ADD_AGENT_ID, AcpAgentAddDialog } from "./acp-agent-add-dialog";
 import { AcpAgentDetail } from "./acp-agent-detail";
 import {
   ACP_STATUS_ACTION_LABELS,
@@ -99,8 +99,14 @@ function AgentRow({
             <span className="truncate text-sm font-medium text-token-text-primary">
               {instance.displayName}
             </span>
-            <span className="truncate font-mono text-xs text-token-description-foreground">
-              {acpSourceSummary(instance, inspection?.status === "ready" ? inspection.value : null)}
+            {/* Long commands keep their end visible: the script or flags identify the Agent. */}
+            <span className="block min-w-0 truncate text-start font-mono text-xs text-token-description-foreground [direction:rtl]">
+              <bdi dir="ltr">
+                {acpSourceSummary(
+                  instance,
+                  inspection?.status === "ready" ? inspection.value : null,
+                )}
+              </bdi>
             </span>
           </span>
         </button>
@@ -207,6 +213,7 @@ export function AcpAgentsSettingsSection({
         description="Install Agents from the ACP Registry or run your own command. Each instance keeps its own account, models and history."
       >
         <NodexButton
+          id={ACP_ADD_AGENT_ID}
           size="sm"
           variant="secondary"
           disabled={!snapshot.settings || instances.length >= 32}

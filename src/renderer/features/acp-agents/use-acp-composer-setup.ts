@@ -5,7 +5,7 @@ import type { ConversationProviderStatus } from "../local-conversation/thread-st
 import { acpComposerSetupHint, acpProviderId, type AcpProviderSnapshot } from "./acp-agent-model";
 import type { AcpAgentsOwner } from "./acp-agents-owner";
 import { openAcpAgentSetupDialog } from "./acp-agent-setup-dialog";
-import { acpAgentsOwner } from "./use-acp-agents";
+import { acpAgentsOwner, useAcpAgents } from "./use-acp-agents";
 
 interface ComposerInstance {
   readonly binding: AgentBackendBinding;
@@ -34,6 +34,7 @@ export function useAcpComposerSetup({
   readonly status: ConversationProviderStatus | null;
 } {
   const appHandle = useScopeHandle(appScope);
+  const { activities } = useAcpAgents(owner);
   const entries = instances.flatMap((instance) => {
     const binding = instance.binding;
     if (binding.kind !== "acp" || !binding.instanceConfigId || !instance.enabled) return [];
@@ -42,7 +43,10 @@ export function useAcpComposerSetup({
       id: instanceId,
       agentDefinitionId: binding.agentDefinitionId,
     });
-    const hint = acpComposerSetupHint(providers.find((entry) => entry.instanceId === providerId));
+    const hint = acpComposerSetupHint(
+      providers.find((entry) => entry.instanceId === providerId),
+      activities.get(instanceId),
+    );
     if (!hint) return [];
     const open = (showModels?: () => void) =>
       openAcpAgentSetupDialog(appHandle, {

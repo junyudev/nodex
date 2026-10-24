@@ -190,4 +190,55 @@ describe("ACP native conversations", () => {
     await view.findByText("Connected Agents that list their conversations appear here.");
     expect(main.runtime.listSessions).not.toHaveBeenCalled();
   });
+
+  test("an Agent that isn't connected yet can be connected from here to list its history", async () => {
+    const qoder = registryInstance();
+    const main = fakeAcpRuntime({ instances: [qoder] });
+    const owner = createAcpAgentsOwner({
+      runtime: main.runtime,
+      subscribeChanges: () => () => {},
+      journal: memoryJournal(),
+    });
+    main.runtime.connect.mockImplementation(async ({ operationId }) => {
+      main.runtime.knownProviders.mockResolvedValue([
+        providerSnapshot({
+          instanceId: acpProviderId(qoder)!,
+          nativeSessions: { canList: true, canLoad: true, canResume: false },
+        }),
+      ]);
+      return ok({
+        operationId,
+        kind: "connect" as const,
+        phase: "succeeded" as const,
+        instanceId: "qoder-main",
+        agentId: null,
+        result: null,
+        error: null,
+      });
+    });
+    main.runtime.listSessions.mockResolvedValue(
+      ok({
+        sessions: [session({})],
+        nextCursor: null,
+        canLoad: true,
+        canResume: false,
+        canDelete: false,
+      }),
+    );
+    const view = renderWithAppMaitai(
+      <AcpNativeConversationsSection
+        owner={owner}
+        defaultProjectId="project"
+        destinations={() => ({
+          options: [],
+          hasMore: false,
+          loadingMore: false,
+          loadMore: () => {},
+        })}
+      />,
+    );
+    await press(await view.findByRole("button", { name: "Connect" }));
+    await view.findByRole("group", { name: "Fix the parser" });
+    expect(main.runtime.connect).toHaveBeenCalledOnce();
+  });
 });

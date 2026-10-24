@@ -436,15 +436,9 @@ export function acpInstanceStatus(input: {
           "cancel",
           activity.cancelling ? "Cancelling…" : null,
         );
-  // A sign-in request is answered once the Runtime reports the account authenticated.
-  if (
-    activity?.phase === "failed" &&
-    activity.failure &&
-    !(
-      activity.failure.reason === "authentication_failed" &&
-      provider?.auth.status === "authenticated"
-    )
-  )
+  // The owner retires a sign-in failure once sign-in is verified; a later Connect is newer
+  // evidence than the Runtime's last known account state.
+  if (activity?.phase === "failed" && activity.failure)
     return failureStatus(activity.failure, activity.kind);
   if (!inspection || inspection.status === "loading")
     return status("checking", "Checking", "muted", null);
@@ -479,15 +473,22 @@ export function acpInstanceStatus(input: {
     return status("sign-in", "Sign-in required", "default", "sign-in");
   if (provider?.status === "error")
     return status("failed", "Error", "danger", "connect", provider.message ?? null);
-  const models =
-    provider && provider.models.length > 0
-      ? provider.models.length
-      : connected && "models" in connected
-        ? connected.models.length
-        : 0;
-  if (models > 0 || connected) return status("ready", "Ready", "info", null, modelCount(models));
+  if (provider && acpProviderDiscovered(provider))
+    return status("ready", "Ready", "info", null, modelCount(provider.models.length));
+  if (connected && "models" in connected)
+    return status("ready", "Ready", "info", null, modelCount(connected.models.length));
   return status("not-connected", "Not connected", "muted", "connect");
 }
+
+/**
+ * Whether the Runtime learned this Agent's capabilities from a real connection or session.
+ * Before that, its only model is the startup Default it offers so a chat can still begin.
+ */
+export const acpProviderDiscovered = (provider: AcpProviderSnapshot): boolean =>
+  provider.nativeSessions !== undefined ||
+  provider.models.some(
+    (model) => !model.isCustom && !(model.slug === "default" && model.name === "Default"),
+  );
 
 export const ACP_STATUS_ACTION_LABELS: Record<Exclude<AcpStatusAction, null>, string> = {
   install: "Install",
@@ -536,12 +537,17 @@ export function acpRegistryIconUrl(icon: string | null): string | null {
  */
 export function acpComposerSetupHint(
   provider: AcpProviderSnapshot | undefined,
+  activity?: AcpActivity,
 ): { readonly hint: string; readonly tone: "default" | "danger" } | null {
   if (!provider || !provider.enabled) return null;
-  if (provider.auth.status === "unauthenticated") return { hint: "Sign in", tone: "default" };
+  // This window's latest Connect is newer evidence than the Runtime's last known account.
+  const refused =
+    activity?.phase === "failed" && activity.failure?.reason === "authentication_failed";
+  if (refused || provider.auth.status === "unauthenticated")
+    return { hint: "Sign in", tone: "default" };
   if (!provider.installed) return { hint: "Install", tone: "default" };
   if (provider.status === "error") return { hint: "Unavailable", tone: "danger" };
-  if (provider.models.length === 0) return { hint: "Connect", tone: "default" };
+  if (!acpProviderDiscovered(provider)) return { hint: "Connect", tone: "default" };
   return null;
 }
 

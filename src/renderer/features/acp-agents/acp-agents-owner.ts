@@ -7,6 +7,7 @@ import type {
 import type { AcpAgentsRuntime } from "../../lib/acp-agents-runtime";
 import {
   acpInstanceInput,
+  acpProviderDiscovered,
   acpProviderId,
   describeAcpCause,
   isAcpAuthActive,
@@ -161,6 +162,8 @@ interface AuthControl {
   epoch: number;
   queue: TerminalChunk[];
   sending: boolean;
+  /** The flow this window started; only its success counts as a new sign-in. */
+  startedFlowId: string | null;
 }
 
 const sameInput = (left: AcpAgentInstanceInput, right: AcpAgentInstanceInput) =>
@@ -568,7 +571,7 @@ export function createAcpAgentsOwner(input: {
   const authControl = (instanceId: string) => {
     let control = authControls.get(instanceId);
     if (!control) {
-      control = { epoch: 0, queue: [], sending: false };
+      control = { epoch: 0, queue: [], sending: false, startedFlowId: null };
       authControls.set(instanceId, control);
     }
     return control;
@@ -578,6 +581,7 @@ export function createAcpAgentsOwner(input: {
     const control = authControl(instanceId);
     control.epoch += 1;
     control.queue = [];
+    control.startedFlowId = null;
     clearTimer(`auth:${instanceId}`);
     return control.epoch;
   };
@@ -602,13 +606,29 @@ export function createAcpAgentsOwner(input: {
       clearTimer(`auth:${instanceId}`);
       authControl(instanceId).queue = [];
     }
-    if (state.phase === "succeeded" && previous?.phase !== "succeeded") {
+    // A passive read can report an earlier flow's success; only the flow started here is news.
+    const control = authControl(instanceId);
+    const completedHere =
+      state.phase === "succeeded" &&
+      state.flowId !== null &&
+      state.flowId === control.startedFlowId &&
+      previous?.phase !== "succeeded";
+    if (completedHere) {
+      control.startedFlowId = null;
       // Verified sign-in answers the Connect that asked for it; other failures stay current.
       const activity = snapshot.activities.get(instanceId);
-      if (activity?.phase === "failed" && activity.failure?.reason === "authentication_failed")
-        setActivity(instanceId, undefined);
-      void readProviders();
+      const answered =
+        activity?.phase === "failed" && activity.failure?.reason === "authentication_failed";
+      if (answered) setActivity(instanceId, undefined);
       void readInspection(instanceId);
+      // Signing in was the step before using the Agent: read its models unless already known.
+      void readProviders().then(() => {
+        const provider = snapshot.providers.get(instanceId);
+        const current = snapshot.activities.get(instanceId);
+        // A live operation or an unrelated failure keeps its place.
+        if (current && current.phase !== "succeeded") return;
+        if (!provider || !acpProviderDiscovered(provider)) connect(instanceId);
+      });
     }
   };
   /**
@@ -663,8 +683,10 @@ export function createAcpAgentsOwner(input: {
       if (result.ok) cancelOrphan(instanceId, result.value);
       return false;
     }
-    if (result.ok) admitAuth(instanceId, result.value, null);
-    else failAuth(instanceId, result.error, options.context ?? "sign-in");
+    if (result.ok) {
+      if (request === "start") authControl(instanceId).startedFlowId = result.value.flowId;
+      admitAuth(instanceId, result.value, null);
+    } else failAuth(instanceId, result.error, options.context ?? "sign-in");
     return result.ok;
   };
 

@@ -47,6 +47,9 @@ import type { AcpAgentsOwner } from "./acp-agents-owner";
 import { AcpArgumentsEditor } from "./acp-arguments-editor";
 import { useAcpAgents } from "./use-acp-agents";
 
+/** The Settings button that opens this dialog; focus returns to it on close. */
+export const ACP_ADD_AGENT_ID = "acp-add-agent";
+
 export interface AcpAgentAddDialogProps extends ModalCloseProps {
   readonly owner: AcpAgentsOwner;
   /** Called with the saved instance so Settings can reveal its progress. */
@@ -598,7 +601,11 @@ export function AcpAgentAddDialog({ owner, onAdded, onClose }: AcpAgentAddDialog
         if (!open && !pending) onClose();
       }}
     >
-      <NodexDialogContent size="wide">
+      <NodexDialogContent
+        size="wide"
+        // The dialog outlives its trigger, so focus returns to Add Agent by identity.
+        finalFocus={() => document.getElementById(ACP_ADD_AGENT_ID) ?? true}
+      >
         {chosen ? (
           <RegistryReview
             agent={chosen}

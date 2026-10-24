@@ -50,14 +50,19 @@ const importRequest = (key: string) => {
 const listable = (
   instance: AcpAgentInstanceConfig,
   canList: boolean | undefined,
-): { readonly ok: boolean; readonly reason: string | null } =>
+): {
+  readonly ok: boolean;
+  readonly reason: string | null;
+  /** Whether listing becomes possible once the Agent is connected. */
+  readonly needsConnection: boolean;
+} =>
   !instance.enabled
-    ? { ok: false, reason: "Off" }
+    ? { ok: false, reason: "Off", needsConnection: false }
     : canList === undefined
-      ? { ok: false, reason: "Connect it first" }
+      ? { ok: false, reason: "Not connected", needsConnection: true }
       : canList
-        ? { ok: true, reason: null }
-        : { ok: false, reason: "Doesn't list conversations" };
+        ? { ok: true, reason: null, needsConnection: false }
+        : { ok: false, reason: "Doesn't list conversations", needsConnection: false };
 
 function SessionRow({
   session,
@@ -436,9 +441,39 @@ export function AcpNativeConversationsSection({
           onOpenThread={onOpenThread}
         />
       ) : (
-        <p className="px-4 py-3 text-xs text-token-description-foreground">
-          Connected Agents that list their conversations appear here.
-        </p>
+        <>
+          <p className="px-4 py-3 text-xs text-token-description-foreground">
+            Connected Agents that list their conversations appear here.
+          </p>
+          {/* What an Agent can list is known only after connecting to it. */}
+          {candidates
+            .filter((entry) => entry.needsConnection)
+            .map(({ instance: candidate }) => {
+              const activity = snapshot.activities.get(candidate.id);
+              const connecting = activity?.phase === "running" || activity?.phase === "starting";
+              return (
+                <NodexSettingsRow
+                  key={candidate.id}
+                  variant="nested"
+                  label={candidate.displayName}
+                  description={
+                    activity?.phase === "failed" && activity.failure
+                      ? acpFailureText(activity.failure, "connect")
+                      : undefined
+                  }
+                >
+                  <NodexButton
+                    size="sm"
+                    variant="secondary"
+                    disabled={connecting}
+                    onClick={() => owner.connect(candidate.id)}
+                  >
+                    {connecting ? "Connecting…" : "Connect"}
+                  </NodexButton>
+                </NodexSettingsRow>
+              );
+            })}
+        </>
       )}
     </NodexSettingsSection>
   );
