@@ -67,7 +67,7 @@ const automationExecution = Layer.unwrap(
       runtimeStateHome: codex.runtimeStateHome,
     });
   }),
-);
+).pipe(Layer.provideMerge(agentBackendRegistryLive));
 const backgroundProcesses = Layer.effect(
   CodexBackgroundProcesses,
   makeCodexBackgroundProcesses,

@@ -30,6 +30,7 @@ import {
 } from "../host-runtime/ScheduledAutomationPolicy";
 import { computeCodexScheduledAutomationIntervalMs } from "../local-store/codex-scheduled-automation-schedule";
 import { ProjectWorkspace } from "../project-application/ProjectWorkspace";
+import { AgentBackendRegistry } from "../agent-backend/AgentBackendRegistry";
 import { AutomationApplication } from "./AutomationApplication";
 import type { AutomationArchiveMessages } from "./AutomationArchiveExcerpt";
 
@@ -105,7 +106,11 @@ export const live = (
 ): Layer.Layer<
   AutomationExecution,
   never,
-  AutomationApplication | AgentRuntimeApplication | AgentRuntimeSupervisor | ProjectWorkspace
+  | AutomationApplication
+  | AgentRuntimeApplication
+  | AgentRuntimeSupervisor
+  | ProjectWorkspace
+  | AgentBackendRegistry
 > =>
   Layer.effect(
     AutomationExecution,
@@ -114,6 +119,7 @@ export const live = (
       const application = yield* AgentRuntimeApplication;
       const supervisor = yield* AgentRuntimeSupervisor;
       const workspace = yield* ProjectWorkspace;
+      const backends = yield* AgentBackendRegistry;
       const protect = <A, E>(operation: string, effect: Effect.Effect<A, E>) =>
         effect.pipe(Effect.mapError((cause) => new AutomationExecutionError({ operation, cause })));
       const fail = (operation: string, message: string) =>
@@ -124,6 +130,7 @@ export const live = (
           "backendBinding" | "model" | "reasoningEffort" | "serviceTier"
         >,
       ) {
+        yield* backends.resolve(definition.backendBinding);
         const instanceId = agentRuntimeProviderId(definition.backendBinding);
         const provider = (yield* application.catalog()).find(
           (item) => item.instanceId === instanceId,

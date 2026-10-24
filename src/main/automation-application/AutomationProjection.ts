@@ -10,11 +10,7 @@ import type {
   Priority,
 } from "../../shared/types";
 import { normalizeCodexServiceTier } from "../../shared/codex-service-tier";
-import {
-  CODEX_AGENT_BACKEND_BINDING,
-  isCodexAgentBackendBinding,
-  type AgentBackendBinding,
-} from "../../shared/agent-backend";
+import { CODEX_AGENT_BACKEND_BINDING, type AgentBackendBinding } from "../../shared/agent-backend";
 import { canonicalizePortableRichText } from "../../shared/block-documents/portable-rich-text";
 import { PRIORITY_VALUES } from "../../shared/priority";
 import { isWorkflowStatus } from "../../shared/workflow-status";
@@ -53,26 +49,16 @@ export type CorePageOccurrenceSchedulePatch = Extract<
   { readonly kind: "update_page_occurrence" }
 >["updates"];
 
-export const requireCodexAutomationBackendBinding = (
-  binding: AgentBackendBinding,
-): typeof CODEX_AGENT_BACKEND_BINDING => {
-  if (isCodexAgentBackendBinding(binding)) return CODEX_AGENT_BACKEND_BINDING;
-  throw new Error("Scheduled automations currently support only the Codex Agent Backend");
-};
-
-const requireNativeAutomationBackendBinding = (
-  binding: AgentBackendBinding,
-): AgentBackendBinding => {
+const requireAutomationBackendBinding = (binding: AgentBackendBinding): AgentBackendBinding => {
   if (binding.kind === "codex" || binding.kind === "claude") return binding;
-  throw new Error("Scheduled automations support native Codex or Claude Agent Backends");
+  if (binding.kind === "acp" && binding.instanceConfigId?.trim()) return binding;
+  throw new Error("Scheduled automation requires an available Agent Instance");
 };
 
 export const projectAutomationDefinition = (
   definition: CoreAutomationDefinition,
 ): CodexScheduledAutomation => {
-  const backendBinding = requireNativeAutomationBackendBinding(
-    projectAgentBackendBindingFromCore(definition.backend_binding),
-  );
+  const backendBinding = projectAgentBackendBindingFromCore(definition.backend_binding);
   return {
     id: definition.automation_id,
     definitionRevision: definition.definition_revision,
@@ -224,7 +210,7 @@ export const projectPageOccurrence = (occurrence: CoreScheduledPageOccurrence): 
 };
 
 export const toCoreAutomationDefinitionInput = (input: CodexScheduledAutomationCreateInput) => {
-  const backendBinding = requireNativeAutomationBackendBinding(
+  const backendBinding = requireAutomationBackendBinding(
     input.backendBinding ?? CODEX_AGENT_BACKEND_BINDING,
   );
   return {

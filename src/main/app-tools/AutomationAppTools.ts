@@ -28,6 +28,10 @@ import { ApplicationSettings } from "../settings/ApplicationSettings";
 import { agentRuntimeProviderId } from "../../shared/agent-runtime-provider";
 import type { AgentBackendBinding } from "../../shared/agent-backend";
 import { resolveAppToolCallingSession } from "./AppToolCallingSession";
+import {
+  AgentBackendRegistryError,
+  resolveAgentBackendBinding,
+} from "../agent-backend/AgentBackendRegistry";
 
 const definitionInput = (request: Extract<AutomationToolInput, { kind: "cron" | "heartbeat" }>) => {
   if (request.mode === "update" || request.mode === "suggested_update") {
@@ -144,13 +148,35 @@ export const makeWithCapture = (capture: AppToolAuthorityCapture) =>
         current?.backendBinding ??
         runtimeBinding ??
         target?.backendBinding;
-      if (!backendBinding || backendBinding.kind === "acp")
+      if (!backendBinding) return toolFailure("automation_backend_unavailable");
+      const heartbeatBinding = runtimeBinding ?? target?.backendBinding;
+      if (
+        request.kind === "heartbeat" &&
+        (!heartbeatBinding ||
+          agentRuntimeProviderId(heartbeatBinding) !== agentRuntimeProviderId(backendBinding))
+      )
         return toolFailure("automation_backend_unavailable");
+      if (backendBinding.kind === "acp") {
+        if (Option.isNone(settings) || Option.isNone(runtime))
+          return toolFailure("automation_backend_unavailable");
+        const configured = yield* settings.value
+          .snapshot()
+          .pipe(
+            Effect.mapError(
+              (cause) => new AutomationApplicationError({ operation: "validate-runtime", cause }),
+            ),
+          );
+        if (
+          resolveAgentBackendBinding(backendBinding, configured) instanceof
+          AgentBackendRegistryError
+        )
+          return toolFailure("automation_backend_unavailable");
+      }
       const definition =
         request.kind === "heartbeat"
           ? { ...fields, backendBinding, targetSessionId }
           : { ...fields, backendBinding };
-      if (hosted) {
+      if (hosted || backendBinding.kind === "acp") {
         if (Option.isNone(runtime)) return toolFailure("automation_backend_unavailable");
         const providers = yield* runtime.value
           .catalog()
@@ -162,7 +188,12 @@ export const makeWithCapture = (capture: AppToolAuthorityCapture) =>
         const provider = providers.find(
           (provider) => provider.instanceId === agentRuntimeProviderId(backendBinding),
         );
-        if (!provider || provider.availability === "unavailable")
+        if (
+          !provider?.enabled ||
+          !provider.installed ||
+          provider.status === "error" ||
+          provider.availability === "unavailable"
+        )
           return toolFailure("automation_backend_unavailable");
         const model = "model" in fields ? fields.model : null;
         if (model && !provider.models.some((candidate) => candidate.slug === model))

@@ -10,6 +10,8 @@ import { AgentRuntimeSupervisor } from "../agent-runtime/AgentRuntimeSupervisor"
 import { ProjectWorkspace } from "../project-application/ProjectWorkspace";
 import { AutomationApplication } from "./AutomationApplication";
 import { AutomationExecution, live } from "./AutomationExecution";
+import { live as backendRegistryLive } from "../agent-backend/AgentBackendRegistry";
+import { ApplicationSettings } from "../settings/ApplicationSettings";
 
 const definition: CodexScheduledAutomation = {
   id: "report",
@@ -49,6 +51,10 @@ const setup = (binding: CodexScheduledAutomation["backendBinding"] = { kind: "co
     busy: false,
     denyMessage: false,
     failedOutcome: false,
+    instanceEnabled: true,
+    instanceAvailable: true,
+    agentDefinitionId: binding.kind === "acp" ? binding.agentDefinitionId : "",
+    targetProviderId: agentRuntimeProviderId(binding),
   };
   const runs = new Map<string, CodexAutomationRun>();
   const launches: AgentRuntimeLaunch[] = [];
@@ -59,6 +65,34 @@ const setup = (binding: CodexScheduledAutomation["backendBinding"] = { kind: "co
   const layer = live({ runtimeStateHome: "/runtime" }).pipe(
     Layer.provide(
       Layer.mergeAll(
+        backendRegistryLive.pipe(
+          Layer.provide(
+            Layer.succeed(ApplicationSettings, {
+              snapshot: () =>
+                Effect.succeed({
+                  claudeAgents: {
+                    instances:
+                      binding.kind === "claude" && state.instanceAvailable
+                        ? [{ id: binding.instanceConfigId, enabled: state.instanceEnabled }]
+                        : [],
+                  },
+                  openCodeAgents: { instances: [] },
+                  acpAgents: {
+                    instances:
+                      binding.kind === "acp" && state.instanceAvailable
+                        ? [
+                            {
+                              id: binding.instanceConfigId,
+                              agentDefinitionId: state.agentDefinitionId,
+                              enabled: state.instanceEnabled,
+                            },
+                          ]
+                        : [],
+                  },
+                }),
+            } as unknown as ApplicationSettings["Service"]),
+          ),
+        ),
         Layer.succeed(AutomationApplication, {
           definitions: {
             getForExecution: () =>
@@ -141,7 +175,7 @@ const setup = (binding: CodexScheduledAutomation["backendBinding"] = { kind: "co
           inspect: () =>
             Effect.succeed({
               thread: {
-                providerInstanceId: agentRuntimeProviderId(binding),
+                providerInstanceId: state.targetProviderId,
                 archivedAt: null,
                 updatedAt: "1970-01-01T00:00:00Z",
                 activeRunId: state.busy ? "other-run" : null,
@@ -211,6 +245,8 @@ const setup = (binding: CodexScheduledAutomation["backendBinding"] = { kind: "co
 it.effect.each([
   { kind: "codex" as const },
   { kind: "claude" as const, instanceConfigId: "named" },
+  { kind: "acp" as const, agentDefinitionId: "scripted-agent", instanceConfigId: "personal" },
+  { kind: "acp" as const, agentDefinitionId: "scripted-agent", instanceConfigId: "work" },
 ])(
   "$kind: scheduled execution binds a product Session and observes its exact submitted message",
   (binding) => {
@@ -394,3 +430,94 @@ it.effect(
     }).pipe(Effect.provide(fixture.layer));
   },
 );
+
+const acpBinding = {
+  kind: "acp",
+  agentDefinitionId: "scripted-agent",
+  instanceConfigId: "personal",
+} as const;
+it.effect(
+  "ACP scheduling rejects disabled, removed and mismatched instances before a Run or Session is admitted",
+  () => {
+    const fixture = setup(acpBinding);
+    return Effect.gen(function* () {
+      const execution = yield* AutomationExecution;
+      yield* execution.prepareDefinition(fixture.state.definition);
+      fixture.state.instanceEnabled = false;
+      assert.equal(
+        (yield* execution.prepareDefinition(fixture.state.definition).pipe(Effect.result))._tag,
+        "Failure",
+      );
+      assert.equal(
+        (yield* execution.executeClaimed(fixture.state.definition, context).pipe(Effect.result))
+          ._tag,
+        "Failure",
+      );
+      fixture.state.instanceEnabled = true;
+      fixture.state.instanceAvailable = false;
+      assert.equal(
+        (yield* execution.executeClaimed(fixture.state.definition, context).pipe(Effect.result))
+          ._tag,
+        "Failure",
+      );
+      fixture.state.instanceAvailable = true;
+      fixture.state.agentDefinitionId = "another-agent";
+      assert.equal(
+        (yield* execution.executeClaimed(fixture.state.definition, context).pipe(Effect.result))
+          ._tag,
+        "Failure",
+      );
+      assert.equal(fixture.launches.length, 0);
+      assert.equal(fixture.runs.size, 0);
+      assert.equal(fixture.physical.size, 0);
+    }).pipe(Effect.provide(fixture.layer));
+  },
+);
+
+it.effect("ACP Heartbeats use the same Session and refuse a replaced instance", () => {
+  const fixture = setup(acpBinding);
+  fixture.state.definition = {
+    ...fixture.state.definition,
+    kind: "heartbeat",
+    targetSessionId: "heartbeat-session",
+    cwds: [],
+  };
+  return Effect.gen(function* () {
+    const execution = yield* AutomationExecution;
+    yield* execution.prepareDefinition(fixture.state.definition);
+    yield* execution.executeClaimed(fixture.state.definition, {
+      ...context,
+      now: 1_000_000_000,
+      heartbeat: {
+        automationsEnabled: true,
+        rendererState: {
+          rendererClientId: "renderer",
+          isEligible: true,
+          reason: null,
+          updatedAtMs: 1000,
+        },
+        collaborationMode: null,
+      },
+    });
+    assert.equal(fixture.launches.length, 0);
+    assert.equal(
+      fixture.messages[0]?.modelSelection?.instanceId,
+      agentRuntimeProviderId(acpBinding),
+    );
+    fixture.state.targetProviderId = agentRuntimeProviderId({
+      ...acpBinding,
+      instanceConfigId: "work",
+    });
+    assert.equal(
+      (yield* execution.prepareDefinition(fixture.state.definition).pipe(Effect.result))._tag,
+      "Failure",
+    );
+    assert.equal(
+      (yield* execution
+        .executeClaimed(fixture.state.definition, { ...context, dispatchId: "next" })
+        .pipe(Effect.result))._tag,
+      "Failure",
+    );
+    assert.equal(fixture.messages.length, 1);
+  }).pipe(Effect.provide(fixture.layer));
+});

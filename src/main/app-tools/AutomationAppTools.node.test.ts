@@ -19,6 +19,8 @@ import type { AppToolInvocation } from "./AppToolInvocationInbox";
 import { make, makeWithCapture } from "./AutomationAppTools";
 import { createHostedAppToolCaller, captureHostedAppToolAuthority } from "./AppToolCaller";
 import { AgentRuntimeApplication } from "../agent-runtime/AgentRuntimeApplication";
+import { ApplicationSettings } from "../settings/ApplicationSettings";
+import { agentRuntimeProviderId } from "../../shared/agent-runtime-provider";
 
 const authority: NodexAgentTurnContext = {
   threadId: "thread:a",
@@ -427,7 +429,10 @@ it.effect(
         } as never),
         Effect.provideService(AgentRuntimeApplication, {
           inspect: () => Effect.succeed({ thread: { providerInstanceId: "codex" } }),
-          catalog: () => Effect.succeed([{ instanceId: "codex", models: [] }]),
+          catalog: () =>
+            Effect.succeed([
+              { instanceId: "codex", models: [], enabled: true, installed: true, status: "ready" },
+            ]),
         } as never),
         Effect.provideService(AutomationApplication, {
           definitions: {
@@ -459,5 +464,116 @@ it.effect(
       assert.deepEqual((definitions[0] as { backendBinding: unknown }).backendBinding, {
         kind: "codex",
       });
+    }),
+);
+
+it.effect(
+  "ACP callers keep their exact instance for Cron and Heartbeat tools and cannot schedule a disabled account",
+  () =>
+    Effect.gen(function* () {
+      const binding = {
+        kind: "acp",
+        agentDefinitionId: "scripted-agent",
+        instanceConfigId: "personal",
+      } as const;
+      const providerId = agentRuntimeProviderId(binding);
+      let enabled = true;
+      const definitions: Array<Parameters<AutomationDefinitions["create"]>[0]> = [];
+      const caller = createHostedAppToolCaller({
+        backend: "acp",
+        authority,
+        callId: "acp-automation",
+        generation: 1,
+        isActive: () => true,
+        capture: Effect.succeed(authority),
+        sessionContext: {
+          sessionId: "acp-session",
+          projectId: "project:a",
+          runtimeId: "engine",
+          rootThreadId: "engine-root",
+          threadId: "engine-child",
+          runId: "engine-run",
+          cwd: "/workspace",
+        },
+      });
+      const execute = yield* makeWithCapture(captureHostedAppToolAuthority).pipe(
+        Effect.provideService(CoreAuthority, { identity: { profileId: "profile:a" } } as never),
+        Effect.provideService(ProjectWorkspace, {
+          getThread: () => Effect.die("ACP must use the hosted Session"),
+        } as never),
+        Effect.provideService(ApplicationSettings, {
+          snapshot: () =>
+            Effect.succeed({
+              claudeAgents: { instances: [] },
+              openCodeAgents: { instances: [] },
+              acpAgents: {
+                instances: ["personal", "work"].map((id) => ({
+                  id,
+                  agentDefinitionId: "scripted-agent",
+                  enabled,
+                })),
+              },
+            }),
+        } as never),
+        Effect.provideService(AgentRuntimeApplication, {
+          inspect: () => Effect.succeed({ thread: { providerInstanceId: providerId } }),
+          catalog: () =>
+            Effect.succeed([
+              {
+                instanceId: providerId,
+                enabled: true,
+                installed: true,
+                status: "ready",
+                models: [{ slug: "chosen-model" }],
+              },
+            ]),
+        } as never),
+        Effect.provideService(AutomationApplication, {
+          definitions: {
+            get: () => Effect.succeed(null),
+            create: (definition: Parameters<AutomationDefinitions["create"]>[0]) =>
+              Effect.sync(() => {
+                definitions.push(definition);
+                return { ...item, backendBinding: binding };
+              }),
+          },
+        } as never),
+      );
+      const request = (arguments_: Record<string, unknown>) =>
+        execute({ caller, name: "automation_update", arguments: arguments_ });
+      assert.isUndefined(
+        (yield* request({ ...cron, mode: "create", backendBinding: binding })).isError,
+      );
+      assert.isUndefined(
+        (yield* request({
+          mode: "create",
+          kind: "heartbeat",
+          name: "Watch",
+          prompt: "Report changes",
+          rrule: "FREQ=HOURLY;INTERVAL=1",
+        })).isError,
+      );
+      assert.deepEqual(
+        definitions.map((definition) => definition.backendBinding),
+        [binding, binding],
+      );
+      assert.equal(definitions[1]?.targetSessionId, "acp-session");
+      assert.deepEqual(
+        (yield* request({
+          mode: "create",
+          kind: "heartbeat",
+          name: "Wrong instance",
+          prompt: "Report changes",
+          rrule: "FREQ=HOURLY;INTERVAL=1",
+          backendBinding: { ...binding, instanceConfigId: "work" },
+        })).structuredContent,
+        { error: { code: "automation_backend_unavailable" } },
+      );
+      enabled = false;
+      assert.deepEqual(
+        (yield* request({ ...cron, mode: "create", backendBinding: binding })).structuredContent,
+        { error: { code: "automation_backend_unavailable" } },
+      );
+      assert.equal(definitions.length, 2);
     }),
 );

@@ -31,6 +31,26 @@ describe("automation tool input", () => {
     });
   });
 
+  it("accepts an exact ACP instance without treating a missing instance as a default", () => {
+    const backendBinding = {
+      kind: "acp",
+      agentDefinitionId: "scripted-agent",
+      instanceConfigId: "personal",
+    };
+    expect(automationSchema.parse({ ...cron, backendBinding })).toMatchObject({ backendBinding });
+    expect(automationSchema.parse({ ...heartbeat, backendBinding })).toMatchObject({
+      backendBinding,
+    });
+    for (const instanceConfigId of [null, undefined, "", " "]) {
+      expect(
+        automationSchema.safeParse({
+          ...cron,
+          backendBinding: { ...backendBinding, instanceConfigId },
+        }).success,
+      ).toBe(false);
+    }
+  });
+
   it("requires complete revision-fenced updates and deletion commands", () => {
     const update = { ...cron, mode: "update", id: "automation-1", status: "PAUSED" };
     const deletion = { mode: "delete", id: "automation-1" };

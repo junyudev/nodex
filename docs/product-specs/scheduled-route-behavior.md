@@ -13,9 +13,13 @@ history remains available through its bounded Core window. Renderer mutations
 use the same Core revision fence and committed update event as agent-driven
 `automation_update` mutations.
 
-Scheduled tasks execute with an explicit Codex or configured Claude Code binding.
-Creation, editing and execution retain that binding; ACP and remote-host execution
-remain unavailable. An unavailable Profile or runtime never selects another backend.
+Scheduled tasks execute with an explicit Codex, configured Claude Code, or ACP
+Agent Instance binding. Creation, editing and execution retain the exact instance;
+ACP also retains its logical Agent identity. A missing, disabled, or mismatched
+instance cannot admit a new scheduled execution, even while an older catalog is
+cached. Existing definitions remain readable when their instance is unavailable.
+An unavailable Profile or runtime never selects another backend. Remote-host
+execution remains unavailable.
 
 Every Agent can read and manage Cron tasks and Heartbeats across Projects and
 Sessions in the current Profile, including in Plan mode. Core retains exact
@@ -141,7 +145,14 @@ projectless workspace before submission. The existing Core due lease and run inb
 own the entire run. Heartbeats observe the Session’s execution metadata without opening
 transcript history or resuming a second native client. They recheck the target, cadence,
 busy state and background tasks before launch.
-Scheduled native turns do not wait for interactive approvals or questions. They are
+ACP Cron runs use the same Core due lease, Run inbox, product Session, workspace
+preparation and Runtime execution path. Heartbeats retain their target Session and
+reject an attachment to a different ACP instance. ACP model selection uses the
+advertised model and options of that instance; Agent tools preserve the same binding
+when creating or replacing a definition. Page-linked Sessions keep their existing
+links while their Heartbeat continues the selected instance.
+
+Scheduled turns do not wait for interactive approvals or questions. They are
 bounded within the due lease; failure, timeout and interruption cancel only their exact
 accepted Turn, settle the run and retain its review record.
 

@@ -557,103 +557,124 @@ it.effect("commits Definition and Run routing before mutations return", () =>
   }),
 );
 
-it.effect("rejects unsupported backend bindings before Definition mutations reach Core", () =>
-  Effect.gen(function* () {
-    let reads = 0;
-    let applies = 0;
-    const application = yield* make.pipe(
-      Effect.provideService(
-        CoreModules,
-        coreModules({
-          read: () => {
-            reads += 1;
-            return Effect.succeed(
-              readSnapshot({
-                kind: "definition",
-                item: definition({
-                  backend_binding: {
-                    kind: "acp",
-                    agent_definition_id: "claude-agent-acp",
-                    instance_config_id: "claude:default",
-                  },
-                }),
-              }),
-            );
-          },
-          apply: () => {
-            applies += 1;
-            return Effect.die("Unsupported backend mutation reached Core");
-          },
-        }),
-      ),
-      Effect.provideService(AutomationRoutingIndex, routingIndex()),
-    );
-    const binding = {
-      kind: "acp",
-      agentDefinitionId: "claude-agent-acp",
-      instanceConfigId: "claude:default",
-    } as const;
-
-    const createError = yield* Effect.flip(
-      application.definitions.create({
+it.effect(
+  "creates, updates and lists the exact ACP automation instance without changing its backend",
+  () =>
+    Effect.gen(function* () {
+      const requests: AutomationApplyInput[] = [];
+      const binding = {
+        kind: "acp",
+        agentDefinitionId: "scripted-agent",
+        instanceConfigId: "personal",
+      } as const;
+      let stored = definition({ kind: "cron", target_session_id: null });
+      const application = yield* make.pipe(
+        Effect.provideService(
+          CoreModules,
+          coreModules({
+            read: (input) =>
+              Effect.succeed(
+                readSnapshot(
+                  input.kind === "definitions"
+                    ? { kind: "definitions", window: window([stored]) }
+                    : { kind: "definition", item: stored },
+                ),
+              ),
+            apply: (input) => {
+              requests.push(input);
+              const intent = input.intent;
+              if (intent.kind !== "create_definition" && intent.kind !== "update_definition")
+                return Effect.die("Unexpected Automation mutation");
+              stored = definition({
+                ...stored,
+                automation_id: intent.automation_id,
+                definition_revision: stored.definition_revision + 1,
+                name: intent.definition.name,
+                backend_binding: intent.definition.backend_binding,
+              });
+              return Effect.succeed(committed({ definitions: [stored] }));
+            },
+          }),
+        ),
+        Effect.provideService(AutomationRoutingIndex, routingIndex()),
+      );
+      const created = yield* application.definitions.create(
+        { kind: "cron", name: "ACP report", prompt: "Report changes", backendBinding: binding },
+        { operationId: "acp:create" },
+      );
+      const updated = yield* application.definitions.update({
+        id: created.id,
         kind: "cron",
-        name: "Unsupported",
-        prompt: "Do not run.",
-        backendBinding: binding,
-      }),
-    );
-    assert.strictEqual(createError.operation, "definitions.create");
-    assert.match(String(createError.cause), /native Codex or Claude Agent Backends/);
-    assert.strictEqual(reads, 0);
-
-    const updateError = yield* Effect.flip(
-      application.definitions.update({
-        id: "daily-report",
-        kind: "heartbeat",
-        status: "ACTIVE",
-        name: "Unsupported",
-        prompt: "Do not run.",
-        backendBinding: binding,
-      }),
-    );
-    assert.strictEqual(updateError.operation, "definitions.update");
-    assert.match(String(updateError.cause), /native Codex or Claude Agent Backends/);
-    assert.strictEqual(reads, 1);
-    assert.strictEqual(applies, 0);
-  }),
+        status: "PAUSED",
+        name: "Paused ACP report",
+        prompt: "Report changes",
+      });
+      const listed = yield* application.definitions.list();
+      assert.deepStrictEqual(created.backendBinding, binding);
+      assert.deepStrictEqual(updated?.backendBinding, binding);
+      assert.deepStrictEqual(listed[0]?.backendBinding, binding);
+      assert.strictEqual(requests.length, 2);
+      for (const request of requests) {
+        if (
+          request.intent.kind !== "create_definition" &&
+          request.intent.kind !== "update_definition"
+        )
+          throw new Error("Unexpected intent");
+        assert.deepStrictEqual(request.intent.definition.backend_binding, {
+          kind: "acp",
+          agent_definition_id: "scripted-agent",
+          instance_config_id: "personal",
+        });
+      }
+    }),
 );
 
-it.effect("rejects unsupported durable Definitions at the projection boundary", () =>
-  Effect.gen(function* () {
-    const application = yield* make.pipe(
-      Effect.provideService(
-        CoreModules,
-        coreModules({
-          read: () =>
-            Effect.succeed(
-              readSnapshot({
-                kind: "definitions",
-                window: window([
-                  definition({
-                    backend_binding: {
-                      kind: "acp",
-                      agent_definition_id: "claude-agent-acp",
-                      instance_config_id: null,
-                    },
-                  }),
-                ]),
-              }),
-            ),
-          apply: () => Effect.die("Projection attempted an Automation mutation"),
-        }),
-      ),
-      Effect.provideService(AutomationRoutingIndex, routingIndex()),
-    );
-
-    const projectionError = yield* Effect.flip(application.definitions.list());
-    assert.strictEqual(projectionError.operation, "definitions.list");
-    assert.match(String(projectionError.cause), /native Codex or Claude Agent Backends/);
-  }),
+it.effect(
+  "keeps unavailable durable ACP definitions readable but refuses new tasks without an instance",
+  () =>
+    Effect.gen(function* () {
+      const binding = {
+        kind: "acp",
+        agent_definition_id: "scripted-agent",
+        instance_config_id: null,
+      } as const;
+      const application = yield* make.pipe(
+        Effect.provideService(
+          CoreModules,
+          coreModules({
+            read: () =>
+              Effect.succeed(
+                readSnapshot({
+                  kind: "definitions",
+                  window: window([definition({ backend_binding: binding })]),
+                }),
+              ),
+            apply: () => Effect.die("Missing instance must not reach Core mutation"),
+          }),
+        ),
+        Effect.provideService(AutomationRoutingIndex, routingIndex()),
+      );
+      assert.deepStrictEqual((yield* application.definitions.list())[0]?.backendBinding, {
+        kind: "acp",
+        agentDefinitionId: "scripted-agent",
+        instanceConfigId: null,
+      });
+      const rejected = yield* Effect.flip(
+        application.definitions.create(
+          {
+            kind: "cron",
+            name: "Missing instance",
+            backendBinding: {
+              kind: "acp",
+              agentDefinitionId: "scripted-agent",
+              instanceConfigId: null,
+            },
+          },
+          { operationId: "acp:missing" },
+        ),
+      );
+      assert.strictEqual(rejected.operation, "definitions.create");
+    }),
 );
 
 it.effect("routes occurrence reads and mutations through the exact Project scope", () =>

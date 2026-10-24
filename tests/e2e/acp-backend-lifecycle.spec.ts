@@ -3,12 +3,20 @@ import fs from "node:fs";
 import path from "node:path";
 
 import { chooseComposerModel } from "./support/composer-model-picker";
-import { ElectronScenarioHarness } from "../../scripts/scenarios/harness/electron-e2e-harness";
+import {
+  ElectronScenarioHarness,
+  withElectronScenario,
+} from "../../scripts/scenarios/harness/electron-e2e-harness";
 import { createBoundedOperationId } from "../../src/shared/operation-identity";
 import { createUuidV7 } from "../../src/shared/uuid-v7";
 import type { AgentRuntimeConversation } from "../../src/shared/agent-runtime-api";
 import { agentRuntimeProviderId } from "../../src/shared/agent-runtime-provider";
-import type { ProjectSession } from "../../src/shared/types";
+import type {
+  ProjectSession,
+  CodexScheduledAutomation,
+  CodexAutomationInboxItem,
+  PageChatWindow,
+} from "../../src/shared/types";
 
 const repositoryRoot = process.cwd();
 const instanceConfigId = "acp-personal-e2e";
@@ -313,4 +321,164 @@ test("runs a chat on an ACP agent and continues its protocol session after resta
   } finally {
     await harness.close();
   }
+});
+
+test("ACP automations preserve their instance through Cron, Page-linked Heartbeat and disabled admission", async () => {
+  test.setTimeout(120_000);
+  await withElectronScenario(
+    { label: "acp-automation", scenarioId: "agent/cli-workflow" },
+    async ({ page, profile, manifest }) => {
+      if (!manifest) throw new Error("Automation scenario requires its authoritative seed");
+      const instanceId = "acp-automation-e2e";
+      const observationPath = path.join(profile.runRoot, "automation-acp-observations.json");
+      const binding = { kind: "acp", agentDefinitionId, instanceConfigId: instanceId } as const;
+      const instance = {
+        id: instanceId,
+        agentDefinitionId,
+        displayName: "ACP automation",
+        enabled: true,
+        source: {
+          kind: "local",
+          executable: process.execPath,
+          args: [path.join(repositoryRoot, "scripts/scenarios/runtime/scripted-acp-agent.ts")],
+        },
+        environment: scriptedEnvironment(observationPath, "ACP_AUTOMATION_COMPLETED"),
+        customModels: [],
+        credentials: {
+          kind: "isolated-home",
+          home: path.join(profile.runRoot, "automation-credentials"),
+        },
+        proxy: "isolated",
+      };
+      await invoke(page, "settings:acp-agents:update", { instances: [instance] });
+      const operationId = createUuidV7();
+      await invoke(page, "acp:connection:start", {
+        instanceId,
+        operationId,
+        projectId: manifest.projectId,
+      });
+      await expect
+        .poll(
+          async () =>
+            (await invoke<{ phase: string }>(page, "acp:operation:read", { operationId })).phase,
+        )
+        .toBe("succeeded");
+      const input = {
+        kind: "cron",
+        name: "ACP scheduled report",
+        prompt: "Report fixture state",
+        rrule: "FREQ=DAILY;INTERVAL=1",
+        projectId: manifest.projectId,
+        backendBinding: binding,
+        model: "scripted-model",
+        executionEnvironment: "local",
+        cwds: [profile.initialProjectsDirectory],
+      };
+      const created = await invoke<{ item: CodexScheduledAutomation }>(
+        page,
+        "codex:scheduled-automations:create",
+        input,
+      );
+      const updated = await invoke<{ item: CodexScheduledAutomation }>(
+        page,
+        "codex:scheduled-automations:update",
+        {
+          ...input,
+          id: created.item.id,
+          expectedRevision: created.item.definitionRevision,
+          status: "ACTIVE",
+          name: "ACP retained instance",
+        },
+      );
+      expect(updated.item.backendBinding).toEqual(binding);
+      expect(
+        (
+          await invoke<{ items: CodexScheduledAutomation[] }>(
+            page,
+            "codex:scheduled-automations:list",
+          )
+        ).items.find((item) => item.id === created.item.id)?.backendBinding,
+      ).toEqual(binding);
+      await invoke(page, "codex:scheduled-automations:run-now", { id: created.item.id });
+      const inbox = await invoke<{ items: CodexAutomationInboxItem[] }>(
+        page,
+        "codex:automation-runs:inbox-items",
+      );
+      const run = inbox.items.find((item) => item.automationId === created.item.id);
+      expect(run?.status).toBe("PENDING_REVIEW");
+      if (!run?.sessionId) throw new Error("ACP Cron did not bind its product Session");
+      const readSession = () =>
+        invoke<AgentRuntimeConversation>(page, "agent-runtime:session:control", {
+          sessionId: run.sessionId,
+        });
+      const first = await readSession();
+      expect(first.snapshot.projection.thread.providerInstanceId).toBe(
+        agentRuntimeProviderId(binding),
+      );
+      expect(readObservations(observationPath)).toEqual(
+        expect.arrayContaining([
+          { method: "session/set_config_option", configId: "model", value: "scripted-model" },
+          { method: "session/prompt", sessionId: protocolSessionId },
+        ]),
+      );
+      const pageId = manifest.pageIdsByKey.meeting;
+      if (!pageId) throw new Error("Automation scenario Page is missing");
+      await invoke(page, "page-chats:link", run.sessionId, {
+        pageAccessProjectId: manifest.projectId,
+        pageId,
+      });
+      const heartbeat = await invoke<{ item: CodexScheduledAutomation }>(
+        page,
+        "codex:scheduled-automations:create",
+        {
+          kind: "heartbeat",
+          name: "ACP linked follow-up",
+          prompt: "Continue the fixture report",
+          rrule: "FREQ=HOURLY;INTERVAL=1",
+          targetSessionId: run.sessionId,
+          projectId: manifest.projectId,
+          backendBinding: binding,
+          model: "scripted-model",
+        },
+      );
+      await invoke(page, "codex:scheduled-automations:run-now", { id: heartbeat.item.id });
+      const continued = await readSession();
+      expect(continued.threadId).toBe(first.threadId);
+      expect(continued.snapshot.projection.thread.providerInstanceId).toBe(
+        agentRuntimeProviderId(binding),
+      );
+      expect(
+        readObservations(observationPath).filter((item) => item.method === "session/prompt"),
+      ).toHaveLength(2);
+      expect(
+        (
+          await invoke<PageChatWindow>(page, "page-chats:list", {
+            pageAccessProjectId: manifest.projectId,
+            pageId,
+          })
+        ).items.some((item) => item.sessionId === run.sessionId),
+      ).toBe(true);
+      await invoke(page, "settings:acp-agents:update", {
+        instances: [{ ...instance, enabled: false }],
+      });
+      const before = readObservations(observationPath);
+      await expect(
+        invoke(page, "codex:scheduled-automations:run-now", { id: created.item.id }),
+      ).rejects.toThrow();
+      await expect(
+        invoke(page, "codex:scheduled-automations:run-now", { id: heartbeat.item.id }),
+      ).rejects.toThrow();
+      expect(readObservations(observationPath)).toEqual(before);
+      expect(
+        (
+          await invoke<{ items: CodexScheduledAutomation[] }>(
+            page,
+            "codex:scheduled-automations:list",
+          )
+        ).items
+          .filter((item) => [created.item.id, heartbeat.item.id].includes(item.id))
+          .map((item) => item.backendBinding),
+      ).toEqual([binding, binding]);
+    },
+  );
 });
