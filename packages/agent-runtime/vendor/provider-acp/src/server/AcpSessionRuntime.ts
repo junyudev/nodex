@@ -2892,7 +2892,7 @@ function configOptionCurrentValueMatches(
   if (typeof currentValue !== "string") {
     return false;
   }
-  return currentValue.trim() === String(value).trim();
+  return currentValue === value;
 }
 
 function isStartupMetadataUpdate(notification: EffectAcpSchema.SessionNotification): boolean {

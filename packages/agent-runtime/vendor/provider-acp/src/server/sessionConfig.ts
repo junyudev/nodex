@@ -23,16 +23,24 @@ const ACP_ESCAPED_OPTION_PREFIX = "_t3/value:";
 
 export const acpOptionSelectionValue = (value: string): string => {
   if (value === ACP_EMPTY_OPTION_VALUE) return "";
-  if (value.startsWith(ACP_ESCAPED_OPTION_PREFIX)) return value.slice(ACP_ESCAPED_OPTION_PREFIX.length);
+  if (value.startsWith(ACP_ESCAPED_OPTION_PREFIX)) {
+    try {
+      return decodeURIComponent(value.slice(ACP_ESCAPED_OPTION_PREFIX.length));
+    } catch {
+      return value;
+    }
+  }
   return value;
 };
 
 const optionChoiceId = (value: string): string | undefined => {
   if (value === "") return ACP_EMPTY_OPTION_VALUE;
+  if (value.length > MAX_TEXT_LENGTH) return undefined;
+  if (value !== value.trim()) return `${ACP_ESCAPED_OPTION_PREFIX}${encodeURIComponent(value)}`;
   const id = boundedOpaqueValue(value, MAX_TEXT_LENGTH);
   if (id === undefined) return undefined;
   if (id === ACP_EMPTY_OPTION_VALUE || id.startsWith(ACP_ESCAPED_OPTION_PREFIX)) {
-    return `${ACP_ESCAPED_OPTION_PREFIX}${id}`;
+    return `${ACP_ESCAPED_OPTION_PREFIX}${encodeURIComponent(id)}`;
   }
   return id;
 };

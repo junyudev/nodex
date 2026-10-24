@@ -30,6 +30,7 @@ const configOptions = () =>
           options: [
             { value: "", name: "Empty" },
             { value: "nonempty", name: "Nonempty" },
+            { value: " nonempty ", name: "Padded" },
           ],
         },
       ];

@@ -658,7 +658,14 @@ describe("AcpAdapterV2", () => {
   });
 
   it("preserves empty and reserved-looking ACP choices without collisions", () => {
-    const values = ["", ACP_EMPTY_OPTION_VALUE, "_t3/value:literal", "ordinary"];
+    const values = [
+      "",
+      ACP_EMPTY_OPTION_VALUE,
+      "_t3/value:literal",
+      "ordinary",
+      " padded ",
+      " \t ",
+    ];
     const descriptors = acpProviderOptionDescriptors({
       configOptions: [
         {
@@ -731,6 +738,24 @@ describe("AcpAdapterV2", () => {
           runtimePolicy,
         });
         const now = yield* DateTime.now;
+        const contexts = ["", "nonempty", " nonempty ", "", "nonempty"];
+        const contextDescriptor = acpProviderOptionDescriptors({
+          configOptions: [
+            {
+              id: "context",
+              name: "Context",
+              type: "select",
+              currentValue: "nonempty",
+              options: ["", "nonempty", " nonempty "].map((value) => ({
+                value,
+                name: value || "Empty",
+              })),
+            },
+          ],
+          modeState: undefined,
+        })[0];
+        if (contextDescriptor?.type !== "select")
+          return yield* Effect.die("Missing context choices");
         const models = ["model-b", "model-a", "auto", "default", "custom-model"];
         for (const [index, model] of models.entries()) {
           yield* Queue.clear(protocolEvents);
@@ -739,7 +764,16 @@ describe("AcpAdapterV2", () => {
             model,
             ...(api === "legacy"
               ? {}
-              : { options: [{ id: "context", value: ACP_EMPTY_OPTION_VALUE }] }),
+              : {
+                  options: [
+                    {
+                      id: "context",
+                      value: contextDescriptor.options.find(
+                        (choice) => acpOptionSelectionValue(choice.id) === contexts[index],
+                      )!.id,
+                    },
+                  ],
+                }),
           };
           yield* runtime.startTurn(
             makeTurnInput({
@@ -773,13 +807,13 @@ describe("AcpAdapterV2", () => {
             rawProtocolRequestParam(modelRequest!, api === "legacy" ? "modelId" : "value"),
             model,
           );
-          if (api !== "legacy" && index === 0) {
+          if (api !== "legacy") {
             const context = requests.find(
               (event) =>
                 rawProtocolMethod(event) === method &&
                 rawProtocolRequestParam(event, "configId") === "context",
             );
-            assert.equal(rawProtocolRequestParam(context!, "value"), "");
+            assert.equal(rawProtocolRequestParam(context!, "value"), contexts[index]);
           }
         }
         yield* Queue.clear(protocolEvents);
@@ -12983,15 +13017,13 @@ const makeClaudeWorkHarness = (generation: 1 | 2 = 2) =>
         return {
           ...runtime,
           start: () =>
-            runtime
-              .start()
-              .pipe(
-                Effect.map((setup) => ({
-                  ...setup,
-                  protocolGeneration: generation,
-                  initializeResult: { ...setup.initializeResult, protocolVersion: 2 },
-                })),
-              ),
+            runtime.start().pipe(
+              Effect.map((setup) => ({
+                ...setup,
+                protocolGeneration: generation,
+                initializeResult: { ...setup.initializeResult, protocolVersion: 2 },
+              })),
+            ),
           handleSessionUpdate: (handler) =>
             Effect.sync(() => {
               update = handler;
