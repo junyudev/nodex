@@ -73,6 +73,12 @@ extensions through the existing normalized Runtime history. Native permissions u
 questions that need user information remain interactive. Dedicated compatibility adapters require
 evidence of their native capability and never infer it solely from an executable basename.
 
+Claude ACP follows native working and idle state only after actual v2 wire negotiation. A finished
+foreground Run can retain live native child work, including nested children, and later status or
+output keeps its original lineage. Reusing a native child session keeps that child Thread and
+creates the appropriate subsequent Run. Pending information questions block false idle completion.
+Ordinary ACP Agents without those native events do not acquire invented child relationships.
+
 Cancellation retires the affected native source and its interactions, including owned background
 work. Late output cannot revive a cancelled source. Protocol corruption, process loss and bounded
 intake failures have explicit failure and cleanup behavior. Reconnection never resubmits an old

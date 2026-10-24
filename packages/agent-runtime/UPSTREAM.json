@@ -6,7 +6,7 @@
   "patches": [
     {
       "revision": "2c592a1086ff593293358529a1975dde308edeaf",
-      "scope": "ACP legacy model selection, session choice mapping, Droid elicitation and standalone Node PTY behavior"
+      "scope": "ACP legacy model selection, session choice mapping, Droid elicitation, Claude native work and child sessions, pinned v2 wire normalization and standalone Node PTY behavior"
     }
   ]
 }
