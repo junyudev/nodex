@@ -170,7 +170,7 @@ const makeHarness = Effect.fn("ProviderAuthService.test.makeHarness")(function* 
 
   const auth: ProviderAuthService.ProviderAuthController = {
     ...(input.sharedCredentials
-      ? { credentialBinding: { owner: "provider" as const, key: "shared" } }
+      ? { credentialBinding: { owner: "provider" as const, claims: ["shared"] as const } }
       : {}),
     ...(input.responds
       ? {
@@ -850,7 +850,7 @@ it.effect.each(["start", "logout", "prompt"] as const)(
           enabled: true,
           auth: {
             ...harness.auth,
-            credentialBinding: { owner: "provider", key: "replacement-binding" },
+            credentialBinding: { owner: "provider", claims: ["replacement-binding"] as const },
             isChangingCredentials: Effect.succeed(true),
             invalidate: Effect.die(
               "The unrelated replacement credential binding must stay intact.",
@@ -873,7 +873,7 @@ it.effect.each(["start", "logout", "prompt"] as const)(
       let replacementMutations = 0;
       harness.replaceAuth({
         ...harness.auth,
-        credentialBinding: { owner: "provider", key: "replacement-binding" },
+        credentialBinding: { owner: "provider", claims: ["replacement-binding"] as const },
         start: () =>
           Effect.sync(() => {
             replacementMutations++;
@@ -898,8 +898,8 @@ it.effect.each(["start", "logout", "prompt"] as const)(
 );
 
 it.effect.each([
-  { owner: "provider" as const, key: "different-binding" },
-  { owner: "t3" as const, key: "shared" },
+  { owner: "provider" as const, claims: ["different-binding"] as const },
+  { owner: "t3" as const, claims: ["shared"] as const },
 ])(
   "does not invalidate a peer that switches credential binding during session draining %#",
   (binding) =>
@@ -963,7 +963,7 @@ it.effect.each(["selection", "drain"] as const)(
           enabled: true,
           auth: {
             ...harness.auth,
-            credentialBinding: { owner: "provider", key: "replacement-credentials" },
+            credentialBinding: { owner: "provider", claims: ["replacement-credentials"] as const },
             invalidate: Effect.die("The replacement peer's credentials must not be invalidated."),
           },
         }),
@@ -975,5 +975,60 @@ it.effect.each(["selection", "drain"] as const)(
       assert.notInclude(harness.actions, "stop:peer-persisted");
       assert.isFalse(harness.sessions.has(ThreadId.make("target-draining")));
       assert.include(harness.actions, "native-logout");
+    }).pipe(Effect.scoped),
+);
+
+it.effect.each([true, false])(
+  "coordinates overlapping credential claims with peer mutation active: %s",
+  (busy) =>
+    Effect.gen(function* () {
+      const harness = yield* makeHarness({
+        sharedCredentials: true,
+        ...sessionThreads([makeSession("shared-claims", "ready", otherInstanceId)]),
+      });
+      harness.replaceAuth({
+        ...harness.auth,
+        credentialBinding: {
+          owner: "provider",
+          claims: ["home-a", "shared-store"] as const,
+        },
+      });
+      harness.replaceInstance(
+        makeInstance({
+          instanceId: otherInstanceId,
+          enabled: true,
+          auth: {
+            ...harness.auth,
+            credentialBinding: {
+              owner: "provider",
+              claims: ["home-b", "shared-store"] as const,
+            },
+            isChangingCredentials: Effect.succeed(busy),
+            invalidate: Effect.sync(() => {
+              harness.actions.push("invalidate-claims");
+            }),
+          },
+        }),
+      );
+      if (busy) {
+        for (const task of [
+          harness.service.start({ instanceId }, owner),
+          harness.service.logout({ instanceId }),
+        ])
+          assert.include((yield* task.pipe(Effect.flip)).detail, "shared sign-in");
+        assert.deepEqual(harness.actions, []);
+        assert.isTrue(harness.sessions.has(ThreadId.make("shared-claims")));
+        return;
+      }
+      yield* harness.service.logout({ instanceId });
+      assert.isFalse(harness.sessions.has(ThreadId.make("shared-claims")));
+      assert.isBelow(
+        harness.actions.indexOf("stop:shared-claims"),
+        harness.actions.indexOf("invalidate-claims"),
+      );
+      assert.isBelow(
+        harness.actions.indexOf("invalidate-claims"),
+        harness.actions.indexOf("native-logout"),
+      );
     }).pipe(Effect.scoped),
 );

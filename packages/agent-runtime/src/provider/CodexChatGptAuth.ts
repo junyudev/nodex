@@ -826,7 +826,7 @@ export const makeCodexChatGptAuth = Effect.fn("makeCodexChatGptAuth")(function* 
   }
   const controller = yield* ProviderAuthFlow.make({
     instanceId: options.instanceId,
-    credentialBinding: store.binding,
+    credentialBinding: { owner: store.binding.owner, claims: [store.binding.key] },
     refreshMethodsAfterAuth: true,
     methods: Effect.gen(function* () {
       const saved = yield* readRegistrations;

@@ -1,3 +1,4 @@
+import { providerCredentialBindingsOverlap } from "@t3tools/provider-core/server/auth";
 import {
   ProviderInstanceId,
   ProviderSetupError,
@@ -94,10 +95,11 @@ export const layerFromProviderInstanceRegistry: Layer.Layer<
                 const open = Effect.gen(function* () {
                   const binding = auth.credentialBinding;
                   const related = binding
-                    ? (yield* instances.listInstances).filter(
-                        (instance) =>
-                          instance.auth?.credentialBinding?.key === binding.key &&
-                          instance.auth.credentialBinding.owner === binding.owner,
+                    ? (yield* instances.listInstances).filter((instance) =>
+                        providerCredentialBindingsOverlap(
+                          instance.auth?.credentialBinding,
+                          binding,
+                        ),
                       )
                     : [instance];
                   for (const instance of related) {

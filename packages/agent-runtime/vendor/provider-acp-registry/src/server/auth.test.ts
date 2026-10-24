@@ -227,9 +227,9 @@ it.effect("keeps local credentials separate from a matching registry agent ID", 
     );
     assert.equal(registry.controller.credentialBinding?.owner, "provider");
     assert.equal(local.controller.credentialBinding?.owner, "provider");
-    assert.notEqual(
-      registry.controller.credentialBinding?.key,
-      local.controller.credentialBinding?.key,
+    assert.notDeepEqual(
+      registry.controller.credentialBinding?.claims,
+      local.controller.credentialBinding?.claims,
     );
   }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
 );

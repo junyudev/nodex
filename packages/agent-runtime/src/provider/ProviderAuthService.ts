@@ -11,14 +11,16 @@ import {
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
-import type * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
 import * as Semaphore from "effect/Semaphore";
 
 import * as ProviderSessionManager from "../orchestration-v2/ProviderSessionManager.ts";
 import * as ProjectionStore from "../orchestration-v2/ProjectionStore.ts";
 import * as ProviderInstanceRegistry from "./ProviderInstanceRegistry.ts";
-import type { ProviderAuthController } from "@t3tools/provider-core/server/auth";
+import {
+  providerCredentialBindingsOverlap,
+  type ProviderAuthController,
+} from "@t3tools/provider-core/server/auth";
 
 export type { ProviderAuthController } from "@t3tools/provider-core/server/auth";
 
@@ -101,10 +103,8 @@ export const makeProviderAuthService = Effect.gen(function* () {
       ...(binding === undefined
         ? []
         : (yield* registry.listInstances)
-            .filter(
-              (instance) =>
-                instance.auth?.credentialBinding?.key === binding.key &&
-                instance.auth.credentialBinding.owner === binding.owner,
+            .filter((instance) =>
+              providerCredentialBindingsOverlap(instance.auth?.credentialBinding, binding),
             )
             .map((instance) => instance.instanceId)),
     ]);
@@ -132,9 +132,7 @@ export const makeProviderAuthService = Effect.gen(function* () {
                   if (session.providerInstanceId !== instanceId) {
                     const current = yield* registry.getInstance(session.providerInstanceId);
                     if (
-                      !binding ||
-                      current?.auth?.credentialBinding?.key !== binding.key ||
-                      current.auth.credentialBinding.owner !== binding.owner
+                      !providerCredentialBindingsOverlap(current?.auth?.credentialBinding, binding)
                     )
                       return;
                   }
@@ -161,8 +159,7 @@ export const makeProviderAuthService = Effect.gen(function* () {
           (instance) =>
             instance.instanceId !== instanceId &&
             affectedIds.has(instance.instanceId) &&
-            instance.auth?.credentialBinding?.key === binding.key &&
-            instance.auth.credentialBinding.owner === binding.owner,
+            providerCredentialBindingsOverlap(instance.auth?.credentialBinding, binding),
         ),
         (instance) => instance.auth?.invalidate ?? Effect.void,
         { discard: true },
@@ -181,9 +178,8 @@ export const makeProviderAuthService = Effect.gen(function* () {
     for (const instance of instances) {
       if (
         instance.instanceId !== instanceId &&
-        instance.auth?.credentialBinding?.key === binding.key &&
-        instance.auth.credentialBinding.owner === binding.owner &&
-        instance.auth.isChangingCredentials &&
+        providerCredentialBindingsOverlap(instance.auth?.credentialBinding, binding) &&
+        instance.auth?.isChangingCredentials &&
         (yield* instance.auth.isChangingCredentials)
       ) {
         return yield* new ProviderSetupError({

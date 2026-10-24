@@ -1,3 +1,4 @@
+import { providerCredentialBindingsOverlap } from "@t3tools/provider-core/server/auth";
 import {
   AcpRegistrySearchInput,
   AcpRegistryPrepareInput,
@@ -328,9 +329,7 @@ export const make = Effect.fn("AcpManagement.make")(function* (
         return instances.filter(
           (candidate) =>
             candidate.instanceId === selected.instanceId ||
-            (binding !== undefined &&
-              candidate.auth?.credentialBinding?.key === binding.key &&
-              candidate.auth.credentialBinding.owner === binding.owner),
+            providerCredentialBindingsOverlap(candidate.auth?.credentialBinding, binding),
         );
       }),
     );

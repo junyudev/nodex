@@ -388,7 +388,7 @@ it.live.each([true, false])(
             fileURLToPath(new URL("./testing/acp-management-peer.mjs", import.meta.url)),
           ],
           nativeStorageScope: home,
-          ...(projectedScope ? { credentialStorageScope: home } : {}),
+          ...(projectedScope ? { credentialStorageScopes: [home] } : {}),
           agentIdentity: "same-logical-agent",
         },
         environment: [
@@ -411,12 +411,20 @@ it.live.each([true, false])(
             { name: "CARGO_HOME", value: `${home}/cargo-other`, sensitive: false },
           ],
         },
+        mixed: {
+          ...common,
+          config: {
+            ...common.config,
+            agentIdentity: "claude-agent-acp",
+            ...(projectedScope ? { credentialStorageScopes: [home, `${home}/.claude`] } : {}),
+          },
+        },
         isolated: {
           ...common,
           config: {
             ...common.config,
             nativeStorageScope: `${home}/isolated`,
-            ...(projectedScope ? { credentialStorageScope: `${home}/isolated` } : {}),
+            ...(projectedScope ? { credentialStorageScopes: [`${home}/isolated`] } : {}),
           },
           environment: common.environment.map((entry) =>
             entry.name === "HOME" ? { ...entry, value: `${home}/isolated` } : entry,
@@ -449,6 +457,12 @@ it.live.each([true, false])(
             }).pipe(Effect.exit),
           ),
         ).toBe(true);
+        const mixed = yield* call("acp.auth.start", {
+          instanceId: "mixed",
+          ownerId: "window-mixed",
+          methodId: "login",
+        }).pipe(Effect.flip);
+        expect(acpFailure(mixed).reason).toBe("busy");
         const isolated = yield* call("acp.auth.start", {
           instanceId: "isolated",
           ownerId: "window-three",
@@ -486,6 +500,17 @@ it.live.each([true, false])(
           instanceId: "first",
           ownerId: "window-one",
           flowId: first.flowId!,
+        });
+        const resumed = yield* call("acp.auth.start", {
+          instanceId: "mixed",
+          ownerId: "window-mixed",
+          methodId: "login",
+        });
+        expect(resumed.flowId).not.toBeNull();
+        yield* call("acp.auth.cancel", {
+          instanceId: "mixed",
+          ownerId: "window-mixed",
+          flowId: resumed.flowId!,
         });
         yield* call("acp.auth.cancel", {
           instanceId: "isolated",

@@ -22,6 +22,7 @@ import type * as AcpSchema from "effect-acp/compat";
 import * as PtyAdapter from "@t3tools/shared/PtyAdapter";
 import { SpawnExecutableResolution } from "@t3tools/shared/shell";
 import * as ProviderAuthFlow from "@t3tools/provider-core/server/providerAuthFlow";
+import type { ProviderCredentialBinding } from "@t3tools/provider-core/server/auth";
 import {
   normalizeAcpRegistryAuthMethods,
   normalizeAcpRegistryWebUrl,
@@ -38,27 +39,35 @@ type Runtime = Pick<
   Partial<Pick<AcpSessionRuntime.AcpSessionRuntime["Service"], "closeSession" | "deleteSession">>;
 
 /** A local executable shares credential ownership even when instances have different display identities. */
-export const acpRegistryCredentialBindingKey = (
+export const acpRegistryCredentialBinding = (
   settings: AcpRegistrySettings,
   environment: NodeJS.ProcessEnv,
   localExecutable?: string,
   platform: NodeJS.Platform = process.platform,
-): string => {
+): ProviderCredentialBinding => {
   const identity =
     settings.source === "registry"
       ? ["registry", settings.agentId]
       : ["local", localExecutable ?? settings.commandPath];
-  // Native history roots can include unrelated tool directories. They do not
-  // prove credential isolation; absent an authoritative scope, share the home.
-  const storage =
-    settings.credentialStorageScope ??
-    (platform === "win32"
-      ? environment.USERPROFILE ?? environment.HOME
-      : environment.HOME ?? environment.USERPROFILE) ??
-    null;
-  return `acp:${createHash("sha256")
-    .update(JSON.stringify([identity, storage]))
-    .digest("hex")}`;
+  // Main includes the home plus known credential roots. A label can add a
+  // claim but cannot remove the shared-home claim and bypass credential exclusion.
+  const home =
+    platform === "win32"
+      ? (environment.USERPROFILE ?? environment.HOME)
+      : (environment.HOME ?? environment.USERPROFILE);
+  const storage = settings.credentialStorageScopes?.length
+    ? settings.credentialStorageScopes
+    : [home ?? "unknown-home"];
+  const roots = [...new Set(storage)].sort();
+  const claim = (root: string) =>
+    `acp:${createHash("sha256")
+      .update(JSON.stringify([identity, root]))
+      .digest("hex")}`;
+  const claims = [claim(roots[0]!), ...roots.slice(1).map(claim)] as const;
+  return {
+    owner: "provider",
+    claims,
+  };
 };
 
 /** ACP credentials stay in the agent's own store, using the same launch environment as chat. */
@@ -414,15 +423,12 @@ export const makeAcpRegistryAuth = Effect.fn("makeAcpRegistryAuth")(function* (o
   return yield* ProviderAuthFlow.make({
     instanceId: options.instanceId,
     // Main supplies the canonical storage scope; shared profiles coordinate across instances.
-    credentialBinding: {
-      owner: "provider",
-      key: acpRegistryCredentialBindingKey(
-        options.settings,
-        options.environment,
-        canonicalExecutable,
-        platform,
-      ),
-    },
+    credentialBinding: acpRegistryCredentialBinding(
+      options.settings,
+      options.environment,
+      canonicalExecutable,
+      platform,
+    ),
     methods,
     ...(options.settings.authMethodId ? { defaultMethodId: options.settings.authMethodId } : {}),
     authenticate,

@@ -9,9 +9,23 @@ import type * as Effect from "effect/Effect";
 import type * as Scope from "effect/Scope";
 import type * as Stream from "effect/Stream";
 
+export interface ProviderCredentialBinding {
+  readonly owner: "provider" | "t3";
+  /** An overlap means these controllers can change the same credential resource. */
+  readonly claims: readonly [string, ...string[]];
+}
+
+export function providerCredentialBindingsOverlap(
+  left: ProviderCredentialBinding | undefined,
+  right: ProviderCredentialBinding | undefined,
+): boolean {
+  if (!left || !right || left.owner !== right.owner) return false;
+  const rightClaims = new Set(right.claims);
+  return left.claims.some((claim) => rightClaims.has(claim));
+}
+
 export interface ProviderAuthController {
-  /** Equal keys mean these instances share credentials on this environment. */
-  readonly credentialBinding?: { readonly owner: "provider" | "t3"; readonly key: string };
+  readonly credentialBinding?: ProviderCredentialBinding;
   readonly reconnectProfile?: (
     methodId: string,
   ) => Effect.Effect<ChatGptReconnectProfile | null, ProviderSetupError>;

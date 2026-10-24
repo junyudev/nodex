@@ -226,7 +226,7 @@ it.effect(
     Effect.gen(function* () {
       const unused = () => Effect.die("unused auth operation");
       const auth: ProviderAuthController = {
-        credentialBinding: { owner: "provider", key: "shared-cli" },
+        credentialBinding: { owner: "provider", claims: ["home-a", "shared-cli"] as const },
         isChangingCredentials: Effect.succeed(false),
         start: unused,
         complete: unused,
@@ -236,7 +236,17 @@ it.effect(
       };
       const related = [
         { ...instances[0], auth },
-        { ...instances[1], auth: { ...auth, isChangingCredentials: Effect.succeed(true) } },
+        {
+          ...instances[1],
+          auth: {
+            ...auth,
+            credentialBinding: {
+              owner: "provider" as const,
+              claims: ["home-b", "shared-cli"] as const,
+            },
+            isChangingCredentials: Effect.succeed(true),
+          },
+        },
       ];
       const registry = yield* Effect.service(
         ProviderAdapterRegistry.ProviderAdapterRegistryV2,
@@ -275,7 +285,7 @@ it.effect("interrupts admitted session startup when a shared peer signs out", ()
   Effect.gen(function* () {
     const entered = yield* Deferred.make<void>();
     const stopped = yield* Deferred.make<void>();
-    const binding = { owner: "provider" as const, key: "shared-cli" };
+    const binding = { owner: "provider" as const, claims: ["shared-cli"] as const };
     const auth = yield* ProviderAuthFlow.make({
       instanceId: personalId,
       credentialBinding: binding,

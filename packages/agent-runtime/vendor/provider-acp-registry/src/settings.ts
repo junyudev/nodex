@@ -14,7 +14,9 @@ export type AcpRegistryDistributionPreference = typeof AcpRegistryDistributionPr
 export const AcpRegistrySettings = makeProviderSettingsSchema(
   {
     nativeStorageScope: Schema.optionalKey(Schema.String),
-    credentialStorageScope: Schema.optionalKey(Schema.String),
+    credentialStorageScopes: Schema.optionalKey(
+      Schema.Array(Schema.NonEmptyString).check(Schema.isMinLength(1), Schema.isMaxLength(16)),
+    ),
     agentIdentity: Schema.optionalKey(Schema.String),
     discovery: Schema.optionalKey(Schema.Literals(["automatic", "explicit"])),
     installationId: Schema.optionalKey(Schema.NonEmptyString.check(Schema.isMaxLength(256))),

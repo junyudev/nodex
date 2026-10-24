@@ -26,7 +26,7 @@ it.effect("distinguishes pending method discovery from an agent with no sign-in 
     const discovered = yield* Deferred.make<ReadonlyArray<typeof method>>();
     const controller = yield* ProviderAuthFlow.make({
       instanceId,
-      credentialBinding: { owner: "provider", key: "shared-agent" },
+      credentialBinding: { owner: "provider", claims: ["shared-agent"] },
       methods: Deferred.await(discovered),
       authenticate: () => Effect.void,
       logout: Effect.void,
@@ -52,7 +52,7 @@ const makeHarness = Effect.gen(function* () {
   let attempts = 0;
   const controller = yield* ProviderAuthFlow.make({
     instanceId,
-    credentialBinding: { owner: "provider", key: "shared-agent" },
+    credentialBinding: { owner: "provider", claims: ["shared-agent"] },
     methods: Effect.succeed([method]),
     authenticate: (_, context) =>
       Effect.gen(function* () {
@@ -214,7 +214,7 @@ it.effect.each([
       const received = yield* Deferred.make<ProviderAuthResponse>();
       const controller = yield* ProviderAuthFlow.make({
         instanceId,
-        credentialBinding: { owner: "t3", key: "binding" },
+        credentialBinding: { owner: "t3", claims: ["binding"] },
         methods: Effect.succeed([method]),
         authenticate: (_, context) =>
           Effect.gen(function* () {
@@ -260,7 +260,7 @@ it.effect("shows a device code only to its owner without treating it as authenti
   Effect.gen(function* () {
     const controller = yield* ProviderAuthFlow.make({
       instanceId,
-      credentialBinding: { owner: "provider", key: "device" },
+      credentialBinding: { owner: "provider", claims: ["device"] },
       methods: Effect.succeed([method]),
       authenticate: (_, context) =>
         context
@@ -309,7 +309,7 @@ it.effect.each([
   Effect.gen(function* () {
     const controller = yield* ProviderAuthFlow.make({
       instanceId,
-      credentialBinding: { owner: "t3", key: "failure" },
+      credentialBinding: { owner: "t3", claims: ["failure"] },
       methods: Effect.succeed([method]),
       authenticate: () => failure,
       logout: Effect.void,
@@ -333,7 +333,7 @@ const makeBlockingResponseHarness = Effect.gen(function* () {
   let responses = 0;
   const controller = yield* ProviderAuthFlow.make({
     instanceId,
-    credentialBinding: { owner: "t3", key: "blocked-response" },
+    credentialBinding: { owner: "t3", claims: ["blocked-response"] },
     methods: Effect.succeed([method]),
     authenticate: (_, context) =>
       Effect.gen(function* () {
@@ -480,7 +480,7 @@ it.effect("a failed method refresh keeps the last discovered methods", () =>
     let fail = false;
     const controller = yield* ProviderAuthFlow.make({
       instanceId,
-      credentialBinding: { owner: "provider", key: "shared-agent" },
+      credentialBinding: { owner: "provider", claims: ["shared-agent"] },
       methods: Effect.suspend(() =>
         fail
           ? Effect.fail(
@@ -523,7 +523,7 @@ it.effect("profile import stops owned sessions and gates access until credential
   Effect.gen(function* () {
     const controller = yield* ProviderAuthFlow.make({
       instanceId,
-      credentialBinding: { owner: "t3", key: "handoff-binding" },
+      credentialBinding: { owner: "t3", claims: ["handoff-binding"] },
       methods: Effect.succeed([method]),
       authenticate: () => Effect.void,
       logout: Effect.void,
