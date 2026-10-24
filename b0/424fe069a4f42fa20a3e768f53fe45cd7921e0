@@ -1,0 +1,41 @@
+packages/agent-runtime/src/orchestration-v2/Adapters/AcpAdapterV2.test.ts
+  s_9cccd37e800d7a::t_59b1dfa7a03b52 2251-2257,2259-2277
+  s_9cccd37e800d7a::t_fd89da6c73bfca 2278-2298,11799,12054
+packages/agent-runtime/scripts/acp-model-agent.ts
+  s_9cccd37e800d7a::t_d138b99b38f5a1 87-91
+  s_9cccd37e800d7a::t_60b593c85f68e5 83,92-93
+  s_9cccd37e800d7a::t_44f8b07127deeb 68,84,94
+packages/agent-runtime/src/orchestration-v2/testkit/ProviderSwitch.integration.test.ts
+  s_9cccd37e800d7a::t_c1e8f4a582bc39 118,138-144,165-167,1804-1811,1826-1830,1832,1838-1841,1866,1914-1922
+  s_9cccd37e800d7a::t_9340491c46157e 115,1923-1926
+packages/agent-runtime/src/orchestration-v2/ProviderTurnStartService.ts
+  s_9cccd37e800d7a::t_e0a124b1ba95f8 606-609,921-929
+packages/agent-runtime/vendor/provider-acp/src/server/adapter.ts
+  s_9cccd37e800d7a::t_ae66b974ea8a0b 6503,7092,7095,7107-7112,7132,7135-7136,7138-7140,7582,7683,7685-7703,8108,8111,8276-8279,8282
+packages/agent-runtime/vendor/provider-core/src/server/ProviderAdapter.ts
+  s_74cb07b04fcdc2::t_f53e4cc0b8f77e 555-556
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "b0424fe069a4f42fa20a3e768f53fe45cd7921e0",
+  "prompts": {},
+  "sessions": {
+    "s_74cb07b04fcdc2": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a16c5e-90b2-7e40-92fb-3de257969ffd",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_9cccd37e800d7a": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a16d80-f1cc-7471-9f61-cb6ea1bc793d",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
