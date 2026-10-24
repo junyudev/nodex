@@ -76,7 +76,7 @@ async function main() {
   const agentId = args.includes("--agent") ? value("--agent") : undefined;
   if (!homePath || !path.isAbsolute(homePath) || !agentId)
     throw new Error(
-      "Pass --home <absolute development home> --agent <Registry ID> [--exercise --model <ID>] [--authenticate --hold] [--repair-installation].",
+      "Pass --home <absolute development home> --agent <Registry ID> [--exercise --model <ID>] [--authenticate --hold] [--repair-installation] [--recover-session <ID>].",
     );
   const home = await openDevelopmentEnvironmentHome({ repositoryRoot: root, home: homePath });
   const reportPath = path.join(home.artifacts, `acp-live-${agentId}.json`);
@@ -170,11 +170,33 @@ async function main() {
     }
     return operation;
   };
+  const settled = async (target: { sessionId: string; threadId: string }, minimumRuns: number) => {
+    const deadline = Date.now() + 120_000;
+    while (Date.now() < deadline) {
+      const result = await invoke(page, "agent-runtime:session:read", target);
+      const runs = result.snapshot.projection.runs;
+      report.latestRunStatuses = runs.map((run) => ({ id: run.id, status: run.status }));
+      report.pendingRequestKinds = result.snapshot.projection.runtimeRequests
+        .filter((request) => request.status === "pending")
+        .map((request) => request.kind);
+      if (
+        runs.length >= minimumRuns &&
+        runs.every((run) =>
+          ["completed", "failed", "interrupted", "cancelled"].includes(run.status),
+        )
+      )
+        return result;
+      await delay(300);
+    }
+    throw new Error("Live Run exceeded two minutes.");
+  };
   try {
     page = await launch();
-    if (args.includes("--inspect-session")) {
+    if (args.includes("--inspect-session") || args.includes("--recover-session")) {
       const inspected = await invoke(page, "agent-runtime:session:read", {
-        sessionId: value("--inspect-session")!,
+        sessionId: value(
+          args.includes("--recover-session") ? "--recover-session" : "--inspect-session",
+        )!,
       });
       report.inspection = {
         sessionId: inspected.sessionId,
@@ -188,6 +210,44 @@ async function main() {
           .map((message) => ({ runId: message.runId, text: message.text })),
         runs: inspected.snapshot.projection.runs.map((run) => ({ id: run.id, status: run.status })),
       };
+      if (args.includes("--recover-session")) {
+        const target = {
+          sessionId: inspected.sessionId,
+          threadId: inspected.snapshot.projection.thread.id,
+        };
+        conversationTarget = target;
+        const before = inspected.snapshot.projection.providerThreads.map(
+          (thread) => thread.nativeThreadRef?.nativeId ?? null,
+        );
+        const assistantCount = inspected.snapshot.projection.messages.filter(
+          (message) => message.role === "assistant",
+        ).length;
+        await invoke(page, "agent-runtime:session:message", {
+          ...target,
+          message: { messageId: createUuidV7(), text: "Reply RESTORED and nothing else." },
+        });
+        const result = await settled(target, inspected.snapshot.projection.runs.length + 1);
+        const after = result.snapshot.projection.providerThreads.map(
+          (thread) => thread.nativeThreadRef?.nativeId ?? null,
+        );
+        report.recoveryAttempt = {
+          ...target,
+          before,
+          after,
+          identityPreserved: JSON.stringify(before) === JSON.stringify(after),
+          newAssistantMessages:
+            result.snapshot.projection.messages.filter((message) => message.role === "assistant")
+              .length - assistantCount,
+          runs: result.snapshot.projection.runs.map((run) => ({ id: run.id, status: run.status })),
+        };
+        checks.nativeRecovery = {
+          status:
+            result.snapshot.projection.runs.at(-1)?.status === "completed" &&
+            JSON.stringify(before) === JSON.stringify(after)
+              ? "verified"
+              : "failed",
+        };
+      }
       process.exitCode = 2;
       return;
     }
@@ -420,27 +480,7 @@ async function main() {
     const target = { sessionId: launched.sessionId, threadId: launched.threadId };
     conversationTarget = target;
     report.session = target;
-    const settled = async (minimumRuns: number) => {
-      const deadline = Date.now() + 120_000;
-      while (Date.now() < deadline) {
-        const result = await invoke(page, "agent-runtime:session:read", target);
-        const runs = result.snapshot.projection.runs;
-        report.latestRunStatuses = runs.map((run) => ({ id: run.id, status: run.status }));
-        report.pendingRequestKinds = result.snapshot.projection.runtimeRequests
-          .filter((request) => request.status === "pending")
-          .map((request) => request.kind);
-        if (
-          runs.length >= minimumRuns &&
-          runs.every((run) =>
-            ["completed", "failed", "interrupted", "cancelled"].includes(run.status),
-          )
-        )
-          return result;
-        await delay(300);
-      }
-      throw new Error("Live Run exceeded two minutes.");
-    };
-    const first = await settled(1);
+    const first = await settled(target, 1);
     report.firstRunStatuses = first.snapshot.projection.runs.map((run) => run.status);
     const output = await readFile(path.join(home.workspace, "acp-live-output.txt"), "utf8").catch(
       () => "",
@@ -483,7 +523,7 @@ async function main() {
       ...target,
       runId: running.id,
     });
-    const stoppedState = await settled(2);
+    const stoppedState = await settled(target, 2);
     nativeTimeline.push({
       phase: "stopped",
       nativeIds: stoppedState.snapshot.projection.providerThreads.map(
@@ -495,7 +535,7 @@ async function main() {
       ...target,
       message: { messageId: createUuidV7(), text: "Reply CONTINUED and nothing else." },
     });
-    const continued = await settled(3);
+    const continued = await settled(target, 3);
     nativeTimeline.push({
       phase: "continued",
       nativeIds: continued.snapshot.projection.providerThreads.map(
@@ -534,7 +574,7 @@ async function main() {
         ...target,
         message: { messageId: createUuidV7(), text: "Reply RESTORED and nothing else." },
       });
-      const recovered = await settled(4);
+      const recovered = await settled(target, 4);
       nativeTimeline.push({
         phase: "recovered",
         nativeIds: recovered.snapshot.projection.providerThreads.map(
