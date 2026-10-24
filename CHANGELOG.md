@@ -13,9 +13,7 @@ All notable changes to this project will be documented in this file.
 ### Changed
 
 - Codex reuses the user's native home, including configuration and hooks, without selecting a separate directory from Profile history. Changing the Codex home takes effect after restart; native conversations enter the sidebar only when explicitly connected.
-
 - Chats automatically load earlier messages as you scroll up, preserve your reading position, and offer retries beside any history that could not load. Imported conversations can be browsed beyond the previous history-window limit.
-
 - A message sent from the Inbox to a chat stays tied to that chat. Its Page shows the chat and its live status on its Board, List and Page, and its status moves from Triage to Build, Plan or Ship as the message is handled, without overriding a status you set yourself. History leads with work still in progress until you mark it done, and a decided message shows where it went before it folds away.
 
 ### Fixed
@@ -51,21 +49,13 @@ All notable changes to this project will be documented in this file.
 ### Added
 
 - Home and Space separate chats and Projects from content browsing while remembering each destination. The navigation rail remains available with the sidebar hidden, and each split panel has an Open tabs chooser with live titles and counts.
-
 - An Inbox above New chat captures thoughts, todos and questions as Pages without first choosing a Project, and opens them as tabs beside itself. A suggestion Agent names messages and always proposes a concrete next step for confirmation, with exact targets and grouped scope visible. Drafts and confirmed inputs survive interrupted replies, edits preserve concurrent changes, and grouped filing has one atomic Undo. Busy chats receive confirmed messages into their own queue. Settings reuse available models while refreshing. Handled messages leave for History, and a message sent by mistake can be deleted for good. Agents and `nodex inbox send` can leave messages in the Inbox of the Project they work in. Messages are written in Markdown and can carry pasted, dropped or picked images, and the stream shows each message with its formatting and images. A message marked important stays within reach: while it is out of view, the Inbox points back to it with how long it has waited.
-
 - Appearance settings can choose UI, content and code fonts separately for light and dark themes, with independent UI, code and Page text sizes that stay consistent across windows and restart.
-
 - A started chat can continue on another Agent: choose another Agent's model and the next message carries the conversation so far to it, including in finished chats. Returning to an earlier Agent resumes its own conversation with only what it missed, and the transcript marks each handoff. Agents can do the same for another chat, and each model keeps the options last chosen for it.
-
 - A fork can merge its finished work back into the chat it came from with `/merge`; that chat's next message carries what the fork found, on whichever Agent it uses. Agents can merge forks they manage.
-
 - Codex and Claude chats can delegate work to each other, open each child's conversation, and receive results after the parent Turn ends. Delegated work, result delivery and cancellation survive runtime restart, while Profile snapshots preserve the complete execution history and native conversation identities.
-
 - Chats can use configured OpenCode models, including Kimi and OpenRouter providers, through the shared searchable model menu, with native options and questions. OpenCode is enabled by default, initially showing its `-free` models with other models available through Show all models. If OpenCode is missing, its official installer is available directly from the model menu and Settings. Independent profiles preserve model choices, and conversation history restores each prompt with its replies across restart and pagination.
-
 - Local tasks can use Claude Code with its existing login, configuration, skills and tools in the shared conversation UI, including images, native model and effort choices, questions, task details, steering, compaction, forks and session recovery. Chats can start in the Project folder or a managed worktree with the selected starting state and setup environment, then move between them while retaining the same native conversation and uncommitted changes. Existing CLI conversations can be connected to a Project or projectless chat and inspected through their native history. Separate profiles support environment variables, encrypted tokens and custom models. Application tools and scheduled tasks use the selected native profile.
-
 - Dictation streams into your draft by default, preserves edits when the cursor moves, and offers captured speech for recovery after an interruption. Streaming uses authenticated desktop connections with workspace and system-proxy routing, and performance details identify handshake rejections and timeouts.
 - Admitted Codex chats can start realtime voice with microphone and output mute controls. Calls stay active while switching chats within the same window and release their microphone when ended or cancelled.
 - Voice settings can manage an account dictionary when available.
@@ -86,31 +76,21 @@ All notable changes to this project will be documented in this file.
 - Markdown written with `*` or `+` bullets, `1)` numbers, lists nested with spaces, or tables with short `| - |` rules keeps its lists, nesting and tables in Pages, and a paragraph that merely starts like a list or heading stays a paragraph.
 - The messages you write in a chat show in the same message style as the Inbox: lines you wrote together stay together, bare links are clickable, and long messages collapse the same way.
 - An unsent chat draft keeps its images across a reload or restart, not only its text.
-
 - Scheduled has its own sidebar of upcoming tasks with search, status filters and task actions. Cron tasks open as folders of their runs, runs and Heartbeat chats open without leaving Scheduled, and tasks are created and edited in a focused dialog. A selected task reads as the conversation that set it up, with a reply box for follow-up questions.
-
 - The composer that floats over full-width content can be dragged to any corner or the bottom centre, resized from either edge, and minimized to a bubble that keeps its own corner. Its header with chat and location controls unfolds while you type, clicking it expands the latest reply above the prompt, and an unread reply appears as a card you can open or dismiss. Size and position are remembered.
-
 - A Project now opens on its own Inbox. Thoughts about the Project land there as Pages on its Board, suggestions stay inside the Project, and the sidebar counts what is waiting. The Board opens beside the Inbox as an ordinary tab, and `⌘⇧D` captures into the Inbox of the Project you are in.
 - Nodex starts faster by loading optional panels when opened, with a restart action if a view cannot load.
-
 - Agents can read and write all Projects, Pages and Library resources in the current Profile, including across Sessions and from background tasks. Native execution uses full access and automatically approves permission requests while retaining questions that need your input.
-
 - Long chats display bounded history while restoring execution, update streamed items independently, and give foreground history requests dedicated capacity. Persisted and live voice segments keep their native order alongside text; missing promoted content and failed item-history pages can be restored in place. Completed responses show their available outputs, and active voice work keeps its live status. Sending, expanding tools, and resizing the composer preserve the reading position; Find includes all assistant messages and retained voice text, with highlights restored as visible rows change.
-
 - Queued follow-ups show native and captured local messages together, with editing, ordering and delivery routed to each message's owner. Widget requests wait for the native queue to drain before submitting their confirmed context.
-
 - New Profiles reuse native Codex login, settings and skills by default, with safe directory switching, a shared native conversation chooser, and desktop tools scoped to each Nodex Profile. An independent account directory can change the active login after restart while retaining the same conversation history.
 - Nodex is now distributed under the Apache License 2.0.
 
 ### Fixed
 
 - Terminal output failures no longer trigger runaway error reporting and memory exhaustion.
-
 - Existing Profiles open reliably after an upgrade and resume background cleanup while preserving saved document content.
-
 - macOS notifications wait for system authorization before sending, and Settings shows the current permission with an action to allow notifications or open System Settings.
-
 - Terminals retain startup events and release processes that exit before attachment completes.
 - Deleted Pages are cleared from local storage once their retention period ends instead of being kept indefinitely.
 - Retained edits that cannot be received can now be removed from this device after confirmation, clearing their warning without changing current documents.
@@ -130,7 +110,6 @@ All notable changes to this project will be documented in this file.
 ### Added
 
 - Command Palette can now search local workspace files and open previews, with directory completion shared across file-search surfaces.
-
 - Local agent tasks can discover Projects, create, fork, and move Sessions, send follow-ups, manage scheduled tasks, wait for tasks to complete or need attention, read and edit authorized content, open files at a line and targeted Review sources, navigate Sessions, use bundled document dependencies, arrange tabs, and organize the Sidebar through native application tools that respect the Turn's permissions, including verified Full access for tasks without a Project. Workbench context follows each accepted message or steer, reports missing context without blocking submission, and preserves exact long-path file targets through preview and pinning.
 - Local Full access Agent tasks can now work with Nodex through the bundled CLI, with automatic task context, command help organized by task, complete write examples, direct text streams, bare resource IDs, SQL reads across Page bodies, properties, saved Views and Files, ranked Page search, atomic schema/View configuration with saved filters, Property batches that preserve the original read versions, atomic Page creation batches, and file-based drafts that preserve Block identities and reject conflicting edits without replacing the whole Page.
 - Page and Canvas unsaved edits can now be reviewed, restored or saved as a separate copy, with reversible discard, automatic confirmation of already saved drafts, and recovery across restarts and windows. Retained packages remain individually visible after closing a document or losing the Core connection, with complete local export even when reception or preview is unavailable.
