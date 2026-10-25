@@ -1,0 +1,23 @@
+packages/agent-runtime/src/nodex/AcpAuthenticationConformance.test.ts
+  s_9cccd37e800d7a::t_f9b56b5d597348 1-4
+packages/agent-runtime/vite.config.ts
+  s_9cccd37e800d7a::t_f193ce000e838e 13-16
+packages/agent-runtime/vendor/provider-core/src/server/providerAuthFlow.test.ts
+  s_9cccd37e800d7a::t_b7f37b2b93b0fa 541,544,546-550,552
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "9614d41e42e4d581c444e7e130c29e70b6ec5218",
+  "prompts": {},
+  "sessions": {
+    "s_9cccd37e800d7a": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a16d80-f1cc-7471-9f61-cb6ea1bc793d",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
