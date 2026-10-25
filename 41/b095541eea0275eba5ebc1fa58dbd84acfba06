@@ -1,0 +1,26 @@
+src/renderer/components/ui/input.tsx
+  s_901e7cdfde4ade::t_3dba32a8177c57 8
+src/renderer/features/acp-agents/acp-agent-add-dialog.tsx
+  s_901e7cdfde4ade::t_5ececd5cbc3787 22,65-68,71,74-104,108,113-114,121-122,131,136,172,183,397-401,403-404,443,445,479-484,504,532,536-555,557,570,572,583,585,601,607-612,616,619,706-710,713,720,722-723,726,728,731-732,734-735,757,772
+src/renderer/features/acp-agents/acp-agent-add-dialog.test.tsx
+  s_901e7cdfde4ade::t_6296cceec5d892 28-39,131-205
+  s_901e7cdfde4ade::t_dcaff365662399 206
+docs/product-specs/acp-agent-behavior.md
+  s_901e7cdfde4ade::t_3e568a3091fd41 172-174
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "41b095541eea0275eba5ebc1fa58dbd84acfba06",
+  "prompts": {},
+  "sessions": {
+    "s_901e7cdfde4ade": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "dbfeb0b2-2a6b-4724-8483-90ea2623a3fd",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
