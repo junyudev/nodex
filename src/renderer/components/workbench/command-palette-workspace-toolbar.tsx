@@ -1,5 +1,4 @@
-import { useRef, useState, type ComponentPropsWithRef, type Ref } from "react";
-import { useMergeRefs } from "@floating-ui/react";
+import { useRef, useState, type ComponentPropsWithRef, type RefObject } from "react";
 import type { FileSearchScope } from "../../../shared/file-search";
 import {
   commandPaletteWorkspaceScope,
@@ -18,7 +17,7 @@ export interface CommandPaletteWorkspaceToolbarProps {
   readonly contextScope?: FileSearchScope | null;
   readonly contextLabel?: string;
   readonly onSelectionChange: (selection: CommandPaletteWorkspaceSelection) => void;
-  readonly firstControlRef?: Ref<HTMLButtonElement>;
+  readonly firstControlRef?: RefObject<HTMLButtonElement | null>;
   readonly onChooseFolder?: () => Promise<FileSearchScope | null>;
 }
 
@@ -57,8 +56,8 @@ export function CommandPaletteWorkspaceToolbar({
   const [choosing, setChoosing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const chooseAfterClose = useRef(false);
-  const triggerRef = useRef<HTMLButtonElement>(null);
-  const mergedTriggerRef = useMergeRefs([triggerRef, firstControlRef]);
+  const localTriggerRef = useRef<HTMLButtonElement>(null);
+  const triggerRef = firstControlRef ?? localTriggerRef;
   const restoreFocus = () => triggerRef.current?.focus();
   const context =
     contextScope?.roots.length && contextScope.hostId === scope?.hostId ? contextScope : null;
@@ -129,7 +128,7 @@ export function CommandPaletteWorkspaceToolbar({
         triggerButton={
           <FolderTrigger
             tooltipContent={scope?.roots.join("\n")}
-            ref={mergedTriggerRef}
+            ref={triggerRef}
             type="button"
             disabled={choosing}
             aria-label="Search folder"

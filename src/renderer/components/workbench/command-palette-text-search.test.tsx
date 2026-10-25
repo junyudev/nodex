@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { createRef, useRef, useState } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, fireEvent, waitFor, within } from "@testing-library/react";
 import { afterEach, expect, test, vi } from "vite-plus/test";
@@ -154,6 +154,32 @@ test("folder chooser survives toolbar removal and selects a directory on its ori
   );
   await waitFor(() => expect(view.queryByRole("dialog")).toBeNull());
 });
+
+test.each([false, true])(
+  "folder selection restores focus with an external control ref: %s",
+  async (external) => {
+    const control = createRef<HTMLButtonElement>();
+    const view = renderWithAppMaitai(
+      <CommandPaletteWorkspaceToolbar
+        contextScope={scope}
+        onSelectionChange={vi.fn()}
+        firstControlRef={external ? control : undefined}
+        onChooseFolder={async () => null}
+      />,
+    );
+    const trigger = view.getByRole("button", { name: "Search folder" });
+    if (external) expect(control.current).toBe(trigger);
+    await openNodexMenu(trigger);
+    const choose = await view.findByRole("menuitem", { name: "Choose folder" });
+    await act(async () => {
+      fireEvent.click(choose);
+      await Promise.resolve();
+    });
+    await waitFor(() => expect(document.activeElement).toBe(trigger));
+    view.unmount();
+    expect(control.current).toBeNull();
+  },
+);
 
 test("folder chooser can navigate above the resolved host home", async () => {
   mocks.directory.mockImplementation(async (input) => ({
