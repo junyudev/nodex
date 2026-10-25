@@ -12,6 +12,7 @@ import { AutomationApplication } from "./AutomationApplication";
 import { AutomationExecution, live } from "./AutomationExecution";
 import { live as backendRegistryLive } from "../agent-backend/AgentBackendRegistry";
 import { ApplicationSettings } from "../settings/ApplicationSettings";
+import { toElectronIpcRendererError } from "../platform/electron/electron-ipc-error";
 
 const definition: CodexScheduledAutomation = {
   id: "report",
@@ -480,6 +481,44 @@ it.effect(
       assert.equal(fixture.launches.length, 0);
       assert.equal(fixture.runs.size, 0);
       assert.equal(fixture.physical.size, 0);
+    }).pipe(Effect.provide(fixture.layer));
+  },
+);
+
+it.effect(
+  "refusals tell the user what to change, as the scheduled-task toast receives them",
+  () => {
+    const fixture = setup(acpBinding);
+    const refusal = <A, E>(effect: Effect.Effect<A, E>) =>
+      effect.pipe(
+        Effect.flip,
+        Effect.map((error) => toElectronIpcRendererError(error).message),
+      );
+    return Effect.gen(function* () {
+      const execution = yield* AutomationExecution;
+      const definition = fixture.state.definition;
+      assert.equal(
+        yield* refusal(execution.prepareDefinition({ ...definition, model: "retired" })),
+        "This Agent doesn't offer model 'retired'. Choose another model.",
+      );
+      assert.equal(
+        yield* refusal(execution.prepareDefinition({ ...definition, reasoningEffort: "high" })),
+        "Model 'model' doesn't offer 'high'. Choose its options again.",
+      );
+      fixture.state.instanceEnabled = false;
+      assert.equal(
+        yield* refusal(execution.prepareDefinition(definition)),
+        "This Agent is turned off. Turn it on in Settings.",
+      );
+      fixture.state.instanceEnabled = true;
+      fixture.state.instanceAvailable = false;
+      assert.equal(
+        yield* refusal(execution.prepareDefinition(definition)),
+        "This Agent was removed from Settings.",
+      );
+      fixture.state.instanceAvailable = true;
+      fixture.state.failedOutcome = true;
+      assert.equal(yield* refusal(execution.runNow({ id: definition.id })), "The run failed.");
     }).pipe(Effect.provide(fixture.layer));
   },
 );

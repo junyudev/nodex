@@ -323,7 +323,7 @@ export const make: Effect.Effect<
       if (input.kind !== "heartbeat" || input.targetSessionId) {
         return yield* evaluate(operation, () => toCoreAutomationDefinitionInput(input));
       }
-      return yield* error(operation, new Error("Heartbeat target Session is required"));
+      return yield* error(operation, new Error("Choose a chat for this heartbeat."));
     },
   );
 

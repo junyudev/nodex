@@ -81,7 +81,8 @@ const modelOption = (
   tier: string | null,
 ) => {
   const selected = provider.models.find((item) => item.slug === model);
-  if (!selected) throw new Error(`Model '${model}' is unavailable`);
+  if (!selected)
+    throw new Error(`This Agent doesn't offer model '${model}'. Choose another model.`);
   const options: Array<{ id: string; value: string | boolean }> = [];
   const descriptors = selected.capabilities?.optionDescriptors ?? [];
   for (const [pattern, value] of [
@@ -91,7 +92,7 @@ const modelOption = (
     if (value === null) continue;
     const option = descriptors.find((item) => pattern.test(item.id));
     if (option?.type !== "select" || !option.options.some((item) => item.id === value))
-      throw new Error("Requested model option is unavailable");
+      throw new Error(`Model '${model}' doesn't offer '${value}'. Choose its options again.`);
     options.push({ id: option.id, value });
   }
   return options;
@@ -130,9 +131,16 @@ export const live: Layer.Layer<
         (item) => item.instanceId === instanceId,
       );
       if (!provider?.enabled || !provider.installed || provider.status === "error")
-        return yield* fail("model", "Configured Agent Instance is unavailable");
+        return yield* fail(
+          "model",
+          "This scheduled task's Agent is off or unavailable. Turn it on in Settings or choose another Agent.",
+        );
       const model = definition.model ?? provider.models[0]?.slug;
-      if (!model) return yield* fail("model", "Agent Instance has no available models");
+      if (!model)
+        return yield* fail(
+          "model",
+          "This scheduled task's Agent has no models yet. Connect it in Settings.",
+        );
       const options = yield* Effect.try(() =>
         modelOption(provider, model, definition.reasoningEffort, definition.serviceTier),
       );
@@ -148,14 +156,17 @@ export const live: Layer.Layer<
           if (input.kind === "heartbeat") {
             const sessionId = input.targetSessionId ?? current?.targetSessionId;
             if (!sessionId)
-              return yield* fail("prepare-definition", "Heartbeat target Session is required");
+              return yield* fail("prepare-definition", "Choose a chat for this heartbeat.");
             const session = yield* workspace.getProjectSession(sessionId);
             if (
               !session?.executionRef ||
               session.archived ||
               session.projectId !== (input.projectId ?? current?.projectId ?? null)
             )
-              return yield* fail("prepare-definition", "Heartbeat target is unavailable");
+              return yield* fail(
+                "prepare-definition",
+                "This heartbeat's chat is archived or no longer available. Choose another chat.",
+              );
             const actual = yield* application.inspect({ sessionId });
             if (
               actual.thread.providerInstanceId !==
@@ -163,7 +174,10 @@ export const live: Layer.Layer<
                 input.backendBinding ?? current?.backendBinding ?? CODEX_AGENT_BACKEND_BINDING,
               )
             )
-              return yield* fail("prepare-definition", "Heartbeat target Agent Instance changed");
+              return yield* fail(
+                "prepare-definition",
+                "A heartbeat runs on its chat's Agent. Choose the Agent this chat uses.",
+              );
           }
           const selected = yield* selection({
             backendBinding:
@@ -214,7 +228,10 @@ export const live: Layer.Layer<
         ),
       );
       if (outcome.status !== "completed")
-        return yield* fail("execute", `Automation ${outcome.status}`);
+        return yield* fail(
+          "execute",
+          outcome.status === "failed" ? "The run failed." : `The run was ${outcome.status}.`,
+        );
       const item = outcome.finalAssistantItemId
         ? yield* application.item({ sessionId, itemId: outcome.finalAssistantItemId })
         : null;
@@ -231,14 +248,15 @@ export const live: Layer.Layer<
         (context.definitionRevision !== undefined &&
           context.definitionRevision !== definition.definitionRevision)
       )
-        return yield* fail("execute", "Automation changed before execution");
+        return yield* fail("execute", "This scheduled task changed before it ran. Try again.");
       const dispatchId = context.dispatchId ?? (context.reason === "run-now" ? randomUUID() : null);
       if (!dispatchId)
         return yield* fail("execute", "Scheduled execution requires its durable dispatch identity");
       const selected = yield* selection(definition);
       if (definition.kind === "heartbeat") {
         const sessionId = definition.targetSessionId;
-        if (!sessionId) return yield* fail("heartbeat", "Heartbeat target Session is unavailable");
+        if (!sessionId)
+          return yield* fail("heartbeat", "This heartbeat's chat is no longer available.");
         const session = yield* workspace.getProjectSession(sessionId);
         const target = yield* application.inspect({ sessionId });
         if (
@@ -246,7 +264,10 @@ export const live: Layer.Layer<
           target.thread.archivedAt !== null ||
           target.thread.providerInstanceId !== selected.instanceId
         )
-          return yield* fail("heartbeat", "Heartbeat target Agent Instance changed");
+          return yield* fail(
+            "heartbeat",
+            "A heartbeat runs on its chat's Agent. Choose the Agent this chat uses.",
+          );
         const messageId = identity("heartbeat", [definition.id, dispatchId]);
         const previous = yield* application.runOutcome({ sessionId, messageId });
         if (previous) {
@@ -282,7 +303,7 @@ export const live: Layer.Layer<
           context.reason === "run-now" &&
           !(yield* automation.definitions.dispatchNow(definition.id))
         )
-          return yield* fail("heartbeat", "Automation changed before dispatch");
+          return yield* fail("heartbeat", "This scheduled task changed before it ran. Try again.");
         const changes = yield* subscribeExecutionChanges(supervisor.get());
         yield* application.queueMessage({
           sessionId,
@@ -299,10 +320,14 @@ export const live: Layer.Layer<
         context.reason === "run-now" &&
         !(yield* automation.definitions.dispatchNow(definition.id))
       )
-        return yield* fail("execute", "Automation changed before dispatch");
+        return yield* fail("execute", "This scheduled task changed before it ran. Try again.");
       const cwds: readonly (string | null)[] =
         definition.projectId === null ? [null] : definition.cwds;
-      if (cwds.length === 0) return yield* fail("execute", "Automation workspace is unavailable");
+      if (cwds.length === 0)
+        return yield* fail(
+          "execute",
+          "This scheduled task has no folder to run in. Choose a Project folder.",
+        );
       for (const [index, cwd] of cwds.entries()) {
         const runId = identity("run", [definition.id, dispatchId, index]);
         const sessionId = identity("session", [definition.id, dispatchId, index]);
@@ -367,7 +392,7 @@ export const live: Layer.Layer<
           "run-now",
           Effect.gen(function* () {
             const definition = yield* automation.definitions.get(input.id);
-            if (!definition) return yield* fail("run-now", "Automation not found");
+            if (!definition) return yield* fail("run-now", "This scheduled task no longer exists.");
             const now = yield* Clock.currentTimeMillis;
             yield* execute(definition, {
               now,

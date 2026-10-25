@@ -6,6 +6,7 @@ import type {
 } from "../../../shared/acp-agent-settings";
 import { agentRuntimeProviderId } from "../../../shared/agent-runtime-provider";
 import { formatBytes } from "../../lib/file-metadata-format";
+import { readableIpcError } from "../../lib/ipc-error-message";
 
 export type AcpInspection = AcpOperations["acp.inspect"]["output"];
 export type AcpOperation = AcpOperations["acp.operation.read"]["output"];
@@ -22,12 +23,9 @@ export type AcpDistribution = "binary" | "npx" | "uvx";
 export type AcpDistributionChoice = "auto" | AcpDistribution;
 export type AcpUrlAuthAction = NonNullable<AcpFailure["authAction"]>;
 
-/** A rejected IPC call loses its structure; the readable part follows Electron's prefix. */
-const REMOTE_METHOD_PREFIX = /^Error invoking remote method '[^']+': (?:[A-Za-z]*Error: )?/u;
+/** A rejected IPC call loses its structure; only its readable reason remains. */
 export const describeAcpCause = (cause: unknown): string =>
-  (cause instanceof Error ? cause.message : String(cause))
-    .replace(REMOTE_METHOD_PREFIX, "")
-    .trim() || "Something went wrong.";
+  readableIpcError(cause, "Something went wrong.");
 
 /** Transport and programming failures become an `invalid_request` failure with their message. */
 export const transportFailure = (cause: unknown): AcpFailure => ({

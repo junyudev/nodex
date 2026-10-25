@@ -34,12 +34,9 @@ import {
   undoInboxDecision,
 } from "@/lib/inbox-runtime";
 import { CoreApiError } from "@/lib/core-api-error";
+import { readableIpcError } from "@/lib/ipc-error-message";
 import { RendererCommandRejectedError } from "@/lib/renderer-command";
-import {
-  inboxReceiptNeedsReview,
-  readableInboxError,
-  type InboxDecision,
-} from "./inbox-presentation";
+import { inboxReceiptNeedsReview, type InboxDecision } from "./inbox-presentation";
 import { invalidateInbox } from "./use-inbox";
 import { useInboxCaptureState } from "./use-inbox-capture";
 
@@ -134,7 +131,7 @@ export function useInboxActions(
       await task();
       return true;
     } catch (error) {
-      toast.danger(readableInboxError(error, fallback));
+      toast.danger(readableIpcError(error, fallback));
       return false;
     } finally {
       void invalidateInbox(queryClient);

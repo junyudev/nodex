@@ -117,24 +117,20 @@ export const resolveAgentBackendBinding = (
   }
   const instance = settings.acpAgents.instances.find(({ id }) => id === binding.instanceConfigId);
   if (instance === undefined) {
-    return unavailable(
-      binding,
-      "instance-unavailable",
-      `ACP Agent instance is unavailable: ${binding.instanceConfigId}`,
-    );
+    return unavailable(binding, "instance-unavailable", "This Agent was removed from Settings.");
   }
   if (!instance.enabled) {
     return unavailable(
       binding,
       "instance-disabled",
-      `ACP Agent instance is disabled: ${binding.instanceConfigId}`,
+      "This Agent is turned off. Turn it on in Settings.",
     );
   }
   if (instance.agentDefinitionId !== binding.agentDefinitionId) {
     return unavailable(
       binding,
       "instance-definition-mismatch",
-      "ACP Agent instance belongs to another Agent definition",
+      "This Agent instance changed to a different Agent. Choose it again.",
     );
   }
   return {
@@ -207,7 +203,7 @@ export const make = Effect.gen(function* () {
         const instance = snapshot.acpAgents.instances.find(({ id }) => id === instanceConfigId);
         if (instance === undefined) {
           return yield* new AgentBackendRegistryError({
-            message: `ACP Agent instance is unavailable: ${instanceConfigId}`,
+            message: "This Agent was removed from Settings.",
             reason: "instance-unavailable",
             backendKind: "acp",
             instanceConfigId,

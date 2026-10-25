@@ -436,15 +436,6 @@ export const inboxReceiptNeedsReview = (error: unknown): boolean =>
   error instanceof CoreApiError &&
   (error.code === "idempotency_window_expired" || error.code === "legacy_idempotency_unavailable");
 
-const REMOTE_METHOD_PREFIX = /^Error invoking remote method '[^']+': (?:[A-Za-z]*Error: )?/;
-
-/** Electron prefixes rejected IPC calls; the Core reason after it is the useful part. */
-export function readableInboxError(error: unknown, fallback: string): string {
-  const message = error instanceof Error ? error.message : typeof error === "string" ? error : "";
-  const readable = message.replace(REMOTE_METHOD_PREFIX, "").trim();
-  return readable || fallback;
-}
-
 /**
  * Where the oldest-first Inbox stream shows a centered time, as a conversation does: above
  * the first message once it is over an hour old, and above any message sent over an hour

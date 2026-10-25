@@ -10,7 +10,8 @@ import {
   retryPersistedAtom,
   type PersistedAtomDefinition,
 } from "@/lib/maitai";
-import { inboxReceiptNeedsReview, readableInboxError } from "./inbox-presentation";
+import { readableIpcError } from "@/lib/ipc-error-message";
+import { inboxReceiptNeedsReview } from "./inbox-presentation";
 import {
   EMPTY_INBOX_CAPTURE_STATE,
   changeInboxDraft,
@@ -116,7 +117,7 @@ export function useInboxCapture({
           intent.pageId,
           inboxReceiptNeedsReview(error)
             ? "Could not verify whether this capture was saved. Check the Inbox before recovering it."
-            : readableInboxError(error, "Message not saved — retry"),
+            : readableIpcError(error, "Message not saved — retry"),
           inboxReceiptNeedsReview(error),
         ),
       ).catch(() => undefined);

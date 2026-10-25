@@ -9,6 +9,7 @@ import {
   setCodexAutomationRunReadState,
   updateCodexScheduledAutomation,
 } from "@/lib/codex-automation-runtime";
+import { readableIpcError } from "@/lib/ipc-error-message";
 import { queryKeys } from "@/lib/query-keys";
 import { useCodexAutomationRunsInbox } from "@/lib/use-codex-automation-runs-inbox";
 import { useCodexScheduledAutomations } from "@/lib/use-codex-scheduled-automations";
@@ -27,8 +28,7 @@ import {
 const EMPTY_TASKS: readonly CodexScheduledAutomation[] = [];
 
 function showMutationError(title: string, error: unknown): void {
-  const message = error instanceof Error ? error.message.trim() : "";
-  toast.danger(title, { description: message || undefined });
+  toast.danger(title, { description: readableIpcError(error) || undefined });
 }
 
 /**

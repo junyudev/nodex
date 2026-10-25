@@ -164,10 +164,12 @@ bounded within the due lease; failure, timeout and interruption cancel only thei
 accepted Turn, settle the run and retain its review record.
 
 Create stays disabled, with a tooltip naming what is missing, until the draft is
-valid; success selects the new task. Editing saves only through `Save`, and its
-footer pauses or resumes the task immediately. Closing a changed draft asks
-`Discard changes?` with `Keep editing` and `Discard changes`; an untouched draft
-closes directly.
+valid; success selects the new task. When a create, save or Run now is refused, its
+notification shows only the reason and what to change, such as a turned-off or
+removed Agent, a model or option the Agent doesn't offer, or a Heartbeat chat that
+is gone. Editing saves only through `Save`, and its footer pauses or resumes the
+task immediately. Closing a changed draft asks `Discard changes?` with
+`Keep editing` and `Discard changes`; an untouched draft closes directly.
 
 ## Notification preferences
 

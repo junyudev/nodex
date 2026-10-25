@@ -15,8 +15,8 @@ import {
   NodexSettingsSection as SectionBlock,
 } from "@/components/ui/settings";
 import { toast } from "@/components/ui/toast";
+import { readableIpcError } from "@/lib/ipc-error-message";
 import { useAgentRuntimeProviders } from "@/lib/use-agent-runtime-providers";
-import { readableInboxError } from "./inbox-presentation";
 import { useInboxSettingsQuery, useUpdateInboxSettings } from "./use-inbox";
 
 type InboxProvider = AgentRuntimeOperations["providers.read"]["output"][number];
@@ -113,7 +113,7 @@ export function InboxSettingsPage() {
         if (input.instructions !== undefined)
           setInstructionsDraft((current) => (current === input.instructions ? null : current));
       },
-      onError: (error) => toast.danger(readableInboxError(error, "Inbox settings were not saved")),
+      onError: (error) => toast.danger(readableIpcError(error, "Inbox settings were not saved")),
     });
 
   if (!settingsQuery.data)
