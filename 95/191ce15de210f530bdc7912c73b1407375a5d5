@@ -1,0 +1,26 @@
+docs/product-specs/settings-route-behavior.md
+  s_be2168b060c315::t_b98ffbdc1a3f36 118-121
+  s_be2168b060c315::t_8472a99c6dec16 122
+src/renderer/components/workbench/workbench-settings-search-catalog.node.test.ts
+  s_be2168b060c315::t_14078e54f4b816 138-146
+src/renderer/lib/settings-search.node.test.ts
+  s_be2168b060c315::t_14078e54f4b816 138-162
+src/renderer/lib/settings-search.ts
+  s_be2168b060c315::t_f905b9b6f347ed 33-34,129-134,148,150
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "95191ce15de210f530bdc7912c73b1407375a5d5",
+  "prompts": {},
+  "sessions": {
+    "s_be2168b060c315": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "dc4b3d75-218a-4f02-ae3e-b579fb7c2f60",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
