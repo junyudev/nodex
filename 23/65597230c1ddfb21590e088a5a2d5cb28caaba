@@ -1,0 +1,35 @@
+src/renderer/features/workspace-files/workspace-files-panel.tsx
+  s_38977beeb600f3::t_cb9b43ec7ed2be 208,309,402,435,1313
+  s_38977beeb600f3::t_c741eb2ceee66e 225,602-609
+src/renderer/features/workspace-files/workspace-pierre-editor.test.tsx
+  s_38977beeb600f3::t_2bcf24f4a2579f 172,184,191
+  s_38977beeb600f3::t_1c41f9ba1bb4a7 1,3,45,57,61-62,90-91,169-171,175-181,183,186,188-190,195,198-199,202-204
+  s_38977beeb600f3::t_687bcd3fb9dc8d 8-18,20-28,58-60,173-174,182,185,187,192-194,196,200-201,205
+  s_38977beeb600f3::t_3514c9a5d25dbc 19,50
+  s_38977beeb600f3::t_8b92fcf7884628 197,206
+src/renderer/features/workspace-files/workspace-pierre-editor.tsx
+  s_38977beeb600f3::t_a8f74a189bd1c4 10,62,65-68,111-113,116-123,125-126,128,144
+  s_38977beeb600f3::t_184d3cbbe3a2c5 36-38,114,127
+src/renderer/components/ui/source-viewer.test.tsx
+  s_38977beeb600f3::t_5b31087cd01248 48-50
+  s_38977beeb600f3::t_c38c97cb1f83f2 1,3,14-17,38-42,51-53,76-77,81-107
+src/renderer/components/ui/source-viewer.tsx
+  s_38977beeb600f3::t_0eafe12e879636 2-3,47,50-51,75,82-84,86,92-97,99
+  s_38977beeb600f3::t_9468ced24dfa6a 28,98
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "2365597230c1ddfb21590e088a5a2d5cb28caaba",
+  "prompts": {},
+  "sessions": {
+    "s_38977beeb600f3": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17152-6ee1-78e3-b9fa-305f561d82fe",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
