@@ -204,6 +204,27 @@ describe("Add ACP Agent dialog", () => {
     expect(main.runtime.updateSettings).not.toHaveBeenCalled();
   });
 
+  test("an argument too long to pass is the one Add points at", async () => {
+    const main = fakeAcpRuntime();
+    const { view } = mount(main);
+    await press(view.getByRole("tab", { name: "Local command" }));
+    await type(view.getByLabelText("Executable"), "qoder");
+    await press(view.getByRole("button", { name: "Add argument" }));
+    await type(view.getByLabelText("Argument 1"), "--acp");
+    await press(view.getByRole("button", { name: "Add argument" }));
+    await type(view.getByLabelText("Argument 2"), "a".repeat(32769));
+
+    await press(view.getByRole("button", { name: "Add and connect" }));
+    const long = view.getByLabelText("Argument 2");
+    expect(problemOf(long)).toBe("Argument 2 is longer than the 32,768-character limit.");
+    expect(document.activeElement).toBe(long);
+    expect(problemOf(view.getByLabelText("Argument 1"))).toBeNull();
+    expect(main.runtime.updateSettings).not.toHaveBeenCalled();
+
+    await type(long, "--model");
+    expect(problemOf(view.getByLabelText("Argument 2"))).toBeNull();
+  });
+
   test("a local command keeps each argument exactly and connects after saving", async () => {
     const main = fakeAcpRuntime();
     const { view, onClose } = mount(main);

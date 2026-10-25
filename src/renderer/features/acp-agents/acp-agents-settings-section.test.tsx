@@ -293,6 +293,15 @@ describe("ACP Agents settings", () => {
     await press(view.getByRole("button", { name: "Discard" }));
     expect(problemOf(name)).toBeNull();
     expect(problemOf(executable)).toBeNull();
+
+    // An argument too long to pass is marked itself, not the whole list.
+    await type(view.getByLabelText("Argument 1"), "a".repeat(32769));
+    expect(problemOf(view.getByLabelText("Argument 1"))).toBe(
+      "Argument 1 is longer than the 32,768-character limit.",
+    );
+    expect(save.disabled).toBe(true);
+    await press(view.getByRole("button", { name: "Discard" }));
+    expect(problemOf(view.getByLabelText("Argument 1"))).toBeNull();
     expect(main.runtime.updateSettings).not.toHaveBeenCalled();
   });
 

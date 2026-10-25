@@ -96,8 +96,8 @@ export function AcpAgentDetail({
   const problem = changed ? acpDraftProblem(instance, draft) : null;
   const problemId = useId();
   // The message stays beside Save; the field that blocks it is marked and described by it.
-  const problemOf = (field: "name" | "executable") =>
-    problem?.field === field ? { "aria-invalid": true, "aria-describedby": problemId } : {};
+  const marking = { "aria-invalid": true, "aria-describedby": problemId } as const;
+  const problemOf = (field: "name" | "executable") => (problem?.field === field ? marking : {});
   const change = (patch: Partial<AcpAgentDraft>) => {
     setNotice(null);
     setDraft((current) => ({ ...current, ...patch }));
@@ -236,6 +236,9 @@ export function AcpAgentDetail({
               className="w-[min(28rem,45vw)]"
               value={draft.arguments}
               disabled={saving}
+              marked={
+                problem?.field === "argument" ? { index: problem.index, props: marking } : null
+              }
               onChange={(next) => change({ arguments: next })}
             />
           </Field>

@@ -62,6 +62,9 @@ export const AcpEnvironmentInputSchema = createAgentEnvironmentInputSchema(
       message: "Profile directory variables require an absolute path.",
     });
 });
+/** The most launch arguments an instance passes, and the longest each may be. */
+export const ACP_ARGUMENTS_MAX = 256;
+export const ACP_ARGUMENT_MAX_LENGTH = 32768;
 export const AcpAgentSourceSchema = z.discriminatedUnion("kind", [
   z
     .object({
@@ -71,10 +74,10 @@ export const AcpAgentSourceSchema = z.discriminatedUnion("kind", [
         .array(
           z
             .string()
-            .max(32768)
+            .max(ACP_ARGUMENT_MAX_LENGTH)
             .refine((value) => !value.includes("\0")),
         )
-        .max(256),
+        .max(ACP_ARGUMENTS_MAX),
     })
     .strict(),
   z

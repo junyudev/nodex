@@ -1,6 +1,7 @@
-import type {
-  AcpAgentInstanceConfig,
-  AcpAgentInstanceInput,
+import {
+  ACP_ARGUMENT_MAX_LENGTH,
+  type AcpAgentInstanceConfig,
+  type AcpAgentInstanceInput,
 } from "../../../shared/acp-agent-settings";
 import {
   environmentDraftInput,
@@ -95,10 +96,28 @@ export const acpDraftChanged = (instance: AcpAgentInstanceConfig, draft: AcpAgen
   return JSON.stringify(acpDraftInput(saved, draft)) !== JSON.stringify(saved);
 };
 
-export interface AcpDraftProblem {
-  readonly field: "name" | "executable" | "environment";
-  readonly message: string;
+/** The first launch argument a command can't receive, by position, and why. */
+export function acpArgumentProblem(
+  args: readonly string[],
+): { readonly index: number; readonly message: string } | null {
+  for (const [index, value] of args.entries()) {
+    if (value.length > ACP_ARGUMENT_MAX_LENGTH)
+      return {
+        index,
+        message: `Argument ${index + 1} is longer than the ${ACP_ARGUMENT_MAX_LENGTH.toLocaleString("en-US")}-character limit.`,
+      };
+    if (value.includes("\0"))
+      return {
+        index,
+        message: `Argument ${index + 1} contains a null character, which a command can't receive.`,
+      };
+  }
+  return null;
 }
+
+export type AcpDraftProblem =
+  | { readonly field: "name" | "executable" | "environment"; readonly message: string }
+  | { readonly field: "argument"; readonly index: number; readonly message: string };
 
 /** The first reason the draft cannot be saved, phrased for the field that owns it. */
 export function acpDraftProblem(
@@ -106,8 +125,12 @@ export function acpDraftProblem(
   draft: AcpAgentDraft,
 ): AcpDraftProblem | null {
   if (!draft.displayName.trim()) return { field: "name", message: "Enter a name." };
-  if (instance.source.kind === "local" && !draft.executable.trim())
-    return { field: "executable", message: "Enter the executable to run." };
+  if (instance.source.kind === "local") {
+    if (!draft.executable.trim())
+      return { field: "executable", message: "Enter the executable to run." };
+    const argument = acpArgumentProblem(draft.arguments.map(({ value }) => value));
+    if (argument) return { field: "argument", ...argument };
+  }
   const environment = validateEnvironmentDraft(draft.environment, ACP_ENVIRONMENT_POLICY);
   return environment ? { field: "environment", message: environment } : null;
 }

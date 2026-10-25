@@ -3,10 +3,19 @@ import { CloseIcon } from "@/components/shared/icons";
 import { NodexButton, NodexIconButton } from "@/components/ui/button";
 import { Input, Textarea } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
+import { ACP_ARGUMENTS_MAX } from "../../../shared/acp-agent-settings";
 import { splitPastedAcpArguments } from "./acp-agent-model";
 import type { AcpArgumentDraft } from "./acp-agent-draft";
 
-const ARGUMENT_LIMIT = 256;
+/** Props for the argument a problem names: invalid and described while shown, findable by name. */
+export interface AcpArgumentMark {
+  readonly index: number;
+  readonly props: {
+    readonly name?: string;
+    readonly "aria-invalid"?: boolean;
+    readonly "aria-describedby"?: string;
+  };
+}
 
 /**
  * Launch arguments as separate values, never joined into a shell line. An empty field is an
@@ -17,18 +26,20 @@ export function AcpArgumentsEditor({
   value,
   disabled,
   className,
+  marked = null,
   onChange,
 }: {
   readonly value: readonly AcpArgumentDraft[];
   readonly disabled: boolean;
   readonly className?: string;
+  readonly marked?: AcpArgumentMark | null;
   readonly onChange: (next: AcpArgumentDraft[]) => void;
 }) {
   // The row created by Enter or paste takes focus once, when it mounts.
   const [focusId, setFocusId] = useState<string | null>(null);
   const replace = (index: number, rows: readonly AcpArgumentDraft[]) =>
     onChange(
-      [...value.slice(0, index), ...rows, ...value.slice(index + 1)].slice(0, ARGUMENT_LIMIT),
+      [...value.slice(0, index), ...rows, ...value.slice(index + 1)].slice(0, ACP_ARGUMENTS_MAX),
     );
   const insertAfter = (index: number) => {
     const row = { id: crypto.randomUUID(), value: "" };
@@ -55,13 +66,14 @@ export function AcpArgumentsEditor({
   const keyDown = (event: KeyboardEvent<HTMLInputElement>, index: number) => {
     if (event.key !== "Enter" || event.nativeEvent.isComposing || event.keyCode === 229) return;
     event.preventDefault();
-    if (value.length < ARGUMENT_LIMIT) insertAfter(index);
+    if (value.length < ACP_ARGUMENTS_MAX) insertAfter(index);
   };
   return (
     <div className={cn("flex flex-col gap-1", className)}>
       {value.map((row, index) => {
         const label = `Argument ${index + 1}`;
         const common = {
+          ...(marked?.index === index ? marked.props : {}),
           "aria-label": label,
           value: row.value,
           disabled,
@@ -101,7 +113,7 @@ export function AcpArgumentsEditor({
         <NodexButton
           size="xs"
           variant="ghost"
-          disabled={disabled || value.length >= ARGUMENT_LIMIT}
+          disabled={disabled || value.length >= ACP_ARGUMENTS_MAX}
           onClick={() => insertAfter(value.length - 1)}
         >
           Add argument

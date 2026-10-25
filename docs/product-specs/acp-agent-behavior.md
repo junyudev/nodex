@@ -162,7 +162,8 @@ observes them.
 A row expands in place to Account, Installation, launch configuration, environment variables,
 account storage, proxy and, when advertised, the Agent's model services. Arguments are separate
 verbatim values: an empty field is an empty argument, Enter adds the next one and pasted lines become
-one argument each. Account storage and the logical Agent are fixed after saving. Removing the last
+one argument each. An argument a command can't receive, over 32,768 characters or with a null
+character, blocks saving and is marked itself rather than the whole list. Account storage and the logical Agent are fixed after saving. Removing the last
 instance of a Registry Agent offers Also uninstall. Updates install the cached catalog version the
 row showed; a moved catalog asks for another look.
 

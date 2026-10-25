@@ -44,7 +44,7 @@ import {
   type AcpInstallPreview,
   type AcpRegistryAgent,
 } from "./acp-agent-model";
-import type { AcpArgumentDraft } from "./acp-agent-draft";
+import { acpArgumentProblem, type AcpArgumentDraft } from "./acp-agent-draft";
 import type { AcpAgentsOwner } from "./acp-agents-owner";
 import { AcpArgumentsEditor } from "./acp-arguments-editor";
 import { useAcpAgents } from "./use-acp-agents";
@@ -529,28 +529,28 @@ function LocalCommandForm({
   const [args, setArgs] = useState<AcpArgumentDraft[]>([]);
   const [storage, setStorage] = useState<Storage>({ kind: "shared" });
   const [identity, setIdentity] = useState("");
-  const sourceIssue = AcpAgentSourceSchema.safeParse({
+  const executableIssue = AcpAgentSourceSchema.safeParse({
     kind: "local",
     executable,
-    args: args.map(({ value }) => value),
+    args: [],
   }).error?.issues[0];
+  const argumentProblem = acpArgumentProblem(args.map(({ value }) => value));
   const problems = useFieldProblem(
     !name.trim()
       ? { field: "name", message: "Enter a name." }
       : !executable.trim()
         ? { field: "executable", message: "Enter the executable to run." }
-        : sourceIssue
-          ? {
-              field: sourceIssue.path[0] === "args" ? "arguments" : "executable",
-              message: sourceIssue.message,
-            }
-          : identity.trim() && !ACP_REGISTRY_ID_PATTERN.test(identity.trim())
-            ? {
-                field: "identity",
-                message:
-                  "A Registry ID uses lowercase letters, digits, dots, dashes and underscores.",
-              }
-            : storageProblem(storage),
+        : executableIssue
+          ? { field: "executable", message: executableIssue.message }
+          : argumentProblem
+            ? { field: "arguments", message: argumentProblem.message }
+            : identity.trim() && !ACP_REGISTRY_ID_PATTERN.test(identity.trim())
+              ? {
+                  field: "identity",
+                  message:
+                    "A Registry ID uses lowercase letters, digits, dots, dashes and underscores.",
+                }
+              : storageProblem(storage),
   );
   const submit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -597,7 +597,16 @@ function LocalCommandForm({
       </div>
       <div role="group" aria-label="Arguments" className="flex flex-col gap-1 text-sm">
         <span className="text-token-text-secondary">Arguments</span>
-        <AcpArgumentsEditor value={args} disabled={pending} onChange={setArgs} />
+        <AcpArgumentsEditor
+          value={args}
+          disabled={pending}
+          marked={
+            argumentProblem
+              ? { index: argumentProblem.index, props: problems.control("arguments") }
+              : null
+          }
+          onChange={setArgs}
+        />
         {problems.message("arguments")}
         <span className="text-xs text-token-description-foreground">
           Each passed exactly as written, without a shell. Include the Agent's ACP flag, such as
