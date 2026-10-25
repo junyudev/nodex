@@ -239,7 +239,7 @@ read through the authenticated Profile and exact execution identity boundary.
   upstream checksums from locally recorded byte digests; neither a top-level package version nor
   npm registry integrity metadata attests an immutable installed dependency closure. Local executables
   remain user-managed and are never deleted by Registry uninstall. Nodex-distributed dependencies
-  retain their separate locked artifact and release-verification contract. See [ADR 0070](adr/0070-configured-acp-agents-and-explicit-management.md).
+  retain their separate locked artifact and release-verification contract. See [ADR 0071](adr/0071-configured-acp-agents-and-explicit-management.md).
   Main is the sole owner of configuration and encrypted environment references; Runtime holds
   decrypted launch configuration only in memory and rejects configuration persistence through its
   settings writer. The selected credential and proxy policies bound environment inheritance, and

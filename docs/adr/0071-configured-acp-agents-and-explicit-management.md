@@ -1,4 +1,4 @@
-# ADR 0070: Configured ACP Agents and explicit management
+# ADR 0071: Configured ACP Agents and explicit management
 
 - Status: Accepted
 - Date: 2026-10-24

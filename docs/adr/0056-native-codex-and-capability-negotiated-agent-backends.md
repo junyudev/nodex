@@ -5,7 +5,7 @@
 - Owners: Nodex maintainers
 - Refined by: [ADR 0065: Native Claude Code backend](0065-native-claude-code-backend.md)
 - Refined by: [ADR 0066: Native model selection and OpenCode](0066-native-model-selection-and-opencode.md)
-- Superseded for configured ACP management and scheduled execution by: [ADR 0070](0070-configured-acp-agents-and-explicit-management.md)
+- Superseded for configured ACP management and scheduled execution by: [ADR 0071](0071-configured-acp-agents-and-explicit-management.md)
 
 ## Context
 

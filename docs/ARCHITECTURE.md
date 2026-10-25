@@ -827,7 +827,7 @@ operations delegate installation, authentication, connection probes and native-s
 the supervised Runtime. Core remains the product Session admission owner. Runtime receives launch
 configuration in memory and cannot persist a second configuration source. See
 [ACP Agent behavior](product-specs/acp-agent-behavior.md) and
-[ADR 0070](adr/0070-configured-acp-agents-and-explicit-management.md).
+[ADR 0071](adr/0071-configured-acp-agents-and-explicit-management.md).
 
 Inbox confirmation freezes the source versions, complete message, target and execution
 selection in Core before Main hands the stable command to the Runtime. Durable message
