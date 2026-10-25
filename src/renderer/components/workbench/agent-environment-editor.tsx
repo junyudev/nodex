@@ -52,7 +52,11 @@ export function AgentEnvironmentEditor({
   };
   return (
     <div>
-      <NodexSettingsRow label="Environment variables">
+      <NodexSettingsRow
+        variant="nested"
+        label="Environment variables"
+        description="Paste a .env file or export lines to add several at once."
+      >
         <NodexButton
           size="sm"
           variant="secondary"

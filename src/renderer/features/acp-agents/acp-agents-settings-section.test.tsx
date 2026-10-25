@@ -39,7 +39,11 @@ function mount(main: ReturnType<typeof fakeAcpRuntime>, anchor: string | null = 
   });
   const view = renderWithAppMaitai(
     <NodexTooltipProvider delay={0}>
-      <AcpAgentsSettingsSection owner={owner} anchor={anchor} />
+      <AcpAgentsSettingsSection
+        owner={owner}
+        anchor={anchor}
+        disclosure={{ open: true, onOpenChange: () => {} }}
+      />
       <NodexModalHost />
     </NodexTooltipProvider>,
   );

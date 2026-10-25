@@ -5,6 +5,7 @@ import {
   type ClaudeAgentSettings,
 } from "../../../shared/claude-agent-settings";
 import { render } from "../../test/dom";
+import { expandProfile, openSection } from "./agent-instance-settings.test-fixtures";
 import {
   ClaudeAgentSettingsControl,
   type ClaudeAgentSettingsRuntime,
@@ -23,7 +24,10 @@ it("pastes exports, saves once, redacts saved tokens and retains them on subsequ
     read: async () => ({ instances: [defaultClaudeInstance()] }),
     update,
   };
-  const view = render(<ClaudeAgentSettingsControl open runtime={runtime} />);
+  const view = render(
+    <ClaudeAgentSettingsControl open disclosure={openSection} runtime={runtime} />,
+  );
+  await expandProfile(view, "Claude Code");
   await waitFor(() =>
     expect((view.getByRole("button", { name: "Add variable" }) as HTMLButtonElement).disabled).toBe(
       false,
@@ -93,8 +97,13 @@ it("keeps drafts on save failure and rejects invalid pasted commands without rep
     throw new Error("Secure storage unavailable");
   });
   const view = render(
-    <ClaudeAgentSettingsControl open runtime={{ read: async () => saved, update }} />,
+    <ClaudeAgentSettingsControl
+      open
+      disclosure={openSection}
+      runtime={{ read: async () => saved, update }}
+    />,
   );
+  await expandProfile(view, "Claude Code");
   await view.findByLabelText("Variable value 1");
   await act(async () => {
     fireEvent.change(view.getByLabelText("Variable value 1"), { target: { value: "replacement" } });

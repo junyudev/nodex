@@ -19,11 +19,15 @@ export function ClaudeCustomModelsEditor({
       models.map((model, position) => (position === index ? { ...model, ...patch } : model)),
     );
   return (
-    <>
-      <NodexSettingsRow label="Custom models">
+    <div>
+      <NodexSettingsRow
+        variant="nested"
+        label="Custom models"
+        description="Models this profile can choose besides Claude's own."
+      >
         <NodexButton
           size="sm"
-          variant="ghost"
+          variant="secondary"
           disabled={disabled || models.length >= 64}
           onClick={() => onChange([...models, { id: "", displayName: "", traits: {} }])}
         >
@@ -31,7 +35,7 @@ export function ClaudeCustomModelsEditor({
         </NodexButton>
       </NodexSettingsRow>
       {models.map((model, index) => (
-        <div key={index} className="flex flex-col gap-2 px-3 pb-3">
+        <div key={index} className="flex flex-col gap-2 px-4 pb-3">
           <div className="flex items-center gap-2">
             <Input
               aria-label={`Model ID ${index + 1}`}
@@ -134,6 +138,6 @@ export function ClaudeCustomModelsEditor({
           </div>
         </div>
       ))}
-    </>
+    </div>
   );
 }

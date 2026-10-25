@@ -1,5 +1,6 @@
 import { describe, expect, test } from "vite-plus/test";
 import {
+  acpAgentsSummary,
   acpCommandLine,
   acpComposerSetupHint,
   acpFailureCopy,
@@ -14,6 +15,7 @@ import {
   acpUpdateVersion,
   splitPastedAcpArguments,
   type AcpActivity,
+  type AcpInstanceStatus,
 } from "./acp-agent-model";
 import {
   localInstance,
@@ -356,5 +358,27 @@ describe("ACP imported history", () => {
     ).toBe(
       "Send a message to continue. Qoder keeps the earlier context, but its messages can't be shown here.",
     );
+  });
+});
+
+describe("acpAgentsSummary", () => {
+  const status = (
+    kind: AcpInstanceStatus["kind"],
+    tone: AcpInstanceStatus["tone"] = "default",
+  ): AcpInstanceStatus => ({ kind, label: kind, detail: null, tone, action: null });
+
+  test("counts the agents and the ones waiting on the user", () => {
+    expect(acpAgentsSummary([])).toEqual({ text: "None added", attention: null });
+    expect(acpAgentsSummary([status("ready"), status("off", "muted")])).toEqual({
+      text: "2 agents",
+      attention: null,
+    });
+    expect(acpAgentsSummary([status("sign-in")])).toEqual({
+      text: "1 agent",
+      attention: "1 needs attention",
+    });
+    expect(
+      acpAgentsSummary([status("not-installed"), status("failed", "danger"), status("connecting")]),
+    ).toEqual({ text: "3 agents", attention: "2 need attention" });
   });
 });

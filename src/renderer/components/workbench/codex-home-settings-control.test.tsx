@@ -1,11 +1,14 @@
 import { act, fireEvent, waitFor } from "@testing-library/react";
-import { expect, it, vi } from "vite-plus/test";
+import { describe, expect, it, vi } from "vite-plus/test";
 import type { CodexHomeSettingsSnapshot } from "../../../shared/codex-home-settings";
 import { render } from "../../test/dom";
+import { openSection } from "./agent-instance-settings.test-fixtures";
 import {
-  CodexHomeSettingsControl,
+  CodexAgentSettingsSection,
+  codexHomeSummary,
   type CodexHomeSettingsRuntime,
 } from "./codex-home-settings-control";
+import type { CodexSetupImportRuntime } from "./codex-setup-import-control";
 
 const nativeHome: CodexHomeSettingsSnapshot = {
   homePath: "",
@@ -18,6 +21,22 @@ const nativeHome: CodexHomeSettingsSnapshot = {
   restartRequired: false,
 };
 
+const importRuntime: CodexSetupImportRuntime = {
+  scan: vi.fn(),
+  scanPickedHome: vi.fn(),
+  apply: vi.fn(),
+};
+
+const renderSection = (runtime: CodexHomeSettingsRuntime) =>
+  render(
+    <CodexAgentSettingsSection
+      open
+      disclosure={openSection}
+      runtime={runtime}
+      importRuntime={importRuntime}
+    />,
+  );
+
 it("saves a home as pending until restart and clears the override to return to the native home", async () => {
   const update = vi.fn<CodexHomeSettingsRuntime["update"]>(async ({ homePath }) => ({
     ...nativeHome,
@@ -26,9 +45,7 @@ it("saves a home as pending until restart and clears the override to return to t
     source: homePath ? "settings" : "default",
     restartRequired: Boolean(homePath),
   }));
-  const view = render(
-    <CodexHomeSettingsControl open runtime={{ read: async () => nativeHome, update }} />,
-  );
+  const view = renderSection({ read: async () => nativeHome, update });
   await waitFor(() =>
     expect((view.getByLabelText("Codex home") as HTMLInputElement).disabled).toBe(false),
   );
@@ -57,9 +74,7 @@ it("selects an independent account while retaining the shared conversation home"
     resolvedAccountHomePath: input.accountHomePath || null,
     restartRequired: Boolean(input.accountHomePath),
   }));
-  const view = render(
-    <CodexHomeSettingsControl open runtime={{ read: async () => nativeHome, update }} />,
-  );
+  const view = renderSection({ read: async () => nativeHome, update });
   await waitFor(() =>
     expect((view.getByLabelText("Codex account directory") as HTMLInputElement).disabled).toBe(
       false,
@@ -81,9 +96,7 @@ it("retains the edited home when saving fails", async () => {
   const update = vi.fn<CodexHomeSettingsRuntime["update"]>(async () => {
     throw new Error("Codex home must be absolute or start with ~/.");
   });
-  const view = render(
-    <CodexHomeSettingsControl open runtime={{ read: async () => nativeHome, update }} />,
-  );
+  const view = renderSection({ read: async () => nativeHome, update });
   await waitFor(() =>
     expect((view.getByLabelText("Codex home") as HTMLInputElement).disabled).toBe(false),
   );
@@ -94,4 +107,47 @@ it("retains the edited home when saving fails", async () => {
   await view.findByRole("alert");
   expect((view.getByLabelText("Codex home") as HTMLInputElement).value).toBe("relative/path");
   expect(update).toHaveBeenCalledTimes(1);
+});
+
+it("keeps the folders locked until they load, and loads them again on request", async () => {
+  const read = vi
+    .fn<CodexHomeSettingsRuntime["read"]>()
+    .mockRejectedValueOnce(new Error("Settings unavailable"))
+    .mockResolvedValue(nativeHome);
+  const update = vi.fn<CodexHomeSettingsRuntime["update"]>();
+  const view = renderSection({ read, update });
+  expect((await view.findByRole("alert")).textContent).toBe(
+    "Couldn't load the Codex folders. Settings unavailable",
+  );
+  expect((view.getByLabelText("Codex home") as HTMLInputElement).disabled).toBe(true);
+  await act(async () => {
+    fireEvent.click(view.getByRole("button", { name: "Try again" }));
+    await Promise.resolve();
+  });
+  await waitFor(() =>
+    expect((view.getByLabelText("Codex home") as HTMLInputElement).disabled).toBe(false),
+  );
+  expect(view.queryByRole("alert")).toBeNull();
+  expect(update).not.toHaveBeenCalled();
+});
+
+describe("codexHomeSummary", () => {
+  it("names the folders Codex runs from in a few words", () => {
+    expect(codexHomeSummary(null)).toBeNull();
+    expect(codexHomeSummary(nativeHome)).toBe("Default setup");
+    expect(codexHomeSummary({ ...nativeHome, source: "settings" })).toBe("Custom home");
+    expect(codexHomeSummary({ ...nativeHome, activeAccountHomePath: "/user/personal" })).toBe(
+      "Separate account",
+    );
+    expect(
+      codexHomeSummary({
+        ...nativeHome,
+        source: "environment",
+        activeAccountHomePath: "/user/personal",
+      }),
+    ).toBe("Custom home · separate account");
+    expect(codexHomeSummary({ ...nativeHome, source: "settings", restartRequired: true })).toBe(
+      "Restart to apply",
+    );
+  });
 });

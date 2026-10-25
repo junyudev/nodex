@@ -114,7 +114,7 @@ export function CodexSetupImportControl({
     <>
       <NodexSettingsRow
         label="Copy setup from"
-        description="Adds only what this Codex home is missing. The Codex app and CLI use the same setup."
+        description="Brings in instructions, skills, MCP servers and more once you review them. Only what Codex is missing is added."
       >
         <NodexButton
           size="sm"

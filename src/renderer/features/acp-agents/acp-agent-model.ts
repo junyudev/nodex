@@ -556,6 +556,26 @@ export function acpComposerSetupHint(
   return null;
 }
 
+/**
+ * What the collapsed Settings section says about its instances: how many there are, and how many
+ * an enabled instance's next step is waiting on the user (a failure, sign-in or install).
+ */
+export function acpAgentsSummary(statuses: readonly AcpInstanceStatus[]): {
+  readonly text: string;
+  readonly attention: string | null;
+} {
+  if (statuses.length === 0) return { text: "None added", attention: null };
+  const waiting = statuses.filter(
+    (status) =>
+      status.tone === "danger" || status.kind === "sign-in" || status.kind === "not-installed",
+  ).length;
+  return {
+    text: statuses.length === 1 ? "1 agent" : `${statuses.length} agents`,
+    attention:
+      waiting === 0 ? null : waiting === 1 ? "1 needs attention" : `${waiting} need attention`,
+  };
+}
+
 /** The Settings anchor that reveals one instance, used by deep links from conversations. */
 export const acpAgentAnchor = (instanceId: string) => `acp-agent-${instanceId}`;
 

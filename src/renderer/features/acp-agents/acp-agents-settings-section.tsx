@@ -1,11 +1,16 @@
 import { useState } from "react";
-import { ChevronRightIcon, SettingsAgentIcon } from "@/components/shared/icons";
+import { SettingsAgentIcon } from "@/components/shared/icons";
 import { NodexButton, NodexSwitch } from "@/components/ui/button";
-import { NodexSettingsRow, NodexSettingsSection } from "@/components/ui/settings";
+import {
+  NodexSettingsAddRow,
+  NodexSettingsExpandableRow,
+  NodexSettingsRow,
+  NodexSettingsSection,
+  type NodexSettingsDisclosureState,
+} from "@/components/ui/settings";
 import { toast } from "@/components/ui/toast";
 import { appScope, useScopeHandle } from "@/lib/maitai";
 import { openModal } from "@/lib/modal-registry";
-import { cn } from "@/lib/utils";
 import type { AcpAgentInstanceConfig } from "../../../shared/acp-agent-settings";
 import { installReviewedVersion } from "./acp-agent-actions";
 import { ACP_ADD_AGENT_ID, AcpAgentAddDialog } from "./acp-agent-add-dialog";
@@ -13,6 +18,7 @@ import { AcpAgentDetail } from "./acp-agent-detail";
 import {
   ACP_STATUS_ACTION_LABELS,
   acpAgentAnchor,
+  acpAgentsSummary,
   acpInstanceStatus,
   acpProgressFraction,
   acpSourceSummary,
@@ -42,7 +48,6 @@ function AgentRow({
   const status = acpInstanceStatus({ instance, inspection, provider, activity });
   const [toggling, setToggling] = useState(false);
   const fraction = activity?.kind === "install" ? acpProgressFraction(activity.progress) : null;
-  const detailId = `${acpAgentAnchor(instance.id)}-detail`;
 
   const runAction = () => {
     switch (status.action) {
@@ -79,64 +84,51 @@ function AgentRow({
   };
 
   return (
-    <div id={acpAgentAnchor(instance.id)} className="flex scroll-mt-4 flex-col">
-      <div className="relative flex min-h-14 items-center gap-3 px-4 py-2.5">
-        <button
-          type="button"
-          aria-expanded={expanded}
-          aria-controls={detailId}
-          className="flex min-w-0 flex-1 cursor-interaction items-center gap-3 text-start outline-hidden focus-visible:ring-2 focus-visible:ring-token-focus-border rounded-md"
-          onClick={onToggle}
-        >
-          <ChevronRightIcon
-            className={cn(
-              "icon-2xs shrink-0 text-token-description-foreground transition-transform duration-150",
-              expanded && "rotate-90",
-            )}
+    <NodexSettingsExpandableRow
+      id={acpAgentAnchor(instance.id)}
+      label={instance.displayName}
+      detail={
+        // Long commands keep their end visible: the script or flags identify the Agent.
+        <span className="block min-w-0 truncate text-start font-mono [direction:rtl]">
+          <bdi dir="ltr">
+            {acpSourceSummary(instance, inspection?.status === "ready" ? inspection.value : null)}
+          </bdi>
+        </span>
+      }
+      expanded={expanded}
+      onExpandedChange={onToggle}
+      controls={
+        <>
+          <AcpStatusText
+            status={status}
+            pending={snapshot.deferred.has(instance.id)}
+            className="max-w-[40%]"
           />
-          <SettingsAgentIcon className="icon-xs shrink-0 text-token-text-secondary" />
-          <span className="flex min-w-0 flex-col gap-0.5">
-            <span className="truncate text-sm font-medium text-token-text-primary">
-              {instance.displayName}
-            </span>
-            {/* Long commands keep their end visible: the script or flags identify the Agent. */}
-            <span className="block min-w-0 truncate text-start font-mono text-xs text-token-description-foreground [direction:rtl]">
-              <bdi dir="ltr">
-                {acpSourceSummary(
-                  instance,
-                  inspection?.status === "ready" ? inspection.value : null,
-                )}
-              </bdi>
-            </span>
-          </span>
-        </button>
-        <AcpStatusText
-          status={status}
-          pending={snapshot.deferred.has(instance.id)}
-          className="max-w-[40%]"
-        />
-        {status.action && status.action !== "sign-in" ? (
-          <NodexButton
-            size="xs"
-            variant={status.action === "cancel" ? "ghost" : "secondary"}
-            disabled={activity?.cancelling === true}
-            onClick={runAction}
-          >
-            {ACP_STATUS_ACTION_LABELS[status.action]}
-          </NodexButton>
-        ) : status.action === "sign-in" && !expanded ? (
-          <NodexButton size="xs" variant="secondary" onClick={runAction}>
-            {ACP_STATUS_ACTION_LABELS["sign-in"]}
-          </NodexButton>
-        ) : null}
-        <NodexSwitch
-          size="compact"
-          ariaLabel={`${instance.enabled ? "Turn off" : "Turn on"} ${instance.displayName}`}
-          checked={instance.enabled}
-          disabled={toggling || snapshot.saving}
-          onCheckedChange={(enabled) => void setEnabled(enabled)}
-        />
-        {fraction !== null ? (
+          {status.action && status.action !== "sign-in" ? (
+            <NodexButton
+              size="xs"
+              variant={status.action === "cancel" ? "ghost" : "secondary"}
+              disabled={activity?.cancelling === true}
+              onClick={runAction}
+            >
+              {ACP_STATUS_ACTION_LABELS[status.action]}
+            </NodexButton>
+          ) : status.action === "sign-in" && !expanded ? (
+            <NodexButton size="xs" variant="secondary" onClick={runAction}>
+              {ACP_STATUS_ACTION_LABELS["sign-in"]}
+            </NodexButton>
+          ) : null}
+          <NodexSwitch
+            size="compact"
+            ariaLabel={`${instance.enabled ? "Turn off" : "Turn on"} ${instance.displayName}`}
+            checked={instance.enabled}
+            disabled={toggling || snapshot.saving}
+            onCheckedChange={(enabled) => void setEnabled(enabled)}
+          />
+        </>
+      }
+      progress={
+        fraction !== null ? (
           <div
             role="progressbar"
             aria-label={`Installing ${instance.displayName}`}
@@ -147,52 +139,53 @@ function AgentRow({
           >
             <div className="h-full bg-text-info" style={{ width: `${fraction * 100}%` }} />
           </div>
-        ) : null}
-      </div>
-      {status.tone === "danger" && status.detail ? (
-        <p role="alert" className="-mt-1 px-4 pb-2.5 ps-[3.75rem] text-xs text-danger">
-          {status.detail}
-          {activity?.phase === "failed" ? (
-            <button
-              type="button"
-              className="ms-2 cursor-interaction text-token-text-secondary underline-offset-2 hover:underline"
-              onClick={() => owner.dismiss(instance.id)}
-            >
-              Dismiss
-            </button>
-          ) : null}
-        </p>
-      ) : null}
-      {expanded ? (
-        <div id={detailId}>
-          <AcpAgentDetail
-            key={instance.id}
-            instance={instance}
-            instances={snapshot.settings?.instances ?? []}
-            status={status}
-            inspection={inspection}
-            provider={provider}
-            activity={activity}
-            deferred={snapshot.deferred.has(instance.id)}
-            owner={owner}
-            onRemoved={onCollapse}
-          />
-        </div>
-      ) : null}
-    </div>
+        ) : null
+      }
+      notice={
+        status.tone === "danger" && status.detail ? (
+          <p role="alert" className="-mt-1 px-4 pb-2.5 ps-10 text-xs text-danger">
+            {status.detail}
+            {activity?.phase === "failed" ? (
+              <button
+                type="button"
+                className="ms-2 cursor-interaction text-token-text-secondary underline-offset-2 hover:underline"
+                onClick={() => owner.dismiss(instance.id)}
+              >
+                Dismiss
+              </button>
+            ) : null}
+          </p>
+        ) : null
+      }
+    >
+      <AcpAgentDetail
+        key={instance.id}
+        instance={instance}
+        instances={snapshot.settings?.instances ?? []}
+        status={status}
+        inspection={inspection}
+        provider={provider}
+        activity={activity}
+        deferred={snapshot.deferred.has(instance.id)}
+        owner={owner}
+        onRemoved={onCollapse}
+      />
+    </NodexSettingsExpandableRow>
   );
 }
 
 /**
- * ACP instances in Settings > Agent: one row per instance with its live status and next step,
- * expanding in place to its account, installation and launch configuration.
+ * ACP instances in Settings > Agents > Other agents: one row per instance with its live status and
+ * next step, expanding in place to its account, installation and launch configuration.
  */
 export function AcpAgentsSettingsSection({
   owner = acpAgentsOwner,
   anchor = null,
+  disclosure,
 }: {
   readonly owner?: AcpAgentsOwner;
   readonly anchor?: string | null;
+  readonly disclosure: NodexSettingsDisclosureState;
 }) {
   const snapshot = useAcpAgents(owner);
   const appHandle = useScopeHandle(appScope);
@@ -206,27 +199,42 @@ export function AcpAgentsSettingsSection({
     setExpanded(anchored);
   }
 
+  const summary = snapshot.settings
+    ? acpAgentsSummary(
+        instances.map((instance) =>
+          acpInstanceStatus({
+            instance,
+            inspection: snapshot.inspections.get(instance.id),
+            provider: snapshot.providers.get(instance.id),
+            activity: snapshot.activities.get(instance.id),
+          }),
+        ),
+      )
+    : null;
+  const addAgent = () =>
+    openModal(appHandle, AcpAgentAddDialog, {
+      owner,
+      onAdded: (instanceId: string) => setExpanded(instanceId),
+    });
+
   return (
-    <NodexSettingsSection id="acp" title="ACP Agents">
-      <NodexSettingsRow
-        label="Agent Client Protocol"
-        description="Install Agents from the ACP Registry or run your own command. Instances that share account storage share the Agent's sign-in and history."
-      >
-        <NodexButton
-          id={ACP_ADD_AGENT_ID}
-          size="sm"
-          variant="secondary"
-          disabled={!snapshot.settings || instances.length >= 32}
-          onClick={() =>
-            openModal(appHandle, AcpAgentAddDialog, {
-              owner,
-              onAdded: (instanceId: string) => setExpanded(instanceId),
-            })
-          }
-        >
-          Add Agent
-        </NodexButton>
-      </NodexSettingsRow>
+    <NodexSettingsSection
+      id="acp"
+      title="Other agents"
+      icon={<SettingsAgentIcon />}
+      description="Agents that support the Agent Client Protocol (ACP), from the ACP Registry or your own command."
+      summary={
+        summary ? (
+          <>
+            {summary.text}
+            {summary.attention ? <span className="text-danger"> · {summary.attention}</span> : null}
+          </>
+        ) : snapshot.loadError ? (
+          "Couldn't load"
+        ) : null
+      }
+      disclosure={disclosure}
+    >
       {snapshot.configurationFailed ? (
         <div className="flex items-center gap-3 px-4 py-3">
           <p role="alert" className="min-w-0 flex-1 text-xs text-danger">
@@ -258,6 +266,25 @@ export function AcpAgentsSettingsSection({
           onCollapse={() => setExpanded(null)}
         />
       ))}
+      {snapshot.settings ? (
+        instances.length === 0 ? (
+          <NodexSettingsRow
+            label="Add an agent"
+            description="Install one from the ACP Registry, or run your own command that speaks ACP."
+          >
+            <NodexButton id={ACP_ADD_AGENT_ID} size="sm" variant="secondary" onClick={addAgent}>
+              Add agent
+            </NodexButton>
+          </NodexSettingsRow>
+        ) : (
+          <NodexSettingsAddRow
+            id={ACP_ADD_AGENT_ID}
+            label="Add agent"
+            disabled={instances.length >= 32}
+            onClick={addAgent}
+          />
+        )
+      ) : null}
     </NodexSettingsSection>
   );
 }
