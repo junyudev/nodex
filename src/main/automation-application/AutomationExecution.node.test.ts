@@ -56,6 +56,7 @@ const setup = (binding: CodexScheduledAutomation["backendBinding"] = { kind: "co
     instanceAvailable: true,
     agentDefinitionId: binding.kind === "acp" ? binding.agentDefinitionId : "",
     targetProviderId: agentRuntimeProviderId(binding),
+    targetArchived: false,
   };
   const runs = new Map<string, CodexAutomationRun>();
   const launches: AgentRuntimeLaunch[] = [];
@@ -234,7 +235,7 @@ const setup = (binding: CodexScheduledAutomation["backendBinding"] = { kind: "co
             Effect.succeed({
               id: "heartbeat-session",
               projectId: "project",
-              archived: false,
+              archived: state.targetArchived,
               executionRef: { runtimeId: "runtime", threadId: "root" },
             }),
         } as unknown as ProjectWorkspace["Service"]),
@@ -243,6 +244,12 @@ const setup = (binding: CodexScheduledAutomation["backendBinding"] = { kind: "co
   );
   return { state, runs, launches, physical, completions, stops, messages, layer };
 };
+/** The message a refused create, save or Run now shows in its toast. */
+const refusal = <A, E>(effect: Effect.Effect<A, E>) =>
+  effect.pipe(
+    Effect.flip,
+    Effect.map((error) => toElectronIpcRendererError(error).message),
+  );
 it.effect.each([
   { kind: "codex" as const },
   { kind: "claude" as const, instanceConfigId: "named" },
@@ -489,11 +496,6 @@ it.effect(
   "refusals tell the user what to change, as the scheduled-task toast receives them",
   () => {
     const fixture = setup(acpBinding);
-    const refusal = <A, E>(effect: Effect.Effect<A, E>) =>
-      effect.pipe(
-        Effect.flip,
-        Effect.map((error) => toElectronIpcRendererError(error).message),
-      );
     return Effect.gen(function* () {
       const execution = yield* AutomationExecution;
       const definition = fixture.state.definition;
@@ -523,7 +525,7 @@ it.effect(
   },
 );
 
-it.effect("ACP Heartbeats use the same Session and refuse a replaced instance", () => {
+it.effect("ACP Heartbeats use one Session and refuse a replaced instance or archived chat", () => {
   const fixture = setup(acpBinding);
   fixture.state.definition = {
     ...fixture.state.definition,
@@ -562,10 +564,18 @@ it.effect("ACP Heartbeats use the same Session and refuse a replaced instance", 
       "Failure",
     );
     assert.equal(
-      (yield* execution
-        .executeClaimed(fixture.state.definition, { ...context, dispatchId: "next" })
-        .pipe(Effect.result))._tag,
-      "Failure",
+      yield* refusal(
+        execution.executeClaimed(fixture.state.definition, { ...context, dispatchId: "next" }),
+      ),
+      "A heartbeat runs on its chat's Agent. Choose the Agent this chat uses.",
+    );
+    fixture.state.targetProviderId = agentRuntimeProviderId(acpBinding);
+    fixture.state.targetArchived = true;
+    assert.equal(
+      yield* refusal(
+        execution.executeClaimed(fixture.state.definition, { ...context, dispatchId: "after" }),
+      ),
+      "This heartbeat's chat is archived. Unarchive it or choose another chat.",
     );
     assert.equal(fixture.messages.length, 1);
   }).pipe(Effect.provide(fixture.layer));

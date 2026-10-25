@@ -157,16 +157,23 @@ export const makeWithCapture = (capture: AppToolAuthorityCapture) =>
           AGENT_UNAVAILABLE,
           "No Agent is known for this task. Pass backendBinding from a task returned by view.",
         );
-      const heartbeatBinding = runtimeBinding ?? target?.backendBinding;
-      if (
-        request.kind === "heartbeat" &&
-        (!heartbeatBinding ||
-          agentRuntimeProviderId(heartbeatBinding) !== agentRuntimeProviderId(backendBinding))
-      )
-        return toolFailure(
-          AGENT_UNAVAILABLE,
-          "A Heartbeat runs on its target Session's Agent. Omit backendBinding or pass that Agent.",
-        );
+      if (request.kind === "heartbeat") {
+        const sessionBinding = runtimeBinding ?? target?.backendBinding;
+        if (!sessionBinding)
+          return toolFailure(
+            AGENT_UNAVAILABLE,
+            "The target Session is unavailable or its Agent is off or removed. Ask the user to check that Agent in Settings, or target another Session.",
+          );
+        // Update resolves an omitted backendBinding from the task, not from a new target Session.
+        if (agentRuntimeProviderId(sessionBinding) !== agentRuntimeProviderId(backendBinding))
+          return toolFailure(
+            AGENT_UNAVAILABLE,
+            request.mode === "update" || request.mode === "suggested_update"
+              ? "A Heartbeat runs on its target Session's Agent, and update keeps the task's current backendBinding when it is omitted. Pass the backendBinding included here."
+              : "A Heartbeat runs on its target Session's Agent. Omit backendBinding, or pass the one included here.",
+            { backendBinding: sessionBinding },
+          );
+      }
       if (backendBinding.kind === "acp") {
         if (Option.isNone(settings) || Option.isNone(runtime))
           return toolFailure(AGENT_UNAVAILABLE, AGENT_UNAVAILABLE_MESSAGE);

@@ -259,11 +259,12 @@ export const live: Layer.Layer<
           return yield* fail("heartbeat", "This heartbeat's chat is no longer available.");
         const session = yield* workspace.getProjectSession(sessionId);
         const target = yield* application.inspect({ sessionId });
-        if (
-          session?.archived ||
-          target.thread.archivedAt !== null ||
-          target.thread.providerInstanceId !== selected.instanceId
-        )
+        if (session?.archived || target.thread.archivedAt !== null)
+          return yield* fail(
+            "heartbeat",
+            "This heartbeat's chat is archived. Unarchive it or choose another chat.",
+          );
+        if (target.thread.providerInstanceId !== selected.instanceId)
           return yield* fail(
             "heartbeat",
             "A heartbeat runs on its chat's Agent. Choose the Agent this chat uses.",

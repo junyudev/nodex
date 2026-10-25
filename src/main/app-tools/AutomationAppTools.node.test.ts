@@ -477,6 +477,13 @@ it.effect(
         instanceConfigId: "personal",
       } as const;
       const providerId = agentRuntimeProviderId(binding);
+      const workHeartbeat: CodexScheduledAutomation = {
+        ...item,
+        id: "automation:work-heartbeat",
+        kind: "heartbeat",
+        targetSessionId: "work-session",
+        backendBinding: { ...binding, instanceConfigId: "work" },
+      };
       let enabled = true;
       const definitions: Array<Parameters<AutomationDefinitions["create"]>[0]> = [];
       const caller = createHostedAppToolCaller({
@@ -530,7 +537,7 @@ it.effect(
         } as never),
         Effect.provideService(AutomationApplication, {
           definitions: {
-            get: () => Effect.succeed(null),
+            get: (id: string) => Effect.succeed(id === workHeartbeat.id ? workHeartbeat : null),
             create: (definition: Parameters<AutomationDefinitions["create"]>[0]) =>
               Effect.sync(() => {
                 definitions.push(definition);
@@ -558,17 +565,50 @@ it.effect(
         [binding, binding],
       );
       assert.equal(definitions[1]?.targetSessionId, "acp-session");
-      assert.deepEqual(
-        (yield* request({
-          mode: "create",
-          kind: "heartbeat",
-          name: "Wrong instance",
-          prompt: "Report changes",
-          rrule: "FREQ=HOURLY;INTERVAL=1",
-          backendBinding: { ...binding, instanceConfigId: "work" },
-        })).structuredContent,
-        { error: { code: "automation_backend_unavailable" } },
-      );
+      const heartbeat = {
+        kind: "heartbeat",
+        prompt: "Report changes",
+        rrule: "FREQ=HOURLY;INTERVAL=1",
+      };
+      const failureBody = (result: { content: unknown }) =>
+        JSON.parse((result.content as [{ text: string }])[0].text) as unknown;
+      const sessionAgent = {
+        code: "automation_backend_unavailable",
+        details: { backendBinding: binding },
+      };
+      const wrongInstance = yield* request({
+        ...heartbeat,
+        mode: "create",
+        name: "Wrong instance",
+        backendBinding: { ...binding, instanceConfigId: "work" },
+      });
+      assert.deepEqual(wrongInstance.structuredContent, { error: sessionAgent });
+      assert.deepEqual(failureBody(wrongInstance), {
+        message:
+          "A Heartbeat runs on its target Session's Agent. Omit backendBinding, or pass the one included here.",
+        backendBinding: binding,
+      });
+      const retarget = {
+        ...heartbeat,
+        mode: "suggested_update",
+        id: workHeartbeat.id,
+        expectedRevision: workHeartbeat.definitionRevision,
+        status: "ACTIVE",
+        name: "Moved",
+        targetSessionId: "acp-session",
+      };
+      const kept = yield* request(retarget);
+      assert.deepEqual(kept.structuredContent, { error: sessionAgent });
+      assert.deepEqual(failureBody(kept), {
+        message:
+          "A Heartbeat runs on its target Session's Agent, and update keeps the task's current backendBinding when it is omitted. Pass the backendBinding included here.",
+        backendBinding: binding,
+      });
+      const included = (kept.structuredContent as { error: typeof sessionAgent }).error.details;
+      assert.deepEqual((yield* request({ ...retarget, ...included })).structuredContent, {
+        proposal: { ...retarget, backendBinding: binding },
+        committed: false,
+      });
       const retired = yield* request({
         ...cron,
         mode: "create",
@@ -593,6 +633,21 @@ it.effect(
         {
           type: "text",
           text: "The selected Agent is off, removed or not ready. Ask the user to check it in Settings, or choose another Agent.",
+        },
+      ]);
+      const unknownAgent = yield* request({
+        ...heartbeat,
+        mode: "create",
+        name: "Off",
+        backendBinding: binding,
+      });
+      assert.deepEqual(unknownAgent.structuredContent, {
+        error: { code: "automation_backend_unavailable" },
+      });
+      assert.deepEqual(unknownAgent.content, [
+        {
+          type: "text",
+          text: "The target Session is unavailable or its Agent is off or removed. Ask the user to check that Agent in Settings, or target another Session.",
         },
       ]);
       assert.equal(definitions.length, 2);

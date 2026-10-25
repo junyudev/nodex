@@ -130,8 +130,9 @@ selected Project source. It offers `No environment`, identifies the preferred
 `environment.toml` definition, and can open Settings → Environments with the
 selected Project/config context.
 
-The shared Agent menu offers Codex and enabled Claude Profiles. Codex uses its runtime
-model catalog and exact model, reasoning and service-tier tuple. Claude uses discovery
+The shared Agent menu offers Codex, enabled Claude Profiles and enabled ACP instances.
+Codex uses its runtime model catalog and exact model, reasoning and service-tier
+tuple. Claude uses discovery
 from the selected Profile and Project, or the trusted host directory for a projectless
 task. It displays concrete native model IDs and only advertised effort levels. Inherited preferences
 display their resolved native values. Changing Profile clears settings that do not apply to the new
