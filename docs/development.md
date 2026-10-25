@@ -557,6 +557,10 @@ catalog for aggregate, focused, related, and standalone execution. Every run is
 uncached. The standard aggregate runs unit, effect-codex, Agent Runtime, core-client, Main,
 renderer, and integration serially; Chromium remains an explicit browser gate.
 Main and integration run Vitest under Electron so native addons use its ABI.
+Workspace text-search process tests use the locked `@vscode/ripgrep` development
+dependency for the test host. They require no staged desktop bundle or `rg` on
+the user's PATH; keep platform optional dependencies enabled during installation.
+Electron and packaged-runtime checks exercise the application's bundled search tool.
 Renderer uses up to four workers in CI, and locally on machines with at least
 8 available CPUs and 24 GiB total memory; smaller local machines use up to two.
 The budget never exceeds available CPUs. Stress stays at one worker, file

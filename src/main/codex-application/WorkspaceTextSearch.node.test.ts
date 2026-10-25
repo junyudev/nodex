@@ -2,6 +2,7 @@ import { assert, it } from "@effect/vitest";
 import { mkdtemp, mkdir, rm, writeFile, chmod, symlink, realpath } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { rgPath } from "@vscode/ripgrep";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
@@ -21,7 +22,8 @@ import {
 } from "../platform/node/WorkspaceTextSearchPlatform";
 import { searchWorkspaceTextOnHost } from "./WorkspaceTextSearch";
 
-const rgDirectory = path.resolve(".generated/codex-runtime/agent-runtime/codex-path");
+// Test the real process boundary on the test host, independently of macOS app packaging.
+const rgDirectory = path.dirname(rgPath);
 const request = (
   roots: readonly string[],
   options: Partial<WorkspaceTextSearchRequest> = {},
