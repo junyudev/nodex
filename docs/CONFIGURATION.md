@@ -189,7 +189,7 @@ configuration; it does not import conversation history. Import receipts remain i
 
 ## Claude Code instances
 
-Agent settings expose Claude Code with an enabled default instance, executable `claude`, and the
+Settings > Agents > Claude Code exposes Claude Code with an enabled default instance, executable `claude`, and the
 normal Claude configuration directory. Nodex searches the Desktop PATH, then the login-shell PATH
 and the native `~/.local/bin/claude` installation when needed. Explicit executable paths and
 instance or worktree PATH overrides remain authoritative. Add separate profiles for independent

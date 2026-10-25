@@ -96,7 +96,7 @@ Account changes retain the history home. Configuration and launch precedence are
 
 ## Copying Agent setup
 
-Copy setup in Settings > Agent > Codex copies supported configuration, instructions, skills, hooks and related Agent
+Copy setup in Settings > Agents > Codex copies supported configuration, instructions, skills, hooks and related Agent
 resources to Codex. It does not offer or import conversations. Conversation
 history enters Nodex exclusively through the shared independent-copy workflow.
 

@@ -138,7 +138,7 @@ model state.
 
 ## Settings and Composer
 
-Settings > Agent lists ACP Agents one row per instance: name, its command or Registry source, one
+Settings > Agents > Other agents lists ACP Agents one row per instance: name, its command or Registry source, one
 status with the next step (Install, Connect, Sign in or Cancel), and an on/off switch that saves
 immediately. Statuses follow the instance's discovery state: Ready with the model count (or Startup
 model for an Agent without a model API) once discovery is ready, Not connected while it is unknown,

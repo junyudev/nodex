@@ -50,10 +50,11 @@ keyed by page key rather than by route slug.
 
 The desktop groups are:
 
-- Personal: Account, General, Appearance, Voice, Agent, Keyboard shortcuts, Inbox.
+- Personal: Account, General, Appearance, Voice, Keyboard shortcuts.
+- AI: Agents, Conversations, Hooks.
 - Integrations: Browser, Computer use.
-- Coding: Conversations, Hooks, Git, Environments, Worktrees.
-- Workspace: Pages.
+- Coding: Git, Environments, Worktrees.
+- Workspace: Pages, Inbox.
 - Data & recovery: Data controls, Backups.
 
 Account owns the optional Nodex identity and its connection controls, following
@@ -72,8 +73,15 @@ Conversations owns source discovery, destination selection and independent conve
 for Codex and Claude, as described in
 [Native Conversation Import Behavior](native-conversation-connection-behavior.md), and imports of
 conversations saved by ACP Agents, as described in [ACP Agent behavior](acp-agent-behavior.md).
-Agent owns ACP instance setup, sign-in and model services.
-Agent > Codex owns Copy setup. Setup migration is separate from conversation import and targets
+Agents shows one collapsible card per Agent kind, in the order Codex, Claude Code, OpenCode and
+Other agents. Every card starts closed with a short status summary, so the page reads as a list of
+Agents; opening one reveals its setup, and cards stay open while Settings remains on Agents. A search
+result, Manage link or deep link that names an Agent, profile or ACP instance opens its card on
+arrival; one that names only the page opens it with every card closed. Claude Code and OpenCode list
+one row per profile, and Other agents one row per ACP instance, each expanding in place.
+Other agents owns ACP instance setup, sign-in and model services, as described in
+[ACP Agent behavior](acp-agent-behavior.md).
+Agents > Codex owns Copy setup. Setup migration is separate from conversation import and targets
 shared Codex configuration.
 
 General owns Permissions, general behavior, Composer, Files & links, Notifications, and app-server
@@ -97,7 +105,8 @@ Browser child terms contribute to the single Browser result; Browser remains
 the navigation owner. `Cmd/Ctrl+F` focuses and selects the search field, Escape
 clears it, Arrow Up/Down wraps the highlighted result, and Enter navigates only
 when a result is highlighted. Navigation preserves the active query and targets
-the owning section or anchor.
+the owning section or anchor; a result inside a collapsed group, such as an Agent
+card or Appearance's Advanced group, opens that group on arrival.
 
 Settings search uses its dedicated ranking/list-navigation helpers rather than
 the command-palette index.
