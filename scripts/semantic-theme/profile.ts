@@ -5,7 +5,7 @@ import type {
   SemanticUtilityProfile,
 } from "./types";
 
-export const SEMANTIC_THEME_GENERATOR_VERSION = 3;
+export const SEMANTIC_THEME_GENERATOR_VERSION = 4;
 export const SEMANTIC_THEME_REF_VERSION = "26.1007.30912";
 
 export const SEMANTIC_THEME_TARGETS = [

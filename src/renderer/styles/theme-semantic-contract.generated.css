@@ -4,7 +4,7 @@
  *   vp run semantic-theme:sync -- --source /temporary/reference.css --ref-version 26.1007.30912
  */
 
-@theme static {
+@theme reference {
   --app-color-background-shell: var(--color-surface-tertiary);
   --color-background-activity-control: var(--lightningcss-light, #e8e8e8)var(--lightningcss-dark, var(--gray-fixed-700));
   --color-background-activity-control-hover: var(--lightningcss-light, var(--gray-fixed-300))var(--lightningcss-dark, var(--gray-fixed-450));
@@ -412,6 +412,17 @@
   --transition-duration-basic: .15s;
   --transition-duration-moderate: .2s;
   --transition-ease-basic: ease;
+}
+
+@layer theme {
+  :where(:root, :host) {
+    --color-token-border-heavy: var(--color-border-strong);
+    --color-token-conversation-body: color-mix(in oklab, var(--color-token-foreground) 60%, transparent);
+    --color-token-conversation-header: color-mix(in oklab, var(--color-token-foreground) 30%, transparent);
+    --color-token-conversation-summary-leading: color-mix(in oklab, var(--color-token-description-foreground) 90%, transparent);
+    --color-token-conversation-summary-trailing: color-mix(in oklab, var(--color-token-foreground) 40%, transparent);
+    --color-token-non-assistant-body-descendant: color-mix(in oklab, var(--color-token-foreground) 50%, transparent);
+  }
 }
 
 @layer theme {

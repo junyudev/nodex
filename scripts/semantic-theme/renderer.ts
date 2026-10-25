@@ -73,8 +73,11 @@ const formatDeclarations = (declarations: ReadonlyMap<string, string>): string =
 const formatBlock = (selector: string, declarations: ReadonlyMap<string, string>): string =>
   declarations.size === 0 ? "" : `${selector} {\n${formatDeclarations(declarations)}\n}`;
 
-const formatThemeBlock = (declarations: ReadonlyMap<string, string>): string =>
-  declarations.size === 0 ? "" : `@theme static {\n${formatDeclarations(declarations)}\n}`;
+const formatThemeBlock = (
+  declarations: ReadonlyMap<string, string>,
+  mode: "static" | "reference" = "static",
+): string =>
+  declarations.size === 0 ? "" : `@theme ${mode} {\n${formatDeclarations(declarations)}\n}`;
 
 const mergeMaps = (...maps: readonly ReadonlyMap<string, string>[]): Map<string, string> => {
   const result = new Map<string, string>();
@@ -234,7 +237,10 @@ const renderContract = (
     },
   });
 
-  return [HEADER(refVersion), formatThemeBlock(theme), declarations]
+  // Registration must not synthesize a :root rule above the source's zero-specificity cascade.
+  // Source declarations publish their own runtime values; Nodex-only defaults use the same layer.
+  const augmentations = `@layer theme {\n  ${formatBlock(":where(:root, :host)", RUNTIME_TOKEN_AUGMENTATIONS).replaceAll("\n", "\n  ")}\n}`;
+  return [HEADER(refVersion), formatThemeBlock(theme, "reference"), augmentations, declarations]
     .filter(Boolean)
     .join("\n\n")
     .concat("\n");

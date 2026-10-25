@@ -493,6 +493,13 @@ const collectThemeRuleFacts = (
   artifactPath: string,
 ): SemanticThemeCssFacts => {
   if (rule.value.name !== "theme" || !rule.value.block) return { definitions: [], uses: [] };
+  if (
+    rule.value.prelude?.some(
+      (token) =>
+        token.type === "token" && token.value.type === "ident" && token.value.value === "reference",
+    )
+  )
+    return { definitions: [], uses: [] };
   const definitions: SemanticThemeVariableDefinition[] = [];
   const uses: SemanticThemeVariableUse[] = [];
   const tokens = rule.value.block;

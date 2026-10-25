@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "refVersion": "26.1007.30912",
   "profileSha256": "713bd7dd9bcb10b298cbfe7d308783d3f0fd4078e043ce52031652c050ac6bff",
-  "generatorVersion": 3,
+  "generatorVersion": 4,
   "artifacts": [
     {
       "path": "src/renderer/styles/semantic-theme-contract.generated.json",
@@ -18,7 +18,7 @@
     },
     {
       "path": "src/renderer/styles/theme-semantic-contract.generated.css",
-      "sha256": "c82471b0c1f07cebe4edaf766b38fe56530b6b4fc3f522e6a3beb7204eb9528e"
+      "sha256": "017cc5ee6e827e0aaf99192a8336a98e150b2d5bb845591af8120aa9108c5f1b"
     },
     {
       "path": "src/renderer/styles/theme-semantic-utilities.generated.css",

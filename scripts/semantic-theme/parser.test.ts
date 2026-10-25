@@ -8,6 +8,24 @@ import {
 } from "./parser";
 
 describe("semantic theme CSS parser", () => {
+  test("reference theme registration does not count as a runtime variable provider", () => {
+    const facts = collectSemanticThemeCssFacts(
+      `
+        @theme reference { --color-text-secondary: var(--missing-runtime-color); }
+        @theme static { --color-text-info: blue; }
+        :where(:root) { --color-text-secondary: rgb(0 0 0 / 0.65); }
+      `,
+      "fixture.css",
+    );
+    expect(facts.definitions.filter(({ name }) => name === "--color-text-secondary")).toHaveLength(
+      1,
+    );
+    expect(facts.definitions.find(({ name }) => name === "--color-text-info")?.selectorKey).toBe(
+      "@theme",
+    );
+    expect(facts.uses).toEqual([]);
+  });
+
   test("keeps configured declarations and their conditional scope", () => {
     const css = `
       :root, :host { --color-text-info: blue; --unowned: red; }

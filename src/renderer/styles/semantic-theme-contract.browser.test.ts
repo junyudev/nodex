@@ -55,6 +55,31 @@ describe("semantic theme contract in the renderer build", () => {
     expect(getComputedStyle(mountRole("text-secondary")).color).not.toBe("rgb(10, 120, 40)");
   });
 
+  test.each([
+    { windowType: "electron", scheme: "light" },
+    { windowType: "electron", scheme: "dark" },
+    { windowType: "browser", scheme: "light" },
+    { windowType: "browser", scheme: "dark" },
+  ] as const)(
+    "preserves the secondary text alpha through the $windowType $scheme theme cascade",
+    ({ windowType, scheme }) => {
+      setWindowTheme(windowType, scheme);
+      const foreground = getComputedStyle(document.documentElement).getPropertyValue(
+        "--app-color-text-foreground",
+      );
+      const secondary = mountRole("semantic-text-secondary");
+      const expected = mountRole("");
+      expected.style.color = `color-mix(in srgb, ${foreground} 65%, transparent)`;
+      expect(getComputedStyle(secondary).color).toBe(getComputedStyle(expected).color);
+
+      document.documentElement.style.setProperty(
+        "--app-color-text-secondary",
+        "rgb(20 40 60 / 0.4)",
+      );
+      expect(getComputedStyle(secondary).color).toBe("rgba(20, 40, 60, 0.4)");
+    },
+  );
+
   test("resolves semantic border and progress roles", () => {
     document.body.style.setProperty("--color-border", "rgb(42, 43, 44)");
     document.body.style.setProperty("--color-text", "rgb(18, 105, 201)");
