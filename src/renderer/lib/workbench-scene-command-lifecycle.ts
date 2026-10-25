@@ -1,4 +1,4 @@
-import type { WorkbenchSceneOwner } from "../../shared/workbench-scene";
+import type { WorkbenchSceneOwner, WorkbenchSurfaceDescriptor } from "../../shared/workbench-scene";
 import { makeWorkbenchSceneKey } from "../../shared/workbench-scene";
 import { workspaceTextDocumentRegistry } from "../features/workspace-files/workspace-text-document-controller";
 import {
@@ -24,6 +24,31 @@ const closeBrowserTab = defineRendererCommand({
 const presentationOwnerId = (sceneOwner: WorkbenchSceneOwner) =>
   sceneOwner.kind === "session" ? sceneOwner.sessionId : makeWorkbenchSceneKey(sceneOwner);
 
+/** Prepare a Scene preview replacement through the same content owners as durable closing. */
+export async function prepareWorkbenchSceneSurfaceClose(
+  sceneOwner: WorkbenchSceneOwner,
+  surface: WorkbenchSurfaceDescriptor,
+): Promise<boolean> {
+  if (surface.kind === "files") return workspaceTextDocumentRegistry.flush(surface.id);
+  if (surface.kind === "page_stage") {
+    const lease = documentSessionRegistry.get(workbenchPageEditorKey(sceneOwner, surface.id));
+    if (!lease) return true;
+    try {
+      const result = await lease.runtime.persist();
+      return result.flush === "completed" && result.checkpoint === "completed";
+    } catch {
+      return false;
+    }
+  }
+  if (surface.kind !== "canvas_stage") return true;
+  try {
+    await canvasSceneSurfaceRegistry.flushOwnerCommitted(surface.config.canvasBlockId);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /** Narrow lifecycle Adapter shared by UI and Agent presentation commands. */
 export function createWorkbenchSceneCommandLifecycle(input: {
   readonly owner: WorkbenchWindowOwner;
@@ -32,26 +57,7 @@ export function createWorkbenchSceneCommandLifecycle(input: {
 }): WorkbenchSceneCommandLifecycle {
   return {
     async prepareClose(sceneOwner, tab) {
-      const surface = tab.surface;
-      if (!surface) return true;
-      if (surface.kind === "files") return workspaceTextDocumentRegistry.flush(surface.id);
-      if (surface.kind === "page_stage") {
-        const lease = documentSessionRegistry.get(workbenchPageEditorKey(sceneOwner, surface.id));
-        if (!lease) return true;
-        try {
-          const result = await lease.runtime.persist();
-          return result.flush === "completed" && result.checkpoint === "completed";
-        } catch {
-          return false;
-        }
-      }
-      if (surface.kind !== "canvas_stage") return true;
-      try {
-        await canvasSceneSurfaceRegistry.flushOwnerCommitted(surface.config.canvasBlockId);
-        return true;
-      } catch {
-        return false;
-      }
+      return tab.surface ? prepareWorkbenchSceneSurfaceClose(sceneOwner, tab.surface) : true;
     },
     async close(sceneOwner, tab) {
       const surface = tab.surface;

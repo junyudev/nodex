@@ -81,23 +81,24 @@ function normalizeHostId(value: WorkspaceFileHostInput): "local" {
 type WorkspaceFileHostInput = WorkspaceDirectoryEntriesInput["hostId"];
 
 function normalizeAbsolutePath(value: string, label: string): string {
-  const trimmed = value.trim();
-  if (!trimmed) {
+  if (!value.trim()) {
     throw new WorkspaceFileUserError("invalid_path", `${label} is required`);
   }
-  return resolve(trimmed);
+  if (!isAbsolute(value) || value.includes("\0"))
+    throw new WorkspaceFileUserError("invalid_path", `${label} must be absolute`);
+  return resolve(value);
 }
 
 export function normalizeWorkspaceDirectoryPath(value: string | undefined): string {
-  const trimmed = value?.trim() ?? "";
-  if (!trimmed || trimmed === ".") return "";
-  if (isAbsolute(trimmed) || win32.isAbsolute(trimmed)) {
+  const requested = value ?? "";
+  if (!requested || requested === ".") return "";
+  if (isAbsolute(requested) || win32.isAbsolute(requested)) {
     throw new WorkspaceFileUserError(
       "invalid_directory",
       "directoryPath must be relative to workspaceRoot",
     );
   }
-  return trimmed
+  return requested
     .replace(/\\/g, "/")
     .replace(/^\.\/+/, "")
     .replace(/\/+$/, "");

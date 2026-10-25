@@ -12,6 +12,11 @@ export const CODEX_ACCENT_PRESETS = [
 ] as const;
 
 export type CodexAccentPreset = (typeof CODEX_ACCENT_PRESETS)[number];
+export function codexAccentPresetLabel(name: CodexAccentPreset, variant: ThemeVariant): string {
+  if (name === "black" && variant === "dark") return "White";
+  return name.charAt(0).toUpperCase() + name.slice(1);
+}
+
 export type CodexAccent =
   | { readonly kind: "preset"; readonly name: CodexAccentPreset }
   | { readonly kind: "custom"; readonly color: string };

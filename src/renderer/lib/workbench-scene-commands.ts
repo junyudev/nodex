@@ -1,3 +1,4 @@
+import type { WorkbenchSurfaceReveal } from "../../shared/nodex-app-tools/workbench-reveal";
 import {
   WorkbenchSceneSnapshotSchema,
   WorkbenchSurfaceDescriptorSchema,
@@ -317,6 +318,7 @@ interface PreparedCommand {
 }
 
 export interface WorkbenchSceneCommandOptions {
+  readonly reveal?: WorkbenchSurfaceReveal;
   readonly open?: {
     readonly presentation?: "activate" | "background";
     readonly targetIndex?: number;
@@ -830,8 +832,9 @@ export function createWorkbenchSceneCommands(
           executionOptions,
           lifecycle.getOpenerState,
         );
-        if (input.command.kind === "open_surface" && input.command.reveal && prepared.tabId) {
-          const reveal = input.command.reveal;
+        const reveal =
+          input.command.kind === "open_surface" ? input.command.reveal : executionOptions.reveal;
+        if (reveal && prepared.tabId) {
           const surface = resolveWorkbenchSceneSurface(prepared.scene, prepared.tabId);
           if (
             !surface ||
@@ -844,7 +847,14 @@ export function createWorkbenchSceneCommands(
               : {};
           const revealState =
             reveal.kind === "file"
-              ? { pendingReveal: { line: reveal.line } }
+              ? {
+                  pendingReveal: {
+                    line: reveal.line,
+                    ...(reveal.column ? { column: reveal.column } : {}),
+                    ...(reveal.endLine ? { endLine: reveal.endLine } : {}),
+                    ...(reveal.endColumn ? { endColumn: reveal.endColumn } : {}),
+                  },
+                }
               : { pendingReviewOpen: { operationId: input.operationId, intent: reveal } };
           prepared = {
             ...prepared,

@@ -1,4 +1,5 @@
-import { act, render, waitFor } from "@testing-library/react";
+import { act, waitFor } from "@testing-library/react";
+import { renderWithAppMaitai as render } from "@/test/app-maitai";
 import { useState } from "react";
 import { afterEach, expect, test, vi } from "vite-plus/test";
 import { page, userEvent } from "vite-plus/test/browser";
@@ -60,6 +61,7 @@ const commandHandlers: CommandPaletteShellCommandHandlers = {
   navigateForward: ignore,
   newThread: ignore,
   newThreadInProject: ignore,
+  openFolder: ignore,
   createPage: ignore,
   renameThread: ignore,
   archiveThread: ignore,
@@ -111,6 +113,21 @@ function PaletteFixture() {
   const [open, setOpen] = useState(false);
   return (
     <>
+      <div
+        role="textbox"
+        aria-label="Draft editor"
+        contentEditable
+        suppressContentEditableWarning
+        onKeyDown={(event) => {
+          if (!event.ctrlKey || event.key !== "k") return;
+          event.preventDefault();
+          setOpen(true);
+        }}
+      >
+        <span>First paragraph</span>
+        <br />
+        <span>Second paragraph</span>
+      </div>
       <button type="button" onClick={() => setOpen(true)}>
         Open command menu
       </button>
@@ -225,6 +242,33 @@ test("keeps consecutive scope navigation in the tablist until F6 returns to sear
   expect(input.value).toBe("review");
 });
 
+test("captures the live editor selection at the open edge and restores it after Escape", async () => {
+  const view = render(<PaletteFixture />);
+  const editor = view.getByRole("textbox", { name: "Draft editor" });
+  const first = editor.firstElementChild?.firstChild;
+  const last = editor.lastElementChild?.firstChild;
+  const selection = document.getSelection();
+  if (!first || !last || !selection) throw new Error("Expected a selectable editor fixture");
+  await act(async () => {
+    editor.focus();
+    selection.setBaseAndExtent(last, 6, first, 2);
+    await userEvent.keyboard("{Control>}k{/Control}");
+  });
+  await view.findByRole("dialog", { name: "Command palette" });
+  const search = view.getByRole("combobox", { name: "Command palette search" });
+  await waitFor(() => expect(document.activeElement).toBe(search));
+  await act(async () => {
+    selection.removeAllRanges();
+    await userEvent.keyboard("{Escape}");
+  });
+  await waitFor(() => expect(view.queryByRole("dialog")).toBeNull());
+  expect(document.activeElement).toBe(editor);
+  expect(selection.anchorNode).toBe(last);
+  expect(selection.anchorOffset).toBe(6);
+  expect(selection.focusNode).toBe(first);
+  expect(selection.focusOffset).toBe(2);
+});
+
 test("contains long results in a small viewport and returns focus after dismissal", async () => {
   await page.viewport(390, 360);
   const { view, input, trigger, surface } = await openPalette();
@@ -248,4 +292,64 @@ test("contains long results in a small viewport and returns focus after dismissa
   await act(async () => userEvent.keyboard("{Escape}"));
   await waitFor(() => expect(view.queryByRole("dialog")).toBeNull());
   await waitFor(() => expect(document.activeElement).toBe(trigger));
+});
+
+test("Theme drill-in clears search, dismisses one level, and applies the shared appearance preference", async () => {
+  const { view, input } = await openPalette();
+  await act(async () => userEvent.type(input, "theme"));
+  await act(async () => userEvent.click(view.getByRole("option", { name: /^Theme /u })));
+  await waitFor(() => expect(input.placeholder).toBe("Search themes"));
+  expect(input.value).toBe("");
+  expect(view.queryByRole("tablist")).toBeNull();
+  expect(
+    view.getByRole("button", { name: "Back to command menu" }).getBoundingClientRect().top,
+  ).toBeGreaterThanOrEqual(input.getBoundingClientRect().bottom);
+  expect(view.getByRole("group", { name: "Color themes" })).toBeTruthy();
+  await act(async () => userEvent.keyboard("{Escape}"));
+  await waitFor(() => expect(view.getByRole("tab", { name: "All" })).toBeTruthy());
+  expect(view.getByRole("dialog")).toBeTruthy();
+  expect(document.activeElement).toBe(input);
+  await act(async () => userEvent.type(input, "theme"));
+  await act(async () => userEvent.click(view.getByRole("option", { name: /^Theme /u })));
+  await act(async () =>
+    userEvent.click(view.getByRole("option", { name: /^Switch to (light|dark) theme$/u })),
+  );
+  await waitFor(() => expect(view.queryByRole("dialog")).toBeNull());
+});
+
+test("fits the physical viewport under window zoom and keeps its search controls visible", async () => {
+  await page.viewport(560, 480);
+  document.documentElement.style.setProperty("--codex-window-zoom", "1.25");
+  document.body.style.zoom = "1.25";
+  document.body.style.width = "calc(100vw / 1.25)";
+  try {
+    const { view, surface, input } = await openPalette();
+    await act(async () => userEvent.click(view.getByRole("tab", { name: "Text" })));
+    const bounds = surface.getBoundingClientRect();
+    expect(bounds.left).toBeGreaterThanOrEqual(0);
+    expect(bounds.right).toBeLessThanOrEqual(window.innerWidth);
+    expect(bounds.top).toBeGreaterThanOrEqual(0);
+    expect(bounds.bottom).toBeLessThanOrEqual(window.innerHeight);
+    expect(input.getBoundingClientRect().bottom).toBeLessThan(bounds.bottom);
+    expect(
+      view.getByRole("button", { name: "Search folder" }).getBoundingClientRect().bottom,
+    ).toBeLessThan(bounds.bottom);
+  } finally {
+    document.documentElement.style.removeProperty("--codex-window-zoom");
+    document.body.style.removeProperty("zoom");
+    document.body.style.removeProperty("width");
+  }
+});
+
+test("reopens with the last broad query selected for replacement", async () => {
+  const { view, input, trigger } = await openPalette();
+  await act(async () => userEvent.type(input, "review"));
+  await act(async () => userEvent.keyboard("{Escape}"));
+  await waitFor(() => expect(view.queryByRole("dialog")).toBeNull());
+  await act(async () => userEvent.click(trigger));
+  const reopened = view.getByRole("combobox", {
+    name: "Command palette search",
+  }) as HTMLInputElement;
+  await waitFor(() => expect(reopened.value).toBe("review"));
+  await waitFor(() => expect([reopened.selectionStart, reopened.selectionEnd]).toEqual([0, 6]));
 });

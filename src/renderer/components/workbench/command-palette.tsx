@@ -1,10 +1,17 @@
 import type { FileSearchScope, FileSearchMatch } from "../../../shared/file-search";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   NodexDialog as Dialog,
   NodexDialogContent as DialogContent,
   NodexDialogTitle as DialogTitle,
 } from "@/components/ui/dialog";
+import { flushSync } from "react-dom";
+import {
+  captureCommandPaletteFocus,
+  readCommandPaletteSelectionQuery,
+  type CommandPaletteFocusSnapshot,
+} from "@/lib/command-palette-focus";
+import type { WorkspaceTextSearchMatch } from "../../../shared/workspace-text-search";
 import { useCommandPaletteThreadItems } from "@/lib/command-palette-chat-search";
 import {
   type CommandMenuMode,
@@ -12,6 +19,7 @@ import {
   type CommandPalettePage,
   type CommandPaletteThread,
   type CommandPaletteFile,
+  type CommandPaletteText,
 } from "@/lib/command-palette";
 import {
   buildCommandPaletteCommands,
@@ -24,11 +32,20 @@ import { useCommandPaletteThreadSearchIndex } from "@/lib/use-command-palette-th
 import { configureInteractivePageSearch } from "@/lib/interactive-page-search";
 import type { Project } from "@/lib/types";
 import type { RecentPageSession } from "@/lib/use-workbench-profile-preferences";
+import { useCommandPaletteTheme } from "./command-palette-theme";
 import { CommandPaletteSurface, type CommandPaletteSurfaceHandle } from "./command-palette-surface";
+
+import {
+  resolveVisibleSettingsSections,
+  type SettingsSectionId,
+} from "./workbench-settings-sections";
 
 interface CommandPaletteProps {
   fileSearchScope?: FileSearchScope | null;
-  onOpenFile?: (file: FileSearchMatch) => void;
+  onOpenFile?: (file: FileSearchMatch, hostId: string) => void;
+  onOpenTextMatch?: (match: WorkspaceTextSearchMatch, hostId: string) => void;
+  priorityFolders?: readonly string[];
+  onOpenSettingsSection?: (section: SettingsSectionId) => void;
   open: boolean;
   openTriggerTick: number;
   initialMode?: CommandMenuMode;
@@ -48,7 +65,8 @@ type PaletteItem =
   | CommandPaletteCommand
   | CommandPalettePage
   | CommandPaletteThread
-  | CommandPaletteFile;
+  | CommandPaletteFile
+  | CommandPaletteText;
 
 function isMacPlatform(): boolean {
   return typeof navigator !== "undefined" && navigator.platform.toUpperCase().includes("MAC");
@@ -67,17 +85,61 @@ export function CommandPalette({
   onOpenChange,
   onOpenPage,
   onOpenThread,
-  fileSearchScope,
+  fileSearchScope = null,
   onOpenFile,
+  onOpenTextMatch,
+  priorityFolders,
+  onOpenSettingsSection,
 }: CommandPaletteProps) {
   const isMac = isMacPlatform();
+  const theme = useCommandPaletteTheme();
   const { threads, loading: threadsLoading } = useCommandPaletteThreadItems({
     enabled: open,
     activeProjectId,
     refreshKey: openTriggerTick,
   });
   const [mode, setMode] = useState<CommandMenuMode>(initialMode);
+  const contextScopeKey = JSON.stringify([fileSearchScope?.hostId, fileSearchScope?.roots]);
+  const [workspaceSelection, setWorkspaceSelection] = useState<{
+    open: boolean;
+    initialMode: CommandMenuMode;
+    openTriggerTick: number;
+    override: { contextKey: string; scope: FileSearchScope } | null;
+  }>({ open, initialMode, openTriggerTick, override: null });
+  if (
+    workspaceSelection.open !== open ||
+    workspaceSelection.initialMode !== initialMode ||
+    workspaceSelection.openTriggerTick !== openTriggerTick
+  ) {
+    setWorkspaceSelection({
+      open,
+      initialMode,
+      openTriggerTick,
+      override: open && initialMode !== "text" ? null : workspaceSelection.override,
+    });
+  }
+  const scopeOverride = workspaceSelection.override;
+  const workspaceScope =
+    scopeOverride?.contextKey === contextScopeKey ? scopeOverride.scope : fileSearchScope;
   const surfaceRef = useRef<CommandPaletteSurfaceHandle>(null);
+  const focusSnapshot = useRef<CommandPaletteFocusSnapshot | null>(null);
+  const lastQuery = useRef("");
+  const [openingQuery, setOpeningQuery] = useState(initialQuery ?? "");
+  useLayoutEffect(() => {
+    if (open) {
+      focusSnapshot.current ??= captureCommandPaletteFocus();
+      setOpeningQuery(initialQuery ?? readCommandPaletteSelectionQuery() ?? lastQuery.current);
+      return;
+    }
+    focusSnapshot.current?.restore();
+    focusSnapshot.current = null;
+  }, [open, initialQuery, openTriggerTick]);
+  const close = () => {
+    const snapshot = focusSnapshot.current;
+    focusSnapshot.current = null;
+    flushSync(() => onOpenChange(false));
+    snapshot?.restore();
+  };
   const threadSearchIndex = useCommandPaletteThreadSearchIndex(threads);
   const recentPageIds = useMemo(
     () => recentPageSessions.map((session) => session.pageId),
@@ -90,13 +152,27 @@ export function CommandPalette({
     );
   }, [projects]);
   const commands = useMemo(
-    () =>
-      buildCommandPaletteCommands({
+    () => [
+      ...buildCommandPaletteCommands({
         ...commandContext,
         isMac,
-        showMockCommands: import.meta.env.DEV,
+        showMockCommands: false,
       }),
-    [commandContext, isMac],
+      ...(onOpenSettingsSection
+        ? resolveVisibleSettingsSections()
+            .filter((section) => !section.disabled)
+            .map((section): CommandPaletteCommand => ({
+              kind: "command",
+              id: `settings:${section.id}`,
+              title: section.label,
+              subtitle: "",
+              keywords: ["settings", ...section.searchMessages],
+              group: "Settings",
+              priority: 700,
+            }))
+        : []),
+    ],
+    [commandContext, isMac, onOpenSettingsSection],
   );
 
   useEffect(() => {
@@ -109,7 +185,11 @@ export function CommandPalette({
 
   const handleExecute = (item: PaletteItem) => {
     if (item.kind === "file") {
-      onOpenFile?.(item.file);
+      onOpenFile?.(item.file, item.hostId);
+      return;
+    }
+    if (item.kind === "text") {
+      if (!item.disabled) onOpenTextMatch?.(item.match, item.hostId);
       return;
     }
     if (item.kind === "page") {
@@ -120,7 +200,15 @@ export function CommandPalette({
       onOpenThread(item.threadId, item.sessionId);
       return;
     }
-    if (item.disabled || !isCommandPaletteShellCommandId(item.id)) return;
+    if (item.disabled) return;
+    if (item.id.startsWith("settings:")) {
+      const section = resolveVisibleSettingsSections().find(
+        (candidate) => `settings:${candidate.id}` === item.id,
+      );
+      if (section && !section.disabled) onOpenSettingsSection?.(section.id);
+      return;
+    }
+    if (!isCommandPaletteShellCommandId(item.id)) return;
     executeCommandPaletteShellCommand(item.id, commandHandlers);
   };
 
@@ -132,7 +220,12 @@ export function CommandPalette({
           details.cancel();
           return;
         }
-        onOpenChange(nextOpen);
+        if (!nextOpen && surfaceRef.current?.dismissNested()) {
+          details.cancel();
+          return;
+        }
+        if (nextOpen) onOpenChange(true);
+        else close();
       }}
     >
       <DialogContent
@@ -140,7 +233,8 @@ export function CommandPalette({
         showCloseButton={false}
         overlayClassName="bg-black/[0.1333]"
         initialFocus={false}
-        className="command-menu-dialog top-[max(16px,calc((100vh-min(504px,90vh))/2))] w-[min(768px,92vw)] max-w-none translate-y-0 border-none bg-transparent p-0 shadow-none"
+        finalFocus={false}
+        className="command-menu-dialog top-[max(calc(16px/var(--codex-window-zoom,1)),calc((100vh/var(--codex-window-zoom,1)-var(--command-menu-height))/2))] w-[min(768px,calc(92vw/var(--codex-window-zoom,1)))] max-w-none translate-y-0 border-none bg-transparent p-0 shadow-none [--command-menu-height:calc(min(440px,max(120px,90vh/var(--codex-window-zoom,1)-64px))+64px)]"
       >
         <DialogTitle className="sr-only">Command palette</DialogTitle>
         <CommandPaletteSurface
@@ -148,9 +242,20 @@ export function CommandPalette({
           open={open}
           openTriggerTick={openTriggerTick}
           mode={mode}
-          initialQuery={initialQuery}
+          initialQuery={openingQuery}
+          onQueryChange={(query) => {
+            lastQuery.current = query;
+          }}
           fileSearchScope={fileSearchScope}
-          commands={commands}
+          workspaceScope={workspaceScope}
+          onWorkspaceScopeChange={(scope) =>
+            setWorkspaceSelection((current) => ({
+              ...current,
+              override: { contextKey: contextScopeKey, scope },
+            }))
+          }
+          priorityFolders={priorityFolders}
+          commands={[...commands, theme.parentCommand]}
           projects={projects}
           activeProjectId={activeProjectId}
           recentPageIds={recentPageIds}
@@ -160,7 +265,7 @@ export function CommandPalette({
           pagesLoading={false}
           chatsLoading={threadsLoading}
           onChangeMode={handleChangeMode}
-          onRequestClose={() => onOpenChange(false)}
+          onRequestClose={close}
           onExecute={handleExecute}
         />
       </DialogContent>

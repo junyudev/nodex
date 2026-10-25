@@ -949,9 +949,9 @@ export const CODEX_COMMAND_REGISTRY = [
   command("newWindow", "New window", "Open a new app window", 280, "electron", [
     "CmdOrCtrl+Shift+N",
   ]),
-  command("openFolder", "Open folder", "Open a local folder", 290, "electron", ["CmdOrCtrl+O"], {
-    available: false,
-  }),
+  command("openFolder", "Open folder", "Open a local folder as a Project", 290, "app", [
+    "CmdOrCtrl+O",
+  ]),
   command(
     "openProcessManager",
     "Open process manager",

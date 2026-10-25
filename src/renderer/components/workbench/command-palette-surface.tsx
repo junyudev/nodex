@@ -1,5 +1,21 @@
 import type { FileSearchScope } from "../../../shared/file-search";
-import { useFileSearch } from "@/lib/use-file-search";
+import { useCommandPaletteFileSearch } from "@/lib/use-command-palette-file-search";
+import { useWorkspaceTextSearch } from "@/lib/use-workspace-text-search";
+import {
+  useWorkspaceTextSearchHistory,
+  workspaceTextSearchHistoryScope,
+} from "@/lib/workspace-text-search-history";
+import { getWorkspaceSearchPriorityFolders } from "@/lib/workspace-search-recent-files";
+import {
+  CommandPaletteTextToolbar,
+  CommandPaletteTextHistoryRecorder,
+  CommandPaletteTextRow,
+  CommandPaletteTextHistoryRow,
+  CommandPaletteTextStatus,
+  workspaceTextSearchResultLabels,
+} from "./command-palette-text-search";
+import { CommandPaletteWorkspaceToolbar } from "./command-palette-workspace-toolbar";
+import { useCommandPaletteTheme, CommandPaletteThemeRow } from "./command-palette-theme";
 import {
   useCallback,
   useDeferredValue,
@@ -14,6 +30,7 @@ import {
 } from "react";
 import {
   FilterIcon,
+  BackIcon,
   PageIcon,
   FileIcon,
   FolderIcon,
@@ -36,6 +53,7 @@ import {
   type CommandPaletteCommand,
   type CommandPaletteThread,
   type CommandPaletteFile,
+  type CommandPaletteText,
   writeCommandPalettePageFilters,
 } from "../../lib/command-palette";
 import { type CommandPaletteHighlightSegment } from "../../lib/command-palette-highlight";
@@ -79,6 +97,7 @@ import {
   buildCommandPaletteSectionsModel,
   DEFAULT_DISCOVERY_LIMITS,
   MAX_DISCOVERY_RESULTS,
+  getDiscoveryResultLimit,
   type DiscoveryLimits,
   type ExecutablePaletteItem,
   type PaletteItem,
@@ -86,10 +105,14 @@ import {
 
 interface CommandPaletteSurfaceProps {
   fileSearchScope?: FileSearchScope | null;
+  workspaceScope?: FileSearchScope | null;
+  onWorkspaceScopeChange?: (scope: FileSearchScope) => void;
+  priorityFolders?: readonly string[];
   open: boolean;
   openTriggerTick: number;
   mode: CommandMenuMode;
   initialQuery?: string;
+  onQueryChange?: (query: string) => void;
   commands: readonly CommandPaletteCommand[];
   pages?: readonly CommandPalettePage[];
   projects?: readonly Project[];
@@ -110,6 +133,7 @@ interface CommandPaletteSurfaceProps {
 export interface CommandPaletteSurfaceHandle {
   /** A composing input retains Escape until its composition has finished. */
   isComposing: () => boolean;
+  dismissNested: () => boolean;
 }
 
 const EMPTY_PALETTE_PAGES: readonly CommandPalettePage[] = [];
@@ -122,7 +146,7 @@ function getPaletteItemDomId(listId: string, index: number): string {
 }
 
 function isPaletteItemDisabled(item: PaletteItem | undefined): boolean {
-  return item?.kind === "command" && item.disabled === true;
+  return (item?.kind === "command" || item?.kind === "text") && item.disabled === true;
 }
 
 function getModePlaceholder(mode: CommandMenuMode): string {
@@ -130,6 +154,7 @@ function getModePlaceholder(mode: CommandMenuMode): string {
   if (mode === "chats") return "Search chats";
   if (mode === "pages") return "Search pages";
   if (mode === "files") return "Search files";
+  if (mode === "text") return "Search files";
   return "Search Nodex";
 }
 
@@ -199,11 +224,16 @@ function getCommandGlyph(id: string) {
     return (props: { className?: string }) => (
       <CommandMenuReferenceIcon name="terminal" {...props} />
     );
-  if (id === "searchChats" || id === "searchPages" || id === "findInThread")
+  if (id === "searchChats" || id === "searchPages" || id === "searchText" || id === "findInThread")
     return (props: { className?: string }) => <CommandMenuReferenceIcon name="search" {...props} />;
   if (id === OPEN_DB_VIEW_TAB_COMMAND_ID) return DatabaseIcon;
   if (id === "openSideChat") return SidePanelSideChatIcon;
-  if (id === "settings" || id === "showKeyboardShortcuts" || id.endsWith("Settings"))
+  if (
+    id === "settings" ||
+    id === "showKeyboardShortcuts" ||
+    id.endsWith("Settings") ||
+    id.startsWith("settings:")
+  )
     return (props: { className?: string }) => (
       <CommandMenuReferenceIcon name="settings" {...props} />
     );
@@ -466,6 +496,8 @@ function PaletteSection({
   onSelectIndex,
   onExecute,
   showSubtitle,
+  textLabels,
+  showHeading,
 }: {
   compactPages: boolean;
   title: string;
@@ -476,6 +508,8 @@ function PaletteSection({
   onSelectIndex: (index: number) => void;
   onExecute: (item: PaletteItem) => void;
   showSubtitle: boolean;
+  textLabels: ReadonlyMap<string, string>;
+  showHeading: boolean;
 }) {
   if (items.length === 0) return null;
 
@@ -486,11 +520,13 @@ function PaletteSection({
       className="flex flex-col gap-[var(--spacing)]"
       data-value={title}
     >
-      <div cmdk-group-heading="" aria-hidden="true">
-        <span className="block px-[11px] pt-2 text-sm text-token-description-foreground">
-          {title}
-        </span>
-      </div>
+      {showHeading ? (
+        <div cmdk-group-heading="" aria-hidden="true">
+          <span className="block px-[11px] pt-2 text-sm text-token-description-foreground">
+            {title}
+          </span>
+        </div>
+      ) : null}
       <div cmdk-group-items="" role="group" aria-label={title}>
         {items.map((item, offset) => {
           const index = startIndex + offset;
@@ -506,17 +542,27 @@ function PaletteSection({
               data-palette-index={index}
               data-selected={selected}
               aria-selected={selected}
-              aria-disabled={item.kind === "command" && item.disabled ? "true" : undefined}
+              aria-disabled={isPaletteItemDisabled(item) ? "true" : undefined}
+              aria-label={
+                item.kind === "text" ? `${item.match.path}:${item.match.line}` : undefined
+              }
+              aria-description={
+                item.kind === "text"
+                  ? item.match.preview
+                  : item.kind === "command" && item.themeAction && item.active
+                    ? "Current theme"
+                    : undefined
+              }
               onMouseDown={(event) => event.preventDefault()}
               onMouseMove={() => onSelectIndex(index)}
               onClick={() => onExecute(item)}
-              disabled={item.kind === "command" && item.disabled}
+              disabled={isPaletteItemDisabled(item)}
               className={cn(
                 "flex min-h-[calc(var(--spacing)*6)] w-full cursor-interaction rounded-lg px-[calc(var(--padding-row-x)+var(--spacing)*0.5)] py-[calc(var(--padding-row-y)+var(--spacing)*0.5)] text-left text-base text-token-foreground opacity-75 outline-none",
                 (item.kind === "page" || item.kind === "thread") &&
                   item.searchPreview &&
                   "py-[calc(var(--padding-row-y)+2px)]",
-                item.kind === "command" && item.disabled
+                isPaletteItemDisabled(item)
                   ? "cursor-not-allowed opacity-40 hover:bg-transparent hover:opacity-40"
                   : selected
                     ? "bg-background-primary-ghost-hover opacity-100"
@@ -525,8 +571,19 @@ function PaletteSection({
             >
               {item.kind === "more" ? (
                 <span className="pl-6 text-token-description-foreground">Show more</span>
+              ) : item.kind === "text" ? (
+                <CommandPaletteTextRow
+                  match={item.match}
+                  pathLabel={textLabels.get(item.match.path)}
+                />
+              ) : item.kind === "text-query" ? (
+                <CommandPaletteTextHistoryRow query={item.query} />
               ) : item.kind === "command" ? (
-                <CommandRow item={item} selected={selected} />
+                item.themeAction ? (
+                  <CommandPaletteThemeRow item={item} />
+                ) : (
+                  <CommandRow item={item} selected={selected} />
+                )
               ) : item.kind === "page" ? (
                 <PageRow
                   compact={compactPages}
@@ -576,8 +633,12 @@ export const CommandPaletteSurface = forwardRef<
     open,
     openTriggerTick,
     fileSearchScope = null,
+    workspaceScope = fileSearchScope,
+    onWorkspaceScopeChange,
+    priorityFolders,
     mode,
     initialQuery,
+    onQueryChange,
     commands,
     pages = EMPTY_PALETTE_PAGES,
     projects = EMPTY_PALETTE_PROJECTS,
@@ -596,6 +657,11 @@ export const CommandPaletteSurface = forwardRef<
   },
   forwardedRef,
 ) {
+  const theme = useCommandPaletteTheme();
+  const [pageStack, setPageStack] = useState<readonly "themes"[]>([]);
+  const activePage = pageStack.at(-1);
+  const currentCommands = activePage ? theme.pageCommands : commands;
+  const currentMode = activePage ? "actions" : mode;
   const inputId = useId();
   const labelId = useId();
   const listId = useId();
@@ -603,12 +669,26 @@ export const CommandPaletteSurface = forwardRef<
   const scrollViewportRef = useRef<HTMLDivElement | null>(null);
   const scopeControlsRef = useRef<HTMLDivElement>(null);
   const filterButtonRef = useRef<HTMLButtonElement>(null);
+  const searchOptionsRef = useRef<HTMLButtonElement>(null);
   const composingRef = useRef(false);
   const pointerSelectionRef = useRef(false);
-  const canSearchFiles = Boolean(fileSearchScope?.roots.length);
-  const scopes = getCommandPaletteScopes(canSearchFiles);
+  const scopes = getCommandPaletteScopes();
+  const searchScope = mode === "root" ? fileSearchScope : workspaceScope;
+  const historyScope = workspaceTextSearchHistoryScope(fileSearchScope, searchScope);
+  const history = useWorkspaceTextSearchHistory({
+    hostId: historyScope?.hostId ?? "local",
+    projectRoots: historyScope?.roots ?? [],
+  });
   const [query, setQuery] = useState("");
-  const selectionScopeKey = JSON.stringify([mode, fileSearchScope?.hostId, fileSearchScope?.roots]);
+  useEffect(() => {
+    if (open && !activePage && (mode === "root" || mode === "files")) onQueryChange?.(query);
+  }, [open, query, mode, activePage, onQueryChange]);
+  const selectionScopeKey = JSON.stringify([
+    mode,
+    activePage,
+    searchScope?.hostId,
+    searchScope?.roots,
+  ]);
   const discoveryKey = `${openTriggerTick}:${selectionScopeKey}:${normalizeCommandPaletteSearchText(query)}`;
   const [expandedDiscovery, setExpandedDiscovery] = useState<{
     key: string;
@@ -616,16 +696,46 @@ export const CommandPaletteSurface = forwardRef<
   } | null>(null);
   const discoveryLimits =
     expandedDiscovery?.key === discoveryKey ? expandedDiscovery.limits : DEFAULT_DISCOVERY_LIMITS;
-  const fileSearch = useFileSearch({
+  const fileSearch = useCommandPaletteFileSearch({
+    showRecent: mode === "files",
+    restrictToRoots: JSON.stringify(searchScope) !== JSON.stringify(fileSearchScope),
     enabled:
-      open && (mode === "files" || (mode === "root" && Array.from(query.trim()).length >= 2)),
+      open && !activePage && (mode === "files" || (mode === "root" && query.trim().length > 0)),
     query,
-    scope: fileSearchScope,
+    scope: searchScope,
   });
+  const retryFileLookup = fileSearch.retry;
   const files = useMemo<CommandPaletteFile[]>(
-    () => fileSearch.matches.map((file) => ({ kind: "file", id: file.fsPath, file })),
-    [fileSearch.matches],
+    () =>
+      fileSearch.matches.map((file) => ({
+        kind: "file",
+        id: file.fsPath,
+        file,
+        hostId: searchScope?.hostId ?? "local",
+      })),
+    [fileSearch.matches, searchScope?.hostId],
   );
+  const textSearch = useWorkspaceTextSearch({
+    enabled:
+      open && !activePage && (mode === "text" || (mode === "root" && query.trim().length > 0)),
+    scope: searchScope,
+    query,
+    fileMask: mode === "text" ? history.fileMask : "",
+    priorityFolders:
+      priorityFolders ?? getWorkspaceSearchPriorityFolders(searchScope?.hostId ?? "local"),
+  });
+  const textMatches = useMemo<CommandPaletteText[]>(
+    () =>
+      textSearch.matches.map((match) => ({
+        kind: "text",
+        id: `text:${match.path}:${match.line}`,
+        match,
+        hostId: searchScope?.hostId ?? "local",
+        disabled: !textSearch.matchesCurrent,
+      })),
+    [textSearch.matches, textSearch.matchesCurrent, searchScope?.hostId],
+  );
+  const textLabels = workspaceTextSearchResultLabels(textSearch.matches, searchScope?.roots ?? []);
   const [pageFilters, setPageFilters] = useState<CommandPalettePageFilters>(() =>
     readCommandPalettePageFilters(),
   );
@@ -636,11 +746,18 @@ export const CommandPaletteSurface = forwardRef<
     forwardedRef,
     () => ({
       isComposing: () => composingRef.current,
+      dismissNested: () => {
+        if (pageStack.length === 0) return false;
+        setPageStack((pages) => pages.slice(0, -1));
+        setQuery("");
+        inputRef.current?.focus();
+        return true;
+      },
     }),
-    [],
+    [pageStack],
   );
 
-  const threadSearchPlan = getCommandPaletteThreadSearchPlan(mode, deferredQuery);
+  const threadSearchPlan = getCommandPaletteThreadSearchPlan(currentMode, deferredQuery);
   const fetchedThreadSearchBatch = useCommandPaletteThreadSearch({
     enabled: open && threadSearchPlan?.includeContentResults === true,
     query: deferredQuery,
@@ -731,7 +848,7 @@ export const CommandPaletteSurface = forwardRef<
     const selectedProjectIds = new Set(normalizedPageFilters.projectIds);
     return allProjectIds.filter((projectId) => selectedProjectIds.has(projectId));
   }, [availableProjects, normalizedPageFilters.projectIds]);
-  const pageSearchPlan = getCommandPalettePageSearchPlan(mode, query);
+  const pageSearchPlan = getCommandPalettePageSearchPlan(currentMode, query);
   const projectIdsForSearch =
     mode === "pages" ? filteredProjectIdsForSearch : allProjectIdsForSearch;
   const pageSearchScopeKey = useMemo(
@@ -752,8 +869,8 @@ export const CommandPaletteSurface = forwardRef<
     () =>
       buildCommandPaletteSectionsModel({
         query,
-        mode,
-        commands,
+        mode: currentMode,
+        commands: currentCommands,
         projects,
         activeProjectId,
         recentPageIds,
@@ -761,6 +878,8 @@ export const CommandPaletteSurface = forwardRef<
         threads,
         threadSearchIndex,
         files,
+        textMatches,
+        textQueries: history.queries,
         discoveryLimits,
         pageSearchBatch: pageSearchBatch,
         pageSearchScopeKey,
@@ -770,21 +889,45 @@ export const CommandPaletteSurface = forwardRef<
       pageSearchScopeKey,
       activeProjectId,
       pages,
-      commands,
+      currentCommands,
+      currentMode,
       query,
       pageSearchBatch,
-      mode,
       projects,
       recentPageIds,
       threadSearchBatch,
       threadSearchIndex,
       threads,
       files,
+      textMatches,
+      history.queries,
       discoveryLimits,
     ],
   );
-  const sections = visibleModel.sections;
-  const flatItems = visibleModel.flatItems;
+  const sections =
+    mode === "files" && fileSearch.retry
+      ? [
+          ...visibleModel.sections,
+          {
+            title: "Files",
+            items: [
+              {
+                kind: "command" as const,
+                id: "retryFileLookup",
+                title: "Couldn’t check path. Select to retry",
+                subtitle: "",
+                keywords: [],
+                group: "Suggested" as const,
+                priority: 0,
+              },
+            ],
+          },
+        ]
+      : visibleModel.sections;
+  const flatItems =
+    fileSearch.retry && mode === "files"
+      ? sections.flatMap((section) => section.items)
+      : visibleModel.flatItems;
   const filterActive = hasActiveCommandPalettePageFilters(normalizedPageFilters);
   const showSubtitle = visibleModel.query.length > 0;
   const [selectedIndex, setSelectedIndex] = useState(0);
@@ -795,16 +938,12 @@ export const CommandPaletteSurface = forwardRef<
     const nextQuery = initialQuery ?? "";
     setQuery(nextQuery);
     setFilterOpen(false);
+    setPageStack([]);
 
     const rafId = window.requestAnimationFrame(() => {
       const input = inputRef.current;
       input?.focus();
       if (!input) {
-        return;
-      }
-
-      if (nextQuery.length > 0) {
-        input.setSelectionRange(nextQuery.length, nextQuery.length);
         return;
       }
 
@@ -830,10 +969,9 @@ export const CommandPaletteSurface = forwardRef<
   }, [selectionScopeKey, open, openTriggerTick, visibleModel.query]);
 
   useEffect(() => {
-    if (mode === "files" && !canSearchFiles) onChangeMode("root");
     if (mode === "pages") return;
     setFilterOpen(false);
-  }, [mode, canSearchFiles, onChangeMode]);
+  }, [mode]);
 
   useEffect(() => {
     if (areCommandPalettePageFiltersEqual(pageFilters, normalizedPageFilters)) {
@@ -856,9 +994,11 @@ export const CommandPaletteSurface = forwardRef<
       buildCommandPaletteSectionsModel({
         query: nextQuery,
         files: nextQuery === query ? files : [],
+        textMatches: nextQuery === query ? textMatches : [],
+        textQueries: history.queries,
         discoveryLimits: nextQuery === query ? discoveryLimits : DEFAULT_DISCOVERY_LIMITS,
-        mode,
-        commands,
+        mode: currentMode,
+        commands: currentCommands,
         projects,
         activeProjectId,
         recentPageIds,
@@ -873,9 +1013,9 @@ export const CommandPaletteSurface = forwardRef<
       pageSearchScopeKey,
       activeProjectId,
       pages,
-      commands,
+      currentCommands,
+      currentMode,
       pageSearchBatch,
-      mode,
       projects,
       recentPageIds,
       threadSearchBatch,
@@ -883,6 +1023,8 @@ export const CommandPaletteSurface = forwardRef<
       threads,
       query,
       files,
+      textMatches,
+      history.queries,
       discoveryLimits,
     ],
   );
@@ -892,10 +1034,15 @@ export const CommandPaletteSurface = forwardRef<
       : mode === "chats"
         ? chatsLoading || visibleModel.threadSearchPending
         : mode === "root"
-          ? loading || visibleModel.threadSearchPending || visibleModel.pageSearchPending
+          ? loading ||
+            visibleModel.threadSearchPending ||
+            visibleModel.pageSearchPending ||
+            textSearch.loading
           : mode === "files"
             ? fileSearch.loading
-            : false;
+            : mode === "text"
+              ? textSearch.loading
+              : false;
 
   useEffect(() => {
     if (flatItems.length === 0) {
@@ -928,6 +1075,7 @@ export const CommandPaletteSurface = forwardRef<
     setSelectedIndex(0);
     setFilterOpen(false);
     setExpandedDiscovery(null);
+    setPageStack([]);
     onChangeMode(nextMode);
     if (focusInput) inputRef.current?.focus();
   };
@@ -941,12 +1089,40 @@ export const CommandPaletteSurface = forwardRef<
           key: discoveryKey,
           limits: {
             ...discoveryLimits,
-            [item.scope]: Math.min(MAX_DISCOVERY_RESULTS, discoveryLimits[item.scope] + 5),
+            [item.scope]: Math.min(
+              getDiscoveryResultLimit(item.scope),
+              discoveryLimits[item.scope] + 5,
+            ),
           },
         });
         inputRef.current?.focus();
         return;
       }
+      if (item.kind === "command" && item.themeAction) {
+        if (item.themeAction === "open") {
+          setPageStack((pages) => [...pages, "themes"]);
+          setQuery("");
+          inputRef.current?.focus();
+          return;
+        }
+        if (theme.execute(item.id)) onRequestClose();
+        return;
+      }
+      if (item.kind === "command" && item.id === "retryFileLookup") {
+        retryFileLookup?.();
+        return;
+      }
+      if (item.kind === "text-query") {
+        setQuery(item.query);
+        inputRef.current?.focus();
+        return;
+      }
+      if (item.kind === "command" && item.id === "searchText") {
+        setQuery("");
+        onChangeMode("text");
+        return;
+      }
+      if (item.kind === "text") history.commit(query);
       if (item.kind === "command" && item.id === "searchChats") {
         setQuery("");
         onChangeMode("chats");
@@ -965,15 +1141,22 @@ export const CommandPaletteSurface = forwardRef<
         return;
       }
 
-      if (item.kind === "file" && item.file.kind === "directory") {
-        setQuery(`${item.file.path.replace(/\/$/u, "")}/`);
-        inputRef.current?.focus();
-        return;
-      }
       onRequestClose();
       onExecute(item);
     },
-    [discoveryKey, discoveryLimits, flatItems, onChangeMode, onExecute, onRequestClose, setQuery],
+    [
+      discoveryKey,
+      discoveryLimits,
+      flatItems,
+      retryFileLookup,
+      history,
+      theme,
+      query,
+      onChangeMode,
+      onExecute,
+      onRequestClose,
+      setQuery,
+    ],
   );
 
   const handleKeyDown = (event: ReactKeyboardEvent<HTMLInputElement>) => {
@@ -986,9 +1169,16 @@ export const CommandPaletteSurface = forwardRef<
       event.stopPropagation();
       return;
     }
-    if (event.key === "F6") {
+    if (
+      event.key === "F6" &&
+      !event.defaultPrevented &&
+      !event.altKey &&
+      !event.ctrlKey &&
+      !event.metaKey
+    ) {
       event.preventDefault();
       const control =
+        searchOptionsRef.current ??
         filterButtonRef.current ??
         scopeControlsRef.current?.querySelector<HTMLButtonElement>('[aria-selected="true"]');
       control?.focus();
@@ -1051,9 +1241,9 @@ export const CommandPaletteSurface = forwardRef<
       return;
     }
 
-    if (event.key === "Tab" && !event.altKey && !event.ctrlKey && !event.metaKey) {
+    if (!activePage && event.key === "Tab" && !event.altKey && !event.ctrlKey && !event.metaKey) {
       event.preventDefault();
-      changeScope(cycleCommandPaletteMode(mode, event.shiftKey ? -1 : 1, canSearchFiles));
+      changeScope(cycleCommandPaletteMode(mode, event.shiftKey ? -1 : 1));
       return;
     }
     if (event.key === "Enter") {
@@ -1076,6 +1266,11 @@ export const CommandPaletteSurface = forwardRef<
 
     if (event.key !== "Escape" || event.defaultPrevented) return;
     event.preventDefault();
+    if (activePage) {
+      setPageStack((pages) => pages.slice(0, -1));
+      setQuery("");
+      return;
+    }
     onRequestClose();
   };
   const activeDescendantId =
@@ -1085,9 +1280,13 @@ export const CommandPaletteSurface = forwardRef<
   const showThreadSearchStatus = visibleModel.showThreadSearchStatus;
   const showPageSearchStatus = visibleModel.showPageSearchStatus;
   const showFileSearchStatus =
-    (mode === "files" || mode === "root") && (fileSearch.loading || fileSearch.error !== null);
+    (mode === "files" || mode === "root") &&
+    (fileSearch.loading || (fileSearch.error !== null && !fileSearch.retry));
   const hasVisibleSearchStatus =
-    showThreadSearchStatus || showPageSearchStatus || showFileSearchStatus;
+    showThreadSearchStatus ||
+    showPageSearchStatus ||
+    showFileSearchStatus ||
+    ((mode === "root" || mode === "text") && (textSearch.loading || textSearch.error !== null));
 
   return (
     <NodexTabsRoot
@@ -1103,48 +1302,112 @@ export const CommandPaletteSurface = forwardRef<
       cmdk-root=""
       data-cmdk-root
       data-command-palette-surface
-      className="flex h-[min(504px,90vh)] min-w-full select-none flex-col gap-1 overflow-hidden rounded-2xl bg-surface/65 p-1 pb-0 text-base text-token-foreground shadow-2xl ring-[0.5px] ring-token-border backdrop-blur-[24px]"
+      className="flex h-[var(--command-menu-height,min(504px,90vh))] min-w-full select-none flex-col gap-1 overflow-hidden rounded-2xl bg-surface/65 p-1 pb-0 text-base text-token-foreground shadow-2xl ring-[0.5px] ring-token-border backdrop-blur-[24px]"
     >
+      {!activePage && mode === "text" ? (
+        <CommandPaletteTextHistoryRecorder
+          key={JSON.stringify(historyScope)}
+          query={query}
+          history={history}
+        />
+      ) : null}
       <label cmdk-label="" htmlFor={inputId} id={labelId} className="sr-only">
         Command palette search
       </label>
-      <div
-        ref={scopeControlsRef}
-        className="flex shrink-0 items-center gap-0.5 overflow-x-auto [scrollbar-width:none]"
-        onKeyDown={(event) => {
-          if (event.key !== "F6") return;
-          event.preventDefault();
-          inputRef.current?.focus();
-        }}
-      >
-        <NodexTabsList
-          activateOnFocus
-          aria-label="Search scope"
-          className="flex items-center gap-px"
+      {!activePage ? (
+        <div
+          ref={scopeControlsRef}
+          className="flex shrink-0 flex-wrap items-center gap-1"
+          onKeyDown={(event) => {
+            if (
+              event.key !== "F6" ||
+              event.defaultPrevented ||
+              event.altKey ||
+              event.ctrlKey ||
+              event.metaKey ||
+              event.nativeEvent.isComposing ||
+              event.nativeEvent.keyCode === 229
+            )
+              return;
+            event.preventDefault();
+            inputRef.current?.focus();
+          }}
         >
-          {scopes.map((scope) => (
-            <NodexTabsTab
-              key={scope.mode}
-              value={scope.mode}
-              onMouseDown={(event) => event.preventDefault()}
-              className={cn(
-                "flex h-8 shrink-0 items-center rounded-[calc(var(--radius-2xl)-var(--spacing)-1px)] px-3 text-base font-medium outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-token-focus-border",
-                mode === scope.mode
-                  ? "bg-background-primary-ghost-hover text-token-foreground"
-                  : "text-token-description-foreground hover:bg-background-primary-ghost-hover hover:text-token-foreground",
-              )}
+          <div className="flex min-w-0 items-center overflow-x-auto [scrollbar-width:none]">
+            <NodexTabsList
+              activateOnFocus
+              aria-label="Search scope"
+              className="flex items-center gap-px"
             >
-              {scope.label}
-            </NodexTabsTab>
-          ))}
-        </NodexTabsList>
-        <ShortcutKeycaps
-          aria-hidden="true"
-          keys={["Tab"]}
-          density="compact"
-          className="ml-1 h-4 min-w-0 rounded-full px-1.5 font-normal tracking-normal"
-        />
-      </div>
+              {scopes.map((scope) => (
+                <NodexTabsTab
+                  key={scope.mode}
+                  value={scope.mode}
+                  onMouseDown={(event) => event.preventDefault()}
+                  className={cn(
+                    "flex h-8 shrink-0 items-center rounded-[calc(var(--radius-2xl)-var(--spacing)-1px)] px-3 text-base font-medium outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-token-focus-border",
+                    mode === scope.mode
+                      ? "bg-background-primary-ghost-hover text-token-foreground"
+                      : "text-token-description-foreground hover:bg-background-primary-ghost-hover hover:text-token-foreground",
+                  )}
+                >
+                  {scope.label}
+                </NodexTabsTab>
+              ))}
+            </NodexTabsList>
+            <ShortcutKeycaps
+              aria-hidden="true"
+              keys={["Tab"]}
+              density="compact"
+              className="ml-1 h-4 min-w-0 rounded-full px-1.5 font-normal tracking-normal"
+            />
+          </div>
+          {mode === "text" || mode === "files" ? (
+            <div
+              className="ml-auto flex min-w-0 shrink-0 justify-end pr-2"
+              onKeyDown={(event) => {
+                if (
+                  event.key !== "F6" ||
+                  event.defaultPrevented ||
+                  event.altKey ||
+                  event.ctrlKey ||
+                  event.metaKey ||
+                  event.nativeEvent.isComposing ||
+                  event.nativeEvent.keyCode === 229
+                )
+                  return;
+                event.preventDefault();
+                inputRef.current?.focus();
+              }}
+            >
+              {mode === "text" ? (
+                <CommandPaletteTextToolbar
+                  history={history}
+                  scope={workspaceScope}
+                  contextScope={fileSearchScope}
+                  onScopeChange={(scope) => {
+                    onWorkspaceScopeChange?.(scope);
+                    setSelectedIndex(0);
+                  }}
+                  focusSearch={() => inputRef.current?.focus()}
+                  firstControlRef={searchOptionsRef}
+                />
+              ) : (
+                <CommandPaletteWorkspaceToolbar
+                  scope={workspaceScope}
+                  contextScope={fileSearchScope}
+                  onScopeChange={(scope) => {
+                    onWorkspaceScopeChange?.(scope);
+                    setSelectedIndex(0);
+                  }}
+                  focusSearch={() => inputRef.current?.focus()}
+                  firstControlRef={searchOptionsRef}
+                />
+              )}
+            </div>
+          ) : null}
+        </div>
+      ) : null}
       <div className="-mx-1 flex shrink-0 items-center border-b-[0.5px] border-token-border px-4">
         <input
           ref={inputRef}
@@ -1160,6 +1423,7 @@ export const CommandPaletteSurface = forwardRef<
           aria-labelledby={labelId}
           id={inputId}
           value={query}
+          maxLength={mode === "text" ? 256 : undefined}
           onChange={(event) => {
             setExpandedDiscovery(null);
             setQuery(event.target.value);
@@ -1171,12 +1435,12 @@ export const CommandPaletteSurface = forwardRef<
           onCompositionEnd={() => {
             composingRef.current = false;
           }}
-          placeholder={getModePlaceholder(mode)}
+          placeholder={activePage ? "Search themes" : getModePlaceholder(mode)}
           aria-label="Command palette search"
           className="h-11.5 min-w-0 flex-1 rounded-none border-none bg-transparent pb-1.5 text-lg text-token-foreground outline-none placeholder:text-token-description-foreground"
         />
 
-        {mode === "pages" ? (
+        {!activePage && mode === "pages" ? (
           <CommandPalettePageFilterPopover
             open={filterOpen}
             onOpenChange={setFilterOpen}
@@ -1193,7 +1457,16 @@ export const CommandPaletteSurface = forwardRef<
             <NodexIconButton
               ref={filterButtonRef}
               onKeyDown={(event) => {
-                if (event.key !== "F6") return;
+                if (
+                  event.key !== "F6" ||
+                  event.defaultPrevented ||
+                  event.altKey ||
+                  event.ctrlKey ||
+                  event.metaKey ||
+                  event.nativeEvent.isComposing ||
+                  event.nativeEvent.keyCode === 229
+                )
+                  return;
                 event.preventDefault();
                 inputRef.current?.focus();
               }}
@@ -1207,7 +1480,22 @@ export const CommandPaletteSurface = forwardRef<
         ) : null}
       </div>
 
-      {mode === "pages" && filterActive ? (
+      {activePage ? (
+        <button
+          type="button"
+          className="flex h-[34px] shrink-0 items-center gap-2 px-3 text-sm text-token-description-foreground"
+          aria-label="Back to command menu"
+          onClick={() => {
+            setPageStack((pages) => pages.slice(0, -1));
+            setQuery("");
+            inputRef.current?.focus();
+          }}
+        >
+          <BackIcon className="size-4" />
+          Theme
+        </button>
+      ) : null}
+      {!activePage && mode === "pages" && filterActive ? (
         <div className="px-[calc(var(--spacing)*2.75)] pb-[calc(var(--spacing)*0.5)]">
           <CommandPalettePageFiltersSummaryRow
             filters={pageFilters}
@@ -1241,7 +1529,9 @@ export const CommandPaletteSurface = forwardRef<
               <PaletteSection
                 key={section.title}
                 compactPages={mode === "root"}
+                textLabels={textLabels}
                 title={section.title}
+                showHeading={mode !== "text" && !(activePage && section.title === "Suggested")}
                 items={section.items}
                 listId={listId}
                 selectedIndex={selectedIndex}
@@ -1274,7 +1564,16 @@ export const CommandPaletteSurface = forwardRef<
               {fileSearch.error ? "File search is unavailable" : "Searching files…"}
             </SearchStatusRow>
           ) : null}
-          {flatItems.length === 0 && !hasVisibleSearchStatus ? (
+          {!activePage && (mode === "text" || mode === "root") ? (
+            <CommandPaletteTextStatus
+              result={textSearch}
+              mode={mode}
+              query={query}
+              hasScope={Boolean(searchScope?.roots.length)}
+              hasHistory={history.queries.length > 0}
+            />
+          ) : null}
+          {mode !== "text" && flatItems.length === 0 && !hasVisibleSearchStatus ? (
             <div
               data-cmdk-empty
               className="absolute inset-0 flex items-center justify-center px-4 text-center text-lg text-token-description-foreground"

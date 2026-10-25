@@ -7,6 +7,7 @@ import {
   type CommandPaletteFile,
   type CommandPalettePage,
   type CommandPaletteThread,
+  type CommandPaletteText,
 } from "./command-palette";
 import type { CommandPaletteThreadSearchIndex } from "./command-palette-thread-search";
 import {
@@ -27,15 +28,19 @@ export type ExecutablePaletteItem =
   | CommandPaletteCommand
   | CommandPalettePage
   | CommandPaletteThread
-  | CommandPaletteFile;
-type DiscoveryScope = "chats" | "pages" | "files";
+  | CommandPaletteFile
+  | CommandPaletteText;
+type DiscoveryScope = "chats" | "pages" | "files" | "text";
 export type PaletteItem =
   | ExecutablePaletteItem
-  | { kind: "more"; id: string; scope: DiscoveryScope };
+  | { kind: "more"; id: string; scope: DiscoveryScope }
+  | { kind: "text-query"; id: string; query: string };
 type PaletteSectionModel = { title: string; items: PaletteItem[] };
 export type DiscoveryLimits = Readonly<Record<DiscoveryScope, number>>;
 export const MAX_DISCOVERY_RESULTS = 60;
-export const DEFAULT_DISCOVERY_LIMITS: DiscoveryLimits = { chats: 5, pages: 5, files: 5 };
+export const DEFAULT_DISCOVERY_LIMITS: DiscoveryLimits = { chats: 5, pages: 5, files: 5, text: 5 };
+export const getDiscoveryResultLimit = (scope: DiscoveryScope): number =>
+  scope === "text" ? 100 : MAX_DISCOVERY_RESULTS;
 
 function discoverySection(
   title: string,
@@ -46,7 +51,7 @@ function discoverySection(
   return {
     title,
     items:
-      items.length > limit && limit < MAX_DISCOVERY_RESULTS
+      items.length > limit && limit < getDiscoveryResultLimit(scope)
         ? [...items.slice(0, limit), { kind: "more", id: `more:${scope}`, scope }]
         : items.slice(0, limit),
   };
@@ -59,6 +64,8 @@ const COMMAND_GROUP_ORDER: CommandPaletteCommandGroup[] = [
   "Panels",
   "Project",
   "Configure",
+  "Settings",
+  "Color themes",
   "Skills",
   "App",
 ];
@@ -66,6 +73,8 @@ const COMMAND_GROUP_ORDER: CommandPaletteCommandGroup[] = [
 interface CommandPaletteSectionsInput {
   discoveryLimits?: DiscoveryLimits;
   files?: readonly CommandPaletteFile[];
+  textMatches?: readonly CommandPaletteText[];
+  textQueries?: readonly string[];
   query: string;
   mode: CommandMenuMode;
   commands: readonly CommandPaletteCommand[];
@@ -106,6 +115,8 @@ export function buildCommandPaletteSectionsModel({
   pageSearchScopeKey,
   threadSearchBatch,
   files = [],
+  textMatches = [],
+  textQueries = [],
   discoveryLimits = DEFAULT_DISCOVERY_LIMITS,
 }: CommandPaletteSectionsInput): CommandPaletteSectionsModel {
   const results = filterCommandPaletteItems({
@@ -170,7 +181,7 @@ export function buildCommandPaletteSectionsModel({
         ? [
             {
               title: "Quick actions",
-              items: ["newThread", "createPage", "openFolder"].flatMap((id) => {
+              items: ["newThread", "openFolder"].flatMap((id) => {
                 const item = results.commands.find(
                   (candidate) => candidate.id === id && !candidate.mockReason,
                 );
@@ -195,6 +206,8 @@ export function buildCommandPaletteSectionsModel({
       }
       if (files.length > 0)
         sections.push(discoverySection("Files", [...files], "files", discoveryLimits.files));
+      if (textMatches.length > 0)
+        sections.push(discoverySection("Text", [...textMatches], "text", discoveryLimits.text));
       return sections;
     }
 
@@ -207,7 +220,21 @@ export function buildCommandPaletteSectionsModel({
       return [{ title: "Pages", items: visiblePages }];
     }
 
-    if (mode === "files") return [{ title: "Files", items: [...files] }];
+    if (mode === "files")
+      return [{ title: query.trim() ? "Files" : "Opened recently", items: [...files] }];
+    if (mode === "text") {
+      if (query.length > 0) return [{ title: "Text", items: [...textMatches] }];
+      return [
+        {
+          title: "Recent searches",
+          items: textQueries.map((value) => ({
+            kind: "text-query" as const,
+            id: `text-query:${value}`,
+            query: value,
+          })),
+        },
+      ];
+    }
     return [];
   })();
 

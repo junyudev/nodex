@@ -1545,6 +1545,14 @@ export interface IpcApi extends AgentRuntimeIpcApi {
     args: [import("./types").WorkspacePathsExistInput];
     result: import("./types").WorkspacePathsExistResult;
   };
+  "workspace-text-search:start": {
+    args: [input: import("./workspace-text-search").WorkspaceTextSearchRequest];
+    result: void;
+  };
+  "workspace-text-search:stop": {
+    args: [input: { requestId: string }];
+    result: void;
+  };
   "file-search:start": {
     args: [input: FileSearchStartInput];
     result: void;
@@ -2964,6 +2972,7 @@ export interface IpcEvents {
   "terminal-exit": TerminalExitEvent;
   "terminal-view-lease-revoked": TerminalViewLeaseRevokedEvent;
   "file-search:event": FileSearchEvent;
+  "workspace-text-search:event": import("./workspace-text-search").WorkspaceTextSearchEvent;
   "codex:event": CodexEvent;
   "codex:host-message": CodexHostMessage;
   "codex:user-input:auto-resolution:changed": CodexUserInputAutoResolutionChange;

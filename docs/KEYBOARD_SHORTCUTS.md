@@ -10,6 +10,8 @@ The editable settings tab covers Nodex-supported command ids only. Editor-native
 
 ## App-Wide
 
+`⌘/Ctrl+O` opens a local folder as a Project and focuses its new-chat composer. An existing active Project for that folder is reused; canceling the folder picker leaves navigation unchanged.
+
 | Shortcut               | Action                     | Notes                                                                                                                                                                                                                                                                                                                                                                 |
 | ---------------------- | -------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `⌘/Ctrl+Alt+1`–`9`     | Jump to project by index   | First 9 projects in shell/sidebar order (disabled while focus is in NFM editor because `⌘/Ctrl+Alt+1`–`4` are editor heading shortcuts)                                                                                                                                                                                                                               |

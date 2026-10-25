@@ -1,3 +1,4 @@
+import type { CodexAccentPreset } from "./codex-theme-variant";
 import type { FileSearchMatch } from "../../shared/file-search";
 import { matchesSearchTokens, tokenizeSearchQuery } from "./page-search";
 import { buildCommandPaletteCharacterHighlightSegments } from "./command-palette-highlight";
@@ -37,10 +38,12 @@ export interface CommandPaletteCommand {
   disabledReason?: string;
   mockReason?: string;
   priority: number;
+  themePreview?: { surface: string; ink: string; accent: string };
+  themeAction?: "open" | "light" | "dark" | CodexAccentPreset;
   searchTitleSegments?: CommandPalettePageSearchPreviewSegment[] | null;
 }
 
-export type CommandMenuMode = "root" | "actions" | "chats" | "pages" | "files";
+export type CommandMenuMode = "root" | "actions" | "chats" | "pages" | "files" | "text";
 
 const COMMAND_PALETTE_SCOPES: readonly {
   readonly mode: CommandMenuMode;
@@ -51,22 +54,17 @@ const COMMAND_PALETTE_SCOPES: readonly {
   { mode: "chats", label: "Chats" },
   { mode: "pages", label: "Pages" },
   { mode: "files", label: "Files" },
+  { mode: "text", label: "Text" },
 ];
 
-export function getCommandPaletteScopes(canSearchFiles: boolean) {
-  return canSearchFiles
-    ? COMMAND_PALETTE_SCOPES
-    : COMMAND_PALETTE_SCOPES.filter((scope) => scope.mode !== "files");
+/** Workspace scopes remain discoverable before a folder has been selected. */
+export function getCommandPaletteScopes() {
+  return COMMAND_PALETTE_SCOPES;
 }
 
-export function cycleCommandPaletteMode(
-  mode: CommandMenuMode,
-  direction: -1 | 1,
-  canSearchFiles: boolean,
-): CommandMenuMode {
-  const scopes = getCommandPaletteScopes(canSearchFiles);
+export function cycleCommandPaletteMode(mode: CommandMenuMode, direction: -1 | 1): CommandMenuMode {
+  const scopes = getCommandPaletteScopes();
   const currentIndex = scopes.findIndex((scope) => scope.mode === mode);
-  if (currentIndex < 0) return direction === 1 ? "root" : "pages";
   return scopes[(currentIndex + direction + scopes.length) % scopes.length]!.mode;
 }
 
@@ -82,6 +80,8 @@ export type CommandPaletteCommandGroup =
   | "Panels"
   | "Project"
   | "Configure"
+  | "Color themes"
+  | "Settings"
   | "Skills"
   | "App";
 
@@ -734,4 +734,13 @@ export interface CommandPaletteFile {
   readonly kind: "file";
   readonly id: string;
   readonly file: FileSearchMatch;
+  readonly hostId: string;
+}
+
+export interface CommandPaletteText {
+  readonly kind: "text";
+  readonly id: string;
+  readonly match: import("../../shared/workspace-text-search").WorkspaceTextSearchMatch;
+  readonly disabled: boolean;
+  readonly hostId: string;
 }

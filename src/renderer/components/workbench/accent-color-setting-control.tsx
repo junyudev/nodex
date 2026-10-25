@@ -9,6 +9,7 @@ import {
 import { NodexPopover, NodexPopoverContent, NodexPopoverTrigger } from "@/components/ui/popover";
 import {
   CODEX_ACCENT_PRESETS,
+  codexAccentPresetLabel,
   getCodexAccentStyle,
   normalizeCodexAccentColor,
   resolveEffectiveCodexAccent,
@@ -16,22 +17,6 @@ import {
 } from "@/lib/codex-theme-variant";
 import { useAppearanceAccent, useTheme } from "@/lib/use-theme";
 import type { ResolvedTheme } from "@/lib/theme-preferences";
-
-const ACCENT_LABELS: Record<CodexAccentPreset, string> = {
-  default: "Default",
-  blue: "Blue",
-  green: "Green",
-  yellow: "Yellow",
-  pink: "Pink",
-  orange: "Orange",
-  purple: "Purple",
-  black: "Black",
-};
-
-function accentLabel(name: CodexAccentPreset, variant: "light" | "dark"): string {
-  if (name === "black" && variant === "dark") return "White";
-  return ACCENT_LABELS[name];
-}
 
 function accentSwatch(name: CodexAccentPreset, variant: "light" | "dark"): string {
   if (name !== "default" && name !== "black") return `var(--brand-${name}-400)`;
@@ -116,7 +101,8 @@ export function AccentColorSettingControl({ variant }: { variant?: ResolvedTheme
       : effectiveAccent.color;
   const variantLabel = appearance === "light" ? "Light" : "Dark";
   const value = accent.kind === "custom" ? "custom" : accent.name;
-  const label = accent.kind === "custom" ? "Custom" : accentLabel(accent.name, appearance);
+  const label =
+    accent.kind === "custom" ? "Custom" : codexAccentPresetLabel(accent.name, appearance);
   const chooseAccent = (next: string) => {
     if (next === "custom") {
       const color = getCodexAccentStyle(appearance, effectiveAccent)["--codex-base-accent"];
@@ -139,7 +125,7 @@ export function AccentColorSettingControl({ variant }: { variant?: ResolvedTheme
         options={[
           ...CODEX_ACCENT_PRESETS.map((name) => ({
             value: name,
-            label: accentLabel(name, appearance),
+            label: codexAccentPresetLabel(name, appearance),
             leftSlot: <NodexDropdownColorDot color={accentSwatch(name, appearance)} />,
           })),
           {

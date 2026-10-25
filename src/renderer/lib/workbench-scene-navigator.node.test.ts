@@ -1,5 +1,7 @@
 import { afterEach, describe, expect, test, vi } from "vite-plus/test";
 import { createDefaultWorkbenchLayoutSnapshot } from "../../shared/workbench-layout";
+import { WorkbenchSceneSnapshotSchema } from "../../shared/schemas/workbench-scene";
+import { openWorkbenchSceneFile } from "./workbench-scene-file-opener";
 import {
   createMaitaiStore,
   createScopeHandle,
@@ -33,7 +35,12 @@ afterEach(() => {
   for (const dispose of disposers.splice(0).reverse()) dispose();
 });
 
-function createHarness(options: { readonly sessionHasConversation?: boolean } = {}) {
+function createHarness(
+  options: {
+    readonly sessionHasConversation?: boolean;
+    readonly prepareReplace?: NonNullable<WorkbenchSceneNavigatorPort["preview"]>["prepareReplace"];
+  } = {},
+) {
   const store = createMaitaiStore();
   disposers.push(() => disposeMaitaiStore(store));
   const windowOwner = getWorkbenchWindowOwner(
@@ -60,6 +67,8 @@ function createHarness(options: { readonly sessionHasConversation?: boolean } = 
     },
   );
   const port: WorkbenchSceneNavigatorPort = {
+    getScene: (owner) =>
+      windowOwner.read().windowState.scenesByOwnerKey[makeWorkbenchSceneKey(owner)],
     presentDurable: createWorkbenchSceneSurfacePresenter(windowOwner, executor),
     hasConversation: () => options.sessionHasConversation ?? true,
     setScene(owner, update) {
@@ -68,6 +77,7 @@ function createHarness(options: { readonly sessionHasConversation?: boolean } = 
     selectLocation,
     setSceneAndSelect,
     preview: {
+      prepareReplace: options.prepareReplace,
       list(owner) {
         const state = windowOwner.read();
         const scene = state.windowState.scenesByOwnerKey[makeWorkbenchSceneKey(owner)];
@@ -668,8 +678,119 @@ describe("WorkbenchSceneNavigator", () => {
       }),
     ).resolves.toEqual({
       status: "unavailable",
-      reason: "Only Library Pages, Databases, and Canvases open here",
+      reason: "This surface requires a Project or chat",
     });
     expect(harness.scenes).toEqual({});
+  });
+});
+
+test("opens host files in Project, Library, and Inbox Scenes without a Session", async () => {
+  for (const owner of [
+    { kind: "project" as const, projectId: "alpha" },
+    { kind: "library" as const },
+    { kind: "inbox" as const },
+  ]) {
+    const harness = createHarness();
+    const opened = await openWorkbenchSceneFile({
+      owner,
+      navigator: harness.navigator,
+      projects: [],
+      input: {
+        hostId: "remote",
+        path: "/work/src/code.ts",
+        title: "code.ts",
+        panelId: "bottom",
+        workspaceRoot: "/work",
+        location: { line: 12, column: 8 },
+      },
+    });
+    expect(opened).toBe(true);
+    expect(Object.keys(harness.scenes)).toEqual([makeWorkbenchSceneKey(owner)]);
+    const preview = Object.values(harness.previews)[0]!;
+    expect(preview.panelId).toBe("bottom");
+    expect(preview.surface).toMatchObject({
+      kind: "files",
+      config: {
+        hostId: "remote",
+        path: "/work/src/code.ts",
+        projectId: owner.kind === "project" ? "alpha" : null,
+      },
+      state: { pendingReveal: { line: 12, column: 8 } },
+    });
+    expect(harness.scenes[makeWorkbenchSceneKey(owner)]!.primary?.kind).not.toBe("conversation");
+  }
+});
+
+test("reuses a file preview and durable tab while delivering each precise reveal", async () => {
+  const harness = createHarness();
+  const owner = { kind: "library" as const };
+  const open = (line: number, mode: "preview" | "durable" = "preview") =>
+    openWorkbenchSceneFile({
+      owner,
+      navigator: harness.navigator,
+      projects: [],
+      input: {
+        path: "/work/file.ts",
+        title: "file.ts",
+        panelId: "right",
+        mode,
+        location: { line, column: 3, endLine: line, endColumn: 7 },
+      },
+    });
+  expect(await open(10)).toBe(true);
+  const first = Object.values(harness.previews)[0]!.surface;
+  expect(await open(20)).toBe(true);
+  const second = Object.values(harness.previews)[0]!.surface;
+  expect(second.id).toBe(first.id);
+  expect(second.stateKey).toBeGreaterThan(first.stateKey);
+  expect(second.state).toMatchObject({
+    pendingReveal: { line: 20, column: 3, endLine: 20, endColumn: 7 },
+  });
+  expect(await open(30, "durable")).toBe(true);
+  expect(harness.previews).toEqual({});
+  const third = harness.scenes.library!.panelSurfacesById[first.id]!;
+  expect(third.state).toMatchObject({ pendingReveal: { line: 30, column: 3 } });
+  expect(await open(40)).toBe(true);
+  const final = harness.scenes.library!;
+  expect(Object.keys(final.panelSurfacesById)).toEqual([first.id]);
+  expect(final.panelSurfacesById[first.id]!.state).toMatchObject({
+    pendingReveal: { line: 40, column: 3 },
+  });
+  expect(WorkbenchSceneSnapshotSchema.parse(JSON.parse(JSON.stringify(final)))).toEqual(final);
+});
+
+test("a failed save or revoked file opening cannot replace the current Scene preview", async () => {
+  const prepareReplace = vi
+    .fn<NonNullable<NonNullable<WorkbenchSceneNavigatorPort["preview"]>["prepareReplace"]>>()
+    .mockResolvedValue(false);
+  const harness = createHarness({ prepareReplace });
+  const owner = { kind: "inbox" as const };
+  const open = (path: string, isCurrent?: () => boolean) =>
+    openWorkbenchSceneFile({
+      owner,
+      navigator: harness.navigator,
+      projects: [],
+      input: { path, title: path, panelId: "right", isCurrent },
+    });
+  expect(await open("/work/first.ts")).toBe(true);
+  await expect(open("/work/second.ts")).rejects.toThrow("Save pending changes");
+  expect(Object.values(harness.previews)[0]!.surface).toMatchObject({
+    config: { path: "/work/first.ts" },
+  });
+  let finish!: (result: boolean) => void;
+  prepareReplace.mockImplementationOnce(
+    () =>
+      new Promise((resolve) => {
+        finish = resolve;
+      }),
+  );
+  let current = true;
+  const pending = open("/work/third.ts", () => current);
+  await Promise.resolve();
+  current = false;
+  finish(true);
+  expect(await pending).toBe(false);
+  expect(Object.values(harness.previews)[0]!.surface).toMatchObject({
+    config: { path: "/work/first.ts" },
   });
 });

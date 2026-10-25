@@ -1,3 +1,6 @@
+import { openWorkbenchSceneFile } from "@/lib/workbench-scene-file-opener";
+import { prepareWorkbenchSceneSurfaceClose } from "@/lib/workbench-scene-command-lifecycle";
+import type { FileReferenceRouterPort } from "@/lib/file-reference-router";
 import { useRegisterFileLocationNavigator } from "@/lib/file-location-navigation";
 import { useApplicationReady } from "@/bootstrap/application-surface";
 import { subscribeDictationRecordingNavigation } from "@/lib/global-dictation-commands";
@@ -219,6 +222,7 @@ import { TerminalPanel } from "./workbench-terminal-panel";
 import { buildWorkbenchScenePanels } from "./workbench-scene-panels";
 import { useWorkbenchRouteSurfaces } from "./use-workbench-route-surfaces";
 import { WorkbenchCommandPaletteHost } from "./workbench-command-palette-host";
+import { openCommandPaletteFolder } from "@/lib/command-palette-projects";
 import { useWorkbenchChromeLayout } from "./use-workbench-chrome-layout";
 import { useWorkbenchChromeCommands } from "@/lib/use-workbench-chrome-commands";
 import {
@@ -808,6 +812,8 @@ export function WorkbenchRuntime({
   const sceneNavigator = useMemo(
     () =>
       createWorkbenchSceneNavigator({
+        getScene: (owner) =>
+          workbenchWindowRef.current.scenesByOwnerKey[makeWorkbenchSceneKey(owner)],
         presentDurable: (input, surface) => {
           const capability = sceneCommandsRef.current;
           if (!capability)
@@ -829,6 +835,7 @@ export function WorkbenchRuntime({
           workbenchWindowRef.current.navigate(location);
         },
         preview: {
+          prepareReplace: (owner, entry) => prepareWorkbenchSceneSurfaceClose(owner, entry.surface),
           list(owner) {
             const scene =
               workbenchWindowRef.current.scenesByOwnerKey[makeWorkbenchSceneKey(owner)] ??
@@ -950,7 +957,7 @@ export function WorkbenchRuntime({
   const [commandPaletteOpenRequest, setCommandPaletteOpenRequest] = useState({
     tick: 0,
     mode: "root" as CommandMenuMode,
-    initialQuery: "",
+    initialQuery: undefined as string | undefined,
   });
   const [commandContentSearchOpenRequest, setCommandContentSearchOpenRequest] =
     useState<ContentSearchOpenRequest | null>(null);
@@ -2323,7 +2330,27 @@ export function WorkbenchRuntime({
     windowSessionId,
   });
 
+  const presentOwnedSceneFile = useCallback<FileReferenceRouterPort["openWorkspaceFileTab"]>(
+    async (input) => {
+      if (!activeOwnedSceneOwner) return false;
+      const location = getWorkbenchSceneReturnLocation(workbenchWindowRef.current.location);
+      return openWorkbenchSceneFile({
+        owner: activeOwnedSceneOwner,
+        navigator: sceneNavigator,
+        projects,
+        input: {
+          ...input,
+          isCurrent: () =>
+            input.isCurrent?.() !== false &&
+            JSON.stringify(getWorkbenchSceneReturnLocation(workbenchWindowRef.current.location)) ===
+              JSON.stringify(location),
+        },
+      });
+    },
+    [activeOwnedSceneOwner, projects, sceneNavigator],
+  );
   const panelOpeners = useWorkbenchPanelOpeners({
+    presentOwnedSceneFile,
     activeProjectId,
     activeSession,
     controller: panelController,
@@ -3441,6 +3468,17 @@ export function WorkbenchRuntime({
       openRequest={commandPaletteOpenRequest}
       projects={projects}
       activeProjectId={activeProject?.id ?? activeProjectId}
+      openProjectFolder={() =>
+        openCommandPaletteFolder({
+          createProject: onCreateProject,
+          startChat: async (projectId) => {
+            closePendingWorktreeRoute();
+            setAutomationsPath(null);
+            setSettingsPath(null);
+            await sessionCommands.startNewChatInProject(projectId, { focusComposer: true });
+          },
+        })
+      }
       activeSession={activeSession}
       recentPageSessions={recentPageSessions}
       canNavigateBack={shellCanNavigateBack}
@@ -3466,6 +3504,7 @@ export function WorkbenchRuntime({
       }}
       openProcessManager={() => setProcessManagerOpen(true)}
       openSettings={openSettings}
+      openSettingsSection={openSettingsAt}
       openKeyboardShortcuts={openKeyboardShortcutHelp}
       onOpenSessionInNewWindow={onOpenProjectSessionInNewWindow}
     />
@@ -3474,6 +3513,73 @@ export function WorkbenchRuntime({
   const activeSessionProject = activeRenderSession?.projectId
     ? (projects.find((project) => project.id === activeRenderSession.projectId) ?? activeProject)
     : null;
+  const renderOwnedSceneFileSurface = useCallback(
+    (
+      surface: Extract<WorkbenchSurfaceDescriptor, { kind: "files" }>,
+      context: { readonly active: boolean; readonly panelId: PanelId },
+    ) => {
+      if (!activeOwnedScene || !activeOwnedSceneOwner || !activeOwnedSceneKey) return null;
+      const owner = activeOwnedSceneOwner;
+      const sceneKey = activeOwnedSceneKey;
+      const preview = listWorkbenchScenePreviewEntries(
+        activeOwnedScene,
+        previewSurfacesByPanel,
+      ).some((entry) => entry.surface.id === surface.id);
+      const tab = {
+        id: surface.id,
+        sessionId: sceneKey,
+        projectId: surface.config.projectId,
+        panelId: context.panelId,
+        kind: "files" as const,
+        title: surface.titleSnapshot,
+        order: 0,
+        config: surface.config,
+        browserTabId: null,
+        stateKey: surface.stateKey,
+        state: surface.state,
+        createdAt: activeOwnedScene.touchedAt,
+        updatedAt: activeOwnedScene.touchedAt,
+        ...(preview ? { preview: true as const } : {}),
+      } as WorkspaceFilesTab;
+      return (
+        <WorkspaceFilesPanel
+          key={`${sceneKey}:${surface.id}:${surface.stateKey}`}
+          tab={tab}
+          presentationOwnerId={sceneKey}
+          project={projects.find((project) => project.id === surface.config.projectId) ?? null}
+          onOpenFileTab={openWorkspaceFileTab}
+          onUpdateTabState={(state) => {
+            const scene = workbenchWindowRef.current.scenesByOwnerKey[sceneKey];
+            const entry = scene
+              ? listWorkbenchScenePreviewEntries(scene, previewSurfacesByPanelRef.current).find(
+                  (entry) => entry.surface.id === surface.id,
+                )
+              : undefined;
+            if (!entry) {
+              updateSceneSurfacePresentation(owner, surface.id, { state });
+              return;
+            }
+            const slotKey = makeWorkbenchScenePreviewSlotKey(owner, entry.panelId, entry.leafId);
+            const next = {
+              ...previewSurfacesByPanelRef.current,
+              [slotKey]: { ...entry.surface, state },
+            };
+            previewSurfacesByPanelRef.current = next;
+            panelControllerRef.current.updatePreviewSurfacesByPanel(next);
+          }}
+        />
+      );
+    },
+    [
+      activeOwnedScene,
+      activeOwnedSceneOwner,
+      activeOwnedSceneKey,
+      projects,
+      previewSurfacesByPanel,
+      openWorkspaceFileTab,
+      updateSceneSurfacePresentation,
+    ],
+  );
   const renderProjectSceneSurface = useCallback(
     (
       surface: WorkbenchSurfaceDescriptor,
@@ -3740,37 +3846,7 @@ export function WorkbenchRuntime({
         );
       }
 
-      if (surface.kind === "files") {
-        const tab: WorkbenchTabProjection = {
-          ...common,
-          kind: "files",
-          config: surface.config,
-        };
-        return (
-          <WorkspaceFilesPanel
-            tab={tab as WorkspaceFilesTab}
-            presentationOwnerId={projectSceneKey}
-            project={projects.find((item) => item.id === surface.config.projectId) ?? activeProject}
-            onOpenFileTab={async (input) =>
-              openProjectSceneManualSurface(activeProject.id, "files", {
-                panelId: input.panelId,
-                path: input.path,
-                hostId: input.hostId,
-                cwd: input.cwd ?? surface.config.cwd,
-                workspaceRoot: input.workspaceRoot ?? surface.config.workspaceRoot,
-              })
-            }
-            onUpdateTabState={(state) => {
-              if (!projectSceneOwner) return;
-              panelControllerRef.current.sceneDurable?.updateSurface(
-                projectSceneOwner,
-                surface.id,
-                { state },
-              );
-            }}
-          />
-        );
-      }
+      if (surface.kind === "files") return renderOwnedSceneFileSurface(surface, context);
 
       if (surface.kind === "browser") {
         const tab: WorkbenchTabProjection = {
@@ -3880,6 +3956,7 @@ export function WorkbenchRuntime({
       return null;
     },
     [
+      renderOwnedSceneFileSurface,
       executeSceneCommand,
       activeProject,
       activeProjectScene,
@@ -3947,6 +4024,8 @@ export function WorkbenchRuntime({
           placement: { kind: "same-group", sourceSurfaceId: surface.id },
         });
       };
+
+      if (surface.kind === "files") return renderOwnedSceneFileSurface(surface, context);
 
       if (surface.kind === "inbox") {
         return (
@@ -4055,6 +4134,7 @@ export function WorkbenchRuntime({
       );
     },
     [
+      renderOwnedSceneFileSurface,
       executeSceneCommand,
       activeLibraryScene,
       inboxFocusToken,

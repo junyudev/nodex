@@ -955,6 +955,8 @@ export interface WorkspaceDirectoryEntriesInput {
 }
 
 export interface WorkspaceDirectoryEntriesResult {
+  /** Canonical root returned when the request used a host-home shortcut. */
+  workspaceRoot?: string;
   directoryPath: string;
   parentPath: string | null;
   entries: WorkspaceFileDirectoryEntry[];

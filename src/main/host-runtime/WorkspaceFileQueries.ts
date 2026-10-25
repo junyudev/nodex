@@ -1,10 +1,14 @@
 import { stat } from "node:fs/promises";
 import path from "node:path";
+import { homedir } from "node:os";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
 import type {
+  WorkspaceDirectoryEntriesInput,
+  WorkspaceDirectoryEntriesResult,
+  WorkspaceFileDirectoryEntry,
   WorkspaceFileBinaryReadResult,
   WorkspaceFileMetadata,
   WorkspaceFileMetadataInput,
@@ -20,6 +24,7 @@ import { CodexGateway, codexGatewayGenerationFence } from "../codex-runtime/Code
 import type { CodexRuntimeError } from "../codex-runtime/CodexRuntimeError";
 import {
   describeWorkspaceFileBytes,
+  listWorkspaceDirectoryEntries,
   readWorkspaceFile,
   readWorkspaceFileBinary,
   readWorkspaceFileMetadata,
@@ -39,6 +44,9 @@ type Query<A> = Effect.Effect<A, QueryError>;
 export class WorkspaceFileQueries extends Context.Service<
   WorkspaceFileQueries,
   {
+    readonly directory: (
+      input: WorkspaceDirectoryEntriesInput,
+    ) => Query<WorkspaceDirectoryEntriesResult>;
     readonly pathsExist: (input: WorkspacePathsExistInput) => Query<WorkspacePathsExistResult>;
     readonly metadata: (input: WorkspaceFileMetadataInput) => Query<WorkspaceFileMetadata>;
     readonly text: (input: WorkspaceFileTextReadInput) => Query<WorkspaceFileReadResult>;
@@ -58,6 +66,9 @@ const local = <A>(operation: string, task: () => Promise<A>): Query<A> =>
 const invalid = (message: string) => new WorkspaceFileUserError("invalid_path", message);
 
 interface RemoteFileReader {
+  readonly directory: (
+    input: WorkspaceDirectoryEntriesInput,
+  ) => Effect.Effect<WorkspaceDirectoryEntriesResult, RemoteReadError>;
   readonly metadata: (filePath: string) => Effect.Effect<FsGetMetadataResponse, RemoteReadError>;
   readonly bytes: (filePath: string, maxBytes: number) => Effect.Effect<Buffer, RemoteReadError>;
 }
@@ -127,7 +138,81 @@ export const live: Layer.Layer<
               );
             return contents;
           });
-        const result = yield* task({ metadata, bytes });
+        const directory = Effect.fnUntraced(function* (input: WorkspaceDirectoryEntriesInput) {
+          let root = input.workspaceRoot;
+          const homeShortcut = root === "~";
+          if (homeShortcut) {
+            const home = yield* gateway.requestOnHost(
+              hostId,
+              "command/exec",
+              {
+                command: ["sh", "-c", 'printf "%s" "$HOME"'],
+                timeoutMs: 10_000,
+                outputBytesCap: 16_384,
+              },
+              fence,
+            );
+            if (home.exitCode !== 0)
+              return yield* Effect.fail(invalid("Could not resolve the host home folder"));
+            root = home.stdout;
+          }
+          yield* validatePath(root);
+          const paths =
+            path.win32.isAbsolute(root) && !path.posix.isAbsolute(root) ? path.win32 : path.posix;
+          const relative = input.directoryPath ?? "";
+          if (
+            relative.includes("\0") ||
+            path.posix.isAbsolute(relative) ||
+            path.win32.isAbsolute(relative)
+          )
+            return yield* Effect.fail(invalid("directoryPath must be relative to workspaceRoot"));
+          const absolute = paths.resolve(root, relative);
+          const directoryPath = paths.relative(root, absolute).replaceAll("\\", "/");
+          if (directoryPath === ".." || directoryPath.startsWith("../"))
+            return yield* Effect.fail(invalid("directoryPath must stay within workspaceRoot"));
+          const response = yield* gateway.requestOnHost(
+            hostId,
+            "fs/readDirectory",
+            { path: absolute },
+            fence,
+          );
+          const entries: WorkspaceFileDirectoryEntry[] = [];
+          for (const entry of response.entries) {
+            if (
+              !entry.fileName ||
+              entry.fileName === "." ||
+              entry.fileName === ".." ||
+              /[\/\\\0]/u.test(entry.fileName)
+            )
+              continue;
+            if (
+              (!input.includeHidden && entry.fileName.startsWith(".")) ||
+              (!entry.isDirectory && (!entry.isFile || input.directoriesOnly))
+            )
+              continue;
+            entries.push({
+              name: entry.fileName,
+              path: directoryPath ? `${directoryPath}/${entry.fileName}` : entry.fileName,
+              type: entry.isDirectory ? "directory" : "file",
+              isSymlink: false,
+            });
+          }
+          const collator = new Intl.Collator(undefined, { sensitivity: "base", numeric: true });
+          entries.sort((left, right) =>
+            left.type !== right.type
+              ? left.type === "directory"
+                ? -1
+                : 1
+              : collator.compare(left.name, right.name),
+          );
+          return {
+            ...(homeShortcut ? { workspaceRoot: root } : {}),
+            directoryPath,
+            parentPath: directoryPath ? directoryPath.split("/").slice(0, -1).join("/") : null,
+            entries,
+          };
+        });
+        const result = yield* task({ metadata, bytes, directory });
         const nextConnection = yield* gateway.connection(hostId);
         if (
           nextConnection.kind !== "ready" ||
@@ -139,6 +224,17 @@ export const live: Layer.Layer<
       }).pipe(Effect.mapError((cause) => mapError(operation, cause)));
 
     return WorkspaceFileQueries.of({
+      directory: (input) => {
+        const hostId = input.hostId ?? "local";
+        if (hostId !== "local")
+          return remote("directory", hostId, (reader) => reader.directory(input));
+        if (input.workspaceRoot !== "~")
+          return local("directory", () => listWorkspaceDirectoryEntries(input));
+        const workspaceRoot = homedir();
+        return local("directory", () =>
+          listWorkspaceDirectoryEntries({ ...input, workspaceRoot }),
+        ).pipe(Effect.map((result) => ({ ...result, workspaceRoot })));
+      },
       pathsExist: (input) => {
         const hostId = input.hostId ?? "local";
         if (hostId === "local") {

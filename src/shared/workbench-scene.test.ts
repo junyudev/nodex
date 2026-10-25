@@ -1030,3 +1030,43 @@ test("cloning a window preserves canonical file resources and gives their groups
   );
   expect(WorkbenchSceneSnapshotSchema.safeParse(cloned).success).toBe(true);
 });
+
+test("Library and Inbox host files survive save, restore, move, and window cloning", () => {
+  for (const owner of [LIBRARY_SCENE_OWNER, INBOX_SCENE_OWNER]) {
+    const scene = materializeInitialWorkbenchScene(owner);
+    const surface: WorkbenchSurfaceDescriptor = {
+      id: "file:remote:/work/file.ts",
+      kind: "files",
+      titleSnapshot: "file.ts",
+      stateKey: 2,
+      state: { pendingReveal: { line: 4, column: 7 } },
+      config: {
+        projectId: null,
+        hostId: "remote",
+        cwd: "/work",
+        workspaceRoot: "/work",
+        path: "/work/file.ts",
+      },
+    };
+    const opened = createWorkbenchSceneSurface(scene, { panelId: "right", surface });
+    const moved = moveWorkbenchSceneSurface(opened, {
+      surfaceId: surface.id,
+      targetPanelId: "bottom",
+    });
+    const restored = WorkbenchSceneSnapshotSchema.parse(JSON.parse(JSON.stringify(moved)));
+    expect(restored.panelSurfacesById[surface.id]).toEqual(surface);
+    expect(flattenWorkbenchPanelTabIds(restored.panels.bottom.layout)).toContain(surface.id);
+    const key = makeWorkbenchSceneKey(owner);
+    const cloned = cloneWorkbenchSceneLayoutForNewWindow({ scenesByOwnerKey: { [key]: restored } })
+      .scenesByOwnerKey[key]!;
+    expect(WorkbenchSceneSnapshotSchema.parse(cloned).panelSurfacesById[surface.id]).toEqual(
+      surface,
+    );
+    expect(
+      createWorkbenchSceneSurface(scene, {
+        panelId: "right",
+        surface: { ...surface, config: { ...surface.config, projectId: "unrelated" } },
+      }),
+    ).toBe(scene);
+  }
+});

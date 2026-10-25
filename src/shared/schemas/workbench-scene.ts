@@ -689,6 +689,10 @@ function isRawScenePanelSurfaceAllowed(ownerKind: unknown, surface: unknown): bo
   const config = record.config;
   if (!config || typeof config !== "object" || Array.isArray(config)) return false;
   const configRecord = config as Record<string, unknown>;
+  if (record.kind === "files")
+    return (
+      configRecord.projectId === null && Boolean(configRecord.path || configRecord.workspaceRoot)
+    );
   const routingContext = configRecord.routingContext;
   if (!routingContext || typeof routingContext !== "object" || Array.isArray(routingContext)) {
     return false;

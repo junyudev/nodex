@@ -83,6 +83,7 @@ it.effect("releases active file watches and renderer listeners with the Main Sco
             Layer.succeed(ElectronIpc, ipc),
             Layer.succeed(ElectronDesktop, {} as ElectronDesktop["Service"]),
             Layer.succeed(WorkspaceFileQueries, {
+              directory: () => Effect.die("unused"),
               pathsExist: () =>
                 Effect.sync(() => {
                   existenceReads += 1;

@@ -16,6 +16,7 @@ export type FileReferenceTarget = FileLinkTarget;
 
 export interface FileReferenceOpenInput {
   readonly hostId?: string;
+  readonly kind?: "file" | "directory";
   readonly cwd?: string | null;
   readonly workspaceRoot?: string | null;
   readonly title?: string;
@@ -30,6 +31,7 @@ export interface FileReferenceRouterPort {
   readonly openWorkspaceFileTab: (input: {
     cwd?: string | null;
     hostId?: string;
+    kind?: "file" | "directory";
     path: string;
     title: string;
     panelId: PanelId;
@@ -122,6 +124,7 @@ export function createFileReferenceRouter({
         const openedInPanel = await port.openWorkspaceFileTab({
           cwd: options?.cwd,
           hostId,
+          kind: options?.kind,
           path: resolvedTarget.path,
           title: getTargetTitle(resolvedTarget, options?.title),
           panelId: options?.panelId ?? "right",

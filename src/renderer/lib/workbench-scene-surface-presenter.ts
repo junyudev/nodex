@@ -53,6 +53,7 @@ export function createWorkbenchSceneSurfacePresenter(
             ),
           );
     const { id: _id, state: _state, stateKey: _stateKey, ...opening } = surface;
+    const generationIsCurrent = captureIsCurrent?.();
     const receipt = await executor.execute(
       {
         operationId: createSecureRuntimeId("ui-open"),
@@ -65,10 +66,13 @@ export function createWorkbenchSceneSurfacePresenter(
           surface: opening,
         },
       },
-      captureIsCurrent?.(),
+      () => (generationIsCurrent?.() ?? true) && (input.isCurrent?.() ?? true),
       {
         preparedScene: target.scene,
         surfaceId: surface.id,
+        ...(input.request.kind === "files" && input.request.reveal
+          ? { reveal: input.request.reveal }
+          : {}),
         ...(input.navigation === "select-owner"
           ? { location: sceneLocationForOwner(input.owner) }
           : {}),

@@ -1,10 +1,12 @@
-import { DEFAULT_CODEX_HOST_ID } from "../../../shared/codex-host";
+import { useFileReferenceRouter } from "@/lib/file-reference-router";
 import { toast } from "@/components/ui/toast";
 import {
   useSelectedConversationSkillsReloadControl,
   useSelectedWorkspaceSearchContext,
 } from "@/lib/workbench-ui-scopes";
-import type { Dispatch, SetStateAction } from "react";
+import { useEffect, useEffectEvent, useRef, type Dispatch, type SetStateAction } from "react";
+import { flushSync } from "react-dom";
+import { keyboardActionMayRun } from "@/lib/keyboard-action-runtime";
 import { copySessionConversationMarkdown } from "@/lib/session-conversation-markdown";
 import type { useWorkbenchPanelCommandRouter } from "@/lib/use-workbench-panel-command-router";
 import type { useWorkbenchPanelOpeners } from "@/lib/use-workbench-panel-openers";
@@ -18,7 +20,11 @@ import {
   TOGGLE_BOTTOM_PANEL_COMMAND_ID,
   type WorkbenchCommandInvocation,
 } from "../../../shared/workbench-commands";
-import type { CommandKeymapState } from "../../../shared/command-keybindings";
+import {
+  createCommandKeymapState,
+  matchesKeyboardEventToCommand,
+  type CommandKeymapState,
+} from "../../../shared/command-keybindings";
 import type { CommandMenuMode } from "@/lib/command-palette";
 import type {
   CommandPaletteShellCommandContext,
@@ -32,6 +38,8 @@ import {
   resolveSessionExecution,
   resolveSessionMarkdownExport,
 } from "@/lib/session-execution";
+
+import type { SettingsSectionId } from "./workbench-settings-sections";
 
 type ProjectSession = WorkbenchSessionRenderProjection;
 type SessionCommands = Pick<
@@ -59,9 +67,10 @@ interface WorkbenchCommandPaletteHostProps {
   readonly openRequest: {
     readonly tick: number;
     readonly mode: CommandMenuMode;
-    readonly initialQuery: string;
+    readonly initialQuery: string | undefined;
   };
   readonly projects: readonly Project[];
+  readonly openProjectFolder: () => Promise<void>;
   readonly activeProjectId: string | null;
   readonly activeSession: ProjectSession | null;
   readonly recentPageSessions: readonly RecentPageSession[];
@@ -83,6 +92,7 @@ interface WorkbenchCommandPaletteHostProps {
   readonly openLibraryFiles: () => void;
   readonly openProcessManager: () => void;
   readonly openSettings: () => void;
+  readonly openSettingsSection?: (section: SettingsSectionId) => void;
   readonly openKeyboardShortcuts: () => void;
   readonly onOpenSessionInNewWindow?: (session: ProjectSession) => Promise<void>;
 }
@@ -91,6 +101,7 @@ export function WorkbenchCommandPaletteHost({
   open,
   openRequest,
   projects,
+  openProjectFolder,
   activeProjectId,
   activeSession,
   recentPageSessions,
@@ -112,18 +123,56 @@ export function WorkbenchCommandPaletteHost({
   openLibraryFiles,
   openProcessManager,
   openSettings,
+  openSettingsSection,
   openKeyboardShortcuts,
   onOpenSessionInNewWindow,
 }: WorkbenchCommandPaletteHostProps) {
   const workspaceSearchContext = useSelectedWorkspaceSearchContext();
+  const fileRouter = useFileReferenceRouter();
   const skillsReloadControl = useSelectedConversationSkillsReloadControl();
   const pageCreateTargetResolution = usePageCreateTargetResolution(activeProjectId);
+  const openingFolder = useRef(false);
+  const openFolder = async () => {
+    if (openingFolder.current) return;
+    openingFolder.current = true;
+    try {
+      await openProjectFolder();
+    } catch (cause) {
+      toast.danger(cause instanceof Error ? cause.message : "Couldn’t open folder");
+    } finally {
+      openingFolder.current = false;
+    }
+  };
+  const handleFolderShortcut = useEffectEvent((event: KeyboardEvent) => {
+    if (
+      !keyboardActionMayRun(event, {
+        runWithEditableFocus: true,
+        runInsideLocalSurface: true,
+        runInsideTerminal: false,
+        allowRepeat: false,
+      })
+    )
+      return;
+    const keymap =
+      commandKeymapState ??
+      createCommandKeymapState(
+        {},
+        navigator.platform.toUpperCase().includes("MAC") ? "macOS" : "windows",
+      );
+    if (!matchesKeyboardEventToCommand(event, keymap, "openFolder")) return;
+    event.preventDefault();
+    flushSync(() => setOpen(false));
+    void openFolder();
+  });
+  useEffect(() => {
+    window.addEventListener("keydown", handleFolderShortcut);
+    return () => window.removeEventListener("keydown", handleFolderShortcut);
+  }, []);
   const panelCapabilities = panelCommands.resolveActivePanelCapabilities("right");
   const commandContext: Omit<CommandPaletteShellCommandContext, "isMac" | "showMockCommands"> = {
     canReloadSkills: skillsReloadControl !== null,
-    canSearchFiles:
-      workspaceSearchContext?.hostId === DEFAULT_CODEX_HOST_ID &&
-      workspaceSearchContext.roots.length > 0,
+    canSearchFiles: true,
+    canSearchText: true,
     canGoBack: canNavigateBack,
     canGoForward: canNavigateForward,
     canStartNewChat: true,
@@ -148,6 +197,9 @@ export function WorkbenchCommandPaletteHost({
     commandKeymapState,
   };
   const commandHandlers: CommandPaletteShellCommandHandlers = {
+    openFolder: () => {
+      void openFolder();
+    },
     navigateBack: () => {
       void executeNavigation("back");
     },
@@ -242,18 +294,44 @@ export function WorkbenchCommandPaletteHost({
       projects={projects}
       activeProjectId={activeProjectId}
       recentPageSessions={recentPageSessions}
-      fileSearchScope={
-        workspaceSearchContext?.hostId === DEFAULT_CODEX_HOST_ID ? workspaceSearchContext : null
-      }
-      onOpenFile={(file) => {
-        void panelOpeners.openWorkspaceFileTab({
-          path: file.fsPath,
-          title: file.label,
-          workspaceRoot: file.root,
-          panelId: "right",
-          mode: "preview",
-        });
+      fileSearchScope={workspaceSearchContext}
+      onOpenFile={(file, hostId) => {
+        void fileRouter
+          .open(
+            { path: file.fsPath },
+            {
+              hostId,
+              title: file.label,
+              kind: file.kind,
+              workspaceRoot: file.root,
+              mode: "preview",
+            },
+          )
+          .then((opened) => {
+            if (!opened) toast.danger("Couldn’t open file");
+          })
+          .catch((cause: unknown) =>
+            toast.danger(cause instanceof Error ? cause.message : "Couldn’t open file"),
+          );
       }}
+      onOpenTextMatch={(match, hostId) => {
+        void fileRouter
+          .open(
+            { path: match.path, line: match.line, column: match.column },
+            {
+              hostId,
+              workspaceRoot: match.root,
+              mode: "preview",
+            },
+          )
+          .then((opened) => {
+            if (!opened) toast.danger("Couldn’t open file");
+          })
+          .catch((cause: unknown) =>
+            toast.danger(cause instanceof Error ? cause.message : "Couldn’t open file"),
+          );
+      }}
+      onOpenSettingsSection={openSettingsSection}
       commandContext={commandContext}
       commandHandlers={commandHandlers}
       onOpenChange={setOpen}

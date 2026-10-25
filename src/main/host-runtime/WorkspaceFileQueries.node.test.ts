@@ -1,4 +1,3 @@
-/* oxlint-disable effecttsgo/strict-effect-provide -- Each case acquires the complete isolated query Layer at its managed test entry point. */
 import { assert, it } from "@effect/vitest";
 import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -62,6 +61,21 @@ function fixture(
         assert.strictEqual(fence.expectedHostId, hostId);
         assert.strictEqual(fence.expectedGeneration, 7);
         requests.push({ method, path: params.path });
+        if (method === "command/exec")
+          return Effect.succeed({ exitCode: 0, stdout: "/home/fixture", stderr: "" });
+        if (method === "fs/readDirectory") {
+          if (options.retire === "generation") generation += 1;
+          if (options.retire === "epoch") epoch = "endpoint-b";
+          return Effect.succeed({
+            entries: [
+              { fileName: "src10", isDirectory: true, isFile: false },
+              { fileName: "note.md", isDirectory: false, isFile: true },
+              { fileName: ".config", isDirectory: true, isFile: false },
+              { fileName: "src2", isDirectory: true, isFile: false },
+              { fileName: "../escape", isDirectory: true, isFile: false },
+            ],
+          });
+        }
         if (params.path === deniedPath)
           return Effect.fail(
             codexRuntimeError({
@@ -240,3 +254,56 @@ it.effect("rejects malformed base64 instead of displaying a silently decoded pre
     );
   }).pipe(Effect.provide(f.layer));
 });
+
+it.effect("lists host directories with canonical home roots, filters and numeric sorting", () => {
+  const f = fixture();
+  return Effect.gen(function* () {
+    const queries = yield* WorkspaceFileQueries;
+    assert.deepStrictEqual(
+      yield* queries.directory({
+        hostId,
+        workspaceRoot: "~",
+        directoryPath: "repo",
+        directoriesOnly: true,
+      }),
+      {
+        workspaceRoot: "/home/fixture",
+        directoryPath: "repo",
+        parentPath: "",
+        entries: [
+          { name: "src2", path: "repo/src2", type: "directory", isSymlink: false },
+          { name: "src10", path: "repo/src10", type: "directory", isSymlink: false },
+        ],
+      },
+    );
+    assert.deepStrictEqual(
+      f.requests.map(({ method, path }) => [method, path]),
+      [
+        ["command/exec", undefined],
+        ["fs/readDirectory", "/home/fixture/repo"],
+      ],
+    );
+    const all = yield* queries.directory({ hostId, workspaceRoot: "/repo", includeHidden: true });
+    assert.deepStrictEqual(
+      all.entries.map((entry) => entry.name),
+      [".config", "src2", "src10", "note.md"],
+    );
+    assert.strictEqual(all.parentPath, null);
+    const escaped = yield* Effect.result(
+      queries.directory({ hostId, workspaceRoot: "/repo", directoryPath: "../escape" }),
+    );
+    assert.strictEqual(escaped._tag, "Failure");
+    assert.isFalse(f.requests.some((request) => request.path === "/escape"));
+  }).pipe(Effect.provide(f.layer));
+});
+
+for (const retire of ["generation", "epoch"] as const) {
+  it.effect(`rejects directory entries after native ${retire} retirement`, () => {
+    const f = fixture({ retire });
+    return Effect.gen(function* () {
+      const queries = yield* WorkspaceFileQueries;
+      const result = yield* Effect.result(queries.directory({ hostId, workspaceRoot: "/repo" }));
+      assert.strictEqual(result._tag, "Failure");
+    }).pipe(Effect.provide(f.layer));
+  });
+}

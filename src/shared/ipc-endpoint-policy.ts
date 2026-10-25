@@ -388,6 +388,8 @@ type ControlEndpointPolicy =
   | "terminal-resize"
   | "terminal-take-over-view"
   | "terminal-write"
+  | "workspace-text-search:start"
+  | "workspace-text-search:stop"
   | "file-search:start"
   | "file-search:update"
   | "file-search:stop"

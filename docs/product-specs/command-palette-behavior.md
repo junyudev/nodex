@@ -5,11 +5,12 @@
 The command palette is the global launcher for fast workbench navigation.
 Its scope controls keep broad search and focused navigation in one surface:
 
-- All shows quick actions, recent chats, and Page suggestions, then searches actions, chats, Pages, and available workspace files as users type
+- All shows quick actions, recent chats, and Page suggestions, then searches actions, chats, Pages, workspace filenames, and file contents as users type
 - Actions searches the command catalog
 - Chats searches current non-archived chats
 - Pages searches Library Pages and owns the Page filter controls
-- Files searches the selected local workspace through the native file-search session
+- Files searches filenames on the selected computer through the native file-search session
+- Text streams literal matches from file contents on the selected computer
 - result ranking favors fast recall over exhaustive inspection
 - matching context is visible directly in the result row through inline highlights and short previews
 
@@ -25,17 +26,19 @@ The palette is a transient overlay and does not become part of durable navigatio
 - A leading `>` is plain query text and no longer switches modes.
 - The palette searches the complete authorized Page corpus of every available Project context, not only Pages already loaded by a Board or the active Project.
 - The palette combines the current non-archived local chat catalog with eligible root chats returned by app-server search. A server-only result is materialized locally only when opened.
-- `Search files` is available when the selected context has local workspace roots. It shares native search lifecycle and ranking with the Composer and Files panel. `Enter` on a directory completes its path; accepting a file opens a preview. Remote contexts do not expose local file opening.
+- `Search files` and `Search text in files` are always discoverable. When the current context has no workspace, their folder control opens a host-aware chooser. Search roots are transient and never change Project sources. File and directory results open through the same host-qualified file navigation owner as file links; Text results also pass their exact one-based line and UTF-16 column. Remote paths never fall through to local filesystem opening.
 - `Force reload skills` is available when the selected chat supports skill discovery. It refreshes that chat's provider and scope, including its Claude Profile and Project or Codex execution host and skill roots. Unsupported providers do not expose the command. A pending refresh cannot replace another chat's inventory after selection changes.
 - The palette closes after executing a result.
+- `Open folder` and `Cmd/Ctrl+O` choose a local directory, reuse an active Project with exactly that source folder or create one named after the folder, and focus that Project's new-chat composer without clearing its draft or attachments. A multi-folder Project is not reused for a single-folder request, so the selected folder becomes the execution directory. Canceling the picker leaves navigation unchanged. Directory search results remain file-navigation actions, distinct from opening a Project.
 - Pressing `Enter` on a selected Page result materializes and selects that Page as a durable
   surface: in the active Session when one owns the workbench, otherwise in the target Project
   Scene. An unopened Page follows the same path as a clicked result; closing the palette is not
   evidence that navigation succeeded.
-- Closing the palette clears the query and resets the selection index. Reopening starts discovery sections at their initial result counts.
-- The top row contains All, Actions, Chats, and Pages; Files appears when local workspace roots are available. Changing scope keeps the current query. Pointer selection and Tab cycling return focus to the search field; arrow navigation within the scope tabs keeps focus on the tabs.
+- Opening uses an explicit query when supplied, otherwise a valid selection from the originating editor, then the last All/Files query. A selected query is trimmed, single-line, at most 256 UTF-16 units, and never read from a password field. The search input selects the opening query for replacement. Closing preserves the last broad query; reopening resets result selection and section expansion.
+- Closing synchronously releases the dialog before restoring the originating element and its directional native-input or document selection, including shadow-root editors. Disconnected or shortened selection endpoints are ignored; restoration does not scroll the document.
+- The scope controls contain All, Actions, Chats, Pages, Files, and Text, including before a workspace has been chosen. Changing scope keeps the current query. Pointer selection and Tab cycling return focus to the search field; arrow navigation within the scope tabs keeps focus on the tabs.
 - The palette uses a translucent surface with 65% surface color, a 24px backdrop blur, rounded corners, a hairline boundary, and a shadow. A black overlay at 13.33% opacity lightly dims the workbench.
-- The centered palette is 768px wide and 504px high, bounded to 92vw and 90vh. The scope and input rows stay fixed while results scroll, so changing queries or scopes does not resize the surface.
+- The centered palette is normally 768px wide and 504px high. Width and viewport bounds account for window zoom; the result viewport is bounded between 120px and 440px with a 64px chrome allowance. The scope and input rows stay fixed while results scroll, so changing queries or scopes does not resize the surface.
 
 ## Scopes
 
@@ -43,25 +46,28 @@ The palette is a transient overlay and does not become part of durable navigatio
 
 All is the initial scope for `Cmd/Ctrl+K` and `Cmd/Ctrl+Shift+P`.
 
-- An empty query shows the supported `New chat`, `Create Page`, and `Open folder` actions under Quick actions, followed initially by up to five recent chats and five Page suggestions. Development-only mock actions are excluded from Quick actions.
-- A one-character query searches actions only.
-- At `2` Unicode characters, matching local chat and Page metadata appears in trailing Chats and Pages sections while matching actions remain visible. Available local workspace files are searched through the native file-search session.
+- An empty query shows the supported `New chat` and `Open folder` actions under Quick actions, followed initially by up to five recent chats and five Page suggestions. Development-only mock actions are excluded from Quick actions.
+- A one-character query searches actions, available workspace filenames, and file contents. Files and Text remain absent from an empty All query.
+- All searches the current Project context and ignores a temporary folder selection. Switching back to Files or Text within the same opening restores that selection.
+- At `2` Unicode characters, matching local chat and Page metadata appears in trailing Chats and Pages sections while matching actions remain visible. Workspace filename and text searches continue independently of those thresholds.
 - At `2` Unicode characters, All synchronously searches the warm, Core-authorized Page metadata projection and starts bounded Core body enrichment. At `3` characters, Chats additionally merges bounded app-server chat-history results.
-- Results remain grouped as actions, Chats, Pages, then Files; scores from different result types are never interleaved.
-- Chats, Pages, and Files each initially show up to five results. Each section exposes `Show more` when additional results are available; activating it appends up to five results in that section without closing the palette. Focus stays in the input and selection stays at the insertion point, allowing keyboard navigation to continue through the newly revealed results. Actions and search-status rows do not consume another section's limit, and Page results appear independently of pending chat-history search.
+- Results remain grouped as actions, Chats, Pages, Files, then Text; scores from different result types are never interleaved.
+- Chats, Pages, Files, and Text each initially show up to five results. Text can expand to its 100 matching-line backend limit. Each section exposes `Show more` when additional results are available; activating it appends up to five results in that section without closing the palette. Focus stays in the input and selection stays at the insertion point, allowing keyboard navigation to continue through the newly revealed results. Actions and search-status rows do not consume another section's limit, and Page results appear independently of pending chat-history search.
 - Changing scope resets section expansion to its initial five-result counts. Page discovery ignores persisted Pages filters because those controls are not visible in All.
-- Search actions such as `Search chats`, `Search Pages`, and `Search files` enter the corresponding scope with an empty query. This differs from selecting a scope in the top row, which preserves the query.
+- Search actions such as `Search chats`, `Search Pages`, `Search files`, and `Search text in files` enter the corresponding scope with an empty query. This differs from selecting a scope in the top row, which preserves the query.
 
 ### Actions Scope
 
 Actions contains the full command catalog, including when the query is empty.
 All uses the same catalog for non-empty queries.
 
-- Commands are grouped as Suggested, Chat, Navigation, Panels, Project, Configure, Skills, and App.
+- Commands are grouped as Suggested, Chat, Navigation, Panels, Project, Configure, Settings, Skills, and App.
 - Disabled commands remain visible with their reason, but keyboard selection skips them and they cannot be executed.
 - Commands use customized command-keymap shortcut labels where a matching command id exists.
 - Command rows omit explanatory subtitles unless needed to explain an unavailable action.
-- Unsupported shell commands appear only in development as disabled mock rows with a `Mock` badge; production hides them entirely. Supported Nodex-only actions appear in the closest matching group.
+- The application catalog contains real capabilities; mock entries are excluded in development and production. Supported Nodex actions use their normal command handlers.
+- Visible, enabled Settings sections are directly searchable in the Settings group and navigate through the Settings route owner.
+- Theme opens a nested page with a search field, a Back row, light/dark switching, and the existing per-appearance accent presets. Previews and the current-preset check reflect the same persisted appearance owner as Settings. Entering or leaving this page clears its query; scope tabs are hidden while it is open. Escape or an outside dismissal returns one level before closing the root menu.
 - `Toggle browser panel` and `Open Page Stage` are intentionally not part of the command catalog.
 
 ### Chats Scope
@@ -87,15 +93,34 @@ Pages is opened by `Cmd/Ctrl+P`, the sidebar `Search` row, the Pages scope contr
 - A failed enrichment keeps synchronous metadata rows and shows `Full Page search is unavailable`. It never falls back to an incomplete corpus assembled from mounted Boards.
 - Clicking `Filter` opens a transient popover with property filters for status, priority, tags, assignee, and project. Escape closes the popover before the palette. Closing it returns focus to the Page search field without an intervening tooltip layer.
 - When any palette filters are active, the palette shows a compact summary row directly under the input, using the same compact pill language as the DB view toolbar.
-- Palette Page filters persist across palette reopen and app reload, but the free-text query still clears on close.
+- Palette Page filters persist across palette reopen and app reload. Pages queries are not saved as the last broad query.
 
 ### Files Scope
 
-Files uses the shared native file-search controller and reports loading, empty, and failure states. All uses the same controller for queries of at least two characters when local workspace roots are available.
+Files uses the shared native file-search controller. All searches names from the first non-empty character. Empty Files shows up to ten recently opened files on the selected host and within the selected roots.
 
-- Query changes update the existing native session; host/root changes, leaving an eligible search scope, and closing the palette release it.
-- Directory results complete the query; file results open a preview in the selected owner.
-- File search has no default keyboard binding; its configurable binding leaves `Cmd/Ctrl+P` assigned to Pages.
+- Query changes update the existing native session; host/root changes, leaving an eligible scope, and closing release it.
+- Absolute paths and `~/` use host-qualified metadata lookup instead of fuzzy matching. Home shorthand resolves on that host. Missing paths show an empty result; transient lookup failures offer retry. Explicit folder overrides constrain absolute lookup to their roots, while a default Project context permits an explicitly entered outside path.
+- Changing host, roots, query, or lookup generation fences previous responses. Directory results close the palette and open the directory; they do not complete a Composer mention.
+- The folder control is shared with Text. It includes the current context and individual roots, and opens a directory browser with parent navigation, an editable path, hidden-folder visibility, and keyboard selection. Remote browsing uses the remote filesystem and preserves the host when choosing a path.
+- The temporary folder selection survives closing and directly reopening Text in the same context. A new opening in another scope clears it; changing host or Project roots never borrows another context's selection. It is not persisted across application restart.
+- File search has no default keyboard binding; `Cmd/Ctrl+P` remains assigned to Pages.
+
+### Text Scope
+
+Text searches file contents through Main's scoped workspace search service. This is independent of Page body search and does not require a cloud search index.
+
+- Queries are literal, single-line strings of at most 256 UTF-16 units; smart case matches lower-case queries without case sensitivity and respects explicit capitals. CR, LF, and NUL are rejected.
+- Each edit starts after a 50ms debounce. Query, file mask, host, roots, or priority-folder changes cancel previous work. Closing the palette cancels its request; destroying the renderer or Main scope releases all its subprocesses.
+- Results stream in backend order. While the same host/roots refresh, previous matches may remain visible but cannot be selected or opened until they belong to the current request. Switching hosts or roots immediately removes stale results.
+- Loading indication is delayed 500ms. Empty, invalid-query, invalid-mask, unsupported-host, missing-runtime, failed-search, and limited-result states are distinct. Fast searches do not flash a spinner.
+- A failed request clears any retained results from an older query. Valid matches already received from the current request remain usable, with its failure shown after the results; a failure before any match uses the centered empty state.
+- Each compact result shows a highlighted line preview and filename with line number. Duplicate filenames gain relative paths and root labels. UTF-8 byte offsets from the search process are converted to UTF-16 offsets before display and navigation; previews are capped at 512 units without splitting surrogate pairs, with at most 32 highlight ranges.
+- File types accepts comma-separated glob patterns with `!` exclusions. Escaped commas and commas inside balanced braces or brackets remain in their pattern; malformed patterns do not start a process. Include patterns precede exclusions. Enter in the field saves its mask and returns to search; ArrowDown opens previous masks. Pattern length is bounded to 256 units.
+- Query and mask history is keyed by host and Project roots, bounded to 20 contexts, 30 queries, and 20 masks each. Empty Text recalls previous queries. Accepting a result or leaving Text records the latest valid query and mask; intermediate typed prefixes are not added to history.
+- A temporary folder selection changes the searched roots while retaining that host's current Project query and file-type history. Without a matching Project context, the chosen roots provide the history scope.
+- The search reads hidden files, does not follow symlinks, honors ignore files, and excludes dependency/build/cache directories. It searches roots sequentially, prioritizing up to 20 recent file parent directories without duplicate matches. Files over 10MiB are skipped; each child is limited to 30 seconds and 128MiB of output. A request stops at 100 matching lines and exposes that limit in Text.
+- Local searches use the verified bundled ripgrep runtime. Remote POSIX searches use a trusted executable outside workspace roots or a pinned, checksum-verified runtime. Remote Windows reports its unsupported capability explicitly. Search processes and remote paths remain owned by their execution host.
 
 ## Page Search Model
 
@@ -271,9 +296,9 @@ Metadata matches highlight title, project/Chats context, cwd, branch, and previe
 - `Alt+ArrowUp` / `Alt+ArrowDown` moves to the first enabled result in the previous or next group, stopping at the first or last group.
 - `Enter` executes the selected result. A directory completes the path; `Show more` expands its section. Both keep the palette open.
 - `Tab` / `Shift+Tab` in the search field cycles forward/backward through available scopes, wrapping at either end and preserving the query.
-- `F6` moves focus from the search field to Filter in Pages, or to the active scope tab in other scopes. From Filter or the scope tabs, `F6` returns to the search field.
+- Unmodified `F6` moves from search to the first Files/Text search option, Filter in Pages, or the active scope tab elsewhere. From the options or scope tabs it returns to search. Composition and modified/default-prevented events do not trigger this transfer.
 - The scope row uses tablist semantics. `ArrowLeft` / `ArrowRight` moves between scope tabs and activates them; `Home` / `End` selects the first or last scope. Keyboard scope navigation retains focus on the tabs and preserves the query.
-- `Escape` closes the palette directly, including with a non-empty query. An open nested Page filter popover consumes Escape first.
+- `Escape` first dismisses an open options popover or nested Theme page, then closes the palette, including with a non-empty query.
 - IME composition prevents palette keyboard commands from executing or closing the palette while text is being composed.
 
 ## Result Limits

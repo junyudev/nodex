@@ -177,7 +177,7 @@ interface WorkbenchSessionCommandsInput {
     SetStateAction<{
       tick: number;
       mode: CommandMenuMode;
-      initialQuery: string;
+      initialQuery: string | undefined;
     }>
   >;
   readonly setCommandContentSearchOpenRequest: Dispatch<
@@ -517,7 +517,7 @@ export function useWorkbenchSessionCommands({
   );
 
   const startNewChatInProject = useCallback(
-    async (projectId: string | null) => {
+    async (projectId: string | null, options?: { focusComposer?: boolean }) => {
       const session = await ensureDefaultDraftSessionForProject(projectId);
       panelControllerRef.current.durable.patchPanel(session, "right", {
         size: {
@@ -525,8 +525,17 @@ export function useWorkbenchSessionCommands({
           fullWidth: false,
         },
       });
+      if (!options?.focusComposer) return;
+      setNewThreadComposerIntentsBySessionId((current) => ({
+        ...current,
+        [session.id]: {
+          prompt: "",
+          attachmentMode: "append",
+          focusNonce: Date.now(),
+        },
+      }));
     },
-    [ensureDefaultDraftSessionForProject],
+    [ensureDefaultDraftSessionForProject, setNewThreadComposerIntentsBySessionId],
   );
 
   const prefillNewChat = useCallback(
@@ -574,7 +583,7 @@ export function useWorkbenchSessionCommands({
     setCommandPaletteOpenRequest((current) => ({
       tick: current.tick + 1,
       mode: "pages",
-      initialQuery: "",
+      initialQuery: undefined,
     }));
     setCommandPaletteOpen(true);
   }, [setCommandPaletteOpen, setCommandPaletteOpenRequest]);
@@ -584,7 +593,7 @@ export function useWorkbenchSessionCommands({
       setCommandPaletteOpenRequest((current) => ({
         tick: current.tick + 1,
         mode: request?.mode ?? "root",
-        initialQuery: request?.query ?? "",
+        initialQuery: request?.query,
       }));
       setCommandPaletteOpen(true);
     },

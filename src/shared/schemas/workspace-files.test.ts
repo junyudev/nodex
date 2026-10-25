@@ -27,6 +27,13 @@ describe("workspace file IPC schemas", () => {
     ).toThrow();
     const paths = { hostId: "ssh:build", paths: ["/workspace/report.md", "/workspace/trailing "] };
     expect(WorkspacePathsExistInputSchema.parse(paths)).toEqual(paths);
+    const directory = {
+      hostId: "ssh:build",
+      workspaceRoot: "/workspace/trailing ",
+      directoryPath: "src ",
+      directoriesOnly: true,
+    };
+    expect(WorkspaceDirectoryEntriesInputSchema.parse(directory)).toEqual(directory);
   });
   test("keeps workspace roots only on directory browsing", () => {
     expect(

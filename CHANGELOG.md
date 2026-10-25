@@ -13,7 +13,7 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 
-- Command K brings recent chats and Pages into one glass search window, with separate search categories, keyboard category switching that keeps your query, and expandable grouped results.
+- Command K brings chats, Pages, files, and full-text file search into one glass window, with host-aware folder and file-type filters, recent searches, exact match navigation, expandable results, and searchable Settings and themes.
 
 - Codex reuses the user's native home, including configuration and hooks, without selecting a separate directory from Profile history. Changing the Codex home takes effect after restart; native conversations enter the sidebar only when explicitly imported.
 - Chats automatically load earlier messages as you scroll up, preserve your reading position, and offer retries beside any history that could not load. Imported conversations can be browsed beyond the previous history-window limit.

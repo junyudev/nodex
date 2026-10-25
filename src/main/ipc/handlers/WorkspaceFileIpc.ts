@@ -34,7 +34,6 @@ import { requireTrustedAppRendererSender } from "../../platform/electron/Trusted
 import { WindowRuntime } from "../../window-runtime/WindowRuntime";
 import { MAIN_OBSERVATION_EVENT_CAPACITY } from "../../runtime-limits";
 import {
-  listWorkspaceDirectoryEntries,
   saveWorkspaceFileCopy,
   toWorkspaceFileIpcError,
   WorkspaceFileUserError,
@@ -193,8 +192,12 @@ export const live = (
         });
 
       yield* ipc.handleQuery("workspace-directory-entries", (event, input: unknown) =>
-        run("list-directory", event, () =>
-          listWorkspaceDirectoryEntries(WorkspaceDirectoryEntriesInputSchema.parse(input)),
+        runEffect(
+          "list-directory",
+          event,
+          decode(WorkspaceDirectoryEntriesInputSchema, input).pipe(
+            Effect.flatMap(fileQueries.directory),
+          ),
         ),
       );
       yield* ipc.handleQuery("read-file", (event, input: unknown) =>

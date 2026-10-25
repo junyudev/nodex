@@ -1,5 +1,8 @@
 import * as CodexFilesystemAssetRuntime from "../host-runtime/CodexFilesystemAssetRuntime";
 import * as FileSearchIpc from "../ipc/handlers/FileSearchIpc";
+import * as WorkspaceTextSearchIpc from "../ipc/handlers/WorkspaceTextSearchIpc";
+import * as WorkspaceTextSearch from "../codex-application/WorkspaceTextSearch";
+import * as WorkspaceTextSearchPlatform from "../platform/node/WorkspaceTextSearchPlatform";
 import * as CodexThreadHandoffIpc from "../ipc/handlers/CodexThreadHandoffIpc";
 import * as Layer from "effect/Layer";
 import * as WorkbenchAgentIpc from "../ipc/handlers/WorkbenchAgentIpc";
@@ -81,6 +84,9 @@ export const live = Layer.mergeAll(
   ApplicationSyncIpc.live,
   WorkspaceFileIpc.live().pipe(Layer.provide(WorkspaceFileQueries.live)),
   FileSearchIpc.live,
+  WorkspaceTextSearchIpc.live.pipe(
+    Layer.provide(WorkspaceTextSearch.live.pipe(Layer.provide(WorkspaceTextSearchPlatform.live))),
+  ),
   CodexFilesystemAssetRuntime.live,
   ApplicationLifecycleIpc.live,
   ComposerAppshotIpc.live,

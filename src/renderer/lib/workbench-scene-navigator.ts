@@ -25,6 +25,8 @@ import {
 import type { WorkbenchSceneLocation } from "../../shared/workbench-layout";
 import type { WorkbenchPanelId } from "../../shared/workbench-session-view";
 import { createSecureRuntimeId } from "../../shared/secure-runtime-id";
+import type { WorkbenchSurfaceReveal } from "../../shared/nodex-app-tools/workbench-reveal";
+import { updateWorkbenchSceneSurface } from "../../shared/workbench-scene";
 import {
   resolveRightNeighborPanelPlacement,
   type WorkbenchSurfaceRelativePlacement,
@@ -75,6 +77,7 @@ export type WorkbenchSurfaceOpenRequest =
       readonly kind: "files";
       readonly config: WorkbenchFilesSurfaceConfig;
       readonly titleSnapshot?: string;
+      readonly reveal?: Extract<WorkbenchSurfaceReveal, { kind: "file" }>;
     };
 
 export interface PresentWorkbenchPanelSurfaceInput {
@@ -87,6 +90,7 @@ export interface PresentWorkbenchPanelSurfaceInput {
   };
   readonly mode: "durable" | "preview";
   readonly navigation: "select-owner" | "background";
+  readonly isCurrent?: () => boolean;
 }
 
 export function resolvePanelSurfaceTarget(
@@ -159,6 +163,7 @@ export interface WorkbenchSceneNavigatorIdentityFactory {
 }
 
 export interface WorkbenchSceneNavigatorPort {
+  readonly getScene: (owner: WorkbenchSceneOwner) => WorkbenchSceneSnapshot | undefined;
   readonly presentDurable: (
     input: PresentWorkbenchPanelSurfaceInput,
     surface: WorkbenchSurfaceDescriptor,
@@ -176,6 +181,10 @@ export interface WorkbenchSceneNavigatorPort {
     location: WorkbenchSceneLocation,
   ) => void;
   readonly preview?: {
+    readonly prepareReplace?: (
+      owner: WorkbenchSceneOwner,
+      entry: WorkbenchScenePreviewEntry,
+    ) => Promise<boolean>;
     readonly list: (owner: WorkbenchSceneOwner) => readonly WorkbenchScenePreviewEntry[];
     readonly set: (
       owner: WorkbenchSceneOwner,
@@ -221,6 +230,23 @@ function createDefaultIdentityFactory(): WorkbenchSceneNavigatorIdentityFactory 
     createId(kind) {
       return createSecureRuntimeId(kind);
     },
+  };
+}
+
+function applyFileReveal(
+  surface: WorkbenchSurfaceDescriptor,
+  reveal: Extract<WorkbenchSurfaceReveal, { kind: "file" }> | undefined,
+): WorkbenchSurfaceDescriptor {
+  if (!reveal || surface.kind !== "files") return surface;
+  const previous =
+    surface.state && typeof surface.state === "object" && !Array.isArray(surface.state)
+      ? surface.state
+      : {};
+  const { kind: _kind, ...location } = reveal;
+  return {
+    ...surface,
+    stateKey: surface.stateKey + 1,
+    state: { ...previous, pendingReveal: location },
   };
 }
 
@@ -301,13 +327,16 @@ function makeSurfaceDescriptor(
         config: request.config,
       };
     case "files":
-      return {
-        ...common,
-        kind: request.kind,
-        titleSnapshot:
-          request.titleSnapshot ?? request.config.path?.split(/[\\/]/).pop() ?? "Files",
-        config: canonicalWorkbenchFilesConfig(request.config),
-      };
+      return applyFileReveal(
+        {
+          ...common,
+          kind: request.kind,
+          titleSnapshot:
+            request.titleSnapshot ?? request.config.path?.split(/[\\/]/).pop() ?? "Files",
+          config: canonicalWorkbenchFilesConfig(request.config),
+        },
+        request.reveal,
+      );
   }
 }
 
@@ -338,11 +367,11 @@ function updateSceneForNavigation(
   port.setScene(owner, update);
 }
 
-function presentPreviewSurface(
+async function presentPreviewSurface(
   port: WorkbenchSceneNavigatorPort,
   input: PresentWorkbenchPanelSurfaceInput,
   candidate: WorkbenchSurfaceDescriptor,
-): PresentWorkbenchPanelSurfaceResult {
+): Promise<PresentWorkbenchPanelSurfaceResult> {
   if (!port.preview) {
     return {
       status: "unavailable",
@@ -350,7 +379,48 @@ function presentPreviewSurface(
     };
   }
 
+  const initialScene = port.getScene(input.owner) ?? materializeInitialWorkbenchScene(input.owner);
+  const entries = port.preview.list(input.owner);
+  const reuseKey = getWorkbenchSurfaceReuseKey(candidate);
+  const matchingDurable = Object.values(initialScene.panelSurfacesById).find(
+    (surface) => getWorkbenchSurfaceReuseKey(surface) === reuseKey,
+  );
   const matchingPreview = matchingPreviewEntry(port, input.owner, candidate);
+  const durableTarget =
+    matchingDurable &&
+    (["right", "bottom"] as const).flatMap((panelId) => {
+      const leaf = findWorkbenchPanelLeafForTab(
+        initialScene.panels[panelId].layout,
+        matchingDurable.id,
+      );
+      return leaf ? [{ panelId, leafId: leaf.id }] : [];
+    })[0];
+  const target =
+    durableTarget ||
+    matchingPreview ||
+    resolvePanelSurfaceTarget(initialScene, input.target, entries);
+  const targetLeaf = target.leafId ?? initialScene.panels[target.panelId].layout.activeLeafId;
+  const replacing = entries.find(
+    (entry) =>
+      entry.panelId === target.panelId &&
+      entry.leafId === targetLeaf &&
+      entry.surface.id !== candidate.id,
+  );
+  if (replacing && port.preview.prepareReplace) {
+    if (!(await port.preview.prepareReplace(input.owner, replacing)))
+      return { status: "unavailable", reason: "Save pending changes before opening another file" };
+    const current = port.preview
+      .list(input.owner)
+      .find((entry) => entry.panelId === replacing.panelId && entry.leafId === replacing.leafId);
+    if (
+      current?.surface.id !== replacing.surface.id ||
+      current.surface.stateKey !== replacing.surface.stateKey
+    )
+      return { status: "unavailable", reason: "The preview changed while this file was opening" };
+  }
+  if (input.isCurrent?.() === false)
+    return { status: "unavailable", reason: "The Scene changed while this file was opening" };
+  const reveal = input.request.kind === "files" ? input.request.reveal : undefined;
   let result: PresentWorkbenchPanelSurfaceResult = {
     status: "presented",
     surfaceId: matchingPreview?.surface.id ?? candidate.id,
@@ -359,12 +429,15 @@ function presentPreviewSurface(
   let previewEntry: WorkbenchScenePreviewEntry | null = matchingPreview
     ? {
         ...matchingPreview,
-        surface: {
-          ...candidate,
-          id: matchingPreview.surface.id,
-          stateKey: matchingPreview.surface.stateKey,
-          state: matchingPreview.surface.state,
-        },
+        surface: applyFileReveal(
+          {
+            ...candidate,
+            id: matchingPreview.surface.id,
+            stateKey: matchingPreview.surface.stateKey,
+            state: matchingPreview.surface.state,
+          },
+          reveal,
+        ),
       }
     : null;
   let durableSlot: {
@@ -392,8 +465,16 @@ function presentPreviewSurface(
         };
         durableSlot = { panelId, leafId: leaf.id };
         previewEntry = null;
+        const revealed = applyFileReveal(durable, reveal);
+        const revealedScene =
+          revealed === durable
+            ? scene
+            : updateWorkbenchSceneSurface(scene, durable.id, {
+                state: revealed.state,
+                stateKey: revealed.stateKey,
+              });
         return patchWorkbenchScenePanel(
-          activateWorkbenchSceneSurface(scene, panelId, leaf.id, durable.id),
+          activateWorkbenchSceneSurface(revealedScene, panelId, leaf.id, durable.id),
           panelId,
           { collapsed: false },
         );
@@ -466,6 +547,12 @@ function validateSceneSurfaceRequest(
     };
   }
   if (input.owner.kind !== "library" && input.owner.kind !== "inbox") return null;
+  if (
+    input.request.kind === "files" &&
+    input.request.config.projectId === null &&
+    (input.request.config.path || input.request.config.workspaceRoot)
+  )
+    return null;
 
   const requestAllowed =
     input.request.kind === "page_stage" ||
@@ -479,7 +566,7 @@ function validateSceneSurfaceRequest(
     ? null
     : {
         status: "unavailable",
-        reason: "Only Library Pages, Databases, and Canvases open here",
+        reason: "This surface requires a Project or chat",
       };
 }
 
@@ -490,6 +577,8 @@ export function createWorkbenchSceneNavigator(
   const presentPanelSurface = async (
     input: PresentWorkbenchPanelSurfaceInput,
   ): Promise<PresentWorkbenchPanelSurfaceResult> => {
+    if (input.isCurrent?.() === false)
+      return { status: "unavailable", reason: "The Scene changed while this file was opening" };
     const unavailable = validateSceneSurfaceRequest(port, input);
     if (unavailable) return unavailable;
 

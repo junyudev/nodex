@@ -445,6 +445,11 @@ export function createElectronRendererTransport(bridge: ElectronRendererBridge):
         callback(payload as DesktopNotificationActionInvocation);
       });
     },
+    subscribeWorkspaceTextSearchEvents(callback) {
+      return bridge.on("workspace-text-search:event", (event) => {
+        callback(event as import("../../shared/workspace-text-search").WorkspaceTextSearchEvent);
+      });
+    },
     subscribeFileSearchEvents(callback) {
       return bridge.on("file-search:event", (event) => {
         callback(event as import("../../shared/file-search").FileSearchEvent);

@@ -576,8 +576,13 @@ export function enforceWorkbenchSessionReviewEligibility(
   return { ...eligibleScene, touchedAt: scene.touchedAt };
 }
 
-/** The Library Scene and the Library Inbox's Scene present only Library-routed content. */
+/** Library Scenes present Library content and explicitly addressed host files without a Project. */
 export function isLibrarySceneSurfaceAllowed(surface: WorkbenchSurfaceDescriptor): boolean {
+  if (surface.kind === "files")
+    return (
+      surface.config.projectId === null &&
+      Boolean(surface.config.path || surface.config.workspaceRoot)
+    );
   if (surface.kind === "page_stage" || surface.kind === "canvas_stage") {
     return surface.config.routingContext.kind === "library";
   }

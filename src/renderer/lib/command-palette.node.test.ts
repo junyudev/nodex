@@ -149,37 +149,26 @@ function withMockLocalStorage(run: () => void): void {
 }
 
 describe("command palette scopes", () => {
-  test("cycles available scopes in both directions and wraps at the ends", () => {
-    const scopes = getCommandPaletteScopes(true);
+  test("keeps workspace discovery available before a folder is selected and cycles both ways", () => {
+    const scopes = getCommandPaletteScopes();
     expect(scopes.map((scope) => scope.mode)).toEqual([
       "root",
       "actions",
       "chats",
       "pages",
       "files",
+      "text",
     ]);
     let mode: CommandMenuMode = "root";
     const visited: CommandMenuMode[] = [];
     for (let index = 0; index < scopes.length; index += 1) {
-      mode = cycleCommandPaletteMode(mode, 1, true);
+      mode = cycleCommandPaletteMode(mode, 1);
       visited.push(mode);
     }
-    expect(visited).toEqual(["actions", "chats", "pages", "files", "root"]);
-    expect(cycleCommandPaletteMode("root", -1, true)).toBe("files");
-    expect(cycleCommandPaletteMode("chats", -1, true)).toBe("actions");
-  });
-
-  test("omits Files without local search and recovers when its scope disappears", () => {
-    expect(getCommandPaletteScopes(false).map((scope) => scope.mode)).toEqual([
-      "root",
-      "actions",
-      "chats",
-      "pages",
-    ]);
-    expect(cycleCommandPaletteMode("pages", 1, false)).toBe("root");
-    expect(cycleCommandPaletteMode("root", -1, false)).toBe("pages");
-    expect(cycleCommandPaletteMode("files", 1, false)).toBe("root");
-    expect(cycleCommandPaletteMode("files", -1, false)).toBe("pages");
+    expect(visited).toEqual(["actions", "chats", "pages", "files", "text", "root"]);
+    expect(cycleCommandPaletteMode("root", -1)).toBe("text");
+    expect(cycleCommandPaletteMode("text", -1)).toBe("files");
+    expect(cycleCommandPaletteMode("files", -1)).toBe("pages");
   });
 });
 
@@ -198,7 +187,7 @@ describe("command palette discovery sections", () => {
         activeProjectId: null,
         recentPageIds: [],
         threads,
-        discoveryLimits: { chats: limit, pages: 5, files: 5 },
+        discoveryLimits: { chats: limit, pages: 5, files: 5, text: 5 },
       });
     const expandable = sections(55).flatItems;
     expect(expandable.filter((item) => item.kind === "thread")).toHaveLength(55);
@@ -223,11 +212,7 @@ describe("command palette discovery sections", () => {
       recentPageIds: [],
       threads: [],
     });
-    expect(model.flatItems.map((item) => item.id)).toEqual([
-      "newThread",
-      "createPage",
-      "openFolder",
-    ]);
+    expect(model.flatItems.map((item) => item.id)).toEqual(["newThread", "openFolder"]);
     const mock = buildCommandPaletteSectionsModel({
       mode: "root",
       query: "",
@@ -467,4 +452,39 @@ describe("filterCommandPaletteItems", () => {
     expect(result.commands[0]?.disabled).toBe(true);
     expect(result.commands[1]?.id).toBe("navigateForward");
   });
+});
+
+test("Text discovery expands independently to 100 lines without changing backend order", () => {
+  const textMatches = Array.from({ length: 100 }, (_, index) => ({
+    kind: "text" as const,
+    id: `text:${index}`,
+    hostId: "local",
+    disabled: false,
+    match: {
+      path: "/work/a.ts",
+      root: "/work",
+      relativePath: "a.ts",
+      line: index + 1,
+      column: 1,
+      preview: "needle",
+      matchRanges: [{ start: 0, end: 6 }],
+    },
+  }));
+  const build = (limit: number) =>
+    buildCommandPaletteSectionsModel({
+      mode: "root",
+      query: "needle",
+      commands: [],
+      pages: [],
+      projects: [],
+      activeProjectId: null,
+      recentPageIds: [],
+      threads: [],
+      textMatches,
+      discoveryLimits: { chats: 5, pages: 5, files: 5, text: limit },
+    }).flatItems;
+  expect(build(5).slice(0, 5)).toEqual(textMatches.slice(0, 5));
+  expect(build(5).at(-1)).toMatchObject({ kind: "more", scope: "text" });
+  expect(build(95).at(-1)).toMatchObject({ kind: "more", scope: "text" });
+  expect(build(100)).toEqual(textMatches);
 });

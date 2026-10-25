@@ -1,8 +1,10 @@
+import type { FileReferenceRouterPort } from "./file-reference-router";
 import {
   canonicalWorkbenchFilePath,
   workbenchFileResourceId,
 } from "../../shared/workbench-resource-identity";
 import { useCallback, useEffect, useRef } from "react";
+import { recordWorkspaceSearchFile } from "./workspace-search-recent-files";
 import { createUuidV7 } from "../../shared/uuid-v7";
 import {
   captureCodexTurnPresentation,
@@ -197,6 +199,7 @@ type PanelLifecycle = Pick<
 interface WorkbenchPanelOpenersInput {
   readonly activeProjectId: string | null;
   readonly activeSession: ProjectSession | null;
+  readonly presentOwnedSceneFile: FileReferenceRouterPort["openWorkspaceFileTab"];
   readonly controller: WorkbenchPanelController;
   readonly lifecycle: PanelLifecycle;
   readonly codexControl: ReturnType<typeof useCodexAppServerControl>;
@@ -240,6 +243,7 @@ interface WorkbenchPanelOpenersInput {
 export function useWorkbenchPanelOpeners({
   activeProjectId,
   activeSession,
+  presentOwnedSceneFile,
   controller,
   lifecycle,
   codexControl: workbenchCodexControl,
@@ -874,6 +878,7 @@ export function useWorkbenchPanelOpeners({
     async (input: {
       cwd?: string | null;
       hostId?: string;
+      kind?: "file" | "directory";
       path: string;
       title: string;
       panelId: PanelId;
@@ -883,7 +888,7 @@ export function useWorkbenchPanelOpeners({
       isCurrent?: () => boolean;
     }) => {
       if (input.isCurrent?.() === false) return false;
-      if (!activeSession) return false;
+      if (!activeSession) return presentOwnedSceneFile(input);
       const hostId = input.hostId ?? "local";
       const sessionProjectId = activeSession.projectId;
       const previewsAtOpen = panelControllerRef.current.previewTabsByPanel;
@@ -929,6 +934,10 @@ export function useWorkbenchPanelOpeners({
         ];
       });
       const canonicalPath = canonicalWorkbenchFilePath(input.path, cwd ?? workspaceRoot);
+      const didOpen = () => {
+        if (input.kind !== "directory") recordWorkspaceSearchFile(hostId, canonicalPath);
+        return true;
+      };
       const matchingPreview = (["right", "bottom"] as const).flatMap((panelId) =>
         listWorkbenchPanelLeaves(activeSession.panels[panelId].layout).flatMap((leaf) => {
           const tab = getRenderablePanelPreviewTab(activeSession, panelId, leaf.id, previewsAtOpen);
@@ -1022,14 +1031,14 @@ export function useWorkbenchPanelOpeners({
         await setActivePanelTab(existing.panelId, decision.tabId, { openPanel: true });
         if (input.isCurrent?.() === false) return false;
         applyRevealToDurableTab(decision.tabId);
-        return true;
+        return didOpen();
       }
       if (decision.kind === "focus-preview") {
         applyRevealToPreviewTab(
           makeWorkbenchSessionPanelSlotKey(activeSession.id, previewPanelId, previewLeafId),
         );
         await setActivePanelTab(previewPanelId, decision.tabId, { openPanel: true });
-        return true;
+        return didOpen();
       }
       if (decision.kind === "create-from-empty") {
         const created = await createSessionViewTab({
@@ -1049,14 +1058,14 @@ export function useWorkbenchPanelOpeners({
         });
         if (input.isCurrent?.() === false) return false;
         await ensureActivePanelOpenWithoutRefresh(input.panelId);
-        return true;
+        return didOpen();
       }
       if (decision.kind === "pin-preview") {
         applyRevealToPreviewTab(
           makeWorkbenchSessionPanelSlotKey(activeSession.id, previewPanelId, previewLeafId),
         );
         await pinPreviewTab(previewPanelId, decision.tabId, previewLeafId);
-        return true;
+        return didOpen();
       }
 
       if (decision.kind === "create-preview" && decision.replacingPreviewTabId) {
@@ -1081,7 +1090,7 @@ export function useWorkbenchPanelOpeners({
         if (input.isCurrent?.() === false) return false;
         applyRevealToDurableTab(created.id);
         await ensureActivePanelOpenWithoutRefresh(input.panelId);
-        return true;
+        return didOpen();
       }
 
       const currentPreview = getRenderablePanelPreviewTab(
@@ -1106,10 +1115,11 @@ export function useWorkbenchPanelOpeners({
       }));
       await ensureActivePanelOpenWithoutRefresh(input.panelId);
       await refreshProjectSessions(sessionProjectId);
-      return true;
+      return didOpen();
     },
     [
       activeSession,
+      presentOwnedSceneFile,
       closeTab,
       createSessionViewTab,
       ensureActivePanelOpenWithoutRefresh,

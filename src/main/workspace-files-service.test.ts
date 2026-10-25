@@ -45,6 +45,18 @@ test("save copy preserves binary bytes, cancellation, and the source through sym
 });
 
 describe("workspace-files-service directory browsing", () => {
+  test("preserves exact root and directory names with trailing spaces", async () => {
+    const parent = await makeTempWorkspace();
+    const root = join(parent, "root ");
+    await mkdir(join(root, "nested "), { recursive: true });
+    await mkdir(join(root, "nested ", "child"));
+    const result = await listWorkspaceDirectoryEntries({
+      workspaceRoot: root,
+      directoryPath: "nested ",
+    });
+    expect(result.directoryPath).toBe("nested ");
+    expect(result.entries.map((entry) => entry.path)).toEqual(["nested /child"]);
+  });
   test("returns canonical relative entries, parents, visibility, and directory filtering", async () => {
     const root = await makeTempWorkspace();
     await mkdir(join(root, "src", "nested"), { recursive: true });

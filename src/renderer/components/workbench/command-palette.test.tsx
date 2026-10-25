@@ -19,7 +19,8 @@ import type { DatabasePageSummary, PageSearchResult } from "@/lib/types";
 import { plainTextToPortableRichText } from "../../../shared/block-documents/portable-rich-text";
 import type { CommandPalettePageSearchBatch } from "../../lib/command-palette-page-results";
 import { createCommandPaletteThreadSearchIndex } from "../../lib/command-palette-thread-search";
-import { render, settleAsyncRender, textContent } from "../../test/dom";
+import { openNodexMenu, settleAsyncRender, textContent } from "../../test/dom";
+import { renderWithAppMaitai as render } from "../../test/app-maitai";
 import { createCommandKeymapState } from "../../../shared/command-keybindings";
 import {
   RENAME_THREAD_COMMAND_ID,
@@ -525,7 +526,8 @@ describe("CommandPaletteSurface", () => {
     expect(view.getByRole("tab", { name: "Actions" }).getAttribute("aria-selected")).toBe("true");
     expect(input).toHaveProperty("value", "settings");
     expect(document.activeElement).toBe(input);
-    expect(view.queryByRole("tab", { name: "Files" })).toBeNull();
+    expect(view.queryByRole("tab", { name: "Files" })).not.toBeNull();
+    expect(view.queryByRole("tab", { name: "Text" })).not.toBeNull();
     await act(async () => {
       for (const modifier of [{ ctrlKey: true }, { metaKey: true }, { altKey: true }]) {
         expect(fireEvent.keyDown(input, { key: "Tab", ...modifier })).toBe(true);
@@ -1847,7 +1849,7 @@ describe("buildCommandPaletteCommands navigation", () => {
   });
 });
 
-test("file search completes directories, opens the selected native path, and releases its session", async () => {
+test("file search opens directories on the selected host and releases its session", async () => {
   const { CommandPaletteSurface } = await import("./command-palette-surface");
   const fixture = createFileSearchFixture([
     { name: "src", path: "src", type: "directory", isSymlink: false },
@@ -1888,16 +1890,9 @@ test("file search completes directories, opens the selected native path, and rel
       fireEvent.keyDown(input, { key: "Tab" });
       await Promise.resolve();
     });
-    expect(changeMode).toHaveBeenCalledWith("root");
+    expect(changeMode).toHaveBeenCalledWith("text");
     expect(input).toHaveProperty("value", "sr");
     expect(execute).not.toHaveBeenCalled();
-    await act(async () => {
-      fireEvent.keyDown(input, { key: "Enter" });
-      await Promise.resolve();
-    });
-    await waitFor(() => expect(input).toHaveProperty("value", "src/"));
-    await waitFor(() => expect(view.getAllByRole("option")).toHaveLength(1));
-    expect(close).not.toHaveBeenCalled();
     await act(async () => {
       fireEvent.keyDown(input, { key: "Enter" });
       await Promise.resolve();
@@ -1905,7 +1900,7 @@ test("file search completes directories, opens the selected native path, and rel
     expect(execute).toHaveBeenCalledWith(
       expect.objectContaining({
         kind: "file",
-        file: expect.objectContaining({ fsPath: "/workspace/src/index.ts" }),
+        file: expect.objectContaining({ fsPath: "/workspace/src", kind: "directory" }),
       }),
     );
     expect(close).toHaveBeenCalledOnce();
@@ -1914,6 +1909,367 @@ test("file search completes directories, opens the selected native path, and rel
       expect(calls.filter((call) => call === "file-search:stop")).toHaveLength(1),
     );
     expect(calls.filter((call) => call === "file-search:start")).toHaveLength(1);
+  } finally {
+    view.unmount();
+    installWindowApi(previousApi);
+  }
+});
+
+test("Text streams host-scoped matches, filters file types, and fences stale acceptance", async () => {
+  const { CommandPaletteSurface } = await import("./command-palette-surface");
+  const listeners = new Set<(...args: unknown[]) => void>();
+  const requests: import("../../../shared/workspace-text-search").WorkspaceTextSearchRequest[] = [];
+  const stopped: string[] = [];
+  const previousApi = window.api;
+  installWindowApi({
+    on: (channel: string, listener: (...args: unknown[]) => void) => {
+      if (channel !== "workspace-text-search:event") return () => undefined;
+      listeners.add(listener);
+      return () => {
+        listeners.delete(listener);
+      };
+    },
+    invoke: async (channel: string, ...args: unknown[]) => {
+      if (channel === "workspace-text-search:start")
+        requests.push(args[0] as (typeof requests)[number]);
+      if (channel === "workspace-text-search:stop")
+        stopped.push((args[0] as { requestId: string }).requestId);
+      return undefined;
+    },
+  });
+  const execute = vi.fn();
+  const close = vi.fn();
+  const view = render(
+    <CommandPaletteSurface
+      open
+      openTriggerTick={1}
+      mode="text"
+      initialQuery="needle"
+      commands={[]}
+      fileSearchScope={{ hostId: "remote:test", roots: ["/workspace"] }}
+      loading={false}
+      pagesLoading={false}
+      chatsLoading={false}
+      onChangeMode={() => undefined}
+      onRequestClose={close}
+      onExecute={execute}
+    />,
+  );
+  const emit = async (index: number, line: number) =>
+    act(async () => {
+      const requestId = requests[index]!.requestId;
+      for (const listener of listeners) {
+        listener({
+          requestId,
+          type: "match",
+          match: {
+            path: "/workspace/file.ts",
+            root: "/workspace",
+            relativePath: "file.ts",
+            line,
+            column: 4,
+            preview: "a needle",
+            matchRanges: [{ start: 2, end: 8 }],
+          },
+        });
+        listener({ requestId, type: "done", limited: false });
+      }
+      await Promise.resolve();
+    });
+  try {
+    await waitFor(() => expect(requests).toHaveLength(1));
+    expect(requests[0]).toMatchObject({
+      hostId: "remote:test",
+      roots: ["/workspace"],
+      query: "needle",
+    });
+    await emit(0, 7);
+    const input = view.getByRole("combobox", { name: "Command palette search" });
+    await waitFor(() =>
+      expect(
+        view.getByRole("option", { name: "/workspace/file.ts:7" }).getAttribute("aria-disabled"),
+      ).toBeNull(),
+    );
+    await act(async () => {
+      fireEvent.keyDown(input, { key: "F6" });
+      await Promise.resolve();
+    });
+    expect(document.activeElement).toBe(view.getByRole("button", { name: "Search folder" }));
+    await act(async () => {
+      fireEvent.keyDown(document.activeElement!, { key: "F6" });
+      fireEvent.change(view.getByRole("textbox", { name: "File types" }), {
+        target: { value: "*.ts,!*.test.ts" },
+      });
+      await Promise.resolve();
+    });
+    await waitFor(() =>
+      expect(
+        view.getByRole("option", { name: "/workspace/file.ts:7" }).getAttribute("aria-disabled"),
+      ).toBe("true"),
+    );
+    await act(async () => {
+      fireEvent.keyDown(input, { key: "Enter" });
+      await Promise.resolve();
+    });
+    expect(execute).not.toHaveBeenCalled();
+    await waitFor(() => expect(requests).toHaveLength(2));
+    expect(requests[1]?.fileMask).toBe("*.ts,!*.test.ts");
+    await emit(0, 99);
+    expect(view.queryByRole("option", { name: "/workspace/file.ts:99" })).toBeNull();
+    await emit(1, 9);
+    await act(async () => {
+      fireEvent.keyDown(input, { key: "Enter" });
+      await Promise.resolve();
+    });
+    expect(close).toHaveBeenCalledOnce();
+    expect(execute).toHaveBeenCalledWith(
+      expect.objectContaining({
+        kind: "text",
+        hostId: "remote:test",
+        match: expect.objectContaining({ path: "/workspace/file.ts", line: 9, column: 4 }),
+      }),
+    );
+    view.unmount();
+    expect(stopped.length).toBeLessThanOrEqual(2);
+  } finally {
+    view.unmount();
+    installWindowApi(previousApi);
+  }
+});
+
+test("Text keeps Project query and mask history when choosing a different search folder", async () => {
+  const { CommandPaletteSurface } = await import("./command-palette-surface");
+  type Request = import("../../../shared/workspace-text-search").WorkspaceTextSearchRequest;
+  const requests: Request[] = [];
+  const fileRequests: import("../../../shared/file-search").FileSearchStartInput[] = [];
+  const previousApi = window.api;
+  installWindowApi({
+    on: () => () => undefined,
+    invoke: async (channel: string, ...args: unknown[]) => {
+      if (channel === "workspace-text-search:start") requests.push(args[0] as Request);
+      if (channel === "file-search:start")
+        fileRequests.push(args[0] as (typeof fileRequests)[number]);
+      return undefined;
+    },
+  });
+  function Harness() {
+    const [mode, setMode] = useState<CommandMenuMode>("text");
+    const [workspaceScope, setWorkspaceScope] = useState({
+      hostId: "local",
+      roots: ["/history-project/first", "/history-project/second"],
+    });
+    return (
+      <CommandPaletteSurface
+        open
+        openTriggerTick={1}
+        mode={mode}
+        initialQuery="needle"
+        commands={[]}
+        fileSearchScope={{
+          hostId: "local",
+          roots: ["/history-project/first", "/history-project/second"],
+        }}
+        workspaceScope={workspaceScope}
+        onWorkspaceScopeChange={(scope) => setWorkspaceScope({ ...scope, roots: [...scope.roots] })}
+        loading={false}
+        pagesLoading={false}
+        chatsLoading={false}
+        onChangeMode={setMode}
+        onRequestClose={() => undefined}
+        onExecute={() => undefined}
+      />
+    );
+  }
+  const view = render(<Harness />);
+  try {
+    const input = view.getByRole("combobox", { name: "Command palette search" });
+    await act(async () => {
+      fireEvent.change(view.getByRole("textbox", { name: "File types" }), {
+        target: { value: "*.ts,!*.test.ts" },
+      });
+      await Promise.resolve();
+    });
+    await act(async () => {
+      fireEvent.click(view.getByRole("tab", { name: "Actions" }));
+      await Promise.resolve();
+    });
+    await act(async () => {
+      fireEvent.click(view.getByRole("tab", { name: "Text" }));
+      fireEvent.change(input, { target: { value: "" } });
+      await Promise.resolve();
+    });
+    await view.findByRole("option", { name: "needle" });
+    await openNodexMenu(view.getByRole("button", { name: "Search folder" }));
+    const folder = await view.findByRole("menuitem", { name: "second" });
+    await act(async () => {
+      fireEvent.click(folder);
+      await Promise.resolve();
+    });
+    await waitFor(() =>
+      expect((view.getByRole("textbox", { name: "File types" }) as HTMLInputElement).value).toBe(
+        "*.ts,!*.test.ts",
+      ),
+    );
+    const recalledQuery = await view.findByRole("option", { name: "needle" });
+    await act(async () => {
+      fireEvent.click(recalledQuery);
+      await Promise.resolve();
+    });
+    await waitFor(() =>
+      expect(requests).toContainEqual(
+        expect.objectContaining({
+          hostId: "local",
+          roots: ["/history-project/second"],
+          query: "needle",
+          fileMask: "*.ts,!*.test.ts",
+        }),
+      ),
+    );
+    await act(async () => {
+      fireEvent.click(view.getByRole("tab", { name: "All" }));
+      await Promise.resolve();
+    });
+    await waitFor(() =>
+      expect(requests.at(-1)).toMatchObject({
+        hostId: "local",
+        roots: ["/history-project/first", "/history-project/second"],
+        fileMask: "",
+      }),
+    );
+    await waitFor(() =>
+      expect(fileRequests.at(-1)).toMatchObject({
+        hostId: "local",
+        roots: ["/history-project/first", "/history-project/second"],
+      }),
+    );
+    await act(async () => {
+      fireEvent.click(view.getByRole("tab", { name: "Text" }));
+      await Promise.resolve();
+    });
+    await waitFor(() =>
+      expect(requests.at(-1)).toMatchObject({
+        hostId: "local",
+        roots: ["/history-project/second"],
+        fileMask: "*.ts,!*.test.ts",
+      }),
+    );
+  } finally {
+    view.unmount();
+    installWindowApi(previousApi);
+  }
+});
+
+test("Text recovers after a terminal error without accepting stale results", async () => {
+  const { CommandPaletteSurface } = await import("./command-palette-surface");
+  type Request = import("../../../shared/workspace-text-search").WorkspaceTextSearchRequest;
+  type SearchEvent = import("../../../shared/workspace-text-search").WorkspaceTextSearchEvent;
+  const requests: Request[] = [];
+  const listeners = new Set<(...args: unknown[]) => void>();
+  const previousApi = window.api;
+  installWindowApi({
+    on: (channel: string, listener: (...args: unknown[]) => void) => {
+      if (channel !== "workspace-text-search:event") return () => undefined;
+      listeners.add(listener);
+      return () => {
+        listeners.delete(listener);
+      };
+    },
+    invoke: async (channel: string, ...args: unknown[]) => {
+      if (channel === "workspace-text-search:start") requests.push(args[0] as Request);
+      return undefined;
+    },
+  });
+  const execute = vi.fn();
+  const close = vi.fn();
+  const view = render(
+    <CommandPaletteSurface
+      open
+      openTriggerTick={1}
+      mode="text"
+      initialQuery="needle"
+      commands={[]}
+      fileSearchScope={{ hostId: "local", roots: ["/workspace-error"] }}
+      loading={false}
+      pagesLoading={false}
+      chatsLoading={false}
+      onChangeMode={() => undefined}
+      onRequestClose={close}
+      onExecute={execute}
+    />,
+  );
+  const emit = async (event: SearchEvent) =>
+    act(async () => {
+      for (const listener of listeners) listener(event);
+      await Promise.resolve();
+    });
+  const match = {
+    path: "/workspace-error/result.ts",
+    root: "/workspace-error",
+    relativePath: "result.ts",
+    line: 7,
+    column: 1,
+    preview: "needle",
+    matchRanges: [{ start: 0, end: 6 }],
+  };
+  try {
+    await waitFor(() => expect(requests).toHaveLength(1));
+    await emit({ requestId: requests[0]!.requestId, type: "match", match });
+    const input = view.getByRole("combobox", { name: "Command palette search" });
+    const oldResult = view.getByRole("option", { name: "/workspace-error/result.ts:7" });
+    await act(async () => {
+      fireEvent.change(input, { target: { value: "broken" } });
+      await Promise.resolve();
+    });
+    expect(oldResult.getAttribute("aria-disabled")).toBe("true");
+    await act(async () => {
+      fireEvent.keyDown(input, { key: "Enter" });
+      await Promise.resolve();
+    });
+    expect(execute).not.toHaveBeenCalled();
+    await waitFor(() => expect(requests).toHaveLength(2));
+    await emit({
+      requestId: requests[1]!.requestId,
+      type: "error",
+      code: "search-failed",
+      message: "Host disconnected",
+    });
+    await waitFor(() =>
+      expect(view.getByRole("alert").textContent).toBe("Unable to search files. Try again"),
+    );
+    expect(view.queryAllByRole("option")).toHaveLength(0);
+    await act(async () => {
+      fireEvent.keyDown(input, { key: "Enter" });
+      await Promise.resolve();
+    });
+    expect(close).not.toHaveBeenCalled();
+    expect(execute).not.toHaveBeenCalled();
+    await act(async () => {
+      fireEvent.change(input, { target: { value: "recovered" } });
+      await Promise.resolve();
+    });
+    await waitFor(() => expect(requests).toHaveLength(3));
+    await emit({ requestId: requests[2]!.requestId, type: "match", match: { ...match, line: 9 } });
+    expect(view.queryByRole("alert")).toBeNull();
+    await emit({
+      requestId: requests[2]!.requestId,
+      type: "error",
+      code: "search-failed",
+      message: "Host disconnected after returning a match",
+    });
+    expect(view.getByRole("alert").textContent).toBe("Unable to search files. Try again");
+    expect(
+      view
+        .getByRole("option", { name: "/workspace-error/result.ts:9" })
+        .getAttribute("aria-disabled"),
+    ).toBeNull();
+    await act(async () => {
+      fireEvent.keyDown(input, { key: "Enter" });
+      await Promise.resolve();
+    });
+    expect(execute).toHaveBeenCalledWith(
+      expect.objectContaining({ kind: "text", match: expect.objectContaining({ line: 9 }) }),
+    );
+    expect(close).toHaveBeenCalledOnce();
   } finally {
     view.unmount();
     installWindowApi(previousApi);

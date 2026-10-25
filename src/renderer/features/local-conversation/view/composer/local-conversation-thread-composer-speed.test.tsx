@@ -58,6 +58,7 @@ import {
   type ComposerAppModelContextRecipient,
 } from "./composer-app-model-context";
 import { McpAppHostDispatcher } from "@/lib/mcp-app/mcp-app-host-dispatcher";
+import { createCommandKeymapState } from "../../../../../shared/command-keybindings";
 
 const RESTORED_APP_CONTEXT = {
   id: "queued-context-original",
@@ -2376,6 +2377,60 @@ describe("ThreadComposer speed menu", () => {
       await Promise.resolve();
     });
     await waitFor(() => expect(readComposerText(view)).toBe(""));
+  });
+
+  test("a focus-only draft intent preserves text and attachments while returning to the composer", async () => {
+    resetStorage();
+    installAsyncRequestAnimationFrame();
+    installComposerWindowApi(async (channel) =>
+      channel === "codex-command-keymap-state"
+        ? createCommandKeymapState({}, "windows")
+        : undefined,
+    );
+    const actions = buildActions();
+    const renderTree = (intent: NonNullable<ThreadFooterModel["composerIntent"]>) => (
+      <AppProviders>
+        <TestComposerScopePath>
+          <ThreadComposer
+            model={buildModel({ composerIntent: intent })}
+            actions={actions}
+            errorMessage={null}
+            onErrorMessage={() => {}}
+          />
+          <button type="button">Outside composer</button>
+        </TestComposerScopePath>
+      </AppProviders>
+    );
+    const view = render(renderTree({ prompt: "Keep this draft", focusNonce: 31 }));
+    await settleComposerFrame();
+    const originalEditor = view.container.querySelector('[data-codex-composer="true"]');
+    expect(originalEditor).not.toBeNull();
+    const target = captureComposerImageAttachmentTarget({
+      channelId: IMAGE_EDIT_COMPOSER_CHANNEL_ID,
+      placement: "root",
+    });
+    expect(target).not.toBeNull();
+    await act(async () => {
+      target!.append(
+        [{ src: "data:image/png;base64,aW1hZ2U=", filename: "keep.png", origin: "conversation" }],
+        () => true,
+      );
+      await Promise.resolve();
+    });
+    expect(await view.findByRole("button", { name: "Remove keep.png" })).toBeTruthy();
+    const outside = view.getByRole("button", { name: "Outside composer" });
+    await act(async () => {
+      outside.focus();
+      await Promise.resolve();
+    });
+    expect(document.activeElement).toBe(outside);
+    await act(async () => {
+      view.rerender(renderTree({ prompt: "", attachmentMode: "append", focusNonce: 32 }));
+      await Promise.resolve();
+    });
+    await waitFor(() => expect(document.activeElement).toBe(originalEditor));
+    expect(readComposerText(view)).toBe("Keep this draft");
+    expect(view.getByRole("button", { name: "Remove keep.png" })).toBeTruthy();
   });
 
   test("applies explicit attachment append and replace semantics once per nonce", async () => {

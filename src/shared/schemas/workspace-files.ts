@@ -11,7 +11,6 @@ import type {
 
 const hostIdSchema = z.string().trim().min(1).optional();
 const localHostIdSchema = z.literal("local").optional();
-const pathSchema = z.string().trim().min(1);
 const exactFilePathSchema = z.string().refine((value) => value.trim().length > 0, {
   message: "File path is required",
 });
@@ -23,8 +22,8 @@ const positiveByteLimitSchema = z
 
 export const WorkspaceDirectoryEntriesInputSchema = z
   .object({
-    hostId: localHostIdSchema,
-    workspaceRoot: pathSchema,
+    hostId: hostIdSchema,
+    workspaceRoot: exactFilePathSchema,
     directoryPath: z.string().optional(),
     includeHidden: z.boolean().optional(),
     directoriesOnly: z.boolean().optional(),

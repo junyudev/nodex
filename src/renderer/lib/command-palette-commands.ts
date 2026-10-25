@@ -23,6 +23,7 @@ export type CommandPaletteShellCommandId =
   | typeof NAVIGATE_FORWARD_COMMAND_ID
   | "newThread"
   | "newThreadInProject"
+  | "openFolder"
   | typeof CREATE_PAGE_COMMAND_ID
   | typeof RENAME_THREAD_COMMAND_ID
   | "archiveThread"
@@ -52,6 +53,7 @@ export type CommandPaletteShellCommandHandlers = Record<CommandPaletteShellComma
 export interface CommandPaletteShellCommandContext {
   canGoBack: boolean;
   canSearchFiles?: boolean;
+  canSearchText?: boolean;
   canReloadSkills?: boolean;
   canGoForward: boolean;
   canStartNewChat: boolean;
@@ -78,6 +80,7 @@ export function isCommandPaletteShellCommandId(id: string): id is CommandPalette
     id === NAVIGATE_FORWARD_COMMAND_ID ||
     id === "newThread" ||
     id === "newThreadInProject" ||
+    id === "openFolder" ||
     id === CREATE_PAGE_COMMAND_ID ||
     id === RENAME_THREAD_COMMAND_ID ||
     id === "archiveThread" ||
@@ -184,9 +187,17 @@ export function buildCommandPaletteCommands(
       1188,
       {
         disabled: context.canSearchFiles === false,
-        disabledReason:
-          context.canSearchFiles === false ? "Select a task with a local workspace" : undefined,
+        disabledReason: context.canSearchFiles === false ? "Choose a workspace folder" : undefined,
       },
+    ),
+    command(
+      "searchText",
+      "Suggested",
+      "Search text in files",
+      "Search workspace file contents",
+      ["search", "text", "contents", "files", "workspace"],
+      1187,
+      { disabled: context.canSearchText === false },
     ),
     command(
       "searchChats",
@@ -517,14 +528,14 @@ export function buildCommandPaletteCommands(
       ["switch", "project", "workspace"],
       820,
     ),
-    ...maybeMockCommand(
+    command(
       "openFolder",
       "Project",
       "Open folder",
       "Open a local folder",
       ["open", "folder", "project"],
       810,
-      shortcutLabel("openFolder", "CmdOrCtrl+O"),
+      { shortcut: shortcutLabel("openFolder", "CmdOrCtrl+O") },
     ),
     ...(context.showMockCommands
       ? Array.from({ length: 9 }, (_, index) =>
