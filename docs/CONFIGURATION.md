@@ -69,8 +69,16 @@ and their validation.
 
 Social sign-in connections require their own production credentials in Clerk.
 Their provider callback is the URL supplied by Clerk, not the Desktop loopback
-callback. Provider client secrets stay in Clerk; enable each connection only
-after its production configuration and browser sign-in have been verified.
+callback. Provider client secrets are configured in Clerk and are never consumed
+by Desktop. Keep any operator backup in an ignored private file with mode `0600`,
+separate from runtime/build environment files. Verify each enabled connection
+through a real production browser sign-in before release.
+
+GitHub sign-in uses the `Nodex` OAuth App owned by `NodexApp`, with the exact
+callback `https://clerk.nodex.jyu.app/v1/oauth_callback`. It requests only
+`read:user` and `user:email`; repository access is not part of account sign-in.
+Wildcard callbacks and Device Flow remain disabled. Google remains disabled
+until its own production credentials and sign-in have been verified.
 
 Credentials are encrypted under `${NODEX_HOME}/account/credentials.enc`, bound
 to the Profile, issuer and client. They are separate from native Agent homes
