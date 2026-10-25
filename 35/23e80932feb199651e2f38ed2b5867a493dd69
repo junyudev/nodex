@@ -1,0 +1,25 @@
+docs/product-specs/settings-route-behavior.md
+  s_8ba9572f1b48c1::t_2b56e2977b620a 73-75
+CHANGELOG.md
+  s_8ba9572f1b48c1::t_6fdb119d0b6083 9
+docs/product-specs/native-conversation-connection-behavior.md
+  s_8ba9572f1b48c1::t_2b56e2977b620a 6-7
+docs/product-specs/acp-agent-behavior.md
+  s_8ba9572f1b48c1::t_6fdb119d0b6083 131-178
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "3523e80932feb199651e2f38ed2b5867a493dd69",
+  "prompts": {},
+  "sessions": {
+    "s_8ba9572f1b48c1": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "cf77dbe9-4c90-42a1-89dd-a69d75865e03",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}

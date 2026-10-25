@@ -1,0 +1,33 @@
+src/renderer/features/acp-agents/acp-native-conversations-section.test.tsx
+  s_a8c95baa0ea54f::t_abb03eea3d4002 13,215-223,264-272
+src/renderer/features/acp-agents/acp-agents-owner.test.ts
+  s_a8c95baa0ea54f::t_d627519b482954 289-333
+src/renderer/features/acp-agents/acp-agents-owner.ts
+  s_a8c95baa0ea54f::t_b15ddec6353a2f 668-675
+src/renderer/features/acp-agents/acp-agents.test-fixtures.ts
+  s_a8c95baa0ea54f::t_4b48b2582ffe58 10-16
+  s_a8c95baa0ea54f::t_33c3535951cf83 63-85,87-108
+src/renderer/features/acp-agents/acp-agents-settings-section.test.tsx
+  s_a8c95baa0ea54f::t_c12e3187931661 150-204
+  s_a8c95baa0ea54f::t_a83ae4c4fa0942 16
+  s_a8c95baa0ea54f::t_c3727ef5253b9c 317-322
+src/renderer/features/acp-agents/acp-agent-account.tsx
+  s_a8c95baa0ea54f::t_7f03ebf3182262 373-382
+  s_a8c95baa0ea54f::t_11c2a2774d5ec1 339-341
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "189659664bb0b17176aa542151963dc9b4ef584b",
+  "prompts": {},
+  "sessions": {
+    "s_a8c95baa0ea54f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "af019f94-e9a6-4e6e-932d-1c0cea9f6a19",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}

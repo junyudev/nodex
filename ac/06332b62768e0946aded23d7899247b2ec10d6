@@ -1,0 +1,52 @@
+src/shared/schemas/acp-api.ts
+  s_9cccd37e800d7a::t_113f83305942cb 4,61,63-66,68,70
+  s_9cccd37e800d7a::t_ff85aca68bc653 67
+src/shared/schemas/acp-api.test.ts
+  s_9cccd37e800d7a::t_f64b2dc894a93e 1-25
+packages/agent-runtime/src/nodex/AcpNativeHistory.integration.test.ts
+  s_9cccd37e800d7a::t_872cb4ea50c321 203
+  s_9cccd37e800d7a::t_113f83305942cb 12-14,17,42,76,82,132
+src/main/agent-runtime/AgentRuntimeApplication.node.test.ts
+  s_9cccd37e800d7a::t_113f83305942cb 1001,1003,1021,1028,1032
+  s_9cccd37e800d7a::t_872cb4ea50c321 1029-1031,1055-1074
+  s_9cccd37e800d7a::t_2e616e53ae0f67 1075
+packages/agent-runtime/src/nodex/AcpPagination.integration.test.ts
+  s_9cccd37e800d7a::t_f64b2dc894a93e 5,26-29,98-105,108-118,120-129,131-148,150-162,165-167,170-175
+  s_9cccd37e800d7a::t_8cdba1322f1242 106-107,119,130,149,163-164,168-169,176
+src/main/agent-runtime/AgentRuntimeApplication.ts
+  s_9cccd37e800d7a::t_9e9daffaa1eb64 1327-1328
+packages/agent-runtime/src/nodex/testing/acp-native-history-peer.mjs
+  s_9cccd37e800d7a::t_113f83305942cb 5
+docs/product-specs/acp-agent-behavior.md
+  s_9cccd37e800d7a::t_113f83305942cb 59,113-114
+packages/agent-runtime/vendor/contracts/src/acpRegistry.ts
+  s_818b7ad22e73d5::t_858404a803fd7c 177
+packages/agent-runtime/vendor/contracts/src/orchestrationV2.ts
+  s_818b7ad22e73d5::t_80c95ad81a3710 108,2917
+packages/agent-runtime/vendor/provider-acp/src/server/adapter.ts
+  s_818b7ad22e73d5::t_2dc4e561fe5d2d 744
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "ac06332b62768e0946aded23d7899247b2ec10d6",
+  "prompts": {},
+  "sessions": {
+    "s_818b7ad22e73d5": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17044-40ef-72a0-87aa-b9c6d40a7aa0",
+        "model": "unknown"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_9cccd37e800d7a": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a16d80-f1cc-7471-9f61-cb6ea1bc793d",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}

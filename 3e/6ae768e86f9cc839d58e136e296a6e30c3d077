@@ -1,0 +1,95 @@
+packages/agent-runtime/src/nodex/AcpDiscovery.integration.test.ts
+  s_9cccd37e800d7a::t_7ad14e35cfd4ce 88,91-99,113-124,136-138
+packages/agent-runtime/src/nodex/AcpPagination.integration.test.ts
+  s_9cccd37e800d7a::t_a0aad3d59b79ba 244
+  s_a8c95baa0ea54f::t_e1d6ff8a6b1c8e 1-23,25-57,68,70-71,74-243,245-320
+  s_9cccd37e800d7a::t_f202679633e05a 24,58-67,69,72-73
+packages/agent-runtime/src/nodex/Service.ts
+  s_9cccd37e800d7a::t_db98538f2052be 464
+packages/agent-runtime/src/nodex/AcpManagement.test.ts
+  s_9cccd37e800d7a::t_cdb9d1356d4412 114,119-124
+  s_9cccd37e800d7a::t_adf4161418e4a9 26-69,74,89-93,101,110-111
+  s_9cccd37e800d7a::t_fb7099118928ff 12-14,17,25,176
+packages/agent-runtime/src/nodex/AcpManagementContract.ts
+  s_9cccd37e800d7a::t_db98538f2052be 42-48
+  s_9cccd37e800d7a::t_786e0f2961ffb2 61-66,111,115,119,123,127,131
+packages/agent-runtime/src/nodex/ProviderConfiguration.ts
+  s_9cccd37e800d7a::t_db98538f2052be 27-30,41,44-47,63-64,66-69
+src/main/acp-agents/AcpAgents.node.test.ts
+  s_9cccd37e800d7a::t_96f82bf82f07f9 29,66-68,70,72
+  s_9cccd37e800d7a::t_cb2d8326576408 54-57,201-206
+  s_9cccd37e800d7a::t_eeca3789bff0aa 71,73-74,256-259
+packages/agent-runtime/src/nodex/AcpAuthentication.test.ts
+  s_9cccd37e800d7a::t_c89838180001de 42,106-108
+  s_9cccd37e800d7a::t_780b92985927bd 92
+  s_9cccd37e800d7a::t_56900020098a3f 1-41,43-91,93-105,109-114
+packages/agent-runtime/src/nodex/ProviderConfiguration.test.ts
+  s_9cccd37e800d7a::t_adf4161418e4a9 19-50
+docs/product-specs/acp-agent-behavior.md
+  s_9cccd37e800d7a::t_7ad14e35cfd4ce 59-64
+  s_9cccd37e800d7a::t_eeca3789bff0aa 113-116
+packages/agent-runtime/src/nodex/AcpOperationBudget.test.ts
+  s_a8c95baa0ea54f::t_e1d6ff8a6b1c8e 10-12,15,27
+packages/agent-runtime/src/nodex/AcpManagement.integration.test.ts
+  s_9cccd37e800d7a::t_cdb9d1356d4412 53-59,78-84
+packages/agent-runtime/src/nodex/AcpManagementLifecycle.ts
+  s_9cccd37e800d7a::t_4f3e1edb34ee2d 22-23
+  s_a8c95baa0ea54f::t_e1d6ff8a6b1c8e 36
+  s_9cccd37e800d7a::t_acbdfa4af7f2b1 1-21,24-35
+packages/agent-runtime/src/nodex/AcpManagement.ts
+  s_9cccd37e800d7a::t_c2bddd285cbf66 297-306,719-731,741-742,771-777
+  s_9cccd37e800d7a::t_3bca8f522e05e5 454,457,686-692,694-700,702-708,714
+  s_9cccd37e800d7a::t_f7fcdb468ae9e1 451
+  s_9cccd37e800d7a::t_4f3e1edb34ee2d 47,342
+  s_9cccd37e800d7a::t_70ffa9de42c65e 11
+  s_9cccd37e800d7a::t_7de28e41d01f7b 46,295,321,323,445-450,452-453,455-456,458-462,467-475,477,664-666,668-673,680-683,685,711,755,769
+  s_9cccd37e800d7a::t_db98538f2052be 140,142,157-158,160,164-173,201,207-210,212,283,294,330-331,339,600,648
+  s_9cccd37e800d7a::t_92912697dbece9 141,159,211,322,476,674-679,684,693,701,709,732,734-740,743-754,756-768,770,778-780
+packages/agent-runtime/src/nodex/AcpManagementLifecycle.test.ts
+  s_9cccd37e800d7a::t_acbdfa4af7f2b1 1-85
+packages/agent-runtime/src/nodex/testing/acp-management-peer.mjs
+  s_9cccd37e800d7a::t_9f928d05eff1ca 18-19,54-69
+packages/agent-runtime/src/nodex/AcpAuthentication.ts
+  s_9cccd37e800d7a::t_8b5695253a091d 21
+  s_9cccd37e800d7a::t_ee8c82bd87fd89 14,44,48,56-73
+  s_9cccd37e800d7a::t_f1cf815d76288d 51-53
+  s_9cccd37e800d7a::t_a60c9b7b2dae8e 1-13,15-20,22-43,45-47,49-50,54-55,74-77
+packages/agent-runtime/src/nodex/AcpAuthentication.integration.test.ts
+  s_9cccd37e800d7a::t_600d92d5913483 1-98
+packages/agent-runtime/vendor/provider-acp-registry/src/server/probe.ts
+  s_9cccd37e800d7a::t_5b613c8ca7fb3f 23,654-660,665-676,678-687,691
+packages/agent-runtime/vendor/provider-core/src/server/providerAuthFlow.test.ts
+  s_b20f5f232a8db1::t_fcbed1a62be4e8 550-552
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "3e6ae768e86f9cc839d58e136e296a6e30c3d077",
+  "prompts": {},
+  "sessions": {
+    "s_9cccd37e800d7a": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a16d80-f1cc-7471-9f61-cb6ea1bc793d",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_a8c95baa0ea54f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "af019f94-e9a6-4e6e-932d-1c0cea9f6a19",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_b20f5f232a8db1": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a16dd3-a3c9-7ba3-bcec-395da1a29b6f",
+        "model": "unknown"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}

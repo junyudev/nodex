@@ -1,0 +1,41 @@
+.github/workflows/_certify-release-source.yml
+  s_9cccd37e800d7a::t_f91c3a20815276 89-96
+scripts/immutable-artifact-cache.ts
+  s_9cccd37e800d7a::t_ab1383297b209c 108-117,130
+scripts/testing/probe-acp-runtime.test.ts
+  s_8ba9572f1b48c1::t_8624780b5b5bb0 2-113
+  s_9cccd37e800d7a::t_cba1c200a609af 1,114
+.github/workflows/ci-nightly.yml
+  s_9cccd37e800d7a::t_f91c3a20815276 70-77
+scripts/testing/probe-acp-runtime.ts
+  s_8ba9572f1b48c1::t_8624780b5b5bb0 37-42,45-50,60-61,68-70,123,135-137,139-143,147-150
+  s_9cccd37e800d7a::t_1cc95faeeaefe4 2,6-7,12-13,15-30,32-36,43-44,51-59,62-67,71-74,76-78,109-111,113,126-128,130-134,138,144-146,151-159
+docs/development.md
+  s_9cccd37e800d7a::t_84d0886bdb5f5c 886-899
+package.json
+  s_9cccd37e800d7a::t_9e7fcd0a19d0f9 62,178
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "7a5e39e2ccf1e8987ca9a7b79aa85b105994b787",
+  "prompts": {},
+  "sessions": {
+    "s_8ba9572f1b48c1": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "cf77dbe9-4c90-42a1-89dd-a69d75865e03",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_9cccd37e800d7a": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a16d80-f1cc-7471-9f61-cb6ea1bc793d",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}

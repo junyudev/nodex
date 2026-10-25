@@ -1,0 +1,24 @@
+src/shared/nodex-app-tools/automation-schema.ts
+  s_8ba9572f1b48c1::t_2ff3643708db38 27,55-63,124
+src/main/app-tools/AutomationAppTools.node.test.ts
+  s_8ba9572f1b48c1::t_0cb79e688366ae 572-586,588-597
+src/main/app-tools/AutomationAppTools.ts
+  s_8ba9572f1b48c1::t_ac31b8a3550657 38,157,167
+  s_8ba9572f1b48c1::t_2ff3643708db38 36-37,39,155-156,158-159,166,168-169,172,184,191-192,209,212-215
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "cd6d8082b3d5ee51e84dafeea22166a4aed113b6",
+  "prompts": {},
+  "sessions": {
+    "s_8ba9572f1b48c1": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "cf77dbe9-4c90-42a1-89dd-a69d75865e03",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}

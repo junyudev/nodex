@@ -1,0 +1,19 @@
+scripts/testing/probe-acp-live.ts
+  s_9cccd37e800d7a::t_bc7b1f2a961026 79,173-192,195,197-199,213-250,483,526,538,577
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "a3c71d8e4fbdf77140252a99607706462778f558",
+  "prompts": {},
+  "sessions": {
+    "s_9cccd37e800d7a": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a16d80-f1cc-7471-9f61-cb6ea1bc793d",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}

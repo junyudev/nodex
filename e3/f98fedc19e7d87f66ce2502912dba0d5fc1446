@@ -1,0 +1,33 @@
+docs/ARCHITECTURE.md
+  s_9cccd37e800d7a::t_62bf2293ad10fa 825-831
+docs/SECURITY.md
+  s_9cccd37e800d7a::t_c50da17a52c3d2 235-245,252-255
+CONTEXT.md
+  s_9cccd37e800d7a::t_62bf2293ad10fa 71-74
+docs/CONFIGURATION.md
+  s_9cccd37e800d7a::t_c50da17a52c3d2 256-278
+docs/product-specs/acp-agent-behavior.md
+  s_9cccd37e800d7a::t_62bf2293ad10fa 10-12
+  s_9cccd37e800d7a::t_2f6e2282346844 1-9,13-110
+docs/product-specs/agent-backend-behavior.md
+  s_9cccd37e800d7a::t_c50da17a52c3d2 94-98
+docs/adr/0070-configured-acp-agents-and-explicit-management.md
+  s_9cccd37e800d7a::t_2f6e2282346844 1-60,65-77
+  s_9cccd37e800d7a::t_62bf2293ad10fa 61-64
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "e3f98fedc19e7d87f66ce2502912dba0d5fc1446",
+  "prompts": {},
+  "sessions": {
+    "s_9cccd37e800d7a": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a16d80-f1cc-7471-9f61-cb6ea1bc793d",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}

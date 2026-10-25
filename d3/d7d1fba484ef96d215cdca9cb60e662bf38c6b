@@ -1,0 +1,24 @@
+src/main/app/AgentRuntimeApplicationLive.ts
+  s_9cccd37e800d7a::t_7711d1d8b69477 1,518-527,529
+src/main/platform/node/AcpProfilePaths.node.test.ts
+  s_9cccd37e800d7a::t_a9260fd8ea8b58 5,58-65,84-212
+src/main/platform/node/AcpProfilePaths.ts
+  s_9cccd37e800d7a::t_8e1dd5eda8d417 9-14,53,82
+  s_9cccd37e800d7a::t_7711d1d8b69477 4-8,15,34,51-52,54-81,83-88
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "d3d7d1fba484ef96d215cdca9cb60e662bf38c6b",
+  "prompts": {},
+  "sessions": {
+    "s_9cccd37e800d7a": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a16d80-f1cc-7471-9f61-cb6ea1bc793d",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}

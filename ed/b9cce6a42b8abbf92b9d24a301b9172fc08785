@@ -1,0 +1,21 @@
+packages/agent-runtime/src/nodex/AcpCredentialOwnership.test.ts
+  s_9cccd37e800d7a::t_b516c44a5cef78 1-49
+packages/agent-runtime/vendor/provider-acp-registry/src/server/auth.ts
+  s_9cccd37e800d7a::t_05367454d260cb 45,54-58,423
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "edb9cce6a42b8abbf92b9d24a301b9172fc08785",
+  "prompts": {},
+  "sessions": {
+    "s_9cccd37e800d7a": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a16d80-f1cc-7471-9f61-cb6ea1bc793d",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}

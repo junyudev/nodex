@@ -1,0 +1,32 @@
+packages/agent-runtime/src/nodex/AcpManagement.integration.test.ts
+  s_9cccd37e800d7a::t_f83fc1a7403bb9 8,15-32,36-50,52-57,59-67,69,72-89
+  s_9cccd37e800d7a::t_7daaa44d7b3ada 33-35,51,58,68,70-71,90
+packages/agent-runtime/src/nodex/AcpRegistryInstallation.test.ts
+  s_9cccd37e800d7a::t_cebc5fc436075d 18,264,362,477,573
+  s_9cccd37e800d7a::t_a8d6e3d1f35f16 475-476,478-572,574-588
+packages/agent-runtime/src/nodex/AcpManagement.ts
+  s_9cccd37e800d7a::t_73666c372b3556 162-171,173-176,592-595
+  s_9cccd37e800d7a::t_48bd20632de923 172
+packages/agent-runtime/src/nodex/AcpFailures.ts
+  s_9cccd37e800d7a::t_de2336c3a7a4fd 22
+packages/agent-runtime/vendor/contracts/src/acpRegistry.ts
+  s_9cccd37e800d7a::t_91f68a1bfa4289 347
+packages/agent-runtime/vendor/provider-acp-registry/src/server/AcpRegistrySupport.ts
+  s_9cccd37e800d7a::t_14d2a6e1fbfa09 568,684,773-782,784-785,792-806,1816-1817,1820-1839,2115,2140,2202-2206,2208-2213
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "b5a2ce1e20379b944cebac5192a5955407aaca5f",
+  "prompts": {},
+  "sessions": {
+    "s_9cccd37e800d7a": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a16d80-f1cc-7471-9f61-cb6ea1bc793d",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}

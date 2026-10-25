@@ -1,0 +1,24 @@
+scripts/scenarios/runtime/scripted-acp-registry-fixture.test.ts
+  s_9cccd37e800d7a::t_3e7a85892dab71 142-146
+scripts/scenarios/runtime/scripted-acp-agent.ts
+  s_9cccd37e800d7a::t_7f68c96fc3f229 49,106-108,110,320-325,328-330
+  s_9cccd37e800d7a::t_408a280d710ec4 109,326-327
+scripts/scenarios/runtime/scripted-acp-registry-fixture.ts
+  s_9cccd37e800d7a::t_b30c9c98884c67 65
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "cb16ee5c1282f1d5c32f0f640baaaca95e6a99f5",
+  "prompts": {},
+  "sessions": {
+    "s_9cccd37e800d7a": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a16d80-f1cc-7471-9f61-cb6ea1bc793d",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}

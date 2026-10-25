@@ -1,0 +1,52 @@
+packages/agent-runtime/src/provider/providerStatusCache.ts
+  s_9cccd37e800d7a::t_14fa8ac0ddcef3 72-74
+packages/agent-runtime/src/provider/ProviderRegistry.ts
+  s_9cccd37e800d7a::t_14fa8ac0ddcef3 343-345,567
+docs/product-specs/acp-agent-behavior.md
+  s_9cccd37e800d7a::t_4af932a236236e 62-67
+packages/agent-runtime/src/provider/providerStatusCache.test.ts
+  s_9cccd37e800d7a::t_291e674fa54cfb 46-69
+packages/agent-runtime/src/nodex/AcpDiscovery.integration.test.ts
+  s_8ba9572f1b48c1::t_3ad1772b67c1e9 9-223
+  s_9cccd37e800d7a::t_664e3a7be92398 1-8,224-254
+packages/agent-runtime/src/nodex/AcpDiscoveryProjection.test.ts
+  s_9cccd37e800d7a::t_b2d259a09c9cc7 2,8-9,17
+packages/agent-runtime/src/nodex/AcpDiscoveryState.test.ts
+  s_9cccd37e800d7a::t_2a9bb43996d3bc 2-4,9,13,25,28,35,37,60,62,64,72,86,88,96,98-151
+packages/agent-runtime/src/nodex/testing/acp-discovery-peer.mjs
+  s_9cccd37e800d7a::t_7107883284a3df 1-59
+packages/agent-runtime/vendor/contracts/src/server.ts
+  s_9cccd37e800d7a::t_3e59589d46749d 295-303
+packages/agent-runtime/vendor/provider-acp-registry/src/server/auth.ts
+  s_9cccd37e800d7a::t_15792e4c05da27 80,204,220-224,439-440
+packages/agent-runtime/vendor/provider-acp-registry/src/server/connectionState.ts
+  s_9cccd37e800d7a::t_342d30166e1d37 1-8,16,21-22,25-32,35,42-43,50-51,55-74,78,81,83,85-95,101-105,107-139,141,145,148-149,151-161,164-194
+packages/agent-runtime/vendor/provider-acp-registry/src/server/driver.ts
+  s_9cccd37e800d7a::t_67e81674050227 6,58,93,225-229,279-284,473-475,552-593,601,605,622-625,631,673,738-739,743-749,759-761,764-768,847,852,868,887-891,907-965,967,1031
+packages/agent-runtime/vendor/provider-core/src/server/providerAuthFlow.ts
+  s_9cccd37e800d7a::t_e23912fe43e68a 66,70-71,93,148
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "35b7a1d3e9efac9bca00aa5002c2478d203d8b4f",
+  "prompts": {},
+  "sessions": {
+    "s_8ba9572f1b48c1": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "cf77dbe9-4c90-42a1-89dd-a69d75865e03",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_9cccd37e800d7a": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a16d80-f1cc-7471-9f61-cb6ea1bc793d",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}

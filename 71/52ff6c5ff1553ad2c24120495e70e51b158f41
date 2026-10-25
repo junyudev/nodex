@@ -1,0 +1,27 @@
+docs/product-specs/scheduled-route-behavior.md
+  s_9cccd37e800d7a::t_9eba408ad2e7c6 155-161
+src/main/app/ApplicationOperationsLive.ts
+  s_9cccd37e800d7a::t_92513db9aa2bde 63-65
+src/main/automation-application/AutomationExecution.node.test.ts
+  s_9cccd37e800d7a::t_3e396bc4d736fa 65,262-271
+src/main/automation-application/AutomationExecution.ts
+  s_9cccd37e800d7a::t_6b78d11518c23c 101,109-162,164-193,195-210,212-243,245-247,249-252,257-280,285-356,358-398,400-403
+src/main/codex-scheduled-automation-runtime.test.ts
+  s_9cccd37e800d7a::t_79e9a4b55d6e10 62,69-77
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "7152ff6c5ff1553ad2c24120495e70e51b158f41",
+  "prompts": {},
+  "sessions": {
+    "s_9cccd37e800d7a": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a16d80-f1cc-7471-9f61-cb6ea1bc793d",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}

@@ -1,0 +1,25 @@
+scripts/agent-runtime-native-inventory.mjs
+  s_9cccd37e800d7a::t_15a49d0c3d207a 12,18,33-35
+scripts/restore-packaged-runtime-closure.mjs
+  s_9cccd37e800d7a::t_0cadf54e786d29 123-126
+scripts/sign-macos-runtime.mjs
+  s_9cccd37e800d7a::t_f4309f8222ad4d 483-486
+src/main/acp-agents/AcpAgents.node.test.ts
+  s_9cccd37e800d7a::t_2183d54795e7b0 481
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "e9d5804e786caefa083cd3b6dd6a35a81fc4d909",
+  "prompts": {},
+  "sessions": {
+    "s_9cccd37e800d7a": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a16d80-f1cc-7471-9f61-cb6ea1bc793d",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}

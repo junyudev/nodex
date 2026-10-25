@@ -1,0 +1,21 @@
+packages/agent-runtime/src/nodex/AcpRegistryExecution.integration.test.ts
+  s_9cccd37e800d7a::t_5ac180774440da 105
+  s_9cccd37e800d7a::t_7deee2d8d9ec39 1-75,77-104,106-210
+  s_9cccd37e800d7a::t_1ed00d6d376d2f 76
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "f2f64eb8a65ffbcf269b9848ab8c53c5fb10a49f",
+  "prompts": {},
+  "sessions": {
+    "s_9cccd37e800d7a": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a16d80-f1cc-7471-9f61-cb6ea1bc793d",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}

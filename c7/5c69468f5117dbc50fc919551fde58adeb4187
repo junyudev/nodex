@@ -1,0 +1,20 @@
+scripts/testing/acp-management-probe.ts
+  s_9cccd37e800d7a::t_e5844b3cff4876 195-197
+  s_9cccd37e800d7a::t_b17857917662c2 198-199
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "c75c69468f5117dbc50fc919551fde58adeb4187",
+  "prompts": {},
+  "sessions": {
+    "s_9cccd37e800d7a": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a16d80-f1cc-7471-9f61-cb6ea1bc793d",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}

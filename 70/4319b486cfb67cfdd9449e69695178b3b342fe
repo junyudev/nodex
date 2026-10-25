@@ -1,0 +1,37 @@
+src/renderer/components/workbench/workbench-settings-search-catalog.node.test.ts
+  s_901e7cdfde4ade::t_72e5b91b72308c 117-136,146
+src/renderer/components/workbench/workbench-settings-search-catalog.ts
+  s_901e7cdfde4ade::t_7f85e5da0ab7df 100,103-104,106,113,115-119,121-123,126-128,138-139,141-145,158-174,197,216,228-262
+docs/product-specs/settings-route-behavior.md
+  s_901e7cdfde4ade::t_39a5ba6d681bb5 87-95,136
+src/renderer/components/workbench/app-update-settings-control.test.tsx
+  s_901e7cdfde4ade::t_4a470ac916940a 84,89-90,143
+src/renderer/components/workbench/workbench-settings-controls.tsx
+  s_901e7cdfde4ade::t_aa46ecc8f22c20 1-8,498,576-578,581-582,588,591-627,653,729-731,734-735,741,744-803
+src/renderer/components/workbench/app-update-settings-control.tsx
+  s_901e7cdfde4ade::t_a29f093af51aa4 13,129-143,145-148,152-153,155,158-188,192-193
+src/renderer/components/workbench/workbench-settings-overlay.backups.test.tsx
+  s_901e7cdfde4ade::t_f9f98f9b86488d 244-246,264,266,344,415-417,435,437,511
+src/renderer/components/workbench/general-settings-page.tsx
+  s_901e7cdfde4ade::t_e203170ebde312 4,9,21,42-46,49,53,56,72,74-75,77,86-93,95-112,165-173
+CHANGELOG.md
+  s_901e7cdfde4ade::t_226d6f427436e2 19
+src/renderer/components/workbench/workbench-settings-overlay.licenses.test.tsx
+  s_901e7cdfde4ade::t_6b9ce5b3499eb6 11,146-163
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "704319b486cfb67cfdd9449e69695178b3b342fe",
+  "prompts": {},
+  "sessions": {
+    "s_901e7cdfde4ade": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "dbfeb0b2-2a6b-4724-8483-90ea2623a3fd",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}

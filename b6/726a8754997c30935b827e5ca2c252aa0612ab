@@ -1,0 +1,51 @@
+packages/agent-runtime/src/nodex/AcpCredentialOwnership.test.ts
+  s_9cccd37e800d7a::t_5d7dac3ad58c54 4-6,11,17,23,29-30,34,40,46-86
+packages/agent-runtime/src/nodex/AcpManagement.integration.test.ts
+  s_9cccd37e800d7a::t_6e74f8b47109bd 391,414-421,427,460-465,504-514
+packages/agent-runtime/src/nodex/AcpManagement.ts
+  s_9cccd37e800d7a::t_d9348a38772a1e 1,332
+packages/agent-runtime/src/orchestration-v2/ProviderAdapterRegistry.test.ts
+  s_9cccd37e800d7a::t_4ade0c0f53dac4 229,239-249,288
+packages/agent-runtime/src/orchestration-v2/ProviderAdapterRegistry.ts
+  s_9cccd37e800d7a::t_ac12c2533436a6 1,98-102
+packages/agent-runtime/src/provider/CodexChatGptAuth.ts
+  s_9cccd37e800d7a::t_c49eaf90ea7fc1 829
+packages/agent-runtime/src/provider/ProviderAuthService.test.ts
+  s_9cccd37e800d7a::t_5855e5217865ac 173,853,876,901-902,966,980-1034
+packages/agent-runtime/vendor/provider-acp-registry/src/server/auth.test.ts
+  s_9cccd37e800d7a::t_0efa4cf65a480c 230-232
+packages/agent-runtime/vendor/provider-acp-registry/src/server/auth.ts
+  s_9cccd37e800d7a::t_03f6f98139fbee 25,42,47,52-70,426-431
+packages/agent-runtime/vendor/provider-acp-registry/src/settings.ts
+  s_9cccd37e800d7a::t_6e1a377dfb010e 17-19
+packages/agent-runtime/vendor/provider-core/src/server/auth.ts
+  s_9cccd37e800d7a::t_152860a12d9548 12-26,28
+packages/agent-runtime/vendor/provider-core/src/server/providerAuthFlow.test.ts
+  s_9cccd37e800d7a::t_48a0cb33de624c 29,55,217,263,312,336,483,526
+packages/agent-runtime/src/provider/ProviderAuthService.ts
+  s_2468ca63a6174e::t_8ea5c1cf765cea 20-23,106-107,135,162,181-182
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "b6726a8754997c30935b827e5ca2c252aa0612ab",
+  "prompts": {},
+  "sessions": {
+    "s_2468ca63a6174e": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a16d84-9a90-7502-bf89-36dc3142716b",
+        "model": "unknown"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_9cccd37e800d7a": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a16d80-f1cc-7471-9f61-cb6ea1bc793d",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}

@@ -1,0 +1,21 @@
+scripts/scenarios/runtime/scripted-acp-registry-fixture.test.ts
+  s_9cccd37e800d7a::t_4f5b9a882ac842 1-151
+scripts/scenarios/runtime/scripted-acp-registry-fixture.ts
+  s_9cccd37e800d7a::t_843a25252872c1 1-130
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "8da470b0274e21b9d1bce7cce1acc03b3e889702",
+  "prompts": {},
+  "sessions": {
+    "s_9cccd37e800d7a": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a16d80-f1cc-7471-9f61-cb6ea1bc793d",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}

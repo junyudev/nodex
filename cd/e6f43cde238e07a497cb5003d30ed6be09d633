@@ -1,0 +1,25 @@
+src/main/acp-agents/AcpAgents.ts
+  s_9cccd37e800d7a::t_1e48d69253765b 65-73,86-90,103,113,115,460-461
+  s_9cccd37e800d7a::t_a7dc812ce9275f 60,74-78,84-85,100,110,114,133-144,208-209,235,241,439-440,462,468-471,478,484,486,545,637
+src/main/acp-agents/AcpAgents.node.test.ts
+  s_9cccd37e800d7a::t_c9a7c3b82e1c2e 26-27,34-36,90-101,133,165-166,488-518,524-526,528-554
+  s_9cccd37e800d7a::t_a6fdb626d4c3fa 24-25,33,83-89,157-164,167,442-487,527
+  s_9cccd37e800d7a::t_0a7c9966274b48 519-523
+  s_9cccd37e800d7a::t_90e327c3f0d6e2 555
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "cde6f43cde238e07a497cb5003d30ed6be09d633",
+  "prompts": {},
+  "sessions": {
+    "s_9cccd37e800d7a": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a16d80-f1cc-7471-9f61-cb6ea1bc793d",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}

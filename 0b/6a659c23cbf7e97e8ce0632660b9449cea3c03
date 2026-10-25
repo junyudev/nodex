@@ -1,0 +1,31 @@
+packages/agent-runtime/src/nodex/AcpRecoveryRetry.integration.test.ts
+  s_9cccd37e800d7a::t_712dabfaadc306 1-59,61-75,77-79,81,83,93,103-143
+  s_9cccd37e800d7a::t_81ef6ecc55a4e0 60,76,80,82,84-92,94-102
+packages/agent-runtime/src/orchestration-v2/ProviderTurnStartService.ts
+  s_9cccd37e800d7a::t_1e0597f51e7af7 932
+  s_9cccd37e800d7a::t_e375b39c4834b3 64-70,73-75,610-611,631-632,931
+packages/agent-runtime/scripts/acp-model-agent.ts
+  s_9cccd37e800d7a::t_7f82d6e68162ae 96-112
+packages/agent-runtime/src/orchestration-v2/Adapters/AcpAdapterV2.test.ts
+  s_9cccd37e800d7a::t_931913a0ca0dd6 2403-2468
+packages/agent-runtime/vendor/provider-acp/src/server/adapter.ts
+  s_9cccd37e800d7a::t_d9302649df9215 47,462-471,7745,8377
+packages/agent-runtime/vendor/provider-core/src/server/ProviderAdapter.ts
+  s_9cccd37e800d7a::t_476df695509f6a 181-182,210-211
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "0b6a659c23cbf7e97e8ce0632660b9449cea3c03",
+  "prompts": {},
+  "sessions": {
+    "s_9cccd37e800d7a": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a16d80-f1cc-7471-9f61-cb6ea1bc793d",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}

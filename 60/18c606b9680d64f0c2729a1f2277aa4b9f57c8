@@ -1,0 +1,83 @@
+src/main/acp-agents/AcpAgents.node.test.ts
+  s_9cccd37e800d7a::t_1e97ff3c4206e5 1-167
+src/main/acp-agents/AcpAgents.ts
+  s_9cccd37e800d7a::t_a93f632f6abebe 1-397
+src/main/agent-backend/AgentBackendRegistry.node.test.ts
+  s_9cccd37e800d7a::t_7a49094c010b44 8-15,65-88,91,94
+src/main/agent-backend/AgentBackendRegistry.ts
+  s_9cccd37e800d7a::t_7c8af4e861c8f1 35,133,137,144,147
+src/main/agent-runtime/AcpProviderConfiguration.node.test.ts
+  s_9cccd37e800d7a::t_2b40c3bb790498 1-83
+src/main/agent-runtime/AcpProviderConfiguration.ts
+  s_9cccd37e800d7a::t_af7e0a198c224d 1-3,5-43,45-51,53-68,70-98
+src/main/agent-runtime/AgentRuntimeApplication.node.test.ts
+  s_9cccd37e800d7a::t_3656b81b9bed1f 219-220,397-411,987-1068
+src/main/agent-runtime/AgentRuntimeApplication.ts
+  s_9cccd37e800d7a::t_25ac6d1fefa880 1,1315-1425,2388-2392
+src/main/agent-runtime/AgentRuntimeQuiescence.node.test.ts
+  s_9cccd37e800d7a::t_773c5c8d04e5dc 44-49,55-63,72-81
+src/main/agent-runtime/AgentRuntimeQuiescence.ts
+  s_9cccd37e800d7a::t_9c5258d6e2fae0 68-70
+src/main/app/AgentRuntimeApplicationLive.ts
+  s_9cccd37e800d7a::t_0e5e2b595fe1cf 1,23,509-519,521,701
+src/main/app/RendererIngressLive.ts
+  s_9cccd37e800d7a::t_93e3ce55fe121c 1-2,114
+src/main/host-runtime/AppUpdateRuntime.test.ts
+  s_9cccd37e800d7a::t_167d6b0a8628ca 109
+src/main/host-runtime/ApplicationSchedulers.test.ts
+  s_9cccd37e800d7a::t_cc4300e19fea8b 342
+src/main/ipc/handlers/AcpAgentsIpc.node.test.ts
+  s_9cccd37e800d7a::t_2b766cf796e430 1-3,7-14,16-55,58-63,65-87
+src/main/ipc/handlers/AcpAgentsIpc.ts
+  s_9cccd37e800d7a::t_65339eb903cbf5 1-174
+src/main/ipc/handlers/ApplicationSettingsIpc.ts
+  s_9cccd37e800d7a::t_dc69835ab4fca4 1,429
+src/main/platform/node/AcpProfilePaths.node.test.ts
+  s_9cccd37e800d7a::t_9851fcc9bec8ee 1-26
+src/main/platform/node/AcpProfilePaths.ts
+  s_9cccd37e800d7a::t_2d063e66637c5e 1-42
+src/main/settings/ApplicationSettings.test-support.ts
+  s_9cccd37e800d7a::t_3a0e278ac92baa 13
+src/main/settings/ApplicationSettings.test.ts
+  s_9cccd37e800d7a::t_4906bc40576991 429-436,449-456
+src/main/settings/ApplicationSettings.ts
+  s_9cccd37e800d7a::t_b40ad7cdf8a566 60,174-176,403-406
+src/main/settings/acp-agent-environment.node.test.ts
+  s_9cccd37e800d7a::t_2703b7f4bf87bf 1-228
+src/main/settings/acp-agent-environment.ts
+  s_9cccd37e800d7a::t_74b18b62550891 1-139
+src/main/settings/agent-environment-storage.ts
+  s_9cccd37e800d7a::t_0abeba9d8528bc 34
+src/main/settings/application-settings-persistence.ts
+  s_9cccd37e800d7a::t_1d9940bd4cdd60 1-6,1109-1121,1127-1134
+src/shared/acp-agent-settings.ts
+  s_9cccd37e800d7a::t_cdb312eaf43b21 1-139
+src/shared/acp-api.ts
+  s_9cccd37e800d7a::t_5445ef89345332 1-38
+src/shared/ipc-api.ts
+  s_9cccd37e800d7a::t_69d7be53b343d1 1,716
+src/shared/ipc-endpoint-policy.ts
+  s_9cccd37e800d7a::t_f43d729b7012fa 76-82,470-483
+src/shared/schemas/acp-api.ts
+  s_9cccd37e800d7a::t_b54d243f62df34 1-78
+src/shared/types.ts
+  s_9cccd37e800d7a::t_1c13deda19c449 1681-1685
+tests/e2e/acp-backend-lifecycle.spec.ts
+  s_9cccd37e800d7a::t_20f2a8be7e47ec 14-16,36-55,73-81,89-93,98-111,115-125,161,190,238-286
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "6018c606b9680d64f0c2729a1f2277aa4b9f57c8",
+  "prompts": {},
+  "sessions": {
+    "s_9cccd37e800d7a": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a16d80-f1cc-7471-9f61-cb6ea1bc793d",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}

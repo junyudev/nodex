@@ -1,0 +1,47 @@
+src/main/automation-application/AutomationExecution.ts
+  s_8ba9572f1b48c1::t_cd4d078677de88 84-85,95,134-137,139-143,159,166-169,177-180,231-234,251,258-259,267-270,306,323,326-330,395
+src/renderer/lib/ipc-error-message.ts
+  s_8ba9572f1b48c1::t_50979ea3497ea6 1-8
+src/renderer/features/inbox/use-inbox-capture.ts
+  s_8ba9572f1b48c1::t_aa2d90b0f54825 13-14,120
+docs/product-specs/scheduled-route-behavior.md
+  s_8ba9572f1b48c1::t_507ead44a6b567 168-172
+  s_8ba9572f1b48c1::t_0dab5e8ea68360 167
+src/main/automation-application/AutomationApplication.ts
+  s_8ba9572f1b48c1::t_cd4d078677de88 326
+src/main/automation-application/AutomationExecution.node.test.ts
+  s_8ba9572f1b48c1::t_b7015dc7f6366d 15,488-521
+  s_8ba9572f1b48c1::t_116dea5cb87d2d 522-525
+src/main/agent-backend/AgentBackendRegistry.ts
+  s_8ba9572f1b48c1::t_cd4d078677de88 120,126,133,206
+src/renderer/features/inbox/inbox-settings-page.tsx
+  s_8ba9572f1b48c1::t_aa2d90b0f54825 18,116
+src/renderer/features/inbox/use-inbox-actions.ts
+  s_8ba9572f1b48c1::t_aa2d90b0f54825 37,39,134
+src/renderer/features/acp-agents/acp-agent-model.ts
+  s_8ba9572f1b48c1::t_aa2d90b0f54825 9
+  s_8ba9572f1b48c1::t_b7d6fed55dbc1f 26,28
+src/renderer/lib/ipc-error-message.node.test.ts
+  s_8ba9572f1b48c1::t_b0e64824d35523 1-25
+src/renderer/features/scheduled/use-scheduled-tasks.ts
+  s_8ba9572f1b48c1::t_aa2d90b0f54825 12
+  s_8ba9572f1b48c1::t_b7d6fed55dbc1f 31
+src/main/automation-application/AutomationProjection.ts
+  s_8ba9572f1b48c1::t_cd4d078677de88 55
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "43f52364a9df9faed016551e8fbba5f204c8c978",
+  "prompts": {},
+  "sessions": {
+    "s_8ba9572f1b48c1": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "cf77dbe9-4c90-42a1-89dd-a69d75865e03",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
