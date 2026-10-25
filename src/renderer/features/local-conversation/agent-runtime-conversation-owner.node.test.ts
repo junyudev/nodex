@@ -931,6 +931,61 @@ describe("Agent Runtime keyed transcript reads", () => {
     release();
   });
 
+  test("history restored while a Run starts precedes that Run, grouped as on reopening", async () => {
+    const prompt: Extract<AgentTurnItem, { type: "user_message" }> = {
+      ...base("user:continue", 1_000_001),
+      type: "user_message",
+      createdBy: "user",
+      creationSource: "web",
+      inputIntent: "turn_start",
+      messageId: "user-message",
+      text: "Continue",
+      attachments: [],
+    };
+    const restored = (id: string, ordinal: number, role: "user" | "assistant"): AgentTurnItem => {
+      const shared = {
+        ...base(id, ordinal),
+        runId: null,
+        messageId: id,
+        text: id,
+        attachments: [],
+      };
+      return role === "user"
+        ? {
+            ...shared,
+            type: "user_message",
+            createdBy: "user",
+            creationSource: "web",
+            inputIntent: "turn_start",
+          }
+        : { ...shared, type: "assistant_message", streaming: false };
+    };
+    const history = [
+      restored("earlier question", 1, "user"),
+      restored("earlier answer", 2, "assistant"),
+      restored("later answer", 3, "assistant"),
+    ];
+    const order = (owner: AgentRuntimeConversationOwner) =>
+      owner.readOwner.readStructure()!.turnEntityKeys.map((key) =>
+        owner.readOwner
+          .readTurn(key)!
+          .items.map((item) => item.markdownText)
+          .filter(Boolean),
+      );
+
+    const live = await open(conversation([prompt]));
+    history.forEach((item, index) => live.wire.emit(event(item, index + 2)));
+    const reopened = await open(conversation([...history, prompt]));
+
+    expect(order(live.owner)).toEqual([
+      ["earlier question", "earlier answer", "later answer"],
+      ["Continue"],
+    ]);
+    expect(order(live.owner)).toEqual(order(reopened.owner));
+    live.release();
+    reopened.release();
+  });
+
   test("pages more than five queued messages without opening older history and reads the full edit text only on demand", async () => {
     const initial = conversation([]);
     const template = initial.snapshot.projection.runs[0]!;

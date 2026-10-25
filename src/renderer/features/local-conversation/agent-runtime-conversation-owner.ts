@@ -917,6 +917,11 @@ export class AgentRuntimeConversationOwner {
       if (item.runId !== null) entityKey = runKey(item.threadId, item.runId);
       else if (item.type === "fork") entityKey = JSON.stringify(["agent-marker", item.id]);
       else {
+        // Live history continues the history Turn it follows, as a reopened snapshot groups it.
+        if (!prepend && !isTurnOpening(item)) {
+          runlessKey = this.#historyTurnBefore(row.sourceThreadId, item.ordinal);
+          runlessSource = row.sourceThreadId;
+        }
         if (runlessSource !== row.sourceThreadId || !runlessKey)
           runlessKey = JSON.stringify(["agent-history", row.sourceThreadId, "tail", item.id]);
         runlessSource = row.sourceThreadId;
@@ -1015,8 +1020,44 @@ export class AgentRuntimeConversationOwner {
     }
     // New Turn metadata and slots must exist before its first addressed body update.
     changes.push(...itemChanges);
-    this.#turnKeys = prepend ? [...newKeys, ...this.#turnKeys] : [...this.#turnKeys, ...newKeys];
+    this.#turnKeys = prepend ? [...newKeys, ...this.#turnKeys] : this.#placeLive(newKeys);
     return changes;
+  }
+  #turnHead(entityKey: string): ResidentItem | undefined {
+    return this.#items.get(this.#turns.get(entityKey)?.itemIds[0] ?? "");
+  }
+  #isHistoryTurn(head: ResidentItem | undefined): head is ResidentItem {
+    return head?.runId === null && head.type !== "fork";
+  }
+  /** The resident history Turn that immediately precedes an ordinal, if the ordinal follows all of it. */
+  #historyTurnBefore(sourceThreadId: string, ordinal: number): string | undefined {
+    let found: { key: string; head: ResidentItem } | undefined;
+    for (const key of this.#turnKeys) {
+      const head = this.#turnHead(key);
+      if (!this.#isHistoryTurn(head) || head.sourceThreadId !== sourceThreadId) continue;
+      if (head.ordinal < ordinal && (!found || head.ordinal > found.head.ordinal))
+        found = { key, head };
+    }
+    const last = found && this.#items.get(this.#turns.get(found.key)?.itemIds.at(-1) ?? "");
+    return last && last.ordinal < ordinal ? found!.key : undefined;
+  }
+  /**
+   * Run-less history occupies the start of a thread's ordinal space. History restored after a Run
+   * started (an imported conversation's first Continue) still precedes that Run, as on reopening.
+   */
+  #placeLive(keys: readonly string[]): string[] {
+    const order = [...this.#turnKeys];
+    for (const key of keys) {
+      const head = this.#turnHead(key);
+      const before = this.#isHistoryTurn(head)
+        ? order.findIndex((existing) => {
+            const other = this.#turnHead(existing);
+            return other?.sourceThreadId === head.sourceThreadId && other.ordinal > head.ordinal;
+          })
+        : -1;
+      order.splice(before === -1 ? order.length : before, 0, key);
+    }
+    return order;
   }
   #turnHookRuns(entityKey: string): readonly CodexCanonicalHookRun[] | undefined {
     const runs = this.#hookRuns.get(entityKey);
