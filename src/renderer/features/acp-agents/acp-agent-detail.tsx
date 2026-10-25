@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import { useId, useState, type ReactNode } from "react";
 import { AgentEnvironmentEditor } from "@/components/workbench/agent-environment-editor";
 import { NodexButton } from "@/components/ui/button";
 import { toast } from "@/components/ui/toast";
@@ -12,8 +12,8 @@ import { AcpArgumentsEditor } from "./acp-arguments-editor";
 import { installReviewedVersion } from "./acp-agent-actions";
 import {
   acpDraftChanged,
-  acpDraftError,
   acpDraftInput,
+  acpDraftProblem,
   acpAgentDraft,
   withAcpVariables,
   type AcpAgentDraft,
@@ -93,7 +93,11 @@ export function AcpAgentDetail({
   const [uninstallToo, setUninstallToo] = useState(true);
   const [removeError, setRemoveError] = useState<string | null>(null);
   const changed = acpDraftChanged(instance, draft);
-  const error = changed ? acpDraftError(instance, draft) : null;
+  const problem = changed ? acpDraftProblem(instance, draft) : null;
+  const problemId = useId();
+  // The message stays beside Save; the field that blocks it is marked and described by it.
+  const problemOf = (field: "name" | "executable") =>
+    problem?.field === field ? { "aria-invalid": true, "aria-describedby": problemId } : {};
   const change = (patch: Partial<AcpAgentDraft>) => {
     setNotice(null);
     setDraft((current) => ({ ...current, ...patch }));
@@ -119,7 +123,7 @@ export function AcpAgentDetail({
   };
 
   const save = async () => {
-    if (saving || !changed || error) return;
+    if (saving || !changed || problem) return;
     setSaving(true);
     const outcome = await owner.updateInstance(instance.id, (saved) => acpDraftInput(saved, draft));
     setSaving(false);
@@ -205,6 +209,7 @@ export function AcpAgentDetail({
       ) : null}
       <Field label="Name">
         <Input
+          {...problemOf("name")}
           aria-label="Agent name"
           className={fieldClassName}
           value={draft.displayName}
@@ -217,6 +222,7 @@ export function AcpAgentDetail({
         <>
           <Field label="Executable" description="An absolute path or a command on PATH.">
             <Input
+              {...problemOf("executable")}
               aria-label="Executable"
               className={`${fieldClassName} font-mono text-xs`}
               value={draft.executable}
@@ -368,9 +374,9 @@ export function AcpAgentDetail({
             <span role="alert" className="text-danger">
               {removeError}
             </span>
-          ) : error ? (
-            <span role="alert" className="text-danger">
-              {error}
+          ) : problem ? (
+            <span id={problemId} role="alert" className="text-danger">
+              {problem.message}
             </span>
           ) : notice?.kind === "error" ? (
             <span role="alert" className="text-danger">
@@ -402,7 +408,7 @@ export function AcpAgentDetail({
         <NodexButton
           size="sm"
           variant="secondary"
-          disabled={saving || !changed || error !== null}
+          disabled={saving || !changed || problem !== null}
           onClick={() => void save()}
         >
           {saving ? "Saving…" : "Save"}

@@ -95,15 +95,21 @@ export const acpDraftChanged = (instance: AcpAgentInstanceConfig, draft: AcpAgen
   return JSON.stringify(acpDraftInput(saved, draft)) !== JSON.stringify(saved);
 };
 
+export interface AcpDraftProblem {
+  readonly field: "name" | "executable" | "environment";
+  readonly message: string;
+}
+
 /** The first reason the draft cannot be saved, phrased for the field that owns it. */
-export function acpDraftError(
+export function acpDraftProblem(
   instance: AcpAgentInstanceConfig,
   draft: AcpAgentDraft,
-): string | null {
-  if (!draft.displayName.trim()) return "Enter a name.";
+): AcpDraftProblem | null {
+  if (!draft.displayName.trim()) return { field: "name", message: "Enter a name." };
   if (instance.source.kind === "local" && !draft.executable.trim())
-    return "Enter the executable to run.";
-  return validateEnvironmentDraft(draft.environment, ACP_ENVIRONMENT_POLICY);
+    return { field: "executable", message: "Enter the executable to run." };
+  const environment = validateEnvironmentDraft(draft.environment, ACP_ENVIRONMENT_POLICY);
+  return environment ? { field: "environment", message: environment } : null;
 }
 
 /** Adds secret rows for variables the Agent asked for, keeping rows that already name them. */

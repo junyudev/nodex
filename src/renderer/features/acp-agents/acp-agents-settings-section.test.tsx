@@ -271,6 +271,31 @@ describe("ACP Agents settings", () => {
     });
   });
 
+  test("a change that can't be saved marks the field that blocks Save", async () => {
+    const main = fakeAcpRuntime({ instances: [localInstance()] });
+    const { view } = mount(main, "acp-agent-local-one");
+    const executable = await view.findByLabelText("Executable");
+    const name = view.getByLabelText("Agent name");
+    const save = view.getByRole("button", { name: "Save" }) as HTMLButtonElement;
+    const problemOf = (field: HTMLElement) =>
+      field.getAttribute("aria-invalid") === "true"
+        ? document.getElementById(field.getAttribute("aria-describedby") ?? "")?.textContent
+        : null;
+
+    await type(executable, " ");
+    expect(problemOf(executable)).toBe("Enter the executable to run.");
+    expect(save.disabled).toBe(true);
+    await type(name, "");
+    // One problem at a time, starting from the top.
+    expect(problemOf(name)).toBe("Enter a name.");
+    expect(problemOf(executable)).toBeNull();
+
+    await press(view.getByRole("button", { name: "Discard" }));
+    expect(problemOf(name)).toBeNull();
+    expect(problemOf(executable)).toBeNull();
+    expect(main.runtime.updateSettings).not.toHaveBeenCalled();
+  });
+
   test("removing the last instance of a Registry Agent can uninstall it too", async () => {
     const main = fakeAcpRuntime({ instances: [registryInstance()] });
     const { view } = mount(main, "acp-agent-qoder-main");
