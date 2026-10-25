@@ -1,0 +1,19 @@
+docs/CONFIGURATION.md
+  s_020e56a074e5e7::t_1703c49863b033 63-74
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "0f177375885e0815a11336b857dc41f021034482",
+  "prompts": {},
+  "sessions": {
+    "s_020e56a074e5e7": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a16369-09ce-73d2-b36e-73b9a8aae6ea",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
