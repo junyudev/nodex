@@ -1,12 +1,12 @@
 import { createHash } from "node:crypto";
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
 import type { ScriptedAcpScenario } from "./scripted-acp-agent";
 
 const registryUrl = "https://cdn.agentclientprotocol.com/registry/v1/latest/registry.json";
 const archiveUrl = "https://nodex-acp-fixture.invalid/scripted-agent.bin";
-const peerPath = fileURLToPath(new URL("./scripted-acp-agent.ts", import.meta.url));
+// Playwright loads scenario helpers as CommonJS from the repository root.
+const peerPath = path.resolve("scripts/scenarios/runtime/scripted-acp-agent.ts");
 const shellQuote = (value: string) => `'${value.replaceAll("'", `'"'"'`)}'`;
 
 export interface ScriptedAcpRegistryFixture {
