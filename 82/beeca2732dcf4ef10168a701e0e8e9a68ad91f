@@ -1,0 +1,25 @@
+docs/development.md
+  s_f79dd9d0c7ac54::t_705d0685dc5583 560-563
+src/main/codex-application/WorkspaceTextSearch.node.test.ts
+  s_f79dd9d0c7ac54::t_79dcfc826b0672 5,25-26
+package.json
+  s_f79dd9d0c7ac54::t_d1ce572115fb39 286
+pnpm-lock.yaml
+  s_f79dd9d0c7ac54::t_d88a321e6d883e 453-455,4990-5052,11772-11822
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "82beeca2732dcf4ef10168a701e0e8e9a68ad91f",
+  "prompts": {},
+  "sessions": {
+    "s_f79dd9d0c7ac54": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a151d6-b92f-7f41-b4e5-4834cb7752bd",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
