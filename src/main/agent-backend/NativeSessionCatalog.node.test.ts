@@ -2,6 +2,7 @@ import { mkdtempSync, mkdirSync, realpathSync, rmSync, symlinkSync, writeFileSyn
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { assert, it } from "@effect/vitest";
+import { CodexAppServerRequestError } from "@nodex/effect-codex-app-server/errors";
 import * as Effect from "effect/Effect";
 import type { Thread } from "@nodex/codex-app-server-protocol/v2/Thread";
 import type {
@@ -12,6 +13,7 @@ import type {
 import { ClaudeNativeCatalog } from "./claude/ClaudeNativeCatalog";
 import { make, type NativeSessionCatalogError } from "./NativeSessionCatalog";
 import { CodexGateway } from "../codex-runtime/CodexGateway";
+import { CodexRuntimeError } from "../codex-runtime/CodexRuntimeError";
 import { ApplicationSettings } from "../settings/ApplicationSettings";
 
 const SESSION_ID = "019d0000-0000-7000-8000-000000000001";
@@ -54,6 +56,7 @@ const harness = (
   options: {
     readonly threads?: readonly Thread[];
     readonly readThread?: Thread;
+    readonly readThreads?: Readonly<Record<string, Thread>>;
     readonly nextCursor?: string;
     readonly claudeProfiles?: readonly { id: string; home: string }[];
     readonly brokenClaudeProfile?: string;
@@ -83,19 +86,26 @@ const harness = (
   } as unknown as ApplicationSettings["Service"];
   const gateway = {
     requestLocal: (method: string, params: unknown) =>
-      Effect.try(() => {
+      Effect.suspend((): Effect.Effect<unknown, Error> => {
         requests.push({ method, params });
         if (method === "thread/list")
-          return {
+          return Effect.succeed({
             data: options.threads ?? [nativeThread(cwd)],
             nextCursor: options.nextCursor ?? null,
-          };
+          });
         if (method === "thread/read") {
-          if (options.codexReadFailure) throw options.codexReadFailure;
+          if (options.codexReadFailure) return Effect.fail(options.codexReadFailure);
           options.afterRead?.();
-          return { thread: options.readThread ?? nativeThread(cwd) };
+          const id = (params as { threadId: string }).threadId;
+          return Effect.succeed({
+            thread:
+              options.readThreads?.[id] ??
+              options.readThread ??
+              options.threads?.find((thread) => thread.id === id) ??
+              nativeThread(cwd),
+          });
         }
-        throw new Error(`Unexpected native operation: ${method}`);
+        return Effect.die(new Error(`Unexpected native operation: ${method}`));
       }),
   } as unknown as CodexGateway["Service"];
   const claude = {
@@ -186,10 +196,7 @@ it.effect("pages persistent Codex roots without loading history or starting a ru
         ],
         nextCursor: "next-native-page",
       });
-      assert.deepEqual(
-        fixture.requests.map(({ method }) => method),
-        ["thread/list"],
-      );
+      assert.equal(fixture.requests.filter(({ method }) => method === "thread/read").length, 7);
       assert.deepEqual(fixture.requests[0]?.params, {
         cursor: "native-page",
         limit: 50,
@@ -200,6 +207,112 @@ it.effect("pages persistent Codex roots without loading history or starting a ru
       });
     }),
   ),
+);
+
+it.effect("offers only roots verified by the same metadata read used for preview", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const root = yield* temporaryRoot;
+      const cwd = join(root, "workspace");
+      const fixture = harness(root, {
+        threads: [
+          nativeThread(cwd, { id: "runtime" }),
+          nativeThread(cwd, { id: "child" }),
+          nativeThread(cwd, { id: "temporary" }),
+          nativeThread(cwd, { name: "Stale title", parentThreadId: "stale-parent" }),
+        ],
+        readThreads: {
+          runtime: nativeThread(cwd, { id: "runtime", threadSource: "agent_runtime" }),
+          child: nativeThread(cwd, { id: "child", parentThreadId: SESSION_ID }),
+          temporary: nativeThread(cwd, { id: "temporary", ephemeral: true }),
+          [SESSION_ID]: nativeThread(join(root, "unavailable"), { name: "Verified title" }),
+        },
+        nextCursor: "older-candidates",
+      });
+      const catalog = yield* fixture.catalog;
+      const page = yield* catalog.list({ backendKind: "codex" });
+      const preview = yield* catalog.previewImport({ reference: SESSION_ID });
+      assert.deepEqual(page.entries, [
+        {
+          nativeSessionId: SESSION_ID,
+          title: "Verified title",
+          cwd: join(root, "unavailable"),
+          cwdAvailable: false,
+          updatedAt: 20_000,
+        },
+      ]);
+      assert.equal(page.nextCursor, "older-candidates");
+      assert.equal(preview.matches[0]?.title, page.entries[0]?.title);
+      assert.isTrue(
+        fixture.requests.every(
+          ({ method, params }) =>
+            method === "thread/list" ||
+            (method === "thread/read" &&
+              (params as { includeTurns: boolean }).includeTurns === false),
+        ),
+      );
+    }),
+  ),
+);
+
+it.effect.each(["identity", "home", "unavailable"] as const)(
+  "does not publish a catalog with unverified %s",
+  (failureKind) =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const root = yield* temporaryRoot;
+        const otherHome = join(root, "other-home");
+        mkdirSync(otherHome);
+        const fixture = harness(root, {
+          ...(failureKind === "identity"
+            ? { readThread: nativeThread(root, { id: "another-id" }) }
+            : {}),
+          ...(failureKind === "unavailable"
+            ? { codexReadFailure: new Error("Native transport unavailable") }
+            : {}),
+          ...(failureKind === "home" ? { afterRead: () => fixture.setActiveHome(otherHome) } : {}),
+        });
+        const catalog = yield* fixture.catalog;
+        const failure = yield* catalog.list({ backendKind: "codex" }).pipe(Effect.flip);
+        assert.isNotEmpty(failure.message);
+      }),
+    ),
+);
+
+it.effect.each(["owned", "deleted"] as const)(
+  "preserves pagination when the only candidate is %s",
+  (kind) =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const root = yield* temporaryRoot;
+        const fixture = harness(root, {
+          nextCursor: "older-native-page",
+          ...(kind === "owned"
+            ? { readThread: nativeThread(root, { threadSource: "agent_runtime" }) }
+            : {
+                codexReadFailure: new CodexRuntimeError({
+                  message: "Source deleted",
+                  operation: "request",
+                  reason: "request",
+                  retryable: false,
+                  method: "thread/read",
+                  cause: new CodexAppServerRequestError({
+                    method: "thread/read",
+                    operation: "receive-response",
+                    code: -32600,
+                    errorMessage: `no rollout found for thread id ${SESSION_ID}`,
+                  }),
+                }),
+              }),
+        });
+        const catalog = yield* fixture.catalog;
+        assert.deepEqual(yield* catalog.list({ backendKind: "codex" }), {
+          nativeHome: fixture.home,
+          entries: [],
+          nextCursor: "older-native-page",
+        });
+      }),
+    ),
 );
 
 it.effect("previews a local thread link even when its original workspace is unavailable", () =>
@@ -364,7 +477,9 @@ it.effect.each([
         .pipe(Effect.flip);
       assert.equal(
         previewFailure.message,
-        "This is a subagent conversation or one Nodex runs itself, so it can’t be imported.",
+        patch.id
+          ? "Codex returned a different conversation. Refresh and try again."
+          : "This is a subagent conversation or one Nodex runs itself, so it can’t be imported.",
       );
       assert.equal(prepareFailure.message, previewFailure.message);
       assert.deepEqual(fixture.requests, [

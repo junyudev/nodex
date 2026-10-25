@@ -54,7 +54,10 @@ history home matches the previewed home. Claude capture uses the exact selected 
 without launching or resuming the source session. A restored Profile using its captured Codex
 history cannot import from a different active history home. Completed-import retries remain
 independent of that source check. Codex conversations identified as Runtime-owned are not offered
-as import sources. Claude roots use the SDK's native history identity; SDK-created roots can also
+as import sources. Catalog candidates are verified against current native conversation metadata
+before they are offered; an incomplete or stale list index does not establish import eligibility.
+Filtering a catalog page preserves its continuation cursor, even when no eligible sources remain.
+Claude roots use the SDK's native history identity; SDK-created roots can also
 be copied. Subagent histories are not independent import sources.
 
 ## Existing connected history

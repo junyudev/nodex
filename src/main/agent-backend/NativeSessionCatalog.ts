@@ -139,6 +139,33 @@ export const make = Effect.gen(function* () {
       );
     return profile.id;
   });
+  // The list index can omit or lag ownership metadata. Read the exact native identity
+  // without loading history; discovery, preview and admission use the same evidence.
+  const readCodexThread = Effect.fn("NativeSessionCatalog.readCodexThread")(function* (
+    nativeSessionId: string,
+  ) {
+    const response = yield* gateway
+      .requestLocal(
+        "thread/read",
+        { threadId: nativeSessionId, includeTurns: false },
+        { priority: "interactive", source: "native_session_import", timeoutMs: 15_000 },
+      )
+      .pipe(
+        Effect.catchIf(
+          (cause) => missingCodexThread(cause, nativeSessionId),
+          () => Effect.succeed(null),
+        ),
+      );
+    if (!response) return null;
+    const thread = projectCodexGatewayThreadReadThread(response.thread);
+    if (thread.id !== nativeSessionId)
+      return yield* fail(
+        "import.identity",
+        new Error("Codex returned a different conversation. Refresh and try again."),
+        true,
+      );
+    return thread;
+  });
   const listCodex = Effect.fn("NativeSessionCatalog.listCodex")(function* (
     input: NativeSessionCatalogInput,
   ) {
@@ -167,22 +194,27 @@ export const make = Effect.gen(function* () {
         new Error("Codex returned an unexpected conversation list. Refresh to try again."),
         true,
       );
-    const entries: NativeSessionCatalogEntry[] = [];
-    for (const metadata of response.data) {
-      const thread = projectCodexGatewayThreadReadThread(metadata);
-      if (!isImportableRoot(thread)) continue;
-      const cwdAvailable = yield* Effect.tryPromise({
-        try: () => nativeSessionCwdAvailable(thread.cwd),
-        catch: (cause) => fail("catalog.cwd", cause),
-      });
-      entries.push({
-        nativeSessionId: thread.id,
-        title: nativeSessionCatalogTitle(thread.name?.trim() || thread.preview),
-        cwd: thread.cwd,
-        cwdAvailable,
-        updatedAt: milliseconds(thread.updatedAt),
-      });
-    }
+    const inspected = yield* Effect.forEach(
+      response.data,
+      (metadata) =>
+        Effect.gen(function* () {
+          const thread = yield* readCodexThread(metadata.id);
+          if (!thread || !isImportableRoot(thread)) return null;
+          const cwdAvailable = yield* Effect.tryPromise({
+            try: () => nativeSessionCwdAvailable(thread.cwd),
+            catch: (cause) => fail("catalog.cwd", cause),
+          });
+          return {
+            nativeSessionId: thread.id,
+            title: nativeSessionCatalogTitle(thread.name?.trim() || thread.preview),
+            cwd: thread.cwd,
+            cwdAvailable,
+            updatedAt: milliseconds(thread.updatedAt),
+          } satisfies NativeSessionCatalogEntry;
+        }),
+      { concurrency: 4 },
+    );
+    const entries = inspected.filter((entry) => entry !== null);
     if ((yield* nativeHome()) !== home)
       return yield* fail(
         "catalog.home",
@@ -202,20 +234,9 @@ export const make = Effect.gen(function* () {
         new Error("The Codex home changed. Refresh or paste the link again."),
         true,
       );
-    const response = yield* gateway
-      .requestLocal(
-        "thread/read",
-        { threadId: nativeSessionId, includeTurns: false },
-        { priority: "interactive", source: "native_session_import", timeoutMs: 15_000 },
-      )
-      .pipe(
-        Effect.catch((cause) =>
-          missingCodexThread(cause, nativeSessionId) ? Effect.succeed(null) : Effect.fail(cause),
-        ),
-      );
-    if (!response) return null;
-    const thread = projectCodexGatewayThreadReadThread(response.thread);
-    if (thread.id !== nativeSessionId || !isImportableRoot(thread))
+    const thread = yield* readCodexThread(nativeSessionId);
+    if (!thread) return null;
+    if (!isImportableRoot(thread))
       return yield* fail(
         "import.identity",
         new Error(
