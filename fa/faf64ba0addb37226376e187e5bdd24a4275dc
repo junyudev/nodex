@@ -1,0 +1,24 @@
+src/main/automation-application/AutomationExecution.ts
+  s_9cccd37e800d7a::t_fbb982cec9c16e 161-162
+src/main/automation-application/AutomationExecution.node.test.ts
+  s_9cccd37e800d7a::t_b49646781ffb97 2,6,12,18-19,24-28,60-66,117-119,268-270,335,376,574
+  s_9cccd37e800d7a::t_ec940912eced4c 127,130,198,200,280,625,657,660-726,728-751,753-763,765-785,787-790,792
+  s_9cccd37e800d7a::t_d0a8aae6ea4cbc 3,8-11,626-656,658-659,791
+  s_9cccd37e800d7a::t_7d6714701dcfcd 120-126,128-129,131-148,150-153,155-160,162-163,165-197,199,271-279,727,752,764,786,793-799
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "fafaf64ba0addb37226376e187e5bdd24a4275dc",
+  "prompts": {},
+  "sessions": {
+    "s_9cccd37e800d7a": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a16d80-f1cc-7471-9f61-cb6ea1bc793d",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
