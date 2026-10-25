@@ -45,8 +45,9 @@ The engine is the single production composition `layerProduction` in
 hourly pruning of settled outbox receipts older than seven days (failed receipts and cancelled
 provider retirements remain). `src/nodex/Runtime.ts` supplies only platform capabilities and
 explicit policy overrides, and parked workers start after startup recovery completes. Desktop
-launch, worktree setup, content operations, scheduled tasks, usage-limit auto-resume and native
-session import are not composed.
+launch, worktree setup, content operations, scheduled tasks and usage-limit auto-resume remain
+host-owned. The public Runtime service composes ACP management and native session import around
+the engine; the host links imported Threads to product Sessions.
 
 ## Agent tools
 
