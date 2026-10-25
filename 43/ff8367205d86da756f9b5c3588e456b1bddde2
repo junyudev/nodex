@@ -1,0 +1,19 @@
+packages/agent-runtime/src/nodex/AcpStreaming.integration.test.ts
+  s_9cccd37e800d7a::t_e55e18e918c8b3 65-71
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "43ff8367205d86da756f9b5c3588e456b1bddde2",
+  "prompts": {},
+  "sessions": {
+    "s_9cccd37e800d7a": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a16d80-f1cc-7471-9f61-cb6ea1bc793d",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
