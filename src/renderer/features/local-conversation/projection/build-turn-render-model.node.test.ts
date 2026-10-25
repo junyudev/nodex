@@ -11,6 +11,7 @@ import type {
   ThreadComposerShellBackgroundAgentRowModel,
   ThreadTurnModel,
 } from "../thread-stage-types";
+import { projectAgentBodyCollapsePresentation } from "./agent-body-collapse-presentation";
 import { buildTurnRenderModel, createTurnRenderModelSelector } from "./build-turn-render-model";
 
 const LIVE_DIFF = [
@@ -1225,6 +1226,66 @@ describe("buildTurnRenderModel", () => {
     expect(model.workedForItem).toBe(null);
     expect(model.agentBodyUnits.some((unit) => unit.block.type === "workedFor")).toBe(false);
     expect(model.collapsedMessageCount).toBe(1);
+  });
+
+  test("keeps a reply that precedes settled delegated work visible in the collapsed body", () => {
+    const buildModel = (reply: CodexConversationItem) => {
+      const delegatedTask: CodexConversationItem = {
+        threadId: "thread_1",
+        turnId: "turn_1",
+        itemId: "task_1",
+        type: "delegatedTask",
+        kind: "systemEvent",
+        semanticKind: "delegatedTask",
+        status: "completed",
+        createdAt: 6,
+        updatedAt: 6,
+        delegatedTask: {
+          taskId: "task_1",
+          ownerRunId: "turn_1",
+          childThreadId: "child_1",
+          title: "Inspect workspace",
+          providerInstanceId: "claude",
+          status: "completed",
+          prompt: "Inspect the workspace",
+          summary: null,
+        },
+      };
+      const items = [buildUserItem(), buildExecItem({ status: "completed" }), reply, delegatedTask];
+      return buildTurnRenderModel({
+        turn: buildTurn({
+          status: "completed",
+          durationMs: 4_000,
+          itemIds: items.map((item) => item.itemId),
+          items,
+        }),
+        requests: [],
+        isLatestTurn: true,
+        isStreamingTurn: false,
+      });
+    };
+
+    const model = buildModel(
+      buildAssistantItem({ assistantPhase: undefined, markdownText: "Workflow complete" }),
+    );
+    const collapsed = projectAgentBodyCollapsePresentation(model.agentBodyUnits, {
+      extractWorkedFor: model.hasRenderableAgentBodyUnits,
+      replyBlockId: model.agentBodyReplyBlockId,
+    });
+
+    expect(model.defaultAgentBodyCollapsed).toBe(true);
+    expect(model.trailingBlocks.some((block) => block.type === "assistantMessage")).toBe(false);
+    expect(model.agentBodyReplyBlockId).toBe("assistant_1");
+    expect(
+      collapsed.bodyUnits.filter(({ persistent }) => persistent).map(({ unit }) => unit.block.id),
+    ).toEqual(["assistant_1"]);
+    expect(collapsed.collapsibleUnits.some((unit) => unit.block.id === "assistant_1")).toBe(false);
+    expect(collapsed.canCollapse).toBe(true);
+
+    const commentary = buildModel(
+      buildAssistantItem({ assistantPhase: "commentary", markdownText: "Checking the workspace" }),
+    );
+    expect(commentary.agentBodyReplyBlockId).toBeNull();
   });
 
   test("routes the production turn through exact maximal v2 units and identity keys", () => {

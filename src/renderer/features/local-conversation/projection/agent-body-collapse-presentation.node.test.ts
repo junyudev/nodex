@@ -12,17 +12,28 @@ import {
 
 function buildEntryUnit(
   id: string,
-  type: "exec" | "userMessage" | "contextCompaction" | "streamError" | "systemError",
+  type:
+    | "exec"
+    | "userMessage"
+    | "assistantMessage"
+    | "contextCompaction"
+    | "streamError"
+    | "systemError",
   entryOverrides: Partial<CodexConversationItem> = {},
 ): ThreadAgentRenderUnit {
   const entry: CodexConversationItem = {
     threadId: "thread-1",
     turnId: "turn-1",
     itemId: id,
-    type: type === "userMessage" ? "user_message" : "command_execution",
-    kind:
+    type:
       type === "userMessage"
-        ? "userMessage"
+        ? "user_message"
+        : type === "assistantMessage"
+          ? "assistant_message"
+          : "command_execution",
+    kind:
+      type === "userMessage" || type === "assistantMessage"
+        ? type
         : type === "contextCompaction"
           ? "systemEvent"
           : "commandExecution",
@@ -64,7 +75,10 @@ describe("agent body collapse presentation", () => {
         },
       );
       const presentation = projectAgentBodyCollapsePresentation([exec, recovery]);
-      expect(presentation.persistentUnits).toEqual([recovery]);
+      expect(presentation.bodyUnits).toEqual([
+        { unit: exec, persistent: false },
+        { unit: recovery, persistent: true },
+      ]);
       expect(presentation.collapsibleUnits).toEqual([exec]);
       expect(countAgentBodyUnits(presentation.collapsibleUnits)).toBe(1);
       expect(projectAgentBodyCollapsePresentation([recovery]).canCollapse).toBe(false);
@@ -114,11 +128,32 @@ describe("agent body collapse presentation", () => {
 
     const presentation = projectAgentBodyCollapsePresentation(units);
 
-    expect(presentation.expandedUnits).toBe(units);
+    expect(presentation.bodyUnits).toEqual([
+      { unit: exec, persistent: false },
+      ...messages.map((unit) => ({ unit, persistent: true })),
+    ]);
     expect(presentation.collapsibleUnits).toEqual([exec]);
-    expect(presentation.persistentUnits).toEqual(messages);
     expect(presentation.workedForItem).toBeNull();
     expect(countAgentBodyUnits(presentation.collapsibleUnits)).toBe(1);
+  });
+
+  test("keeps the Turn's reply visible when later work holds it inside the collapsed body", () => {
+    const exec = buildEntryUnit("exec", "exec");
+    const reply = buildEntryUnit("reply", "assistantMessage", { markdownText: "Done" });
+    const delegated = buildEntryUnit("delegated", "exec");
+    const units = [exec, reply, delegated];
+
+    const presentation = projectAgentBodyCollapsePresentation(units, { replyBlockId: "reply" });
+
+    // The reply keeps its canonical place between the work that folds around it.
+    expect(presentation.bodyUnits).toEqual([
+      { unit: exec, persistent: false },
+      { unit: reply, persistent: true },
+      { unit: delegated, persistent: false },
+    ]);
+    expect(presentation.collapsibleUnits).toEqual([exec, delegated]);
+    expect(presentation.canCollapse).toBe(true);
+    expect(projectAgentBodyCollapsePresentation(units).collapsibleUnits).toEqual(units);
   });
 
   test("extracts worked time as the sole collapse label source", () => {
@@ -141,8 +176,7 @@ describe("agent body collapse presentation", () => {
     });
 
     expect(presentation.workedForItem).toBe(workedFor);
-    expect(presentation.expandedUnits).toEqual([exec]);
+    expect(presentation.bodyUnits).toEqual([{ unit: exec, persistent: false }]);
     expect(presentation.collapsibleUnits).toEqual([exec]);
-    expect(presentation.persistentUnits).toEqual([]);
   });
 });

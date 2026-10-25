@@ -1054,6 +1054,8 @@ export interface ThreadTurnModel {
   searchableText: string;
   searchUnits: ThreadSearchUnitModel[];
   hasRenderableAgentBodyUnits: boolean;
+  /** The reply that later work keeps inside the agent body; it stays visible when collapsed. */
+  agentBodyReplyBlockId: string | null;
   defaultAgentBodyCollapsed: boolean;
   collapsedMessageCount: number;
 }

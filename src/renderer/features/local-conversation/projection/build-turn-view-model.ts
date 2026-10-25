@@ -582,6 +582,14 @@ export function buildTurnViewModel(input: BuildTurnViewModelInput): ThreadTurnMo
           (block): block is ThreadTranscriptBlockModel =>
             block.type === "assistantMessage" && block.id === latestAssistantId,
         ) ?? buckets.latestAssistantMessage);
+  // Later work can keep the reply inside the agent body; collapsing that work still shows it.
+  const agentBodyReplyBlockId =
+    nextAssistantItem === null &&
+    nextLatestAssistantMessage?.type === "assistantMessage" &&
+    nextLatestAssistantMessage.entry.assistantPhase !== "commentary" &&
+    (nextLatestAssistantMessage.entry.markdownText?.trim().length ?? 0) > 0
+      ? nextLatestAssistantMessage.id
+      : null;
   const deferredAssistantActionsBlock =
     nextAssistantItem === null && input.voiceWorkActivity === undefined
       ? (buildDeferredAssistantActionsBlock(nextLatestAssistantMessage, actionInput) ??
@@ -629,7 +637,9 @@ export function buildTurnViewModel(input: BuildTurnViewModelInput): ThreadTurnMo
     mcpServerStatuses: input.mcpServerStatuses ?? null,
   });
   const agentBodyUnits = activityPresentation.units;
-  const agentBodyCollapsePresentation = projectAgentBodyCollapsePresentation(agentBodyUnits);
+  const agentBodyCollapsePresentation = projectAgentBodyCollapsePresentation(agentBodyUnits, {
+    replyBlockId: agentBodyReplyBlockId,
+  });
   const liveActivity: ThreadLiveActivityPresentation = activityPresentation.liveActivity;
 
   const leadingBlocks: ThreadBlockModel[] = [
@@ -689,6 +699,7 @@ export function buildTurnViewModel(input: BuildTurnViewModelInput): ThreadTurnMo
     searchableText: collectSearchableText(resolvedBlocks),
     searchUnits,
     hasRenderableAgentBodyUnits,
+    agentBodyReplyBlockId,
     defaultAgentBodyCollapsed:
       !input.voiceWorkActivity &&
       hasRenderableAgentBodyUnits &&

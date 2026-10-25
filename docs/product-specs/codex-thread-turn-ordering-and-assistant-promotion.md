@@ -28,6 +28,7 @@ The corresponding Nodex implementation lives in:
 - `src/renderer/features/local-conversation/projection/build-turn-view-model.ts`
 - `src/renderer/features/local-conversation/projection/agent-activity-v2.ts`
 - `src/renderer/features/local-conversation/projection/agent-activity-group.ts`
+- `src/renderer/features/local-conversation/projection/agent-body-collapse-presentation.ts`
 - `src/renderer/features/local-conversation/view/local-conversation-thread-turn.tsx`
 
 ## Canonical Turn Pipeline In Nodex
@@ -311,6 +312,7 @@ The agent body is driven by grouped `agentItems`, not by "all items before the f
 Consequences:
 
 - `assistant -> exec` may collapse together as one agent-work section
+- collapsing hides work, never the Turn's reply: when `assistantItem` is `null`, the latest non-commentary assistant with content stays visible with user messages and recovery rows; work folds around these rows in place, so they keep their canonical order and never move or remount when the body toggles; this covers phaseless Agent Runtime replies followed by delegated work
 - a renderable final-answer boundary, or settled subagent activity, establishes collapse eligibility
 - eligible latest and historical turns both default collapsed unless persisted disclosure state overrides that default
 - interrupted turns never collapse, and active subagent activity prevents automatic collapse
@@ -380,4 +382,5 @@ Any future refactor is valid only if all are true:
 - `worked-for` blocks assistant promotion before becoming label/divider input
 - latest assistant search ownership survives when `assistantItem` is `null`
 - subagent commentary ownership and null-anchor collapse state never manufacture visible activity
+- a collapsed agent body never hides the Turn's latest non-commentary reply
 - visible order matches semantic slot order across the scenario matrix above

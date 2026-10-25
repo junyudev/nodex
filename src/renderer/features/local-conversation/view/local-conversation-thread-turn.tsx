@@ -153,23 +153,34 @@ function renderSpacedBlocks<TBlock extends { id: string }>(
   ));
 }
 
-function renderAgentUnits(
-  units: readonly ThreadAgentRenderUnit[],
-  renderUnit: (unit: ThreadAgentRenderUnit, index: number) => ReactNode,
-) {
-  return units.map((unit, index) => {
-    const hasTargets = unit.targetAttributes !== undefined;
-    return (
-      <div
-        key={resolveThreadBlockRenderKey(unit.block)}
-        className={cn("empty:hidden", hasTargets && "outline-none")}
-        tabIndex={hasTargets ? -1 : undefined}
-        {...unit.targetAttributes}
-      >
-        {renderUnit(unit, index)}
-      </div>
-    );
-  });
+/** One agent-body unit's target frame; its leading gap disappears with a unit that renders nothing. */
+function AgentBodyUnitFrame({
+  unit,
+  leadingGap,
+  animateGap,
+  children,
+}: {
+  unit: ThreadAgentRenderUnit;
+  leadingGap: "toggle" | "item" | null;
+  animateGap: boolean;
+  children: ReactNode;
+}) {
+  const hasTargets = unit.targetAttributes !== undefined;
+  return (
+    <div
+      className={cn(
+        "empty:hidden",
+        hasTargets && "outline-none",
+        leadingGap === "toggle" && "mt-[var(--conversation-tool-assistant-gap,8px)]",
+        leadingGap === "item" && "mt-[var(--conversation-item-gap,16px)]",
+        animateGap && "transition-[margin] duration-basic",
+      )}
+      tabIndex={hasTargets ? -1 : undefined}
+      {...unit.targetAttributes}
+    >
+      {children}
+    </div>
+  );
 }
 
 function ThreadLiveActivityFallbackForTurn({ turn }: { turn: ThreadTurnModel }) {
@@ -235,12 +246,17 @@ function ThreadTurnBody({
 }: ThreadTurnProps & { agentBodyUnits: ThreadAgentRenderUnit[] }) {
   const agentBodyCollapsePresentation = projectAgentBodyCollapsePresentation(agentBodyUnits, {
     extractWorkedFor: turn.hasRenderableAgentBodyUnits,
+    replyBlockId: turn.agentBodyReplyBlockId,
   });
   const shouldAllowAgentBodyCollapse =
     !turn.voiceWorkActivity &&
     turn.hasRenderableAgentBodyUnits &&
     agentBodyCollapsePresentation.canCollapse;
   const effectiveAgentBodyCollapsed = shouldAllowAgentBodyCollapse ? agentBodyCollapsed : false;
+  const { bodyUnits } = agentBodyCollapsePresentation;
+  const firstVisibleBodyUnitIndex = effectiveAgentBodyCollapsed
+    ? bodyUnits.findIndex(({ persistent }) => persistent)
+    : 0;
   const reducedMotion = useResolvedReducedMotion();
   const agentBodyMotion = resolveCodexThreadAgentBodyMotion(reducedMotion);
   const workedForItem = turn.workedForItem ?? agentBodyCollapsePresentation.workedForItem;
@@ -343,37 +359,40 @@ function ThreadTurnBody({
                   }
                 />
               ) : null}
-              <AnimatePresence initial={false}>
-                {effectiveAgentBodyCollapsed ? null : (
-                  <motion.div
-                    ref={latestTurnFollowContentRef}
-                    key="agent-body"
-                    className="-ms-2 ps-2"
-                    initial={agentBodyMotion.initial}
-                    animate={agentBodyMotion.animate}
-                    exit={agentBodyMotion.exit}
-                    transition={agentBodyMotion.transition}
-                  >
-                    {shouldAllowAgentBodyCollapse ? <ThreadGap /> : null}
-                    <div className="flex flex-col gap-[var(--conversation-item-gap,16px)]">
-                      {renderAgentUnits(agentBodyCollapsePresentation.expandedUnits, (unit) =>
-                        renderAgentUnit(unit),
-                      )}
-                    </div>
-                  </motion.div>
-                )}
-              </AnimatePresence>
-              {effectiveAgentBodyCollapsed &&
-              agentBodyCollapsePresentation.persistentUnits.length > 0 ? (
-                <>
-                  <ThreadGap />
-                  <div className="flex flex-col gap-[var(--conversation-item-gap,16px)]">
-                    {renderAgentUnits(agentBodyCollapsePresentation.persistentUnits, (unit) =>
-                      renderAgentUnit(unit, true),
+              <div
+                ref={effectiveAgentBodyCollapsed ? undefined : latestTurnFollowContentRef}
+                className="flex flex-col"
+              >
+                {bodyUnits.map(({ unit, persistent }, index) => (
+                  // A keyed slot per unit: work folds in place, and what stays visible never moves.
+                  <AnimatePresence key={resolveThreadBlockRenderKey(unit.block)} initial={false}>
+                    {effectiveAgentBodyCollapsed && !persistent ? null : (
+                      <motion.div
+                        key="agent-body-unit"
+                        className="-ms-2 ps-2"
+                        initial={agentBodyMotion.initial}
+                        animate={agentBodyMotion.animate}
+                        exit={agentBodyMotion.exit}
+                        transition={agentBodyMotion.transition}
+                      >
+                        <AgentBodyUnitFrame
+                          unit={unit}
+                          leadingGap={
+                            index !== firstVisibleBodyUnitIndex
+                              ? "item"
+                              : shouldAllowAgentBodyCollapse
+                                ? "toggle"
+                                : null
+                          }
+                          animateGap={!reducedMotion}
+                        >
+                          {renderAgentUnit(unit, persistent && effectiveAgentBodyCollapsed)}
+                        </AgentBodyUnitFrame>
+                      </motion.div>
                     )}
-                  </div>
-                </>
-              ) : null}
+                  </AnimatePresence>
+                ))}
+              </div>
             </div>
           </>
         ) : null}

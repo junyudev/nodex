@@ -638,6 +638,112 @@ describe("LocalConversationTurnEntry", () => {
     expect(workedForShell?.contains(workedForButton)).toBe(true);
   });
 
+  test("keeps the reply visible when settled delegated work after it collapses", async () => {
+    const { LocalConversationTurnEntry } = await import("./local-conversation-turn-entry");
+    const turnId = "turn_reply_before_delegated_work";
+    const turn: CodexConversationTurn = {
+      ...buildTurn(turnId, "Run the workflow", "Workflow complete"),
+      durationMs: 4_000,
+      itemIds: [`${turnId}_user`, "exec_workspace", `${turnId}_assistant`, "task_inspect"],
+      items: [
+        buildUserEntry(turnId, `${turnId}_user`, "Run the workflow"),
+        {
+          threadId: "thread_1",
+          turnId,
+          itemId: "exec_workspace",
+          type: "command_execution",
+          kind: "commandExecution",
+          semanticKind: "exec",
+          createdAt: 2,
+          updatedAt: 2,
+          status: "completed",
+          commandActions: [{ type: "read", command: "", name: "src/app.ts", path: "src/app.ts" }],
+          toolCall: { subtype: "command", toolName: "exec_command", args: {} },
+        },
+        buildAssistantEntry(turnId, `${turnId}_assistant`, "Workflow complete", {
+          status: "completed",
+        }),
+        {
+          threadId: "thread_1",
+          turnId,
+          itemId: "task_inspect",
+          type: "delegatedTask",
+          kind: "systemEvent",
+          semanticKind: "delegatedTask",
+          status: "completed",
+          createdAt: 4,
+          updatedAt: 4,
+          delegatedTask: {
+            taskId: "task_inspect",
+            ownerRunId: turnId,
+            childThreadId: "child_inspect",
+            title: "Inspect workspace",
+            providerInstanceId: "claude",
+            status: "completed",
+            prompt: "Inspect the workspace",
+            summary: null,
+          },
+        },
+      ],
+    };
+    let requestedCollapsed: boolean | null = null;
+    const renderTurn = (persistedCollapsed?: boolean) =>
+      createElement(
+        TooltipProvider,
+        null,
+        createElement(LocalConversationTurnEntry, {
+          conversationId: "thread_1",
+          entry: buildVisibleTurnEntry(turn, [], true),
+          cwd: "/tmp/project",
+          canEditTurnUserPrefix: false,
+          canForkTurn: true,
+          persistedCollapsed,
+          onSetCollapsed: (collapsed) => {
+            requestedCollapsed = collapsed;
+          },
+        }),
+      );
+    const view = render(renderTurn());
+    await act(async () => {
+      await settleAsyncRender();
+    });
+
+    const workedForButton = view.getByRole("button", { name: /Worked for 4s/ });
+    expect(workedForButton.getAttribute("aria-expanded")).toBe("false");
+    expect(view.container.textContent?.includes("src/app.ts") ?? false).toBe(false);
+    expect(view.getAllByText("Workflow complete")).toHaveLength(1);
+    const reply = view.getByText("Workflow complete");
+    expect(
+      workedForButton.compareDocumentPosition(reply) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+
+    await act(async () => {
+      fireEvent.click(workedForButton);
+      view.rerender(renderTurn(false));
+      await settleAsyncRender();
+    });
+
+    // Expanding restores the work around the reply in canonical order without remounting it.
+    expect(requestedCollapsed).toBe(false);
+    expect(workedForButton.getAttribute("aria-expanded")).toBe("true");
+    expect(view.getAllByText("Workflow complete")).toHaveLength(1);
+    expect(view.getByText("Workflow complete")).toBe(reply);
+    expect(
+      view.getByText("src/app.ts").compareDocumentPosition(reply) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+
+    await act(async () => {
+      view.rerender(renderTurn(true));
+      await Promise.resolve();
+    });
+
+    // While the work folds away, the reply is still the one mounted copy.
+    expect(workedForButton.getAttribute("aria-expanded")).toBe("false");
+    expect(view.getAllByText("Workflow complete")).toHaveLength(1);
+    expect(view.getByText("Workflow complete")).toBe(reply);
+  });
+
   test("keeps steering messages visible when historical agent activity is collapsed", async () => {
     const stableRequests: [] = [];
     const { LocalConversationTurnEntry } = await import("./local-conversation-turn-entry");
