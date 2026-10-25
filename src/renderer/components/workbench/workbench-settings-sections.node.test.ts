@@ -1,5 +1,10 @@
 import { describe, expect, test } from "vite-plus/test";
-import { SETTINGS_SECTION_GROUP_ORDER, SETTINGS_SECTIONS } from "./workbench-settings-sections";
+import {
+  resolveSettingsCommandTarget,
+  SETTINGS_SECTION_GROUP_ORDER,
+  SETTINGS_SECTIONS,
+  settingsCommandId,
+} from "./workbench-settings-sections";
 
 describe("settings section catalog", () => {
   test("keeps one page owner per visible top-level entry", () => {
@@ -30,5 +35,31 @@ describe("settings section catalog", () => {
       "workspace",
       "data",
     ]);
+  });
+
+  test("opens a Command K Settings command where Settings search would land", () => {
+    expect(resolveSettingsCommandTarget(settingsCommandId("agent"), "Fast mode")).toEqual({
+      sectionId: "agent",
+      anchor: "codex",
+    });
+    expect(resolveSettingsCommandTarget(settingsCommandId("agent"), "Gemini")).toEqual({
+      sectionId: "agent",
+      anchor: "acp",
+    });
+    expect(
+      resolveSettingsCommandTarget(settingsCommandId("general-settings"), "Spellcheck"),
+    ).toEqual({ sectionId: "general-settings", anchor: "writing" });
+    expect(resolveSettingsCommandTarget(settingsCommandId("appearance"), "Code font size")).toEqual(
+      { sectionId: "appearance", anchor: "advanced" },
+    );
+    // Naming the page, or browsing without a query, opens it at the top.
+    expect(resolveSettingsCommandTarget(settingsCommandId("agent"), "Agents")).toEqual({
+      sectionId: "agent",
+    });
+    expect(resolveSettingsCommandTarget(settingsCommandId("account"), "")).toEqual({
+      sectionId: "account",
+    });
+    expect(resolveSettingsCommandTarget("settings:retired", "Fast mode")).toBeNull();
+    expect(resolveSettingsCommandTarget("settings", "Fast mode")).toBeNull();
   });
 });

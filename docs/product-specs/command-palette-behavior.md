@@ -67,7 +67,7 @@ All uses the same catalog for non-empty queries.
 - Commands use customized command-keymap shortcut labels where a matching command id exists.
 - Command rows omit explanatory subtitles unless needed to explain an unavailable action.
 - The application catalog contains real capabilities; mock entries are excluded in development and production. Supported Nodex actions use their normal command handlers.
-- Visible, enabled Settings sections are directly searchable in the Settings group and navigate through the Settings route owner.
+- Visible, enabled Settings sections are directly searchable in the Settings group and navigate through the Settings route owner, opening the group or Agent card the query names, as Settings search does.
 - Theme opens a nested page with a search field, a Back row, light/dark switching, and the existing per-appearance accent presets. Previews and the current-preset check reflect the same persisted appearance owner as Settings. Entering or leaving this page clears its query; scope tabs are hidden while it is open. Escape or an outside dismissal returns one level before closing the root menu.
 - `Toggle browser panel` and `Open Page Stage` are intentionally not part of the command catalog.
 

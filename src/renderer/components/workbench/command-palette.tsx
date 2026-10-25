@@ -36,7 +36,9 @@ import { useCommandPaletteTheme } from "./command-palette-theme";
 import { CommandPaletteSurface, type CommandPaletteSurfaceHandle } from "./command-palette-surface";
 
 import {
+  resolveSettingsCommandTarget,
   resolveVisibleSettingsSections,
+  settingsCommandId,
   type SettingsSectionId,
 } from "./workbench-settings-sections";
 
@@ -45,7 +47,7 @@ interface CommandPaletteProps {
   onOpenFile?: (file: FileSearchMatch, hostId: string) => void;
   onOpenTextMatch?: (match: WorkspaceTextSearchMatch, hostId: string) => void;
   priorityFolders?: readonly string[];
-  onOpenSettingsSection?: (section: SettingsSectionId) => void;
+  onOpenSettingsSection?: (section: SettingsSectionId, anchor?: string) => void;
   open: boolean;
   openTriggerTick: number;
   initialMode?: CommandMenuMode;
@@ -165,7 +167,7 @@ export function CommandPalette({
             .filter((section) => !section.disabled)
             .map((section): CommandPaletteCommand => ({
               kind: "command",
-              id: `settings:${section.id}`,
+              id: settingsCommandId(section.id),
               title: section.label,
               subtitle: "",
               keywords: ["settings", ...section.searchMessages],
@@ -185,7 +187,7 @@ export function CommandPalette({
     setMode(nextMode);
   }, []);
 
-  const handleExecute = (item: PaletteItem) => {
+  const handleExecute = (item: PaletteItem, query: string) => {
     if (item.kind === "file") {
       onOpenFile?.(item.file, item.hostId);
       return;
@@ -204,10 +206,8 @@ export function CommandPalette({
     }
     if (item.disabled) return;
     if (item.id.startsWith("settings:")) {
-      const section = resolveVisibleSettingsSections().find(
-        (candidate) => `settings:${candidate.id}` === item.id,
-      );
-      if (section && !section.disabled) onOpenSettingsSection?.(section.id);
+      const target = resolveSettingsCommandTarget(item.id, query);
+      if (target) onOpenSettingsSection?.(target.sectionId, target.anchor);
       return;
     }
     if (!isCommandPaletteShellCommandId(item.id)) return;

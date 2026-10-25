@@ -92,7 +92,7 @@ interface WorkbenchCommandPaletteHostProps {
   readonly openLibraryFiles: () => void;
   readonly openProcessManager: () => void;
   readonly openSettings: () => void;
-  readonly openSettingsSection?: (section: SettingsSectionId) => void;
+  readonly openSettingsSection?: (section: SettingsSectionId, anchor?: string) => void;
   readonly openKeyboardShortcuts: () => void;
   readonly onOpenSessionInNewWindow?: (session: ProjectSession) => Promise<void>;
 }

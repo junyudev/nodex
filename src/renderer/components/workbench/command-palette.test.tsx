@@ -879,6 +879,47 @@ describe("CommandPaletteSurface", () => {
     expect(textContent(container).includes("Settings")).toBe(true);
   });
 
+  test("runs a result with the query that found it in every scope", async () => {
+    const { CommandPaletteSurface } = await import("./command-palette-surface");
+    const execute = vi.fn();
+    const { container } = render(
+      <CommandPaletteSurface
+        open
+        openTriggerTick={3}
+        mode="actions"
+        initialQuery="Fast mode"
+        commands={[
+          makePaletteCommand({
+            id: "settings:agent",
+            group: "Settings",
+            title: "Agents",
+            subtitle: "",
+            keywords: ["settings", "Fast mode"],
+          }),
+        ]}
+        loading={false}
+        pagesLoading={false}
+        chatsLoading={false}
+        onChangeMode={() => undefined}
+        onRequestClose={() => undefined}
+        onExecute={execute}
+      />,
+    );
+
+    await settleAsyncRender();
+    const topResult = container.querySelector('button[cmdk-item][data-selected="true"]');
+    expect(topResult).not.toBeNull();
+    await act(async () => {
+      fireEvent.click(topResult as HTMLElement);
+      await Promise.resolve();
+    });
+
+    expect(execute).toHaveBeenCalledWith(
+      expect.objectContaining({ id: "settings:agent" }),
+      "Fast mode",
+    );
+  });
+
   test("keeps Page search pending instead of flashing a false empty state", async () => {
     const { CommandPaletteSurface } = await import("./command-palette-surface");
     const pages = [
@@ -1979,6 +2020,7 @@ test("Files keeps empty and pending states out of keyboard selection and opens t
         hostId: "remote:files-states",
         file: expect.objectContaining({ fsPath: `/files-states/${path}`, label: name }),
       }),
+      expect.any(String),
     );
     expect(close).toHaveBeenCalledOnce();
   } finally {
@@ -2202,6 +2244,7 @@ test("file search opens directories on the selected host and releases its sessio
         kind: "file",
         file: expect.objectContaining({ fsPath: "/workspace/src", kind: "directory" }),
       }),
+      expect.any(String),
     );
     expect(close).toHaveBeenCalledOnce();
     view.unmount();
@@ -2328,6 +2371,7 @@ test("Text streams host-scoped matches, filters file types, and fences stale acc
         hostId: "remote:test",
         match: expect.objectContaining({ path: "/workspace/file.ts", line: 9, column: 4 }),
       }),
+      expect.any(String),
     );
     view.unmount();
     expect(stopped.length).toBeLessThanOrEqual(2);
@@ -2603,6 +2647,7 @@ test("Text recovers after a terminal error without accepting stale results", asy
     });
     expect(execute).toHaveBeenCalledWith(
       expect.objectContaining({ kind: "text", match: expect.objectContaining({ line: 9 }) }),
+      expect.any(String),
     );
     expect(close).toHaveBeenCalledOnce();
   } finally {

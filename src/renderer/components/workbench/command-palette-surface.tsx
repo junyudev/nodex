@@ -139,7 +139,8 @@ interface CommandPaletteSurfaceProps {
   threadSearchBatch?: CommandPaletteThreadSearchBatch;
   onChangeMode: (mode: CommandMenuMode) => void;
   onRequestClose: () => void;
-  onExecute: (item: ExecutablePaletteItem) => void;
+  /** Runs a chosen result with the query that found it. */
+  onExecute: (item: ExecutablePaletteItem, query: string) => void;
 }
 
 export interface CommandPaletteSurfaceHandle {
@@ -1198,7 +1199,7 @@ export const CommandPaletteSurface = forwardRef<
       }
 
       onRequestClose();
-      onExecute(item);
+      onExecute(item, query);
     },
     [
       discoveryKey,

@@ -18,7 +18,7 @@ import {
   SettingsWorktreeIcon,
 } from "../shared/icons";
 import { UserRound } from "../shared/icons/generic-icons";
-import { SETTINGS_SEARCH_CATALOG } from "./workbench-settings-search-catalog";
+import { SETTINGS_SEARCH_CATALOG, settingsSearchAnchor } from "./workbench-settings-search-catalog";
 import type { SettingsPageKey } from "./workbench-settings-page-registry";
 
 export type SettingsSectionId =
@@ -223,6 +223,26 @@ export const SETTINGS_SECTIONS: SettingsSectionDefinition[] = [
 
 export function resolveVisibleSettingsSections(): SettingsSectionDefinition[] {
   return SETTINGS_SECTIONS.filter((section) => section.visibleWhen?.() ?? true);
+}
+
+export function settingsCommandId(sectionId: SettingsSectionId): string {
+  return `settings:${sectionId}`;
+}
+
+/**
+ * Where a Command K Settings command opens: its visible, enabled section, at the group or Agent the
+ * query that found it names, exactly as Settings search lands.
+ */
+export function resolveSettingsCommandTarget(
+  commandId: string,
+  query: string,
+): { readonly sectionId: SettingsSectionId; readonly anchor?: string } | null {
+  const section = resolveVisibleSettingsSections().find(
+    (candidate) => settingsCommandId(candidate.id) === commandId,
+  );
+  if (!section || section.disabled) return null;
+  const anchor = settingsSearchAnchor(section.id, query);
+  return anchor ? { sectionId: section.id, anchor } : { sectionId: section.id };
 }
 
 export function resolveDefaultSettingsSectionId(

@@ -112,7 +112,8 @@ the navigation owner. `Cmd/Ctrl+F` focuses and selects the search field, Escape
 clears it, Arrow Up/Down wraps the highlighted result, and Enter navigates only
 when a result is highlighted. Navigation preserves the active query and targets
 the owning section or anchor; a result inside a collapsed group, such as an Agent
-card or Appearance's Advanced group, opens that group on arrival.
+card or Appearance's Advanced group, opens that group on arrival. A Command K
+Settings command lands the same way for the query that found it.
 
 Settings search uses its dedicated ranking/list-navigation helpers rather than
 the command-palette index.
