@@ -120,7 +120,8 @@ test("isolates Profile settings without replacing the launcher HOME", async () =
     expect(activeHome.restartRequired).toBe(false);
     const selectedHome = path.join(harness.profile.runRoot, "selected-codex-home");
     await openWorkbenchSettings(page);
-    await page.getByRole("link", { name: "Agent", exact: true }).click();
+    await page.getByRole("link", { name: "Agents", exact: true }).click();
+    await page.getByRole("button", { name: "Codex", exact: true, expanded: false }).click();
     const homeInput = page.getByRole("textbox", { name: "Codex home", exact: true });
     await homeInput.fill(selectedHome);
     // Codex home and its account directory save together.

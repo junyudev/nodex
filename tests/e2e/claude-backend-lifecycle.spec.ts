@@ -134,8 +134,10 @@ test("runs a Claude Code chat in a new worktree environment and continues it wit
       ],
     });
     await openWorkbenchSettings(page);
-    await page.getByRole("link", { name: "Agent", exact: true }).click();
+    await page.getByRole("link", { name: "Agents", exact: true }).click();
     const claudeSettings = page.getByRole("region", { name: "Claude Code", exact: true });
+    await claudeSettings.getByRole("button", { name: "Claude Code", exact: true }).click();
+    await claudeSettings.getByRole("button", { name: /^Claude Code/, expanded: false }).click();
     await claudeSettings.getByRole("button", { name: "Add variable", exact: true }).click();
     await claudeSettings.getByLabel("Variable name 1").evaluate((element) => {
       const clipboardData = new DataTransfer();

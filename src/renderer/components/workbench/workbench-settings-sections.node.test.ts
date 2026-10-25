@@ -24,6 +24,7 @@ describe("settings section catalog", () => {
   test("orders the rail by product area", () => {
     expect(SETTINGS_SECTION_GROUP_ORDER).toEqual([
       "personal",
+      "agents",
       "integrations",
       "coding",
       "workspace",

@@ -40,7 +40,13 @@ export type SettingsSectionId =
   | "data-controls"
   | "backups";
 
-export type SettingsSectionGroupKey = "personal" | "integrations" | "coding" | "workspace" | "data";
+export type SettingsSectionGroupKey =
+  | "personal"
+  | "agents"
+  | "integrations"
+  | "coding"
+  | "workspace"
+  | "data";
 
 export interface SettingsSectionDefinition {
   id: SettingsSectionId;
@@ -57,6 +63,7 @@ export interface SettingsSectionDefinition {
 }
 
 export const SETTINGS_SECTION_GROUP_LABELS: Record<SettingsSectionGroupKey, string> = {
+  agents: "AI",
   coding: "Coding",
   data: "Data & recovery",
   integrations: "Integrations",
@@ -66,6 +73,7 @@ export const SETTINGS_SECTION_GROUP_LABELS: Record<SettingsSectionGroupKey, stri
 
 export const SETTINGS_SECTION_GROUP_ORDER: readonly SettingsSectionGroupKey[] = [
   "personal",
+  "agents",
   "integrations",
   "coding",
   "workspace",
@@ -90,14 +98,6 @@ export const SETTINGS_SECTIONS: SettingsSectionDefinition[] = [
     searchMessages: SETTINGS_SEARCH_CATALOG["general-settings"].messages,
   },
   {
-    id: "agent-import",
-    label: "Conversations",
-    pageKey: "import",
-    icon: SettingsImportIcon,
-    groupKey: "coding",
-    searchMessages: SETTINGS_SEARCH_CATALOG["agent-import"].messages,
-  },
-  {
     id: "appearance",
     label: "Appearance",
     pageKey: "appearance",
@@ -114,15 +114,6 @@ export const SETTINGS_SECTIONS: SettingsSectionDefinition[] = [
     searchMessages: SETTINGS_SEARCH_CATALOG.voice.messages,
   },
   {
-    id: "agent",
-    label: "Agent",
-    pageKey: "agent",
-    icon: SettingsAgentIcon,
-    groupKey: "personal",
-    searchMessages: SETTINGS_SEARCH_CATALOG.agent.messages,
-    searchTerms: SETTINGS_SEARCH_CATALOG.agent.searchTerms,
-  },
-  {
     id: "keyboard-shortcuts",
     label: "Keyboard shortcuts",
     pageKey: "keyboard-shortcuts",
@@ -131,12 +122,29 @@ export const SETTINGS_SECTIONS: SettingsSectionDefinition[] = [
     searchMessages: SETTINGS_SEARCH_CATALOG["keyboard-shortcuts"].messages,
   },
   {
-    id: "inbox-settings",
-    label: "Inbox",
-    pageKey: "inbox",
-    icon: InboxIcon,
-    groupKey: "personal",
-    searchMessages: SETTINGS_SEARCH_CATALOG["inbox-settings"].messages,
+    id: "agent",
+    label: "Agents",
+    pageKey: "agent",
+    icon: SettingsAgentIcon,
+    groupKey: "agents",
+    searchMessages: SETTINGS_SEARCH_CATALOG.agent.messages,
+    searchTerms: SETTINGS_SEARCH_CATALOG.agent.searchTerms,
+  },
+  {
+    id: "agent-import",
+    label: "Conversations",
+    pageKey: "import",
+    icon: SettingsImportIcon,
+    groupKey: "agents",
+    searchMessages: SETTINGS_SEARCH_CATALOG["agent-import"].messages,
+  },
+  {
+    id: "hooks-settings",
+    label: "Hooks",
+    pageKey: "hooks",
+    icon: HooksIcon,
+    groupKey: "agents",
+    searchMessages: SETTINGS_SEARCH_CATALOG["hooks-settings"].messages,
   },
   {
     id: "browser",
@@ -153,14 +161,6 @@ export const SETTINGS_SECTIONS: SettingsSectionDefinition[] = [
     icon: SettingsComputerUseIcon,
     groupKey: "integrations",
     searchMessages: SETTINGS_SEARCH_CATALOG["computer-use"].messages,
-  },
-  {
-    id: "hooks-settings",
-    label: "Hooks",
-    pageKey: "hooks",
-    icon: HooksIcon,
-    groupKey: "coding",
-    searchMessages: SETTINGS_SEARCH_CATALOG["hooks-settings"].messages,
   },
   {
     id: "git",
@@ -194,6 +194,14 @@ export const SETTINGS_SECTIONS: SettingsSectionDefinition[] = [
     icon: PageIcon,
     groupKey: "workspace",
     searchMessages: SETTINGS_SEARCH_CATALOG.page.messages,
+  },
+  {
+    id: "inbox-settings",
+    label: "Inbox",
+    pageKey: "inbox",
+    icon: InboxIcon,
+    groupKey: "workspace",
+    searchMessages: SETTINGS_SEARCH_CATALOG["inbox-settings"].messages,
   },
   {
     id: "data-controls",

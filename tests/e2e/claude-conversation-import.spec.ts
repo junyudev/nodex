@@ -130,7 +130,8 @@ test("imports Claude history as an independent executable copy with a replacemen
         observations().filter((entry) => entry.type === "launch" && entry.persistent);
 
       await openWorkbenchSettings(page);
-      await page.getByRole("link", { name: "Agent", exact: true }).click();
+      await page.getByRole("link", { name: "Agents", exact: true }).click();
+      await page.getByRole("button", { name: "Codex", exact: true, expanded: false }).click();
       const setupSource = page.getByRole("button", { name: "Other Codex home", exact: true });
       await setupSource.scrollIntoViewIfNeeded();
       await expect(page.getByText("Copy setup from", { exact: true })).toBeVisible();
