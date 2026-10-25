@@ -100,6 +100,55 @@ it.effect(
     }).pipe(Effect.scoped, Effect.provide(runtimeLayer())),
 );
 
+it.effect.each([false, true])(
+  "keeps dot-ignore, Git-ignore and explicit mask precedence with priority search %s",
+  (prioritizeRecent) =>
+    Effect.gen(function* () {
+      const root = yield* temp;
+      yield* Effect.promise(async () => {
+        await Promise.all(
+          [".git", "recent", "node_modules"].map((directory) => mkdir(path.join(root, directory))),
+        );
+        const files = {
+          ".ignore": "dot-ignored.ts\n",
+          ".rgignore": "rg-ignored.ts\n",
+          ".gitignore": "git-ignored.ts\n",
+          "visible.ts": "needle\n",
+          "recent/dot-ignored.ts": "needle\n",
+          "recent/rg-ignored.ts": "needle\n",
+          "recent/git-ignored.ts": "needle\n",
+          "recent/mask-excluded.ts": "needle\n",
+          "node_modules/dependency.ts": "needle\n",
+        };
+        await Promise.all(
+          Object.entries(files).map(([file, content]) => writeFile(path.join(root, file), content)),
+        );
+      });
+      const platform = yield* WorkspaceTextSearchPlatform;
+      const host = yield* platform.open({ kind: "local", roots: [root] });
+      const priorityFolders = prioritizeRecent ? [path.join(root, "recent")] : [];
+      const unfiltered = yield* collect(host, request([root], { priorityFolders }));
+      assert.deepEqual(
+        unfiltered
+          .filter((event) => event.type === "match")
+          .map((event) => event.match.relativePath)
+          .sort(),
+        ["recent/dot-ignored.ts", "recent/mask-excluded.ts", "recent/rg-ignored.ts", "visible.ts"],
+      );
+      const filtered = yield* collect(
+        host,
+        request([root], { priorityFolders, fileMask: "*.ts,!mask-excluded.ts" }),
+      );
+      assert.deepEqual(
+        filtered
+          .filter((event) => event.type === "match")
+          .map((event) => event.match.relativePath)
+          .sort(),
+        ["recent/dot-ignored.ts", "recent/git-ignored.ts", "recent/rg-ignored.ts", "visible.ts"],
+      );
+    }).pipe(Effect.scoped, Effect.provide(runtimeLayer())),
+);
+
 it.effect(
   "searches priority folders first from the same root and stops at 100 matching lines across all roots",
   () =>
