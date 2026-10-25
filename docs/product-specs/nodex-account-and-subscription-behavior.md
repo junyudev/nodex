@@ -1,7 +1,7 @@
 # Nodex Account and Subscription Behavior
 
 - Status: Proposed subscription and model access; native login implemented separately
-- Last updated: 2026-10-23
+- Last updated: 2026-10-25
 - Decision: [ADR 0070](../adr/0070-optional-cloud-account-and-subscription-authority.md)
 
 ## Purpose and first release
@@ -51,6 +51,10 @@ A Clerk identity maps by `(issuer, subject)` to an internal immutable
 `accountId`. Email is display/contact data, never a join key. Email changes
 preserve identity; recreating a deleted Clerk user does not recover another
 Account's subscription merely by using the same email.
+Identity and billing remain scoped to Nodex, independently of other products
+under `jyu.app`. The production domain roles are fixed in
+[Configuration](../CONFIGURATION.md#nodex-account); `api.nodex.jyu.app` is
+reserved for this proposed cloud service, not a currently deployed API.
 
 | State | Authoritative owner | Local projection |
 | --- | --- | --- |
@@ -538,7 +542,7 @@ review requires link/diff validation, not application code checks.
 
 Set the plan price/currency, included credits and rate card, first model set,
 maximum per-call/account/global cost, supported managed runtime supply,
-production domains and hosting region, and account-data retention/refund
+cloud hosting region, and account-data retention/refund
 policy. These are launch inputs, not reasons to delay the identity and sandbox
 implementation. The decision to use Clerk and Stripe is fixed for this design.
 

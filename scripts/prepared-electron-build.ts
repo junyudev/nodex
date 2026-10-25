@@ -18,6 +18,7 @@ import { fileURLToPath } from "node:url";
 
 import { inspectOfficialAgentSkillsArtifact } from "./official-agent-skills-artifact.mjs";
 import { BUNDLED_ELECTRON_MAIN_DEPENDENCIES } from "../config/electron-main-runtime-closure";
+import { NODEX_ACCOUNT_BUILD_VARIABLES } from "../config/nodex-account-build";
 import { buildAgentRuntime } from "./build-agent-runtime";
 import { nodeBuildOptimizationArguments } from "../config/node-build-optimization";
 import { parseReleaseIdentity, type ReleaseIdentity } from "./release/model";
@@ -246,6 +247,10 @@ const buildContext = (): Record<string, string> => {
         : "",
     ],
     ...sensitiveBuildVariables.map((key) => [key, digest(process.env[key] ?? "")]),
+    ...NODEX_ACCOUNT_BUILD_VARIABLES.map((key) => [
+      key,
+      digest(JSON.stringify(process.env[key] ?? null)),
+    ]),
     ...viteEnvironment.map(([key, value]) => [key, digest(value ?? "")]),
   ]);
 };

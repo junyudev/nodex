@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { afterEach, describe, expect, test } from "vite-plus/test";
+import { afterEach, describe, expect, test, vi } from "vite-plus/test";
 import {
   recordPreparedElectronBuild,
   verifyPreparedElectronBuild,
@@ -181,6 +181,7 @@ const initializeGitFixture = (
 };
 
 afterEach(() => {
+  vi.unstubAllEnvs();
   for (const root of temporaryRoots.splice(0)) {
     fs.rmSync(root, { recursive: true, force: true });
   }
@@ -209,6 +210,26 @@ describe("prepared Electron build", () => {
     expect(verifyPreparedElectronBuild(fixture).generationId).toBe(recorded.generationId);
 
     fs.appendFileSync(path.join(fixture.repositoryRoot, "src/value.ts"), "changed\n");
+    expect(() => verifyPreparedElectronBuild(fixture)).toThrow("inputs are stale");
+  });
+
+  test("invalidates prepared outputs when the bundled account pair or its presence changes", () => {
+    const fixture = makeFixture();
+    vi.stubEnv("NODEX_BUILD_CLERK_ISSUER", undefined);
+    vi.stubEnv("NODEX_BUILD_CLERK_CLIENT_ID", undefined);
+    recordPreparedElectronBuild(fixture);
+    vi.stubEnv("NODEX_BUILD_CLERK_ISSUER", "");
+    vi.stubEnv("NODEX_BUILD_CLERK_CLIENT_ID", "");
+    expect(() => verifyPreparedElectronBuild(fixture)).toThrow("inputs are stale");
+
+    vi.stubEnv("NODEX_BUILD_CLERK_ISSUER", "https://clerk.example.test");
+    vi.stubEnv("NODEX_BUILD_CLERK_CLIENT_ID", "first-client");
+    recordPreparedElectronBuild(fixture);
+    vi.stubEnv("NODEX_BUILD_CLERK_CLIENT_ID", "second-client");
+    expect(() => verifyPreparedElectronBuild(fixture)).toThrow("inputs are stale");
+
+    recordPreparedElectronBuild(fixture);
+    vi.stubEnv("NODEX_BUILD_CLERK_ISSUER", "https://other.example.test");
     expect(() => verifyPreparedElectronBuild(fixture)).toThrow("inputs are stale");
   });
 

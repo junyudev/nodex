@@ -10,14 +10,10 @@ import * as Redacted from "effect/Redacted";
 import * as Stream from "effect/Stream";
 import { expect } from "vite-plus/test";
 import { make as makeAccount } from "../../nodex-account/NodexAccount";
+import { resolveNodexAccountConfiguration } from "../../nodex-account/configuration";
 import { NodexAccountPlatform } from "../NodexAccountPlatform";
 import { SecretEncryption } from "../SecretEncryption";
-import {
-  make,
-  parseNodexAccountCallback,
-  resolveNodexAccountConfiguration,
-  type NodexAccountHost,
-} from "./NodexAccountPlatform";
+import { make, parseNodexAccountCallback, type NodexAccountHost } from "./NodexAccountPlatform";
 
 const redirectUri = "http://127.0.0.1:12345/callback";
 const callback = (url: string) =>

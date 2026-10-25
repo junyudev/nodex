@@ -6,6 +6,7 @@ import { createExcalidrawFontAssetPlugins } from "./config/excalidraw-font-asset
 import { createStartupShellHtmlPlugin } from "./config/startup-shell-html";
 import { createTypographyBootstrapHtmlPlugin } from "./config/typography-bootstrap";
 import { BUNDLED_ELECTRON_MAIN_DEPENDENCIES } from "./config/electron-main-runtime-closure";
+import { resolveNodexAccountBuildConfiguration } from "./config/nodex-account-build";
 import {
   resolveRendererChunkFileName,
   resolveRendererManualChunk,
@@ -133,6 +134,11 @@ export default defineConfig(({ command, mode }) => {
 
   return {
     main: {
+      define: {
+        __NODEX_ACCOUNT_CONFIGURATION__: JSON.stringify(
+          resolveNodexAccountBuildConfiguration(process.env),
+        ),
+      },
       plugins: createSentryPlugins(),
       build: {
         externalizeDeps: {

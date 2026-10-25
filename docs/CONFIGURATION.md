@@ -20,17 +20,45 @@ Profile home resolves in this order:
 
 ## Nodex account
 
-The optional Desktop account connection reads `NODEX_CLERK_ISSUER` and
-`NODEX_CLERK_CLIENT_ID` from the captured process environment. Both are public
-deployment values, not user secrets or TOML preferences. Restart Desktop after
-changing them. Without both values, local work remains available and sign-in
-is unavailable. A malformed value is reported by Account settings without
-making Core depend on a cloud connection.
+Nodex Account has its own production identity domain and user pool:
+
+| Domain | Purpose |
+| --- | --- |
+| `nodex.jyu.app` | Product website, downloads and update feeds |
+| `accounts.nodex.jyu.app` | Clerk-hosted sign-in and account management |
+| `clerk.nodex.jyu.app` | Clerk OAuth issuer and Frontend API |
+| `api.nodex.jyu.app` | Reserved for the proposed Nodex Cloud API; no service is implemented yet |
+
+The account portal is not the OAuth issuer. Other products under `jyu.app`
+do not share Nodex identities or subscription access. Development and
+production use separate Clerk instances and public OAuth clients.
+
+Packaged Desktop reads its default public issuer/client pair from the Main
+bundle. The build takes this pair from
+[`config/nodex-account-production.json`](../config/nodex-account-production.json),
+whose value is either `null` for an unconfigured build or an object containing
+`issuer` and `clientId`. Installed apps therefore do not depend on a shell
+environment for sign-in. `NODEX_BUILD_CLERK_ISSUER` and
+`NODEX_BUILD_CLERK_CLIENT_ID` replace the pair at build time; both empty produce
+a local-only build. A nonempty incomplete pair, malformed issuer or Clerk
+development issuer fails the build. Build configuration is part of the
+prepared-build cache identity.
+
+At startup, either `NODEX_CLERK_ISSUER` or `NODEX_CLERK_CLIENT_ID` in the captured
+process environment replaces the entire bundled pair. Supply both for a
+runtime override; values are never combined across environments. Both empty
+disable the connection. Unpackaged development stays local unless these runtime
+values are supplied. Restart Desktop after changing them. These are public
+deployment values, not secrets or TOML preferences. Missing or invalid account
+configuration leaves local work available; a malformed pair is reported in
+Account settings.
 
 Configure a public Clerk OAuth application with PKCE required, opaque access
 tokens, consent enabled, scopes `openid profile email offline_access` and
 redirect URI `http://127.0.0.1/callback`. The desktop chooses an ephemeral port.
-No Clerk secret key or OAuth client secret belongs in the Desktop environment.
+No Clerk secret key or OAuth client secret belongs in the Desktop environment
+or bundle. DNS, TLS and Clerk configuration must be verified separately from
+the build; a configured client is not evidence that production sign-in works.
 
 Credentials are encrypted under `${NODEX_HOME}/account/credentials.enc`, bound
 to the Profile, issuer and client. They are separate from native Agent homes

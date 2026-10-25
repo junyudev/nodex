@@ -1,7 +1,7 @@
 # Nodex Account Login Behavior
 
 - Status: Active
-- Last updated: 2026-10-23
+- Last updated: 2026-10-25
 
 ## Scope
 
@@ -16,6 +16,13 @@ Library or introduce a cloud Account database. The current identity is the
 pair `(issuer, subject)`. A future cloud service maps that pair to its own
 Account ID and independently verifies access before authorizing spending; see
 the [subscription proposal](nodex-account-and-subscription-behavior.md).
+
+Nodex Account is a product-specific identity. Other products on `jyu.app` do
+not share its user pool or subscription access. Production identity is bound
+to the stable issuer `https://clerk.nodex.jyu.app`; the browser account portal
+uses `https://accounts.nodex.jyu.app`. Moving the issuer requires an explicit
+identity migration rather than matching users by email. Domain roles and
+build/runtime configuration belong in [Configuration](../CONFIGURATION.md#nodex-account).
 
 ## Account entry points
 
@@ -60,6 +67,9 @@ Closing the menu or leaving Account settings does not cancel a browser login.
 Deployment configuration supplies a public OAuth client ID and HTTPS Clerk
 issuer. Missing or invalid configuration leaves local work available. An
 unconfigured Profile performs no identity discovery or login network request.
+Packaged Desktop can use its bundled production configuration without a shell
+environment. Unpackaged development requires an explicit runtime pair; a
+runtime override replaces both values together.
 
 Each attempt binds an ephemeral `127.0.0.1` listener, generates independent
 state and an S256 PKCE verifier, and opens the system browser. The registered
@@ -124,3 +134,9 @@ remain unchanged across sign-in, refresh, restart, cancellation and sign-out.
 An explicit live test separately exercises the configured Clerk development
 instance with a synthetic test identity and produces review evidence without
 credentials or private user content.
+
+Production acceptance additionally requires verified DNS and TLS, the production
+public client and a real browser sign-in through a packaged Desktop build.
+Verify refresh, restart and sign-out against that same issuer/client pair.
+Development evidence and successful build configuration do not establish
+production acceptance or enable subscription purchases.

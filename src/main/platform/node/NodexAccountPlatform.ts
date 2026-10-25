@@ -25,6 +25,7 @@ import {
   type NodexAccountRefreshLease,
 } from "../NodexAccountPlatform";
 import { SecretEncryption } from "../SecretEncryption";
+import { resolveNodexAccountConfiguration } from "../../nodex-account/configuration";
 
 const failure = (code: NodexAccountErrorCode) => new NodexAccountPlatformError({ code });
 const MAX_RESPONSE_BYTES = 64 * 1024;
@@ -106,31 +107,6 @@ export const parseNodexAccountCallback = (input: {
     return { kind: "code", code };
   } catch {
     return { kind: "invalid" };
-  }
-};
-
-/** Only the public issuer/client ID are configurable; credentials never come from environment. */
-export const resolveNodexAccountConfiguration = (host: NodexAccountHost) => {
-  const issuer = host.environment.NODEX_CLERK_ISSUER?.trim();
-  const clientId = host.environment.NODEX_CLERK_CLIENT_ID?.trim();
-  if (!issuer && !clientId) return { kind: "absent" } as const;
-  if (!issuer || !clientId || clientId.length > 1024) return { kind: "invalid" } as const;
-  try {
-    const url = new URL(issuer);
-    const fixture = !host.isPackaged && host.environment.NODEX_TEST_CLERK_LOOPBACK === "1";
-    if (
-      (url.protocol !== "https:" &&
-        !(fixture && url.protocol === "http:" && url.hostname === "127.0.0.1")) ||
-      url.username ||
-      url.password ||
-      url.search ||
-      url.hash ||
-      url.pathname !== "/"
-    )
-      return { kind: "invalid" } as const;
-    return { kind: "ready", issuer: url.origin, clientId } as const;
-  } catch {
-    return { kind: "invalid" } as const;
   }
 };
 
