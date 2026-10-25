@@ -158,11 +158,8 @@ export const live: Layer.Layer<
             if (!sessionId)
               return yield* fail("prepare-definition", "Choose a chat for this heartbeat.");
             const session = yield* workspace.getProjectSession(sessionId);
-            if (
-              !session?.executionRef ||
-              session.archived ||
-              session.projectId !== (input.projectId ?? current?.projectId ?? null)
-            )
+            // Heartbeats inherit execution context from the Session; Core rejects definition overrides.
+            if (!session?.executionRef || session.archived)
               return yield* fail(
                 "prepare-definition",
                 "This heartbeat's chat is archived or no longer available. Choose another chat.",
