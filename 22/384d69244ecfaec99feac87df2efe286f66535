@@ -1,0 +1,25 @@
+src/renderer/features/acp-agents/acp-agent-model.ts
+  s_8ba9572f1b48c1::t_328ec1bd6450ba 312-313,317
+src/renderer/features/acp-agents/acp-agent-model.test.ts
+  s_8ba9572f1b48c1::t_328ec1bd6450ba 235-236,238-240
+src/renderer/features/acp-agents/acp-agents-owner.ts
+  s_8ba9572f1b48c1::t_3577797785437b 471-476,480-481,495-497
+src/renderer/features/acp-agents/acp-agents-owner.test.ts
+  s_8ba9572f1b48c1::t_46fef1ce12f582 100-147
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "22384d69244ecfaec99feac87df2efe286f66535",
+  "prompts": {},
+  "sessions": {
+    "s_8ba9572f1b48c1": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "cf77dbe9-4c90-42a1-89dd-a69d75865e03",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
