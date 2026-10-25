@@ -1,0 +1,23 @@
+src/renderer/features/local-conversation/agent-runtime-conversation-owner.ts
+  s_8ba9572f1b48c1::t_bd097ca401a905 1023,1026-1061
+  s_8ba9572f1b48c1::t_4ed2236376d32d 920-924
+src/renderer/features/local-conversation/agent-runtime-conversation-owner.node.test.ts
+  s_8ba9572f1b48c1::t_d6c9e639aa6ffb 946-952,969-974
+  s_8ba9572f1b48c1::t_9c33c193aa369a 934-945,953-968,975-988
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "aaa9ffcbbb763c07f35b3137a9a6dfbbea03af0c",
+  "prompts": {},
+  "sessions": {
+    "s_8ba9572f1b48c1": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "cf77dbe9-4c90-42a1-89dd-a69d75865e03",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
