@@ -1,0 +1,25 @@
+docs/ARCHITECTURE.md
+  s_9cccd37e800d7a::t_8e8989902e613a 830
+docs/SECURITY.md
+  s_9cccd37e800d7a::t_0f4d0c40b3ac4e 242
+docs/adr/0056-native-codex-and-capability-negotiated-agent-backends.md
+  s_9cccd37e800d7a::t_28dc948fa2a3cd 8
+docs/adr/0071-configured-acp-agents-and-explicit-management.md
+  s_9cccd37e800d7a::t_0d456e36993413 1
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "76cb701346fdce58f1fddbb57c3b236c7e2b0bc1",
+  "prompts": {},
+  "sessions": {
+    "s_9cccd37e800d7a": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a16d80-f1cc-7471-9f61-cb6ea1bc793d",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
