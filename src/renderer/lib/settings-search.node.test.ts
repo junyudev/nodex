@@ -135,6 +135,31 @@ describe("settings search", () => {
     expect(tiedResults[1]?.sectionId).toBe("agent");
   });
 
+  test("a setting holding the whole query outranks a panel that only mentions each word", () => {
+    const results = buildSettingsSearchResults({
+      query: "sign in",
+      targets: buildSettingsSearchTargets(
+        [
+          { id: "general", label: "Account", searchMessages: ["Sign in", "Sign out"] },
+          {
+            id: "agent",
+            label: "Agents",
+            searchMessages: ["Sign in", "Install agents", "Signature"],
+          },
+          { id: "keyboard", label: "Keyboard", searchMessages: ["Signature", "Install"] },
+        ],
+        SEARCH_CONTEXT,
+      ),
+      visibleSectionIds: ["general", "agent", "keyboard"],
+    });
+
+    expect(results.map((result) => [result.sectionId, result.label])).toEqual([
+      ["general", "Sign in"],
+      ["agent", "Sign in"],
+      ["keyboard", "Keyboard"],
+    ]);
+  });
+
   test("markup-like messages fall back to the panel label", () => {
     const results = resultsFor("markup");
 

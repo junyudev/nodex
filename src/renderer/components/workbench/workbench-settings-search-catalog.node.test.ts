@@ -135,6 +135,15 @@ describe("workbench settings search catalog", () => {
     expect(settingsSearchAnchor("general-settings", "General")).toBeNull();
   });
 
+  test("leads sign-in searches with the Nodex Account and still offers Agent sign-in", () => {
+    for (const query of ["Sign in", "sign out"]) {
+      const results = searchCatalog(query);
+      expect(results[0]?.sectionId).toBe("account");
+      expect(results[1]?.sectionId).toBe("agent");
+      expect(settingsSearchAnchor("agent", query)).toBe("acp");
+    }
+  });
+
   test("does not index the retired raw Codex config and agent permission controls", () => {
     for (const query of [
       "Approval policy",

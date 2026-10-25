@@ -115,6 +115,11 @@ the owning section or anchor; a result inside a collapsed group, such as an Agen
 card or Appearance's Advanced group, opens that group on arrival. A Command K
 Settings command lands the same way for the query that found it.
 
+Results whose section name matches come first, then sections where one setting
+holds the whole query, then sections that only mention each word; ties keep rail
+order. A sign-in search therefore leads with Account and still offers the Agent
+sign-in under Other agents.
+
 Settings search uses its dedicated ranking/list-navigation helpers rather than
 the command-palette index.
 

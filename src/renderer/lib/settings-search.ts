@@ -30,7 +30,8 @@ export interface SettingsSearchResult<TSectionId extends string = string> {
 interface ScoredSettingsSearchResult<
   TSectionId extends string = string,
 > extends SettingsSearchResult<TSectionId> {
-  matchPriority: 0 | 1;
+  /** 0: the panel itself; 1: one setting holds the whole query; 2: its words are spread out. */
+  matchPriority: 0 | 1 | 2;
   score: number;
 }
 
@@ -125,6 +126,12 @@ function scoreSettingsSearchTarget<TSectionId extends string>(
 
   if (multiTermScore === 0) return null;
 
+  const phraseScore = Math.max(
+    0,
+    ...[...target.messageTexts, ...target.termTexts].map((text) =>
+      scoreSettingsQueryMatch(text, query),
+    ),
+  );
   let bestMessage: { score: number; text: string } | null = null;
 
   for (const text of target.messageTexts) {
@@ -138,9 +145,9 @@ function scoreSettingsSearchTarget<TSectionId extends string>(
   return {
     label:
       bestMessage === null || /[<{]/u.test(bestMessage.text) ? target.panelLabel : bestMessage.text,
-    matchPriority: 1,
+    matchPriority: phraseScore > 0 ? 1 : 2,
     panelLabel: target.panelLabel,
-    score: multiTermScore,
+    score: phraseScore > 0 ? phraseScore : multiTermScore,
     sectionId: target.sectionId,
   };
 }
