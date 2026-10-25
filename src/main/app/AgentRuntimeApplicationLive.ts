@@ -41,6 +41,10 @@ import { make as makeHost } from "../agent-runtime/AgentRuntimeHost";
 import { make as makeDesktopTools } from "../agent-runtime/AgentRuntimeDesktopTools";
 import { make as makeProviderCatalog } from "../agent-runtime/AgentRuntimeProviderCatalog";
 import {
+  AgentRuntimeClaudeUsage,
+  make as makeClaudeUsage,
+} from "../agent-runtime/AgentRuntimeClaudeUsage";
+import {
   make as makeHostTools,
   runtimeHostToolCatalog,
   type AgentRuntimeHostToolExecutor,
@@ -651,6 +655,24 @@ const supervisor = Layer.effectContext(
       Effect.map((result) => result ?? { applied: true, deferredInstanceIds: [] }),
     );
     yield* Deferred.succeed(ready, runtime);
+    const claudeUsage = yield* makeClaudeUsage({
+      declared: settings.snapshot().pipe(
+        Effect.map((snapshot) =>
+          snapshot.claudeAgents.instances.flatMap((configured) => {
+            const id = configured.enabled
+              ? agentRuntimeProviderId({ kind: "claude", instanceConfigId: configured.id })
+              : null;
+            return id ? [id] : [];
+          }),
+        ),
+      ),
+      known: product.knownCatalog(),
+      refresh: (instanceIds) => product.catalog({ instanceIds, refresh: true }),
+      logout: product.logoutProviders,
+      served: providerCatalog.served,
+      connectionChanges: runtime.connectionChanges,
+      activityChanges: activity.activityChanges,
+    });
     // A held storage lease spans the capture with no request in flight.
     const snapshotAdmission = {
       withWriter: admission.withWriter,
@@ -685,7 +707,11 @@ const supervisor = Layer.effectContext(
         connection: runtime.connectionState,
         connectionChanges: runtime.connectionChanges,
       }),
-      Context.add(AgentRuntimeProviderConfiguration, { refresh }),
+      // Changed Agent settings change which Claude accounts there are.
+      Context.add(AgentRuntimeProviderConfiguration, {
+        refresh: refresh.pipe(Effect.ensuring(claudeUsage.reread)),
+      }),
+      Context.add(AgentRuntimeClaudeUsage, claudeUsage),
       Context.add(AgentRuntimeApplication, product),
       Context.add(AgentRuntimeProfileSnapshot, profileSnapshot),
       Context.add(HostActivation, {

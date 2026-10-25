@@ -246,6 +246,19 @@ export type AgentRuntimeSessionActivityChange =
   /** Consumers discard local state and read a fresh snapshot. */
   | { readonly type: "reset"; readonly sequence: number };
 
+/**
+ * Claude subscription usage as Main last read it from the Claude Agents' own checks; every
+ * window shows this one snapshot.
+ */
+export interface ClaudeUsageSnapshot {
+  /** `loading`: nothing read yet. `ready`: the latest read answered. `unavailable`: it failed. */
+  readonly status: "loading" | "ready" | "unavailable";
+  /** The Claude Agents as last read, kept through a failed read; null before the first read. */
+  readonly providers: AgentRuntimeOperations["providers.read"]["output"] | null;
+  /** Why the latest read failed. */
+  readonly reason: string | null;
+}
+
 /** Supervised execution process availability, independent of any one Session. */
 export type AgentRuntimeConnectionState =
   /** Not running and nothing requires it; the next operation starts it. */
@@ -368,6 +381,13 @@ export interface AgentRuntimeIpcApi {
   "agent-runtime:providers:known": {
     args: [];
     result: AgentRuntimeOperations["providers.read"]["output"] | null;
+  };
+  "agent-runtime:claude-usage:read": { args: []; result: ClaudeUsageSnapshot };
+  /** Reads Claude usage again now, unless it was read moments ago. */
+  "agent-runtime:claude-usage:refresh": { args: []; result: ClaudeUsageSnapshot };
+  "agent-runtime:claude-usage:logout": {
+    args: [input: { readonly instanceIds: readonly string[] }];
+    result: ClaudeUsageSnapshot;
   };
   "agent-runtime:session:observe": {
     args: [input: AgentRuntimeObserveInput];

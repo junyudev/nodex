@@ -286,6 +286,11 @@ type ClaudeCapabilitiesProbe = {
    * otherwise successful response mean the account has none (API key).
    */
   readonly usage?: Pick<SDKControlGetUsageResponse, "rate_limits_available" | "rate_limits">;
+  /**
+   * When `get_usage` answered. The probe is cached, so a status check that
+   * reuses it must date the windows by this, not by the check itself.
+   */
+  readonly usageReadAt?: string;
 };
 
 function parseClaudeInitializationCommands(
@@ -419,8 +424,11 @@ const probeClaudeCapabilities = (
         const usage =
           usageResult && Result.isSuccess(usageResult)
             ? {
-                rate_limits_available: usageResult.success.rate_limits_available,
-                rate_limits: usageResult.success.rate_limits,
+                usage: {
+                  rate_limits_available: usageResult.success.rate_limits_available,
+                  rate_limits: usageResult.success.rate_limits,
+                },
+                usageReadAt: DateTime.formatIso(yield* DateTime.now),
               }
             : undefined;
         const account = init.account as
@@ -439,7 +447,7 @@ const probeClaudeCapabilities = (
           apiKeySource: account?.apiKeySource,
           apiProvider: account?.apiProvider,
           slashCommands: parseClaudeInitializationCommands(init.commands),
-          ...(usage ? { usage } : {}),
+          ...usage,
         } satisfies ClaudeCapabilitiesProbe;
       }),
     ),
@@ -467,6 +475,29 @@ const runClaudeCommand = Effect.fn("runClaudeCommand")(function* (
     shell: spawnCommand.shell,
   });
   return yield* spawnAndCollect(claudeSettings.binaryPath, command);
+});
+
+/**
+ * Signs this profile's Claude Code out as `claude auth logout` does in a terminal, so every app
+ * that shares its config directory is signed out too. Answers with the CLI's own explanation
+ * when it reports a failure, otherwise null; the caller's re-check decides the outcome.
+ */
+export const signOutClaudeCli = Effect.fn("signOutClaudeCli")(function* (
+  claudeSettings: ClaudeSettings,
+  environment?: NodeJS.ProcessEnv,
+) {
+  const result = yield* runClaudeCommand(
+    claudeSettings,
+    ["auth", "logout"],
+    environment ?? process.env,
+  ).pipe(Effect.timeoutOption(DEFAULT_TIMEOUT_MS));
+  if (Option.isNone(result)) return "Claude Code did not finish signing out.";
+  if (result.value.code === 0) return null;
+  const explanation = `${result.value.stderr}\n${result.value.stdout}`
+    .split("\n")
+    .map((line) => line.trim())
+    .find(Boolean);
+  return explanation ?? "Claude Code could not sign out.";
 });
 
 /** Read commands from the same cwd Claude uses for a workspace session. */
@@ -656,14 +687,14 @@ export const checkClaudeProviderStatus = Effect.fn("checkClaudeProviderStatus")(
       subscriptionType: capabilities.subscriptionType,
       authMethod: capabilities.tokenSource,
     }) ?? apiProviderAuthMetadata(capabilities.apiProvider);
-  const usageLimits = !capabilities.usage
+  const usageRead = capabilities.usage
+    ? { response: capabilities.usage, checkedAt: capabilities.usageReadAt ?? checkedAt }
+    : undefined;
+  const usageLimits = !usageRead
     ? makeUnavailableUsageLimits({ checkedAt, reason: "probeFailed" })
     : scopedLimitNames
-      ? yield* recordClaudeUsageResponse(scopedLimitNames, {
-          response: capabilities.usage,
-          checkedAt,
-        })
-      : claudeUsageResponseToLimits({ response: capabilities.usage, checkedAt }).limits;
+      ? yield* recordClaudeUsageResponse(scopedLimitNames, usageRead)
+      : claudeUsageResponseToLimits(usageRead).limits;
   const resetCredits =
     resolveResetCredits &&
     capabilities.subscriptionType &&

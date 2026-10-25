@@ -1,9 +1,11 @@
 import { describe, expect, test } from "vite-plus/test";
 import type { AgentRuntimeOperations } from "@nodex/agent-runtime/contracts";
+import type { ClaudeUsageSnapshot } from "../../shared/agent-runtime-api";
 import type { CodexAccountSnapshot } from "./types";
 import {
   USAGE_READING_STALE_AFTER_MS,
-  claudeUsageReadings,
+  claudeUsageAccounts,
+  claudeUsagePlaceholder,
   codexUsageReading,
   describeUsageMeter,
   describeUsageMeterLabel,
@@ -50,9 +52,15 @@ const reading = (overrides: Partial<UsageReading> = {}): UsageReading => ({
   ],
   observedAt: NOW - 5 * 60_000,
   readFailed: false,
-  refresh: "afterReply",
   ...overrides,
 });
+
+const read = (
+  providers: readonly RuntimeProvider[],
+  status: ClaudeUsageSnapshot["status"] = "ready",
+): ClaudeUsageSnapshot => ({ status, providers, reason: null });
+const claudeReadings = (providers: readonly RuntimeProvider[]) =>
+  claudeUsageAccounts(read(providers)).map((account) => account.reading);
 
 const claudeProvider = (overrides: Partial<RuntimeProvider> = {}): RuntimeProvider =>
   ({
@@ -227,7 +235,7 @@ describe("usage meter", () => {
     expect(describeUsageMeterLabel(never, NOW)).toBe("Claude usage not read yet");
     expect(describeUsageProvenance(never, "this Mac", NOW)).toEqual({
       status: "Not read on this Mac yet",
-      detail: "Updates when Claude replies in Nodex.",
+      detail: null,
     });
 
     const failed = describeUsageMeter(
@@ -244,7 +252,7 @@ describe("usage meter", () => {
   });
 
   test("provenance separates the account's limits from this computer's reading", () => {
-    const view = describeUsageMeter(reading({ refresh: "continuous" }), NOW);
+    const view = describeUsageMeter(reading(), NOW);
     expect(describeUsageProvenance(view, "this Mac", NOW)).toEqual({
       status: "Account limits · read on this Mac 5 min ago",
       detail: null,
@@ -280,7 +288,7 @@ describe("usage readings", () => {
   });
 
   test("Claude accounts come from the provider snapshot the Agent already published", () => {
-    const [claude] = claudeUsageReadings([claudeProvider()]);
+    const [claude] = claudeReadings([claudeProvider()]);
     expect(claude?.plan).toBe("Claude Max");
     expect(claude?.observedAt).toBe(NOW - 10 * 60_000);
     expect(claude?.windows.map((window) => [window.id, window.label, window.scope])).toEqual([
@@ -292,7 +300,7 @@ describe("usage readings", () => {
 
   test("only Claude accounts that can have limits get a meter", () => {
     expect(
-      claudeUsageReadings([
+      claudeReadings([
         claudeProvider({ enabled: false }),
         claudeProvider({ installed: false }),
         claudeProvider({ auth: { status: "unauthenticated" }, usageLimits: undefined }),
@@ -311,11 +319,41 @@ describe("usage readings", () => {
     ).toEqual([]);
   });
 
+  test("a reading kept through a failed refresh stays dated by its own read and says so", () => {
+    const kept = claudeProvider({
+      usageLimits: {
+        ...claudeProvider().usageLimits!,
+        unavailable: { reason: "probeFailed" },
+      },
+    });
+    const [account] = claudeReadings([kept]);
+    expect(account?.readFailed).toBe(true);
+    expect(account?.observedAt).toBe(NOW - 10 * 60_000);
+    expect(describeUsageMeter(account!, NOW).status).toBe("measured");
+
+    // Main could not read at all: everything it kept is marked the same way.
+    const [unreachable] = claudeUsageAccounts(read([claudeProvider()], "unavailable"));
+    expect(unreachable?.reading.readFailed).toBe(true);
+  });
+
+  test("only a snapshot Main has never read holds the Claude slot", () => {
+    expect(claudeUsagePlaceholder(null)).toBe(null);
+    expect(claudeUsagePlaceholder({ status: "loading", providers: null, reason: null })).toEqual({
+      kind: "loading",
+    });
+    expect(
+      claudeUsagePlaceholder({ status: "unavailable", providers: null, reason: "Timed out" }),
+    ).toEqual({ kind: "unavailable", reason: "Timed out" });
+    expect(
+      claudeUsagePlaceholder({ status: "unavailable", providers: [], reason: "Timed out" }),
+    ).toBe(null);
+  });
+
   test("a signed-in account without a reading is shown as unread or failed", () => {
-    const [unread] = claudeUsageReadings([claudeProvider({ usageLimits: undefined })]);
+    const [unread] = claudeReadings([claudeProvider({ usageLimits: undefined })]);
     expect(unread?.observedAt).toBe(null);
     expect(unread?.readFailed).toBe(false);
-    const [failed] = claudeUsageReadings([
+    const [failed] = claudeReadings([
       claudeProvider({
         usageLimits: {
           checkedAt: new Date(NOW).toISOString(),
@@ -350,10 +388,17 @@ describe("usage readings", () => {
       instanceId: "claude-c" as RuntimeProvider["instanceId"],
       auth: { status: "authenticated", email: "other@example.com", label: "Claude Pro" },
     });
-    const readings = claudeUsageReadings([older, newer, other]);
-    expect(readings.map((entry) => [entry.account, entry.observedAt, entry.title])).toEqual([
-      ["dev@example.com", NOW, "Claude"],
-      ["other@example.com", NOW - 10 * 60_000, "Claude"],
+    const accounts = claudeUsageAccounts(read([older, newer, other]));
+    expect(
+      accounts.map(({ reading, instanceIds }) => [
+        reading.account,
+        reading.observedAt,
+        reading.title,
+        instanceIds,
+      ]),
+    ).toEqual([
+      ["dev@example.com", NOW, "Claude", ["claude-a", "claude-b"]],
+      ["other@example.com", NOW - 10 * 60_000, "Claude", ["claude-c"]],
     ]);
   });
 });

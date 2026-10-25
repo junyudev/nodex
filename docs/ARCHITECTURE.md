@@ -809,6 +809,8 @@ it never hydrates child histories for status observation. Product writers share
 snapshot admission without holding a Project lifecycle gate across Host callbacks.
 Live Session activity (running, waiting, background) is one Main-owned projection derived from
 the Runtime per process generation and served to every window; it is never copied into Core.
+Claude subscription usage is likewise one Main-owned snapshot served to every window, read only
+through the Claude Agents' own Runtime provider checks rather than from the account directly.
 
 The renderer owns a bounded, keyed presentation cache derived from execution snapshots
 and events. Root and child views lease that same owner; the final reader releases

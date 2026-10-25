@@ -43,6 +43,7 @@ import {
   makePendingClaudeProvider,
   probeClaudeCapabilities,
   probeClaudeWorkspaceSnapshot,
+  signOutClaudeCli,
 } from "../ClaudeProvider.ts";
 import { makeManagedServerProvider } from "@t3tools/provider-core/server/managedProvider";
 import * as ModelCatalog from "@t3tools/provider-core/server/ModelCatalog";
@@ -346,6 +347,37 @@ export const ClaudeDriver: ProviderDriver<ClaudeSettings, ClaudeDriverEnv, Path.
           ),
         );
 
+      // Claude Code keeps its own sign-in, so signing out runs its CLI, then re-checks from
+      // scratch. A profile that still reads as signed in (an API key or token in its
+      // environment) reports why instead of pretending to be signed out.
+      const signOut: NonNullable<ProviderInstance["signOut"]> = Effect.gen(function* () {
+        const explanation = yield* signOutClaudeCli(effectiveConfig, processEnv).pipe(
+          Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
+          Effect.provideService(FileSystem.FileSystem, fileSystem),
+          Effect.provideService(Path.Path, path),
+          Effect.mapError(
+            (cause) =>
+              new ProviderDriverError({
+                driver: DRIVER_KIND,
+                instanceId,
+                detail: "Claude Code could not be started to sign out.",
+                cause,
+              }),
+          ),
+        );
+        yield* Cache.invalidateAll(capabilitiesProbeCache);
+        const refreshed = yield* snapshot.refresh;
+        if (refreshed.auth.status === "authenticated") {
+          return yield* new ProviderDriverError({
+            driver: DRIVER_KIND,
+            instanceId,
+            detail:
+              explanation ??
+              "Claude Code is still signed in, possibly through an API key or token in this profile's environment.",
+          });
+        }
+      });
+
       return {
         instanceId,
         driverKind: DRIVER_KIND,
@@ -369,6 +401,7 @@ export const ClaudeDriver: ProviderDriver<ClaudeSettings, ClaudeDriverEnv, Path.
         orchestrationAdapter,
         textGeneration,
         consumeResetCredit,
+        signOut,
       } satisfies ProviderInstance;
     }),
 };

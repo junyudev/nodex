@@ -2753,6 +2753,15 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
           return providers;
         }),
       ),
+    /** Signs the named Agents out of the sign-in their own CLI keeps; answers their new state. */
+    logoutProviders: (instanceIds: readonly string[]) =>
+      owned(
+        "logout",
+        Effect.gen(function* () {
+          const connection = yield* options.connect;
+          return yield* connection.request("providers.logout", { instanceIds });
+        }),
+      ),
     /**
      * The catalog Nodex already knows, without starting execution: a running process answers
      * live (and the answer is kept), a stopped one is represented by the kept catalog, and null

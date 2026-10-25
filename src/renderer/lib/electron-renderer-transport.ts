@@ -407,6 +407,14 @@ export function createElectronRendererTransport(bridge: ElectronRendererBridge):
         if (payload) callback(payload);
       });
     },
+    subscribeClaudeUsageChanges(callback) {
+      return bridge.on("agent-runtime:claude-usage-changed", (...args: unknown[]) => {
+        const payload = args[0] as
+          | import("../../shared/agent-runtime-api").ClaudeUsageSnapshot
+          | undefined;
+        if (payload) callback(payload);
+      });
+    },
     subscribeCodexHostMessages(callback: (message: CodexHostMessage) => void) {
       return bridge.on("codex:host-message", (...args: unknown[]) => {
         const payload = args[0] as CodexHostMessage | undefined;

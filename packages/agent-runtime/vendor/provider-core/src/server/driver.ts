@@ -103,6 +103,12 @@ export interface ProviderInstance {
     ProviderConsumeResetCreditOutcome,
     ProviderDriverError
   >;
+  /**
+   * Remove the sign-in this instance's own CLI keeps, as signing out in its
+   * terminal would, then re-check. Fails when the check still finds the
+   * instance signed in. For providers whose sign-in Nodex does not run.
+   */
+  readonly signOut?: Effect.Effect<void, ProviderDriverError>;
   readonly orchestrationAdapter: ProviderAdapter.ProviderAdapterV2["Service"];
   readonly textGeneration: ProviderTextGeneration;
   readonly auth?: ProviderAuthController;

@@ -2,9 +2,11 @@ import { join } from "node:path";
 import type { AgentRuntimeOperations } from "@nodex/agent-runtime/contracts";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
+import * as PubSub from "effect/PubSub";
 import * as Ref from "effect/Ref";
 import * as Schema from "effect/Schema";
 import * as Semaphore from "effect/Semaphore";
+import * as Stream from "effect/Stream";
 
 type Providers = AgentRuntimeOperations["providers.read"]["output"];
 
@@ -39,6 +41,7 @@ export const make = Effect.fn("AgentRuntimeProviderCatalog.make")(function* (opt
   const path = join(options.home, "provider-catalog.json");
   const writes = yield* Semaphore.make(1);
   const memory = yield* Ref.make<Stored | null>(null);
+  const served = yield* PubSub.sliding<Providers>(1);
   const stored = Effect.gen(function* () {
     const kept = yield* Ref.get(memory);
     if (kept) return kept;
@@ -65,16 +68,16 @@ export const make = Effect.fn("AgentRuntimeProviderCatalog.make")(function* (opt
       if (yield* options.running) return null;
       return yield* saved;
     }).pipe(Effect.catchCause(() => Effect.succeed(null))),
-    /**
-     * The kept catalog even while a process runs, for observers that must not reach it, such
-     * as usage meters that settle for the last reading rather than start execution.
-     */
+    /** The kept catalog even while a process runs, for observers that must not reach it. */
     saved,
+    /** Every whole catalog a live process serves, as it is served. */
+    served: Stream.fromPubSub(served),
     /** Keeps what a live process just served for the next stopped read. */
     record: (providers: Providers) =>
       writes
         .withPermits(1)(
           Effect.gen(function* () {
+            yield* PubSub.publish(served, providers);
             const identity = yield* options.identity;
             const encoded = JSON.stringify({ version: 1, identity, providers });
             if ((yield* Ref.get(memory))?.encoded === encoded) return;

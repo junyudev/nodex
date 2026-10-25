@@ -236,12 +236,8 @@ function UsageWindowRow({
 /** Says why there is nothing to draw, unless the provenance footer already says it. */
 function emptyUsageMessage(view: UsageMeterView): string | null {
   if (view.status === "unmetered") return "Billed by usage; no subscription limits apply.";
-  const silent =
-    view.status === "unread" &&
-    view.windows.length === 0 &&
-    !view.reading.readFailed &&
-    view.reading.refresh === "continuous";
-  return silent ? "Codex hasn't reported usage limits yet." : null;
+  const silent = view.status === "unread" && view.windows.length === 0 && !view.reading.readFailed;
+  return silent ? `${view.reading.title} hasn't reported usage limits yet.` : null;
 }
 
 /**

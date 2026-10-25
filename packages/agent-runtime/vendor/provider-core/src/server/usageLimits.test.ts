@@ -80,10 +80,28 @@ describe("applyUsageLimitsUpdate", () => {
 
 describe("resolveUsageLimitsAfterProbe", () => {
   it("keeps the last good windows through a failed probe but not an unsupported one", () => {
-    const failed = { checkedAt, windows: [], unavailable: { reason: "probeFailed" as const } };
+    const failed = {
+      checkedAt: "2026-09-03T12:30:00.000Z",
+      windows: [],
+      unavailable: { reason: "probeFailed" as const },
+    };
     const unsupported = { checkedAt, windows: [], unavailable: { reason: "unsupported" as const } };
-    expect(resolveUsageLimitsAfterProbe({ published, probed: failed })).toBe(published);
+    // The kept windows stay dated by their own read and say the latest one failed.
+    const kept = resolveUsageLimitsAfterProbe({ published, probed: failed });
+    expect(kept).toEqual({ ...published, unavailable: failed.unavailable });
+    expect(resolveUsageLimitsAfterProbe({ published: kept, probed: failed })).toEqual(kept);
     expect(resolveUsageLimitsAfterProbe({ published, probed: unsupported })).toBe(unsupported);
     expect(resolveUsageLimitsAfterProbe({ published: undefined, probed: failed })).toBe(failed);
+  });
+
+  it("clears a kept failure once a turn reports usage again", () => {
+    const kept = { ...published, unavailable: { reason: "probeFailed" as const } };
+    expect(
+      applyUsageLimitsUpdate({
+        previous: kept,
+        checkedAt: "2026-09-03T12:40:00.000Z",
+        update: { windows: [session] },
+      }),
+    ).toEqual({ checkedAt: "2026-09-03T12:40:00.000Z", windows: published.windows });
   });
 });

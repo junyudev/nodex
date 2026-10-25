@@ -215,3 +215,6 @@ export const AgentRuntimeCatalogSchema = z
     instanceIds: z.array(z.string().trim().min(1).max(128)).max(32).optional(),
   })
   .strict();
+export const ClaudeUsageLogoutSchema = z
+  .object({ instanceIds: z.array(z.string().trim().min(1).max(128)).min(1).max(32) })
+  .strict();

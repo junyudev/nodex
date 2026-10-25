@@ -19,6 +19,7 @@ import {
   PersistChatAttachmentsInput,
   PersistChatAttachmentsResult,
   ProviderInstanceConfigMap,
+  ProviderInstanceId,
   OrchestrationV2Subagent,
   OrchestrationV2ConversationMessage,
   OrchestrationV2ExecutionLocation,
@@ -66,6 +67,7 @@ import { rollbackThread } from "./Rollback.ts";
 import { ThreadManagementService } from "../orchestration-v2/ThreadManagementService.ts";
 import * as IdAllocator from "@t3tools/provider-core/server/IdAllocator";
 import * as Providers from "../provider/ProviderRegistry.ts";
+import { ProviderInstanceRegistry } from "../provider/ProviderInstanceRegistry.ts";
 import * as Configuration from "../config.ts";
 import { persistChatAttachments } from "../assets/PersistChatAttachments.ts";
 import * as ProviderConfiguration from "./ProviderConfiguration.ts";
@@ -226,6 +228,7 @@ const AgentRequest = Schema.Union([
       instanceIds: Schema.optional(Schema.Array(Schema.String)),
     }),
   ),
+  request("providers.logout", Schema.Struct({ instanceIds: Schema.Array(ProviderInstanceId) })),
   request(
     "native-session.authority",
     Schema.Struct({
@@ -452,6 +455,7 @@ export const make = Effect.fn("AgentRuntime.makeService")(function* (
   const identity = yield* readIdentity;
   const effectOutbox = yield* EffectOutboxV2;
   const providers = yield* Providers.ProviderRegistry;
+  const instances = yield* ProviderInstanceRegistry;
   const providerConfiguration = yield* ProviderConfiguration.make(
     yield* Schema.decodeUnknownEffect(ProviderInstanceConfigMap)(initialProviders),
   );
@@ -669,7 +673,14 @@ export const make = Effect.fn("AgentRuntime.makeService")(function* (
         const named = input.input.instanceIds;
         return yield* (
           input.input.refresh
-            ? providers.refresh()
+            ? named
+              ? Effect.forEach(
+                  named,
+                  (instanceId) =>
+                    providers.refreshInstance(instanceId as ProviderInstanceId, { fresh: true }),
+                  { concurrency: "unbounded", discard: true },
+                ).pipe(Effect.andThen(providers.getProviders))
+              : providers.refresh()
             : named
               ? providers.getCheckedProvidersFor(named)
               : providers.getCheckedProviders
@@ -679,6 +690,17 @@ export const make = Effect.fn("AgentRuntime.makeService")(function* (
           ),
           Effect.flatMap(encodeProviders),
         );
+      }
+      case "providers.logout": {
+        const named = input.input.instanceIds;
+        // One at a time: profiles that share a config directory share one sign-in.
+        for (const instanceId of named) {
+          const instance = yield* instances.getInstance(instanceId);
+          if (!instance?.signOut)
+            return yield* Effect.fail(new Error("This Agent cannot be signed out in Nodex."));
+          yield* instance.signOut.pipe(Effect.mapError((error) => new Error(error.detail)));
+        }
+        return yield* providers.getCheckedProvidersFor(named).pipe(Effect.flatMap(encodeProviders));
       }
       case "native-session.authority":
         return yield* readNativeSessionAuthority(input.input);

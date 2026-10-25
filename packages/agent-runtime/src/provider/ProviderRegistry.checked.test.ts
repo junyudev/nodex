@@ -135,3 +135,39 @@ it.effect("a read of named Agents does not wait for another Agent's check", () =
     }).pipe(Effect.provide(registryOf([codex, claude])), Effect.scoped);
   }).pipe(Effect.provide(environment)),
 );
+
+it.effect("a fresh refresh of one Agent checks it again from scratch and leaves the others", () =>
+  Effect.gen(function* () {
+    const claudeChecked: ServerProvider = {
+      ...checked,
+      instanceId: ProviderInstanceId.make("claude-default"),
+      driver: ProviderDriverKind.make("claudeAgent"),
+    };
+    const steps = yield* Ref.make<ReadonlyArray<string>>([]);
+    const record = (step: string) => Ref.update(steps, (all) => [...all, step]);
+    const instrumented = (provider: ServerProvider) => {
+      const base = instanceOf(provider, undefined as never, Effect.void);
+      return {
+        ...base,
+        snapshot: {
+          ...base.snapshot,
+          getSnapshot: Effect.succeed(provider),
+          refresh: record(`${provider.instanceId}:check`).pipe(Effect.as(provider)),
+        },
+        invalidateCaches: record(`${provider.instanceId}:invalidate`),
+      } satisfies ProviderInstance;
+    };
+    yield* Effect.gen(function* () {
+      const registry = yield* ProviderRegistry.ProviderRegistry;
+      yield* registry.getCheckedProviders;
+      yield* registry.refreshInstance(claudeChecked.instanceId, { fresh: true });
+      assert.deepStrictEqual(yield* Ref.get(steps), [
+        "claude-default:invalidate",
+        "claude-default:check",
+      ]);
+    }).pipe(
+      Effect.provide(registryOf([instrumented(checked), instrumented(claudeChecked)])),
+      Effect.scoped,
+    );
+  }).pipe(Effect.provide(environment)),
+);

@@ -338,8 +338,17 @@ export interface AgentRuntimeOperations extends AgentAcpManagementOperations {
     readonly output: AgentWire<OrchestrationV2ThreadShell> | null;
   };
   readonly "providers.read": {
-    /** Naming instances reads only those Agents, without waiting for the others' checks. */
+    /**
+     * Naming instances reads only those Agents, without waiting for the others' checks. A
+     * refresh that names them checks only them, from scratch, so usage they report is read
+     * again rather than reused from a recent check.
+     */
     readonly input: { readonly refresh?: boolean; readonly instanceIds?: ReadonlyArray<string> };
+    readonly output: ReadonlyArray<AgentWire<ServerProvider>>;
+  };
+  readonly "providers.logout": {
+    /** Signs the named Agents out of the sign-in their own CLI keeps, then checks them again. */
+    readonly input: { readonly instanceIds: ReadonlyArray<string> };
     readonly output: ReadonlyArray<AgentWire<ServerProvider>>;
   };
   readonly "providers.configure": {

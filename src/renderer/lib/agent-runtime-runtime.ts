@@ -30,6 +30,7 @@ import type {
   AgentRuntimeSessionActivitySnapshot,
   AgentRuntimeSessionMoveInput,
   AgentRuntimeConnectionState,
+  ClaudeUsageSnapshot,
 } from "../../shared/agent-runtime-api";
 import type {
   AgentHistoryPage,
@@ -160,6 +161,14 @@ const moveSession = defineRendererCommand({
   trace: { scopeKind: "session" },
 });
 
+const logoutClaude = defineRendererCommand({
+  key: "agent_runtime.claude_usage.logout",
+  channel: "agent-runtime:claude-usage:logout",
+  authority: "external",
+  owner: "AgentRuntimeClaudeUsage",
+  protocol: { kind: "returned_value" },
+});
+
 export interface AgentRuntimeRendererTransport {
   readonly launch: (input: AgentRuntimeLaunch) => Promise<AgentRuntimeLaunchResult>;
   readonly read: (target: AgentRuntimeSessionTarget) => Promise<AgentRuntimeConversation>;
@@ -196,6 +205,12 @@ export interface AgentRuntimeRendererTransport {
   ) => Promise<AgentRuntimeOperations["providers.read"]["output"]>;
   /** What Nodex already knows about providers; never starts execution. */
   readonly knownCatalog: () => Promise<AgentRuntimeOperations["providers.read"]["output"] | null>;
+  /** Main's one Claude usage snapshot, shared by every window. */
+  readonly claudeUsage: () => Promise<ClaudeUsageSnapshot>;
+  /** Reads Claude usage again now, unless it was read moments ago. */
+  readonly refreshClaudeUsage: () => Promise<ClaudeUsageSnapshot>;
+  /** Signs the named Claude Agents out of Claude Code. */
+  readonly logoutClaude: (instanceIds: readonly string[]) => Promise<ClaudeUsageSnapshot>;
   readonly history: (input: AgentRuntimeHistoryInput) => Promise<AgentHistoryPage>;
   readonly readQueuePage: (input: AgentRuntimeQueueReadInput) => Promise<AgentRuntimeQueuePage>;
   readonly readQueuedPreview: (input: AgentRuntimeRunInput) => Promise<AgentRuntimeQueuedPreview>;
@@ -235,6 +250,9 @@ export const agentRuntimeRuntime: AgentRuntimeRendererTransport = {
   moveSession: (input) => invokePlainCommand(moveSession, input),
   catalog: (input) => invokeRendererQuery("agent-runtime:providers:read", input),
   knownCatalog: () => invokeRendererQuery("agent-runtime:providers:known"),
+  claudeUsage: () => invokeRendererQuery("agent-runtime:claude-usage:read"),
+  refreshClaudeUsage: () => invokeRendererQuery("agent-runtime:claude-usage:refresh"),
+  logoutClaude: (instanceIds) => invokePlainCommand(logoutClaude, { instanceIds }),
   history: (input) => invokeRendererQuery("agent-runtime:session:history", input),
   readQueuePage: (input) => invokeRendererQuery("agent-runtime:session:queue-read", input),
   readQueuedPreview: (input) => invokeRendererQuery("agent-runtime:session:queued-preview", input),

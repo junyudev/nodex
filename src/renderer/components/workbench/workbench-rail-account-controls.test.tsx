@@ -4,10 +4,11 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { ReactElement } from "react";
 import { NodexTooltipProvider } from "@/components/ui/tooltip";
 import type { CodexAccountSnapshot } from "@/lib/types";
-import type { UsageReading } from "@/lib/usage-meter";
+import type { ClaudeUsage } from "@/lib/use-claude-usage";
 import { nodexAccountQueryKey } from "@/lib/nodex-account-runtime";
 import { installWindowApi } from "@/test/browser-globals";
 import { textContent } from "@/test/dom";
+import type { ClaudeUsageSnapshot } from "../../../shared/agent-runtime-api";
 import type { NodexAccountSnapshot } from "../../../shared/nodex-account";
 import { WorkbenchRailAccountControls } from "./workbench-rail-account-controls";
 
@@ -83,37 +84,78 @@ function codexMeter(container: HTMLElement): HTMLElement {
 
 const HOUR = 60 * 60_000;
 
-function claudeReading(overrides: Partial<UsageReading> = {}): UsageReading {
+type ClaudeProvider = NonNullable<ClaudeUsageSnapshot["providers"]>[number];
+
+function claudeProvider(overrides: { readonly readAt?: number | null } = {}): ClaudeProvider {
+  const readAt = overrides.readAt === undefined ? Date.now() - 2 * HOUR : overrides.readAt;
   return {
-    provider: "claude",
-    key: "claude:dev@example.com|",
-    title: "Claude",
-    account: "dev@example.com",
-    plan: "Claude Max",
-    metered: true,
-    windows: [
-      {
-        id: "five_hour",
-        label: "5-hour",
-        usedPercent: 88,
-        resetsAt: Date.now() + 2 * HOUR,
-        durationMins: 300,
-        scope: "account",
-      },
-      {
-        id: "seven_day",
-        label: "Weekly",
-        usedPercent: 30,
-        resetsAt: Date.now() + 72 * HOUR,
-        durationMins: 7 * 24 * 60,
-        scope: "account",
-      },
-    ],
-    observedAt: Date.now() - 2 * HOUR,
-    readFailed: false,
-    refresh: "afterReply",
+    instanceId: "claude-default",
+    driver: "claudeAgent",
+    enabled: true,
+    installed: true,
+    version: "2.1.310",
+    status: "ready",
+    auth: { status: "authenticated", email: "dev@example.com", label: "Claude Max" },
+    checkedAt: new Date().toISOString(),
+    models: [],
+    slashCommands: [],
+    skills: [],
+    ...(readAt === null
+      ? {}
+      : {
+          usageLimits: {
+            checkedAt: new Date(readAt).toISOString(),
+            windows: [
+              {
+                id: "five_hour",
+                kind: "session",
+                label: "Session",
+                usedPercent: 88,
+                windowDurationMins: 300,
+                resetsAt: new Date(Date.now() + 2 * HOUR).toISOString(),
+              },
+              {
+                id: "seven_day",
+                kind: "weekly",
+                label: "Weekly",
+                usedPercent: 30,
+                windowDurationMins: 7 * 24 * 60,
+                resetsAt: new Date(Date.now() + 72 * HOUR).toISOString(),
+              },
+            ],
+          },
+        }),
+  } as unknown as ClaudeProvider;
+}
+
+function claudeUsage(
+  snapshot: ClaudeUsageSnapshot,
+  overrides: Partial<Omit<ClaudeUsage, "snapshot">> = {},
+): ClaudeUsage {
+  return {
+    snapshot,
+    refresh: async () => snapshot,
+    logout: async () => snapshot,
     ...overrides,
   };
+}
+
+const readClaude = (providers: ClaudeUsageSnapshot["providers"]): ClaudeUsageSnapshot => ({
+  status: "ready",
+  providers,
+  reason: null,
+});
+
+async function openCard(view: ReturnType<typeof renderRail>, meter: HTMLElement) {
+  await act(async () => {
+    fireEvent.focus(meter);
+    await Promise.resolve();
+  });
+  return waitFor(() => {
+    const found = view.container.ownerDocument.querySelector('[data-usage-card="claude"]');
+    if (!found) throw new Error("Expected the Claude usage card");
+    return found;
+  });
 }
 
 describe("WorkbenchRailAccountControls", () => {
@@ -354,8 +396,11 @@ describe("WorkbenchRailAccountControls", () => {
     });
     await waitFor(() => expect(refreshCount).toBe(1));
   });
-  test("adds a Claude meter that shows how old its reading is and reads nothing when opened", async () => {
-    let refreshCount = 0;
+  test("adds a Claude meter that says how old its reading is and reads again when opened", async () => {
+    let codexRefreshes = 0;
+    let claudeRefreshes = 0;
+    const signedOut: (readonly string[])[] = [];
+    const snapshot = readClaude([claudeProvider()]);
     const view = renderRail(
       <NodexTooltipProvider>
         <WorkbenchRailAccountControls
@@ -364,11 +409,20 @@ describe("WorkbenchRailAccountControls", () => {
           account={authenticatedAccount}
           connection={{ status: "connected", retries: 0 }}
           onRefreshAccount={async () => {
-            refreshCount += 1;
+            codexRefreshes += 1;
             return authenticatedAccount;
           }}
           onLogout={async () => undefined}
-          claudeUsage={[claudeReading()]}
+          claudeUsage={claudeUsage(snapshot, {
+            refresh: async () => {
+              claudeRefreshes += 1;
+              return snapshot;
+            },
+            logout: async (instanceIds) => {
+              signedOut.push(instanceIds);
+              return readClaude([]);
+            },
+          })}
         />
       </NodexTooltipProvider>,
     );
@@ -382,26 +436,48 @@ describe("WorkbenchRailAccountControls", () => {
     if (!claude) throw new Error("Expected the Claude usage meter");
     expect(claude.hasAttribute("data-usage-stale")).toBe(true);
 
-    await act(async () => {
-      fireEvent.focus(claude);
-      await Promise.resolve();
-    });
-    const card = await waitFor(() => {
-      const found = view.container.ownerDocument.querySelector('[data-usage-card="claude"]');
-      if (!found) throw new Error("Expected the Claude usage card");
-      return found;
-    });
+    const card = await openCard(view, claude);
     expect(textContent(card).includes("dev@example.com")).toBe(true);
-    expect(textContent(card).includes("Claude Max")).toBe(false);
     expect(textContent(card).includes("Account limits · read on this computer 2 h ago")).toBe(true);
-    expect(textContent(card).includes("Updates when Claude replies in Nodex.")).toBe(true);
     expect(
       [...card.querySelectorAll('[role="meter"]')].map((meter) =>
         meter.getAttribute("aria-valuenow"),
       ),
     ).toEqual(["12", "70"]);
-    expect(Boolean(card.querySelector("button"))).toBe(false);
-    expect(refreshCount).toBe(0);
+    await waitFor(() => expect(claudeRefreshes).toBe(1));
+    expect(codexRefreshes).toBe(0);
+
+    const signOut = [...card.querySelectorAll("button")].find(
+      (button) => button.textContent === "Sign out",
+    );
+    if (!signOut) throw new Error("Expected Sign out in the Claude card");
+    await act(async () => {
+      fireEvent.click(signOut);
+      await Promise.resolve();
+    });
+    await waitFor(() => expect(signedOut).toEqual([["claude-default"]]));
+  });
+
+  test("a Claude reading Main could not refresh keeps its level and says so", async () => {
+    const view = renderRail(
+      <NodexTooltipProvider>
+        <WorkbenchRailAccountControls
+          onOpenSettings={() => undefined}
+          onOpenAccountSettings={() => undefined}
+          claudeUsage={claudeUsage({
+            status: "unavailable",
+            providers: [claudeProvider()],
+            reason: "Agent execution could not start",
+          })}
+        />
+      </NodexTooltipProvider>,
+    );
+
+    const claude = view.getByRole("button", {
+      name: "Claude usage: 12% left in 5-hour window, read 2 h ago",
+    });
+    const card = await openCard(view, claude);
+    expect(textContent(card).includes("Couldn't refresh on this computer")).toBe(true);
   });
 
   test("an unread Claude account says so instead of showing a level", async () => {
@@ -410,7 +486,7 @@ describe("WorkbenchRailAccountControls", () => {
         <WorkbenchRailAccountControls
           onOpenSettings={() => undefined}
           onOpenAccountSettings={() => undefined}
-          claudeUsage={[claudeReading({ windows: [], observedAt: null })]}
+          claudeUsage={claudeUsage(readClaude([claudeProvider({ readAt: null })]))}
         />
       </NodexTooltipProvider>,
     );
@@ -418,19 +494,51 @@ describe("WorkbenchRailAccountControls", () => {
     const claude = view.getByRole("button", { name: "Claude usage not read yet" });
     expect(claude.querySelector("[data-usage-ring-arc]")).toBe(null);
     expect(claude.querySelector('[data-usage-ring-track="dotted"]')).not.toBe(null);
+    const card = await openCard(view, claude);
+    expect(textContent(card).includes("Not read on this computer yet")).toBe(true);
+    expect(textContent(card).includes("Claude hasn't reported usage limits yet.")).toBe(true);
+    expect(view.queryAllByRole("meter")).toHaveLength(0);
+  });
+
+  test("holds the Claude slot while Main first reads it and asks again when that fails", async () => {
+    let retries = 0;
+    const loading: ClaudeUsageSnapshot = { status: "loading", providers: null, reason: null };
+    const failed: ClaudeUsageSnapshot = {
+      status: "unavailable",
+      providers: null,
+      reason: "Agent execution could not start",
+    };
+    const controls = (snapshot: ClaudeUsageSnapshot) => (
+      <NodexTooltipProvider>
+        <WorkbenchRailAccountControls
+          onOpenSettings={() => undefined}
+          onOpenAccountSettings={() => undefined}
+          claudeUsage={claudeUsage(snapshot, {
+            refresh: async () => {
+              retries += 1;
+              return snapshot;
+            },
+          })}
+        />
+      </NodexTooltipProvider>
+    );
+    const view = renderRail(controls(loading));
+    const placeholder = view.getByRole("button", { name: "Loading Claude usage" });
+    expect(placeholder.getAttribute("data-rail-account-state")).toBe("loading");
+
+    view.rerender(controls(failed));
+    const unavailable = view.getByRole("button", {
+      name: "Can't read Claude usage. Retrying automatically",
+    });
     await act(async () => {
-      fireEvent.focus(claude);
+      fireEvent.click(unavailable);
       await Promise.resolve();
     });
-    await waitFor(() => {
-      const bodyText = textContent(view.container.ownerDocument.body);
-      if (
-        !bodyText.includes("Not read on this computer yet") ||
-        !bodyText.includes("Updates when Claude replies in Nodex.")
-      ) {
-        throw new Error(`Expected the unread explanation, saw: ${bodyText}`);
-      }
-    });
-    expect(view.queryAllByRole("meter")).toHaveLength(0);
+    await waitFor(() => expect(retries).toBe(1));
+
+    // Once Main has read the Agents, a profile without a subscription shows nothing.
+    view.rerender(controls(readClaude([])));
+    expect(view.queryByRole("button", { name: /Claude usage/ })).toBe(null);
+    expect(view.container.querySelector('[data-usage-meter="claude"]')).toBe(null);
   });
 });

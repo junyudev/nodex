@@ -1,5 +1,11 @@
 import type { AgentRuntimeOperations } from "@nodex/agent-runtime/contracts";
 import type { PlanType } from "@nodex/codex-app-server-protocol";
+import type { ClaudeUsageSnapshot } from "../../shared/agent-runtime-api";
+import {
+  claudeUsageReadAt,
+  hasClaudeSubscriptionLimits,
+  meteredClaudeProviders,
+} from "../../shared/claude-usage";
 import type { CodexAccountSnapshot, CodexRateLimitsSnapshot } from "./types";
 
 /**
@@ -34,8 +40,6 @@ export interface UsageReading {
   readonly observedAt: number | null;
   /** The latest read failed; `windows` is the previous reading, if there was one. */
   readonly readFailed: boolean;
-  /** Codex keeps its reading current; Claude reports usage only while it replies. */
-  readonly refresh: "continuous" | "afterReply";
 }
 
 export type UsageSeverity = "normal" | "low" | "critical" | "exhausted";
@@ -233,26 +237,19 @@ export function describeUsageProvenance(
   now: number = Date.now(),
 ): { readonly status: string; readonly detail: string | null } {
   const { reading } = view;
-  const updatesAfterReply =
-    reading.refresh === "afterReply" &&
-    (view.stale ||
-      view.status === "unread" ||
-      view.windows.some((window) => window.state === "elapsed"))
-      ? "Updates when Claude replies in Nodex."
-      : null;
   if (reading.readFailed) {
     return view.status === "measured" && reading.observedAt !== null
       ? {
           status: `Couldn't refresh on ${hostLabel}`,
           detail: `Showing the reading from ${formatUsageMoment(reading.observedAt, now)}.`,
         }
-      : { status: `Couldn't read usage on ${hostLabel}`, detail: updatesAfterReply };
+      : { status: `Couldn't read usage on ${hostLabel}`, detail: null };
   }
   if (view.status !== "measured" && reading.observedAt === null) {
-    return { status: `Not read on ${hostLabel} yet`, detail: updatesAfterReply };
+    return { status: `Not read on ${hostLabel} yet`, detail: null };
   }
   const age = reading.observedAt === null ? "" : ` ${formatUsageAge(reading.observedAt, now)}`;
-  return { status: `Account limits · read on ${hostLabel}${age}`, detail: updatesAfterReply };
+  return { status: `Account limits · read on ${hostLabel}${age}`, detail: null };
 }
 
 /** The plan beside the account's title, without repeating it: `Claude` · `Max`, `Codex` · `ChatGPT Pro`. */
@@ -330,7 +327,6 @@ export function codexUsageReading(snapshot: CodexAccountSnapshot | null): UsageR
       windows: [],
       observedAt: null,
       readFailed: false,
-      refresh: "continuous",
     };
   }
   const limits = snapshot.rateLimits;
@@ -347,7 +343,6 @@ export function codexUsageReading(snapshot: CodexAccountSnapshot | null): UsageR
     ].filter((window) => window !== null),
     observedAt: snapshot.rateLimitsUpdatedAt ?? null,
     readFailed: snapshot.rateLimitsReadFailed ?? false,
-    refresh: "continuous",
   };
 }
 
@@ -362,7 +357,7 @@ function epochMs(iso: string | undefined): number | null {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
-function claudeReading(provider: RuntimeProvider): UsageReading {
+function claudeReading(provider: RuntimeProvider, readFailed: boolean): UsageReading {
   const limits = provider.usageLimits;
   const auth = provider.auth;
   const windows = (limits?.windows ?? []).map((window): UsageWindowReading => {
@@ -389,38 +384,55 @@ function claudeReading(provider: RuntimeProvider): UsageReading {
     title: provider.displayName ?? "Claude",
     account: auth.email ?? null,
     plan: auth.label ?? null,
-    metered:
-      limits?.unavailable?.reason !== "unsupported" &&
-      auth.type !== "apiKey" &&
-      auth.type !== "bedrock",
+    metered: hasClaudeSubscriptionLimits(provider),
     windows,
-    observedAt: windows.length > 0 ? epochMs(limits?.checkedAt) : null,
-    readFailed: windows.length === 0 && limits?.unavailable?.reason === "probeFailed",
-    refresh: "afterReply",
+    observedAt: claudeUsageReadAt(provider),
+    readFailed: readFailed || limits?.unavailable?.reason === "probeFailed",
   };
 }
 
+/** One Claude account's meter and the Agents that read it. */
+export interface ClaudeUsageAccount {
+  readonly reading: UsageReading;
+  readonly instanceIds: readonly string[];
+}
+
 /**
- * The Claude subscription accounts worth a meter: enabled, installed instances that are signed in
- * or have reported windows. Instances that read one account collapse into its freshest reading;
- * accounts that can never report windows are left out rather than shown as empty.
+ * One meter per Claude subscription account in Main's snapshot. Agents that read one account
+ * collapse into its freshest reading; a read that failed marks every reading it kept.
  */
-export function claudeUsageReadings(
-  providers: readonly RuntimeProvider[] | null | undefined,
-): readonly UsageReading[] {
-  const byAccount = new Map<string, UsageReading>();
-  for (const provider of providers ?? []) {
-    if (provider.driver !== "claudeAgent" || !provider.enabled || !provider.installed) continue;
-    const reading = claudeReading(provider);
-    if (!reading.metered) continue;
-    if (provider.auth.status !== "authenticated" && reading.windows.length === 0) continue;
+export function claudeUsageAccounts(
+  snapshot: ClaudeUsageSnapshot | null | undefined,
+): readonly ClaudeUsageAccount[] {
+  const readFailed = snapshot?.status === "unavailable";
+  const byAccount = new Map<string, ClaudeUsageAccount>();
+  for (const provider of meteredClaudeProviders(snapshot?.providers)) {
+    const reading = claudeReading(provider, readFailed);
     const existing = byAccount.get(reading.key);
     if (!existing) {
-      byAccount.set(reading.key, reading);
+      byAccount.set(reading.key, { reading, instanceIds: [provider.instanceId] });
       continue;
     }
-    const fresher = (reading.observedAt ?? -1) > (existing.observedAt ?? -1) ? reading : existing;
-    byAccount.set(reading.key, { ...fresher, title: "Claude" });
+    const fresher =
+      (reading.observedAt ?? -1) > (existing.reading.observedAt ?? -1) ? reading : existing.reading;
+    byAccount.set(reading.key, {
+      reading: { ...fresher, title: "Claude" },
+      instanceIds: [...existing.instanceIds, provider.instanceId],
+    });
   }
   return [...byAccount.values()];
+}
+
+/** What holds the Claude slot before anything is known: a read in progress, or why it failed. */
+export type ClaudeUsagePlaceholder =
+  | { readonly kind: "loading" }
+  | { readonly kind: "unavailable"; readonly reason: string | null };
+
+export function claudeUsagePlaceholder(
+  snapshot: ClaudeUsageSnapshot | null | undefined,
+): ClaudeUsagePlaceholder | null {
+  if (!snapshot || snapshot.providers !== null) return null;
+  if (snapshot.status === "loading") return { kind: "loading" };
+  if (snapshot.status === "unavailable") return { kind: "unavailable", reason: snapshot.reason };
+  return null;
 }

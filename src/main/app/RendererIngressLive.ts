@@ -32,6 +32,7 @@ import * as ApplicationLocalStateIpc from "../ipc/handlers/ApplicationLocalState
 import * as ApplicationSettingsIpc from "../ipc/handlers/ApplicationSettingsIpc";
 import * as AgentBackendIpc from "../ipc/handlers/AgentBackendIpc";
 import * as AgentRuntimeIpc from "../ipc/handlers/AgentRuntimeIpc";
+import * as ClaudeUsageIpc from "../ipc/handlers/ClaudeUsageIpc";
 import * as NativeSessionCatalogIpc from "../ipc/handlers/NativeSessionCatalogIpc";
 import * as NativeSessionCatalog from "../agent-backend/NativeSessionCatalog";
 import * as AutomationIpc from "../ipc/handlers/AutomationIpc";
@@ -111,6 +112,7 @@ export const live = Layer.mergeAll(
   ApplicationSettingsIpc.live,
   AgentBackendIpc.live,
   AgentRuntimeIpc.live,
+  ClaudeUsageIpc.live,
   AcpAgentsIpc.live.pipe(Layer.provide(AcpAgents.live)),
   NativeSessionCatalogIpc.live.pipe(Layer.provide(NativeSessionCatalog.live)),
   AutomationIpc.live,
