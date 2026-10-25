@@ -39,6 +39,13 @@ export interface AgentAcpFailure {
 }
 export interface AgentAcpOperation {
   readonly operationId: string;
+  /** The Runtime lifetime that owns this volatile operation. */
+  readonly runtimeGeneration: string;
+  /** Applied provider policy captured at admission; directory-level installs have none. */
+  readonly configurationRevision: number | null;
+  /** Increases for every published state or progress update within this operation. */
+  readonly revision: number;
+  readonly cancellable: boolean;
   readonly kind: "install" | "connect";
   readonly phase: "running" | "succeeded" | "failed" | "cancelled";
   readonly instanceId: string | null;
@@ -50,6 +57,12 @@ export interface AgentAcpOperation {
     readonly downloadedBytes: number;
     readonly totalBytes: number | null;
   };
+}
+export interface AgentAcpAuthentication extends AgentWire<ProviderAuthState> {
+  readonly runtimeGeneration: string;
+  readonly configurationRevision: number;
+  readonly revision: number;
+  readonly cancellable: boolean;
 }
 export interface AgentAcpManagementOperations {
   readonly "acp.activity": {
@@ -95,27 +108,27 @@ export interface AgentAcpManagementOperations {
   };
   readonly "acp.auth.read": {
     readonly input: { readonly instanceId: string; readonly ownerId: string };
-    readonly output: AgentWire<ProviderAuthState>;
+    readonly output: AgentAcpAuthentication;
   };
   readonly "acp.auth.start": {
     readonly input: AgentWire<ProviderAuthStartInput> & { readonly ownerId: string };
-    readonly output: AgentWire<ProviderAuthState>;
+    readonly output: AgentAcpAuthentication;
   };
   readonly "acp.auth.respond": {
     readonly input: AgentWire<ProviderAuthRespondInput> & { readonly ownerId: string };
-    readonly output: AgentWire<ProviderAuthState>;
+    readonly output: AgentAcpAuthentication;
   };
   readonly "acp.auth.complete": {
     readonly input: AgentWire<ProviderAuthCompleteInput> & { readonly ownerId: string };
-    readonly output: AgentWire<ProviderAuthState>;
+    readonly output: AgentAcpAuthentication;
   };
   readonly "acp.auth.cancel": {
     readonly input: AgentWire<ProviderAuthCancelInput> & { readonly ownerId: string };
-    readonly output: AgentWire<ProviderAuthState>;
+    readonly output: AgentAcpAuthentication;
   };
   readonly "acp.auth.logout": {
     readonly input: { readonly instanceId: string };
-    readonly output: AgentWire<ProviderAuthState>;
+    readonly output: AgentAcpAuthentication;
   };
   readonly "acp.urlAuth.accept": {
     readonly input: { readonly instanceId: string; readonly elicitationId: string };

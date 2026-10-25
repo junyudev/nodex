@@ -56,6 +56,12 @@ intersecting claims within the same source coordinate login, logout and model-se
 active work. Logical labels and unrelated toolchain or cache directories cannot remove those claims.
 Independent isolated homes with no shared credential roots can authenticate concurrently.
 
+Installation and connection status include the owning Runtime generation, the captured applied
+provider-policy revision (null for directory-level installation), a monotonically increasing operation
+revision, and whether cancellation is available. Progress and terminal transitions advance the
+operation revision; reading or retrying the same operation does not. Configuration revisions are
+local to a Runtime generation, and later configuration changes never rewrite an existing operation.
+
 Explicit connection can create a temporary native session to discover the Agent's capabilities,
 commands, models and configuration. It creates no Nodex Session or Run and sends no prompt. Search,
 passive inspection, cached catalog reads and stored-history browsing do not perform this probe.
@@ -104,7 +110,10 @@ Agent prompts; automatic titles retain the deterministic temporary title.
 
 ## Native history and model services
 
-Native history lists use the Agent's pagination and workspace context. Import first admits and binds
+Native history lists use the Agent's pagination and workspace context. Opaque cursor bytes remain
+unchanged; oversized pages and cursors fail explicitly. Each bounded traversal belongs to the selected
+instance, execution directory and configuration, and rejects unknown cursors and pagination cycles.
+Import first admits and binds
 a Core product Session, then materializes a Runtime Thread with an idempotent native mapping and
 without a prompt. The mapping includes a non-secret source fingerprint, so the same native ID in
 another storage or account scope cannot reconnect to the old chat. Renaming or upgrading an instance

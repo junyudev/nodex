@@ -16,6 +16,38 @@ import * as Exit from "effect/Exit";
 import { effectiveSettings, makePolicy, makeWithPorts } from "./ProviderConfiguration.ts";
 import * as ServerSettings from "../serverSettings.ts";
 
+it.effect("revisions describe applied configuration, including deferred admission changes", () =>
+  Effect.gen(function* () {
+    const id = ProviderInstanceId.make("acp-revision");
+    const initial = {
+      [id]: {
+        driver: ProviderDriverKind.make("acpRegistry"),
+        config: { source: "local", commandPath: "/agent" },
+      },
+    };
+    const policy = yield* makePolicy(initial);
+    const busy = yield* Ref.make<ReadonlySet<ProviderInstanceId>>(new Set([id]));
+    const configuration = yield* makeWithPorts(initial, {
+      busyInstances: Ref.get(busy),
+      closeIdleInstance: () => Effect.void,
+      reconcile: policy.replace,
+      admission: policy.setDesired,
+    });
+    const captured = yield* policy.snapshot;
+    expect(captured.revision).toBe(1);
+    const desired = { [id]: { ...initial[id]!, enabled: false } };
+    yield* configuration.configure(desired);
+    expect(yield* policy.snapshot).toEqual(captured);
+    expect(yield* policy.desired).toEqual(desired);
+    yield* Ref.set(busy, new Set());
+    yield* TestClock.adjust("1 second");
+    expect(yield* policy.snapshot).toEqual({ config: desired, revision: 2 });
+    yield* policy.replace({ ...desired });
+    expect((yield* policy.snapshot).revision).toBe(2);
+    expect(captured).toEqual({ config: initial, revision: 1 });
+  }),
+);
+
 it.effect(
   "disabling stops new admission immediately while native configuration remains captured",
   () =>

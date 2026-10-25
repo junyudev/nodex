@@ -85,9 +85,18 @@ it.live(
         models: [],
       });
       expect(yield* fs.readFileString(log)).toBe("");
+      let firstGeneration = "";
       yield* run(
         Effect.gen(function* () {
-          expect((yield* connect).phase).toBe("succeeded");
+          const connected = yield* connect;
+          firstGeneration = connected.runtimeGeneration;
+          expect(connected).toMatchObject({
+            phase: "succeeded",
+            configurationRevision: 1,
+            cancellable: false,
+          });
+          expect(connected.runtimeGeneration).not.toBe("");
+          expect(connected.revision).toBeGreaterThan(1);
           const provider = yield* read;
           expect(provider.discovery).toMatchObject({
             status: "ready",
@@ -101,6 +110,18 @@ it.live(
             canDelete: true,
           });
           expect(provider.configurableProviders).toBe(true);
+          yield* call("providers.configure", {
+            providers: {
+              ...configuration.providers,
+              spare: { ...configuration.providers[instanceId]!, enabled: false },
+            },
+          });
+          const reconnected = yield* connect;
+          expect(reconnected.configurationRevision).toBe(2);
+          expect(reconnected.runtimeGeneration).toBe(firstGeneration);
+          expect(yield* call("acp.operation.read", { operationId: connected.operationId })).toEqual(
+            connected,
+          );
         }),
       );
       const callsAfterConnect = yield* fs.readFileString(log);
@@ -112,7 +133,9 @@ it.live(
       expect(yield* fs.readFileString(log)).toBe(callsAfterConnect);
 
       yield* fs.writeFileString(state, JSON.stringify({ models: ["first"] }));
-      yield* run(connect);
+      const restarted = yield* run(connect);
+      expect(restarted.runtimeGeneration).not.toBe(firstGeneration);
+      expect(restarted.configurationRevision).toBe(1);
       expect((yield* run(read)).models.map((model) => model.slug)).toEqual(["first", "custom"]);
       yield* run(
         Effect.gen(function* () {

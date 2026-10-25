@@ -461,7 +461,7 @@ export const make = Effect.fn("AgentRuntime.makeService")(function* (
   const storageSnapshot = yield* StorageSnapshot.make(identity, providerConfiguration).pipe(
     Effect.provideService(Scope.Scope, processScope),
   );
-  const acp = yield* AcpManagement.make(storageSnapshot.withWriter);
+  const acp = yield* AcpManagement.make(storageSnapshot.withWriter, identity.runtimeGeneration);
   const providerPolicy = yield* ProviderConfiguration.ProviderPolicy;
   const textGeneration = yield* TextGeneration;
   const nativeInteraction = yield* NativeInteraction.make(identity.runtimeGeneration, notify).pipe(

@@ -9,9 +9,12 @@ import { makeOperations, validateProviderMutation } from "./AcpManagement.ts";
 import type { AgentAcpOperation } from "./AcpManagementContract.ts";
 import { decodeAgentAcpFailure } from "./AcpFailureContract.ts";
 
-const operation = (id: string): AgentAcpOperation => ({
+const operation = (
+  id: string,
+): Omit<AgentAcpOperation, "runtimeGeneration" | "revision" | "cancellable"> => ({
   operationId: id,
   kind: "connect",
+  configurationRevision: 7,
   phase: "running",
   instanceId: "agent",
   agentId: null,
@@ -20,10 +23,55 @@ const operation = (id: string): AgentAcpOperation => ({
 });
 
 it.effect(
+  "publishes captured provenance and monotonic revisions through progress and completion",
+  () =>
+    Effect.gen(function* () {
+      const owner = yield* makeOperations("runtime-captured");
+      const result = yield* Deferred.make<AgentAcpOperation["result"]>();
+      const started = yield* owner.start(operation("tracked"), "tracked", Deferred.await(result));
+      expect(started).toMatchObject({
+        runtimeGeneration: "runtime-captured",
+        configurationRevision: 7,
+        revision: 1,
+        cancellable: true,
+        phase: "running",
+      });
+      yield* owner.progress("tracked", {
+        phase: "downloading",
+        downloadedBytes: 16,
+        totalBytes: 32,
+      });
+      const progressed = yield* owner.read("tracked");
+      expect(progressed.revision).toBe(2);
+      expect(progressed.progress?.downloadedBytes).toBe(16);
+      expect(yield* owner.start(operation("duplicate"), "tracked", Effect.never)).toEqual(
+        progressed,
+      );
+      yield* Deferred.succeed(result, null);
+      yield* TestClock.adjust("1 millis");
+      const completed = yield* owner.read("tracked");
+      expect(completed).toMatchObject({
+        runtimeGeneration: "runtime-captured",
+        configurationRevision: 7,
+        revision: 3,
+        cancellable: false,
+        phase: "succeeded",
+      });
+      yield* owner.progress("tracked", {
+        phase: "installing",
+        downloadedBytes: 32,
+        totalBytes: 32,
+      });
+      expect(yield* owner.cancel("tracked")).toEqual(completed);
+      expect(yield* owner.read("tracked")).toEqual(completed);
+    }),
+);
+
+it.effect(
   "deduplicates running operations, rejects key reuse, and closes the owned task on cancel",
   () =>
     Effect.gen(function* () {
-      const owner = yield* makeOperations;
+      const owner = yield* makeOperations("runtime-one");
       const started = yield* Deferred.make<void>();
       const released = yield* Ref.make(false);
       const task = Deferred.succeed(started, undefined).pipe(
@@ -38,7 +86,11 @@ it.effect(
           yield* owner.start(operation("one"), "different-agent", task).pipe(Effect.exit),
         ),
       ).toBe(true);
-      expect((yield* owner.cancel("one")).phase).toBe("cancelled");
+      expect(yield* owner.cancel("one")).toMatchObject({
+        phase: "cancelled",
+        revision: 2,
+        cancellable: false,
+      });
       expect(yield* Ref.get(released)).toBe(true);
       expect((yield* owner.start(operation("one"), "same-agent", task)).phase).toBe("cancelled");
     }),
@@ -46,7 +98,7 @@ it.effect(
 
 it.effect("records completion without retaining credentials from failures", () =>
   Effect.gen(function* () {
-    const owner = yield* makeOperations;
+    const owner = yield* makeOperations("runtime-one");
     yield* owner.start(
       operation("bad"),
       "opaque-identity",
@@ -55,13 +107,21 @@ it.effect("records completion without retaining credentials from failures", () =
     yield* TestClock.adjust("1 millis");
     const failed = yield* owner.read("bad");
     expect(failed.phase).toBe("failed");
+    expect(failed.cancellable).toBe(false);
+    expect(failed.revision).toBe(2);
     expect(JSON.stringify(failed)).not.toContain("secret-value");
     yield* owner.start(
-      { ...operation("good"), kind: "install" },
+      { ...operation("good"), kind: "install", instanceId: null, configurationRevision: null },
       "install-agent",
       Effect.succeed({ agentId: "agent", version: "1.0.0", distribution: "npx", prepared: true }),
     );
     yield* TestClock.adjust("1 millis");
+    expect(yield* owner.read("good")).toMatchObject({
+      runtimeGeneration: "runtime-one",
+      configurationRevision: null,
+      revision: 2,
+      cancellable: false,
+    });
     expect((yield* owner.read("good")).result).toEqual({
       agentId: "agent",
       version: "1.0.0",
@@ -113,7 +173,7 @@ it.effect(
   "retains typed authentication recovery without publishing nested failures or terminal secrets",
   () =>
     Effect.gen(function* () {
-      const owner = yield* makeOperations;
+      const owner = yield* makeOperations("runtime-one");
       yield* owner.start(
         operation("auth"),
         "auth",

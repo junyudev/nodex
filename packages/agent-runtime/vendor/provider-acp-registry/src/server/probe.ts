@@ -20,6 +20,7 @@ import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Ref from "effect/Ref";
 import * as Result from "effect/Result";
+import * as Schema from "effect/Schema";
 import * as ChildProcessSpawner from "effect/process/ChildProcessSpawner";
 import type * as EffectAcpErrors from "effect-acp/errors";
 import type * as EffectAcpSchema from "effect-acp/compat";
@@ -650,47 +651,44 @@ function managementFailure(
     : new AcpRegistryOperationError({ ...failure, cause: error });
 }
 
+const invalidSessionPage = (cause: unknown) =>
+  new AcpRegistryOperationError({
+    reason: "probe_failed",
+    message: "The Agent could not complete this request. Refresh its state and retry.",
+    cause,
+  });
+
 export const listAcpRegistrySessions = Effect.fn("AcpRegistryProbe.listSessions")(
   function* (input: AcpRegistryManagementInput & { readonly cursor?: string }) {
     const runtime = yield* makeAcpRegistryManagementRuntime(input);
     const initialized = yield* runtime.initialize();
-    const listed = yield* runtime.listSessions(input.cursor);
-    const sessions = listed.sessions.slice(0, 256).flatMap((session) => {
-      const sessionId = boundedOpaqueValue(session.sessionId, 1_024);
-      const cwd = boundedOpaqueValue(session.cwd, 4_096);
-      if (sessionId === undefined || cwd === undefined) return [];
-      return [
-        {
-          sessionId,
-          cwd,
-          additionalDirectories: (session.additionalDirectories ?? [])
-            .flatMap((directory) => {
-              const normalized = boundedOpaqueValue(directory, 4_096);
-              return normalized === undefined ? [] : [normalized];
-            })
-            .slice(0, 32),
-          title:
-            session.title === undefined || session.title === null
-              ? null
-              : boundedText(session.title, 1_024) || null,
-          updatedAt:
-            session.updatedAt === undefined || session.updatedAt === null
-              ? null
-              : boundedText(session.updatedAt, 128) || null,
-          importedThreadId: null,
-        },
-      ];
-    });
-    return AcpRegistryListSessionsResult.make({
-      sessions,
-      nextCursor:
-        listed.nextCursor === undefined || listed.nextCursor === null
+    const listed = yield* runtime.listSessions(input.cursor).pipe(
+      // The protocol compatibility decoder can surface malformed wire data as a defect.
+      Effect.catchDefect((defect) =>
+        Schema.isSchemaError(defect) ? Effect.fail(invalidSessionPage(defect)) : Effect.die(defect),
+      ),
+    );
+    const sessions = listed.sessions.map((session) => ({
+      sessionId: session.sessionId,
+      cwd: session.cwd,
+      additionalDirectories: session.additionalDirectories ?? [],
+      title:
+        session.title === undefined || session.title === null
           ? null
-          : boundedText(listed.nextCursor, 2_048) || null,
+          : boundedText(session.title, 1_024) || null,
+      updatedAt:
+        session.updatedAt === undefined || session.updatedAt === null
+          ? null
+          : boundedText(session.updatedAt, 128) || null,
+      importedThreadId: null,
+    }));
+    return yield* Schema.decodeUnknownEffect(AcpRegistryListSessionsResult)({
+      sessions,
+      nextCursor: listed.nextCursor ?? null,
       canLoad: initialized.agentCapabilities?.loadSession === true,
       canResume: initialized.agentCapabilities?.sessionCapabilities?.resume != null,
       canDelete: initialized.agentCapabilities?.sessionCapabilities?.delete != null,
-    });
+    }).pipe(Effect.mapError(invalidSessionPage));
   },
   (effect) =>
     effect.pipe(

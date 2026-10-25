@@ -26,6 +26,7 @@ const setup = Effect.gen(function* () {
   const authenticationReadStarted = yield* Deferred.make<void>();
   const authenticationReadRelease = yield* Deferred.make<void>();
   const calls: { method: string; input: Record<string, unknown> }[] = [];
+  const operationConfigurations = new Map<unknown, number | null>();
   const state = {
     rejectOperations: false,
     flowId: "flow",
@@ -50,6 +51,10 @@ const setup = Effect.gen(function* () {
       if (method.startsWith("acp.auth."))
         return {
           instanceId: input.instanceId,
+          runtimeGeneration: state.generation,
+          configurationRevision: 7,
+          revision: 4,
+          cancellable: ["starting", "waiting", "verifying"].includes(state.authenticationPhase),
           phase: state.authenticationPhase,
           flowId: state.flowId,
           authorizationUrl: null,
@@ -58,8 +63,15 @@ const setup = Effect.gen(function* () {
         };
       if (method === "acp.sessions.list")
         return { sessions: [], nextCursor: null, canLoad: true, canResume: false, canDelete: true };
+      const operationId = state.coalescedOperation || input.operationId;
+      if (method === "acp.install.start") operationConfigurations.set(operationId, null);
+      if (method === "acp.connection.start") operationConfigurations.set(operationId, 7);
       return {
-        operationId: state.coalescedOperation || input.operationId,
+        operationId,
+        runtimeGeneration: state.generation,
+        configurationRevision: operationConfigurations.get(operationId) ?? null,
+        revision: 4,
+        cancellable: state.operationPhase === "running",
         kind: method === "acp.install.start" ? "install" : "connect",
         phase: state.operationPhase,
         instanceId: input.instanceId ?? null,
@@ -186,7 +198,12 @@ it.effect(
   () =>
     Effect.gen(function* () {
       const { agents, calls, state } = yield* setup;
-      yield* agents["acp.auth.start"]("owner", { instanceId: "personal" });
+      const authentication = yield* agents["acp.auth.start"]("owner", { instanceId: "personal" });
+      assert.equal(authentication.instanceId, "personal");
+      assert.equal(authentication.runtimeGeneration, "generation-one");
+      assert.equal(authentication.configurationRevision, 7);
+      assert.equal(authentication.revision, 4);
+      assert.isTrue(authentication.cancellable);
       const input = {
         instanceId: "personal",
         flowId: "flow",
@@ -236,6 +253,10 @@ it.effect("reads and cancels a coalesced installation through each window's oper
     });
     assert.equal(first.operationId, "first-install");
     assert.equal(second.operationId, "second-install");
+    assert.equal(second.runtimeGeneration, "generation-one");
+    assert.isNull(second.configurationRevision);
+    assert.equal(second.revision, 4);
+    assert.isTrue(second.cancellable);
     yield* agents["acp.operation.read"]("second-window", { operationId: "second-install" });
     yield* agents["acp.operation.cancel"]("second-window", { operationId: "second-install" });
     assert.deepEqual(

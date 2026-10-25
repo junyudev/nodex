@@ -24,6 +24,10 @@ export class ProviderPolicy extends Context.Service<
   ProviderPolicy,
   {
     readonly current: Effect.Effect<ProviderInstanceConfigMap>;
+    readonly snapshot: Effect.Effect<{
+      readonly config: ProviderInstanceConfigMap;
+      readonly revision: number;
+    }>;
     readonly desired: Effect.Effect<ProviderInstanceConfigMap>;
     readonly replace: (config: ProviderInstanceConfigMap) => Effect.Effect<void>;
     readonly admission: Effect.Effect<ProviderInstanceConfigMap>;
@@ -34,10 +38,13 @@ export class ProviderPolicy extends Context.Service<
 export const makePolicy = Effect.fn("AgentRuntime.makeProviderPolicy")(function* (
   initial: ProviderInstanceConfigMap,
 ) {
-  const current = yield* Ref.make(initial);
+  const current = yield* Ref.make({ config: initial, revision: 1 });
   const desired = yield* Ref.make(initial);
   return ProviderPolicy.of({
-    admission: Effect.all([Ref.get(current), Ref.get(desired)]).pipe(
+    admission: Effect.all([
+      Ref.get(current).pipe(Effect.map(({ config }) => config)),
+      Ref.get(desired),
+    ]).pipe(
       Effect.map(([applied, wanted]) =>
         Object.fromEntries(
           Object.entries(applied).map(([id, entry]) => [
@@ -53,9 +60,13 @@ export const makePolicy = Effect.fn("AgentRuntime.makeProviderPolicy")(function*
       ),
     ),
     setDesired: (config) => Ref.set(desired, config),
-    current: Ref.get(current),
+    current: Ref.get(current).pipe(Effect.map(({ config }) => config)),
+    snapshot: Ref.get(current),
     desired: Ref.get(desired),
-    replace: (config) => Ref.set(current, config),
+    replace: (config) =>
+      Ref.update(current, (before) =>
+        Equal.equals(before.config, config) ? before : { config, revision: before.revision + 1 },
+      ),
   });
 });
 

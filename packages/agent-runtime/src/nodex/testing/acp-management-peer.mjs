@@ -15,6 +15,8 @@ for await (const line of createInterface({ input: process.stdin })) {
       sessionId: params?.sessionId,
       providerId: params?.providerId,
       apiType: params?.apiType,
+      cursor: params?.cursor,
+      cwd: params?.cwd,
     }) + "\n",
   );
   if (method === "initialize")
@@ -49,7 +51,22 @@ for await (const line of createInterface({ input: process.stdin })) {
         },
       ],
     });
-  else if (method === "session/list")
+  else if (method === "session/list" && process.env.ACP_MANAGEMENT_PAGES) {
+    const pages = JSON.parse(readFileSync(process.env.ACP_MANAGEMENT_PAGES, "utf8"));
+    const page = pages.find((entry) => entry.cursor === params?.cursor);
+    if (page) write(id, page.result);
+    else
+      process.stdout.write(
+        JSON.stringify({
+          jsonrpc: "2.0",
+          id,
+          error: {
+            code: -32602,
+            message: "Unknown fixture cursor",
+          },
+        }) + "\n",
+      );
+  } else if (method === "session/list")
     write(id, {
       sessions: [
         {

@@ -8,7 +8,7 @@ import {
   ProviderAuthRespondInput,
   ProviderAuthCompleteInput,
   ProviderAuthCancelInput,
-  ProviderAuthState,
+  type ProviderAuthState,
   ProviderInstanceId,
   ProviderDriverKind,
   ProviderSetupError,
@@ -37,13 +37,14 @@ import { mergeProviderInstanceEnvironment } from "@t3tools/provider-core/server/
 import * as HostProcess from "@t3tools/shared/HostProcess";
 import type { ProviderInstance } from "@t3tools/provider-core/server/driver";
 import { ProviderInstanceRegistry } from "../provider/ProviderInstanceRegistry.ts";
-import { ProviderAuthService } from "../provider/ProviderAuthService.ts";
 import { ProviderSessionManagerV2 } from "../orchestration-v2/ProviderSessionManager.ts";
 import { OrchestratorV2 } from "../orchestration-v2/Orchestrator.ts";
 import { deriveThreadFromProviderThread } from "@t3tools/provider-core/server/IdAllocator";
 import { ProviderPolicy } from "./ProviderConfiguration.ts";
 import { AcpManagementError, acpFailure } from "./AcpFailures.ts";
 import type { AgentAcpFailure, AgentAcpOperation } from "./AcpManagementContract.ts";
+import { makeAuthenticationProjection } from "./AcpAuthentication.ts";
+import { withCurrentAcpInstance } from "./AcpManagementLifecycle.ts";
 
 const request = <M extends string, S extends Schema.Constraint>(method: M, input: S) =>
   Schema.Struct({ id: Schema.String, method: Schema.Literal(method), input });
@@ -134,10 +135,11 @@ const failure = (
       ...(affectedThreadIds ? { affectedThreadIds } : {}),
     }),
   );
-const encodeAuth = Schema.encodeEffect(Schema.toCodecJson(ProviderAuthState));
 
 /** Volatile, bounded operations own their fibers. Their records contain no executable environment or credentials. */
-export const makeOperations = Effect.gen(function* () {
+export const makeOperations = Effect.fn("AcpOperations.make")(function* (
+  runtimeGeneration: string,
+) {
   const scope = yield* Effect.scope;
   const lane = yield* Semaphore.make(1);
   const records = yield* Ref.make(
@@ -152,11 +154,23 @@ export const makeOperations = Effect.gen(function* () {
       );
     return record.state;
   });
-  const change = (id: string, patch: Partial<AgentAcpOperation>) =>
+  const change = (
+    id: string,
+    patch: Partial<Pick<AgentAcpOperation, "phase" | "result" | "error" | "progress">>,
+  ) =>
     Ref.update(records, (all) => {
       const record = all.get(id);
       if (!record || record.state.phase !== "running") return all;
-      return new Map(all).set(id, { ...record, state: { ...record.state, ...patch } });
+      const phase = patch.phase ?? record.state.phase;
+      return new Map(all).set(id, {
+        ...record,
+        state: {
+          ...record.state,
+          ...patch,
+          revision: record.state.revision + 1,
+          cancellable: phase === "running",
+        },
+      });
     });
   return {
     read,
@@ -184,12 +198,18 @@ export const makeOperations = Effect.gen(function* () {
     progress: (id: string, progress: NonNullable<AgentAcpOperation["progress"]>) =>
       change(id, { progress }),
     start: <E, R>(
-      state: AgentAcpOperation,
+      input: Omit<AgentAcpOperation, "runtimeGeneration" | "revision" | "cancellable">,
       key: string,
       task: Effect.Effect<AgentAcpOperation["result"], E, R>,
     ) =>
       lane.withPermit(
         Effect.gen(function* () {
+          const state: AgentAcpOperation = {
+            ...input,
+            runtimeGeneration,
+            revision: 1,
+            cancellable: true,
+          };
           const all = yield* Ref.get(records);
           const previous = all.get(state.operationId);
           if (previous) {
@@ -260,10 +280,10 @@ export const validateProviderMutation = (
 
 export const make = Effect.fn("AcpManagement.make")(function* (
   withWriter: <A, E, R>(effect: Effect.Effect<A, E, R>) => Effect.Effect<A, E | Error, R>,
+  runtimeGeneration: string,
 ) {
   const catalog = yield* AcpRegistryCatalog;
   const registry = yield* ProviderInstanceRegistry;
-  const auth = yield* ProviderAuthService;
   const sessions = yield* ProviderSessionManagerV2;
   const coordinator = yield* AcpRegistryRuntimeCoordinator;
   const policy = yield* ProviderPolicy;
@@ -271,8 +291,19 @@ export const make = Effect.fn("AcpManagement.make")(function* (
   const orchestrator = yield* OrchestratorV2;
   const hostEnvironment = yield* HostProcess.Environment;
   const fileSystem = yield* FileSystem.FileSystem;
-  const operations = yield* makeOperations;
+  const operations = yield* makeOperations(runtimeGeneration);
+  const authentication = makeAuthenticationProjection(runtimeGeneration);
   const mutation = yield* Semaphore.make(1);
+  const pagination = yield* Semaphore.make(1);
+  // Cursors are issued by a particular instance generation and execution directory.
+  // A fresh first-page request replaces that query's bounded, volatile traversal.
+  const listPages = new Map<
+    string,
+    {
+      source: ProviderInstance["snapshot"];
+      cursors: Map<string, ReadonlyArray<string>>;
+    }
+  >();
 
   const instance = Effect.fn("AcpManagement.instance")(function* (id: ProviderInstanceId) {
     const current = (yield* policy.current)[id];
@@ -287,14 +318,17 @@ export const make = Effect.fn("AcpManagement.make")(function* (
     const value = yield* registry.getInstance(id);
     if (value?.driverKind !== "acpRegistry" || !value.acpSessionManagement)
       return yield* failure("The ACP instance is no longer available.");
-    return { ...value, acpSessionManagement: value.acpSessionManagement };
+    return value as ProviderInstance & {
+      acpSessionManagement: NonNullable<ProviderInstance["acpSessionManagement"]>;
+    };
   });
   const configuration = Effect.fn("AcpManagement.configuration")(function* (
     id: ProviderInstanceId,
     passive = false,
   ) {
     if (!passive) yield* instance(id);
-    const entry = (yield* passive ? policy.desired : policy.current)[id];
+    const captured = yield* policy.snapshot;
+    const entry = (passive ? yield* policy.desired : captured.config)[id];
     if (entry?.driver !== "acpRegistry")
       return yield* failure("The ACP instance is no longer configured.");
     const settings = yield* Schema.decodeUnknownEffect(AcpRegistrySettings)(entry.config);
@@ -302,26 +336,10 @@ export const make = Effect.fn("AcpManagement.make")(function* (
       entry.environment,
       settings.inheritEnvironment === false ? {} : hostEnvironment,
     );
-    return { entry, settings, environment };
+    return { entry, settings, environment, revision: captured.revision };
   });
   const withCurrent = <A, E, R>(captured: ProviderInstance, task: Effect.Effect<A, E, R>) =>
-    Effect.scoped(
-      Effect.gen(function* () {
-        const changes = yield* registry.subscribeChanges;
-        const replaced = Stream.fromSubscription(changes).pipe(
-          Stream.filterEffect(() =>
-            registry
-              .getInstance(captured.instanceId)
-              .pipe(Effect.map((current) => current !== captured)),
-          ),
-          Stream.runHead,
-          Effect.andThen(
-            failure("The ACP configuration changed. Retry against the current instance."),
-          ),
-        );
-        return yield* Effect.raceFirst(task, replaced);
-      }),
-    );
+    withCurrentAcpInstance(registry, captured, task);
   const relatedInstances = (selected: ProviderInstance) =>
     registry.listInstances.pipe(
       Effect.map((instances) => {
@@ -424,14 +442,39 @@ export const make = Effect.fn("AcpManagement.make")(function* (
       idleBeforeMutation(selected),
     );
   };
+  const projectAuth = Effect.fn("AcpManagement.projectAuth")(function* (
+    selected: ProviderInstance,
+    revision: number,
+    state: ProviderAuthState,
+  ) {
+    if (!selected.auth) return yield* failure("The Agent sign-in state is unavailable.");
+    return authentication.project(selected.auth, revision, state);
+  });
+  const authAction = Effect.fn("AcpManagement.authAction")(function* <E, R>(
+    selected: ProviderInstance,
+    task: Effect.Effect<ProviderAuthState, E, R>,
+  ) {
+    if (!selected.auth) return yield* failure("The Agent sign-in state is unavailable.");
+    const captured = yield* policy.snapshot;
+    return yield* withCurrent(selected, task).pipe(
+      Effect.flatMap((state) => projectAuth(selected, captured.revision, state)),
+    );
+  });
   const readAuth = Effect.fn("AcpManagement.readAuth")(function* (input: {
     instanceId: ProviderInstanceId;
     ownerId: string;
   }) {
-    yield* instance(input.instanceId);
-    const state = yield* auth.subscribe(input, input.ownerId).pipe(Stream.runHead);
-    if (Option.isNone(state)) return yield* failure("The Agent sign-in state is unavailable.");
-    return yield* encodeAuth(state.value);
+    const selected = yield* instance(input.instanceId);
+    if (!selected.auth) return yield* failure("The Agent sign-in state is unavailable.");
+    const captured = yield* policy.snapshot;
+    return yield* withCurrent(
+      selected,
+      Effect.gen(function* () {
+        const state = yield* selected.auth!.subscribe(input.ownerId).pipe(Stream.runHead);
+        if (Option.isNone(state)) return yield* failure("The Agent sign-in state is unavailable.");
+        return yield* projectAuth(selected, captured.revision, state.value);
+      }),
+    );
   });
 
   const importIdentity = (
@@ -554,6 +597,7 @@ export const make = Effect.fn("AcpManagement.make")(function* (
         return yield* operations.start(
           {
             operationId: request.input.operationId,
+            configurationRevision: null,
             kind: "install",
             phase: "running",
             instanceId: null,
@@ -601,6 +645,7 @@ export const make = Effect.fn("AcpManagement.make")(function* (
         return yield* operations.start(
           {
             operationId: request.input.operationId,
+            configurationRevision: config.revision,
             kind: "connect",
             phase: "running",
             instanceId: request.input.instanceId,
@@ -616,62 +661,124 @@ export const make = Effect.fn("AcpManagement.make")(function* (
       }
       case "acp.auth.read":
         return yield* readAuth(request.input);
-      case "acp.auth.start":
+      case "acp.auth.start": {
+        const existing = yield* readAuth(request.input);
+        if (existing.cancellable) return existing;
         return yield* withIdle(request.input.instanceId, (selected) =>
-          selected
-            .auth!.start(
-              request.input.ownerId,
-              idleBeforeMutation(selected),
-              request.input.methodId,
-              request.input.returnUrl,
-              request.input.callbackMode,
-            )
-            .pipe(Effect.flatMap(encodeAuth)),
+          Effect.gen(function* () {
+            const captured = yield* policy.snapshot;
+            const finish = authentication.begin(selected.auth!, captured.revision);
+            return yield* withCurrent(
+              selected,
+              selected.auth!.start(
+                request.input.ownerId,
+                idleBeforeMutation(selected),
+                request.input.methodId,
+                request.input.returnUrl,
+                request.input.callbackMode,
+              ),
+            ).pipe(
+              Effect.flatMap((state) => projectAuth(selected, captured.revision, state)),
+              Effect.ensuring(Effect.sync(finish)),
+            );
+          }),
         );
-      case "acp.auth.respond":
-        return yield* auth
-          .respond(request.input, request.input.ownerId)
-          .pipe(Effect.flatMap(encodeAuth));
-      case "acp.auth.complete":
-        return yield* auth
-          .complete(request.input, request.input.ownerId)
-          .pipe(Effect.flatMap(encodeAuth));
-      case "acp.auth.cancel":
-        return yield* auth
-          .cancel(request.input, request.input.ownerId)
-          .pipe(Effect.flatMap(encodeAuth));
+      }
+      case "acp.auth.respond": {
+        const selected = yield* registry.getInstance(request.input.instanceId);
+        if (!selected?.auth?.respond)
+          return yield* failure("The Agent sign-in state is unavailable.");
+        return yield* authAction(
+          selected,
+          selected.auth.respond(request.input.ownerId, request.input),
+        );
+      }
+      case "acp.auth.complete": {
+        const selected = yield* registry.getInstance(request.input.instanceId);
+        if (!selected?.auth) return yield* failure("The Agent sign-in state is unavailable.");
+        return yield* authAction(
+          selected,
+          selected.auth.complete(request.input.ownerId, request.input),
+        );
+      }
+      case "acp.auth.cancel": {
+        const selected = yield* registry.getInstance(request.input.instanceId);
+        if (!selected?.auth) return yield* failure("The Agent sign-in state is unavailable.");
+        return yield* authAction(
+          selected,
+          selected.auth.cancel(request.input.ownerId, request.input.flowId),
+        );
+      }
       case "acp.auth.logout":
         return yield* withIdle(request.input.instanceId, (selected) =>
-          selected.auth!.logout(idleBeforeMutation(selected)).pipe(Effect.flatMap(encodeAuth)),
+          authAction(selected, selected.auth!.logout(idleBeforeMutation(selected))),
         );
       case "acp.urlAuth.accept":
         return { accepted: yield* coordinator.acceptUrlAuthentication(request.input) };
       case "acp.sessions.list": {
-        const selected = yield* instance(request.input.instanceId);
-        const result = yield* selected.acpSessionManagement.listSessions(request.input);
-        if (result.nextCursor !== null && result.nextCursor === request.input.cursor)
-          return yield* failure("The Agent returned a repeated session cursor.");
-        const config = yield* configuration(request.input.instanceId);
-        const sourceFingerprint = fingerprint(
-          config.settings,
-          request.input.instanceId,
-          config.environment,
-        );
-        const mapped = yield* Effect.forEach(
-          result.sessions,
-          (session) =>
-            Effect.gen(function* () {
-              const threadId = importIdentity(
-                request.input.instanceId,
-                session.sessionId,
-                sourceFingerprint,
+        return yield* pagination.withPermit(
+          Effect.gen(function* () {
+            const selected = yield* instance(request.input.instanceId);
+            const key = JSON.stringify([request.input.instanceId, request.input.cwd]);
+            const previous = listPages.get(key);
+            const ancestry =
+              request.input.cursor === undefined
+                ? []
+                : previous?.source === selected.snapshot
+                  ? previous.cursors.get(request.input.cursor)
+                  : undefined;
+            if (ancestry === undefined)
+              return yield* failure(
+                "The Agent could not complete this request. Refresh its state and retry.",
               );
-              const shell = yield* orchestrator.getThreadShell(threadId);
-              return { ...session, importedThreadId: shell === null ? null : threadId };
-            }),
-          { concurrency: 8 },
+            const result = yield* selected.acpSessionManagement.listSessions(request.input);
+            if ((yield* instance(request.input.instanceId)).snapshot !== selected.snapshot)
+              return yield* failure(
+                "The ACP configuration changed. Retry against the current instance.",
+              );
+            if (result.nextCursor !== null && ancestry.includes(result.nextCursor))
+              return yield* failure("The Agent returned a repeated session cursor.");
+            if (result.nextCursor !== null && ancestry.length >= 100)
+              return yield* failure("The Agent session listing exceeded its page budget.");
+            if (
+              request.input.cursor !== undefined &&
+              result.nextCursor !== null &&
+              !previous!.cursors.has(result.nextCursor) &&
+              previous!.cursors.size >= 100
+            )
+              return yield* failure("The Agent session listing exceeded its page budget.");
+            const config = yield* configuration(request.input.instanceId);
+            const sourceFingerprint = fingerprint(
+              config.settings,
+              request.input.instanceId,
+              config.environment,
+            );
+            const mapped = yield* Effect.forEach(
+              result.sessions,
+              (session) =>
+                Effect.gen(function* () {
+                  const threadId = importIdentity(
+                    request.input.instanceId,
+                    session.sessionId,
+                    sourceFingerprint,
+                  );
+                  const shell = yield* orchestrator.getThreadShell(threadId);
+                  return { ...session, importedThreadId: shell === null ? null : threadId };
+                }),
+              { concurrency: 8 },
+            );
+            const traversal =
+              request.input.cursor === undefined
+                ? { source: selected.snapshot, cursors: new Map<string, ReadonlyArray<string>>() }
+                : previous!;
+            if (result.nextCursor !== null)
+              traversal.cursors.set(result.nextCursor, [...ancestry, result.nextCursor]);
+            listPages.delete(key);
+            listPages.set(key, traversal);
+            if (listPages.size > 64) listPages.delete(listPages.keys().next().value!);
+            return { ...result, sessions: mapped };
+          }),
         );
-        return { ...result, sessions: mapped };
       }
       case "acp.sessions.prepareImport":
         return yield* prepareImport(request.input);

@@ -547,7 +547,9 @@ it.effect("profile import stops owned sessions and gates access until credential
         Effect.andThen(Deferred.succeed(writing, undefined)),
         Effect.andThen(Deferred.await(release)),
       ),
-      Effect.sync(() => { admitted = true; }),
+      Effect.sync(() => {
+        admitted = true;
+      }),
     ).pipe(Effect.forkChild);
     yield* Effect.raceFirst(Deferred.await(writing), Fiber.join(imported));
     const denied = yield* controller.withAccess!(Effect.succeed("old credential process")).pipe(

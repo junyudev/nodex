@@ -7,9 +7,12 @@ import * as TestClock from "effect/testing/TestClock";
 import { makeOperations } from "./AcpManagement.ts";
 import type { AgentAcpOperation } from "./AcpManagementContract.ts";
 
-const operation = (operationId: string): AgentAcpOperation => ({
+const operation = (
+  operationId: string,
+): Omit<AgentAcpOperation, "runtimeGeneration" | "revision" | "cancellable"> => ({
   operationId,
   kind: "connect",
+  configurationRevision: 7,
   phase: "running",
   instanceId: operationId,
   agentId: null,
@@ -21,7 +24,7 @@ it.effect(
   "bounds active ACP work and releases every cancelled operation before accepting replacements",
   () =>
     Effect.gen(function* () {
-      const owner = yield* makeOperations;
+      const owner = yield* makeOperations("runtime-one");
       const live = yield* Ref.make(0);
       for (let index = 0; index < 8; index++) {
         const started = yield* Deferred.make<void>();

@@ -50,7 +50,13 @@ it.live(
           method: "acp.install.start",
           input: { operationId: "install", agentId: "fixture", distribution: "binary" },
         });
-        expect(install).toMatchObject({ phase: "running" });
+        expect(install).toMatchObject({
+          phase: "running",
+          runtimeGeneration: expect.any(String),
+          configurationRevision: null,
+          revision: expect.any(Number),
+          cancellable: true,
+        });
         yield* Effect.promise(() => downloadStarted.promise).pipe(Effect.timeout("5 seconds"));
         const uninstall = runtime.handle({
           id: "uninstall",
@@ -69,7 +75,13 @@ it.live(
             }),
             Effect.timeout("5 seconds"),
           );
-        expect(completed).toMatchObject({ phase: "succeeded", result: { prepared: true } });
+        expect(completed).toMatchObject({
+          phase: "succeeded",
+          runtimeGeneration: expect.any(String),
+          configurationRevision: null,
+          cancellable: false,
+          result: { prepared: true },
+        });
         expect(acpFailure(yield* uninstall.pipe(Effect.flip)).reason).toBe("busy");
         expect(yield* fs.exists(`${home}/tools/fixture`)).toBe(true);
         expect(
