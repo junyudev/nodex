@@ -165,6 +165,31 @@ describe("ACP native conversations", () => {
     await waitFor(() => expect(view.queryByRole("group", { name: "Scratch" })).toBeNull());
   });
 
+  test("a failed first read can be retried, and an empty page that has more keeps Load more", async () => {
+    const { main, view } = mount({ canLoad: true, canResume: false, canDelete: false }, []);
+    const page = (sessions: AcpNativeSession[], nextCursor: string | null) =>
+      ok({ sessions, nextCursor, canLoad: true, canResume: false, canDelete: false });
+    main.runtime.listSessions
+      .mockResolvedValueOnce({ ok: false, error: { reason: "busy", message: "busy" } })
+      .mockResolvedValueOnce(page([], "page-2"))
+      .mockResolvedValueOnce(page([session({})], null));
+
+    await view.findByText("The Agent is busy. Try again when its current work finishes.");
+    await press(view.getByRole("button", { name: "Try again" }));
+    await view.findByText("Qoder hasn't listed any conversations yet.");
+    expect(view.queryByRole("alert")).toBeNull();
+
+    await press(view.getByRole("button", { name: "Load more" }));
+    await view.findByRole("group", { name: "Fix the parser" });
+    expect(main.runtime.listSessions).toHaveBeenLastCalledWith({
+      instanceId: "qoder-main",
+      projectId: "project",
+      cursor: "page-2",
+    });
+    expect(view.queryByRole("button", { name: "Load more" })).toBeNull();
+    expect(view.queryByText(/no saved conversations/)).toBeNull();
+  });
+
   test("an Agent that doesn't list conversations is shown as unavailable instead of empty", async () => {
     const qoder = registryInstance();
     const main = fakeAcpRuntime({ instances: [qoder] });

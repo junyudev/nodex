@@ -315,15 +315,13 @@ function SessionList({
 
   return (
     <>
-      {listing.failure && listing.sessions.length === 0 ? (
-        <p role="alert" className="px-4 py-3 text-xs text-danger">
-          {acpFailureText(listing.failure, "history")}
-        </p>
-      ) : listing.sessions.length === 0 ? (
+      {listing.sessions.length === 0 && !listing.failure ? (
         <p className="px-4 py-3 text-xs text-token-description-foreground">
-          {listing.loading
-            ? "Loading…"
-            : `${agentName} has no saved conversations for this folder.`}
+          {listing.nextCursor
+            ? `${agentName} hasn't listed any conversations yet.`
+            : listing.loading
+              ? "Loading…"
+              : `${agentName} has no saved conversations for this folder.`}
         </p>
       ) : null}
       {listing.sessions.map((session) => (
@@ -341,7 +339,8 @@ function SessionList({
           onDismiss={() => setRow(session.sessionId, undefined)}
         />
       ))}
-      {listing.sessions.length > 0 && (listing.nextCursor || listing.failure) ? (
+      {/* An Agent may return an empty page that still has more; a failed first page can retry. */}
+      {listing.nextCursor || listing.failure ? (
         <div className="flex items-center gap-2 px-4 py-2.5">
           {listing.failure ? (
             <span role="alert" className="min-w-0 flex-1 text-xs text-danger">
