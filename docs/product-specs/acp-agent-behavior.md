@@ -188,8 +188,9 @@ supported and only for conversations not imported, after confirmation. Until the
 imported conversation, its empty transcript is titled Imported from the Agent and says to send a
 message to continue, adding that the Agent will try to restore earlier messages, or that it keeps
 their context without showing them. Continuing depends on the Agent restoring the conversation; when
-it cannot, that request fails instead of starting over. Restored messages appear above the message
-that continued the conversation, live and after reopening.
+it cannot, that request fails instead of starting over and the chat says it couldn't reopen the
+conversation, without offering Continue. Restored messages appear above the message that continued
+the conversation, live and after reopening.
 
 ## Verification
 

@@ -34,6 +34,8 @@ export function recoveryStatusLabel(recovery: ConversationRecovery): string {
         return "Service is unavailable";
       case "connection":
         return "Connection could not be restored";
+      case "unrecoverable":
+        return "Couldn't reopen this conversation";
       case "unknown":
         return "Request failed";
     }
@@ -67,6 +69,8 @@ export function recoveryAction(
   isStreamingTurn: boolean,
 ): "continue" | "manage-provider" | null {
   if (!recovery || recovery.state !== "failed" || !isLatestTurn || isStreamingTurn) return null;
+  // Continuing would ask the provider to reopen the same conversation again.
+  if (recovery.reason === "unrecoverable") return null;
   if (recovery.reason === "authentication" || recovery.reason === "usage_limit")
     return "manage-provider";
   return "continue";

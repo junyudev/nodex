@@ -7,6 +7,8 @@ export type ConversationRecoveryReason =
   | "rate_limit"
   | "usage_limit"
   | "authentication"
+  /** The provider can't reopen the captured conversation; retrying the same chat can't help. */
+  | "unrecoverable"
   | "unknown";
 
 /** Current request recovery, separate from the diagnostic event that started it. */
@@ -37,6 +39,7 @@ export function conversationRecoveryReason(code: string | null): ConversationRec
     code === "responseTooManyFailedAttempts"
   )
     return "connection";
+  if (code === "native_session_unrecoverable") return "unrecoverable";
   return "unknown";
 }
 
