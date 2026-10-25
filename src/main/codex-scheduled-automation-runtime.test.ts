@@ -70,7 +70,7 @@ describe("codex scheduled automation runtime helpers", () => {
       [
         "Automation: Daily report",
         "Automation ID: daily-report",
-        "Last run: 2026-07-08T01:02:03.000Z (1783472523000)",
+        "Last run: 2026-07-08T01:02:03.000Z",
         "",
         "Summarize the repo.",
       ].join("\n"),

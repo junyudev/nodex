@@ -39,9 +39,7 @@ export function buildCodexScheduledAutomationRunPrompt(
   automation: Pick<CodexScheduledAutomation, "id" | "name" | "prompt" | "lastRunAt">,
 ): string {
   const lastRun =
-    automation.lastRunAt === null
-      ? "never"
-      : `${new Date(automation.lastRunAt).toISOString()} (${automation.lastRunAt})`;
+    automation.lastRunAt === null ? "never" : new Date(automation.lastRunAt).toISOString();
 
   return [
     `Automation: ${automation.name}`,
