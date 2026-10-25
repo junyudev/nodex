@@ -5,6 +5,7 @@ import path from "node:path";
 
 import { chooseComposerModel } from "./support/composer-model-picker";
 import { waitForDraftScene } from "./support/new-chat-draft";
+import { openWorkbenchSettings } from "./support/workbench-settings";
 import { withElectronScenario } from "../../scripts/scenarios/harness/electron-e2e-harness";
 import { createScriptedAcpRegistryFixture } from "../../scripts/scenarios/runtime/scripted-acp-registry-fixture";
 import {
@@ -116,7 +117,7 @@ test("installs an ACP Agent from the Registry and chats with the installed Agent
         [],
       );
 
-      await page.getByRole("button", { name: "Settings", exact: true }).click();
+      await openWorkbenchSettings(page);
       await page.getByRole("link", { name: "Agents", exact: true }).click();
       const otherAgents = page.getByRole("region", { name: "Other agents", exact: true });
       await otherAgents
