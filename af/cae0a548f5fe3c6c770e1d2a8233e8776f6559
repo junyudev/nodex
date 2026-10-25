@@ -1,0 +1,48 @@
+src/renderer/lib/command-palette-page-results.node.test.ts
+  s_38977beeb600f3::t_deb9ea9bca3c13 5,61-68
+src/renderer/lib/command-palette-chat-search.test.tsx
+  s_38977beeb600f3::t_978b979a0393fd 1-120
+  s_38977beeb600f3::t_aae4df1d3a6922 121-124
+src/renderer/lib/command-palette-page-results.ts
+  s_38977beeb600f3::t_ea3398799cc39e 92
+  s_38977beeb600f3::t_555009331f6687 93
+src/renderer/lib/command-palette-chat-search.ts
+  s_38977beeb600f3::t_e5215f13114567 250-255,264,266,269
+  s_38977beeb600f3::t_ea3398799cc39e 22,60,62,66
+src/renderer/lib/command-palette.ts
+  s_38977beeb600f3::t_ea3398799cc39e 43-71,669
+src/renderer/lib/command-palette.node.test.ts
+  s_38977beeb600f3::t_deb9ea9bca3c13 6,8,15,18,151-244,246-260
+src/renderer/lib/command-palette-chat-search.node.test.ts
+  s_38977beeb600f3::t_deb9ea9bca3c13 72-75,87-91,94-109
+src/renderer/components/workbench/command-palette.browser.test.tsx
+  s_38977beeb600f3::t_abea3ae605a8b7 1-251
+CHANGELOG.md
+  s_38977beeb600f3::t_d9320ebc520956 16-17
+docs/product-specs/command-palette-behavior.md
+  s_38977beeb600f3::t_d624da337303b9 6,8-12,20-24,28,35-59,61-63,65,67,69,71-72,77,79,81-82,84-85,88,92,94,96,155,164-166,197,243,248,254,260,268-277,281-293
+src/renderer/components/workbench/command-palette-surface.tsx
+  s_38977beeb600f3::t_3f4c77ad2c34e6 17,28-29,68,78-85,107,111-112,129,133,157-162,172,215,219,230,251-257,312-313,317-321,388-396,407-408,412,420-443,450-454,490-492,504,510,515,522-523,526-529,550,604-609,611-618,620-621,638,640,647-653,764,783,789,827,829-830,833,836,859,886,896-898,908-910,916-919,927-933,938-949,951,957,963,970,976,980-996,1005-1027,1054,1056,1077,1079,1087-1090,1093-1102,1105-1106,1108-1117,1120-1148,1163-1166,1168-1173,1176,1194-1199,1221-1222,1224,1226-1291
+src/renderer/components/workbench/command-palette.test.tsx
+  s_38977beeb600f3::t_ad21dabc7275f1 4,10,455,457-458,462,469,473-481,483-585,587-617,619-668,670,673-676,678-753,823-826,991,1032,1111,1165-1166,1214-1217,1375,1406,1498,1545-1548,1557-1575,1577-1580,1585-1647,1656,1701-1704,1867,1879,1891-1897
+src/renderer/components/workbench/command-palette.tsx
+  s_38977beeb600f3::t_d3baa6f6774314 131,141,143
+src/renderer/lib/command-palette-sections.ts
+  s_38977beeb600f3::t_b23bcafe28fcb9 1-227
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "afcae0a548f5fe3c6c770e1d2a8233e8776f6559",
+  "prompts": {},
+  "sessions": {
+    "s_38977beeb600f3": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17152-6ee1-78e3-b9fa-305f561d82fe",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
