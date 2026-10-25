@@ -1,0 +1,34 @@
+src/renderer/styles/semantic-theme-contract.browser.test.ts
+  s_38977beeb600f3::t_5f29b557b98aef 58-79
+  s_38977beeb600f3::t_3b68f5dfe03dd2 80-82
+scripts/semantic-theme/parser.ts
+  s_38977beeb600f3::t_971be84f4ae154 496-502
+scripts/semantic-theme/renderer.ts
+  s_38977beeb600f3::t_971be84f4ae154 76-80,240-241,243
+  s_38977beeb600f3::t_8acb57c66bd33d 242
+scripts/semantic-theme/profile.ts
+  s_38977beeb600f3::t_971be84f4ae154 8
+scripts/semantic-theme/parser.test.ts
+  s_38977beeb600f3::t_971be84f4ae154 11-24
+  s_38977beeb600f3::t_99cf41bbff9400 25-28
+src/renderer/styles/semantic-theme.provenance.json
+  s_38977beeb600f3::t_e8be2855920422 5,21
+src/renderer/styles/theme-semantic-contract.generated.css
+  s_38977beeb600f3::t_a9af09de320ea5 7,417-427
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "975f87e3049bcda965ad6863bad69d90028a0967",
+  "prompts": {},
+  "sessions": {
+    "s_38977beeb600f3": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17152-6ee1-78e3-b9fa-305f561d82fe",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
