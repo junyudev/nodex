@@ -1,0 +1,27 @@
+docs/CONFIGURATION.md
+  s_901e7cdfde4ade::t_1923e3aee3fb2b 124
+CHANGELOG.md
+  s_901e7cdfde4ade::t_adbda12a26ac9d 17
+docs/product-specs/native-conversation-connection-behavior.md
+  s_901e7cdfde4ade::t_1923e3aee3fb2b 96
+docs/product-specs/acp-agent-behavior.md
+  s_901e7cdfde4ade::t_1923e3aee3fb2b 141
+docs/product-specs/settings-route-behavior.md
+  s_901e7cdfde4ade::t_1923e3aee3fb2b 53-54,56-58,71-79,103-104
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "731058cfd2a834e2f450f534129b4f2970844652",
+  "prompts": {},
+  "sessions": {
+    "s_901e7cdfde4ade": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "dbfeb0b2-2a6b-4724-8483-90ea2623a3fd",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
