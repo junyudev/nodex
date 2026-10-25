@@ -1,0 +1,24 @@
+docs/product-specs/nodex-account-and-subscription-behavior.md
+  s_020e56a074e5e7::t_163b47f659fc5c 427,429-435,462-463
+  s_020e56a074e5e7::t_aae8d7b740f2b7 59-68,229-239,279-288,407-418,514-534
+docs/CONFIGURATION.md
+  s_020e56a074e5e7::t_98f0a2f3cf23ef 25-30
+docs/product-specs/index.md
+  s_020e56a074e5e7::t_3d7bc24398047d 5-7,13
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "9999c7aab07d08edad39aae4d1b9648ae54aa8f7",
+  "prompts": {},
+  "sessions": {
+    "s_020e56a074e5e7": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a16369-09ce-73d2-b36e-73b9a8aae6ea",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
