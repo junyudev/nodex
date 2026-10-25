@@ -205,6 +205,7 @@ function WorkspaceFilePreview({
   markdownMode,
   wrap,
   revealLocation,
+  onRevealComplete,
   resourceRevision,
 }: {
   hostId: string;
@@ -221,6 +222,7 @@ function WorkspaceFilePreview({
   markdownMode: "source" | "rendered";
   wrap: boolean;
   revealLocation?: WorkspaceFilesTabState["pendingReveal"];
+  onRevealComplete: (location: NonNullable<WorkspaceFilesTabState["pendingReveal"]>) => void;
   resourceRevision: number;
 }) {
   if (state.status === "idle") {
@@ -304,6 +306,7 @@ function WorkspaceFilePreview({
             lineNumbers
             wrap={wrap}
             revealLocation={revealLocation}
+            onRevealComplete={onRevealComplete}
             className="min-h-0 flex-1"
           />
         </div>
@@ -396,6 +399,7 @@ function WorkspaceFilePreview({
           className="min-h-0 flex-1"
           onChange={onEdit}
           revealLocation={revealLocation}
+          onRevealComplete={onRevealComplete}
         />
         <div className="flex h-6 shrink-0 items-center justify-end border-t-[0.5px] border-token-border px-2 text-[11px] text-token-description-foreground">
           {document.status === "saving"
@@ -428,6 +432,7 @@ function WorkspaceFilePreview({
         lineNumbers
         wrap={wrap}
         revealLocation={revealLocation}
+        onRevealComplete={onRevealComplete}
         className="min-h-0 flex-1 bg-token-main-surface-primary"
       />
     </div>
@@ -594,39 +599,15 @@ export function WorkspaceFilesPanel({
     onUpdateTabStateRef.current?.(state);
   }, []);
 
-  const revealViewerMounted = Boolean(
-    selectedPath &&
-    previewState.status === "loaded" &&
-    (presentation === "editable-text" ||
-      presentation === "readonly-text" ||
-      (presentation === "markdown" && markdownMode === "source")) &&
-    revealLocation?.line,
+  const handleRevealComplete = useCallback(
+    (location: NonNullable<WorkspaceFilesTabState["pendingReveal"]>) => {
+      if (persistedTabStateRef.current.pendingReveal !== location) return;
+      const nextState = { ...persistedTabStateRef.current };
+      delete nextState.pendingReveal;
+      persistTabState(nextState);
+    },
+    [persistTabState],
   );
-
-  useEffect(() => {
-    if (!revealViewerMounted) return;
-
-    let clearFrame: number | null = null;
-    const revealFrame = window.requestAnimationFrame(() => {
-      clearFrame = window.requestAnimationFrame(() => {
-        const nextState = { ...persistedTabStateRef.current };
-        delete nextState.pendingReveal;
-        persistTabState(nextState);
-      });
-    });
-
-    return () => {
-      window.cancelAnimationFrame(revealFrame);
-      if (clearFrame !== null) window.cancelAnimationFrame(clearFrame);
-    };
-  }, [
-    persistTabState,
-    revealLocation?.column,
-    revealLocation?.endColumn,
-    revealLocation?.endLine,
-    revealLocation?.line,
-    revealViewerMounted,
-  ]);
 
   useEffect(() => {
     const root = rootRef.current;
@@ -1329,6 +1310,7 @@ export function WorkspaceFilesPanel({
                 markdownMode={markdownMode}
                 wrap={wordWrap}
                 revealLocation={revealLocation}
+                onRevealComplete={handleRevealComplete}
                 resourceRevision={previewRevision}
               />
             </div>

@@ -1,6 +1,6 @@
 import type { SupportedLanguages } from "@pierre/diffs";
-import { CodeView, type CodeViewHandle } from "@pierre/diffs/react";
-import { useEffect, useMemo, useRef } from "react";
+import { CodeView, type CodeViewHandle, type CodeViewProps } from "@pierre/diffs/react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   NODEX_SOURCE_HOST_CLASS,
   getNodexDiffHostStyle,
@@ -25,6 +25,7 @@ export interface SourceViewerProps {
   readonly wrap?: boolean;
   readonly sourceIdentity?: string;
   readonly className?: string;
+  readonly onRevealComplete?: (location: NonNullable<SourceViewerProps["revealLocation"]>) => void;
   readonly revealLocation?: {
     line?: number;
     column?: number;
@@ -43,8 +44,11 @@ export function SourceViewer({
   sourceIdentity,
   className,
   revealLocation,
+  onRevealComplete,
 }: SourceViewerProps) {
   const codeViewRef = useRef<CodeViewHandle<undefined>>(null);
+  const [renderedIdentity, setRenderedIdentity] = useState<string | null>(null);
+  const identity = sourceIdentity ?? filename;
   const { resolved } = useTheme();
   const { codeFontSize } = useCodeFontSize();
   const contentVersion = useMemo(() => getSourceContentVersion(value), [value]);
@@ -68,30 +72,31 @@ export function SourceViewer({
     ],
     [contentVersion, file, filename, sourceIdentity],
   );
-  const options = useMemo(
+  const options = useMemo<NonNullable<CodeViewProps["options"]>>(
     () => ({
       ...getNodexSourceOptions(resolved, true, {
         disableLineNumbers: !lineNumbers,
         wrap,
       }),
       itemMetrics: { lineHeight: getNodexSourceLineHeight(codeFontSize), spacing: 0 },
+      onPostRender: (_node, _instance, phase) => {
+        if (phase !== "unmount") setRenderedIdentity(identity);
+      },
     }),
-    [codeFontSize, lineNumbers, resolved, wrap],
+    [codeFontSize, identity, lineNumbers, resolved, wrap],
   );
   const style = useMemo(() => getNodexDiffHostStyle(resolved), [resolved]);
 
   useEffect(() => {
     if (!revealLocation?.line) return;
-    const frame = window.requestAnimationFrame(() => {
-      const id = sourceIdentity ?? filename;
-      const codeView = codeViewRef.current;
-      if (!codeView) return;
-      codeView.setSelectedLines(buildWorkspaceFileLineSelection(id, revealLocation));
-      const target = buildWorkspaceFileScrollTarget(id, revealLocation);
-      if (target) codeView.scrollTo(target);
-    });
-    return () => window.cancelAnimationFrame(frame);
-  }, [filename, revealLocation, sourceIdentity]);
+    if (renderedIdentity !== identity) return;
+    const codeView = codeViewRef.current;
+    if (!codeView) return;
+    codeView.setSelectedLines(buildWorkspaceFileLineSelection(identity, revealLocation));
+    const target = buildWorkspaceFileScrollTarget(identity, revealLocation);
+    if (target) codeView.scrollTo(target);
+    onRevealComplete?.(revealLocation);
+  }, [identity, onRevealComplete, renderedIdentity, revealLocation]);
 
   return (
     <section

@@ -7,7 +7,7 @@ import {
   type CodeViewItem,
   type FileContents,
 } from "@pierre/diffs/react";
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   NODEX_SOURCE_HOST_CLASS,
   getNodexSourceEditorHostStyle,
@@ -33,6 +33,9 @@ interface WorkspacePierreEditorProps {
   readonly wrap?: boolean;
   readonly className?: string;
   readonly onChange: (value: string) => void;
+  readonly onRevealComplete?: (
+    location: NonNullable<WorkspacePierreEditorProps["revealLocation"]>,
+  ) => void;
   readonly revealLocation?: {
     line?: number;
     column?: number;
@@ -56,8 +59,13 @@ export function WorkspacePierreEditor({
   className,
   onChange,
   revealLocation,
+  onRevealComplete,
 }: WorkspacePierreEditorProps) {
   const codeViewRef = useRef<CodeViewHandle<undefined>>(null);
+  const [attachment, setAttachment] = useState<{
+    sourceIdentity: string;
+    editor: Editor<undefined>;
+  } | null>(null);
   const { resolved } = useTheme();
   const { codeFontSize } = useCodeFontSize();
   const items = useMemo<CodeViewItem[]>(
@@ -100,24 +108,24 @@ export function WorkspacePierreEditor({
 
   useEffect(() => {
     if (!revealLocation?.line) return;
-    const frame = window.requestAnimationFrame(() => {
-      const codeView = codeViewRef.current;
-      if (!codeView) return;
+    if (attachment?.sourceIdentity !== sourceIdentity) return;
+    const codeView = codeViewRef.current;
+    if (!codeView) return;
+    if (codeView.getEditor(sourceIdentity) !== attachment.editor) return;
 
-      const editor = codeView.getEditor(sourceIdentity) as Editor<undefined> | undefined;
-      const editorSelection = buildWorkspaceFileEditorSelection(revealLocation);
-      if (editor && editorSelection) {
-        codeView.setSelectedLines(null);
-        editor.setSelections([editorSelection]);
-      } else {
-        codeView.setSelectedLines(buildWorkspaceFileLineSelection(sourceIdentity, revealLocation));
-      }
+    // onAttach is delivered after the editable document and its shadow DOM are ready.
+    const editorSelection = buildWorkspaceFileEditorSelection(revealLocation);
+    if (editorSelection) {
+      codeView.setSelectedLines(null);
+      attachment.editor.setSelections([editorSelection]);
+    } else {
+      codeView.setSelectedLines(buildWorkspaceFileLineSelection(sourceIdentity, revealLocation));
+    }
 
-      const target = buildWorkspaceFileScrollTarget(sourceIdentity, revealLocation);
-      if (target) codeView.scrollTo(target);
-    });
-    return () => window.cancelAnimationFrame(frame);
-  }, [revealLocation, sourceIdentity]);
+    const target = buildWorkspaceFileScrollTarget(sourceIdentity, revealLocation);
+    if (target) codeView.scrollTo(target);
+    onRevealComplete?.(revealLocation);
+  }, [attachment, onRevealComplete, revealLocation, sourceIdentity]);
 
   return (
     <section
@@ -133,6 +141,7 @@ export function WorkspacePierreEditor({
           options={options}
           editorOptions={{
             persistState: true,
+            onAttach: (editor) => setAttachment({ sourceIdentity, editor }),
             clipboard: {
               readText: async () => {
                 if (typeof navigator.clipboard?.readText !== "function") return "";

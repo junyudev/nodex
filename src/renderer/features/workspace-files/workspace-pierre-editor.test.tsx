@@ -1,25 +1,31 @@
-import { render } from "@testing-library/react";
+import { act, render } from "@testing-library/react";
 import { beforeEach, describe, expect, test, vi } from "vite-plus/test";
-import { forwardRef, useImperativeHandle } from "react";
+import { forwardRef, useEffect, useImperativeHandle } from "react";
 import { settleAsyncRender } from "../../test/dom";
 import { installAsyncRequestAnimationFrame } from "../../test/browser-globals";
 import { WorkspacePierreEditor } from "./workspace-pierre-editor";
 
-const { editor, codeViewHandle, typography, captureCodeViewOptions } = vi.hoisted(() => {
-  const editor = {
-    setSelections: vi.fn(),
-  };
-  return {
-    editor,
-    typography: { codeFontSize: 12 },
-    captureCodeViewOptions: vi.fn(),
-    codeViewHandle: {
-      getEditor: vi.fn(() => editor),
-      scrollTo: vi.fn(),
-      setSelectedLines: vi.fn(),
-    },
-  };
-});
+const { editor, codeViewHandle, typography, captureCodeViewOptions, attachment } = vi.hoisted(
+  () => {
+    const editor = {
+      setSelections: vi.fn(),
+    };
+    return {
+      editor,
+      typography: { codeFontSize: 12 },
+      captureCodeViewOptions: vi.fn(),
+      attachment: {
+        ready: true,
+        onAttach: undefined as ((attachedEditor: typeof editor) => void) | undefined,
+      },
+      codeViewHandle: {
+        getEditor: vi.fn(() => editor),
+        scrollTo: vi.fn(),
+        setSelectedLines: vi.fn(),
+      },
+    };
+  },
+);
 
 vi.mock("@/lib/use-theme", () => ({
   useTheme: () => ({ resolved: "dark" }),
@@ -36,16 +42,24 @@ vi.mock("@pierre/diffs/react", () => ({
       {
         items,
         options,
+        editorOptions,
         onItemEditChange,
       }: {
         items: Array<{ file: { contents: string; name: string }; edit: boolean }>;
         options: { itemMetrics: { lineHeight: number } };
+        editorOptions: { onAttach?: (attachedEditor: typeof editor) => void };
         onItemEditChange: (item: unknown, file: { contents: string; name: string }) => void;
       },
       ref,
     ) => {
       useImperativeHandle(ref, () => codeViewHandle);
       captureCodeViewOptions(options);
+      useEffect(() => {
+        attachment.onAttach = editorOptions.onAttach;
+      }, [editorOptions.onAttach]);
+      useEffect(() => {
+        if (attachment.ready) attachment.onAttach?.(editor);
+      }, []);
       return (
         <button
           type="button"
@@ -73,6 +87,8 @@ beforeEach(() => {
   codeViewHandle.setSelectedLines.mockClear();
   captureCodeViewOptions.mockClear();
   typography.codeFontSize = 12;
+  attachment.ready = true;
+  attachment.onAttach = undefined;
 });
 
 describe("WorkspacePierreEditor", () => {
@@ -149,5 +165,43 @@ describe("WorkspacePierreEditor", () => {
       align: "center",
       behavior: "instant",
     });
+  });
+
+  test("retains a caret reveal until the actual editor attaches", async () => {
+    attachment.ready = false;
+    const onRevealComplete = vi.fn();
+    const location = { line: 2, column: 3 };
+    const component = (revealLocation: typeof location) => (
+      <WorkspacePierreEditor
+        value={"first\nsecond\nthird"}
+        filename="index.ts"
+        language="typescript"
+        sourceIdentity="/repo/index.ts"
+        documentVersion={0}
+        ariaLabel="Editor"
+        revealLocation={revealLocation}
+        onChange={() => undefined}
+        onRevealComplete={onRevealComplete}
+      />
+    );
+    const view = render(component(location));
+
+    await settleAsyncRender();
+    expect(editor.setSelections).not.toHaveBeenCalled();
+    expect(onRevealComplete).not.toHaveBeenCalled();
+    const onAttach = attachment.onAttach;
+    const nextLocation = { line: 3, column: 2 };
+    view.rerender(component(nextLocation));
+    await act(async () => {
+      onAttach?.(editor);
+    });
+    expect(editor.setSelections).toHaveBeenCalledWith([
+      {
+        start: { line: 2, character: 1 },
+        end: { line: 2, character: 1 },
+        direction: "forward",
+      },
+    ]);
+    expect(onRevealComplete).toHaveBeenCalledExactlyOnceWith(nextLocation);
   });
 });

@@ -1,6 +1,6 @@
-import { render } from "@testing-library/react";
+import { act, render } from "@testing-library/react";
 import { beforeEach, describe, expect, test, vi } from "vite-plus/test";
-import { forwardRef, useImperativeHandle } from "react";
+import { forwardRef, useEffect, useImperativeHandle } from "react";
 import { settleAsyncRender } from "../../test/dom";
 import { installAsyncRequestAnimationFrame } from "../../test/browser-globals";
 import { SourceViewer } from "./source-viewer";
@@ -11,6 +11,10 @@ const codeViewHandle = vi.hoisted(() => ({
 }));
 const typography = vi.hoisted(() => ({ codeFontSize: 12 }));
 const captureCodeViewOptions = vi.hoisted(() => vi.fn());
+const renderState = vi.hoisted(() => ({
+  ready: true,
+  onPostRender: undefined as (() => void) | undefined,
+}));
 
 vi.mock("@/lib/use-theme", () => ({
   useTheme: () => ({ resolved: "dark" }),
@@ -31,12 +35,22 @@ vi.mock("@pierre/diffs/react", () => ({
           file: { contents: string; name: string };
           version: number;
         }>;
-        options: { disableLineNumbers?: boolean; overflow?: string };
+        options: {
+          disableLineNumbers?: boolean;
+          overflow?: string;
+          onPostRender?: () => void;
+        };
       },
       ref,
     ) => {
       useImperativeHandle(ref, () => codeViewHandle);
       captureCodeViewOptions(options);
+      useEffect(() => {
+        renderState.onPostRender = options.onPostRender;
+      }, [options.onPostRender]);
+      useEffect(() => {
+        if (renderState.ready) renderState.onPostRender?.();
+      }, []);
       const file = items[0]?.file;
       return (
         <pre
@@ -59,9 +73,38 @@ beforeEach(() => {
   codeViewHandle.setSelectedLines.mockClear();
   captureCodeViewOptions.mockClear();
   typography.codeFontSize = 12;
+  renderState.ready = true;
+  renderState.onPostRender = undefined;
 });
 
 describe("SourceViewer", () => {
+  test("does not consume a reveal before the source item has rendered", async () => {
+    renderState.ready = false;
+    const onRevealComplete = vi.fn();
+    render(
+      <SourceViewer
+        value={"first\nsecond"}
+        ariaLabel="Source"
+        sourceIdentity="/repo/index.ts"
+        revealLocation={{ line: 2 }}
+        onRevealComplete={onRevealComplete}
+      />,
+    );
+    await settleAsyncRender();
+    expect(codeViewHandle.scrollTo).not.toHaveBeenCalled();
+    expect(onRevealComplete).not.toHaveBeenCalled();
+    await act(async () => {
+      renderState.onPostRender?.();
+    });
+    expect(codeViewHandle.scrollTo).toHaveBeenCalledWith({
+      type: "line",
+      id: "/repo/index.ts",
+      lineNumber: 2,
+      align: "center",
+      behavior: "instant",
+    });
+    expect(onRevealComplete).toHaveBeenCalledOnce();
+  });
   test("keeps virtual line measurements aligned with the independent code preference", () => {
     render(<SourceViewer value="source" ariaLabel="Source" />);
     expect(captureCodeViewOptions).toHaveBeenLastCalledWith(
