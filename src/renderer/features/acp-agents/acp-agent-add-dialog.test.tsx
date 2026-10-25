@@ -25,6 +25,18 @@ const type = async (element: HTMLElement, value: string) =>
     await Promise.resolve();
   });
 
+const key = async (element: HTMLElement, name: string) =>
+  act(async () => {
+    fireEvent.keyDown(element, { key: name });
+    await Promise.resolve();
+  });
+
+/** The field's own problem, as assistive technology reads it. */
+const problemOf = (field: HTMLElement) =>
+  field.getAttribute("aria-invalid") === "true"
+    ? document.getElementById(field.getAttribute("aria-describedby") ?? "")?.textContent
+    : null;
+
 const PREVIEW = {
   agentId: "qoder-cli",
   installationId: "d".repeat(64),
@@ -114,6 +126,82 @@ describe("Add ACP Agent dialog", () => {
       expectedInstallationId: PREVIEW.installationId,
     });
     expect(onAdded).toHaveBeenCalledWith(added.id);
+  });
+
+  test("a reviewed Registry Agent without a name points back at the Name field", async () => {
+    const main = fakeAcpRuntime();
+    main.runtime.previewInstall.mockResolvedValue(ok(PREVIEW));
+    const { view, onClose } = mount(main);
+    await press(await view.findByRole("button", { name: /Qoder CLI/ }));
+    await view.findByText("@qoder-ai/qodercli@0.2.14");
+    const name = view.getByLabelText("Name");
+    await type(name, " ");
+
+    await press(view.getByRole("button", { name: "Install and connect" }));
+    expect(problemOf(name)).toBe("Enter a name.");
+    expect(document.activeElement).toBe(name);
+    expect(main.runtime.updateSettings).not.toHaveBeenCalled();
+
+    await type(name, "Qoder work");
+    expect(problemOf(name)).toBeNull();
+    await press(view.getByRole("button", { name: "Install and connect" }));
+    await waitFor(() => expect(onClose).toHaveBeenCalledOnce());
+    expect(main.settings().instances[0]?.displayName).toBe("Qoder work");
+  });
+
+  test("the source tabs follow arrow keys and each source starts at its first field", async () => {
+    const main = fakeAcpRuntime();
+    const { view } = mount(main);
+    const search = await view.findByLabelText("Search the ACP Registry");
+    await waitFor(() => expect(document.activeElement).toBe(search));
+    const registry = view.getByRole("tab", { name: "ACP Registry" });
+    const local = view.getByRole("tab", { name: "Local command" });
+    expect(registry.getAttribute("aria-selected")).toBe("true");
+
+    await act(async () => {
+      registry.focus();
+      await Promise.resolve();
+    });
+    await key(registry, "ArrowRight");
+    expect(document.activeElement).toBe(local);
+    await key(local, "ArrowRight");
+    expect(document.activeElement).toBe(registry);
+    await key(registry, "ArrowLeft");
+    await press(local);
+    expect(local.getAttribute("aria-selected")).toBe("true");
+    expect(view.queryByLabelText("Search the ACP Registry")).toBeNull();
+    await waitFor(() => expect(document.activeElement).toBe(view.getByLabelText("Executable")));
+  });
+
+  test("a blocked local command shows each problem under its field and focuses it", async () => {
+    const main = fakeAcpRuntime();
+    const { view } = mount(main);
+    await press(view.getByRole("tab", { name: "Local command" }));
+    const name = view.getByLabelText("Name");
+    const executable = view.getByLabelText("Executable");
+    // Problems wait for the first submit.
+    expect(problemOf(executable)).toBeNull();
+    expect(view.queryByRole("alert")).toBeNull();
+
+    await press(view.getByRole("button", { name: "Add and connect" }));
+    expect(problemOf(executable)).toBe("Enter the executable to run.");
+    expect(document.activeElement).toBe(executable);
+
+    await type(executable, "qoder");
+    await type(name, "");
+    // After a submit, the problem follows the draft.
+    expect(problemOf(executable)).toBeNull();
+    expect(problemOf(name)).toBe("Enter a name.");
+    await press(view.getByRole("button", { name: "Add and connect" }));
+    expect(document.activeElement).toBe(name);
+
+    await type(name, "Qoder");
+    await type(view.getByLabelText("Registry ID"), "Qoder CLI");
+    await press(view.getByRole("button", { name: "Add and connect" }));
+    const identity = view.getByLabelText("Registry ID");
+    expect(problemOf(identity)).toMatch(/^A Registry ID uses lowercase letters/);
+    expect(document.activeElement).toBe(identity);
+    expect(main.runtime.updateSettings).not.toHaveBeenCalled();
   });
 
   test("a local command keeps each argument exactly and connects after saving", async () => {

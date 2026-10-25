@@ -5,6 +5,7 @@ const nodexFormInputClassName = cn(
   "w-full min-w-0 rounded-md border border-token-input-border bg-token-input-background px-2.5 py-1.5 text-base text-token-input-foreground outline-none",
   "placeholder:text-token-input-placeholder-foreground",
   "focus:border-token-focus-border",
+  "aria-invalid:border-token-error-foreground aria-invalid:ring-2 aria-invalid:ring-token-error-foreground/20",
   "disabled:cursor-not-allowed disabled:opacity-50",
 );
 

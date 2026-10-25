@@ -19,6 +19,7 @@ import {
 } from "@/components/ui/dialog";
 import { NodexOptionPicker, NodexSettingsDropdownTrigger } from "@/components/ui/dropdown";
 import { Input } from "@/components/ui/input";
+import { NodexTabsList, NodexTabsPanel, NodexTabsRoot, NodexTabsTab } from "@/components/ui/tabs";
 import { openExternalUrl } from "@/lib/file-system-operations";
 import type { ModalCloseProps } from "@/lib/modal-registry";
 import { cn } from "@/lib/utils";
@@ -61,26 +62,64 @@ const storageCredentials = (storage: Storage): AcpAgentInstanceInput["credential
     ? { kind: "isolated-home", home: storage.home.trim() }
     : { kind: "inherit-host-profile" };
 
-const storageError = (storage: Storage): string | null =>
+type Field = "name" | "executable" | "arguments" | "home" | "identity";
+type FieldProblem = { readonly field: Field; readonly message: string };
+
+const storageProblem = (storage: Storage): FieldProblem | null =>
   storage.kind === "separate" &&
   !AcpAgentInstanceFields.credentials.safeParse(storageCredentials(storage)).success
-    ? "Use an absolute folder path for the separate account."
+    ? { field: "home", message: "Use an absolute folder path for the separate account." }
     : null;
+
+/**
+ * A form's first problem stays quiet until the first submit; from then on it shows under its
+ * field, which is marked invalid and described by it, and each blocked submit focuses that field.
+ */
+function useFieldProblem(problem: FieldProblem | null) {
+  const [shown, setShown] = useState(false);
+  const messageId = useId();
+  const visible = shown ? problem : null;
+  return {
+    /** Props for the control of `field`; `name` lets a blocked submit find it. */
+    control: (field: Field) =>
+      visible?.field === field
+        ? { name: field, "aria-invalid": true, "aria-describedby": messageId }
+        : { name: field },
+    message: (field: Field) =>
+      visible?.field === field ? (
+        <span id={messageId} role="alert" className="text-xs text-danger">
+          {visible.message}
+        </span>
+      ) : null,
+    /** Whether `form` may submit; otherwise reveals the problem and focuses its field. */
+    allows: (form: HTMLFormElement) => {
+      if (!problem) return true;
+      setShown(true);
+      const control = form.elements.namedItem(problem.field);
+      if (control instanceof HTMLElement) control.focus();
+      return false;
+    },
+  };
+}
 
 function Labeled({
   label,
   hint,
+  problem,
   children,
 }: {
   readonly label: string;
   readonly hint?: ReactNode;
+  /** Replaces the hint while the field has a problem. */
+  readonly problem?: ReactNode;
   readonly children: ReactNode;
 }) {
   return (
     <label className="flex flex-col gap-1 text-sm">
       <span className="text-token-text-secondary">{label}</span>
       {children}
-      {hint ? <span className="text-xs text-token-description-foreground">{hint}</span> : null}
+      {problem ??
+        (hint ? <span className="text-xs text-token-description-foreground">{hint}</span> : null)}
     </label>
   );
 }
@@ -89,10 +128,12 @@ function Labeled({
 function StorageField({
   storage,
   disabled,
+  problems,
   onChange,
 }: {
   readonly storage: Storage;
   readonly disabled: boolean;
+  readonly problems: ReturnType<typeof useFieldProblem>;
   readonly onChange: (storage: Storage) => void;
 }) {
   return (
@@ -128,6 +169,7 @@ function StorageField({
         />
         {storage.kind === "separate" ? (
           <Input
+            {...problems.control("home")}
             aria-label="Separate account folder"
             className="h-8 min-w-0 flex-1 font-mono text-xs"
             placeholder="/absolute/path"
@@ -138,6 +180,7 @@ function StorageField({
           />
         ) : null}
       </div>
+      {problems.message("home")}
       <span className="text-xs text-token-description-foreground">
         Can't be changed later. Add another instance for another account.
       </span>
@@ -351,12 +394,14 @@ function RegistryReview({
     current?.value && !current.value.available
       ? (acpAvailabilityText(current.value.reason, current.value.runner) ?? "Not available here")
       : null;
-  const error = !name.trim() ? "Enter a name." : storageError(storage);
-  const canSubmit = !pending && !error && current?.value?.available === true;
-  const submit = (event: FormEvent) => {
+  const problems = useFieldProblem(
+    !name.trim() ? { field: "name", message: "Enter a name." } : storageProblem(storage),
+  );
+  const installable = current?.value?.available === true ? current.value : null;
+  const submit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (canSubmit && current.value)
-      onSubmit({ name: name.trim(), distribution, storage, preview: current.value });
+    if (pending || !installable || !problems.allows(event.currentTarget)) return;
+    onSubmit({ name: name.trim(), distribution, storage, preview: installable });
   };
   const meta = [agent.authors.length ? agent.authors.join(", ") : null, agent.license].filter(
     Boolean,
@@ -395,8 +440,9 @@ function RegistryReview({
       <NodexDialogBody className="gap-3">
         <div className="flex gap-3">
           <div className="min-w-0 flex-1">
-            <Labeled label="Name">
+            <Labeled label="Name" problem={problems.message("name")}>
               <Input
+                {...problems.control("name")}
                 aria-label="Name"
                 className="h-8 text-sm"
                 maxLength={128}
@@ -430,7 +476,12 @@ function RegistryReview({
             />
           </Labeled>
         </div>
-        <StorageField storage={storage} disabled={pending} onChange={setStorage} />
+        <StorageField
+          storage={storage}
+          disabled={pending}
+          problems={problems}
+          onChange={setStorage}
+        />
         {current?.value ? (
           <PreviewDetails preview={current.value} />
         ) : current?.failure ? (
@@ -450,7 +501,7 @@ function RegistryReview({
         <span className="min-w-0 text-xs text-token-description-foreground">
           Installs privately for Nodex, then connects to read its models.
         </span>
-        <NodexDialogAction type="submit" tone="primary" disabled={!canSubmit}>
+        <NodexDialogAction type="submit" tone="primary" disabled={pending || !installable}>
           {pending ? "Adding…" : "Install and connect"}
         </NodexDialogAction>
       </NodexDialogFooter>
@@ -478,25 +529,32 @@ function LocalCommandForm({
   const [args, setArgs] = useState<AcpArgumentDraft[]>([]);
   const [storage, setStorage] = useState<Storage>({ kind: "shared" });
   const [identity, setIdentity] = useState("");
-  const [submitted, setSubmitted] = useState(false);
-  const executableResult = AcpAgentSourceSchema.safeParse({
+  const sourceIssue = AcpAgentSourceSchema.safeParse({
     kind: "local",
     executable,
     args: args.map(({ value }) => value),
-  });
-  const error = !name.trim()
-    ? "Enter a name."
-    : !executable.trim()
-      ? "Enter the executable to run."
-      : !executableResult.success
-        ? (executableResult.error.issues[0]?.message ?? "Check the executable.")
-        : identity.trim() && !ACP_REGISTRY_ID_PATTERN.test(identity.trim())
-          ? "A Registry ID uses lowercase letters, digits, dots, dashes and underscores."
-          : storageError(storage);
-  const submit = (event: FormEvent) => {
+  }).error?.issues[0];
+  const problems = useFieldProblem(
+    !name.trim()
+      ? { field: "name", message: "Enter a name." }
+      : !executable.trim()
+        ? { field: "executable", message: "Enter the executable to run." }
+        : sourceIssue
+          ? {
+              field: sourceIssue.path[0] === "args" ? "arguments" : "executable",
+              message: sourceIssue.message,
+            }
+          : identity.trim() && !ACP_REGISTRY_ID_PATTERN.test(identity.trim())
+            ? {
+                field: "identity",
+                message:
+                  "A Registry ID uses lowercase letters, digits, dots, dashes and underscores.",
+              }
+            : storageProblem(storage),
+  );
+  const submit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    setSubmitted(true);
-    if (error || pending) return;
+    if (pending || !problems.allows(event.currentTarget)) return;
     onSubmit({
       name: name.trim(),
       executable: executable.trim(),
@@ -509,8 +567,9 @@ function LocalCommandForm({
     <form id="acp-local-command" className="flex flex-col gap-3" onSubmit={submit}>
       <div className="flex gap-3">
         <div className="w-40 shrink-0">
-          <Labeled label="Name">
+          <Labeled label="Name" problem={problems.message("name")}>
             <Input
+              {...problems.control("name")}
               aria-label="Name"
               className="h-8 text-sm"
               maxLength={128}
@@ -521,8 +580,9 @@ function LocalCommandForm({
           </Labeled>
         </div>
         <div className="min-w-0 flex-1">
-          <Labeled label="Executable">
+          <Labeled label="Executable" problem={problems.message("executable")}>
             <Input
+              {...problems.control("executable")}
               aria-label="Executable"
               autoFocus
               className="h-8 font-mono text-xs"
@@ -538,17 +598,25 @@ function LocalCommandForm({
       <div role="group" aria-label="Arguments" className="flex flex-col gap-1 text-sm">
         <span className="text-token-text-secondary">Arguments</span>
         <AcpArgumentsEditor value={args} disabled={pending} onChange={setArgs} />
+        {problems.message("arguments")}
         <span className="text-xs text-token-description-foreground">
           Each passed exactly as written, without a shell. Include the Agent's ACP flag, such as
           --acp.
         </span>
       </div>
-      <StorageField storage={storage} disabled={pending} onChange={setStorage} />
+      <StorageField
+        storage={storage}
+        disabled={pending}
+        problems={problems}
+        onChange={setStorage}
+      />
       <Labeled
         label="Registry ID (optional)"
         hint="For a locally installed Registry Agent, enables its compatibility features."
+        problem={problems.message("identity")}
       >
         <Input
+          {...problems.control("identity")}
           aria-label="Registry ID"
           className="h-8 font-mono text-xs"
           placeholder="claude-acp"
@@ -558,11 +626,6 @@ function LocalCommandForm({
           onChange={(event) => setIdentity(event.target.value)}
         />
       </Labeled>
-      {submitted && error ? (
-        <p role="alert" className="text-xs text-danger">
-          {error}
-        </p>
-      ) : null}
     </form>
   );
 }
@@ -640,38 +703,36 @@ export function AcpAgentAddDialog({ owner, onAdded, onClose }: AcpAgentAddDialog
             }}
           />
         ) : (
-          <div className="flex flex-col px-5 py-5">
+          <NodexTabsRoot
+            className="flex flex-col px-5 py-5"
+            value={tab}
+            onValueChange={(value: typeof tab) => setTab(value)}
+          >
             <NodexDialogHeader>
               <NodexDialogTitle>Add Agent</NodexDialogTitle>
-              <div role="tablist" aria-label="Agent source" className="flex gap-1 pt-1">
+              <NodexTabsList aria-label="Agent source" className="flex gap-1 pt-1">
                 {(
                   [
                     ["registry", "ACP Registry"],
                     ["local", "Local command"],
                   ] as const
                 ).map(([value, label]) => (
-                  <button
+                  <NodexTabsTab
                     key={value}
-                    type="button"
-                    role="tab"
-                    aria-selected={tab === value}
-                    className={cn(
-                      "cursor-interaction rounded-md px-2.5 py-1 text-sm outline-hidden focus-visible:ring-2 focus-visible:ring-token-focus-border",
-                      tab === value
-                        ? "bg-token-foreground/8 text-token-text-primary"
-                        : "text-token-description-foreground hover:bg-token-list-hover-background",
-                    )}
-                    onClick={() => setTab(value)}
+                    value={value}
+                    className="cursor-interaction rounded-md px-2.5 py-1 text-sm text-token-description-foreground outline-hidden hover:bg-token-list-hover-background focus-visible:ring-2 focus-visible:ring-token-focus-border data-active:bg-token-foreground/8 data-active:text-token-text-primary data-active:hover:bg-token-foreground/8"
                   >
                     {label}
-                  </button>
+                  </NodexTabsTab>
                 ))}
-              </div>
+              </NodexTabsList>
             </NodexDialogHeader>
             <NodexDialogBody>
-              {tab === "registry" ? (
+              {/* Each source's first field takes focus when chosen, so its panel isn't a tab stop. */}
+              <NodexTabsPanel value="registry" tabIndex={-1} className="outline-hidden">
                 <RegistryResults owner={owner} onChoose={setChosen} />
-              ) : (
+              </NodexTabsPanel>
+              <NodexTabsPanel value="local" tabIndex={-1} className="outline-hidden">
                 <LocalCommandForm
                   takenNames={takenNames}
                   pending={pending}
@@ -693,7 +754,7 @@ export function AcpAgentAddDialog({ owner, onAdded, onClose }: AcpAgentAddDialog
                     );
                   }}
                 />
-              )}
+              </NodexTabsPanel>
             </NodexDialogBody>
             {tab === "local" ? (
               <NodexDialogFooter>
@@ -708,7 +769,7 @@ export function AcpAgentAddDialog({ owner, onAdded, onClose }: AcpAgentAddDialog
                 </NodexDialogAction>
               </NodexDialogFooter>
             ) : null}
-          </div>
+          </NodexTabsRoot>
         )}
         {error ? (
           <p role="alert" className="px-5 pb-4 text-xs text-danger">

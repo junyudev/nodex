@@ -169,8 +169,9 @@ row showed; a moved catalog asks for another look.
 Add Agent offers ACP Registry and Local command. Registry results include unavailable Agents with the
 reason, and choosing one shows the exact package or archive, integrity, runner and private install
 directory before Install and connect. Local command takes a name, executable, arguments, account
-storage and an optional Registry ID for compatibility features. Saving creates the instance; its
-installation and connection continue in Settings after the dialog closes.
+storage and an optional Registry ID for compatibility features. A submit that can't save names the
+problem under its field and moves focus there. Saving creates the instance; its installation and
+connection continue in Settings after the dialog closes.
 
 Account lists the methods the Agent advertises: Sign in with an Agent method, Open for a terminal
 method, Set for environment variables (adding secret rows to the editor) and Open sign-in page for a
