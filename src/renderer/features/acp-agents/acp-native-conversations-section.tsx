@@ -30,6 +30,7 @@ type RowState =
 
 interface Listing {
   readonly sessions: readonly AcpNativeSession[];
+  /** The Agent's opaque cursor, passed back exactly; only null ends the list, and "" is a cursor. */
   readonly nextCursor: string | null;
   readonly capabilities: Pick<AcpNativeSessionPage, "canLoad" | "canResume" | "canDelete"> | null;
   readonly loading: boolean;
@@ -229,7 +230,7 @@ function SessionList({
         : { ...existing, loading: false, failure: result.error },
     );
   const readPage = (cursor: string | null) =>
-    owner.listSessions({ instanceId, projectId, ...(cursor ? { cursor } : {}) });
+    owner.listSessions({ instanceId, projectId, ...(cursor === null ? {} : { cursor }) });
   const acceptFirstPage = useEffectEvent(accept);
   useEffect(() => {
     let active = true;
@@ -313,11 +314,12 @@ function SessionList({
     }));
   };
 
+  const hasMore = listing.nextCursor !== null;
   return (
     <>
       {listing.sessions.length === 0 && !listing.failure ? (
         <p className="px-4 py-3 text-xs text-token-description-foreground">
-          {listing.nextCursor
+          {hasMore
             ? `${agentName} hasn't listed any conversations yet.`
             : listing.loading
               ? "Loading…"
@@ -339,8 +341,8 @@ function SessionList({
           onDismiss={() => setRow(session.sessionId, undefined)}
         />
       ))}
-      {/* An Agent may return an empty page that still has more; a failed first page can retry. */}
-      {listing.nextCursor || listing.failure ? (
+      {/* An Agent may return an empty page that still has more; a failed page retries its cursor. */}
+      {hasMore || listing.failure ? (
         <div className="flex items-center gap-2 px-4 py-2.5">
           {listing.failure ? (
             <span role="alert" className="min-w-0 flex-1 text-xs text-danger">

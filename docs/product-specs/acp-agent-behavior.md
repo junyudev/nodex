@@ -204,7 +204,7 @@ advertises.
 Settings > Conversations lists conversations an Agent saved for the chosen Project's folder when the
 Agent can list them, and offers Connect for Agents whose capabilities are not yet known. Load more
 follows the Agent's pages, including past an empty page that reports more; a failed read keeps what
-already loaded and offers Try again. Import sends nothing to the Agent. When the Agent can only resume, Nodex says earlier messages will not be shown
+already loaded and offers Try again for the same page. Import sends nothing to the Agent. When the Agent can only resume, Nodex says earlier messages will not be shown
 before importing. Imported conversations reopen as Open. Delete from the Agent is offered only when
 supported and only for conversations not imported, after confirmation. Until the Agent restores an
 imported conversation, its empty transcript is titled Imported from the Agent and says to send a
