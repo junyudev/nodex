@@ -1,0 +1,23 @@
+docs/product-specs/acp-agent-behavior.md
+  s_be2168b060c315::t_88cdb34b63f9c6 205-207
+src/renderer/features/acp-agents/acp-native-conversations-section.tsx
+  s_be2168b060c315::t_616d174f1149b7 318,320-324,342-343
+src/renderer/features/acp-agents/acp-native-conversations-section.test.tsx
+  s_be2168b060c315::t_e69428d4947ca3 168-192
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "239d60319cadc919b0f1f1d1e4ab547e1fa224ba",
+  "prompts": {},
+  "sessions": {
+    "s_be2168b060c315": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "dc4b3d75-218a-4f02-ae3e-b579fb7c2f60",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
