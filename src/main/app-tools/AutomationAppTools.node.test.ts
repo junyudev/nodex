@@ -569,11 +569,32 @@ it.effect(
         })).structuredContent,
         { error: { code: "automation_backend_unavailable" } },
       );
+      const retired = yield* request({
+        ...cron,
+        mode: "create",
+        backendBinding: binding,
+        model: "retired-model",
+      });
+      assert.deepEqual(retired.structuredContent, {
+        error: { code: "automation_model_unavailable" },
+      });
+      assert.deepEqual(retired.content, [
+        {
+          type: "text",
+          text: "The selected Agent doesn't offer this model. Omit model to use its first available model.",
+        },
+      ]);
       enabled = false;
-      assert.deepEqual(
-        (yield* request({ ...cron, mode: "create", backendBinding: binding })).structuredContent,
-        { error: { code: "automation_backend_unavailable" } },
-      );
+      const off = yield* request({ ...cron, mode: "create", backendBinding: binding });
+      assert.deepEqual(off.structuredContent, {
+        error: { code: "automation_backend_unavailable" },
+      });
+      assert.deepEqual(off.content, [
+        {
+          type: "text",
+          text: "The selected Agent is off, removed or not ready. Ask the user to check it in Settings, or choose another Agent.",
+        },
+      ]);
       assert.equal(definitions.length, 2);
     }),
 );

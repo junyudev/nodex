@@ -33,6 +33,10 @@ import {
   resolveAgentBackendBinding,
 } from "../agent-backend/AgentBackendRegistry";
 
+const AGENT_UNAVAILABLE = "automation_backend_unavailable";
+const AGENT_UNAVAILABLE_MESSAGE =
+  "The selected Agent is off, removed or not ready. Ask the user to check it in Settings, or choose another Agent.";
+
 const definitionInput = (request: Extract<AutomationToolInput, { kind: "cron" | "heartbeat" }>) => {
   if (request.mode === "update" || request.mode === "suggested_update") {
     const {
@@ -148,17 +152,24 @@ export const makeWithCapture = (capture: AppToolAuthorityCapture) =>
         current?.backendBinding ??
         runtimeBinding ??
         target?.backendBinding;
-      if (!backendBinding) return toolFailure("automation_backend_unavailable");
+      if (!backendBinding)
+        return toolFailure(
+          AGENT_UNAVAILABLE,
+          "No Agent is known for this task. Pass backendBinding from a task returned by view.",
+        );
       const heartbeatBinding = runtimeBinding ?? target?.backendBinding;
       if (
         request.kind === "heartbeat" &&
         (!heartbeatBinding ||
           agentRuntimeProviderId(heartbeatBinding) !== agentRuntimeProviderId(backendBinding))
       )
-        return toolFailure("automation_backend_unavailable");
+        return toolFailure(
+          AGENT_UNAVAILABLE,
+          "A Heartbeat runs on its target Session's Agent. Omit backendBinding or pass that Agent.",
+        );
       if (backendBinding.kind === "acp") {
         if (Option.isNone(settings) || Option.isNone(runtime))
-          return toolFailure("automation_backend_unavailable");
+          return toolFailure(AGENT_UNAVAILABLE, AGENT_UNAVAILABLE_MESSAGE);
         const configured = yield* settings.value
           .snapshot()
           .pipe(
@@ -170,14 +181,15 @@ export const makeWithCapture = (capture: AppToolAuthorityCapture) =>
           resolveAgentBackendBinding(backendBinding, configured) instanceof
           AgentBackendRegistryError
         )
-          return toolFailure("automation_backend_unavailable");
+          return toolFailure(AGENT_UNAVAILABLE, AGENT_UNAVAILABLE_MESSAGE);
       }
       const definition =
         request.kind === "heartbeat"
           ? { ...fields, backendBinding, targetSessionId }
           : { ...fields, backendBinding };
       if (hosted || backendBinding.kind === "acp") {
-        if (Option.isNone(runtime)) return toolFailure("automation_backend_unavailable");
+        if (Option.isNone(runtime))
+          return toolFailure(AGENT_UNAVAILABLE, AGENT_UNAVAILABLE_MESSAGE);
         const providers = yield* runtime.value
           .catalog()
           .pipe(
@@ -194,10 +206,13 @@ export const makeWithCapture = (capture: AppToolAuthorityCapture) =>
           provider.status === "error" ||
           provider.availability === "unavailable"
         )
-          return toolFailure("automation_backend_unavailable");
+          return toolFailure(AGENT_UNAVAILABLE, AGENT_UNAVAILABLE_MESSAGE);
         const model = "model" in fields ? fields.model : null;
         if (model && !provider.models.some((candidate) => candidate.slug === model))
-          return toolFailure("automation_model_unavailable");
+          return toolFailure(
+            "automation_model_unavailable",
+            "The selected Agent doesn't offer this model. Omit model to use its first available model.",
+          );
       }
       if (request.mode === "suggested_create" || request.mode === "suggested_update") {
         if (request.mode === "suggested_update") {
