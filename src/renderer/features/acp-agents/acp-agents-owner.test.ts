@@ -286,6 +286,51 @@ describe("ACP Agents owner", () => {
     });
   });
 
+  test("another client's sign-in is never cancelled from this window", async () => {
+    const { main, owner } = setup();
+    await settleAll();
+    main.runtime.readAuth.mockResolvedValue(
+      ok(authState({ phase: "waiting", message: "Sign-in is in progress in another client." })),
+    );
+    const release = owner.retainAuth("qoder-main");
+    owner.readAuth("qoder-main");
+    await settleAll();
+    expect(owner.getSnapshot().auth.get("qoder-main")?.state).toMatchObject({
+      phase: "waiting",
+      cancellable: false,
+    });
+    owner.cancelSignIn("qoder-main");
+    release();
+    await settleAll();
+    expect(main.runtime.cancelAuth).not.toHaveBeenCalled();
+  });
+
+  test("a failed read settles this window's flow as no longer cancellable and still ends it", async () => {
+    const { main, owner } = setup();
+    await settleAll();
+    main.runtime.startAuth.mockResolvedValueOnce(ok(waiting("flow-1")));
+    main.runtime.readAuth.mockResolvedValue({
+      ok: false,
+      error: { reason: "probe_failed", message: "lost" },
+    });
+    owner.retainAuth("qoder-main");
+    owner.signIn("qoder-main", "login");
+    await settleAll();
+    expect(owner.getSnapshot().auth.get("qoder-main")?.state?.cancellable).toBe(true);
+
+    await vi.advanceTimersByTimeAsync(300);
+    await settleAll();
+    expect(owner.getSnapshot().auth.get("qoder-main")?.state).toMatchObject({
+      phase: "failed",
+      flowId: null,
+      cancellable: false,
+    });
+    expect(main.runtime.cancelAuth).toHaveBeenCalledExactlyOnceWith({
+      instanceId: "qoder-main",
+      flowId: "flow-1",
+    });
+  });
+
   test("busy sign-out keeps the affected chats for its explanation", async () => {
     const { main, owner } = setup();
     await settleAll();

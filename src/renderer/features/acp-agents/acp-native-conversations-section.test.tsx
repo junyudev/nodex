@@ -10,6 +10,7 @@ import {
   localInstance,
   memoryJournal,
   ok,
+  operation,
   providerSnapshot,
   registryInstance,
 } from "./acp-agents.test-fixtures";
@@ -211,15 +212,15 @@ describe("ACP native conversations", () => {
           ...discovered(),
         }),
       ]);
-      return ok({
-        operationId,
-        kind: "connect" as const,
-        phase: "succeeded" as const,
-        instanceId: "qoder-main",
-        agentId: null,
-        result: null,
-        error: null,
-      });
+      return ok(
+        operation({
+          operationId,
+          kind: "connect",
+          phase: "succeeded",
+          instanceId: "qoder-main",
+          agentId: null,
+        }),
+      );
     });
     main.runtime.listSessions.mockResolvedValue(
       ok({
@@ -260,15 +261,15 @@ describe("ACP native conversations", () => {
     main.runtime.knownProviders.mockResolvedValue([listing(qoder.id)]);
     main.runtime.connect.mockImplementation(async ({ operationId }) => {
       main.runtime.knownProviders.mockResolvedValue([listing(qoder.id), listing(local.id)]);
-      return ok({
-        operationId,
-        kind: "connect" as const,
-        phase: "succeeded" as const,
-        instanceId: local.id,
-        agentId: null,
-        result: null,
-        error: null,
-      });
+      return ok(
+        operation({
+          operationId,
+          kind: "connect",
+          phase: "succeeded",
+          instanceId: local.id,
+          agentId: null,
+        }),
+      );
     });
     main.runtime.listSessions.mockImplementation(async ({ instanceId }) =>
       ok({

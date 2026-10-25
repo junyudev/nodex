@@ -13,6 +13,7 @@ import {
   localInstance,
   memoryJournal,
   ok,
+  operation,
   providerSnapshot,
   readyInspection,
   registryInstance,
@@ -146,6 +147,61 @@ describe("ACP Agents settings", () => {
     await view.findByText("Sign in using the terminal below.");
   });
 
+  test("only a sign-in started in this window can be cancelled from it", async () => {
+    const qoder = registryInstance();
+    const main = fakeAcpRuntime({ instances: [qoder] });
+    main.runtime.knownProviders.mockResolvedValue([
+      providerSnapshot({
+        instanceId: acpProviderId(qoder)!,
+        auth: { status: "unauthenticated" },
+      }),
+    ]);
+    const methods = [
+      { id: "login", name: "Qoder login", description: null, type: "terminal" as const },
+    ];
+    // The Runtime shows another window's flow as underway, without the flow itself.
+    main.runtime.readAuth.mockResolvedValue(
+      ok(
+        authState({
+          phase: "waiting",
+          message: "Sign-in is in progress in another client.",
+          methods,
+        }),
+      ),
+    );
+    const { owner, view } = mount(main);
+    await press(await view.findByRole("button", { name: "Sign in" }));
+    await view.findByText("Sign-in is in progress in another client.");
+    expect(view.queryByRole("button", { name: "Cancel" })).toBeNull();
+
+    // That flow ended, so this window can start its own.
+    main.runtime.readAuth.mockResolvedValue(ok(authState({ methods })));
+    await act(async () => {
+      owner.readAuth("qoder-main");
+      await Promise.resolve();
+    });
+    const own = authState({
+      phase: "waiting",
+      flowId: "flow",
+      methods,
+      interaction: { type: "terminal", id: "terminal", output: "", outputOffset: 0 },
+    });
+    main.runtime.startAuth.mockResolvedValueOnce(ok(own));
+    main.runtime.readAuth.mockResolvedValue(ok(own));
+    await press(await view.findByRole("button", { name: "Open Qoder login" }));
+    await view.findByText("Sign in using the terminal below.");
+    expect(main.runtime.cancelAuth).not.toHaveBeenCalled();
+
+    await press(view.getByRole("button", { name: "Cancel" }));
+    await waitFor(() =>
+      expect(main.runtime.cancelAuth).toHaveBeenCalledExactlyOnceWith({
+        instanceId: "qoder-main",
+        flowId: "flow",
+      }),
+    );
+    await waitFor(() => expect(view.queryByRole("button", { name: "Cancel" })).toBeNull());
+  });
+
   test("saved changes stay pending while the Agent works and clear once applied", async () => {
     const main = fakeAcpRuntime({ instances: [localInstance()] });
     const { owner, view } = mount(main, "acp-agent-local-one");
@@ -258,16 +314,12 @@ describe("ACP Agents settings", () => {
       }),
     );
     main.runtime.install.mockImplementation(async ({ operationId }) =>
-      ok({
-        operationId,
-        kind: "install" as const,
-        phase: "running" as const,
-        instanceId: null,
-        agentId: "qoder-cli",
-        result: null,
-        error: null,
-        progress: { phase: "downloading" as const, downloadedBytes: 30, totalBytes: 120 },
-      }),
+      ok(
+        operation({
+          operationId,
+          progress: { phase: "downloading", downloadedBytes: 30, totalBytes: 120 },
+        }),
+      ),
     );
     const { view } = mount(main);
     await press(await view.findByRole("button", { name: "Install" }));

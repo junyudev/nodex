@@ -336,7 +336,9 @@ export function AcpAgentAccount({
   const busy = pending || view?.request === "cancel" || view?.request === "sign-out";
 
   let description: ReactNode;
-  if (active)
+  // Another window's sign-in shows only that it is underway; it can't be continued or cancelled here.
+  if (active && !state?.cancellable && state?.message) description = state.message;
+  else if (active)
     description =
       state?.phase === "starting"
         ? "Starting sign-in…"
@@ -368,14 +370,16 @@ export function AcpAgentAccount({
     <div className="flex flex-col">
       <NodexSettingsRow label="Account" description={<span role="status">{description}</span>}>
         {active ? (
-          <NodexButton
-            size="sm"
-            variant="ghost"
-            disabled={view?.request === "cancel"}
-            onClick={() => owner.cancelSignIn(instance.id)}
-          >
-            Cancel
-          </NodexButton>
+          state?.cancellable ? (
+            <NodexButton
+              size="sm"
+              variant="ghost"
+              disabled={view?.request === "cancel"}
+              onClick={() => owner.cancelSignIn(instance.id)}
+            >
+              Cancel
+            </NodexButton>
+          ) : null
         ) : (
           <>
             {needsSignIn && methods.length === 0 && documentationUrl ? (

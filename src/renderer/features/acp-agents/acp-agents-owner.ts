@@ -665,7 +665,14 @@ export function createAcpAgentsOwner(input: {
     const flowId = state.flowId;
     supersede(instanceId);
     patchAuth(instanceId, {
-      state: { ...state, phase: "failed", flowId: null, interaction: null, message: null },
+      state: {
+        ...state,
+        phase: "failed",
+        flowId: null,
+        interaction: null,
+        message: null,
+        cancellable: false,
+      },
       request: null,
       failure: { failure, context },
     });

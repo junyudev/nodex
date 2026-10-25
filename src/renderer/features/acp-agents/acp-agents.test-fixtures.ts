@@ -7,12 +7,13 @@ import type {
   UpdateAcpAgentSettingsInput,
 } from "../../../shared/acp-agent-settings";
 import type { AcpAgentsRuntime } from "../../lib/acp-agents-runtime";
-import type {
-  AcpAuthState,
-  AcpInspection,
-  AcpOperation,
-  AcpProviderSnapshot,
-  AcpRegistryAgent,
+import {
+  isAcpAuthActive,
+  type AcpAuthState,
+  type AcpInspection,
+  type AcpOperation,
+  type AcpProviderSnapshot,
+  type AcpRegistryAgent,
 } from "./acp-agent-model";
 
 type Input<Method extends keyof AcpAgentsRuntime> = Parameters<AcpAgentsRuntime[Method]>[0];
@@ -59,28 +60,52 @@ export const readyInspection = (patch: Partial<AcpInspection> = {}): AcpInspecti
     ...patch,
   }) as AcpInspection;
 
-export const operation = (patch: Partial<AcpOperation> = {}): AcpOperation => ({
-  operationId: "op",
-  kind: "install",
-  phase: "running",
-  instanceId: null,
-  agentId: "qoder-cli",
-  result: null,
-  error: null,
-  ...patch,
-});
+/**
+ * Metadata follows the Runtime's rules unless patched: a directory-level install captures no
+ * provider policy, only a running operation is cancellable, and any progress or settled state is
+ * published after the initial revision.
+ */
+export const operation = (patch: Partial<AcpOperation> = {}): AcpOperation => {
+  const kind = patch.kind ?? "install";
+  const phase = patch.phase ?? "running";
+  return {
+    operationId: "op",
+    runtimeGeneration: "runtime-1",
+    configurationRevision: kind === "install" ? null : 1,
+    revision: phase === "running" && patch.progress === undefined ? 1 : 2,
+    cancellable: phase === "running",
+    kind,
+    phase,
+    instanceId: null,
+    agentId: "qoder-cli",
+    result: null,
+    error: null,
+    ...patch,
+  };
+};
 
-export const authState = (patch: Partial<AcpAuthState> = {}): AcpAuthState => ({
-  instanceId: "qoder-main",
-  phase: "idle",
-  flowId: null,
-  authorizationUrl: null,
-  expiresAt: null,
-  message: null,
-  methods: [],
-  interaction: null,
-  ...patch,
-});
+/** Like the Runtime, only a live flow this window can see (it has a flow ID) is cancellable. */
+export const authState = (patch: Partial<AcpAuthState> = {}): AcpAuthState => {
+  const state: AcpAuthState = {
+    instanceId: "qoder-main",
+    runtimeGeneration: "runtime-1",
+    configurationRevision: 1,
+    revision: 1,
+    cancellable: false,
+    phase: "idle",
+    flowId: null,
+    authorizationUrl: null,
+    expiresAt: null,
+    message: null,
+    methods: [],
+    interaction: null,
+    ...patch,
+  };
+  return {
+    ...state,
+    cancellable: patch.cancellable ?? (state.flowId !== null && isAcpAuthActive(state)),
+  };
+};
 
 /** The Runtime's record that a real connection reported the Agent's capabilities. */
 export const discovered = (
