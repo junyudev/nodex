@@ -1,0 +1,83 @@
+src/renderer/components/workbench/agent-settings-page.tsx
+  s_901e7cdfde4ade::t_30aadfbeaab3a8 8-9,12-21,23,25-34
+  s_901e7cdfde4ade::t_a6593e875b19c4 1,5
+  s_901e7cdfde4ade::t_614a2ac588ba6f 7
+src/renderer/components/workbench/codex-home-settings-control.test.tsx
+  s_901e7cdfde4ade::t_830e8bacb8d7ad 2,5,7-8,11,24-39,48,77,99,111,134-142,148-152
+  s_901e7cdfde4ade::t_6eb75283027e03 112-133,153
+  s_901e7cdfde4ade::t_e2e144eeb7c9c3 143-147
+src/renderer/components/workbench/agent-instance-settings.test-fixtures.ts
+  s_901e7cdfde4ade::t_c1688946cdee6f 1-23,27-37
+  s_901e7cdfde4ade::t_e2e144eeb7c9c3 24-26
+src/renderer/features/acp-agents/acp-agent-model.test.ts
+  s_901e7cdfde4ade::t_de34cbef929830 3,18,363-382
+  s_901e7cdfde4ade::t_a987174f74ec7f 383-384
+src/renderer/features/acp-agents/acp-agent-model.ts
+  s_901e7cdfde4ade::t_e2e144eeb7c9c3 569-570,574-575
+  s_901e7cdfde4ade::t_b338795251d9a1 559-568,571-573,576-578
+src/renderer/features/acp-agents/acp-agents-settings-section.tsx
+  s_901e7cdfde4ade::t_4c00c013d70bca 273
+  s_901e7cdfde4ade::t_b338795251d9a1 2,4-10,21,87-105,107-131,142-173,178-179,184,188,202-219,221-237,269-272,274-287
+src/renderer/components/workbench/agent-instance-settings-control.test.tsx
+  s_901e7cdfde4ade::t_3892e106d834ab 1-7,9-27,31-65,69-105,107-117,119-149,151-183,187-205,209-221,223-227
+  s_901e7cdfde4ade::t_e2e144eeb7c9c3 28-30,66-68,184-186,206-208,222
+  s_901e7cdfde4ade::t_524df6debc0d39 8,106,118,150
+src/renderer/features/acp-agents/acp-agents-settings-section.test.tsx
+  s_901e7cdfde4ade::t_0f552cbb863b06 42-46
+src/renderer/components/ui/settings.tsx
+  s_901e7cdfde4ade::t_a41157862c79e3 2,379-478
+  s_901e7cdfde4ade::t_e2e144eeb7c9c3 148-149
+  s_901e7cdfde4ade::t_321491823d7fdc 1,4-8,150-301,306-310,317-326,332-348,361-362
+  s_901e7cdfde4ade::t_f6a38d742f8d78 479
+src/renderer/components/workbench/claude-agent-settings-control.test.tsx
+  s_901e7cdfde4ade::t_89439e049948b0 8,27-30,100-104,106
+src/renderer/components/workbench/codex-home-settings-control.tsx
+  s_901e7cdfde4ade::t_26f8c0e057ff42 90-92
+  s_901e7cdfde4ade::t_4ccc9df2bcba6d 1,6,68-79,86,111,128,148,154-160,163,183,196
+  s_901e7cdfde4ade::t_1f4af61e54b0f3 7,10-14,31-52,54,56,59,61,99-103,106-110,112-122,129,131,138-139,143-147,149-152,164-182,184-195,197-206
+  s_901e7cdfde4ade::t_e2e144eeb7c9c3 15-18
+  s_901e7cdfde4ade::t_685a3bc952d1f0 153
+src/renderer/components/workbench/claude-custom-models-editor.tsx
+  s_901e7cdfde4ade::t_cef9854f86a1ea 22-27,30,38,141
+src/renderer/components/workbench/agent-environment-editor.tsx
+  s_901e7cdfde4ade::t_cef9854f86a1ea 55-59
+src/renderer/components/workbench/claude-agent-settings-control.tsx
+  s_901e7cdfde4ade::t_30aadfbeaab3a8 16,67
+  s_901e7cdfde4ade::t_cef9854f86a1ea 6,9,41,45,51,53-56,58,63-66,68-71,74-78
+src/renderer/components/workbench/agent-instance-settings-control.tsx
+  s_901e7cdfde4ade::t_6378a5abab1c90 73-89,115,147,149-159,161-178,186,218,222-225,227,230-231,235,256-257,263-267,271-273,277,279,281,289-293,297-299,303-304,310,312-315,317-318,323,327-328,529-530
+  s_901e7cdfde4ade::t_5d0be61510c54d 110-112,187-190,228,244,268-270,341-344,457
+  s_901e7cdfde4ade::t_d0a891d7f66316 16,52-54,243,247,255,258,300,508
+  s_901e7cdfde4ade::t_dd81c805716b40 14,17-23,44-51,55-72,90-97,102-109,113-114,117-118,120-124,126,131-132,139-140,179-185,191-192,194-198,210-217,219-221,229,232-234,236-238,241-242,246,248-252,254,259-262,274-275,278,283,287-288,294-296,301-302,305-309,311,316,319-322,324-326,329-340,345-364,366,368-378,380-452,455-456,458-459,461,463-481,483-496,498-507,509-528,531-544,547-548
+  s_901e7cdfde4ade::t_30aadfbeaab3a8 98-101
+  s_901e7cdfde4ade::t_26f8c0e057ff42 482
+  s_901e7cdfde4ade::t_740d0e8c2a9e62 1,12,200-209,240
+src/renderer/components/workbench/codex-setup-import-control.tsx
+  s_901e7cdfde4ade::t_830e8bacb8d7ad 117
+src/renderer/components/ui/settings.test.tsx
+  s_901e7cdfde4ade::t_30d2541244afa8 2,8,13,88-197
+src/renderer/lib/use-settings-read.ts
+  s_901e7cdfde4ade::t_4d8273e2b48242 1-64
+src/renderer/components/workbench/opencode-agent-settings-control.test.tsx
+  s_901e7cdfde4ade::t_751d28ee3d77f9 46,53,61-67,75,81,89-90,92-102,116,124,129-132,136-139,142-143,146,148-151,155-156,160-169,176-179,189,197,219,224,246,261,277-280,287-292,298,311,325,327-328
+  s_901e7cdfde4ade::t_e2e144eeb7c9c3 17
+src/renderer/components/workbench/opencode-agent-settings-control.tsx
+  s_901e7cdfde4ade::t_30aadfbeaab3a8 19,83
+  s_901e7cdfde4ade::t_cef9854f86a1ea 14,16,46,51,58,60-63,65,79-82,84-87,90-94,100,105-109,115
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "7622c8e62f789637f6c5ec0dacae1655eaabd594",
+  "prompts": {},
+  "sessions": {
+    "s_901e7cdfde4ade": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "dbfeb0b2-2a6b-4724-8483-90ea2623a3fd",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
