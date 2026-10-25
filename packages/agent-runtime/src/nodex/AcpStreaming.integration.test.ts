@@ -62,15 +62,13 @@ it.live.each(["v1", "v2"])(
           creationSource: "web",
           dispatchMode: { type: "start_immediately" },
         });
-        yield* fs
-          .readFileString(log)
-          .pipe(
-            Effect.repeat({
-              until: (value) => value.includes("prompt-held:"),
-              schedule: Schedule.spaced("20 millis"),
-            }),
-            Effect.timeout("10 seconds"),
-          );
+        yield* fs.readFileString(log).pipe(
+          Effect.repeat({
+            until: (value) => value.includes("prompt-held:"),
+            schedule: Schedule.spaced("20 millis"),
+          }),
+          Effect.timeout("10 seconds"),
+        );
         const partial = yield* call("thread.snapshot", { threadId: "thread" });
         expect(partial.projection.runs[0]?.status).toBe("running");
         expect(partial.projection.messages.some((message) => message.role === "assistant")).toBe(
