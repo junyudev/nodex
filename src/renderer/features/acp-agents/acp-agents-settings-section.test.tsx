@@ -326,6 +326,33 @@ describe("ACP Agents settings", () => {
     expect(main.settings().instances).toEqual([]);
   });
 
+  test("confirming a removal keeps keyboard focus on the next answer", async () => {
+    const main = fakeAcpRuntime({ instances: [localInstance()] });
+    const { view } = mount(main, "acp-agent-local-one");
+    await view.findByLabelText("Agent name");
+    const removeButtons = view.getAllByRole("button", { name: "Remove" });
+    await press(removeButtons[removeButtons.length - 1]!);
+    const confirmation = within(view.getByText("Remove Scripted?").parentElement!);
+    expect(document.activeElement).toBe(confirmation.getByRole("button", { name: "Keep" }));
+
+    await press(confirmation.getByRole("button", { name: "Keep" }));
+    expect(view.queryByText("Remove Scripted?")).toBeNull();
+    const remove = view.getAllByRole("button", { name: "Remove" }).at(-1)!;
+    expect(document.activeElement).toBe(remove);
+
+    await press(remove);
+    await press(
+      within(view.getByText("Remove Scripted?").parentElement!).getByRole("button", {
+        name: "Remove",
+      }),
+    );
+    await waitFor(() => expect(main.settings().instances).toEqual([]));
+    // The last row is gone, so focus continues from the empty list's Add agent.
+    await waitFor(() =>
+      expect(document.activeElement).toBe(view.getByRole("button", { name: "Add agent" })),
+    );
+  });
+
   test("an install in progress shows real progress and can be cancelled", async () => {
     const main = fakeAcpRuntime({ instances: [registryInstance()] });
     main.runtime.inspect.mockResolvedValue(ok(readyInspection({ status: "unprepared" } as never)));

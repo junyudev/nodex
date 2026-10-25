@@ -153,19 +153,21 @@ status with the next step (Install, Connect, Sign in or Cancel), and an on/off s
 immediately. Statuses follow the instance's discovery state: Ready with the model count (or Startup
 model for an Agent without a model API) once discovery is ready, Not connected while it is unknown,
 and Couldn't connect when it failed. Sign-in required, Installing with real progress, Connecting, Not
-installed, Needs a runner, Unavailable, Not in Registry, Off, or a failure with its recovery take
-precedence. Installation and sign-in alone never show Ready. Saved changes that wait for current work
-show Changes pending until Main reports them applied; a reconcile failure stays visible with Try
-again. Pending and failed states are re-read only while unsettled and while an ACP Settings surface
-observes them.
+installed, Needs a runner (Command not found when a local command's executable is missing),
+Unavailable, Not in Registry, Off, or a failure with its recovery take precedence. Installation and
+sign-in alone never show Ready. Saved changes that wait for current work show Changes pending until
+Main reports them applied; a reconcile failure stays visible with Try again. Pending and failed
+states are re-read only while unsettled and while an ACP Settings surface observes them.
 
 A row expands in place to Account, Installation, launch configuration, environment variables,
 account storage, proxy and, when advertised, the Agent's model services. Arguments are separate
 verbatim values: an empty field is an empty argument, Enter adds the next one and pasted lines become
 one argument each. An argument a command can't receive, over 32,768 characters or with a null
-character, blocks saving and is marked itself rather than the whole list. Account storage and the logical Agent are fixed after saving. Removing the last
-instance of a Registry Agent offers Also uninstall. Updates install the cached catalog version the
-row showed; a moved catalog asks for another look.
+character, blocks saving and is marked itself rather than the whole list. Account storage and the
+logical Agent are fixed after saving. Remove asks first, with focus on Keep; Keep returns to Remove,
+and a removed row hands focus to Add agent. Removing the last instance of a Registry Agent offers
+Also uninstall. Updates install the cached catalog version the row showed; a moved catalog asks for
+another look.
 
 Add Agent offers ACP Registry and Local command. Registry results include unavailable Agents with the
 reason, and choosing one shows the exact package or archive, integrity, runner and private install

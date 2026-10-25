@@ -89,7 +89,8 @@ export function AcpAgentDetail({
   const [draft, setDraft] = useState<AcpAgentDraft>(() => acpAgentDraft(instance));
   const [saving, setSaving] = useState(false);
   const [notice, setNotice] = useState<SaveNotice | null>(null);
-  const [confirmRemove, setConfirmRemove] = useState(false);
+  // Kept returns focus to Remove; the confirmation itself starts on Keep, the safe answer.
+  const [removal, setRemoval] = useState<"idle" | "confirming" | "kept">("idle");
   const [uninstallToo, setUninstallToo] = useState(true);
   const [removeError, setRemoveError] = useState<string | null>(null);
   const changed = acpDraftChanged(instance, draft);
@@ -330,7 +331,7 @@ export function AcpAgentDetail({
         <AcpModelServices instanceId={instance.id} owner={owner} />
       ) : null}
       <div className="flex flex-wrap items-center gap-2 px-4 py-3">
-        {confirmRemove ? (
+        {removal === "confirming" ? (
           <>
             <span className="text-sm">Remove {instance.displayName}?</span>
             {source.kind === "registry" && !sharedInstall ? (
@@ -355,8 +356,9 @@ export function AcpAgentDetail({
             <NodexButton
               size="sm"
               variant="ghost"
+              autoFocus
               disabled={saving}
-              onClick={() => setConfirmRemove(false)}
+              onClick={() => setRemoval("kept")}
             >
               Keep
             </NodexButton>
@@ -366,8 +368,9 @@ export function AcpAgentDetail({
             size="sm"
             variant="ghost"
             className="text-danger"
+            autoFocus={removal === "kept"}
             disabled={saving}
-            onClick={() => setConfirmRemove(true)}
+            onClick={() => setRemoval("confirming")}
           >
             Remove
           </NodexButton>

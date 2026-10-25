@@ -377,13 +377,28 @@ const status = (
 
 const modelCount = (count: number) => `${count} ${plural(count, "model", "models")}`;
 
-function failureStatus(failure: AcpFailure, kind: AcpActivity["kind"]): AcpInstanceStatus {
+// A local command is its own runner: the program it names is what couldn't be found.
+const commandNotFound = status(
+  "needs-runner",
+  "Command not found",
+  "danger",
+  null,
+  "Use an absolute path or a command on PATH.",
+);
+
+function failureStatus(
+  failure: AcpFailure,
+  kind: AcpActivity["kind"],
+  instance: AcpAgentInstanceConfig,
+): AcpInstanceStatus {
   const retry: AcpStatusAction = kind;
   switch (failure.reason) {
     case "authentication_failed":
       return status("sign-in", "Sign-in required", "default", "sign-in");
     case "runner_unavailable":
-      return status("needs-runner", "Needs a runner", "danger", null, failure.message);
+      return instance.source.kind === "local"
+        ? commandNotFound
+        : status("needs-runner", "Needs a runner", "danger", null, failure.message);
     case "unsupported_platform":
       return status("unsupported", "Unavailable", "danger", null, "No build for this computer");
     case "configuration_pending":
@@ -438,10 +453,10 @@ export function acpInstanceStatus(input: {
   // The owner retires a sign-in failure once sign-in is verified; a later Connect is newer
   // evidence than the Runtime's last known account state.
   if (activity?.phase === "failed" && activity.failure)
-    return failureStatus(activity.failure, activity.kind);
+    return failureStatus(activity.failure, activity.kind, instance);
   if (!inspection || inspection.status === "loading")
     return status("checking", "Checking", "muted", null);
-  if (inspection.status === "failed") return failureStatus(inspection.failure, "connect");
+  if (inspection.status === "failed") return failureStatus(inspection.failure, "connect", instance);
   const inspected = inspection.value;
   switch (inspected.status) {
     case "unconfigured":
@@ -451,7 +466,7 @@ export function acpInstanceStatus(input: {
       return status("unsupported", "Unavailable", "danger", null, "No build for this computer");
     case "missing_runner":
       return inspected.distribution === "local"
-        ? status("needs-runner", "Command not found", "danger", null)
+        ? commandNotFound
         : status(
             "needs-runner",
             `Needs ${acpRunnerLabel(inspected.runner)}`,

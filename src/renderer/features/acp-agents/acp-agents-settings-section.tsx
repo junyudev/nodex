@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { flushSync } from "react-dom";
 import { SettingsAgentIcon } from "@/components/shared/icons";
 import { NodexButton, NodexSwitch } from "@/components/ui/button";
 import {
@@ -34,14 +35,14 @@ function AgentRow({
   owner,
   expanded,
   onToggle,
-  onCollapse,
+  onRemoved,
 }: {
   readonly instance: AcpAgentInstanceConfig;
   readonly snapshot: AcpAgentsSnapshot;
   readonly owner: AcpAgentsOwner;
   readonly expanded: boolean;
   readonly onToggle: () => void;
-  readonly onCollapse: () => void;
+  readonly onRemoved: () => void;
 }) {
   const inspection = snapshot.inspections.get(instance.id);
   const provider = snapshot.providers.get(instance.id);
@@ -169,7 +170,7 @@ function AgentRow({
         activity={activity}
         deferred={snapshot.deferred.has(instance.id)}
         owner={owner}
-        onRemoved={onCollapse}
+        onRemoved={onRemoved}
       />
     </NodexSettingsExpandableRow>
   );
@@ -264,7 +265,11 @@ export function AcpAgentsSettingsSection({
           owner={owner}
           expanded={expanded === instance.id}
           onToggle={() => setExpanded((current) => (current === instance.id ? null : instance.id))}
-          onCollapse={() => setExpanded(null)}
+          onRemoved={() => {
+            // The removed row took focus with it; continue from Add agent, which ends every list.
+            flushSync(() => setExpanded(null));
+            document.getElementById(ACP_ADD_AGENT_ID)?.focus();
+          }}
         />
       ))}
       {snapshot.settings ? (

@@ -97,6 +97,40 @@ describe("ACP instance status", () => {
     expect(status({ status: "unsupported" } as never)).toMatchObject({ kind: "unsupported" });
   });
 
+  test("a local command that can't be found says so instead of asking for a runner", () => {
+    const missing = { reason: "runner_unavailable" as const, message: "Install the runner." };
+    const failed = (instance: ReturnType<typeof localInstance>) =>
+      acpInstanceStatus({
+        instance,
+        inspection: ready,
+        provider: undefined,
+        activity: activity({ phase: "failed", failure: missing }),
+      });
+    const commandNotFound = {
+      label: "Command not found",
+      detail: "Use an absolute path or a command on PATH.",
+      action: null,
+    };
+    expect(failed(localInstance())).toMatchObject(commandNotFound);
+    // The passive check agrees with what a failed connection reported.
+    expect(
+      acpInstanceStatus({
+        instance: localInstance(),
+        inspection: {
+          status: "ready",
+          value: readyInspection({ status: "missing_runner", distribution: "local" } as never),
+        },
+        provider: undefined,
+        activity: undefined,
+      }),
+    ).toMatchObject(commandNotFound);
+    // A Registry Agent's runner is a separate program the user installs.
+    expect(failed(registryInstance())).toMatchObject({
+      label: "Needs a runner",
+      detail: "Install the runner.",
+    });
+  });
+
   test("discovery, not installation or sign-in, makes an Agent ready", () => {
     const model = { slug: "qfmodel", name: "Qwen", isCustom: false, capabilities: null };
     const startup = {
