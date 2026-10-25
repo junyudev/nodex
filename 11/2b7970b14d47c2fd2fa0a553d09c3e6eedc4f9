@@ -1,0 +1,31 @@
+src/main/agent-backend/NativeSessionCatalog.ts
+  s_f79dd9d0c7ac54::t_382f7544038d66 154-156,162-166,197,199-216
+  s_f79dd9d0c7ac54::t_aad1bac56698ba 198
+  s_f79dd9d0c7ac54::t_73510aa0e37bee 142-153,157-161,167-168,217,237-239
+src/main/agent-backend/NativeSessionCatalog.node.test.ts
+  s_f79dd9d0c7ac54::t_382f7544038d66 284-315
+  s_f79dd9d0c7ac54::t_6bbc95412e859b 480-482
+  s_f79dd9d0c7ac54::t_8c40e5cb2373b6 59,212-221,223-234,244-245,256-259
+  s_f79dd9d0c7ac54::t_577f69c8da3473 89,92,95,97,99-106,108
+  s_f79dd9d0c7ac54::t_705d0685dc5583 5,16,235-243,246-253,260-283,316
+  s_f79dd9d0c7ac54::t_aad1bac56698ba 199,222
+  s_f79dd9d0c7ac54::t_13064d923317b3 254-255,317
+docs/product-specs/native-conversation-connection-behavior.md
+  s_f79dd9d0c7ac54::t_6bbc95412e859b 57-60
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "112b7970b14d47c2fd2fa0a553d09c3e6eedc4f9",
+  "prompts": {},
+  "sessions": {
+    "s_f79dd9d0c7ac54": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a151d6-b92f-7f41-b4e5-4834cb7752bd",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
