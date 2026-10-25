@@ -1,0 +1,22 @@
+src/renderer/components/workbench/command-palette-workspace-toolbar.tsx
+  s_f79dd9d0c7ac54::t_c585464c79e25f 1,20,59-60,131
+src/renderer/components/workbench/command-palette-text-search.test.tsx
+  s_f79dd9d0c7ac54::t_6bbc95412e859b 1
+  s_f79dd9d0c7ac54::t_7111522763ddec 158-183
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "a12bfc8de338cb6f00fac9f352c2c0538899872b",
+  "prompts": {},
+  "sessions": {
+    "s_f79dd9d0c7ac54": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a151d6-b92f-7f41-b4e5-4834cb7752bd",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
