@@ -3,6 +3,12 @@ import { renderWithAppMaitai as render } from "@/test/app-maitai";
 import { useState } from "react";
 import { afterEach, expect, test, vi } from "vite-plus/test";
 import { page, userEvent } from "vite-plus/test/browser";
+import type { FuzzyFileSearchSessionUpdateParams } from "@nodex/codex-app-server-protocol";
+import type { FileSearchEvent, FileSearchScope } from "../../../shared/file-search";
+import type {
+  WorkspaceTextSearchEvent,
+  WorkspaceTextSearchRequest,
+} from "../../../shared/workspace-text-search";
 import type { CommandPaletteThread } from "@/lib/command-palette";
 import type {
   CommandPaletteShellCommandContext,
@@ -14,6 +20,8 @@ import {
   readRendererThemeColor,
 } from "@/test/renderer-theme";
 import { CommandPalette } from "./command-palette";
+import { installWindowApi } from "@/test/browser-globals";
+import { clearPersistedAtomStoreForTests } from "@/lib/persisted-atom-store";
 import "@/globals.css";
 
 // Keep the real dialog, command catalog, search projection, and keyboard owner.
@@ -109,7 +117,7 @@ const commandContext: Omit<CommandPaletteShellCommandContext, "isMac" | "showMoc
   canOpenSessionInNewWindow: true,
 };
 
-function PaletteFixture() {
+function PaletteFixture({ fileSearchScope }: { readonly fileSearchScope?: FileSearchScope }) {
   const [open, setOpen] = useState(false);
   return (
     <>
@@ -139,6 +147,7 @@ function PaletteFixture() {
         recentPageSessions={[]}
         commandContext={commandContext}
         commandHandlers={commandHandlers}
+        fileSearchScope={fileSearchScope}
         onOpenChange={setOpen}
         onOpenPage={ignore}
         onOpenThread={ignore}
@@ -164,8 +173,8 @@ function paletteSurface(dialog: HTMLElement): HTMLElement {
   return surface;
 }
 
-async function openPalette() {
-  const view = render(<PaletteFixture />);
+async function openPalette(fileSearchScope?: FileSearchScope) {
+  const view = render(<PaletteFixture fileSearchScope={fileSearchScope} />);
   const trigger = view.getByRole("button", { name: "Open command menu" });
   await act(async () => userEvent.click(trigger));
   const dialog = await view.findByRole("dialog", { name: "Command palette" });
@@ -174,6 +183,287 @@ async function openPalette() {
   await waitFor(() => expect(document.activeElement).toBe(input));
   return { view, dialog, input, trigger, surface: paletteSurface(dialog) };
 }
+
+function installWorkspaceSearchTransport() {
+  const originalBridge = Object.getOwnPropertyDescriptor(window, "api");
+  const listeners = new Map<string, Set<(event: unknown) => void>>();
+  const values = new Map<string, unknown>();
+  const searches: WorkspaceTextSearchRequest[] = [];
+  const fileSearches: FuzzyFileSearchSessionUpdateParams[] = [];
+  let revision = 0;
+  const emit = (channel: string, event: unknown) => {
+    for (const listener of listeners.get(channel) ?? []) listener(event);
+  };
+  clearPersistedAtomStoreForTests();
+  installWindowApi({
+    invoke: async (channel: string, ...args: unknown[]) => {
+      if (channel === "persisted-atom:sync-request")
+        return { revision, values: Object.fromEntries(values) };
+      if (channel === "persisted-atom:update") {
+        const mutation = args[0] as { key: string; value: unknown; mutationId: string };
+        values.set(mutation.key, mutation.value);
+        const event = { ...mutation, revision: ++revision, originRendererId: "palette-layout" };
+        emit("persisted-atom:updated", event);
+        return event;
+      }
+      if (channel === "workspace-text-search:start") {
+        searches.push(args[0] as WorkspaceTextSearchRequest);
+        return;
+      }
+      if (channel === "file-search:update") {
+        fileSearches.push(args[0] as FuzzyFileSearchSessionUpdateParams);
+        return;
+      }
+      if (channel === "workspace-text-search:stop" || channel.startsWith("file-search:")) return;
+      throw new Error(`Unsupported workspace search fixture request: ${channel}`);
+    },
+    on: (channel: string, listener: (event: unknown) => void) => {
+      const subscribers = listeners.get(channel) ?? new Set();
+      subscribers.add(listener);
+      listeners.set(channel, subscribers);
+      return () => subscribers.delete(listener);
+    },
+  });
+  return {
+    searches,
+    fileSearches,
+    emitText: (event: WorkspaceTextSearchEvent) => emit("workspace-text-search:event", event),
+    emitFiles: (event: FileSearchEvent) => emit("file-search:event", event),
+    restore: () => {
+      clearPersistedAtomStoreForTests();
+      if (originalBridge) Object.defineProperty(window, "api", originalBridge);
+      else Reflect.deleteProperty(window, "api");
+    },
+  };
+}
+
+function expectColor(actual: string, expected: string) {
+  const actualPixels = pixels(actual);
+  const expectedPixels = pixels(expected);
+  for (const channel of [0, 1, 2, 3])
+    expect(
+      Math.abs(actualPixels[channel]! - expectedPixels[channel]!),
+      `${actual} must match ${expected}`,
+    ).toBeLessThanOrEqual(2);
+}
+
+function expectThemeColor(actual: string, token: `--${string}`) {
+  expectColor(actual, readRendererThemeColor(token));
+}
+
+function expectSecondaryColor(actual: string) {
+  const customSecondary = getComputedStyle(document.documentElement)
+    .getPropertyValue("--app-color-text-secondary")
+    .trim();
+  const expected = customSecondary
+    ? readRendererThemeColor("--app-color-text-secondary")
+    : `color-mix(in srgb, ${readRendererThemeColor("--app-color-text-foreground")} 65%, transparent)`;
+  expectColor(actual, expected);
+}
+
+test.each(["light", "dark"] as const)(
+  "keeps %s Files and Text controls on one desktop row with long folders and recalled masks",
+  async (theme) => {
+    await page.viewport(1280, 800);
+    applyRendererThemeForTest(theme);
+    const transport = installWorkspaceSearchTransport();
+    const root = "/workspace/a-very-long-folder-name-that-exceeds-the-search-toolbar-label-budget";
+    let view: Awaited<ReturnType<typeof openPalette>>["view"] | undefined;
+    try {
+      const opened = await openPalette({ hostId: "local", roots: [root] });
+      view = opened.view;
+      const { input, surface } = opened;
+      const inputOffset = input.getBoundingClientRect().top - surface.getBoundingClientRect().top;
+      expect(surface.getBoundingClientRect().width).toBeCloseTo(768, 0);
+      const assertControlRow = () => {
+        const surfaceRect = surface.getBoundingClientRect();
+        const tabs = view!.getByRole("tablist", { name: "Search scope" }).getBoundingClientRect();
+        const toolbar = view!.getByRole("toolbar", { name: "Search options" });
+        const controls = toolbar.querySelectorAll<HTMLElement>("button, input");
+        expect(controls.length).toBeGreaterThan(0);
+        for (const control of controls) {
+          const rect = control.getBoundingClientRect();
+          expect(Math.abs(rect.top + rect.height / 2 - (tabs.top + tabs.height / 2))).toBeLessThan(
+            1,
+          );
+          expect(rect.left).toBeGreaterThanOrEqual(surfaceRect.left);
+          expect(rect.right).toBeLessThanOrEqual(surfaceRect.right);
+          expect(rect.width).toBeGreaterThan(0);
+        }
+        expect(input.getBoundingClientRect().top - surfaceRect.top).toBeCloseTo(inputOffset, 0);
+        expect(surface.scrollWidth).toBeLessThanOrEqual(surface.clientWidth);
+        expect(toolbar.scrollWidth).toBeLessThanOrEqual(toolbar.clientWidth);
+      };
+
+      await act(async () => userEvent.click(view!.getByRole("tab", { name: "Files" })));
+      assertControlRow();
+      const filesFolder = view.getByRole("button", { name: "Search folder" });
+      const label = view.getByText(`Folder: ${root.split("/").at(-1)}`);
+      expect(label.scrollWidth).toBeGreaterThan(label.clientWidth);
+      expectThemeColor(getComputedStyle(filesFolder).color, "--color-text-tertiary");
+
+      const fileName =
+        "needle-file-with-a-very-long-name-that-needs-ellipsis-and-keeps-the-directory-visible.ts";
+      const directory =
+        "deeply-nested-directory/another-long-directory/one-more-directory/project-source/nested-components";
+      await act(async () => userEvent.type(input, "needle"));
+      await waitFor(() => expect(transport.fileSearches.at(-1)?.query).toBe("needle"));
+      const fileRequest = transport.fileSearches.at(-1)!;
+      await act(async () => {
+        transport.emitFiles({
+          method: "fuzzyFileSearch/sessionUpdated",
+          params: {
+            ...fileRequest,
+            files: [
+              {
+                root,
+                path: `${directory}/${fileName}`,
+                file_name: fileName,
+                match_type: "file",
+                score: 10,
+                indices: null,
+              },
+            ],
+          },
+        });
+        transport.emitFiles({
+          method: "fuzzyFileSearch/sessionCompleted",
+          params: { sessionId: fileRequest.sessionId },
+        });
+      });
+      const fileRow = await view.findByRole("option", { name: new RegExp(fileName) });
+      const directoryLabel = view.getByText(directory);
+      const titleGroup = directoryLabel.previousElementSibling;
+      const fileContent = directoryLabel.parentElement;
+      const titleLabel = titleGroup?.querySelector("span");
+      if (!(titleGroup instanceof HTMLElement) || !fileContent || !titleLabel)
+        throw new Error("Expected the file result's filename and directory");
+      const fileContentRect = fileContent.getBoundingClientRect();
+      const titleRect = titleGroup.getBoundingClientRect();
+      const directoryRect = directoryLabel.getBoundingClientRect();
+      expect(titleRect.width).toBeGreaterThan(0);
+      expect(titleRect.width).toBeLessThanOrEqual(fileContentRect.width * 0.6 + 1);
+      expect(titleLabel.scrollWidth).toBeGreaterThan(titleLabel.clientWidth);
+      expect(directoryLabel.scrollWidth).toBeGreaterThan(directoryLabel.clientWidth);
+      expect(directoryRect.left).toBeGreaterThanOrEqual(titleRect.right);
+      expect(directoryRect.width).toBeGreaterThan(0);
+      expect(directoryRect.right).toBeLessThanOrEqual(fileContentRect.right + 1);
+      expect(fileRow.scrollWidth).toBeLessThanOrEqual(fileRow.clientWidth);
+      expectThemeColor(getComputedStyle(directoryLabel).color, "--color-text-tertiary");
+      assertControlRow();
+      await act(async () => userEvent.clear(input));
+
+      await act(async () => userEvent.click(view!.getByRole("tab", { name: "Text" })));
+      const mask = view.getByRole("textbox", { name: "File types" });
+      assertControlRow();
+      expectThemeColor(getComputedStyle(mask).borderTopColor, "--color-border-primary-outline");
+      await act(async () => {
+        await userEvent.type(mask, "*.ts");
+        await userEvent.keyboard("{Enter}");
+      });
+      await view.findByRole("button", { name: "Previous file types" });
+      assertControlRow();
+      expect(document.activeElement).toBe(input);
+
+      await act(async () => {
+        await userEvent.clear(mask);
+        await userEvent.type(mask, "*.tsx");
+        await userEvent.keyboard("{Enter}");
+      });
+      const previousMasks = view.getByRole("button", { name: "Previous file types" });
+      expectThemeColor(getComputedStyle(previousMasks).color, "--color-text-tertiary");
+      await act(async () => userEvent.click(previousMasks));
+      const savedMask = await view.findByRole("menuitem", { name: "*.ts" });
+      await act(async () => userEvent.click(savedMask));
+      await waitFor(() => expect((mask as HTMLInputElement).value).toBe("*.ts"));
+      await waitFor(() => expect(document.activeElement).toBe(mask));
+      assertControlRow();
+
+      const folder = view.getByRole("button", { name: "Search folder" });
+      expectThemeColor(getComputedStyle(folder).color, "--color-text-tertiary");
+      await act(async () => userEvent.hover(folder));
+      expectThemeColor(getComputedStyle(folder).color, "--color-text-tertiary");
+      expectThemeColor(
+        getComputedStyle(folder).backgroundColor,
+        "--color-background-primary-ghost-hover",
+      );
+      await act(async () => userEvent.click(folder));
+      const chooseFolder = await view.findByRole("menuitem", { name: "Choose folder" });
+      await act(async () => userEvent.hover(chooseFolder));
+      expectThemeColor(getComputedStyle(folder).color, "--color-text-tertiary");
+      expectThemeColor(
+        getComputedStyle(folder).backgroundColor,
+        "--color-background-primary-ghost-hover",
+      );
+      await act(async () => userEvent.keyboard("{Escape}"));
+      await waitFor(() => expect(view!.queryByRole("menu")).toBeNull());
+      await act(async () => userEvent.click(view!.getByRole("tab", { name: "Files" })));
+      assertControlRow();
+      await act(async () => userEvent.click(view!.getByRole("tab", { name: "Text" })));
+      assertControlRow();
+      expect((view.getByRole("textbox", { name: "File types" }) as HTMLInputElement).value).toBe(
+        "*.ts",
+      );
+
+      await act(async () => userEvent.type(input, "needle"));
+      await waitFor(() => expect(transport.searches.at(-1)?.query).toBe("needle"));
+      const request = transport.searches.at(-1)!;
+      await act(async () => {
+        transport.emitText({
+          requestId: request.requestId,
+          type: "match",
+          match: {
+            path: `${root}/result.ts`,
+            root,
+            relativePath: "result.ts",
+            line: 7,
+            column: 1,
+            preview: "needle in source",
+            matchRanges: [{ start: 0, end: 6 }],
+          },
+        });
+        transport.emitText({ requestId: request.requestId, type: "done", limited: false });
+      });
+      const location = await view.findByText("result.ts");
+      expectSecondaryColor(getComputedStyle(location).color);
+      assertControlRow();
+
+      // This leaves just over 700px of surface content, at the desktop layout boundary.
+      await act(async () => page.viewport(770, 800));
+      await waitFor(() => expect(surface.getBoundingClientRect().width).toBeCloseTo(708.4, 0));
+      assertControlRow();
+
+      await act(async () => page.viewport(560, 800));
+      await waitFor(() => expect(surface.getBoundingClientRect().width).toBeCloseTo(515.2, 0));
+      const narrowSurface = surface.getBoundingClientRect();
+      const narrowToolbar = view.getByRole("toolbar", { name: "Search options" });
+      const narrowControls = Array.from(
+        narrowToolbar.querySelectorAll<HTMLElement>("button, input"),
+        (control) => control.getBoundingClientRect(),
+      );
+      const narrowInput = input.getBoundingClientRect();
+      expect(narrowSurface.left).toBeGreaterThanOrEqual(0);
+      expect(narrowSurface.right).toBeLessThanOrEqual(560);
+      expect(narrowInput.top - narrowSurface.top).toBeGreaterThan(inputOffset);
+      for (const rect of narrowControls) {
+        expect(rect.width).toBeGreaterThan(0);
+        expect(rect.left).toBeGreaterThanOrEqual(narrowSurface.left);
+        expect(rect.right).toBeLessThanOrEqual(narrowSurface.right);
+        expect(rect.bottom).toBeLessThanOrEqual(narrowInput.top);
+      }
+      expect(surface.scrollWidth).toBeLessThanOrEqual(surface.clientWidth);
+      expect(narrowToolbar.scrollWidth).toBeLessThanOrEqual(narrowToolbar.clientWidth);
+      expect((view.getByRole("textbox", { name: "File types" }) as HTMLInputElement).value).toBe(
+        "*.ts",
+      );
+      await act(async () => page.viewport(1280, 800));
+      assertControlRow();
+    } finally {
+      await act(async () => view?.unmount());
+      transport.restore();
+    }
+  },
+);
 
 test.each(["light", "dark"] as const)(
   "keeps the %s glass surface stable while query and scope change",
@@ -325,6 +615,7 @@ test("fits the physical viewport under window zoom and keeps its search controls
   try {
     const { view, surface, input } = await openPalette();
     await act(async () => userEvent.click(view.getByRole("tab", { name: "Text" })));
+    expect(view.queryByRole("textbox", { name: "File types" })).toBeNull();
     const bounds = surface.getBoundingClientRect();
     expect(bounds.left).toBeGreaterThanOrEqual(0);
     expect(bounds.right).toBeLessThanOrEqual(window.innerWidth);

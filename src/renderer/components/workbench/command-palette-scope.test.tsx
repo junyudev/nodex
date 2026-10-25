@@ -1,5 +1,9 @@
 import { act, fireEvent, waitFor } from "@testing-library/react";
 import { expect, test, vi } from "vite-plus/test";
+import {
+  commandPaletteWorkspaceScope,
+  type CommandPaletteWorkspaceSelection,
+} from "@/lib/command-palette-workspace-selection";
 import type { FileSearchScope } from "../../../shared/file-search";
 import type { CommandMenuMode } from "@/lib/command-palette";
 import type {
@@ -19,15 +23,33 @@ vi.mock("@/lib/interactive-page-search", () => ({
 // Exercise dialog mount lifetime and its state owner; folder selection is the Surface's typed port.
 vi.mock("./command-palette-surface", () => ({
   CommandPaletteSurface: ({
-    workspaceScope,
-    onWorkspaceScopeChange,
+    fileSearchScope,
+    workspaceSelection,
+    onWorkspaceSelectionChange,
   }: {
-    workspaceScope: FileSearchScope | null;
-    onWorkspaceScopeChange: (scope: FileSearchScope) => void;
+    fileSearchScope: FileSearchScope | null;
+    workspaceSelection: CommandPaletteWorkspaceSelection;
+    onWorkspaceSelectionChange: (selection: CommandPaletteWorkspaceSelection) => void;
   }) => (
     <>
-      <output aria-label="Search scope">{JSON.stringify(workspaceScope)}</output>
-      <button onClick={() => onWorkspaceScopeChange(chosenScope)}>Choose search folder</button>
+      <output aria-label="Search scope">
+        {JSON.stringify(commandPaletteWorkspaceScope(workspaceSelection, fileSearchScope))}
+      </output>
+      <output aria-label="Search selection">{workspaceSelection.kind}</output>
+      <button onClick={() => onWorkspaceSelectionChange({ kind: "directory", scope: chosenScope })}>
+        Choose search folder
+      </button>
+      <button
+        onClick={() =>
+          fileSearchScope &&
+          onWorkspaceSelectionChange({ kind: "directory", scope: fileSearchScope })
+        }
+      >
+        Choose current directory
+      </button>
+      <button onClick={() => onWorkspaceSelectionChange({ kind: "context" })}>
+        Use Project context
+      </button>
     </>
   ),
 }));
@@ -88,6 +110,7 @@ const commandContext: Omit<CommandPaletteShellCommandContext, "isMac" | "showMoc
 
 test.each([
   { label: "Project context", scope: { hostId: "local", roots: ["/project", "/second"] } },
+  { label: "single-root Project context", scope: { hostId: "local", roots: ["/project"] } },
   { label: "no Project context", scope: null },
 ])(
   "retains Text folder selection across close and isolates contexts with $label",
@@ -144,5 +167,30 @@ test.each([
     await waitFor(() => expect(view.queryByLabelText("Search scope")).toBeNull());
     view.rerender(content(true, "files", 6));
     await waitFor(() => expect(readScope()).toEqual(scope));
+    if (!scope) return;
+    await act(async () => {
+      fireEvent.click(view.getByRole("button", { name: "Choose current directory" }));
+      await Promise.resolve();
+    });
+    expect(readScope()).toEqual(scope);
+    expect(view.getByLabelText("Search selection").textContent).toBe("directory");
+    view.rerender(content(false, "files", 6));
+    await waitFor(() => expect(view.queryByLabelText("Search scope")).toBeNull());
+    view.rerender(content(true, "text", 7));
+    await waitFor(() =>
+      expect(view.getByLabelText("Search selection").textContent).toBe("directory"),
+    );
+    await act(async () => {
+      fireEvent.click(view.getByRole("button", { name: "Use Project context" }));
+      await Promise.resolve();
+    });
+    expect(readScope()).toEqual(scope);
+    expect(view.getByLabelText("Search selection").textContent).toBe("context");
+    view.rerender(content(false, "text", 7));
+    await waitFor(() => expect(view.queryByLabelText("Search scope")).toBeNull());
+    view.rerender(content(true, "text", 8));
+    await waitFor(() =>
+      expect(view.getByLabelText("Search selection").textContent).toBe("context"),
+    );
   },
 );

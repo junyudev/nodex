@@ -104,18 +104,26 @@ test("searches file contents, filters file types and opens the exact matching ca
         const palette = page.getByRole("dialog", { name: "Command palette" });
         await expect(palette).toBeVisible();
         await palette.getByRole("tab", { name: "Text", exact: true }).click();
+        const initialSearchTop = await palette
+          .getByRole("combobox", { name: "Command palette search" })
+          .evaluate((input) => input.getBoundingClientRect().top);
         await palette.getByRole("button", { name: "Search folder", exact: true }).click();
         await page.getByRole("menuitem", { name: "Choose folder", exact: true }).click();
         const folderPicker = page.getByRole("dialog", { name: "Choose search folder" });
         await expect(folderPicker).toBeVisible();
-        await folderPicker.getByRole("textbox", { name: "Folder path" }).fill(workspace);
-        await folderPicker.getByRole("textbox", { name: "Folder path" }).press("Enter");
-        await expect(folderPicker.getByText("No folders", { exact: true })).toBeVisible();
-        await folderPicker.getByRole("button", { name: "Choose folder", exact: true }).click();
+        await folderPicker
+          .getByRole("combobox", { name: "Selected folder path" })
+          .fill(`${workspace}/`);
+        await expect(
+          folderPicker.getByText("No folders found in this directory.", { exact: true }),
+        ).toBeVisible();
+        await folderPicker.getByRole("button", { name: "Choose", exact: true }).click();
         await expect(folderPicker).toHaveCount(0);
 
         const search = palette.locator('input[aria-label="Command palette search"]');
-        await expect(search).toBeFocused();
+        await expect(
+          palette.getByRole("button", { name: "Search folder", exact: true }),
+        ).toBeFocused();
         await search.fill(needle);
         const target = palette.getByRole("option", {
           name: `${targetPath}:${targetLine}`,
@@ -148,6 +156,25 @@ test("searches file contents, filters file types and opens the exact matching ca
         await expect(palette.getByRole("option")).toHaveCount(1);
         await expect(target).toBeEnabled();
         await expect(target).toHaveAttribute("aria-selected", "true");
+        claim(
+          "Long folders and recalled file types share the tabs row without moving search",
+          { sameRow: true, searchTop: initialSearchTop, folderTruncated: true },
+          await palette.evaluate((dialog) => {
+            const tabs = dialog.querySelector('[role="tablist"]')!;
+            const options = dialog.querySelector('[role="toolbar"]')!;
+            const folder = options.querySelector('[aria-label="Search folder"] span')!;
+            const tabsBox = tabs.getBoundingClientRect();
+            const optionsBox = options.getBoundingClientRect();
+            return {
+              sameRow:
+                Math.abs(
+                  tabsBox.top + tabsBox.height / 2 - optionsBox.top - optionsBox.height / 2,
+                ) < 0.5,
+              searchTop: dialog.querySelector("[cmdk-input]")!.getBoundingClientRect().top,
+              folderTruncated: folder.scrollWidth > folder.clientWidth,
+            };
+          }),
+        );
         claim(
           "File types preserves the query and filters to TypeScript",
           { query: needle, matches: [`${targetPath}:${targetLine}`] },

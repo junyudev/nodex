@@ -1,4 +1,10 @@
 import type { FileSearchScope } from "../../../shared/file-search";
+import {
+  commandPaletteWorkspaceScope,
+  COMMAND_PALETTE_CONTEXT_SELECTION,
+  type CommandPaletteWorkspaceSelection,
+} from "@/lib/command-palette-workspace-selection";
+import { isAbsoluteSearchPath } from "../../../shared/file-search-paths";
 import { useCommandPaletteFileSearch } from "@/lib/use-command-palette-file-search";
 import { useWorkspaceTextSearch } from "@/lib/use-workspace-text-search";
 import {
@@ -12,6 +18,7 @@ import {
   CommandPaletteTextRow,
   CommandPaletteTextHistoryRow,
   CommandPaletteTextStatus,
+  CommandPaletteTextError,
   workspaceTextSearchResultLabels,
 } from "./command-palette-text-search";
 import { CommandPaletteWorkspaceToolbar } from "./command-palette-workspace-toolbar";
@@ -21,6 +28,7 @@ import {
   useDeferredValue,
   useEffect,
   forwardRef,
+  Fragment,
   useId,
   useImperativeHandle,
   useMemo,
@@ -30,6 +38,7 @@ import {
 } from "react";
 import {
   FilterIcon,
+  ActivitySpinnerIcon,
   BackIcon,
   PageIcon,
   FileIcon,
@@ -56,7 +65,10 @@ import {
   type CommandPaletteText,
   writeCommandPalettePageFilters,
 } from "../../lib/command-palette";
-import { type CommandPaletteHighlightSegment } from "../../lib/command-palette-highlight";
+import {
+  buildCommandPaletteCharacterHighlightSegments,
+  type CommandPaletteHighlightSegment,
+} from "../../lib/command-palette-highlight";
 import type { CommandPaletteThreadSearchIndex } from "../../lib/command-palette-thread-search";
 import {
   getCommandPaletteThreadSearchPlan,
@@ -105,8 +117,8 @@ import {
 
 interface CommandPaletteSurfaceProps {
   fileSearchScope?: FileSearchScope | null;
-  workspaceScope?: FileSearchScope | null;
-  onWorkspaceScopeChange?: (scope: FileSearchScope) => void;
+  workspaceSelection?: CommandPaletteWorkspaceSelection;
+  onWorkspaceSelectionChange?: (selection: CommandPaletteWorkspaceSelection) => void;
   priorityFolders?: readonly string[];
   open: boolean;
   openTriggerTick: number;
@@ -168,7 +180,7 @@ function getEmptyMessage(mode: CommandMenuMode, query: string, loading: boolean)
 
   if (mode === "chats") return query.length > 0 ? "No matching chats." : "No chats.";
   if (mode === "pages") return query.length > 0 ? "No matching pages." : "No pages.";
-  if (mode === "files") return query ? "No files found." : "Type to search files.";
+  if (mode === "files") return query ? "No matching files" : "Type to search files";
   return "No matching results.";
 }
 
@@ -486,6 +498,52 @@ function ThreadRow({
   );
 }
 
+function fileRowText(value: string): string {
+  const characters = Array.from(value);
+  return characters.length > 100 ? `${characters.slice(0, 99).join("").trimEnd()}…` : value;
+}
+
+function FileRow({ item, query }: { item: CommandPaletteFile; query: string }) {
+  const title = fileRowText(item.file.label);
+  const explicitPath = isAbsoluteSearchPath(query.trim()) || /^~[\\/]/u.test(query.trim());
+  const description = fileRowText(explicitPath ? item.file.fsPath : item.file.directoryPath);
+  const segments = buildCommandPaletteCharacterHighlightSegments(title, query, "fuzzy");
+  const hasMatch = segments.some((segment) => segment.highlight);
+  return (
+    <div className="flex w-full min-w-0 items-center gap-2">
+      {item.file.kind === "directory" ? (
+        <FolderIcon className="size-4 shrink-0" />
+      ) : (
+        <FileIcon className="size-4 shrink-0" />
+      )}
+      <div className="min-w-0 flex-1">
+        <div className="flex w-full min-w-0 items-center gap-2">
+          <div
+            className={cn(
+              "flex items-center gap-1",
+              description ? "max-w-[60%] flex-none" : "min-w-0 flex-1",
+            )}
+          >
+            <span className="min-w-0 truncate">
+              {segments.map((segment, index) => (
+                <span
+                  key={index}
+                  className={hasMatch && !segment.highlight ? "text-tertiary" : undefined}
+                >
+                  {segment.text}
+                </span>
+              ))}
+            </span>
+          </div>
+          {description ? (
+            <span className="min-w-0 flex-1 truncate text-sm text-tertiary">{description}</span>
+          ) : null}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function PaletteSection({
   compactPages,
   title,
@@ -498,6 +556,7 @@ function PaletteSection({
   showSubtitle,
   textLabels,
   showHeading,
+  query,
 }: {
   compactPages: boolean;
   title: string;
@@ -510,6 +569,7 @@ function PaletteSection({
   showSubtitle: boolean;
   textLabels: ReadonlyMap<string, string>;
   showHeading: boolean;
+  query: string;
 }) {
   if (items.length === 0) return null;
 
@@ -592,17 +652,7 @@ function PaletteSection({
                   showSubtitle={showSubtitle}
                 />
               ) : item.kind === "file" ? (
-                <div className="flex min-w-0 items-center gap-2">
-                  {item.file.kind === "directory" ? (
-                    <FolderIcon className="size-4 shrink-0" />
-                  ) : (
-                    <FileIcon className="size-4 shrink-0" />
-                  )}
-                  <span className="shrink-0">{item.file.label}</span>
-                  <span className="min-w-0 truncate text-token-description-foreground">
-                    {item.file.directoryPath}
-                  </span>
-                </div>
+                <FileRow item={item} query={query} />
               ) : (
                 <ThreadRow item={item} selected={selected} compact={!showSubtitle} />
               )}
@@ -633,8 +683,8 @@ export const CommandPaletteSurface = forwardRef<
     open,
     openTriggerTick,
     fileSearchScope = null,
-    workspaceScope = fileSearchScope,
-    onWorkspaceScopeChange,
+    workspaceSelection = COMMAND_PALETTE_CONTEXT_SELECTION,
+    onWorkspaceSelectionChange,
     priorityFolders,
     mode,
     initialQuery,
@@ -673,6 +723,7 @@ export const CommandPaletteSurface = forwardRef<
   const composingRef = useRef(false);
   const pointerSelectionRef = useRef(false);
   const scopes = getCommandPaletteScopes();
+  const workspaceScope = commandPaletteWorkspaceScope(workspaceSelection, fileSearchScope);
   const searchScope = mode === "root" ? fileSearchScope : workspaceScope;
   const historyScope = workspaceTextSearchHistoryScope(fileSearchScope, searchScope);
   const history = useWorkspaceTextSearchHistory({
@@ -696,11 +747,15 @@ export const CommandPaletteSurface = forwardRef<
   } | null>(null);
   const discoveryLimits =
     expandedDiscovery?.key === discoveryKey ? expandedDiscovery.limits : DEFAULT_DISCOVERY_LIMITS;
+  const hasFileScope = Boolean(searchScope?.roots.length);
   const fileSearch = useCommandPaletteFileSearch({
     showRecent: mode === "files",
-    restrictToRoots: JSON.stringify(searchScope) !== JSON.stringify(fileSearchScope),
+    restrictToRoots: mode !== "root" && workspaceSelection.kind === "directory",
     enabled:
-      open && !activePage && (mode === "files" || (mode === "root" && query.trim().length > 0)),
+      open &&
+      hasFileScope &&
+      !activePage &&
+      (mode === "files" || (mode === "root" && query.trim().length > 0)),
     query,
     scope: searchScope,
   });
@@ -1037,6 +1092,7 @@ export const CommandPaletteSurface = forwardRef<
           ? loading ||
             visibleModel.threadSearchPending ||
             visibleModel.pageSearchPending ||
+            fileSearch.loading ||
             textSearch.loading
           : mode === "files"
             ? fileSearch.loading
@@ -1286,7 +1342,18 @@ export const CommandPaletteSurface = forwardRef<
     showThreadSearchStatus ||
     showPageSearchStatus ||
     showFileSearchStatus ||
-    ((mode === "root" || mode === "text") && (textSearch.loading || textSearch.error !== null));
+    ((mode === "root" || mode === "text") &&
+      (textSearch.loading ||
+        (textSearch.error !== null && !(mode === "root" && textSearch.error === "invalid-query"))));
+  const showEmptyResultsProgress =
+    !activePage &&
+    flatItems.length === 0 &&
+    ((mode === "files" && fileSearch.loading) ||
+      (mode === "root" &&
+        (fileSearch.loading ||
+          textSearch.loading ||
+          visibleModel.pageSearchPending ||
+          visibleModel.threadSearchPending)));
 
   return (
     <NodexTabsRoot
@@ -1302,7 +1369,7 @@ export const CommandPaletteSurface = forwardRef<
       cmdk-root=""
       data-cmdk-root
       data-command-palette-surface
-      className="flex h-[var(--command-menu-height,min(504px,90vh))] min-w-full select-none flex-col gap-1 overflow-hidden rounded-2xl bg-surface/65 p-1 pb-0 text-base text-token-foreground shadow-2xl ring-[0.5px] ring-token-border backdrop-blur-[24px]"
+      className="@container flex h-[var(--command-menu-height,min(504px,90vh))] min-w-full select-none flex-col gap-1 overflow-hidden rounded-2xl bg-surface/65 p-1 pb-0 text-base text-token-foreground shadow-2xl ring-[0.5px] ring-token-border backdrop-blur-[24px]"
     >
       {!activePage && mode === "text" ? (
         <CommandPaletteTextHistoryRecorder
@@ -1317,7 +1384,7 @@ export const CommandPaletteSurface = forwardRef<
       {!activePage ? (
         <div
           ref={scopeControlsRef}
-          className="flex shrink-0 flex-wrap items-center gap-1"
+          className="flex min-w-0 shrink-0 flex-wrap items-center gap-2 pe-2 @min-[700px]:flex-nowrap"
           onKeyDown={(event) => {
             if (
               event.key !== "F6" ||
@@ -1333,38 +1400,39 @@ export const CommandPaletteSurface = forwardRef<
             inputRef.current?.focus();
           }}
         >
-          <div className="flex min-w-0 items-center overflow-x-auto [scrollbar-width:none]">
-            <NodexTabsList
-              activateOnFocus
-              aria-label="Search scope"
-              className="flex items-center gap-px"
-            >
-              {scopes.map((scope) => (
-                <NodexTabsTab
-                  key={scope.mode}
-                  value={scope.mode}
-                  onMouseDown={(event) => event.preventDefault()}
-                  className={cn(
-                    "flex h-8 shrink-0 items-center rounded-[calc(var(--radius-2xl)-var(--spacing)-1px)] px-3 text-base font-medium outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-token-focus-border",
-                    mode === scope.mode
-                      ? "bg-background-primary-ghost-hover text-token-foreground"
-                      : "text-token-description-foreground hover:bg-background-primary-ghost-hover hover:text-token-foreground",
-                  )}
-                >
-                  {scope.label}
-                </NodexTabsTab>
-              ))}
-            </NodexTabsList>
-            <ShortcutKeycaps
-              aria-hidden="true"
-              keys={["Tab"]}
-              density="compact"
-              className="ml-1 h-4 min-w-0 rounded-full px-1.5 font-normal tracking-normal"
-            />
-          </div>
+          <NodexTabsList
+            activateOnFocus
+            aria-label="Search scope"
+            className="flex min-w-0 flex-wrap items-center gap-px @min-[700px]:shrink-0"
+          >
+            {scopes.map((scope) => (
+              <NodexTabsTab
+                key={scope.mode}
+                value={scope.mode}
+                onMouseDown={(event) => event.preventDefault()}
+                className={cn(
+                  "flex h-8 shrink-0 items-center rounded-[calc(var(--radius-2xl)-var(--spacing)-1px)] px-3 text-base font-medium outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-token-focus-border",
+                  mode === scope.mode
+                    ? "bg-background-primary-ghost-hover text-token-foreground"
+                    : "text-tertiary hover:bg-background-primary-ghost-hover",
+                )}
+              >
+                {scope.label}
+              </NodexTabsTab>
+            ))}
+          </NodexTabsList>
+          <ShortcutKeycaps
+            aria-hidden="true"
+            keys={["Tab"]}
+            density="compact"
+            className="h-4 min-w-0 shrink-0 rounded-full px-1.5 font-normal tracking-normal"
+          />
           {mode === "text" || mode === "files" ? (
             <div
-              className="ml-auto flex min-w-0 shrink-0 justify-end pr-2"
+              role="toolbar"
+              aria-label="Search options"
+              tabIndex={-1}
+              className="ml-auto flex min-w-0 flex-wrap items-center justify-end gap-2 @min-[700px]:flex-nowrap"
               onKeyDown={(event) => {
                 if (
                   event.key !== "F6" ||
@@ -1383,10 +1451,11 @@ export const CommandPaletteSurface = forwardRef<
               {mode === "text" ? (
                 <CommandPaletteTextToolbar
                   history={history}
-                  scope={workspaceScope}
+                  selection={workspaceSelection}
                   contextScope={fileSearchScope}
-                  onScopeChange={(scope) => {
-                    onWorkspaceScopeChange?.(scope);
+                  contextLabel={projects.find((project) => project.id === activeProjectId)?.name}
+                  onSelectionChange={(selection) => {
+                    onWorkspaceSelectionChange?.(selection);
                     setSelectedIndex(0);
                   }}
                   focusSearch={() => inputRef.current?.focus()}
@@ -1394,13 +1463,13 @@ export const CommandPaletteSurface = forwardRef<
                 />
               ) : (
                 <CommandPaletteWorkspaceToolbar
-                  scope={workspaceScope}
+                  selection={workspaceSelection}
                   contextScope={fileSearchScope}
-                  onScopeChange={(scope) => {
-                    onWorkspaceScopeChange?.(scope);
+                  contextLabel={projects.find((project) => project.id === activeProjectId)?.name}
+                  onSelectionChange={(selection) => {
+                    onWorkspaceSelectionChange?.(selection);
                     setSelectedIndex(0);
                   }}
-                  focusSearch={() => inputRef.current?.focus()}
                   firstControlRef={searchOptionsRef}
                 />
               )}
@@ -1521,30 +1590,47 @@ export const CommandPaletteSurface = forwardRef<
           aria-busy={visibleRowsLoading}
           className="relative flex min-h-0 flex-1 scroll-pt-8 flex-col gap-1 overflow-y-auto overscroll-contain pb-1 [scrollbar-width:none]"
         >
+          {!activePage && mode === "text" ? (
+            <CommandPaletteTextError result={textSearch} mode={mode} />
+          ) : null}
           {sections.map((section) => {
             const startIndex = sections
               .slice(0, sections.indexOf(section))
               .reduce((sum, candidate) => sum + candidate.items.length, 0);
             return (
-              <PaletteSection
-                key={section.title}
-                compactPages={mode === "root"}
-                textLabels={textLabels}
-                title={section.title}
-                showHeading={mode !== "text" && !(activePage && section.title === "Suggested")}
-                items={section.items}
-                listId={listId}
-                selectedIndex={selectedIndex}
-                startIndex={startIndex}
-                onSelectIndex={(index) => {
-                  pointerSelectionRef.current = true;
-                  setSelectedIndex(index);
-                }}
-                onExecute={handleExecute}
-                showSubtitle={showSubtitle}
-              />
+              <Fragment key={section.title}>
+                {!activePage && mode === "root" && section.title === "Text" ? (
+                  <CommandPaletteTextError result={textSearch} mode={mode} />
+                ) : null}
+                <PaletteSection
+                  compactPages={mode === "root"}
+                  query={query}
+                  textLabels={textLabels}
+                  title={section.title}
+                  showHeading={
+                    mode !== "text" &&
+                    !(activePage && section.title === "Suggested") &&
+                    section.items[0]?.id !== "retryFileLookup"
+                  }
+                  items={section.items}
+                  listId={listId}
+                  selectedIndex={selectedIndex}
+                  startIndex={startIndex}
+                  onSelectIndex={(index) => {
+                    pointerSelectionRef.current = true;
+                    setSelectedIndex(index);
+                  }}
+                  onExecute={handleExecute}
+                  showSubtitle={showSubtitle}
+                />
+              </Fragment>
             );
           })}
+          {!activePage &&
+          mode === "root" &&
+          !sections.some((section) => section.title === "Text") ? (
+            <CommandPaletteTextError result={textSearch} mode={mode} />
+          ) : null}
           {showThreadSearchStatus && visibleModel.threadSearchPending ? (
             <SearchStatusRow>Loading chats…</SearchStatusRow>
           ) : null}
@@ -1560,9 +1646,22 @@ export const CommandPaletteSurface = forwardRef<
             <SearchStatusRow>Full Page search is unavailable</SearchStatusRow>
           ) : null}
           {showFileSearchStatus ? (
-            <SearchStatusRow>
-              {fileSearch.error ? "File search is unavailable" : "Searching files…"}
-            </SearchStatusRow>
+            fileSearch.error ? (
+              <SearchStatusRow>File search is unavailable</SearchStatusRow>
+            ) : (
+              <span className="sr-only" role="status">
+                Searching files…
+              </span>
+            )
+          ) : null}
+          {showEmptyResultsProgress ? (
+            <span
+              className="pointer-events-none absolute inset-0 flex items-center justify-center"
+              role="progressbar"
+              aria-label={mode === "files" ? "Searching files" : "Searching"}
+            >
+              <ActivitySpinnerIcon className="icon-sm" />
+            </span>
           ) : null}
           {!activePage && (mode === "text" || mode === "root") ? (
             <CommandPaletteTextStatus
@@ -1578,11 +1677,13 @@ export const CommandPaletteSurface = forwardRef<
               data-cmdk-empty
               className="absolute inset-0 flex items-center justify-center px-4 text-center text-lg text-token-description-foreground"
             >
-              {getEmptyMessage(
-                mode,
-                visibleModel.query,
-                mode === "chats" ? chatsLoading : mode === "pages" ? pagesLoading : loading,
-              )}
+              {mode === "files" && !hasFileScope
+                ? "Choose a folder to search files"
+                : getEmptyMessage(
+                    mode,
+                    visibleModel.query,
+                    mode === "chats" ? chatsLoading : mode === "pages" ? pagesLoading : loading,
+                  )}
             </div>
           ) : null}
         </div>

@@ -1,94 +1,87 @@
-import { useRef, useState, type Ref } from "react";
+import { useRef, useState, type ComponentPropsWithRef, type Ref } from "react";
+import { useMergeRefs } from "@floating-ui/react";
 import type { FileSearchScope } from "../../../shared/file-search";
-import { FolderIcon } from "@/components/shared/icons";
-import { NodexDropdownButtonTrigger, NodexOptionPicker } from "@/components/ui/dropdown";
+import {
+  commandPaletteWorkspaceScope,
+  COMMAND_PALETTE_CONTEXT_SELECTION,
+  type CommandPaletteWorkspaceSelection,
+} from "@/lib/command-palette-workspace-selection";
+import { DropdownChevronIcon } from "@/components/shared/icons";
+import { NodexOptionPicker } from "@/components/ui/dropdown";
+import { NodexTooltip } from "@/components/ui/tooltip";
 import { appScope, useScopeHandle } from "@/lib/maitai";
 import { openModal } from "@/lib/modal-registry";
 import { CommandPaletteFolderPicker } from "./command-palette-folder-picker";
 
-export interface CommandPaletteWorkspaceOption {
-  readonly label: string;
-  readonly scope: FileSearchScope;
-}
-
 export interface CommandPaletteWorkspaceToolbarProps {
-  readonly scope: FileSearchScope | null;
+  readonly selection?: CommandPaletteWorkspaceSelection;
   readonly contextScope?: FileSearchScope | null;
   readonly contextLabel?: string;
-  readonly scopeOptions?: readonly CommandPaletteWorkspaceOption[];
-  readonly onScopeChange: (scope: FileSearchScope) => void;
-  readonly focusSearch: () => void;
+  readonly onSelectionChange: (selection: CommandPaletteWorkspaceSelection) => void;
   readonly firstControlRef?: Ref<HTMLButtonElement>;
   readonly onChooseFolder?: () => Promise<FileSearchScope | null>;
 }
 
-const scopeKey = (scope: FileSearchScope | null | undefined) =>
-  scope ? JSON.stringify([scope.hostId, scope.roots]) : "";
 const folderName = (path: string) =>
   path
     .replace(/[\\/]+$/u, "")
     .split(/[\\/]/u)
     .at(-1) || path;
 const CHOOSE_FOLDER = "choose-folder";
-const EMPTY_SCOPE_OPTIONS: readonly CommandPaletteWorkspaceOption[] = [];
+export const COMMAND_PALETTE_SEARCH_OPTION_CLASS_NAME =
+  "flex h-7 min-w-0 items-center gap-1 rounded-lg border border-transparent px-2 py-0 text-sm/4.5 text-tertiary whitespace-nowrap outline-hidden hover:bg-background-primary-ghost-hover data-[popup-open]:bg-background-primary-ghost-hover focus-visible:ring-2 focus-visible:ring-token-focus-border disabled:cursor-default disabled:opacity-40";
+
+function FolderTrigger({
+  tooltipContent,
+  ...props
+}: ComponentPropsWithRef<"button"> & { readonly tooltipContent: string | undefined }) {
+  return (
+    <NodexTooltip tooltipContent={tooltipContent} disabled={props["aria-expanded"] === true}>
+      <button {...props} />
+    </NodexTooltip>
+  );
+}
 
 /** Files and Text share one explicit workspace selection and the same folder action. */
 export function CommandPaletteWorkspaceToolbar({
-  scope,
-  contextScope = scope,
+  selection = COMMAND_PALETTE_CONTEXT_SELECTION,
+  contextScope = null,
   contextLabel,
-  scopeOptions = EMPTY_SCOPE_OPTIONS,
-  onScopeChange,
-  focusSearch,
+  onSelectionChange,
   firstControlRef,
   onChooseFolder,
 }: CommandPaletteWorkspaceToolbarProps) {
+  const scope = commandPaletteWorkspaceScope(selection, contextScope);
   const appHandle = useScopeHandle(appScope);
   const [open, setOpen] = useState(false);
   const [choosing, setChoosing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const chooseAfterClose = useRef(false);
-  const options = [
-    ...new Map(
-      [
-        ...(contextScope?.roots.length
-          ? [
-              {
-                label: contextLabel
-                  ? `Project: ${contextLabel}`
-                  : contextScope.roots.length > 1
-                    ? "Project folders"
-                    : `Folder: ${folderName(contextScope.roots[0]!)}`,
-                scope: contextScope,
-              },
-            ]
-          : []),
-        ...(contextScope && contextScope.roots.length > 1
-          ? contextScope.roots.map((root) => ({
-              label: folderName(root),
-              scope: { hostId: contextScope.hostId, roots: [root] },
-            }))
-          : []),
-        ...scopeOptions,
-        ...(scope?.roots.length && scopeKey(scope) !== scopeKey(contextScope)
-          ? [
-              {
-                label: scope.roots.length === 1 ? `In ${folderName(scope.roots[0]!)}` : "Folders",
-                scope,
-              },
-            ]
-          : []),
-      ].map((option) => [scopeKey(option.scope), option] as const),
-    ).values(),
-  ];
-  const selected = options.find((option) => scopeKey(option.scope) === scopeKey(scope));
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const mergedTriggerRef = useMergeRefs([triggerRef, firstControlRef]);
+  const restoreFocus = () => triggerRef.current?.focus();
+  const context =
+    contextScope?.roots.length && contextScope.hostId === scope?.hostId ? contextScope : null;
+  const contextTitle = contextLabel
+    ? `Project: ${contextLabel}`
+    : context?.roots.length === 1
+      ? `Folder: ${folderName(context.roots[0]!)}`
+      : "Folders";
+  const isContext = selection.kind === "context";
+  const title = !scope?.roots.length
+    ? "Choose folder"
+    : isContext
+      ? contextTitle
+      : scope.roots.length === 1
+        ? `In ${folderName(scope.roots[0]!)}`
+        : "Folders";
   const choose = async () => {
     if (choosing) return;
     if (!onChooseFolder) {
       openModal(appHandle, CommandPaletteFolderPicker, {
         scope,
-        onSelect: onScopeChange,
-        focusSearch,
+        onSelect: (next) => onSelectionChange({ kind: "directory", scope: next }),
+        onRestoreFocus: restoreFocus,
       });
       return;
     }
@@ -96,23 +89,23 @@ export function CommandPaletteWorkspaceToolbar({
     setError(null);
     try {
       const next = await onChooseFolder();
-      if (next) onScopeChange(next);
+      if (next) onSelectionChange({ kind: "directory", scope: next });
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Unable to choose a folder");
     } finally {
       setChoosing(false);
-      focusSearch();
+      restoreFocus();
     }
   };
   return (
-    <div className="flex min-w-0 items-center gap-2">
+    <>
       <NodexOptionPicker
         open={open}
         onOpenChange={setOpen}
-        value={scopeKey(scope)}
-        search={options.length > 6 ? "filter" : "none"}
+        value={isContext ? "context" : "directory"}
+        search="none"
         options={[
-          ...options.map((option) => ({ value: scopeKey(option.scope), label: option.label })),
+          ...(context ? [{ value: "context", label: contextTitle }] : []),
           { value: CHOOSE_FOLDER, label: "Choose folder" },
         ]}
         onValueChange={(value) => {
@@ -120,8 +113,7 @@ export function CommandPaletteWorkspaceToolbar({
             chooseAfterClose.current = true;
             return;
           }
-          const option = options.find((candidate) => scopeKey(candidate.scope) === value);
-          if (option) onScopeChange(option.scope);
+          if (context && value === "context") onSelectionChange({ kind: "context" });
         }}
         finalFocus={() => {
           if (chooseAfterClose.current) {
@@ -129,23 +121,23 @@ export function CommandPaletteWorkspaceToolbar({
             void choose();
             return false;
           }
-          focusSearch();
+          restoreFocus();
           return false;
         }}
         align="end"
         contentWidth="menuBounded"
         triggerButton={
-          <NodexDropdownButtonTrigger
-            ref={firstControlRef}
-            size="sm"
-            chrome="transparent"
+          <FolderTrigger
+            tooltipContent={scope?.roots.join("\n")}
+            ref={mergedTriggerRef}
+            type="button"
             disabled={choosing}
             aria-label="Search folder"
-            leadingVisual={<FolderIcon className="icon-xs" />}
-            className="max-w-48"
+            className={`${COMMAND_PALETTE_SEARCH_OPTION_CLASS_NAME} max-w-full`}
           >
-            <span className="truncate">{selected?.label ?? "Choose folder"}</span>
-          </NodexDropdownButtonTrigger>
+            <span className="max-w-40 truncate text-start">{title}</span>
+            <DropdownChevronIcon className="icon-xs shrink-0" />
+          </FolderTrigger>
         }
       />
       {error ? (
@@ -153,6 +145,6 @@ export function CommandPaletteWorkspaceToolbar({
           {error}
         </span>
       ) : null}
-    </div>
+    </>
   );
 }

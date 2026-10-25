@@ -2,7 +2,9 @@ import { createFileSearchFixture } from "../../test/file-search-fixture";
 import { installWindowApi } from "../../test/browser-globals";
 import { describe, expect, vi, test } from "vite-plus/test";
 import { createElement, createRef, useState } from "react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, fireEvent, waitFor } from "@testing-library/react";
+import { NodexModalHost } from "@/lib/modal-registry";
 import type {
   CommandPalettePage,
   CommandPaletteCommand,
@@ -28,6 +30,7 @@ import {
 } from "../../../shared/window-navigation";
 import { TOGGLE_BOTTOM_PANEL_COMMAND_ID } from "../../../shared/workbench-commands";
 import { DEFAULT_PROJECT_APPEARANCE } from "../../../shared/project-appearance";
+import type { CommandPaletteWorkspaceSelection } from "@/lib/command-palette-workspace-selection";
 import type { CommandPaletteSurfaceHandle } from "./command-palette-surface";
 
 vi.mock("./threads-icon", () => ({
@@ -1849,6 +1852,303 @@ describe("buildCommandPaletteCommands navigation", () => {
   });
 });
 
+test.each(["needle", "/workspace/result.ts"])(
+  "Files requires a folder before searching %s",
+  async (query) => {
+    const { CommandPaletteSurface } = await import("./command-palette-surface");
+    const previousApi = window.api;
+    const previousQuery = apiMock.invokeImplementation;
+    const queryOwner = vi.fn(previousQuery);
+    apiMock.invokeImplementation = queryOwner;
+    const invoke = vi.fn(async () => undefined);
+    installWindowApi({ invoke });
+    const execute = vi.fn();
+    const close = vi.fn();
+    const view = render(
+      <CommandPaletteSurface
+        open
+        openTriggerTick={1}
+        mode="files"
+        initialQuery={query}
+        commands={[]}
+        loading={false}
+        pagesLoading={false}
+        chatsLoading={false}
+        onChangeMode={() => undefined}
+        onRequestClose={close}
+        onExecute={execute}
+      />,
+    );
+    try {
+      expect(await view.findByText("Choose a folder to search files")).toBeTruthy();
+      expect(view.queryAllByRole("option")).toHaveLength(0);
+      expect(view.queryByRole("progressbar")).toBeNull();
+      await act(async () => {
+        fireEvent.keyDown(view.getByRole("combobox"), { key: "Enter" });
+        await Promise.resolve();
+      });
+      expect(invoke).not.toHaveBeenCalledWith("file-search:start", expect.anything());
+      expect(queryOwner).not.toHaveBeenCalledWith("read-file-metadata", expect.anything());
+      expect(execute).not.toHaveBeenCalled();
+      expect(close).not.toHaveBeenCalled();
+    } finally {
+      view.unmount();
+      apiMock.invokeImplementation = previousQuery;
+      installWindowApi(previousApi);
+    }
+  },
+);
+
+test("Files keeps empty and pending states out of keyboard selection and opens the full result path", async () => {
+  const { CommandPaletteSurface } = await import("./command-palette-surface");
+  const name = `report-${"🙂".repeat(100)}.ts`;
+  const path = `deep/${"nested/".repeat(20)}${name}`;
+  const fixture = createFileSearchFixture([{ name, path, type: "file", isSymlink: false }]);
+  const updates: unknown[] = [];
+  const previousApi = window.api;
+  installWindowApi({
+    on: fixture.on,
+    invoke: async (channel: string, ...args: unknown[]) => {
+      if (channel === "file-search:update") {
+        updates.push(args[0]);
+        return;
+      }
+      return fixture.invoke(channel, args[0]);
+    },
+  });
+  const execute = vi.fn();
+  const close = vi.fn();
+  const view = render(
+    <CommandPaletteSurface
+      open
+      openTriggerTick={1}
+      mode="files"
+      commands={[]}
+      fileSearchScope={{ hostId: "remote:files-states", roots: ["/files-states"] }}
+      loading={false}
+      pagesLoading={false}
+      chatsLoading={false}
+      onChangeMode={() => undefined}
+      onRequestClose={close}
+      onExecute={execute}
+    />,
+  );
+  try {
+    expect(await view.findByText("Type to search files")).toBeTruthy();
+    expect(view.queryAllByRole("option")).toHaveLength(0);
+    const input = view.getByRole("combobox");
+    await act(async () => {
+      fireEvent.change(input, { target: { value: "missing" } });
+      await Promise.resolve();
+    });
+    await waitFor(() => expect(updates).toHaveLength(1));
+    expect(view.getByRole("progressbar", { name: "Searching files" })).toBeTruthy();
+    expect(view.queryByText("Type to search files")).toBeNull();
+    expect(view.queryAllByRole("option")).toHaveLength(0);
+    await act(async () => {
+      fireEvent.keyDown(input, { key: "Enter" });
+      await Promise.resolve();
+    });
+    expect(execute).not.toHaveBeenCalled();
+    expect(close).not.toHaveBeenCalled();
+    await act(async () => {
+      fixture.invoke("file-search:update", updates[0]);
+      await Promise.resolve();
+    });
+    expect(await view.findByText("No matching files")).toBeTruthy();
+    expect(view.queryByRole("progressbar")).toBeNull();
+    expect(view.queryAllByRole("option")).toHaveLength(0);
+    await act(async () => {
+      fireEvent.change(input, { target: { value: "report" } });
+      await Promise.resolve();
+    });
+    await waitFor(() => expect(updates).toHaveLength(2));
+    await act(async () => {
+      fixture.invoke("file-search:update", updates[1]);
+      await Promise.resolve();
+    });
+    expect(await view.findByRole("option")).toBeTruthy();
+    expect(view.queryByRole("progressbar")).toBeNull();
+    await act(async () => {
+      fireEvent.keyDown(input, { key: "Enter" });
+      await Promise.resolve();
+    });
+    expect(execute).toHaveBeenCalledWith(
+      expect.objectContaining({
+        kind: "file",
+        hostId: "remote:files-states",
+        file: expect.objectContaining({ fsPath: `/files-states/${path}`, label: name }),
+      }),
+    );
+    expect(close).toHaveBeenCalledOnce();
+  } finally {
+    view.unmount();
+    installWindowApi(previousApi);
+  }
+});
+
+test("choosing the current Project folder remains an explicit boundary until context is restored", async () => {
+  const { CommandPaletteSurface } = await import("./command-palette-surface");
+  const previousQuery = apiMock.invokeImplementation;
+  const metadata = vi.fn(async () => ({ isFile: true }));
+  apiMock.invokeImplementation = async (...args) => {
+    if (args[0] === "read-file-metadata") return metadata();
+    if (args[0] !== "workspace-directory-entries") return previousQuery(...args);
+    const input = args[1] as import("../../../shared/types").WorkspaceDirectoryEntriesInput;
+    return {
+      workspaceRoot: input.workspaceRoot,
+      directoryPath: input.directoryPath ?? "",
+      parentPath: null,
+      entries: [],
+    };
+  };
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  function Harness() {
+    const [selection, setSelection] = useState<CommandPaletteWorkspaceSelection>({
+      kind: "context",
+    });
+    return (
+      <CommandPaletteSurface
+        open
+        openTriggerTick={1}
+        mode="files"
+        initialQuery="/outside/file.ts"
+        commands={[]}
+        fileSearchScope={{ hostId: "local", roots: ["/project"] }}
+        workspaceSelection={selection}
+        onWorkspaceSelectionChange={setSelection}
+        loading={false}
+        pagesLoading={false}
+        chatsLoading={false}
+        onChangeMode={() => undefined}
+        onRequestClose={() => undefined}
+        onExecute={() => undefined}
+      />
+    );
+  }
+  const view = render(
+    <QueryClientProvider client={queryClient}>
+      <Harness />
+      <NodexModalHost />
+    </QueryClientProvider>,
+  );
+  try {
+    await view.findByRole("option", { name: /file.ts/ });
+    expect(metadata).toHaveBeenCalledOnce();
+    await openNodexMenu(view.getByRole("button", { name: "Search folder" }));
+    await act(async () => {
+      fireEvent.click(await view.findByRole("menuitem", { name: "Choose folder" }));
+      await Promise.resolve();
+    });
+    const current = await view.findByRole("button", { name: "Select current folder" });
+    await waitFor(() => expect((current as HTMLButtonElement).disabled).toBe(false));
+    await act(async () => {
+      fireEvent.click(current);
+      await Promise.resolve();
+    });
+    await act(async () => {
+      fireEvent.click(view.getByRole("button", { name: "Choose" }));
+      await Promise.resolve();
+    });
+    await waitFor(() => expect(view.queryByRole("dialog")).toBeNull());
+    await view.findByText("In project");
+    await view.findByText("No matching files");
+    expect(view.queryAllByRole("option")).toHaveLength(0);
+    expect(metadata).toHaveBeenCalledOnce();
+    expect(view.getByRole("combobox", { name: "Command palette search" })).toHaveProperty(
+      "value",
+      "/outside/file.ts",
+    );
+    await openNodexMenu(view.getByRole("button", { name: "Search folder" }));
+    await act(async () => {
+      fireEvent.click(await view.findByRole("menuitem", { name: "Folder: project" }));
+      await Promise.resolve();
+    });
+    await view.findByRole("option", { name: /file.ts/ });
+    expect(metadata).toHaveBeenCalledTimes(2);
+    expect(view.getByText("Folder: project")).toBeTruthy();
+  } finally {
+    view.unmount();
+    apiMock.invokeImplementation = previousQuery;
+    queryClient.clear();
+  }
+});
+
+test("All shows progress while only current Text search remains pending and removes it for results", async () => {
+  const { CommandPaletteSurface } = await import("./command-palette-surface");
+  type Request = import("../../../shared/workspace-text-search").WorkspaceTextSearchRequest;
+  type SearchEvent = import("../../../shared/workspace-text-search").WorkspaceTextSearchEvent;
+  const requests: Request[] = [];
+  const listeners = new Set<(...args: unknown[]) => void>();
+  const fixture = createFileSearchFixture([]);
+  const previousApi = window.api;
+  installWindowApi({
+    on: (channel: string, listener: (...args: unknown[]) => void) => {
+      if (channel !== "workspace-text-search:event") return fixture.on(channel, listener);
+      listeners.add(listener);
+      return () => {
+        listeners.delete(listener);
+      };
+    },
+    invoke: async (channel: string, ...args: unknown[]) => {
+      if (channel === "workspace-text-search:start") requests.push(args[0] as Request);
+      else fixture.invoke(channel, args[0]);
+    },
+  });
+  const view = render(
+    <CommandPaletteSurface
+      open
+      openTriggerTick={1}
+      mode="root"
+      initialQuery="needle"
+      commands={[]}
+      fileSearchScope={{ hostId: "local", roots: ["/pending"] }}
+      loading={false}
+      pagesLoading={false}
+      chatsLoading={false}
+      onChangeMode={() => undefined}
+      onRequestClose={() => undefined}
+      onExecute={() => undefined}
+    />,
+  );
+  const emit = async (event: SearchEvent) =>
+    act(async () => {
+      for (const listener of listeners) listener(event);
+      await Promise.resolve();
+    });
+  try {
+    await waitFor(() => expect(requests).toHaveLength(1));
+    expect(view.queryByText("Searching files…")).toBeNull();
+    expect(view.queryAllByRole("option")).toHaveLength(0);
+    expect(view.getByRole("progressbar", { name: "Searching" })).toBeTruthy();
+    await act(async () => {
+      fireEvent.change(view.getByRole("combobox"), { target: { value: "next" } });
+      await Promise.resolve();
+    });
+    await waitFor(() => expect(requests).toHaveLength(2));
+    await emit({ requestId: requests[0]!.requestId, type: "done", limited: false });
+    expect(view.getByRole("progressbar", { name: "Searching" })).toBeTruthy();
+    await emit({
+      requestId: requests[1]!.requestId,
+      type: "match",
+      match: {
+        path: "/pending/file.ts",
+        root: "/pending",
+        relativePath: "file.ts",
+        line: 1,
+        column: 1,
+        preview: "next",
+        matchRanges: [{ start: 0, end: 4 }],
+      },
+    });
+    await view.findByRole("option", { name: "/pending/file.ts:1" });
+    expect(view.queryByRole("progressbar", { name: "Searching" })).toBeNull();
+  } finally {
+    view.unmount();
+    installWindowApi(previousApi);
+  }
+});
+
 test("file search opens directories on the selected host and releases its session", async () => {
   const { CommandPaletteSurface } = await import("./command-palette-surface");
   const fixture = createFileSearchFixture([
@@ -2043,6 +2343,18 @@ test("Text keeps Project query and mask history when choosing a different search
   const requests: Request[] = [];
   const fileRequests: import("../../../shared/file-search").FileSearchStartInput[] = [];
   const previousApi = window.api;
+  const previousQuery = apiMock.invokeImplementation;
+  apiMock.invokeImplementation = async (...args) => {
+    if (args[0] !== "workspace-directory-entries") return previousQuery(...args);
+    const input = args[1] as import("../../../shared/types").WorkspaceDirectoryEntriesInput;
+    return {
+      workspaceRoot: input.workspaceRoot,
+      directoryPath: input.directoryPath ?? "",
+      parentPath: null,
+      entries: [],
+    };
+  };
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   installWindowApi({
     on: () => () => undefined,
     invoke: async (channel: string, ...args: unknown[]) => {
@@ -2054,9 +2366,8 @@ test("Text keeps Project query and mask history when choosing a different search
   });
   function Harness() {
     const [mode, setMode] = useState<CommandMenuMode>("text");
-    const [workspaceScope, setWorkspaceScope] = useState({
-      hostId: "local",
-      roots: ["/history-project/first", "/history-project/second"],
+    const [workspaceSelection, setWorkspaceSelection] = useState<CommandPaletteWorkspaceSelection>({
+      kind: "context",
     });
     return (
       <CommandPaletteSurface
@@ -2069,8 +2380,8 @@ test("Text keeps Project query and mask history when choosing a different search
           hostId: "local",
           roots: ["/history-project/first", "/history-project/second"],
         }}
-        workspaceScope={workspaceScope}
-        onWorkspaceScopeChange={(scope) => setWorkspaceScope({ ...scope, roots: [...scope.roots] })}
+        workspaceSelection={workspaceSelection}
+        onWorkspaceSelectionChange={setWorkspaceSelection}
         loading={false}
         pagesLoading={false}
         chatsLoading={false}
@@ -2080,7 +2391,12 @@ test("Text keeps Project query and mask history when choosing a different search
       />
     );
   }
-  const view = render(<Harness />);
+  const view = render(
+    <QueryClientProvider client={queryClient}>
+      <Harness />
+      <NodexModalHost />
+    </QueryClientProvider>,
+  );
   try {
     const input = view.getByRole("combobox", { name: "Command palette search" });
     await act(async () => {
@@ -2100,11 +2416,21 @@ test("Text keeps Project query and mask history when choosing a different search
     });
     await view.findByRole("option", { name: "needle" });
     await openNodexMenu(view.getByRole("button", { name: "Search folder" }));
-    const folder = await view.findByRole("menuitem", { name: "second" });
+    const folder = await view.findByRole("menuitem", { name: "Choose folder" });
     await act(async () => {
       fireEvent.click(folder);
       await Promise.resolve();
     });
+    const folderPath = await view.findByRole("combobox", { name: "Selected folder path" });
+    await act(async () => {
+      fireEvent.change(folderPath, { target: { value: "/history-project/second" } });
+      await Promise.resolve();
+    });
+    await act(async () => {
+      fireEvent.click(view.getByRole("button", { name: "Choose" }));
+      await Promise.resolve();
+    });
+    await waitFor(() => expect(view.queryByRole("dialog")).toBeNull());
     await waitFor(() =>
       expect((view.getByRole("textbox", { name: "File types" }) as HTMLInputElement).value).toBe(
         "*.ts,!*.test.ts",
@@ -2155,6 +2481,8 @@ test("Text keeps Project query and mask history when choosing a different search
     );
   } finally {
     view.unmount();
+    apiMock.invokeImplementation = previousQuery;
+    queryClient.clear();
     installWindowApi(previousApi);
   }
 });
@@ -2257,6 +2585,13 @@ test("Text recovers after a terminal error without accepting stale results", asy
       message: "Host disconnected after returning a match",
     });
     expect(view.getByRole("alert").textContent).toBe("Unable to search files. Try again");
+    expect(
+      view
+        .getByRole("alert")
+        .compareDocumentPosition(
+          view.getByRole("option", { name: "/workspace-error/result.ts:9" }),
+        ) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
     expect(
       view
         .getByRole("option", { name: "/workspace-error/result.ts:9" })

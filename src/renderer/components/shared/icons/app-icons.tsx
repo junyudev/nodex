@@ -1128,6 +1128,25 @@ export function CompactChevronDownIcon({ className }: IconProps) {
   );
 }
 
+/** A light disclosure glyph for compact dropdown controls. */
+export function DropdownChevronIcon({ className }: IconProps) {
+  return (
+    <svg
+      width="16"
+      height="16"
+      viewBox="0 0 16 16"
+      className={className ?? "icon-xs"}
+      fill="none"
+      aria-hidden="true"
+    >
+      <path
+        d="M11.6289 6.29537C11.8339 6.09035 12.166 6.09035 12.3711 6.29537C12.5761 6.5004 12.5761 6.83253 12.3711 7.03756L8.60641 10.8022C8.27129 11.1369 7.72863 11.1369 7.39352 10.8022L3.62887 7.03756C3.42384 6.83253 3.42384 6.5004 3.62887 6.29537C3.83389 6.09035 4.16603 6.09035 4.37105 6.29537L7.99996 9.92428L11.6289 6.29537Z"
+        fill="currentColor"
+      />
+    </svg>
+  );
+}
+
 export function AutomationActiveStatusIcon({ className }: IconProps) {
   return (
     <svg

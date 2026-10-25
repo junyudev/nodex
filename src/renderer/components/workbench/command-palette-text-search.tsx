@@ -5,86 +5,108 @@ import type {
 } from "../../../shared/workspace-text-search";
 import {
   ActivitySpinnerIcon,
-  ChevronDownIcon,
+  DropdownChevronIcon,
   FileIcon,
   HistoryIcon,
 } from "@/components/shared/icons";
-import { NodexIconButton } from "@/components/ui/button";
-import { NodexOptionPicker } from "@/components/ui/dropdown";
+import { NodexDropdownItem, NodexDropdownMenu } from "@/components/ui/dropdown";
 import { NodexTooltip } from "@/components/ui/tooltip";
+import {
+  commandPaletteWorkspaceScope,
+  COMMAND_PALETTE_CONTEXT_SELECTION,
+} from "@/lib/command-palette-workspace-selection";
 import type { WorkspaceTextSearchHistoryController } from "@/lib/workspace-text-search-history";
 import type { WorkspaceTextSearchResult } from "@/lib/use-workspace-text-search";
 import {
   CommandPaletteWorkspaceToolbar,
+  COMMAND_PALETTE_SEARCH_OPTION_CLASS_NAME,
   type CommandPaletteWorkspaceToolbarProps,
 } from "./command-palette-workspace-toolbar";
 
 export function CommandPaletteTextToolbar({
   history,
+  focusSearch,
   ...workspace
 }: CommandPaletteWorkspaceToolbarProps & {
   readonly history: WorkspaceTextSearchHistoryController;
+  readonly focusSearch: () => void;
 }) {
+  const scope = commandPaletteWorkspaceScope(
+    workspace.selection ?? COMMAND_PALETTE_CONTEXT_SELECTION,
+    workspace.contextScope ?? null,
+  );
   const maskId = useId();
   const maskInput = useRef<HTMLInputElement>(null);
   const [historyOpen, setHistoryOpen] = useState(false);
   return (
-    <div className="flex min-w-0 flex-wrap items-center justify-end gap-2">
+    <>
       <CommandPaletteWorkspaceToolbar {...workspace} />
-      <div className="flex min-w-0 items-center gap-2">
-        <label htmlFor={maskId} className="shrink-0 text-sm text-token-description-foreground">
-          File types
-        </label>
-        <div className="flex min-w-0 items-center">
-          <input
-            ref={maskInput}
-            id={maskId}
-            value={history.fileMask}
-            maxLength={256}
-            placeholder="*.ts"
-            spellCheck={false}
-            autoComplete="off"
-            className="h-7 w-28 min-w-0 rounded-md border border-token-border bg-transparent px-1 text-sm outline-none placeholder:text-token-description-foreground focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-token-focus-border"
-            onChange={(event) => history.setFileMask(event.currentTarget.value)}
-            onBlur={(event) => history.commit(undefined, event.currentTarget.value)}
-            onKeyDown={(event) => {
-              if (event.nativeEvent.isComposing || event.nativeEvent.keyCode === 229) {
-                event.stopPropagation();
-                return;
-              }
-              if (event.key === "Enter") {
-                event.preventDefault();
-                event.stopPropagation();
-                history.commit(undefined, event.currentTarget.value);
-                workspace.focusSearch();
-                return;
-              }
-              if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
-              event.stopPropagation();
-              if (event.key !== "ArrowDown" || history.masks.length === 0) return;
-              event.preventDefault();
-              setHistoryOpen(true);
-            }}
-          />
-          {history.masks.length > 0 ? (
-            <NodexOptionPicker
-              open={historyOpen}
-              onOpenChange={setHistoryOpen}
-              search="none"
-              value={history.fileMask}
-              options={history.masks.map((mask) => ({ value: mask, label: mask }))}
-              onValueChange={(mask) => history.commit(undefined, mask)}
-              finalFocus={maskInput}
-              align="end"
-              contentWidth="menuBounded"
-              triggerButton={
-                <NodexIconButton icon={ChevronDownIcon} size="sm" ariaLabel="Previous file types" />
-              }
-            />
-          ) : null}
+      {scope?.roots.length ? (
+        <div className="flex min-w-0 shrink-0 items-center gap-2">
+          <label htmlFor={maskId} className="shrink-0 text-sm text-tertiary">
+            File types
+          </label>
+          <div className="flex min-w-0 items-center">
+            <div className="w-28 min-w-0 shrink">
+              <input
+                ref={maskInput}
+                id={maskId}
+                value={history.fileMask}
+                maxLength={256}
+                placeholder="*.ts"
+                spellCheck={false}
+                autoComplete="off"
+                className="h-7 w-full min-w-0 rounded-md border border-border-primary-outline bg-transparent px-2 text-sm text-token-foreground outline-none placeholder:text-tertiary"
+                onChange={(event) => history.setFileMask(event.currentTarget.value)}
+                onBlur={(event) => history.commit(undefined, event.currentTarget.value)}
+                onKeyDown={(event) => {
+                  if (event.nativeEvent.isComposing || event.nativeEvent.keyCode === 229) {
+                    event.stopPropagation();
+                    return;
+                  }
+                  if (event.key === "Enter") {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    history.commit(undefined, event.currentTarget.value);
+                    focusSearch();
+                    return;
+                  }
+                  if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
+                  event.stopPropagation();
+                  if (event.key !== "ArrowDown" || history.masks.length === 0) return;
+                  event.preventDefault();
+                  setHistoryOpen(true);
+                }}
+              />
+            </div>
+            {history.masks.length > 0 ? (
+              <NodexDropdownMenu
+                open={historyOpen}
+                onOpenChange={setHistoryOpen}
+                finalFocus={maskInput}
+                align="end"
+                contentWidth="menuBounded"
+                triggerButton={
+                  <button
+                    type="button"
+                    className={`${COMMAND_PALETTE_SEARCH_OPTION_CLASS_NAME} shrink-0`}
+                    aria-label="Previous file types"
+                  >
+                    <DropdownChevronIcon className="icon-xs shrink-0" />
+                  </button>
+                }
+              >
+                {history.masks.map((mask) => (
+                  <NodexDropdownItem key={mask} onSelect={() => history.commit(undefined, mask)}>
+                    {mask}
+                  </NodexDropdownItem>
+                ))}
+              </NodexDropdownMenu>
+            ) : null}
+          </div>
         </div>
-      </div>
-    </div>
+      ) : null}
+    </>
   );
 }
 
@@ -135,7 +157,7 @@ export function CommandPaletteTextRow({
         ))}
         {match.preview.slice(match.matchRanges.at(-1)?.end ?? 0)}
       </span>
-      <span className="flex max-w-1/3 shrink-0 text-sm text-token-description-foreground">
+      <span className="semantic-text-secondary flex max-w-1/3 shrink-0 text-sm">
         <NodexTooltip tooltipContent={match.path}>
           <span className="truncate">{pathLabel ?? basename(match.path)}</span>
         </NodexTooltip>
@@ -191,6 +213,26 @@ function DelayedTextSearchProgress({ centered }: { readonly centered: boolean })
   );
 }
 
+/** Search errors stay in the result flow, including when usable matches precede a failure. */
+export function CommandPaletteTextError({
+  result,
+  mode,
+}: {
+  readonly result: WorkspaceTextSearchResult;
+  readonly mode: "root" | "text";
+}) {
+  if (!result.error || (mode === "root" && result.error === "invalid-query")) return null;
+  return (
+    <div
+      role="alert"
+      data-cmdk-empty
+      className="flex min-h-8 items-center px-2.5 py-1.5 text-center text-lg/1.4 text-tertiary whitespace-pre-wrap"
+    >
+      {workspaceTextSearchErrorMessage(result.error)}
+    </div>
+  );
+}
+
 /** Status is separate from selectable rows so pending work never steals keyboard selection. */
 export function CommandPaletteTextStatus({
   result,
@@ -206,23 +248,14 @@ export function CommandPaletteTextStatus({
   readonly hasHistory?: boolean;
 }) {
   if (mode === "root") {
-    if (result.error && result.error !== "invalid-query")
-      return (
-        <div role="alert" className="px-2 py-2 text-xs text-token-description-foreground">
-          {workspaceTextSearchErrorMessage(result.error)}
-        </div>
-      );
     return result.loading ? (
       <span className="sr-only" role="progressbar" aria-label="Find in files" />
     ) : null;
   }
-  const partialError = result.error && result.matchesCurrent && result.matches.length > 0;
   const message = !hasScope
     ? "Choose a folder to search files"
     : result.error
-      ? partialError
-        ? null
-        : workspaceTextSearchErrorMessage(result.error)
+      ? null
       : query.trim().length === 0
         ? hasHistory
           ? null
@@ -234,7 +267,7 @@ export function CommandPaletteTextStatus({
     <>
       {message ? (
         <div
-          role={result.error ? "alert" : "status"}
+          role="status"
           data-cmdk-empty
           className="absolute inset-0 flex items-center justify-center px-4 text-center text-lg text-token-description-foreground"
         >
@@ -242,20 +275,15 @@ export function CommandPaletteTextStatus({
         </div>
       ) : null}
       {result.loading ? (
-        <div className="px-2 py-2 text-xs text-token-description-foreground">
+        <div className="semantic-text-secondary px-2 py-2 text-xs">
           <DelayedTextSearchProgress
             key={result.requestKey}
             centered={result.matches.length === 0}
           />
         </div>
       ) : null}
-      {partialError && result.error ? (
-        <div role="alert" className="px-2 py-2 text-xs text-token-description-foreground">
-          {workspaceTextSearchErrorMessage(result.error)}
-        </div>
-      ) : null}
       {!result.loading && result.limited ? (
-        <div role="status" className="px-2 py-2 text-xs text-token-description-foreground">
+        <div role="status" className="semantic-text-secondary px-2 py-2 text-xs">
           Showing first 100 matching lines
         </div>
       ) : null}

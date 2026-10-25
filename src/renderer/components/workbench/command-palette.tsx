@@ -119,8 +119,10 @@ export function CommandPalette({
     });
   }
   const scopeOverride = workspaceSelection.override;
-  const workspaceScope =
-    scopeOverride?.contextKey === contextScopeKey ? scopeOverride.scope : fileSearchScope;
+  const workspaceSelectionForContext =
+    scopeOverride?.contextKey === contextScopeKey
+      ? { kind: "directory" as const, scope: scopeOverride.scope }
+      : { kind: "context" as const };
   const surfaceRef = useRef<CommandPaletteSurfaceHandle>(null);
   const focusSnapshot = useRef<CommandPaletteFocusSnapshot | null>(null);
   const lastQuery = useRef("");
@@ -247,11 +249,14 @@ export function CommandPalette({
             lastQuery.current = query;
           }}
           fileSearchScope={fileSearchScope}
-          workspaceScope={workspaceScope}
-          onWorkspaceScopeChange={(scope) =>
+          workspaceSelection={workspaceSelectionForContext}
+          onWorkspaceSelectionChange={(selection) =>
             setWorkspaceSelection((current) => ({
               ...current,
-              override: { contextKey: contextScopeKey, scope },
+              override:
+                selection.kind === "context"
+                  ? null
+                  : { contextKey: contextScopeKey, scope: selection.scope },
             }))
           }
           priorityFolders={priorityFolders}

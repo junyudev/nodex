@@ -57,9 +57,9 @@ test("mask input commits on Enter, ignores composition, recalls masks and restor
     const [fileMask, setFileMask] = useState("*.ts");
     return (
       <CommandPaletteTextToolbar
-        scope={scope}
+        contextScope={scope}
         focusSearch={focusSearch}
-        onScopeChange={vi.fn()}
+        onSelectionChange={vi.fn()}
         history={{
           fileMask,
           setFileMask,
@@ -112,16 +112,11 @@ test("folder chooser survives toolbar removal and selects a directory on its ori
     entries: [{ name: "nested", path: "workspace/nested", type: "directory", isSymlink: false }],
   });
   const selected = vi.fn();
-  const focusSearch = vi.fn();
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const content = (toolbar: boolean) => (
     <QueryClientProvider client={queryClient}>
       {toolbar ? (
-        <CommandPaletteWorkspaceToolbar
-          scope={scope}
-          onScopeChange={selected}
-          focusSearch={focusSearch}
-        />
+        <CommandPaletteWorkspaceToolbar contextScope={scope} onSelectionChange={selected} />
       ) : null}
       <NodexModalHost />
     </QueryClientProvider>
@@ -141,18 +136,21 @@ test("folder chooser survives toolbar removal and selects a directory on its ori
     workspaceRoot: "/",
     directoryPath: "workspace",
     directoriesOnly: true,
-    includeHidden: false,
+    includeHidden: true,
   });
   await act(async () => {
     fireEvent.click(nested);
     await Promise.resolve();
   });
   await act(async () => {
-    fireEvent.click(view.getByRole("button", { name: "Choose folder" }));
+    fireEvent.click(view.getByRole("button", { name: "Choose" }));
     await Promise.resolve();
   });
   await waitFor(() =>
-    expect(selected).toHaveBeenCalledWith({ hostId: "ssh:test", roots: ["/workspace/nested"] }),
+    expect(selected).toHaveBeenCalledWith({
+      kind: "directory",
+      scope: { hostId: "ssh:test", roots: ["/workspace/nested"] },
+    }),
   );
   await waitFor(() => expect(view.queryByRole("dialog")).toBeNull());
 });
@@ -171,11 +169,11 @@ test("folder chooser can navigate above the resolved host home", async () => {
         scope={null}
         onSelect={() => undefined}
         onClose={() => undefined}
-        focusSearch={() => undefined}
+        onRestoreFocus={() => undefined}
       />
     </QueryClientProvider>,
   );
-  const parent = view.getByRole("button", { name: "Parent folder" }) as HTMLButtonElement;
+  const parent = view.getByRole("button", { name: "Go to parent folder" }) as HTMLButtonElement;
   await waitFor(() => expect(parent.disabled).toBe(false));
   await act(async () => {
     fireEvent.click(parent);
@@ -186,9 +184,140 @@ test("folder chooser can navigate above the resolved host home", async () => {
       expect.objectContaining({ hostId: "local", workspaceRoot: "/", directoryPath: "Users" }),
     ),
   );
-  expect((view.getByRole("textbox", { name: "Folder path" }) as HTMLInputElement).value).toBe(
-    "/Users",
-  );
+  expect(
+    (view.getByRole("combobox", { name: "Selected folder path" }) as HTMLInputElement).value,
+  ).toBe("/Users");
+});
+
+function renderFolderPicker(onSelect = vi.fn(), onClose = vi.fn()) {
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  return {
+    ...renderWithAppMaitai(
+      <QueryClientProvider client={queryClient}>
+        <CommandPaletteFolderPicker
+          scope={scope}
+          onSelect={onSelect}
+          onClose={onClose}
+          onRestoreFocus={() => undefined}
+        />
+      </QueryClientProvider>,
+    ),
+    onSelect,
+    onClose,
+  };
+}
+
+function installFolderHierarchy() {
+  mocks.directory.mockImplementation(async (input) => {
+    const directoryPath = input.directoryPath ?? "";
+    const names = directoryPath === "workspace" ? ["Alpha", "alpine", "Beta", ".hidden"] : [];
+    return {
+      workspaceRoot: "/",
+      directoryPath,
+      parentPath: directoryPath === "" ? null : "",
+      entries: names.map((name) => ({
+        name,
+        path: `${directoryPath}/${name}`,
+        type: "directory" as const,
+        isSymlink: false,
+      })),
+    };
+  });
+}
+
+test("folder chooser requires explicit selection and can select the displayed current folder", async () => {
+  installFolderHierarchy();
+  const view = renderFolderPicker();
+  await view.findByRole("option", { name: ".hidden" });
+  const input = view.getByRole("combobox", { name: "Selected folder path" });
+  const choose = view.getByRole("button", { name: "Choose" }) as HTMLButtonElement;
+  expect((input as HTMLInputElement).value).toBe("/workspace");
+  expect(choose.disabled).toBe(true);
+  await act(async () => {
+    fireEvent.click(view.getByRole("button", { name: "Select current folder" }));
+    await Promise.resolve();
+  });
+  expect(choose.disabled).toBe(false);
+  expect(view.queryByRole("button", { name: "Select current folder" })).toBeNull();
+  await act(async () => {
+    fireEvent.click(choose);
+    await Promise.resolve();
+  });
+  expect(view.onSelect).toHaveBeenCalledWith({ hostId: "ssh:test", roots: ["/workspace"] });
+  expect(view.onClose).toHaveBeenCalledOnce();
+});
+
+test("folder path completion wraps candidates and Enter selects without entering or closing", async () => {
+  installFolderHierarchy();
+  const view = renderFolderPicker();
+  await view.findByRole("option", { name: "Beta" });
+  const input = view.getByRole("combobox", { name: "Selected folder path" });
+  await act(async () => {
+    fireEvent.change(input, { target: { value: "/workspace/AL" } });
+    await Promise.resolve();
+  });
+  const alpha = await view.findByRole("option", { name: "Alpha" });
+  const alpine = view.getByRole("option", { name: "alpine" });
+  expect(view.queryByRole("option", { name: "Beta" })).toBeNull();
+  expect(input.getAttribute("aria-autocomplete")).toBe("list");
+  await act(async () => {
+    fireEvent.keyDown(input, { key: "ArrowUp" });
+    await Promise.resolve();
+  });
+  expect(input.getAttribute("aria-activedescendant")).toBe(alpine.id);
+  await act(async () => {
+    fireEvent.keyDown(input, { key: "ArrowDown" });
+    await Promise.resolve();
+  });
+  expect(input.getAttribute("aria-activedescendant")).toBe(alpha.id);
+  await act(async () => {
+    fireEvent.keyDown(input, { key: "Enter", isComposing: true });
+    await Promise.resolve();
+  });
+  expect((input as HTMLInputElement).value).toBe("/workspace/AL");
+  await act(async () => {
+    fireEvent.keyDown(input, { key: "Enter" });
+    await Promise.resolve();
+  });
+  expect((input as HTMLInputElement).value).toBe("/workspace/Alpha");
+  expect(view.getByRole("option", { name: "Alpha" }).getAttribute("aria-selected")).toBe("true");
+  expect(view.getByRole("option", { name: "Beta" })).toBeTruthy();
+  expect(view.onSelect).not.toHaveBeenCalled();
+  await act(async () => {
+    fireEvent.click(view.getByRole("button", { name: "Choose" }));
+    await Promise.resolve();
+  });
+  expect(view.onSelect).toHaveBeenCalledWith({ hostId: "ssh:test", roots: ["/workspace/Alpha"] });
+});
+
+test("single-click enters a directory and trailing-separator input browses it directly", async () => {
+  installFolderHierarchy();
+  const view = renderFolderPicker();
+  const alpha = await view.findByRole("option", { name: "Alpha" });
+  await act(async () => {
+    fireEvent.click(alpha);
+    await Promise.resolve();
+  });
+  await view.findByText("No folders found in this directory.");
+  const input = view.getByRole("combobox", { name: "Selected folder path" });
+  expect((input as HTMLInputElement).value).toBe("/workspace/Alpha");
+  await act(async () => {
+    fireEvent.change(input, { target: { value: "relative" } });
+    await Promise.resolve();
+  });
+  expect(view.getByText("Enter a full folder path to browse")).toBeTruthy();
+  expect(view.queryByRole("listbox")).toBeNull();
+  await act(async () => {
+    fireEvent.change(input, { target: { value: "/workspace/" } });
+    await Promise.resolve();
+  });
+  await view.findByRole("option", { name: "Beta" });
+  await act(async () => {
+    fireEvent.blur(input, { relatedTarget: view.getByRole("button", { name: "Cancel" }) });
+    await Promise.resolve();
+  });
+  expect((input as HTMLInputElement).value).toBe("/workspace/");
+  expect(view.onSelect).not.toHaveBeenCalled();
 });
 
 test("renders UTF16 match ranges and disambiguates only colliding filenames", () => {
@@ -260,7 +389,7 @@ test("records only the latest query and mask when leaving the mounted Text scope
   expect(commit.mock.calls).toEqual([["word", "*.md"]]);
 });
 
-test("Escape dismisses only the mask menu or folder chooser and restores the owning input", async () => {
+test("Escape and Cancel dismiss only nested controls and restore their owning focus", async () => {
   mocks.directory.mockResolvedValue({ directoryPath: "workspace", parentPath: "", entries: [] });
   const closePalette = vi.fn();
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -278,8 +407,8 @@ test("Escape dismisses only the mask menu or folder chooser and restores the own
             <NodexDialogTitle>Command palette</NodexDialogTitle>
             <input ref={search} aria-label="Command palette search" />
             <CommandPaletteTextToolbar
-              scope={scope}
-              onScopeChange={vi.fn()}
+              contextScope={scope}
+              onSelectionChange={vi.fn()}
               focusSearch={() => search.current?.focus()}
               history={{
                 fileMask: "*.ts",
@@ -315,7 +444,7 @@ test("Escape dismisses only the mask menu or folder chooser and restores the own
   });
   const picker = await view.findByRole("dialog", { name: "Choose search folder" });
   await act(async () => {
-    fireEvent.keyDown(within(picker).getByRole("textbox", { name: "Folder path" }), {
+    fireEvent.keyDown(within(picker).getByRole("combobox", { name: "Selected folder path" }), {
       key: "Escape",
     });
     await Promise.resolve();
@@ -325,9 +454,29 @@ test("Escape dismisses only the mask menu or folder chooser and restores the own
   );
   await waitFor(() =>
     expect(document.activeElement).toBe(
-      within(palette).getByRole("textbox", { name: "Command palette search" }),
+      within(palette).getByRole("button", { name: "Search folder" }),
     ),
   );
   expect(view.getByRole("dialog", { name: "Command palette" })).toBe(palette);
+  expect(closePalette).not.toHaveBeenCalled();
+  await openNodexMenu(within(palette).getByRole("button", { name: "Search folder" }));
+  const chooseAgain = await view.findByRole("menuitem", { name: "Choose folder" });
+  await act(async () => {
+    fireEvent.click(chooseAgain);
+    await Promise.resolve();
+  });
+  const pickerAgain = await view.findByRole("dialog", { name: "Choose search folder" });
+  await act(async () => {
+    fireEvent.click(within(pickerAgain).getByRole("button", { name: "Cancel" }));
+    await Promise.resolve();
+  });
+  await waitFor(() =>
+    expect(view.queryByRole("dialog", { name: "Choose search folder" })).toBeNull(),
+  );
+  await waitFor(() =>
+    expect(document.activeElement).toBe(
+      within(palette).getByRole("button", { name: "Search folder" }),
+    ),
+  );
   expect(closePalette).not.toHaveBeenCalled();
 });
