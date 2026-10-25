@@ -468,11 +468,17 @@ export function createAcpAgentsOwner(input: {
       forget(entry.operationId);
       return;
     }
+    // An install that continues to Connect stays Installing while its receipt is pinned, so the
+    // instance never reads as Not connected in between.
+    const connectsNext =
+      entry.kind === "install" &&
+      entry.continuation === "connect" &&
+      operation.phase === "succeeded";
     setActivity(entry.instanceId, {
       kind: entry.kind,
       operationId: entry.operationId,
-      phase: operation.phase,
-      ...(operation.progress ? { progress: operation.progress } : {}),
+      phase: connectsNext ? "running" : operation.phase,
+      ...(operation.progress && !connectsNext ? { progress: operation.progress } : {}),
       failure: operation.error,
       result: operation.result,
       cancelling: current?.cancelling === true && operation.phase === "running",
@@ -486,6 +492,9 @@ export function createAcpAgentsOwner(input: {
     if (entry.kind === "install")
       void pinInstallation(entry, operation).then((pinned) => {
         void readInspection(entry.instanceId);
+        const settled = snapshot.activities.get(entry.instanceId);
+        if (settled?.operationId === entry.operationId && settled.phase === "running")
+          setActivity(entry.instanceId, { ...settled, phase: "succeeded", cancelling: false });
         if (pinned && entry.continuation === "connect") connect(entry.instanceId);
       });
     else {

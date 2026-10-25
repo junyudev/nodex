@@ -309,11 +309,12 @@ export const isAcpAuthActive = (state: AcpAuthState | null | undefined): boolean
   state !== null && state !== undefined && ACTIVE_AUTH_PHASES.has(state.phase);
 
 export type AcpProgress = NonNullable<AcpOperation["progress"]>;
-const PROGRESS_PHASE: Record<AcpProgress["phase"], string> = {
+/** The final phase repeats the Installing status, so it adds no detail. */
+const PROGRESS_PHASE: Record<AcpProgress["phase"], string | null> = {
   downloading: "Downloading",
   verifying: "Verifying",
   extracting: "Unpacking",
-  installing: "Installing",
+  installing: null,
 };
 /** A percentage only exists with a known total; otherwise bytes or the phase stand alone. */
 export const acpProgressText = (progress: AcpProgress | undefined): string | null => {

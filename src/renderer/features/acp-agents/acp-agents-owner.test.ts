@@ -97,6 +97,54 @@ describe("ACP Agents owner", () => {
     expect(owner.getSnapshot().activities.get("qoder-main")?.kind).toBe("connect");
   });
 
+  test("an installed Agent reads Installing until its Connect starts", async () => {
+    const { main, owner } = setup();
+    await settleAll();
+    main.runtime.readOperation.mockResolvedValueOnce(
+      ok(
+        operation({
+          operationId: "op-1",
+          phase: "succeeded",
+          result: {
+            agentId: "qoder-cli",
+            version: "0.2.14",
+            distribution: "binary",
+            prepared: true,
+            installationId: INSTALLATION,
+          },
+        }),
+      ),
+    );
+    const pin = deferred<void>();
+    const save = main.runtime.updateSettings.getMockImplementation()!;
+    main.runtime.updateSettings.mockImplementationOnce(async (input) => {
+      await pin.promise;
+      return save(input);
+    });
+    const status = () =>
+      acpInstanceStatus({
+        instance: owner.getSnapshot().settings!.instances[0]!,
+        inspection: undefined,
+        provider: undefined,
+        activity: owner.getSnapshot().activities.get("qoder-main"),
+      }).label;
+
+    owner.install(
+      "qoder-main",
+      { agentId: "qoder-cli", distribution: "auto", expectedInstallationId: INSTALLATION },
+      "connect",
+    );
+    await vi.advanceTimersByTimeAsync(500);
+    await settleAll();
+    expect(main.runtime.updateSettings).toHaveBeenCalledOnce();
+    expect(status()).toBe("Installing");
+
+    pin.resolve();
+    await settleAll();
+    expect(main.runtime.connect).toHaveBeenCalledOnce();
+    expect(status()).toBe("Connecting");
+  });
+
   test("a reloaded window resumes polling the operation it started", async () => {
     const journal = memoryJournal(
       JSON.stringify([{ instanceId: "qoder-main", kind: "connect", operationId: "op-9" }]),

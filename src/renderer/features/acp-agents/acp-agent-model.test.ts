@@ -232,9 +232,12 @@ describe("ACP presentation helpers", () => {
     expect(
       acpProgressText({ phase: "downloading", downloadedBytes: 2_048, totalBytes: null }),
     ).toBe("2.0 KB");
-    expect(acpProgressText({ phase: "installing", downloadedBytes: 0, totalBytes: null })).toBe(
-      "Installing",
+    expect(acpProgressText({ phase: "verifying", downloadedBytes: 0, totalBytes: null })).toBe(
+      "Verifying",
     );
+    expect(
+      acpProgressText({ phase: "installing", downloadedBytes: 0, totalBytes: null }),
+    ).toBeNull();
   });
 
   test("updates come from the cached catalog for pinned Registry installs only", () => {
