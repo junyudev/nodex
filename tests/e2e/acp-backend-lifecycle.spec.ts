@@ -436,11 +436,12 @@ test("ACP automations preserve their instance through Cron, Page-linked Heartbea
           prompt: "Continue the fixture report",
           rrule: "FREQ=HOURLY;INTERVAL=1",
           targetSessionId: run.sessionId,
-          projectId: manifest.projectId,
           backendBinding: binding,
           model: "scripted-model",
         },
       );
+      // The Heartbeat runs in its target Session's context instead of carrying its own Project.
+      expect(heartbeat.item).toMatchObject({ projectId: null, targetSessionId: run.sessionId });
       await invoke(page, "codex:scheduled-automations:run-now", { id: heartbeat.item.id });
       const continued = await readSession();
       expect(continued.threadId).toBe(first.threadId);
