@@ -142,6 +142,8 @@ export interface NodexPopoverContentProps
   className?: string;
   portalled?: boolean;
   portalContainer?: HTMLElement | null;
+  /** Lets a presence animation retain the portal until its exit completes. */
+  keepMounted?: boolean;
   style?: CSSProperties;
 }
 
@@ -164,6 +166,7 @@ export const NodexPopoverContent = forwardRef<HTMLDivElement, NodexPopoverConten
       sticky,
       portalled = true,
       portalContainer,
+      keepMounted,
       ...props
     },
     ref,
@@ -208,13 +211,15 @@ export const NodexPopoverContent = forwardRef<HTMLDivElement, NodexPopoverConten
       return (
         <>
           <div ref={inlinePortalRef} data-slot="popover-inline-portal" />
-          <NodexPopoverPortal container={inlinePortalRef}>{positionedPopup}</NodexPopoverPortal>
+          <NodexPopoverPortal container={inlinePortalRef} keepMounted={keepMounted}>
+            {positionedPopup}
+          </NodexPopoverPortal>
         </>
       );
     }
 
     return (
-      <NodexPopoverPortal container={portalContainer ?? undefined}>
+      <NodexPopoverPortal container={portalContainer ?? undefined} keepMounted={keepMounted}>
         {positionedPopup}
       </NodexPopoverPortal>
     );

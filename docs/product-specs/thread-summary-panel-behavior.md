@@ -15,7 +15,11 @@ Automation, Browser, Computer Use, and process Modules remain the data owners.
 
 The summary action is available only for an attached root Chat. A full-width
 right panel hides it. Pinned mode persists its open preference; the responsive
-popover is dismissible presentation and does not rewrite that preference.
+popover is dismissible presentation and does not rewrite that preference. A
+resize changes placement according to the remaining chat-pane width. The
+transcript and Composer share the same animated horizontal offset; the summary
+slides and fades at the pane edge without scaling. See [Workbench Shell](workbench-shell.md#layout)
+for responsive placement, focus, and motion behavior.
 
 ## Section model
 

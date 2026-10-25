@@ -114,7 +114,6 @@ export function AgentRuntimeChildPanel(input: {
         summaryPanelMounted={false}
         summaryPanelOpen={false}
         summaryPanelHideImmediately={false}
-        summaryPanelContentShift={0}
         turnDiffHoverPreviewDisabled={input.turnDiffHoverPreviewDisabled}
         actions={actions}
       />
@@ -267,7 +266,6 @@ export function AgentRuntimeSideChatPanel(input: {
         summaryPanelMounted={false}
         summaryPanelOpen={false}
         summaryPanelHideImmediately={false}
-        summaryPanelContentShift={0}
         turnDiffHoverPreviewDisabled={input.turnDiffHoverPreviewDisabled}
         actions={actions}
       />

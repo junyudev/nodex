@@ -1,7 +1,6 @@
 import type { CodexSubagentRow } from "../../../../../shared/codex-subagent-row-model";
 import { ListTree, PictureInPicture2, Slash } from "@/components/shared/icons/generic-icons";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { motion } from "motion/react";
 import {
   BranchStatusIcon,
   FileIcon,
@@ -20,9 +19,7 @@ import {
   TerminalIcon,
   NfmImageBlockIcon,
 } from "@/components/shared/icons";
-import { NodexPopover, NodexPopoverContent, NodexPopoverTrigger } from "@/components/ui/popover";
 import { NodexTooltip } from "@/components/ui/tooltip";
-import { useResolvedReducedMotion } from "@/lib/use-reduced-motion";
 import { BranchSelectorPopover } from "../shared/branch-selector-popover";
 import {
   ThreadExecutionLocationSelector,
@@ -39,10 +36,6 @@ import {
 import { DiffStats } from "../shared/tools/diff-file-shared";
 import { ConnectorFallbackIcon, ConnectorGlobeIcon, PluginsIcon } from "@/components/shared/icons";
 import { openFileLink } from "../../../../lib/file-system-operations";
-import {
-  CODEX_SUMMARY_PANEL_TRANSITION,
-  CODEX_SUMMARY_PANEL_WIDTH,
-} from "../../../../lib/codex-panel-motion";
 import {
   ImagePreviewDialog,
   resolveImageDisplaySource,
@@ -107,7 +100,10 @@ import {
 } from "./thread-summary-git-action-dialog";
 import { ThreadSummaryCreatePullRequestDialog } from "./thread-summary-create-pull-request-dialog";
 import { ThreadSummaryBranchSetupDialog } from "./thread-summary-branch-setup-dialog";
-import { ThreadSummaryPanelToggleButton } from "./thread-summary-panel-toggle";
+import {
+  ThreadPinnedSummaryPanelShell,
+  ThreadSummaryPanelPopoverShell,
+} from "./thread-summary-panel-shell";
 import { SubagentAvatar, SubagentGlyphIcon } from "../shared/subagent-avatar";
 import { CodexShimmerText } from "../shared/codex-shimmer-text";
 import {
@@ -1884,31 +1880,9 @@ export function ThreadSummaryPanelPopover({
   );
 
   return (
-    <NodexPopover open={open} onOpenChange={handleOpenChange}>
-      <NodexTooltip tooltipContent="Toggle summary" side="bottom">
-        <NodexPopoverTrigger>
-          <ThreadSummaryPanelToggleButton label="Toggle summary" pressed={open} />
-        </NodexPopoverTrigger>
-      </NodexTooltip>
-      <NodexPopoverContent
-        align="end"
-        side="bottom"
-        sideOffset={8}
-        className="!w-auto !overflow-visible !rounded-3xl !bg-transparent !p-0 !shadow-none !ring-0 !backdrop-blur-none"
-        style={{
-          maxHeight: "none",
-          maxWidth: "none",
-        }}
-      >
-        <div
-          data-thread-summary-panel-mode="popover"
-          className="flex max-h-[min(var(--nodex-floating-surface-available-height),calc(100vh-16px))] flex-col"
-          style={{ width: CODEX_SUMMARY_PANEL_WIDTH }}
-        >
-          <ThreadSummaryPanelSurface {...props} isVisible />
-        </div>
-      </NodexPopoverContent>
-    </NodexPopover>
+    <ThreadSummaryPanelPopoverShell open={open} onOpenChange={handleOpenChange}>
+      <ThreadSummaryPanelSurface {...props} isVisible={open} />
+    </ThreadSummaryPanelPopoverShell>
   );
 }
 
@@ -1918,45 +1892,11 @@ export function ThreadFloatingSummaryPanel({
   open,
   ...props
 }: ThreadFloatingSummaryPanelProps) {
-  const reducedMotion = useResolvedReducedMotion();
   if (!mounted) return null;
 
   return (
-    <div
-      className="pointer-events-none absolute top-(--thread-floating-content-top-inset) right-0 bottom-(--thread-floating-content-bottom-inset) z-40"
-      data-thread-summary-panel-hide-immediately={String(hideImmediately)}
-      data-thread-summary-panel-mode="pinned"
-      data-thread-summary-panel-open={String(open)}
-    >
-      <div className="relative flex max-h-full">
-        <motion.div
-          className={cn(
-            "pointer-events-none max-h-full min-h-0 origin-top-right pe-4",
-            hideImmediately && "invisible",
-          )}
-          // A closed panel stays mounted only for its exit motion; its controls are not reachable.
-          inert={!open}
-          initial={false}
-          animate={{
-            opacity: open ? 1 : 0,
-            translateX: open ? 0 : "100%",
-            scale: open ? 1 : 0.8,
-          }}
-          transition={
-            hideImmediately || reducedMotion ? { duration: 0 } : CODEX_SUMMARY_PANEL_TRANSITION
-          }
-        >
-          <div
-            className={cn(
-              "flex max-h-full flex-col",
-              open ? "pointer-events-auto" : "pointer-events-none",
-            )}
-            style={{ width: CODEX_SUMMARY_PANEL_WIDTH }}
-          >
-            <ThreadSummaryPanelSurface {...props} isVisible={open} />
-          </div>
-        </motion.div>
-      </div>
-    </div>
+    <ThreadPinnedSummaryPanelShell open={open} hideImmediately={hideImmediately}>
+      <ThreadSummaryPanelSurface {...props} isVisible={open && !hideImmediately} />
+    </ThreadPinnedSummaryPanelShell>
   );
 }

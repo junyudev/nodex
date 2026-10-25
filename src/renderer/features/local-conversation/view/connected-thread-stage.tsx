@@ -24,6 +24,7 @@ import {
   type ReactNode,
 } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import type { MotionValue } from "motion/react";
 import { gitRepositoryIdentityQueryOptions } from "@/lib/query-options";
 import { sessionForkDestinations } from "@/lib/session-fork";
 import {
@@ -204,7 +205,7 @@ interface ConnectedThreadStageProps extends ConnectedThreadStageInput {
   summaryPanelMounted?: boolean;
   summaryPanelOpen?: boolean;
   summaryPanelHideImmediately?: boolean;
-  summaryPanelContentShift?: number;
+  summaryPanelContentShift?: MotionValue<number>;
   routeActive?: boolean;
   threadBodyVisible?: boolean;
   presentation?: "primary" | "panel";
@@ -364,7 +365,7 @@ function ConnectedThreadStageBody({
   onForkFromTurnIntoWorktree?: (input: { threadId: string; targetTurnId: string }) => Promise<void>;
   isWorktreeThread: boolean;
   onErrorMessage: (message: string | null) => void;
-  contentShiftX?: number;
+  contentShiftX?: MotionValue<number>;
   footer?: ReactNode;
   leadingContent?: ReactNode;
   initialUiState?: ThreadBodyUiStateOverrides;
@@ -1188,7 +1189,7 @@ function ConnectedThreadStageContent({
   summaryPanelMounted = false,
   summaryPanelOpen = false,
   summaryPanelHideImmediately = false,
-  summaryPanelContentShift = 0,
+  summaryPanelContentShift,
   routeActive = true,
   threadBodyVisible = routeActive,
   presentation = "primary",

@@ -1,7 +1,5 @@
 import type { ReactNode } from "react";
-import { motion } from "motion/react";
-import { useResolvedReducedMotion } from "@/lib/use-reduced-motion";
-import { CODEX_SHELL_PANEL_TRANSITION } from "../../../lib/codex-panel-motion";
+import { motion, type MotionValue } from "motion/react";
 import {
   REMOTE_HOSTED_PIP_ANCHOR_HOST_ATTRIBUTE,
   REMOTE_HOSTED_PIP_MAIN_THREAD_HOST_ID,
@@ -14,7 +12,7 @@ interface LocalConversationNewThreadHomeScreenProps {
   footer: ReactNode;
   body?: ReactNode;
   floatingContent?: ReactNode;
-  contentShiftX?: number;
+  contentShiftX?: MotionValue<number>;
 }
 
 export function LocalConversationNewThreadHomeScreen({
@@ -22,19 +20,13 @@ export function LocalConversationNewThreadHomeScreen({
   footer,
   body = null,
   floatingContent,
-  contentShiftX = 0,
+  contentShiftX,
 }: LocalConversationNewThreadHomeScreenProps) {
-  const reducedMotion = useResolvedReducedMotion();
-
   return (
     <div className="relative flex h-full min-h-0 flex-col bg-(--background)">
       {floatingContent}
       <EnsureLocalConversationThreadScrollController>
-        <motion.div
-          className="flex min-h-0 flex-1 flex-col"
-          animate={{ x: contentShiftX }}
-          transition={reducedMotion ? { duration: 0 } : CODEX_SHELL_PANEL_TRANSITION}
-        >
+        <motion.div className="flex min-h-0 flex-1 flex-col" style={{ x: contentShiftX }}>
           <div className="@container/left-panel relative flex h-full flex-col">
             <div
               className="[container-type:size] relative min-h-[43.75rem] w-full flex-1 overflow-y-auto [container-name:home-main-content]"

@@ -5,6 +5,7 @@ import { useCodexAppServerControl } from "@/features/local-conversation/local-co
 import { useNativeConversationHistoryAdapter } from "@/features/local-conversation/native-conversation-history-adapter";
 import type { ConversationProviderPresentation } from "@/features/local-conversation/thread-stage-types";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import type { MotionValue } from "motion/react";
 import {
   ConnectedThreadComposerDock,
   ConnectedThreadStage,
@@ -173,7 +174,7 @@ function SharedConnectedSessionThread({
   summaryPanelMounted: boolean;
   summaryPanelOpen: boolean;
   summaryPanelHideImmediately: boolean;
-  summaryPanelContentShift: number;
+  summaryPanelContentShift?: MotionValue<number>;
   summarySideChatRows: readonly ThreadSummaryPanelAuxiliaryRow[];
   summaryBrowserRows: readonly ThreadSummaryPanelBrowserRow[];
   summaryScheduledAutomation: ThreadSummaryPanelScheduledAutomationRow | null;
@@ -905,7 +906,6 @@ export function ProjectSessionThreadComposerDock({
       summaryPanelMounted={false}
       summaryPanelOpen={false}
       summaryPanelHideImmediately={false}
-      summaryPanelContentShift={0}
       summarySideChatRows={[]}
       summaryBrowserRows={[]}
       summaryScheduledAutomation={null}

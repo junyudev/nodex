@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import type { MotionValue } from "motion/react";
+import { useResolvedReducedMotion } from "./use-reduced-motion";
 import { useConversationSubset } from "@/features/local-conversation";
 import {
   buildThreadSummaryPanelBrowserRows,
@@ -29,7 +31,7 @@ import type { SideChatPanelTab } from "./workbench-panel-tab-model";
 import { resolveLeafIdForPanelTab } from "./workbench-panel-placement";
 import { resolveWorkbenchPanelSlotLeafId } from "./workbench-panel-slot-key";
 import {
-  resolveCodexSummaryContentShift,
+  useCodexAnimatedContentShift,
   type ThreadSummaryPanelLayoutMode,
 } from "./codex-panel-motion";
 import type { WorkbenchSessionRenderProjection } from "./workbench-session-presentation";
@@ -59,6 +61,7 @@ interface WorkbenchThreadSummaryInput {
   readonly activeSession: WorkbenchSessionRenderProjection | null;
   readonly windowSessionId: string;
   readonly layoutMode: ThreadSummaryPanelLayoutMode;
+  readonly mainContentWidth: MotionValue<number>;
   readonly rightPanelFullWidth: boolean;
   readonly pinnedOpen: boolean;
   readonly sideChatTabs: readonly SideChatPanelTab[];
@@ -71,7 +74,7 @@ export interface WorkbenchThreadSummaryModel {
   readonly mounted: boolean;
   readonly open: boolean;
   readonly hideImmediately: boolean;
-  readonly contentShift: number;
+  readonly contentShift: MotionValue<number>;
   readonly mode: "hidden" | "popover" | "pinned";
   readonly popoverOpen: boolean;
   readonly setPopoverOpen: (open: boolean) => void;
@@ -108,6 +111,7 @@ export function useWorkbenchThreadSummary({
   activeSession,
   windowSessionId,
   layoutMode,
+  mainContentWidth,
   rightPanelFullWidth,
   pinnedOpen,
   sideChatTabs,
@@ -117,6 +121,14 @@ export function useWorkbenchThreadSummary({
 }: WorkbenchThreadSummaryInput): WorkbenchThreadSummaryModel {
   const conversationThreadId = sessionExecutionThreadId(activeSession);
   const available = conversationThreadId !== null;
+  const reducedMotion = useResolvedReducedMotion();
+  const contentShift = useCodexAnimatedContentShift({
+    mainContentWidth,
+    pinnedOpen: available && pinnedOpen,
+    reducedMotion,
+    resetKey: conversationThreadId,
+    fullWidth: rightPanelFullWidth,
+  });
   const mounted = available && !rightPanelFullWidth;
   const open = mounted && layoutMode !== "overlay" && pinnedOpen;
   const mode = !mounted ? "hidden" : layoutMode === "overlay" ? "popover" : "pinned";
@@ -269,10 +281,7 @@ export function useWorkbenchThreadSummary({
     mounted,
     open,
     hideImmediately: layoutMode === "overlay" && popoverOpen,
-    contentShift: resolveCodexSummaryContentShift({
-      layoutMode,
-      pinnedOpen: open,
-    }),
+    contentShift,
     mode,
     popoverOpen,
     setPopoverOpen,

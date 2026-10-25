@@ -106,8 +106,8 @@ describe("Codex panel motion helpers", () => {
   });
 
   test("applies Codex shift only for pinned shift mode", () => {
-    expect(CODEX_SUMMARY_SHIFT_X).toBe(-158);
-    expect(resolveCodexSummaryContentShift({ layoutMode: "shift", pinnedOpen: true })).toBe(-158);
+    expect(CODEX_SUMMARY_SHIFT_X).toBe(-154);
+    expect(resolveCodexSummaryContentShift({ layoutMode: "shift", pinnedOpen: true })).toBe(-154);
     expect(resolveCodexSummaryContentShift({ layoutMode: "shift", pinnedOpen: false })).toBe(0);
     expect(resolveCodexSummaryContentShift({ layoutMode: "overlay", pinnedOpen: true })).toBe(0);
     expect(resolveCodexSummaryContentShift({ layoutMode: "gutter", pinnedOpen: true })).toBe(0);

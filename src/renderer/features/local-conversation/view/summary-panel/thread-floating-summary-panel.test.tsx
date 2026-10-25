@@ -405,14 +405,8 @@ describe("ThreadFloatingSummaryPanel", () => {
     );
 
     const outer = view.container.querySelector('[data-thread-summary-panel-mode="pinned"]');
-    const motionShell = outer?.querySelector(".origin-top-right") as HTMLElement | null;
-    const widthShell = motionShell?.firstElementChild as HTMLElement | null;
     expect(outer !== null).toBe(true);
-    expect(motionShell?.style.opacity).toBe("1");
-    expect(motionShell?.style.transform).toBe("none");
-    expect(widthShell?.className.includes("pointer-events-auto")).toBe(true);
-    expect(motionShell?.hasAttribute("inert")).toBe(false);
-    expect(widthShell?.style.width).toBe("300px");
+    expect(outer?.hasAttribute("inert")).toBe(false);
     expect(textContent(view.container).includes("Rate limits")).toBe(false);
     expect(textContent(view.container).includes("82% · 61%")).toBe(false);
   });
@@ -433,18 +427,13 @@ describe("ThreadFloatingSummaryPanel", () => {
     );
 
     const outer = view.container.querySelector('[data-thread-summary-panel-open="false"]');
-    const motionShell = outer?.querySelector(".origin-top-right") as HTMLElement | null;
-    const widthShell = motionShell?.firstElementChild as HTMLElement | null;
     expect(textContent(view.container).includes("Rate limits")).toBe(false);
     expect(invokeCalls.length).toBe(0);
-    expect(motionShell?.style.opacity).toBe("0");
-    expect(motionShell?.style.transform).toBe("translateX(100%) scale(0.8)");
-    expect(widthShell?.style.width).toBe("300px");
     expect(Boolean(view.container.querySelector("[data-testid='thread-summary-panel']"))).toBe(
       true,
     );
     // The closed panel stays mounted for its exit motion, outside focus and accessibility.
-    expect(motionShell?.hasAttribute("inert")).toBe(true);
+    expect(outer?.hasAttribute("inert")).toBe(true);
   });
 
   test("uses the Codex instant invisible branch while overlay popover is open", async () => {
@@ -466,12 +455,8 @@ describe("ThreadFloatingSummaryPanel", () => {
     const outer = view.container.querySelector(
       "[data-thread-summary-panel-hide-immediately='true']",
     );
-    const motionShell = outer?.querySelector(".origin-top-right");
-    expect(Boolean(outer)).toBe(true);
-    expect((motionShell as HTMLElement | null)?.style.opacity).toBe("0");
-    expect((motionShell as HTMLElement | null)?.style.transform).toBe(
-      "translateX(100%) scale(0.8)",
-    );
+    expect(outer?.hasAttribute("inert")).toBe(true);
+    expect(outer?.getAttribute("aria-hidden")).toBe("true");
   });
 
   test("renders the right-panel summary as a dismissible popover", async () => {

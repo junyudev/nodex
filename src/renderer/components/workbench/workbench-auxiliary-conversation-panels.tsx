@@ -187,7 +187,6 @@ function NativeBackgroundAgentSessionTab({
         summaryPanelMounted={false}
         summaryPanelOpen={false}
         summaryPanelHideImmediately={false}
-        summaryPanelContentShift={0}
         turnDiffHoverPreviewDisabled={turnDiffHoverPreviewDisabled}
         actions={actions}
       />
@@ -658,7 +657,6 @@ function NativeSideChatSessionTab({
         summaryPanelMounted={false}
         summaryPanelOpen={false}
         summaryPanelHideImmediately={false}
-        summaryPanelContentShift={0}
         sideChatContext={{
           parentThreadId: tab.parentThreadId,
           tabTitle: tab.title,

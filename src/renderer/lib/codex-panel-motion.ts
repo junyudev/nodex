@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import {
   animate,
   useMotionValue,
@@ -26,7 +26,7 @@ export const CODEX_SIDEBAR_PROJECT_FOLDER_TRANSITION: Transition = {
 };
 
 export const CODEX_SUMMARY_PANEL_WIDTH = 300;
-export const CODEX_SUMMARY_PANEL_GAP = 16;
+export const CODEX_SUMMARY_PANEL_GAP = 8;
 export const CODEX_SUMMARY_TARGET_CONTENT_WIDTH = 736;
 export const CODEX_SUMMARY_OVERLAY_AVAILABLE_WIDTH = 180;
 export const CODEX_SUMMARY_GUTTER_AVAILABLE_WIDTH = 400;
@@ -125,6 +125,66 @@ export function shouldSnapCodexMotion(
   animateLayout = true,
 ): boolean {
   return reducedMotion === true || !animateLayout;
+}
+
+/** Keeps every conversation surface on one interruptible summary-placement animation. */
+export function useCodexAnimatedContentShift({
+  mainContentWidth,
+  pinnedOpen,
+  reducedMotion,
+  resetKey,
+  fullWidth,
+}: {
+  mainContentWidth: MotionValue<number>;
+  pinnedOpen: boolean;
+  reducedMotion: boolean;
+  resetKey: string | null;
+  fullWidth: boolean;
+}): MotionValue<number> {
+  const resolveTarget = useCallback(
+    (width: number) =>
+      resolveCodexSummaryContentShift({
+        layoutMode: resolveCodexSummaryPanelLayoutMode(width),
+        pinnedOpen: pinnedOpen && !fullWidth,
+      }),
+    [fullWidth, pinnedOpen],
+  );
+  const contentX = useMotionValue(resolveTarget(mainContentWidth.get()));
+  const previousPresentation = useRef({ resetKey, fullWidth });
+  const targetRef = useRef(contentX.get());
+  const animationRef = useRef<ReturnType<typeof animate> | null>(null);
+  const updateTarget = useCallback(
+    (width: number, snap: boolean) => {
+      const targetX = resolveTarget(width);
+      if (!snap && !reducedMotion && targetRef.current === targetX) return;
+      targetRef.current = targetX;
+      animationRef.current?.stop();
+      animationRef.current = null;
+      if (snap || reducedMotion) {
+        contentX.jump(targetX);
+        return;
+      }
+      animationRef.current = animate(contentX, targetX, CODEX_SHELL_PANEL_TRANSITION);
+    },
+    [contentX, reducedMotion, resolveTarget],
+  );
+
+  useMotionValueEvent(mainContentWidth, "change", (width) => {
+    updateTarget(width, width === 0 || mainContentWidth.getPrevious() === 0);
+  });
+
+  useLayoutEffect(() => {
+    const previous = previousPresentation.current;
+    previousPresentation.current = { resetKey, fullWidth };
+    updateTarget(
+      mainContentWidth.get(),
+      previous.resetKey !== resetKey || previous.fullWidth !== fullWidth,
+    );
+  }, [fullWidth, mainContentWidth, resetKey, updateTarget]);
+
+  useEffect(() => () => animationRef.current?.stop(), []);
+
+  return contentX;
 }
 
 export function useCodexAnimatedPanelState({

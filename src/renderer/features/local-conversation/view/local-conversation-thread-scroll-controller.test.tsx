@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "vite-plus/test";
 import { act } from "@testing-library/react";
 import { useEffect } from "react";
+import { motionValue } from "motion/react";
 import { installAsyncRequestAnimationFrame } from "../../../test/browser-globals";
 import { render, settleAsyncRender } from "../../../test/dom";
 import {
@@ -121,7 +122,7 @@ describe("LocalConversationThreadScrollLayout", () => {
   test("renders the scroll container and shifts content by the provided offset", () => {
     const view = render(
       <EnsureLocalConversationThreadScrollController>
-        <LocalConversationThreadScrollLayout contentX={-158}>
+        <LocalConversationThreadScrollLayout contentX={motionValue(-154)}>
           <div>Thread content</div>
         </LocalConversationThreadScrollLayout>
       </EnsureLocalConversationThreadScrollController>,
@@ -140,7 +141,7 @@ describe("LocalConversationThreadScrollLayout", () => {
       REMOTE_HOSTED_PIP_MAIN_THREAD_HOST_ID,
     );
     expect(widthWrapper !== null).toBe(true);
-    expect(shiftedContent?.style.transform.includes("translateX(-158px)")).toBe(true);
+    expect(shiftedContent?.style.transform.includes("translateX(-154px)")).toBe(true);
   });
 
   test("restores native bottom distance before paint and normalizes the 24px boundary", async () => {

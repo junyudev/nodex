@@ -1,4 +1,5 @@
 import { memo, useCallback, useLayoutEffect, useState, type ReactNode } from "react";
+import type { MotionValue } from "motion/react";
 import { appScope, useScopeHandle } from "@/lib/maitai";
 import { ThreadScope } from "@/lib/workbench-ui-scopes";
 import type {
@@ -55,7 +56,7 @@ interface LocalConversationThreadBodyProps {
   resolveRuntimeAttachment?: import("../thread-stage-types").ConversationProviderPresentation["resolveRuntimeAttachment"];
   readToolOutput?: import("../thread-stage-types").ConversationProviderPresentation["readToolOutput"];
   onErrorMessage: (message: string | null) => void;
-  contentShiftX?: number;
+  contentShiftX?: MotionValue<number>;
   footer?: ReactNode;
   leadingContent?: ReactNode;
   initialUiState?: ThreadBodyUiStateOverrides;
@@ -76,7 +77,7 @@ function LocalConversationThreadBodyLayout({
   onForkFromTurnIntoWorktree,
   planSidePanelState,
   onErrorMessage,
-  contentShiftX = 0,
+  contentShiftX,
   footer,
   leadingContent,
   initialUiState,

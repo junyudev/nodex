@@ -11,9 +11,8 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { motion } from "motion/react";
+import { motion, type MotionValue } from "motion/react";
 import { useResolvedReducedMotion } from "@/lib/use-reduced-motion";
-import { CODEX_SHELL_PANEL_TRANSITION } from "../../../lib/codex-panel-motion";
 import { cn } from "../../../lib/utils";
 import {
   REMOTE_HOSTED_PIP_ANCHOR_HOST_ATTRIBUTE,
@@ -119,7 +118,7 @@ export interface LocalConversationThreadScrollLayoutHandle {
 
 interface LocalConversationThreadScrollLayoutProps {
   children: ReactNode;
-  contentX?: number;
+  contentX?: MotionValue<number>;
   footer?: ReactNode;
   scrollViewClassName?: string;
   contentWrapperClassName?: string;
@@ -995,7 +994,6 @@ export const LocalConversationThreadScrollLayout = forwardRef<
   ref,
 ) {
   const controller = useLocalConversationThreadScrollController();
-  const reducedMotion = useResolvedReducedMotion();
   const registerScrollElement = controller.registerScrollElement;
   const registerViewport = useCallback(
     (element: HTMLDivElement | null) => registerScrollElement(element),
@@ -1081,11 +1079,7 @@ export const LocalConversationThreadScrollLayout = forwardRef<
         }}
         className={cn(THREAD_SCROLL_VIEWPORT_CLASS_NAME, scrollViewClassName)}
       >
-        <motion.div
-          style={motionStyle}
-          transition={reducedMotion ? { duration: 0 } : CODEX_SHELL_PANEL_TRANSITION}
-          className="flex min-h-full shrink-0 flex-col justify-start"
-        >
+        <motion.div style={motionStyle} className="flex min-h-full shrink-0 flex-col justify-start">
           <div
             data-mcp-app-portal-target="true"
             className={cn(

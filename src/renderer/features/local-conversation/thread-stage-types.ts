@@ -1297,7 +1297,6 @@ export interface ThreadStageScreenProps {
   body: ReactNode;
   footer?: ReactNode;
   floatingContent?: ReactNode;
-  contentShiftX?: number;
   onReadInteraction?: ReactEventHandler<HTMLDivElement>;
 }
 

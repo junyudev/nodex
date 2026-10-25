@@ -1,5 +1,6 @@
 import "./workbench-testkit/workbench-shell-harness";
 import { describe, test, expect } from "vite-plus/test";
+import type { MotionValue } from "motion/react";
 import { settleAsyncRender, textContent } from "../../test/dom";
 import { act, fireEvent, waitFor, within } from "@testing-library/react";
 import { TOGGLE_BOTTOM_PANEL_COMMAND_ID } from "../../../shared/workbench-commands";
@@ -72,6 +73,11 @@ const setShellBodyWidthForTest = (width: number) =>
   setWindowInnerWidthForTest(
     width + WORKBENCH_NAVIGATION_RAIL_WIDTH_PX + WORKBENCH_SURFACE_GUTTER_PX,
   );
+
+async function expectSummaryContentShift(props: Record<string, unknown> | undefined, x: number) {
+  const contentShift = props?.summaryPanelContentShift as MotionValue<number> | undefined;
+  await waitFor(() => expect(contentShift?.get()).toBeCloseTo(x, 2));
+}
 
 describe("workbench session shell / layout-panel-actions", () => {
   test("settles a failed side chat open into a closable retry surface", async () => {
@@ -366,7 +372,7 @@ describe("workbench session shell / layout-panel-actions", () => {
     expect(summaryToggle.getAttribute("aria-pressed")).toBe("true");
     expect(stageProps?.summaryPanelMounted).toBe(true);
     expect(stageProps?.summaryPanelOpen).toBe(true);
-    expect(stageProps?.summaryPanelContentShift).toBe(-158);
+    await expectSummaryContentShift(stageProps, -154);
 
     await act(async () => {
       fireEvent.click(summaryToggle);
@@ -379,7 +385,7 @@ describe("workbench session shell / layout-panel-actions", () => {
     expect(summaryToggle.getAttribute("aria-pressed")).toBe("false");
     expect(stageProps?.summaryPanelMounted).toBe(true);
     expect(stageProps?.summaryPanelOpen).toBe(false);
-    expect(stageProps?.summaryPanelContentShift).toBe(0);
+    await expectSummaryContentShift(stageProps, 0);
     expect(localStorage.getItem("nodex:thread-summary-panel:pinned-open")).toBe("false");
   });
 
@@ -410,7 +416,7 @@ describe("workbench session shell / layout-panel-actions", () => {
     ).toBe(true);
     expect(stageProps?.summaryPanelMounted).toBe(true);
     expect(stageProps?.summaryPanelOpen).toBe(true);
-    expect(stageProps?.summaryPanelContentShift).toBe(0);
+    await expectSummaryContentShift(stageProps, 0);
   });
 
   test("medium thread widths keep guarded header chrome and shift pinned summary", async () => {
@@ -440,7 +446,7 @@ describe("workbench session shell / layout-panel-actions", () => {
     ).toBe(true);
     expect(stageProps?.summaryPanelMounted).toBe(true);
     expect(stageProps?.summaryPanelOpen).toBe(true);
-    expect(stageProps?.summaryPanelContentShift).toBe(-158);
+    await expectSummaryContentShift(stageProps, -154);
   });
 
   test("narrow effective thread widths switch summary to overlay popover", async () => {
@@ -466,7 +472,7 @@ describe("workbench session shell / layout-panel-actions", () => {
     expect(stageProps?.summaryPanelMounted).toBe(true);
     expect(stageProps?.summaryPanelOpen).toBe(false);
     expect(stageProps?.summaryPanelHideImmediately).toBe(false);
-    expect(stageProps?.summaryPanelContentShift).toBe(0);
+    await expectSummaryContentShift(stageProps, 0);
   });
 
   test("resize-driven overlay mode keeps the summary mounted so it can animate out", async () => {
@@ -490,7 +496,7 @@ describe("workbench session shell / layout-panel-actions", () => {
       .__lastConnectedThreadStageProps;
     expect(stageProps?.summaryPanelMounted).toBe(true);
     expect(stageProps?.summaryPanelOpen).toBe(true);
-    expect(stageProps?.summaryPanelContentShift).toBe(-158);
+    await expectSummaryContentShift(stageProps, -154);
 
     setShellBodyWidthForTest(1350);
     await act(async () => {
@@ -516,7 +522,7 @@ describe("workbench session shell / layout-panel-actions", () => {
     expect(stageProps?.summaryPanelMounted).toBe(true);
     expect(stageProps?.summaryPanelOpen).toBe(false);
     expect(stageProps?.summaryPanelHideImmediately).toBe(false);
-    expect(stageProps?.summaryPanelContentShift).toBe(0);
+    await expectSummaryContentShift(stageProps, 0);
     expect(localStorage.getItem("nodex:thread-summary-panel:pinned-open")).toBe("true");
   });
 
@@ -708,7 +714,7 @@ describe("workbench session shell / layout-panel-actions", () => {
     expect(stageProps?.summaryPanelMounted).toBe(true);
     expect(stageProps?.summaryPanelOpen).toBe(false);
     expect(stageProps?.summaryPanelHideImmediately).toBe(false);
-    expect(stageProps?.summaryPanelContentShift).toBe(0);
+    await expectSummaryContentShift(stageProps, 0);
     expect(localStorage.getItem("nodex:thread-summary-panel:pinned-open")).toBe("true");
 
     await act(async () => {
@@ -725,7 +731,7 @@ describe("workbench session shell / layout-panel-actions", () => {
     expect(stageProps?.summaryPanelMounted).toBe(true);
     expect(stageProps?.summaryPanelOpen).toBe(false);
     expect(stageProps?.summaryPanelHideImmediately).toBe(true);
-    expect(stageProps?.summaryPanelContentShift).toBe(0);
+    await expectSummaryContentShift(stageProps, 0);
     expect(localStorage.getItem("nodex:thread-summary-panel:pinned-open")).toBe("true");
 
     await act(async () => {
@@ -741,7 +747,7 @@ describe("workbench session shell / layout-panel-actions", () => {
     expect(stageProps?.summaryPanelMounted).toBe(true);
     expect(stageProps?.summaryPanelOpen).toBe(true);
     expect(stageProps?.summaryPanelHideImmediately).toBe(false);
-    expect(stageProps?.summaryPanelContentShift).toBe(-158);
+    await expectSummaryContentShift(stageProps, -154);
     expect(localStorage.getItem("nodex:thread-summary-panel:pinned-open")).toBe("true");
   });
 
