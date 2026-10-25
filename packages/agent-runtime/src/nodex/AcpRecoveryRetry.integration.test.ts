@@ -12,6 +12,9 @@ it.live.each([
   { protocol: "v1", failure: "missing", attempts: 1 },
   { protocol: "v2", failure: "missing", attempts: 1 },
   { protocol: "v1", failure: "temporary", attempts: 5 },
+  { protocol: "v1", failure: "unsupported", attempts: 1 },
+  { protocol: "v2", failure: "unsupported", attempts: 1 },
+  { protocol: "v1", failure: "not-found", attempts: 1 },
 ])(
   "settles $protocol $failure native recovery after $attempts attempts without replacing its identity",
   ({ protocol, failure, attempts }) =>
@@ -91,7 +94,7 @@ it.live.each([
         const restores = wire.filter(
           (request) => request.method === (protocol === "v1" ? "session/load" : "session/resume"),
         );
-        expect(restores).toHaveLength(attempts);
+        expect(restores).toHaveLength(failure === "unsupported" ? 0 : attempts);
         expect(
           restores.every((request) => request.params?.sessionId === "original-native-session"),
         ).toBe(true);
@@ -108,6 +111,27 @@ it.live.each([
           strength: "strong",
         });
         expect(snapshot.projection.contextTransfers).toHaveLength(0);
+        const failureItem = snapshot.projection.visibleTurnItems
+          .map((row) => row.item)
+          .find((item) => item.type === "error");
+        expect(failureItem?.type).toBe("error");
+        if (failureItem?.type === "error") {
+          expect(failureItem.failure.class).toBe("provider_error");
+          if (failure === "temporary") {
+            expect(failureItem.failure.code).not.toBe("native_session_unrecoverable");
+            expect(failureItem.failure.retryable).not.toBe(false);
+          } else {
+            expect(failureItem.failure).toMatchObject({
+              code: "native_session_unrecoverable",
+              retryable: false,
+              message: "The Agent couldn't reopen this conversation",
+            });
+          }
+          if (failure !== "temporary") {
+            expect(failureItem.failure.message).not.toContain("provider-session:");
+            expect(failureItem.failure.message).not.toContain("original-native-session");
+          }
+        }
       }).pipe(
         Effect.provide(
           Application.layer(
@@ -129,6 +153,11 @@ it.live.each([
                   environment: [
                     { name: "NODEX_ACP_MODEL_PROTOCOL", value: protocol, sensitive: false },
                     { name: "NODEX_ACP_FAIL_LOAD", value: failure, sensitive: false },
+                    {
+                      name: "NODEX_ACP_RECOVERY_UNSUPPORTED",
+                      value: failure === "unsupported" ? "1" : "0",
+                      sensitive: false,
+                    },
                     { name: "NODEX_ACP_MODEL_REQUEST_LOG", value: log, sensitive: false },
                   ],
                 },

@@ -2403,9 +2403,14 @@ describe("AcpAdapterV2", () => {
       }).pipe(Effect.provide(layerTest), Effect.scoped),
   );
 
-  it.live.each(["v1", "v2"] as const)(
-    "marks a known missing attached %s session as non-retryable without replacing it",
-    (protocol) =>
+  it.live.each([
+    { protocol: "v1", failure: "missing" },
+    { protocol: "v2", failure: "missing" },
+    { protocol: "v1", failure: "unsupported" },
+    { protocol: "v2", failure: "unsupported" },
+  ])(
+    "marks a $failure attached $protocol session as non-retryable without replacing it",
+    ({ protocol, failure: failureKind }) =>
       Effect.gen(function* () {
         const instanceId = ProviderInstanceId.make(`acp-missing-attached-${protocol}`);
         const threadId = ThreadId.make(`thread-missing-attached-${protocol}`);
@@ -2421,7 +2426,11 @@ describe("AcpAdapterV2", () => {
               mockAgentPath: yield* (yield* Path.Path).fromFileUrl(
                 new URL("../../../scripts/acp-model-agent.ts", import.meta.url),
               ),
-              environment: { NODEX_ACP_MODEL_PROTOCOL: protocol, NODEX_ACP_FAIL_LOAD: "missing" },
+              environment: {
+                NODEX_ACP_MODEL_PROTOCOL: protocol,
+                NODEX_ACP_FAIL_LOAD: failureKind,
+                NODEX_ACP_RECOVERY_UNSUPPORTED: failureKind === "unsupported" ? "1" : "0",
+              },
               protocolEvents,
             }),
           },
@@ -2462,7 +2471,7 @@ describe("AcpAdapterV2", () => {
           methods.filter(
             (method) => method === (protocol === "v1" ? "session/load" : "session/resume"),
           ).length,
-          1,
+          failureKind === "unsupported" ? 0 : 1,
         );
         assert.notInclude(methods, "session/new");
         assert.notInclude(methods, "session/prompt");

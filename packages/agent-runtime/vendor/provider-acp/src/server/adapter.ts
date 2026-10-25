@@ -459,15 +459,18 @@ export type AcpSubagentSessionEvent =
       readonly prompt: string;
     };
 
-// Only classify the observed permanent native-history rejection. Other internal
-// errors, missing capabilities and transport failures retain the caller's retry policy.
-const acpNativeSessionIsMissing = (cause: unknown): boolean =>
+// Recovery capabilities and protocol resource errors are definitive. Only the
+// observed provider-specific missing-history shape joins them; unknown internal
+// errors and transport failures retain the caller's retry policy.
+const acpNativeSessionIsUnrecoverable = (cause: unknown): boolean =>
   Schema.is(EffectAcpErrors.AcpRequestError)(cause) &&
   (cause.method === "session/load" || cause.method === "session/resume") &&
-  cause.code === -32603 &&
-  Schema.is(
-    Schema.Struct({ details: Schema.Literal("No previous sessions found for this project.") }),
-  )(cause.data);
+  (cause.code === -32601 ||
+    cause.code === -32002 ||
+    (cause.code === -32603 &&
+      Schema.is(
+        Schema.Struct({ details: Schema.Literal("No previous sessions found for this project.") }),
+      )(cause.data)));
 
 export interface AcpAdapterV2SubagentUpdate {
   readonly nativeTaskId: string;
@@ -6542,9 +6545,11 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
             ? yield* runtime.loadSession(sessionId, activationOptions)
             : canResumeSession
               ? yield* runtime.resumeSession(sessionId, activationOptions)
-              : yield* new ProviderAdapter.ProviderAdapterProtocolError({
-                  driver,
-                  detail: `ACP driver cannot load or resume session ${sessionId}`,
+              : yield* new EffectAcpErrors.AcpRequestError({
+                  code: -32601,
+                  method: "session/load",
+                  errorMessage:
+                    "ACP agent does not advertise session/load or session/resume support",
                 });
           rememberTerminalEnvironment(activated.sessionId, yield* readMcpContext(threadId));
           return activated;
@@ -7735,7 +7740,7 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
                 Effect.mapError(
                   (cause) =>
                     new ProviderAdapter.ProviderAdapterResumeThreadError({
-                      ...(acpNativeSessionIsMissing(cause) ? { retryable: false } : {}),
+                      ...(acpNativeSessionIsUnrecoverable(cause) ? { retryable: false } : {}),
                       driver,
                       providerSessionId: input.providerSessionId,
                       providerThreadId: threadInput.providerThread.id,
@@ -8367,7 +8372,7 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
           Effect.mapError(
             (cause) =>
               new ProviderAdapter.ProviderAdapterOpenSessionError({
-                ...(acpNativeSessionIsMissing(cause) ? { retryable: false } : {}),
+                ...(acpNativeSessionIsUnrecoverable(cause) ? { retryable: false } : {}),
                 driver,
                 providerSessionId: input.providerSessionId,
                 cause,

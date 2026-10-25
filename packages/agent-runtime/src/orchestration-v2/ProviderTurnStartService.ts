@@ -3,6 +3,7 @@ import { projectComposerContextForProvider } from "@t3tools/shared/composerConte
 import { readExecutionHandoff } from "./ExecutionHandoff.ts";
 import {
   CommandId,
+  ORCHESTRATION_V2_NATIVE_SESSION_UNRECOVERABLE_FAILURE_CODE,
   type OrchestrationV2DomainEvent,
   type OrchestrationV2ExecutionNode,
   type OrchestrationV2ProviderThread,
@@ -584,6 +585,8 @@ export const layer: Layer.Layer<
         readonly error: Error;
       }) =>
         Effect.gen(function* () {
+          const unrecoverableNativeSession =
+            providerThread.nativeThreadRef !== null && permanentNativeRecoveryFailure(failed.error);
           const nestedCause = "cause" in failed.error ? failed.error.cause : undefined;
           yield* settleRunBeforeStart({
             signal: failed.signal,
@@ -596,12 +599,19 @@ export const layer: Layer.Layer<
               title: failed.title,
               failure: makeProviderFailure({
                 cause: failed.error,
-                message:
-                  nestedCause instanceof Error
+                message: unrecoverableNativeSession
+                  ? "The Agent couldn't reopen this conversation"
+                  : nestedCause instanceof Error
                     ? nestedCause.message
                     : typeof nestedCause === "string"
                       ? nestedCause
                       : failed.error.message,
+                ...(unrecoverableNativeSession
+                  ? {
+                      code: ORCHESTRATION_V2_NATIVE_SESSION_UNRECOVERABLE_FAILURE_CODE,
+                      retryable: false,
+                    }
+                  : {}),
                 class: "provider_error",
               }),
             },

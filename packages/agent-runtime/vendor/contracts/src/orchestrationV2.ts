@@ -1426,6 +1426,10 @@ export type OrchestrationV2ProviderFailureClass = typeof OrchestrationV2Provider
 const OrchestrationV2ProviderFailureMessage = TrimmedNonEmptyString.check(
   Schema.isMaxLength(4_096),
 );
+/** The captured native conversation cannot be restored; a new chat is required. */
+export const ORCHESTRATION_V2_NATIVE_SESSION_UNRECOVERABLE_FAILURE_CODE =
+  "native_session_unrecoverable";
+
 const OrchestrationV2ProviderFailureCode = TrimmedNonEmptyString.check(Schema.isMaxLength(128));
 
 /**

@@ -7,6 +7,7 @@ import { appendFileSync } from "node:fs";
 // different wire shapes so the numeric version cannot select the wrong codec.
 const api = process.env.NODEX_ACP_MODEL_API ?? "config";
 const protocol = process.env.NODEX_ACP_MODEL_PROTOCOL ?? "v1";
+const supportsRecovery = process.env.NODEX_ACP_RECOVERY_UNSUPPORTED !== "1";
 const modelIds =
   process.env.NODEX_ACP_MODEL_EMPTY_CATALOG === "1"
     ? []
@@ -74,9 +75,12 @@ input.on("line", (line) => {
       result({
         protocolVersion: protocol === "v1" ? 1 : 2,
         ...(protocol === "v2"
-          ? { capabilities: { session: {} }, info: { name: "model-peer", version: "1.0.0" } }
+          ? {
+              capabilities: supportsRecovery ? { session: {} } : {},
+              info: { name: "model-peer", version: "1.0.0" },
+            }
           : {
-              agentCapabilities: { loadSession: true },
+              agentCapabilities: { loadSession: supportsRecovery },
               agentInfo: { name: "model-peer", version: "1.0.0" },
             }),
         authMethods: [],
@@ -93,6 +97,14 @@ input.on("line", (line) => {
       return;
     case "session/load":
     case "session/resume":
+      if (process.env.NODEX_ACP_FAIL_LOAD === "not-found") {
+        send({
+          jsonrpc: "2.0",
+          id: request.id,
+          error: { code: -32002, message: "Resource not found" },
+        });
+        return;
+      }
       if (["missing", "temporary"].includes(process.env.NODEX_ACP_FAIL_LOAD ?? "")) {
         send({
           jsonrpc: "2.0",
