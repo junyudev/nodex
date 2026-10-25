@@ -1015,13 +1015,10 @@ export function useAgentRuntimeConversationAdapter(input: {
     observedSelection ??
     draftSelectionFor(catalogState.providers);
   const provider = providerOf(selection);
-  const openSettingsFor = (binding: AgentBackendBinding) => {
-    if (!openAgentSettings) return;
-    if (binding.kind === "codex") openAgentSettings();
-    else if (binding.kind === "acp" && binding.instanceConfigId)
-      openAgentSettings("acp", binding.instanceConfigId);
-    else openAgentSettings(binding.kind);
-  };
+  const openSettingsFor = (binding: AgentBackendBinding) =>
+    binding.kind === "acp" && binding.instanceConfigId
+      ? openAgentSettings?.("acp", binding.instanceConfigId)
+      : openAgentSettings?.(binding.kind);
   const acpSetup = useAcpComposerSetup({
     providers: catalogState.providers,
     instances: input.instances,

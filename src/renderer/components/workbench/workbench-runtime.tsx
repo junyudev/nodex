@@ -69,9 +69,9 @@ import {
 } from "./workbench-settings-routes";
 import {
   AgentSettingsNavigationProvider,
+  agentSettingsAnchor,
   type AgentSettingsKind,
 } from "@/lib/agent-settings-navigation";
-import { acpAgentAnchor } from "@/features/acp-agents/acp-agent-model";
 import type { BrowserSettingsDestination } from "./workbench-settings-routes";
 import type { SettingsOpenThread } from "./workbench-settings-page-registry";
 import {
@@ -1752,7 +1752,7 @@ export function WorkbenchRuntime({
 
   const openAgentSettings = useCallback(
     (kind?: AgentSettingsKind, instanceId?: string) =>
-      openSettingsAt("agent", kind === "acp" && instanceId ? acpAgentAnchor(instanceId) : kind),
+      openSettingsAt("agent", kind && agentSettingsAnchor(kind, instanceId)),
     [openSettingsAt],
   );
 

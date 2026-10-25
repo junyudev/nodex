@@ -13,9 +13,10 @@ import { appScope, useScopeHandle } from "@/lib/maitai";
 import { openModal } from "@/lib/modal-registry";
 import type { AcpAgentInstanceConfig } from "../../../shared/acp-agent-settings";
 import { installReviewedVersion } from "./acp-agent-actions";
-import { ACP_ADD_AGENT_ID, AcpAgentAddDialog } from "./acp-agent-add-dialog";
+import { AcpAgentAddDialog } from "./acp-agent-add-dialog";
 import { AcpAgentDetail } from "./acp-agent-detail";
 import {
+  ACP_ADD_AGENT_ID,
   ACP_STATUS_ACTION_LABELS,
   acpAgentAnchor,
   acpAgentsSummary,

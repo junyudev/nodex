@@ -1,4 +1,5 @@
 import { buildSettingsSearchResults, type SettingsSearchContext } from "@/lib/settings-search";
+import { scoreSettingsQueryMatch } from "@/lib/settings-search-score";
 import { DEFAULT_WORKTREE_AUTO_BRANCH_PREFIX } from "../../lib/worktree-branch-prefix";
 import { FILE_LINK_OPENER_OPTIONS } from "../../../shared/file-link-openers";
 
@@ -324,95 +325,24 @@ export const SETTINGS_SEARCH_PANELS = {
   },
   agent: {
     title: "Agents",
+    subtitle: "The coding agents Nodex can run. Open one to change how it starts and signs in.",
     groups: [
       {
-        title: "OpenCode",
-        entries: [
-          entry("Profile", "Configure an OpenCode runtime instance.", [
-            "Enabled",
-            "Name",
-            "Executable",
-            "opencode",
-          ]),
-          entry("Profile directory", "Select isolated OpenCode configuration and data.", [
-            "Managed profile",
-            "account",
-            "configuration",
-          ]),
-          entry("Server URL", "Connect to an external OpenCode server.", [
-            "Local server",
-            "OPENCODE_SERVER_PASSWORD",
-          ]),
-          entry(
-            "Environment variables",
-            "Configure provider credentials for this OpenCode profile.",
-            ["API key", "Moonshot", "Kimi", "DeepSeek", "OpenRouter", "Secret", "export"],
-          ),
-        ],
-      },
-      {
-        title: "Claude Code",
-        entries: [
-          entry("Environment variables", "Configure the Claude instance environment.", [
-            "ANTHROPIC_BASE_URL",
-            "ANTHROPIC_AUTH_TOKEN",
-            "ANTHROPIC_API_KEY",
-            "export",
-            "token",
-            "proxy",
-            "Config directory",
-          ]),
-        ],
-      },
-      {
-        title: "ACP Agents",
-        entries: [
-          entry(
-            "Agent Client Protocol",
-            "Install Agents from the ACP Registry or run your own command.",
-            [
-              "Add Agent",
-              "ACP Registry",
-              "Local command",
-              "Install",
-              "Update",
-              "Uninstall",
-              "Connect",
-              "Sign in",
-              "Sign out",
-              "Account storage",
-              "Arguments",
-              "Custom models",
-              "Model services",
-              "Qoder",
-              "Claude",
-              "Copilot",
-              "Gemini",
-            ],
-          ),
-        ],
-      },
-      {
-        title: "Agent",
-        messages: [
-          "Open a project workspace to edit agent permissions.",
-          "Could not load agent settings.",
-          "Could not save permission mode.",
-          "Could not save config setting.",
-        ],
-      },
-      {
+        anchor: "codex",
         title: "Codex",
         entries: [
-          entry("Codex home", "Select the Codex configuration and account directory.", [
+          entry("Codex home", "Settings, skills and conversation history.", [
             "CODEX_HOME",
             "~/.codex",
-            "profile",
             "restart",
+          ]),
+          entry("Account directory", "A separate folder for another Codex sign-in.", [
+            "account",
+            "sign-in",
           ]),
           entry(
             "Copy setup from",
-            "Adds only what this Codex home is missing. The Codex app and CLI use the same setup.",
+            "Brings in instructions, skills, MCP servers and more once you review them. Only what Codex is missing is added.",
             [
               "Claude Code",
               "Other Codex home",
@@ -428,27 +358,90 @@ export const SETTINGS_SEARCH_PANELS = {
               "memory",
             ],
           ),
-          entry("Approval policy", "Raw `approval_policy` value for this config target.", [
-            "granular",
-            "untrusted",
-            "on-request",
-            "never",
+        ],
+      },
+      {
+        anchor: "claude",
+        title: "Claude Code",
+        entries: [
+          entry("Profile", "Use a profile for each Claude setup or account.", [
+            "Add profile",
+            "Name",
+            "Executable",
+            "claude",
           ]),
-          entry("Sandbox settings", "Raw `sandbox_mode` value for this config target.", [
-            "unset",
-            "read-only",
-            "workspace-write",
-            "danger-full-access",
+          entry("Config directory", "Where this profile keeps its sign-in and settings.", [
+            "~/.claude",
+            "CLAUDE_CONFIG_DIR",
+            "account",
           ]),
-          entry("Allow network access", "Controls `sandbox_workspace_write.network_access`.", [
-            "network_access",
-            "sandbox workspace write",
+          entry("Environment variables", "Paste a .env file or export lines.", [
+            "ANTHROPIC_BASE_URL",
+            "ANTHROPIC_AUTH_TOKEN",
+            "ANTHROPIC_API_KEY",
+            "export",
+            "token",
+            "proxy",
           ]),
-          entry("config.toml", "No writable config target", [
-            "Reveal",
-            "writable config target",
-            "configuration",
+          entry("Custom models", "Models this profile can choose besides Claude's own."),
+        ],
+      },
+      {
+        anchor: "opencode",
+        title: "OpenCode",
+        entries: [
+          entry("Profile", "Use a profile for each OpenCode setup.", [
+            "Add profile",
+            "Name",
+            "Executable",
+            "opencode",
           ]),
+          entry("Profile directory", "OpenCode's settings and data for this profile.", ["account"]),
+          entry("Server URL", "Connect to an OpenCode server that's already running.", [
+            "Local server",
+            "OPENCODE_SERVER_PASSWORD",
+          ]),
+          entry("Environment variables", "Provider credentials for this OpenCode profile.", [
+            "API key",
+            "Moonshot",
+            "Kimi",
+            "DeepSeek",
+            "OpenRouter",
+            "Secret",
+            "export",
+          ]),
+        ],
+      },
+      {
+        anchor: "acp",
+        title: "Other agents",
+        entries: [
+          entry(
+            "Agent Client Protocol",
+            "Install agents from the ACP Registry or run your own command.",
+            [
+              "ACP",
+              "Add agent",
+              "ACP Registry",
+              "Local command",
+              "Install",
+              "Update",
+              "Uninstall",
+              "Connect",
+              "Sign in",
+              "Sign out",
+              "Account storage",
+              "Arguments",
+              "Distribution",
+              "Executable override",
+              "System proxy",
+              "Custom models",
+              "Model services",
+              "Qoder",
+              "Copilot",
+              "Gemini",
+            ],
+          ),
         ],
       },
     ],
@@ -763,24 +756,31 @@ export const SETTINGS_SEARCH_PANELS = {
   },
 } satisfies Record<string, SettingsSearchCatalogPanel>;
 
-/** Use the canonical Advanced group when a settings search opens Appearance. */
-export function shouldExpandAppearanceAdvanced(query: string | undefined): boolean {
-  if (!query?.trim()) return false;
-  if (query.trim().toLowerCase() === SETTINGS_SEARCH_PANELS.appearance.title.toLowerCase()) {
-    return false;
-  }
-  const targets = SETTINGS_SEARCH_PANELS.appearance.groups.map((group) => ({
-    sectionId: "anchor" in group ? (group.anchor ?? group.title) : group.title,
+/**
+ * The anchored group a settings search result lands on inside its panel: the best-matching group
+ * when it has an anchor, or none when the query names the panel itself.
+ */
+export function settingsSearchAnchor(sectionId: string, query: string | undefined): string | null {
+  const panel: SettingsSearchCatalogPanel | undefined =
+    SETTINGS_SEARCH_PANELS[sectionId as keyof typeof SETTINGS_SEARCH_PANELS];
+  if (!panel || !query?.trim() || scoreSettingsQueryMatch(panel.title, query) > 0) return null;
+  const targets = panel.groups.map((group, index) => ({
+    sectionId: String(index),
     panelLabel: group.title,
     messageTexts: materializePanelSearchMessages({ title: group.title, groups: [group] }),
     termTexts: [],
   }));
-  const results = buildSettingsSearchResults({
+  const [best] = buildSettingsSearchResults({
     query,
     targets,
     visibleSectionIds: targets.map((target) => target.sectionId),
   });
-  return results[0]?.sectionId === APPEARANCE_ADVANCED_ANCHOR;
+  return best ? (panel.groups[Number(best.sectionId)]?.anchor ?? null) : null;
+}
+
+/** Use the canonical Advanced group when a settings search opens Appearance. */
+export function shouldExpandAppearanceAdvanced(query: string | undefined): boolean {
+  return settingsSearchAnchor("appearance", query) === APPEARANCE_ADVANCED_ANCHOR;
 }
 
 export const SETTINGS_SEARCH_CATALOG = {

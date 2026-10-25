@@ -579,6 +579,13 @@ export function acpAgentsSummary(statuses: readonly AcpInstanceStatus[]): {
 /** The Settings anchor that reveals one instance, used by deep links from conversations. */
 export const acpAgentAnchor = (instanceId: string) => `acp-agent-${instanceId}`;
 
+/** The Settings button that opens the Add agent dialog; focus returns to it on close. */
+export const ACP_ADD_AGENT_ID = "acp-add-agent";
+
+/** Whether a Settings anchor points inside Other agents: at one instance or at Add agent. */
+export const isAcpAgentsAnchor = (anchor: string) =>
+  anchor.startsWith(acpAgentAnchor("")) || anchor === ACP_ADD_AGENT_ID;
+
 /**
  * The Runtime sends a bounded tail of the sign-in transcript and the total characters written.
  * Returns what to append since `written`, or the whole tail after a gap the tail no longer covers.

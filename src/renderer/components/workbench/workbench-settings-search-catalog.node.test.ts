@@ -5,7 +5,10 @@ import {
   type SettingsSearchContext,
 } from "@/lib/settings-search";
 import { SETTINGS_SECTIONS, type SettingsSectionId } from "./workbench-settings-sections";
-import { shouldExpandAppearanceAdvanced } from "./workbench-settings-search-catalog";
+import {
+  settingsSearchAnchor,
+  shouldExpandAppearanceAdvanced,
+} from "./workbench-settings-search-catalog";
 
 const SEARCH_CONTEXT: SettingsSearchContext = {
   activeProjectName: "Nodex Workspace",
@@ -41,7 +44,6 @@ describe("workbench settings search catalog", () => {
     expect(hasSectionResult("browsing history", "browser")).toBe(true);
     expect(hasSectionResult("force fixed theme", "appearance")).toBe(true);
     expect(hasSectionResult("custom hex color", "appearance")).toBe(true);
-    expect(hasSectionResult("danger-full-access", "agent")).toBe(true);
     expect(hasSectionResult("OpenCode", "agent")).toBe(true);
     expect(hasSectionResult("Kimi", "agent")).toBe(true);
     expect(hasSectionResult("Agent Client Protocol", "agent")).toBe(true);
@@ -83,6 +85,43 @@ describe("workbench settings search catalog", () => {
     }
     for (const query of [undefined, "", "Appearance", "Accent color", "Mode"]) {
       expect(shouldExpandAppearanceAdvanced(query)).toBe(false);
+    }
+  });
+
+  test("opens the Agent a search names, and only the page when the query names Agents", () => {
+    const anchors = {
+      CODEX_HOME: "codex",
+      "MCP servers": "codex",
+      "Claude Code": "claude",
+      ANTHROPIC_BASE_URL: "claude",
+      "Config directory": "claude",
+      Kimi: "opencode",
+      "Server URL": "opencode",
+      "Agent Client Protocol": "acp",
+      "ACP Registry": "acp",
+      Gemini: "acp",
+    };
+    for (const [query, anchor] of Object.entries(anchors)) {
+      expect(hasSectionResult(query, "agent")).toBe(true);
+      expect(settingsSearchAnchor("agent", query)).toBe(anchor);
+    }
+    for (const query of [undefined, "", "Agents", "agent"]) {
+      expect(settingsSearchAnchor("agent", query)).toBeNull();
+    }
+    // A shared setting opens the first Agent that has it, in page order.
+    expect(settingsSearchAnchor("agent", "Environment variables")).toBe("claude");
+    // Panels without anchored groups always open at the top.
+    expect(settingsSearchAnchor("git", "Commit instructions")).toBeNull();
+  });
+
+  test("does not index the retired raw Codex config and agent permission controls", () => {
+    for (const query of [
+      "Approval policy",
+      "danger-full-access",
+      "network_access",
+      "permission mode",
+    ]) {
+      expect(hasSectionResult(query, "agent")).toBe(false);
     }
   });
 

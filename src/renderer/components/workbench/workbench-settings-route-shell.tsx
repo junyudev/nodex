@@ -26,10 +26,7 @@ import {
   buildSettingsPath,
   resolveSettingsShellState,
 } from "./workbench-settings-routes";
-import {
-  APPEARANCE_ADVANCED_ANCHOR,
-  shouldExpandAppearanceAdvanced,
-} from "./workbench-settings-search-catalog";
+import { settingsSearchAnchor } from "./workbench-settings-search-catalog";
 import {
   resolveWorkbenchMainSurfaceClip,
   workbenchMainSurfaceClassName,
@@ -256,11 +253,10 @@ export function SettingsRouteShell({
           initialHighlightedSearchIndex={initialSettingsSearchHighlightIndex}
           onBack={onBackToApp}
           onSelectSection={(sectionId, searchQuery) => {
+            const anchor = settingsSearchAnchor(sectionId, searchQuery);
             startTransition(() => {
               onPathChange(
-                sectionId === "appearance" && shouldExpandAppearanceAdvanced(searchQuery ?? "")
-                  ? buildSettingsAnchorPath(sectionId, APPEARANCE_ADVANCED_ANCHOR)
-                  : buildSettingsPath(sectionId),
+                anchor ? buildSettingsAnchorPath(sectionId, anchor) : buildSettingsPath(sectionId),
               );
             });
           }}

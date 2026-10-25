@@ -1,5 +1,5 @@
-import { ACP_ADD_AGENT_ID } from "@/features/acp-agents/acp-agent-add-dialog";
 import { AcpAgentsSettingsSection } from "@/features/acp-agents/acp-agents-settings-section";
+import { agentSettingsKindForAnchor } from "@/lib/agent-settings-navigation";
 import {
   NodexSettingsPageSurface as SettingsPageSurface,
   useNodexSettingsDisclosures,
@@ -9,18 +9,9 @@ import { CodexAgentSettingsSection } from "./codex-home-settings-control";
 import { OpenCodeAgentSettingsControl } from "./opencode-agent-settings-control";
 import type { SettingsSectionPageProps } from "./workbench-settings-page-registry";
 
-const AGENT_SECTIONS = ["codex", "claude", "opencode", "acp"] as const;
-
-/** The Agent section a deep link or search result opens: its own anchor or one inside it. */
-export function agentSettingsSectionForAnchor(anchor: string | null | undefined) {
-  if (!anchor) return null;
-  if (anchor.startsWith("acp-agent-") || anchor === ACP_ADD_AGENT_ID) return "acp";
-  return AGENT_SECTIONS.find((section) => section === anchor) ?? null;
-}
-
 /** Every coding Agent Nodex can run, most common first; each opens to its own setup. */
 export function AgentSettingsPage({ open, settingsAnchor }: SettingsSectionPageProps) {
-  const disclosure = useNodexSettingsDisclosures(agentSettingsSectionForAnchor(settingsAnchor));
+  const disclosure = useNodexSettingsDisclosures(agentSettingsKindForAnchor(settingsAnchor));
   return (
     <SettingsPageSurface
       title="Agents"

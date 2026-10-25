@@ -29,6 +29,7 @@ import {
   type AcpAgentInstanceInput,
 } from "../../../shared/acp-agent-settings";
 import {
+  ACP_ADD_AGENT_ID,
   ACP_REGISTRY_ID_PATTERN,
   acpAvailabilityText,
   acpDistributionLabel,
@@ -46,9 +47,6 @@ import type { AcpArgumentDraft } from "./acp-agent-draft";
 import type { AcpAgentsOwner } from "./acp-agents-owner";
 import { AcpArgumentsEditor } from "./acp-arguments-editor";
 import { useAcpAgents } from "./use-acp-agents";
-
-/** The Settings button that opens this dialog; focus returns to it on close. */
-export const ACP_ADD_AGENT_ID = "acp-add-agent";
 
 export interface AcpAgentAddDialogProps extends ModalCloseProps {
   readonly owner: AcpAgentsOwner;
