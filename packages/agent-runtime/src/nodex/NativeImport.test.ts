@@ -151,23 +151,22 @@ it("owns Windows Markdown locators and rejects foreign or drive-relative paths",
   );
   for (const url of urls.slice(0, 4))
     assert.throws(
-      () => resolveMarkdownImagePath(url, "/source", "darwin"),
+      () => resolveMarkdownImagePath(url, "/source", "posix"),
       /Windows image path this computer cannot read/,
     );
-  assert.deepEqual(localMarkdownImagePaths("![Invalid](C:relative.png)"), ["C:relative.png"]);
+  assert.deepEqual(localMarkdownImagePaths("![Invalid](C:relative.png)", "win32"), [
+    "C:relative.png",
+  ]);
   assert.throws(
     () => resolveMarkdownImagePath("C:relative.png", String.raw`C:\source`, "win32"),
     /relative Windows image path/,
   );
   assert.deepEqual(
-    localMarkdownImagePaths(
-      "![CDN](//cdn.example.com/image.png)\n![Local](relative.png)",
-      "darwin",
-    ),
+    localMarkdownImagePaths("![CDN](//cdn.example.com/image.png)\n![Local](relative.png)", "posix"),
     ["relative.png"],
   );
   assert.deepEqual(
-    localMarkdownImagePaths(String.raw`![UNC](\\\\server\share\image.png)`, "darwin"),
+    localMarkdownImagePaths(String.raw`![UNC](\\\\server\share\image.png)`, "posix"),
     [String.raw`\\server\share\image.png`],
   );
 });

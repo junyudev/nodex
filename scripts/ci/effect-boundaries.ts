@@ -272,6 +272,7 @@ export function analyzeEffectBoundaries({
   const pubSubNamespaces = new Set<string>();
   const queueNamespaces = new Set<string>();
   const nodeRuntimeNamespaces = new Set<string>();
+  const dateTimeNamespaces = new Set<string>();
   const applicationModule = isEffectApplicationModule(path);
 
   const report = (code: EffectBoundaryDiagnosticCode, offset: number, message: string): void => {
@@ -282,6 +283,25 @@ export function analyzeEffectBoundaries({
   for (const statement of program.body) {
     if (statement.type !== "ImportDeclaration") continue;
     const moduleName = statement.source.value;
+    // DateTime.makeUnsafe constructs a value; it does not allocate a live resource.
+    // Resolve its import, so an unrelated object's name cannot grant an exemption.
+    for (const specifier of statement.specifiers) {
+      if (moduleName === "effect/DateTime" && specifier.type === "ImportNamespaceSpecifier") {
+        dateTimeNamespaces.add(specifier.local.name);
+      }
+      if (moduleName !== "effect") continue;
+      if (specifier.type === "ImportNamespaceSpecifier") {
+        dateTimeNamespaces.add(`${specifier.local.name}.DateTime`);
+      }
+      if (
+        specifier.type === "ImportSpecifier" &&
+        (specifier.imported.type === "Identifier"
+          ? specifier.imported.name
+          : specifier.imported.value) === "DateTime"
+      ) {
+        dateTimeNamespaces.add(specifier.local.name);
+      }
+    }
     effectNamespaceFromImport(statement).forEach((name) => effectNamespaces.add(name));
     moduleNamespaceFromImport(statement, "Layer").forEach((name) => layerNamespaces.add(name));
     moduleNamespaceFromImport(statement, "PubSub").forEach((name) => pubSubNamespaces.add(name));
@@ -346,9 +366,24 @@ export function analyzeEffectBoundaries({
       }
       if (node.callee.type !== "MemberExpression") return;
       if (node.callee.property.type !== "Identifier") return;
+      const receiver = node.callee.object;
+      const receiverName =
+        receiver.type === "Identifier"
+          ? receiver.name
+          : receiver.type === "MemberExpression" &&
+              !receiver.computed &&
+              receiver.object.type === "Identifier" &&
+              receiver.property.type === "Identifier"
+            ? `${receiver.object.name}.${receiver.property.name}`
+            : null;
+      const pureDateConstructor =
+        node.callee.property.name === "makeUnsafe" &&
+        receiverName !== null &&
+        dateTimeNamespaces.has(receiverName);
       if (
         applicationModule &&
         lifecycleBypassingCalls.has(node.callee.property.name) &&
+        !pureDateConstructor &&
         !synchronousIngressUnsafeCalls
           .get(path)
           ?.has(

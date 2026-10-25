@@ -358,6 +358,8 @@ const persistImages = Effect.fn("NativeImport.persistImages")(function* (
   entry: ThreadItemEntry,
   sourceCwd: string,
 ) {
+  const path = yield* Path.Path;
+  const pathStyle = path.sep === "\\" ? "win32" : "posix";
   const assistantImages = entry.item.type === "agentMessage";
   const content =
     entry.item.type === "userMessage"
@@ -367,7 +369,7 @@ const persistImages = Effect.fn("NativeImport.persistImages")(function* (
           ? [{ type: "image" as const, url: entry.item.path }]
           : [{ type: "localImage" as const, path: entry.item.path }]
         : entry.item.type === "agentMessage"
-          ? localMarkdownImagePaths(entry.item.text).map((path) => ({
+          ? localMarkdownImagePaths(entry.item.text, pathStyle).map((path) => ({
               type: "localImage" as const,
               path,
             }))
@@ -395,7 +397,7 @@ const persistImages = Effect.fn("NativeImport.persistImages")(function* (
     // The new execution directory must never supply an unrelated same-name image.
     const sourcePath = assistantImages
       ? yield* Effect.try({
-          try: () => resolveMarkdownImagePath(part.path, sourceCwd),
+          try: () => resolveMarkdownImagePath(part.path, sourceCwd, pathStyle),
           catch: (cause) =>
             cause instanceof Error
               ? cause
@@ -403,8 +405,8 @@ const persistImages = Effect.fn("NativeImport.persistImages")(function* (
                   "A reply in this conversation links an image with an invalid local path.",
                 ),
         })
-      : nodePath.resolve(sourceCwd, part.path);
-    const name = nodePath.basename(sourcePath) || "Image";
+      : path.resolve(sourceCwd, part.path);
+    const name = path.basename(sourcePath) || "Image";
     const info = yield* fs
       .stat(sourcePath)
       .pipe(
@@ -439,7 +441,7 @@ const persistImages = Effect.fn("NativeImport.persistImages")(function* (
       return yield* fail(
         "An image in this conversation is larger than 10 MB and cannot be imported.",
       );
-    const extension = nodePath.extname(sourcePath).toLowerCase();
+    const extension = path.extname(sourcePath).toLowerCase();
     if (![".jpg", ".jpeg", ".png", ".webp", ".gif"].includes(extension))
       return yield* fail("An image in this conversation uses a format Nodex cannot import.");
     const mimeType =
@@ -486,7 +488,7 @@ type MarkdownNode = {
 /** Parse actual images, including references; code examples never acquire attachment ownership. */
 export function localMarkdownImagePaths(
   text: string,
-  platform = process.platform,
+  platform: "win32" | "posix",
 ): readonly string[] {
   const pending: MarkdownNode[] = [fromMarkdown(text)];
   const images: MarkdownNode[] = [];
@@ -522,7 +524,7 @@ const windowsUncPath = /^(?:\\\\|\/\/)[^\\/]+[\\/][^\\/]+/u;
 export function resolveMarkdownImagePath(
   sourcePath: string,
   sourceCwd: string,
-  platform = process.platform,
+  platform: "win32" | "posix",
 ): string {
   const windows = platform === "win32";
   if (windowsDrivePrefix.test(sourcePath) || windowsUncPath.test(sourcePath)) {

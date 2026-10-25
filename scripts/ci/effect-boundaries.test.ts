@@ -228,4 +228,31 @@ describe("Effect architecture boundaries", () => {
       "Deferred.doneUnsafe(completion, effect);",
     ]);
   });
+
+  test.each([
+    'import * as Dates from "effect/DateTime"; Dates.makeUnsafe(0);',
+    'import { DateTime as Dates } from "effect"; Dates.makeUnsafe(0);',
+    'import * as Library from "effect"; Library.DateTime.makeUnsafe(0);',
+  ])("allows the pure DateTime constructor by its imported identity: %s", (sourceText) => {
+    expect(
+      analyzeEffectBoundaries({
+        path: "packages/agent-runtime/src/nodex/History.ts",
+        sourceText,
+      }),
+    ).toEqual([]);
+  });
+
+  test.each([
+    'import * as DateTime from "effect/Deferred"; DateTime.makeUnsafe();',
+    'import { Deferred as DateTime } from "effect"; DateTime.makeUnsafe();',
+    'import * as Library from "effect"; Library.Deferred.makeUnsafe();',
+    "const DateTime = getRuntime(); DateTime.makeUnsafe();",
+  ])("does not exempt lifecycle constructors disguised as dates: %s", (sourceText) => {
+    expect(
+      analyzeEffectBoundaries({
+        path: "packages/agent-runtime/src/nodex/History.ts",
+        sourceText,
+      }).map((diagnostic) => diagnostic.code),
+    ).toEqual(["application-unsafe-runtime"]);
+  });
 });
