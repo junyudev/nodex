@@ -741,7 +741,7 @@ function nativeThreadId(
   thread: OrchestrationV2ProviderThread,
 ): Effect.Effect<string, ProviderAdapter.ProviderAdapterProtocolError> {
   const id = thread.nativeThreadRef?.nativeId;
-  if (id === null || id === undefined || id.trim().length === 0) {
+  if (id === null || id === undefined || id.length === 0) {
     return Effect.fail(
       new ProviderAdapter.ProviderAdapterProtocolError({
         driver,

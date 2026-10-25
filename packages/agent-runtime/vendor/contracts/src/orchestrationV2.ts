@@ -105,7 +105,7 @@ export type OrchestrationV2CompactionTrigger = typeof OrchestrationV2CompactionT
 
 export const OrchestrationV2ProviderRef = Schema.Struct({
   driver: ProviderDriverKind,
-  nativeId: Schema.NullOr(TrimmedNonEmptyString),
+  nativeId: Schema.NullOr(Schema.NonEmptyString),
   strength: OrchestrationV2NativeRefStrength,
   fingerprint: Schema.optional(TrimmedNonEmptyString),
   ordinal: Schema.optional(NonNegativeInt),
@@ -2914,7 +2914,7 @@ export const OrchestrationV2Command = Schema.Union([
       Schema.Struct({
         ref: Schema.Struct({
           driver: ProviderDriverKind,
-          nativeId: TrimmedNonEmptyString,
+          nativeId: Schema.NonEmptyString,
           strength: Schema.Literal("strong"),
         }),
         metadata: Schema.optional(OrchestrationV2ProviderThreadNativeMetadata),

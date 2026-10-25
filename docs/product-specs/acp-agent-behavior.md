@@ -56,7 +56,7 @@ intersecting claims within the same source coordinate login, logout and model-se
 active work. Logical labels and unrelated toolchain or cache directories cannot remove those claims.
 Independent isolated homes with no shared credential roots can authenticate concurrently.
 
-Installation and connection status include the owning Runtime generation, the captured applied
+Installation, connection and authentication status include the owning Runtime generation, the captured applied
 provider-policy revision (null for directory-level installation), a monotonically increasing operation
 revision, and whether cancellation is available. Progress and terminal transitions advance the
 operation revision; reading or retrying the same operation does not. Configuration revisions are
@@ -110,7 +110,8 @@ Agent prompts; automatic titles retain the deterministic temporary title.
 
 ## Native history and model services
 
-Native history lists use the Agent's pagination and workspace context. Opaque cursor bytes remain
+Native history lists use the Agent's pagination and workspace context. Native session identifiers retain
+their exact values through import, restoration and deletion within the shared 1024-character limit. Opaque cursor bytes remain
 unchanged; oversized pages and cursors fail explicitly. Each bounded traversal belongs to the selected
 instance, execution directory and configuration, and rejects unknown cursors and pagination cycles.
 Import first admits and binds

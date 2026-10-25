@@ -1324,7 +1324,8 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
     yield* validateCaller();
     if (
       !validId(input.requestId) ||
-      !validId(input.sessionId) ||
+      input.sessionId.length === 0 ||
+      input.sessionId.length > 1024 ||
       !Number.isSafeInteger(input.acceptedAt) ||
       input.acceptedAt < 0
     )

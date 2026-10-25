@@ -174,7 +174,7 @@ export const AcpRegistryAcceptUrlAuthResult = Schema.Struct({
 });
 export type AcpRegistryAcceptUrlAuthResult = typeof AcpRegistryAcceptUrlAuthResult.Type;
 
-const AcpRegistrySessionId = TrimmedNonEmptyString.check(Schema.isMaxLength(1_024));
+const AcpRegistrySessionId = Schema.NonEmptyString.check(Schema.isMaxLength(1_024));
 const AcpRegistrySessionPath = TrimmedNonEmptyString.check(Schema.isMaxLength(4_096));
 
 export const AcpRegistrySession = Schema.Struct({

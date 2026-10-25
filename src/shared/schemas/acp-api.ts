@@ -1,6 +1,7 @@
 import { z } from "zod";
 import type { AcpMethod, AcpOperations } from "../acp-api";
 const id = z.string().trim().min(1).max(256);
+const nativeSessionId = z.string().min(1).max(1024);
 const instance = { instanceId: id };
 const target = { ...instance, projectId: z.string().min(1).max(128).nullable().optional() };
 const flow = { ...instance, flowId: id };
@@ -57,11 +58,16 @@ export const AcpInputSchemas = {
   "acp.auth.logout": z.object(instance).strict(),
   "acp.urlAuth.accept": z.object({ ...instance, elicitationId: id }).strict(),
   "acp.sessions.list": z.object({ ...target, cursor: z.string().max(8192).optional() }).strict(),
-  "acp.sessions.prepareImport": z.object({ ...target, sessionId: id }).strict(),
+  "acp.sessions.prepareImport": z.object({ ...target, sessionId: nativeSessionId }).strict(),
   "acp.sessions.import": z
-    .object({ ...target, sessionId: id, requestId: id, acceptedAt: z.number().int().nonnegative() })
+    .object({
+      ...target,
+      sessionId: nativeSessionId,
+      requestId: id,
+      acceptedAt: z.number().int().nonnegative(),
+    })
     .strict(),
-  "acp.sessions.delete": z.object({ ...target, sessionId: id }).strict(),
+  "acp.sessions.delete": z.object({ ...target, sessionId: nativeSessionId }).strict(),
   "acp.modelProviders.list": z.object(target).strict(),
   "acp.modelProviders.set": z
     .object({

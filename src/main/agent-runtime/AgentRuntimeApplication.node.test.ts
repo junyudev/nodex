@@ -998,9 +998,9 @@ it.effect("binds an independent imported chat before reading its history into th
   }),
 );
 
-it.effect(
+it.effect.each(["native-session", " x ", "x", "n".repeat(1024)])(
   "connects an ACP native session after Core admission and returns the existing product Session on repeated import",
-  () =>
+  (nativeSessionId) =>
     Effect.gen(function* () {
       const instanceId = agentRuntimeProviderId({
         kind: "acp",
@@ -1018,13 +1018,18 @@ it.effect(
       const owner = yield* fixture.owner;
       const input = {
         instanceId,
-        sessionId: "native-session",
+        sessionId: nativeSessionId,
         requestId: "import-acp-session",
         acceptedAt: 10,
         projectId: "project",
         cwd: "/workspace",
       };
       const result = yield* owner.importAcp(input);
+      for (const method of ["acp.sessions.prepareImport", "acp.sessions.import"]) {
+        assert.deepInclude(fixture.calls.find((call) => call.method === method)?.input, {
+          sessionId: nativeSessionId,
+        });
+      }
       assert.deepEqual(result, {
         sessionId: input.requestId,
         threadId: "nodex:thread:acp-source-one",
@@ -1045,6 +1050,27 @@ it.effect(
         fixture.calls.filter(({ method }) => method === "acp.sessions.import").length,
         1,
       );
+    }),
+);
+it.effect.each(["", "n".repeat(1025)])(
+  "refuses invalid native ACP identities before admission",
+  (sessionId) =>
+    Effect.gen(function* () {
+      const fixture = setup();
+      const owner = yield* fixture.owner;
+      const result = yield* owner
+        .importAcp({
+          instanceId: "agent",
+          sessionId,
+          requestId: "import-acp-session",
+          acceptedAt: 10,
+          projectId: "project",
+          cwd: "/workspace",
+        })
+        .pipe(Effect.result);
+      assert.equal(result._tag, "Failure");
+      assert.deepEqual(fixture.calls, []);
+      assert.equal(fixture.applied.length, 0);
     }),
 );
 it.effect("refuses an ACP import request reused after its native source identity changes", () =>

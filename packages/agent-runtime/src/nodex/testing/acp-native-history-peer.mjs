@@ -2,7 +2,7 @@ import { appendFileSync, existsSync } from "node:fs";
 import { createInterface } from "node:readline";
 const canLoad = process.env.ACP_HISTORY_CAN_LOAD === "1";
 const v2 = process.env.ACP_HISTORY_PROTOCOL === "v2";
-const sessionId = "native-history";
+const sessionId = process.env.ACP_HISTORY_SESSION_ID ?? "native-history";
 const send = (message) =>
   process.stdout.write(JSON.stringify({ jsonrpc: "2.0", ...message }) + "\n");
 const message = (text, role = "agent", targetSessionId = sessionId) =>

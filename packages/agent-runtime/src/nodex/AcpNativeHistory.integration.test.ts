@@ -9,12 +9,12 @@ import { AgentRuntime } from "./Service.ts";
 import type { AgentRuntimeMethod, AgentRuntimeOperations } from "./Interface.ts";
 
 it.live.each([
-  { protocol: "v1", canLoad: true },
-  { protocol: "v1", canLoad: false },
-  { protocol: "v2", canLoad: true },
+  { protocol: "v1", canLoad: true, nativeSessionId: " x " },
+  { protocol: "v1", canLoad: false, nativeSessionId: "n".repeat(1024) },
+  { protocol: "v2", canLoad: true, nativeSessionId: " " },
 ])(
   "retains $protocol native import capabilities without loading history until Continue (canLoad=$canLoad)",
-  ({ protocol, canLoad }) =>
+  ({ protocol, canLoad, nativeSessionId }) =>
     Effect.gen(function* () {
       const fs = yield* FileSystem.FileSystem;
       const home = yield* fs.makeTempDirectoryScoped({ prefix: "nodex-acp-native-history-" });
@@ -39,6 +39,7 @@ it.live.each([
               { name: "ACP_HISTORY_CAN_LOAD", value: canLoad ? "1" : "0", sensitive: false },
               { name: "ACP_HISTORY_LOG", value: log, sensitive: false },
               { name: "ACP_HISTORY_PROTOCOL", value: protocol, sensitive: false },
+              { name: "ACP_HISTORY_SESSION_ID", value: nativeSessionId, sensitive: false },
             ],
           },
         },
@@ -72,13 +73,13 @@ it.live.each([
           const prepared = yield* call("acp.sessions.prepareImport", {
             instanceId,
             cwd: home,
-            sessionId: "native-history",
+            sessionId: nativeSessionId,
           });
           expect(prepared).toMatchObject({ canLoad, canResume: true });
           yield* call("acp.sessions.import", {
             instanceId,
             cwd: prepared.cwd,
-            sessionId: "native-history",
+            sessionId: nativeSessionId,
             commandId: "import",
             threadId: prepared.threadId,
             projectId: "project",
@@ -128,7 +129,7 @@ it.live.each([
           expect(outcome?.status).toBe("completed");
           const loaded = yield* call("thread.snapshot", { threadId });
           expect(nativeRow(loaded)?.status).toBe("idle");
-          expect(nativeRow(loaded)?.nativeThreadRef?.nativeId).toBe("native-history");
+          expect(nativeRow(loaded)?.nativeThreadRef?.nativeId).toBe(nativeSessionId);
           expect(nativeRow(loaded)?.nativeMetadata?.nativeImport).toEqual({
             canLoad,
             canResume: true,
@@ -199,7 +200,7 @@ it.live.each([
             original,
           );
           expect(continued.projection.providerThreads).toHaveLength(1);
-          expect(nativeRow(continued)?.nativeThreadRef?.nativeId).toBe("native-history");
+          expect(nativeRow(continued)?.nativeThreadRef?.nativeId).toBe(nativeSessionId);
           expect((yield* fs.readFileString(log)).slice(afterContinue.length)).not.toContain(
             "session/new",
           );

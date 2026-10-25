@@ -2,6 +2,7 @@ import * as NodeServices from "@effect/platform-node/NodeServices";
 import { expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
+import * as Schedule from "effect/Schedule";
 import { fileURLToPath } from "node:url";
 import * as Application from "./Application.ts";
 import { AgentRuntime } from "./Service.ts";
@@ -22,7 +23,10 @@ type Peer = {
   call: ReturnType<typeof makeCall>;
   writePages: (pages: Page[]) => Effect.Effect<void, unknown>;
   replaceInstance: Effect.Effect<unknown, unknown>;
-  requests: Effect.Effect<Array<{ method: string; cursor?: string; cwd?: string }>, unknown>;
+  requests: Effect.Effect<
+    Array<{ method: string; cursor?: string; cwd?: string; sessionId?: string }>,
+    unknown
+  >;
 };
 const withPeer = (use: (peer: Peer) => Effect.Effect<void, unknown>) =>
   Effect.gen(function* () {
@@ -90,6 +94,85 @@ const withPeer = (use: (peer: Peer) => Effect.Effect<void, unknown>) =>
       ),
     );
   }).pipe(Effect.provide(NodeServices.layer));
+
+it.live("keeps native session IDs exact across listing, import mappings and deletion", () =>
+  withPeer(({ cwd, call, writePages, requests }) =>
+    Effect.gen(function* () {
+      const importedIds = [" x ", "x", "n".repeat(1024)];
+      const deletedId = ` ${"d".repeat(510)} `;
+      yield* writePages([
+        {
+          result: {
+            sessions: [...importedIds, deletedId].map((sessionId) => ({ sessionId, cwd })),
+          },
+        },
+      ]);
+      expect(
+        (yield* call("acp.sessions.list", { instanceId: "first", cwd })).sessions.map(
+          (session) => session.sessionId,
+        ),
+      ).toEqual([...importedIds, deletedId]);
+      yield* call("acp.connection.start", { instanceId: "first", cwd, operationId: "connect" });
+      const connected = yield* call("acp.operation.read", { operationId: "connect" }).pipe(
+        Effect.repeat({
+          until: (value) => value.phase !== "running",
+          schedule: Schedule.spaced("10 millis"),
+        }),
+        Effect.timeout("5 seconds"),
+      );
+      expect(connected.phase).toBe("succeeded");
+      yield* call("project.upsert", { id: "project", title: "Project", workspaceRoot: cwd });
+      const threadIds: string[] = [];
+      for (const [index, sessionId] of importedIds.entries()) {
+        const prepared = yield* call("acp.sessions.prepareImport", {
+          instanceId: "first",
+          cwd,
+          sessionId,
+        });
+        threadIds.push(prepared.threadId);
+        yield* call("acp.sessions.import", {
+          instanceId: "first",
+          cwd: prepared.cwd,
+          sessionId,
+          commandId: `import-${index}`,
+          threadId: prepared.threadId,
+          projectId: "project",
+          title: prepared.title,
+          sourceFingerprint: prepared.sourceFingerprint,
+          model: "fixture",
+        });
+        const snapshot = yield* call("thread.snapshot", { threadId: prepared.threadId });
+        expect(snapshot.projection.providerThreads[0]?.nativeThreadRef?.nativeId).toBe(sessionId);
+        expect(snapshot.projection.runs).toHaveLength(0);
+        expect(
+          (yield* call("acp.sessions.prepareImport", { instanceId: "first", cwd, sessionId }))
+            .threadId,
+        ).toBe(prepared.threadId);
+      }
+      expect(new Set(threadIds).size).toBe(importedIds.length);
+      yield* call("acp.sessions.delete", { instanceId: "first", cwd, sessionId: deletedId });
+      expect(
+        (yield* requests)
+          .filter((request) => request.method === "session/delete")
+          .map((request) => request.sessionId),
+      ).toEqual(["probe-session", deletedId]);
+      const before = (yield* requests).length;
+      for (const sessionId of ["", "n".repeat(1025)]) {
+        expect(
+          (yield* call("acp.sessions.prepareImport", { instanceId: "first", cwd, sessionId }).pipe(
+            Effect.result,
+          ))._tag,
+        ).toBe("Failure");
+        expect(
+          (yield* call("acp.sessions.delete", { instanceId: "first", cwd, sessionId }).pipe(
+            Effect.result,
+          ))._tag,
+        ).toBe("Failure");
+      }
+      expect((yield* requests).length).toBe(before);
+    }),
+  ),
+);
 
 it.live(
   "preserves opaque cursor bytes and rejects tokens from another instance or directory before spawning",
