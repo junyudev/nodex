@@ -120,18 +120,6 @@ export function CommandPalette({
       onOpenThread(item.threadId, item.sessionId);
       return;
     }
-    if (item.id === "searchChats") {
-      setMode("chats");
-      return;
-    }
-    if (item.id === "searchPages") {
-      setMode("pages");
-      return;
-    }
-    if (item.id === "searchFiles") {
-      setMode("files");
-      return;
-    }
     if (item.disabled || !isCommandPaletteShellCommandId(item.id)) return;
     executeCommandPaletteShellCommand(item.id, commandHandlers);
   };
@@ -140,7 +128,7 @@ export function CommandPalette({
     <Dialog
       open={open}
       onOpenChange={(nextOpen, details) => {
-        if (!nextOpen && details.reason === "escape" && surfaceRef.current?.consumeEscape()) {
+        if (!nextOpen && details.reason === "escape" && surfaceRef.current?.isComposing()) {
           details.cancel();
           return;
         }
@@ -150,9 +138,9 @@ export function CommandPalette({
       <DialogContent
         unstyledContent
         showCloseButton={false}
-        overlayClassName="bg-transparent"
+        overlayClassName="bg-black/[0.1333]"
         initialFocus={false}
-        className="command-menu-dialog global-command-menu-dialog w-[min(520px,92vw)] max-w-none border-none bg-transparent p-0 shadow-none"
+        className="command-menu-dialog top-[max(16px,calc((100vh-min(504px,90vh))/2))] w-[min(768px,92vw)] max-w-none translate-y-0 border-none bg-transparent p-0 shadow-none"
       >
         <DialogTitle className="sr-only">Command palette</DialogTitle>
         <CommandPaletteSurface

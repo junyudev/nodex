@@ -26,7 +26,6 @@ import { normalizeSearchText } from "./search-text";
 import { useInteractivePageSearch } from "./interactive-page-search";
 
 const DEFAULT_PAGE_SEARCH_LIMIT = 60;
-const ROOT_PAGE_SEARCH_LIMIT = 12;
 const inFlightPageSearches = new Map<string, Promise<PageSearchResult[]>>();
 
 export type CommandPalettePageSearchStatus = "idle" | "pending" | "success" | "error";
@@ -90,8 +89,8 @@ export function getCommandPalettePageSearchPlan(
   if (mode === "pages") {
     return { searchLimit: DEFAULT_PAGE_SEARCH_LIMIT };
   }
-  if (mode === "root" && queryLength >= 2) {
-    return { searchLimit: ROOT_PAGE_SEARCH_LIMIT };
+  if (mode === "root" && (queryLength === 0 || queryLength >= 2)) {
+    return { searchLimit: DEFAULT_PAGE_SEARCH_LIMIT };
   }
   return null;
 }

@@ -1,12 +1,13 @@
 import { createFileSearchFixture } from "../../test/file-search-fixture";
 import { installWindowApi } from "../../test/browser-globals";
 import { describe, expect, vi, test } from "vite-plus/test";
-import { createElement, createRef } from "react";
+import { createElement, createRef, useState } from "react";
 import { act, fireEvent, waitFor } from "@testing-library/react";
 import type {
   CommandPalettePage,
   CommandPaletteCommand,
   CommandPaletteThread,
+  CommandMenuMode,
 } from "@/lib/command-palette";
 import { getDefaultCommandPalettePageFilters } from "@/lib/command-palette";
 import {
@@ -451,39 +452,305 @@ function makePageSearchResult(
 }
 
 describe("CommandPaletteSurface", () => {
-  test("lets the dialog consume a non-empty query before closing", async () => {
+  test("closes on Escape without replacing the live query", async () => {
     const { CommandPaletteSurface } = await import("./command-palette-surface");
-    const surfaceRef = createRef<CommandPaletteSurfaceHandle>();
-    const { getByLabelText } = render(
+    const close = vi.fn();
+    const view = render(
       <CommandPaletteSurface
-        ref={surfaceRef}
         open
         openTriggerTick={1}
-        mode="root"
+        mode="actions"
         initialQuery="settings"
         commands={[]}
         loading={false}
         pagesLoading={false}
         chatsLoading={false}
         onChangeMode={() => undefined}
-        onRequestClose={() => undefined}
+        onRequestClose={close}
         onExecute={() => undefined}
       />,
     );
-
     await settleAsyncRender();
-    const input = getByLabelText("Command palette search") as HTMLInputElement;
-    expect(input.value).toBe("settings");
-
-    let consumed = false;
+    const input = view.getByRole("combobox");
     await act(async () => {
-      consumed = surfaceRef.current?.consumeEscape() ?? false;
+      fireEvent.keyDown(input, { key: "Escape" });
       await Promise.resolve();
     });
+    expect(close).toHaveBeenCalledOnce();
+    expect(input).toHaveProperty("value", "settings");
+  });
 
-    expect(consumed).toBe(true);
-    expect(input.value).toBe("");
-    expect(surfaceRef.current?.consumeEscape()).toBe(false);
+  test("preserves the query and input focus when switching scopes by click or Tab", async () => {
+    const { CommandPaletteSurface } = await import("./command-palette-surface");
+    function Harness() {
+      const [mode, setMode] = useState<CommandMenuMode>("root");
+      return (
+        <CommandPaletteSurface
+          open
+          openTriggerTick={1}
+          mode={mode}
+          initialQuery="settings"
+          commands={[makePaletteCommand()]}
+          loading={false}
+          pagesLoading={false}
+          chatsLoading={false}
+          onChangeMode={setMode}
+          onRequestClose={() => undefined}
+          onExecute={() => undefined}
+        />
+      );
+    }
+    const view = render(<Harness />);
+    const input = view.getByRole("combobox");
+    await waitFor(() => expect(document.activeElement).toBe(input));
+    await act(async () => {
+      fireEvent.mouseDown(view.getByRole("tab", { name: "Actions" }));
+      fireEvent.click(view.getByRole("tab", { name: "Actions" }));
+      await Promise.resolve();
+    });
+    expect(view.getByRole("tab", { name: "Actions" }).getAttribute("aria-selected")).toBe("true");
+    expect(input).toHaveProperty("value", "settings");
+    expect(document.activeElement).toBe(input);
+    await act(async () => {
+      fireEvent.keyDown(input, { key: "Tab" });
+      await Promise.resolve();
+    });
+    expect(view.getByRole("tab", { name: "Chats" }).getAttribute("aria-selected")).toBe("true");
+    expect(input).toHaveProperty("value", "settings");
+    expect(document.activeElement).toBe(input);
+    await act(async () => {
+      fireEvent.keyDown(input, { key: "Tab", shiftKey: true });
+      await Promise.resolve();
+    });
+    expect(view.getByRole("tab", { name: "Actions" }).getAttribute("aria-selected")).toBe("true");
+    expect(input).toHaveProperty("value", "settings");
+    expect(document.activeElement).toBe(input);
+    expect(view.queryByRole("tab", { name: "Files" })).toBeNull();
+    await act(async () => {
+      for (const modifier of [{ ctrlKey: true }, { metaKey: true }, { altKey: true }]) {
+        expect(fireEvent.keyDown(input, { key: "Tab", ...modifier })).toBe(true);
+      }
+      await Promise.resolve();
+    });
+    expect(view.getByRole("tab", { name: "Actions" }).getAttribute("aria-selected")).toBe("true");
+
+    await act(async () => {
+      fireEvent.keyDown(input, { key: "F6" });
+      await Promise.resolve();
+    });
+    const activeScope = view.getByRole("tab", { name: "Actions" });
+    expect(document.activeElement).toBe(activeScope);
+    await act(async () => {
+      fireEvent.keyDown(activeScope, { key: "F6" });
+      await Promise.resolve();
+    });
+    expect(document.activeElement).toBe(input);
+    await act(async () => {
+      fireEvent.click(view.getByRole("tab", { name: "Pages" }));
+      await Promise.resolve();
+    });
+    const filter = view.getByRole("button", { name: "Filter pages" });
+    await act(async () => {
+      fireEvent.keyDown(input, { key: "F6" });
+      await Promise.resolve();
+    });
+    expect(document.activeElement).toBe(filter);
+    await act(async () => {
+      fireEvent.keyDown(filter, { key: "F6" });
+      await Promise.resolve();
+    });
+    expect(document.activeElement).toBe(input);
+  });
+
+  test("leaves IME acceptance and navigation with the composition owner", async () => {
+    const { CommandPaletteSurface } = await import("./command-palette-surface");
+    const surfaceRef = createRef<CommandPaletteSurfaceHandle>();
+    const execute = vi.fn();
+    const changeMode = vi.fn();
+    const close = vi.fn();
+    const view = render(
+      <CommandPaletteSurface
+        ref={surfaceRef}
+        open
+        openTriggerTick={1}
+        mode="actions"
+        commands={[makePaletteCommand(), makePaletteCommand({ id: "other", title: "Other" })]}
+        loading={false}
+        pagesLoading={false}
+        chatsLoading={false}
+        onChangeMode={changeMode}
+        onRequestClose={close}
+        onExecute={execute}
+      />,
+    );
+    await settleAsyncRender();
+    const input = view.getByRole("combobox");
+    const selected = input.getAttribute("aria-activedescendant");
+    await act(async () => {
+      fireEvent.compositionStart(input);
+      fireEvent.keyDown(input, { key: "Enter" });
+      fireEvent.keyDown(input, { key: "Tab" });
+      fireEvent.keyDown(input, { key: "ArrowDown" });
+      fireEvent.keyDown(input, { key: "Escape" });
+      await Promise.resolve();
+    });
+    expect(surfaceRef.current?.isComposing()).toBe(true);
+    expect(input.getAttribute("aria-activedescendant")).toBe(selected);
+    await act(async () => {
+      fireEvent.compositionEnd(input);
+      fireEvent.keyDown(input, { key: "Enter", keyCode: 229 });
+      fireEvent.keyDown(input, { key: "Tab", keyCode: 229 });
+      fireEvent.keyDown(input, { key: "Enter", isComposing: true });
+      fireEvent.keyDown(input, { key: "Tab", isComposing: true });
+      await Promise.resolve();
+    });
+    expect(surfaceRef.current?.isComposing()).toBe(false);
+    expect(execute).not.toHaveBeenCalled();
+    expect(changeMode).not.toHaveBeenCalled();
+    expect(close).not.toHaveBeenCalled();
+    await act(async () => {
+      fireEvent.keyDown(input, { key: "Enter" });
+      await Promise.resolve();
+    });
+    expect(execute).toHaveBeenCalledOnce();
+    expect(close).toHaveBeenCalledOnce();
+  });
+
+  test("opens All with quick actions and recent content, and Actions with the complete catalog", async () => {
+    const { CommandPaletteSurface } = await import("./command-palette-surface");
+    const pages = Array.from({ length: 8 }, (_, index) =>
+      makePalettePage({
+        id: `default:recent-page-${index}`,
+        page: makePage({ id: `recent-page-${index}`, title: `Recent page ${index}` }),
+      }),
+    );
+    const threads = Array.from({ length: 8 }, (_, index) =>
+      makePaletteThread({
+        id: `thread:recent-${index}`,
+        threadId: `recent-${index}`,
+        title: `Recent chat ${index}`,
+      }),
+    );
+    function Harness() {
+      const [mode, setMode] = useState<CommandMenuMode>("root");
+      return (
+        <CommandPaletteSurface
+          open
+          openTriggerTick={1}
+          mode={mode}
+          commands={[
+            makePaletteCommand({ id: "newThread", title: "New chat" }),
+            makePaletteCommand({ id: "openFolder", title: "Open folder" }),
+            makePaletteCommand(),
+          ]}
+          pages={pages}
+          threads={threads}
+          pageSearchBatch={makePageSearchBatch({
+            query: "",
+            results: pages.map((page) => makePageSearchResult(page)),
+          })}
+          loading={false}
+          pagesLoading={false}
+          chatsLoading={false}
+          onChangeMode={setMode}
+          onRequestClose={() => undefined}
+          onExecute={() => undefined}
+        />
+      );
+    }
+    const view = render(<Harness />);
+    await settleAsyncRender();
+    expect(view.getByRole("group", { name: "Quick actions" })).toBeTruthy();
+    expect(view.getByRole("option", { name: "New chat" })).toBeTruthy();
+    expect(view.getByRole("option", { name: "Open folder" })).toBeTruthy();
+    expect(view.queryByRole("option", { name: "Settings" })).toBeNull();
+    expect(view.getAllByRole("option", { name: /Recent chat/u })).toHaveLength(5);
+    expect(view.getAllByRole("option", { name: /Recent page/u })).toHaveLength(5);
+    await act(async () => {
+      fireEvent.click(view.getByRole("tab", { name: "Actions" }));
+      await Promise.resolve();
+    });
+    expect(view.getAllByRole("option")).toHaveLength(3);
+    expect(view.getByRole("option", { name: "Settings" })).toBeTruthy();
+    expect(view.queryByRole("option", { name: /Recent/u })).toBeNull();
+  });
+
+  test("expands a discovery section without closing, losing the query, or moving selection", async () => {
+    const { CommandPaletteSurface } = await import("./command-palette-surface");
+    const pages = Array.from({ length: 12 }, (_, index) =>
+      makePalettePage({
+        id: `default:page-${index}`,
+        page: makePage({ id: `page-${index}`, title: `Page result ${index}` }),
+      }),
+    );
+    const close = vi.fn();
+    const execute = vi.fn();
+    function Harness() {
+      const [mode, setMode] = useState<CommandMenuMode>("root");
+      return (
+        <CommandPaletteSurface
+          open
+          openTriggerTick={1}
+          mode={mode}
+          initialQuery="page"
+          commands={[]}
+          pages={pages}
+          pageSearchBatch={makePageSearchBatch({
+            results: pages.map((page) => makePageSearchResult(page)),
+          })}
+          threadSearchBatch={{ query: "page", results: [], loading: false, error: null }}
+          loading={false}
+          pagesLoading={false}
+          chatsLoading={false}
+          onChangeMode={setMode}
+          onRequestClose={close}
+          onExecute={execute}
+        />
+      );
+    }
+    const view = render(<Harness />);
+    await settleAsyncRender();
+    const input = view.getByRole("combobox");
+    expect(view.getAllByRole("option", { name: /Page result/u })).toHaveLength(5);
+    await act(async () => {
+      fireEvent.keyDown(input, { key: "End" });
+      await Promise.resolve();
+    });
+    const more = view.getByRole("option", { name: "Show more" });
+    expect(input.getAttribute("aria-activedescendant")).toBe(more.id);
+    const insertionId = more.id;
+    await act(async () => {
+      fireEvent.keyDown(input, { key: "Enter" });
+      await Promise.resolve();
+    });
+    expect(view.getAllByRole("option", { name: /Page result/u })).toHaveLength(10);
+    expect(input).toHaveProperty("value", "page");
+    expect(document.activeElement).toBe(input);
+    expect(input.getAttribute("aria-activedescendant")).toBe(insertionId);
+    expect(view.getByRole("option", { name: /Page result 5/u }).id).toBe(insertionId);
+    const nextMore = view.getByRole("option", { name: "Show more" });
+    await act(async () => {
+      fireEvent.click(nextMore);
+      await Promise.resolve();
+    });
+    expect(view.getAllByRole("option", { name: /Page result/u })).toHaveLength(12);
+    expect(input.getAttribute("aria-activedescendant")).toBe(
+      view.getByRole("option", { name: /Page result 10/u }).id,
+    );
+    expect(view.queryByRole("option", { name: "Show more" })).toBeNull();
+    expect(document.activeElement).toBe(input);
+    await act(async () => {
+      fireEvent.click(view.getByRole("tab", { name: "Actions" }));
+      await Promise.resolve();
+    });
+    await act(async () => {
+      fireEvent.click(view.getByRole("tab", { name: "All" }));
+      await Promise.resolve();
+    });
+    expect(input).toHaveProperty("value", "page");
+    expect(view.getAllByRole("option", { name: /Page result/u })).toHaveLength(5);
+    expect(close).not.toHaveBeenCalled();
+    expect(execute).not.toHaveBeenCalled();
   });
 
   test("opens the top fuzzy description match when the selected result is activated", async () => {
@@ -553,7 +820,10 @@ describe("CommandPaletteSurface", () => {
 
     expect(textContent(container).includes("fuzzy search indxer")).toBe(true);
     expect(topResult).not.toBeNull();
-    fireEvent.click(topResult as HTMLElement);
+    await act(async () => {
+      fireEvent.click(topResult as HTMLElement);
+      await Promise.resolve();
+    });
 
     expect(closeCalls.length).toBe(1);
     expect(executedItems.length).toBe(1);
@@ -718,7 +988,7 @@ describe("CommandPaletteSurface", () => {
     expect(textContent(container)).not.toContain("Loading more Pages…");
   });
 
-  test("fills the root discovery budget with Pages without an independent Page cap", async () => {
+  test("caps root Page discovery at five results", async () => {
     const { CommandPaletteSurface } = await import("./command-palette-surface");
     const pages = Array.from({ length: 10 }, (_, index) =>
       makePalettePage({
@@ -759,7 +1029,7 @@ describe("CommandPaletteSurface", () => {
     const pageButtons = Array.from(container.querySelectorAll("button[cmdk-item]")).filter(
       (button) => button.textContent?.includes("Page result"),
     );
-    expect(pageButtons).toHaveLength(7);
+    expect(pageButtons).toHaveLength(5);
     expect(textContent(container)).toContain("Pages");
   });
 
@@ -838,7 +1108,7 @@ describe("CommandPaletteSurface", () => {
     expect(textContent(container)).toContain("Pages");
   });
 
-  test("uses only the root budget remaining after commands and chats for Pages", async () => {
+  test("keeps five Page results alongside independent command and chat sections", async () => {
     const { CommandPaletteSurface } = await import("./command-palette-surface");
     const pages = Array.from({ length: 8 }, (_, index) =>
       makePalettePage({
@@ -892,8 +1162,8 @@ describe("CommandPaletteSurface", () => {
     const pageButtons = Array.from(container.querySelectorAll("button[cmdk-item]")).filter(
       (button) => button.textContent?.includes("Page result"),
     );
-    expect(container.querySelectorAll("button[cmdk-item]")).toHaveLength(7);
-    expect(pageButtons).toHaveLength(3);
+    expect(container.querySelectorAll("button[cmdk-item]")).toHaveLength(10);
+    expect(pageButtons).toHaveLength(5);
   });
 
   test("renders and executes chat results from chats mode", async () => {
@@ -941,7 +1211,10 @@ describe("CommandPaletteSurface", () => {
     expect(textContent(container).includes("Chats")).toBe(true);
     expect(textContent(container).includes("Thread transcript search")).toBe(true);
     expect(topResult).not.toBeNull();
-    fireEvent.click(topResult as HTMLElement);
+    await act(async () => {
+      fireEvent.click(topResult as HTMLElement);
+      await Promise.resolve();
+    });
 
     expect(closeCalls.length).toBe(1);
     expect(executedItems.length).toBe(1);
@@ -1099,7 +1372,7 @@ describe("CommandPaletteSurface", () => {
     expect(textContent(container)).toContain("Chats");
   });
 
-  test("reserves the ninth root chat slot for current-query loading state", async () => {
+  test("keeps five root metadata chats interactive while content search is pending", async () => {
     const { CommandPaletteSurface } = await import("./command-palette-surface");
     const threads = Array.from({ length: 9 }, (_, index) =>
       makePaletteThread({
@@ -1130,7 +1403,7 @@ describe("CommandPaletteSurface", () => {
 
     await settleAsyncRender();
 
-    expect(container.querySelectorAll("button[cmdk-item]")).toHaveLength(8);
+    expect(container.querySelectorAll("button[cmdk-item]")).toHaveLength(6);
     expect(textContent(container)).toContain("Loading chats…");
   });
 
@@ -1222,7 +1495,7 @@ describe("CommandPaletteSurface", () => {
       <CommandPaletteSurface
         open
         openTriggerTick={4}
-        mode="root"
+        mode="actions"
         initialQuery=""
         commands={[
           makePaletteCommand({
@@ -1269,7 +1542,10 @@ describe("CommandPaletteSurface", () => {
     expect(firstActiveId !== null).toBe(true);
     expect(firstActive?.textContent?.includes("Forward command")).toBe(true);
 
-    fireEvent.keyDown(input, { key: "ArrowDown" });
+    await act(async () => {
+      fireEvent.keyDown(input, { key: "ArrowDown" });
+      await Promise.resolve();
+    });
     await settleAsyncRender();
 
     const nextActiveId = input.getAttribute("aria-activedescendant");
@@ -1278,10 +1554,95 @@ describe("CommandPaletteSurface", () => {
     expect(nextActiveId !== firstActiveId).toBe(true);
     expect(nextActive?.textContent?.includes("Settings")).toBe(true);
     expect(textContent(container).includes("Mock")).toBe(false);
+    await act(async () => {
+      fireEvent.keyDown(input, { key: "ArrowDown" });
+      await Promise.resolve();
+    });
+    expect(input.getAttribute("aria-activedescendant")).toBe(nextActiveId);
+    await act(async () => {
+      fireEvent.keyDown(input, { key: "Home" });
+      await Promise.resolve();
+    });
+    expect(input.getAttribute("aria-activedescendant")).toBe(firstActiveId);
+    await act(async () => {
+      fireEvent.keyDown(input, { key: "ArrowUp" });
+      await Promise.resolve();
+    });
+    expect(input.getAttribute("aria-activedescendant")).toBe(firstActiveId);
+    await act(async () => {
+      fireEvent.keyDown(input, { key: "End" });
+      await Promise.resolve();
+    });
 
-    fireEvent.keyDown(input, { key: "Enter" });
+    await act(async () => {
+      fireEvent.keyDown(input, { key: "Enter" });
+      await Promise.resolve();
+    });
     expect(executedItems.length).toBe(1);
     expect(executedItems[0]?.id).toBe("settings");
+  });
+
+  test("jumps between enabled section entries and list edges with modified arrows", async () => {
+    const { CommandPaletteSurface } = await import("./command-palette-surface");
+    const view = render(
+      <CommandPaletteSurface
+        open
+        openTriggerTick={1}
+        mode="actions"
+        commands={[
+          makePaletteCommand({ id: "suggested", title: "Suggested action", group: "Suggested" }),
+          makePaletteCommand({
+            id: "disabled-nav",
+            title: "Disabled navigation",
+            group: "Navigation",
+            disabled: true,
+            priority: 200,
+          }),
+          makePaletteCommand({ id: "back", title: "Navigate back", group: "Navigation" }),
+          makePaletteCommand(),
+          makePaletteCommand({
+            id: "disabled-app",
+            title: "Unavailable app action",
+            group: "App",
+            disabled: true,
+          }),
+        ]}
+        loading={false}
+        pagesLoading={false}
+        chatsLoading={false}
+        onChangeMode={() => undefined}
+        onRequestClose={() => undefined}
+        onExecute={() => undefined}
+      />,
+    );
+    await settleAsyncRender();
+    const input = view.getByRole("combobox");
+    const press = async (key: string, modifiers: { altKey?: boolean; metaKey?: boolean }) => {
+      await act(async () => {
+        fireEvent.keyDown(input, { key, ...modifiers });
+        await Promise.resolve();
+      });
+    };
+    await press("ArrowDown", { altKey: true });
+    expect(input.getAttribute("aria-activedescendant")).toBe(
+      view.getByRole("option", { name: "Navigate back" }).id,
+    );
+    await press("ArrowDown", { altKey: true });
+    expect(input.getAttribute("aria-activedescendant")).toBe(
+      view.getByRole("option", { name: "Settings" }).id,
+    );
+    await press("ArrowUp", { altKey: true });
+    expect(input.getAttribute("aria-activedescendant")).toBe(
+      view.getByRole("option", { name: "Navigate back" }).id,
+    );
+    await press("ArrowDown", { metaKey: true });
+    expect(input.getAttribute("aria-activedescendant")).toBe(
+      view.getByRole("option", { name: "Settings" }).id,
+    );
+    await press("ArrowUp", { metaKey: true });
+    expect(input.getAttribute("aria-activedescendant")).toBe(
+      view.getByRole("option", { name: "Suggested action" }).id,
+    );
   });
 
   test("marks mock commands with a visible badge and keeps them inert", async () => {
@@ -1292,7 +1653,7 @@ describe("CommandPaletteSurface", () => {
       <CommandPaletteSurface
         open
         openTriggerTick={5}
-        mode="root"
+        mode="actions"
         initialQuery=""
         commands={[
           makePaletteCommand({
@@ -1337,7 +1698,10 @@ describe("CommandPaletteSurface", () => {
     expect(mockButton !== undefined).toBe(true);
     expect(mockButton?.getAttribute("aria-disabled")).toBe("true");
     if (mockButton) {
-      fireEvent.click(mockButton);
+      await act(async () => {
+        fireEvent.click(mockButton);
+        await Promise.resolve();
+      });
     }
     expect(closeCalls.length).toBe(0);
     expect(executedItems.length).toBe(0);
@@ -1500,6 +1864,7 @@ test("file search completes directories, opens the selected native path, and rel
   });
   const execute = vi.fn();
   const close = vi.fn();
+  const changeMode = vi.fn();
   const view = render(
     <CommandPaletteSurface
       open
@@ -1511,7 +1876,7 @@ test("file search completes directories, opens the selected native path, and rel
       loading={false}
       pagesLoading={false}
       chatsLoading={false}
-      onChangeMode={() => undefined}
+      onChangeMode={changeMode}
       onRequestClose={close}
       onExecute={execute}
     />,
@@ -1521,6 +1886,13 @@ test("file search completes directories, opens the selected native path, and rel
     const input = view.getByRole("combobox");
     await act(async () => {
       fireEvent.keyDown(input, { key: "Tab" });
+      await Promise.resolve();
+    });
+    expect(changeMode).toHaveBeenCalledWith("root");
+    expect(input).toHaveProperty("value", "sr");
+    expect(execute).not.toHaveBeenCalled();
+    await act(async () => {
+      fireEvent.keyDown(input, { key: "Enter" });
       await Promise.resolve();
     });
     await waitFor(() => expect(input).toHaveProperty("value", "src/"));

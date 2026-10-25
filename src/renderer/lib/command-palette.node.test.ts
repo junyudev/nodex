@@ -3,15 +3,19 @@ import {
   COMMAND_PALETTE_PAGE_FILTERS_STORAGE_KEY,
   LEGACY_COMMAND_PALETTE_PAGE_FILTERS_STORAGE_KEY,
   areCommandPalettePageFiltersEqual,
+  cycleCommandPaletteMode,
   filterCommandPaletteItems,
+  getCommandPaletteScopes,
   getDefaultCommandPalettePageFilters,
   readCommandPalettePageFilters,
   summarizeCommandPalettePageFilters,
   type CommandPalettePage,
   type CommandPaletteCommand,
   type CommandPaletteThread,
+  type CommandMenuMode,
   writeCommandPalettePageFilters,
 } from "./command-palette";
+import { buildCommandPaletteSectionsModel } from "./command-palette-sections";
 import { createCommandPaletteThreadSearchIndex } from "./command-palette-thread-search";
 import type { DatabasePageSummary } from "./types";
 import { plainTextToPortableRichText } from "../../shared/block-documents/portable-rich-text";
@@ -144,7 +148,116 @@ function withMockLocalStorage(run: () => void): void {
   }
 }
 
+describe("command palette scopes", () => {
+  test("cycles available scopes in both directions and wraps at the ends", () => {
+    const scopes = getCommandPaletteScopes(true);
+    expect(scopes.map((scope) => scope.mode)).toEqual([
+      "root",
+      "actions",
+      "chats",
+      "pages",
+      "files",
+    ]);
+    let mode: CommandMenuMode = "root";
+    const visited: CommandMenuMode[] = [];
+    for (let index = 0; index < scopes.length; index += 1) {
+      mode = cycleCommandPaletteMode(mode, 1, true);
+      visited.push(mode);
+    }
+    expect(visited).toEqual(["actions", "chats", "pages", "files", "root"]);
+    expect(cycleCommandPaletteMode("root", -1, true)).toBe("files");
+    expect(cycleCommandPaletteMode("chats", -1, true)).toBe("actions");
+  });
+
+  test("omits Files without local search and recovers when its scope disappears", () => {
+    expect(getCommandPaletteScopes(false).map((scope) => scope.mode)).toEqual([
+      "root",
+      "actions",
+      "chats",
+      "pages",
+    ]);
+    expect(cycleCommandPaletteMode("pages", 1, false)).toBe("root");
+    expect(cycleCommandPaletteMode("root", -1, false)).toBe("pages");
+    expect(cycleCommandPaletteMode("files", 1, false)).toBe("root");
+    expect(cycleCommandPaletteMode("files", -1, false)).toBe("pages");
+  });
+});
+
+describe("command palette discovery sections", () => {
+  test("stops offering expansion at sixty even when more candidates exist", () => {
+    const threads = Array.from({ length: 65 }, (_, index) =>
+      makePaletteThread({ id: `thread:${index}`, threadId: `${index}`, title: `Chat ${index}` }),
+    );
+    const sections = (limit: number) =>
+      buildCommandPaletteSectionsModel({
+        mode: "root",
+        query: "",
+        commands: [],
+        pages: [],
+        projects: [],
+        activeProjectId: null,
+        recentPageIds: [],
+        threads,
+        discoveryLimits: { chats: limit, pages: 5, files: 5 },
+      });
+    const expandable = sections(55).flatItems;
+    expect(expandable.filter((item) => item.kind === "thread")).toHaveLength(55);
+    expect(expandable.at(-1)).toMatchObject({ kind: "more", scope: "chats" });
+    const bounded = sections(60).flatItems;
+    expect(bounded).toEqual(threads.slice(0, 60));
+  });
+
+  test("orders quick actions by task and excludes mock capabilities", () => {
+    const model = buildCommandPaletteSectionsModel({
+      mode: "root",
+      query: "",
+      commands: [
+        makeCommand({ id: "openFolder", title: "Open folder", priority: 900 }),
+        makeCommand({ id: "createPage", title: "Create Page", priority: 800 }),
+        makeCommand({ id: "newThread", title: "New chat", priority: 1 }),
+        makeCommand(),
+      ],
+      pages: [],
+      projects: [],
+      activeProjectId: null,
+      recentPageIds: [],
+      threads: [],
+    });
+    expect(model.flatItems.map((item) => item.id)).toEqual([
+      "newThread",
+      "createPage",
+      "openFolder",
+    ]);
+    const mock = buildCommandPaletteSectionsModel({
+      mode: "root",
+      query: "",
+      commands: [{ ...makeCommand({ id: "openFolder" }), mockReason: "Unavailable" }],
+      pages: [],
+      projects: [],
+      activeProjectId: null,
+      recentPageIds: [],
+      threads: [],
+    });
+    expect(mock.flatItems).toEqual([]);
+  });
+});
+
 describe("filterCommandPaletteItems", () => {
+  test("keeps Actions confined to ranked commands even when content matches", () => {
+    const result = filterCommandPaletteItems({
+      query: "settings",
+      mode: "actions",
+      commands: [makeCommand(), makeCommand({ id: "back", title: "Go back", keywords: [] })],
+      pages: [makePalettePage({ page: makePage({ title: "Settings guide" }) })],
+      threads: [makePaletteThread({ title: "Settings discussion" })],
+    });
+
+    expect(result.mode).toBe("actions");
+    expect(result.commands.map((command) => command.id)).toEqual(["open-settings"]);
+    expect(result.pages).toEqual([]);
+    expect(result.threads).toEqual([]);
+  });
+
   test("supports command-only root mode without a > prefix", () => {
     const result = filterCommandPaletteItems({
       query: "sett",

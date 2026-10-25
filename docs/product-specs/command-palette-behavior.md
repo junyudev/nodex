@@ -3,12 +3,13 @@
 ## Intent
 
 The command palette is the global launcher for fast workbench navigation.
-It has explicit entry modes while keeping root search useful when users type a task title without switching modes first:
+Its scope controls keep broad search and focused navigation in one surface:
 
-- root mode searches commands immediately and progressively adds chats and Pages as the query becomes specific
-- chats mode searches the current non-archived sidebar chats
-- page mode searches Library Pages and owns the Page filter controls
-- files mode searches the selected local workspace through the native file-search session
+- All shows quick actions, recent chats, and Page suggestions, then searches actions, chats, Pages, and available workspace files as users type
+- Actions searches the command catalog
+- Chats searches current non-archived chats
+- Pages searches Library Pages and owns the Page filter controls
+- Files searches the selected local workspace through the native file-search session
 - result ranking favors fast recall over exhaustive inspection
 - matching context is visible directly in the result row through inline highlights and short previews
 
@@ -16,77 +17,83 @@ The palette is a transient overlay and does not become part of durable navigatio
 
 ## Launch and Scope
 
-- `Cmd/Ctrl+K` opens the command palette from anywhere in the app in root command mode, including editable surfaces.
-- `Cmd/Ctrl+Shift+P` opens the same root command mode.
-- `Cmd/Ctrl+G` opens chats mode.
-- `Cmd/Ctrl+P` opens page mode.
-- The sidebar `Search` row opens page mode and shows the `Cmd/Ctrl+P` shortcut.
+- `Cmd/Ctrl+K` opens the command palette from anywhere in the app with All selected, including editable surfaces.
+- `Cmd/Ctrl+Shift+P` opens the same All scope.
+- `Cmd/Ctrl+G` opens Chats.
+- `Cmd/Ctrl+P` opens Pages.
+- The sidebar `Search` row opens Pages and shows the `Cmd/Ctrl+P` shortcut.
 - A leading `>` is plain query text and no longer switches modes.
 - The palette searches the complete authorized Page corpus of every available Project context, not only Pages already loaded by a Board or the active Project.
 - The palette combines the current non-archived local chat catalog with eligible root chats returned by app-server search. A server-only result is materialized locally only when opened.
-- `Search files` is available when the selected context has local workspace roots. It shares native search lifecycle and ranking with the Composer and Files panel. `Tab` or `Enter` on a directory completes its path; accepting a file opens a preview. Remote contexts do not expose local file opening.
+- `Search files` is available when the selected context has local workspace roots. It shares native search lifecycle and ranking with the Composer and Files panel. `Enter` on a directory completes its path; accepting a file opens a preview. Remote contexts do not expose local file opening.
 - `Force reload skills` is available when the selected chat supports skill discovery. It refreshes that chat's provider and scope, including its Claude Profile and Project or Codex execution host and skill roots. Unsupported providers do not expose the command. A pending refresh cannot replace another chat's inventory after selection changes.
 - The palette closes after executing a result.
 - Pressing `Enter` on a selected Page result materializes and selects that Page as a durable
   surface: in the active Session when one owns the workbench, otherwise in the target Project
   Scene. An unopened Page follows the same path as a clicked result; closing the palette is not
   evidence that navigation succeeded.
-- Closing the palette clears the query and resets the selection index.
-- The palette overlays the workbench without dimming the background content.
+- Closing the palette clears the query and resets the selection index. Reopening starts discovery sections at their initial result counts.
+- The top row contains All, Actions, Chats, and Pages; Files appears when local workspace roots are available. Changing scope keeps the current query. Pointer selection and Tab cycling return focus to the search field; arrow navigation within the scope tabs keeps focus on the tabs.
+- The palette uses a translucent surface with 65% surface color, a 24px backdrop blur, rounded corners, a hairline boundary, and a shadow. A black overlay at 13.33% opacity lightly dims the workbench.
+- The centered palette is 768px wide and 504px high, bounded to 92vw and 90vh. The scope and input rows stay fixed while results scroll, so changing queries or scopes does not resize the surface.
 
-## Modes
+## Scopes
 
-### Root Command Mode
+### All Scope
 
-Root command mode is opened by `Cmd/Ctrl+K` and `Cmd/Ctrl+Shift+P`.
+All is the initial scope for `Cmd/Ctrl+K` and `Cmd/Ctrl+Shift+P`.
 
-- Root mode always searches command/action rows.
-- A root query shorter than `2` characters remains command-only.
-- At `2` Unicode characters, matching local chat and Page metadata appears in trailing `Chats` and `Pages` sections while commands remain visible.
-- At `2` Unicode characters, root mode synchronously searches the warm, Core-authorized Page metadata projection and starts bounded Core body enrichment. At `3` characters, the `Chats` section additionally merges bounded app-server chat-history results.
-- Chats and Pages are represented as explicit command rows such as `Search chats` and `Search Pages`.
-- Executing `Search chats` switches to chats mode. Executing `Search Pages` switches to page mode.
-- `Search files` switches to files mode when local workspace roots are available.
-- Root results remain grouped as commands, Chats, then Pages; scores from different result types are never interleaved.
-- Pages use only the discovery-row budget left after commands, Chats, and visible search-status rows. Root mode has no separate Page-result cap, so Pages can fill every remaining row.
-- For queries that include app-server chat history, root mode waits for that Chat result count to settle before revealing Pages so the final section does not appear and disappear as Chats arrive.
-- Root Page discovery ignores persisted Page-mode filters because those controls are not visible in root mode.
-- Disabled commands remain visible so users can understand available affordances, but they are skipped by keyboard selection and cannot be executed.
-- Commands use customized command-keymap shortcut labels where a matching command id exists.
+- An empty query shows the supported `New chat`, `Create Page`, and `Open folder` actions under Quick actions, followed initially by up to five recent chats and five Page suggestions. Development-only mock actions are excluded from Quick actions.
+- A one-character query searches actions only.
+- At `2` Unicode characters, matching local chat and Page metadata appears in trailing Chats and Pages sections while matching actions remain visible. Available local workspace files are searched through the native file-search session.
+- At `2` Unicode characters, All synchronously searches the warm, Core-authorized Page metadata projection and starts bounded Core body enrichment. At `3` characters, Chats additionally merges bounded app-server chat-history results.
+- Results remain grouped as actions, Chats, Pages, then Files; scores from different result types are never interleaved.
+- Chats, Pages, and Files each initially show up to five results. Each section exposes `Show more` when additional results are available; activating it appends up to five results in that section without closing the palette. Focus stays in the input and selection stays at the insertion point, allowing keyboard navigation to continue through the newly revealed results. Actions and search-status rows do not consume another section's limit, and Page results appear independently of pending chat-history search.
+- Changing scope resets section expansion to its initial five-result counts. Page discovery ignores persisted Pages filters because those controls are not visible in All.
+- Search actions such as `Search chats`, `Search Pages`, and `Search files` enter the corresponding scope with an empty query. This differs from selecting a scope in the top row, which preserves the query.
+
+### Actions Scope
+
+Actions contains the full command catalog, including when the query is empty.
+All uses the same catalog for non-empty queries.
+
 - Commands are grouped as Suggested, Chat, Navigation, Panels, Project, Configure, Skills, and App.
+- Disabled commands remain visible with their reason, but keyboard selection skips them and they cannot be executed.
+- Commands use customized command-keymap shortcut labels where a matching command id exists.
+- Command rows omit explanatory subtitles unless needed to explain an unavailable action.
 - Unsupported shell commands appear only in development as disabled mock rows with a `Mock` badge; production hides them entirely. Supported Nodex-only actions appear in the closest matching group.
-- `Toggle browser panel` and `Open Page Stage` are intentionally not part of the root command catalog.
+- `Toggle browser panel` and `Open Page Stage` are intentionally not part of the command catalog.
 
-### Chats Mode
+### Chats Scope
 
-Chats mode is opened by `Cmd/Ctrl+G` or the root-mode `Search chats` row.
+Chats is opened by `Cmd/Ctrl+G`, the Chats scope control, or `Search chats`.
 
-- Chats mode shows chat rows only.
-- Commands and Pages are hidden entirely in chats mode.
+- Chats shows chat rows only.
+- Commands and Pages are hidden entirely in Chats.
 - Empty query shows recent and pinned sidebar chats when available.
 - User-facing row text uses `chat`; internal data structures may still use `thread`.
 - Chat metadata search is local and immediate. Transcript discovery and snippets come only from the bounded app-server search path described below.
 
-### Page Mode
+### Pages Scope
 
-Page mode is opened by `Cmd/Ctrl+P`, the sidebar `Search` row, or the root-mode `Search Pages` row.
+Pages is opened by `Cmd/Ctrl+P`, the sidebar `Search` row, the Pages scope control, or `Search Pages`.
 
-- Page mode shows Page rows only.
-- Commands and chats are hidden entirely in page mode.
+- Pages shows Page rows only.
+- Commands and chats are hidden entirely in Pages.
 - Empty query shows default Page suggestions.
-- Page mode keeps a trailing `Filter` button on the search-input row.
-- Query-fresh metadata rows appear in the input event. While Core body enrichment is pending, the final result slot is reserved for `Loading more Pages…`; `No matching pages.` appears only after the current query, filters, Project scope, and projection revision have settled with no matches.
+- Pages keeps a trailing `Filter` button on the search-input row.
+- Query-fresh metadata rows appear in the input event. While Core body enrichment is pending, `Loading more Pages…` appears below the current results; `No matching pages.` appears only after the current query, filters, Project scope, and projection revision have settled with no matches.
 - Typing a newer query or closing the palette cancels obsolete body enrichment as normal control flow. Superseded work never produces a Main-process error or changes the current query to an unavailable state.
 - A failed enrichment keeps synchronous metadata rows and shows `Full Page search is unavailable`. It never falls back to an incomplete corpus assembled from mounted Boards.
-- Clicking `Filter` opens a transient popover with property filters for status, priority, tags, assignee, and project. Closing it returns focus to the Page search field so typing and progressive Escape handling resume without an intervening tooltip layer.
+- Clicking `Filter` opens a transient popover with property filters for status, priority, tags, assignee, and project. Escape closes the popover before the palette. Closing it returns focus to the Page search field without an intervening tooltip layer.
 - When any palette filters are active, the palette shows a compact summary row directly under the input, using the same compact pill language as the DB view toolbar.
 - Palette Page filters persist across palette reopen and app reload, but the free-text query still clears on close.
 
-### Files Mode
+### Files Scope
 
-Files mode uses the shared native file-search controller and reports loading, empty, and failure states.
+Files uses the shared native file-search controller and reports loading, empty, and failure states. All uses the same controller for queries of at least two characters when local workspace roots are available.
 
-- Query changes update the existing native session; host/root changes and closing the palette release it.
+- Query changes update the existing native session; host/root changes, leaving an eligible search scope, and closing the palette release it.
 - Directory results complete the query; file results open a preview in the selected owner.
 - File search has no default keyboard binding; its configurable binding leaves `Cmd/Ctrl+P` assigned to Pages.
 
@@ -145,7 +152,7 @@ For empty queries, Core returns suggestions ordered by:
 - Core may reuse a derived in-memory Page-search projection only while both Store epoch and commit head still match the read snapshot. The first read after a committed change rebuilds it before answering.
 - Core publishes a read-only metadata bootstrap fenced by Profile/Store identity, commit head and the exact query. Library change events refresh affected Pages or replace the snapshot; an identity or query change invalidates it before further synchronous reads.
 - The renderer prewarms this projection, queries it synchronously on every live input, and debounces only complete Core enrichment. It does not persist the projection or implement matching/ranking in TypeScript.
-- Root mode requests at most `12` Page results; focused Page mode requests at most `60`.
+- All and Pages request at most `60` Page results. All initially displays `5`; Show more reveals the next batch without replacing the authoritative search or clearing existing body matches. Pages displays up to `60`.
 - Filter facets come from the same current Core projection as search results.
 
 ## Page Result Presentation
@@ -154,9 +161,9 @@ For empty queries, Core returns suggestions ordered by:
 
 Each Page result renders:
 
-- canonical Project marker
-- Page title
-- project and column subtitle
+- a Page icon in All or the canonical Project marker in Pages
+- Page key when available and Page title
+- project and column subtitle for non-empty queries
 
 If the query matched the title, Core returns the exact display-text segments to highlight inline rather than asking the renderer to reconstruct a match.
 
@@ -187,7 +194,7 @@ If the query matched body or Property text, the result renders a contextual prev
 
 If a result has no body or Property excerpt, no preview is shown.
 
-In root mode, Page rows stay compact: metadata badges are omitted and a body excerpt is clamped to one line. Focused Page mode retains the full Page row treatment above.
+In All, Page rows stay compact: metadata badges are omitted and a body excerpt is clamped to one line. Focused Pages retains the full match treatment above. Empty-query suggestions omit the subtitle in both scopes.
 
 ## Chat Search Model
 
@@ -233,28 +240,24 @@ For non-empty queries, the best matched field orders results first (`title`, `pr
 The renderer requests bounded chat search through `codex:threads:palette:search`, with a 200 ms debounce:
 
 - the request limit is capped at `60`
-- explicit Chats mode searches for every non-empty query; root mode starts at `3` characters
+- Chats searches for every non-empty query; All starts at `3` characters
 - main calls paginated app-server `thread/search`, ordered by `updated_at` descending, until it reaches the result limit or exhausts the cursor
 - main drops archived, ephemeral, parent/subagent, and internal-source rows, guards repeated cursors, and enriches hits from local thread/session/Project state when available
 - a normalized query/limit cache lasts 30 seconds and identical in-flight requests are deduplicated
 - renderer results are accepted only for the current normalized query; a stale response cannot replace newer rows
+- expanding the same query retains confirmed content matches while the larger request loads or fails; changing the query or closing the palette clears them
 - app-server errors show a compact fallback status while local metadata matches remain interactive
 - Nodex stores no transcript copy, FTS table, retry state, or backfill queue for this feature
 
 ### Chat Result Presentation
 
-Each chat result renders:
-
-- chat icon
-- chat title
-- project, cwd basename, branch, and updated date metadata
-- optional preview/snippet row
+Each chat result renders a chat icon and title. Empty-query recent rows keep a compact single-line layout with the Project name at the trailing edge when available. Non-empty queries add project, cwd basename, branch, and updated date metadata plus any matching preview or snippet.
 
 Metadata matches highlight title, project/Chats context, cwd, branch, and preview characters inline without badge-like match chips. App-server snippets are normalized and highlighted against the current query in the renderer. CJK, emoji, and combining marks use one code-point coordinate system so highlighting never corrupts visible text.
 
 ## Command Search Model
 
-- Commands are matched only in root mode.
+- Commands are matched in All and Actions.
 - Command ranking remains lightweight and heuristic rather than MiniSearch-based.
 - Ranking considers exact/prefix/substring and fuzzy subsequence matches across title, subtitle, and keyword text, plus explicit command priority and active-state bonus.
 - Matching command-title characters are highlighted inline; a failed fuzzy attempt leaves the original title untouched.
@@ -262,18 +265,32 @@ Metadata matches highlight title, project/Chats context, cwd, branch, and previe
 
 ## Keyboard Behavior
 
-- `ArrowDown` / `ArrowUp` moves selection and skips disabled commands.
-- `Home` / `End` jumps to the first or last visible result.
-- `Enter` executes the selected result.
-- `Escape` clears the query when the query is non-empty.
-- When the query is empty, standard dialog close behavior applies.
+- The search field keeps focus while the selected result is exposed through the combobox's active descendant. Result rows do not enter the Tab sequence.
+- `ArrowDown` / `ArrowUp`, or `Ctrl+J` / `Ctrl+N` and `Ctrl+K` / `Ctrl+P`, move selection and skip disabled commands. Selection stops at the first and last enabled result instead of wrapping.
+- `Home` / `End`, or `Meta+ArrowUp` / `Meta+ArrowDown`, jumps to the first or last enabled result.
+- `Alt+ArrowUp` / `Alt+ArrowDown` moves to the first enabled result in the previous or next group, stopping at the first or last group.
+- `Enter` executes the selected result. A directory completes the path; `Show more` expands its section. Both keep the palette open.
+- `Tab` / `Shift+Tab` in the search field cycles forward/backward through available scopes, wrapping at either end and preserving the query.
+- `F6` moves focus from the search field to Filter in Pages, or to the active scope tab in other scopes. From Filter or the scope tabs, `F6` returns to the search field.
+- The scope row uses tablist semantics. `ArrowLeft` / `ArrowRight` moves between scope tabs and activates them; `Home` / `End` selects the first or last scope. Keyboard scope navigation retains focus on the tabs and preserves the query.
+- `Escape` closes the palette directly, including with a non-empty query. An open nested Page filter popover consumes Escape first.
+- IME composition prevents palette keyboard commands from executing or closing the palette while text is being composed.
 
 ## Result Limits
 
-- root mode shows up to `100` matching command rows and up to `9` progressive chat rows; Pages appear only when the combined command, Chat, and status-row count is below the `7`-row discovery budget, then fill the remaining budget without a separate Page cap
-- chats mode shows up to `9` chat rows
-- page mode shows up to `12` Page rows
-- files mode displays up to 50 native file and directory matches after path exclusions
+- All with an empty query shows supported quick actions and initially up to `5` chats and `5` Pages.
+- All with a non-empty query shows up to `100` matching command rows and, once the relevant search threshold is met, initially up to `5` chats, `5` Pages, and `5` native file/directory matches.
+- Each All content section expands independently in increments of `5` through `Show more`. Chat request budgets grow with expansion, up to `60`; Page expansion reveals the already bounded `60`-result search, and native Files retains its `50`-match bound. Expansion stops at the available results or that category's bound. Status rows do not displace another category.
+- Actions shows up to `100` matching command rows.
+- Chats shows up to `25` chat rows, with pending history-search status below the current results.
+- Pages shows up to `60` Page rows, with pending enrichment status below the current results.
+- Files displays up to `50` native file and directory matches after path exclusions.
+
+The palette owns transient scope, query, section expansion, and selection. A single
+result model composes command groups and independently bounded discovery sections,
+including their expansion rows and search status. Search providers retain their
+own ranking, query freshness, and lifecycle rules; expanding one section does not
+change another section's result order or budget.
 
 ## Execution Semantics
 
@@ -315,7 +332,6 @@ Supported actions currently include:
 - quoted phrase operators
 - inline search qualifiers or advanced query syntax
 - persistent search history
-- multi-snippet previews per Page
 - multi-snippet previews per chat
 - syntax-colored rich-text previews
 

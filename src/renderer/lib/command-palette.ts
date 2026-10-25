@@ -40,7 +40,35 @@ export interface CommandPaletteCommand {
   searchTitleSegments?: CommandPalettePageSearchPreviewSegment[] | null;
 }
 
-export type CommandMenuMode = "root" | "chats" | "pages" | "files";
+export type CommandMenuMode = "root" | "actions" | "chats" | "pages" | "files";
+
+const COMMAND_PALETTE_SCOPES: readonly {
+  readonly mode: CommandMenuMode;
+  readonly label: string;
+}[] = [
+  { mode: "root", label: "All" },
+  { mode: "actions", label: "Actions" },
+  { mode: "chats", label: "Chats" },
+  { mode: "pages", label: "Pages" },
+  { mode: "files", label: "Files" },
+];
+
+export function getCommandPaletteScopes(canSearchFiles: boolean) {
+  return canSearchFiles
+    ? COMMAND_PALETTE_SCOPES
+    : COMMAND_PALETTE_SCOPES.filter((scope) => scope.mode !== "files");
+}
+
+export function cycleCommandPaletteMode(
+  mode: CommandMenuMode,
+  direction: -1 | 1,
+  canSearchFiles: boolean,
+): CommandMenuMode {
+  const scopes = getCommandPaletteScopes(canSearchFiles);
+  const currentIndex = scopes.findIndex((scope) => scope.mode === mode);
+  if (currentIndex < 0) return direction === 1 ? "root" : "pages";
+  return scopes[(currentIndex + direction + scopes.length) % scopes.length]!.mode;
+}
 
 export interface CommandMenuOpenRequest {
   mode: CommandMenuMode;
@@ -638,7 +666,7 @@ export function filterCommandPaletteItems(input: {
   const tokens = tokenizeSearchQuery(query);
   const preferActiveProject = input.preferActiveProject ?? false;
 
-  if (input.mode === "root") {
+  if (input.mode === "root" || input.mode === "actions") {
     const commands = input.commands
       .map((item) => rankCommand(item, query, tokens))
       .filter((item): item is ScoredCommand => item !== null)

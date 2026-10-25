@@ -69,6 +69,10 @@ function makeSearchBatch(
 
 describe("command palette chat result selection", () => {
   test("switches from commands to metadata and then content at the root thresholds", () => {
+    expect(getCommandPaletteThreadSearchPlan("root", "  ")).toEqual({
+      includeContentResults: false,
+      maxResults: 9,
+    });
     expect(getCommandPaletteThreadSearchPlan("root", "a")).toBeNull();
     expect(getCommandPaletteThreadSearchPlan("root", "ab")).toEqual({
       includeContentResults: false,
@@ -80,8 +84,29 @@ describe("command palette chat result selection", () => {
     });
     expect(getCommandPaletteThreadSearchPlan("chats", "a")).toEqual({
       includeContentResults: true,
+      maxResults: 25,
+    });
+    expect(getCommandPaletteThreadSearchPlan("root", "🦊")).toBeNull();
+    expect(getCommandPaletteThreadSearchPlan("root", "🦊猫")).toEqual({
+      includeContentResults: false,
       maxResults: 9,
     });
+    expect(getCommandPaletteThreadSearchPlan("actions", "chat")).toBeNull();
+  });
+
+  test("shows twenty-five recent chats in Chats without starting content search", () => {
+    const plan = getCommandPaletteThreadSearchPlan("chats", "");
+    const threads = Array.from({ length: 30 }, (_, index) =>
+      makeThread({ id: `thread:${index}`, threadId: `${index}`, title: `Chat ${index}` }),
+    );
+    const results = selectCommandPaletteChatResults({
+      query: "",
+      threads,
+      threadLimit: plan?.maxResults,
+    });
+
+    expect(plan?.includeContentResults).toBe(false);
+    expect(results).toEqual(threads.slice(0, 25));
   });
 
   test("searches projectless and sessionless chats through metadata labels", () => {

@@ -19,6 +19,7 @@ import {
 } from "./command-palette-thread-search";
 
 const DEFAULT_THREAD_LIMIT = 9;
+const CHATS_MODE_THREAD_LIMIT = 25;
 const CONTENT_SEARCH_LIMIT = 60;
 const THREAD_SEARCH_DEBOUNCE_MS = 200;
 const THREAD_SEARCH_CACHE_TTL_MS = 30_000;
@@ -56,13 +57,13 @@ export function getCommandPaletteThreadSearchPlan(
   mode: CommandMenuMode,
   query: string,
 ): CommandPaletteThreadSearchPlan | null {
-  const length = query.trim().length;
+  const length = Array.from(query.trim()).length;
   if (mode === "root") {
-    if (length < 2) return null;
+    if (length === 1) return null;
     return { includeContentResults: length >= 3, maxResults: DEFAULT_THREAD_LIMIT };
   }
   if (mode === "chats") {
-    return { includeContentResults: length > 0, maxResults: DEFAULT_THREAD_LIMIT };
+    return { includeContentResults: length > 0, maxResults: CHATS_MODE_THREAD_LIMIT };
   }
   return null;
 }
@@ -246,7 +247,12 @@ export function useCommandPaletteThreadSearch({
     }
 
     let cancelled = false;
-    setBatch({ query: normalizedQuery, results: [], loading: true, error: null });
+    setBatch((current) => ({
+      query: normalizedQuery,
+      results: current.query === normalizedQuery ? current.results : [],
+      loading: true,
+      error: null,
+    }));
     const timer = setTimeout(() => {
       void searchCommandPaletteThreads({ query: queryText, limit: normalizedLimit })
         .then((results) => {
@@ -255,12 +261,12 @@ export function useCommandPaletteThreadSearch({
         })
         .catch((error: unknown) => {
           if (cancelled) return;
-          setBatch({
+          setBatch((current) => ({
             query: normalizedQuery,
-            results: [],
+            results: current.query === normalizedQuery ? current.results : [],
             loading: false,
             error: error instanceof Error ? error.message : "Chat content search is unavailable",
-          });
+          }));
         });
     }, THREAD_SEARCH_DEBOUNCE_MS);
 

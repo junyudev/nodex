@@ -2,6 +2,7 @@ import { describe, expect, test } from "vite-plus/test";
 import { getDefaultCommandPalettePageFilters } from "./command-palette";
 import {
   buildCommandPalettePagesFromSearchResults,
+  getCommandPalettePageSearchPlan,
   isCommandPalettePageSearchPending,
   pageSearchOptionIdentityKey,
   selectCommandPalettePageResults,
@@ -57,6 +58,14 @@ const result = (overrides: Partial<PageSearchResult> = {}): PageSearchResult => 
 });
 
 describe("Core-authoritative command palette Page results", () => {
+  test("requests root suggestions while preserving non-empty query thresholds", () => {
+    expect(getCommandPalettePageSearchPlan("root", "  ")).toEqual({ searchLimit: 60 });
+    expect(getCommandPalettePageSearchPlan("root", "🦊")).toBeNull();
+    expect(getCommandPalettePageSearchPlan("root", "🦊猫")).toEqual({ searchLimit: 60 });
+    expect(getCommandPalettePageSearchPlan("pages", "")).toEqual({ searchLimit: 60 });
+    expect(getCommandPalettePageSearchPlan("actions", "search")).toBeNull();
+  });
+
   test("preserves Core order and consumes typed highlight evidence", () => {
     const pages = buildCommandPalettePagesFromSearchResults({
       results: [result(), result({ pageId: "page:two", title: "Second", pageKey: null })],
