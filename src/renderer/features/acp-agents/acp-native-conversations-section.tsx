@@ -444,40 +444,41 @@ export function AcpNativeConversationsSection({
           onOpenThread={onOpenThread}
         />
       ) : (
-        <>
-          <p className="px-4 py-3 text-xs text-token-description-foreground">
-            Connected Agents that list their conversations appear here.
-          </p>
-          {/* What an Agent can list is known only after connecting to it. */}
-          {candidates
-            .filter((entry) => entry.needsConnection)
-            .map(({ instance: candidate }) => {
-              const activity = snapshot.activities.get(candidate.id);
-              const connecting = activity?.phase === "running" || activity?.phase === "starting";
-              return (
-                <NodexSettingsRow
-                  key={candidate.id}
-                  variant="nested"
-                  label={candidate.displayName}
-                  description={
-                    activity?.phase === "failed" && activity.failure
-                      ? acpFailureText(activity.failure, "connect")
-                      : undefined
-                  }
-                >
-                  <NodexButton
-                    size="sm"
-                    variant="secondary"
-                    disabled={connecting}
-                    onClick={() => owner.connect(candidate.id)}
-                  >
-                    {connecting ? "Connecting…" : "Connect"}
-                  </NodexButton>
-                </NodexSettingsRow>
-              );
-            })}
-        </>
+        <p className="px-4 py-3 text-xs text-token-description-foreground">
+          Connected Agents that list their conversations appear here.
+        </p>
       )}
+      {/* What an Agent can list is known only after connecting to it; it opens once connected. */}
+      {candidates
+        .filter((entry) => entry.needsConnection)
+        .map(({ instance: candidate }) => {
+          const activity = snapshot.activities.get(candidate.id);
+          const connecting = activity?.phase === "running" || activity?.phase === "starting";
+          return (
+            <NodexSettingsRow
+              key={candidate.id}
+              variant="nested"
+              label={candidate.displayName}
+              description={
+                activity?.phase === "failed" && activity.failure
+                  ? acpFailureText(activity.failure, "connect")
+                  : undefined
+              }
+            >
+              <NodexButton
+                size="sm"
+                variant="secondary"
+                disabled={connecting}
+                onClick={() => {
+                  setChosen(candidate.id);
+                  owner.connect(candidate.id);
+                }}
+              >
+                {connecting ? "Connecting…" : "Connect"}
+              </NodexButton>
+            </NodexSettingsRow>
+          );
+        })}
     </NodexSettingsSection>
   );
 }

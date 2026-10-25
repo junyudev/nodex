@@ -7,6 +7,7 @@ import { createAcpAgentsOwner } from "./acp-agents-owner";
 import {
   discovered,
   fakeAcpRuntime,
+  localInstance,
   memoryJournal,
   ok,
   providerSnapshot,
@@ -244,5 +245,63 @@ describe("ACP native conversations", () => {
     await press(await view.findByRole("button", { name: "Connect" }));
     await view.findByRole("group", { name: "Fix the parser" });
     expect(main.runtime.connect).toHaveBeenCalledOnce();
+  });
+
+  test("an Agent that isn't connected can be connected beside one that lists, and opens once connected", async () => {
+    const qoder = registryInstance();
+    const local = localInstance({ displayName: "Local agent" });
+    const main = fakeAcpRuntime({ instances: [qoder, local] });
+    const listing = (id: string) =>
+      providerSnapshot({
+        instanceId: acpProviderId(id === qoder.id ? qoder : local)!,
+        nativeSessions: { canList: true, canLoad: true, canResume: false },
+        ...discovered(),
+      });
+    main.runtime.knownProviders.mockResolvedValue([listing(qoder.id)]);
+    main.runtime.connect.mockImplementation(async ({ operationId }) => {
+      main.runtime.knownProviders.mockResolvedValue([listing(qoder.id), listing(local.id)]);
+      return ok({
+        operationId,
+        kind: "connect" as const,
+        phase: "succeeded" as const,
+        instanceId: local.id,
+        agentId: null,
+        result: null,
+        error: null,
+      });
+    });
+    main.runtime.listSessions.mockImplementation(async ({ instanceId }) =>
+      ok({
+        sessions: [session({ title: instanceId === local.id ? "Local work" : "Fix the parser" })],
+        nextCursor: null,
+        canLoad: true,
+        canResume: false,
+        canDelete: false,
+      }),
+    );
+    const owner = createAcpAgentsOwner({
+      runtime: main.runtime,
+      subscribeChanges: () => () => {},
+      journal: memoryJournal(),
+    });
+    const view = renderWithAppMaitai(
+      <AcpNativeConversationsSection
+        owner={owner}
+        defaultProjectId="project"
+        destinations={() => ({
+          options: [],
+          hasMore: false,
+          loadingMore: false,
+          loadMore: () => {},
+        })}
+      />,
+    );
+    await view.findByRole("group", { name: "Fix the parser" });
+    await press(view.getByRole("button", { name: "Connect" }));
+    await view.findByRole("group", { name: "Local work" });
+    expect(main.runtime.connect).toHaveBeenCalledWith(
+      expect.objectContaining({ instanceId: local.id }),
+    );
+    expect(view.queryByRole("button", { name: "Connect" })).toBeNull();
   });
 });
