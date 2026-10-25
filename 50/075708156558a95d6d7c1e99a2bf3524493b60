@@ -8,6 +8,7 @@ docs/product-specs/acp-agent-behavior.md
   s_901e7cdfde4ade::t_1923e3aee3fb2b 141
 docs/product-specs/settings-route-behavior.md
   s_901e7cdfde4ade::t_1923e3aee3fb2b 54,56-58,76-84,108-109
+  s_be2168b060c315::t_1c146cfefe46ae 53
 ---
 {
   "schema_version": "authorship/3.0.0",
@@ -19,6 +20,14 @@ docs/product-specs/settings-route-behavior.md
       "agent_id": {
         "tool": "claude",
         "id": "dbfeb0b2-2a6b-4724-8483-90ea2623a3fd",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_be2168b060c315": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "dc4b3d75-218a-4f02-ae3e-b579fb7c2f60",
         "model": "claude-opus-5-5"
       },
       "human_author": "Jun Yu <junyu.dev@gmail.com>"
