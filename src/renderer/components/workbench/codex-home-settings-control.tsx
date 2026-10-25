@@ -16,6 +16,7 @@ import {
   CodexSetupImportControl,
   type CodexSetupImportRuntime,
 } from "./codex-setup-import-control";
+import { CodexSpeedSettingControl } from "./workbench-settings-controls";
 import { readCodexHomeSettings, updateCodexHomeSettings } from "./workbench-settings-overlay-deps";
 
 export interface CodexHomeSettingsRuntime {
@@ -48,7 +49,10 @@ function InUsePath({ path }: { readonly path: string | null | undefined }) {
   );
 }
 
-/** Settings > Agents > Codex: the native home and account Codex runs from, and setup import. */
+/**
+ * Settings > Agents > Codex: the speed new Codex chats start with, the native home and account
+ * Codex runs from, and setup import.
+ */
 export function CodexAgentSettingsSection({
   open,
   disclosure,
@@ -111,6 +115,12 @@ export function CodexAgentSettingsSection({
       summary={loadError ? "Couldn't load" : codexHomeSummary(settings)}
       disclosure={disclosure}
     >
+      <NodexSettingsRow
+        label="Speed"
+        description="The speed new Codex chats start with. A speed you pick in a Codex chat becomes the new default."
+      >
+        <CodexSpeedSettingControl />
+      </NodexSettingsRow>
       <NodexSettingsRow
         label="Codex home"
         description={

@@ -81,7 +81,7 @@ arrival; one that names only the page opens it with every card closed. Claude Co
 one row per profile, and Other agents one row per ACP instance, each expanding in place.
 Other agents owns ACP instance setup, sign-in and model services, as described in
 [ACP Agent behavior](acp-agent-behavior.md).
-Agents > Codex owns Copy setup. Setup migration is separate from conversation import and targets
+Agents > Codex owns the speed new Codex chats start with, and Copy setup. Setup migration is separate from conversation import and targets
 shared Codex configuration.
 
 General is grouped by what a setting affects, in this order: App (window restore, the running

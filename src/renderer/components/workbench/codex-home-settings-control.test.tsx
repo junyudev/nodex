@@ -1,6 +1,8 @@
-import { act, fireEvent, waitFor } from "@testing-library/react";
+import { act, fireEvent, waitFor, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vite-plus/test";
 import type { CodexHomeSettingsSnapshot } from "../../../shared/codex-home-settings";
+import { CODEX_DEFAULT_SERVICE_TIER_STORAGE_KEY } from "../../lib/codex-service-tier-settings";
+import { CodexServiceTierSettingsProvider } from "../../lib/use-codex-service-tier-settings";
 import { render } from "../../test/dom";
 import { openSection } from "./agent-instance-settings.test-fixtures";
 import {
@@ -29,13 +31,41 @@ const importRuntime: CodexSetupImportRuntime = {
 
 const renderSection = (runtime: CodexHomeSettingsRuntime) =>
   render(
-    <CodexAgentSettingsSection
-      open
-      disclosure={openSection}
-      runtime={runtime}
-      importRuntime={importRuntime}
-    />,
+    <CodexServiceTierSettingsProvider>
+      <CodexAgentSettingsSection
+        open
+        disclosure={openSection}
+        runtime={runtime}
+        importRuntime={importRuntime}
+      />
+    </CodexServiceTierSettingsProvider>,
   );
+
+it("shows the speed new Codex chats start with and saves a new one for later chats", async () => {
+  localStorage.setItem(CODEX_DEFAULT_SERVICE_TIER_STORAGE_KEY, "fast");
+  try {
+    const view = renderSection({ read: async () => nativeHome, update: vi.fn() });
+    const speed = within(await view.findByRole("group", { name: "Codex speed" }));
+    expect(speed.getByRole("button", { name: "Fast" }).getAttribute("aria-pressed")).toBe("true");
+    await act(async () => {
+      fireEvent.click(speed.getByRole("button", { name: "Standard" }));
+      await Promise.resolve();
+    });
+    expect(localStorage.getItem(CODEX_DEFAULT_SERVICE_TIER_STORAGE_KEY)).toBeNull();
+    expect(speed.getByRole("button", { name: "Standard" }).getAttribute("aria-pressed")).toBe(
+      "true",
+    );
+    await act(async () => {
+      fireEvent.click(speed.getByRole("button", { name: "Fast" }));
+      await Promise.resolve();
+    });
+    expect(localStorage.getItem(CODEX_DEFAULT_SERVICE_TIER_STORAGE_KEY)).toBe("fast");
+    // The folder rows stay unchanged: speed applies at once, with no Save or restart.
+    expect(view.queryByRole("button", { name: "Save" })).toBeNull();
+  } finally {
+    localStorage.removeItem(CODEX_DEFAULT_SERVICE_TIER_STORAGE_KEY);
+  }
+});
 
 it("saves a home as pending until restart and clears the override to return to the native home", async () => {
   const update = vi.fn<CodexHomeSettingsRuntime["update"]>(async ({ homePath }) => ({

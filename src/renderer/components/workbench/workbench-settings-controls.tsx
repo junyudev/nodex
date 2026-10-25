@@ -394,13 +394,13 @@ export function ThreadNotificationSettingControl({ open }: { open: boolean }) {
   );
 }
 
-export function ServiceTierSettingControl() {
+export function CodexSpeedSettingControl() {
   const { serviceTierSettings, setServiceTier } = useCodexServiceTierSettings();
   const selectedValue = serviceTierSettings.serviceTier === "fast" ? "fast" : "standard";
 
   return (
     <SegmentedControl<"standard" | "fast">
-      ariaLabel="Service tier"
+      ariaLabel="Codex speed"
       value={selectedValue}
       onChange={(value) => {
         setServiceTier(value === "fast" ? "fast" : null, "settings");

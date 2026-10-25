@@ -138,11 +138,6 @@ export const SETTINGS_SEARCH_PANELS = {
         anchor: "chats",
         title: "Chats",
         entries: [
-          entry(
-            "Service tier",
-            "The default speed for new requests. Fast opts into the faster tier.",
-            ["Standard", "Fast"],
-          ),
           entry("Thread detail", "Choose how much command output to show in threads.", [
             "Steps",
             "Steps with code commands",
@@ -359,6 +354,11 @@ export const SETTINGS_SEARCH_PANELS = {
         anchor: "codex",
         title: "Codex",
         entries: [
+          entry(
+            "Speed",
+            "The speed new Codex chats start with. A speed you pick in a Codex chat becomes the new default.",
+            ["Service tier", "Standard", "Fast", "Fast mode"],
+          ),
           entry("Codex home", "Settings, skills and conversation history.", [
             "CODEX_HOME",
             "~/.codex",

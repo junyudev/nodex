@@ -46,7 +46,6 @@ if (!(globalThis as { localStorage?: unknown }).localStorage) {
   (globalThis as { localStorage: typeof mockStorage }).localStorage = mockStorage;
 }
 
-const localStorageRef = (globalThis as { localStorage: typeof mockStorage }).localStorage;
 const invokedChannels: Array<{ channel: string; args: unknown[] }> = [];
 
 function resetStorage(): void {
@@ -54,7 +53,6 @@ function resetStorage(): void {
   invokedChannels.splice(0);
   __resetWindowRestoreSettingsForTests();
   __resetThreadNotificationSettingsForTests();
-  localStorageRef.removeItem("nodex-codex-default-service-tier-v1");
 }
 
 function installSettingsWindowApi() {
@@ -135,40 +133,7 @@ function renderOverlay({
   );
 }
 
-describe("SettingsRouteShell service tier", () => {
-  test("reads the stored tier and writes Standard/Fast through the shared setting", async () => {
-    resetStorage();
-    localStorageRef.setItem("nodex-codex-default-service-tier-v1", "fast");
-    installSettingsWindowApi();
-
-    const view = renderOverlay();
-    await settleLazyRender();
-
-    const fastButton = await view.findByRole("button", { name: "Fast" });
-    const standardButton = view.getByRole("button", { name: "Standard" });
-
-    expect(fastButton.getAttribute("aria-pressed")).toBe("true");
-    expect(standardButton.getAttribute("aria-pressed")).toBe("false");
-
-    await act(async () => {
-      fireEvent.click(standardButton);
-      await Promise.resolve();
-    });
-    await settleAsyncRender();
-
-    expect(localStorageRef.getItem("nodex-codex-default-service-tier-v1")).toBe(null);
-    expect(standardButton.getAttribute("aria-pressed")).toBe("true");
-
-    await act(async () => {
-      fireEvent.click(fastButton);
-      await Promise.resolve();
-    });
-    await settleAsyncRender();
-
-    expect(localStorageRef.getItem("nodex-codex-default-service-tier-v1")).toBe("fast");
-    expect(fastButton.getAttribute("aria-pressed")).toBe("true");
-  });
-
+describe("SettingsRouteShell Escape", () => {
   test("backs out on Escape unless focus is inside an editable setting", async () => {
     resetStorage();
     installSettingsWindowApi();

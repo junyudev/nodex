@@ -13,7 +13,6 @@ import {
   NfmAutolinkTypingSettingControl,
   PasteResourceDescriptionSoftLimitSettingControl,
   PasteResourceTextThresholdSettingControl,
-  ServiceTierSettingControl,
   SpellcheckSettingControl,
   ThreadDetailLevelSettingControl,
   ThreadNotificationSettingControl,
@@ -70,12 +69,6 @@ export function GeneralSettingsPage({
       </SectionBlock>
 
       <SectionBlock id="chats" title="Chats">
-        <SettingRow
-          label="Service tier"
-          description="The default speed for new requests. Fast opts into the faster tier."
-        >
-          <ServiceTierSettingControl />
-        </SettingRow>
         <SettingRow
           label="Thread detail"
           description="Choose how much command output to show in threads."

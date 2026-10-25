@@ -61,7 +61,8 @@ This spec does not cover:
 
 ### Settings
 
-- Settings -> General exposes a `Service tier` row.
+- Settings -> Agents -> Codex exposes a `Speed` row: the speed new Codex chats start with. Other
+  Agents keep their own speed choices and never read it.
 - The control offers exactly two choices:
   - `Standard`
   - `Fast`

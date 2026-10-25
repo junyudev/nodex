@@ -91,6 +91,8 @@ describe("workbench settings search catalog", () => {
   test("opens the Agent a search names, and only the page when the query names Agents", () => {
     const anchors = {
       CODEX_HOME: "codex",
+      "Service tier": "codex",
+      "Fast mode": "codex",
       "MCP servers": "codex",
       "Claude Code": "claude",
       ANTHROPIC_BASE_URL: "claude",
@@ -118,7 +120,6 @@ describe("workbench settings search catalog", () => {
     const anchors = {
       "Update channel": "app",
       "Restart to update": "app",
-      "Service tier": "chats",
       "Queue follow-ups": "chats",
       Spellcheck: "writing",
       "Markdown file links": "files-and-links",
