@@ -26,6 +26,7 @@ tests/e2e/nodex-account-menu.spec.ts
   s_020e56a074e5e7::t_07925ffbdb4b6f 114-116,123-124,128-129,135-137,144
   s_020e56a074e5e7::t_fe24a55fe90114 7-10,12-17,22-23,41-42,46-49,55,68-70,72-73,75-79,94,96-103,105-113,125-127,145-152,156-160,175-185,189-193,197-204,217-231,239-249,258-260,273-275,278-297,304-308,315-327,335-346,348-352
   s_020e56a074e5e7::t_67bbae1d69a323 356-363
+  s_020e56a074e5e7::t_2c985a88f9da39 71
 docs/product-specs/nodex-account-login-behavior.md
   s_020e56a074e5e7::t_48b4c159521f56 10-11,31-32
   s_020e56a074e5e7::t_67a0a79e622e6c 9,20-30,33-38
@@ -76,6 +77,12 @@ tests/e2e/typography-settings.spec.ts
   s_020e56a074e5e7::t_9672b83c79f415 1,36
 tests/e2e/workbench-shell-navigation.spec.ts
   s_020e56a074e5e7::t_a7f384497efe6a 1,89,188,331,822,894
+tests/e2e/codex-thread-import.spec.ts
+  s_020e56a074e5e7::t_2c985a88f9da39 2,336
+tests/e2e/composer-predictions.spec.ts
+  s_020e56a074e5e7::t_2c985a88f9da39 2,31
+tests/e2e/claude-conversation-import.spec.ts
+  s_020e56a074e5e7::t_2c985a88f9da39 2,132
 ---
 {
   "schema_version": "authorship/3.0.0",
