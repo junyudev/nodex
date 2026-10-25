@@ -139,7 +139,11 @@ test("downloaded executable runs the authoritative ACP model and prompt protocol
         configId: "model",
         value: fixture.modelId,
       });
-      expect(observed).toContainEqual({ method: "session/prompt", sessionId: fixture.sessionId });
+      expect(observed).toContainEqual({
+        method: "session/prompt",
+        sessionId: fixture.sessionId,
+        promptText: ["Reply from this installed Agent."],
+      });
     } finally {
       clearTimeout(deadline);
       child.kill("SIGKILL");

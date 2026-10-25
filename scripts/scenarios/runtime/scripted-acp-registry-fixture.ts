@@ -62,6 +62,7 @@ export async function createScriptedAcpRegistryFixture(
       values: ["default", modelId],
     },
     beforePrompt: [`${reply}\n\n`],
+    recordPromptText: true,
   };
   const archive = [
     "#!/bin/sh",

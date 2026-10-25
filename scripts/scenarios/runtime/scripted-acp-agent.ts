@@ -46,6 +46,7 @@ const scenarioSchema = z.object({
     .optional(),
   initializeProtocolVersion: z.number().int().optional(),
   beforePrompt: z.array(z.string()).default([]),
+  recordPromptText: z.boolean().default(false),
   foreignSessionUpdates: z.array(z.string()).default([]),
   replayUpdate: z.object({ text: z.string(), count: z.number().int().min(1).max(32) }).optional(),
   requestPermission: z.boolean().default(false),
@@ -102,7 +103,11 @@ type Observation =
       readonly configId: string;
       readonly value: string;
     }
-  | { readonly method: "session/prompt"; readonly sessionId: string }
+  | {
+      readonly method: "session/prompt";
+      readonly sessionId: string;
+      readonly promptText?: ReadonlyArray<string>;
+    }
   | { readonly method: "authenticate"; readonly methodId: string }
   | { readonly method: "session/request_permission"; readonly outcome: string }
   | { readonly method: "fs/read_text_file"; readonly content: string }
@@ -312,7 +317,17 @@ export const runScriptedAcpAgent = (): void => {
       if (context.params.sessionId !== scenario.sessionId) {
         throw new Error(`Unexpected root session ${context.params.sessionId}`);
       }
-      observe({ method: "session/prompt", sessionId: context.params.sessionId });
+      observe({
+        method: "session/prompt",
+        sessionId: context.params.sessionId,
+        ...(scenario.recordPromptText
+          ? {
+              promptText: context.params.prompt.flatMap((block) =>
+                block.type === "text" ? [block.text] : [],
+              ),
+            }
+          : {}),
+      });
       if (scenario.failFirstPromptRequest && !promptRequestFailed) {
         promptRequestFailed = true;
         throw RequestError.internalError(undefined, "Scripted prompt rejection");
