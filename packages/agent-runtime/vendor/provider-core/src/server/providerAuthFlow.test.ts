@@ -538,13 +538,18 @@ it.effect("profile import stops owned sessions and gates access until credential
     );
     const writing = yield* Deferred.make<void>();
     const release = yield* Deferred.make<void>();
+    let admitted = false;
     const imported = yield* controller.adoptCredentials!(
-      Deferred.succeed(writing, undefined).pipe(Effect.andThen(Deferred.await(release))),
       Effect.sync(() => {
+        assert.isTrue(admitted);
         assert.isTrue(closed);
-      }),
+      }).pipe(
+        Effect.andThen(Deferred.succeed(writing, undefined)),
+        Effect.andThen(Deferred.await(release)),
+      ),
+      Effect.sync(() => { admitted = true; }),
     ).pipe(Effect.forkChild);
-    yield* Deferred.await(writing);
+    yield* Effect.raceFirst(Deferred.await(writing), Fiber.join(imported));
     const denied = yield* controller.withAccess!(Effect.succeed("old credential process")).pipe(
       Effect.result,
     );

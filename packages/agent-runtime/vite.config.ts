@@ -10,6 +10,10 @@ const localGlob = (glob: string) => glob.replace(/^packages\/agent-runtime\//u, 
 
 export default defineConfig({
   root: fileURLToPath(new URL(".", import.meta.url)),
+  resolve: {
+    // Workspace peer variants must register against the active test runner's suite.
+    dedupe: ["@effect/vitest", "vite-plus"],
+  },
   test: {
     env: TEST_ENVIRONMENT,
     environment: "node",
