@@ -60,14 +60,9 @@ const workspaceDependencies = Layer.unwrap(
   }),
 );
 
-const automationExecution = Layer.unwrap(
-  Effect.gen(function* () {
-    const codex = yield* CodexPlatform;
-    return automationExecutionLive({
-      runtimeStateHome: codex.runtimeStateHome,
-    });
-  }),
-).pipe(Layer.provideMerge(agentBackendRegistryLive));
+const automationExecution = automationExecutionLive.pipe(
+  Layer.provideMerge(agentBackendRegistryLive),
+);
 const backgroundProcesses = Layer.effect(
   CodexBackgroundProcesses,
   makeCodexBackgroundProcesses,

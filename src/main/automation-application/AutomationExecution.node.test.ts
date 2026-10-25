@@ -62,7 +62,7 @@ const setup = (binding: CodexScheduledAutomation["backendBinding"] = { kind: "co
   const completions: string[] = [];
   const stops: string[] = [];
   const messages: AgentRuntimeMessage[] = [];
-  const layer = live({ runtimeStateHome: "/runtime" }).pipe(
+  const layer = live.pipe(
     Layer.provide(
       Layer.mergeAll(
         backendRegistryLive.pipe(
@@ -259,6 +259,16 @@ it.effect.each([
       const run = [...fixture.runs.values()][0]!;
       assert.equal(run.sessionId, launch.sessionId);
       assert.equal(launch.modelSelection.instanceId, agentRuntimeProviderId(binding));
+      assert.equal(
+        launch.message.text,
+        [
+          "Automation: Report",
+          "Automation ID: report",
+          "Last run: never",
+          "",
+          "Build a report",
+        ].join("\n"),
+      );
       assert.equal(launch.acceptedAt, 50);
       assert.equal(run.status, "PENDING_REVIEW");
       assert.equal(run.inboxSummary, "Completed report");

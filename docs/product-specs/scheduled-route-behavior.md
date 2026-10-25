@@ -152,6 +152,13 @@ advertised model and options of that instance; Agent tools preserve the same bin
 when creating or replacing a definition. Page-linked Sessions keep their existing
 links while their Heartbeat continues the selected instance.
 
+Each Cron run receives its task name, stable Automation ID, previous run time,
+and saved instructions in a new Session. Nodex does not provision an implicit
+cross-run memory file or require an Agent-specific home environment variable.
+Persistent notes must be explicitly requested in the task's instructions at a
+location accessible to its selected Agent. Heartbeats continue the existing
+Session and its available conversation context.
+
 Scheduled turns do not wait for interactive approvals or questions. They are
 bounded within the due lease; failure, timeout and interruption cancel only their exact
 accepted Turn, settle the run and retain its review record.
