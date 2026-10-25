@@ -1,0 +1,66 @@
+src/renderer/features/local-conversation/view/local-conversation-new-thread-home-screen.tsx
+  s_882992ba2cda62::t_6ce8ab06a00aa2 2,15,23
+  s_882992ba2cda62::t_80b4ec7e27288a 29
+src/renderer/features/local-conversation/view/summary-panel/thread-summary-panel-shell.tsx
+  s_882992ba2cda62::t_07911abdf68082 2-9,14-21,27-30,33-40,75-78,80-83,85-105,107,110-111,113,115-120,125-134,140-156,159,161-165,170,175,188,191-199,209-235,240-241,245-246,251-255
+  s_882992ba2cda62::t_336b60cc92c28e 1,10-13,22-26,31-32,41,46-49,53,59-66,71-74,79,84,106,108-109,114,121-124,135,158,160,176-187,200,206-208,236-239,242-244,247-250
+  s_882992ba2cda62::t_81ecb3941e6f24 112,166-169,189-190,201-205
+  s_882992ba2cda62::t_95ac6442966dc5 42-45,50-52,54-58,67-70,136-139,157,171-174
+src/renderer/lib/use-workbench-thread-summary.ts
+  s_882992ba2cda62::t_e86d4e74040233 2-3,34,64,77,114,124-131,284
+src/renderer/components/ui/popover.tsx
+  s_882992ba2cda62::t_07911abdf68082 145-146,169,214
+  s_882992ba2cda62::t_b1045ccc9fff25 215-216,222
+src/renderer/components/workbench/workbench-session-thread-route.tsx
+  s_882992ba2cda62::t_e86d4e74040233 8,177
+src/renderer/features/local-conversation/view/connected-thread-stage.tsx
+  s_882992ba2cda62::t_e86d4e74040233 208,1192
+  s_882992ba2cda62::t_6ce8ab06a00aa2 27,368
+src/renderer/lib/codex-panel-motion.ts
+  s_882992ba2cda62::t_c80b607ed2266d 1,144-151,156-170,183
+  s_882992ba2cda62::t_6ce8ab06a00aa2 29,130,186-187
+  s_882992ba2cda62::t_e86d4e74040233 131-143,152-155,171-182,184-185
+  s_882992ba2cda62::t_81501bac785905 188-189
+src/renderer/features/local-conversation/view/local-conversation-content-motion.browser.test.tsx
+  s_882992ba2cda62::t_366ce44fff6f76 2-3,33-37,39-41,178-180
+  s_882992ba2cda62::t_3308dfbe6fe3a2 1,4-32,38,42-177,181
+src/renderer/components/workbench/workbench-shell.layout-panel-actions.test.tsx
+  s_882992ba2cda62::t_366ce44fff6f76 3,77-81,375,388,419,449,475,499,525,717,734,750
+src/renderer/features/local-conversation/view/local-conversation-thread-scroll-controller.test.tsx
+  s_882992ba2cda62::t_4a8623df904517 4,125,144
+src/renderer/components/workbench/workbench-runtime.tsx
+  s_882992ba2cda62::t_e86d4e74040233 1635,2818
+src/renderer/lib/codex-panel-motion.node.test.ts
+  s_882992ba2cda62::t_4a8623df904517 109-110
+src/renderer/features/local-conversation/view/local-conversation-thread-scroll-controller.tsx
+  s_882992ba2cda62::t_6ce8ab06a00aa2 14,121
+  s_882992ba2cda62::t_e989bccfa9f2c4 1082
+src/renderer/features/local-conversation/view/local-conversation-thread-body.tsx
+  s_882992ba2cda62::t_6ce8ab06a00aa2 2,59,80
+docs/product-specs/thread-summary-panel-behavior.md
+  s_882992ba2cda62::t_82b678963de3c8 18-22
+docs/product-specs/workbench-shell.md
+  s_882992ba2cda62::t_05c38cda4a4aa5 25
+src/renderer/features/local-conversation/view/summary-panel/thread-floating-summary-panel.test.tsx
+  s_882992ba2cda62::t_92e1e91e0d4bf6 409,436,458-459
+src/renderer/features/local-conversation/view/summary-panel/thread-floating-summary-panel.tsx
+  s_882992ba2cda62::t_a587a62eaf5f36 103-106,1883-1885,1898-1900
+src/renderer/features/local-conversation/view/summary-panel/thread-summary-panel-shell.browser.test.tsx
+  s_882992ba2cda62::t_92f83fa15119b3 1-238
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "3a0e2eeff2383144d5356d979861de648b1fd39a",
+  "prompts": {},
+  "sessions": {
+    "s_882992ba2cda62": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17153-f57a-7d52-b919-fecd25fcc4d5",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
