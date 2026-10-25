@@ -149,6 +149,23 @@ describe("Add ACP Agent dialog", () => {
     expect(main.settings().instances[0]?.displayName).toBe("Qoder work");
   });
 
+  test("a chosen Registry Agent's review starts at Name, and Back returns to the same search", async () => {
+    const main = fakeAcpRuntime();
+    main.runtime.previewInstall.mockResolvedValue(ok(PREVIEW));
+    const { view } = mount(main);
+    await type(await view.findByLabelText("Search the ACP Registry"), "qoder");
+    await waitFor(() => expect(main.runtime.search).toHaveBeenLastCalledWith({ query: "qoder" }));
+    await press(await view.findByRole("button", { name: /Qoder CLI/ }));
+    await waitFor(() => expect(document.activeElement).toBe(view.getByLabelText("Name")));
+
+    await press(view.getByRole("button", { name: "Back to search" }));
+    const search = view.getByLabelText("Search the ACP Registry") as HTMLInputElement;
+    expect(search.value).toBe("qoder");
+    await waitFor(() => expect(document.activeElement).toBe(search));
+    expect(view.getByRole("button", { name: /Qoder CLI/ })).toBeTruthy();
+    expect(main.runtime.search).toHaveBeenCalledTimes(2);
+  });
+
   test("the source tabs follow arrow keys and each source starts at its first field", async () => {
     const main = fakeAcpRuntime();
     const { view } = mount(main);

@@ -204,13 +204,8 @@ function RegistryIcon({ agent }: { readonly agent: AcpRegistryAgent }) {
   );
 }
 
-function RegistryResults({
-  owner,
-  onChoose,
-}: {
-  readonly owner: AcpAgentsOwner;
-  readonly onChoose: (agent: AcpRegistryAgent) => void;
-}) {
+/** The dialog's Registry search, which outlives its panel so Back and the source tabs keep it. */
+function useRegistrySearch(owner: AcpAgentsOwner) {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<{
     readonly query: string;
@@ -238,7 +233,16 @@ function RegistryResults({
       clearTimeout(timer);
     };
   }, [owner, query]);
-  const loading = results === null || results.query !== query;
+  return { query, setQuery, results, loading: results === null || results.query !== query };
+}
+
+function RegistryResults({
+  search: { query, setQuery, results, loading },
+  onChoose,
+}: {
+  readonly search: ReturnType<typeof useRegistrySearch>;
+  readonly onChoose: (agent: AcpRegistryAgent) => void;
+}) {
   return (
     <div className="flex flex-col gap-2">
       <div className="relative">
@@ -444,6 +448,8 @@ function RegistryReview({
               <Input
                 {...problems.control("name")}
                 aria-label="Name"
+                // The chosen result is gone; the review starts at its first field.
+                autoFocus
                 className="h-8 text-sm"
                 maxLength={128}
                 value={name}
@@ -647,6 +653,7 @@ export function AcpAgentAddDialog({ owner, onAdded, onClose }: AcpAgentAddDialog
   const snapshot = useAcpAgents(owner);
   const [tab, setTab] = useState<"registry" | "local">("registry");
   const [chosen, setChosen] = useState<AcpRegistryAgent | null>(null);
+  const search = useRegistrySearch(owner);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const takenNames = (snapshot.settings?.instances ?? []).map(({ displayName }) => displayName);
@@ -739,7 +746,7 @@ export function AcpAgentAddDialog({ owner, onAdded, onClose }: AcpAgentAddDialog
             <NodexDialogBody>
               {/* Each source's first field takes focus when chosen, so its panel isn't a tab stop. */}
               <NodexTabsPanel value="registry" tabIndex={-1} className="outline-hidden">
-                <RegistryResults owner={owner} onChoose={setChosen} />
+                <RegistryResults search={search} onChoose={setChosen} />
               </NodexTabsPanel>
               <NodexTabsPanel value="local" tabIndex={-1} className="outline-hidden">
                 <LocalCommandForm
