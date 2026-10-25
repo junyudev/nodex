@@ -1,0 +1,29 @@
+CONTEXT.md
+  s_020e56a074e5e7::t_fb32ab188f3dc0 878-904
+docs/product-specs/nodex-account-and-subscription-behavior.md
+  s_020e56a074e5e7::t_ece373f6977d86 85-86,120-123,144-153,184-189,280,283-288,294,298-305,309-313,321-324,358-366
+  s_020e56a074e5e7::t_bcd721a44a69be 455-456,465-471,482-486,508-509,512,517,520-523
+  s_020e56a074e5e7::t_fb32ab188f3dc0 1-84,87-119,124-143,154-183,190-279,281-282,289-293,295-297,306-308,314-320,325-357,367-454,457-464,472-481,487-507,510-511,513-516,518-519,524-558
+docs/product-specs/index.md
+  s_020e56a074e5e7::t_fb32ab188f3dc0 3-10
+docs/ARCHITECTURE.md
+  s_020e56a074e5e7::t_fb32ab188f3dc0 67-76
+docs/adr/0070-optional-cloud-account-and-subscription-authority.md
+  s_020e56a074e5e7::t_fb32ab188f3dc0 1-44
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "5f00ecb2031359e79972d5459e8b33bc39afedbe",
+  "prompts": {},
+  "sessions": {
+    "s_020e56a074e5e7": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a16369-09ce-73d2-b36e-73b9a8aae6ea",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}

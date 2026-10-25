@@ -1,0 +1,56 @@
+docs/product-specs/nodex-account-and-subscription-behavior.md
+  s_020e56a074e5e7::t_89b2bdd172bd9d 4,54-57,545
+config/nodex-account-build.test.ts
+  s_020e56a074e5e7::t_27e2f3a73f66af 32-34,42-59,63-78,80-96,103-109,111-131,139-148
+  s_020e56a074e5e7::t_80d9e42d165b10 1-31,35-41,60-62,79,97-102,110,132-138,149-150
+src/main/platform/node/NodexAccountPlatform.node.test.ts
+  s_020e56a074e5e7::t_61d59506600cd0 13
+  s_020e56a074e5e7::t_802a92b8e71ba0 16
+src/shared/nodex-account-configuration.ts
+  s_020e56a074e5e7::t_61d59506600cd0 1-36
+scripts/prepared-electron-build.ts
+  s_020e56a074e5e7::t_61d59506600cd0 21
+  s_020e56a074e5e7::t_80d9e42d165b10 250-253
+scripts/prepared-electron-build.test.ts
+  s_020e56a074e5e7::t_80d9e42d165b10 6,184,216-233
+  s_f79dd9d0c7ac54::t_b357a12e7ee8a3 234-235
+docs/product-specs/nodex-account-login-behavior.md
+  s_020e56a074e5e7::t_89b2bdd172bd9d 4,20-26,70-72,137-142
+src/main/nodex-account/configuration.ts
+  s_020e56a074e5e7::t_61d59506600cd0 1-27
+config/nodex-account-production.json
+  s_020e56a074e5e7::t_27e2f3a73f66af 1-4
+docs/CONFIGURATION.md
+  s_020e56a074e5e7::t_89b2bdd172bd9d 23-54,59-61
+config/nodex-account-build.ts
+  s_020e56a074e5e7::t_61d59506600cd0 1-38
+  s_020e56a074e5e7::t_409fd41550c57c 39-40
+electron.vite.config.ts
+  s_020e56a074e5e7::t_61d59506600cd0 9,137-141
+src/main/platform/node/NodexAccountPlatform.ts
+  s_020e56a074e5e7::t_61d59506600cd0 28
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "64503c03861e84883312299bb18ef0a2b85c2e04",
+  "prompts": {},
+  "sessions": {
+    "s_020e56a074e5e7": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a16369-09ce-73d2-b36e-73b9a8aae6ea",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_f79dd9d0c7ac54": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a151d6-b92f-7f41-b4e5-4834cb7752bd",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
