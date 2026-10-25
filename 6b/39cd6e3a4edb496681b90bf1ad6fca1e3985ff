@@ -1,0 +1,34 @@
+src/main/app-tools/AutomationAppTools.ts
+  s_019d9b3e0778c4::t_cd34dc55b33892 160-176
+src/main/app-tools/AutomationAppTools.node.test.ts
+  s_019d9b3e0778c4::t_578ef23af26f58 575-578
+  s_019d9b3e0778c4::t_63172eb4c42c80 638-643
+  s_019d9b3e0778c4::t_ed52d3f047a28c 574,587-590,603-606
+  s_019d9b3e0778c4::t_699a2487555c7f 644-652
+  s_019d9b3e0778c4::t_f74c4c4e4b73d7 573,586,602,607-611
+  s_019d9b3e0778c4::t_0caeaa48dd8283 480-486,540,568-572,579-585,591-601
+src/main/automation-application/AutomationExecution.ts
+  s_019d9b3e0778c4::t_07dec9ac51557c 262-267
+src/main/automation-application/AutomationExecution.node.test.ts
+  s_019d9b3e0778c4::t_5f1c0d1dd163d7 528,567-578
+  s_019d9b3e0778c4::t_faf551a139b8e0 59,238,247-252
+docs/product-specs/scheduled-route-behavior.md
+  s_019d9b3e0778c4::t_43ffa652bc18b6 134-135
+  s_019d9b3e0778c4::t_b54f50ec4780b7 133
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "6b39cd6e3a4edb496681b90bf1ad6fca1e3985ff",
+  "prompts": {},
+  "sessions": {
+    "s_019d9b3e0778c4": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d0455042-57b9-4d11-bf36-078bac03d3e1",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
