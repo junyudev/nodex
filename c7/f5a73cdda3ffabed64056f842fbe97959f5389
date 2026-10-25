@@ -1,0 +1,33 @@
+docs/product-specs/acp-agent-behavior.md
+  s_9cccd37e800d7a::t_144ea259be5e88 125-128
+packages/agent-runtime/scripts/acp-model-agent.ts
+  s_9cccd37e800d7a::t_5b1d04b3709c00 10,78-81,83,100-107
+packages/agent-runtime/src/nodex/AcpRecoveryRetry.integration.test.ts
+  s_9cccd37e800d7a::t_4022558079d74a 15-17,97,114-134,156-160
+packages/agent-runtime/src/orchestration-v2/Adapters/AcpAdapterV2.test.ts
+  s_9cccd37e800d7a::t_0b5f26213fdee3 2406-2413,2429-2433,2474
+packages/agent-runtime/src/orchestration-v2/ProviderTurnStartService.ts
+  s_9cccd37e800d7a::t_9b58188b143776 6,588-589,602-604,609-614
+packages/agent-runtime/vendor/contracts/src/orchestrationV2.ts
+  s_9cccd37e800d7a::t_097f404cf71e70 1429-1432
+packages/agent-runtime/vendor/provider-acp/src/server/AcpSessionRuntime.ts
+  s_9cccd37e800d7a::t_b1c6c04b8d730e 2356
+packages/agent-runtime/vendor/provider-acp/src/server/adapter.ts
+  s_9cccd37e800d7a::t_41abd8a07db10f 462-465,468-473,6548-6552,7743,8375
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "c7f5a73cdda3ffabed64056f842fbe97959f5389",
+  "prompts": {},
+  "sessions": {
+    "s_9cccd37e800d7a": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a16d80-f1cc-7471-9f61-cb6ea1bc793d",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
