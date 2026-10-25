@@ -56,16 +56,16 @@ under `jyu.app`. The production domain roles are fixed in
 [Configuration](../CONFIGURATION.md#nodex-account); `api.nodex.jyu.app` is
 reserved for this proposed cloud service, not a currently deployed API.
 
-| State | Authoritative owner | Local projection |
-| --- | --- | --- |
-| Cloud login identity and OAuth grants | Clerk | Main's current account connection |
-| Nodex Account lifecycle and Clerk identity mapping | Cloud Account Module | Account summary |
-| Customer, recurring subscription, invoices and payments | Stripe Billing | Cloud subscription projection, then desktop summary |
-| Plan policy, paid service periods, grants, reservations and usage | Cloud Billing and Model Access Modules | Read-only usage summary |
-| Current Profile's credentials and login generation | Main NodexAccount Module | Sanitized renderer snapshot |
-| Local Library, Projects and Session placement | Rust Core | Existing content Interfaces |
-| Threads, Runs, tools, queues and conversation history | Agent Runtime | Existing execution Interfaces |
-| Native Codex/Claude accounts | Existing native homes and provider protocols | Existing Agent settings and usage |
+| State                                                             | Authoritative owner                          | Local projection                                    |
+| ----------------------------------------------------------------- | -------------------------------------------- | --------------------------------------------------- |
+| Cloud login identity and OAuth grants                             | Clerk                                        | Main's current account connection                   |
+| Nodex Account lifecycle and Clerk identity mapping                | Cloud Account Module                         | Account summary                                     |
+| Customer, recurring subscription, invoices and payments           | Stripe Billing                               | Cloud subscription projection, then desktop summary |
+| Plan policy, paid service periods, grants, reservations and usage | Cloud Billing and Model Access Modules       | Read-only usage summary                             |
+| Current Profile's credentials and login generation                | Main NodexAccount Module                     | Sanitized renderer snapshot                         |
+| Local Library, Projects and Session placement                     | Rust Core                                    | Existing content Interfaces                         |
+| Threads, Runs, tools, queues and conversation history             | Agent Runtime                                | Existing execution Interfaces                       |
+| Native Codex/Claude accounts                                      | Existing native homes and provider protocols | Existing Agent settings and usage                   |
 
 Nodex Cloud is an independently deployed TypeScript application with an HTTP
 Adapter and PostgreSQL storage. Start with one deployable and a durable
@@ -226,17 +226,17 @@ period end. V1 disables quantity changes, trials and plan changes. Browser
 Clerk identity is not used to replace the desktop's chosen billing Customer:
 every Checkout/Portal URL is minted from the authenticated cloud request.
 
-| Payment condition | First-party model access |
-| --- | --- |
-| Signed out or signed in without a paid period | No included model capacity; local/native use remains available |
-| Initial payment incomplete, failed or requiring action | No grant until the invoice is verified paid |
-| Verified paid subscription invoice | One grant for its allowed recurring price, benefit and service interval |
-| Successful renewal | A new period grant; previous unused capacity expires |
-| Renewal failed / past due | No new grant; an already paid, unexpired period remains usable |
-| Cancellation scheduled for period end | Existing paid period remains usable until its end |
-| Effective cancellation, suspension or deletion | Stop new paid admission; preserve settlement history |
-| Late payment | Grant only its actual service interval; an expired interval never becomes a fresh month |
-| Refund or dispute | Suspend the affected paid benefit pending reconciliation; apply explicit adjustment entries without erasing consumed usage |
+| Payment condition                                      | First-party model access                                                                                                   |
+| ------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------- |
+| Signed out or signed in without a paid period          | No included model capacity; local/native use remains available                                                             |
+| Initial payment incomplete, failed or requiring action | No grant until the invoice is verified paid                                                                                |
+| Verified paid subscription invoice                     | One grant for its allowed recurring price, benefit and service interval                                                    |
+| Successful renewal                                     | A new period grant; previous unused capacity expires                                                                       |
+| Renewal failed / past due                              | No new grant; an already paid, unexpired period remains usable                                                             |
+| Cancellation scheduled for period end                  | Existing paid period remains usable until its end                                                                          |
+| Effective cancellation, suspension or deletion         | Stop new paid admission; preserve settlement history                                                                       |
+| Late payment                                           | Grant only its actual service interval; an expired interval never becomes a fresh month                                    |
+| Refund or dispute                                      | Suspend the affected paid benefit pending reconciliation; apply explicit adjustment entries without erasing consumed usage |
 
 Verify the invoice, subscription, Customer mapping, allowed price, line type,
 service interval and current Account state. A successful Checkout, an `active`
@@ -276,16 +276,16 @@ be fixed and explainable before paid launch. Each grant has an immutable
 source, amount and half-open service interval `[startsAt, endsAt)` in server
 time. Capacity is scoped to Account and shared across its devices/Profiles.
 
-| Cloud record | Required contract |
-| --- | --- |
-| Account / identity mapping | Stable Account ID; unique issuer and subject; explicit lifecycle |
-| Billing customer / subscription | Unique environment/Customer mapping; one live personal subscription per Account |
-| Purchase operation | Account-scoped idempotency, request fingerprint, uncertain outcome and Stripe references |
-| Webhook inbox / reconciliation job | Unique source/event ID, attempts, lease generation and failure evidence |
-| Usage grant | Immutable paid-period source; unique benefit/period; integer amount and expiry |
-| Model request / reservation | Unique Account/request ID and fingerprint; captured account, grant, rate card, upper bound and dispatch state |
-| Supplier-cost reservation | One per model request; integer monetary upper bound against the shared deployment budget, independent of user credits |
-| Ledger entry | Append-only grant, reservation, settlement, release, expiry or adjustment evidence with an idempotent operation key |
+| Cloud record                       | Required contract                                                                                                     |
+| ---------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| Account / identity mapping         | Stable Account ID; unique issuer and subject; explicit lifecycle                                                      |
+| Billing customer / subscription    | Unique environment/Customer mapping; one live personal subscription per Account                                       |
+| Purchase operation                 | Account-scoped idempotency, request fingerprint, uncertain outcome and Stripe references                              |
+| Webhook inbox / reconciliation job | Unique source/event ID, attempts, lease generation and failure evidence                                               |
+| Usage grant                        | Immutable paid-period source; unique benefit/period; integer amount and expiry                                        |
+| Model request / reservation        | Unique Account/request ID and fingerprint; captured account, grant, rate card, upper bound and dispatch state         |
+| Supplier-cost reservation          | One per model request; integer monetary upper bound against the shared deployment budget, independent of user credits |
+| Ledger entry                       | Append-only grant, reservation, settlement, release, expiry or adjustment evidence with an idempotent operation key   |
 
 Admission updates the ledger projection, concurrency count and supplier-cost
 reservation in one short PostgreSQL transaction. Lock the shared deployment
@@ -404,18 +404,18 @@ signed-out, signing-in, signed-in and reauthentication-required. Cloud state
 separately carries loading/available/unavailable and last-observed time; an
 unavailable snapshot can retain the known Account without granting spending.
 
-| Proposed cloud route | Meaning |
-| --- | --- |
-| `GET /v1/account` | Verified identity and Account lifecycle |
-| `POST /v1/account/logout` | Revoke the current native OAuth grant |
-| `GET /v1/billing` | Plan, paid-through interval, available/reserved capacity and freshness |
-| `POST /v1/billing/checkout` | Idempotently start or recover the Account's purchase |
-| `POST /v1/billing/portal` | Create an Account-bound management session |
-| `GET /v1/models` | Supported first-party model catalog and product availability |
-| `POST /v1/model-requests` | Authenticated, bounded and idempotent model admission/stream |
-| `GET /v1/model-requests/:id` | Account-bound recovery/settlement status |
-| `POST /v1/webhooks/stripe` | Signature-verified payment notifications |
-| `POST /v1/webhooks/clerk` | Signature-verified identity lifecycle notifications |
+| Proposed cloud route         | Meaning                                                                |
+| ---------------------------- | ---------------------------------------------------------------------- |
+| `GET /v1/account`            | Verified identity and Account lifecycle                                |
+| `POST /v1/account/logout`    | Revoke the current native OAuth grant                                  |
+| `GET /v1/billing`            | Plan, paid-through interval, available/reserved capacity and freshness |
+| `POST /v1/billing/checkout`  | Idempotently start or recover the Account's purchase                   |
+| `POST /v1/billing/portal`    | Create an Account-bound management session                             |
+| `GET /v1/models`             | Supported first-party model catalog and product availability           |
+| `POST /v1/model-requests`    | Authenticated, bounded and idempotent model admission/stream           |
+| `GET /v1/model-requests/:id` | Account-bound recovery/settlement status                               |
+| `POST /v1/webhooks/stripe`   | Signature-verified payment notifications                               |
+| `POST /v1/webhooks/clerk`    | Signature-verified identity lifecycle notifications                    |
 
 These are proposed contracts, not existing routes. Model protocol translation
 stays in the Adapter; callers do not choose arbitrary upstream hosts. Errors
@@ -424,12 +424,15 @@ capacity exhausted, rate limited, service unavailable and reconciling outcome.
 Only safe reads or operations with an established idempotency key may retry;
 a 401 refresh must not blindly replay an uncertain model request.
 
-Add one Settings → Account page with identity, plan, usage/reset date and the
+Extend the existing Settings → Account page with plan, usage/reset date and the
 relevant action. Signed-out users see a sign-in action; paid users see Manage
-subscription. Avoid a mandatory first-run screen, a second permanent sidebar
-account widget or duplicate provider usage summaries. Existing Agent settings
-retain Codex/Claude login and usage. The existing rail account control is
-Codex-specific and is not repurposed in this slice.
+subscription. Avoid a mandatory first-run screen, additional permanent account
+widgets or duplicate provider usage summaries. Existing Agent settings retain
+Codex/Claude login and usage. The rail keeps its native Codex account control
+and Claude subscription meters, followed by the independent Nodex avatar and
+account menu described in [Nodex Account Login](nodex-account-login-behavior.md).
+Subscription access extends the Nodex account surfaces without repurposing
+native provider controls.
 
 The model picker labels the managed source as Nodex and keeps the actual
 execution engine identifiable where users configure it. Signed-out/unpaid
@@ -456,7 +459,8 @@ Existing integration seams include:
 - `src/renderer/components/workbench/workbench-settings-sections.ts` and
   `workbench-settings-page-registry.ts`: register the single Account page.
 - `src/renderer/components/workbench/workbench-rail-account-controls.tsx`:
-  retain the existing Codex-specific owner in this slice.
+  preserve the composition of native Codex account controls, Claude subscription
+  meters and the independent Nodex account menu.
 - `src/main/agent-runtime/AgentRuntimeProviderCatalog.ts`: keep account-specific
   model access out of generic caches or include Account/generation identity.
 - `src/main/agent-runtime/AgentRuntimeSessionTitle.ts`: structured generation
@@ -507,27 +511,27 @@ description intact.
 
 ## Acceptance evidence
 
-| Scenario | Required observation |
-| --- | --- |
-| New home with no cloud configuration or network | Local workspace opens; editing/export/local CLI work; no sign-in gate |
-| Existing Codex/Claude login, then Nodex sign-in/out | Native credentials and native account state remain unchanged |
-| Two Profiles and multiple windows | Correct independent accounts; one refresh owner per Profile; no cross-account responses |
-| Same Clerk user/client in two Profiles, then logout in one | Only the selected grant is revoked; the other remains usable and refreshable |
-| Canceled/replayed/wrong-state OAuth callback or late token exchange | No account adoption; listener, pending attempt and uncommitted tokens clean up |
-| Secure storage unavailable | Explicit memory-only session; no plaintext secret file |
-| Expired or revoked native OAuth grant | New cloud requests fail closed; local work remains usable |
-| Logout with expired access and a valid refresh token | Private cleanup revokes the grant without publishing or persisting a new session |
-| Checkout return before webhook / duplicate purchase | Pending state then one subscription/grant; no optimistic allowance |
-| Duplicate/out-of-order events and expired worker lease | No double grant or stale lifecycle overwrite; reconciliation converges |
-| Renewal failure, late payment, cancellation, refund | Exactly the paid interval/policy applies; local history remains readable |
-| Two devices spend the final available capacity | Atomic admission permits only affordable reservations |
-| Different Accounts race for the final deployment budget | Shared supplier-cost reservations prevent aggregate overspend |
-| Disconnect/crash after supplier dispatch | No duplicate execution or automatic reservation refund |
-| Account switch during queued, streaming or retrying work | Old work cannot spend the new Account; old usage settles once |
-| Automatic title generation after account switch or exhausted capacity | No new-account charge; safe local fallback preserves the chat |
-| Call settlement races with period expiry | Original grant/rate card applies; expired unused capacity cannot enter the new balance |
-| Account deletion/refund races with admission or dispatch intent | Shared admission generation stops new dispatch; in-flight evidence remains reconcilable |
-| Deployment kill switch | New paid admission stops; local/native work remains usable |
+| Scenario                                                              | Required observation                                                                    |
+| --------------------------------------------------------------------- | --------------------------------------------------------------------------------------- |
+| New home with no cloud configuration or network                       | Local workspace opens; editing/export/local CLI work; no sign-in gate                   |
+| Existing Codex/Claude login, then Nodex sign-in/out                   | Native credentials and native account state remain unchanged                            |
+| Two Profiles and multiple windows                                     | Correct independent accounts; one refresh owner per Profile; no cross-account responses |
+| Same Clerk user/client in two Profiles, then logout in one            | Only the selected grant is revoked; the other remains usable and refreshable            |
+| Canceled/replayed/wrong-state OAuth callback or late token exchange   | No account adoption; listener, pending attempt and uncommitted tokens clean up          |
+| Secure storage unavailable                                            | Explicit memory-only session; no plaintext secret file                                  |
+| Expired or revoked native OAuth grant                                 | New cloud requests fail closed; local work remains usable                               |
+| Logout with expired access and a valid refresh token                  | Private cleanup revokes the grant without publishing or persisting a new session        |
+| Checkout return before webhook / duplicate purchase                   | Pending state then one subscription/grant; no optimistic allowance                      |
+| Duplicate/out-of-order events and expired worker lease                | No double grant or stale lifecycle overwrite; reconciliation converges                  |
+| Renewal failure, late payment, cancellation, refund                   | Exactly the paid interval/policy applies; local history remains readable                |
+| Two devices spend the final available capacity                        | Atomic admission permits only affordable reservations                                   |
+| Different Accounts race for the final deployment budget               | Shared supplier-cost reservations prevent aggregate overspend                           |
+| Disconnect/crash after supplier dispatch                              | No duplicate execution or automatic reservation refund                                  |
+| Account switch during queued, streaming or retrying work              | Old work cannot spend the new Account; old usage settles once                           |
+| Automatic title generation after account switch or exhausted capacity | No new-account charge; safe local fallback preserves the chat                           |
+| Call settlement races with period expiry                              | Original grant/rate card applies; expired unused capacity cannot enter the new balance  |
+| Account deletion/refund races with admission or dispatch intent       | Shared admission generation stops new dispatch; in-flight evidence remains reconcilable |
+| Deployment kill switch                                                | New paid admission stops; local/native work remains usable                              |
 
 Implementation verification uses focused domain/ledger tests, Main lifecycle
 tests, act-clean renderer tests and a seeded Electron scenario. Run the

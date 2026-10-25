@@ -22,12 +22,12 @@ Profile home resolves in this order:
 
 Nodex Account has its own production identity domain and user pool:
 
-| Domain | Purpose |
-| --- | --- |
-| `nodex.jyu.app` | Product website, downloads and update feeds |
-| `accounts.nodex.jyu.app` | Clerk-hosted sign-in and account management |
-| `clerk.nodex.jyu.app` | Clerk OAuth issuer and Frontend API |
-| `api.nodex.jyu.app` | Reserved for the proposed Nodex Cloud API; no service is implemented yet |
+| Domain                   | Purpose                                                                  |
+| ------------------------ | ------------------------------------------------------------------------ |
+| `nodex.jyu.app`          | Product website, downloads and update feeds                              |
+| `accounts.nodex.jyu.app` | Clerk-hosted sign-in and account management                              |
+| `clerk.nodex.jyu.app`    | Clerk OAuth issuer and Frontend API                                      |
+| `api.nodex.jyu.app`      | Reserved for the proposed Nodex Cloud API; no service is implemented yet |
 
 The account portal is not the OAuth issuer. Other products under `jyu.app`
 do not share Nodex identities or subscription access. Development and
