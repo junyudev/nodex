@@ -1,0 +1,28 @@
+scripts/ci/effect-boundaries.ts
+  s_f79dd9d0c7ac54::t_79dcfc826b0672 275,286-304,369-372
+  s_f79dd9d0c7ac54::t_97724548368d9d 373-382,386
+packages/agent-runtime/src/nodex/NativeImport.ts
+  s_f79dd9d0c7ac54::t_c585464c79e25f 361-362,372,400,408-409,444,491,527
+packages/agent-runtime/src/nodex/NativeImport.test.ts
+  s_f79dd9d0c7ac54::t_c585464c79e25f 154,157
+  s_f79dd9d0c7ac54::t_927a18f6300454 158-159,165,169
+scripts/ci/effect-boundaries.test.ts
+  s_f79dd9d0c7ac54::t_8c40e5cb2373b6 231-251
+  s_f79dd9d0c7ac54::t_7e65a56fd33841 252-257
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "5b10793398d4902e1c69c3b75aa6204558caf1b2",
+  "prompts": {},
+  "sessions": {
+    "s_f79dd9d0c7ac54": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a151d6-b92f-7f41-b4e5-4834cb7752bd",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
