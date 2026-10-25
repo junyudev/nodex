@@ -1,0 +1,19 @@
+tests/e2e/acp-agent-setup.spec.ts
+  s_be2168b060c315::t_d86e0d98a78fd4 8,120
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "216a88a35de7b220c941bd4e86473656ad57abf4",
+  "prompts": {},
+  "sessions": {
+    "s_be2168b060c315": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "dc4b3d75-218a-4f02-ae3e-b579fb7c2f60",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
