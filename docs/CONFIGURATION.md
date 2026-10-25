@@ -60,6 +60,18 @@ No Clerk secret key or OAuth client secret belongs in the Desktop environment
 or bundle. DNS, TLS and Clerk configuration must be verified separately from
 the build; a configured client is not evidence that production sign-in works.
 
+The hosted Account Portal is branded through the Clerk Dashboard, separately
+from the Desktop build. Its application logo and favicon reuse
+[`packages/landing/public/nodex-icon.png`](../packages/landing/public/nodex-icon.png).
+The production portal uses light appearance, a white background, primary blue
+`#0071E3`, and flush elevation. Clerk retains ownership of authentication forms
+and their validation.
+
+Social sign-in connections require their own production credentials in Clerk.
+Their provider callback is the URL supplied by Clerk, not the Desktop loopback
+callback. Provider client secrets stay in Clerk; enable each connection only
+after its production configuration and browser sign-in have been verified.
+
 Credentials are encrypted under `${NODEX_HOME}/account/credentials.enc`, bound
 to the Profile, issuer and client. They are separate from native Agent homes
 and content backups. The test-only `NODEX_TEST_CLERK_LOOPBACK=1` flag permits a
