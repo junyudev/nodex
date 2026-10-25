@@ -1,0 +1,124 @@
+packages/agent-runtime/src/nodex/Interface.ts
+  s_b709f00f592577::t_54d17fccc96018 341-345,349-351
+  s_b709f00f592577::t_f7f77dc1479c91 352-353
+src/renderer/lib/usage-meter.ts
+  s_b709f00f592577::t_8d9f8863e16a2e 3-8,246,249,252,360,387,389-390,394-399,401-402,404-410,413,416-421,425-438
+src/main/ipc/handlers/ClaudeUsageIpc.ts
+  s_b709f00f592577::t_f8b7602919f2cc 1-69
+src/renderer/lib/use-claude-usage.ts
+  s_b709f00f592577::t_7183396e899783 1-46
+src/main/app/RendererIngressLive.ts
+  s_b709f00f592577::t_f8b7602919f2cc 35,115
+src/renderer/lib/agent-runtime-runtime.ts
+  s_b709f00f592577::t_95a79c95c2c593 33
+  s_b709f00f592577::t_3c85512530dc34 164-171,208-213,253-255
+CHANGELOG.md
+  s_b709f00f592577::t_97746e1fc017dd 13
+docs/ARCHITECTURE.md
+  s_b709f00f592577::t_a492fa543c3f09 812-813
+docs/product-specs/agent-runtime-behavior.md
+  s_b709f00f592577::t_97746e1fc017dd 653-654,658
+  s_b709f00f592577::t_924ac654a5b18b 655-657
+packages/agent-runtime/src/provider/ClaudeProvider.status.test.ts
+  s_b709f00f592577::t_0a3730d397efd4 31-34
+  s_b709f00f592577::t_977ac08b1c0d4b 10-11,73-94,96-104
+  s_b709f00f592577::t_6754f172204d83 1-9,12-30,35-72,95,105
+src/renderer/components/workbench/workbench-testkit/workbench-shell-harness.tsx
+  s_b709f00f592577::t_eb93211f1fc8c0 2825-2826
+src/renderer/components/workbench/workbench-rail-account-controls.tsx
+  s_b709f00f592577::t_9bd9c205080f46 11,13-20,44-45,48-51,53,56-58,60,62-66,68,70-74,76,83,97,100,104,106,115-167,169-170,187,193-194,206-233,237-239,254,264-265,349-384,398-399,402
+  s_b709f00f592577::t_e2ed272a8f926f 86
+src/main/agent-runtime/AgentRuntimeApplication.ts
+  s_b709f00f592577::t_e6becdd0eeeef6 2756-2764
+src/renderer/lib/usage-meter.node.test.ts
+  s_b709f00f592577::t_d8fff7f7701892 3,7-8,58-64,238,255,291,303,322-351,353,356,391-401
+src/renderer/lib/query-keys.ts
+  s_b709f00f592577::t_95a79c95c2c593 26
+packages/agent-runtime/src/provider/Drivers/ClaudeDriver.ts
+  s_b709f00f592577::t_83b0aaf5ff6884 46,350-380,404
+src/main/app/AgentRuntimeApplicationLive.ts
+  s_b709f00f592577::t_69c043e4c2d51c 44-46,658-668,671-675,710-714
+  s_b709f00f592577::t_df89f758a86408 669-670
+  s_b709f00f592577::t_b862d41206ed60 43
+src/main/ipc/handlers/ClaudeUsageIpc.node.test.ts
+  s_b709f00f592577::t_2533ed1140f1a6 1-116
+packages/agent-runtime/src/provider/ClaudeProvider.ts
+  s_b709f00f592577::t_da3be21c6b9b71 289-293,690-693,696-697
+  s_b709f00f592577::t_83b0aaf5ff6884 480-502
+  s_b709f00f592577::t_beb0ed75a6b340 427-431,450
+src/shared/agent-runtime-api.ts
+  s_b709f00f592577::t_95d46299d0d445 249-261,385-390
+  s_b709f00f592577::t_0d57c784030805 391
+src/main/agent-runtime/AgentRuntimeClaudeUsage.node.test.ts
+  s_b709f00f592577::t_02f12c84522db0 13,123-133
+  s_b709f00f592577::t_aa9b0ba1578830 61-64,68-69,73-76,79-83,85-87,98,136,139-141,143,146-149,151,157,159-168,170,178,180,182,189,199,219-242,266,293
+  s_b709f00f592577::t_3180ab0bbb25ca 3,142,202,302-303,306-308,315-321
+  s_b709f00f592577::t_a2086a615c8aea 1-2,4-12,14-60,65-67,70-72,77-78,84,88-97,99-122,134-135,137-138,144-145,150,152-156,158,169,171-177,181,183-188,190-198,200-201,203-210,215-218,243-265,267-292,294-301,304-305,309-314,322-324
+  s_b709f00f592577::t_b7032d2643da83 179
+  s_b709f00f592577::t_e5a62733b027c8 211-214
+packages/agent-runtime/src/provider/ProviderRegistry.ts
+  s_b709f00f592577::t_c9fdb8d447a327 119-120,124,803,805-808,1116,1193-1194
+src/shared/claude-usage.ts
+  s_b709f00f592577::t_d2a5f68c1186f1 1-34
+src/main/agent-runtime/AgentRuntimeClaudeUsage.ts
+  s_b709f00f592577::t_aa9b0ba1578830 183-185
+  s_b709f00f592577::t_df89f758a86408 50-53
+  s_b709f00f592577::t_02f12c84522db0 81-93,160-162,268-276
+  s_b709f00f592577::t_628491167fec33 64-67,95-97,108-109,115,126-143,153-159,163-172,174-182,187-192,211,232,236-237,242-248,253-255,261
+  s_b709f00f592577::t_e53577335a64e5 37-40
+  s_b709f00f592577::t_351b6e33d0dd7d 256
+  s_b709f00f592577::t_7f71d3e42d2892 1-36,41-49,54-63,68-80,94,98-107,110-114,116-125,173,186,193-210,212,216-231,235,238-241,249-252,257-260,262-267,277-316,342-344
+  s_b709f00f592577::t_3995c852f52f13 213-215,233-234,317-341
+  s_b709f00f592577::t_3e8895337d27ca 144-152
+src/main/agent-runtime/AgentRuntimeProviderCatalog.ts
+  s_b709f00f592577::t_e6becdd0eeeef6 71
+  s_b709f00f592577::t_a0bf4d6d38ba9f 5,9,44,73-74,80
+src/renderer/components/workbench/workbench-rail-usage-meter.tsx
+  s_b709f00f592577::t_3c85512530dc34 239-240
+src/renderer/lib/renderer-transport.ts
+  s_b709f00f592577::t_3c85512530dc34 23-25
+docs/product-specs/workbench-shell.md
+  s_b709f00f592577::t_924ac654a5b18b 22
+packages/agent-runtime/src/provider/ProviderRegistry.checked.test.ts
+  s_b709f00f592577::t_af0c815ab4fa44 138-173
+src/shared/ipc-api.ts
+  s_b709f00f592577::t_95d46299d0d445 2966
+src/renderer/components/workbench/workbench-rail-account-controls.test.tsx
+  s_b709f00f592577::t_0865497c505631 7,11,87-90,92-138,143-160,399-403,412,416-425,439,447-480,489,497-532,534,537-540,542
+  s_b709f00f592577::t_6da98a504868eb 541
+src/shared/ipc-endpoint-policy.ts
+  s_b709f00f592577::t_95d46299d0d445 98-99,548
+packages/agent-runtime/src/nodex/Service.ts
+  s_b709f00f592577::t_54d17fccc96018 22,70,231,458,676-683,694-700,702
+  s_b709f00f592577::t_3995c852f52f13 703
+  s_b709f00f592577::t_beda1895e3b367 701
+  s_b709f00f592577::t_763a761b9d1bee 704
+src/shared/schemas/agent-runtime-api.ts
+  s_b709f00f592577::t_f8b7602919f2cc 218-220
+src/renderer/lib/electron-renderer-transport.ts
+  s_b709f00f592577::t_3c85512530dc34 410-417
+packages/agent-runtime/vendor/provider-core/src/server/driver.ts
+  s_b709f00f592577::t_8574c33a93d34a 106-111
+packages/agent-runtime/vendor/provider-core/src/server/managedProvider.test.ts
+  s_b709f00f592577::t_8fc7e723a97ee0 671-672,676-677
+packages/agent-runtime/vendor/provider-core/src/server/usageLimits.test.ts
+  s_b709f00f592577::t_c43e8d973ed758 83-87,89-92,96-106
+packages/agent-runtime/vendor/provider-core/src/server/usageLimits.ts
+  s_b709f00f592577::t_fd78c5fef53168 114-116,131-137
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "7ec44492891b2d4149a649405a95ce7409ece60d",
+  "prompts": {},
+  "sessions": {
+    "s_b709f00f592577": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "0f1619e0-b7d7-4e3c-9876-4e1f5a141d58",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
