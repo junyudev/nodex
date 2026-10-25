@@ -1,0 +1,20 @@
+tests/e2e/support/workbench-settings.ts
+  s_020e56a074e5e7::t_90c96032a304d5 10
+  s_020e56a074e5e7::t_8f89103facdf7d 3,9
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "136ea35ee48aa9aee3e3a873a129f0e984ea3d87",
+  "prompts": {},
+  "sessions": {
+    "s_020e56a074e5e7": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a16369-09ce-73d2-b36e-73b9a8aae6ea",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
