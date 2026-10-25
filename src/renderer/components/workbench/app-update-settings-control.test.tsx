@@ -81,13 +81,13 @@ vi.mock("./app-update-settings-control-deps", async (importOriginal) => {
   };
 });
 
-describe("AppUpdateSettingsControl", () => {
+describe("AppUpdateSettingRows", () => {
   test("loads settings, reacts to update events, and triggers actions", async () => {
     mockState.invokeCalls.length = 0;
     mockState.subscribeCallback = null;
 
-    const { AppUpdateSettingsControl } = await import("./app-update-settings-control");
-    const view = render(<AppUpdateSettingsControl open={true} />);
+    const { AppUpdateSettingRows } = await import("./app-update-settings-control");
+    const view = render(<AppUpdateSettingRows open={true} />);
 
     await settleAsyncRender();
 
@@ -140,7 +140,7 @@ describe("AppUpdateSettingsControl", () => {
       true,
     );
 
-    fireEvent.click(view.getByText("Restart to Update"));
+    fireEvent.click(view.getByText("Restart to update"));
     await settleAsyncRender();
     expect(mockState.invokeCalls.some((entry) => entry[0] === "app:update:install")).toBe(true);
   });

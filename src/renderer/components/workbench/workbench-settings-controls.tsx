@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useRef, useState, type ComponentType } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type ComponentType,
+  type ReactNode,
+} from "react";
 import { NodexButton, NodexSwitch } from "@/components/ui/button";
 import {
   NodexDropdownItem,
@@ -488,7 +495,7 @@ function toDiagnosticsUpdateInput(
   };
 }
 
-export function DiagnosticsSettingControl({ open }: { open: boolean }) {
+export function DiagnosticsSettingRows({ open }: { open: boolean }) {
   const [settings, setSettings] = useState<DiagnosticsSettings>(DEFAULT_DIAGNOSTICS_SETTINGS);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -566,55 +573,58 @@ export function DiagnosticsSettingControl({ open }: { open: boolean }) {
     [settings],
   );
 
-  const hasEnvOverride = hasDiagnosticsEnvOverride(settings);
-  const summary = settings.envOverrides.enabled
-    ? "Managed by NODEX_SENTRY_ENABLED."
+  const managed = settings.envOverrides.enabled ? "Managed by NODEX_SENTRY_ENABLED." : null;
+  const status = hasDiagnosticsEnvOverride(settings)
+    ? `${managed ?? ""} Environment overrides are active.`.trim()
     : settings.enabled
       ? "Crash reports are enabled after restart."
-      : "Crash reports are off.";
-  const replaySummary = settings.envOverrides.replayEnabled
+      : null;
+  const replayStatus = settings.envOverrides.replayEnabled
     ? "Session Replay is managed by NODEX_SENTRY_REPLAY_ENABLED."
     : !settings.enabled
       ? "Session replays require crash reports."
       : settings.replayEnabled
         ? "Session replays are enabled after restart."
-        : "Session replays are off.";
-  const replayDisabled = busy || !settings.enabled || settings.envOverrides.replayEnabled;
+        : null;
 
   return (
-    <div className="flex max-w-80 flex-col items-end gap-2 text-right">
-      <div className="flex flex-col items-end gap-1">
-        <div className="flex items-center gap-2">
-          <span className="text-xs text-(--foreground-secondary)">Share crash reports</span>
-          <TogglePill
-            ariaLabel="Share crash reports"
-            value={settings.enabled}
-            disabled={busy || settings.envOverrides.enabled}
-            onChange={(enabled) => {
-              void handleEnabledChange(enabled);
-            }}
-          />
-        </div>
-        <div className="max-w-72 text-xs text-(--foreground-secondary)">
-          {hasEnvOverride ? `${summary} Environment overrides are active.` : summary}
-        </div>
-      </div>
-      <div className="flex flex-col items-end gap-1">
-        <div className="flex items-center gap-2">
-          <span className="text-xs text-(--foreground-secondary)">Share session replays</span>
-          <TogglePill
-            ariaLabel="Share session replays"
-            value={settings.replayEnabled && settings.enabled}
-            disabled={replayDisabled}
-            onChange={(replayEnabled) => {
-              void handleReplayEnabledChange(replayEnabled);
-            }}
-          />
-        </div>
-        <div className="max-w-72 text-xs text-(--foreground-secondary)">{replaySummary}</div>
-      </div>
-      {error ? <span className="max-w-72 text-xs text-(--red-text)">{error}</span> : null}
-    </div>
+    <>
+      <SettingRow
+        label="Share crash reports"
+        description={
+          <SettingDescription status={status} error={error}>
+            Send crash diagnostics to Sentry. Prompts, transcripts, card text and local payloads are
+            scrubbed before upload.
+          </SettingDescription>
+        }
+      >
+        <TogglePill
+          ariaLabel="Share crash reports"
+          value={settings.enabled}
+          disabled={busy || settings.envOverrides.enabled}
+          onChange={(enabled) => {
+            void handleEnabledChange(enabled);
+          }}
+        />
+      </SettingRow>
+      <SettingRow
+        label="Share session replays"
+        description={
+          <SettingDescription status={replayStatus}>
+            Include masked replays of the app with crash reports.
+          </SettingDescription>
+        }
+      >
+        <TogglePill
+          ariaLabel="Share session replays"
+          value={settings.replayEnabled && settings.enabled}
+          disabled={busy || !settings.enabled || settings.envOverrides.replayEnabled}
+          onChange={(replayEnabled) => {
+            void handleReplayEnabledChange(replayEnabled);
+          }}
+        />
+      </SettingRow>
+    </>
   );
 }
 
@@ -640,7 +650,7 @@ function toTelemetryUpdateInput(
   };
 }
 
-export function TelemetrySettingControl({ open }: { open: boolean }) {
+export function TelemetrySettingRows({ open }: { open: boolean }) {
   const [settings, setSettings] = useState<TelemetrySettings>(DEFAULT_TELEMETRY_SETTINGS);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -716,55 +726,81 @@ export function TelemetrySettingControl({ open }: { open: boolean }) {
     [settings],
   );
 
-  const hasEnvOverride = hasTelemetryEnvOverride(settings);
-  const summary = settings.envOverrides.enabled
-    ? "Managed by NODEX_TELEMETRY_ENABLED."
+  const managed = settings.envOverrides.enabled ? "Managed by NODEX_TELEMETRY_ENABLED." : null;
+  const status = hasTelemetryEnvOverride(settings)
+    ? `${managed ?? ""} Environment overrides are active.`.trim()
     : settings.enabled
       ? "Product telemetry is enabled after restart."
-      : "Product telemetry is off.";
-  const autoCaptureSummary = settings.envOverrides.autoCaptureEnabled
+      : null;
+  const autoCaptureStatus = settings.envOverrides.autoCaptureEnabled
     ? "Web analytics are managed by NODEX_TELEMETRY_AUTOCAPTURE_ENABLED."
     : !settings.enabled
       ? "Web analytics require product telemetry."
       : settings.autoCaptureEnabled
         ? "Web analytics are enabled after restart."
-        : "Web analytics are off.";
-  const autoCaptureDisabled = busy || !settings.enabled || settings.envOverrides.autoCaptureEnabled;
+        : null;
 
   return (
-    <div className="flex max-w-80 flex-col items-end gap-2 text-right">
-      <div className="flex flex-col items-end gap-1">
-        <div className="flex items-center gap-2">
-          <span className="text-xs text-(--foreground-secondary)">Share product telemetry</span>
-          <TogglePill
-            ariaLabel="Share product telemetry"
-            value={settings.enabled}
-            disabled={busy || settings.envOverrides.enabled}
-            onChange={(enabled) => {
-              void handleEnabledChange(enabled);
-            }}
-          />
-        </div>
-        <div className="max-w-72 text-xs text-(--foreground-secondary)">
-          {hasEnvOverride ? `${summary} Environment overrides are active.` : summary}
-        </div>
-      </div>
-      <div className="flex flex-col items-end gap-1">
-        <div className="flex items-center gap-2">
-          <span className="text-xs text-(--foreground-secondary)">Share web analytics</span>
-          <TogglePill
-            ariaLabel="Share web analytics"
-            value={settings.autoCaptureEnabled && settings.enabled}
-            disabled={autoCaptureDisabled}
-            onChange={(autoCaptureEnabled) => {
-              void handleAutoCaptureEnabledChange(autoCaptureEnabled);
-            }}
-          />
-        </div>
-        <div className="max-w-72 text-xs text-(--foreground-secondary)">{autoCaptureSummary}</div>
-      </div>
-      {error ? <span className="max-w-72 text-xs text-(--red-text)">{error}</span> : null}
-    </div>
+    <>
+      <SettingRow
+        label="Share product telemetry"
+        description={
+          <SettingDescription status={status} error={error}>
+            Send anonymous product events to Statsig. Prompts, transcripts, card text and file paths
+            are never sent.
+          </SettingDescription>
+        }
+      >
+        <TogglePill
+          ariaLabel="Share product telemetry"
+          value={settings.enabled}
+          disabled={busy || settings.envOverrides.enabled}
+          onChange={(enabled) => {
+            void handleEnabledChange(enabled);
+          }}
+        />
+      </SettingRow>
+      <SettingRow
+        label="Share web analytics"
+        description={
+          <SettingDescription status={autoCaptureStatus}>
+            Include filtered technical web analytics with product telemetry.
+          </SettingDescription>
+        }
+      >
+        <TogglePill
+          ariaLabel="Share web analytics"
+          value={settings.autoCaptureEnabled && settings.enabled}
+          disabled={busy || !settings.enabled || settings.envOverrides.autoCaptureEnabled}
+          onChange={(autoCaptureEnabled) => {
+            void handleAutoCaptureEnabledChange(autoCaptureEnabled);
+          }}
+        />
+      </SettingRow>
+    </>
+  );
+}
+
+/** A row's explanation, then its current state and any failure on lines of their own. */
+function SettingDescription({
+  status,
+  error = null,
+  children,
+}: {
+  status: string | null;
+  error?: string | null;
+  children: ReactNode;
+}) {
+  return (
+    <>
+      {children}
+      {status ? <span className="block">{status}</span> : null}
+      {error ? (
+        <span role="alert" className="block text-danger">
+          {error}
+        </span>
+      ) : null}
+    </>
   );
 }
 

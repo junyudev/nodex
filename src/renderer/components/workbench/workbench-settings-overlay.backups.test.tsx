@@ -241,13 +241,9 @@ describe("SettingsRouteShell backups", () => {
     const view = await renderOverlay(buildSettingsPath("general-settings"));
     await settleLazyRender();
 
-    await view.findByText("Crash reports are off.");
-    const toggle = view
-      .getByText("Share crash reports")
-      .parentElement?.querySelector("[role='switch']");
-    const replayToggle = view
-      .getByText("Share session replays")
-      .parentElement?.querySelector("[role='switch']");
+    await view.findByText("Session replays require crash reports.");
+    const toggle = view.getByRole("switch", { name: "Share crash reports" });
+    const replayToggle = view.getByRole("switch", { name: "Share session replays" });
     expect(toggle).not.toBeNull();
     expect(replayToggle).not.toBeNull();
     expect(toggle?.getAttribute("aria-checked")).toBe("false");
@@ -265,11 +261,9 @@ describe("SettingsRouteShell backups", () => {
     expect(diagnosticsUpdates[0]?.replayEnabled).toBe(false);
     expect(toggle?.getAttribute("aria-checked")).toBe("true");
     view.getByText("Crash reports are enabled after restart.");
-    view.getByText("Session replays are off.");
+    expect(view.queryByText("Session replays require crash reports.")).toBeNull();
 
-    const enabledReplayToggle = view
-      .getByText("Share session replays")
-      .parentElement?.querySelector("[role='switch']");
+    const enabledReplayToggle = view.getByRole("switch", { name: "Share session replays" });
     expect(enabledReplayToggle).not.toBeNull();
     expect((enabledReplayToggle as HTMLButtonElement | null)?.disabled ?? false).toBe(false);
 
@@ -347,9 +341,7 @@ describe("SettingsRouteShell backups", () => {
     await settleLazyRender();
 
     await view.findByText("Managed by NODEX_SENTRY_ENABLED. Environment overrides are active.");
-    const toggle = view
-      .getByText("Share crash reports")
-      .parentElement?.querySelector("[role='switch']");
+    const toggle = view.getByRole("switch", { name: "Share crash reports" });
     expect(toggle).not.toBeNull();
     expect((toggle as HTMLButtonElement | null)?.disabled ?? false).toBe(true);
 
@@ -420,13 +412,9 @@ describe("SettingsRouteShell backups", () => {
     const view = await renderOverlay(buildSettingsPath("general-settings"));
     await settleLazyRender();
 
-    await view.findByText("Product telemetry is off.");
-    const toggle = view
-      .getByText("Share product telemetry")
-      .parentElement?.querySelector("[role='switch']");
-    const autoCaptureToggle = view
-      .getByText("Share web analytics")
-      .parentElement?.querySelector("[role='switch']");
+    await view.findByText("Web analytics require product telemetry.");
+    const toggle = view.getByRole("switch", { name: "Share product telemetry" });
+    const autoCaptureToggle = view.getByRole("switch", { name: "Share web analytics" });
     expect(toggle).not.toBeNull();
     expect(autoCaptureToggle).not.toBeNull();
     expect(toggle?.getAttribute("aria-checked")).toBe("false");
@@ -444,11 +432,9 @@ describe("SettingsRouteShell backups", () => {
     expect(telemetryUpdates[0]?.autoCaptureEnabled).toBe(false);
     expect(toggle?.getAttribute("aria-checked")).toBe("true");
     view.getByText("Product telemetry is enabled after restart.");
-    view.getByText("Web analytics are off.");
+    expect(view.queryByText("Web analytics require product telemetry.")).toBeNull();
 
-    const enabledAutoCaptureToggle = view
-      .getByText("Share web analytics")
-      .parentElement?.querySelector("[role='switch']");
+    const enabledAutoCaptureToggle = view.getByRole("switch", { name: "Share web analytics" });
     expect(enabledAutoCaptureToggle).not.toBeNull();
     expect((enabledAutoCaptureToggle as HTMLButtonElement | null)?.disabled ?? false).toBe(false);
 
@@ -522,9 +508,7 @@ describe("SettingsRouteShell backups", () => {
     await settleLazyRender();
 
     await view.findByText("Managed by NODEX_TELEMETRY_ENABLED. Environment overrides are active.");
-    const toggle = view
-      .getByText("Share product telemetry")
-      .parentElement?.querySelector("[role='switch']");
+    const toggle = view.getByRole("switch", { name: "Share product telemetry" });
     expect(toggle).not.toBeNull();
     expect((toggle as HTMLButtonElement | null)?.disabled ?? false).toBe(true);
 

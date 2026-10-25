@@ -1,12 +1,12 @@
 import { startTransition } from "react";
 import { NodexButton } from "@/components/ui/button";
 import { CodexRequestDiagnostics } from "@/features/local-conversation/codex-request-diagnostics";
-import { AppUpdateSettingsControl } from "./app-update-settings-control";
+import { AppUpdateSettingRows } from "./app-update-settings-control";
 import {
   ComposerEnterBehaviorControl,
   ComposerPredictionSettingControl,
   CopyFileReferencesAsLocalPathsSettingControl,
-  DiagnosticsSettingControl,
+  DiagnosticsSettingRows,
   FileLinkOpenerSettingControl,
   NfmAutolinkBareDomainsSettingControl,
   NfmAutolinkPasteSettingControl,
@@ -18,7 +18,7 @@ import {
   ThreadDetailLevelSettingControl,
   ThreadNotificationSettingControl,
   ThreadQueueFollowUpsSettingControl,
-  TelemetrySettingControl,
+  TelemetrySettingRows,
   WindowRestoreSettingControl,
 } from "./workbench-settings-controls";
 import { OPEN_SOURCE_LICENSES_SETTINGS_PATH } from "./workbench-settings-routes";
@@ -39,41 +39,21 @@ export function GeneralSettingsPage({
   threadQueueFollowUpsEnabled,
 }: SettingsSectionPageProps) {
   return (
-    <SettingsPageSurface title="General" subtitle="App-wide shell behavior and notifications.">
-      <SectionBlock id="general" title="General">
+    <SettingsPageSurface
+      title="General"
+      subtitle="How Nodex starts and updates, how chats and writing behave, and what you share."
+    >
+      <SectionBlock id="app" title="App">
         <SettingRow
           label="Restore windows"
-          description="Choose which workbench windows reopen after quitting Nodex."
+          description="Choose which windows reopen after quitting Nodex."
         >
           <WindowRestoreSettingControl />
         </SettingRow>
-        <SettingRow
-          label="Service tier"
-          description="Choose the default speed for new thread requests. Standard is the default; Fast opts into the faster tier."
-        >
-          <ServiceTierSettingControl />
-        </SettingRow>
-        <SettingRow
-          label="App updates"
-          description="Packaged macOS builds can check, download, and install stable updates in the background."
-        >
-          <AppUpdateSettingsControl open={open} />
-        </SettingRow>
-        <SettingRow
-          label="Diagnostics"
-          description="Optionally send crash diagnostics and masked session replays to Sentry. Prompts, transcripts, card text, and local payloads are scrubbed before upload."
-        >
-          <DiagnosticsSettingControl open={open} />
-        </SettingRow>
-        <SettingRow
-          label="Telemetry"
-          description="Optionally send anonymous product events and filtered technical web analytics to Statsig. Prompts, transcripts, card text, and file paths are not sent."
-        >
-          <TelemetrySettingControl open={open} />
-        </SettingRow>
+        <AppUpdateSettingRows open={open} />
         <SettingRow
           label="Open source licenses"
-          description="Third-party notices for bundled dependencies"
+          description="Third-party notices for bundled dependencies."
         >
           <NodexButton
             variant="secondary"
@@ -89,16 +69,12 @@ export function GeneralSettingsPage({
         </SettingRow>
       </SectionBlock>
 
-      <SectionBlock id="app-server-diagnostics" title="App server diagnostics">
-        <CodexRequestDiagnostics enabled={open} />
-      </SectionBlock>
-
-      <SectionBlock id="composer" title="Composer">
+      <SectionBlock id="chats" title="Chats">
         <SettingRow
-          label="Show predictions"
-          description="Suggest your next message after an agent replies."
+          label="Service tier"
+          description="The default speed for new requests. Fast opts into the faster tier."
         >
-          <ComposerPredictionSettingControl />
+          <ServiceTierSettingControl />
         </SettingRow>
         <SettingRow
           label="Thread detail"
@@ -107,9 +83,33 @@ export function GeneralSettingsPage({
           <ThreadDetailLevelSettingControl />
         </SettingRow>
         <SettingRow
-          label="Spellcheck"
-          description="Inline text correction for editable writing surfaces."
+          label="Show predictions"
+          description="Suggest your next message after an agent replies."
         >
+          <ComposerPredictionSettingControl />
+        </SettingRow>
+        <SettingRow
+          label={`${isMacPlatform ? "Cmd" : "Ctrl"}+Enter to send long prompts`}
+          description="Single-line prompts still send on Enter. Multiline prompts send with the modifier instead."
+        >
+          <ComposerEnterBehaviorControl
+            value={composerEnterBehavior}
+            onChange={onComposerEnterBehaviorChange}
+          />
+        </SettingRow>
+        <SettingRow
+          label="Queue follow-ups"
+          description="While a thread is running, queue new messages by default instead of steering it right away."
+        >
+          <ThreadQueueFollowUpsSettingControl
+            value={threadQueueFollowUpsEnabled}
+            onChange={onThreadQueueFollowUpsEnabledChange}
+          />
+        </SettingRow>
+      </SectionBlock>
+
+      <SectionBlock id="writing" title="Writing">
+        <SettingRow label="Spellcheck" description="Mark misspelled words wherever you type.">
           <SpellcheckSettingControl />
         </SettingRow>
         <SettingRow
@@ -142,24 +142,6 @@ export function GeneralSettingsPage({
         >
           <PasteResourceDescriptionSoftLimitSettingControl />
         </SettingRow>
-        <SettingRow
-          label={`${isMacPlatform ? "Cmd" : "Ctrl"}+Enter to send long prompts`}
-          description="Single-line prompts still send on Enter. Multiline prompts switch to the modifier chord when this is enabled."
-        >
-          <ComposerEnterBehaviorControl
-            value={composerEnterBehavior}
-            onChange={onComposerEnterBehaviorChange}
-          />
-        </SettingRow>
-        <SettingRow
-          label="Queue follow-ups"
-          description="While a thread is running, use queue as the default submit action instead of immediate steering."
-        >
-          <ThreadQueueFollowUpsSettingControl
-            value={threadQueueFollowUpsEnabled}
-            onChange={onThreadQueueFollowUpsEnabledChange}
-          />
-        </SettingRow>
       </SectionBlock>
 
       <SectionBlock id="files-and-links" title="Files & links">
@@ -179,6 +161,15 @@ export function GeneralSettingsPage({
 
       <SectionBlock id="notifications" title="Notifications">
         <ThreadNotificationSettingControl open={open} />
+      </SectionBlock>
+
+      <SectionBlock id="privacy" title="Privacy">
+        <DiagnosticsSettingRows open={open} />
+        <TelemetrySettingRows open={open} />
+      </SectionBlock>
+
+      <SectionBlock id="app-server-diagnostics" title="Troubleshooting">
+        <CodexRequestDiagnostics enabled={open} />
       </SectionBlock>
     </SettingsPageSurface>
   );

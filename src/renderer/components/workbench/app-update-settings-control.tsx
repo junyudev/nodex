@@ -10,6 +10,7 @@ import {
   updateAppUpdateSettings,
 } from "./app-update-settings-control-deps";
 import { useAppUpdateStatus } from "../../app-providers";
+import { NodexSettingsRow as SettingRow } from "../ui/settings";
 import { ConfigValueDropdown } from "./config-value-dropdown";
 
 function isAppUpdateSettings(value: unknown): value is AppUpdateSettings {
@@ -125,68 +126,71 @@ export function AppUpdateSettingsControlView({
     status.status === "installing";
 
   return (
-    <div className="flex max-w-80 flex-col items-end gap-2 text-right">
-      <div className="flex flex-wrap items-center justify-end gap-2">
-        <span className="text-xs font-medium text-(--foreground)">
-          Nodex {status.currentVersion}
-        </span>
-        <span className="text-xs text-(--foreground-secondary)">Auto check</span>
-        <NodexSwitch
-          ariaLabel="Auto check"
-          disabled={busy || !status.supported}
-          checked={settings.automaticChecksEnabled}
-          onCheckedChange={onAutomaticChecksChange}
-        />
-      </div>
-      <div className="flex items-center justify-end gap-2">
-        <span className="text-xs text-(--foreground-secondary)">Channel</span>
-        <ConfigValueDropdown
-          value={settings.channel}
-          options={[
-            { value: "stable", label: "Stable — Recommended" },
-            { value: "nightly", label: "Nightly" },
-          ]}
-          disabled={busy || !status.channelChangeAllowed}
-          onSelect={onChannelChange}
-        />
-      </div>
-      <div className="max-w-72 text-[11px] text-(--foreground-tertiary)">
-        Nightly receives new mainline builds first. Switching channels does not install an older
-        build.
-      </div>
-      <div className="max-w-72 text-xs text-(--foreground-secondary)">
-        {formatStatusSummary(status)}
-      </div>
-      {checkedAtLabel ? (
-        <div className="text-[11px] text-(--foreground-tertiary)">{checkedAtLabel}</div>
-      ) : null}
-      <div className="flex flex-wrap justify-end gap-2">
-        <NodexButton
-          variant="outline"
-          size="xs"
-          disabled={busy || !status.supported || updateAlreadyActive}
-          onClick={onCheckNow}
-        >
-          Check now
-        </NodexButton>
+    <>
+      <SettingRow
+        label={`Nodex ${status.currentVersion}`}
+        description={
+          <>
+            {formatStatusSummary(status)}
+            {checkedAtLabel ? ` ${checkedAtLabel}.` : null}
+            {error ? (
+              <span role="alert" className="block text-danger">
+                {error}
+              </span>
+            ) : null}
+          </>
+        }
+      >
         {status.status === "downloaded" ? (
+          <NodexButton variant="primary" size="xs" disabled={busy} onClick={onInstall}>
+            Restart to update
+          </NodexButton>
+        ) : status.supported ? (
           <NodexButton
             variant="secondary"
             size="xs"
-            className="border-token-focus-border/30 bg-text-info/10 text-info hover:bg-text-info/15 hover:text-info"
-            disabled={busy}
-            onClick={onInstall}
+            disabled={busy || updateAlreadyActive}
+            onClick={onCheckNow}
           >
-            Restart to Update
+            Check now
           </NodexButton>
         ) : null}
-      </div>
-      {error ? <div className="max-w-72 text-xs text-(--red-text)">{error}</div> : null}
-    </div>
+      </SettingRow>
+      {status.supported ? (
+        <>
+          <SettingRow
+            label="Check automatically"
+            description="Look for updates in the background and download them when they're ready."
+          >
+            <NodexSwitch
+              ariaLabel="Check for updates automatically"
+              disabled={busy}
+              checked={settings.automaticChecksEnabled}
+              onCheckedChange={onAutomaticChecksChange}
+            />
+          </SettingRow>
+          <SettingRow
+            label="Update channel"
+            description="Nightly gets new builds first. Switching channels never installs an older build."
+          >
+            <ConfigValueDropdown
+              value={settings.channel}
+              options={[
+                { value: "stable", label: "Stable" },
+                { value: "nightly", label: "Nightly" },
+              ]}
+              disabled={busy || !status.channelChangeAllowed}
+              onSelect={onChannelChange}
+            />
+          </SettingRow>
+        </>
+      ) : null}
+    </>
   );
 }
 
-export function AppUpdateSettingsControl({ open }: { open: boolean }) {
+/** Version, update status and update preferences, as rows of the General page's App section. */
+export function AppUpdateSettingRows({ open }: { open: boolean }) {
   const sharedStatus = useAppUpdateStatus();
   const [settings, setSettings] = useState<AppUpdateSettings>({
     automaticChecksEnabled: true,

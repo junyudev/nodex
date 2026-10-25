@@ -114,6 +114,26 @@ describe("workbench settings search catalog", () => {
     expect(settingsSearchAnchor("git", "Commit instructions")).toBeNull();
   });
 
+  test("lands on the General section a search names", () => {
+    const anchors = {
+      "Update channel": "app",
+      "Restart to update": "app",
+      "Service tier": "chats",
+      "Queue follow-ups": "chats",
+      Spellcheck: "writing",
+      "Markdown file links": "files-and-links",
+      "Turn completion notifications": "notifications",
+      "Share crash reports": "privacy",
+      Statsig: "privacy",
+      "App server requests": "app-server-diagnostics",
+    };
+    for (const [query, anchor] of Object.entries(anchors)) {
+      expect(hasSectionResult(query, "general-settings")).toBe(true);
+      expect(settingsSearchAnchor("general-settings", query)).toBe(anchor);
+    }
+    expect(settingsSearchAnchor("general-settings", "General")).toBeNull();
+  });
+
   test("does not index the retired raw Codex config and agent permission controls", () => {
     for (const query of [
       "Approval policy",
@@ -123,6 +143,7 @@ describe("workbench settings search catalog", () => {
     ]) {
       expect(hasSectionResult(query, "agent")).toBe(false);
     }
+    expect(hasSectionResult("Default permissions mode", "general-settings")).toBe(false);
   });
 
   test("does not index the retired sidebar section preferences", () => {

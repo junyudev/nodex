@@ -84,9 +84,15 @@ Other agents owns ACP instance setup, sign-in and model services, as described i
 Agents > Codex owns Copy setup. Setup migration is separate from conversation import and targets
 shared Codex configuration.
 
-General owns Permissions, general behavior, Composer, Files & links, Notifications, and app-server
-request diagnostics. Request diagnostics are captured only while the General page is open and show
-bounded recent request timing, scheduling, transport, and failure data for local troubleshooting.
+General is grouped by what a setting affects, in this order: App (window restore, the running
+version with its update actions and preferences, open source licenses), Chats, Writing, Files &
+links, Notifications, Privacy (crash reports, session replays, product telemetry and web analytics)
+and Troubleshooting (app-server request diagnostics). Each preference is its own row; a row's
+description adds its current state only when that differs from what the switch shows, such as an
+environment override, a prerequisite or a change that applies after restart. A search result for a
+General setting lands on its group. Request diagnostics are captured only while the General page is
+open and show bounded recent request timing, scheduling, transport, and failure data for local
+troubleshooting.
 Browser owns General, Autofill and passwords, Extensions,
 Downloads, Permissions, Site permissions, Developer mode, and its focused
 history/manager detail pages. Pages owns only the Block → Page task-shorthand
@@ -127,7 +133,7 @@ The Settings section rail uses the normal sidebar's shared material and palette.
 Section pages render only the main content surface and do
 not add another sidebar-like card or nested full-page scroll container.
 
-General includes an App server diagnostics disclosure within one shared Settings
+General's Troubleshooting group holds an App server requests disclosure within one shared Settings
 surface. Expanding it starts request capture while General is active; collapsing
 it or leaving Settings stops capture. The expanded view shows recorded requests
 by host, with request details, payload copying, failure filtering and host-local

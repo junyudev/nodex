@@ -97,57 +97,35 @@ export const SETTINGS_SEARCH_PANELS = {
   },
   "general-settings": {
     title: "General",
-    subtitle: "App-wide shell behavior and notifications.",
+    subtitle: "How Nodex starts and updates, how chats and writing behave, and what you share.",
     groups: [
       {
-        title: "Permissions",
+        anchor: "app",
+        title: "App",
         entries: [
-          entry("Default permissions mode", "Choose the preset used for new local tasks.", [
-            "Ask for approval",
-            "Approve for me",
-            "Default permissions",
-            "Auto-review",
-            "Full access",
-            "Custom (config.toml)",
-            "guardian-approvals",
-            "full-access",
-            "custom",
-            "sandbox",
-            "Nodex Library",
-            "without approval prompts",
-            "elevated requests",
-          ]),
-        ],
-      },
-      {
-        title: "General",
-        entries: [
-          entry("Restore windows", "Choose which workbench windows reopen after quitting Nodex.", [
+          entry("Restore windows", "Choose which windows reopen after quitting Nodex.", [
             "All",
             "Last",
             "None",
             "quit",
             "reopen",
           ]),
-          entry(
-            "Service tier",
-            "Choose the default speed for new thread requests. Standard is the default; Fast opts into the faster tier.",
-            ["Standard", "Fast"],
-          ),
-          entry(
+          entry("Nodex version", "Check for updates, or restart to install a downloaded one.", [
             "App updates",
-            "Packaged macOS builds can check, download, and install stable updates in the background.",
-            ["check updates", "download updates", "install updates"],
+            "Check now",
+            "Restart to update",
+            "download updates",
+            "install updates",
+          ]),
+          entry(
+            "Check automatically",
+            "Look for updates in the background and download them when they're ready.",
+            ["automatic updates", "check updates"],
           ),
           entry(
-            "Diagnostics",
-            "Optionally send crash diagnostics and masked session replays to Sentry. Prompts, transcripts, card text, and local payloads are scrubbed before upload.",
-            ["crash diagnostics", "masked session replays", "Sentry", "scrubbed"],
-          ),
-          entry(
-            "Telemetry",
-            "Optionally send anonymous product events and filtered technical web analytics to Statsig. Prompts, transcripts, card text, and file paths are not sent.",
-            ["anonymous product events", "technical web analytics", "Statsig"],
+            "Update channel",
+            "Nightly gets new builds first. Switching channels never installs an older build.",
+            ["Stable", "Nightly", "beta"],
           ),
           entry("Open source licenses", "Third-party notices for bundled dependencies.", [
             "open source",
@@ -157,8 +135,14 @@ export const SETTINGS_SEARCH_PANELS = {
         ],
       },
       {
-        title: "Composer",
+        anchor: "chats",
+        title: "Chats",
         entries: [
+          entry(
+            "Service tier",
+            "The default speed for new requests. Fast opts into the faster tier.",
+            ["Standard", "Fast"],
+          ),
           entry("Thread detail", "Choose how much command output to show in threads.", [
             "Steps",
             "Steps with code commands",
@@ -171,7 +155,23 @@ export const SETTINGS_SEARCH_PANELS = {
             "autocomplete",
             "suggestions",
           ]),
-          entry("Spellcheck", "Inline text correction for editable writing surfaces."),
+          entry(
+            "Cmd+Enter to send long prompts",
+            "Single-line prompts still send on Enter. Multiline prompts send with the modifier instead.",
+            ["Ctrl+Enter to send long prompts", "composer", "modifier chord"],
+          ),
+          entry(
+            "Queue follow-ups",
+            "While a thread is running, queue new messages by default instead of steering it right away.",
+            ["steer", "composer"],
+          ),
+        ],
+      },
+      {
+        anchor: "writing",
+        title: "Writing",
+        entries: [
+          entry("Spellcheck", "Mark misspelled words wherever you type.", ["spelling"]),
           entry("Auto-link while typing", "Turn typed URLs into links as you finish the token."),
           entry(
             "Auto-link on paste",
@@ -191,18 +191,10 @@ export const SETTINGS_SEARCH_PANELS = {
             "Prompt before pasted plain text pushes the note near its description size ceiling.",
             ["Paste resource description soft limit"],
           ),
-          entry(
-            "Cmd+Enter to send long prompts",
-            "Single-line prompts still send on Enter. Multiline prompts switch to the modifier chord when this is enabled.",
-            ["Ctrl+Enter to send long prompts", "modifier chord"],
-          ),
-          entry(
-            "Queue follow-ups",
-            "While a thread is running, use queue as the default submit action instead of immediate steering.",
-          ),
         ],
       },
       {
+        anchor: "files-and-links",
         title: "Files & links",
         entries: [
           entry(
@@ -221,6 +213,7 @@ export const SETTINGS_SEARCH_PANELS = {
         ],
       },
       {
+        anchor: "notifications",
         title: "Notifications",
         entries: [
           entry("Turn completion notifications", "Set when agent alerts you that it's finished.", [
@@ -230,6 +223,41 @@ export const SETTINGS_SEARCH_PANELS = {
             "Never",
             "Only when unfocused",
             "Always",
+          ]),
+        ],
+      },
+      {
+        anchor: "privacy",
+        title: "Privacy",
+        entries: [
+          entry(
+            "Share crash reports",
+            "Send crash diagnostics to Sentry. Prompts, transcripts, card text and local payloads are scrubbed before upload.",
+            ["Diagnostics", "crash diagnostics", "Sentry", "scrubbed"],
+          ),
+          entry("Share session replays", "Include masked replays of the app with crash reports.", [
+            "masked session replays",
+          ]),
+          entry(
+            "Share product telemetry",
+            "Send anonymous product events to Statsig. Prompts, transcripts, card text and file paths are never sent.",
+            ["Telemetry", "anonymous product events", "Statsig"],
+          ),
+          entry(
+            "Share web analytics",
+            "Include filtered technical web analytics with product telemetry.",
+            ["technical web analytics"],
+          ),
+        ],
+      },
+      {
+        anchor: "app-server-diagnostics",
+        title: "Troubleshooting",
+        entries: [
+          entry("App server requests", "Record requests while expanded.", [
+            "App server diagnostics",
+            "request log",
+            "failed requests",
           ]),
         ],
       },

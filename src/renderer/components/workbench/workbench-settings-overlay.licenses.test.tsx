@@ -8,6 +8,7 @@ import { installWindowApi } from "@/test/browser-globals";
 import { render, settleLazyRender } from "@/test/dom";
 import { SettingsRouteShell } from "./workbench-settings-route-shell";
 import { buildSettingsPath, OPEN_SOURCE_LICENSES_SETTINGS_PATH } from "./workbench-settings-routes";
+import { SETTINGS_SEARCH_PANELS } from "./workbench-settings-search-catalog";
 
 const PROJECTS = [
   {
@@ -140,6 +141,24 @@ describe("SettingsRouteShell open source licenses", () => {
     await settleLazyRender();
 
     await view.findByRole("button", { name: "View" });
+  });
+
+  test("lands every General search group on the section of the same name", async () => {
+    installSettingsWindowApi(null);
+
+    const view = render(
+      <SettingsLicensesHarness initialPath={buildSettingsPath("general-settings")} />,
+    );
+    await settleLazyRender();
+    await view.findByRole("button", { name: "View" });
+
+    const groups = SETTINGS_SEARCH_PANELS["general-settings"].groups;
+    expect(view.getAllByRole("region").map((region) => region.id)).toEqual(
+      groups.map((group) => group.anchor),
+    );
+    for (const group of groups) {
+      expect(view.getByRole("region", { name: group.title }).id).toBe(group.anchor);
+    }
   });
 
   test("shows an explicit unavailable state when no notice resource exists", async () => {
