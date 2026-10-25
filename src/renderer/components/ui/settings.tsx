@@ -1,4 +1,11 @@
-import { useId, useState, type ComponentProps, type CSSProperties, type ReactNode } from "react";
+import {
+  useId,
+  useState,
+  type ComponentProps,
+  type CSSProperties,
+  type ReactNode,
+  type Ref,
+} from "react";
 import { ChevronDownIcon, ChevronRightIcon, PlusIcon } from "@/components/shared/icons";
 import { cn } from "@/lib/utils";
 import {
@@ -389,6 +396,7 @@ export function NodexSettingsExpandableRow({
   controls,
   progress,
   notice,
+  toggleRef,
   children,
 }: {
   id?: string;
@@ -403,6 +411,8 @@ export function NodexSettingsExpandableRow({
   progress?: ReactNode;
   /** A message under the header that stays visible while collapsed. */
   notice?: ReactNode;
+  /** The header's expand toggle, where focus can return when a quick control goes away. */
+  toggleRef?: Ref<HTMLButtonElement>;
   /** The expanded configuration, mounted only while open. */
   children: ReactNode;
 }) {
@@ -411,6 +421,7 @@ export function NodexSettingsExpandableRow({
     <div id={id} className="flex scroll-mt-4 flex-col">
       <div className="relative flex min-h-14 items-center gap-3 px-4 py-2.5">
         <button
+          ref={toggleRef}
           type="button"
           aria-expanded={expanded}
           aria-controls={expanded ? detailId : undefined}

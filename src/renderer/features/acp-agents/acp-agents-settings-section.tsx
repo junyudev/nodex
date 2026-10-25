@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import { SettingsAgentIcon } from "@/components/shared/icons";
 import { NodexButton, NodexSwitch } from "@/components/ui/button";
@@ -10,6 +10,7 @@ import {
   type NodexSettingsDisclosureState,
 } from "@/components/ui/settings";
 import { toast } from "@/components/ui/toast";
+import { focusFallbackRef } from "@/lib/focus-fallback";
 import { appScope, useScopeHandle } from "@/lib/maitai";
 import { openModal } from "@/lib/modal-registry";
 import type { AcpAgentInstanceConfig } from "../../../shared/acp-agent-settings";
@@ -49,7 +50,12 @@ function AgentRow({
   const activity = snapshot.activities.get(instance.id);
   const status = acpInstanceStatus({ instance, inspection, provider, activity });
   const [toggling, setToggling] = useState(false);
-  const fraction = activity?.kind === "install" ? acpProgressFraction(activity.progress) : null;
+  // A cancelled or failed install keeps its last progress; the bar belongs to Installing only.
+  const fraction = status.kind === "installing" ? acpProgressFraction(activity?.progress) : null;
+  const toggleRef = useRef<HTMLButtonElement>(null);
+  // The quick action ends with its work (Ready, or Sign in opening the row); focus on it stays
+  // in the row.
+  const keepFocusInRow = focusFallbackRef(() => toggleRef.current);
 
   const runAction = () => {
     switch (status.action) {
@@ -99,6 +105,7 @@ function AgentRow({
       }
       expanded={expanded}
       onExpandedChange={onToggle}
+      toggleRef={toggleRef}
       controls={
         <>
           <AcpStatusText
@@ -108,15 +115,18 @@ function AgentRow({
           />
           {status.action && status.action !== "sign-in" ? (
             <NodexButton
+              ref={keepFocusInRow}
               size="xs"
               variant={status.action === "cancel" ? "ghost" : "secondary"}
+              // Cancelling keeps focus on Cancel, which becomes the next step once it settles.
               disabled={activity?.cancelling === true}
+              focusableWhenDisabled
               onClick={runAction}
             >
               {ACP_STATUS_ACTION_LABELS[status.action]}
             </NodexButton>
           ) : status.action === "sign-in" && !expanded ? (
-            <NodexButton size="xs" variant="secondary" onClick={runAction}>
+            <NodexButton ref={keepFocusInRow} size="xs" variant="secondary" onClick={runAction}>
               {ACP_STATUS_ACTION_LABELS["sign-in"]}
             </NodexButton>
           ) : null}

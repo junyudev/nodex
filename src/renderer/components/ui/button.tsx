@@ -8,6 +8,8 @@ const nodexButtonVariants = cva(
   [
     "inline-flex shrink-0 items-center justify-center gap-2 whitespace-nowrap",
     "outline-hidden transition-colors disabled:pointer-events-none disabled:opacity-50",
+    // A button that stays focusable while disabled is only marked disabled.
+    "data-disabled:pointer-events-none data-disabled:opacity-50",
     "focus-visible:ring-token-focus-border focus-visible:ring-2",
     "cursor-interaction",
     "[&_svg]:pointer-events-none [&_svg]:shrink-0",

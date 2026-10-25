@@ -20,6 +20,13 @@ type Input<Method extends keyof AcpAgentsRuntime> = Parameters<AcpAgentsRuntime[
 
 export const ok = <Value>(value: Value): AcpResult<Value> => ({ ok: true, value });
 
+/** A result a test settles when the step it holds back should finish. */
+export const deferred = <Value>() => {
+  let resolve!: (value: Value) => void;
+  const promise = new Promise<Value>((done) => (resolve = done));
+  return { promise, resolve };
+};
+
 export const registryInstance = (
   patch: Partial<AcpAgentInstanceConfig> = {},
 ): AcpAgentInstanceConfig => ({

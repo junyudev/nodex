@@ -148,16 +148,20 @@ model state.
 
 ## Settings and Composer
 
-Settings > Agents > Other agents lists ACP Agents one row per instance: name, its command or Registry source, one
-status with the next step (Install, Connect, Sign in or Cancel), and an on/off switch that saves
-immediately. Statuses follow the instance's discovery state: Ready with the model count (or Startup
-model for an Agent without a model API) once discovery is ready, Not connected while it is unknown,
-and Couldn't connect when it failed. Sign-in required, Installing with real progress, Connecting, Not
-installed, Needs a runner (Command not found when a local command's executable is missing),
-Unavailable, Not in Registry, Off, or a failure with its recovery take precedence. Installation and
-sign-in alone never show Ready. Saved changes that wait for current work show Changes pending until
-Main reports them applied; a reconcile failure stays visible with Try again. Pending and failed
-states are re-read only while unsettled and while an ACP Settings surface observes them.
+Settings > Agents > Other agents lists ACP Agents one row per instance: name, its command or
+Registry source, one status with the next step (Install, Connect, Sign in or Cancel), and an on/off
+switch that saves immediately. Statuses follow the instance's discovery state: Ready with the model
+count (or Startup model for an Agent without a model API) once discovery is ready, Not connected
+while it is unknown, and Couldn't connect when it failed. Sign-in required, Installing with real
+download progress (the bar belongs to Installing alone, not to a cancelled or failed install),
+Connecting, Not installed, Needs a runner (Command not found when a local command's executable is
+missing), Unavailable, Not in Registry, Off, or a failure with its recovery take precedence.
+Installation and sign-in alone never show Ready. Saved changes that wait for current work show
+Changes pending until Main reports them applied; a reconcile failure stays visible with Try again.
+Pending and failed states are re-read only while unsettled and while an ACP Settings surface
+observes them. The next step keeps keyboard focus as it changes: Install becomes Cancel in place,
+Cancel stays focused while Cancelling and becomes the next step once it settles, and a step that
+ends with its work (Ready, or Sign in opening the row) hands focus to the row.
 
 A row expands in place to Account, Installation, launch configuration, environment variables,
 account storage, proxy and, when advertised, the Agent's model services. Arguments are separate
@@ -180,20 +184,22 @@ instance; its installation and connection continue in Settings after the dialog 
 Account lists the methods the Agent advertises: Sign in with an Agent method, Open for a terminal
 method, Set for environment variables (adding secret rows to the editor) and Open sign-in page for a
 browser request. Without methods it asks for the Agent's own command line, then Check again. Check
-again is always available and reconnects explicitly. A terminal sign-in runs in place and the account
-is verified after the command exits; Escape belongs to the terminal. Closing the last surface showing
-a sign-in cancels it, including one still starting; reopening reads the current state. A verified
-sign-in answers the Connect that asked for it and connects again when the Agent's models are not yet
-known. Sign out appears only when the Agent supports it; a busy refusal names how many chats must
-stop first.
+again is always available and reconnects explicitly. Starting, cancelling or ending a sign-in keeps
+focus in Account: on Cancel while it runs, then on the first available step. A terminal sign-in runs
+in place and the account is verified after the command exits; Escape belongs to the terminal.
+Closing the last surface showing a sign-in cancels it, including one still starting; reopening reads
+the current state. A verified sign-in answers the Connect that asked for it and connects again when
+the Agent's models are not yet known. Sign out appears only when the Agent supports it; a busy
+refusal names how many chats must stop first.
 
-The model menu lists every connected instance's models with its name, and one setup entry per enabled
-instance that is not usable yet (Sign in, Install, Connect or Unavailable). Each opens the same
-account surface in place; Settings opens the instance. Manage providers opens the selected Agent's
-settings. A chat whose ACP Agent needs sign-in shows Sign in beside the Composer. Scheduled tasks
-offer enabled ACP instances beside Codex and Claude Code profiles. A Cron task lists the instance's
-advertised models once it is connected (otherwise it asks to connect the Agent in Settings) and sends
-only the options that model advertises.
+The model menu lists every connected instance's models with its name, and one setup entry per
+enabled instance that is not usable yet (Sign in, Install, Connect or Unavailable). Each opens the
+same account surface in place, whose next step keeps focus the same way; Settings opens the
+instance. Manage providers opens the selected Agent's settings. A chat whose ACP Agent needs sign-in
+shows Sign in beside the Composer. Scheduled tasks offer enabled ACP instances beside Codex and
+Claude Code profiles. A Cron task lists the instance's advertised models once it is connected
+(otherwise it asks to connect the Agent in Settings) and sends only the options that model
+advertises.
 
 Settings > Conversations lists conversations an Agent saved for the chosen Project's folder when the
 Agent can list them, and offers Connect for Agents whose capabilities are not yet known. Import sends

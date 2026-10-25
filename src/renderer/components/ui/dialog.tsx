@@ -325,6 +325,8 @@ export function NodexDialogAction({
           ? "h-7 rounded-full px-2.5 py-0 text-xs font-medium leading-3"
           : "rounded-lg px-4 py-1.5 text-sm font-medium leading-[18px]",
         "focus:outline-none disabled:cursor-not-allowed disabled:opacity-40",
+        // An action that keeps focus while it can't be used is only marked disabled.
+        "aria-disabled:cursor-not-allowed aria-disabled:opacity-40",
         NODEX_DIALOG_ACTION_STYLES[tone],
         className,
       )}

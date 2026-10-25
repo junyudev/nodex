@@ -2,10 +2,12 @@ import {
   lazy,
   Suspense,
   useEffect,
+  useRef,
   useState,
   type FormEvent,
   type ReactElement,
   type ReactNode,
+  type Ref,
 } from "react";
 import { CopyIcon, OpenExternalIcon } from "@/components/shared/icons";
 import { NodexButton, NodexIconButton } from "@/components/ui/button";
@@ -14,6 +16,7 @@ import { NodexSettingsRow } from "@/components/ui/settings";
 import { toast } from "@/components/ui/toast";
 import { NodexTooltip } from "@/components/ui/tooltip";
 import { openExternalUrl } from "@/lib/file-system-operations";
+import { focusFallbackRef } from "@/lib/focus-fallback";
 import type { AcpAgentInstanceConfig } from "../../../shared/acp-agent-settings";
 import {
   acpFailureText,
@@ -239,11 +242,13 @@ function ActiveInteraction({
 function MethodAction({
   method,
   disabled,
+  buttonRef,
   onStart,
   onSetVariables,
 }: {
   readonly method: AcpSignInMethod;
   readonly disabled: boolean;
+  readonly buttonRef: Ref<HTMLButtonElement>;
   readonly onStart: (methodId: string) => void;
   readonly onSetVariables: ((names: readonly string[]) => void) | undefined;
 }) {
@@ -258,9 +263,11 @@ function MethodAction({
   if (method.kind !== "environment")
     return described(
       <NodexButton
+        ref={buttonRef}
         size="sm"
         variant="secondary"
         disabled={disabled}
+        focusableWhenDisabled
         onClick={() => onStart(method.id)}
       >
         {acpSignInActionLabel(method)}
@@ -334,6 +341,12 @@ export function AcpAgentAccount({
     (provider?.auth.status === "authenticated" || (state?.phase === "succeeded" && !active));
   const pending = view?.request === "start" || view?.request === "respond";
   const busy = pending || view?.request === "cancel" || view?.request === "sign-out";
+  // Starting, cancelling or ending a sign-in replaces the control that did it. Its focus moves to
+  // the account's first control: Cancel while signing in, then Check again.
+  const accountRef = useRef<HTMLDivElement>(null);
+  const keepFocusInAccount = focusFallbackRef(() =>
+    accountRef.current?.querySelector<HTMLElement>("button:not(:disabled)"),
+  );
 
   let description: ReactNode;
   // Another window's sign-in shows only that it is underway; it can't be continued or cancelled here.
@@ -367,14 +380,16 @@ export function AcpAgentAccount({
         : null;
 
   return (
-    <div className="flex flex-col">
+    <div ref={accountRef} className="flex flex-col">
       <NodexSettingsRow label="Account" description={<span role="status">{description}</span>}>
         {active ? (
           state?.cancellable ? (
             <NodexButton
+              ref={keepFocusInAccount}
               size="sm"
               variant="ghost"
               disabled={view?.request === "cancel"}
+              focusableWhenDisabled
               onClick={() => owner.cancelSignIn(instance.id)}
             >
               Cancel
@@ -394,18 +409,22 @@ export function AcpAgentAccount({
             ) : null}
             {/* Rechecks after signing in elsewhere, such as with the Agent's own command line. */}
             <NodexButton
+              ref={keepFocusInAccount}
               size="sm"
               variant="ghost"
               disabled={busy || connecting}
+              focusableWhenDisabled
               onClick={() => owner.connect(instance.id)}
             >
               {connecting ? "Checking…" : "Check again"}
             </NodexButton>
             {signedIn && provider?.auth.canLogout ? (
               <NodexButton
+                ref={keepFocusInAccount}
                 size="sm"
                 variant="ghost"
                 disabled={busy || connecting}
+                focusableWhenDisabled
                 onClick={() => owner.signOut(instance.id)}
               >
                 {view?.request === "sign-out" ? "Signing out…" : "Sign out"}
@@ -423,6 +442,7 @@ export function AcpAgentAccount({
                   key={method.id}
                   method={method}
                   disabled={busy || connecting}
+                  buttonRef={keepFocusInAccount}
                   onStart={(methodId) => owner.signIn(instance.id, methodId)}
                   onSetVariables={onSetVariables}
                 />

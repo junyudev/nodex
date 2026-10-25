@@ -8,6 +8,7 @@ import { AcpAgentsSettingsSection } from "./acp-agents-settings-section";
 import { acpProviderId } from "./acp-agent-model";
 import {
   authState,
+  deferred,
   discovered,
   fakeAcpRuntime,
   localInstance,
@@ -23,6 +24,12 @@ const press = async (element: HTMLElement) =>
   act(async () => {
     fireEvent.pointerDown(element, { button: 0 });
     fireEvent.click(element);
+    await Promise.resolve();
+  });
+
+const focus = async (element: HTMLElement) =>
+  act(async () => {
+    element.focus();
     await Promise.resolve();
   });
 
@@ -353,7 +360,7 @@ describe("ACP Agents settings", () => {
     );
   });
 
-  test("an install in progress shows real progress and can be cancelled", async () => {
+  test("an install shows real progress, and Cancel keeps focus until Install is back", async () => {
     const main = fakeAcpRuntime({ instances: [registryInstance()] });
     main.runtime.inspect.mockResolvedValue(ok(readyInspection({ status: "unprepared" } as never)));
     main.runtime.previewInstall.mockResolvedValue(
@@ -374,26 +381,120 @@ describe("ACP Agents settings", () => {
         reason: null,
       }),
     );
+    const progress = { phase: "downloading", downloadedBytes: 30, totalBytes: 120 } as const;
     main.runtime.install.mockImplementation(async ({ operationId }) =>
-      ok(
-        operation({
-          operationId,
-          progress: { phase: "downloading", downloadedBytes: 30, totalBytes: 120 },
-        }),
-      ),
+      ok(operation({ operationId, progress })),
     );
+    const cancelling = deferred<void>();
+    main.runtime.cancelOperation.mockImplementation(async ({ operationId }) => {
+      await cancelling.promise;
+      // The Runtime's cancelled operation keeps the last progress it reported.
+      return ok(operation({ operationId, phase: "cancelled", progress }));
+    });
     const { view } = mount(main);
-    await press(await view.findByRole("button", { name: "Install" }));
+    const install = await view.findByRole("button", { name: "Install" });
+    await focus(install);
+    await press(install);
     await waitFor(() =>
       expect(main.runtime.install).toHaveBeenCalledWith(
         expect.objectContaining({ expectedInstallationId: "b".repeat(64) }),
       ),
     );
-    const progress = await view.findByRole("progressbar", { name: "Installing Qoder" });
-    expect(progress.getAttribute("aria-valuenow")).toBe("25");
-    await press(view.getByRole("button", { name: "Cancel" }));
-    await waitFor(() => expect(main.runtime.cancelOperation).toHaveBeenCalledOnce());
-    await waitFor(() => expect(view.queryByRole("progressbar")).toBeNull());
+    const bar = await view.findByRole("progressbar", { name: "Installing Qoder" });
+    expect(bar.getAttribute("aria-valuenow")).toBe("25");
+    // Install became Cancel in place, so focus is still on it.
+    const cancel = view.getByRole("button", { name: "Cancel" });
+    expect(document.activeElement).toBe(cancel);
+
+    await press(cancel);
+    await view.findByText(/Cancelling…/u);
+    expect(cancel.getAttribute("aria-disabled")).toBe("true");
+    expect(document.activeElement).toBe(cancel);
+    await act(async () => {
+      cancelling.resolve();
+      await Promise.resolve();
+    });
+    await view.findByText("Not installed");
+    expect(view.queryByRole("progressbar")).toBeNull();
+    expect(document.activeElement).toBe(view.getByRole("button", { name: "Install" }));
     vi.restoreAllMocks();
+  });
+
+  test("a quick action that ends with its work leaves focus on its row", async () => {
+    const qoder = registryInstance();
+    const main = fakeAcpRuntime({ instances: [qoder] });
+    main.runtime.connect.mockImplementation(async ({ operationId, instanceId }) =>
+      ok(
+        operation({ operationId, kind: "connect", phase: "succeeded", instanceId, agentId: null }),
+      ),
+    );
+    const { view } = mount(main);
+    const connect = await view.findByRole("button", { name: "Connect" });
+    main.runtime.knownProviders.mockResolvedValue([
+      providerSnapshot({ instanceId: acpProviderId(qoder)!, ...discovered() }),
+    ]);
+    await focus(connect);
+    await press(connect);
+    await view.findByText("Ready");
+    expect(view.queryByRole("button", { name: "Connect" })).toBeNull();
+    expect(document.activeElement).toBe(
+      view.getByRole("button", { name: /^Qoder/u, expanded: false }),
+    );
+  });
+
+  test("starting and ending a sign-in keeps focus in the account", async () => {
+    const qoder = registryInstance();
+    const main = fakeAcpRuntime({ instances: [qoder] });
+    main.runtime.knownProviders.mockResolvedValue([
+      providerSnapshot({ instanceId: acpProviderId(qoder)!, auth: { status: "unauthenticated" } }),
+    ]);
+    const methods = [{ id: "login", name: "Qoder", description: null, type: "agent" as const }];
+    main.runtime.readAuth.mockResolvedValue(ok(authState({ methods })));
+    const { view } = mount(main);
+    // Sign in opens the row and goes away; focus stays on the row.
+    const signIn = await view.findByRole("button", { name: "Sign in" });
+    await focus(signIn);
+    await press(signIn);
+    const method = await view.findByRole("button", { name: "Sign in with Qoder" });
+    expect(document.activeElement).toBe(
+      view.getByRole("button", { name: /^Qoder/u, expanded: true }),
+    );
+
+    main.runtime.startAuth.mockResolvedValueOnce(
+      ok(
+        authState({
+          phase: "waiting",
+          flowId: "flow",
+          methods,
+          interaction: {
+            type: "browser",
+            id: "page",
+            url: "https://example.test",
+            requiresConsent: false,
+          },
+        }),
+      ),
+    );
+    await focus(method);
+    await press(method);
+    await view.findByText("Continue signing in from your browser.");
+    const cancel = view.getByRole("button", { name: "Cancel" });
+    expect(document.activeElement).toBe(cancel);
+
+    const cancelling = deferred<void>();
+    main.runtime.cancelAuth.mockImplementationOnce(async () => {
+      await cancelling.promise;
+      return ok(authState({ phase: "cancelled", methods }));
+    });
+    await press(cancel);
+    await waitFor(() => expect(cancel.getAttribute("aria-disabled")).toBe("true"));
+    expect(document.activeElement).toBe(cancel);
+    await act(async () => {
+      cancelling.resolve();
+      await Promise.resolve();
+    });
+    await waitFor(() =>
+      expect(document.activeElement).toBe(view.getByRole("button", { name: "Check again" })),
+    );
   });
 });

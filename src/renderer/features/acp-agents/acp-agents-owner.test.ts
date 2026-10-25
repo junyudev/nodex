@@ -3,6 +3,7 @@ import { acpInstanceStatus, acpProviderId } from "./acp-agent-model";
 import { createAcpAgentsOwner } from "./acp-agents-owner";
 import {
   authState,
+  deferred,
   fakeAcpRuntime,
   memoryJournal,
   ok,
@@ -25,12 +26,6 @@ const setup = (instances = [registryInstance()], journal = memoryJournal()) => {
   });
   const stop = owner.subscribe(() => {});
   return { main, owner, journal, stop };
-};
-
-const deferred = <Value>() => {
-  let resolve!: (value: Value) => void;
-  const promise = new Promise<Value>((done) => (resolve = done));
-  return { promise, resolve };
 };
 
 const waiting = (flowId: string, output = "") =>

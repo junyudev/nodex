@@ -129,7 +129,8 @@ export function AcpAgentSetupDialog({
       case "cancel":
         primary = (
           <NodexDialogAction
-            disabled={activity?.cancelling === true}
+            // Cancelling keeps focus on Cancel, which becomes the next step once it settles.
+            aria-disabled={activity?.cancelling === true || undefined}
             onClick={() => owner.cancel(instanceId)}
           >
             Cancel
