@@ -1,0 +1,74 @@
+docs/product-specs/codex-thread-transcript-behavior.md
+  s_1292af2a37ec10::t_945b38f6ae153f 507,571
+src/renderer/features/local-conversation/projection/tool-metadata/dynamic-tool-fallback-details.node.test.ts
+  s_1292af2a37ec10::t_542e88da63e341 1-97
+src/renderer/features/local-conversation/view/shared/tools/tool-call-inspection.tsx
+  s_1292af2a37ec10::t_16e2d507066f6b 216,225
+  s_1292af2a37ec10::t_120179885d64b3 218,223
+  s_1292af2a37ec10::t_a7f982010531a8 130-131,140-141,159,166-168,180,182-184,190-191,205-207,215,219-222,224,226-229
+  s_1292af2a37ec10::t_31051b0acb36f4 13-16
+  s_1292af2a37ec10::t_8a9d90c03cf44c 217
+  s_1292af2a37ec10::t_0f6cc82afb069d 1,43,53-54,81
+  s_1292af2a37ec10::t_2f0fc8c6938c41 142-144,146
+src/renderer/lib/code-block-syntax-theme.ts
+  s_1292af2a37ec10::t_9636d6aeeb11d1 80,84
+  s_1292af2a37ec10::t_a4744aae72baa5 1-79,81-83,85-117
+src/renderer/features/local-conversation/view/shared/tools/tool-call-inspection.browser.test.tsx
+  s_1292af2a37ec10::t_0ed7e1eb3c313a 1-30,35-36,44-50,52,54-55,57-58,60-73,81-86,93-96
+  s_1292af2a37ec10::t_94756654b33f44 31-34,37-43,51,53,56,59,74-80,87-92
+src/renderer/features/local-conversation/view/shared/conversation-recovery-surface.test.tsx
+  s_1292af2a37ec10::t_561cad8de6c1a5 125-128
+src/renderer/features/local-conversation/view/shared/tools/tool-primitives.tsx
+  s_1292af2a37ec10::t_b6593a14b785dc 600-601,612
+src/renderer/features/local-conversation/view/shared/tools/dynamic-tool-call.tsx
+  s_1292af2a37ec10::t_31051b0acb36f4 741,743
+  s_1292af2a37ec10::t_2f0fc8c6938c41 740,742,744,774
+  s_1292af2a37ec10::t_5385aefce63612 14-17,27,713-739,745,747-752,754-756,758,766,772,775-776,781,786-804
+  s_1292af2a37ec10::t_b6593a14b785dc 753
+  s_1292af2a37ec10::t_dcd7a070a32b84 13,805-806
+src/renderer/features/local-conversation/view/shared/tools/generic-tool-call.tsx
+  s_1292af2a37ec10::t_b6593a14b785dc 2,16-18
+packages/agent-runtime/src/orchestration-v2/Adapters/ClaudeAdapterV2.test.ts
+  s_1292af2a37ec10::t_56fabe45e9af62 12,205-218,220-227,229-237
+  s_1292af2a37ec10::t_5db03f8862e715 219,228
+  s_1292af2a37ec10::t_d3f39ac7f00e04 238
+src/renderer/components/ui/source-viewer.tsx
+  s_1292af2a37ec10::t_7f8610c1e8a769 9,27,46,83,90
+src/renderer/features/local-conversation/view/shared/conversation-recovery-surface.tsx
+  s_1292af2a37ec10::t_048b743a3c1494 12,168-169,212,214,219,222
+src/renderer/features/local-conversation/agent-runtime-transcript-projection.ts
+  s_1292af2a37ec10::t_a1495de1175817 448-449
+src/renderer/features/local-conversation/agent-runtime-transcript-projection.node.test.ts
+  s_1292af2a37ec10::t_561cad8de6c1a5 136-141
+docs/product-specs/agent-runtime-behavior.md
+  s_1292af2a37ec10::t_592349967e352d 75-77
+src/renderer/features/local-conversation/projection/conversation-recovery-presentation.ts
+  s_1292af2a37ec10::t_a271511ae8d9a7 80,91-106,108,114
+packages/agent-runtime/src/orchestration-v2/Adapters/ClaudeAdapterV2.ts
+  s_1292af2a37ec10::t_e0068f2c7f1b41 2613-2628,2633-2637,2639,2642-2643,2646
+  s_1292af2a37ec10::t_5db03f8862e715 2629-2632,2638,2640-2641
+src/renderer/lib/diff-presentation.ts
+  s_1292af2a37ec10::t_120179885d64b3 3
+  s_1292af2a37ec10::t_7f8610c1e8a769 284-286,293,297,312
+src/renderer/features/local-conversation/projection/tool-metadata/dynamic-tool-fallback-details.ts
+  s_1292af2a37ec10::t_3c3cf48808cccc 1-110
+src/renderer/features/local-conversation/view/shared/tools/dynamic-tool-call.test.tsx
+  s_1292af2a37ec10::t_8697aaf87f7337 203-211,215-230
+  s_1292af2a37ec10::t_31051b0acb36f4 212-214
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "6f8601693b4cc65d947f18acabd22a14fa876f70",
+  "prompts": {},
+  "sessions": {
+    "s_1292af2a37ec10": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "08d8f948-822f-4c53-adcc-632905c40873",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
