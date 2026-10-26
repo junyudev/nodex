@@ -1,0 +1,46 @@
+src/renderer/features/plugins/view/plugin-detail-page.test.tsx
+  s_1f621c9737ee85::t_5406a99010bf4e 148-152
+src/renderer/features/plugins/view/plugin-apps-onboarding.tsx
+  s_1f621c9737ee85::t_57398210e11db7 1,60-67
+  s_1f621c9737ee85::t_3ce693296bcd0e 137-141,195
+  s_1f621c9737ee85::t_27ded6cf58d954 2-59,68-136,142-166,168-194,196-213
+  s_1f621c9737ee85::t_5406a99010bf4e 167
+src/renderer/features/plugins/view/use-plugin-row-actions.tsx
+  s_1f621c9737ee85::t_57398210e11db7 4,52-55
+  s_1f621c9737ee85::t_5406a99010bf4e 33-37,56-57
+src/renderer/features/plugins/model/install-sessions.ts
+  s_1f621c9737ee85::t_dd69210f06f23b 2-3,42-43
+  s_1f621c9737ee85::t_5406a99010bf4e 44-45
+  s_1f621c9737ee85::t_de1e0dd4f85a68 39-41,46-72
+src/renderer/features/plugins/view/plugin-apps-onboarding.test.tsx
+  s_1f621c9737ee85::t_cc4f517a5e20f8 2,57-66,68-77,88,114-116
+  s_1f621c9737ee85::t_639de04f28d2f3 1,3-56,67,78-87,89-113
+src/renderer/features/plugins/model/app-model.test.ts
+  s_1f621c9737ee85::t_de1e0dd4f85a68 10,82-86,88-91
+  s_1f621c9737ee85::t_8fb6dad57c0712 87
+  s_1f621c9737ee85::t_eec63e74c87217 92-93
+src/renderer/features/plugins/view/plugin-detail-page.tsx
+  s_1f621c9737ee85::t_5406a99010bf4e 254
+src/renderer/features/plugins/view/plugins-route.tsx
+  s_1f621c9737ee85::t_57398210e11db7 3,39
+src/renderer/features/plugins/model/app-model.ts
+  s_1f621c9737ee85::t_de1e0dd4f85a68 107-120
+docs/product-specs/plugins-behavior.md
+  s_1f621c9737ee85::t_ea9cac032448d1 27-32
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "236a9ba2682f2ed9b3fc4609604e627ca8d6fabe",
+  "prompts": {},
+  "sessions": {
+    "s_1f621c9737ee85": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "dec682ee-8dcb-4974-b7cd-a9bfde733cc3",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
