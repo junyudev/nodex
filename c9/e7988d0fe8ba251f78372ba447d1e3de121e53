@@ -1,0 +1,21 @@
+src/renderer/features/plugins/view/skill-preview-modal.tsx
+  s_1f621c9737ee85::t_1972ee72a3735f 175
+src/renderer/features/plugins/view/plugin-detail-page.test.tsx
+  s_1f621c9737ee85::t_1972ee72a3735f 68,71-72,74-76
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "c9e7988d0fe8ba251f78372ba447d1e3de121e53",
+  "prompts": {},
+  "sessions": {
+    "s_1f621c9737ee85": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "dec682ee-8dcb-4974-b7cd-a9bfde733cc3",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
