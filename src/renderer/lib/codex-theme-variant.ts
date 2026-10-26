@@ -194,6 +194,7 @@ interface DerivedTheme {
   elevatedPrimaryOpaque: string;
   elevatedSecondary: string;
   elevatedSecondaryOpaque: string;
+  elevatedTertiaryOpaque: string;
   iconAccent: string;
   iconPrimary: string;
   iconSecondary: string;
@@ -315,6 +316,7 @@ export function getCodexThemeVariantStyle(
     "--app-color-background-elevated-primary-opaque": derived.elevatedPrimaryOpaque,
     "--app-color-background-elevated-secondary": derived.elevatedSecondary,
     "--app-color-background-elevated-secondary-opaque": derived.elevatedSecondaryOpaque,
+    "--app-color-background-elevated-tertiary-opaque": derived.elevatedTertiaryOpaque,
     "--color-background-mode-toggle-track":
       variant === "light" ? prepared.surfaceUnder : derived.buttonTertiaryBackgroundHover,
     "--color-background-mode-toggle-selected":
@@ -426,6 +428,8 @@ function deriveAccentStyle(
       "--app-color-border-focus": derived.borderFocus,
       "--app-color-icon-accent": derived.iconAccent,
       "--app-color-text-accent": derived.textAccent,
+      "--color-background-accent-action": "var(--color-background-info-solid)",
+      "--color-text-accent-action": "var(--color-text-info-solid)",
       "--color-background-composer-primary": "var(--color-background-primary-solid)",
       "--color-text-composer-primary": "var(--color-text-primary-solid)",
       "--color-background-user-message": "color-mix(in oklab, var(--color-text) 5%, transparent)",
@@ -468,6 +472,12 @@ function deriveAccentStyle(
       : "#0d0d0d"
     : palette[isDark ? 25 : 900];
   const soft = palette[isDark ? 800 : 50];
+  const actionBackground = monochrome
+    ? isDark
+      ? "#ffffff"
+      : "#000000"
+    : palette[isDark && preset !== "pink" ? 500 : 400];
+  const actionText = monochrome && isDark ? "#000000" : "#ffffff";
   return {
     ...shared,
     "--app-color-background-accent": soft,
@@ -476,12 +486,10 @@ function deriveAccentStyle(
     "--app-color-border-focus": prepared.theme.accent,
     "--app-color-icon-accent": palette[textTone],
     "--app-color-text-accent": palette[textTone],
-    "--color-background-composer-primary": monochrome
-      ? isDark
-        ? "#ffffff"
-        : "#000000"
-      : palette[isDark && preset !== "pink" ? 500 : 400],
-    "--color-text-composer-primary": monochrome && isDark ? "#000000" : "#ffffff",
+    "--color-background-accent-action": actionBackground,
+    "--color-text-accent-action": actionText,
+    "--color-background-composer-primary": actionBackground,
+    "--color-text-composer-primary": actionText,
     "--color-background-user-message":
       preset === "black" && !isDark ? "#000000" : messageBackground,
     "--color-text-user-message": preset === "black" && !isDark ? "#ffffff" : messageText,
@@ -640,6 +648,7 @@ function deriveLightTheme(theme: PreparedTheme): DerivedTheme {
     elevatedPrimaryOpaque: toRgb(elevatedPrimaryBase),
     elevatedSecondary: toRgba(elevatedSecondaryBase, 0.96),
     elevatedSecondaryOpaque: toRgb(elevatedSecondaryBase),
+    elevatedTertiaryOpaque: mixHex(elevatedSecondaryBase, theme.ink, 0.04 + theme.contrast * 0.02),
     iconAccent: theme.theme.accent,
     iconPrimary: theme.theme.ink,
     iconSecondary: toRgba(theme.ink, 0.65 + theme.contrast * 0.1),
@@ -686,6 +695,7 @@ function deriveDarkTheme(theme: PreparedTheme): DerivedTheme {
     elevatedPrimaryOpaque: toRgb(elevatedPrimaryBase),
     elevatedSecondary: toRgba(theme.ink, 0.02 + theme.contrast * 0.02),
     elevatedSecondaryOpaque: mixHex(theme.surface, theme.ink, 0.04 + theme.contrast * 0.05),
+    elevatedTertiaryOpaque: toRgb(theme.editorBackground),
     iconAccent: toRgb(accentTextBase),
     iconPrimary: toRgba(theme.ink, 0.82 + theme.contrast * 0.14),
     iconSecondary: toRgba(theme.ink, 0.65 + theme.contrast * 0.1),

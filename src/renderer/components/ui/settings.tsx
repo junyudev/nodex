@@ -35,9 +35,9 @@ export function NodexSettingsNumberInput({
         onKeyDown?.(event);
       }}
       className={cn(
-        "h-7 min-w-0 rounded-md border border-primary-outline bg-primary-soft px-2 py-0 text-sm text-default tabular-nums outline-none",
+        "h-7 min-w-0 rounded-md border border-(--color-border-primary-outline) bg-(--color-background-primary-soft) px-2 py-0 text-sm text-(--color-text) tabular-nums outline-none",
         "focus:border-ring aria-invalid:border-text-danger aria-invalid:ring-2 aria-invalid:ring-text-danger/20",
-        "disabled:cursor-not-allowed disabled:text-secondary",
+        "disabled:cursor-not-allowed disabled:text-(--color-text-secondary)",
         className,
       )}
     />

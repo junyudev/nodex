@@ -23,14 +23,14 @@ import { cn } from "@/lib/utils";
 export const SIDEBAR_NEW_CHAT_ROW_CLASS =
   "focus-visible:outline-token-border relative h-[var(--height-token-nav-row)] px-row-x py-row-y cursor-interaction shrink-0 items-center overflow-hidden rounded-lg text-left text-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 disabled:cursor-not-allowed disabled:opacity-50 gap-2 flex w-full hover:bg-token-list-hover-background group";
 export const SIDEBAR_PROJECT_NEW_CHAT_BUTTON_CLASS =
-  "border-token-border no-drag cursor-interaction flex items-center gap-1 border whitespace-nowrap select-none focus:outline-none disabled:cursor-not-allowed disabled:opacity-40 rounded-full electron:rounded-md text-token-muted-foreground enabled:hover:bg-transparent data-[state=open]:bg-transparent hover:text-token-foreground border-transparent electron:p-1 electron:[&>svg]:icon-sm flex items-center justify-center p-0.5 h-6 w-6 rounded-md !p-1";
+  "border-token-border no-drag cursor-interaction flex items-center gap-1 border whitespace-nowrap select-none focus:outline-none disabled:cursor-not-allowed disabled:opacity-40 rounded-full electron:rounded-md text-token-muted-foreground enabled:hover:bg-transparent aria-expanded:bg-transparent hover:text-token-foreground border-transparent electron:p-1 electron:[&>svg]:icon-sm flex items-center justify-center p-0.5 h-6 w-6 rounded-md !p-1";
 export const SIDEBAR_COLLAPSED_CHROME_BUTTON_CLASS =
-  "border-token-border no-drag cursor-interaction flex items-center gap-1 border whitespace-nowrap select-none focus:outline-none disabled:cursor-not-allowed disabled:opacity-40 rounded-lg h-token-button-composer px-2 py-0 text-base leading-[18px] aspect-square justify-center !px-0 text-token-text-tertiary enabled:hover:bg-token-list-hover-background data-[state=open]:bg-token-list-hover-background border-transparent";
+  "border-token-border no-drag cursor-interaction flex items-center gap-1 border whitespace-nowrap select-none focus:outline-none disabled:cursor-not-allowed disabled:opacity-40 rounded-lg h-token-button-composer px-2 py-0 text-base leading-[18px] aspect-square justify-center !px-0 text-token-text-tertiary enabled:hover:bg-token-list-hover-background aria-expanded:bg-token-list-hover-background border-transparent";
 export const SIDEBAR_SCROLL_AREA_CLASS =
   "sidebar-scroll-fade-mask relative isolate flex min-h-0 flex-1 flex-col gap-4 overflow-x-hidden overflow-y-auto pt-1 [contain:layout_paint]";
 
 const SIDEBAR_HEADER_TOOL_BUTTON_CLASS =
-  "no-drag flex size-7 cursor-interaction items-center justify-center rounded-lg text-token-text-secondary select-none outline-none hover:bg-token-list-hover-background hover:text-token-foreground focus-visible:ring-2 focus-visible:ring-token-focus-border data-[state=open]:bg-token-list-hover-background";
+  "no-drag flex size-7 cursor-interaction items-center justify-center rounded-lg text-(--color-text-secondary-ghost) select-none outline-none hover:bg-(--color-background-secondary-ghost-hover) hover:text-(--color-text-secondary-ghost-hover) active:bg-(--color-background-secondary-ghost-active) focus-visible:ring-2 focus-visible:ring-token-focus-border aria-expanded:bg-(--color-background-secondary-ghost-hover) aria-expanded:text-(--color-text-secondary-ghost-hover)";
 
 interface SidebarScrollChromeState {
   scrolledContentUnderHeader: boolean;

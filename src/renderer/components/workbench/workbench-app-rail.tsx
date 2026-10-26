@@ -16,7 +16,7 @@ import type { WorkbenchPrimaryDestination } from "../../../shared/workbench-layo
 
 /** Every rail control shares the destinations' quiet ghost treatment. */
 export const WORKBENCH_RAIL_BUTTON_CLASS =
-  "no-drag rounded-lg text-token-text-secondary hover:text-token-foreground";
+  "no-drag rounded-lg text-(--color-text-secondary-ghost) hover:text-(--color-text-secondary-ghost-hover)";
 
 export interface WorkbenchAppRailProps {
   destination: WorkbenchPrimaryDestination;
@@ -91,11 +91,12 @@ export function WorkbenchAppRail({
               aria-current={active ? "page" : undefined}
               data-workbench-destination={id}
               {...(peekArea ? { [WORKBENCH_SIDEBAR_PEEK_AREA_ATTRIBUTE]: peekArea } : {})}
-              variant="ghost"
+              variant="ghostSecondary"
               size="icon"
               className={cn(
                 WORKBENCH_RAIL_BUTTON_CLASS,
-                active && "bg-token-list-hover-background text-token-foreground",
+                active &&
+                  "bg-(--color-background-secondary-ghost-hover) text-(--color-text-secondary-ghost-hover)",
               )}
               onClick={onSelect}
             >

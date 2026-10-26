@@ -1,11 +1,12 @@
 /*
- * Generated semantic theme contract (refVersion 26.1007.30912).
+ * Generated semantic theme contract (refVersion 26.1021.31345).
  * Do not edit by hand. Run:
- *   vp run semantic-theme:sync -- --source /temporary/reference.css --ref-version 26.1007.30912
+ *   vp run semantic-theme:sync -- --source /temporary/reference.css --ref-version 26.1021.31345
  */
 
 @theme reference {
   --app-color-background-shell: var(--color-surface-tertiary);
+  --color-background-accent-action: var(--color-background-info-solid);
   --color-background-activity-control: var(--lightningcss-light, #e8e8e8)var(--lightningcss-dark, var(--gray-fixed-700));
   --color-background-activity-control-hover: var(--lightningcss-light, var(--gray-fixed-300))var(--lightningcss-dark, var(--gray-fixed-450));
   --color-background-activity-input: var(--lightningcss-light, var(--gray-fixed-150))var(--lightningcss-dark, var(--color-surface-secondary));
@@ -142,7 +143,7 @@
   --color-background-tooltip-shortcut: var(--color-text-tooltip);
   --color-background-user-message: var(--color-text);
   --color-background-user-message-compact: var(--lightningcss-light, var(--gray-fixed-75))var(--lightningcss-dark, var(--gray-fixed-600));
-  --color-background-viewer-control: var(--color-surface-elevated);
+  --color-background-viewer-control: var(--lightningcss-light, var(--color-surface-elevated))var(--lightningcss-dark, var(--color-surface-elevated-secondary));
   --color-background-warning-ghost-active: var(--orange-a50);
   --color-background-warning-ghost-hover: var(--orange-a50);
   --color-background-warning-outline-active: var(--orange-a25);
@@ -259,6 +260,7 @@
   --color-surface-secondary: var(--app-color-background-surface-under);
   --color-surface-tertiary: var(--app-color-background-editor-opaque);
   --color-text: var(--app-color-text-foreground);
+  --color-text-accent-action: var(--color-text-info-solid);
   --color-text-activity-control: var(--lightningcss-light, var(--gray-fixed-350))var(--lightningcss-dark, var(--gray-fixed-300));
   --color-text-activity-control-active: var(--white);
   --color-text-business-claim: var(--lightningcss-light, var(--blue-500))var(--lightningcss-dark, var(--blue-200));
@@ -398,10 +400,13 @@
   --color-token-foreground: var(--app-color-text-foreground);
   --color-token-input-border: var(--app-color-border-heavy, transparent);
   --color-token-interactive-bg-secondary-hover: var(--color-background-secondary-solid-hover);
+  --color-token-interactive-bg-secondary-selected: var(--color-background-secondary-soft);
   --color-token-interactive-border-focus: var(--color-border-primary-outline);
   --color-token-list-hover-background: var(--app-color-background-button-secondary-hover);
   --color-token-main-surface-primary: var(--app-color-background-surface);
   --color-token-non-assistant-body-descendant: color-mix(in oklab, var(--color-token-foreground) 50%, transparent);
+  --color-token-scrollbar-slider-active-background: var(--app-color-border-heavy);
+  --color-token-scrollbar-slider-background: var(--app-color-border);
   --color-token-scrollbar-slider-hover-background: var(--app-color-border-heavy);
   --color-token-side-bar-background: var(--app-color-background-surface-under);
   --color-token-text-code-block-background: var(--app-color-background-button-secondary);
@@ -445,7 +450,9 @@
     --color-token-focus-border: var(--app-color-border-focus);
     --color-token-text-link-foreground: var(--app-color-text-accent);
     --color-token-text-code-block-background: var(--app-color-background-button-secondary);
+    --color-token-scrollbar-slider-background: var(--app-color-border);
     --color-token-scrollbar-slider-hover-background: var(--app-color-border-heavy);
+    --color-token-scrollbar-slider-active-background: var(--app-color-border-heavy);
     --color-token-editor-warning-foreground: var(--app-color-text-warning);
     --color-token-editor-find-match-background: var(--app-color-background-accent-hover);
     --color-token-input-border: var(--app-color-border-heavy, transparent);
@@ -475,6 +482,7 @@
 
   :root, :host {
     --color-token-interactive-bg-secondary-hover: var(--color-background-secondary-solid-hover);
+    --color-token-interactive-bg-secondary-selected: var(--color-background-secondary-soft);
   }
 
   :where([data-theme="light"]) {
@@ -956,6 +964,7 @@
     --app-color-background-elevated-primary-opaque: var(--lightningcss-light, var(--gray-fixed-0))var(--lightningcss-dark, var(--gray-fixed-750));
     --app-color-background-elevated-secondary: var(--lightningcss-light, var(--app-color-text-foreground))var(--lightningcss-dark, var(--gray-fixed-0));
     --app-color-background-elevated-secondary-opaque: var(--lightningcss-light, var(--gray-fixed-100))var(--lightningcss-dark, var(--gray-fixed-800));
+    --app-color-background-elevated-tertiary-opaque: var(--lightningcss-light, var(--gray-75))var(--lightningcss-dark, var(--gray-200));
     --app-color-background-button-primary: var(--lightningcss-light, var(--app-color-text-foreground))var(--lightningcss-dark, var(--gray-fixed-1000));
     --app-color-background-button-primary-hover: var(--lightningcss-light, var(--app-color-text-foreground))var(--lightningcss-dark, var(--gray-fixed-1000));
     --app-color-background-button-primary-active: var(--lightningcss-light, var(--app-color-text-foreground))var(--lightningcss-dark, var(--gray-fixed-1000));
@@ -1118,6 +1127,7 @@
     --color-text-inverse: var(--app-color-text-button-primary);
     --color-text-primary-solid: var(--app-color-text-primary-solid, var(--color-background-control-opaque, var(--app-color-background-surface)));
     --color-text-composer-primary: var(--color-text-primary-solid);
+    --color-text-accent-action: var(--color-text-info-solid);
     --color-text-composer-reference: var(--color-text-info);
     --color-text-user-message: var(--color-text);
     --color-text-secondary-solid: var(--app-color-text-foreground-secondary);
@@ -1191,7 +1201,7 @@
     --color-surface-elevated: var(--app-color-background-elevated-primary);
     --color-surface-elevated-secondary: var(--color-background-control-opaque, var(--app-color-background-surface));
     --color-background-artifact-preview: var(--color-surface);
-    --color-background-viewer-control: var(--color-surface-elevated);
+    --color-background-viewer-control: var(--lightningcss-light, var(--color-surface-elevated))var(--lightningcss-dark, var(--color-surface-elevated-secondary));
     --color-background-primary-soft: var(--app-color-background-control);
     --color-background-page-search: var(--color-surface-elevated-secondary);
     --color-background-primary-soft-alpha: var(--app-color-text-foreground);
@@ -1200,6 +1210,7 @@
     --color-background-primary-ghost-focus: var(--lightningcss-light, var(--color-text))var(--lightningcss-dark, var(--color-background-primary-ghost-hover));
     --color-background-primary-solid: var(--app-color-text-foreground);
     --color-background-composer-primary: var(--color-background-primary-solid);
+    --color-background-accent-action: var(--color-background-info-solid);
     --color-background-user-message: var(--color-text);
     --color-background-other-user-message: var(--color-text);
     --color-background-secondary-soft: var(--app-color-background-button-secondary);
@@ -1698,6 +1709,7 @@
     --color-chart-yellow: var(--color-yellow);
     --color-surface-secondary: var(--vscode-sideBar-background);
     --color-surface-tertiary: var(--vscode-editor-background);
+    --app-color-background-elevated-tertiary-opaque: var(--vscode-editor-background);
     --color-surface-elevated: var(--vscode-menu-background);
     --color-surface-elevated-secondary: var(--vscode-dropdown-background);
     --color-background-primary-soft: var(--vscode-input-background);

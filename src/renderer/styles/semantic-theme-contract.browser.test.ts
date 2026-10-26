@@ -105,6 +105,42 @@ describe("semantic theme contract in the renderer build", () => {
     expect(rootStyle.getPropertyValue("--height-toolbar").trim()).toBe("46px");
   });
 
+  test.each(["light", "dark"] as const)(
+    "keeps shared neutral surfaces on the active %s palette",
+    (scheme) => {
+      setWindowTheme("electron", scheme);
+      for (const [alias, role] of [
+        ["--card-foreground", "--color-text"],
+        ["--popover-foreground", "--color-text"],
+        ["--sidebar-foreground", "--color-text"],
+        ["--sidebar-accent", "--color-background-primary-ghost-hover"],
+        ["--sidebar-border", "--app-color-border"],
+        ["--border", "--app-color-border"],
+        ["--border-secondary", "--app-color-border-light"],
+        ["--border-strong", "--app-color-border-heavy"],
+        ["--input", "--app-color-border"],
+        ["--popover", "--color-surface-elevated-secondary"],
+        ["--muted", "--color-surface-secondary"],
+      ] as const) {
+        expect(readRendererThemeColor(alias), alias).toBe(readRendererThemeColor(role));
+      }
+    },
+  );
+
+  test("resolves shared elevation from the generated foundation rather than framework defaults", () => {
+    setWindowTheme("electron", "light");
+    for (const [role, shadow] of [
+      ["--shadow-sm", "rgba(0, 0, 0, 0.08) 0px 1px 2px -1px"],
+      ["--shadow-md", "rgba(0, 0, 0, 0.08) 0px 2px 4px -1px"],
+      ["--shadow-lg", "rgba(0, 0, 0, 0.1) 0px 4px 8px -2px"],
+      ["--shadow-xl", "rgba(0, 0, 0, 0.12) 0px 8px 16px -4px"],
+    ] as const) {
+      const surface = mountRole("");
+      surface.style.boxShadow = `var(${role})`;
+      expect(getComputedStyle(surface).boxShadow, role).toBe(shadow);
+    }
+  });
+
   test("keeps the browser toolbar override independent from the electron default", () => {
     setWindowTheme("browser", "light");
 
@@ -174,6 +210,7 @@ describe("semantic theme contract in the renderer build", () => {
     // The one opaque content surface every route renders inside.
     const main = mountRole(`${workbenchMainSurfaceClassName(false)} text-token-foreground`);
     const legacy = mountRole("bg-background text-foreground");
+    const legacyControl = mountRole("bg-token-bg-fog");
     const bubble = mountRole("bg-user-message text-user-message");
     const composer = mountRole("bg-composer-primary text-composer-primary");
 
@@ -187,6 +224,9 @@ describe("semantic theme contract in the renderer build", () => {
       expect(getComputedStyle(main).color).toBe(ink);
       expect(getComputedStyle(legacy).backgroundColor).toBe(surface);
       expect(getComputedStyle(legacy).color).toBe(ink);
+      expect(getComputedStyle(legacyControl).backgroundColor).toBe(
+        readRendererThemeColor("--color-background-secondary-soft"),
+      );
       expect(getComputedStyle(bubble).backgroundColor).toBe(
         readRendererThemeColor("--color-background-user-message"),
       );
@@ -201,6 +241,24 @@ describe("semantic theme contract in the renderer build", () => {
       );
     }
   });
+
+  test.each(["light", "dark"] as const)(
+    "keeps secondary controls translucent when the %s native window becomes opaque",
+    (scheme) => {
+      setWindowTheme("electron", scheme);
+      const secondary = readRendererThemeColor("--app-color-background-elevated-secondary");
+      document.documentElement.classList.add("electron-opaque");
+      try {
+        expect(readRendererThemeColor("--app-color-background-elevated-primary")).toBe(
+          readRendererThemeColor("--app-color-background-elevated-primary-opaque"),
+        );
+        expect(readRendererThemeColor("--app-color-background-elevated-secondary")).toBe(secondary);
+        expect(readRendererThemeColor("--color-background-primary-soft-alpha")).toBe(secondary);
+      } finally {
+        document.documentElement.classList.remove("electron-opaque");
+      }
+    },
+  );
 
   test("resolves production shimmer and sidebar surfaces in both electron schemes", () => {
     for (const scheme of ["light", "dark"] as const) {

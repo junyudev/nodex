@@ -75,8 +75,7 @@ export function SelectedTextActionsToolbar({
     >
       <div
         role="presentation"
-        // Compact selection actions have a shallower shadow than general overlays.
-        className="pointer-events-auto flex w-fit max-w-full overflow-hidden rounded-lg border border-border/70 bg-surface-elevated-secondary font-sans shadow-[0px_4px_8px_-2px_#0000001a]"
+        className="pointer-events-auto flex w-fit max-w-full overflow-hidden rounded-lg border border-border/70 bg-surface-elevated-secondary font-sans shadow-lg"
         onMouseDown={(event) => event.preventDefault()}
       >
         {onAddToChat ? (

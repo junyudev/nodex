@@ -23,19 +23,7 @@ import { useNodexAccount } from "./use-nodex-account";
 
 const TRIGGER_LABEL = "Account and settings";
 
-// Account menu palette: primary, secondary, tertiary, border, hover, and opaque surface at 0.9.
-const ACCOUNT_MENU_SURFACE_CLASS =
-  "bg-[rgb(255_255_255/0.9)] text-[#1a1c1f] ring-[rgba(26,28,31,0.078)] dark:bg-[rgb(45_45_45/0.9)] dark:text-[#dfdfdf] dark:ring-[rgba(255,255,255,0.084)]";
-const ACCOUNT_MENU_TEXT_CLASS = "text-[#1a1c1f] dark:text-[#dfdfdf]";
-const ACCOUNT_MENU_SECONDARY_CLASS =
-  "text-[rgba(26,28,31,0.695)] dark:text-[rgba(255,255,255,0.71)]";
-const ACCOUNT_MENU_DETAIL_CLASS = "text-[rgba(26,28,31,0.495)] dark:text-[rgba(255,255,255,0.498)]";
-const ACCOUNT_MENU_HOVER_CLASS =
-  "hover:bg-[rgba(26,28,31,0.053)] focus:bg-[rgba(26,28,31,0.053)] dark:hover:bg-[rgba(255,255,255,0.078)] dark:focus:bg-[rgba(255,255,255,0.078)]";
-const ACCOUNT_MENU_SEPARATOR_CLASS =
-  "[&>div]:bg-[rgba(26,28,31,0.078)] dark:[&>div]:bg-[rgba(255,255,255,0.084)]";
-
-/** Menu row in the account palette; decorative `icon`s rest at 75% and brighten with the row. */
+/** Decorative icons rest at 75% and brighten with the menu row. */
 function AccountMenuItem({
   icon,
   leftSlot,
@@ -52,7 +40,6 @@ function AccountMenuItem({
           <span
             className={cn(
               "inline-flex opacity-75",
-              ACCOUNT_MENU_TEXT_CLASS,
               !disabled && "group-hover:opacity-100 group-focus:opacity-100",
             )}
           >
@@ -62,7 +49,7 @@ function AccountMenuItem({
           leftSlot
         )
       }
-      className={cn(ACCOUNT_MENU_TEXT_CLASS, !disabled && ACCOUNT_MENU_HOVER_CLASS, className)}
+      className={className}
     />
   );
 }
@@ -103,7 +90,7 @@ export function NodexAccountMenu({
       >
         <NodexDropdownTrigger nativeButton>
           <NodexButton
-            variant="ghost"
+            variant="ghostSecondary"
             size="icon"
             aria-label={TRIGGER_LABEL}
             aria-busy={view.signingIn || undefined}
@@ -129,27 +116,25 @@ export function NodexAccountMenu({
           align="end"
           sideOffset={4}
           alignOffset={-4}
-          className={cn("w-[240px]", ACCOUNT_MENU_SURFACE_CLASS)}
+          className="w-[240px]"
         >
           {view.identity ? (
             <>
               <AccountMenuItem
                 leftSlot={<NodexAccountAvatar identity={view.identity} size="sm" />}
-                subText={
-                  detail ? <span className={ACCOUNT_MENU_DETAIL_CLASS}>{detail}</span> : null
-                }
+                subText={detail ? <span className="text-tertiary">{detail}</span> : null}
                 onSelect={onOpenAccountSettings}
               >
                 {view.identity.label}
               </AccountMenuItem>
-              <NodexDropdownSeparator className={ACCOUNT_MENU_SEPARATOR_CLASS} />
+              <NodexDropdownSeparator />
             </>
           ) : null}
           <AccountMenuItem
             icon={<SettingsGeneralIcon />}
             keyboardShortcut={
               settingsShortcutLabel ? (
-                <span aria-hidden="true" className={ACCOUNT_MENU_DETAIL_CLASS}>
+                <span aria-hidden="true" className="text-tertiary">
                   {settingsShortcutLabel}
                 </span>
               ) : undefined
@@ -177,21 +162,17 @@ function AccountMenuActions({
 
   return (
     <>
-      <NodexDropdownSeparator className={ACCOUNT_MENU_SEPARATOR_CLASS} />
+      <NodexDropdownSeparator />
       {view.notice ? (
         <NodexDropdownMessage
           compact
           tone={view.notice.tone === "error" ? "error" : "muted"}
-          className={cn("text-xs", view.notice.tone !== "error" && ACCOUNT_MENU_SECONDARY_CLASS)}
+          className={cn("text-xs", view.notice.tone !== "error" && "semantic-text-secondary")}
         >
           {view.notice.message}
         </NodexDropdownMessage>
       ) : view.reauthentication && !view.identity ? (
-        <NodexDropdownMessage
-          compact
-          tone="muted"
-          className={cn("text-xs", ACCOUNT_MENU_SECONDARY_CLASS)}
-        >
+        <NodexDropdownMessage compact tone="muted" className="text-xs semantic-text-secondary">
           {NODEX_ACCOUNT_ERROR_COPY["invalid-grant"].message}
         </NodexDropdownMessage>
       ) : null}

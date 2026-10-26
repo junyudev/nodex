@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "refVersion": "26.1007.30912",
+  "refVersion": "26.1021.31345",
   "families": [
     {
       "prefix": "--vscode-",
@@ -8,19 +8,19 @@
     },
     {
       "prefix": "--color-token-",
-      "declarationCount": 319
+      "declarationCount": 320
     },
     {
       "prefix": "--app-color-",
-      "declarationCount": 69
+      "declarationCount": 70
     },
     {
       "prefix": "--color-text",
-      "declarationCount": 119
+      "declarationCount": 120
     },
     {
       "prefix": "--color-background-",
-      "declarationCount": 151
+      "declarationCount": 152
     },
     {
       "prefix": "--color-border",
@@ -869,6 +869,27 @@
         "--gray-fixed-800",
         "--lightningcss-dark",
         "--lightningcss-light"
+      ],
+      "owners": [
+        "src/renderer/styles/theme-semantic-contract.generated.css"
+      ]
+    },
+    {
+      "name": "--app-color-background-elevated-tertiary-opaque",
+      "scopes": [
+        "browser-dark",
+        "browser-light",
+        "electron-dark",
+        "electron-light",
+        "extension-dark",
+        "extension-light"
+      ],
+      "dependencies": [
+        "--gray-200",
+        "--gray-75",
+        "--lightningcss-dark",
+        "--lightningcss-light",
+        "--vscode-editor-background"
       ],
       "owners": [
         "src/renderer/styles/theme-semantic-contract.generated.css"
@@ -2063,6 +2084,23 @@
       ],
       "dependencies": [
         "--white"
+      ],
+      "owners": [
+        "src/renderer/styles/theme-semantic-contract.generated.css"
+      ]
+    },
+    {
+      "name": "--color-background-accent-action",
+      "scopes": [
+        "browser-dark",
+        "browser-light",
+        "electron-dark",
+        "electron-light",
+        "extension-dark",
+        "extension-light"
+      ],
+      "dependencies": [
+        "--color-background-info-solid"
       ],
       "owners": [
         "src/renderer/styles/theme-semantic-contract.generated.css"
@@ -4597,7 +4635,10 @@
         "extension-light"
       ],
       "dependencies": [
-        "--color-surface-elevated"
+        "--color-surface-elevated",
+        "--color-surface-elevated-secondary",
+        "--lightningcss-dark",
+        "--lightningcss-light"
       ],
       "owners": [
         "src/renderer/styles/theme-semantic-contract.generated.css"
@@ -6852,6 +6893,23 @@
         "--lightningcss-dark",
         "--lightningcss-light",
         "--vscode-foreground"
+      ],
+      "owners": [
+        "src/renderer/styles/theme-semantic-contract.generated.css"
+      ]
+    },
+    {
+      "name": "--color-text-accent-action",
+      "scopes": [
+        "browser-dark",
+        "browser-light",
+        "electron-dark",
+        "electron-light",
+        "extension-dark",
+        "extension-light"
+      ],
+      "dependencies": [
+        "--color-text-info-solid"
       ],
       "owners": [
         "src/renderer/styles/theme-semantic-contract.generated.css"
@@ -9321,19 +9379,6 @@
       ]
     },
     {
-      "name": "--color-token-bg-fog",
-      "scopes": [
-        "electron-dark",
-        "electron-light"
-      ],
-      "dependencies": [
-        "--color-background-elevated-secondary"
-      ],
-      "owners": [
-        "src/renderer/styles/theme-extracted-foundation.generated.css"
-      ]
-    },
-    {
       "name": "--color-token-bg-secondary",
       "scopes": [
         "browser-dark",
@@ -11180,6 +11225,23 @@
       ]
     },
     {
+      "name": "--color-token-interactive-bg-secondary-selected",
+      "scopes": [
+        "browser-dark",
+        "browser-light",
+        "electron-dark",
+        "electron-light",
+        "extension-dark",
+        "extension-light"
+      ],
+      "dependencies": [
+        "--color-background-secondary-soft"
+      ],
+      "owners": [
+        "src/renderer/styles/theme-semantic-contract.generated.css"
+      ]
+    },
+    {
       "name": "--color-token-interactive-border-focus",
       "scopes": [
         "browser-dark",
@@ -11863,10 +11925,15 @@
     {
       "name": "--color-token-scrollbar-slider-active-background",
       "scopes": [
+        "browser-dark",
+        "browser-light",
+        "electron-dark",
+        "electron-light",
         "extension-dark",
         "extension-light"
       ],
       "dependencies": [
+        "--app-color-border-heavy",
         "--vscode-scrollbarSlider-activeBackground"
       ],
       "owners": [
@@ -11876,10 +11943,15 @@
     {
       "name": "--color-token-scrollbar-slider-background",
       "scopes": [
+        "browser-dark",
+        "browser-light",
+        "electron-dark",
+        "electron-light",
         "extension-dark",
         "extension-light"
       ],
       "dependencies": [
+        "--app-color-border",
         "--vscode-scrollbarSlider-background"
       ],
       "owners": [
@@ -15695,6 +15767,159 @@
     },
     {
       "name": "--safe-area-right",
+      "scopes": [
+        "browser-dark",
+        "browser-light",
+        "electron-dark",
+        "electron-light",
+        "extension-dark",
+        "extension-light"
+      ],
+      "dependencies": [],
+      "owners": [
+        "src/renderer/styles/theme-extracted-foundation.generated.css"
+      ]
+    },
+    {
+      "name": "--shadow-2xl",
+      "scopes": [
+        "browser-dark",
+        "browser-light",
+        "electron-dark",
+        "electron-light",
+        "extension-dark",
+        "extension-light"
+      ],
+      "dependencies": [],
+      "owners": [
+        "src/renderer/styles/theme-extracted-foundation.generated.css"
+      ]
+    },
+    {
+      "name": "--shadow-lg",
+      "scopes": [
+        "browser-dark",
+        "browser-light",
+        "electron-dark",
+        "electron-light",
+        "extension-dark",
+        "extension-light"
+      ],
+      "dependencies": [],
+      "owners": [
+        "src/renderer/styles/theme-extracted-foundation.generated.css"
+      ]
+    },
+    {
+      "name": "--shadow-lg-stronger",
+      "scopes": [
+        "browser-dark",
+        "browser-light",
+        "electron-dark",
+        "electron-light",
+        "extension-dark",
+        "extension-light"
+      ],
+      "dependencies": [],
+      "owners": [
+        "src/renderer/styles/theme-extracted-foundation.generated.css"
+      ]
+    },
+    {
+      "name": "--shadow-md",
+      "scopes": [
+        "browser-dark",
+        "browser-light",
+        "electron-dark",
+        "electron-light",
+        "extension-dark",
+        "extension-light"
+      ],
+      "dependencies": [],
+      "owners": [
+        "src/renderer/styles/theme-extracted-foundation.generated.css"
+      ]
+    },
+    {
+      "name": "--shadow-sm",
+      "scopes": [
+        "browser-dark",
+        "browser-light",
+        "electron-dark",
+        "electron-light",
+        "extension-dark",
+        "extension-light"
+      ],
+      "dependencies": [],
+      "owners": [
+        "src/renderer/styles/theme-extracted-foundation.generated.css"
+      ]
+    },
+    {
+      "name": "--shadow-sm-stronger",
+      "scopes": [
+        "browser-dark",
+        "browser-light",
+        "electron-dark",
+        "electron-light",
+        "extension-dark",
+        "extension-light"
+      ],
+      "dependencies": [],
+      "owners": [
+        "src/renderer/styles/theme-extracted-foundation.generated.css"
+      ]
+    },
+    {
+      "name": "--shadow-xl",
+      "scopes": [
+        "browser-dark",
+        "browser-light",
+        "electron-dark",
+        "electron-light",
+        "extension-dark",
+        "extension-light"
+      ],
+      "dependencies": [],
+      "owners": [
+        "src/renderer/styles/theme-extracted-foundation.generated.css"
+      ]
+    },
+    {
+      "name": "--shadow-xl-spread",
+      "scopes": [
+        "browser-dark",
+        "browser-light",
+        "electron-dark",
+        "electron-light",
+        "extension-dark",
+        "extension-light"
+      ],
+      "dependencies": [
+        "--color-token-border",
+        "--shadow-xl"
+      ],
+      "owners": [
+        "src/renderer/styles/theme-extracted-foundation.generated.css"
+      ]
+    },
+    {
+      "name": "--shadow-xl-stronger",
+      "scopes": [
+        "browser-dark",
+        "browser-light",
+        "electron-dark",
+        "electron-light",
+        "extension-dark",
+        "extension-light"
+      ],
+      "dependencies": [],
+      "owners": [
+        "src/renderer/styles/theme-extracted-foundation.generated.css"
+      ]
+    },
+    {
+      "name": "--shadow-xs",
       "scopes": [
         "browser-dark",
         "browser-light",

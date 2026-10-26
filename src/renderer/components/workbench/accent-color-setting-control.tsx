@@ -142,7 +142,7 @@ export function AccentColorSettingControl({ variant }: { variant?: ResolvedTheme
         triggerButton={
           <NodexSettingsDropdownTrigger
             aria-label={`${variantLabel} accent color`}
-            className="w-36"
+            className="w-36 bg-(--color-surface)"
             leadingVisual={<NodexDropdownColorDot color={selectedColor} />}
           >
             <span className="truncate">{label}</span>

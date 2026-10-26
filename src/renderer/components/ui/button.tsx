@@ -4,6 +4,26 @@ import { cva, type VariantProps } from "class-variance-authority";
 import { cn } from "@/lib/utils";
 import { NodexTooltip } from "./tooltip";
 
+/** Shared neutral action colors for buttons and dialog actions. */
+export const NODEX_BUTTON_COLOR_CLASS = {
+  default:
+    "bg-primary-solid text-primary-solid not-disabled:not-aria-disabled:hover:bg-(--color-background-primary-solid-hover) not-disabled:not-aria-disabled:active:bg-(--color-background-primary-solid-active)",
+  primary:
+    "bg-primary-solid text-primary-solid not-disabled:not-aria-disabled:hover:bg-(--color-background-primary-solid-hover) not-disabled:not-aria-disabled:active:bg-(--color-background-primary-solid-active)",
+  secondary:
+    "bg-(--color-background-secondary-soft) text-(--color-text-secondary-soft) not-disabled:not-aria-disabled:hover:bg-(--color-background-secondary-soft-hover) not-disabled:not-aria-disabled:active:bg-(--color-background-secondary-soft-active)",
+  outline:
+    "border-[0.5px] border-(--color-border-primary-outline) bg-transparent text-(--color-text-primary-outline) not-disabled:not-aria-disabled:hover:bg-(--color-background-primary-outline-hover) not-disabled:not-aria-disabled:hover:border-(--color-border-primary-outline-hover) not-disabled:not-aria-disabled:hover:text-(--color-text-primary-outline-hover) not-disabled:not-aria-disabled:active:bg-(--color-background-primary-outline-active)",
+  ghost:
+    "text-(--color-text-primary-ghost) not-disabled:not-aria-disabled:hover:bg-(--color-background-primary-ghost-hover) not-disabled:not-aria-disabled:hover:text-(--color-text-primary-ghost-hover) not-disabled:not-aria-disabled:active:bg-(--color-background-primary-ghost-active) aria-expanded:not-hover:bg-(--color-background-primary-ghost-hover)/60",
+  ghostSecondary:
+    "text-(--color-text-secondary-ghost) not-disabled:not-aria-disabled:hover:bg-(--color-background-secondary-ghost-hover) not-disabled:not-aria-disabled:hover:text-(--color-text-secondary-ghost-hover) not-disabled:not-aria-disabled:active:bg-(--color-background-secondary-ghost-active) aria-expanded:not-hover:bg-(--color-background-secondary-ghost-hover)/60 aria-expanded:text-(--color-text-secondary-ghost-hover)",
+  destructive:
+    "bg-(--color-background-danger-surface) text-danger not-disabled:not-aria-disabled:hover:opacity-90",
+  accentAction:
+    "border border-transparent bg-(--color-background-accent-action) text-(--color-text-accent-action) not-disabled:not-aria-disabled:hover:bg-(--color-background-accent-action)/90",
+} as const;
+
 const nodexButtonVariants = cva(
   [
     "inline-flex shrink-0 items-center justify-center gap-2 whitespace-nowrap",
@@ -17,17 +37,7 @@ const nodexButtonVariants = cva(
   ],
   {
     variants: {
-      variant: {
-        default: "bg-primary-solid text-primary-solid hover:bg-text/80",
-        primary: "bg-primary-solid text-primary-solid hover:bg-text/80",
-        secondary: "bg-token-foreground/6 text-token-foreground hover:bg-token-foreground/10",
-        outline:
-          "border border-token-border bg-token-main-surface-primary text-token-foreground hover:bg-token-list-hover-background",
-        ghost: "text-token-foreground hover:bg-token-list-hover-background",
-        destructive: "bg-(--color-background-danger-surface) text-danger hover:opacity-90",
-        accentAction:
-          "border border-transparent bg-chart-blue text-(--app-color-text-on-accent) hover:bg-chart-blue/90",
-      },
+      variant: NODEX_BUTTON_COLOR_CLASS,
       size: {
         default: "h-9 rounded-xl px-4 text-sm",
         sm: "h-8 rounded-lg px-3 text-sm",
@@ -117,7 +127,7 @@ export const NodexIconButton = React.forwardRef<HTMLButtonElement, NodexIconButt
                 : "text-danger/70 hover:bg-text-danger/10 hover:text-(--color-text-danger)"
               : active
                 ? "text-info hover:bg-text-info/12"
-                : "text-[color-mix(in_srgb,var(--foreground)_62%,transparent)] hover:bg-[color-mix(in_srgb,var(--foreground)_5%,transparent)] hover:text-(--foreground)",
+                : "text-(--color-text-secondary-ghost) hover:bg-(--color-background-secondary-ghost-hover) hover:text-(--color-text-secondary-ghost-hover) active:bg-(--color-background-secondary-ghost-active)",
             disabled && "cursor-not-allowed opacity-40 hover:bg-transparent",
             className,
           )}

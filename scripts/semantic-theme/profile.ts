@@ -6,7 +6,7 @@ import type {
 } from "./types";
 
 export const SEMANTIC_THEME_GENERATOR_VERSION = 4;
-export const SEMANTIC_THEME_REF_VERSION = "26.1007.30912";
+export const SEMANTIC_THEME_REF_VERSION = "26.1021.31345";
 
 export const SEMANTIC_THEME_TARGETS = [
   "electron-light",
@@ -48,6 +48,16 @@ export const CONTRACT_DECLARATION_PREFIXES = [
 export const FOUNDATION_THEME_PROPERTIES = [
   "--font-sans",
   "--font-mono",
+  "--shadow-xs",
+  "--shadow-sm",
+  "--shadow-md",
+  "--shadow-lg",
+  "--shadow-xl",
+  "--shadow-2xl",
+  "--shadow-sm-stronger",
+  "--shadow-lg-stronger",
+  "--shadow-xl-stronger",
+  "--shadow-xl-spread",
   "--spacing-panel",
   "--radius-2xs",
   "--radius-xs",
@@ -96,7 +106,6 @@ export const FOUNDATION_ROOT_FALLBACKS = {
 export const FOUNDATION_ELECTRON_OVERRIDES = {
   "--thread-composer-max-width": "calc(var(--thread-content-max-width) + 1rem)",
   "--markdown-wide-block-max-width": "80rem",
-  "--color-token-bg-fog": "var(--color-background-elevated-secondary)",
 } as const;
 
 export const FOUNDATION_BROWSER_OVERRIDES = {

@@ -9,7 +9,7 @@ import { ProjectCreateDialog } from "./project-edit-dialog";
 export type SidebarCreateProjectHandler = (input: ProjectCreateInput) => Promise<Project | null>;
 
 const CODEX_PROJECT_ADD_BUTTON_CLASS =
-  "outline-hidden cursor-interaction relative isolate h-6 w-6 overflow-visible rounded-md !p-1 text-token-foreground opacity-75 hover:opacity-100";
+  "outline-hidden cursor-interaction relative isolate h-6 w-6 overflow-visible rounded-md !p-1 text-(--color-text-secondary-ghost) hover:text-(--color-text-secondary-ghost-hover)";
 
 export function SidebarProjectAddButton({
   onCreateProject,

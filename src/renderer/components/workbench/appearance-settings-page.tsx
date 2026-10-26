@@ -131,7 +131,7 @@ export function AppearanceSettingsPage({
               render={
                 <button
                   type="button"
-                  className="inline-flex min-h-7 cursor-interaction items-center gap-1.5 rounded-md text-base font-medium text-token-text-primary outline-none focus-visible:ring-2 focus-visible:ring-token-focus-border"
+                  className="inline-flex min-h-7 cursor-interaction items-center gap-1.5 rounded-md text-base font-medium text-tertiary hover:text-(--color-text) outline-none focus-visible:ring-2 focus-visible:ring-token-focus-border"
                 />
               }
             >

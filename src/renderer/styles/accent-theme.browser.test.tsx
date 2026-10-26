@@ -203,9 +203,9 @@ test.each(paintCases)(
 
     const accentAction = surfaces.getByRole("button", { name: "Accent action" });
     expect(getComputedStyle(accentAction).backgroundColor).toBe(
-      color(styles["--app-color-accent-blue"]!),
+      color(styles["--color-background-accent-action"]!),
     );
-    expect(getComputedStyle(accentAction).color).toBe(color(styles["--app-color-text-on-accent"]!));
+    expect(getComputedStyle(accentAction).color).toBe(color(styles["--color-text-accent-action"]!));
     const switchTrack = surfaces.getByRole("switch").firstElementChild;
     if (!switchTrack) throw new Error("Checked switch track is missing");
     expect(getComputedStyle(switchTrack).backgroundColor).toBe(

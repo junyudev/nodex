@@ -91,7 +91,7 @@ function RailUsagePlaceholder({
       }
     >
       <NodexButton
-        variant="ghost"
+        variant="ghostSecondary"
         size="icon"
         aria-label={label}
         aria-busy={loading || retrying}
@@ -334,7 +334,7 @@ export function WorkbenchRailAccountControls({
             sideOffset={8}
             trigger={
               <NodexButton
-                variant="ghost"
+                variant="ghostSecondary"
                 size="icon"
                 aria-label="Sign in"
                 className={WORKBENCH_RAIL_BUTTON_CLASS}

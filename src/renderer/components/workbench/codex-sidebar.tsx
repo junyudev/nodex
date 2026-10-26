@@ -133,9 +133,9 @@ export const CODEX_SIDEBAR_GROUP_ROW_CLASS =
 export const CODEX_SIDEBAR_DISCLOSURE_CHEVRON_CLASS =
   "icon-2xs shrink-0 opacity-0 transition-transform";
 export const CODEX_SIDEBAR_SECTION_ACTIONS_CLASS =
-  "flex items-center gap-1 pointer-events-none opacity-0 group-focus-within/projects-section-header:pointer-events-auto group-focus-within/projects-section-header:opacity-100 group-hover/projects-section-header:pointer-events-auto group-hover/projects-section-header:opacity-100 has-[[data-state=open]]:pointer-events-auto has-[[data-state=open]]:opacity-100";
+  "flex items-center gap-1 pointer-events-none opacity-0 group-focus-within/projects-section-header:pointer-events-auto group-focus-within/projects-section-header:opacity-100 group-hover/projects-section-header:pointer-events-auto group-hover/projects-section-header:opacity-100 has-[[aria-expanded=true]]:pointer-events-auto has-[[aria-expanded=true]]:opacity-100";
 export const CODEX_SIDEBAR_SECTION_ACTION_BUTTON_CLASS =
-  "border-token-border no-drag cursor-interaction flex items-center gap-1 border whitespace-nowrap select-none focus:outline-none disabled:cursor-not-allowed disabled:opacity-40 rounded-full electron:rounded-md text-token-foreground enabled:hover:bg-token-list-hover-background data-[state=open]:bg-token-list-hover-background border-transparent electron:p-1 electron:[&>svg]:icon-sm flex items-center justify-center p-0.5 h-6 w-6 rounded-md !p-1 text-token-foreground opacity-75 hover:opacity-100";
+  "border-token-border no-drag cursor-interaction flex items-center gap-1 border whitespace-nowrap select-none focus:outline-none disabled:cursor-not-allowed disabled:opacity-40 rounded-full electron:rounded-md enabled:hover:bg-token-list-hover-background aria-expanded:bg-token-list-hover-background border-transparent electron:p-1 electron:[&>svg]:icon-sm flex items-center justify-center p-0.5 h-6 w-6 rounded-md !p-1 text-(--color-text-secondary-ghost) hover:text-(--color-text-secondary-ghost-hover)";
 export const CODEX_SIDEBAR_GROUP_ACTION_BUTTON_CLASS = SIDEBAR_PROJECT_NEW_CHAT_BUTTON_CLASS;
 export const CODEX_SIDEBAR_THREAD_ROW_CLASS =
   "group relative h-token-nav-row cursor-interaction rounded-lg py-row-y text-sm hover:bg-token-list-hover-background focus-visible:outline-offset-[-2px]";
@@ -367,7 +367,7 @@ export function CodexSidebarSection({
     >
       <div className="flex flex-col">
         <div className="flex items-center justify-between gap-2 pr-0.5 pl-2">
-          <div className="min-w-0 flex-1 text-base font-medium text-token-input-placeholder-foreground opacity-75">
+          <div className="min-w-0 flex-1 text-base font-medium text-tertiary">
             <div className="group/projects-section-header flex items-center justify-between gap-2">
               <div className="flex min-w-0 flex-1">
                 <button

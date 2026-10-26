@@ -263,15 +263,18 @@ export function SettingsSidebar({
   });
   return (
     <aside
-      className="app-shell-left-panel relative hidden min-h-0 w-token-sidebar shrink-0 flex-col overflow-hidden bg-(--app-shell-sidebar-background) md:flex"
+      className="app-shell-left-panel relative hidden min-h-0 w-token-sidebar shrink-0 flex-col overflow-hidden md:flex"
       style={{ clipPath: WORKBENCH_PINNED_SIDEBAR_CLIP }}
     >
-      <nav className="flex min-h-0 flex-1 flex-col select-none px-row-x" aria-label="Settings">
+      <nav
+        className="flex min-h-0 flex-1 flex-col bg-(--app-shell-sidebar-background) select-none px-row-x"
+        aria-label="Settings"
+      >
         <div className="flex min-h-0 flex-1 flex-col">
           <button
             type="button"
             onClick={onBack}
-            className="group relative mb-2 flex w-full shrink-0 cursor-interaction items-center gap-2 rounded-lg px-row-x py-row-y text-left text-base text-token-text-secondary outline-none hover:bg-token-list-hover-background focus-visible:ring-1 focus-visible:ring-token-focus-border electron:opacity-75"
+            className="group relative mb-2 flex w-full shrink-0 cursor-interaction items-center gap-2 rounded-lg px-row-x py-row-y text-left text-base text-(--color-text-secondary-ghost) outline-none hover:bg-(--color-background-secondary-ghost-hover) hover:text-(--color-text-secondary-ghost-hover) focus-visible:ring-1 focus-visible:ring-token-focus-border"
           >
             <BrowserBackIcon />
             Back to app
@@ -297,7 +300,7 @@ export function SettingsSidebar({
                 {groupedSections.map((group) => (
                   <div key={group.groupKey} className="flex flex-col gap-1">
                     <div className="flex items-center justify-between gap-2 pr-0.5 pl-2">
-                      <div className="min-w-0 flex-1 text-base text-token-input-placeholder-foreground opacity-75">
+                      <div className="min-w-0 flex-1 text-base font-medium text-tertiary">
                         {group.label}
                       </div>
                     </div>

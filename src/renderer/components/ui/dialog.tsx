@@ -3,6 +3,7 @@ import { Dialog as DialogPrimitive } from "@base-ui/react/dialog";
 import { CloseIcon } from "@/components/shared/icons";
 import { APP_SHELL_MODAL_LAYER_CLASS, APP_SHELL_MODAL_LAYER_INDEX } from "@/lib/app-shell-layers";
 import { cn } from "@/lib/utils";
+import { NODEX_BUTTON_COLOR_CLASS } from "./button";
 import { NodexFloatingLayerProvider, useNodexFloatingLayerIndex } from "./floating-layer";
 import { hasOpenNodexFloatingEscapeLayer } from "./floating-surface";
 
@@ -21,16 +22,8 @@ const NODEX_DIALOG_ACTION_STYLES = {
     "bg-token-charts-red/10 text-token-charts-red",
     "enabled:hover:bg-token-charts-red/20 enabled:active:bg-token-charts-red/30",
   ],
-  ghost: [
-    "text-token-text-tertiary",
-    "enabled:hover:bg-token-list-hover-background enabled:active:bg-token-foreground/15",
-    "data-[state=open]:bg-token-list-hover-background",
-  ],
-  primary: [
-    "bg-token-foreground text-token-dropdown-background",
-    "enabled:hover:bg-token-foreground/80 enabled:active:bg-token-foreground/70",
-    "data-[state=open]:bg-token-foreground/80",
-  ],
+  ghost: NODEX_BUTTON_COLOR_CLASS.ghostSecondary,
+  primary: NODEX_BUTTON_COLOR_CLASS.primary,
 } as const;
 
 export type NodexDialogDismissReason =
@@ -188,7 +181,7 @@ export function NodexDialogContent({
           APP_SHELL_MODAL_LAYER_CLASS,
           !unstyledContent && [
             "max-w-[92vw] rounded-3xl bg-token-dropdown-background/90 text-token-foreground",
-            "shadow-[0px_4px_8px_-2px_#0000001a] ring-[0.5px] ring-token-border backdrop-blur-xl",
+            "shadow-lg ring-[0.5px] ring-token-border backdrop-blur-xl",
             "overflow-hidden",
             NODEX_DIALOG_SIZE_CLASS[size],
           ],

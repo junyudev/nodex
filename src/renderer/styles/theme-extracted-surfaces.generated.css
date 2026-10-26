@@ -1,7 +1,7 @@
 /*
- * Generated semantic theme contract (refVersion 26.1007.30912).
+ * Generated semantic theme contract (refVersion 26.1021.31345).
  * Do not edit by hand. Run:
- *   vp run semantic-theme:sync -- --source /temporary/reference.css --ref-version 26.1007.30912
+ *   vp run semantic-theme:sync -- --source /temporary/reference.css --ref-version 26.1021.31345
  */
 
 @layer components {
@@ -117,13 +117,14 @@
     background: var(--shimmer-text-secondary) linear-gradient(to right, transparent 0%, var(--shimmer-contrast) 40%, var(--shimmer-contrast) 60%, transparent 100%);
     background: var(--shimmer-text-secondary) -webkit-gradient(linear, 100% 0, 0 0, from(transparent), color-stop(.4, var(--shimmer-contrast)), color-stop(.6, var(--shimmer-contrast)), to(transparent));
     animation-duration: var(--loading-shimmer-duration, var(--loading-shimmer-default-duration));
-    background-position: -100% 0;
-    background-repeat: no-repeat;
-    background-size: 50% 200%;
     animation-name: loading-shimmer;
     animation-timing-function: steps(48, end);
     animation-iteration-count: infinite;
     animation-delay: 0s;
+    animation-play-state: var(--decorative-animation-play-state, running);
+    background-position: -100% 0;
+    background-repeat: no-repeat;
+    background-size: 50% 200%;
     display: inline-block;
   }
 

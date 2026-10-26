@@ -36,6 +36,7 @@ describe("getCodexThemeVariantStyle", () => {
     expect(styles["--app-color-background-surface"]).toBe("#ffffff");
     expect(styles["--app-color-border"]).toBe("rgba(13, 13, 13, 0.078)");
     expect(styles["--cursor-interaction"]).toBe("pointer");
+    expect(styles["--app-color-background-elevated-tertiary-opaque"]).toBe("#f3f3f3");
   });
 
   test("defines the runtime semantic control and foreground tokens for dark", () => {
@@ -56,6 +57,7 @@ describe("getCodexThemeVariantStyle", () => {
     expect(styles["--app-color-background-editor-opaque"]).toBe("rgb(33, 33, 33)");
     expect(styles["--app-color-background-elevated-primary-opaque"]).toBe("rgb(47, 47, 47)");
     expect(styles["--cursor-interaction"]).toBe("pointer");
+    expect(styles["--app-color-background-elevated-tertiary-opaque"]).toBe("rgb(33, 33, 33)");
   });
 
   test("resolves conversation accent roles independently from generic button roles", () => {

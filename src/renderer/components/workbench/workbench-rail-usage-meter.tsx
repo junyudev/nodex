@@ -1,5 +1,6 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { ClaudeIcon, OpenAIIcon } from "@/components/shared/icons/provider-icons";
+import { NODEX_BUTTON_COLOR_CLASS } from "@/components/ui/button";
 import { NodexHoverCard } from "@/components/ui/hover-card";
 import {
   describeUsageMeter,
@@ -364,7 +365,7 @@ export function RailUsageMeter({
         data-usage-stale={view.stale ? "" : undefined}
         className={cn(
           "inline-flex size-9 items-center justify-center rounded-lg outline-none",
-          "text-(--sidebar-foreground-secondary) hover:bg-(--sidebar-accent) hover:text-(--sidebar-foreground)",
+          NODEX_BUTTON_COLOR_CLASS.ghostSecondary,
           "focus-visible:bg-(--sidebar-accent) focus-visible:ring-2 focus-visible:ring-(--sidebar-ring)/35",
           className,
         )}

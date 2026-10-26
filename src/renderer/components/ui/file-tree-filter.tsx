@@ -11,7 +11,7 @@ export function FileTreeFilter({
 }) {
   const id = useId();
   return (
-    <div className="relative flex h-token-button-composer w-full items-center gap-1.5 rounded-lg border border-default bg-primary-soft-alpha text-base leading-[18px]">
+    <div className="relative flex h-token-button-composer w-full items-center gap-1.5 rounded-lg border border-default bg-(--color-background-primary-soft-alpha) text-base leading-[18px]">
       <label className="sr-only" htmlFor={id}>
         Filter files
       </label>

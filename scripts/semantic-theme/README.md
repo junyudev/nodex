@@ -18,6 +18,13 @@ is `src/renderer/lib/codex-theme-variant.ts`; its output also supplies the initi
 document. Keep numeric palette verification there and cascade verification in
 the computed-style browser suite.
 
+Visual review must identify the effective appearance and persisted palette overrides
+of the target window; a clean Profile can resolve to a different palette. Match the
+native opaque/translucent state before comparing paint. Root-variable equality is
+only an input check: also inspect actual surfaces, descendant color inheritance,
+ancestor opacity, and control hover/selected/open states. Keep these measurements
+in local review artifacts rather than encoding visual snapshots as source tests.
+
 ```sh
 vp run semantic-theme:audit -- --source /temporary/reference.css --ref-version <version>
 vp run semantic-theme:audit -- --source /temporary/reference.css --ref-version <version> --report /tmp/theme-audit.json
@@ -40,7 +47,7 @@ This checks provenance, artifact hashes, required semantic utilities, and the sc
 - `profile.ts` defines supported semantic families, utilities, scopes, and explicit collision resolutions.
 - Generated files are outputs, never hand-edited.
 - `theme-token-bridge.css` owns product compatibility aliases while consumers migrate.
-- `theme-source.css` owns product foundation values such as radius scale. Generated values may consume those foundations but must not silently replace them.
+- `theme-source.css` owns product foundation values such as radius scale and feature-specific aliases. Shared elevation tiers come from the generated foundation; legacy shadow names alias those tiers. Generated values may consume product foundations but must not silently replace them.
 - `--app-color-*` values feed the shared semantic roles. Extension `--vscode-*` inputs remain scoped to the extension; product aliases needed by Electron must resolve through its semantic providers.
 - Components should express shared text, status, border, background, icon, and motion roles with semantic utilities. Feature-native visual concepts remain feature-owned.
 

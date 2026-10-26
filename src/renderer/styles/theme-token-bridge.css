@@ -37,6 +37,7 @@
   --color-token-link: var(--color-token-text-link-foreground);
   --color-token-terminal-background: var(--color-token-main-surface-primary);
   --color-token-background: var(--color-surface-elevated);
+  --color-token-bg-fog: var(--color-background-secondary-soft);
   --color-token-bg-subtle: var(--color-background-secondary-soft);
   --color-token-button-foreground: var(--color-text-primary-solid);
   --color-token-charts-green: var(--color-text-success);
@@ -58,8 +59,6 @@
   --color-token-list-active-selection-icon-foreground: var(--color-codex-icon-active);
   --color-token-menu-background: var(--color-surface-elevated-secondary);
   --color-token-menu-border: var(--color-border);
-  --color-token-scrollbar-slider-active-background: var(--color-border-strong);
-  --color-token-scrollbar-slider-background: var(--color-border-subtle);
   --color-token-terminal-ansi-black: var(--color-codex-terminal-ansi-black);
   --color-token-terminal-ansi-blue: var(--color-codex-terminal-ansi-blue);
   --color-token-terminal-ansi-bright-black: var(--color-codex-terminal-ansi-bright-black);

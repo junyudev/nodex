@@ -495,12 +495,12 @@ export const NodexDropdownButtonTrigger = forwardRef<
       className={cn(
         "inline-flex min-w-0 items-center justify-between gap-1 border-[0.5px] outline-hidden disabled:cursor-not-allowed disabled:opacity-40",
         chrome === "outline"
-          ? "border-token-border bg-token-bg-fog hover:bg-token-list-hover-background"
+          ? "border-token-border bg-(--color-background-primary-soft-alpha) hover:bg-(--color-background-primary-ghost-hover) aria-expanded:bg-(--color-background-primary-ghost-hover)"
           : chrome === "raised"
             ? NODEX_RAISED_CONTROL_CHROME_CLASS_NAME
             : chrome === "filled"
-              ? "border-transparent bg-token-foreground/5 hover:bg-token-foreground/10"
-              : "border-transparent bg-transparent hover:bg-token-foreground/5",
+              ? "border-transparent bg-(--color-background-secondary-soft) hover:bg-(--color-background-secondary-soft-hover)"
+              : "border-transparent bg-transparent hover:bg-(--color-background-primary-ghost-hover)",
         "focus-visible:ring-token-focus-border focus-visible:ring-2",
         muted ? "text-token-description-foreground" : "text-token-foreground",
         "[&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg]:text-token-description-foreground",

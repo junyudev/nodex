@@ -1,7 +1,7 @@
 /*
- * Generated semantic theme contract (refVersion 26.1007.30912).
+ * Generated semantic theme contract (refVersion 26.1021.31345).
  * Do not edit by hand. Run:
- *   vp run semantic-theme:sync -- --source /temporary/reference.css --ref-version 26.1007.30912
+ *   vp run semantic-theme:sync -- --source /temporary/reference.css --ref-version 26.1021.31345
  */
 
 @theme static {
@@ -28,6 +28,16 @@
   --radius-sm: calc(var(--radius-sm-base) * var(--corner-radius-scale));
   --radius-xl: calc(var(--radius-xl-base) * var(--corner-radius-scale));
   --radius-xs: calc(var(--radius-xs-base) * var(--corner-radius-scale));
+  --shadow-2xl: 0px 16px 32px -8px #00000030;
+  --shadow-lg: 0px 4px 8px -2px #0000001a;
+  --shadow-lg-stronger: 0px 4px 8px -2px #00000029;
+  --shadow-md: 0px 2px 4px -1px #00000014;
+  --shadow-sm: 0px 1px 2px -1px #00000014;
+  --shadow-sm-stronger: 0px 1px 2px -1px #00000021;
+  --shadow-xl: 0px 8px 16px -4px #0000001f;
+  --shadow-xl-spread: 0px 0px 0px .5px var(--color-token-border), var(--shadow-xl);
+  --shadow-xl-stronger: 0px 8px 16px -4px #00000030;
+  --shadow-xs: 0 1px 2px 0 #0000000d;
   --spacing-token-button-composer: calc(var(--spacing) * 7);
   --spacing-token-button-composer-gap: var(--spacing);
   --spacing-token-button-composer-sm: calc(var(--spacing) * 5);
@@ -52,7 +62,6 @@
 }
 
 [data-codex-window-type="electron"] body {
-  --color-token-bg-fog: var(--color-background-elevated-secondary);
   --cursor-interaction: default;
   --markdown-wide-block-max-width: 80rem;
   --padding-panel: var(--padding-panel-base);

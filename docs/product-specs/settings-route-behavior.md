@@ -145,9 +145,11 @@ it or leaving Settings stops capture. The expanded view shows recorded requests
 by host, with request details, payload copying, failure filtering and host-local
 clearing. Dividers separate these groups without additional framed cards.
 
-The default appearance uses a `#111111` main surface with `#fcfcfc` primary
-text in dark mode, and `#ffffff` with `#0d0d0d` text in light mode. Controls,
+The default appearance uses a `#181818` main surface with `#ffffff` primary
+text in dark mode, and `#ffffff` with `#1a1c1f` text in light mode. Controls,
 menus, borders, and secondary text derive from the same resolved palette.
+Shared neutral aliases for cards, popovers, sidebars, inputs, and hover states
+follow these roles in both appearances; they do not retain a separate gray palette.
 Conversation bubbles and the primary send action have dedicated color roles.
 Switching appearance updates these roles together, including content that uses
 the shared legacy background and foreground aliases. Native sidebar material
