@@ -1,0 +1,83 @@
+src/renderer/features/plugins/plugins-routes.ts
+  s_1f621c9737ee85::t_c80a114c5d4196 17-18,38-42,52,99
+src/renderer/components/ui/browse-tabs.tsx
+  s_1f621c9737ee85::t_4e538d9516662a 1-95
+src/renderer/components/ui/section-header.tsx
+  s_1f621c9737ee85::t_4e538d9516662a 1-88
+src/renderer/features/plugins/customize-navigation.ts
+  s_1f621c9737ee85::t_8d9baf8ad59d48 8-9
+src/renderer/components/ui/searchable-page-layout.tsx
+  s_1f621c9737ee85::t_95f4146b9fee4f 157
+  s_1f621c9737ee85::t_2b321f0e6d8e04 1-156,158-183
+  s_1f621c9737ee85::t_eec688a9a86774 184
+src/renderer/features/plugins/view/customize-buttons.tsx
+  s_1f621c9737ee85::t_2b2595b2e910e9 1-91
+src/renderer/features/plugins/model/customize-selection.ts
+  s_1f621c9737ee85::t_c80a114c5d4196 1
+src/renderer/features/plugins/view/plugin-grid.tsx
+  s_1f621c9737ee85::t_cd29073b05c426 1-141
+src/renderer/features/plugins/view/plugin-listing-card.tsx
+  s_1f621c9737ee85::t_f98082aa9aea47 1-170,173-174,176-213
+  s_1f621c9737ee85::t_3ff4750f387fba 171-172,175
+  s_1f621c9737ee85::t_6139afed454184 214-218
+src/renderer/features/plugins/model/marketplace-form.test.ts
+  s_1f621c9737ee85::t_67db27b226d9d1 1-25
+src/renderer/features/plugins/model/marketplace-form.ts
+  s_1f621c9737ee85::t_67db27b226d9d1 1-28
+src/renderer/features/plugins/view/installed-plugin-actions-menu.tsx
+  s_1f621c9737ee85::t_06b954a9c0613c 7-11,13-20,22-25,29,36-37,41-46,48-54,57-61,63-67,69-87
+  s_1f621c9737ee85::t_5fb94099cb0814 1
+src/renderer/features/plugins/model/install-sessions.ts
+  s_1f621c9737ee85::t_c791d11d099153 1-36
+src/renderer/components/workbench/workbench-runtime.tsx
+  s_1f621c9737ee85::t_8d9baf8ad59d48 2544,3468
+src/renderer/features/plugins/view/add-marketplace-dialog.tsx
+  s_1f621c9737ee85::t_5e0d1e555d2b53 16
+  s_1f621c9737ee85::t_03de705ddfa491 13
+  s_1f621c9737ee85::t_3510fa4e1bb1ba 1-12,14-15,17-169
+  s_1f621c9737ee85::t_b628e86976cd6a 170-172
+src/renderer/features/plugins/view/use-plugin-row-actions.tsx
+  s_1f621c9737ee85::t_5e0d1e555d2b53 3,37,66,88
+  s_1f621c9737ee85::t_c791d11d099153 1-2,4-36,38-65,67-87,89-105
+src/renderer/features/plugins/view/plugins-route.tsx
+  s_1f621c9737ee85::t_891e1ef42741c6 1,3,7,11,13-14,16-29
+src/renderer/features/plugins/model/mutation-result.ts
+  s_1f621c9737ee85::t_5e0d1e555d2b53 1-10
+src/renderer/features/plugins/view/plugins-directory-page.tsx
+  s_1f621c9737ee85::t_ea4fc995cf5801 1-16,18,20-88,90-120,126-129,133-206,208-552,569-624,638-644,660-665,667-675
+  s_1f621c9737ee85::t_5e0d1e555d2b53 17,19,89,207
+  s_1f621c9737ee85::t_891e1ef42741c6 121-125,130-132,553-568,625-637,645-659,666
+  s_1f621c9737ee85::t_514638d4da2387 676-727
+src/renderer/features/plugins/view/customize-sidebar.tsx
+  s_1f621c9737ee85::t_a83121efe9711c 65,67,105-110
+  s_1f621c9737ee85::t_c80a114c5d4196 16-20
+  s_1f621c9737ee85::t_95adfbe51867ef 21,60-64,121,151,167,180
+src/renderer/components/ui/page-search-input.tsx
+  s_1f621c9737ee85::t_4e538d9516662a 1-82
+src/renderer/features/plugins/plugins-routes.node.test.ts
+  s_1f621c9737ee85::t_c80a114c5d4196 16,22,33,42-52
+src/renderer/components/workbench/use-workbench-route-surfaces.test.tsx
+  s_1f621c9737ee85::t_8d9baf8ad59d48 77-79
+src/renderer/components/ui/searchable-page-layout.module.css
+  s_1f621c9737ee85::t_45e3bbe3cac27a 1-244,246-248
+  s_1f621c9737ee85::t_95f4146b9fee4f 245
+src/renderer/components/shared/icons/customize-action-icons.tsx
+  s_1f621c9737ee85::t_864f5c4edb2d9e 1-417
+  s_1f621c9737ee85::t_daecd372a6bac9 418-431
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "400e06ff0d21a2b107d17f64a8e6521fd86a83fe",
+  "prompts": {},
+  "sessions": {
+    "s_1f621c9737ee85": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "dec682ee-8dcb-4974-b7cd-a9bfde733cc3",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
