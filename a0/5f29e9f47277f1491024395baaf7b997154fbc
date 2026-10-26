@@ -1,0 +1,35 @@
+docs/product-specs/plugins-behavior.md
+  s_77ac5bdfa64dec::t_d1ce18650fb450 192-210
+src/main/codex-application/PluginAccountMetadata.node.test.ts
+  s_77ac5bdfa64dec::t_b3e90d8df475cc 1-81
+src/main/codex-application/PluginAccountMetadata.ts
+  s_77ac5bdfa64dec::t_ff7eb714df603c 1-124
+src/main/codex-application/PluginApps.ts
+  s_77ac5bdfa64dec::t_457a95d3f6249d 34,268-272,288-291,307
+src/main/codex-application/PluginManager.node.test.ts
+  s_77ac5bdfa64dec::t_d77b0caedf88f4 45-53,125,189-208,1120-1260
+src/main/codex-application/PluginManager.ts
+  s_77ac5bdfa64dec::t_bea97a724700ac 1,7,120,167,354-357,363-371,391-406,414,416-423,666,681-740,745-754,824-828,832-837,839-855,858-861,1136-1151,1176-1179,1208-1211,1273-1274,1319,1330-1419,1506
+src/main/codex-application/StandaloneSkills.ts
+  s_77ac5bdfa64dec::t_fe7605c5e2d2df 252,255-258,270-288
+src/shared/codex-plugin-management.ts
+  s_77ac5bdfa64dec::t_2e41d317201de3 164-167,217-218,228
+src/shared/codex-plugin-settings.ts
+  s_77ac5bdfa64dec::t_d5161f97de79d4 95-111
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "a05f29e9f47277f1491024395baaf7b997154fbc",
+  "prompts": {},
+  "sessions": {
+    "s_77ac5bdfa64dec": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1795d-5e95-7ea0-9bf7-2e3e042b723f",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
