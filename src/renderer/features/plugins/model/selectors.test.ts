@@ -232,7 +232,15 @@ it("keeps newly installed recommendation cards visible without duplicating their
   const recommended = {
     source: "cache",
     error: null,
-    skills: [{ id: "my-pdf", name: "PDF", description: "Read files", shortDescription: null }],
+    skills: [
+      {
+        id: "my-pdf",
+        name: "PDF",
+        description: "Read files",
+        shortDescription: null,
+        iconUrl: null,
+      },
+    ],
   } as const;
   expect(selectSkillsBrowse({ skills, recommended }).recommended).toEqual([]);
   const duringFlow = selectSkillsBrowse({
@@ -250,7 +258,13 @@ it("uses the default recommendation order and searches the full catalog", async 
     source: "git",
     error: null,
     skills: ["Playwright", "Other", "PDF", "Imagegen", "Doc", "Sora", "Spreadsheet"].map(
-      (name) => ({ id: name.toLowerCase(), name, description: name, shortDescription: null }),
+      (name) => ({
+        id: name.toLowerCase(),
+        name,
+        description: name,
+        shortDescription: null,
+        iconUrl: null,
+      }),
     ),
   } as const;
   expect(

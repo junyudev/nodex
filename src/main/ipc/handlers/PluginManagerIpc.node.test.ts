@@ -29,6 +29,23 @@ const event = (kind = "window"): IpcMainInvokeEvent => {
 it.effect("validates selector XOR and typed command booleans at ingress", () =>
   Effect.gen(function* () {
     const base = { hostId: "local", projectId: null, pluginName: "name" };
+    assert.strictEqual(
+      (yield* Schema.decodeUnknownEffect(pluginQuerySchemas["skill-contents"])({
+        hostId: "local",
+        projectId: null,
+        recommendedSkillId: "sample",
+      }).pipe(Effect.result))._tag,
+      "Success",
+    );
+    assert.strictEqual(
+      (yield* Schema.decodeUnknownEffect(pluginQuerySchemas["skill-contents"])({
+        hostId: "local",
+        projectId: null,
+        recommendedSkillId: "sample",
+        path: "/private/SKILL.md",
+      }).pipe(Effect.result))._tag,
+      "Failure",
+    );
     for (const input of [
       { ...base },
       { ...base, marketplacePath: "/catalog", remoteMarketplaceName: "remote" },

@@ -129,6 +129,12 @@ and an immediate child of an authorized installation directory. Symbolic-link es
 managed directories are protected. Local contents include the original SKILL.md and the
 contained file list; remote skill reads expose only SKILL.md because the native protocol
 has no remote included-files operation.
+Recommended previews use `useSkillContents(context, {recommendedSkillId})` before installation.
+The catalog owner resolves the ID to its validated curated/experimental directory and reads
+SKILL.md plus its contained file list under the same catalog lane as refresh/install. Unknown
+IDs return the typed not-found result. Traversal and escaping symlinks are refused. The catalog's
+`RecommendedSkill.iconUrl` authorizes an existing contained small icon from skill interface
+metadata, including `agents/openai.yaml`; missing or unsafe icons are null.
 
 ## Mutations and refresh
 

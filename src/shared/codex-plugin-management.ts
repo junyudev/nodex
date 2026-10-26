@@ -204,6 +204,7 @@ export interface SkillsView {
 }
 export type SkillContentsSelector =
   | { readonly path: string }
+  | { readonly recommendedSkillId: string }
   | {
       readonly remoteMarketplaceName: string;
       readonly remotePluginId: string;

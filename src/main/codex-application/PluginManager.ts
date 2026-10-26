@@ -1155,6 +1155,10 @@ export const live = (options: {
           }).pipe(Effect.map((response) => response as unknown as SkillsListResponse)),
         "skill-contents": Effect.fn("PluginManager.skillContents")(
           function* (context, input) {
+            if ("recommendedSkillId" in input)
+              return yield* withOperationLease(
+                standaloneSkills.recommendedContents(input.recommendedSkillId),
+              ).pipe(Effect.map((value) => ({ ...value, status: "success" as const })));
             if ("remotePluginId" in input)
               return yield* request(context, "plugin/skill/read", {
                 remoteMarketplaceName: input.remoteMarketplaceName,

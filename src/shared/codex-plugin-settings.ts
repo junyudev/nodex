@@ -93,6 +93,7 @@ export interface PluginMcpServersView {
   readonly servers: readonly PluginMcpServer[];
 }
 export interface RecommendedSkill {
+  readonly iconUrl: string | null;
   readonly id: string;
   readonly name: string;
   readonly description: string;

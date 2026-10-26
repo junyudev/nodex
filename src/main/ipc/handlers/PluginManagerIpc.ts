@@ -82,7 +82,16 @@ export const pluginQuerySchemas = {
   "skill-contents": Schema.Union([
     Schema.Struct({
       ...context,
+      recommendedSkillId: Schema.NonEmptyString,
+      path: Schema.optionalKey(Schema.Never),
+      remoteMarketplaceName: Schema.optionalKey(Schema.Never),
+      remotePluginId: Schema.optionalKey(Schema.Never),
+      skillName: Schema.optionalKey(Schema.Never),
+    }),
+    Schema.Struct({
+      ...context,
       path: Schema.NonEmptyString,
+      recommendedSkillId: Schema.optionalKey(Schema.Never),
       remoteMarketplaceName: Schema.optionalKey(Schema.Never),
       remotePluginId: Schema.optionalKey(Schema.Never),
       skillName: Schema.optionalKey(Schema.Never),
@@ -90,6 +99,7 @@ export const pluginQuerySchemas = {
     Schema.Struct({
       ...context,
       path: Schema.optionalKey(Schema.Never),
+      recommendedSkillId: Schema.optionalKey(Schema.Never),
       remoteMarketplaceName: Schema.NonEmptyString,
       remotePluginId: Schema.NonEmptyString,
       skillName: Schema.NonEmptyString,

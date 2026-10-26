@@ -237,3 +237,56 @@ it.effect(
       }),
     ).pipe(Effect.provide(NodeServices.layer)),
 );
+
+it.effect(
+  "previews recommendations before installation and authorizes only contained small icons",
+  () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const fs = yield* FileSystem.FileSystem;
+        const h = yield* make;
+        yield* Effect.gen(function* () {
+          const skills = yield* StandaloneSkills;
+          const preview = yield* skills.recommendedContents("sample");
+          assert.ok(preview.contents?.includes("# Skill"));
+          assert.deepEqual(preview.files, ["SKILL.md", "scripts/run.py"]);
+          assert.strictEqual(yield* fs.exists(`${h.home}/skills/sample`), false);
+          for (const id of ["missing", "../sample", "/private"])
+            assert.strictEqual(
+              (yield* skills.recommendedContents(id).pipe(Effect.flip)).code,
+              "not_found",
+            );
+          const source = `${h.repo}/skills/.curated/sample`;
+          yield* fs.makeDirectory(`${source}/agents`);
+          yield* fs.makeDirectory(`${source}/assets`);
+          yield* fs.writeFileString(`${source}/assets/small.svg`, "<svg/>");
+          yield* fs.writeFileString(
+            `${source}/agents/openai.yaml`,
+            'interface:\n  icon_small: "./assets/small.svg"\n',
+          );
+          const catalog = yield* skills.list(false);
+          assert.ok(catalog.skills[0]?.iconUrl?.startsWith("app://fs/@fs/"));
+          assert.ok(catalog.skills[0]?.iconUrl?.endsWith("/assets/small.svg"));
+          assert.deepEqual((yield* skills.recommendedContents("sample")).files, [
+            "SKILL.md",
+            "agents/openai.yaml",
+            "assets/small.svg",
+            "scripts/run.py",
+          ]);
+          const outside = `${h.home}/private`;
+          yield* fs.makeDirectory(outside);
+          yield* fs.writeFileString(`${outside}/SKILL.md`, "private");
+          yield* fs.writeFileString(
+            `${source}/agents/openai.yaml`,
+            `interface:\n  icon_small: "${outside}/SKILL.md"\n`,
+          );
+          assert.strictEqual((yield* skills.list(false)).skills[0]?.iconUrl, null);
+          yield* fs.symlink(`${outside}/SKILL.md`, `${source}/leak.md`);
+          assert.strictEqual(
+            (yield* skills.recommendedContents("sample").pipe(Effect.flip)).code,
+            "protected",
+          );
+        }).pipe(Effect.provide(h.layer));
+      }),
+    ).pipe(Effect.provide(NodeServices.layer)),
+);

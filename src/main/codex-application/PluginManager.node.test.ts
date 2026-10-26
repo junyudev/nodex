@@ -21,6 +21,7 @@ import type { PluginSummary } from "../../shared/codex-plugin-management";
 import type { Project } from "../../shared/types";
 import { createPluginInventoryPolicy } from "./PluginInventoryPolicy";
 import { codexRuntimeError } from "../codex-runtime/CodexRuntimeError";
+import { pluginError } from "./PluginManagementError";
 
 const home = "/tmp/plugin-manager-tests";
 const policy = createPluginInventoryPolicy(home);
@@ -327,6 +328,10 @@ const make = (
     });
   const services = Layer.mergeAll(
     Layer.succeed(StandaloneSkills, {
+      recommendedContents: (id: string) =>
+        id === "sample"
+          ? Effect.succeed({ contents: "recommended", files: ["SKILL.md", "scripts/run.py"] })
+          : Effect.fail(pluginError("not_found", "The recommended skill was not found.")),
       list: unavailable,
       install: unavailable,
       uninstall: unavailable,
@@ -1916,3 +1921,29 @@ it.effect("rejects app enablement from non-user config layers before writing", (
     }),
   );
 });
+
+it.effect(
+  "returns typed recommended skill previews and not-found results without installed inventory",
+  () => {
+    const h = make({ omitInventory: true });
+    return withManager(h, (manager) =>
+      Effect.gen(function* () {
+        assert.deepEqual(
+          yield* manager.query("skill-contents", { ...context, recommendedSkillId: "sample" }),
+          { status: "success", contents: "recommended", files: ["SKILL.md", "scripts/run.py"] },
+        );
+        const missing = yield* manager.query("skill-contents", {
+          ...context,
+          recommendedSkillId: "missing",
+        });
+        assert.strictEqual(missing.status, "failed");
+        if (missing.status === "failed") assert.strictEqual(missing.error.code, "not_found");
+        assert.deepEqual(h.contentReads, []);
+        assert.strictEqual(
+          h.calls.some((call) => call.method === "skills/list" || call.method === "plugin/read"),
+          false,
+        );
+      }),
+    );
+  },
+);

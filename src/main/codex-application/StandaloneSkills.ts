@@ -7,6 +7,7 @@ import * as Schema from "effect/Schema";
 import * as Result from "effect/Result";
 import * as Semaphore from "effect/Semaphore";
 import { load, JSON_SCHEMA } from "js-yaml";
+import { resolveComposerInventoryIconUrl } from "../../shared/codex-composer-inventory-icon";
 import type { SkillMetadata } from "@nodex/codex-app-server-protocol/v2/SkillMetadata";
 import type { RecommendedSkillsView, SkillContentsView } from "../../shared/codex-plugin-settings";
 import { GitCommandPlatform } from "../git-worker/git-command-platform";
@@ -18,6 +19,7 @@ const Skill = Schema.Struct({
   description: Schema.String,
   shortDescription: Schema.NullOr(Schema.String),
   repoPath: Schema.String,
+  iconPath: Schema.NullOr(Schema.String),
 });
 const Cache = Schema.Struct({ fetchedAt: Schema.Number, skills: Schema.Array(Skill) });
 const Frontmatter = Schema.Struct({
@@ -43,6 +45,9 @@ export class StandaloneSkills extends Context.Service<
     ) => Effect.Effect<void, PluginManagementError>;
     readonly contents: (
       skillFile: string,
+    ) => Effect.Effect<SkillContentsView, PluginManagementError>;
+    readonly recommendedContents: (
+      id: string,
     ) => Effect.Effect<SkillContentsView, PluginManagementError>;
   }
 >()("nodex/main/codex-application/StandaloneSkills") {}
@@ -252,12 +257,37 @@ export const live = (options: {
               decoded.interface?.short_description ??
               decoded.metadata?.["short-description"] ??
               decoded.metadata?.short_description;
+            const skillRoot = path.dirname(skillFile);
+            const interfaceFile = path.join(skillRoot, "agents", "openai.yaml");
+            const smallIcon = yield* Effect.gen(function* () {
+              let ui = decoded.interface;
+              if (yield* exists(interfaceFile)) {
+                if (!contained(yield* canonical(skillRoot), yield* canonical(interfaceFile)))
+                  return null;
+                const document = yield* fs
+                  .readFileString(interfaceFile)
+                  .pipe(Effect.mapError(failure));
+                const metadata = yield* Effect.try({
+                  try: () => load(document, { schema: JSON_SCHEMA }),
+                  catch: failure,
+                }).pipe(Effect.flatMap((value) => Schema.decodeUnknownEffect(Frontmatter)(value)));
+                ui = metadata.interface ?? ui;
+              }
+              const small = ui?.icon_small ?? ui?.iconSmall;
+              if (typeof small !== "string") return null;
+              const file = path.resolve(skillRoot, small);
+              if (!contained(yield* canonical(skillRoot), yield* canonical(file))) return null;
+              yield* noLink(file);
+              if ((yield* fs.stat(file)).type !== "File") return null;
+              return path.relative(root, file).replaceAll("\\", "/");
+            }).pipe(Effect.orElseSucceed(() => null));
             found.set(id, {
               id,
               name: decoded.name ?? id,
               description: decoded.description ?? id,
               shortDescription: typeof short === "string" ? short : null,
               repoPath: `skills/${group}/${id}`,
+              iconPath: smallIcon,
             });
           }
         }
@@ -331,51 +361,84 @@ export const live = (options: {
         }
         return root;
       });
+      const validCatalogPath = (skill: typeof Skill.Type) =>
+        /^skills\/\.(?:curated|experimental)\/[a-z0-9][a-z0-9-]*$/u.test(skill.repoPath) &&
+        path.basename(skill.repoPath) === skill.id;
+      const recommendedSource = Effect.fn("StandaloneSkills.recommendedSource")(function* (
+        id: string,
+      ) {
+        if (!safeId(id))
+          return yield* pluginError("not_found", "The recommended skill was not found.");
+        const catalogResult = yield* catalog(false);
+        const skill = catalogResult.skills.find((skill) => skill.id === id);
+        if (!skill) return yield* pluginError("not_found", "The recommended skill was not found.");
+        if (!validCatalogPath(skill))
+          return yield* pluginError("protected", "The recommended skill path is invalid.");
+        const source = path.join(catalogResult.root, skill.repoPath);
+        if (!contained(yield* canonical(catalogResult.root), yield* canonical(source)))
+          return yield* pluginError(
+            "protected",
+            "The recommended skill is outside its repository.",
+          );
+        return source;
+      });
+      const catalogIcon = Effect.fn("StandaloneSkills.catalogIcon")(
+        function* (root: string, skill: typeof Skill.Type) {
+          if (!skill.iconPath || !validCatalogPath(skill)) return null;
+          const file = yield* canonical(path.resolve(root, skill.iconPath));
+          if (
+            !contained(yield* canonical(root), file) ||
+            !contained(yield* canonical(path.join(root, skill.repoPath)), file)
+          )
+            return null;
+          yield* noLink(path.resolve(root, skill.iconPath));
+          return (yield* fs.stat(file)).type === "File"
+            ? resolveComposerInventoryIconUrl(file)
+            : null;
+        },
+        Effect.orElseSucceed(() => null),
+      );
       return StandaloneSkills.of({
         list: (refresh) =>
-          lane
-            .withPermits(1)(catalog(refresh))
-            .pipe(
-              Effect.map(({ skills, error, source }) => ({
-                skills: skills.map((skill) => ({
-                  id: skill.id,
-                  name: skill.name,
-                  description: skill.description,
-                  shortDescription: skill.shortDescription,
-                })),
-                error,
-                source,
-              })),
+          lane.withPermits(1)(
+            catalog(refresh).pipe(
+              Effect.flatMap(({ skills, root, error, source }) =>
+                Effect.forEach(
+                  skills,
+                  (skill) =>
+                    catalogIcon(root, skill).pipe(
+                      Effect.map((iconUrl) => ({
+                        id: skill.id,
+                        name: skill.name,
+                        description: skill.description,
+                        shortDescription: skill.shortDescription,
+                        iconUrl,
+                      })),
+                    ),
+                  { concurrency: 4 },
+                ).pipe(Effect.map((rows) => ({ skills: rows, error, source }))),
+              ),
               Effect.orElseSucceed((error) => ({
                 skills: [],
                 error: pluginFailure(error),
                 source: "cache" as const,
               })),
             ),
+          ),
         contents,
+        recommendedContents: (id) =>
+          lane.withPermits(1)(
+            recommendedSource(id).pipe(
+              Effect.flatMap((source) => contents(path.join(source, "SKILL.md"))),
+            ),
+          ),
         install: (id, projectRoot, beforeWrite) =>
           lane.withPermits(1)(
             Effect.scoped(
               Effect.gen(function* () {
                 if (!safeId(id))
                   return yield* pluginError("invalid_input", "Select a recommended skill.");
-                const catalogResult = yield* catalog(false);
-                const skill = catalogResult.skills.find((skill) => skill.id === id);
-                if (!skill)
-                  return yield* pluginError("not_found", "The recommended skill was not found.");
-                if (
-                  !/^skills\/\.(?:curated|experimental)\/[a-z0-9][a-z0-9-]*$/u.test(
-                    skill.repoPath,
-                  ) ||
-                  path.basename(skill.repoPath) !== id
-                )
-                  return yield* pluginError("protected", "The recommended skill path is invalid.");
-                const source = path.join(catalogResult.root, skill.repoPath);
-                if (!contained(yield* canonical(catalogResult.root), yield* canonical(source)))
-                  return yield* pluginError(
-                    "protected",
-                    "The recommended skill is outside its repository.",
-                  );
+                const source = yield* recommendedSource(id);
                 yield* files(source);
                 yield* beforeWrite;
                 const root = yield* ownedRoot(
