@@ -1,0 +1,21 @@
+src/renderer/features/local-conversation/view/local-conversation-selected-text-actions.tsx
+  s_445cea4ff32a57::t_95c4eef2c6cd01 67,78-79
+src/renderer/features/local-conversation/view/local-conversation-selected-text-actions.browser.test.tsx
+  s_445cea4ff32a57::t_744e4ba40f176f 5,12-13
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "fe3de13f7fcc36763d3f23eafe542cabca0b2c40",
+  "prompts": {},
+  "sessions": {
+    "s_445cea4ff32a57": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a175e1-7cbe-7db2-958f-9b2dc1d1a3e0",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
