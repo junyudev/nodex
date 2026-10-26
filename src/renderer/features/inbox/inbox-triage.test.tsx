@@ -14,6 +14,7 @@ import { InboxMessage, InboxMessageMenu, type InboxMessageMenuHandlers } from ".
 import { NO_ROW_OFFERS } from "./inbox-presentation";
 import { InboxTriage } from "./inbox-triage";
 import type { InboxActions } from "./use-inbox-actions";
+import { CLAUDE_INSTANCE_ID, inboxAgentsFixture } from "./inbox-agents.test-support";
 
 const project = (id: string, name: string): Project =>
   ({ id, name, lifecycle: "active", databaseId: `db:${id}` }) as Project;
@@ -90,6 +91,7 @@ const renderTriage = (
       <InboxTriage
         item={item()}
         projects={[project("project:nodex", "Nodex"), project("project:site", "Site")]}
+        agents={inboxAgentsFixture()}
         suggestionsEnabled
         actions={commands}
         manualDraft={null}
@@ -149,6 +151,7 @@ describe("InboxTriage", () => {
         <InboxTriage
           item={waiting}
           projects={[]}
+          agents={inboxAgentsFixture()}
           suggestionsEnabled
           awaitingIndicator
           actions={actions()}
@@ -193,6 +196,7 @@ describe("InboxTriage", () => {
       <InboxTriage
         item={message}
         projects={[]}
+        agents={inboxAgentsFixture()}
         inboxProjectId={null}
         suggestionsEnabled
         actions={commands}
@@ -352,6 +356,42 @@ describe("InboxTriage", () => {
     expect(commands.dispatch).not.toHaveBeenCalled();
   });
 
+  test("a new chat says what it runs on, apart from the Agent that suggested it", async () => {
+    renderTriage({ item: item({ proposal: proposal({ producedBy: "Codex · GPT-6.1 Sol" }) }) });
+    await act(async () => {
+      screen.getByRole("button", { name: "New chat in Nodex" }).focus();
+      await Promise.resolve();
+    });
+    const tooltip = within(await screen.findByRole("tooltip"));
+    expect(tooltip.getByText("Codex · GPT-6 Astra · Medium")).toBeTruthy();
+    expect(tooltip.getByText("Suggested by Codex · GPT-6.1 Sol")).toBeTruthy();
+  });
+
+  test("starts one suggestion's chat on another model without changing the Inbox's own", async () => {
+    const agents = inboxAgentsFixture();
+    const commands = renderTriage({ agents });
+    await click("Choose the model for this chat");
+    await act(async () => {
+      fireEvent.click(await screen.findByRole("option", { name: /Opus 5\.5/ }));
+      await Promise.resolve();
+    });
+    // A choice that differs from the Inbox's own stays on the decision.
+    const menu = screen.getByRole("button", { name: "Choose the model for this chat" });
+    await waitFor(() => expect(menu.textContent).toContain("Opus 5.5 · High"));
+    await click("New chat in Nodex");
+    await waitFor(() =>
+      expect(commands.confirm).toHaveBeenCalledWith(proposal(), undefined, {
+        chatAgent: {
+          instanceId: CLAUDE_INSTANCE_ID,
+          model: "claude-opus-5-5",
+          reasoningEffort: null,
+          serviceTier: null,
+        },
+      }),
+    );
+    expect(agents.save).not.toHaveBeenCalled();
+  });
+
   test("Edit rewrites the message itself and asks nothing to run", async () => {
     const commands = renderTriage();
     await click("Edit");
@@ -430,7 +470,7 @@ describe("InboxTriage", () => {
       expect(commands.confirm).toHaveBeenCalledWith(
         grouped,
         { type: "new_chat", projectId: "project:nodex", prompt: "Only list the trade-offs." },
-        null,
+        { chat: null, chatAgent: null },
       ),
     );
   });

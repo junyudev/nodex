@@ -118,6 +118,9 @@ interface ServerTomlConfig {
   inbox_suggestion_model?: string;
   inbox_instructions?: string;
   inbox_chat_agent?: string;
+  inbox_chat_model?: string;
+  inbox_chat_effort?: string;
+  inbox_chat_speed?: string;
   diagnostics_enabled?: boolean;
   diagnostics_dsn?: string;
   diagnostics_environment?: string;
@@ -1260,9 +1263,24 @@ export function updateAppUpdateSettings(
   return getAppUpdateSettings(source, buildDefaultChannel);
 }
 
+/** An optional Inbox choice: a trimmed, bounded name, or unset. */
+const inboxChoiceFromConfig = (value: unknown): string | null => {
+  const trimmed = typeof value === "string" ? value.trim() : "";
+  return trimmed && trimmed.length <= 256 ? trimmed : null;
+};
+
+const writeInboxChoice = (
+  server: ServerTomlConfig,
+  key: "inbox_suggestion_model" | "inbox_chat_model" | "inbox_chat_effort" | "inbox_chat_speed",
+  value: string | null,
+) => {
+  const trimmed = value?.trim();
+  if (trimmed) server[key] = trimmed;
+  else delete server[key];
+};
+
 function inboxSettingsFromConfig(config: ServerTomlConfig): InboxSettings {
-  const model =
-    typeof config.inbox_suggestion_model === "string" ? config.inbox_suggestion_model.trim() : "";
+  const chatAgent = decodeInboxAgentBinding(config.inbox_chat_agent);
   return {
     suggestionsEnabled:
       typeof config.inbox_suggestions_enabled === "boolean"
@@ -1271,12 +1289,20 @@ function inboxSettingsFromConfig(config: ServerTomlConfig): InboxSettings {
     suggestionAgent:
       decodeInboxAgentBinding(config.inbox_suggestion_agent) ??
       DEFAULT_INBOX_SETTINGS.suggestionAgent,
-    suggestionModel: model || null,
+    suggestionModel: inboxChoiceFromConfig(config.inbox_suggestion_model),
     instructions:
       typeof config.inbox_instructions === "string"
         ? config.inbox_instructions.slice(0, MAX_INBOX_INSTRUCTIONS_CHARS)
         : DEFAULT_INBOX_SETTINGS.instructions,
-    chatAgent: decodeInboxAgentBinding(config.inbox_chat_agent) ?? DEFAULT_INBOX_SETTINGS.chatAgent,
+    // Model, effort and speed belong to the Agent they were chosen for.
+    chatAgent: chatAgent
+      ? {
+          instanceId: chatAgent.instanceId,
+          model: inboxChoiceFromConfig(config.inbox_chat_model),
+          reasoningEffort: inboxChoiceFromConfig(config.inbox_chat_effort),
+          serviceTier: inboxChoiceFromConfig(config.inbox_chat_speed),
+        }
+      : DEFAULT_INBOX_SETTINGS.chatAgent,
   };
 }
 
@@ -1300,9 +1326,10 @@ export function updateInboxSettings(
     inbox_instructions: next.instructions,
     inbox_chat_agent: encodeInboxAgentBinding(next.chatAgent),
   };
-  const model = next.suggestionModel?.trim();
-  if (model) server.inbox_suggestion_model = model;
-  else delete server.inbox_suggestion_model;
+  writeInboxChoice(server, "inbox_suggestion_model", next.suggestionModel);
+  writeInboxChoice(server, "inbox_chat_model", next.chatAgent.model);
+  writeInboxChoice(server, "inbox_chat_effort", next.chatAgent.reasoningEffort);
+  writeInboxChoice(server, "inbox_chat_speed", next.chatAgent.serviceTier);
   writeProfileServerTomlConfig(source, server);
   return getInboxSettings(source);
 }

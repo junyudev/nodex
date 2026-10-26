@@ -60,8 +60,11 @@ import {
   type AgentRuntimeRendererTransport,
 } from "../../lib/agent-runtime-runtime";
 import {
+  agentRuntimeBinding,
+  agentRuntimeProviderLabel,
   defaultAgentRuntimeModelSelection,
   isAgentRuntimeProviderAvailable,
+  projectAgentRuntimeModel,
   requireAgentRuntimeModelSelection,
 } from "../../lib/agent-runtime-model-selection";
 import {
@@ -281,56 +284,6 @@ export function createAgentRuntimeConversationRuntime(
     runtimePorts.set(owner, ports);
   }
   return runtime;
-}
-
-/** The configured Agent behind a Runtime provider instance; Codex needs no configuration. */
-export function agentRuntimeBinding(
-  instanceId: string,
-  instances: readonly { readonly binding: AgentBackendBinding }[],
-): AgentBackendBinding | undefined {
-  return instanceId === "codex"
-    ? { kind: "codex" }
-    : instances.find((entry) => agentRuntimeProviderId(entry.binding) === instanceId)?.binding;
-}
-
-/** The configured Agent name the user chose, then the provider's own name. */
-export function agentRuntimeProviderLabel(
-  provider: Pick<AgentRuntimeProvider, "instanceId" | "displayName">,
-  instances: readonly { readonly binding: AgentBackendBinding; readonly label: string }[],
-): string {
-  return (
-    instances.find((entry) => agentRuntimeProviderId(entry.binding) === provider.instanceId)
-      ?.label ??
-    provider.displayName ??
-    (provider.instanceId === "codex" ? "Codex" : "Agent")
-  );
-}
-
-export function projectAgentRuntimeModel(
-  provider: AgentRuntimeProvider,
-  model: AgentRuntimeProvider["models"][number],
-): AgentModelPickerEntry["model"] {
-  const effort = model.capabilities?.optionDescriptors?.find(
-    (option) => option.type === "select" && /effort|reasoning/i.test(option.id),
-  );
-  const choices = effort?.type === "select" ? effort.options : [];
-  return {
-    id: model.slug,
-    model: model.slug,
-    displayName: model.name,
-    description: model.name,
-    hidden: false,
-    supportedReasoningEfforts: choices.map((option) => ({
-      reasoningEffort: option.id,
-      description: option.description ?? option.label,
-    })),
-    defaultReasoningEffort:
-      effort?.type === "select"
-        ? (effort.currentValue ?? choices.find((option) => option.isDefault)?.id ?? "default")
-        : "default",
-    inputModalities: [...(model.capabilities?.inputModalities ?? [])],
-    isDefault: model.isDefault ?? false,
-  };
 }
 
 // Actions are reconstructed on render; one observed source admits one continuation at a time.

@@ -4,7 +4,7 @@ import * as Fiber from "effect/Fiber";
 import { TestClock } from "effect/testing";
 import { vi } from "vitest";
 import type { AgentRuntimeLaunch } from "../../shared/agent-runtime-api";
-import type { InboxAgentBinding, InboxSettings } from "../../shared/inbox";
+import type { InboxAgentBinding, InboxChatAgent, InboxSettings } from "../../shared/inbox";
 import type { Project, ProjectSession } from "../../shared/types";
 import {
   AgentRuntimeApplication,
@@ -34,12 +34,17 @@ import {
 type Runtime = AgentRuntimeApplication["Service"];
 type Provider = Effect.Success<ReturnType<Runtime["catalog"]>>[number];
 const claude = { instanceId: "claude:inbox" } as const;
+const choice = (
+  instanceId: string,
+  model: string | null = null,
+  reasoningEffort: string | null = null,
+): InboxChatAgent => ({ instanceId, model, reasoningEffort, serviceTier: null });
 const settings: InboxSettings = {
   suggestionsEnabled: true,
   suggestionAgent: claude,
   suggestionModel: null,
   instructions: "Prefer existing chats when relevant.",
-  chatAgent: { instanceId: "codex" },
+  chatAgent: choice("codex"),
 };
 const provider = (binding: InboxAgentBinding = { instanceId: "codex" }): Provider => ({
   instanceId: binding.instanceId,
@@ -215,12 +220,7 @@ const delivery = (input: {
 it.effect("uses a warm model catalog without refreshing any Provider", () =>
   Effect.gen(function* () {
     const catalog = vi.fn(() => Effect.succeed([provider()]));
-    const selection = yield* resolveInboxModel(
-      { catalog },
-      { instanceId: "codex" },
-      null,
-      "medium",
-    );
+    const selection = yield* resolveInboxModel({ catalog }, choice("codex", null, "medium"));
     assert.deepEqual(selection, {
       instanceId: "codex",
       model: "default-model",
@@ -229,9 +229,7 @@ it.effect("uses a warm model catalog without refreshing any Provider", () =>
     assert.deepEqual(catalog.mock.calls, [[]]);
     const withoutOptions = yield* resolveInboxModel(
       { catalog },
-      { instanceId: "codex" },
-      "first-model",
-      "medium",
+      choice("codex", "first-model", "medium"),
     );
     assert.deepEqual(withoutOptions, { instanceId: "codex", model: "first-model" });
   }),
@@ -243,30 +241,16 @@ it.effect("suggests on Codex's Sol model by default while chats keep the catalog
     const sol = { ...codex.models[1]!, slug: "gpt-6.1-sol", name: "GPT-6.1 Sol", isDefault: false };
     const catalog = (models: Provider["models"]) => () => Effect.succeed([{ ...codex, models }]);
     const withSol = { catalog: catalog([...codex.models, sol]) };
-    const suggestion = yield* resolveInboxModel(
-      withSol,
-      { instanceId: "codex" },
-      null,
-      undefined,
-      "suggestion",
-    );
+    const suggestion = yield* resolveInboxModel(withSol, choice("codex"), "suggestion");
     assert.strictEqual(suggestion.model, "gpt-6.1-sol");
-    const chat = yield* resolveInboxModel(withSol, { instanceId: "codex" });
+    const chat = yield* resolveInboxModel(withSol, choice("codex"));
     assert.strictEqual(chat.model, "default-model");
-    const chosen = yield* resolveInboxModel(
-      withSol,
-      { instanceId: "codex" },
-      "first-model",
-      undefined,
-      "suggestion",
-    );
+    const chosen = yield* resolveInboxModel(withSol, choice("codex", "first-model"), "suggestion");
     assert.strictEqual(chosen.model, "first-model");
     // A catalog without Sol keeps working on its own default.
     const withoutSol = yield* resolveInboxModel(
       { catalog: catalog(codex.models) },
-      { instanceId: "codex" },
-      null,
-      undefined,
+      choice("codex"),
       "suggestion",
     );
     assert.strictEqual(withoutSol.model, "default-model");
@@ -277,13 +261,11 @@ it.effect("restricts only suggestion utilities while allowing other launch Provi
   Effect.gen(function* () {
     const opencode = { ...provider({ instanceId: "opencode:one" }), driver: "opencode" as const };
     const catalog = () => Effect.succeed([opencode]);
-    const selected = yield* resolveInboxModel({ catalog }, { instanceId: opencode.instanceId });
+    const selected = yield* resolveInboxModel({ catalog }, choice(opencode.instanceId));
     assert.strictEqual(selected.instanceId, opencode.instanceId);
     const suggestion = yield* resolveInboxModel(
       { catalog },
-      { instanceId: opencode.instanceId },
-      null,
-      undefined,
+      choice(opencode.instanceId),
       "suggestion",
     ).pipe(Effect.result);
     assert.strictEqual(suggestion._tag, "Failure");
@@ -305,7 +287,9 @@ it.effect(
             : { ...provider(claude), installed: false, status: "warning" as const, models: [] },
         ]),
       );
-      const pending = yield* resolveInboxModel({ catalog }, claude).pipe(Effect.forkChild);
+      const pending = yield* resolveInboxModel({ catalog }, choice(claude.instanceId)).pipe(
+        Effect.forkChild,
+      );
       yield* Effect.yieldNow;
       ready = true;
       yield* TestClock.adjust("200 millis");
@@ -324,7 +308,7 @@ it.effect("ends a cold catalog wait at its bounded deadline", () =>
     const catalog: Runtime["catalog"] = vi.fn(() =>
       Effect.succeed([{ ...provider(), models: [] }]),
     );
-    const pending = yield* resolveInboxModel({ catalog }, { instanceId: "codex" }).pipe(
+    const pending = yield* resolveInboxModel({ catalog }, choice("codex")).pipe(
       Effect.result,
       Effect.forkChild,
     );
@@ -786,7 +770,7 @@ const suggestionHarness = (count = 1, action = "send_to_chat") =>
       Effect.provideService(InboxApplication, inbox as unknown as InboxApplication["Service"]),
       Effect.provideService(ApplicationSettings, settingsService),
       Effect.provideService(AgentRuntimeApplication, {
-        catalog: () => Effect.succeed([provider(), provider(claude)]),
+        catalog: () => Effect.succeed([provider(), { ...provider(claude), displayName: "Claude" }]),
         generateStructured: generated,
       } as unknown as Runtime),
       Effect.provide(configLayer({ nodexHome: "/profiles/inbox" })),
@@ -802,7 +786,8 @@ it.effect("settles a 16-message explicit group atomically with the actual resolv
     assert.strictEqual(settlements.length, 1);
     assert.strictEqual(settlements[0]?.suggestions.length, 1);
     assert.deepEqual(settlements[0]?.suggestions[0]?.page_ids, pageIds);
-    assert.strictEqual(settlements[0]?.produced_by, "claude:inbox · default-model");
+    // Provenance names the Agent and model as the user knows them.
+    assert.strictEqual(settlements[0]?.produced_by, "Claude · Default");
     const request = generated.mock.calls[0]![0];
     assert.deepEqual(request.modelSelection, {
       instanceId: claude.instanceId,

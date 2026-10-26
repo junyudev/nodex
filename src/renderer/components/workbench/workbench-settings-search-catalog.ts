@@ -518,7 +518,8 @@ export const SETTINGS_SEARCH_PANELS = {
             "An Agent reads new messages and proposes a chat, a Project, or keeping them.",
             ["inbox", "suggestions", "dispatch", "agent", "capture"],
           ),
-          entry("Suggestion agent", "The runtime that writes suggestions.", [
+          entry("Suggest with", "The Agent and model that write suggestions.", [
+            "suggestion agent",
             "codex",
             "claude",
             "model",
@@ -530,11 +531,14 @@ export const SETTINGS_SEARCH_PANELS = {
         ],
       },
       {
-        title: "Dispatch",
+        title: "Chats",
         entries: [
-          entry("New chats run on", "The runtime for chats the Inbox starts.", [
+          entry("New chats run on", "The Agent, model and effort for chats the Inbox starts.", [
             "dispatch",
             "runtime",
+            "model",
+            "effort",
+            "speed",
           ]),
         ],
       },

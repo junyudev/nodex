@@ -6,9 +6,17 @@ import { render, settleAsyncRender } from "@/test/dom";
 import { DEFAULT_INBOX_SETTINGS, type InboxChat } from "../../../shared/inbox";
 import { readInboxChatTargets, readInboxSettings, updateInboxSettings } from "@/lib/inbox-runtime";
 import { agentRuntimeRuntime } from "@/lib/agent-runtime-runtime";
+import { agentRuntimeProviderId } from "../../../shared/agent-runtime-provider";
 import { agentRuntimeProvidersQueryOptions } from "@/lib/use-agent-runtime-providers";
 import { InboxDispatchEditor, draftFromAction } from "./inbox-dispatch-editor";
 import { InboxSettingsPage } from "./inbox-settings-page";
+import {
+  CLAUDE_INSTANCE,
+  CLAUDE_INSTANCE_ID,
+  claudeProvider,
+  codexProvider,
+  inboxAgentsFixture,
+} from "./inbox-agents.test-support";
 
 vi.mock("@/lib/inbox-runtime", () => ({
   readInboxChatTargets: vi.fn(),
@@ -19,7 +27,20 @@ vi.mock("@/lib/inbox-runtime", () => ({
 const { agentSettingsListeners } = vi.hoisted(() => ({
   agentSettingsListeners: new Set<() => void>(),
 }));
+const OPENCODE_INSTANCE = { kind: "opencode", instanceConfigId: "work" } as const;
+const OPENCODE_INSTANCE_ID = agentRuntimeProviderId(OPENCODE_INSTANCE)!;
 vi.mock("@/lib/agent-runtime-runtime", () => ({ agentRuntimeRuntime: { catalog: vi.fn() } }));
+vi.mock("@/features/local-conversation/use-agent-instances", () => ({
+  useAgentInstances: () => ({
+    instances: [
+      { binding: CLAUDE_INSTANCE, label: "Work", enabled: true },
+      { binding: OPENCODE_INSTANCE, label: "Work OpenCode", enabled: true },
+    ],
+    loading: false,
+    error: null,
+    refresh: () => {},
+  }),
+}));
 vi.mock("@/lib/renderer-transport", () => ({
   resolveRendererTransport: () => ({
     subscribeAgentSettingsChanges: (listener: () => void) => {
@@ -110,6 +131,7 @@ describe("Inbox destination and Agent selection", () => {
           chat: chat("session:old", "Earlier research"),
         }}
         projects={[]}
+        agents={inboxAgentsFixture()}
         onSubmit={vi.fn(async () => true)}
         onCancel={vi.fn()}
       />,
@@ -134,6 +156,7 @@ describe("Inbox destination and Agent selection", () => {
           "Continue",
         )}
         projects={[]}
+        agents={inboxAgentsFixture()}
         inboxProjectId="project:A"
         onSubmit={onSubmit}
         onCancel={vi.fn()}
@@ -163,49 +186,98 @@ describe("Inbox destination and Agent selection", () => {
     // The chosen chat travels with the action, so the message can say where it went.
     expect(onSubmit).toHaveBeenCalledWith(
       { type: "send_to_chat", sessionId: "session:old", prompt: "Continue" },
-      expect.objectContaining({ sessionId: "session:old", displayTitle: "Research findings" }),
+      {
+        chat: expect.objectContaining({
+          sessionId: "session:old",
+          displayTitle: "Research findings",
+        }),
+        chatAgent: null,
+      },
     );
   });
 
-  test("keeps an unavailable selected Agent and model explicit, and selects real catalog IDs", async () => {
+  test("a hand-written new chat shows and changes what it runs on beside Start chat", async () => {
+    const onSubmit = vi.fn(async () => true);
+    renderQuery(
+      <InboxDispatchEditor
+        initial={draftFromAction(
+          { type: "new_chat", projectId: null, prompt: "Compare both" },
+          "Compare both",
+        )}
+        projects={[]}
+        agents={inboxAgentsFixture()}
+        onSubmit={onSubmit}
+        onCancel={vi.fn()}
+      />,
+    );
+    await click("Runs on Codex · GPT-6 Astra · Medium");
+    await click("Effort Medium");
+    await click("High", "menuitem");
+    await click("Start chat");
+    expect(onSubmit).toHaveBeenCalledWith(
+      { type: "new_chat", projectId: null, prompt: "Compare both" },
+      {
+        chat: null,
+        chatAgent: { instanceId: "codex", model: null, reasoningEffort: "high", serviceTier: null },
+      },
+    );
+  });
+
+  test("keeps an unavailable suggestion choice explicit and offers only Agents that can suggest", async () => {
     vi.mocked(readInboxSettings).mockResolvedValue({
       ...DEFAULT_INBOX_SETTINGS,
       suggestionAgent: { instanceId: "removed:account" },
       suggestionModel: "retired-model",
     });
+    const opencode = provider(OPENCODE_INSTANCE_ID, "opencode", "OpenCode");
     vi.mocked(agentRuntimeRuntime.catalog).mockResolvedValue([
-      provider("claude:work", "claudeAgent", "Work Claude"),
-      provider("other:work", "opencode", "Work OpenCode"),
+      provider(CLAUDE_INSTANCE_ID, "claudeAgent", "Claude"),
+      {
+        ...opencode,
+        models: [{ ...opencode.models[0]!, slug: "open-model-free", name: "Open model" }],
+      },
     ]);
     renderQuery(<InboxSettingsPage />);
-    await screen.findByRole("button", { name: "Suggestion agent" });
-    await waitFor(() => expect(agentRuntimeRuntime.catalog).toHaveBeenCalled());
-    expect(screen.getByRole("button", { name: "Suggestion agent" }).textContent).toContain(
-      "removed:account · Unavailable",
-    );
-    expect(screen.getByRole("button", { name: "Suggestion model" }).textContent).toContain(
-      "retired-model · Unavailable",
-    );
-    await click("Suggestion agent");
-    expect(screen.queryByRole("option", { name: "Work OpenCode" })).toBeNull();
-    await click("Work Claude", "option");
-    expect(updateInboxSettings).toHaveBeenCalledWith({
-      suggestionAgent: { instanceId: "claude:work" },
-      suggestionModel: null,
-    });
-    await waitFor(() =>
-      expect(screen.getByRole("button", { name: "Suggestion model" }).textContent).toContain(
-        "Default · Precise model",
-      ),
-    );
+    const suggestion = await screen.findByRole("button", { name: "Suggestion model" });
+    await waitFor(() => expect(suggestion.textContent).toBe("removed:account · Unavailable"));
     await click("Suggestion model");
-    await click("Precise model", "option");
-    expect(updateInboxSettings).toHaveBeenLastCalledWith({ suggestionModel: "precise-model" });
-    await click("New chat runtime");
-    expect(screen.getByRole("option", { name: "Work OpenCode" })).toBeTruthy();
+    expect(screen.queryByRole("option", { name: /Open model/ })).toBeNull();
+    await act(async () => {
+      fireEvent.click(screen.getByRole("option", { name: /Precise model/ }));
+      await settleAsyncRender();
+    });
+    expect(updateInboxSettings).toHaveBeenLastCalledWith({
+      suggestionAgent: { instanceId: CLAUDE_INSTANCE_ID },
+      suggestionModel: "precise-model",
+    });
+    await waitFor(() => expect(suggestion.textContent).toBe("Work · Precise model"));
+    // Any Agent can run the chats the Inbox starts.
+    await click("New chat model");
+    expect(screen.getByRole("option", { name: /Open model/ })).toBeTruthy();
   });
 
-  test("shows cold catalog loading without calling the selected Agent or model unavailable", async () => {
+  test("chooses the Agent, model and effort of the Inbox's chats from the composer's menu", async () => {
+    vi.mocked(agentRuntimeRuntime.catalog).mockResolvedValue([codexProvider(), claudeProvider()]);
+    renderQuery(<InboxSettingsPage />);
+    const trigger = await screen.findByRole("button", { name: "New chat model" });
+    await waitFor(() => expect(trigger.textContent).toBe("GPT-6 Astra · Medium"));
+    await click("New chat model");
+    await act(async () => {
+      fireEvent.click(screen.getByRole("option", { name: /Opus 5\.5/ }));
+      await settleAsyncRender();
+    });
+    expect(updateInboxSettings).toHaveBeenLastCalledWith({
+      chatAgent: {
+        instanceId: CLAUDE_INSTANCE_ID,
+        model: "claude-opus-5-5",
+        reasoningEffort: null,
+        serviceTier: null,
+      },
+    });
+    await waitFor(() => expect(trigger.textContent).toBe("Work · Opus 5.5 · High"));
+  });
+
+  test("shows cold catalog loading without calling the chosen model unavailable", async () => {
     const pending = deferredCatalog();
     vi.mocked(agentRuntimeRuntime.catalog).mockReturnValue(pending.promise);
     vi.mocked(readInboxSettings).mockResolvedValue({
@@ -213,16 +285,13 @@ describe("Inbox destination and Agent selection", () => {
       suggestionModel: "precise-model",
     });
     renderQuery(<InboxSettingsPage />);
-    const agent = await screen.findByRole("button", { name: "Suggestion agent" });
-    const model = screen.getByRole("button", { name: "Suggestion model" });
-    expect(agent.textContent).toBe("Loading…");
-    expect(model.textContent).toBe("Loading…");
-    expect((agent as HTMLButtonElement).disabled).toBe(true);
+    const model = await screen.findByRole("button", { name: "Suggestion model" });
+    expect(model.textContent).toBe("Codex · Loading…");
     expect((model as HTMLButtonElement).disabled).toBe(true);
     expect(agentRuntimeRuntime.catalog).toHaveBeenCalledWith();
     await act(async () => pending.resolve([provider("codex", "codex", "Codex")]));
-    await waitFor(() => expect(agent.textContent).toBe("Codex"));
-    expect(model.textContent).toBe("Precise model");
+    await waitFor(() => expect(model.textContent).toBe("Precise model"));
+    expect((model as HTMLButtonElement).disabled).toBe(false);
   });
 
   test("uses the warm Runtime projection immediately while rechecking it", async () => {
@@ -232,11 +301,8 @@ describe("Inbox destination and Agent selection", () => {
     const pending = deferredCatalog();
     vi.mocked(agentRuntimeRuntime.catalog).mockReturnValue(pending.promise);
     renderQuery(<InboxSettingsPage />, client);
-    const agent = await screen.findByRole("button", { name: "Suggestion agent" });
-    expect(agent.textContent).toBe("Codex");
-    expect(screen.getByRole("button", { name: "Suggestion model" }).textContent).toBe(
-      "Default · Precise model",
-    );
+    const model = await screen.findByRole("button", { name: "Suggestion model" });
+    expect(model.textContent).toBe("Precise model");
     await waitFor(() => expect(agentRuntimeRuntime.catalog).toHaveBeenCalledTimes(2));
     await act(async () => pending.resolve([provider("codex", "codex", "Codex")]));
     await settleAsyncRender();
@@ -245,8 +311,8 @@ describe("Inbox destination and Agent selection", () => {
   test("retains a usable catalog through an Agent settings refresh and accepts the new names", async () => {
     vi.mocked(agentRuntimeRuntime.catalog).mockResolvedValue([provider("codex", "codex", "Codex")]);
     renderQuery(<InboxSettingsPage />);
-    const agent = await screen.findByRole("button", { name: "Suggestion agent" });
-    await waitFor(() => expect(agent.textContent).toBe("Codex"));
+    const model = await screen.findByRole("button", { name: "Suggestion model" });
+    await waitFor(() => expect(model.textContent).toBe("Precise model"));
     const pending = deferredCatalog();
     vi.mocked(agentRuntimeRuntime.catalog).mockReturnValue(pending.promise);
     await act(async () => {
@@ -254,38 +320,28 @@ describe("Inbox destination and Agent selection", () => {
       await Promise.resolve();
     });
     await waitFor(() => expect(agentRuntimeRuntime.catalog).toHaveBeenCalledTimes(2));
-    expect(agent.textContent).toBe("Codex");
-    expect(screen.getByRole("button", { name: "Suggestion model" }).textContent).toBe(
-      "Default · Precise model",
-    );
+    expect(model.textContent).toBe("Precise model");
     const next = provider("codex", "codex", "Work Codex");
     await act(async () =>
       pending.resolve([{ ...next, models: [{ ...next.models[0]!, name: "Updated model" }] }]),
     );
-    await waitFor(() => expect(agent.textContent).toBe("Work Codex"));
-    expect(screen.getByRole("button", { name: "Suggestion model" }).textContent).toBe(
-      "Default · Updated model",
-    );
+    await waitFor(() => expect(model.textContent).toBe("Work Codex · Updated model"));
   });
 
   test("reports a disabled Agent only after the catalog resolves and recovers on its settings event", async () => {
     const current = provider("codex", "codex", "Codex");
     vi.mocked(agentRuntimeRuntime.catalog).mockResolvedValue([{ ...current, enabled: false }]);
     renderQuery(<InboxSettingsPage />);
-    const agent = await screen.findByRole("button", { name: "Suggestion agent" });
-    await waitFor(() => expect(agent.textContent).toBe("Codex · Unavailable"));
-    expect(
-      (screen.getByRole("button", { name: "Suggestion model" }) as HTMLButtonElement).disabled,
-    ).toBe(true);
+    const model = await screen.findByRole("button", { name: "Suggestion model" });
+    await waitFor(() => expect(model.textContent).toBe("Codex · Unavailable"));
+    // An unavailable Agent stays choosable away from.
+    expect((model as HTMLButtonElement).disabled).toBe(false);
     vi.mocked(agentRuntimeRuntime.catalog).mockResolvedValue([current]);
     await act(async () => {
       for (const listener of agentSettingsListeners) listener();
       await Promise.resolve();
     });
-    await waitFor(() => expect(agent.textContent).toBe("Codex"));
-    expect(
-      (screen.getByRole("button", { name: "Suggestion model" }) as HTMLButtonElement).disabled,
-    ).toBe(false);
+    await waitFor(() => expect(model.textContent).toBe("Precise model"));
   });
 
   test("keeps configured identities distinct from a failed catalog read", async () => {
@@ -296,9 +352,8 @@ describe("Inbox destination and Agent selection", () => {
     });
     renderQuery(<InboxSettingsPage />);
     await screen.findByRole("button", { name: "Retry" });
-    expect(screen.getByRole("button", { name: "Suggestion agent" }).textContent).toBe("codex");
     expect(screen.getByRole("button", { name: "Suggestion model" }).textContent).toBe(
-      "precise-model",
+      "Codex · precise-model",
     );
     expect(updateInboxSettings).not.toHaveBeenCalled();
   });
@@ -306,25 +361,22 @@ describe("Inbox destination and Agent selection", () => {
   test("keeps the last usable Agent and model when a background catalog refresh fails", async () => {
     vi.mocked(agentRuntimeRuntime.catalog).mockResolvedValue([provider("codex", "codex", "Codex")]);
     renderQuery(<InboxSettingsPage />);
-    const agent = await screen.findByRole("button", { name: "Suggestion agent" });
-    await waitFor(() => expect(agent.textContent).toBe("Codex"));
+    const model = await screen.findByRole("button", { name: "Suggestion model" });
+    await waitFor(() => expect(model.textContent).toBe("Precise model"));
     vi.mocked(agentRuntimeRuntime.catalog).mockRejectedValue(new Error("offline"));
     await act(async () => {
       for (const listener of agentSettingsListeners) listener();
       await Promise.resolve();
     });
     await screen.findByRole("button", { name: "Retry" });
-    expect(agent.textContent).toBe("Codex");
-    expect(screen.getByRole("button", { name: "Suggestion model" }).textContent).toBe(
-      "Default · Precise model",
-    );
+    expect(model.textContent).toBe("Precise model");
   });
 
   test("does not expose editable default settings when the settings read failed", async () => {
     vi.mocked(readInboxSettings).mockRejectedValue(new Error("offline"));
     renderQuery(<InboxSettingsPage />);
     await screen.findByRole("button", { name: "Retry" });
-    expect(screen.queryByRole("button", { name: "Suggestion agent" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Suggestion model" })).toBeNull();
     expect(updateInboxSettings).not.toHaveBeenCalled();
   });
 });

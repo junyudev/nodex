@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useRef, useState, type ReactElement } from "react";
 import type { AgentBackendBinding } from "../../../../shared/agent-backend";
 import type { AgentModelSelection } from "../../../../shared/agent-model-catalog";
 import type { ExternalAgentBinding } from "../../../../shared/agent-model-catalog";
@@ -14,10 +14,8 @@ import {
   flattenAgentConfigOptions,
   visibleAgentModelPickerEntries,
 } from "@/lib/agent-model-selection";
-import {
-  formatCodexModelLabel,
-  formatCodexReasoningEffortLabel,
-} from "@/lib/codex-thread-settings";
+import { formatCodexModelLabel } from "@/lib/codex-thread-settings";
+import { agentEffortLabel } from "@/lib/agent-runtime-model-selection";
 import {
   AgentProviderIcon,
   ChevronDownIcon,
@@ -45,9 +43,6 @@ import type {
   AgentIntelligenceDropdownProps,
   AgentNativeIntelligencePatch,
 } from "./agent-intelligence-dropdown";
-
-export const agentEffortLabel = (kind: AgentBackendBinding["kind"], effort: string): string =>
-  kind === "claude" && effort === "low" ? "Low" : formatCodexReasoningEffortLabel(effort);
 
 export interface AgentModelPickerEntry {
   readonly binding: AgentBackendBinding;
@@ -94,6 +89,8 @@ export interface AgentModelCatalogPresentation {
   readonly changeMode?: (modeId: string) => Promise<void>;
   /** Runtimes whose models become available after setup; each keeps its own entry. */
   readonly setups?: readonly AgentModelSetupPresentation[];
+  /** Owner actions about the choice itself, listed last; each closes the menu first. */
+  readonly actions?: readonly { readonly label: string; readonly run: () => void }[];
 }
 
 function OptionRow({
@@ -147,6 +144,10 @@ function OptionRow({
 export function AgentModelPicker(
   props: AgentIntelligenceDropdownProps & {
     readonly catalog: AgentModelCatalogPresentation;
+    /** Replaces the composer or settings trigger, such as a split button's menu half. */
+    readonly triggerButton?: ReactElement;
+    /** Lists models alone, for a caller that runs every model at its own fixed options. */
+    readonly modelOnly?: boolean;
   },
 ) {
   const { catalog, selection, models, provider } = props;
@@ -239,13 +240,14 @@ export function AgentModelPicker(
   const disabled = props.disabled === true || pending;
   const runtimeOptions = catalog.runtimeOptions ?? [];
   const hasOptions =
-    isCodex || selection.kind === "claude"
+    props.modelOnly !== true &&
+    (isCodex || selection.kind === "claude"
       ? reasoningOptions.length > 0 ||
         native?.capabilities.disableThinking ||
         isCodex ||
         native?.capabilities.fastMode ||
         contextWindows.length > 1
-      : genericOptions.length > 0 || Boolean(catalog.modes?.availableModes.length);
+      : genericOptions.length > 0 || Boolean(catalog.modes?.availableModes.length));
   return (
     <NodexOptionPicker
       search="filter"
@@ -288,10 +290,11 @@ export function AgentModelPicker(
       side={props.triggerStyle === "settings" ? "bottom" : "top"}
       align="end"
       sideOffset={INTELLIGENCE_SELECTOR_SIDE_OFFSET_PX}
-      alignOffset={geometry.alignOffset}
+      alignOffset={props.triggerButton ? undefined : geometry.alignOffset}
       contentClassName="w-[288px]"
       triggerButton={
-        props.triggerStyle === "settings" ? (
+        props.triggerButton ??
+        (props.triggerStyle === "settings" ? (
           <NodexSettingsDropdownTrigger
             ref={props.triggerRef}
             aria-label="Agent intelligence"
@@ -314,7 +317,7 @@ export function AgentModelPicker(
             }
             aria-keyshortcuts={props.shortcut?.ariaKeyShortcuts}
           />
-        )
+        ))
       }
       onValueChange={(value) => {
         const entry = catalog.entries.find(
@@ -365,116 +368,139 @@ export function AgentModelPicker(
             </NodexDropdownActionRow>
           ))}
           {hasOptions ? <NodexDropdownSeparator /> : null}
-          {(isCodex || selection.kind === "claude") &&
-          (reasoningOptions.length > 0 || native?.capabilities.disableThinking) ? (
-            <OptionRow
-              label="Effort"
-              value={native?.selected.thinking === false ? "off" : selection.reasoningEffort}
-              disabled={disabled}
-              options={[
-                ...(native?.capabilities.disableThinking ? [{ value: "off", label: "Off" }] : []),
-                ...(native?.capabilities.disableThinking && reasoningOptions.length === 0
-                  ? [{ value: "on", label: "On" }]
-                  : []),
-                ...reasoningOptions.map((option) => ({
-                  value: option.reasoningEffort,
-                  label: agentEffortLabel(selection.kind, option.reasoningEffort),
-                  tooltipText: option.description,
-                })),
-              ]}
-              onChange={(value) => {
-                if (native && value === "off") return changeNative({ thinking: false });
-                if (native && value === "on") return changeNative({ thinking: true });
-                if (native && isClaudeEffortLevel(value))
-                  return changeNative({ effort: value, thinking: true });
-                props.onSelectionChange(
-                  { ...selection, reasoningEffort: value },
-                  "reasoningEffort",
-                );
+          {props.modelOnly ? null : (
+            <>
+              {(isCodex || selection.kind === "claude") &&
+              (reasoningOptions.length > 0 || native?.capabilities.disableThinking) ? (
+                <OptionRow
+                  label="Effort"
+                  value={native?.selected.thinking === false ? "off" : selection.reasoningEffort}
+                  disabled={disabled}
+                  options={[
+                    ...(native?.capabilities.disableThinking
+                      ? [{ value: "off", label: "Off" }]
+                      : []),
+                    ...(native?.capabilities.disableThinking && reasoningOptions.length === 0
+                      ? [{ value: "on", label: "On" }]
+                      : []),
+                    ...reasoningOptions.map((option) => ({
+                      value: option.reasoningEffort,
+                      label: agentEffortLabel(selection.kind, option.reasoningEffort),
+                      tooltipText: option.description,
+                    })),
+                  ]}
+                  onChange={(value) => {
+                    if (native && value === "off") return changeNative({ thinking: false });
+                    if (native && value === "on") return changeNative({ thinking: true });
+                    if (native && isClaudeEffortLevel(value))
+                      return changeNative({ effort: value, thinking: true });
+                    props.onSelectionChange(
+                      { ...selection, reasoningEffort: value },
+                      "reasoningEffort",
+                    );
+                  }}
+                />
+              ) : null}
+              {isCodex || native?.capabilities.fastMode ? (
+                <OptionRow
+                  label="Speed"
+                  value={
+                    isCodex
+                      ? selection.serviceTier === "fast"
+                        ? "fast"
+                        : "standard"
+                      : native?.selected.fast == null
+                        ? ""
+                        : native.selected.fast
+                          ? "fast"
+                          : "standard"
+                  }
+                  options={[
+                    { value: "standard", label: "Standard" },
+                    { value: "fast", label: "Fast" },
+                  ]}
+                  disabled={disabled}
+                  onChange={(value) => {
+                    if (native) return changeNative({ fast: value === "fast" });
+                    props.onSelectionChange(
+                      { ...selection, serviceTier: value === "fast" ? "fast" : null },
+                      "serviceTier",
+                    );
+                  }}
+                />
+              ) : null}
+              {native && contextWindows.length > 1 ? (
+                <OptionRow
+                  label="Context"
+                  value={
+                    native.selected.contextInherited ? "default" : (native.selected.context ?? "")
+                  }
+                  options={[
+                    { value: "default", label: "Default" },
+                    ...contextWindows.map((value) => ({ value, label: value })),
+                  ]}
+                  disabled={disabled}
+                  onChange={(value) =>
+                    changeNative({ context: value === "default" ? null : value })
+                  }
+                />
+              ) : null}
+              {genericOptions.map((option) => (
+                <OptionRow
+                  key={option.id}
+                  label={option.name}
+                  value={String(option.currentValue)}
+                  disabled={disabled || !catalog.changeConfig}
+                  options={
+                    option.type === "boolean"
+                      ? [
+                          { value: "true", label: "On" },
+                          { value: "false", label: "Off" },
+                        ]
+                      : flattenAgentConfigOptions(option).map((entry) => ({
+                          value: entry.value,
+                          label: entry.name,
+                          tooltipText: entry.description,
+                        }))
+                  }
+                  onChange={(value) =>
+                    void run(() =>
+                      catalog.changeConfig?.(
+                        option.id,
+                        option.type === "boolean" ? value === "true" : value,
+                      ),
+                    )
+                  }
+                />
+              ))}
+              {catalog.modes && catalog.modes.availableModes.length > 0 && catalog.changeMode ? (
+                <OptionRow
+                  label="Mode"
+                  value={catalog.modes.currentModeId}
+                  options={catalog.modes.availableModes.map((mode) => ({
+                    value: mode.id,
+                    label: mode.name,
+                    tooltipText: mode.description,
+                  }))}
+                  disabled={disabled}
+                  onChange={(value) => void run(() => catalog.changeMode?.(value))}
+                />
+              ) : null}
+            </>
+          )}
+          {catalog.actions?.length ? <NodexDropdownSeparator /> : null}
+          {catalog.actions?.map((action) => (
+            <NodexDropdownActionRow
+              key={action.label}
+              disabled={pending}
+              onClick={() => {
+                afterClose.current = action.run;
+                changeOpen(false);
               }}
-            />
-          ) : null}
-          {isCodex || native?.capabilities.fastMode ? (
-            <OptionRow
-              label="Speed"
-              value={
-                isCodex
-                  ? selection.serviceTier === "fast"
-                    ? "fast"
-                    : "standard"
-                  : native?.selected.fast == null
-                    ? ""
-                    : native.selected.fast
-                      ? "fast"
-                      : "standard"
-              }
-              options={[
-                { value: "standard", label: "Standard" },
-                { value: "fast", label: "Fast" },
-              ]}
-              disabled={disabled}
-              onChange={(value) => {
-                if (native) return changeNative({ fast: value === "fast" });
-                props.onSelectionChange(
-                  { ...selection, serviceTier: value === "fast" ? "fast" : null },
-                  "serviceTier",
-                );
-              }}
-            />
-          ) : null}
-          {native && contextWindows.length > 1 ? (
-            <OptionRow
-              label="Context"
-              value={native.selected.contextInherited ? "default" : (native.selected.context ?? "")}
-              options={[
-                { value: "default", label: "Default" },
-                ...contextWindows.map((value) => ({ value, label: value })),
-              ]}
-              disabled={disabled}
-              onChange={(value) => changeNative({ context: value === "default" ? null : value })}
-            />
-          ) : null}
-          {genericOptions.map((option) => (
-            <OptionRow
-              key={option.id}
-              label={option.name}
-              value={String(option.currentValue)}
-              disabled={disabled || !catalog.changeConfig}
-              options={
-                option.type === "boolean"
-                  ? [
-                      { value: "true", label: "On" },
-                      { value: "false", label: "Off" },
-                    ]
-                  : flattenAgentConfigOptions(option).map((entry) => ({
-                      value: entry.value,
-                      label: entry.name,
-                      tooltipText: entry.description,
-                    }))
-              }
-              onChange={(value) =>
-                void run(() =>
-                  catalog.changeConfig?.(
-                    option.id,
-                    option.type === "boolean" ? value === "true" : value,
-                  ),
-                )
-              }
-            />
+            >
+              {action.label}
+            </NodexDropdownActionRow>
           ))}
-          {catalog.modes && catalog.modes.availableModes.length > 0 && catalog.changeMode ? (
-            <OptionRow
-              label="Mode"
-              value={catalog.modes.currentModeId}
-              options={catalog.modes.availableModes.map((mode) => ({
-                value: mode.id,
-                label: mode.name,
-                tooltipText: mode.description,
-              }))}
-              disabled={disabled}
-              onChange={(value) => void run(() => catalog.changeMode?.(value))}
-            />
-          ) : null}
           {runtimeOptions.length > 0 || catalog.error ? <NodexDropdownSeparator /> : null}
           {runtimeOptions.map((runtime) => (
             <NodexDropdownActionRow

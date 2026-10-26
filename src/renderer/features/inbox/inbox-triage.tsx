@@ -1,11 +1,17 @@
 import { useState, type ReactNode } from "react";
 import { motion } from "motion/react";
-import type { InboxItem, InboxProposal, InboxPageBasis } from "../../../shared/inbox";
+import type {
+  InboxChatAgent,
+  InboxItem,
+  InboxProposal,
+  InboxPageBasis,
+} from "../../../shared/inbox";
 import type { Project } from "../../../shared/types";
 import {
   ActivitySpinnerIcon,
   ArchiveIcon,
   CheckmarkIcon,
+  CompactChevronDownIcon,
   DispatchIcon,
   EditIcon,
   RetryIcon,
@@ -44,6 +50,12 @@ import {
   type InboxDispatchDraft,
 } from "./inbox-dispatch-editor";
 import type { InboxActions } from "./use-inbox-actions";
+import { InboxAgentLabel, InboxAgentPicker, type InboxAgents } from "./inbox-agent-picker";
+import {
+  describeInboxAgent,
+  sameInboxChatAgent,
+  type InboxAgentPresentation,
+} from "./inbox-agent-model";
 
 /** New strip content settles in place rather than popping. */
 function Settle({ id, children }: { readonly id: string; readonly children: ReactNode }) {
@@ -93,6 +105,7 @@ function Decision({
   why = null,
   icon: Icon,
   variant = "primary",
+  menu = null,
   onClick,
 }: {
   readonly label: string;
@@ -102,15 +115,22 @@ function Decision({
   readonly why?: ReactNode;
   readonly icon: InboxIcon;
   readonly variant?: "primary" | "ghost";
+  /** The other half of a split decision, which changes how it runs rather than running it. */
+  readonly menu?: ReactNode;
   readonly onClick: () => void;
 }) {
   const button = (
-    <NodexButton size="xs" variant={variant} className="min-w-0 gap-1.5" onClick={onClick}>
+    <NodexButton
+      size="xs"
+      variant={variant}
+      className={cn("min-w-0 gap-1.5", menu && "rounded-e-none")}
+      onClick={onClick}
+    >
       <Icon className="icon-xs shrink-0" />
       <span className="truncate">{target ?? label}</span>
     </NodexButton>
   );
-  return target ? (
+  const decision = target ? (
     <NodexTooltip
       tooltipContent={
         <div className="flex max-w-80 flex-col gap-1">
@@ -125,16 +145,87 @@ function Decision({
   ) : (
     button
   );
+  return menu ? (
+    <div className="flex min-w-0 items-center gap-px">
+      {decision}
+      {menu}
+    </div>
+  ) : (
+    decision
+  );
 }
 
-/** The summary of a chat suggestion, and for every suggestion why it was made and by whom. */
-function SuggestionWhy({ proposal }: { readonly proposal: InboxProposal }) {
-  const why = [proposal.rationale, proposal.producedBy].filter(Boolean).join(" — ");
+/**
+ * The summary of a chat suggestion and why it was made. A new chat also says what it runs on,
+ * kept apart from the Agent that wrote the suggestion.
+ */
+function SuggestionWhy({
+  proposal,
+  runsOn,
+}: {
+  readonly proposal: InboxProposal;
+  readonly runsOn: InboxAgentPresentation | null;
+}) {
   return (
     <>
       {isChatAction(proposal.action) ? <span>{proposal.summary}</span> : null}
-      {why ? <span className="text-token-description-foreground">{why}</span> : null}
+      {proposal.rationale ? (
+        <span className="text-token-description-foreground">{proposal.rationale}</span>
+      ) : null}
+      {runsOn ? (
+        <span className="flex min-w-0 items-start gap-1 pt-1">
+          <span className="shrink-0">Runs on</span>
+          <InboxAgentLabel presentation={runsOn} full className="items-start [&>svg]:mt-0.5" />
+        </span>
+      ) : null}
+      {proposal.producedBy ? (
+        <span className="text-token-description-foreground">
+          Suggested by {proposal.producedBy}
+        </span>
+      ) : null}
     </>
+  );
+}
+
+/**
+ * A new chat's menu half: opens the model menu for this message alone. A choice that differs
+ * from the Inbox's own stays visible on the button, so the decision never hides it.
+ */
+function ChatAgentMenu({
+  agents,
+  value,
+  changed,
+  onChange,
+}: {
+  readonly agents: InboxAgents;
+  readonly value: InboxChatAgent;
+  readonly changed: boolean;
+  readonly onChange: (next: InboxChatAgent) => void;
+}) {
+  return (
+    <InboxAgentPicker
+      agents={agents}
+      purpose="chat"
+      scope="message"
+      value={value}
+      onChange={onChange}
+      trigger={
+        <NodexButton
+          size="xs"
+          variant="primary"
+          aria-label="Choose the model for this chat"
+          className="min-w-0 gap-1 rounded-s-none px-1.5"
+        >
+          {changed ? (
+            <InboxAgentLabel
+              presentation={describeInboxAgent(agents, value)}
+              className="max-w-44 gap-1"
+            />
+          ) : null}
+          <CompactChevronDownIcon className="icon-2xs shrink-0" />
+        </NodexButton>
+      }
+    />
   );
 }
 
@@ -177,6 +268,7 @@ const NO_MEMBERS: readonly InboxGroupMember[] = [];
 export function InboxTriage({
   item,
   projects,
+  agents,
   suggestionsEnabled,
   actions,
   manualDraft,
@@ -204,6 +296,8 @@ export function InboxTriage({
   readonly onOpenPage?: (pageId: string) => void;
   readonly onOpenSession?: (sessionId: string) => void;
   readonly projects: readonly Project[];
+  /** What a new chat can run on, and the Inbox's own choice. */
+  readonly agents: InboxAgents;
   /** The Project whose Inbox holds the message, or null for the Library Inbox. */
   readonly inboxProjectId: string | null;
   readonly suggestionsEnabled: boolean;
@@ -212,14 +306,30 @@ export function InboxTriage({
   readonly manualDraft: InboxDispatchDraft | null;
   /** Set when this message's suggestion is shown on a newer message of the same group. */
   readonly groupedWithKey: string | null;
-  /** The message's menu, the first of the action row's icons; it leaves out what the row offers. */
-  readonly menu: (offers: InboxRowOffers) => ReactNode;
+  /**
+   * The message's menu, the first of the action row's icons; it leaves out what the row offers.
+   * `handleManually` opens the dispatch editor from the decision as the row currently has it.
+   */
+  readonly menu: (offers: InboxRowOffers, handleManually: () => void) => ReactNode;
   readonly onManualDraftChange: (draft: InboxDispatchDraft | null) => void;
   /** Opens the message's Page, where a body too rich or long to rewrite in place is edited. */
   readonly onEditAsPage: () => void;
   /** Places the strip and the action row around the message. */
   readonly children: (parts: InboxTriageParts) => ReactNode;
 }) {
+  // A model chosen for one suggestion's new chat; another suggestion starts from the Inbox's own.
+  const [chatChoice, setChatChoice] = useState<{
+    readonly proposalId: string;
+    readonly agent: InboxChatAgent;
+  } | null>(null);
+  const chosenAgent =
+    chatChoice &&
+    chatChoice.proposalId === item.proposal?.proposalId &&
+    !sameInboxChatAgent(chatChoice.agent, agents.settings.chatAgent)
+      ? chatChoice.agent
+      : null;
+  const chooseAgent = (proposalId: string, agent: InboxChatAgent) =>
+    setChatChoice({ proposalId, agent });
   const [editing, setEditing] = useState<{
     readonly baseBody: string;
     readonly draft: InboxDraft;
@@ -229,11 +339,12 @@ export function InboxTriage({
   const rewrite = item.bodyEditable ? inboxDraftFromBody(item.body) : null;
   const model = inboxTriageModel(item, suggestionsEnabled);
   const offers = inboxRowOffers(model, { suggestionsEnabled, grouped: groupedWithKey != null });
-  const menuNode = menu(offers);
   const handled = useInboxOutcome(item);
   const done = () => void actions.setState([item.pageId], "done");
   const keep = () => void actions.keep([item.pageId]);
-  const handleManually = () => onManualDraftChange(draftForInboxItem(item, inboxProjectId));
+  const handleManually = () =>
+    onManualDraftChange(draftForInboxItem(item, inboxProjectId, chosenAgent));
+  const menuNode = menu(offers, handleManually);
   const editAction = rewrite ? (
     <InboxIconAction
       label="Edit"
@@ -318,16 +429,17 @@ export function InboxTriage({
               embedded
               initial={manualDraft}
               projects={projects}
+              agents={agents}
               inboxProjectId={inboxProjectId}
               onCancel={() => onManualDraftChange(null)}
-              onSubmit={(action, chat) =>
+              onSubmit={(action, choice) =>
                 manualDraft.proposal
-                  ? actions.confirm(manualDraft.proposal, action, chat)
+                  ? actions.confirm(manualDraft.proposal, action, choice)
                   : actions.dispatch(
                       (manualDraft.basis ?? [item.basis]).map((basis) => basis.pageId),
                       action,
                       manualDraft.basis ?? [item.basis],
-                      chat,
+                      choice,
                     )
               }
             />
@@ -381,6 +493,8 @@ export function InboxTriage({
           targetProjectName: proposal.targetProjectName,
           chat: proposal.chat,
         });
+        const newChat = proposal.action.type === "new_chat";
+        const chatAgent = chosenAgent ?? agents.settings.chatAgent;
         return {
           strip: (
             <Settle id={proposal.proposalId}>
@@ -398,9 +512,28 @@ export function InboxTriage({
               <Decision
                 label={presentation.verb}
                 target={presentation.target}
-                why={<SuggestionWhy proposal={proposal} />}
+                why={
+                  <SuggestionWhy
+                    proposal={proposal}
+                    runsOn={newChat ? describeInboxAgent(agents, chatAgent) : null}
+                  />
+                }
                 icon={INBOX_ACTION_ICONS[proposal.action.type]}
-                onClick={() => void actions.confirm(proposal)}
+                menu={
+                  newChat ? (
+                    <ChatAgentMenu
+                      agents={agents}
+                      value={chatAgent}
+                      changed={chosenAgent !== null}
+                      onChange={(next) => chooseAgent(proposal.proposalId, next)}
+                    />
+                  ) : null
+                }
+                onClick={() =>
+                  void (chosenAgent
+                    ? actions.confirm(proposal, undefined, { chatAgent: chosenAgent })
+                    : actions.confirm(proposal))
+                }
               />
             </Row>
           ),

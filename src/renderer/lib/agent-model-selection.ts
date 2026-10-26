@@ -46,7 +46,7 @@ const BRANDED_RUNTIME_NAMES: Partial<Record<AgentBackendBinding["kind"], readonl
  * instance label adds information (for example a second Claude account).
  */
 export const agentRuntimeQualifier = (
-  binding: AgentBackendBinding,
+  binding: Pick<AgentBackendBinding, "kind">,
   label: string,
 ): string | null => {
   const trimmed = label.trim();

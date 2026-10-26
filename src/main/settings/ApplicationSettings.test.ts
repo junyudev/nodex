@@ -348,6 +348,48 @@ describe("ApplicationSettings", () => {
     }),
   );
 
+  it.effect(
+    "keeps the Inbox chat model, effort and speed with the Agent they were chosen for",
+    () =>
+      Effect.gen(function* () {
+        const { root, settingsPath } = fixture();
+        const input = { environment: {}, hostHomeDirectory: root, settingsPath };
+        const settings = yield* makeApplicationSettings(input);
+        const chosen = {
+          instanceId: "codex",
+          model: "gpt-6-astra",
+          reasoningEffort: "high",
+          serviceTier: "fast",
+        };
+        yield* settings.update({ type: "update-inbox", input: { chatAgent: chosen } });
+        const reopened = yield* makeApplicationSettings(input);
+        assert.deepEqual((yield* reopened.snapshot()).inbox.chatAgent, chosen);
+
+        // Another Agent at its own defaults leaves nothing of the previous choice behind.
+        const other = {
+          instanceId: "opencode",
+          model: null,
+          reasoningEffort: null,
+          serviceTier: null,
+        };
+        yield* reopened.update({ type: "update-inbox", input: { chatAgent: other } });
+        assert.deepEqual(
+          (yield* makeApplicationSettings(input).pipe(Effect.flatMap((next) => next.snapshot())))
+            .inbox.chatAgent,
+          other,
+        );
+        const server = (
+          parseToml(readFileSync(settingsPath, "utf8")) as {
+            readonly server?: Record<string, unknown>;
+          }
+        ).server;
+        assert.strictEqual(server?.inbox_chat_agent, "opencode");
+        assert.notProperty(server, "inbox_chat_model");
+        assert.notProperty(server, "inbox_chat_effort");
+        assert.notProperty(server, "inbox_chat_speed");
+      }),
+  );
+
   it.effect("ignores legacy root history and removes it on the next managed settings write", () =>
     Effect.gen(function* () {
       const { settingsPath } = fixture(

@@ -4,7 +4,7 @@ import * as Layer from "effect/Layer";
 import * as Schedule from "effect/Schedule";
 import * as Semaphore from "effect/Semaphore";
 import * as Stream from "effect/Stream";
-import type { InboxSettings } from "../../shared/inbox";
+import { inboxSuggestionChoice, type InboxSettings } from "../../shared/inbox";
 import { createUuidV7 } from "../../shared/uuid-v7";
 import {
   AgentRuntimeApplication,
@@ -61,9 +61,7 @@ export const make = Effect.gen(function* () {
     const outcome = yield* Effect.gen(function* () {
       const modelSelection = yield* resolveInboxModel(
         runtime,
-        current.suggestionAgent,
-        current.suggestionModel,
-        undefined,
+        inboxSuggestionChoice(current),
         "suggestion",
       );
       const prompt = yield* Effect.try({
@@ -109,7 +107,14 @@ export const make = Effect.gen(function* () {
       });
       return {
         validated,
-        producedBy: `${modelSelection.instanceId} · ${modelSelection.model}`.slice(0, 256),
+        // Read beside the suggestion, so it names the Agent and model as the user knows them.
+        producedBy: [
+          provider?.displayName ?? modelSelection.instanceId,
+          provider?.models.find((model) => model.slug === modelSelection.model)?.name ??
+            modelSelection.model,
+        ]
+          .join(" · ")
+          .slice(0, 256),
       };
     }).pipe(Effect.result);
     const base = { request_id: request.request_id, generation: request.generation };

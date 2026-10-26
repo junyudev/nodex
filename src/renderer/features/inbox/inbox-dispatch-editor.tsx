@@ -2,6 +2,7 @@ import { useMemo, useState, type ReactNode, type ComponentProps } from "react";
 import type {
   InboxDispatchAction,
   InboxChat,
+  InboxChatAgent,
   InboxItem,
   InboxProposal,
   InboxPageBasis,
@@ -15,6 +16,9 @@ import { LIBRARY_INBOX, projectInbox } from "../../../shared/inbox";
 import { useInboxChatTargets } from "./use-inbox";
 import { cn } from "@/lib/utils";
 import { INBOX_ACTION_ICONS } from "./inbox-icon-action";
+import { InboxAgentPicker, type InboxAgents } from "./inbox-agent-picker";
+import { sameInboxChatAgent } from "./inbox-agent-model";
+import type { InboxChatChoice } from "./use-inbox-actions";
 
 type ActionType = InboxDispatchAction["type"];
 
@@ -40,6 +44,8 @@ export interface InboxDispatchDraft {
   readonly projectId: string | null;
   readonly sessionId: string | null;
   readonly prompt: string;
+  /** What a new chat runs on when chosen for this decision; the Inbox's own when unset. */
+  readonly chatAgent?: InboxChatAgent | null;
 }
 
 export function draftFromAction(
@@ -74,7 +80,11 @@ export function draftFromAction(
 }
 
 /** A new decision still reviews the complete source group of the previous handoff. */
-export function draftForInboxItem(item: InboxItem, projectId: string | null): InboxDispatchDraft {
+export function draftForInboxItem(
+  item: InboxItem,
+  projectId: string | null,
+  chatAgent: InboxChatAgent | null = null,
+): InboxDispatchDraft {
   const proposal = item.proposal;
   const action = proposal?.action;
   return {
@@ -84,6 +94,7 @@ export function draftForInboxItem(item: InboxItem, projectId: string | null): In
     ),
     basis: proposal?.basis ?? [item.basis],
     chat: proposal?.chat ?? null,
+    chatAgent,
     ...(proposal?.state === "open" ? { proposal } : {}),
   };
 }
@@ -134,19 +145,22 @@ function PickerTrigger({
 export function InboxDispatchEditor({
   initial,
   projects,
+  agents,
   inboxProjectId = null,
   embedded = false,
   onSubmit,
   onCancel,
 }: {
   readonly initial: InboxDispatchDraft;
+  /** What a new chat can run on, and the Inbox's own choice it starts from. */
+  readonly agents: InboxAgents;
   /** Inside a message's strip the form takes the strip's frame instead of its own. */
   readonly embedded?: boolean;
   readonly projects: readonly Project[];
   /** The Project whose Inbox holds the messages, or null for the Library Inbox. */
   readonly inboxProjectId?: string | null;
-  /** `chat` is the chosen chat when the action sends to one. */
-  readonly onSubmit: (action: InboxDispatchAction, chat: InboxChat | null) => Promise<boolean>;
+  /** Carries the chosen chat when the action sends to one, and a new chat's chosen Agent. */
+  readonly onSubmit: (action: InboxDispatchAction, choice: InboxChatChoice) => Promise<boolean>;
   readonly onCancel: () => void;
 }) {
   const [draft, setDraft] = useState(() =>
@@ -199,7 +213,10 @@ export function InboxDispatchEditor({
   const submit = async () => {
     if (!action) return;
     setSubmitting(true);
-    const done = await onSubmit(action, action.type === "send_to_chat" ? chosenChat : null);
+    const done = await onSubmit(action, {
+      chat: action.type === "send_to_chat" ? chosenChat : null,
+      chatAgent: action.type === "new_chat" ? (draft.chatAgent ?? null) : null,
+    });
     setSubmitting(false);
     if (done) onCancel();
   };
@@ -332,8 +349,24 @@ export function InboxDispatchEditor({
         />
       ) : null}
 
-      <div className="flex items-center justify-end gap-1">
-        <NodexButton size="xs" variant="ghost" onClick={onCancel}>
+      <div className="flex min-w-0 items-center gap-1">
+        {draft.type === "new_chat" ? (
+          // What the chat starts on sits beside the button that starts it, as in the composer.
+          <InboxAgentPicker
+            agents={agents}
+            purpose="chat"
+            scope="message"
+            value={draft.chatAgent ?? agents.settings.chatAgent}
+            trigger="inline"
+            onChange={(next) =>
+              setDraft((current) => ({
+                ...current,
+                chatAgent: sameInboxChatAgent(next, agents.settings.chatAgent) ? null : next,
+              }))
+            }
+          />
+        ) : null}
+        <NodexButton size="xs" variant="ghost" className="ms-auto" onClick={onCancel}>
           Cancel
         </NodexButton>
         <NodexButton

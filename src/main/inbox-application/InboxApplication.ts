@@ -359,7 +359,7 @@ export const make = Effect.gen(function* () {
   const prepareConfirmation = Effect.fn("InboxApplication.prepareConfirmation")(function* (
     input: InboxConfirmationDraft,
   ): Effect.fn.Return<InboxPreparedConfirmation, InboxApplicationError> {
-    const draft = yield* parse("prepare-confirmation", () =>
+    const { chatAgent, ...draft } = yield* parse("prepare-confirmation", () =>
       InboxConfirmationDraftSchema.parse(input),
     );
     const context = yield* dispatchContext(draft.basis.map((basis) => basis.pageId));
@@ -372,13 +372,15 @@ export const make = Effect.gen(function* () {
       return yield* fail("prepare-confirmation")(
         new Error("Review this suggestion before deciding"),
       );
+    // A new chat runs on the user's choice for this message, or else the Inbox's chat Agent.
     const executionSelection =
       action.type === "new_chat"
         ? {
             modelSelection: yield* resolveInboxModel(
               runtime,
-              (yield* settings.snapshot().pipe(Effect.mapError(fail("prepare-confirmation")))).inbox
-                .chatAgent,
+              chatAgent ??
+                (yield* settings.snapshot().pipe(Effect.mapError(fail("prepare-confirmation"))))
+                  .inbox.chatAgent,
             ).pipe(Effect.mapError(fail("prepare-confirmation"))),
             interactionMode: "default" as const,
           }

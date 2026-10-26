@@ -1,6 +1,6 @@
 import type { CodexThreadActiveFlag, CodexThreadStatusType } from "./types";
 import type { AgentRuntimeLaunch } from "./agent-runtime-api";
-import { agentRuntimeProviderId } from "./agent-runtime-provider";
+import { agentRuntimeProviderId, applyAgentRuntimeOptionIntent } from "./agent-runtime-provider";
 import type { AgentRuntimeOperations } from "@nodex/agent-runtime/contracts";
 
 /** User-editable classification. It never authorizes work. */
@@ -254,12 +254,17 @@ export interface InboxExecutionSelection {
   readonly interactionMode: AgentRuntimeLaunch["interactionMode"];
 }
 
+/**
+ * What the user reviewed before deciding. A new chat runs on `chatAgent` when the user chose one
+ * for this message, otherwise on the Inbox's chat Agent; Main freezes either into the execution
+ * selection.
+ */
 export type InboxConfirmationDraft =
-  | ({ readonly kind: "proposal" } & Omit<
+  | ({ readonly kind: "proposal"; readonly chatAgent?: InboxChatAgent | null } & Omit<
       InboxConfirmInput,
       "operationId" | "sessionId" | "executionSelection"
     >)
-  | ({ readonly kind: "direct" } & Omit<
+  | ({ readonly kind: "direct"; readonly chatAgent?: InboxChatAgent | null } & Omit<
       InboxDispatchInput,
       "operationId" | "proposalId" | "sessionId" | "executionSelection"
     >);
@@ -332,14 +337,29 @@ export const isInboxChatDispatch = (
 export const inboxNeedsDecision = (item: InboxItem): boolean =>
   item.state === "open" && item.proposal?.state === "open";
 
-/** The Agent runtime that suggests dispatches or runs dispatched chats. */
+/** The Agent runtime that suggests dispatches. */
 export interface InboxAgentBinding {
   readonly instanceId: string;
 }
 
+/**
+ * What a chat the Inbox starts runs on: an Agent and, when chosen, its model, effort and speed.
+ * A null model is the Agent's catalog default. A null effort or speed, or one the model does not
+ * offer, is the model's own default.
+ */
+export interface InboxChatAgent extends InboxAgentBinding {
+  readonly model: string | null;
+  readonly reasoningEffort: string | null;
+  /** A non-standard speed tier such as `fast`; null runs at the model's default speed. */
+  readonly serviceTier: string | null;
+}
+
+type InboxProvider = AgentRuntimeOperations["providers.read"]["output"][number];
+type InboxProviderModel = InboxProvider["models"][number];
+
 /** Native utility implementations currently exposing generateStructured. */
 export const supportsInboxStructuredGeneration = (
-  provider: Pick<AgentRuntimeOperations["providers.read"]["output"][number], "driver">,
+  provider: Pick<InboxProvider, "driver">,
 ): boolean => provider.driver === "codex" || provider.driver === "claudeAgent";
 
 /**
@@ -365,6 +385,92 @@ export const inboxDefaultSuggestionModel = <
   );
 };
 
+/** A model an omitted chat model resolves to: the Agent's catalog default. */
+export const inboxDefaultChatModel = <
+  Model extends { readonly slug: string; readonly isDefault?: boolean },
+>(provider: {
+  readonly models: readonly Model[];
+}): Model | undefined => provider.models.find((model) => model.isDefault) ?? provider.models[0];
+
+/** Suggestions run at an economical effort that does not follow any chat preference. */
+const inboxSuggestionEffort = (provider: Pick<InboxProvider, "driver">) =>
+  provider.driver === "claudeAgent" ? "low" : "medium";
+
+export const isInboxProviderUsable = (provider: InboxProvider): boolean =>
+  provider.enabled &&
+  provider.status !== "error" &&
+  provider.status !== "disabled" &&
+  provider.availability !== "unavailable";
+
+export type InboxModelResolution =
+  | {
+      readonly kind: "ready";
+      readonly selection: AgentRuntimeLaunch["modelSelection"];
+      readonly provider: InboxProvider;
+      readonly model: InboxProviderModel;
+    }
+  /** The Agent is usable but has not reported its models yet; a catalog refresh probes it. */
+  | { readonly kind: "pending"; readonly provider: InboxProvider }
+  | { readonly kind: "unavailable"; readonly message: string };
+
+/**
+ * The exact Model Selection an Inbox chat or suggestion runs on, read from one catalog. Main
+ * freezes this selection at confirmation and the Inbox shows the same one before the user decides.
+ */
+export function resolveInboxModel(
+  providers: readonly InboxProvider[],
+  choice: InboxChatAgent,
+  purpose: "chat" | "suggestion",
+): InboxModelResolution {
+  const provider = providers.find((candidate) => candidate.instanceId === choice.instanceId);
+  if (!provider || !isInboxProviderUsable(provider))
+    return { kind: "unavailable", message: "The configured Agent is unavailable" };
+  if (purpose === "suggestion" && !supportsInboxStructuredGeneration(provider))
+    return {
+      kind: "unavailable",
+      message: "The configured Agent cannot generate Inbox suggestions",
+    };
+  // A cold boot snapshot is enabled but not yet installed/probed. Refresh owns the probe.
+  if (!provider.installed || provider.models.length === 0) return { kind: "pending", provider };
+  const model = choice.model
+    ? provider.models.find((candidate) => candidate.slug === choice.model)
+    : purpose === "suggestion"
+      ? inboxDefaultSuggestionModel(provider)
+      : inboxDefaultChatModel(provider);
+  if (!model) return { kind: "unavailable", message: "The selected model is unavailable" };
+  const reasoningEffort =
+    purpose === "suggestion" ? inboxSuggestionEffort(provider) : choice.reasoningEffort;
+  const serviceTier = purpose === "suggestion" ? null : choice.serviceTier;
+  const options = applyAgentRuntimeOptionIntent(
+    model.capabilities?.optionDescriptors ?? [],
+    undefined,
+    {
+      ...(reasoningEffort ? { reasoningEffort } : {}),
+      ...(serviceTier ? { serviceTier } : {}),
+    },
+  );
+  return {
+    kind: "ready",
+    provider,
+    model,
+    selection: {
+      instanceId: provider.instanceId,
+      model: model.slug,
+      ...(options.length ? { options } : {}),
+    },
+  };
+}
+
+/** The suggestion Agent and model as a choice the shared resolver reads. */
+export const inboxSuggestionChoice = (
+  settings: Pick<InboxSettings, "suggestionAgent" | "suggestionModel">,
+): InboxChatAgent => ({
+  instanceId: settings.suggestionAgent.instanceId,
+  model: settings.suggestionModel,
+  reasoningEffort: null,
+  serviceTier: null,
+});
+
 export interface InboxSettings {
   /** When off, the Inbox captures messages and supports manual dispatch only. */
   readonly suggestionsEnabled: boolean;
@@ -373,8 +479,8 @@ export interface InboxSettings {
   readonly suggestionModel: string | null;
   /** Durable routing preferences given to the suggestion Agent. */
   readonly instructions: string;
-  /** Runtime for chats the Inbox starts. Existing chats keep their own runtime. */
-  readonly chatAgent: InboxAgentBinding;
+  /** What chats the Inbox starts run on, unless the user chooses otherwise for one message. */
+  readonly chatAgent: InboxChatAgent;
 }
 
 export type UpdateInboxSettingsInput = Partial<InboxSettings>;
@@ -386,7 +492,7 @@ export const DEFAULT_INBOX_SETTINGS: InboxSettings = {
   suggestionAgent: { instanceId: "codex" },
   suggestionModel: null,
   instructions: "",
-  chatAgent: { instanceId: "codex" },
+  chatAgent: { instanceId: "codex", model: null, reasoningEffort: null, serviceTier: null },
 };
 
 export const encodeInboxAgentBinding = (binding: InboxAgentBinding): string => binding.instanceId;

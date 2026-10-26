@@ -2,6 +2,7 @@ import { z } from "zod";
 import {
   MAX_INBOX_INSTRUCTIONS_CHARS,
   type InboxAgentBinding,
+  type InboxChatAgent,
   type UpdateInboxSettingsInput,
 } from "../inbox";
 import type {
@@ -160,6 +161,21 @@ export const InboxDispatchInputSchema = z
   })
   .strict() satisfies z.ZodType<InboxDispatchInput>;
 
+export const InboxAgentBindingSchema = z
+  .object({ instanceId: id })
+  .strict() satisfies z.ZodType<InboxAgentBinding>;
+
+const choiceValue = z.string().trim().min(1).max(256).nullable();
+
+export const InboxChatAgentSchema = z
+  .object({
+    instanceId: id,
+    model: choiceValue,
+    reasoningEffort: choiceValue,
+    serviceTier: choiceValue,
+  })
+  .strict() satisfies z.ZodType<InboxChatAgent>;
+
 export const InboxConfirmationDraftSchema = z.discriminatedUnion("kind", [
   z
     .object({
@@ -169,6 +185,7 @@ export const InboxConfirmationDraftSchema = z.discriminatedUnion("kind", [
       expectedRevision: z.number().int().min(1),
       basis,
       action: InboxDispatchActionSchema.optional(),
+      chatAgent: InboxChatAgentSchema.nullable().optional(),
     })
     .strict(),
   z
@@ -178,6 +195,7 @@ export const InboxConfirmationDraftSchema = z.discriminatedUnion("kind", [
       pageIds: pageIds(MAX_INBOX_DISPATCH_PAGES),
       basis,
       action: InboxDispatchActionSchema,
+      chatAgent: InboxChatAgentSchema.nullable().optional(),
     })
     .strict(),
 ]) satisfies z.ZodType<InboxConfirmationDraft>;
@@ -243,17 +261,13 @@ export const InboxSetImportantInputSchema = z
   .object({ pageId: id, important: z.boolean() })
   .strict() satisfies z.ZodType<InboxSetImportantInput>;
 
-export const InboxAgentBindingSchema = z
-  .object({ instanceId: id })
-  .strict() satisfies z.ZodType<InboxAgentBinding>;
-
 export const UpdateInboxSettingsInputSchema = z
   .object({
     suggestionsEnabled: z.boolean().optional(),
     suggestionAgent: InboxAgentBindingSchema.optional(),
     suggestionModel: z.string().trim().max(256).nullable().optional(),
     instructions: z.string().max(MAX_INBOX_INSTRUCTIONS_CHARS).optional(),
-    chatAgent: InboxAgentBindingSchema.optional(),
+    chatAgent: InboxChatAgentSchema.optional(),
   })
   .strict() satisfies z.ZodType<UpdateInboxSettingsInput>;
 

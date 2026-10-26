@@ -20,7 +20,6 @@ import {
   DispatchIcon,
   HistoryIcon,
   InboxIcon,
-  SettingsGeneralIcon,
   AskAiIcon,
 } from "@/components/shared/icons";
 import { useApplicationPending } from "@/bootstrap/application-surface";
@@ -36,7 +35,6 @@ import { InboxComposer } from "./inbox-composer";
 import {
   InboxDispatchEditor,
   draftFromAction,
-  draftForInboxItem,
   type InboxDispatchDraft,
 } from "./inbox-dispatch-editor";
 import { InboxDeleteDialog, type InboxDeleteRequest } from "./inbox-delete-dialog";
@@ -53,6 +51,8 @@ import {
   type InboxOutcomeTarget,
   type InboxRowOffers,
 } from "./inbox-presentation";
+import { useInboxAgents, type InboxAgents } from "./inbox-agent-picker";
+import { InboxAgentsPopover } from "./inbox-agents-popover";
 import { InboxTriage } from "./inbox-triage";
 import { inboxDraftLabel } from "./inbox-capture-state";
 import { useInboxCapture } from "./use-inbox-capture";
@@ -60,7 +60,7 @@ import { useInboxImageAccess } from "./use-inbox-image-access";
 import { useInboxJump, useInboxMessagesInView } from "./use-inbox-important";
 import { useInboxActions } from "./use-inbox-actions";
 import { useInboxDepartures } from "./use-inbox-departures";
-import { useInboxSettings, useInboxStream, useInboxSummary } from "./use-inbox";
+import { useInboxStream, useInboxSummary } from "./use-inbox";
 import { INBOX_STICK_TO_BOTTOM_PX } from "./inbox-viewport";
 import { initialInboxView, initiallyFollowsInbox, useInboxViewport } from "./use-inbox-viewport";
 
@@ -88,6 +88,7 @@ function InboxHeader({
   inboxCount,
   databaseId,
   databaseLabel,
+  agents,
   onViewChange,
   onOpenDatabase,
   onOpenSettings,
@@ -97,6 +98,7 @@ function InboxHeader({
   readonly databaseId: string | null;
   /** What the Database button opens: the Inbox's own Database or the Project's Board. */
   readonly databaseLabel: string;
+  readonly agents: InboxAgents;
   readonly onViewChange: (view: InboxWindowFilter) => void;
   readonly onOpenDatabase: (databaseId: string) => void;
   readonly onOpenSettings: () => void;
@@ -133,9 +135,7 @@ function InboxHeader({
             <BoardIcon className="icon-sm" />
           </ToolbarIconButton>
         ) : null}
-        <ToolbarIconButton label="Inbox settings" onClick={onOpenSettings}>
-          <SettingsGeneralIcon className="icon-sm" />
-        </ToolbarIconButton>
+        <InboxAgentsPopover agents={agents} onOpenSettings={onOpenSettings} />
       </div>
     </header>
   );
@@ -261,7 +261,9 @@ export function InboxRoute({
   const stream = useInboxStream(scope, view);
   const summary = useInboxSummary(scope);
   useApplicationPending(visible && (stream.isPending || summary.isPending));
-  const settings = useInboxSettings();
+  // The Inbox's preferences arrive with the Agents they name.
+  const agents = useInboxAgents();
+  const settings = agents.settings;
   // A message decided here shows where it went in its place before it leaves the Inbox.
   const departures = useInboxDepartures(view === "inbox" ? stream.items : []);
   const actions = useInboxActions(
@@ -393,13 +395,13 @@ export function InboxRoute({
   const renderMessage = (item: InboxItem) => {
     const proposal = item.proposal;
     const anchor = proposal ? anchors.get(proposal.proposalId) : undefined;
-    const menu = (rowOffers: InboxRowOffers) => (
+    const menu = (rowOffers: InboxRowOffers, handleManually: () => void) => (
       <InboxMessageMenu
         item={item}
         rowOffers={rowOffers}
         handlers={{
           onOpenPage: () => onOpenPage(item.pageId),
-          onDispatch: () => setManualDraft(item.pageId, draftForInboxItem(item, inboxProjectId)),
+          onDispatch: handleManually,
           onSuggestAgain: () =>
             void actions.requestSuggestion(
               proposal?.pageIds ?? [item.pageId],
@@ -416,6 +418,7 @@ export function InboxRoute({
       <InboxTriage
         item={item}
         projects={projects}
+        agents={agents}
         inboxProjectId={inboxProjectId}
         suggestionsEnabled={settings.suggestionsEnabled}
         awaitingIndicator={item.pageId === awaitingPageId}
@@ -488,6 +491,7 @@ export function InboxRoute({
       databaseId={summary.data?.databaseId ?? null}
       databaseLabel={inboxProjectId ? "Open Board" : "Open Inbox as a Database"}
       onViewChange={changeView}
+      agents={agents}
       onOpenDatabase={onOpenDatabase}
       onOpenSettings={onOpenSettings}
     />
@@ -606,14 +610,15 @@ export function InboxRoute({
                     embedded
                     initial={bulkDraft}
                     projects={projects}
+                    agents={agents}
                     inboxProjectId={inboxProjectId}
                     onCancel={() => setBulkDraft(null)}
-                    onSubmit={async (action, chat) => {
+                    onSubmit={async (action, choice) => {
                       const done = await actions.dispatch(
                         (bulkDraft.basis ?? []).map((basis) => basis.pageId),
                         action,
                         bulkDraft.basis ?? [],
-                        chat,
+                        choice,
                       );
                       if (done) setSelected(new Set());
                       return done;

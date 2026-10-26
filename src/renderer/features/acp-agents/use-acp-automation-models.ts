@@ -2,10 +2,8 @@ import { useEffect, useState } from "react";
 import { agentRuntimeRuntime } from "@/lib/agent-runtime-runtime";
 import type { AgentBackendBinding } from "../../../shared/agent-backend";
 import { agentRuntimeProviderId } from "../../../shared/agent-runtime-provider";
-import {
-  projectAgentRuntimeModel,
-  type AgentRuntimeProvider,
-} from "../local-conversation/agent-runtime-conversation-adapter";
+import { projectAgentRuntimeModel } from "@/lib/agent-runtime-model-selection";
+import type { AgentRuntimeProvider } from "../local-conversation/agent-runtime-conversation-adapter";
 
 /**
  * An ACP instance's advertised models for a scheduled run, read from what the Runtime already

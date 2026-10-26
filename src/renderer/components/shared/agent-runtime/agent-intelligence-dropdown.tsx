@@ -30,11 +30,8 @@ import {
   type IntelligenceSelectorLabelCandidate,
   useIntelligenceSelectorTriggerGeometry,
 } from "./intelligence-selector-trigger";
-import {
-  AgentModelPicker,
-  agentEffortLabel as effortLabel,
-  type AgentModelCatalogPresentation,
-} from "./agent-model-picker";
+import { AgentModelPicker, type AgentModelCatalogPresentation } from "./agent-model-picker";
+import { agentEffortLabel as effortLabel } from "@/lib/agent-runtime-model-selection";
 
 export interface AgentIntelligenceSelection {
   readonly kind: "codex" | "claude" | "acp" | "opencode";

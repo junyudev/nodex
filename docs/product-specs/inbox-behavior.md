@@ -323,8 +323,15 @@ and its row show one of these:
     collapsed after as many lines as a user message in a chat.
     Other suggestions say what they do in a one-line summary;
   - a primary action with its exact destination visible without hovering.
-    Hovering it adds a chat suggestion's summary, the rationale and the runtime
-    that suggested it;
+    Hovering it adds a chat suggestion's summary and the rationale. For a new
+    chat it then says `Runs on` with the Agent's mark, name, model, effort and
+    speed the chat will start with. Last, apart from that, `Suggested by` names
+    the Agent and model that wrote the suggestion;
+  - for a new chat, a split decision. Its menu half opens the composer's model
+    menu for that message alone: every available Agent's models, then the chosen
+    model's effort and speed. A choice that differs from the Inbox's own shows
+    its model on the menu half, so the decision never hides it, and the menu then
+    offers `Use for all Inbox chats`;
   - the member count for a group, with access to its complete scope;
   - `Keep`.
 - **Failure:** one short reason and a new decision. Suggestion failures and
@@ -354,8 +361,10 @@ Editing a grouped dispatch keeps its full membership and revision. Handling just
 one member requires an explicit new decision; the remaining members cannot keep
 an old prompt that still includes the removed work. Changing a suggestion's
 destination or prompt happens in `Handle manually`, which starts from that
-suggestion. Manual target selection searches eligible chats beyond the recent
-list.
+suggestion, including the model chosen on its decision. Manual target selection
+searches eligible chats beyond the recent list. For a new chat, the dispatch
+editor shows what it runs on beside `Start chat`, as the composer shows its
+model beside Send, and opens the same model menu.
 
 ## Dispatch
 
@@ -366,7 +375,11 @@ the proposal was computed from.
 Every confirmation, including an edited action, checks the message versions
 the user reviewed. It freezes the complete original text, final prompt and
 destination. New chats also retain the resolved Agent instance, model and
-options; retries do not re-read the current defaults. Confirmed text is ordinary
+options: the choice made for that decision, or else the Inbox's own. Retries do
+not re-read the current defaults. A choice the catalog cannot run is refused
+with its reason; it never silently starts on another Agent or model. What the
+Inbox shows before the decision is read against the same catalog with the same
+rules, so it names the model the chat will start with. Confirmed text is ordinary
 message content and cannot override that selection through inline Agent config
 instructions.
 
@@ -504,16 +517,22 @@ creates a second message, and does not count against the Agent budget again.
     Database's views, the Inbox showing its count;
   - `Open Inbox as a Database` in the Library Inbox, or `Open Board` in a
     Project's Inbox;
-  - `Inbox settings`.
+  - `Inbox settings`, a panel that changes in place what suggests and what new
+    chats run on: the suggestions switch, the suggestion model, and the new chat
+    model, each with the composer's model menu. `Routing preferences and more`
+    opens `Settings → Inbox`.
 
   Each Inbox is a tab, so its header spans the tab like a Board's: views at
   the start and tools at the end, in the same places as on every other tab.
 
 - `Settings → Inbox` holds these Profile preferences:
   - whether suggestions run;
-  - the suggestion runtime and optional model;
+  - the suggestion Agent and model, chosen with the composer's model menu among
+    the Agents that can write suggestions. Suggestions run each model at its own
+    economical effort, so the menu offers no effort or speed;
   - free-text routing preferences given to the suggestion Agent;
-  - the runtime for chats the Inbox starts.
+  - what chats the Inbox starts run on, chosen with the composer's model menu:
+    the Agent, its model, and the model's effort and speed.
 
   Choices read the Runtime's existing provider and model catalog without forcing
   discovery on open. Cached choices remain visible during background refresh;
@@ -523,8 +542,11 @@ creates a second message, and does not count against the Agent budget again.
   An unavailable instance retains its real name rather than appearing as another Agent.
   Suggestions run for every message, so an omitted suggestion model resolves to
   GPT-6.1 Sol on Codex, and otherwise, or when the catalog lacks it, to that
-  instance's catalog default. Chats the Inbox starts keep the catalog default;
-  messages sent to an existing chat use that chat's runtime.
+  instance's catalog default. Until a chat model is chosen, chats the Inbox
+  starts use the Agent's catalog default model at that model's own effort and
+  speed. A chosen effort or speed the model does not offer falls back to the
+  model's own; choosing another model keeps the ones it also offers. Messages
+  sent to an existing chat use that chat's own Agent and model.
 
 ## Current limits
 

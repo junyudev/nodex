@@ -90,7 +90,12 @@ const coreModulesOver = (client: ScenarioClient) => {
  * The Inbox Interface over a fresh, isolated real Core, so its Core and Page writes are tested
  * through the same transport the desktop app uses.
  */
-export const inboxOverRealCore = (requestErasure: Effect.Effect<void> = Effect.void) =>
+export const inboxOverRealCore = (
+  requestErasure: Effect.Effect<void> = Effect.void,
+  /** The Agent catalog a chat handoff resolves against; content tests never start one. */
+  catalog: AgentRuntimeApplication["Service"]["catalog"] = () =>
+    Effect.die("Content tests must not start an Agent catalog"),
+) =>
   Effect.gen(function* () {
     const { context } = yield* scenario;
     const inbox = yield* makeInboxApplication.pipe(
@@ -99,7 +104,7 @@ export const inboxOverRealCore = (requestErasure: Effect.Effect<void> = Effect.v
         requestErasure,
       } as unknown as StoreAdministration["Service"]),
       Effect.provideService(AgentRuntimeApplication, {
-        catalog: () => Effect.die("Content tests must not start an Agent catalog"),
+        catalog,
       } as unknown as AgentRuntimeApplication["Service"]),
       Effect.provideService(ApplicationSettings, {
         snapshot: () => Effect.succeed({ inbox: DEFAULT_INBOX_SETTINGS }),

@@ -1,0 +1,65 @@
+import { act, fireEvent, screen, waitFor } from "@testing-library/react";
+import { describe, expect, test, vi } from "vite-plus/test";
+import { render, settleAsyncRender } from "@/test/dom";
+import { DEFAULT_INBOX_SETTINGS } from "../../../shared/inbox";
+import { InboxAgentsPopover } from "./inbox-agents-popover";
+import { CLAUDE_INSTANCE_ID, inboxAgentsFixture } from "./inbox-agents.test-support";
+
+const click = async (element: HTMLElement) => {
+  await act(async () => {
+    fireEvent.click(element);
+    await settleAsyncRender();
+  });
+};
+
+describe("the Inbox's settings panel", () => {
+  test("changes what suggests and what new chats run on without leaving the Inbox", async () => {
+    const agents = inboxAgentsFixture();
+    const onOpenSettings = vi.fn();
+    render(<InboxAgentsPopover agents={agents} onOpenSettings={onOpenSettings} />);
+    await click(screen.getByRole("button", { name: "Inbox settings" }));
+
+    // Suggestions run every model at their own economical effort, so only the model is chosen.
+    const suggestion = await screen.findByRole("button", { name: "Suggestion model" });
+    expect(suggestion.textContent).toBe("GPT-6 Astra · Medium");
+    await click(suggestion);
+    expect(screen.queryByRole("button", { name: /^Effort/ })).toBeNull();
+    await click(screen.getByRole("option", { name: /Opus 5\.5/ }));
+    expect(agents.save).toHaveBeenLastCalledWith({
+      suggestionAgent: { instanceId: CLAUDE_INSTANCE_ID },
+      suggestionModel: "claude-opus-5-5",
+    });
+
+    const chat = screen.getByRole("button", { name: "New chat model" });
+    expect(chat.textContent).toBe("GPT-6 Astra · Medium");
+    await click(chat);
+    await click(screen.getByRole("button", { name: "Effort Medium" }));
+    await click(screen.getByRole("menuitem", { name: "High" }));
+    expect(agents.save).toHaveBeenLastCalledWith({
+      chatAgent: { instanceId: "codex", model: null, reasoningEffort: "high", serviceTier: null },
+    });
+  });
+
+  test("turning suggestions off leaves their model visible but not choosable", async () => {
+    const agents = inboxAgentsFixture({
+      settings: { ...DEFAULT_INBOX_SETTINGS, suggestionsEnabled: false },
+    });
+    render(<InboxAgentsPopover agents={agents} onOpenSettings={vi.fn()} />);
+    await click(screen.getByRole("button", { name: "Inbox settings" }));
+    const suggestion = await screen.findByRole("button", { name: "Suggestion model" });
+    expect((suggestion as HTMLButtonElement).disabled).toBe(true);
+    await click(screen.getByRole("switch", { name: "Suggest where messages go" }));
+    expect(agents.save).toHaveBeenCalledWith({ suggestionsEnabled: true });
+  });
+
+  test("hands routing preferences to Settings and closes", async () => {
+    const onOpenSettings = vi.fn();
+    render(<InboxAgentsPopover agents={inboxAgentsFixture()} onOpenSettings={onOpenSettings} />);
+    await click(screen.getByRole("button", { name: "Inbox settings" }));
+    await click(await screen.findByRole("button", { name: "Routing preferences and more" }));
+    expect(onOpenSettings).toHaveBeenCalledOnce();
+    await waitFor(() =>
+      expect(screen.queryByRole("button", { name: "New chat model" })).toBeNull(),
+    );
+  });
+});

@@ -1,14 +1,6 @@
 import { useState } from "react";
-import type { AgentRuntimeOperations } from "@nodex/agent-runtime/contracts";
-import type { InboxAgentBinding } from "../../../shared/inbox";
-import {
-  DEFAULT_INBOX_SETTINGS,
-  MAX_INBOX_INSTRUCTIONS_CHARS,
-  inboxDefaultSuggestionModel,
-  supportsInboxStructuredGeneration,
-} from "../../../shared/inbox";
+import { DEFAULT_INBOX_SETTINGS, MAX_INBOX_INSTRUCTIONS_CHARS } from "../../../shared/inbox";
 import { NodexButton, NodexSwitch } from "@/components/ui/button";
-import { NodexOptionPicker, NodexSettingsDropdownTrigger } from "@/components/ui/dropdown";
 import {
   NodexSettingsPageSurface as SettingsPageSurface,
   NodexSettingsRow as SettingRow,
@@ -16,71 +8,12 @@ import {
 } from "@/components/ui/settings";
 import { toast } from "@/components/ui/toast";
 import { readableIpcError } from "@/lib/ipc-error-message";
-import { useAgentRuntimeProviders } from "@/lib/use-agent-runtime-providers";
 import { useInboxSettingsQuery, useUpdateInboxSettings } from "./use-inbox";
-
-type InboxProvider = AgentRuntimeOperations["providers.read"]["output"][number];
-type CatalogState = "loading" | "ready" | "error";
-
-const available = (provider: InboxProvider) =>
-  provider.enabled &&
-  provider.installed &&
-  provider.status !== "error" &&
-  provider.status !== "disabled" &&
-  provider.availability !== "unavailable";
-
-function AgentPicker({
-  value,
-  ariaLabel,
-  providers,
-  catalogState,
-  suggestions = false,
-  onChange,
-}: {
-  readonly value: InboxAgentBinding;
-  readonly ariaLabel: string;
-  readonly providers: readonly InboxProvider[];
-  readonly catalogState: CatalogState;
-  readonly suggestions?: boolean;
-  readonly onChange: (binding: InboxAgentBinding) => void;
-}) {
-  const selected = providers.find((provider) => provider.instanceId === value.instanceId);
-  const current = selected?.displayName ?? value.instanceId;
-  const usable =
-    selected &&
-    available(selected) &&
-    (!suggestions || supportsInboxStructuredGeneration(selected));
-  return (
-    <NodexOptionPicker
-      align="end"
-      search="filter"
-      searchAriaLabel={`Search ${ariaLabel.toLowerCase()}s`}
-      disabled={catalogState !== "ready"}
-      triggerButton={
-        <NodexSettingsDropdownTrigger aria-label={ariaLabel}>
-          {catalogState === "loading" ? "Loading…" : current}
-          {catalogState === "ready" && !usable ? " · Unavailable" : ""}
-        </NodexSettingsDropdownTrigger>
-      }
-      value={value.instanceId}
-      options={providers
-        .filter(
-          (provider) =>
-            !suggestions ||
-            supportsInboxStructuredGeneration(provider) ||
-            provider.instanceId === value.instanceId,
-        )
-        .map((provider) => ({
-          value: provider.instanceId,
-          label: provider.displayName ?? provider.instanceId,
-          disabled:
-            !available(provider) || (suggestions && !supportsInboxStructuredGeneration(provider)),
-          subText: available(provider) ? undefined : "Unavailable",
-        }))}
-      onValueChange={(instanceId) => onChange({ instanceId })}
-    />
-  );
-}
+import {
+  InboxChatAgentPicker,
+  InboxSuggestionAgentPicker,
+  useInboxAgents,
+} from "./inbox-agent-picker";
 
 export function InboxSettingsPage() {
   const settingsQuery = useInboxSettingsQuery();
@@ -88,24 +21,9 @@ export function InboxSettingsPage() {
   const update = useUpdateInboxSettings();
   const [instructionsDraft, setInstructionsDraft] = useState<string | null>(null);
   const instructions = instructionsDraft ?? settings.instructions;
-  const catalog = useAgentRuntimeProviders();
-  const catalogState: CatalogState = catalog.data ? "ready" : catalog.error ? "error" : "loading";
-  const providers = catalog.data ?? [];
-  const suggestionProvider = providers.find(
-    (provider) => provider.instanceId === settings.suggestionAgent.instanceId,
-  );
-  const models = suggestionProvider?.models ?? [];
-  const defaultModel = suggestionProvider
-    ? inboxDefaultSuggestionModel(suggestionProvider)
-    : undefined;
-  const selectedModel = models.find((model) => model.slug === settings.suggestionModel);
-  const modelLabel =
-    catalogState === "loading"
-      ? "Loading…"
-      : settings.suggestionModel === null
-        ? `Default${defaultModel ? ` · ${defaultModel.name}` : ""}`
-        : (selectedModel?.name ??
-          `${settings.suggestionModel}${catalogState === "ready" ? " · Unavailable" : ""}`);
+  // The same Agents, and the same pickers, as the Inbox's own settings panel.
+  const agents = useInboxAgents();
+  const ready = agents.state === "ready";
 
   const save = (input: Parameters<typeof update.mutate>[0]) =>
     update.mutate(input, {
@@ -138,13 +56,13 @@ export function InboxSettingsPage() {
       title="Inbox"
       subtitle="How captured messages are suggested and handed to chats."
     >
-      {catalog.error ? (
+      {agents.readFailed ? (
         <div
           role="status"
           className="flex items-center gap-2 text-sm text-token-description-foreground"
         >
           Couldn’t load Agents{" "}
-          <NodexButton size="xs" variant="ghost" onClick={() => void catalog.refetch()}>
+          <NodexButton size="xs" variant="ghost" onClick={agents.reload}>
             Retry
           </NodexButton>
         </div>
@@ -160,45 +78,17 @@ export function InboxSettingsPage() {
             onCheckedChange={(suggestionsEnabled) => save({ suggestionsEnabled })}
           />
         </SettingRow>
-        <SettingRow label="Suggestion agent" description="The runtime that writes suggestions.">
-          <AgentPicker
-            ariaLabel="Suggestion agent"
-            value={settings.suggestionAgent}
-            providers={providers}
-            catalogState={catalogState}
-            suggestions
-            onChange={(suggestionAgent) => save({ suggestionAgent, suggestionModel: null })}
-          />
-        </SettingRow>
         <SettingRow
-          label="Model"
-          description="Runs for every message, so Default uses GPT-6.1 Sol on Codex."
+          label="Suggest with"
+          description="Runs for every message, so on Codex it starts on the economical GPT-6.1 Sol."
         >
-          <NodexOptionPicker
-            align="end"
-            search="filter"
-            searchAriaLabel="Search suggestion models"
-            disabled={
-              catalogState !== "ready" ||
-              !suggestionProvider ||
-              !available(suggestionProvider) ||
-              !supportsInboxStructuredGeneration(suggestionProvider)
-            }
-            value={settings.suggestionModel ?? "default"}
-            triggerButton={
-              <NodexSettingsDropdownTrigger aria-label="Suggestion model">
-                {modelLabel}
-              </NodexSettingsDropdownTrigger>
-            }
-            options={[
-              {
-                value: "default",
-                label: `Default${defaultModel ? ` · ${defaultModel.name}` : ""}`,
-              },
-              ...models.map((model) => ({ value: model.slug, label: model.name })),
-            ]}
-            onValueChange={(model) => save({ suggestionModel: model === "default" ? null : model })}
-          />
+          <div className="w-72 max-w-full">
+            <InboxSuggestionAgentPicker
+              agents={agents}
+              trigger="field"
+              disabled={!settings.suggestionsEnabled || !ready}
+            />
+          </div>
         </SettingRow>
       </SectionBlock>
       <SectionBlock title="Routing preferences">
@@ -231,15 +121,11 @@ export function InboxSettingsPage() {
       <SectionBlock title="Chats">
         <SettingRow
           label="New chats run on"
-          description="The runtime for chats the Inbox starts. Messages sent to an existing chat use that chat's runtime."
+          description="The Agent, model and effort the Inbox starts chats on. One message can choose another from its decision; sending to an existing chat keeps that chat's."
         >
-          <AgentPicker
-            ariaLabel="New chat runtime"
-            value={settings.chatAgent}
-            providers={providers}
-            catalogState={catalogState}
-            onChange={(chatAgent) => save({ chatAgent })}
-          />
+          <div className="w-72 max-w-full">
+            <InboxChatAgentPicker agents={agents} trigger="field" disabled={!ready} />
+          </div>
         </SettingRow>
       </SectionBlock>
     </SettingsPageSurface>

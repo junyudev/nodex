@@ -10,6 +10,7 @@ import { installRendererThemeFixture } from "@/test/renderer-theme";
 import type { InboxItem, InboxProposal } from "../../../shared/inbox";
 import { InboxMessage } from "./inbox-message";
 import { InboxStreamItem } from "./inbox-stream-item";
+import { inboxAgentsFixture } from "./inbox-agents.test-support";
 import { InboxTriage } from "./inbox-triage";
 import type { InboxActions } from "./use-inbox-actions";
 
@@ -56,6 +57,7 @@ function StreamMessage({
       <InboxTriage
         item={item}
         projects={[]}
+        agents={inboxAgentsFixture()}
         suggestionsEnabled
         awaitingIndicator
         actions={actions}
@@ -299,7 +301,7 @@ test("a chat suggestion reads as its prompt: full width, the message's size, why
     kind: "todo",
     summary: "整理合并前的提交历史",
     rationale: "A clear task for a new chat.",
-    producedBy: "codex · gpt-6.1-sol",
+    producedBy: "Codex · GPT-6.1 Sol",
     targetProjectName: "Nodex",
     chat: null,
     failureMessage: null,
@@ -334,5 +336,8 @@ test("a chat suggestion reads as its prompt: full width, the message's size, why
     await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
   });
   expect(await screen.findByText("整理合并前的提交历史", {}, { timeout: 3_000 })).toBeTruthy();
-  expect(screen.getByText("A clear task for a new chat. — codex · gpt-6.1-sol")).toBeTruthy();
+  expect(screen.getByText("A clear task for a new chat.")).toBeTruthy();
+  // What the chat runs on is never confused with the Agent that wrote the suggestion.
+  expect(screen.getByText("Codex · GPT-6 Astra · Medium")).toBeTruthy();
+  expect(screen.getByText("Suggested by Codex · GPT-6.1 Sol")).toBeTruthy();
 });

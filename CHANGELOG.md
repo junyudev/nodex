@@ -13,6 +13,7 @@ All notable changes to this project will be documented in this file.
 - Chats offer Fork in the sidebar context menu and Chat actions, with the current directory or a new Git worktree as the destination.
 - Claude subscription usage appears beside Codex at the foot of the navigation rail. Each account gets one ring for the limit that runs out first, and a card lists every window with its reset time and when Claude Code reported it. Readings refresh every five minutes while Agents are running and whenever a card opens, match across windows, and are labeled honestly when old, failed or missing. The card can also sign Claude Code out.
 - Sign in to an optional Nodex Account from Settings through your browser, while Nodex and your existing Codex and Claude sign-ins keep working without one.
+- A new chat suggested in the Inbox shows the Agent, model and effort it will start on when you hover its decision, apart from the Agent that wrote the suggestion. Its menu half, and Handle manually, can start that one chat on another model, effort or speed, or make the choice the default. The Inbox's settings gear changes the suggestion model and the model, effort and speed of every chat the Inbox starts, right in the Inbox.
 
 ### Changed
 
