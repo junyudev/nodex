@@ -1,0 +1,33 @@
+src/main/codex-application/PluginManager.ts
+  s_77ac5bdfa64dec::t_ed92916555c084 524-534,945-959
+src/main/ipc/handlers/PluginManagerIpc.ts
+  s_77ac5bdfa64dec::t_ef39dc1b991f53 58-67,116-150
+src/renderer/features/plugins/plugin-management.ts
+  s_77ac5bdfa64dec::t_585c2468110909 81-88,211-231,244-251
+src/renderer/lib/plugin-management-adapter.ts
+  s_77ac5bdfa64dec::t_b8d6152586c2bc 8-63
+src/renderer/lib/plugin-management-query-options.ts
+  s_77ac5bdfa64dec::t_b13b8cb04721d6 13-18
+src/shared/codex-plugin-management.ts
+  s_77ac5bdfa64dec::t_f5aaf7d94b74d3 1-2,17,60,222,267
+src/shared/codex-plugin-settings.ts
+  s_77ac5bdfa64dec::t_cb4fc1f4a4ee83 1-154
+src/shared/ipc-endpoint-policy.ts
+  s_77ac5bdfa64dec::t_bc7fbe7d67bc8a 76-81,495-502
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "16e6fd2dd7a69042eed3ae45d9765cdcef3e57a1",
+  "prompts": {},
+  "sessions": {
+    "s_77ac5bdfa64dec": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1795d-5e95-7ea0-9bf7-2e3e042b723f",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
