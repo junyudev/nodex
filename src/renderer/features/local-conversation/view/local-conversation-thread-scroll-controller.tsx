@@ -21,8 +21,6 @@ import {
 } from "../../../../shared/remote-hosted-pip";
 import {
   buildPendingLatestTurnSubmitPlacement,
-  resolveAdjustedScrollDistanceFromBottomForMeasuredTurnHeightDelta,
-  type MeasuredTurnHeightDeltaInput,
   type PendingLatestTurnSubmitPlacement,
   type ThreadScrollMode,
   THREAD_NEAR_BOTTOM_THRESHOLD_PX,
@@ -39,7 +37,6 @@ import {
 const USER_SCROLL_GRACE_WINDOW_MS = 1_000;
 const PROGRAMMATIC_SCROLL_SETTLE_WINDOW_MS = 64;
 const SCROLL_TO_BOTTOM_ANIMATION_DURATION_MS = 260;
-const WHEEL_DELTA_LINE_HEIGHT_PX = 16;
 
 export interface ThreadScrollPositionSnapshot {
   scrollDistanceFromBottomPx: number;
@@ -69,7 +66,6 @@ export interface LocalConversationThreadScrollControllerValue {
   isScrolledFromBottom: boolean;
   nativeFindTurnKey: string | null;
   scrollElement: HTMLDivElement | null;
-  notifyContentLayout: () => void;
   suppressAutoStickToBottom: () => void;
   setScrollMode: (mode: ThreadScrollMode) => void;
   getScrollMode: () => ThreadScrollMode;
@@ -85,8 +81,6 @@ export interface LocalConversationThreadScrollControllerValue {
   compensateScrollToDistanceFromBottomPx: (distance: number) => void;
   holdViewport: () => void;
   shouldFollowContentGrowth: () => boolean;
-  maybeStickToBottom: () => void;
-  preserveScrollPositionForNextLayout: () => void;
   prepareLatestTurnSubmitPlacement: (options?: {
     readonly placeLatestTurn?: boolean;
   }) => PendingLatestTurnSubmitPlacement | null;
@@ -107,9 +101,6 @@ export interface LocalConversationThreadScrollControllerValue {
   scrollToDistanceFromBottomPx: (distanceFromBottomPx: number, behavior?: ScrollBehavior) => void;
   setFooterResizeViewportPreserveDisabled: (disabled: boolean) => void;
   setFooterHeightPx: (height: number) => void;
-  adjustForMeasuredTurnHeightDelta: (
-    input: Omit<MeasuredTurnHeightDeltaInput, "currentScrollDistanceFromBottomPx" | "scrollMode">,
-  ) => void;
 }
 
 export interface LocalConversationThreadScrollLayoutHandle {
@@ -130,7 +121,7 @@ interface LocalConversationThreadScrollControllerContextValue extends LocalConve
 }
 
 const THREAD_SCROLL_VIEWPORT_CLASS_NAME =
-  "thread-scroll-container relative h-full overflow-x-hidden overflow-y-auto overscroll-y-contain [overflow-anchor:none] [scroll-padding-bottom:var(--thread-scroll-padding-bottom,0px)] electron:[scrollbar-gutter:stable_both-edges] pt-(--thread-content-top-inset) [container-name:thread-content] [container-type:inline-size] [&:has([data-thread-scroll-footer='true']:focus-within)]:[scroll-padding-bottom:0px] flex flex-col-reverse outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset";
+  "thread-scroll-container relative h-full overflow-x-hidden overflow-y-auto overscroll-y-contain [overflow-anchor:none] [scroll-padding-bottom:var(--thread-scroll-padding-bottom,0px)] electron:[scrollbar-gutter:stable_both-edges] pt-(--thread-content-top-inset) [container-name:thread-content] [container-type:inline-size] [&:has([data-thread-scroll-footer='true']:focus-within)]:[scroll-padding-bottom:0px] flex flex-col outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset";
 
 const THREAD_SCROLL_CONTENT_WRAPPER_CLASS_NAME =
   "mx-auto w-full max-w-(--thread-content-max-width) px-toolbar";
@@ -165,14 +156,21 @@ export function resolveThreadScrollModeForScrollEvent({
   return currentMode;
 }
 
-export function getThreadScrollDistanceFromBottomPx(
-  element: Pick<HTMLElement, "scrollTop">,
-): number {
-  return Math.max(0, -element.scrollTop);
+type ThreadScrollGeometry = Pick<HTMLElement, "scrollTop" | "scrollHeight" | "clientHeight">;
+
+/**
+ * The viewport scrolls from the top like any document, and bottom distance is derived from it.
+ * Growth or decay below the reader therefore never needs a native write, so the browser's
+ * animated wheel and momentum scrolling keep their full travel.
+ */
+export function getThreadScrollDistanceFromBottomPx(element: ThreadScrollGeometry): number {
+  const distanceFromBottomPx = element.scrollHeight - element.clientHeight - element.scrollTop;
+  // Integer extents and zoomed fractional offsets leave sub-pixel remainders at the native end.
+  return distanceFromBottomPx < 0.5 ? 0 : distanceFromBottomPx;
 }
 
 function resolveScrollDistanceFromBottomPx(
-  element: HTMLDivElement,
+  element: ThreadScrollGeometry,
   distanceFromBottomPx: number,
 ): number {
   const maxDistanceFromBottomPx = Math.max(0, element.scrollHeight - element.clientHeight);
@@ -180,21 +178,15 @@ function resolveScrollDistanceFromBottomPx(
 }
 
 export function resolveNativeScrollTopForDistanceFromBottomPx(
-  element: HTMLDivElement,
+  element: ThreadScrollGeometry,
   distanceFromBottomPx: number,
 ): number {
-  const nextDistanceFromBottomPx = resolveScrollDistanceFromBottomPx(element, distanceFromBottomPx);
-  return nextDistanceFromBottomPx === 0 ? 0 : -nextDistanceFromBottomPx;
-}
-
-function resolveWheelDeltaPx(event: WheelEvent, viewportHeightPx: number): number {
-  if (event.deltaMode === WheelEvent.DOM_DELTA_LINE) {
-    return event.deltaY * WHEEL_DELTA_LINE_HEIGHT_PX;
-  }
-  if (event.deltaMode === WheelEvent.DOM_DELTA_PAGE) {
-    return event.deltaY * viewportHeightPx;
-  }
-  return event.deltaY;
+  return Math.max(
+    0,
+    element.scrollHeight -
+      element.clientHeight -
+      resolveScrollDistanceFromBottomPx(element, distanceFromBottomPx),
+  );
 }
 
 export function resolveThreadScrollKeyDirection(
@@ -263,13 +255,6 @@ function LocalConversationThreadScrollControllerProvider({ children }: { childre
     readonly height: number;
   } | null>(null);
   const scrollToBottomAnimationFrameRef = useRef<number | null>(null);
-  const pendingPreserveRef = useRef<{
-    distanceFromBottomPx: number;
-    frameId: number;
-    scrollElement: HTMLDivElement;
-    scrollHeightPx: number;
-    wheelDistanceFromBottomPx: number;
-  } | null>(null);
   const pendingLatestTurnSubmitPlacementRef = useRef<PendingLatestTurnSubmitPlacement | null>(null);
   const nativeFindScrollRef = useRef<LocalConversationNativeFindScroll | null>(null);
 
@@ -293,13 +278,6 @@ function LocalConversationThreadScrollControllerProvider({ children }: { childre
   useEffect(() => {
     responseSpacerStateRef.current = responseSpacerState;
   }, [responseSpacerState]);
-
-  const cancelPendingPreserve = useCallback(() => {
-    const pending = pendingPreserveRef.current;
-    if (pending === null) return;
-    window.cancelAnimationFrame(pending.frameId);
-    pendingPreserveRef.current = null;
-  }, []);
 
   const cancelScrollToBottomAnimation = useCallback(() => {
     if (scrollToBottomAnimationFrameRef.current === null) return;
@@ -339,12 +317,16 @@ function LocalConversationThreadScrollControllerProvider({ children }: { childre
         element,
         distanceFromBottomPx,
       );
-      const top = nextDistanceFromBottomPx === 0 ? 0 : -nextDistanceFromBottomPx;
-      // Even a no-op native write can interrupt an in-flight browser scroll.
-      if (element.scrollTop !== top) element.scrollTo({ behavior, top });
+      const top = resolveNativeScrollTopForDistanceFromBottomPx(element, nextDistanceFromBottomPx);
+      // Any native write interrupts an in-flight wheel or momentum scroll. Fractional layout under
+      // integer scroll extents leaves sub-pixel differences that cannot move content perceptibly,
+      // so only a whole-pixel difference is written; the request below keeps its exact value.
+      const instant = behavior !== "smooth";
+      if (instant ? Math.abs(element.scrollTop - top) >= 1 : element.scrollTop !== top)
+        element.scrollTo({ behavior, top });
       const actual = getThreadScrollDistanceFromBottomPx(element);
       roundedScrollRequestRef.current =
-        behavior === "instant" &&
+        instant &&
         actual !== nextDistanceFromBottomPx &&
         nextDistanceFromBottomPx > 0 &&
         nextDistanceFromBottomPx < element.scrollHeight - element.clientHeight
@@ -423,11 +405,10 @@ function LocalConversationThreadScrollControllerProvider({ children }: { childre
   );
 
   const holdViewport = useCallback(() => {
-    cancelPendingPreserve();
     cancelScrollToBottomAnimation();
     setScrollMode("user");
     responseSpacerStateRef.current?.holdViewport?.();
-  }, [cancelPendingPreserve, cancelScrollToBottomAnimation, setScrollMode]);
+  }, [cancelScrollToBottomAnimation, setScrollMode]);
 
   const compensateScrollToDistanceFromBottomPx = useCallback(
     (distance: number) => {
@@ -494,7 +475,6 @@ function LocalConversationThreadScrollControllerProvider({ children }: { childre
       const element = scrollElementRef.current;
       if (element === null) return;
       cancelNativeFindScroll();
-      cancelPendingPreserve();
       cancelScrollToBottomAnimation();
       programmaticScrollSettledUntilRef.current =
         performance.now() + PROGRAMMATIC_SCROLL_SETTLE_WINDOW_MS;
@@ -504,7 +484,6 @@ function LocalConversationThreadScrollControllerProvider({ children }: { childre
     },
     [
       cancelNativeFindScroll,
-      cancelPendingPreserve,
       cancelScrollToBottomAnimation,
       setScrollMode,
       writeNativeScrollDistance,
@@ -523,7 +502,6 @@ function LocalConversationThreadScrollControllerProvider({ children }: { childre
       },
     ) => {
       cancelNativeFindScroll();
-      cancelPendingPreserve();
       cancelScrollToBottomAnimation();
       programmaticScrollSettledUntilRef.current =
         performance.now() + PROGRAMMATIC_SCROLL_SETTLE_WINDOW_MS;
@@ -556,18 +534,12 @@ function LocalConversationThreadScrollControllerProvider({ children }: { childre
       }
       targetElement.scrollIntoView({ behavior, block, inline: "nearest" });
     },
-    [cancelNativeFindScroll, cancelPendingPreserve, cancelScrollToBottomAnimation, setScrollMode],
+    [cancelNativeFindScroll, cancelScrollToBottomAnimation, setScrollMode],
   );
 
-  const setFooterResizeViewportPreserveDisabled = useCallback(
-    (disabled: boolean) => {
-      footerResizeViewportPreserveDisabledRef.current = disabled;
-      if (disabled) {
-        cancelPendingPreserve();
-      }
-    },
-    [cancelPendingPreserve],
-  );
+  const setFooterResizeViewportPreserveDisabled = useCallback((disabled: boolean) => {
+    footerResizeViewportPreserveDisabledRef.current = disabled;
+  }, []);
 
   const setFooterHeightPx = useCallback(
     (height: number) => {
@@ -576,46 +548,28 @@ function LocalConversationThreadScrollControllerProvider({ children }: { childre
       const previous =
         footerHeightRef.current?.element === element ? footerHeightRef.current.height : null;
       if (previous === height) return;
+      const distanceBeforePx = getThreadScrollDistanceFromBottomPx(element);
       element.style.setProperty("--thread-scroll-padding-bottom", `${height + 16}px`);
       footerHeightRef.current = { element, height };
       if (
-        previous === null ||
         footerResizeViewportPreserveDisabledRef.current ||
         scrollToBottomAnimationFrameRef.current !== null
       )
         return;
-      const distance = getThreadScrollDistanceFromBottomPx(element);
-      if (distance <= THREAD_NEAR_BOTTOM_THRESHOLD_PX) return;
-      writeNativeScrollDistance(element, distance + height - previous, "instant");
-    },
-    [writeNativeScrollDistance],
-  );
-
-  const preserveScrollPositionForNextLayout = useCallback(() => {
-    const element = scrollElementRef.current;
-    if (element === null || footerResizeViewportPreserveDisabledRef.current) return;
-    if (pendingPreserveRef.current !== null) return;
-
-    const pending = {
-      distanceFromBottomPx: getThreadScrollDistanceFromBottomPx(element),
-      frameId: 0,
-      scrollElement: element,
-      scrollHeightPx: element.scrollHeight,
-      wheelDistanceFromBottomPx: 0,
-    };
-    pending.frameId = window.requestAnimationFrame(() => {
-      if (pendingPreserveRef.current !== pending) return;
-      pendingPreserveRef.current = null;
-      if (scrollElementRef.current !== pending.scrollElement) return;
-      if (pending.scrollElement.scrollHeight === pending.scrollHeightPx) return;
-      writeNativeScrollDistance(
-        pending.scrollElement,
-        pending.distanceFromBottomPx + pending.wheelDistanceFromBottomPx,
-        "auto",
+      // The footer clearance changes below the reader, so only a reader at the bottom must move.
+      if (isThreadScrollNearBottom({ scrollDistanceFromBottomPx: distanceBeforePx })) {
+        writeNativeScrollDistance(element, 0, "instant");
+        return;
+      }
+      // Record only the clearance change, leaving any pending gesture for its own scroll event.
+      recordScrollDistance(
+        lastScrollDistanceFromBottomPxRef.current +
+          getThreadScrollDistanceFromBottomPx(element) -
+          distanceBeforePx,
       );
-    });
-    pendingPreserveRef.current = pending;
-  }, [writeNativeScrollDistance]);
+    },
+    [recordScrollDistance, writeNativeScrollDistance],
+  );
 
   const maybeStickToBottom = useCallback(() => {
     if (scrollModeRef.current !== "stickToBottom") return;
@@ -624,37 +578,10 @@ function LocalConversationThreadScrollControllerProvider({ children }: { childre
     scrollToDistanceFromBottomPx(0, "auto");
   }, [scrollToDistanceFromBottomPx]);
 
-  const notifyContentLayout = useCallback(() => {
-    maybeStickToBottom();
-  }, [maybeStickToBottom]);
-
-  const adjustForMeasuredTurnHeightDelta = useCallback(
-    ({
-      heightDeltaPx,
-      turnTopDistanceFromBottomPx,
-      viewportBottomDistanceFromBottomPx,
-    }: Omit<MeasuredTurnHeightDeltaInput, "currentScrollDistanceFromBottomPx" | "scrollMode">) => {
-      const element = scrollElementRef.current;
-      if (element === null) return;
-      const adjustedScrollDistanceFromBottomPx =
-        resolveAdjustedScrollDistanceFromBottomForMeasuredTurnHeightDelta({
-          currentScrollDistanceFromBottomPx: getThreadScrollDistanceFromBottomPx(element),
-          heightDeltaPx,
-          turnTopDistanceFromBottomPx,
-          viewportBottomDistanceFromBottomPx,
-          scrollMode: scrollModeRef.current,
-        });
-      if (adjustedScrollDistanceFromBottomPx === null) return;
-      scrollToDistanceFromBottomPx(adjustedScrollDistanceFromBottomPx, "auto");
-    },
-    [scrollToDistanceFromBottomPx],
-  );
-
   const scrollToBottom = useCallback(() => {
     const element = scrollElementRef.current;
     if (element === null) return;
     setScrollMode("stickToBottom");
-    cancelPendingPreserve();
     cancelScrollToBottomAnimation();
 
     const initialDistanceFromBottomPx = getThreadScrollDistanceFromBottomPx(element);
@@ -681,13 +608,7 @@ function LocalConversationThreadScrollControllerProvider({ children }: { childre
       scrollToBottomAnimationFrameRef.current = null;
     };
     scrollToBottomAnimationFrameRef.current = window.requestAnimationFrame(step);
-  }, [
-    cancelPendingPreserve,
-    cancelScrollToBottomAnimation,
-    reducedMotion,
-    setScrollMode,
-    writeNativeScrollDistance,
-  ]);
+  }, [cancelScrollToBottomAnimation, reducedMotion, setScrollMode, writeNativeScrollDistance]);
 
   const jumpToBottom = useCallback(() => {
     setScrollMode("stickToBottom");
@@ -772,13 +693,6 @@ function LocalConversationThreadScrollControllerProvider({ children }: { childre
         Math.abs(event.deltaY) <= Math.abs(event.deltaX)
       )
         return;
-      const pendingPreserve = pendingPreserveRef.current;
-      if (pendingPreserve !== null) {
-        pendingPreserve.wheelDistanceFromBottomPx -= resolveWheelDeltaPx(
-          event,
-          scrollElement.clientHeight,
-        );
-      }
       userScrollDirection = event.deltaY < 0 ? "away" : "toward";
       userScrollGraceUntilRef.current = performance.now() + USER_SCROLL_GRACE_WINDOW_MS;
       roundedScrollRequestRef.current = null;
@@ -801,7 +715,6 @@ function LocalConversationThreadScrollControllerProvider({ children }: { childre
       scrollbarPointerStart = null;
       if (event.pointerType !== "mouse" || event.target !== scrollElement) return;
       cancelNativeFindScroll();
-      cancelPendingPreserve();
       cancelScrollToBottomAnimation();
       roundedScrollRequestRef.current = null;
       scrollbarPointerStart = {
@@ -836,9 +749,34 @@ function LocalConversationThreadScrollControllerProvider({ children }: { childre
       touch = null;
     };
 
+    // Content that grows below a top-origin viewport extends it away from the reader. Only a
+    // reader following at the bottom is carried along; an unobserved scroll or a live upward
+    // gesture keeps that reader where they are.
+    let observedScrollTop = scrollElement.scrollTop;
     const handleScroll = () => {
+      observedScrollTop = scrollElement.scrollTop;
       syncFromScrollPosition();
     };
+    const followContentGrowth = () => {
+      const scrolledSinceObservation = Math.abs(observedScrollTop - scrollElement.scrollTop) > 1;
+      observedScrollTop = scrollElement.scrollTop;
+      // Physical pixel snapping can leave a sub-pixel remainder; response placement sits at 1px.
+      if (
+        scrollModeRef.current !== "stickToBottom" ||
+        lastScrollDistanceFromBottomPxRef.current >= 1 ||
+        scrolledSinceObservation ||
+        (userScrollDirection === "away" && performance.now() <= userScrollGraceUntilRef.current) ||
+        getThreadScrollDistanceFromBottomPx(scrollElement) < 1
+      )
+        return;
+      compensateScrollToDistanceFromBottomPx(0);
+      observedScrollTop = scrollElement.scrollTop;
+    };
+    const contentResizeObserver =
+      typeof ResizeObserver === "undefined" ? null : new ResizeObserver(followContentGrowth);
+    contentResizeObserver?.observe(scrollElement);
+    if (scrollElement.firstElementChild)
+      contentResizeObserver?.observe(scrollElement.firstElementChild);
 
     scrollElement.addEventListener("wheel", handleWheel, { passive: true });
     scrollElement.addEventListener("pointerdown", handlePointerDown, { passive: true });
@@ -854,6 +792,7 @@ function LocalConversationThreadScrollControllerProvider({ children }: { childre
     return () => {
       mounted = false;
       window.cancelAnimationFrame(frameId);
+      contentResizeObserver?.disconnect();
       scrollElement.removeEventListener("wheel", handleWheel);
       scrollElement.removeEventListener("pointerdown", handlePointerDown);
       scrollElement.removeEventListener("pointerup", handlePointerEnd);
@@ -867,8 +806,8 @@ function LocalConversationThreadScrollControllerProvider({ children }: { childre
     };
   }, [
     cancelNativeFindScroll,
-    cancelPendingPreserve,
     cancelScrollToBottomAnimation,
+    compensateScrollToDistanceFromBottomPx,
     maybeStickToBottom,
     recordScrollDistance,
     scrollElement,
@@ -881,10 +820,9 @@ function LocalConversationThreadScrollControllerProvider({ children }: { childre
       if (programmaticFindSettleTimeoutRef.current !== null) {
         window.clearTimeout(programmaticFindSettleTimeoutRef.current);
       }
-      cancelPendingPreserve();
       cancelScrollToBottomAnimation();
     },
-    [cancelNativeFindScroll, cancelPendingPreserve, cancelScrollToBottomAnimation],
+    [cancelNativeFindScroll, cancelScrollToBottomAnimation],
   );
 
   const controller = useMemo<LocalConversationThreadScrollControllerContextValue>(
@@ -895,7 +833,6 @@ function LocalConversationThreadScrollControllerProvider({ children }: { childre
       getUnroundedScrollDistanceFromBottomPx,
       holdViewport,
       shouldFollowContentGrowth,
-      adjustForMeasuredTurnHeightDelta,
       clearPendingLatestTurnSubmitPlacement,
       consumePendingLatestTurnSubmitPlacement,
       hasPendingLatestTurnSubmitPlacement,
@@ -906,9 +843,6 @@ function LocalConversationThreadScrollControllerProvider({ children }: { childre
       isScrolledFromBottom,
       nativeFindTurnKey,
       jumpToBottom,
-      maybeStickToBottom,
-      notifyContentLayout,
-      preserveScrollPositionForNextLayout,
       prepareLatestTurnSubmitPlacement,
       registerScrollElement,
       registerResponseSpacerState,
@@ -929,7 +863,6 @@ function LocalConversationThreadScrollControllerProvider({ children }: { childre
       getUnroundedScrollDistanceFromBottomPx,
       holdViewport,
       shouldFollowContentGrowth,
-      adjustForMeasuredTurnHeightDelta,
       clearPendingLatestTurnSubmitPlacement,
       consumePendingLatestTurnSubmitPlacement,
       hasPendingLatestTurnSubmitPlacement,
@@ -940,9 +873,6 @@ function LocalConversationThreadScrollControllerProvider({ children }: { childre
       isScrolledFromBottom,
       nativeFindTurnKey,
       jumpToBottom,
-      maybeStickToBottom,
-      notifyContentLayout,
-      preserveScrollPositionForNextLayout,
       prepareLatestTurnSubmitPlacement,
       registerResponseSpacerState,
       responseSpacerState,

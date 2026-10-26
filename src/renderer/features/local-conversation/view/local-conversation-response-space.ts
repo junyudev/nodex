@@ -68,6 +68,8 @@ export function createThreadResponseSpaceController(
     const scrollElement = scrollController.getScrollElement();
     const distance = scrollElement === null ? 0 : scrollController.getScrollDistanceFromBottomPx();
     writeHeight(next);
+    // Space removed below a top-origin reader leaves its native position unchanged, so this is a
+    // no-op unless the browser clamped; an in-flight wheel animation keeps its full travel.
     if (scrollElement) {
       scrollController.compensateScrollToDistanceFromBottomPx(
         Math.max(0, distance - (previous - next)),
@@ -128,6 +130,12 @@ export function createThreadResponseSpaceController(
       },
       onComplete: () => {
         stopPlacementAnimation = null;
+        // Settle any physical-pixel remainder left by the last animated write.
+        scrollController.compensateScrollToDistanceFromBottomPx(
+          scrollController.getUnroundedScrollDistanceFromBottomPx(
+            scrollController.getLastScrollDistanceFromBottomPx(),
+          ),
+        );
       },
     });
     stopPlacementAnimation = () => {

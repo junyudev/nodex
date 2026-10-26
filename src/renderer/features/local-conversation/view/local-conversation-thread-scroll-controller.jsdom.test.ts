@@ -29,12 +29,24 @@ function buildScrollElement(input: {
 }
 
 describe("getThreadScrollDistanceFromBottomPx", () => {
-  test("treats the bottom of a column-reverse scroller as zero", () => {
-    expect(getThreadScrollDistanceFromBottomPx({ scrollTop: 0 })).toBe(0);
+  test("treats the end of the top-origin scroller as zero", () => {
+    expect(
+      getThreadScrollDistanceFromBottomPx({
+        clientHeight: 500,
+        scrollHeight: 8_000,
+        scrollTop: 7_500,
+      }),
+    ).toBe(0);
   });
 
-  test("converts negative native scrollTop into positive distance from bottom", () => {
-    expect(getThreadScrollDistanceFromBottomPx({ scrollTop: -5_365 })).toBe(5_365);
+  test("derives distance from bottom from native scrollTop", () => {
+    expect(
+      getThreadScrollDistanceFromBottomPx({
+        clientHeight: 500,
+        scrollHeight: 8_000,
+        scrollTop: 2_135,
+      }),
+    ).toBe(5_365);
   });
 });
 
@@ -75,24 +87,34 @@ describe("thread keyboard scroll intent", () => {
 });
 
 describe("resolveNativeScrollTopForDistanceFromBottomPx", () => {
-  test("writes negative native scrollTop for older content", () => {
+  test("maps older content to a smaller native scrollTop", () => {
     const element = buildScrollElement({
       clientHeight: 500,
       scrollHeight: 8_000,
-      scrollTop: 0,
+      scrollTop: 7_500,
     });
 
-    expect(resolveNativeScrollTopForDistanceFromBottomPx(element, 5_365)).toBe(-5_365);
+    expect(resolveNativeScrollTopForDistanceFromBottomPx(element, 5_365)).toBe(2_135);
   });
 
-  test("keeps the bottom target at native zero", () => {
+  test("maps the bottom target to the native scroll end", () => {
     const element = buildScrollElement({
       clientHeight: 500,
       scrollHeight: 8_000,
-      scrollTop: -100,
+      scrollTop: 100,
     });
 
-    expect(resolveNativeScrollTopForDistanceFromBottomPx(element, 0)).toBe(0);
+    expect(resolveNativeScrollTopForDistanceFromBottomPx(element, 0)).toBe(7_500);
+  });
+
+  test("clamps distances beyond the oldest content to the native start", () => {
+    const element = buildScrollElement({
+      clientHeight: 500,
+      scrollHeight: 8_000,
+      scrollTop: 100,
+    });
+
+    expect(resolveNativeScrollTopForDistanceFromBottomPx(element, 9_000)).toBe(0);
   });
 });
 

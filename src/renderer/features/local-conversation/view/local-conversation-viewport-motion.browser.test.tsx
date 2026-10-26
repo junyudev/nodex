@@ -1,6 +1,14 @@
 import { act, fireEvent, render, waitFor } from "@testing-library/react";
 import { useLayoutEffect, type ReactNode } from "react";
-import { afterEach, beforeEach, describe, expect, test, type TestContext } from "vite-plus/test";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  test,
+  vi,
+  type TestContext,
+} from "vite-plus/test";
 import { NodexTooltipProvider } from "@/components/ui/tooltip";
 import { createMaitaiStore, disposeMaitaiStore, MaitaiProvider } from "@/lib/maitai";
 import { REDUCED_MOTION_STORAGE_KEY } from "@/lib/reduced-motion";
@@ -10,7 +18,9 @@ import type { VisibleConversationTurnEntry } from "../selectors";
 import { LocalConversationTestQueryProvider } from "./local-conversation-test-query.test-fixtures";
 import {
   EnsureLocalConversationThreadScrollController,
+  getThreadScrollDistanceFromBottomPx,
   LocalConversationThreadScrollLayout,
+  resolveNativeScrollTopForDistanceFromBottomPx,
   useLocalConversationThreadScrollController,
   type LocalConversationThreadScrollControllerValue,
 } from "./local-conversation-thread-scroll-controller";
@@ -284,7 +294,7 @@ describe("transcript viewport motion in Chromium", () => {
       const scroll = view.readController().getScrollElement()!;
       await act(async () => {
         // A native navigation scroll does not manufacture a wheel/user intent.
-        scroll.scrollTop = -300;
+        scroll.scrollTop = resolveNativeScrollTopForDistanceFromBottomPx(scroll, 300);
         fireEvent.scroll(scroll);
         await settleFrames(3);
       });
@@ -310,7 +320,7 @@ describe("transcript viewport motion in Chromium", () => {
       });
       const heightGrowth = latest.getBoundingClientRect().height - beforeHeight;
       expect(heightGrowth).toBeGreaterThan(40);
-      expect(-scroll.scrollTop).toBeGreaterThan(24);
+      expect(getThreadScrollDistanceFromBottomPx(scroll)).toBeGreaterThan(24);
       const anchorError = Math.abs(anchor.getBoundingClientRect().top - before);
       expect(anchorError).toBeLessThanOrEqual(1);
       await act(async () => {
@@ -319,11 +329,11 @@ describe("transcript viewport motion in Chromium", () => {
         view.update(growLatest(grown));
         await settleFrames(8);
       });
-      expect(Math.abs(scroll.scrollTop)).toBeLessThanOrEqual(1);
+      expect(getThreadScrollDistanceFromBottomPx(scroll)).toBeLessThanOrEqual(1);
       await recordGeometry(context, "measured physical bottom gate", {
         heightGrowth,
         anchorError,
-        bottomDistanceAfterGrowth: -scroll.scrollTop,
+        bottomDistanceAfterGrowth: getThreadScrollDistanceFromBottomPx(scroll),
       });
     } finally {
       view.dispose();
@@ -424,7 +434,7 @@ describe("transcript viewport motion in Chromium", () => {
         view.update([...turns, entry(10, true)]);
       });
       const scroll = view.readController().getScrollElement()!;
-      const initialDistance = -scroll.scrollTop;
+      const initialDistance = getThreadScrollDistanceFromBottomPx(scroll);
       const latest = view.container.querySelector<HTMLElement>(
         '[data-turn-key="viewport-turn-10"]',
       )!;
@@ -433,18 +443,66 @@ describe("transcript viewport motion in Chromium", () => {
       await act(async () => {
         await new Promise((resolve) => setTimeout(resolve, 120));
       });
-      expect(-scroll.scrollTop).toBeLessThan(initialDistance);
+      expect(getThreadScrollDistanceFromBottomPx(scroll)).toBeLessThan(initialDistance);
       await act(async () => {
         await new Promise((resolve) => setTimeout(resolve, 650));
       });
-      expect(-scroll.scrollTop).toBeLessThanOrEqual(2);
+      expect(getThreadScrollDistanceFromBottomPx(scroll)).toBeLessThanOrEqual(2);
       expect(latest.getBoundingClientRect().top).toBeLessThan(initialTop - 50);
       expect(latest.getBoundingClientRect().height).toBeGreaterThan(0);
       await recordGeometry(context, "submit placement", {
         initialDistance,
-        finalDistance: -scroll.scrollTop,
+        finalDistance: getThreadScrollDistanceFromBottomPx(scroll),
         initialTop,
         finalTop: latest.getBoundingClientRect().top,
+      });
+    } finally {
+      view.dispose();
+    }
+  });
+  test("an animated upward scroll after submit keeps its full travel through response space", async (context) => {
+    const turns = Array.from({ length: 10 }, (_, index) => entry(index));
+    const view = renderThread(turns, true);
+    try {
+      await waitFor(() => expect(view.readController().getScrollElement()?.clientHeight).toBe(600));
+      await act(async () => {
+        await settleFrames();
+      });
+      await act(async () => {
+        view.readController().prepareLatestTurnSubmitPlacement();
+        view.update([...turns, entry(10, true)]);
+        await settleFrames(6);
+      });
+      const scroll = view.readController().getScrollElement()!;
+      const placedSpace = view.readController().responseSpacerState?.getHeightPx() ?? 0;
+      expect(placedSpace).toBeGreaterThan(150);
+      const latest = view.container.querySelector<HTMLElement>(
+        '[data-turn-key="viewport-turn-10"]',
+      )!;
+      const placedTop = latest.getBoundingClientRect().top;
+      const nativeWrites = vi.spyOn(scroll, "scrollTo");
+      await act(async () => {
+        // A mouse-wheel notch is an animated native scroll; any native write would cut it short.
+        fireEvent.wheel(scroll, { deltaY: -120 });
+        scroll.scrollBy({ top: -120, behavior: "smooth" });
+        let previousTop = scroll.scrollTop;
+        let stableFrames = 0;
+        for (let frame = 0; frame < 90 && stableFrames < 4; frame += 1) {
+          await settleFrames(1);
+          stableFrames = scroll.scrollTop === previousTop ? stableFrames + 1 : 0;
+          previousTop = scroll.scrollTop;
+        }
+      });
+      const travel = latest.getBoundingClientRect().top - placedTop;
+      const remainingSpace = view.readController().responseSpacerState?.getHeightPx() ?? 0;
+      expect(nativeWrites).not.toHaveBeenCalled();
+      expect(travel).toBeGreaterThan(118);
+      expect(remainingSpace).toBeLessThanOrEqual(placedSpace);
+      expect(view.readController().getScrollMode()).toBe("user");
+      await recordGeometry(context, "upward scroll through response space", {
+        placedSpace,
+        remainingSpace,
+        travel,
       });
     } finally {
       view.dispose();
@@ -714,7 +772,7 @@ describe("transcript viewport motion in Chromium", () => {
       expect(view.readController().responseSpacerState?.getHeightPx()).toBe(
         Math.max(0, Math.min((available * 2) / 3, available - 240)),
       );
-      expect(-scroll.scrollTop).toBeLessThanOrEqual(2);
+      expect(getThreadScrollDistanceFromBottomPx(scroll)).toBeLessThanOrEqual(2);
       const latest = view.container.querySelector<HTMLElement>(
         '[data-turn-key="viewport-turn-10"]',
       )!;

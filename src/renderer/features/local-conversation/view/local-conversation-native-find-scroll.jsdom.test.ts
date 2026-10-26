@@ -20,11 +20,10 @@ function frames() {
   };
 }
 
-function fixture(input: { targetTop?: number; direction?: string; scrollTop?: number } = {}) {
+function fixture(input: { targetTop?: number; scrollTop?: number } = {}) {
   vi.useFakeTimers();
   const frame = frames();
   const viewport = document.createElement("div");
-  viewport.style.flexDirection = input.direction ?? "column-reverse";
   const geometry = { height: 1_600, targetTop: input.targetTop ?? 800, clientHeight: 400 };
   Object.defineProperties(viewport, {
     scrollHeight: { get: () => geometry.height },
@@ -32,7 +31,7 @@ function fixture(input: { targetTop?: number; direction?: string; scrollTop?: nu
     offsetHeight: { get: () => geometry.clientHeight },
     clientTop: { value: 0 },
   });
-  viewport.scrollTop = input.scrollTop ?? -600;
+  viewport.scrollTop = input.scrollTop ?? 600;
   viewport.getBoundingClientRect = () => new DOMRect(0, 10, 500, geometry.clientHeight);
   document.body.append(viewport);
   const newMark = () => {
@@ -79,13 +78,11 @@ afterEach(() => {
 
 describe("native Find scroll lifetime", () => {
   test.each([
-    { direction: "column-reverse", scrollTop: -600, targetTop: 200 },
-    { direction: "column", scrollTop: 0, targetTop: 20 },
-    { direction: "column", scrollTop: 1_200, targetTop: 380 },
-    { direction: "column-reverse", scrollTop: -1_200, targetTop: 20 },
-    { direction: "column-reverse", scrollTop: 0, targetTop: 380 },
+    { scrollTop: 600, targetTop: 200 },
+    { scrollTop: 0, targetTop: 20 },
+    { scrollTop: 1_200, targetTop: 380 },
   ])(
-    "finishes an already positioned request without scrollend: $direction/$scrollTop",
+    "finishes an already positioned request without scrollend at scrollTop $scrollTop",
     async (input) => {
       const value = fixture(input);
       expect(value.finished).not.toHaveBeenCalled();
@@ -275,13 +272,10 @@ describe("native Find scroll lifetime", () => {
   });
 
   test.each([
-    { direction: "column", scrollTop: 0, targetTop: 20 },
-    { direction: "column", scrollTop: 1_200, targetTop: 380 },
-    { direction: "column-reverse", scrollTop: -1_200, targetTop: 20 },
-    { direction: "column-reverse", scrollTop: 0, targetTop: 380 },
-  ])("accepts a visible native edge clamp: $direction/$scrollTop", async (input) => {
+    { scrollTop: 0, targetTop: 20 },
+    { scrollTop: 1_200, targetTop: 380 },
+  ])("accepts a visible native edge clamp at scrollTop $scrollTop", async (input) => {
     const value = fixture();
-    value.viewport.style.flexDirection = input.direction;
     value.viewport.scrollTop = input.scrollTop;
     value.geometry.targetTop = input.targetTop;
     value.scrollEnd();

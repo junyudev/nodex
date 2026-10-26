@@ -5,7 +5,6 @@ import {
   isRewindSurvivorLatestTurn,
   buildVirtualizedTurnListRestoreState,
   createThreadLatestTurnFollowState,
-  resolveAdjustedScrollDistanceFromBottomForMeasuredTurnHeightDelta,
   resolveAnchorPreservedDistanceFromBottom,
   resolveInitialVirtualizedTurnViewportState,
   resolveMeasuredVisibleAnchorKey,
@@ -471,60 +470,6 @@ describe("turn reveal distances", () => {
     });
 
     expect(`${range.startIndex}:${range.endIndex}`).toBe("0:3");
-  });
-});
-
-describe("resolveAdjustedScrollDistanceFromBottomForMeasuredTurnHeightDelta", () => {
-  test("does not adjust when the turn is still visible in the viewport", () => {
-    const adjustedScrollDistanceFromBottomPx =
-      resolveAdjustedScrollDistanceFromBottomForMeasuredTurnHeightDelta({
-        currentScrollDistanceFromBottomPx: 300,
-        heightDeltaPx: 80,
-        turnTopDistanceFromBottomPx: 340,
-        viewportBottomDistanceFromBottomPx: 300,
-        scrollMode: "user",
-      });
-
-    expect(adjustedScrollDistanceFromBottomPx === null).toBe(true);
-  });
-
-  test("adjusts when the measured turn is fully below the viewport", () => {
-    const adjustedScrollDistanceFromBottomPx =
-      resolveAdjustedScrollDistanceFromBottomForMeasuredTurnHeightDelta({
-        currentScrollDistanceFromBottomPx: 300,
-        heightDeltaPx: 80,
-        turnTopDistanceFromBottomPx: 220,
-        viewportBottomDistanceFromBottomPx: 300,
-        scrollMode: "user",
-      });
-
-    expect(adjustedScrollDistanceFromBottomPx).toBe(380);
-  });
-
-  test("stays at zero while sticking to bottom", () => {
-    const adjustedScrollDistanceFromBottomPx =
-      resolveAdjustedScrollDistanceFromBottomForMeasuredTurnHeightDelta({
-        currentScrollDistanceFromBottomPx: 700,
-        heightDeltaPx: 64,
-        turnTopDistanceFromBottomPx: 740,
-        viewportBottomDistanceFromBottomPx: 640,
-        scrollMode: "stickToBottom",
-      });
-
-    expect(adjustedScrollDistanceFromBottomPx).toBe(0);
-  });
-
-  test("suppresses height compensation during programmatic find scrolls", () => {
-    const adjustedScrollDistanceFromBottomPx =
-      resolveAdjustedScrollDistanceFromBottomForMeasuredTurnHeightDelta({
-        currentScrollDistanceFromBottomPx: 400,
-        heightDeltaPx: 40,
-        turnTopDistanceFromBottomPx: 120,
-        viewportBottomDistanceFromBottomPx: 400,
-        scrollMode: "programmaticFind",
-      });
-
-    expect(adjustedScrollDistanceFromBottomPx === null).toBe(true);
   });
 });
 

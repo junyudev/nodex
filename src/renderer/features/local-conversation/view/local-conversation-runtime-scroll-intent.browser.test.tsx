@@ -22,6 +22,7 @@ import { projectNormalizedTimelineEntries } from "../projection/normalized-timel
 import { LocalConversationTestQueryProvider } from "./local-conversation-test-query.test-fixtures";
 import {
   EnsureLocalConversationThreadScrollController,
+  getThreadScrollDistanceFromBottomPx,
   LocalConversationThreadScrollLayout,
   useLocalConversationThreadScrollController,
   type LocalConversationThreadScrollControllerValue,
@@ -390,7 +391,7 @@ describe("completed runtime response scroll intent", () => {
       const session: CDPSession = cdp();
       const distances: number[] = [];
       for (let index = 0; index < 8; index++) {
-        const beforeWheel = -viewport.scrollTop;
+        const beforeWheel = getThreadScrollDistanceFromBottomPx(viewport);
         await act(async () => {
           await session.send("Input.dispatchMouseEvent", {
             type: "mouseWheel",
@@ -401,16 +402,18 @@ describe("completed runtime response scroll intent", () => {
           });
           await frames(8);
         });
-        distances.push(-viewport.scrollTop);
-        expect(-viewport.scrollTop).toBeGreaterThan(beforeWheel);
+        distances.push(getThreadScrollDistanceFromBottomPx(viewport));
+        expect(getThreadScrollDistanceFromBottomPx(viewport)).toBeGreaterThan(beforeWheel);
         if (index === 0) {
           const frame = view.container.querySelector<HTMLElement>("[data-test-viewport-frame]")!;
-          const beforeReflow = -viewport.scrollTop;
+          const beforeReflow = getThreadScrollDistanceFromBottomPx(viewport);
           await act(async () => {
             frame.style.width = "620px";
             await frames(8);
           });
-          expect(-viewport.scrollTop).toBeGreaterThanOrEqual(beforeReflow);
+          expect(getThreadScrollDistanceFromBottomPx(viewport)).toBeGreaterThanOrEqual(
+            beforeReflow,
+          );
         }
       }
       expect(distances.at(-1)).toBeGreaterThan(50);
@@ -444,7 +447,8 @@ describe("completed runtime response scroll intent", () => {
       const iframe = window.frameElement?.getBoundingClientRect();
       const session: CDPSession = cdp();
       const nativeDistances: number[] = [];
-      const recordNativeScroll = () => nativeDistances.push(-viewport.scrollTop);
+      const recordNativeScroll = () =>
+        nativeDistances.push(getThreadScrollDistanceFromBottomPx(viewport));
       viewport.addEventListener("scroll", recordNativeScroll);
       try {
         await act(async () => {
@@ -459,7 +463,7 @@ describe("completed runtime response scroll intent", () => {
           await frames(40);
         });
         expect(nativeDistances.some((distance) => distance > 0)).toBe(true);
-        expect(-viewport.scrollTop).toBeGreaterThan(0);
+        expect(getThreadScrollDistanceFromBottomPx(viewport)).toBeGreaterThan(0);
         expect(view.scroll().getScrollMode()).toBe("user");
       } finally {
         viewport.removeEventListener("scroll", recordNativeScroll);

@@ -153,6 +153,41 @@ function getBottomViewportOverflowPx(input: {
   );
 }
 
+/**
+ * Reads the reader's bottom distance from the committed content box. A measured row can overflow
+ * its committed height before layout includes it; that overflow is not yet distance to compensate.
+ */
+function readCommittedScrollDistanceFromBottomPx(scrollElement: HTMLElement): number | null {
+  const content = scrollElement.firstElementChild;
+  if (content === null || scrollElement.clientHeight <= 0) return null;
+  const contentRect = content.getBoundingClientRect();
+  if (contentRect.height <= 0) return null;
+  const scrollTop = scrollElement.scrollTop;
+  const contentBottomPx =
+    scrollTop +
+    (contentRect.bottom - scrollElement.getBoundingClientRect().top) /
+      readCodexWindowZoom(scrollElement);
+  return Math.max(0, Math.round(contentBottomPx) - scrollElement.clientHeight) - scrollTop;
+}
+
+/** Converts a content distance into the list root's own bottom distance. */
+function resolveListRootDistanceFromBottomPx(input: {
+  readonly contentDistanceFromBottomPx: number;
+  readonly listRoot: HTMLElement | null;
+  readonly responseSpaceHeightPx: number;
+  readonly scrollElement: HTMLElement | null;
+}): number {
+  const { contentDistanceFromBottomPx, listRoot, responseSpaceHeightPx, scrollElement } = input;
+  const scrollContent = scrollElement?.firstElementChild;
+  if (!scrollElement || !scrollContent || !listRoot) return contentDistanceFromBottomPx;
+  return (
+    contentDistanceFromBottomPx +
+    responseSpaceHeightPx -
+    (scrollContent.getBoundingClientRect().bottom - listRoot.getBoundingClientRect().bottom) /
+      readCodexWindowZoom(scrollElement)
+  );
+}
+
 export type LocalConversationVirtualizedTurnTargetResolver = (
   turnElement: HTMLElement,
 ) => HTMLElement | null;
@@ -805,15 +840,30 @@ function LocalConversationVirtualizedTurnListCore({
     return element;
   }, [scrollController]);
 
-  const shouldFollowMeasuredGrowth = useCallback(() => {
+  /** Content distance before uncommitted row growth, including a pending native gesture. */
+  const readMeasuredScrollDistanceFromBottomPx = useCallback(() => {
     const element = getScrollElement();
-    if (element === null) return false;
+    const committedDistancePx =
+      element === null ? null : readCommittedScrollDistanceFromBottomPx(element);
+    return committedDistancePx === null
+      ? scrollController.getLastScrollDistanceFromBottomPx()
+      : committedDistancePx - getResponseSpacerHeightPx();
+  }, [getResponseSpacerHeightPx, getScrollElement, scrollController]);
+
+  const shouldFollowMeasuredGrowth = useCallback(() => {
+    if (getScrollElement() === null) return false;
     return shouldFollowMeasuredTurnGrowth({
       shouldFollowContentGrowth: scrollController.shouldFollowContentGrowth(),
       responseSpacerHeightPx: getResponseSpacerHeightPx(),
-      physicalDistanceFromBottomPx: getThreadScrollDistanceFromBottomPx(element),
+      physicalDistanceFromBottomPx:
+        readMeasuredScrollDistanceFromBottomPx() + getResponseSpacerHeightPx(),
     });
-  }, [getResponseSpacerHeightPx, getScrollElement, scrollController]);
+  }, [
+    getResponseSpacerHeightPx,
+    getScrollElement,
+    readMeasuredScrollDistanceFromBottomPx,
+    scrollController,
+  ]);
 
   const canPreserveContentAnchor = useCallback(
     () =>
@@ -1040,6 +1090,7 @@ function LocalConversationVirtualizedTurnListCore({
           ? capturedAnchor
           : null;
       const responseSpaceHeightAtMeasurementPx = getResponseSpacerHeightPx();
+      const measuredScrollDistanceFromBottomPx = readMeasuredScrollDistanceFromBottomPx();
       let nextHeights = currentHeights;
       let hasChanged = false;
       let measuredDistanceDeltaPx = 0;
@@ -1049,6 +1100,48 @@ function LocalConversationVirtualizedTurnListCore({
       const pendingRestoreDistanceFromBottomPx = preserveMeasuredTurnViewport
         ? null
         : getPendingRestoreScrollDistanceFromBottomPx();
+      // Growth from the reader's first visible row downward extends away from the viewport top;
+      // only growth before that row moves what the reader sees.
+      let referenceBottomOffsetPx = currentViewport.distanceFromBottomPx;
+      if (
+        preserveMeasuredTurnViewport &&
+        activePendingTargetRef.current === null &&
+        getPendingRestoreScrollDistanceFromBottomPx() === null
+      ) {
+        const scrollElement = getScrollElement();
+        let anchorKey = resolveMeasuredVisibleAnchorKey({
+          distanceFromBottomPx: resolveListRootDistanceFromBottomPx({
+            contentDistanceFromBottomPx: measuredScrollDistanceFromBottomPx,
+            listRoot: listRootRef.current,
+            responseSpaceHeightPx: responseSpaceHeightAtMeasurementPx,
+            scrollElement,
+          }),
+          preferLatestVisibleRow: measuredScrollDistanceFromBottomPx < 0,
+          layout: currentLayout,
+          measuredHeightsByKey: currentHeights,
+          nextLayout: currentLayout,
+          viewportHeightPx: currentViewport.viewportHeightPx,
+        });
+        const focused = scrollElement?.ownerDocument.activeElement;
+        const focusedRow = focused?.closest<HTMLElement>("[data-turn-key]");
+        const focusedTurnKey = focusedRow?.dataset.turnKey;
+        if (
+          scrollElement &&
+          focused &&
+          focusedTurnKey &&
+          turnElementsByKeyRef.current.get(focusedTurnKey) === focusedRow
+        ) {
+          const focusedRect = focused.getBoundingClientRect();
+          const viewport = scrollElement.getBoundingClientRect();
+          if (focusedRect.bottom > viewport.top && focusedRect.top < viewport.bottom)
+            anchorKey = focusedTurnKey;
+        }
+        const anchorIndex =
+          anchorKey === null ? undefined : currentLayout.turnIndexByKey.get(anchorKey);
+        if (anchorIndex !== undefined)
+          referenceBottomOffsetPx =
+            currentLayout.bottomOffsetsPx[anchorIndex] ?? referenceBottomOffsetPx;
+      }
 
       for (const [turnKey, measurement] of measurements) {
         if (!Number.isFinite(measurement.heightPx) || measurement.heightPx < 0) continue;
@@ -1074,7 +1167,7 @@ function LocalConversationVirtualizedTurnListCore({
         const isLatestTurn = turnKey === latestTurnKey;
         if (
           layoutDeltaPx !== 0 &&
-          bottomOffsetPx <= currentViewport.distanceFromBottomPx &&
+          bottomOffsetPx <= referenceBottomOffsetPx &&
           (preserveMeasuredTurnViewport ||
             (pendingRestoreDistanceFromBottomPx !== null && !isLatestTurn))
         ) {
@@ -1112,8 +1205,12 @@ function LocalConversationVirtualizedTurnListCore({
       } else if (measuredDistanceDeltaPx !== 0) {
         scrollDistanceFromBottomPx =
           scrollController.getUnroundedScrollDistanceFromBottomPx(
-            scrollController.getLastScrollDistanceFromBottomPx(),
+            measuredScrollDistanceFromBottomPx,
           ) + measuredDistanceDeltaPx;
+        nextDistanceFromBottomPx = Math.max(0, scrollDistanceFromBottomPx);
+      } else if (preserveMeasuredTurnViewport || latestTurnElement === null) {
+        // Committed growth before the reader would otherwise push the rows they are reading down.
+        scrollDistanceFromBottomPx = measuredScrollDistanceFromBottomPx;
         nextDistanceFromBottomPx = Math.max(0, scrollDistanceFromBottomPx);
       }
 
@@ -1182,7 +1279,11 @@ function LocalConversationVirtualizedTurnListCore({
       } else {
         commit();
       }
-      if (publishLatestMeasurementImmediately) applyMeasurementEffects(measurementEffect);
+      if (publishLatestMeasurementImmediately) {
+        // Compensation maps bottom distance through the committed height; apply it first.
+        if (listRootRef.current) listRootRef.current.style.height = `${nextLayout.totalHeightPx}px`;
+        applyMeasurementEffects(measurementEffect);
+      }
       return true;
     },
     [
@@ -1193,6 +1294,7 @@ function LocalConversationVirtualizedTurnListCore({
       getScrollElement,
       preserveMeasuredTurnViewport,
       publishViewportState,
+      readMeasuredScrollDistanceFromBottomPx,
       scrollController,
       shouldFollowMeasuredGrowth,
     ],
@@ -1542,8 +1644,9 @@ function LocalConversationVirtualizedTurnListCore({
       (leaf.getBoundingClientRect().top - scrollElement.getBoundingClientRect().top) /
       readCodexWindowZoom(scrollElement);
     const distanceFromBottomPx = resolveRealtimeTranscriptAnchorDistance({
+      // The anchor's live position pairs with the live distance, including committed growth.
       distanceFromBottomPx: scrollController.getUnroundedScrollDistanceFromBottomPx(
-        scrollController.getLastScrollDistanceFromBottomPx(),
+        scrollController.getScrollDistanceFromBottomPx(),
       ),
       currentTopWithinViewportPx,
       anchorTopWithinViewportPx: anchor.topWithinViewportPx,
@@ -1585,27 +1688,33 @@ function LocalConversationVirtualizedTurnListCore({
       publishCurrentLayout();
       return;
     }
-    const pendingRestoreDistance = getPendingRestoreScrollDistanceFromBottomPx();
-    if (pendingRestoreDistance !== null || shouldFollowMeasuredGrowth()) {
+    if (getPendingRestoreScrollDistanceFromBottomPx() !== null) {
       publishCurrentLayout();
       return;
     }
+    // The committed layout already moved the live position; the recorded one predates it.
     const previousContentDistanceFromBottomPx =
       scrollController.getLastScrollDistanceFromBottomPx();
-    const previousDistanceFromBottomPx = Math.max(0, previousContentDistanceFromBottomPx);
     const responseSpaceHeightPx = getResponseSpacerHeightPx();
-    const scrollElement = getScrollElement();
-    const scrollContent = scrollElement?.firstElementChild;
-    const listRoot = listRootRef.current;
-    const anchorDistanceFromBottomPx =
-      scrollElement && scrollContent && listRoot
-        ? previousContentDistanceFromBottomPx +
-          responseSpaceHeightPx -
-          (scrollContent.getBoundingClientRect().bottom - listRoot.getBoundingClientRect().bottom) /
-            readCodexWindowZoom(scrollElement)
-        : previousContentDistanceFromBottomPx;
+    if (
+      shouldFollowMeasuredTurnGrowth({
+        shouldFollowContentGrowth: scrollController.shouldFollowContentGrowth(),
+        responseSpacerHeightPx: responseSpaceHeightPx,
+        physicalDistanceFromBottomPx: previousContentDistanceFromBottomPx + responseSpaceHeightPx,
+      })
+    ) {
+      publishCurrentLayout();
+      scrollController.compensateScrollToDistanceFromBottomPx(0);
+      return;
+    }
+    const previousDistanceFromBottomPx = Math.max(0, previousContentDistanceFromBottomPx);
     const anchorKey = resolveMeasuredVisibleAnchorKey({
-      distanceFromBottomPx: anchorDistanceFromBottomPx,
+      distanceFromBottomPx: resolveListRootDistanceFromBottomPx({
+        contentDistanceFromBottomPx: previousContentDistanceFromBottomPx,
+        listRoot: listRootRef.current,
+        responseSpaceHeightPx,
+        scrollElement: getScrollElement(),
+      }),
       preferLatestVisibleRow: previousContentDistanceFromBottomPx < 0,
       layout: previousLayout,
       measuredHeightsByKey: measuredHeightsRef.current,
@@ -1622,9 +1731,11 @@ function LocalConversationVirtualizedTurnListCore({
       previousLayout,
       nextLayout: unmeasuredLayout,
     });
+    // Rows added before the anchor keep its bottom distance but still move it down.
     if (
       preservedDistanceFromBottomPx === null ||
-      preservedDistanceFromBottomPx === previousDistanceFromBottomPx
+      (preservedDistanceFromBottomPx === previousDistanceFromBottomPx &&
+        previousLayout.totalHeightPx === unmeasuredLayout.totalHeightPx)
     ) {
       publishCurrentLayout();
       return;

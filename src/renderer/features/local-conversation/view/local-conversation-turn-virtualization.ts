@@ -79,14 +79,6 @@ export interface TargetRevealDistanceInput extends TurnRevealDistanceInput {
   windowZoom?: number;
 }
 
-export interface MeasuredTurnHeightDeltaInput {
-  currentScrollDistanceFromBottomPx: number;
-  heightDeltaPx: number;
-  scrollMode: ThreadScrollMode;
-  turnTopDistanceFromBottomPx: number;
-  viewportBottomDistanceFromBottomPx: number;
-}
-
 export interface VirtualizedTurnRenderedWindow {
   anchorKey: string;
   count: number;
@@ -672,28 +664,6 @@ export function resolveTargetCenterDistanceFromBottom({
       normalizedTargetHeightPx / 2 -
       viewportHeightPx / 2,
   );
-}
-
-export function resolveAdjustedScrollDistanceFromBottomForMeasuredTurnHeightDelta({
-  currentScrollDistanceFromBottomPx,
-  heightDeltaPx,
-  turnTopDistanceFromBottomPx,
-  viewportBottomDistanceFromBottomPx,
-  scrollMode,
-}: MeasuredTurnHeightDeltaInput): number | null {
-  if (heightDeltaPx === 0 || scrollMode === "programmaticFind") {
-    return null;
-  }
-
-  if (scrollMode === "stickToBottom") {
-    return 0;
-  }
-
-  if (turnTopDistanceFromBottomPx <= viewportBottomDistanceFromBottomPx) {
-    return Math.max(0, currentScrollDistanceFromBottomPx + heightDeltaPx);
-  }
-
-  return null;
 }
 
 export function createThreadLatestTurnFollowState(

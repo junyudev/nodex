@@ -26,6 +26,7 @@ import { projectNormalizedTimelineEntries } from "../projection/normalized-timel
 import { LocalConversationTestQueryProvider } from "./local-conversation-test-query.test-fixtures";
 import {
   EnsureLocalConversationThreadScrollController,
+  getThreadScrollDistanceFromBottomPx,
   LocalConversationThreadScrollLayout,
   useLocalConversationThreadScrollController,
   type LocalConversationThreadScrollControllerValue,
@@ -358,7 +359,7 @@ function mountHistory(fixture: ReturnType<typeof historyFixture>) {
     async towardTop(offset = 100) {
       await act(async () => {
         const element = viewport();
-        const nextScrollTop = -(element.scrollHeight - element.clientHeight - offset);
+        const nextScrollTop = offset;
         fireEvent.wheel(element, { deltaY: nextScrollTop - element.scrollTop });
         element.scrollTop = nextScrollTop;
         fireEvent.scroll(element);
@@ -411,7 +412,7 @@ describe("automatic thread history in Chromium", () => {
           afterScrollTop: view.viewport().scrollTop,
         }),
       ).toBeLessThanOrEqual(2);
-      const beforeStreamScrollTop = view.viewport().scrollTop;
+      const beforeStreamDistance = getThreadScrollDistanceFromBottomPx(view.viewport());
       const turn = anchor.closest<HTMLElement>("[data-turn-key]")!;
       const beforeStreamHeight = turn.getBoundingClientRect().height;
       await fixture.stream(
@@ -419,7 +420,10 @@ describe("automatic thread history in Chromium", () => {
         "run",
       );
       expect(turn.getBoundingClientRect().height).toBeGreaterThan(beforeStreamHeight);
-      expect(view.viewport().scrollTop).toBeLessThan(beforeStreamScrollTop);
+      // The reply grows below the reader, extending the conversation away from them.
+      expect(getThreadScrollDistanceFromBottomPx(view.viewport())).toBeGreaterThan(
+        beforeStreamDistance,
+      );
       expect(anchor.isConnected).toBe(true);
       expect(Math.abs(anchor.getBoundingClientRect().top - before)).toBeLessThanOrEqual(2);
     } finally {
@@ -442,7 +446,7 @@ describe("automatic thread history in Chromium", () => {
         "Current reply\n\nThe live response continues.\n\nA third paragraph arrives.",
       );
       expect(reply.getBoundingClientRect().height).toBeGreaterThan(replyHeight);
-      expect(view.viewport().scrollTop).toBe(0);
+      expect(getThreadScrollDistanceFromBottomPx(view.viewport())).toBe(0);
       expect(fixture.requests).toHaveLength(0);
       await view.towardTop();
       await waitFor(() => expect(fixture.requests).toHaveLength(1));
@@ -457,7 +461,7 @@ describe("automatic thread history in Chromium", () => {
       const before = anchor.getBoundingClientRect().top;
       expect(before).toBeGreaterThanOrEqual(view.viewport().getBoundingClientRect().top);
       expect(before).toBeLessThan(view.viewport().getBoundingClientRect().bottom);
-      expect(view.viewport().scrollTop).toBeLessThan(0);
+      expect(getThreadScrollDistanceFromBottomPx(view.viewport())).toBeGreaterThan(0);
       await fixture.stream(
         Array.from({ length: 12 }, (_, index) => `Growing reply ${index}`).join("\n\n"),
       );
@@ -481,8 +485,7 @@ describe("automatic thread history in Chromium", () => {
       expect(anchor.isConnected).toBe(true);
       // The measured layout rounds each row to physical pixels.
       expect(Math.abs(anchor.getBoundingClientRect().top - before)).toBeLessThanOrEqual(2);
-      const distanceFromTop =
-        view.viewport().scrollHeight - view.viewport().clientHeight + view.viewport().scrollTop;
+      const distanceFromTop = view.viewport().scrollTop;
       expect(distanceFromTop - 144).toBeGreaterThan(800);
       await view.towardTop();
       await waitFor(() => expect(fixture.requests).toHaveLength(3));

@@ -211,7 +211,6 @@ describe("ordinary sparse history geometry", () => {
       const viewport = readController().getScrollElement()!.getBoundingClientRect();
       const beforeTop = target.getBoundingClientRect().top;
       const beforeScrollTop = readController().getScrollElement()!.scrollTop;
-      const nativeWrites = vi.spyOn(readController().getScrollElement()!, "scrollTo");
       expect(beforeTop).toBeGreaterThan(viewport.top);
       expect(beforeTop).toBeLessThan(viewport.bottom);
       expect(gap!.getBoundingClientRect().top - viewport.bottom).toBeLessThanOrEqual(800);
@@ -234,8 +233,10 @@ describe("ordinary sparse history geometry", () => {
       expect(view.container.querySelector('[data-content-search-unit-key="44:user:0"]')).toBe(
         target,
       );
-      expect(nativeWrites).toHaveBeenCalled();
-      expect(readController().getScrollElement()!.scrollTop).toBeLessThan(beforeScrollTop);
+      // Newer history fills in below the reader, so their native position needs no write.
+      expect(
+        Math.abs(readController().getScrollElement()!.scrollTop - beforeScrollTop),
+      ).toBeLessThanOrEqual(1);
       expect(Math.abs(target.getBoundingClientRect().top - beforeTop)).toBeLessThanOrEqual(1);
       await act(async () => {
         releaseFirst();

@@ -34,6 +34,7 @@ All notable changes to this project will be documented in this file.
 - Editing an earlier message across Agents removes the withdrawn context when continuing or switching Agents, including after restart. Forks retain the history they inherited without restoring messages withdrawn before the fork.
 - Chats distinguish automatic retries, recovery and terminal failures, retain error details for inspection, and let you continue a failed reply without replaying the original request.
 - Scrolling up in a chat keeps your reading position instead of reattaching to the bottom during layout updates.
+- Scrolling up right after sending a message moves the chat by the full mouse-wheel or trackpad distance, instead of a few pixels per notch while the space below your message shrinks.
 - Offline Profile backups work with Claude Code and OpenCode chats, preserve required Claude history, and ignore unrelated active Claude sessions.
 - Sidebar chats can be dragged into empty or collapsed Sections, including chats that have not started yet, with consistent destination feedback and reliable moves back to Projects, Chats and Pinned.
 - Images sent while steering a running chat remain visible with their message, including after activity is collapsed or the chat is reopened.

@@ -26,6 +26,7 @@ import { LocalConversationThreadBodyOwner } from "./local-conversation-thread-bo
 import {
   EnsureLocalConversationThreadScrollController,
   LocalConversationThreadScrollLayout,
+  resolveNativeScrollTopForDistanceFromBottomPx,
   useLocalConversationThreadScrollController,
   type LocalConversationThreadScrollControllerValue,
 } from "./local-conversation-thread-scroll-controller";
@@ -491,11 +492,11 @@ describe("actual transcript Find placement", () => {
       });
       await act(async () => {
         fireEvent.wheel(viewport, { deltaY: -220 });
-        viewport.scrollTop = -220;
+        viewport.scrollTop = resolveNativeScrollTopForDistanceFromBottomPx(viewport, 220);
         fireEvent.scroll(viewport);
         await Promise.resolve();
         fireEvent.wheel(viewport, { deltaY: 220 });
-        viewport.scrollTop = 0;
+        viewport.scrollTop = resolveNativeScrollTopForDistanceFromBottomPx(viewport, 0);
         fireEvent.scroll(viewport);
         await Promise.resolve();
       });

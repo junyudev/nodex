@@ -34,12 +34,9 @@ function isPositioned(scrollElement: HTMLElement, target: HTMLElement): boolean 
   if (Math.abs(targetCenter - viewportCenter) <= tolerance) return true;
   if (rect.top < paddedTop - tolerance || rect.bottom > paddedBottom + tolerance) return false;
   const max = Math.max(0, scrollElement.scrollHeight - scrollElement.clientHeight);
-  const reverse = style.flexDirection === "column-reverse" || scrollElement.scrollTop < 0;
-  const distanceFromTop = reverse ? max + scrollElement.scrollTop : scrollElement.scrollTop;
-  const distanceFromBottom = reverse ? -scrollElement.scrollTop : max - scrollElement.scrollTop;
   return (
-    (targetCenter < viewportCenter && distanceFromTop <= 1) ||
-    (targetCenter > viewportCenter && distanceFromBottom <= 1)
+    (targetCenter < viewportCenter && scrollElement.scrollTop <= 1) ||
+    (targetCenter > viewportCenter && max - scrollElement.scrollTop <= 1)
   );
 }
 

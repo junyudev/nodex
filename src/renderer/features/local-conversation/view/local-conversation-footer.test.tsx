@@ -468,7 +468,7 @@ describe("LocalConversationFooter", () => {
       },
     });
 
-    scrollTopValue = -200;
+    scrollTopValue = 700;
     await act(async () => {
       fireEvent.scroll(viewport);
       await Promise.resolve();
@@ -504,7 +504,7 @@ describe("LocalConversationFooter", () => {
     expect(isBefore(aboveComposerPortal, queuePortal)).toBe(true);
     expect(isBefore(queuePortal, composerShell)).toBe(true);
     expect(scrollToCalls.length).toBe(1);
-    expect(scrollToCalls[0]?.top).toBe(0);
+    expect(scrollToCalls[0]?.top).toBe(900);
     restoreMotionPreference();
   });
 
