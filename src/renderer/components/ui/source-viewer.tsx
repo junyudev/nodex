@@ -6,6 +6,7 @@ import {
   getNodexDiffHostStyle,
   getNodexSourceOptions,
   getNodexSourceLineHeight,
+  type NodexSyntaxTheme,
 } from "@/lib/diff-presentation";
 import { useTheme } from "@/lib/use-theme";
 import { useCodeFontSize } from "@/lib/use-code-font-size";
@@ -23,6 +24,7 @@ export interface SourceViewerProps {
   readonly language?: SupportedLanguages | null;
   readonly lineNumbers?: boolean;
   readonly wrap?: boolean;
+  readonly syntaxTheme?: NodexSyntaxTheme;
   readonly sourceIdentity?: string;
   readonly className?: string;
   readonly onRevealComplete?: (location: NonNullable<SourceViewerProps["revealLocation"]>) => void;
@@ -41,6 +43,7 @@ export function SourceViewer({
   language,
   lineNumbers = false,
   wrap = false,
+  syntaxTheme = "source",
   sourceIdentity,
   className,
   revealLocation,
@@ -77,13 +80,14 @@ export function SourceViewer({
       ...getNodexSourceOptions(resolved, true, {
         disableLineNumbers: !lineNumbers,
         wrap,
+        syntaxTheme,
       }),
       itemMetrics: { lineHeight: getNodexSourceLineHeight(codeFontSize), spacing: 0 },
       onPostRender: (_node, _instance, phase) => {
         if (phase !== "unmount") setRenderedIdentity(identity);
       },
     }),
-    [codeFontSize, identity, lineNumbers, resolved, wrap],
+    [codeFontSize, identity, lineNumbers, resolved, syntaxTheme, wrap],
   );
   const style = useMemo(() => getNodexDiffHostStyle(resolved), [resolved]);
 

@@ -1,5 +1,6 @@
 import type { CodeViewProps, FileDiffProps, ThemeTypes, ThemesType } from "@pierre/diffs/react";
 import type { CSSProperties } from "react";
+import { codeBlockSyntaxThemes } from "./code-block-syntax-theme";
 
 type DiffThemeType = Exclude<ThemeTypes, "system">;
 type SharedDiffOptions = NonNullable<FileDiffProps<undefined>["options"]>;
@@ -280,16 +281,20 @@ export function getNodexDiffOptions(
   };
 }
 
+/** Files and diffs use the source palette; code blocks use the conversation code-block palette. */
+export type NodexSyntaxTheme = "source" | "code-block";
+
 function getNodexCodeOptions(
   themeType: DiffThemeType,
   disableFileHeader: boolean,
   opts?: {
     overflow?: SharedCodeOptions["overflow"];
     wrap?: boolean;
+    syntaxTheme?: NodexSyntaxTheme;
   },
 ): SharedCodeOptions {
   return {
-    theme: NODEX_DIFF_THEME,
+    theme: opts?.syntaxTheme === "code-block" ? codeBlockSyntaxThemes() : NODEX_DIFF_THEME,
     themeType,
     overflow: opts?.overflow ?? (opts?.wrap ? "wrap" : "scroll"),
     unsafeCSS: NODEX_DIFF_UNSAFE_CSS,
@@ -304,6 +309,7 @@ export function getNodexSourceOptions(
     disableLineNumbers?: boolean;
     overflow?: SharedSourceOptions["overflow"];
     wrap?: boolean;
+    syntaxTheme?: NodexSyntaxTheme;
   },
 ): SharedSourceOptions {
   return {

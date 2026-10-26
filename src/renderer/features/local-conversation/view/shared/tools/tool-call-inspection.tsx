@@ -1,4 +1,4 @@
-import { useId, useRef, useState } from "react";
+import { useId, useRef, useState, type ReactNode } from "react";
 import { CodeIcon } from "@/components/shared/icons";
 import {
   NodexDialog as Dialog,
@@ -10,7 +10,10 @@ import {
 } from "../../../../../components/ui/dialog";
 import { NodexTooltip } from "../../../../../components/ui/tooltip";
 import { cn } from "../../../../../lib/utils";
-import { CopyMessageActionButton } from "../thread-message-actions";
+import {
+  CopyMessageActionButton,
+  threadMessageActionButtonClassName,
+} from "../thread-message-actions";
 import { LazySourceViewer, preloadSourceViewer } from "@/components/ui/lazy-source-viewer";
 import {
   buildTextPreview,
@@ -37,6 +40,7 @@ export function stringifyToolCallValue(value: unknown): string {
 export function ToolCallCodePanel({
   title,
   preview,
+  actions,
   getCopyText,
   getFullText,
   bodyClassName,
@@ -46,6 +50,8 @@ export function ToolCallCodePanel({
 }: {
   title: string;
   preview: TextPreview;
+  /** Inspection controls shown before Copy in the panel toolbar. */
+  actions?: ReactNode;
   getCopyText?: () => string;
   getFullText?: () => string;
   bodyClassName?: string;
@@ -72,6 +78,7 @@ export function ToolCallCodePanel({
       >
         <div className="min-w-0 truncate">{title}</div>
         <div className="flex items-center">
+          {actions}
           {boundedPreview.kind === "omitted" && getFullText ? (
             <ToolCallRawDialog
               open={fullTextOpen}
@@ -120,7 +127,8 @@ export function ToolCallRawDialog({
   getRawText?: () => string;
   getRawValue?: () => unknown;
   triggerLabel: string;
-  triggerKind?: "icon" | "text";
+  /** `toolbar` sits beside a code panel's Copy; `icon` reveals itself on row hover. */
+  triggerKind?: "icon" | "toolbar" | "text";
   triggerText?: string;
 }) {
   const dialogId = useId();
@@ -129,11 +137,13 @@ export function ToolCallRawDialog({
     <button
       type="button"
       className={cn(
-        "border-token-border user-select-none no-drag cursor-interaction flex items-center justify-center gap-1 border border-transparent text-token-description-foreground focus:outline-none disabled:cursor-not-allowed disabled:opacity-40 enabled:hover:bg-token-list-hover-background data-[state=open]:bg-token-list-hover-background",
-        triggerKind === "icon"
-          ? "rounded-full p-0.5 opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100 focus-visible:opacity-100 electron:rounded-md electron:p-1"
-          : "rounded-md px-1.5 py-1 text-xs font-medium",
+        triggerKind === "toolbar"
+          ? threadMessageActionButtonClassName
+          : "border-token-border user-select-none no-drag cursor-interaction flex items-center justify-center gap-1 border border-transparent text-token-description-foreground focus:outline-none disabled:cursor-not-allowed disabled:opacity-40 enabled:hover:bg-token-list-hover-background data-[state=open]:bg-token-list-hover-background",
+        triggerKind === "icon" &&
+          "rounded-full p-0.5 opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100 focus-visible:opacity-100 electron:rounded-md electron:p-1",
         triggerKind === "icon" && electronToolIconSizeClassName,
+        triggerKind === "text" && "rounded-md px-1.5 py-1 text-xs font-medium",
       )}
       aria-label={triggerLabel}
       aria-haspopup="dialog"
@@ -146,19 +156,19 @@ export function ToolCallRawDialog({
       onPointerEnter={preloadSourceViewer}
       onFocus={preloadSourceViewer}
     >
-      <CodeIcon className="icon-xxs" />
+      <CodeIcon className={triggerKind === "toolbar" ? "icon-xs electron:icon-sm" : "icon-xxs"} />
       {triggerKind === "text" ? <span>{triggerText}</span> : null}
     </button>
   );
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      {triggerKind === "icon" ? (
+      {triggerKind === "text" ? (
+        trigger
+      ) : (
         <NodexTooltip tooltipContent={triggerLabel} side="top" delay={0}>
           {trigger}
         </NodexTooltip>
-      ) : (
-        trigger
       )}
       <DialogContent
         id={dialogId}
@@ -167,23 +177,18 @@ export function ToolCallRawDialog({
         showCloseButton={false}
         aria-describedby={undefined}
         initialFocus={contentRef}
+        size="large"
       >
-        <DialogFrame>
-          <DialogHeader className="gap-0">
-            <DialogTitle>{title}</DialogTitle>
-          </DialogHeader>
-          <DialogBody className="h-[min(65vh,40rem)] min-h-72">
-            {open ? (
-              <ToolCallRawContent title={title} getRawText={getRawText} getRawValue={getRawValue} />
-            ) : null}
-          </DialogBody>
-        </DialogFrame>
+        {open ? (
+          <ToolCallRawFrame title={title} getRawText={getRawText} getRawValue={getRawValue} />
+        ) : null}
       </DialogContent>
     </Dialog>
   );
 }
 
-function ToolCallRawContent({
+/** One copyable code surface; raw values are JSON, full previews keep their own text. */
+function ToolCallRawFrame({
   title,
   getRawText,
   getRawValue,
@@ -197,12 +202,9 @@ function ToolCallRawContent({
   );
 
   return (
-    <div
-      className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg bg-token-text-code-block-background dark"
-      data-theme="dark"
-    >
-      <div className="flex h-8 shrink-0 items-center justify-between px-2 text-sm text-token-description-foreground">
-        <span>json</span>
+    <DialogFrame>
+      <DialogHeader className="flex-row items-center justify-between gap-3">
+        <DialogTitle className="truncate">{title}</DialogTitle>
         <CopyMessageActionButton
           getText={() => rawText}
           label="Copy"
@@ -210,8 +212,20 @@ function ToolCallRawContent({
           tooltipLabel="Copy"
           copiedTooltipLabel="Copied"
         />
-      </div>
-      <LazySourceViewer value={rawText} ariaLabel={title} className="min-h-0 flex-1" />
-    </div>
+      </DialogHeader>
+      {/* Short values fit their content; longer ones scroll inside the capped surface. */}
+      <DialogBody className="max-h-[min(65vh,40rem)] min-h-0">
+        <div className="flex min-h-0 flex-col overflow-hidden rounded-[10px] bg-[var(--code-block-bg)] py-3 ps-1 [--codex-diffs-surface-override:transparent]">
+          <LazySourceViewer
+            value={rawText}
+            ariaLabel={title}
+            language={getRawText ? null : "json"}
+            syntaxTheme="code-block"
+            wrap
+            className="flex h-auto flex-col"
+          />
+        </div>
+      </DialogBody>
+    </DialogFrame>
   );
 }

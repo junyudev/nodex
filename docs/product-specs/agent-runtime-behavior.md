@@ -72,7 +72,9 @@ limit and next attempt time and presents the shared
 [request recovery states](codex-thread-transcript-behavior.md) in the conversation.
 A retry record is historical evidence after its item completes, fails or stops; it
 does not keep an ended request retrying. Unknown provider errors do not establish a
-network failure, and retryability alone does not establish an active retry.
+network failure, and retryability alone does not establish an active retry. A retry's
+message describes the failed attempt in a sentence, such as "Claude API request failed.";
+its HTTP status travels in the failure code instead of being repeated in the message.
 
 Continue on the latest failed reply submits a new follow-up asking the Agent to
 continue from where it left off, with the existing conversation context. It does not

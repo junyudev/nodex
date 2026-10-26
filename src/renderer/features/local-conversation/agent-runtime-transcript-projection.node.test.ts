@@ -135,6 +135,12 @@ describe("Runtime request recovery", () => {
     });
   });
 
+  test("an unknown failure code adds no diagnostic line", () => {
+    expect(
+      projectAgentRuntimeItem(error({ failure: { ...failure, code: "unknown" } })),
+    ).toMatchObject({ recovery: { reason: "unknown" }, additionalDetails: null });
+  });
+
   test("retryability alone never invents an automatic retry", () => {
     expect(projectAgentRuntimeItem(error({ retry: undefined }))).toMatchObject({
       recovery: { state: "failed", attempt: null, maxAttempts: null, retryAt: null },

@@ -2692,10 +2692,40 @@ function providerFailureFromResult(
   });
 }
 
+const CLAUDE_API_RETRY_ERRORS: Partial<Record<SDKAPIRetryMessage["error"], string>> = {
+  authentication_failed: "Claude API authentication failed",
+  oauth_org_not_allowed: "This Claude organization doesn't allow this sign-in",
+  account_on_hold: "This Claude account is on hold",
+  verification_required: "This Claude account needs verification",
+  billing_error: "Claude API billing error",
+  rate_limit: "Claude API rate limit reached",
+  overloaded: "Claude API is overloaded",
+  invalid_request: "Claude API rejected the request",
+  model_not_found: "Claude model not found",
+  server_error: "Claude API server error",
+  unknown: "Claude API request failed",
+  max_output_tokens: "Claude response reached its output token limit",
+  cloud_credential_error: "Cloud provider credentials were rejected",
+};
+
+/**
+ * Describes the failed attempt only; Claude Code is already retrying it. The HTTP status travels
+ * in the failure code rather than being repeated here.
+ */
+export function claudeApiRetryFailureMessage(message: SDKAPIRetryMessage): string {
+  if (message.no_response) {
+    const seconds = Math.max(1, Math.round(message.no_response.waited_ms / 1_000));
+    return `Claude API didn't respond within ${seconds}s.`;
+  }
+  return `${
+    CLAUDE_API_RETRY_ERRORS[message.error] ??
+    `Claude API error: ${message.error.replaceAll("_", " ")}`
+  }.`;
+}
+
 function providerFailureFromApiRetry(message: SDKAPIRetryMessage): OrchestrationV2ProviderFailure {
-  const errorName = message.error.replaceAll("_", " ");
   return makeProviderFailure({
-    message: `Claude API ${errorName}.`,
+    message: claudeApiRetryFailureMessage(message),
     code:
       message.error_status === null
         ? message.error

@@ -122,6 +122,10 @@ describe("ConversationRecoverySurface", () => {
     view.rerender(surface({ ...retrying, state: "recovered" }));
     await advance(RECOVERY_CONFIRMATION_MS);
     expect(view.getByRole("button", { name: "Request resumed" })).toBe(disclosure);
+    // The row already states the recovery; only copying repeats it.
+    expect(view.getByRole("region", { name: "Recovery diagnostics" }).textContent).toBe(
+      "Claude API unknown.\nECONNRESET: request stream closed.",
+    );
     await act(async () => {
       fireEvent.click(view.getByRole("button", { name: "Copy diagnostics" }));
       await Promise.resolve();

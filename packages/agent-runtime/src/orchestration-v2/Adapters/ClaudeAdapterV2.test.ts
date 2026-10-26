@@ -9,6 +9,7 @@ import * as NodeStream from "node:stream";
 import type {
   HookInput,
   Query as ClaudeQuery,
+  SDKAPIRetryMessage,
   SDKMessage,
   SDKResultMessage,
   SDKUserMessage,
@@ -204,6 +205,40 @@ function makeClaudeTestTurnInput(input: {
     runtimePolicy: input.runtimePolicy ?? CLAUDE_TEST_RUNTIME_POLICY,
   };
 }
+
+describe("ClaudeAdapterV2 API retry notices", () => {
+  const retry = (overrides: Partial<SDKAPIRetryMessage> = {}): SDKAPIRetryMessage => ({
+    type: "system",
+    subtype: "api_retry",
+    attempt: 2,
+    max_retries: 10,
+    retry_delay_ms: 1_500,
+    error_status: null,
+    error: "unknown",
+    uuid: "00000000-0000-4000-8000-000000000901",
+    session_id: "retry-notice-session",
+    ...overrides,
+  });
+
+  it("describes the failed attempt as a sentence", () => {
+    assert.equal(
+      ClaudeAdapterV2.claudeApiRetryFailureMessage(retry()),
+      "Claude API request failed.",
+    );
+    assert.equal(
+      ClaudeAdapterV2.claudeApiRetryFailureMessage(
+        retry({ error: "overloaded", error_status: 529 }),
+      ),
+      "Claude API is overloaded.",
+    );
+    assert.equal(
+      ClaudeAdapterV2.claudeApiRetryFailureMessage(
+        retry({ no_response: { waited_ms: 30_000, retry_wait_ms: 60_000 } }),
+      ),
+      "Claude API didn't respond within 30s.",
+    );
+  });
+});
 
 describe("ClaudeAdapterV2 runtime query policy", () => {
   it.each([false, true])("requests thinking summaries with resume=%s", (resume) => {

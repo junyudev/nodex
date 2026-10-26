@@ -581,15 +581,6 @@ export function DetailLabel({ children }: { children: ReactNode }) {
   );
 }
 
-export function ToolJsonDetail({ label, value }: { label: string; value: unknown }) {
-  return (
-    <div className="mb-2">
-      <DetailLabel>{label}</DetailLabel>
-      <JsonBlock value={value} />
-    </div>
-  );
-}
-
 export function ToolErrorDetail({
   error,
   className,
@@ -622,7 +613,8 @@ export function CodeBlock({ children, className }: { children: ReactNode; classN
   );
 }
 
-export function JsonBlock({ value }: { value: unknown }) {
+/** The title names the value's role when one is known, otherwise its format. */
+export function JsonBlock({ title = "json", value }: { title?: string; value: unknown }) {
   const text = useMemo(() => {
     try {
       return JSON.stringify(value, null, 2);
@@ -633,7 +625,7 @@ export function JsonBlock({ value }: { value: unknown }) {
 
   return (
     <ToolCallCodePanel
-      title="json"
+      title={title}
       preview={buildTextPreview(text, INLINE_TEXT_PREVIEW_MAX_CHARS)}
       getCopyText={() => text}
       getFullText={() => text}

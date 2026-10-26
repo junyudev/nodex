@@ -486,7 +486,8 @@ function runtimeFailureDetails(
 ): string | null {
   const resetAt = agentRuntimeTime(failure.resetAt);
   const details = [
-    failure.code === null ? null : `Code: ${failure.code}`,
+    // "unknown" names no cause; the recovery reason already records that.
+    failure.code === null || failure.code === "unknown" ? null : `Code: ${failure.code}`,
     resetAt === null ? null : `Usage resets: ${new Date(resetAt).toUTCString()}`,
   ]
     .filter((line) => line !== null)

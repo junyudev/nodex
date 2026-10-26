@@ -11,6 +11,11 @@ import type { CodexDynamicToolCallView } from "../../../../../lib/types";
 import { cn } from "../../../../../lib/utils";
 import { readAgentSessionToolTarget } from "../../../projection/tool-metadata/agent-session-tool";
 import {
+  buildDynamicToolArgumentPanels,
+  formatToolOutputText,
+  resolveDynamicToolFallbackIdentity,
+} from "../../../projection/tool-metadata/dynamic-tool-fallback-details";
+import {
   resolveNodexDynamicToolCallPresentation,
   type NodexDynamicToolPresentationIcon,
 } from "../../../projection/tool-metadata/nodex-dynamic-tool-call-presentation";
@@ -19,11 +24,7 @@ import { useToolCallOutputDetail } from "./use-tool-call-output-detail";
 import { buildTextPreview, INLINE_TEXT_PREVIEW_MAX_CHARS } from "../../../../../lib/text-preview";
 import type { ToolComponentProps } from "./get-tool-component";
 import { AutomationUpdatePage } from "./automation-update-page";
-import {
-  ThreadActivityDisclosure,
-  ThreadRichActivityHeader,
-  ToolJsonDetail,
-} from "./tool-primitives";
+import { ThreadActivityDisclosure, ThreadRichActivityHeader } from "./tool-primitives";
 import { ToolCallCodePanel, ToolCallRawDialog } from "./tool-call-inspection";
 import { ToolOutputImage } from "./tool-output-image";
 import { NodexDynamicToolChangePreview } from "./nodex-dynamic-tool-change-preview";
@@ -709,27 +710,52 @@ function DynamicToolFallbackDetails({ item }: ToolComponentProps) {
   );
   const [rawOpen, setRawOpen] = useState(false);
   const call = item.dynamicToolCall!;
-  const args = call.arguments;
-  const code =
-    call.tool === "js" && args !== null && typeof args === "object" && !Array.isArray(args)
-      ? args.code
-      : null;
-  const codeText = typeof code === "string" ? code : null;
+  const identity = resolveDynamicToolFallbackIdentity(call);
+  const argumentPanels = buildDynamicToolArgumentPanels(call);
+  const outputItems = outputError || call.outputOmitted ? [] : (call.contentItems ?? []);
+  const outputTitle = call.success === false ? "Error" : "Output";
+  const rawInspector = call.outputOmitted ? null : (
+    <ToolCallRawDialog
+      open={rawOpen}
+      onOpenChange={setRawOpen}
+      title={`Raw ${[call.namespace, call.tool].filter(Boolean).join(".")} tool call`}
+      triggerLabel="Show raw tool call output"
+      triggerKind="toolbar"
+      getRawValue={() =>
+        item.rawItem ?? {
+          type: "dynamicToolCall",
+          id: call.callId,
+          namespace: call.namespace,
+          tool: call.tool,
+          arguments: call.arguments,
+          status: call.status,
+          durationMs: call.durationMs,
+          success: call.success,
+          contentItems: call.contentItems,
+        }
+      }
+    />
+  );
+  // The inspector joins the first panel's toolbar instead of occupying its own row.
+  const outputRawIndex =
+    argumentPanels.length > 0
+      ? -1
+      : outputItems.findIndex((content) => content.type === "inputText");
+  const rawInPanel = argumentPanels.length > 0 || outputRawIndex >= 0;
+
   return (
-    <div className="flex min-w-0 flex-col gap-1">
-      <div className="truncate text-xs text-token-description-foreground">
-        {[call.namespace, call.tool].filter(Boolean).join(".")}
-      </div>
-      {codeText !== null ? (
-        <ToolCallCodePanel
-          title="javascript"
-          preview={buildTextPreview(codeText, INLINE_TEXT_PREVIEW_MAX_CHARS)}
-          getCopyText={() => codeText}
-          getFullText={() => codeText}
+    <div className="flex min-w-0 flex-col gap-2">
+      {identity ? (
+        <div className="truncate text-xs text-token-description-foreground">{identity}</div>
+      ) : null}
+      {argumentPanels.map((panel, index) => (
+        <DynamicToolDetailCodePanel
+          key={`argument:${index}`}
+          actions={index === 0 ? rawInspector : null}
+          text={panel.text}
+          title={panel.title}
         />
-      ) : (
-        <ToolJsonDetail label="Arguments" value={call.arguments} />
-      )}
+      ))}
       {outputError ? (
         <p role="alert">{outputError}</p>
       ) : call.outputOmitted ? (
@@ -737,44 +763,44 @@ function DynamicToolFallbackDetails({ item }: ToolComponentProps) {
           {outputAvailable ? "Loading output…" : "Tool output unavailable"}
         </p>
       ) : (
-        (call.contentItems ?? []).map((content, index) =>
+        outputItems.map((content, index) =>
           content.type === "inputImage" ? (
             <ToolOutputImage key={index} source={content.imageUrl} />
           ) : content.type === "inputAudio" ? (
             <audio key={index} src={content.audioUrl} controls preload="metadata" />
           ) : (
-            <ToolCallCodePanel
+            <DynamicToolDetailCodePanel
               key={index}
-              title="Output"
-              preview={buildTextPreview(content.text, INLINE_TEXT_PREVIEW_MAX_CHARS)}
-              getCopyText={() => content.text}
-              getFullText={() => content.text}
+              actions={index === outputRawIndex ? rawInspector : null}
+              text={formatToolOutputText(content.text)}
+              title={outputTitle}
             />
           ),
         )
       )}
-      {!call.outputOmitted ? (
-        <ToolCallRawDialog
-          open={rawOpen}
-          onOpenChange={setRawOpen}
-          title={`Raw ${[call.namespace, call.tool].filter(Boolean).join(".")} tool call`}
-          triggerLabel="Show raw tool call output"
-          getRawValue={() =>
-            item.rawItem ?? {
-              type: "dynamicToolCall",
-              id: call.callId,
-              namespace: call.namespace,
-              tool: call.tool,
-              arguments: call.arguments,
-              status: call.status,
-              durationMs: call.durationMs,
-              success: call.success,
-              contentItems: call.contentItems,
-            }
-          }
-        />
-      ) : null}
+      {rawInPanel || !rawInspector ? null : <div className="flex">{rawInspector}</div>}
     </div>
+  );
+}
+
+function DynamicToolDetailCodePanel({
+  actions,
+  text,
+  title,
+}: {
+  actions: ReactNode;
+  text: string;
+  title: string;
+}) {
+  return (
+    <ToolCallCodePanel
+      title={title}
+      actions={actions}
+      preview={buildTextPreview(text, INLINE_TEXT_PREVIEW_MAX_CHARS)}
+      getCopyText={() => text}
+      getFullText={() => text}
+      preClassName="font-mono text-size-code"
+    />
   );
 }
 

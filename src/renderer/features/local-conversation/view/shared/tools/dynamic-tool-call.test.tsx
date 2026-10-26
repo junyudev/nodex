@@ -200,6 +200,34 @@ describe("DynamicToolCall", () => {
     expect(view.getByRole("button", { name: "Show raw tool call output" })).toBeTruthy();
   });
 
+  test("expanded fallback calls read authored arguments verbatim without repeating the tool", async () => {
+    const script = "export const meta = {\n  name: 'triage',\n}\n";
+    const view = renderWithQueryClient(
+      <TooltipProvider>
+        <DynamicToolCall
+          item={buildDynamicEntry({
+            namespace: null,
+            tool: "Workflow",
+            arguments: { script },
+            contentItems: [
+              { type: "inputText", text: '{"status":"async_launched","taskId":"w7"}' },
+            ],
+          })}
+        />
+      </TooltipProvider>,
+    );
+    await act(async () => {
+      fireEvent.click(view.getByRole("button", { name: "Workflow" }));
+      await Promise.resolve();
+    });
+    expect(view.getAllByText("Workflow")).toHaveLength(1);
+    expect([...view.container.querySelectorAll("pre")].map((pre) => pre.textContent)).toEqual([
+      script,
+      '{\n  "status": "async_launched",\n  "taskId": "w7"\n}',
+    ]);
+    expect(view.getByRole("button", { name: "Show raw tool call output" })).toBeTruthy();
+  });
+
   test("renders navigable Codex app thread rows through the registry renderer", async () => {
     const openedThreads: string[] = [];
     const { getByRole } = render(

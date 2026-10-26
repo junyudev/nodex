@@ -77,7 +77,7 @@ export function recoveryAction(
 }
 
 /** Preserve the provider's evidence without treating its raw message as the current status. */
-export function recoveryDiagnosticText(entry: CodexTranscriptEntry): string {
+function recoveryEvidence(entry: CodexTranscriptEntry): string[] {
   const raw = entry.rawItem;
   const rawMessage =
     raw !== null &&
@@ -88,18 +88,28 @@ export function recoveryDiagnosticText(entry: CodexTranscriptEntry): string {
     typeof raw.message === "string"
       ? raw.message
       : entry.markdownText;
-  const messages = [rawMessage?.trim(), entry.additionalDetails?.trim()].filter(
-    (value): value is string => Boolean(value),
-  );
+  const details = entry.additionalDetails?.trim();
+  // Without recovery, the row's label is already the display message.
+  if (!entry.recovery && rawMessage === entry.markdownText) return details ? [details] : [];
+  return [
+    ...new Set([rawMessage?.trim(), details].filter((value): value is string => Boolean(value))),
+  ];
+}
+
+/** What the provider reported, without repeating the status row's state, cause or attempt. */
+export function recoveryDiagnosticSummary(entry: CodexTranscriptEntry): string {
+  return recoveryEvidence(entry).join("\n");
+}
+
+/** Provider evidence plus the recovery state, for copying and Conversation Markdown. */
+export function recoveryDiagnosticText(entry: CodexTranscriptEntry): string {
+  const evidence = recoveryEvidence(entry);
   const recovery = entry.recovery;
-  if (!recovery)
-    return rawMessage !== entry.markdownText
-      ? [...new Set(messages)].join("\n\n")
-      : (entry.additionalDetails?.trim() ?? "");
+  if (!recovery) return evidence.join("\n\n");
   const metadata = [
     `State: ${recovery.state}`,
     `Reason: ${recovery.reason}`,
     attemptLabel(recovery) ? `Retry: ${attemptLabel(recovery)}` : null,
   ].filter(Boolean);
-  return [...new Set(messages), metadata.join("\n")].join("\n\n");
+  return [...evidence, metadata.join("\n")].join("\n\n");
 }

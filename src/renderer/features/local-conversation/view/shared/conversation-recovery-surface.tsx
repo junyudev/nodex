@@ -9,6 +9,7 @@ import {
   RECOVERY_CONFIRMATION_MS,
   RECOVERY_REVEAL_DELAY_MS,
   recoveryAction,
+  recoveryDiagnosticSummary,
   recoveryDiagnosticText,
   recoveryProgressLabel,
   recoveryStatusLabel,
@@ -164,6 +165,8 @@ export function ConversationRecoverySurface({
   const label = recovery ? recoveryStatusLabel(recovery) : (entry.markdownText ?? "Request failed");
   const progress = recovery ? recoveryProgressLabel(recovery, now) : null;
   const details = recoveryDiagnosticText(entry);
+  // The status row already says the state, cause and attempt; copying keeps all of them.
+  const summary = recoveryDiagnosticSummary(entry) || details;
   const action = recoveryAction(recovery, true, false);
   const eligible = recoveryAction(recovery, isLatestTurn, isStreamingTurn) !== null;
   const actionCallback = action === "manage-provider" ? onManageProvider : onContinue;
@@ -206,16 +209,17 @@ export function ConversationRecoverySurface({
       }
       body={
         presence.expanded && details ? (
-          <div className="mt-1 flex min-w-0 items-start gap-2">
+          <div className="mt-1 flex min-w-0 items-start gap-1">
             <pre
-              className="max-h-48 min-w-0 flex-1 overflow-auto rounded-sm font-sans text-size-chat-sm whitespace-pre-wrap break-words semantic-text-secondary focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-token-focus-border"
+              className="max-h-48 min-w-0 overflow-auto rounded-sm font-sans text-size-chat-sm whitespace-pre-wrap break-words semantic-text-secondary focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-token-focus-border"
               role="region"
               aria-label="Recovery diagnostics"
               tabIndex={0}
             >
-              {details}
+              {summary}
             </pre>
             <ThreadActionIconButton
+              className="-mt-0.5 shrink-0"
               label={copied ? "Copied" : "Copy diagnostics"}
               tooltip={copied ? "Copied" : "Copy diagnostics"}
               onClick={() => void copy(() => writeTextToClipboard(details))}
