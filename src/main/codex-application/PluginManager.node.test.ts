@@ -1375,6 +1375,8 @@ it.effect(
         accessible: null,
         enabled: true,
         callable: true,
+        editable: true,
+        editRestriction: null,
         connectionState: "connected",
         canDisconnect: false,
       });
@@ -1845,6 +1847,72 @@ it.effect("retains installed skill authorization and the native remote skill-rea
         remotePluginId: "plugin-id",
         skillName: "remote-skill",
       });
+    }),
+  );
+});
+
+it.effect(
+  "writes only app enablement against the current user version and exposes policy restrictions",
+  () => {
+    const config = { ...settingsConfig(), config: { apps: { connector_test: { enabled: true } } } };
+    const h = make({
+      config,
+      configWriteOk: true,
+      runtimeApps: [{ id: "connector_test", runtimeName: "Test", enabled: true, callable: false }],
+    });
+    return withManager(h, (manager) =>
+      Effect.gen(function* () {
+        const view = yield* manager.query("apps", context);
+        assert.strictEqual(view.apps[0]?.editable, true);
+        assert.strictEqual(
+          (yield* manager.command("app-enabled", {
+            ...context,
+            appId: "asdk_app_test",
+            enabled: false,
+          })).status,
+          "success",
+        );
+        const write = h.calls.find((call) => call.method === "config/batchWrite");
+        assert.deepEqual(write?.params.edits, [
+          { keyPath: 'apps."connector_test".enabled', value: false, mergeStrategy: "upsert" },
+        ]);
+        assert.strictEqual(write?.params.expectedVersion, "observed");
+        assert.strictEqual(write?.params.reloadUserConfig, true);
+      }),
+    );
+  },
+);
+it.effect("rejects app enablement from non-user config layers before writing", () => {
+  const h = make({
+    config: {
+      ...settingsConfig(),
+      config: { apps: { connector_test: { enabled: false } } },
+      origins: {
+        "apps.connector_test.enabled": {
+          name: { type: "project", dotCodexFolder: "/repo/.codex" },
+          version: "project",
+        },
+      },
+    },
+    runtimeApps: [{ id: "connector_test", runtimeName: null, enabled: false, callable: false }],
+  });
+  return withManager(h, (manager) =>
+    Effect.gen(function* () {
+      const view = yield* manager.query("apps", context);
+      assert.strictEqual(view.apps[0]?.editable, false);
+      assert.strictEqual(view.apps[0]?.editRestriction?.code, "policy_denied");
+      assert.strictEqual(
+        (yield* manager.command("app-enabled", {
+          ...context,
+          appId: "connector_test",
+          enabled: true,
+        })).status,
+        "policy_denied",
+      );
+      assert.strictEqual(
+        h.calls.some((call) => call.method === "config/batchWrite"),
+        false,
+      );
     }),
   );
 });

@@ -285,6 +285,7 @@ it.each([
   ["set-enabled", { pluginId: "test@custom", enabled: true }],
   ["skill-enabled", { name: "test:skill", enabled: true }],
   ["app-disconnect", { appId: "connector_test" }],
+  ["app-enabled", { appId: "connector_test", enabled: true }],
   [
     "plugin-mcp-enabled",
     { marketplacePath: "/catalog", pluginName: "test", name: "server", enabled: true },

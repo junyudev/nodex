@@ -137,7 +137,7 @@ const changeForCommand = (name: keyof PluginCommands): PluginManagementChanged["
   if (name === "plugin-mcp-enabled") return "mcp";
   if (["skill-enabled", "skill-install", "skill-uninstall"].includes(name)) return "skills";
   if (["mcp-save", "mcp-remove", "mcp-enabled", "mcp-login"].includes(name)) return "mcp";
-  if (name === "app-disconnect") return "apps";
+  if (name === "app-disconnect" || name === "app-enabled") return "apps";
   return "plugins";
 };
 const accountRevisions = new WeakMap<QueryClient, Map<string, number>>();

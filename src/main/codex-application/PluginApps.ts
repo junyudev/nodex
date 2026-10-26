@@ -11,6 +11,7 @@ import { PluginServiceAccount, pluginAccountProductHeaders } from "./PluginServi
 import { pluginError, pluginFailure } from "./PluginManagementError";
 import { pluginNativeFailure } from "./PluginNativeErrors";
 import { normalizeConnectorId, safePluginCatalogIcon } from "./PluginSettingsModel";
+import { pluginAppPolicy } from "./PluginAppPolicy";
 
 const optionalText = Schema.optionalKey(Schema.NullOr(Schema.String));
 const Link = Schema.Struct({
@@ -232,6 +233,23 @@ export const makePluginApps = Effect.gen(function* () {
             ),
           )
         : { links: [], connectors: [], error: null };
+    const config = yield* gateway
+      .requestOnHost(
+        context.hostId,
+        "config/read",
+        {
+          includeLayers: true,
+          cwd: context.cwds[0] ?? null,
+        },
+        { expectedHostId: context.hostId, expectedGeneration: context.hostGeneration },
+      )
+      .pipe(
+        Effect.map(
+          (value) =>
+            value as unknown as import("@nodex/codex-app-server-protocol/v2/ConfigReadResponse").ConfigReadResponse,
+        ),
+        Effect.orElseSucceed(() => null),
+      );
     const apps = ids.map((id): PluginAppRow => {
       const metadata =
         result.metadata.find((app) => normalizeConnectorId(app.id) === normalizeConnectorId(id)) ??
@@ -264,6 +282,13 @@ export const makePluginApps = Effect.gen(function* () {
             : expected !== null && connection.error === null
               ? "authentication_required"
               : "unknown";
+      const editPolicy =
+        metadata || runtime
+          ? pluginAppPolicy(config, id, adminDisabled === true)
+          : {
+              editable: false,
+              editRestriction: pluginFailure(pluginError("not_found", "The app was not found.")),
+            };
       return {
         id,
         name: metadata?.name ?? connector?.name ?? runtime?.runtimeName ?? id,
@@ -271,6 +296,8 @@ export const makePluginApps = Effect.gen(function* () {
         runtime,
         enabled: runtime?.enabled ?? false,
         callable: runtime?.callable ?? false,
+        editable: editPolicy.editable,
+        editRestriction: editPolicy.editRestriction,
         accessible: result.accessibility.get(normalizeConnectorId(id)) ?? null,
         installUrl: safePluginCatalogIcon(metadata?.installUrl),
         logoUrl: safePluginCatalogIcon(

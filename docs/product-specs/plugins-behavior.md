@@ -188,6 +188,13 @@ rows and matching marketplace errors, and retries preserve previously completed 
 Apps use the committed `app/installed` runtime snapshot and `app/read` metadata in batches
 of at most one hundred IDs. Only an unsupported-method response falls back to paginated
 `app/list`. Effective enabled and callable state remain separate from connection state.
+App rows and detail apps expose `editable` and `editRestriction` for switches. Editability
+uses current effective config origins and a writable base user layer; administrator,
+managed, Project, session and active-profile restrictions cannot be bypassed with connector
+aliases. Missing config fails closed. `setAppEnabled` writes only the quoted
+`apps.<id>.enabled` leaf through the versioned native config owner and reloads native app
+state. It preserves unrelated fields and returns policy denial for an overriding layer.
+App enablement invalidates app views, installed/plugin detail and composer observations.
 Detail app rows retain their manifest fields and expose `logoUrl`, `logoDarkUrl`,
 `accessible`, `enabled`, `callable`, `connectionState` and `canDisconnect`. Unknown native
 flags are null; the legacy inventory supplies accessibility when available. `installUrl`

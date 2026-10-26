@@ -76,6 +76,7 @@ type Command<K extends keyof PluginCommands> = (
   input: Omit<PluginCommands[K]["input"], keyof PluginContext>,
 ) => Promise<PluginCommands[K]["output"]>;
 export interface PluginManagement {
+  readonly setAppEnabled: Command<"app-enabled">;
   readonly trustAllPluginHooks: Command<"plugin-hooks-trust">;
   readonly setPluginMcpServerEnabled: Command<"plugin-mcp-enabled">;
   readonly install: Command<"install">;
@@ -303,6 +304,7 @@ export function usePluginManagement(context: PluginContext): PluginManagement {
     upgradeMarketplaces: (input) =>
       runPluginMutation(client, context, "marketplace-upgrade", input),
     disconnectApp: (input) => runPluginMutation(client, context, "app-disconnect", input),
+    setAppEnabled: (input) => runPluginMutation(client, context, "app-enabled", input),
     trustAllPluginHooks: (input) => runPluginMutation(client, context, "plugin-hooks-trust", input),
     setPluginMcpServerEnabled: (input) =>
       runPluginMutation(client, context, "plugin-mcp-enabled", input),

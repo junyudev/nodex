@@ -41,6 +41,8 @@ export interface PluginAppRow {
   readonly runtime: InstalledApp | null;
   readonly enabled: boolean;
   readonly callable: boolean;
+  readonly editable: boolean;
+  readonly editRestriction: PluginFailure | null;
   readonly accessible: boolean | null;
   readonly installUrl: string | null;
   readonly logoUrl: string | null;
@@ -54,6 +56,8 @@ export type PluginDetailSkill = SkillSummary & {
   readonly installedSkill: Pick<SkillMetadata, "path" | "name" | "enabled"> | null;
 };
 export type PluginDetailApp = AppSummary & {
+  readonly editable: boolean;
+  readonly editRestriction: PluginFailure | null;
   readonly logoUrl: string | null;
   readonly logoDarkUrl: string | null;
   readonly accessible: boolean | null;
@@ -163,6 +167,10 @@ export interface PluginSettingsQueries {
   "plugin-hooks": { input: PluginContext & PluginSelector; output: PluginHooksView };
 }
 export interface PluginSettingsCommands {
+  "app-enabled": {
+    input: PluginContext & { readonly appId: string; readonly enabled: boolean };
+    output: PluginMutationResult;
+  };
   "plugin-hooks-trust": { input: PluginContext & PluginSelector; output: PluginMutationResult };
   "plugin-mcp-enabled": {
     input: PluginContext & PluginSelector & { readonly name: string; readonly enabled: boolean };

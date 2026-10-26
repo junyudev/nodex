@@ -47,6 +47,19 @@ const make = (
       scheduling: unknown,
     ) => {
       calls.push({ method, params, scheduling });
+      if (method === "config/read")
+        return Effect.succeed({
+          config: {},
+          origins: {},
+          layers: [
+            {
+              name: { type: "user", file: "/config.toml", profile: null },
+              config: {},
+              version: "v1",
+              disabledReason: null,
+            },
+          ],
+        });
       if (options.fail || (options.unsupported && method === "app/installed"))
         return Effect.fail(
           codexRuntimeError({

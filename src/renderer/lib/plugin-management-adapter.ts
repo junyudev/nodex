@@ -5,6 +5,13 @@ import type {
 } from "../../shared/codex-plugin-management";
 import { defineRendererCommand, invokePlainCommand, invokeRendererQuery } from "./renderer-command";
 const definitions = {
+  "app-enabled": defineRendererCommand({
+    key: "plugins.app-enabled",
+    channel: "codex:plugins:app-enabled",
+    authority: "main",
+    owner: "PluginManager",
+    protocol: { kind: "returned_value" },
+  }),
   "plugin-hooks-trust": defineRendererCommand({
     key: "plugins.plugin-hooks-trust",
     channel: "codex:plugins:plugin-hooks-trust",

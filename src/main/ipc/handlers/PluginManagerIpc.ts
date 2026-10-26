@@ -116,6 +116,11 @@ export const pluginQuerySchemas = {
   }),
 } as const;
 export const pluginCommandSchemas = {
+  "app-enabled": Schema.Struct({
+    ...context,
+    appId: Schema.NonEmptyString,
+    enabled: Schema.Boolean,
+  }),
   "plugin-hooks-trust": selector,
   "plugin-mcp-enabled": Schema.Union([
     Schema.Struct({ ...localSelector, name: Schema.NonEmptyString, enabled: Schema.Boolean }),

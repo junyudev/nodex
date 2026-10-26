@@ -2,6 +2,7 @@ import { MAIN_OBSERVATION_EVENT_CAPACITY } from "../runtime-limits";
 import { matchPluginDetailSkill, projectPluginMcpServers } from "./PluginDetailModel";
 import { authorizedPluginAsset } from "./PluginInventoryPolicy";
 import { isAbsoluteAppFilesystemPath } from "../../shared/app-protocol";
+import { pluginAppPolicy } from "./PluginAppPolicy";
 import { makePluginAccountMetadata } from "./PluginAccountMetadata";
 import * as Result from "effect/Result";
 import { StandaloneSkills } from "./StandaloneSkills";
@@ -1064,6 +1065,12 @@ export const live = (options: {
                 accessible: state?.accessible ?? null,
                 enabled: state?.runtime ? state.enabled : null,
                 callable: state?.runtime ? state.callable : null,
+                editable: state?.editable ?? false,
+                editRestriction: state
+                  ? state.editRestriction
+                  : pluginFailure(
+                      pluginError("inventory_unavailable", "App settings are unavailable."),
+                    ),
                 connectionState: state?.connectionState ?? "unknown",
                 canDisconnect: state?.canDisconnect ?? false,
               };
@@ -1502,6 +1509,28 @@ export const live = (options: {
           input: PluginCommands[K]["input"],
         ) => Effect.Effect<PluginCommands[K]["output"], PluginManagementError>;
       } = {
+        "app-enabled": Effect.fn("PluginManager.setAppEnabled")(function* (context, input) {
+          const view = yield* withOperationLease(
+            apps.list(context, { ...context, appIds: [input.appId], forceRefresh: true }),
+          );
+          const app = view.apps.find(
+            (app) => normalizeConnectorId(app.id) === normalizeConnectorId(input.appId),
+          );
+          if (!app || (!app.metadata && !app.runtime))
+            return yield* pluginError("not_found", "The app was not found.");
+          const config = yield* configRead(context);
+          const policy = pluginAppPolicy(config, app.id, app.connectionState === "admin_disabled");
+          if (policy.editRestriction)
+            return yield* pluginError(policy.editRestriction.code, policy.editRestriction.message);
+          yield* writeConfig(context, config, [
+            {
+              keyPath: `apps.${JSON.stringify(policy.configKey)}.enabled`,
+              value: input.enabled,
+              mergeStrategy: "upsert",
+            },
+          ]);
+          return yield* applied(context, undefined, "apps");
+        }),
         "plugin-hooks-trust": Effect.fn("PluginManager.trustAllPluginHooks")(
           function* (context, input) {
             const detail = yield* queryHandlers.read(context, input);
