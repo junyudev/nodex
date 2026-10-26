@@ -1,0 +1,37 @@
+src/main/app/CodexApplicationLive.ts
+  s_c65b4244018ae4::t_35e101fe032691 1-4,376-381,387,445
+src/main/codex-application/ComposerCatalog.node.test.ts
+  s_c65b4244018ae4::t_3fb8111cb3725d 1,59-61
+src/main/codex-application/ComposerCatalog.ts
+  s_c65b4244018ae4::t_c9b3bf0041b216 56-58,110-114,120-124,128-130,220-223,225-226
+src/main/codex-application/PluginInventoryPolicy.node.test.ts
+  s_c65b4244018ae4::t_95b09168c418ca 1-51
+src/main/codex-application/PluginInventoryPolicy.ts
+  s_c65b4244018ae4::t_73ed680971105e 1-110
+src/main/codex-application/PluginNativeOperations.ts
+  s_c65b4244018ae4::t_970a16c37f2321 1-85
+src/renderer/features/plugins/model/selectors.test.ts
+  s_c65b4244018ae4::t_3626d7b59466f9 1-164
+src/renderer/features/plugins/model/selectors.ts
+  s_c65b4244018ae4::t_ac9de6c3f8923c 1
+src/shared/codex-plugin-management-model.ts
+  s_c65b4244018ae4::t_5cf0b6ede28f61 1-288
+src/shared/test-fixtures/plugins.ts
+  s_c65b4244018ae4::t_49b4fc8bb6647f 1-3
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "4de0ee1f949a0a1a04ba188285ce3190b22673fe",
+  "prompts": {},
+  "sessions": {
+    "s_c65b4244018ae4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a178d2-99d4-76f0-aded-75ddc279d862",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
