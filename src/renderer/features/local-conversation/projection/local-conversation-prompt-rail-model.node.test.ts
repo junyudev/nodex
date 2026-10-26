@@ -1,31 +1,19 @@
 import { describe, expect, test } from "vite-plus/test";
-import type { CodexPromptRailIndex } from "../../../../shared/codex-prompt-rail-history";
+import type { ConversationPromptTurn } from "../conversation-runtime";
 import type { ThreadUserMessageNavigationItem } from "../thread-stage-types";
-import {
-  buildLocalConversationPromptRailItems,
-  projectLocalConversationPromptRailVirtualWindow,
-  resolveCodexPromptRailRevealTarget,
-} from "./local-conversation-prompt-rail-model";
+import { buildLocalConversationPromptRailItems } from "./local-conversation-prompt-rail-model";
 
-const shellIndex = (count: number): CodexPromptRailIndex => ({
-  threadId: "thread-a",
-  hostId: "host-a",
-  generation: 4,
-  shells: Array.from({ length: count }, (_, index) => ({
-    turnId: `turn-${index + 1}`,
-    pageBackwardsCursor: `page-${Math.floor(index / 100)}`,
-    descendingOffset: index % 100,
-  })),
-  complete: count < 1_000,
-  truncatedBy: count >= 1_000 ? "page-budget" : null,
-  approximateBytes: count * 64,
-  loadedAtMs: 1_000,
-});
+const indexedTurns = (count: number): ConversationPromptTurn[] =>
+  Array.from({ length: count }, (_, index) => ({ turnId: `turn-${index + 1}` }));
 
-const residentItem = (turnId: string, label: string): ThreadUserMessageNavigationItem => ({
-  id: `${turnId}:user:0`,
+const residentItem = (
+  turnId: string | null,
+  label: string,
+  id = `${turnId}:user:0`,
+): ThreadUserMessageNavigationItem => ({
+  id,
   turnId,
-  turnKey: turnId,
+  turnKey: turnId ?? id,
   ordinal: 1,
   label,
   responsePreview: "resident response",
@@ -34,11 +22,10 @@ const residentItem = (turnId: string, label: string): ThreadUserMessageNavigatio
 });
 
 describe("local conversation prompt rail model", () => {
-  test("keeps one item-free marker per shell and replaces only resident or previewed Turns", () => {
-    const index = shellIndex(1_000);
+  test("keeps one item-free marker per indexed Turn and replaces only resident or previewed Turns", () => {
     const resident = residentItem("turn-999", "resident prompt");
     const items = buildLocalConversationPromptRailItems({
-      index,
+      turns: indexedTurns(1_000),
       residentItems: [resident],
       previewsByTurnId: new Map([
         [
@@ -56,37 +43,77 @@ describe("local conversation prompt rail model", () => {
     });
 
     expect(items).toHaveLength(1_000);
+    expect(items[0]).toMatchObject({
+      label: "Load prompt preview",
+      promptRailShell: { turnId: "turn-1", hasPreview: false },
+    });
     expect(items[3]).toMatchObject({
       id: "turn-4:user:0",
       label: "lazy prompt",
       responsePreview: "lazy response",
+      promptRailShell: { turnId: "turn-4", hasPreview: true },
     });
     expect(items[998]).toEqual({ ...resident, ordinal: 999 });
-    expect(items[0]).not.toHaveProperty("turn");
   });
 
-  test("uses explicit identity seek when a known Turn is beyond the 1,000-shell window", () => {
-    const index = shellIndex(1_000);
-    expect(resolveCodexPromptRailRevealTarget(index, "turn-1000").kind).toBe("shell");
-    expect(resolveCodexPromptRailRevealTarget(index, "turn-1001")).toEqual({
-      kind: "knownTurn",
-      turnId: "turn-1001",
+  test("shows previews an owner read with its index without another read", () => {
+    const [item] = buildLocalConversationPromptRailItems({
+      turns: [
+        {
+          turnId: "run-1",
+          previews: [
+            {
+              itemId: "message-1",
+              promptPreview: "Align the theme",
+              responsePreview: "Aligned",
+              isHeartbeat: false,
+            },
+          ],
+        },
+      ],
+      residentItems: [],
+      previewsByTurnId: new Map(),
+    });
+
+    expect(item).toMatchObject({
+      label: "Align the theme",
+      responsePreview: "Aligned",
+      promptRailShell: { turnId: "run-1", hasPreview: true },
     });
   });
 
-  test("projects a bounded overscanned DOM window for a 1,000-marker rail", () => {
-    const window = projectLocalConversationPromptRailVirtualWindow({
-      itemCount: 1_000,
-      scrollTop: 4_500,
-      viewportHeight: 400,
+  test("keeps resident markers outside the index in conversation order", () => {
+    const items = buildLocalConversationPromptRailItems({
+      turns: indexedTurns(3),
+      residentItems: [
+        residentItem(null, "imported prompt", "imported:user:0"),
+        residentItem("turn-2", "second prompt"),
+        residentItem("turn-unindexed", "between prompt"),
+        residentItem("turn-3", "third prompt"),
+        residentItem("turn-new", "newest prompt"),
+      ],
+      previewsByTurnId: new Map(),
     });
 
-    expect(window).toEqual({
-      startIndex: 438,
-      endIndex: 502,
-      paddingBeforePx: 4_380,
-      paddingAfterPx: 4_980,
-    });
-    expect(window.endIndex - window.startIndex).toBeLessThan(100);
+    expect(items.map((item) => item.label)).toEqual([
+      "Load prompt preview",
+      "imported prompt",
+      "second prompt",
+      "between prompt",
+      "third prompt",
+      "newest prompt",
+    ]);
+    expect(items.map((item) => item.ordinal)).toEqual([1, 2, 3, 4, 5, 6]);
+  });
+
+  test("navigates resident messages alone without an index", () => {
+    const resident = residentItem("turn-1", "resident prompt");
+    expect(
+      buildLocalConversationPromptRailItems({
+        turns: null,
+        residentItems: [resident],
+        previewsByTurnId: new Map(),
+      }),
+    ).toEqual([resident]);
   });
 });

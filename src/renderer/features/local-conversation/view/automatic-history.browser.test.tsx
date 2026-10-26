@@ -212,6 +212,7 @@ function historyFixture(items: readonly AgentTurnItem[]) {
         active--;
       });
     },
+    promptIndex: async () => ({ prompts: [], complete: true }),
     item: async () => null,
     attachment: async () => null,
     readQueuePage: async () => ({

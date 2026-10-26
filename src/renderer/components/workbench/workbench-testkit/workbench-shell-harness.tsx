@@ -2888,6 +2888,7 @@ export function renderWorkbench({
     if (channel === "agent-runtime:session:observe") return { observed: true };
     if (channel === "agent-runtime:session:unobserve") return { unobserved: true };
     if (channel === "agent-runtime:session:rollback") return { rolledBack: true };
+    if (channel === "agent-runtime:session:prompt-index") return { prompts: [], complete: true };
     if (channel === "agent-runtime:session:run-message") {
       const input = args[0] as { threadId: string; runId: string };
       return {

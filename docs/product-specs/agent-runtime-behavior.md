@@ -168,6 +168,14 @@ further read. A diff past the transport budget is withheld whole; its row keeps 
 counts and says the change is too large to preview. A failed edit keeps the Agent's error in
 place of a diff. A file whose counts were never measured shows no counts rather than `+0 -0`.
 
+Prompt navigation indexes each of the chat's own Runs with bounded previews of its opening
+prompt and latest reply, read without loading their history; the index lists the newest 1,000
+Runs. Every loaded Turn of the chat's own Runs keeps that Run's identity, including Turns whose
+Run records the bounded snapshot omitted. Selecting an unloaded Run loads older pages through its
+opening message, then scrolls to it. Rewinding to an earlier message replaces the loaded history
+topology, so the index reloads without the withdrawn Runs. Inherited fork history and imported
+native history have no Run of this chat; their prompts join the rail as their pages load.
+
 Read-only history loading, retry and child observations use the conversation's
 current owner, including for archived chats and provider-spawned subagents. Viewport
 pagination uses that same owner and validates its current history boundary; a released

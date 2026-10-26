@@ -11,6 +11,7 @@ import type { CodexTranscriptReadOwner } from "./normalized-transcript-read-owne
 import type { AsyncQuestionDelivery, AsyncQuestionRuntime } from "./async-question-runtime";
 import type { CodexHistoryBoundaryRef } from "../../../shared/codex-conversation-state/codex-history-topology";
 import type { CodexConversationHistoryTurnItemsRef } from "../../../shared/codex-conversation-history-page";
+import type { CodexPromptRailPreview } from "../../../shared/codex-prompt-rail-history";
 
 /** Viewport demand addresses the publishing owner; native read envelopes stay in its Adapter. */
 export interface ConversationHistoryPort {
@@ -19,6 +20,31 @@ export interface ConversationHistoryPort {
   readonly loadTurnItems?: (
     items: CodexConversationHistoryTurnItemsRef,
   ) => Promise<"applied" | "stale">;
+  /** Present where the owner can list Turns that resident history has not loaded yet. */
+  readonly promptRail?: ConversationPromptRailPort;
+}
+
+/** One Turn of a conversation's prompt index; identity matches its resident Turn id. */
+export interface ConversationPromptTurn {
+  readonly turnId: string;
+  /** Present where the owner reads previews with its index. */
+  readonly previews?: readonly CodexPromptRailPreview[];
+}
+
+/**
+ * Prompt navigation over every Turn, bound to the history reader that published it. Reads never
+ * install history; only `install` makes a Turn resident, through the same owner.
+ */
+export interface ConversationPromptRailPort {
+  /** Turns in conversation order, or null when the owner cannot index this conversation now. */
+  readonly loadIndex: (signal: AbortSignal) => Promise<readonly ConversationPromptTurn[] | null>;
+  /** Present where previews need their own read. */
+  readonly preview?: (
+    turnId: string,
+    signal: AbortSignal,
+  ) => Promise<readonly CodexPromptRailPreview[] | null>;
+  /** Makes one Turn resident so navigation can reveal its message. */
+  readonly install: (turnId: string, signal: AbortSignal) => Promise<"applied" | "stale">;
 }
 
 /** Optional questions answered beside the ordinary Composer, through the execution owner. */

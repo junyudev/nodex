@@ -88,6 +88,7 @@ type QueryEndpointPolicy =
   | "agent-runtime:session:inspect"
   | "agent-runtime:session:overview"
   | "agent-runtime:session:history"
+  | "agent-runtime:session:prompt-index"
   | "agent-runtime:session:attachment"
   | "agent-runtime:session:queue-read"
   | "agent-runtime:session:run-message"

@@ -228,6 +228,7 @@ function runtimeFixture(toolWork = false) {
       nextCursor: null,
       hasMoreHistory: false,
     }),
+    promptIndex: async () => ({ prompts: [], complete: true }),
     item: async () => null,
     attachment: async () => null,
     readQueuePage: async () => ({

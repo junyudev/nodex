@@ -4,6 +4,8 @@ import {
   type CanonicalHistoryClient,
 } from "./codex-canonical-history-loader";
 import {
+  CODEX_PROMPT_RAIL_MAX_PAGES,
+  CODEX_PROMPT_RAIL_PAGE_SIZE,
   buildCodexPromptRailPreviews,
   type CodexPromptRailTurnShell,
   type CodexPromptRailPreview,
@@ -16,13 +18,13 @@ export async function loadCanonicalPromptRailIndex(
 ): Promise<{ items: CodexPromptRailTurnShell[]; complete: boolean }> {
   const items: CodexPromptRailTurnShell[] = [];
   let cursor: string | null = null;
-  for (let page = 0; page < 10; page += 1) {
+  for (let page = 0; page < CODEX_PROMPT_RAIL_MAX_PAGES; page += 1) {
     const response: ClientRequestResponsesByMethod["thread/turns/list"] = await client.sendRequest(
       "thread/turns/list",
       {
         threadId: conversationId,
         cursor,
-        limit: 100,
+        limit: CODEX_PROMPT_RAIL_PAGE_SIZE,
         itemsView: "notLoaded",
         sortDirection: "desc",
       },

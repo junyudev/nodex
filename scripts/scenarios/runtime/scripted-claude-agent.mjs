@@ -296,6 +296,65 @@ for await (const line of createInterface({ input: process.stdin })) {
       result();
       continue;
     }
+    // A tool-heavy, tall reply: a few such Turns exceed one bounded history page and the viewport.
+    if (
+      typeof incoming.message.content === "string" &&
+      incoming.message.content.startsWith("Verify prompt navigation ")
+    ) {
+      const label = incoming.message.content.slice("Verify prompt navigation ".length);
+      const assistant = (id, content) => {
+        const message = {
+          id,
+          role: "assistant",
+          model,
+          content: [content],
+          usage: { input_tokens: 12, output_tokens: 4 },
+        };
+        send({
+          type: "assistant",
+          session_id: sessionId,
+          uuid: record("assistant", message),
+          parent_tool_use_id: null,
+          message,
+        });
+      };
+      for (let index = 0; index < 150; index += 1) {
+        const toolUseId = `navigation-${label}-${index}`;
+        assistant(`navigation-${label}`, {
+          type: "tool_use",
+          id: toolUseId,
+          name: "Bash",
+          input: { command: `echo ${index}` },
+        });
+        const toolMessage = {
+          role: "user",
+          content: [
+            {
+              type: "tool_result",
+              tool_use_id: toolUseId,
+              content: [{ type: "text", text: "ok" }],
+            },
+          ],
+        };
+        send({
+          type: "user",
+          session_id: sessionId,
+          uuid: record("user", toolMessage),
+          parent_tool_use_id: null,
+          message: toolMessage,
+          tool_use_result: { stdout: "ok", stderr: "", exitCode: 0, interrupted: false },
+        });
+      }
+      assistant(`navigation-${label}`, {
+        type: "text",
+        text: [
+          `Navigation reply ${label}`,
+          ...Array.from({ length: 60 }, (_, line) => `- Step ${line}`),
+        ].join("\n"),
+      });
+      result();
+      continue;
+    }
     if (JSON.stringify(incoming.message.content).includes("Verify imported copy continuation")) {
       const message = {
         id: `import-check-${randomUUID()}`,

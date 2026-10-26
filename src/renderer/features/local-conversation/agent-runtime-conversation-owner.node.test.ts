@@ -154,6 +154,7 @@ function transport(initial: AgentRuntimeConversation, pages: readonly AgentHisto
     read: vi.fn(async () => initial),
     control: vi.fn(async () => conversation([])),
     history: vi.fn(async () => pages[index++]!),
+    promptIndex: vi.fn(async () => ({ prompts: [], complete: true })),
     item: vi.fn(async () => null),
     attachment: vi.fn(async () => null),
     readQueuePage: vi.fn(async () => ({
@@ -1789,6 +1790,7 @@ describe("Agent Runtime keyed transcript reads", () => {
     const { owner, wire, release } = await open(conversation([assistant()]));
     const entityKey = owner.readOwner.readStructure()!.turnEntityKeys[0]!;
     const run = owner.getSnapshot().conversation!.snapshot.projection.runs[0]!;
+    const topology = owner.getSnapshot().view?.historyTopologyGeneration;
     wire.emit({
       sequence: 2,
       commandId: null,
@@ -1803,6 +1805,8 @@ describe("Agent Runtime keyed transcript reads", () => {
     expect(owner.readOwner.readTurnDetails(entityKey)).toBeNull();
     expect(owner.readOwner.readItem(entityKey, "assistant")).toBeNull();
     expect(owner.readOwner.readStructure()!.turnEntityKeys).toEqual([]);
+    // Readers of the rewound history, such as the prompt index, rebind to its replacement.
+    expect(owner.getSnapshot().view?.historyTopologyGeneration).toBe(topology! + 1);
     release();
   });
 
@@ -2163,5 +2167,151 @@ test("a held queue explains itself from the Run that ended last", () => {
   expect(agentRuntimeQueueHoldPause([run(1, "queued")])).toEqual({
     kind: "held",
     reason: "Queue paused",
+  });
+});
+
+describe("Agent Runtime prompt navigation", () => {
+  const opening = (
+    runId: string,
+    ordinal: number,
+    text = `Prompt for ${runId}`,
+  ): Extract<AgentTurnItem, { type: "user_message" }> => ({
+    ...base(`user:${runId}`, ordinal),
+    runId,
+    type: "user_message",
+    messageId: `message:${runId}`,
+    text,
+    attachments: [],
+    inputIntent: "turn_start",
+    createdBy: "user",
+    creationSource: "web",
+  });
+  const reply = (runId: string, ordinal: number): AgentTurnItem => ({
+    ...assistant(`Reply for ${runId}`),
+    id: `reply:${runId}`,
+    runId,
+    ordinal,
+    messageId: `reply-message:${runId}`,
+    streaming: false,
+    status: "completed",
+    completedAt: at,
+  });
+  const withRuns = (
+    runIds: readonly string[],
+    items: readonly AgentTurnItem[],
+    cursor: string | null,
+  ): AgentRuntimeConversation => {
+    const initial = conversation(items, cursor);
+    const template = initial.snapshot.projection.runs[0]!;
+    return {
+      ...initial,
+      snapshot: {
+        ...initial.snapshot,
+        projection: {
+          ...initial.snapshot.projection,
+          runs: runIds.map((id, index) => ({
+            ...template,
+            id,
+            ordinal: index + 1,
+            userMessageId: `message:${id}`,
+            status: "completed" as const,
+            completedAt: at,
+          })),
+        },
+      },
+    };
+  };
+
+  test("indexes the thread's own Runs with the previews their messages display", async () => {
+    const { owner, wire, release } = await open(withRuns(["run-1"], [opening("run-1", 1)], null));
+    vi.mocked(wire.port.promptIndex).mockResolvedValueOnce({
+      complete: true,
+      prompts: [
+        {
+          runId: "run-1",
+          messageId: "message:run-1",
+          prompt: "Align the theme\n\n[Selected page](t3-context://v1/nodex-app-context/context-1)",
+          response: "a".repeat(256),
+          scheduled: true,
+        },
+      ],
+    });
+
+    const [turn] = (await owner.readPromptIndex()) ?? [];
+
+    expect(wire.port.promptIndex).toHaveBeenCalledExactlyOnceWith(target);
+    expect(turn?.turnId).toBe("run-1");
+    expect(turn?.previews?.[0]).toMatchObject({
+      itemId: "message:run-1",
+      promptPreview: "Align the theme",
+      isHeartbeat: true,
+    });
+    expect(Array.from(turn?.previews?.[0]?.responsePreview ?? "")).toHaveLength(240);
+    expect(turn?.previews?.[0]?.responsePreview.endsWith("…")).toBe(true);
+    release();
+  });
+
+  test("loads older pages through a Run's opening message until that message is resident", async () => {
+    // A bounded snapshot carries only the Run records of its own window.
+    const { owner, wire, release } = await open(
+      withRuns(["run-3"], [opening("run-3", 5), reply("run-3", 6)], "older"),
+      [
+        // A bounded page can end inside the requested Run.
+        {
+          snapshotSequence: 1,
+          items: [row(reply("run-2", 4))],
+          nextCursor: "oldest",
+          hasMoreHistory: true,
+        },
+        {
+          snapshotSequence: 1,
+          items: [opening("run-1", 1), reply("run-1", 2), opening("run-2", 3)].map(row),
+          nextCursor: null,
+          hasMoreHistory: false,
+        },
+      ],
+    );
+
+    vi.mocked(wire.port.promptIndex).mockResolvedValueOnce({
+      complete: true,
+      prompts: ["run-0", "run-1", "run-2", "run-3"].map((runId) => ({
+        runId,
+        messageId: `message:${runId}`,
+        prompt: `Prompt for ${runId}`,
+        response: "",
+        scheduled: false,
+      })),
+    });
+    expect((await owner.readPromptIndex())?.map((turn) => turn.turnId)).toEqual([
+      "run-0",
+      "run-1",
+      "run-2",
+      "run-3",
+    ]);
+
+    await expect(owner.loadHistoryThroughRun("run-2")).resolves.toBe("applied");
+    expect(wire.port.history).toHaveBeenNthCalledWith(1, {
+      ...target,
+      cursor: "older",
+      throughEntryId: "message:run-2",
+    });
+    expect(wire.port.history).toHaveBeenNthCalledWith(2, {
+      ...target,
+      cursor: "oldest",
+      throughEntryId: "message:run-2",
+    });
+    // Older Turns keep their Run identity without the Run records.
+    const structure = owner.readOwner.readStructure()!;
+    expect(structure.turns.map((turn) => turn.value.details.turnId)).toEqual([
+      "run-1",
+      "run-2",
+      "run-3",
+    ]);
+
+    // A Run without visible history, or an unknown one, ends without another read.
+    await expect(owner.loadHistoryThroughRun("run-0")).resolves.toBe("stale");
+    await expect(owner.loadHistoryThroughRun("unknown")).resolves.toBe("stale");
+    expect(wire.port.history).toHaveBeenCalledTimes(2);
+    release();
   });
 });

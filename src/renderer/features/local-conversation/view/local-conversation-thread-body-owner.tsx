@@ -41,7 +41,6 @@ import type {
 import {
   hydrateLocalPersistedHistoryOccurrence,
   searchLocalPersistedHistory,
-  prepareLocalConversationPromptRailNavigation,
 } from "../local-conversation-store";
 import {
   selectVisibleConversationTurnEntries,
@@ -114,7 +113,6 @@ import {
   waitForLocalConversationPromptRailResidentTarget,
 } from "./local-conversation-prompt-rail";
 import { formatBoundedWorktreeOutput } from "../../../../shared/worktree-output";
-import type { CodexPromptRailReveal } from "../../../../shared/codex-prompt-rail-history";
 import type {
   CodexHistoryRow,
   CodexHistoryTurnItemsPagination,
@@ -1196,17 +1194,14 @@ export function LocalConversationThreadBodyOwner({
     },
     [searchReads],
   );
-  const handlePublishPromptRailReveal = useCallback(async (reveal: CodexPromptRailReveal) => {
-    await prepareLocalConversationPromptRailNavigation(reveal);
-  }, []);
   const handleRevealInstalledPromptRailTurn = useCallback(
     async (
-      reveal: CodexPromptRailReveal,
+      turnId: string,
       mode: "smooth" | "instant",
       signal: AbortSignal,
     ): Promise<HTMLElement | null> =>
       await waitForLocalConversationPromptRailResidentTarget({
-        turnId: reveal.turnId,
+        turnId,
         mode,
         signal,
         readResidentItems: () => userMessageNavigationItemsRef.current,
@@ -1233,12 +1228,9 @@ export function LocalConversationThreadBodyOwner({
         }
       />
       <LocalConversationPromptRail
-        enabled={Boolean((threadId ?? body.threadId) && historyTopologyGeneration !== undefined)}
-        hostId={hostId}
+        port={history?.promptRail ?? null}
         threadId={threadId ?? body.threadId}
-        topologyGeneration={historyTopologyGeneration ?? null}
         residentItems={userMessageNavigationItems}
-        publishReveal={handlePublishPromptRailReveal}
         revealResidentItem={handleRevealUserMessageNavigationItem}
         revealInstalledTurn={handleRevealInstalledPromptRailTurn}
       />

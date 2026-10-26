@@ -40,6 +40,7 @@ import {
   type CodexHistoryBoundaryRef,
   type CodexHistoryRow,
 } from "../../../shared/codex-conversation-state/codex-history-topology";
+import { truncateCodexPromptRailPreview } from "../../../shared/codex-prompt-rail-history";
 import { CodexTranscriptReadOwner } from "./normalized-transcript-read-owner";
 import {
   agentRuntimeRuntime,
@@ -61,7 +62,7 @@ import {
   type AgentRuntimeThread,
 } from "./agent-runtime-transcript-projection";
 
-import type { ConversationContentSource } from "./conversation-runtime";
+import type { ConversationContentSource, ConversationPromptTurn } from "./conversation-runtime";
 import { createAsyncQuestionRuntime } from "./async-question-runtime";
 import type { CodexCanonicalHookRun } from "../../../shared/codex-conversation-state/codex-conversation-state";
 import {
@@ -76,6 +77,7 @@ export type AgentRuntimeReadTransport = Pick<
   | "read"
   | "control"
   | "history"
+  | "promptIndex"
   | "item"
   | "subscribe"
   | "readQueuePage"
@@ -228,6 +230,8 @@ export class AgentRuntimeConversationOwner {
     Pick<NonNullable<AgentRuntimeRun["delegatedCompletion"]>, "disposition" | "nextGeneration">
   >();
   readonly #residentTaskIds = new Set<string>();
+  /** Opening message of each Run the prompt index listed, by Run. */
+  readonly #promptMessageIds = new Map<string, string>();
   readonly #turns = new Map<string, ResidentTurn>();
   /** Each Turn's hooks by item, presented with its reply rather than as transcript rows. */
   readonly #hookRuns = new Map<string, Map<string, CodexCanonicalHookRun>>();
@@ -460,7 +464,46 @@ export class AgentRuntimeConversationOwner {
   /** A viewport intent reads only its current source boundary; failures stay with that gap. */
   readonly loadHistoryBoundary = (
     boundary: CodexHistoryBoundaryRef,
-  ): Promise<"applied" | "stale"> => {
+  ): Promise<"applied" | "stale"> => this.#loadOlderPage(boundary);
+  /**
+   * The thread's own Runs, each with its opening prompt and latest reply, including Runs that
+   * resident history has not loaded. Inherited and imported history has no Run to index.
+   */
+  readonly readPromptIndex = async (): Promise<readonly ConversationPromptTurn[] | null> => {
+    const generation = this.#generation;
+    const index = await this.#transport.promptIndex(this.#target);
+    if (generation !== this.#generation || this.#disposed) return null;
+    for (const prompt of index.prompts) this.#promptMessageIds.set(prompt.runId, prompt.messageId);
+    return index.prompts.map((prompt) => ({
+      turnId: prompt.runId,
+      previews: [
+        {
+          itemId: prompt.messageId,
+          promptPreview: truncateCodexPromptRailPreview(agentMessageDisplayText(prompt.prompt)),
+          responsePreview: truncateCodexPromptRailPreview(prompt.response),
+          isHeartbeat: prompt.scheduled,
+        },
+      ],
+    }));
+  };
+  /** Loads older pages until one Run's opening message is resident. */
+  readonly loadHistoryThroughRun = async (runId: string): Promise<"applied" | "stale"> => {
+    const generation = this.#generation;
+    const entityKey = runKey(this.threadId, runId);
+    // Bounded snapshots omit older Run records; the prompt index names their opening messages.
+    const throughEntryId = this.#promptMessageIds.get(runId) ?? this.#run(runId)?.userMessageId;
+    if (!throughEntryId) return "stale";
+    while (this.#turnHead(entityKey)?.opening !== true) {
+      const boundary = this.#historyBoundary();
+      if (generation !== this.#generation || !boundary) return "stale";
+      if ((await this.#loadOlderPage(boundary, throughEntryId)) === "stale") return "stale";
+    }
+    return "applied";
+  };
+  #loadOlderPage(
+    boundary: CodexHistoryBoundaryRef,
+    throughEntryId?: string,
+  ): Promise<"applied" | "stale"> {
     if (!this.#isCurrentHistoryBoundary(boundary)) return Promise.resolve("stale");
     if (this.#historyRequest) return this.#historyRequest;
     const generation = this.#generation;
@@ -468,7 +511,15 @@ export class AgentRuntimeConversationOwner {
     const isCurrent = () =>
       generation === this.#generation && this.#isCurrentHistoryBoundary(boundary);
     const pending = Promise.resolve()
-      .then(() => (isCurrent() ? this.#transport.history({ ...this.#target, cursor }) : null))
+      .then(() =>
+        isCurrent()
+          ? this.#transport.history({
+              ...this.#target,
+              cursor,
+              ...(throughEntryId === undefined ? {} : { throughEntryId }),
+            })
+          : null,
+      )
       .then((page) => {
         if (!page || !isCurrent()) return "stale" as const;
         if (page.nextCursor === cursor) throw new Error("History cursor did not advance");
@@ -495,7 +546,7 @@ export class AgentRuntimeConversationOwner {
     this.#patch({ historyLoading: true });
     this.#publishView();
     return pending;
-  };
+  }
   /** Explicit detail hydrates one addressed item, never its siblings or the whole Turn. */
   readonly readItem = async (itemId: string): Promise<AgentTurnItem | null> => {
     const source = this.#items.get(itemId);
@@ -967,11 +1018,14 @@ export class AgentRuntimeConversationOwner {
       const itemIds = prepend
         ? [...incoming.ids, ...(current?.itemIds ?? [])]
         : [...(current?.itemIds ?? []), ...incoming.ids];
-      const runId = this.#items.get(itemIds[0]!)?.runId ?? null;
+      const head = this.#items.get(itemIds[0]!);
+      const runId = head?.runId ?? null;
       const details = projectAgentRuntimeTurnDetails({
         thread,
         entityKey,
         run: this.#run(runId),
+        // A bounded snapshot omits Run records for older pages; their Turns keep the Run's identity.
+        runId: head?.sourceThreadId === this.threadId ? runId : null,
         openingItem: incoming.opening,
         previous: current?.details,
         hookRuns: this.#turnHookRuns(entityKey),
@@ -1462,6 +1516,8 @@ export class AgentRuntimeConversationOwner {
         }
         this.#turns.delete(entityKey);
         this.#turnKeys = this.#turnKeys.filter((key) => key !== entityKey);
+        // Rewound history replaces the topology, so readers of it, including the prompt index, rebind.
+        this.#historyGeneration += 1;
         this.readOwner.applyEvent({
           type: "changes",
           changes: [

@@ -815,6 +815,8 @@ export function projectAgentRuntimeTurnDetails(input: {
   readonly thread: AgentRuntimeThread;
   readonly entityKey: string;
   readonly run?: AgentRuntimeRun | undefined;
+  /** The thread's own Run, which identifies its Turn even when the Run record is not resident. */
+  readonly runId?: string | null | undefined;
   readonly openingItem?: Extract<AgentTurnItem, { type: "user_message" }> | undefined;
   readonly previous?: CodexTranscriptTurnDetails | undefined;
   readonly hookRuns?: readonly CodexCanonicalHookRun[] | undefined;
@@ -827,7 +829,7 @@ export function projectAgentRuntimeTurnDetails(input: {
   const completedAt = agentRuntimeTime(run?.completedAt);
   return {
     entityKey: input.entityKey,
-    turnId: run?.id ?? previous?.turnId ?? null,
+    turnId: input.runId ?? run?.id ?? previous?.turnId ?? null,
     rootTurnId: null,
     itemsView: "full",
     status: run ? agentRuntimeTurnStatus(run.status) : (previous?.status ?? "completed"),

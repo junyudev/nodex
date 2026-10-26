@@ -252,6 +252,7 @@ it.effect(
           searchThread: () => Effect.die("unused"),
           searchThreadStream: () => Stream.empty,
           getThreadHistoryPage: () => Effect.die("unused"),
+          getThreadPromptIndex: () => Effect.die("unused prompt index"),
           getTimelinePage: () => Effect.die("Unused timeline read"),
           getMessageCount: () => Effect.die("unused message count"),
           getNextTurnItemOrdinal: () => Effect.die("unused ordinal read"),

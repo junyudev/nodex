@@ -4,11 +4,6 @@ import type { CodexThreadHistoryFeatureUnavailable } from "./codex-thread-histor
 
 export const CODEX_PROMPT_RAIL_PAGE_SIZE = 100;
 export const CODEX_PROMPT_RAIL_MAX_PAGES = 10;
-export const CODEX_PROMPT_RAIL_MAX_SHELLS =
-  CODEX_PROMPT_RAIL_PAGE_SIZE * CODEX_PROMPT_RAIL_MAX_PAGES;
-export const CODEX_PROMPT_RAIL_MAX_INDEX_BYTES = 512 * 1024;
-export const CODEX_PROMPT_RAIL_STALE_MS = 30_000;
-export const CODEX_PROMPT_RAIL_LOAD_DEADLINE_MS = 30_000;
 export const CODEX_PROMPT_RAIL_PREVIEW_CODE_POINTS = 240;
 
 /** Validates the renderer-provided locator before it can become an app-server page limit. */

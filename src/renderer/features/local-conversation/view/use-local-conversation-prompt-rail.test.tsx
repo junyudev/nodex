@@ -1,499 +1,248 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { describe, expect, test, vi } from "vite-plus/test";
-import type {
-  CodexPromptRailIndex,
-  CodexPromptRailIndexRequest,
-  CodexPromptRailReveal,
-  CodexPromptRailRevealCommandResult,
-  CodexPromptRailRevealRequest,
-} from "../../../../shared/codex-prompt-rail-history";
+import type { CodexPromptRailPreview } from "../../../../shared/codex-prompt-rail-history";
+import type { ConversationPromptRailPort, ConversationPromptTurn } from "../conversation-runtime";
 import type { ThreadUserMessageNavigationItem } from "../thread-stage-types";
 import {
   useLocalConversationPromptRail,
-  type LocalConversationPromptRailClient,
+  type UseLocalConversationPromptRailInput,
 } from "./use-local-conversation-prompt-rail";
 
-const index = (count = 1_000): CodexPromptRailIndex => ({
-  threadId: "thread-a",
-  hostId: "host-a",
-  generation: 8,
-  shells: Array.from({ length: count }, (_, position) => ({
-    turnId: `turn-${position + 1}`,
-    pageBackwardsCursor: `cursor-${Math.floor(position / 100)}`,
-    descendingOffset: position % 100,
-  })),
-  complete: count < 1_000,
-  truncatedBy: count === 1_000 ? "page-budget" : null,
-  approximateBytes: count * 64,
-  loadedAtMs: 1_000,
+const turns = (count: number): ConversationPromptTurn[] =>
+  Array.from({ length: count }, (_, index) => ({ turnId: `turn-${index + 1}` }));
+
+const previews = (turnId: string): CodexPromptRailPreview[] => [
+  {
+    itemId: `${turnId}:prompt`,
+    promptPreview: `Prompt for ${turnId}`,
+    responsePreview: `Response for ${turnId}`,
+    isHeartbeat: false,
+  },
+];
+
+const residentItem = (
+  turnId: string,
+  label = "Resident prompt",
+): ThreadUserMessageNavigationItem => ({
+  id: `${turnId}:resident`,
+  turnId,
+  turnKey: turnId,
+  ordinal: 1,
+  label,
+  responsePreview: "",
+  outputs: [],
+  isHeartbeat: false,
 });
 
-const reveal = (
-  turnId: string,
-  _requestId: string,
-  expectedTopologyGeneration: number,
-): CodexPromptRailReveal => ({
-  threadId: "thread-a",
-  hostId: "host-a",
-  generation: 8,
-  turnId,
-  topologyGeneration: expectedTopologyGeneration,
-  previews: [
-    {
-      itemId: `${turnId}:prompt`,
-      promptPreview: `Prompt for ${turnId}`,
-      responsePreview: `Response for ${turnId}`,
-      isHeartbeat: false,
-    },
-  ],
-  turnCursor: `cursor:${turnId}`,
+const port = (overrides: Partial<ConversationPromptRailPort> = {}): ConversationPromptRailPort => ({
+  loadIndex: vi.fn(async () => turns(3)),
+  preview: vi.fn(async (turnId: string) => previews(turnId)),
+  install: vi.fn(async () => "applied" as const),
+  ...overrides,
 });
+
+const renderRail = (initialProps: UseLocalConversationPromptRailInput) =>
+  renderHook(
+    (props: UseLocalConversationPromptRailInput) => useLocalConversationPromptRail(props),
+    {
+      initialProps,
+    },
+  );
 
 describe("useLocalConversationPromptRail", () => {
-  test("loads only shells, lazily previews one Turn, and identity-seeks beyond 1,000", async () => {
-    const revealRequests: Array<Parameters<LocalConversationPromptRailClient["reveal"]>[0]> = [];
-    const client: LocalConversationPromptRailClient = {
-      loadIndex: async (request) => ({
-        status: "completed",
-        requestId: request.requestId,
-        expectedTopologyGeneration: request.expectedTopologyGeneration,
-        index: index(),
-      }),
-      reveal: async (request) => {
-        revealRequests.push(request);
-        const turnId =
-          request.target.kind === "shell" ? request.target.shell.turnId : request.target.turnId;
-        return {
-          status: "completed",
-          requestId: request.requestId,
-          expectedTopologyGeneration: request.expectedTopologyGeneration,
-          reveal: reveal(turnId, request.requestId, request.expectedTopologyGeneration),
-        };
-      },
-    };
-    const publishReveal = vi.fn(async () => undefined);
+  test("indexes every Turn, previews one on demand, and installs a Turn before revealing it", async () => {
+    const rail = port({ loadIndex: vi.fn(async () => turns(1_000)) });
     const installedTarget = document.createElement("div");
     const revealInstalledTurn = vi.fn(async () => installedTarget);
-    const hook = renderHook(() =>
-      useLocalConversationPromptRail({
-        enabled: true,
-        threadId: "thread-a",
-        topologyGeneration: 12,
-        residentItems: [],
-        client,
-        publishReveal,
-        revealInstalledTurn,
-      }),
-    );
+    const hook = renderRail({
+      port: rail,
+      threadId: "thread-a",
+      residentItems: [],
+      revealInstalledTurn,
+    });
 
     await waitFor(() => expect(hook.result.current.items).toHaveLength(1_000));
-    expect(revealRequests).toHaveLength(0);
+    expect(rail.preview).not.toHaveBeenCalled();
 
     await act(async () => {
       hook.result.current.previewItem(hook.result.current.items[499]!);
       await Promise.resolve();
     });
     await waitFor(() => expect(hook.result.current.items[499]?.label).toBe("Prompt for turn-500"));
-    expect(revealRequests).toHaveLength(1);
-    expect(publishReveal).not.toHaveBeenCalled();
-
-    let revealedTarget: HTMLElement | null = null;
-    await act(async () => {
-      revealedTarget = await hook.result.current.revealItem(
-        hook.result.current.items[499]!,
-        "smooth",
-      );
-    });
-    expect(revealRequests).toHaveLength(2);
-    expect(publishReveal).toHaveBeenCalledTimes(1);
-    expect(revealInstalledTurn).toHaveBeenCalledWith(
-      expect.objectContaining({ turnId: "turn-500" }),
-      "smooth",
-      expect.any(AbortSignal),
-    );
-    expect(revealedTarget).toBe(installedTarget);
-
-    await act(async () => {
-      await hook.result.current.revealKnownTurn("turn-1001");
-    });
-    expect(revealRequests[2]?.target).toEqual({ kind: "knownTurn", turnId: "turn-1001" });
-    expect(publishReveal).toHaveBeenCalledTimes(2);
-  });
-
-  test("keeps resident navigation available when persisted prompt history is unavailable", async () => {
-    const residentItem = {
-      id: "resident-user-message",
-      turnId: "turn-resident",
-      label: "Resident prompt",
-    } as ThreadUserMessageNavigationItem;
-    const loadIndex = vi.fn(
-      async (request: CodexPromptRailIndexRequest) =>
-        ({
-          status: "unavailable",
-          requestId: request.requestId,
-          availability: {
-            status: "unavailable",
-            feature: "prompt-rail",
-            reason: "capability-unproven",
-            threadId: "thread-a",
-            hostId: "host-a",
-            hostGeneration: 8,
-            sourceEpoch: "epoch-a",
-            appServerVersion: "0.0.0",
-            historyMode: "paginated",
-          },
-        }) as const,
-    );
-    const client: LocalConversationPromptRailClient = {
-      loadIndex,
-      reveal: vi.fn(async (): Promise<CodexPromptRailRevealCommandResult> => ({
-        status: "cancelled",
-        requestId: "unused",
-      })),
-    };
-    const hook = renderHook(() =>
-      useLocalConversationPromptRail({
-        enabled: true,
-        threadId: "thread-a",
-        topologyGeneration: 12,
-        residentItems: [residentItem],
-        client,
-        publishReveal: vi.fn(async () => undefined),
-      }),
-    );
-
-    await waitFor(() => expect(hook.result.current.loadingIndex).toBe(false));
-    expect(hook.result.current.availability?.reason).toBe("capability-unproven");
-    expect(hook.result.current.error).toBeNull();
-    expect(hook.result.current.items).toEqual([residentItem]);
-    expect(loadIndex).toHaveBeenCalledOnce();
-    expect(client.reveal).not.toHaveBeenCalled();
-  });
-
-  test("re-evaluates unavailable prompt history after the conversation generation changes", async () => {
-    let attempt = 0;
-    const client: LocalConversationPromptRailClient = {
-      loadIndex: async (request) => {
-        attempt += 1;
-        if (attempt === 1) {
-          return {
-            status: "unavailable",
-            requestId: request.requestId,
-            availability: {
-              status: "unavailable",
-              feature: "prompt-rail",
-              reason: "host-unsupported",
-              threadId: "thread-a",
-              hostId: "host-a",
-              hostGeneration: 8,
-              sourceEpoch: "epoch-old",
-              appServerVersion: "0.144.0",
-              historyMode: "paginated",
-            },
-          };
-        }
-        return {
-          status: "completed",
-          requestId: request.requestId,
-          expectedTopologyGeneration: request.expectedTopologyGeneration,
-          index: index(2),
-        };
-      },
-      reveal: vi.fn(async (): Promise<CodexPromptRailRevealCommandResult> => ({
-        status: "cancelled",
-        requestId: "unused",
-      })),
-    };
-    const hook = renderHook(
-      ({ topologyGeneration }) =>
-        useLocalConversationPromptRail({
-          enabled: true,
-          threadId: "thread-a",
-          topologyGeneration,
-          residentItems: [],
-          client,
-          publishReveal: vi.fn(async () => undefined),
-        }),
-      { initialProps: { topologyGeneration: 12 } },
-    );
-
-    await waitFor(() => expect(hook.result.current.availability?.reason).toBe("host-unsupported"));
-    hook.rerender({ topologyGeneration: 13 });
-    await waitFor(() => expect(hook.result.current.items).toHaveLength(2));
-
-    expect(attempt).toBe(2);
-    expect(hook.result.current.availability).toBeNull();
-  });
-
-  test("rehydrates an evicted hover preview before exact click navigation", async () => {
-    const revealRequests: CodexPromptRailRevealRequest[] = [];
-    const client: LocalConversationPromptRailClient = {
-      loadIndex: async (request) => ({
-        status: "completed",
-        requestId: request.requestId,
-        expectedTopologyGeneration: request.expectedTopologyGeneration,
-        index: index(1),
-      }),
-      reveal: async (request) => {
-        revealRequests.push(request);
-        const turnId =
-          request.target.kind === "shell" ? request.target.shell.turnId : request.target.turnId;
-        return {
-          status: "completed",
-          requestId: request.requestId,
-          expectedTopologyGeneration: request.expectedTopologyGeneration,
-          reveal: reveal(turnId, request.requestId, request.expectedTopologyGeneration),
-        };
-      },
-    };
-    const publishReveal = vi.fn(async () => undefined);
-    const realTarget = document.createElement("div");
-    const revealInstalledTurn = vi.fn(async () => realTarget);
-    const hook = renderHook(
-      ({ residentItems }) =>
-        useLocalConversationPromptRail({
-          enabled: true,
-          threadId: "thread-a",
-          topologyGeneration: 12,
-          residentItems,
-          client,
-          publishReveal,
-          revealInstalledTurn,
-        }),
-      {
-        initialProps: {
-          residentItems: [] as ThreadUserMessageNavigationItem[],
-        },
-      },
-    );
-
-    await waitFor(() => expect(hook.result.current.items).toHaveLength(1));
-    const shell = hook.result.current.items[0]!;
-    await act(async () => {
-      hook.result.current.previewItem(shell);
-      await Promise.resolve();
-    });
-    await waitFor(() => expect(hook.result.current.items[0]?.label).toBe("Prompt for turn-1"));
-
-    const { promptRailShell: _promptRailShell, ...residentShell } = shell;
-    const resident: ThreadUserMessageNavigationItem = {
-      ...residentShell,
-      id: "turn-1:real-search-unit",
-      label: "Resident prompt",
-    };
-    hook.rerender({ residentItems: [resident] });
-    await waitFor(() => expect(hook.result.current.items[0]?.id).toBe(resident.id));
-    // Resident history can disappear while its independently read preview stays cached.
-    hook.rerender({ residentItems: [] });
-    await waitFor(() => expect(hook.result.current.items[0]?.id).not.toBe(resident.id));
+    expect(rail.install).not.toHaveBeenCalled();
 
     let target: HTMLElement | null = null;
     await act(async () => {
-      target = await hook.result.current.revealItem(hook.result.current.items[0]!, "smooth");
+      target = await hook.result.current.revealItem(hook.result.current.items[499]!, "smooth");
     });
-    expect(revealRequests).toHaveLength(2);
-    expect(publishReveal).toHaveBeenCalledTimes(1);
-    expect(revealInstalledTurn).toHaveBeenLastCalledWith(
-      expect.objectContaining({ turnId: "turn-1" }),
-      "smooth",
-      expect.any(AbortSignal),
-    );
-    expect(target).toBe(realTarget);
+    expect(rail.install).toHaveBeenCalledWith("turn-500", expect.any(AbortSignal));
+    expect(revealInstalledTurn).toHaveBeenCalledWith("turn-500", "smooth", expect.any(AbortSignal));
+    expect(target).toBe(installedTarget);
   });
 
-  test("waits for match preparation before scrolling to the installed target", async () => {
-    let revealSignal: AbortSignal | undefined;
-    let finishPublication: (() => void) | undefined;
-    const client: LocalConversationPromptRailClient = {
-      loadIndex: async (request) => ({
-        status: "completed",
-        requestId: request.requestId,
-        expectedTopologyGeneration: request.expectedTopologyGeneration,
-        index: index(1),
-      }),
-      reveal: async (request, options) => {
-        revealSignal = options?.signal;
-        const turnId =
-          request.target.kind === "shell" ? request.target.shell.turnId : request.target.turnId;
-        return {
-          status: "completed",
-          requestId: request.requestId,
-          expectedTopologyGeneration: request.expectedTopologyGeneration,
-          reveal: reveal(turnId, request.requestId, request.expectedTopologyGeneration),
-        };
-      },
-    };
-    const publishReveal = vi.fn(
-      () =>
-        new Promise<void>((resolve) => {
-          finishPublication = resolve;
-        }),
-    );
-    const realTarget = document.createElement("div");
-    const revealInstalledTurn = vi.fn(async () => realTarget);
-    const hook = renderHook(
-      ({ topologyGeneration }) =>
-        useLocalConversationPromptRail({
-          enabled: true,
-          threadId: "thread-a",
-          topologyGeneration,
-          residentItems: [],
-          client,
-          publishReveal,
-          revealInstalledTurn,
-        }),
-      { initialProps: { topologyGeneration: 12 } },
-    );
-
-    await waitFor(() => expect(hook.result.current.items).toHaveLength(1));
-    let navigationPromise: Promise<HTMLElement | null> | undefined;
-    await act(async () => {
-      navigationPromise = hook.result.current.revealItem(hook.result.current.items[0]!, "smooth");
-      await Promise.resolve();
+  test("shows previews read with the index without another read", async () => {
+    const rail = port({
+      loadIndex: vi.fn(async () => [{ turnId: "run-1", previews: previews("run-1") }]),
+      preview: undefined,
     });
-    await waitFor(() => expect(publishReveal).toHaveBeenCalledOnce());
+    const hook = renderRail({ port: rail, threadId: "thread-a", residentItems: [] });
 
-    await act(async () => {
-      hook.rerender({ topologyGeneration: 12 });
-      await Promise.resolve();
-    });
-    expect(revealSignal?.aborted).toBe(false);
-
-    let target: HTMLElement | null = null;
-    await act(async () => {
-      finishPublication?.();
-      target = (await navigationPromise) ?? null;
-    });
-
-    expect(revealSignal?.aborted).toBe(false);
-    expect(revealInstalledTurn).toHaveBeenCalledWith(
-      expect.objectContaining({ turnId: "turn-1", topologyGeneration: 12 }),
-      "smooth",
-      expect.any(AbortSignal),
-    );
-    expect(target).toBe(realTarget);
-  });
-
-  test("aborts the old request and rejects late topology or host generations", async () => {
-    const pending: Array<{
-      readonly request: Parameters<LocalConversationPromptRailClient["loadIndex"]>[0];
-      readonly signal: AbortSignal | undefined;
-      readonly resolve: (
-        value: Awaited<ReturnType<LocalConversationPromptRailClient["loadIndex"]>>,
-      ) => void;
-    }> = [];
-    const client: LocalConversationPromptRailClient = {
-      loadIndex: (request, options) =>
-        new Promise((resolve) => pending.push({ request, signal: options?.signal, resolve })),
-      reveal: async (request) => ({
-        status: "completed",
-        requestId: request.requestId,
-        expectedTopologyGeneration: request.expectedTopologyGeneration,
-        reveal: {
-          ...reveal("turn-1", request.requestId, request.expectedTopologyGeneration),
-          hostId: "foreign-host",
-        },
-      }),
-    };
-    const publishReveal = vi.fn(async () => undefined);
-    const hook = renderHook(
-      ({ topologyGeneration }) =>
-        useLocalConversationPromptRail({
-          enabled: true,
-          threadId: "thread-a",
-          topologyGeneration,
-          residentItems: [],
-          client,
-          publishReveal,
-        }),
-      { initialProps: { topologyGeneration: 1 } },
-    );
-    await waitFor(() => expect(pending).toHaveLength(1));
-    hook.rerender({ topologyGeneration: 2 });
-    await waitFor(() => expect(pending).toHaveLength(2));
-    expect(pending[0]?.signal?.aborted).toBe(true);
-
-    await act(async () => {
-      pending[0]?.resolve({
-        status: "completed",
-        requestId: pending[0].request.requestId,
-        expectedTopologyGeneration: 1,
-        index: index(4),
-      });
-      pending[1]?.resolve({
-        status: "completed",
-        requestId: pending[1].request.requestId,
-        expectedTopologyGeneration: 2,
-        index: index(4),
-      });
-    });
-    await waitFor(() => expect(hook.result.current.items).toHaveLength(4));
-
-    await act(async () => {
-      await hook.result.current.revealItem(hook.result.current.items[0]!, "smooth");
-    });
-    expect(publishReveal).not.toHaveBeenCalled();
-  });
-
-  test("retires a late preview after context replacement without preparing navigation", async () => {
-    let pendingReveal:
-      | {
-          readonly request: CodexPromptRailRevealRequest;
-          readonly signal: AbortSignal | undefined;
-          readonly resolve: (value: CodexPromptRailRevealCommandResult) => void;
-        }
-      | undefined;
-    const client: LocalConversationPromptRailClient = {
-      loadIndex: async (request) => ({
-        status: "completed",
-        requestId: request.requestId,
-        expectedTopologyGeneration: request.expectedTopologyGeneration,
-        index: index(1),
-      }),
-      reveal: (request, options) =>
-        new Promise((resolve) => {
-          pendingReveal = { request, signal: options?.signal, resolve };
-        }),
-    };
-    const publishReveal = vi.fn(async () => undefined);
-    const hook = renderHook(
-      ({ topologyGeneration }) =>
-        useLocalConversationPromptRail({
-          enabled: true,
-          threadId: "thread-a",
-          topologyGeneration,
-          residentItems: [],
-          client,
-          publishReveal,
-        }),
-      { initialProps: { topologyGeneration: 1 } },
-    );
-
-    await waitFor(() => expect(hook.result.current.items).toHaveLength(1));
+    await waitFor(() => expect(hook.result.current.items[0]?.label).toBe("Prompt for run-1"));
     await act(async () => {
       hook.result.current.previewItem(hook.result.current.items[0]!);
       await Promise.resolve();
     });
-    await waitFor(() => expect(pendingReveal).toBeDefined());
-    const committedRequest = pendingReveal!.request;
-    hook.rerender({ topologyGeneration: 2 });
-    expect(pendingReveal?.signal?.aborted).toBe(true);
+    expect(hook.result.current.items[0]?.responsePreview).toBe("Response for run-1");
+  });
+
+  test("navigates resident messages without an owner index or when its read fails", async () => {
+    const resident = residentItem("turn-resident");
+    const revealResidentItem = vi.fn(() => document.createElement("div"));
+    const hook = renderRail({
+      port: null,
+      threadId: "thread-a",
+      residentItems: [resident],
+      revealResidentItem,
+    });
+    expect(hook.result.current.items).toEqual([resident]);
+
+    const failing = port({ loadIndex: vi.fn(async () => Promise.reject(new Error("offline"))) });
+    hook.rerender({
+      port: failing,
+      threadId: "thread-a",
+      residentItems: [resident],
+      revealResidentItem,
+    });
+    await waitFor(() => expect(failing.loadIndex).toHaveBeenCalledOnce());
+    expect(hook.result.current.items).toEqual([resident]);
 
     await act(async () => {
-      pendingReveal?.resolve({
-        status: "completed",
-        requestId: committedRequest.requestId,
-        expectedTopologyGeneration: committedRequest.expectedTopologyGeneration,
-        reveal: reveal(
-          "turn-1",
-          committedRequest.requestId,
-          committedRequest.expectedTopologyGeneration,
-        ),
-      });
+      await hook.result.current.revealItem(hook.result.current.items[0]!, "instant");
+    });
+    expect(revealResidentItem).toHaveBeenCalledWith(resident, "instant");
+    expect(failing.install).not.toHaveBeenCalled();
+  });
+
+  test("a replacement reader keeps its conversation's index until the next one arrives", async () => {
+    let resolveNext: ((value: readonly ConversationPromptTurn[]) => void) | undefined;
+    const first = port();
+    const second = port({
+      loadIndex: vi.fn(
+        () =>
+          new Promise<readonly ConversationPromptTurn[]>((resolve) => {
+            resolveNext = resolve;
+          }),
+      ),
+    });
+    const hook = renderRail({ port: first, threadId: "thread-a", residentItems: [] });
+    await waitFor(() => expect(hook.result.current.items).toHaveLength(3));
+
+    hook.rerender({ port: second, threadId: "thread-a", residentItems: [] });
+    expect(hook.result.current.items).toHaveLength(3);
+    await act(async () => {
+      resolveNext?.(turns(4));
+      await Promise.resolve();
+    });
+    await waitFor(() => expect(hook.result.current.items).toHaveLength(4));
+
+    hook.rerender({ port: null, threadId: "thread-b", residentItems: [] });
+    expect(hook.result.current.items).toEqual([]);
+  });
+
+  test("retires a late preview from a replaced reader and previews through its replacement", async () => {
+    let resolvePreview: ((value: readonly CodexPromptRailPreview[]) => void) | undefined;
+    const first = port({
+      preview: vi.fn(async (turnId: string) =>
+        turnId === "turn-1"
+          ? new Promise<readonly CodexPromptRailPreview[]>((resolve) => {
+              resolvePreview = resolve;
+            })
+          : previews(turnId),
+      ),
+    });
+    const hook = renderRail({ port: first, threadId: "thread-a", residentItems: [] });
+    await waitFor(() => expect(hook.result.current.items).toHaveLength(3));
+    await act(async () => {
+      hook.result.current.previewItem(hook.result.current.items[2]!);
+      await Promise.resolve();
+    });
+    await waitFor(() => expect(hook.result.current.items[2]?.label).toBe("Prompt for turn-3"));
+    await act(async () => {
+      hook.result.current.previewItem(hook.result.current.items[0]!);
       await Promise.resolve();
     });
 
-    expect(publishReveal).not.toHaveBeenCalled();
+    const replacement = port();
+    hook.rerender({ port: replacement, threadId: "thread-a", residentItems: [] });
+    await act(async () => {
+      resolvePreview?.(previews("turn-1"));
+      await Promise.resolve();
+    });
     expect(hook.result.current.items[0]?.label).toBe("Load prompt preview");
+    expect(hook.result.current.items[2]?.label).toBe("Load prompt preview");
+
+    await act(async () => {
+      hook.result.current.previewItem(hook.result.current.items[0]!);
+      await Promise.resolve();
+    });
+    await waitFor(() => expect(hook.result.current.items[0]?.label).toBe("Prompt for turn-1"));
+    expect(replacement.preview).toHaveBeenCalledWith("turn-1", expect.any(AbortSignal));
+  });
+
+  test("navigation outlives its reader's replacement but not a conversation change", async () => {
+    let finishInstall: (() => void) | undefined;
+    const installing = port({
+      install: vi.fn(
+        (_turnId: string, _signal: AbortSignal) =>
+          new Promise<"applied">((resolve) => {
+            finishInstall = () => resolve("applied");
+          }),
+      ),
+    });
+    const revealInstalledTurn = vi.fn(async (_turnId: string, _mode, signal: AbortSignal) =>
+      signal.aborted ? null : document.createElement("div"),
+    );
+    const hook = renderRail({
+      port: installing,
+      threadId: "thread-a",
+      residentItems: [],
+      revealInstalledTurn,
+    });
+    await waitFor(() => expect(hook.result.current.items).toHaveLength(3));
+
+    let navigation: Promise<HTMLElement | null> | undefined;
+    await act(async () => {
+      navigation = hook.result.current.revealItem(hook.result.current.items[1]!, "smooth");
+      await Promise.resolve();
+    });
+    // Installing history publishes a new reader for the same conversation.
+    hook.rerender({ port: port(), threadId: "thread-a", residentItems: [], revealInstalledTurn });
+    let target: HTMLElement | null = null;
+    await act(async () => {
+      finishInstall?.();
+      target = (await navigation) ?? null;
+    });
+    expect(target).not.toBeNull();
+    expect(revealInstalledTurn).toHaveBeenCalledWith("turn-2", "smooth", expect.any(AbortSignal));
+
+    hook.rerender({
+      port: installing,
+      threadId: "thread-a",
+      residentItems: [],
+      revealInstalledTurn,
+    });
+    await act(async () => {
+      navigation = hook.result.current.revealItem(hook.result.current.items[2]!, "smooth");
+      await Promise.resolve();
+    });
+    const signal = vi.mocked(installing.install).mock.calls.at(-1)?.[1];
+    expect(vi.mocked(installing.install).mock.calls.at(-1)?.[0]).toBe("turn-3");
+    hook.rerender({ port: null, threadId: "thread-b", residentItems: [] });
+    await act(async () => {
+      finishInstall?.();
+      target = (await navigation) ?? null;
+    });
+    expect(signal?.aborted).toBe(true);
+    expect(target).toBeNull();
   });
 });

@@ -1,11 +1,9 @@
-import { forwardRef, useImperativeHandle } from "react";
-import type { CodexPromptRailReveal } from "../../../../shared/codex-prompt-rail-history";
 import type { ThreadUserMessageNavigationItem } from "../thread-stage-types";
 import { ThreadUserMessageNavigationRailLazy } from "./thread-user-message-navigation-rail-lazy";
 import type { ThreadUserMessageNavigationRevealMode } from "./thread-user-message-navigation-rail";
 import {
   useLocalConversationPromptRail,
-  type LocalConversationPromptRailClient,
+  type UseLocalConversationPromptRailInput,
 } from "./use-local-conversation-prompt-rail";
 
 export const LOCAL_CONVERSATION_PROMPT_RAIL_INSTALL_RENDER_ATTEMPTS = 60;
@@ -50,65 +48,11 @@ export async function waitForLocalConversationPromptRailResidentTarget(
   return null;
 }
 
-export interface LocalConversationPromptRailHandle {
-  readonly revealKnownTurn: (
-    turnId: string,
-    mode?: ThreadUserMessageNavigationRevealMode,
-  ) => Promise<HTMLElement | null>;
-}
+export type LocalConversationPromptRailProps = UseLocalConversationPromptRailInput;
 
-export interface LocalConversationPromptRailProps {
-  readonly enabled: boolean;
-  readonly hostId?: string | null;
-  readonly threadId: string | null;
-  readonly topologyGeneration: number | null;
-  readonly residentItems: ThreadUserMessageNavigationItem[];
-  readonly client?: LocalConversationPromptRailClient;
-  readonly publishReveal: (reveal: CodexPromptRailReveal) => Promise<void>;
-  readonly revealResidentItem?: (
-    item: ThreadUserMessageNavigationItem,
-    mode: ThreadUserMessageNavigationRevealMode,
-  ) => HTMLElement | null | Promise<HTMLElement | null>;
-  readonly revealInstalledTurn?: (
-    reveal: CodexPromptRailReveal,
-    mode: ThreadUserMessageNavigationRevealMode,
-    signal: AbortSignal,
-  ) => HTMLElement | null | Promise<HTMLElement | null>;
-}
-
-/** Bounded shell rail; only a Main-authored one-Turn mutation crosses the reveal boundary. */
-export const LocalConversationPromptRail = forwardRef<
-  LocalConversationPromptRailHandle,
-  LocalConversationPromptRailProps
->(function LocalConversationPromptRail(
-  {
-    enabled,
-    hostId,
-    threadId,
-    topologyGeneration,
-    residentItems,
-    client,
-    publishReveal,
-    revealInstalledTurn,
-    revealResidentItem,
-  },
-  ref,
-) {
-  const controller = useLocalConversationPromptRail({
-    enabled,
-    hostId,
-    threadId,
-    topologyGeneration,
-    residentItems,
-    client,
-    publishReveal,
-    revealInstalledTurn,
-    revealResidentItem,
-  });
-  useImperativeHandle(ref, () => ({ revealKnownTurn: controller.revealKnownTurn }), [
-    controller.revealKnownTurn,
-  ]);
-
+/** Prompt navigation; only the conversation owner's install crosses into resident history. */
+export function LocalConversationPromptRail(props: LocalConversationPromptRailProps) {
+  const controller = useLocalConversationPromptRail(props);
   return (
     <ThreadUserMessageNavigationRailLazy
       items={controller.items}
@@ -116,4 +60,4 @@ export const LocalConversationPromptRail = forwardRef<
       onRevealItem={controller.revealItem}
     />
   );
-});
+}

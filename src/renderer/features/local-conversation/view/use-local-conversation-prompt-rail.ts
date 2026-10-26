@@ -1,63 +1,29 @@
 import { startTransition, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type {
-  CodexPromptRailIndex,
-  CodexPromptRailIndexCommandResult,
-  CodexPromptRailIndexRequest,
-  CodexPromptRailPreview,
-  CodexPromptRailReveal,
-  CodexPromptRailRevealCommandResult,
-  CodexPromptRailRevealRequest,
-  CodexPromptRailRevealTarget,
-} from "../../../../shared/codex-prompt-rail-history";
-import type { CodexThreadHistoryFeatureUnavailable } from "../../../../shared/codex-thread-history-features";
-import {
-  loadLocalConversationPromptRailIndex,
-  revealLocalConversationPromptRailTurn,
-} from "../local-conversation-store";
+import type { CodexPromptRailPreview } from "../../../../shared/codex-prompt-rail-history";
+import type { ConversationPromptRailPort, ConversationPromptTurn } from "../conversation-runtime";
 import type { ThreadUserMessageNavigationItem } from "../thread-stage-types";
 import {
   buildLocalConversationPromptRailItems,
   isLocalConversationPromptRailShellItem,
-  resolveCodexPromptRailRevealTarget,
   type LocalConversationPromptRailItem,
 } from "../projection/local-conversation-prompt-rail-model";
 import type { ThreadUserMessageNavigationRevealMode } from "./thread-user-message-navigation-rail";
 
 const MAX_PREVIEWED_TURNS = 8;
-let nextRequestOrdinal = 0;
-
-const makeRequestId = (kind: "index" | "reveal"): string => {
-  nextRequestOrdinal += 1;
-  return `prompt-rail:${kind}:${Date.now()}:${nextRequestOrdinal}`;
-};
-
-export interface LocalConversationPromptRailClient {
-  readonly loadIndex: (
-    request: CodexPromptRailIndexRequest,
-    options?: { readonly signal?: AbortSignal },
-  ) => Promise<CodexPromptRailIndexCommandResult>;
-  readonly reveal: (
-    request: CodexPromptRailRevealRequest,
-    options?: { readonly signal?: AbortSignal },
-  ) => Promise<CodexPromptRailRevealCommandResult>;
-}
+const EMPTY_PREVIEWS: ReadonlyMap<string, readonly CodexPromptRailPreview[]> = new Map();
 
 export interface UseLocalConversationPromptRailInput {
-  readonly enabled: boolean;
-  readonly hostId?: string | null;
+  /** The current history reader's prompt index; null where its owner cannot index Turns. */
+  readonly port: ConversationPromptRailPort | null;
   readonly threadId: string | null;
-  readonly topologyGeneration: number | null;
   readonly residentItems: readonly ThreadUserMessageNavigationItem[];
-  readonly client?: LocalConversationPromptRailClient;
-  /** The owner hydrates the selected native match only when navigating. */
-  readonly publishReveal: (reveal: CodexPromptRailReveal) => Promise<void>;
   readonly revealResidentItem?: (
     item: ThreadUserMessageNavigationItem,
     mode: ThreadUserMessageNavigationRevealMode,
   ) => HTMLElement | null | Promise<HTMLElement | null>;
-  /** Resolves the real resident navigation item after the selected history window has rendered. */
+  /** Resolves the real resident marker after the installed Turn has rendered. */
   readonly revealInstalledTurn?: (
-    reveal: CodexPromptRailReveal,
+    turnId: string,
     mode: ThreadUserMessageNavigationRevealMode,
     signal: AbortSignal,
   ) => HTMLElement | null | Promise<HTMLElement | null>;
@@ -65,350 +31,107 @@ export interface UseLocalConversationPromptRailInput {
 
 export interface LocalConversationPromptRailController {
   readonly items: LocalConversationPromptRailItem[];
-  readonly index: CodexPromptRailIndex | null;
-  readonly loadingIndex: boolean;
-  readonly availability: CodexThreadHistoryFeatureUnavailable | null;
-  readonly error: string | null;
   readonly previewItem: (item: ThreadUserMessageNavigationItem) => void;
   readonly revealItem: (
     item: ThreadUserMessageNavigationItem,
     mode: ThreadUserMessageNavigationRevealMode,
   ) => Promise<HTMLElement | null>;
-  readonly revealKnownTurn: (
-    turnId: string,
-    mode?: ThreadUserMessageNavigationRevealMode,
-  ) => Promise<HTMLElement | null>;
-  readonly reload: () => void;
 }
 
-interface ActiveRevealRequest {
-  readonly contextKey: string;
-  readonly requestId: string;
-  readonly targetTurnId: string;
-  readonly controller: AbortController;
-  readonly promise: Promise<CodexPromptRailReveal | null>;
-}
-
-interface AcceptedRevealTopologyTransition {
-  readonly requestId: string;
-  readonly sourceContextKey: string;
-  readonly targetContextKey: string;
-}
-
-interface CachedReveal {
-  readonly contextKey: string;
-  readonly turnId: string;
-  readonly reveal: CodexPromptRailReveal;
-}
-
-const turnIdForTarget = (target: CodexPromptRailRevealTarget): string =>
-  target.kind === "shell" ? target.shell.turnId : target.turnId;
-
-const currentIndexResult = (input: {
-  readonly result: CodexPromptRailIndexCommandResult;
-  readonly requestId: string;
+interface ThreadPromptIndex {
   readonly threadId: string;
-  readonly topologyGeneration: number;
-}): CodexPromptRailIndex | null => {
-  if (input.result.status !== "completed") return null;
-  if (
-    input.result.requestId !== input.requestId ||
-    input.result.expectedTopologyGeneration !== input.topologyGeneration ||
-    input.result.index.threadId !== input.threadId
-  ) {
-    return null;
-  }
-  return input.result.index;
-};
+  readonly turns: readonly ConversationPromptTurn[];
+}
 
-const currentUnavailableResult = (input: {
-  readonly result: CodexPromptRailIndexCommandResult | CodexPromptRailRevealCommandResult;
-  readonly requestId: string;
-  readonly threadId: string;
-}): CodexThreadHistoryFeatureUnavailable | null => {
-  if (input.result.status !== "unavailable") return null;
-  if (
-    input.result.requestId !== input.requestId ||
-    input.result.availability.threadId !== input.threadId ||
-    input.result.availability.feature !== "prompt-rail"
-  ) {
-    return null;
-  }
-  return input.result.availability;
-};
-
-const currentRevealResult = (input: {
-  readonly result: CodexPromptRailRevealCommandResult;
-  readonly requestId: string;
-  readonly threadId: string;
-  readonly topologyGeneration: number;
-  readonly hostId: string;
-  readonly generation: number;
-  readonly turnId: string;
-}): CodexPromptRailReveal | null => {
-  if (input.result.status !== "completed") return null;
-  const reveal = input.result.reveal;
-  if (
-    input.result.requestId !== input.requestId ||
-    input.result.expectedTopologyGeneration !== input.topologyGeneration ||
-    reveal.threadId !== input.threadId ||
-    reveal.hostId !== input.hostId ||
-    reveal.generation !== input.generation ||
-    reveal.turnId !== input.turnId ||
-    reveal.topologyGeneration !== input.topologyGeneration
-  ) {
-    return null;
-  }
-  return reveal;
-};
-
+/**
+ * Prompt navigation over every Turn the conversation's owner can index, falling back to resident
+ * messages. A replacement reader of the same conversation keeps its index until the next one
+ * arrives, so installing a Turn does not collapse the rail.
+ */
 export function useLocalConversationPromptRail(
   input: UseLocalConversationPromptRailInput,
 ): LocalConversationPromptRailController {
-  const {
-    enabled,
-    hostId,
-    publishReveal,
-    residentItems,
-    revealInstalledTurn,
-    revealResidentItem,
-    threadId,
-    topologyGeneration,
-  } = input;
-  const client = useMemo<LocalConversationPromptRailClient>(
-    () =>
-      input.client ?? {
-        loadIndex: (request) => loadLocalConversationPromptRailIndex(request, hostId),
-        reveal: revealLocalConversationPromptRailTurn,
-      },
-    [hostId, input.client],
-  );
-  const [index, setIndex] = useState<CodexPromptRailIndex | null>(null);
-  const [previewsByTurnId, setPreviewsByTurnId] = useState<
-    ReadonlyMap<string, readonly CodexPromptRailPreview[]>
-  >(() => new Map());
-  const [loadingIndex, setLoadingIndex] = useState(false);
-  const [availability, setAvailability] = useState<CodexThreadHistoryFeatureUnavailable | null>(
-    null,
-  );
-  const [error, setError] = useState<string | null>(null);
-  const [reloadOrdinal, setReloadOrdinal] = useState(0);
-  const contextKey = `${threadId ?? ""}\u0000${topologyGeneration ?? -1}`;
-  const activeContextRef = useRef(contextKey);
-  activeContextRef.current = contextKey;
-  const revealRequestRef = useRef<ActiveRevealRequest | null>(null);
-  const acceptedRevealTopologyTransitionRef = useRef<AcceptedRevealTopologyTransition | null>(null);
-  const revealCacheRef = useRef<CachedReveal | null>(null);
-  const navigationControllerRef = useRef<AbortController | null>(null);
+  const { port, residentItems, revealInstalledTurn, revealResidentItem, threadId } = input;
+  const [index, setIndex] = useState<ThreadPromptIndex | null>(null);
+  const [previews, setPreviews] = useState<{
+    readonly port: ConversationPromptRailPort | null;
+    readonly byTurnId: ReadonlyMap<string, readonly CodexPromptRailPreview[]>;
+  }>({ port: null, byTurnId: new Map() });
+  const currentPortRef = useRef(port);
+  useEffect(() => {
+    currentPortRef.current = port;
+  }, [port]);
+  const previewRequestRef = useRef<{
+    readonly port: ConversationPromptRailPort;
+    readonly turnId: string;
+    readonly controller: AbortController;
+  } | null>(null);
+  const navigationRef = useRef<{
+    readonly threadId: string | null;
+    readonly controller: AbortController;
+  } | null>(null);
 
   useEffect(() => {
-    const acceptedTransition = acceptedRevealTopologyTransitionRef.current;
-    const isAcceptedRevealTopology = acceptedTransition?.targetContextKey === contextKey;
-    if (!isAcceptedRevealTopology) {
-      revealRequestRef.current?.controller.abort();
-      revealRequestRef.current = null;
-      navigationControllerRef.current?.abort();
-      navigationControllerRef.current = null;
-      acceptedRevealTopologyTransitionRef.current = null;
-    }
-    revealCacheRef.current = null;
-    setIndex(null);
-    setPreviewsByTurnId(new Map());
-    setAvailability(null);
-    setError(null);
-
-    if (!enabled || !threadId || topologyGeneration === null) {
-      setLoadingIndex(false);
-      return undefined;
-    }
-
+    if (!port || !threadId) return undefined;
     const controller = new AbortController();
-    const requestId = makeRequestId("index");
-    setLoadingIndex(true);
-    void client
-      .loadIndex(
-        { requestId, threadId, expectedTopologyGeneration: topologyGeneration },
-        { signal: controller.signal },
-      )
-      .then((result) => {
-        if (controller.signal.aborted || activeContextRef.current !== contextKey) return;
-        const unavailable = currentUnavailableResult({ result, requestId, threadId });
-        if (unavailable) {
-          setAvailability(unavailable);
-          return;
-        }
-        const next = currentIndexResult({ result, requestId, threadId, topologyGeneration });
-        if (!next) return;
-        startTransition(() => {
-          setAvailability(null);
-          setIndex(next);
-        });
+    port
+      .loadIndex(controller.signal)
+      .then((turns) => {
+        if (controller.signal.aborted) return;
+        startTransition(() => setIndex(turns ? { threadId, turns } : null));
       })
-      .catch((cause: unknown) => {
-        if (controller.signal.aborted || activeContextRef.current !== contextKey) return;
-        setError(cause instanceof Error ? cause.message : "Could not load prompt history");
-      })
-      .finally(() => {
-        if (controller.signal.aborted || activeContextRef.current !== contextKey) return;
-        setLoadingIndex(false);
+      // An unreadable index leaves navigation over resident messages.
+      .catch(() => {
+        if (!controller.signal.aborted) setIndex(null);
       });
     return () => controller.abort();
-  }, [client, contextKey, enabled, reloadOrdinal, threadId, topologyGeneration]);
+  }, [port, threadId]);
 
+  // Navigation outlives a replacement reader of its conversation, not the conversation.
   useEffect(
     () => () => {
-      revealRequestRef.current?.controller.abort();
-      navigationControllerRef.current?.abort();
+      const navigation = navigationRef.current;
+      if (navigation?.threadId !== threadId) return;
+      navigation.controller.abort();
+      navigationRef.current = null;
     },
-    [],
-  );
-
-  const effectiveIndex =
-    index?.threadId === threadId && enabled && topologyGeneration !== null ? index : null;
-
-  const loadReveal = useCallback(
-    (
-      target: CodexPromptRailRevealTarget,
-      options: { readonly reuseCompleted?: boolean } = {},
-    ): Promise<CodexPromptRailReveal | null> => {
-      const activeIndex = effectiveIndex;
-      const targetTurnId = turnIdForTarget(target);
-      if (!threadId || topologyGeneration === null || !activeIndex) return Promise.resolve(null);
-
-      const cached = revealCacheRef.current;
-      if (
-        options.reuseCompleted !== false &&
-        cached?.contextKey === contextKey &&
-        cached.turnId === targetTurnId &&
-        cached.reveal.hostId === activeIndex.hostId &&
-        cached.reveal.generation === activeIndex.generation
-      ) {
-        return Promise.resolve(cached.reveal);
-      }
-      const existing = revealRequestRef.current;
-      if (existing?.contextKey === contextKey && existing.targetTurnId === targetTurnId) {
-        return existing.promise;
-      }
-      existing?.controller.abort();
-
-      const controller = new AbortController();
-      const requestId = makeRequestId("reveal");
-      const promise = client
-        .reveal(
-          {
-            requestId,
-            threadId,
-            hostId: activeIndex.hostId,
-            generation: activeIndex.generation,
-            expectedTopologyGeneration: topologyGeneration,
-            target,
-          },
-          { signal: controller.signal },
-        )
-        .then(async (result) => {
-          const unavailable = currentUnavailableResult({ result, requestId, threadId });
-          if (unavailable) {
-            if (!controller.signal.aborted && activeContextRef.current === contextKey) {
-              startTransition(() => {
-                setAvailability(unavailable);
-                setIndex(null);
-              });
-            }
-            return null;
-          }
-          const reveal = currentRevealResult({
-            result,
-            requestId,
-            threadId,
-            topologyGeneration,
-            hostId: activeIndex.hostId,
-            generation: activeIndex.generation,
-            turnId: targetTurnId,
-          });
-          if (!reveal) return null;
-          acceptedRevealTopologyTransitionRef.current = {
-            requestId,
-            sourceContextKey: contextKey,
-            targetContextKey: `${reveal.threadId}\u0000${reveal.topologyGeneration}`,
-          };
-          // A completed response means Main already committed the island. Publication must win
-          // over a late UI abort so owner and followers cannot diverge from Main.
-          const activeContext = activeContextRef.current;
-          const isCurrentContext =
-            activeContext === contextKey ||
-            activeContext === `${reveal.threadId}\u0000${reveal.topologyGeneration}`;
-          if (controller.signal.aborted || !isCurrentContext) return null;
-          revealCacheRef.current = { contextKey, turnId: targetTurnId, reveal };
-          startTransition(() => {
-            setPreviewsByTurnId((current) => {
-              const next = new Map(current);
-              next.delete(targetTurnId);
-              next.set(targetTurnId, reveal.previews);
-              while (next.size > MAX_PREVIEWED_TURNS) {
-                const oldest = next.keys().next().value as string | undefined;
-                if (!oldest) break;
-                next.delete(oldest);
-              }
-              return next;
-            });
-          });
-          return reveal;
-        })
-        .catch((cause: unknown) => {
-          if (!controller.signal.aborted && activeContextRef.current === contextKey) {
-            setError(cause instanceof Error ? cause.message : "Could not reveal prompt history");
-          }
-          return null;
-        })
-        .finally(() => {
-          if (revealRequestRef.current?.promise === promise) revealRequestRef.current = null;
-        });
-      revealRequestRef.current = { contextKey, requestId, targetTurnId, controller, promise };
-      return promise;
-    },
-    [client, contextKey, effectiveIndex, threadId, topologyGeneration],
+    [threadId],
   );
 
   const previewItem = useCallback(
     (item: ThreadUserMessageNavigationItem): void => {
-      if (!isLocalConversationPromptRailShellItem(item)) return;
-      if (item.promptRailShell.hasPreview) return;
-      void loadReveal({ kind: "shell", shell: item.promptRailShell.shell });
-    },
-    [loadReveal],
-  );
-
-  const installAndReveal = useCallback(
-    async (
-      target: CodexPromptRailRevealTarget,
-      mode: ThreadUserMessageNavigationRevealMode,
-    ): Promise<HTMLElement | null> => {
-      // Navigation revalidates the native locator before loading its resident window.
-      const reveal = await loadReveal(target, { reuseCompleted: false });
-      const activeContext = activeContextRef.current;
-      const isCurrentContext =
-        activeContext === contextKey ||
-        activeContext === `${reveal?.threadId ?? ""}\u0000${reveal?.topologyGeneration ?? -1}`;
-      if (!reveal || topologyGeneration === null || !isCurrentContext) {
-        return null;
-      }
-
-      navigationControllerRef.current?.abort();
+      if (!isLocalConversationPromptRailShellItem(item) || item.promptRailShell.hasPreview) return;
+      const turnId = item.promptRailShell.turnId;
+      const pending = previewRequestRef.current;
+      if (!port?.preview || (pending?.port === port && pending.turnId === turnId)) return;
+      pending?.controller.abort();
       const controller = new AbortController();
-      navigationControllerRef.current = controller;
-      const navigationContext = activeContextRef.current;
-      if (
-        controller.signal.aborted ||
-        (navigationContext !== contextKey &&
-          navigationContext !== `${reveal.threadId}\u0000${reveal.topologyGeneration}`)
-      ) {
-        return null;
-      }
-      await publishReveal(reveal);
-      if (controller.signal.aborted) return null;
-      return (await revealInstalledTurn?.(reveal, mode, controller.signal)) ?? null;
+      previewRequestRef.current = { port, turnId, controller };
+      void port
+        .preview(turnId, controller.signal)
+        .then((turnPreviews) => {
+          // Previews belong to their reader; a replaced reader's late result stays unseen.
+          if (controller.signal.aborted || !turnPreviews || currentPortRef.current !== port) return;
+          startTransition(() =>
+            setPreviews((current) => {
+              const byTurnId = new Map(current.port === port ? current.byTurnId : []);
+              byTurnId.delete(turnId);
+              byTurnId.set(turnId, turnPreviews);
+              for (const oldest of byTurnId.keys()) {
+                if (byTurnId.size <= MAX_PREVIEWED_TURNS) break;
+                byTurnId.delete(oldest);
+              }
+              return { port, byTurnId };
+            }),
+          );
+        })
+        .catch(() => undefined)
+        .finally(() => {
+          if (previewRequestRef.current?.controller === controller)
+            previewRequestRef.current = null;
+        });
     },
-    [contextKey, loadReveal, publishReveal, revealInstalledTurn, topologyGeneration],
+    [port],
   );
 
   const revealItem = useCallback(
@@ -416,51 +139,35 @@ export function useLocalConversationPromptRail(
       item: ThreadUserMessageNavigationItem,
       mode: ThreadUserMessageNavigationRevealMode,
     ): Promise<HTMLElement | null> => {
-      if (!isLocalConversationPromptRailShellItem(item)) {
+      if (!isLocalConversationPromptRailShellItem(item))
         return (await revealResidentItem?.(item, mode)) ?? null;
+      const turnId = item.promptRailShell.turnId;
+      const resident = residentItems.find((candidate) => candidate.turnId === turnId);
+      if (resident) return (await revealResidentItem?.(resident, mode)) ?? null;
+      if (!port) return null;
+
+      navigationRef.current?.controller.abort();
+      const controller = new AbortController();
+      navigationRef.current = { threadId, controller };
+      try {
+        if ((await port.install(turnId, controller.signal)) !== "applied") return null;
+        if (controller.signal.aborted) return null;
+        return (await revealInstalledTurn?.(turnId, mode, controller.signal)) ?? null;
+      } catch {
+        return null;
+      } finally {
+        if (navigationRef.current?.controller === controller) navigationRef.current = null;
       }
-      const resident = residentItems.find(
-        (candidate) => candidate.turnId === item.promptRailShell.shell.turnId,
-      );
-      if (resident) return (await revealResidentItem?.(resident, mode)) ?? null;
-      return installAndReveal({ kind: "shell", shell: item.promptRailShell.shell }, mode);
     },
-    [installAndReveal, residentItems, revealResidentItem],
+    [port, residentItems, revealInstalledTurn, revealResidentItem, threadId],
   );
 
-  const revealKnownTurn = useCallback(
-    async (
-      turnId: string,
-      mode: ThreadUserMessageNavigationRevealMode = "smooth",
-    ): Promise<HTMLElement | null> => {
-      if (!effectiveIndex) return null;
-      const resident = residentItems.find((item) => item.turnId === turnId);
-      if (resident) return (await revealResidentItem?.(resident, mode)) ?? null;
-      const target = resolveCodexPromptRailRevealTarget(effectiveIndex, turnId);
-      return installAndReveal(target, mode);
-    },
-    [effectiveIndex, installAndReveal, residentItems, revealResidentItem],
-  );
-
+  const turns = port && index?.threadId === threadId ? index.turns : null;
+  const previewsByTurnId = previews.port === port ? previews.byTurnId : EMPTY_PREVIEWS;
   const items = useMemo(
-    () =>
-      buildLocalConversationPromptRailItems({
-        index: effectiveIndex,
-        residentItems,
-        previewsByTurnId,
-      }),
-    [effectiveIndex, previewsByTurnId, residentItems],
+    () => buildLocalConversationPromptRailItems({ turns, residentItems, previewsByTurnId }),
+    [previewsByTurnId, residentItems, turns],
   );
 
-  return {
-    items,
-    index: effectiveIndex,
-    loadingIndex,
-    availability,
-    error,
-    previewItem,
-    revealItem,
-    revealKnownTurn,
-    reload: () => setReloadOrdinal((current) => current + 1),
-  };
+  return { items, previewItem, revealItem };
 }

@@ -119,6 +119,13 @@ import {
   THREAD_HISTORY_PAGE_POLICY,
   OLDER_THREAD_USER_TURN_LIMIT,
 } from "./threadHistoryPaging.ts";
+import {
+  THREAD_PROMPT_INDEX_PROMPT_CHARACTERS,
+  THREAD_PROMPT_INDEX_RESPONSE_CHARACTERS,
+  boundThreadPromptText,
+  selectThreadPromptIndexSlots,
+  type ThreadPromptIndex,
+} from "./threadPromptIndex.ts";
 
 export class ProjectionStoreApplyEventError extends Schema.TaggedError<ProjectionStoreApplyEventError>()(
   "ProjectionStoreApplyEventError",
@@ -859,6 +866,10 @@ export interface ProjectionStoreV2Shape {
     throughEntryId?: string,
     conversationOnly?: boolean,
   ) => Effect.Effect<OrchestrationV2ThreadHistoryPage, ProjectionStoreV2Error>;
+  /** Each local Run's opening prompt and latest reply, read without materializing history. */
+  readonly getThreadPromptIndex: (
+    threadId: ThreadId,
+  ) => Effect.Effect<ThreadPromptIndex, ProjectionStoreV2Error>;
   readonly getTimelinePage: (
     threadId: ThreadId,
     options: ProjectionTimelinePageOptions,
@@ -7956,17 +7967,21 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
       readonly synthetic?: OrchestrationV2TurnItem;
       readonly encodedBytes?: number;
     };
-    const readTimelineIndex = (
+    const timelineIndexReadError =
+      (threadId: ThreadId) =>
+      (cause: unknown): ProjectionStoreV2Error =>
+        isProjectionStoreThreadNotFoundError(cause) || isProjectionStoreReadError(cause)
+          ? cause
+          : new ProjectionStoreReadError({ threadId, cause });
+    type TimelineIndex = {
+      readonly records: ProjectionRecords<"runs" | "attempts">;
+      readonly local: ReadonlyArray<TimelineIndexRow>;
+      readonly visible: ReadonlyArray<TimelineIndexRow>;
+    };
+    /** The thread's own visible rows, without captured fork ancestry. */
+    const readLocalTimelineIndex = (
       threadId: ThreadId,
-      seen: ReadonlySet<ThreadId>,
-    ): Effect.Effect<
-      {
-        readonly records: ProjectionRecords<"runs" | "attempts">;
-        readonly local: ReadonlyArray<TimelineIndexRow>;
-        readonly visible: ReadonlyArray<TimelineIndexRow>;
-      },
-      ProjectionStoreV2Error
-    > =>
+    ): Effect.Effect<TimelineIndex, ProjectionStoreV2Error> =>
       Effect.gen(function* () {
         const records = yield* getThreadRecords(threadId, ["runs", "attempts"]);
         const rows = yield* sql<{
@@ -8008,7 +8023,14 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
           attempts: records.attempts,
           items,
         });
-        const visible = local.filter((row) => isVisible(row.item));
+        return { records, local, visible: local.filter((row) => isVisible(row.item)) };
+      }).pipe(Effect.mapError(timelineIndexReadError(threadId)));
+    const readTimelineIndex = (
+      threadId: ThreadId,
+      seen: ReadonlySet<ThreadId>,
+    ): Effect.Effect<TimelineIndex, ProjectionStoreV2Error> =>
+      Effect.gen(function* () {
+        const { records, local, visible } = yield* readLocalTimelineIndex(threadId);
         const fork = records.thread.forkedFrom;
         if (fork?.type !== "run" || seen.has(fork.threadId)) return { records, local, visible };
         const source = yield* readTimelineIndex(fork.threadId, new Set([...seen, threadId]));
@@ -8061,13 +8083,7 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
             ...visible,
           ],
         };
-      }).pipe(
-        Effect.mapError((cause) =>
-          isProjectionStoreThreadNotFoundError(cause) || isProjectionStoreReadError(cause)
-            ? cause
-            : new ProjectionStoreReadError({ threadId, cause }),
-        ),
-      );
+      }).pipe(Effect.mapError(timelineIndexReadError(threadId)));
 
     const { searchThread, searchThreadStream } = yield* makeThreadFind((threadId) =>
       readTimelineIndex(threadId, new Set()).pipe(Effect.map((index) => index.visible)),
@@ -8153,6 +8169,59 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
                 : bounded.items,
               nextCursor: bounded.nextCursor,
               hasMoreHistory: bounded.hasMoreHistory,
+            };
+          }),
+        )
+        .pipe(Effect.mapError(controlReadError(threadId)));
+
+    const getThreadPromptIndex: ProjectionStoreV2Shape["getThreadPromptIndex"] = (threadId) =>
+      sql
+        .withTransaction(
+          Effect.gen(function* () {
+            const { visible } = yield* readLocalTimelineIndex(threadId);
+            const { slots, complete } = selectThreadPromptIndexSlots(visible);
+            const itemIds = slots.flatMap((slot) =>
+              slot.responseItemId === null
+                ? [slot.promptItemId]
+                : [slot.promptItemId, slot.responseItemId],
+            );
+            const texts = new Map<string, { readonly text: string; readonly scheduled: boolean }>();
+            for (let start = 0; start < itemIds.length; start += 500) {
+              const rows = yield* sql<{
+                turn_item_id: string;
+                text: string | null;
+                scheduled: number;
+              }>`SELECT turn_item_id,
+                substr(json_extract(payload_json, '$.text'), 1, ${THREAD_PROMPT_INDEX_PROMPT_CHARACTERS}) AS text,
+                json_extract(payload_json, '$.scheduledTaskId') IS NOT NULL AS scheduled
+              FROM orchestration_v2_projection_turn_items
+              WHERE thread_id = ${threadId} AND turn_item_id IN ${sql.in(itemIds.slice(start, start + 500))}`;
+              for (const row of rows)
+                texts.set(row.turn_item_id, {
+                  text: row.text ?? "",
+                  scheduled: row.scheduled === 1,
+                });
+            }
+            return {
+              complete,
+              prompts: slots.map((slot) => {
+                const prompt = texts.get(slot.promptItemId);
+                const response =
+                  slot.responseItemId === null ? undefined : texts.get(slot.responseItemId);
+                return {
+                  runId: slot.runId,
+                  messageId: slot.messageId,
+                  prompt: boundThreadPromptText(
+                    prompt?.text ?? "",
+                    THREAD_PROMPT_INDEX_PROMPT_CHARACTERS,
+                  ),
+                  response: boundThreadPromptText(
+                    response?.text ?? "",
+                    THREAD_PROMPT_INDEX_RESPONSE_CHARACTERS,
+                  ),
+                  scheduled: prompt?.scheduled === true,
+                };
+              }),
             };
           }),
         )
@@ -9207,6 +9276,7 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
       getThreadSnapshotWindow,
       getTimelinePage,
       getThreadHistoryPage,
+      getThreadPromptIndex,
       searchThread,
       searchThreadStream,
       getThreadAttachmentIds,
@@ -10851,6 +10921,35 @@ export const layerMemory: Layer.Layer<ProjectionStoreV2> = Layer.effect(
               });
             }),
           ),
+        ),
+      getThreadPromptIndex: (threadId) =>
+        service.getThreadProjection(threadId).pipe(
+          Effect.map((projection) => {
+            const { slots, complete } = selectThreadPromptIndexSlots(projection.visibleTurnItems);
+            const items = new Map(
+              projection.visibleTurnItems.map((row) => [row.sourceItemId as string, row.item]),
+            );
+            const text = (itemId: string | null, characters: number) => {
+              const item = itemId === null ? undefined : items.get(itemId);
+              return item?.type === "user_message" || item?.type === "assistant_message"
+                ? boundThreadPromptText(item.text, characters)
+                : "";
+            };
+            return {
+              complete,
+              prompts: slots.map((slot) => {
+                const prompt = items.get(slot.promptItemId);
+                return {
+                  runId: slot.runId,
+                  messageId: slot.messageId,
+                  prompt: text(slot.promptItemId, THREAD_PROMPT_INDEX_PROMPT_CHARACTERS),
+                  response: text(slot.responseItemId, THREAD_PROMPT_INDEX_RESPONSE_CHARACTERS),
+                  scheduled:
+                    prompt?.type === "user_message" && prompt.scheduledTaskId !== undefined,
+                };
+              }),
+            };
+          }),
         ),
       getTimelinePage: (threadId, options) =>
         service.getThreadProjection(threadId).pipe(

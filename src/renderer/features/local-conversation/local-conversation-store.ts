@@ -1,5 +1,6 @@
 import { assertCodexFailedTurnContinuation } from "../../../shared/codex-conversation-state/codex-failed-turn-continuation";
 import { useConversationRuntimeOverride, type ConversationRuntime } from "./conversation-runtime";
+import { createCodexPromptRailPort } from "./codex-prompt-rail-port";
 import {
   useConversationRuntimeValue,
   useConversationRuntimeChildMemberships,
@@ -9123,8 +9124,10 @@ export function useConversationRuntime(
       kind: "codex",
       hostId: manager.getHostId(),
       history: (id) => {
-        const generation = manager.readConversation(id)?.conversationEntityGeneration;
+        const conversation = manager.readConversation(id);
+        const generation = conversation?.conversationEntityGeneration;
         if (generation === undefined) return null;
+        const topologyGeneration = conversation?.historyTopologyGeneration;
         const loadPage = async (target: CodexConversationHistoryPageTarget) => {
           const snapshot = manager.readConversation(id);
           if (!snapshot || snapshot.conversationEntityGeneration !== generation)
@@ -9140,6 +9143,15 @@ export function useConversationRuntime(
         return {
           loadBoundary: (boundary) => loadPage({ kind: "turnBoundary", boundary }),
           loadTurnItems: (items) => loadPage({ kind: "turnItems", items }),
+          ...(topologyGeneration === undefined
+            ? {}
+            : {
+                promptRail: createCodexPromptRailPort({
+                  client: manager,
+                  threadId: id,
+                  topologyGeneration,
+                }),
+              }),
         };
       },
       subscribe: (id, listener) => {
@@ -10406,23 +10418,4 @@ export function useCodexAppServerControl(
     setDefaultServiceTier,
     setExecutionProfile,
   };
-}
-
-export function loadLocalConversationPromptRailIndex(
-  input: CodexPromptRailIndexRequest,
-  hostId?: string | null,
-): Promise<CodexPromptRailIndexCommandResult> {
-  return getLocalConversationManagerForConversation(input.threadId, hostId).loadPromptRailIndex(
-    input,
-  );
-}
-export function revealLocalConversationPromptRailTurn(
-  input: CodexPromptRailRevealRequest,
-): Promise<CodexPromptRailRevealCommandResult> {
-  return codexAppServerRegistry.getForHostId(input.hostId).revealPromptRail(input);
-}
-export function prepareLocalConversationPromptRailNavigation(
-  reveal: CodexPromptRailReveal,
-): Promise<void> {
-  return codexAppServerRegistry.getForHostId(reveal.hostId).preparePromptRailNavigation(reveal);
 }

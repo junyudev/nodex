@@ -130,6 +130,7 @@ export type AgentRuntimeQueuePage = AgentRuntimeOperations["thread.queue"]["outp
 export type AgentRuntimeRunInput = AgentRuntimeSessionTarget & { readonly runId: string };
 export type AgentRuntimeQueuedPreview = AgentRuntimeOperations["thread.queued-preview"]["output"];
 export type AgentRuntimeRunMessage = AgentRuntimeOperations["thread.run-message"]["output"];
+export type AgentRuntimePromptIndex = AgentRuntimeOperations["thread.prompt-index"]["output"];
 export type AgentRuntimeRollbackInput = AgentRuntimeSessionTarget & {
   readonly requestId: string;
   readonly runId: string;
@@ -352,6 +353,10 @@ export interface AgentRuntimeIpcApi {
   "agent-runtime:session:history": {
     args: [input: AgentRuntimeHistoryInput];
     result: AgentHistoryPage;
+  };
+  "agent-runtime:session:prompt-index": {
+    args: [input: AgentRuntimeSessionTarget];
+    result: AgentRuntimePromptIndex;
   };
   "agent-runtime:session:queue-read": {
     args: [input: AgentRuntimeQueueReadInput];

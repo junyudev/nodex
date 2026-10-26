@@ -2812,6 +2812,15 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
           });
         }),
       ),
+    promptIndex: (input: AgentRuntimeSessionTarget) =>
+      owned(
+        "prompt-index",
+        Effect.gen(function* () {
+          const connection = yield* options.connect;
+          const loaded = yield* targetInfo(connection, input);
+          return yield* connection.request("thread.prompt-index", { threadId: loaded.threadId });
+        }),
+      ),
     overview: (
       input: AgentRuntimeSessionTarget &
         Omit<AgentRuntimeOperations["tasks.overview"]["input"], "threadId">,

@@ -40,6 +40,7 @@ All notable changes to this project will be documented in this file.
 - Images sent while steering a running chat remain visible with their message, including after activity is collapsed or the chat is reopened.
 - Codex tool calls retain their action titles, source icons and rich results, including JavaScript calls and image outputs.
 - Codex usage no longer disappears after a single failed refresh or a partial usage update; the last reading stays visible and says how old it is.
+- Long Claude Code, OpenCode and ACP chats show the message navigator beside the conversation, listing every message you sent with its reply preview, and jump to messages whose history has not loaded yet.
 - Claude Code and OpenCode slash menus retain supported chat actions, including Fork, Side, Merge back and Compact.
 - Forking a chat can continue from its latest eligible history without requiring a Git checkpoint, and Claude Code forks retain the selected Agent instance’s native history.
 - OpenCode chats offer editing of earlier messages, rewinding the conversation before continuing from the edit.

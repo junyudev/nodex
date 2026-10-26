@@ -208,6 +208,11 @@ export function createAgentRuntimeConversationRuntime(
       return {
         loadBoundary: (boundary) =>
           source.isCurrent() ? owner!.loadHistoryBoundary(boundary) : Promise.resolve("stale"),
+        promptRail: {
+          loadIndex: async () => (source.isCurrent() ? owner!.readPromptIndex() : null),
+          install: async (runId) =>
+            source.isCurrent() ? owner!.loadHistoryThroughRun(runId) : "stale",
+        },
       };
     },
     attachment: (id) => {

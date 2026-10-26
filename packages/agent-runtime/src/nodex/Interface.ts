@@ -474,6 +474,11 @@ export interface AgentRuntimeOperations extends AgentAcpManagementOperations {
     };
     readonly output: AgentHistoryPage;
   };
+  /** Each of the thread's own Runs' opening prompt and latest reply, oldest first. */
+  readonly "thread.prompt-index": {
+    readonly input: { readonly threadId: string };
+    readonly output: import("../orchestration-v2/threadPromptIndex.ts").ThreadPromptIndex;
+  };
   readonly "thread.item": {
     readonly input: {
       readonly threadId: string;

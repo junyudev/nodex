@@ -21,6 +21,7 @@ import type {
   AgentRuntimeQueueReadInput,
   AgentRuntimeQueuePage,
   AgentRuntimeRunInput,
+  AgentRuntimePromptIndex,
   AgentRuntimeRunMessage,
   AgentRuntimeQueuedPreview,
   AgentRuntimeItemInput,
@@ -212,6 +213,7 @@ export interface AgentRuntimeRendererTransport {
   /** Signs the named Claude Agents out of Claude Code. */
   readonly logoutClaude: (instanceIds: readonly string[]) => Promise<ClaudeUsageSnapshot>;
   readonly history: (input: AgentRuntimeHistoryInput) => Promise<AgentHistoryPage>;
+  readonly promptIndex: (input: AgentRuntimeSessionTarget) => Promise<AgentRuntimePromptIndex>;
   readonly readQueuePage: (input: AgentRuntimeQueueReadInput) => Promise<AgentRuntimeQueuePage>;
   readonly readQueuedPreview: (input: AgentRuntimeRunInput) => Promise<AgentRuntimeQueuedPreview>;
   readonly readRunMessage: (input: AgentRuntimeRunInput) => Promise<AgentRuntimeRunMessage>;
@@ -254,6 +256,7 @@ export const agentRuntimeRuntime: AgentRuntimeRendererTransport = {
   refreshClaudeUsage: () => invokeRendererQuery("agent-runtime:claude-usage:refresh"),
   logoutClaude: (instanceIds) => invokePlainCommand(logoutClaude, { instanceIds }),
   history: (input) => invokeRendererQuery("agent-runtime:session:history", input),
+  promptIndex: (input) => invokeRendererQuery("agent-runtime:session:prompt-index", input),
   readQueuePage: (input) => invokeRendererQuery("agent-runtime:session:queue-read", input),
   readQueuedPreview: (input) => invokeRendererQuery("agent-runtime:session:queued-preview", input),
   readRunMessage: (input) => invokeRendererQuery("agent-runtime:session:run-message", input),

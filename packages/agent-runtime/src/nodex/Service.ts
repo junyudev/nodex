@@ -300,6 +300,7 @@ const AgentRequest = Schema.Union([
       conversationOnly: Schema.optional(Schema.Boolean),
     }),
   ),
+  request("thread.prompt-index", Schema.Struct({ threadId: ThreadId })),
   request(
     "thread.item",
     Schema.Struct({
@@ -791,6 +792,8 @@ export const make = Effect.fn("AgentRuntime.makeService")(function* (
             input.input.conversationOnly,
           )
           .pipe(Effect.flatMap(encodeHistory));
+      case "thread.prompt-index":
+        return yield* projections.getThreadPromptIndex(input.input.threadId);
       case "thread.item":
         return yield* projections
           .getVisibleTurnItem({
@@ -962,6 +965,7 @@ export const make = Effect.fn("AgentRuntime.makeService")(function* (
       case "thread.fork-source":
       case "run.outcome":
       case "thread.history":
+      case "thread.prompt-index":
       case "thread.item":
       case "thread.item.full":
       case "thread.attachment":
