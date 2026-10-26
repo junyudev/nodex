@@ -1,3 +1,4 @@
+import { live as nativeOperationsLive } from "./PluginNativeOperations";
 import { buildAppHostAssetUrl } from "../../shared/app-protocol";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
@@ -55,7 +56,9 @@ const catalogLayer = (gateway: CodexGateway["Service"]) =>
   composerCatalogLive({ runtimeStateHome }).pipe(
     Layer.provide(
       Layer.merge(
-        Layer.succeed(CodexGateway, gateway),
+        nativeOperationsLive({ runtimeStateHome }).pipe(
+          Layer.provideMerge(Layer.succeed(CodexGateway, gateway)),
+        ),
         Layer.succeed(AppProtocolRuntime, testProtocol),
       ),
     ),

@@ -1,4 +1,3 @@
-import { resolveComposerInventoryIconUrl } from "../../shared/codex-composer-inventory-icon";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -38,10 +37,6 @@ import {
 } from "../codex/composer-skill-inventory";
 import { parseModelOption } from "../../shared/codex-composer-catalog";
 import { AppProtocolRuntime } from "../host-runtime/AppProtocolRuntime";
-import {
-  isForeignDesktopToolPlugin,
-  nodexDesktopToolMarketplaceName,
-} from "../codex/bundled-desktop-tool-marketplace";
 
 export class ComposerCatalogInputError extends Schema.TaggedError<ComposerCatalogInputError>()(
   "ComposerCatalogInputError",
@@ -58,20 +53,9 @@ export type ComposerCatalogError =
   | ComposerCatalogInputError
   | ComposerCatalogProjectionError;
 
-export type PluginRemovalResult =
-  | { readonly status: "uninstalled" | "still_installed"; readonly pluginId: string }
-  | {
-      readonly status:
-        | "not_installed"
-        | "protected"
-        | "cancelled"
-        | "inventory_unavailable"
-        | "outcome_unavailable";
-    }
-  | {
-      readonly status: "selection_required";
-      readonly candidates: readonly { readonly pluginId: string; readonly name: string }[];
-    };
+export type { PluginRemovalResult } from "./PluginNativeOperations";
+import { PluginNativeOperations, type PluginRemovalResult } from "./PluginNativeOperations";
+import { createPluginInventoryPolicy } from "./PluginInventoryPolicy";
 
 export class ComposerCatalog extends Context.Service<
   ComposerCatalog,
@@ -123,40 +107,27 @@ const asPlainSkillsResponse = (
 
 export const live = (options: {
   readonly runtimeStateHome: string;
-}): Layer.Layer<ComposerCatalog, never, CodexGateway | AppProtocolRuntime> =>
+}): Layer.Layer<
+  ComposerCatalog,
+  never,
+  CodexGateway | AppProtocolRuntime | PluginNativeOperations
+> =>
   Layer.effect(
     ComposerCatalog,
     Effect.gen(function* () {
       const gateway = yield* CodexGateway;
       const protocol = yield* AppProtocolRuntime;
-      const marketplaceName = nodexDesktopToolMarketplaceName(options.runtimeStateHome);
-      const managedDesktopPlugins = new Set(
-        ["browser", "chrome", "computer-use"].map((name) => `${name}@${marketplaceName}`),
-      );
+      const nativeOperations = yield* PluginNativeOperations;
+      const policy = createPluginInventoryPolicy(options.runtimeStateHome);
+      const managedDesktopPlugins = {
+        has: (id: string) => policy.managed(id, gateway.localHostId),
+      };
       const pluginProjection = (
         response: ClientRequestResponsesByMethod["plugin/installed"],
         hostId: string,
-      ): PluginInstalledResponse => {
-        const plain = asPlainPluginResponse(response);
-        if (hostId !== gateway.localHostId) return plain;
-        return {
-          ...plain,
-          marketplaces: plain.marketplaces.map((marketplace) => ({
-            ...marketplace,
-            plugins: marketplace.plugins
-              .filter((plugin) => !isForeignDesktopToolPlugin(plugin.id, options.runtimeStateHome))
-              .map((plugin) =>
-                managedDesktopPlugins.has(plugin.id) && plugin.installed
-                  ? { ...plugin, enabled: true }
-                  : plugin,
-              ),
-          })),
-        };
-      };
-      const iconResolver = (hostId: string) => (path: string) =>
-        hostId === gateway.localHostId
-          ? resolveComposerInventoryIconUrl(path)
-          : protocol.authorizeHostFile({ hostId, path });
+      ) => policy.project(asPlainPluginResponse(response), hostId);
+      const iconResolver = (hostId: string) =>
+        policy.iconResolver(hostId, protocol.authorizeHostFile);
       const awaitReady = gateway.awaitReady(gateway.localHostId);
 
       const readInstalled = (cwds: readonly string[], hostId = gateway.localHostId) =>
@@ -246,59 +217,13 @@ export const live = (options: {
       });
 
       return ComposerCatalog.of({
-        uninstallPlugin: Effect.fn("ComposerCatalog.uninstallPlugin")(
-          function* (input): Effect.fn.Return<PluginRemovalResult, ComposerCatalogError> {
-            yield* awaitReady;
-            if (!(yield* input.isCurrent)) return { status: "cancelled" };
-            const query = input.plugin.trim();
-            if (!query)
-              return yield* new ComposerCatalogInputError({
-                message: "Plugin name or ID is required",
-              });
-            const cwds = normalizeCwds(input.cwds);
-            const inventory = yield* readInstalled(cwds);
-            if ((inventory.marketplaceLoadErrors?.length ?? 0) > 0)
-              return { status: "inventory_unavailable" };
-            const plugins = [
-              ...new Map(
-                inventory.marketplaces.flatMap((marketplace) =>
-                  marketplace.plugins
-                    .filter((plugin) => plugin.installed)
-                    .map((plugin) => [plugin.id, plugin] as const),
-                ),
-              ).values(),
-            ];
-            const exact = plugins.find((plugin) => plugin.id === query);
-            const matches = exact
-              ? [exact]
-              : plugins.filter(
-                  (plugin) =>
-                    plugin.name.toLowerCase() === query.toLowerCase() ||
-                    plugin.interface?.displayName?.toLowerCase() === query.toLowerCase(),
-                );
-            if (!(yield* input.isCurrent)) return { status: "cancelled" };
-            if (matches.length === 0) return { status: "not_installed" };
-            if (matches.length > 1)
-              return {
-                status: "selection_required",
-                candidates: matches.map((plugin) => ({
-                  pluginId: plugin.id,
-                  name: plugin.interface?.displayName ?? plugin.name,
-                })),
-              };
-            const pluginId = matches[0]!.id;
-            // These plugins are acquired by the Desktop Host and reconciled on launch.
-            if (managedDesktopPlugins.has(pluginId)) return { status: "protected" };
-            yield* gateway.requestLocal("plugin/uninstall", { pluginId });
-            const refreshed = yield* readInstalled(cwds);
-            if ((refreshed.marketplaceLoadErrors?.length ?? 0) > 0)
-              return { status: "outcome_unavailable" };
-            const remains = refreshed.marketplaces.some((marketplace) =>
-              marketplace.plugins.some((plugin) => plugin.id === pluginId && plugin.installed),
+        uninstallPlugin: (input) => {
+          if (!input.plugin.trim())
+            return Effect.fail(
+              new ComposerCatalogInputError({ message: "Plugin name or ID is required" }),
             );
-            return { status: remains ? "still_installed" : "uninstalled", pluginId };
-          },
-        ),
+          return nativeOperations.uninstall(input);
+        },
         listModels: listModels(),
         listPlugins: (input) =>
           Effect.gen(function* () {

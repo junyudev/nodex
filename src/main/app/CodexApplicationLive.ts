@@ -1,3 +1,7 @@
+import {
+  PluginNativeOperations,
+  live as pluginNativeOperationsLive,
+} from "../codex-application/PluginNativeOperations";
 import { CodexExecutionHostAuthState } from "../codex-runtime/CodexExecutionHostAuthState";
 import {
   CodexMainConversationManagers,
@@ -369,12 +373,18 @@ const transport = runtime.pipe(Layer.provideMerge(localLaunch), Layer.provideMer
 const kernel = pendingRequests.pipe(Layer.provideMerge(transport));
 
 const account = codexAccountLive({ pollInterval: "60 seconds" }).pipe(Layer.provideMerge(kernel));
+const nativePlugins = Layer.unwrap(
+  Effect.gen(function* () {
+    const codex = yield* CodexPlatform;
+    return pluginNativeOperationsLive({ runtimeStateHome: codex.runtimeStateHome });
+  }),
+).pipe(Layer.provideMerge(kernel));
 const catalog = Layer.unwrap(
   Effect.gen(function* () {
     const codex = yield* CodexPlatform;
     return composerCatalogLive({ runtimeStateHome: codex.runtimeStateHome });
   }),
-).pipe(Layer.provideMerge(kernel));
+).pipe(Layer.provideMerge(nativePlugins));
 const events = Layer.effect(CodexApplicationEventHub, makeCodexApplicationEventHub);
 const connection = codexConnectionLive.pipe(Layer.provideMerge(Layer.mergeAll(kernel, events)));
 const tools = codexToolRuntimeLive({
@@ -432,6 +442,7 @@ export const live: Layer.Layer<
   | CodexEventHub
   | CodexAccount
   | ComposerCatalog
+  | PluginNativeOperations
   | CodexConnection
   | CodexToolRuntime
   | CodexPreferences
