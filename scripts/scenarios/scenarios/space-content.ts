@@ -10,7 +10,7 @@ import {
 export const SPACE_CONTENT_SCENARIO_ID = "space/content" as const;
 export const SPACE_CONTENT_SCENARIO_REVISION = 1 as const;
 
-/** Root Pages in Library order, after the Project's own Database. */
+/** Root Pages in Library order, ahead of the Project resources created before them. */
 export const SPACE_CONTENT_PAGE_TITLES = [
   "Product principles",
   "Q4 roadmap",
@@ -68,8 +68,8 @@ const materialize = async (
     throw new Error("space/content Project has no default Database View");
   }
   const pageIdsByKey: Record<string, string> = {};
-  // Sequential creation fixes the Library order the sidebar must preserve.
-  for (const [index, title] of SPACE_CONTENT_PAGE_TITLES.entries()) {
+  // New roots enter first, so creating in reverse yields the listed Library order.
+  for (const [index, title] of [...SPACE_CONTENT_PAGE_TITLES.entries()].reverse()) {
     const pageId = createUuidV7();
     await port.createStandalonePage({
       pageId,

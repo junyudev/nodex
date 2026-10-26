@@ -878,10 +878,10 @@ fn move_block(
                     connection,
                     library_id,
                     &authority.id,
-                    match parent {
+                    LibraryRootPosition::placed(match parent {
                         LibraryWriteParent::Library { before } => before.as_ref(),
                         LibraryWriteParent::Page { .. } => None,
-                    },
+                    }),
                     &now,
                 )?;
                 let changed = connection.execute(
@@ -1892,10 +1892,10 @@ fn create_database(
                     connection,
                     library_id,
                     database_id,
-                    match parent {
+                    LibraryRootPosition::created(match parent {
                         LibraryWriteParent::Library { before } => before.as_ref(),
                         LibraryWriteParent::Page { .. } => None,
-                    },
+                    }),
                     &now,
                 )?;
             }
@@ -2077,10 +2077,10 @@ fn create_page_records_and_genesis(
             connection,
             library_id,
             page_id,
-            match parent {
+            LibraryRootPosition::created(match parent {
                 LibraryWriteParent::Library { before } => before.as_ref(),
                 LibraryWriteParent::Page { .. } => None,
-            },
+            }),
             now,
         )?;
     }
@@ -3313,14 +3313,40 @@ pub(crate) fn require_project_in_library(
     Err(unauthorized("Bound Project is unavailable in this Library"))
 }
 
+/// Where a Block lands among the Library's roots.
+#[derive(Clone, Copy, Debug)]
+pub(crate) enum LibraryRootPosition<'a> {
+    /// Ahead of every root, where newly created content stays visible.
+    First,
+    Before(&'a nodex_core_contracts::library::LibraryPlacementAnchor),
+    /// After every root, the end a drop, move, or recorded position may name.
+    Last,
+}
+
+impl<'a> LibraryRootPosition<'a> {
+    /// New content without an explicit position enters ahead of every root.
+    pub(crate) fn created(
+        before: Option<&'a nodex_core_contracts::library::LibraryPlacementAnchor>,
+    ) -> Self {
+        before.map_or(Self::First, Self::Before)
+    }
+
+    /// Placed content without an explicit position goes after every root.
+    pub(crate) fn placed(
+        before: Option<&'a nodex_core_contracts::library::LibraryPlacementAnchor>,
+    ) -> Self {
+        before.map_or(Self::Last, Self::Before)
+    }
+}
+
 pub(crate) fn insert_library_placement(
     connection: &Connection,
     library_id: &str,
     block_id: &str,
-    before: Option<&nodex_core_contracts::library::LibraryPlacementAnchor>,
+    position: LibraryRootPosition<'_>,
     now: &str,
 ) -> Result<String, StoreError> {
-    if let Some(anchor) = before {
+    if let LibraryRootPosition::Before(anchor) = position {
         validate_library_anchor(connection, library_id, anchor)?;
     }
     let items = connection
@@ -3335,12 +3361,15 @@ pub(crate) fn insert_library_placement(
             })
         })?
         .collect::<rusqlite::Result<Vec<_>>>()?;
-    let plan = plan_fractional_rank(
-        &items,
-        block_id,
-        before.map(|anchor| anchor.block_id.as_str()),
-    )
-    .map_err(placement_rank_error)?;
+    let before_id = match position {
+        LibraryRootPosition::First => items
+            .iter()
+            .find(|item| item.id != block_id)
+            .map(|item| item.id.as_str()),
+        LibraryRootPosition::Before(anchor) => Some(anchor.block_id.as_str()),
+        LibraryRootPosition::Last => None,
+    };
+    let plan = plan_fractional_rank(&items, block_id, before_id).map_err(placement_rank_error)?;
     for (sibling_id, rank_key) in &plan.rebalanced_rank_keys {
         synchronize_library_placement_rank(connection, library_id, sibling_id, rank_key, now)?;
     }

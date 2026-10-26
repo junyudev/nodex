@@ -4644,7 +4644,13 @@ fn transfer_page(
             if target_library_id != library_id {
                 return Err(unauthorized("A Page cannot transfer to another Library"));
             }
-            crate::library::insert_library_placement(connection, library_id, page_id, None, now)?;
+            crate::library::insert_library_placement(
+                connection,
+                library_id,
+                page_id,
+                crate::library::LibraryRootPosition::Last,
+                now,
+            )?;
 
             (None, None)
         }

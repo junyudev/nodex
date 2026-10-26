@@ -65,9 +65,9 @@ use crate::infrastructure::sqlite::{StoreError, StoreErrorCode};
 
 use super::LibraryApplyOutcome;
 use super::mutation::{
-    MutationEffects, ensure_default_page_intrinsic_properties, insert_library_placement,
-    insert_page_read_model, library_commit_result, refresh_page_intrinsic_projection,
-    require_project_in_library, seal_mutation_with, sqlite_now,
+    LibraryRootPosition, MutationEffects, ensure_default_page_intrinsic_properties,
+    insert_library_placement, insert_page_read_model, library_commit_result,
+    refresh_page_intrinsic_projection, require_project_in_library, seal_mutation_with, sqlite_now,
 };
 use super::page_copy::{
     PageCopyParentDocumentMode, execute_page_copy, page_copy_closure_document_heads,
@@ -2685,7 +2685,7 @@ fn apply_page_ownership_transfer(
                     connection,
                     library_id,
                     &root.page_id,
-                    anchor.as_ref(),
+                    LibraryRootPosition::placed(anchor.as_ref()),
                     &now,
                 )?;
             }
@@ -4709,7 +4709,13 @@ pub(super) fn stage_prepared_fresh_page_in_library(
     let anchor = before_block_id
         .map(|block_id| read_library_anchor(connection, library_id, block_id))
         .transpose()?;
-    insert_library_placement(connection, library_id, page_id, anchor.as_ref(), now)?;
+    insert_library_placement(
+        connection,
+        library_id,
+        page_id,
+        LibraryRootPosition::placed(anchor.as_ref()),
+        now,
+    )?;
 
     let authority = read_document_authority(connection, document_id)?
         .ok_or_else(|| corrupt("Created Page has no Document authority"))?;
@@ -4856,7 +4862,13 @@ fn stage_page_parent_root(
     let anchor = before_block_id
         .map(|block_id| read_library_anchor(connection, library_id, block_id))
         .transpose()?;
-    insert_library_placement(connection, library_id, &root.page_id, anchor.as_ref(), now)?;
+    insert_library_placement(
+        connection,
+        library_id,
+        &root.page_id,
+        LibraryRootPosition::placed(anchor.as_ref()),
+        now,
+    )?;
     let title_delta = crate::domain::rich_text::rich_text_to_delta(rich_title)
         .map_err(|error| invalid(error.to_string()))?;
     let prepared_genesis = prepare_yjs_clone_genesis(

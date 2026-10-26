@@ -21,8 +21,8 @@ use crate::infrastructure::sqlite::{StoreError, StoreErrorCode};
 
 use super::LibraryApplyOutcome;
 use super::mutation::{
-    MutationEffects, ParentDocumentWriteContext, ResolvedWriteParent, embedded_resource_block,
-    insert_library_placement, library_commit_result,
+    LibraryRootPosition, MutationEffects, ParentDocumentWriteContext, ResolvedWriteParent,
+    embedded_resource_block, insert_library_placement, library_commit_result,
     persist_parent_operations_detailed_with_local_commit,
     persist_parent_relocation_source_with_local_commit, resolve_library_mutation_authority,
     resolve_write_parent_for_context, seal_mutation, sqlite_now,
@@ -417,7 +417,7 @@ pub(super) fn move_canvas(
                     connection,
                     library_id,
                     canvas_id,
-                    resolved.library_before.as_ref(),
+                    LibraryRootPosition::placed(resolved.library_before.as_ref()),
                     &now,
                 )?;
             }
@@ -1134,7 +1134,7 @@ fn create_canvas_records(
             connection,
             library_id,
             canvas_id,
-            resolved.library_before.as_ref(),
+            LibraryRootPosition::created(resolved.library_before.as_ref()),
             now,
         )?;
     }

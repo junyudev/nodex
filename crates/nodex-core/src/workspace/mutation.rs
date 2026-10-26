@@ -64,7 +64,6 @@ const MAX_SOURCE_ROOTS: usize = 128;
 const MAX_SOURCE_ROOT_BYTES: usize = 4_096;
 const MAX_PROJECT_ORDER_SIZE: usize = 100_000;
 const MAX_UNARCHIVED_PROJECTS: usize = 200;
-const INITIAL_RANK_KEY: &str = "7fffffffffffffffffffffffffffffff";
 const PROJECT_DATABASE_NAME_SUFFIX: &str = " DB";
 const PROJECT_CANVAS_NAME_SUFFIX: &str = " Canvas";
 
@@ -2258,12 +2257,6 @@ fn create_project_records(
          ) VALUES (?1, ?2, 'database', 'active', 1, 1, ?3, ?3)",
         params![identities.database_id, library_id, now],
     )?;
-    connection.execute(
-        "INSERT INTO library_block_placements(\
-           block_id, library_id, rank_key, revision, created_at, updated_at\
-         ) VALUES (?1, ?2, ?3, 1, ?4, ?4)",
-        params![identities.database_id, library_id, INITIAL_RANK_KEY, now],
-    )?;
     create_database_authority_records(
         connection,
         library_id,
@@ -2324,6 +2317,14 @@ fn create_project_records(
         &canvas_name,
         &now,
         assets_root,
+    )?;
+    // A new Project's resources enter the top of the Library, its Database ahead of its Canvas.
+    crate::library::insert_library_placement(
+        connection,
+        library_id,
+        &identities.database_id,
+        crate::library::LibraryRootPosition::First,
+        &now,
     )?;
 
     Ok(CreatedProjectAggregate {

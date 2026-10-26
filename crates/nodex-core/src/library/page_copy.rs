@@ -29,9 +29,10 @@ use crate::infrastructure::sqlite::{StoreError, StoreErrorCode};
 
 use super::LibraryApplyOutcome;
 use super::mutation::{
-    MutationEffects, ParentDocumentWriteContext, ensure_default_page_intrinsic_properties,
-    insert_library_placement, insert_page_read_model, library_commit_result, persist_parent_insert,
-    refresh_page_intrinsic_projection, seal_mutation, sqlite_now,
+    LibraryRootPosition, MutationEffects, ParentDocumentWriteContext,
+    ensure_default_page_intrinsic_properties, insert_library_placement, insert_page_read_model,
+    library_commit_result, persist_parent_insert, refresh_page_intrinsic_projection, seal_mutation,
+    sqlite_now,
 };
 
 const MAX_COPY_BLOCKS: usize = 10_000;
@@ -1436,10 +1437,10 @@ fn stage_copy_authority(
             connection,
             library_id,
             target_page_id,
-            match requested_parent {
+            LibraryRootPosition::created(match requested_parent {
                 LibraryWriteParent::Library { before } => before.as_ref(),
                 LibraryWriteParent::Page { .. } => None,
-            },
+            }),
             now,
         )?;
     }

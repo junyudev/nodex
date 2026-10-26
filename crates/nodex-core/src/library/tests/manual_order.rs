@@ -3,9 +3,9 @@
 
 use super::*;
 use nodex_core_contracts::library::{
-    LibraryFileChange, LibraryPageContent, LibraryPagePromotionPolicy,
-    LibraryStructuralEditCommand, LibraryStructuralReplacement, LibraryStructuralReplacementBlock,
-    LibraryStructuralSelection,
+    LibraryFileChange, LibraryNavigationNode, LibraryPageContent, LibraryPagePromotionPolicy,
+    LibraryPlacedResourceTarget, LibraryPlacementAnchor, LibraryStructuralEditCommand,
+    LibraryStructuralReplacement, LibraryStructuralReplacementBlock, LibraryStructuralSelection,
 };
 
 const DATABASE: &str = "018f0000-0000-7000-8000-000000009001";
@@ -720,4 +720,102 @@ fn relocated_page_undo_restores_logical_neighbors_after_rebalance() {
     let after = content(&library, MIDDLE);
     assert_eq!(after.document_id, before.document_id);
     assert_eq!(after.body_nfm, before.body_nfm);
+}
+
+fn library_roots(library: &LibraryModule) -> Vec<(String, i64)> {
+    let result = library
+        .read(
+            &context(),
+            ModuleReadRequest {
+                contract_version: LIBRARY_CONTRACT_VERSION,
+                read: LibraryRead::Children {
+                    parent: LibraryNavigationParent::Library,
+                    cursor: None,
+                    limit: Some(20),
+                    force_include_target: None,
+                },
+            },
+        )
+        .unwrap();
+    let LibraryReadValue::Children { items, .. } = result.value else {
+        panic!("Library children")
+    };
+    items
+        .into_iter()
+        .map(|node| match node {
+            LibraryNavigationNode::Page {
+                page_id,
+                parent_revision,
+                ..
+            } => (page_id, parent_revision),
+            LibraryNavigationNode::Database {
+                database_id,
+                location_revision,
+                ..
+            } => (database_id, location_revision),
+            other => panic!("unexpected Library root {other:?}"),
+        })
+        .collect()
+}
+
+fn library_root_ids(library: &LibraryModule) -> Vec<String> {
+    library_roots(library)
+        .into_iter()
+        .map(|(id, _)| id)
+        .collect()
+}
+
+#[test]
+fn created_roots_enter_first_while_placed_roots_keep_their_named_position() {
+    const NEWER: &str = "018f0000-0000-7000-8000-000000009005";
+    const ANCHORED: &str = "018f0000-0000-7000-8000-000000009006";
+    let (_directory, _kernel, library, _database) = fixture();
+    create_page(&library, PAGE);
+    create_page(&library, NEWER);
+    assert_eq!(library_root_ids(&library), [NEWER, PAGE, DATABASE]);
+
+    let page_revision = library_roots(&library)
+        .into_iter()
+        .find_map(|(id, revision)| (id == PAGE).then_some(revision))
+        .unwrap();
+    apply(
+        &library,
+        "create-anchored-page",
+        LibraryIntent::CreatePage {
+            page_id: ANCHORED.into(),
+            document_id: format!("document:{ANCHORED}"),
+            title: "Anchored entry".into(),
+            parent: LibraryWriteParent::Library {
+                before: Some(LibraryPlacementAnchor {
+                    block_id: PAGE.into(),
+                    expected_location_revision: page_revision,
+                }),
+            },
+        },
+    );
+    assert_eq!(
+        library_root_ids(&library),
+        [NEWER, ANCHORED, PAGE, DATABASE]
+    );
+
+    // Reordering an existing root without an anchor names the end of the list.
+    let newer_revision = library_roots(&library)
+        .into_iter()
+        .find_map(|(id, revision)| (id == NEWER).then_some(revision))
+        .unwrap();
+    apply(
+        &library,
+        "move-newer-to-end",
+        LibraryIntent::MoveBlock {
+            target: LibraryPlacedResourceTarget::Page {
+                page_id: NEWER.into(),
+            },
+            expected_location_revision: newer_revision,
+            parent: LibraryWriteParent::Library { before: None },
+        },
+    );
+    assert_eq!(
+        library_root_ids(&library),
+        [ANCHORED, PAGE, DATABASE, NEWER]
+    );
 }

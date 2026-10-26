@@ -8,8 +8,6 @@ use super::canvas::ensure_canvas_scene;
 use super::canvas_scene::{CANVAS_OWNER_TYPE, CANVAS_SCHEMA_KEY, CANVAS_SCHEMA_VERSION};
 use super::persistence::read_document_authority;
 
-const PRIMARY_CANVAS_RANK_KEY: &str = "e0000000000000000000000000000000";
-
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct PrimaryCanvasIdentity {
     pub(crate) block_id: String,
@@ -74,11 +72,12 @@ pub(crate) fn create_primary_canvas(
             now
         ],
     )?;
-    connection.execute(
-        "INSERT INTO library_block_placements(\
-           block_id, library_id, rank_key, revision, created_at, updated_at\
-         ) VALUES (?1, ?2, ?3, 1, ?4, ?4)",
-        params![identity.block_id, library_id, PRIMARY_CANVAS_RANK_KEY, now],
+    crate::library::insert_library_placement(
+        connection,
+        library_id,
+        &identity.block_id,
+        crate::library::LibraryRootPosition::First,
+        now,
     )?;
     connection.execute(
         "INSERT INTO documents(\

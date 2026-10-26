@@ -158,7 +158,11 @@ fn public_page_relations_preserve_authority_and_read_validators_without_body_on_
                 &BTreeMap::from([("parent_kind".into(), json!("library"))]),
             )?;
             assert_eq!(children.len(), 2);
-            assert_eq!(children[0]["child_id"], "page:visible");
+            assert!(
+                children
+                    .iter()
+                    .any(|child| child["child_id"] == "page:visible")
+            );
             let hits = query.search("Query", 5)?;
             assert_eq!(hits.len(), 2);
             assert!(hits.iter().any(|hit| hit["page_id"] == "page:visible"));

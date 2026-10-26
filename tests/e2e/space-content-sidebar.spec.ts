@@ -30,7 +30,7 @@ const showMore = async (page: Page): Promise<void> => {
 
 const PAGE_TITLES: readonly string[] = SPACE_CONTENT_PAGE_TITLES;
 
-test("Space Content keeps its order and remembered depth while content opens", async ({}, testInfo) => {
+test("Space Content keeps its order and depth while content opens, and new content enters on top", async ({}, testInfo) => {
   test.setTimeout(150_000);
   await withElectronScenario(
     {
@@ -54,7 +54,7 @@ test("Space Content keeps its order and remembered depth while content opens", a
       requireSpaceContentScenarioFacts(facts);
       let page = initialPage;
       await openSpace(page);
-      await expect(contentRows(page)).toHaveCount(5);
+      await expect.poll(() => readContentTitles(page)).toEqual(PAGE_TITLES.slice(0, 5));
 
       await showMore(page);
       await expect(contentRows(page)).toHaveCount(15);
@@ -65,7 +65,7 @@ test("Space Content keeps its order and remembered depth while content opens", a
       expect(revealedPages).toEqual(PAGE_TITLES.slice(0, revealedPages.length));
 
       // Opening rows deep in the list never reorders Content or forgets how much is revealed.
-      for (const title of ["Team rituals", "Retrospectives", "Hiring plan"]) {
+      for (const title of ["Hiring plan", "Team rituals", "Retrospectives"]) {
         await contentRows(page).filter({ hasText: title }).click();
         await expect(page.getByRole("tab", { name: title, exact: true })).toHaveAttribute(
           "aria-selected",
@@ -96,7 +96,17 @@ test("Space Content keeps its order and remembered depth while content opens", a
       // The open Page beyond the first page stays listed as one extra row in Library order.
       await expect
         .poll(() => readContentTitles(page))
-        .toEqual([...revealed.slice(0, 5), "Hiring plan"]);
+        .toEqual([...revealed.slice(0, 5), "Retrospectives"]);
+
+      // New content enters at the top, where the first page keeps it visible.
+      await page
+        .getByRole("navigation", { name: "Space", exact: true })
+        .getByRole("button", { name: "New page", exact: true })
+        .click();
+      await expect
+        .poll(() => readContentTitles(page))
+        .toEqual(["Untitled", ...revealed.slice(0, 4)]);
+      await expect(contentRows(page).first()).toHaveAttribute("aria-current", "page");
     },
   );
 });

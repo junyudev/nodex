@@ -1171,7 +1171,7 @@ fn stage_owner(
         connection,
         library_id,
         block_id,
-        before.as_ref(),
+        crate::library::LibraryRootPosition::placed(before.as_ref()),
         &now,
     )?;
     connection.execute(

@@ -320,7 +320,9 @@ only rank inside the current View and is not a relocation synonym.
 
 Library top-level order and View manual order are independent fractional
 orderings with `blockId` as stable tie-breaker. SQL rank never determines order
-inside a Yjs Document.
+inside a Yjs Document. A new top-level Page, Database, Canvas, Page copy, or
+Project resource enters ahead of every root unless its creator names an anchor;
+moves, drops, and Undo without an anchor place a root after every root.
 
 `library_block_placements` is the sole top-level order authority. Block and
 Document registries are keyed by Library; Project IDs on receipts, changes,

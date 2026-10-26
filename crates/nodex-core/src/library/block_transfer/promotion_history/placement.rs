@@ -129,7 +129,13 @@ impl PromotionPlacement {
                     .as_deref()
                     .map(|id| read_library_anchor(connection, library_id, id))
                     .transpose()?;
-                insert_library_placement(connection, library_id, page_id, anchor.as_ref(), now)?;
+                insert_library_placement(
+                    connection,
+                    library_id,
+                    page_id,
+                    LibraryRootPosition::placed(anchor.as_ref()),
+                    now,
+                )?;
             }
             Self::DataSource {
                 data_source_id,
