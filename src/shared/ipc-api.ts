@@ -1,3 +1,4 @@
+import type { PluginManagementIpcApi, PluginManagementChanged } from "./codex-plugin-management";
 import type { AcpIpcApi } from "./acp-api";
 import type { AgentRuntimeIpcApi } from "./agent-runtime-api";
 import type { AgentModelCatalog, AgentModelCatalogInput } from "./agent-model-catalog";
@@ -713,7 +714,7 @@ export interface RendererDiagnosticsLogInput {
   fields?: Record<string, unknown>;
 }
 
-export interface IpcApi extends AgentRuntimeIpcApi, AcpIpcApi {
+export interface IpcApi extends AgentRuntimeIpcApi, AcpIpcApi, PluginManagementIpcApi {
   "codex:turn-presentation:capture": {
     args: [input: CodexTurnPresentationCaptureInput];
     result: CodexTurnPresentationTicket | undefined;
@@ -2951,6 +2952,7 @@ export interface IpcApi extends AgentRuntimeIpcApi, AcpIpcApi {
 export type IpcArgs<Channel extends keyof IpcApi> = IpcApi[Channel]["args"];
 
 export interface IpcEvents {
+  "codex:plugins:changed": [PluginManagementChanged];
   "nodex-account:changed": import("./nodex-account").NodexAccountSnapshot;
   "opencode-setup:changed": import("./opencode-setup").OpenCodeSetupState;
   "codex:realtime-voice:event": import("./codex-realtime-voice").CodexRealtimeVoiceEvent;

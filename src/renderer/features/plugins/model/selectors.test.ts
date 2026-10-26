@@ -4,6 +4,7 @@ import {
   buildLocalPluginSections,
   selectInstalledPlugins,
   dedupePluginRows,
+  mergeInstalledRows,
   mergePluginSections,
   pluginActionState,
   normalizePluginSearch,
@@ -47,6 +48,45 @@ describe("plugin inventory selectors", () => {
     });
     const local = pluginRow({ stableIdentity: "remote-id" });
     expect(dedupePluginRows([remote, local])).toEqual([local]);
+  });
+  it("merges fresh listing metadata with the installed checkout identity and exact selector", () => {
+    const checkout = pluginRow({
+      nativeId: "checkout@personal",
+      stableIdentity: "remote-id",
+      isPersonal: true,
+      summary: pluginSummary({
+        id: "checkout@personal",
+        name: "checkout",
+        remotePluginId: "remote-id",
+        localVersion: "1.0",
+      }),
+      selector: { marketplacePath: "/personal.json", pluginName: "checkout" },
+    });
+    const listing = pluginRow({
+      nativeId: "listing@remote",
+      stableIdentity: "remote-id",
+      marketplace: { name: "public", path: null, displayName: null },
+      selector: { remoteMarketplaceName: "public", pluginName: "remote-id" },
+      summary: pluginSummary({
+        id: "listing@remote",
+        installed: false,
+        version: "2.0",
+        source: { type: "remote" },
+        keywords: ["fresh"],
+      }),
+    });
+    const merged = mergeInstalledRows([listing], [checkout])[0]!;
+    expect(merged.summary).toMatchObject({
+      id: "checkout@personal",
+      installed: true,
+      localVersion: "1.0",
+      version: "2.0",
+      keywords: ["fresh"],
+      source: checkout.summary.source,
+    });
+    expect(merged.selector).toEqual(checkout.selector);
+    expect(merged.isPersonal).toBe(true);
+    expect(mergeInstalledRows([listing], [])[0]?.summary.installed).toBe(false);
   });
   it("builds truthful fallback sections, preserves featured order, caps at nine and omits managed tools", () => {
     const values = Array.from({ length: 12 }, (_, i) => row(`p${i}`));

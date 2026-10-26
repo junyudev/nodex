@@ -51,7 +51,13 @@ export type PluginActionState =
   | "admin_disabled"
   | "unavailable"
   | "loading";
+export type PluginAppConnectionState =
+  | "unknown"
+  | "connected"
+  | "authentication_required"
+  | "unavailable";
 export interface PluginRow {
+  readonly appConnectionStates?: Readonly<Record<string, PluginAppConnectionState>>;
   readonly summary: PluginSummary;
   readonly marketplace: PluginMarketplaceIdentity;
   readonly selector: PluginSelector;
@@ -82,6 +88,7 @@ export interface PluginManagementCapabilities {
   readonly shared: boolean;
   readonly remoteToggle: boolean;
   readonly workspace: boolean;
+  readonly workspaceCreated: boolean;
 }
 export type PluginFailureCode =
   | "invalid_input"
@@ -98,6 +105,7 @@ export type PluginFailureCode =
   | "mutation_outcome_unknown"
   | "service_unavailable";
 export interface PluginFailure {
+  readonly marketplaceErrors?: readonly import("@nodex/codex-app-server-protocol/v2/MarketplaceUpgradeErrorInfo").MarketplaceUpgradeErrorInfo[];
   readonly code: PluginFailureCode;
   readonly message: string;
   readonly retryable: boolean;
@@ -147,6 +155,7 @@ export interface PersonalPlugins {
   }[];
 }
 export interface PluginDetailView {
+  readonly appConnectionStates?: Readonly<Record<string, PluginAppConnectionState>>;
   readonly detail: PluginDetail;
   readonly row: PluginRow;
   readonly summary: PluginSummary;
@@ -207,6 +216,7 @@ export interface PluginManagementChanged {
   readonly progress?: MarketplaceRemovalProgress;
 }
 export interface PluginQueries {
+  context: { input: PluginContext; output: ResolvedPluginContext };
   capabilities: { input: PluginContext; output: PluginManagementCapabilities };
   list: {
     input: PluginContext & { readonly forceRefetch?: boolean };

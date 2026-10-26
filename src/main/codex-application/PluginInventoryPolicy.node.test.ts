@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { pluginSummary } from "../../shared/test-fixtures/plugins";
-import { createPluginInventoryPolicy } from "./PluginInventoryPolicy";
+import { createPluginInventoryPolicy, safeRemoteIcon } from "./PluginInventoryPolicy";
 const policy = createPluginInventoryPolicy("/tmp/plugin-policy");
 describe("plugin inventory policy", () => {
   it("hides only foreign local desktop copies, retains disabled/admin rows and protects managed tools", () => {
@@ -43,6 +43,9 @@ describe("plugin inventory policy", () => {
       "local",
       () => null,
     );
+    expect(safeRemoteIcon("file:///private/logo.png")).toBeNull();
+    expect(safeRemoteIcon("javascript:alert(1)")).toBeNull();
+    expect(safeRemoteIcon("https://example.com/logo.png")).toBe("https://example.com/logo.png");
     expect(rows[0]?.selector).toEqual({ remoteMarketplaceName: "remote", pluginName: "opaque-id" });
     expect(policy.iconResolver("remote", () => "app://host-image")("/some/path")).toBe(
       "app://host-image",

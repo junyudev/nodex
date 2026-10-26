@@ -96,11 +96,17 @@ export function mergeInstalledRows(
       if (!match)
         return {
           ...row,
+          summary: { ...row.summary, installed: false, enabled: false },
+          canUninstall: false,
+          canSetEnabled: false,
           installState: "not_installed" as const,
           actionState: pluginActionState(row.summary, "not_installed"),
         };
       const summary = {
         ...row.summary,
+        id: match.summary.installed ? match.summary.id : row.summary.id,
+        name: match.summary.installed ? match.summary.name : row.summary.name,
+        source: match.summary.installed ? match.summary.source : row.summary.source,
         installed: match.summary.installed,
         installedAt: match.summary.installedAt,
         enabled: match.summary.enabled,
@@ -112,6 +118,19 @@ export function mergeInstalledRows(
         ...row,
         summary,
         nativeId: match.nativeId,
+        selector:
+          match.summary.installed && match.marketplace.path !== null
+            ? match.selector
+            : row.selector,
+        marketplace:
+          match.summary.installed && match.marketplace.path !== null
+            ? match.marketplace
+            : row.marketplace,
+        isPersonal: match.isPersonal || row.isPersonal,
+        isOfficial:
+          match.summary.installed && match.marketplace.path !== null
+            ? match.isOfficial
+            : row.isOfficial,
         managed: match.managed,
         canUninstall: match.canUninstall,
         canSetEnabled: match.canSetEnabled,
@@ -137,6 +156,7 @@ export const selectInstalledPlugins = (rows: readonly PluginRow[], search = ""):
 export function buildLocalPluginSections(
   rows: readonly PluginRow[],
   featuredPluginIds: readonly string[],
+  limit = 9,
 ): PluginSection[] {
   const publicRows = dedupePluginRows(rows.filter((row) => row.isOfficial && !row.managed));
   const byId = new Map(
@@ -164,7 +184,7 @@ export function buildLocalPluginSections(
   }
   return [
     ...(featured.length
-      ? [{ id: "featured", title: "Featured", urlSlug: null, plugins: featured.slice(0, 9) }]
+      ? [{ id: "featured", title: "Featured", urlSlug: null, plugins: featured.slice(0, limit) }]
       : []),
     ...[...categories]
       .sort(([a], [b]) => a.localeCompare(b))
@@ -172,7 +192,7 @@ export function buildLocalPluginSections(
         id: `plugins-${normalizePluginSearch(title).replaceAll(" ", "-")}`,
         title,
         urlSlug: null,
-        plugins: take(plugins).slice(0, 9),
+        plugins: take(plugins).slice(0, limit),
       })),
   ].filter((section) => section.plugins.length > 0);
 }
@@ -194,6 +214,8 @@ export function mergePluginSections(sections: readonly PluginSection[]): PluginS
   return [...byId.values()].filter((section) => section.plugins.length > 0);
 }
 const marketplaceKey = (m: PluginMarketplaceIdentity) => JSON.stringify([m.name, m.path]);
+const marketplaceLabelRank = (label: string): number =>
+  label === "Built by OpenAI" ? 0 : label === "ChatGPT official" ? 1 : 2;
 export function groupPersonalPlugins(
   rows: readonly PluginRow[],
   created: readonly PluginRow[] = [],
@@ -210,7 +232,7 @@ export function groupPersonalPlugins(
     const key = marketplaceKey(row.marketplace);
     const group = groups.get(key) ?? {
       identity: row.marketplace,
-      label: row.marketplace.displayName ?? row.marketplace.name,
+      label: row.marketplace.displayName?.trim() || row.marketplace.name,
       plugins: [],
     };
     group.plugins.push(row);
@@ -237,7 +259,11 @@ export function groupPersonalPlugins(
       }
       return { ...group, label: `${group.label} (${suffix})` };
     })
-    .sort((a, b) => a.label.localeCompare(b.label));
+    .sort(
+      (a, b) =>
+        marketplaceLabelRank(a.label) - marketplaceLabelRank(b.label) ||
+        a.label.localeCompare(b.label),
+    );
   return {
     createdByYou,
     sharedWithYou: dedupePluginRows(shared).filter((row) => !createdIds.has(row.stableIdentity)),
@@ -261,9 +287,9 @@ export function skillMatchKeys(skill: SkillMetadata): string[] {
   ];
 }
 export function selectSkills(response: SkillsListResponse): SkillsView {
-  const byPath = new Map(
-    response.data.flatMap((entry) => entry.skills).map((skill) => [skill.path, skill]),
-  );
+  const byPath = new Map<string, SkillMetadata>();
+  for (const entry of response.data)
+    for (const skill of entry.skills) if (!byPath.has(skill.path)) byPath.set(skill.path, skill);
   const priority = { repo: 0, user: 1, system: 2, admin: 3 };
   const byName = new Map<string, SkillMetadata>();
   for (const skill of [...byPath.values()].sort(
@@ -276,7 +302,7 @@ export function selectSkills(response: SkillsListResponse): SkillsView {
         b.interface?.displayName ?? humanize(b.name),
       ) || a.name.localeCompare(b.name),
   );
-  const installed = all.filter((skill) => !skill.pluginId && !skill.path.startsWith("plugin://"));
+  const installed = all.filter((skill) => !skill.pluginId && !skill.path.startsWith("plugin:"));
   return {
     installed,
     personal: installed.filter((skill) => skill.scope === "user"),

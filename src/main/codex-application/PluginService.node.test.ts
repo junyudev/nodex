@@ -14,6 +14,7 @@ const make = (
     workspace?: boolean;
     malformed?: boolean;
     changeAccount?: boolean;
+    terminal?: boolean;
   } = {},
 ) => {
   const calls: { path: string; method: string; account: string | undefined }[] = [];
@@ -50,7 +51,7 @@ const make = (
               }
             : {
                 plugins: [{ id: "plugin", display_name: "Plugin" }],
-                pagination: { next_page_token: "next" },
+                pagination: options.terminal ? {} : { next_page_token: "next" },
                 category: { title: "Design", description: "Tools for design" },
               };
         return Response.json(body, { status: options.status ?? 200 });
@@ -186,6 +187,17 @@ it.effect("refuses to retarget a frozen account before dispatch", () => {
       assert.strictEqual(result._tag, "Failure");
       if (result._tag === "Failure") assert.strictEqual(result.failure.code, "account_changed");
       assert.strictEqual(h.calls.length, 0);
+    }),
+  );
+});
+
+it.effect("accepts terminal pages without a next-page token", () => {
+  const h = make({ terminal: true });
+  return withService(h, (service) =>
+    Effect.gen(function* () {
+      const page = yield* service.page({ feed: "user", limit: 50 });
+      assert.strictEqual(page.plugins.length, 1);
+      assert.strictEqual(page.pagination.next_page_token ?? null, null);
     }),
   );
 });

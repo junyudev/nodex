@@ -1,3 +1,4 @@
+import { PluginNativeOperations } from "../codex-application/PluginNativeOperations";
 import { AgentRuntimeApplication } from "../agent-runtime/AgentRuntimeApplication";
 import { CodexThreadHandoffRuntime } from "../codex-application/CodexThreadHandoffRuntime";
 import { SessionWaiter } from "./SessionWaiter";
@@ -50,6 +51,7 @@ const interpreter = (options: { hostId?: string; afterRead?: () => void } = {}) 
       Effect.provideService(CodexAccount, {} as never),
       Effect.provideService(WorkspaceDependencyRuntime, {} as never),
       Effect.provideService(ComposerCatalog, {} as never),
+      Effect.provideService(PluginNativeOperations, {} as never),
     )
     .pipe(
       Effect.provideService(CodexTurnPresentation, {} as never),

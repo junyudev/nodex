@@ -176,7 +176,9 @@ owns its helper resources, import receipts, and desktop tool source copies under
 `${NODEX_HOME}/runtime/agent`. Startup supplies missing feature defaults as process options and
 leaves native configuration bytes intact. Nodex tasks use full native execution access;
 only an explicit native configuration edit updates Codex settings. Nodex desktop plugins use a
-distinct namespace per Profile and are enabled only in its chats.
+distinct namespace per Profile and are enabled only in its chats. Customize manages that
+native home's plugins and versioned enablement settings; Project roots scope discovery,
+not installation ownership. See [Plugins behavior](product-specs/plugins-behavior.md).
 
 Sharing a native home does not add all native conversations to the Nodex sidebar. In **Settings >
 Conversations**, importing a Codex or Claude conversation creates an independent Nodex chat with copied history

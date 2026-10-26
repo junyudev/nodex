@@ -353,6 +353,7 @@ it.effect("uninstalls only an unambiguous user plugin and verifies the installed
               ],
               marketplaceLoadErrors: unavailable ? [{ message: "unavailable" }] : [],
             };
+          if (method === "skills/list") return { data: [] };
           if (method === "plugin/uninstall") {
             removed.push((params as { pluginId: string }).pluginId);
             return {};

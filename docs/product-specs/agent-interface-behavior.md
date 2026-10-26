@@ -146,7 +146,8 @@ redeeming credits. `consume_usage_reset` redeems an existing credit with explici
 user authorization and a stable idempotency key for uncertain retries.
 `uninstall_plugin` resolves the current installed inventory by exact ID or name,
 returns candidates for ambiguous names, and verifies removal by reading the inventory
-again. Nodex-managed desktop plugins are protected.
+again. Nodex-managed desktop plugins are protected. The tool shares its native removal
+owner with Customize and the composer; see [Plugins behavior](plugins-behavior.md).
 
 Each Nodex Profile installs its Browser, Chrome, and Computer Use peers in a separate
 marketplace namespace inside the selected native Codex home. These peers stay disabled in

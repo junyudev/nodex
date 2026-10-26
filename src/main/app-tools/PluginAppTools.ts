@@ -2,7 +2,7 @@ import { captureAppToolAuthority, type AppToolAuthorityCapture } from "./AppTool
 import * as Effect from "effect/Effect";
 import { nodexAgentAuthorityFingerprint } from "../../shared/nodex-agent-authority";
 import { uninstallPluginSchema } from "../../shared/nodex-app-tools/plugin-schema";
-import { ComposerCatalog } from "../codex-application/ComposerCatalog";
+import { PluginNativeOperations } from "../codex-application/PluginNativeOperations";
 import { CodexTurnAuthority } from "../codex-application/CodexTurnAuthority";
 import { ProjectWorkspace } from "../project-application/ProjectWorkspace";
 import type { AppToolInvocation } from "./AppToolInvocationInbox";
@@ -11,7 +11,7 @@ import { resolveAppToolCallingSession } from "./AppToolCallingSession";
 
 export const makeWithCapture = (capture: AppToolAuthorityCapture) =>
   Effect.gen(function* () {
-    const catalog = yield* ComposerCatalog;
+    const plugins = yield* PluginNativeOperations;
     const workspace = yield* ProjectWorkspace;
     return Effect.fn("PluginAppTools.uninstall")(function* (input: AppToolInvocation) {
       const parsed = uninstallPluginSchema.safeParse(input.arguments);
@@ -23,8 +23,8 @@ export const makeWithCapture = (capture: AppToolAuthorityCapture) =>
 
       const calling = yield* resolveAppToolCallingSession(input.caller, workspace);
       if (!calling) return toolFailure("session_unavailable");
-      return yield* catalog
-        .uninstallPlugin({
+      return yield* plugins
+        .uninstall({
           plugin: parsed.data.plugin,
           cwds: calling.cwd ? [calling.cwd] : [],
           isCurrent: Effect.gen(function* () {

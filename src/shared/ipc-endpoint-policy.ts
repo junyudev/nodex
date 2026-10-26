@@ -73,6 +73,20 @@ export type IpcCommand<
 
 /** Exact owner-audited groups. Never replace one group with an `Exclude<keyof IpcApi, ...>` remainder. */
 type QueryEndpointPolicy =
+  | "codex:plugins:context"
+  | "codex:plugins:capabilities"
+  | "codex:plugins:list"
+  | "codex:plugins:installed"
+  | "codex:plugins:read"
+  | "codex:plugins:search"
+  | "codex:plugins:skills"
+  | "codex:plugins:skill-contents"
+  | "codex:plugins:hooks"
+  | "codex:plugins:public-home"
+  | "codex:plugins:category"
+  | "codex:plugins:personal"
+  | "codex:plugins:personal-page"
+  | "codex:plugins:marketplace-removal-preview"
   | "acp:registry:search"
   | "acp:inspect"
   | "acp:install:preview"
@@ -472,6 +486,14 @@ type MainRevisionCommandEndpointPolicy =
   | "codex:visualization:interaction:write";
 
 type PlainResultCommandEndpointPolicy =
+  | "codex:plugins:install"
+  | "codex:plugins:uninstall"
+  | "codex:plugins:set-enabled"
+  | "codex:plugins:skill-enabled"
+  | "codex:plugins:marketplace-add"
+  | "codex:plugins:marketplace-remove"
+  | "codex:plugins:marketplace-upgrade"
+  | "codex:plugins:refresh"
   | "acp:install:start"
   | "acp:registry:uninstall"
   | "acp:connection:start"

@@ -147,6 +147,7 @@ export const live = (options: {
             });
           }
           const cwds = normalizeCwds(input.cwds);
+          yield* nativeOperations.observeSkillScope({ hostId, cwds });
           const installed = yield* readInstalled(cwds, hostId);
           const activation = yield* Effect.try({
             try: () => resolveComposerPluginActivation(pluginProjection(installed, hostId), id),
@@ -169,7 +170,13 @@ export const live = (options: {
               activation.params as unknown as ClientRequestParamsByMethod["plugin/install"],
             );
           }
-          yield* gateway.requestOnHost(hostId, "skills/list", { cwds, forceReload: true });
+          if (hostId === gateway.localHostId) yield* nativeOperations.changed;
+          const scopes = yield* nativeOperations.skillScopes(hostId);
+          for (const roots of scopes)
+            yield* gateway.requestOnHost(hostId, "skills/list", {
+              cwds: [...roots],
+              forceReload: true,
+            });
           const verified = (yield* readInstalled(cwds, hostId)).marketplaces
             .flatMap((marketplace) => marketplace.plugins)
             .find((plugin) => plugin.id.trim() === id);
@@ -266,6 +273,7 @@ export const live = (options: {
             const hostId = input.hostId;
             yield* gateway.awaitReady(hostId);
             const normalized = normalizeCwds(input.cwds);
+            yield* nativeOperations.observeSkillScope({ hostId, cwds: normalized });
             const response = yield* gateway.requestOnHost(hostId, "skills/list", {
               ...(input.forceReload === undefined ? {} : { forceReload: input.forceReload }),
               ...(normalized.length > 0 ? { cwds: normalized } : {}),

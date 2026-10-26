@@ -60,7 +60,7 @@ export const PluginServiceListing = Schema.Struct({
 export type ServiceListing = typeof PluginServiceListing.Type;
 const Page = Schema.Struct({
   plugins: Schema.Array(PluginServiceListing),
-  pagination: Schema.Struct({ next_page_token: Schema.NullOr(Schema.String) }),
+  pagination: Schema.Struct({ next_page_token: Schema.optionalKey(Schema.NullOr(Schema.String)) }),
 });
 const CategoryPage = Schema.Struct({
   ...Page.fields,
@@ -77,7 +77,7 @@ const Home = Schema.Struct({
     Schema.Struct({
       id: Schema.String,
       title: Schema.String,
-      url_slug: Schema.NullOr(Schema.String),
+      url_slug: Schema.optionalKey(Schema.NullOr(Schema.String)),
       plugins: Schema.Array(PluginServiceListing),
     }),
   ),
@@ -89,6 +89,7 @@ export interface PluginServiceAccess {
   readonly shared: boolean;
   readonly remoteToggle: boolean;
   readonly workspace: boolean;
+  readonly workspaceCreated: boolean;
 }
 export class PluginService extends Context.Service<
   PluginService,
@@ -164,8 +165,26 @@ export const live = Layer.effect(
       if (response.ok) return { response, identity };
       if (response.status === 401)
         return yield* pluginError("auth_required", "Sign in to ChatGPT to continue.");
-      if (response.status === 403)
+      if (response.status === 403) {
+        const capability: keyof PluginServiceAccess =
+          method === "POST"
+            ? "remoteToggle"
+            : path.startsWith("ps/plugin-categories/")
+              ? "category"
+              : path.startsWith("ps/plugins/home")
+                ? "publicHome"
+                : path.startsWith("ps/plugins/workspace/shared")
+                  ? "shared"
+                  : path.startsWith("ps/plugins/workspace/created")
+                    ? "workspaceCreated"
+                    : "personal";
+        yield* Ref.update(cachedAccess, (current) =>
+          current?.key === `${identity.accountId}:${identity.userId}`
+            ? { ...current, value: { ...current.value, [capability]: false } }
+            : current,
+        );
         return yield* pluginError("policy_denied", "Plugin access is denied for this account.");
+      }
       if (response.status === 404)
         return yield* pluginError("unsupported", "This plugin service is unavailable.");
       return yield* pluginError(
@@ -242,6 +261,7 @@ export const live = Layer.effect(
             shared: false,
             remoteToggle: false,
             workspace: false,
+            workspaceCreated: false,
           };
         }
         const identity = auth.authToken ? decodeChatGptBackendIdentity(auth.authToken) : null;
@@ -266,10 +286,11 @@ export const live = Layer.effect(
         const workspace =
           plan !== null &&
           /^(?:team|business|self_serve_business|ent26|enterprise|edu)/u.test(plan);
-        const [publicHome, personal, shared] = yield* Effect.all([
+        const [publicHome, personal, shared, workspaceCreated] = yield* Effect.all([
           probe("ps/plugins/home"),
           probe("ps/plugins/list?scope=USER&limit=9"),
           workspace ? probe("ps/plugins/workspace/shared?limit=9") : Effect.succeed(false),
+          workspace ? probe("ps/plugins/workspace/created?limit=9") : Effect.succeed(false),
         ]);
         const value = {
           publicHome,
@@ -278,6 +299,7 @@ export const live = Layer.effect(
           shared,
           remoteToggle: publicHome || personal,
           workspace,
+          workspaceCreated,
         };
         yield* ensureIdentity(identity);
         yield* Ref.set(cachedAccess, { key, at: now, value });

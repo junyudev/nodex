@@ -1,3 +1,8 @@
+import { PluginService, live as pluginServiceLive } from "../codex-application/PluginService";
+import { PluginManager, live as pluginManagerLive } from "../codex-application/PluginManager";
+import { PluginNativeOperations } from "../codex-application/PluginNativeOperations";
+import { ProjectWorkspace } from "../project-application/ProjectWorkspace";
+import { AppProtocolRuntime } from "../host-runtime/AppProtocolRuntime";
 import { CodexExecutionHostAuthState } from "../codex-runtime/CodexExecutionHostAuthState";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
@@ -114,6 +119,17 @@ const workspaceRouting = Layer.unwrap(
 const chatGpt = chatGptDesktopLive.pipe(
   Layer.provideMerge(Layer.merge(ElectronNet.live, workspaceRouting)),
 );
+const plugins = Layer.unwrap(
+  Effect.gen(function* () {
+    const codex = yield* CodexPlatform;
+    const config = yield* MainConfig;
+    return pluginManagerLive({
+      homeDirectory: config.homeDirectory,
+      runtimeStateHome: codex.runtimeStateHome,
+      codexHome: codex.codexHome,
+    });
+  }),
+).pipe(Layer.provideMerge(pluginServiceLive.pipe(Layer.provideMerge(chatGpt))));
 const browserSiteStatus = browserSiteStatusRuntimeLive.pipe(Layer.provideMerge(chatGpt));
 const browserApplication = Layer.unwrap(
   Effect.gen(function* () {
@@ -260,6 +276,8 @@ const gitActions = gitActionsLive.pipe(
 export const live: Layer.Layer<
   | ElectronNet.ElectronNet
   | ChatGptDesktop
+  | PluginManager
+  | PluginService
   | CodexWorkspaceRouting
   | ComposerExternalSuggestions
   | BrowserSiteStatusRuntime
@@ -286,6 +304,9 @@ export const live: Layer.Layer<
   | BrowserUseRuntimeError
   | ExecutionHostRuntimeError,
   | CodexGateway
+  | PluginNativeOperations
+  | ProjectWorkspace
+  | AppProtocolRuntime
   | CodexAppServerCapabilities
   | CodexExecutionHostAuthState
   | ApplicationSettings
@@ -307,4 +328,5 @@ export const live: Layer.Layer<
   managedWorktrees,
   gitActions,
   externalSuggestions,
+  plugins,
 );

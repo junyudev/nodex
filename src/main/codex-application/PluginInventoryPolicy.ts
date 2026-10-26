@@ -81,7 +81,8 @@ export function createPluginInventoryPolicy(runtimeStateHome: string) {
           installState: state,
           actionState: pluginActionState(summary, state),
           isPersonal:
-            personalMarketplacePath !== null && marketplace.path === personalMarketplacePath,
+            marketplace.name === "created-by-me-remote" ||
+            (personalMarketplacePath !== null && marketplace.path === personalMarketplacePath),
           isOfficial: isOfficialMarketplace(identity),
         };
       }),
