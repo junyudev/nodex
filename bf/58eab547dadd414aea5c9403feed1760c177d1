@@ -1,0 +1,23 @@
+src/renderer/lib/plugin-management-cache.ts
+  s_77ac5bdfa64dec::t_317e2fd7350bb1 289-292
+src/renderer/lib/query-client.tsx
+  s_77ac5bdfa64dec::t_c800796f07bc3d 33
+src/renderer/lib/server-state-hooks.test.tsx
+  s_77ac5bdfa64dec::t_14ebfddbb911f2 8-10,137,140,151,154,221,227-229,296,308,310-311,318,323,325,329-331,344-349
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "bf58eab547dadd414aea5c9403feed1760c177d1",
+  "prompts": {},
+  "sessions": {
+    "s_77ac5bdfa64dec": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1795d-5e95-7ea0-9bf7-2e3e042b723f",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
