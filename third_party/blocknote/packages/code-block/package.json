@@ -53,7 +53,6 @@
     "@shikijs/core": "^4.4.3",
     "@shikijs/engine-javascript": "^4.4.3",
     "@shikijs/langs-precompiled": "^4.4.3",
-    "@shikijs/themes": "^4.4.3",
     "@shikijs/types": "^4.4.3"
   },
   "peerDependencies": {

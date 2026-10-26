@@ -1,17 +1,17 @@
-import { registerCustomTheme, type ThemeRegistration, type ThemesType } from "@pierre/diffs";
+import type { ThemeRegistration } from "@pierre/diffs";
 
-const CODE_BLOCK_SYNTAX_THEME_NAME = "nodex-code-block";
-const registeredSymbol = Symbol.for("nodex.codeBlockSyntaxThemeRegistered");
+export const CODE_BLOCK_SYNTAX_THEME_NAME = "nodex-code-block";
 
 const syntax = (role: string) => `var(--color-codex-syntax-${role})`;
-const FOREGROUND = "var(--color-token-editor-foreground)";
+const FOREGROUND = "var(--foreground)";
 
 /**
- * Code blocks read with the Codex syntax palette. Its light and dark values live in the theme
- * contract, so one registration follows the app theme. TextMate scopes are grouped by the roles
- * the palette names; identifiers, operators and punctuation keep the editor foreground.
+ * Every code block (editor, previews, conversation and raw tool inspection) reads with the Codex
+ * syntax palette. Its light and dark values live in the theme contract, so one theme follows the
+ * color scheme wherever it is declared. TextMate scopes are grouped by the roles the palette
+ * names; identifiers, operators and punctuation keep the code foreground.
  */
-const CODE_BLOCK_SYNTAX_THEME: ThemeRegistration = {
+export const CODE_BLOCK_SYNTAX_THEME: ThemeRegistration = {
   name: CODE_BLOCK_SYNTAX_THEME_NAME,
   type: "light",
   fg: FOREGROUND,
@@ -57,7 +57,11 @@ const CODE_BLOCK_SYNTAX_THEME: ThemeRegistration = {
       ],
       settings: { foreground: syntax("string") },
     },
-    { scope: ["meta.template.expression"], settings: { foreground: FOREGROUND } },
+    // Template substitutions and bare shell words are code, not string content.
+    {
+      scope: ["meta.template.expression", "string.unquoted.argument", "constant.other.option"],
+      settings: { foreground: FOREGROUND },
+    },
     {
       scope: [
         "variable.language",
@@ -90,6 +94,9 @@ const CODE_BLOCK_SYNTAX_THEME: ThemeRegistration = {
       scope: [
         "entity.name.tag",
         "entity.other.attribute-name.id",
+        "meta.decorator",
+        "entity.name.function.decorator",
+        "punctuation.definition.decorator",
         "meta.preprocessor",
         "keyword.control.directive",
         "constant.other.symbol",
@@ -103,15 +110,3 @@ const CODE_BLOCK_SYNTAX_THEME: ThemeRegistration = {
     { scope: ["markup.bold"], settings: { fontStyle: "bold" } },
   ],
 };
-
-/** Registers the code-block theme on first use and names it for both color schemes. */
-export function codeBlockSyntaxThemes(): ThemesType {
-  const registry = globalThis as typeof globalThis & { [registeredSymbol]?: true };
-  if (!registry[registeredSymbol]) {
-    registerCustomTheme(CODE_BLOCK_SYNTAX_THEME_NAME, () =>
-      Promise.resolve(CODE_BLOCK_SYNTAX_THEME),
-    );
-    registry[registeredSymbol] = true;
-  }
-  return { light: CODE_BLOCK_SYNTAX_THEME_NAME, dark: CODE_BLOCK_SYNTAX_THEME_NAME };
-}

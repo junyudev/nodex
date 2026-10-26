@@ -7,10 +7,10 @@ import {
   resolveReadonlyCodeLanguage,
 } from "@/lib/code-block-presentation";
 import { streamdownCodePlugin } from "@/lib/markdown/markdown-code-highlighter";
-import { NFM_CODE_THEME_PAIR } from "@/lib/syntax-highlighting";
+import { CODE_BLOCK_THEME_PAIR } from "@/lib/syntax-highlighting";
 import { cn } from "@/lib/utils";
 
-const themes: HighlightOptions["themes"] = [...NFM_CODE_THEME_PAIR];
+const themes: HighlightOptions["themes"] = [...CODE_BLOCK_THEME_PAIR];
 
 function useHighlightedCode(code: string, language: string): HighlightResult | null {
   const [highlighted, setHighlighted] = useState<{

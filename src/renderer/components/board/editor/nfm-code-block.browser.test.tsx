@@ -6,7 +6,11 @@ import { afterEach, describe, expect, test, vi } from "vite-plus/test";
 import { codeBlockViewState } from "@/lib/nfm/code-block-view-state";
 import { NodexModalHost } from "@/lib/modal-registry";
 import { createMaitaiStore, MaitaiProvider } from "@/lib/maitai";
-import { applyRendererThemeForTest, installRendererThemeFixture } from "@/test/renderer-theme";
+import {
+  applyRendererThemeForTest,
+  installRendererThemeFixture,
+  readRendererThemeColor,
+} from "@/test/renderer-theme";
 import { settleLazyRender } from "@/test/dom";
 import {
   contrastRatio,
@@ -258,6 +262,33 @@ describe("NFM Code Block surface in Chromium", () => {
         ratio,
         `${theme} Code Block contrast: ${JSON.stringify({ foreground, background, ratio })}`,
       ).toBeGreaterThanOrEqual(4.5);
+    },
+  );
+
+  test.each(["light", "dark"] as const)(
+    "reads %s code in the shared Code palette, with italic comments",
+    async (theme) => {
+      const { host } = await mountCodeBlock(
+        `code-palette-${theme}`,
+        "// cached\nexport const value = 1;",
+        theme,
+      );
+      const code = host.querySelector<HTMLElement>("[data-nfm-code-block-surface] code")!;
+      const token = (text: string) =>
+        [...code.querySelectorAll<HTMLElement>("span")].find(
+          (candidate) => candidate.textContent?.trim() === text,
+        );
+      await waitFor(() => {
+        const comment = token("// cached");
+        expect(comment).toBeDefined();
+        expect(getComputedStyle(comment!).color).toBe(
+          readRendererThemeColor("--color-codex-syntax-comment"),
+        );
+        expect(getComputedStyle(comment!).fontStyle).toBe("italic");
+        expect(getComputedStyle(token("export")!).color).toBe(
+          readRendererThemeColor("--color-codex-syntax-keyword"),
+        );
+      });
     },
   );
 

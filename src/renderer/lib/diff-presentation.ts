@@ -1,6 +1,7 @@
+import { registerCustomTheme } from "@pierre/diffs";
 import type { CodeViewProps, FileDiffProps, ThemeTypes, ThemesType } from "@pierre/diffs/react";
 import type { CSSProperties } from "react";
-import { codeBlockSyntaxThemes } from "./code-block-syntax-theme";
+import { CODE_BLOCK_SYNTAX_THEME, CODE_BLOCK_SYNTAX_THEME_NAME } from "./code-block-syntax-theme";
 
 type DiffThemeType = Exclude<ThemeTypes, "system">;
 type SharedDiffOptions = NonNullable<FileDiffProps<undefined>["options"]>;
@@ -281,8 +282,22 @@ export function getNodexDiffOptions(
   };
 }
 
-/** Files and diffs use the source palette; code blocks use the conversation code-block palette. */
+/** Files and diffs use the source palette; code blocks use the shared code-block palette. */
 export type NodexSyntaxTheme = "source" | "code-block";
+
+const codeBlockThemeRegistration = Symbol.for("nodex.codeBlockSyntaxThemeRegistered");
+
+/** Registers the code-block theme with the source viewer's highlighter on first use. */
+function codeBlockSyntaxThemes(): ThemesType {
+  const registry = globalThis as typeof globalThis & { [codeBlockThemeRegistration]?: true };
+  if (!registry[codeBlockThemeRegistration]) {
+    registerCustomTheme(CODE_BLOCK_SYNTAX_THEME_NAME, () =>
+      Promise.resolve(CODE_BLOCK_SYNTAX_THEME),
+    );
+    registry[codeBlockThemeRegistration] = true;
+  }
+  return { light: CODE_BLOCK_SYNTAX_THEME_NAME, dark: CODE_BLOCK_SYNTAX_THEME_NAME };
+}
 
 function getNodexCodeOptions(
   themeType: DiffThemeType,

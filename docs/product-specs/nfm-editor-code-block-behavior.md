@@ -58,6 +58,8 @@ The surface has a 10px radius, 22px horizontal code inset, 24px outer vertical p
 
 The product surface is the sole Code Block backdrop; the surrounding BlockNote content host remains transparent. Its translucent background token and Shiki token theme must resolve from the same light or dark color scheme. Ordinary code and syntax punctuation maintain at least a 4.5:1 contrast ratio against the fully composited surface in both schemes.
 
+Every Code surface uses one syntax palette: editable Code Blocks, read-only previews, conversation code and the raw tool-call inspector. The palette is the Codex code palette, defined as light and dark theme tokens, so token colors follow the color scheme without a second theme. Comments are italic. Identifiers, operators, punctuation and bare shell words keep the code foreground. File views and diffs keep their own source palette.
+
 The Action Bar is inset 4px from the top and end edge. It is 28px high with 24px controls. A normal-width ordinary-Code bar contains Language, Copy, and More; a block no wider than 230px contains only More. Mermaid Code has a larger capability-derived width budget and progressively collapses its additional preview actions. Width changes are observed rather than inferred from document structure.
 
 The Action Bar and read-only header resolve their floating surface, foreground, controls, divider, and outline from the same light or dark scheme as the Code Block. Related portaled pickers and menus inherit the renderer window scheme rather than retaining light chrome inside a dark editor.
@@ -83,9 +85,9 @@ Formatting distinguishes unsupported, unchanged, failed, and changed results. Un
 
 ## Read-only presentation
 
-Read-only BlockNote previews keep the editable surface geometry. NFM previews, thread messages and Markdown documents share one read-only Code presentation: the same 10px surface, background token, 22px code inset, Code typography and Shiki theme pair, with a symmetric 24px vertical inset because no editable Action Bar row is reserved. Every read-only presentation is unwrapped and shows only the read-only header, containing the language label and Copy, inset 4px from the top and end edge. It never mounts Language, More, Wrap, Format, or another mutation controller. In message and document surfaces the header appears on hover, while focus is within it, and always on coarse-pointer devices.
+Read-only BlockNote previews keep the editable surface geometry. NFM previews, thread messages and Markdown documents share one read-only Code presentation: the same 10px surface, background token, 22px code inset, Code typography and syntax palette, with a symmetric 24px vertical inset because no editable Action Bar row is reserved. Every read-only presentation is unwrapped and shows only the read-only header, containing the language label and Copy, inset 4px from the top and end edge. It never mounts Language, More, Wrap, Format, or another mutation controller. In message and document surfaces the header appears on hover, while focus is within it, and always on coarse-pointer devices.
 
-NFM previews label languages through the catalog. Markdown surfaces label catalog languages the same way and keep any other authored language name, which is still offered to Shiki's own grammar aliases. Each token carries both themes and resolves from the document color scheme, so the contrast rule above holds in every read-only presentation. Copy writes the authored source; an unfinished streaming fence cannot be copied, a failed write can retry, and success feedback lasts two seconds.
+NFM previews label languages through the catalog. Markdown surfaces label catalog languages the same way and keep any other authored language name, which is still offered to Shiki's own grammar aliases. Each token's palette color resolves from the document color scheme, so the contrast rule above holds in every read-only presentation. Copy writes the authored source; an unfinished streaming fence cannot be copied, a failed write can retry, and success feedback lasts two seconds.
 
 ## Verification boundary
 

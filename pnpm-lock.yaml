@@ -1377,9 +1377,6 @@ importers:
       '@shikijs/langs-precompiled':
         specifier: ^4.4.3
         version: 4.4.3
-      '@shikijs/themes':
-        specifier: ^4.4.3
-        version: 4.4.3
       '@shikijs/types':
         specifier: ^4.4.3
         version: 4.4.3
@@ -10923,6 +10920,7 @@ snapshots:
   '@shikijs/themes@4.4.3':
     dependencies:
       '@shikijs/types': 4.4.3
+    optional: true
 
   '@shikijs/transformers@4.3.1':
     dependencies:

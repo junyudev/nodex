@@ -1,8 +1,8 @@
 import { createCodePlugin } from "@streamdown/code";
-import { NFM_CODE_THEME_PAIR } from "../syntax-highlighting";
+import { CODE_BLOCK_THEME_PAIR } from "../syntax-highlighting";
 
 const baseStreamdownCodePlugin = createCodePlugin({
-  themes: [NFM_CODE_THEME_PAIR[0], NFM_CODE_THEME_PAIR[1]],
+  themes: [...CODE_BLOCK_THEME_PAIR],
 });
 
 type StreamdownHighlightOptions = Parameters<typeof baseStreamdownCodePlugin.highlight>[0];

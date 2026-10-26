@@ -4,7 +4,7 @@ import { createCodeBlockHighlighter } from "./index.js";
 describe("@blocknote/code-block", () => {
   it("exposes the generated highlighter factory", async () => {
     const highlighter = await createCodeBlockHighlighter({
-      themes: ["github-light", "github-dark"],
+      themes: [{ name: "plain", type: "light", fg: "#000000", bg: "#ffffff", settings: [] }],
       langs: [],
     });
 

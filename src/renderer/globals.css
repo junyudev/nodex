@@ -452,14 +452,26 @@
   word-break: break-all;
 }
 
+/* Shiki inlines only the light color; italic comments and other font styles arrive as
+   per-scheme variables, like the read-only Code presentation consumes them. */
+.bn-block-content[data-content-type="codeBlock"] .shiki,
+.nfm-editor .bn-source-block-popup .shiki {
+  font-style: var(--shiki-light-font-style, inherit);
+  font-weight: var(--shiki-light-font-weight, inherit);
+}
+
 .bn-root[data-color-scheme="dark"] .bn-block-content[data-content-type="codeBlock"] .shiki {
   color: var(--shiki-dark, var(--foreground)) !important;
+  font-style: var(--shiki-dark-font-style, inherit);
+  font-weight: var(--shiki-dark-font-weight, inherit);
 }
 
 /* Source-with-preview blocks render Shiki decorations with an inline light color.
    Resolve their dark token at the product theme boundary, just as Code Blocks do. */
 .nfm-editor .bn-root[data-color-scheme="dark"] .bn-source-block-popup .shiki {
   color: var(--shiki-dark, var(--color-token-editor-foreground)) !important;
+  font-style: var(--shiki-dark-font-style, inherit);
+  font-weight: var(--shiki-dark-font-weight, inherit);
 }
 
 /* BlockNote's dark red-on-red defaults are only 1.44:1. Keep the semantic danger

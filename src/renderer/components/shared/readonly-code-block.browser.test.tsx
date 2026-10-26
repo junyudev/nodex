@@ -5,7 +5,11 @@ import { NfmDocument } from "@/components/board/nfm-renderer";
 import { MarkdownRenderer } from "@/features/local-conversation/view/shared/markdown/markdown-renderer";
 import { parseNfm } from "@/lib/nfm/parser";
 import { contrastRatio, getPaintedBackground, parseComputedColor } from "@/test/color-contrast";
-import { applyRendererThemeForTest, installRendererThemeFixture } from "@/test/renderer-theme";
+import {
+  applyRendererThemeForTest,
+  installRendererThemeFixture,
+  readRendererThemeColor,
+} from "@/test/renderer-theme";
 
 installRendererThemeFixture();
 
@@ -52,3 +56,34 @@ describe.each(["light", "dark"] as const)("read-only code in the %s scheme", (th
     },
   );
 });
+
+test.each(["light", "dark"] as const)(
+  "conversation code reads in the shared %s Code palette",
+  async (theme) => {
+    applyRendererThemeForTest(theme);
+    const view = render(
+      <MarkdownRenderer
+        content={'```json\n{ "name": "nodex", "count": 2 }\n```'}
+        dialect="conversation"
+      />,
+    );
+    try {
+      const color = (text: string) => {
+        const token = [
+          ...view.container.querySelectorAll<HTMLElement>(
+            "[data-readonly-code-block] code span span",
+          ),
+        ].find((candidate) => candidate.textContent?.includes(text));
+        if (!token) throw new Error(`No token for ${text}`);
+        return getComputedStyle(token).color;
+      };
+      await waitFor(() => {
+        expect(color("name")).toBe(readRendererThemeColor("--color-codex-syntax-attribute"));
+        expect(color("nodex")).toBe(readRendererThemeColor("--color-codex-syntax-string"));
+        expect(color("2")).toBe(readRendererThemeColor("--color-codex-syntax-literal"));
+      });
+    } finally {
+      view.unmount();
+    }
+  },
+);

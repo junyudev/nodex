@@ -1,13 +1,10 @@
 import { SyntaxHighlightingExtension } from "@blocknote/core";
 import { createCodeBlockHighlighter } from "@blocknote/code-block";
 import { createParser } from "prosemirror-highlight/shiki";
+import { CODE_BLOCK_SYNTAX_THEME, CODE_BLOCK_SYNTAX_THEME_NAME } from "./code-block-syntax-theme";
 
-export const NFM_CODE_THEMES = {
-  light: "github-light",
-  dark: "github-dark",
-} as const;
-
-export const NFM_CODE_THEME_PAIR = [NFM_CODE_THEMES.light, NFM_CODE_THEMES.dark] as const;
+/** Shiki asks for a light and a dark theme; the shared palette resolves both from CSS. */
+export const CODE_BLOCK_THEME_PAIR = [CODE_BLOCK_SYNTAX_THEME, CODE_BLOCK_SYNTAX_THEME] as const;
 
 const shikiParserSymbol = Symbol.for("blocknote.shikiParser");
 const shikiHighlighterPromiseSymbol = Symbol.for("blocknote.shikiHighlighterPromise");
@@ -27,7 +24,7 @@ function getGlobalThisForBlockNoteShiki(): GlobalThisWithBlockNoteShiki {
 export function getSharedBlockNoteCodeHighlighter(): Promise<BlockNoteHighlighter> {
   const globalState = getGlobalThisForBlockNoteShiki();
   globalState[shikiHighlighterPromiseSymbol] ??= createCodeBlockHighlighter({
-    themes: [...NFM_CODE_THEME_PAIR],
+    themes: [CODE_BLOCK_SYNTAX_THEME],
     langs: [],
   });
   return globalState[shikiHighlighterPromiseSymbol];
@@ -42,8 +39,8 @@ export async function preloadBlockNoteDualThemeParser(): Promise<BlockNoteHighli
     highlighter as never,
     {
       themes: {
-        light: NFM_CODE_THEMES.light,
-        dark: NFM_CODE_THEMES.dark,
+        light: CODE_BLOCK_SYNTAX_THEME_NAME,
+        dark: CODE_BLOCK_SYNTAX_THEME_NAME,
       },
     } as never,
   );
