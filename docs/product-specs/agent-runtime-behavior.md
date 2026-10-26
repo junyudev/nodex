@@ -161,6 +161,13 @@ adds earlier messages inside an already visible Turn. Page failures expose a ret
 repeated continuation cursors fail the page instead of looping. Releasing the last transcript reader clears body caches; retained
 controls continue observing metadata until their last reader releases. Captured fork ancestry identifies the source of inherited history.
 
+File changes record every file a tool changed, whichever Agent made them: its operation
+(create, edit, delete or move), its diff and the line counts measured from the complete diff.
+Diffs travel with the transcript, so patch rows, their expanded diffs and Review need no
+further read. A diff past the transport budget is withheld whole; its row keeps the measured
+counts and says the change is too large to preview. A failed edit keeps the Agent's error in
+place of a diff. A file whose counts were never measured shows no counts rather than `+0 -0`.
+
 Read-only history loading, retry and child observations use the conversation's
 current owner, including for archived chats and provider-spawned subagents. Viewport
 pagination uses that same owner and validates its current history boundary; a released

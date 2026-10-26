@@ -16,6 +16,13 @@ import {
 } from "./claudeWorkflowProgress.ts";
 
 import { isWorkspaceImagePreviewPath } from "@t3tools/shared/filePreview";
+import {
+  fileChangeDetail,
+  fileChangeItemFields,
+  fileChangesFromPatch,
+  unifiedHunksText,
+  type StructuredHunk,
+} from "@t3tools/shared/fileChanges";
 import { normalizeClaudeTurnTokenUsage } from "../../provider/ClaudeTurnTokenUsage.ts";
 import { loadClaudeAgentSdk } from "../../provider/ClaudeAgentSdk.ts";
 import { createClaudeSessionStores } from "../../provider/ClaudeSessionStore.ts";
@@ -1986,7 +1993,7 @@ function parseClaudeBackgroundTaskEntry(
 
 function fileNameFromClaudeTool(toolName: string, input: ClaudeNativeToolInput): string {
   return (
-    firstStringInputField(input, ["file_path", "path", "filename", "fileName"]) ??
+    firstStringInputField(input, ["file_path", "notebook_path", "path", "filename", "fileName"]) ??
     `${toolName} result`
   );
 }
@@ -2040,6 +2047,78 @@ function claudeNativeToolOutputValue(output: ClaudeNativeToolOutput): unknown | 
 function claudeNativeToolOutputText(output: ClaudeNativeToolOutput): string {
   const value = claudeNativeToolOutputValue(output);
   return typeof value === "string" ? value : value === undefined ? "" : jsonStringifyForTool(value);
+}
+
+function claudeStructuredHunks(value: unknown): ReadonlyArray<StructuredHunk> | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const hunks = value.filter(
+    (hunk): hunk is StructuredHunk =>
+      typeof hunk === "object" &&
+      hunk !== null &&
+      ["oldStart", "oldLines", "newStart", "newLines"].every(
+        (key) => typeof Reflect.get(hunk, key) === "number",
+      ) &&
+      Array.isArray(Reflect.get(hunk, "lines")) &&
+      (Reflect.get(hunk, "lines") as unknown[]).every((line) => typeof line === "string"),
+  );
+  return hunks.length === value.length ? hunks : undefined;
+}
+
+/**
+ * The file an Edit or Write result changed, from its structured result. An empty patch is a
+ * change only when a write left the content as it was; otherwise Claude Code could not diff the
+ * file, so its git diff stands in, or the file is kept without inventing one.
+ */
+function claudeEditResultChange(value: unknown) {
+  if (typeof value !== "object" || value === null) return null;
+  const filePath = Reflect.get(value, "filePath");
+  if (typeof filePath !== "string") return null;
+  const content = Reflect.get(value, "content");
+  if (Reflect.get(value, "type") === "create" && typeof content === "string")
+    return fileChangeDetail({ operation: "add", path: filePath, diff: content });
+  const hunks = claudeStructuredHunks(Reflect.get(value, "structuredPatch"));
+  if (hunks !== undefined && hunks.length > 0)
+    return fileChangeDetail({ operation: "modify", path: filePath, diff: unifiedHunksText(hunks) });
+  if (
+    hunks !== undefined &&
+    typeof content === "string" &&
+    content === Reflect.get(value, "originalFile")
+  )
+    return fileChangeDetail({ operation: "modify", path: filePath, diff: "" });
+  const gitDiff = Reflect.get(value, "gitDiff");
+  const gitPatch =
+    typeof gitDiff === "object" && gitDiff !== null ? Reflect.get(gitDiff, "patch") : undefined;
+  const reported =
+    typeof gitPatch === "string"
+      ? fileChangesFromPatch(gitPatch, filePath).find(
+          (change) => change.operation === "add" || change.operation === "modify",
+        )
+      : undefined;
+  return fileChangeDetail({
+    operation: reported?.operation ?? "modify",
+    path: filePath,
+    ...(reported?.diff === undefined ? {} : { diff: reported.diff }),
+  });
+}
+
+/** A file_change item records the files a Claude edit changed; only a failed edit keeps its text. */
+function claudeFileChangeFields(input: {
+  readonly toolName: string;
+  readonly toolInput: ClaudeNativeToolInput;
+  readonly output: ClaudeNativeToolOutput;
+  readonly failed: boolean;
+}) {
+  const change =
+    input.output.type === "structured_tool_use_result"
+      ? claudeEditResultChange(input.output.value)
+      : null;
+  const fields = fileChangeItemFields(change === null ? [] : [change]);
+  if (fields !== undefined) return fields;
+  const text = input.failed ? claudeNativeToolOutputText(input.output) : "";
+  return {
+    fileName: fileNameFromClaudeTool(input.toolName, input.toolInput),
+    ...(text.length === 0 ? {} : { diffStr: text }),
+  };
 }
 
 /**
@@ -4194,8 +4273,12 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
                 ? {
                     ...itemBase,
                     type: "file_change",
-                    fileName: fileNameFromClaudeTool(input.toolName, input.toolInput),
-                    ...(outputText.length === 0 ? {} : { diffStr: outputText }),
+                    ...claudeFileChangeFields({
+                      toolName: input.toolName,
+                      toolInput: input.toolInput,
+                      output: input.output,
+                      failed: input.status === "failed",
+                    }),
                   }
                 : itemType === "web_search"
                   ? {

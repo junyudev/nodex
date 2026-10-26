@@ -6,6 +6,7 @@ import {
   type ModelSelection,
   type OrchestrationV2ConversationMessage,
   type OrchestrationV2ExecutionNode,
+  type OrchestrationV2FileChangeDetail,
   type OrchestrationV2PlanArtifact,
   type OrchestrationV2PlanStep,
   type OrchestrationV2ProviderCapabilities,
@@ -32,7 +33,13 @@ import {
 import { AgentScope, AgentScopeThreadId } from "@t3tools/shared/AgentScope";
 import { modelSelectionsEqual } from "@t3tools/shared/model";
 import { type SelfInvocation, selfInvocationArgs } from "@t3tools/shared/nodeRuntime";
-import { FILE_HEADERS_ONLY, formatPatch, structuredPatch } from "diff";
+import {
+  fileChangeDetail,
+  fileChangeItemFields,
+  fileChangesFromPatch,
+  unifiedHunksText,
+} from "@t3tools/shared/fileChanges";
+import { structuredPatch } from "diff";
 import * as Cause from "effect/Cause";
 import * as Crypto from "effect/Crypto";
 import * as DateTime from "effect/DateTime";
@@ -913,30 +920,25 @@ export function acpProjectedCommandExitCode(
   return commandExitCode(rawOutput);
 }
 
-function structuredFileChanges(toolCall: AcpToolCallState) {
-  const content = toolCall.data.content;
-  if (!Array.isArray(content)) return [];
-  return content.flatMap((entry) => {
-    const diff = unknownRecord(entry);
-    if (diff?.type !== "diff" || !Array.isArray(diff.changes)) return [];
-    return diff.changes.flatMap((candidate) => {
-      const change = unknownRecord(candidate);
-      const operation = typeof change?.operation === "string" ? change.operation.trim() : "";
-      const path = typeof change?.path === "string" ? change.path.trim() : "";
-      if (operation.length === 0 || path.length === 0) return [];
-      const oldPath = typeof change?.oldPath === "string" ? change.oldPath.trim() : "";
-      const fileType = typeof change?.fileType === "string" ? change.fileType.trim() : "";
-      const mimeType = typeof change?.mimeType === "string" ? change.mimeType.trim() : "";
-      return [
-        {
-          operation,
-          path,
-          ...(oldPath.length === 0 ? {} : { oldPath }),
-          ...(fileType.length === 0 ? {} : { fileType }),
-          ...(mimeType.length === 0 ? {} : { mimeType }),
-        },
-      ];
-    });
+function diffChangeIdentities(diff: Record<string, unknown>) {
+  if (!Array.isArray(diff.changes)) return [];
+  return diff.changes.flatMap((candidate) => {
+    const change = unknownRecord(candidate);
+    const operation = typeof change?.operation === "string" ? change.operation.trim() : "";
+    const path = typeof change?.path === "string" ? change.path.trim() : "";
+    if (operation.length === 0 || path.length === 0) return [];
+    const oldPath = typeof change?.oldPath === "string" ? change.oldPath.trim() : "";
+    const fileType = typeof change?.fileType === "string" ? change.fileType.trim() : "";
+    const mimeType = typeof change?.mimeType === "string" ? change.mimeType.trim() : "";
+    return [
+      {
+        operation,
+        path,
+        ...(oldPath.length === 0 ? {} : { oldPath }),
+        ...(fileType.length === 0 ? {} : { fileType }),
+        ...(mimeType.length === 0 ? {} : { mimeType }),
+      },
+    ];
   });
 }
 
@@ -945,40 +947,82 @@ function structuredFileChanges(toolCall: AcpToolCallState) {
 // file has one empty side and needs no search, so it is never capped.
 const ACP_V1_DIFF_MAX_EDITS = 1_000;
 
-/**
- * Patch text for a tool call's diff content. ACP v2 diffs carry it as
- * `patch.text`. ACP v1 diffs carry `oldText`/`newText` instead (`oldText`
- * null or absent for a new file), and agents that negotiate v1 still send
- * that shape, so the patch is built from the two sides.
- */
-export function acpToolCallDiffPatch(content: unknown): string | undefined {
-  if (!Array.isArray(content)) return undefined;
-  const diffs = content.flatMap((entry) => {
-    const diff = unknownRecord(entry);
-    return diff?.type === "diff" ? [diff] : [];
+/** Whether a patch's file name, which may drop a leading slash, names the reported path. */
+function patchNamesPath(patchPath: string, path: string): boolean {
+  return patchPath === path || path.endsWith(`/${patchPath}`);
+}
+
+/** A v2 diff's files: its declared changes, measured from the one patch that covers them. */
+function acpV2FileChanges(
+  diff: Record<string, unknown>,
+  text: string,
+): Array<OrchestrationV2FileChangeDetail> {
+  const identities = diffChangeIdentities(diff);
+  const measured = fileChangesFromPatch(
+    text,
+    identities.length === 1 ? identities[0]!.path : undefined,
+  );
+  const unclaimed = new Set(measured);
+  const declared = identities.map((identity) => {
+    const match = measured.find(
+      (change) => unclaimed.has(change) && patchNamesPath(change.path, identity.path),
+    );
+    if (match !== undefined) unclaimed.delete(match);
+    if (match?.diff === undefined) return identity;
+    // Created and deleted files carry content rather than hunks, so the patch decides those.
+    const carriesContent = [match.operation, identity.operation].some(
+      (operation) => operation === "add" || operation === "delete",
+    );
+    return {
+      ...identity,
+      operation: carriesContent ? match.operation : identity.operation,
+      diff: match.diff,
+      additions: match.additions ?? 0,
+      deletions: match.deletions ?? 0,
+    };
   });
-  for (const diff of diffs) {
+  return [...declared, ...unclaimed];
+}
+
+/**
+ * The files a tool call's diff content changed. ACP v2 diffs carry one patch as `patch.text`
+ * with the structured changes it covers. ACP v1 diffs carry `oldText`/`newText` per file
+ * (`oldText` null or absent for a new file), and agents that negotiate v1 still send that shape,
+ * so its hunks are computed from the two sides.
+ */
+export function acpToolCallFileChanges(content: unknown): Array<OrchestrationV2FileChangeDetail> {
+  if (!Array.isArray(content)) return [];
+  return content.flatMap((entry) => {
+    const diff = unknownRecord(entry);
+    if (diff?.type !== "diff") return [];
     const patch = unknownRecord(diff.patch);
-    if (typeof patch?.text === "string") return patch.text;
-  }
-  const v1Patches = diffs.flatMap((diff) => {
-    if (typeof diff.path !== "string" || typeof diff.newText !== "string") return [];
-    const oldText = typeof diff.oldText === "string" ? diff.oldText : undefined;
-    const patch = structuredPatch(
-      oldText === undefined ? "/dev/null" : diff.path,
+    if (typeof patch?.text === "string") return acpV2FileChanges(diff, patch.text);
+    if (typeof diff.path !== "string" || typeof diff.newText !== "string")
+      return diffChangeIdentities(diff);
+    if (typeof diff.oldText !== "string")
+      return fileChangeDetail({ operation: "add", path: diff.path, diff: diff.newText }) ?? [];
+    const structured = structuredPatch(
       diff.path,
-      oldText ?? "",
+      diff.path,
+      diff.oldText,
       diff.newText,
       undefined,
       undefined,
       {
         context: 3,
-        maxEditLength: oldText && diff.newText ? ACP_V1_DIFF_MAX_EDITS : Number.POSITIVE_INFINITY,
+        maxEditLength:
+          diff.oldText && diff.newText ? ACP_V1_DIFF_MAX_EDITS : Number.POSITIVE_INFINITY,
       },
     );
-    return patch === undefined || patch.hunks.length === 0 ? [] : [patch];
+    if (structured?.hunks.length === 0) return [];
+    return (
+      fileChangeDetail({
+        operation: "modify",
+        path: diff.path,
+        ...(structured === undefined ? {} : { diff: unifiedHunksText(structured.hunks) }),
+      }) ?? []
+    );
   });
-  return v1Patches.length === 0 ? undefined : formatPatch(v1Patches, FILE_HEADERS_ONLY);
 }
 
 function pathFromToolCall(toolCall: AcpToolCallState): string | undefined {
@@ -3747,10 +3791,10 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
           } as const;
           const rawInput = toolCall.data.rawInput;
           const rawOutput = toolCall.data.rawOutput ?? toolCall.data.content;
-          const changes = structuredFileChanges(toolCall);
+          const changes = acpToolCallFileChanges(toolCall.data.content);
           const path = changes[0]?.path ?? pathFromToolCall(toolCall);
-          const diffText =
-            acpToolCallDiffPatch(toolCall.data.content) ?? textFromUnknown(rawOutput);
+          // A failed edit has no diff; keep its error where the diff would be.
+          const failureText = status === "failed" ? textFromUnknown(rawOutput) : undefined;
           const rawInputRecord = unknownRecord(rawInput);
           const inputVariant =
             typeof rawInputRecord?.variant === "string"
@@ -3831,9 +3875,8 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
             turnItem = {
               ...base,
               type: "file_change",
-              fileName: changes[0]!.path,
-              changes,
-              ...(diffText === undefined ? {} : { diffStr: diffText }),
+              ...fileChangeItemFields(changes)!,
+              ...(failureText === undefined ? {} : { diffStr: failureText }),
             };
           } else {
             switch (toolCall.kind) {
@@ -3915,14 +3958,21 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
               }
               case "edit":
               case "delete":
-              case "move":
+              case "move": {
+                // Some agents report the edit's patch as its output instead of diff content.
+                const outputText = textFromUnknown(rawOutput);
+                const reported =
+                  outputText === undefined || failureText !== undefined
+                    ? undefined
+                    : fileChangeItemFields(fileChangesFromPatch(outputText, path));
                 turnItem = {
                   ...base,
                   type: "file_change",
-                  fileName: path ?? toolCall.title ?? "File change",
-                  ...(diffText === undefined ? {} : { diffStr: diffText }),
+                  ...(reported ?? { fileName: path ?? toolCall.title ?? "File change" }),
+                  ...(failureText === undefined ? {} : { diffStr: failureText }),
                 };
                 break;
+              }
               case "fetch": {
                 // Grok nests the page under rawOutput.Content, which textFromUnknown
                 // cannot read; the (bounded) content blocks carry the same text.

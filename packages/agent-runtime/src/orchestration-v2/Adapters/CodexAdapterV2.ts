@@ -40,6 +40,7 @@ import { SKILL_MENTION_PATTERN } from "@t3tools/shared/composerInlineTokens";
 import { AgentScope } from "@t3tools/shared/AgentScope";
 import * as HostProcess from "@t3tools/shared/HostProcess";
 import { dynamicToolTitle } from "@t3tools/shared/toolActivity";
+import { fileChangeDetail, fileChangeItemFields } from "@t3tools/shared/fileChanges";
 import { getModelSelectionStringOptionValue, modelSelectionsEqual } from "@t3tools/shared/model";
 import { resolveSpawnCommand } from "@t3tools/shared/shell";
 import type {
@@ -178,6 +179,25 @@ export function codexFileChangeApprovalPrompt(input: {
     return remaining > 0 ? `${described.join("\n")}\n+${remaining} more` : described.join("\n");
   }
   return input.grantRoot?.trim() || undefined;
+}
+
+type CodexFileUpdateChange = Extract<
+  CodexSchema.V2ItemCompletedNotification__ThreadItem,
+  { type: "fileChange" }
+>["changes"][number];
+
+/** One Codex file update as a recorded file change; a moved file keeps its source path. */
+export function codexFileChangeDetail(change: CodexFileUpdateChange) {
+  const { kind, path, diff } = change;
+  const detail =
+    kind.type === "update" && kind.move_path
+      ? fileChangeDetail({ operation: "move", path: kind.move_path, oldPath: path, diff })
+      : fileChangeDetail({
+          operation: kind.type === "update" ? "modify" : kind.type,
+          path,
+          diff,
+        });
+  return detail === null ? [] : [detail];
 }
 
 // Reasoning effort changes future generation, not the existing context's tokenizer
@@ -3805,8 +3825,8 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
           >,
         ) =>
           Effect.gen(function* () {
-            const firstChange = item.changes[0];
-            if (firstChange === undefined) {
+            const fields = fileChangeItemFields(item.changes.flatMap(codexFileChangeDetail));
+            if (fields === undefined) {
               return null;
             }
 
@@ -3855,8 +3875,7 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
               completedAt,
               updatedAt,
               type: "file_change",
-              fileName: firstChange.path,
-              diffStr: firstChange.diff,
+              ...fields,
             };
             return { node, turnItem };
           });

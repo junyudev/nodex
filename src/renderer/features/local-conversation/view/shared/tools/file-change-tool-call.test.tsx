@@ -15,6 +15,7 @@ import type {
   CodexTranscriptEntry,
 } from "../../../../../lib/types";
 import { projectCodexCanonicalTurnItemViews } from "../../../../../../shared/codex-canonical-item-projector";
+import type { CodexCanonicalFileUpdateChange } from "../../../../../../shared/codex-conversation-state/codex-conversation-state";
 import {
   buildCodexFileChangeMap,
   resolveCodexPatchSuccess,
@@ -100,11 +101,7 @@ function buildFileChangeEntry(overrides?: Partial<CodexTranscriptEntry>): CodexT
 
 function buildNormalizedFileChangeEntry(input: {
   status?: "inProgress" | "completed" | "failed" | "declined";
-  changes: Array<{
-    path: string;
-    kind: { type: "add" | "delete" } | { type: "update"; move_path: string | null };
-    diff: string;
-  }>;
+  changes: CodexCanonicalFileUpdateChange[];
 }): CodexTranscriptEntry {
   const item = projectCodexCanonicalTurnItemViews({
     threadId: "thread-1",
@@ -647,6 +644,56 @@ describe("FileChangeToolCall", () => {
     });
     const body = container.querySelector<HTMLElement>("[data-file-change-row-body]");
     expect(body?.querySelectorAll("diffs-container").length ?? 0).toBe(1);
+  });
+
+  test("shows a withheld diff's measured lines and explains why it is not previewed", async () => {
+    const item = buildNormalizedFileChangeEntry({
+      changes: [
+        {
+          path: "src/generated.ts",
+          kind: { type: "update", move_path: null },
+          diff: "",
+          diffWithheld: true,
+          lineCounts: { additions: 300, deletions: 12 },
+        },
+      ],
+    });
+    const { container } = render(
+      <TooltipProvider>
+        <FileChangeToolCall item={item} threadCwd="/tmp/project" />
+      </TooltipProvider>,
+    );
+    expect(textContent(container)).toContain("+300");
+    expect(textContent(container)).toContain("-12");
+
+    fireEvent.click(fileChangeHeaders(container)[0] as HTMLElement);
+    await settleAsyncRender();
+
+    expect(textContent(container)).toContain("Change is too large to preview");
+    expect(container.querySelector('button[aria-label="Copy diff"]')).toBeNull();
+  });
+
+  test("never presents an unmeasured change as an empty +0 -0 edit", async () => {
+    const item = buildNormalizedFileChangeEntry({
+      changes: [
+        {
+          path: "src/app.ts",
+          kind: { type: "update", move_path: null },
+          diff: "",
+          diffWithheld: true,
+        },
+      ],
+    });
+    const { container } = render(
+      <TooltipProvider>
+        <FileChangeToolCall item={item} threadCwd="/tmp/project" />
+      </TooltipProvider>,
+    );
+    fireEvent.click(fileChangeHeaders(container)[0] as HTMLElement);
+    await settleAsyncRender();
+
+    expect(textContent(container)).toContain("Diff unavailable");
+    expect(textContent(container)).not.toContain("+0");
   });
 
   test("renders multi-file created rows with visible diff content under the expanded frame header", async () => {

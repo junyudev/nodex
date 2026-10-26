@@ -4,10 +4,9 @@ import type {
   ProtocolAppInfo,
 } from "../../../lib/types";
 import {
-  buildCodexFileChangeUnifiedDiff,
   getCodexFileChangeEntries,
   resolveCodexPatchSuccess,
-  summarizeCodexUnifiedDiff,
+  summarizeCodexFileChangeLines,
 } from "../../../../shared/codex-file-change";
 import { normalizeAutomaticApprovalReviewPayload } from "../../../../shared/codex-transcript-special-items";
 import { resolveCodexMcpVisualSource } from "../../../../shared/codex-mcp-tool-call";
@@ -585,7 +584,7 @@ function buildPatchSummaryFact(entry: ThreadTranscriptBlockModel): AgentActivity
   const isRunning = entry.status === "inProgress";
   const isStopped = isRunning && entry.isTurnCancelled === true;
   for (const [path, change] of changes) {
-    const diffStats = summarizeCodexUnifiedDiff(buildCodexFileChangeUnifiedDiff(path, change));
+    const diffStats = summarizeCodexFileChangeLines(path, change);
     changedLineCount += (diffStats?.additions ?? 0) + (diffStats?.deletions ?? 0);
 
     if (change.type === "add") {

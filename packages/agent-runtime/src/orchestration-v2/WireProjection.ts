@@ -18,6 +18,8 @@ const MAX_DETAIL_STRING_BYTES = 32_768;
 const MAX_DYNAMIC_VALUE_BYTES = 16_384;
 const MAX_ON_DEMAND_BYTES = 256 * 1024;
 const MAX_TIMELINE_TEXT_BYTES = 128 * 1024;
+// Clients do not preview a larger change inline, so it is withheld whole, never cut mid-hunk.
+const MAX_FILE_CHANGE_DIFF_BYTES = 256 * 1024;
 
 function truncateDetail(
   value: string | undefined,
@@ -188,6 +190,24 @@ function projectMcpCallForDetail(call: McpToolCall): McpToolCall {
   };
 }
 
+/** Each file keeps its diff while the item's budget lasts; a withheld diff keeps its counts. */
+function projectFileChangesForWire(
+  changes: NonNullable<Extract<OrchestrationV2TurnItem, { type: "file_change" }>["changes"]>,
+) {
+  let remaining = MAX_FILE_CHANGE_DIFF_BYTES;
+  return changes.map((change) => {
+    if (change.diff === undefined) return change;
+    // UTF-8 needs at least one byte per code unit, so a longer string cannot fit.
+    const bytes = change.diff.length > remaining ? null : Buffer.byteLength(change.diff, "utf8");
+    if (bytes === null || bytes > remaining) {
+      const { diff: _diff, ...withheld } = change;
+      return withheld;
+    }
+    remaining -= bytes;
+    return change;
+  });
+}
+
 export function projectTurnItemForWire(item: OrchestrationV2TurnItem): OrchestrationV2TurnItem {
   switch (item.type) {
     case "user_message":
@@ -217,13 +237,16 @@ export function projectTurnItemForWire(item: OrchestrationV2TurnItem): Orchestra
       };
     }
     case "file_change": {
-      // File identity and counts are enough for activity. Full diffs already
-      // have a dedicated read path and remain intact in persistence.
-      const { diffStr, oldStr: _old, newStr: _new, ...projected } = item;
-      // A failed edit stores the provider's error where the diff would be.
-      return item.status === "failed" && diffStr?.trim()
-        ? { ...projected, diffStr: truncateDetail(diffStr) }
-        : projected;
+      // Diffs are the change itself, so they travel with the timeline like message text.
+      const { diffStr, changes, ...projected } = item;
+      return {
+        ...projected,
+        ...(changes === undefined ? {} : { changes: projectFileChangesForWire(changes) }),
+        // A failed edit stores the provider's error where the diff would be.
+        ...(item.status === "failed" && diffStr?.trim()
+          ? { diffStr: truncateDetail(diffStr) }
+          : {}),
+      };
     }
     case "subagent": {
       const { progress: _progress, ...metadata } = item;

@@ -78,7 +78,7 @@ import {
   acpPostSettleWakeEvidence,
   acpPostSettleWakeShouldBuffer,
   acpProjectedCommandExitCode,
-  acpToolCallDiffPatch,
+  acpToolCallFileChanges,
   acpTurnStartShouldPreserveContinuation,
   makeAcpAdapterV2,
   type AcpAdapterV2ExtensionContext,
@@ -127,53 +127,86 @@ describe("acpProjectedCommandExitCode", () => {
   });
 });
 
-describe("acpToolCallDiffPatch", () => {
-  it("builds a patch per file from ACP v1 oldText/newText, with /dev/null for a new file", () => {
-    assert.equal(
-      acpToolCallDiffPatch([
+describe("acpToolCallFileChanges", () => {
+  it("measures each ACP v1 file from its two sides, with a new file's content as written", () => {
+    assert.deepEqual(
+      acpToolCallFileChanges([
         { type: "diff", path: "/repo/new.txt", oldText: null, newText: "hello\n" },
         { type: "diff", path: "/repo/a.ts", oldText: "a\nb\nc\n", newText: "a\nB\nc\n" },
         { type: "diff", path: "/repo/same.ts", oldText: "x\n", newText: "x\n" },
       ]),
       [
-        "--- /dev/null",
-        "+++ /repo/new.txt",
-        "@@ -0,0 +1,1 @@",
-        "+hello",
-        "",
-        "--- /repo/a.ts",
-        "+++ /repo/a.ts",
-        "@@ -1,3 +1,3 @@",
-        " a",
-        "-b",
-        "+B",
-        " c",
-        "",
-      ].join("\n"),
+        {
+          operation: "add",
+          path: "/repo/new.txt",
+          diff: "hello\n",
+          additions: 1,
+          deletions: 0,
+        },
+        {
+          operation: "modify",
+          path: "/repo/a.ts",
+          diff: "@@ -1,3 +1,3 @@\n a\n-b\n+B\n c\n",
+          additions: 1,
+          deletions: 1,
+        },
+      ],
     );
   });
 
-  it("keeps the ACP v2 patch text as sent", () => {
-    const text = "diff --git a/repo/a.ts b/repo/a.ts\n";
-    assert.equal(
-      acpToolCallDiffPatch([
+  it("keeps an ACP v2 change's declared identity and measures it from the shared patch", () => {
+    assert.deepEqual(
+      acpToolCallFileChanges([
         {
           type: "diff",
-          changes: [{ operation: "modify", path: "/repo/a.ts" }],
-          patch: { format: "git_patch", text },
+          changes: [
+            { operation: "modify", path: "/repo/a.ts", mimeType: "text/typescript" },
+            { operation: "add", path: "/repo/b.ts" },
+            { operation: "modify", path: "/repo/logo.png", fileType: "binary" },
+          ],
+          patch: {
+            format: "git_patch",
+            text: [
+              "diff --git a/repo/a.ts b/repo/a.ts",
+              "--- a/repo/a.ts",
+              "+++ b/repo/a.ts",
+              "@@ -1 +1 @@",
+              "-old",
+              "+new",
+              "diff --git a/repo/b.ts b/repo/b.ts",
+              "new file mode 100644",
+              "--- /dev/null",
+              "+++ b/repo/b.ts",
+              "@@ -0,0 +1 @@",
+              "+created",
+              "",
+            ].join("\n"),
+          },
         },
       ]),
-      text,
+      [
+        {
+          operation: "modify",
+          path: "/repo/a.ts",
+          mimeType: "text/typescript",
+          diff: "@@ -1 +1 @@\n-old\n+new\n",
+          additions: 1,
+          deletions: 1,
+        },
+        { operation: "add", path: "/repo/b.ts", diff: "created\n", additions: 1, deletions: 0 },
+        { operation: "modify", path: "/repo/logo.png", fileType: "binary" },
+      ],
     );
   });
 
-  it("drops the patch for a rewrite too large to diff cheaply", () => {
+  it("keeps a rewrite too large to diff cheaply without inventing counts", () => {
     const lines = (prefix: string) =>
       Array.from({ length: 2_000 }, (_, index) => `${prefix} ${index}`).join("\n");
-    assert.isUndefined(
-      acpToolCallDiffPatch([
+    assert.deepEqual(
+      acpToolCallFileChanges([
         { type: "diff", path: "/repo/big.ts", oldText: lines("old"), newText: lines("new") },
       ]),
+      [{ operation: "modify", path: "/repo/big.ts" }],
     );
   });
 });
@@ -2192,13 +2225,18 @@ describe("AcpAdapterV2", () => {
       assert.isTrue(
         items.some((item) => item.title === "Action required" && item.status === "waiting"),
       );
-      assert.isTrue(
-        items.some(
-          (item) =>
-            item.type === "file_change" &&
-            item.changes?.[0]?.operation === "move" &&
-            item.changes[0]?.oldPath === "/workspace/old.ts",
-        ),
+      assert.deepInclude(
+        items.flatMap((item) => (item.type === "file_change" ? (item.changes ?? []) : [])),
+        {
+          operation: "move",
+          path: "/workspace/new.ts",
+          oldPath: "/workspace/old.ts",
+          fileType: "text",
+          mimeType: "text/typescript",
+          diff: "",
+          additions: 0,
+          deletions: 0,
+        },
       );
       const read = items.find((item) => item.type === "dynamic_tool" && item.toolName === "Read");
       assert.deepEqual(

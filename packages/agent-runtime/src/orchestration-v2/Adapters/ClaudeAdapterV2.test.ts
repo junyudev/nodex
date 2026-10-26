@@ -17,6 +17,10 @@ import type {
 } from "@anthropic-ai/claude-agent-sdk";
 import type {
   AskUserQuestionInput,
+  FileEditInput,
+  FileEditOutput,
+  FileWriteInput,
+  FileWriteOutput,
   TaskCreateInput,
   TaskCreateOutput,
   TaskListOutput,
@@ -3595,7 +3599,9 @@ describe("ClaudeAdapterV2 background wake turns", () => {
   type TaskToolCall =
     | { name: "TaskCreate"; input: TaskCreateInput; output: TaskCreateOutput }
     | { name: "TaskUpdate"; input: TaskUpdateInput; output: TaskUpdateOutput }
-    | { name: "TaskList"; input: Record<string, never>; output: TaskListOutput };
+    | { name: "TaskList"; input: Record<string, never>; output: TaskListOutput }
+    | { name: "Edit"; input: FileEditInput; output: FileEditOutput | string }
+    | { name: "Write"; input: FileWriteInput; output: FileWriteOutput };
 
   function taskToolFrames(
     tool: TaskToolCall,
@@ -3688,7 +3694,15 @@ describe("ClaudeAdapterV2 background wake turns", () => {
       harness.events.flatMap((event) =>
         event.type === "plan.updated" && event.plan.kind === "todo_list" ? [event.plan] : [],
       );
-    return { startTurn, call, finishTurn, plans };
+    const fileChanges = () =>
+      new Map(
+        harness.events.flatMap((event) =>
+          event.type === "turn_item.updated" && event.turnItem.type === "file_change"
+            ? [[event.turnItem.nativeItemRef?.nativeId, event.turnItem] as const]
+            : [],
+        ),
+      );
+    return { startTurn, call, finishTurn, plans, fileChanges };
   });
 
   const createTask = (id: string, subject: string): TaskToolCall => ({
@@ -3701,6 +3715,105 @@ describe("ClaudeAdapterV2 background wake turns", () => {
     input,
     output: { success, taskId: input.taskId, updatedFields: ["status"] },
   });
+
+  it.effect("records each Claude edit's file from its structured result", () =>
+    Effect.gen(function* () {
+      const harness = yield* makeTaskToolHarness;
+      yield* harness.startTurn();
+      yield* harness.call({
+        name: "Edit",
+        input: { file_path: "/workspace/a.ts", old_string: "a", new_string: "b" },
+        output: {
+          filePath: "/workspace/a.ts",
+          oldString: "a",
+          newString: "b",
+          originalFile: "x\na\ny\n",
+          structuredPatch: [
+            { oldStart: 1, oldLines: 3, newStart: 1, newLines: 3, lines: [" x", "-a", "+b", " y"] },
+          ],
+          userModified: false,
+          replaceAll: false,
+        },
+      });
+      yield* harness.call({
+        name: "Write",
+        input: { file_path: "/workspace/new.ts", content: "one\ntwo\n" },
+        output: {
+          type: "create",
+          filePath: "/workspace/new.ts",
+          content: "one\ntwo\n",
+          structuredPatch: [],
+          originalFile: null,
+        },
+      });
+      yield* harness.call(
+        {
+          name: "Edit",
+          input: { file_path: "/workspace/b.ts", old_string: "q", new_string: "r" },
+          output: "String to replace not found in file.",
+        },
+        { isError: true },
+      );
+      // An empty patch for a rewrite Claude Code could not diff is not an empty change.
+      yield* harness.call({
+        name: "Write",
+        input: { file_path: "/workspace/large.ts", content: "next\n" },
+        output: {
+          type: "update",
+          filePath: "/workspace/large.ts",
+          content: "next\n",
+          structuredPatch: [],
+          originalFile: "previous\n",
+        },
+      });
+      yield* harness.finishTurn();
+      const [edit, write, failed, undiffed] = [...harness.fileChanges().values()];
+      assert.deepInclude(edit, {
+        status: "completed",
+        fileName: "/workspace/a.ts",
+        additions: 1,
+        deletions: 1,
+        changes: [
+          {
+            operation: "modify",
+            path: "/workspace/a.ts",
+            diff: "@@ -1,3 +1,3 @@\n x\n-a\n+b\n y\n",
+            additions: 1,
+            deletions: 1,
+          },
+        ],
+      });
+      assert.notProperty(edit, "diffStr");
+      assert.deepInclude(write, {
+        fileName: "/workspace/new.ts",
+        changes: [
+          {
+            operation: "add",
+            path: "/workspace/new.ts",
+            diff: "one\ntwo\n",
+            additions: 2,
+            deletions: 0,
+          },
+        ],
+      });
+      assert.deepInclude(failed, {
+        status: "failed",
+        fileName: "/workspace/b.ts",
+        diffStr: "String to replace not found in file.",
+      });
+      assert.notProperty(failed, "changes");
+      assert.deepInclude(undiffed, {
+        fileName: "/workspace/large.ts",
+        changes: [{ operation: "modify", path: "/workspace/large.ts" }],
+      });
+      assert.notProperty(undiffed, "additions");
+    }).pipe(
+      Effect.scoped,
+      Effect.provide(
+        Layer.mergeAll(IdAllocator.layer, McpProviderSessions.layer, NodeServices.layer),
+      ),
+    ),
+  );
 
   it.effect("persists a todo_list from inline Claude task-tool frames", () =>
     Effect.gen(function* () {

@@ -1403,13 +1403,23 @@ export const OrchestrationV2TurnItemStatus = Schema.Literals([
 
 export type OrchestrationV2TurnItemStatus = typeof OrchestrationV2TurnItemStatus.Type;
 
-/** One structured file operation reported by a provider inside a file_change item. */
+/**
+ * One file a provider changed inside a file_change item. `operation` uses the
+ * ACP diff vocabulary (`add`, `delete`, `modify`, `move`); a move records its
+ * source as `oldPath`. `diff` follows the operation: the created file's content
+ * for `add`, the removed content for `delete`, and unified diff hunks otherwise.
+ * The line counts are measured from the complete diff when the item is recorded,
+ * so they stay exact when a projection withholds a large diff.
+ */
 export const OrchestrationV2FileChangeDetail = Schema.Struct({
   operation: TrimmedNonEmptyString,
   path: TrimmedNonEmptyString,
   oldPath: Schema.optional(TrimmedNonEmptyString),
   fileType: Schema.optional(TrimmedNonEmptyString),
   mimeType: Schema.optional(TrimmedNonEmptyString),
+  diff: Schema.optional(Schema.String),
+  additions: Schema.optional(NonNegativeInt),
+  deletions: Schema.optional(NonNegativeInt),
 });
 export type OrchestrationV2FileChangeDetail = typeof OrchestrationV2FileChangeDetail.Type;
 
@@ -1688,12 +1698,12 @@ export const OrchestrationV2TurnItem = Schema.Union([
   Schema.Struct({
     ...OrchestrationV2TurnItemBaseFields,
     type: Schema.Literal("file_change"),
+    // `changes` holds every changed file; `fileName` and the counts summarize them.
+    // `diffStr` keeps provider text that is not a file change, such as a failed edit's error.
     fileName: TrimmedNonEmptyString,
     additions: Schema.optional(NonNegativeInt),
     deletions: Schema.optional(NonNegativeInt),
     diffStr: Schema.optional(Schema.String),
-    oldStr: Schema.optional(Schema.String),
-    newStr: Schema.optional(Schema.String),
     changes: Schema.optional(Schema.Array(OrchestrationV2FileChangeDetail)),
   }),
   Schema.Struct({
@@ -2486,8 +2496,6 @@ export const OrchestrationV2TurnItemJson = Schema.Union([
     additions: Schema.optional(NonNegativeInt),
     deletions: Schema.optional(NonNegativeInt),
     diffStr: Schema.optional(Schema.String),
-    oldStr: Schema.optional(Schema.String),
-    newStr: Schema.optional(Schema.String),
     changes: Schema.optional(Schema.Array(OrchestrationV2FileChangeDetail)),
   }),
   Schema.Struct({

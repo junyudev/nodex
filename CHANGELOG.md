@@ -49,6 +49,7 @@ All notable changes to this project will be documented in this file.
 - Code blocks in chat replies use dark-theme syntax colors in the dark theme, instead of near-invisible light-theme colors.
 - Context compaction in chats appears as a quiet activity row instead of a divider, says whether the compaction was manual or automatic, reassures you when a long compaction is still working, and no longer reports a stopped compaction as finished.
 - Inbox History shows the live status of chats run by Agent Runtime instead of leaving them at Starting.
+- File edits in Agent chats show each file's real line counts and diff instead of `+0 -0` and an empty preview. This covers edits that touch several files, created and deleted files, and edits from Codex, Claude Code, OpenCode and ACP Agents.
 
 ### Security
 

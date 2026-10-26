@@ -2,6 +2,7 @@ import { prepareAgentMessage } from "../../../shared/agent-prompt";
 import { describe, expect, test } from "vite-plus/test";
 import type { AgentTurnItem } from "@nodex/agent-runtime/contracts";
 import { projectCodexCanonicalTurnItemViews } from "../../../shared/codex-canonical-item-projector";
+import { buildCodexFileChangePatchRows } from "../../../shared/codex-file-change";
 import { projectCodexItemViewToTranscriptEntry } from "../../../shared/codex-transcript-entry-projection";
 import {
   buildAgentRuntimeAttachmentSource,
@@ -902,4 +903,170 @@ test("projects saved selected-text context even when the user sent no prose", as
   const entry = projectCodexItemViewToTranscriptEntry(views[0]!, "bootstrap", 1);
   expect(entry.markdownText).toBe("");
   expect(entry.textSelections?.selectedTextAttachments).toEqual([selection]);
+});
+
+describe("Runtime file changes", () => {
+  const fileChange = (
+    overrides: Partial<Extract<AgentTurnItem, { type: "file_change" }>>,
+  ): Extract<AgentTurnItem, { type: "file_change" }> => ({
+    ...base,
+    type: "file_change",
+    fileName: "/repo/src/app.ts",
+    ...overrides,
+  });
+  const rows = (item: AgentTurnItem) => {
+    const [view] = projectCodexCanonicalTurnItemViews({
+      threadId: base.threadId,
+      turnId: base.runId,
+      items: [projectAgentRuntimeItem(item)!],
+      observedAtMs: Date.parse(at),
+      turnStatus: "completed",
+    });
+    return buildCodexFileChangePatchRows(view?.fileChange?.changes).map((row) => ({
+      path: row.path,
+      action: row.action,
+      type: row.change.type,
+      counts: row.summary && { additions: row.summary.additions, deletions: row.summary.deletions },
+    }));
+  };
+
+  test("shows every recorded file with its own operation and measured lines", () => {
+    expect(
+      rows(
+        fileChange({
+          changes: [
+            {
+              operation: "modify",
+              path: "/repo/src/app.ts",
+              diff: "@@ -66,3 +66,4 @@\n   const a =\n-    old;\n+    new;\n+    more;\n   return a;\n",
+              additions: 2,
+              deletions: 1,
+            },
+            {
+              operation: "add",
+              path: "/repo/src/new.ts",
+              diff: "one\ntwo\n",
+              additions: 2,
+              deletions: 0,
+            },
+            {
+              operation: "move",
+              oldPath: "/repo/src/old-name.ts",
+              path: "/repo/src/new-name.ts",
+              diff: "@@ -1 +1 @@\n-a\n+b\n",
+              additions: 1,
+              deletions: 1,
+            },
+            {
+              operation: "delete",
+              path: "/repo/src/gone.ts",
+              diff: "bye\n",
+              additions: 0,
+              deletions: 1,
+            },
+          ],
+        }),
+      ),
+    ).toEqual([
+      {
+        path: "/repo/src/app.ts",
+        action: "edit",
+        type: "update",
+        counts: { additions: 2, deletions: 1 },
+      },
+      {
+        path: "/repo/src/new.ts",
+        action: "create",
+        type: "add",
+        counts: { additions: 2, deletions: 0 },
+      },
+      {
+        path: "/repo/src/old-name.ts",
+        action: "edit",
+        type: "update",
+        counts: { additions: 1, deletions: 1 },
+      },
+      {
+        path: "/repo/src/gone.ts",
+        action: "delete",
+        type: "delete",
+        counts: { additions: 0, deletions: 1 },
+      },
+    ]);
+  });
+
+  test("keeps measured lines for a diff the Runtime withheld, and never invents an empty change", () => {
+    expect(
+      rows(
+        fileChange({
+          changes: [
+            { operation: "modify", path: "/repo/src/app.ts", additions: 300, deletions: 12 },
+          ],
+        }),
+      ),
+    ).toEqual([
+      {
+        path: "/repo/src/app.ts",
+        action: "edit",
+        type: "nonRenderable",
+        counts: { additions: 300, deletions: 12 },
+      },
+    ]);
+    // An item recorded without its files names one file whose diff is unknown, not +0 -0.
+    expect(rows(fileChange({}))).toEqual([
+      { path: "/repo/src/app.ts", action: "edit", type: "nonRenderable", counts: null },
+    ]);
+  });
+
+  test("prefers the lines the Runtime measured over a recount of the delivered diff", () => {
+    // Past the inline parse budget a line scan would skip the removed `-- note` lines.
+    const removed = Array.from({ length: 6_000 }, (_, index) =>
+      index % 2 === 0 ? "--- note" : "-select 1;",
+    );
+    expect(
+      rows(
+        fileChange({
+          changes: [
+            {
+              operation: "modify",
+              path: "/repo/db/seed.sql",
+              diff: `@@ -1,6000 +0,0 @@\n${removed.join("\n")}\n`,
+              additions: 0,
+              deletions: 6_000,
+            },
+          ],
+        }),
+      ),
+    ).toEqual([
+      {
+        path: "/repo/db/seed.sql",
+        action: "edit",
+        type: "update",
+        counts: { additions: 0, deletions: 6_000 },
+      },
+    ]);
+  });
+
+  test("shows a failed edit's provider error where its diff would be", () => {
+    const error = "String to replace not found";
+    const expected = {
+      type: "fileChange",
+      status: "failed",
+      changes: [
+        { path: "/repo/src/app.ts", kind: { type: "update", move_path: null }, diff: error },
+      ],
+    };
+    expect(projectAgentRuntimeItem(fileChange({ status: "failed", diffStr: error }))).toMatchObject(
+      expected,
+    );
+    expect(
+      projectAgentRuntimeItem(
+        fileChange({
+          status: "failed",
+          diffStr: error,
+          changes: [{ operation: "modify", path: "/repo/src/app.ts" }],
+        }),
+      ),
+    ).toMatchObject(expected);
+  });
 });

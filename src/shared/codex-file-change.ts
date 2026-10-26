@@ -2,6 +2,7 @@ import { parsePatchFiles, type FileDiffMetadata } from "@pierre/diffs";
 import type {
   CodexFileChange,
   CodexFileChangeKind,
+  CodexFileChangeLineCounts,
   CodexFileChangeMap,
   CodexFileChangePatch,
   CodexItemStatus,
@@ -142,14 +143,56 @@ function buildNonRenderableCodexFileChange(input: {
   };
 }
 
+/** A withheld diff with measured counts was set aside for its size. */
+function withheldDiffSafety(measured: boolean): ReviewFileSafety {
+  return {
+    binary: false,
+    tooLarge: measured,
+    invalidText: false,
+    renderable: false,
+    sizeBytes: null,
+    mimeType: null,
+    skipReason: measured ? "tooLarge" : "unsupported",
+  };
+}
+
+function measuredLines(change: { lineCounts?: CodexFileChangeLineCounts }) {
+  return change.lineCounts ? { lineCounts: change.lineCounts } : {};
+}
+
 export function buildCodexFileChangeFromProtocol(input: {
   path: string;
   kind: CodexFileChangeKind;
   diff: string;
   movePath?: string | null;
+  /** Changed lines the execution owner measured from the complete diff. */
+  lineCounts?: CodexFileChangeLineCounts;
+  /** The execution owner withheld the diff text. */
+  diffWithheld?: boolean;
 }): CodexFileChange | null {
   const path = input.path.trim();
   if (path.length === 0) return null;
+  const change = buildCodexFileChangeBody({ ...input, path });
+  return { ...change, ...measuredLines(input) };
+}
+
+function buildCodexFileChangeBody(input: {
+  path: string;
+  kind: CodexFileChangeKind;
+  diff: string;
+  movePath?: string | null;
+  lineCounts?: CodexFileChangeLineCounts;
+  diffWithheld?: boolean;
+}): CodexFileChange {
+  const { path } = input;
+  if (input.diffWithheld) {
+    return buildNonRenderableCodexFileChange({
+      path,
+      kind: input.kind,
+      movePath: input.movePath ?? null,
+      safety: withheldDiffSafety(input.lineCounts !== undefined),
+    });
+  }
   const safety = classifyReviewTextPayload({
     path,
     text: input.diff,
@@ -194,6 +237,7 @@ export function toCodexFileChangePatch(change: CodexFileChange): CodexFileChange
     return {
       type: "add",
       content: change.content,
+      ...measuredLines(change),
     };
   }
 
@@ -201,6 +245,7 @@ export function toCodexFileChangePatch(change: CodexFileChange): CodexFileChange
     return {
       type: "delete",
       content: change.content,
+      ...measuredLines(change),
     };
   }
 
@@ -210,6 +255,7 @@ export function toCodexFileChangePatch(change: CodexFileChange): CodexFileChange
       originalType: change.originalType,
       movePath: change.movePath,
       safety: change.safety,
+      ...measuredLines(change),
     };
   }
 
@@ -217,6 +263,7 @@ export function toCodexFileChangePatch(change: CodexFileChange): CodexFileChange
     type: "update",
     unifiedDiff: change.unifiedDiff,
     movePath: change.movePath,
+    ...measuredLines(change),
   };
 }
 
@@ -229,6 +276,7 @@ export function materializeCodexFileChange(
       path,
       type: "add",
       content: change.content,
+      ...measuredLines(change),
     };
   }
 
@@ -237,6 +285,7 @@ export function materializeCodexFileChange(
       path,
       type: "delete",
       content: change.content,
+      ...measuredLines(change),
     };
   }
 
@@ -247,6 +296,7 @@ export function materializeCodexFileChange(
       originalType: change.originalType,
       movePath: change.movePath,
       safety: change.safety,
+      ...measuredLines(change),
     };
   }
 
@@ -255,6 +305,7 @@ export function materializeCodexFileChange(
     type: "update",
     unifiedDiff: change.unifiedDiff,
     movePath: change.movePath,
+    ...measuredLines(change),
   };
 }
 
@@ -478,6 +529,25 @@ export function summarizeCodexUnifiedDiff(
   };
 }
 
+/** Counts its execution owner measured win over a recount of possibly withheld or bounded text. */
+function withMeasuredLines(
+  summary: CodexUnifiedDiffSummary | null,
+  change: CodexFileChangePatch,
+): CodexUnifiedDiffSummary | null {
+  return change.lineCounts ? { ...change.lineCounts, openLine: summary?.openLine ?? 1 } : summary;
+}
+
+/** One file's changed lines, measured by its execution owner or read from its diff. */
+export function summarizeCodexFileChangeLines(
+  path: string,
+  change: CodexFileChangePatch,
+): CodexUnifiedDiffSummary | null {
+  return withMeasuredLines(
+    summarizeCodexUnifiedDiff(buildCodexFileChangeUnifiedDiff(path, change)),
+    change,
+  );
+}
+
 export function resolveCodexFileChangePatchAction(
   change: CodexFileChange | CodexFileChangePatch,
 ): CodexFileChangePatchAction {
@@ -493,7 +563,7 @@ export function buildCodexFileChangePatchRows(
   return getCodexFileChangeEntries(changes).map(([path, patch]) => {
     const change = materializeCodexFileChange(path, patch);
     const unifiedDiff = buildCodexFileChangeUnifiedDiff(path, patch);
-    const summary = summarizeCodexUnifiedDiff(unifiedDiff);
+    const summary = withMeasuredLines(summarizeCodexUnifiedDiff(unifiedDiff), patch);
 
     return {
       key: path,

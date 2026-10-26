@@ -4,7 +4,7 @@ import { motion } from "motion/react";
 import { useMemo, useState, type CSSProperties, type ReactNode } from "react";
 import { reviewDiffPreferencesAtom } from "@/features/review/model/review-view-state";
 import { useScopedAtomValue } from "@/lib/maitai";
-import type { CodexVisualizationActivity } from "../../../../../../shared/types";
+import type { CodexVisualizationActivity, ReviewSkipReason } from "../../../../../../shared/types";
 import {
   buildCodexFileChangePatchRows,
   canParseCodexFileChangeInline,
@@ -289,15 +289,13 @@ function FileChangeCodePreview({ content }: { content: string }) {
   );
 }
 
-function SemanticChangePreview({ row }: { row: FileChangeRowModel }) {
-  if (row.change.type === "delete") {
-    return (
-      <div className="text-token-description-foreground/80 bg-token-editor-background flex w-full items-center justify-center px-2 pt-7 pb-8 text-size-chat">
-        Contents deleted
-      </div>
-    );
-  }
+function nonRenderableChangeMessage(skipReason: ReviewSkipReason | null): string {
+  if (skipReason === "tooLarge") return "Change is too large to preview";
+  if (skipReason === "binary") return "Binary file not shown";
+  return "Diff unavailable";
+}
 
+function SemanticChangePreview({ row }: { row: FileChangeRowModel }) {
   if (row.change.type === "add") {
     return <FileChangeCodePreview content={row.change.content} />;
   }
@@ -308,7 +306,9 @@ function SemanticChangePreview({ row }: { row: FileChangeRowModel }) {
 
   return (
     <div className="text-token-description-foreground/80 bg-token-editor-background flex w-full items-center justify-center px-2 pt-7 pb-8 text-size-chat">
-      No changes
+      {row.change.type === "delete"
+        ? "Contents deleted"
+        : nonRenderableChangeMessage(row.change.safety.skipReason)}
     </div>
   );
 }

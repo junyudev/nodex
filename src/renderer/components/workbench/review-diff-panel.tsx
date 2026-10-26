@@ -895,6 +895,7 @@ function buildPatchBatchMetadataFiles(
         originalType?: unknown;
         movePath?: unknown;
         safety?: unknown;
+        lineCounts?: { additions?: unknown; deletions?: unknown };
       };
       if (candidate.type !== "nonRenderable") continue;
       if (typeof candidate.path !== "string" || candidate.path.trim().length === 0) continue;
@@ -912,8 +913,14 @@ function buildPatchBatchMetadataFiles(
         oldOid: null,
         newOid: null,
         revision: null,
-        additions: null,
-        deletions: null,
+        additions:
+          typeof candidate.lineCounts?.additions === "number"
+            ? candidate.lineCounts.additions
+            : null,
+        deletions:
+          typeof candidate.lineCounts?.deletions === "number"
+            ? candidate.lineCounts.deletions
+            : null,
         safety: candidate.safety,
       });
     }

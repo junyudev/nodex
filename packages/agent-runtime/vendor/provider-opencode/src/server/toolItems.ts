@@ -4,6 +4,11 @@
  * metadata; only how they deliver those differs.
  */
 import type { OrchestrationV2TurnItem } from "@t3tools/contracts";
+import {
+  fileChangeDetail,
+  fileChangeItemFields,
+  fileChangesFromPatch,
+} from "@t3tools/shared/fileChanges";
 import { formatReadToolLabel, formatSearchToolLabel } from "@t3tools/shared/toolActivity";
 
 // Search results stay on the timeline wire, so keep their text a preview.
@@ -62,6 +67,12 @@ function recordNumber(input: unknown, ...keys: ReadonlyArray<string>): number | 
   return undefined;
 }
 
+function recordBoolean(input: unknown, key: string): boolean | undefined {
+  if (typeof input !== "object" || input === null) return undefined;
+  const value = (input as Record<string, unknown>)[key];
+  return typeof value === "boolean" ? value : undefined;
+}
+
 function stableJson(value: unknown): string {
   if (typeof value === "string") return value;
   try {
@@ -97,19 +108,27 @@ export function openCodeToolTurnItem(
       };
     }
     case "file_change": {
-      const oldStr = recordString(input, "oldString", "oldText");
-      const newStr = recordString(input, "newString", "content", "newText");
+      const path = recordString(input, "filePath", "path", "file");
+      const patch = recordString(tool.completedMetadata, "diff", "patch");
+      const content = recordString(input, "content");
+      // A write reports no patch; a file it created is its content.
+      const created =
+        patch === undefined &&
+        path !== undefined &&
+        content !== undefined &&
+        recordBoolean(tool.completedMetadata, "exists") === false
+          ? fileChangeDetail({ operation: "add", path, diff: content })
+          : null;
+      const recorded = fileChangeItemFields(
+        created !== null ? [created] : patch === undefined ? [] : fileChangesFromPatch(patch, path),
+      );
       // A failed edit has no diff; keep its error where the diff would be.
-      const diffStr =
-        recordString(tool.completedMetadata, "diff", "patch") ??
-        (base.status === "failed" && output?.trim() ? output : undefined);
+      const failure = base.status === "failed" && output?.trim() ? output : undefined;
       return {
         ...base,
         type: "file_change",
-        fileName: recordString(input, "filePath", "path", "file") ?? tool.name,
-        ...(oldStr === undefined ? {} : { oldStr }),
-        ...(newStr === undefined ? {} : { newStr }),
-        ...(diffStr === undefined ? {} : { diffStr }),
+        ...(recorded ?? { fileName: path ?? tool.name }),
+        ...(failure === undefined ? {} : { diffStr: failure }),
       };
     }
     case "file_search": {

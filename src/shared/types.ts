@@ -3046,7 +3046,7 @@ export interface CodexCommandExecutionAttachmentFields {
   grantRoot?: string | null;
 }
 
-export type CodexFileChange =
+export type CodexFileChange = (
   | {
       path: string;
       type: "add";
@@ -3069,9 +3069,18 @@ export type CodexFileChange =
       originalType: CodexFileChangeKind;
       movePath: string | null;
       safety: ReviewFileSafety;
-    };
+    }
+) & {
+  /** Changed lines its execution owner measured from the complete diff. */
+  lineCounts?: CodexFileChangeLineCounts;
+};
 
-export type CodexFileChangePatch =
+export interface CodexFileChangeLineCounts {
+  additions: number;
+  deletions: number;
+}
+
+export type CodexFileChangePatch = (
   | {
       type: "add";
       content: string;
@@ -3090,7 +3099,10 @@ export type CodexFileChangePatch =
       originalType: CodexFileChangeKind;
       movePath: string | null;
       safety: ReviewFileSafety;
-    };
+    }
+) & {
+  lineCounts?: CodexFileChangeLineCounts;
+};
 
 export type CodexFileChangeMap = Record<string, CodexFileChangePatch>;
 

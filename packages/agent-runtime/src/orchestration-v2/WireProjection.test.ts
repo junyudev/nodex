@@ -551,23 +551,37 @@ describe("orchestration V2 wire projection", () => {
     });
   });
 
-  it("omits inline file bodies but preserves file identity and change counts", () => {
+  it("carries each file's diff with its counts and withholds only what exceeds the budget", () => {
+    const large = `@@ -1 +1 @@\n-${"a".repeat(200 * 1024)}\n+${"b".repeat(200 * 1024)}\n`;
     const item = {
       ...base,
       type: "file_change" as const,
       fileName: "src/main.ts",
       additions: 3,
-      deletions: 1,
-      diffStr: "+new code",
-      oldStr: "old code",
-      newStr: "new code",
+      deletions: 2,
+      diffStr: "provider text",
+      changes: [
+        {
+          operation: "modify",
+          path: "src/main.ts",
+          diff: "@@ -1 +1,2 @@\n-old\n+new\n+more\n",
+          additions: 2,
+          deletions: 1,
+        },
+        { operation: "modify", path: "src/large.ts", diff: large, additions: 1, deletions: 1 },
+        { operation: "add", path: "src/small.ts", diff: "small\n", additions: 1, deletions: 0 },
+      ],
     };
     const projected = projectTurnItemForWire(item);
     expect(projected).not.toHaveProperty("diffStr");
-    expect(projected).not.toHaveProperty("oldStr");
-    expect(projected).not.toHaveProperty("newStr");
-    expect(projected).toMatchObject({ fileName: "src/main.ts", additions: 3, deletions: 1 });
-    expect(item.diffStr).toBe("+new code");
+    expect(projected).toMatchObject({ fileName: "src/main.ts", additions: 3, deletions: 2 });
+    expect(projected.type === "file_change" ? projected.changes : null).toEqual([
+      item.changes[0],
+      { operation: "modify", path: "src/large.ts", additions: 1, deletions: 1 },
+      item.changes[2],
+    ]);
+    expect(projectTurnItemForDetail(item)).toEqual(projected);
+    expect(item.changes[1]?.diff).toBe(large);
     // A failed edit keeps the provider's error so expanding the row can show it.
     const failed = projectTurnItemForWire({
       ...item,
@@ -575,7 +589,6 @@ describe("orchestration V2 wire projection", () => {
       diffStr: "String to replace not found",
     });
     expect(failed).toMatchObject({ diffStr: "String to replace not found" });
-    expect(failed).not.toHaveProperty("newStr");
   });
 
   it("retains only result identities and failure metadata in live tool events", () => {

@@ -8,7 +8,10 @@ import type {
   DynamicToolCallOutputContentItem,
   UserInput,
 } from "@nodex/codex-app-server-protocol/v2";
-import type { CodexCanonicalHookRun } from "../../../shared/codex-conversation-state/codex-conversation-state";
+import type {
+  CodexCanonicalFileUpdateChange,
+  CodexCanonicalHookRun,
+} from "../../../shared/codex-conversation-state/codex-conversation-state";
 import type {
   CodexCanonicalItem,
   CodexConversationServerRequest,
@@ -115,6 +118,40 @@ export function projectAgentRuntimeExportTurns(
       items,
       itemIds: items.map((item) => item.itemId),
     };
+  });
+}
+
+type AgentRuntimeFileChangeItem = Extract<AgentTurnItem, { type: "file_change" }>;
+
+/**
+ * Runtime file changes in Codex's shape, with the lines the Runtime measured. A move names its
+ * source and destination; a withheld diff never reads as an empty change, and a failed edit's
+ * error stands in for a diff it never produced.
+ */
+export function projectAgentRuntimeFileChanges(
+  item: AgentRuntimeFileChangeItem,
+): CodexCanonicalFileUpdateChange[] {
+  const failure = item.status === "failed" ? item.diffStr : undefined;
+  const unrecorded = (path: string): CodexCanonicalFileUpdateChange => ({
+    path,
+    kind: { type: "update", move_path: null },
+    ...(failure === undefined ? { diff: "", diffWithheld: true } : { diff: failure }),
+  });
+  if (!item.changes?.length) return [unrecorded(item.fileName)];
+  return item.changes.map((change) => {
+    const movedFrom = change.operation === "move" ? change.oldPath : undefined;
+    const kind: CodexCanonicalFileUpdateChange["kind"] =
+      change.operation === "add" || change.operation === "delete"
+        ? { type: change.operation }
+        : { type: "update", move_path: movedFrom === undefined ? null : change.path };
+    const path = movedFrom ?? change.path;
+    const lineCounts =
+      change.additions === undefined
+        ? {}
+        : { lineCounts: { additions: change.additions, deletions: change.deletions ?? 0 } };
+    if (change.diff !== undefined) return { path, kind, diff: change.diff, ...lineCounts };
+    if (failure !== undefined) return unrecorded(path);
+    return { path, kind, diff: "", diffWithheld: true, ...lineCounts };
   });
 }
 
@@ -583,14 +620,7 @@ export function projectAgentRuntimeItem(item: AgentTurnItem, cwd = ""): CodexCan
         type: "fileChange",
         id,
         status: status === "interrupted" ? "declined" : status,
-        changes: (item.changes?.length
-          ? item.changes.map((change) => change.path)
-          : [item.fileName]
-        ).map((path) => ({
-          path,
-          kind: { type: "update", move_path: null },
-          diff: item.diffStr ?? "",
-        })),
+        changes: projectAgentRuntimeFileChanges(item),
       };
     case "web_search":
       return {

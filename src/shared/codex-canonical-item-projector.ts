@@ -650,6 +650,8 @@ function projectFileChange(
       kind,
       diff: change.diff,
       movePath,
+      ...(change.lineCounts === undefined ? {} : { lineCounts: change.lineCounts }),
+      ...(change.diffWithheld ? { diffWithheld: true } : {}),
     });
     if (projected) ordinaryChanges.push(projected);
   }

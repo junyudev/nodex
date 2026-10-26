@@ -22,6 +22,7 @@ import type {
   ActivePermissionProfile,
   CodexErrorInfo,
   EnvironmentConnectionNotification,
+  FileUpdateChange,
   GuardianApprovalReviewAction,
   GuardianApprovalReviewStatus,
   GuardianRiskLevel,
@@ -53,7 +54,12 @@ import type { ThreadTokenUsage } from "@nodex/codex-app-server-protocol/v2/Threa
 import { isCodexProtocolThreadItem } from "../codex-protocol-thread-item";
 import type { CodexQueuedFollowUp } from "../codex-queued-follow-up-state";
 import { normalizeCodexServiceTier } from "../codex-service-tier";
-import type { CodexImportedMarkdownImage, CodexItemStatus, CodexUnavailableImage } from "../types";
+import type {
+  CodexFileChangeLineCounts,
+  CodexImportedMarkdownImage,
+  CodexItemStatus,
+  CodexUnavailableImage,
+} from "../types";
 import type { ConversationRecovery } from "../conversation-recovery";
 import { settleCodexProviderRecovery } from "./codex-provider-recovery";
 import type {
@@ -606,6 +612,22 @@ export type CodexCanonicalMcpToolCallItem = Extract<ThreadItem, { type: "mcpTool
   readonly outputOmitted?: boolean;
 };
 
+/**
+ * An execution owner such as Agent Runtime may report the lines it measured from the complete
+ * diff, and may withhold a large diff's text, leaving `diff` empty.
+ */
+export type CodexCanonicalFileUpdateChange = FileUpdateChange & {
+  readonly lineCounts?: CodexFileChangeLineCounts;
+  readonly diffWithheld?: true;
+};
+
+export type CodexCanonicalFileChangeItem = Omit<
+  Extract<ThreadItem, { type: "fileChange" }>,
+  "changes"
+> & {
+  changes: Array<CodexCanonicalFileUpdateChange>;
+};
+
 /** Generated items that require app-owned display enrichment after ingress. */
 export type CodexCanonicalGeneratedItem =
   | Exclude<
@@ -619,9 +641,11 @@ export type CodexCanonicalGeneratedItem =
           | "agentMessage"
           | "imageView"
           | "dynamicToolCall"
-          | "mcpToolCall";
+          | "mcpToolCall"
+          | "fileChange";
       }
     >
+  | CodexCanonicalFileChangeItem
   | CodexCanonicalUserMessageItem
   | CodexCanonicalAgentMessageItem
   | CodexCanonicalImageViewItem

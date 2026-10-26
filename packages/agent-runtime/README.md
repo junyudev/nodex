@@ -27,7 +27,8 @@ projection with cursor and omission markers. `thread.history` follows an opaque
 cursor. `thread.item` hydrates one item's bounded detail, verifying captured ancestry for inherited
 fork items. `thread.item.full` returns the explicitly requested canonical item for copy/export,
 up to the single-response budget of 15 MiB. Event observations carry
-wire-projected updates, so large tool output is fetched on demand. There is no
+wire-projected updates, so large tool output is fetched on demand. File changes keep each file's
+diff and measured line counts on the wire; a diff past the per-item budget is withheld whole. There is no
 public full-transcript snapshot operation.
 `thread.read` and `thread.authority` expose control metadata without hydrating history.
 Authority includes the Thread's resolved execution directory, branch and workspace path.

@@ -119,6 +119,10 @@
       "types": "./src/toolActivity.ts",
       "import": "./src/toolActivity.ts"
     },
+    "./fileChanges": {
+      "types": "./src/fileChanges.ts",
+      "import": "./src/fileChanges.ts"
+    },
     "./toolOutput": {
       "types": "./src/toolOutput.ts",
       "import": "./src/toolOutput.ts"

@@ -579,11 +579,21 @@ function turnItemContentText(item: OrchestrationV2TurnItem): string | null {
       return jsonText(item.questions);
     case "file_change":
       return [
-        item.fileName,
-        item.additions === undefined && item.deletions === undefined
-          ? undefined
-          : `+${item.additions ?? 0} -${item.deletions ?? 0}`,
-        item.diffStr ?? item.newStr,
+        ...(item.changes?.length
+          ? item.changes.flatMap((change) => [
+              [
+                change.operation,
+                change.oldPath === undefined ? change.path : `${change.oldPath} -> ${change.path}`,
+                change.additions === undefined
+                  ? undefined
+                  : `+${change.additions} -${change.deletions ?? 0}`,
+              ]
+                .filter((part) => part !== undefined)
+                .join(" "),
+              change.diff,
+            ])
+          : [item.fileName]),
+        item.diffStr,
       ]
         .filter((line): line is string => line !== undefined)
         .join("\n");
