@@ -1,0 +1,130 @@
+src/main/inbox-application/inbox-confirmation.node.test.ts
+  s_64b8d727f83fb3::t_9df2bbe6ffef4c 1-7,9-98
+  s_64b8d727f83fb3::t_4c17f3a117a094 8
+src/renderer/features/inbox/inbox-route.tsx
+  s_64b8d727f83fb3::t_c11fd0f19d4d8b 54-55,91,101,138,265,421,613
+  s_64b8d727f83fb3::t_d4416178f99f78 398,404,616,621
+  s_64b8d727f83fb3::t_938aa155b63e65 63
+  s_64b8d727f83fb3::t_b16f27837e2a7b 264,266
+  s_64b8d727f83fb3::t_84459385266aeb 494
+src/renderer/features/inbox/inbox-agent-model.ts
+  s_64b8d727f83fb3::t_9aca9ee018862a 5-15,33-45,56-63,76-103,118-119,121,131,142,155-193,210-212,253-254
+  s_64b8d727f83fb3::t_9d2479baa5ae4b 19,50-51,109-117,120,123-129,133-141,144-153,201,222,249,252
+  s_64b8d727f83fb3::t_171f37e6d71367 73-75,105-107,202-204,223-225,272,274-276
+  s_64b8d727f83fb3::t_7af2bb303c6d86 1-4,16-18,20-32,46-49,52-55,64-72,104,108,122,130,132,143,154,194-200,205-209,213-221,226-248,250-251,255-271,273,277-288
+src/renderer/features/acp-agents/use-acp-automation-models.ts
+  s_64b8d727f83fb3::t_10a53b0d6037a2 5-6
+src/renderer/features/local-conversation/agent-runtime-conversation-adapter.ts
+  s_64b8d727f83fb3::t_10a53b0d6037a2 63-64,67
+src/renderer/components/shared/agent-runtime/agent-model-picker.tsx
+  s_64b8d727f83fb3::t_ff211614d9af85 1,147-148,293,296-297,320
+  s_64b8d727f83fb3::t_ca9b32d46c8ae9 17-18
+  s_64b8d727f83fb3::t_d523a7aa4e2711 92-93,491-498,500-502
+  s_64b8d727f83fb3::t_50be4a54a9ff73 149-150,243-244,250,372-489
+  s_64b8d727f83fb3::t_d9a6bdfb2ee09e 371,490
+src/main/settings/application-settings-persistence.ts
+  s_64b8d727f83fb3::t_e7310025bd5155 121-123,1266-1281,1283,1292,1297-1305,1329-1332
+src/renderer/features/inbox/inbox-selection.test.tsx
+  s_64b8d727f83fb3::t_d0de4873b6765f 263,293,305,315,323,344,365,372
+  s_64b8d727f83fb3::t_3c68daddcc3b23 18-19,134,159,208
+  s_64b8d727f83fb3::t_0a747fd0980f6b 265-268
+  s_64b8d727f83fb3::t_9405a22c692e73 235-238
+  s_64b8d727f83fb3::t_a21c6d802a0819 9,30-31,35-38,226,232,234,241-242,244-256,280,288-289,294,304,314,328,335-338,356,364,379
+  s_64b8d727f83fb3::t_1582611d26937d 215
+  s_64b8d727f83fb3::t_09e095c2a94269 13-17,33-34,39-43,189-207,209-214,216-222,259-262,264,269-278
+  s_64b8d727f83fb3::t_b8289830bed09f 279
+src/renderer/lib/agent-runtime-model-selection.ts
+  s_64b8d727f83fb3::t_aa55e9a9b6835c 9,104,109
+  s_64b8d727f83fb3::t_ca9b32d46c8ae9 5,77-79
+  s_64b8d727f83fb3::t_10a53b0d6037a2 4,6-8,10,80-103,105-108,110-128
+src/main/settings/ApplicationSettings.test.ts
+  s_64b8d727f83fb3::t_4c17f3a117a094 351-366,368-390
+  s_64b8d727f83fb3::t_11c4816089395c 367,391-392
+src/renderer/features/inbox/inbox-agents-popover.tsx
+  s_64b8d727f83fb3::t_f2e158a51a3ae7 83,99
+  s_64b8d727f83fb3::t_c12e7e8714513f 1-82,84-98,100-117
+CHANGELOG.md
+  s_64b8d727f83fb3::t_93b7d8d2f0bab9 15
+src/main/inbox-application/InboxRuntimeSelection.ts
+  s_64b8d727f83fb3::t_f66314d77b04a6 4,11,14-15,17-20
+src/renderer/features/inbox/inbox-triage.tsx
+  s_64b8d727f83fb3::t_75a2090fa1a738 53,55,57-58,167,200,206,208-209,220-221,300,328,497,518
+  s_64b8d727f83fb3::t_9f8d22ba1ea716 3-8,14,54,56,108,118-119,123-128,133,148-155,158-166,168,172-175,177,179-185,190-199,201-205,207,210-219,224-231,271,299,320-325,331,345-346,432,435,437,442,496,515-517,519-520,522-532,536
+  s_64b8d727f83fb3::t_324e3a05431434 326-327,329-330,332
+  s_64b8d727f83fb3::t_be3e2d6fa9d85a 533-535
+  s_64b8d727f83fb3::t_ebec041dcd4f36 176,222-223
+  s_64b8d727f83fb3::t_d4416178f99f78 309-313,347
+  s_64b8d727f83fb3::t_9d2479baa5ae4b 178
+src/renderer/features/inbox/inbox-triage.test.tsx
+  s_64b8d727f83fb3::t_be3e2d6fa9d85a 359-370,372-391,393-394,473
+  s_64b8d727f83fb3::t_3c68daddcc3b23 17,94,154,199,371,392
+src/renderer/features/inbox/inbox-agent-model.node.test.ts
+  s_64b8d727f83fb3::t_e7eba898035f8e 2,104-107,131,134,140,145
+  s_64b8d727f83fb3::t_377f8e9a047079 9,53-63
+  s_64b8d727f83fb3::t_a21c6d802a0819 93,95-103,108-115,128-130,132-133,135-139,141-144
+  s_64b8d727f83fb3::t_3c68daddcc3b23 1,3-8,10-52,64-92,94,116-127,146-163
+src/main/inbox-application/InboxApplication.test-support.ts
+  s_64b8d727f83fb3::t_9df2bbe6ffef4c 93-98,107
+src/renderer/features/inbox/inbox-agents.test-support.ts
+  s_64b8d727f83fb3::t_3c68daddcc3b23 1-86
+src/shared/inbox.ts
+  s_64b8d727f83fb3::t_b489d2a41d3185 3
+  s_64b8d727f83fb3::t_4c17f3a117a094 429-432
+  s_64b8d727f83fb3::t_34df819208f9a1 257-261,263,267
+  s_64b8d727f83fb3::t_8947422ebfb43d 340,345-359,362,388-428,433-473,482-483
+  s_64b8d727f83fb3::t_c95a85f0ba52e9 495
+src/renderer/features/inbox/use-inbox-actions.ts
+  s_64b8d727f83fb3::t_131e42e5af0dc5 5,44-51,69,75,90-93,339,341,348-349,351,353,356-363,365
+docs/product-specs/inbox-behavior.md
+  s_64b8d727f83fb3::t_1761e822aca805 319-327,357-360,371-375,527-528,538-542
+  s_64b8d727f83fb3::t_f74cb65b0aaa00 513-516,523-525
+src/renderer/features/inbox/inbox-agent-picker.tsx
+  s_64b8d727f83fb3::t_be7681cf166b03 3-26,29-63,73,79,83-84,97-98,101-154,159-234,239-265
+  s_64b8d727f83fb3::t_9d2479baa5ae4b 27,75-78,81,85-94
+  s_64b8d727f83fb3::t_171f37e6d71367 155-157,235-238
+  s_64b8d727f83fb3::t_2f477704c1aae0 1-2,28,64-72,74,80,82,95-96,99-100,158
+src/renderer/features/inbox/inbox-settings-page.tsx
+  s_64b8d727f83fb3::t_171f37e6d71367 59,65,82-83,85-91,126-128
+  s_64b8d727f83fb3::t_08a7a5bc028cef 124
+  s_64b8d727f83fb3::t_07632d21812711 2,12-16,24-26
+src/renderer/features/inbox/inbox-agents-popover.test.tsx
+  s_64b8d727f83fb3::t_beee5090b591ff 1-23,25-33,35-60,64-65
+  s_64b8d727f83fb3::t_d0de4873b6765f 24,34,61-63
+src/renderer/lib/agent-model-selection.ts
+  s_64b8d727f83fb3::t_9405a22c692e73 49
+src/renderer/components/workbench/workbench-settings-search-catalog.ts
+  s_64b8d727f83fb3::t_9e2e04baa36215 521-522,534,536,539-541
+src/shared/schemas/inbox.ts
+  s_64b8d727f83fb3::t_6f1829a85c5b5a 5,164-178,188,198,270
+src/renderer/components/shared/agent-runtime/agent-intelligence-dropdown.tsx
+  s_64b8d727f83fb3::t_ca9b32d46c8ae9 33-34
+src/main/inbox-application/InboxDispatcher.ts
+  s_64b8d727f83fb3::t_71d8fff039bab4 7,64,110-117
+src/main/inbox-application/InboxRuntime.node.test.ts
+  s_64b8d727f83fb3::t_01187d3407026b 7,37-41,47,223,232,244,246,253,264,268,290-292,311,773,789-790
+  s_64b8d727f83fb3::t_4c17f3a117a094 248
+src/main/inbox-application/InboxApplication.ts
+  s_64b8d727f83fb3::t_9743df1f39cc29 362,375,381-383
+src/renderer/features/inbox/inbox-message.browser.test.tsx
+  s_64b8d727f83fb3::t_7ae58001e0073f 304,339-342
+  s_64b8d727f83fb3::t_3c68daddcc3b23 13,60
+src/renderer/features/inbox/inbox-dispatch-editor.tsx
+  s_64b8d727f83fb3::t_b76b1524c16353 5,21,47-48,83-87,97,148,155,162-163,216-219,352-354,356,360-363,365-369
+  s_64b8d727f83fb3::t_75a2090fa1a738 19-20,156,355,357-359,364
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "d3c3358e866288cf051cc02ff4cdd9d9f8f1fc2b",
+  "prompts": {},
+  "sessions": {
+    "s_64b8d727f83fb3": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c0c10103-201a-4840-9f29-e4a69eb67fda",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
