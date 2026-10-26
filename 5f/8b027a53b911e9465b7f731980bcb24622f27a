@@ -1,0 +1,67 @@
+packages/agent-runtime/src/nodex/OpenCodeCatalog.test.ts
+  s_351bd91a239aa5::t_0aebe94c95e3b6 17-18,26,81-85
+  s_351bd91a239aa5::t_fb7dd8de2cafb4 205-208
+src/main/platform/node/OpenCodeSdk.node.test.ts
+  s_351bd91a239aa5::t_2d724e79a9cd18 132-163
+CHANGELOG.md
+  s_351bd91a239aa5::t_b621954068d142 30
+docs/product-specs/agent-backend-behavior.md
+  s_351bd91a239aa5::t_b621954068d142 65-67
+src/main/platform/node/OpenCodeSdk.ts
+  s_351bd91a239aa5::t_1285d7d656eaab 274
+  s_351bd91a239aa5::t_caba85b34121ab 12,275-288
+packages/agent-runtime/src/nodex/OpenCodeCatalog.ts
+  s_351bd91a239aa5::t_760375b9b0ac6e 15-18,44-46,161-164,171
+packages/agent-runtime/vendor/provider-opencode/package.json
+  s_9290fab67e843e::t_c2242ebd383298 22-25
+packages/agent-runtime/vendor/provider-opencode/src/server/agentModels.ts
+  s_351bd91a239aa5::t_1223b194df9e39 1-22
+packages/agent-runtime/vendor/provider-opencode/src/server/openCode2Catalog.test.ts
+  s_84a787688eba85::t_2f84e82296845f 138-170
+packages/agent-runtime/vendor/provider-opencode/src/server/openCode2Catalog.ts
+  s_351bd91a239aa5::t_7ca67391b80be9 5,18,55
+packages/agent-runtime/vendor/provider-opencode/src/server/status.test.ts
+  s_674dfaa3967339::t_33d9938b5820c2 459-495
+packages/agent-runtime/vendor/provider-opencode/src/server/status.ts
+  s_351bd91a239aa5::t_6bead6ae170798 23,274
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "5f8b027a53b911e9465b7f731980bcb24622f27a",
+  "prompts": {},
+  "sessions": {
+    "s_351bd91a239aa5": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "797a4c25-b3dc-4472-8d36-4e150aaaee19",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_674dfaa3967339": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "925b1ef2-59e0-4db3-9bec-0280c1e922bb",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_84a787688eba85": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "de254a05-2640-4277-b304-cf79d5c8d7b0",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_9290fab67e843e": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1772f-7c41-7600-8bb0-1d70c85d9bff",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
