@@ -88,7 +88,7 @@ Only named rows appear in the overview and summary. Display names use explicit
 membership names, receiver metadata, membership metadata and child nicknames;
 blank values, conversation titles and raw Thread IDs are not agent labels. Source paths can establish a
 modern activity name. Blank/default roles are omitted. Objective text is cleaned
-and shortened to 60 characters for the overview, then a current reasoning summary
+and shortened to 60 characters for the overview, then the current Thought's heading
 is used, then Working for non-Done rows. Done clocks use the last assistant start
 time (per-message observation, final-answer start, then Turn start), falling back to row recency; active clocks use the latest Turn start or
 child creation time. Inherited parent history is removed before computing child

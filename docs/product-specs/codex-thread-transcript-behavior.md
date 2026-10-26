@@ -262,9 +262,8 @@ MCP and dynamic app-server tool calls are specialized `toolCall` rows with canon
   - tool activity blocks (`commandExecution`, materialized `patch`, `mcpToolCall`,
     `dynamicToolCall`, non-empty `webSearch`, `multiAgentAction`,
     completed `mcpServerElicitation`, completed `userInputResponse`, and
-    `contextCompaction`) plus auxiliary subagent activity state; canonical
-    `reasoning` remains available only as turn-level fallback input and is hidden
-    from tool topology
+    `contextCompaction`) and the [Thoughts](#thoughts) among them, plus auxiliary
+    subagent activity state
   - `systemEvent`
   - `assistantMessage`
   - post-assistant artifacts such as trailing automatic approval review
@@ -275,8 +274,8 @@ MCP and dynamic app-server tool calls are specialized `toolCall` rows with canon
   - trailing status markers (`remoteTaskCreated`, `personalityChanged`, `forkedFromConversation`)
 - The parent activity resolver computes global state, the main activity-slice
   state, and one mutually exclusive fallback owner. The latest open group owns
-  reasoning only while that group is the latest visible unit, the slice remains
-  open, and global state is `thinking`; otherwise an eligible fallback is
+  the thinking status only while that group is the latest visible unit, the slice
+  remains open, and global state is `thinking`; otherwise an eligible fallback is
   standalone or absent. The fallback is not a canonical item, bucket entry,
   search unit, or persisted transcript row.
 - Exploration, incomplete proposed plans, blocking requests, safety buffering,
@@ -285,9 +284,9 @@ MCP and dynamic app-server tool calls are specialized `toolCall` rows with canon
   assistant commentary closes the main slice; before final-answer output, the
   parent may still derive a post-assistant standalone fallback when no later unit
   owns the space. Commentary followed by later tools is not treated as trailing
-  commentary for that later slice. The fallback uses the latest readable,
-  non-comment reasoning-summary line or generic `Thinking`. An active tool always
-  keeps its concrete family label and never displays reasoning in that label.
+  commentary for that later slice. The fallback uses the current Thought's
+  status line. An active tool always keeps its concrete family label and never
+  displays a Thought in that label.
 - Raw item lifecycle uses one shared decision contract in main fallback and renderer-owner flows. A started item replaces the first same-ID slot or appends; an authoritative completed item does the same only after an existing same-ID/same-protocol-type row is found, except that commands, user messages, hook prompts, and subagent activity may complete without a start. Rejected orphan work completions can still establish turn timing, but never materialize a transcript row.
 - The first raw work item in a turn stamps `firstTurnWorkItemStartedAtMs`; only `userMessage` and `hookPrompt` are excluded, so an `agentMessage` start counts as work and independently stamps `finalAssistantStartedAtMs`. Later events do not overwrite the first-work stamp, while duplicate agent starts may refresh the final-assistant stamp.
 - Statusless reasoning, assistant-message, and plan items retain a lifecycle ledger
@@ -302,6 +301,16 @@ MCP and dynamic app-server tool calls are specialized `toolCall` rows with canon
 - Completed turns with first-work timing project the same internal block before the final assistant boundary, but completed collapsible agent bodies extract it as the single collapse-label input and remove it from both collapsed and expanded body rows.
 - Only genuine user-input questions and MCP forms own interactive pending-question surfaces. Native execution permission envelopes remain diagnostic history.
 - Unknown replay/app-server tool payloads do not render a generic transcript tool row. The mounted transcript only renders supported tool families with dedicated surfaces (`exec`, `patch`, `mcpToolCall`, `dynamicToolCall`, `webSearch`, `turnDiff`) and keeps any remaining raw tool metadata internal to the canonical conversation state.
+
+## Thoughts
+
+- A Thought is one reasoning item: a Codex reasoning summary section, or another Agent's thinking block or thought segment. Every Agent's Thoughts share one presentation that depends only on the Thought's text, never on the provider.
+- A Thought's status line is its latest heading, meaning a whole line of bold text or a Markdown heading, including one that is still streaming; without one it is `Thinking`. Prose never becomes a status line. A status line is one line truncated at the Thread width wherever it appears: an activity group's thinking header, the Turn's standalone thinking row, and subagent rows.
+- Thoughts are groupable activity in the order they happened. A streaming Thought is not running work, so an open group whose newest work is a Thought, or that has no running tool, is `thinking`.
+- While a Thought without a heading streams as the newest item of a collapsed thinking group, its text streams in place under the status line in a preview of about three lines that follows the newest text. The preview folds away when the Thought ends or work begins. A Thought with a heading shows only its heading. An expanded group shows the streaming Thought in the same bounded form.
+- In an expanded group, a settled Thought is one line, its latest heading or the start of its prose, that opens to the whole Thought in a bounded scroll.
+- A settled Thought on its own, such as one between work and the reply, reads `Thought for {time}`, or `Thought` when its time is unknown, and opens to the whole Thought.
+- Agent Runtime Thoughts report when they started and how long they took. Native app-server reasoning reports no time.
 
 ## Collapse and Search
 
@@ -441,9 +450,7 @@ MCP and dynamic app-server tool calls are specialized `toolCall` rows with canon
 - Local file references in transcript markdown are semantic controls rather than ordinary filesystem anchors. A normal click opens the local file in the right-side Files surface as a preview, a double click makes that Files tab durable, and a modified click opens the configured desktop app. References carry line/column/range location into the Files viewer when present; unsupported or failed previews remain an explicit Files fallback with Open externally, while external opener failures fall back to Finder. The reference context menu exposes Open in Files, Open with, Copy path, Copy contents, and Reveal in Finder. In-app route anchors remain owned by their route handlers and are not intercepted globally.
 - The Files surface consumes a one-shot reveal location after its text viewer mounts: a start-only reference centers that line, a line range uses Pierre's range scroll and line selection, and an editable viewer additionally applies the zero-based character selection when column bounds exist. Invalid or reversed ranges are discarded at the tab-state boundary. The Files header `Open`, unsupported/oversized fallback action, and explicit `Open with` choices all use the configured external opener router; a failed opener may fall back to Finder, but no React click event is ever passed as an opener id.
 - Reasoning text deltas accept safe non-negative integer part indexes and densely fill omitted preceding parts with empty strings. Canonical hydration, completion and replay retain every supplied part; no client part-count cap truncates the stream. Part-added announcements are observational, and the subsequent text delta materializes its indexed parts.
-- Reasoning follows summary-first canonical projection: only the reasoning `summary` is retained in the transcript item, empty summaries produce no reasoning item, and raw `content` remains non-transcript state. The live activity renderer may keep that summary hidden from ordinary activity leaves while projecting its latest readable line into the turn-level fallback or activity-group header.
-- Consecutive replay reasoning records in the same turn are coalesced into one visible reasoning row instead of materializing one `Thought` block per raw reasoning event line.
-- Reasoning items remain available in canonical/source state throughout their lifecycle, but the normal live activity leaf policy hides them so they do not duplicate the turn-level live row. Their latest readable summary may feed the separate render-time live activity fallback; the fallback is a turn-body presentation state, not a second reasoning row.
+- Reasoning follows summary-first canonical projection: only the reasoning `summary` is retained in the transcript item, empty summaries produce no reasoning item, and raw `content` remains non-transcript state. Each retained item is one Thought, presented as specified in [Thoughts](#thoughts).
 - User transcript bubbles expose hover message actions under the bubble in this order: timestamp, `Copy message`, and optional `Edit message`. Selected-text `Ask in side chat` is not a user-bubble action; it belongs to the thread-level selected-text overlay.
 - Selecting assistant response text shows a compact `Add to chat` / `Ask in side chat` toolbar above the first visible selected line. It follows scrolling and clips against the transcript, nested scroll containers, and composer. Selection across different messages or inside editable controls does not open it; pointer dragging hides it until selection finishes. User text offers only `Ask in side chat`, and side chats omit that action.
 - `Add to chat` retains the exact source range as a numbered blue highlight and opens an optional comment. Enter or `Comment` saves it and focuses the composer; Shift+Enter adds a line, Cmd/Ctrl+Enter saves and sends, and Escape discards a new annotation or an unsaved edit. The composer groups references into an annotation pill with preview, edit, and delete actions. References belong to their execution host and conversation, remain attached when sending fails, and can be sent without additional prose. Sent messages retain the reference metadata beside the user's words; numbered inline references in the reply resolve only against that Turn's annotations.
@@ -471,11 +478,10 @@ MCP and dynamic app-server tool calls are specialized `toolCall` rows with canon
 ## Tool and Activity Rendering
 
 - Tool activity passes through one production classifier and one topology
-  projector. Hidden items, including reasoning, do not break adjacency;
-  standalone items flush the current run; and every maximal run of groupable
-  exec, materialized patch, non-empty web search, ordinary MCP, registered
-  groupable dynamic tool, and in-progress Auto-review items first becomes a raw
-  group. A settled non-active singleton is then demoted to its standalone family
+  projector. Hidden items do not break adjacency; standalone items flush the
+  current run; and every maximal run of groupable Thoughts, exec, materialized
+  patch, non-empty web search, ordinary MCP, registered groupable dynamic tool,
+  and in-progress Auto-review items first becomes a raw group. A settled non-active singleton is then demoted to its standalone family
   row, except a file-change singleton remains grouped when it does not represent
   exactly one ordinary changed file or when it contains visualization activity.
 - Group membership is finalized before React leaves render. Each raw group keeps
@@ -538,8 +544,10 @@ MCP and dynamic app-server tool calls are specialized `toolCall` rows with canon
   sources, loaded tools, unnamed MCP calls, file changes, stopped file creation,
   exploration, visualization, commands, web search, then deduplicated dynamic
   calls. Node REPL contributes to commands; recognized web curl and visualization
-  commands are removed from ordinary command counts. Reasoning contributes no
-  completed part, and an empty part list renders `Worked`.
+  commands are removed from ordinary command counts. Thoughts contribute no
+  completed part. A group of only Thoughts renders `Thought for {time}`, or
+  `Thought` when a Thought's time is unknown; any other empty part list renders
+  `Worked`.
 - Collapsed web-search summary facts count every renderable web-search row in `webSearchCount`, with `runningWebSearchCount` as a subset rather than a replacement for completed rows. The visible summary remains count-free: any running web-search renders `Searching the web` / `searching the web`; otherwise it renders `Searched the web` / `searched the web`. While the current still-open activity slice ends in web-search activity, the display stats treat that trailing activity as running so the header stays in the active `Searching the web` state until later turn content closes the slice.
 - Collapsed command summary stats preserve Codex's special exec categories: running `mkdir` commands can summarize as `Creating folder`, and successful or still-running readonly remote `curl` commands can summarize as `Searched the web` / `Searching the web` instead of generic command counts. Mutating curl requests, local curl requests, failed completed curl requests, and mixed running command sets stay generic. Command-row-only labels such as `date` and background terminal state are not collapsed activity summary facts; Node REPL is an MCP source summary special.
 - Collapsed approval failure summaries count only denied and timed-out automatic approval reviews, deduped by canonical review id across standalone and attached review paths before formatting `Denied request(s)` or `Request(s) timed out`. Attached review failures fold through the same fact path for file-change, command/exploration, and MCP tool rows.
@@ -593,7 +601,7 @@ MCP and dynamic app-server tool calls are specialized `toolCall` rows with canon
   - an ordinary in-progress `fileChange` with no changes and no visualization
     activity is semantically hidden: it creates neither an empty `Editing files`
     group nor a fabricated path. During that pre-materialization interval, the
-    parent reasoning/`Thinking` fallback remains eligible. Once a real change
+    thinking status remains eligible. Once a real change
     arrives, the same item begins showing the active patch header, paths, stats,
     and inline diff
   - when a renderer owner exists, both main recovery state and the owner consume

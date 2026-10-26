@@ -3210,6 +3210,12 @@ export type CodexDelegatedTaskView = Omit<
   "type" | "id"
 >;
 
+/** Timing an execution owner reports for one Thought; native reasoning history has none. */
+export interface CodexThoughtView {
+  startedAtMs: number | null;
+  durationMs: number | null;
+}
+
 export interface CodexContextCompactionView {
   status: import("./codex-context-compaction-presentation").CodexContextCompactionStatus;
   source: import("./codex-context-compaction-presentation").CodexContextCompactionSource;
@@ -3322,6 +3328,7 @@ export interface CodexItemView extends CodexCommandExecutionAttachmentFields {
   userMessageOrigin?: import("./codex-conversation-state/codex-conversation-state").CodexUserMessageOrigin;
   userInputIntent?: import("./codex-conversation-state/codex-conversation-state").CodexUserMessageInputIntent;
   contextCompaction?: CodexContextCompactionView;
+  thought?: CodexThoughtView;
   requestId?: CodexAppServerRequestId;
   fileChange?: CodexFileChangeView;
   markdownText?: string;
@@ -3384,6 +3391,7 @@ export interface CodexTranscriptEntry extends CodexCommandExecutionAttachmentFie
   userMessageOrigin?: import("./codex-conversation-state/codex-conversation-state").CodexUserMessageOrigin;
   userInputIntent?: import("./codex-conversation-state/codex-conversation-state").CodexUserMessageInputIntent;
   contextCompaction?: CodexContextCompactionView;
+  thought?: CodexThoughtView;
   requestId?: CodexAppServerRequestId;
   fileChange?: CodexFileChangeView;
   markdownText?: string;

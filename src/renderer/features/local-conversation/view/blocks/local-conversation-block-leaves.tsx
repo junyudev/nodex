@@ -42,7 +42,7 @@ import { ImportedMarkdownImagesProvider } from "../shared/imported-markdown-imag
 import { GeneratedImageGallery } from "../shared/generated-image-gallery";
 import { CompletedRequestActivitySurface } from "../shared/completed-request-activity-surface";
 import { PlanMessage } from "../shared/plan-message";
-import { ReasoningSurface } from "../shared/reasoning-surface";
+import { ThoughtDisclosure, ThoughtLivePreview, ThoughtRow } from "../shared/thought-surface";
 import {
   SubagentActivityDetails,
   SubagentActivityInline,
@@ -107,6 +107,7 @@ import type {
   ThreadWorkedForBlockModel,
 } from "../../thread-stage-types";
 import { THREAD_VISUAL_TOKENS } from "./local-conversation-visual-tokens";
+import { formatThoughtLabel, sumThoughtDurations } from "../../thread-thought-label";
 import { useHookFeedbackSettingsNavigation } from "../hook-feedback-settings-navigation";
 import { useLocalConversationUserTurnEditDraft } from "../local-conversation-thread-view-state";
 import { resolveComposerSubmitIntentFromKeyDown } from "../shared/composer-action";
@@ -352,6 +353,8 @@ function renderCollapsedActivityEntry({
     return (
       <ThreadContextCompactionBlock block={entry as ThreadTranscriptBlockModel} {...sharedProps} />
     );
+  if (entry.type === "reasoning")
+    return <ThreadThoughtRowBlock block={entry as ThreadTranscriptBlockModel} {...sharedProps} />;
   if (
     entry.type === "exec" ||
     entry.type === "fileChange" ||
@@ -450,17 +453,22 @@ export function ThreadAgentActivityGroupBlock({
     iconItem == null ? null : resolveToolActivityEntryIcon(iconItem, block.mcpApps ?? []);
   const summaryTransition: ThreadActivitySummaryTransition =
     block.header.kind === "summary" ? "immediate" : "deferred";
+  const isThoughtOnly = block.entries.every((entry) => entry.type === "reasoning");
+  const latestThought = block.entries.findLast((entry) => entry.type === "reasoning") ?? null;
   const summaryText =
     block.header.kind === "summary" ? (
-      <CompletedActivitySummaryText parts={block.completedHeader.parts} />
+      isThoughtOnly && block.completedHeader.parts.length === 0 ? (
+        formatThoughtLabel(
+          sumThoughtDurations(block.entries.map((entry) => entry.entry.thought?.durationMs)),
+        )
+      ) : (
+        <CompletedActivitySummaryText parts={block.completedHeader.parts} />
+      )
     ) : block.header.kind === "active" ? (
       <ActiveActivitySummaryText header={block.header} />
     ) : (
       <CodexShimmerText>
-        <CodexTranscriptReasoningSummary
-          item={block.entries.findLast((entry) => entry.type === "reasoning") ?? null}
-          fallback={block.header.message}
-        />
+        <CodexTranscriptReasoningSummary item={latestThought} fallback={block.header.message} />
       </CodexShimmerText>
     );
   const summary = (
@@ -521,6 +529,18 @@ export function ThreadAgentActivityGroupBlock({
       summaryKey={block.header.key}
       summaryTransition={summaryTransition}
       shouldAnimateInitialCollapse={block.shouldAnimateInitialCollapse}
+      preview={
+        latestThought ? (
+          <ThreadThoughtLivePreview
+            block={latestThought as ThreadTranscriptBlockModel}
+            active={block.header.kind === "thinking" && block.entries.at(-1) === latestThought}
+            isLatestTurn={isLatestTurn}
+            isStreamingTurn={isStreamingTurn}
+            projectWorkspacePath={projectWorkspacePath}
+            threadCwd={threadCwd}
+          />
+        ) : null
+      }
     >
       {body}
     </ThreadActivityDisclosure>
@@ -1139,20 +1159,46 @@ export function ThreadUserBubbleBlock(props: ThreadLeafBlockProps) {
   return <UserMessageBubble {...props} />;
 }
 
+/** A settled Thought standing on its own between replies and work. */
 export function ThreadReasoningBlock({
   block: inputBlock,
-  isLatestTurn,
-  isStreamingTurn,
   projectWorkspacePath,
   threadCwd,
 }: ThreadLeafBlockProps) {
   const block = useCodexTranscriptBlock(inputBlock);
-  const item = block.entry;
-
   return (
-    <ReasoningSurface
-      item={item}
-      parseIncompleteMarkdown={isStreamingTurn && (item.status === "inProgress" || isLatestTurn)}
+    <ThoughtDisclosure
+      item={block.entry}
+      cwd={threadCwd}
+      projectWorkspacePath={projectWorkspacePath}
+    />
+  );
+}
+
+/** A Thought among the work of an expanded activity group. */
+function ThreadThoughtRowBlock({
+  block: inputBlock,
+  projectWorkspacePath,
+  threadCwd,
+}: ThreadLeafBlockProps) {
+  const block = useCodexTranscriptBlock(inputBlock);
+  return (
+    <ThoughtRow item={block.entry} cwd={threadCwd} projectWorkspacePath={projectWorkspacePath} />
+  );
+}
+
+/** The streaming Thought of a thinking activity group, read as it is written. */
+function ThreadThoughtLivePreview({
+  block: inputBlock,
+  active,
+  projectWorkspacePath,
+  threadCwd,
+}: ThreadLeafBlockProps & { readonly active: boolean }) {
+  const block = useCodexTranscriptBlock(inputBlock);
+  return (
+    <ThoughtLivePreview
+      item={block.entry}
+      active={active}
       cwd={threadCwd}
       projectWorkspacePath={projectWorkspacePath}
     />

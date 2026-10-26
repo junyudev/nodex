@@ -58,6 +58,13 @@ A Run is one admitted unit of Agent work in a Thread. Attempts may resume or ret
 that work without changing its identity. A delegated task can outlive its parent's
 foreground Turn; durable result delivery determines when the parent consumes its result.
 
+### Thought
+
+A Thought is one unit of an Agent's reasoning in a Turn: a reasoning summary section, a
+thinking block or a thought segment. It is part of the work around it, not a reply. Its
+heading, when it names one, is the Turn's thinking status; its prose is content and never
+a status line.
+
 ### Agent Backend
 
 An Agent Backend is the runtime and protocol family that executes a Thread or supported Scheduled

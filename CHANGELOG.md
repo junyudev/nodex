@@ -26,10 +26,12 @@ All notable changes to this project will be documented in this file.
 - A message sent from the Inbox to a chat stays tied to that chat. Its Page shows the chat and its live status on its Board, List and Page, and its status moves from Triage to Build, Plan or Ship as the message is handled, without overriding a status you set yourself. History leads with work still in progress until you mark it done, and a decided message shows where it went before it folds away.
 - An Inbox opens a message's Page beside itself, so you can read or edit it without losing the stream. Opening the next message's Page replaces it until you start working in it.
 - The Library Inbox's Database appears in Space with the rest of your content. Like a Project's Database, it can't be archived while the Inbox depends on it, so earlier messages never end up in an archived copy.
+- Every Agent's thinking reads the same way in a chat and stays where it happened. While an Agent thinks, a one-line status shows a few lines of its latest thinking beneath it. Afterwards each thought folds into the work around it, or reads Thought for its duration on its own, and opens in full.
 
 ### Fixed
 
 - Space Content keeps its order when you open a Page, Database or Canvas, and every sidebar list remembers how far you expanded it with Show more after switching between Home and Space, reopening the window or relaunching.
+- Claude's thinking no longer turns into replies the moment a tool call starts, and long thinking no longer stretches past the edge of the chat.
 - Unread dots clear when you view a chat or its reply finishes in the foreground, without switching away and back. Manually marked unread chats stay unread until new activity or interaction.
 - Chat completion notifications include the Agent’s reply after execution ends and preserve readable content from Markdown, including code blocks.
 - Existing Profiles upgrade without rejecting saved paragraphs that begin with Markdown punctuation, while preserving their content and edit history.

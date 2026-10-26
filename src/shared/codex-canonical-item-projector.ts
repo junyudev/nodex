@@ -998,6 +998,14 @@ function projectCanonicalItemViews(
           semanticKind: "reasoning",
           markdownText,
           status,
+          ...(item.startedAtMs !== undefined || item.durationMs !== undefined
+            ? {
+                thought: {
+                  startedAtMs: item.startedAtMs ?? null,
+                  durationMs: item.durationMs ?? null,
+                },
+              }
+            : {}),
         },
       ];
     }

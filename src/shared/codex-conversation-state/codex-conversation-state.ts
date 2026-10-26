@@ -630,12 +630,23 @@ export type CodexCanonicalFileChangeItem = Omit<
   changes: Array<CodexCanonicalFileUpdateChange>;
 };
 
+/**
+ * Reasoning as one Thought. An execution owner that reports each Thought's lifecycle and timing
+ * carries them on the item; native app-server reasoning derives its lifecycle from the Turn ledger.
+ */
+export type CodexCanonicalReasoningItem = Extract<ThreadItem, { type: "reasoning" }> & {
+  readonly status?: Extract<CodexItemStatus, "inProgress" | "completed">;
+  readonly startedAtMs?: number | null;
+  readonly durationMs?: number | null;
+};
+
 /** Generated items that require app-owned display enrichment after ingress. */
 export type CodexCanonicalGeneratedItem =
   | Exclude<
       ThreadItem,
       {
         type:
+          | "reasoning"
           | "imageGeneration"
           | "collabAgentToolCall"
           | "contextCompaction"
@@ -648,6 +659,7 @@ export type CodexCanonicalGeneratedItem =
       }
     >
   | CodexCanonicalFileChangeItem
+  | CodexCanonicalReasoningItem
   | CodexCanonicalUserMessageItem
   | CodexCanonicalAgentMessageItem
   | CodexCanonicalImageViewItem

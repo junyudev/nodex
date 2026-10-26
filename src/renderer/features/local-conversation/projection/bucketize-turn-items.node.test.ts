@@ -191,8 +191,9 @@ describe("bucketizeTurnItems", () => {
       isBlocked: false,
     });
 
+    // The Thought after the command belongs to the same work.
     expect(turn.blocks.map((block) => block.type).join(",")).toBe(
-      "modelChanged,userMessage,exec,assistantMessage,proposedPlan,forkedFromConversation",
+      "modelChanged,userMessage,agentActivityGroup,assistantMessage,proposedPlan,forkedFromConversation",
     );
     const assistantBlock = turn.blocks.find((block) => block.type === "assistantMessage");
     expect(
@@ -938,9 +939,12 @@ describe("bucketizeTurnItems", () => {
 
     expect(buckets.assistantItem).toBe(null);
     expect(turn.agentBodyUnits.map((unit) => unit.block.type).join(",")).toBe(
-      "assistantMessage,exec",
+      "assistantMessage,agentActivityGroup",
     );
-    expect(turn.agentBodyUnits[1]?.block.type).toBe("exec");
+    const work = turn.agentBodyUnits[1]?.block;
+    expect(
+      work?.type === "agentActivityGroup" ? work.entries.map((entry) => entry.type).join(",") : "",
+    ).toBe("exec,reasoning");
     expect(turn.trailingBlocks.map((block) => block.type).join(",")).toBe("assistantActions");
     const inlineAssistant = turn.agentBodyUnits[0]?.block;
     expect(
@@ -1364,7 +1368,7 @@ describe("bucketizeTurnItems", () => {
       group?.type === "agentActivityGroup"
         ? group.entries.map((entry) => entry.type).join(",")
         : "",
-    ).toBe("exec,exec");
+    ).toBe("exec,exec,reasoning");
   });
 
   test("groups same-action multi-agent actions including in-progress ones", () => {
@@ -1723,7 +1727,7 @@ describe("bucketizeTurnItems", () => {
     expect(turn.liveActivity.fallback.owner).toBe("none");
   });
 
-  test("projects a trailing in-progress reasoning row as standalone live activity", () => {
+  test("projects a trailing in-progress Thought as a thinking activity group", () => {
     const buckets = bucketizeTurnItems({
       items: [
         buildItem({
@@ -1762,11 +1766,17 @@ describe("bucketizeTurnItems", () => {
       isBlocked: false,
     });
 
-    expect(turn.blocks).toEqual([]);
+    const [group] = turn.blocks;
+    expect(group?.type === "agentActivityGroup" ? group.header : null).toEqual({
+      kind: "thinking",
+      key: "thinking",
+      message: null,
+    });
+    // Prose thinking names no status of its own: the status line stays Thinking.
     expect(turn.liveActivity).toMatchObject({
       global: { state: { type: "thinking", isVisible: true } },
-      fallback: { owner: "standalone" },
-      reasoningSummary: { text: "Checking the bundle." },
+      fallback: { owner: "group" },
+      reasoningSummary: null,
     });
   });
 

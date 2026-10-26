@@ -518,7 +518,7 @@ describe("buildTurnRenderModel", () => {
     expect(selectModel({ entry })).toBe(initial);
     expect(projectionCount).toBe(1);
 
-    reasoning.markdownText = "Preparing the large patch";
+    reasoning.markdownText = "**Preparing the large patch**";
     reasoning.updatedAt = 3;
     const afterReasoningDelta = selectModel({ entry });
     expect(afterReasoningDelta).not.toBe(initial);

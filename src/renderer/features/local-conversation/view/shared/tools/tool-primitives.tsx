@@ -245,9 +245,11 @@ export interface ThreadActivityDisclosureProps {
   headerTestId?: string;
   icon?: ReactNode;
   onExpand?: () => void;
+  /** Live content shown under the header while the body is collapsed. */
+  preview?: ReactNode;
   shouldAnimateInitialCollapse?: boolean;
   status: SemanticActivityStatus;
-  summary: ReactNode;
+  summary: ReactNode | ((expanded: boolean) => ReactNode);
   summaryClassName?: string;
   summaryKey?: string | null;
   summaryTransition?: ThreadActivitySummaryTransition;
@@ -404,6 +406,7 @@ export function ThreadActivityDisclosure({
   headerTestId,
   icon,
   onExpand,
+  preview,
   status,
   summary,
   summaryClassName,
@@ -429,6 +432,7 @@ export function ThreadActivityDisclosure({
   };
 
   const disclosure = hasBody ? { expanded, onToggle: handleToggle } : undefined;
+  const summaryNode = typeof summary === "function" ? summary(expanded) : summary;
   const header =
     icon === undefined ? (
       <ThreadActivityHeader
@@ -441,7 +445,7 @@ export function ThreadActivityDisclosure({
           summaryKey={summaryKey}
           summaryTransition={summaryTransition}
         >
-          {summary}
+          {summaryNode}
         </ThreadActivitySummaryText>
       </ThreadActivityHeader>
     ) : (
@@ -450,7 +454,7 @@ export function ThreadActivityDisclosure({
         className={headerClassName}
         disclosure={disclosure}
         icon={icon}
-        summary={summary}
+        summary={summaryNode}
         summaryClassName={summaryClassName}
         testId={headerTestId}
       />
@@ -478,7 +482,19 @@ export function ThreadActivityDisclosure({
     </motion.div>
   ) : null;
 
-  return <ThreadActivityShell body={body} className={className} header={header} testId={testId} />;
+  return (
+    <ThreadActivityShell
+      body={
+        <>
+          {expanded ? null : preview}
+          {body}
+        </>
+      }
+      className={className}
+      header={header}
+      testId={testId}
+    />
+  );
 }
 
 export type ThreadActivityListViewState = "preview" | "collapsed" | "expanded";

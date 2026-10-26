@@ -322,6 +322,9 @@ export function classifyThreadAgentActivityItem<TItem extends ThreadClassifiable
       return classifyThreadMcpServerElicitationActivityItem(item);
     case "automaticApprovalReview":
       return classifyThreadAutomaticApprovalReviewActivityItem(item);
+    // A Thought belongs to the work around it, in the order it happened.
+    case "reasoning":
+      return createThreadAgentActivityItem(item, "groupable");
     case "toolCall":
     case "assistantMessage":
     case "autoReviewInterruptionWarning":
@@ -349,7 +352,6 @@ export function classifyThreadAgentActivityItem<TItem extends ThreadClassifiable
     case "personalityChanged":
     case "planImplementation":
     case "proposedPlan":
-    case "reasoning":
     case "remoteTaskCreated":
     case "steered":
     case "todoList":

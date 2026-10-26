@@ -1402,7 +1402,7 @@ describe("LocalConversationTurnEntry", () => {
           createdAt: 4,
           updatedAt: 4,
           status: "inProgress",
-          markdownText: "Checking the file.",
+          markdownText: "**Checking the file.**",
         },
       ],
     };
@@ -1538,5 +1538,189 @@ describe("LocalConversationTurnEntry", () => {
       ),
     ).toBe(true);
     expect(Boolean(view.getByLabelText("Fork chat from here"))).toBe(true);
+  });
+});
+
+describe("Thoughts in a Turn", () => {
+  const prose =
+    "I need to check whether the status label stays on one line. The group header renders the " +
+    "summary inside an inline span, so a long paragraph could wrap across the Thread.";
+
+  function buildThoughtEntry(
+    turnId: string,
+    itemId: string,
+    markdownText: string,
+    overrides: Partial<CodexConversationItem> = {},
+  ): CodexConversationItem {
+    return {
+      threadId: "thread_1",
+      turnId,
+      itemId,
+      type: "reasoning",
+      kind: "reasoning",
+      semanticKind: "reasoning",
+      markdownText,
+      status: "completed",
+      createdAt: 3,
+      updatedAt: 3,
+      ...overrides,
+    };
+  }
+
+  function buildReadEntry(turnId: string, itemId: string, path: string): CodexConversationItem {
+    return {
+      threadId: "thread_1",
+      turnId,
+      itemId,
+      type: "command_execution",
+      kind: "commandExecution",
+      semanticKind: "exec",
+      createdAt: 3,
+      updatedAt: 3,
+      status: "completed",
+      commandActions: [{ type: "read", command: "", name: path, path }],
+      toolCall: { subtype: "command", toolName: "exec_command", args: {} },
+    };
+  }
+
+  async function click(element: HTMLElement) {
+    await act(async () => {
+      fireEvent.click(element);
+      await Promise.resolve();
+    });
+    await settleAsyncRender();
+  }
+
+  /** Work before a reply starts folded; an opened Turn shows it. */
+  async function renderTurn(turn: CodexConversationTurn) {
+    const { LocalConversationTurnEntry } = await import("./local-conversation-turn-entry");
+    const view = render(
+      createElement(
+        TooltipProvider,
+        null,
+        createElement(LocalConversationTurnEntry, {
+          conversationId: "thread_1",
+          entry: buildVisibleTurnEntry(turn, [], true),
+          cwd: "/tmp/project",
+          canEditTurnUserPrefix: false,
+          canForkTurn: false,
+          persistedCollapsed: false,
+        }),
+      ),
+    );
+    await settleAsyncRender();
+    return view;
+  }
+
+  test("reads a streaming prose Thought under a one-line Thinking status", async () => {
+    const turnId = "turn_prose";
+    const view = await renderTurn({
+      threadId: "thread_1",
+      turnId,
+      status: "inProgress",
+      itemIds: ["user", "read", "thought"],
+      items: [
+        buildUserEntry(turnId, "user", "Fix the label"),
+        buildReadEntry(turnId, "read", "src/app.ts"),
+        buildThoughtEntry(turnId, "thought", prose, { status: "inProgress" }),
+      ],
+    });
+
+    view.getByRole("button", { name: "Thinking" });
+    expect(view.queryByRole("button", { name: /status label/u })).toBeNull();
+    const preview = view.getByTestId("thought-live-preview");
+    expect(preview.getAttribute("aria-hidden")).toBe("false");
+    expect(preview.textContent).toContain("The group header renders the summary");
+  });
+
+  test("names a streaming headed Thought by its heading, without a prose preview", async () => {
+    const turnId = "turn_headed";
+    const view = await renderTurn({
+      threadId: "thread_1",
+      turnId,
+      status: "inProgress",
+      itemIds: ["user", "thought"],
+      items: [
+        buildUserEntry(turnId, "user", "Fix the label"),
+        buildThoughtEntry(turnId, "thought", "**Checking the label**\n\nReading the header.", {
+          status: "inProgress",
+        }),
+      ],
+    });
+
+    view.getByRole("button", { name: "Checking the label" });
+    const preview = view.getByTestId("thought-live-preview");
+    expect(preview.getAttribute("aria-hidden")).toBe("true");
+    expect(preview.textContent).toBe("");
+  });
+
+  test("settles a lone Thought before the reply into a timed disclosure", async () => {
+    const turnId = "turn_settled";
+    const view = await renderTurn({
+      threadId: "thread_1",
+      turnId,
+      status: "inProgress",
+      itemIds: ["user", "thought", "reply"],
+      items: [
+        buildUserEntry(turnId, "user", "Fix the label"),
+        buildThoughtEntry(turnId, "thought", prose, {
+          thought: { startedAtMs: 0, durationMs: 12_000 },
+        }),
+        buildAssistantEntry(turnId, "reply", "Fixed.", {
+          assistantPhase: "final_answer",
+          status: "inProgress",
+        }),
+      ],
+    });
+
+    const disclosure = view.getByRole("button", { name: "Thought for 12s" });
+    expect(disclosure.getAttribute("aria-expanded")).toBe("false");
+    await click(disclosure);
+    expect(disclosure.getAttribute("aria-expanded")).toBe("true");
+    expect(view.getByTestId("thought-disclosure").textContent).toContain(
+      "The group header renders the summary",
+    );
+  });
+
+  test("lists settled Thoughts in order among the work they belong to", async () => {
+    const turnId = "turn_work";
+    const view = await renderTurn({
+      threadId: "thread_1",
+      turnId,
+      status: "inProgress",
+      itemIds: ["user", "read_a", "thought", "read_b", "reply"],
+      items: [
+        buildUserEntry(turnId, "user", "Fix the label"),
+        buildReadEntry(turnId, "read_a", "src/a.ts"),
+        buildThoughtEntry(turnId, "thought", prose),
+        buildReadEntry(turnId, "read_b", "src/b.ts"),
+        buildAssistantEntry(turnId, "reply", "Fixed.", {
+          assistantPhase: "final_answer",
+          status: "inProgress",
+        }),
+      ],
+    });
+
+    // A Thought adds nothing to the summary of the work it sits in.
+    await click(view.getByRole("button", { name: "Read files" }));
+
+    const row = view.getByTestId("thought-row");
+    const [first, second] = view.getAllByRole("link", { name: /src\/[ab]\.ts|[ab]\.ts/u });
+    expect(first && second).toBeTruthy();
+    expect(Boolean(first!.compareDocumentPosition(row) & Node.DOCUMENT_POSITION_FOLLOWING)).toBe(
+      true,
+    );
+    expect(Boolean(row.compareDocumentPosition(second!) & Node.DOCUMENT_POSITION_FOLLOWING)).toBe(
+      true,
+    );
+    const excerpt = view.getByRole("button", {
+      name: /^I need to check whether the status label/u,
+    });
+    expect(excerpt.getAttribute("aria-expanded")).toBe("false");
+    // Opened, the row names the Thought instead of repeating its opening above the full text.
+    await click(excerpt);
+    expect(excerpt.getAttribute("aria-expanded")).toBe("true");
+    expect(excerpt.textContent).toBe("Thought");
+    expect(row.textContent).toContain("so a long paragraph could wrap across the Thread.");
   });
 });

@@ -33,6 +33,7 @@ export function projectCodexItemViewToTranscriptEntry(
     userMessageOrigin: item.userMessageOrigin,
     userInputIntent: item.userInputIntent,
     contextCompaction: item.contextCompaction,
+    thought: item.thought,
     requestId: item.requestId,
     cmd: item.cmd,
     callId: item.callId,

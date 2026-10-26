@@ -780,6 +780,51 @@ describe("Runtime message attribution and notices", () => {
   });
 });
 
+describe("Runtime Thoughts", () => {
+  const thought = (
+    status: AgentTurnItem["status"],
+    overrides: Partial<Extract<AgentTurnItem, { type: "reasoning" }>> = {},
+  ): Extract<AgentTurnItem, { type: "reasoning" }> => ({
+    ...base,
+    type: "reasoning",
+    title: "Thinking",
+    text: "I need to check whether the label clamps.",
+    streaming: status === "running",
+    status,
+    startedAt: "2026-10-15T00:00:00.000Z",
+    completedAt: status === "running" ? null : "2026-10-15T00:00:12.500Z",
+    ...overrides,
+  });
+  const entryOf = (item: AgentTurnItem, turnStatus: "inProgress" | "completed") => {
+    const views = projectCodexCanonicalTurnItemViews({
+      threadId: base.threadId,
+      turnId: "parent-run",
+      items: [projectAgentRuntimeItem(item)!],
+      observedAtMs: Date.parse(at),
+      turnStatus,
+    });
+    return projectCodexItemViewToTranscriptEntry(views[0]!, "live", 0);
+  };
+
+  test("a streaming Thought is live and reports when it started", () => {
+    expect(entryOf(thought("running"), "inProgress")).toMatchObject({
+      semanticKind: "reasoning",
+      status: "inProgress",
+      markdownText: "I need to check whether the label clamps.",
+      thought: { startedAtMs: Date.parse("2026-10-15T00:00:00.000Z"), durationMs: null },
+    });
+  });
+
+  test("a settled Thought reports how long it took, including one its Run stopped", () => {
+    for (const status of ["completed", "interrupted"] as const) {
+      expect(entryOf(thought(status), "inProgress")).toMatchObject({
+        status: "completed",
+        thought: { durationMs: 12_500 },
+      });
+    }
+  });
+});
+
 describe("Runtime Turn metadata", () => {
   test("hooks stay out of the transcript and read as the Turn's hook runs", () => {
     const hook: Extract<AgentTurnItem, { type: "hook_run" }> = {

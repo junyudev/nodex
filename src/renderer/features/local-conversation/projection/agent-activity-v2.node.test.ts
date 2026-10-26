@@ -428,7 +428,6 @@ describe("agent activity v2 type boundary", () => {
       "personalityChanged",
       "planImplementation",
       "proposedPlan",
-      "reasoning",
       "remoteTaskCreated",
       "steered",
       "todoList",
@@ -454,6 +453,11 @@ describe("agent activity v2 type boundary", () => {
         )
         .every((visibility) => visibility === "hidden"),
     ).toBe(true);
+    expect(
+      resolveThreadAgentActivityVisibility(
+        classifyThreadAgentActivityItem(buildClassifiableBlock("reasoning")),
+      ),
+    ).toBe("groupable");
   });
 
   test("classifies every automatic approval review status exactly", () => {
@@ -556,7 +560,7 @@ describe("agent activity v2 type boundary", () => {
         },
       }),
     });
-    const hiddenReasoning = buildClassifiableBlock("reasoning");
+    const hiddenItem = buildClassifiableBlock("modelChanged");
     const patch = buildClassifiableBlock("fileChange", {
       entry: buildConversationItem("visualization-patch", {
         fileChange: {
@@ -567,7 +571,7 @@ describe("agent activity v2 type boundary", () => {
       }),
     });
 
-    const indexed = projectThreadIndexedAgentActivityItems([command, hiddenReasoning, patch]);
+    const indexed = projectThreadIndexedAgentActivityItems([command, hiddenItem, patch]);
 
     expect(indexed.map(({ sourceIndex }) => sourceIndex).join(",")).toBe("0,2");
   });

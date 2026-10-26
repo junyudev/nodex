@@ -594,7 +594,16 @@ export function projectAgentRuntimeItem(item: AgentTurnItem, cwd = ""): CodexCan
       };
     }
     case "reasoning":
-      return { type: "reasoning", id, summary: [item.text], content: [] };
+      // Each Thought keeps its own lifecycle and timing; a settled Thought is never still live.
+      return {
+        type: "reasoning",
+        id,
+        summary: [item.text],
+        content: [],
+        status: status === "inProgress" ? "inProgress" : "completed",
+        startedAtMs: agentRuntimeTime(item.startedAt),
+        durationMs,
+      };
     case "proposed_plan":
       return { type: "plan", id, text: item.markdown };
     case "command_execution":

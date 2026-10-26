@@ -16,7 +16,10 @@ import {
   type CodexTranscriptTurnSlice,
   type CodexTranscriptGeneratedImage,
 } from "./normalized-transcript-read-owner";
-import { resolveCodexReasoningSummaryPresentation } from "../../../shared/codex-reasoning-presentation";
+import {
+  resolveThoughtHeading,
+  THOUGHT_STATUS_FALLBACK,
+} from "../../../shared/thought-presentation";
 import type { ConversationTurnListEntry } from "./selectors";
 import { isNormalizedConversationTurnEntry } from "./selectors";
 import { isCodexTimelineTurnEntry } from "./projection/normalized-timeline-entries";
@@ -236,7 +239,10 @@ export function useCodexTranscriptDelegatedTaskEntries(entries: readonly CodexCo
   return useSyncExternalStore(query.subscribe, query.read);
 }
 
-/** The compact thinking label is a separate keyed consumer from the complete Turn model. */
+/**
+ * The thinking status line is a separate keyed consumer from the complete Turn model: the current
+ * Thought's latest heading as it streams, otherwise generic Thinking. Thought prose never appears here.
+ */
 export function CodexTranscriptReasoningSummary({
   item,
   fallback,
@@ -245,17 +251,8 @@ export function CodexTranscriptReasoningSummary({
   readonly fallback: string | null;
 }) {
   const block = useCodexTranscriptBlock(item ?? EMPTY_REASONING_BLOCK);
-  const summary = item
-    ? resolveCodexReasoningSummaryPresentation([
-        {
-          itemId: block.entry.itemId,
-          normalizedKind: block.entry.kind,
-          semanticKind: block.entry.semanticKind,
-          markdownText: block.entry.markdownText,
-        },
-      ])
-    : null;
-  return <>{summary?.text ?? fallback ?? "Thinking"}</>;
+  const heading = item ? resolveThoughtHeading(block.entry.markdownText) : null;
+  return <>{heading ?? fallback ?? THOUGHT_STATUS_FALLBACK}</>;
 }
 
 const EMPTY_REASONING_BLOCK: ThreadTranscriptBlockModel = {

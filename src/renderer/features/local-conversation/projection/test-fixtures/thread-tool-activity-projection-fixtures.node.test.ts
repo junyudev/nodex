@@ -6,14 +6,19 @@ import {
 } from "./thread-tool-activity-projection-fixtures";
 
 describe("thread tool activity projection fixtures", () => {
-  test("keeps reasoning-only work in the standalone fallback owner", () => {
+  test("names reasoning-only work by its heading in a thinking group", () => {
     const { model, transcriptItems } = buildThreadToolActivityProjectionScenario("reasoning-only");
+    const group = findProjectedActivityGroup(model.agentBodyUnits);
 
     expect(transcriptItems.map((item) => item.semanticKind)).toEqual(["reasoning"]);
-    expect(model.agentBodyUnits).toEqual([]);
+    expect(group ? readProjectedActivityEntryTypes(group.entries) : []).toEqual(["reasoning"]);
+    expect(group?.header).toMatchObject({
+      kind: "thinking",
+      message: "Preparing the implementation.",
+    });
     expect(model.liveActivity).toMatchObject({
       global: { state: { type: "thinking", isVisible: true } },
-      fallback: { owner: "standalone" },
+      fallback: { owner: "group" },
       reasoningSummary: { text: "Preparing the implementation." },
     });
   });
@@ -24,9 +29,12 @@ describe("thread tool activity projection fixtures", () => {
 
     expect(before.canonicalItems.map((item) => item.type)).toEqual(["reasoning", "fileChange"]);
     expect(before.transcriptItems.map((item) => item.semanticKind)).toEqual(["reasoning"]);
-    expect(before.model.agentBodyUnits).toEqual([]);
+    const thinking = findProjectedActivityGroup(before.model.agentBodyUnits);
+    expect(thinking ? readProjectedActivityEntryTypes(thinking.entries) : []).toEqual([
+      "reasoning",
+    ]);
     expect(before.model.liveActivity).toMatchObject({
-      fallback: { owner: "standalone" },
+      fallback: { owner: "group" },
       reasoningSummary: { text: "Preparing the larger patch." },
     });
 
@@ -34,11 +42,11 @@ describe("thread tool activity projection fixtures", () => {
     expect(after.transcriptItems.map((item) => item.semanticKind)).toEqual(["reasoning", "patch"]);
     expect(group?.header.kind).toBe("active");
     expect(group?.header.kind === "active" ? group.header.item.type : null).toBe("fileChange");
-    expect(group?.bodyEntries.map((entry) => entry.type)).toEqual(["fileChange"]);
+    expect(group?.bodyEntries.map((entry) => entry.type)).toEqual(["reasoning", "fileChange"]);
     expect(after.model.liveActivity.fallback.owner).toBe("none");
   });
 
-  test("does not let interleaved reasoning split or enter a mixed tool group", () => {
+  test("keeps interleaved Thoughts in order inside one mixed tool group", () => {
     const { model, transcriptItems } = buildThreadToolActivityProjectionScenario("mixed-tools");
     const group = findProjectedActivityGroup(model.agentBodyUnits);
 
@@ -54,10 +62,18 @@ describe("thread tool activity projection fixtures", () => {
     expect(group?.header.kind === "active" ? group.header.item.type : null).toBe("webSearch");
     expect(group ? readProjectedActivityEntryTypes(group.entries) : []).toEqual([
       "exec",
+      "reasoning",
       "fileChange",
+      "reasoning",
       "webSearch",
     ]);
-    expect(group?.bodyEntries.some((entry) => entry.type === "reasoning")).toBe(false);
+    expect(group?.bodyEntries.map((entry) => entry.type)).toEqual([
+      "exec",
+      "reasoning",
+      "fileChange",
+      "reasoning",
+      "webSearch",
+    ]);
     expect(model.liveActivity.fallback.owner).toBe("none");
   });
 
@@ -106,6 +122,7 @@ describe("thread tool activity projection fixtures", () => {
     expect(group ? readProjectedActivityEntryTypes(group.entries) : []).toEqual([
       "exec",
       "fileChange",
+      "reasoning",
     ]);
     expect(model.liveActivity).toMatchObject({
       global: { state: { type: "thinking", isVisible: true } },

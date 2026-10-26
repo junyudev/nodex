@@ -56,11 +56,12 @@ export interface ThreadToolActivityProjectionFixtureResult {
   readonly model: ThreadTurnModel;
 }
 
-function reasoning(id: string, summary: string): ThreadItem {
+/** A Codex reasoning summary section, headed by what the Agent is doing. */
+function reasoning(id: string, heading: string): ThreadItem {
   return {
     type: "reasoning",
     id,
-    summary: [summary],
+    summary: [`**${heading}**`],
     content: [],
   };
 }

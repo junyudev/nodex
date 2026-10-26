@@ -1,10 +1,11 @@
-import { resolveCodexReasoningSummaryPresentation } from "../../../../shared/codex-reasoning-presentation";
+import { resolveThoughtHeading } from "../../../../shared/thought-presentation";
 import type {
   ThreadActivitySlicePresentation,
   ThreadAgentActivityUnit,
   ThreadAgentItemModel,
   ThreadGlobalActivityPresentation,
   ThreadLiveActivityPresentation,
+  ThreadLiveReasoningSummary,
   ThreadThinkingFallbackPresentation,
   ThreadTranscriptBlockModel,
 } from "../thread-stage-types";
@@ -32,20 +33,14 @@ export interface ResolveThreadParentActivityInput {
   forceThinking?: boolean;
 }
 
-export function resolveThreadReasoningSummary(agentItems: readonly ThreadAgentItemModel[]) {
-  return resolveCodexReasoningSummaryPresentation(
-    agentItems.flatMap((item) => {
-      if (item.type !== "reasoning") return [];
-      return [
-        {
-          itemId: item.entry.itemId,
-          normalizedKind: item.entry.kind,
-          semanticKind: item.entry.semanticKind,
-          markdownText: item.entry.markdownText,
-        },
-      ];
-    }),
-  );
+/** The current Thought's heading, which names the Turn's thinking status when it has one. */
+export function resolveThreadReasoningSummary(
+  agentItems: readonly ThreadAgentItemModel[],
+): ThreadLiveReasoningSummary | null {
+  const latest = agentItems.findLast((item) => item.type === "reasoning");
+  if (latest?.type !== "reasoning") return null;
+  const text = resolveThoughtHeading(latest.entry.markdownText);
+  return text === null ? null : { itemId: latest.entry.itemId, text };
 }
 
 function isIncompleteBlock(block: ThreadTranscriptBlockModel | null): boolean {

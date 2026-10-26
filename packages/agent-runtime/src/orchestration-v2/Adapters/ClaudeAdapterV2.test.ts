@@ -2450,73 +2450,115 @@ describe("ClaudeAdapterV2 background wake turns", () => {
       ),
   );
 
+  const PLANNING = { type: "thinking", thinking: "Planning the check", signature: "sig" } as const;
+  const UPDATE = {
+    type: "thinking",
+    thinking: "Found it: the memory file is the cause.",
+    signature: "sig",
+  } as const;
+  const NOTE = { type: "text", text: "Checking the memory file." } as const;
   it.effect.each([
-    { model: "claude-opus-5-5", expected: "assistant_message" },
-    { model: "claude-fable-5-1", expected: "assistant_message" },
-    { model: "claude-opus-5", expected: "reasoning" },
-    { model: "claude-sonnet-4-6", expected: "reasoning" },
-  ] as const)(
-    "shows $model thinking right before a tool call as $expected",
-    ({ model, expected }) =>
-      Effect.gen(function* () {
-        const harness = yield* makeWakeHarness;
-        yield* harness.runtime.startTurn(
-          makeClaudeTestTurnInput({
-            threadId: harness.threadId,
-            providerThread: harness.providerThread,
-            now: yield* DateTime.now,
-            attemptId: RunAttemptId.make("thinking-before-tool-attempt"),
-            text: "Check the memory file",
-            attachments: [],
-          }),
-        );
-        const snapshot = (uuid: string, content: ReadonlyArray<unknown>) =>
-          claudeSdkFrame({
-            type: "assistant",
-            uuid,
-            session_id: WAKE_NATIVE_SESSION,
-            parent_tool_use_id: null,
-            message: { id: "reply-message", model, content },
-          });
-        const frames = [
-          snapshot("reasoning-snapshot", [
-            { type: "thinking", thinking: "Planning the check", signature: "sig" },
-          ]),
-          snapshot("reply-snapshot", [
-            {
-              type: "thinking",
-              thinking: "Found it: the memory file is the cause.",
-              signature: "sig",
-            },
-          ]),
-          snapshot("tool-snapshot", [
-            { type: "tool_use", id: "tool-1", name: "Bash", input: { command: "ls" } },
-          ]),
-          makeResultFrame({ uuid: "thinking-before-tool-result", result: "" }),
-        ];
-        for (const frame of frames) yield* Queue.offer(harness.sdkMessages, frame);
-        yield* Queue.take(harness.terminalReceipts);
-        const latest = new Map(
-          harness.events.flatMap((event) =>
-            event.type === "turn_item.updated" &&
-            (event.turnItem.type === "reasoning" || event.turnItem.type === "assistant_message")
-              ? [[event.turnItem.id, event.turnItem] as const]
-              : [],
-          ),
-        );
-        assert.deepEqual(
-          [...latest.values()].map((item) => [item.type, item.text]),
-          [
-            ["reasoning", "Planning the check"],
-            [expected, "Found it: the memory file is the cause."],
-          ],
-        );
-      }).pipe(
-        Effect.scoped,
-        Effect.provide(
-          Layer.mergeAll(IdAllocator.layer, McpProviderSessions.layer, NodeServices.layer),
+    {
+      name: "the second of two opus-5-5 thinking blocks as an update",
+      model: "claude-opus-5-5",
+      blocks: [PLANNING, UPDATE],
+      expected: [
+        ["reasoning", PLANNING.thinking],
+        ["assistant_message", UPDATE.thinking],
+      ],
+    },
+    {
+      name: "the second of two fable-5-1 thinking blocks as an update",
+      model: "claude-fable-5-1",
+      blocks: [PLANNING, UPDATE],
+      expected: [
+        ["reasoning", PLANNING.thinking],
+        ["assistant_message", UPDATE.thinking],
+      ],
+    },
+    {
+      name: "a lone opus-5-5 thinking block as thinking",
+      model: "claude-opus-5-5",
+      blocks: [PLANNING],
+      expected: [["reasoning", PLANNING.thinking]],
+    },
+    {
+      name: "opus-5-5 thinking after text as thinking",
+      model: "claude-opus-5-5",
+      blocks: [PLANNING, NOTE, UPDATE],
+      expected: [
+        ["reasoning", PLANNING.thinking],
+        ["assistant_message", NOTE.text],
+        ["reasoning", UPDATE.thinking],
+      ],
+    },
+    {
+      name: "two opus-5 thinking blocks as thinking",
+      model: "claude-opus-5",
+      blocks: [PLANNING, UPDATE],
+      expected: [
+        ["reasoning", PLANNING.thinking],
+        ["reasoning", UPDATE.thinking],
+      ],
+    },
+    {
+      name: "two sonnet-4-6 thinking blocks as thinking",
+      model: "claude-sonnet-4-6",
+      blocks: [PLANNING, UPDATE],
+      expected: [
+        ["reasoning", PLANNING.thinking],
+        ["reasoning", UPDATE.thinking],
+      ],
+    },
+  ] as const)("shows $name right before a tool call", ({ model, blocks, expected }) =>
+    Effect.gen(function* () {
+      const harness = yield* makeWakeHarness;
+      yield* harness.runtime.startTurn(
+        makeClaudeTestTurnInput({
+          threadId: harness.threadId,
+          providerThread: harness.providerThread,
+          now: yield* DateTime.now,
+          attemptId: RunAttemptId.make("thinking-before-tool-attempt"),
+          text: "Check the memory file",
+          attachments: [],
+        }),
+      );
+      const snapshot = (uuid: string, content: ReadonlyArray<unknown>) =>
+        claudeSdkFrame({
+          type: "assistant",
+          uuid,
+          session_id: WAKE_NATIVE_SESSION,
+          parent_tool_use_id: null,
+          message: { id: "reply-message", model, content },
+        });
+      // The SDK emits one assistant snapshot per completed content block.
+      const frames = [
+        ...blocks.map((block, index) => snapshot(`block-snapshot-${index}`, [block])),
+        snapshot("tool-snapshot", [
+          { type: "tool_use", id: "tool-1", name: "Bash", input: { command: "ls" } },
+        ]),
+        makeResultFrame({ uuid: "thinking-before-tool-result", result: "" }),
+      ];
+      for (const frame of frames) yield* Queue.offer(harness.sdkMessages, frame);
+      yield* Queue.take(harness.terminalReceipts);
+      const latest = new Map(
+        harness.events.flatMap((event) =>
+          event.type === "turn_item.updated" &&
+          (event.turnItem.type === "reasoning" || event.turnItem.type === "assistant_message")
+            ? [[event.turnItem.id, event.turnItem] as const]
+            : [],
         ),
+      );
+      assert.deepEqual(
+        [...latest.values()].map((item) => [item.type, item.text]),
+        expected.map(([type, text]) => [type, text]),
+      );
+    }).pipe(
+      Effect.scoped,
+      Effect.provide(
+        Layer.mergeAll(IdAllocator.layer, McpProviderSessions.layer, NodeServices.layer),
       ),
+    ),
   );
 
   it.effect.each(["cancelled", "denied", "permission_denied", undefined])(

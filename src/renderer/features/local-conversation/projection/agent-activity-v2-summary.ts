@@ -151,6 +151,9 @@ export function isThreadAgentActivityItemInProgress(
   const item = activityItem.item;
   if (!("entry" in item)) return item.status === "working";
   switch (item.type) {
+    // Thinking is not running work: an open group with no running tool is thinking.
+    case "reasoning":
+      return false;
     case "delegatedTask":
       return (item.delegatedTaskEntries ?? [item.entry]).some(
         (entry) => entry.delegatedTask && isDelegatedTaskLive(entry.delegatedTask.status),
@@ -183,7 +186,7 @@ function selectThreadExplorationActivityItem(
   let latestExplorationItem: ThreadAgentActivityItem<ThreadClassifiableActivityItem> | null = null;
   for (let index = unit.items.length - 1; index >= 0; index -= 1) {
     const activityItem = unit.items[index];
-    if (activityItem == null) continue;
+    if (activityItem == null || activityItem.item.type === "reasoning") continue;
     if (!isThreadExplorationActivityItem(activityItem.item)) {
       if (latestExplorationItem != null) break;
       continue;

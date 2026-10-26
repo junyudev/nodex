@@ -14,6 +14,7 @@ import type {
   CodexMultiAgentReceiverThread,
 } from "./codex-transcript-special-items";
 import { normalizeMultiAgentActionPayload } from "./codex-transcript-special-items";
+import { resolveThoughtHeading } from "./thought-presentation";
 /** One pure row contract shared by overview, transcript, summary and mentions. */
 export interface CodexSubagentRow {
   /** Current child metadata is available; parent transcript events confer no capability. */
@@ -409,9 +410,12 @@ function resolveStatusSummary(child: SubagentConversation | null): string | null
   for (let itemIndex = latestTurn.items.length - 1; itemIndex >= 0; itemIndex -= 1) {
     const item = latestTurn.items[itemIndex];
     if (item?.semanticKind !== "reasoning" && item?.type !== "reasoning") continue;
+    // Only a Thought's heading is a status; prose thinking leaves the row Working.
     const candidates = getReasoningSummaryCandidates(item);
     for (let index = candidates.length - 1; index >= 0; index -= 1) {
-      const summary = cleanupBackgroundSubagentStatusSummary(candidates[index]);
+      const summary = cleanupBackgroundSubagentStatusSummary(
+        resolveThoughtHeading(candidates[index]),
+      );
       if (summary) return summary;
     }
   }

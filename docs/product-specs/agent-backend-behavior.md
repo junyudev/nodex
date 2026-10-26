@@ -185,6 +185,16 @@ Read-only task details retain the opening view and parent Thread context when th
 trigger unmounts or the selected task changes. They remain observations and do not
 acquire a product Session attachment or execution controls.
 
+## Thinking
+
+Claude Code returns summarized thinking. Each thinking block is one Thought that streams
+in place and keeps the position it started at among the Run's work; ACP thought segments
+and OpenCode reasoning parts are Thoughts the same way. Claude 5.1 and later may write
+the note that precedes a tool call as a second thinking block: only the second of two
+consecutive thinking blocks directly before a tool call becomes that reply, while a lone
+thinking block before a tool call stays a Thought. Every Agent's Thoughts share the
+presentation in [Thoughts](codex-thread-transcript-behavior.md#thoughts).
+
 ## Scheduled work
 
 Scheduled work uses ordinary Agent Runtime Session admission, due leases, durable

@@ -435,10 +435,11 @@ function ThreadTurnBody({
   );
 }
 
+/** The Turn's thinking status: always one line, truncated at the Thread's width. */
 export function ThreadLiveActivityFallback({ message }: { message?: ReactNode }) {
   return (
     <div className="min-w-0 py-0">
-      <CodexShimmerText className="font-sans text-size-chat leading-[calc(var(--codex-chat-font-size)_+_8px)] truncate text-token-foreground/30">
+      <CodexShimmerText className="block font-sans text-size-chat leading-[calc(var(--codex-chat-font-size)_+_8px)] truncate text-token-foreground/30">
         {message ?? "Thinking"}
       </CodexShimmerText>
     </div>
