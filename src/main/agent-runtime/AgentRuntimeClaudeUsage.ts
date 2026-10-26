@@ -65,6 +65,10 @@ export interface AgentRuntimeClaudeUsageOptions {
   readonly known: Effect.Effect<Providers | null, unknown>;
   /** Checks the named Agents again from scratch, starting execution when it is stopped. */
   readonly refresh: (instanceIds: readonly string[]) => Effect.Effect<Providers, unknown>;
+  /** The same check only while execution already runs; null when it is stopped. */
+  readonly refreshWhileRunning: (
+    instanceIds: readonly string[],
+  ) => Effect.Effect<Providers | null, unknown>;
   readonly logout: (instanceIds: readonly string[]) => Effect.Effect<Providers, unknown>;
   /** Whole catalogs execution served to anything else, such as a model menu. */
   readonly served: Stream.Stream<Providers>;
@@ -92,9 +96,9 @@ export function adoptClaudeRows(current: Providers | null, catalog: Providers): 
 
 /**
  * Main's one owner of Claude subscription usage, so every window shows the same reading. It reads
- * only through the Claude Agents' own checks. Only keeping a shown meter current and an explicit
- * refresh may start execution; launching, saving settings and every execution event merely take
- * over what Nodex already knows.
+ * only through the Claude Agents' own checks. A shown meter is read again every interval while
+ * execution runs anyway; only someone asking, by opening a card, starts it to read. Launching,
+ * saving settings and every execution event merely take over what Nodex already knows.
  */
 export const make = Effect.fn("AgentRuntimeClaudeUsage.make")(function* (
   options: AgentRuntimeClaudeUsageOptions,
@@ -105,17 +109,18 @@ export const make = Effect.fn("AgentRuntimeClaudeUsage.make")(function* (
   const floorMs = Duration.toMillis(
     Duration.fromInputUnsafe(options.refreshFloor ?? CLAUDE_USAGE_REFRESH_FLOOR),
   );
-  // A launch stays quiet: the first read of its own waits an interval, like every later one.
+  // The first read of its own waits an interval after launch, like every later one.
   const startedAt = yield* Clock.currentTimeMillis;
   const snapshot = yield* SubscriptionRef.make<ClaudeUsageSnapshot>({
     status: "loading",
     providers: null,
     reason: null,
   });
+  /** Paces reading again: every from-scratch attempt, even one skipped while stopped. */
   const lastAttemptAt = yield* Ref.make(startedAt);
+  /** Floors explicit refreshes: from-scratch reads that actually ran. */
   const lastFreshReadAt = yield* Ref.make<number | null>(null);
   const reads = yield* Semaphore.make(1);
-  const freshInFlight = yield* Ref.make<Deferred.Deferred<void> | null>(null);
   // Each wakes its loop to reconsider; sliding so a burst of requests asks once.
   const schedule = yield* Queue.sliding<void>(1);
   const rereads = yield* Queue.sliding<void>(1);
@@ -140,7 +145,6 @@ export const make = Effect.fn("AgentRuntimeClaudeUsage.make")(function* (
    */
   const readKnown = reads.withPermits(1)(
     Effect.gen(function* () {
-      yield* Ref.set(lastAttemptAt, yield* Clock.currentTimeMillis);
       const result = yield* Effect.result(
         options.declared.pipe(
           Effect.flatMap((instanceIds) =>
@@ -171,30 +175,48 @@ export const make = Effect.fn("AgentRuntimeClaudeUsage.make")(function* (
     }),
   );
 
-  /** Reads the declared Claude Agents again from scratch. A failed read keeps what was read. */
-  const readNow = reads.withPermits(1)(
+  /**
+   * Reads the declared Claude Agents again from scratch; `start` lets it start execution to do
+   * so. A failed read keeps what was read, and one skipped while stopped changes nothing.
+   */
+  const readNow = (start: boolean) =>
     Effect.gen(function* () {
       const now = yield* Clock.currentTimeMillis;
       yield* Ref.set(lastAttemptAt, now);
-      yield* Ref.set(lastFreshReadAt, now);
       const result = yield* Effect.result(
         options.declared.pipe(
           Effect.flatMap((instanceIds) =>
             instanceIds.length === 0
               ? Effect.succeed([] as Providers)
-              : options.refresh(instanceIds),
+              : start
+                ? options.refresh(instanceIds)
+                : options.refreshWhileRunning(instanceIds),
           ),
         ),
       );
       if (Result.isFailure(result)) return yield* publishFailure(result.failure);
+      if (result.success === null) return;
+      yield* Ref.set(lastFreshReadAt, now);
       yield* publish({ status: "ready", providers: claudeRows(result.success), reason: null });
+    });
+
+  /**
+   * Someone asked to see current usage. Callers that arrive while one read runs share it, and a
+   * read that ran moments ago, on its own or for an earlier caller, stands in.
+   */
+  const askedInFlight = yield* Ref.make<Deferred.Deferred<void> | null>(null);
+  const readAsked = reads.withPermits(1)(
+    Effect.gen(function* () {
+      const current = yield* SubscriptionRef.get(snapshot);
+      const last = yield* Ref.get(lastFreshReadAt);
+      const now = yield* Clock.currentTimeMillis;
+      if (current.status !== "unavailable" && last !== null && now - last < floorMs) return;
+      yield* readNow(true);
     }),
   );
-
-  /** A fresh read; callers that arrive while one runs share it. */
-  const readFresh = Effect.gen(function* () {
+  const refresh = Effect.gen(function* () {
     const claimed = yield* Ref.modify(
-      freshInFlight,
+      askedInFlight,
       (
         current,
       ): readonly [
@@ -208,23 +230,15 @@ export const make = Effect.fn("AgentRuntimeClaudeUsage.make")(function* (
     );
     // Forked into this owner's scope so an interrupted caller cannot cancel a shared read.
     if (claimed.owner)
-      yield* readNow.pipe(
+      yield* readAsked.pipe(
         Effect.ensuring(
-          Ref.set(freshInFlight, null).pipe(
+          Ref.set(askedInFlight, null).pipe(
             Effect.andThen(Deferred.succeed(claimed.done, undefined)),
           ),
         ),
         Effect.forkIn(scope),
       );
     yield* Deferred.await(claimed.done);
-  });
-
-  const refresh = Effect.gen(function* () {
-    const current = yield* SubscriptionRef.get(snapshot);
-    const last = yield* Ref.get(lastFreshReadAt);
-    const now = yield* Clock.currentTimeMillis;
-    if (current.status !== "unavailable" && last !== null && now - last < floorMs) return current;
-    yield* readFresh;
     return yield* SubscriptionRef.get(snapshot);
   });
 
@@ -233,15 +247,15 @@ export const make = Effect.fn("AgentRuntimeClaudeUsage.make")(function* (
     Effect.forkScoped,
   );
 
-  // A shown meter is kept no older than the interval. When nothing could be read at all, the
-  // same pace retries until something answers. Nothing else here starts execution.
+  // While execution runs, a shown meter is kept no older than the interval, and a read that
+  // failed with nothing to show is retried at the same pace. Neither starts execution.
   const nextRead = Effect.gen(function* () {
     const current = yield* SubscriptionRef.get(snapshot);
     const metered = meteredClaudeProviders(current.providers);
     if (metered.length > 0)
       return nextClaudeUsageReadAt({
         readings: metered.map(claudeUsageReadAt),
-        lastAttemptAt: (yield* Ref.get(lastFreshReadAt)) ?? startedAt,
+        lastAttemptAt: yield* Ref.get(lastAttemptAt),
         intervalMs,
       });
     if (current.status === "unavailable" && current.providers === null)
@@ -258,7 +272,7 @@ export const make = Effect.fn("AgentRuntimeClaudeUsage.make")(function* (
         Effect.sleep(Duration.millis(delay)).pipe(Effect.as(true)),
         Queue.take(schedule).pipe(Effect.as(false)),
       );
-      if (due) yield* readFresh;
+      if (due) yield* reads.withPermits(1)(readNow(false));
     }),
   ).pipe(Effect.forkScoped);
 

@@ -668,6 +668,8 @@ const supervisor = Layer.effectContext(
       ),
       known: product.knownCatalog(),
       refresh: (instanceIds) => product.catalog({ instanceIds, refresh: true }),
+      refreshWhileRunning: (instanceIds) =>
+        product.catalogWhileRunning({ instanceIds, refresh: true }),
       logout: product.logoutProviders,
       served: providerCatalog.served,
       connectionChanges: runtime.connectionChanges,

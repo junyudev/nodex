@@ -153,6 +153,8 @@ export function claudeRateLimitEventToUpdate(
 /**
  * Percentages on the `get_usage` response are already 0–100. Also yields the
  * scoped-bucket names the response carried, for the event mapper to reuse.
+ * An account that has limits but no windows in the answer is one Claude Code
+ * could not read this time, not one without limits.
  */
 export function claudeUsageResponseToLimits(input: {
   readonly response: Pick<SDKControlGetUsageResponse, "rate_limits_available" | "rate_limits">;
@@ -161,7 +163,10 @@ export function claudeUsageResponseToLimits(input: {
   const { response, checkedAt } = input;
   if (!response.rate_limits_available || !response.rate_limits) {
     return {
-      limits: makeUnavailableUsageLimits({ checkedAt, reason: "unsupported" }),
+      limits: makeUnavailableUsageLimits({
+        checkedAt,
+        reason: response.rate_limits_available ? "probeFailed" : "unsupported",
+      }),
       names: { overageIncluded: undefined },
     };
   }
@@ -189,11 +194,64 @@ export function claudeUsageResponseToLimits(input: {
   };
 }
 
-/** Probe-side helper: map the response and remember the scoped names for events. */
+/** The account-wide windows of one usage reading, as Claude Code reports and stores them. */
+export interface ClaudeUsageWindowsReading {
+  readonly five_hour?: {
+    readonly utilization: number | null;
+    readonly resets_at: string | null;
+  } | null;
+  readonly seven_day?: {
+    readonly utilization: number | null;
+    readonly resets_at: string | null;
+  } | null;
+}
+
+/** The reading Claude Code last stored for a login, and when it fetched it. */
+export interface ClaudeStoredUsage {
+  readonly fetchedAtMs: number;
+  readonly windows: ClaudeUsageWindowsReading;
+}
+
+const sameWindow = (
+  left: ClaudeUsageWindowsReading["five_hour"],
+  right: ClaudeUsageWindowsReading["five_hour"],
+) =>
+  (left?.utilization ?? null) === (right?.utilization ?? null) &&
+  (left?.resets_at ?? null) === (right?.resets_at ?? null);
+
+/**
+ * When the reading `get_usage` answered with was taken. Claude Code answers from the reading it
+ * stored while that is under a minute old, and from one up to an hour old when it cannot reach
+ * the usage service, without saying so. An answer whose account-wide windows match what it had
+ * stored before it was asked is therefore dated by when that reading was fetched; one that
+ * differs was fetched for this answer.
+ */
+export function claudeUsageTakenAt(input: {
+  readonly answer: ClaudeUsageWindowsReading | null | undefined;
+  /** What Claude Code had stored before it was asked. */
+  readonly stored: ClaudeStoredUsage | undefined;
+  readonly answeredAtMs: number;
+}): number {
+  const { answer, stored, answeredAtMs } = input;
+  const hasWindows = (windows: ClaudeUsageWindowsReading) =>
+    windows.five_hour?.utilization != null || windows.seven_day?.utilization != null;
+  if (!answer || !stored || !hasWindows(answer) || !hasWindows(stored.windows)) return answeredAtMs;
+  return sameWindow(answer.five_hour, stored.windows.five_hour) &&
+    sameWindow(answer.seven_day, stored.windows.seven_day)
+    ? Math.min(stored.fetchedAtMs, answeredAtMs)
+    : answeredAtMs;
+}
+
+/**
+ * Probe-side helper: map the response and remember the scoped names for events. A read that
+ * failed names nothing, so the names the last good read saw stay.
+ */
 export const recordClaudeUsageResponse = (
   namesRef: Ref.Ref<ClaudeScopedLimitNames>,
   input: Parameters<typeof claudeUsageResponseToLimits>[0],
 ): Effect.Effect<ServerProviderUsageLimits> => {
   const { limits, names } = claudeUsageResponseToLimits(input);
-  return Ref.set(namesRef, names).pipe(Effect.as(limits));
+  return limits.unavailable?.reason === "probeFailed"
+    ? Effect.succeed(limits)
+    : Ref.set(namesRef, names).pipe(Effect.as(limits));
 };

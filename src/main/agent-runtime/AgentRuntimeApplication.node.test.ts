@@ -2204,6 +2204,18 @@ it.effect("usage observers read the known catalog without ever starting executio
     declared.identity = "changed";
     assert.isNull(yield* owner.knownCatalog());
     assert.equal(reads(), 1);
+    // A check of named Agents reaches only a running process and never replaces the kept copy.
+    const first = live?.[0];
+    if (!first) throw new Error("Expected a live catalog");
+    const named = { instanceIds: [first.instanceId], refresh: true };
+    assert.isNull(yield* owner.catalogWhileRunning(named));
+    assert.equal(reads(), 1);
+    declared.running = true;
+    yield* owner.catalogWhileRunning(named);
+    assert.deepEqual(fixture.calls.at(-1), { method: "providers.read", input: named });
+    declared.identity = "declared";
+    declared.running = false;
+    assert.deepEqual(yield* owner.knownCatalog(), live);
   }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
 );
 

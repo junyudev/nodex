@@ -204,8 +204,9 @@ function CodexUsageMeter({
 }
 
 /**
- * One Claude account's meter. Opening its card asks Main for a fresh reading, as Main also does
- * on its own every five minutes; signing out signs out every Claude profile that reads it.
+ * One Claude account's meter. Opening its card asks Main for a fresh reading, starting Agent
+ * execution if it must; on its own Main reads only while execution runs. Signing out signs out
+ * every Claude profile that reads it.
  */
 function ClaudeUsageMeter({
   account,

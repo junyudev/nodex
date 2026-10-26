@@ -58,15 +58,19 @@ const codex = { instanceId: "codex", driver: "codex" } as unknown as Provider;
 
 const harness = (options: {
   readonly declared?: readonly string[];
+  /** Whether Agent execution is running; mutable so a test can stop or start it. */
+  readonly execution?: { running: boolean };
   /** What Nodex knows without starting execution. */
   readonly known?: () => Effect.Effect<Providers | null, Error>;
-  /** A from-scratch check, which may start execution. */
-  readonly refresh?: () => Effect.Effect<Providers, Error>;
+  /** A from-scratch check of the Claude Agents. */
+  readonly check?: () => Effect.Effect<Providers, Error>;
   readonly logout?: (instanceIds: readonly string[]) => Effect.Effect<Providers, Error>;
 }) =>
   Effect.gen(function* () {
-    const reads: ("known" | "refresh")[] = [];
-    const refreshed: (readonly string[])[] = [];
+    const execution = options.execution ?? { running: true };
+    /** `asked` may start execution; `poll` runs only while it already does. */
+    const reads: ("known" | "asked" | "poll")[] = [];
+    let skipped = 0;
     const served = yield* PubSub.unbounded<Providers>();
     const connection = yield* PubSub.unbounded<AgentRuntimeConnectionState>();
     const activity = yield* PubSub.unbounded<AgentRuntimeSessionActivityChange>();
@@ -74,17 +78,27 @@ const harness = (options: {
       Clock.currentTimeMillis.pipe(
         Effect.map((readAt): Providers => [codex, claude({ readAt, usedPercent })]),
       );
+    const check = () => options.check?.() ?? now(30);
     const usage = yield* make({
       declared: Effect.succeed(options.declared ?? ["claude-default"]),
       known: Effect.suspend(() => {
         reads.push("known");
         return options.known?.() ?? now(10);
       }),
-      refresh: (instanceIds) =>
+      refresh: () =>
         Effect.suspend(() => {
-          reads.push("refresh");
-          refreshed.push(instanceIds);
-          return options.refresh?.() ?? now(30);
+          reads.push("asked");
+          execution.running = true;
+          return check();
+        }),
+      refreshWhileRunning: () =>
+        Effect.suspend(() => {
+          if (!execution.running) {
+            skipped += 1;
+            return Effect.succeed(null);
+          }
+          reads.push("poll");
+          return check();
         }),
       logout: options.logout ?? (() => Effect.succeed([])),
       served: Stream.fromPubSub(served),
@@ -95,7 +109,16 @@ const harness = (options: {
       discard: true,
     });
     yield* settle;
-    return { usage, reads, refreshed, served, connection, activity, settle };
+    return {
+      usage,
+      reads,
+      skipped: () => skipped,
+      execution,
+      served,
+      connection,
+      activity,
+      settle,
+    };
   });
 
 it("reads usage again once the oldest reading is an interval old, never sooner than an attempt", () => {
@@ -133,17 +156,17 @@ it("a kept catalog never replaces an Agent that was checked more recently", () =
   assert.deepEqual(adoptClaudeRows([fresh], []), []);
 });
 
-it.effect("launches quietly, then keeps a shown reading no older than five minutes", () =>
+it.effect("keeps a shown reading no older than five minutes while execution runs", () =>
   Effect.scoped(
     Effect.gen(function* () {
-      const { usage, reads, refreshed, settle } = yield* harness({
+      const { usage, reads, settle } = yield* harness({
         // What Nodex kept from its last launch was read an hour ago.
         known: () =>
           Clock.currentTimeMillis.pipe(
             Effect.map((now) => [codex, claude({ readAt: now - 60 * MINUTE })]),
           ),
       });
-      // Launch only takes over what Nodex knows; nothing starts execution yet.
+      // Launch only takes over what Nodex knows.
       assert.deepEqual(reads, ["known"]);
       const launched = yield* SubscriptionRef.get(usage.snapshot);
       assert.strictEqual(launched.status, "ready");
@@ -157,8 +180,7 @@ it.effect("launches quietly, then keeps a shown reading no older than five minut
       assert.deepEqual(reads, ["known"]);
       yield* TestClock.adjust("1 minute");
       yield* settle;
-      assert.deepEqual(reads, ["known", "refresh"]);
-      assert.deepEqual(refreshed, [["claude-default"]]);
+      assert.deepEqual(reads, ["known", "poll"]);
       assert.strictEqual(
         (yield* SubscriptionRef.get(usage.snapshot)).providers?.[0]?.usageLimits?.windows[0]
           ?.usedPercent,
@@ -167,7 +189,29 @@ it.effect("launches quietly, then keeps a shown reading no older than five minut
 
       yield* TestClock.adjust("5 minutes");
       yield* settle;
-      assert.deepEqual(reads, ["known", "refresh", "refresh"]);
+      assert.deepEqual(reads, ["known", "poll", "poll"]);
+    }),
+  ).pipe(Effect.provide(TestClock.layer())),
+);
+
+it.effect("never starts stopped execution on its own, but an opened card does", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const execution = { running: false };
+      const { usage, reads, skipped, connection, settle } = yield* harness({ execution });
+      yield* TestClock.adjust("30 minutes");
+      yield* settle;
+      assert.deepEqual(reads, ["known"]);
+      // Each due read looked once and let execution be; none spun.
+      assert.strictEqual(skipped(), 6);
+
+      yield* usage.refresh;
+      assert.deepEqual(reads, ["known", "asked"]);
+
+      // Execution started for any reason reports its fresh checks.
+      yield* PubSub.publish(connection, { status: "ready", generation: "g1" });
+      yield* settle;
+      assert.deepEqual(reads, ["known", "asked", "known"]);
     }),
   ).pipe(Effect.provide(TestClock.layer())),
 );
@@ -177,16 +221,16 @@ it.effect("an opened card reads again unless it read moments ago, once for every
     Effect.gen(function* () {
       const { usage, reads, settle } = yield* harness({});
       yield* usage.refresh;
-      assert.deepEqual(reads, ["known", "refresh"]);
+      assert.deepEqual(reads, ["known", "asked"]);
       yield* usage.refresh;
-      assert.deepEqual(reads, ["known", "refresh"], "a refresh right after a read reuses it");
+      assert.deepEqual(reads, ["known", "asked"], "a refresh right after a read reuses it");
 
       yield* TestClock.adjust("90 seconds");
       yield* Effect.all([usage.refresh, usage.refresh, usage.refresh], {
         concurrency: "unbounded",
       });
       yield* settle;
-      assert.deepEqual(reads, ["known", "refresh", "refresh"]);
+      assert.deepEqual(reads, ["known", "asked", "asked"]);
     }),
   ).pipe(Effect.provide(TestClock.layer())),
 );
@@ -196,9 +240,9 @@ it.effect("a failed read keeps the last reading, says why, and retries on its ow
     Effect.gen(function* () {
       let failing = false;
       const { usage, reads, settle } = yield* harness({
-        refresh: () =>
+        check: () =>
           failing
-            ? Effect.fail(new Error("Agent execution could not start"))
+            ? Effect.fail(new Error("Claude Code did not answer"))
             : Clock.currentTimeMillis.pipe(Effect.map((now) => [claude({ readAt: now })])),
       });
       failing = true;
@@ -206,7 +250,7 @@ it.effect("a failed read keeps the last reading, says why, and retries on its ow
       yield* settle;
       const failed = yield* SubscriptionRef.get(usage.snapshot);
       assert.strictEqual(failed.status, "unavailable");
-      assert.strictEqual(failed.reason, "Agent execution could not start");
+      assert.strictEqual(failed.reason, "Claude Code did not answer");
       assert.strictEqual(failed.providers?.[0]?.usageLimits?.checkedAt, new Date(0).toISOString());
       const attempts = reads.length;
       yield* TestClock.adjust("5 minutes");
@@ -216,7 +260,7 @@ it.effect("a failed read keeps the last reading, says why, and retries on its ow
       // A click asks again at once, even right after the failure.
       failing = false;
       assert.strictEqual((yield* usage.refresh).status, "ready");
-      assert.strictEqual(reads.length, attempts + 2);
+      assert.deepEqual(reads.at(-1), "asked");
     }),
   ).pipe(Effect.provide(TestClock.layer())),
 );
@@ -224,7 +268,8 @@ it.effect("a failed read keeps the last reading, says why, and retries on its ow
 it.effect("with nothing known and execution stopped, nothing is shown or started", () =>
   Effect.scoped(
     Effect.gen(function* () {
-      const { usage, reads, connection, settle } = yield* harness({
+      const { usage, reads, skipped, connection, settle } = yield* harness({
+        execution: { running: false },
         known: () => Effect.succeed(null),
       });
       assert.deepEqual(yield* SubscriptionRef.get(usage.snapshot), {
@@ -235,6 +280,7 @@ it.effect("with nothing known and execution stopped, nothing is shown or started
       yield* TestClock.adjust("1 hour");
       yield* settle;
       assert.deepEqual(reads, ["known"]);
+      assert.strictEqual(skipped(), 0);
 
       // Execution starting for any other reason reads what it reports.
       yield* PubSub.publish(connection, { status: "ready", generation: "g1" });

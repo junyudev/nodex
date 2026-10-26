@@ -652,10 +652,9 @@ as long as the execution build and the provider settings and installation it des
 unchanged; otherwise the listing starts the process. A running process always answers live,
 and an explicit refresh always reaches it; a refresh that names Agents checks only those, from
 scratch, so the usage they report is read again rather than reused from a recent check. Claude
-usage meters otherwise only take over what is known, never starting the process; their
-five-minute and on-open refreshes are such named refreshes and start it when it is stopped, the
-first no sooner than five minutes after launch (see the rail foot in
-[Workbench shell](workbench-shell.md)). A provider check that ends without an answer, such
+usage meters never start the process on their own: their five-minute refresh is such a named
+refresh made only while the process runs, and only opening a Claude usage card starts it to read
+(see the rail foot in [Workbench shell](workbench-shell.md)). A provider check that ends without an answer, such
 as when the provider's service cannot be reached, is retried on its own after 15 seconds,
 doubling up to the provider health interval, until a check settles; a signed-out provider
 waits for the user instead. Opening the model menu reads the catalog again without forcing a

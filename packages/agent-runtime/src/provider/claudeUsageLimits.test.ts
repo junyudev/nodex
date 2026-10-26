@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { claudeRateLimitEventToUpdate, claudeUsageResponseToLimits } from "./claudeUsageLimits.ts";
+import {
+  claudeRateLimitEventToUpdate,
+  claudeUsageResponseToLimits,
+  claudeUsageTakenAt,
+} from "./claudeUsageLimits.ts";
 
 const checkedAt = "2026-07-18T10:00:00.000Z";
 const noNames = { overageIncluded: undefined } as const;
@@ -84,6 +88,15 @@ describe("claudeUsageResponseToLimits", () => {
         },
       }).names,
     ).toEqual({ overageIncluded: "Fable" });
+  });
+
+  it("reads an account whose windows Claude Code could not fetch as a failed read", () => {
+    expect(
+      claudeUsageResponseToLimits({
+        checkedAt,
+        response: { rate_limits_available: true, rate_limits: null },
+      }).limits,
+    ).toEqual({ checkedAt, windows: [], unavailable: { reason: "probeFailed" } });
   });
 
   it("reports API key and Bedrock accounts as unsupported", () => {
@@ -176,5 +189,39 @@ describe("claudeRateLimitEventToUpdate", () => {
     expect(
       claudeRateLimitEventToUpdate({ status: "rejected", rateLimitType: "five_hour" }, noNames),
     ).toBeUndefined();
+  });
+});
+
+describe("claudeUsageTakenAt", () => {
+  const answeredAtMs = Date.parse("2026-10-26T10:00:00.000Z");
+  const stored = {
+    fetchedAtMs: Date.parse("2026-10-26T09:20:00.000Z"),
+    windows: {
+      five_hour: { utilization: 40, resets_at: "2026-10-26T12:00:00Z" },
+      seven_day: { utilization: 18, resets_at: "2026-10-30T08:00:00Z" },
+    },
+  };
+
+  it("dates an answer Claude Code gave from its stored reading by when it fetched that", () => {
+    // Claude Code could not reach the usage service and answered with what it kept.
+    expect(claudeUsageTakenAt({ answer: stored.windows, stored, answeredAtMs })).toBe(
+      stored.fetchedAtMs,
+    );
+  });
+
+  it("dates an answer that moved since the stored reading by when it arrived", () => {
+    const answer = {
+      ...stored.windows,
+      five_hour: { ...stored.windows.five_hour, utilization: 41 },
+    };
+    expect(claudeUsageTakenAt({ answer, stored, answeredAtMs })).toBe(answeredAtMs);
+    expect(claudeUsageTakenAt({ answer, stored: undefined, answeredAtMs })).toBe(answeredAtMs);
+  });
+
+  it("never dates an answer later than it arrived", () => {
+    const ahead = { ...stored, fetchedAtMs: answeredAtMs + 60_000 };
+    expect(claudeUsageTakenAt({ answer: stored.windows, stored: ahead, answeredAtMs })).toBe(
+      answeredAtMs,
+    );
   });
 });

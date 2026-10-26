@@ -259,6 +259,20 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
     );
   const ownedWrite = <A, E, R>(operation: string, effect: Effect.Effect<A, E, R>) =>
     owned(operation, options.withWriter ? options.withWriter(effect) : effect);
+  /** Reads providers from a running process, holding it meanwhile; a whole catalog is kept. */
+  const liveCatalog = (input: AgentRuntimeOperations["providers.read"]["input"]) =>
+    Effect.gen(function* () {
+      if (!options.whileRunning) return null;
+      const live = yield* options.whileRunning(
+        Effect.gen(function* () {
+          const connection = yield* options.connect;
+          return yield* connection.request("providers.read", input);
+        }),
+      );
+      if (live && !input.instanceIds && options.providerCatalog)
+        yield* options.providerCatalog.record(live);
+      return live;
+    });
   const withSessionLane = <A, E, R>(
     sessionId: string,
     use: Effect.Effect<A, E, R>,
@@ -2771,21 +2785,14 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
       owned(
         "catalog",
         Effect.gen(function* () {
-          const live = options.whileRunning
-            ? yield* options.whileRunning(
-                Effect.gen(function* () {
-                  const connection = yield* options.connect;
-                  return yield* connection.request("providers.read", {});
-                }),
-              )
-            : null;
-          if (live) {
-            if (options.providerCatalog) yield* options.providerCatalog.record(live);
-            return live;
-          }
+          const live = yield* liveCatalog({});
+          if (live) return live;
           return options.providerCatalog ? yield* options.providerCatalog.saved : null;
         }),
       ),
+    /** A provider read only while execution already runs; null when it is stopped. */
+    catalogWhileRunning: (input: AgentRuntimeOperations["providers.read"]["input"]) =>
+      owned("catalog", liveCatalog(input)),
     history: (
       input: AgentRuntimeSessionTarget &
         Omit<AgentRuntimeOperations["thread.history"]["input"], "threadId">,
