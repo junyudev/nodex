@@ -1,0 +1,83 @@
+docs/product-specs/codex-thread-transcript-behavior.md
+  s_12fe0f28d3d315::t_8d35819b96ef85 330-331
+src/renderer/features/local-conversation/view/ordinary-history-position.browser.test.tsx
+  s_12fe0f28d3d315::t_c4cbf949b2e4f6 236-239
+src/renderer/features/local-conversation/view/local-conversation-find-placement.browser.test.tsx
+  s_12fe0f28d3d315::t_19b39261cc8435 29
+  s_12fe0f28d3d315::t_f90998d9ef3e47 495,499
+src/renderer/features/local-conversation/view/local-conversation-response-space.ts
+  s_12fe0f28d3d315::t_860c62b5536223 71-72
+  s_12fe0f28d3d315::t_b9530a9f236590 133-138
+src/renderer/features/local-conversation/view/local-conversation-virtualized-turn-list.tsx
+  s_12fe0f28d3d315::t_c5edf685315d3b 1297
+  s_12fe0f28d3d315::t_97b37931f30457 1647,1649
+  s_12fe0f28d3d315::t_186a010c17c086 1691,1695,1699-1702,1704-1710,1712-1717
+  s_12fe0f28d3d315::t_605de910fa9ba3 1282-1286
+  s_12fe0f28d3d315::t_7bcb015813b7ee 156-190
+  s_12fe0f28d3d315::t_675d3664523be9 1703,1734,1737-1738
+  s_12fe0f28d3d315::t_337cd07af56fca 843-844,846-854,858-859,861-866
+  s_12fe0f28d3d315::t_fd64367adc243c 1208,1211-1213
+  s_12fe0f28d3d315::t_29a72001121a25 1139-1140,1142-1143
+  s_12fe0f28d3d315::t_701875e3764348 1170
+  s_12fe0f28d3d315::t_25623b6d118580 1093,1103-1138,1141,1144
+  s_445cea4ff32a57::t_ca7ff8a77ba878 1214
+src/renderer/features/local-conversation/view/local-conversation-runtime-scroll-intent.browser.test.tsx
+  s_12fe0f28d3d315::t_29a72001121a25 414-416,450-451
+  s_12fe0f28d3d315::t_29b63e09e8b04f 25,394,405-406,409,466
+src/renderer/features/local-conversation/view/local-conversation-native-find-scroll.jsdom.test.ts
+  s_12fe0f28d3d315::t_69b57826ea6d8a 23,34,81-83,85,275-277
+src/renderer/features/local-conversation/view/local-conversation-native-find-scroll.ts
+  s_12fe0f28d3d315::t_2337c66ba96906 38-39
+CHANGELOG.md
+  s_12fe0f28d3d315::t_abcd468340e05b 34
+src/renderer/features/local-conversation/view/local-conversation-footer.test.tsx
+  s_12fe0f28d3d315::t_df08e818b149ba 471,507
+src/renderer/features/local-conversation/view/local-conversation-viewport-motion.browser.test.tsx
+  s_12fe0f28d3d315::t_efe24f3ba61c5f 474,488-494,500
+  s_12fe0f28d3d315::t_771a04e81ac551 21,23,297,323,332,336,437,446,450,455,775
+  s_12fe0f28d3d315::t_a51bc0705e9a05 463-473,475-487,495-499,501-510
+  s_12fe0f28d3d315::t_83b9c441619e99 3-11
+src/renderer/features/local-conversation/view/automatic-history.browser.test.tsx
+  s_12fe0f28d3d315::t_975631a3067e92 29,362,415,423-426,449,464,488
+src/renderer/features/local-conversation/view/local-conversation-thread-scroll-controller.jsdom.test.ts
+  s_12fe0f28d3d315::t_5d2abeace7a0cb 32-33,39,42-43,49,90-100,104,107,110,114,117
+  s_12fe0f28d3d315::t_29a72001121a25 34-38,44-48
+src/renderer/features/local-conversation/view/local-conversation-thread-scroll-controller.test.tsx
+  s_12fe0f28d3d315::t_b1bd7ec9aac848 127
+  s_12fe0f28d3d315::t_c8215ca438d021 680,689-706
+  s_12fe0f28d3d315::t_1811b9100c39f4 90-91,93-97,102-104,114-126,128-143,145-150,218,238,603,643,668,727,735-736,742-743,755,766,774,974
+src/renderer/features/local-conversation/view/local-conversation-thread-scroll-controller.tsx
+  s_12fe0f28d3d315::t_acbd0176556ac3 167-169
+  s_12fe0f28d3d315::t_957e941a9ce443 320
+  s_12fe0f28d3d315::t_b3b87144d2a2cc 159-166,173,181,184-189
+  s_12fe0f28d3d315::t_4e85e72d33e99c 321-326,329
+  s_12fe0f28d3d315::t_b1bd7ec9aac848 752-755,757
+  s_12fe0f28d3d315::t_05dde40150fab8 760-762,764-765,767-768,770-779,795,810,825
+  s_12fe0f28d3d315::t_f9723c758ec564 124
+  s_12fe0f28d3d315::t_8cdc09cf7f1488 411,537,540-542,551,559-569,571,611
+  s_12fe0f28d3d315::t_ddcadd06bc8dc6 763,766,769
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "be305b3bfd75424e06fba2f9b757bc30cefc40fc",
+  "prompts": {},
+  "sessions": {
+    "s_12fe0f28d3d315": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "83dd57e0-af19-4169-ba3b-3666671efae7",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_445cea4ff32a57": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a175e1-7cbe-7db2-958f-9b2dc1d1a3e0",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
