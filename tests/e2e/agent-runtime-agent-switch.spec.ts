@@ -32,6 +32,7 @@ const invoke = <Channel extends keyof IpcApi>(
 interface NativeRecord {
   readonly kind: "codex" | "claude";
   readonly event: string;
+  readonly threadId?: string;
   readonly prompt?: string;
   readonly items?: unknown;
 }
@@ -245,5 +246,96 @@ test("merges a fork's finished work back into the chat it came from with that ch
     await expect(
       page.locator('[data-runtime-notice="agentHandoff"]').filter({ visible: true }),
     ).toContainText("Fork merged back");
+  });
+});
+
+test("clears a chat's context so its next message starts fresh on any Agent, keeping its panels", async ({}, testInfo) => {
+  test.setTimeout(240_000);
+  const evidence = process.env.NODEX_E2E_EVIDENCE_DIR ?? testInfo.outputPath("clear-context");
+  fs.mkdirSync(evidence, { recursive: true });
+  await withAgentPeers(testInfo, "clear-context", async ({ page, send, records, models }) => {
+    const capture = async (name: string) => {
+      // Assertions own settling; keep a readable frame of each verified state.
+      await page.waitForTimeout(400);
+      const body = await page.screenshot({
+        path: path.join(evidence, `${name}.png`),
+        animations: "disabled",
+      });
+      await testInfo.attach(name, { body, contentType: "image/png" });
+    };
+    const prompts = (kind: NativeRecord["kind"]) =>
+      records().filter((record) => record.kind === kind && record.event === "prompt");
+    const composer = page.locator('[data-codex-composer="true"]:visible');
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.screencast.start({
+      path: path.join(evidence, "clear-context.webm"),
+      size: { width: 1440, height: 900 },
+      annotate: { position: "bottom", fontSize: 14 },
+    });
+    try {
+      await send("Remember the codeword ORCHID", "Codex child report", 1);
+      const earlier = prompts("codex").at(-1);
+
+      // The chat's panels belong to its Session, not to its context.
+      await page.getByRole("button", { name: "New tab", exact: true }).click();
+      await page
+        .locator('[data-thread-side-panel-new-tab-action-grid="true"]')
+        .getByRole("button", { name: /^Files/u })
+        .click();
+      const files = page.getByRole("tab", { name: "Files", exact: true });
+      await expect(files).toBeVisible();
+      await capture("1-before-clear");
+
+      const chatActions = page.getByRole("button", { name: "Chat actions", exact: true });
+      const menuItem = page.getByRole("menuitem", { name: "Clear context", exact: true });
+      await chatActions.click();
+      await expect(menuItem).toBeVisible();
+      await capture("2-chat-actions");
+      // Escape would dismiss the Composer's next slash menu along with this one.
+      await chatActions.click();
+      await expect(menuItem).toBeHidden();
+
+      await composer.fill("/clear");
+      const clear = page.locator('[data-slash-command-row="clear"]');
+      await expect(clear).toContainText("Clear context");
+      await capture("3-slash-clear");
+      await clear.click();
+      const divider = page
+        .locator('[data-runtime-notice="contextCleared"]')
+        .filter({ visible: true });
+      await expect(divider).toHaveCount(1);
+      await expect(divider).toContainText("Context cleared");
+      await expect(files).toBeVisible();
+      await capture("4-cleared");
+
+      // Claude takes the next message with nothing from before the clear.
+      await chooseComposerModel(page, models.claude);
+      await send("What is the codeword?", "Claude child report", 1);
+      const claudePrompt = prompts("claude").at(-1)?.prompt ?? "";
+      expect(claudePrompt).toContain("What is the codeword?");
+      expect(claudePrompt).not.toContain("ORCHID");
+      expect(claudePrompt).not.toContain("Context handoff");
+      await expect(
+        page.locator('[data-runtime-notice="agentHandoff"]').filter({ visible: true }),
+      ).toHaveCount(0);
+      await divider.scrollIntoViewIfNeeded();
+      await capture("5-fresh-on-claude");
+
+      // Codex starts a new native conversation that receives only what followed the clear.
+      await chooseComposerModel(page, models.codex);
+      await send("Back on Codex", "Codex child report", 2);
+      const fresh = prompts("codex").at(-1);
+      expect(fresh?.prompt).toBe("Back on Codex");
+      expect(fresh?.threadId).not.toBe(earlier?.threadId);
+      const injected = records().filter((record) => record.event === "inject");
+      expect(injected.map((record) => record.threadId)).toEqual([fresh?.threadId]);
+      expect(JSON.stringify(injected[0]?.items)).toContain("What is the codeword?");
+      expect(JSON.stringify(injected[0]?.items)).not.toContain("ORCHID");
+      await expect(divider).toHaveCount(1);
+      await expect(files).toBeVisible();
+      await capture("6-back-on-codex");
+    } finally {
+      await page.screencast.stop();
+    }
   });
 });

@@ -2,6 +2,7 @@ import { memo, useCallback, useRef, useState } from "react";
 import {
   ArchiveIcon,
   ChatActionsIcon,
+  ClearContextIcon,
   EditIcon,
   SessionPinFilledIcon,
   SessionPinIcon,
@@ -60,7 +61,8 @@ function ThreadStageHeaderComponent({
   const canTogglePin = Boolean(model.threadId && actions.onToggleThreadPin);
   const canGenerateTitle = Boolean(model.threadId && provider?.generateTitle);
   const canForkThread = Boolean(model.threadId && actions.onForkThread);
-  const hasNewWorkActions = canForkThread || model.showSideChatAction;
+  const canClearContext = Boolean(model.threadId && actions.onClearContext);
+  const hasNewWorkActions = canForkThread || canClearContext || model.showSideChatAction;
   const opensSubagents = provider?.controls?.subagents === true;
   const canOpenNativeTasks = Boolean(
     model.threadId &&
@@ -224,6 +226,16 @@ function ThreadStageHeaderComponent({
                 </NodexDropdownItem>
               ))}
             </NodexDropdownFlyoutSubmenuItem>
+          ) : null}
+          {canClearContext ? (
+            <NodexDropdownItem
+              leftSlot={<ClearContextIcon className={menuIconClassName} />}
+              onSelect={() =>
+                void handleAction(actions.onClearContext, "Could not clear the context")
+              }
+            >
+              Clear context
+            </NodexDropdownItem>
           ) : null}
           {hasIdentityActions || hasNewWorkActions ? <NodexDropdownSeparator /> : null}
           <NodexDropdownFlyoutSubmenuItem

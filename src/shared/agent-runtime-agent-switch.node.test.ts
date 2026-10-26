@@ -27,6 +27,7 @@ const finished = {
       providerInstanceId: "codex",
       providerSessionId: "detached-session",
       nativeThreadRef: { driver: "codex", nativeId: "native", strength: "strong" },
+      firstRunOrdinal: 1,
     },
   ],
 } as unknown as Projection;
@@ -67,6 +68,17 @@ describe("Agent switching in a started chat", () => {
       } as unknown as Projection),
     ).toMatch(/can't continue on another Agent/u);
     expect(agentRuntimeAgentSwitchRefusal({ ...finished, runs: [] })).toBeNull();
+  });
+
+  it("lets a cleared chat start its fresh conversation on any Agent", () => {
+    expect(
+      agentRuntimeAgentSwitchRefusal({
+        ...finished,
+        providerThreads: [
+          { ...finished.providerThreads[0]!, nativeThreadRef: null, firstRunOrdinal: null },
+        ],
+      } as unknown as Projection),
+    ).toBeNull();
   });
 
   it("applies the chat's Agent rule to other Agents and the provider's model rule within one", () => {

@@ -429,6 +429,8 @@ export type CodexRuntimeNotice =
       readonly from: readonly CodexRuntimeNoticeAgent[];
       readonly to: CodexRuntimeNoticeAgent;
     }
+  /** The conversation's context ended here; later Turns start every Agent fresh. */
+  | { readonly kind: "contextCleared" }
   | { readonly kind: "info" };
 
 /** A configured Agent and the model it ran, named by the conversation's presentation. */

@@ -769,6 +769,15 @@ describe("Runtime message attribution and notices", () => {
       notice: { from: [{ providerInstanceId: "codex", model: null }] },
     });
   });
+
+  test("a cleared context reads as its own notice", () => {
+    expect(projectAgentRuntimeItem({ ...base, type: "context_cleared" })).toEqual({
+      type: "runtimeNotice",
+      id: "item",
+      message: "Context cleared",
+      notice: { kind: "contextCleared" },
+    });
+  });
 });
 
 describe("Runtime Turn metadata", () => {

@@ -2086,4 +2086,23 @@ describe("bucketizeTurnItems", () => {
     });
     expect(buckets.agentItems.map((item) => item.id)).toEqual(["task", "stopped"]);
   });
+
+  test("a cleared context closes its Turn after the reply it followed", () => {
+    const cleared = buildItem({
+      id: "cleared",
+      type: "runtimeNotice",
+      entry: { ...buildItem({}).entry, runtimeNotice: { kind: "contextCleared" } },
+    });
+    const user = buildItem({
+      id: "user",
+      type: "userMessage",
+      entry: { ...buildItem({}).entry, itemId: "user", kind: "userMessage" },
+    });
+    const buckets = bucketizeTurnItems({
+      items: [user, buildItem({ id: "work", type: "exec" }), buildItem({ id: "answer" }), cleared],
+    });
+    expect(buckets.assistantItem?.id).toBe("answer");
+    expect(buckets.agentItems.map((item) => item.id)).toEqual(["work"]);
+    expect(buckets.contextClearedItems.map((item) => item.id)).toEqual(["cleared"]);
+  });
 });

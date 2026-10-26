@@ -33,6 +33,7 @@ function createEmptyBuckets(): ThreadTurnRenderBuckets {
     remoteTaskCreatedItems: [],
     personalityChangedItems: [],
     forkedFromConversationItems: [],
+    contextClearedItems: [],
     modelChangedItems: [],
     modelReroutedItems: [],
   };
@@ -242,6 +243,12 @@ export function bucketizeTurnItems(input: BucketizeTurnItemsInput): ThreadTurnRe
 
     if (item.type === "modelRerouted") {
       buckets.modelReroutedItems.push(item);
+      continue;
+    }
+
+    // A cleared context closes its Turn, after the reply and anything that follows it.
+    if (item.type === "runtimeNotice" && item.entry.runtimeNotice?.kind === "contextCleared") {
+      buckets.contextClearedItems.push(item);
       continue;
     }
 

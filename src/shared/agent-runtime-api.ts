@@ -125,6 +125,10 @@ export type AgentRuntimeModeInput = AgentRuntimeSessionTarget & {
   readonly interactionMode?: CreateThread["interactionMode"];
 };
 export type AgentRuntimeCompactInput = AgentRuntimeSessionTarget & { readonly requestId: string };
+/** Ends the chat's context; its next message starts every Agent's conversation fresh. */
+export type AgentRuntimeClearContextInput = AgentRuntimeSessionTarget & {
+  readonly requestId: string;
+};
 export type AgentRuntimeQueueReadInput = AgentRuntimeSessionTarget & { readonly cursor?: string };
 export type AgentRuntimeQueuePage = AgentRuntimeOperations["thread.queue"]["output"];
 export type AgentRuntimeRunInput = AgentRuntimeSessionTarget & { readonly runId: string };
@@ -333,6 +337,10 @@ export interface AgentRuntimeIpcApi {
   "agent-runtime:session:compact": {
     args: [input: AgentRuntimeCompactInput];
     result: AgentRuntimeOperations["thread.compact"]["output"];
+  };
+  "agent-runtime:session:clear-context": {
+    args: [input: AgentRuntimeClearContextInput];
+    result: { readonly cleared: true };
   };
   "agent-runtime:session:rollback": {
     args: [input: AgentRuntimeRollbackInput];

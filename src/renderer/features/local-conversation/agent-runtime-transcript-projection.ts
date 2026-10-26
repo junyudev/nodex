@@ -735,6 +735,8 @@ export function projectAgentRuntimeItem(item: AgentTurnItem, cwd = ""): CodexCan
       return notice(item, "Stopped", { kind: "stopped" });
     case "system_notice":
       return notice(item, item.message);
+    case "context_cleared":
+      return notice(item, "Context cleared", { kind: "contextCleared" });
     case "handoff": {
       // The carried history itself stays with the Runtime; the notice names who continued.
       const to = { providerInstanceId: item.toProviderInstanceId, model: item.toModel ?? null };

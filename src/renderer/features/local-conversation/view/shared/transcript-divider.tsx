@@ -101,3 +101,22 @@ export function AgentHandoffDivider({ notice }: { readonly notice: AgentHandoffN
     </TranscriptDivider>
   );
 }
+
+/**
+ * Where the chat's context was cleared. Later messages start every Agent fresh; the earlier
+ * conversation stays readable here but no Agent receives it.
+ */
+export function ContextClearedDivider() {
+  const detail =
+    "Messages after this start with a fresh context. Agents no longer receive the conversation above.";
+  return (
+    <TranscriptDivider data-runtime-notice="contextCleared">
+      <NodexTooltip tooltipContent={detail}>
+        <span tabIndex={0} className="rounded-sm focus-visible:outline-2">
+          Context cleared
+          <span className="sr-only">{detail}</span>
+        </span>
+      </NodexTooltip>
+    </TranscriptDivider>
+  );
+}

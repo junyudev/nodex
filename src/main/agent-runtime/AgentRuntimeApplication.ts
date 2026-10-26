@@ -63,6 +63,7 @@ export type {
 import { agentExecutionThreadId } from "../../shared/agent-runtime-api";
 import { agentRuntimeProviderId } from "../../shared/agent-runtime-provider";
 import { agentRuntimeAgentSwitchRefusal } from "../../shared/agent-runtime-agent-switch";
+import { agentRuntimeContextClearRefusal } from "../../shared/agent-runtime-context-clear";
 import { agentRuntimeImageInputUnavailableReason } from "../../shared/agent-runtime-image-input";
 import type {
   NativeConversationImportInput,
@@ -1827,6 +1828,31 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
     } satisfies AgentRuntimeLaunchResult;
   });
 
+  /**
+   * Ends a chat's context after its latest finished Run. Its next message starts every Agent's
+   * conversation fresh, while the transcript, workspace and Session stay as they are.
+   */
+  const clearContext = Effect.fn("AgentRuntimeApplication.clearContext")(function* (
+    input: import("../../shared/agent-runtime-api").AgentRuntimeClearContextInput,
+  ) {
+    if (!validId(input.requestId))
+      return yield* failure("clear-context", "Request identity is required");
+    const connection = yield* options.connect;
+    const loaded = yield* targetInfo(connection, input, true);
+    const control = yield* connection.request("thread.control", { threadId: loaded.threadId });
+    const refusal = agentRuntimeContextClearRefusal(control.projection);
+    if (refusal) return yield* failure("clear-context", refusal);
+    yield* dispatch(connection, {
+      type: "thread.clear_context",
+      commandId: commandId("clear-context", {
+        threadId: loaded.threadId,
+        requestId: input.requestId,
+      }),
+      threadId: loaded.threadId,
+    });
+    return { cleared: true } as const;
+  });
+
   const message = Effect.fn("AgentRuntimeApplication.message")(function* (
     input: AgentRuntimeSessionTarget & {
       readonly message: AgentRuntimeMessage;
@@ -2639,6 +2665,8 @@ export const make = Effect.fn("AgentRuntimeApplication.make")(function* (
     message: (input: Parameters<typeof message>[0]) => ownedWrite("message", message(input)),
     mergeBack: (input: Parameters<typeof mergeBack>[0]) =>
       ownedWrite("merge-back", mergeBack(input)),
+    clearContext: (input: Parameters<typeof clearContext>[0]) =>
+      ownedWrite("clear-context", clearContext(input)),
     /** Read before retrying a durable handoff: archive and execution failure do not erase admission. */
     messageAdmission: (input: {
       readonly sessionId: string;

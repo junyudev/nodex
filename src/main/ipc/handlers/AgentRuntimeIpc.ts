@@ -166,6 +166,9 @@ export const live = Layer.effectDiscard(
     yield* ipc.handlePlainCommand("agent-runtime:session:compact", (event, value) =>
       handle(event, Inputs.AgentRuntimeCompactSchema, value, application.compact),
     );
+    yield* ipc.handlePlainCommand("agent-runtime:session:clear-context", (event, value) =>
+      handle(event, Inputs.AgentRuntimeClearContextSchema, value, application.clearContext),
+    );
     yield* ipc.handlePlainCommand("agent-runtime:session:rollback", (event, value) =>
       handle(event, Inputs.AgentRuntimeRollbackSchema, value, application.rollback),
     );

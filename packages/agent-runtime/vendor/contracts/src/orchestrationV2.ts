@@ -1778,6 +1778,15 @@ export const OrchestrationV2TurnItem = Schema.Union([
     beforeTokenCount: Schema.optional(NonNegativeInt),
     afterTokenCount: Schema.optional(NonNegativeInt),
   }),
+  /**
+   * The conversation's context ends after the Run that owns this marker. Later Runs start fresh
+   * native conversations, and no handoff carries this Run or anything before it. Rewinding that
+   * Run removes the marker with it.
+   */
+  Schema.Struct({
+    ...OrchestrationV2TurnItemBaseFields,
+    type: Schema.Literal("context_cleared"),
+  }),
   Schema.Struct({
     ...OrchestrationV2TurnItemBaseFields,
     type: Schema.Literal("handoff"),
@@ -2572,6 +2581,10 @@ export const OrchestrationV2TurnItemJson = Schema.Union([
   }),
   Schema.Struct({
     ...OrchestrationV2TurnItemJsonBaseFields,
+    type: Schema.Literal("context_cleared"),
+  }),
+  Schema.Struct({
+    ...OrchestrationV2TurnItemJsonBaseFields,
     type: Schema.Literal("handoff"),
     contextHandoffId: ContextHandoffId,
     fromProviderThreadIds: Schema.Array(ProviderThreadId),
@@ -3322,6 +3335,17 @@ export const OrchestrationV2Command = Schema.Union([
     sourceThreadId: ThreadId,
     targetThreadId: ThreadId,
     sourcePoint: OrchestrationV2ThreadForkSourcePoint,
+    createdAt: Schema.optional(Schema.DateTimeUtc),
+  }),
+  /**
+   * Ends an idle conversation's context after its latest settled Run. Every Agent starts its next
+   * native conversation fresh; the transcript, workspace and Session stay. Clearing a context that
+   * is already clear is an accepted no-op.
+   */
+  Schema.Struct({
+    type: Schema.Literal("thread.clear_context"),
+    commandId: CommandId,
+    threadId: ThreadId,
     createdAt: Schema.optional(Schema.DateTimeUtc),
   }),
   Schema.Struct({

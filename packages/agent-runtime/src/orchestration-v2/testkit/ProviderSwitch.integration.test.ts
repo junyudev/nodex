@@ -4239,3 +4239,377 @@ describe("orchestration v2 provider switching", () => {
     ),
   );
 });
+
+describe("orchestration v2 context clearing", () => {
+  /** Codex and Claude peers that record each native conversation's whole input. */
+  const clearContextRuntime = Effect.fn("ClearContextTest.runtime")(function* (name: string) {
+    const cwd = yield* checkpointWorkspace(name);
+    const capturedTurns = yield* Ref.make<ReadonlyArray<CapturedTurn>>([]);
+    const nativeHistories = new Map<string, string[]>();
+    // A rewind to the thread start leaves the native conversation empty.
+    const rollback: ProviderAdapter.ProviderAdapterV2SessionRuntime["rollbackThread"] = (input) =>
+      Effect.sync(() => {
+        assert.equal(input.target.type, "thread_start");
+        nativeHistories.set(input.providerThread.nativeThreadRef!.nativeId!, []);
+        return {
+          providerThread: input.providerThread,
+          providerTurns: [],
+          messages: [],
+          runtimeRequests: [],
+        };
+      });
+    const registry = ProviderAdapterRegistry.layerFromAdapters([
+      makeTestAdapter({
+        instanceId: CODEX_MODEL_SELECTION.instanceId,
+        driver: CODEX_DRIVER,
+        capabilities: CodexProviderCapabilitiesV2,
+        modelSelection: CODEX_MODEL_SELECTION,
+        responseByRunOrdinal: {},
+        capturedTurns,
+        nativeHistories,
+        injectedHistory: yield* Ref.make<ReadonlyArray<unknown>>([]),
+        nativeThreadGeneration: yield* Ref.make(0),
+        rollback,
+      }),
+      makeTestAdapter({
+        instanceId: CLAUDE_MODEL_SELECTION.instanceId,
+        driver: CLAUDE_DRIVER,
+        capabilities: ClaudeProviderCapabilitiesV2,
+        modelSelection: CLAUDE_MODEL_SELECTION,
+        responseByRunOrdinal: {},
+        capturedTurns,
+        nativeHistories,
+        nativeThreadGeneration: yield* Ref.make(0),
+        rollback,
+      }),
+    ]);
+    const layer = ProviderReplayHarness.layerWithRegistry(
+      { name, runtimePolicyOverride: { cwd } },
+      registry,
+      { checkpointStoreLayer: CheckpointStore.layerWithoutWorkspaceState },
+    );
+    /** Everything the native conversation that ran the latest Turn has seen. */
+    const latestNative = Effect.gen(function* () {
+      const latest = (yield* Ref.get(capturedTurns)).at(-1)!;
+      return {
+        nativeThreadId: latest.nativeThreadId!,
+        seen: nativeHistories.get(latest.nativeThreadId!)!.join("\n"),
+      };
+    });
+    return { layer, latestNative };
+  });
+
+  const create = Effect.fn("ClearContextTest.create")(function* (targetThreadId: ThreadId) {
+    const orchestrator = yield* Orchestrator.OrchestratorV2;
+    yield* orchestrator.dispatch({
+      type: "thread.create",
+      commandId: CommandId.make(`${targetThreadId}:create`),
+      threadId: targetThreadId,
+      projectId,
+      createdBy: "user",
+      creationSource: "web",
+      title: "Clear context",
+      modelSelection: CODEX_MODEL_SELECTION,
+      runtimeMode: "full-access",
+      interactionMode: "default",
+      branch: null,
+      worktreePath: null,
+    });
+  });
+
+  const send = Effect.fn("ClearContextTest.send")(function* (
+    targetThreadId: ThreadId,
+    key: string,
+    text: string,
+    selection: ModelSelection,
+  ) {
+    const orchestrator = yield* Orchestrator.OrchestratorV2;
+    const worker = yield* EffectWorker.OrchestrationEffectWorkerV2;
+    yield* orchestrator.dispatch({
+      type: "message.dispatch",
+      commandId: CommandId.make(`${targetThreadId}:send:${key}`),
+      threadId: targetThreadId,
+      messageId: MessageId.make(`${targetThreadId}:message:${key}`),
+      createdBy: "user",
+      creationSource: "web",
+      text,
+      attachments: [],
+      modelSelection: selection,
+      dispatchMode: { type: "start_immediately" },
+    });
+    const projection = yield* waitForIdle(targetThreadId);
+    yield* worker.drain();
+    assert.equal(projection.runs.at(-1)?.status, "completed");
+    return yield* orchestrator.getThreadProjection(targetThreadId);
+  });
+
+  const clear = Effect.fn("ClearContextTest.clear")(function* (
+    targetThreadId: ThreadId,
+    key: string,
+  ) {
+    const orchestrator = yield* Orchestrator.OrchestratorV2;
+    yield* orchestrator.dispatch({
+      type: "thread.clear_context",
+      commandId: CommandId.make(`${targetThreadId}:clear:${key}`),
+      threadId: targetThreadId,
+    });
+    return yield* orchestrator.getThreadProjection(targetThreadId);
+  });
+
+  const rewindBefore = Effect.fn("ClearContextTest.rewindBefore")(function* (
+    targetThreadId: ThreadId,
+    runId: RunId,
+  ) {
+    const orchestrator = yield* Orchestrator.OrchestratorV2;
+    yield* rollbackThread({
+      threadId: targetThreadId,
+      runId,
+      requestId: CommandId.make(`${targetThreadId}:rewind:${runId}`),
+    }).pipe(
+      Effect.provide(
+        Layer.mock(ThreadManagementService)({
+          getReceipt: orchestrator.getReceipt,
+          getCheckpointContext: orchestrator.getCheckpointContext,
+          getThreadRecords: orchestrator.getThreadRecords,
+          dispatch: orchestrator.dispatch,
+        }),
+      ),
+      Effect.provide(IdAllocator.layer),
+    );
+    yield* (yield* EffectWorker.OrchestrationEffectWorkerV2).drain();
+    yield* orchestrator.streamStoredEvents.pipe(
+      Stream.filter(
+        ({ event }) =>
+          event.type === "run.updated" &&
+          event.payload.id === runId &&
+          event.payload.status === "rolled_back",
+      ),
+      Stream.runHead,
+    );
+  });
+
+  const markers = (projection: {
+    readonly turnItems: ReadonlyArray<{ readonly type: string; readonly runId: RunId | null }>;
+  }) => projection.turnItems.filter((item) => item.type === "context_cleared");
+
+  it.live("starts every Agent's next conversation fresh after a clear", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const target = ThreadId.make("clear-context:fresh");
+        const { layer, latestNative } = yield* clearContextRuntime("clear-context-fresh");
+        yield* Effect.gen(function* () {
+          yield* create(target);
+          yield* send(target, "1", "EARLIER_CODEX_CONSTRAINT", CODEX_MODEL_SELECTION);
+          const firstCodex = (yield* latestNative).nativeThreadId;
+          yield* send(target, "2", "EARLIER_CLAUDE_REPLY", CLAUDE_MODEL_SELECTION);
+          const firstClaude = yield* latestNative;
+          assert.include(firstClaude.seen, "EARLIER_CODEX_CONSTRAINT");
+
+          const cleared = yield* clear(target, "1");
+          assert.deepEqual(
+            markers(cleared).map((item) => item.runId),
+            [cleared.runs[1]!.id],
+          );
+          const active = cleared.providerThreads.find(
+            (thread) => thread.id === cleared.thread.activeProviderThreadId,
+          );
+          assert.equal(active?.status, "not_loaded");
+          assert.isNull(active?.nativeThreadRef);
+          assert.isTrue(
+            cleared.providerThreads
+              .filter((thread) => thread.id !== active?.id)
+              .every((thread) => thread.status === "closed"),
+          );
+          // Clearing a context that is already clear changes nothing.
+          assert.lengthOf(markers(yield* clear(target, "2")), 1);
+
+          yield* send(target, "3", "AFTER_CLEAR_CLAUDE", CLAUDE_MODEL_SELECTION);
+          const freshClaude = yield* latestNative;
+          assert.notEqual(freshClaude.nativeThreadId, firstClaude.nativeThreadId);
+          assert.notInclude(freshClaude.seen, "EARLIER_CODEX_CONSTRAINT");
+          assert.notInclude(freshClaude.seen, "EARLIER_CLAUDE_REPLY");
+
+          const afterSwitch = yield* send(target, "4", "AFTER_CLEAR_CODEX", CODEX_MODEL_SELECTION);
+          const freshCodex = yield* latestNative;
+          assert.notEqual(freshCodex.nativeThreadId, firstCodex);
+          assert.include(freshCodex.seen, "AFTER_CLEAR_CLAUDE");
+          assert.notInclude(freshCodex.seen, "EARLIER_CODEX_CONSTRAINT");
+          assert.notInclude(freshCodex.seen, "EARLIER_CLAUDE_REPLY");
+          assert.deepEqual(
+            afterSwitch.contextHandoffs.map((handoff) => handoff.coveredRunOrdinals),
+            [
+              { from: 1, to: 1 },
+              { from: 3, to: 3 },
+            ],
+          );
+        }).pipe(Effect.provide(layer));
+      }),
+    ),
+  );
+
+  it.live("restores the earlier context when a rewind removes the cleared Run", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const target = ThreadId.make("clear-context:rewind-past");
+        const { layer, latestNative } = yield* clearContextRuntime("clear-context-rewind-past");
+        yield* Effect.gen(function* () {
+          yield* create(target);
+          yield* send(target, "1", "KEPT_CONSTRAINT", CODEX_MODEL_SELECTION);
+          const before = yield* send(target, "2", "EDITED_AWAY", CODEX_MODEL_SELECTION);
+          yield* clear(target, "1");
+          // The cleared conversation never started natively, so the rewind needs no provider.
+          yield* rewindBefore(target, before.runs[1]!.id);
+          const rewound = yield* Orchestrator.OrchestratorV2.pipe(
+            Effect.flatMap((orchestrator) => orchestrator.getThreadProjection(target)),
+          );
+          assert.lengthOf(
+            rewound.visibleTurnItems.filter(({ item }) => item.type === "context_cleared"),
+            0,
+          );
+
+          yield* send(target, "3", "REPLACEMENT_MESSAGE", CODEX_MODEL_SELECTION);
+          const { seen } = yield* latestNative;
+          assert.include(seen, "KEPT_CONSTRAINT");
+          assert.notInclude(seen, "EDITED_AWAY");
+        }).pipe(Effect.provide(layer));
+      }),
+    ),
+  );
+
+  it.live("keeps the clear when a rewind removes only later Runs", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const target = ThreadId.make("clear-context:rewind-after");
+        const { layer, latestNative } = yield* clearContextRuntime("clear-context-rewind-after");
+        yield* Effect.gen(function* () {
+          yield* create(target);
+          yield* send(target, "1", "CLEARED_CONSTRAINT", CODEX_MODEL_SELECTION);
+          yield* clear(target, "1");
+          const after = yield* send(target, "2", "FIRST_AFTER_CLEAR", CODEX_MODEL_SELECTION);
+          yield* rewindBefore(target, after.runs[1]!.id);
+          yield* send(target, "3", "REPLACEMENT_AFTER_CLEAR", CODEX_MODEL_SELECTION);
+          const { seen } = yield* latestNative;
+          assert.include(seen, "REPLACEMENT_AFTER_CLEAR");
+          assert.notInclude(seen, "CLEARED_CONSTRAINT");
+          assert.notInclude(seen, "FIRST_AFTER_CLEAR");
+        }).pipe(Effect.provide(layer));
+      }),
+    ),
+  );
+
+  it.live("forks carry the context as it stood at their source Run", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const source = ThreadId.make("clear-context:fork-source");
+        const { layer, latestNative } = yield* clearContextRuntime("clear-context-fork");
+        yield* Effect.gen(function* () {
+          const orchestrator = yield* Orchestrator.OrchestratorV2;
+          yield* create(source);
+          yield* send(source, "1", "BEFORE_CLEAR_WORK", CODEX_MODEL_SELECTION);
+          yield* clear(source, "1");
+          const sourceProjection = yield* send(
+            source,
+            "2",
+            "AFTER_CLEAR_WORK",
+            CODEX_MODEL_SELECTION,
+          );
+          const forkFrom = Effect.fn("ClearContextTest.forkFrom")(function* (
+            key: string,
+            runId: RunId,
+          ) {
+            const fork = ThreadId.make(`clear-context:fork-${key}`);
+            yield* orchestrator.dispatch({
+              type: "thread.fork",
+              commandId: CommandId.make(`${fork}:fork`),
+              sourceThreadId: source,
+              targetThreadId: fork,
+              sourcePoint: { type: "run", runId },
+              title: `Fork ${key}`,
+              createdBy: "user",
+              creationSource: "web",
+            });
+            // Another Agent continues the fork, so it receives the source as portable history.
+            yield* send(fork, "1", `FORK_${key}_MESSAGE`, CLAUDE_MODEL_SELECTION);
+            return (yield* latestNative).seen;
+          });
+
+          const beforeClear = yield* forkFrom("before", sourceProjection.runs[0]!.id);
+          assert.include(beforeClear, "BEFORE_CLEAR_WORK");
+          const afterClear = yield* forkFrom("after", sourceProjection.runs[1]!.id);
+          assert.include(afterClear, "AFTER_CLEAR_WORK");
+          assert.notInclude(afterClear, "BEFORE_CLEAR_WORK");
+
+          // A later Agent in each fork reads the same inherited context through its ancestry.
+          for (const [key, expected, excluded] of [
+            ["before", "BEFORE_CLEAR_WORK", "AFTER_CLEAR_WORK"],
+            ["after", "AFTER_CLEAR_WORK", "BEFORE_CLEAR_WORK"],
+          ] as const) {
+            const fork = ThreadId.make(`clear-context:fork-${key}`);
+            yield* send(fork, "2", `FORK_${key}_ON_CODEX`, CODEX_MODEL_SELECTION);
+            const { seen } = yield* latestNative;
+            assert.include(seen, expected);
+            assert.include(seen, `FORK_${key}_MESSAGE`);
+            assert.notInclude(seen, excluded);
+          }
+        }).pipe(Effect.provide(layer));
+      }),
+    ),
+  );
+
+  it.live("refuses to clear while a reply is running", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const target = ThreadId.make("clear-context:running");
+        const cwd = yield* checkpointWorkspace("clear-context-running");
+        const holdFirstTurn = yield* Deferred.make<void>();
+        const releaseFirstTurn = yield* Deferred.make<void>();
+        const registry = ProviderAdapterRegistry.layerFromAdapters([
+          makeTestAdapter({
+            instanceId: CODEX_MODEL_SELECTION.instanceId,
+            driver: CODEX_DRIVER,
+            capabilities: CodexProviderCapabilitiesV2,
+            modelSelection: CODEX_MODEL_SELECTION,
+            responseByRunOrdinal: {},
+            capturedTurns: yield* Ref.make<ReadonlyArray<CapturedTurn>>([]),
+            holdFirstTurn,
+            releaseFirstTurn,
+          }),
+        ]);
+        yield* Effect.gen(function* () {
+          const orchestrator = yield* Orchestrator.OrchestratorV2;
+          yield* create(target);
+          yield* orchestrator.dispatch({
+            type: "message.dispatch",
+            commandId: CommandId.make("clear-context:running:send"),
+            threadId: target,
+            messageId: MessageId.make("clear-context:running:message"),
+            createdBy: "user",
+            creationSource: "web",
+            text: "Keep working",
+            attachments: [],
+            modelSelection: CODEX_MODEL_SELECTION,
+            dispatchMode: { type: "start_immediately" },
+          });
+          yield* Deferred.await(holdFirstTurn);
+          const refused = yield* Effect.flip(
+            orchestrator.dispatch({
+              type: "thread.clear_context",
+              commandId: CommandId.make("clear-context:running:clear"),
+              threadId: target,
+            }),
+          );
+          assert.include(String(refused.cause), "Wait for the reply");
+          yield* Deferred.succeed(releaseFirstTurn, undefined);
+          assert.lengthOf(markers(yield* waitForIdle(target)), 0);
+        }).pipe(
+          Effect.provide(
+            ProviderReplayHarness.layerWithRegistry(
+              { name: "clear-context-running", runtimePolicyOverride: { cwd } },
+              registry,
+            ),
+          ),
+        );
+      }),
+    ),
+  );
+});

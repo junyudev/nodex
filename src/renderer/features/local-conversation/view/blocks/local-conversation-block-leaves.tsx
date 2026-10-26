@@ -31,7 +31,11 @@ import { useConversationVisualizationContext } from "../inline-visualization-con
 import { AutomaticApprovalReviewSurface } from "../shared/automatic-approval-review-surface";
 import { MultiAgentActionSurface } from "../shared/multi-agent-action-surface";
 import { DelegatedTaskGroup, RuntimeNoticeRow } from "../shared/delegated-task-row";
-import { AgentHandoffDivider, TranscriptDivider } from "../shared/transcript-divider";
+import {
+  AgentHandoffDivider,
+  ContextClearedDivider,
+  TranscriptDivider,
+} from "../shared/transcript-divider";
 import { ContextCompactionSurface } from "../shared/context-compaction-surface";
 import { ImageViewSurface } from "../shared/image-view-surface";
 import { ImportedMarkdownImagesProvider } from "../shared/imported-markdown-images";
@@ -654,6 +658,7 @@ export function ThreadRuntimeNoticeBlock({ block, onOpenThread }: ThreadLeafBloc
   if (block.type !== "runtimeNotice") return null;
   const notice = block.entry.runtimeNotice;
   if (notice?.kind === "agentHandoff") return <AgentHandoffDivider notice={notice} />;
+  if (notice?.kind === "contextCleared") return <ContextClearedDivider />;
   if (!block.entry.markdownText?.trim()) return null;
   return (
     <RuntimeNoticeRow

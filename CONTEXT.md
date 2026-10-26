@@ -49,7 +49,8 @@ use different Agent Instances.
 A Context Handoff carries a Thread's bounded portable history to the Agent that runs its
 next Run when that Agent's native conversation has not seen those Runs, such as after the
 person changes Agent, forks onto another Agent, or merges a fork back into its source. The Thread remains the one history;
-each Agent keeps its own native conversation and receives only what it missed.
+each Agent keeps its own native conversation and receives only what it missed. A context clear ends what any
+later handoff carries: Runs before the latest clear still in the conversation stay in the transcript only.
 
 ### Run
 

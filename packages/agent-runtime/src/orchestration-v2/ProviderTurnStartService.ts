@@ -674,6 +674,7 @@ export const layer: Layer.Layer<
                   scope: "conversation",
                   threadId: nativeForkTransfer.sourceThreadId,
                   runOrdinalTo: boundary.sourceRunOrdinal,
+                  asOfRunOrdinalTo: true,
                   historyRevision:
                     projection.thread.forkedFrom?.type === "run"
                       ? projection.thread.forkedFrom.sourceHistoryRevision

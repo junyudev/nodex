@@ -212,7 +212,7 @@ history directory. Restored Profile history takes precedence when present, and
 standalone history operations never change the process-wide account environment.
 
 Slash commands expose supported Nodex actions across Agents rather than filtering
-them by Agent name. Fork, Merge back, Side, Compact, Project and other shared actions
+them by Agent name. Fork, Merge back, Clear context, Side, Compact, Project and other shared actions
 appear when their owning callbacks and conversation state permit them. Agent-native
 commands supplement those actions without replacing an available Nodex action with
 the same name. Status and MCP use the selected Agent's inspector; Codex-specific
@@ -390,6 +390,22 @@ with the configured Agent and model names it moved from and to. Its description 
 it carried — the conversation so far, only the turns that Agent missed, or a merged fork's
 work — and a failed handoff says the Agent may lack the earlier conversation. An unavailable chosen
 Agent fails the message explicitly; the chat never falls back to another Agent.
+
+### Clearing context
+
+A started chat can clear its context with Clear context in the header's Chat actions menu or
+`/clear`, which replaces any Agent's own `/clear`. The next message starts a fresh native
+conversation on whichever Agent it chooses and carries nothing from before the clear: no context
+handoff, fork ancestry or imported history. The Session keeps its title, Project, working directory,
+panels, Linked Pages and transcript, which shows Context cleared after the Run it followed. Clearing
+needs no handoff, so any configured Agent can take the next message.
+
+Clearing waits until no reply, queued message, background task or subagent can still add to the
+conversation, and a chat with no finished Run has nothing to clear. Clearing an already clear
+context changes nothing, and a merge waiting for the next message is dropped. Rewinding an earlier
+message removes the clear with the Runs it followed, so the replacement continues with the retained
+context; rewinding a message after the clear keeps it. Forks and merges carry the conversation as it
+stood at their source Run, so a fork from before the clear keeps the earlier context.
 
 ## Delegated work in the conversation
 

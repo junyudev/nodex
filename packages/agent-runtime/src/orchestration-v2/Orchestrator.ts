@@ -54,6 +54,7 @@ import {
   type OrchestrationV2Subagent,
   type OrchestrationV2ThreadProjection,
   type OrchestrationV2TurnItem,
+  isOrchestrationV2WorkActive,
   latestProviderTurnForAttempt,
   orchestrationV2RunWorkStartedAt,
   ProviderInstanceId,
@@ -466,6 +467,7 @@ function commandThreadId(command: OrchestrationV2ServerCommand): ThreadId {
     case "checkpoint.rollback.fail":
     case "thread.background-work.settle":
     case "thread.stop":
+    case "thread.clear_context":
     case "provider.switch":
       return command.threadId;
     case "delegated_task.request":
@@ -3899,6 +3901,175 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
     });
   });
 
+  /**
+   * Ends the conversation's context after its latest settled Run. The marker belongs to that Run,
+   * so rewinding it restores the earlier context; every native conversation that has seen the
+   * cleared Runs retires, and the active Agent keeps its session with a fresh conversation.
+   */
+  const dispatchThreadClearContext = Effect.fn("orchestrationV2.dispatch.threadClearContext")(
+    function* (
+      command: Extract<OrchestrationV2Command, { readonly type: "thread.clear_context" }>,
+      events: Ref.Ref<Array<OrchestrationV2DomainEvent>>,
+    ) {
+      const refuse = (cause: string) =>
+        new OrchestratorDispatchError({
+          commandId: command.commandId,
+          commandType: command.type,
+          cause,
+        });
+      const unsettled = yield* loadProjectionForCommand(command, ["runs"], {
+        runStatuses: ["preparing", "queued", "starting", "running", "waiting"],
+        runLimit: 1,
+      });
+      if (unsettled.runs.length > 0)
+        return yield* refuse(
+          "Wait for the reply and queued messages to finish, then clear the context.",
+        );
+      const projection = yield* loadProjectionForCommand(
+        command,
+        ["runs", "providerThreads", "subagents", "contextTransfers"],
+        {
+          runStatuses: ["completed", "failed", "interrupted", "cancelled"],
+          runOrder: "desc",
+          runLimit: 1,
+          contextTransferTargetThreadId: command.threadId,
+          contextTransferTypes: ["merge_back"],
+          contextTransferStatuses: ["pending"],
+          contextTransferLimit: 128,
+        },
+      );
+      const afterRun = projection.runs[0];
+      if (afterRun === undefined)
+        return yield* refuse("Send a message before clearing the context.");
+      if (
+        projection.providerThreads.some(
+          (thread) => (thread.pendingBackgroundTasks?.length ?? 0) > 0,
+        )
+      )
+        return yield* refuse("Stop background work before clearing the context.");
+      if (
+        projection.subagents.some(
+          (task) =>
+            isOrchestrationV2WorkActive(task.status) ||
+            task.completionDelivery?.state === "pending" ||
+            task.completionDelivery?.state === "claimed",
+        )
+      )
+        return yield* refuse("Wait for subagents to report back before clearing the context.");
+      const cleared = yield* loadProjectionForCommand(command, ["turnItems"], {
+        turnItemRunIds: [afterRun.id],
+        turnItemTypes: ["context_cleared"],
+      });
+      if (cleared.turnItems.length > 0) return;
+
+      const now = command.createdAt ?? (yield* DateTime.now);
+      const emitEvent = emit(events, command);
+      yield* emitEvent({
+        type: "turn-item.updated",
+        threadId: command.threadId,
+        runId: afterRun.id,
+        ...(afterRun.rootNodeId === null ? {} : { nodeId: afterRun.rootNodeId }),
+        providerInstanceId: afterRun.providerInstanceId,
+        occurredAt: now,
+        payload: {
+          id: idAllocator.derive.runSignalTurnItem({
+            runId: afterRun.id,
+            signal: `context-cleared:${command.commandId}`,
+          }),
+          threadId: command.threadId,
+          runId: afterRun.id,
+          nodeId: afterRun.rootNodeId,
+          providerThreadId: null,
+          providerTurnId: null,
+          nativeItemRef: null,
+          parentItemId: null,
+          ordinal: yield* nextTurnItemOrdinal(projection),
+          status: "completed",
+          title: "Context cleared",
+          startedAt: now,
+          completedAt: now,
+          updatedAt: now,
+          type: "context_cleared",
+        },
+      });
+      const rootThreads = projection.providerThreads.filter(
+        (thread) =>
+          thread.appThreadId === command.threadId &&
+          thread.ownerNodeId === null &&
+          thread.status !== "closed",
+      );
+      for (const retired of rootThreads) {
+        yield* emitEvent({
+          type: "provider-thread.updated",
+          threadId: command.threadId,
+          driver: retired.driver,
+          providerInstanceId: retired.providerInstanceId,
+          occurredAt: now,
+          payload: { ...retired, status: "closed", updatedAt: now },
+        });
+      }
+      // The active Agent keeps its session; only its native conversation starts over.
+      const active = rootThreads.find(
+        (thread) => thread.id === projection.thread.activeProviderThreadId,
+      );
+      const fresh: OrchestrationV2ProviderThread | null =
+        active === undefined
+          ? null
+          : {
+              ...active,
+              id: idAllocator.derive.providerThread({
+                driver: active.driver,
+                nativeThreadId: `pending:clear:${command.commandId}`,
+              }),
+              nativeThreadRef: null,
+              nativeConversationHeadRef: null,
+              status: "not_loaded",
+              firstRunOrdinal: null,
+              lastRunOrdinal: null,
+              handoffIds: [],
+              forkedFrom: null,
+              pendingBackgroundTasks: [],
+              contextUsage: null,
+              goal: null,
+              createdAt: now,
+              updatedAt: now,
+            };
+      if (fresh !== null)
+        yield* emitEvent({
+          type: "provider-thread.updated",
+          threadId: command.threadId,
+          driver: fresh.driver,
+          providerInstanceId: fresh.providerInstanceId,
+          occurredAt: now,
+          payload: fresh,
+        });
+      yield* emitEvent({
+        type: "thread.metadata-updated",
+        threadId: command.threadId,
+        occurredAt: now,
+        payload: {
+          ...projection.thread,
+          activeProviderThreadId: fresh?.id ?? null,
+          updatedAt: now,
+        },
+      });
+      // Work merged back from a fork is context the next message would have carried.
+      for (const transfer of pendingMergeBackTransfersForThread(projection)) {
+        yield* emitEvent({
+          type: "context-transfer.updated",
+          threadId: command.threadId,
+          occurredAt: now,
+          payload: {
+            ...transfer,
+            status: "superseded",
+            error: "Superseded by clearing the context.",
+            updatedAt: now,
+          },
+        });
+      }
+    },
+  );
+
   const dispatchSteerIntoRun = (input: {
     readonly command: Extract<
       OrchestrationV2Command,
@@ -5934,6 +6105,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
           : yield* readHandoffHistory(sourceProjection.thread.id, {
               scope: "conversation",
               runOrdinalTo: sourceRun.ordinal,
+              asOfRunOrdinalTo: true,
               historyRevision:
                 projection.thread.forkedFrom?.type === "run"
                   ? projection.thread.forkedFrom.sourceHistoryRevision
@@ -6147,6 +6319,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
           : yield* readHandoffHistory(mergeBackSourceProjection.thread.id, {
               scope: "local",
               runOrdinalTo: mergeBackSourceRun.ordinal,
+              asOfRunOrdinalTo: true,
               includeSummary: true,
             });
       const mergeBackHandoff =
@@ -11354,6 +11527,9 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       case "thread.merge_back":
         yield* dispatchThreadMergeBack(command, events);
         break;
+      case "thread.clear_context":
+        yield* dispatchThreadClearContext(command, events);
+        break;
       case "delegated_task.request":
         yield* dispatchDelegatedTaskRequest(command, events, effects);
         break;
@@ -11458,6 +11634,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         "checkpoint.rollback",
         "thread.fork",
         "thread.merge_back",
+        "thread.clear_context",
         "thread.interaction-mode.set",
       ].includes(command.type)
     ) {
@@ -11476,12 +11653,13 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
 
     const plan = yield* dispatchOnce(command).pipe(
       Effect.flatMap((planned) =>
-        // A settle that finds the provider already ended everything, or a
-        // stop that finds nothing running, has nothing to record. That is
-        // its expected outcome, not a failure.
+        // A settle that finds the provider already ended everything, a stop
+        // that finds nothing running, or a clear of a context that is already
+        // clear has nothing to record. That is its expected outcome, not a failure.
         planned.events.length > 0 ||
         command.type === "thread.background-work.settle" ||
         command.type === "thread.stop" ||
+        command.type === "thread.clear_context" ||
         command.type === "subagent.stop"
           ? Effect.succeed(planned)
           : Effect.fail(

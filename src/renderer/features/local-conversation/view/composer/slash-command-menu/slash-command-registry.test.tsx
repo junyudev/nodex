@@ -313,6 +313,42 @@ describe("buildComposerSlashCommands", () => {
     expect(onMergeForkBack).toHaveBeenCalledOnce();
   });
 
+  test("clears the context in place of an Agent's own /clear once its reply has finished", async () => {
+    const onClearContext = vi.fn(async () => undefined);
+    const onSendPrompt = vi.fn(async () => undefined);
+    const build = (actions: ThreadStageActions, isThreadRunning = false) =>
+      buildComposerSlashCommands({
+        model: {
+          ...buildModel(),
+          isThreadRunning,
+          provider: {
+            kind: "claude",
+            label: "Claude",
+            selection: "claude:work",
+            options: [],
+            select: () => {},
+            commands: [
+              { name: "clear", description: "Clear conversation history", inputHint: null },
+            ],
+            error: null,
+          },
+        } as unknown as ThreadFooterModel,
+        actions,
+        serviceTier: null,
+        setServiceTier: () => undefined,
+        openExpandedDialog: () => undefined,
+        onPetToggle: () => undefined,
+        activateGoalMode: () => undefined,
+      }).filter((command) => command.id === "clear");
+    const runtime = { ...buildActions(), onClearContext, onSendPrompt };
+    expect(build(runtime, true)).toMatchObject([{ title: "Clear context", isEnabled: false }]);
+    const [clear] = build(runtime);
+    expect(clear).toMatchObject({ title: "Clear context", isVisible: true, isEnabled: true });
+    await clear?.onSelect?.({ source: "dialog" });
+    expect(onClearContext).toHaveBeenCalledOnce();
+    expect(onSendPrompt).not.toHaveBeenCalled();
+  });
+
   test("keeps the Composer focused when a nested panel row is pressed so its click runs", async () => {
     const onForkFromTurn = vi.fn(async () => undefined);
     const fork = buildComposerSlashCommands({

@@ -210,7 +210,7 @@ export const layer: Layer.Layer<
       const existingSession = projection.providerSessions.find(
         (candidate) => candidate.id === providerThread.providerSessionId,
       );
-      const session = yield* sessions.open({
+      const openSession = sessions.open({
         threadId: input.threadId,
         providerSessionId: providerThread.providerSessionId,
         modelSelection,
@@ -286,7 +286,9 @@ export const layer: Layer.Layer<
       // Native context injection precedes a Turn and may survive native Turn rollback.
       // Likewise a failed start may have accepted context without publishing a Turn.
       // Neither has a proven native boundary: abandon that incarnation instead.
+      // A conversation that never started natively, such as one just cleared, has nothing to rewind.
       const requiresFreshNative =
+        providerThread.nativeThreadRef === null ||
         runsToRollback.some(
           (run) =>
             run.providerThreadId === providerThread.id &&
@@ -315,7 +317,7 @@ export const layer: Layer.Layer<
           }
         : runsToRollback.length === 0
           ? { providerThread }
-          : yield* session.rollbackThread({
+          : yield* (yield* openSession).rollbackThread({
               providerThread,
               target: rollbackTarget,
               providerThreadTurns,

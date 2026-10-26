@@ -207,6 +207,35 @@ describe("ThreadStageHeader", () => {
     expect(renameCalls).toBe(1);
   });
 
+  test("offers Clear context with the chat's new-work actions and reports its refusal", async () => {
+    const { ThreadStageHeader } = await import("./local-conversation-stage-header");
+    const onClearContext = vi.fn(async () => {
+      throw new Error("Wait for the reply and queued messages to finish, then clear the context.");
+    });
+    const onErrorMessage = vi.fn();
+    const screen = render(
+      <ThreadStageHeader
+        model={buildModel({ showSideChatAction: true })}
+        actions={{ ...buildActions(), onOpenSideChat: async () => {}, onClearContext }}
+        onErrorMessage={onErrorMessage}
+      />,
+    );
+
+    await openNodexMenu(screen.getByRole("button", { name: "Chat actions" }));
+    const bodyText = textContent(document.body);
+    expect(bodyText.indexOf("New side chat") < bodyText.indexOf("Clear context")).toBe(true);
+    expect(bodyText.indexOf("Clear context") < bodyText.indexOf("Copy")).toBe(true);
+
+    await act(async () => {
+      fireEvent.click(screen.getByText("Clear context"));
+      await Promise.resolve();
+    });
+    expect(onClearContext).toHaveBeenCalledOnce();
+    expect(onErrorMessage).toHaveBeenLastCalledWith(
+      "Wait for the reply and queued messages to finish, then clear the context.",
+    );
+  });
+
   test("opens Copy as a separate submenu with Codex item ordering", async () => {
     const { ThreadStageHeader } = await import("./local-conversation-stage-header");
     const screen = render(

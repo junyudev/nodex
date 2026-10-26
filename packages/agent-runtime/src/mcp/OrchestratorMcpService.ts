@@ -621,6 +621,8 @@ function turnItemContentText(item: OrchestrationV2TurnItem): string | null {
       return item.summary ?? `${item.strategy} handoff to ${item.toProviderInstanceId}`;
     case "fork":
       return "Forked into a new conversation.";
+    case "context_cleared":
+      return "The person cleared the context here; later messages started fresh.";
     case "thread_created":
       return `Created a conversation with ${item.targetProviderInstanceId} (${item.targetModel}).`;
     case "secret_request":

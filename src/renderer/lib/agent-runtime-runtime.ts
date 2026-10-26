@@ -10,6 +10,7 @@ import type {
   AgentRuntimeStopInput,
   AgentRuntimeResponseInput,
   AgentRuntimeModeInput,
+  AgentRuntimeClearContextInput,
   AgentRuntimeCompactInput,
   AgentRuntimeRollbackInput,
   AgentRuntimeTaskStopInput,
@@ -127,6 +128,14 @@ const compact = defineRendererCommand({
   protocol: { kind: "returned_value" },
   trace: { scopeKind: "session" },
 });
+const clearContext = defineRendererCommand({
+  key: "agent_runtime.session.clear_context",
+  channel: "agent-runtime:session:clear-context",
+  authority: "external",
+  owner: "AgentRuntimeConversationOwner",
+  protocol: { kind: "returned_value" },
+  trace: { scopeKind: "session" },
+});
 const rollback = defineRendererCommand({
   key: "agent_runtime.session.rollback",
   channel: "agent-runtime:session:rollback",
@@ -193,6 +202,9 @@ export interface AgentRuntimeRendererTransport {
   readonly compact: (
     input: AgentRuntimeCompactInput,
   ) => Promise<AgentRuntimeOperations["thread.compact"]["output"]>;
+  readonly clearContext: (
+    input: AgentRuntimeClearContextInput,
+  ) => Promise<{ readonly cleared: true }>;
   readonly rollback: (input: AgentRuntimeRollbackInput) => Promise<{ readonly rolledBack: true }>;
   readonly stopTask: (input: AgentRuntimeTaskStopInput) => Promise<{ readonly sequence: number }>;
   readonly retryPreparation: (
@@ -246,6 +258,7 @@ export const agentRuntimeRuntime: AgentRuntimeRendererTransport = {
   respond: (input) => invokePlainCommand(respond, input),
   setModes: (input) => invokePlainCommand(setModes, input),
   compact: (input) => invokePlainCommand(compact, input),
+  clearContext: (input) => invokePlainCommand(clearContext, input),
   rollback: (input) => invokePlainCommand(rollback, input),
   stopTask: (input) => invokePlainCommand(stopTask, input),
   retryPreparation: (input) => invokePlainCommand(retryPreparation, input),

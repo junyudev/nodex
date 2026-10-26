@@ -535,6 +535,8 @@ export interface ThreadStageActions {
   /** Present in a fork: brings its newest finished work into the chat it was forked from. */
   onMergeForkBack?: () => Promise<void>;
   onCompactThread?: (threadId: string) => Promise<void>;
+  /** Ends the conversation's context; the next message starts every Agent fresh. */
+  onClearContext?: () => Promise<void>;
   onGetThreadGoal?: (threadId: string) => Promise<ThreadGoal | null>;
   onSetThreadGoal?: (input: CodexThreadGoalSetActionInput) => Promise<ThreadGoal | null>;
   onClearThreadGoal?: (threadId: string) => Promise<void>;
@@ -1034,6 +1036,8 @@ export interface ThreadTurnRenderBuckets {
   remoteTaskCreatedItems: ThreadTranscriptBlockModel[];
   personalityChangedItems: ThreadTranscriptBlockModel[];
   forkedFromConversationItems: ThreadTranscriptBlockModel[];
+  /** Ends the Turn: the conversation's context was cleared after it. */
+  contextClearedItems: ThreadTranscriptBlockModel[];
   modelChangedItems: ThreadTranscriptBlockModel[];
   modelReroutedItems: ThreadTranscriptBlockModel[];
 }

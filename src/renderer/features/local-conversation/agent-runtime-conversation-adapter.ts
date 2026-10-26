@@ -559,6 +559,9 @@ export function createAgentRuntimeStageActions(input: {
         throw new Error("Conversation identity changed");
       await transport.compact({ ...target, requestId: createUuidV7() });
     },
+    onClearContext: async () => {
+      await transport.clearContext({ ...requireTarget(), requestId: createUuidV7() });
+    },
     onSendPrompt: (text, options) =>
       dispatch(
         text,

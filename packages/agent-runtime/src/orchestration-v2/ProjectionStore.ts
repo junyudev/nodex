@@ -465,6 +465,12 @@ export interface ProjectionHandoffHistoryInput {
   readonly runOrdinalTo?: number;
   /** Read a source prefix captured at this conversation revision. */
   readonly historyRevision?: number | undefined;
+  /**
+   * Read the conversation as it stood when Run `runOrdinalTo` finished, as a fork or merge-back
+   * source does: only context clears before that Run apply. Other reads continue the current
+   * context, which begins after the latest retained clear.
+   */
+  readonly asOfRunOrdinalTo?: boolean;
   readonly runStatuses?: readonly OrchestrationV2Run["status"][];
   readonly runIds?: readonly RunId[];
   readonly includeImported?: boolean;
@@ -5733,12 +5739,34 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
         )
         .pipe(Effect.mapError(controlReadError(threadId)));
 
-    const getHandoffHistory: ProjectionStoreV2Shape["getHandoffHistory"] = (input) =>
+    const getHandoffHistory: ProjectionStoreV2Shape["getHandoffHistory"] = (requested) =>
       sql
         .withTransaction(
           Effect.gen(function* () {
-            const { threadId } = input;
+            const { threadId } = requested;
             yield* requireThread(threadId);
+            // The conversation's context begins after its latest retained clear. Nothing before
+            // it, including captured fork ancestry or imported history, reaches another Agent.
+            const floor = yield* sql<{ ordinal: number | null }>`
+              SELECT MAX(runs.ordinal) AS ordinal
+              FROM orchestration_v2_projection_turn_items AS items
+              INNER JOIN orchestration_v2_projection_runs AS runs ON runs.run_id = items.run_id
+              WHERE items.thread_id = ${threadId} AND items.type = 'context_cleared'
+                AND (runs.status <> 'rolled_back' OR (${requested.historyRevision ?? null} IS NOT NULL
+                  AND json_extract(runs.payload_json, '$.rolledBackAtRevision') > ${requested.historyRevision ?? null}))
+                AND runs.ordinal < ${
+                  requested.asOfRunOrdinalTo === true
+                    ? (requested.runOrdinalTo ?? Number.MAX_SAFE_INTEGER)
+                    : Number.MAX_SAFE_INTEGER
+                }`.pipe(Effect.map((rows) => rows[0]?.ordinal ?? 0));
+            const input =
+              floor === 0
+                ? requested
+                : {
+                    ...requested,
+                    runOrdinalFrom: Math.max(requested.runOrdinalFrom ?? 1, floor + 1),
+                    includeImported: false,
+                  };
             // A full prefix includes each captured fork prefix. Read only ancestry metadata,
             // then apply the same global item/body budget across every source.
             const inherited = !includesInheritedHandoffHistory(input)
@@ -5749,12 +5777,23 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
                   history_revision: number | null;
                   depth: number;
                   imported: number;
+                  floor: number;
                 }>`
-                WITH RECURSIVE sources(thread_id, max_run_ordinal, history_revision, depth, visited) AS (
-                  SELECT ${threadId}, 0, NULL, 0, json_array(${threadId})
+                WITH RECURSIVE sources(thread_id, max_run_ordinal, history_revision, depth, visited, floor) AS (
+                  SELECT ${threadId}, 0, NULL, 0, json_array(${threadId}), 0
                   UNION ALL
                   SELECT source.thread_id, boundary.ordinal, json_extract(child.payload_json, '$.forkedFrom.sourceHistoryRevision'), sources.depth + 1,
-                    json_insert(sources.visited, '$[#]', source.thread_id)
+                    json_insert(sources.visited, '$[#]', source.thread_id),
+                    -- A source's own clear before the fork boundary ends what the fork inherits.
+                    (SELECT COALESCE(MAX(cleared_run.ordinal), 0)
+                      FROM orchestration_v2_projection_turn_items AS cleared
+                      INNER JOIN orchestration_v2_projection_runs AS cleared_run ON cleared_run.run_id = cleared.run_id
+                      WHERE cleared.thread_id = source.thread_id AND cleared.type = 'context_cleared'
+                        AND cleared_run.ordinal < boundary.ordinal
+                        AND (cleared_run.status <> 'rolled_back'
+                          OR (json_extract(child.payload_json, '$.forkedFrom.sourceHistoryRevision') IS NOT NULL
+                            AND json_extract(cleared_run.payload_json, '$.rolledBackAtRevision')
+                              > json_extract(child.payload_json, '$.forkedFrom.sourceHistoryRevision'))))
                   FROM sources
                   INNER JOIN orchestration_v2_projection_threads AS child ON child.thread_id = sources.thread_id
                   INNER JOIN orchestration_v2_projection_threads AS source
@@ -5762,10 +5801,11 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
                   INNER JOIN orchestration_v2_projection_runs AS boundary ON boundary.thread_id = source.thread_id
                     AND boundary.run_id = json_extract(child.payload_json, '$.forkedFrom.runId')
                   WHERE json_extract(child.payload_json, '$.forkedFrom.type') = 'run'
-                    AND sources.depth < 128
+                    AND sources.depth < 128 AND sources.floor = 0
                     AND NOT EXISTS (SELECT 1 FROM json_each(sources.visited) WHERE value = source.thread_id)
                 ) SELECT sources.thread_id, sources.max_run_ordinal, sources.history_revision, sources.depth,
-                  json_extract(thread.payload_json, '$.historyOrigin') IN ('v1_import', 'native_import') AS imported
+                  json_extract(thread.payload_json, '$.historyOrigin') IN ('v1_import', 'native_import') AS imported,
+                  sources.floor
                 FROM sources INNER JOIN orchestration_v2_projection_threads AS thread ON thread.thread_id = sources.thread_id
                 WHERE sources.depth > 0 ORDER BY sources.depth DESC`;
             if (inherited.some((source) => source.depth === 128))
@@ -5811,6 +5851,7 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
               ...inherited.map(
                 (source) =>
                   sql`runs.thread_id = ${source.thread_id} AND runs.ordinal <= ${source.max_run_ordinal}
+                    AND runs.ordinal > ${source.floor}
                     AND (runs.status <> 'rolled_back' OR (${source.history_revision} IS NOT NULL
                       AND json_extract(runs.payload_json, '$.rolledBackAtRevision') > ${source.history_revision}))`,
               ),
@@ -5818,7 +5859,7 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
             const importedSourceIds = [
               ...(input.includeImported === true ? [threadId] : []),
               ...inherited
-                .filter((source) => source.imported === 1)
+                .filter((source) => source.imported === 1 && source.floor === 0)
                 .map((source) => source.thread_id),
             ];
             const itemPredicate = sql`
@@ -6129,7 +6170,7 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
         )
         .pipe(
           Effect.mapError(
-            (cause) => new ProjectionStoreReadError({ threadId: input.threadId, cause }),
+            (cause) => new ProjectionStoreReadError({ threadId: requested.threadId, cause }),
           ),
         );
 

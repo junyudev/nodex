@@ -38,7 +38,8 @@ function conversationProviderSession(projection: Projection) {
  * Why a started chat cannot hand its conversation to another Agent now, or null when it can.
  * Its provider session answers from its capability. Without one, a Run that is still starting
  * cannot hand over yet; a chat with no Runs can; a finished chat can while its Agent keeps the
- * native conversation the handoff reads from, even after that Agent's process detached.
+ * native conversation the handoff reads from, even after that Agent's process detached, and
+ * before its next conversation starts after a clear or rewind.
  */
 export function agentRuntimeAgentSwitchRefusal(projection: Projection): string | null {
   const session = conversationProviderSession(projection);
@@ -52,7 +53,7 @@ export function agentRuntimeAgentSwitchRefusal(projection: Projection): string |
       thread.id === projection.thread.activeProviderThreadId &&
       thread.appThreadId === projection.thread.id &&
       thread.providerInstanceId === projection.thread.modelSelection.instanceId &&
-      thread.nativeThreadRef !== null,
+      (thread.nativeThreadRef !== null || thread.firstRunOrdinal === null),
   )
     ? null
     : UNSUPPORTED;

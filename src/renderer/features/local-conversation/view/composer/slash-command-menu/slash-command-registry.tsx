@@ -11,6 +11,7 @@ import {
 } from "@/components/shared/icons/generic-icons";
 import { CheckmarkIcon } from "@/components/shared/icons";
 import {
+  ClearContextIcon,
   FastModeIcon,
   GoalTargetIcon,
   SettingsWorktreeIcon,
@@ -101,6 +102,21 @@ export function buildComposerSlashCommands(input: BuildSlashCommandsInput): Comp
         }
         await runCommand("Failed to compact thread", async () => {
           await input.actions.onCompactThread?.(threadId);
+        });
+      },
+    },
+    {
+      id: "clear",
+      title: "Clear context",
+      description: "Clear this chat's context; its workspace stays",
+      group: "Commands",
+      icon: <ClearContextIcon className={iconClassName} />,
+      requiresEmptyComposer: true,
+      isVisible: canUseExistingThread && Boolean(input.actions.onClearContext),
+      isEnabled: !input.model.isThreadRunning,
+      onSelect: async () => {
+        await runCommand("Could not clear the context", async () => {
+          await input.actions.onClearContext?.();
         });
       },
     },

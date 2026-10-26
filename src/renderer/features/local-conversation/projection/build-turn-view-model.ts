@@ -664,6 +664,7 @@ export function buildTurnViewModel(input: BuildTurnViewModelInput): ThreadTurnMo
     ...buckets.remoteTaskCreatedItems,
     ...buckets.personalityChangedItems,
     ...buckets.forkedFromConversationItems,
+    ...buckets.contextClearedItems,
   ].filter(
     (block) => !turnOwnerHiddenBlockIds.has(block.id) && !assistantAfterBlockIds.has(block.id),
   );

@@ -34,6 +34,7 @@ import {
   OpenExternalIcon,
   TerminalIcon,
 } from "./canonical-icons";
+import { ImageEraseIcon } from "./image-editor-icons";
 
 type IconProps = {
   className?: string;
@@ -388,6 +389,11 @@ function ClearGlyph({ className }: IconProps) {
 
 export function GoalClearIcon({ className }: IconProps) {
   return <ClearGlyph className={className ?? "icon-xs"} />;
+}
+
+/** Clearing a chat's context erases what its Agents carry forward, not its transcript. */
+export function ClearContextIcon({ className }: IconProps) {
+  return <ImageEraseIcon className={className ?? "icon-xs"} />;
 }
 
 export function GoalResumeIcon({ className }: IconProps) {

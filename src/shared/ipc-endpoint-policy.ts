@@ -496,6 +496,7 @@ type PlainResultCommandEndpointPolicy =
   | "agent-runtime:session:respond"
   | "agent-runtime:session:set-modes"
   | "agent-runtime:session:compact"
+  | "agent-runtime:session:clear-context"
   | "agent-runtime:session:rollback"
   | "agent-runtime:session:stop-task"
   | "agent-runtime:session:retry-preparation"
