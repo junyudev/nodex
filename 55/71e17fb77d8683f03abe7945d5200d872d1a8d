@@ -1,0 +1,112 @@
+CHANGELOG.md
+  s_84a787688eba85::t_e441ced5cfb507 29,34
+src/shared/codex-canonical-item-projector.ts
+  s_84a787688eba85::t_5e28501dc3b84f 1001-1008
+src/renderer/features/local-conversation/normalized-transcript-hooks.tsx
+  s_84a787688eba85::t_35c623817b4307 19-22
+  s_84a787688eba85::t_df8a1250bcd33d 242-245,254-255
+src/renderer/features/local-conversation/thread-thought-label.test.ts
+  s_84a787688eba85::t_25440102fe34cb 1-28
+src/renderer/features/local-conversation/projection/test-fixtures/thread-tool-activity-projection-fixtures.node.test.ts
+  s_84a787688eba85::t_29c6d7cc608589 9,11,14-18,21,32-35,37,45,49,65,67-74,125
+src/renderer/features/local-conversation/agent-runtime-transcript-projection.ts
+  s_84a787688eba85::t_e85a148f9a3fa6 597-606
+docs/product-specs/codex-thread-transcript-behavior.md
+  s_84a787688eba85::t_c9566029b208a6 265-266,277-278,287-289,453,481-484,547-550,604
+  s_84a787688eba85::t_d60256c5e27b15 305-314
+src/renderer/features/local-conversation/agent-runtime-transcript-projection.node.test.ts
+  s_84a787688eba85::t_c26dfcb0d15092 783-827
+docs/product-specs/agent-backend-behavior.md
+  s_84a787688eba85::t_9e9e66a31df726 188-197
+src/renderer/features/local-conversation/view/local-conversation-thread-turn.tsx
+  s_84a787688eba85::t_dc3de5b160b080 438,442
+src/shared/thought-presentation.test.ts
+  s_84a787688eba85::t_d00ca1ea9c4340 2-6,60-84
+  s_84a787688eba85::t_b50716599723f2 20-23
+  s_84a787688eba85::t_6939e0381d9b86 1,7-19,24-59,85-86
+docs/product-specs/codex-subagent-behavior.md
+  s_84a787688eba85::t_9e9e66a31df726 91
+src/shared/codex-subagent-row-model.ts
+  s_84a787688eba85::t_dc3de5b160b080 17,413,416-418
+src/renderer/features/local-conversation/projection/agent-activity-v2.ts
+  s_84a787688eba85::t_965f08028c4714 325-327
+CONTEXT.md
+  s_84a787688eba85::t_dd7ad16db05a7b 61-67
+src/renderer/features/local-conversation/projection/agent-activity-v2-summary.ts
+  s_84a787688eba85::t_965f08028c4714 154-156,189
+src/shared/types.ts
+  s_84a787688eba85::t_5e28501dc3b84f 3213-3218,3331,3394
+src/renderer/features/local-conversation/projection/thread-live-activity.ts
+  s_84a787688eba85::t_7bc859bb21866f 1,8,36-43
+packages/agent-runtime/src/persistence/Migrations/079_ClaudeLoneThinkingThoughts.test.ts
+  s_84a787688eba85::t_0a4899745958e2 1-47,49-51,53-126,128-184
+src/shared/thought-presentation.ts
+  s_84a787688eba85::t_35c623817b4307 11
+  s_84a787688eba85::t_7c6446a37fa77c 1-5,9-10,12-37
+  s_84a787688eba85::t_a428655fe75d42 6
+  s_84a787688eba85::t_d00ca1ea9c4340 38-53
+  s_84a787688eba85::t_b50716599723f2 7-8
+packages/agent-runtime/src/orchestration-v2/Adapters/ClaudeAdapterV2.ts
+  s_84a787688eba85::t_c658307c3a0b30 1265-1268,2877-2878,6758,6775,6781-6786,6788
+  s_84a787688eba85::t_a992f7d15ab8d4 6787
+  s_84a787688eba85::t_51f95e59c028f3 6756-6757
+src/renderer/features/local-conversation/thread-thought-label.ts
+  s_84a787688eba85::t_d6675d1afd0954 1-19
+src/renderer/features/local-conversation/projection/build-turn-render-model.node.test.ts
+  s_84a787688eba85::t_b50716599723f2 521
+src/renderer/features/local-conversation/view/local-conversation-turn-entry.test.tsx
+  s_84a787688eba85::t_46be43b898e81d 1586-1593,1678
+  s_84a787688eba85::t_4d913fbb596afa 1594,1607
+  s_84a787688eba85::t_4156695c8a90ca 1720-1724
+  s_84a787688eba85::t_806b8a82e52a39 1405
+  s_84a787688eba85::t_cdb1125a150a9e 1704-1705
+  s_84a787688eba85::t_35c623817b4307 1716-1718
+  s_84a787688eba85::t_0f746576b63c6a 1543-1585,1595-1606,1608-1677,1679-1703,1706-1715,1719,1725-1726
+packages/agent-runtime/src/persistence/Migrations/079_ClaudeLoneThinkingThoughts.ts
+  s_84a787688eba85::t_1ae83a2ca07421 1-99
+src/shared/codex-conversation-state/codex-conversation-state.ts
+  s_84a787688eba85::t_dbf802dc71d842 633-642,649,662
+src/renderer/features/local-conversation/view/blocks/local-conversation-block-leaves.tsx
+  s_84a787688eba85::t_588bb832bcf237 45,356-357,456-457,460-466,471,532-543,1162,1169-1176,1178-1197,1199-1201
+  s_84a787688eba85::t_7caad6071c88ae 110
+src/renderer/features/local-conversation/view/shared/tools/tool-primitives.tsx
+  s_84a787688eba85::t_588bb832bcf237 248-249,409,485-497
+  s_84a787688eba85::t_70a18754631fdd 252,435,448,457
+src/renderer/features/local-conversation/projection/test-fixtures/thread-tool-activity-projection-fixtures.ts
+  s_84a787688eba85::t_29c6d7cc608589 59-60,64
+src/shared/codex-transcript-entry-projection.ts
+  s_84a787688eba85::t_5e28501dc3b84f 36
+packages/agent-runtime/src/orchestration-v2/Adapters/ClaudeAdapterV2.test.ts
+  s_84a787688eba85::t_2e5021079d93d3 2453-2459,2461-2513
+  s_84a787688eba85::t_35c623817b4307 2514-2549,2551-2559,2561
+src/renderer/features/local-conversation/projection/agent-activity-v2.node.test.ts
+  s_84a787688eba85::t_895c4a754827cb 456-460
+  s_84a787688eba85::t_a3c66e034c4273 563,574
+src/renderer/features/local-conversation/projection/bucketize-turn-items.node.test.ts
+  s_84a787688eba85::t_93cd8b4e5d1d7d 194,196,942,944-947,1371,1730,1769-1775,1778-1779
+src/renderer/features/local-conversation/view/thought-layout.browser.test.tsx
+  s_84a787688eba85::t_f12b2fd32b6351 1-2,4-78,91-130
+  s_84a787688eba85::t_175b5e690b5c04 3,79-90
+src/renderer/features/local-conversation/view/shared/thought-surface.tsx
+  s_84a787688eba85::t_29e25cde24573c 1-2,7,9-54,56-58,60-62,67-125,129-149,151-189
+  s_84a787688eba85::t_3d4681358e6f40 8,63-66
+  s_84a787688eba85::t_feca66d72cf882 55,59
+  s_84a787688eba85::t_70a18754631fdd 126-128,150
+  s_84a787688eba85::t_35c623817b4307 3-6
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "5571e17fb77d8683f03abe7945d5200d872d1a8d",
+  "prompts": {},
+  "sessions": {
+    "s_84a787688eba85": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "de254a05-2640-4277-b304-cf79d5c8d7b0",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
