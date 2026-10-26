@@ -1,0 +1,61 @@
+CHANGELOG.md
+  s_359ad7f947db94::t_c0d9f4aa41bdc3 33-34
+docs/product-specs/agent-runtime-behavior.md
+  s_359ad7f947db94::t_48907da01a9612 366-385
+packages/agent-runtime/package.json
+  s_359ad7f947db94::t_9614025e124e5e 15-16
+packages/agent-runtime/src/nodex/AcpWireCompatibility.test.ts
+  s_359ad7f947db94::t_e7ae7f4d4c4dc7 9-12,181-201
+packages/agent-runtime/src/orchestration-v2/ProjectionControlReads.test.ts
+  s_359ad7f947db94::t_79c19829106e40 1,848-939
+packages/agent-runtime/src/orchestration-v2/ProjectionStore.ts
+  s_359ad7f947db94::t_da153312e206ed 1,1638-1643,3470,4186-4205,4211,4382-4390,4510-4517,5362
+packages/agent-runtime/src/orchestration-v2/PublicThreadProjection.ts
+  s_359ad7f947db94::t_e5cd6d81d9d907 1,9-13,15-18,69-72,105
+packages/agent-runtime/vendor/provider-acp/src/server/adapter.ts
+  s_359ad7f947db94::t_1e1869c37bcb9c 4723,4774
+packages/agent-runtime/vendor/provider-acp/src/server/runtimeModel.test.ts
+  s_359ad7f947db94::t_50258264d7c9e1 1197,1242
+packages/agent-runtime/vendor/provider-acp/src/server/runtimeModel.ts
+  s_359ad7f947db94::t_0d0eb89032f81b 1611-1612
+packages/agent-runtime/vendor/provider-core/package.json
+  s_359ad7f947db94::t_9a68fd3ee049c6 193-196
+packages/agent-runtime/vendor/provider-core/src/contextUsage.ts
+  s_359ad7f947db94::t_81f22aa2ddb0ae 1-108
+packages/agent-runtime/vendor/provider-core/src/server/handoffBudget.ts
+  s_359ad7f947db94::t_bc01c103983ea6 41
+src/renderer/features/local-conversation/agent-runtime-context-usage.ts
+  s_359ad7f947db94::t_24d23444bf2b85 1-72
+src/renderer/features/local-conversation/agent-runtime-conversation-owner.node.test.ts
+  s_359ad7f947db94::t_b6b1aeee5ae389 2318-2715
+src/renderer/features/local-conversation/agent-runtime-conversation-owner.ts
+  s_359ad7f947db94::t_c20d37094d7da9 1-6,176,1491-1492,1561-1598,1669-1675,1677,1689-1698,1860-1865,1897
+src/renderer/features/local-conversation/view/composer/local-conversation-thread-composer.tsx
+  s_359ad7f947db94::t_1d5adbc9cda43c 24,3800
+src/renderer/features/local-conversation/view/shared/context-window.test.tsx
+  s_359ad7f947db94::t_ad7e681f4e3221 45,50,58-59,63-73
+src/renderer/features/local-conversation/view/shared/context-window.tsx
+  s_359ad7f947db94::t_a7160b7f833db2 4,43,49-53,83,91-93,107,127,172
+src/renderer/lib/context-window.node.test.ts
+  s_359ad7f947db94::t_95ee912b8f8d0d 3,138-163
+src/renderer/lib/context-window.ts
+  s_359ad7f947db94::t_dcf1809064db99 3-6,8-13,18-35,38-39,41
+src/shared/agent-runtime-api.ts
+  s_359ad7f947db94::t_e8db6779fd7207 85-87
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "036df305e4ec156fb21762e65f9f2e618ad247ba",
+  "prompts": {},
+  "sessions": {
+    "s_359ad7f947db94": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1787e-1e4d-7cd0-89bb-3cea689b7843",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
