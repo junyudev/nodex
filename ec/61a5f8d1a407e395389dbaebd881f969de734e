@@ -1,0 +1,21 @@
+src/renderer/features/plugins/model/selectors.ts
+  s_77ac5bdfa64dec::t_6632586c502723 4-9,50,53-54
+src/shared/codex-plugin-management-model.ts
+  s_77ac5bdfa64dec::t_db6a99549357de 11,283-295,303-308,322-323
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "ec61a5f8d1a407e395389dbaebd881f969de734e",
+  "prompts": {},
+  "sessions": {
+    "s_77ac5bdfa64dec": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1795d-5e95-7ea0-9bf7-2e3e042b723f",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
