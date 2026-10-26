@@ -42,6 +42,7 @@ import { subscribeProjectChanges, subscribeProjectSessionChanges } from "@/lib/a
 import { listAllSidebarSectionItems, listAllSidebarSections } from "@/lib/sidebar-sections-api";
 import { cn } from "@/lib/utils";
 import type { ProjectSession } from "@/lib/types";
+import type { SidebarListExtraPagesState } from "@/lib/sidebar-section-prefs";
 import type { ProjectSessionSummary } from "../../../shared/types";
 import {
   workspaceProjectCommands,
@@ -272,17 +273,24 @@ export interface SidebarSectionProjectRowRenderInput {
   readonly sectionId: string;
 }
 
+/** Rows a Section shows first and reveals with each Show more. */
+const SECTION_PAGE_ITEMS = 50;
+
 function SectionDirectItems({
   catalog,
+  extraPages,
   getThreadKey,
   items,
   loading,
+  onExtraPagesChange,
   onThreadsChanged,
   renderProject,
   renderSession,
   section,
 }: {
   readonly catalog: SidebarSectionsCatalog;
+  readonly extraPages: number;
+  readonly onExtraPagesChange: (extraPages: number) => void;
   readonly getThreadKey: (sessionId: string) => string;
   readonly items: readonly SidebarSectionItem[];
   readonly loading: boolean;
@@ -291,7 +299,7 @@ function SectionDirectItems({
   readonly renderSession: (session: ProjectSessionSummary) => ReactNode;
   readonly section: SidebarSectionSummary;
 }) {
-  const [visibleItemCount, setVisibleItemCount] = useState(50);
+  const visibleItemCount = SECTION_PAGE_ITEMS * (extraPages + 1);
   const visibleItems = items.slice(0, visibleItemCount);
   const allItemIds = items.map((item) => item.placementId);
   const visibleItemIds = visibleItems.map((item) => item.placementId);
@@ -364,17 +372,15 @@ function SectionDirectItems({
           </div>
         )}
         {reorder.dropIndicatorTarget?.beforeThreadKey === null ? <SidebarDropIndicator /> : null}
-        {items.length > 50 ? (
+        {items.length > SECTION_PAGE_ITEMS ? (
           <div className="flex items-center gap-2 px-row-x py-1" role="listitem">
             {visibleItemCount < items.length ? (
-              <CodexSidebarPagerButton
-                onClick={() => setVisibleItemCount((current) => current + 50)}
-              >
+              <CodexSidebarPagerButton onClick={() => onExtraPagesChange(extraPages + 1)}>
                 Show more
               </CodexSidebarPagerButton>
             ) : null}
-            {visibleItemCount > 50 ? (
-              <CodexSidebarPagerButton onClick={() => setVisibleItemCount(50)}>
+            {extraPages > 0 ? (
+              <CodexSidebarPagerButton onClick={() => onExtraPagesChange(0)}>
                 Show less
               </CodexSidebarPagerButton>
             ) : null}
@@ -444,6 +450,8 @@ export function SidebarCustomSections({
   activeSessionId,
   collapsedSections,
   onSetCollapsed,
+  listExtraPages,
+  onListExtraPagesChange,
   onSelectSession,
 }: {
   readonly sessionsByProject: Readonly<Record<string, readonly ProjectSession[]>>;
@@ -455,6 +463,9 @@ export function SidebarCustomSections({
   readonly activeSessionId: string | null;
   readonly collapsedSections: Readonly<Record<string, boolean>>;
   readonly onSetCollapsed: (sectionId: `custom:${string}`, collapsed: boolean) => void;
+  /** Show more steps each Section keeps revealed, keyed by its `custom:` list. */
+  readonly listExtraPages: SidebarListExtraPagesState;
+  readonly onListExtraPagesChange: (listId: `custom:${string}`, extraPages: number) => void;
   readonly onSelectSession: (session: ProjectSession) => void;
 }) {
   const [archiveSection, setArchiveSection] = useState<SidebarSectionSummary | null>(null);
@@ -568,6 +579,10 @@ export function SidebarCustomSections({
                     >
                       <SectionDirectItems
                         catalog={catalog}
+                        extraPages={listExtraPages[disclosureId] ?? 0}
+                        onExtraPagesChange={(extraPages) =>
+                          onListExtraPagesChange(disclosureId, extraPages)
+                        }
                         getThreadKey={getThreadKey}
                         items={items}
                         loading={itemQuery?.isPending ?? false}

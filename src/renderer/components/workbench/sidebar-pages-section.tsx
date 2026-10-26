@@ -11,7 +11,6 @@ import {
   libraryChildrenQueryOptions,
   useInfiniteLibraryChildren,
 } from "@/lib/use-library-navigation";
-import { codexSidebarVisibleCount } from "@/lib/codex-sidebar-pagination";
 import {
   CODEX_SIDEBAR_GROUP_ACTION_BUTTON_CLASS,
   CODEX_SIDEBAR_ROW_LABEL_CLASS,
@@ -70,7 +69,7 @@ const nodeKey = (node: LibraryRoot): string => rootKey(nodeTarget(node));
 
 /** Rows shown before the first Show more. */
 const CONTENT_FIRST_PAGE_ROWS = 5;
-/** Rows per Library read; restoring a deeper list reads further windows. */
+/** Rows per Library read; a deeper revealed depth reads further windows. */
 const CONTENT_SOURCE_WINDOW_ROWS = 20;
 
 const DEFAULT_PAGES_DATA_SOURCE: SidebarPagesDataSource = {
@@ -301,17 +300,6 @@ export function SidebarPagesSection({
     () => (selectedRoot ? [...loadedRoots, selectedRoot] : loadedRoots),
     [loadedRoots, selectedRoot],
   );
-  // Keep one row beyond the revealed depth loaded, so a restored depth fills itself and
-  // Show more knows whether unrevealed rows remain.
-  const loadsMoreRows =
-    query.hasNextPage &&
-    !query.isError &&
-    loadedRoots.length <= codexSidebarVisibleCount(CONTENT_FIRST_PAGE_ROWS, extraPages);
-  const { fetchNextPage, isFetchingNextPage } = query;
-  useEffect(() => {
-    if (!loadsMoreRows || isFetchingNextPage) return;
-    void fetchNextPage();
-  }, [fetchNextPage, isFetchingNextPage, loadsMoreRows]);
   const rootDropTarget = useSidebarLibraryRootDropTarget();
 
   return (
@@ -350,7 +338,12 @@ export function SidebarPagesSection({
             extraPages={extraPages}
             onExtraPagesChange={onExtraPagesChange}
             forcedVisibleKey={activeKey}
-            hasMoreAtSource={query.hasNextPage}
+            source={{
+              hasMore: query.hasNextPage,
+              loading: query.isFetchingNextPage,
+              failed: query.isError,
+              loadMore: query.fetchNextPage,
+            }}
           >
             {(pagination, pager) => (
               <div role="list" aria-label="Content">

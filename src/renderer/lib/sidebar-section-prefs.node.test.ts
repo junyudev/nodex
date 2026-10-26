@@ -2,8 +2,8 @@ import { describe, expect, test } from "vite-plus/test";
 import {
   makeDefaultSidebarCollapsibleSectionsState,
   normalizeSidebarCollapsibleSectionsState,
-  normalizeSidebarSectionExtraPages,
-  withSidebarSectionExtraPages,
+  normalizeSidebarListExtraPages,
+  withSidebarListExtraPages,
 } from "./sidebar-section-prefs";
 
 describe("sidebar-section-prefs", () => {
@@ -30,24 +30,41 @@ describe("sidebar-section-prefs", () => {
     expect(normalizeSidebarCollapsibleSectionsState({ library: true }).pages).toBe(true);
   });
 
-  test("keeps only positive whole Show more depths for known sections", () => {
+  test("keeps positive whole Show more depths for built-in, Project, and custom lists", () => {
     expect(
-      normalizeSidebarSectionExtraPages({
+      normalizeSidebarListExtraPages({
         pages: 3,
         projects: 0,
         chats: -1,
         pinned: 2.5,
-        "custom:section-alpha": 2,
+        "project:alpha": 2,
+        "custom:section-alpha": 1,
+        "project:": 4,
+        library: 4,
       }),
-    ).toEqual({ pages: 3 });
-    expect(normalizeSidebarSectionExtraPages({ pages: 1e9 }).pages).toBe(1000);
-    expect(normalizeSidebarSectionExtraPages(["pages"])).toEqual({});
+    ).toEqual({ pages: 3, "project:alpha": 2, "custom:section-alpha": 1 });
+    expect(normalizeSidebarListExtraPages({ pages: 1e9 }).pages).toBe(1000);
+    expect(normalizeSidebarListExtraPages(["pages"])).toEqual({});
   });
 
-  test("records a depth and forgets a section that returns to its first page", () => {
-    const deeper = withSidebarSectionExtraPages({}, "pages", 2);
-    expect(deeper).toEqual({ pages: 2 });
-    expect(withSidebarSectionExtraPages(deeper, "pages", 2)).toBe(deeper);
-    expect(withSidebarSectionExtraPages(deeper, "pages", 0)).toEqual({});
+  test("records a depth and forgets a list that returns to its first page", () => {
+    const deeper = withSidebarListExtraPages({}, "project:alpha", 2);
+    expect(deeper).toEqual({ "project:alpha": 2 });
+    expect(withSidebarListExtraPages(deeper, "project:alpha", 2)).toBe(deeper);
+    expect(withSidebarListExtraPages(deeper, "project:alpha", 0)).toEqual({});
+  });
+
+  test("remembers the most recently changed lists when Projects come and go", () => {
+    let state = {};
+    for (let index = 0; index < 205; index += 1) {
+      state = withSidebarListExtraPages(state, `project:${index}`, 1);
+    }
+    state = withSidebarListExtraPages(state, "project:10", 2);
+    const remembered = Object.keys(state);
+    expect(remembered).toHaveLength(200);
+    expect(remembered).not.toContain("project:4");
+    expect(remembered[0]).toBe("project:5");
+    expect(remembered.at(-1)).toBe("project:10");
+    expect(Object.keys(normalizeSidebarListExtraPages(state))).toEqual(remembered);
   });
 });

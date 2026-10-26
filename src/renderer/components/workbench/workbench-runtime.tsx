@@ -125,10 +125,10 @@ import { PageTitleProjectionProvider } from "@/lib/page-title-projection-context
 import { useLibraryNavigationInvalidation } from "@/lib/use-library-navigation";
 import { cn } from "@/lib/utils";
 import {
-  type SidebarCollapsibleSectionId,
   type SidebarCollapsibleSectionsState,
   type SidebarDisclosureSectionId,
-  type SidebarSectionExtraPagesState,
+  type SidebarListExtraPagesState,
+  type SidebarListId,
 } from "@/lib/sidebar-section-prefs";
 import { useWorkbenchSidebarState } from "@/lib/use-workbench-sidebar-state";
 import type { WorkbenchCommandPort } from "@/lib/use-workbench-command-ingress";
@@ -391,6 +391,7 @@ export interface WorkbenchRuntimeProps {
   projects: Project[];
   hasMoreProjects?: boolean;
   loadingMoreProjects?: boolean;
+  loadMoreProjectsFailed?: boolean;
   onLoadMoreProjects?: () => Promise<void>;
   projectCatalogError?: string | null;
   onRetryProjects?: () => Promise<void> | void;
@@ -398,7 +399,7 @@ export interface WorkbenchRuntimeProps {
     collapsed: boolean;
     width: number;
     collapsibleSections?: SidebarCollapsibleSectionsState;
-    sectionExtraPages?: SidebarSectionExtraPagesState;
+    listExtraPages?: SidebarListExtraPagesState;
   };
   pageStageCloseRef: React.RefObject<(() => Promise<void>) | null>;
   pageStagePersistRef?: React.MutableRefObject<(() => Promise<void>) | null>;
@@ -441,10 +442,7 @@ export interface WorkbenchRuntimeProps {
     sectionId: SidebarDisclosureSectionId,
     collapsed: boolean,
   ) => void;
-  setSidebarSectionExtraPages?: (
-    sectionId: SidebarCollapsibleSectionId,
-    extraPages: number,
-  ) => void;
+  setSidebarListExtraPages?: (listId: SidebarListId, extraPages: number) => void;
   recentPageSessions?: readonly RecentPageSession[];
   projectPickerOpenTick?: number;
   taskSearchOpenTick?: number;
@@ -461,6 +459,7 @@ export function WorkbenchRuntime({
   projects,
   hasMoreProjects = false,
   loadingMoreProjects = false,
+  loadMoreProjectsFailed = false,
   onLoadMoreProjects,
   projectCatalogError = null,
   onRetryProjects,
@@ -492,7 +491,7 @@ export function WorkbenchRuntime({
   setSidebarCollapsed,
   setSidebarWidth,
   setSidebarCollapsibleSectionCollapsed,
-  setSidebarSectionExtraPages,
+  setSidebarListExtraPages,
   onNavigationStateChange,
   onRegisterCommandPort,
   commandKeymapState,
@@ -610,8 +609,8 @@ export function WorkbenchRuntime({
     activeProjectId,
     collapsibleSections: sidebar?.collapsibleSections,
     setCollapsibleSectionCollapsed: setSidebarCollapsibleSectionCollapsed,
-    sectionExtraPages: sidebar?.sectionExtraPages,
-    setSectionExtraPages: setSidebarSectionExtraPages,
+    listExtraPages: sidebar?.listExtraPages,
+    setListExtraPages: setSidebarListExtraPages,
   });
   const {
     expandedProjectIds,
@@ -4743,6 +4742,7 @@ export function WorkbenchRuntime({
   const sidebarBody: WorkbenchSidebarBodyProps = {
     hasMoreProjects,
     loadingMoreProjects,
+    loadMoreProjectsFailed,
     onLoadMoreProjects,
     activeProjectId,
     activeSessionId: activeSession?.id ?? null,
@@ -4755,7 +4755,7 @@ export function WorkbenchRuntime({
     expandedProjectIds,
     pinnedProjectsSectionCollapsed,
     pagesSectionCollapsed,
-    pagesSectionExtraPages: sidebarState.pagesSectionExtraPages,
+    sidebarListExtraPages: sidebarState.listExtraPages,
     projectsSectionCollapsed,
     chatsSectionCollapsed,
     sidebarCollapsibleSections: sidebarState.sections,
@@ -4766,7 +4766,7 @@ export function WorkbenchRuntime({
     onResizeWidth: applySidebarWidth,
     onTogglePinnedProjectsSectionCollapsed: togglePinnedProjectsSectionCollapsed,
     onTogglePagesSectionCollapsed: togglePagesSection,
-    onPagesSectionExtraPagesChange: sidebarState.setPagesSectionExtraPages,
+    onSidebarListExtraPagesChange: sidebarState.setListExtraPages,
     onToggleProjectsSectionCollapsed: toggleProjectsSectionCollapsed,
     onToggleChatsSectionCollapsed: toggleChatsSectionCollapsed,
     onSetSidebarSectionCollapsed: sidebarState.setSectionCollapsed,

@@ -406,7 +406,8 @@ test("moves draft and attached Chats through Section boundaries and built-in des
     await expect(laterChat).toBeVisible();
     await expect(ungroupedChat).toHaveCount(0);
     await sectionToggle(work).click();
-    await work.getByRole("button", { name: "Show more" }).click();
+    // Reopening the Section keeps the rows its earlier Show more revealed.
+    await expect(work.getByRole("button", { name: "Show less" })).toBeVisible();
     await dragSidebarRow(laterChat, movedProject, containerFeedback(movedProject), 0.5);
     await expect(movedProjectChat).toBeVisible();
     await expect(movedProjectChat).toHaveAttribute(
@@ -443,7 +444,8 @@ test("moves draft and attached Chats through Section boundaries and built-in des
       )
       .toEqual(pinnedTitles);
     const restoredWork = workSection(restartedPage);
-    await restoredWork.getByRole("button", { name: "Show more" }).click();
+    // The revealed depth is a Profile preference, so it survives the relaunch.
+    await expect(restoredWork.getByRole("button", { name: "Show less" })).toBeVisible();
     const restoredTitles = await restoredWork
       .locator("[data-app-action-sidebar-thread-title]")
       .evaluateAll((rows) =>

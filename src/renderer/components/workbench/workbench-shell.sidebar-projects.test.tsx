@@ -773,7 +773,7 @@ describe("workbench session shell / sidebar-projects", () => {
     ).toBe(null);
   });
 
-  test("projectless Chats starts at fifty rows and expands through the pager", async () => {
+  test("projectless Chats starts at fifty rows and keeps its revealed rows across destinations", async () => {
     const projectlessChats = Array.from({ length: 52 }, (_, index) =>
       makeAttachedSession({
         id: `session:projectless:paged-${index + 1}`,
@@ -815,6 +815,18 @@ describe("workbench session shell / sidebar-projects", () => {
     ).toBe(true);
     expect(within(chatsSection).queryByRole("button", { name: "Show more" })).toBe(null);
     expect(within(chatsSection).queryByRole("button", { name: "Show less" }) !== null).toBe(true);
+
+    const rail = screen.getByRole("navigation", { name: "App navigation" });
+    for (const destination of ["Space", "Home"]) {
+      await act(async () => {
+        fireEvent.click(within(rail).getByRole("button", { name: destination }));
+        await Promise.resolve();
+      });
+      await settleAsyncRender();
+    }
+    const returnedChats = getSidebarSection(screen.container, "Chats");
+    expect(returnedChats.querySelectorAll("[data-app-action-sidebar-thread-row]").length).toBe(52);
+    expect(within(returnedChats).queryByRole("button", { name: "Show less" }) !== null).toBe(true);
   });
 
   test("Cmd+N ensures a project-scoped default Session", async () => {

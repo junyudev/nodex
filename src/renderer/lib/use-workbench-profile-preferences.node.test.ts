@@ -48,12 +48,13 @@ describe("Workbench profile preferences", () => {
           pinned: true,
           chats: true,
         },
-        sectionExtraPages: {
+        listExtraPages: {
           pages: 2,
           chats: 0,
           projects: 1.5,
           pinned: "3",
-          "custom:work": 4,
+          "project:alpha": 1,
+          unknown: 4,
         },
       },
       recentPageSessions: [
@@ -89,7 +90,7 @@ describe("Workbench profile preferences", () => {
         projects: false,
         chats: true,
       },
-      sectionExtraPages: { pages: 2 },
+      listExtraPages: { pages: 2, "project:alpha": 1 },
     });
     expect(preferences.recentPageSessions).toHaveLength(1);
     expect(preferences.databaseViewTabs.displayModeByDatabaseId).toEqual({

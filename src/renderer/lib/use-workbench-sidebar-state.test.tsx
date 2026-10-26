@@ -61,29 +61,29 @@ describe("useWorkbenchSidebarState", () => {
     expect(setCollapsed).toHaveBeenCalledWith("projects", false);
   });
 
-  test("delegates persisted Content depth and keeps a local depth without an owner", () => {
+  test("delegates persisted list depth and keeps a local depth without an owner", () => {
     const setExtraPages = vi.fn();
     const persisted = renderHook(() =>
       useWorkbenchSidebarState({
         projects: [],
         activeProjectId: null,
-        sectionExtraPages: { pages: 2 },
-        setSectionExtraPages: setExtraPages,
+        listExtraPages: { pages: 2 },
+        setListExtraPages: setExtraPages,
       }),
     );
-    expect(persisted.result.current.pagesSectionExtraPages).toBe(2);
-    act(() => persisted.result.current.setPagesSectionExtraPages(3));
-    expect(setExtraPages).toHaveBeenCalledWith("pages", 3);
-    expect(persisted.result.current.pagesSectionExtraPages).toBe(2);
+    expect(persisted.result.current.listExtraPages.pages).toBe(2);
+    act(() => persisted.result.current.setListExtraPages("project:alpha", 3));
+    expect(setExtraPages).toHaveBeenCalledWith("project:alpha", 3);
+    expect(persisted.result.current.listExtraPages).toEqual({ pages: 2 });
 
     const local = renderHook(() =>
       useWorkbenchSidebarState({ projects: [], activeProjectId: null }),
     );
-    expect(local.result.current.pagesSectionExtraPages).toBe(0);
-    act(() => local.result.current.setPagesSectionExtraPages(1));
-    expect(local.result.current.pagesSectionExtraPages).toBe(1);
-    act(() => local.result.current.setPagesSectionExtraPages(0));
-    expect(local.result.current.pagesSectionExtraPages).toBe(0);
+    expect(local.result.current.listExtraPages).toEqual({});
+    act(() => local.result.current.setListExtraPages("chats", 1));
+    expect(local.result.current.listExtraPages).toEqual({ chats: 1 });
+    act(() => local.result.current.setListExtraPages("chats", 0));
+    expect(local.result.current.listExtraPages).toEqual({});
   });
 
   test("guards archive intents and owns context-menu selection", () => {

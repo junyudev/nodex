@@ -109,7 +109,11 @@ import {
   type WorkbenchSessionCollectionState,
 } from "@/lib/use-workbench-session-catalog";
 import { projectSessionSummaryToDomain } from "@/lib/workbench-session-presentation";
-import type { SidebarCollapsibleSectionsState } from "@/lib/sidebar-section-prefs";
+import type {
+  SidebarCollapsibleSectionsState,
+  SidebarListExtraPagesState,
+  SidebarListId,
+} from "@/lib/sidebar-section-prefs";
 import { SidebarPaginatedItems } from "./sidebar-paginated-items";
 import {
   SidebarCustomSections,
@@ -402,8 +406,11 @@ function SidebarThreadContainerRowsContent({
       onExtraPagesChange={onExtraPagesChange}
       forcedVisibleKey={forcedVisibleKey}
       suppressedKeys={suppressedKeys}
-      hasMoreAtSource={hasMoreAtSource}
-      onLoadMore={onLoadMore}
+      source={{
+        hasMore: hasMoreAtSource,
+        failed: collectionState.kind === "error",
+        loadMore: onLoadMore,
+      }}
     >
       {(pagination, pager) => (
         <div className="isolate flex flex-col [contain:layout]">
@@ -622,8 +629,11 @@ function SidebarProjectThreadRowsContent({
       forcedVisibleKey={forcedVisibleKey}
       suppressedKeys={suppressedKeys}
       pagerClassName={CODEX_SIDEBAR_PROJECT_THREAD_PAGER_ROW_CLASS}
-      hasMoreAtSource={hasMoreAtSource}
-      onLoadMore={onLoadMore}
+      source={{
+        hasMore: hasMoreAtSource,
+        failed: collectionState.kind === "error",
+        loadMore: onLoadMore,
+      }}
     >
       {(pagination, pager) => {
         const pinnedThreadKeySet = new Set(displayedPinnedThreadKeys);
@@ -712,6 +722,8 @@ function SidebarThreadOrganizerSections({
   projectsSectionCollapsed,
   chatsSectionCollapsed,
   sidebarCollapsibleSections,
+  sidebarListExtraPages,
+  onSidebarListExtraPagesChange,
   onLoadMoreTaskWindow,
   onRetryTaskWindow,
   model,
@@ -750,6 +762,7 @@ function SidebarThreadOrganizerSections({
   sidebarArchivePendingKeys,
   hasMoreProjects,
   loadingMoreProjects,
+  loadMoreProjectsFailed,
   onLoadMoreProjects,
 }: {
   /** Messages waiting in each Project's own Inbox. */
@@ -765,6 +778,9 @@ function SidebarThreadOrganizerSections({
   projectsSectionCollapsed: boolean;
   chatsSectionCollapsed: boolean;
   sidebarCollapsibleSections: SidebarCollapsibleSectionsState;
+  /** Show more steps each list keeps revealed, remembered by the Profile. */
+  sidebarListExtraPages: SidebarListExtraPagesState;
+  onSidebarListExtraPagesChange: (listId: SidebarListId, extraPages: number) => void;
   onLoadMoreTaskWindow: (projectId: string | null) => Promise<void>;
   onRetryTaskWindow: (projectId: string | null) => Promise<void>;
   model: CodexSidebarThreadSyncModel;
@@ -815,6 +831,7 @@ function SidebarThreadOrganizerSections({
   sidebarArchivePendingKeys: ReadonlySet<string>;
   hasMoreProjects: boolean;
   loadingMoreProjects: boolean;
+  loadMoreProjectsFailed: boolean;
   onLoadMoreProjects?: () => Promise<void>;
 }) {
   const sectionCatalog = useSidebarSectionsCatalog();
@@ -861,12 +878,6 @@ function SidebarThreadOrganizerSections({
       ),
     [sectionCatalog.itemsBySectionId],
   );
-  const [pinnedProjectsExtraPages, setPinnedProjectsExtraPages] = useState(0);
-  const [projectsExtraPages, setProjectsExtraPages] = useState(0);
-  const [projectThreadListExtraPages, setProjectThreadListExtraPages] = useState<
-    ReadonlyMap<string, number>
-  >(() => new Map());
-  const [projectlessThreadListExtraPages, setProjectlessThreadListExtraPages] = useState(0);
   const [previouslyExpandedProjectGroupIds, setPreviouslyExpandedProjectGroupIds] = useState<
     string[]
   >([]);
@@ -1322,18 +1333,6 @@ function SidebarThreadOrganizerSections({
     return activeSession ? `local:session:${activeSession.id}` : null;
   }, [activePendingClientThreadId, activeSessionId, sessionsById, sidebarThreadItemsByKey]);
 
-  const setProjectThreadListPages = useCallback((projectId: string, extraPages: number) => {
-    setProjectThreadListExtraPages((current) => {
-      const next = new Map(current);
-      if (extraPages > 0) {
-        next.set(projectId, extraPages);
-      } else {
-        next.delete(projectId);
-      }
-      return next;
-    });
-  }, []);
-
   const resolveSessionForItem = useCallback(
     (item: CodexSidebarThreadItem) => {
       if (item.sessionId) {
@@ -1437,7 +1436,7 @@ function SidebarThreadOrganizerSections({
     currentSectionId: string | null = null,
   ) => {
     const expanded = expandedProjectIds.has(project.id);
-    const threadListExtraPages = projectThreadListExtraPages.get(project.id) ?? 0;
+    const threadListId = `project:${project.id}` as const;
     const projectThreadItems = Array.from(new Set([...pinnedThreadKeys, ...threadKeys]))
       .map((threadKey) => sidebarThreadItemsByKey.get(threadKey))
       .filter((item): item is CodexSidebarThreadItem => item != null);
@@ -1499,9 +1498,9 @@ function SidebarThreadOrganizerSections({
               model.threadItemsByKey.has(threadKey) && !sidebarArchivePendingKeys.has(threadKey),
           )}
           threadKeys={threadKeys}
-          extraPages={threadListExtraPages}
+          extraPages={sidebarListExtraPages[threadListId] ?? 0}
           onExtraPagesChange={(extraPages) => {
-            setProjectThreadListPages(project.id, extraPages);
+            onSidebarListExtraPagesChange(threadListId, extraPages);
           }}
           forcedVisibleKey={activeThreadKey}
           suppressedKeys={sidebarArchivePendingKeys}
@@ -1546,8 +1545,16 @@ function SidebarThreadOrganizerSections({
       extraPages={options.extraPages}
       onExtraPagesChange={options.onExtraPagesChange}
       forcedVisibleKey={activeProjectId}
-      hasMoreAtSource={options.readsProjectWindow === true && hasMoreProjects}
-      onLoadMore={options.readsProjectWindow ? onLoadMoreProjects : undefined}
+      source={
+        options.readsProjectWindow && onLoadMoreProjects
+          ? {
+              hasMore: hasMoreProjects,
+              loading: loadingMoreProjects,
+              failed: loadMoreProjectsFailed,
+              loadMore: onLoadMoreProjects,
+            }
+          : undefined
+      }
     >
       {(pagination, pager) => {
         const visibleGroupIds = pagination.visibleItems.map((group) => group.project.id);
@@ -1636,8 +1643,9 @@ function SidebarThreadOrganizerSections({
           {pinnedProjectGroups.length > 0
             ? renderProjectGroupRows(pinnedProjectGroups, {
                 reorderScope: "pinned",
-                extraPages: pinnedProjectsExtraPages,
-                onExtraPagesChange: setPinnedProjectsExtraPages,
+                extraPages: sidebarListExtraPages.pinned ?? 0,
+                onExtraPagesChange: (extraPages) =>
+                  onSidebarListExtraPagesChange("pinned", extraPages),
               })
             : null}
         </CodexSidebarSection>
@@ -1677,6 +1685,8 @@ function SidebarThreadOrganizerSections({
         activeSessionId={activeSessionId}
         collapsedSections={sidebarCollapsibleSections}
         onSetCollapsed={onSetSidebarSectionCollapsed}
+        listExtraPages={sidebarListExtraPages}
+        onListExtraPagesChange={onSidebarListExtraPagesChange}
         onThreadsChanged={onThreadsChanged}
         getThreadKey={(sessionId) =>
           sidebarThreadKeyBySessionId.get(sessionId) ?? `section-session:${sessionId}`
@@ -1698,8 +1708,8 @@ function SidebarThreadOrganizerSections({
         <StableWorktreeSidebarRows entries={pendingStableWorktrees} onOpen={onOpenStableWorktree} />
         {renderProjectGroupRows(unpinnedProjectGroups, {
           reorderScope: "projects",
-          extraPages: projectsExtraPages,
-          onExtraPagesChange: setProjectsExtraPages,
+          extraPages: sidebarListExtraPages.projects ?? 0,
+          onExtraPagesChange: (extraPages) => onSidebarListExtraPagesChange("projects", extraPages),
           readsProjectWindow: true,
         })}
       </CodexSidebarSection>
@@ -1728,8 +1738,8 @@ function SidebarThreadOrganizerSections({
             getSessionId={getSidebarSessionId}
             getThreadId={getSidebarRealThreadId}
             itemsByKey={sidebarThreadItemsByKey}
-            extraPages={projectlessThreadListExtraPages}
-            onExtraPagesChange={setProjectlessThreadListExtraPages}
+            extraPages={sidebarListExtraPages.chats ?? 0}
+            onExtraPagesChange={(extraPages) => onSidebarListExtraPagesChange("chats", extraPages)}
             forcedVisibleKey={activeThreadKey}
             suppressedKeys={sidebarArchivePendingKeys}
             collectionState={projectlessSessionCollection.state}
@@ -1766,6 +1776,9 @@ export interface ProjectSessionSidebarProps extends Omit<
   projectsSectionCollapsed: boolean;
   chatsSectionCollapsed: boolean;
   sidebarCollapsibleSections: SidebarCollapsibleSectionsState;
+  /** Show more steps each list keeps revealed, remembered by the Profile. */
+  sidebarListExtraPages: SidebarListExtraPagesState;
+  onSidebarListExtraPagesChange: (listId: SidebarListId, extraPages: number) => void;
   onLoadMoreTaskWindow: (projectId: string | null) => Promise<void>;
   onRetryTaskWindow: (projectId: string | null) => Promise<void>;
   onHoverSurfaceOpenChange?: (open: boolean) => void;
@@ -1820,6 +1833,7 @@ export interface ProjectSessionSidebarProps extends Omit<
   sidebarArchivePendingKeys: ReadonlySet<string>;
   hasMoreProjects: boolean;
   loadingMoreProjects: boolean;
+  loadMoreProjectsFailed: boolean;
   onLoadMoreProjects?: () => Promise<void>;
 }
 
@@ -1839,6 +1853,8 @@ export function ProjectSessionSidebar({
   projectsSectionCollapsed,
   chatsSectionCollapsed,
   sidebarCollapsibleSections,
+  sidebarListExtraPages,
+  onSidebarListExtraPagesChange,
   onLoadMoreTaskWindow,
   onRetryTaskWindow,
   width,
@@ -1887,6 +1903,7 @@ export function ProjectSessionSidebar({
   sidebarArchivePendingKeys,
   hasMoreProjects,
   loadingMoreProjects,
+  loadMoreProjectsFailed,
   onLoadMoreProjects,
 }: ProjectSessionSidebarProps) {
   const queryClient = useQueryClient();
@@ -2113,6 +2130,8 @@ export function ProjectSessionSidebar({
                 projectsSectionCollapsed={projectsSectionCollapsed}
                 chatsSectionCollapsed={chatsSectionCollapsed}
                 sidebarCollapsibleSections={sidebarCollapsibleSections}
+                sidebarListExtraPages={sidebarListExtraPages}
+                onSidebarListExtraPagesChange={onSidebarListExtraPagesChange}
                 onLoadMoreTaskWindow={onLoadMoreTaskWindow}
                 onRetryTaskWindow={onRetryTaskWindow}
                 model={sidebarThreadModel}
@@ -2151,6 +2170,7 @@ export function ProjectSessionSidebar({
                 sidebarArchivePendingKeys={sidebarArchivePendingKeys}
                 hasMoreProjects={hasMoreProjects}
                 loadingMoreProjects={loadingMoreProjects}
+                loadMoreProjectsFailed={loadMoreProjectsFailed}
                 onLoadMoreProjects={onLoadMoreProjects}
               />
             </SidebarReorderDndProvider>

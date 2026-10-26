@@ -7,13 +7,19 @@ export type SidebarDisclosureSectionId = SidebarCollapsibleSectionId | `custom:$
 export type SidebarCollapsibleSectionsState = Record<string, boolean> &
   Record<SidebarCollapsibleSectionId, boolean>;
 
-/** Show more steps a section keeps revealed, keyed by section. Absent means its first page. */
-export type SidebarSectionExtraPagesState = Readonly<
-  Partial<Record<SidebarCollapsibleSectionId, number>>
->;
+/**
+ * A sidebar list whose revealed depth the Profile remembers: a built-in section, one
+ * Project's chats, or a custom Section.
+ */
+export type SidebarListId = SidebarCollapsibleSectionId | `project:${string}` | `custom:${string}`;
+
+/** Show more steps each sidebar list keeps revealed. Absent means its first page. */
+export type SidebarListExtraPagesState = Readonly<Partial<Record<SidebarListId, number>>>;
 
 /** Rejects implausible stored values; Show more never approaches it. */
-const SIDEBAR_SECTION_MAX_EXTRA_PAGES = 1000;
+const SIDEBAR_LIST_MAX_EXTRA_PAGES = 1000;
+/** Lists for removed Projects or Sections age out behind the most recently changed ones. */
+const SIDEBAR_LIST_MAX_REMEMBERED = 200;
 
 export function makeDefaultSidebarCollapsibleSectionsState(): SidebarCollapsibleSectionsState {
   return SIDEBAR_COLLAPSIBLE_SECTION_IDS.reduce<SidebarCollapsibleSectionsState>(
@@ -56,28 +62,39 @@ export function normalizeSidebarCollapsibleSectionsState(
   return normalized;
 }
 
-export function normalizeSidebarSectionExtraPages(value: unknown): SidebarSectionExtraPagesState {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) return {};
-  const record = value as Record<string, unknown>;
-  const normalized: Partial<Record<SidebarCollapsibleSectionId, number>> = {};
-  for (const sectionId of SIDEBAR_COLLAPSIBLE_SECTION_IDS) {
-    const extraPages = record[sectionId];
-    if (typeof extraPages !== "number" || !Number.isInteger(extraPages) || extraPages <= 0) {
-      continue;
-    }
-    normalized[sectionId] = Math.min(extraPages, SIDEBAR_SECTION_MAX_EXTRA_PAGES);
-  }
-  return normalized;
+export function isSidebarListId(value: string): value is SidebarListId {
+  if (isSidebarCollapsibleSectionId(value)) return true;
+  if (value.length > 320) return false;
+  return (
+    (value.startsWith("project:") && value.length > "project:".length) ||
+    (value.startsWith("custom:") && value.length > "custom:".length)
+  );
 }
 
-/** Returns the next state, dropping a section that returns to its first page. */
-export function withSidebarSectionExtraPages(
-  current: SidebarSectionExtraPagesState,
-  sectionId: SidebarCollapsibleSectionId,
+export function normalizeSidebarListExtraPages(value: unknown): SidebarListExtraPagesState {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return {};
+  const entries = Object.entries(value as Record<string, unknown>).flatMap(([listId, pages]) =>
+    isSidebarListId(listId) && typeof pages === "number" && Number.isInteger(pages) && pages > 0
+      ? [[listId, Math.min(pages, SIDEBAR_LIST_MAX_EXTRA_PAGES)] as const]
+      : [],
+  );
+  return Object.fromEntries(entries.slice(-SIDEBAR_LIST_MAX_REMEMBERED));
+}
+
+/**
+ * Returns the next state with the changed list most recent, dropping a list that returns
+ * to its first page.
+ */
+export function withSidebarListExtraPages(
+  current: SidebarListExtraPagesState,
+  listId: SidebarListId,
   extraPages: number,
-): SidebarSectionExtraPagesState {
+): SidebarListExtraPagesState {
   const next = Math.max(0, Math.trunc(extraPages));
-  if ((current[sectionId] ?? 0) === next) return current;
-  const { [sectionId]: _previous, ...rest } = current;
-  return next === 0 ? rest : { ...rest, [sectionId]: next };
+  if ((current[listId] ?? 0) === next) return current;
+  const { [listId]: _previous, ...rest } = current;
+  if (next === 0) return rest;
+  return Object.fromEntries(
+    [...Object.entries(rest), [listId, next] as const].slice(-SIDEBAR_LIST_MAX_REMEMBERED),
+  );
 }

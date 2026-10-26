@@ -7,12 +7,12 @@ import {
 } from "./codex-sidebar-auto-reveal";
 import {
   normalizeSidebarCollapsibleSectionsState,
-  normalizeSidebarSectionExtraPages,
-  withSidebarSectionExtraPages,
-  type SidebarCollapsibleSectionId,
+  normalizeSidebarListExtraPages,
+  withSidebarListExtraPages,
   type SidebarDisclosureSectionId,
   type SidebarCollapsibleSectionsState,
-  type SidebarSectionExtraPagesState,
+  type SidebarListExtraPagesState,
+  type SidebarListId,
 } from "./sidebar-section-prefs";
 import { appScope, scopedAtom, useScopedAtom } from "./maitai";
 import { WORKBENCH_PERSIST_DEBOUNCE_MS } from "./timing";
@@ -22,14 +22,15 @@ export type {
   SidebarCollapsibleSectionId,
   SidebarDisclosureSectionId,
   SidebarCollapsibleSectionsState,
-  SidebarSectionExtraPagesState,
+  SidebarListExtraPagesState,
+  SidebarListId,
 } from "./sidebar-section-prefs";
 
 export interface WorkbenchSidebarPreferences {
   readonly collapsed: boolean;
   readonly width: number;
   readonly collapsibleSections: SidebarCollapsibleSectionsState;
-  readonly sectionExtraPages: SidebarSectionExtraPagesState;
+  readonly listExtraPages: SidebarListExtraPagesState;
 }
 
 export type DatabaseViewTabDisplayMode = "icon_and_text" | "text_only" | "icon_only";
@@ -60,7 +61,7 @@ function makeDefaultWorkbenchProfilePreferences(): WorkbenchProfilePreferences {
       collapsed: false,
       width: CODEX_SIDEBAR_WIDTH_DEFAULT_PX,
       collapsibleSections: normalizeSidebarCollapsibleSectionsState(undefined),
-      sectionExtraPages: {},
+      listExtraPages: {},
     },
     databaseViewTabs: { displayModeByDatabaseId: {}, ruleBarOpenByViewId: {} },
     recentPageSessions: [],
@@ -143,7 +144,7 @@ function normalizeWorkbenchProfilePreferencesAtBoundary(
         typeof sidebar?.width === "number" ? sidebar.width : defaults.sidebar.width,
       ),
       collapsibleSections: normalizeSidebarCollapsibleSectionsState(sidebar?.collapsibleSections),
-      sectionExtraPages: normalizeSidebarSectionExtraPages(sidebar?.sectionExtraPages),
+      listExtraPages: normalizeSidebarListExtraPages(sidebar?.listExtraPages),
     },
     databaseViewTabs: {
       displayModeByDatabaseId: normalizeDatabaseViewTabDisplayModes(
@@ -331,16 +332,16 @@ export function useWorkbenchProfilePreferences() {
     [update],
   );
 
-  const setSidebarSectionExtraPages = useCallback(
-    (sectionId: SidebarCollapsibleSectionId, extraPages: number) => {
+  const setSidebarListExtraPages = useCallback(
+    (listId: SidebarListId, extraPages: number) => {
       update((current) => {
-        const sectionExtraPages = withSidebarSectionExtraPages(
-          current.sidebar.sectionExtraPages,
-          sectionId,
+        const listExtraPages = withSidebarListExtraPages(
+          current.sidebar.listExtraPages,
+          listId,
           extraPages,
         );
-        if (sectionExtraPages === current.sidebar.sectionExtraPages) return current;
-        return { ...current, sidebar: { ...current.sidebar, sectionExtraPages } };
+        if (listExtraPages === current.sidebar.listExtraPages) return current;
+        return { ...current, sidebar: { ...current.sidebar, listExtraPages } };
       });
     },
     [update],
@@ -416,7 +417,7 @@ export function useWorkbenchProfilePreferences() {
       setSidebarCollapsed,
       setSidebarWidth,
       setSidebarCollapsibleSectionCollapsed,
-      setSidebarSectionExtraPages,
+      setSidebarListExtraPages,
       setDatabaseViewTabDisplayMode,
       setDatabaseViewRuleBarOpen,
       recordRecentPageLeave,
@@ -428,7 +429,7 @@ export function useWorkbenchProfilePreferences() {
       recordRecentPageLeave,
       setSidebarCollapsed,
       setSidebarCollapsibleSectionCollapsed,
-      setSidebarSectionExtraPages,
+      setSidebarListExtraPages,
       setDatabaseViewTabDisplayMode,
       setDatabaseViewRuleBarOpen,
       setSidebarWidth,

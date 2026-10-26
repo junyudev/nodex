@@ -293,6 +293,7 @@ export function useProjects() {
     projects,
     hasMoreProjects: projectsQuery.hasNextPage,
     loadingMoreProjects: projectsQuery.isFetchingNextPage,
+    loadMoreProjectsFailed: projectsQuery.isFetchNextPageError,
     loadMoreProjects: async () => {
       if (!projectsQuery.hasNextPage || projectsQuery.isFetchingNextPage) return;
       await projectsQuery.fetchNextPage();
@@ -347,6 +348,7 @@ export function useRemovedProjects(open: boolean) {
     projects: projectsQuery.data ?? EMPTY_PROJECTS,
     hasMoreProjects: projectsQuery.hasNextPage,
     loadingMoreProjects: projectsQuery.isFetchingNextPage,
+    loadMoreProjectsFailed: projectsQuery.isFetchNextPageError,
     loadMoreProjects: async () => {
       if (!projectsQuery.hasNextPage || projectsQuery.isFetchingNextPage) return;
       await projectsQuery.fetchNextPage();

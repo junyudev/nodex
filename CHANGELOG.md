@@ -27,7 +27,7 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
-- Space Content keeps its order when you open a Page, Database or Canvas, and remembers how far you expanded it with Show more after switching to Home, reopening the window or relaunching.
+- Space Content keeps its order when you open a Page, Database or Canvas, and every sidebar list remembers how far you expanded it with Show more after switching between Home and Space, reopening the window or relaunching.
 - Unread dots clear when you view a chat or its reply finishes in the foreground, without switching away and back. Manually marked unread chats stay unread until new activity or interaction.
 - Chat completion notifications include the Agent’s reply after execution ends and preserve readable content from Markdown, including code blocks.
 - Existing Profiles upgrade without rejecting saved paragraphs that begin with Markdown punctuation, while preserving their content and edit history.

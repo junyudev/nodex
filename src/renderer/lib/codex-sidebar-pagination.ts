@@ -20,11 +20,6 @@ export interface CodexSidebarPaginationResult<T> {
   showPager: boolean;
 }
 
-/** Rows a list reveals after its first page plus `extraPages` Show more steps. */
-export function codexSidebarVisibleCount(maxItems: number, extraPages: number): number {
-  return maxItems + CODEX_SIDEBAR_PAGE_INCREMENT * extraPages;
-}
-
 export function paginateCodexSidebarItems<T>(input: {
   items: readonly T[];
   getKey: (item: T) => string;
@@ -41,7 +36,9 @@ export function paginateCodexSidebarItems<T>(input: {
   const maxItems = input.maxItems ?? null;
   const expanded = input.extraPages > 0;
   const visibleCount =
-    maxItems === null ? filteredItems.length : codexSidebarVisibleCount(maxItems, input.extraPages);
+    maxItems === null
+      ? filteredItems.length
+      : maxItems + CODEX_SIDEBAR_PAGE_INCREMENT * input.extraPages;
   // The forced item is guaranteed visible without taking a page slot from anything else:
   // inside the page nothing changes, and beyond it the item joins in list order as one extra row.
   const isForced = (item: T) => input.getKey(item) === input.forcedVisibleKey;

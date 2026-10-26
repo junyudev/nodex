@@ -101,6 +101,7 @@ export function WorkbenchShell({
     projects,
     hasMoreProjects,
     loadingMoreProjects,
+    loadMoreProjectsFailed,
     loadMoreProjects,
     loading,
     error: projectsError,
@@ -125,7 +126,7 @@ export function WorkbenchShell({
     setSidebarCollapsed,
     setSidebarWidth,
     setSidebarCollapsibleSectionCollapsed,
-    setSidebarSectionExtraPages,
+    setSidebarListExtraPages,
     recordRecentPageLeave,
   } = useWorkbenchProfilePreferences();
   const projectOrder = useMemo(() => projects.map((project) => project.id), [projects]);
@@ -424,6 +425,7 @@ export function WorkbenchShell({
       projects={projects}
       hasMoreProjects={hasMoreProjects}
       loadingMoreProjects={loadingMoreProjects}
+      loadMoreProjectsFailed={loadMoreProjectsFailed}
       onLoadMoreProjects={loadMoreProjects}
       projectCatalogError={projectsError}
       onRetryProjects={refreshProjects}
@@ -441,7 +443,7 @@ export function WorkbenchShell({
       setSidebarCollapsed={setSidebarCollapsed}
       setSidebarWidth={setSidebarWidth}
       setSidebarCollapsibleSectionCollapsed={setSidebarCollapsibleSectionCollapsed}
-      setSidebarSectionExtraPages={setSidebarSectionExtraPages}
+      setSidebarListExtraPages={setSidebarListExtraPages}
       onLeavePageStage={recordPageLeave}
       pageStageSessionSnapshotRef={pageStageSessionSnapshotRef}
       onRequestProjectPickerOpen={handleOpenProjectPicker}

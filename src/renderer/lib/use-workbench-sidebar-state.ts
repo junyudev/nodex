@@ -2,11 +2,11 @@ import { useCallback, useRef, useState } from "react";
 import type { Project } from "./types";
 import {
   makeDefaultSidebarCollapsibleSectionsState,
-  withSidebarSectionExtraPages,
-  type SidebarCollapsibleSectionId,
+  withSidebarListExtraPages,
   type SidebarDisclosureSectionId,
   type SidebarCollapsibleSectionsState,
-  type SidebarSectionExtraPagesState,
+  type SidebarListExtraPagesState,
+  type SidebarListId,
 } from "./sidebar-section-prefs";
 
 function readInitialExpandedProjects(
@@ -27,11 +27,8 @@ interface UseWorkbenchSidebarStateInput {
     sectionId: SidebarDisclosureSectionId,
     collapsed: boolean,
   ) => void;
-  readonly sectionExtraPages?: SidebarSectionExtraPagesState;
-  readonly setSectionExtraPages?: (
-    sectionId: SidebarCollapsibleSectionId,
-    extraPages: number,
-  ) => void;
+  readonly listExtraPages?: SidebarListExtraPagesState;
+  readonly setListExtraPages?: (listId: SidebarListId, extraPages: number) => void;
 }
 
 export function useWorkbenchSidebarState({
@@ -39,8 +36,8 @@ export function useWorkbenchSidebarState({
   activeProjectId,
   collapsibleSections,
   setCollapsibleSectionCollapsed,
-  sectionExtraPages,
-  setSectionExtraPages,
+  listExtraPages,
+  setListExtraPages,
 }: UseWorkbenchSidebarStateInput) {
   const [expandedProjectIds, setExpandedProjectIds] = useState(() =>
     readInitialExpandedProjects(projects, activeProjectId),
@@ -52,9 +49,8 @@ export function useWorkbenchSidebarState({
   const [archivePendingKeys, setArchivePendingKeys] = useState<Set<string>>(() => new Set());
   const archivePendingKeysRef = useRef<ReadonlySet<string>>(archivePendingKeys);
   const resolvedCollapsibleSections = collapsibleSections ?? localCollapsibleSections;
-  const [localSectionExtraPages, setLocalSectionExtraPages] =
-    useState<SidebarSectionExtraPagesState>({});
-  const resolvedSectionExtraPages = sectionExtraPages ?? localSectionExtraPages;
+  const [localListExtraPages, setLocalListExtraPages] = useState<SidebarListExtraPagesState>({});
+  const resolvedListExtraPages = listExtraPages ?? localListExtraPages;
 
   const toggleProjectExpanded = useCallback((projectId: string) => {
     setExpandedProjectIds((current) => {
@@ -90,17 +86,15 @@ export function useWorkbenchSidebarState({
     [setCollapsibleSectionCollapsed],
   );
 
-  const setSectionPages = useCallback(
-    (sectionId: SidebarCollapsibleSectionId, extraPages: number) => {
-      if (setSectionExtraPages) {
-        setSectionExtraPages(sectionId, extraPages);
+  const setListPages = useCallback(
+    (listId: SidebarListId, extraPages: number) => {
+      if (setListExtraPages) {
+        setListExtraPages(listId, extraPages);
         return;
       }
-      setLocalSectionExtraPages((current) =>
-        withSidebarSectionExtraPages(current, sectionId, extraPages),
-      );
+      setLocalListExtraPages((current) => withSidebarListExtraPages(current, listId, extraPages));
     },
-    [setSectionExtraPages],
+    [setListExtraPages],
   );
 
   const toggleSection = useCallback(
@@ -154,8 +148,8 @@ export function useWorkbenchSidebarState({
     toggleSection,
     togglePinnedSection: () => toggleSection("pinned"),
     togglePagesSection: () => toggleSection("pages"),
-    pagesSectionExtraPages: resolvedSectionExtraPages.pages ?? 0,
-    setPagesSectionExtraPages: (extraPages: number) => setSectionPages("pages", extraPages),
+    listExtraPages: resolvedListExtraPages,
+    setListExtraPages: setListPages,
     toggleProjectsSection: () => toggleSection("projects"),
     toggleChatsSection: () => toggleSection("chats"),
   };
