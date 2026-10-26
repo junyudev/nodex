@@ -515,6 +515,7 @@ export function SideChatSessionTab(props: Parameters<typeof NativeSideChatSessio
           ? {
               prompt: props.tab.draftPrompt ?? "",
               promptInput: props.tab.draftPromptInput,
+              attachmentMode: props.tab.draftAttachmentMode,
               focusNonce: props.tab.stateKey,
             }
           : null

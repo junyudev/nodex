@@ -61,7 +61,9 @@ export type ComposerPastedTextAttachment =
       readonly error: string;
     });
 
-export interface ComposerCompletedDraftSnapshot {
+export interface ComposerCompletedDraftSnapshot extends Partial<
+  import("../../../../../shared/thread-text-selection").ThreadTextSelectionContext
+> {
   readonly prompt: string;
   readonly fileAttachments: readonly ComposerFileAttachment[];
   readonly addedFiles: readonly ComposerFileAttachment[];

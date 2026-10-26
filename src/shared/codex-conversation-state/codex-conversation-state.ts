@@ -480,6 +480,7 @@ export type CodexUserMessageInputIntent = "queued" | "steer" | "promotedToSteer"
 export type CodexCanonicalUserMessageItem = Extract<ThreadItem, { type: "userMessage" }> & {
   readonly origin?: CodexUserMessageOrigin;
   readonly inputIntent?: CodexUserMessageInputIntent;
+  readonly textSelections?: import("../thread-text-selection").ThreadTextSelectionContext;
   readonly unavailableImages?: readonly CodexUnavailableImage[];
 };
 

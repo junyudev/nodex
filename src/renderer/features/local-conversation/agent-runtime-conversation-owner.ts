@@ -1,3 +1,4 @@
+import { readRuntimeThreadTextSelections } from "../../../shared/thread-text-selection";
 import { agentMessageDisplayText } from "../../../shared/agent-prompt";
 import type {
   AgentEvent,
@@ -356,7 +357,11 @@ export class AgentRuntimeConversationOwner {
       : [];
     if (!this.#queuePage?.entries.some((entry) => entry.runId === runId))
       throw new Error("This queued message is no longer available");
-    return { text: agentMessageDisplayText(message.text), images };
+    return {
+      text: agentMessageDisplayText(message.text),
+      images,
+      ...readRuntimeThreadTextSelections(message.context),
+    };
   };
   /**
    * Reads the message that started a sent Run, with its images resolved to files, so an edit

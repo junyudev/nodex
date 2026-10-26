@@ -1,3 +1,4 @@
+import { prepareCodexPrompt } from "./codex-prompt-preparation";
 import { describe, expect, test } from "vite-plus/test";
 import type { ThreadItem } from "@nodex/codex-app-server-protocol/v2";
 import { parseCodexProtocolThreadItem } from "./codex-protocol-thread-item";
@@ -1113,4 +1114,58 @@ describe("provider recovery projection", () => {
       });
     },
   );
+});
+
+test("selection-only input remains a user row and scopes inline response references to its Turn", async () => {
+  const textSelections = {
+    selectedTextAttachments: [],
+    responseTextAnnotations: [
+      {
+        id: "note",
+        text: "Selected response",
+        annotation: "Explain",
+        source: {
+          threadId: THREAD_ID,
+          messageId: "earlier",
+          startOffset: 0,
+          endOffset: 17,
+          rangeText: "Selected response",
+        },
+      },
+    ],
+  };
+  const prepared = await prepareCodexPrompt(
+    "",
+    { text: "", ...textSelections },
+    {
+      resolveImageInput: () => {
+        throw new Error("No image");
+      },
+    },
+  );
+  const views = projectCodexCanonicalTurnViews({
+    threadId: THREAD_ID,
+    turn: buildCanonicalTurn({
+      params: buildTurnParams({
+        input: prepared.inputItems,
+        additionalContext: prepared.additionalContext,
+      }),
+      items: [
+        {
+          type: "agentMessage",
+          id: "reply",
+          text: 'Explained :codex-annotation{index="1"}',
+          phase: "final_answer",
+          memoryCitation: null,
+          delivery: null,
+          questions: null,
+        },
+      ],
+    }),
+    observedAtMs: 10,
+  });
+  expect(views.map((view) => view.role)).toEqual(["user", "assistant"]);
+  expect(views[0]?.markdownText).toBe("");
+  expect(views[0]?.textSelections).toEqual(textSelections);
+  expect(views[1]?.textSelections).toEqual(textSelections);
 });

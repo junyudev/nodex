@@ -1,3 +1,9 @@
+import {
+  ThreadTextSelectionContextSchema,
+  hasThreadTextSelections,
+  serializeThreadTextSelections,
+  THREAD_TEXT_SELECTION_ADDITIONAL_CONTEXT_KEY,
+} from "./thread-text-selection";
 import type { UserInput } from "@nodex/codex-app-server-protocol/v2";
 import { codexImageFileIdFromSource } from "./codex-image-input";
 import { dedupeCodexLiveFileAttachments } from "./codex-live-file-attachments";
@@ -245,11 +251,24 @@ export async function prepareCodexPrompt(
     browserAnnotationAttachments,
     appshots,
   });
+  const selections = ThreadTextSelectionContextSchema.parse({
+    responseTextAnnotations: promptInput?.responseTextAnnotations ?? [],
+    selectedTextAttachments: promptInput?.selectedTextAttachments ?? [],
+  });
+  const selectionItems = hasThreadTextSelections(selections)
+    ? [createCodexTextUserInput(serializeThreadTextSelections(selections))]
+    : [];
+  if (selectionItems.length)
+    additionalContext[THREAD_TEXT_SELECTION_ADDITIONAL_CONTEXT_KEY] = {
+      kind: "application",
+      value: JSON.stringify(selections),
+    };
   const primaryTextItems = promptText ? [createCodexTextUserInput(promptText)] : [];
   const primaryDocumentItems = documentItems ?? primaryTextItems;
   const inputItems: UserInput[] = [
     ...primaryDocumentItems,
     ...commentItems,
+    ...selectionItems,
     ...browserAnnotationItems,
     ...browserAnnotationEvidenceItems,
     ...appshotImageItems,
@@ -261,6 +280,7 @@ export async function prepareCodexPrompt(
   const pendingInputItems: UserInput[] = [
     ...primaryDocumentItems,
     ...commentItems,
+    ...selectionItems,
     ...browserAnnotationItems,
     ...browserAnnotationEvidenceItems,
     ...appshotImageItems,

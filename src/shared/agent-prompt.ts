@@ -1,3 +1,9 @@
+import {
+  THREAD_TEXT_SELECTION_CONTEXT_KIND,
+  hasThreadTextSelections,
+  ThreadTextSelectionContextSchema,
+  serializeThreadTextSelections,
+} from "./thread-text-selection";
 import { serializeBrowserAnnotationAttachmentForPrompt } from "./browser-annotation";
 import { serializeReviewDiffCommentAttachmentForPrompt } from "./review-diff-comments";
 import type { CodexLiveFileAttachment, CodexPromptInput } from "./types";
@@ -12,13 +18,13 @@ import { createUuidV7 } from "./uuid-v7";
 /** The kind of the context record that carries app-supplied data beside a user message. */
 const APP_CONTEXT_KIND = "nodex-app-context";
 const APP_CONTEXT_REFERENCE = new RegExp(
-  String.raw`\[[^\]\n]{0,512}\]\(t3-context://v1/${APP_CONTEXT_KIND}/[A-Za-z0-9_-]{1,128}\)`,
+  String.raw`\[[^\]\n]{0,512}\]\(t3-context://v1/(?:${APP_CONTEXT_KIND}|${THREAD_TEXT_SELECTION_CONTEXT_KIND})/[A-Za-z0-9_-]{1,128}\)`,
   "gu",
 );
 
 /** A user's own words, without the reference that carries app-supplied data beside them. */
 export function agentMessageDisplayText(text: string): string {
-  if (!text.includes(`t3-context://v1/${APP_CONTEXT_KIND}/`)) return text;
+  if (!text.includes("t3-context://v1/")) return text;
   return text.replace(APP_CONTEXT_REFERENCE, "").trimEnd();
 }
 
@@ -129,12 +135,19 @@ export function appendAgentAppContext<
 export function retainAgentAppContext(
   revised: Pick<AgentRuntimeMessage, "text" | "context">,
   original: { readonly text: string; readonly context?: { readonly records: readonly unknown[] } },
+  retainTextSelections = true,
 ): Pick<AgentRuntimeMessage, "text" | "context"> {
-  if (revised.context) return revised;
+  const revisedKinds = new Set(
+    (revised.context?.records ?? []).flatMap((record: unknown) =>
+      isAppContextJsonObject(record) && typeof record.kind === "string" ? [record.kind] : [],
+    ),
+  );
   const records = new Map(
     (original.context?.records ?? []).flatMap((record) =>
       isAppContextJsonObject(record) &&
-      record.kind === APP_CONTEXT_KIND &&
+      (record.kind === APP_CONTEXT_KIND ||
+        (retainTextSelections && record.kind === THREAD_TEXT_SELECTION_CONTEXT_KIND)) &&
+      !revisedKinds.has(record.kind) &&
       typeof record.contextId === "string"
         ? [[record.contextId, record] as const]
         : [],
@@ -151,7 +164,7 @@ export function retainAgentAppContext(
       .join("\n\n"),
     context: {
       version: 1,
-      records: retained.map(({ record }) => record),
+      records: [...(revised.context?.records ?? []), ...retained.map(({ record }) => record)],
     } as unknown as AgentRuntimeMessage["context"],
   };
 }
@@ -171,15 +184,31 @@ export async function prepareAgentMessage(
   const appContext = prepareAgentAppContext(input, capabilities?.untrustedAppMessage);
   const record = agentAppContextRecord(appContext.parts);
   const text = await prepareAgentText(prompt, input, readPastedText, capabilities, appContext);
-  return record
-    ? {
-        text: [text, record.reference].filter(Boolean).join("\n\n"),
-        context: {
-          version: 1,
-          records: [record.record],
-        } as unknown as AgentRuntimeMessage["context"],
-      }
-    : { text };
+  const records = record ? [record.record] : [];
+  const references = record ? [record.reference] : [];
+  if (input && hasThreadTextSelections(input)) {
+    const selections = ThreadTextSelectionContextSchema.parse({
+      responseTextAnnotations: input.responseTextAnnotations ?? [],
+      selectedTextAttachments: input.selectedTextAttachments ?? [],
+    });
+    const contextId = createUuidV7().replaceAll("-", "");
+    records.push({
+      version: 1,
+      kind: THREAD_TEXT_SELECTION_CONTEXT_KIND,
+      contextId,
+      label: "Selected text",
+      payload: { ...selections, prompt: serializeThreadTextSelections(selections) },
+    });
+    references.push(
+      `[Selected text](t3-context://v1/${THREAD_TEXT_SELECTION_CONTEXT_KIND}/${contextId})`,
+    );
+  }
+  return {
+    text: [text, ...references].filter(Boolean).join("\n\n"),
+    ...(records.length
+      ? { context: { version: 1, records } as unknown as AgentRuntimeMessage["context"] }
+      : {}),
+  };
 }
 
 async function prepareAgentText(

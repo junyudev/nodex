@@ -96,3 +96,21 @@ export async function writeMessageToClipboard(
   }
   return writeTextToClipboard(text);
 }
+
+/** Selection context keeps visible paragraph/code/table boundaries without conversation chrome. */
+export function getSelectedMessageText(range: Range): string {
+  const fragment = range.cloneContents();
+  const output = document.createElement("div");
+  fragment.childNodes.forEach((node) => copyNode(node, output));
+  const read = (node: Node): string => {
+    if (node.nodeType === Node.TEXT_NODE) return node.textContent ?? "";
+    if (!(node instanceof Element)) return "";
+    if (node.tagName === "BR") return "\n";
+    const text = Array.from(node.childNodes).map(read).join("");
+    if (node.tagName === "TD" || node.tagName === "TH") return `${text.trim()}\t`;
+    if (node.tagName === "P")
+      return `${node.previousElementSibling?.tagName === "P" ? "\n" : ""}${text}\n`;
+    return /^(?:H[1-6]|DIV|PRE|LI|TR|BLOCKQUOTE)$/u.test(node.tagName) ? `${text}\n` : text;
+  };
+  return Array.from(output.childNodes).map(read).join("").trim();
+}

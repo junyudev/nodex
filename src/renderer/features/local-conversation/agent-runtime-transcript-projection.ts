@@ -1,3 +1,7 @@
+import {
+  readRuntimeThreadTextSelections,
+  threadTextSelectionAdditionalContext,
+} from "../../../shared/thread-text-selection";
 import type { AgentSnapshot, AgentTurnItem } from "@nodex/agent-runtime/contracts";
 import type {
   CommandAction,
@@ -515,6 +519,7 @@ export function projectAgentRuntimeItem(item: AgentTurnItem, cwd = ""): CodexCan
         type: "userMessage",
         id,
         clientId: item.messageId,
+        textSelections: readRuntimeThreadTextSelections(item.context),
         ...(origin ? { origin } : {}),
         ...(inputIntent ? { inputIntent } : {}),
         ...(missing.length ? { unavailableImages: missing } : {}),
@@ -826,6 +831,9 @@ export function projectAgentRuntimeTurnDetails(input: {
               })),
           ],
           clientUserMessageId: openingItem.messageId,
+          additionalContext: threadTextSelectionAdditionalContext(
+            readRuntimeThreadTextSelections(openingItem.context),
+          ),
           cwd: thread.worktreePath ?? null,
           approvalPolicy: "never",
           approvalsReviewer: "user",

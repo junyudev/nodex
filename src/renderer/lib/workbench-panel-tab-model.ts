@@ -55,6 +55,7 @@ export interface SideChatPanelTab {
   runtimeSession?: ProjectSession;
   draftPrompt?: string;
   draftPromptInput?: CodexPromptInput;
+  draftAttachmentMode?: "append";
   initialSubmission?: import("../features/conversation-launch/session-first-submission-owner").FirstSubmissionIdentity & {
     readonly acceptedAt: number;
     readonly presentationTicket?: import("../../shared/nodex-app-tools/turn-presentation").CodexTurnPresentationTicket;

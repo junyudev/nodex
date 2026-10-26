@@ -1,3 +1,6 @@
+import { agentRuntimeActivityStore } from "./agent-runtime-session-activity";
+import { readLocalConversation } from "@/features/local-conversation/local-conversation-store";
+import { selectReusableSideChat } from "./side-chat-selection";
 import type { FileReferenceRouterPort } from "./file-reference-router";
 import {
   canonicalWorkbenchFilePath,
@@ -361,13 +364,89 @@ export function useWorkbenchPanelOpeners({
 
   const openSideChat = useCallback(
     async (
-      input: ThreadOpenSideChatInput & {
+      request: ThreadOpenSideChatInput & {
         targetPanelId?: PanelId;
         targetLeafId?: string;
         retryTabId?: string;
         collaborationMode?: CodexCollaborationModeKind;
       } = {},
     ) => {
+      const input =
+        request.kind === "selection"
+          ? {
+              ...request,
+              kind: "draft" as const,
+              draftPrompt: "",
+              promptInput: {
+                text: "",
+                selectedTextAttachments: [{ id: createUuidV7(), text: request.text.trim() }],
+              },
+            }
+          : request;
+      if (request.kind === "selection" && !request.text.trim()) return;
+      if (request.kind === "selection" && activeSession) {
+        const controller = panelControllerRef.current;
+        const reusable = selectReusableSideChat({
+          tabs: controller.sideChatTabsBySession[activeSession.id] ?? [],
+          isActive: (tab) =>
+            controller.sideChatActiveTabByPanel[
+              makeWorkbenchSessionPanelSlotKey(
+                activeSession.id,
+                tab.panelId,
+                tab.leafId ?? resolveSessionPanelActiveLeafId(activeSession, tab.panelId),
+              )
+            ] === tab.id,
+          isIdle: (tab) =>
+            tab.runtimeSession
+              ? agentRuntimeActivityStore.read(tab.runtimeSession.id) === null
+              : Boolean(
+                  tab.threadId &&
+                  readLocalConversation(tab.threadId, activeSession.thread?.executionHostId)
+                    ?.statusType === "idle",
+                ),
+        });
+        if (reusable) {
+          const leafId =
+            reusable.leafId ?? resolveSessionPanelActiveLeafId(activeSession, reusable.panelId);
+          controller.updateSideChatTabsBySession((current) => ({
+            ...current,
+            [activeSession.id]: (current[activeSession.id] ?? []).map((tab) =>
+              tab.id === reusable.id
+                ? {
+                    ...tab,
+                    draftPrompt: "",
+                    draftAttachmentMode: "append",
+                    draftPromptInput: {
+                      ...input.promptInput,
+                      text: "",
+                      selectedTextAttachments: [
+                        ...(tab.status === "loading"
+                          ? (tab.draftPromptInput?.selectedTextAttachments ?? [])
+                          : []),
+                        ...(input.promptInput?.selectedTextAttachments ?? []),
+                      ],
+                    },
+                    stateKey: tab.stateKey + 1,
+                  }
+                : tab,
+            ),
+          }));
+          controller.updateSideChatActiveTabByPanel((current) => ({
+            ...current,
+            [makeWorkbenchSessionPanelSlotKey(activeSession.id, reusable.panelId, leafId)]:
+              reusable.id,
+          }));
+          if (reusable.threadId)
+            workbenchCodexControl.setComposerIntent(reusable.threadId, {
+              prompt: "",
+              promptInput: input.promptInput,
+              attachmentMode: "append",
+              focusNonce: Date.now(),
+            });
+          await ensureActivePanelOpenWithoutRefresh(reusable.panelId);
+          return;
+        }
+      }
       const localSourceThreadId =
         activeSession?.executionRef?.threadId ?? activeSession?.thread?.threadId;
       const sourceHostId = activeSession?.thread?.executionHostId ?? "local";
@@ -407,6 +486,8 @@ export function useWorkbenchPanelOpeners({
           status: "loading",
           stateKey: Date.now(),
           draftPrompt: input.kind === "draft" ? input.draftPrompt : input.prompt,
+          draftPromptInput: input.promptInput,
+          draftAttachmentMode: request.kind === "selection" ? "append" : undefined,
         });
         await ensureActivePanelOpenWithoutRefresh(panelId);
         try {
@@ -432,7 +513,7 @@ export function useWorkbenchPanelOpeners({
                     id: readyId,
                     status: "ready",
                     runtimeSession: session,
-                    draftPromptInput: input.kind === "draft" ? undefined : input.promptInput,
+                    draftPromptInput: tab.draftPromptInput,
                     initialSubmission: initialSubmission
                       ? { ...initialSubmission, presentationTicket }
                       : undefined,
@@ -491,6 +572,8 @@ export function useWorkbenchPanelOpeners({
         title,
         status: "loading",
         stateKey: Date.now(),
+        draftPromptInput: input.promptInput,
+        draftAttachmentMode: request.kind === "selection" ? "append" : undefined,
       };
 
       panelControllerRef.current.upsertEphemeralTab(loadingTab);
@@ -535,9 +618,14 @@ export function useWorkbenchPanelOpeners({
           ...current,
           [makeWorkbenchSessionPanelSlotKey(activeSession.id, panelId, leafId)]: readyTabId,
         }));
-        if (draftPrompt.length > 0) {
+        if (input.kind === "draft" && (draftPrompt.length > 0 || input.promptInput)) {
           workbenchCodexControl.setComposerIntent(result.threadId, {
             prompt: draftPrompt,
+            promptInput:
+              panelControllerRef.current.sideChatTabsBySession[activeSession.id]?.find(
+                (tab) => tab.id === loadingTabId || tab.id === readyTabId,
+              )?.draftPromptInput ?? input.promptInput,
+            attachmentMode: request.kind === "selection" ? "append" : undefined,
             focusNonce: Date.now(),
           });
         }
@@ -745,6 +833,7 @@ export function useWorkbenchPanelOpeners({
         await openSideChat({
           kind: "draft",
           draftPrompt: existingTab.draftPrompt ?? "",
+          promptInput: existingTab.draftPromptInput,
           targetPanelId: existingTab.panelId,
           targetLeafId: existingTab.leafId,
           retryTabId: existingTab.id,

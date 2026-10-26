@@ -599,6 +599,11 @@ export type ThreadOpenSideChatInput =
   | {
       kind: "draft";
       draftPrompt: string;
+      promptInput?: CodexPromptInput;
+    }
+  | {
+      kind: "selection";
+      text: string;
     };
 
 export interface ThreadRequestResponseContext {

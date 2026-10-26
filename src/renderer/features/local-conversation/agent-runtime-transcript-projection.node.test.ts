@@ -1,3 +1,4 @@
+import { prepareAgentMessage } from "../../../shared/agent-prompt";
 import { describe, expect, test } from "vite-plus/test";
 import type { AgentTurnItem } from "@nodex/agent-runtime/contracts";
 import { projectCodexCanonicalTurnItemViews } from "../../../shared/codex-canonical-item-projector";
@@ -878,4 +879,27 @@ describe("Runtime context compaction", () => {
       projectAgentRuntimeItem(compaction({ status: "running", completedAt: null })),
     ).toMatchObject({ completed: false, source: "automatic" });
   });
+});
+
+test("projects saved selected-text context even when the user sent no prose", async () => {
+  const selection = { id: "selected", text: "Earlier response" };
+  const prepared = await prepareAgentMessage(
+    "",
+    { text: "", selectedTextAttachments: [selection] },
+    async () => "",
+  );
+  const canonical = projectAgentRuntimeItem(
+    message({ text: prepared.text, context: prepared.context }),
+  );
+  if (!canonical) throw new Error("Expected selected-text message");
+  const views = projectCodexCanonicalTurnItemViews({
+    threadId: "parent",
+    turnId: "parent-run",
+    items: [canonical],
+    observedAtMs: 1,
+    turnStatus: "completed",
+  });
+  const entry = projectCodexItemViewToTranscriptEntry(views[0]!, "bootstrap", 1);
+  expect(entry.markdownText).toBe("");
+  expect(entry.textSelections?.selectedTextAttachments).toEqual([selection]);
 });

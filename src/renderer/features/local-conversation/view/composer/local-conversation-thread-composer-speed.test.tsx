@@ -5489,3 +5489,108 @@ test("sends a restored image with a vision config while the selected Runtime mod
     await act(async () => view.unmount());
   }
 });
+
+test("selected text can send without prose and remains intact after a rejected send", async () => {
+  resetStorage();
+  const annotation = {
+    id: "annotation",
+    text: "Selected response",
+    annotation: "Explain this",
+    source: {
+      threadId: "thread_1",
+      messageId: "assistant_1",
+      startOffset: 0,
+      endOffset: 17,
+      rangeText: "Selected response",
+    },
+  };
+  const send = vi
+    .fn<ThreadStageActions["onSendPrompt"]>()
+    .mockRejectedValueOnce(new Error("Not accepted"))
+    .mockResolvedValue(undefined);
+  const view = await renderComposer(
+    {
+      composerIntent: {
+        prompt: "",
+        focusNonce: 990,
+        promptInput: { text: "", responseTextAnnotations: [annotation] },
+      },
+    },
+    { onSendPrompt: send },
+  );
+  await view.findByRole("button", { name: "1 annotation" });
+  await submitCurrentComposerDraft(view);
+  await waitFor(() => expect(send).toHaveBeenCalledTimes(1));
+  expect(send.mock.calls[0]?.[1]?.promptInput?.responseTextAnnotations).toEqual([annotation]);
+  expect(readComposerText(view)).toBe("");
+  await view.findByRole("button", { name: "1 annotation" });
+  await submitCurrentComposerDraft(view);
+  await waitFor(() => expect(send).toHaveBeenCalledTimes(2));
+  expect(send.mock.calls[1]?.[1]?.promptInput?.responseTextAnnotations).toEqual([annotation]);
+  await waitFor(() => expect(view.queryByRole("button", { name: "1 annotation" })).toBeNull());
+});
+
+test("selected text intents append without replacing prose or duplicating an already consumed selection", async () => {
+  resetStorage();
+  installAsyncRequestAnimationFrame();
+  installComposerWindowApi();
+  const send = vi.fn<ThreadStageActions["onSendPrompt"]>(async () => {});
+  const actions = buildActions({ onSendPrompt: send });
+  const first = { id: "first", text: "First passage" };
+  const second = { id: "second", text: "Second passage" };
+  const tree = (intent: NonNullable<ThreadFooterModel["composerIntent"]>) => (
+    <AppProviders>
+      <TestComposerScopePath>
+        <ThreadComposer
+          model={buildModel({ composerIntent: intent })}
+          actions={actions}
+          errorMessage={null}
+          onErrorMessage={() => {}}
+        />
+      </TestComposerScopePath>
+    </AppProviders>
+  );
+  const view = render(
+    tree({
+      prompt: "Keep my draft",
+      focusNonce: 991,
+      promptInput: { text: "Keep my draft", selectedTextAttachments: [first] },
+    }),
+  );
+  await view.findByRole("button", { name: "1 selection" });
+  await act(async () => {
+    view.rerender(
+      tree({
+        prompt: "",
+        attachmentMode: "append",
+        focusNonce: 992,
+        promptInput: { text: "", selectedTextAttachments: [first, second] },
+      }),
+    );
+    await Promise.resolve();
+  });
+  await view.findByRole("button", { name: "2 selections" });
+  expect(readComposerText(view)).toBe("Keep my draft");
+  await submitCurrentComposerDraft(view);
+  await waitFor(() => expect(send).toHaveBeenCalledTimes(1));
+  expect(send.mock.calls[0]?.[1]?.promptInput?.selectedTextAttachments).toEqual([first, second]);
+  await waitFor(() => expect(view.queryByRole("button", { name: "2 selections" })).toBeNull());
+  await act(async () => {
+    view.getByRole("button", { name: "Select model" }).focus();
+    view.rerender(
+      tree({
+        prompt: "",
+        attachmentMode: "append",
+        focusNonce: 993,
+        promptInput: { text: "", selectedTextAttachments: [first] },
+      }),
+    );
+    await Promise.resolve();
+  });
+  await view.findByRole("button", { name: "1 selection" });
+  await waitFor(() =>
+    expect(document.activeElement).toBe(
+      view.container.querySelector('[data-codex-composer="true"]'),
+    ),
+  );
+});

@@ -145,7 +145,8 @@ export function AgentRuntimeSideChatPanel(input: {
     initialData: input.session,
   });
   const session = sessionQuery.data ?? input.session;
-  const [draft, setDraft] = useState(input.draft);
+  const [consumedDraftNonce, setConsumedDraftNonce] = useState<number | null>(null);
+  const draft = input.draft?.focusNonce === consumedDraftNonce ? null : input.draft;
   const agent: ReturnType<typeof useAgentRuntimeConversationAdapter> =
     useAgentRuntimeConversationAdapter({
       sessionId: session.id,
@@ -163,7 +164,6 @@ export function AgentRuntimeSideChatPanel(input: {
         if (current?.executionRef?.threadId !== result.threadId)
           throw new Error("The side chat execution binding changed");
         seedProjectSessionDetail(queryClient, current);
-        setDraft(null);
       },
       ensureDraft: async () => session,
     });
@@ -222,7 +222,7 @@ export function AgentRuntimeSideChatPanel(input: {
       onNewThreadStartInEnvironmentChange: () => {},
       onRefreshNewThreadStartInEnvironments: async () => {},
       onOpenNewThreadLocalEnvironmentsSettings: () => {},
-      onConsumeNewThreadComposerIntent: () => setDraft(null),
+      onConsumeNewThreadComposerIntent: (_sessionId, nonce) => setConsumedDraftNonce(nonce),
       onOpenThread: input.onOpenThread,
     },
     { ...input.hostActions, ...agent.actions },
@@ -249,6 +249,7 @@ export function AgentRuntimeSideChatPanel(input: {
               }
         }
         newThreadComposerIntent={summary ? null : draft}
+        composerIntent={summary ? draft : null}
         newThreadProjectSelector={null}
         newThreadStartInSelector={null}
         threadStartProgress={null}
@@ -267,7 +268,13 @@ export function AgentRuntimeSideChatPanel(input: {
         summaryPanelOpen={false}
         summaryPanelHideImmediately={false}
         turnDiffHoverPreviewDisabled={input.turnDiffHoverPreviewDisabled}
-        actions={actions}
+        actions={{
+          ...actions,
+          onConsumeComposerIntent: (threadId, nonce) => {
+            setConsumedDraftNonce(nonce);
+            actions.onConsumeComposerIntent(threadId, nonce);
+          },
+        }}
       />
     </ConversationRuntimeContext>
   );

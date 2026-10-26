@@ -28,6 +28,12 @@ function resolveComposerFollowUpDisplayText(prompt: string, input: CodexPromptIn
     count(input.commentAttachments) > 0
       ? pluralize(count(input.commentAttachments), "review comment")
       : null,
+    count(input.responseTextAnnotations) > 0
+      ? pluralize(count(input.responseTextAnnotations), "annotation")
+      : null,
+    count(input.selectedTextAttachments) > 0
+      ? pluralize(count(input.selectedTextAttachments), "selection")
+      : null,
     count(input.browserAnnotationAttachments) > 0
       ? pluralize(count(input.browserAnnotationAttachments), "browser context")
       : null,

@@ -2762,6 +2762,8 @@ export interface CodexPromptInput {
   skills?: CodexPromptSkillInput[];
   commentAttachments?: CodexReviewDiffCommentAttachment[];
   browserAnnotationAttachments?: import("./browser-annotation").BrowserAnnotationAttachment[];
+  responseTextAnnotations?: import("./thread-text-selection").ResponseTextAnnotation[];
+  selectedTextAttachments?: import("./thread-text-selection").ThreadTextSelection[];
   agentConfigs?: CodexPromptAgentConfigInput[];
 }
 
@@ -3318,6 +3320,7 @@ export interface CodexItemView extends CodexCommandExecutionAttachmentFields {
   unavailableImages?: readonly CodexUnavailableImage[];
   importedImages?: readonly CodexImportedMarkdownImage[];
   commentAttachments?: CodexReviewDiffCommentAttachment[];
+  textSelections?: import("./thread-text-selection").ThreadTextSelectionContext;
   deliveryStatus?: "not-sent";
   steeringStatus?: CodexSteeringStatus;
   steeringInput?: CodexSteeringUserInput[];
@@ -3379,6 +3382,7 @@ export interface CodexTranscriptEntry extends CodexCommandExecutionAttachmentFie
   unavailableImages?: readonly CodexUnavailableImage[];
   importedImages?: readonly CodexImportedMarkdownImage[];
   commentAttachments?: CodexReviewDiffCommentAttachment[];
+  textSelections?: import("./thread-text-selection").ThreadTextSelectionContext;
   deliveryStatus?: "not-sent";
   steeringStatus?: CodexSteeringStatus;
   steeringInput?: CodexSteeringUserInput[];

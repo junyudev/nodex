@@ -131,7 +131,10 @@ export type ConnectedThreadStageInput = Omit<
   | "account"
   | "composerIntent"
   | "primaryRequest"
->;
+> & {
+  /** A surface-owned one-shot draft intent, including an already attached side chat. */
+  readonly composerIntent?: ThreadStageRouteInput["composerIntent"];
+};
 
 function useRetainedConversation(
   conversationId: string | null,
@@ -616,7 +619,7 @@ export function ConnectedThreadStageFooter({
   const backgroundTerminalRows = useConversationBackgroundTerminalRows(activeThreadId);
   const activeThreadComposerIntent = useComposerIntent(activeThreadId);
   const composerIntent = activeThreadId
-    ? activeThreadComposerIntent
+    ? (input.composerIntent ?? activeThreadComposerIntent)
     : (input.newThreadComposerIntent ?? null);
   const primaryRequest = useConversationPrimaryRequest(activeThreadId);
   const liveCollaborationMode = useConversationCollaborationMode(activeThreadId);

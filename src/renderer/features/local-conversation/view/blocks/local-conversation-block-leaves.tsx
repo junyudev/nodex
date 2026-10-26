@@ -1,3 +1,5 @@
+import { ThreadTextSelectionAttachments } from "../thread-text-selection-attachments";
+import { ResponseAnnotationContext } from "../response-annotation-context";
 import { AssistantMessageActionsRow } from "../shared/assistant-message-actions";
 import { LocalConversationCreatedThreadCards } from "../local-conversation-created-thread-cards";
 import { readAssistantCreatedThreadResults } from "../../projection/assistant-created-thread-results";
@@ -1027,6 +1029,11 @@ export function UserMessageBubble({
       )}
       data-content-search-unit-key={block.searchUnitKey}
     >
+      {block.entry.textSelections ? (
+        <div className="flex gap-2">
+          <ThreadTextSelectionAttachments context={block.entry.textSelections} />
+        </div>
+      ) : null}
       <UserAttachmentStrip
         attachments={block.entry.userAttachments ?? []}
         unavailableImages={block.entry.unavailableImages ?? []}
@@ -1308,35 +1315,44 @@ export function ThreadAssistantBodyBlock({
       data-content-search-unit-key={block.searchUnitKey}
     >
       <div className="group flex min-w-0 flex-col">
-        <div className={THREAD_VISUAL_TOKENS.assistantBody} data-thread-selected-text-target="true">
-          <ImportedMarkdownImagesProvider images={block.entry.importedImages}>
-            <MarkdownRenderer
-              content={markdownText}
-              dialect="conversation"
-              nativeSource={
-                entityKey
-                  ? {
-                      kind: "item",
-                      entityKey,
-                      itemId: block.entry.rawItemId ?? block.entry.itemId,
-                    }
-                  : undefined
-              }
-              preserveLineBreaks
-              parseIncompleteMarkdown={isAssistantItemStreaming}
-              animateStreamingText={isAssistantItemStreaming}
-              adaptiveBuffering={
-                block.entry.assistantPhase === "commentary"
-                  ? undefined
-                  : {
-                      streamId: `${block.entry.threadId}:${block.searchUnitKey ?? block.entry.rawItemId ?? block.entry.itemId}`,
-                    }
-              }
-              cwd={threadCwd}
-              projectWorkspacePath={projectWorkspacePath}
-              visualizationContext={visualizationContext}
-            />
-          </ImportedMarkdownImagesProvider>
+        <div
+          className={THREAD_VISUAL_TOKENS.assistantBody}
+          data-thread-selected-text-target="true"
+          data-response-annotation-target={block.entry.rawItemId ?? block.entry.itemId}
+          data-response-annotation-thread={block.entry.threadId}
+        >
+          <ResponseAnnotationContext
+            value={block.entry.textSelections?.responseTextAnnotations ?? []}
+          >
+            <ImportedMarkdownImagesProvider images={block.entry.importedImages}>
+              <MarkdownRenderer
+                content={markdownText}
+                dialect="conversation"
+                nativeSource={
+                  entityKey
+                    ? {
+                        kind: "item",
+                        entityKey,
+                        itemId: block.entry.rawItemId ?? block.entry.itemId,
+                      }
+                    : undefined
+                }
+                preserveLineBreaks
+                parseIncompleteMarkdown={isAssistantItemStreaming}
+                animateStreamingText={isAssistantItemStreaming}
+                adaptiveBuffering={
+                  block.entry.assistantPhase === "commentary"
+                    ? undefined
+                    : {
+                        streamId: `${block.entry.threadId}:${block.searchUnitKey ?? block.entry.rawItemId ?? block.entry.itemId}`,
+                      }
+                }
+                cwd={threadCwd}
+                projectWorkspacePath={projectWorkspacePath}
+                visualizationContext={visualizationContext}
+              />
+            </ImportedMarkdownImagesProvider>
+          </ResponseAnnotationContext>
         </div>
         {createdThreads.length > 0 ? (
           <div className="mt-3">

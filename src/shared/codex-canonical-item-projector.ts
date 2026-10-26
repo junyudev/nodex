@@ -1,3 +1,9 @@
+import {
+  EMPTY_THREAD_TEXT_SELECTION_CONTEXT,
+  hasThreadTextSelections,
+  readThreadTextSelectionAdditionalContext,
+  withoutThreadTextSelectionInput,
+} from "./thread-text-selection";
 import { projectCodexSubagentPathDisplayName } from "./codex-subagent-display";
 import { areStructurallyEqual } from "./structural-equality";
 import { trimMarkdownBlankLines } from "./markdown-text-boundaries";
@@ -461,10 +467,11 @@ function projectTurnParamsUserView(input: {
   readonly goalProjection: ReturnType<typeof readCodexCanonicalThreadGoalTranscriptProjection>;
 }): CodexCanonicalTurnView | null {
   const itemId = `${input.turnKey}:input`;
+  const textSelections = readThreadTextSelectionAdditionalContext(input.params.additionalContext);
   const rawCommentAttachments = input.params.commentAttachments ?? [];
   const commentAttachments = rawCommentAttachments.filter(isReviewDiffCommentAttachment);
   const rawMarkdownText = buildCodexSteeringCompareKey(
-    input.params.input.map((entry) => {
+    withoutThreadTextSelectionInput(input.params.input, textSelections).map((entry) => {
       const message = decodeUntrustedAppMessage(entry);
       return entry.type === "text" && message ? { ...entry, text: message.text } : entry;
     }),
@@ -483,6 +490,7 @@ function projectTurnParamsUserView(input: {
     markdownText.trim().length === 0 &&
     userAttachments.length === 0 &&
     commentAttachments.length === 0 &&
+    !hasThreadTextSelections(textSelections) &&
     unavailableImages.length === 0
   ) {
     return null;
@@ -504,6 +512,7 @@ function projectTurnParamsUserView(input: {
     ...(input.opening?.inputIntent ? { userInputIntent: input.opening.inputIntent } : {}),
     ...(input.blocked ? { deliveryStatus: "not-sent" as const } : {}),
     ...(commentAttachments.length === 0 ? {} : { commentAttachments: [...commentAttachments] }),
+    ...(hasThreadTextSelections(textSelections) ? { textSelections } : {}),
     ...(userAttachments.length === 0 ? {} : { userAttachments }),
     ...(unavailableImages.length === 0 ? {} : { unavailableImages }),
     ...(input.goalProjection
@@ -1254,7 +1263,10 @@ function projectCanonicalItemViews(
         },
       ];
     case "userMessage": {
-      const rawText = projectUserMessageText(item.content);
+      const textSelections = item.textSelections ?? EMPTY_THREAD_TEXT_SELECTION_CONTEXT;
+      const rawText = projectUserMessageText(
+        withoutThreadTextSelectionInput(item.content, textSelections),
+      );
       const questionReplies =
         item.content.length === 1
           ? (decodeCodexAsyncQuestionReplies(rawText) ?? undefined)
@@ -1267,6 +1279,7 @@ function projectCanonicalItemViews(
       if (
         markdownText.trim().length === 0 &&
         userAttachments.length === 0 &&
+        !hasThreadTextSelections(textSelections) &&
         unavailableImages.length === 0
       )
         return [];
@@ -1279,6 +1292,7 @@ function projectCanonicalItemViews(
           status: "completed",
           markdownText,
           questionReplies,
+          ...(hasThreadTextSelections(textSelections) ? { textSelections } : {}),
           ...(userAttachments.length === 0 ? {} : { userAttachments }),
           ...(unavailableImages.length === 0 ? {} : { unavailableImages }),
           ...(item.origin ? { userMessageOrigin: item.origin } : {}),
@@ -1405,7 +1419,10 @@ export function projectCodexCanonicalVisibleTurnItemViews(
       observedAtMs: input.observedAtMs,
       goalProjection: null,
     }) !== null;
+  const textSelections = readThreadTextSelectionAdditionalContext(input.params.additionalContext);
   return projectCodexCanonicalTurnItemViews(input).flatMap((view) => {
+    if (view.role === "assistant" && hasThreadTextSelections(textSelections))
+      return [{ ...view, textSelections }];
     if (
       hasVisibleTurnParamsUserMessage &&
       input.preserveServerUserMessages !== true &&

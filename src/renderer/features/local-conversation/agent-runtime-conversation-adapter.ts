@@ -563,6 +563,7 @@ export function createAgentRuntimeStageActions(input: {
         ...retainAgentAppContext(
           await input.prepare(prompt, promptInput, undefined, selection),
           original,
+          false,
         ),
         images: agentRuntimePromptImages(promptInput),
         ...(promptInput?.agentConfigs !== undefined

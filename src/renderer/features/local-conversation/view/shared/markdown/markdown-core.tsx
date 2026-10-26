@@ -1,3 +1,4 @@
+import { ResponseAnnotationReference } from "../../response-annotation-context";
 import { type Components } from "streamdown";
 import MarkdownDocumentSurface from "./markdown-document-surface";
 import {
@@ -82,6 +83,8 @@ function renderVisualization(token: ConversationDirectiveToken) {
   );
 }
 const renderConversationDirective: ConversationDirectiveRenderer = (token, context) => {
+  if (token.name === "codex-annotation" && !token.block)
+    return <ResponseAnnotationReference index={Number(token.attributes.index)} />;
   const { registration } = context;
   if (registration.kind === "task-stub")
     return (

@@ -451,7 +451,7 @@ export function useWorkbenchPanelProjection({
                 <ReviewRouteOpenAdapter activateReviewTab={activateReviewTab}>
                   {({ onOpenTurnDiffReview }) => (
                     <SideChatSessionTab
-                      key={`${session.id}:${tab.id}:${tab.stateKey}`}
+                      key={`${session.id}:${tab.id}`}
                       tab={tab}
                       activeSession={session}
                       projects={projects}

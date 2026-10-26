@@ -108,7 +108,7 @@ import {
   type LocalConversationSearchTarget,
 } from "./local-conversation-persisted-search";
 import { projectLocalConversationLegacyHistoryRows } from "./local-conversation-history-gap";
-import { LocalConversationSelectedTextSideChatOverlay } from "./local-conversation-selected-text-side-chat-overlay";
+import { LocalConversationSelectedTextActions } from "./local-conversation-selected-text-actions";
 import {
   LocalConversationPromptRail,
   waitForLocalConversationPromptRailResidentTarget,
@@ -1218,9 +1218,7 @@ export function LocalConversationThreadBodyOwner({
     [handleRevealUserMessageNavigationItem],
   );
 
-  const selectedTextSideChatOverlayEnabled = Boolean(
-    threadId && !isSideChat && actions.onOpenSideChat && body.emptyState.type === "none",
-  );
+  const selectedTextActionsEnabled = Boolean(threadId && body.emptyState.type === "none");
 
   return (
     <>
@@ -1244,10 +1242,13 @@ export function LocalConversationThreadBodyOwner({
         revealResidentItem={handleRevealUserMessageNavigationItem}
         revealInstalledTurn={handleRevealInstalledPromptRailTurn}
       />
-      <LocalConversationSelectedTextSideChatOverlay
-        enabled={selectedTextSideChatOverlayEnabled}
+      <LocalConversationSelectedTextActions
+        key={threadId}
+        enabled={selectedTextActionsEnabled}
+        hostId={hostId}
+        threadId={threadId}
         scrollElement={scrollElement}
-        onOpenSideChat={actions.onOpenSideChat}
+        onOpenSideChat={isSideChat ? undefined : actions.onOpenSideChat}
       />
       <div className="flex flex-col">
         {body.showThreadStartProgressPanel && threadStartProgress ? (

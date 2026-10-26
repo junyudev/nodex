@@ -1016,19 +1016,20 @@ describe("LocalConversationThreadBody", () => {
     });
 
     await waitFor(() => {
-      expect(
-        Boolean(view.container.querySelector("[data-selected-text-side-chat-overlay='true']")),
-      ).toBe(true);
+      expect(Boolean(document.querySelector("[data-selected-text-actions='true']"))).toBe(true);
     });
 
-    fireEvent.mouseDown(view.getByLabelText("Ask in side chat"));
-    fireEvent.click(view.getByLabelText("Ask in side chat"));
+    await act(async () => {
+      fireEvent.mouseDown(view.getByRole("button", { name: "Ask in side chat" }));
+      fireEvent.click(view.getByRole("button", { name: "Ask in side chat" }));
+      await Promise.resolve();
+    });
 
     expect(JSON.stringify(sideChatInputs)).toBe(
       JSON.stringify([
         {
-          kind: "draft",
-          draftPrompt: "run bun test",
+          kind: "selection",
+          text: "run bun test",
         },
       ]),
     );
@@ -1069,9 +1070,7 @@ describe("LocalConversationThreadBody", () => {
       await new Promise((resolve) => setTimeout(resolve, 0));
     });
 
-    expect(
-      Boolean(view.container.querySelector("[data-selected-text-side-chat-overlay='true']")),
-    ).toBe(false);
+    expect(Boolean(document.querySelector("[data-selected-text-actions='true']"))).toBe(false);
   });
 
   test.each<[string, CodexCanonicalServerRequest]>([
@@ -1175,14 +1174,14 @@ describe("LocalConversationThreadBody", () => {
     });
 
     const overlay = await waitFor(() => {
-      const currentOverlay = view.container.querySelector<HTMLElement>(
-        "[data-selected-text-side-chat-overlay='true']",
+      const currentOverlay = document.querySelector<HTMLElement>(
+        "[data-selected-text-actions='true']",
       );
       expect(Boolean(currentOverlay)).toBe(true);
       return currentOverlay;
     });
-    expect(overlay?.style.left).toBe("220px");
-    expect(overlay?.style.top).toBe("160px");
+    expect(overlay?.style.left).toBe("300px");
+    expect(overlay?.style.top).toBe("192px");
 
     selectedRangeRect = makeRect({ left: 300, top: 260, width: 120, height: 20 });
     const scrollElement = view.container.querySelector(
@@ -1198,8 +1197,8 @@ describe("LocalConversationThreadBody", () => {
     });
 
     await waitFor(() => {
-      expect(overlay?.style.left).toBe("280px");
-      expect(overlay?.style.top).toBe("220px");
+      expect(overlay?.style.left).toBe("360px");
+      expect(overlay?.style.top).toBe("252px");
     });
   });
 

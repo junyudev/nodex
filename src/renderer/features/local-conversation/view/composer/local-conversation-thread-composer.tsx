@@ -1,3 +1,9 @@
+import {
+  hasThreadTextSelections,
+  type ThreadTextSelectionContext,
+} from "../../../../../shared/thread-text-selection";
+import { useThreadTextSelectionDraft } from "../../thread-text-selection-draft";
+import { ThreadTextSelectionAttachments } from "../thread-text-selection-attachments";
 import { ApplicationPending } from "@/bootstrap/application-surface";
 import { useComposerRealtimeVoice } from "@/features/realtime-voice/realtime-voice-window";
 import { RealtimeVoiceControls } from "@/features/realtime-voice/realtime-voice-controls";
@@ -6,6 +12,7 @@ import { useComposerPrediction } from "./use-composer-prediction";
 import {
   useCallback,
   useEffect,
+  useEffectEvent,
   useLayoutEffect,
   useMemo,
   useRef,
@@ -308,7 +315,7 @@ function isElectronLikeComposerEnvironment(): boolean {
   return document.documentElement.dataset.codexWindowType === "electron";
 }
 
-interface ComposerAttachmentState {
+interface ComposerAttachmentState extends Partial<ThreadTextSelectionContext> {
   fileAttachments: readonly ComposerFileAttachment[];
   addedFiles: readonly ComposerFileAttachment[];
   imageAttachments: readonly ComposerImageAttachment[];
@@ -432,6 +439,8 @@ function buildComposerPromptInput(input: {
   const skills = parsedPrompt.skills;
   const commentAttachments = [...input.attachments.commentAttachments];
   const browserAnnotationAttachments = [...input.attachments.browserAnnotationAttachments];
+  const responseTextAnnotations = [...(input.attachments.responseTextAnnotations ?? [])];
+  const selectedTextAttachments = [...(input.attachments.selectedTextAttachments ?? [])];
 
   if (
     images.length === 0 &&
@@ -442,7 +451,9 @@ function buildComposerPromptInput(input: {
     mentions.length === 0 &&
     skills.length === 0 &&
     commentAttachments.length === 0 &&
-    browserAnnotationAttachments.length === 0
+    browserAnnotationAttachments.length === 0 &&
+    responseTextAnnotations.length === 0 &&
+    selectedTextAttachments.length === 0
   ) {
     return undefined;
   }
@@ -461,6 +472,8 @@ function buildComposerPromptInput(input: {
     ...(skills.length > 0 ? { skills } : {}),
     ...(commentAttachments.length > 0 ? { commentAttachments } : {}),
     ...(browserAnnotationAttachments.length > 0 ? { browserAnnotationAttachments } : {}),
+    ...(responseTextAnnotations.length > 0 ? { responseTextAnnotations } : {}),
+    ...(selectedTextAttachments.length > 0 ? { selectedTextAttachments } : {}),
   };
 }
 
@@ -626,6 +639,8 @@ function buildComposerAttachmentStateFromPromptInput(
     addedFiles,
     commentAttachments: promptInput?.commentAttachments ?? [],
     browserAnnotationAttachments: promptInput?.browserAnnotationAttachments ?? [],
+    responseTextAnnotations: promptInput?.responseTextAnnotations ?? [],
+    selectedTextAttachments: promptInput?.selectedTextAttachments ?? [],
   };
 }
 
@@ -647,7 +662,8 @@ function hasComposerAttachmentStateContent(attachments: ComposerAttachmentState)
     attachments.appshotContexts.length > 0 ||
     attachments.pastedTextAttachments.length > 0 ||
     attachments.commentAttachments.length > 0 ||
-    attachments.browserAnnotationAttachments.length > 0
+    attachments.browserAnnotationAttachments.length > 0 ||
+    hasThreadTextSelections(attachments)
   );
 }
 
@@ -659,7 +675,8 @@ function hasSubmittableComposerAttachmentState(attachments: ComposerAttachmentSt
     attachments.appshotContexts.length > 0 ||
     attachments.pastedTextAttachments.some((attachment) => attachment.status === "ready") ||
     attachments.commentAttachments.length > 0 ||
-    attachments.browserAnnotationAttachments.length > 0
+    attachments.browserAnnotationAttachments.length > 0 ||
+    hasThreadTextSelections(attachments)
   );
 }
 
@@ -719,6 +736,7 @@ function buildThreadGoalSubmissionDraft(
       attachments.appshotContexts.length > 0 ||
       attachments.commentAttachments.length > 0 ||
       attachments.browserAnnotationAttachments.length > 0 ||
+      hasThreadTextSelections(attachments) ||
       imageAttachments.length !== attachments.imageAttachments.length,
   };
 }
@@ -1048,6 +1066,7 @@ function ControlledThreadComposer(
   const composerThreadId = model.conversation?.threadId ?? model.threadId;
   const browserAnnotationConversationId =
     composerThreadId ?? model.newThreadTarget?.sessionId ?? null;
+  const selectionDraft = useThreadTextSelectionDraft(model.hostId, browserAnnotationConversationId);
   const promptDraft = useComposerPromptDraft(composerThreadId);
   const imageDraft = useComposerImageDraft(composerThreadId);
   const [initialized, setInitialized] = useScopedAtom(composerDraftInitializedAtom);
@@ -1100,6 +1119,10 @@ function ControlledThreadComposer(
       consumedTransferIdRef.current !== transfer.transferId
     ) {
       consumedTransferIdRef.current = transfer.transferId;
+      selectionDraft.replace({
+        responseTextAnnotations: transfer.responseTextAnnotations ?? [],
+        selectedTextAttachments: transfer.selectedTextAttachments ?? [],
+      });
       applyCompletedDraftSnapshot({
         snapshot: transfer,
         composerHandle,
@@ -1130,6 +1153,13 @@ function ControlledThreadComposer(
       restoreComposerAppModelContext(
         composerHandle,
         intent.promptInput?.mcpAppModelContextAttachments ?? [],
+        append,
+      );
+      selectionDraft.replace(
+        {
+          responseTextAnnotations: restored.responseTextAnnotations ?? [],
+          selectedTextAttachments: restored.selectedTextAttachments ?? [],
+        },
         append,
       );
       if (append) {
@@ -1247,6 +1277,7 @@ function ControlledThreadComposer(
     setInitialized,
     setPastedTextAttachments,
     setTransfer,
+    selectionDraft,
     transfer,
   ]);
 
@@ -1442,6 +1473,13 @@ function HydratedThreadComposer({
   }, [model.composerApps, model.composerPlugins, model.composerSkills]);
   const browserAnnotationConversationId =
     composerThreadId ?? model.newThreadTarget?.sessionId ?? "";
+  const selectionDraft = useThreadTextSelectionDraft(model.hostId, browserAnnotationConversationId);
+  const selectionFocusNonce = selectionDraft.draft.focusNonce;
+  useLayoutEffect(() => {
+    if (selectionFocusNonce === 0 || !composerVisible) return;
+    promptEditorRef.current?.focusAtEnd();
+    selectionDraft.consumeFocus();
+  }, [selectionFocusNonce, composerVisible, selectionDraft]);
   const getBrowserAnnotationsSnapshot = useCallback(
     () => getBrowserAnnotationAttachmentsSnapshot(browserAnnotationConversationId),
     [browserAnnotationConversationId],
@@ -1594,11 +1632,15 @@ function HydratedThreadComposer({
       pastedTextAttachments,
       commentAttachments,
       browserAnnotationAttachments,
+      responseTextAnnotations: selectionDraft.draft.responseTextAnnotations,
+      selectedTextAttachments: selectionDraft.draft.selectedTextAttachments,
     }),
     [
       addedFiles,
       appshotContexts,
       browserAnnotationAttachments,
+      selectionDraft.draft.responseTextAnnotations,
+      selectionDraft.draft.selectedTextAttachments,
       commentAttachments,
       fileAttachments,
       imageAttachments,
@@ -1622,7 +1664,8 @@ function HydratedThreadComposer({
     appshotContexts.length > 0 ||
     pastedTextAttachments.length > 0 ||
     commentAttachments.length > 0 ||
-    browserAnnotationAttachments.length > 0;
+    browserAnnotationAttachments.length > 0 ||
+    hasThreadTextSelections(selectionDraft.draft);
   const hasPendingPastedTextAttachments = pastedTextAttachments.some(
     (attachment) => attachment.status === "pending",
   );
@@ -1869,12 +1912,14 @@ function HydratedThreadComposer({
     incrementAttachmentGeneration();
     clearBrowserAnnotationAttachments(browserAnnotationConversationId);
     clearImageEditComposerDraft(imageEditComposerChannelId);
+    selectionDraft.clear();
     clearSubmittedDraft();
   }, [
     browserAnnotationConversationId,
     clearSubmittedDraft,
     imageEditComposerChannelId,
     incrementAttachmentGeneration,
+    selectionDraft,
   ]);
   const completeSuccessfulSubmission = useCallback(
     (text: string) => {
@@ -1891,6 +1936,10 @@ function HydratedThreadComposer({
       readonly goalModeActive?: boolean;
     }) => {
       setPrompt(input.prompt);
+      selectionDraft.replace({
+        responseTextAnnotations: input.attachments.responseTextAnnotations ?? [],
+        selectedTextAttachments: input.attachments.selectedTextAttachments ?? [],
+      });
       setFileAttachments(input.attachments.fileAttachments);
       setAddedFiles(input.attachments.addedFiles);
       setImageAttachments(input.attachments.imageAttachments);
@@ -1924,6 +1973,7 @@ function HydratedThreadComposer({
       setImageAttachments,
       setPastedTextAttachments,
       setPrompt,
+      selectionDraft,
     ],
   );
   const readSubmittedPastedTextFiles = useCallback(
@@ -3562,6 +3612,17 @@ function HydratedThreadComposer({
     latestTurnStatus,
     canResumeInterruptedTurn,
   });
+  const submitAnnotation = useEffectEvent(() => {
+    selectionDraft.consumeSubmission();
+    void submitPrompt({
+      prompt: readPrompt(),
+      submitAction: composerActionState.primarySubmitAction,
+    });
+  });
+  useEffect(() => {
+    if (composerVisible && selectionDraft.draft.submitNonce > 0) submitAnnotation();
+  }, [composerVisible, selectionDraft.draft.submitNonce]);
+
   useEffect(() => {
     return registerImageEditComposerChannel(
       imageEditComposerChannelId,
@@ -4296,6 +4357,12 @@ function HydratedThreadComposer({
                         </button>
                       </NodexTooltip>
                     ))}
+                    <ThreadTextSelectionAttachments
+                      context={selectionDraft.draft}
+                      onEditAnnotation={selectionDraft.editAnnotation}
+                      onRemoveAnnotation={selectionDraft.removeAnnotation}
+                      onRemoveSelection={selectionDraft.removeSelection}
+                    />
                     {browserAnnotationAttachments.map((attachment) => (
                       <NodexTooltip
                         key={attachment.id}
