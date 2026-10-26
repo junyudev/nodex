@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useMemo, useRef, type ReactNode } from "react";
 import {
   CODEX_SIDEBAR_DEFAULT_PAGER_ROW_CLASS,
   paginateCodexSidebarItems,
@@ -10,8 +10,9 @@ export interface SidebarPaginatedItemsProps<T> {
   readonly items: T[];
   readonly getKey: (item: T) => string;
   readonly maxItems?: number | null;
-  readonly expanded: boolean;
-  readonly onExpandedChange?: (expanded: boolean) => void;
+  /** Show more steps beyond the first page. The owner decides how long it is remembered. */
+  readonly extraPages: number;
+  readonly onExtraPagesChange?: (extraPages: number) => void;
   readonly forcedVisibleKey?: string | null;
   readonly suppressedKeys?: ReadonlySet<string>;
   readonly pagerClassName?: string;
@@ -24,8 +25,8 @@ export function SidebarPaginatedItems<T>({
   items,
   getKey,
   maxItems = null,
-  expanded,
-  onExpandedChange,
+  extraPages,
+  onExtraPagesChange,
   forcedVisibleKey = null,
   suppressedKeys,
   pagerClassName = CODEX_SIDEBAR_DEFAULT_PAGER_ROW_CLASS,
@@ -33,13 +34,8 @@ export function SidebarPaginatedItems<T>({
   onLoadMore,
   children,
 }: SidebarPaginatedItemsProps<T>) {
-  const [extraPageCount, setExtraPageCount] = useState(1);
   const focusRestoreTargetRef = useRef<HTMLButtonElement | null>(null);
-
-  useEffect(() => {
-    if (expanded) return;
-    setExtraPageCount(1);
-  }, [expanded]);
+  const expanded = extraPages > 0;
 
   const pagination = useMemo(
     () =>
@@ -47,22 +43,12 @@ export function SidebarPaginatedItems<T>({
         items,
         getKey,
         maxItems,
-        expanded,
-        extraPageCount,
+        extraPages,
         forcedVisibleKey,
         suppressedKeys,
-        pagerEnabled: Boolean(onExpandedChange),
+        pagerEnabled: Boolean(onExtraPagesChange),
       }),
-    [
-      expanded,
-      extraPageCount,
-      forcedVisibleKey,
-      getKey,
-      items,
-      maxItems,
-      onExpandedChange,
-      suppressedKeys,
-    ],
+    [extraPages, forcedVisibleKey, getKey, items, maxItems, onExtraPagesChange, suppressedKeys],
   );
 
   const restorePagerFocus = useCallback(() => {
@@ -72,23 +58,15 @@ export function SidebarPaginatedItems<T>({
   }, []);
 
   const showMore = useCallback(() => {
-    if (!expanded) {
-      if (hasMoreAtSource) void onLoadMore?.();
-      setExtraPageCount(1);
-      onExpandedChange?.(true);
-      restorePagerFocus();
-      return;
-    }
     if (hasMoreAtSource) void onLoadMore?.();
-    setExtraPageCount((current) => current + 1);
+    onExtraPagesChange?.(extraPages + 1);
     restorePagerFocus();
-  }, [expanded, hasMoreAtSource, onExpandedChange, onLoadMore, restorePagerFocus]);
+  }, [extraPages, hasMoreAtSource, onExtraPagesChange, onLoadMore, restorePagerFocus]);
 
   const showLess = useCallback(() => {
-    setExtraPageCount(1);
-    onExpandedChange?.(false);
+    onExtraPagesChange?.(0);
     restorePagerFocus();
-  }, [onExpandedChange, restorePagerFocus]);
+  }, [onExtraPagesChange, restorePagerFocus]);
 
   const hasOverflow = pagination.hasOverflow || hasMoreAtSource;
   const pager =

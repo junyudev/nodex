@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { DatabaseIcon, PageIcon, ProjectActionsIcon, CanvasIcon } from "@/components/shared/icons";
 import type {
   LibraryNavigationNode,
@@ -6,7 +7,11 @@ import type {
   LibraryReadValue,
   LibraryViewNavigationNode,
 } from "../../../shared/library-module";
-import { useInfiniteLibraryChildren } from "@/lib/use-library-navigation";
+import {
+  libraryChildrenQueryOptions,
+  useInfiniteLibraryChildren,
+} from "@/lib/use-library-navigation";
+import { codexSidebarVisibleCount } from "@/lib/codex-sidebar-pagination";
 import {
   CODEX_SIDEBAR_GROUP_ACTION_BUTTON_CLASS,
   CODEX_SIDEBAR_ROW_LABEL_CLASS,
@@ -35,22 +40,17 @@ interface LibraryRootsQueryState {
   readonly isPending: boolean;
   readonly isError: boolean;
   readonly hasNextPage: boolean;
+  readonly isFetchingNextPage: boolean;
   readonly refetch: () => Promise<unknown>;
   readonly fetchNextPage: () => Promise<unknown>;
 }
 
 export interface SidebarPagesDataSource {
-  readonly useRoots: (
-    input: Readonly<{
-      limit?: number;
-      forceIncludeTarget?: LibraryPlacedResourceTarget;
-    }>,
-  ) => LibraryRootsQueryState;
+  /** Library roots in Library order, read through stable continuation windows. */
+  readonly useRoots: (input: Readonly<{ limit: number }>) => LibraryRootsQueryState;
+  /** Core's Content row for a selected root, or null while unread or when Content omits it. */
+  readonly useSelectedRoot: (target: LibraryPlacedResourceTarget | null) => LibraryRoot | null;
 }
-
-const DEFAULT_PAGES_DATA_SOURCE: SidebarPagesDataSource = {
-  useRoots: (input) => useInfiniteLibraryChildren({ kind: "library" }, input),
-};
 
 const rootKey = (root: LibraryPlacedResourceTarget): string => {
   if (root.kind === "page") return `page:${root.pageId}`;
@@ -67,6 +67,33 @@ const nodeTarget = (node: LibraryRoot): LibraryPlacedResourceTarget => {
 };
 
 const nodeKey = (node: LibraryRoot): string => rootKey(nodeTarget(node));
+
+/** Rows shown before the first Show more. */
+const CONTENT_FIRST_PAGE_ROWS = 5;
+/** Rows per Library read; restoring a deeper list reads further windows. */
+const CONTENT_SOURCE_WINDOW_ROWS = 20;
+
+const DEFAULT_PAGES_DATA_SOURCE: SidebarPagesDataSource = {
+  useRoots: (input) => useInfiniteLibraryChildren({ kind: "library" }, input),
+  useSelectedRoot: (target) => {
+    // A one-row window lets Core decide whether the target is a Content root without
+    // making the listed window depend on selection.
+    const query = useQuery({
+      ...libraryChildrenQueryOptions(
+        { kind: "library" },
+        target ? { limit: 1, forceIncludeTarget: target } : { limit: 1 },
+      ),
+      enabled: target !== null,
+    });
+    if (!target) return null;
+    const key = rootKey(target);
+    return (
+      query.data?.items.find(
+        (node): node is LibraryRoot => node.kind !== "view" && nodeKey(node) === key,
+      ) ?? null
+    );
+  },
+};
 
 const nodeIcon = (node: LibraryRoot) => {
   if (node.kind === "page") return <PageIcon />;
@@ -222,6 +249,9 @@ export interface SidebarPagesSectionProps {
   readonly collapsed: boolean;
   readonly activeRoot: LibraryPlacedResourceTarget | null;
   readonly onToggle: () => void;
+  /** Show more steps the Profile keeps revealed for Content. */
+  readonly extraPages: number;
+  readonly onExtraPagesChange: (extraPages: number) => void;
   readonly onOpenRoot: (target: LibraryPlacedResourceTarget) => void;
   readonly projects?: readonly LibraryProjectOption[];
   readonly onOpenInProject?: (
@@ -238,6 +268,8 @@ export function SidebarPagesSection({
   collapsed,
   activeRoot,
   onToggle,
+  extraPages,
+  onExtraPagesChange,
   onOpenRoot,
   projects = EMPTY_LIBRARY_PROJECT_OPTIONS,
   onOpenInProject,
@@ -245,12 +277,10 @@ export function SidebarPagesSection({
   mutationsEnabled = dataSource === DEFAULT_PAGES_DATA_SOURCE,
   onHoverSurfaceOpenChange,
 }: SidebarPagesSectionProps) {
-  const query = dataSource.useRoots({
-    limit: 10,
-    ...(activeRoot ? { forceIncludeTarget: activeRoot } : {}),
-  });
-  const [expanded, setExpanded] = useState(false);
-  const roots = useMemo(
+  // The listed window is a prefix of Library order whose identity never includes the
+  // selection, so opening content can neither reorder rows nor drop loaded windows.
+  const query = dataSource.useRoots({ limit: CONTENT_SOURCE_WINDOW_ROWS });
+  const loadedRoots = useMemo(
     () => [
       ...new Map(
         (query.data?.pages ?? [])
@@ -261,6 +291,27 @@ export function SidebarPagesSection({
     ],
     [query.data?.pages],
   );
+  const activeKey = activeRoot ? rootKey(activeRoot) : null;
+  const activeRootLoaded = loadedRoots.some((node) => nodeKey(node) === activeKey);
+  const selectedRoot = dataSource.useSelectedRoot(
+    activeRoot && !activeRootLoaded && query.hasNextPage ? activeRoot : null,
+  );
+  // Every loaded row precedes a selected root that is not loaded yet, so it joins last.
+  const roots = useMemo(
+    () => (selectedRoot ? [...loadedRoots, selectedRoot] : loadedRoots),
+    [loadedRoots, selectedRoot],
+  );
+  // Keep one row beyond the revealed depth loaded, so a restored depth fills itself and
+  // Show more knows whether unrevealed rows remain.
+  const loadsMoreRows =
+    query.hasNextPage &&
+    !query.isError &&
+    loadedRoots.length <= codexSidebarVisibleCount(CONTENT_FIRST_PAGE_ROWS, extraPages);
+  const { fetchNextPage, isFetchingNextPage } = query;
+  useEffect(() => {
+    if (!loadsMoreRows || isFetchingNextPage) return;
+    void fetchNextPage();
+  }, [fetchNextPage, isFetchingNextPage, loadsMoreRows]);
   const rootDropTarget = useSidebarLibraryRootDropTarget();
 
   return (
@@ -295,14 +346,11 @@ export function SidebarPagesSection({
           <SidebarPaginatedItems
             items={roots}
             getKey={nodeKey}
-            maxItems={5}
-            expanded={expanded}
-            onExpandedChange={setExpanded}
-            forcedVisibleKey={activeRoot ? rootKey(activeRoot) : null}
+            maxItems={CONTENT_FIRST_PAGE_ROWS}
+            extraPages={extraPages}
+            onExtraPagesChange={onExtraPagesChange}
+            forcedVisibleKey={activeKey}
             hasMoreAtSource={query.hasNextPage}
-            onLoadMore={async () => {
-              await query.fetchNextPage();
-            }}
           >
             {(pagination, pager) => (
               <div role="list" aria-label="Content">
@@ -310,7 +358,7 @@ export function SidebarPagesSection({
                   <SidebarPageRootRow
                     key={nodeKey(node)}
                     node={node}
-                    active={activeRoot ? nodeKey(node) === rootKey(activeRoot) : false}
+                    active={nodeKey(node) === activeKey}
                     projects={projects}
                     mutationsEnabled={mutationsEnabled}
                     onOpen={onOpenRoot}

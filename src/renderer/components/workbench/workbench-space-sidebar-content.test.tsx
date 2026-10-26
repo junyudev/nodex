@@ -43,6 +43,8 @@ describe("WorkbenchSpaceSidebarContent", () => {
     renderWithMaitai(
       <WorkbenchSpaceSidebarContent
         collapsed={false}
+        extraPages={0}
+        onExtraPagesChange={vi.fn()}
         activeRoot={null}
         onToggle={vi.fn()}
         onOpenRoot={vi.fn()}

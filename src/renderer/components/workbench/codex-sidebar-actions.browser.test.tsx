@@ -101,8 +101,8 @@ test.each([240, 320])("aligns project pagination text with Session titles at %ip
               items={[THREAD, { ...THREAD, key: "second" }]}
               getKey={(item) => item.key}
               maxItems={1}
-              expanded={false}
-              onExpandedChange={() => undefined}
+              extraPages={0}
+              onExtraPagesChange={() => undefined}
               pagerClassName={CODEX_SIDEBAR_PROJECT_THREAD_PAGER_ROW_CLASS}
             >
               {({ visibleItems }, pager) => (

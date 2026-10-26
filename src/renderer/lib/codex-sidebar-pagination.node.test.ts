@@ -18,22 +18,19 @@ describe("paginateCodexSidebarItems", () => {
       items: allItems,
       getKey: (item) => item,
       maxItems: CODEX_SIDEBAR_PROJECT_THREAD_MAX_ITEMS,
-      expanded: false,
-      extraPageCount: 1,
+      extraPages: 0,
     });
     const expandedFirst = paginateCodexSidebarItems({
       items: allItems,
       getKey: (item) => item,
       maxItems: CODEX_SIDEBAR_PROJECT_THREAD_MAX_ITEMS,
-      expanded: true,
-      extraPageCount: 1,
+      extraPages: 1,
     });
     const expandedSecond = paginateCodexSidebarItems({
       items: allItems,
       getKey: (item) => item,
       maxItems: CODEX_SIDEBAR_PROJECT_THREAD_MAX_ITEMS,
-      expanded: true,
-      extraPageCount: 2,
+      extraPages: 2,
     });
 
     expect(CODEX_SIDEBAR_PAGE_INCREMENT).toBe(10);
@@ -47,8 +44,7 @@ describe("paginateCodexSidebarItems", () => {
       items: items(8),
       getKey: (item) => item,
       maxItems: CODEX_SIDEBAR_PROJECT_GROUP_MAX_GROUPS,
-      expanded: false,
-      extraPageCount: 1,
+      extraPages: 0,
     });
 
     expect(result.visibleItems.length).toBe(5);
@@ -60,8 +56,7 @@ describe("paginateCodexSidebarItems", () => {
       items: items(55),
       getKey: (item) => item,
       maxItems: CODEX_SIDEBAR_PROJECTLESS_THREAD_MAX_ITEMS,
-      expanded: false,
-      extraPageCount: 1,
+      extraPages: 0,
     });
 
     expect(result.visibleItems.length).toBe(50);
@@ -74,8 +69,7 @@ describe("paginateCodexSidebarItems", () => {
       items: items(7),
       getKey: (item) => item,
       maxItems: CODEX_SIDEBAR_PROJECT_THREAD_MAX_ITEMS,
-      expanded: false,
-      extraPageCount: 1,
+      extraPages: 0,
       suppressedKeys: new Set(["item-1", "item-3"]),
     });
 
@@ -90,8 +84,7 @@ describe("paginateCodexSidebarItems", () => {
       items: items(8),
       getKey: (item) => item,
       maxItems: CODEX_SIDEBAR_PROJECT_THREAD_MAX_ITEMS,
-      expanded: false,
-      extraPageCount: 1,
+      extraPages: 0,
       forcedVisibleKey: "item-8",
     });
 
@@ -107,8 +100,7 @@ describe("paginateCodexSidebarItems", () => {
         items: items(8),
         getKey: (item) => item,
         maxItems: CODEX_SIDEBAR_PROJECT_THREAD_MAX_ITEMS,
-        expanded: false,
-        extraPageCount: 1,
+        extraPages: 0,
         forcedVisibleKey,
       });
 
@@ -120,13 +112,12 @@ describe("paginateCodexSidebarItems", () => {
   });
 
   test("offers no pager when the forced item is the only one beyond the page", () => {
-    for (const expanded of [false, true]) {
+    for (const extraPages of [0, 1]) {
       const result = paginateCodexSidebarItems({
         items: items(6),
         getKey: (item) => item,
         maxItems: CODEX_SIDEBAR_PROJECT_THREAD_MAX_ITEMS,
-        expanded,
-        extraPageCount: 1,
+        extraPages,
         forcedVisibleKey: "item-6",
       });
 
@@ -140,8 +131,7 @@ describe("paginateCodexSidebarItems", () => {
       items: items(6),
       getKey: (item) => item,
       maxItems: CODEX_SIDEBAR_PROJECT_THREAD_MAX_ITEMS,
-      expanded: true,
-      extraPageCount: 1,
+      extraPages: 1,
       forcedVisibleKey: "item-1",
     });
 

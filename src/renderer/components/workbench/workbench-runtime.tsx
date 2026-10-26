@@ -125,8 +125,10 @@ import { PageTitleProjectionProvider } from "@/lib/page-title-projection-context
 import { useLibraryNavigationInvalidation } from "@/lib/use-library-navigation";
 import { cn } from "@/lib/utils";
 import {
+  type SidebarCollapsibleSectionId,
   type SidebarCollapsibleSectionsState,
   type SidebarDisclosureSectionId,
+  type SidebarSectionExtraPagesState,
 } from "@/lib/sidebar-section-prefs";
 import { useWorkbenchSidebarState } from "@/lib/use-workbench-sidebar-state";
 import type { WorkbenchCommandPort } from "@/lib/use-workbench-command-ingress";
@@ -396,6 +398,7 @@ export interface WorkbenchRuntimeProps {
     collapsed: boolean;
     width: number;
     collapsibleSections?: SidebarCollapsibleSectionsState;
+    sectionExtraPages?: SidebarSectionExtraPagesState;
   };
   pageStageCloseRef: React.RefObject<(() => Promise<void>) | null>;
   pageStagePersistRef?: React.MutableRefObject<(() => Promise<void>) | null>;
@@ -437,6 +440,10 @@ export interface WorkbenchRuntimeProps {
   setSidebarCollapsibleSectionCollapsed?: (
     sectionId: SidebarDisclosureSectionId,
     collapsed: boolean,
+  ) => void;
+  setSidebarSectionExtraPages?: (
+    sectionId: SidebarCollapsibleSectionId,
+    extraPages: number,
   ) => void;
   recentPageSessions?: readonly RecentPageSession[];
   projectPickerOpenTick?: number;
@@ -485,6 +492,7 @@ export function WorkbenchRuntime({
   setSidebarCollapsed,
   setSidebarWidth,
   setSidebarCollapsibleSectionCollapsed,
+  setSidebarSectionExtraPages,
   onNavigationStateChange,
   onRegisterCommandPort,
   commandKeymapState,
@@ -602,6 +610,8 @@ export function WorkbenchRuntime({
     activeProjectId,
     collapsibleSections: sidebar?.collapsibleSections,
     setCollapsibleSectionCollapsed: setSidebarCollapsibleSectionCollapsed,
+    sectionExtraPages: sidebar?.sectionExtraPages,
+    setSectionExtraPages: setSidebarSectionExtraPages,
   });
   const {
     expandedProjectIds,
@@ -4745,6 +4755,7 @@ export function WorkbenchRuntime({
     expandedProjectIds,
     pinnedProjectsSectionCollapsed,
     pagesSectionCollapsed,
+    pagesSectionExtraPages: sidebarState.pagesSectionExtraPages,
     projectsSectionCollapsed,
     chatsSectionCollapsed,
     sidebarCollapsibleSections: sidebarState.sections,
@@ -4755,6 +4766,7 @@ export function WorkbenchRuntime({
     onResizeWidth: applySidebarWidth,
     onTogglePinnedProjectsSectionCollapsed: togglePinnedProjectsSectionCollapsed,
     onTogglePagesSectionCollapsed: togglePagesSection,
+    onPagesSectionExtraPagesChange: sidebarState.setPagesSectionExtraPages,
     onToggleProjectsSectionCollapsed: toggleProjectsSectionCollapsed,
     onToggleChatsSectionCollapsed: toggleChatsSectionCollapsed,
     onSetSidebarSectionCollapsed: sidebarState.setSectionCollapsed,

@@ -33,6 +33,8 @@ export type WorkbenchSidebarBodyProps = Omit<
 > & {
   readonly pagesSectionCollapsed: SidebarPagesSectionProps["collapsed"];
   readonly onTogglePagesSectionCollapsed: SidebarPagesSectionProps["onToggle"];
+  readonly pagesSectionExtraPages: SidebarPagesSectionProps["extraPages"];
+  readonly onPagesSectionExtraPagesChange: SidebarPagesSectionProps["onExtraPagesChange"];
   readonly onOpenResourceTarget: SidebarPagesSectionProps["onOpenRoot"];
   readonly onOpenResourceTargetInProject?: SidebarPagesSectionProps["onOpenInProject"];
   readonly activeResourceTarget: SidebarPagesSectionProps["activeRoot"];

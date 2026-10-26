@@ -55,6 +55,8 @@ export function WorkbenchSpaceSidebar({
             collapsed={body.pagesSectionCollapsed}
             activeRoot={body.activeResourceTarget ?? null}
             onToggle={body.onTogglePagesSectionCollapsed}
+            extraPages={body.pagesSectionExtraPages}
+            onExtraPagesChange={body.onPagesSectionExtraPagesChange}
             onOpenRoot={body.onOpenResourceTarget}
             projects={body.sidebarThreadModel.projectGroups.map(({ project }) => ({
               id: project.id,

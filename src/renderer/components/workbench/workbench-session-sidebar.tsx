@@ -332,8 +332,8 @@ function SidebarThreadContainerRowsContent({
   getSessionId,
   getThreadId,
   itemsByKey,
-  expanded,
-  onExpandedChange,
+  extraPages,
+  onExtraPagesChange,
   forcedVisibleKey,
   suppressedKeys,
   collectionState,
@@ -348,8 +348,8 @@ function SidebarThreadContainerRowsContent({
   getSessionId: (threadKey: string) => string | null;
   getThreadId: (threadKey: string) => string | null;
   itemsByKey: ReadonlyMap<string, CodexSidebarThreadItem>;
-  expanded: boolean;
-  onExpandedChange: (expanded: boolean) => void;
+  extraPages: number;
+  onExtraPagesChange: (extraPages: number) => void;
   forcedVisibleKey: string | null;
   suppressedKeys: ReadonlySet<string>;
   collectionState: WorkbenchSessionCollectionState;
@@ -398,8 +398,8 @@ function SidebarThreadContainerRowsContent({
       items={displayedThreadKeys}
       getKey={(threadKey) => threadKey}
       maxItems={CODEX_SIDEBAR_PROJECTLESS_THREAD_MAX_ITEMS}
-      expanded={expanded}
-      onExpandedChange={onExpandedChange}
+      extraPages={extraPages}
+      onExtraPagesChange={onExtraPagesChange}
       forcedVisibleKey={forcedVisibleKey}
       suppressedKeys={suppressedKeys}
       hasMoreAtSource={hasMoreAtSource}
@@ -461,14 +461,14 @@ function SidebarProjectThreadRowsContent({
   pinnedThreadKeys,
   sortablePinnedThreadKeys,
   threadKeys,
-  expanded,
+  extraPages,
   forcedVisibleKey,
   suppressedKeys,
   collectionState,
   hasMoreAtSource,
   onLoadMore,
   onRetry,
-  onExpandedChange,
+  onExtraPagesChange,
   onPinnedThreadOrderChange,
   onRegularSessionOrderChange,
   getSessionId,
@@ -480,14 +480,14 @@ function SidebarProjectThreadRowsContent({
   pinnedThreadKeys: string[];
   sortablePinnedThreadKeys: string[];
   threadKeys: string[];
-  expanded: boolean;
+  extraPages: number;
   forcedVisibleKey: string | null;
   suppressedKeys: ReadonlySet<string>;
   collectionState: WorkbenchSessionCollectionState;
   hasMoreAtSource: boolean;
   onLoadMore: () => void | Promise<void>;
   onRetry: () => void | Promise<void>;
-  onExpandedChange: (expanded: boolean) => void;
+  onExtraPagesChange: (extraPages: number) => void;
   onPinnedThreadOrderChange: (change: {
     visibleThreadKeys: string[];
     nextVisibleThreadKeys: string[];
@@ -617,8 +617,8 @@ function SidebarProjectThreadRowsContent({
       items={displayedThreadKeys}
       getKey={(threadKey) => threadKey}
       maxItems={CODEX_SIDEBAR_PROJECT_THREAD_MAX_ITEMS}
-      expanded={expanded}
-      onExpandedChange={onExpandedChange}
+      extraPages={extraPages}
+      onExtraPagesChange={onExtraPagesChange}
       forcedVisibleKey={forcedVisibleKey}
       suppressedKeys={suppressedKeys}
       pagerClassName={CODEX_SIDEBAR_PROJECT_THREAD_PAGER_ROW_CLASS}
@@ -635,7 +635,7 @@ function SidebarProjectThreadRowsContent({
         );
 
         return (
-          <CodexProjectSessionList project={project} showAll={expanded}>
+          <CodexProjectSessionList project={project} showAll={extraPages > 0}>
             <SidebarThreadDropContainer containerId={pinnedContainerId} targetProjectKind="local">
               <SidebarThreadSortableRows
                 containerId={pinnedContainerId}
@@ -861,12 +861,12 @@ function SidebarThreadOrganizerSections({
       ),
     [sectionCatalog.itemsBySectionId],
   );
-  const [pinnedProjectsExpanded, setPinnedProjectsExpanded] = useState(false);
-  const [projectsExpanded, setProjectsExpanded] = useState(false);
-  const [expandedProjectThreadListIds, setExpandedProjectThreadListIds] = useState<Set<string>>(
-    new Set(),
-  );
-  const [projectlessThreadListExpanded, setProjectlessThreadListExpanded] = useState(false);
+  const [pinnedProjectsExtraPages, setPinnedProjectsExtraPages] = useState(0);
+  const [projectsExtraPages, setProjectsExtraPages] = useState(0);
+  const [projectThreadListExtraPages, setProjectThreadListExtraPages] = useState<
+    ReadonlyMap<string, number>
+  >(() => new Map());
+  const [projectlessThreadListExtraPages, setProjectlessThreadListExtraPages] = useState(0);
   const [previouslyExpandedProjectGroupIds, setPreviouslyExpandedProjectGroupIds] = useState<
     string[]
   >([]);
@@ -1322,11 +1322,11 @@ function SidebarThreadOrganizerSections({
     return activeSession ? `local:session:${activeSession.id}` : null;
   }, [activePendingClientThreadId, activeSessionId, sessionsById, sidebarThreadItemsByKey]);
 
-  const setProjectThreadListExpanded = useCallback((projectId: string, expanded: boolean) => {
-    setExpandedProjectThreadListIds((current) => {
-      const next = new Set(current);
-      if (expanded) {
-        next.add(projectId);
+  const setProjectThreadListPages = useCallback((projectId: string, extraPages: number) => {
+    setProjectThreadListExtraPages((current) => {
+      const next = new Map(current);
+      if (extraPages > 0) {
+        next.set(projectId, extraPages);
       } else {
         next.delete(projectId);
       }
@@ -1437,7 +1437,7 @@ function SidebarThreadOrganizerSections({
     currentSectionId: string | null = null,
   ) => {
     const expanded = expandedProjectIds.has(project.id);
-    const threadListExpanded = expandedProjectThreadListIds.has(project.id);
+    const threadListExtraPages = projectThreadListExtraPages.get(project.id) ?? 0;
     const projectThreadItems = Array.from(new Set([...pinnedThreadKeys, ...threadKeys]))
       .map((threadKey) => sidebarThreadItemsByKey.get(threadKey))
       .filter((item): item is CodexSidebarThreadItem => item != null);
@@ -1499,9 +1499,9 @@ function SidebarThreadOrganizerSections({
               model.threadItemsByKey.has(threadKey) && !sidebarArchivePendingKeys.has(threadKey),
           )}
           threadKeys={threadKeys}
-          expanded={threadListExpanded}
-          onExpandedChange={(nextExpanded) => {
-            setProjectThreadListExpanded(project.id, nextExpanded);
+          extraPages={threadListExtraPages}
+          onExtraPagesChange={(extraPages) => {
+            setProjectThreadListPages(project.id, extraPages);
           }}
           forcedVisibleKey={activeThreadKey}
           suppressedKeys={sidebarArchivePendingKeys}
@@ -1533,8 +1533,8 @@ function SidebarThreadOrganizerSections({
     groups: CodexSidebarProjectGroup[],
     options: {
       reorderScope: "projects" | "pinned";
-      expanded: boolean;
-      onExpandedChange: (expanded: boolean) => void;
+      extraPages: number;
+      onExtraPagesChange: (extraPages: number) => void;
       emptyText?: string;
       readsProjectWindow?: boolean;
     },
@@ -1543,8 +1543,8 @@ function SidebarThreadOrganizerSections({
       items={groups}
       getKey={(group) => group.project.id}
       maxItems={CODEX_SIDEBAR_PROJECT_GROUP_MAX_GROUPS}
-      expanded={options.expanded}
-      onExpandedChange={options.onExpandedChange}
+      extraPages={options.extraPages}
+      onExtraPagesChange={options.onExtraPagesChange}
       forcedVisibleKey={activeProjectId}
       hasMoreAtSource={options.readsProjectWindow === true && hasMoreProjects}
       onLoadMore={options.readsProjectWindow ? onLoadMoreProjects : undefined}
@@ -1636,8 +1636,8 @@ function SidebarThreadOrganizerSections({
           {pinnedProjectGroups.length > 0
             ? renderProjectGroupRows(pinnedProjectGroups, {
                 reorderScope: "pinned",
-                expanded: pinnedProjectsExpanded,
-                onExpandedChange: setPinnedProjectsExpanded,
+                extraPages: pinnedProjectsExtraPages,
+                onExtraPagesChange: setPinnedProjectsExtraPages,
               })
             : null}
         </CodexSidebarSection>
@@ -1698,8 +1698,8 @@ function SidebarThreadOrganizerSections({
         <StableWorktreeSidebarRows entries={pendingStableWorktrees} onOpen={onOpenStableWorktree} />
         {renderProjectGroupRows(unpinnedProjectGroups, {
           reorderScope: "projects",
-          expanded: projectsExpanded,
-          onExpandedChange: setProjectsExpanded,
+          extraPages: projectsExtraPages,
+          onExtraPagesChange: setProjectsExtraPages,
           readsProjectWindow: true,
         })}
       </CodexSidebarSection>
@@ -1728,8 +1728,8 @@ function SidebarThreadOrganizerSections({
             getSessionId={getSidebarSessionId}
             getThreadId={getSidebarRealThreadId}
             itemsByKey={sidebarThreadItemsByKey}
-            expanded={projectlessThreadListExpanded}
-            onExpandedChange={setProjectlessThreadListExpanded}
+            extraPages={projectlessThreadListExtraPages}
+            onExtraPagesChange={setProjectlessThreadListExtraPages}
             forcedVisibleKey={activeThreadKey}
             suppressedKeys={sidebarArchivePendingKeys}
             collectionState={projectlessSessionCollection.state}

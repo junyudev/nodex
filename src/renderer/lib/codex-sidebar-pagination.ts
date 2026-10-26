@@ -20,12 +20,17 @@ export interface CodexSidebarPaginationResult<T> {
   showPager: boolean;
 }
 
+/** Rows a list reveals after its first page plus `extraPages` Show more steps. */
+export function codexSidebarVisibleCount(maxItems: number, extraPages: number): number {
+  return maxItems + CODEX_SIDEBAR_PAGE_INCREMENT * extraPages;
+}
+
 export function paginateCodexSidebarItems<T>(input: {
   items: readonly T[];
   getKey: (item: T) => string;
   maxItems?: number | null;
-  expanded: boolean;
-  extraPageCount: number;
+  /** Show more steps beyond the first page; 0 is the first page. */
+  extraPages: number;
   forcedVisibleKey?: string | null;
   suppressedKeys?: ReadonlySet<string>;
   pagerEnabled?: boolean;
@@ -34,10 +39,9 @@ export function paginateCodexSidebarItems<T>(input: {
     ? input.items.filter((item) => !input.suppressedKeys?.has(input.getKey(item)))
     : [...input.items];
   const maxItems = input.maxItems ?? null;
+  const expanded = input.extraPages > 0;
   const visibleCount =
-    maxItems === null
-      ? filteredItems.length
-      : maxItems + (input.expanded ? CODEX_SIDEBAR_PAGE_INCREMENT * input.extraPageCount : 0);
+    maxItems === null ? filteredItems.length : codexSidebarVisibleCount(maxItems, input.extraPages);
   // The forced item is guaranteed visible without taking a page slot from anything else:
   // inside the page nothing changes, and beyond it the item joins in list order as one extra row.
   const isForced = (item: T) => input.getKey(item) === input.forcedVisibleKey;
@@ -55,6 +59,6 @@ export function paginateCodexSidebarItems<T>(input: {
     hiddenItems,
     visibleCount,
     hasOverflow,
-    showPager: pagerEnabled && collapsedPageHidesItems && (input.expanded || hasOverflow),
+    showPager: pagerEnabled && collapsedPageHidesItems && (expanded || hasOverflow),
   };
 }

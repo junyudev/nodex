@@ -1,4 +1,5 @@
 import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { useState } from "react";
 import { beforeEach, describe, expect, test, vi } from "vite-plus/test";
 import type {
   LibraryNavigationNode,
@@ -6,17 +7,27 @@ import type {
 } from "../../../shared/library-module";
 import { parseDatabaseId, parseDatabaseViewId } from "../../../shared/database-identities";
 import { renderWithMaitai } from "@/test/thread-maitai";
+import { TestQueryProvider } from "@/test/query";
 import { PageTitleProjectionProvider } from "@/lib/page-title-projection-context";
 import {
   createPageTitleProjectionStore,
   makePageTitleResourceKey,
 } from "@/lib/page-title-projection-store";
-import { SidebarPagesSection, type SidebarPagesDataSource } from "./sidebar-pages-section";
+import {
+  SidebarPagesSection,
+  type SidebarPagesDataSource,
+  type SidebarPagesSectionProps,
+} from "./sidebar-pages-section";
 
 const mockLibraryChildren = vi.hoisted(() => vi.fn());
+const mockSelectedRootRead = vi.hoisted(() => vi.fn());
 
 vi.mock("@/lib/use-library-navigation", () => ({
   useInfiniteLibraryChildren: mockLibraryChildren,
+  libraryChildrenQueryOptions: (_parent: unknown, input: unknown) => ({
+    queryKey: ["libraryNavigation", "children", "library", input],
+    queryFn: () => mockSelectedRootRead(input),
+  }),
   useApplyLibraryOperation: () => ({
     mutation: { mutateAsync: vi.fn(), isPending: false },
   }),
@@ -47,51 +58,132 @@ const makePage = (index: number): LibraryPageNavigationNode => ({
   updatedAt: "2026-08-03T00:00:00.000Z",
 });
 
-const dataSource = (items: readonly LibraryNavigationNode[]): SidebarPagesDataSource => ({
+const pages = (count: number) => Array.from({ length: count }, (_, index) => makePage(index + 1));
+
+const childrenWindow = (items: readonly LibraryNavigationNode[], hasMore: boolean) => ({
+  kind: "children" as const,
+  parent: { kind: "library" as const },
+  items,
+  nextCursor: hasMore ? "next" : null,
+  hasMore,
+  total: items.length,
+});
+
+const dataSource = (
+  items: readonly LibraryNavigationNode[],
+  selected: SidebarPagesDataSource["useSelectedRoot"] = () => null,
+): SidebarPagesDataSource => ({
   useRoots: () => ({
-    data: {
-      pages: [
-        {
-          kind: "children",
-          parent: { kind: "library" },
-          items,
-          nextCursor: null,
-          hasMore: false,
-          total: items.length,
-        },
-      ],
-    },
+    data: { pages: [childrenWindow(items, false)] },
     isPending: false,
     isError: false,
     hasNextPage: false,
+    isFetchingNextPage: false,
     refetch: vi.fn(async () => undefined),
     fetchNextPage: vi.fn(async () => undefined),
   }),
+  useSelectedRoot: selected,
 });
 
-beforeEach(() => mockLibraryChildren.mockReset());
+/** A Library of `total` roots read in windows of `limit`, like the Core continuation. */
+const windowedDataSource = (
+  total: number,
+  onRead: (loadedWindows: number) => void = () => {},
+): SidebarPagesDataSource => ({
+  useRoots: ({ limit }) => {
+    const [loadedWindows, setLoadedWindows] = useState(1);
+    const all = pages(total);
+    const windows = Array.from({ length: loadedWindows }, (_, index) =>
+      childrenWindow(all.slice(index * limit, (index + 1) * limit), (index + 1) * limit < total),
+    );
+    return {
+      data: { pages: windows },
+      isPending: false,
+      isError: false,
+      hasNextPage: loadedWindows * limit < total,
+      isFetchingNextPage: false,
+      refetch: vi.fn(async () => undefined),
+      fetchNextPage: async () => {
+        onRead(loadedWindows + 1);
+        setLoadedWindows((current) => current + 1);
+      },
+    };
+  },
+  useSelectedRoot: (target) => {
+    if (target?.kind !== "page") return null;
+    return pages(total).find((page) => page.pageId === target.pageId) ?? null;
+  },
+});
+
+const contentRowTitles = () =>
+  within(screen.getByRole("list", { name: "Content" }))
+    .getAllByRole("listitem")
+    .map((row) => row.textContent ?? "")
+    .filter((title) => title.startsWith("Page "));
+
+/** Holds Content depth the way the Profile preference does for the Workbench. */
+function DepthOwner({
+  initialExtraPages = 0,
+  onExtraPagesChange,
+  ...props
+}: Omit<SidebarPagesSectionProps, "extraPages" | "onExtraPagesChange"> & {
+  readonly initialExtraPages?: number;
+  readonly onExtraPagesChange?: (extraPages: number) => void;
+}) {
+  const [extraPages, setExtraPages] = useState(initialExtraPages);
+  return (
+    <SidebarPagesSection
+      {...props}
+      extraPages={extraPages}
+      onExtraPagesChange={(next) => {
+        onExtraPagesChange?.(next);
+        setExtraPages(next);
+      }}
+    />
+  );
+}
+
+const baseProps = {
+  collapsed: false,
+  onToggle: vi.fn(),
+  onOpenRoot: vi.fn(),
+  mutationsEnabled: false,
+  extraPages: 0,
+  onExtraPagesChange: vi.fn(),
+} satisfies Partial<SidebarPagesSectionProps>;
+
+beforeEach(() => {
+  mockLibraryChildren.mockReset();
+  mockSelectedRootRead.mockReset();
+});
 
 describe("SidebarPagesSection", () => {
-  test("reads the complete Library root projection and force-includes the selected root", () => {
-    mockLibraryChildren.mockImplementation(() => dataSource([makePage(1)]).useRoots({}));
-    const activeRoot = { kind: "page", pageId: "page:1" } as const;
-    renderWithMaitai(
-      <SidebarPagesSection
-        collapsed={false}
-        activeRoot={activeRoot}
-        onToggle={vi.fn()}
-        onOpenRoot={vi.fn()}
-        mutationsEnabled={false}
-      />,
+  test("reads one Library window identity no matter which root is selected", async () => {
+    mockLibraryChildren.mockImplementation(() => ({
+      ...windowedDataSource(30).useRoots({ limit: 20 }),
+    }));
+    mockSelectedRootRead.mockImplementation(async () =>
+      childrenWindow([makePage(1), makePage(25)], true),
+    );
+    const view = renderWithMaitai(
+      <TestQueryProvider>
+        <SidebarPagesSection {...baseProps} activeRoot={{ kind: "page", pageId: "page:2" }} />
+      </TestQueryProvider>,
+    );
+    view.rerender(
+      <TestQueryProvider>
+        <SidebarPagesSection {...baseProps} activeRoot={{ kind: "page", pageId: "page:25" }} />
+      </TestQueryProvider>,
     );
 
-    expect(mockLibraryChildren).toHaveBeenCalledWith(
-      { kind: "library" },
-      {
-        limit: 10,
-        forceIncludeTarget: activeRoot,
-      },
+    expect(await screen.findByText("Page 25")).not.toBeNull();
+    expect(new Set(mockLibraryChildren.mock.calls.map((call) => JSON.stringify(call)))).toEqual(
+      new Set([JSON.stringify([{ kind: "library" }, { limit: 20 }])]),
     );
+    expect(mockSelectedRootRead).toHaveBeenCalledWith({
+      limit: 1,
+      forceIncludeTarget: { kind: "page", pageId: "page:25" },
+    });
   });
 
   test("opens Project primary Databases and Canvases through their Library targets", async () => {
@@ -123,7 +215,7 @@ describe("SidebarPagesSection", () => {
     ];
     renderWithMaitai(
       <SidebarPagesSection
-        collapsed={false}
+        {...baseProps}
         activeRoot={{ kind: "database", databaseId }}
         onToggle={vi.fn()}
         onOpenRoot={onOpenRoot}
@@ -146,7 +238,7 @@ describe("SidebarPagesSection", () => {
   test("shows a complete small root set without a pager", () => {
     renderWithMaitai(
       <SidebarPagesSection
-        collapsed={false}
+        {...baseProps}
         activeRoot={{ kind: "page", pageId: "page:2" }}
         onToggle={vi.fn()}
         onOpenRoot={vi.fn()}
@@ -163,25 +255,35 @@ describe("SidebarPagesSection", () => {
     );
   });
 
-  test("uses the shared Show more and Show less paging behavior", async () => {
+  test("reports each Show more step and Show less to the depth owner", async () => {
+    const onExtraPagesChange = vi.fn();
     renderWithMaitai(
-      <SidebarPagesSection
-        collapsed={false}
+      <DepthOwner
+        {...baseProps}
         activeRoot={null}
-        onToggle={vi.fn()}
-        onOpenRoot={vi.fn()}
-        dataSource={dataSource(Array.from({ length: 6 }, (_, index) => makePage(index + 1)))}
-        mutationsEnabled={false}
+        dataSource={dataSource(pages(18))}
+        onExtraPagesChange={onExtraPagesChange}
       />,
     );
 
-    expect(screen.queryByText("Page 6")).toBeNull();
+    expect(contentRowTitles()).toHaveLength(5);
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: "Show more" }));
       await Promise.resolve();
     });
-    expect(await screen.findByText("Page 6")).not.toBeNull();
-    expect(screen.getByRole("button", { name: "Show less" })).not.toBeNull();
+    expect(contentRowTitles()).toHaveLength(15);
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Show more" }));
+      await Promise.resolve();
+    });
+    expect(contentRowTitles()).toHaveLength(18);
+    expect(screen.queryByRole("button", { name: "Show more" })).toBeNull();
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Show less" }));
+      await Promise.resolve();
+    });
+    expect(contentRowTitles()).toHaveLength(5);
+    expect(onExtraPagesChange.mock.calls).toEqual([[1], [2], [0]]);
   });
 
   test("opens a Page's shared resource menu from the whole row context target", async () => {
@@ -189,7 +291,7 @@ describe("SidebarPagesSection", () => {
     const onHoverSurfaceOpenChange = vi.fn();
     renderWithMaitai(
       <SidebarPagesSection
-        collapsed={false}
+        {...baseProps}
         activeRoot={null}
         onToggle={vi.fn()}
         onOpenRoot={onOpenRoot}
@@ -230,10 +332,8 @@ describe("SidebarPagesSection", () => {
     });
     renderWithMaitai(
       <SidebarPagesSection
-        collapsed={false}
+        {...baseProps}
         activeRoot={null}
-        onToggle={vi.fn()}
-        onOpenRoot={vi.fn()}
         dataSource={dataSource([database("Reading", false), database("Inbox", true)])}
         mutationsEnabled
       />,
@@ -264,10 +364,8 @@ describe("SidebarPagesSection", () => {
   test("only an open resource menu releases floating sidebar ownership when rows unmount", async () => {
     const onHoverSurfaceOpenChange = vi.fn();
     const props = {
-      collapsed: false,
+      ...baseProps,
       activeRoot: null,
-      onToggle: vi.fn(),
-      onOpenRoot: vi.fn(),
       mutationsEnabled: true,
       onHoverSurfaceOpenChange,
     };
@@ -291,46 +389,94 @@ describe("SidebarPagesSection", () => {
     expect(onHoverSurfaceOpenChange).toHaveBeenLastCalledWith(false);
   });
 
-  test("keeps the selected root visible outside the collapsed page window", () => {
+  test("restores a remembered depth by reading windows until it is filled", async () => {
+    const onRead = vi.fn();
     renderWithMaitai(
-      <SidebarPagesSection
-        collapsed={false}
-        activeRoot={{ kind: "page", pageId: "page:6" }}
-        onToggle={vi.fn()}
-        onOpenRoot={vi.fn()}
-        dataSource={dataSource(Array.from({ length: 6 }, (_, index) => makePage(index + 1)))}
-        mutationsEnabled={false}
+      <DepthOwner
+        {...baseProps}
+        activeRoot={null}
+        initialExtraPages={2}
+        dataSource={windowedDataSource(60, onRead)}
       />,
     );
-    expect(screen.getByText("Page 6").closest("[aria-current]")?.getAttribute("aria-current")).toBe(
-      "page",
-    );
+
+    await waitFor(() => expect(contentRowTitles()).toHaveLength(25));
+    expect(contentRowTitles().at(-1)).toBe("Page 25");
+    // One row beyond the depth is loaded, so no further window is read until Show more.
+    expect(onRead.mock.calls).toEqual([[2]]);
+    expect(screen.getByRole("button", { name: "Show more" })).not.toBeNull();
+    expect(screen.getByRole("button", { name: "Show less" })).not.toBeNull();
   });
 
-  test("requests the next bounded root window from Show more", async () => {
-    const fetchNextPage = vi.fn(async () => undefined);
-    const source: SidebarPagesDataSource = {
-      useRoots: () => ({
-        ...dataSource([makePage(1)]).useRoots({}),
-        hasNextPage: true,
-        fetchNextPage,
-      }),
-    };
-    renderWithMaitai(
-      <SidebarPagesSection
-        collapsed={false}
-        activeRoot={null}
-        onToggle={vi.fn()}
-        onOpenRoot={vi.fn()}
+  test("opening a listed root changes neither the rows nor their order", async () => {
+    const source = windowedDataSource(30);
+    const view = renderWithMaitai(
+      <DepthOwner {...baseProps} activeRoot={null} initialExtraPages={1} dataSource={source} />,
+    );
+    const before = contentRowTitles();
+    view.rerender(
+      <DepthOwner
+        {...baseProps}
+        activeRoot={{ kind: "page", pageId: "page:12" }}
+        initialExtraPages={1}
         dataSource={source}
-        mutationsEnabled={false}
       />,
     );
+
+    expect(contentRowTitles()).toEqual(before);
+    expect(
+      screen.getByText("Page 12").closest("[aria-current]")?.getAttribute("aria-current"),
+    ).toBe("page");
+  });
+
+  test("a selected root beyond the loaded rows joins after them, then takes its own position", async () => {
+    renderWithMaitai(
+      <DepthOwner
+        {...baseProps}
+        activeRoot={{ kind: "page", pageId: "page:27" }}
+        dataSource={windowedDataSource(40)}
+      />,
+    );
+
+    expect(contentRowTitles()).toEqual([
+      "Page 1",
+      "Page 2",
+      "Page 3",
+      "Page 4",
+      "Page 5",
+      "Page 27",
+    ]);
+    for (let step = 0; step < 2; step += 1) {
+      await act(async () => {
+        fireEvent.click(screen.getByRole("button", { name: "Show more" }));
+        await Promise.resolve();
+      });
+    }
+
+    await waitFor(() => expect(contentRowTitles()).toHaveLength(26));
+    const titles = contentRowTitles();
+    expect(titles.slice(0, 25)).toEqual(pages(25).map((page) => page.title));
+    expect(titles.at(-1)).toBe("Page 27");
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: "Show more" }));
       await Promise.resolve();
     });
-    await waitFor(() => expect(fetchNextPage).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(contentRowTitles()).toHaveLength(35));
+    expect(contentRowTitles()).toEqual(pages(35).map((page) => page.title));
+  });
+
+  test("omits a selected resource that Content does not list", () => {
+    const source = windowedDataSource(30);
+    renderWithMaitai(
+      <SidebarPagesSection
+        {...baseProps}
+        activeRoot={{ kind: "database", databaseId: parseDatabaseId("database:inbox") }}
+        dataSource={source}
+      />,
+    );
+
+    expect(contentRowTitles()).toEqual(pages(5).map((page) => page.title));
+    expect(screen.queryByRole("listitem", { current: "page" })).toBeNull();
   });
 
   test("projects a mounted Page's live title without changing its resource identity", async () => {
@@ -339,7 +485,7 @@ describe("SidebarPagesSection", () => {
     renderWithMaitai(
       <PageTitleProjectionProvider currentLibraryId="library-a" store={store}>
         <SidebarPagesSection
-          collapsed={false}
+          {...baseProps}
           activeRoot={null}
           onToggle={vi.fn()}
           onOpenRoot={onOpenRoot}
