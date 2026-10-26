@@ -1,0 +1,47 @@
+docs/product-specs/plugins-behavior.md
+  s_77ac5bdfa64dec::t_33c3947c8393c7 48-50,97-110,157-191
+src/main/app/HostApplicationLive.ts
+  s_77ac5bdfa64dec::t_c7ca7e9af306a9 1,131-139
+src/main/codex-application/PluginApps.node.test.ts
+  s_77ac5bdfa64dec::t_c7f86a5eda174e 1-228
+src/main/codex-application/PluginApps.ts
+  s_77ac5bdfa64dec::t_512abff867f16a 1-307
+src/main/codex-application/PluginManager.node.test.ts
+  s_77ac5bdfa64dec::t_7f5ad26e1e0ffe 1,41-44,180-182,184-190,192-211,280-285,957-1090
+src/main/codex-application/PluginManager.ts
+  s_77ac5bdfa64dec::t_42c3b52e458dfd 1-12,117-118,158-167,526-637,644-650,653-668,728-735,737-739,741,818-823,828,930-936,941-950,957-958,961,986-1001,1123-1183,1217-1224,1288-1315
+src/main/codex-application/PluginNativeErrors.ts
+  s_77ac5bdfa64dec::t_6536dbe2abbd2d 1-18
+src/main/codex-application/PluginSettingsModel.ts
+  s_77ac5bdfa64dec::t_030c006c80a84e 1-103
+src/main/codex-application/StandaloneSkills.node.test.ts
+  s_77ac5bdfa64dec::t_833edd85f39179 1-185
+src/main/codex-application/StandaloneSkills.ts
+  s_77ac5bdfa64dec::t_2e4c656f6ec457 1-408
+src/main/ipc/handlers/PluginManagerIpc.ts
+  s_77ac5bdfa64dec::t_fa3bd70879b67b 113,184
+src/main/platform/node/StandaloneSkillsNode.ts
+  s_77ac5bdfa64dec::t_4b5078a3d8beb9 1-7
+src/renderer/features/plugins/plugin-management.ts
+  s_77ac5bdfa64dec::t_b6eb6b8f76587c 184,190,195
+src/shared/codex-plugin-management.ts
+  s_77ac5bdfa64dec::t_31b61d85842781 163,207-208,222-223,246,267-270,290-294
+src/shared/codex-plugin-settings.ts
+  s_77ac5bdfa64dec::t_ab6b6c785f6afa 23
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "c9d9b6bb9ac6ea94851e90422f6895324b6f74dd",
+  "prompts": {},
+  "sessions": {
+    "s_77ac5bdfa64dec": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1795d-5e95-7ea0-9bf7-2e3e042b723f",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
