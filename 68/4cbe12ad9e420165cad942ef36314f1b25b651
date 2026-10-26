@@ -1,0 +1,108 @@
+packages/agent-runtime/src/orchestration-v2/Adapters/AcpAdapterV2.test.ts
+  s_f9bd8920ed6b05::t_c3719873bcdc97 81,130-133,139-153,157-159,162-184,187-198,202,205-206,209,2228-2239
+src/renderer/features/local-conversation/view/shared/tools/file-change-tool-call.tsx
+  s_f9bd8920ed6b05::t_56bbfa78036f29 7
+  s_f9bd8920ed6b05::t_b1506326617915 292-296,298,309-311
+src/renderer/features/local-conversation/agent-runtime-transcript-projection.ts
+  s_f9bd8920ed6b05::t_ce3d56bd7acf1e 131,134,136,149
+  s_f9bd8920ed6b05::t_b8dc79877fe582 8-10,120-122,126-129,137-143,151-153,618
+  s_f9bd8920ed6b05::t_e8b2013edb2a6f 7
+  s_f9bd8920ed6b05::t_cec460cdff3724 123-125,130,132-133,135,144-148,150
+src/shared/types.ts
+  s_f9bd8920ed6b05::t_6317cb806f6013 3047,3070-3074,3081,3100-3103
+  s_f9bd8920ed6b05::t_0f58e0f7ac4f01 3076-3079
+  s_f9bd8920ed6b05::t_c897356fd6819a 3075
+src/renderer/features/local-conversation/agent-runtime-transcript-projection.node.test.ts
+  s_f9bd8920ed6b05::t_56bbfa78036f29 936-942
+  s_f9bd8920ed6b05::t_4425e2513f4a0d 4,883-935,943-996,1026,1029-1031,1033,1047
+  s_f9bd8920ed6b05::t_535a65a43211d7 1048
+  s_f9bd8920ed6b05::t_ce3d56bd7acf1e 997-1025,1027-1028,1032,1034-1046
+packages/agent-runtime/vendor/provider-acp/src/server/adapter.ts
+  s_f9bd8920ed6b05::t_7b8951333ef046 9,36-42,923-941,950-986,988-991,993-995,997,999-1005,1007,1013-1014,1017-1024,3794,3796-3797,3878-3879,3961-3967,3971-3972,3975
+packages/agent-runtime/src/orchestration-v2/Adapters/ClaudeAdapterV2.ts
+  s_f9bd8920ed6b05::t_f8b2026309305b 1996
+  s_f9bd8920ed6b05::t_a93fb1093622c3 19-21,23-25,2052-2067,2071-2079,2097,2099,2101-2123,4276-4281
+  s_f9bd8920ed6b05::t_1af71ba1bd024f 22,2068-2070,2080-2096,2098,2100
+packages/agent-runtime/src/orchestration-v2/fileChanges.test.ts
+  s_f9bd8920ed6b05::t_90afb898be7ad9 195-210
+  s_f9bd8920ed6b05::t_5ca6b7376a570f 1-194,211-223
+packages/agent-runtime/vendor/contracts/src/orchestrationV2.ts
+  s_f9bd8920ed6b05::t_786f2510fc03d0 1406-1413,1420-1422,1701-1702
+src/renderer/components/workbench/review-diff-panel.tsx
+  s_f9bd8920ed6b05::t_bd8131355a55dc 898,916,920
+  s_f9bd8920ed6b05::t_56bbfa78036f29 917-919,921-923
+packages/agent-runtime/README.md
+  s_f9bd8920ed6b05::t_5e3ab8fb099be9 30-31
+packages/agent-runtime/src/orchestration-v2/WireProjection.ts
+  s_f9bd8920ed6b05::t_23914083358689 200-204,206-207
+  s_f9bd8920ed6b05::t_54c4c737101cf5 21-22,193-199,205,208-210,240-245,249
+  s_f9bd8920ed6b05::t_56bbfa78036f29 246-248
+packages/agent-runtime/vendor/shared/package.json
+  s_f9bd8920ed6b05::t_019a070b798100 122-125
+src/renderer/features/local-conversation/view/shared/tools/file-change-tool-call.test.tsx
+  s_f9bd8920ed6b05::t_96c777239f644a 698
+  s_f9bd8920ed6b05::t_fbb6c57c72769b 18,104,649-655,658-682,684-697
+  s_f9bd8920ed6b05::t_ce3d56bd7acf1e 656-657,683
+packages/agent-runtime/src/orchestration-v2/Adapters/ClaudeAdapterV2.test.ts
+  s_f9bd8920ed6b05::t_f9ae7ff64a7f31 3810-3815
+  s_f9bd8920ed6b05::t_478b0b8d16194b 3817
+  s_f9bd8920ed6b05::t_be4e9811e8e6d6 20-23,3602-3604,3697-3705,3719-3756,3769,3771-3804,3816
+  s_f9bd8920ed6b05::t_1af71ba1bd024f 3757-3768,3770,3805-3809
+packages/agent-runtime/src/orchestration-v2/Adapters/CodexAdapterV2.ts
+  s_f9bd8920ed6b05::t_3f4d924662dfcc 43,3828-3829,3878
+  s_f9bd8920ed6b05::t_4e01eb569e916f 184-202
+CHANGELOG.md
+  s_f9bd8920ed6b05::t_476ad4b3203216 48
+docs/product-specs/agent-runtime-behavior.md
+  s_f9bd8920ed6b05::t_5e3ab8fb099be9 164-170
+src/shared/codex-file-change.ts
+  s_f9bd8920ed6b05::t_cec460cdff3724 146-147,150,155-162,168-171,175-188,193,240,248,258,266,279,288,299,308,532-540,545-548,566
+  s_f9bd8920ed6b05::t_97f0a3a1699990 5,148-149,151-154,189-192,194-195,541-544,549-550
+src/shared/codex-canonical-item-projector.ts
+  s_f9bd8920ed6b05::t_cec460cdff3724 644-645
+docs/product-specs/codex-thread-transcript-behavior.md
+  s_f9bd8920ed6b05::t_39b0876eec552a 626
+  s_f9bd8920ed6b05::t_5e3ab8fb099be9 627
+packages/agent-runtime/src/orchestration-v2/WireProjection.test.ts
+  s_f9bd8920ed6b05::t_23914083358689 554-555,561-573,577-584
+packages/agent-runtime/vendor/provider-opencode/src/server/toolItems.ts
+  s_f9bd8920ed6b05::t_88d7dac3532e95 7-11,70-75,111-124,126,130-131
+packages/agent-runtime/vendor/shared/src/fileChanges.ts
+  s_f9bd8920ed6b05::t_af8739b2422c0f 173-181,208-217,220-225,227,229
+  s_74cb07b04fcdc2::t_1efa8ad253feb0 1-172,182-207,218-219,226,228,230-316
+tests/e2e/agent-file-change-stats.spec.ts
+  s_f9bd8920ed6b05::t_a58d22f5688e07 2-95,97,103-121,124-151,154-201,203-218,220,222-227,229-248
+  s_f9bd8920ed6b05::t_56bbfa78036f29 152-153
+  s_f9bd8920ed6b05::t_75b474a0313f16 1,96,98-102,122-123,202,219,221,228
+packages/agent-runtime/src/mcp/OrchestratorMcpService.ts
+  s_f9bd8920ed6b05::t_a9e43ff01fa9de 582-596
+src/shared/codex-conversation-state/codex-conversation-state.ts
+  s_f9bd8920ed6b05::t_0f58e0f7ac4f01 25,57-62,614,617-618,621-629,643-644,647
+  s_f9bd8920ed6b05::t_6317cb806f6013 615-616,619-620
+src/renderer/features/local-conversation/projection/agent-activity-group.ts
+  s_f9bd8920ed6b05::t_a8bd2dfa44100b 9,587
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "684cbe12ad9e420165cad942ef36314f1b25b651",
+  "prompts": {},
+  "sessions": {
+    "s_74cb07b04fcdc2": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a16c5e-90b2-7e40-92fb-3de257969ffd",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_f9bd8920ed6b05": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "01eafaa7-586c-46b4-a9ff-dca9ad6ecd19",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
