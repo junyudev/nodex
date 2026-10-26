@@ -201,6 +201,15 @@ aliases. Missing config fails closed. `setAppEnabled` writes only the quoted
 `apps.<id>.enabled` leaf through the versioned native config owner and reloads native app
 state. It preserves unrelated fields and returns policy denial for an overriding layer.
 App enablement invalidates app views, installed/plugin detail and composer observations.
+`usePluginAppTools(context, appId)` reads native `app/read` with tool summaries. Rows retain
+native `name`, `title`, `description`, `isEnabled`, `disabledReason` and `isReadOnly`, plus
+`editable`/`editRestriction`. `setAppToolEnabled` validates a unique tool name against fresh
+metadata, then writes only its quoted `apps.<id>.tools.<name>.enabled` leaf through the same
+versioned config owner. Disabled parent apps and non-user tool policies prevent editing.
+App, tool and MCP changes invalidate the app tools view as well as affected app/detail views.
+The pinned app metadata does not expose destructive hints or events: `destructiveHint` is
+null, `events` is empty and `eventsAvailable` is false. A missing native tool catalog returns
+`available: false` with a typed error instead of inferring tools from unrelated MCP names.
 Detail app rows retain their manifest fields and expose `logoUrl`, `logoDarkUrl`,
 `accessible`, `enabled`, `callable`, `connectionState` and `canDisconnect`. Unknown native
 flags are null; the legacy inventory supplies accessibility when available. `installUrl`

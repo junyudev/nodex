@@ -76,6 +76,7 @@ type Command<K extends keyof PluginCommands> = (
   input: Omit<PluginCommands[K]["input"], keyof PluginContext>,
 ) => Promise<PluginCommands[K]["output"]>;
 export interface PluginManagement {
+  readonly setAppToolEnabled: Command<"app-tool-enabled">;
   readonly setAppEnabled: Command<"app-enabled">;
   readonly trustAllPluginHooks: Command<"plugin-hooks-trust">;
   readonly setPluginMcpServerEnabled: Command<"plugin-mcp-enabled">;
@@ -243,6 +244,16 @@ export function usePluginApps(
 export function usePluginMcpServers(context: PluginContext) {
   return useQuery(pluginQueryOptions(useScope(context), context, "mcp-servers", {}));
 }
+export function usePluginAppTools(
+  context: PluginContext,
+  appId: string,
+): UseQueryResult<import("../../../shared/codex-plugin-settings").PluginAppToolsView> {
+  const scope = useScope(context);
+  return useQuery({
+    ...pluginQueryOptions(scope, context, "app-tools", { appId }),
+    enabled: scope !== undefined && appId.length > 0,
+  });
+}
 export function useRecommendedSkills(context: PluginContext, input: { refresh?: boolean } = {}) {
   return useQuery(pluginQueryOptions(useScope(context), context, "recommended-skills", input));
 }
@@ -305,6 +316,7 @@ export function usePluginManagement(context: PluginContext): PluginManagement {
       runPluginMutation(client, context, "marketplace-upgrade", input),
     disconnectApp: (input) => runPluginMutation(client, context, "app-disconnect", input),
     setAppEnabled: (input) => runPluginMutation(client, context, "app-enabled", input),
+    setAppToolEnabled: (input) => runPluginMutation(client, context, "app-tool-enabled", input),
     trustAllPluginHooks: (input) => runPluginMutation(client, context, "plugin-hooks-trust", input),
     setPluginMcpServerEnabled: (input) =>
       runPluginMutation(client, context, "plugin-mcp-enabled", input),

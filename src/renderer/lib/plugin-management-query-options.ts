@@ -10,6 +10,7 @@ import { queryPluginManagement } from "./plugin-management-adapter";
 import { pluginManagementKeys } from "./plugin-management-query-keys";
 const MINUTE = 60_000;
 const freshness = {
+  "app-tools": 5 * MINUTE,
   marketplaces: MINUTE,
   apps: 5 * MINUTE,
   "mcp-servers": 5 * MINUTE,

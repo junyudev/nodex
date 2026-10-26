@@ -54,6 +54,7 @@ const skill = Schema.Union([
   }),
 ]);
 export const pluginQuerySchemas = {
+  "app-tools": Schema.Struct({ ...context, appId: Schema.NonEmptyString }),
   marketplaces: ContextInput,
   apps: Schema.Struct({
     ...context,
@@ -126,6 +127,12 @@ export const pluginQuerySchemas = {
   }),
 } as const;
 export const pluginCommandSchemas = {
+  "app-tool-enabled": Schema.Struct({
+    ...context,
+    appId: Schema.NonEmptyString,
+    toolName: Schema.NonEmptyString,
+    enabled: Schema.Boolean,
+  }),
   "app-enabled": Schema.Struct({
     ...context,
     appId: Schema.NonEmptyString,

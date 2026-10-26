@@ -52,3 +52,38 @@ it("applies default restrictions and cannot bypass connector alias policy", () =
   expect(pluginAppPolicy(config(managed), "asdk_app_test").editable).toBe(false);
   expect(pluginAppPolicy(config(), "asdk_app_test").configKey).toBe("connector_test");
 });
+it("protects tool-specific policy and disables editing under a disabled parent app", () => {
+  expect(
+    pluginAppPolicy(
+      config({ type: "sessionFlags" }, 'apps."connector.with.dot".tools.read.enabled', {
+        "connector.with.dot": { enabled: true },
+      }),
+      "connector.with.dot",
+      false,
+      "read",
+    ).editable,
+  ).toBe(false);
+  expect(
+    pluginAppPolicy(
+      config(
+        { type: "project", dotCodexFolder: "/repo" },
+        "apps.connector_test.tools.read.files.enabled",
+        { connector_test: { enabled: true } },
+      ),
+      "connector_test",
+      false,
+      "read.files",
+    ).editRestriction?.code,
+  ).toBe("policy_denied");
+  expect(
+    pluginAppPolicy(config(), "connector_test", false, "read.files").editRestriction?.code,
+  ).toBe("protected");
+  expect(
+    pluginAppPolicy(
+      config(undefined, undefined, { connector_test: { enabled: true } }),
+      "connector_test",
+      false,
+      "read.files",
+    ).editable,
+  ).toBe(true);
+});

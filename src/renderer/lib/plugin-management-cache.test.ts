@@ -286,6 +286,7 @@ it.each([
   ["skill-enabled", { name: "test:skill", enabled: true }],
   ["app-disconnect", { appId: "connector_test" }],
   ["app-enabled", { appId: "connector_test", enabled: true }],
+  ["app-tool-enabled", { appId: "connector_test", toolName: "read.files", enabled: false }],
   [
     "plugin-mcp-enabled",
     { marketplacePath: "/catalog", pluginName: "test", name: "server", enabled: true },
@@ -316,6 +317,22 @@ it("refreshes hook inventory and detail without invalidating unrelated skill and
     true,
     true,
     false,
+    false,
+  ]);
+});
+
+it("refreshes app tools, apps, installed rows and detail while preserving unrelated skills", () => {
+  const queryClient = client();
+  const keys = ["app-tools", "apps", "installed", "read", "skills"].map((resource) =>
+    pluginManagementKeys.resource(scope, resource),
+  );
+  for (const key of keys) queryClient.setQueryData(key, {});
+  applyPluginManagementEvent(queryClient, { hostId: "local", accountEpoch: 1, kind: "apps" });
+  expect(keys.map((key) => queryClient.getQueryState(key)?.isInvalidated)).toEqual([
+    true,
+    true,
+    true,
+    true,
     false,
   ]);
 });

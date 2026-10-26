@@ -11,6 +11,7 @@ export function pluginAppPolicy(
   config: ConfigReadResponse | null,
   appId: string,
   adminDisabled = false,
+  toolName?: string,
 ) {
   const declarations = configuredTable(config?.config.apps);
   const canonical = normalizeConnectorId(appId);
@@ -26,13 +27,38 @@ export function pluginAppPolicy(
   if (adminDisabled) return denied("policy_denied", "This app is disabled by your administrator.");
   if (!config || !writablePluginConfigLayer(config))
     return denied("inventory_unavailable", "Writable app settings are unavailable.");
-  const keys = [...new Set([appId, configKey, canonical])];
+  const keys = [
+    ...new Set([
+      appId,
+      configKey,
+      canonical,
+      ...Object.keys(declarations).filter((key) => normalizeConnectorId(key) === canonical),
+    ]),
+  ];
   const candidates = keys.flatMap((key) => [
     `apps.${key}.enabled`,
     `apps.${JSON.stringify(key)}.enabled`,
     `apps.${key}`,
     `apps.${JSON.stringify(key)}`,
   ]);
+  if (toolName !== undefined)
+    candidates.push(
+      ...keys.flatMap((key) => [
+        `apps.${key}.tools.${toolName}.enabled`,
+        `apps.${JSON.stringify(key)}.tools.${JSON.stringify(toolName)}.enabled`,
+        `apps.${JSON.stringify(key)}.tools.${toolName}.enabled`,
+        `apps.${key}.tools.${JSON.stringify(toolName)}.enabled`,
+        `apps.${key}.tools.${toolName}`,
+        `apps.${JSON.stringify(key)}.tools.${JSON.stringify(toolName)}`,
+        `apps.${JSON.stringify(key)}.tools.${toolName}`,
+        `apps.${key}.tools.${JSON.stringify(toolName)}`,
+        `apps.${key}.tools`,
+        `apps.${JSON.stringify(key)}.tools`,
+        `apps.${key}.default_tools_enabled`,
+        `apps.${JSON.stringify(key)}.default_tools_enabled`,
+      ]),
+      "apps._default.default_tools_enabled",
+    );
   if (!keys.some((key) => typeof configuredTable(declarations[key]).enabled === "boolean"))
     candidates.push("apps._default.enabled", "apps._default");
   candidates.push("apps");
@@ -47,5 +73,13 @@ export function pluginAppPolicy(
     })
   )
     return denied("policy_denied", "This app is controlled by another configuration layer.");
+  const declaration = configuredTable(declarations[configKey]);
+  if (
+    toolName !== undefined &&
+    (declaration.enabled === false ||
+      (declaration.enabled === undefined &&
+        configuredTable(declarations._default).enabled === false))
+  )
+    return denied("protected", "Enable the app before changing its tools.");
   return { configKey, editable: true, editRestriction: null };
 }

@@ -7,6 +7,7 @@ import type { HookMetadata } from "@nodex/codex-app-server-protocol/v2/HookMetad
 import type { SkillMetadata } from "@nodex/codex-app-server-protocol/v2/SkillMetadata";
 import type { SkillSummary } from "@nodex/codex-app-server-protocol/v2/SkillSummary";
 import type { AppSummary } from "@nodex/codex-app-server-protocol/v2/AppSummary";
+import type { AppToolSummary } from "@nodex/codex-app-server-protocol/v2/AppToolSummary";
 import type { ConfigEdit } from "@nodex/codex-app-server-protocol/v2/ConfigEdit";
 import type {
   PluginContext,
@@ -78,6 +79,19 @@ export interface PluginAppsView {
   readonly missingAppIds: readonly string[];
   readonly connectionError: PluginFailure | null;
   readonly connect: { readonly supported: boolean; readonly reason: string | null };
+}
+export type PluginAppTool = AppToolSummary & {
+  readonly editable: boolean;
+  readonly editRestriction: PluginFailure | null;
+  readonly destructiveHint: null;
+};
+export interface PluginAppToolsView {
+  readonly appId: string;
+  readonly tools: readonly PluginAppTool[];
+  readonly available: boolean;
+  readonly error: PluginFailure | null;
+  readonly events: readonly never[];
+  readonly eventsAvailable: false;
 }
 /** Native config declarations remain JSON; plugin MCP names never become executable declarations. */
 export type PluginMcpDeclaration = Readonly<Record<string, ConfigEdit["value"]>>;
@@ -154,6 +168,7 @@ export interface PluginHooksView {
   readonly needsReviewCount: number;
 }
 export interface PluginSettingsQueries {
+  "app-tools": { input: PluginContext & { readonly appId: string }; output: PluginAppToolsView };
   marketplaces: { input: PluginContext; output: MarketplacesView };
   apps: {
     input: PluginContext & { readonly appIds?: readonly string[]; readonly forceRefresh?: boolean };
@@ -168,6 +183,14 @@ export interface PluginSettingsQueries {
   "plugin-hooks": { input: PluginContext & PluginSelector; output: PluginHooksView };
 }
 export interface PluginSettingsCommands {
+  "app-tool-enabled": {
+    input: PluginContext & {
+      readonly appId: string;
+      readonly toolName: string;
+      readonly enabled: boolean;
+    };
+    output: PluginMutationResult;
+  };
   "app-enabled": {
     input: PluginContext & { readonly appId: string; readonly enabled: boolean };
     output: PluginMutationResult;

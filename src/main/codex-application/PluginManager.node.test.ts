@@ -57,6 +57,7 @@ const make = (
       installUrl: string | null;
       category: string | null;
     }[];
+    appTools?: import("@nodex/codex-app-server-protocol/v2/AppToolSummary").AppToolSummary[];
     accountMetadata?: unknown;
     events?: Stream.Stream<import("../codex-runtime/CodexEventHub").CodexEndpointEvent>;
     hooks?: import("@nodex/codex-app-server-protocol/v2/HookMetadata").HookMetadata[];
@@ -212,7 +213,7 @@ const make = (
             distributionChannel: null,
             installUrl: null,
             pluginDisplayNames: [],
-            toolSummaries: null,
+            toolSummaries: options.appTools ?? null,
           })),
           missingAppIds: [],
         });
@@ -1947,3 +1948,106 @@ it.effect(
     );
   },
 );
+
+const toolSummary = {
+  name: "read.files",
+  title: "Read files",
+  description: "Read a file.",
+  isEnabled: true,
+  disabledReason: null,
+  isReadOnly: true,
+} satisfies import("@nodex/codex-app-server-protocol/v2/AppToolSummary").AppToolSummary;
+it.effect("exposes native app tools and changes only a verified tool enablement leaf", () => {
+  const h = make({ appTools: [toolSummary], configWriteOk: true });
+  return withManager(h, (manager) =>
+    Effect.gen(function* () {
+      const view = yield* manager.query("app-tools", { ...context, appId: "connector_test" });
+      assert.strictEqual(view.available, true);
+      assert.deepEqual(view.tools, [
+        { ...toolSummary, editable: true, editRestriction: null, destructiveHint: null },
+      ]);
+      assert.deepEqual(view.events, []);
+      assert.strictEqual(view.eventsAvailable, false);
+      assert.deepEqual(h.calls.find((call) => call.method === "app/read")?.params, {
+        appIds: ["connector_test"],
+        includeTools: true,
+      });
+      assert.strictEqual(
+        (yield* manager.command("app-tool-enabled", {
+          ...context,
+          appId: "connector_test",
+          toolName: "unknown",
+          enabled: true,
+        })).status,
+        "failed",
+      );
+      assert.strictEqual(
+        h.calls.some((call) => call.method === "config/batchWrite"),
+        false,
+      );
+      assert.strictEqual(
+        (yield* manager.command("app-tool-enabled", {
+          ...context,
+          appId: "connector_test",
+          toolName: "read.files",
+          enabled: false,
+        })).status,
+        "success",
+      );
+      const write = h.calls.find((call) => call.method === "config/batchWrite");
+      assert.deepEqual(write?.params.edits, [
+        {
+          keyPath: 'apps."connector_test".tools."read.files".enabled',
+          value: false,
+          mergeStrategy: "upsert",
+        },
+      ]);
+      assert.strictEqual(write?.params.expectedVersion, "v42");
+    }),
+  );
+});
+it.effect("denies managed app tools and reports absent native tool catalogs explicitly", () => {
+  const h = make({
+    appTools: [toolSummary],
+    config: {
+      ...settingsConfig(),
+      origins: {
+        "apps.connector_test.tools.read.files.enabled": {
+          name: { type: "enterpriseManaged", id: "org", name: "Org" },
+          version: "policy",
+        },
+      },
+    },
+  });
+  return withManager(h, (manager) =>
+    Effect.gen(function* () {
+      const view = yield* manager.query("app-tools", { ...context, appId: "connector_test" });
+      assert.strictEqual(view.tools[0]?.editable, false);
+      assert.strictEqual(view.tools[0]?.editRestriction?.code, "policy_denied");
+      assert.strictEqual(
+        (yield* manager.command("app-tool-enabled", {
+          ...context,
+          appId: "connector_test",
+          toolName: toolSummary.name,
+          enabled: true,
+        })).status,
+        "policy_denied",
+      );
+      assert.strictEqual(
+        h.calls.some((call) => call.method === "config/batchWrite"),
+        false,
+      );
+      yield* withManager(make(), (other) =>
+        Effect.gen(function* () {
+          const unavailable = yield* other.query("app-tools", {
+            ...context,
+            appId: "connector_test",
+          });
+          assert.strictEqual(unavailable.available, false);
+          assert.strictEqual(unavailable.appId, "connector_test");
+          assert.strictEqual(unavailable.error?.code, "unsupported");
+        }),
+      );
+    }),
+  );
+});

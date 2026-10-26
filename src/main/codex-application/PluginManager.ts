@@ -790,6 +790,46 @@ export const live = (options: {
         );
         return mapPluginProjection(value, (row) => projected.get(row.nativeId) ?? row) as A;
       });
+      const appTools = Effect.fn("PluginManager.appTools")(function* (
+        context: ResolvedPluginContext,
+        input: PluginQueries["app-tools"]["input"],
+      ) {
+        const metadata = yield* request(context, "app/read", {
+          appIds: [input.appId],
+          includeTools: true,
+        });
+        const app = (
+          metadata.apps as unknown as readonly import("@nodex/codex-app-server-protocol/v2/ConnectorMetadata").ConnectorMetadata[]
+        ).find((app) => normalizeConnectorId(app.id) === normalizeConnectorId(input.appId));
+        if (!app) return yield* pluginError("not_found", "The app was not found.");
+        if (app.toolSummaries === null)
+          return yield* pluginError(
+            "unsupported",
+            "This app does not provide a native tool catalog.",
+          );
+        const config = yield* configRead(context);
+        return {
+          appId: app.id,
+          available: true,
+          error: null,
+          events: [],
+          eventsAvailable: false as const,
+          tools: app.toolSummaries.map((tool) => {
+            const policy = pluginAppPolicy(
+              config,
+              app.id,
+              tool.disabledReason === "disabled_by_admin",
+              tool.name,
+            );
+            return {
+              ...tool,
+              editable: policy.editable,
+              editRestriction: policy.editRestriction,
+              destructiveHint: null,
+            };
+          }),
+        };
+      });
       const queryHandlers: {
         [K in keyof PluginQueries]: (
           context: ResolvedPluginContext,
@@ -797,6 +837,19 @@ export const live = (options: {
         ) => Effect.Effect<PluginQueries[K]["output"], PluginManagementError>;
       } = {
         marketplaces,
+        "app-tools": (context, input) =>
+          appTools(context, input).pipe(
+            Effect.catch((error) =>
+              Effect.succeed({
+                appId: input.appId,
+                available: false,
+                error: pluginFailure(error),
+                tools: [],
+                events: [],
+                eventsAvailable: false as const,
+              }),
+            ),
+          ),
         apps: (context, input) => withOperationLease(apps.list(context, input)),
         "mcp-servers": Effect.fn("PluginManager.mcpServers")(function* (context) {
           const [config, statuses] = yield* Effect.all([configRead(context), mcpStatuses(context)]);
@@ -1513,6 +1566,39 @@ export const live = (options: {
           input: PluginCommands[K]["input"],
         ) => Effect.Effect<PluginCommands[K]["output"], PluginManagementError>;
       } = {
+        "app-tool-enabled": Effect.fn("PluginManager.setAppToolEnabled")(
+          function* (context, input) {
+            const view = yield* queryHandlers["app-tools"](context, input);
+            if (view.error)
+              return yield* pluginError(view.error.code, view.error.message, view.error.retryable);
+            const matches = view.tools.filter((tool) => tool.name === input.toolName);
+            if (matches.length !== 1)
+              return yield* pluginError("not_found", "The app tool was not found unambiguously.");
+            const tool = matches[0]!;
+            if (tool.editRestriction)
+              return yield* pluginError(tool.editRestriction.code, tool.editRestriction.message);
+            const config = yield* configRead(context);
+            const policy = pluginAppPolicy(
+              config,
+              view.appId,
+              tool.disabledReason === "disabled_by_admin",
+              tool.name,
+            );
+            if (policy.editRestriction)
+              return yield* pluginError(
+                policy.editRestriction.code,
+                policy.editRestriction.message,
+              );
+            yield* writeConfig(context, config, [
+              {
+                keyPath: `apps.${JSON.stringify(policy.configKey)}.tools.${JSON.stringify(tool.name)}.enabled`,
+                value: input.enabled,
+                mergeStrategy: "upsert",
+              },
+            ]);
+            return yield* applied(context, undefined, "apps");
+          },
+        ),
         "app-enabled": Effect.fn("PluginManager.setAppEnabled")(function* (context, input) {
           const view = yield* withOperationLease(
             apps.list(context, { ...context, appIds: [input.appId], forceRefresh: true }),

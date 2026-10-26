@@ -14,6 +14,7 @@ import {
   useMcpOauthCompletion,
   usePluginDetail,
   usePluginApps,
+  usePluginAppTools,
 } from "./plugin-management";
 import {
   queryPluginManagement,
@@ -190,4 +191,25 @@ it("refreshes detail and app connections on focus after an external browser flow
       await Promise.resolve();
     });
   }
+});
+
+it("loads the selected app's native tool view through its scoped query", async () => {
+  const view = {
+    appId: "connector_test",
+    tools: [{ name: "read", description: "Read", isReadOnly: true }],
+    available: true,
+    error: null,
+    events: [],
+    eventsAvailable: false,
+  };
+  vi.mocked(queryPluginManagement).mockImplementation(
+    async (name) => (name === "context" ? scope : view) as never,
+  );
+  const hook = renderHook(() => usePluginAppTools(context, "connector_test"), {
+    wrapper: wrapper(),
+  });
+  await waitFor(() => expect(hook.result.current.data).toEqual(view));
+  expect(
+    vi.mocked(queryPluginManagement).mock.calls.filter(([name]) => name === "app-tools"),
+  ).toEqual([["app-tools", { ...context, appId: "connector_test" }]]);
 });

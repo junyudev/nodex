@@ -93,6 +93,7 @@ const resourcesForChange = (kind: PluginManagementChanged["kind"]): readonly str
   if (kind === "apps")
     return [
       "apps",
+      "app-tools",
       "read",
       "list",
       "installed",
@@ -103,7 +104,7 @@ const resourcesForChange = (kind: PluginManagementChanged["kind"]): readonly str
       "search",
       "creation-capabilities",
     ];
-  if (kind === "mcp") return ["mcp-servers", "apps", "read"];
+  if (kind === "mcp") return ["mcp-servers", "apps", "app-tools", "read"];
   return null;
 };
 export async function invalidatePluginManagement(
@@ -137,7 +138,8 @@ const changeForCommand = (name: keyof PluginCommands): PluginManagementChanged["
   if (name === "plugin-mcp-enabled") return "mcp";
   if (["skill-enabled", "skill-install", "skill-uninstall"].includes(name)) return "skills";
   if (["mcp-save", "mcp-remove", "mcp-enabled", "mcp-login"].includes(name)) return "mcp";
-  if (name === "app-disconnect" || name === "app-enabled") return "apps";
+  if (name === "app-disconnect" || name === "app-enabled" || name === "app-tool-enabled")
+    return "apps";
   return "plugins";
 };
 const accountRevisions = new WeakMap<QueryClient, Map<string, number>>();
