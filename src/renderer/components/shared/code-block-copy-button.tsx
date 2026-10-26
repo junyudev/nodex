@@ -60,6 +60,7 @@ export function CodeBlockCopyButton({
       <button
         type="button"
         className={cn(codeBlockActionButtonClassName, "shrink-0")}
+        data-code-block-action="copy"
         disabled={disabled}
         aria-label={copied ? "Copied code" : "Copy code to clipboard"}
         onClick={() => void onCopy()}

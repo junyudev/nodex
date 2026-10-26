@@ -222,9 +222,7 @@ describe("compiled assistant display and native Find", () => {
             ?.getAttribute("data-content-search-unit-key"),
         ).toBe(units[0]!.key);
         expect(root.querySelector("button mark")).toBeNull();
-        const button = root.querySelector<HTMLButtonElement>(
-          "[data-nfm-code-block-readonly-header] button",
-        )!;
+        const button = root.querySelector<HTMLButtonElement>('[data-code-block-action="copy"]')!;
         await act(async () => {
           button.focus();
           fireEvent.click(button);
@@ -237,7 +235,7 @@ describe("compiled assistant display and native Find", () => {
           await Promise.resolve();
         });
         await waitFor(() =>
-          expect(root.querySelector("[data-nfm-code-block-readonly-header] button")).toBe(button),
+          expect(root.querySelector('[data-code-block-action="copy"]')).toBe(button),
         );
         expect(document.activeElement).toBe(button);
         await waitFor(() =>

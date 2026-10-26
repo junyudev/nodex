@@ -55,7 +55,7 @@ import {
   NfmSideMenuTableHeaderIcon,
   NfmSideMenuTurnIntoIcon,
   PlusIcon,
-  ReviewEnableWordWrapIcon,
+  EnableWordWrapIcon,
 } from "@/components/shared/icons";
 import { WandSparkles } from "@/components/shared/icons/generic-icons";
 import { NodexPopover, NodexPopoverAnchor } from "@/components/ui/popover";
@@ -585,7 +585,7 @@ function getActionIcon(key: NfmSideMenuActionKey) {
   if (key === "copy-code") return <CopyIcon className="size-4" />;
   if (key === "expand-diagram") return <ExpandPanelIcon className="size-4" />;
   if (key === "download-diagram") return <DownloadIcon className="size-4" />;
-  if (key === "wrap-code") return <ReviewEnableWordWrapIcon className="size-4" />;
+  if (key === "wrap-code") return <EnableWordWrapIcon className="size-4" />;
   if (key === "code-language") return <CodeIcon />;
   if (key === "format-code") return <WandSparkles className="size-4" />;
   if (key === "turn-into") return <NfmSideMenuTurnIntoIcon />;

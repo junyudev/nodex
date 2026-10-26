@@ -1,5 +1,6 @@
 /// <reference types="vite/client" />
-import { render, waitFor } from "@testing-library/react";
+import { waitFor } from "@testing-library/react";
+import { renderWithAppMaitai as render } from "@/test/app-maitai";
 import { beforeAll, describe, expect, test } from "vite-plus/test";
 import "@/globals.css";
 import { installRendererThemeFixture } from "@/test/renderer-theme";

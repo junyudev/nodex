@@ -1,4 +1,5 @@
-import { act, fireEvent, render, waitFor } from "@testing-library/react";
+import { act, fireEvent, waitFor } from "@testing-library/react";
+import { renderWithAppMaitai as render } from "@/test/app-maitai";
 import { describe, expect, test } from "vite-plus/test";
 import "../../../../globals.css";
 import { waitForCodeHighlight } from "../../../../test/dom";

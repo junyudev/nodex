@@ -1,9 +1,10 @@
-import { render, waitFor } from "@testing-library/react";
+import { act, waitFor } from "@testing-library/react";
 import { describe, expect, test } from "vite-plus/test";
 import "@/globals.css";
 import { NfmDocument } from "@/components/board/nfm-renderer";
 import { MarkdownRenderer } from "@/features/local-conversation/view/shared/markdown/markdown-renderer";
 import { parseNfm } from "@/lib/nfm/parser";
+import { renderWithAppMaitai as render } from "@/test/app-maitai";
 import { contrastRatio, getPaintedBackground, parseComputedColor } from "@/test/color-contrast";
 import {
   applyRendererThemeForTest,
@@ -87,3 +88,48 @@ test.each(["light", "dark"] as const)(
     }
   },
 );
+
+test("one Wrap toggle rewraps every read-only code block without changing its source", async () => {
+  const line = `const values = [${Array.from({ length: 40 }, (_, index) => index).join(", ")}];`;
+  const fence = (value: string) => `\`\`\`ts\n${value}\n\`\`\``;
+  const view = render(
+    <div style={{ width: 360 }}>
+      <MarkdownRenderer content={`${fence(line)}\n\n${fence(`${line} // second`)}`} />
+    </div>,
+  );
+  const blocks = () => [
+    ...view.container.querySelectorAll<HTMLElement>("[data-readonly-code-block]"),
+  ];
+  const overflows = (block: HTMLElement) => {
+    const pre = block.querySelector("pre")!;
+    return pre.scrollWidth > pre.clientWidth;
+  };
+  const toggle = async () => {
+    const button = blocks()[0]!.querySelector<HTMLButtonElement>(
+      '[data-code-block-action="wrap"]',
+    )!;
+    await act(async () => {
+      button.click();
+      await Promise.resolve();
+    });
+  };
+  try {
+    await waitFor(() => expect(blocks()).toHaveLength(2));
+    expect(blocks().every(overflows)).toBe(true);
+    const sources = blocks().map((block) => block.querySelector("code")!.textContent);
+
+    await toggle();
+    await waitFor(() => expect(blocks().some(overflows)).toBe(false));
+    for (const block of blocks()) {
+      const wrap = block.querySelector('[data-code-block-action="wrap"]')!;
+      expect(wrap.getAttribute("aria-pressed")).toBe("true");
+      expect(wrap.getAttribute("aria-label")).toBe("Disable word wrap");
+    }
+    expect(blocks().map((block) => block.querySelector("code")!.textContent)).toEqual(sources);
+
+    await toggle();
+    await waitFor(() => expect(blocks().every(overflows)).toBe(true));
+  } finally {
+    view.unmount();
+  }
+});

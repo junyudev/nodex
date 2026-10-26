@@ -79,7 +79,7 @@ describe("assistant document lifecycle", () => {
     try {
       await settleLazyRender();
       const codeButton = mounted.container.querySelector<HTMLButtonElement>(
-        "[data-nfm-code-block-readonly-header] button",
+        '[data-code-block-action="copy"]',
       )!;
       await act(async () => {
         fireEvent.click(codeButton);
@@ -142,7 +142,7 @@ ${payload}
       try {
         await settleLazyRender();
         const button = mounted.container.querySelector<HTMLButtonElement>(
-          "[data-nfm-code-block-readonly-header] button",
+          '[data-code-block-action="copy"]',
         )!;
         await act(async () => {
           button.focus();
@@ -156,9 +156,7 @@ ${payload}
           </StrictMode>,
         );
         await settleLazyRender();
-        expect(
-          mounted.container.querySelector("[data-nfm-code-block-readonly-header] button"),
-        ).toBe(button);
+        expect(mounted.container.querySelector('[data-code-block-action="copy"]')).toBe(button);
         expect(document.activeElement).toBe(button);
         await act(async () => {
           fireEvent.click(button);

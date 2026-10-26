@@ -43,7 +43,7 @@ describe("typed Markdown document through the public rich provider", () => {
         );
         await settleLazyRender();
         const copy = view.container.querySelector<HTMLButtonElement>(
-          "[data-nfm-code-block-readonly-header] button",
+          '[data-code-block-action="copy"]',
         )!;
         await act(async () => {
           fireEvent.click(copy);
@@ -117,7 +117,7 @@ describe("typed Markdown document through the public rich provider", () => {
     );
     await settleLazyRender();
     const codeButton = view.container.querySelector<HTMLButtonElement>(
-      "[data-nfm-code-block-readonly-header] button",
+      '[data-code-block-action="copy"]',
     )!;
     await act(async () => {
       codeButton.focus();
@@ -137,9 +137,7 @@ describe("typed Markdown document through the public rich provider", () => {
     );
     expect(view.container.querySelector("strong")?.textContent).toBe("other");
     expect(view.getByAltText("other").getAttribute("src")).toBe("https://example.com/b.png");
-    expect(view.container.querySelector("[data-nfm-code-block-readonly-header] button")).toBe(
-      codeButton,
-    );
+    expect(view.container.querySelector('[data-code-block-action="copy"]')).toBe(codeButton);
     expect(document.activeElement).toBe(codeButton);
   });
   test("uses the public highlight provider, explicit incomplete code and immediate diagram boundary", async () => {

@@ -32,8 +32,8 @@ import {
   ReviewCreatePrIcon,
   ReviewDisableRichPreviewIcon,
   ReviewDisableWordDiffsIcon,
-  ReviewDisableWordWrapIcon,
-  ReviewEnableWordWrapIcon,
+  DisableWordWrapIcon,
+  EnableWordWrapIcon,
   ReviewFileToggleChevronIcon,
   ReviewExpandAllDiffsIcon,
   ReviewHideWhitespaceIcon,
@@ -3946,9 +3946,9 @@ export function ReviewDiffPanel({
                 onSelect={() => setWrap((current) => !current)}
                 leftSlot={
                   wrap ? (
-                    <ReviewDisableWordWrapIcon className={REVIEW_OPTIONS_MENU_ICON_CLASS_NAME} />
+                    <DisableWordWrapIcon className={REVIEW_OPTIONS_MENU_ICON_CLASS_NAME} />
                   ) : (
-                    <ReviewEnableWordWrapIcon className={REVIEW_OPTIONS_MENU_ICON_CLASS_NAME} />
+                    <EnableWordWrapIcon className={REVIEW_OPTIONS_MENU_ICON_CLASS_NAME} />
                   )
                 }
               >

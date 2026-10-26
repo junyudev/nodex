@@ -1,8 +1,9 @@
 import { StrictMode } from "react";
-import { act, fireEvent, render, waitFor } from "@testing-library/react";
+import { act, fireEvent, waitFor } from "@testing-library/react";
 import { describe, expect, test, vi } from "vite-plus/test";
 import { MarkdownRenderer } from "@/features/local-conversation/view/shared/markdown/markdown-renderer";
 import { NodexTooltipProvider } from "@/components/ui/tooltip";
+import { renderWithAppMaitai as render } from "@/test/app-maitai";
 import {
   applyContentSearchDomMarks,
   clearContentSearchMarks,

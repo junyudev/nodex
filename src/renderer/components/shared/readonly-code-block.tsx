@@ -6,6 +6,7 @@ import {
   projectCodeTokenStyle,
   resolveReadonlyCodeLanguage,
 } from "@/lib/code-block-presentation";
+import { useCodeBlockWordWrap } from "@/lib/code-block-word-wrap";
 import { streamdownCodePlugin } from "@/lib/markdown/markdown-code-highlighter";
 import { CODE_BLOCK_THEME_PAIR } from "@/lib/syntax-highlighting";
 import { cn } from "@/lib/utils";
@@ -59,10 +60,12 @@ export function ReadonlyCodeBlock({
 }) {
   const { id, highlightLanguage } = resolveReadonlyCodeLanguage(language);
   const result = useHighlightedCode(code, highlightLanguage);
+  const wrap = useCodeBlockWordWrap();
   return (
     <figure
       data-readonly-code-block
       data-language={id}
+      data-wrapped={wrap.wrapped}
       className={cn(
         "group/code relative mx-0 my-3 overflow-hidden rounded-[10px] bg-[var(--code-block-bg)] text-[var(--foreground)]",
         className,
@@ -76,10 +79,15 @@ export function ReadonlyCodeBlock({
             "opacity-0 group-hover/code:opacity-100 focus-within:opacity-100 pointer-coarse:opacity-100",
         )}
       >
-        <CodeBlockReadOnlyHeader language={language} code={code} disabled={incomplete} />
+        <CodeBlockReadOnlyHeader
+          language={language}
+          code={code}
+          disabled={incomplete}
+          wrap={{ wrapped: wrap.wrapped, onToggle: wrap.toggle }}
+        />
       </div>
       <pre className="m-0 overflow-x-auto px-[22px] py-6 font-mono text-size-code leading-[max(1.5em,20px)] [tab-size:2]">
-        <code className="whitespace-pre">
+        <code className={wrap.wrapped ? "wrap-break-word whitespace-pre-wrap" : "whitespace-pre"}>
           {result
             ? result.tokens.map((line, lineIndex) => (
                 <span key={lineIndex} className="block min-h-lh">

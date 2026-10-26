@@ -1,7 +1,8 @@
-import { act, render, waitFor } from "@testing-library/react";
+import { act, waitFor } from "@testing-library/react";
 import { expect, test, vi } from "vite-plus/test";
 import { ReadonlyCodeBlock } from "@/components/shared/readonly-code-block";
 import { streamdownCodePlugin } from "@/lib/streamdown";
+import { renderWithAppMaitai } from "./app-maitai";
 import { settleAsyncRender, waitForCodeHighlight } from "./dom";
 
 test("code readiness waits for highlighting instead of accepting the plain fallback", async () => {
@@ -13,7 +14,9 @@ test("code readiness waits for highlighting instead of accepting the plain fallb
       return null;
     });
   try {
-    const view = render(<ReadonlyCodeBlock code="const answer = 42;" language="typescript" />);
+    const view = renderWithAppMaitai(
+      <ReadonlyCodeBlock code="const answer = 42;" language="typescript" />,
+    );
     await waitFor(() => expect(highlight).toHaveBeenCalled());
 
     let ready = false;

@@ -2977,7 +2977,7 @@ export function ReviewUnifiedDiffIcon({ className }: IconProps) {
   );
 }
 
-export function ReviewEnableWordWrapIcon({ className }: IconProps) {
+export function EnableWordWrapIcon({ className }: IconProps) {
   return (
     <svg
       xmlns="http://www.w3.org/2000/svg"
@@ -2992,7 +2992,7 @@ export function ReviewEnableWordWrapIcon({ className }: IconProps) {
   );
 }
 
-export function ReviewDisableWordWrapIcon({ className }: IconProps) {
+export function DisableWordWrapIcon({ className }: IconProps) {
   return (
     <svg
       xmlns="http://www.w3.org/2000/svg"

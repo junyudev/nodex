@@ -132,7 +132,7 @@ describe("MarkdownRenderer", () => {
       [...container.querySelectorAll("[data-nfm-code-block-readonly-header] button")].map(
         (button) => button.getAttribute("aria-label"),
       ),
-    ).toEqual(["Copy code to clipboard"]);
+    ).toEqual(["Enable word wrap", "Copy code to clipboard"]);
   });
 
   test("copies fenced code through the Nodex clipboard fallback with line breaks intact", async () => {
@@ -164,7 +164,7 @@ describe("MarkdownRenderer", () => {
       await waitForCodeHighlight(container);
 
       const copyButton = container.querySelector<HTMLButtonElement>(
-        "[data-nfm-code-block-readonly-header] button",
+        '[data-code-block-action="copy"]',
       );
       expect(copyButton !== null).toBe(true);
 
