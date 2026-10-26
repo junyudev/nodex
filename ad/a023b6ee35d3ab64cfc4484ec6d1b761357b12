@@ -1,0 +1,90 @@
+src/renderer/lib/workbench-panel-placement.ts
+  s_d0f0b53a279991::t_e5301b04963062 27-40
+src/renderer/components/workbench/sidebar-pages-section.test.tsx
+  s_d0f0b53a279991::t_dfa680d1145540 219-263
+  s_d0f0b53a279991::t_0bf22ed6742d07 107
+packages/core-protocol/openapi.json
+  s_d0f0b53a279991::t_8b400942f1c6db 20338,20354-20356
+  s_d0f0b53a279991::t_0240d66c4cfd69 20357
+src/renderer/lib/library-resource-routing.node.test.ts
+  s_d0f0b53a279991::t_124d01799d31aa 15,30
+crates/nodex-core/src/library/navigation.rs
+  s_d0f0b53a279991::t_38bd0c3872e26d 1594
+  s_d0f0b53a279991::t_7ff0db96dbf746 3906-3907,3912-3913,3917
+  s_d0f0b53a279991::t_ca5de49aefc2af 25,1595,1615-1616,1684,1703-1704,1828,1830,1858-1859,1877,1945-1946,1948,1955-1956,1974,2217
+  s_d0f0b53a279991::t_72bd1511333534 3725-3726,3733-3735,3758,3941-3972
+  s_d0f0b53a279991::t_a372457c86f459 2302,2307
+  s_d0f0b53a279991::t_3b54c83110055d 1642,1649
+  s_d0f0b53a279991::t_578951e8d8fe73 3869,3884,3896-3904,3908-3911,3914-3916,3918-3939
+crates/nodex-core-contracts/src/library.rs
+  s_d0f0b53a279991::t_2d17e412323e4a 1066-1067
+crates/nodex-core/src/library/structural_edit.rs
+  s_d0f0b53a279991::t_a9b6affa505aef 3897-3898,3907
+src/renderer/components/workbench/workbench-runtime.tsx
+  s_d0f0b53a279991::t_14630897a11c00 306
+  s_d0f0b53a279991::t_0a9d2accc2aab4 4025,4056,4118,4120,4123,4139
+  s_d0f0b53a279991::t_218bf21933c9f9 4045-4054
+  s_d0f0b53a279991::t_d754853504e5d8 4023-4024
+  s_d0f0b53a279991::t_2835cf38cecbb8 3632-3633,3635-3638
+tests/e2e/inbox-page-peek.spec.ts
+  s_d0f0b53a279991::t_59d38b42ea28d8 1-184
+  s_d0f0b53a279991::t_c3354d22870402 185-186
+src/shared/library-module-transport.ts
+  s_d0f0b53a279991::t_f628ba62a89488 1853,1864
+packages/core-protocol/src/generated.ts
+  s_d0f0b53a279991::t_8b400942f1c6db 4962-4963
+docs/adr/0069-library-and-inbox-scenes.md
+  s_d0f0b53a279991::t_f4df1b6c9e2627 8
+src/shared/library-module-transport.test.ts
+  s_d0f0b53a279991::t_124d01799d31aa 519
+CHANGELOG.md
+  s_d0f0b53a279991::t_c8393e2aeafe2f 23-24
+src/shared/library-module.ts
+  s_d0f0b53a279991::t_f628ba62a89488 60-61
+docs/product-specs/workbench-shell.md
+  s_d0f0b53a279991::t_89e70de069597b 15,24
+docs/adr/0072-inbox-page-peek-and-primary-inbox-database.md
+  s_d0f0b53a279991::t_5d408955cbaaed 1-32,36-43
+  s_d0f0b53a279991::t_f4df1b6c9e2627 33-35
+crates/nodex-core/src/library/mutation.rs
+  s_d0f0b53a279991::t_c2ed1d582fcf37 1035-1038
+docs/adr/0067-inbox-entries-and-dispatch-proposals.md
+  s_d0f0b53a279991::t_f4df1b6c9e2627 5
+src/renderer/components/workbench/workbench-shell.layout-panel-actions.test.tsx
+  s_d0f0b53a279991::t_124d01799d31aa 594
+src/renderer/components/workbench/workbench-shell.routes-threads.test.tsx
+  s_d0f0b53a279991::t_124d01799d31aa 42
+CONTEXT.md
+  s_d0f0b53a279991::t_89e70de069597b 509-516,530-531
+  s_d0f0b53a279991::t_6b02b43852e6eb 719,946-948
+src/renderer/components/workbench/sidebar-pages-section.tsx
+  s_d0f0b53a279991::t_dfa680d1145540 115-117,190
+docs/product-specs/inbox-behavior.md
+  s_d0f0b53a279991::t_89e70de069597b 29-37,49-51
+crates/nodex-core/src/library/primary_database.rs
+  s_d0f0b53a279991::t_c2ed1d582fcf37 1-13
+docs/product-specs/product-foundations.md
+  s_d0f0b53a279991::t_89e70de069597b 69-72
+crates/nodex-core/src/library/mod.rs
+  s_d0f0b53a279991::t_c2ed1d582fcf37 7750
+src/main/core-client/library-module-adapter.ts
+  s_d0f0b53a279991::t_f628ba62a89488 870
+tests/e2e/inbox-triage.spec.ts
+  s_d0f0b53a279991::t_b513478a347cbe 152,156-160,164-165,169-170,190
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "ada023b6ee35d3ab64cfc4484ec6d1b761357b12",
+  "prompts": {},
+  "sessions": {
+    "s_d0f0b53a279991": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "bdc7bf37-8be8-4f78-82f8-5de19d67a0cf",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
