@@ -1,0 +1,50 @@
+src/shared/mcp-app/mcp-app-data.ts
+  s_77ac5bdfa64dec::t_7d18ce462cd4f5 1-10
+src/main/app/RendererIngressLive.ts
+  s_77ac5bdfa64dec::t_7d18ce462cd4f5 2,103
+src/main/mcp-app/mcp-app-sandbox-host.ts
+  s_77ac5bdfa64dec::t_7d18ce462cd4f5 4-5,42-47,100-101,334-351,359
+  s_77ac5bdfa64dec::t_42429346be269a 352-358,360-365,895,899-900
+src/renderer/lib/mcp-app-data.ts
+  s_77ac5bdfa64dec::t_8226e778b68c60 5-10,12-27
+  s_77ac5bdfa64dec::t_7d18ce462cd4f5 1-4,11
+src/main/ipc/handlers/McpAppDataIpc.ts
+  s_77ac5bdfa64dec::t_7d18ce462cd4f5 1-32
+  s_77ac5bdfa64dec::t_70bdd5769500cf 33-67
+src/shared/ipc-endpoint-policy.ts
+  s_77ac5bdfa64dec::t_7d18ce462cd4f5 91,497
+docs/product-specs/plugins-behavior.md
+  s_77ac5bdfa64dec::t_f6a9e89ea8014d 248-264
+src/renderer/features/plugins/plugin-management.jsdom.test.ts
+  s_77ac5bdfa64dec::t_f6a9e89ea8014d 18-19
+  s_77ac5bdfa64dec::t_3fa6b59e62c4b6 218-251
+src/renderer/features/plugins/plugin-management.ts
+  s_77ac5bdfa64dec::t_7d18ce462cd4f5 47-48,251-253,326
+  s_77ac5bdfa64dec::t_30127d5537e60d 19,82
+src/shared/ipc-api.ts
+  s_77ac5bdfa64dec::t_7d18ce462cd4f5 2,718
+  s_77ac5bdfa64dec::t_0402918c09a111 719
+src/main/mcp-app/mcp-app-sandbox-host.test.ts
+  s_77ac5bdfa64dec::t_30127d5537e60d 27-28,31-33
+  s_77ac5bdfa64dec::t_e4279feb596ecb 34-40,399-494
+src/main/host-runtime/McpAppSandboxRuntime.ts
+  s_77ac5bdfa64dec::t_7d18ce462cd4f5 35-36,97-98
+src/main/ipc/handlers/McpAppDataIpc.node.test.ts
+  s_77ac5bdfa64dec::t_3fc9264c0217cb 1-115
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "0fe01565f911c91a9e20ae6d65aab08bd9c4659e",
+  "prompts": {},
+  "sessions": {
+    "s_77ac5bdfa64dec": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1795d-5e95-7ea0-9bf7-2e3e042b723f",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
