@@ -245,6 +245,23 @@ native completion notifications refresh MCP observations. The login response ret
 native login ID so the UI can correlate completion. This flow is independent of
 ChatGPT connector authentication.
 
+MCP app data clearing is a local, Profile-wide sandbox capability. The renderer reads
+`useMcpAppDataCapabilities(context).data.available` and invokes
+`usePluginManagement(context).clearMcpAppData()` without confirmation. A dedicated typed
+sandbox IPC owner keeps this operation available without a native agent connection or
+ChatGPT authentication. Remote hosts report unavailable.
+
+"All" means every unique Electron MCP sandbox session configured by the host when the clear
+operation starts, including sessions retained after their views/windows close. MCP app
+partitions use `nodex-mcp-app-sandbox:<id>` without `persist:`; they are in-memory and leave
+no persistent MCP app partition directory to discover after restart. Each session clears
+all origins and data types through Electron `clearData()`, including cookies, storage,
+HTTP/cache storage, shader caches and service workers; compiled code caches and HTTP auth
+caches are cleared as well. The ordinary desktop/browser session is outside this registry.
+Open apps may recreate data afterwards, and sessions first created after the snapshot start
+with their own empty state. Clear requests serialize and attempt every session/cache even
+after a failure. Partial failure returns a typed failure instead of reporting success.
+
 Plugin hook inventory filters native hook metadata by the exact owning plugin ID and counts
 untrusted or modified hooks as needing review. Rootless contexts explicitly mark hook inventory unavailable; their zero scanned review count
 does not establish that the plugin is trusted. Hook summaries and scheduled tasks remain available directly on native detail.

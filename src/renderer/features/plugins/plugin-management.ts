@@ -16,6 +16,7 @@ import type {
   PluginSelector,
   SkillContentsSelector,
   PluginCommands,
+  PluginMutationResult,
   MarketplaceRemovalProgress,
   MarketplaceRemovalPreview,
   PluginManagementCapabilities,
@@ -43,6 +44,8 @@ import {
   pluginQueryOptions,
 } from "../../lib/plugin-management-query-options";
 import { pluginManagementKeys } from "../../lib/plugin-management-query-keys";
+import { clearMcpAppData, mcpAppDataCapabilitiesOptions } from "../../lib/mcp-app-data";
+export type { McpAppDataCapabilities } from "../../../shared/mcp-app/mcp-app-data";
 export type * from "../../../shared/codex-plugin-management";
 export { selectorToRouteTarget, routeTargetToSelector } from "./model/selectors";
 function infiniteState<T>(query: UseInfiniteQueryResult<InfiniteData<T>>) {
@@ -76,6 +79,7 @@ type Command<K extends keyof PluginCommands> = (
   input: Omit<PluginCommands[K]["input"], keyof PluginContext>,
 ) => Promise<PluginCommands[K]["output"]>;
 export interface PluginManagement {
+  readonly clearMcpAppData: () => Promise<PluginMutationResult>;
   readonly setAppToolEnabled: Command<"app-tool-enabled">;
   readonly setAppEnabled: Command<"app-enabled">;
   readonly trustAllPluginHooks: Command<"plugin-hooks-trust">;
@@ -244,6 +248,9 @@ export function usePluginApps(
 export function usePluginMcpServers(context: PluginContext) {
   return useQuery(pluginQueryOptions(useScope(context), context, "mcp-servers", {}));
 }
+export function useMcpAppDataCapabilities(context: PluginContext) {
+  return useQuery(mcpAppDataCapabilitiesOptions(context));
+}
 export function usePluginAppTools(
   context: PluginContext,
   appId: string,
@@ -316,6 +323,7 @@ export function usePluginManagement(context: PluginContext): PluginManagement {
       runPluginMutation(client, context, "marketplace-upgrade", input),
     disconnectApp: (input) => runPluginMutation(client, context, "app-disconnect", input),
     setAppEnabled: (input) => runPluginMutation(client, context, "app-enabled", input),
+    clearMcpAppData: () => clearMcpAppData(context),
     setAppToolEnabled: (input) => runPluginMutation(client, context, "app-tool-enabled", input),
     trustAllPluginHooks: (input) => runPluginMutation(client, context, "plugin-hooks-trust", input),
     setPluginMcpServerEnabled: (input) =>

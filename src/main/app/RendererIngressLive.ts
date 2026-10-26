@@ -1,4 +1,5 @@
 import * as PluginManagerIpc from "../ipc/handlers/PluginManagerIpc";
+import * as McpAppDataIpc from "../ipc/handlers/McpAppDataIpc";
 import * as AcpAgentsIpc from "../ipc/handlers/AcpAgentsIpc";
 import * as AcpAgents from "../acp-agents/AcpAgents";
 import * as CodexFilesystemAssetRuntime from "../host-runtime/CodexFilesystemAssetRuntime";
@@ -99,6 +100,7 @@ export const live = Layer.mergeAll(
   ComposerAppshotIpc.live,
   CodexApplicationIpc.live,
   PluginManagerIpc.live,
+  McpAppDataIpc.live,
   CodexRendererIpc.live,
   CodexVisualizationIpc.live,
   CodexVisualizationStateIpc.live,

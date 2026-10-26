@@ -15,6 +15,8 @@ import {
   usePluginDetail,
   usePluginApps,
   usePluginAppTools,
+  useMcpAppDataCapabilities,
+  usePluginManagement,
 } from "./plugin-management";
 import {
   queryPluginManagement,
@@ -212,4 +214,38 @@ it("loads the selected app's native tool view through its scoped query", async (
   expect(
     vi.mocked(queryPluginManagement).mock.calls.filter(([name]) => name === "app-tools"),
   ).toEqual([["app-tools", { ...context, appId: "connector_test" }]]);
+});
+
+it("exposes sandbox data clearing independently of native agent readiness and returns typed transport uncertainty", async () => {
+  vi.mocked(queryPluginManagement).mockRejectedValue(new Error("Agent offline"));
+  let fail = false;
+  const success = { status: "success", value: undefined, refreshFailures: [] };
+  const invoke = vi.fn(async (channel: string) => {
+    if (channel === "mcp-app:data:capabilities") return { available: true };
+    if (channel === "mcp-app:data:clear") {
+      if (fail) throw new Error("Transport stopped");
+      return success;
+    }
+    throw new Error(`Unexpected channel: ${channel}`);
+  });
+  installWindowApi({ invoke, on: () => () => {} });
+  const hook = renderHook(
+    () => ({
+      capability: useMcpAppDataCapabilities(context),
+      management: usePluginManagement(context),
+    }),
+    { wrapper: wrapper() },
+  );
+  await waitFor(() => expect(hook.result.current.capability.data?.available).toBe(true));
+  await act(async () => {
+    expect(await hook.result.current.management.clearMcpAppData()).toEqual(success);
+  });
+  expect(invoke).toHaveBeenCalledWith("mcp-app:data:clear", context);
+  fail = true;
+  await act(async () => {
+    expect(await hook.result.current.management.clearMcpAppData()).toMatchObject({
+      status: "failed",
+      error: { code: "mutation_outcome_unknown" },
+    });
+  });
 });

@@ -1,6 +1,8 @@
 import * as Effect from "effect/Effect";
 import * as Scope from "effect/Scope";
 import * as Schema from "effect/Schema";
+import * as Result from "effect/Result";
+import * as Semaphore from "effect/Semaphore";
 import type {
   IpcMainEvent,
   NativeImage,
@@ -35,6 +37,12 @@ export class McpAppSandboxCaptureError extends Schema.TaggedError<McpAppSandboxC
   {
     reason: Schema.Literals(["unavailable", "failed", "retired"]),
     cause: Schema.optionalKey(Schema.Defect()),
+  },
+) {}
+export class McpAppSandboxDataError extends Schema.TaggedError<McpAppSandboxDataError>()(
+  "McpAppSandboxDataError",
+  {
+    reason: Schema.Literals(["unavailable", "failed"]),
   },
 ) {}
 
@@ -89,6 +97,8 @@ export interface McpAppSandboxHost {
 }
 
 export interface McpAppSandboxController {
+  readonly appDataAvailable: () => boolean;
+  readonly clearAppData: Effect.Effect<void, McpAppSandboxDataError>;
   readonly createHost: (owner: WebContents) => McpAppSandboxHost;
   readonly consumeUserGesture: (owner: WebContents, sandboxId: string, initId?: string) => boolean;
   readonly releaseGuest: (owner: WebContents, sandboxId: string, initId: string) => boolean;
@@ -320,6 +330,38 @@ class McpAppSandboxControllerState {
     );
     this.#hosts.add(host);
     return host;
+  }
+  appDataAvailable(): boolean {
+    return this.#installed;
+  }
+
+  /** Partitions are in-memory; this registry also retains sessions after their views close. */
+  clearAppData(): Effect.Effect<void, McpAppSandboxDataError> {
+    return Effect.suspend(() => {
+      if (!this.#installed)
+        return Effect.fail(new McpAppSandboxDataError({ reason: "unavailable" }));
+      const sessions = [...this.#configuredSessions.keys()];
+      return Effect.forEach(sessions, (session) =>
+        Effect.forEach(
+          [
+            () => session.clearData(),
+            () => session.clearCodeCaches({}),
+            () => session.clearAuthCache(),
+          ],
+          (clear) =>
+            Effect.tryPromise({
+              try: clear,
+              catch: () => new McpAppSandboxDataError({ reason: "failed" }),
+            }).pipe(Effect.result),
+        ),
+      ).pipe(
+        Effect.flatMap((results) =>
+          results.some((session) => session.some(Result.isFailure))
+            ? Effect.fail(new McpAppSandboxDataError({ reason: "failed" }))
+            : Effect.void,
+        ),
+      );
+    });
   }
 
   consumeUserGesture(owner: WebContents, sandboxId: string, initId?: string): boolean {
@@ -850,9 +892,12 @@ export const makeMcpAppSandboxController = (
 ): Effect.Effect<McpAppSandboxController, never, Scope.Scope> =>
   Effect.gen(function* () {
     const state = new McpAppSandboxControllerState(options, protocolCache, scheduler, platform);
+    const clearLane = yield* Semaphore.make(1);
     yield* Effect.addFinalizer(() => Effect.sync(() => state.release()));
     yield* Effect.sync(() => state.install());
     return {
+      appDataAvailable: () => state.appDataAvailable(),
+      clearAppData: clearLane.withPermits(1)(state.clearAppData()),
       createHost: (owner) => state.createHost(owner),
       consumeUserGesture: (owner, sandboxId, initId) =>
         state.consumeUserGesture(owner, sandboxId, initId),

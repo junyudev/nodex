@@ -32,6 +32,8 @@ export class McpAppSandboxRuntime extends Context.Service<
   McpAppSandboxRuntime,
   {
     readonly createHost: (owner: WebContents) => McpAppSandboxHost;
+    readonly appDataAvailable: McpAppSandboxController["appDataAvailable"];
+    readonly clearAppData: McpAppSandboxController["clearAppData"];
     readonly consumeUserGesture: (
       owner: WebContents,
       sandboxId: string,
@@ -92,6 +94,8 @@ export const live = (options: McpAppSandboxRuntimeOptions): Layer.Layer<McpAppSa
         },
       );
       return McpAppSandboxRuntime.of({
+        appDataAvailable: controller.appDataAvailable,
+        clearAppData: controller.clearAppData,
         createHost: controller.createHost,
         consumeUserGesture: controller.consumeUserGesture,
         captureImage: controller.captureImage,

@@ -1,4 +1,5 @@
 import type { PluginManagementIpcApi, PluginManagementChanged } from "./codex-plugin-management";
+import type { McpAppDataIpcApi } from "./mcp-app/mcp-app-data";
 import type { AcpIpcApi } from "./acp-api";
 import type { AgentRuntimeIpcApi } from "./agent-runtime-api";
 import type { AgentModelCatalog, AgentModelCatalogInput } from "./agent-model-catalog";
@@ -714,7 +715,8 @@ export interface RendererDiagnosticsLogInput {
   fields?: Record<string, unknown>;
 }
 
-export interface IpcApi extends AgentRuntimeIpcApi, AcpIpcApi, PluginManagementIpcApi {
+export interface IpcApi
+  extends AgentRuntimeIpcApi, AcpIpcApi, PluginManagementIpcApi, McpAppDataIpcApi {
   "codex:turn-presentation:capture": {
     args: [input: CodexTurnPresentationCaptureInput];
     result: CodexTurnPresentationTicket | undefined;

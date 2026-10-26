@@ -24,8 +24,20 @@ function makeSession() {
     permissionCheck: undefined as unknown,
     permissionRequest: undefined as unknown,
     unhandledSchemes: [] as string[],
+    cleared: [] as string[],
+    failClearData: false,
   };
   const value = {
+    clearData: async () => {
+      state.cleared.push("data");
+      if (state.failClearData) throw new Error("Clear failed");
+    },
+    clearCodeCaches: async () => {
+      state.cleared.push("code");
+    },
+    clearAuthCache: async () => {
+      state.cleared.push("auth");
+    },
     getUserAgent: () => "Mozilla/5.0 Electron/40.0 Nodex/1.0 Chrome/140.0.0.0",
     on: events.on.bind(events),
     protocol: {
@@ -382,5 +394,101 @@ it.effect("owns the complete MCP App sandbox callback graph with its Scope", () 
     assert.strictEqual(ownerEvents.listenerCount("destroyed"), 0);
     assert.throws(() => controller.createHost(owner), /not installed/u);
     assert.isFalse(controller.consumeUserGesture(owner, sandboxId));
+  }),
+);
+
+const appDataFixture = Effect.gen(function* () {
+  const first = makeSession();
+  const second = makeSession();
+  const defaultSession = makeSession();
+  const controller = yield* makeMcpAppSandboxController(
+    {
+      allowLocalDevelopment: false,
+      applicationName: "Nodex",
+      guestPreloadPath: "/preload.js",
+      locale: "en-US",
+      logger: { error: () => undefined, warn: () => undefined } as unknown as BackendLogger,
+      platform: "darwin",
+      preferredSystemLanguages: ["en-US"],
+    },
+    {
+      createHandler: () => async () => new Response("ok"),
+      getState: () => "cold",
+      prewarm: async () => undefined,
+    },
+    { schedule: () => () => undefined },
+    {
+      defaultSession: defaultSession.value,
+      fromPartition: (partition) =>
+        partition.endsWith("1111111111111111") ? first.value : second.value,
+      onGuestMessage: () => () => undefined,
+      showGuestContextMenu: () => undefined,
+    },
+  );
+  const owners = [1, 2].map((id) => Object.assign(new EventEmitter(), { id }));
+  for (const [index, owner] of owners.entries()) {
+    const host = controller.createHost(owner as unknown as WebContents);
+    const sandboxId = `source-${String(index + 1).repeat(16)}`;
+    const attach = () =>
+      host.handleWillAttach(
+        {
+          preventDefault: () => {
+            throw new Error("Valid sandbox rejected");
+          },
+        } as unknown as Electron.Event,
+        {},
+        {
+          partition: buildMcpAppSandboxPartition(sandboxId),
+          src: appendMcpAppSandboxInitId(
+            buildMcpAppSandboxSourceUrl({ subdomain: "app-data", locale: "en-US" }),
+            `init-${index}`,
+          ),
+        },
+      );
+    attach();
+    attach();
+  }
+  return { controller, first, second, defaultSession, owners };
+});
+
+it.effect(
+  "clears every configured MCP session once, including closed views, and leaves the default session intact",
+  () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const h = yield* appDataFixture;
+        h.owners[0]!.emit("destroyed");
+        assert.strictEqual(h.controller.appDataAvailable(), true);
+        yield* h.controller.clearAppData;
+        assert.deepEqual(h.first.state.cleared, ["data", "code", "auth"]);
+        assert.deepEqual(h.second.state.cleared, ["data", "code", "auth"]);
+        assert.deepEqual(h.defaultSession.state.cleared, []);
+        yield* h.controller.clearAppData;
+        assert.strictEqual(h.first.state.cleared.length, 6);
+        assert.strictEqual(h.second.state.cleared.length, 6);
+      }),
+    ),
+);
+it.effect(
+  "continues clearing remaining caches and sessions after a failure and returns a typed failure",
+  () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const h = yield* appDataFixture;
+        h.first.state.failClearData = true;
+        assert.strictEqual((yield* h.controller.clearAppData.pipe(Effect.flip)).reason, "failed");
+        assert.deepEqual(h.first.state.cleared, ["data", "code", "auth"]);
+        assert.deepEqual(h.second.state.cleared, ["data", "code", "auth"]);
+      }),
+    ),
+);
+it.effect("makes clearing unavailable after the sandbox owner releases", () =>
+  Effect.gen(function* () {
+    const scope = yield* Scope.make();
+    const h = yield* appDataFixture.pipe(Scope.provide(scope));
+    yield* Scope.close(scope, Exit.void);
+    assert.strictEqual(h.controller.appDataAvailable(), false);
+    assert.strictEqual((yield* h.controller.clearAppData.pipe(Effect.flip)).reason, "unavailable");
+    assert.deepEqual(h.first.state.cleared, []);
   }),
 );

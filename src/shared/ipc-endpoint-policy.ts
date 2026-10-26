@@ -88,6 +88,7 @@ type QueryEndpointPolicy =
   | "codex:plugins:skills"
   | "codex:plugins:skill-contents"
   | "codex:plugins:app-tools"
+  | "mcp-app:data:capabilities"
   | "codex:plugins:hooks"
   | "codex:plugins:public-home"
   | "codex:plugins:category"
@@ -493,6 +494,7 @@ type MainRevisionCommandEndpointPolicy =
   | "codex:visualization:interaction:write";
 
 type PlainResultCommandEndpointPolicy =
+  | "mcp-app:data:clear"
   | "codex:plugins:app-disconnect"
   | "codex:plugins:app-enabled"
   | "codex:plugins:app-tool-enabled"
