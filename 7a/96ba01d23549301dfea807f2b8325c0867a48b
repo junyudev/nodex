@@ -1,0 +1,75 @@
+CHANGELOG.md
+  s_1125822f4ad3ae::t_971e9b7fd140b5 29
+src/renderer/lib/codex-sidebar-pagination.ts
+  s_1125822f4ad3ae::t_05823c98cacdbd 23-27,32-33,42,44,62
+src/renderer/components/workbench/workbench-sidebar.tsx
+  s_1125822f4ad3ae::t_6926eab94cb58b 36-37
+scripts/scenarios/registry.ts
+  s_1125822f4ad3ae::t_4f0632867dc613 19,38
+src/renderer/components/workbench/codex-sidebar-actions.browser.test.tsx
+  s_1125822f4ad3ae::t_dc17495e7791d9 104-105
+src/renderer/components/workbench/workbench-runtime.tsx
+  s_1125822f4ad3ae::t_d022f523a01f68 401,495,613-614,4758,4769
+  s_1125822f4ad3ae::t_ba4e6a6b5a11d1 444-447
+  s_1125822f4ad3ae::t_6926eab94cb58b 128,131
+scripts/scenarios/scenarios/space-content.ts
+  s_1125822f4ad3ae::t_10d513de92eeb9 1-116
+src/renderer/lib/sidebar-section-prefs.ts
+  s_1125822f4ad3ae::t_2bfbe6e39ad138 10,15-16,79
+  s_1125822f4ad3ae::t_6cfbb9d409ee80 11-13,58-78,80-83
+src/renderer/components/workbench/workbench-space-sidebar.tsx
+  s_1125822f4ad3ae::t_6926eab94cb58b 58-59
+src/renderer/lib/use-workbench-profile-preferences.node.test.ts
+  s_1125822f4ad3ae::t_0f5856f6788dfd 51-57,92
+src/renderer/components/workbench/sidebar-paginated-items.tsx
+  s_1125822f4ad3ae::t_2c1d98b00b78ee 1,13-15,28-29,38,46,49,51,62,64,67,69
+src/renderer/lib/use-workbench-sidebar-state.test.tsx
+  s_1125822f4ad3ae::t_060b62c2b83e7f 64-78,82-88
+  s_1125822f4ad3ae::t_ba4e6a6b5a11d1 79-81
+src/renderer/lib/sidebar-section-prefs.node.test.ts
+  s_1125822f4ad3ae::t_abb679decff61d 5-6,32-52
+docs/product-specs/workbench-shell.md
+  s_1125822f4ad3ae::t_bd0b84aab30ff5 19
+tests/e2e/space-content-sidebar.spec.ts
+  s_1125822f4ad3ae::t_cc82565e944819 17-19,67,96-99
+  s_1125822f4ad3ae::t_2855cd4025af54 31,64-65
+  s_1125822f4ad3ae::t_2e83fd4cbfd04c 1-16,20-30,32-63,66,68-95,100-102
+src/renderer/components/workbench/workbench-space-sidebar-content.test.tsx
+  s_1125822f4ad3ae::t_dc17495e7791d9 46-47
+src/renderer/lib/codex-sidebar-pagination.node.test.ts
+  s_1125822f4ad3ae::t_9d7674259406f1 103,115,120
+  s_1125822f4ad3ae::t_05823c98cacdbd 21,27,33,47,59,72,87,134
+src/renderer/components/workbench/sidebar-pages-section.test.tsx
+  s_1125822f4ad3ae::t_7b73aaa55feb9e 218,241,258-259,261-262,264-265,269,274-286,294,367,392-393,395-399,402-423,425-426,432,434-437,440,449-459,464-479,488
+  s_1125822f4ad3ae::t_ba4e6a6b5a11d1 427-429,441-448
+  s_1125822f4ad3ae::t_df23d159997162 2,10,16-20,23,27-30,61-75,77,81,85-115,118-158,161-176,179-181,183-186
+src/renderer/lib/use-workbench-profile-preferences.ts
+  s_1125822f4ad3ae::t_552df27b6be836 10-12,15,25,32,63,146,334-348,419,431
+src/renderer/lib/use-workbench-sidebar-state.ts
+  s_1125822f4ad3ae::t_d022f523a01f68 5-6,9,30,42-43,55-57,93-105,157-158
+  s_1125822f4ad3ae::t_ba4e6a6b5a11d1 31-34
+src/renderer/components/workbench/workbench-shell.tsx
+  s_1125822f4ad3ae::t_6926eab94cb58b 128,444
+src/renderer/components/workbench/workbench-session-sidebar.tsx
+  s_1125822f4ad3ae::t_dc17495e7791d9 638
+  s_1125822f4ad3ae::t_3be3415f689378 335-336,351-352,401-402,464,471,483,490,620-621,864-869,1325-1329,1440,1502-1504,1536-1537,1546-1547,1639-1640,1701-1702,1731-1732
+src/renderer/components/workbench/sidebar-pages-section.tsx
+  s_1125822f4ad3ae::t_f7606210394b7a 2,10-14,43,49-52,71-97,252-254,271-272,280-283,294-300,303-314,349-352,361
+  s_1125822f4ad3ae::t_6946e639946dec 301-302
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "7a96ba01d23549301dfea807f2b8325c0867a48b",
+  "prompts": {},
+  "sessions": {
+    "s_1125822f4ad3ae": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ea4b1fa8-29d0-4515-acd8-d5648ed0c728",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
