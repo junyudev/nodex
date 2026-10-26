@@ -1,0 +1,24 @@
+src/renderer/features/plugins/view/plugins-settings-page.test.tsx
+  s_1f621c9737ee85::t_4c2705603223f2 11,25,98
+src/renderer/features/plugins/view/plugins-settings-mcps.tsx
+  s_1f621c9737ee85::t_b32c9a90a21a41 35,654,658-684
+  s_1f621c9737ee85::t_9816e544927f95 685-686
+docs/product-specs/plugins-behavior.md
+  s_1f621c9737ee85::t_e908c27ffeabe5 58-59
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "6faf27ca259908b4ef87d79cbe77add36a7bd1fe",
+  "prompts": {},
+  "sessions": {
+    "s_1f621c9737ee85": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "dec682ee-8dcb-4974-b7cd-a9bfde733cc3",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
