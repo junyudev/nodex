@@ -189,3 +189,22 @@ ChatGPT connector authentication.
 Plugin hook inventory filters native hook metadata by the exact owning plugin ID and counts
 untrusted or modified hooks as needing review. Rootless contexts have no root-scoped hook
 inventory. Hook summaries and scheduled tasks remain available directly on native detail.
+
+## Creation and detail extras
+
+Creation capabilities resolve official Plugin Creator and Record and Replay catalog entries.
+When necessary, ChatGPT connector metadata resolves the canonical Plugin Creator plugin.
+Preparation installs or enables the chosen helper, preserves the caller's installation
+attempt ID, re-reads native installation state and verifies required apps are enabled and
+callable. It returns a native plugin ID and an unsent mention draft; failed preparation
+returns no draft. Required app authentication remains a typed setup failure when connector
+connection initiation is unavailable. Same-name third-party plugins cannot become official
+creation helpers.
+
+Native detail exposes app templates, onboarding skills and scheduled-task templates without
+redefining their protocol fields. The optional Works with projection comes from the
+account service's disclosed provider dependencies, retaining categories, availability,
+installation/enablement observations and validated navigation. It is distinct from native
+skill tool dependencies. Missing access or missing dependency data is explicit and does not
+fabricate an empty supported feature. Connector read failures remain visible separately
+from the plugin's native detail.

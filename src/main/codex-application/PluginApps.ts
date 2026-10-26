@@ -31,6 +31,7 @@ const Connector = Schema.Struct({
   logo_url_dark: optionalText,
   icon_url: optionalText,
   icon_url_dark: optionalText,
+  icon_dark_url: optionalText,
 });
 const Connectors = Schema.Struct({ connectors: Schema.Array(Connector) });
 export const pluginConnectUnavailableReason =
@@ -264,7 +265,11 @@ export const makePluginApps = Effect.gen(function* () {
         callable: runtime?.callable ?? false,
         logoUrl: metadata?.iconUrl ?? connector?.logo_url ?? connector?.icon_url ?? null,
         logoDarkUrl:
-          metadata?.iconUrlDark ?? connector?.logo_url_dark ?? connector?.icon_url_dark ?? null,
+          metadata?.iconUrlDark ??
+          connector?.logo_url_dark ??
+          connector?.icon_dark_url ??
+          connector?.icon_url_dark ??
+          null,
         connectionState,
         connections: links.filter(active).map((link) => ({ id: link.id, name: link.name ?? null })),
         canDisconnect: expected !== null && links.some(active),
@@ -280,6 +285,10 @@ export const makePluginApps = Effect.gen(function* () {
   const disconnect = Effect.fn("PluginApps.disconnect")(function* (
     context: ResolvedPluginContext,
     input: { readonly appId: string; readonly linkId?: string },
+    beforeWrite: Effect.Effect<
+      void,
+      import("./PluginManagementError").PluginManagementError
+    > = Effect.void,
   ) {
     const view = yield* list(context, { ...context, appIds: [input.appId], forceRefresh: true });
     if (view.connectionError)
@@ -295,6 +304,7 @@ export const makePluginApps = Effect.gen(function* () {
       return yield* pluginError("not_found", "No connected account was found for this app.");
     if (input.linkId && !app.connections.some((link) => link.id === input.linkId))
       return yield* pluginError("not_found", "This account does not belong to the selected app.");
+    yield* beforeWrite;
     yield* http(
       input.linkId
         ? `aip/connectors/links/${encodeURIComponent(input.linkId)}`

@@ -42,6 +42,15 @@ const make = (
     mcpStatuses?: unknown[];
     configWriteOk?: boolean;
     oauthUrl?: string;
+    runtimeApps?: { id: string; runtimeName: string | null; enabled: boolean; callable: boolean }[];
+    detailApps?: {
+      id: string;
+      name: string;
+      description: string | null;
+      installUrl: string | null;
+      category: string | null;
+    }[];
+    hooks?: import("@nodex/codex-app-server-protocol/v2/HookMetadata").HookMetadata[];
   } = {},
 ) => {
   const calls: { method: string; params: Record<string, unknown> }[] = [];
@@ -113,7 +122,7 @@ const make = (
                   },
                 ]
               : [],
-            apps: [],
+            apps: options.detailApps ?? [],
             hooks: [],
             mcpServers: [],
             appTemplates: [],
@@ -177,6 +186,26 @@ const make = (
           nextCursor: "opaque-next",
         });
       if (method === "plugin/skill/read") return Effect.succeed({ contents: "remote skill" });
+      if (method === "app/installed") return Effect.succeed({ apps: options.runtimeApps ?? [] });
+      if (method === "app/read")
+        return Effect.succeed({
+          apps: (params.appIds as string[]).map((id) => ({
+            id,
+            name: id,
+            description: null,
+            iconUrl: null,
+            iconUrlDark: null,
+            distributionChannel: null,
+            installUrl: null,
+            pluginDisplayNames: [],
+            toolSummaries: null,
+          })),
+          missingAppIds: [],
+        });
+      if (method === "hooks/list")
+        return Effect.succeed({
+          data: [{ cwd: "/", hooks: options.hooks ?? [], warnings: [], errors: [] }],
+        });
       if (method === "mcpServerStatus/list")
         return Effect.succeed({ data: options.mcpStatuses ?? [], nextCursor: null });
       if (method === "mcpServer/oauth/login")
@@ -1085,6 +1114,147 @@ it.effect("keeps plugin MCP declarations read-only and validates OAuth authoriza
     assert.strictEqual(
       h.calls.some((call) => call.method === "config/batchWrite"),
       false,
+    );
+  }).pipe(Effect.provide(h.layer));
+});
+
+it.effect(
+  "prepares the official recording helper and preserves the caller's install attempt",
+  () => {
+    const h = make({
+      marketplaceName: "openai-curated",
+      plugins: [
+        pluginSummary({
+          id: "record-and-replay@openai-curated",
+          name: "record-and-replay",
+          installed: false,
+          enabled: false,
+        }),
+      ],
+    });
+    return Effect.gen(function* () {
+      const manager = yield* PluginManager;
+      assert.strictEqual(
+        (yield* manager.query("creation-capabilities", context)).recordSkill.available,
+        true,
+      );
+      const result = yield* manager.command("prepare-helper", {
+        ...context,
+        helper: "record-and-replay",
+        installAttemptId: "caller-attempt",
+      });
+      assert.ok("value" in result);
+      if (!("value" in result)) return;
+      assert.strictEqual(result.value.nativeId, "record-and-replay@openai-curated");
+      assert.ok(result.value.draft.includes("plugin://record-and-replay@openai-curated"));
+      assert.strictEqual(
+        h.calls.find((call) => call.method === "plugin/install")?.params.installAttemptId,
+        "caller-attempt",
+      );
+    }).pipe(Effect.provide(h.layer));
+  },
+);
+it.effect("requires callable creator apps before returning an unsent creation draft", () => {
+  const plugin = pluginSummary({ id: "plugin_creator@openai-curated", name: "plugin_creator" });
+  const h = make({ marketplaceName: "openai-curated", plugins: [plugin] });
+  return Effect.gen(function* () {
+    const manager = yield* PluginManager;
+    const result = yield* manager.command("prepare-helper", {
+      ...context,
+      helper: "plugin-creator",
+      installAttemptId: "creator-attempt",
+    });
+    assert.ok("error" in result);
+    if (!("error" in result)) return;
+    assert.strictEqual(result.error.code, "auth_required");
+  }).pipe(Effect.provide(h.layer));
+});
+it.effect("returns Plugin Creator's native ID only after native callability is verified", () => {
+  const h = make({
+    marketplaceName: "openai-curated",
+    plugins: [pluginSummary({ id: "plugin_creator@openai-curated", name: "plugin_creator" })],
+    runtimeApps: [
+      {
+        id: "connector_openai_plugin_creator",
+        runtimeName: "Plugin Creator",
+        enabled: true,
+        callable: true,
+      },
+    ],
+  });
+  return Effect.gen(function* () {
+    const manager = yield* PluginManager;
+    const result = yield* manager.command("prepare-helper", {
+      ...context,
+      helper: "plugin-creator",
+      installAttemptId: "creator-attempt",
+    });
+    assert.ok("value" in result);
+    if (!("value" in result)) return;
+    assert.strictEqual(
+      result.value.draft,
+      "[@Plugin Creator](plugin://plugin_creator@openai-curated) help me create a plugin",
+    );
+    const impostor = make({
+      marketplaceName: "third-party",
+      plugins: [pluginSummary({ id: "record-and-replay@third-party", name: "record-and-replay" })],
+    });
+    assert.strictEqual(
+      (yield* Effect.gen(function* () {
+        return yield* (yield* PluginManager).query("creation-capabilities", context);
+      }).pipe(Effect.provide(impostor.layer))).recordSkill.available,
+      false,
+    );
+  }).pipe(Effect.provide(h.layer));
+});
+
+it.effect("filters plugin hook metadata by its exact owner and counts trust review states", () => {
+  const hook = {
+    key: "review",
+    eventName: "SessionStart",
+    timeoutSec: 0n,
+    matcher: null,
+    statusMessage: null,
+    additionalContextLimit: null,
+    sourcePath: "/hooks.json",
+    source: "plugin",
+    pluginId: "a@custom",
+    displayOrder: 0n,
+    enabled: true,
+    isManaged: false,
+    currentHash: "hash",
+    trustStatus: "modified",
+    handlerType: "command",
+    command: "echo ready",
+    async: false,
+  } as unknown as import("@nodex/codex-app-server-protocol/v2/HookMetadata").HookMetadata;
+  const h = make({
+    hooks: [
+      hook,
+      { ...hook, key: "trusted", trustStatus: "trusted" },
+      { ...hook, key: "other", pluginId: "b@custom" },
+    ],
+  });
+  return Effect.gen(function* () {
+    const manager = yield* PluginManager;
+    const result = yield* manager.query("plugin-hooks", {
+      hostId: "local",
+      projectId: "p",
+      marketplacePath: "/marketplace.json",
+      pluginName: "a",
+    });
+    assert.deepEqual(
+      result.hooks.map((hook) => hook.key),
+      ["review", "trusted"],
+    );
+    assert.strictEqual(result.needsReviewCount, 1);
+    assert.strictEqual(
+      (yield* manager.query("plugin-hooks", {
+        ...context,
+        marketplacePath: "/marketplace.json",
+        pluginName: "a",
+      })).needsReviewCount,
+      0,
     );
   }).pipe(Effect.provide(h.layer));
 });

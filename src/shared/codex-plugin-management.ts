@@ -161,6 +161,10 @@ export interface PersonalPlugins {
 export interface PluginDetailView {
   readonly appConnectionStates?: Readonly<Record<string, PluginAppConnectionState>>;
   readonly scheduledTasks?: PluginDetail["scheduledTasks"];
+  readonly appTemplates?: PluginDetail["appTemplates"];
+  readonly onboardingSkill?: PluginDetail["onboardingSkill"];
+  readonly worksWith?: import("./codex-plugin-settings").PluginDependenciesView;
+  readonly appConnectionError?: PluginFailure | null;
   readonly detail: PluginDetail;
   readonly row: PluginRow;
   readonly summary: PluginSummary;
@@ -210,6 +214,8 @@ export interface MarketplaceRemovalPreview {
   readonly protected: boolean;
 }
 export interface MarketplaceRemovalProgress extends MarketplaceRemovalPreview {
+  readonly context?: ResolvedPluginContext;
+  readonly phase?: "uninstalling" | "removing" | "complete" | "failed";
   readonly operationId: string;
   readonly completedPluginIds: readonly string[];
   readonly remainingPluginIds: readonly string[];
@@ -219,6 +225,7 @@ export interface MarketplaceRemovalProgress extends MarketplaceRemovalPreview {
 export interface PluginManagementChanged {
   readonly hostId: string;
   readonly accountEpoch: number;
+  readonly hostGeneration?: number;
   readonly kind: "plugins" | "skills" | "apps" | "mcp" | "account" | "connection";
   readonly mcpOauthCompletion?: import("@nodex/codex-app-server-protocol/v2/McpServerOauthLoginCompletedNotification").McpServerOauthLoginCompletedNotification;
   readonly progress?: MarketplaceRemovalProgress;

@@ -92,6 +92,23 @@ export interface PreparedPluginHelper {
   readonly displayName: string;
   readonly draft: string;
 }
+/** Account-service dependency metadata; distinct from native skill tool dependencies. */
+export interface PluginDependency {
+  readonly pluginId: string;
+  readonly displayName: string;
+  readonly categories: readonly { readonly id: string; readonly label: string }[];
+  readonly logoUrl: string | null;
+  readonly logoDarkUrl: string | null;
+  readonly enabled: boolean | null;
+  readonly installed: boolean | null;
+  readonly unavailableReason: string | null;
+  readonly navigationPluginId: string | null;
+}
+export interface PluginDependenciesView {
+  readonly dependencies: readonly PluginDependency[];
+  readonly available: boolean;
+  readonly error: PluginFailure | null;
+}
 export interface PluginHooksView {
   readonly hooks: readonly HookMetadata[];
   readonly needsReviewCount: number;

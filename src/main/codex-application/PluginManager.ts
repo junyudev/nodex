@@ -1,8 +1,10 @@
+import { makePluginAccountMetadata } from "./PluginAccountMetadata";
 import * as Result from "effect/Result";
 import { StandaloneSkills } from "./StandaloneSkills";
 import { pluginNativeFailure as nativeFailure } from "./PluginNativeErrors";
 import { makePluginApps } from "./PluginApps";
 import {
+  normalizeConnectorId,
   configuredTable,
   projectMarketplaces,
   projectMcpServers,
@@ -115,6 +117,7 @@ export const live = (options: {
       const service = yield* PluginService;
       const desktop = yield* ChatGptDesktop;
       const apps = yield* makePluginApps;
+      const accountMetadata = yield* makePluginAccountMetadata;
       const standaloneSkills = yield* StandaloneSkills;
       const policy = createPluginInventoryPolicy(options.runtimeStateHome);
       const epoch = yield* Ref.make(0);
@@ -161,6 +164,7 @@ export const live = (options: {
                 hostId: event.hostId,
                 accountEpoch: yield* Ref.get(epoch),
                 kind: "mcp",
+                hostGeneration: event.generation,
                 mcpOauthCompletion: event.value
                   .params as unknown as import("@nodex/codex-app-server-protocol/v2/McpServerOauthLoginCompletedNotification").McpServerOauthLoginCompletedNotification,
               });
@@ -347,19 +351,24 @@ export const live = (options: {
           return yield* pluginError("protected", "This desktop tool is managed by Nodex.");
         return row;
       });
-      const reload = Effect.fn("PluginManager.reload")(function* (context: ResolvedPluginContext) {
+      const reload = Effect.fn("PluginManager.reload")(function* (
+        context: ResolvedPluginContext,
+        resources: readonly PluginRefreshResource[] = ["plugins", "skills", "apps", "hooks", "mcp"],
+      ) {
         const failures: PluginRefreshResource[] = [];
         const settle = <A>(
           resource: PluginRefreshResource,
           effect: Effect.Effect<A, PluginManagementError>,
         ) =>
-          effect.pipe(
-            Effect.catch(() =>
-              Effect.sync(() => {
-                if (!failures.includes(resource)) failures.push(resource);
-              }),
-            ),
-          );
+          !resources.includes(resource)
+            ? Effect.void
+            : effect.pipe(
+                Effect.catch(() =>
+                  Effect.sync(() => {
+                    if (!failures.includes(resource)) failures.push(resource);
+                  }),
+                ),
+              );
         const observed = yield* native.skillScopes(context.hostId);
         const scopes = observed.length ? observed : [context.cwds];
         for (const cwds of scopes)
@@ -379,7 +388,22 @@ export const live = (options: {
             ),
           ),
         );
-        yield* settle("apps", request(context, "app/list", { forceRefetch: true }));
+        yield* settle(
+          "apps",
+          withOperationLease(apps.list(context, { ...context, forceRefresh: true })).pipe(
+            Effect.flatMap((view) =>
+              view.connectionError
+                ? Effect.fail(
+                    pluginError(
+                      view.connectionError.code,
+                      view.connectionError.message,
+                      view.connectionError.retryable,
+                    ),
+                  )
+                : Effect.void,
+            ),
+          ),
+        );
         yield* settle("hooks", request(context, "hooks/list", { cwds: [...context.cwds] }));
         yield* settle("mcp", request(context, "mcpServerStatus/list", {}));
         return failures;
@@ -387,10 +411,16 @@ export const live = (options: {
       const applied = Effect.fn("PluginManager.applied")(function* <A>(
         context: ResolvedPluginContext,
         value: A,
-        notify = true,
+        notify: boolean | PluginManagementChanged["kind"] = true,
       ) {
-        if (notify) yield* emit("plugins");
-        const refreshFailures = yield* reload(context);
+        if (notify) yield* emit(notify === true ? "plugins" : notify);
+        const resources: readonly PluginRefreshResource[] | undefined =
+          notify === "skills"
+            ? ["skills"]
+            : notify === "mcp" || notify === "apps"
+              ? ["apps", "mcp"]
+              : undefined;
+        const refreshFailures = yield* reload(context, resources);
         return {
           status: refreshFailures.length ? "success-with-refresh-warning" : "success",
           value,
@@ -633,7 +663,7 @@ export const live = (options: {
         yield* writeConfig(context, config, [
           { keyPath: "mcp_servers", value: entries, mergeStrategy: "replace" },
         ]);
-        return yield* applied(context, undefined);
+        return yield* applied(context, undefined, "mcp");
       });
       const queryHandlers: {
         [K in keyof PluginQueries]: (
@@ -648,17 +678,80 @@ export const live = (options: {
           return projectMcpServers(config, statuses);
         }),
         "recommended-skills": (_context, input) => standaloneSkills.list(input.refresh ?? false),
-        "creation-capabilities": () =>
-          Effect.fail(pluginError("unsupported", "Plugin creation is unavailable.")),
+        "creation-capabilities": Effect.fn("PluginManager.creationCapabilities")(
+          function* (context) {
+            const inventory = yield* queryHandlers.list(context, context);
+            const eligible = (
+              row: PluginRow | undefined,
+            ): import("../../shared/codex-plugin-settings").PluginHelperCapability => {
+              if (!row)
+                return {
+                  available: false,
+                  plugin: null,
+                  reason: pluginFailure(
+                    pluginError("not_found", "This helper is unavailable in the catalog."),
+                  ),
+                };
+              const denied =
+                row.summary.availability === "DISABLED_BY_ADMIN" ||
+                row.summary.installPolicy === "NOT_AVAILABLE";
+              return {
+                available: !denied,
+                plugin: row,
+                reason: denied
+                  ? pluginFailure(
+                      pluginError("policy_denied", "This helper is disabled by policy."),
+                    )
+                  : null,
+              };
+            };
+            let creator = inventory.rows.find(
+              (row) =>
+                row.isOfficial && ["plugin_creator", "plugin-creator"].includes(row.summary.name),
+            );
+            let creatorError: PluginManagementError | null = null;
+            if (!creator && (yield* PluginServiceAccount) !== null) {
+              const result = yield* accountMetadata.creatorPluginId.pipe(
+                Effect.flatMap((id) =>
+                  queryHandlers.read(context, {
+                    ...context,
+                    remoteMarketplaceName: "chatgpt-workspace",
+                    pluginName: id,
+                  }),
+                ),
+                Effect.result,
+              );
+              if (Result.isSuccess(result)) creator = result.success.row;
+              else creatorError = result.failure;
+            }
+            const createPlugin = eligible(creator);
+            return {
+              createPlugin:
+                !creator && creatorError
+                  ? { ...createPlugin, reason: pluginFailure(creatorError) }
+                  : createPlugin,
+              recordSkill: eligible(
+                inventory.rows.find(
+                  (row) => row.isOfficial && row.summary.name === "record-and-replay",
+                ),
+              ),
+            };
+          },
+        ),
         "plugin-hooks": Effect.fn("PluginManager.pluginHooks")(function* (context, input) {
           const detail = yield* queryHandlers.read(context, input);
           if (!context.cwds.length) return { hooks: [], needsReviewCount: 0 };
           const response = yield* request(context, "hooks/list", { cwds: [...context.cwds] });
-          const hooks = (
-            response as unknown as import("@nodex/codex-app-server-protocol/v2/HooksListResponse").HooksListResponse
-          ).data
-            .flatMap((entry) => entry.hooks)
-            .filter((hook) => hook.pluginId === detail.summary.id);
+          const hooks = [
+            ...new Map(
+              (
+                response as unknown as import("@nodex/codex-app-server-protocol/v2/HooksListResponse").HooksListResponse
+              ).data
+                .flatMap((entry) => entry.hooks)
+                .filter((hook) => hook.pluginId === detail.summary.id)
+                .map((hook) => [hook.key, hook]),
+            ).values(),
+          ];
           return {
             hooks,
             needsReviewCount: hooks.filter(
@@ -728,13 +821,44 @@ export const live = (options: {
           const appView = detail.apps.length
             ? yield* withOperationLease(
                 apps.list(context, { ...context, appIds: detail.apps.map((app) => app.id) }),
+              ).pipe(
+                Effect.orElseSucceed((error) => ({
+                  apps: [],
+                  connectionError: pluginFailure(error),
+                })),
               )
             : null;
           const appConnectionStates = Object.fromEntries(
-            appView?.apps.map((app) => [app.id, app.connectionState]) ?? [],
+            detail.apps.map((app) => [
+              app.id,
+              appView?.apps.find(
+                (row) => normalizeConnectorId(row.id) === normalizeConnectorId(app.id),
+              )?.connectionState ?? "unknown",
+            ]),
           );
+          const remoteId =
+            detail.summary.remotePluginId ?? detail.summary.shareContext?.remotePluginId;
+          const worksWith =
+            remoteId && (yield* PluginServiceAccount) !== null
+              ? yield* accountMetadata.dependencies(remoteId).pipe(
+                  Effect.map((dependencies) => ({
+                    dependencies: dependencies ?? [],
+                    available: dependencies !== null,
+                    error: null,
+                  })),
+                  Effect.orElseSucceed((error) => ({
+                    dependencies: [],
+                    available: false,
+                    error: pluginFailure(error),
+                  })),
+                )
+              : { dependencies: [], available: false, error: null };
           return {
             appConnectionStates,
+            appConnectionError: appView?.connectionError ?? null,
+            worksWith,
+            appTemplates: detail.appTemplates,
+            onboardingSkill: detail.onboardingSkill,
             scheduledTasks: detail.scheduledTasks,
 
             detail: { ...detail, summary: row.summary },
@@ -1009,6 +1133,22 @@ export const live = (options: {
         ): MarketplaceRemovalProgress => {
           const progress = {
             ...preview,
+            context,
+            phase: removed
+              ? ("complete" as const)
+              : outcome.status === "failed" ||
+                  outcome.status === "protected" ||
+                  outcome.status === "policy_denied"
+                ? ("failed" as const)
+                : ("uninstalling" as const),
+            plugins: [
+              ...new Map(
+                [...(previous?.progress.plugins ?? []), ...(preview.plugins ?? [])].map((row) => [
+                  row.nativeId,
+                  row,
+                ]),
+              ).values(),
+            ],
             operationId,
             pluginIds: [...new Set([...completedPluginIds, ...preview.pluginIds])],
             completedPluginIds: [...completedPluginIds],
@@ -1033,6 +1173,10 @@ export const live = (options: {
             return save(
               failed(pluginError("protected", "This marketplace contains required plugins.")),
             );
+          yield* emit(
+            "plugins",
+            save({ status: "success", value: undefined, refreshFailures: [] }),
+          );
           for (const pluginId of preview.pluginIds) {
             // Inventory, protection and context are checked again for every step and every resume.
             const row = yield* findPlugin(context, pluginId, true);
@@ -1061,6 +1205,10 @@ export const live = (options: {
                 ),
               ),
             );
+          yield* emit("plugins", {
+            ...save({ status: "success", value: undefined, refreshFailures: [] }),
+            phase: "removing",
+          });
           yield* assertCurrent(context);
           yield* request(context, "marketplace/remove", { marketplaceName: input.marketplaceName });
           const progress = save(yield* applied(context, undefined), true);
@@ -1122,8 +1270,8 @@ export const live = (options: {
       } = {
         "app-disconnect": Effect.fn("PluginManager.disconnectApp")(function* (context, input) {
           yield* assertCurrent(context);
-          yield* withOperationLease(apps.disconnect(context, input));
-          return yield* applied(context, undefined);
+          yield* withOperationLease(apps.disconnect(context, input, assertCurrent(context)));
+          return yield* applied(context, undefined, "apps");
         }),
         "mcp-save": (context, input) => updateMcp(context, input, "save"),
         "mcp-remove": (context, input) => updateMcp(context, input, "remove"),
@@ -1168,7 +1316,7 @@ export const live = (options: {
           const value = yield* withOperationLease(
             standaloneSkills.install(input.id, root ?? null, assertCurrent(context)),
           );
-          return yield* applied(context, value);
+          return yield* applied(context, value, "skills");
         }),
         "skill-uninstall": Effect.fn("PluginManager.uninstallSkill")(function* (context, input) {
           const response = yield* queryHandlers.skills(context, context);
@@ -1179,10 +1327,97 @@ export const live = (options: {
           yield* withOperationLease(
             standaloneSkills.uninstall(skill, context.cwds, assertCurrent(context)),
           );
-          return yield* applied(context, undefined);
+          return yield* applied(context, undefined, "skills");
         }),
-        "prepare-helper": () =>
-          Effect.fail(pluginError("unsupported", "This operation is unavailable.")),
+        "prepare-helper": Effect.fn("PluginManager.prepareHelper")(function* (context, input) {
+          const capabilities = yield* queryHandlers["creation-capabilities"](context, context);
+          const capability =
+            input.helper === "plugin-creator"
+              ? capabilities.createPlugin
+              : capabilities.recordSkill;
+          if (!capability.available || !capability.plugin)
+            return yield* pluginError(
+              capability.reason?.code ?? "not_found",
+              capability.reason?.message ?? "This helper is unavailable.",
+            );
+          let detail = yield* queryHandlers.read(context, {
+            ...context,
+            ...capability.plugin.selector,
+          });
+          const refreshFailures: PluginRefreshResource[] = [];
+          if (!detail.summary.installed) {
+            const result = yield* commandHandlers.install(context, {
+              ...context,
+              ...detail.row.selector,
+              installAttemptId: input.installAttemptId,
+            });
+            if ("error" in result) return result;
+            refreshFailures.push(...result.refreshFailures);
+            detail = yield* queryHandlers.read(context, { ...context, ...detail.row.selector });
+          }
+          if (!detail.summary.enabled) {
+            const result = yield* commandHandlers["set-enabled"](context, {
+              ...context,
+              pluginId: detail.row.nativeId,
+              enabled: true,
+            });
+            if ("error" in result) return result;
+            refreshFailures.push(...result.refreshFailures);
+            detail = yield* queryHandlers.read(context, { ...context, ...detail.row.selector });
+          }
+          if (
+            !detail.summary.installed ||
+            !detail.summary.enabled ||
+            detail.summary.availability === "DISABLED_BY_ADMIN"
+          )
+            return yield* pluginError(
+              "inventory_unavailable",
+              "The helper could not be verified as enabled.",
+            );
+          const appIds = [
+            ...new Set([
+              ...detail.apps.map((app) => app.id),
+              ...(input.helper === "plugin-creator" ? ["connector_openai_plugin_creator"] : []),
+            ]),
+          ];
+          if (appIds.length) {
+            const view = yield* withOperationLease(
+              apps.list(context, { ...context, appIds, forceRefresh: true }),
+            );
+            if (
+              appIds.some(
+                (id) => !view.apps.some((app) => app.id === id && app.enabled && app.callable),
+              )
+            )
+              return yield* pluginError(
+                "auth_required",
+                "Connect the helper's required apps before creating a draft.",
+              );
+          }
+          yield* assertCurrent(context);
+          const displayName = detail.summary.interface?.displayName ?? detail.summary.name;
+          const label =
+            input.helper === "plugin-creator"
+              ? "Plugin Creator"
+              : displayName.replaceAll("[", "").replaceAll("]", "");
+          const prompt =
+            input.helper === "plugin-creator"
+              ? "help me create a plugin"
+              : (detail.info.defaultPrompts.find((prompt) => prompt.trim()) ??
+                "help me record a skill");
+          const failures = [...new Set(refreshFailures)];
+          return {
+            status: failures.length
+              ? ("success-with-refresh-warning" as const)
+              : ("success" as const),
+            value: {
+              nativeId: detail.row.nativeId,
+              displayName,
+              draft: `[@${label}](plugin://${detail.row.nativeId}) ${prompt}`,
+            },
+            refreshFailures: failures,
+          };
+        }),
         install: Effect.fn("PluginManager.install")(function* (context, input) {
           const detail = yield* queryHandlers.read(context, input);
           if (detail.row.managed || !policy.visible(detail.row.nativeId, "local"))
@@ -1268,7 +1503,7 @@ export const live = (options: {
             name: input.name ?? null,
             enabled: input.enabled,
           });
-          return yield* applied(context, undefined);
+          return yield* applied(context, undefined, "skills");
         }),
         "marketplace-add": Effect.fn("PluginManager.addMarketplace")(function* (context, input) {
           yield* assertCurrent(context);

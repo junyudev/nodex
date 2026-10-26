@@ -249,10 +249,13 @@ export const live = (options: {
           (yield* exists(path.join(options.bundledRepoRoot, "skills", ".curated")))
             ? options.bundledRepoRoot
             : null;
-        const root = !gitExists && !localExists && bundled ? bundled : repo;
+        const root = !refresh && !gitExists && !localExists && bundled ? bundled : repo;
         const attempt = Effect.gen(function* () {
           let source: RecommendedSkillsView["source"] = root === bundled ? "bundled" : "cache";
-          if (root === repo && (refresh || !cache || now - cache.fetchedAt >= 600_000)) {
+          if (
+            root === repo &&
+            (refresh || !cache || !localExists || now - cache.fetchedAt >= 600_000)
+          ) {
             yield* refreshRepo;
             source = "git";
           }
@@ -264,12 +267,25 @@ export const live = (options: {
           return { skills, root, error: null, source };
         });
         return yield* attempt.pipe(
-          Effect.orElseSucceed((error) => ({
-            skills: cache?.skills ?? [],
-            root,
-            error: pluginFailure(error),
-            source: "cache" as const,
-          })),
+          Effect.catch((error) =>
+            Effect.gen(function* () {
+              if (!cache && bundled) {
+                const skills = yield* scan(bundled).pipe(Effect.orElseSucceed(() => []));
+                return {
+                  skills,
+                  root: bundled,
+                  error: pluginFailure(error),
+                  source: "bundled" as const,
+                };
+              }
+              return {
+                skills: cache?.skills ?? [],
+                root,
+                error: pluginFailure(error),
+                source: "cache" as const,
+              };
+            }),
+          ),
         );
       });
       const ownedRoot = Effect.fn("StandaloneSkills.ownedRoot")(function* (
