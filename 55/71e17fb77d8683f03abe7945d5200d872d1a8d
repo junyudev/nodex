@@ -40,6 +40,7 @@ src/renderer/features/local-conversation/projection/thread-live-activity.ts
   s_84a787688eba85::t_7bc859bb21866f 1,8,36-43
 packages/agent-runtime/src/persistence/Migrations/079_ClaudeLoneThinkingThoughts.test.ts
   s_84a787688eba85::t_0a4899745958e2 1-47,49-51,53-126,128-184
+  s_84a787688eba85::t_d4854f632d3df6 48,52,127
 src/shared/thought-presentation.ts
   s_84a787688eba85::t_35c623817b4307 11
   s_84a787688eba85::t_7c6446a37fa77c 1-5,9-10,12-37
@@ -93,6 +94,8 @@ src/renderer/features/local-conversation/view/shared/thought-surface.tsx
   s_84a787688eba85::t_feca66d72cf882 55,59
   s_84a787688eba85::t_70a18754631fdd 126-128,150
   s_84a787688eba85::t_35c623817b4307 3-6
+packages/agent-runtime/src/persistence/Migrations.ts
+  s_84a787688eba85::t_d4854f632d3df6 95,188
 ---
 {
   "schema_version": "authorship/3.0.0",
