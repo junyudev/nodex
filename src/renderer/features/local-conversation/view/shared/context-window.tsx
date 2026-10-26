@@ -1,7 +1,7 @@
 import { NodexTooltip } from "@/components/ui/tooltip";
 import { cn } from "../../../../lib/utils";
 import type { CodexAccountSnapshot } from "@/lib/types";
-import type { ContextWindowIndicatorState } from "@/lib/codex-context-window";
+import type { ContextWindowIndicatorState } from "@/lib/context-window";
 
 const PROMPT_TEXTAREA_MAX_VIEWPORT_RATIO = 0.25;
 const FALLBACK_PROMPT_TEXTAREA_MAX_HEIGHT_PX = 220;
@@ -40,13 +40,17 @@ export function ContextWindowTooltipContent({
   state: ContextWindowIndicatorState;
   showAutoCompactionNote: boolean;
 }) {
-  if (state.status !== "ready" || state.usedTokens === null || state.windowTokens === null) {
+  if (state.status !== "ready") {
     return (
       <div className="flex flex-col gap-0.5">
         <span className="whitespace-pre-line text-token-input-placeholder-foreground">
           Context window:
         </span>
-        <span>0% used (100% left)</span>
+        <span>
+          {state.status === "usageOnly"
+            ? `${formatWholeTokenCount(state.usedTokens)} tokens used`
+            : "Usage unavailable"}
+        </span>
       </div>
     );
   }
@@ -76,7 +80,7 @@ export function ContextWindowTooltipContent({
 }
 
 function contextWindowAriaLabel(state: ContextWindowIndicatorState): string {
-  if (state.status === "ready" && state.usedTokens !== null && state.windowTokens !== null) {
+  if (state.status === "ready") {
     if (state.percentFull >= 50) {
       return `Context window ${state.percentFull}% full, ${formatWholeTokenCount(state.usedTokens)} of ${formatWholeTokenCount(state.windowTokens)} tokens used`;
     }
@@ -84,7 +88,9 @@ function contextWindowAriaLabel(state: ContextWindowIndicatorState): string {
     return `Context window ${state.percentFull}% used, ${Math.max(0, 100 - state.percentFull)}% left, ${formatWholeTokenCount(state.usedTokens)} of ${formatWholeTokenCount(state.windowTokens)} tokens used`;
   }
 
-  return "Context window 0% used, 100% left";
+  return state.status === "usageOnly"
+    ? `Context window ${formatWholeTokenCount(state.usedTokens)} tokens used, capacity unavailable`
+    : "Context window usage unavailable";
 }
 
 export function ContextWindowIndicator({
@@ -98,7 +104,7 @@ export function ContextWindowIndicator({
   className?: string;
   showFallbackLabel?: boolean;
 }) {
-  const dashOffset = Math.max(0, 100 - state.percentFull);
+  const dashOffset = state.status === "ready" ? Math.max(0, 100 - state.percentFull) : 100;
   const shouldShowFallbackLabel = showFallbackLabel && state.status !== "ready";
   const showAutoCompaction = shouldShowAutoCompactionNote(account);
   const ring = (
@@ -118,7 +124,7 @@ export function ContextWindowIndicator({
         r={CONTEXT_RING_RADIUS}
         stroke="currentColor"
         strokeWidth="2"
-        opacity={state.status === "unavailable" ? 0 : 1}
+        opacity={state.status === "ready" ? 1 : 0}
         strokeLinecap="round"
         fill="none"
         pathLength="100"
@@ -163,7 +169,7 @@ export function ContextWindowIndicator({
           {ring}
           {shouldShowFallbackLabel ? (
             <span className="composer-footer__label--sm select-none whitespace-nowrap text-sm text-token-input-placeholder-foreground opacity-60">
-              0%
+              {state.status === "usageOnly" ? formatRoundedTokenThousands(state.usedTokens) : "—"}
             </span>
           ) : null}
         </button>

@@ -21,7 +21,7 @@ import {
   type DragEvent,
   type ReactNode,
 } from "react";
-import { resolveContextWindowIndicatorState } from "@/lib/codex-context-window";
+import { resolveContextWindowIndicatorState } from "@/lib/context-window";
 import type {
   CodexComposerAppshotContext,
   CodexComposerAppshotTarget,
@@ -3797,7 +3797,7 @@ function HydratedThreadComposer({
     <>
       <ContextWindowIndicator
         state={contextWindowIndicatorState}
-        account={model.account}
+        account={!model.provider || model.provider.kind === "codex" ? model.account : null}
         showFallbackLabel={false}
       />
       <ModelSelectorDropdown model={model} controller={intelligenceController} />

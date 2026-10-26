@@ -190,6 +190,10 @@
     "./server/nativeInteraction": {
       "types": "./src/server/nativeInteraction.ts",
       "import": "./src/server/nativeInteraction.ts"
+    },
+    "./contextUsage": {
+      "types": "./src/contextUsage.ts",
+      "import": "./src/contextUsage.ts"
     }
   },
   "scripts": {

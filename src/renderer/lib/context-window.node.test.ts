@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vite-plus/test";
 import type { CodexConversationSnapshot } from "@/lib/types";
-import { resolveContextWindowIndicatorState } from "./codex-context-window";
+import { resolveContextWindowIndicatorState } from "./context-window";
 
 function makeConversation(): CodexConversationSnapshot {
   return {
@@ -134,4 +134,30 @@ describe("codex context window indicator", () => {
     expect(state.status).toBe("unavailable");
     expect(state.usedTokens).toBe(null);
   });
+});
+
+test("unknown measurements and missing capacity remain distinct from measured zero", () => {
+  const conversation = makeConversation();
+  expect(resolveContextWindowIndicatorState(conversation)).toEqual({
+    status: "unavailable",
+    percentFull: null,
+    usedTokens: null,
+    windowTokens: null,
+  });
+  conversation.contextUsage = { used: 42_000, size: 0 };
+  expect(resolveContextWindowIndicatorState(conversation)).toEqual({
+    status: "usageOnly",
+    percentFull: null,
+    usedTokens: 42_000,
+    windowTokens: null,
+  });
+  conversation.contextUsage = { used: 0, size: 200_000 };
+  expect(resolveContextWindowIndicatorState(conversation)).toEqual({
+    status: "ready",
+    percentFull: 0,
+    usedTokens: 0,
+    windowTokens: 200_000,
+  });
+  conversation.contextUsage = { used: NaN, size: 200_000 };
+  expect(resolveContextWindowIndicatorState(conversation).status).toBe("unavailable");
 });

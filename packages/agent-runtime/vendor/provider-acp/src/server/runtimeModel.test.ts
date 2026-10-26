@@ -1194,7 +1194,7 @@ describe("AcpRuntimeModel", () => {
     ).toMatchObject([{ _tag: "UnknownUpdate", updateType: "timeline_update" }]);
   });
 
-  it("projects ACP v2 compaction lifecycle and prompt usage", () => {
+  it("projects ACP v2 compaction without mistaking processed tokens for context occupancy", () => {
     const compacting = parseSessionUpdateEvent({
       sessionId: "session-1",
       update: {
@@ -1239,10 +1239,7 @@ describe("AcpRuntimeModel", () => {
         data: { rawOutput: "Retained the implementation decisions." },
       },
     });
-    expect(idle.events[0]).toMatchObject({
-      _tag: "UsageUpdated",
-      usage: { usedTokens: 420 },
-    });
+    expect(idle.events).toEqual([]);
   });
 
   it("applies ACP v2 agent-owned terminal snapshots and output chunks", () => {

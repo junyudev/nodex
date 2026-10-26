@@ -6,7 +6,10 @@ import type * as Compat from "effect-acp/compat";
 import * as Queue from "effect/Queue";
 import * as AcpClient from "effect-acp/client";
 import { makeInMemoryStdio } from "../../vendor/effect-acp/src/_internal/stdio.ts";
-import { findModelConfigOption } from "@t3tools/provider-acp/server/runtimeModel";
+import {
+  findModelConfigOption,
+  parseSessionUpdateEvent,
+} from "@t3tools/provider-acp/server/runtimeModel";
 import { acpProviderOptionDescriptors } from "@t3tools/provider-acp/server/sessionConfig";
 
 const peer = Effect.gen(function* () {
@@ -175,3 +178,24 @@ it.effect("preserves native idle failure details through the wire normalization 
     });
   }).pipe(Effect.scoped),
 );
+
+it("keeps ACP context occupancy separate from completion token accounting", () => {
+  const context = parseSessionUpdateEvent({
+    sessionId: "context-session",
+    update: { sessionUpdate: "usage_update", used: 42_000, size: 128_000 },
+  });
+  assert.deepInclude(context.events[0], {
+    _tag: "UsageUpdated",
+    usage: { usedTokens: 42_000, maxTokens: 128_000 },
+  });
+  const completion = parseSessionUpdateEvent({
+    sessionId: "context-session",
+    update: {
+      sessionUpdate: "state_update",
+      state: "idle",
+      stopReason: "end_turn",
+      usage: { totalTokens: 980_000, inputTokens: 900_000, outputTokens: 80_000 },
+    },
+  });
+  assert.deepEqual(completion.events, []);
+});

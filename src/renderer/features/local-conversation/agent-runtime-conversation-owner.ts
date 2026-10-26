@@ -1,3 +1,9 @@
+import { providerThreadActivatesThread } from "@nodex/agent-runtime/context-usage";
+import {
+  agentRuntimeContextReport,
+  projectAgentRuntimeContextUsage,
+  retainAgentRuntimeContextMetadata,
+} from "./agent-runtime-context-usage";
 import { readRuntimeThreadTextSelections } from "../../../shared/thread-text-selection";
 import { agentMessageDisplayText } from "../../../shared/agent-prompt";
 import type {
@@ -167,7 +173,7 @@ const recentMetadata = <T extends { readonly id: string; readonly updatedAt: str
 
 /** Releases body sidecars at the renderer boundary; only the keyed read owner retains transcript text. */
 function controlConversation(value: AgentRuntimeConversation): AgentRuntimeConversation {
-  const projection = value.snapshot.projection;
+  const projection = retainAgentRuntimeContextMetadata(value.snapshot.projection);
   return {
     ...value,
     snapshot: {
@@ -178,7 +184,6 @@ function controlConversation(value: AgentRuntimeConversation): AgentRuntimeConve
         visibleTurnItems: [],
         messages: [],
         nodes: [],
-        attempts: [],
         plans: [],
         checkpoints: [],
         checkpointScopes: [],
@@ -1483,6 +1488,8 @@ export class AgentRuntimeConversationOwner {
       incomingRuns.push(run);
       const recent = [...incomingRuns].sort((a, b) => b.ordinal - a.ordinal);
       const retained = new Set(recent.slice(0, 5).map((value) => value.id));
+      const contextReport = agentRuntimeContextReport(conversation.snapshot.projection);
+      if (contextReport) retained.add(contextReport.runId);
       const foreground = recent.find(
         (value) => value.status !== "queued" && controlStatusIsLive(value.status),
       );
@@ -1548,6 +1555,44 @@ export class AgentRuntimeConversationOwner {
           ],
         });
       }
+      this.#publishView();
+      return;
+    }
+    if (event.type === "run-attempt.created" || event.type === "run-attempt.updated") {
+      const projection = conversation.snapshot.projection;
+      if (!projection.runs.some((run) => run.id === event.payload.runId)) return;
+      const attempts = [
+        ...projection.attempts.filter((attempt) => attempt.id !== event.payload.id),
+        event.payload,
+      ];
+      this.#state = {
+        ...this.#state,
+        conversation: {
+          ...conversation,
+          snapshot: { ...conversation.snapshot, projection: { ...projection, attempts } },
+        },
+      };
+      this.#publishView();
+      return;
+    }
+    if (event.type === "provider-turn.updated") {
+      const projection = conversation.snapshot.projection;
+      const previous = projection.providerTurns.find((turn) => turn.id === event.payload.id);
+      const turn = {
+        ...event.payload,
+        tokenUsage: event.payload.tokenUsage ?? previous?.tokenUsage,
+      };
+      const providerTurns = [
+        ...projection.providerTurns.filter((value) => value.id !== turn.id),
+        turn,
+      ];
+      this.#state = {
+        ...this.#state,
+        conversation: {
+          ...conversation,
+          snapshot: { ...conversation.snapshot, projection: { ...projection, providerTurns } },
+        },
+      };
       this.#publishView();
       return;
     }
@@ -1621,7 +1666,15 @@ export class AgentRuntimeConversationOwner {
     }
     if (event.type === "provider-thread.updated") {
       const projection = conversation.snapshot.projection;
+      if (
+        projection.providerThreads.some(
+          (provider) => provider.id === event.payload.id && provider.status === "closed",
+        )
+      )
+        return;
+      const activates = providerThreadActivatesThread(event.payload, projection.thread.id);
       const referenced =
+        activates ||
         event.payload.id === projection.thread.activeProviderThreadId ||
         projection.runs.some((run) => run.providerThreadId === event.payload.id);
       if (!referenced) return;
@@ -1633,7 +1686,16 @@ export class AgentRuntimeConversationOwner {
         ...this.#state,
         conversation: {
           ...conversation,
-          snapshot: { ...conversation.snapshot, projection: { ...projection, providerThreads } },
+          snapshot: {
+            ...conversation.snapshot,
+            projection: {
+              ...projection,
+              providerThreads,
+              thread: activates
+                ? { ...projection.thread, activeProviderThreadId: event.payload.id }
+                : projection.thread,
+            },
+          },
         },
       };
       this.#publishView();
@@ -1795,7 +1857,12 @@ export class AgentRuntimeConversationOwner {
   #publishView(): void {
     const conversation = this.#state.conversation;
     if (!conversation) return;
-    const thread = conversation.snapshot.projection.thread;
+    const projection = retainAgentRuntimeContextMetadata(conversation.snapshot.projection);
+    this.#state = {
+      ...this.#state,
+      conversation: { ...conversation, snapshot: { ...conversation.snapshot, projection } },
+    };
+    const thread = projection.thread;
     const latestRun = conversation.snapshot.projection.runs.reduce<AgentRuntimeRun | undefined>(
       (latest, run) =>
         run.status !== "queued" && (!latest || latest.ordinal < run.ordinal) ? run : latest,
@@ -1827,6 +1894,7 @@ export class AgentRuntimeConversationOwner {
       updatedAt: agentRuntimeTime(thread.updatedAt) ?? 0,
       linkedAt: thread.createdAt,
       resumeState: "resumed",
+      contextUsage: projectAgentRuntimeContextUsage(projection),
       turns: [],
       canonicalRequests: [],
       requests,

@@ -2315,3 +2315,401 @@ describe("Agent Runtime prompt navigation", () => {
     release();
   });
 });
+
+function contextConversation(driver = "claudeAgent"): AgentRuntimeConversation {
+  const initial = conversation([]);
+  const projection = initial.snapshot.projection;
+  return {
+    ...initial,
+    snapshot: {
+      ...initial.snapshot,
+      projection: {
+        ...projection,
+        thread: { ...projection.thread, activeProviderThreadId: "context-provider" },
+        runs: projection.runs.map((run) => ({
+          ...run,
+          providerThreadId: "context-provider",
+          rootNodeId: "context-root",
+          activeAttemptId: "context-attempt",
+        })),
+        attempts: [
+          {
+            id: "context-attempt",
+            runId: "run",
+            attemptOrdinal: 1,
+            rootNodeId: "context-root",
+            providerInstanceId: "claude",
+            providerThreadId: "context-provider",
+            providerTurnId: "context-turn",
+            nativeThreadId: "native-context",
+            reason: "initial",
+            status: "running",
+            startedAt: at,
+            completedAt: null,
+          },
+        ],
+        providerThreads: [
+          {
+            id: "context-provider",
+            driver,
+            providerInstanceId: "claude",
+            providerSessionId: "physical",
+            appThreadId: target.threadId,
+            ownerNodeId: null,
+            nativeThreadRef: { driver, nativeId: "native-context", strength: "strong" },
+            nativeConversationHeadRef: null,
+            status: "active",
+            firstRunOrdinal: 1,
+            lastRunOrdinal: 1,
+            handoffIds: [],
+            forkedFrom: null,
+            contextUsage: null,
+            createdAt: at,
+            updatedAt: at,
+          },
+        ],
+        providerTurns: [
+          {
+            id: "context-turn",
+            providerThreadId: "context-provider",
+            nodeId: "context-root",
+            runAttemptId: "context-attempt",
+            nativeTurnRef: null,
+            ordinal: 1,
+            status: "running",
+            startedAt: at,
+            completedAt: null,
+            tokenUsage: { usedTokens: 50_000, maxTokens: 200_000, updatedAt: at },
+          },
+        ],
+      },
+    },
+  };
+}
+
+function sendContextEvent(
+  wire: ReturnType<typeof transport>,
+  payload: AgentEvent["event"],
+  sequence: number,
+) {
+  wire.emit({ sequence, commandId: null, event: payload });
+}
+
+describe("Runtime Composer context usage", () => {
+  test("a newly attached native conversation starts reporting without reopening the chat", async () => {
+    const fixture = contextConversation();
+    const initial = {
+      ...fixture,
+      snapshot: {
+        ...fixture.snapshot,
+        projection: {
+          ...fixture.snapshot.projection,
+          thread: { ...fixture.snapshot.projection.thread, activeProviderThreadId: null },
+          attempts: [],
+          providerThreads: [],
+          providerTurns: [],
+        },
+      },
+    };
+    const { owner, wire, release } = await open(initial);
+    try {
+      expect(owner.getSnapshot().view?.contextUsage).toBeNull();
+      const common = { threadId: target.threadId, occurredAt: at };
+      sendContextEvent(
+        wire,
+        {
+          ...common,
+          id: "attach-context",
+          type: "provider-thread.updated",
+          payload: fixture.snapshot.projection.providerThreads[0]!,
+        },
+        2,
+      );
+      sendContextEvent(
+        wire,
+        {
+          ...common,
+          id: "context-attempt",
+          type: "run-attempt.created",
+          payload: fixture.snapshot.projection.attempts[0]!,
+        },
+        3,
+      );
+      sendContextEvent(
+        wire,
+        {
+          ...common,
+          id: "first-context",
+          type: "provider-turn.updated",
+          payload: fixture.snapshot.projection.providerTurns[0]!,
+        },
+        4,
+      );
+      expect(owner.getSnapshot().view?.contextUsage).toMatchObject({ used: 50_000, size: 200_000 });
+      expect(wire.port.read).toHaveBeenCalledOnce();
+    } finally {
+      release();
+    }
+  });
+
+  test("a new execution uses its adapted window until it reports another measurement", async () => {
+    const initial = contextConversation();
+    const { owner, wire, release } = await open(initial);
+    try {
+      const common = { threadId: target.threadId, occurredAt: at };
+      sendContextEvent(
+        wire,
+        {
+          ...common,
+          id: "larger-window",
+          type: "provider-thread.updated",
+          payload: {
+            ...initial.snapshot.projection.providerThreads[0]!,
+            contextUsage: { usedTokens: 50_000, maxTokens: 1_000_000 },
+          },
+        },
+        2,
+      );
+      sendContextEvent(
+        wire,
+        {
+          ...common,
+          id: "larger-model-run",
+          type: "run.created",
+          payload: {
+            ...initial.snapshot.projection.runs[0]!,
+            id: "next-run",
+            ordinal: 2,
+            modelSelection: { instanceId: "claude", model: "larger-model" },
+            rootNodeId: "next-root",
+            activeAttemptId: "next-attempt",
+          },
+        },
+        3,
+      );
+      expect(owner.getSnapshot().view?.contextUsage).toMatchObject({
+        used: 50_000,
+        size: 1_000_000,
+      });
+    } finally {
+      release();
+    }
+  });
+
+  test.each(["claudeAgent", "codex", "opencode2"])(
+    "%s restores usage and updates the Composer without reading transcript bodies",
+    async (driver) => {
+      const initial = contextConversation(driver);
+      const wire = transport(initial);
+      vi.mocked(wire.port.control).mockResolvedValue(initial);
+      const owner = new AgentRuntimeConversationOwner(target, wire.port);
+      const release = owner.retain();
+      try {
+        await owner.resume();
+        expect(owner.getSnapshot().view?.contextUsage).toMatchObject({
+          used: 50_000,
+          size: 200_000,
+        });
+        const providerTurn = initial.snapshot.projection.providerTurns[0]!;
+        const common = { threadId: target.threadId, occurredAt: at };
+        sendContextEvent(
+          wire,
+          {
+            ...common,
+            id: "context-live",
+            type: "provider-turn.updated",
+            payload: {
+              ...providerTurn,
+              tokenUsage: {
+                usedTokens: 80_000,
+                maxTokens: 200_000,
+                updatedAt: "2026-10-14T00:00:01.000Z",
+              },
+            },
+          },
+          2,
+        );
+        expect(owner.getSnapshot().view?.contextUsage).toMatchObject({
+          used: 80_000,
+          size: 200_000,
+        });
+        sendContextEvent(
+          wire,
+          {
+            ...common,
+            id: "context-child",
+            type: "provider-turn.updated",
+            payload: {
+              ...providerTurn,
+              id: "child-turn",
+              nodeId: "child-node",
+              ordinal: 2,
+              tokenUsage: {
+                usedTokens: 190_000,
+                maxTokens: 200_000,
+                updatedAt: "2026-10-14T00:00:02.000Z",
+              },
+            },
+          },
+          3,
+        );
+        expect(owner.getSnapshot().view?.contextUsage?.used).toBe(80_000);
+        sendContextEvent(
+          wire,
+          {
+            ...common,
+            id: "context-compacted",
+            type: "provider-turn.updated",
+            payload: {
+              ...providerTurn,
+              tokenUsage: {
+                usedTokens: 12_000,
+                maxTokens: 200_000,
+                updatedAt: "2026-10-14T00:00:03.000Z",
+              },
+            },
+          },
+          4,
+        );
+        sendContextEvent(
+          wire,
+          {
+            ...common,
+            id: "context-done",
+            type: "provider-turn.updated",
+            payload: {
+              ...providerTurn,
+              status: "completed",
+              completedAt: at,
+              tokenUsage: undefined,
+            },
+          },
+          5,
+        );
+        expect(owner.getSnapshot().view?.contextUsage).toMatchObject({
+          used: 12_000,
+          size: 200_000,
+        });
+        expect(wire.port.subscribe).toHaveBeenCalledWith(
+          expect.objectContaining({
+            eventTypes: expect.arrayContaining(["provider-turn.updated", "run-attempt.updated"]),
+          }),
+          expect.any(Function),
+        );
+        expect(wire.port.read).not.toHaveBeenCalled();
+        expect(wire.port.history).not.toHaveBeenCalled();
+      } finally {
+        release();
+      }
+    },
+  );
+
+  test("native replacement and clear drop old measurements; ACP thread observations share the same presentation", async () => {
+    const initial = contextConversation();
+    const { owner, wire, release } = await open(initial);
+    try {
+      const common = { threadId: target.threadId, occurredAt: at };
+      const provider = initial.snapshot.projection.providerThreads[0]!;
+      sendContextEvent(
+        wire,
+        {
+          ...common,
+          id: "replacement",
+          type: "provider-thread.updated",
+          payload: {
+            ...provider,
+            nativeThreadRef: {
+              driver: provider.driver,
+              nativeId: "replacement",
+              strength: "strong",
+            },
+            contextUsage: null,
+          },
+        },
+        2,
+      );
+      expect(owner.getSnapshot().view?.contextUsage).toBeNull();
+      sendContextEvent(
+        wire,
+        {
+          ...common,
+          id: "clear",
+          type: "thread.metadata-updated",
+          payload: {
+            ...initial.snapshot.projection.thread,
+            activeProviderThreadId: null,
+          },
+        },
+        3,
+      );
+      expect(owner.getSnapshot().view?.contextUsage).toBeNull();
+      sendContextEvent(
+        wire,
+        {
+          ...common,
+          id: "acp-usage",
+          type: "provider-thread.updated",
+          payload: {
+            ...provider,
+            id: "acp-provider",
+            driver: "acp",
+            providerInstanceId: "acp",
+            contextUsage: { usedTokens: 42_000 },
+          },
+        },
+        4,
+      );
+      expect(owner.getSnapshot().view?.contextUsage).toMatchObject({ used: 42_000, size: 0 });
+      sendContextEvent(
+        wire,
+        {
+          ...common,
+          id: "acp-window",
+          type: "provider-thread.updated",
+          payload: {
+            ...provider,
+            id: "acp-provider",
+            driver: "acp",
+            providerInstanceId: "acp",
+            contextUsage: { usedTokens: 42_000, maxTokens: 128_000 },
+          },
+        },
+        5,
+      );
+      expect(owner.getSnapshot().view?.contextUsage).toMatchObject({ used: 42_000, size: 128_000 });
+    } finally {
+      release();
+    }
+  });
+
+  test("a new root attempt establishes its own native identity before usage is shown", async () => {
+    const initial = contextConversation();
+    const { owner, wire, release } = await open(initial);
+    try {
+      const common = { threadId: target.threadId, occurredAt: at };
+      const attempt = initial.snapshot.projection.attempts[0]!;
+      sendContextEvent(
+        wire,
+        {
+          ...common,
+          id: "root-without-native",
+          type: "run-attempt.updated",
+          payload: {
+            ...attempt,
+            nativeThreadId: undefined,
+          },
+        },
+        2,
+      );
+      expect(owner.getSnapshot().view?.contextUsage).toBeNull();
+      sendContextEvent(
+        wire,
+        { ...common, id: "root-with-native", type: "run-attempt.updated", payload: attempt },
+        3,
+      );
+      expect(owner.getSnapshot().view?.contextUsage?.used).toBe(50_000);
+    } finally {
+      release();
+    }
+  });
+});

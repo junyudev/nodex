@@ -363,6 +363,26 @@ persist the same way until it starts. Choosing another Agent's model starts from
 options last chosen for that model, so a round trip between Agents keeps each model's
 effort and speed.
 
+### Context window
+
+The Composer ring shows the active Agent's current native conversation occupancy,
+separate from billed tokens accumulated across requests or subagents. Codex, Claude
+Code and OpenCode report the latest root execution measurement; ACP Agents can report
+conversation usage directly through `usage_update`; completion token totals do not
+replace that reading. Cached input counts toward occupancy. Compaction can
+lower the reading, and finishing a Turn preserves its last measurement.
+
+Only a measurement tied to that native conversation and its root execution can supply
+the ring. Switching Agents selects the other conversation's reading; clearing context
+or replacing a native conversation cannot revive the old reading. A model change uses
+the window established for the new execution, not the previous model's capacity.
+Usage restores on reopening even when its Turn is outside the loaded transcript window.
+
+A known count without a reported capacity shows tokens without a percentage. Missing
+usage is shown as unavailable, never as zero or 100% remaining. A measured zero remains
+valid. Context observations travel with bounded control metadata and live events;
+reading or updating the ring does not hydrate transcript bodies.
+
 ### Changing Agent in a chat
 
 The model menu of a started chat lists every configured Agent. Choosing another Agent's

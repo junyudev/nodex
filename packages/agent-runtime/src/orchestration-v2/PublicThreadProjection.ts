@@ -1,3 +1,4 @@
+import { latestNativeContextUsage } from "@t3tools/provider-core/contextUsage";
 import type { OrchestrationV2ThreadProjection } from "@t3tools/contracts";
 
 /** A transcript window is not an index of every entity ever owned by its Runs. */
@@ -5,8 +6,16 @@ export function retainPublicThreadControlClosure(
   projection: OrchestrationV2ThreadProjection,
   requiredRunId?: string,
 ): OrchestrationV2ThreadProjection {
+  const activeProvider = projection.providerThreads.find(
+    (provider) =>
+      provider.id === projection.thread.activeProviderThreadId && provider.status !== "closed",
+  );
+  const context = activeProvider ? latestNativeContextUsage(projection, activeProvider) : undefined;
   const items = projection.visibleTurnItems.map((row) => row.item);
-  const runIds = new Set(items.flatMap((item) => (item.runId === null ? [] : [item.runId])));
+  const runIds = new Set<string>(
+    items.flatMap((item) => (item.runId === null ? [] : [item.runId])),
+  );
+  if (context) runIds.add(context.runId);
   const requiredRun = projection.runs.find((run) => run.id === requiredRunId);
   if (requiredRun) runIds.add(requiredRun.id);
   const foreground =
@@ -57,7 +66,10 @@ export function retainPublicThreadControlClosure(
   );
   const itemNodeIds = new Set(items.flatMap((item) => (item.nodeId === null ? [] : [item.nodeId])));
   const attempts = projection.attempts.filter(
-    (attempt) => attemptIds.has(attempt.id) || itemNodeIds.has(attempt.rootNodeId),
+    (attempt) =>
+      attempt.id === context?.attemptId ||
+      attemptIds.has(attempt.id) ||
+      itemNodeIds.has(attempt.rootNodeId),
   );
   const providerThreadIds = new Set(
     items.flatMap((item) =>
@@ -90,6 +102,7 @@ export function retainPublicThreadControlClosure(
     if (request.providerTurnId) turnIds.add(request.providerTurnId);
   const providerTurns = projection.providerTurns.filter(
     (turn) =>
+      turn.id === context?.providerTurnId ||
       turnIds.has(turn.id) ||
       (turn.nodeId === foreground?.rootNodeId && ["running", "waiting"].includes(turn.status)),
   );

@@ -30,6 +30,8 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 
+- The Composer context ring reports Claude Code, OpenCode and other Agents’ current usage, restores it when reopening a chat, and distinguishes unavailable readings from an empty context.
+
 - Space Content keeps its order when you open a Page, Database or Canvas, and every sidebar list remembers how far you expanded it with Show more after switching between Home and Space, reopening the window or relaunching.
 - Claude's thinking no longer turns into replies the moment a tool call starts, and long thinking no longer stretches past the edge of the chat.
 - Unread dots clear when you view a chat or its reply finishes in the foreground, without switching away and back. Manually marked unread chats stay unread until new activity or interaction.

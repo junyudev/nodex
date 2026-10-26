@@ -1,3 +1,4 @@
+import { latestNativeContextUsage } from "@t3tools/provider-core/contextUsage";
 import { assert, it } from "@effect/vitest";
 import {
   EventId,
@@ -843,4 +844,96 @@ it.effect(
     }).pipe(
       Effect.provide(ProjectionStore.layer.pipe(Layer.provideMerge(SqlitePersistence.layerMemory))),
     ),
+);
+
+it.effect.each(storageCases)(
+  "$storage: context telemetry survives an empty transcript window and newer unmeasured Runs",
+  ({ storeLayer }) =>
+    Effect.gen(function* () {
+      const store = yield* ProjectionStore.ProjectionStoreV2;
+      const now = yield* DateTime.now;
+      const events = fixtureEvents(now);
+      const run = events.find((event) => event.type === "run.created")!;
+      const attempt = events.find((event) => event.type === "run-attempt.created")!;
+      const turn = events.find((event) => event.type === "provider-turn.updated")!;
+      const provider = events.find((event) => event.type === "provider-thread.updated")!;
+      yield* Effect.forEach(events, (event) => store.apply(event), { discard: true });
+      yield* store.apply({
+        ...attempt,
+        id: EventId.make("measured-attempt"),
+        type: "run-attempt.updated",
+        payload: {
+          ...attempt.payload,
+          nativeThreadId: "native-control-thread",
+          status: "completed",
+          completedAt: now,
+        },
+      });
+      yield* store.apply({
+        ...turn,
+        id: EventId.make("measured-turn"),
+        payload: {
+          ...turn.payload,
+          status: "completed",
+          completedAt: now,
+          tokenUsage: {
+            usedTokens: 50_000,
+            maxTokens: 200_000,
+            updatedAt: DateTime.formatIso(now),
+          },
+        },
+      });
+      yield* store.apply({
+        ...run,
+        id: EventId.make("completed-run"),
+        type: "run.updated",
+        payload: { ...run.payload, status: "completed", completedAt: now },
+      });
+      yield* store.apply({
+        ...run,
+        id: EventId.make("newer-unmeasured-run"),
+        payload: {
+          ...run.payload,
+          id: RunId.make("newer-unmeasured-run"),
+          ordinal: 2,
+          status: "queued",
+          rootNodeId: null,
+          activeAttemptId: null,
+          startedAt: null,
+        },
+      });
+      const read = yield* store.getThreadSnapshotWindow(threadId, {
+        rowLimit: 0,
+        controlOnly: true,
+      });
+      const snapshot = buildBoundedThreadStreamSnapshot({ ...read, compactTurnItems: true });
+      const restored = latestNativeContextUsage(
+        snapshot.projection,
+        snapshot.projection.providerThreads[0]!,
+      );
+      assert.deepEqual(restored?.usage, { usedTokens: 50_000, maxTokens: 200_000 });
+      assert.equal(restored?.providerTurnId, providerTurnId);
+      assert.lengthOf(snapshot.projection.visibleTurnItems, 0);
+      assert.lengthOf(snapshot.projection.messages, 0);
+      assert.lengthOf(snapshot.projection.providerTurns, 1);
+      // Reusing a provider row after /clear or native replacement cannot revive the old report.
+      yield* store.apply({
+        ...provider,
+        id: EventId.make("replaced-native"),
+        payload: {
+          ...provider.payload,
+          nativeThreadRef: { driver, nativeId: "replacement", strength: "strong" },
+        },
+      });
+      const replacement = yield* store.getThreadSnapshotWindow(threadId, {
+        rowLimit: 0,
+        controlOnly: true,
+      });
+      assert.isUndefined(
+        latestNativeContextUsage(
+          replacement.projection,
+          replacement.projection.providerThreads[0]!,
+        ),
+      );
+    }).pipe(Effect.provide(storeLayer)),
 );

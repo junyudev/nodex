@@ -12,7 +12,8 @@
     "./contracts": "./src/nodex/contracts.ts",
     "./codex-conventions": "./src/nodex/CodexConventions.ts",
     "./opencode-catalog": "./src/nodex/OpenCodeCatalog.ts",
-    "./orchestration/*": "./src/orchestration-v2/*.ts"
+    "./orchestration/*": "./src/orchestration-v2/*.ts",
+    "./context-usage": "./vendor/provider-core/src/contextUsage.ts"
   },
   "scripts": {
     "typecheck": "tsc-rs --noEmit",

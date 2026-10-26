@@ -1,3 +1,4 @@
+import { providerThreadActivatesThread } from "@t3tools/provider-core/contextUsage";
 import { projectTurnItemForWire, projectThreadProjectionForWire } from "./WireProjection.ts";
 import {
   isRestartNoteContinuation,
@@ -1386,16 +1387,6 @@ export function emptyProjection(
   };
 }
 
-// A future queued provider has a reserved thread record but is not active until delivery.
-function isQueuedProviderThreadPlaceholder(providerThread: OrchestrationV2ProviderThread): boolean {
-  return (
-    providerThread.status === "not_loaded" &&
-    providerThread.firstRunOrdinal === null &&
-    providerThread.nativeThreadRef === null &&
-    providerThread.providerSessionId === null
-  );
-}
-
 /** Mirror the SQL field patches without replacing any conversation or tool bodies. */
 function applyExecutionRetired(
   projection: OrchestrationV2ThreadProjection,
@@ -1644,15 +1635,12 @@ export function applyToProjection(
         return base;
       return {
         ...base,
-        thread:
-          event.payload.appThreadId === base.thread.id &&
-          event.payload.status !== "closed" &&
-          !isQueuedProviderThreadPlaceholder(event.payload)
-            ? {
-                ...base.thread,
-                activeProviderThreadId: event.payload.id,
-              }
-            : base.thread,
+        thread: providerThreadActivatesThread(event.payload, base.thread.id)
+          ? {
+              ...base.thread,
+              activeProviderThreadId: event.payload.id,
+            }
+          : base.thread,
         providerThreads: upsertById(base.providerThreads, event.payload),
       };
     case "provider-turn.updated":
@@ -3479,8 +3467,7 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
             `;
             if (
               event.payload.appThreadId !== null &&
-              event.payload.status !== "closed" &&
-              !isQueuedProviderThreadPlaceholder(event.payload)
+              providerThreadActivatesThread(event.payload, event.payload.appThreadId)
             ) {
               const threadRows = yield* sql<PayloadRow>`
                 SELECT payload_json
@@ -4196,11 +4183,32 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
         const cohortRunIds = cohortJson("runId");
         // Public windows retain one foreground Run and only visible task/request
         // identities. A Run is not a task-page selector: it can own 10k tasks.
+        // Context occupancy is a control head, independent of which transcript rows
+        // are visible. Select one accepted root report for the current native identity.
+        const usageHeads =
+          window === undefined || window.historyOnly === true
+            ? []
+            : yield* sql<{ provider_turn_id: string; attempt_id: string; run_id: string }>`
+            SELECT t.provider_turn_id, a.attempt_id, a.run_id
+            FROM orchestration_v2_projection_provider_turns t
+            JOIN orchestration_v2_projection_provider_threads p ON p.provider_thread_id = t.provider_thread_id
+            JOIN orchestration_v2_projection_run_attempts a ON a.attempt_id = t.run_attempt_id
+            JOIN orchestration_v2_projection_runs r ON r.run_id = a.run_id
+            WHERE t.thread_id = ${threadId}
+              AND p.provider_thread_id = (SELECT active_provider_thread_id FROM orchestration_v2_projection_threads WHERE thread_id = ${threadId})
+              AND p.status <> 'closed' AND r.status <> 'rolled_back'
+              AND a.provider_thread_id = t.provider_thread_id AND a.root_node_id = t.node_id
+              AND json_extract(a.payload_json, '$.nativeThreadId') = json_extract(p.payload_json, '$.nativeThreadRef.nativeId')
+              AND json_extract(t.payload_json, '$.tokenUsage') IS NOT NULL
+            ORDER BY json_extract(t.payload_json, '$.tokenUsage.updatedAt') DESC, t.ordinal DESC LIMIT 1
+          `;
+        const usageHead = usageHeads[0];
         const publicRunIds =
           window === undefined
             ? cohortRunIds
             : encodeIdList([
                 ...turnItems.flatMap((item) => (item.runId === null ? [] : [item.runId])),
+                ...usageHeads.map((head) => head.run_id),
                 ...(window.historyOnly === true
                   ? []
                   : (yield* sql<{ run_id: string }>`
@@ -4371,13 +4379,16 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
           `
               : sql<PayloadRow>`
             SELECT payload_json FROM orchestration_v2_projection_run_attempts
-            WHERE thread_id = ${threadId}
-              AND (root_node_id IN (SELECT value FROM json_each(${cohortJson("nodeId")}))
-                OR attempt_id IN (SELECT json_extract(payload_json, '$.activeAttemptId')
-                  FROM orchestration_v2_projection_runs WHERE thread_id = ${threadId}
-                    AND run_id IN (SELECT value FROM json_each(${publicRunIds}))))
+            WHERE thread_id = ${threadId} AND attempt_id IN (
+              SELECT attempt_id FROM (SELECT attempt_id FROM orchestration_v2_projection_run_attempts
+                WHERE thread_id = ${threadId}
+                  AND (root_node_id IN (SELECT value FROM json_each(${cohortJson("nodeId")}))
+                    OR attempt_id IN (SELECT json_extract(payload_json, '$.activeAttemptId')
+                      FROM orchestration_v2_projection_runs WHERE thread_id = ${threadId}
+                        AND run_id IN (SELECT value FROM json_each(${publicRunIds}))))
+                ORDER BY run_id ASC, attempt_ordinal ASC LIMIT 512)
+              UNION SELECT ${usageHead?.attempt_id ?? null})
             ORDER BY run_id ASC, attempt_ordinal ASC
-            LIMIT 512
           `,
           fields !== undefined && !fields.includes("nodes")
             ? Effect.succeed([])
@@ -4496,10 +4507,14 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
           `
               : sql<PayloadRow>`
             SELECT payload_json FROM orchestration_v2_projection_provider_turns
-            WHERE thread_id = ${threadId}
-              AND (provider_turn_id IN (SELECT value FROM json_each(${cohortProviderTurnIds}))
-                OR node_id IN (SELECT value FROM json_each(${cohortNodeIds})))
-            ORDER BY ordinal DESC, provider_turn_id DESC LIMIT 512
+            WHERE thread_id = ${threadId} AND provider_turn_id IN (
+              SELECT provider_turn_id FROM (SELECT provider_turn_id FROM orchestration_v2_projection_provider_turns
+                WHERE thread_id = ${threadId}
+                  AND (provider_turn_id IN (SELECT value FROM json_each(${cohortProviderTurnIds}))
+                    OR node_id IN (SELECT value FROM json_each(${cohortNodeIds})))
+                ORDER BY ordinal DESC, provider_turn_id DESC LIMIT 512)
+              UNION SELECT ${usageHead?.provider_turn_id ?? null})
+            ORDER BY ordinal DESC, provider_turn_id DESC
           `,
           fields !== undefined && !fields.includes("runtimeRequests")
             ? Effect.succeed([])
@@ -5344,7 +5359,7 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
             AND a.provider_thread_id = t.provider_thread_id AND a.root_node_id = t.node_id
             AND json_extract(a.payload_json, '$.nativeThreadId') = json_extract(p.payload_json, '$.nativeThreadRef.nativeId')
             AND json_extract(t.payload_json, '$.tokenUsage') IS NOT NULL
-          ORDER BY json_extract(t.payload_json, '$.tokenUsage.updatedAt') DESC, t.ordinal ASC LIMIT 1`.pipe(
+          ORDER BY json_extract(t.payload_json, '$.tokenUsage.updatedAt') DESC, t.ordinal DESC LIMIT 1`.pipe(
                 Effect.flatMap(decodeRows(decodeProviderTurnPayload, threadId)),
               );
             const attempts =

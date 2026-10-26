@@ -42,12 +42,12 @@ describe("ContextWindowTooltipContent", () => {
     expect(view.queryByText("Nodex automatically compacts its context") === null).toBe(true);
   });
 
-  test("falls back to the Codex 0% tooltip when usage data is unavailable", () => {
+  test("shows unavailable usage without claiming an empty context", () => {
     const view = render(
       <ContextWindowTooltipContent
         state={{
           status: "unavailable",
-          percentFull: 0,
+          percentFull: null,
           usedTokens: null,
           windowTokens: null,
         }}
@@ -55,7 +55,19 @@ describe("ContextWindowTooltipContent", () => {
       />,
     );
 
-    expect(view.getByText("0% used (100% left)").textContent).toBe("0% used (100% left)");
+    expect(view.getByText("Usage unavailable")).toBeTruthy();
+    expect(view.queryByText(/0%/)).toBeNull();
     expect(view.queryByText(/tokens used/) === null).toBe(true);
   });
+});
+
+test("usage without capacity shows the token count rather than a percentage", () => {
+  const view = render(
+    <ContextWindowTooltipContent
+      state={{ status: "usageOnly", usedTokens: 42_123, windowTokens: null, percentFull: null }}
+      showAutoCompactionNote={false}
+    />,
+  );
+  expect(view.getByText("42,123 tokens used")).toBeTruthy();
+  expect(view.queryByText(/%/)).toBeNull();
 });
