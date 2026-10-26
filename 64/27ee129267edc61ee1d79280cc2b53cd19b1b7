@@ -1,0 +1,52 @@
+src/renderer/features/plugins/view/plugin-settings-page.tsx
+  s_1f621c9737ee85::t_5a7e2b9e08a2b7 1-20,22-235,237-327,332-348,352-358
+  s_1f621c9737ee85::t_c07f4ae888b6e0 21,236
+  s_1f621c9737ee85::t_74eaec9720c3bf 328-331,349-351
+src/renderer/components/workbench/workbench-runtime.tsx
+  s_1f621c9737ee85::t_13b2678a3938bd 1762-1763,1769,1774-1781,2554-2557
+  s_1f621c9737ee85::t_74eaec9720c3bf 121-124
+src/renderer/features/plugins/view/customize-header-actions.tsx
+  s_1f621c9737ee85::t_fd9d2c3886d646 103
+src/renderer/features/plugins/view/plugins-settings-page.tsx
+  s_1f621c9737ee85::t_c07f4ae888b6e0 42,53,67-68,273,650-653,656-657,661-680
+  s_1f621c9737ee85::t_4b6c61aaf41bf9 47,49-50
+src/renderer/features/plugins/view/plugin-detail-actions.tsx
+  s_1f621c9737ee85::t_deb7dbfc24afb8 4,9,206
+src/renderer/components/shared/icons/plugin-detail-icons.tsx
+  s_1f621c9737ee85::t_deb7dbfc24afb8 326-346
+src/renderer/features/plugins/view/installed-plugin-actions-menu.tsx
+  s_1f621c9737ee85::t_7126245922cd4b 9,27-28,76-79
+src/renderer/features/plugins/view/plugins-settings-page.test.tsx
+  s_1f621c9737ee85::t_c07f4ae888b6e0 35,91,96-100
+src/renderer/features/plugins/view/plugin-detail-page.tsx
+  s_1f621c9737ee85::t_fd9d2c3886d646 32,270
+docs/product-specs/plugins-behavior.md
+  s_1f621c9737ee85::t_74eaec9720c3bf 36-41
+src/renderer/features/plugins/customize-navigation.ts
+  s_1f621c9737ee85::t_13b2678a3938bd 1-2,12-13
+src/renderer/features/plugins/plugins-routes.node.test.ts
+  s_1f621c9737ee85::t_4973ee4f595e5c 4-5,100-108
+  s_1f621c9737ee85::t_eeeefd6d0012ee 109
+src/renderer/features/plugins/plugins-routes.ts
+  s_1f621c9737ee85::t_4973ee4f595e5c 77-106,113-128,137,141-143
+src/renderer/components/workbench/workbench-settings-routes.ts
+  s_1f621c9737ee85::t_02660f50fb72de 155-157
+src/renderer/components/workbench/workbench-settings-routes.test.ts
+  s_1f621c9737ee85::t_ccf18a7d80e51d 75-83
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "6427ee129267edc61ee1d79280cc2b53cd19b1b7",
+  "prompts": {},
+  "sessions": {
+    "s_1f621c9737ee85": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "dec682ee-8dcb-4974-b7cd-a9bfde733cc3",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
