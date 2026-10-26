@@ -1,0 +1,53 @@
+src/renderer/lib/syntax-highlighting.ts
+  s_1292af2a37ec10::t_d10cd97dac87ac 4,6-7,27,42-43
+src/renderer/components/shared/readonly-code-block.browser.test.tsx
+  s_1292af2a37ec10::t_3c4861f244b5f5 60-89
+  s_1292af2a37ec10::t_9ca09433f76e07 8-12,59
+src/renderer/globals.css
+  s_1292af2a37ec10::t_a78777257f0658 455-462,465-466,473-474
+third_party/blocknote/packages/code-block/src/index.test.ts
+  s_1292af2a37ec10::t_64d7510ac3a98f 7
+src/renderer/lib/code-block-syntax-theme.ts
+  s_1292af2a37ec10::t_ca895162d6d942 97-99
+  s_1292af2a37ec10::t_f290c36aeda038 3
+  s_1292af2a37ec10::t_1fc00acbc221dc 14
+  s_1292af2a37ec10::t_c00f9e9436fda5 1,6,9-12
+  s_1292af2a37ec10::t_f61a0abc870b7b 60-64
+src/renderer/lib/markdown/markdown-code-highlighter.ts
+  s_1292af2a37ec10::t_d10cd97dac87ac 2,5
+third_party/blocknote/packages/code-block/src/shiki.bundle.ts
+  s_1292af2a37ec10::t_c5991e531052e5 5,238,240-241,243,246
+scripts/generate-code-language-artifacts.mjs
+  s_1292af2a37ec10::t_c5991e531052e5 81,91,93-94,96,99
+src/renderer/lib/diff-presentation.ts
+  s_1292af2a37ec10::t_1fc00acbc221dc 1,285,288-293,295-298,300
+  s_1292af2a37ec10::t_f290c36aeda038 4,294,299
+  s_1292af2a37ec10::t_4e7062d027c437 301
+src/renderer/lib/markdown/markdown-document-renderer.tsx
+  s_1292af2a37ec10::t_d10cd97dac87ac 28,43-44
+docs/product-specs/nfm-editor-code-block-behavior.md
+  s_1292af2a37ec10::t_095c3bc952b842 61-62,88,90
+src/renderer/components/board/editor/nfm-code-block.browser.test.tsx
+  s_1292af2a37ec10::t_9ca09433f76e07 9-13,268-291
+  s_1292af2a37ec10::t_d2553bce7fe1ab 292-294
+src/renderer/components/shared/readonly-code-block.tsx
+  s_1292af2a37ec10::t_d10cd97dac87ac 10,13
+pnpm-lock.yaml
+  s_1292af2a37ec10::t_4f82771ff391a6 10923
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "83a6c097ea9090ef1576b3951330d2446d4e259a",
+  "prompts": {},
+  "sessions": {
+    "s_1292af2a37ec10": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "08d8f948-822f-4c53-adcc-632905c40873",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
