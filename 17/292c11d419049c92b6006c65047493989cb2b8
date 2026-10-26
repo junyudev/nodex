@@ -1,0 +1,82 @@
+src/shared/codex-plugin-management.ts
+  s_77ac5bdfa64dec::t_46d3042c9abd1a 173-174,176-177,179-182,248-251
+  s_77ac5bdfa64dec::t_b8b1731e2f818a 236
+  s_77ac5bdfa64dec::t_8c67680bc371ea 263
+src/main/codex-application/PluginDetailModel.ts
+  s_77ac5bdfa64dec::t_2c4c9ddd42be5e 17-18,23,25
+  s_77ac5bdfa64dec::t_e79ea5b1b6fbf5 1-16,19-22,24,26-57
+  s_77ac5bdfa64dec::t_73593ff3fe6ee0 58-78
+src/renderer/lib/plugin-management-adapter.ts
+  s_77ac5bdfa64dec::t_b8b1731e2f818a 8-15
+  s_77ac5bdfa64dec::t_88bb60f1bbd43e 16-21
+src/main/codex-application/PluginDetailModel.node.test.ts
+  s_77ac5bdfa64dec::t_2c4c9ddd42be5e 1-49
+  s_77ac5bdfa64dec::t_9ecf402ccf9f93 50-104
+docs/product-specs/plugins-behavior.md
+  s_77ac5bdfa64dec::t_6be5e236f3bfe8 52-62,191-197,213-220,229-234
+  s_77ac5bdfa64dec::t_6aa332e04a9e88 105-118
+src/main/codex-application/PluginManager.ts
+  s_77ac5bdfa64dec::t_b8b1731e2f818a 450-451
+  s_77ac5bdfa64dec::t_ed8e8bfebee5c4 2-3,649-653,657-658,676,867,1041-1042,1054-1056,1067,1083-1084
+  s_77ac5bdfa64dec::t_5209c5b4abcbe5 14
+  s_77ac5bdfa64dec::t_756cbb21e6f526 452-454,654-656,659-675,930-934,983-1027,1043-1053,1057-1066,1068-1070,1072-1080,1506-1583
+  s_77ac5bdfa64dec::t_efa5f40d383d49 1040,1082,1505
+  s_77ac5bdfa64dec::t_8c67680bc371ea 4,47,141,176,183,1940-1941,1950-1951,1960-1962
+  s_77ac5bdfa64dec::t_682ea45ffbeec7 1942,1952
+  s_77ac5bdfa64dec::t_6aa332e04a9e88 142-158,1149-1168,1173-1197,1199-1208,1943-1949,1953-1959
+  s_77ac5bdfa64dec::t_2f820912e2bea6 1169-1172
+src/main/ipc/handlers/PluginManagerIpc.node.test.ts
+  s_77ac5bdfa64dec::t_e1be8be534d3f9 58-66
+  s_77ac5bdfa64dec::t_d837cc2c6f4dee 67-83
+  s_77ac5bdfa64dec::t_6aa332e04a9e88 96-104
+  s_77ac5bdfa64dec::t_e23916216aab52 105,108,111,161-168
+src/renderer/features/plugins/plugin-management.jsdom.test.ts
+  s_77ac5bdfa64dec::t_e1be8be534d3f9 2
+  s_77ac5bdfa64dec::t_9c7cba85403281 3-7,15-16,143-193
+src/main/codex-application/PluginApps.node.test.ts
+  s_77ac5bdfa64dec::t_e1be8be534d3f9 152
+src/shared/ipc-endpoint-policy.ts
+  s_77ac5bdfa64dec::t_b8b1731e2f818a 496-497
+src/main/codex-application/PluginApps.ts
+  s_77ac5bdfa64dec::t_e79ea5b1b6fbf5 161
+  s_77ac5bdfa64dec::t_5a0fdf6e24af18 162-166,196-198,274-275
+src/shared/codex-plugin-settings.ts
+  s_77ac5bdfa64dec::t_46d3042c9abd1a 7-9,44-45,52-71,166-170
+  s_77ac5bdfa64dec::t_8c67680bc371ea 106-113
+src/main/codex-application/PluginManager.node.test.ts
+  s_77ac5bdfa64dec::t_d703abcce8f830 259
+  s_77ac5bdfa64dec::t_e1be8be534d3f9 124-137,249-252,1312-1314,1320-1322,1330,1367-1380,1506-1647
+  s_77ac5bdfa64dec::t_5209c5b4abcbe5 1315-1319,1323
+  s_77ac5bdfa64dec::t_2c4c9ddd42be5e 39-42,139-140,183
+  s_77ac5bdfa64dec::t_77ffe28564cb1f 260-262,269,1288-1290,1294,1308,1324-1329,1648-1669
+  s_77ac5bdfa64dec::t_c5719c4ceed1d0 32,65,377,793-795,1011,1025-1027,1031
+  s_77ac5bdfa64dec::t_432d8a2986ceb0 85-94,333-337,775-779,789-792,1016-1020,1028-1030,1032-1037,1670-1850
+src/renderer/lib/plugin-management-cache.ts
+  s_77ac5bdfa64dec::t_b8b1731e2f818a 90,116,127,136-137
+src/main/ipc/handlers/PluginManagerIpc.ts
+  s_77ac5bdfa64dec::t_b8b1731e2f818a 20-32,71-74,119-123
+src/main/codex-application/PluginInventoryPolicy.ts
+  s_77ac5bdfa64dec::t_e79ea5b1b6fbf5 100-104,115
+src/renderer/features/plugins/plugin-management.ts
+  s_77ac5bdfa64dec::t_b8b1731e2f818a 79-80,179,181-187,232,234-238
+  s_77ac5bdfa64dec::t_33f87fc974b464 239-240,306-308
+  s_77ac5bdfa64dec::t_8c67680bc371ea 198
+src/renderer/lib/plugin-management-cache.test.ts
+  s_77ac5bdfa64dec::t_8e536a291d0f33 281-320
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "17292c11d419049c92b6006c65047493989cb2b8",
+  "prompts": {},
+  "sessions": {
+    "s_77ac5bdfa64dec": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1795d-5e95-7ea0-9bf7-2e3e042b723f",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}

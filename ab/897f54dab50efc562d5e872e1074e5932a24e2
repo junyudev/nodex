@@ -1,0 +1,58 @@
+src/main/codex-application/PluginAppPolicy.ts
+  s_77ac5bdfa64dec::t_3904912806633f 30-37,44-52
+  s_77ac5bdfa64dec::t_ce095c3568ec40 14
+  s_77ac5bdfa64dec::t_9c665aaa2d4b36 53-61,76-83
+src/renderer/lib/plugin-management-cache.ts
+  s_77ac5bdfa64dec::t_ce095c3568ec40 96,107,141
+  s_77ac5bdfa64dec::t_cb438a4c8f25fe 142
+src/renderer/features/plugins/plugin-management.ts
+  s_77ac5bdfa64dec::t_ce095c3568ec40 79,247-250,253,256
+  s_77ac5bdfa64dec::t_c562ea4f766e6d 251-252,254-255,319
+src/main/ipc/handlers/PluginManagerIpc.ts
+  s_77ac5bdfa64dec::t_ce095c3568ec40 57,130
+  s_77ac5bdfa64dec::t_2c12c2d199cdc1 131-135
+src/renderer/features/plugins/plugin-management.jsdom.test.ts
+  s_77ac5bdfa64dec::t_7c140b1d5bc70c 17
+  s_77ac5bdfa64dec::t_1ed0c49a4bc7c1 195-215
+src/main/codex-application/PluginManager.node.test.ts
+  s_77ac5bdfa64dec::t_7c140b1d5bc70c 60,216
+  s_77ac5bdfa64dec::t_6362b350952f64 1951-2053
+src/renderer/lib/plugin-management-adapter.ts
+  s_77ac5bdfa64dec::t_ce095c3568ec40 8
+  s_77ac5bdfa64dec::t_a06988b91f1e9e 9-14
+docs/product-specs/plugins-behavior.md
+  s_77ac5bdfa64dec::t_7c140b1d5bc70c 204-212
+src/main/codex-application/PluginManager.ts
+  s_77ac5bdfa64dec::t_ce095c3568ec40 794-803
+  s_77ac5bdfa64dec::t_7c140b1d5bc70c 793,804-812
+  s_77ac5bdfa64dec::t_55851f09b30b5d 813-832,840-852,1569-1601
+src/main/codex-application/PluginAppPolicy.node.test.ts
+  s_77ac5bdfa64dec::t_3904912806633f 55-80
+  s_77ac5bdfa64dec::t_9446beb71833ab 81-89
+src/renderer/lib/plugin-management-query-options.ts
+  s_77ac5bdfa64dec::t_ce095c3568ec40 13
+src/shared/ipc-endpoint-policy.ts
+  s_77ac5bdfa64dec::t_ce095c3568ec40 90,498
+src/shared/codex-plugin-settings.ts
+  s_77ac5bdfa64dec::t_ce095c3568ec40 10,83-95,171,186-189,192-193
+  s_77ac5bdfa64dec::t_62bfaeee9539c9 190-191
+src/renderer/lib/plugin-management-cache.test.ts
+  s_77ac5bdfa64dec::t_7c140b1d5bc70c 289
+  s_77ac5bdfa64dec::t_ab8376ddb7f07a 323-338
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "ab897f54dab50efc562d5e872e1074e5932a24e2",
+  "prompts": {},
+  "sessions": {
+    "s_77ac5bdfa64dec": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1795d-5e95-7ea0-9bf7-2e3e042b723f",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
