@@ -516,6 +516,7 @@ describe("Library Module transport", () => {
                 title: "Tasks",
                 defaultViewId: "view-1",
                 hasMultipleViews: false,
+                isPrimary: false,
                 metadataRevision: 1,
                 locationRevision: 1,
                 updatedAt: "2026-07-18T00:00:00.000Z",

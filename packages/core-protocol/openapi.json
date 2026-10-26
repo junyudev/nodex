@@ -20335,6 +20335,7 @@
               "title",
               "default_view_id",
               "has_multiple_views",
+              "is_primary",
               "metadata_revision",
               "location_revision",
               "updated_at",
@@ -20349,6 +20350,10 @@
               },
               "has_multiple_views": {
                 "type": "boolean"
+              },
+              "is_primary": {
+                "type": "boolean",
+                "description": "The home of an active Project or of the Library Inbox, which cannot be archived."
               },
               "kind": {
                 "type": "string",

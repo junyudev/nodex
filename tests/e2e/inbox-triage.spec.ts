@@ -149,28 +149,27 @@ test("preserves capture and filing decisions while Project counts share the acti
           "1",
           await count.innerText(),
         );
-        // A message's Page opens as a tab beside the Library Inbox, which stays its Scene's Home.
+        // A message's Page opens beside the Library Inbox, which stays in view.
         await firstRow.getByTestId("inbox-message-unit").hover();
         await firstRow.getByRole("button", { name: "Message actions", exact: true }).click();
         await page.getByRole("menuitem", { name: "Open page", exact: true }).click();
-        // The Scene's tab strip sits in the window's title row.
-        const sceneTabs = page.locator("[data-panel-tab-row]").getByRole("tab");
-        const inboxTab = sceneTabs.filter({ hasText: /^Inbox$/ });
-        await expect(sceneTabs.and(page.getByRole("tab", { selected: true }))).toContainText(
+        // Each tab group has its own tab row in the window's title row.
+        const groups = page.locator('[data-panel-tab-row^="right:"]').filter({ visible: true });
+        await expect(groups).toHaveCount(2);
+        await expect(groups.nth(1).getByRole("tab", { selected: true })).toContainText(
           "Research compact navigation",
         );
         claim(
-          "Open page keeps the reader in the Inbox Scene",
-          { inboxScene: 1, space: 0, tabs: 2 },
+          "Open page keeps the Inbox in view beside the Page",
+          { inboxScene: 1, space: 0, groups: 2, inboxVisible: true },
           {
             inboxScene: await page.getByTestId("inbox-right-panel").count(),
             space: await page.getByTestId("library-right-panel").count(),
-            tabs: await sceneTabs.count(),
+            groups: await groups.count(),
+            inboxVisible: await firstRow.isVisible(),
           },
         );
         await page.screenshot({ path: path.join(artifacts, "page-beside-inbox.png") });
-        await inboxTab.click();
-        await expect(firstRow).toBeVisible();
 
         await page.screenshot({ path: path.join(artifacts, "final.png") });
         await page.waitForTimeout(700);
@@ -187,7 +186,7 @@ test("preserves capture and filing decisions while Project counts share the acti
         );
         await writeFile(
           path.join(artifacts, "README.md"),
-          `# Inbox triage verification\n\nStatus: **${status}**\n\nA fresh disposable Electron Profile captures a message, restores the next draft after reload, edits the original message inline, files two selected messages to a Project, which each say where they went in place before folding away, and returns both with one Undo. Opening a message's Page adds a tab beside the Library Inbox instead of leaving it. The destination Inbox has no duplicate capture. A separate Project capture then verifies its count is replaced by row actions on hover and returns when the pointer leaves. The recording uses synthetic content and real renderer/Main/Core operations. Exact expected and actual values are in result.json.\n\nArtifacts: review.webm, decided-in-place.png, page-beside-inbox.png, final.png and hover.png.\n${failure ? `\nFailure: ${failure}\n` : ""}`,
+          `# Inbox triage verification\n\nStatus: **${status}**\n\nA fresh disposable Electron Profile captures a message, restores the next draft after reload, edits the original message inline, files two selected messages to a Project, which each say where they went in place before folding away, and returns both with one Undo. Opening a message's Page shows it beside the Library Inbox, which stays in view. The destination Inbox has no duplicate capture. A separate Project capture then verifies its count is replaced by row actions on hover and returns when the pointer leaves. The recording uses synthetic content and real renderer/Main/Core operations. Exact expected and actual values are in result.json.\n\nArtifacts: review.webm, decided-in-place.png, page-beside-inbox.png, final.png and hover.png.\n${failure ? `\nFailure: ${failure}\n` : ""}`,
         );
       }
     },

@@ -57,6 +57,8 @@ export interface LibraryDatabaseNavigationNode {
   readonly title: string;
   readonly defaultViewId: DatabaseViewId;
   readonly hasMultipleViews: boolean;
+  /** The home of an active Project or of the Library Inbox, which cannot be archived. */
+  readonly isPrimary: boolean;
   readonly metadataRevision: number;
   readonly locationRevision: number;
   readonly updatedAt: string;

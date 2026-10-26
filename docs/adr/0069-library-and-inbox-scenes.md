@@ -5,6 +5,7 @@
 - Owners: Nodex maintainers
 - Supersedes: the `pages` owner name in [ADR 0038](0038-window-local-pages-scene.md)
 - Refines: Library Inbox placement in [ADR 0067](0067-inbox-entries-and-dispatch-proposals.md)
+- Refined by: Page placement in [ADR 0072](0072-inbox-page-peek-and-primary-inbox-database.md)
 
 ## Context
 

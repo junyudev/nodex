@@ -506,12 +506,14 @@ surfaces join the independent bounded projections for presentation.
 
 ### Inbox
 
-The Inbox is the Profile's single capture surface. It is backed by one
-Library-owned Inbox Database, created on the first message. Each message is an
-ordinary Page in that Database, and the whole message is its body. The title is
-a label: the sender's own, or a provisional excerpt that the suggestion Agent
-may replace with a name once. The Inbox Database is never a standalone Library
-or sidebar root.
+An Inbox is where the user captures a message without first choosing a chat.
+The Library has one Inbox, and each Project has its own. Each message is an
+ordinary Page in its Inbox's primary Database, and the whole message is its
+body. A Project's Inbox uses the Project's primary Database; the Library Inbox
+uses one Library-owned Inbox Database, created on the first message. A primary
+Database is ordinary Library content listed in Space, but it cannot be archived
+while its owner depends on it. The title is a label: the sender's own, or a
+provisional excerpt that the suggestion Agent may replace with a name once.
 
 ### Inbox entry
 
@@ -525,7 +527,8 @@ An Inbox entry is the Workspace-owned record beside a message Page. It holds:
 - a triage state: open, kept, or done.
 
 An entry is in the Inbox while it still needs the user. A confirmed chat
-dispatch, a move out of the Inbox Database, Keep, or Done hands it to History.
+dispatch, filing in another Project, Keep, or Done hands it to History; where
+its Page lives never does.
 Work handed to a chat stays in progress until the user marks it done; a chat
 finishing never does. The message Page's workflow status follows the handling,
 Triage while waiting, Build once handed to a chat, Plan when kept or filed,
@@ -713,7 +716,7 @@ state is rejected rather than replayed.
 | Restorable Document states                                                 | immutable semantic Document revisions                                    |
 | Presence, cursor, selection, leases                                        | ephemeral collaboration state                                            |
 | Project Sessions, Thread links, and Linked chats                           | Project execution domain                                                 |
-| Inbox entries and Dispatch proposals                                       | Project execution domain beside Inbox Database Pages                     |
+| Inbox entries and Dispatch proposals                                       | Project execution domain beside Inbox message Pages                      |
 | Per-window Project/Session Scene surfaces, panels, selection, and geometry | Window Session view                                                      |
 | Browser guests and Terminal PTYs                                           | Main-process runtime Modules                                             |
 
@@ -940,6 +943,9 @@ idempotency, projections, and post-commit events behind `read` and `apply`.
   owner, exact Session and native source identity, and full-Profile content access.
 - `docs/adr/0067-inbox-entries-and-dispatch-proposals.md`: Page-backed Inbox
   triage, proposals and confirmed dispatch without a second task authority.
+- `docs/adr/0072-inbox-page-peek-and-primary-inbox-database.md`: Inbox Pages
+  open beside their Inbox, and each Inbox's primary Database is protected
+  Library content listed in Space.
 - `docs/adr/0043-database-scoped-page-keys.md`: Database-owned Page-key
   namespaces, Library-unique prefix history, monotonic allocation, UUID
   identity boundary, resolution, and presentation projection.

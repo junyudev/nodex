@@ -7747,6 +7747,7 @@ mod page_lifecycle;
 pub(crate) mod page_lifecycle_mutation;
 mod page_property_mutation;
 mod page_write_semantic;
+mod primary_database;
 mod structural_edit;
 
 /// Creates only content whose resource closure was verified by the Document recovery owner.

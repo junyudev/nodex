@@ -3894,6 +3894,8 @@ fn reject_primary_databases(
                    WHERE database_block_id = ?1 AND lifecycle = 'active' \
                  ) OR EXISTS ( \
                    SELECT 1 FROM projects WHERE database_block_id = ?1 \
+                 ) OR EXISTS ( \
+                   SELECT 1 FROM inbox_registry WHERE database_block_id = ?1 \
                  )",
                 [&database.block_id],
                 |_| Ok(()),
@@ -3902,7 +3904,7 @@ fn reject_primary_databases(
         if primary.is_some() {
             return Err(StoreError::new(
                 StoreErrorCode::ProtectedOwnerDeletion,
-                "A Project's primary Database cannot be removed by a structural selection",
+                "A primary Database cannot be removed by a structural selection",
                 false,
             ));
         }

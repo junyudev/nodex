@@ -66,9 +66,10 @@ Profile access; Plan mode changes planning behavior while permitting writes.
 
 Space is a bounded navigation projection of active top-level Page, Database,
 and Canvas roots in the Library, including primary Project Databases and
-Canvases. The Profile's system Inbox Database has its own Home entry and stays
-outside ordinary Library root navigation. Root eligibility, counts,
-continuations, and selected-root inclusion are evaluated by Core.
+Canvases and the Library Inbox Database. A primary Database, a Project's or the
+Library Inbox's, cannot be archived or removed by a structural selection while
+its owner depends on it. Root eligibility, counts, continuations, and
+selected-root inclusion are evaluated by Core.
 
 Selecting a Space content row opens or focuses that resource in the window's
 singleton Library Scene. It never chooses a Project or creates a Chat. The Scene may

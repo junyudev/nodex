@@ -1032,13 +1032,10 @@ fn change_resource_lifecycle(
     if authority.resource_kind == "database" && !restore {
         let protected = connection
             .query_row(
-                "SELECT 1 WHERE EXISTS (\
-                   SELECT 1 FROM project_database_bindings \
-                   WHERE database_block_id = ?1 AND lifecycle = 'active'\
-                 ) OR EXISTS (\
-                   SELECT 1 FROM projects \
-                   WHERE database_block_id = ?1 AND lifecycle = 'active'\
-                 )",
+                &format!(
+                    "SELECT 1 WHERE {}",
+                    super::primary_database::active_primary_database_sql("?1")
+                ),
                 [&authority.id],
                 |_| Ok(()),
             )

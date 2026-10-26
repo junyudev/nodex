@@ -22,16 +22,11 @@ use crate::database::resolve_page_key_matches_in_library;
 use crate::document::is_primary_canvas_block_id;
 use crate::infrastructure::sqlite::{StoreError, StoreErrorCode};
 
+use super::primary_database::active_primary_database_sql;
 use super::{cursor, page_search};
 
 const DEFAULT_LIMIT: usize = 20;
 const MAX_LIMIT: usize = 100;
-// Inbox has its own navigation entry; ordinary Library roots include Project content.
-const NON_INBOX_LIBRARY_ROOT: &str = "NOT EXISTS( \
-    SELECT 1 FROM inbox_registry inbox \
-    WHERE inbox.database_block_id = block.id \
-      AND inbox.library_id = placement.library_id \
-  )";
 
 fn page_mention_destination(
     connection: &Connection,
@@ -1596,6 +1591,8 @@ fn root_node_window(
     let (after_sort_key, after_id) = keyset_text_coordinate(after)?;
     let query_limit =
         i64::try_from(limit.saturating_add(1)).map_err(|_| invalid("Library limit overflowed"))?;
+    // Library roots are all of its root content, Project and Inbox Databases included.
+    let primary = active_primary_database_sql("block.id");
     let nodes = connection
         .prepare(&format!(
             "SELECT block.type, block.id, placement.rank_key, \
@@ -1615,7 +1612,8 @@ fn root_node_window(
                block.placement_revision, canvas.updated_at, canvas_document.generation, \
                canvas_document.head_seq, (SELECT project.id FROM projects project \
                  WHERE project.library_id = block.library_id \
-                   AND block.id = 'canvas:primary:' || project.id LIMIT 1) \
+                   AND block.id = 'canvas:primary:' || project.id LIMIT 1), \
+               {primary} \
              FROM library_block_placements placement \
              INNER JOIN blocks block ON block.id = placement.block_id \
              LEFT JOIN pages page ON page.block_id = block.id \
@@ -1631,7 +1629,6 @@ fn root_node_window(
              WHERE placement.library_id = ?1 AND block.type IN ('page', 'database', 'canvas') \
                AND block.lifecycle = 'active' \
                AND COALESCE(container.lifecycle, block.lifecycle) = 'active' \
-               AND {NON_INBOX_LIBRARY_ROOT} \
                AND (?2 IS NULL OR placement.rank_key > ?2 \
                  OR (placement.rank_key = ?2 AND block.id > ?3)) \
              ORDER BY placement.rank_key, block.id LIMIT ?4",
@@ -1642,17 +1639,14 @@ fn root_node_window(
         )?
         .collect::<rusqlite::Result<Vec<_>>>()?;
     let total = connection.query_row(
-        &format!(
-            "SELECT COUNT(*) FROM library_block_placements placement \
+        "SELECT COUNT(*) FROM library_block_placements placement \
          INNER JOIN blocks block ON block.id = placement.block_id \
          LEFT JOIN pages page ON page.block_id = block.id \
          LEFT JOIN database_containers container ON container.block_id = block.id \
          LEFT JOIN canvas_owners canvas ON canvas.block_id = block.id \
          WHERE placement.library_id = ?1 AND block.type IN ('page', 'database', 'canvas') \
            AND block.lifecycle = 'active' \
-           AND COALESCE(container.lifecycle, block.lifecycle) = 'active' \
-           AND {NON_INBOX_LIBRARY_ROOT}"
-        ),
+           AND COALESCE(container.lifecycle, block.lifecycle) = 'active'",
         [library_id],
         |row| row.get::<_, i64>(0),
     )?;
@@ -1687,6 +1681,7 @@ fn standalone_root_node_window(
             AND project.lifecycle <> 'archived' \
             AND block.id = 'canvas:primary:' || project.id \
         ))";
+    let primary = active_primary_database_sql("block.id");
     let rows_sql = format!(
         "SELECT block.type, block.id, placement.rank_key, \
            materialization.title, block.placement_revision, block.metadata_revision, \
@@ -1705,7 +1700,8 @@ fn standalone_root_node_window(
            block.placement_revision, canvas.updated_at, canvas_document.generation, \
            canvas_document.head_seq, (SELECT project.id FROM projects project \
              WHERE project.library_id = block.library_id \
-               AND block.id = 'canvas:primary:' || project.id LIMIT 1) \
+               AND block.id = 'canvas:primary:' || project.id LIMIT 1), \
+           {primary} \
          FROM library_block_placements placement \
          INNER JOIN blocks block ON block.id = placement.block_id \
          LEFT JOIN pages page ON page.block_id = block.id \
@@ -1829,8 +1825,9 @@ fn page_child_node_window(
     let (after_sort_key, after_id) = keyset_text_coordinate(after)?;
     let query_limit =
         i64::try_from(limit.saturating_add(1)).map_err(|_| invalid("Library limit overflowed"))?;
+    let primary = active_primary_database_sql("block.id");
     let nodes = connection
-        .prepare(
+        .prepare(&format!(
             "WITH RECURSIVE ordered(block_id, path) AS ( \
                SELECT block_id, printf('%010d', ordinal) || ':' || block_id \
                FROM document_block_index \
@@ -1858,7 +1855,8 @@ fn page_child_node_window(
                block.placement_revision, canvas.updated_at, canvas_document.generation, \
                canvas_document.head_seq, (SELECT project.id FROM projects project \
                  WHERE project.library_id = block.library_id \
-                   AND block.id = 'canvas:primary:' || project.id LIMIT 1) \
+                   AND block.id = 'canvas:primary:' || project.id LIMIT 1), \
+               {primary} \
              FROM ordered \
              INNER JOIN blocks block ON block.id = ordered.block_id \
              LEFT JOIN pages page ON page.block_id = block.id \
@@ -1876,7 +1874,7 @@ fn page_child_node_window(
                AND (?2 IS NULL OR ordered.path > ?2 \
                  OR (ordered.path = ?2 AND block.id > ?3)) \
              ORDER BY ordered.path, block.id LIMIT ?4",
-        )?
+        ))?
         .query_map(
             params![document_id, after_sort_key, after_id, query_limit],
             navigation_row,
@@ -1944,15 +1942,18 @@ fn database_node(
 ) -> Result<LibraryNavigationNode, StoreError> {
     connection
         .query_row(
-            "SELECT container.block_id, container.name, container.default_view_id, \
+            &format!(
+                "SELECT container.block_id, container.name, container.default_view_id, \
                container.metadata_revision, block.placement_revision, container.updated_at, \
-               COUNT(view.id) \
+               COUNT(view.id), {} \
              FROM database_containers container \
              INNER JOIN blocks block ON block.id = container.block_id \
              LEFT JOIN database_views view ON view.database_block_id = container.block_id \
                AND view.lifecycle = 'active' \
              WHERE container.block_id = ?1 AND container.lifecycle <> 'deleted' \
              GROUP BY container.block_id",
+                active_primary_database_sql("container.block_id")
+            ),
             [database_id],
             |row| {
                 let default_view_id = row.get::<_, Option<String>>(2)?.ok_or_else(|| {
@@ -1970,6 +1971,7 @@ fn database_node(
                     location_revision: row.get(4)?,
                     updated_at: row.get(5)?,
                     has_multiple_views: row.get::<_, i64>(6)? > 1,
+                    is_primary: row.get(7)?,
                 })
             },
         )
@@ -2212,6 +2214,7 @@ fn navigation_row(row: &Row<'_>) -> rusqlite::Result<OrderedNavigationNode> {
             location_revision: row.get(13)?,
             updated_at: row.get(14)?,
             has_multiple_views: row.get::<_, i64>(15)? > 1,
+            is_primary: row.get(23)?,
         },
         "canvas" => {
             let project_id = row.get::<_, Option<String>>(22)?;
@@ -2296,15 +2299,12 @@ fn forced_child_node(
         }
         (LibraryNavigationParent::Library, LibraryRouteTarget::Database { database_id }) => {
             let exists = connection.query_row(
-                &format!(
-                    "SELECT EXISTS(SELECT 1 FROM library_block_placements placement \
+                "SELECT EXISTS(SELECT 1 FROM library_block_placements placement \
                  INNER JOIN blocks block ON block.id = placement.block_id \
                  INNER JOIN database_containers container \
                    ON container.block_id = placement.block_id \
                  WHERE placement.library_id = ?1 AND placement.block_id = ?2 \
-                   AND block.lifecycle = 'active' AND container.lifecycle = 'active' \
-                   AND {NON_INBOX_LIBRARY_ROOT})"
-                ),
+                   AND block.lifecycle = 'active' AND container.lifecycle = 'active')",
                 params![library_id, database_id],
                 |row| row.get::<_, bool>(0),
             )?;
@@ -3722,16 +3722,17 @@ fn corrupt(message: &str) -> StoreError {
 #[cfg(test)]
 mod tests {
     use nodex_core_contracts::library::{
-        LibraryNavigationNode, LibraryNavigationParent, LibraryRead, LibraryReadValue,
-        LibraryRouteTarget,
+        LibraryIntent, LibraryNavigationNode, LibraryNavigationParent, LibraryPlacedResourceTarget,
+        LibraryRead, LibraryReadValue, LibraryRouteTarget,
     };
     use nodex_core_contracts::workspace::{
         ProjectWorkspaceIntent, ProjectWorkspaceRead, ProjectWorkspaceReadValue,
         ProjectWorkspaceStarterPage,
     };
     use nodex_core_contracts::{
-        AdapterKind, BoundModuleContext, LIBRARY_CONTRACT_VERSION, LibraryId, ModuleApplyRequest,
-        ModuleReadRequest, PROJECT_WORKSPACE_CONTRACT_VERSION, ProfileId, StoreEpoch,
+        AdapterKind, BoundModuleContext, CoreErrorCode, LIBRARY_CONTRACT_VERSION, LibraryId,
+        ModuleApplyRequest, ModuleReadRequest, PROJECT_WORKSPACE_CONTRACT_VERSION, ProfileId,
+        StoreEpoch,
     };
     use serde_json::json;
     use tempfile::tempdir;
@@ -3754,7 +3755,7 @@ mod tests {
     }
 
     #[test]
-    fn library_roots_include_project_content_and_exclude_inbox_before_windowing() {
+    fn library_roots_include_project_and_inbox_databases() {
         const NOW: &str = "2026-10-15T00:00:00.000Z";
         const PROJECT: &str = "project:library-roots";
         const CANVAS: &str = "canvas:primary:project:library-roots";
@@ -3865,7 +3866,7 @@ mod tests {
         };
         let inbox_id = summary.database_id.expect("system Inbox Database");
         let library = LibraryModule::new("profile-1", "library-1", &kernel);
-        let roots = |cursor, force_include_target| {
+        let roots = |cursor, force_include_target, limit| {
             let LibraryReadValue::Children {
                 items,
                 next_cursor,
@@ -3880,7 +3881,7 @@ mod tests {
                         read: LibraryRead::Children {
                             parent: LibraryNavigationParent::Library,
                             cursor,
-                            limit: Some(1),
+                            limit: Some(limit),
                             force_include_target,
                         },
                     },
@@ -3892,52 +3893,82 @@ mod tests {
             };
             (items, next_cursor, has_more, total)
         };
+        let route_target = |node: &LibraryNavigationNode| match node {
+            LibraryNavigationNode::Database { database_id, .. } => LibraryRouteTarget::Database {
+                database_id: database_id.clone(),
+            },
+            LibraryNavigationNode::Canvas { canvas_id, .. } => LibraryRouteTarget::Canvas {
+                canvas_id: canvas_id.clone(),
+            },
+            other => panic!("unexpected Library root {other:?}"),
+        };
 
-        let first = roots(None, None);
-        assert_eq!(first.3, 2);
-        assert!(first.2);
-        assert!(
-            matches!(first.0.as_slice(), [LibraryNavigationNode::Database { database_id, .. }]
-            if database_id == &project.database_id)
-        );
-        let cursor = first.1.clone().expect("continuation");
-        let second = roots(Some(cursor.clone()), None);
-        assert_eq!(second.3, 2);
-        assert!(!second.2);
-        assert_eq!(second.1, None);
-        assert!(
-            matches!(second.0.as_slice(), [LibraryNavigationNode::Canvas { canvas_id, is_primary: true, .. }]
-            if canvas_id == CANVAS)
-        );
+        // The Project's Database and Canvas and the Library Inbox's Database are all roots;
+        // both Databases are primary.
+        let all = roots(None, None, 3);
+        assert_eq!(all.3, 3);
+        assert!(!all.2);
+        assert!(all.0.iter().any(|node| matches!(node,
+            LibraryNavigationNode::Database { database_id, is_primary: true, .. }
+                if database_id == &project.database_id)));
+        assert!(all.0.iter().any(|node| matches!(node,
+            LibraryNavigationNode::Canvas { canvas_id, is_primary: true, .. } if canvas_id == CANVAS)));
+        assert!(all.0.iter().any(|node| matches!(node,
+            LibraryNavigationNode::Database { database_id, title, is_primary: true, .. }
+                if database_id == &inbox_id && title == "Inbox")));
 
-        // Selected Project resources outside the window remain visible without changing pagination.
-        let forced_database = roots(
-            Some(cursor),
-            Some(LibraryRouteTarget::Database {
-                database_id: project.database_id,
-            }),
-        );
-        assert_eq!(forced_database.0, [second.0[0].clone(), first.0[0].clone()]);
-        assert_eq!(forced_database.1, second.1);
-        assert_eq!(forced_database.2, second.2);
-        assert_eq!(forced_database.3, second.3);
-        let forced_canvas = roots(
-            None,
-            Some(LibraryRouteTarget::Canvas {
-                canvas_id: CANVAS.to_owned(),
-            }),
-        );
-        assert_eq!(forced_canvas.0, [first.0[0].clone(), second.0[0].clone()]);
-        assert_eq!(forced_canvas.1, first.1);
-        assert_eq!(forced_canvas.2, first.2);
-        assert_eq!(forced_canvas.3, first.3);
+        let mut cursor = None;
+        for (index, expected) in all.0.iter().enumerate() {
+            let window = roots(cursor.take(), None, 1);
+            assert_eq!(window.0, std::slice::from_ref(expected));
+            assert_eq!(window.3, 3);
+            assert_eq!(window.2, index + 1 < all.0.len());
+            cursor = window.1;
+        }
+        assert_eq!(cursor, None);
 
-        let forced_inbox = roots(
-            None,
-            Some(LibraryRouteTarget::Database {
-                database_id: inbox_id,
-            }),
-        );
-        assert_eq!(forced_inbox, first);
+        // A selected root outside the window remains visible without changing pagination.
+        let first = roots(None, None, 1);
+        for node in &all.0[1..] {
+            let forced = roots(None, Some(route_target(node)), 1);
+            assert_eq!(forced.0, [first.0[0].clone(), node.clone()]);
+            assert_eq!(forced.1, first.1);
+            assert_eq!(forced.2, first.2);
+            assert_eq!(forced.3, first.3);
+        }
+        assert_eq!(roots(None, Some(route_target(&first.0[0])), 1), first);
+
+        // Like a Project's Database, the Inbox's cannot be archived while it is the Inbox.
+        let inbox_revision = all
+            .0
+            .iter()
+            .find_map(|node| match node {
+                LibraryNavigationNode::Database {
+                    database_id,
+                    metadata_revision,
+                    ..
+                } if database_id == &inbox_id => Some(*metadata_revision),
+                _ => None,
+            })
+            .expect("Inbox root");
+        let archive = library
+            .apply(
+                &context,
+                ModuleApplyRequest {
+                    contract_version: LIBRARY_CONTRACT_VERSION,
+                    operation_id: "archive-inbox".to_owned(),
+                    store_epoch: StoreEpoch("epoch-1".to_owned()),
+                    intent: LibraryIntent::ArchiveResource {
+                        target: LibraryPlacedResourceTarget::Database {
+                            database_id: inbox_id.clone(),
+                        },
+                        expected_metadata_revision: inbox_revision,
+                    },
+                },
+            )
+            .expect_err("the Inbox's Database cannot be archived");
+        assert_eq!(archive.code, CoreErrorCode::Conflict);
+        assert!(archive.message.contains("primary Database"));
+        assert_eq!(roots(None, None, 3), all);
     }
 }

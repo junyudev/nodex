@@ -24,6 +24,20 @@ export type WorkbenchSurfaceRelativePlacement =
       readonly sourceSurfaceId: string;
     };
 
+/**
+ * An Inbox opens a message's Page beside itself, as a preview in the group to its right: the
+ * stream stays in view, and the next Page opened replaces it until the reader works in it.
+ */
+export function inboxPagePeek(inboxSurfaceId: string) {
+  return {
+    placement: { kind: "adjacent-right", sourceSurfaceId: inboxSurfaceId },
+    mode: "preview",
+  } as const satisfies {
+    readonly placement: WorkbenchSurfaceRelativePlacement;
+    readonly mode: "preview";
+  };
+}
+
 export type WorkbenchSessionPanelSurfaceTarget =
   | { readonly kind: "fallback"; readonly panelId: PanelId }
   | { readonly kind: "existing"; readonly panelId: PanelId; readonly leafId: string }

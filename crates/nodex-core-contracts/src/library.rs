@@ -1063,6 +1063,8 @@ pub enum LibraryNavigationNode {
         title: String,
         default_view_id: String,
         has_multiple_views: bool,
+        /// The home of an active Project or of the Library Inbox, which cannot be archived.
+        is_primary: bool,
         metadata_revision: i64,
         location_revision: i64,
         updated_at: String,

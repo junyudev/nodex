@@ -26,9 +26,15 @@ intents, and selection.
   Views as ordinary tabs beside it; the Home's `Open Board` button opens the
   Project's default View, or focuses it when it is already open. The Project's
   Agent Dock is hidden while the Home is showing, since the Home has its own
-  composer. The Library Inbox is the Home of the Inbox's own tab set: a
-  message's Page, the Inbox Database, and Library content opened from them open
-  as tabs beside it, so reading or editing a message never leaves the Inbox.
+  composer. The Library Inbox is the Home of the Inbox's own tab set: the Inbox
+  Database and Library content opened from it open as tabs beside it.
+- Every Inbox opens a message's Page beside itself, so reading or editing a
+  message keeps the stream in view. The Page opens as a preview in the group to
+  the Inbox's right, which the first Page opened creates. Opening another Page
+  replaces the preview until the reader works in it or pins it, and closing the
+  last tab beside the Inbox returns it to full width. `Open Board` and
+  `Open Inbox as a Database` open in the Inbox's own group instead, since a Board
+  needs the width.
 - The Inbox composer sends to the Inbox it shows. Agent Turns send to their
   chat's Project Inbox, and the command line to its Project's Inbox; both use
   the Library Inbox outside a Project. Only the desktop app chooses an Inbox
@@ -40,8 +46,9 @@ intents, and selection.
 
 - A message sent to the Library Inbox becomes a Page in the Library's Inbox
   Database. Core creates that Database lazily on the first send, under the
-  Page-key prefix `IN`. It never appears as a standalone sidebar root or Library
-  root.
+  Page-key prefix `IN`. It is the Library Inbox's primary Database, as a
+  Project's Database is its Inbox's: Space lists it with the Library's other
+  content, and it cannot be archived while it is the Inbox's.
 - A message sent to a Project's Inbox becomes a Page in that Project's Database,
   in Triage, with the Project's Page key. It is on the Project's Board at once.
 - The whole message, read as message text, becomes the Page body, and the stream

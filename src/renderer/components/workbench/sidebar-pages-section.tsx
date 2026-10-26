@@ -112,6 +112,9 @@ function SidebarPageRootRow({
     node.kind === "canvas" ? null : (target as ActionableLibraryResourceTarget);
   const expectedLocationRevision =
     node.kind === "page" ? node.parentRevision : node.locationRevision;
+  // A primary Database stays while its Project or the Library Inbox depends on it: no Archive.
+  const lifecycleRevision =
+    node.kind === "database" && node.isPrimary ? undefined : node.metadataRevision;
   const [actionsOpen, setActionsOpen] = useState(false);
   const changeActionsOpen = (open: boolean) => {
     onHoverSurfaceOpenChange?.(open);
@@ -184,7 +187,7 @@ function SidebarPageRootRow({
                 target={actionableTarget}
                 title={title}
                 expectedLocationRevision={expectedLocationRevision}
-                expectedMetadataRevision={node.metadataRevision}
+                expectedMetadataRevision={lifecycleRevision}
                 projects={projects}
                 onOpenInProject={onOpenInProject}
                 open={actionsOpen}

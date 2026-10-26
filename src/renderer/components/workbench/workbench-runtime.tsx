@@ -303,7 +303,7 @@ import {
 } from "./sidebar-new-chat-controls";
 import { useCodexAccountActions } from "@/lib/use-codex-account-actions";
 import { filterAvailablePanelActions, PANEL_NEW_TAB_ACTIONS } from "@/lib/workbench-panel-actions";
-import { readPageStagePanelTabPageRef } from "@/lib/workbench-panel-placement";
+import { inboxPagePeek, readPageStagePanelTabPageRef } from "@/lib/workbench-panel-placement";
 import { isRootThreadRightPanelComposerOverlayEligibleTab } from "@/lib/workbench-panel-tab-model";
 import {
   buildSessionPanelRenderModel,
@@ -3629,11 +3629,13 @@ export function WorkbenchRuntime({
             projects={projects}
             focusComposerToken={inboxFocusToken}
             onOpenSession={sessionCommands.openProjectSessionById}
-            onOpenPage={(pageId) =>
+            onOpenPage={(pageId) => {
+              const peek = inboxPagePeek(surface.id);
               void openProjectScenePage(projectId, pageId, "Page", {
-                placement: { kind: "same-group", sourceSurfaceId: surface.id },
-              })
-            }
+                placement: peek.placement,
+                openMode: peek.mode,
+              });
+            }}
             onOpenDatabase={(databaseId) => {
               // The Board button opens this Project's default View beside its Home.
               if (databaseId === homeProject?.databaseId) {
@@ -4018,8 +4020,9 @@ export function WorkbenchRuntime({
         if (surface.titleSnapshot === title) return;
         updateSceneSurfacePresentation(librarySceneOwner, surface.id, { titleSnapshot: title });
       };
-      // Content opened from this Scene stays in it, in the source surface's tab group.
-      const openBeside = (target: LibraryRouteTarget, titleSnapshot?: string) => {
+      // Content opened from this Scene stays in it, in the source surface's tab group; an Inbox
+      // opens a message's Page beside itself instead.
+      const openInSourceGroup = (target: LibraryRouteTarget, titleSnapshot?: string) => {
         void presentLibraryTarget(target, {
           owner: librarySceneOwner,
           titleSnapshot,
@@ -4039,9 +4042,18 @@ export function WorkbenchRuntime({
             projects={projects}
             focusComposerToken={inboxFocusToken}
             onOpenSession={sessionCommands.openProjectSessionById}
-            onOpenPage={(pageId) => openBeside({ kind: "page", pageId })}
+            onOpenPage={(pageId) =>
+              void presentLibraryTarget(
+                { kind: "page", pageId },
+                {
+                  owner: librarySceneOwner,
+                  targetPanelId: context.panelId,
+                  ...inboxPagePeek(surface.id),
+                },
+              )
+            }
             onOpenDatabase={(databaseId) =>
-              openBeside({ kind: "database", databaseId: parseDatabaseId(databaseId) })
+              openInSourceGroup({ kind: "database", databaseId: parseDatabaseId(databaseId) })
             }
             onOpenSettings={() => openSettingsAt("inbox-settings")}
           />
@@ -4103,12 +4115,12 @@ export function WorkbenchRuntime({
             surfaceId={surface.id}
             isActivePanelTab={context.active}
             onClose={removeSurface}
-            onOpenDatabase={(databaseId) => openBeside({ kind: "database", databaseId })}
+            onOpenDatabase={(databaseId) => openInSourceGroup({ kind: "database", databaseId })}
             onOpenPage={(pageId, titleSnapshot) =>
-              openBeside({ kind: "page", pageId }, titleSnapshot)
+              openInSourceGroup({ kind: "page", pageId }, titleSnapshot)
             }
             onOpenCanvas={(canvasId, titleSnapshot) =>
-              openBeside({ kind: "canvas", canvasId }, titleSnapshot)
+              openInSourceGroup({ kind: "canvas", canvasId }, titleSnapshot)
             }
           />
         );
@@ -4124,7 +4136,7 @@ export function WorkbenchRuntime({
             onClose={removeSurface}
             onTitleChange={publishTitle}
             onOpenPage={({ pageId, titleSnapshot }) =>
-              openBeside({ kind: "page", pageId }, titleSnapshot)
+              openInSourceGroup({ kind: "page", pageId }, titleSnapshot)
             }
           />
         );

@@ -104,6 +104,7 @@ describe("SidebarPagesSection", () => {
         title: "Project Database",
         defaultViewId: parseDatabaseViewId("view:alpha"),
         hasMultipleViews: false,
+        isPrimary: true,
         metadataRevision: 1,
         locationRevision: 2,
         updatedAt: "2026-08-03T00:00:00.000Z",
@@ -213,6 +214,51 @@ describe("SidebarPagesSection", () => {
       await Promise.resolve();
     });
     await waitFor(() => expect(onHoverSurfaceOpenChange).toHaveBeenLastCalledWith(false));
+  });
+
+  test("offers Archive for an ordinary Database but not for a primary one", async () => {
+    const database = (title: string, isPrimary: boolean): LibraryNavigationNode => ({
+      kind: "database",
+      databaseId: parseDatabaseId(`database:${title}`),
+      title,
+      defaultViewId: parseDatabaseViewId(`view:${title}`),
+      hasMultipleViews: false,
+      isPrimary,
+      metadataRevision: 1,
+      locationRevision: 1,
+      updatedAt: "2026-10-26T00:00:00.000Z",
+    });
+    renderWithMaitai(
+      <SidebarPagesSection
+        collapsed={false}
+        activeRoot={null}
+        onToggle={vi.fn()}
+        onOpenRoot={vi.fn()}
+        dataSource={dataSource([database("Reading", false), database("Inbox", true)])}
+        mutationsEnabled
+      />,
+    );
+    const menuItems = async (title: string) => {
+      await act(async () => {
+        fireEvent.click(screen.getByRole("button", { name: `Actions for ${title}` }));
+        await Promise.resolve();
+      });
+      const menu = await screen.findByRole("menu");
+      const names = within(menu)
+        .getAllByRole("menuitem")
+        .map((item) => item.textContent?.trim());
+      await act(async () => {
+        fireEvent.keyDown(menu, { key: "Escape" });
+        await Promise.resolve();
+      });
+      await waitFor(() => expect(screen.queryByRole("menu")).toBeNull());
+      return names;
+    };
+
+    expect(await menuItems("Reading")).toContain("Archive");
+    const primary = await menuItems("Inbox");
+    expect(primary).toContain("Move to");
+    expect(primary).not.toContain("Archive");
   });
 
   test("only an open resource menu releases floating sidebar ownership when rows unmount", async () => {

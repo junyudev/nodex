@@ -4959,6 +4959,8 @@ export interface components {
             readonly database_id: string;
             readonly default_view_id: string;
             readonly has_multiple_views: boolean;
+            /** @description The home of an active Project or of the Library Inbox, which cannot be archived. */
+            readonly is_primary: boolean;
             /** @enum {string} */
             readonly kind: "database";
             /** Format: int64 */

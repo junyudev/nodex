@@ -867,6 +867,7 @@ const fromCoreNode = (node: CoreNavigationNode): LibraryNavigationNode => {
       title: node.title,
       defaultViewId: parseDatabaseViewId(node.default_view_id),
       hasMultipleViews: node.has_multiple_views,
+      isPrimary: node.is_primary,
       metadataRevision: node.metadata_revision,
       locationRevision: node.location_revision,
       updatedAt: node.updated_at,
