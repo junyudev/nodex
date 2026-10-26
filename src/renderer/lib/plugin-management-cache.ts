@@ -86,23 +86,57 @@ const patchSkillData = (value: unknown, selector: SkillEnabledSelector): unknown
       selector.path !== undefined ? node.path === selector.path : node.name === selector.name;
     return matches ? { ...node, enabled: selector.enabled } : node;
   });
+const resourcesForChange = (kind: PluginManagementChanged["kind"]): readonly string[] | null => {
+  if (kind === "skills")
+    return ["skills", "recommended-skills", "skill-contents", "read", "creation-capabilities"];
+  if (kind === "apps")
+    return [
+      "apps",
+      "read",
+      "list",
+      "installed",
+      "public-home",
+      "category",
+      "personal",
+      "personal-page",
+      "search",
+      "creation-capabilities",
+    ];
+  if (kind === "mcp") return ["mcp-servers", "apps", "read"];
+  return null;
+};
 export async function invalidatePluginManagement(
   client: QueryClient,
   hostId: string,
+  kind: PluginManagementChanged["kind"] = "plugins",
 ): Promise<void> {
+  const resources = resourcesForChange(kind);
+  const composer =
+    kind === "mcp"
+      ? []
+      : [queryKeys.codexComposerPlugins.all(), queryKeys.codexComposerSkills.all()];
   await Promise.all([
-    client.invalidateQueries({ queryKey: pluginManagementKeys.all(hostId) }),
     client.invalidateQueries({
-      queryKey: queryKeys.codexComposerPlugins.all(),
-      predicate: (query) => query.queryKey[2] === hostId,
+      queryKey: pluginManagementKeys.all(hostId),
+      predicate: (query) => resources === null || resources.includes(String(query.queryKey[7])),
     }),
-    client.invalidateQueries({
-      queryKey: queryKeys.codexComposerSkills.all(),
-      predicate: (query) => query.queryKey[2] === hostId,
-    }),
-    client.invalidateQueries({ queryKey: queryKeys.mcp.all() }),
+    ...composer.map((queryKey) =>
+      client.invalidateQueries({ queryKey, predicate: (query) => query.queryKey[2] === hostId }),
+    ),
+    ...(kind === "skills"
+      ? []
+      : [
+          client.invalidateQueries({ queryKey: queryKeys.mcp.apps() }),
+          client.invalidateQueries({ queryKey: queryKeys.mcp.statuses() }),
+        ]),
   ]);
 }
+const changeForCommand = (name: keyof PluginCommands): PluginManagementChanged["kind"] => {
+  if (["skill-enabled", "skill-install", "skill-uninstall"].includes(name)) return "skills";
+  if (["mcp-save", "mcp-remove", "mcp-enabled", "mcp-login"].includes(name)) return "mcp";
+  if (name === "app-disconnect") return "apps";
+  return "plugins";
+};
 const accountRevisions = new WeakMap<QueryClient, Map<string, number>>();
 const accountRevision = (client: QueryClient, hostId: string) =>
   accountRevisions.get(client)?.get(hostId) ?? 0;
@@ -110,7 +144,7 @@ export function applyPluginManagementEvent(
   client: QueryClient,
   event: PluginManagementChanged,
 ): void {
-  if (event.progress) {
+  if (event.progress || event.mcpOauthCompletion) {
     for (const [key] of client.getQueriesData({
       queryKey: ["plugin-management-context", event.hostId],
     })) {
@@ -118,7 +152,22 @@ export function applyPluginManagementEvent(
         client.getQueryData<import("../../shared/codex-plugin-management").ResolvedPluginContext>(
           key,
         );
-      if (capabilities) {
+      const progressContext = event.progress?.context;
+      if (
+        capabilities &&
+        capabilities.accountEpoch === event.accountEpoch &&
+        (event.hostGeneration === undefined ||
+          capabilities.hostGeneration === event.hostGeneration) &&
+        (!progressContext ||
+          JSON.stringify(pluginManagementKeys.scope(progressContext)) ===
+            JSON.stringify(pluginManagementKeys.scope(capabilities)))
+      ) {
+        if (event.mcpOauthCompletion)
+          client.setQueryData(
+            pluginManagementKeys.resource(capabilities, "mcp-oauth-completion"),
+            event.mcpOauthCompletion,
+          );
+        if (!event.progress) continue;
         client.setQueryData(
           pluginManagementKeys.resource(capabilities, "marketplace-progress", null),
           event.progress,
@@ -140,10 +189,22 @@ export function applyPluginManagementEvent(
     accountRevisions.set(client, revisions);
     void client.cancelQueries({ queryKey: pluginManagementKeys.all(event.hostId) });
     client.removeQueries({ queryKey: pluginManagementKeys.all(event.hostId) });
+    for (const queryKey of [
+      queryKeys.codexComposerPlugins.all(),
+      queryKeys.codexComposerSkills.all(),
+    ]) {
+      void client.cancelQueries({
+        queryKey,
+        predicate: (query) => query.queryKey[2] === event.hostId,
+      });
+      client.removeQueries({ queryKey, predicate: (query) => query.queryKey[2] === event.hostId });
+    }
+    client.removeQueries({ queryKey: queryKeys.mcp.apps() });
+    client.removeQueries({ queryKey: queryKeys.mcp.statuses() });
     void client.resetQueries({ queryKey: ["plugin-management-context", event.hostId] });
     void client.resetQueries({ queryKey: ["plugin-management-capabilities", event.hostId] });
-  } else void client.invalidateQueries({ queryKey: ["plugin-management-context", event.hostId] });
-  void invalidatePluginManagement(client, event.hostId);
+  }
+  void invalidatePluginManagement(client, event.hostId, event.kind);
 }
 const subscriptions = new WeakMap<QueryClient, { count: number; release: () => void }>();
 export function acquirePluginManagementSubscription(client: QueryClient): () => void {
@@ -225,12 +286,20 @@ export async function runPluginMutation<K extends keyof PluginCommands>(
     ) as PluginCommands[K]["output"];
   };
   await client.cancelQueries({ queryKey });
+  if (name === "mcp-login")
+    for (const [key] of client.getQueriesData({ queryKey })) {
+      if (key[7] === "mcp-oauth-completion") client.setQueryData(key, null);
+    }
   const snapshots = client.getQueriesData({ queryKey });
+  const touched: typeof snapshots = [];
   if (name === "skill-enabled")
-    for (const [key] of snapshots)
-      client.setQueryData(key, (current: unknown) =>
+    for (const snapshot of snapshots) {
+      if (!["skills", "read"].includes(String(snapshot[0][7]))) continue;
+      touched.push(snapshot);
+      client.setQueryData(snapshot[0], (current: unknown) =>
         patchSkillData(current, input as unknown as SkillEnabledSelector),
       );
+    }
   const id = "pluginId" in input && typeof input.pluginId === "string" ? input.pluginId : undefined;
   const target =
     id ??
@@ -253,11 +322,17 @@ export async function runPluginMutation<K extends keyof PluginCommands>(
       ? { enabled: Boolean(input.enabled) }
       : { pending: true };
   if (target && (name === "install" || name === "uninstall" || name === "set-enabled"))
-    for (const [key] of snapshots)
-      client.setQueryData(key, (current: unknown) => patchPluginData(current, target, optimistic));
+    for (const snapshot of snapshots) {
+      if (!findRow(snapshot[1], (row) => row.nativeId === target || row.stableIdentity === target))
+        continue;
+      touched.push(snapshot);
+      client.setQueryData(snapshot[0], (current: unknown) =>
+        patchPluginData(current, target, optimistic),
+      );
+    }
   const rollback = () => {
     if (accountRevision(client, context.hostId) !== revision) return;
-    for (const [key, value] of snapshots)
+    for (const [key, value] of touched)
       if (client.getQueryState(key)) client.setQueryData(key, value);
   };
   try {
@@ -270,8 +345,19 @@ export async function runPluginMutation<K extends keyof PluginCommands>(
     if ("status" in result) {
       if (!succeeded(result)) {
         if (result.error.code !== "mutation_outcome_unknown") rollback();
-        await invalidatePluginManagement(client, context.hostId);
+        await invalidatePluginManagement(client, context.hostId, changeForCommand(name));
         return result;
+      }
+      if (name === "skill-install" && "id" in input && typeof input.id === "string") {
+        const installedId = input.id;
+        const scope = client.getQueryData<
+          import("../../shared/codex-plugin-management").ResolvedPluginContext
+        >(pluginManagementKeys.context(context));
+        if (scope)
+          client.setQueryData<readonly string[]>(
+            pluginManagementKeys.resource(scope, "recommended-installs"),
+            (previous) => [...new Set([...(previous ?? []), installedId])],
+          );
       }
       if (target) {
         const patch =
@@ -317,10 +403,10 @@ export async function runPluginMutation<K extends keyof PluginCommands>(
         }
       }
     }
-    await invalidatePluginManagement(client, context.hostId);
+    await invalidatePluginManagement(client, context.hostId, changeForCommand(name));
     return result;
   } catch {
-    await invalidatePluginManagement(client, context.hostId);
+    await invalidatePluginManagement(client, context.hostId, changeForCommand(name));
     return failure(
       "mutation_outcome_unknown",
       "The plugin operation could not be confirmed. Refresh before trying again.",

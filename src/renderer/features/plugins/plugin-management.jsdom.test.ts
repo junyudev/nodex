@@ -2,7 +2,12 @@ import { createElement, type ReactNode } from "react";
 import { QueryClient, QueryClientProvider, useQueryClient } from "@tanstack/react-query";
 import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
-import { useInstalledPlugins, usePluginCapabilities, usePluginSearch } from "./plugin-management";
+import {
+  useInstalledPlugins,
+  usePluginCapabilities,
+  usePluginSearch,
+  useMcpOauthCompletion,
+} from "./plugin-management";
 import {
   queryPluginManagement,
   subscribePluginManagement,
@@ -103,4 +108,28 @@ it("clears account-scoped caches while no Customize hook is mounted", async () =
     await Promise.resolve();
   });
   expect(hook.result.current.getQueryData(key)).toBeUndefined();
+});
+
+it("updates the MCP OAuth observation from the scoped subscription after the hook settles", async () => {
+  vi.mocked(queryPluginManagement).mockResolvedValue(scope as never);
+  const hook = renderHook(() => useMcpOauthCompletion(context), { wrapper: wrapper() });
+  await waitFor(() => expect(queryPluginManagement).toHaveBeenCalledWith("context", context));
+  await waitFor(() => expect(subscribePluginManagement).toHaveBeenCalled());
+  const listener = vi.mocked(subscribePluginManagement).mock.calls[0]?.[0];
+  await waitFor(() =>
+    expect(clients.at(-1)?.getQueryData(pluginManagementKeys.context(context))).toEqual(scope),
+  );
+  await act(async () => {
+    listener?.({
+      hostId: "local",
+      hostGeneration: 1,
+      accountEpoch: 1,
+      kind: "mcp",
+      mcpOauthCompletion: { name: "server", threadId: null, success: true },
+    });
+    await Promise.resolve();
+  });
+  await waitFor(() =>
+    expect(hook.result.current.data).toEqual({ name: "server", threadId: null, success: true }),
+  );
 });

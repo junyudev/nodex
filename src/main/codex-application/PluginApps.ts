@@ -7,10 +7,10 @@ import type { PluginAppRow, PluginAppsView } from "../../shared/codex-plugin-set
 import type { PluginQueries, ResolvedPluginContext } from "../../shared/codex-plugin-management";
 import { CodexGateway } from "../codex-runtime/CodexGateway";
 import { ChatGptDesktop } from "./ChatGptDesktop";
-import { PluginServiceAccount } from "./PluginService";
+import { PluginServiceAccount, pluginAccountProductHeaders } from "./PluginService";
 import { pluginError, pluginFailure } from "./PluginManagementError";
 import { pluginNativeFailure } from "./PluginNativeErrors";
-import { normalizeConnectorId } from "./PluginSettingsModel";
+import { normalizeConnectorId, safePluginCatalogIcon } from "./PluginSettingsModel";
 
 const optionalText = Schema.optionalKey(Schema.NullOr(Schema.String));
 const Link = Schema.Struct({
@@ -62,7 +62,7 @@ export const makePluginApps = Effect.gen(function* () {
         action: "manage app connections",
         expectedAccount: expected,
         body: JSON.stringify(body),
-        headers: { "Content-Type": "application/json" },
+        headers: { ...pluginAccountProductHeaders, "Content-Type": "application/json" },
         refreshOn401: method === "POST",
       })
       .pipe(
@@ -263,13 +263,15 @@ export const makePluginApps = Effect.gen(function* () {
         runtime,
         enabled: runtime?.enabled ?? false,
         callable: runtime?.callable ?? false,
-        logoUrl: metadata?.iconUrl ?? connector?.logo_url ?? connector?.icon_url ?? null,
-        logoDarkUrl:
+        logoUrl: safePluginCatalogIcon(
+          metadata?.iconUrl ?? connector?.logo_url ?? connector?.icon_url,
+        ),
+        logoDarkUrl: safePluginCatalogIcon(
           metadata?.iconUrlDark ??
-          connector?.logo_url_dark ??
-          connector?.icon_dark_url ??
-          connector?.icon_url_dark ??
-          null,
+            connector?.logo_url_dark ??
+            connector?.icon_dark_url ??
+            connector?.icon_url_dark,
+        ),
         connectionState,
         connections: links.filter(active).map((link) => ({ id: link.id, name: link.name ?? null })),
         canDisconnect: expected !== null && links.some(active),

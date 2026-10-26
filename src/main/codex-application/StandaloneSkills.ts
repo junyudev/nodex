@@ -147,9 +147,25 @@ export const live = (options: {
       const run = (args: readonly string[], cwd: string) =>
         git
           .run({
-            args: ["-c", "core.hooksPath=/dev/null", ...args],
+            args: [
+              "-c",
+              "core.hooksPath=/dev/null",
+              "-c",
+              "core.fsmonitor=false",
+              ...(cwd === repo
+                ? [`--git-dir=${path.join(repo, ".git")}`, `--work-tree=${repo}`]
+                : []),
+              ...args,
+            ],
             cwd,
-            environment: { ...options.environment, GIT_TERMINAL_PROMPT: "0" },
+            environment: {
+              ...Object.fromEntries(
+                Object.entries(options.environment).filter(
+                  ([name]) => !name.toUpperCase().startsWith("GIT_"),
+                ),
+              ),
+              GIT_TERMINAL_PROMPT: "0",
+            },
             timeoutMs: 30_000,
             outputBytesCap: 256_000,
           })
@@ -169,7 +185,15 @@ export const live = (options: {
               "protected",
               "The recommended repository is outside the Codex home.",
             );
-          if (yield* exists(path.join(repo, ".git"))) yield* noLink(path.join(repo, ".git"));
+          if (yield* exists(path.join(repo, ".git"))) {
+            yield* noLink(path.join(repo, ".git"));
+            const info = yield* fs.stat(path.join(repo, ".git")).pipe(Effect.mapError(failure));
+            if (info.type !== "Directory")
+              return yield* pluginError(
+                "protected",
+                "The recommended repository must own its Git directory.",
+              );
+          }
         }
         if (!(yield* exists(path.join(repo, ".git")))) {
           yield* run(
@@ -403,20 +427,25 @@ export const live = (options: {
                         Effect.orElseSucceed(() => ""),
                       ),
                     );
-              const root = candidates.find((root) => root && path.dirname(directory) === root);
+              const realDirectory = yield* canonical(directory);
+              const realParent = yield* canonical(path.dirname(directory));
+              const realFile = yield* canonical(skill.path);
+              const root = candidates.find((root) => root && realParent === root);
               if (
                 !root ||
-                (yield* canonical(directory)) !== directory ||
-                (yield* canonical(skill.path)) !== skill.path
+                realDirectory !== path.join(root, path.basename(directory)) ||
+                realFile !== path.join(realDirectory, "SKILL.md")
               )
                 return yield* pluginError(
                   "protected",
                   "The skill is outside a standalone installation directory.",
                 );
+              yield* noLink(directory);
+              yield* noLink(skill.path);
               yield* beforeWrite;
               if ((yield* canonical(root)) !== root)
                 return yield* pluginError("protected", "The skill installation directory changed.");
-              yield* fs.remove(directory, { recursive: true }).pipe(Effect.mapError(failure));
+              yield* fs.remove(realDirectory, { recursive: true }).pipe(Effect.mapError(failure));
             }),
           ),
       });

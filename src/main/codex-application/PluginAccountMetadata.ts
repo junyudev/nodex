@@ -1,7 +1,8 @@
+import { safePluginCatalogIcon } from "./PluginSettingsModel";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 import { ChatGptDesktop } from "./ChatGptDesktop";
-import { PluginServiceAccount } from "./PluginService";
+import { PluginServiceAccount, pluginAccountProductHeaders } from "./PluginService";
 import { pluginError, type PluginManagementError } from "./PluginManagementError";
 import { ChatGptBackendAuthError } from "../codex/chatgpt-backend-auth";
 
@@ -23,8 +24,6 @@ const Detail = Schema.Struct({
   dependencies: Schema.optionalKey(Schema.NullOr(Schema.Array(Dependency))),
 });
 const CanonicalApp = Schema.Struct({ plugin_id: optionalText, status: optionalText });
-const safeIcon = (value: string | null | undefined) =>
-  value?.startsWith("https://") ? value : null;
 
 export const makePluginAccountMetadata = Effect.gen(function* () {
   const desktop = yield* ChatGptDesktop;
@@ -45,6 +44,7 @@ export const makePluginAccountMetadata = Effect.gen(function* () {
           path,
           method: "GET",
           action: "load plugin information",
+          headers: pluginAccountProductHeaders,
           expectedAccount: expected,
         })
         .pipe(
@@ -107,8 +107,8 @@ export const makePluginAccountMetadata = Effect.gen(function* () {
               pluginId: dependency.plugin_id,
               displayName: dependency.display_name,
               categories: dependency.categories,
-              logoUrl: safeIcon(dependency.icon_url),
-              logoDarkUrl: safeIcon(dependency.icon_url_dark),
+              logoUrl: safePluginCatalogIcon(dependency.icon_url),
+              logoDarkUrl: safePluginCatalogIcon(dependency.icon_url_dark),
               enabled: dependency.is_enabled ?? null,
               installed: dependency.is_installed ?? null,
               unavailableReason: dependency.availability_status?.reason ?? null,

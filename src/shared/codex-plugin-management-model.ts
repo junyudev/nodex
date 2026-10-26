@@ -8,6 +8,7 @@ import type {
   PersonalPlugins,
   SkillsView,
   PluginActionState,
+  RecommendedSkill,
 } from "./codex-plugin-management";
 import type { SkillsListResponse } from "@nodex/codex-app-server-protocol/v2/SkillsListResponse";
 import type { SkillMetadata } from "@nodex/codex-app-server-protocol/v2/SkillMetadata";
@@ -279,7 +280,19 @@ export function groupPersonalPlugins(
     marketplaces,
   };
 }
-const humanize = (value: string) => value.replace(/[-_]+/gu, " ");
+export const humanizeSkillName = (value: string) => value.replace(/[-_]+/gu, " ");
+const normalizedSkillMatchKeys = (values: readonly string[]): string[] => [
+  ...new Set(
+    values
+      .flatMap((value) => [
+        value.trim().toLowerCase(),
+        value.toLowerCase().replace(/[^a-z0-9]/gu, ""),
+      ])
+      .filter(Boolean),
+  ),
+];
+export const recommendedSkillMatchKeys = (skill: RecommendedSkill): readonly string[] =>
+  normalizedSkillMatchKeys([skill.id, skill.name, humanizeSkillName(skill.name)]);
 export function skillMatchKeys(skill: SkillMetadata): string[] {
   const directory =
     skill.path
@@ -287,13 +300,12 @@ export function skillMatchKeys(skill: SkillMetadata): string[] {
       .replace(/\/SKILL\.md$/iu, "")
       .split("/")
       .at(-1) ?? "";
-  return [
-    ...new Set(
-      [directory, skill.name, humanize(skill.name), skill.interface?.displayName ?? ""]
-        .flatMap((key) => [key.trim().toLowerCase(), key.toLowerCase().replace(/[^a-z0-9]/gu, "")])
-        .filter(Boolean),
-    ),
-  ];
+  return normalizedSkillMatchKeys([
+    directory,
+    skill.name,
+    humanizeSkillName(skill.name),
+    skill.interface?.displayName ?? "",
+  ]);
 }
 export function selectSkills(response: SkillsListResponse): SkillsView {
   const byPath = new Map<string, SkillMetadata>();
@@ -307,8 +319,8 @@ export function selectSkills(response: SkillsListResponse): SkillsView {
     if (!byName.has(skill.name)) byName.set(skill.name, skill);
   const all = [...byName.values()].sort(
     (a, b) =>
-      (a.interface?.displayName ?? humanize(a.name)).localeCompare(
-        b.interface?.displayName ?? humanize(b.name),
+      (a.interface?.displayName ?? humanizeSkillName(a.name)).localeCompare(
+        b.interface?.displayName ?? humanizeSkillName(b.name),
       ) || a.name.localeCompare(b.name),
   );
   const installed = all.filter((skill) => !skill.pluginId && !skill.path.startsWith("plugin:"));

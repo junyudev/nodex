@@ -1,3 +1,5 @@
+import * as PubSub from "effect/PubSub";
+import * as Fiber from "effect/Fiber";
 import { StandaloneSkills } from "./StandaloneSkills";
 import { assert, it } from "@effect/vitest";
 import * as Context from "effect/Context";
@@ -50,6 +52,7 @@ const make = (
       installUrl: string | null;
       category: string | null;
     }[];
+    events?: Stream.Stream<import("../codex-runtime/CodexEventHub").CodexEndpointEvent>;
     hooks?: import("@nodex/codex-app-server-protocol/v2/HookMetadata").HookMetadata[];
   } = {},
 ) => {
@@ -211,6 +214,7 @@ const make = (
       if (method === "mcpServer/oauth/login")
         return Effect.succeed({
           authorizationUrl: options.oauthUrl ?? "https://example.com/oauth",
+          loginId: "native-login",
         });
       if (method === "config/read")
         return Effect.succeed(
@@ -260,7 +264,7 @@ const make = (
     })) as CodexGateway["Service"]["requestLocal"];
   const gateway = CodexGateway.of({
     localHostId: "local",
-    events: Stream.empty,
+    events: options.events ?? Stream.empty,
     promoteQueuedCatalogPage: Effect.succeed(false),
     requestLocal: request,
     requestOnHost: (_host, method, params) => request(method, params),
@@ -1209,9 +1213,9 @@ it.effect("returns Plugin Creator's native ID only after native callability is v
 });
 
 it.effect("filters plugin hook metadata by its exact owner and counts trust review states", () => {
-  const hook = {
+  const hook: import("@nodex/codex-app-server-protocol/v2/HookMetadata").HookMetadata = {
     key: "review",
-    eventName: "SessionStart",
+    eventName: "sessionStart",
     timeoutSec: 0n,
     matcher: null,
     statusMessage: null,
@@ -1227,7 +1231,7 @@ it.effect("filters plugin hook metadata by its exact owner and counts trust revi
     handlerType: "command",
     command: "echo ready",
     async: false,
-  } as unknown as import("@nodex/codex-app-server-protocol/v2/HookMetadata").HookMetadata;
+  };
   const h = make({
     hooks: [
       hook,
@@ -1258,3 +1262,120 @@ it.effect("filters plugin hook metadata by its exact owner and counts trust revi
     );
   }).pipe(Effect.provide(h.layer));
 });
+
+it.effect(
+  "projects declared app connection states onto inventory rows and detail without conflating enablement",
+  () => {
+    const h = make({
+      detailApps: [
+        {
+          id: "connector_test",
+          name: "Test app",
+          description: null,
+          installUrl: null,
+          category: null,
+        },
+      ],
+      runtimeApps: [{ id: "connector_test", runtimeName: "Test", enabled: true, callable: true }],
+    });
+    return Effect.gen(function* () {
+      const manager = yield* PluginManager;
+      const inventory = yield* manager.query("installed", context);
+      assert.strictEqual(inventory.rows[0]?.appConnectionStates?.connector_test, "connected");
+      const detail = yield* manager.query("read", {
+        ...context,
+        marketplacePath: "/marketplace.json",
+        pluginName: "a",
+      });
+      assert.deepEqual(detail.appConnectionStates, { connector_test: "connected" });
+      const loginHost = make({
+        config: settingsConfig({ server: { url: "https://example.com/mcp" } }),
+      });
+      const login = yield* Effect.gen(function* () {
+        return yield* (yield* PluginManager).command("mcp-login", { ...context, name: "server" });
+      }).pipe(Effect.provide(loginHost.layer));
+      assert.ok("value" in login);
+      if ("value" in login) assert.strictEqual(login.value.loginId, "native-login");
+    }).pipe(Effect.provide(h.layer));
+  },
+);
+it.effect(
+  "keeps effective MCP policy origins read-only even when a user declaration exists",
+  () => {
+    const config = settingsConfig({ managed: { command: "server" } });
+    const h = make({
+      config: {
+        ...config,
+        origins: {
+          "mcp_servers.managed.command": {
+            name: { type: "enterpriseManaged", id: "policy", name: "Policy" },
+            version: "policy-version",
+          },
+        },
+      },
+    });
+    return Effect.gen(function* () {
+      const manager = yield* PluginManager;
+      const result = yield* manager.command("mcp-enabled", {
+        ...context,
+        name: "managed",
+        enabled: false,
+      });
+      assert.strictEqual(result.status, "protected");
+      assert.strictEqual(
+        h.calls.some((call) => call.method === "config/batchWrite"),
+        false,
+      );
+    }).pipe(Effect.provide(h.layer));
+  },
+);
+
+it.effect(
+  "forwards app inventory and MCP OAuth notifications with their owning host and generation",
+  () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const events =
+          yield* PubSub.unbounded<import("../codex-runtime/CodexEventHub").CodexEndpointEvent>();
+        const h = make({ events: Stream.fromPubSub(events) });
+        yield* Effect.gen(function* () {
+          const manager = yield* PluginManager;
+          const changes = yield* manager.changes.pipe(
+            Stream.take(2),
+            Stream.runCollect,
+            Effect.forkScoped({ startImmediately: true }),
+          );
+          yield* PubSub.publish(events, {
+            kind: "notification",
+            hostId: "remote",
+            generation: 7,
+            value: { protocol: "generated", method: "app/list/updated", params: { data: [] } },
+          });
+          yield* PubSub.publish(events, {
+            kind: "notification",
+            hostId: "local",
+            generation: 1,
+            value: { protocol: "generated", method: "app/list/updated", params: { data: [] } },
+          });
+          yield* PubSub.publish(events, {
+            kind: "notification",
+            hostId: "local",
+            generation: 1,
+            value: {
+              protocol: "generated",
+              method: "mcpServer/oauthLogin/completed",
+              params: { name: "server", threadId: null, loginId: "login", success: true },
+            },
+          });
+          const observed = yield* Fiber.join(changes);
+          assert.deepEqual(
+            observed.map((event) => event.kind),
+            ["apps", "mcp"],
+          );
+          assert.strictEqual(observed[1]?.hostGeneration, 1);
+          assert.strictEqual(observed[1]?.mcpOauthCompletion?.loginId, "login");
+          assert.ok(observed.every((event) => event.hostId === "local"));
+        }).pipe(Effect.provide(h.layer));
+      }),
+    ),
+);

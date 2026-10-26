@@ -19,6 +19,30 @@ export function configuredTable(value: unknown): Record<string, unknown> {
     ? (value as Record<string, unknown>)
     : {};
 }
+const userOwnsConfigEntry = (
+  response: ConfigReadResponse,
+  table: string,
+  name: string,
+): boolean => {
+  const prefix = `${table}.${name}`;
+  const entries = Object.entries(response.origins).filter(
+    ([key]) => key === prefix || key.startsWith(`${prefix}.`),
+  );
+  const origins = entries.length ? entries.map(([, origin]) => origin) : [response.origins[table]];
+  return origins.every(
+    (origin) =>
+      origin === undefined || (origin.name.type === "user" && origin.name.profile == null),
+  );
+};
+export const safePluginCatalogIcon = (value: string | null | undefined): string | null => {
+  if (!value) return null;
+  try {
+    const url = new URL(value);
+    return url.protocol === "https:" && !url.username && !url.password ? url.href : null;
+  } catch {
+    return null;
+  }
+};
 export function projectMarketplaces(
   response: PluginListResponse,
   config: ConfigReadResponse,
@@ -63,7 +87,11 @@ export function projectMarketplaces(
                 ? declaration.ref_name
                 : null,
           canUpgrade: configured && !builtIn && sourceType === "git" && !!source?.trim(),
-          canRemove: configured && userConfigured && !builtIn,
+          canRemove:
+            configured &&
+            userConfigured &&
+            !builtIn &&
+            userOwnsConfigEntry(config, "marketplaces", name),
           pluginCount: new Set(m.plugins.map((plugin) => plugin.id)).size,
         };
       });
@@ -93,7 +121,10 @@ export function projectMcpServers(
         declaration,
         status,
         enabled: declaration?.enabled !== false,
-        readOnly: pluginId !== null || (declaration !== null && !Object.hasOwn(user, name)),
+        readOnly:
+          pluginId !== null ||
+          (declaration !== null &&
+            (!Object.hasOwn(user, name) || !userOwnsConfigEntry(config, "mcp_servers", name))),
         pluginId,
       };
     }),
@@ -101,3 +132,19 @@ export function projectMcpServers(
 }
 export const normalizeConnectorId = (id: string): string =>
   id.startsWith("asdk_app_") ? `connector_${id.slice(9)}` : id;
+
+/** Visits only derived inventory rows; native summaries and metadata retain their own shapes. */
+export function mapPluginProjection(
+  value: unknown,
+  map: (
+    row: import("../../shared/codex-plugin-management").PluginRow,
+  ) => import("../../shared/codex-plugin-management").PluginRow,
+): unknown {
+  if (Array.isArray(value)) return value.map((item) => mapPluginProjection(item, map));
+  if (!Predicate.isObject(value)) return value;
+  if ("stableIdentity" in value && "summary" in value)
+    return map(value as unknown as import("../../shared/codex-plugin-management").PluginRow);
+  return Object.fromEntries(
+    Object.entries(value).map(([key, item]) => [key, mapPluginProjection(item, map)]),
+  );
+}

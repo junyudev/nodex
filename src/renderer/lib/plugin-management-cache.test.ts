@@ -185,3 +185,96 @@ describe("plugin mutation cache settlement", () => {
     expect(queryClient.getQueryState(remote)?.isInvalidated).toBe(false);
   });
 });
+
+it("refreshes skill and composer observations without invalidating unrelated settings or other hosts", () => {
+  const queryClient = client();
+  const skills = pluginManagementKeys.resource(scope, "skills");
+  const apps = pluginManagementKeys.resource(scope, "apps");
+  const recommended = pluginManagementKeys.resource(scope, "recommended-skills");
+  const composer = ["codexComposerSkills", "list", "local"];
+  const remoteComposer = ["codexComposerSkills", "list", "remote"];
+  for (const key of [skills, apps, recommended, composer, remoteComposer])
+    queryClient.setQueryData(key, {});
+  applyPluginManagementEvent(queryClient, { hostId: "local", accountEpoch: 1, kind: "skills" });
+  expect(queryClient.getQueryState(skills)?.isInvalidated).toBe(true);
+  expect(queryClient.getQueryState(recommended)?.isInvalidated).toBe(true);
+  expect(queryClient.getQueryState(composer)?.isInvalidated).toBe(true);
+  expect(queryClient.getQueryState(apps)?.isInvalidated).toBe(false);
+  expect(queryClient.getQueryState(remoteComposer)?.isInvalidated).toBe(false);
+});
+it("keeps fresh unrelated observations when an operation with no optimistic patch is rejected", async () => {
+  const queryClient = client();
+  const apps = pluginManagementKeys.resource(scope, "apps");
+  queryClient.setQueryData(apps, { version: 1 });
+  vi.mocked(commandPluginManagement).mockImplementation(async () => {
+    queryClient.setQueryData(apps, { version: 2 });
+    return {
+      status: "failed",
+      error: { code: "policy_denied", message: "Denied", retryable: false },
+    } as never;
+  });
+  await runPluginMutation(queryClient, context, "mcp-login", { name: "server" });
+  expect(queryClient.getQueryData(apps)).toEqual({ version: 2 });
+});
+it("fences MCP OAuth completion by account and host generation", () => {
+  const queryClient = client();
+  queryClient.setQueryData(pluginManagementKeys.context(context), scope);
+  const key = pluginManagementKeys.resource(scope, "mcp-oauth-completion");
+  const completion = { name: "server", threadId: null, success: true };
+  applyPluginManagementEvent(queryClient, {
+    hostId: "local",
+    hostGeneration: 1,
+    accountEpoch: 1,
+    kind: "mcp",
+    mcpOauthCompletion: completion,
+  });
+  expect(queryClient.getQueryData(key)).toEqual(completion);
+  for (const stale of [
+    { hostGeneration: 0, accountEpoch: 1 },
+    { hostGeneration: 1, accountEpoch: 0 },
+  ])
+    applyPluginManagementEvent(queryClient, {
+      ...stale,
+      hostId: "local",
+      kind: "mcp",
+      mcpOauthCompletion: { ...completion, success: false },
+    });
+  expect(queryClient.getQueryData(key)).toEqual(completion);
+});
+it("keeps marketplace progress in its originating Project and remembers successful recommended installs", async () => {
+  const queryClient = client();
+  queryClient.setQueryData(pluginManagementKeys.context(context), scope);
+  const other = { ...scope, projectId: "other" };
+  queryClient.setQueryData(pluginManagementKeys.context(other), other);
+  applyPluginManagementEvent(queryClient, {
+    hostId: "local",
+    accountEpoch: 1,
+    kind: "plugins",
+    progress: {
+      context: scope,
+      operationId: "remove",
+      marketplaceName: "market",
+      pluginIds: [],
+      completedPluginIds: [],
+      remainingPluginIds: [],
+      protected: false,
+      removed: true,
+      outcome: { status: "success", value: undefined, refreshFailures: [] },
+    },
+  });
+  expect(
+    queryClient.getQueryData(pluginManagementKeys.resource(other, "marketplace-progress", null)),
+  ).toBeUndefined();
+  vi.mocked(commandPluginManagement).mockResolvedValue({
+    status: "success",
+    value: { path: "/skills/pdf/SKILL.md" },
+    refreshFailures: [],
+  } as never);
+  await runPluginMutation(queryClient, context, "skill-install", { id: "pdf", scope: "user" });
+  expect(
+    queryClient.getQueryData(pluginManagementKeys.resource(scope, "recommended-installs")),
+  ).toEqual(["pdf"]);
+  expect(
+    queryClient.getQueryData(pluginManagementKeys.resource(other, "recommended-installs")),
+  ).toBeUndefined();
+});

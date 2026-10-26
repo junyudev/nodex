@@ -183,7 +183,8 @@ servers and declarations owned by another configuration layer are read-only. Add
 renames, removal and enablement use the observed writable user-layer version through the
 native config writer. Unrelated declarations and unknown native config fields are retained.
 MCP OAuth returns a validated HTTP(S) authorization URL for the UI's browser action;
-native completion notifications refresh MCP observations. This flow is independent of
+native completion notifications refresh MCP observations. The login response retains its
+native login ID so the UI can correlate completion. This flow is independent of
 ChatGPT connector authentication.
 
 Plugin hook inventory filters native hook metadata by the exact owning plugin ID and counts
@@ -208,3 +209,26 @@ installation/enablement observations and validated navigation. It is distinct fr
 skill tool dependencies. Missing access or missing dependency data is explicit and does not
 fabricate an empty supported feature. Connector read failures remain visible separately
 from the plugin's native detail.
+
+## Settings observation updates
+
+Skill changes invalidate skills, recommended skills, previews, affected detail and composer
+observations. App changes invalidate app-dependent plugin projections and MCP catalogs.
+MCP changes invalidate MCP/app status and detail without refetching unrelated skill or
+marketplace catalogs. Account and host changes remove old scoped and composer observations;
+late results cannot repopulate them. MCP OAuth completion carries host generation and account
+epoch. Removal progress additionally retains its originating Project context and display rows,
+with uninstalling, removing, complete and failed phases.
+
+Skills browse suppresses recommendations matching any installed skill's normalized name,
+directory or display-name keys. A recommendation installed during the current flow remains
+visible and carries its installed skill, while the duplicate installed row is suppressed.
+Without search, recommendation order is Imagegen, Sora, PDF, Doc, Spreadsheet and Playwright;
+search considers the full catalog. Standalone settings user skills wait for recommendations
+to load and exclude recommendation matches. System standalone skills remain in browse.
+
+Inventory rows for local and installed plugins resolve their declared apps before projecting
+connection states; catalog summaries alone do not establish app ownership or callability.
+Dependency reads and icon URLs do not bypass account fencing or local-file authorization.
+Recommended-skill Git commands discard inherited Git directory/config overrides and pin the
+owned checkout, preventing another repository from becoming the refresh target.

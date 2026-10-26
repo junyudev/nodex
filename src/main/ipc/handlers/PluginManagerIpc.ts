@@ -5,7 +5,7 @@ import * as Stream from "effect/Stream";
 import type { IpcMainInvokeEvent } from "electron";
 import type { PluginQueries, PluginCommands } from "../../../shared/codex-plugin-management";
 import { PluginManager } from "../../codex-application/PluginManager";
-import { pluginError } from "../../codex-application/PluginManagementError";
+import { pluginError, pluginFailure } from "../../codex-application/PluginManagementError";
 import { MainConfig } from "../../app/MainConfig";
 import { ElectronIpc } from "../../platform/electron/ElectronIpc";
 import { requireTrustedAppRendererSender } from "../../platform/electron/TrustedRendererSender";
@@ -224,6 +224,27 @@ export const live = Layer.effectDiscard(
             ),
           ),
           Effect.flatMap((input) => manager.command(name, input as PluginCommands[K]["input"])),
+          Effect.catch((error) => {
+            const outcome = {
+              status:
+                error.code === "policy_denied" ? ("policy_denied" as const) : ("failed" as const),
+              error: pluginFailure(error),
+            };
+            return Effect.succeed(
+              (name === "marketplace-remove"
+                ? {
+                    marketplaceName: "",
+                    operationId: "",
+                    pluginIds: [],
+                    completedPluginIds: [],
+                    remainingPluginIds: [],
+                    protected: error.code === "policy_denied",
+                    removed: false,
+                    outcome,
+                  }
+                : outcome) as PluginCommands[K]["output"],
+            );
+          }),
         ),
       );
     for (const name of Object.keys(pluginQuerySchemas) as (keyof PluginQueries)[])

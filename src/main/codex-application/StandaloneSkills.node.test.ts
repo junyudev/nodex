@@ -52,9 +52,10 @@ const make = Effect.gen(function* () {
         };
       }),
   });
-  const layer = live({ codexHome: home, environment: { PATH: "/usr/bin" } }).pipe(
-    Layer.provide(Layer.succeed(GitCommandPlatform, git)),
-  );
+  const layer = live({
+    codexHome: home,
+    environment: { PATH: "/usr/bin", GIT_DIR: "/outside/.git", GIT_WORK_TREE: "/outside" },
+  }).pipe(Layer.provide(Layer.succeed(GitCommandPlatform, git)));
   return {
     home,
     repo,
@@ -94,6 +95,8 @@ it.effect(
           );
           assert.strictEqual(initial.source, "git");
           assert.strictEqual(h.calls.length, 2);
+          assert.strictEqual(h.calls[0]?.environment.GIT_DIR, undefined);
+          assert.strictEqual(h.calls[0]?.environment.GIT_WORK_TREE, undefined);
           assert.ok(
             h.calls.every(
               (call) => call.timeoutMs === 30_000 && call.environment.GIT_TERMINAL_PROMPT === "0",
@@ -137,6 +140,13 @@ it.effect(
           assert.strictEqual(project.path, `${h.project}/.agents/skills/sample/SKILL.md`);
           yield* skills.uninstall(skill(project.path, "repo"), [h.project], Effect.void);
           assert.strictEqual(yield* fs.exists(`${h.project}/.agents/skills/sample`), false);
+          yield* fs.symlink(h.home, `${h.home}/native-home-alias`);
+          yield* skills.uninstall(
+            skill(`${h.home}/native-home-alias/skills/sample/SKILL.md`),
+            [],
+            Effect.void,
+          );
+          assert.strictEqual(yield* fs.exists(`${h.home}/skills/sample`), false);
         }).pipe(Effect.provide(h.layer));
       }),
     ).pipe(Effect.provide(NodeServices.layer)),
@@ -173,6 +183,12 @@ it.effect("rejects traversal, plugin removal, symlink scopes, and escaping suppo
             .pipe(Effect.flip)).code,
           "protected",
         );
+        yield* fs.symlink(outside, `${h.project}/.agents`);
+        assert.strictEqual(
+          (yield* skills.install("sample", h.project, Effect.void).pipe(Effect.flip)).code,
+          "protected",
+        );
+        assert.strictEqual(yield* fs.exists(`${outside}/skills`), false);
         yield* fs.symlink(`${outside}/SKILL.md`, `${h.repo}/skills/.curated/sample/leak.md`);
         assert.strictEqual(
           (yield* skills.install("sample", h.project, Effect.void).pipe(Effect.flip)).code,
@@ -182,4 +198,42 @@ it.effect("rejects traversal, plugin removal, symlink scopes, and escaping suppo
       }).pipe(Effect.provide(h.layer));
     }),
   ).pipe(Effect.provide(NodeServices.layer)),
+);
+
+it.effect(
+  "uses an available bundled catalog and supporting files before creating a Git checkout",
+  () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const h = yield* make;
+        const fs = yield* FileSystem.FileSystem;
+        const bundled = `${h.home}/bundled`;
+        yield* fs.makeDirectory(`${bundled}/skills/.curated/pdf`, { recursive: true });
+        yield* fs.writeFileString(
+          `${bundled}/skills/.curated/pdf/SKILL.md`,
+          "---\nname: PDF\ndescription: Read files\n---\n# PDF",
+        );
+        const layer = live({ codexHome: h.home, environment: {}, bundledRepoRoot: bundled }).pipe(
+          Layer.provide(
+            Layer.succeed(GitCommandPlatform, {
+              run: () => Effect.die("The bundled fallback must not fetch Git"),
+            }),
+          ),
+        );
+        yield* Effect.gen(function* () {
+          const skills = yield* StandaloneSkills;
+          const catalog = yield* skills.list(false);
+          assert.strictEqual(catalog.source, "bundled");
+          assert.deepEqual(
+            catalog.skills.map((skill) => skill.id),
+            ["pdf"],
+          );
+          const installed = yield* skills.install("pdf", null, Effect.void);
+          assert.strictEqual(
+            (yield* skills.contents(installed.path)).contents?.includes("# PDF"),
+            true,
+          );
+        }).pipe(Effect.provide(layer));
+      }),
+    ).pipe(Effect.provide(NodeServices.layer)),
 );

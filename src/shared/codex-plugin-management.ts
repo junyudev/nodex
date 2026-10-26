@@ -61,6 +61,7 @@ export type PluginAppConnectionState =
   | "authentication_required"
   | "unavailable";
 export interface PluginRow {
+  readonly appConnectionError?: PluginFailure | null;
   readonly appConnectionStates?: Readonly<Record<string, PluginAppConnectionState>>;
   readonly summary: PluginSummary;
   readonly marketplace: PluginMarketplaceIdentity;

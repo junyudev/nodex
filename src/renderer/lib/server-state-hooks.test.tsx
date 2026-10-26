@@ -5,13 +5,14 @@ import { beforeEach, describe, expect, test } from "vite-plus/test";
 import { render, settleAsyncRender } from "@/test/dom";
 import { installWindowApi } from "@/test/browser-globals";
 import { createTestQueryClient, TestQueryProvider } from "@/test/query";
-import { applyCodexHostCatalogEvent, NodexQueryProvider } from "./query-client";
+import { NodexQueryProvider } from "./query-client";
+import { applyPluginManagementEvent } from "./plugin-management-cache";
+import type { PluginManagementChanged } from "../../shared/codex-plugin-management";
 import { queryKeys } from "./query-keys";
 import type {
   WorktreeEnvironmentConfigRecord,
   WorktreeEnvironmentDefinition,
   WorktreeEnvironmentSettingsSnapshot,
-  CodexEvent,
   ProtocolAppInfo,
 } from "./types";
 import {
@@ -133,9 +134,10 @@ describe("server state query hooks", () => {
   let mcpStatusCalls = 0;
   let mcpStatusArgs: unknown[] = [];
   let appListCalls = 0;
+  let appCatalog = [makeApp("Docs")];
   let skillNames: string[] = [];
   let skillsListCwds: unknown[] = [];
-  let codexEventListeners = new Set<(...args: unknown[]) => void>();
+  let pluginEventListeners = new Set<(...args: unknown[]) => void>();
 
   beforeEach(() => {
     configs = [makeConfig("/tmp/project-1/.codex/environment.json")];
@@ -146,9 +148,10 @@ describe("server state query hooks", () => {
     mcpStatusCalls = 0;
     mcpStatusArgs = [];
     appListCalls = 0;
+    appCatalog = [makeApp("Docs")];
     skillNames = ["original"];
     skillsListCwds = [];
-    codexEventListeners = new Set();
+    pluginEventListeners = new Set();
 
     installWindowApi({
       invoke: async (channel: string, ...args: unknown[]) => {
@@ -215,15 +218,15 @@ describe("server state query hooks", () => {
         }
         if (channel === "codex:mcp-apps:list") {
           appListCalls += 1;
-          return [makeApp("Docs")];
+          return appCatalog;
         }
 
         throw new Error(`Unexpected channel: ${channel}`);
       },
       on: (channel: string, listener: (...args: unknown[]) => void) => {
-        if (channel !== "codex:event") return () => {};
-        codexEventListeners.add(listener);
-        return () => codexEventListeners.delete(listener);
+        if (channel !== "codex:plugins:changed") return () => {};
+        pluginEventListeners.add(listener);
+        return () => pluginEventListeners.delete(listener);
       },
     });
   });
@@ -290,7 +293,7 @@ describe("server state query hooks", () => {
     expect(mcpStatusArgs).toEqual([]);
   });
 
-  test("replaces an observed Apps catalog from the host update event", async () => {
+  test("refreshes an observed Apps catalog from its scoped host event", async () => {
     const view = render(
       <NodexQueryProvider>
         <AppsCatalogConsumer />
@@ -302,30 +305,30 @@ describe("server state query hooks", () => {
     });
     expect(appListCalls).toBe(1);
 
+    appCatalog = [makeApp("Calendar")];
     await act(async () => {
-      const event: CodexEvent = { type: "appsUpdated", apps: [makeApp("Calendar")] };
-      for (const listener of codexEventListeners) listener(event);
+      const event: PluginManagementChanged = { hostId: "local", accountEpoch: 1, kind: "apps" };
+      for (const listener of pluginEventListeners) listener(event);
       await Promise.resolve();
     });
 
     await waitFor(() => {
       expect(view.getByTestId("apps").textContent).toBe("Calendar");
     });
-    expect(appListCalls).toBe(1);
+    expect(appListCalls).toBe(2);
   });
 
   test("does not warm an unobserved Apps cache from a host update", () => {
     const client = createTestQueryClient();
-    const event: CodexEvent = { type: "appsUpdated", apps: [makeApp("Calendar")] };
+    const event: PluginManagementChanged = { hostId: "local", accountEpoch: 1, kind: "apps" };
 
-    applyCodexHostCatalogEvent(client, event);
+    applyPluginManagementEvent(client, event);
     expect(client.getQueryData(queryKeys.mcp.apps())).toBeUndefined();
 
     client.setQueryData(queryKeys.mcp.apps(), [makeApp("Docs")]);
-    applyCodexHostCatalogEvent(client, event);
-    expect(client.getQueryData<ProtocolAppInfo[]>(queryKeys.mcp.apps())?.[0]?.name).toBe(
-      "Calendar",
-    );
+    applyPluginManagementEvent(client, event);
+    expect(client.getQueryData<ProtocolAppInfo[]>(queryKeys.mcp.apps())?.[0]?.name).toBe("Docs");
+    expect(client.getQueryState(queryKeys.mcp.apps())?.isInvalidated).toBe(true);
   });
   test("refreshes active skill inventories for their own cwd after a native change notification", async () => {
     const view = render(
@@ -338,7 +341,12 @@ describe("server state query hooks", () => {
     await waitFor(() => expect(view.getByTestId("/second").textContent).toBe("original"));
     skillNames = ["original", "new-skill"];
     await act(async () => {
-      for (const listener of codexEventListeners) listener({ type: "skillsChanged" });
+      for (const listener of pluginEventListeners)
+        listener({
+          hostId: "local",
+          accountEpoch: 1,
+          kind: "skills",
+        } satisfies PluginManagementChanged);
       await Promise.resolve();
     });
     await waitFor(() => expect(view.getByTestId("/first").textContent).toBe("original,new-skill"));

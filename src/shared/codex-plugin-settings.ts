@@ -1,3 +1,4 @@
+import type { McpServerOauthLoginResponse } from "@nodex/codex-app-server-protocol/v2/McpServerOauthLoginResponse";
 import type { ConnectorMetadata } from "@nodex/codex-app-server-protocol/v2/ConnectorMetadata";
 import type { InstalledApp } from "@nodex/codex-app-server-protocol/v2/InstalledApp";
 import type { McpServerStatus } from "@nodex/codex-app-server-protocol/v2/McpServerStatus";
@@ -148,7 +149,7 @@ export interface PluginSettingsCommands {
   "mcp-login": {
     input: PluginContext &
       Pick<McpServerOauthLoginParams, "name" | "clientRegistration" | "scopes">;
-    output: PluginMutationResult<{ readonly authorizationUrl: string }>;
+    output: PluginMutationResult<McpServerOauthLoginResponse>;
   };
   "skill-install": {
     input: PluginContext & {

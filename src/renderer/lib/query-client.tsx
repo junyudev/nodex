@@ -1,8 +1,5 @@
 import { QueryClient, QueryClientProvider, type DefaultOptions } from "@tanstack/react-query";
 import { lazy, Suspense, useEffect, useState, type ReactNode } from "react";
-import { subscribeCodexEvents } from "./api";
-import { queryKeys } from "./query-keys";
-import type { CodexEvent } from "./types";
 import { ProjectionInvalidationProvider } from "./projection-invalidation-context";
 import { PageFileQueryCacheSync } from "./page-file-query-cache";
 import { useDevelopmentFeature } from "./development-features-context";
@@ -32,31 +29,8 @@ export function createNodexQueryClient(
   return new QueryClient({ defaultOptions });
 }
 
-export function applyCodexHostCatalogEvent(queryClient: QueryClient, event: CodexEvent): void {
-  if (event.type === "skillsChanged") {
-    void queryClient.invalidateQueries({ queryKey: queryKeys.codexComposerSkills.all() });
-    return;
-  }
-  if (event.type !== "appsUpdated") return;
-
-  const queryKey = queryKeys.mcp.apps();
-  const queryState = queryClient.getQueryState(queryKey);
-  if (queryState?.data == null && queryState?.fetchStatus !== "fetching") return;
-
-  queryClient.setQueryData(queryKey, event.apps);
-}
-
 function CodexHostCatalogQuerySync({ queryClient }: { queryClient: QueryClient }) {
-  useEffect(() => {
-    const releasePlugins = acquirePluginManagementSubscription(queryClient);
-    const releaseCodex = subscribeCodexEvents((event) => {
-      applyCodexHostCatalogEvent(queryClient, event);
-    });
-    return () => {
-      releaseCodex();
-      releasePlugins();
-    };
-  }, [queryClient]);
+  useEffect(() => acquirePluginManagementSubscription(queryClient), [queryClient]);
   return null;
 }
 

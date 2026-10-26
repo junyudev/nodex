@@ -66,6 +66,7 @@ it.effect(
         const delivered: unknown[][] = [];
         const events = yield* PubSub.unbounded<PluginManagementChanged>();
         let reads = 0;
+        let commands = 0;
         const manager = PluginManager.of({
           changes: Stream.fromPubSub(events),
           query: () =>
@@ -73,7 +74,11 @@ it.effect(
               reads++;
               return {} as never;
             }),
-          command: () => Effect.succeed({} as never),
+          command: () =>
+            Effect.sync(() => {
+              commands++;
+              return {} as never;
+            }),
         });
         const ipc = makeTestElectronIpc({
           handle: (channel, handler) =>
@@ -116,6 +121,22 @@ it.effect(
           projectId: null,
         });
         assert.strictEqual(reads, 1);
+        const command = handlers.get("codex:plugins:mcp-enabled")!;
+        const invalid = yield* command(event(), {
+          hostId: "local",
+          projectId: null,
+          name: "server",
+          enabled: "false",
+        });
+        assert.strictEqual((invalid as { error: { code: string } }).error.code, "invalid_input");
+        const denied = yield* command(event("webview"), {
+          hostId: "local",
+          projectId: null,
+          name: "server",
+          enabled: false,
+        });
+        assert.strictEqual((denied as { error: { code: string } }).error.code, "policy_denied");
+        assert.strictEqual(commands, 0);
         const change: PluginManagementChanged = {
           hostId: "local",
           accountEpoch: 1,

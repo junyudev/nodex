@@ -52,6 +52,7 @@ it.effect(
         },
       ]);
       assert.strictEqual(h.calls[0]?.path, "ps/plugins/plugin%2Fid");
+      assert.strictEqual(new Headers(h.calls[0]?.headers).get("OAI-Product-Sku"), "CODEX");
       assert.deepEqual(h.calls[0]?.expectedAccount, { accountId: "a", userId: "u" });
     }).pipe(Effect.provideService(PluginServiceAccount, { accountId: "a", userId: "u" })),
 );

@@ -1,9 +1,11 @@
+import { MAIN_OBSERVATION_EVENT_CAPACITY } from "../runtime-limits";
 import { makePluginAccountMetadata } from "./PluginAccountMetadata";
 import * as Result from "effect/Result";
 import { StandaloneSkills } from "./StandaloneSkills";
 import { pluginNativeFailure as nativeFailure } from "./PluginNativeErrors";
 import { makePluginApps } from "./PluginApps";
 import {
+  mapPluginProjection,
   normalizeConnectorId,
   configuredTable,
   projectMarketplaces,
@@ -121,7 +123,10 @@ export const live = (options: {
       const standaloneSkills = yield* StandaloneSkills;
       const policy = createPluginInventoryPolicy(options.runtimeStateHome);
       const epoch = yield* Ref.make(0);
-      const events = yield* PubSub.unbounded<PluginManagementChanged>();
+      // Backpressure retains progress and OAuth completion; IPC fan-out does not await renderer work.
+      const events = yield* PubSub.bounded<PluginManagementChanged>(
+        MAIN_OBSERVATION_EVENT_CAPACITY,
+      );
       yield* Effect.addFinalizer(() => PubSub.shutdown(events));
       const lane = yield* Semaphore.make(1);
       const removals = new Map<
@@ -665,6 +670,70 @@ export const live = (options: {
         ]);
         return yield* applied(context, undefined, "mcp");
       });
+      const hydrateAppConnections = Effect.fn("PluginManager.hydrateAppConnections")(function* <A>(
+        context: ResolvedPluginContext,
+        value: A,
+      ) {
+        const candidates = new Map<string, PluginRow>();
+        mapPluginProjection(value, (row) => {
+          if (!row.managed && (row.marketplace.path !== null || row.summary.installed))
+            candidates.set(row.nativeId, row);
+          return row;
+        });
+        if (!candidates.size) return value;
+        const details = yield* Effect.forEach(
+          [...candidates.values()],
+          (row) =>
+            request(context, "plugin/read", {
+              marketplacePath: row.selector.marketplacePath ?? null,
+              remoteMarketplaceName: row.selector.remoteMarketplaceName ?? null,
+              pluginName: row.selector.pluginName,
+            }).pipe(
+              Effect.map((response) => ({
+                row,
+                apps: (response.plugin as unknown as PluginDetail).apps,
+                error: null as import("../../shared/codex-plugin-management").PluginFailure | null,
+              })),
+              Effect.orElseSucceed((error) => ({
+                row,
+                apps: [] as PluginDetail["apps"],
+                error: pluginFailure(error),
+              })),
+            ),
+          { concurrency: 4 },
+        );
+        const appIds = [...new Set(details.flatMap((detail) => detail.apps.map((app) => app.id)))];
+        const appView = appIds.length
+          ? yield* withOperationLease(apps.list(context, { ...context, appIds })).pipe(
+              Effect.orElseSucceed((error) => ({
+                apps: [],
+                connectionError: pluginFailure(error),
+              })),
+            )
+          : null;
+        const projected = new Map(
+          details.map((detail) => [
+            detail.row.nativeId,
+            {
+              ...detail.row,
+              appConnectionError: detail.error ?? appView?.connectionError ?? null,
+              ...(detail.error
+                ? {}
+                : {
+                    appConnectionStates: Object.fromEntries(
+                      detail.apps.map((app) => [
+                        app.id,
+                        appView?.apps.find(
+                          (row) => normalizeConnectorId(row.id) === normalizeConnectorId(app.id),
+                        )?.connectionState ?? "unknown",
+                      ]),
+                    ),
+                  }),
+            },
+          ]),
+        );
+        return mapPluginProjection(value, (row) => projected.get(row.nativeId) ?? row) as A;
+      });
       const queryHandlers: {
         [K in keyof PluginQueries]: (
           context: ResolvedPluginContext,
@@ -1054,8 +1123,7 @@ export const live = (options: {
             if (
               raw.marketplaceLoadErrors.some(
                 (error) =>
-                  input.marketplacePath === undefined ||
-                  error.marketplacePath === input.marketplacePath,
+                  input.marketplacePath == null || error.marketplacePath === input.marketplacePath,
               )
             )
               return yield* pluginError(
@@ -1302,7 +1370,11 @@ export const live = (options: {
             );
           return {
             status: "success" as const,
-            value: { authorizationUrl: url.href },
+            value: {
+              ...response,
+              authorizationUrl: url.href,
+              loginId: response.loginId ?? undefined,
+            },
             refreshFailures: [],
           };
         }),
@@ -1384,15 +1456,38 @@ export const live = (options: {
             const view = yield* withOperationLease(
               apps.list(context, { ...context, appIds, forceRefresh: true }),
             );
-            if (
-              appIds.some(
-                (id) => !view.apps.some((app) => app.id === id && app.enabled && app.callable),
-              )
-            )
+            for (const id of appIds) {
+              const app = view.apps.find(
+                (app) => normalizeConnectorId(app.id) === normalizeConnectorId(id),
+              );
+              if (app?.enabled && app.callable) continue;
+              if (app?.connectionState === "admin_disabled")
+                return yield* pluginError(
+                  "policy_denied",
+                  "A required app is disabled by your administrator.",
+                );
+              if (app?.runtime && !app.enabled)
+                return yield* pluginError(
+                  "invalid_input",
+                  "Enable the helper's required apps before creating a draft.",
+                );
+              if (app?.connectionState === "connected")
+                return yield* pluginError(
+                  "inventory_unavailable",
+                  "The helper's app is connected but is not callable by the agent.",
+                  true,
+                );
+              if (view.connectionError)
+                return yield* pluginError(
+                  view.connectionError.code,
+                  view.connectionError.message,
+                  view.connectionError.retryable,
+                );
               return yield* pluginError(
                 "auth_required",
                 "Connect the helper's required apps before creating a draft.",
               );
+            }
           }
           yield* assertCurrent(context);
           const displayName = detail.summary.interface?.displayName ?? detail.summary.name;
@@ -1578,6 +1673,19 @@ export const live = (options: {
           const context = yield* resolve(input);
           const expected = yield* captureAccount;
           const value = yield* queryHandlers[name](context, input).pipe(
+            Effect.flatMap((value) =>
+              [
+                "list",
+                "installed",
+                "search",
+                "public-home",
+                "category",
+                "personal",
+                "personal-page",
+              ].includes(name)
+                ? hydrateAppConnections(context, value)
+                : Effect.succeed(value),
+            ),
             Effect.provideService(PluginServiceAccount, expected),
             Effect.provideService(PluginOperationLease, lease),
           );

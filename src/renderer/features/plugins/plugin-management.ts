@@ -25,7 +25,12 @@ import type {
   SkillsView,
   PluginSearchScope,
 } from "../../../shared/codex-plugin-management";
-import { dedupePluginRows, selectInstalledPlugins, selectSkills } from "./model/selectors";
+import {
+  dedupePluginRows,
+  selectInstalledPlugins,
+  selectSkills,
+  selectSkillsBrowse,
+} from "./model/selectors";
 import {
   acquirePluginManagementSubscription,
   runPluginMutation,
@@ -231,9 +236,48 @@ export function usePluginCreationCapabilities(context: PluginContext) {
 export function usePluginHooks(context: PluginContext, selector: PluginSelector) {
   return useQuery(pluginQueryOptions(useScope(context), context, "plugin-hooks", selector));
 }
+export function useMcpOauthCompletion(context: PluginContext) {
+  const scope = useScope(context);
+  return useQuery({
+    queryKey: scope
+      ? pluginManagementKeys.resource(scope, "mcp-oauth-completion")
+      : ["plugin-mcp-oauth-pending", context.hostId, context.projectId],
+    queryFn: ():
+      | import("@nodex/codex-app-server-protocol/v2/McpServerOauthLoginCompletedNotification").McpServerOauthLoginCompletedNotification
+      | null => null,
+    initialData: null,
+    enabled: false,
+  });
+}
+export function useRecommendedSkillInstallIds(context: PluginContext) {
+  const scope = useScope(context);
+  return useQuery({
+    queryKey: scope
+      ? pluginManagementKeys.resource(scope, "recommended-installs")
+      : ["plugin-recommended-installs-pending", context.hostId, context.projectId],
+    queryFn: (): readonly string[] => [],
+    initialData: [] as readonly string[],
+    enabled: false,
+  });
+}
+export function useSkillsPageData(context: PluginContext, search = "") {
+  const skills = useSkills(context);
+  const recommended = useRecommendedSkills(context);
+  const installedIds = useRecommendedSkillInstallIds(context);
+  return {
+    ...selectSkillsBrowse({
+      skills: skills.data,
+      recommended: recommended.data,
+      search,
+      installedRecommendedIds: installedIds.data,
+    }),
+    skillsQuery: skills,
+    recommendedQuery: recommended,
+  };
+}
 export function usePluginManagement(context: PluginContext): PluginManagement {
   const client = useQueryClient();
-  usePluginCapabilities(context);
+  useScope(context);
   return {
     install: (input) => runPluginMutation(client, context, "install", input),
     uninstall: (input) => runPluginMutation(client, context, "uninstall", input),

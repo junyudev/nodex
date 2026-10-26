@@ -122,6 +122,8 @@ export class PluginService extends Context.Service<
   }
 >()("nodex/main/codex-application/PluginService") {}
 
+/** Native Customize requests use the Codex product's catalog and connector policies. */
+export const pluginAccountProductHeaders = { "OAI-Product-Sku": "CODEX" } as const;
 /** Frozen by the semantic owner so an account switch cannot retarget a remote operation. */
 export const PluginServiceAccount = Context.Reference<{
   readonly accountId: string;
@@ -162,6 +164,7 @@ export const live = Layer.effect(
           path,
           method,
           action: "manage plugins",
+          headers: pluginAccountProductHeaders,
           expectedAccount: identity,
         })
         .pipe(

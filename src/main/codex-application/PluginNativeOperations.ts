@@ -1,3 +1,4 @@
+import { MAIN_OBSERVATION_EVENT_CAPACITY } from "../runtime-limits";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -45,7 +46,10 @@ export const live = (options: { readonly runtimeStateHome: string }) =>
     Effect.gen(function* () {
       const gateway = yield* CodexGateway;
       const policy = createPluginInventoryPolicy(options.runtimeStateHome);
-      const events = yield* PubSub.unbounded<{ readonly hostId: string }>();
+      // These coalescible observations invalidate native inventory; the newest notification repairs a gap.
+      const events = yield* PubSub.sliding<{ readonly hostId: string }>(
+        MAIN_OBSERVATION_EVENT_CAPACITY,
+      );
       yield* Effect.addFinalizer(() => PubSub.shutdown(events));
       const changed = PubSub.publish(events, { hostId: gateway.localHostId }).pipe(Effect.asVoid);
       const scopes = yield* Ref.make<ReadonlyMap<string, ReadonlyMap<string, readonly string[]>>>(

@@ -217,3 +217,71 @@ it("chooses skill scope precedence and excludes plugin-owned skills while retain
   );
   expect(response.matchKeys).toContain("owned");
 });
+
+it("keeps newly installed recommendation cards visible without duplicating their installed rows", async () => {
+  const { selectSkillsBrowse } = await import("./selectors");
+  const skill = {
+    path: "/skills/my-pdf/SKILL.md",
+    name: "PDF",
+    description: "Read files",
+    scope: "user",
+    enabled: true,
+    pluginId: null,
+  } as const;
+  const skills = selectSkills({ data: [{ cwd: "/", skills: [skill], errors: [] }] });
+  const recommended = {
+    source: "cache",
+    error: null,
+    skills: [{ id: "my-pdf", name: "PDF", description: "Read files", shortDescription: null }],
+  } as const;
+  expect(selectSkillsBrowse({ skills, recommended }).recommended).toEqual([]);
+  const duringFlow = selectSkillsBrowse({
+    skills,
+    recommended,
+    installedRecommendedIds: ["my-pdf"],
+  });
+  expect(duringFlow.recommended[0]?.installedSkill).toEqual(skill);
+  expect(duringFlow.installed).toEqual([]);
+  expect(duringFlow.settingsSkills).toEqual([]);
+});
+it("uses the default recommendation order and searches the full catalog", async () => {
+  const { selectSkillsBrowse } = await import("./selectors");
+  const recommended = {
+    source: "git",
+    error: null,
+    skills: ["Playwright", "Other", "PDF", "Imagegen", "Doc", "Sora", "Spreadsheet"].map(
+      (name) => ({ id: name.toLowerCase(), name, description: name, shortDescription: null }),
+    ),
+  } as const;
+  expect(
+    selectSkillsBrowse({ skills: undefined, recommended }).recommended.map((skill) => skill.name),
+  ).toEqual(["Imagegen", "Sora", "PDF", "Doc", "Spreadsheet", "Playwright"]);
+  expect(
+    selectSkillsBrowse({ skills: undefined, recommended, search: "other" }).recommended.map(
+      (skill) => skill.name,
+    ),
+  ).toEqual(["Other"]);
+});
+it("retains system skills and waits for recommendation inventory before populating settings user skills", async () => {
+  const { selectSkillsBrowse } = await import("./selectors");
+  const base = { name: "sample", description: "Sample", enabled: true, pluginId: null };
+  const skills = selectSkills({
+    data: [
+      {
+        cwd: "/",
+        errors: [],
+        skills: [
+          { ...base, name: "system", scope: "system", path: "/skills/.system/system/SKILL.md" },
+          { ...base, scope: "user", path: "/skills/sample/SKILL.md" },
+        ],
+      },
+    ],
+  });
+  expect(selectSkillsBrowse({ skills, recommended: undefined }).settingsSkills).toEqual([]);
+  const loaded = selectSkillsBrowse({
+    skills,
+    recommended: { skills: [], source: "cache", error: null },
+  });
+  expect(loaded.system.map((skill) => skill.name)).toEqual(["system"]);
+  expect(loaded.settingsSkills.map((skill) => skill.name)).toEqual(["sample"]);
+});
