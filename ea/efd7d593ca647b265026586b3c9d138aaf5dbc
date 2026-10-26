@@ -1,0 +1,77 @@
+src/renderer/features/plugins/model/customize-selection.ts
+  s_1f621c9737ee85::t_f563b18b678761 1-39
+src/renderer/features/plugins/view/installed-plugin-actions-menu.tsx
+  s_1f621c9737ee85::t_0a21438b0dc286 2,73
+  s_1f621c9737ee85::t_67fa80226635b4 1,3-72,74-87
+src/renderer/components/workbench/use-workbench-route-surfaces.tsx
+  s_1f621c9737ee85::t_0a21438b0dc286 11-13,17,29-32,46,61-66,78
+src/renderer/features/plugins/view/customize-sidebar.tsx
+  s_1f621c9737ee85::t_f563b18b678761 18-23,57,120,125,164,288
+  s_1f621c9737ee85::t_80d61184f6c322 1-17,24-56,58-119,121-124,126-163,165-287,289-296
+src/renderer/features/plugins/view/plugin-logo.tsx
+  s_1f621c9737ee85::t_31bdf01833df26 1-78
+src/renderer/lib/workbench-window-state.node.test.ts
+  s_1f621c9737ee85::t_221b5e01a18770 118-145
+src/renderer/components/workbench/workbench-runtime.tsx
+  s_1f621c9737ee85::t_02f1e1e9ce181d 120-121,533-534,562-568,570,575-576,579,583-590,1996-2006,2527-2544,3428,3465-3471,3508-3509,3512,3516,3522,5010,5022,5024,5027,5049,5089,5144-5153
+  s_1f621c9737ee85::t_45c07465c5c7ce 1679
+  s_1f621c9737ee85::t_d2abefd5d8e626 5154
+src/renderer/features/plugins/plugins-routes.ts
+  s_1f621c9737ee85::t_f563b18b678761 1-101
+src/renderer/components/workbench/use-workbench-chrome-layout.test.tsx
+  s_1f621c9737ee85::t_45c07465c5c7ce 13
+src/shared/workbench-layout.test.ts
+  s_1f621c9737ee85::t_221b5e01a18770 36,64-72
+src/renderer/features/plugins/model/plugin-labels.ts
+  s_1f621c9737ee85::t_5d3aa4ddb2b8f8 1-13
+src/renderer/components/workbench/workbench-sidebar.tsx
+  s_1f621c9737ee85::t_0a21438b0dc286 12-13,64,77,100-103
+  s_1f621c9737ee85::t_7b5cd2d481712b 104-109
+src/renderer/components/workbench/use-workbench-route-surfaces.test.tsx
+  s_1f621c9737ee85::t_39891f9440f0e5 25-33,75-78,86,92,125-132,146
+src/renderer/features/plugins/view/plugins-route.tsx
+  s_1f621c9737ee85::t_02f1e1e9ce181d 1-17
+src/renderer/components/workbench/sidebar-new-chat-controls.tsx
+  s_1f621c9737ee85::t_31bdf01833df26 141-142,150-151,188
+src/renderer/components/workbench/use-workbench-chrome-layout.ts
+  s_1f621c9737ee85::t_45c07465c5c7ce 45,86,206,208
+src/renderer/lib/workbench-ui-scopes.tsx
+  s_1f621c9737ee85::t_02f1e1e9ce181d 34-41
+src/renderer/components/workbench/workbench-app-rail.browser.test.tsx
+  s_1f621c9737ee85::t_70b9a767662bd5 31-34,78
+src/renderer/components/workbench/workbench-route-host.tsx
+  s_1f621c9737ee85::t_0a21438b0dc286 18,73,102-107
+  s_1f621c9737ee85::t_10090bea49b44d 108-111
+src/renderer/components/shared/icons/customize-icons.tsx
+  s_1f621c9737ee85::t_657aeb6cf35598 1-55
+src/renderer/components/shared/icons/workbench-navigation-icons.tsx
+  s_1f621c9737ee85::t_8f914bcc433f97 113-146
+src/renderer/components/workbench/workbench-app-rail.tsx
+  s_1f621c9737ee85::t_77cc133f28c16f 4,32,34,72-73,92
+src/renderer/features/plugins/customize-navigation.ts
+  s_1f621c9737ee85::t_e0efec9f720c3c 1-8
+src/renderer/lib/workbench-window-state.ts
+  s_1f621c9737ee85::t_a91639942b5043 233
+src/shared/schemas/workbench-layout.ts
+  s_1f621c9737ee85::t_4eda7cd544d5ab 851-857
+src/shared/workbench-layout.ts
+  s_1f621c9737ee85::t_cb972167047db6 279-284,301,304,308,430,442
+src/renderer/features/plugins/plugins-routes.node.test.ts
+  s_1f621c9737ee85::t_efb6651a6727d7 1-67
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "eaefd7d593ca647b265026586b3c9d138aaf5dbc",
+  "prompts": {},
+  "sessions": {
+    "s_1f621c9737ee85": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "dec682ee-8dcb-4974-b7cd-a9bfde733cc3",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
