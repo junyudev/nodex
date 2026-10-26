@@ -1,0 +1,33 @@
+docs/product-specs/plugins-behavior.md
+  s_77ac5bdfa64dec::t_e370fb696f11f6 211-227
+src/main/codex-application/PluginManager.node.test.ts
+  s_77ac5bdfa64dec::t_6d567c2a4e02ad 1212,1214,1230
+src/renderer/features/plugins/model/selectors.test.ts
+  s_77ac5bdfa64dec::t_a857264c945549 220-287
+src/renderer/features/plugins/model/selectors.ts
+  s_77ac5bdfa64dec::t_898837003c9170 2-97
+src/renderer/features/plugins/plugin-management.jsdom.test.ts
+  s_77ac5bdfa64dec::t_d1250bca7cbc4e 5-10,112-135
+src/renderer/features/plugins/plugin-management.ts
+  s_77ac5bdfa64dec::t_6d3d0c343a9ef9 28-33,239-277,280
+src/renderer/lib/plugin-management-cache.test.ts
+  s_77ac5bdfa64dec::t_69b62c6e99578a 188-280
+src/renderer/lib/plugin-management-cache.ts
+  s_77ac5bdfa64dec::t_45627ab115f27f 89-107,111,113-117,120-121,123-131,134-139,147,155-170,192-203,206-207,290,292-295,298,321-328,331,344,347-357,402,405
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "25d36c5c8a7c53a9e389e8d6f90c28867892fe46",
+  "prompts": {},
+  "sessions": {
+    "s_77ac5bdfa64dec": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1795d-5e95-7ea0-9bf7-2e3e042b723f",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
