@@ -1,0 +1,101 @@
+src/renderer/lib/codex-theme-variant.ts
+  s_445cea4ff32a57::t_2a161ffa7c0960 197,319,431-432,651,698
+  s_445cea4ff32a57::t_79b045ca541ab3 475-480,489-492
+src/renderer/components/workbench/accent-color-setting-control.tsx
+  s_445cea4ff32a57::t_2b6e957cad1dbb 145
+src/renderer/styles/theme-semantic-contract.generated.css
+  s_74cb07b04fcdc2::t_273af9e9296218 2,4,9,146,263,403,408-409,453,455,485,967,1130,1204,1213,1712
+scripts/semantic-theme/README.md
+  s_445cea4ff32a57::t_d008442e99b0a4 50
+  s_445cea4ff32a57::t_fe1c7fe7f05663 21-27
+src/renderer/components/ui/dropdown.tsx
+  s_445cea4ff32a57::t_f15a3606a88451 498,502-503
+src/renderer/components/workbench/workbench-rail-account-controls.tsx
+  s_445cea4ff32a57::t_857e4c219cf683 94,336
+src/renderer/styles/theme-semantic-utilities.generated.css
+  s_74cb07b04fcdc2::t_79b300124dfaf4 2,4
+src/renderer/components/workbench/codex-sidebar.tsx
+  s_445cea4ff32a57::t_c5a7f679846661 136,138
+  s_445cea4ff32a57::t_6085f656076869 370
+src/renderer/styles/semantic-theme-contract.generated.json
+  s_74cb07b04fcdc2::t_840c49cadd9691 3,11,15,19,23,877-897,2092-2108,4638-4641,6901-6917,11227-11243,11928-11931,11936,11946-11949,11954,15783-15935
+src/renderer/components/workbench/workbench-rail-usage-meter.tsx
+  s_445cea4ff32a57::t_1eccd2b39005e0 3,368
+scripts/semantic-theme/profile.ts
+  s_445cea4ff32a57::t_deb8e48af6b11c 9,51-60
+src/renderer/features/local-conversation/view/local-conversation-selected-text-actions.tsx
+  s_445cea4ff32a57::t_f23fd9608293fc 78
+src/renderer/styles/semantic-theme-contract.browser.test.ts
+  s_445cea4ff32a57::t_e24fe1ff22b229 108-143
+  s_445cea4ff32a57::t_e21991d5f794c9 213,227-229,245-262
+docs/product-specs/workbench-shell.md
+  s_445cea4ff32a57::t_fe1c7fe7f05663 197
+src/renderer/styles/semantic-theme.provenance.json
+  s_74cb07b04fcdc2::t_ec00e42848c71d 3,17,21,25
+  s_445cea4ff32a57::t_473f8decbac156 4,9,13
+src/renderer/components/workbench/sidebar-new-chat-controls.tsx
+  s_445cea4ff32a57::t_b33c4a5eed072c 26,28
+  s_445cea4ff32a57::t_6085f656076869 33
+src/renderer/components/ui/file-tree-filter.tsx
+  s_445cea4ff32a57::t_4bab92da1e34f9 14
+src/renderer/components/workbench/workbench-settings-sidebar.tsx
+  s_445cea4ff32a57::t_fe1c7fe7f05663 277,303
+  s_445cea4ff32a57::t_dfad6778b9738e 266,269-272
+src/renderer/styles/theme-source.css
+  s_445cea4ff32a57::t_79f99df3477265 100-106,172-196,200-201,209-212,215-217,317,328
+src/renderer/styles/theme-token-bridge.css
+  s_445cea4ff32a57::t_7f05e789d779b7 40
+src/renderer/components/ui/dialog.tsx
+  s_445cea4ff32a57::t_886c85981f739d 6,25-26
+  s_445cea4ff32a57::t_2f25749b42b736 184
+src/renderer/components/workbench/sidebar-project-add-button.tsx
+  s_445cea4ff32a57::t_ade295dc6b14fd 12
+src/renderer/styles/accent-theme.browser.test.tsx
+  s_445cea4ff32a57::t_2a161ffa7c0960 206,208
+docs/product-specs/settings-route-behavior.md
+  s_445cea4ff32a57::t_d40c1f480a8a63 148-149,151-152
+src/renderer/components/workbench/appearance-settings-page.tsx
+  s_445cea4ff32a57::t_431278074c8f05 134
+src/renderer/components/ui/settings.tsx
+  s_445cea4ff32a57::t_84b5371a23eae3 38,40
+src/renderer/lib/workbench-toolbar-control-styles.ts
+  s_445cea4ff32a57::t_b0a5b3cdaf1afd 4,6
+src/renderer/styles/theme-extracted-surfaces.generated.css
+  s_74cb07b04fcdc2::t_2939465d66d9f3 2,4,124-127
+src/renderer/components/workbench/workbench-app-rail.tsx
+  s_445cea4ff32a57::t_98d78974142eeb 99
+  s_445cea4ff32a57::t_6085f656076869 19,94,98
+src/renderer/styles/theme-extracted-foundation.generated.css
+  s_74cb07b04fcdc2::t_d6e74c45840c10 2,4,31-40
+src/renderer/lib/codex-theme-variant.node.test.ts
+  s_445cea4ff32a57::t_dfdfd1c63d6782 39,60
+src/renderer/components/ui/button.tsx
+  s_445cea4ff32a57::t_a6e36da978b686 7-26,40
+  s_445cea4ff32a57::t_54e54e781bc935 130
+src/renderer/features/nodex-account/nodex-account-menu.tsx
+  s_445cea4ff32a57::t_4c1d047d380d9c 26,52,93,119,125,130,137,165,170,175
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "8f9d588afbd45a50809fa80b6548cf7136af4ee1",
+  "prompts": {},
+  "sessions": {
+    "s_445cea4ff32a57": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a175e1-7cbe-7db2-958f-9b2dc1d1a3e0",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_74cb07b04fcdc2": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a16c5e-90b2-7e40-92fb-3de257969ffd",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
