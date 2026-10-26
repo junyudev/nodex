@@ -1,0 +1,91 @@
+src/renderer/lib/use-theme.tsx
+  s_e84ef3268214b9::t_ec136c127977d0 3-6,9,12,17,35,38,51-54,75-79,84,112,119-124,126,133,135-136,146-148,152
+  s_e84ef3268214b9::t_654f9b670c82d1 2
+src/renderer/features/handler-one/squad-link.node.test.ts
+  s_e84ef3268214b9::t_552ee9a72c6a54 4,130-137,141-154
+  s_e84ef3268214b9::t_e1d2623bf97c60 31-37,85-90,94-99
+  s_e84ef3268214b9::t_a86803918e5d61 138-140
+  s_e84ef3268214b9::t_e4b6bda3655a5f 1-3,5-30,38-84,91-93,100-129,155-158
+src/renderer/lib/theme-preferences.ts
+  s_e84ef3268214b9::t_ec136c127977d0 2,5,7,12,49-65
+  s_e84ef3268214b9::t_95c27c7bf27e53 66
+src/renderer/bootstrap/application-appearance.ts
+  s_e84ef3268214b9::t_ec136c127977d0 2-6,17-18
+src/renderer/features/handler-one/squad.ts
+  s_e84ef3268214b9::t_0e1c2b07c97771 21-22,30,39-40,48,57,66-67,75-76,84-85,93-94
+  s_e84ef3268214b9::t_9013e6acbc03bc 1-20,23-29,31-38,41-47,49-56,58-65,68-74,77-83,86-92,95-103
+src/renderer/components/workbench/command-palette-theme.tsx
+  s_e84ef3268214b9::t_ee1d4d3d5e6ab8 12,38
+src/renderer/features/handler-one/handler-one-sound.ts
+  s_e84ef3268214b9::t_e1d2623bf97c60 197-201
+  s_e84ef3268214b9::t_b26cba998b9f0b 1-23,25-34,48-196,202-251
+  s_e84ef3268214b9::t_49f27c054bedce 24,35-47
+src/renderer/features/handler-one/handler-one.css
+  s_e84ef3268214b9::t_986e8a00f33122 1-58
+src/renderer/features/handler-one/return-ceremony.tsx
+  s_e84ef3268214b9::t_eb2a739f0fa191 81
+  s_e84ef3268214b9::t_e1d2623bf97c60 59-60,127-131,133-135,194-195
+  s_e84ef3268214b9::t_5ab53b431cb275 1-58,61-80,82-126,132,136-193,196-214
+src/renderer/features/handler-one/squad-link-hud.tsx
+  s_e84ef3268214b9::t_6d21977f368302 1,3-31,33-39,43-44,48-89,93-124,150,152
+  s_e84ef3268214b9::t_2dbcaa9a04bedf 32
+  s_e84ef3268214b9::t_eb2a739f0fa191 2,125-149,151
+  s_e84ef3268214b9::t_e1d2623bf97c60 40-42,45-47,90-92
+src/renderer/features/handler-one/handler-one-layer.tsx
+  s_e84ef3268214b9::t_6272df4e4e0f24 1-20,22-23,25-47,50-88,90-96,101-112,114-116,118,129-137,140-145,151-165,167-168,170-174,178-185,187-193,201-203,205-218,223-238,262-266,270-288,290-294
+  s_e84ef3268214b9::t_552ee9a72c6a54 21,24,49,138-139,146-150,175-177,186
+  s_e84ef3268214b9::t_a86803918e5d61 120-128
+  s_e84ef3268214b9::t_e1d2623bf97c60 97-100,113,117,119,219-222,241-245,248-252,255-259,267-269
+  s_e84ef3268214b9::t_2dbcaa9a04bedf 48,89
+  s_e84ef3268214b9::t_1ab559f2e34767 166,169,204,239-240,246-247,253-254,260-261,289
+  s_e84ef3268214b9::t_2ba9c7259c7245 194-200
+src/renderer/features/handler-one/index.tsx
+  s_e84ef3268214b9::t_8764424963ac7e 1-15
+src/renderer/lib/codex-theme-variant.ts
+  s_e84ef3268214b9::t_8829ecfe7e2cd8 29-37,135-138,141-142,145-147,255-285,319,322,424,427,633,636,639,641
+src/renderer/lib/app-shell-layers.ts
+  s_e84ef3268214b9::t_1ab559f2e34767 9-10
+src/renderer/features/handler-one/para-raid-link.tsx
+  s_e84ef3268214b9::t_a86803918e5d61 77
+  s_e84ef3268214b9::t_e1d2623bf97c60 51-52,111-114,171-177,229-231,244-246,334-336,339-341
+  s_e84ef3268214b9::t_fecb2ab1b30115 78,93-95,98,130,133-134,137-139,160
+  s_e84ef3268214b9::t_3d6ff80b6a21b9 1-50,53-76,79-92,96-97,99-110,115-129,131-132,135-136,140-159,161-170,178-179,183-228,232-243,247-333,337-338,342-355
+  s_e84ef3268214b9::t_f54e1bb75d18ed 180-182
+src/renderer/features/handler-one/handler-one-preferences.ts
+  s_e84ef3268214b9::t_8bd119c8c29f6a 2-42,46-63
+  s_e84ef3268214b9::t_e1d2623bf97c60 1,43-45
+src/renderer/components/workbench/workbench-settings-controls.tsx
+  s_e84ef3268214b9::t_e1d2623bf97c60 22-25,250-272
+  s_e84ef3268214b9::t_14191620ad02b6 21,273-274
+src/renderer/features/handler-one/squad-link.ts
+  s_e84ef3268214b9::t_099ea51e0f5ac1 1-148,173-196
+  s_e84ef3268214b9::t_552ee9a72c6a54 149-161,166-172
+  s_e84ef3268214b9::t_a86803918e5d61 162-165
+src/renderer/components/workbench/accent-color-setting-control.tsx
+  s_e84ef3268214b9::t_d12dc616eeeb1e 28-30,115-117,145-149
+  s_e84ef3268214b9::t_ee1d4d3d5e6ab8 17,22-26,101,104,107,138
+src/renderer/features/handler-one/sortie-cut-in.tsx
+  s_e84ef3268214b9::t_a01c925a7da0ee 40
+  s_e84ef3268214b9::t_5b1ac32f29b55d 1-39,41-42,47-202
+  s_e84ef3268214b9::t_e1d2623bf97c60 43-46
+src/renderer/app.tsx
+  s_e84ef3268214b9::t_8764424963ac7e 6,92
+src/renderer/components/workbench/appearance-settings-page.tsx
+  s_e84ef3268214b9::t_e1d2623bf97c60 27,31-34,71-72,118-148
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "23f2651712426e5a891645226586237ad8b47ee1",
+  "prompts": {},
+  "sessions": {
+    "s_e84ef3268214b9": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "4007ccf7-0ed0-4442-a475-1f671644fecf",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
