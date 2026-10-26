@@ -22,6 +22,7 @@ import { APP_SHELL_FLOATING_UI_LAYER_CLASS } from "@/lib/app-shell-layers";
 import { cn } from "@/lib/utils";
 import { NodexFloatingLayerProvider, useNodexFloatingLayerIndex } from "./floating-layer";
 import { makeNodexFloatingSurfaceBoundaryStyle } from "./floating-surface";
+import { NodexMenuRowContent, nodexMenuRowClassName } from "./menu-row";
 import { handleNodexMenuItemClick, type NodexMenuSelectHandler } from "./menu-selection";
 import { nodexMenuSurfaceClassName } from "./menu-surface";
 
@@ -39,8 +40,9 @@ const CONTEXT_MENU_BOUNDARY_STYLE: CSSProperties = {
 const CONTEXT_SUBMENU_MOTION_CLASS_NAME = "data-closed:invisible data-closed:pointer-events-none";
 
 const CONTEXT_MENU_ITEM_CLASS_NAME = cn(
-  "no-drag group flex w-full items-center gap-1.5 rounded-lg px-[var(--padding-row-x)] py-[var(--padding-row-y)] text-sm outline-hidden",
-  "cursor-interaction text-token-foreground data-highlighted:bg-token-list-hover-background focus:bg-token-list-hover-background",
+  nodexMenuRowClassName,
+  "group flex w-full items-center",
+  "cursor-interaction data-highlighted:bg-token-list-hover-background focus:bg-token-list-hover-background",
   "data-[disabled]:pointer-events-none data-[disabled]:cursor-default data-[disabled]:opacity-50",
 );
 
@@ -151,24 +153,17 @@ function NodexContextMenuRowContent({
   readonly tone?: "default" | "danger";
 }) {
   return (
-    <>
-      {leftSlot ? (
-        <span
-          className={cn(
-            "shrink-0 [&_svg]:size-4 [&_svg]:shrink-0",
-            tone === "danger"
-              ? "text-token-error-foreground"
-              : "text-token-text-secondary group-data-[highlighted]:text-token-foreground group-focus:text-token-foreground",
-          )}
-        >
-          {leftSlot}
-        </span>
-      ) : null}
-      <span className="min-w-0 flex-1 truncate">{children}</span>
-      {rightSlot ? (
-        <span className="ml-2 shrink-0 text-token-description-foreground">{rightSlot}</span>
-      ) : null}
-    </>
+    <NodexMenuRowContent
+      leading={leftSlot}
+      tone={tone}
+      trailing={
+        rightSlot ? (
+          <span className="ml-2 shrink-0 text-token-description-foreground">{rightSlot}</span>
+        ) : null
+      }
+    >
+      {children}
+    </NodexMenuRowContent>
   );
 }
 

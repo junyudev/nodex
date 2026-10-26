@@ -25,6 +25,7 @@ import { cn } from "@/lib/utils";
 import { NODEX_RAISED_CONTROL_CHROME_CLASS_NAME } from "./control-chrome";
 import { NodexFloatingLayerProvider, useNodexFloatingLayerIndex } from "./floating-layer";
 import { makeNodexFloatingSurfaceBoundaryStyle } from "./floating-surface";
+import { NodexMenuRowContent, nodexMenuRowClassName } from "./menu-row";
 import { handleNodexMenuItemClick, type NodexMenuSelectHandler } from "./menu-selection";
 import { nodexMenuSurfaceClassName } from "./menu-surface";
 import { NodexPopover, NodexPopoverContent, NodexPopoverTrigger } from "./popover";
@@ -159,7 +160,7 @@ const NodexDropdownSubmenuTrigger = forwardRef<HTMLDivElement, NodexDropdownSubm
       <MenuPrimitive.SubmenuTrigger
         ref={ref}
         data-slot="dropdown-submenu-trigger"
-        className={cn(dropdownItemBaseClassName, dropdownItemInteractiveClassName, className)}
+        className={cn(nodexMenuRowClassName, dropdownItemInteractiveClassName, className)}
         {...props}
       />
     );
@@ -235,14 +236,8 @@ const dropdownContentSurfaceClassName = cn(
   "[transform-origin:var(--nodex-menu-transform-origin)] [will-change:opacity,transform]",
 );
 
-const dropdownItemBaseClassName =
-  "text-token-foreground outline-hidden rounded-lg px-[var(--padding-row-x)] py-[var(--padding-row-y)] text-sm";
 const dropdownItemInteractiveClassName =
   "hover:bg-token-list-hover-background focus:bg-token-list-hover-background cursor-interaction";
-const dropdownItemLeftSlotClassName =
-  "inline-flex shrink-0 items-center justify-center text-token-text-secondary [&_svg]:size-4 [&_svg]:shrink-0";
-const dropdownItemLeftSlotInteractiveClassName =
-  "group-focus:text-token-foreground group-hover:text-token-foreground";
 const dropdownSectionLabelClassName =
   "px-[var(--padding-row-x)] py-1 text-sm text-token-description-foreground";
 const dropdownMessageClassName = "px-[var(--padding-row-x)] text-sm";
@@ -595,8 +590,7 @@ export const NodexDropdownItem = forwardRef<HTMLDivElement, NodexDropdownItemPro
             : (event) => handleNodexMenuItemClick(event, onClick, onSelect)
         }
         className={cn(
-          "no-drag",
-          dropdownItemBaseClassName,
+          nodexMenuRowClassName,
           !disabled && dropdownItemInteractiveClassName,
           "group flex flex-col",
           disabled && "cursor-default opacity-50",
@@ -604,41 +598,38 @@ export const NodexDropdownItem = forwardRef<HTMLDivElement, NodexDropdownItemPro
         )}
         {...props}
       >
-        <div className={cn("flex w-full items-center gap-2", alignSlotsToStart && "items-start")}>
-          {leftSlot ? (
-            <span
-              className={cn(
-                dropdownItemLeftSlotClassName,
-                !disabled && dropdownItemLeftSlotInteractiveClassName,
-              )}
-            >
-              {leftSlot}
-            </span>
-          ) : null}
-          <span className={cn("min-w-0 flex-1", allowWrap ? "whitespace-normal" : "truncate")}>
-            <span
-              className={cn("flex items-center gap-1", subText && "flex-col items-start gap-0.5")}
-            >
-              <span className={cn("min-w-0", !allowWrap && "truncate")}>{children}</span>
-              {subText ? (
-                <span
-                  className={cn(
-                    "min-w-0 text-token-description-foreground",
-                    subTextAllowWrap ? "whitespace-normal text-sm" : "truncate text-xs",
-                  )}
-                >
-                  {subText}
+        <NodexMenuRowContent
+          leading={leftSlot}
+          highlight={!disabled}
+          wrap={allowWrap}
+          alignStart={alignSlotsToStart}
+          trailing={
+            <>
+              {keyboardShortcut ? (
+                <span className="ml-2 shrink-0 text-xs text-token-description-foreground">
+                  {keyboardShortcut}
                 </span>
               ) : null}
-            </span>
+              {rightSlot ? <span className="shrink-0">{rightSlot}</span> : null}
+            </>
+          }
+        >
+          <span
+            className={cn("flex items-center gap-1", subText && "flex-col items-start gap-0.5")}
+          >
+            <span className={cn("min-w-0", !allowWrap && "truncate")}>{children}</span>
+            {subText ? (
+              <span
+                className={cn(
+                  "min-w-0 text-token-description-foreground",
+                  subTextAllowWrap ? "whitespace-normal text-sm" : "truncate text-xs",
+                )}
+              >
+                {subText}
+              </span>
+            ) : null}
           </span>
-          {keyboardShortcut ? (
-            <span className="ml-2 shrink-0 text-xs text-token-description-foreground">
-              {keyboardShortcut}
-            </span>
-          ) : null}
-          {rightSlot ? <span className="shrink-0">{rightSlot}</span> : null}
-        </div>
+        </NodexMenuRowContent>
       </MenuPrimitive.Item>
     );
 
@@ -711,8 +702,7 @@ export const NodexDropdownRadioItem = forwardRef<HTMLDivElement, NodexDropdownRa
           disabled ? undefined : (event) => handleNodexMenuItemClick(event, onClick, onSelect)
         }
         className={cn(
-          "no-drag",
-          dropdownItemBaseClassName,
+          nodexMenuRowClassName,
           !disabled && dropdownItemInteractiveClassName,
           "group flex flex-col",
           disabled && "cursor-default opacity-50",
@@ -720,22 +710,16 @@ export const NodexDropdownRadioItem = forwardRef<HTMLDivElement, NodexDropdownRa
         )}
         {...props}
       >
-        <div className="flex w-full items-center gap-2">
-          {leftSlot ? (
-            <span
-              className={cn(
-                dropdownItemLeftSlotClassName,
-                !disabled && dropdownItemLeftSlotInteractiveClassName,
-              )}
-            >
-              {leftSlot}
-            </span>
-          ) : null}
-          <span className={cn("min-w-0 flex-1", allowWrap ? "whitespace-normal" : "truncate")}>
-            <span className={cn("min-w-0", !allowWrap && "truncate")}>{children}</span>
-          </span>
-          <MenuPrimitive.RadioItemIndicator render={rightSlot ?? <NodexDropdownSelectedIcon />} />
-        </div>
+        <NodexMenuRowContent
+          leading={leftSlot}
+          highlight={!disabled}
+          wrap={allowWrap}
+          trailing={
+            <MenuPrimitive.RadioItemIndicator render={rightSlot ?? <NodexDropdownSelectedIcon />} />
+          }
+        >
+          {children}
+        </NodexMenuRowContent>
       </MenuPrimitive.RadioItem>
     );
   },
@@ -902,45 +886,32 @@ function NodexFilterOptionButton({
       onClick={onSelect}
       onKeyDown={onKeyDown}
       className={cn(
-        "no-drag group flex w-full flex-col",
-        dropdownItemBaseClassName,
+        "group flex w-full flex-col",
+        nodexMenuRowClassName,
         !option.disabled && dropdownItemInteractiveClassName,
         option.disabled && "cursor-default opacity-50",
       )}
     >
-      <span className="flex w-full items-center gap-2">
-        {option.leftSlot ? (
-          <span
-            className={cn(
-              dropdownItemLeftSlotClassName,
-              !option.disabled && dropdownItemLeftSlotInteractiveClassName,
-            )}
-          >
-            {option.leftSlot}
-          </span>
-        ) : null}
+      <NodexMenuRowContent
+        leading={option.leftSlot}
+        highlight={!option.disabled}
+        wrap={option.allowWrap}
+        trailing={selected ? <NodexDropdownSelectedIcon /> : null}
+      >
         <span
           className={cn(
-            "min-w-0 flex-1 text-left",
-            option.allowWrap ? "whitespace-normal" : "truncate",
+            "flex min-w-0 items-center gap-1",
+            option.subText && "flex-col items-start gap-0.5",
           )}
         >
-          <span
-            className={cn(
-              "flex min-w-0 items-center gap-1",
-              option.subText && "flex-col items-start gap-0.5",
-            )}
-          >
-            <span className={cn("min-w-0", !option.allowWrap && "truncate")}>{option.label}</span>
-            {option.subText ? (
-              <span className="min-w-0 truncate text-xs text-token-description-foreground">
-                {option.subText}
-              </span>
-            ) : null}
-          </span>
+          <span className={cn("min-w-0", !option.allowWrap && "truncate")}>{option.label}</span>
+          {option.subText ? (
+            <span className="min-w-0 truncate text-xs text-token-description-foreground">
+              {option.subText}
+            </span>
+          ) : null}
         </span>
-        {selected ? <NodexDropdownSelectedIcon /> : null}
-      </span>
+      </NodexMenuRowContent>
     </button>
   );
 
@@ -1266,8 +1237,7 @@ export const NodexDropdownActionRow = forwardRef<
       type="button"
       disabled={disabled}
       className={cn(
-        "no-drag",
-        dropdownItemBaseClassName,
+        nodexMenuRowClassName,
         !disabled && dropdownItemInteractiveClassName,
         "focus-visible:bg-token-list-hover-background cursor-interaction flex w-full data-disabled:pointer-events-none",
         disabled && "cursor-default opacity-50",
@@ -1392,20 +1362,15 @@ export function NodexDropdownFlyoutSubmenuItem({
       }}
     >
       {triggerContent ?? (
-        <div className="flex w-full items-center gap-1.5">
-          {leftSlot ? (
-            <span
-              className={cn(
-                dropdownItemLeftSlotClassName,
-                !disabled && dropdownItemLeftSlotInteractiveClassName,
-              )}
-            >
-              {leftSlot}
-            </span>
-          ) : null}
-          <span className="min-w-0 flex-1 truncate">{label}</span>
-          <ChevronRightIcon className="icon-xs shrink-0 text-token-input-placeholder-foreground opacity-75 group-focus:opacity-100 group-hover:opacity-100" />
-        </div>
+        <NodexMenuRowContent
+          leading={leftSlot}
+          highlight={!disabled}
+          trailing={
+            <ChevronRightIcon className="icon-xs shrink-0 text-token-input-placeholder-foreground opacity-75 group-focus:opacity-100 group-hover:opacity-100" />
+          }
+        >
+          {label}
+        </NodexMenuRowContent>
       )}
     </NodexDropdownSubmenuTrigger>
   );
@@ -1473,24 +1438,19 @@ export function NodexDropdownSummarySubmenuItem({
       tooltipText={tooltipText}
       onOpenChange={onOpenChange}
       triggerContent={
-        <div className="flex w-full min-w-0 items-center gap-3">
-          {leftSlot ? (
-            <span
-              className={cn(
-                dropdownItemLeftSlotClassName,
-                !disabled && dropdownItemLeftSlotInteractiveClassName,
-                "-me-1",
-              )}
-            >
-              {leftSlot}
-            </span>
-          ) : null}
+        <NodexMenuRowContent
+          leading={leftSlot}
+          highlight={!disabled}
+          labelClassName="flex items-center gap-3"
+          trailing={
+            <ChevronRightIcon className="icon-xs shrink-0 text-token-input-placeholder-foreground" />
+          }
+        >
           <span className="shrink-0">{label}</span>
           <span className="flex min-w-0 flex-1 justify-end text-token-text-tertiary">
             <span className="min-w-0 truncate">{value}</span>
           </span>
-          <ChevronRightIcon className="icon-xs shrink-0 text-token-input-placeholder-foreground" />
-        </div>
+        </NodexMenuRowContent>
       }
     >
       {children}
