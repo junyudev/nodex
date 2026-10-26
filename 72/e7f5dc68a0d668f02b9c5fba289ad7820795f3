@@ -1,0 +1,59 @@
+tests/e2e/space-content-sidebar.spec.ts
+  s_1125822f4ad3ae::t_4eb951937351a4 33,57,68,99-109
+docs/product-specs/workbench-shell.md
+  s_1125822f4ad3ae::t_44addf29aaf98f 15
+crates/nodex-core/src/workspace/mutation.rs
+  s_1125822f4ad3ae::t_851c7b264c5e7b 2321-2327
+  s_1125822f4ad3ae::t_e56526a614e563 2328
+crates/nodex-core/src/database/mutation.rs
+  s_1125822f4ad3ae::t_d62bd501a9ff1d 4647-4653
+crates/nodex-core/src/document/owners.rs
+  s_1125822f4ad3ae::t_45da45b2117a42 1174
+crates/nodex-core/src/library/canvas_mutation.rs
+  s_1125822f4ad3ae::t_e4b70fe402048c 24-25
+  s_1125822f4ad3ae::t_45da45b2117a42 420,1137
+crates/nodex-core/src/library/tests/manual_order.rs
+  s_1125822f4ad3ae::t_4e20dc141eb6b0 724-761,766-795,800-815,820-821
+  s_1125822f4ad3ae::t_e4b70fe402048c 762-765,796-799,816-819
+  s_1125822f4ad3ae::t_72822d25745ff1 6-8
+crates/nodex-core/src/library/mutation.rs
+  s_1125822f4ad3ae::t_c296f766070f55 881,884,1898,1901,2083,2086
+  s_1125822f4ad3ae::t_e4b70fe402048c 3375
+  s_1125822f4ad3ae::t_b60daefff5a494 3319-3344,3349,3352,3367-3374
+crates/nodex-core/src/library/block_transfer/promotion_history/placement.rs
+  s_1125822f4ad3ae::t_45da45b2117a42 132-138
+crates/nodex-core/src/library/page_copy.rs
+  s_1125822f4ad3ae::t_e4b70fe402048c 32-35
+  s_1125822f4ad3ae::t_45da45b2117a42 1440,1443
+crates/nodex-core/src/library/mod.rs
+  s_1125822f4ad3ae::t_b60daefff5a494 7742-7744
+scripts/scenarios/scenarios/space-content.ts
+  s_1125822f4ad3ae::t_4eb951937351a4 13,71-72
+crates/nodex-core/src/library/block_transfer.rs
+  s_1125822f4ad3ae::t_45da45b2117a42 68,2688,4712-4718,4865-4871
+  s_1125822f4ad3ae::t_e4b70fe402048c 69-70
+crates/nodex-core/src/library/tests/query.rs
+  s_1125822f4ad3ae::t_4e20dc141eb6b0 161-165
+crates/nodex-core/src/document/primary_canvas.rs
+  s_1125822f4ad3ae::t_851c7b264c5e7b 75-80
+CONTEXT.md
+  s_1125822f4ad3ae::t_44addf29aaf98f 323-325
+CHANGELOG.md
+  s_1125822f4ad3ae::t_44addf29aaf98f 18
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "72e7f5dc68a0d668f02b9c5fba289ad7820795f3",
+  "prompts": {},
+  "sessions": {
+    "s_1125822f4ad3ae": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ea4b1fa8-29d0-4515-acd8-d5648ed0c728",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
