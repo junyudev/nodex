@@ -56,6 +56,14 @@ src/shared/agent-runtime-api.ts
         "model": "gpt-6-astra"
       },
       "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_e84ef3268214b9": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "4007ccf7-0ed0-4442-a475-1f671644fecf",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
     }
   }
 }
