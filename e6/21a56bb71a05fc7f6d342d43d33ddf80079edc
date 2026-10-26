@@ -1,0 +1,54 @@
+src/shared/ipc-endpoint-policy.ts
+  s_77ac5bdfa64dec::t_0395508e7ee571 496
+src/renderer/lib/plugin-management-cache.ts
+  s_77ac5bdfa64dec::t_0395508e7ee571 140
+src/main/codex-application/PluginManager.node.test.ts
+  s_77ac5bdfa64dec::t_cc08ce55c03b4b 1378-1379
+  s_77ac5bdfa64dec::t_5abcd908de3dcd 1853-1918
+src/renderer/lib/plugin-management-cache.test.ts
+  s_77ac5bdfa64dec::t_cc08ce55c03b4b 288
+src/main/codex-application/PluginAppPolicy.ts
+  s_77ac5bdfa64dec::t_cc08ce55c03b4b 24-28
+  s_77ac5bdfa64dec::t_0395508e7ee571 1-23,29-31
+  s_77ac5bdfa64dec::t_e2233f0ecca979 32-51
+src/main/codex-application/PluginManager.ts
+  s_77ac5bdfa64dec::t_0395508e7ee571 5,1068,1520-1521,1531-1532
+  s_77ac5bdfa64dec::t_27920bba33fabe 1069-1073,1512-1519,1522-1530
+  s_77ac5bdfa64dec::t_116dcbaf65d169 1533
+src/shared/codex-plugin-settings.ts
+  s_77ac5bdfa64dec::t_0395508e7ee571 44-45,59-60,170-173
+src/renderer/lib/plugin-management-adapter.ts
+  s_77ac5bdfa64dec::t_0395508e7ee571 8
+  s_77ac5bdfa64dec::t_168c418b32a7e3 9-14
+src/main/codex-application/PluginApps.ts
+  s_77ac5bdfa64dec::t_0395508e7ee571 14,236-241
+  s_77ac5bdfa64dec::t_6562722efd9bc0 242-252,285-291,299-300
+src/renderer/features/plugins/plugin-management.ts
+  s_77ac5bdfa64dec::t_0395508e7ee571 79,307
+docs/product-specs/plugins-behavior.md
+  s_77ac5bdfa64dec::t_27920bba33fabe 191-197
+src/main/ipc/handlers/PluginManagerIpc.ts
+  s_77ac5bdfa64dec::t_0395508e7ee571 119
+  s_77ac5bdfa64dec::t_6ab0a76b669822 120-123
+src/main/codex-application/PluginApps.node.test.ts
+  s_77ac5bdfa64dec::t_cc08ce55c03b4b 50
+  s_77ac5bdfa64dec::t_a8dcb74a8b0b78 51-62
+src/main/codex-application/PluginAppPolicy.node.test.ts
+  s_77ac5bdfa64dec::t_acbf3de1ae2645 1-54
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "e621a56bb71a05fc7f6d342d43d33ddf80079edc",
+  "prompts": {},
+  "sessions": {
+    "s_77ac5bdfa64dec": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1795d-5e95-7ea0-9bf7-2e3e042b723f",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
