@@ -1,0 +1,121 @@
+packages/agent-runtime/src/orchestration-v2/Orchestrator.ts
+  s_674dfaa3967339::t_2d81e36ce983a6 3944-3948,4050-4054
+  s_674dfaa3967339::t_2ec751c9b15f1b 11656-11658,11662
+  s_674dfaa3967339::t_88569a6b429eab 6108,6322
+  s_674dfaa3967339::t_5ba274bc7ac7b9 3925-3927
+  s_674dfaa3967339::t_363cda10f53687 57,3904-3924,3928-3943,3949-4049,4055-4071
+  s_674dfaa3967339::t_c6dea0034df19b 470,11530-11532,11637
+  s_674dfaa3967339::t_d30980f46efb30 4072
+src/renderer/features/local-conversation/view/composer/slash-command-menu/slash-command-registry.tsx
+  s_674dfaa3967339::t_cfd99f1108d5f6 14,111
+  s_674dfaa3967339::t_ea71c242c39b27 109-110,112-122
+  s_674dfaa3967339::t_e62a08b7a4c27f 108
+src/renderer/features/local-conversation/agent-runtime-transcript-projection.ts
+  s_674dfaa3967339::t_f23d0f944594b9 738-739
+CHANGELOG.md
+  s_674dfaa3967339::t_3daf6729ee0e05 14
+packages/agent-runtime/src/orchestration-v2/testkit/OrchestratorScenario.ts
+  s_674dfaa3967339::t_0d900f255ea5bd 180
+packages/agent-runtime/src/persistence/Migrations.ts
+  s_674dfaa3967339::t_2afb1651eeb0af 94,186
+packages/agent-runtime/src/orchestration-v2/ProjectionStore.ts
+  s_674dfaa3967339::t_ff21387b066ef8 468-473,5742,5746,5748-5769,5780,5782-5783,5786-5796,5804,5807-5808,5854,5862,6173
+src/shared/schemas/agent-runtime-api.ts
+  s_674dfaa3967339::t_b434f4c225aea5 120
+src/renderer/features/local-conversation/projection/build-turn-view-model.ts
+  s_674dfaa3967339::t_f23d0f944594b9 667
+src/renderer/features/local-conversation/thread-stage-types.ts
+  s_674dfaa3967339::t_f23d0f944594b9 1039-1040
+  s_674dfaa3967339::t_ea71c242c39b27 538-539
+src/renderer/components/shared/icons/app-icons.tsx
+  s_674dfaa3967339::t_ea71c242c39b27 37,394-396
+  s_674dfaa3967339::t_8f4ccca3f6be53 397-398
+src/renderer/features/local-conversation/agent-runtime-conversation-adapter.ts
+  s_674dfaa3967339::t_ea71c242c39b27 562-564
+src/renderer/features/local-conversation/view/local-conversation-stage-header.tsx
+  s_674dfaa3967339::t_cfd99f1108d5f6 5,64-65,230-238
+  s_674dfaa3967339::t_b70baaadc53c30 239
+src/renderer/features/local-conversation/projection/bucketize-turn-items.ts
+  s_674dfaa3967339::t_f23d0f944594b9 36,249-251
+  s_674dfaa3967339::t_4339759aa10d1b 252-254
+packages/agent-runtime/src/orchestration-v2/testkit/ProviderSwitch.integration.test.ts
+  s_674dfaa3967339::t_99ee4af2e0589d 4391-4393,4410
+  s_674dfaa3967339::t_f6b54dbcd3915e 4541-4553
+  s_674dfaa3967339::t_159bc30883b620 4242-4390,4394-4409,4411-4540,4554-4615
+src/renderer/lib/agent-runtime-runtime.ts
+  s_674dfaa3967339::t_b434f4c225aea5 13,131-138,205-207,261
+src/renderer/features/local-conversation/view/shared/transcript-divider.tsx
+  s_674dfaa3967339::t_f23d0f944594b9 104-122
+packages/agent-runtime/src/mcp/OrchestratorMcpService.ts
+  s_674dfaa3967339::t_3aadd9f956becb 624-625
+src/renderer/features/local-conversation/agent-runtime-transcript-projection.node.test.ts
+  s_674dfaa3967339::t_4009cf5c568fc1 772-780
+src/main/ipc/handlers/AgentRuntimeIpc.ts
+  s_674dfaa3967339::t_b434f4c225aea5 169-171
+src/shared/agent-runtime-api.ts
+  s_674dfaa3967339::t_b434f4c225aea5 128-131,341-343
+  s_674dfaa3967339::t_4d6d223f131cbc 344
+src/shared/ipc-endpoint-policy.ts
+  s_674dfaa3967339::t_b434f4c225aea5 499
+src/main/agent-runtime/AgentRuntimeApplication.ts
+  s_674dfaa3967339::t_cdd58f79937648 66,1831-1855,2668-2669
+src/shared/codex-conversation-state/codex-conversation-state.ts
+  s_674dfaa3967339::t_f23d0f944594b9 432-433
+src/renderer/features/local-conversation/view/composer/slash-command-menu/slash-command-registry.test.tsx
+  s_674dfaa3967339::t_e4d908ce72378f 316-329,333-351
+  s_674dfaa3967339::t_2d81e36ce983a6 330-332
+src/renderer/features/local-conversation/view/local-conversation-stage-header.test.tsx
+  s_674dfaa3967339::t_d8c677108f170c 210-238
+CONTEXT.md
+  s_674dfaa3967339::t_3daf6729ee0e05 52-53
+docs/product-specs/codex-workspace-behavior.md
+  s_674dfaa3967339::t_3daf6729ee0e05 271-274
+packages/agent-runtime/src/orchestration-v2/ProviderTurnStartService.ts
+  s_674dfaa3967339::t_88569a6b429eab 677
+docs/product-specs/workbench-shell.md
+  s_674dfaa3967339::t_3daf6729ee0e05 233
+tests/e2e/agent-runtime-agent-switch.spec.ts
+  s_674dfaa3967339::t_dec9ae65eb84a9 35,251-279,281-288,293,297-320,323-335,337-339
+  s_674dfaa3967339::t_9a3c9d4750b1f9 321-322,336
+  s_674dfaa3967339::t_9a05590f2852d3 289-292,294-296
+  s_674dfaa3967339::t_68c7f93c0d92b4 280,340-341
+packages/agent-runtime/src/persistence/Migrations/078_ContextClearIndex.ts
+  s_674dfaa3967339::t_a7f5272e76f2c6 1-13
+docs/product-specs/agent-runtime-behavior.md
+  s_674dfaa3967339::t_3daf6729ee0e05 215,394-408
+  s_674dfaa3967339::t_fa259fecc997ab 409
+src/renderer/features/local-conversation/projection/bucketize-turn-items.node.test.ts
+  s_674dfaa3967339::t_59ff45efb7ecaf 2089-2107
+src/shared/agent-runtime-agent-switch.node.test.ts
+  s_674dfaa3967339::t_4009cf5c568fc1 30,73-81
+  s_674dfaa3967339::t_b709a653ed4f50 82-83
+packages/agent-runtime/src/orchestration-v2/CheckpointRollbackService.ts
+  s_674dfaa3967339::t_2bde26ebbfa811 213,289,291,320
+src/shared/agent-runtime-context-clear.node.test.ts
+  s_674dfaa3967339::t_4009cf5c568fc1 1-54
+src/shared/agent-runtime-context-clear.ts
+  s_674dfaa3967339::t_4d1c79246c81d2 1-23
+src/renderer/features/local-conversation/view/blocks/local-conversation-block-leaves.tsx
+  s_674dfaa3967339::t_f23d0f944594b9 661
+  s_674dfaa3967339::t_54be4c2eacc1ae 34-38
+src/shared/agent-runtime-agent-switch.ts
+  s_674dfaa3967339::t_d9282bcb0b1203 41-42,56
+packages/agent-runtime/vendor/contracts/src/orchestrationV2.ts
+  s_674dfaa3967339::t_868fa250acf202 1781-1789,2582-2585,3340-3350
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "9ee6144876d63fe1fa4eb7c81a663a098dae0225",
+  "prompts": {},
+  "sessions": {
+    "s_674dfaa3967339": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "925b1ef2-59e0-4db3-9bec-0280c1e922bb",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}

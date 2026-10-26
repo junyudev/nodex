@@ -1,0 +1,30 @@
+src/renderer/components/ui/context-menu.tsx
+  s_674dfaa3967339::t_4fd50c3a0c2101 25
+  s_674dfaa3967339::t_3f94aff2e1bae2 43-45,156-166
+src/renderer/components/ui/dropdown.tsx
+  s_674dfaa3967339::t_74abcd42285f8d 163,593,601-610,613-630,632,705,713-722,889-890,895-900,903-904,907-912,914,1240,1365-1373,1441-1448,1453
+  s_674dfaa3967339::t_3f94aff2e1bae2 28
+.agents/skills/general-design-guidelines/SKILL.md
+  s_674dfaa3967339::t_144520e5a00c01 314
+src/renderer/components/ui/menu-row.browser.test.tsx
+  s_674dfaa3967339::t_7e0f6a5a3090b5 33-36,39-41,50-53
+  s_674dfaa3967339::t_7c93f747deefc1 1-32,37-38,42-49,54-107
+src/renderer/components/ui/menu-row.tsx
+  s_674dfaa3967339::t_c6e3bb51f463df 1-63
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "ee27d09f585386eb9f7af424000f3d21f455b98f",
+  "prompts": {},
+  "sessions": {
+    "s_674dfaa3967339": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "925b1ef2-59e0-4db3-9bec-0280c1e922bb",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
