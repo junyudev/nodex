@@ -30,6 +30,7 @@ src/renderer/lib/sidebar-section-prefs.node.test.ts
   s_1125822f4ad3ae::t_abb679decff61d 5-6,32-52
 docs/product-specs/workbench-shell.md
   s_1125822f4ad3ae::t_bd0b84aab30ff5 19
+  s_1125822f4ad3ae::t_8ed149e515c179 15
 tests/e2e/space-content-sidebar.spec.ts
   s_1125822f4ad3ae::t_cc82565e944819 17-19,67,96-99
   s_1125822f4ad3ae::t_2855cd4025af54 31,64-65
@@ -43,6 +44,7 @@ src/renderer/components/workbench/sidebar-pages-section.test.tsx
   s_1125822f4ad3ae::t_7b73aaa55feb9e 218,241,258-259,261-262,264-265,269,274-286,294,367,392-393,395-399,402-423,425-426,432,434-437,440,449-459,464-479,488
   s_1125822f4ad3ae::t_ba4e6a6b5a11d1 427-429,441-448
   s_1125822f4ad3ae::t_df23d159997162 2,10,16-20,23,27-30,61-75,77,81,85-115,118-158,161-176,179-181,183-186
+  s_1125822f4ad3ae::t_cf1493474f3bbc 335,424
 src/renderer/lib/use-workbench-profile-preferences.ts
   s_1125822f4ad3ae::t_552df27b6be836 10-12,15,25,32,63,146,334-348,419,431
 src/renderer/lib/use-workbench-sidebar-state.ts
