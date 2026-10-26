@@ -97,6 +97,11 @@ export const safeRemoteIcon = (url: string | null | undefined): string | null =>
     return null;
   }
 };
+export const authorizedPluginAsset = (
+  local: string | null | undefined,
+  remote: string | null | undefined,
+  authorize: (path: string) => string | null,
+): string | null => (local ? authorize(local) : null) ?? safeRemoteIcon(remote);
 function authorizedIcon(
   summary: PluginSummary,
   kind: "logo" | "dark" | "composer",
@@ -107,5 +112,5 @@ function authorizedIcon(
   const local = kind === "logo" ? ui.logo : kind === "dark" ? ui.logoDark : ui.composerIcon;
   const remote =
     kind === "logo" ? ui.logoUrl : kind === "dark" ? ui.logoUrlDark : ui.composerIconUrl;
-  return (local ? authorize(local) : null) ?? safeRemoteIcon(remote);
+  return authorizedPluginAsset(local, remote, authorize);
 }

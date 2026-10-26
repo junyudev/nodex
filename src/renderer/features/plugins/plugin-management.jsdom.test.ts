@@ -1,5 +1,10 @@
 import { createElement, type ReactNode } from "react";
-import { QueryClient, QueryClientProvider, useQueryClient } from "@tanstack/react-query";
+import {
+  QueryClient,
+  QueryClientProvider,
+  useQueryClient,
+  focusManager,
+} from "@tanstack/react-query";
 import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
 import {
@@ -7,6 +12,8 @@ import {
   usePluginCapabilities,
   usePluginSearch,
   useMcpOauthCompletion,
+  usePluginDetail,
+  usePluginApps,
 } from "./plugin-management";
 import {
   queryPluginManagement,
@@ -132,4 +139,55 @@ it("updates the MCP OAuth observation from the scoped subscription after the hoo
   await waitFor(() =>
     expect(hook.result.current.data).toEqual({ name: "server", threadId: null, success: true }),
   );
+});
+
+it("refreshes detail and app connections on focus after an external browser flow", async () => {
+  vi.mocked(queryPluginManagement).mockImplementation(
+    async (name) => (name === "context" ? scope : {}) as never,
+  );
+  const hook = renderHook(
+    () => ({
+      detail: usePluginDetail(
+        context,
+        { marketplacePath: "/catalog", pluginName: "test" },
+        { refreshAppConnectionsOnFocus: true },
+      ),
+      apps: usePluginApps(context, { refreshOnFocus: true }),
+    }),
+    { wrapper: wrapper() },
+  );
+  await waitFor(() =>
+    expect(hook.result.current.detail.isSuccess && hook.result.current.apps.isSuccess).toBe(true),
+  );
+  const reads = () =>
+    vi.mocked(queryPluginManagement).mock.calls.filter(([name]) => name === "read");
+  const before = reads().length;
+  try {
+    await act(async () => {
+      focusManager.setFocused(false);
+      await Promise.resolve();
+    });
+    await act(async () => {
+      focusManager.setFocused(true);
+      await Promise.resolve();
+    });
+    await waitFor(() => expect(reads().length).toBeGreaterThan(before));
+    expect(reads().at(-1)?.[1]).toMatchObject({ forceRefreshApps: true });
+    expect(
+      vi
+        .mocked(queryPluginManagement)
+        .mock.calls.filter(([name]) => name === "apps")
+        .at(-1)?.[1],
+    ).toMatchObject({ forceRefresh: true });
+    await waitFor(() =>
+      expect(hook.result.current.detail.isFetching || hook.result.current.apps.isFetching).toBe(
+        false,
+      ),
+    );
+  } finally {
+    await act(async () => {
+      focusManager.setFocused(undefined);
+      await Promise.resolve();
+    });
+  }
 });

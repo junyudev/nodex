@@ -17,20 +17,19 @@ const context = {
   projectId: Schema.NullOr(Schema.NonEmptyString),
 };
 const ContextInput = Schema.Struct(context);
-const selector = Schema.Union([
-  Schema.Struct({
-    ...context,
-    marketplacePath: Schema.NonEmptyString,
-    remoteMarketplaceName: Schema.optionalKey(Schema.Never),
-    pluginName: Schema.NonEmptyString,
-  }),
-  Schema.Struct({
-    ...context,
-    marketplacePath: Schema.optionalKey(Schema.Never),
-    remoteMarketplaceName: Schema.NonEmptyString,
-    pluginName: Schema.NonEmptyString,
-  }),
-]);
+const localSelector = {
+  ...context,
+  marketplacePath: Schema.NonEmptyString,
+  remoteMarketplaceName: Schema.optionalKey(Schema.Never),
+  pluginName: Schema.NonEmptyString,
+};
+const remoteSelector = {
+  ...context,
+  marketplacePath: Schema.optionalKey(Schema.Never),
+  remoteMarketplaceName: Schema.NonEmptyString,
+  pluginName: Schema.NonEmptyString,
+};
+const selector = Schema.Union([Schema.Struct(localSelector), Schema.Struct(remoteSelector)]);
 const cursor = Schema.optionalKey(Schema.NullOr(Schema.String));
 const personalCursor = Schema.optionalKey(
   Schema.NullOr(
@@ -69,7 +68,10 @@ export const pluginQuerySchemas = {
   capabilities: ContextInput,
   list: Schema.Struct({ ...context, forceRefetch: Schema.optionalKey(Schema.Boolean) }),
   installed: ContextInput,
-  read: selector,
+  read: Schema.Union([
+    Schema.Struct({ ...localSelector, forceRefreshApps: Schema.optionalKey(Schema.Boolean) }),
+    Schema.Struct({ ...remoteSelector, forceRefreshApps: Schema.optionalKey(Schema.Boolean) }),
+  ]),
   search: Schema.Struct({
     ...context,
     term: Schema.String,
@@ -114,6 +116,11 @@ export const pluginQuerySchemas = {
   }),
 } as const;
 export const pluginCommandSchemas = {
+  "plugin-hooks-trust": selector,
+  "plugin-mcp-enabled": Schema.Union([
+    Schema.Struct({ ...localSelector, name: Schema.NonEmptyString, enabled: Schema.Boolean }),
+    Schema.Struct({ ...remoteSelector, name: Schema.NonEmptyString, enabled: Schema.Boolean }),
+  ]),
   "app-disconnect": Schema.Struct({
     ...context,
     appId: Schema.NonEmptyString,

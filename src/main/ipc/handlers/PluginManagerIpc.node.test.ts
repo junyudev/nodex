@@ -55,6 +55,32 @@ it.effect("validates selector XOR and typed command booleans at ingress", () =>
       }).pipe(Effect.result))._tag,
       "Failure",
     );
+    assert.strictEqual(
+      (yield* Schema.decodeUnknownEffect(pluginCommandSchemas["plugin-mcp-enabled"])({
+        ...base,
+        marketplacePath: "/catalog",
+        name: "server",
+        enabled: true,
+      }).pipe(Effect.result))._tag,
+      "Success",
+    );
+    assert.strictEqual(
+      (yield* Schema.decodeUnknownEffect(pluginCommandSchemas["plugin-mcp-enabled"])({
+        ...base,
+        marketplacePath: "/catalog",
+        name: "server",
+        enabled: "true",
+      }).pipe(Effect.result))._tag,
+      "Failure",
+    );
+    assert.strictEqual(
+      (yield* Schema.decodeUnknownEffect(pluginCommandSchemas["plugin-hooks-trust"])({
+        ...base,
+        marketplacePath: "/catalog",
+        remoteMarketplaceName: "remote",
+      }).pipe(Effect.result))._tag,
+      "Failure",
+    );
   }),
 );
 it.effect(
@@ -67,11 +93,22 @@ it.effect(
         const events = yield* PubSub.unbounded<PluginManagementChanged>();
         let reads = 0;
         let commands = 0;
+        const missingSkill = {
+          status: "failed",
+          contents: null,
+          files: [],
+          error: {
+            code: "not_found",
+            message: "The skill was not found in the current inventory.",
+            retryable: false,
+          },
+        } satisfies import("../../../shared/codex-plugin-settings").SkillContentsResult;
         const manager = PluginManager.of({
           changes: Stream.fromPubSub(events),
-          query: () =>
+          query: (name) =>
             Effect.sync(() => {
               reads++;
+              if (name === "skill-contents") return missingSkill as never;
               return {} as never;
             }),
           command: () =>
@@ -121,6 +158,14 @@ it.effect(
           projectId: null,
         });
         assert.strictEqual(reads, 1);
+        assert.deepEqual(
+          yield* handlers.get("codex:plugins:skill-contents")!(event(), {
+            hostId: "local",
+            projectId: null,
+            path: "/unknown/SKILL.md",
+          }),
+          missingSkill,
+        );
         const command = handlers.get("codex:plugins:mcp-enabled")!;
         const invalid = yield* command(event(), {
           hostId: "local",

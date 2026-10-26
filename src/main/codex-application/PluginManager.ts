@@ -1,4 +1,7 @@
 import { MAIN_OBSERVATION_EVENT_CAPACITY } from "../runtime-limits";
+import { matchPluginDetailSkill, projectPluginMcpServers } from "./PluginDetailModel";
+import { authorizedPluginAsset } from "./PluginInventoryPolicy";
+import { isAbsoluteAppFilesystemPath } from "../../shared/app-protocol";
 import { makePluginAccountMetadata } from "./PluginAccountMetadata";
 import * as Result from "effect/Result";
 import { StandaloneSkills } from "./StandaloneSkills";
@@ -8,6 +11,7 @@ import {
   mapPluginProjection,
   normalizeConnectorId,
   configuredTable,
+  safePluginCatalogIcon,
   projectMarketplaces,
   projectMcpServers,
   writablePluginConfigLayer,
@@ -40,6 +44,7 @@ import type {
   PluginCommands,
   PluginManagementChanged,
   PluginRow,
+  PluginSelector,
   PluginMutationResult,
   PluginRefreshResource,
   PluginPage,
@@ -133,6 +138,24 @@ export const live = (options: {
         string,
         { context: ResolvedPluginContext; progress: MarketplaceRemovalProgress }
       >();
+      // Only completed, fenced detail reads grant exact manifest paths to previews.
+      const detailSkillGrants = new Map<
+        string,
+        Map<
+          string,
+          {
+            readonly selector: PluginSelector;
+            readonly nativeId: string;
+            readonly paths: ReadonlySet<string>;
+          }
+        >
+      >();
+      const skillGrantScope = (
+        context: ResolvedPluginContext,
+        account: { readonly accountId: string; readonly userId: string } | null,
+      ) => JSON.stringify([context, account?.accountId ?? null, account?.userId ?? null]);
+      const skillManifestPath = (path: string) =>
+        isAbsoluteAppFilesystemPath(path) && /[/\\]SKILL\.md$/u.test(path);
       let nextOperation = 0;
       const emit = Effect.fn("PluginManager.emit")(function* (
         kind: PluginManagementChanged["kind"],
@@ -150,12 +173,14 @@ export const live = (options: {
           Effect.gen(function* () {
             if (event.kind === "connection") {
               if (event.value.hostId !== "local") return;
+              detailSkillGrants.clear();
               yield* Ref.update(epoch, (n) => n + 1);
               yield* emit("connection");
               return;
             }
             if (event.hostId !== "local") return;
             if (event.value.method === "account/updated") {
+              detailSkillGrants.clear();
               yield* Ref.update(epoch, (n) => n + 1);
               yield* emit("account");
               return;
@@ -422,9 +447,11 @@ export const live = (options: {
         const resources: readonly PluginRefreshResource[] | undefined =
           notify === "skills"
             ? ["skills"]
-            : notify === "mcp" || notify === "apps"
-              ? ["apps", "mcp"]
-              : undefined;
+            : notify === "hooks"
+              ? ["hooks"]
+              : notify === "mcp" || notify === "apps"
+                ? ["apps", "mcp"]
+                : undefined;
         const refreshFailures = yield* reload(context, resources);
         return {
           status: refreshFailures.length ? "success-with-refresh-warning" : "success",
@@ -619,6 +646,34 @@ export const live = (options: {
         const [catalog, config] = yield* Effect.all([directoryRaw(context), configRead(context)]);
         return projectMarketplaces(catalog, config, policy.marketplaceName);
       });
+      const pluginHooks = Effect.fn("PluginManager.pluginHookInventory")(function* (
+        context: ResolvedPluginContext,
+        pluginId: string,
+      ) {
+        if (!context.cwds.length) return { available: false, hooks: [], needsReviewCount: 0 };
+        const response = (yield* request(context, "hooks/list", {
+          cwds: [...context.cwds],
+        })) as unknown as import("@nodex/codex-app-server-protocol/v2/HooksListResponse").HooksListResponse;
+        if (response.data.some((entry) => entry.errors.length))
+          return yield* pluginError("inventory_unavailable", "Hook inventory could not be loaded.");
+        const hooks = [
+          ...new Map(
+            response.data
+              .flatMap((entry) => entry.hooks)
+              .filter((hook) => hook.pluginId === pluginId)
+              .map((hook) => [hook.key, hook]),
+          ).values(),
+        ];
+        return {
+          available: true,
+          hooks,
+          needsReviewCount: hooks.filter(
+            (hook) =>
+              !hook.isManaged &&
+              (hook.trustStatus === "untrusted" || hook.trustStatus === "modified"),
+          ).length,
+        };
+      });
       const updateMcp = Effect.fn("PluginManager.updateMcp")(function* (
         context: ResolvedPluginContext,
         input: PluginCommands["mcp-save" | "mcp-remove" | "mcp-enabled"]["input"],
@@ -809,24 +864,7 @@ export const live = (options: {
         ),
         "plugin-hooks": Effect.fn("PluginManager.pluginHooks")(function* (context, input) {
           const detail = yield* queryHandlers.read(context, input);
-          if (!context.cwds.length) return { hooks: [], needsReviewCount: 0 };
-          const response = yield* request(context, "hooks/list", { cwds: [...context.cwds] });
-          const hooks = [
-            ...new Map(
-              (
-                response as unknown as import("@nodex/codex-app-server-protocol/v2/HooksListResponse").HooksListResponse
-              ).data
-                .flatMap((entry) => entry.hooks)
-                .filter((hook) => hook.pluginId === detail.summary.id)
-                .map((hook) => [hook.key, hook]),
-            ).values(),
-          ];
-          return {
-            hooks,
-            needsReviewCount: hooks.filter(
-              (hook) => hook.trustStatus === "untrusted" || hook.trustStatus === "modified",
-            ).length,
-          };
+          return yield* pluginHooks(context, detail.summary.id);
         }),
         context: (context) => Effect.succeed(context),
         capabilities: Effect.fn("PluginManager.capabilities")(function* (context) {
@@ -889,7 +927,11 @@ export const live = (options: {
           const ui = row.summary.interface;
           const appView = detail.apps.length
             ? yield* withOperationLease(
-                apps.list(context, { ...context, appIds: detail.apps.map((app) => app.id) }),
+                apps.list(context, {
+                  ...context,
+                  appIds: detail.apps.map((app) => app.id),
+                  forceRefresh: "forceRefreshApps" in input && input.forceRefreshApps === true,
+                }),
               ).pipe(
                 Effect.orElseSucceed((error) => ({
                   apps: [],
@@ -922,10 +964,71 @@ export const live = (options: {
                   })),
                 )
               : { dependencies: [], available: false, error: null };
+          const providerInventory =
+            worksWith.available && worksWith.dependencies.length
+              ? yield* installed(context).pipe(Effect.orElseSucceed(() => null))
+              : null;
+          const dependencies = worksWith.dependencies.map((provider) => ({
+            ...provider,
+            installed:
+              providerInventory && !providerInventory.marketplaceLoadErrors.length
+                ? rows(providerInventory).some(
+                    (row) =>
+                      row.summary.installed &&
+                      (row.stableIdentity === provider.pluginId ||
+                        row.nativeId === provider.pluginId),
+                  )
+                : null,
+          }));
+          const skillInventory =
+            row.summary.installed && detail.skills.length
+              ? yield* request(context, "skills/list", {
+                  cwds: [...context.cwds],
+                  forceReload: false,
+                }).pipe(
+                  Effect.map((value) => {
+                    const entries = (value as unknown as SkillsListResponse).data;
+                    return {
+                      skills: entries.flatMap((entry) => entry.skills),
+                      error: entries.some((entry) => entry.errors.length)
+                        ? pluginFailure(
+                            pluginError(
+                              "inventory_unavailable",
+                              "Some local skills could not be loaded.",
+                            ),
+                          )
+                        : null,
+                    };
+                  }),
+                  Effect.orElseSucceed((error) => ({ skills: [], error: pluginFailure(error) })),
+                )
+              : { skills: [], error: null };
+          const hookInventory = row.summary.installed
+            ? yield* pluginHooks(context, row.nativeId).pipe(
+                Effect.map((value) => ({ ...value, error: null })),
+                Effect.orElseSucceed((error) => ({
+                  available: false,
+                  hooks: [],
+                  needsReviewCount: 0,
+                  error: pluginFailure(error),
+                })),
+              )
+            : { available: false, hooks: [], needsReviewCount: 0, error: null };
+          const mcpInventory =
+            row.summary.installed && detail.mcpServers.length
+              ? yield* Effect.all([configRead(context), mcpStatuses(context)]).pipe(
+                  Effect.map(([config, statuses]) => ({ config, statuses, error: null })),
+                  Effect.orElseSucceed((error) => ({
+                    config: null,
+                    statuses: [],
+                    error: pluginFailure(error),
+                  })),
+                )
+              : { config: null, statuses: [], error: null };
           return {
             appConnectionStates,
             appConnectionError: appView?.connectionError ?? null,
-            worksWith,
+            worksWith: { ...worksWith, dependencies },
             appTemplates: detail.appTemplates,
             onboardingSkill: detail.onboardingSkill,
             scheduledTasks: detail.scheduledTasks,
@@ -934,10 +1037,51 @@ export const live = (options: {
             row: { ...row, appConnectionStates },
             summary: row.summary,
             description: detail.description,
-            skills: detail.skills,
-            apps: detail.apps,
+            skills: detail.skills.map((skill) => {
+              const local = matchPluginDetailSkill(row.summary.name, skill, skillInventory.skills);
+              return {
+                ...skill,
+                iconUrl: authorizedPluginAsset(
+                  skill.interface?.iconSmall,
+                  skill.interface?.iconSmallUrl,
+                  icon,
+                ),
+                installedSkill: local
+                  ? { path: local.path, name: local.name, enabled: local.enabled }
+                  : null,
+              };
+            }),
+            skillsError: skillInventory.error,
+            apps: detail.apps.map((app) => {
+              const state = appView?.apps.find(
+                (entry) => normalizeConnectorId(entry.id) === normalizeConnectorId(app.id),
+              );
+              return {
+                ...app,
+                installUrl: state?.installUrl ?? safePluginCatalogIcon(app.installUrl),
+                logoUrl: state?.logoUrl ?? null,
+                logoDarkUrl: state?.logoDarkUrl ?? null,
+                accessible: state?.accessible ?? null,
+                enabled: state?.runtime ? state.enabled : null,
+                callable: state?.runtime ? state.callable : null,
+                connectionState: state?.connectionState ?? "unknown",
+                canDisconnect: state?.canDisconnect ?? false,
+              };
+            }),
             mcpServers: detail.mcpServers,
+            mcpServerStates: projectPluginMcpServers(
+              detail.mcpServers,
+              row.nativeId,
+              row.summary.installed,
+              row.canSetEnabled,
+              mcpInventory.config,
+              mcpInventory.statuses,
+            ),
+            mcpServerError: mcpInventory.error,
             hooks: detail.hooks,
+            hooksNeedingReviewCount: hookInventory.needsReviewCount,
+            hooksAvailable: hookInventory.available,
+            hooksError: hookInventory.error,
             info: {
               capabilities: ui?.capabilities ?? [],
               developer: ui?.developerName ?? null,
@@ -1002,44 +1146,66 @@ export const live = (options: {
             cwds: [...context.cwds],
             forceReload: input.forceReload ?? false,
           }).pipe(Effect.map((response) => response as unknown as SkillsListResponse)),
-        "skill-contents": Effect.fn("PluginManager.skillContents")(function* (context, input) {
-          if ("remotePluginId" in input)
-            return yield* request(context, "plugin/skill/read", {
-              remoteMarketplaceName: input.remoteMarketplaceName,
-              remotePluginId: input.remotePluginId,
-              skillName: input.skillName,
-            }).pipe(
-              Effect.map((response) => ({
-                contents: response.contents ?? null,
-                files: ["SKILL.md"],
-              })),
+        "skill-contents": Effect.fn("PluginManager.skillContents")(
+          function* (context, input) {
+            if ("remotePluginId" in input)
+              return yield* request(context, "plugin/skill/read", {
+                remoteMarketplaceName: input.remoteMarketplaceName,
+                remotePluginId: input.remotePluginId,
+                skillName: input.skillName,
+              }).pipe(
+                Effect.map((response) => ({
+                  status: "success" as const,
+                  contents: response.contents ?? null,
+                  files: ["SKILL.md"],
+                })),
+              );
+            if (!skillManifestPath(input.path))
+              return yield* pluginError(
+                "not_found",
+                "The skill was not found in the current inventory.",
+              );
+            const contents = (path: string) =>
+              assertCurrent(context).pipe(
+                Effect.andThen(standaloneSkills.contents(path)),
+                Effect.map((value) => ({ ...value, status: "success" as const })),
+              );
+            const scope = skillGrantScope(context, yield* PluginServiceAccount);
+            const grants = detailSkillGrants.get(scope);
+            for (const grant of grants?.values() ?? []) {
+              if (!grant.paths.has(input.path)) continue;
+              const response = yield* request(context, "plugin/read", {
+                marketplacePath: grant.selector.marketplacePath ?? null,
+                remoteMarketplaceName: grant.selector.remoteMarketplaceName ?? null,
+                pluginName: grant.selector.pluginName,
+              });
+              const detail = response.plugin as unknown as PluginDetail;
+              const current =
+                detail.summary.id === grant.nativeId &&
+                policy.visible(detail.summary.id, context.hostId) &&
+                detail.skills.some((skill) => skill.path === input.path);
+              if (current) return yield* contents(input.path);
+              grants?.delete(JSON.stringify(grant.selector));
+            }
+            const response = yield* queryHandlers.skills(context, context);
+            const skill = response.data
+              .flatMap((entry) => entry.skills)
+              .find((item) => item.path === input.path);
+            if (skill) return yield* contents(skill.path);
+            return yield* pluginError(
+              "not_found",
+              "The skill was not found in the current inventory.",
             );
-          const response = yield* queryHandlers.skills(context, context);
-          const skill = response.data
-            .flatMap((entry) => entry.skills)
-            .find((item) => item.path === input.path);
-          const contents = standaloneSkills.contents;
-          if (skill) return yield* contents(skill.path);
-          // Inactive plugins do not contribute to skills/list. Current native details
-          // authorize their exact skill files without admitting arbitrary filesystem reads.
-          const catalog = yield* directory(context);
-          const plugins = dedupePluginRows([
-            ...(yield* requireInventory(context)),
-            ...rows(catalog),
-          ]);
-          for (const row of plugins) {
-            if (row.marketplace.path === null) continue;
-            const detail = yield* queryHandlers.read(context, { ...context, ...row.selector });
-            const pluginSkill = detail.skills.find((item) => item.path === input.path);
-            if (pluginSkill?.path) return yield* contents(pluginSkill.path);
-          }
-          if (catalog.marketplaceLoadErrors.length)
-            return yield* pluginError("inventory_unavailable", "Plugin inventory is incomplete.");
-          return yield* pluginError(
-            "not_found",
-            "The skill was not found in the current inventory.",
-          );
-        }),
+          },
+          Effect.catch((error) =>
+            Effect.succeed({
+              status: "failed" as const,
+              error: pluginFailure(error),
+              contents: null,
+              files: [],
+            }),
+          ),
+        ),
         hooks: (context) =>
           request(context, "hooks/list", { cwds: [...context.cwds] }).pipe(
             Effect.map((response) => response as unknown as PluginQueries["hooks"]["output"]),
@@ -1336,6 +1502,85 @@ export const live = (options: {
           input: PluginCommands[K]["input"],
         ) => Effect.Effect<PluginCommands[K]["output"], PluginManagementError>;
       } = {
+        "plugin-hooks-trust": Effect.fn("PluginManager.trustAllPluginHooks")(
+          function* (context, input) {
+            const detail = yield* queryHandlers.read(context, input);
+            if (!detail.summary.installed)
+              return yield* pluginError(
+                "not_found",
+                "Install this plugin before trusting its hooks.",
+              );
+            if (detail.row.managed)
+              return yield* pluginError("protected", "Nodex manages this plugin.");
+            const inventory = yield* pluginHooks(context, detail.row.nativeId);
+            if (!inventory.available)
+              return yield* pluginError("unsupported", "Select a project to review plugin hooks.");
+            const edits = inventory.hooks
+              .filter(
+                (hook) =>
+                  !hook.isManaged &&
+                  (hook.trustStatus === "untrusted" || hook.trustStatus === "modified"),
+              )
+              .map((hook): ConfigEdit => ({
+                keyPath: `hooks.state.${JSON.stringify(hook.key)}.trusted_hash`,
+                value: hook.currentHash,
+                mergeStrategy: "upsert",
+              }));
+            if (edits.length) yield* writeConfig(context, yield* configRead(context), edits);
+            return yield* applied(context, undefined, "hooks");
+          },
+        ),
+        "plugin-mcp-enabled": Effect.fn("PluginManager.setPluginMcpEnabled")(
+          function* (context, input) {
+            const detail = yield* queryHandlers.read(context, input);
+            const config = yield* configRead(context);
+            const states = projectPluginMcpServers(
+              detail.mcpServers,
+              detail.row.nativeId,
+              detail.summary.installed,
+              detail.row.canSetEnabled,
+              config,
+              yield* mcpStatuses(context),
+            );
+            const server = states.find((entry) => entry.name === input.name);
+            if (!server?.installed || server.configKey === null)
+              return yield* pluginError(
+                "not_found",
+                "The installed MCP server configuration was not found.",
+              );
+            if (!server.canSetEnabled)
+              return yield* pluginError("protected", "This MCP server cannot be changed.");
+            const user = writablePluginConfigLayer(config);
+            if (!user || user.name.type !== "user")
+              return yield* pluginError(
+                "inventory_unavailable",
+                "Versioned user configuration is unavailable.",
+              );
+            yield* assertCurrent(context);
+            const written = yield* request(context, "config/value/write", {
+              keyPath: `mcp_servers.${JSON.stringify(server.configKey)}.enabled`,
+              value: input.enabled,
+              mergeStrategy: "upsert",
+              filePath: user.name.file,
+              expectedVersion: user.version,
+            }).pipe(
+              Effect.mapError((error) =>
+                error.code === "mutation_outcome_unknown"
+                  ? error
+                  : pluginError(
+                      "config_conflict",
+                      "Settings changed. Refresh before trying again.",
+                    ),
+              ),
+            );
+            if (written.status === "okOverridden")
+              return yield* pluginError(
+                "policy_denied",
+                "These settings are controlled by policy.",
+              );
+            return yield* applied(context, undefined, "mcp");
+          },
+        ),
         "app-disconnect": Effect.fn("PluginManager.disconnectApp")(function* (context, input) {
           yield* assertCurrent(context);
           yield* withOperationLease(apps.disconnect(context, input, assertCurrent(context)));
@@ -1692,6 +1937,29 @@ export const live = (options: {
           yield* assertCurrent(context);
           if (lease.aborted)
             return yield* pluginError("account_changed", "The authenticated account changed.");
+          if (name === "read") {
+            const detail = value as PluginQueries["read"]["output"];
+            const read = input as PluginQueries["read"]["input"];
+            const selector: PluginSelector =
+              read.marketplacePath !== undefined
+                ? { marketplacePath: read.marketplacePath, pluginName: read.pluginName }
+                : {
+                    remoteMarketplaceName: read.remoteMarketplaceName,
+                    pluginName: read.pluginName,
+                  };
+            const scope = skillGrantScope(context, expected);
+            const grants = detailSkillGrants.get(scope) ?? new Map();
+            grants.set(JSON.stringify(selector), {
+              selector,
+              nativeId: detail.row.nativeId,
+              paths: new Set(
+                detail.skills.flatMap((skill) =>
+                  skill.path && skillManifestPath(skill.path) ? [skill.path] : [],
+                ),
+              ),
+            });
+            detailSkillGrants.set(scope, grants);
+          }
           return value;
         }),
         command: <K extends keyof PluginCommands>(name: K, input: PluginCommands[K]["input"]) =>

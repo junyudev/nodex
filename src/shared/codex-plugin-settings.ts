@@ -4,6 +4,9 @@ import type { InstalledApp } from "@nodex/codex-app-server-protocol/v2/Installed
 import type { McpServerStatus } from "@nodex/codex-app-server-protocol/v2/McpServerStatus";
 import type { McpServerOauthLoginParams } from "@nodex/codex-app-server-protocol/v2/McpServerOauthLoginParams";
 import type { HookMetadata } from "@nodex/codex-app-server-protocol/v2/HookMetadata";
+import type { SkillMetadata } from "@nodex/codex-app-server-protocol/v2/SkillMetadata";
+import type { SkillSummary } from "@nodex/codex-app-server-protocol/v2/SkillSummary";
+import type { AppSummary } from "@nodex/codex-app-server-protocol/v2/AppSummary";
 import type { ConfigEdit } from "@nodex/codex-app-server-protocol/v2/ConfigEdit";
 import type {
   PluginContext,
@@ -38,11 +41,33 @@ export interface PluginAppRow {
   readonly runtime: InstalledApp | null;
   readonly enabled: boolean;
   readonly callable: boolean;
+  readonly accessible: boolean | null;
+  readonly installUrl: string | null;
   readonly logoUrl: string | null;
   readonly logoDarkUrl: string | null;
   readonly connectionState: PluginAppConnectionState;
   readonly connections: readonly { readonly id: string; readonly name: string | null }[];
   readonly canDisconnect: boolean;
+}
+export type PluginDetailSkill = SkillSummary & {
+  readonly iconUrl: string | null;
+  readonly installedSkill: Pick<SkillMetadata, "path" | "name" | "enabled"> | null;
+};
+export type PluginDetailApp = AppSummary & {
+  readonly logoUrl: string | null;
+  readonly logoDarkUrl: string | null;
+  readonly accessible: boolean | null;
+  readonly enabled: boolean | null;
+  readonly callable: boolean | null;
+  readonly connectionState: PluginAppConnectionState;
+  readonly canDisconnect: boolean;
+};
+export interface PluginDetailMcpServer {
+  readonly name: string;
+  readonly configKey: string | null;
+  readonly enabled: boolean;
+  readonly installed: boolean;
+  readonly canSetEnabled: boolean;
 }
 export interface PluginAppsView {
   readonly apps: readonly PluginAppRow[];
@@ -78,6 +103,14 @@ export interface SkillContentsView {
   readonly contents: string | null;
   readonly files: readonly string[];
 }
+export type SkillContentsResult =
+  | (SkillContentsView & { readonly status: "success" })
+  | {
+      readonly status: "failed";
+      readonly error: PluginFailure;
+      readonly contents: null;
+      readonly files: readonly string[];
+    };
 export type PluginCreationHelper = "plugin-creator" | "record-and-replay";
 export interface PluginHelperCapability {
   readonly available: boolean;
@@ -111,6 +144,7 @@ export interface PluginDependenciesView {
   readonly error: PluginFailure | null;
 }
 export interface PluginHooksView {
+  readonly available: boolean;
   readonly hooks: readonly HookMetadata[];
   readonly needsReviewCount: number;
 }
@@ -129,6 +163,11 @@ export interface PluginSettingsQueries {
   "plugin-hooks": { input: PluginContext & PluginSelector; output: PluginHooksView };
 }
 export interface PluginSettingsCommands {
+  "plugin-hooks-trust": { input: PluginContext & PluginSelector; output: PluginMutationResult };
+  "plugin-mcp-enabled": {
+    input: PluginContext & PluginSelector & { readonly name: string; readonly enabled: boolean };
+    output: PluginMutationResult;
+  };
   "app-disconnect": {
     input: PluginContext & { readonly appId: string; readonly linkId?: string };
     output: PluginMutationResult;

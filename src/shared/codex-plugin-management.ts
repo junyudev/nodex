@@ -170,10 +170,16 @@ export interface PluginDetailView {
   readonly row: PluginRow;
   readonly summary: PluginSummary;
   readonly description: string | null;
-  readonly skills: PluginDetail["skills"];
-  readonly apps: PluginDetail["apps"];
+  readonly skills: readonly import("./codex-plugin-settings").PluginDetailSkill[];
+  readonly apps: readonly import("./codex-plugin-settings").PluginDetailApp[];
   readonly mcpServers: PluginDetail["mcpServers"];
+  readonly mcpServerStates: readonly import("./codex-plugin-settings").PluginDetailMcpServer[];
+  readonly mcpServerError: PluginFailure | null;
   readonly hooks: PluginDetail["hooks"];
+  readonly hooksNeedingReviewCount: number;
+  readonly hooksError: PluginFailure | null;
+  readonly hooksAvailable: boolean;
+  readonly skillsError: PluginFailure | null;
   readonly info: {
     readonly capabilities: readonly string[];
     readonly developer: string | null;
@@ -227,7 +233,7 @@ export interface PluginManagementChanged {
   readonly hostId: string;
   readonly accountEpoch: number;
   readonly hostGeneration?: number;
-  readonly kind: "plugins" | "skills" | "apps" | "mcp" | "account" | "connection";
+  readonly kind: "plugins" | "skills" | "apps" | "mcp" | "hooks" | "account" | "connection";
   readonly mcpOauthCompletion?: import("@nodex/codex-app-server-protocol/v2/McpServerOauthLoginCompletedNotification").McpServerOauthLoginCompletedNotification;
   readonly progress?: MarketplaceRemovalProgress;
 }
@@ -239,7 +245,10 @@ export interface PluginQueries extends PluginSettingsQueries {
     output: PluginInventory<PluginListResponse>;
   };
   installed: { input: PluginContext; output: PluginInventory<PluginInstalledResponse> };
-  read: { input: PluginContext & PluginSelector; output: PluginDetailView };
+  read: {
+    input: PluginContext & PluginSelector & { readonly forceRefreshApps?: boolean };
+    output: PluginDetailView;
+  };
   search: {
     input: PluginContext & {
       readonly term: string;
@@ -251,7 +260,7 @@ export interface PluginQueries extends PluginSettingsQueries {
   skills: { input: PluginContext & { readonly forceReload?: boolean }; output: SkillsListResponse };
   "skill-contents": {
     input: PluginContext & SkillContentsSelector;
-    output: import("./codex-plugin-settings").SkillContentsView;
+    output: import("./codex-plugin-settings").SkillContentsResult;
   };
   hooks: { input: PluginContext; output: HooksListResponse };
   "public-home": { input: PluginContext; output: PublicPluginSections };

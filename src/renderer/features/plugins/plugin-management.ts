@@ -76,6 +76,8 @@ type Command<K extends keyof PluginCommands> = (
   input: Omit<PluginCommands[K]["input"], keyof PluginContext>,
 ) => Promise<PluginCommands[K]["output"]>;
 export interface PluginManagement {
+  readonly trustAllPluginHooks: Command<"plugin-hooks-trust">;
+  readonly setPluginMcpServerEnabled: Command<"plugin-mcp-enabled">;
   readonly install: Command<"install">;
   readonly uninstall: Command<"uninstall">;
   readonly setPluginEnabled: Command<"set-enabled">;
@@ -174,8 +176,15 @@ export function usePluginSearch(
 export function usePluginDetail(
   context: PluginContext,
   selector: PluginSelector,
+  options: { readonly refreshAppConnectionsOnFocus?: boolean } = {},
 ): UseQueryResult<PluginDetailView> {
-  return useQuery(pluginQueryOptions(useScope(context), context, "read", selector));
+  return useQuery({
+    ...pluginQueryOptions(useScope(context), context, "read", {
+      ...selector,
+      forceRefreshApps: options.refreshAppConnectionsOnFocus ?? false,
+    }),
+    refetchOnWindowFocus: options.refreshAppConnectionsOnFocus ? "always" : false,
+  });
 }
 export function useSkills(context: PluginContext): UseQueryResult<SkillsView> {
   return useQuery({
@@ -186,7 +195,7 @@ export function useSkills(context: PluginContext): UseQueryResult<SkillsView> {
 export function useSkillContents(
   context: PluginContext,
   selector: SkillContentsSelector,
-): UseQueryResult<import("../../../shared/codex-plugin-settings").SkillContentsView> {
+): UseQueryResult<import("../../../shared/codex-plugin-settings").SkillContentsResult> {
   return useQuery(pluginQueryOptions(useScope(context), context, "skill-contents", selector));
 }
 export function useMarketplaceRemovalPreview(
@@ -220,9 +229,15 @@ export function useMarketplaces(context: PluginContext) {
 }
 export function usePluginApps(
   context: PluginContext,
-  input: { appIds?: readonly string[]; forceRefresh?: boolean } = {},
+  input: { appIds?: readonly string[]; forceRefresh?: boolean; refreshOnFocus?: boolean } = {},
 ) {
-  return useQuery(pluginQueryOptions(useScope(context), context, "apps", input));
+  return useQuery({
+    ...pluginQueryOptions(useScope(context), context, "apps", {
+      appIds: input.appIds,
+      forceRefresh: input.forceRefresh || input.refreshOnFocus,
+    }),
+    refetchOnWindowFocus: input.refreshOnFocus ? "always" : false,
+  });
 }
 export function usePluginMcpServers(context: PluginContext) {
   return useQuery(pluginQueryOptions(useScope(context), context, "mcp-servers", {}));
@@ -288,6 +303,9 @@ export function usePluginManagement(context: PluginContext): PluginManagement {
     upgradeMarketplaces: (input) =>
       runPluginMutation(client, context, "marketplace-upgrade", input),
     disconnectApp: (input) => runPluginMutation(client, context, "app-disconnect", input),
+    trustAllPluginHooks: (input) => runPluginMutation(client, context, "plugin-hooks-trust", input),
+    setPluginMcpServerEnabled: (input) =>
+      runPluginMutation(client, context, "plugin-mcp-enabled", input),
     saveMcpServer: (input) => runPluginMutation(client, context, "mcp-save", input),
     removeMcpServer: (input) => runPluginMutation(client, context, "mcp-remove", input),
     setMcpServerEnabled: (input) => runPluginMutation(client, context, "mcp-enabled", input),

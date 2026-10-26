@@ -278,3 +278,43 @@ it("keeps marketplace progress in its originating Project and remembers successf
     queryClient.getQueryData(pluginManagementKeys.resource(other, "recommended-installs")),
   ).toBeUndefined();
 });
+
+it.each([
+  ["install", { marketplacePath: "/catalog", pluginName: "test", installAttemptId: "attempt" }],
+  ["uninstall", { pluginId: "test@custom" }],
+  ["set-enabled", { pluginId: "test@custom", enabled: true }],
+  ["skill-enabled", { name: "test:skill", enabled: true }],
+  ["app-disconnect", { appId: "connector_test" }],
+  [
+    "plugin-mcp-enabled",
+    { marketplacePath: "/catalog", pluginName: "test", name: "server", enabled: true },
+  ],
+  ["plugin-hooks-trust", { marketplacePath: "/catalog", pluginName: "test" }],
+] as const)("refreshes open detail after %s without crossing hosts", async (name, input) => {
+  const queryClient = client();
+  const detail = pluginManagementKeys.resource(scope, "read", { pluginName: "test" });
+  const remoteDetail = pluginManagementKeys.resource({ ...scope, hostId: "remote" }, "read");
+  for (const key of [detail, remoteDetail]) queryClient.setQueryData(key, {});
+  vi.mocked(commandPluginManagement).mockResolvedValue({
+    status: "success",
+    value: undefined,
+  } as never);
+  await runPluginMutation(queryClient, context, name, input);
+  expect(queryClient.getQueryState(detail)?.isInvalidated).toBe(true);
+  expect(queryClient.getQueryState(remoteDetail)?.isInvalidated).toBe(false);
+});
+
+it("refreshes hook inventory and detail without invalidating unrelated skill and app data", () => {
+  const queryClient = client();
+  const resources = ["read", "plugin-hooks", "hooks", "skills", "apps"];
+  const keys = resources.map((resource) => pluginManagementKeys.resource(scope, resource));
+  for (const key of keys) queryClient.setQueryData(key, {});
+  applyPluginManagementEvent(queryClient, { hostId: "local", accountEpoch: 1, kind: "hooks" });
+  expect(keys.map((key) => queryClient.getQueryState(key)?.isInvalidated)).toEqual([
+    true,
+    true,
+    true,
+    false,
+    false,
+  ]);
+});

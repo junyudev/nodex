@@ -5,6 +5,20 @@ import type {
 } from "../../shared/codex-plugin-management";
 import { defineRendererCommand, invokePlainCommand, invokeRendererQuery } from "./renderer-command";
 const definitions = {
+  "plugin-hooks-trust": defineRendererCommand({
+    key: "plugins.plugin-hooks-trust",
+    channel: "codex:plugins:plugin-hooks-trust",
+    authority: "main",
+    owner: "PluginManager",
+    protocol: { kind: "returned_value" },
+  }),
+  "plugin-mcp-enabled": defineRendererCommand({
+    key: "plugins.plugin-mcp-enabled",
+    channel: "codex:plugins:plugin-mcp-enabled",
+    authority: "main",
+    owner: "PluginManager",
+    protocol: { kind: "returned_value" },
+  }),
   "app-disconnect": defineRendererCommand({
     key: "plugins.app-disconnect",
     channel: "codex:plugins:app-disconnect",

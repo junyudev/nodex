@@ -49,6 +49,17 @@ plugin's published information fields. MCP names are not executable declarations
 administrator-disabled and unknown states. A failed connector read makes no claim about authentication.
 Scheduled-task templates retain the native protocol shape.
 
+Detail skills expose an authorized `iconUrl` and `installedSkill` containing the local
+`path`, `name` and `enabled` state. Uninstalled plugins and unmatched local skills return
+`installedSkill: null`; this means unavailable, regardless of the manifest's enabled flag.
+Matching prefers the exact path, then the exact name (qualified with the plugin name for
+pathless, unqualified skills), then a unique comparable name. Comparable names lowercase
+each colon-delimited segment and remove whitespace, underscores and hyphens. Duplicate
+observations of the same path across roots do not make a match ambiguous. Local small icons
+use the same asset authorization as plugin logos, with an HTTPS small-icon fallback.
+Switches address the installed skill by name when it contains a colon, otherwise by path.
+`skillsError` distinguishes a failed inventory read from a complete inventory with no match.
+
 Each Profile's Browser, Chrome and Computer Use plugins are managed desktop tools. Local
 inventory omits foreign desktop copies, retains unrelated same-name plugins, and presents
 installed managed tools as effectively enabled. Managed IDs, alternate identities,
@@ -91,10 +102,20 @@ Skills flatten in resolved root order and deduplicate by path, then by name. Sco
 is Project, user, system, administrator; lexical path breaks ties. Standalone groups exclude
 plugin-owned skills and retain system skills. Match keys include directory basename, raw and
 humanized name, display name, and punctuation-free variants. Plugin-owned skills still
-contribute installed match keys. Local contents must match current skill inventory or a visible plugin's current detail,
-including disabled and uninstalled local plugins; remote
-plugin contents use the named native skill-read operation. No arbitrary file-read or skill
-deletion operation is exposed without inventory authorization.
+contribute installed match keys. Local contents must match current skill inventory or an exact
+absolute SKILL.md path returned by a completed plugin detail query, including disabled and
+uninstalled plugins. Detail path grants are scoped by host generation, account identity and
+epoch, Project bindings and ordered roots. The original native plugin selector is re-read
+before accessing the file; removed paths lose authorization. Account changes and reconnects
+revoke grants. Preview authorization does not depend on rediscovering the plugin in installed
+or catalog inventory, and never grants sibling files or directories. Filesystem reads retain
+the skill directory's canonical containment checks.
+
+Skill contents return `SkillContentsResult`: `status: "success"` with `contents` and `files`,
+or `status: "failed"` with a typed `error`, null contents and no files. Unknown local paths
+return `error.code: "not_found"` through IPC instead of rejecting the preview query. Remote
+plugin contents continue to use the named native `plugin/skill/read` operation. No arbitrary
+file-read or skill deletion operation is exposed without inventory authorization.
 
 Recommended standalone skills come from the curated and experimental directories in
 `openai/skills`, checked out sparsely under the native home's `vendor_imports/skills`.
@@ -167,6 +188,13 @@ rows and matching marketplace errors, and retries preserve previously completed 
 Apps use the committed `app/installed` runtime snapshot and `app/read` metadata in batches
 of at most one hundred IDs. Only an unsupported-method response falls back to paginated
 `app/list`. Effective enabled and callable state remain separate from connection state.
+Detail app rows retain their manifest fields and expose `logoUrl`, `logoDarkUrl`,
+`accessible`, `enabled`, `callable`, `connectionState` and `canDisconnect`. Unknown native
+flags are null; the legacy inventory supplies accessibility when available. `installUrl`
+is a validated HTTPS browser destination. `usePluginDetail` can opt into
+`refreshAppConnectionsOnFocus`; `usePluginApps` can opt into `refreshOnFocus`. Both force
+native app reconciliation and blocking account-link refresh when refetched after focus,
+including when the existing query is fresh.
 ChatGPT-authenticated reads join accessible account links with connector metadata. An active,
 visible, usable link wins over a blocked link for the same connector. Implicit and hidden
 links do not establish an account connection. Disconnect targets either every account for
@@ -182,14 +210,28 @@ MCP inventory joins paginated native status with configured declarations. Plugin
 servers and declarations owned by another configuration layer are read-only. Adds, edits,
 renames, removal and enablement use the observed writable user-layer version through the
 native config writer. Unrelated declarations and unknown native config fields are retained.
+Plugin declarations remain read-only; the detail page can change only their enabled override.
+`mcpServerStates` accompanies the native `mcpServers` names and contains `name`, `configKey`,
+`enabled`, `installed` and `canSetEnabled`. Installation reflects the plugin's installed
+state. Keys resolve from current configuration by exact name or a unique comparable key or
+declaration name. Ambiguous keys and servers owned by another plugin cannot be toggled.
+`setPluginMcpServerEnabled` revalidates the selector and resolved key, then writes only
+`mcp_servers.<quoted-key>.enabled` through native `config/value/write` against the observed
+user-layer version. `mcpServerError` reports unavailable configuration or status inventory.
 MCP OAuth returns a validated HTTP(S) authorization URL for the UI's browser action;
 native completion notifications refresh MCP observations. The login response retains its
 native login ID so the UI can correlate completion. This flow is independent of
 ChatGPT connector authentication.
 
 Plugin hook inventory filters native hook metadata by the exact owning plugin ID and counts
-untrusted or modified hooks as needing review. Rootless contexts have no root-scoped hook
-inventory. Hook summaries and scheduled tasks remain available directly on native detail.
+untrusted or modified hooks as needing review. Rootless contexts explicitly mark hook inventory unavailable; their zero scanned review count
+does not establish that the plugin is trusted. Hook summaries and scheduled tasks remain available directly on native detail.
+Detail exposes `hooksNeedingReviewCount`, `hooksAvailable` and `hooksError`.
+`trustAllPluginHooks` reloads current metadata and writes each unmanaged, untrusted or
+modified hook's current hash to its quoted `hooks.state.<key>.trusted_hash` entry. It cannot
+trust another plugin's hooks, caller-supplied hashes or a rootless inventory. A subsequent
+hook content change still requires review. Trust changes refresh hook observations and
+detail without invalidating unrelated app or skill catalogs.
 
 ## Creation and detail extras
 
@@ -205,7 +247,8 @@ creation helpers.
 Native detail exposes app templates, onboarding skills and scheduled-task templates without
 redefining their protocol fields. The optional Works with projection comes from the
 account service's disclosed provider dependencies, retaining categories, availability,
-installation/enablement observations and validated navigation. It is distinct from native
+installation/enablement observations and validated navigation. Provider installed badges use
+complete native installed inventory for the selected home; incomplete inventory leaves them unknown. It is distinct from native
 skill tool dependencies. Missing access or missing dependency data is explicit and does not
 fabricate an empty supported feature. Connector read failures remain visible separately
 from the plugin's native detail.

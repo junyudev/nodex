@@ -29,13 +29,17 @@ const unavailable = () => Effect.die("Unexpected test capability");
 const make = (
   options: {
     plugins?: PluginSummary[];
+    omitInventory?: boolean;
     failSkills?: boolean;
     failUninstall?: string;
     remoteSearch?: boolean;
     marketplaceName?: string;
     service?: PluginService["Service"];
     detailSkillPath?: string;
-    omitSkills?: boolean;
+    detailSkills?: import("@nodex/codex-app-server-protocol/v2/SkillSummary").SkillSummary[];
+    localSkills?: import("@nodex/codex-app-server-protocol/v2/SkillMetadata").SkillMetadata[];
+    detailMcpServers?: string[];
+    detailHooks?: import("@nodex/codex-app-server-protocol/v2/PluginHookSummary").PluginHookSummary[];
     configOverridden?: boolean;
     directoryErrors?: boolean;
     upgradePartial?: boolean;
@@ -52,11 +56,13 @@ const make = (
       installUrl: string | null;
       category: string | null;
     }[];
+    accountMetadata?: unknown;
     events?: Stream.Stream<import("../codex-runtime/CodexEventHub").CodexEndpointEvent>;
     hooks?: import("@nodex/codex-app-server-protocol/v2/HookMetadata").HookMetadata[];
   } = {},
 ) => {
   const calls: { method: string; params: Record<string, unknown> }[] = [];
+  const contentReads: string[] = [];
   const controller = new AbortController();
   let plugins = options.plugins ?? [
     pluginSummary({ id: "a@custom", name: "a" }),
@@ -76,14 +82,16 @@ const make = (
   };
   let onRead: (() => void) | undefined;
   const inventory = () => ({
-    marketplaces: [
-      {
-        name: options.marketplaceName ?? "custom",
-        path: "/marketplace.json",
-        interface: null,
-        plugins,
-      },
-    ],
+    marketplaces: options.omitInventory
+      ? []
+      : [
+          {
+            name: options.marketplaceName ?? "custom",
+            path: "/marketplace.json",
+            interface: null,
+            plugins,
+          },
+        ],
     marketplaceLoadErrors: [],
   });
   const request = ((method: string, raw: unknown) =>
@@ -113,21 +121,23 @@ const make = (
             marketplaceName: "custom",
             marketplacePath: "/marketplace.json",
             description: "Description",
-            skills: options.detailSkillPath
-              ? [
-                  {
-                    name: "sample",
-                    path: options.detailSkillPath,
-                    description: "Sample",
-                    shortDescription: null,
-                    interface: null,
-                    enabled: false,
-                  },
-                ]
-              : [],
+            skills:
+              options.detailSkills ??
+              (options.detailSkillPath
+                ? [
+                    {
+                      name: "sample",
+                      path: options.detailSkillPath,
+                      description: "Sample",
+                      shortDescription: null,
+                      interface: null,
+                      enabled: false,
+                    },
+                  ]
+                : []),
             apps: options.detailApps ?? [],
-            hooks: [],
-            mcpServers: [],
+            hooks: options.detailHooks ?? [],
+            mcpServers: options.detailMcpServers ?? [],
             appTemplates: [],
             scheduledTasks: null,
             onboardingSkill: null,
@@ -170,7 +180,7 @@ const make = (
                 {
                   cwd: "/",
                   errors: [],
-                  skills: [
+                  skills: options.localSkills ?? [
                     {
                       name: "managed",
                       path: "/managed/SKILL.md",
@@ -236,21 +246,27 @@ const make = (
             ],
           },
         );
-      if (method === "config/batchWrite" && options.configWriteOk)
+      if (
+        (method === "config/batchWrite" || method === "config/value/write") &&
+        options.configWriteOk
+      )
         return Effect.succeed({
           status: "ok",
           version: "next",
           filePath: "/config.toml",
           overriddenMetadata: null,
         });
-      if (method === "config/batchWrite" && options.configOverridden)
+      if (
+        (method === "config/batchWrite" || method === "config/value/write") &&
+        options.configOverridden
+      )
         return Effect.succeed({
           status: "okOverridden",
           version: "v43",
           filePath: "/config.toml",
           overriddenMetadata: null,
         });
-      if (method === "config/batchWrite")
+      if (method === "config/batchWrite" || method === "config/value/write")
         return Effect.fail(
           codexRuntimeError({ operation: "write", reason: "request", retryable: false }),
         );
@@ -314,7 +330,11 @@ const make = (
       list: unavailable,
       install: unavailable,
       uninstall: unavailable,
-      contents: () => Effect.succeed({ contents: "contents", files: ["SKILL.md"] }),
+      contents: (path: string) =>
+        Effect.sync(() => {
+          contentReads.push(path);
+          return { contents: "contents", files: ["SKILL.md"] };
+        }),
     }),
     Layer.succeed(CodexGateway, gateway),
     Layer.succeed(CodexAppServerCapabilities, capabilities),
@@ -327,7 +347,14 @@ const make = (
     } as unknown as ProjectWorkspace["Service"]),
     Layer.succeed(ChatGptDesktop, {
       authStatus: () =>
-        Effect.succeed({ authMethod: "apikey", authToken: null, requiresOpenaiAuth: true }),
+        Effect.succeed({
+          authMethod: options.accountMetadata ? "chatgpt" : "apikey",
+          authToken: options.accountMetadata
+            ? `x.${Buffer.from(JSON.stringify({ exp: 9999999999, "https://api.openai.com/auth": { chatgpt_account_id: "account", user_id: "user" } })).toString("base64url")}.x`
+            : null,
+          requiresOpenaiAuth: true,
+        }),
+      request: () => Effect.succeed(Response.json(options.accountMetadata ?? {})),
     } as unknown as ChatGptDesktop["Service"]),
     Layer.succeed(AppProtocolRuntime, {
       installed: true,
@@ -347,6 +374,7 @@ const make = (
   return {
     layer,
     calls,
+    contentReads,
     controller,
     setProject: (value: typeof project) => {
       project = value;
@@ -740,11 +768,15 @@ it.effect(
 it.effect("authorizes disabled plugin skill previews through current plugin details", () => {
   const h = make({
     detailSkillPath: "/plugins/a/skills/sample/SKILL.md",
-    omitSkills: true,
     plugins: [pluginSummary({ id: "a@custom", name: "a", enabled: false })],
   });
   return withManager(h, (manager) =>
     Effect.gen(function* () {
+      yield* manager.query("read", {
+        ...context,
+        marketplacePath: "/marketplace.json",
+        pluginName: "a",
+      });
       const result = yield* manager.query("skill-contents", {
         ...context,
         path: "/plugins/a/skills/sample/SKILL.md",
@@ -754,11 +786,13 @@ it.effect("authorizes disabled plugin skill previews through current plugin deta
         h.calls.some((call) => call.method === "plugin/read"),
         true,
       );
-      const denied = yield* manager
-        .query("skill-contents", { ...context, path: "/private/unrelated/SKILL.md" })
-        .pipe(Effect.result);
-      assert.strictEqual(denied._tag, "Failure");
-      if (denied._tag === "Failure") assert.strictEqual(denied.failure.code, "not_found");
+      const denied = yield* manager.query("skill-contents", {
+        ...context,
+        path: "/private/unrelated/SKILL.md",
+      });
+      assert.strictEqual(denied.status, "failed");
+      if (denied.status === "failed") assert.strictEqual(denied.error.code, "not_found");
+      assert.deepEqual(h.contentReads, ["/plugins/a/skills/sample/SKILL.md"]);
     }),
   );
 });
@@ -974,14 +1008,32 @@ it.effect(
     const path = "/plugins/a/skills/sample/SKILL.md";
     const h = make({
       detailSkillPath: path,
-      omitSkills: true,
+      omitInventory: true,
       plugins: [pluginSummary({ id: "a@custom", name: "a", installed: false })],
     });
     return withManager(h, (manager) =>
       Effect.gen(function* () {
+        yield* manager.query("read", {
+          ...context,
+          remoteMarketplaceName: "custom",
+          pluginName: "a",
+        });
         assert.strictEqual(
           (yield* manager.query("skill-contents", { ...context, path })).contents,
           "contents",
+        );
+        assert.deepEqual(h.contentReads, [path]);
+        assert.strictEqual(h.calls.filter((call) => call.method === "plugin/read").length, 2);
+        assert.deepEqual(h.calls.filter((call) => call.method === "plugin/read").at(-1)?.params, {
+          marketplacePath: null,
+          remoteMarketplaceName: "custom",
+          pluginName: "a",
+        });
+        assert.strictEqual(
+          h.calls.some(
+            (call) => call.method === "plugin/list" || call.method === "plugin/installed",
+          ),
+          false,
         );
       }),
     );
@@ -1233,9 +1285,13 @@ it.effect("filters plugin hook metadata by its exact owner and counts trust revi
     async: false,
   };
   const h = make({
+    detailHooks: [{ key: hook.key, eventName: hook.eventName }],
+    config: settingsConfig(),
+    configWriteOk: true,
     hooks: [
       hook,
       { ...hook, key: "trusted", trustStatus: "trusted" },
+      { ...hook, key: "managed", isManaged: true },
       { ...hook, key: "other", pluginId: "b@custom" },
     ],
   });
@@ -1249,9 +1305,29 @@ it.effect("filters plugin hook metadata by its exact owner and counts trust revi
     });
     assert.deepEqual(
       result.hooks.map((hook) => hook.key),
-      ["review", "trusted"],
+      ["review", "trusted", "managed"],
     );
     assert.strictEqual(result.needsReviewCount, 1);
+    assert.strictEqual(result.available, true);
+    const selector = {
+      hostId: "local",
+      projectId: "p",
+      marketplacePath: "/marketplace.json",
+      pluginName: "a",
+    };
+    const detail = yield* manager.query("read", selector);
+    assert.strictEqual(detail.hooksNeedingReviewCount, 1);
+    assert.strictEqual(detail.hooksAvailable, true);
+    assert.strictEqual((yield* manager.command("plugin-hooks-trust", selector)).status, "success");
+    const write = h.calls.find((call) => call.method === "config/batchWrite");
+    assert.deepEqual(write?.params.edits, [
+      { keyPath: 'hooks.state."review".trusted_hash', value: "hash", mergeStrategy: "upsert" },
+    ]);
+    assert.strictEqual(write?.params.expectedVersion, "observed");
+    assert.strictEqual(
+      (yield* manager.command("plugin-hooks-trust", { ...selector, projectId: null })).status,
+      "failed",
+    );
     assert.strictEqual(
       (yield* manager.query("plugin-hooks", {
         ...context,
@@ -1288,6 +1364,20 @@ it.effect(
         pluginName: "a",
       });
       assert.deepEqual(detail.appConnectionStates, { connector_test: "connected" });
+      assert.deepEqual(detail.apps[0], {
+        id: "connector_test",
+        name: "Test app",
+        description: null,
+        installUrl: null,
+        category: null,
+        logoUrl: null,
+        logoDarkUrl: null,
+        accessible: null,
+        enabled: true,
+        callable: true,
+        connectionState: "connected",
+        canDisconnect: false,
+      });
       const loginHost = make({
         config: settingsConfig({ server: { url: "https://example.com/mcp" } }),
       });
@@ -1379,3 +1469,382 @@ it.effect(
       }),
     ),
 );
+
+it.effect(
+  "uses installed native identity for Works with badges instead of account-service installation flags",
+  () => {
+    const h = make({
+      plugins: [
+        pluginSummary({ id: "a@custom", name: "a", remotePluginId: "parent" }),
+        pluginSummary({ id: "b@custom", name: "b", remotePluginId: "provider" }),
+      ],
+      accountMetadata: {
+        dependencies: [
+          { plugin_id: "provider", display_name: "Provider", categories: [], is_installed: false },
+          { plugin_id: "absent", display_name: "Absent", categories: [], is_installed: true },
+        ],
+      },
+    });
+    return Effect.gen(function* () {
+      const manager = yield* PluginManager;
+      const detail = yield* manager.query("read", {
+        ...context,
+        marketplacePath: "/marketplace.json",
+        pluginName: "a",
+      });
+      assert.strictEqual(detail.worksWith?.available, true);
+      assert.deepEqual(
+        detail.worksWith?.dependencies.map((provider) => [provider.pluginId, provider.installed]),
+        [
+          ["provider", true],
+          ["absent", false],
+        ],
+      );
+    }).pipe(Effect.provide(h.layer));
+  },
+);
+
+it.effect(
+  "projects authorized skill icons and actual local enablement only for installed plugins",
+  () => {
+    const skill: import("@nodex/codex-app-server-protocol/v2/SkillSummary").SkillSummary = {
+      name: "make_art",
+      description: "Art",
+      shortDescription: null,
+      path: null,
+      enabled: true,
+      interface: {
+        iconSmall: "/icons/art.svg",
+        iconSmallUrl: "https://cdn.test/art.svg",
+        iconLargeUrl: null,
+      },
+    };
+    const options = {
+      detailSkills: [skill, { ...skill, name: "missing" }],
+      localSkills: [
+        {
+          name: "a:make-art",
+          path: "/skills/art/SKILL.md",
+          enabled: false,
+          description: "",
+          scope: "user" as const,
+          pluginId: "a@custom",
+        },
+      ],
+    };
+    const selector = { ...context, marketplacePath: "/marketplace.json", pluginName: "a" };
+    return Effect.gen(function* () {
+      const detail = yield* Effect.gen(function* () {
+        return yield* (yield* PluginManager).query("read", selector);
+      }).pipe(Effect.provide(make(options).layer));
+      assert.strictEqual(detail.skills[0]?.iconUrl, "app://fs/@fs/icons/art.svg");
+      assert.deepEqual(detail.skills[0]?.installedSkill, {
+        path: "/skills/art/SKILL.md",
+        name: "a:make-art",
+        enabled: false,
+      });
+      assert.strictEqual(detail.skills[1]?.installedSkill, null);
+      const uninstalled = make({
+        ...options,
+        plugins: [pluginSummary({ id: "a@custom", name: "a", installed: false })],
+      });
+      const preview = yield* Effect.gen(function* () {
+        return yield* (yield* PluginManager).query("read", selector);
+      }).pipe(Effect.provide(uninstalled.layer));
+      assert.strictEqual(preview.skills[0]?.installedSkill, null);
+      assert.strictEqual(
+        uninstalled.calls.some((call) => call.method === "skills/list"),
+        false,
+      );
+    });
+  },
+);
+
+it.effect(
+  "writes only the resolved plugin MCP enablement key and preserves its declaration",
+  () => {
+    const h = make({
+      detailMcpServers: ["Art Tools"],
+      config: settingsConfig({
+        "art.with.dot": { name: "Art Tools", command: "node", args: ["art.js"], enabled: false },
+      }),
+      mcpStatuses: [{ name: "art.with.dot", pluginId: "a@custom" }],
+      configWriteOk: true,
+    });
+    const selector = { ...context, marketplacePath: "/marketplace.json", pluginName: "a" };
+    return Effect.gen(function* () {
+      const manager = yield* PluginManager;
+      const detail = yield* manager.query("read", selector);
+      assert.deepEqual(detail.mcpServerStates, [
+        {
+          name: "Art Tools",
+          configKey: "art.with.dot",
+          enabled: false,
+          installed: true,
+          canSetEnabled: true,
+        },
+      ]);
+      const result = yield* manager.command("plugin-mcp-enabled", {
+        ...selector,
+        name: "Art Tools",
+        enabled: true,
+      });
+      assert.strictEqual(result.status, "success");
+      assert.deepEqual(h.calls.find((call) => call.method === "config/value/write")?.params, {
+        keyPath: 'mcp_servers."art.with.dot".enabled',
+        value: true,
+        mergeStrategy: "upsert",
+        filePath: "/config.toml",
+        expectedVersion: "observed",
+      });
+      assert.strictEqual(
+        h.calls.some((call) => call.method === "config/batchWrite"),
+        false,
+      );
+      const writes = h.calls.filter((call) => call.method === "config/value/write").length;
+      assert.strictEqual(
+        (yield* manager.command("plugin-mcp-enabled", {
+          ...selector,
+          name: "unrelated",
+          enabled: true,
+        })).status,
+        "failed",
+      );
+      assert.strictEqual(
+        h.calls.filter((call) => call.method === "config/value/write").length,
+        writes,
+      );
+    }).pipe(Effect.provide(h.layer));
+  },
+);
+
+it.effect(
+  "forces native app reconciliation for detail reads requested after browser authentication",
+  () => {
+    const h = make({
+      detailApps: [
+        {
+          id: "connector_test",
+          name: "Test",
+          description: null,
+          category: null,
+          installUrl: "https://chatgpt.com/apps/test",
+        },
+      ],
+    });
+    return Effect.gen(function* () {
+      const detail = yield* (yield* PluginManager).query("read", {
+        ...context,
+        marketplacePath: "/marketplace.json",
+        pluginName: "a",
+        forceRefreshApps: true,
+      });
+      assert.strictEqual(
+        h.calls.find((call) => call.method === "app/installed")?.params.forceRefresh,
+        true,
+      );
+      assert.strictEqual(detail.apps[0]?.installUrl, "https://chatgpt.com/apps/test");
+      assert.strictEqual(detail.apps[0]?.enabled, null);
+    }).pipe(Effect.provide(h.layer));
+  },
+);
+
+it.effect("returns policy denial for an overridden plugin MCP enablement write", () => {
+  const h = make({
+    detailMcpServers: ["server"],
+    config: settingsConfig({ server: { command: "node" } }),
+    configOverridden: true,
+  });
+  return Effect.gen(function* () {
+    const result = yield* (yield* PluginManager).command("plugin-mcp-enabled", {
+      ...context,
+      marketplacePath: "/marketplace.json",
+      pluginName: "a",
+      name: "server",
+      enabled: false,
+    });
+    assert.strictEqual(result.status, "policy_denied");
+    if (result.status === "policy_denied") assert.strictEqual(result.error.code, "policy_denied");
+  }).pipe(Effect.provide(h.layer));
+});
+
+it.effect(
+  "admits only observed exact SKILL.md paths and revokes paths removed from the current detail",
+  () => {
+    const path = "/marketplace/figma/skills/design/SKILL.md";
+    const skills: import("@nodex/codex-app-server-protocol/v2/SkillSummary").SkillSummary[] = [
+      {
+        path,
+        name: "design",
+        description: "",
+        shortDescription: null,
+        enabled: false,
+        interface: null,
+      },
+      {
+        path: "/marketplace/figma/private.txt",
+        name: "invalid",
+        description: "",
+        shortDescription: null,
+        enabled: false,
+        interface: null,
+      },
+    ];
+    const h = make({
+      omitInventory: true,
+      detailSkills: skills,
+      plugins: [pluginSummary({ id: "figma@custom", name: "figma", installed: false })],
+    });
+    return withManager(h, (manager) =>
+      Effect.gen(function* () {
+        const read = (requested: string) =>
+          manager.query("skill-contents", { ...context, path: requested });
+        const unknown = yield* read(path);
+        assert.strictEqual(unknown.status, "failed");
+        if (unknown.status === "failed") assert.strictEqual(unknown.error.code, "not_found");
+        yield* manager.query("read", {
+          ...context,
+          marketplacePath: "/marketplace.json",
+          pluginName: "figma",
+        });
+        assert.strictEqual((yield* read(path)).status, "success");
+        for (const requested of [
+          "/marketplace/figma/skills/other/SKILL.md",
+          `${path}/../private.txt`,
+          "/marketplace/figma/private.txt",
+        ])
+          assert.strictEqual((yield* read(requested)).status, "failed");
+        skills.splice(0);
+        const removed = yield* read(path);
+        assert.strictEqual(removed.status, "failed");
+        assert.deepEqual(h.contentReads, [path]);
+      }),
+    );
+  },
+);
+
+it.effect("fences detail skill preview grants by project bindings", () => {
+  const path = "/marketplace/figma/skills/design/SKILL.md";
+  const h = make({
+    omitInventory: true,
+    detailSkillPath: path,
+    plugins: [pluginSummary({ id: "figma@custom", name: "figma", installed: false })],
+  });
+  return withManager(h, (manager) =>
+    Effect.gen(function* () {
+      const selector = {
+        hostId: "local",
+        projectId: "p",
+        marketplacePath: "/marketplace.json",
+        pluginName: "figma",
+      };
+      yield* manager.query("read", selector);
+      assert.strictEqual(
+        (yield* manager.query("skill-contents", { ...context, path })).status,
+        "failed",
+      );
+      h.setProject({
+        id: "p",
+        lifecycle: "active",
+        bindingRevision: 4,
+        sources: [{ root: "/new", order: 1 }],
+      });
+      assert.strictEqual(
+        (yield* manager.query("skill-contents", { hostId: "local", projectId: "p", path })).status,
+        "failed",
+      );
+      yield* manager.query("read", selector);
+      assert.strictEqual(
+        (yield* manager.query("skill-contents", { hostId: "local", projectId: "p", path })).status,
+        "success",
+      );
+      assert.deepEqual(h.contentReads, [path]);
+    }),
+  );
+});
+
+it.effect("revokes observed skill paths after account changes and host reconnections", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const events =
+        yield* PubSub.bounded<import("../codex-runtime/CodexEventHub").CodexEndpointEvent>(16);
+      const path = "/marketplace/figma/skills/design/SKILL.md";
+      const h = make({
+        events: Stream.fromPubSub(events),
+        omitInventory: true,
+        detailSkillPath: path,
+        plugins: [pluginSummary({ id: "figma@custom", name: "figma", installed: false })],
+      });
+      yield* withManager(h, (manager) =>
+        Effect.gen(function* () {
+          const selector = {
+            ...context,
+            marketplacePath: "/marketplace.json",
+            pluginName: "figma",
+          };
+          for (const event of [
+            {
+              kind: "notification",
+              hostId: "local",
+              generation: 1,
+              value: {
+                protocol: "generated",
+                method: "account/updated",
+                params: { authMode: null, planType: null },
+              },
+            },
+            { kind: "connection", value: { kind: "ready", hostId: "local", generation: 1 } },
+          ] as const) {
+            yield* manager.query("read", selector);
+            const changed = yield* manager.changes.pipe(
+              Stream.take(1),
+              Stream.runDrain,
+              Effect.forkScoped({ startImmediately: true }),
+            );
+            yield* PubSub.publish(events, event);
+            yield* Fiber.join(changed);
+            const result = yield* manager.query("skill-contents", { ...context, path });
+            assert.strictEqual(result.status, "failed");
+            if (result.status === "failed") assert.strictEqual(result.error.code, "not_found");
+          }
+          assert.deepEqual(h.contentReads, []);
+        }).pipe(Effect.scoped),
+      );
+    }),
+  ),
+);
+
+it.effect("retains installed skill authorization and the native remote skill-read path", () => {
+  const h = make({ omitInventory: true });
+  return withManager(h, (manager) =>
+    Effect.gen(function* () {
+      assert.deepEqual(
+        yield* manager.query("skill-contents", { ...context, path: "/managed/SKILL.md" }),
+        {
+          status: "success",
+          contents: "contents",
+          files: ["SKILL.md"],
+        },
+      );
+      assert.deepEqual(
+        yield* manager.query("skill-contents", {
+          ...context,
+          remoteMarketplaceName: "remote",
+          remotePluginId: "plugin-id",
+          skillName: "remote-skill",
+        }),
+        {
+          status: "success",
+          contents: "remote skill",
+          files: ["SKILL.md"],
+        },
+      );
+      assert.deepEqual(h.contentReads, ["/managed/SKILL.md"]);
+      assert.deepEqual(h.calls.find((call) => call.method === "plugin/skill/read")?.params, {
+        remoteMarketplaceName: "remote",
+        remotePluginId: "plugin-id",
+        skillName: "remote-skill",
+      });
+    }),
+  );
+});

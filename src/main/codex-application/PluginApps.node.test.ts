@@ -149,6 +149,7 @@ it.effect("uses the legacy lifecycle only for an unsupported method", () =>
     assert.strictEqual(view.apps[0]?.id, "legacy");
     assert.strictEqual(view.apps[0]?.callable, false);
     assert.strictEqual(view.apps[0]?.enabled, false);
+    assert.strictEqual(view.apps[0]?.accessible, true);
     const failure = make({ fail: true });
     const error = yield* (yield* failure.owner).list(context, context).pipe(Effect.flip);
     assert.strictEqual(error.code, "service_unavailable");

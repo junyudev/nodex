@@ -87,6 +87,7 @@ const patchSkillData = (value: unknown, selector: SkillEnabledSelector): unknown
     return matches ? { ...node, enabled: selector.enabled } : node;
   });
 const resourcesForChange = (kind: PluginManagementChanged["kind"]): readonly string[] | null => {
+  if (kind === "hooks") return ["hooks", "plugin-hooks", "read"];
   if (kind === "skills")
     return ["skills", "recommended-skills", "skill-contents", "read", "creation-capabilities"];
   if (kind === "apps")
@@ -112,7 +113,7 @@ export async function invalidatePluginManagement(
 ): Promise<void> {
   const resources = resourcesForChange(kind);
   const composer =
-    kind === "mcp"
+    kind === "mcp" || kind === "hooks"
       ? []
       : [queryKeys.codexComposerPlugins.all(), queryKeys.codexComposerSkills.all()];
   await Promise.all([
@@ -123,7 +124,7 @@ export async function invalidatePluginManagement(
     ...composer.map((queryKey) =>
       client.invalidateQueries({ queryKey, predicate: (query) => query.queryKey[2] === hostId }),
     ),
-    ...(kind === "skills"
+    ...(kind === "skills" || kind === "hooks"
       ? []
       : [
           client.invalidateQueries({ queryKey: queryKeys.mcp.apps() }),
@@ -132,6 +133,8 @@ export async function invalidatePluginManagement(
   ]);
 }
 const changeForCommand = (name: keyof PluginCommands): PluginManagementChanged["kind"] => {
+  if (name === "plugin-hooks-trust") return "hooks";
+  if (name === "plugin-mcp-enabled") return "mcp";
   if (["skill-enabled", "skill-install", "skill-uninstall"].includes(name)) return "skills";
   if (["mcp-save", "mcp-remove", "mcp-enabled", "mcp-login"].includes(name)) return "mcp";
   if (name === "app-disconnect") return "apps";

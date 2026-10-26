@@ -158,7 +158,12 @@ export const makePluginApps = Effect.gen(function* () {
       metadata.push(...(response.apps as unknown as ConnectorMetadata[]));
       missing.push(...response.missingAppIds);
     }
-    return { runtime: runtime.apps as unknown as InstalledApp[], metadata, missing };
+    return {
+      runtime: runtime.apps as unknown as InstalledApp[],
+      metadata,
+      missing,
+      accessibility: new Map<string, boolean>(),
+    };
   });
   const list = Effect.fn("PluginApps.list")(function* (
     context: ResolvedPluginContext,
@@ -188,6 +193,9 @@ export const makePluginApps = Effect.gen(function* () {
                 toolSummaries: null,
               })),
               missing: (input.appIds ?? []).filter((id) => !apps.some((app) => app.id === id)),
+              accessibility: new Map(
+                apps.map((app) => [normalizeConnectorId(app.id), app.isAccessible]),
+              ),
             })),
           ),
       ),
@@ -263,6 +271,8 @@ export const makePluginApps = Effect.gen(function* () {
         runtime,
         enabled: runtime?.enabled ?? false,
         callable: runtime?.callable ?? false,
+        accessible: result.accessibility.get(normalizeConnectorId(id)) ?? null,
+        installUrl: safePluginCatalogIcon(metadata?.installUrl),
         logoUrl: safePluginCatalogIcon(
           metadata?.iconUrl ?? connector?.logo_url ?? connector?.icon_url,
         ),

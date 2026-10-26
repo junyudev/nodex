@@ -493,6 +493,8 @@ type MainRevisionCommandEndpointPolicy =
 
 type PlainResultCommandEndpointPolicy =
   | "codex:plugins:app-disconnect"
+  | "codex:plugins:plugin-hooks-trust"
+  | "codex:plugins:plugin-mcp-enabled"
   | "codex:plugins:mcp-save"
   | "codex:plugins:mcp-remove"
   | "codex:plugins:mcp-enabled"
