@@ -1,0 +1,42 @@
+src/renderer/lib/plugin-management-cache.test.ts
+  s_1f621c9737ee85::t_eed3c97473febc 1-187
+src/renderer/lib/query-client.tsx
+  s_c65b4244018ae4::t_d3c43cac6cbca6 9,51-52,55-58
+src/renderer/lib/plugin-management-cache.ts
+  s_c65b4244018ae4::t_b0754e65ea0155 1-8,10-26,39-40,64-68,70,72-74,76,89-94,103-228,234-329
+  s_1f621c9737ee85::t_eed3c97473febc 9,27-38,41-63,69,71,75,77-88,95-102,229-233
+src/renderer/features/plugins/plugin-management.ts
+  s_c65b4244018ae4::t_eed4742aeb6196 1-9,19-25,27-39,41-62,66-67,69-81,83-92,95-97,100-101,103-111,113-121,123-124,126-127,130-131,133-136,138-151,154-157,159-163,166-193,195-208
+src/renderer/features/plugins/plugin-management.jsdom.test.ts
+  s_c65b4244018ae4::t_1131e64664795d 1-106
+src/renderer/lib/plugin-management-adapter.ts
+  s_c65b4244018ae4::t_824dee57f8042b 1-94
+src/renderer/lib/plugin-management-query-keys.ts
+  s_c65b4244018ae4::t_8e128e8fc352bd 1-20
+src/renderer/lib/plugin-management-query-options.ts
+  s_c65b4244018ae4::t_401e855b5213b5 1-126
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "08657cfd1ca2cd826c4ae59f7de534f2ede26aa4",
+  "prompts": {},
+  "sessions": {
+    "s_1f621c9737ee85": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "dec682ee-8dcb-4974-b7cd-a9bfde733cc3",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_c65b4244018ae4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a178d2-99d4-76f0-aded-75ddc279d862",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
