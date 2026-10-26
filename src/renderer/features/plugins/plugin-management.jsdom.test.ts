@@ -1,0 +1,106 @@
+import { createElement, type ReactNode } from "react";
+import { QueryClient, QueryClientProvider, useQueryClient } from "@tanstack/react-query";
+import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
+import { afterEach, expect, it, vi } from "vitest";
+import { useInstalledPlugins, usePluginCapabilities, usePluginSearch } from "./plugin-management";
+import {
+  queryPluginManagement,
+  subscribePluginManagement,
+} from "../../lib/plugin-management-adapter";
+import { NodexQueryProvider } from "../../lib/query-client";
+import { pluginManagementKeys } from "../../lib/plugin-management-query-keys";
+import { installWindowApi } from "../../test/browser-globals";
+import { pluginRow } from "../../../shared/test-fixtures/plugins";
+vi.mock("../../lib/plugin-management-adapter", () => ({
+  queryPluginManagement: vi.fn(),
+  commandPluginManagement: vi.fn(),
+  subscribePluginManagement: vi.fn(() => () => {}),
+  subscribePluginProjectChanges: vi.fn(() => () => {}),
+}));
+const clients: QueryClient[] = [];
+const wrapper = () => {
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+  });
+  clients.push(client);
+  return ({ children }: { children: ReactNode }) =>
+    createElement(QueryClientProvider, { client }, children);
+};
+const context = { hostId: "local", projectId: null } as const;
+const scope = { ...context, accountEpoch: 1, hostGeneration: 1, bindingRevision: null, cwds: [] };
+afterEach(() => {
+  cleanup();
+  for (const client of clients.splice(0)) client.clear();
+  vi.resetAllMocks();
+});
+it("keeps native inventory available when the selected ChatGPT capability feed fails", async () => {
+  vi.mocked(queryPluginManagement).mockImplementation(async (name) => {
+    if (name === "context") return scope as never;
+    if (name === "capabilities") throw new Error("Directory unavailable");
+    return {
+      context: scope,
+      response: { marketplaces: [], marketplaceLoadErrors: [] },
+      rows: [pluginRow()],
+    } as never;
+  });
+  const hook = renderHook(
+    () => ({
+      installed: useInstalledPlugins(context),
+      capabilities: usePluginCapabilities(context),
+    }),
+    { wrapper: wrapper() },
+  );
+  await waitFor(() => {
+    expect(hook.result.current.capabilities.isError).toBe(true);
+    expect(hook.result.current.installed.data).toHaveLength(1);
+  });
+  expect(hook.result.current.installed.isError).toBe(false);
+});
+it("debounces new search terms while retaining the last settled rows", async () => {
+  vi.mocked(queryPluginManagement).mockImplementation(async (name, input) => {
+    if (name === "context") return scope as never;
+    const term = "term" in input ? input.term : "";
+    return {
+      rows: [pluginRow({ nativeId: term, stableIdentity: term })],
+      nextCursor: null,
+    } as never;
+  });
+  const hook = renderHook(({ term }) => usePluginSearch(context, term), {
+    initialProps: { term: "first" },
+    wrapper: wrapper(),
+  });
+  await waitFor(() => expect(hook.result.current.rows[0]?.nativeId).toBe("first"));
+  await act(async () => {
+    hook.rerender({ term: "second" });
+    await Promise.resolve();
+  });
+  expect(hook.result.current.rows[0]?.nativeId).toBe("first");
+  expect(
+    vi
+      .mocked(queryPluginManagement)
+      .mock.calls.some(
+        ([name, input]) => name === "search" && "term" in input && input.term === "second",
+      ),
+  ).toBe(false);
+  await waitFor(() => expect(hook.result.current.rows[0]?.nativeId).toBe("second"));
+});
+
+it("clears account-scoped caches while no Customize hook is mounted", async () => {
+  installWindowApi({ invoke: async () => undefined, on: () => () => {} });
+  let changed: Parameters<typeof subscribePluginManagement>[0] | undefined;
+  vi.mocked(subscribePluginManagement).mockImplementation((listener) => {
+    changed = listener;
+    return () => {};
+  });
+  const Provider = ({ children }: { children: ReactNode }) =>
+    createElement(NodexQueryProvider, null, children);
+  const hook = renderHook(() => useQueryClient(), { wrapper: Provider });
+  const key = pluginManagementKeys.resource(scope, "installed");
+  hook.result.current.setQueryData(key, { rows: [pluginRow()] });
+  await waitFor(() => expect(changed).toBeDefined());
+  await act(async () => {
+    changed!({ hostId: "local", accountEpoch: 2, kind: "account" });
+    await Promise.resolve();
+  });
+  expect(hook.result.current.getQueryData(key)).toBeUndefined();
+});

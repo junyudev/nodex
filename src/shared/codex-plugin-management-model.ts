@@ -79,7 +79,12 @@ export function dedupePluginRows(rows: readonly PluginRow[]): PluginRow[] {
       (!previous.summary.installed && row.summary.installed) ||
       (previous.summary.installed === row.summary.installed &&
         previous.marketplace.path === null &&
-        row.marketplace.path !== null)
+        row.marketplace.path !== null) ||
+      (previous.summary.installed === row.summary.installed &&
+        (previous.marketplace.path === null) === (row.marketplace.path === null) &&
+        (previous.summary.installedAt ?? 0) === (row.summary.installedAt ?? 0) &&
+        previous.summary.interface == null &&
+        row.summary.interface != null)
     )
       result.set(row.stableIdentity, row);
   }
@@ -143,15 +148,17 @@ export function mergeInstalledRows(
     }),
   );
 }
-export const selectInstalledPlugins = (rows: readonly PluginRow[], search = ""): PluginRow[] =>
-  dedupePluginRows(rows.filter((row) => row.summary.installed))
-    .filter((row) => pluginMatchesSearch(row, search))
-    .sort(
+export function selectInstalledPlugins(rows: readonly PluginRow[], search = ""): PluginRow[] {
+  const sorted = rows
+    .filter((row) => row.summary.installed)
+    .toSorted(
       (a, b) =>
         Number(a.summary.availability === "DISABLED_BY_ADMIN") -
           Number(b.summary.availability === "DISABLED_BY_ADMIN") ||
         (b.summary.installedAt ?? 0) - (a.summary.installedAt ?? 0),
     );
+  return dedupePluginRows(sorted).filter((row) => pluginMatchesSearch(row, search));
+}
 
 export function buildLocalPluginSections(
   rows: readonly PluginRow[],
@@ -214,6 +221,8 @@ export function mergePluginSections(sections: readonly PluginSection[]): PluginS
   return [...byId.values()].filter((section) => section.plugins.length > 0);
 }
 const marketplaceKey = (m: PluginMarketplaceIdentity) => JSON.stringify([m.name, m.path]);
+const marketplaceLabel = (identity: PluginMarketplaceIdentity): string =>
+  identity.displayName?.trim() || identity.name;
 const marketplaceLabelRank = (label: string): number =>
   label === "Built by OpenAI" ? 0 : label === "ChatGPT official" ? 1 : 2;
 export function groupPersonalPlugins(
@@ -232,7 +241,7 @@ export function groupPersonalPlugins(
     const key = marketplaceKey(row.marketplace);
     const group = groups.get(key) ?? {
       identity: row.marketplace,
-      label: row.marketplace.displayName?.trim() || row.marketplace.name,
+      label: marketplaceLabel(row.marketplace),
       plugins: [],
     };
     group.plugins.push(row);
@@ -261,8 +270,8 @@ export function groupPersonalPlugins(
     })
     .sort(
       (a, b) =>
-        marketplaceLabelRank(a.label) - marketplaceLabelRank(b.label) ||
-        a.label.localeCompare(b.label),
+        marketplaceLabelRank(marketplaceLabel(a.identity)) -
+          marketplaceLabelRank(marketplaceLabel(b.identity)) || a.label.localeCompare(b.label),
     );
   return {
     createdByYou,

@@ -6,6 +6,7 @@ import type { CodexEvent } from "./types";
 import { ProjectionInvalidationProvider } from "./projection-invalidation-context";
 import { PageFileQueryCacheSync } from "./page-file-query-cache";
 import { useDevelopmentFeature } from "./development-features-context";
+import { acquirePluginManagementSubscription } from "./plugin-management-cache";
 
 const ReactQueryDevtools = lazy(async () => {
   const module = await import("@tanstack/react-query-devtools");
@@ -47,9 +48,14 @@ export function applyCodexHostCatalogEvent(queryClient: QueryClient, event: Code
 
 function CodexHostCatalogQuerySync({ queryClient }: { queryClient: QueryClient }) {
   useEffect(() => {
-    return subscribeCodexEvents((event) => {
+    const releasePlugins = acquirePluginManagementSubscription(queryClient);
+    const releaseCodex = subscribeCodexEvents((event) => {
       applyCodexHostCatalogEvent(queryClient, event);
     });
+    return () => {
+      releaseCodex();
+      releasePlugins();
+    };
   }, [queryClient]);
   return null;
 }

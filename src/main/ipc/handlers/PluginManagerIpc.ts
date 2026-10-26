@@ -60,7 +60,12 @@ export const pluginQuerySchemas = {
   list: Schema.Struct({ ...context, forceRefetch: Schema.optionalKey(Schema.Boolean) }),
   installed: ContextInput,
   read: selector,
-  search: Schema.Struct({ ...context, term: Schema.String, cursor }),
+  search: Schema.Struct({
+    ...context,
+    term: Schema.String,
+    scope: Schema.optionalKey(Schema.Literals(["global", "personal", "workspace"])),
+    cursor,
+  }),
   skills: Schema.Struct({ ...context, forceReload: Schema.optionalKey(Schema.Boolean) }),
   "skill-contents": Schema.Union([
     Schema.Struct({

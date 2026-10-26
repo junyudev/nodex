@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { pluginRow, pluginSummary } from "../../../../shared/test-fixtures/plugins";
+import {
+  pluginRow,
+  pluginSummary,
+  pluginInterface,
+} from "../../../../shared/test-fixtures/plugins";
 import {
   buildLocalPluginSections,
   selectInstalledPlugins,
@@ -48,6 +52,10 @@ describe("plugin inventory selectors", () => {
     });
     const local = pluginRow({ stableIdentity: "remote-id" });
     expect(dedupePluginRows([remote, local])).toEqual([local]);
+    const rich = pluginRow({
+      summary: pluginSummary({ interface: pluginInterface({ displayName: "Detailed" }) }),
+    });
+    expect(dedupePluginRows([pluginRow(), rich])).toEqual([rich]);
   });
   it("merges fresh listing metadata with the installed checkout identity and exact selector", () => {
     const checkout = pluginRow({
@@ -87,6 +95,13 @@ describe("plugin inventory selectors", () => {
     expect(merged.selector).toEqual(checkout.selector);
     expect(merged.isPersonal).toBe(true);
     expect(mergeInstalledRows([listing], [])[0]?.summary.installed).toBe(false);
+  });
+  it("keeps the newest installed duplicate before sorting the sidebar", () => {
+    const older = { ...row("older", 1), stableIdentity: "shared" };
+    const newer = { ...row("newer", 100), stableIdentity: "shared" };
+    expect(
+      selectInstalledPlugins([older, row("middle", 50), newer]).map((row) => row.nativeId),
+    ).toEqual(["newer", "middle"]);
   });
   it("builds truthful fallback sections, preserves featured order, caps at nine and omits managed tools", () => {
     const values = Array.from({ length: 12 }, (_, i) => row(`p${i}`));

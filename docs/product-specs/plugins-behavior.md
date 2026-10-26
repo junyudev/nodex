@@ -91,8 +91,8 @@ Skills flatten in resolved root order and deduplicate by path, then by name. Sco
 is Project, user, system, administrator; lexical path breaks ties. Standalone groups exclude
 plugin-owned skills and retain system skills. Match keys include directory basename, raw and
 humanized name, display name, and punctuation-free variants. Plugin-owned skills still
-contribute installed match keys. Local contents must match current skill inventory or an installed plugin's current detail,
-including disabled plugins; remote
+contribute installed match keys. Local contents must match current skill inventory or a visible plugin's current detail,
+including disabled and uninstalled local plugins; remote
 plugin contents use the named native skill-read operation. No arbitrary file-read or skill
 deletion operation is exposed.
 

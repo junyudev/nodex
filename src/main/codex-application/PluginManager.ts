@@ -235,22 +235,39 @@ export const live = (options: {
         )
           return yield* pluginError("project_unavailable", "The Project workspace changed.");
       });
+      const withOperationLease = <A, E>(operation: Effect.Effect<A, E>) =>
+        Effect.gen(function* () {
+          const lease = yield* PluginOperationLease;
+          if (!lease) return yield* operation;
+          if (lease.aborted)
+            return yield* pluginError("account_changed", "The authenticated account changed.");
+          const revoked = Effect.callback<never, PluginManagementError>((resume) => {
+            const abort = () =>
+              resume(
+                Effect.fail(pluginError("account_changed", "The authenticated account changed.")),
+              );
+            if (lease.aborted) {
+              abort();
+              return;
+            }
+            lease.addEventListener("abort", abort, { once: true });
+            return Effect.sync(() => lease.removeEventListener("abort", abort));
+          });
+          return yield* Effect.raceFirst(revoked, operation);
+        });
       const request = <M extends ClientRequestMethod>(
         context: ResolvedPluginContext,
         method: M,
         params: ClientRequestParamsByMethod[M],
       ) =>
-        Effect.gen(function* () {
-          const lease = yield* PluginOperationLease;
-          if (lease?.aborted)
-            return yield* pluginError("account_changed", "The authenticated account changed.");
-          return yield* gateway
+        withOperationLease(
+          gateway
             .requestOnHost("local", method, params, {
               expectedHostId: "local",
               expectedGeneration: context.hostGeneration,
             })
-            .pipe(Effect.mapError(nativeFailure));
-        });
+            .pipe(Effect.mapError(nativeFailure)),
+        );
       const captureAccount = Effect.gen(function* () {
         const status = yield* desktop
           .authStatus(true, false)
@@ -342,7 +359,18 @@ export const live = (options: {
             "skills",
             request(context, "skills/list", { cwds: [...cwds], forceReload: true }),
           );
-        yield* settle("plugins", directory(context, true));
+        yield* settle(
+          "plugins",
+          directory(context, true).pipe(
+            Effect.flatMap((response) =>
+              response.marketplaceLoadErrors.length
+                ? Effect.fail(
+                    pluginError("inventory_unavailable", "Plugin inventory is incomplete."),
+                  )
+                : Effect.succeed(response),
+            ),
+          ),
+        );
         yield* settle("apps", request(context, "app/list", { forceRefetch: true }));
         yield* settle("hooks", request(context, "hooks/list", { cwds: [...context.cwds] }));
         yield* settle("mcp", request(context, "mcpServerStatus/list", {}));
@@ -380,14 +408,16 @@ export const live = (options: {
             installedAt: null,
             enabled: false,
             installPolicy: listing.installation_policy ?? "AVAILABLE",
-            installPolicySource: null,
-            mustShowInstallationInterstitial: null,
-            authPolicy: "ON_USE",
+            installPolicySource: listing.installation_policy_source ?? null,
+            mustShowInstallationInterstitial: listing.must_show_installation_interstitial ?? null,
+            authPolicy: listing.authentication_policy ?? "ON_USE",
             availability:
               listing.status === "DISABLED_BY_ADMIN" ? "DISABLED_BY_ADMIN" : "AVAILABLE",
             disabledReason: listing.disabled_reason ?? null,
-            eligiblePlanTypes: null,
-            keywords: [...(listing.keywords ?? [])],
+            eligiblePlanTypes: listing.eligible_plan_types
+              ? [...listing.eligible_plan_types]
+              : null,
+            keywords: [...(listing.keywords ?? ui?.capabilities ?? [])],
             interface: {
               displayName:
                 listing.display_name ?? listing.release?.display_name ?? listing.name ?? listing.id,
@@ -399,7 +429,11 @@ export const live = (options: {
               websiteUrl: ui?.website_url ?? null,
               privacyPolicyUrl: ui?.privacy_policy_url ?? null,
               termsOfServiceUrl: ui?.terms_of_service_url ?? null,
-              defaultPrompt: ui?.default_prompts ? [...ui.default_prompts] : null,
+              defaultPrompt: ui?.default_prompts
+                ? [...ui.default_prompts]
+                : ui?.default_prompt
+                  ? [ui.default_prompt]
+                  : null,
               brandColor: ui?.brand_color ?? null,
               composerIcon: null,
               composerIconUrl: ui?.composer_icon_url ?? null,
@@ -574,18 +608,24 @@ export const live = (options: {
           const capabilities = yield* queryHandlers.capabilities(context, context);
           const inventory = yield* requireInventory(context);
           if (!capabilities.nativeSearch) {
+            if (input.scope === "workspace")
+              return yield* pluginError("unsupported", "Workspace plugin search is unavailable.");
             if (input.cursor != null) return { rows: [], nextCursor: null };
             return {
               rows: dedupePluginRows([
                 ...mergeInstalledRows(rows(yield* directory(context)), inventory),
                 ...inventory,
-              ]).filter((row) => pluginMatchesSearch(row, input.term)),
+              ]).filter(
+                (row) =>
+                  pluginMatchesSearch(row, input.term) &&
+                  (input.scope !== "personal" || row.isPersonal || !row.isOfficial),
+              ),
               nextCursor: null,
             };
           }
           const response = yield* request(context, "plugin/search", {
             searchTerm: input.term.trim(),
-            scope: "global",
+            scope: input.scope ?? "global",
             cwds: [...context.cwds],
             cursor: input.cursor ?? null,
             limit: 50,
@@ -632,15 +672,21 @@ export const live = (options: {
               ),
             );
           if (skill) return yield* contents(skill.path);
-          // Disabled plugins do not contribute to skills/list. Their current native detail
-          // still authorizes exact skill files without admitting arbitrary filesystem reads.
-          const plugins = yield* requireInventory(context);
+          // Inactive plugins do not contribute to skills/list. Current native details
+          // authorize their exact skill files without admitting arbitrary filesystem reads.
+          const catalog = yield* directory(context);
+          const plugins = dedupePluginRows([
+            ...(yield* requireInventory(context)),
+            ...rows(catalog),
+          ]);
           for (const row of plugins) {
-            if (!row.summary.installed || row.marketplace.path === null) continue;
+            if (row.marketplace.path === null) continue;
             const detail = yield* queryHandlers.read(context, { ...context, ...row.selector });
             const pluginSkill = detail.skills.find((item) => item.path === input.path);
             if (pluginSkill?.path) return yield* contents(pluginSkill.path);
           }
+          if (catalog.marketplaceLoadErrors.length)
+            return yield* pluginError("inventory_unavailable", "Plugin inventory is incomplete.");
           return yield* pluginError(
             "not_found",
             "The skill was not found in the current inventory.",
@@ -849,17 +895,19 @@ export const live = (options: {
         if (!row.canUninstall)
           return failed(pluginError("policy_denied", "This plugin is required by policy."));
         yield* assertCurrent(context);
-        const result = yield* native
-          .uninstall({
-            plugin: row.nativeId,
-            expectedGeneration: context.hostGeneration,
-            cwds: context.cwds,
-            isCurrent: assertCurrent(context).pipe(
-              Effect.as(true),
-              Effect.orElseSucceed(() => false),
-            ),
-          })
-          .pipe(Effect.mapError(nativeFailure));
+        const result = yield* withOperationLease(
+          native
+            .uninstall({
+              plugin: row.nativeId,
+              expectedGeneration: context.hostGeneration,
+              cwds: context.cwds,
+              isCurrent: assertCurrent(context).pipe(
+                Effect.as(true),
+                Effect.orElseSucceed(() => false),
+              ),
+            })
+            .pipe(Effect.mapError(nativeFailure)),
+        );
         if (result.status === "uninstalled") return yield* applied(context, undefined, false);
         if (result.status === "protected")
           return failed(pluginError("protected", "This desktop tool is managed by Nodex."));
@@ -1025,7 +1073,10 @@ export const live = (options: {
               marketplaceName: input.marketplaceName ?? null,
             })) as unknown as MarketplaceUpgradeResponse;
             if (result.errors.length) {
-              yield* emit("plugins");
+              if (result.upgradedRoots.length) {
+                yield* emit("plugins");
+                yield* reload(context);
+              }
               return {
                 status: "failed" as const,
                 error: {

@@ -34,6 +34,9 @@ const make = (
     detailSkillPath?: string;
     omitSkills?: boolean;
     configOverridden?: boolean;
+    directoryErrors?: boolean;
+    upgradePartial?: boolean;
+    abortInstall?: boolean;
   } = {},
 ) => {
   const calls: { method: string; params: Record<string, unknown> }[] = [];
@@ -43,6 +46,7 @@ const make = (
     pluginSummary({ id: "b@custom", name: "b" }),
   ];
   let failUninstall = options.failUninstall;
+  let interruptedInstall = false;
   let project: Pick<Project, "id" | "lifecycle" | "bindingRevision" | "sources"> | null = {
     id: "p",
     lifecycle: "active",
@@ -74,7 +78,13 @@ const make = (
         return Effect.succeed(inventory());
       }
       if (method === "plugin/list")
-        return Effect.succeed({ ...inventory(), featuredPluginIds: [] });
+        return Effect.succeed({
+          ...inventory(),
+          marketplaceLoadErrors: options.directoryErrors
+            ? [{ marketplaceName: "broken", message: "Unavailable" }]
+            : [],
+          featuredPluginIds: [],
+        });
       if (method === "plugin/read")
         return Effect.succeed({
           plugin: {
@@ -108,6 +118,16 @@ const make = (
           },
         });
       if (method === "plugin/install") {
+        if (options.abortInstall) {
+          controller.abort();
+          return Effect.never.pipe(
+            Effect.ensuring(
+              Effect.sync(() => {
+                interruptedInstall = true;
+              }),
+            ),
+          );
+        }
         plugins = plugins.map((plugin) =>
           plugin.name === params.pluginName
             ? { ...plugin, installed: true, enabled: true }
@@ -179,7 +199,7 @@ const make = (
         return Effect.succeed({
           errors: [{ marketplaceName: "custom", message: "unavailable" }],
           selectedMarketplaces: ["custom"],
-          upgradedRoots: [],
+          upgradedRoots: options.upgradePartial ? ["/marketplaces/changed"] : [],
         });
       return Effect.succeed({});
     })) as CodexGateway["Service"]["requestLocal"];
@@ -269,6 +289,7 @@ const make = (
     setOnRead: (callback: () => void) => {
       onRead = callback;
     },
+    installInterrupted: () => interruptedInstall,
     allowUninstall: () => {
       failUninstall = undefined;
     },
@@ -490,8 +511,13 @@ it.effect(
           ...context,
           term: " ranked ",
           cursor: "opaque-in",
+          scope: "personal",
         });
         assert.strictEqual(result.nextCursor, "opaque-next");
+        assert.strictEqual(
+          h.calls.find((call) => call.method === "plugin/search")?.params.scope,
+          "personal",
+        );
         assert.strictEqual(
           h.calls.find((call) => call.method === "plugin/search")?.params.cursor,
           "opaque-in",
@@ -755,6 +781,142 @@ it.effect(
             (call) => call.method === "marketplace/remove" || call.method === "marketplace/upgrade",
           ),
           false,
+        );
+      }),
+    );
+  },
+);
+
+it.effect(
+  "retains install success with a refresh warning when a marketplace cannot be loaded",
+  () => {
+    const h = make({
+      directoryErrors: true,
+      plugins: [pluginSummary({ name: "a", id: "a@custom", installed: false })],
+    });
+    return withManager(h, (manager) =>
+      Effect.gen(function* () {
+        const result = yield* manager.command("install", {
+          ...context,
+          marketplacePath: "/marketplace.json",
+          pluginName: "a",
+          installAttemptId: "a",
+        });
+        assert.strictEqual(result.status, "success-with-refresh-warning");
+        if (result.status === "success-with-refresh-warning")
+          assert.deepStrictEqual(result.refreshFailures, ["plugins"]);
+      }),
+    );
+  },
+);
+it.effect(
+  "refreshes skills after a partial upgrade while retaining structured upgrade failures",
+  () => {
+    const h = make({ upgradePartial: true });
+    return withManager(h, (manager) =>
+      Effect.gen(function* () {
+        const result = yield* manager.command("marketplace-upgrade", {
+          ...context,
+          marketplaceName: "custom",
+        });
+        assert.strictEqual(result.status, "failed");
+        if (result.status === "failed")
+          assert.strictEqual(result.error.marketplaceErrors?.length, 1);
+        assert.strictEqual(
+          h.calls.some((call) => call.method === "skills/list" && call.params.forceReload === true),
+          true,
+        );
+      }),
+    );
+  },
+);
+
+it.effect(
+  "preserves service installation policy, auth policy and an explicit interstitial opt-out",
+  () => {
+    const service = PluginService.of({
+      access: Effect.succeed({
+        publicHome: true,
+        category: true,
+        personal: false,
+        shared: false,
+        remoteToggle: true,
+        workspace: false,
+        workspaceCreated: false,
+      }),
+      home: Effect.succeed({
+        sections: [
+          {
+            id: "public",
+            title: "Public",
+            url_slug: null,
+            plugins: [
+              {
+                id: "remote",
+                display_name: "Remote",
+                installation_policy: "INSTALLED_BY_DEFAULT",
+                installation_policy_source: "IMPLICIT_CANONICAL_APP",
+                must_show_installation_interstitial: false,
+                authentication_policy: "ON_INSTALL",
+                eligible_plan_types: ["pro"],
+              },
+            ],
+          },
+        ],
+      }),
+      category: unavailable,
+      page: unavailable,
+      setEnabled: unavailable,
+    });
+    const h = make({ service });
+    return withManager(h, (manager) =>
+      Effect.gen(function* () {
+        const home = yield* manager.query("public-home", context);
+        const summary = home.sections[0]!.plugins[0]!.summary;
+        assert.strictEqual(summary.mustShowInstallationInterstitial, false);
+        assert.strictEqual(summary.authPolicy, "ON_INSTALL");
+        assert.strictEqual(summary.installPolicySource, "IMPLICIT_CANONICAL_APP");
+        assert.deepStrictEqual(summary.eligiblePlanTypes, ["pro"]);
+      }),
+    );
+  },
+);
+
+it.effect("cancels an in-flight native mutation when its captured account lease is revoked", () => {
+  const h = make({
+    abortInstall: true,
+    plugins: [pluginSummary({ id: "a@custom", name: "a", installed: false })],
+  });
+  return withManager(h, (manager) =>
+    Effect.gen(function* () {
+      const result = yield* manager.command("install", {
+        ...context,
+        marketplacePath: "/marketplace.json",
+        pluginName: "a",
+        installAttemptId: "a",
+      });
+      assert.strictEqual(result.status, "failed");
+      if (result.status === "failed") assert.strictEqual(result.error.code, "account_changed");
+      assert.strictEqual(h.installInterrupted(), true);
+      assert.strictEqual(h.calls.filter((call) => call.method === "plugin/install").length, 1);
+    }),
+  );
+});
+
+it.effect(
+  "authorizes local skill previews before installation through the visible native catalog",
+  () => {
+    const path = "/plugins/a/skills/sample/SKILL.md";
+    const h = make({
+      detailSkillPath: path,
+      omitSkills: true,
+      plugins: [pluginSummary({ id: "a@custom", name: "a", installed: false })],
+    });
+    return withManager(h, (manager) =>
+      Effect.gen(function* () {
+        assert.strictEqual(
+          (yield* manager.query("skill-contents", { ...context, path })).contents,
+          "contents",
         );
       }),
     );

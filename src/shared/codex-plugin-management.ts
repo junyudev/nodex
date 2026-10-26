@@ -1,3 +1,4 @@
+import type { PluginSearchScope } from "@nodex/codex-app-server-protocol/v2/PluginSearchScope";
 import type { PluginSummary } from "@nodex/codex-app-server-protocol/v2/PluginSummary";
 import type { PluginDetail } from "@nodex/codex-app-server-protocol/v2/PluginDetail";
 import type { PluginListResponse } from "@nodex/codex-app-server-protocol/v2/PluginListResponse";
@@ -11,7 +12,7 @@ import type { SkillsListResponse } from "@nodex/codex-app-server-protocol/v2/Ski
 import type { SkillMetadata } from "@nodex/codex-app-server-protocol/v2/SkillMetadata";
 import type { HooksListResponse } from "@nodex/codex-app-server-protocol/v2/HooksListResponse";
 
-export type { PluginSummary, PluginDetail };
+export type { PluginSummary, PluginDetail, PluginSearchScope };
 export interface PluginContext {
   readonly hostId: string;
   readonly projectId: string | null;
@@ -225,7 +226,11 @@ export interface PluginQueries {
   installed: { input: PluginContext; output: PluginInventory<PluginInstalledResponse> };
   read: { input: PluginContext & PluginSelector; output: PluginDetailView };
   search: {
-    input: PluginContext & { readonly term: string; readonly cursor?: string | null };
+    input: PluginContext & {
+      readonly term: string;
+      readonly cursor?: string | null;
+      readonly scope?: PluginSearchScope;
+    };
     output: PluginPage;
   };
   skills: { input: PluginContext & { readonly forceReload?: boolean }; output: SkillsListResponse };

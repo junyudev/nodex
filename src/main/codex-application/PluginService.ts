@@ -27,6 +27,7 @@ const ListingInterface = Schema.Struct({
   terms_of_service_url: text,
   capabilities: Schema.optionalKey(Schema.Array(Schema.String)),
   default_prompts: Schema.optionalKey(Schema.NullOr(Schema.Array(Schema.String))),
+  default_prompt: text,
 });
 export const PluginServiceListing = Schema.Struct({
   id: Schema.NonEmptyString,
@@ -37,6 +38,14 @@ export const PluginServiceListing = Schema.Struct({
   icon_url_dark: text,
   status: Schema.optionalKey(Schema.String),
   installation_policy: policy,
+  installation_policy_source: Schema.optionalKey(
+    Schema.NullOr(Schema.Literals(["WORKSPACE_SETTING", "IMPLICIT_CANONICAL_APP"])),
+  ),
+  must_show_installation_interstitial: Schema.optionalKey(Schema.NullOr(Schema.Boolean)),
+  authentication_policy: Schema.optionalKey(
+    Schema.NullOr(Schema.Literals(["ON_INSTALL", "ON_USE"])),
+  ),
+  eligible_plan_types: Schema.optionalKey(Schema.NullOr(Schema.Array(Schema.String))),
   disabled_reason: Schema.optionalKey(
     Schema.NullOr(
       Schema.Literals([
