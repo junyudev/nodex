@@ -1,0 +1,56 @@
+src/renderer/features/plugins/view/use-plugin-row-actions.tsx
+  s_1f621c9737ee85::t_1246e85a4873f4 6,20
+src/renderer/components/ui/card-tile.tsx
+  s_1f621c9737ee85::t_1176b56156cfd4 6-10,27-28,33-34,37,50,53,67-68,86,88-92,94-95,111-114
+src/renderer/features/plugins/view/plugins-route.tsx
+  s_1f621c9737ee85::t_282d63da10983e 5,36
+src/renderer/components/ui/page-search-input.tsx
+  s_1f621c9737ee85::t_68b934236a7174 1,17-18,36,40-41
+src/renderer/components/shared/icons/skill-fallback-icons.test.ts
+  s_1f621c9737ee85::t_2aa1aa956c4016 1,4-17,19-21,26-29,31-40,44-47,49-68,70-80,82-86
+  s_1f621c9737ee85::t_69f3555ffcbfdf 22-25,30,41-43,48,81
+  s_1f621c9737ee85::t_05043f528df905 69
+  s_1f621c9737ee85::t_a90c216f5cd580 2-3,18
+src/renderer/components/shared/icons/skill-fallback-icons.tsx
+  s_1f621c9737ee85::t_69f3555ffcbfdf 4-6,23-42,49-68,78-81,90-93,102-125,134-137,155-172,181-200,210-213,240-267,278-281,306,308-309,316
+  s_1f621c9737ee85::t_75ea6f5dcdc0af 237
+  s_1f621c9737ee85::t_9324d14306fc7b 1-3,7-22,43-48,69-77,82-89,94-101,126-133,138-154,173-180,201-209,214-236,238-239,268-277,282-305,307,310-315,317-325
+src/renderer/styles/theme-source.css
+  s_1f621c9737ee85::t_21aae999fb3c15 156
+src/renderer/features/plugins/view/customize-header-actions.tsx
+  s_1f621c9737ee85::t_104e16e70ea941 1-108
+src/renderer/features/plugins/model/skill-model.test.ts
+  s_1f621c9737ee85::t_c2b286b8f2a4a5 1-44,46-58,60-74,76-85
+  s_1f621c9737ee85::t_a90c216f5cd580 45,59,75
+src/renderer/features/plugins/view/plugin-includes.tsx
+  s_1f621c9737ee85::t_1246e85a4873f4 17,35-41
+src/renderer/features/plugins/view/skill-preview-modal.tsx
+  s_1f621c9737ee85::t_1246e85a4873f4 13-15,17-18,190-246
+src/renderer/features/plugins/view/plugins-directory-page.tsx
+  s_1f621c9737ee85::t_104e16e70ea941 35,158,160-168
+src/renderer/components/shared/icons/plugin-detail-icons.tsx
+  s_1f621c9737ee85::t_282d63da10983e 314-325
+src/renderer/features/plugins/model/skill-model.ts
+  s_1f621c9737ee85::t_942e00badaeca0 1-107
+src/renderer/features/plugins/view/skills-page.tsx
+  s_1f621c9737ee85::t_a90c216f5cd580 46-52,439-440
+  s_1f621c9737ee85::t_18639ac7d10bd0 310-311
+  s_1f621c9737ee85::t_4de4e544ec013e 1-10,13-45,53-180,182-309,312-383,385-386,388-395,404-415,417-435,437-438,441-452
+  s_1f621c9737ee85::t_68b934236a7174 11-12,181,384,387,396-403,416,436
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "1a147b66e1e15cb6a2b5a2c527a4ba31ae9933e0",
+  "prompts": {},
+  "sessions": {
+    "s_1f621c9737ee85": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "dec682ee-8dcb-4974-b7cd-a9bfde733cc3",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
