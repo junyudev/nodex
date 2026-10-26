@@ -1,0 +1,62 @@
+src/renderer/components/ui/button.tsx
+  s_445cea4ff32a57::t_2a161ffa7c0960 29
+src/renderer/lib/codex-theme-variant.ts
+  s_445cea4ff32a57::t_79b045ca541ab3 475-480,489-492
+  s_445cea4ff32a57::t_2a161ffa7c0960 197,220,222-224,226,231,234-235,319,431-432,651,698
+src/renderer/styles/accent-theme.browser.test.tsx
+  s_445cea4ff32a57::t_2a161ffa7c0960 206,208
+docs/product-specs/settings-route-behavior.md
+  s_445cea4ff32a57::t_d40c1f480a8a63 148-149,151-152
+scripts/semantic-theme/README.md
+  s_445cea4ff32a57::t_d008442e99b0a4 43
+scripts/semantic-theme/profile.ts
+  s_445cea4ff32a57::t_deb8e48af6b11c 9,51-60
+src/renderer/components/ui/dialog.tsx
+  s_445cea4ff32a57::t_2f25749b42b736 191
+src/renderer/features/local-conversation/view/local-conversation-selected-text-actions.tsx
+  s_445cea4ff32a57::t_f23fd9608293fc 78
+src/renderer/lib/codex-theme-variant.node.test.ts
+  s_445cea4ff32a57::t_18790967db3013 35,37,39,45-46,48-58,60,73-76
+src/renderer/lib/terminal-theme.browser.test.ts
+  s_445cea4ff32a57::t_5ec34e969dd3db 28-29,33,35,38,42
+src/renderer/styles/semantic-theme-contract.browser.test.ts
+  s_445cea4ff32a57::t_e24fe1ff22b229 108-143,172-173,175,178,219-220
+src/renderer/styles/semantic-theme-contract.generated.json
+  s_74cb07b04fcdc2::t_840c49cadd9691 3,11,15,19,23,877-897,2092-2108,4638-4641,6901-6917,11240-11256,11941-11944,11949,11959-11962,11967,15796-15948
+src/renderer/styles/semantic-theme.provenance.json
+  s_74cb07b04fcdc2::t_ec00e42848c71d 3-4,9,13,17,21,25
+src/renderer/styles/theme-extracted-foundation.generated.css
+  s_74cb07b04fcdc2::t_d6e74c45840c10 2,4,31-40
+src/renderer/styles/theme-extracted-surfaces.generated.css
+  s_74cb07b04fcdc2::t_2939465d66d9f3 2,4,124-127
+src/renderer/styles/theme-semantic-contract.generated.css
+  s_74cb07b04fcdc2::t_273af9e9296218 2,4,9,146,263,403,408-409,453,455,485,967,1130,1204,1213,1712
+src/renderer/styles/theme-semantic-utilities.generated.css
+  s_74cb07b04fcdc2::t_79b300124dfaf4 2,4
+src/renderer/styles/theme-source.css
+  s_445cea4ff32a57::t_79f99df3477265 100-106,172-196,200-201,209-212,215-217,317,328
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "038f2b1f8e7850a62e97841b74ec8b3f36413492",
+  "prompts": {},
+  "sessions": {
+    "s_445cea4ff32a57": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a175e1-7cbe-7db2-958f-9b2dc1d1a3e0",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_74cb07b04fcdc2": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a16c5e-90b2-7e40-92fb-3de257969ffd",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
