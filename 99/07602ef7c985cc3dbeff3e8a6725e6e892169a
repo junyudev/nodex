@@ -1,0 +1,44 @@
+src/main/ipc/handlers/PluginManagerIpc.node.test.ts
+  s_77ac5bdfa64dec::t_3a20dff7faf232 32-33
+  s_77ac5bdfa64dec::t_583a9123ed6089 34-48
+src/main/codex-application/PluginManager.ts
+  s_77ac5bdfa64dec::t_8edacc27ec74d1 1158-1160
+  s_77ac5bdfa64dec::t_44077da207e1e2 1161
+src/renderer/features/plugins/model/selectors.test.ts
+  s_77ac5bdfa64dec::t_3a20dff7faf232 235
+  s_77ac5bdfa64dec::t_0867f8c01d0736 236-243,261-267
+src/shared/codex-plugin-management.ts
+  s_77ac5bdfa64dec::t_8edacc27ec74d1 207
+docs/product-specs/plugins-behavior.md
+  s_77ac5bdfa64dec::t_3a20dff7faf232 132-137
+src/main/codex-application/StandaloneSkills.ts
+  s_77ac5bdfa64dec::t_8edacc27ec74d1 10,22,260-264,274-283,290,372-374,377-378,383
+  s_77ac5bdfa64dec::t_c2c9f700f7e23e 49-51,265-273,364-371,375-376,379-382,385-400,403-420,427,429,433
+  s_77ac5bdfa64dec::t_41b219afba113d 384,430-432,434,441
+src/main/ipc/handlers/PluginManagerIpc.ts
+  s_77ac5bdfa64dec::t_8edacc27ec74d1 86,94,102
+  s_77ac5bdfa64dec::t_5859772055140c 83-85,87-90
+src/main/codex-application/PluginManager.node.test.ts
+  s_77ac5bdfa64dec::t_3a20dff7faf232 24,331
+  s_77ac5bdfa64dec::t_be21d6c16e09de 332-334,1924-1949
+src/shared/codex-plugin-settings.ts
+  s_77ac5bdfa64dec::t_8edacc27ec74d1 96
+src/main/codex-application/StandaloneSkills.node.test.ts
+  s_77ac5bdfa64dec::t_e8c67e94f19440 240-292
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "9907602ef7c985cc3dbeff3e8a6725e6e892169a",
+  "prompts": {},
+  "sessions": {
+    "s_77ac5bdfa64dec": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1795d-5e95-7ea0-9bf7-2e3e042b723f",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
