@@ -521,6 +521,17 @@ export const live = (options: {
           input: PluginQueries[K]["input"],
         ) => Effect.Effect<PluginQueries[K]["output"], PluginManagementError>;
       } = {
+        marketplaces: () =>
+          Effect.fail(pluginError("unsupported", "Marketplace settings are unavailable.")),
+        apps: () => Effect.fail(pluginError("unsupported", "App settings are unavailable.")),
+        "mcp-servers": () =>
+          Effect.fail(pluginError("unsupported", "MCP settings are unavailable.")),
+        "recommended-skills": () =>
+          Effect.fail(pluginError("unsupported", "Recommended skills are unavailable.")),
+        "creation-capabilities": () =>
+          Effect.fail(pluginError("unsupported", "Plugin creation is unavailable.")),
+        "plugin-hooks": () =>
+          Effect.fail(pluginError("unsupported", "Plugin hooks are unavailable.")),
         context: (context) => Effect.succeed(context),
         capabilities: Effect.fn("PluginManager.capabilities")(function* (context) {
           const status = yield* desktop
@@ -931,6 +942,21 @@ export const live = (options: {
           input: PluginCommands[K]["input"],
         ) => Effect.Effect<PluginCommands[K]["output"], PluginManagementError>;
       } = {
+        "app-disconnect": () =>
+          Effect.fail(pluginError("unsupported", "This operation is unavailable.")),
+        "mcp-save": () => Effect.fail(pluginError("unsupported", "This operation is unavailable.")),
+        "mcp-remove": () =>
+          Effect.fail(pluginError("unsupported", "This operation is unavailable.")),
+        "mcp-enabled": () =>
+          Effect.fail(pluginError("unsupported", "This operation is unavailable.")),
+        "mcp-login": () =>
+          Effect.fail(pluginError("unsupported", "This operation is unavailable.")),
+        "skill-install": () =>
+          Effect.fail(pluginError("unsupported", "This operation is unavailable.")),
+        "skill-uninstall": () =>
+          Effect.fail(pluginError("unsupported", "This operation is unavailable.")),
+        "prepare-helper": () =>
+          Effect.fail(pluginError("unsupported", "This operation is unavailable.")),
         install: Effect.fn("PluginManager.install")(function* (context, input) {
           const detail = yield* queryHandlers.read(context, input);
           if (detail.row.managed || !policy.visible(detail.row.nativeId, "local"))

@@ -73,6 +73,12 @@ export type IpcCommand<
 
 /** Exact owner-audited groups. Never replace one group with an `Exclude<keyof IpcApi, ...>` remainder. */
 type QueryEndpointPolicy =
+  | "codex:plugins:marketplaces"
+  | "codex:plugins:apps"
+  | "codex:plugins:mcp-servers"
+  | "codex:plugins:recommended-skills"
+  | "codex:plugins:creation-capabilities"
+  | "codex:plugins:plugin-hooks"
   | "codex:plugins:context"
   | "codex:plugins:capabilities"
   | "codex:plugins:list"
@@ -486,6 +492,14 @@ type MainRevisionCommandEndpointPolicy =
   | "codex:visualization:interaction:write";
 
 type PlainResultCommandEndpointPolicy =
+  | "codex:plugins:app-disconnect"
+  | "codex:plugins:mcp-save"
+  | "codex:plugins:mcp-remove"
+  | "codex:plugins:mcp-enabled"
+  | "codex:plugins:mcp-login"
+  | "codex:plugins:skill-install"
+  | "codex:plugins:skill-uninstall"
+  | "codex:plugins:prepare-helper"
   | "codex:plugins:install"
   | "codex:plugins:uninstall"
   | "codex:plugins:set-enabled"

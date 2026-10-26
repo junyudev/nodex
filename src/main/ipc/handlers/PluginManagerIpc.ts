@@ -55,6 +55,16 @@ const skill = Schema.Union([
   }),
 ]);
 export const pluginQuerySchemas = {
+  marketplaces: ContextInput,
+  apps: Schema.Struct({
+    ...context,
+    appIds: Schema.optionalKey(Schema.Array(Schema.NonEmptyString)),
+    forceRefresh: Schema.optionalKey(Schema.Boolean),
+  }),
+  "mcp-servers": ContextInput,
+  "recommended-skills": Schema.Struct({ ...context, refresh: Schema.optionalKey(Schema.Boolean) }),
+  "creation-capabilities": ContextInput,
+  "plugin-hooks": selector,
   context: ContextInput,
   capabilities: ContextInput,
   list: Schema.Struct({ ...context, forceRefetch: Schema.optionalKey(Schema.Boolean) }),
@@ -103,6 +113,41 @@ export const pluginQuerySchemas = {
   }),
 } as const;
 export const pluginCommandSchemas = {
+  "app-disconnect": Schema.Struct({
+    ...context,
+    appId: Schema.NonEmptyString,
+    linkId: Schema.optionalKey(Schema.NonEmptyString),
+  }),
+  "mcp-save": Schema.Struct({
+    ...context,
+    name: Schema.NonEmptyString,
+    previousName: Schema.optionalKey(Schema.NonEmptyString),
+    declaration: Schema.Record(Schema.String, Schema.Json),
+  }),
+  "mcp-remove": Schema.Struct({ ...context, name: Schema.NonEmptyString }),
+  "mcp-enabled": Schema.Struct({
+    ...context,
+    name: Schema.NonEmptyString,
+    enabled: Schema.Boolean,
+  }),
+  "mcp-login": Schema.Struct({
+    ...context,
+    name: Schema.NonEmptyString,
+    scopes: Schema.optionalKey(Schema.NullOr(Schema.Array(Schema.String))),
+    clientRegistration: Schema.optionalKey(Schema.NullOr(Schema.Literals(["auto", "cimd", "dcr"]))),
+  }),
+  "skill-install": Schema.Struct({
+    ...context,
+    id: Schema.NonEmptyString,
+    scope: Schema.Literals(["user", "project"]),
+    cwd: Schema.optionalKey(Schema.NonEmptyString),
+  }),
+  "skill-uninstall": Schema.Struct({ ...context, path: Schema.NonEmptyString }),
+  "prepare-helper": Schema.Struct({
+    ...context,
+    helper: Schema.Literals(["plugin-creator", "record-and-replay"]),
+    installAttemptId: Schema.NonEmptyString,
+  }),
   install: Schema.Union([
     Schema.Struct({
       ...context,

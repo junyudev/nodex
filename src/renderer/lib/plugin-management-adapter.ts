@@ -5,6 +5,62 @@ import type {
 } from "../../shared/codex-plugin-management";
 import { defineRendererCommand, invokePlainCommand, invokeRendererQuery } from "./renderer-command";
 const definitions = {
+  "app-disconnect": defineRendererCommand({
+    key: "plugins.app-disconnect",
+    channel: "codex:plugins:app-disconnect",
+    authority: "main",
+    owner: "PluginManager",
+    protocol: { kind: "returned_value" },
+  }),
+  "mcp-save": defineRendererCommand({
+    key: "plugins.mcp-save",
+    channel: "codex:plugins:mcp-save",
+    authority: "main",
+    owner: "PluginManager",
+    protocol: { kind: "returned_value" },
+  }),
+  "mcp-remove": defineRendererCommand({
+    key: "plugins.mcp-remove",
+    channel: "codex:plugins:mcp-remove",
+    authority: "main",
+    owner: "PluginManager",
+    protocol: { kind: "returned_value" },
+  }),
+  "mcp-enabled": defineRendererCommand({
+    key: "plugins.mcp-enabled",
+    channel: "codex:plugins:mcp-enabled",
+    authority: "main",
+    owner: "PluginManager",
+    protocol: { kind: "returned_value" },
+  }),
+  "mcp-login": defineRendererCommand({
+    key: "plugins.mcp-login",
+    channel: "codex:plugins:mcp-login",
+    authority: "main",
+    owner: "PluginManager",
+    protocol: { kind: "returned_value" },
+  }),
+  "skill-install": defineRendererCommand({
+    key: "plugins.skill-install",
+    channel: "codex:plugins:skill-install",
+    authority: "main",
+    owner: "PluginManager",
+    protocol: { kind: "returned_value" },
+  }),
+  "skill-uninstall": defineRendererCommand({
+    key: "plugins.skill-uninstall",
+    channel: "codex:plugins:skill-uninstall",
+    authority: "main",
+    owner: "PluginManager",
+    protocol: { kind: "returned_value" },
+  }),
+  "prepare-helper": defineRendererCommand({
+    key: "plugins.prepare-helper",
+    channel: "codex:plugins:prepare-helper",
+    authority: "main",
+    owner: "PluginManager",
+    protocol: { kind: "returned_value" },
+  }),
   install: defineRendererCommand({
     key: "plugins.install",
     channel: "codex:plugins:install",

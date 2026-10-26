@@ -1,3 +1,5 @@
+import type { PluginSettingsQueries, PluginSettingsCommands } from "./codex-plugin-settings";
+export type * from "./codex-plugin-settings";
 import type { PluginSearchScope } from "@nodex/codex-app-server-protocol/v2/PluginSearchScope";
 import type { PluginSummary } from "@nodex/codex-app-server-protocol/v2/PluginSummary";
 import type { PluginDetail } from "@nodex/codex-app-server-protocol/v2/PluginDetail";
@@ -12,7 +14,7 @@ import type { SkillsListResponse } from "@nodex/codex-app-server-protocol/v2/Ski
 import type { SkillMetadata } from "@nodex/codex-app-server-protocol/v2/SkillMetadata";
 import type { HooksListResponse } from "@nodex/codex-app-server-protocol/v2/HooksListResponse";
 
-export type { PluginSummary, PluginDetail, PluginSearchScope };
+export type { PluginSummary, PluginDetail, PluginSearchScope, PluginListResponse };
 export interface PluginContext {
   readonly hostId: string;
   readonly projectId: string | null;
@@ -55,6 +57,7 @@ export type PluginActionState =
 export type PluginAppConnectionState =
   | "unknown"
   | "connected"
+  | "admin_disabled"
   | "authentication_required"
   | "unavailable";
 export interface PluginRow {
@@ -216,7 +219,7 @@ export interface PluginManagementChanged {
   readonly kind: "plugins" | "skills" | "apps" | "account" | "connection";
   readonly progress?: MarketplaceRemovalProgress;
 }
-export interface PluginQueries {
+export interface PluginQueries extends PluginSettingsQueries {
   context: { input: PluginContext; output: ResolvedPluginContext };
   capabilities: { input: PluginContext; output: PluginManagementCapabilities };
   list: {
@@ -261,7 +264,7 @@ export interface PluginQueries {
     output: MarketplaceRemovalPreview;
   };
 }
-export interface PluginCommands {
+export interface PluginCommands extends PluginSettingsCommands {
   install: {
     input: PluginContext & PluginSelector & { readonly installAttemptId: string };
     output: PluginMutationResult<PluginInstallResponse>;

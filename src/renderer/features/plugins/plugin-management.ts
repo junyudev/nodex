@@ -78,6 +78,14 @@ export interface PluginManagement {
   readonly addMarketplace: Command<"marketplace-add">;
   readonly removeMarketplace: Command<"marketplace-remove">;
   readonly upgradeMarketplaces: Command<"marketplace-upgrade">;
+  readonly disconnectApp: Command<"app-disconnect">;
+  readonly saveMcpServer: Command<"mcp-save">;
+  readonly removeMcpServer: Command<"mcp-remove">;
+  readonly setMcpServerEnabled: Command<"mcp-enabled">;
+  readonly loginMcpServer: Command<"mcp-login">;
+  readonly installRecommendedSkill: Command<"skill-install">;
+  readonly uninstallSkill: Command<"skill-uninstall">;
+  readonly preparePluginHelper: Command<"prepare-helper">;
   readonly refresh: () => Promise<PluginCommands["refresh"]["output"]>;
 }
 export function usePluginCapabilities(
@@ -200,6 +208,27 @@ export function useMarketplaceRemovalProgress(
     enabled: false,
   });
 }
+export function useMarketplaces(context: PluginContext) {
+  return useQuery(pluginQueryOptions(useScope(context), context, "marketplaces", {}));
+}
+export function usePluginApps(
+  context: PluginContext,
+  input: { appIds?: readonly string[]; forceRefresh?: boolean } = {},
+) {
+  return useQuery(pluginQueryOptions(useScope(context), context, "apps", input));
+}
+export function usePluginMcpServers(context: PluginContext) {
+  return useQuery(pluginQueryOptions(useScope(context), context, "mcp-servers", {}));
+}
+export function useRecommendedSkills(context: PluginContext, input: { refresh?: boolean } = {}) {
+  return useQuery(pluginQueryOptions(useScope(context), context, "recommended-skills", input));
+}
+export function usePluginCreationCapabilities(context: PluginContext) {
+  return useQuery(pluginQueryOptions(useScope(context), context, "creation-capabilities", {}));
+}
+export function usePluginHooks(context: PluginContext, selector: PluginSelector) {
+  return useQuery(pluginQueryOptions(useScope(context), context, "plugin-hooks", selector));
+}
 export function usePluginManagement(context: PluginContext): PluginManagement {
   const client = useQueryClient();
   usePluginCapabilities(context);
@@ -212,6 +241,14 @@ export function usePluginManagement(context: PluginContext): PluginManagement {
     removeMarketplace: (input) => runPluginMutation(client, context, "marketplace-remove", input),
     upgradeMarketplaces: (input) =>
       runPluginMutation(client, context, "marketplace-upgrade", input),
+    disconnectApp: (input) => runPluginMutation(client, context, "app-disconnect", input),
+    saveMcpServer: (input) => runPluginMutation(client, context, "mcp-save", input),
+    removeMcpServer: (input) => runPluginMutation(client, context, "mcp-remove", input),
+    setMcpServerEnabled: (input) => runPluginMutation(client, context, "mcp-enabled", input),
+    loginMcpServer: (input) => runPluginMutation(client, context, "mcp-login", input),
+    installRecommendedSkill: (input) => runPluginMutation(client, context, "skill-install", input),
+    uninstallSkill: (input) => runPluginMutation(client, context, "skill-uninstall", input),
+    preparePluginHelper: (input) => runPluginMutation(client, context, "prepare-helper", input),
     refresh: () => runPluginMutation(client, context, "refresh", {}),
   };
 }
