@@ -1,0 +1,47 @@
+docs/product-specs/plugins-behavior.md
+  s_77ac5bdfa64dec::t_1d9580437e0562 186-187,229-234
+src/main/codex-application/PluginAccountMetadata.node.test.ts
+  s_77ac5bdfa64dec::t_563b4071f3a991 55
+src/main/codex-application/PluginAccountMetadata.ts
+  s_77ac5bdfa64dec::t_ab07f526974f4a 1,5,47,110-111
+src/main/codex-application/PluginApps.ts
+  s_77ac5bdfa64dec::t_8884fe87ca650f 10,13,65,266-269,271-274
+src/main/codex-application/PluginManager.node.test.ts
+  s_77ac5bdfa64dec::t_f6a17d57c47a0c 1-2,55,217,267,1265-1381
+src/main/codex-application/PluginManager.ts
+  s_77ac5bdfa64dec::t_a9d9a155439643 1,8,126-129,673-736,1126,1373-1377,1459-1485,1490,1676-1688
+src/main/codex-application/PluginNativeOperations.ts
+  s_77ac5bdfa64dec::t_66c536309b377b 1,49-52
+src/main/codex-application/PluginService.ts
+  s_77ac5bdfa64dec::t_5a8cbef98a67a4 125-126,167
+src/main/codex-application/PluginSettingsModel.ts
+  s_77ac5bdfa64dec::t_a0b7ff3f3820cb 22-45,90-94,124-127,135-150
+src/main/codex-application/StandaloneSkills.node.test.ts
+  s_77ac5bdfa64dec::t_4d19c4091c8e73 55-58,98-99,143-149,186-191,202-239
+src/main/codex-application/StandaloneSkills.ts
+  s_77ac5bdfa64dec::t_22ec937e9f9af9 150-159,161-168,188-196,430-433,436-437,443-444,448
+src/main/ipc/handlers/PluginManagerIpc.node.test.ts
+  s_77ac5bdfa64dec::t_e5e632d4b59d76 69,77-81,124-139
+src/main/ipc/handlers/PluginManagerIpc.ts
+  s_77ac5bdfa64dec::t_04e5190247a599 8,227-247
+src/shared/codex-plugin-management.ts
+  s_77ac5bdfa64dec::t_3801c0db22da7a 64
+src/shared/codex-plugin-settings.ts
+  s_77ac5bdfa64dec::t_d4002cc5858e02 1,152
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "41005521d359ba42f6cc65888e92ccdd1bbed5e9",
+  "prompts": {},
+  "sessions": {
+    "s_77ac5bdfa64dec": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a1795d-5e95-7ea0-9bf7-2e3e042b723f",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
