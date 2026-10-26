@@ -1,0 +1,39 @@
+packages/agent-runtime/src/nodex/Ingress.test.ts
+  s_351bd91a239aa5::t_13447547af7ad5 413
+packages/agent-runtime/src/mcp/OrchestratorMcpService.ts
+  s_351bd91a239aa5::t_0cc869be0e2abb 1316-1323
+  s_351bd91a239aa5::t_3b2dd63c8fb3bc 984
+  s_351bd91a239aa5::t_ea4e864c76ce79 6,15,89,186-220,727-730,898,943,1281,1284-1289,1291-1298
+packages/agent-runtime/src/mcp/toolkits/task/handlers.ts
+  s_351bd91a239aa5::t_108d12d9952d49 71-72
+packages/agent-runtime/README.md
+  s_351bd91a239aa5::t_b621954068d142 64
+docs/product-specs/agent-runtime-behavior.md
+  s_351bd91a239aa5::t_b621954068d142 551-557
+packages/agent-runtime/src/mcp/toolkits/task/tools.ts
+  s_351bd91a239aa5::t_13447547af7ad5 176-177
+  s_351bd91a239aa5::t_108d12d9952d49 7,168-169
+packages/agent-runtime/src/mcp/TaskToolkit.integration.test.ts
+  s_351bd91a239aa5::t_2590d8c16e3217 649-652
+  s_351bd91a239aa5::t_e317ee265ea9f9 644-647,653-656,658-672,679-688
+  s_351bd91a239aa5::t_3b2dd63c8fb3bc 648,673-678
+  s_351bd91a239aa5::t_266cb231c25a85 657
+packages/agent-runtime/vendor/contracts/src/orchestratorMcp.ts
+  s_351bd91a239aa5::t_da4365c3656dd4 497-509
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "d9fb8c00b035857bfb733bddace257babe5a34fa",
+  "prompts": {},
+  "sessions": {
+    "s_351bd91a239aa5": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "797a4c25-b3dc-4472-8d36-4e150aaaee19",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
