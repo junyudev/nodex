@@ -1,0 +1,36 @@
+src/renderer/components/workbench/use-workbench-route-surfaces.test.tsx
+  s_1f621c9737ee85::t_4b2ed308b4f432 84
+src/renderer/features/plugins/view/plugin-includes.tsx
+  s_1f621c9737ee85::t_e8a4c01a8f8034 132-160,166,168-173,175-182,191,195-203,214-223,225-233,244,250,267-271,277-290,292-311,342,358-373,375-393,395-428,430-458,460,464,759,763
+  s_1f621c9737ee85::t_a7f5272b245f39 1-3,9,13-15,17-18,23,25,35,37,43,52,465,489-515,538,560-564,580,594-600,646,663-713,720-732,734,740,745-746,751-753,756,764
+  s_1f621c9737ee85::t_a53242a573a075 459,461-463,466-467,757-758,760-762,768-770
+src/renderer/features/plugins/view/plugin-detail-page.tsx
+  s_1f621c9737ee85::t_1a889f966d9281 18,42,219-220,226-227,321-327,349-354,369-374
+src/renderer/features/plugins/view/plugin-detail-page.test.tsx
+  s_1f621c9737ee85::t_f3d9d8b1925ee4 105
+src/renderer/components/workbench/workbench-runtime.tsx
+  s_1f621c9737ee85::t_f3d9d8b1925ee4 2558
+src/renderer/features/plugins/view/plugin-logo.tsx
+  s_1f621c9737ee85::t_f3d9d8b1925ee4 1,6,27,31-32,38
+src/renderer/features/plugins/customize-navigation.ts
+  s_1f621c9737ee85::t_f3d9d8b1925ee4 14-15
+src/renderer/features/plugins/view/plugin-works-with.tsx
+  s_1f621c9737ee85::t_8c20fba7227243 1-237
+  s_1f621c9737ee85::t_415c3296320be2 238-240
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "e0daf05afa9a5b91f5e2c2bd44698704754aa129",
+  "prompts": {},
+  "sessions": {
+    "s_1f621c9737ee85": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "dec682ee-8dcb-4974-b7cd-a9bfde733cc3",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
