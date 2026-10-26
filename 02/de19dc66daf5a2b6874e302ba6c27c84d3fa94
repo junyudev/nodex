@@ -1,0 +1,69 @@
+src/renderer/components/workbench/codex-sidebar.tsx
+  s_445cea4ff32a57::t_6085f656076869 370
+  s_445cea4ff32a57::t_c5a7f679846661 136,138
+src/renderer/components/workbench/workbench-settings-sidebar.tsx
+  s_445cea4ff32a57::t_fe1c7fe7f05663 277,303
+  s_445cea4ff32a57::t_dfad6778b9738e 266,269-272
+src/renderer/components/workbench/workbench-app-rail.tsx
+  s_445cea4ff32a57::t_6085f656076869 19,94,98
+  s_445cea4ff32a57::t_98d78974142eeb 99
+src/renderer/lib/codex-theme-variant.ts
+  s_445cea4ff32a57::t_6085f656076869 220,222-224,226,231,234-235
+src/renderer/components/workbench/sidebar-new-chat-controls.tsx
+  s_445cea4ff32a57::t_6085f656076869 33
+  s_445cea4ff32a57::t_b33c4a5eed072c 26,28
+docs/product-specs/workbench-shell.md
+  s_445cea4ff32a57::t_fe1c7fe7f05663 197
+scripts/semantic-theme/README.md
+  s_445cea4ff32a57::t_fe1c7fe7f05663 21-27
+src/renderer/components/ui/button.tsx
+  s_445cea4ff32a57::t_a6e36da978b686 7-26,40,130
+src/renderer/components/ui/dialog.tsx
+  s_445cea4ff32a57::t_886c85981f739d 6,25-26
+src/renderer/components/ui/dropdown.tsx
+  s_445cea4ff32a57::t_f15a3606a88451 498,502-503
+src/renderer/components/ui/file-tree-filter.tsx
+  s_445cea4ff32a57::t_4bab92da1e34f9 14
+src/renderer/components/ui/settings.tsx
+  s_445cea4ff32a57::t_84b5371a23eae3 38,40
+src/renderer/components/workbench/accent-color-setting-control.tsx
+  s_445cea4ff32a57::t_2b6e957cad1dbb 145
+src/renderer/components/workbench/appearance-settings-page.tsx
+  s_445cea4ff32a57::t_431278074c8f05 134
+src/renderer/components/workbench/sidebar-project-add-button.tsx
+  s_445cea4ff32a57::t_ade295dc6b14fd 12
+src/renderer/components/workbench/workbench-rail-account-controls.tsx
+  s_445cea4ff32a57::t_857e4c219cf683 94,336
+src/renderer/components/workbench/workbench-rail-usage-meter.tsx
+  s_445cea4ff32a57::t_1eccd2b39005e0 3,368
+src/renderer/features/nodex-account/nodex-account-menu.tsx
+  s_445cea4ff32a57::t_4c1d047d380d9c 26,52,93,119,125,130,137,165,170,175
+src/renderer/lib/codex-theme-variant.node.test.ts
+  s_445cea4ff32a57::t_dfdfd1c63d6782 35,37,39,45-46,48-58,60,73-76
+src/renderer/lib/terminal-theme.browser.test.ts
+  s_445cea4ff32a57::t_2cf723e00f45d0 28-29,33,35,38,42
+src/renderer/lib/workbench-toolbar-control-styles.ts
+  s_445cea4ff32a57::t_b0a5b3cdaf1afd 4,6
+src/renderer/styles/semantic-theme-contract.browser.test.ts
+  s_445cea4ff32a57::t_e21991d5f794c9 172-173,175,178,213,220-221,227-229,245-262
+src/renderer/styles/semantic-theme.provenance.json
+  s_445cea4ff32a57::t_473f8decbac156 4,9,13
+src/renderer/styles/theme-token-bridge.css
+  s_445cea4ff32a57::t_7f05e789d779b7 40
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "02de19dc66daf5a2b6874e302ba6c27c84d3fa94",
+  "prompts": {},
+  "sessions": {
+    "s_445cea4ff32a57": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a175e1-7cbe-7db2-958f-9b2dc1d1a3e0",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
