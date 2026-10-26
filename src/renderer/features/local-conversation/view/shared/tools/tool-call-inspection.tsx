@@ -21,8 +21,6 @@ import {
   type TextPreview,
 } from "@/lib/text-preview";
 
-const electronToolIconSizeClassName = "electron:[&>svg]:icon-sm";
-
 export function stringifyToolCallValue(value: unknown): string {
   try {
     return (
@@ -118,7 +116,7 @@ export function ToolCallRawDialog({
   getRawText,
   getRawValue,
   triggerLabel,
-  triggerKind = "icon",
+  triggerKind = "toolbar",
   triggerText = "Raw",
 }: {
   open: boolean;
@@ -127,8 +125,8 @@ export function ToolCallRawDialog({
   getRawText?: () => string;
   getRawValue?: () => unknown;
   triggerLabel: string;
-  /** `toolbar` sits beside a code panel's Copy; `icon` reveals itself on row hover. */
-  triggerKind?: "icon" | "toolbar" | "text";
+  /** `toolbar` matches the Copy control beside it; `text` labels the trigger. */
+  triggerKind?: "toolbar" | "text";
   triggerText?: string;
 }) {
   const dialogId = useId();
@@ -136,15 +134,11 @@ export function ToolCallRawDialog({
   const trigger = (
     <button
       type="button"
-      className={cn(
+      className={
         triggerKind === "toolbar"
           ? threadMessageActionButtonClassName
-          : "border-token-border user-select-none no-drag cursor-interaction flex items-center justify-center gap-1 border border-transparent text-token-description-foreground focus:outline-none disabled:cursor-not-allowed disabled:opacity-40 enabled:hover:bg-token-list-hover-background data-[state=open]:bg-token-list-hover-background",
-        triggerKind === "icon" &&
-          "rounded-full p-0.5 opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100 focus-visible:opacity-100 electron:rounded-md electron:p-1",
-        triggerKind === "icon" && electronToolIconSizeClassName,
-        triggerKind === "text" && "rounded-md px-1.5 py-1 text-xs font-medium",
-      )}
+          : "border-token-border user-select-none no-drag cursor-interaction flex items-center justify-center gap-1 rounded-md border border-transparent px-1.5 py-1 text-xs font-medium text-token-description-foreground focus:outline-none enabled:hover:bg-token-list-hover-background data-[state=open]:bg-token-list-hover-background"
+      }
       aria-label={triggerLabel}
       aria-haspopup="dialog"
       aria-expanded={open}

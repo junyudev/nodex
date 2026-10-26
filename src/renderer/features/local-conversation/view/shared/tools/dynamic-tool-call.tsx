@@ -720,7 +720,6 @@ function DynamicToolFallbackDetails({ item }: ToolComponentProps) {
       onOpenChange={setRawOpen}
       title={`Raw ${[call.namespace, call.tool].filter(Boolean).join(".")} tool call`}
       triggerLabel="Show raw tool call output"
-      triggerKind="toolbar"
       getRawValue={() =>
         item.rawItem ?? {
           type: "dynamicToolCall",

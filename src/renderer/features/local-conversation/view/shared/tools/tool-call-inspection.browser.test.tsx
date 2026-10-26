@@ -1,14 +1,20 @@
-import { waitFor } from "@testing-library/react";
+import { act, waitFor } from "@testing-library/react";
 import { expect, test } from "vite-plus/test";
-import { page } from "vite-plus/test/browser";
+import { page, userEvent } from "vite-plus/test/browser";
 import "@/globals.css";
 import { NodexTooltipProvider } from "@/components/ui/tooltip";
+import type { CodexTranscriptEntry } from "@/lib/types";
+import { installWindowApi } from "@/test/browser-globals";
+import { TestQueryProvider } from "@/test/query";
+import { THREAD_TOOL_CALL_FIXTURE_ITEMS } from "@/test/thread-tool-call-fixture";
 import {
   applyRendererThemeForTest,
   installRendererThemeFixture,
   readRendererThemeColor,
 } from "@/test/renderer-theme";
 import { renderWithMaitai } from "@/test/thread-maitai";
+import { DynamicToolCall } from "./dynamic-tool-call";
+import { McpToolCall } from "./mcp-tool-call";
 import { ToolCallRawDialog } from "./tool-call-inspection";
 
 installRendererThemeFixture();
@@ -21,7 +27,6 @@ function renderRawDialog(value: unknown) {
         onOpenChange={() => undefined}
         title="Raw Workflow tool call"
         triggerLabel="Show raw tool call output"
-        triggerKind="toolbar"
         getRawValue={() => value}
       />
     </NodexTooltipProvider>,
@@ -92,5 +97,71 @@ test("short raw values fit the dialog while long ones scroll inside it", async (
     });
   } finally {
     long.unmount();
+  }
+});
+
+const workflowCall: CodexTranscriptEntry = {
+  threadId: "thread-1",
+  turnId: "turn-1",
+  itemId: "workflow-1",
+  type: "dynamicToolCall",
+  kind: "toolCall",
+  semanticKind: "dynamicToolCall",
+  status: "completed",
+  dynamicToolCall: {
+    callId: "workflow-1",
+    namespace: null,
+    tool: "Workflow",
+    arguments: { script: "export const meta = {\n  name: 'triage',\n}" },
+    status: "completed",
+    contentItems: [{ type: "inputText", text: '{"status":"async_launched"}' }],
+    success: true,
+    durationMs: 49,
+    completed: true,
+  },
+  createdAt: 1,
+  updatedAt: 1,
+};
+
+test.each([
+  ["an MCP result", () => <McpToolCall item={THREAD_TOOL_CALL_FIXTURE_ITEMS.mcp} />],
+  ["a fallback tool call", () => <DynamicToolCall item={workflowCall} />],
+] as const)("Raw sits visibly beside Copy in %s instead of on its own row", async (_, Row) => {
+  await page.viewport(900, 900);
+  installWindowApi({
+    invoke: async (channel: string) =>
+      channel === "codex:mcp-server-statuses:list" ? { data: [], nextCursor: null } : null,
+    on: () => () => {},
+  });
+  const view = renderWithMaitai(
+    <TestQueryProvider>
+      <NodexTooltipProvider>
+        <div style={{ width: 640 }}>
+          <Row />
+        </div>
+      </NodexTooltipProvider>
+    </TestQueryProvider>,
+  );
+  try {
+    const disclosure = await waitFor(() => {
+      const button = view
+        .getAllByRole("button")
+        .find((candidate) => candidate.getAttribute("aria-expanded") === "false");
+      if (!button) throw new Error("The row has no closed disclosure");
+      return button;
+    });
+    await act(async () => {
+      await userEvent.click(disclosure);
+    });
+    const raw = await view.findByRole("button", { name: "Show raw tool call output" });
+    const copy = view.getAllByRole("button", { name: "Copy" })[0]!;
+    expect(raw).toBeVisible();
+    await waitFor(() =>
+      expect(
+        Math.abs(raw.getBoundingClientRect().top - copy.getBoundingClientRect().top),
+      ).toBeLessThan(2),
+    );
+  } finally {
+    view.unmount();
   }
 });

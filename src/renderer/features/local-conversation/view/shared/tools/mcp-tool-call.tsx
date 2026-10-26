@@ -1,9 +1,8 @@
 import { motion } from "motion/react";
-import { useEffect, useId, useMemo, useState } from "react";
+import { useEffect, useId, useMemo, useState, type ReactNode } from "react";
 import { PanelRightVisibleIcon } from "@/components/shared/icons";
 import { resolveCodexWebMcpActivities } from "../../../../../../shared/codex-webmcp-tool-call";
 import { LoadingPlaceholder } from "@/components/ui/loading-placeholder";
-import { NodexTooltip } from "../../../../../components/ui/tooltip";
 import type {
   CodexMcpToolCallContentBlock,
   CodexMcpToolCallView,
@@ -20,6 +19,7 @@ import {
   type TextPreview,
 } from "../../../../../lib/text-preview";
 import { CODEX_THREAD_ACCORDION_TRANSITION } from "../thread-motion";
+import { ThreadActionIconButton } from "../thread-message-actions";
 import { useMeasuredElementHeight } from "../use-measured-element-height";
 import { CodexShimmerText } from "../codex-shimmer-text";
 import {
@@ -50,7 +50,6 @@ import {
   type McpRenderableResource,
 } from "./mcp-tool-call-resource-utils";
 
-const electronToolIconSizeClassName = "electron:[&>svg]:icon-sm";
 const EMPTY_MCP_SERVER_STATUSES: ProtocolListMcpServerStatusResponse = {
   data: [],
   nextCursor: null,
@@ -233,12 +232,18 @@ function McpUnknownBlock({
   );
 }
 
-function McpContentBlock({ block, textValue, textPreview }: BudgetedMcpContentBlock) {
+function McpContentBlock({
+  actions,
+  block,
+  textValue,
+  textPreview,
+}: BudgetedMcpContentBlock & { actions?: ReactNode }) {
   if (block.type === "text") {
     const value = textValue ?? appendAnnotations(block.text, block.annotations);
     return (
       <ToolCallCodePanel
         title="plaintext"
+        actions={actions}
         preview={textPreview ?? buildTextPreview(value, INLINE_TEXT_PREVIEW_MAX_CHARS)}
         getCopyText={() => value}
         getFullText={() => value}
@@ -421,7 +426,7 @@ function McpResultBody({
     hasMcpAppBranch,
     hasResourceScope,
   });
-  const shouldShowRawDialog = !isMcpAppLoading;
+  const shouldShowInspection = !isMcpAppLoading;
   const budgetedDisplayContent = useMemo(
     () => budgetMcpContentBlocks(displayContent),
     [displayContent],
@@ -451,6 +456,45 @@ function McpResultBody({
     [mcpServerStatuses, payload.invocation, successResult, threadId],
   );
 
+  const inspectionActions = shouldShowInspection ? (
+    <>
+      {resource && onOpenMcpAppSidePanel ? (
+        <ThreadActionIconButton
+          label="Open MCP app in side panel"
+          tooltip="Open app in side panel"
+          onClick={() => {
+            void onOpenMcpAppSidePanel(buildMcpAppSidePanelInput({ threadId, payload, resource }));
+          }}
+        >
+          <PanelRightVisibleIcon className="icon-xs electron:icon-sm" />
+        </ThreadActionIconButton>
+      ) : null}
+      <ToolCallRawDialog
+        open={rawDialogOpen}
+        onOpenChange={onRawDialogOpenChange}
+        title={`Raw ${payload.invocation.server}.${payload.invocation.tool} tool call output`}
+        getRawValue={() => ({
+          callId: payload.callId,
+          invocation: payload.invocation,
+          durationMs: payload.durationMs,
+          result: payload.result,
+        })}
+        triggerLabel="Show raw tool call output"
+      />
+    </>
+  ) : null;
+  // Inspection joins the first text or JSON panel's toolbar; app widgets, errors and empty
+  // results keep a visible action row instead.
+  const textActionsIndex = hasMcpAppBranch
+    ? -1
+    : budgetedDisplayContent.blocks.findIndex(({ block }) => block.type === "text");
+  const structuredHostsActions =
+    !hasMcpAppBranch &&
+    textActionsIndex < 0 &&
+    shouldShowStructuredContent &&
+    displayStructuredContentJson !== null;
+  const actionsInPanel = textActionsIndex >= 0 || structuredHostsActions;
+
   const appBody = isMcpAppLoading ? (
     <McpAppLoadingPlaceholder resource={resource} />
   ) : mcpAppError ? (
@@ -471,7 +515,11 @@ function McpResultBody({
       {!hasMcpAppBranch && displayContent.length > 0 ? (
         <div className="[&_*]:text-token-foreground/50 flex flex-col gap-0.5">
           {budgetedDisplayContent.blocks.map((entry, index) => (
-            <McpContentBlock key={index} {...entry} />
+            <McpContentBlock
+              key={index}
+              actions={index === textActionsIndex ? inspectionActions : null}
+              {...entry}
+            />
           ))}
           {budgetedDisplayContent.omittedCharacters > 0 ? (
             <div className="px-2 py-1 text-xs text-token-description-foreground">
@@ -488,46 +536,15 @@ function McpResultBody({
       {shouldShowStructuredContent && displayStructuredContentJson ? (
         <ToolCallCodePanel
           title="json"
+          actions={structuredHostsActions ? inspectionActions : null}
           preview={buildTextPreview(displayStructuredContentJson, INLINE_TEXT_PREVIEW_MAX_CHARS)}
           getCopyText={() => displayStructuredContentJson}
           getFullText={() => displayStructuredContentJson}
           preClassName="font-code text-size-chat text-token-description-foreground/80"
         />
       ) : null}
-      {shouldShowRawDialog ? (
-        <div className="inline-flex w-fit items-center gap-1">
-          {resource && onOpenMcpAppSidePanel ? (
-            <NodexTooltip tooltipContent="Open app in side panel" side="top" delay={0}>
-              <button
-                type="button"
-                className={cn(
-                  "border-token-border user-select-none no-drag cursor-interaction flex items-center gap-1 border focus:outline-none disabled:cursor-not-allowed disabled:opacity-40 rounded-full electron:rounded-md text-token-description-foreground enabled:hover:bg-token-list-hover-background data-[state=open]:bg-token-list-hover-background border-transparent electron:p-1 justify-center p-0.5 opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100 focus-visible:opacity-100",
-                  electronToolIconSizeClassName,
-                )}
-                aria-label="Open MCP app in side panel"
-                onClick={() => {
-                  void onOpenMcpAppSidePanel(
-                    buildMcpAppSidePanelInput({ threadId, payload, resource }),
-                  );
-                }}
-              >
-                <PanelRightVisibleIcon />
-              </button>
-            </NodexTooltip>
-          ) : null}
-          <ToolCallRawDialog
-            open={rawDialogOpen}
-            onOpenChange={onRawDialogOpenChange}
-            title={`Raw ${payload.invocation.server}.${payload.invocation.tool} tool call output`}
-            getRawValue={() => ({
-              callId: payload.callId,
-              invocation: payload.invocation,
-              durationMs: payload.durationMs,
-              result: payload.result,
-            })}
-            triggerLabel="Show raw tool call output"
-          />
-        </div>
+      {inspectionActions && !actionsInPanel ? (
+        <div className="mt-1 flex w-fit items-center gap-1">{inspectionActions}</div>
       ) : null}
     </>
   );
