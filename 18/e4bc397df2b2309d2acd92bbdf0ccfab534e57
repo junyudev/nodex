@@ -1,0 +1,27 @@
+src/renderer/features/local-conversation/view/shared/tools/tool-call-inspection.tsx
+  s_1292af2a37ec10::t_53483b36dd7014 119,128-129,137,140-141
+docs/product-specs/codex-thread-transcript-behavior.md
+  s_1292af2a37ec10::t_095c3bc952b842 517,688
+src/renderer/features/local-conversation/view/shared/tools/tool-call-inspection.browser.test.tsx
+  s_1292af2a37ec10::t_8d2166f92cb175 127-129,139-141
+  s_1292af2a37ec10::t_aeaa8d1c565434 1,3,6-9,16-17,102-126,130-138,142-165
+  s_1292af2a37ec10::t_fb13f7798af189 166-167
+src/renderer/features/local-conversation/view/shared/tools/mcp-tool-call.tsx
+  s_1292af2a37ec10::t_b7cf0b7baa2b41 2,22,235-240,246,429,459-497,518-522,539,546-547
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "18e4bc397df2b2309d2acd92bbdf0ccfab534e57",
+  "prompts": {},
+  "sessions": {
+    "s_1292af2a37ec10": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "08d8f948-822f-4c53-adcc-632905c40873",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
