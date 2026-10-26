@@ -45,9 +45,9 @@ stable: newest installation first, with administrator-disabled rows last.
 
 Renderer image URLs are authorized app assets or HTTPS catalog URLs. Raw local logo paths
 are not image URLs. Detail includes skills, apps, hook summaries, MCP server names and the
-plugin's published information fields. MCP names are not executable declarations. Optional
-app connection projections are reserved in the view models; absent connection data makes
-no claim about connector authentication.
+plugin's published information fields. MCP names are not executable declarations. Detail app connection projections distinguish connected, authentication required, unavailable,
+administrator-disabled and unknown states. A failed connector read makes no claim about authentication.
+Scheduled-task templates retain the native protocol shape.
 
 Each Profile's Browser, Chrome and Computer Use plugins are managed desktop tools. Local
 inventory omits foreign desktop copies, retains unrelated same-name plugins, and presents
@@ -94,7 +94,20 @@ humanized name, display name, and punctuation-free variants. Plugin-owned skills
 contribute installed match keys. Local contents must match current skill inventory or a visible plugin's current detail,
 including disabled and uninstalled local plugins; remote
 plugin contents use the named native skill-read operation. No arbitrary file-read or skill
-deletion operation is exposed.
+deletion operation is exposed without inventory authorization.
+
+Recommended standalone skills come from the curated and experimental directories in
+`openai/skills`, checked out sparsely under the native home's `vendor_imports/skills`.
+The catalog refreshes after ten minutes; each Git command has a thirty-second timeout.
+A bundled repository is used when present and no checkout exists. Failed refreshes retain
+the cached catalog and expose a separate error. User installations go into `<codexHome>/skills/<id>`;
+Project installations go into the selected active source's `.agents/skills/<id>`.
+Installation copies supporting files through a staging directory and refuses to overwrite an
+existing skill. Standalone uninstall requires a current user or Project skill, no plugin owner,
+and an immediate child of an authorized installation directory. Symbolic-link escapes and
+managed directories are protected. Local contents include the original SKILL.md and the
+contained file list; remote skill reads expose only SKILL.md because the native protocol
+has no remote included-files operation.
 
 ## Mutations and refresh
 
@@ -141,3 +154,38 @@ mutations also invalidate composer plugin/skill and MCP observations.
 
 Connector account flows, recommendations, sharing, archive uploads, teams, workspace
 management and other Agent Backend exports are separate capabilities outside this contract.
+
+## Settings inventory
+
+Marketplace inventory joins native catalogs with effective layered configuration, including
+configured sources that failed to load. Rows retain name/path identity, display name, local
+or Git source, source string/ref, built-in and user ownership, plugin count, and load errors.
+Built-in catalogs cannot be removed. Only configured Git sources can be upgraded; upgrading
+all targets each eligible configured source individually. Removal previews retain display
+rows and matching marketplace errors, and retries preserve previously completed removals.
+
+Apps use the committed `app/installed` runtime snapshot and `app/read` metadata in batches
+of at most one hundred IDs. Only an unsupported-method response falls back to paginated
+`app/list`. Effective enabled and callable state remain separate from connection state.
+ChatGPT-authenticated reads join accessible account links with connector metadata. An active,
+visible, usable link wins over a blocked link for the same connector. Implicit and hidden
+links do not establish an account connection. Disconnect targets either every account for
+an app or a verified individual link, under the captured account identity.
+
+Connector connection initiation is unavailable until a backend-approved Nodex redirect and
+correlated native callback receiver are verified. The known desktop contract returns a
+Codex-specific `://connector/oauth_callback` URL and posts the full redirect to the connector
+callback endpoint. Nodex does not claim to own that callback, create pending OAuth installs,
+or uninstall plugins for a connection it did not start.
+
+MCP inventory joins paginated native status with configured declarations. Plugin-provided
+servers and declarations owned by another configuration layer are read-only. Adds, edits,
+renames, removal and enablement use the observed writable user-layer version through the
+native config writer. Unrelated declarations and unknown native config fields are retained.
+MCP OAuth returns a validated HTTP(S) authorization URL for the UI's browser action;
+native completion notifications refresh MCP observations. This flow is independent of
+ChatGPT connector authentication.
+
+Plugin hook inventory filters native hook metadata by the exact owning plugin ID and counts
+untrusted or modified hooks as needing review. Rootless contexts have no root-scoped hook
+inventory. Hook summaries and scheduled tasks remain available directly on native detail.

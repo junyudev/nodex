@@ -181,16 +181,18 @@ export function useSkills(context: PluginContext): UseQueryResult<SkillsView> {
 export function useSkillContents(
   context: PluginContext,
   selector: SkillContentsSelector,
-): UseQueryResult<{ readonly contents: string | null }> {
+): UseQueryResult<import("../../../shared/codex-plugin-settings").SkillContentsView> {
   return useQuery(pluginQueryOptions(useScope(context), context, "skill-contents", selector));
 }
 export function useMarketplaceRemovalPreview(
   context: PluginContext,
   marketplaceName: string,
+  marketplacePath?: string | null,
 ): UseQueryResult<MarketplaceRemovalPreview> {
   return useQuery(
     pluginQueryOptions(useScope(context), context, "marketplace-removal-preview", {
       marketplaceName,
+      ...(marketplacePath === undefined ? {} : { marketplacePath }),
     }),
   );
 }

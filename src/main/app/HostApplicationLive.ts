@@ -1,3 +1,4 @@
+import { live as standaloneSkillsLive } from "../platform/node/StandaloneSkillsNode";
 import { PluginService, live as pluginServiceLive } from "../codex-application/PluginService";
 import { PluginManager, live as pluginManagerLive } from "../codex-application/PluginManager";
 import { PluginNativeOperations } from "../codex-application/PluginNativeOperations";
@@ -127,7 +128,15 @@ const plugins = Layer.unwrap(
       homeDirectory: config.homeDirectory,
       runtimeStateHome: codex.runtimeStateHome,
       codexHome: codex.codexHome,
-    });
+    }).pipe(
+      Layer.provide(
+        standaloneSkillsLive({
+          codexHome: codex.codexHome,
+          environment: config.environment,
+          bundledRepoRoot: `${config.resourcesPath}/skills`,
+        }),
+      ),
+    );
   }),
 ).pipe(Layer.provideMerge(pluginServiceLive.pipe(Layer.provideMerge(chatGpt))));
 const browserSiteStatus = browserSiteStatusRuntimeLive.pipe(Layer.provideMerge(chatGpt));

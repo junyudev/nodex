@@ -20,6 +20,7 @@ export interface ConfiguredMarketplace extends PluginMarketplaceIdentity {
   readonly source: string | null;
   readonly refName: string | null;
   readonly configured: boolean;
+  readonly userConfigured: boolean;
   readonly builtIn: boolean;
   readonly canUpgrade: boolean;
   readonly canRemove: boolean;

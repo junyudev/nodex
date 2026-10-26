@@ -160,6 +160,7 @@ export interface PersonalPlugins {
 }
 export interface PluginDetailView {
   readonly appConnectionStates?: Readonly<Record<string, PluginAppConnectionState>>;
+  readonly scheduledTasks?: PluginDetail["scheduledTasks"];
   readonly detail: PluginDetail;
   readonly row: PluginRow;
   readonly summary: PluginSummary;
@@ -203,6 +204,8 @@ export type SkillEnabledSelector = (
 ) & { readonly enabled: boolean };
 export interface MarketplaceRemovalPreview {
   readonly marketplaceName: string;
+  readonly marketplacePath?: string | null;
+  readonly plugins?: readonly PluginRow[];
   readonly pluginIds: readonly string[];
   readonly protected: boolean;
 }
@@ -216,7 +219,8 @@ export interface MarketplaceRemovalProgress extends MarketplaceRemovalPreview {
 export interface PluginManagementChanged {
   readonly hostId: string;
   readonly accountEpoch: number;
-  readonly kind: "plugins" | "skills" | "apps" | "account" | "connection";
+  readonly kind: "plugins" | "skills" | "apps" | "mcp" | "account" | "connection";
+  readonly mcpOauthCompletion?: import("@nodex/codex-app-server-protocol/v2/McpServerOauthLoginCompletedNotification").McpServerOauthLoginCompletedNotification;
   readonly progress?: MarketplaceRemovalProgress;
 }
 export interface PluginQueries extends PluginSettingsQueries {
@@ -239,7 +243,7 @@ export interface PluginQueries extends PluginSettingsQueries {
   skills: { input: PluginContext & { readonly forceReload?: boolean }; output: SkillsListResponse };
   "skill-contents": {
     input: PluginContext & SkillContentsSelector;
-    output: { readonly contents: string | null };
+    output: import("./codex-plugin-settings").SkillContentsView;
   };
   hooks: { input: PluginContext; output: HooksListResponse };
   "public-home": { input: PluginContext; output: PublicPluginSections };
@@ -260,7 +264,10 @@ export interface PluginQueries extends PluginSettingsQueries {
     output: PersonalPluginPage;
   };
   "marketplace-removal-preview": {
-    input: PluginContext & { readonly marketplaceName: string };
+    input: PluginContext & {
+      readonly marketplaceName: string;
+      readonly marketplacePath?: string | null;
+    };
     output: MarketplaceRemovalPreview;
   };
 }
@@ -280,7 +287,11 @@ export interface PluginCommands extends PluginSettingsCommands {
     output: PluginMutationResult<MarketplaceAddResponse>;
   };
   "marketplace-remove": {
-    input: PluginContext & { readonly marketplaceName: string; readonly operationId?: string };
+    input: PluginContext & {
+      readonly marketplaceName: string;
+      readonly marketplacePath?: string | null;
+      readonly operationId?: string;
+    };
     output: MarketplaceRemovalProgress;
   };
   "marketplace-upgrade": {

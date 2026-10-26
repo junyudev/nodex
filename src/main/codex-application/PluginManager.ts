@@ -1,3 +1,15 @@
+import * as Result from "effect/Result";
+import { StandaloneSkills } from "./StandaloneSkills";
+import { pluginNativeFailure as nativeFailure } from "./PluginNativeErrors";
+import { makePluginApps } from "./PluginApps";
+import {
+  configuredTable,
+  projectMarketplaces,
+  projectMcpServers,
+  writablePluginConfigLayer,
+} from "./PluginSettingsModel";
+import type { McpServerStatus } from "@nodex/codex-app-server-protocol/v2/McpServerStatus";
+import type { ConfigEdit } from "@nodex/codex-app-server-protocol/v2/ConfigEdit";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -5,7 +17,6 @@ import * as Ref from "effect/Ref";
 import * as PubSub from "effect/PubSub";
 import * as Stream from "effect/Stream";
 import * as Semaphore from "effect/Semaphore";
-import * as FileSystem from "effect/FileSystem";
 import type {
   ClientRequestMethod,
   ClientRequestParamsByMethod,
@@ -66,18 +77,6 @@ export class PluginManager extends Context.Service<
     readonly changes: Stream.Stream<PluginManagementChanged>;
   }
 >()("nodex/main/codex-application/PluginManager") {}
-const nativeFailure = (cause: { reason?: string; message?: string; cause?: unknown }) => {
-  if (
-    cause.reason === "outcome-unknown" ||
-    cause.reason === "timeout" ||
-    cause.reason === "session-lost"
-  )
-    return pluginError(
-      "mutation_outcome_unknown",
-      "The plugin operation could not be confirmed. Refresh before trying again.",
-    );
-  return pluginError("service_unavailable", "The plugin operation could not be completed.", true);
-};
 const failed = (error: PluginManagementError): PluginMutationResult<never> => ({
   status:
     error.code === "protected"
@@ -115,7 +114,8 @@ export const live = (options: {
       const native = yield* PluginNativeOperations;
       const service = yield* PluginService;
       const desktop = yield* ChatGptDesktop;
-      const fs = yield* FileSystem.FileSystem;
+      const apps = yield* makePluginApps;
+      const standaloneSkills = yield* StandaloneSkills;
       const policy = createPluginInventoryPolicy(options.runtimeStateHome);
       const epoch = yield* Ref.make(0);
       const events = yield* PubSub.unbounded<PluginManagementChanged>();
@@ -155,8 +155,16 @@ export const live = (options: {
             const method: string = event.value.method;
             if (method === "skills/changed" || method === "codex/event/skills_update_available")
               yield* emit("skills");
-            else if (method === "app/list/updated" || method === "mcpServer/oauthLogin/completed")
-              yield* emit("apps");
+            else if (method === "app/list/updated") yield* emit("apps");
+            else if (event.value.method === "mcpServer/oauthLogin/completed")
+              yield* PubSub.publish(events, {
+                hostId: event.hostId,
+                accountEpoch: yield* Ref.get(epoch),
+                kind: "mcp",
+                mcpOauthCompletion: event.value
+                  .params as unknown as import("@nodex/codex-app-server-protocol/v2/McpServerOauthLoginCompletedNotification").McpServerOauthLoginCompletedNotification,
+              });
+            else if (method === "mcpServer/startupStatus/updated") yield* emit("mcp");
             else if (method.startsWith("plugin/") || method.startsWith("marketplace/"))
               yield* emit("plugins");
           }),
@@ -515,23 +523,149 @@ export const live = (options: {
               : cursor,
         };
       });
+      const configRead = (context: ResolvedPluginContext) =>
+        request(context, "config/read", { includeLayers: true, cwd: context.cwds[0] ?? null }).pipe(
+          Effect.map((response) => response as unknown as ConfigReadResponse),
+        );
+      const writeConfig = Effect.fn("PluginManager.writeConfig")(function* (
+        context: ResolvedPluginContext,
+        config: ConfigReadResponse,
+        edits: ConfigEdit[],
+      ) {
+        const user = writablePluginConfigLayer(config);
+        if (!user || user.name.type !== "user")
+          return yield* pluginError(
+            "inventory_unavailable",
+            "Versioned user configuration is unavailable.",
+          );
+        yield* assertCurrent(context);
+        const written = yield* request(context, "config/batchWrite", {
+          edits: edits as unknown as ClientRequestParamsByMethod["config/batchWrite"]["edits"],
+          filePath: user.name.file,
+          expectedVersion: user.version,
+          reloadUserConfig: true,
+        }).pipe(
+          Effect.mapError((error) =>
+            error.code === "mutation_outcome_unknown"
+              ? error
+              : pluginError("config_conflict", "Settings changed. Refresh before trying again."),
+          ),
+        );
+        if (written.status === "okOverridden")
+          return yield* pluginError("policy_denied", "These settings are controlled by policy.");
+      });
+      const mcpStatuses = Effect.fn("PluginManager.mcpStatuses")(function* (
+        context: ResolvedPluginContext,
+      ) {
+        const statuses: McpServerStatus[] = [];
+        const seen = new Set<string>();
+        let cursor: string | null = null;
+        do {
+          const page: import("@nodex/codex-app-server-protocol/v2/ListMcpServerStatusResponse").ListMcpServerStatusResponse =
+            (yield* request(context, "mcpServerStatus/list", {
+              cursor,
+              limit: 100,
+              detail: "full",
+            })) as unknown as import("@nodex/codex-app-server-protocol/v2/ListMcpServerStatusResponse").ListMcpServerStatusResponse;
+          statuses.push(...(page.data as unknown as McpServerStatus[]));
+          cursor = page.nextCursor;
+          if (cursor !== null && seen.has(cursor))
+            return yield* pluginError(
+              "inventory_unavailable",
+              "MCP inventory pagination did not advance.",
+            );
+          if (cursor !== null) seen.add(cursor);
+        } while (cursor !== null);
+        return statuses;
+      });
+      const marketplaces = Effect.fn("PluginManager.marketplaces")(function* (
+        context: ResolvedPluginContext,
+      ) {
+        const [catalog, config] = yield* Effect.all([directoryRaw(context), configRead(context)]);
+        return projectMarketplaces(catalog, config, policy.marketplaceName);
+      });
+      const updateMcp = Effect.fn("PluginManager.updateMcp")(function* (
+        context: ResolvedPluginContext,
+        input: PluginCommands["mcp-save" | "mcp-remove" | "mcp-enabled"]["input"],
+        action: "save" | "remove" | "enabled",
+      ) {
+        const [config, statuses] = yield* Effect.all([configRead(context), mcpStatuses(context)]);
+        const servers = projectMcpServers(config, statuses).servers;
+        const previousName =
+          "previousName" in input ? (input.previousName ?? input.name) : input.name;
+        const previous = servers.find((server) => server.name === previousName);
+        const target = servers.find((server) => server.name === input.name);
+        if (previous?.readOnly || target?.readOnly)
+          return yield* pluginError(
+            "protected",
+            "This MCP server is managed by a plugin or another configuration layer.",
+          );
+        if (action !== "save" && !previous)
+          return yield* pluginError("not_found", "The MCP server was not found.");
+        if (previousName !== input.name && target)
+          return yield* pluginError("invalid_input", "An MCP server already uses this name.");
+        if (
+          !input.name.trim() ||
+          input.name !== input.name.trim() ||
+          ["__proto__", "constructor", "prototype"].includes(input.name)
+        )
+          return yield* pluginError("invalid_input", "Enter a valid MCP server name.");
+        const entries = {
+          ...configuredTable(
+            configuredTable(writablePluginConfigLayer(config)?.config).mcp_servers,
+          ),
+        } as Record<string, ConfigEdit["value"]>;
+        if (action === "remove") delete entries[input.name];
+        if (action === "enabled" && "enabled" in input)
+          entries[input.name] = { ...previous?.declaration, enabled: input.enabled };
+        if (action === "save" && "declaration" in input) {
+          const declaration = input.declaration;
+          const stdio = typeof declaration.command === "string" && !!declaration.command.trim();
+          const http = typeof declaration.url === "string" && /^https?:\/\//u.test(declaration.url);
+          if (stdio === http)
+            return yield* pluginError(
+              "invalid_input",
+              "Configure either a command or an HTTP URL.",
+            );
+          delete entries[previousName];
+          entries[input.name] = { ...declaration };
+        }
+        yield* writeConfig(context, config, [
+          { keyPath: "mcp_servers", value: entries, mergeStrategy: "replace" },
+        ]);
+        return yield* applied(context, undefined);
+      });
       const queryHandlers: {
         [K in keyof PluginQueries]: (
           context: ResolvedPluginContext,
           input: PluginQueries[K]["input"],
         ) => Effect.Effect<PluginQueries[K]["output"], PluginManagementError>;
       } = {
-        marketplaces: () =>
-          Effect.fail(pluginError("unsupported", "Marketplace settings are unavailable.")),
-        apps: () => Effect.fail(pluginError("unsupported", "App settings are unavailable.")),
-        "mcp-servers": () =>
-          Effect.fail(pluginError("unsupported", "MCP settings are unavailable.")),
-        "recommended-skills": () =>
-          Effect.fail(pluginError("unsupported", "Recommended skills are unavailable.")),
+        marketplaces,
+        apps: (context, input) => withOperationLease(apps.list(context, input)),
+        "mcp-servers": Effect.fn("PluginManager.mcpServers")(function* (context) {
+          const [config, statuses] = yield* Effect.all([configRead(context), mcpStatuses(context)]);
+          return projectMcpServers(config, statuses);
+        }),
+        "recommended-skills": (_context, input) => standaloneSkills.list(input.refresh ?? false),
         "creation-capabilities": () =>
           Effect.fail(pluginError("unsupported", "Plugin creation is unavailable.")),
-        "plugin-hooks": () =>
-          Effect.fail(pluginError("unsupported", "Plugin hooks are unavailable.")),
+        "plugin-hooks": Effect.fn("PluginManager.pluginHooks")(function* (context, input) {
+          const detail = yield* queryHandlers.read(context, input);
+          if (!context.cwds.length) return { hooks: [], needsReviewCount: 0 };
+          const response = yield* request(context, "hooks/list", { cwds: [...context.cwds] });
+          const hooks = (
+            response as unknown as import("@nodex/codex-app-server-protocol/v2/HooksListResponse").HooksListResponse
+          ).data
+            .flatMap((entry) => entry.hooks)
+            .filter((hook) => hook.pluginId === detail.summary.id);
+          return {
+            hooks,
+            needsReviewCount: hooks.filter(
+              (hook) => hook.trustStatus === "untrusted" || hook.trustStatus === "modified",
+            ).length,
+          };
+        }),
         context: (context) => Effect.succeed(context),
         capabilities: Effect.fn("PluginManager.capabilities")(function* (context) {
           const status = yield* desktop
@@ -591,9 +725,20 @@ export const live = (options: {
             marketplaceLoadErrors: [],
           })[0]!;
           const ui = row.summary.interface;
+          const appView = detail.apps.length
+            ? yield* withOperationLease(
+                apps.list(context, { ...context, appIds: detail.apps.map((app) => app.id) }),
+              )
+            : null;
+          const appConnectionStates = Object.fromEntries(
+            appView?.apps.map((app) => [app.id, app.connectionState]) ?? [],
+          );
           return {
+            appConnectionStates,
+            scheduledTasks: detail.scheduledTasks,
+
             detail: { ...detail, summary: row.summary },
-            row,
+            row: { ...row, appConnectionStates },
             summary: row.summary,
             description: detail.description,
             skills: detail.skills,
@@ -670,18 +815,17 @@ export const live = (options: {
               remoteMarketplaceName: input.remoteMarketplaceName,
               remotePluginId: input.remotePluginId,
               skillName: input.skillName,
-            }).pipe(Effect.map((response) => ({ contents: response.contents ?? null })));
+            }).pipe(
+              Effect.map((response) => ({
+                contents: response.contents ?? null,
+                files: ["SKILL.md"],
+              })),
+            );
           const response = yield* queryHandlers.skills(context, context);
           const skill = response.data
             .flatMap((entry) => entry.skills)
             .find((item) => item.path === input.path);
-          const contents = (path: string) =>
-            fs.readFileString(path).pipe(
-              Effect.map((contents) => ({ contents })),
-              Effect.mapError(() =>
-                pluginError("not_found", "The skill contents are unavailable."),
-              ),
-            );
+          const contents = standaloneSkills.contents;
           if (skill) return yield* contents(skill.path);
           // Inactive plugins do not contribute to skills/list. Current native details
           // authorize their exact skill files without admitting arbitrary filesystem reads.
@@ -783,19 +927,38 @@ export const live = (options: {
         "marketplace-removal-preview": Effect.fn("PluginManager.removalPreview")(
           function* (context, input) {
             const raw = yield* installedRaw(context);
-            if (raw.marketplaceLoadErrors.length)
+            if (
+              raw.marketplaceLoadErrors.some(
+                (error) =>
+                  input.marketplacePath === undefined ||
+                  error.marketplacePath === input.marketplacePath,
+              )
+            )
               return yield* pluginError(
                 "inventory_unavailable",
                 "Plugin inventory is incomplete. Refresh before changing plugins.",
               );
+            if (protectedMarketplace(raw, input.marketplaceName))
+              return yield* pluginError("protected", "This marketplace is managed by Nodex.");
+            const catalog = yield* marketplaces(context);
+            const marketplace = catalog.marketplaces.find(
+              (item) =>
+                item.name === input.marketplaceName &&
+                (input.marketplacePath === undefined || item.path === input.marketplacePath),
+            );
+            if (!marketplace)
+              return yield* pluginError("not_found", "The marketplace was not found.");
             const inventory = rows(raw);
             const selected = inventory.filter(
               (row) => row.marketplace.name === input.marketplaceName && row.summary.installed,
             );
             return {
               marketplaceName: input.marketplaceName,
+              marketplacePath: marketplace.path,
+              plugins: selected,
               pluginIds: selected.map((row) => row.nativeId),
               protected:
+                !marketplace.canRemove ||
                 protectedMarketplace(raw, input.marketplaceName) ||
                 selected.some((row) => !row.canUninstall),
             };
@@ -820,7 +983,22 @@ export const live = (options: {
             );
           if (previous.progress.removed) return previous.progress;
         }
-        const preview = yield* queryHandlers["marketplace-removal-preview"](context, input);
+        const previewResult = yield* queryHandlers["marketplace-removal-preview"](
+          context,
+          input,
+        ).pipe(Effect.result);
+        if (Result.isFailure(previewResult)) {
+          if (!previous) return yield* previewResult.failure;
+          const progress = {
+            ...previous.progress,
+            outcome: failed(previewResult.failure),
+            protected: previous.progress.protected || previewResult.failure.code === "protected",
+          };
+          removals.set(previous.progress.operationId, { context, progress });
+          yield* emit("plugins", progress);
+          return progress;
+        }
+        const preview = previewResult.success;
         const operationId =
           previous?.progress.operationId ??
           `marketplace:${context.hostGeneration}:${context.accountEpoch}:${++nextOperation}`;
@@ -942,19 +1120,67 @@ export const live = (options: {
           input: PluginCommands[K]["input"],
         ) => Effect.Effect<PluginCommands[K]["output"], PluginManagementError>;
       } = {
-        "app-disconnect": () =>
-          Effect.fail(pluginError("unsupported", "This operation is unavailable.")),
-        "mcp-save": () => Effect.fail(pluginError("unsupported", "This operation is unavailable.")),
-        "mcp-remove": () =>
-          Effect.fail(pluginError("unsupported", "This operation is unavailable.")),
-        "mcp-enabled": () =>
-          Effect.fail(pluginError("unsupported", "This operation is unavailable.")),
-        "mcp-login": () =>
-          Effect.fail(pluginError("unsupported", "This operation is unavailable.")),
-        "skill-install": () =>
-          Effect.fail(pluginError("unsupported", "This operation is unavailable.")),
-        "skill-uninstall": () =>
-          Effect.fail(pluginError("unsupported", "This operation is unavailable.")),
+        "app-disconnect": Effect.fn("PluginManager.disconnectApp")(function* (context, input) {
+          yield* assertCurrent(context);
+          yield* withOperationLease(apps.disconnect(context, input));
+          return yield* applied(context, undefined);
+        }),
+        "mcp-save": (context, input) => updateMcp(context, input, "save"),
+        "mcp-remove": (context, input) => updateMcp(context, input, "remove"),
+        "mcp-enabled": (context, input) => updateMcp(context, input, "enabled"),
+        "mcp-login": Effect.fn("PluginManager.loginMcp")(function* (context, input) {
+          const servers = yield* queryHandlers["mcp-servers"](context, context);
+          const server = servers.servers.find((server) => server.name === input.name);
+          if (!server || !server.enabled)
+            return yield* pluginError("not_found", "The enabled MCP server was not found.");
+          yield* assertCurrent(context);
+          const response = yield* request(context, "mcpServer/oauth/login", {
+            name: input.name,
+            clientRegistration: input.clientRegistration,
+            scopes: input.scopes,
+          });
+          const url = yield* Effect.try({
+            try: () => new URL(response.authorizationUrl),
+            catch: () =>
+              pluginError(
+                "service_unavailable",
+                "The MCP server returned an invalid authorization URL.",
+              ),
+          });
+          if (!["http:", "https:"].includes(url.protocol) || url.username || url.password)
+            return yield* pluginError(
+              "service_unavailable",
+              "The MCP server returned an invalid authorization URL.",
+            );
+          return {
+            status: "success" as const,
+            value: { authorizationUrl: url.href },
+            refreshFailures: [],
+          };
+        }),
+        "skill-install": Effect.fn("PluginManager.installSkill")(function* (context, input) {
+          const root = input.scope === "user" ? null : (input.cwd ?? context.cwds[0]);
+          if (input.scope === "project" && (!root || !context.cwds.includes(root)))
+            return yield* pluginError(
+              "project_unavailable",
+              "Select an active Project source for this skill.",
+            );
+          const value = yield* withOperationLease(
+            standaloneSkills.install(input.id, root ?? null, assertCurrent(context)),
+          );
+          return yield* applied(context, value);
+        }),
+        "skill-uninstall": Effect.fn("PluginManager.uninstallSkill")(function* (context, input) {
+          const response = yield* queryHandlers.skills(context, context);
+          const skill = response.data
+            .flatMap((entry) => entry.skills)
+            .find((skill) => skill.path === input.path);
+          if (!skill) return yield* pluginError("not_found", "The standalone skill was not found.");
+          yield* withOperationLease(
+            standaloneSkills.uninstall(skill, context.cwds, assertCurrent(context)),
+          );
+          return yield* applied(context, undefined);
+        }),
         "prepare-helper": () =>
           Effect.fail(pluginError("unsupported", "This operation is unavailable.")),
         install: Effect.fn("PluginManager.install")(function* (context, input) {
@@ -988,48 +1214,14 @@ export const live = (options: {
               return failed(pluginError("unsupported", "Remote plugin settings are unavailable."));
             yield* service.setEnabled(row.stableIdentity, input.enabled);
           } else {
-            const config = (yield* request(context, "config/read", {
-              includeLayers: true,
-              cwd: context.cwds[0] ?? null,
-            })) as unknown as ConfigReadResponse;
-            const userLayer = config.layers?.findLast(
-              (layer) =>
-                layer.name.type === "user" &&
-                layer.name.profile == null &&
-                layer.disabledReason == null,
-            );
-            if (!userLayer || userLayer.name.type !== "user")
-              return failed(
-                pluginError(
-                  "inventory_unavailable",
-                  "Versioned user configuration is unavailable.",
-                ),
-              );
-            const written = yield* request(context, "config/batchWrite", {
-              edits: [
-                {
-                  keyPath: `plugins.${row.nativeId}.enabled`,
-                  value: input.enabled,
-                  mergeStrategy: "replace",
-                },
-              ],
-              filePath: userLayer.name.file,
-              expectedVersion: userLayer.version,
-              reloadUserConfig: true,
-            }).pipe(
-              Effect.mapError((error) =>
-                error.code === "mutation_outcome_unknown"
-                  ? error
-                  : pluginError(
-                      "config_conflict",
-                      "Plugin settings changed. Refresh before trying again.",
-                    ),
-              ),
-            );
-            if (written.status === "okOverridden")
-              return failed(
-                pluginError("policy_denied", "Plugin enablement is controlled by policy."),
-              );
+            const config = yield* configRead(context);
+            yield* writeConfig(context, config, [
+              {
+                keyPath: `plugins.${JSON.stringify(row.nativeId)}.enabled`,
+                value: input.enabled,
+                mergeStrategy: "replace",
+              },
+            ]);
           }
           return yield* applied(context, undefined);
         }),
@@ -1093,11 +1285,34 @@ export const live = (options: {
         "marketplace-upgrade": Effect.fn("PluginManager.upgradeMarketplaces")(
           function* (context, input) {
             const directoryResponse = yield* directoryRaw(context);
-            if (protectedMarketplace(directoryResponse, input.marketplaceName))
-              return failed(pluginError("protected", "This marketplace is managed by Nodex."));
-            const result = (yield* request(context, "marketplace/upgrade", {
-              marketplaceName: input.marketplaceName ?? null,
-            })) as unknown as MarketplaceUpgradeResponse;
+            const configured = yield* marketplaces(context);
+            if (
+              input.marketplaceName != null &&
+              !configured.marketplaces.some((m) => m.name === input.marketplaceName && m.canUpgrade)
+            )
+              return failed(
+                pluginError("protected", "Only configured Git marketplaces can be upgraded."),
+              );
+            const selected = configured.marketplaces.filter(
+              (m) =>
+                m.canUpgrade && (input.marketplaceName == null || m.name === input.marketplaceName),
+            );
+            const result: MarketplaceUpgradeResponse = {
+              selectedMarketplaces: [],
+              upgradedRoots: [],
+              errors: [],
+            };
+            for (const name of new Set(selected.map((m) => m.name))) {
+              if (protectedMarketplace(directoryResponse, name))
+                return failed(pluginError("protected", "This marketplace is managed by Nodex."));
+              yield* assertCurrent(context);
+              const upgraded = yield* request(context, "marketplace/upgrade", {
+                marketplaceName: name,
+              });
+              result.selectedMarketplaces.push(...upgraded.selectedMarketplaces);
+              result.upgradedRoots.push(...upgraded.upgradedRoots);
+              result.errors.push(...upgraded.errors);
+            }
             if (result.errors.length) {
               if (result.upgradedRoots.length) {
                 yield* emit("plugins");

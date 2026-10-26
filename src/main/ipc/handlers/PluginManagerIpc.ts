@@ -110,6 +110,7 @@ export const pluginQuerySchemas = {
   "marketplace-removal-preview": Schema.Struct({
     ...context,
     marketplaceName: Schema.NonEmptyString,
+    marketplacePath: Schema.optionalKey(Schema.NullOr(Schema.NonEmptyString)),
   }),
 } as const;
 export const pluginCommandSchemas = {
@@ -180,6 +181,7 @@ export const pluginCommandSchemas = {
   "marketplace-remove": Schema.Struct({
     ...context,
     marketplaceName: Schema.NonEmptyString,
+    marketplacePath: Schema.optionalKey(Schema.NullOr(Schema.NonEmptyString)),
     operationId: Schema.optionalKey(Schema.NonEmptyString),
   }),
   "marketplace-upgrade": Schema.Struct({

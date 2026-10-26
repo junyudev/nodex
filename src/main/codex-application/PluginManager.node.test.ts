@@ -1,3 +1,4 @@
+import { StandaloneSkills } from "./StandaloneSkills";
 import { assert, it } from "@effect/vitest";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
@@ -37,6 +38,10 @@ const make = (
     directoryErrors?: boolean;
     upgradePartial?: boolean;
     abortInstall?: boolean;
+    config?: unknown;
+    mcpStatuses?: unknown[];
+    configWriteOk?: boolean;
+    oauthUrl?: string;
   } = {},
 ) => {
   const calls: { method: string; params: Record<string, unknown> }[] = [];
@@ -172,17 +177,38 @@ const make = (
           nextCursor: "opaque-next",
         });
       if (method === "plugin/skill/read") return Effect.succeed({ contents: "remote skill" });
-      if (method === "config/read")
+      if (method === "mcpServerStatus/list")
+        return Effect.succeed({ data: options.mcpStatuses ?? [], nextCursor: null });
+      if (method === "mcpServer/oauth/login")
         return Effect.succeed({
-          config: {},
-          origins: {},
-          layers: [
-            {
-              name: { type: "user", file: "/config.toml" },
-              version: "v42",
-              config: {},
+          authorizationUrl: options.oauthUrl ?? "https://example.com/oauth",
+        });
+      if (method === "config/read")
+        return Effect.succeed(
+          options.config ?? {
+            config: {
+              marketplaces: { custom: { source_type: "git", source: "https://example.com/repo" } },
             },
-          ],
+            origins: {},
+            layers: [
+              {
+                name: { type: "user", file: "/config.toml" },
+                version: "v42",
+                config: {
+                  marketplaces: {
+                    custom: { source_type: "git", source: "https://example.com/repo" },
+                  },
+                },
+              },
+            ],
+          },
+        );
+      if (method === "config/batchWrite" && options.configWriteOk)
+        return Effect.succeed({
+          status: "ok",
+          version: "next",
+          filePath: "/config.toml",
+          overriddenMetadata: null,
         });
       if (method === "config/batchWrite" && options.configOverridden)
         return Effect.succeed({
@@ -251,6 +277,12 @@ const make = (
       setEnabled: unavailable,
     });
   const services = Layer.mergeAll(
+    Layer.succeed(StandaloneSkills, {
+      list: unavailable,
+      install: unavailable,
+      uninstall: unavailable,
+      contents: () => Effect.succeed({ contents: "contents", files: ["SKILL.md"] }),
+    }),
     Layer.succeed(CodexGateway, gateway),
     Layer.succeed(CodexAppServerCapabilities, capabilities),
     Layer.succeed(PluginService, service),
@@ -922,3 +954,137 @@ it.effect(
     );
   },
 );
+
+const settingsConfig = (mcp: Record<string, unknown> = {}) => ({
+  config: {
+    mcp_servers: mcp,
+    marketplaces: {
+      custom: { source_type: "git", source: "https://example.com/plugins", ref: "stable" },
+      "openai-bundled": { source_type: "local", source: "/bundled" },
+    },
+  },
+  origins: {},
+  layers: [
+    {
+      name: { type: "user", file: "/config.toml" },
+      version: "observed",
+      config: {
+        mcp_servers: mcp,
+        marketplaces: {
+          custom: { source_type: "git", source: "https://example.com/plugins" },
+          "openai-bundled": { source_type: "local", source: "/bundled" },
+        },
+      },
+    },
+  ],
+});
+it.effect("derives configured marketplace sources and protects built-in catalogs", () => {
+  const h = make({ config: settingsConfig() });
+  return Effect.gen(function* () {
+    const manager = yield* PluginManager;
+    const view = yield* manager.query("marketplaces", context);
+    assert.deepEqual(
+      view.marketplaces.map((m) => [
+        m.name,
+        m.sourceType,
+        m.canRemove,
+        m.canUpgrade,
+        m.pluginCount,
+      ]),
+      [
+        ["custom", "git", true, true, 2],
+        ["openai-bundled", "local", false, false, 0],
+      ],
+    );
+    assert.strictEqual(view.marketplaces[0]?.refName, "stable");
+    const removal = yield* manager.query("marketplace-removal-preview", {
+      ...context,
+      marketplaceName: "custom",
+      marketplacePath: "/marketplace.json",
+    });
+    assert.deepEqual(
+      removal.plugins?.map((plugin) => plugin.nativeId),
+      ["a@custom", "b@custom"],
+    );
+    assert.strictEqual(
+      (yield* manager.command("marketplace-remove", {
+        ...context,
+        marketplaceName: "openai-bundled",
+      })).outcome.status,
+      "protected",
+    );
+  }).pipe(Effect.provide(h.layer));
+});
+it.effect(
+  "writes MCP edits against the observed user config version and retains unrelated servers",
+  () => {
+    const h = make({
+      config: settingsConfig({
+        existing: { command: "node", args: ["server.js"] },
+        unrelated: { url: "https://other.test/mcp" },
+      }),
+      configWriteOk: true,
+    });
+    return Effect.gen(function* () {
+      const manager = yield* PluginManager;
+      const result = yield* manager.command("mcp-save", {
+        ...context,
+        previousName: "existing",
+        name: "renamed.with.dot",
+        declaration: { command: "python", args: ["server.py"], env: { TOKEN_ENV: "from-config" } },
+      });
+      assert.strictEqual(result.status, "success");
+      const write = h.calls.find((call) => call.method === "config/batchWrite");
+      assert.strictEqual(write?.params.expectedVersion, "observed");
+      assert.deepEqual(write?.params.edits, [
+        {
+          keyPath: "mcp_servers",
+          mergeStrategy: "replace",
+          value: {
+            unrelated: { url: "https://other.test/mcp" },
+            "renamed.with.dot": {
+              command: "python",
+              args: ["server.py"],
+              env: { TOKEN_ENV: "from-config" },
+            },
+          },
+        },
+      ]);
+      assert.strictEqual(
+        (yield* manager.command("mcp-enabled", { ...context, name: "unrelated", enabled: false }))
+          .status,
+        "success",
+      );
+    }).pipe(Effect.provide(h.layer));
+  },
+);
+it.effect("keeps plugin MCP declarations read-only and validates OAuth authorization URLs", () => {
+  const h = make({
+    config: settingsConfig(),
+    mcpStatuses: [{ name: "plugin-server", pluginId: "a@custom", authStatus: "notLoggedIn" }],
+    oauthUrl: "javascript:bad",
+  });
+  return Effect.gen(function* () {
+    const manager = yield* PluginManager;
+    const view = yield* manager.query("mcp-servers", context);
+    assert.strictEqual(view.servers[0]?.readOnly, true);
+    assert.strictEqual(
+      (yield* manager.command("mcp-remove", { ...context, name: "plugin-server" })).status,
+      "protected",
+    );
+    const login = yield* manager.command("mcp-login", {
+      ...context,
+      name: "plugin-server",
+      clientRegistration: "dcr",
+    });
+    assert.strictEqual(login.status, "failed");
+    assert.strictEqual(
+      h.calls.find((call) => call.method === "mcpServer/oauth/login")?.params.clientRegistration,
+      "dcr",
+    );
+    assert.strictEqual(
+      h.calls.some((call) => call.method === "config/batchWrite"),
+      false,
+    );
+  }).pipe(Effect.provide(h.layer));
+});
