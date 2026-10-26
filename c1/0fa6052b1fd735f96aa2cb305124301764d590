@@ -17,6 +17,7 @@ src/renderer/features/local-conversation/agent-runtime-transcript-projection.nod
   s_f9bd8920ed6b05::t_4425e2513f4a0d 5,884,908-959,967-1020,1050,1053-1055,1057,1071
   s_f9bd8920ed6b05::t_535a65a43211d7 1072
   s_f9bd8920ed6b05::t_ce3d56bd7acf1e 1021-1049,1051-1052,1056,1058-1070
+  s_f9bd8920ed6b05::t_8d88ae361a4229 907
 packages/agent-runtime/vendor/provider-acp/src/server/adapter.ts
   s_f9bd8920ed6b05::t_7b8951333ef046 9,36-42,923-941,950-986,988-991,993-995,997,999-1005,1007,1013-1014,1017-1024,3794,3796-3797,3878-3879,3961-3967,3971-3972,3975
 packages/agent-runtime/src/orchestration-v2/Adapters/ClaudeAdapterV2.ts
