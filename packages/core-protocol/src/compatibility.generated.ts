@@ -2,8 +2,8 @@ import type { components } from "./generated";
 
 export const CORE_CLIENT_REQUIREMENTS = {
   "transport": {
-    "min": 13,
-    "max": 13
+    "min": 14,
+    "max": 14
   },
   "event_version": 11,
   "modules": [

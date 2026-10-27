@@ -3,13 +3,24 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, test } from "vite-plus/test";
-import { CORE_CLIENT_REQUIREMENTS, CORE_TRANSPORT_BUDGETS } from "@nodex/core-protocol";
+import {
+  CORE_CLIENT_REQUIREMENTS,
+  CORE_TRANSPORT_BUDGETS,
+  type components,
+} from "@nodex/core-protocol";
 
 import type { CoreEventEnvelope, CoreEventReplayRequired, CoreStreamCheckpoint } from "./types";
+import { CoreCodecError } from "./codec";
+import { CoreModuleResponseError } from "./core-client";
+import {
+  classifyCoreOperationFailure,
+  isRecoverableCoreTransportFailure,
+} from "../core-runtime/CoreRuntimeError";
 import { createCoreLocalCommitFixture } from "./testing/local-commit-fixture";
 import {
   CoreEventCompatibilityError,
   CoreEventReplayError,
+  CoreHttpError,
   CoreResponseTooLargeError,
   CoreTransportError,
   UdsHttpTransport,
@@ -150,26 +161,27 @@ const serveManagedRequest = async (): Promise<{
   return { socketPath, requestHeaders, cancelledRequestId };
 };
 
-const serveJsonResponse = async (
+const serveResponse = async (
   serialized: string,
   mode: "content-length" | "chunked" = "content-length",
   declaredLength?: number,
+  http: { readonly status?: number; readonly contentType?: string } = {},
 ): Promise<string> => {
   const directory = mkdtempSync(path.join(tmpdir(), "nodex-core-uds-test-"));
   directories.push(directory);
   const socketPath = path.join(directory, "core.sock");
   const server = createServer((_request, response) => {
     if (mode === "content-length") {
-      response.writeHead(200, {
+      response.writeHead(http.status ?? 200, {
         "content-length": declaredLength ?? Buffer.byteLength(serialized),
-        "content-type": "application/json",
+        "content-type": http.contentType ?? "application/json",
         connection: "close",
       });
       response.end(serialized);
       return;
     }
-    response.writeHead(200, {
-      "content-type": "application/json",
+    response.writeHead(http.status ?? 200, {
+      "content-type": http.contentType ?? "application/json",
       "transfer-encoding": "chunked",
       connection: "close",
     });
@@ -246,6 +258,168 @@ afterEach(async () => {
   for (const directory of directories.splice(0)) {
     rmSync(directory, { recursive: true, force: true });
   }
+});
+
+const requestError: components["schemas"]["CoreError"] = {
+  code: "invalid_input",
+  message: "sources[0]: expected a path string",
+  retryable: false,
+  recovery: { kind: "none" },
+};
+
+const requestByBoundary = (transport: UdsHttpTransport, boundary: string): Promise<unknown> => {
+  if (boundary === "document") {
+    return transport.requestDocumentFrame(
+      "/core/v1/modules/document/read",
+      new Uint8Array(),
+      {},
+      16_384,
+    );
+  }
+  if (boundary === "blob") {
+    return transport.requestBoundedBytes(
+      "GET",
+      "/core/v1/files/blobs/file-1",
+      undefined,
+      {},
+      16_384,
+    );
+  }
+  if (boundary === "events") {
+    return configureEventContract(transport).openEventStream(0, () => undefined);
+  }
+  return transport.requestJson("POST", "/core/v1/modules/workspace/apply", {});
+};
+
+describe("Core HTTP request failures", () => {
+  test.each(["json", "document", "blob", "events"])(
+    "preserves validation errors at the %s boundary",
+    async (boundary) => {
+      const transport = new UdsHttpTransport(
+        await serveResponse(
+          JSON.stringify({ status: "error", payload: requestError }),
+          "content-length",
+          undefined,
+          { status: 422 },
+        ),
+        "test-capability",
+      );
+      const error = await requestByBoundary(transport, boundary).catch((cause: unknown) => cause);
+      expect(error).toBeInstanceOf(CoreHttpError);
+      expect(error).toMatchObject({
+        status: 422,
+        message: requestError.message,
+        coreError: requestError,
+      });
+      expect(classifyCoreOperationFailure("workspace.apply", error, "generation-1")).toMatchObject({
+        reason: "request",
+        retryable: false,
+        message: requestError.message,
+        operation: "workspace.apply",
+        generation: "generation-1",
+        cause: error,
+      });
+    },
+  );
+
+  test.each(["json", "document", "blob", "events"])(
+    "classifies non-JSON HTTP rejections by status at the %s boundary",
+    async (boundary) => {
+      const message = "Failed to deserialize the JSON body into the target type";
+      const transport = new UdsHttpTransport(
+        await serveResponse(message, "content-length", undefined, {
+          status: 422,
+          contentType: "text/plain",
+        }),
+        "test-capability",
+      );
+      const error = await requestByBoundary(transport, boundary).catch((cause: unknown) => cause);
+      expect(error).toBeInstanceOf(CoreHttpError);
+      expect(error).toMatchObject({ status: 422, message });
+      expect(classifyCoreOperationFailure("workspace.apply", error)).toMatchObject({
+        reason: "request",
+        retryable: false,
+      });
+    },
+  );
+
+  test.each([400, 413, 415, 422, 500, 503])(
+    "retains HTTP %s when its error body is empty or malformed",
+    async (status) => {
+      const transport = new UdsHttpTransport(
+        await serveResponse(status === 500 ? "{" : "", "content-length", undefined, { status }),
+        "test-capability",
+      );
+      const error = await transport
+        .requestJson("GET", "/core/v1/health")
+        .catch((cause: unknown) => cause);
+      expect(error).toBeInstanceOf(CoreHttpError);
+      expect(error).toMatchObject({ status });
+      const classified = classifyCoreOperationFailure("health", error);
+      expect(classified.reason).toBe(
+        status === 503 ? "transport-loss" : status === 500 ? "operation" : "request",
+      );
+      expect(classified.retryable).toBe(status === 503);
+    },
+  );
+
+  test("preserves transport-bound recovery details in the shared envelope", async () => {
+    const failure = {
+      reason: "request_too_large",
+      effect: "not_applied",
+      actual: 65,
+      limit: 64,
+    } as const;
+    const coreError = { ...requestError, recovery: { kind: "recovery_package", failure } } as const;
+    const transport = new UdsHttpTransport(
+      await serveResponse(
+        JSON.stringify({ status: "error", payload: coreError }),
+        "content-length",
+        undefined,
+        { status: 413 },
+      ),
+      "test-capability",
+    );
+    await expect(transport.requestJson("POST", "/core/v1/handshake", {})).rejects.toMatchObject({
+      status: 413,
+      coreError,
+      failure,
+    });
+  });
+
+  test("treats semantic invalid input as the same request failure", () => {
+    const error = new CoreModuleResponseError(requestError);
+    expect(classifyCoreOperationFailure("workspace.apply", error)).toMatchObject({
+      reason: "request",
+      retryable: false,
+      message: requestError.message,
+      cause: error,
+    });
+  });
+
+  test("never recovers a generation for structured validation evidence", () => {
+    const error = new CoreHttpError(503, requestError.message, undefined, requestError);
+    expect(isRecoverableCoreTransportFailure(error)).toBe(false);
+    expect(classifyCoreOperationFailure("workspace.apply", error)).toMatchObject({
+      reason: "request",
+      retryable: false,
+    });
+  });
+
+  test("keeps malformed successful responses as protocol failures", async () => {
+    const transport = new UdsHttpTransport(
+      await serveResponse("Failed to decode"),
+      "test-capability",
+    );
+    const error = await transport
+      .requestJson("GET", "/core/v1/health")
+      .catch((cause: unknown) => cause);
+    expect(error).toBeInstanceOf(CoreCodecError);
+    expect(classifyCoreOperationFailure("health", error)).toMatchObject({
+      reason: "protocol",
+      retryable: false,
+    });
+  });
 });
 
 describe("UDS Core event replay boundaries", () => {
@@ -330,7 +504,7 @@ describe("UDS Core event replay boundaries", () => {
   test("reads an ordinary JSON response larger than the legacy 512 KiB limit", async () => {
     const value = "x".repeat(600 * 1024);
     const transport = new UdsHttpTransport(
-      await serveJsonResponse(JSON.stringify({ value })),
+      await serveResponse(JSON.stringify({ value })),
       "test-capability",
     );
 
@@ -342,7 +516,7 @@ describe("UDS Core event replay boundaries", () => {
   test("rejects an oversized declared ordinary JSON response before reading it", async () => {
     const maximum = CORE_TRANSPORT_BUDGETS.ordinary_json_response_bytes;
     const transport = new UdsHttpTransport(
-      await serveJsonResponse("{}", "content-length", maximum + 1),
+      await serveResponse("{}", "content-length", maximum + 1),
       "test-capability",
     );
 
@@ -355,7 +529,7 @@ describe("UDS Core event replay boundaries", () => {
     const maximum = CORE_TRANSPORT_BUDGETS.ordinary_json_response_bytes;
     const serialized = JSON.stringify({ value: "x".repeat(maximum) });
     const transport = new UdsHttpTransport(
-      await serveJsonResponse(serialized, "chunked"),
+      await serveResponse(serialized, "chunked"),
       "test-capability",
     );
 

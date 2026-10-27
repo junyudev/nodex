@@ -33,3 +33,4 @@ tracing-subscriber.workspace = true
 
 [dev-dependencies]
 tempfile = "3.27.0"
+tower = { version = "0.5.3", features = ["util"] }

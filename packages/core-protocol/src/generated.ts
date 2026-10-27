@@ -4007,6 +4007,12 @@ export interface components {
             readonly start_nonce: string;
             readonly status: components["schemas"]["CoreReadiness"];
         };
+        /** @description HTTP failures carry the same error payload and wire shape as Module failures. */
+        readonly HttpErrorResponse: {
+            readonly payload: components["schemas"]["CoreError"];
+            /** @enum {string} */
+            readonly status: "error";
+        };
         /** @enum {string} */
         readonly LauncherKind: "electron_host" | "native_cli" | "test";
         readonly LibraryAgentBlockTarget: {
@@ -12203,6 +12209,15 @@ export interface operations {
                     readonly "application/json": components["schemas"]["ShutdownResponse"];
                 };
             };
+            /** @description Core HTTP rejection; invalid_input identifies request validation failures */
+            readonly default: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HttpErrorResponse"];
+                };
+            };
         };
     };
     readonly prepare_blob: {
@@ -12231,6 +12246,15 @@ export interface operations {
                     readonly "application/json": components["schemas"]["PreparedBlobReceipt"];
                 };
             };
+            /** @description Core HTTP rejection; invalid_input identifies request validation failures */
+            readonly default: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HttpErrorResponse"];
+                };
+            };
         };
     };
     readonly events: {
@@ -12252,6 +12276,15 @@ export interface operations {
                 };
                 content: {
                     readonly "text/event-stream": components["schemas"]["EventEnvelope"];
+                };
+            };
+            /** @description Core HTTP rejection; invalid_input identifies request validation failures */
+            readonly default: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HttpErrorResponse"];
                 };
             };
         };
@@ -12294,6 +12327,15 @@ export interface operations {
                     readonly "application/octet-stream": readonly number[];
                 };
             };
+            /** @description Core HTTP rejection; invalid_input identifies request validation failures */
+            readonly default: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HttpErrorResponse"];
+                };
+            };
         };
     };
     readonly prepare_file_blob: {
@@ -12322,6 +12364,15 @@ export interface operations {
                     readonly "application/json": components["schemas"]["PreparedBlobReceipt"];
                 };
             };
+            /** @description Core HTTP rejection; invalid_input identifies request validation failures */
+            readonly default: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HttpErrorResponse"];
+                };
+            };
         };
     };
     readonly handshake: {
@@ -12346,6 +12397,15 @@ export interface operations {
                     readonly "application/json": components["schemas"]["HandshakeResponse"];
                 };
             };
+            /** @description Core HTTP rejection; invalid_input identifies request validation failures */
+            readonly default: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HttpErrorResponse"];
+                };
+            };
         };
     };
     readonly health: {
@@ -12364,6 +12424,15 @@ export interface operations {
                 };
                 content: {
                     readonly "application/json": components["schemas"]["HealthResponse"];
+                };
+            };
+            /** @description Core HTTP rejection; invalid_input identifies request validation failures */
+            readonly default: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HttpErrorResponse"];
                 };
             };
         };
@@ -12394,6 +12463,15 @@ export interface operations {
                     readonly "application/json": components["schemas"]["LocalMutationResolveResponse"];
                 };
             };
+            /** @description Core HTTP rejection; invalid_input identifies request validation failures */
+            readonly default: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HttpErrorResponse"];
+                };
+            };
         };
     };
     readonly administration_apply: {
@@ -12420,6 +12498,15 @@ export interface operations {
                 };
                 content: {
                     readonly "application/json": components["schemas"]["StoreAdministrationApplyResponse"];
+                };
+            };
+            /** @description Core HTTP rejection; invalid_input identifies request validation failures */
+            readonly default: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HttpErrorResponse"];
                 };
             };
         };
@@ -12450,6 +12537,15 @@ export interface operations {
                     readonly "application/json": components["schemas"]["StoreAdministrationReadResponse"];
                 };
             };
+            /** @description Core HTTP rejection; invalid_input identifies request validation failures */
+            readonly default: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HttpErrorResponse"];
+                };
+            };
         };
     };
     readonly automation_apply: {
@@ -12476,6 +12572,15 @@ export interface operations {
                 };
                 content: {
                     readonly "application/json": components["schemas"]["AutomationApplyResponse"];
+                };
+            };
+            /** @description Core HTTP rejection; invalid_input identifies request validation failures */
+            readonly default: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HttpErrorResponse"];
                 };
             };
         };
@@ -12506,6 +12611,15 @@ export interface operations {
                     readonly "application/json": components["schemas"]["AutomationReadResponse"];
                 };
             };
+            /** @description Core HTTP rejection; invalid_input identifies request validation failures */
+            readonly default: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HttpErrorResponse"];
+                };
+            };
         };
     };
     readonly database_apply: {
@@ -12532,6 +12646,15 @@ export interface operations {
                 };
                 content: {
                     readonly "application/json": components["schemas"]["DatabaseApplyResponse"];
+                };
+            };
+            /** @description Core HTTP rejection; invalid_input identifies request validation failures */
+            readonly default: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HttpErrorResponse"];
                 };
             };
         };
@@ -12562,6 +12685,15 @@ export interface operations {
                     readonly "application/json": components["schemas"]["DatabaseReadResponse"];
                 };
             };
+            /** @description Core HTTP rejection; invalid_input identifies request validation failures */
+            readonly default: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HttpErrorResponse"];
+                };
+            };
         };
     };
     readonly document_apply: {
@@ -12590,6 +12722,15 @@ export interface operations {
                     readonly "application/json": components["schemas"]["OwnedDocumentApplyResponse"];
                 };
             };
+            /** @description Core HTTP rejection; invalid_input identifies request validation failures */
+            readonly default: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HttpErrorResponse"];
+                };
+            };
         };
     };
     readonly document_read: {
@@ -12616,6 +12757,15 @@ export interface operations {
                 };
                 content: {
                     readonly "application/json": components["schemas"]["OwnedDocumentReadResponse"];
+                };
+            };
+            /** @description Core HTTP rejection; invalid_input identifies request validation failures */
+            readonly default: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HttpErrorResponse"];
                 };
             };
         };
@@ -12650,6 +12800,15 @@ export interface operations {
                     readonly "application/json": components["schemas"]["OwnedDocumentApplyResponse"];
                 };
             };
+            /** @description Core HTTP rejection; invalid_input identifies request validation failures */
+            readonly default: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HttpErrorResponse"];
+                };
+            };
         };
     };
     readonly recovery_export: {
@@ -12676,6 +12835,15 @@ export interface operations {
                 };
                 content: {
                     readonly "application/vnd.nodex.recovery-export.v1+octet-stream": readonly number[];
+                };
+            };
+            /** @description Core HTTP rejection; invalid_input identifies request validation failures */
+            readonly default: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HttpErrorResponse"];
                 };
             };
         };
@@ -12706,6 +12874,15 @@ export interface operations {
                     readonly "application/json": components["schemas"]["LibraryApplyResponse"];
                 };
             };
+            /** @description Core HTTP rejection; invalid_input identifies request validation failures */
+            readonly default: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HttpErrorResponse"];
+                };
+            };
         };
     };
     readonly library_read: {
@@ -12732,6 +12909,15 @@ export interface operations {
                 };
                 content: {
                     readonly "application/json": components["schemas"]["LibraryReadResponse"];
+                };
+            };
+            /** @description Core HTTP rejection; invalid_input identifies request validation failures */
+            readonly default: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HttpErrorResponse"];
                 };
             };
         };
@@ -12762,6 +12948,15 @@ export interface operations {
                     readonly "application/json": components["schemas"]["QueryReadResponse"];
                 };
             };
+            /** @description Core HTTP rejection; invalid_input identifies request validation failures */
+            readonly default: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HttpErrorResponse"];
+                };
+            };
         };
     };
     readonly workspace_apply: {
@@ -12788,6 +12983,15 @@ export interface operations {
                 };
                 content: {
                     readonly "application/json": components["schemas"]["ProjectWorkspaceApplyResponse"];
+                };
+            };
+            /** @description Core HTTP rejection; invalid_input identifies request validation failures */
+            readonly default: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HttpErrorResponse"];
                 };
             };
         };
@@ -12818,6 +13022,15 @@ export interface operations {
                     readonly "application/json": components["schemas"]["ProjectWorkspaceReadResponse"];
                 };
             };
+            /** @description Core HTTP rejection; invalid_input identifies request validation failures */
+            readonly default: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HttpErrorResponse"];
+                };
+            };
         };
     };
     readonly cancel_request: {
@@ -12842,6 +13055,15 @@ export interface operations {
                     readonly "application/json": components["schemas"]["CoreRequestCancelResponse"];
                 };
             };
+            /** @description Core HTTP rejection; invalid_input identifies request validation failures */
+            readonly default: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HttpErrorResponse"];
+                };
+            };
         };
     };
     readonly read_thread_asset_blob: {
@@ -12863,6 +13085,15 @@ export interface operations {
                 };
                 content: {
                     readonly "application/octet-stream": readonly number[];
+                };
+            };
+            /** @description Core HTTP rejection; invalid_input identifies request validation failures */
+            readonly default: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["HttpErrorResponse"];
                 };
             };
         };

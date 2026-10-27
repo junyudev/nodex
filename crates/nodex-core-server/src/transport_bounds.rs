@@ -1,13 +1,13 @@
 use axum::body::{Body, to_bytes};
+use axum::extract::Request;
 use axum::http::header::{CONTENT_LENGTH, CONTENT_TYPE};
 use axum::http::{StatusCode, header};
 use axum::middleware::Next;
 use axum::response::{IntoResponse, Response};
-use axum::{Json, extract::Request};
-use serde::Serialize;
 use serde_json::Value;
 
-use crate::document_wire;
+use crate::{document_wire, http_error::ApiError};
+use nodex_core_contracts::CoreErrorRecovery;
 
 pub(crate) const MAX_JSON_REQUEST_BYTES: usize =
     nodex_core_protocol::MAX_ORDINARY_JSON_REQUEST_BYTES;
@@ -24,12 +24,6 @@ const MAX_JSON_STRING_BYTES: usize = 1024 * 1024;
 const DOCUMENT_ROUTE_PREFIX: &str = "/core/v1/modules/document/";
 const FILE_BLOB_ROUTE_PREFIX: &str = "/core/v1/files/blobs/";
 pub(crate) const BOUNDED_STREAM_HEADER: &str = "x-nodex-bounded-stream";
-
-#[derive(Serialize)]
-struct TransportError<'a> {
-    error: &'a str,
-    failure: nodex_core_contracts::document::RecoveryPackageFailure,
-}
 
 pub(crate) async fn enforce(mut request: Request, next: Next) -> Response {
     let document_json =
@@ -238,18 +232,15 @@ fn bounded_error_response(
     } else {
         RecoveryFailureEffect::NotApplied
     };
-    let mut response = (
-        status,
-        Json(TransportError {
-            error: message,
-            failure: RecoveryPackageFailure {
+    let mut response = ApiError::new(status, message)
+        .with_recovery(CoreErrorRecovery::RecoveryPackage {
+            failure: Box::new(RecoveryPackageFailure {
                 reason,
                 effect,
                 actual: actual.map(|value| value as u64),
                 limit: limit.map(|value| value as u64),
-            },
-        }),
-    )
+            }),
+        })
         .into_response();
     response.headers_mut().insert(
         header::CONNECTION,

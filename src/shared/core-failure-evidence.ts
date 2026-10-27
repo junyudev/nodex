@@ -74,6 +74,14 @@ export const parseCoreFailureEvidence = (value: unknown): CoreFailureEvidence =>
   return { code: value.code as CoreFailureEvidence["code"], recovery };
 };
 
+/** Decode the shared Module/HTTP error payload at transport boundaries. */
+export const parseCoreError = (value: unknown): components["schemas"]["CoreError"] => {
+  if (!record(value) || typeof value.message !== "string" || typeof value.retryable !== "boolean") {
+    throw new TypeError("Invalid Core error payload");
+  }
+  return { ...parseCoreFailureEvidence(value), message: value.message, retryable: value.retryable };
+};
+
 const parseRecovery = (value: unknown): CoreRecovery => {
   if (!record(value) || typeof value.kind !== "string" || !Object.hasOwn(recoveryKinds, value.kind))
     throw new TypeError("Invalid Core recovery evidence");

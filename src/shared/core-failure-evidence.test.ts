@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseCoreFailureEvidence } from "./core-failure-evidence";
+import { parseCoreError, parseCoreFailureEvidence } from "./core-failure-evidence";
 
 describe("View order preparation evidence", () => {
   it("preserves the exact View to prepare and rejects missing identities", () => {
@@ -20,5 +20,35 @@ describe("View order preparation evidence", () => {
         }),
       ).toThrow(TypeError);
     }
+  });
+});
+
+describe("Core error payloads", () => {
+  const payload = {
+    code: "invalid_input",
+    message: "Invalid project identity",
+    retryable: false,
+    recovery: { kind: "none" },
+  } as const;
+
+  it("preserves the generated error contract", () => {
+    expect(parseCoreError(payload)).toEqual(payload);
+  });
+
+  it.each([
+    null,
+    { ...payload, code: "unknown" },
+    { ...payload, message: 1 },
+    { ...payload, retryable: "false" },
+    { ...payload, recovery: { kind: "unknown" } },
+    {
+      ...payload,
+      recovery: {
+        kind: "recovery_package",
+        failure: { reason: "invalid_json", effect: "unknown", limit: -1 },
+      },
+    },
+  ])("rejects invalid error evidence: %j", (value) => {
+    expect(() => parseCoreError(value)).toThrow(TypeError);
   });
 });

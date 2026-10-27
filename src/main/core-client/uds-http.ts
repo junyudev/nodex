@@ -2,13 +2,14 @@ import { request as httpRequest, type IncomingMessage } from "node:http";
 import { randomUUID } from "node:crypto";
 import { CORE_TRANSPORT_BUDGETS, type components } from "@nodex/core-protocol";
 
-import { decodeBoundedJson, encodeBoundedJson } from "./codec";
+import { CoreCodecError, decodeBoundedJson, encodeBoundedJson } from "./codec";
 import { SseParser } from "./sse-parser";
 import {
   DOCUMENT_HTTP_CONTENT_TYPE,
   decodeDocumentRealtimeSseEvent,
 } from "../../shared/block-documents/http-contract";
 import type { DocumentSyncRealtimeEvent } from "../../shared/block-documents/document-sync";
+import { parseCoreError } from "../../shared/core-failure-evidence";
 import { parseAuthorizedDeliveryPacket } from "../../shared/authorized-delivery-packet";
 import type { ProjectionScope } from "../../shared/projection-stream";
 import type {
@@ -103,6 +104,7 @@ export class CoreHttpError extends Error {
     readonly status: number,
     message: string,
     readonly failure?: components["schemas"]["RecoveryPackageFailure"],
+    readonly coreError?: components["schemas"]["CoreError"],
   ) {
     super(message);
     this.name = "CoreHttpError";
@@ -183,6 +185,7 @@ const transportCode = (error: unknown): string | null => {
 
 const normalizeTransportError = (error: unknown, phase: CoreTransportPhase): unknown => {
   if (
+    error instanceof CoreCodecError ||
     error instanceof CoreTransportError ||
     error instanceof CoreHttpError ||
     error instanceof CoreResponseTooLargeError ||
@@ -326,19 +329,17 @@ export class UdsHttpTransport {
         (response) => {
           collectResponse(response, maximumResponseBytes)
             .then((bytes) => {
+              const status = response.statusCode ?? 0;
+              if (status < 200 || status >= 300) {
+                settle(() => reject(decodeHttpError(status, bytes, maximumResponseBytes)));
+                return;
+              }
               const value = decodeBoundedJson<Response>(
                 bytes,
                 maximumResponseBytes,
                 "Core response",
               );
-              const status = response.statusCode ?? 0;
-              if (status >= 200 && status < 300) {
-                settle(() => resolve(value));
-                return;
-              }
-              settle(() =>
-                reject(new CoreHttpError(status, errorMessage(value), transportFailure(value))),
-              );
+              settle(() => resolve(value));
             })
             .catch((error: unknown) =>
               settle(() => reject(normalizeTransportError(error, "response"))),
@@ -409,14 +410,7 @@ export class UdsHttpTransport {
             .then((bytes) => {
               const status = response.statusCode ?? 0;
               if (status < 200 || status >= 300) {
-                const value = decodeBoundedJson<unknown>(
-                  bytes,
-                  maximumResponseBytes,
-                  "Core Document error response",
-                );
-                settle(() =>
-                  reject(new CoreHttpError(status, errorMessage(value), transportFailure(value))),
-                );
+                settle(() => reject(decodeHttpError(status, bytes, maximumResponseBytes)));
                 return;
               }
               const contentType = response.headers["content-type"]?.split(";", 1)[0];
@@ -510,13 +504,14 @@ export class UdsHttpTransport {
             .then((bytes) => {
               const status = response.statusCode ?? 0;
               if (status < 200 || status >= 300) {
-                const value = decodeBoundedJson<unknown>(
-                  bytes,
-                  Math.min(maximumResponseBytes, MAX_JSON_RESPONSE_BYTES),
-                  "Core File Blob error response",
-                );
                 settle(() =>
-                  reject(new CoreHttpError(status, errorMessage(value), transportFailure(value))),
+                  reject(
+                    decodeHttpError(
+                      status,
+                      bytes,
+                      Math.min(maximumResponseBytes, MAX_JSON_RESPONSE_BYTES),
+                    ),
+                  ),
                 );
                 return;
               }
@@ -612,12 +607,7 @@ export class UdsHttpTransport {
           if (status !== 200) {
             collectResponse(response, this.#maximumJsonResponseBytes)
               .then((bytes) => {
-                const value = decodeBoundedJson<unknown>(
-                  bytes,
-                  this.#maximumJsonResponseBytes,
-                  "Core event error response",
-                );
-                reject(new CoreHttpError(status, errorMessage(value), transportFailure(value)));
+                reject(decodeHttpError(status, bytes, this.#maximumJsonResponseBytes));
               })
               .catch((error: unknown) => reject(normalizeTransportError(error, "response")));
             return;
@@ -876,44 +866,34 @@ const parseContentLength = (response: IncomingMessage): number | undefined => {
   return Number.isSafeInteger(value) ? value : undefined;
 };
 
-const transportFailure = (
-  value: unknown,
-): components["schemas"]["RecoveryPackageFailure"] | undefined => {
-  if (typeof value !== "object" || value === null || !("failure" in value)) return undefined;
-  const failure = value.failure;
-  if (
-    typeof failure !== "object" ||
-    failure === null ||
-    !("reason" in failure) ||
-    !("effect" in failure) ||
-    ![
-      "request_too_large",
-      "response_too_large",
-      "manifest_too_large",
-      "invalid_manifest",
-      "invalid_json",
-      "unsupported_format",
-      "unsupported_transport",
-      "invalid_digest",
-      "capacity_exhausted",
-      "source_unverified",
-    ].includes(String(failure.reason)) ||
-    !["not_applied", "unknown"].includes(String(failure.effect))
-  )
-    return undefined;
-  return failure as components["schemas"]["RecoveryPackageFailure"];
-};
-
-const errorMessage = (value: unknown): string => {
-  if (
-    typeof value === "object" &&
-    value !== null &&
-    "error" in value &&
-    typeof value.error === "string"
-  ) {
-    return value.error;
+/** HTTP status remains authoritative even if an error response cannot be decoded. */
+const decodeHttpError = (
+  status: number,
+  bytes: Uint8Array,
+  maximumBytes: number,
+): CoreHttpError => {
+  const fallback = (): CoreHttpError => {
+    const detail = new TextDecoder().decode(bytes.subarray(0, 4_096)).trim();
+    return new CoreHttpError(status, detail || `Core HTTP request failed (${status})`);
+  };
+  try {
+    const value = decodeBoundedJson<unknown>(bytes, maximumBytes, "Core error response");
+    if (
+      typeof value !== "object" ||
+      value === null ||
+      !("status" in value) ||
+      value.status !== "error" ||
+      !("payload" in value)
+    ) {
+      return fallback();
+    }
+    const coreError = parseCoreError(value.payload);
+    const failure =
+      coreError.recovery.kind === "recovery_package" ? coreError.recovery.failure : undefined;
+    return new CoreHttpError(status, coreError.message, failure, coreError);
+  } catch {
+    return fallback();
   }
-  return "Core request failed";
 };
 
 const parseEventEnvelope = (json: string, contract: CoreEventContract): CoreEventEnvelope => {

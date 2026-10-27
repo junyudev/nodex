@@ -4,6 +4,7 @@ use nodex_core_protocol::document_module_wire;
 mod connections;
 mod document_live;
 mod document_wire;
+mod http_error;
 mod lifecycle;
 mod lifecycle_summary;
 mod logging;
@@ -105,6 +106,7 @@ use document_live::{
     DocumentLiveHub, DocumentLiveNotice, DocumentLivePublisher, DocumentLiveRepairKind,
 };
 use document_wire::{ApplyFrame, CONTENT_TYPE as DOCUMENT_CONTENT_TYPE, CanvasSyncKind, SyncFrame};
+use http_error::ApiError;
 use lifecycle::{DrainReason, LifecycleCoordinator, configured_idle_timeout, monitor_idle};
 use lifecycle_summary::LifecycleSummaryWriter;
 use metrics::ServerMetrics;
@@ -457,37 +459,6 @@ struct ProjectionLiveRepair {
     store_epoch: StoreEpoch,
     commit_head: i64,
     reason: ProjectionLiveRepairReason,
-}
-
-#[derive(Serialize)]
-struct ErrorBody<'a> {
-    error: &'a str,
-}
-
-struct ApiError {
-    status: StatusCode,
-    message: String,
-}
-
-impl ApiError {
-    fn new(status: StatusCode, message: impl Into<String>) -> Self {
-        Self {
-            status,
-            message: message.into(),
-        }
-    }
-}
-
-impl IntoResponse for ApiError {
-    fn into_response(self) -> Response {
-        (
-            self.status,
-            Json(ErrorBody {
-                error: &self.message,
-            }),
-        )
-            .into_response()
-    }
 }
 
 async fn authenticate(
@@ -3190,6 +3161,7 @@ fn router(state: Arc<ServerState>) -> Router {
             Arc::clone(&state),
             authenticate,
         ))
+        .layer(middleware::from_fn(http_error::normalize))
         .layer(middleware::from_fn(trace_request))
         .with_state(state)
 }
@@ -3530,7 +3502,7 @@ fn api_core_error(error: CoreError) -> ApiError {
         CoreErrorCode::Cancelled => StatusCode::from_u16(499).expect("499 is a valid status"),
         _ => StatusCode::CONFLICT,
     };
-    ApiError::new(status, error.message)
+    ApiError::from_core(status, error)
 }
 
 fn connection_registry_error(error: ConnectionRegistryError) -> ApiError {

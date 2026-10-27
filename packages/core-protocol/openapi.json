@@ -36,6 +36,16 @@
                 }
               }
             }
+          },
+          "default": {
+            "description": "Core HTTP rejection; invalid_input identifies request validation failures",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            }
           }
         }
       }
@@ -97,6 +107,16 @@
                 }
               }
             }
+          },
+          "default": {
+            "description": "Core HTTP rejection; invalid_input identifies request validation failures",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            }
           }
         }
       }
@@ -126,6 +146,16 @@
               "text/event-stream": {
                 "schema": {
                   "$ref": "#/components/schemas/EventEnvelope"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Core HTTP rejection; invalid_input identifies request validation failures",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
                 }
               }
             }
@@ -187,6 +217,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/PreparedBlobReceipt"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Core HTTP rejection; invalid_input identifies request validation failures",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
                 }
               }
             }
@@ -362,6 +402,16 @@
                 }
               }
             }
+          },
+          "default": {
+            "description": "Core HTTP rejection; invalid_input identifies request validation failures",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            }
           }
         }
       }
@@ -392,6 +442,16 @@
                 }
               }
             }
+          },
+          "default": {
+            "description": "Core HTTP rejection; invalid_input identifies request validation failures",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            }
           }
         }
       }
@@ -409,6 +469,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/HealthResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Core HTTP rejection; invalid_input identifies request validation failures",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
                 }
               }
             }
@@ -483,6 +553,16 @@
                 }
               }
             }
+          },
+          "default": {
+            "description": "Core HTTP rejection; invalid_input identifies request validation failures",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            }
           }
         }
       }
@@ -551,6 +631,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/StoreAdministrationApplyResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Core HTTP rejection; invalid_input identifies request validation failures",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
                 }
               }
             }
@@ -625,6 +715,16 @@
                 }
               }
             }
+          },
+          "default": {
+            "description": "Core HTTP rejection; invalid_input identifies request validation failures",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            }
           }
         }
       }
@@ -693,6 +793,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/AutomationApplyResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Core HTTP rejection; invalid_input identifies request validation failures",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
                 }
               }
             }
@@ -767,6 +877,16 @@
                 }
               }
             }
+          },
+          "default": {
+            "description": "Core HTTP rejection; invalid_input identifies request validation failures",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            }
           }
         }
       }
@@ -835,6 +955,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/DatabaseApplyResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Core HTTP rejection; invalid_input identifies request validation failures",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
                 }
               }
             }
@@ -909,6 +1039,16 @@
                 }
               }
             }
+          },
+          "default": {
+            "description": "Core HTTP rejection; invalid_input identifies request validation failures",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            }
           }
         }
       }
@@ -980,6 +1120,16 @@
                 }
               }
             }
+          },
+          "default": {
+            "description": "Core HTTP rejection; invalid_input identifies request validation failures",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            }
           }
         }
       }
@@ -1048,6 +1198,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/OwnedDocumentReadResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Core HTTP rejection; invalid_input identifies request validation failures",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
                 }
               }
             }
@@ -1161,6 +1321,16 @@
                 }
               }
             }
+          },
+          "default": {
+            "description": "Core HTTP rejection; invalid_input identifies request validation failures",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            }
           }
         }
       }
@@ -1237,6 +1407,16 @@
                 }
               }
             }
+          },
+          "default": {
+            "description": "Core HTTP rejection; invalid_input identifies request validation failures",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            }
           }
         }
       }
@@ -1305,6 +1485,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/LibraryApplyResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Core HTTP rejection; invalid_input identifies request validation failures",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
                 }
               }
             }
@@ -1379,6 +1569,16 @@
                 }
               }
             }
+          },
+          "default": {
+            "description": "Core HTTP rejection; invalid_input identifies request validation failures",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            }
           }
         }
       }
@@ -1447,6 +1647,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/QueryReadResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Core HTTP rejection; invalid_input identifies request validation failures",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
                 }
               }
             }
@@ -1521,6 +1731,16 @@
                 }
               }
             }
+          },
+          "default": {
+            "description": "Core HTTP rejection; invalid_input identifies request validation failures",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            }
           }
         }
       }
@@ -1592,6 +1812,16 @@
                 }
               }
             }
+          },
+          "default": {
+            "description": "Core HTTP rejection; invalid_input identifies request validation failures",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
+                }
+              }
+            }
           }
         }
       }
@@ -1619,6 +1849,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/CoreRequestCancelResponse"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Core HTTP rejection; invalid_input identifies request validation failures",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
                 }
               }
             }
@@ -1662,6 +1902,16 @@
                     "format": "int32",
                     "minimum": 0
                   }
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "Core HTTP rejection; invalid_input identifies request validation failures",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HttpErrorResponse"
                 }
               }
             }
@@ -16254,6 +16504,29 @@
             "$ref": "#/components/schemas/CoreReadiness"
           }
         }
+      },
+      "HttpErrorResponse": {
+        "oneOf": [
+          {
+            "type": "object",
+            "required": [
+              "payload",
+              "status"
+            ],
+            "properties": {
+              "payload": {
+                "$ref": "#/components/schemas/CoreError"
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "error"
+                ]
+              }
+            }
+          }
+        ],
+        "description": "HTTP failures carry the same error payload and wire shape as Module failures."
       },
       "LauncherKind": {
         "type": "string",

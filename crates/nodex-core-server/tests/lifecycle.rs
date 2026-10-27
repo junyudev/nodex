@@ -612,6 +612,32 @@ fn concurrent_launchers_reuse_one_authenticated_profile_core() {
     assert_eq!(database_apply["status"], "ok");
     assert_eq!(database_apply["payload"]["status"], "committed");
 
+    let mut malformed_workspace: serde_json::Value =
+        serde_json::from_str(&create_initial_project).expect("Workspace request");
+    malformed_workspace["intent"]["source_roots"] =
+        serde_json::json!([{ "path": "/workspace/default" }]);
+    let malformed_workspace = malformed_workspace.to_string();
+    for (body, status) in [("{", "400"), (malformed_workspace.as_str(), "422")] {
+        let response = request_with_headers(
+            &expected.socket_path,
+            &auth,
+            "POST",
+            "/core/v1/modules/workspace/apply",
+            body,
+            &module_headers,
+        );
+        assert!(response.starts_with(&format!("HTTP/1.1 {status}")));
+        let value = response_json(&response);
+        assert_eq!(value["status"], "error");
+        assert_eq!(value["payload"]["code"], "invalid_input");
+        assert_eq!(value["payload"]["retryable"], false);
+        assert!(
+            value["payload"]["message"]
+                .as_str()
+                .is_some_and(|message| !message.is_empty())
+        );
+    }
+
     let oversized = request(
         &expected.socket_path,
         &auth,
@@ -620,6 +646,12 @@ fn concurrent_launchers_reuse_one_authenticated_profile_core() {
         &"x".repeat(2 * 1024 * 1024 + 1),
     );
     assert!(oversized.starts_with("HTTP/1.1 413"));
+    let oversized = response_json(&oversized);
+    assert_eq!(oversized["payload"]["code"], "invalid_input");
+    assert_eq!(
+        oversized["payload"]["recovery"]["failure"]["reason"],
+        "request_too_large"
+    );
 
     let invalid_utf8 = request_bytes_with_headers(
         &expected.socket_path,

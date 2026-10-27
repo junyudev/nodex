@@ -1,4 +1,6 @@
 import * as Schema from "effect/Schema";
+import { CoreCodecError } from "../core-client/codec";
+import { CoreModuleResponseError } from "../core-client/core-client";
 import {
   CoreEventCompatibilityError,
   CoreHttpError,
@@ -14,13 +16,14 @@ export const CoreRuntimeFailureReason = Schema.Literals([
   "resync",
   "authority-drift",
   "protocol",
+  "request",
   "closed",
   "operation",
 ]);
 
 export type CoreRuntimeFailureReason = typeof CoreRuntimeFailureReason.Type;
 
-/** A safe policy error. The exact cause stays in the Cause tree, never in the message. */
+/** Policy classification with the exact cause retained for diagnostics. */
 export class CoreRuntimeError extends Schema.TaggedError<CoreRuntimeError>()("CoreRuntimeError", {
   message: Schema.String,
   operation: Schema.String,
@@ -36,9 +39,10 @@ export const coreRuntimeError = (input: {
   readonly retryable: boolean;
   readonly generation?: string;
   readonly cause?: unknown;
+  readonly message?: string;
 }): CoreRuntimeError =>
   new CoreRuntimeError({
-    message: `Native Core ${input.operation} failed`,
+    message: input.message ?? `Native Core ${input.operation} failed`,
     operation: input.operation,
     reason: input.reason,
     retryable: input.retryable,
@@ -47,7 +51,10 @@ export const coreRuntimeError = (input: {
   });
 
 export const isRecoverableCoreTransportFailure = (cause: unknown): boolean =>
-  isDefinitiveCoreGenerationLoss(cause) || (cause instanceof CoreHttpError && cause.status === 503);
+  isDefinitiveCoreGenerationLoss(cause) ||
+  (cause instanceof CoreHttpError &&
+    cause.status === 503 &&
+    (!cause.coreError || cause.coreError.code === "core_unavailable"));
 
 export const classifyCoreOperationFailure = (
   operation: string,
@@ -55,7 +62,22 @@ export const classifyCoreOperationFailure = (
   generation?: string,
 ): CoreRuntimeError => {
   if (Schema.is(CoreRuntimeError)(cause)) return cause;
-  if (cause instanceof CoreEventCompatibilityError) {
+  if (
+    (cause instanceof CoreModuleResponseError && cause.coreError.code === "invalid_input") ||
+    (cause instanceof CoreHttpError &&
+      (cause.coreError?.code === "invalid_input" ||
+        (!cause.coreError && [400, 405, 413, 415, 422].includes(cause.status))))
+  ) {
+    return coreRuntimeError({
+      operation,
+      reason: "request",
+      retryable: false,
+      generation,
+      cause,
+      message: cause.message,
+    });
+  }
+  if (cause instanceof CoreEventCompatibilityError || cause instanceof CoreCodecError) {
     return coreRuntimeError({ operation, reason: "protocol", retryable: false, generation, cause });
   }
   if (isRecoverableCoreTransportFailure(cause)) {

@@ -49,6 +49,27 @@ Reads and writes with stable idempotency identity may retry once with their
 original input. Ephemeral Awareness triggers recovery but is never replayed.
 A request timeout alone is ambiguous and does not prove writer loss.
 
+## HTTP error contract
+
+Every Core HTTP error response uses the Module error envelope: `status` is
+`"error"` and `payload` is a `CoreError` (`code`, `message`, `retryable`,
+`recovery`).
+The generated OpenAPI declares this shared response for every operation. One
+router-wide boundary normalizes framework rejections, including JSON syntax and
+shape errors, missing or unsupported content types, path/query parsing, and body
+limits. Request validation uses `invalid_input` and is not retryable; HTTP status
+still distinguishes malformed syntax (400), shape (422), media type (415), and
+size (413). Authentication and server failures retain their own error codes.
+Transport bounds carry exact capacity and application-effect evidence in
+`recovery.kind = recovery_package`.
+
+Desktop classifies `invalid_input` from either an HTTP rejection or a Module
+response as a request failure and preserves Core's message. It never starts
+generation recovery for request validation. A residual non-JSON error response
+remains an HTTP failure classified by status; malformed successful JSON is a
+protocol failure. Socket loss, HTTP availability errors, and response limits
+retain their separate transport and capacity classifications.
+
 ## Request execution
 
 Every Core Module request has a connection-scoped request ID, an execution

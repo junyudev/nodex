@@ -1274,17 +1274,17 @@ fn read_raw_response(
         }
     }
     if !(200..300).contains(&status) {
-        let value = serde_json::from_slice::<serde_json::Value>(&bytes).ok();
-        let message = value
+        let error = serde_json::from_slice::<crate::HttpErrorResponse>(&bytes)
+            .ok()
+            .map(|crate::HttpErrorResponse::Error(error)| error);
+        let message = error
             .as_ref()
-            .and_then(|value| value.get("message").or_else(|| value.get("error")))
-            .and_then(serde_json::Value::as_str)
-            .map(str::to_owned)
+            .map(|error| error.message.clone())
             .unwrap_or_else(|| format!("Core HTTP request failed ({status})"));
-        let failure = value
-            .and_then(|value| value.get("failure").cloned())
-            .and_then(|value| serde_json::from_value(value).ok())
-            .map(Box::new);
+        let failure = error.and_then(|error| match error.recovery {
+            nodex_core_contracts::CoreErrorRecovery::RecoveryPackage { failure } => Some(failure),
+            _ => None,
+        });
         return Err(ClientError::Http {
             status,
             message,
@@ -1382,6 +1382,36 @@ mod tests {
         assert!(valid_header("project-1"));
         assert!(!valid_header("project-1\r\nx-forged: yes"));
         assert!(!valid_header(""));
+    }
+
+    #[test]
+    fn http_rejections_preserve_core_messages_and_recovery() {
+        let body = serde_json::json!({
+            "status": "error",
+            "payload": {
+                "code": "invalid_input", "message": "request body exceeds its bound", "retryable": false,
+                "recovery": { "kind": "recovery_package", "failure": {
+                    "reason": "request_too_large", "effect": "not_applied", "actual": 65, "limit": 64
+                }}
+            }
+        }).to_string();
+        let response = format!(
+            "HTTP/1.1 413 Payload Too Large\r\nContent-Length: {}\r\n\r\n{body}",
+            body.len()
+        );
+        let Err(ClientError::Http {
+            status,
+            message,
+            failure,
+        }) = read_raw_response(&mut io::Cursor::new(response), 4096)
+        else {
+            panic!("HTTP rejection")
+        };
+        assert_eq!(status, 413);
+        assert_eq!(message, "request body exceeds its bound");
+        let failure = failure.expect("recovery evidence");
+        assert_eq!(failure.actual, Some(65));
+        assert_eq!(failure.limit, Some(64));
     }
 
     #[test]

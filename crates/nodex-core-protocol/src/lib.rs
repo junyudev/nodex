@@ -41,8 +41,8 @@ pub use nodex_store_format::{
     STORE_LINEAGE,
 };
 
-pub const TRANSPORT_PROTOCOL_MIN: u32 = 13;
-pub const TRANSPORT_PROTOCOL_MAX: u32 = 13;
+pub const TRANSPORT_PROTOCOL_MIN: u32 = 14;
+pub const TRANSPORT_PROTOCOL_MAX: u32 = 14;
 pub const MAX_FILE_BLOB_BYTES: usize = 64 * 1024 * 1024;
 pub const MAX_MANAGED_BLOB_BYTES: usize = nodex_core_contracts::MAX_MANAGED_BLOB_BYTES as usize;
 pub const COMPATIBILITY_MANIFEST_VERSION: u32 = 1;
@@ -823,6 +823,13 @@ pub enum ResponseEnvelope<T> {
     Error(CoreError),
 }
 
+/// HTTP failures carry the same error payload and wire shape as Module failures.
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize, ToSchema)]
+#[serde(tag = "status", content = "payload", rename_all = "snake_case")]
+pub enum HttpErrorResponse {
+    Error(CoreError),
+}
+
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct EventEnvelope {
@@ -1265,6 +1272,7 @@ mod api {
         HandshakeRequest,
         HandshakeResponse,
         HealthResponse,
+        HttpErrorResponse,
         CoreHealthMetrics,
         HealthDurationMetric,
         CoreRequestClass,
@@ -1317,7 +1325,41 @@ mod api {
 pub struct CoreProtocolApi;
 
 pub fn openapi() -> utoipa::openapi::OpenApi {
-    CoreProtocolApi::openapi()
+    use utoipa::openapi::{ContentBuilder, Ref, ResponseBuilder};
+
+    let mut api = CoreProtocolApi::openapi();
+    let error = ResponseBuilder::new()
+        .description("Core HTTP rejection; invalid_input identifies request validation failures")
+        .content(
+            "application/json",
+            ContentBuilder::new()
+                .schema(Some(Ref::from_schema_name(HttpErrorResponse::name())))
+                .build(),
+        )
+        .build();
+    for path in api.paths.paths.values_mut() {
+        for operation in [
+            &mut path.get,
+            &mut path.put,
+            &mut path.post,
+            &mut path.delete,
+            &mut path.options,
+            &mut path.head,
+            &mut path.patch,
+            &mut path.trace,
+            &mut path.query,
+        ]
+        .into_iter()
+        .flatten()
+        .chain(path.additional_operations.values_mut())
+        {
+            operation
+                .responses
+                .responses
+                .insert("default".to_owned(), error.clone().into());
+        }
+    }
+    api
 }
 
 #[cfg(test)]
@@ -1388,6 +1430,27 @@ mod tests {
                 response["description"].is_string(),
                 "OpenAPI 3.1 requires a serialized response description"
             );
+        }
+    }
+
+    #[test]
+    fn every_http_operation_declares_the_shared_error_envelope() {
+        let json = serde_json::to_value(openapi()).expect("OpenAPI serializes");
+        let reference = format!("#/components/schemas/{}", HttpErrorResponse::name());
+        assert!(
+            json.pointer(&format!(
+                "/components/schemas/{}",
+                HttpErrorResponse::name()
+            ))
+            .is_some()
+        );
+        for path in json["paths"].as_object().unwrap().values() {
+            for operation in path.as_object().unwrap().values() {
+                assert_eq!(
+                    operation["responses"]["default"]["content"]["application/json"]["schema"]["$ref"],
+                    reference
+                );
+            }
         }
     }
 
