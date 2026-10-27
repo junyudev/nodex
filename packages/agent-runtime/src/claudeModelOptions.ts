@@ -14,11 +14,26 @@ import {
   type ClaudeModelCatalog,
 } from "./provider/ClaudeModelCatalog.ts";
 
+/** What a running Claude Code process can change between turns. */
+export interface ClaudeLiveSelection {
+  readonly model: string;
+  /** `null` returns the session to the model's default effort. */
+  readonly effortLevel: string | null;
+  /** `null` leaves Fast to the user's own Claude Code settings. */
+  readonly fastMode: boolean | null;
+  readonly ultracode: boolean;
+}
+
 export interface CompiledClaudeModelSelection {
   readonly apiModelId: string;
   readonly effort: string | undefined;
   readonly settings: Readonly<Record<string, boolean>>;
-  readonly queryIdentity: string;
+  readonly live: ClaudeLiveSelection;
+  /**
+   * Choices fixed when Claude Code starts. Thinking also decides the thinking display the
+   * process is launched with, so changing it needs a new process; everything else is live.
+   */
+  readonly launchIdentity: string;
 }
 
 /** Compile every Claude model option at the provider boundary. */
@@ -91,7 +106,13 @@ export function compileClaudeModelSelection(
     apiModelId,
     effort,
     settings,
-    queryIdentity: JSON.stringify({ apiModelId, effort: effort ?? null, settings }),
+    live: {
+      model: apiModelId,
+      effortLevel: effort ?? null,
+      fastMode: typeof fastMode === "boolean" ? fastMode : null,
+      ultracode: ultracode === true,
+    },
+    launchIdentity: JSON.stringify({ thinking: settings.alwaysThinkingEnabled ?? null }),
   };
 }
 

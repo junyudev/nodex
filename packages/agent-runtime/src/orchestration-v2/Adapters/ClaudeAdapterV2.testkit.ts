@@ -185,6 +185,11 @@ interface ClaudeQuerySetModelFrame {
   readonly model: string;
 }
 
+interface ClaudeQueryApplyFlagSettingsFrame {
+  readonly type: "query.apply_flag_settings";
+  readonly settings: ClaudeAdapterV2.ClaudeLiveFlagSettings;
+}
+
 interface ClaudeQuerySetPermissionModeFrame {
   readonly type: "query.set_permission_mode";
   readonly mode: string;
@@ -246,6 +251,7 @@ type ClaudeOutboundFrame =
   | ClaudeQueryOpenFrame
   | ClaudePromptOfferFrame
   | ClaudeQuerySetModelFrame
+  | ClaudeQueryApplyFlagSettingsFrame
   | ClaudeQuerySetPermissionModeFrame
   | ClaudeQueryInterruptFrame
   | ClaudePermissionResponseFrame
@@ -819,6 +825,11 @@ function makeReplayQueryRunner(
               model,
             });
           }),
+        applyFlagSettings: (settings) =>
+          replayEffect(() => {
+            assertNextOutboundFrame({ type: "query.apply_flag_settings", settings });
+          }),
+        readAppliedSettings: Effect.succeed(null),
         setPermissionMode: (mode) =>
           replayEffect(() => {
             assertNextOutboundFrame({

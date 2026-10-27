@@ -128,6 +128,12 @@ const CLAUDE_TEST_MODEL_SELECTION = {
   model: "claude-sonnet-4-6",
   options: [{ id: "effort", value: "high" }],
 } satisfies ModelSelection;
+// Thinking is fixed when Claude Code starts, so this choice needs a new process;
+// model, effort and modes change on the live one.
+const CLAUDE_TEST_RELAUNCH_SELECTION = {
+  ...CLAUDE_TEST_MODEL_SELECTION,
+  options: [...CLAUDE_TEST_MODEL_SELECTION.options, { id: "thinking", value: false }],
+} satisfies ModelSelection;
 const CLAUDE_TEST_RUNTIME_POLICY = ProviderAdapter.ProviderAdapterV2RuntimePolicy.make({
   runtimeMode: "full-access",
   interactionMode: "default",
@@ -760,6 +766,8 @@ describe("ClaudeAdapterV2 full execution access", () => {
                       offeredPrompt = message.message.content;
                     }),
                   setModel: () => Effect.void,
+                  applyFlagSettings: () => Effect.void,
+                  readAppliedSettings: Effect.succeed(null),
                   setPermissionMode: () => Effect.void,
                   stopTask: () => Effect.void,
                   interrupt: Effect.void,
@@ -866,6 +874,8 @@ const captureSdkExecutablePaths = Effect.fn("captureSdkExecutablePaths")(functio
             messages: Stream.never,
             offer: () => Effect.void,
             setModel: () => Effect.void,
+            applyFlagSettings: () => Effect.void,
+            readAppliedSettings: Effect.succeed(null),
             setPermissionMode: () => Effect.void,
             stopTask: () => Effect.void,
             interrupt: Effect.void,
@@ -986,6 +996,8 @@ describe("ClaudeAdapterV2 resume compaction", () => {
                   messages: Stream.never,
                   offer: () => Effect.void,
                   setModel: () => Effect.void,
+                  applyFlagSettings: () => Effect.void,
+                  readAppliedSettings: Effect.succeed(null),
                   setPermissionMode: () => Effect.void,
                   stopTask: () => Effect.void,
                   interrupt: Effect.void,
@@ -1211,6 +1223,8 @@ describe("ClaudeAdapterV2 attachments", () => {
                     offeredMessages.push(message);
                   }),
                 setModel: () => Effect.void,
+                applyFlagSettings: () => Effect.void,
+                readAppliedSettings: Effect.succeed(null),
                 setPermissionMode: () => Effect.void,
                 stopTask: () => Effect.void,
                 interrupt: Effect.void,
@@ -1356,6 +1370,8 @@ describe("ClaudeAdapterV2 attachments", () => {
                   messages: Stream.never,
                   offer: () => Effect.void,
                   setModel: () => Effect.void,
+                  applyFlagSettings: () => Effect.void,
+                  readAppliedSettings: Effect.succeed(null),
                   setPermissionMode: () => Effect.void,
                   stopTask: () => Effect.void,
                   interrupt: Effect.void,
@@ -1451,6 +1467,8 @@ describe("ClaudeAdapterV2 native fork", () => {
                   messages: Stream.empty,
                   offer: () => Effect.void,
                   setModel: () => Effect.void,
+                  applyFlagSettings: () => Effect.void,
+                  readAppliedSettings: Effect.succeed(null),
                   setPermissionMode: () => Effect.void,
                   stopTask: () => Effect.void,
                   interrupt: Effect.void,
@@ -1743,6 +1761,8 @@ describe("ClaudeAdapterV2 native session identity", () => {
                   messages: Stream.empty,
                   offer: () => Effect.void,
                   setModel: () => Effect.void,
+                  applyFlagSettings: () => Effect.void,
+                  readAppliedSettings: Effect.succeed(null),
                   setPermissionMode: () => Effect.void,
                   stopTask: () => Effect.void,
                   interrupt: Effect.void,
@@ -2004,6 +2024,8 @@ describe("ClaudeAdapterV2 background wake turns", () => {
     // A CLI process opened after the first streams from its own queue, so the
     // first one can exit (Queue.shutdown) and a later turn can start another.
     readonly freshQueueOnReopen?: boolean;
+    // What Claude Code reports it runs with after a change.
+    readonly appliedSettings?: ClaudeAdapterV2.ClaudeAppliedSettings;
   }) =>
     Effect.gen(function* () {
       const fileSystem = yield* FileSystem.FileSystem;
@@ -2025,6 +2047,15 @@ describe("ClaudeAdapterV2 background wake turns", () => {
         yield* Deferred.await(processed);
       });
       const offeredMessages: Array<SDKUserMessage> = [];
+      const liveChanges: Array<
+        { readonly model: string } | { readonly settings: ClaudeAdapterV2.ClaudeLiveFlagSettings }
+      > = [];
+      const liveQuery = {
+        setModel: (model: string) => Effect.sync(() => void liveChanges.push({ model })),
+        applyFlagSettings: (settings: ClaudeAdapterV2.ClaudeLiveFlagSettings) =>
+          Effect.sync(() => void liveChanges.push({ settings })),
+        readAppliedSettings: Effect.succeed(options?.appliedSettings ?? null),
+      };
       const permissionModeChanges: Array<string> = [];
       const continuationRequests: Array<ProviderContinuationRequests.ProviderContinuationRequest> =
         [];
@@ -2072,7 +2103,7 @@ describe("ClaudeAdapterV2 background wake turns", () => {
                     Effect.sync(() => {
                       offeredMessages.push(message);
                     }),
-                  setModel: () => Effect.void,
+                  ...liveQuery,
                   setPermissionMode: () => Effect.void,
                   stopTask: options?.stopTask ?? (() => Effect.void),
                   interrupt: Effect.void,
@@ -2102,7 +2133,7 @@ describe("ClaudeAdapterV2 background wake turns", () => {
                   Effect.sync(() => {
                     offeredMessages.push(message);
                   }),
-                setModel: () => Effect.void,
+                ...liveQuery,
                 setPermissionMode: (mode) =>
                   Effect.sync(() => {
                     permissionModeChanges.push(mode);
@@ -2180,6 +2211,7 @@ describe("ClaudeAdapterV2 background wake turns", () => {
         subagentReceipts,
         systemNoticeReceipts,
         getOpenedOptions: () => openedOptions,
+        liveChanges,
         terminalEvents,
         hasPendingBackgroundWork,
       };
@@ -2297,7 +2329,7 @@ describe("ClaudeAdapterV2 background wake turns", () => {
   );
 
   it.effect(
-    "reuses a background shell's query for omitted and explicit Normal, but blocks Fast",
+    "changes speed and Ultracode on a background shell's live query, and refuses only a relaunch",
     () =>
       Effect.scoped(
         Effect.gen(function* () {
@@ -2336,11 +2368,32 @@ describe("ClaudeAdapterV2 background wake turns", () => {
           yield* harness.offerAndWait(turnOneResult);
           yield* Queue.take(harness.terminalReceipts);
 
+          yield* harness.runtime.startTurn(
+            turn(3, {
+              ...normal,
+              model: "claude-sonnet-5-5",
+              options: [
+                { id: "effort", value: "low" },
+                { id: "ultracode", value: true },
+              ],
+            }),
+          );
+          assert.strictEqual(harness.getOpenedOptions(), originalOptions);
+          assert.deepEqual(harness.liveChanges, [
+            { model: "claude-sonnet-5-5" },
+            { settings: { effortLevel: "low", fastMode: null, ultracode: true } },
+          ]);
+          assert.lengthOf(harness.offeredMessages, 3);
+          yield* harness.offerAndWait(turnOneResult);
+          yield* Queue.take(harness.terminalReceipts);
+
           const refused = yield* harness.runtime
             .startTurn(
-              turn(3, {
+              // Thinking is fixed at launch; Opus 5 can turn it off.
+              turn(4, {
                 ...normal,
-                options: [{ id: "fastMode", value: true }],
+                model: "claude-opus-5",
+                options: [{ id: "thinking", value: false }],
               }),
             )
             .pipe(Effect.result);
@@ -2352,8 +2405,51 @@ describe("ClaudeAdapterV2 background wake turns", () => {
             );
           }
           assert.strictEqual(harness.getOpenedOptions(), originalOptions);
-          assert.lengthOf(harness.offeredMessages, 2);
+          assert.lengthOf(harness.offeredMessages, 3);
           assert.isTrue(yield* harness.hasPendingBackgroundWork);
+        }).pipe(
+          Effect.provide(
+            Layer.mergeAll(IdAllocator.layer, McpProviderSessions.layer, NodeServices.layer),
+          ),
+        ),
+      ),
+  );
+
+  it.effect(
+    "says so in the chat when Claude Code runs without the Ultracode it was asked for",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const harness = yield* makeWakeHarnessWithOptions({
+            appliedSettings: {
+              model: "claude-opus-5-5",
+              effort: "high",
+              ultracode: false,
+              ultracodeRequested: true,
+              ultracodeAvailable: false,
+            },
+          });
+          const now = yield* DateTime.now;
+          yield* harness.runtime.startTurn(
+            makeClaudeTestTurnInput({
+              threadId: harness.threadId,
+              providerThread: harness.providerThread,
+              now,
+              attemptId: RunAttemptId.make("attempt-ultracode-unavailable"),
+              text: "Refactor the store.",
+              attachments: [],
+              providerTurnOrdinal: 1,
+              modelSelection: {
+                instanceId: ClaudeAdapterV2.CLAUDE_DEFAULT_INSTANCE_ID,
+                model: "claude-opus-5-5",
+                options: [{ id: "ultracode", value: true }],
+              },
+            }),
+          );
+          const notice = (yield* Queue.take(harness.systemNoticeReceipts)).turnItem;
+          assert.equal(notice.type, "system_notice");
+          if (notice.type !== "system_notice") return;
+          assert.match(notice.message, /^Ultracode is off for this chat: .*dynamic workflows/u);
         }).pipe(
           Effect.provide(
             Layer.mergeAll(IdAllocator.layer, McpProviderSessions.layer, NodeServices.layer),
@@ -4795,6 +4891,8 @@ describe("ClaudeAdapterV2 background wake turns", () => {
                   messages: Stream.fromQueue(sdkMessages),
                   offer: () => Effect.void,
                   setModel: () => Effect.void,
+                  applyFlagSettings: () => Effect.void,
+                  readAppliedSettings: Effect.succeed(null),
                   setPermissionMode: () => Effect.void,
                   stopTask: () => Effect.void,
                   interrupt: Effect.void,
@@ -4874,10 +4972,7 @@ describe("ClaudeAdapterV2 background wake turns", () => {
             text: "Start another background build.",
             attachments: [],
             providerTurnOrdinal: 2,
-            modelSelection: {
-              ...CLAUDE_TEST_MODEL_SELECTION,
-              model: "claude-haiku-4-5-20251001",
-            },
+            modelSelection: CLAUDE_TEST_RELAUNCH_SELECTION,
           }),
         );
         assert.lengthOf(processQueues, 2);
@@ -5055,6 +5150,8 @@ describe("ClaudeAdapterV2 background wake turns", () => {
                     messages: Stream.fromQueue(queue),
                     offer: () => Effect.void,
                     setModel: () => Effect.void,
+                    applyFlagSettings: () => Effect.void,
+                    readAppliedSettings: Effect.succeed(null),
                     setPermissionMode: () => Effect.void,
                     stopTask: () => Effect.void,
                     interrupt: Effect.void,
@@ -9847,6 +9944,8 @@ describe("ClaudeAdapterV2 background wake turns", () => {
                   messages: Stream.fromQueue(sdkMessages),
                   offer: () => Effect.void,
                   setModel: () => Effect.void,
+                  applyFlagSettings: () => Effect.void,
+                  readAppliedSettings: Effect.succeed(null),
                   setPermissionMode: () => Effect.void,
                   stopTask: () => Effect.void,
                   interrupt: Effect.void,
@@ -9918,10 +10017,7 @@ describe("ClaudeAdapterV2 background wake turns", () => {
         );
         assert.isFalse(yield* hasPendingBackgroundWork);
 
-        const alternateModel = {
-          ...CLAUDE_TEST_MODEL_SELECTION,
-          model: "claude-haiku-4-5-20251001",
-        } satisfies ModelSelection;
+        const relaunchSelection = CLAUDE_TEST_RELAUNCH_SELECTION;
         // ProviderTurnStartService marks the thread active before startTurn;
         // the process-reset clear must preserve that status.
         const activeProviderThread = {
@@ -9937,7 +10033,7 @@ describe("ClaudeAdapterV2 background wake turns", () => {
             text: "Continue after process restart.",
             attachments: [],
             providerTurnOrdinal: 2,
-            modelSelection: alternateModel,
+            modelSelection: relaunchSelection,
           }),
         );
         assert.equal(processQueues.length, 2);
@@ -10037,6 +10133,8 @@ describe("ClaudeAdapterV2 background wake turns", () => {
                     messages: Stream.fromQueue(sdkMessages),
                     offer: () => Effect.void,
                     setModel: () => Effect.void,
+                    applyFlagSettings: () => Effect.void,
+                    readAppliedSettings: Effect.succeed(null),
                     setPermissionMode: () => Effect.void,
                     stopTask: () => Effect.void,
                     interrupt: Effect.void,
@@ -10102,12 +10200,9 @@ describe("ClaudeAdapterV2 background wake turns", () => {
           yield* awaitUntil(() => quietYields++ >= 50, "notification-only quiet window");
           assert.lengthOf(continuationRequests, 0);
 
-          // User turn changes model, replacing the query while the wake buffer
+          // User turn changes thinking, replacing the query while the wake buffer
           // stays queued for the later provider continuation.
-          const alternateModel = {
-            ...CLAUDE_TEST_MODEL_SELECTION,
-            model: "claude-haiku-4-5-20251001",
-          } satisfies ModelSelection;
+          const relaunchSelection = CLAUDE_TEST_RELAUNCH_SELECTION;
           yield* runtime.startTurn(
             makeClaudeTestTurnInput({
               threadId,
@@ -10117,7 +10212,7 @@ describe("ClaudeAdapterV2 background wake turns", () => {
               text: "Switch model while background work completes.",
               attachments: [],
               providerTurnOrdinal: 2,
-              modelSelection: alternateModel,
+              modelSelection: relaunchSelection,
             }),
           );
           assert.equal(processQueues.length, 2);
@@ -10152,7 +10247,7 @@ describe("ClaudeAdapterV2 background wake turns", () => {
               text: "Background task completed.",
               attachments: [],
               providerTurnOrdinal: 3,
-              modelSelection: alternateModel,
+              modelSelection: relaunchSelection,
               messageCreatedBy: "agent",
               messageCreationSource: "provider",
             }),
@@ -10279,6 +10374,8 @@ describe("ClaudeAdapterV2 background wake turns", () => {
                     messages: Stream.fromQueue(sdkMessages),
                     offer: () => Effect.void,
                     setModel: () => Effect.void,
+                    applyFlagSettings: () => Effect.void,
+                    readAppliedSettings: Effect.succeed(null),
                     setPermissionMode: () => Effect.void,
                     stopTask: () => Effect.void,
                     interrupt: Effect.void,
@@ -10366,10 +10463,7 @@ describe("ClaudeAdapterV2 background wake turns", () => {
           // Model-changing user turn replaces the query while continuation stays
           // queued. Process reset must not invent opaque classification for the
           // buffered subagent notification.
-          const alternateModel = {
-            ...CLAUDE_TEST_MODEL_SELECTION,
-            model: "claude-haiku-4-5-20251001",
-          } satisfies ModelSelection;
+          const relaunchSelection = CLAUDE_TEST_RELAUNCH_SELECTION;
           yield* runtime.startTurn(
             makeClaudeTestTurnInput({
               threadId,
@@ -10379,7 +10473,7 @@ describe("ClaudeAdapterV2 background wake turns", () => {
               text: "Switch model while the subagent completes.",
               attachments: [],
               providerTurnOrdinal: 2,
-              modelSelection: alternateModel,
+              modelSelection: relaunchSelection,
             }),
           );
           assert.equal(processQueues.length, 2);
@@ -10414,7 +10508,7 @@ describe("ClaudeAdapterV2 background wake turns", () => {
               text: "Background task completed.",
               attachments: [],
               providerTurnOrdinal: 3,
-              modelSelection: alternateModel,
+              modelSelection: relaunchSelection,
               messageCreatedBy: "agent",
               messageCreationSource: "provider",
             }),
@@ -10446,7 +10540,7 @@ describe("ClaudeAdapterV2 background wake turns", () => {
       ),
   );
 
-  it.effect("refuses a model change that would kill a running background subagent", () =>
+  it.effect("refuses a thinking change that would kill a running background subagent", () =>
     Effect.scoped(
       Effect.gen(function* () {
         const SUBAGENT_TASK_ID = "task-model-change-running-subagent";
@@ -10478,6 +10572,8 @@ describe("ClaudeAdapterV2 background wake turns", () => {
                   messages: Stream.fromQueue(sdkMessages),
                   offer: () => Effect.void,
                   setModel: () => Effect.void,
+                  applyFlagSettings: () => Effect.void,
+                  readAppliedSettings: Effect.succeed(null),
                   setPermissionMode: () => Effect.void,
                   stopTask: () => Effect.void,
                   interrupt: Effect.void,
@@ -10550,12 +10646,9 @@ describe("ClaudeAdapterV2 background wake turns", () => {
         yield* awaitUntil(() => terminals().length === 1, "first turn terminal");
         const settledTurn = terminals()[0]!;
 
-        // The subagent runs inside the first CLI process. Another model needs
-        // another process, so the turn must not start and close this one.
-        const alternateModel = {
-          ...CLAUDE_TEST_MODEL_SELECTION,
-          model: "claude-haiku-4-5-20251001",
-        } satisfies ModelSelection;
+        // The subagent runs inside the first CLI process. A thinking change
+        // needs another process, so the turn must not start and close this one.
+        const relaunchSelection = CLAUDE_TEST_RELAUNCH_SELECTION;
         const switchTurn = (attempt: string) =>
           runtime.startTurn(
             makeClaudeTestTurnInput({
@@ -10563,10 +10656,10 @@ describe("ClaudeAdapterV2 background wake turns", () => {
               providerThread: { ...providerThread, status: "active" },
               now,
               attemptId: RunAttemptId.make(attempt),
-              text: "Switch model while the subagent runs.",
+              text: "Switch thinking while the subagent runs.",
               attachments: [],
               providerTurnOrdinal: 2,
-              modelSelection: alternateModel,
+              modelSelection: relaunchSelection,
             }),
           );
         const refused = yield* switchTurn("attempt-claude-model-change-running-subagent-b").pipe(
@@ -10618,7 +10711,7 @@ describe("ClaudeAdapterV2 background wake turns", () => {
   );
 
   it.effect(
-    "keeps the process and its roster when a model change meets a running background shell",
+    "keeps the process and its roster when a thinking change meets a running background shell",
     () =>
       Effect.scoped(
         Effect.gen(function* () {
@@ -10661,6 +10754,8 @@ describe("ClaudeAdapterV2 background wake turns", () => {
                     messages: Stream.fromQueue(sdkMessages),
                     offer: () => Effect.void,
                     setModel: () => Effect.void,
+                    applyFlagSettings: () => Effect.void,
+                    readAppliedSettings: Effect.succeed(null),
                     setPermissionMode: () => Effect.void,
                     stopTask: () => Effect.void,
                     interrupt: Effect.void,
@@ -10720,10 +10815,7 @@ describe("ClaudeAdapterV2 background wake turns", () => {
           );
           assert.isTrue(yield* hasPendingBackgroundWork);
 
-          const alternateModel = {
-            ...CLAUDE_TEST_MODEL_SELECTION,
-            model: "claude-haiku-4-5-20251001",
-          } satisfies ModelSelection;
+          const relaunchSelection = CLAUDE_TEST_RELAUNCH_SELECTION;
           const failedStart = yield* runtime
             .startTurn(
               makeClaudeTestTurnInput({
@@ -10734,7 +10826,7 @@ describe("ClaudeAdapterV2 background wake turns", () => {
                 text: "Replace process but fail open.",
                 attachments: [],
                 providerTurnOrdinal: 2,
-                modelSelection: alternateModel,
+                modelSelection: relaunchSelection,
               }),
             )
             .pipe(Effect.exit);
@@ -10800,6 +10892,8 @@ describe("ClaudeAdapterV2 background wake turns", () => {
                     messages: Stream.fromQueue(sdkMessages),
                     offer: () => Effect.void,
                     setModel: () => Effect.void,
+                    applyFlagSettings: () => Effect.void,
+                    readAppliedSettings: Effect.succeed(null),
                     setPermissionMode: () => Effect.void,
                     stopTask: () => Effect.void,
                     interrupt: Effect.void,
@@ -10863,10 +10957,7 @@ describe("ClaudeAdapterV2 background wake turns", () => {
           yield* awaitUntil(() => continuationRequests.length === 1, "first continuation request");
           assert.isTrue(yield* hasPendingBackgroundWork);
 
-          const alternateModel = {
-            ...CLAUDE_TEST_MODEL_SELECTION,
-            model: "claude-haiku-4-5-20251001",
-          } satisfies ModelSelection;
+          const relaunchSelection = CLAUDE_TEST_RELAUNCH_SELECTION;
           const failedStart = yield* runtime
             .startTurn(
               makeClaudeTestTurnInput({
@@ -10877,7 +10968,7 @@ describe("ClaudeAdapterV2 background wake turns", () => {
                 text: "Replace process but fail open.",
                 attachments: [],
                 providerTurnOrdinal: 2,
-                modelSelection: alternateModel,
+                modelSelection: relaunchSelection,
               }),
             )
             .pipe(Effect.exit);
@@ -10893,7 +10984,7 @@ describe("ClaudeAdapterV2 background wake turns", () => {
               text: "Retry after the failed replacement.",
               attachments: [],
               providerTurnOrdinal: 2,
-              modelSelection: alternateModel,
+              modelSelection: relaunchSelection,
             }),
           );
           const retryProcess = processQueues[1]!;

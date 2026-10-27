@@ -112,7 +112,7 @@ import { resolveAttachmentPath } from "../../attachmentStore.ts";
 import { resolveClaudeSdkExecutablePath } from "../../provider/Drivers/ClaudeExecutable.ts";
 import { planClaudeSkillDispatch } from "../../provider/Drivers/ClaudeSkillDispatch.ts";
 import { discoverClaudeSkills } from "../../provider/Drivers/ClaudeSkills.ts";
-import { compileClaudeModelSelection } from "../../claudeModelOptions.ts";
+import { compileClaudeModelSelection, type ClaudeLiveSelection } from "../../claudeModelOptions.ts";
 import * as ServerConfig from "../../config.ts";
 import { expandHomePath } from "@t3tools/provider-core/server/pathExpansion";
 import {
@@ -386,12 +386,59 @@ export interface ClaudeAgentSdkQuerySession {
   readonly messages: Stream.Stream<SDKMessage, ClaudeAgentSdkQueryRunnerError>;
   readonly offer: (message: SDKUserMessage) => Effect.Effect<void, ClaudeAgentSdkQueryRunnerError>;
   readonly setModel: (model: string) => Effect.Effect<void, ClaudeAgentSdkQueryRunnerError>;
+  readonly applyFlagSettings: (
+    settings: ClaudeLiveFlagSettings,
+  ) => Effect.Effect<void, ClaudeAgentSdkQueryRunnerError>;
+  /** What Claude Code reports it is actually running with. */
+  readonly readAppliedSettings: Effect.Effect<
+    ClaudeAppliedSettings | null,
+    ClaudeAgentSdkQueryRunnerError
+  >;
   readonly setPermissionMode: (
     mode: PermissionMode,
   ) => Effect.Effect<void, ClaudeAgentSdkQueryRunnerError>;
   readonly stopTask: (taskId: string) => Effect.Effect<void, ClaudeAgentSdkQueryRunnerError>;
   readonly interrupt: Effect.Effect<void, ClaudeAgentSdkQueryRunnerError>;
   readonly close: Effect.Effect<void, ClaudeAgentSdkQueryRunnerError>;
+}
+
+export type ClaudeLiveFlagSettings = Omit<ClaudeLiveSelection, "model">;
+
+export interface ClaudeAppliedSettings {
+  readonly model: string | null;
+  readonly effort: string | null;
+  readonly ultracode: boolean;
+  readonly ultracodeRequested: boolean;
+  readonly ultracodeAvailable: boolean | null;
+}
+
+export const claudeLiveSelectionsEqual = (
+  left: ClaudeLiveSelection,
+  right: ClaudeLiveSelection,
+): boolean =>
+  left.model === right.model &&
+  left.effortLevel === right.effortLevel &&
+  left.fastMode === right.fastMode &&
+  left.ultracode === right.ultracode;
+
+/** Reads `get_settings().applied`, whose fields Claude Code adds over time. */
+export function readClaudeAppliedSettings(response: unknown): ClaudeAppliedSettings | null {
+  const applied =
+    typeof response === "object" && response !== null ? Reflect.get(response, "applied") : null;
+  if (typeof applied !== "object" || applied === null) return null;
+  const text = (key: string) => {
+    const value = Reflect.get(applied, key);
+    return typeof value === "string" ? value : null;
+  };
+  const flag = (key: string) => Reflect.get(applied, key) === true;
+  const available = Reflect.get(applied, "ultracodeAvailable");
+  return {
+    model: text("model"),
+    effort: text("effort"),
+    ultracode: flag("ultracode"),
+    ultracodeRequested: flag("ultracodeRequested"),
+    ultracodeAvailable: typeof available === "boolean" ? available : null,
+  };
 }
 
 type ClaudeQueryStreamExit = Exit.Exit<void, ClaudeAgentSdkQueryRunnerError>;
@@ -531,6 +578,14 @@ export type ClaudeAgentSdkProtocolLogEvent =
       readonly payload: {
         readonly type: "query.set_model";
         readonly model: string;
+      };
+    }
+  | {
+      readonly direction: "outgoing";
+      readonly stage: "decoded";
+      readonly payload: {
+        readonly type: "query.apply_flag_settings";
+        readonly settings: ClaudeLiveFlagSettings;
       };
     }
   | {
@@ -911,6 +966,33 @@ export const layerQueryRunner: Layer.Layer<
                 }),
               ),
             ),
+          applyFlagSettings: (settings) =>
+            Effect.tryPromise({
+              // Efforts come from the model's own catalog levels.
+              try: () =>
+                queryRuntime.applyFlagSettings(
+                  settings as Parameters<ClaudeQuery["applyFlagSettings"]>[0],
+                ),
+              catch: (cause) => queryRunnerError(cause, "applyFlagSettings"),
+            }).pipe(
+              Effect.tap(() =>
+                logProtocolEvent({
+                  direction: "outgoing",
+                  stage: "decoded",
+                  payload: { type: "query.apply_flag_settings", settings },
+                }),
+              ),
+            ),
+          // The SDK answers get_settings at runtime without typing it.
+          readAppliedSettings: Effect.tryPromise({
+            try: async () => {
+              const getSettings: unknown = Reflect.get(queryRuntime, "getSettings");
+              return typeof getSettings === "function"
+                ? readClaudeAppliedSettings(await getSettings.call(queryRuntime))
+                : null;
+            },
+            catch: (cause) => queryRunnerError(cause, "getSettings"),
+          }),
           setPermissionMode: (mode) =>
             Effect.tryPromise({
               try: () => queryRuntime.setPermissionMode(mode),
@@ -2963,7 +3045,12 @@ interface ClaudeLiveQueryContext {
   readonly nativeThreadId: string;
   readonly query: ClaudeAgentSdkQuerySession;
   readonly queryPolicyKey: string;
-  readonly selectionKey: string;
+  // Choices the process was launched with; a change needs a new process.
+  readonly launchKey: string;
+  // Model, effort and modes, changed on the live process between turns.
+  live: ClaudeLiveSelection;
+  // Ultracode was asked for and Claude Code has not yet confirmed it runs.
+  verifyUltracode: boolean;
   readonly closed: Deferred.Deferred<void>;
   // Retained for process-exit cleanup even when its last turn failed.
   lastTurn: ActiveClaudeTurnContext | null;
@@ -4136,6 +4223,39 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
             context.itemOrdinals.set(nativeItemId, ordinal);
             return ordinal;
           });
+
+        const emitSystemNotice = Effect.fn("ClaudeAdapterV2.emitSystemNotice")(function* (
+          context: ActiveClaudeTurnContext,
+          nativeItemId: string,
+          notice: string,
+        ) {
+          const now = yield* DateTime.now;
+          yield* emitProviderEvent({
+            type: "turn_item.updated",
+            driver: CLAUDE_PROVIDER,
+            turnItem: {
+              id: idAllocator.derive.turnItemFromProviderItem({
+                driver: CLAUDE_PROVIDER,
+                nativeItemId,
+              }),
+              threadId: context.input.threadId,
+              runId: context.input.runId,
+              nodeId: context.input.rootNodeId,
+              providerThreadId: context.input.providerThread.id,
+              providerTurnId: context.providerTurnId,
+              nativeItemRef: { driver: CLAUDE_PROVIDER, nativeId: nativeItemId, strength: "weak" },
+              parentItemId: null,
+              ordinal: yield* resolveItemOrdinal(context, nativeItemId),
+              type: "system_notice",
+              status: "completed",
+              title: notice,
+              message: notice,
+              startedAt: now,
+              completedAt: now,
+              updatedAt: now,
+            },
+          });
+        });
 
         const providerTurnPayload = (input: {
           readonly context: ActiveClaudeTurnContext;
@@ -8196,6 +8316,57 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
                   ),
                 );
 
+        // Model, effort, Fast and Ultracode change on the running process, so a
+        // new choice never ends the background agents, shells and workflows it
+        // hosts. False when Claude Code refused, so the caller starts a new process.
+        const applyLiveSelection = Effect.fn("ClaudeAdapterV2.applyLiveSelection")(function* (
+          context: ClaudeLiveQueryContext,
+          live: ClaudeLiveSelection,
+        ) {
+          const current = context.live;
+          if (claudeLiveSelectionsEqual(current, live)) return true;
+          const { model, ...flags } = live;
+          const applied = yield* Effect.gen(function* () {
+            if (model !== current.model) yield* context.query.setModel(model);
+            // An effort change without the ultracode key turns Ultracode off,
+            // so every change sends the whole set.
+            yield* context.query.applyFlagSettings(flags);
+          }).pipe(
+            Effect.as(true),
+            Effect.catch((cause) =>
+              Effect.logWarning("Claude Code refused a live model change; restarting it.", {
+                cause,
+              }).pipe(Effect.as(false)),
+            ),
+          );
+          if (applied) {
+            context.live = live;
+            context.verifyUltracode = live.ultracode;
+          }
+          return applied;
+        });
+
+        // Claude Code accepts Ultracode silently and runs without it when the
+        // account has dynamic workflows off or the model cannot run it.
+        const reportUltracodeShortfall = Effect.fn("ClaudeAdapterV2.reportUltracodeShortfall")(
+          function* (querySession: ClaudeLiveQueryContext, context: ActiveClaudeTurnContext) {
+            if (!querySession.verifyUltracode) return;
+            querySession.verifyUltracode = false;
+            const applied = yield* querySession.query.readAppliedSettings.pipe(
+              Effect.timeout("20 seconds"),
+              Effect.orElseSucceed(() => null),
+            );
+            if (applied === null || applied.ultracode) return;
+            yield* emitSystemNotice(
+              context,
+              `ultracode-unavailable:${context.providerTurnId}`,
+              applied.ultracodeAvailable === false
+                ? "Ultracode is off for this chat: Claude Code needs dynamic workflows on (see /config in Claude Code) and a model that supports it."
+                : "Ultracode is off for this chat: Claude Code did not turn it on.",
+            );
+          },
+        );
+
         const openQuery = Effect.fnUntraced(function* (
           turnInput: ProviderAdapter.ProviderAdapterV2TurnInput,
           nativeThreadId: string,
@@ -8228,7 +8399,8 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
             existing !== null &&
             existing.nativeThreadId === nativeThreadId &&
             existing.queryPolicyKey === queryPolicyKey &&
-            existing.selectionKey === compiledSelection.queryIdentity
+            existing.launchKey === compiledSelection.launchIdentity &&
+            (yield* applyLiveSelection(existing, compiledSelection.live))
           ) {
             // Claude can switch its own mode mid-session (EnterPlanMode), and
             // a denied ExitPlanMode leaves it there. Put the live process back
@@ -8240,8 +8412,8 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
             return existing;
           }
 
-          // Background agents and shells run inside the CLI process, so a
-          // new selection would kill them and lose their results. Refuse until
+          // Background agents and shells run inside the CLI process, so a new
+          // launch choice would kill them and lose their results. Refuse until
           // they finish or the user presses Stop, which closes the process.
           // Another native thread on this session is one the app thread has
           // left (Claude sessions serve one app thread), so it is replaced.
@@ -8367,7 +8539,9 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
             nativeThreadId,
             query: querySession,
             queryPolicyKey,
-            selectionKey: compiledSelection.queryIdentity,
+            launchKey: compiledSelection.launchIdentity,
+            live: compiledSelection.live,
+            verifyUltracode: compiledSelection.live.ultracode,
             closed,
             lastTurn: null,
             promptEchoMode: "unknown",
@@ -8550,6 +8724,10 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
             });
             if (userMessage !== null) {
               yield* attachTurn;
+              yield* reportUltracodeShortfall(querySession, context).pipe(
+                Effect.ignore,
+                Effect.forkIn(sessionScope),
+              );
               // A user turn that races a wake leaves the buffer alone: the
               // continuation run the worker queued behind this run drains it
               // afterwards with correct attribution.
