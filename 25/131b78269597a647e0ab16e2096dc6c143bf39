@@ -1,0 +1,162 @@
+docs/ARCHITECTURE.md
+  s_6f9124f60f607e::t_d7fec63fe55e0c 1150-1153
+src/main/automation-application/AutomationApplication.ts
+  s_6f9124f60f607e::t_9f9228d2dd95de 597-620,742-749
+  s_6f9124f60f607e::t_8082f551778ff8 22-24,65-66,74-80,90,592,596,621-622,741,1090
+src/renderer/features/inbox/inbox-icon-action.tsx
+  s_6f9124f60f607e::t_7d5385286885dd 21
+src/main/host-runtime/ScheduledAutomationRuntime.ts
+  s_6f9124f60f607e::t_57e937988865c3 27
+  s_6f9124f60f607e::t_6892b2fb458441 18-21,65-69,153-177,183-189,191-194,198
+  s_6f9124f60f607e::t_9076f3b5e43525 76,180-181,197
+  s_6f9124f60f607e::t_cf052678aae5f9 22-23
+  s_6f9124f60f607e::t_3d02a1e698cc4f 190
+src/main/inbox-application/inbox-suggestions.node.test.ts
+  s_6f9124f60f607e::t_25f3b63f242ee0 75-82,84-89,91-92,94-96,98,102
+  s_6f9124f60f607e::t_a8e40e336ffe99 99,101
+  s_6f9124f60f607e::t_637ea527d5c828 83,90,93,97,100
+src/main/automation-application/AutomationExecution.ts
+  s_6f9124f60f607e::t_f36ae9f94fb6b3 35-39,48,116-117,126-127,137,139,300-301,345,359,368-369,428
+  s_6f9124f60f607e::t_9f9228d2dd95de 145-150,166-196,302-304,331-333,336,339-342,360-367,370-405,450-453,489-490
+src/main/host-runtime/ApplicationSchedulers.test.ts
+  s_6f9124f60f607e::t_18e5c48f831187 23,80-82,104-105,233
+  s_6f9124f60f607e::t_da3edb251abe2a 330-332,623-673,675-676,688,691-695,698-699,702-703
+  s_6f9124f60f607e::t_25f3b63f242ee0 617-622,677-682,690,700-701,704-707
+  s_6f9124f60f607e::t_6303055ac89aad 674,683-687,689,696-697
+src/main/automation-application/AutomationProjection.ts
+  s_6f9124f60f607e::t_18e5c48f831187 70
+  s_6f9124f60f607e::t_2fb00efefe07f4 71-81,230-231
+src/main/host-runtime/ScheduledAutomationPolicy.ts
+  s_6f9124f60f607e::t_9076f3b5e43525 5,17
+src/renderer/features/inbox/use-inbox-actions.ts
+  s_6f9124f60f607e::t_7d5385286885dd 170-171
+src/main/app-tools/AutomationAppTools.ts
+  s_6f9124f60f607e::t_8082f551778ff8 290-296,298
+  s_6f9124f60f607e::t_5e9ab5f7bc138f 297
+src/main/inbox-application/scheduled-firing.ts
+  s_6f9124f60f607e::t_990d55dbdca546 1-7,9-16,18-19,21-22,24-27
+  s_6f9124f60f607e::t_c13bb5e81f08df 17,20,23
+  s_6f9124f60f607e::t_f544e6261ee4f6 8
+src/main/automation-application/AutomationExecution.node.test.ts
+  s_6f9124f60f607e::t_82d7ea0263e4cb 98-102,385-386
+  s_6f9124f60f607e::t_74d362267ecf83 28,39-41,83-84,91-92,97,103-117,120-122,163-167,172,178,249-256,259-266,342-351,353-363,365,367-384,387-397,399-419,421,423-428,430-440,442-454,457,459,461-483,564
+  s_6f9124f60f607e::t_4b5e6635ccd6db 118-119,257-258,352,364,398,420,422,429,441,455-456,458,460
+src/main/inbox-application/InboxApplication.ts
+  s_6f9124f60f607e::t_27175921aa2ccd 128-129,131
+  s_6f9124f60f607e::t_cf052678aae5f9 689-710,715-718
+  s_6f9124f60f607e::t_990d55dbdca546 81-83,383-384,386,432,434,458-459,461,669-671,673-681,683-688,719-722,758-759
+  s_6f9124f60f607e::t_4f1f3aa181d1f3 587
+  s_6f9124f60f607e::t_9076f3b5e43525 433,435-439
+  s_6f9124f60f607e::t_c13bb5e81f08df 672
+  s_6f9124f60f607e::t_d90bb5fe6a660f 711-714
+  s_6f9124f60f607e::t_009f9dd4406499 130,385,460,682
+src/shared/nodex-app-tools/automation-schema.ts
+  s_6f9124f60f607e::t_2fb00efefe07f4 19-30
+  s_6f9124f60f607e::t_7813051a8f9285 136
+src/main/inbox-application/inbox-suggestions.ts
+  s_6f9124f60f607e::t_6c3cb1def1c70d 185,215
+  s_6f9124f60f607e::t_52b503c4690cc8 216-218
+  s_6f9124f60f607e::t_6c5fac693bdc16 292
+  s_6f9124f60f607e::t_162f772da71198 291
+src/main/automation-application/AutomationApplication.node.test.ts
+  s_6f9124f60f607e::t_d90bb5fe6a660f 23,494-495
+  s_6f9124f60f607e::t_2edf5b0bd38e72 209-224,226-258,269,271,277,281-282,294-308,310-313,315-318,320-322,324-327
+  s_6f9124f60f607e::t_3dd36d8595862d 225,259-268,270,272-276,278-280,283-293,309,314,319,323
+src/shared/schemas/inbox.ts
+  s_6f9124f60f607e::t_2fb00efefe07f4 83-90
+src/main/inbox-application/scheduled-firing.node.test.ts
+  s_6f9124f60f607e::t_82d7ea0263e4cb 1-24,26-39,41-57,59-84,86-98,100-108,110-136,138-140,142-152,154-156,158-163,165-170,172-173,175-189,191-202,204-214,217-220,222-230,232-240,242-244,246-248,250-252,254,256-257
+  s_6f9124f60f607e::t_c13bb5e81f08df 157
+  s_6f9124f60f607e::t_3d6106bbd32a77 25,40,58,85,99,109,137,141,153,164,171,174,190,203,215-216,221,231,241,245,249,253,255
+src/main/inbox-application/InboxDispatcher.ts
+  s_6f9124f60f607e::t_4f1f3aa181d1f3 55-65
+src/main/core-client/inbox-adapter.ts
+  s_6f9124f60f607e::t_2fb00efefe07f4 42-48,56,59,70,86-92,153-160,249-259
+src/shared/inbox.ts
+  s_6f9124f60f607e::t_040a491c0ecbd6 3-7,526,528-531,533-536
+  s_6f9124f60f607e::t_6c3cb1def1c70d 521-525,527,532
+src/main/codex-scheduled-automation-runtime.ts
+  s_6f9124f60f607e::t_9076f3b5e43525 38-49,51-53,56-57,67-68,75-76,83-84
+  s_6f9124f60f607e::t_b63512bf24e15e 50
+src/main/app/ApplicationOperationsLive.ts
+  s_6f9124f60f607e::t_bf9075303991e8 95
+  s_6f9124f60f607e::t_1ec8ab89366170 61
+src/main/app/MainApplicationLive.ts
+  s_6f9124f60f607e::t_bf9075303991e8 35-36,38-39,163-165,167
+  s_6f9124f60f607e::t_eef0c5416cebaa 37,166
+src/main/app-tools/AutomationAppTools.node.test.ts
+  s_6f9124f60f607e::t_89c7ba794fbd21 24,72-74,120-126,134-138,150,153,155-165
+  s_6f9124f60f607e::t_da2555309656fd 139-145,149,151-152
+  s_6f9124f60f607e::t_18e5c48f831187 127-130,132
+  s_6f9124f60f607e::t_52ce39ce721081 131,133,146-148,154,166
+src/renderer/features/inbox/inbox-presentation.ts
+  s_6f9124f60f607e::t_7d5385286885dd 258,274-281,283,326-327
+  s_6f9124f60f607e::t_6f736e71a73e11 282
+docs/product-specs/scheduled-route-behavior.md
+  s_6f9124f60f607e::t_d7fec63fe55e0c 41,44-56,174-181
+  s_6f9124f60f607e::t_ff68fdf2148c79 211-212
+CHANGELOG.md
+  s_6f9124f60f607e::t_d7fec63fe55e0c 9-10
+src/shared/types.ts
+  s_6f9124f60f607e::t_040a491c0ecbd6 3214-3215
+src/renderer/features/inbox/inbox-dispatch-editor.tsx
+  s_6f9124f60f607e::t_7d5385286885dd 27,35,43,64-70,72,128-129,263-265
+  s_6f9124f60f607e::t_ea65455bc7ee23 71,266-285
+src/shared/nodex-app-tools/automation-projection.test.ts
+  s_6f9124f60f607e::t_040a491c0ecbd6 18-19,102-103,113-116,118
+  s_6f9124f60f607e::t_e01c967d8621da 117
+docs/product-specs/inbox-behavior.md
+  s_6f9124f60f607e::t_d7fec63fe55e0c 47-55
+src/shared/nodex-app-tools/automation-projection.ts
+  s_6f9124f60f607e::t_040a491c0ecbd6 12-13
+src/main/inbox-application/InboxRuntime.node.test.ts
+  s_6f9124f60f607e::t_19f1efa8024587 232,235-237
+src/main/ipc/handlers/AutomationIpc.ts
+  s_6f9124f60f607e::t_6c5fac693bdc16 7,31-48,55,241-242
+src/main/codex-scheduled-automation-runtime.test.ts
+  s_6f9124f60f607e::t_1bf6409b44801d 20-22
+src/main/core-runtime/AutomationRoutingIndex.node.test.ts
+  s_6f9124f60f607e::t_3a02286bf45fd7 27
+src/main/inbox-application/scheduled-firing-core.node.test.ts
+  s_6f9124f60f607e::t_3ea457d94adb22 1-103
+src/main/local-store/codex-scheduled-automation-schedule.test.ts
+  s_6f9124f60f607e::t_70a11c7aafdecd 22-24
+src/renderer/components/workbench/workbench-automation-draft.node.test.ts
+  s_6f9124f60f607e::t_442a337b3ed365 63-65
+src/renderer/components/workbench/workbench-testkit/workbench-shell-fixtures.ts
+  s_6f9124f60f607e::t_743e85dfb97d5f 98-100
+src/renderer/components/workbench/workbench-testkit/workbench-shell-harness.tsx
+  s_6f9124f60f607e::t_73accdab3c1ab6 3497-3499,3529-3531
+src/renderer/features/inbox/inbox-copy-action.test.tsx
+  s_6f9124f60f607e::t_4e84069128a355 33
+src/renderer/features/inbox/inbox-message.browser.test.tsx
+  s_6f9124f60f607e::t_037777e005a760 37
+src/renderer/features/inbox/inbox-presentation.node.test.ts
+  s_6f9124f60f607e::t_748824f9a312ca 38
+src/renderer/features/inbox/inbox-triage.test.tsx
+  s_6f9124f60f607e::t_39623690ace17f 68
+src/renderer/features/inbox/use-inbox-departures.test.tsx
+  s_6f9124f60f607e::t_99e323547f62b6 29
+src/renderer/features/local-conversation/projection/thread-summary-panel-scheduled-automation-model.node.test.ts
+  s_6f9124f60f607e::t_81b07dfa839e89 11-13
+src/renderer/features/scheduled/scheduled-task-model.node.test.ts
+  s_6f9124f60f607e::t_a5bc80fd4b3ab5 22-24
+src/renderer/lib/use-codex-automation-run-updates.test.tsx
+  s_6f9124f60f607e::t_b7b278228bb432 22-24
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "25131b78269597a647e0ab16e2096dc6c143bf39",
+  "prompts": {},
+  "sessions": {
+    "s_6f9124f60f607e": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17cf3-a98a-70e0-b015-f24daa2d529b",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
