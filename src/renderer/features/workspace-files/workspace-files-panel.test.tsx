@@ -278,6 +278,8 @@ vi.mock("./workspace-pdf-preview", () => ({
 beforeAll(async () => {
   const module = await import("./workspace-files-panel");
   WorkspaceFilesPanel = module.WorkspaceFilesPanel;
+  // Video tests observe the viewer, not the player's lazy module load.
+  await import("@/lib/conversation-media/conversation-video-player");
 });
 
 afterAll(() => {

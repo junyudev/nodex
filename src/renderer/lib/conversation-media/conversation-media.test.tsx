@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, test, vi } from "vite-plus/test";
+import { afterEach, beforeAll, beforeEach, describe, expect, test, vi } from "vite-plus/test";
 import { act, cleanup, fireEvent, render, waitFor, within } from "@testing-library/react";
 import { flushSync } from "react-dom";
 import { TestQueryProvider, createTestQueryClient } from "@/test/query";
@@ -53,6 +53,10 @@ async function loaded(image: HTMLElement) {
   });
 }
 describe("ordinary conversation media", () => {
+  // These tests observe player behavior; cold module loading is covered by the lazy player tests.
+  beforeAll(async () => {
+    await import("./conversation-video-player");
+  });
   beforeEach(() => {
     reads.mockReset().mockResolvedValue({ contentsBase64: "aW1hZ2U=", mimeType: "image/png" });
     installWindowApi({
