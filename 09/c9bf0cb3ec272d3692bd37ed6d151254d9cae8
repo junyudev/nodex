@@ -1,0 +1,89 @@
+.node-version
+  s_59e7ff6e7dee19::t_51679ed4d08050 1
+AGENTS.md
+  s_59e7ff6e7dee19::t_00ab3584a898cb 69
+docs/development.md
+  s_59e7ff6e7dee19::t_7c6c0db8616b55 14,215-218
+package.json
+  s_59e7ff6e7dee19::t_69190f0606abad 242,282,303-306,323,356,358
+packages/agent-runtime/package.json
+  s_59e7ff6e7dee19::t_f8cccb19acea7f 46
+packages/agent-runtime/vendor/effect-acp/package.json
+  s_59e7ff6e7dee19::t_82d542c877f887 50
+packages/agent-runtime/vendor/effect-codex-app-server/package.json
+  s_59e7ff6e7dee19::t_e1765039c58a65 43
+packages/agent-runtime/vendor/provider-acp-registry/package.json
+  s_59e7ff6e7dee19::t_7cdcdf5581cc9f 46
+packages/agent-runtime/vendor/provider-acp/package.json
+  s_59e7ff6e7dee19::t_75992717106317 56
+packages/agent-runtime/vendor/provider-core/package.json
+  s_59e7ff6e7dee19::t_f9bb4a43f81494 211
+packages/agent-runtime/vendor/provider-opencode/package.json
+  s_59e7ff6e7dee19::t_b9c6e3d24fb1b7 64
+packages/agent-runtime/vendor/provider-testing/package.json
+  s_59e7ff6e7dee19::t_c65eefb49f9604 39
+packages/agent-runtime/vendor/shared/package.json
+  s_59e7ff6e7dee19::t_9086bc1956e6c0 523
+packages/agent-runtime/vendor/source-control-azure-devops/package.json
+  s_59e7ff6e7dee19::t_6b3c7d8bd0d955 57
+packages/agent-runtime/vendor/source-control-bitbucket/package.json
+  s_59e7ff6e7dee19::t_03cb2dc3d62bd4 51
+packages/agent-runtime/vendor/source-control-core/package.json
+  s_59e7ff6e7dee19::t_2e4de927e9a883 57
+packages/agent-runtime/vendor/source-control-forgejo/package.json
+  s_59e7ff6e7dee19::t_07d593a266e411 48
+packages/agent-runtime/vendor/source-control-gitcafe/package.json
+  s_59e7ff6e7dee19::t_2aba51efd3106b 52
+packages/agent-runtime/vendor/source-control-github/package.json
+  s_59e7ff6e7dee19::t_069992c5bdfca3 89
+packages/agent-runtime/vendor/source-control-gitlab/package.json
+  s_59e7ff6e7dee19::t_8a024547c90cb1 55
+packages/agent-runtime/vendor/source-control-testing/package.json
+  s_59e7ff6e7dee19::t_0ae3da639a29e6 21
+packages/effect-codex-app-server/package.json
+  s_59e7ff6e7dee19::t_8b5c8d515aa93d 25
+packages/nodex-app-tools-mcp/package.json
+  s_59e7ff6e7dee19::t_2119c75fbb0d79 15
+pnpm-lock.yaml
+  s_fa8d75732255a5::t_e0c22874799123 10-11,15-26,30-31,35-41,46-47,52-71,76-77,82-83,87-88,92-94,99-111,114,117,120,123,126,129,132,135-141,143-156,169,180,375,377-378,411,414,497-498,510,513,560-561,563-564,566-567,569-570,576,620-621,663,699,702,705,723,782-783,813,845,848,867,869-870,873,895,897-898,901,926,928-929,935,963,968-969,975,997,999-1000,1003,1037,1042-1043,1046,1068,1070-1071,1074,1132,1134-1135,1141,1166,1171-1172,1175,1197,1199-1200,1203,1219,1221-1222,1225,1247,1252-1253,1256,1278,1283-1284,1287,1312,1317-1318,1321,1340,1345-1346,1349,1367-1368,1400,1402-1403,1409,1415,1427-1428,2074-2080,2765-2767,3533-3628,3632-3634,4503-4504,4773,5200-5201,5204-5205,5308-5309,5785-5786,5833-5834,5836-5837,5841-5842,5847-5848,5862-5863,7191-7192,7219-7220,7860-7864,8344-8345,8492,9127,9130-9131,9133,9136-9137,9199-9208,9212,9573,9776-9777,9997,10000,10013,10016,10021,10023,10371-10415,10418-10419,10895,10900,11121,11262,11276,11287,11297,11299,11315,11334,11338,11342,11466,11474,11478,11480-11481,11484,11491,11495-11496,11503,11506,11513,11521,11528,11551,11559,11567,11792-11793,11820,11827,11830,11836,11841,11845-11846,11969,12454,12456-12457,12512,12514-12515,12521,12523-12524,12528,12537,12541,12553,12558,12560-12561,12577,12581,12682,12695,13030,14259,14261,14267,14284,14290,14437,14460,14462,14485,14496,14518,14520,14542,15086-15107,15109,15111,15113,15115,15117,15119,15675,15800,15804-15806,15811-15812,15814-15815,15817,15862,15866-15868,15873-15874,15876-15877,15879,15924,15927,15938,15942-15944,15950,15953,15964,15968-15970
+pnpm-workspace.yaml
+  s_59e7ff6e7dee19::t_3bdbd3e6b270ea 27,38
+scripts/ci/verify-semantic-tooling.ts
+  s_59e7ff6e7dee19::t_46242132b4eb57 31
+scripts/ci/verify-source-type-ownership.test.ts
+  s_59e7ff6e7dee19::t_3d610ee8dcfd80 28
+scripts/ci/verify-source-type-ownership.ts
+  s_59e7ff6e7dee19::t_3b7e0227d7bc7c 98
+scripts/sign-macos-runtime.d.mts
+  s_59e7ff6e7dee19::t_ae89b0b19a3892 1,5
+scripts/sign-macos-runtime.mjs
+  s_59e7ff6e7dee19::t_13a5dc68a5a389 17,416,442-443,473-474
+scripts/sign-macos-runtime.test.ts
+  s_59e7ff6e7dee19::t_634a7d2f53d431 23,93,102,112-138,153,156,170
+src/main/electron-test-runtime.test.ts
+  s_59e7ff6e7dee19::t_c0417d19a0b4da 8
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "09c9bf0cb3ec272d3692bd37ed6d151254d9cae8",
+  "prompts": {},
+  "sessions": {
+    "s_59e7ff6e7dee19": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17dc2-81ce-72c2-84a2-18d1f10f50ae",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_fa8d75732255a5": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17dc2-a65a-73f3-bbd2-b4f8e69b8676",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
