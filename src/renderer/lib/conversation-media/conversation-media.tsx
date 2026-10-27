@@ -36,6 +36,9 @@ import {
   type ConversationImageAction,
 } from "./conversation-image-actions";
 import { LazyConversationVideoPlayer } from "./conversation-video-lazy";
+import type { ConversationVideoSizing } from "./conversation-video-player";
+import { APP_FILESYSTEM_ORIGIN } from "../../../shared/app-protocol";
+import { saveWorkspaceFileCopy } from "../workspace-file-operations";
 import { displayTime, safeDuration, seekMedia } from "./conversation-media-playback";
 import { writeTextToClipboard } from "../clipboard";
 import { openExternalUrl } from "../file-system-operations";
@@ -240,7 +243,7 @@ export function ConversationMediaProvider({
   );
 }
 
-interface MediaResource {
+export interface ConversationMediaResource {
   readonly identity: string;
   readonly status: "loading" | "ready" | "error";
   readonly url: string | null;
@@ -324,7 +327,7 @@ function ConversationFileMedia({
     queryFn: readFileMedia.bind(null, base, isResourceCurrent),
   };
   const result = useQuery({ ...options, enabled: isResourceCurrent });
-  const resource: MediaResource = {
+  const resource: ConversationMediaResource = {
     identity,
     status: result.isError ? "error" : result.data ? "ready" : "loading",
     url:
@@ -371,12 +374,18 @@ export function ConversationMediaParagraph({
 }
 
 async function saveMedia(
+  resource: ConversationMediaResource,
   url: string,
   filename: string,
   isCurrent: () => boolean,
   signal: AbortSignal,
 ) {
   if (!isCurrent() || signal.aborted) return;
+  // A local stream is copied by the host, so large media never crosses the renderer.
+  if (resource.path && url.startsWith(APP_FILESYSTEM_ORIGIN)) {
+    await saveWorkspaceFileCopy({ hostId: "local", path: resource.path });
+    return;
+  }
   const response = await fetch(url, { signal, credentials: "omit" });
   if (!response.ok) throw new Error("Media download failed");
   if (!isCurrent() || signal.aborted) return;
@@ -420,7 +429,7 @@ export function ConversationMedia({
         title={title}
       />
     );
-  const resource: MediaResource =
+  const resource: ConversationMediaResource =
     target.kind === "blocked"
       ? { identity, status: "error", url: null, path: null, isCurrent, canMount }
       : {
@@ -442,7 +451,7 @@ function ConversationMediaContent({
   alt,
   title,
 }: {
-  resource: MediaResource;
+  resource: ConversationMediaResource;
   raw: string;
   kind: ConversationMediaKind;
   alt: string;
@@ -485,7 +494,7 @@ function MediaUnavailable({
   title,
   loading = false,
 }: {
-  resource: MediaResource;
+  resource: ConversationMediaResource;
   label: string;
   title?: string;
   loading?: boolean;
@@ -529,7 +538,7 @@ function ConversationImage({
   alt,
   title,
 }: {
-  resource: MediaResource;
+  resource: ConversationMediaResource;
   raw: string;
   alt: string;
   title?: string;
@@ -659,7 +668,7 @@ interface PendingDownload {
   readonly controller: AbortController;
 }
 async function runMediaDownload(
-  resource: MediaResource,
+  resource: ConversationMediaResource,
   raw: string,
   pending: { current: PendingDownload | null },
   publish: (state: DownloadState | null) => void,
@@ -671,6 +680,7 @@ async function runMediaDownload(
   publish({ identity: resource.identity, pending: true, failed: false });
   try {
     await saveMedia(
+      resource,
       resource.url,
       conversationMediaFilename(raw),
       resource.isCurrent,
@@ -684,7 +694,7 @@ async function runMediaDownload(
     if (pending.current === attempt) pending.current = null;
   }
 }
-function useMediaDownload(resource: MediaResource, raw: string) {
+function useMediaDownload(resource: ConversationMediaResource, raw: string) {
   const pending = useRef<PendingDownload | null>(null);
   const [status, setStatus] = useState<DownloadState | null>(null);
   useLayoutEffect(
@@ -727,13 +737,13 @@ function MediaDownloadButton({
   );
 }
 
-function ConversationAudio({
+export function ConversationAudio({
   resource,
   raw,
   alt,
   title,
 }: {
-  resource: MediaResource;
+  resource: ConversationMediaResource;
   raw: string;
   alt: string;
   title?: string;
@@ -894,16 +904,20 @@ function ConversationAudio({
   );
 }
 
-function ConversationVideo({
+export function ConversationVideo({
   resource,
   raw,
   alt,
   title,
+  sizing,
+  allowWide,
 }: {
-  readonly resource: MediaResource;
+  readonly resource: ConversationMediaResource;
   readonly raw: string;
   readonly alt: string;
   readonly title?: string;
+  readonly sizing?: ConversationVideoSizing;
+  readonly allowWide?: boolean;
 }) {
   const { save, current: download } = useMediaDownload(resource, raw);
   const fallback = (
@@ -919,6 +933,8 @@ function ConversationVideo({
         resource={resource}
         alt={alt}
         title={title}
+        sizing={sizing}
+        allowWide={allowWide}
         onSaveCopy={save}
         downloadPending={download?.pending ?? false}
         downloadFailed={download?.failed ?? false}

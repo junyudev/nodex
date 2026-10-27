@@ -120,7 +120,7 @@ function WorkspaceScenario({ markdown }: { readonly markdown: boolean }) {
           path,
         },
         stateKey: 0,
-        state: markdown ? { markdownMode: "rendered" } : {},
+        state: { richView: Boolean(markdown) },
         createdAt: session.createdAt,
         updatedAt: session.updatedAt,
       }}

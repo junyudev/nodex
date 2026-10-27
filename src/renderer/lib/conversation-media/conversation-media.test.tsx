@@ -271,6 +271,10 @@ describe("ordinary conversation media", () => {
     expect(view.getByLabelText("Song").getAttribute("src")).toBe(audioUrl);
     expect(view.getByLabelText("Clip").getAttribute("src")).toBe(videoUrl);
     expect(reads).not.toHaveBeenCalled();
+    // The replacement player's controls measure themselves after mount.
+    await act(async () => {
+      await Promise.resolve();
+    });
   });
 
   test("the audio controls consume real native duration, play/pause and seek events", async () => {
@@ -304,6 +308,9 @@ describe("ordinary conversation media", () => {
   });
 
   test("video controls consume native seek/volume/rate and ignore repeated activation keys", async () => {
+    // Inset slider thumbs stay hidden until measured, and jsdom has no layout to measure, so
+    // their range inputs are found by label rather than by accessible role.
+    const slider = (name: string) => [name, { selector: "input[type=range]" }] as const;
     const play = vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue();
     const view = render(
       mediaTree(
@@ -321,20 +328,22 @@ describe("ordinary conversation media", () => {
     });
     expect(view.getByRole("button", { name: "Pause video" })).toBeTruthy();
     await act(async () => {
-      fireEvent.change(view.getByRole("slider", { name: "Seek in video" }), {
+      fireEvent.change(view.getByLabelText(...slider("Seek in video")), {
         target: { value: "62.5" },
       });
       await Promise.resolve();
     });
     expect(video.currentTime).toBe(62.5);
-    expect(view.queryByRole("slider", { name: "Volume" })).toBeNull();
+    expect(view.queryByLabelText(...slider("Video volume"))).toBeNull();
     await act(async () => {
       fireEvent.click(view.getByRole("button", { name: "Video volume" }));
       await Promise.resolve();
     });
-    await view.findByRole("slider", { name: "Volume" });
+    await view.findByLabelText(...slider("Video volume"));
     await act(async () => {
-      fireEvent.change(view.getByRole("slider", { name: "Volume" }), { target: { value: "0.25" } });
+      fireEvent.change(view.getByLabelText(...slider("Video volume")), {
+        target: { value: "0.25" },
+      });
       fireEvent.volumeChange(video);
       await Promise.resolve();
     });
@@ -348,10 +357,10 @@ describe("ordinary conversation media", () => {
     expect(video.muted).toBe(true);
     expect(view.getByRole("button", { name: "Unmute video" })).toBeTruthy();
     await act(async () => {
-      fireEvent.keyDown(view.getByRole("slider", { name: "Volume" }), { key: "Escape" });
+      fireEvent.keyDown(view.getByLabelText(...slider("Video volume")), { key: "Escape" });
       await Promise.resolve();
     });
-    await waitFor(() => expect(view.queryByRole("slider", { name: "Volume" })).toBeNull());
+    await waitFor(() => expect(view.queryByLabelText(...slider("Video volume"))).toBeNull());
     await act(async () => {
       fireEvent.keyDown(video, { key: " ", repeat: true });
       await Promise.resolve();

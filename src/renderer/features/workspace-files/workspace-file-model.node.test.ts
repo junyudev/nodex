@@ -3,11 +3,14 @@ import {
   getWorkspaceFileDomTabId,
   getWorkspaceRelativePath,
   isWorkspacePathInsideRoot,
-  resolveWorkspaceFilePresentation,
+  formatWorkspaceFileSize,
+  isWorkspaceFileTooLargeToPreview,
+  resolveWorkspaceFilePreviewKind,
+  resolveWorkspaceFileRichViewMode,
+  resolveWorkspaceFileUnsupportedType,
   resolveWorkspaceSourceLanguage,
   resolveWorkspaceTreeFilePath,
-  WORKSPACE_TEXT_EDITABLE_MAX_BYTES,
-  WORKSPACE_TEXT_LOAD_MAX_BYTES,
+  WORKSPACE_FILE_PREVIEW_MAX_BYTES,
 } from "./workspace-file-model";
 describe("workspace-file-model", () => {
   test("builds Codex-style file DOM tab ids", () => {
@@ -16,87 +19,82 @@ describe("workspace-file-model", () => {
     );
   });
 
-  test("routes files from sampled metadata instead of filename alone", () => {
+  test("opens sniffed images, PDFs, and playable media in their rich previews", () => {
+    expect(resolveWorkspaceFilePreviewKind({ path: "/repo/asset", contentKind: "image" })).toBe(
+      "image",
+    );
+    expect(resolveWorkspaceFilePreviewKind({ path: "/repo/report", contentKind: "pdf" })).toBe(
+      "pdf",
+    );
     expect(
-      resolveWorkspaceFilePresentation({
-        path: "/repo/LICENSE",
-        contentKind: "text",
-        sizeBytes: 1_024,
-      }),
-    ).toBe("readonly-text");
+      resolveWorkspaceFilePreviewKind({ path: "/repo/review.webm", contentKind: "video" }),
+    ).toBe("video");
     expect(
-      resolveWorkspaceFilePresentation({
-        path: "/repo/main.ts",
-        contentKind: "text",
-        sizeBytes: 1_024,
-      }),
-    ).toBe("editable-text");
+      resolveWorkspaceFilePreviewKind({ path: "/repo/demo.MP4", contentKind: undefined }),
+    ).toBe("video");
+    expect(resolveWorkspaceFilePreviewKind({ path: "/repo/tone.mp3", contentKind: "audio" })).toBe(
+      "audio",
+    );
     expect(
-      resolveWorkspaceFilePresentation({
-        path: "/repo/image.png",
-        contentKind: "binary",
-        sizeBytes: 1_024,
-      }),
+      resolveWorkspaceFileRichViewMode({ path: "/repo/review.webm", contentKind: "video" }),
+    ).toBe("always");
+  });
+
+  test("keeps containers the player cannot decode out of the media preview", () => {
+    const mkv = { path: "/repo/clip.mkv", contentKind: "video" } as const;
+    expect(resolveWorkspaceFilePreviewKind(mkv)).toBeNull();
+    expect(resolveWorkspaceFileUnsupportedType(mkv)).toBe("video");
+    expect(
+      resolveWorkspaceFileUnsupportedType({ path: "/repo/scan.tiff", contentKind: "image" }),
     ).toBe("image");
     expect(
-      resolveWorkspaceFilePresentation({
-        path: "/repo/extensionless-asset",
-        contentKind: "binary",
-        mimeType: "image/png",
-        sizeBytes: WORKSPACE_TEXT_LOAD_MAX_BYTES + 1,
-      }),
+      resolveWorkspaceFileUnsupportedType({ path: "/repo/scan.tiff (2)", contentKind: undefined }),
     ).toBe("image");
+  });
+
+  test("lets Markdown and SVG toggle between their source and rich views", () => {
+    const markdown = { path: "/repo/README.md", contentKind: "text" } as const;
+    expect(resolveWorkspaceFilePreviewKind(markdown)).toBe("markdown");
+    expect(resolveWorkspaceFileRichViewMode(markdown)).toBe("toggle");
+    const svg = { path: "/repo/logo.svg", contentKind: undefined } as const;
+    expect(resolveWorkspaceFilePreviewKind(svg)).toBe("image");
+    expect(resolveWorkspaceFileRichViewMode(svg)).toBe("toggle");
+    expect(resolveWorkspaceFileRichViewMode({ path: "/repo/main.ts", contentKind: "text" })).toBe(
+      "none",
+    );
+  });
+
+  test("names office documents and archives that have no preview", () => {
     expect(
-      resolveWorkspaceFilePresentation({
-        path: "/repo/file.pdf",
-        contentKind: "binary",
-        sizeBytes: 1_024,
-      }),
-    ).toBe("pdf");
+      resolveWorkspaceFileUnsupportedType({ path: "/repo/deck.pptx", contentKind: "archive" }),
+    ).toBe("powerpoint-deck");
     expect(
-      resolveWorkspaceFilePresentation({
-        path: "/repo/archive.zip",
-        contentKind: "binary",
-        sizeBytes: 1_024,
-      }),
-    ).toBe("unsupported");
+      resolveWorkspaceFileUnsupportedType({ path: "/repo/notes.rtf", contentKind: "text" }),
+    ).toBe("rich-text-document");
+    expect(
+      resolveWorkspaceFileUnsupportedType({ path: "/repo/bundle.zip", contentKind: "archive" }),
+    ).toBe("archive");
+    expect(
+      resolveWorkspaceFileUnsupportedType({ path: "/repo/data.bin", contentKind: "binary" }),
+    ).toBe("binary");
+    expect(
+      resolveWorkspaceFileUnsupportedType({ path: "/repo/LICENSE", contentKind: "text" }),
+    ).toBeNull();
+  });
+
+  test("blocks previews above the preview limit and formats sizes for the limit message", () => {
+    expect(isWorkspaceFileTooLargeToPreview(WORKSPACE_FILE_PREVIEW_MAX_BYTES)).toBe(false);
+    expect(isWorkspaceFileTooLargeToPreview(WORKSPACE_FILE_PREVIEW_MAX_BYTES + 1)).toBe(true);
+    expect(isWorkspaceFileTooLargeToPreview(null)).toBe(false);
+    expect(formatWorkspaceFileSize(512)).toBe("512 B");
+    expect(formatWorkspaceFileSize(3_482)).toBe("3.4 KB");
+    expect(formatWorkspaceFileSize(WORKSPACE_FILE_PREVIEW_MAX_BYTES)).toBe("256.0 MB");
   });
 
   test("uses the public source-language registry without treating unknown text as code", () => {
     expect(resolveWorkspaceSourceLanguage("/repo/main.ts")).toBe("typescript");
     expect(resolveWorkspaceSourceLanguage("/repo/Dockerfile")).toBe("dockerfile");
     expect(resolveWorkspaceSourceLanguage("/repo/LICENSE")).toBeNull();
-  });
-
-  test("makes the edit and full-load size boundaries explicit", () => {
-    expect(
-      resolveWorkspaceFilePresentation({
-        path: "/repo/main.ts",
-        contentKind: "text",
-        sizeBytes: WORKSPACE_TEXT_EDITABLE_MAX_BYTES - 1,
-      }),
-    ).toBe("editable-text");
-    expect(
-      resolveWorkspaceFilePresentation({
-        path: "/repo/main.ts",
-        contentKind: "text",
-        sizeBytes: WORKSPACE_TEXT_EDITABLE_MAX_BYTES,
-      }),
-    ).toBe("readonly-text");
-    expect(
-      resolveWorkspaceFilePresentation({
-        path: "/repo/main.ts",
-        contentKind: "text",
-        sizeBytes: WORKSPACE_TEXT_LOAD_MAX_BYTES,
-      }),
-    ).toBe("readonly-text");
-    expect(
-      resolveWorkspaceFilePresentation({
-        path: "/repo/main.ts",
-        contentKind: "text",
-        sizeBytes: WORKSPACE_TEXT_LOAD_MAX_BYTES + 1,
-      }),
-    ).toBe("too-large");
   });
 
   test("resolves tree coordinates without treating prefix collisions as descendants", () => {

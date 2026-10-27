@@ -18,7 +18,7 @@ export {
   getWorkspaceFileDomTabId,
   getWorkspaceFileName,
   isWorkspacePathInsideRoot,
-  resolveWorkspaceFilePresentation,
+  resolveWorkspaceFilePreviewKind,
   resolveWorkspaceSourceLanguage,
   WORKSPACE_TEXT_EDITABLE_MAX_BYTES,
   WORKSPACE_TEXT_LOAD_MAX_BYTES,

@@ -1,0 +1,182 @@
+/*
+ * Viewer chrome: the floating header above file, artifact, and media previews. Controls sit on
+ * blurred pill surfaces (`capsule`, `button`, `compound`); a `group` joins several controls on
+ * one surface. `data-viewer-density="compact"` on an ancestor shrinks every control to 32px and
+ * grouped controls to 28px.
+ */
+
+.header {
+  position: relative;
+  overflow: visible;
+}
+
+.header[data-viewer-placement="overlay"] {
+  isolation: isolate;
+  position: absolute;
+  inset: 0 0 auto;
+}
+
+.controlSurface {
+  background: linear-gradient(
+    var(--color-background-viewer-control),
+    var(--color-background-viewer-control)
+  );
+  box-shadow: var(--lightningcss-light, var(--shadow-viewer-surface))
+    var(
+      --lightningcss-dark,
+      0 0 0 var(--border-width-hairline) var(--color-border),
+      var(--shadow-xl-spread)
+    );
+  backdrop-filter: blur(var(--blur-xl, 24px));
+}
+
+.button {
+  isolation: isolate;
+  position: relative;
+  gap: calc(var(--spacing) * 2);
+  border-width: 0;
+  border-radius: var(--radius-full);
+  padding-block: 0;
+  padding-inline: calc(var(--spacing) * 3);
+  font-size: var(--text-sm);
+  line-height: calc(var(--spacing) * 5);
+  color: var(--color-text);
+}
+
+/* The hover wash paints under the content so it composes with the surface gradient. */
+.button::after {
+  content: "";
+  pointer-events: none;
+  position: absolute;
+  inset: 0;
+  z-index: -10;
+  border-radius: inherit;
+}
+
+.button:disabled {
+  cursor: var(--cursor-interaction);
+}
+
+.button.dropdown {
+  gap: var(--spacing);
+  padding-inline-end: calc(var(--spacing) * 1.5);
+}
+
+@media (hover: hover) {
+  .button:not(.selected, .primary):enabled:hover::after {
+    background-color: var(--color-background-primary-ghost-hover);
+  }
+}
+
+.button:not(.selected, .primary)[data-state="open"]::after,
+.button:not(.selected, .primary)[aria-expanded="true"]::after {
+  background-color: var(--color-background-primary-ghost-hover);
+}
+
+.button.primary {
+  background-color: var(--color-background-primary-solid);
+  background-image: none;
+  color: var(--color-text-primary-solid);
+}
+
+@media (hover: hover) {
+  .button.primary:enabled:hover {
+    background-color: color-mix(in oklab, var(--color-text) 80%, transparent);
+  }
+}
+
+.button.primary[data-state="open"] {
+  background-color: color-mix(in oklab, var(--color-text) 80%, transparent);
+}
+
+.button.selected {
+  background-image: none;
+  background-color: color-mix(in srgb, var(--color-surface) 90%, var(--color-chart-blue));
+  /* Dark themes lift the accent toward white (39% at the default contrast). */
+  color: var(--lightningcss-light, var(--color-text-info))
+    var(--lightningcss-dark, color-mix(in srgb, var(--color-chart-blue), white 39%));
+}
+
+.button.selected:enabled:hover:not([data-hover-suppressed="true"]),
+.button.selected[data-state="open"] {
+  background-color: color-mix(in srgb, var(--color-surface) 85%, var(--color-chart-blue));
+}
+
+.capsule {
+  padding: calc(var(--spacing) * 0.5);
+}
+
+.compound {
+  border-radius: var(--radius-full);
+  color: var(--color-text);
+}
+
+.compoundControl {
+  height: 100%;
+  padding-block: 0;
+  font-size: var(--text-sm);
+  line-height: calc(var(--spacing) * 5);
+}
+
+.compoundControl:disabled {
+  cursor: var(--cursor-interaction);
+}
+
+.button,
+.capsule,
+.compound {
+  height: var(--viewer-control-height, calc(var(--spacing) * 9));
+}
+
+:is(
+  [data-viewer-density="compact"] .button,
+  [data-viewer-density="compact"] .capsule,
+  [data-viewer-density="compact"] .compound
+) {
+  height: calc(var(--spacing) * 8);
+}
+
+[data-viewer-density="compact"] .group {
+  --viewer-control-height: calc(var(--spacing) * 8);
+}
+
+.group {
+  gap: calc(var(--spacing) * 0.5);
+}
+
+.group .button,
+.group .compound {
+  height: calc(var(--viewer-control-height, var(--spacing) * 9) - var(--spacing));
+  border-width: 0;
+  background-image: none;
+  box-shadow: none;
+}
+
+.group .button:not(.selected, .primary),
+.group .compound {
+  background-color: transparent;
+}
+
+:is(
+  [data-viewer-density="compact"] .group :where(.button, .compound),
+  [data-viewer-density="compact"] .control
+) {
+  height: calc(var(--spacing) * 7);
+}
+
+/* A capsule group holding a single control lets that control fill the capsule. */
+.capsule.group:has(> :not([data-viewer-header-collapsed], [hidden]):only-child) {
+  padding: 0;
+}
+
+.capsule.group > :only-child:is(button),
+.capsule.group > :only-child > button:only-child {
+  height: 100%;
+}
+
+.divider {
+  width: 1px;
+  height: calc(var(--spacing) * 4);
+  flex-shrink: 0;
+  background-color: var(--color-border);
+}

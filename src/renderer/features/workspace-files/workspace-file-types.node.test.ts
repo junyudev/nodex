@@ -5,7 +5,7 @@ describe("normalizeWorkspaceFilesTabState", () => {
   test("keeps only serializable presentation state and recoverable drafts", () => {
     expect(
       normalizeWorkspaceFilesTabState({
-        markdownMode: "rendered",
+        richView: false,
         treeVisible: false,
         treeWidth: 320,
         wordWrap: false,
@@ -18,7 +18,7 @@ describe("normalizeWorkspaceFilesTabState", () => {
         runtimeEditor: { unsafe: true },
       }),
     ).toEqual({
-      markdownMode: "rendered",
+      richView: false,
       treeVisible: false,
       treeWidth: 320,
       wordWrap: false,

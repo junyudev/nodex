@@ -86,6 +86,7 @@ mark.codex-thread-find-active {
   --height-titlebar: calc(var(--spacing) * 11);
   --border-width-hairline: 0.5px;
   --shadow-card: 0px 4px 16px 0px #0000000d;
+  --shadow-viewer-surface: 0 0 0 1px var(--color-border-subtle), var(--shadow-card);
   --elevation-stroke-subtle: 0 0 0 0.5px
     var(--lightningcss-light, rgb(from var(--color-border-strong) r g b / 0.04))
     var(--lightningcss-dark, rgb(from var(--color-border-strong) r g b / 0.06));

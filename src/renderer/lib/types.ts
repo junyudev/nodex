@@ -89,6 +89,7 @@ export type {
   WorkspaceDirectoryEntriesResult,
   WorkspaceFileBinaryReadResult,
   WorkspaceFileDirectoryEntry,
+  WorkspaceFileContentKind,
   WorkspaceFileMetadata,
   WorkspaceFileMetadataInput,
   WorkspaceFileReadResult,

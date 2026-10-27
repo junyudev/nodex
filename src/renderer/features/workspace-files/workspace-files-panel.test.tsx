@@ -99,7 +99,7 @@ const invoke = async (channel: string, ...args: unknown[]) => {
                   : (fileContents[input.path]?.length ?? 0),
       createdAtMs: Date.parse(CREATED_AT),
       mtimeMs: Date.parse(CREATED_AT),
-      contentKind: unsupported || pdf || image ? "binary" : "text",
+      contentKind: unsupported ? "archive" : pdf ? "pdf" : image ? "image" : "text",
       mimeType: pdf ? "application/pdf" : image ? "image/png" : undefined,
     };
   }
@@ -112,6 +112,8 @@ const invoke = async (channel: string, ...args: unknown[]) => {
     };
   }
   if (channel.startsWith("file-search:")) return fileSearch.invoke(channel, args[0]);
+  if (channel === "shell:file-link-openers:list-available") return ["vscode", "fileManager"];
+  if (channel === "shell:open-path-default") return true;
   if (channel === "read-file") {
     const input = args[0] as { hostId?: string; path: string };
     if (input.hostId === REMOTE_HOST && remoteTextRead) return remoteTextRead();
@@ -148,6 +150,18 @@ vi.mock("@/lib/api", () => ({
   subscribeAppUpdateStatus: () => () => undefined,
   getWindowFocusState: async () => true,
   subscribeWindowFocusChanges: () => () => undefined,
+  getGitWorkerClient: () => ({
+    request: async ({ params }: { params: { cwd: string } }) => ({
+      cwd: params.cwd,
+      root: null,
+      gitDir: null,
+      commonDir: null,
+      isGitRepository: false,
+      currentBranch: null,
+      defaultBranch: null,
+      errorMessage: null,
+    }),
+  }),
 }));
 
 vi.mock("./workspace-file-tree", () => ({
@@ -421,7 +435,12 @@ describe("WorkspaceFilesPanel", () => {
             );
           if (expected === 3) break;
           await act(async () => {
-            fireEvent.click(view.getByRole("button", { name: "Refresh files" }));
+            fireEvent.click(view.getByRole("button", { name: "File viewer options" }));
+            await Promise.resolve();
+          });
+          const refresh = await view.findByRole("menuitem", { name: "Refresh files" });
+          await act(async () => {
+            fireEvent.click(refresh);
             await Promise.resolve();
           });
         }
@@ -619,21 +638,17 @@ describe("WorkspaceFilesPanel", () => {
     await settleAsyncRender();
     await settleAsyncRender();
 
-    expect(view.getByText("huge.txt is too large to preview.") !== null).toBe(true);
+    expect(view.getByText("File is too large to preview")).not.toBeNull();
+    expect(view.getByText("20.0 MB exceeds the 20.0 MB preview limit")).not.toBeNull();
     expect(invokeCalls.some((call) => call[0] === "read-file")).toBe(false);
   });
 
-  test("routes large Markdown to exact source without mounting the rich renderer", async () => {
+  test("routes large Markdown to its source without mounting the rich renderer", async () => {
     const view = renderPanel(LARGE_MARKDOWN_FILE);
     await settleAsyncRender();
     await settleAsyncRender();
 
-    expect(view.getByText("Rich preview is unavailable for large Markdown files.")).not.toBeNull();
-    expect(
-      view.container.querySelector(
-        "[data-source-viewer='true'], [aria-label^='Loading Markdown source']",
-      ),
-    ).not.toBeNull();
+    expect(await view.findByLabelText("Source editor for large.md")).not.toBeNull();
     expect(view.container.querySelector(".codex-markdown-user")).toBe(null);
     expect(
       invokeCalls.some(
@@ -644,17 +659,18 @@ describe("WorkspaceFilesPanel", () => {
     ).toBe(true);
   });
 
-  test("renders unsupported binaries with external-open action", async () => {
+  test("explains unsupported files and opens them with the system app", async () => {
     const view = renderPanel(`${WORKSPACE_ROOT}/archive.zip`);
     await settleAsyncRender();
     await settleAsyncRender();
 
-    expect(view.getByText("Preview is not available for archive.zip.") !== null).toBe(true);
-    fireEvent.click(view.getByRole("button", { name: "Open externally" }));
+    expect(view.getByText("Archive previews aren't supported yet")).not.toBeNull();
+    expect(view.getByText("Open this file in another app to view it")).not.toBeNull();
+    fireEvent.click(view.getByRole("button", { name: "Open" }));
     await settleAsyncRender();
 
     expect(JSON.stringify(invokeCalls.at(-1))).toBe(
-      JSON.stringify(["shell:open-file-link", { path: `${WORKSPACE_ROOT}/archive.zip` }, "vscode"]),
+      JSON.stringify(["shell:open-path-default", `${WORKSPACE_ROOT}/archive.zip`]),
     );
   });
 
@@ -831,7 +847,7 @@ function makeFilesTab(selectedPath?: string): WorkspaceFilesTab {
       ...(selectedPath ? { path: selectedPath } : {}),
     },
     stateKey: 0,
-    state: { markdownMode: "rendered" },
+    state: { richView: true },
     createdAt: CREATED_AT,
     updatedAt: CREATED_AT,
   };

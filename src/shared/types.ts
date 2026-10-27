@@ -994,12 +994,22 @@ export interface WorkspaceFileBinaryReadResult {
   mimeType?: string;
 }
 
+/** What a file's leading bytes contain, as sniffed from its content sample. */
+export type WorkspaceFileContentKind =
+  | "text"
+  | "image"
+  | "pdf"
+  | "audio"
+  | "video"
+  | "archive"
+  | "binary";
+
 export interface WorkspaceFileMetadata {
   isFile: boolean;
   createdAtMs: number | null;
   mtimeMs: number | null;
   sizeBytes: number | null;
-  contentKind?: "text" | "binary";
+  contentKind?: WorkspaceFileContentKind;
   mimeType?: string;
 }
 

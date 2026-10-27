@@ -50,6 +50,11 @@ test("shows the local loading fallback before a cold player module mounts the ad
   expect(warm.container.querySelector("video")?.getAttribute("src")).toBe(
     "app://fs/@fs/media/clip.webm",
   );
+  // The warm player's controls measure themselves after mount.
+  await act(async () => {
+    await Promise.resolve();
+  });
+  warm.unmount();
 });
 
 function playerProps(alt = "Clip"): ConversationVideoPlayerProps {

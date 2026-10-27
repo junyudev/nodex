@@ -51,7 +51,8 @@ export const WorkspaceFileTextReadInputSchema = WorkspaceFileRequestSchema.exten
 
 export const WorkspaceFileMetadataInputSchema = WorkspaceFileRequestSchema.extend({
   contentSampleByteLimit: positiveByteLimitSchema.optional(),
-  contentSampleMaxFileBytes: positiveByteLimitSchema.optional(),
+  // Only gates whether a sample is read; it never sizes a read.
+  contentSampleMaxFileBytes: z.number().int().positive().optional(),
 }).strict() satisfies z.ZodType<WorkspaceFileMetadataInput>;
 
 export const WorkspaceFileWriteInputSchema = WorkspaceFileRequestSchema.extend({

@@ -16,7 +16,8 @@ export interface WorkspaceFileRevealLocation {
 
 export interface WorkspaceFilesTabState {
   draft?: WorkspaceFilesDraftState;
-  markdownMode?: "source" | "rendered";
+  /** Whether a file that can toggle (Markdown, SVG) shows its rich view instead of its source. */
+  richView?: boolean;
   treeVisible?: boolean;
   treeWidth?: number;
   wordWrap?: boolean;
@@ -38,9 +39,7 @@ export function normalizeWorkspaceFilesTabState(value: unknown): WorkspaceFilesT
       : undefined;
   return {
     ...(validDraft ? { draft: validDraft } : {}),
-    ...(candidate.markdownMode === "source" || candidate.markdownMode === "rendered"
-      ? { markdownMode: candidate.markdownMode }
-      : {}),
+    ...(typeof candidate.richView === "boolean" ? { richView: candidate.richView } : {}),
     ...(typeof candidate.treeVisible === "boolean" ? { treeVisible: candidate.treeVisible } : {}),
     ...(typeof candidate.treeWidth === "number" && Number.isFinite(candidate.treeWidth)
       ? { treeWidth: candidate.treeWidth }
