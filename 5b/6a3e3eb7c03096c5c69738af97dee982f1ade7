@@ -1,0 +1,19 @@
+src/renderer/features/local-conversation/projection/tool-metadata/dynamic-tool-call-utils.ts
+  s_f2e3c034e2bc1d::t_2bdc1c52eb84cc 415-416
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "5b6a3e3eb7c03096c5c69738af97dee982f1ade7",
+  "prompts": {},
+  "sessions": {
+    "s_f2e3c034e2bc1d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "b389974a-fbbe-4e05-a19e-cc46fafa05f3",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
