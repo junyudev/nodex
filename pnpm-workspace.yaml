@@ -23,6 +23,8 @@ supportedArchitectures:
 overrides:
   "@opencode/protocol>effect": 4.0.3
   "@opencode/schema>effect": 4.0.3
+  # Excalidraw's tab API is unchanged; replace its React 18-era Radix closure.
+  "@excalidraw/excalidraw@0.18.1>@radix-ui/react-tabs": 1.2.1
   remark-breaks: 4.0.0
   "@types/node": 24.13.3
   "@babel/core": 7.29.7
@@ -100,6 +102,9 @@ packageExtensions:
       vite-plus: 1.3.0
 
 peerDependencyRules:
+  allowedVersions:
+    # OpenCode shares the workspace Effect patch with its protocol/schema packages.
+    "@opencode/client@2.0.23>effect": 4.0.3
   allowAny:
     # Vite+ supplies the Vite API through its own package version.
     - vite

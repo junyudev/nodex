@@ -1,0 +1,12 @@
+{
+  "name": "@nodex/query-lint-runtime",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Isolated JavaScript compiler runtime for Nodex Query lint rules",
+  "type": "module",
+  "exports": "./index.mjs",
+  "dependencies": {
+    "@tanstack/eslint-plugin-query": "5.101.2",
+    "typescript": "5.9.3"
+  }
+}

@@ -56,7 +56,7 @@
     "@shikijs/types": "^4.4.3"
   },
   "peerDependencies": {
-    "@blocknote/core": "0.54.0"
+    "@blocknote/core": "0.54.2"
   },
   "eslintConfig": {
     "extends": [

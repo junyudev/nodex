@@ -146,7 +146,7 @@ export default defineConfig({
     ],
     jsPlugins: [
       "./oxlint-plugin-nodex/index.ts",
-      { name: "@tanstack/query", specifier: "@tanstack/eslint-plugin-query" },
+      { name: "@tanstack/query", specifier: "@nodex/query-lint-runtime" },
       ...(betterTailwindEnabled
         ? [{ name: "better-tailwindcss", specifier: "eslint-plugin-better-tailwindcss" }]
         : []),

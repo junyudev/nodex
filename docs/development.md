@@ -22,6 +22,27 @@ major-5 utility overrides aligned with the version reported by
 `vp toolchain vitest`; install dependencies and run `vp pm audit --level low`
 after refreshing those pins.
 
+Dependency updates must satisfy pnpm's minimum release age (24 hours by default).
+Do not add release-age exclusions to resolve peer conflicts. Run `vp install`,
+`vp exec pnpm peers check`, and `vp pm audit` after changing the dependency graph.
+
+### Retained dependency and peer decisions
+
+- Vendored BlockNote packages share one version; keep the code-block peer
+  declaration aligned with its workspace Core dependency.
+- Excalidraw `0.18.1` still pins Radix Tabs `1.0.2`. Override only that dependency
+  to `1.2.1` for a React 19-compatible Tabs closure; its Root, List, Trigger, and
+  Content API supports Excalidraw's diagram dialog.
+- TanStack Query's lint plugin brings typescript-eslint, whose JavaScript compiler
+  API requires TypeScript `<6.1`. `packages/query-lint-runtime` supplies the
+  plugin's isolated TypeScript `5.9.3` runtime, as Core protocol generation does.
+  Load the rules through `@nodex/query-lint-runtime` and keep the root TypeScript 7
+  checker and editor runtime independent; revisit the pin when updating the plugin
+  or typescript-eslint.
+- OpenCode's client declares an exact Effect peer. The workspace deliberately
+  shares one Effect version with its protocol and schema packages; only that
+  client version accepts it through `peerDependencyRules.allowedVersions`.
+
 The install lifecycle prepares pinned Electron, then runs `electron-builder install-app-deps`, which rebuilds
 `node-pty` for Electron. Do not run `vp rebuild` for it: that can replace the
 Electron-compatible binary with a host-Node binary. SQLite and collaborative
