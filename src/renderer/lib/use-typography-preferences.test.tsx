@@ -12,12 +12,16 @@ import { TypographyProvider, useTypographyPreferences } from "./use-typography-p
 
 const stores: ReturnType<typeof createMaitaiStore>[] = [];
 function Controls() {
-  const { preferences, setFontFamily, setFontSize } = useTypographyPreferences();
+  const { preferences, setFontSmoothing, setFontFamily, setFontSize } = useTypographyPreferences();
   const { setTheme } = useTheme();
   return (
     <>
       <output aria-label="Font sizes">{`${preferences.uiFontSize}/${preferences.codeFontSize}/${preferences.pageFontSize}`}</output>
+      <output aria-label="Font smoothing">{String(preferences.useFontSmoothing)}</output>
       <button onClick={() => setFontSize("ui", 16)}>Grow UI</button>
+      <button onClick={() => setFontSmoothing(!preferences.useFontSmoothing)}>
+        Toggle smoothing
+      </button>
       <button onClick={() => setFontFamily("dark", "content", "Georgia")}>Dark content</button>
       <button onClick={() => setTheme("dark")}>Dark</button>
     </>
@@ -52,19 +56,30 @@ afterEach(() => {
 describe("typography owner", () => {
   test("persists one preference envelope, restores it, and applies each appearance to root and body", async () => {
     const view = mount();
+    for (const element of [document.documentElement, document.body]) {
+      expect(element.style.getPropertyValue("--font-smoothing")).toBe("antialiased");
+    }
+    await click("Toggle smoothing");
     await click("Grow UI");
     await click("Dark content");
     await click("Dark");
     expect(readTypographyPreferences().uiFontSize).toBe(16);
     expect(readTypographyPreferences().fonts.dark.content).toBe("Georgia");
+    expect(readTypographyPreferences().useFontSmoothing).toBe(false);
     for (const element of [document.documentElement, document.body]) {
       expect(element.style.getPropertyValue("--codex-chat-font-size")).toBe("16px");
       expect(element.style.getPropertyValue("--text-document")).toBe("14px");
       expect(element.style.getPropertyValue("--font-content")).toContain("Georgia");
+      expect(element.style.getPropertyValue("--font-smoothing")).toBe("auto");
     }
     view.unmount();
     mount();
     expect(screen.getByLabelText("Font sizes").textContent).toBe("16/12/14");
+    expect(screen.getByLabelText("Font smoothing").textContent).toBe("false");
+    expect(document.body.style.getPropertyValue("--font-smoothing")).toBe("auto");
+    await click("Toggle smoothing");
+    expect(readTypographyPreferences().useFontSmoothing).toBe(true);
+    expect(document.body.style.getPropertyValue("--font-smoothing")).toBe("antialiased");
   });
 
   test("responds to another window's saved settings without losing its independent font roles", async () => {
@@ -72,6 +87,7 @@ describe("typography owner", () => {
     await act(async () => {
       writeTypographyPreferences({
         ...readTypographyPreferences(),
+        useFontSmoothing: false,
         codeFontSize: 20,
         pageFontSize: 18,
       });
@@ -86,7 +102,10 @@ describe("typography owner", () => {
       uiFontSize: 16,
       codeFontSize: 20,
       pageFontSize: 18,
+      useFontSmoothing: false,
     });
     expect(document.body.style.getPropertyValue("--codex-chat-code-font-size")).toBe("20px");
+    expect(screen.getByLabelText("Font smoothing").textContent).toBe("false");
+    expect(document.body.style.getPropertyValue("--font-smoothing")).toBe("auto");
   });
 });

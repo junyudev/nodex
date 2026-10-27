@@ -23,6 +23,16 @@ describe("typography preference boundary", () => {
     });
     expect(normalizeTypographyPreferences(null)).toEqual(DEFAULT_TYPOGRAPHY_PREFERENCES);
   });
+
+  test("defaults missing or malformed font smoothing to enabled and retains explicit choices", () => {
+    for (const useFontSmoothing of [undefined, null, "false", 0]) {
+      expect(normalizeTypographyPreferences({ useFontSmoothing }).useFontSmoothing).toBe(true);
+    }
+    expect(normalizeTypographyPreferences({ useFontSmoothing: false }).useFontSmoothing).toBe(
+      false,
+    );
+    expect(normalizeTypographyPreferences({ useFontSmoothing: true }).useFontSmoothing).toBe(true);
+  });
   test.each(["ui", "code", "page"] as const)("keeps %s sizes within their own range", (role) => {
     const limits = FONT_SIZE_LIMITS[role];
     expect(normalizeFontSize(role, null)).toBe(limits.default);
@@ -81,6 +91,7 @@ describe("typography preference boundary", () => {
     expect(readTypographyPreferences()).toEqual(DEFAULT_TYPOGRAPHY_PREFERENCES);
     const preferences = writeTypographyPreferences({
       ...DEFAULT_TYPOGRAPHY_PREFERENCES,
+      useFontSmoothing: false,
       uiFontSize: 15.5,
       codeFontSize: 20,
       pageFontSize: 18,

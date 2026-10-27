@@ -29,6 +29,7 @@ test("keeps Page prose, title, and source on their independent typography prefer
         type: "paragraph",
         content: [
           { type: "text", text: "Paragraph ", styles: {} },
+          { type: "text", text: "emphasis ", styles: { bold: true } },
           { type: "text", text: "inline source", styles: { code: true } },
         ],
       },
@@ -96,7 +97,8 @@ test("keeps Page prose, title, and source on their independent typography prefer
     );
     expect(style(body).fontSize).toBe("14px");
     expect(style(body).lineHeight).toBe("22.75px");
-    expect(style(body).fontWeight).toBe("400");
+    expect(style(body).fontWeight).toBe("430");
+    expect(style(`${body} strong`).fontWeight).toBe("600");
     expect(style(body).fontFamily.startsWith("Georgia")).toBe(true);
     expect(style(`${body} code`).fontFamily.startsWith('"Courier New"')).toBe(true);
     expect(Number.parseFloat(style(`${body} code`).fontSize)).toBeCloseTo(12.88);
@@ -135,5 +137,46 @@ test("keeps Page prose, title, and source on their independent typography prefer
     view.unmount();
     editor._tiptapEditor.destroy();
     document.destroy();
+  }
+});
+
+test("keeps mounted Page prose on the workspace font smoothing preference", async () => {
+  const editor = BlockNoteEditor.create({
+    schema: nfmSchema,
+    initialContent: [{ id: "prose", type: "paragraph", content: "Page prose 中文" }],
+  });
+  const view = renderWithAppMaitai(
+    <div className="nfm-editor">
+      <BlockNoteViewRaw
+        editor={editor}
+        formattingToolbar={false}
+        linkToolbar={false}
+        slashMenu={false}
+        sideMenu={false}
+        tableHandles={false}
+      />
+    </div>,
+  );
+  try {
+    const prose = view.getByText("Page prose 中文");
+    for (const useFontSmoothing of [true, false, true]) {
+      await act(async () => {
+        applyTypographyPreferences(
+          document.documentElement,
+          document.body,
+          { ...DEFAULT_TYPOGRAPHY_PREFERENCES, useFontSmoothing },
+          "light",
+        );
+        await Promise.resolve();
+      });
+      const expected = useFontSmoothing ? "antialiased" : "auto";
+      for (const element of [document.documentElement, document.body, prose]) {
+        expect(getComputedStyle(element).getPropertyValue("-webkit-font-smoothing")).toBe(expected);
+      }
+      expect(prose.isConnected).toBe(true);
+    }
+  } finally {
+    view.unmount();
+    editor._tiptapEditor.destroy();
   }
 });

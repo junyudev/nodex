@@ -19,6 +19,14 @@ const typographyPreferencesAtom = scopedAtomWithInitializer(appScope, readTypogr
 
 export function useTypographyPreferences() {
   const [preferences, setPreferences] = useScopedAtom(typographyPreferencesAtom);
+  const setFontSmoothing = (value: boolean) => {
+    setPreferences((current) =>
+      writeTypographyPreferences({
+        ...readTypographyPreferences(current),
+        useFontSmoothing: value,
+      }),
+    );
+  };
   const setFontSize = (role: FontSizeRole, value: number) => {
     setPreferences((current) =>
       writeTypographyPreferences({
@@ -39,7 +47,7 @@ export function useTypographyPreferences() {
       });
     });
   };
-  return { preferences, setFontSize, setFontFamily };
+  return { preferences, setFontSmoothing, setFontSize, setFontFamily };
 }
 
 export function TypographyProvider({ children }: { children: ReactNode }) {

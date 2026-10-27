@@ -141,8 +141,8 @@
     font-family: var(--font-ui-family, var(--font-system));
     font-size: var(--font-ui-size, 14px);
     font-weight: var(--font-ui-weight, 430);
-    -webkit-font-smoothing: antialiased;
-    -moz-osx-font-smoothing: grayscale;
+    -webkit-font-smoothing: inherit;
+    -moz-osx-font-smoothing: inherit;
     background: transparent;
   }
 }
@@ -284,7 +284,7 @@
   color: var(--foreground);
   font-family: var(--font-content);
   font-size: var(--text-document);
-  font-weight: var(--font-weight-normal);
+  font-weight: var(--font-ui-weight);
   line-height: var(--leading-relaxed);
   padding-inline: 0;
 }
@@ -306,7 +306,12 @@
 }
 
 .nfm-editor .bn-default-styles {
-  -webkit-font-smoothing: auto;
+  -webkit-font-smoothing: inherit;
+  -moz-osx-font-smoothing: inherit;
+}
+
+.nfm-editor :is(strong, b) {
+  font-weight: var(--font-weight-semibold);
 }
 
 .nfm-editor .bn-block-content[data-is-empty-and-focused] [data-placeholder]::before {

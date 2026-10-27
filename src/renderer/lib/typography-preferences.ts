@@ -14,6 +14,7 @@ export interface TypographyFontFamilies {
   readonly code: string | null;
 }
 export interface TypographyPreferences {
+  readonly useFontSmoothing: boolean;
   readonly uiFontSize: number;
   readonly codeFontSize: number;
   readonly pageFontSize: number;
@@ -21,6 +22,7 @@ export interface TypographyPreferences {
 }
 
 export const DEFAULT_TYPOGRAPHY_PREFERENCES: TypographyPreferences = {
+  useFontSmoothing: true,
   uiFontSize: FONT_SIZE_LIMITS.ui.default,
   codeFontSize: FONT_SIZE_LIMITS.code.default,
   pageFontSize: FONT_SIZE_LIMITS.page.default,
@@ -132,6 +134,7 @@ export function normalizeTypographyPreferences(value: unknown): TypographyPrefer
   const record = asRecord(value);
   const fonts = asRecord(record.fonts);
   return {
+    useFontSmoothing: typeof record.useFontSmoothing === "boolean" ? record.useFontSmoothing : true,
     uiFontSize: normalizeFontSize("ui", record.uiFontSize),
     codeFontSize: normalizeFontSize("code", record.codeFontSize),
     pageFontSize: normalizeFontSize("page", record.pageFontSize),
@@ -204,6 +207,7 @@ export function getTypographyCssVariables(
     "--font-mono": fonts.code,
     "--font-content": fonts.content,
     "--font-ui-weight": String(DEFAULT_UI_FONT_WEIGHT),
+    "--font-smoothing": preferences.useFontSmoothing ? "antialiased" : "auto",
   };
 }
 
@@ -215,7 +219,13 @@ export function applyTypographyPreferences(
   variant: ResolvedTheme,
 ): void {
   const variables = getTypographyCssVariables(preferences, variant);
+  const smoothing = variables["--font-smoothing"] ?? "antialiased";
   for (const target of body === null ? [root] : [root, body]) {
     for (const [name, value] of Object.entries(variables)) target.style.setProperty(name, value);
+    target.style.setProperty("-webkit-font-smoothing", smoothing);
+    target.style.setProperty(
+      "-moz-osx-font-smoothing",
+      smoothing === "antialiased" ? "grayscale" : "auto",
+    );
   }
 }

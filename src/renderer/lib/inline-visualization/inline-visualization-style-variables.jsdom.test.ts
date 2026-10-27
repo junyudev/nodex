@@ -189,6 +189,7 @@ test("actual host typography preferences reach the authored document on first ex
   const sent = guest.openai.visualizationStyleVariables;
   expect(sent).toMatchObject({
     "--font-mono": document.documentElement.style.getPropertyValue("--font-mono"),
+    "--font-smoothing": "antialiased",
     "--radius": "14px",
     "--control-spacing": "16px",
     "--cursor-interaction": "pointer",
@@ -199,7 +200,7 @@ test("actual host typography preferences reach the authored document on first ex
     applyTypographyPreferences(
       document.documentElement,
       document.body,
-      { ...preferences, uiFontSize: 16 },
+      { ...preferences, uiFontSize: 16, useFontSmoothing: false },
       "light",
     );
     document.documentElement.style.setProperty("--radius-lg", "18px");
@@ -209,6 +210,7 @@ test("actual host typography preferences reach the authored document on first ex
     expect(guest.document.documentElement.style.getPropertyValue("--font-size-base")).toBe("16px"),
   );
   expect(guest.document.documentElement.style.getPropertyValue("--radius")).toBe("18px");
+  expect(guest.document.documentElement.style.getPropertyValue("--font-smoothing")).toBe("auto");
   await act(async () => {
     document.body.style.setProperty("--cursor-interaction", "default");
     await Promise.resolve();

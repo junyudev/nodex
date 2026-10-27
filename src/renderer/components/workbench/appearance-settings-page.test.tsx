@@ -113,6 +113,36 @@ describe("Appearance settings", () => {
     expect(readTypographyPreferences().fonts.light.content).toBe("Charter");
   });
 
+  test("saves font smoothing from macOS Advanced settings", async () => {
+    const view = renderWithAppMaitai(
+      <AppearanceSettingsPage initialSearchQuery="Font smoothing" isMacPlatform />,
+    );
+    const smoothing = view.getByRole("switch", { name: "Font smoothing" });
+    expect(smoothing.getAttribute("aria-checked")).toBe("true");
+
+    await press(smoothing);
+
+    await waitFor(() => {
+      expect(smoothing.getAttribute("aria-checked")).toBe("false");
+      expect(readTypographyPreferences().useFontSmoothing).toBe(false);
+    });
+
+    view.unmount();
+    const reopened = renderWithAppMaitai(
+      <AppearanceSettingsPage settingsAnchor="advanced" isMacPlatform />,
+    );
+    expect(
+      reopened.getByRole("switch", { name: "Font smoothing" }).getAttribute("aria-checked"),
+    ).toBe("false");
+  });
+
+  test("shows font smoothing only on macOS", () => {
+    const view = renderWithAppMaitai(
+      <AppearanceSettingsPage settingsAnchor="advanced" isMacPlatform={false} />,
+    );
+    expect(view.queryByRole("switch", { name: "Font smoothing" })).toBeNull();
+  });
+
   test("resets advanced appearance while preserving Mode and each theme's main choices", async () => {
     const preferences = readTypographyPreferences();
     writeTypographyPreferences({
@@ -120,6 +150,7 @@ describe("Appearance settings", () => {
       uiFontSize: 16,
       pageFontSize: 18,
       codeFontSize: 20,
+      useFontSmoothing: false,
       fonts: {
         light: { ui: "Arial", content: "Georgia", code: "Monaco" },
         dark: { ui: "Verdana", content: "Palatino", code: "Menlo" },
@@ -130,7 +161,7 @@ describe("Appearance settings", () => {
       dark: { kind: "custom", color: "#123456" },
     });
     writeReducedMotionPreference("on");
-    const view = renderWithAppMaitai(<AppearanceSettingsPage />);
+    const view = renderWithAppMaitai(<AppearanceSettingsPage isMacPlatform />);
     await press(view.getByRole("button", { name: "Advanced" }));
     await press(view.getByRole("switch", { name: "Separate light/dark modes" }));
     await press(view.getByRole("button", { name: "Reset advanced appearance" }));
@@ -140,12 +171,16 @@ describe("Appearance settings", () => {
         uiFontSize: 14,
         pageFontSize: 14,
         codeFontSize: 12,
+        useFontSmoothing: true,
         fonts: {
           light: { ui: "Arial", content: null, code: null },
           dark: { ui: "Verdana", content: null, code: null },
         },
       });
       expect(readReducedMotionPreference()).toBe("system");
+      expect(
+        view.getByRole("switch", { name: "Font smoothing" }).getAttribute("aria-checked"),
+      ).toBe("true");
       expect(
         view
           .getByRole("switch", { name: "Separate light/dark modes" })

@@ -299,6 +299,7 @@ export const SETTINGS_SEARCH_PANELS = {
             "diffs",
             "terminals",
           ]),
+          entry("Font smoothing", "", ["macOS", "anti-aliasing", "antialiasing"]),
           entry("Reduce motion", "", [
             "System",
             "On",

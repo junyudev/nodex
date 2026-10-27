@@ -196,6 +196,7 @@ export function readInlineVisualizationStyleVariables(): Record<string, string> 
         dark ? "#ff8549" : "#e25507",
       ),
       "--font-mono": resolve(["--font-mono"], "font-family", MONO_FONT_FAMILY),
+      "--font-smoothing": rootStyle.getPropertyValue("--font-smoothing").trim() || "antialiased",
       "--font-sans": resolve(
         ["--font-sans", "--font-sans-default"],
         "font-family",

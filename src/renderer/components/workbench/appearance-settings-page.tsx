@@ -61,10 +61,13 @@ function ContentFontsSection({ title, variant }: { title?: string; variant: Reso
 
 export function AppearanceSettingsPage({
   initialSearchQuery,
+  isMacPlatform = false,
   settingsAnchor,
-}: Pick<SettingsSectionPageProps, "initialSearchQuery" | "settingsAnchor"> = {}) {
+}: Partial<
+  Pick<SettingsSectionPageProps, "initialSearchQuery" | "isMacPlatform" | "settingsAnchor">
+> = {}) {
   const { resolved } = useTheme();
-  const { setFontSize, setFontFamily } = useTypographyPreferences();
+  const { preferences, setFontSize, setFontFamily, setFontSmoothing } = useTypographyPreferences();
   const { setPreference: setReducedMotion } = useReducedMotionPreference();
   const visualStyleTitleId = useId();
   const [advancedOpen, setAdvancedOpen] = useState(
@@ -83,6 +86,7 @@ export function AppearanceSettingsPage({
         setFontFamily(variant, role, null);
       }
     }
+    setFontSmoothing(true);
     setReducedMotion("system");
     setSeparateModes(false);
   };
@@ -165,6 +169,15 @@ export function AppearanceSettingsPage({
             </NodexSettingsRow>
           </NodexSettingsSection>
           <NodexSettingsSection>
+            {isMacPlatform ? (
+              <NodexSettingsRow label="Font smoothing">
+                <TogglePill
+                  ariaLabel="Font smoothing"
+                  value={preferences.useFontSmoothing}
+                  onChange={setFontSmoothing}
+                />
+              </NodexSettingsRow>
+            ) : null}
             <NodexSettingsRow label="Reduce motion">
               <ReducedMotionSettingControl />
             </NodexSettingsRow>

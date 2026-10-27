@@ -6,6 +6,7 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
+- macOS Appearance settings offer app-wide Font smoothing, enabled by default and synchronized across windows.
 - `/fast` and `/ultracode` toggle Fast and Ultracode from a Claude chat's composer, and Claude chats highlight the words Claude Code reacts to in a message, `ultrathink` and `ultracode`, with what each does for that turn.
 - Plugins in the navigation rail opens Customize, where you can browse plugin marketplaces and installed skills, see what a plugin does and includes before installing it, install, enable, try or uninstall it, preview a skill's instructions, and start a chat from a starter prompt. Settings › Plugins switches installed plugins, connected apps and personal skills on or off, shows the tools each app gives Agents, adds, edits and signs in to MCP servers, and upgrades or removes the marketplaces you added.
 - Selected reply text can be added to a chat with optional numbered comments, or attached to an idle side chat without replacing its draft. References remain available in sent messages.

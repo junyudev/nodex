@@ -1,5 +1,6 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
+import { AuxiliaryWindowAppearance } from "./bootstrap/auxiliary-window-appearance";
 import { AvatarOverlayRoot } from "./features/avatar-overlay/avatar-overlay-page";
 import "./globals.css";
 
@@ -11,7 +12,9 @@ export function mountAvatarOverlayRenderer(): void {
   if (!rootElement) throw new Error("Avatar overlay renderer root is missing");
   createRoot(rootElement).render(
     <StrictMode>
-      <AvatarOverlayRoot />
+      <AuxiliaryWindowAppearance>
+        <AvatarOverlayRoot />
+      </AuxiliaryWindowAppearance>
     </StrictMode>,
   );
 }

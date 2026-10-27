@@ -107,7 +107,7 @@ html > body {
   color: var(--foreground);
   background: transparent !important;
   font-family: var(--font-sans) !important;
-  -webkit-font-smoothing: antialiased;
+  -webkit-font-smoothing: var(--font-smoothing, antialiased);
   font-size: var(--font-size-base);
   line-height: calc(var(--font-size-base) * 1.625);
   font-weight: var(--font-weight-normal);

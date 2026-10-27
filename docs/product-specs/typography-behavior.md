@@ -23,6 +23,14 @@ storage and synchronizes across windows sharing that storage. Changing one
 size or font role preserves the others and the inactive appearance. Window
 zoom remains an independent setting.
 
+On macOS, Appearance offers `Font smoothing`, enabled by default. It applies
+grayscale antialiasing to workspace text; disabling it restores the platform's
+default text rendering. The preference follows the same startup, persistence
+and cross-window synchronization as font sizes. UI, chats, Pages and embedded
+Nodex documents share the selected smoothing, including editor styles that
+would otherwise override the workspace. It does not change the chosen font,
+size or weight and has no rendering effect on other platforms.
+
 Appearance places UI, Content and Code sizes in its collapsed Advanced options
 and groups each appearance's font choices with its theme controls. The independent
 Page size is `Content font size`, marked `Pages`. Showing separate
@@ -72,8 +80,9 @@ family or row line height. User-message metadata remains on the UI small scale.
 
 ## Pages and file surfaces
 
-Page prose uses its independent size, content family, normal 400 weight and
-1.625 line height. Body heading multipliers match the conversation hierarchy.
+Page prose uses its independent size, content family, the workspace's ordinary
+430 weight and 1.625 line height. Strong emphasis uses 600 weight. Body heading
+multipliers match the conversation hierarchy.
 The Page title uses content family, UI heading-app size, 1.2 line height and
 600 weight, so it stays the strongest heading above body H1. While a Page opens,
 its title placeholder uses that identical typography and position. Adjusting
@@ -104,8 +113,9 @@ Default tooltip line height is 18px. Dialog titles use UI heading-md 20px,
 
 Pure tests cover normalization, independent preference updates and scale
 rounding. Browser tests exercise the production stylesheet and real component
-consumers with applied preferences, checking resolved family, size and line
-height. Parser-time tests pause application modules and prove saved typography
-is already effective. Electron evidence uses synthetic Pages and native
+consumers with applied preferences, checking resolved family, size, weight,
+line height and smoothing changes on mounted content. Parser-time tests pause
+application modules and prove saved typography is already effective. Electron
+evidence uses synthetic Pages and native
 conversation fixtures to verify settings interaction, cross-window propagation
 and restoration after reopening.

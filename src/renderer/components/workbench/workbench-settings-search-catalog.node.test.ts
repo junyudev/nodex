@@ -77,6 +77,8 @@ describe("workbench settings search catalog", () => {
       "Content font size",
       "Page font size",
       "Code font size",
+      "Font smoothing",
+      "macOS anti-aliasing",
       "Separate light/dark modes",
       "Content font",
     ]) {

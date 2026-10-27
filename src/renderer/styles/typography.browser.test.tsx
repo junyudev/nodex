@@ -54,6 +54,36 @@ describe("workspace typography cascade", () => {
     expect(typography(probe("text-xs"))).toMatchObject({ size: 12 });
   });
 
+  test("shares font smoothing across UI and Markdown while preserving semantic weights", () => {
+    const surfaces = [
+      probe("text-base"),
+      probe("codex-markdown"),
+      probe("font-normal"),
+      probe("font-medium"),
+      probe("font-semibold"),
+    ];
+    for (const useFontSmoothing of [true, false]) {
+      applyTypographyPreferences(
+        document.documentElement,
+        document.body,
+        { ...DEFAULT_TYPOGRAPHY_PREFERENCES, useFontSmoothing },
+        "light",
+      );
+      for (const surface of surfaces) {
+        expect(getComputedStyle(surface).getPropertyValue("-webkit-font-smoothing")).toBe(
+          useFontSmoothing ? "antialiased" : "auto",
+        );
+      }
+      expect(surfaces.map((surface) => typography(surface).weight)).toEqual([
+        "430",
+        "430",
+        "400",
+        "500",
+        "600",
+      ]);
+    }
+  });
+
   test("settings and dialogs inherit the selected UI scale without local overrides", async () => {
     const preferences = {
       ...DEFAULT_TYPOGRAPHY_PREFERENCES,
