@@ -1,12 +1,14 @@
 import { useRef, useState } from "react";
 import { NodexAccountMenu } from "@/features/nodex-account/nodex-account-menu";
-import { UserRound } from "@/components/shared/icons/generic-icons";
 import { NodexButton } from "@/components/ui/button";
 import { NodexTooltip } from "@/components/ui/tooltip";
 import { WORKBENCH_RAIL_BUTTON_CLASS } from "./workbench-app-rail";
 import { RailUsageMeter, UsageRingGlyph } from "./workbench-rail-usage-meter";
 import { shouldRefreshAccountOnConnectionTooltipOpen } from "@/features/local-conversation/view/shared/account-tooltip-refresh";
-import { AuthPopover } from "@/features/local-conversation/view/shared/auth-controls";
+import {
+  AuthPopover,
+  SIGN_IN_TO_CODEX,
+} from "@/features/local-conversation/view/shared/auth-controls";
 import { QuotaResetTooltipSection } from "@/features/local-conversation/view/shared/auth-rate-limits";
 import { resolveRailAccountState } from "@/features/local-conversation/view/shared/rail-account-state";
 import { cn } from "@/lib/utils";
@@ -233,11 +235,12 @@ function ClaudeUsageMeter({
 }
 
 /**
- * App-wide controls at the foot of the navigation rail: the Codex account control (its usage
- * meter when signed in, sign-in when signed out, an unread Codex meter while the account is
- * unknown), one usage meter per Claude subscription account (an unread Claude meter until Main
- * has read any), then the Nodex Account menu. The menu stays last so it never moves when
- * provider account state becomes known.
+ * App-wide controls at the foot of the navigation rail, read from the bottom up: the Nodex
+ * Account menu, then the Codex account control (its usage meter when signed in, an open Codex
+ * ring that signs in when signed out, an unread Codex meter while the account is unknown), then
+ * one usage meter per Claude subscription account (an unread Claude meter until Main has read
+ * any). The slots that always exist sit lowest, so Claude meters coming and going never move
+ * them.
  */
 export function WorkbenchRailAccountControls({
   onOpenSettings,
@@ -316,44 +319,6 @@ export function WorkbenchRailAccountControls({
       className="mt-auto flex flex-col items-center gap-2"
     >
       <div data-workbench-rail-account="" className="contents">
-        {showUsageMeter && account && onRefreshAccount && onLogout ? (
-          <span className="inline-flex animate-in duration-200 fade-in-0 zoom-in-90 motion-reduce:animate-none">
-            <CodexUsageMeter
-              account={account}
-              onRefreshAccount={onRefreshAccount}
-              onConsumeRateLimitReset={onConsumeRateLimitReset}
-              onLogout={onLogout}
-              onErrorMessage={onErrorMessage}
-            />
-          </span>
-        ) : showSignIn && onCancelLogin ? (
-          <AuthPopover
-            account={account ?? null}
-            busy={loginBusy}
-            side="right"
-            sideOffset={8}
-            trigger={
-              <NodexButton
-                variant="ghostSecondary"
-                size="icon"
-                aria-label="Sign in"
-                className={WORKBENCH_RAIL_BUTTON_CLASS}
-              >
-                <UserRound className="icon-sm" />
-              </NodexButton>
-            }
-            onChatGptLogin={() => void handleChatGptLogin()}
-            onApiKeyLogin={(apiKey) => void handleApiKeyLogin(apiKey)}
-            onCancelLogin={(loginId) => void handleCancelLogin(loginId)}
-          />
-        ) : accountState.kind === "loading" || accountState.kind === "unavailable" ? (
-          <RailUsagePlaceholder
-            provider="codex"
-            subject="Codex account"
-            state={accountState}
-            onRetry={onRefreshAccount}
-          />
-        ) : null}
         {claudeUsage
           ? claudeAccounts.map((claude) => (
               <span
@@ -382,6 +347,45 @@ export function WorkbenchRailAccountControls({
                   }
             }
             onRetry={claudeUsage.refresh}
+          />
+        ) : null}
+        {showUsageMeter && account && onRefreshAccount && onLogout ? (
+          <span className="inline-flex animate-in duration-200 fade-in-0 zoom-in-90 motion-reduce:animate-none">
+            <CodexUsageMeter
+              account={account}
+              onRefreshAccount={onRefreshAccount}
+              onConsumeRateLimitReset={onConsumeRateLimitReset}
+              onLogout={onLogout}
+              onErrorMessage={onErrorMessage}
+            />
+          </span>
+        ) : showSignIn && onCancelLogin ? (
+          <AuthPopover
+            account={account ?? null}
+            busy={loginBusy}
+            side="right"
+            sideOffset={8}
+            trigger={
+              <NodexButton
+                variant="ghostSecondary"
+                size="icon"
+                aria-label={SIGN_IN_TO_CODEX}
+                data-rail-account-state="signedOut"
+                className={WORKBENCH_RAIL_BUTTON_CLASS}
+              >
+                <UsageRingGlyph provider="codex" track="open" />
+              </NodexButton>
+            }
+            onChatGptLogin={() => void handleChatGptLogin()}
+            onApiKeyLogin={(apiKey) => void handleApiKeyLogin(apiKey)}
+            onCancelLogin={(loginId) => void handleCancelLogin(loginId)}
+          />
+        ) : accountState.kind === "loading" || accountState.kind === "unavailable" ? (
+          <RailUsagePlaceholder
+            provider="codex"
+            subject="Codex account"
+            state={accountState}
+            onRetry={onRefreshAccount}
           />
         ) : null}
       </div>

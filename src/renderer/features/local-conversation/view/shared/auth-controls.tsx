@@ -1,9 +1,16 @@
-import type { ReactElement } from "react";
+import { useState, type ReactElement } from "react";
 import { useForm, useStore } from "@tanstack/react-form";
 import { NodexPopover, NodexPopoverContent, NodexPopoverTrigger } from "@/components/ui/popover";
+import { NodexTooltip } from "@/components/ui/tooltip";
 import { handleFormSubmit } from "@/lib/forms";
 import type { CodexAccountSnapshot } from "../../../../lib/types";
 
+export const SIGN_IN_TO_CODEX = "Sign in to Codex";
+
+/**
+ * Signs Codex in from the given trigger. The trigger's tooltip and the popover both name Codex,
+ * so the action is never mistaken for signing in to Nodex.
+ */
 export function AuthPopover({
   account,
   busy,
@@ -18,12 +25,12 @@ export function AuthPopover({
   busy: boolean;
   side?: "top" | "right" | "bottom" | "left";
   sideOffset?: number;
-  /** Replaces the compact `Sign in` pill, for example with a rail icon button. */
-  trigger?: ReactElement;
+  trigger: ReactElement;
   onChatGptLogin: () => void;
   onApiKeyLogin: (key: string) => void;
   onCancelLogin: (loginId: string) => void;
 }) {
+  const [open, setOpen] = useState(false);
   const apiKeyForm = useForm({
     defaultValues: {
       apiKey: "",
@@ -40,18 +47,17 @@ export function AuthPopover({
   if (account === null || account.account) return null;
 
   return (
-    <NodexPopover>
-      <NodexPopoverTrigger>
-        {trigger ?? (
-          <button
-            type="button"
-            className="h-5 shrink-0 rounded-full bg-(--foreground) px-2 text-xs font-medium text-(--background) outline-none hover:opacity-90 focus-visible:ring-2 focus-visible:ring-(--ring)"
-          >
-            Sign in
-          </button>
-        )}
-      </NodexPopoverTrigger>
-      <NodexPopoverContent align="end" side={side} sideOffset={sideOffset} className="w-64 p-3">
+    <NodexPopover open={open} onOpenChange={setOpen}>
+      <NodexTooltip tooltipContent={SIGN_IN_TO_CODEX} side={side} disabled={open}>
+        <NodexPopoverTrigger>{trigger}</NodexPopoverTrigger>
+      </NodexTooltip>
+      <NodexPopoverContent
+        align="end"
+        side={side}
+        sideOffset={sideOffset}
+        className="flex w-64 flex-col gap-2.5 p-3"
+      >
+        <div className="text-sm font-medium text-(--foreground)">{SIGN_IN_TO_CODEX}</div>
         {account?.pendingLogin ? (
           <div className="text-xs text-(--foreground-tertiary)">
             Login pending...{" "}

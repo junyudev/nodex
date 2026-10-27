@@ -325,11 +325,13 @@ describe("WorkbenchRailAccountControls", () => {
     expect(view.container.querySelector("[data-usage-meter]")).toBe(null);
     expect(Boolean(view.getByRole("button", { name: "Account and settings" }))).toBe(true);
     await act(async () => {
-      fireEvent.click(view.getByRole("button", { name: "Sign in" }));
+      fireEvent.click(view.getByRole("button", { name: "Sign in to Codex" }));
       await Promise.resolve();
     });
 
     const chatGptLogin = await view.findByRole("button", { name: "Sign in with ChatGPT" });
+    // The popover names what it signs in to, so it is never taken for the Nodex Account.
+    expect(await view.findByText("Sign in to Codex")).toBeTruthy();
     await act(async () => {
       fireEvent.click(chatGptLogin);
       await Promise.resolve();
@@ -340,8 +342,11 @@ describe("WorkbenchRailAccountControls", () => {
     });
   });
 
-  test("keeps the Nodex account menu last while the account slot hydrates above it", () => {
-    const renderControls = (account: typeof signedOutAccount | null) => (
+  test("reads Nodex, Codex, then Claude from the bottom up while accounts arrive", () => {
+    const renderControls = (
+      account: typeof signedOutAccount | null,
+      claude: ClaudeUsageSnapshot = { status: "loading", providers: null, reason: null },
+    ) => (
       <NodexTooltipProvider>
         <WorkbenchRailAccountControls
           onOpenSettings={() => undefined}
@@ -353,6 +358,7 @@ describe("WorkbenchRailAccountControls", () => {
           onStartApiKeyLogin={async () => ({ type: "apiKey" })}
           onCancelLogin={async () => ({ status: "canceled" })}
           onLogout={async () => undefined}
+          claudeUsage={claudeUsage(claude)}
         />
       </NodexTooltipProvider>
     );
@@ -361,10 +367,21 @@ describe("WorkbenchRailAccountControls", () => {
       view.getAllByRole("button").map((button) => button.getAttribute("aria-label"));
 
     expect(view.container.querySelector("[data-usage-meter]")).toBe(null);
-    expect(labels()).toEqual(["Loading Codex account", "Account and settings"]);
+    expect(labels()).toEqual([
+      "Loading Claude usage",
+      "Loading Codex account",
+      "Account and settings",
+    ]);
 
-    view.rerender(renderControls(signedOutAccount));
-    expect(labels()).toEqual(["Sign in", "Account and settings"]);
+    // Codex and the Nodex menu always hold the lowest slots, so Claude coming and going never moves them.
+    view.rerender(renderControls(signedOutAccount, readClaude([])));
+    expect(labels()).toEqual(["Sign in to Codex", "Account and settings"]);
+    view.rerender(renderControls(signedOutAccount, readClaude([claudeProvider()])));
+    expect(labels()).toEqual([
+      "Claude usage: 12% left in 5-hour window, read 2 h ago",
+      "Sign in to Codex",
+      "Account and settings",
+    ]);
   });
 
   test("says why an unknown account cannot load and asks again when clicked", async () => {
@@ -428,8 +445,8 @@ describe("WorkbenchRailAccountControls", () => {
     );
 
     expect(view.getAllByRole("button").map((button) => button.getAttribute("aria-label"))).toEqual([
-      "Codex usage: 61% left in weekly window",
       "Claude usage: 12% left in 5-hour window, read 2 h ago",
+      "Codex usage: 61% left in weekly window",
       "Account and settings",
     ]);
     const claude = view.container.querySelector<HTMLElement>('[data-usage-meter="claude"]');

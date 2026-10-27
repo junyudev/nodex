@@ -428,9 +428,9 @@ Extend the existing Settings → Account page with plan, usage/reset date and th
 relevant action. Signed-out users see a sign-in action; paid users see Manage
 subscription. Avoid a mandatory first-run screen, additional permanent account
 widgets or duplicate provider usage summaries. Existing Agent settings retain
-Codex/Claude login and usage. The rail keeps its native Codex account control
-and Claude subscription meters, followed by the independent Nodex avatar and
-account menu described in [Nodex Account Login](nodex-account-login-behavior.md).
+Codex/Claude login and usage. The rail keeps its Claude subscription meters and
+native Codex account control above the independent Nodex avatar and account
+menu described in [Nodex Account Login](nodex-account-login-behavior.md).
 Subscription access extends the Nodex account surfaces without repurposing
 native provider controls.
 

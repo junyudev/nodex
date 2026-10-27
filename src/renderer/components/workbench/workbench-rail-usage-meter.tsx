@@ -20,6 +20,27 @@ import { cn } from "@/lib/utils";
 
 const RING_RADIUS = 12;
 const RING_CIRCUMFERENCE = 2 * Math.PI * RING_RADIUS;
+
+/**
+ * The open track: the ring with a 70° gap at the lower right, where a plus offers to sign in.
+ * The SVG is turned a quarter left so arcs start at the top; 135° here is the lower right.
+ */
+const OPEN_GAP_CENTER = 135;
+const OPEN_GAP_HALF = 35;
+const ringPoint = (degrees: number) => {
+  const radians = (degrees * Math.PI) / 180;
+  return [14 + RING_RADIUS * Math.cos(radians), 14 + RING_RADIUS * Math.sin(radians)] as const;
+};
+const OPEN_TRACK_PATH = (() => {
+  const [startX, startY] = ringPoint(OPEN_GAP_CENTER + OPEN_GAP_HALF);
+  const [endX, endY] = ringPoint(OPEN_GAP_CENTER - OPEN_GAP_HALF);
+  return `M ${startX.toFixed(3)} ${startY.toFixed(3)} A ${RING_RADIUS} ${RING_RADIUS} 0 1 1 ${endX.toFixed(3)} ${endY.toFixed(3)}`;
+})();
+const OPEN_PLUS_PATH = (() => {
+  const [x, y] = ringPoint(OPEN_GAP_CENTER);
+  const arm = 3.2;
+  return `M ${(x - arm).toFixed(3)} ${y.toFixed(3)} H ${(x + arm).toFixed(3)} M ${x.toFixed(3)} ${(y - arm).toFixed(3)} V ${(y + arm).toFixed(3)}`;
+})();
 const MAX_TIMEOUT_MS = 2_147_483_647;
 
 const SEVERITY_TONE: Readonly<Record<UsageSeverity, string>> = {
@@ -58,8 +79,9 @@ function UsageProviderMark({
 
 /**
  * The rail's usage glyph: the provider's mark inside one ring. A solid track with an arc is a
- * measured level, a dotted track is a level Nodex does not know, and a red track is a window that
- * is used up. Only low levels take color; a healthy meter stays as quiet as the rail around it.
+ * measured level, a dotted track is a level Nodex does not know, a red track is a window that
+ * is used up, and an open track with a plus is an account not signed in yet. Only low levels
+ * take color; a healthy meter stays as quiet as the rail around it.
  */
 export function UsageRingGlyph({
   provider,
@@ -69,7 +91,7 @@ export function UsageRingGlyph({
   pulse = false,
 }: {
   readonly provider: UsageProvider;
-  readonly track: "solid" | "dotted" | "spent";
+  readonly track: "solid" | "dotted" | "spent" | "open";
   readonly arc?: {
     readonly percent: number;
     readonly severity: UsageSeverity;
@@ -92,17 +114,31 @@ export function UsageRingGlyph({
         fill="none"
         aria-hidden="true"
       >
-        <circle
-          data-usage-ring-track={track}
-          cx="14"
-          cy="14"
-          r={RING_RADIUS}
-          strokeWidth="2.25"
-          strokeLinecap="round"
-          stroke={track === "spent" ? "var(--red-text)" : "currentColor"}
-          strokeOpacity={track === "spent" ? 0.45 : track === "dotted" ? 0.4 : 0.16}
-          strokeDasharray={track === "dotted" ? "0.01 3.75" : undefined}
-        />
+        {track === "open" ? (
+          <>
+            <path
+              data-usage-ring-track={track}
+              d={OPEN_TRACK_PATH}
+              strokeWidth="2.25"
+              strokeLinecap="round"
+              stroke="currentColor"
+              strokeOpacity={0.16}
+            />
+            <path d={OPEN_PLUS_PATH} strokeWidth="2" strokeLinecap="round" stroke="currentColor" />
+          </>
+        ) : (
+          <circle
+            data-usage-ring-track={track}
+            cx="14"
+            cy="14"
+            r={RING_RADIUS}
+            strokeWidth="2.25"
+            strokeLinecap="round"
+            stroke={track === "spent" ? "var(--red-text)" : "currentColor"}
+            strokeOpacity={track === "spent" ? 0.45 : track === "dotted" ? 0.4 : 0.16}
+            strokeDasharray={track === "dotted" ? "0.01 3.75" : undefined}
+          />
+        )}
         {arc && percent > 0 ? (
           <circle
             data-usage-ring-arc={arc.severity}
