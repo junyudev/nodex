@@ -13,7 +13,6 @@ import {
   resolveSessionPanelActiveLeafId,
   resolveSessionPanelActiveTabId,
 } from "./workbench-panel-placement";
-import { isPreviewableWorkbenchTabKind } from "./workbench-panel-preview";
 import { getRenderablePanelPreviewTab } from "./workbench-panel-projection";
 import { resolveWorkbenchPanelCapabilities } from "./workbench-panel-capabilities";
 import {
@@ -35,6 +34,7 @@ import {
   findWorkbenchPanelLeaf,
   findWorkbenchPanelLeafForTab,
 } from "../../shared/workbench-panel-layout";
+import { resolveBrowserTabTitle } from "../../shared/browser-url";
 import {
   requireWorkbenchBrowserTabProjectionId,
   type BrowserSidebarOpenNewTabRequest,
@@ -77,7 +77,7 @@ type PanelLifecycle = Pick<
 >;
 type PanelOpeners = Pick<
   ReturnType<typeof useWorkbenchPanelOpeners>,
-  "openCanvasStage" | "openPreviewTab" | "openSideChat"
+  "openCanvasStage" | "openSideChat"
 >;
 type SessionCommands = Pick<ReturnType<typeof useWorkbenchSessionCommands>, "createManualTab">;
 
@@ -104,6 +104,11 @@ interface WorkbenchPanelCommandRouterInput {
     options?: OpenPageStageOptions,
   ) => void;
   readonly commandKeymapState?: CommandKeymapState | null;
+  /** Creates a Space Page and opens it in the panel group. */
+  readonly openNewPage: (placement: {
+    readonly panelId: PanelId;
+    readonly leafId?: string;
+  }) => Promise<boolean>;
   readonly focusedPanelGroupRef: MutableRefObject<WorkbenchPanelTabShortcutFocus | null>;
   readonly panelTabShortcutStateRef: MutableRefObject<WorkbenchPanelTabShortcutState | null>;
 }
@@ -159,6 +164,7 @@ export function useWorkbenchPanelCommandRouter({
   resolveProjectDefaultDatabaseViewId,
   openPageStage,
   commandKeymapState,
+  openNewPage,
   focusedPanelGroupRef,
   panelTabShortcutStateRef,
 }: WorkbenchPanelCommandRouterInput) {
@@ -173,7 +179,7 @@ export function useWorkbenchPanelCommandRouter({
     setActivePanelCollapsed,
     setActivePanelTab,
   } = lifecycle;
-  const { openCanvasStage, openPreviewTab, openSideChat } = panelOpeners;
+  const { openCanvasStage, openSideChat } = panelOpeners;
   const { createManualTab } = sessionCommands;
 
   const createBrowserTabToRight = useCallback(
@@ -204,10 +210,8 @@ export function useWorkbenchPanelCommandRouter({
         openerTabId: sourceTab.id,
         kind: "browser",
         title: duplicate
-          ? sourceTab.title || "Browser"
-          : openRequest?.url === "about:blank"
-            ? "Browser"
-            : (openRequest?.url ?? "Browser"),
+          ? sourceTab.title || resolveBrowserTabTitle(undefined, undefined)
+          : resolveBrowserTabTitle(openRequest?.url, openRequest?.url),
         config: duplicate
           ? {
               projectId: sessionProjectId,
@@ -533,6 +537,9 @@ export function useWorkbenchPanelCommandRouter({
         await openSideChat({ targetPanelId: panelId, targetLeafId: options.leafId });
         return true;
       }
+      if (kind === "new_page") {
+        return await openNewPage({ panelId, leafId: options.leafId });
+      }
       if (kind === "terminal" && options.terminalBehavior === "focus_or_create") {
         await focusOrCreateSessionTerminalTab();
         return true;
@@ -553,13 +560,7 @@ export function useWorkbenchPanelCommandRouter({
         );
       }
       if (!isWorkbenchTabKind(kind)) return false;
-      if (kind === "files") {
-        return await createManualTab(kind, panelId, options.leafId);
-      }
-      if (isPreviewableWorkbenchTabKind(kind)) {
-        await openPreviewTab(kind, panelId, options.leafId);
-        return true;
-      }
+      // Browser opens as a durable New tab, never as a preview another open replaces.
       return await createManualTab(kind, panelId, options.leafId);
     },
     [
@@ -568,7 +569,7 @@ export function useWorkbenchPanelCommandRouter({
       focusOrCreateProjectDbViewTab,
       focusOrCreateSessionTerminalTab,
       openCanvasStage,
-      openPreviewTab,
+      openNewPage,
       openSideChat,
       resolveActivePanelCapabilities,
     ],

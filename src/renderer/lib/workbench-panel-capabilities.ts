@@ -4,7 +4,14 @@ import {
   type WorkbenchTabKind,
 } from "@/lib/types";
 
-export type WorkbenchPanelActionKind = Exclude<WorkbenchTabKind, "image_editor"> | "side_chat";
+/**
+ * Panel actions are either surface kinds or intents that produce a surface: `side_chat`
+ * forks the attached Thread, and `new_page` creates a Space Page and opens it.
+ */
+export type WorkbenchPanelActionKind =
+  | Exclude<WorkbenchTabKind, "image_editor">
+  | "side_chat"
+  | "new_page";
 
 export type WorkbenchPanelActionUnavailableReason =
   | "no_session"
@@ -55,6 +62,7 @@ const PROJECT_SESSION_ACTION_ORDER: readonly WorkbenchPanelActionKind[] = [
   "browser",
   "files",
   "side_chat",
+  "new_page",
   "db_view",
   "page_stage",
   "canvas_stage",
@@ -64,6 +72,7 @@ const PROJECT_SCENE_ACTION_ORDER: readonly WorkbenchPanelActionKind[] = [
   "terminal",
   "browser",
   "files",
+  "new_page",
   "db_view",
   "page_stage",
   "canvas_stage",
@@ -74,6 +83,7 @@ const PROJECTLESS_ACTION_ORDER: readonly WorkbenchPanelActionKind[] = [
   "side_chat",
   "browser",
   "terminal",
+  "new_page",
 ];
 
 const ALL_ACTION_KINDS: readonly WorkbenchPanelActionKind[] = [...PROJECT_SESSION_ACTION_ORDER];

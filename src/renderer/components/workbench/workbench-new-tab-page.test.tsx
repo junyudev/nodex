@@ -1,0 +1,167 @@
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { act, fireEvent, render, screen, within } from "@testing-library/react";
+import { describe, expect, test, vi } from "vite-plus/test";
+import type { LibraryCatalogEntry } from "../../../shared/library-module";
+import { NodexTooltipProvider } from "@/components/ui/tooltip";
+import { resolveNewTabToolLayout } from "@/lib/workbench-new-tab-model";
+import { getPanelNewTabAction, type PanelNewTabActionKind } from "@/lib/workbench-panel-actions";
+import { openNodexMenu } from "../../test/dom";
+import type { SpaceContentDataSource } from "./space-content";
+import { WorkbenchNewTabPage, type WorkbenchNewTabPageProps } from "./workbench-new-tab-page";
+
+const recent = (pageId: string, title: string, updatedAt: string): LibraryCatalogEntry => ({
+  target: { kind: "page", pageId },
+  title,
+  kind: "page",
+  lifecycle: "active",
+  locationLabel: "Library",
+  updatedAt,
+  locationRevision: 1,
+  metadataRevision: 1,
+});
+
+function recentsDataSource(entries: readonly LibraryCatalogEntry[]): SpaceContentDataSource {
+  return {
+    useCatalog: () => ({
+      data: {
+        pages: [
+          {
+            kind: "catalog" as const,
+            libraryId: "library:test",
+            storeEpoch: "epoch:test",
+            commitSeq: 1,
+            items: [...entries],
+            nextCursor: null,
+            hasMore: false,
+            total: entries.length,
+          },
+        ],
+        pageParams: [undefined],
+      },
+      isPending: false,
+      isError: false,
+      hasNextPage: false,
+      isFetchingNextPage: false,
+      refetch: async () => ({}) as never,
+      fetchNextPage: async () => ({}) as never,
+    }),
+    useCreateCommands: () => ({
+      isPending: false,
+      createPage: async () => null,
+      createDatabase: async () => undefined,
+    }),
+  };
+}
+
+function renderPage(
+  kinds: readonly PanelNewTabActionKind[],
+  overrides: Partial<WorkbenchNewTabPageProps> = {},
+) {
+  const onSelectAction = vi.fn();
+  const onOpenRecent = vi.fn();
+  const layout = resolveNewTabToolLayout(kinds.map(getPanelNewTabAction), {
+    hasChat: overrides.onSelectChat != null,
+    hasShortcut: (action) => action.shortcut !== undefined,
+  });
+  render(
+    <QueryClientProvider client={new QueryClient()}>
+      <NodexTooltipProvider>
+        <WorkbenchNewTabPage
+          layout={layout}
+          isMac
+          projects={[]}
+          currentProjectId="alpha"
+          onSelectChat={null}
+          onSelectAction={onSelectAction}
+          onOpenDestination={() => undefined}
+          bottomTerminal={null}
+          onOpenRecent={onOpenRecent}
+          recentsDataSource={recentsDataSource([
+            recent("page:draft", "Weekend draft", "2026-10-27T09:05:00"),
+            recent("page:plan", "Launch plan", "2026-10-20T09:05:00"),
+          ])}
+          {...overrides}
+        />
+      </NodexTooltipProvider>
+    </QueryClientProvider>,
+  );
+  return { onSelectAction, onOpenRecent };
+}
+
+describe("WorkbenchNewTabPage", () => {
+  test("shows tools as tiles and keeps project destinations in More tools", async () => {
+    const { onSelectAction } = renderPage([
+      "terminal",
+      "browser",
+      "files",
+      "new_page",
+      "db_view",
+      "page_stage",
+      "canvas_stage",
+    ]);
+    const tools = screen.getByRole("heading", { name: "Tools" }).parentElement;
+    if (!tools) throw new Error("Expected the Tools section");
+
+    expect(within(tools).queryByRole("button", { name: /^Browser/ })).toBe(null);
+    await act(async () => {
+      fireEvent.click(within(tools).getByRole("button", { name: /New page/ }));
+      await Promise.resolve();
+    });
+    expect(onSelectAction).toHaveBeenCalledWith("new_page");
+
+    await openNodexMenu(within(tools).getByRole("button", { name: /More tools/ }));
+    const menu = await screen.findByRole("menu");
+    expect(within(menu).getByText("Project") !== null).toBe(true);
+    expect(within(menu).queryByText("More tools")).toBe(null);
+    await act(async () => {
+      fireEvent.click(within(menu).getByText("Canvas"));
+      await Promise.resolve();
+    });
+    expect(onSelectAction).toHaveBeenCalledWith("canvas_stage");
+  });
+
+  test("leads with Chat while the Chat is hidden behind a full-width panel", async () => {
+    const onSelectChat = vi.fn();
+    renderPage(["review", "terminal", "files", "side_chat", "new_page"], { onSelectChat });
+    const tools = screen.getByRole("heading", { name: "Tools" }).parentElement;
+    if (!tools) throw new Error("Expected the Tools section");
+
+    const labels = within(tools)
+      .getAllByRole("button")
+      .map((button) => button.textContent ?? "");
+    expect(labels[0]).toBe("Chat");
+    expect(labels.some((label) => label.startsWith("More tools"))).toBe(false);
+    await act(async () => {
+      fireEvent.click(within(tools).getByRole("button", { name: "Chat" }));
+      await Promise.resolve();
+    });
+    expect(onSelectChat).toHaveBeenCalledOnce();
+  });
+
+  test("opens a recent page from its row", async () => {
+    const { onOpenRecent } = renderPage(["terminal", "new_page"]);
+    const recents = screen.getByRole("list", { name: "Recent pages" });
+
+    expect(within(recents).getAllByRole("listitem")).toHaveLength(2);
+    await act(async () => {
+      fireEvent.click(within(recents).getByRole("button", { name: "Launch plan" }));
+      await Promise.resolve();
+    });
+    expect(onOpenRecent).toHaveBeenCalledWith(
+      expect.objectContaining({ target: { kind: "page", pageId: "page:plan" } }),
+    );
+  });
+
+  test("offers the bottom terminal from the Terminal tile", async () => {
+    const onOpen = vi.fn();
+    renderPage(["terminal", "files"], { bottomTerminal: { shortcut: "⌘J", onOpen } });
+
+    await openNodexMenu(screen.getByRole("button", { name: "Terminal options" }));
+    const menu = await screen.findByRole("menu");
+    await act(async () => {
+      fireEvent.click(within(menu).getByText("Open bottom terminal"));
+      await Promise.resolve();
+    });
+    expect(onOpen).toHaveBeenCalledOnce();
+  });
+});

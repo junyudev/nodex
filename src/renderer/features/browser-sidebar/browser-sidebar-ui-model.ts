@@ -24,7 +24,8 @@ export interface BrowserVisibleLocalServers {
   hasMore: boolean;
 }
 
-const VISIBLE_LOCAL_SERVER_LIMIT = 5;
+/** One row of the New tab's four-column local server tiles. */
+const VISIBLE_LOCAL_SERVER_LIMIT = 4;
 
 export function readBrowserAddressValue(url: string): string {
   if (isBlankBrowserUrl(url)) return "";

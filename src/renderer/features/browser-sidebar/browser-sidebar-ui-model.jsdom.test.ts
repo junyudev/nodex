@@ -63,17 +63,17 @@ describe("browser-sidebar-ui-model", () => {
       sortMode: "recently-used",
       expandedProjectIds: new Set(),
     });
-    expect(online.servers.length).toBe(5);
+    expect(online.servers.length).toBe(4);
     expect(online.servers[0]?.origin).toBe("http://localhost:5004");
-    expect(online.servers[4]?.origin).toBe("http://localhost:5007");
-    expect(online.hasMore).toBe(false);
+    expect(online.servers[3]?.origin).toBe("http://localhost:5006");
+    expect(online.hasMore).toBe(true);
 
     const all = resolveVisibleLocalServers(snapshot, {
       showMode: "all",
       sortMode: "recently-used",
       expandedProjectIds: new Set(),
     });
-    expect(all.servers.length).toBe(5);
+    expect(all.servers.length).toBe(4);
     expect(all.hasMore).toBe(true);
 
     const hidden = resolveVisibleLocalServers(snapshot, {

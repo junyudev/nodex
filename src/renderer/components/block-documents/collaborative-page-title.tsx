@@ -173,6 +173,7 @@ export function CollaborativePageTitle({
   spellCheck = true,
   placeholder = "Untitled",
   "aria-label": ariaLabel = "Page title",
+  autoFocus,
   ...props
 }: CollaborativePageTitleProps) {
   const [richTitle, setRichTitle] = useState(() => readPortableRichTextFromYText(title));
@@ -187,6 +188,7 @@ export function CollaborativePageTitle({
   const [linkEditorOpen, setLinkEditorOpen] = useState(false);
   const [linkDraft, setLinkDraft] = useState("");
   const editorRef = useRef<HTMLDivElement | null>(null);
+  const mountSelectionRef = useRef(false);
   const wrapperRef = useRef<HTMLDivElement | null>(null);
   const composingRef = useRef(false);
   const compositionBaseRef = useRef(title.toString());
@@ -214,6 +216,11 @@ export function CollaborativePageTitle({
   const captureSelection = (): void => {
     const editor = editorRef.current;
     if (!editor) return;
+    // The title's own select-all on mount is a typing target, not a range to format.
+    if (mountSelectionRef.current) {
+      setSelectedRange(null);
+      return;
+    }
     const selection = composingRef.current
       ? readRichTitleDomDraftSelection(editor)
       : readRichTitleDomSelection(editor);
@@ -331,6 +338,27 @@ export function CollaborativePageTitle({
     restoreRichTitleDomSelection(editor, selection.anchor, selection.focus);
     captureSelection();
   }, [plainTitle, richTitle, selectionRevision]);
+
+  // React only autofocuses form controls. A title asked to take focus does so once, when it
+  // mounts, and selects its text so typing replaces a placeholder name such as "Untitled".
+  const [focusOnMount] = useState(autoFocus === true);
+  useEffect(() => {
+    const editor = editorRef.current;
+    if (!focusOnMount || !editor) return;
+    // Someone already typing elsewhere keeps their focus.
+    const active = editor.ownerDocument.activeElement;
+    if (
+      active instanceof HTMLElement &&
+      active !== editor &&
+      (active.isContentEditable || active.matches("input, textarea, select"))
+    ) {
+      return;
+    }
+    mountSelectionRef.current = true;
+    editor.focus({ preventScroll: true });
+    const length = portableRichTextPlainText(readPortableRichTextFromYText(title)).length;
+    restoreRichTitleDomSelection(editor, 0, length);
+  }, [focusOnMount, title]);
 
   useEffect(() => {
     const editor = editorRef.current;
@@ -506,6 +534,7 @@ export function CollaborativePageTitle({
   };
 
   const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>): void => {
+    mountSelectionRef.current = false;
     if (composingRef.current || event.nativeEvent.isComposing) return;
     if (event.key === "Enter" && event.shiftKey) {
       event.preventDefault();
@@ -714,6 +743,10 @@ export function CollaborativePageTitle({
         onCompositionStart={handleCompositionStart}
         onCompositionEnd={handleCompositionEnd}
         onKeyDown={handleKeyDown}
+        onPointerDown={(event) => {
+          mountSelectionRef.current = false;
+          props.onPointerDown?.(event);
+        }}
         onFocus={(event) => {
           captureSelection();
           onFocus?.(event);

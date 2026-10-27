@@ -1,4 +1,5 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
+import { consumePageTitleFocus } from "@/lib/page-title-focus-intent";
 import { hashKey, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createUuidV7 } from "../../../shared/uuid-v7";
 
@@ -49,6 +50,8 @@ export function WorkbenchLibraryPageSurface({
   readonly onOpenCanvas?: (canvasBlockId: string, titleSnapshot?: string) => void;
 }) {
   const queryClient = useQueryClient();
+  // A Page created a moment ago opens ready to be named; reopening one never moves focus.
+  const [focusTitle] = useState(() => consumePageTitleFocus(pageId));
   const detailQueryKey = useMemo(() => queryKeys.library.pageDetail(pageId), [pageId]);
   const documentQueryKey = useMemo(() => queryKeys.library.pageDocument(pageId), [pageId]);
   const detail = useQuery({
@@ -151,7 +154,7 @@ export function WorkbenchLibraryPageSurface({
       pageTitleIdentity={{ libraryId: detail.data.libraryId, pageId }}
       retainEditorSession
       page={stagePage}
-      autoFocusTitle={stagePage.page.title.trim() === "Untitled"}
+      autoFocusTitle={focusTitle}
       projectName={null}
       documentAuthority={
         document.data

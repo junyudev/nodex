@@ -1,3 +1,4 @@
+import { resolveBrowserTabTitle } from "../../shared/browser-url";
 import {
   canonicalWorkbenchFilesConfig,
   workbenchFileResourceId,
@@ -314,7 +315,8 @@ function makeSurfaceDescriptor(
       return {
         ...common,
         kind: request.kind,
-        titleSnapshot: request.titleSnapshot ?? "Browser",
+        titleSnapshot:
+          request.titleSnapshot ?? resolveBrowserTabTitle(request.config?.url, undefined),
         config: {
           ...request.config,
           browserTabId,

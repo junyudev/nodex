@@ -4859,11 +4859,21 @@ export async function releasePointerDrag(pointerId = 1): Promise<void> {
   await settleAsyncRender();
 }
 
+/** Opens a panel's action menu: the side panel's New tab button opens it from its context menu. */
 export async function openPanelMenu(
   screen: ReturnType<typeof renderWorkbench>,
-  label: "Open side panel tab" | "Open bottom panel tab",
+  label: "New tab" | "Open bottom panel tab",
 ): Promise<HTMLElement> {
-  await openNodexMenu(await screen.findByRole("button", { name: label }));
+  const trigger = await screen.findByRole("button", { name: label });
+  if (label === "New tab") {
+    await act(async () => {
+      fireEvent.contextMenu(trigger);
+      await Promise.resolve();
+    });
+    await settleAsyncRender();
+  } else {
+    await openNodexMenu(trigger);
+  }
   await waitFor(() => {
     expect(screen.queryByRole("menu") !== null).toBe(true);
   });

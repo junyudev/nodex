@@ -69,7 +69,11 @@ import type {
   BrowserCredentialSummary,
   BrowserSiteInfo,
 } from "../../../shared/browser-profile";
-import { isBlankBrowserUrl, normalizeBrowserNavigationUrl } from "../../../shared/browser-url";
+import {
+  isBlankBrowserUrl,
+  normalizeBrowserNavigationUrl,
+  resolveBrowserTabTitle,
+} from "../../../shared/browser-url";
 import { createSecureRuntimeId } from "../../../shared/secure-runtime-id";
 import { useTheme } from "@/lib/use-theme";
 import {
@@ -127,7 +131,6 @@ import {
   DeleteIcon,
   DownloadIcon,
   BrowserExternalIcon,
-  BrowserHideIcon,
   BrowserLocalServerFilterIcon,
   BrowserMoreIcon,
   BrowserReloadIcon,
@@ -144,6 +147,7 @@ import {
   PlusIcon,
   ResetIcon,
   SettingsGeneralIcon,
+  SidePanelBrowserIcon,
 } from "@/components/shared/icons";
 import {
   NodexDropdownButtonTrigger,
@@ -246,6 +250,7 @@ export function BrowserSidebarPanel({
   boundsSyncTrigger,
   activeForContentSearch = false,
   isVisible,
+  renderNewTabPage,
 }: {
   tab: BrowserTab;
   activeSession?: WorkbenchSessionRenderProjection;
@@ -258,6 +263,8 @@ export function BrowserSidebarPanel({
   boundsSyncTrigger?: MotionValue<number>;
   activeForContentSearch?: boolean;
   isVisible: boolean;
+  /** Composes a blank tab's New tab page around the Browser's own sections. */
+  renderNewTabPage?: (sections: BrowserNewTabSections) => ReactNode;
 }) {
   const browserConversationId =
     surfaceContext?.browserConversationId ?? activeSession?.id ?? browserViewScopeId;
@@ -842,7 +849,7 @@ export function BrowserSidebarPanel({
 
   useEffect(() => {
     if (tab.preview) return undefined;
-    const title = snapshot.title || "Browser";
+    const title = resolveBrowserTabTitle(snapshot.url, snapshot.title);
     const url = isBlankBrowserUrl(snapshot.url) ? undefined : snapshot.url;
     const timeout = window.setTimeout(() => {
       onUpdateTab(tab.id, {
@@ -1086,7 +1093,7 @@ export function BrowserSidebarPanel({
                     : undefined
                 }
                 value={addressValue}
-                placeholder="Enter a URL"
+                placeholder="Search or enter a URL"
                 onFocus={() => setAddressFocused(true)}
                 onBlur={(event) => {
                   setAddressFocused(false);
@@ -1275,7 +1282,8 @@ export function BrowserSidebarPanel({
             }}
           />
         ) : !shouldMountWebview ? (
-          <BrowserNewTabState
+          <BrowserNewTabSurface renderNewTabPage={renderNewTabPage}>
+          <BrowserLocalServersSection
             projectId={tab.projectId}
             localServers={localServers}
             preferences={localServerPreferences}
@@ -1317,17 +1325,8 @@ export function BrowserSidebarPanel({
                 void command({ type: "unhide-local-server", projectId: tab.projectId, url });
               }
             }}
-            onRemoveRoute={(serverUrl, routeUrl) => {
-              if (tab.projectId !== null) {
-                void command({
-                  type: "remove-local-server-route",
-                  projectId: tab.projectId,
-                  serverUrl,
-                  routeUrl,
-                });
-              }
-            }}
           />
+          </BrowserNewTabSurface>
         ) : (
           <BrowserWebviewStage
             activeSessionId={browserConversationId}
@@ -2564,7 +2563,36 @@ function BrowserViewportResizeHandles({
   );
 }
 
-export function BrowserNewTabState({
+export interface BrowserNewTabSections {
+  /** Local development servers found for the tab's Project, or null when there are none. */
+  readonly localServers: ReactNode;
+}
+
+function BrowserNewTabSurface({
+  renderNewTabPage,
+  children,
+}: {
+  readonly renderNewTabPage?: (sections: BrowserNewTabSections) => ReactNode;
+  readonly children: ReactNode;
+}) {
+  return (
+    <div className="absolute inset-0 z-10 bg-token-main-surface-primary">
+      {renderNewTabPage ? (
+        renderNewTabPage({ localServers: children })
+      ) : (
+        <div className="@container h-full overflow-y-auto px-panel py-8 select-none">
+          <div className="mx-auto flex w-full max-w-3xl flex-col gap-10">{children}</div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+const LOCAL_SERVER_ICON_BUTTON_CLASS =
+  "inline-flex size-7 items-center justify-center rounded-lg text-token-text-tertiary hover:bg-token-list-hover-background hover:text-token-text-primary";
+
+/** The New tab's suggested sites: local servers running for the tab's Project. */
+export function BrowserLocalServersSection({
   projectId,
   localServers,
   preferences,
@@ -2574,7 +2602,6 @@ export function BrowserNewTabState({
   onRequestThumbnail,
   onHideServer,
   onUnhideServer,
-  onRemoveRoute,
 }: {
   projectId: string | null;
   localServers: BrowserSidebarLocalServersSnapshot | null;
@@ -2585,7 +2612,6 @@ export function BrowserNewTabState({
   onRequestThumbnail?: (url: string) => Promise<BrowserSidebarLocalServerThumbnailResult>;
   onHideServer: (server: BrowserSidebarLocalServer) => void;
   onUnhideServer: (url: string) => void;
-  onRemoveRoute: (serverUrl: string, routeUrl: string) => void;
 }) {
   const [fallbackPreferences, setFallbackPreferences] = useState<BrowserLocalServerPreferences>(
     () => ({
@@ -2611,9 +2637,15 @@ export function BrowserNewTabState({
     () => resolveVisibleLocalServers(localServers, settings),
     [localServers, settings],
   );
-  const servers = settings.showMode === "hidden" ? visible.hiddenServers : visible.servers;
+  const hiddenMode = settings.showMode === "hidden";
+  const servers = hiddenMode ? visible.hiddenServers : visible.servers;
+  const knownServerCount = visible.servers.length + visible.hiddenServers.length;
+  // A Project without local servers shows nothing; a filter that hides every server still
+  // keeps its heading so the filter can be changed back.
+  if (localServers?.isLoading || knownServerCount === 0) return null;
+
   const showModeLabel =
-    settings.showMode === "online" ? "Online" : settings.showMode === "hidden" ? "Hidden" : "All";
+    settings.showMode === "online" ? "online" : hiddenMode ? "hidden" : "known";
   const setShowMode = (showMode: BrowserLocalServerShowMode) => {
     updatePreferences({ showMode });
   };
@@ -2628,118 +2660,105 @@ export function BrowserNewTabState({
   };
 
   return (
-    <div className="absolute inset-0 z-10 flex h-full w-full overflow-y-auto bg-token-main-surface-primary px-4 py-8 select-none">
-      <div className="m-auto flex w-full max-w-[420px] flex-col gap-5">
-        <div className="flex items-center justify-between">
-          <h2 className="text-sm font-medium text-token-text-primary">Local</h2>
-          <div className="flex items-center gap-1">
-            <NodexTooltip tooltipContent="Refresh local servers">
-              <button
-                type="button"
-                className="inline-flex size-6 items-center justify-center rounded-lg text-token-text-tertiary hover:bg-token-list-hover-background hover:text-token-text-primary"
-                onClick={onRefresh}
-                aria-label="Refresh local servers"
-              >
-                <BrowserReloadIcon className="icon-xs" />
-              </button>
-            </NodexTooltip>
-            <NodexDropdownMenu
-              align="end"
-              contentWidth="menuWide"
-              triggerTooltipContent="Local server options"
-              triggerButton={
-                <button
-                  type="button"
-                  className="inline-flex size-6 items-center justify-center rounded-lg text-token-text-tertiary hover:bg-token-list-hover-background hover:text-token-text-primary"
-                  aria-label="Local server options"
-                >
-                  <BrowserLocalServerFilterIcon className="icon-xs" />
-                </button>
-              }
-            >
-              <NodexDropdownItem
-                rightSlot={
-                  settings.showMode === "online" ? <CheckmarkIcon className="icon-xs" /> : null
-                }
-                onSelect={() => setShowMode("online")}
-              >
-                Online
-              </NodexDropdownItem>
-              <NodexDropdownItem
-                rightSlot={
-                  settings.showMode === "all" ? <CheckmarkIcon className="icon-xs" /> : null
-                }
-                onSelect={() => setShowMode("all")}
-              >
-                All
-              </NodexDropdownItem>
-              <NodexDropdownItem
-                rightSlot={
-                  settings.showMode === "hidden" ? <CheckmarkIcon className="icon-xs" /> : null
-                }
-                onSelect={() => setShowMode("hidden")}
-              >
-                Hidden
-              </NodexDropdownItem>
-              <NodexDropdownSeparator />
-              <NodexDropdownItem
-                rightSlot={
-                  settings.sortMode === "recently-used" ? (
-                    <CheckmarkIcon className="icon-xs" />
-                  ) : null
-                }
-                onSelect={() => setSortMode("recently-used")}
-              >
-                Recently used
-              </NodexDropdownItem>
-              <NodexDropdownItem
-                rightSlot={
-                  settings.sortMode === "origin" ? <CheckmarkIcon className="icon-xs" /> : null
-                }
-                onSelect={() => setSortMode("origin")}
-              >
-                Origin
-              </NodexDropdownItem>
-            </NodexDropdownMenu>
-          </div>
-        </div>
-        <div className="flex min-h-0 flex-col gap-2">
-          {localServers?.isLoading ? (
-            <div className="rounded-lg border border-token-border bg-token-main-surface-primary px-3 py-3 text-sm text-token-text-secondary">
-              Finding local servers...
-            </div>
-          ) : servers.length === 0 ? (
-            <div className="rounded-lg border border-token-border bg-token-main-surface-primary px-3 py-3 text-sm text-token-text-secondary">
-              {settings.showMode === "hidden"
-                ? "No hidden local servers."
-                : `No ${showModeLabel.toLowerCase()} local servers.`}
-            </div>
-          ) : (
-            servers.map((server) => (
-              <LocalServerCard
-                key={server.id}
-                server={server}
-                hiddenMode={settings.showMode === "hidden"}
-                onOpen={onOpen}
-                onRequestThumbnail={onRequestThumbnail}
-                onHide={() => onHideServer(server)}
-                onUnhide={() => onUnhideServer(server.origin)}
-                onRemoveRoute={(routePath) => onRemoveRoute(server.origin, routePath)}
-              />
-            ))
-          )}
-          {visible.hasMore ? (
+    <section className="flex flex-col gap-4">
+      <div className="flex items-center justify-between gap-2">
+        <h3 className="text-sm font-medium text-token-text-primary">Local servers</h3>
+        <div className="flex items-center gap-1">
+          <NodexTooltip tooltipContent="Refresh local servers">
             <button
               type="button"
-              className="h-8 rounded-lg text-sm text-token-text-secondary hover:bg-token-list-hover-background hover:text-token-text-primary"
-              onClick={expandProject}
+              className={LOCAL_SERVER_ICON_BUTTON_CLASS}
+              onClick={onRefresh}
+              aria-label="Refresh local servers"
             >
-              Show more
+              <BrowserReloadIcon className="icon-xs" />
             </button>
-          ) : null}
+          </NodexTooltip>
+          <NodexDropdownMenu
+            align="end"
+            contentWidth="menuWide"
+            triggerTooltipContent="Local server options"
+            triggerButton={
+              <button
+                type="button"
+                className={LOCAL_SERVER_ICON_BUTTON_CLASS}
+                aria-label="Local server options"
+              >
+                <BrowserLocalServerFilterIcon className="icon-xs" />
+              </button>
+            }
+          >
+            <NodexDropdownItem
+              rightSlot={
+                settings.showMode === "online" ? <CheckmarkIcon className="icon-xs" /> : null
+              }
+              onSelect={() => setShowMode("online")}
+            >
+              Online
+            </NodexDropdownItem>
+            <NodexDropdownItem
+              rightSlot={
+                settings.showMode === "all" ? <CheckmarkIcon className="icon-xs" /> : null
+              }
+              onSelect={() => setShowMode("all")}
+            >
+              All
+            </NodexDropdownItem>
+            <NodexDropdownItem
+              rightSlot={hiddenMode ? <CheckmarkIcon className="icon-xs" /> : null}
+              onSelect={() => setShowMode("hidden")}
+            >
+              Hidden
+            </NodexDropdownItem>
+            <NodexDropdownSeparator />
+            <NodexDropdownItem
+              rightSlot={
+                settings.sortMode === "recently-used" ? (
+                  <CheckmarkIcon className="icon-xs" />
+                ) : null
+              }
+              onSelect={() => setSortMode("recently-used")}
+            >
+              Recently used
+            </NodexDropdownItem>
+            <NodexDropdownItem
+              rightSlot={
+                settings.sortMode === "origin" ? <CheckmarkIcon className="icon-xs" /> : null
+              }
+              onSelect={() => setSortMode("origin")}
+            >
+              Origin
+            </NodexDropdownItem>
+          </NodexDropdownMenu>
         </div>
       </div>
-    </div>
+      {servers.length === 0 ? (
+        <p className="px-1 text-sm text-token-text-secondary">No {showModeLabel} local servers.</p>
+      ) : (
+        <ul className="grid grid-cols-2 gap-3 @md:grid-cols-4">
+          {servers.map((server) => (
+            <LocalServerTile
+              key={server.id}
+              server={server}
+              hiddenMode={hiddenMode}
+              onOpen={onOpen}
+              onRequestThumbnail={onRequestThumbnail}
+              onHide={() => onHideServer(server)}
+              onUnhide={() => onUnhideServer(server.origin)}
+            />
+          ))}
+        </ul>
+      )}
+      {visible.hasMore ? (
+        <button
+          type="button"
+          className="h-8 self-start rounded-lg px-2 text-sm text-token-text-secondary hover:bg-token-list-hover-background hover:text-token-text-primary"
+          onClick={expandProject}
+        >
+          Show more
+        </button>
+      ) : null}
+    </section>
   );
 }
 
@@ -2781,13 +2800,15 @@ function LocalServerThumbnail({
     };
   }, [lastSeenAt, onRequest, online, origin]);
 
+  const frameClass =
+    "aspect-[16/10] w-full shrink-0 overflow-hidden rounded-lg border border-token-border-light";
   if (dataUrl) {
     return (
       <img
         alt={`Preview of ${origin}`}
         draggable={false}
         src={dataUrl}
-        className="h-[52px] w-[84px] shrink-0 rounded-[10px] border border-token-border object-cover"
+        className={cn(frameClass, "object-cover object-top")}
       />
     );
   }
@@ -2795,13 +2816,16 @@ function LocalServerThumbnail({
   return (
     <span
       aria-label={online ? `Preview unavailable for ${origin}` : `${origin} is offline`}
-      className="flex h-[52px] w-[84px] shrink-0 items-center justify-center rounded-[10px] border border-token-border bg-[radial-gradient(circle_at_35%_25%,var(--color-token-list-hover-background),transparent_70%)] text-token-text-tertiary"
+      className={cn(
+        frameClass,
+        "flex items-center justify-center bg-[var(--color-background-primary-soft-alpha)] text-token-text-tertiary",
+      )}
       role="img"
     >
       {loading ? (
         <ActivitySpinnerIcon className="icon-xs" icon={BrowserReloadIcon} />
       ) : online ? (
-        <span className="size-1.5 rounded-full bg-token-text-tertiary/50" />
+        <SidePanelBrowserIcon className="icon-sm" />
       ) : (
         <WifiOff className="icon-xs" />
       )}
@@ -2809,14 +2833,13 @@ function LocalServerThumbnail({
   );
 }
 
-function LocalServerCard({
+function LocalServerTile({
   server,
   hiddenMode,
   onOpen,
   onRequestThumbnail,
   onHide,
   onUnhide,
-  onRemoveRoute,
 }: {
   server: BrowserSidebarLocalServer;
   hiddenMode: boolean;
@@ -2824,14 +2847,15 @@ function LocalServerCard({
   onRequestThumbnail?: (url: string) => Promise<BrowserSidebarLocalServerThumbnailResult>;
   onHide: () => void;
   onUnhide: () => void;
-  onRemoveRoute: (routePath: string) => void;
 }) {
-  const visibleRoutes = server.routes.filter((route) => !route.hidden).slice(0, 5);
+  const title = formatLocalServerTitle(server.origin);
   return (
-    <div className="group/local-server overflow-hidden rounded-lg border border-token-border bg-token-main-surface-primary text-token-text-primary transition-colors hover:bg-token-list-hover-background">
+    <li className="group/local-server relative min-w-0">
+      <NodexTooltip tooltipContent={server.origin} delayOpen>
       <button
         type="button"
-        className="flex w-full min-w-0 items-center gap-3 px-3 py-2 text-left"
+        aria-label={`Open ${title}`}
+        className="cursor-interaction flex w-full min-w-0 flex-col items-center gap-2.5 rounded-xl p-2.5 outline-none select-none group-hover/local-server:bg-token-list-hover-background focus-visible:ring-2 focus-visible:ring-token-focus-border focus-visible:ring-inset"
         onClick={() => onOpen(server.origin)}
       >
         <LocalServerThumbnail
@@ -2840,66 +2864,28 @@ function LocalServerCard({
           lastSeenAt={server.lastSeenAt}
           onRequest={onRequestThumbnail}
         />
-        <span className="min-w-0 flex-1">
-          <span className="flex items-center gap-1.5">
-            <span
-              className={cn(
-                "size-1.5 shrink-0 rounded-full",
-                server.online ? "bg-emerald-500" : "bg-token-text-tertiary",
-              )}
-            />
-            <span className="truncate text-sm font-medium text-token-text-primary">
-              {formatLocalServerTitle(server.origin)}
-            </span>
-          </span>
-          <span className="mt-1 block truncate text-xs text-token-text-secondary">
-            {server.origin}
-          </span>
+        <span className="flex w-full min-w-0 items-center justify-center gap-1.5">
+          <span
+            className={cn(
+              "size-1.5 shrink-0 rounded-full",
+              server.online ? "bg-emerald-500" : "bg-token-text-tertiary",
+            )}
+          />
+          <span className="min-w-0 truncate text-sm text-token-text-primary">{title}</span>
         </span>
       </button>
-      <div className="flex items-center justify-between gap-2 px-3 pb-2">
-        <div className="min-w-0 flex-1">
-          {visibleRoutes.length > 0 ? (
-            visibleRoutes.map((route) => (
-              <div
-                key={route.id}
-                className="flex min-w-0 items-center gap-1 text-xs text-token-text-secondary"
-              >
-                <button
-                  type="button"
-                  className="min-w-0 truncate text-left hover:text-token-text-primary"
-                  onClick={() => onOpen(`${server.origin}${route.path}`)}
-                >
-                  {route.path}
-                </button>
-                <button
-                  type="button"
-                  className="inline-flex size-5 shrink-0 items-center justify-center rounded-md opacity-0 hover:bg-token-foreground/5 group-hover/local-server:opacity-100"
-                  aria-label={`Remove route ${route.path}`}
-                  onClick={() => onRemoveRoute(route.path)}
-                >
-                  <CloseIcon className="icon-2xs" />
-                </button>
-              </div>
-            ))
-          ) : (
-            <div className="truncate text-xs text-token-text-secondary">/</div>
-          )}
-        </div>
+      </NodexTooltip>
+      <div className="absolute end-1 top-1">
         <button
           type="button"
-          className="inline-flex size-6 shrink-0 items-center justify-center rounded-lg text-token-text-tertiary opacity-0 transition-opacity hover:bg-token-foreground/5 hover:text-token-text-primary group-hover/local-server:opacity-100 focus-visible:opacity-100"
+          className="inline-flex size-6 items-center justify-center rounded-md bg-token-main-surface-primary/80 text-token-text-tertiary opacity-0 backdrop-blur-sm transition-opacity hover:text-token-text-primary group-hover/local-server:opacity-100 group-hover/local-server:delay-300 focus-visible:opacity-100 group-has-[:focus-visible]/local-server:opacity-100 [@media(hover:none)]:opacity-100"
           aria-label={hiddenMode ? `Unhide ${server.origin}` : `Hide ${server.origin}`}
           onClick={hiddenMode ? onUnhide : onHide}
         >
-          {hiddenMode ? (
-            <CheckmarkIcon className="icon-xs" />
-          ) : (
-            <BrowserHideIcon className="icon-xs" />
-          )}
+          {hiddenMode ? <CheckmarkIcon className="icon-xs" /> : <CloseIcon className="icon-2xs" />}
         </button>
       </div>
-    </div>
+    </li>
   );
 }
 

@@ -60,9 +60,12 @@ function createDataSource(entries: readonly LibraryCatalogEntry[]) {
         fetchNextPage: async () => ({}) as never,
       };
     },
-    useCreateCommands: ({ onCreated }) => ({
+    useCreateCommands: (input) => ({
       isPending: false,
-      createPage: async () => onCreated(createdPage),
+      createPage: async () => {
+        input?.onCreated?.(createdPage);
+        return createdPage;
+      },
       createDatabase: async () => undefined,
     }),
   } satisfies SpaceContentDataSource;

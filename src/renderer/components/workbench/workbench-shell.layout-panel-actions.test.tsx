@@ -103,7 +103,7 @@ describe("workbench session shell / layout-panel-actions", () => {
         throw new Error("Session creation timed out");
       return base(channel, ...args);
     });
-    const menu = await openPanelMenu(screen, "Open side panel tab");
+    const menu = await openPanelMenu(screen, "New tab");
     await clickMenuItem(menu, "Side chat");
 
     expect(textContent(await screen.findByRole("alert"))).toContain(
@@ -1789,11 +1789,11 @@ describe("workbench session shell / layout-panel-actions", () => {
     await settleAsyncRender();
 
     const globalHeader = screen.container.querySelector('[data-testid="workbench-global-header"]');
-    const addTabButton = screen.getByRole("button", { name: "Open side panel tab" });
+    const addTabButton = screen.getByRole("button", { name: "New tab" });
     expect(globalHeader?.contains(addTabButton)).toBe(false);
     expect(screen.queryByRole("button", { name: "Add DB view" })).toBe(null);
 
-    const menu = await openPanelMenu(screen, "Open side panel tab");
+    const menu = await openPanelMenu(screen, "New tab");
     await clickMenuItem(menu, "Files");
 
     expect(screen.getByRole("tab", { name: "Files" }) !== null).toBe(true);
@@ -2189,24 +2189,22 @@ describe("workbench session shell / layout-panel-actions", () => {
     });
   });
 
-  test("opening a Browser preview preserves the durable empty Files tab", async () => {
+  test("the Browser action opens a durable New tab beside the durable Files tab", async () => {
     const screen = renderWorkbench();
     await settleAsyncRender();
     await settleAsyncRender();
 
-    const filesMenu = await openPanelMenu(screen, "Open side panel tab");
+    const filesMenu = await openPanelMenu(screen, "New tab");
     await clickMenuItem(filesMenu, "Files");
 
     expect(screen.getByRole("tab", { name: "Files" }) !== null).toBe(true);
 
-    const browserMenu = await openPanelMenu(screen, "Open side panel tab");
+    const browserMenu = await openPanelMenu(screen, "New tab");
     await clickMenuItem(browserMenu, "Browser");
 
     expect(screen.getByRole("tab", { name: "Files" }) !== null).toBe(true);
-    expect(screen.getByRole("tab", { name: "Browser" }) !== null).toBe(true);
-    expect(
-      screen.container.querySelector('[data-app-shell-tabpanel-preview="true"]') !== null,
-    ).toBe(true);
+    expect((await screen.findByRole("tab", { name: "New tab" })) !== null).toBe(true);
+    expect(screen.container.querySelector('[data-app-shell-tabpanel-preview="true"]')).toBe(null);
     expect(
       invokeCalls.some(
         (call) =>
@@ -2244,9 +2242,10 @@ describe("workbench session shell / layout-panel-actions", () => {
     expect(screen.getByRole("button", { name: /Files/ }) !== null).toBe(true);
     expect(screen.queryByRole("button", { name: /Side chat/ })).toBe(null);
     expect(screen.getByRole("button", { name: /DB View/ }) !== null).toBe(true);
-    expect(within(actionGrid).getByRole("button", { name: "Page" }) !== null).toBe(true);
-    expect(actionText.indexOf("Files") < actionText.indexOf("DB View")).toBe(true);
-    expect(actionText.indexOf("DB View") < actionText.indexOf("Page")).toBe(true);
+    expect(within(actionGrid).getByRole("button", { name: "Open page" }) !== null).toBe(true);
+    expect(actionText.indexOf("Files") < actionText.indexOf("New page")).toBe(true);
+    expect(actionText.indexOf("New page") < actionText.indexOf("DB View")).toBe(true);
+    expect(actionText.indexOf("DB View") < actionText.indexOf("Open page")).toBe(true);
     expect(textContent(actionGrid).includes("⌃⇧G")).toBe(false);
     expect(textContent(actionGrid).includes("⌃`")).toBe(true);
     expect(textContent(actionGrid).includes("Ctrl+T")).toBe(true);
@@ -2286,7 +2285,7 @@ describe("workbench session shell / layout-panel-actions", () => {
     expect(actionText.includes("Files")).toBe(false);
     expect(actionText.includes("Review")).toBe(true);
 
-    const menu = await openPanelMenu(screen, "Open side panel tab");
+    const menu = await openPanelMenu(screen, "New tab");
     expect(within(menu).getByText("Side chat") !== null).toBe(true);
     expect(within(menu).getByText("Browser") !== null).toBe(true);
     expect(within(menu).getByText("Terminal") !== null).toBe(true);
@@ -2338,7 +2337,7 @@ describe("workbench session shell / layout-panel-actions", () => {
     });
   });
 
-  test("blank projectless chats only expose Browser", async () => {
+  test("blank projectless chats expose Browser and New page", async () => {
     const screen = renderWorkbench();
     await settleAsyncRender();
     await act(async () => {
@@ -2387,7 +2386,7 @@ describe("workbench session shell / layout-panel-actions", () => {
       await Promise.resolve();
     });
     await waitFor(() => {
-      expect(screen.getByRole("tab", { name: "Browser" })).toBeDefined();
+      expect(screen.getByRole("tab", { name: "New tab" })).toBeDefined();
     });
     expect(browserShortcut.defaultPrevented).toBe(true);
     expect(
@@ -2396,7 +2395,7 @@ describe("workbench session shell / layout-panel-actions", () => {
           call[0] === "window-session-view:tab-create" &&
           (call[1] as { kind?: string } | undefined)?.kind === "browser",
       ),
-    ).toBe(false);
+    ).toBe(true);
   });
 
   test("bottom panel add menu shows Codex-eligible non-default actions", async () => {
@@ -2430,11 +2429,12 @@ describe("workbench session shell / layout-panel-actions", () => {
     await settleAsyncRender();
     await settleAsyncRender();
 
-    const menu = await openPanelMenu(screen, "Open side panel tab");
+    const menu = await openPanelMenu(screen, "New tab");
     const menuText = textContent(menu);
     expect(menuText.indexOf("Review") < menuText.indexOf("Terminal")).toBe(true);
-    expect(menuText.indexOf("Side chat") < menuText.indexOf("DB View")).toBe(true);
-    expect(menuText.indexOf("DB View") < menuText.indexOf("Page")).toBe(true);
+    expect(menuText.indexOf("Side chat") < menuText.indexOf("New page")).toBe(true);
+    expect(menuText.indexOf("New page") < menuText.indexOf("DB View")).toBe(true);
+    expect(menuText.indexOf("DB View") < menuText.indexOf("Open page")).toBe(true);
   });
 
   test("empty right panel DB View action creates the current project tab directly", async () => {
@@ -2607,7 +2607,7 @@ describe("workbench session shell / layout-panel-actions", () => {
     await settleAsyncRender();
     await settleAsyncRender();
 
-    const menu = await openPanelMenu(screen, "Open side panel tab");
+    const menu = await openPanelMenu(screen, "New tab");
     const dbViewText = within(menu).getByText("DB View");
     const dbViewItem = dbViewText.closest('[role="menuitem"]');
     if (!(dbViewItem instanceof HTMLElement)) {
@@ -2644,7 +2644,7 @@ describe("workbench session shell / layout-panel-actions", () => {
     await settleAsyncRender();
     expect(invokeCalls.some((call) => call[0] === "window-session-view:tab-create")).toBe(false);
 
-    const betaMenu = await openPanelMenu(screen, "Open side panel tab");
+    const betaMenu = await openPanelMenu(screen, "New tab");
     const betaDbViewText = within(betaMenu).getByText("DB View");
     const betaDbViewItem = betaDbViewText.closest('[role="menuitem"]');
     if (!(betaDbViewItem instanceof HTMLElement)) {
@@ -2691,7 +2691,7 @@ describe("workbench session shell / layout-panel-actions", () => {
       '[data-thread-side-panel-new-tab-action-grid="true"]',
     );
     if (!(actionGrid instanceof HTMLElement)) throw new Error("Expected right-panel action grid");
-    await pointerActivate(within(actionGrid).getByRole("button", { name: "Page" }));
+    await pointerActivate(within(actionGrid).getByRole("button", { name: "Open page" }));
     await waitFor(() => {
       expect(screen.getByRole("dialog", { name: "Open Page" }) !== null).toBe(true);
       expect(screen.getByText("Current project") !== null).toBe(true);
@@ -2770,46 +2770,26 @@ describe("workbench session shell / layout-panel-actions", () => {
     ).toHaveLength(tabCreateCount);
   });
 
-  for (const previewCase of [
-    { label: "Browser", kind: "browser", pinPlaceholder: "Enter a URL" },
-  ] as const) {
-    test(`bottom ${previewCase.label} preview mounts and pins after interaction`, async () => {
-      const screen = renderWorkbench();
-      await settleAsyncRender();
-      await settleAsyncRender();
-      await openBottomPanel(screen);
+  test("bottom Browser action opens a durable New tab", async () => {
+    const screen = renderWorkbench();
+    await settleAsyncRender();
+    await settleAsyncRender();
+    await openBottomPanel(screen);
 
-      const menu = await openPanelMenu(screen, "Open bottom panel tab");
-      await clickMenuItem(menu, previewCase.label);
+    const menu = await openPanelMenu(screen, "Open bottom panel tab");
+    await clickMenuItem(menu, "Browser");
 
-      expect(screen.getByRole("tab", { name: previewCase.label }) !== null).toBe(true);
-      expect(
-        screen.container.querySelector('[data-app-shell-tabpanel-preview="true"]') !== null,
-      ).toBe(true);
-      expect(invokeCalls.some((call) => call[0] === "window-session-view:tab-create")).toBe(false);
-
-      await pointerDownAndSettle(screen.getByPlaceholderText(previewCase.pinPlaceholder));
-      await waitFor(() => {
-        expect(
-          invokeCalls.some(
-            (call) =>
-              call[0] === "window-session-view:tab-create" &&
-              JSON.stringify(call[1]).includes('"panelId":"bottom"') &&
-              JSON.stringify(call[1]).includes(`"kind":"${previewCase.kind}"`),
-          ),
-        ).toBe(true);
-      });
-
-      expect(
-        invokeCalls.some(
-          (call) =>
-            call[0] === "window-session-view:tab-create" &&
-            JSON.stringify(call[1]).includes('"panelId":"bottom"') &&
-            JSON.stringify(call[1]).includes(`"kind":"${previewCase.kind}"`),
-        ),
-      ).toBe(true);
-    });
-  }
+    expect((await screen.findByRole("tab", { name: "New tab" })) !== null).toBe(true);
+    expect(screen.container.querySelector('[data-app-shell-tabpanel-preview="true"]')).toBe(null);
+    expect(
+      invokeCalls.some(
+        (call) =>
+          call[0] === "window-session-view:tab-create" &&
+          JSON.stringify(call[1]).includes('"panelId":"bottom"') &&
+          JSON.stringify(call[1]).includes('"kind":"browser"'),
+      ),
+    ).toBe(true);
+  });
 
   test("bottom Side chat action starts an ephemeral side tab instead of a durable preview", async () => {
     localStorage.setItem(THREAD_QUEUE_FOLLOW_UPS_STORAGE_KEY, "false");

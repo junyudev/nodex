@@ -28,7 +28,6 @@ import {
   isWorkspacePathInsideRoot,
 } from "@/features/workspace-files";
 import { getWorkspaceFileParentPath, normalizeOptionalPath } from "./workbench-workspace-context";
-import { getDefaultPanelIdForTabKind } from "./workbench-panel-actions";
 import {
   resolveLeafIdForPanelTab,
   resolveSessionPanelSurfaceTarget,
@@ -48,11 +47,8 @@ import {
   type SideChatPanelTab,
 } from "./workbench-panel-tab-model";
 import {
-  isPreviewableWorkbenchTabKind,
   makePreviewPageStageTab,
-  makePreviewWorkbenchTabProjection,
   makePreviewWorkspaceFileTab,
-  makeWorkbenchTabProjectionDraft,
   sameWorkbenchPreviewInstance,
 } from "./workbench-panel-preview";
 import { getRenderablePanelPreviewTab } from "./workbench-panel-projection";
@@ -941,32 +937,6 @@ export function useWorkbenchPanelOpeners({
     [activeSession, sideChatTabsBySession, workbenchCodexControl, openSideChat],
   );
 
-  const openPreviewTab = useCallback(
-    async (
-      kind: WorkbenchTabProjection["kind"],
-      targetPanelId?: PanelId,
-      targetLeafId?: string,
-    ) => {
-      if (!activeSession) return;
-      const sessionProjectId = activeSession.projectId;
-      if (!isPreviewableWorkbenchTabKind(kind)) return;
-
-      const panelId = targetPanelId ?? getDefaultPanelIdForTabKind(kind);
-      const leafId = targetLeafId ?? resolveSessionPanelActiveLeafId(activeSession, panelId);
-      const draft = makeWorkbenchTabProjectionDraft(activeSession, kind);
-      if (!draft) return;
-
-      panelControllerRef.current.updatePreviewTabsByPanel((current) => ({
-        ...current,
-        [makeWorkbenchSessionPanelSlotKey(activeSession.id, panelId, leafId)]:
-          makePreviewWorkbenchTabProjection(activeSession, panelId, draft),
-      }));
-      await ensureActivePanelOpenWithoutRefresh(panelId);
-      await refreshProjectSessions(sessionProjectId);
-    },
-    [activeSession, ensureActivePanelOpenWithoutRefresh, refreshProjectSessions],
-  );
-
   const openWorkspaceFileTab = useCallback(
     async (input: {
       cwd?: string | null;
@@ -1455,7 +1425,6 @@ export function useWorkbenchPanelOpeners({
     openPlanSidePanel,
     openAutomationSidePanel,
     recreateSideChatPanelTab,
-    openPreviewTab,
     openWorkspaceFileTab,
     openPageTab,
     openCanvasStage,

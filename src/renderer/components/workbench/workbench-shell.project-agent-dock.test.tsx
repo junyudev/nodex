@@ -120,7 +120,7 @@ describe("workbench session shell / Project Agent Dock", () => {
 
     expect(screen.queryByRole("button", { name: "Ask agent" })).toBeNull();
 
-    const menu = await openPanelMenu(screen, "Open side panel tab");
+    const menu = await openPanelMenu(screen, "New tab");
     expect(within(menu).queryByText("Side chat")).toBeNull();
 
     await act(async () => {

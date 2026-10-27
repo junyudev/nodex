@@ -30,6 +30,7 @@ import {
   type PageStageHistoryModalContext,
 } from "./workbench-page-stage-panel";
 import { TerminalPanel } from "./workbench-terminal-panel";
+import { WorkbenchNewTabSurface } from "./workbench-new-tab-page";
 import { projectSessionThreadLinkToSummary } from "./thread-summary-projection";
 import { hasSessionConversation, resolveSessionPageSendTarget } from "@/lib/session-execution";
 import { resolveWorkbenchPanelCapabilities } from "@/lib/workbench-panel-capabilities";
@@ -391,6 +392,15 @@ export function WorkbenchTabProjectionPanel({
         onOpenBrowserSettings={onOpenBrowserSettings}
         activeForContentSearch={isActivePanelTab}
         isVisible={isActivePanelTab}
+        renderNewTabPage={({ localServers }) => (
+          <WorkbenchNewTabSurface
+            owner={{ kind: "session", sessionId: activeSession.id }}
+            surfaceId={tab.id}
+            panelId={tab.panelId}
+          >
+            {localServers}
+          </WorkbenchNewTabSurface>
+        )}
       />
     );
   }

@@ -272,7 +272,7 @@ describe("workbench session shell / sidebar-projects", () => {
       screen.container.querySelector('[data-app-action-sidebar-thread-title="Database View"]'),
     ).toBe(null);
 
-    const panelMenu = await openPanelMenu(screen, "Open side panel tab");
+    const panelMenu = await openPanelMenu(screen, "New tab");
     expect(within(panelMenu).queryByText("Review")).toBeNull();
     expect(within(panelMenu).queryByText("Side chat")).toBeNull();
     expect(within(panelMenu).getByText("Browser")).not.toBeNull();
@@ -490,7 +490,7 @@ describe("workbench session shell / sidebar-projects", () => {
     await settleAsyncRender();
     await openProjectBoard(screen);
 
-    const menu = await openPanelMenu(screen, "Open side panel tab");
+    const menu = await openPanelMenu(screen, "New tab");
     const dbViewItem = within(menu).getByText("DB View").closest('[role="menuitem"]');
     if (!(dbViewItem instanceof HTMLElement)) {
       throw new Error("Expected DB View menu item");

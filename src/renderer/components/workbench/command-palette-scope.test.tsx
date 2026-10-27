@@ -105,6 +105,7 @@ const commandContext: Omit<CommandPaletteShellCommandContext, "isMac" | "showMoc
     review: true,
     files: true,
     side_chat: true,
+    new_page: true,
   },
   canOpenSessionInNewWindow: true,
 };

@@ -40,6 +40,48 @@ import {
 } from "./workbench-testkit/workbench-shell-harness";
 
 describe("workbench session shell / panel-commands", () => {
+  test("the side panel plus opens a New tab whose tool takes its place", async () => {
+    const screen = renderWorkbench({
+      sessionsByProject: { alpha: [makeAttachedSession()] },
+    });
+    await settleAsyncRender();
+    await settleAsyncRender();
+
+    await act(async () => {
+      fireEvent.click(await screen.findByRole("button", { name: "New tab" }));
+      await Promise.resolve();
+    });
+    await settleAsyncRender();
+
+    const newTab = await screen.findByRole("tab", { name: "New tab" });
+    expect(newTab.getAttribute("aria-selected")).toBe("true");
+    expect(screen.queryByRole("menu")).toBe(null);
+    const page = await waitFor(() => {
+      const root = screen.container.querySelector("[data-new-tab-scroll-root]");
+      if (!(root instanceof HTMLElement)) throw new Error("Expected the New tab page");
+      return root;
+    });
+    expect(within(page).getByRole("heading", { name: "Tools" }) !== null).toBe(true);
+    expect(within(page).getByRole("button", { name: /New page/ }) !== null).toBe(true);
+    expect(within(page).queryByRole("button", { name: /^Browser/ })).toBe(null);
+
+    const tabOrder = () =>
+      screen.getAllByRole("tab").map((tab) => tab.getAttribute("aria-label") ?? tab.textContent);
+    const newTabIndex = tabOrder().indexOf("New tab");
+    await act(async () => {
+      fireEvent.click(within(page).getByRole("button", { name: /Files/ }));
+      await Promise.resolve();
+    });
+    await settleAsyncRender();
+
+    await waitFor(() => {
+      expect(screen.queryByRole("tab", { name: "New tab" })).toBe(null);
+    });
+    const filesTab = screen.getByRole("tab", { name: "Files" });
+    expect(filesTab.getAttribute("aria-selected")).toBe("true");
+    expect(tabOrder().indexOf("Files")).toBe(newTabIndex);
+  });
+
   test("plus menu keeps DB and Browser available while hiding singleton Review", async () => {
     const browserTab = makeSessionTab({
       id: "session:alpha:database-view:browser",
@@ -73,9 +115,10 @@ describe("workbench session shell / panel-commands", () => {
     await settleAsyncRender();
     await settleAsyncRender();
 
-    const menu = await openPanelMenu(screen, "Open side panel tab");
+    const menu = await openPanelMenu(screen, "New tab");
     expect(within(menu).getByText("DB View") !== null).toBe(true);
-    expect(within(menu).getByText("Page") !== null).toBe(true);
+    expect(within(menu).getByText("Open page") !== null).toBe(true);
+    expect(within(menu).getByText("New page") !== null).toBe(true);
     expect(within(menu).getByText("Canvas") !== null).toBe(true);
     expect(within(menu).getByText("Browser") !== null).toBe(true);
     expect(within(menu).queryByText("Review")).toBe(null);
@@ -90,7 +133,7 @@ describe("workbench session shell / panel-commands", () => {
     await settleAsyncRender();
     await settleAsyncRender();
 
-    const menu = await openPanelMenu(screen, "Open side panel tab");
+    const menu = await openPanelMenu(screen, "New tab");
     setInvokeCalls([]);
     fireEvent.click(within(menu).getByText("Canvas"));
     await settleAsyncRender();
@@ -154,7 +197,7 @@ describe("workbench session shell / panel-commands", () => {
     await settleAsyncRender();
     await settleAsyncRender();
 
-    const menu = await openPanelMenu(screen, "Open side panel tab");
+    const menu = await openPanelMenu(screen, "New tab");
     fireEvent.click(within(menu).getByText("Review"));
     await settleAsyncRender();
     await settleAsyncRender();
@@ -177,7 +220,7 @@ describe("workbench session shell / panel-commands", () => {
     const screen = renderWorkbench({ sessionsByProject: { alpha: [session] } });
     await settleAsyncRender();
     await settleAsyncRender();
-    const menu = await openPanelMenu(screen, "Open side panel tab");
+    const menu = await openPanelMenu(screen, "New tab");
     await act(async () => {
       fireEvent.click(within(menu).getByText("Review"));
       await Promise.resolve();
@@ -263,7 +306,7 @@ describe("workbench session shell / panel-commands", () => {
     expect(screen.getByRole("tab", { name: "Files" }) !== null).toBe(true);
 
     await executeCommandPaletteCommand(screen, "browser", "Open browser tab");
-    expect(screen.getByRole("tab", { name: "Browser" }) !== null).toBe(true);
+    expect((await screen.findByRole("tab", { name: "New tab" })) !== null).toBe(true);
 
     setInvokeCalls([]);
     await executeCommandPaletteCommand(screen, "review", "Open review tab");

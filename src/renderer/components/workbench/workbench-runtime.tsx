@@ -310,7 +310,20 @@ import {
   SidebarCompactNewChatButton,
 } from "./sidebar-new-chat-controls";
 import { useCodexAccountActions } from "@/lib/use-codex-account-actions";
-import { filterAvailablePanelActions, PANEL_NEW_TAB_ACTIONS } from "@/lib/workbench-panel-actions";
+import {
+  filterAvailablePanelActions,
+  PANEL_NEW_TAB_ACTIONS,
+  type PanelNewTabActionKind,
+} from "@/lib/workbench-panel-actions";
+import { useLibraryCreateCommands } from "../library/library-new-menu";
+import type { PanelDestination } from "./panel-destination-picker-model";
+import { WorkbenchNewTabSurface } from "./workbench-new-tab-page";
+import {
+  useWorkbenchNewTabPortValue,
+  WorkbenchNewTabPortProvider,
+  type WorkbenchNewTabOwnerContext,
+  type WorkbenchNewTabPlacement,
+} from "@/lib/workbench-new-tab-port";
 import { inboxPagePeek, readPageStagePanelTabPageRef } from "@/lib/workbench-panel-placement";
 import { isRootThreadRightPanelComposerOverlayEligibleTab } from "@/lib/workbench-panel-tab-model";
 import {
@@ -2044,6 +2057,7 @@ export function WorkbenchRuntime({
         readonly targetLeafId?: string;
         readonly targetPanelId?: PanelId;
         readonly mode?: PresentWorkbenchPanelSurfaceInput["mode"];
+        readonly isCurrent?: () => boolean;
       } = {},
     ): Promise<boolean> => {
       try {
@@ -2101,6 +2115,7 @@ export function WorkbenchRuntime({
           },
           mode: options.mode ?? "durable",
           navigation: "select-owner",
+          ...(options.isCurrent ? { isCurrent: options.isCurrent } : {}),
         });
         return presented.status === "presented";
       } catch (error) {
@@ -2115,6 +2130,31 @@ export function WorkbenchRuntime({
       await presentLibraryTarget(target);
     },
     [presentLibraryTarget],
+  );
+  const libraryCreateCommands = useLibraryCreateCommands();
+  const { createPage: createSpacePage } = libraryCreateCommands;
+  /** Creates an Untitled Space Page and opens it in the owner's panel group, title first. */
+  const openNewSpacePage = useCallback(
+    async (
+      owner: WorkbenchSceneOwner,
+      placement: {
+        readonly panelId: PanelId;
+        readonly leafId?: string;
+        readonly isCurrent?: () => boolean;
+      },
+    ): Promise<boolean> => {
+      const target = await createSpacePage();
+      // The Page stays in Space when the user moved on while it was being created.
+      if (!target || placement.isCurrent?.() === false) return false;
+      return await presentLibraryTarget(target, {
+        owner,
+        titleSnapshot: "Untitled",
+        targetPanelId: placement.panelId,
+        ...(placement.leafId ? { targetLeafId: placement.leafId } : {}),
+        ...(placement.isCurrent ? { isCurrent: placement.isCurrent } : {}),
+      });
+    },
+    [createSpacePage, presentLibraryTarget],
   );
 
   useRegisterFileLocationNavigator(presentLibraryTarget);
@@ -2363,6 +2403,79 @@ export function WorkbenchRuntime({
     },
     [presentProjectSceneSurface, projects],
   );
+  /** Opens a panel action in a Project Scene group; resolves false when nothing opened. */
+  const openProjectScenePanelAction = useCallback(
+    async (
+      projectId: string,
+      action: PanelNewTabActionKind,
+      placement: { readonly panelId: PanelId; readonly leafId?: string },
+    ): Promise<boolean> => {
+      const panelOptions = { panelId: placement.panelId, targetLeafId: placement.leafId };
+      if (action === "new_page") {
+        return await openNewSpacePage({ kind: "project", projectId }, placement);
+      }
+      if (action === "canvas_stage") {
+        return await openProjectSceneCanvas(projectId, primaryCanvasBlockId(projectId), "Canvas", {
+          targetPanelId: placement.panelId,
+          targetLeafId: placement.leafId,
+        });
+      }
+      if (action === "browser" || action === "files" || action === "terminal") {
+        return await openProjectSceneManualSurface(projectId, action, panelOptions);
+      }
+      if (action !== "db_view") return false;
+      if (!projects.find((project) => project.id === projectId)?.defaultDatabaseViewId) {
+        return false;
+      }
+      return await presentProjectSceneSurface(
+        projectId,
+        {
+          kind: "db_view",
+          config: {
+            routingContext: { kind: "project", projectId },
+            target: { kind: "project-default" },
+          },
+        },
+        panelOptions,
+      );
+    },
+    [
+      openNewSpacePage,
+      openProjectSceneCanvas,
+      openProjectSceneManualSurface,
+      presentProjectSceneSurface,
+      projects,
+    ],
+  );
+  const openProjectSceneDestination = useCallback(
+    async (
+      projectId: string,
+      destination: PanelDestination,
+      placement: { readonly panelId: PanelId; readonly leafId?: string },
+    ): Promise<boolean> =>
+      await presentProjectSceneSurface(
+        projectId,
+        destination.kind === "page"
+          ? {
+              kind: "page_stage",
+              config: {
+                routingContext: { kind: "project", projectId: destination.projectId },
+                pageId: destination.pageId,
+                ...(destination.titleSnapshot ? { titleSnapshot: destination.titleSnapshot } : {}),
+              },
+              titleSnapshot: destination.titleSnapshot,
+            }
+          : {
+              kind: "db_view",
+              config: {
+                routingContext: { kind: "project", projectId: destination.projectId },
+                target: { kind: "database-view", databaseViewId: destination.databaseViewId },
+              },
+            },
+        { panelId: placement.panelId, targetLeafId: placement.leafId },
+      ),
+    [presentProjectSceneSurface],
+  );
   const browserUsePresentation = useBrowserUsePresentationCoordinator({
     activeSession,
     catalog: sessionCatalog,
@@ -2606,6 +2719,10 @@ export function WorkbenchRuntime({
     resolveProjectDefaultDatabaseViewId,
     openPageStage,
     commandKeymapState,
+    openNewPage: async (placement) =>
+      activeSession
+        ? await openNewSpacePage({ kind: "session", sessionId: activeSession.id }, placement)
+        : false,
     focusedPanelGroupRef,
     panelTabShortcutStateRef,
   });
@@ -2709,6 +2826,7 @@ export function WorkbenchRuntime({
       projects,
       pageStageRelatedChatCandidates,
       pageTitleStore,
+      currentLibraryId,
       panelTabPresentationRegistry,
       panelTabPresentationControllerKeysRef,
       panelGroupTabsRef,
@@ -3022,6 +3140,125 @@ export function WorkbenchRuntime({
     resolveActivePanelCapabilities,
     showActiveBottomPanel,
   ]);
+
+  const resolveNewTabOwnerContext = useCallback(
+    (owner: WorkbenchSceneOwner, panelId: PanelId): WorkbenchNewTabOwnerContext | null => {
+      const canOpenBottomTerminal = (terminalAvailable: boolean) =>
+        panelId === "right" && !bottomPanelOpen && terminalAvailable;
+      if (owner.kind === "session") {
+        if (activeSession?.id !== owner.sessionId) return null;
+        const project = projects.find((candidate) => candidate.id === activeSession.projectId);
+        // Singletons stay listed: choosing one that is already open switches to it.
+        return {
+          actions: filterAvailablePanelActions(PANEL_NEW_TAB_ACTIONS, [], panelId, {
+            kind: "session",
+            backendKind: activeSession.thread?.backendBinding.kind ?? "codex",
+            projectId: activeSession.projectId,
+            hasAttachedThread: Boolean(activeSession.executionRef || activeSession.thread),
+            cwd: activeSession.thread?.cwd,
+            projectWorkspaceRoot: projectWorkspaceRootOrNull(project ?? null),
+          }),
+          currentProjectId: activeSession.projectId,
+          canReturnToChat: panelId === "right" && rightPanelFullWidth,
+          canOpenBottomTerminal: canOpenBottomTerminal(
+            resolveActivePanelCapabilities("bottom").actions.terminal.available,
+          ),
+        };
+      }
+      if (owner.kind !== "project" || activeProject?.id !== owner.projectId) return null;
+      const projectWorkspaceRoot = projectWorkspaceRootOrNull(activeProject);
+      return {
+        actions: filterAvailablePanelActions(PANEL_NEW_TAB_ACTIONS, [], panelId, {
+          kind: "project",
+          projectId: activeProject.id,
+          projectWorkspaceRoot,
+        }),
+        currentProjectId: activeProject.id,
+        canReturnToChat: false,
+        canOpenBottomTerminal: canOpenBottomTerminal(projectWorkspaceRoot !== null),
+      };
+    },
+    [
+      activeProject,
+      activeSession,
+      bottomPanelOpen,
+      projects,
+      resolveActivePanelCapabilities,
+      rightPanelFullWidth,
+    ],
+  );
+  const { createManualTab: createSessionManualTab } = sessionCommands;
+  const { openPanelDestinationFromPicker } = panelCommands;
+  const runNewTabAction = useCallback(
+    async (
+      action: PanelNewTabActionKind,
+      { owner, panelId, leafId, isCurrent }: WorkbenchNewTabPlacement,
+    ) => {
+      if (action === "new_page") {
+        return await openNewSpacePage(owner, { panelId, leafId, isCurrent });
+      }
+      if (owner.kind === "project") {
+        return await openProjectScenePanelAction(owner.projectId, action, { panelId, leafId });
+      }
+      if (owner.kind !== "session" || activeSession?.id !== owner.sessionId) return false;
+      // Review is a singleton: an open Review is revealed instead of duplicated.
+      if (action === "review") return await createSessionManualTab("review", panelId, leafId);
+      return await dispatchPanelAction(action, { panelId, leafId });
+    },
+    [
+      activeSession?.id,
+      createSessionManualTab,
+      dispatchPanelAction,
+      openNewSpacePage,
+      openProjectScenePanelAction,
+    ],
+  );
+  const openNewTabDestination = useCallback(
+    async (destination: PanelDestination, { owner, panelId, leafId }: WorkbenchNewTabPlacement) => {
+      if (owner.kind === "project") {
+        return await openProjectSceneDestination(owner.projectId, destination, {
+          panelId,
+          leafId,
+        });
+      }
+      if (owner.kind !== "session" || activeSession?.id !== owner.sessionId) return false;
+      await openPanelDestinationFromPicker(destination, panelId, leafId);
+      return true;
+    },
+    [activeSession?.id, openPanelDestinationFromPicker, openProjectSceneDestination],
+  );
+  const openNewTabLibraryTarget = useCallback(
+    async (
+      target: LibraryRouteTarget,
+      placement: WorkbenchNewTabPlacement & { readonly title?: string },
+    ) =>
+      await presentLibraryTarget(target, {
+        owner: placement.owner,
+        ...(placement.title ? { titleSnapshot: placement.title } : {}),
+        targetPanelId: placement.panelId,
+        targetLeafId: placement.leafId,
+        isCurrent: placement.isCurrent,
+      }),
+    [presentLibraryTarget],
+  );
+  const returnToChat = useCallback(
+    () => setActiveRightPanelFullWidth(false),
+    [setActiveRightPanelFullWidth],
+  );
+  const newTabPort = useWorkbenchNewTabPortValue({
+    windowOwner: workbenchWindow.owner,
+    executeSceneCommand,
+    isMac: isMacPlatform,
+    commandKeymapState: commandKeymapState ?? null,
+    projects,
+    commands: {
+      resolveOwnerContext: resolveNewTabOwnerContext,
+      runAction: runNewTabAction,
+      openDestination: openNewTabDestination,
+      openLibraryTarget: openNewTabLibraryTarget,
+      returnToChat,
+    },
+  });
 
   const handleDesktopNotificationAction = useCallback(
     async (invocation: DesktopNotificationActionInvocation): Promise<void> => {
@@ -3987,6 +4224,15 @@ export function WorkbenchRuntime({
                 },
               };
             }}
+            renderNewTabPage={({ localServers }) => (
+              <WorkbenchNewTabSurface
+                owner={{ kind: "project", projectId: activeProject.id }}
+                surfaceId={surface.id}
+                panelId={context.panelId}
+              >
+                {localServers}
+              </WorkbenchNewTabSurface>
+            )}
             onOpenNewTab={(request) => {
               void openProjectSceneManualSurface(activeProject.id, "browser", {
                 panelId: context.panelId,
@@ -4303,77 +4549,10 @@ export function WorkbenchRuntime({
             });
           },
           onOpenAction: (panelId, leafId, action) => {
-            if (action === "canvas_stage") {
-              void openProjectSceneCanvas(
-                activeProject.id,
-                primaryCanvasBlockId(activeProject.id),
-                "Canvas",
-                { targetPanelId: panelId, targetLeafId: leafId },
-              );
-              return;
-            }
-            if (action === "browser" || action === "files" || action === "terminal") {
-              void openProjectSceneManualSurface(activeProject.id, action, {
-                panelId,
-                targetLeafId: leafId,
-              });
-              return;
-            }
-            if (action !== "db_view" || !activeProject.defaultDatabaseViewId) return;
-            void presentProjectSceneSurface(
-              activeProject.id,
-              {
-                kind: "db_view",
-                config: {
-                  routingContext: {
-                    kind: "project",
-                    projectId: activeProject.id,
-                  },
-                  target: { kind: "project-default" },
-                },
-              },
-              { panelId, targetLeafId: leafId },
-            );
+            void openProjectScenePanelAction(activeProject.id, action, { panelId, leafId });
           },
           onOpenDestination: async (panelId, leafId, destination) => {
-            if (destination.kind === "page") {
-              await presentProjectSceneSurface(
-                activeProject.id,
-                {
-                  kind: "page_stage",
-                  config: {
-                    routingContext: {
-                      kind: "project",
-                      projectId: destination.projectId,
-                    },
-                    pageId: destination.pageId,
-                    ...(destination.titleSnapshot
-                      ? { titleSnapshot: destination.titleSnapshot }
-                      : {}),
-                  },
-                  titleSnapshot: destination.titleSnapshot,
-                },
-                { panelId, targetLeafId: leafId },
-              );
-              return;
-            }
-            await presentProjectSceneSurface(
-              activeProject.id,
-              {
-                kind: "db_view",
-                config: {
-                  routingContext: {
-                    kind: "project",
-                    projectId: destination.projectId,
-                  },
-                  target: {
-                    kind: "database-view",
-                    databaseViewId: destination.databaseViewId,
-                  },
-                },
-              },
-              { panelId, targetLeafId: leafId },
-            );
+            await openProjectSceneDestination(activeProject.id, destination, { panelId, leafId });
           },
         })
       : null;
@@ -5219,7 +5398,7 @@ export function WorkbenchRuntime({
 
   return (
     <AgentSettingsNavigationProvider openAgentSettings={openAgentSettings}>
-      {workbench}
+      <WorkbenchNewTabPortProvider port={newTabPort}>{workbench}</WorkbenchNewTabPortProvider>
     </AgentSettingsNavigationProvider>
   );
 }

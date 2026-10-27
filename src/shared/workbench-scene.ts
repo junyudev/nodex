@@ -1,3 +1,4 @@
+import { resolveBrowserTabTitle } from "./browser-url";
 import { workbenchFilesResourceKey } from "./workbench-resource-identity";
 import type { BrowserSidebarDeviceToolbarState } from "./browser-sidebar";
 import type { CodexForkBrowserSidePanelSnapshot } from "./codex-fork-browser-transfer";
@@ -1442,7 +1443,7 @@ export function applyForkBrowserTransferToWorkbenchScene(
       surface: {
         id: descriptor.tabId,
         kind: "browser",
-        titleSnapshot: "Browser",
+        titleSnapshot: resolveBrowserTabTitle(descriptor.initialUrl, undefined),
         config: {
           browserTabId: descriptor.browserTabId,
           browserStorageId: createSecureRuntimeId("browser"),

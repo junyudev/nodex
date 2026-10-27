@@ -4,6 +4,7 @@ import { DatabaseIcon, PageIcon } from "@/components/shared/icons";
 import { NodexDropdownItem, NodexDropdownMenu } from "@/components/ui/dropdown";
 import { toast } from "@/components/ui/toast";
 import { useApplyLibraryOperation } from "@/lib/use-library-navigation";
+import { requestPageTitleFocus } from "@/lib/page-title-focus-intent";
 import {
   parseDatabaseId,
   parseDatabaseViewId,
@@ -45,16 +46,17 @@ export function LibraryNewMenu({
   );
 }
 
+/** Creates Library content under `parent`; each command resolves to the created target. */
 export function useLibraryCreateCommands({
   parent = LIBRARY_ROOT_PARENT,
   onCreated,
 }: {
   readonly parent?: LibraryWriteParent;
-  readonly onCreated: (target: LibraryRouteTarget) => void;
-}) {
+  readonly onCreated?: (target: LibraryRouteTarget) => void;
+} = {}) {
   const { mutation } = useApplyLibraryOperation();
 
-  const createPage = async () => {
+  const createPage = async (): Promise<LibraryRouteTarget | null> => {
     try {
       const receipt = await mutation.mutateAsync({
         kind: "create_page",
@@ -63,9 +65,13 @@ export function useLibraryCreateCommands({
         title: "Untitled",
         parent,
       });
-      if (receipt.createdTarget?.kind === "page") onCreated(receipt.createdTarget);
+      if (receipt.createdTarget?.kind !== "page") return null;
+      requestPageTitleFocus(receipt.createdTarget.pageId);
+      onCreated?.(receipt.createdTarget);
+      return receipt.createdTarget;
     } catch (error) {
       toast.danger(error instanceof Error ? error.message : "Could not create Page");
+      return null;
     }
   };
 
@@ -79,7 +85,7 @@ export function useLibraryCreateCommands({
         name: "Untitled",
         parent,
       });
-      if (receipt.createdTarget?.kind === "database") onCreated(receipt.createdTarget);
+      if (receipt.createdTarget?.kind === "database") onCreated?.(receipt.createdTarget);
     } catch (error) {
       toast.danger(error instanceof Error ? error.message : "Could not create Database");
     }

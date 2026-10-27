@@ -16,6 +16,7 @@ import {
   type PanelNewTabActionKind,
 } from "@/lib/workbench-panel-actions";
 import {
+  PANEL_TOOL_KEYCAP_CLASS,
   TOOLBAR_BUTTON_BASE_CLASS,
   TOOLBAR_BUTTON_GHOST_CLASS,
   TOOLBAR_BUTTON_SECONDARY_CLASS,
@@ -24,7 +25,7 @@ import type { Project } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 const PANEL_ACTION_ROW_CLASS =
-  "cursor-interaction flex min-h-10 w-full items-center gap-2 rounded-md bg-token-bg-secondary px-2.5 py-2 text-left hover:bg-token-list-hover-background focus-visible:outline focus-visible:outline-2 focus-visible:outline-token-border-xstrong";
+  "cursor-interaction flex min-h-10 w-full items-center gap-2 rounded-md bg-[var(--color-background-primary-soft-alpha)] px-2.5 py-2 text-left hover:bg-token-list-hover-background aria-expanded:bg-token-list-hover-background focus-visible:outline focus-visible:outline-2 focus-visible:outline-token-border-xstrong";
 type PanelActionCardProps = ComponentPropsWithoutRef<"button"> & {
   action: PanelNewTabAction;
   isMac: boolean;
@@ -53,7 +54,7 @@ const PanelActionCard = forwardRef<HTMLButtonElement, PanelActionCardProps>(
         </span>
         {shortcut ? (
           <span className="ml-auto shrink-0 pl-2 text-token-text-secondary">
-            <ShortcutKeycaps keys={[shortcut]} tone="current" />
+            <ShortcutKeycaps keys={[shortcut]} tone="current" className={PANEL_TOOL_KEYCAP_CLASS} />
           </span>
         ) : null}
       </button>

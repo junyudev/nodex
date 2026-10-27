@@ -39,8 +39,9 @@ interface WorkbenchPanelNewTabButtonProps {
 }
 
 /**
- * Self-contained panel action menu. The menu owns its transient open state and
- * delegates semantic choices to the owning panel host.
+ * The panel group's `+`. In the side panel a click opens a New tab, which presents every
+ * tool, and a right-click opens the action menu directly. The bottom panel opens the menu.
+ * The menu owns its transient open state and delegates choices to the owning panel host.
  */
 export function WorkbenchPanelNewTabButton({
   actions,
@@ -55,21 +56,47 @@ export function WorkbenchPanelNewTabButton({
 }: WorkbenchPanelNewTabButtonProps) {
   const [open, setOpen] = useState(false);
   if (actions.length === 0) return null;
-  const title = panelId === "right" ? "Open side panel tab" : "Open bottom panel tab";
+  const newTabAction =
+    panelId === "right" ? actions.find((action) => action.kind === "browser") : undefined;
+  const title = newTabAction ? "New tab" : "Open bottom panel tab";
 
   return (
     <NodexDropdownMenu
       open={open}
-      onOpenChange={setOpen}
+      onOpenChange={(next) => {
+        // A New tab trigger opens its menu only from the context menu.
+        if (newTabAction && next) return;
+        setOpen(next);
+      }}
       align="start"
       sideOffset={6}
       contentWidth="menuWide"
       triggerTooltipContent={title}
+      triggerTooltipShortcutLabel={
+        newTabAction
+          ? (resolvePanelActionShortcutLabel(newTabAction, isMac, commandKeymapState) ?? undefined)
+          : undefined
+      }
       triggerButton={
         <button
           type="button"
           className={cn(TOOLBAR_BUTTON_BASE_CLASS, TOOLBAR_BUTTON_GHOST_CLASS)}
           aria-label={title}
+          onClick={
+            newTabAction
+              ? () => {
+                  void onAction(newTabAction.kind);
+                }
+              : undefined
+          }
+          onContextMenu={
+            newTabAction
+              ? (event) => {
+                  event.preventDefault();
+                  setOpen(true);
+                }
+              : undefined
+          }
         >
           <SidePanelPlusIcon className="icon-xs" />
         </button>

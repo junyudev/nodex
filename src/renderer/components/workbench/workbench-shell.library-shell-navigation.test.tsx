@@ -192,7 +192,7 @@ describe("workbench session shell / library-shell-navigation", () => {
     });
     await settleAsyncRender();
 
-    await openPanelMenu(screen, "Open side panel tab");
+    await openPanelMenu(screen, "New tab");
 
     await act(async () => {
       fireEvent.click(screen.getByText("Browser"));
@@ -209,7 +209,7 @@ describe("workbench session shell / library-shell-navigation", () => {
     expect(screen.getByRole("button", { name: "Hide tabs" }).getAttribute("aria-pressed")).toBe(
       "true",
     );
-    expect(screen.getByRole("tab", { name: "Browser" })).not.toBeNull();
+    expect(await screen.findByRole("tab", { name: "New tab" })).not.toBeNull();
     expect(screen.queryAllByRole("tablist").length > 0).toBe(true);
   });
 

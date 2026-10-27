@@ -46,6 +46,27 @@ describe("CollaborativePageTitle", () => {
     document.destroy();
   });
 
+  test("takes focus on mount with its name selected for replacement, without formatting tools", async () => {
+    const { document, title } = createTitle("Untitled");
+    const view = render(<CollaborativePageTitle title={title} autoFocus />);
+    const editor = view.getByRole("textbox", { name: "Page title" }) as HTMLDivElement;
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(editor.ownerDocument.activeElement).toBe(editor);
+    expect(readRichTitleDomSelection(editor)).toMatchObject({ start: 0, end: "Untitled".length });
+    expect(view.queryByLabelText("Title formatting")).toBe(null);
+
+    await act(async () => {
+      fireEvent.keyDown(editor, { key: "ArrowLeft", shiftKey: true });
+      fireEvent(editor.ownerDocument, new Event("selectionchange"));
+      await Promise.resolve();
+    });
+    expect(view.getByLabelText("Title formatting") !== null).toBe(true);
+    document.destroy();
+  });
+
   test("writes a local DOM draft as a minimal Y.Text transaction and reports authority", async () => {
     const { document, title } = createTitle("Page alpha");
     const reportedValues: string[] = [];

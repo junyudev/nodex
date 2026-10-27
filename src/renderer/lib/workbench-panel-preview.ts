@@ -4,6 +4,7 @@ import {
   workbenchFileResourceId,
 } from "../../shared/workbench-resource-identity";
 import { requireWorkbenchBrowserTabProjectionId } from "../../shared/browser-sidebar";
+import { BROWSER_NEW_TAB_TITLE } from "../../shared/browser-url";
 import { createSecureRuntimeId } from "../../shared/secure-runtime-id";
 import type {
   PanelId,
@@ -69,7 +70,7 @@ export function makeWorkbenchTabProjectionDraft(
   if (kind === "browser") {
     return {
       kind,
-      title: "Browser",
+      title: BROWSER_NEW_TAB_TITLE,
       config: { projectId },
     };
   }

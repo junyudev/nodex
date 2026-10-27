@@ -88,6 +88,7 @@ function makeCommandContext(
       review: true,
       files: true,
       side_chat: true,
+      new_page: true,
     },
     canOpenSessionInNewWindow: true,
     isMac: true,
@@ -258,6 +259,7 @@ describe("buildCommandPaletteCommands", () => {
           review: false,
           files: false,
           side_chat: false,
+          new_page: false,
         },
       }),
     );
@@ -307,6 +309,7 @@ describe("buildCommandPaletteCommands", () => {
           review: false,
           files: false,
           side_chat: true,
+          new_page: true,
         },
       }),
     );

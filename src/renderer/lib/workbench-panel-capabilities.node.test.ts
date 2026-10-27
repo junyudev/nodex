@@ -14,7 +14,13 @@ describe("resolveWorkbenchPanelCapabilities", () => {
       },
     });
 
-    expect(result.availableActionKinds).toEqual(["review", "side_chat", "browser", "terminal"]);
+    expect(result.availableActionKinds).toEqual([
+      "review",
+      "side_chat",
+      "browser",
+      "terminal",
+      "new_page",
+    ]);
   });
 
   it("offers side chat, browser, then terminal to attached projectless chats in the bottom panel", () => {
@@ -59,7 +65,7 @@ describe("resolveWorkbenchPanelCapabilities", () => {
       },
     });
 
-    expect(result.availableActionKinds).toEqual(["review", "side_chat", "browser"]);
+    expect(result.availableActionKinds).toEqual(["review", "side_chat", "browser", "new_page"]);
   });
 
   it("keeps side chat available when a projectless parent needs workspace repair", () => {
@@ -74,11 +80,11 @@ describe("resolveWorkbenchPanelCapabilities", () => {
       },
     });
 
-    expect(result.availableActionKinds).toEqual(["review", "side_chat", "browser"]);
+    expect(result.availableActionKinds).toEqual(["review", "side_chat", "browser", "new_page"]);
     expect(result.actions.terminal.reason).toBe("no_cwd");
   });
 
-  it("only offers browser to a blank projectless session", () => {
+  it("offers only Browser and New page to a blank projectless session", () => {
     const result = resolveWorkbenchPanelCapabilities({
       panelId: "right",
       owner: {
@@ -90,7 +96,7 @@ describe("resolveWorkbenchPanelCapabilities", () => {
       },
     });
 
-    expect(result.availableActionKinds).toEqual(["browser"]);
+    expect(result.availableActionKinds).toEqual(["browser", "new_page"]);
     expect(result.actions.side_chat.reason).toBe("no_thread");
     expect(result.actions.terminal.reason).toBe("no_cwd");
     expect(result.actions.files.reason).toBe("project_required");
@@ -126,6 +132,7 @@ describe("resolveWorkbenchPanelCapabilities", () => {
       "browser",
       "files",
       "side_chat",
+      "new_page",
       "db_view",
       "page_stage",
       "canvas_stage",
@@ -153,6 +160,7 @@ describe("resolveWorkbenchPanelCapabilities", () => {
       "browser",
       "files",
       "side_chat",
+      "new_page",
       "db_view",
       "page_stage",
       "canvas_stage",
@@ -190,6 +198,7 @@ describe("resolveWorkbenchPanelCapabilities", () => {
       "terminal",
       "browser",
       "files",
+      "new_page",
       "db_view",
       "page_stage",
       "canvas_stage",

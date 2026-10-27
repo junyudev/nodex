@@ -138,6 +138,8 @@ interface WorkbenchPanelProjectionInput {
   readonly projects: Project[];
   readonly pageStageRelatedChatCandidates: SurfaceProps["relatedChatCandidates"];
   readonly pageTitleStore: PageTitleProjectionStore;
+  /** The Space Library, whose Pages a Session can also present. */
+  readonly currentLibraryId: string | null;
   readonly panelTabPresentationRegistry: PanelTabPresentationRegistry;
   readonly panelTabPresentationControllerKeysRef: MutableRefObject<Set<string>>;
   readonly panelGroupTabsRef: MutableRefObject<PanelGroupTabsByPanel>;
@@ -258,6 +260,7 @@ export function useWorkbenchPanelProjection({
   projects,
   pageStageRelatedChatCandidates,
   pageTitleStore,
+  currentLibraryId,
   panelTabPresentationRegistry,
   panelTabPresentationControllerKeysRef,
   panelGroupTabsRef,
@@ -329,18 +332,20 @@ export function useWorkbenchPanelProjection({
                 resolveTerminalTabIndex(session, tab),
               )
             : tab.title;
-        const pageStageProject =
+        const pageStageLibraryId =
           !transientPanelTab && tab.kind === "page_stage"
-            ? projects.find(
-                (project) =>
-                  tab.config.routingContext.kind === "project" &&
-                  project.id === tab.config.routingContext.projectId,
-              )
+            ? tab.config.routingContext.kind === "library"
+              ? currentLibraryId
+              : projects.find(
+                  (project) =>
+                    tab.config.routingContext.kind === "project" &&
+                    project.id === tab.config.routingContext.projectId,
+                )?.libraryId
             : undefined;
         const pageStageTitleSource =
-          !transientPanelTab && tab.kind === "page_stage" && pageStageProject
+          !transientPanelTab && tab.kind === "page_stage" && pageStageLibraryId
             ? pageTitleStore.createSource(
-                makePageTitleResourceKey(pageStageProject.libraryId, tab.config.pageId),
+                makePageTitleResourceKey(pageStageLibraryId, tab.config.pageId),
                 title,
               )
             : undefined;
@@ -817,6 +822,7 @@ export function useWorkbenchPanelProjection({
       openTurnDiffFileInSidePanel,
       startNewChatWithPrompt,
       openWorkspaceFileTab,
+      currentLibraryId,
       pageStageRelatedChatCandidates,
       pageTitleStore,
       panelTabPresentationRegistry,

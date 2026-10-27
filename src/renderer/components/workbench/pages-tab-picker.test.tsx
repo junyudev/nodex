@@ -43,7 +43,7 @@ const dataSource = {
   }),
   useCreateCommands: () => ({
     isPending: false,
-    createPage: async () => undefined,
+    createPage: async () => null,
     createDatabase: async () => undefined,
   }),
 } satisfies SpaceContentDataSource;

@@ -647,7 +647,9 @@ test("keeps Home and Space navigation, tabs and chrome across Settings and resta
           const emptyActions = page.locator('[data-thread-side-panel-new-tab-action-grid="true"]');
           await emptyActions.getByRole("button", { name: /^Files/ }).click();
           await expect(page.getByRole("tab", { name: "Files", exact: true })).toBeVisible();
-          await page.getByRole("button", { name: "Open side panel tab", exact: true }).click();
+          await page
+            .getByRole("button", { name: "New tab", exact: true })
+            .click({ button: "right" });
           await page.getByRole("menuitem", { name: "Canvas", exact: true }).click();
           await expect(tabs(page)).toHaveCount(2);
           const retainedTabs = await readTabIdentities(page);

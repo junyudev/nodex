@@ -4,3 +4,6 @@ export const TOOLBAR_BUTTON_GHOST_CLASS =
   "text-(--color-text-secondary-ghost) enabled:hover:bg-(--color-background-secondary-ghost-hover) enabled:hover:text-(--color-text-secondary-ghost-hover) enabled:active:bg-(--color-background-secondary-ghost-active) aria-expanded:bg-(--color-background-secondary-ghost-hover) aria-expanded:text-(--color-text-secondary-ghost-hover) border-transparent";
 export const TOOLBAR_BUTTON_SECONDARY_CLASS =
   "text-(--color-text-secondary-ghost-hover) bg-(--color-background-secondary-ghost-hover) enabled:active:bg-(--color-background-secondary-ghost-active) border-transparent";
+
+/** Shortcut keycaps on panel tool tiles: compact pills. */
+export const PANEL_TOOL_KEYCAP_CLASS = "h-4 rounded-full leading-none";

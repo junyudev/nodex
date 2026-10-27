@@ -14,6 +14,7 @@ import {
   SidePanelTerminalIcon,
   CanvasIcon,
   DatabaseIcon,
+  NewPageIcon,
   PageIcon,
 } from "@/components/shared/icons";
 import {
@@ -42,13 +43,14 @@ export interface PanelNewTabAction {
   Icon: ComponentType<{ className?: string }>;
 }
 
-export const NODEX_PANEL_OPTION_ACTION_ORDER: WorkbenchTabProjection["kind"][] = [
+/** Project content destinations, presented after the general tools. */
+export const NODEX_PANEL_OPTION_ACTION_ORDER: readonly PanelNewTabActionKind[] = [
   "db_view",
   "page_stage",
   "canvas_stage",
 ];
 
-const NODEX_PANEL_OPTION_ACTION_KIND_SET = new Set<WorkbenchTabProjection["kind"]>(
+const NODEX_PANEL_OPTION_ACTION_KIND_SET = new Set<PanelNewTabActionKind>(
   NODEX_PANEL_OPTION_ACTION_ORDER,
 );
 
@@ -104,6 +106,13 @@ export const PANEL_NEW_TAB_ACTIONS: PanelNewTabAction[] = [
     Icon: SidePanelTerminalIcon,
   },
   {
+    kind: "new_page",
+    defaultPanelId: "right",
+    label: "New page",
+    description: "Create a Page in Space",
+    Icon: NewPageIcon,
+  },
+  {
     kind: "db_view",
     defaultPanelId: "right",
     label: "DB View",
@@ -113,8 +122,8 @@ export const PANEL_NEW_TAB_ACTIONS: PanelNewTabAction[] = [
   {
     kind: "page_stage",
     defaultPanelId: "right",
-    label: "Page",
-    description: "Open a Library Page",
+    label: "Open page",
+    description: "Open a Project Page",
     Icon: PageIcon,
   },
   {
@@ -139,7 +148,7 @@ export function isPanelActionTargetAllowed(action: PanelNewTabAction, panelId: P
 export function isWorkbenchTabKind(
   kind: PanelNewTabActionKind,
 ): kind is Exclude<WorkbenchTabProjection["kind"], "image_editor"> {
-  return kind !== "side_chat";
+  return kind !== "side_chat" && kind !== "new_page";
 }
 
 export function filterAvailablePanelActions(
@@ -166,7 +175,7 @@ export function filterAvailablePanelActions(
 }
 
 export function isNodexPanelOptionAction(action: PanelNewTabAction): boolean {
-  return isWorkbenchTabKind(action.kind) && NODEX_PANEL_OPTION_ACTION_KIND_SET.has(action.kind);
+  return NODEX_PANEL_OPTION_ACTION_KIND_SET.has(action.kind);
 }
 
 export function isPanelDestinationAction(
