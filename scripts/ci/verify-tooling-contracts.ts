@@ -237,7 +237,7 @@ verifyInvalidFixtures([
   },
   {
     code: "nodex(no-testing-library-wait-in-act)",
-    count: 8,
+    count: 17,
     filename: "scripts/fixtures/tooling/nodex/testing-library-wait-in-act-invalid.test.tsx",
   },
 ]);

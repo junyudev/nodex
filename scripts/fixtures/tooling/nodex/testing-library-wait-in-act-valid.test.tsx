@@ -38,9 +38,11 @@ export async function callbackRunsLater() {
 
 export async function nonDomWaitsStayLegal() {
   const connection = { waitFor: async () => {} };
+  const directory = { findByRole: async (_role: string) => [] };
   await act(async () => {
     await vi.waitFor(() => true);
     await connection.waitFor();
+    await directory.findByRole("admin");
   });
 }
 
@@ -48,5 +50,31 @@ export async function computedMemberIsNotTheActExport() {
   const act = "other";
   await React[act](async () => {
     await screen.findByRole("dialog");
+  });
+}
+
+export async function businessQueriesAndUnknownReceiversStayLegal(
+  unknownDirectory: { findByRole: (role: string) => Promise<unknown> },
+) {
+  const directory = { findByRole: async (_role: string) => [] };
+  const alias = directory;
+  const { findByRole: findAccount } = directory;
+  const renderWithAppMaitai = () => directory;
+  const created = renderWithAppMaitai();
+  await act(async () => {
+    await alias.findByRole("admin");
+    await findAccount("admin");
+    await created.findByRole("admin");
+    await unknownDirectory.findByRole("admin");
+  });
+}
+
+export async function recursiveWrappersDoNotSupplyKnownQueryResults() {
+  function makeDirectory() {
+    return makeDirectory();
+  }
+  const directory = makeDirectory();
+  await act(async () => {
+    await directory.findByRole("admin");
   });
 }
