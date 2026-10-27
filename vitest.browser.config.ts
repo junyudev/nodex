@@ -33,6 +33,7 @@ export default defineConfig({
       "@base-ui/react/tooltip",
       "@base-ui/react/use-render",
       "pdfjs-dist",
+      "pdfjs-dist/web/pdf_viewer.mjs",
     ],
   },
   test: {

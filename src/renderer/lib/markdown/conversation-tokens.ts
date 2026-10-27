@@ -119,17 +119,6 @@ function normalizeLists(tokens: Token[]): void {
           text: first.raw.trimEnd(),
           tokens: [{ type: "text", raw: prefix, text: prefix }, ...(first.tokens ?? [])],
         };
-      if (item.loose)
-        item.tokens = item.tokens.map((child) =>
-          child.type === "text"
-            ? {
-                type: "paragraph",
-                raw: child.raw,
-                text: child.text,
-                tokens: child.tokens ?? [child],
-              }
-            : child,
-        );
       normalizeLists(item.tokens);
     }
   }
@@ -254,6 +243,10 @@ export function createConversationTokenEngine() {
     parsedUnits += source.length;
     parseCalls += 1;
     void lexer.walkTokens(tokens, (token) => {
+      // A code block's trailing line separator is not part of its displayed/copied payload.
+      if (token.type === "code" && token.codeBlockStyle === "indented") {
+        token.text = token.text.replace(/\n+$/u, "");
+      }
       if (
         token.type === "link" &&
         token.raw === token.text &&

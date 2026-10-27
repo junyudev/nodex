@@ -39,6 +39,30 @@ const message = (content: string, streaming = true) => (
 );
 
 describe("the mounted conversation token document", () => {
+  test.each(["- [x] Done\n- [ ] Pending", "- [x] Done\n\n- [ ] Pending"])(
+    "renders each task marker once in its tight or loose list: %s",
+    async (source) => {
+      const view = render(message(source, false));
+      try {
+        const completed = (await view.findByRole("checkbox", {
+          name: "Completed task",
+        })) as HTMLInputElement;
+        const pending = view.getByRole("checkbox", {
+          name: "Incomplete task",
+        }) as HTMLInputElement;
+        expect(view.getAllByRole("checkbox")).toHaveLength(2);
+        expect(completed.checked).toBe(true);
+        expect(pending.checked).toBe(false);
+        expect(completed.disabled).toBe(true);
+        expect(pending.disabled).toBe(true);
+        expect(completed.closest("li")).toBe(view.getByText("Done").closest("li"));
+        expect(pending.closest("li")).toBe(view.getByText("Pending").closest("li"));
+      } finally {
+        view.unmount();
+      }
+    },
+  );
+
   test("keeps mixed media and its paragraph connected when streaming completes", async () => {
     const source =
       "Ordinary paragraph.\n\nBefore **the image** ![Inline image](data:image/png;base64,AA==) *after the image*.";

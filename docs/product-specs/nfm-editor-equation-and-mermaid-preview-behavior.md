@@ -65,7 +65,7 @@ Empty source shows an authoring prompt. During a 300ms-debounced render the prev
 
 All editor and Streamdown Mermaid rendering goes through one app-owned lazy runtime. No feature or optional package may independently call `mermaid.initialize()`. The runtime owns strict security, disabled autostart/error SVG insertion, HTML-label prohibition, secure configuration keys, `maxTextSize: 500000`, and `maxEdges: 1500`.
 
-Every render uses a unique ID and controlled light/dark theme input. Output passes a second SVG sanitizer that removes executable elements, event handlers, foreign HTML, remote references, CSS imports, unsafe URLs, and fixed root height, then derives a safe intrinsic maximum width from the sanitized viewBox before preview or export. Temporary Mermaid DOM is removed after success or failure. A render failure never blocks source editing or Copy.
+Every render uses a unique ID and controlled light/dark theme input. Diagrams use the Dagre layout and classic appearance unless their authored source selects another layout or look. Output passes a second SVG sanitizer that removes executable elements, event handlers, foreign HTML, remote references, CSS imports, unsafe URLs, and fixed root height, then derives a safe intrinsic maximum width from the sanitized viewBox before preview or export. Temporary Mermaid DOM is removed after success or failure. A render failure never blocks source editing or Copy.
 
 ## Verification boundary
 

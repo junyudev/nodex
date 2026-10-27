@@ -5,7 +5,7 @@ import type {
   PageViewport,
   RenderTask,
 } from "pdfjs-dist";
-import type { IPDFLinkService } from "pdfjs-dist/types/web/interfaces";
+import type { WorkspacePdfLinkService } from "./workspace-pdf-link-service";
 import {
   useCallback,
   useEffect,
@@ -94,22 +94,16 @@ function useWorkspacePdfDocument(fileDataUrl: string): PdfLoadState {
 
         loadingTask = runtime.getDocument({ data: bytes });
         const document = await loadingTask.promise;
-        if (cancelled) {
-          await document.destroy();
-          return;
-        }
+        if (cancelled) return;
         if (!Number.isSafeInteger(document.numPages) || document.numPages <= 0) {
-          await document.destroy();
+          await loadingTask.destroy();
           setState({ status: "error", dataUrl: fileDataUrl });
           return;
         }
 
         const firstPage = await document.getPage(1);
         const viewport = firstPage.getViewport({ scale: 1 });
-        if (cancelled) {
-          await document.destroy();
-          return;
-        }
+        if (cancelled) return;
         setState({
           status: "ready",
           dataUrl: fileDataUrl,
@@ -235,130 +229,6 @@ function useWorkspacePdfPageNavigation(input: {
   return { currentPage: clampWorkspacePdfPage(currentPage, totalPages), goToPage };
 }
 
-function isPdfReference(value: unknown): value is { num: number; gen: number } {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    "num" in value &&
-    typeof value.num === "number" &&
-    "gen" in value &&
-    typeof value.gen === "number"
-  );
-}
-
-class WorkspacePdfLinkService implements IPDFLinkService {
-  readonly isInPresentationMode = false;
-  externalLinksEnabled = true;
-
-  constructor(
-    private readonly document: PDFDocumentProxy,
-    private readonly scrollRootRef: RefObject<HTMLDivElement | null>,
-    private readonly goToPageCallback: (page: number) => void,
-    private readonly openExternalLink: (url: string) => void,
-  ) {}
-
-  get pagesCount() {
-    return this.document.numPages;
-  }
-
-  set page(value: number) {
-    this.goToPageCallback(value);
-  }
-
-  get page() {
-    return 1;
-  }
-
-  set rotation(_value: number) {}
-
-  get rotation() {
-    return 0;
-  }
-
-  set externalLinkEnabled(value: boolean) {
-    this.externalLinksEnabled = value;
-  }
-
-  get externalLinkEnabled() {
-    return this.externalLinksEnabled;
-  }
-
-  async goToDestination(destination: string | unknown[]): Promise<void> {
-    const resolved =
-      typeof destination === "string"
-        ? await this.document.getDestination(destination)
-        : destination;
-    if (resolved === null) return;
-    const page = await this.getDestinationPageNumber(resolved);
-    if (page !== null) this.goToPageCallback(page);
-  }
-
-  goToPage(value: string | number) {
-    const page = Number(value);
-    if (Number.isInteger(page)) this.goToPageCallback(page);
-  }
-
-  goToXY(pageNumber: number) {
-    this.goToPageCallback(pageNumber);
-  }
-
-  addLinkAttributes(link: HTMLAnchorElement, url: string) {
-    if (!url || !this.externalLinksEnabled) {
-      link.href = "";
-      return;
-    }
-    link.href = url;
-    link.title = url;
-    link.target = "_blank";
-    link.rel = "noopener noreferrer nofollow";
-    link.addEventListener("click", (event) => {
-      event.preventDefault();
-      event.stopPropagation();
-      this.openExternalLink(url);
-    });
-  }
-
-  getDestinationHash(destination: unknown) {
-    return typeof destination === "string" && destination.length > 0
-      ? this.getAnchorUrl(`#${window.encodeURIComponent(destination)}`)
-      : this.getAnchorUrl("");
-  }
-
-  getAnchorUrl(hash: unknown) {
-    return typeof hash === "string" ? hash : "";
-  }
-
-  setHash(_hash: string) {}
-
-  executeNamedAction(action: string) {
-    const container = this.scrollRootRef.current;
-    if (container === null) return;
-    const current = Number(
-      container.querySelector<HTMLElement>(`${PAGE_SELECTOR}[data-current-page="true"]`)?.dataset
-        .pageNumber ?? 1,
-    );
-    if (action === "NextPage") this.goToPageCallback(current + 1);
-    if (action === "PrevPage") this.goToPageCallback(current - 1);
-    if (action === "FirstPage") this.goToPageCallback(1);
-    if (action === "LastPage") this.goToPageCallback(this.document.numPages);
-  }
-
-  executeSetOCGState(_action: object) {}
-
-  private async getDestinationPageNumber(destination: unknown[]): Promise<number | null> {
-    const reference = destination[0];
-    if (typeof reference === "number" && Number.isInteger(reference)) return reference + 1;
-    if (!isPdfReference(reference)) return null;
-    const cached = this.document.cachedPageNumber(reference);
-    if (cached !== null) return cached;
-    try {
-      return (await this.document.getPageIndex(reference)) + 1;
-    } catch {
-      return null;
-    }
-  }
-}
-
 function WorkspacePdfTextLayer(input: {
   page: PDFPageProxy;
   runtime: WorkspacePdfRuntime;
@@ -403,7 +273,7 @@ function WorkspacePdfTextLayer(input: {
 
 function WorkspacePdfAnnotationLayer(input: {
   deferMs: number;
-  linkService: IPDFLinkService;
+  linkService: WorkspacePdfLinkService;
   page: PDFPageProxy;
   runtime: WorkspacePdfRuntime;
 }) {
@@ -467,7 +337,7 @@ function WorkspacePdfPage(input: {
   fallbackSize: WorkspacePdfPageSize;
   fitToWidth: boolean;
   isZooming: boolean;
-  linkService: IPDFLinkService;
+  linkService: WorkspacePdfLinkService;
   onError: () => void;
   pageNumber: number;
   pageWidth: number | null;
@@ -881,10 +751,15 @@ export function WorkspacePdfPreview({
 
   const linkService = useMemo(
     () =>
-      pdfDocument === null
+      pdfDocument === null || runtime === null
         ? null
-        : new WorkspacePdfLinkService(pdfDocument, scrollRootRef, goToPage, onOpenExternalLink),
-    [goToPage, onOpenExternalLink, pdfDocument],
+        : new runtime.WorkspacePdfLinkService(
+            pdfDocument,
+            scrollRootRef,
+            goToPage,
+            onOpenExternalLink,
+          ),
+    [goToPage, onOpenExternalLink, pdfDocument, runtime],
   );
   const handleRenderError = useCallback(() => setRenderFailed(true), []);
   const setScrollRoot = useCallback((element: HTMLDivElement | null) => {

@@ -29,6 +29,7 @@ describe("compact Markdown text", () => {
   it("treats non-ASCII or non-letter directive names as literal Markdown", () => {
     expect(project(':1x[label]{key="hidden"}')).toBe(':1x[label]{key="hidden"}');
     expect(project(':中文[label]{key="hidden"}')).toBe(':中文[label]{key="hidden"}');
+    expect(project(':中文[**label**]{key="hidden"}')).toBe(':中文[label]{key="hidden"}');
   });
   it("retains literal directives in fenced code", () => {
     expect(project('```text\n::literal[value]{attribute="yes"}\n```')).toBe(

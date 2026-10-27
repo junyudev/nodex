@@ -1,7 +1,7 @@
 import {
   dropTargetForElements,
   monitorForElements,
-} from "@atlaskit/pragmatic-drag-and-drop/element/adapter";
+} from "@atlaskit/pragmatic-drag-and-drop/adapter/element-adapter";
 import type {
   DragLocationHistory,
   DropTargetRecord,

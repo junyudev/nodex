@@ -1,7 +1,7 @@
 import { act } from "@testing-library/react";
 import { createElement } from "react";
 import { beforeEach, describe, expect, test, vi } from "vite-plus/test";
-import type { draggable } from "@atlaskit/pragmatic-drag-and-drop/element/adapter";
+import type { draggable } from "@atlaskit/pragmatic-drag-and-drop/adapter/element-adapter";
 import { render } from "@/test/dom";
 import type { BoardCardDragData } from "@/components/board/pragmatic-drag-data";
 
@@ -17,7 +17,7 @@ const draggableHarness = vi.hoisted(() => ({
   cleanupCount: 0,
 }));
 
-vi.mock("@atlaskit/pragmatic-drag-and-drop/element/adapter", () => ({
+vi.mock("@atlaskit/pragmatic-drag-and-drop/adapter/element-adapter", () => ({
   draggable: (args: ElementDraggableArgs) => {
     draggableHarness.registration = args;
     return () => {

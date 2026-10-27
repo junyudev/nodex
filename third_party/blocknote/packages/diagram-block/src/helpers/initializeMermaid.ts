@@ -12,17 +12,13 @@ import mermaid, { type MermaidConfig } from "mermaid";
  * keeps label wrapping, `<br/>` and markdown-string formatting; the one
  * thing it can't render is raw inline HTML in label text, which then shows
  * as literal tags - consistently, in the preview as well as in exports.
- *
- * (The cast: `MermaidConfig` doesn't declare `htmlLabels` for every diagram
- * type that honors it at runtime.)
  */
 export const defaultMermaidOptions = {
+  layout: "dagre",
+  look: "classic",
+  theme: "default",
   htmlLabels: false,
-  flowchart: { htmlLabels: false },
-  class: { htmlLabels: false },
-  state: { htmlLabels: false },
-  er: { htmlLabels: false },
-} as MermaidConfig;
+} satisfies MermaidConfig;
 
 // The diagrams are rendered manually whenever a block's source changes.
 let initialized = false;

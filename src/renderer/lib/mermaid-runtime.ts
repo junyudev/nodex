@@ -33,6 +33,9 @@ const SECURE_CONFIG_KEYS = [
 
 export const MERMAID_RUNTIME_CONFIG = {
   startOnLoad: false,
+  layout: "dagre",
+  look: "classic",
+  theme: "default",
   suppressErrorRendering: true,
   securityLevel: "strict",
   secure: [...SECURE_CONFIG_KEYS],

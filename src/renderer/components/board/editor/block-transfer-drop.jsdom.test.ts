@@ -1,5 +1,5 @@
 import { describe, expect, test, vi } from "vite-plus/test";
-import type { dropTargetForElements } from "@atlaskit/pragmatic-drag-and-drop/element/adapter";
+import type { dropTargetForElements } from "@atlaskit/pragmatic-drag-and-drop/adapter/element-adapter";
 import {
   isSameDocumentBlockTargetInsideSelection,
   isSameDocumentBlockMoveNoOp,
@@ -35,7 +35,7 @@ const dropTargetHarness = vi.hoisted(() => ({
   registrations: [] as unknown[],
 }));
 
-vi.mock("@atlaskit/pragmatic-drag-and-drop/element/adapter", () => ({
+vi.mock("@atlaskit/pragmatic-drag-and-drop/adapter/element-adapter", () => ({
   dropTargetForElements: (args: unknown) => {
     dropTargetHarness.registration = args;
     dropTargetHarness.registrations.push(args);

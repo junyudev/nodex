@@ -1,7 +1,7 @@
 import { act } from "@testing-library/react";
 import { createElement, useState } from "react";
 import { beforeEach, describe, expect, test, vi } from "vite-plus/test";
-import type { monitorForElements } from "@atlaskit/pragmatic-drag-and-drop/element/adapter";
+import type { monitorForElements } from "@atlaskit/pragmatic-drag-and-drop/adapter/element-adapter";
 import { render } from "@/test/dom";
 import { useBoardElementDragMonitor } from "./use-board-element-drag-monitor";
 
@@ -12,7 +12,7 @@ const monitorHarness = vi.hoisted(() => ({
   cleanupCount: 0,
 }));
 
-vi.mock("@atlaskit/pragmatic-drag-and-drop/element/adapter", () => ({
+vi.mock("@atlaskit/pragmatic-drag-and-drop/adapter/element-adapter", () => ({
   monitorForElements: (args: unknown) => {
     monitorHarness.registrations.push(args);
     return () => {

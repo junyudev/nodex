@@ -31,10 +31,10 @@ without duplicating those authorities.
 
 ## Decision
 
-Nodex uses Jotai 2.20.2 as the renderer atom engine and an internal Module named
+Nodex uses Jotai 3 as the renderer atom engine and an internal Module named
 Maitai as the scoped renderer-state kernel. Maitai uses only Jotai's public
-`atom`, `createStore`, `Provider`, store `get`/`set`/`sub`, React hooks, and
-explicit family-cleanup APIs.
+`atom`, `createStore`, `Provider`, store `get`/`set`/`sub`, and React hooks.
+Maitai owns family identity and cleanup.
 
 Each Electron renderer window creates exactly one Jotai store. A stable
 `MaitaiProvider` binds that store once at renderer bootstrap. Scope providers

@@ -26,6 +26,12 @@ describe("WorkspacePdfPreview browser runtime", () => {
       expect(canvas?.width ?? 0).toBeGreaterThan(0);
       expect(canvas?.height ?? 0).toBeGreaterThan(0);
       expect(preview.querySelector(".textLayer")?.textContent).toContain("Nodex PDF Preview");
+      const text = preview.querySelector<HTMLElement>('.textLayer span[role="presentation"]');
+      if (text === null) throw new Error("Expected selectable PDF text");
+      const page = text.closest<HTMLElement>("[data-workspace-pdf-page]")!;
+      const scale = page.getBoundingClientRect().width / 612;
+      expect(Number.parseFloat(getComputedStyle(text).fontSize)).toBeCloseTo(24 * scale, 1);
+      expect(text.getBoundingClientRect().width).toBeGreaterThan(100 * scale);
       expect(
         preview.querySelector<HTMLAnchorElement>(
           '.annotationLayer a[href="https://example.com/spec"]',
@@ -42,6 +48,16 @@ describe("WorkspacePdfPreview browser runtime", () => {
       await Promise.resolve();
     });
     expect(openExternalLink).toHaveBeenCalledWith("https://example.com/spec");
+
+    const pageLink = preview.querySelector<HTMLAnchorElement>(
+      '.annotationLayer a:not([target="_blank"])',
+    );
+    if (pageLink === null) throw new Error("Expected the PDF page destination link");
+    await act(async () => {
+      fireEvent.click(pageLink);
+      await Promise.resolve();
+    });
+    await waitForAct(() => expect(view.getByText("2/2")).not.toBeNull());
   });
 });
 
@@ -65,11 +81,13 @@ function buildPdfDataUrl(text: string): string {
   const content = `BT\n/F1 24 Tf\n72 720 Td\n(${text}) Tj\nET\n`;
   const objects = [
     "1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n",
-    "2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n",
-    "3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R /Annots [6 0 R] >>\nendobj\n",
+    "2 0 obj\n<< /Type /Pages /Kids [3 0 R 7 0 R] /Count 2 >>\nendobj\n",
+    "3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R /Annots [6 0 R 8 0 R] >>\nendobj\n",
     `4 0 obj\n<< /Length ${content.length} >>\nstream\n${content}endstream\nendobj\n`,
     "5 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>\nendobj\n",
     "6 0 obj\n<< /Type /Annot /Subtype /Link /Rect [72 680 280 710] /Border [0 0 0] /A << /S /URI /URI (https://example.com/spec) >> >>\nendobj\n",
+    "7 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>\nendobj\n",
+    "8 0 obj\n<< /Type /Annot /Subtype /Link /Rect [72 630 280 660] /Border [0 0 0] /Dest [7 0 R /Fit] >>\nendobj\n",
   ];
   let body = "%PDF-1.4\n";
   const offsets: number[] = [];

@@ -18,6 +18,32 @@ const threadScope = defineScope({
 });
 
 describe("Maitai external-store bridge", () => {
+  test("observes a synchronous snapshot change when the bridge mounts", async () => {
+    let snapshot = "before subscription";
+    const externalAtom = atomWithExternalStore(appScope, {
+      debugLabel: "mount-snapshot",
+      getSnapshot: () => snapshot,
+      subscribe: (listener) => {
+        snapshot = "after subscription";
+        listener();
+        return () => undefined;
+      },
+    });
+    function Probe() {
+      return <output>{useScopedAtomValue(externalAtom)}</output>;
+    }
+    const view = render(
+      <MaitaiProvider store={createMaitaiStore()}>
+        <Probe />
+      </MaitaiProvider>,
+    );
+    try {
+      expect(await view.findByText("after subscription")).toBeTruthy();
+    } finally {
+      view.unmount();
+    }
+  });
+
   test("subscribes once per concrete bridge and releases on React unmount", () => {
     let snapshot = 1;
     let subscribeCount = 0;

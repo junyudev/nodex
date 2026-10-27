@@ -84,7 +84,21 @@ function unclosedHiddenElement(value: string): string | null {
   return new RegExp(`<\\/\\s*${tag}\\s*>`, "i").test(value) ? null : tag;
 }
 
-function extractMarkdownText(node: Nodes): string {
+function extractMarkdownText(node: Nodes, source: string): string {
+  if (
+    (node.type === "textDirective" ||
+      node.type === "leafDirective" ||
+      node.type === "containerDirective") &&
+    !/^[A-Za-z](?:[A-Za-z0-9_-]*[A-Za-z0-9])?$/u.test(node.name)
+  ) {
+    // Nodex directive names use its ASCII grammar; other names remain ordinary Markdown.
+    const literal = source.slice(node.position?.start.offset, node.position?.end.offset);
+    const tree = fromMarkdown(literal, {
+      extensions: [compactGfm()],
+      mdastExtensions: [gfmFromMarkdown()],
+    });
+    return extractMarkdownText(tree, literal);
+  }
   if (node.type === "break") return " ";
   if (node.type === "html") {
     if (/^<br\s*\/?\s*>$/i.test(node.value.trim())) return " ";
@@ -106,7 +120,7 @@ function extractMarkdownText(node: Nodes): string {
       hidden = unclosedHiddenElement(child.value);
       if (hidden) continue;
     }
-    text.push(extractMarkdownText(child));
+    text.push(extractMarkdownText(child, source));
   }
   const block = [
     "root",
@@ -135,7 +149,7 @@ export function projectCodexMarkdownToPlainText(markdown: string): string {
     extensions: [compactGfm(), directive()],
     mdastExtensions: [gfmFromMarkdown(), directiveFromMarkdown()],
   });
-  return extractMarkdownText(tree).replace(/\s+/g, " ").trim();
+  return extractMarkdownText(tree, trimmed).replace(/\s+/g, " ").trim();
 }
 
 /** Project a stored label while preserving nonblank literal text that has no visible Markdown. */

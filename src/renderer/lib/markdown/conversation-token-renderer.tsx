@@ -356,30 +356,24 @@ function TokenNode({
       });
     case "blockquote":
       return primitive("blockquote", options.components, children());
+    case "checkbox":
+      return (
+        <input
+          type="checkbox"
+          checked={token.checked}
+          disabled
+          aria-label={token.checked ? "Completed task" : "Incomplete task"}
+        />
+      );
     case "list":
       return primitive(
         token.ordered ? "ol" : "ul",
         options.components,
         token.items.map((item, index) =>
-          primitive(
-            "li",
-            options.components,
-            <>
-              {item.task ? (
-                <input
-                  type="checkbox"
-                  checked={item.checked ?? false}
-                  disabled
-                  aria-label={item.checked ? "Completed task" : "Incomplete task"}
-                />
-              ) : null}
-              {renderNodes(node.items[index] ?? [], options)}
-            </>,
-            {
-              key: node.itemKeys[index],
-              className: item.task ? "task-list-item" : undefined,
-            },
-          ),
+          primitive("li", options.components, renderNodes(node.items[index] ?? [], options), {
+            key: node.itemKeys[index],
+            className: item.task ? "task-list-item" : undefined,
+          }),
         ),
         {
           start: token.ordered ? token.start || 1 : undefined,

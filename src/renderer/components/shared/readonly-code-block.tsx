@@ -13,7 +13,11 @@ import { cn } from "@/lib/utils";
 
 const themes: HighlightOptions["themes"] = [...CODE_BLOCK_THEME_PAIR];
 
-function useHighlightedCode(code: string, language: string): HighlightResult | null {
+function useHighlightedCode(
+  code: string,
+  language: string,
+  incomplete: boolean,
+): HighlightResult | null {
   const [highlighted, setHighlighted] = useState<{
     code: string;
     language: string;
@@ -25,14 +29,19 @@ function useHighlightedCode(code: string, language: string): HighlightResult | n
       if (active) setHighlighted({ code, language, result });
     };
     const result = streamdownCodePlugin.highlight(
-      { code, language: language as HighlightOptions["language"], themes },
+      {
+        code,
+        language: language as HighlightOptions["language"],
+        themes,
+        isIncomplete: incomplete,
+      },
       accept,
     );
     if (result) accept(result);
     return () => {
       active = false;
     };
-  }, [code, language]);
+  }, [code, language, incomplete]);
   return highlighted?.code === code && highlighted.language === language
     ? highlighted.result
     : null;
@@ -59,7 +68,7 @@ export function ReadonlyCodeBlock({
   readonly className?: string;
 }) {
   const { id, highlightLanguage } = resolveReadonlyCodeLanguage(language);
-  const result = useHighlightedCode(code, highlightLanguage);
+  const result = useHighlightedCode(code, highlightLanguage, incomplete);
   const wrap = useCodeBlockWordWrap();
   return (
     <figure

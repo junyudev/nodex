@@ -1,9 +1,9 @@
 import {
   dropTargetForElements,
   draggable,
-} from "@atlaskit/pragmatic-drag-and-drop/element/adapter";
-import { preserveOffsetOnSource } from "@atlaskit/pragmatic-drag-and-drop/element/preserve-offset-on-source";
-import { setCustomNativeDragPreview } from "@atlaskit/pragmatic-drag-and-drop/element/set-custom-native-drag-preview";
+} from "@atlaskit/pragmatic-drag-and-drop/adapter/element-adapter";
+import { preserveOffsetOnSource } from "@atlaskit/pragmatic-drag-and-drop/utils/preserve-offset-on-source";
+import { setCustomNativeDragPreview } from "@atlaskit/pragmatic-drag-and-drop/utils/set-custom-native-drag-preview";
 import { AnimatePresence, motion } from "motion/react";
 import {
   useCallback,

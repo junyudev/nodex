@@ -1,5 +1,5 @@
 import { useEffect, useEffectEvent } from "react";
-import { monitorForElements } from "@atlaskit/pragmatic-drag-and-drop/element/adapter";
+import { monitorForElements } from "@atlaskit/pragmatic-drag-and-drop/adapter/element-adapter";
 
 type ElementMonitorArgs = Parameters<typeof monitorForElements>[0];
 type CanMonitor = NonNullable<ElementMonitorArgs["canMonitor"]>;

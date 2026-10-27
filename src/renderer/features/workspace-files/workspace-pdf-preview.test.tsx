@@ -22,6 +22,7 @@ vi.mock("./workspace-pdf-runtime", () => {
   return {
     loadWorkspacePdfRuntime: async () => ({
       AnnotationLayer,
+      WorkspacePdfLinkService: class {},
       TextLayer,
       getDocument: runtimeMocks.getDocument,
     }),
@@ -115,6 +116,31 @@ describe("WorkspacePdfPreview", () => {
     expect(await view.findByText("Unable to preview this PDF.")).not.toBeNull();
     expect(runtimeMocks.getDocument).not.toHaveBeenCalled();
   });
+
+  test("releases the loading task when a PDF has no pages", async () => {
+    const loadingTask = {
+      destroyed: false,
+      destroy: vi.fn(async () => {
+        loadingTask.destroyed = true;
+      }),
+      promise: Promise.resolve(makeDocument([])),
+    };
+    runtimeMocks.getDocument.mockReturnValue(loadingTask);
+    const view = render(
+      <WorkspacePdfPreview
+        fileDataUrl="data:application/pdf;base64,JVBERg=="
+        title="empty.pdf"
+        onOpenExternalLink={() => undefined}
+      />,
+    );
+    try {
+      expect(await view.findByText("Unable to preview this PDF.")).not.toBeNull();
+      expect(loadingTask.destroy).toHaveBeenCalledOnce();
+    } finally {
+      view.unmount();
+    }
+    expect(loadingTask.destroy).toHaveBeenCalledOnce();
+  });
 });
 
 function makePage() {
@@ -137,7 +163,6 @@ function makeDocument(pages: ReturnType<typeof makePage>[]) {
   return {
     numPages: pages.length,
     cachedPageNumber: vi.fn(() => null),
-    destroy: vi.fn(async () => undefined),
     getDestination: vi.fn(async () => null),
     getPage: vi.fn(async (page: number) => pages[page - 1]),
     getPageIndex: vi.fn(async () => 0),

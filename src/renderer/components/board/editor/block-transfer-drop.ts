@@ -1,4 +1,4 @@
-import { dropTargetForElements } from "@atlaskit/pragmatic-drag-and-drop/element/adapter";
+import { dropTargetForElements } from "@atlaskit/pragmatic-drag-and-drop/adapter/element-adapter";
 import { DropCursorExtension } from "@blocknote/core/extensions";
 import type { NfmReceivingPageTransferIntent } from "./nfm-history-command";
 import type { DocumentHeadFence } from "../../../lib/block-document-surface-runtime";

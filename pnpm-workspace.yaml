@@ -33,7 +33,7 @@ overrides:
   immutable: 4.3.9
   lodash: 4.18.1
   lodash-es: 4.18.1
-  mermaid: 11.16.1
+  mermaid: 12.2.0
   nanoid: 3.3.18
   node-abi: 4.40.0
   picomatch: 4.0.4

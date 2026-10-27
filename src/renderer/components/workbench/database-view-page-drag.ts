@@ -1,7 +1,7 @@
-import { draggable as registerDraggable } from "@atlaskit/pragmatic-drag-and-drop/element/adapter";
-import { disableNativeDragPreview } from "@atlaskit/pragmatic-drag-and-drop/element/disable-native-drag-preview";
-import { preserveOffsetOnSource } from "@atlaskit/pragmatic-drag-and-drop/element/preserve-offset-on-source";
-import { setCustomNativeDragPreview } from "@atlaskit/pragmatic-drag-and-drop/element/set-custom-native-drag-preview";
+import { draggable as registerDraggable } from "@atlaskit/pragmatic-drag-and-drop/adapter/element-adapter";
+import { disableNativeDragPreview } from "@atlaskit/pragmatic-drag-and-drop/utils/disable-native-drag-preview";
+import { preserveOffsetOnSource } from "@atlaskit/pragmatic-drag-and-drop/utils/preserve-offset-on-source";
+import { setCustomNativeDragPreview } from "@atlaskit/pragmatic-drag-and-drop/utils/set-custom-native-drag-preview";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import type { BoardCardDragData } from "@/components/board/pragmatic-drag-data";
