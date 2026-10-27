@@ -1,6 +1,6 @@
-import { beforeEach, describe, expect, test } from "vite-plus/test";
+import { beforeEach, describe, expect, test, vi } from "vite-plus/test";
 import { act, fireEvent, waitFor } from "@testing-library/react";
-import { createElement, type ReactElement, type RefCallback } from "react";
+import { createElement, useState, type ReactElement, type RefCallback } from "react";
 import { NodexTooltipProvider as TooltipProvider } from "../../../components/ui/tooltip";
 import { renderWithMaitai as renderDom } from "../../../test/thread-maitai";
 import { settleAsyncRender } from "../../../test/dom";
@@ -141,6 +141,118 @@ function buildVisibleTurnEntry(
 describe("LocalConversationTurnEntry", () => {
   beforeEach(() => {
     renderCounts.clear();
+  });
+
+  test("reveals the first denied action from its historical count without moving ordinary expansion", async () => {
+    const { LocalConversationTurnEntry } = await import("./local-conversation-turn-entry");
+    const turnId = "turn_denied_actions";
+    const review = (id: string, status: "denied" | "approved"): CodexConversationItem => ({
+      threadId: "thread_1",
+      turnId,
+      itemId: id,
+      type: "automaticApprovalReview",
+      kind: "systemEvent",
+      semanticKind: "automaticApprovalReview",
+      status: "completed",
+      createdAt: 2,
+      updatedAt: 2,
+      rawItem: {
+        targetItemId: null,
+        review: { status, riskLevel: "high", userAuthorization: "low", rationale: id },
+        action: {
+          type: "command",
+          source: "unifiedExec",
+          command: `touch ${id}.txt`,
+          cwd: "/tmp/project",
+        },
+      },
+    });
+    const items = [
+      buildUserEntry(turnId, "user", "Check the protected files."),
+      review("first-denial", "denied"),
+      review("approved-retry", "approved"),
+      review("second-denial", "denied"),
+      buildAssistantEntry(turnId, "reply", "The checks are complete.", {
+        assistantPhase: "final_answer",
+      }),
+    ];
+    const entry = buildVisibleTurnEntry(
+      buildTurn(turnId, "", "", { items, itemIds: items.map((item) => item.itemId) }),
+      [],
+      true,
+    );
+    function Harness() {
+      const [collapsed, setCollapsed] = useState(true);
+      return (
+        <TooltipProvider>
+          <LocalConversationTurnEntry
+            conversationId="thread_1"
+            entry={entry}
+            cwd="/tmp/project"
+            canEditTurnUserPrefix={false}
+            canForkTurn={false}
+            persistedCollapsed={collapsed}
+            onSetCollapsed={setCollapsed}
+          />
+        </TooltipProvider>
+      );
+    }
+    const scrollIntoView = vi.spyOn(HTMLElement.prototype, "scrollIntoView");
+    const view = render(<Harness />);
+    try {
+      const count = view.getByRole("button", { name: /^View 2 denied actions$/ });
+      const toggle = view.container.querySelector<HTMLButtonElement>("[data-agent-body-toggle]")!;
+      expect(toggle.contains(count)).toBe(false);
+      expect(toggle.getAttribute("aria-expanded")).toBe("false");
+      await act(async () => {
+        fireEvent.click(toggle);
+      });
+      await waitFor(() => expect(toggle.getAttribute("aria-expanded")).toBe("true"));
+      await settleAsyncRender();
+      expect(scrollIntoView).not.toHaveBeenCalled();
+
+      await act(async () => {
+        fireEvent.click(toggle);
+      });
+      await waitFor(() =>
+        expect(view.queryByRole("button", { name: "touch first-denial.txt" })).toBeNull(),
+      );
+      await act(async () => {
+        fireEvent.click(count);
+      });
+      await waitFor(() => expect(scrollIntoView).toHaveBeenCalledTimes(1));
+      expect(scrollIntoView).toHaveBeenCalledWith({ block: "center", behavior: "smooth" });
+      expect(scrollIntoView.mock.contexts[0]).toBe(
+        view.container.querySelector("[data-auto-review-denied]"),
+      );
+      expect(view.getByRole("button", { name: "touch first-denial.txt" })).toBeTruthy();
+      scrollIntoView.mockClear();
+      await act(async () => {
+        fireEvent.click(count);
+      });
+      await waitFor(() => expect(scrollIntoView).toHaveBeenCalledTimes(1));
+      expect(toggle.getAttribute("aria-expanded")).toBe("true");
+
+      await act(async () => {
+        fireEvent.click(toggle);
+      });
+      await waitFor(() =>
+        expect(view.queryByRole("button", { name: "touch first-denial.txt" })).toBeNull(),
+      );
+      scrollIntoView.mockClear();
+      await act(async () => {
+        fireEvent.click(count);
+      });
+      await waitFor(() => expect(toggle.getAttribute("aria-expanded")).toBe("true"));
+      await act(async () => {
+        fireEvent.click(toggle);
+      });
+      await settleAsyncRender();
+      expect(scrollIntoView).not.toHaveBeenCalled();
+    } finally {
+      view.unmount();
+      scrollIntoView.mockRestore();
+    }
   });
 
   test("observes response blocks independently as commentary moves between lanes", async () => {

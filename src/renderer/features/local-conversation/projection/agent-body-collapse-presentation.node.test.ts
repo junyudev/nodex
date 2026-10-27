@@ -7,6 +7,8 @@ import type {
 } from "../thread-stage-types";
 import {
   countAgentBodyUnits,
+  countDeniedThreadActions,
+  isDeniedAgentBodyUnit,
   projectAgentBodyCollapsePresentation,
 } from "./agent-body-collapse-presentation";
 
@@ -14,13 +16,15 @@ function buildEntryUnit(
   id: string,
   type:
     | "exec"
+    | "fileChange"
+    | "automaticApprovalReview"
     | "userMessage"
     | "assistantMessage"
     | "contextCompaction"
     | "streamError"
     | "systemError",
   entryOverrides: Partial<CodexConversationItem> = {},
-): ThreadAgentRenderUnit {
+): { kind: "entry"; block: ThreadTranscriptBlockModel } {
   const entry: CodexConversationItem = {
     threadId: "thread-1",
     turnId: "turn-1",
@@ -37,7 +41,7 @@ function buildEntryUnit(
         : type === "contextCompaction"
           ? "systemEvent"
           : "commandExecution",
-    semanticKind: type,
+    semanticKind: type === "fileChange" ? "patch" : type,
     createdAt: 1,
     updatedAt: 1,
     ...entryOverrides,
@@ -56,6 +60,64 @@ function buildEntryUnit(
 }
 
 describe("agent body collapse presentation", () => {
+  test("counts denied reviews as historical decisions rather than declined executions", () => {
+    const review = (id: string, status: string): CodexConversationItem => ({
+      threadId: "thread-1",
+      turnId: "turn-1",
+      itemId: id,
+      type: "automaticApprovalReview",
+      kind: "systemEvent",
+      semanticKind: "automaticApprovalReview",
+      status: "completed",
+      createdAt: 1,
+      updatedAt: 1,
+      rawItem: { review: { status, riskLevel: "high", rationale: status } },
+    });
+    const declined = buildEntryUnit("declined", "exec", { executionStatus: "declined" });
+    expect(
+      countDeniedThreadActions([
+        declined.block.entry,
+        review("first-denial", "denied"),
+        review("approved-retry", "approved"),
+        review("second-denial", "denied"),
+        review("timed-out", "timedOut"),
+        review("reviewing", "inProgress"),
+      ]),
+    ).toBe(2);
+  });
+
+  test("locates standalone denials and the declined execution that owns a review", () => {
+    const denied = buildEntryUnit("review", "automaticApprovalReview", {
+      rawItem: { review: { status: "denied", riskLevel: "high" } },
+    });
+    const approved = buildEntryUnit("approved", "automaticApprovalReview", {
+      rawItem: { review: { status: "approved", riskLevel: "low" } },
+    });
+    expect(isDeniedAgentBodyUnit(denied)).toBe(true);
+    expect(isDeniedAgentBodyUnit(approved)).toBe(false);
+    for (const type of ["exec", "fileChange"] as const) {
+      const unit = buildEntryUnit("execution", type, {
+        status: "declined",
+        executionStatus: "declined",
+      });
+      expect(isDeniedAgentBodyUnit(unit)).toBe(false);
+      const withReview = {
+        ...unit,
+        block: { ...unit.block, automaticApprovalReviews: [denied.block.entry] },
+      };
+      expect(isDeniedAgentBodyUnit(withReview)).toBe(true);
+      expect(
+        isDeniedAgentBodyUnit({
+          ...withReview,
+          block: {
+            ...withReview.block,
+            entry: { ...unit.block.entry, executionStatus: "completed", status: "completed" },
+          },
+        }),
+      ).toBe(false);
+    }
+  });
+
   test("keeps recovery outside collapsed work without counting it as an agent message", () => {
     const exec = buildEntryUnit("exec", "exec");
     const states = ["retrying", "recovered", "failed", "stopped"] as const;

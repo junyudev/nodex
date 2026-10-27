@@ -328,6 +328,7 @@ Consequences:
 - interrupted turns never collapse, and active subagent activity prevents automatic collapse
 - null-anchor subagent state may affect eligibility without creating a visible item, wrapper, or DOM anchor
 - completion must not silently promote the assistant into a dedicated final slot
+- the work toggle shows the Turn's historical count of actions denied by automatic review; a later approved retry does not erase an earlier denial. Clicking that count expands the work and centers its first denied action after the expansion settles. Ordinary expansion keeps the reader's position, and collapsing or leaving the Turn cancels a pending reveal.
 
 ### Worked-for divider
 

@@ -343,14 +343,16 @@ function ConversationFileMedia({
   );
 }
 
-/** Only an explicit projection of direct media children can widen a paragraph. */
+/** Media containers admit player controls; only direct media-only children can widen them. */
 export function ConversationMediaParagraph({
   children,
   mediaSources,
+  containsMedia = (mediaSources?.length ?? 0) > 0,
   className,
 }: {
   readonly children: ReactNode;
   readonly mediaSources?: readonly string[];
+  readonly containsMedia?: boolean;
   readonly className?: string;
 }) {
   const count = mediaSources?.length ?? 0;
@@ -359,16 +361,17 @@ export function ConversationMediaParagraph({
   const grid = Boolean(allImages && count > 1);
   const wide = Boolean(allImages && count === 1);
   const allowWide = Boolean(allImages);
+  const Container = containsMedia ? "div" : "p";
   return (
     <WideMediaContext value={allowWide}>
-      <p
+      <Container
         className={`text-size-chat leading-relaxed my-2 ${grid ? "flex flex-wrap items-start gap-3" : ""} ${className ?? ""}`}
         data-markdown-image-grid={grid ? "true" : undefined}
         data-wide-markdown-block={wide ? "true" : undefined}
         data-wide-markdown-block-kind={wide ? "image" : undefined}
       >
         {children}
-      </p>
+      </Container>
     </WideMediaContext>
   );
 }
@@ -950,6 +953,11 @@ function paragraphMediaSources(props: object): readonly string[] | undefined {
     ? sources
     : undefined;
 }
+
+function paragraphContainsMedia(props: object): boolean | undefined {
+  const value = (props as { readonly containsMedia?: unknown }).containsMedia;
+  return typeof value === "boolean" ? value : undefined;
+}
 function ConversationMarkdownMedia({
   src,
   alt,
@@ -980,12 +988,14 @@ export const conversationMediaComponents: Components = {
       children={props.children}
       className={props.className}
       mediaSources={paragraphMediaSources(props)}
+      containsMedia={paragraphContainsMedia(props)}
     />
   ),
   "nodex-media-paragraph": (props) => (
     <ConversationMediaParagraph
       children={props.children as ReactNode}
       mediaSources={paragraphMediaSources(props)}
+      containsMedia={paragraphContainsMedia(props)}
     />
   ),
 };

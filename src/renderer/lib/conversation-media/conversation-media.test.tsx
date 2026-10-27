@@ -13,8 +13,11 @@ import {
   ConversationMedia,
   ConversationMediaParagraph,
   ConversationMediaProvider,
+  conversationMediaComponents,
 } from "./conversation-media";
 import type { ConversationMediaSource } from "./conversation-media-model";
+import { ConversationTokenRenderer } from "../markdown/conversation-token-renderer";
+import { streamdownComponents } from "../streamdown";
 
 const reads = vi.fn();
 const scope: ConversationMediaSource = {
@@ -580,11 +583,76 @@ describe("ordinary conversation media", () => {
         </>,
       ),
     );
-    const paragraphs = view.container.querySelectorAll("p");
-    expect(paragraphs[0]?.dataset.markdownImageGrid).toBe("true");
-    expect(paragraphs[1]?.dataset.wideMarkdownBlockKind).toBe("image");
-    expect(paragraphs[2]?.dataset.wideMarkdownBlock).toBeUndefined();
-    expect(paragraphs[3]?.dataset.wideMarkdownBlock).toBeUndefined();
+    expect(view.getByText("grid").dataset.markdownImageGrid).toBe("true");
+    expect(view.getByText("single").dataset.wideMarkdownBlockKind).toBe("image");
+    expect(view.getByText("audio").dataset.wideMarkdownBlock).toBeUndefined();
+    expect(view.getByText("text").dataset.wideMarkdownBlock).toBeUndefined();
+  });
+
+  test("keeps mixed media outside phrasing-only paragraphs without widening inline images", async () => {
+    const errors = vi.spyOn(console, "error");
+    const image = "data:image/png;base64,AA==";
+    const source = [
+      "Ordinary paragraph.",
+      `![Wide image](${image})`,
+      `![First image](${image}) ![Second image](${image})`,
+      `Inline **before** ![Mixed clip](data:video/webm;base64,AA==) *after*.`,
+      "**Bold before *Italic before ![Formatted clip](data:video/webm;base64,AA==) Italic after* Bold after**",
+      "[Link before ![Linked clip](data:video/webm;base64,AA==) Link after](https://example.test/review)",
+      "**![HTTP image](https://example.test/clip.webm)**",
+      `Inline image ![Inline image](${image}) stays beside its text.`,
+    ].join("\n\n");
+    const view = render(
+      mediaTree(
+        null,
+        <ConversationTokenRenderer
+          source={source}
+          streaming={false}
+          animate={false}
+          adaptive={false}
+          components={{ ...streamdownComponents, ...conversationMediaComponents }}
+        />,
+      ),
+    );
+    await waitFor(() => expect(view.getByLabelText("Mixed clip").tagName).toBe("VIDEO"));
+    const video = view.getByLabelText("Mixed clip");
+    expect(video.closest("p")).toBeNull();
+    expect(view.container.querySelector("p div, span > [data-slot='slider']")).toBeNull();
+    expect(view.getByText("Ordinary paragraph.").tagName).toBe("P");
+    expect(
+      view.getByText("before").compareDocumentPosition(video) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(
+      video.compareDocumentPosition(view.getByText("after")) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(view.getByAltText("Wide image").closest("[data-wide-markdown-block]")).not.toBeNull();
+    const gallery = view.getByAltText("First image").closest("[data-markdown-image-grid]");
+    expect(gallery).not.toBeNull();
+    expect(view.getByAltText("Second image").closest("[data-markdown-image-grid]")).toBe(gallery);
+    expect(view.getByAltText("Inline image").closest("[data-wide-markdown-block]")).toBeNull();
+    expect(view.getByAltText("Inline image").closest("[data-markdown-image-grid]")).toBeNull();
+    for (const label of ["Formatted clip", "Linked clip"]) {
+      await waitFor(() => expect(view.getByLabelText(label).tagName).toBe("VIDEO"));
+      expect(view.getByLabelText(label).closest("p, strong, em, del, a")).toBeNull();
+    }
+    expect(view.getByText("Bold before").closest("strong")).not.toBeNull();
+    expect(view.getByText("Bold after").closest("strong")).not.toBeNull();
+    expect(view.getByText("Italic before").closest("em")).not.toBeNull();
+    expect(view.getByText("Italic after").closest("em")).not.toBeNull();
+    expect(view.getByRole("link", { name: "Link before" }).getAttribute("href")).toBe(
+      "https://example.test/review",
+    );
+    expect(view.getByRole("link", { name: "Link after" }).getAttribute("href")).toBe(
+      "https://example.test/review",
+    );
+    expect(view.getByAltText("HTTP image").closest("strong")).not.toBeNull();
+    expect(
+      errors.mock.calls.filter((args) =>
+        /cannot.*(?:descendant|nested|contain)|hydration error|validateDOMNesting/iu.test(
+          args.map(String).join(" "),
+        ),
+      ),
+    ).toEqual([]);
   });
 
   test("fences the selected image's late download after gallery navigation and removal, even while its original trigger stays resident", async () => {

@@ -28,6 +28,7 @@ import type {
 import { projectThreadActivityPresentation } from "./thread-activity-presentation";
 import {
   countAgentBodyUnits,
+  countDeniedThreadActions,
   projectAgentBodyCollapsePresentation,
 } from "./agent-body-collapse-presentation";
 import type { ThreadWorkedForTiming } from "../thread-worked-for-time";
@@ -706,5 +707,6 @@ export function buildTurnViewModel(input: BuildTurnViewModelInput): ThreadTurnMo
       hasRenderableAgentBodyUnits &&
       !subagentActivityState.hasActiveActivity,
     collapsedMessageCount: countAgentBodyUnits(agentBodyCollapsePresentation.collapsibleUnits),
+    deniedActionCount: countDeniedThreadActions(input.turn?.items ?? []),
   };
 }

@@ -1,4 +1,7 @@
 import type { ThreadAgentRenderUnit, ThreadWorkedForBlockModel } from "../thread-stage-types";
+import type { CodexConversationItem } from "../../../lib/types";
+import { normalizeAutomaticApprovalReviewPayload } from "../../../../shared/codex-transcript-special-items";
+import { wasToolExecutionDeclinedByAutomaticReview } from "./tool-metadata/automatic-approval-review";
 
 /** One agent-body unit in canonical order; a persistent unit stays visible while work collapses. */
 export interface ThreadAgentBodyUnit {
@@ -70,4 +73,27 @@ export function countAgentBodyUnits(units: readonly ThreadAgentRenderUnit[]): nu
     (count, unit) => count + (unit.kind === "agentActivityGroup" ? unit.block.entries.length : 1),
     0,
   );
+}
+
+/** Counts historical review decisions, independently of where their tool rows are rendered. */
+export function countDeniedThreadActions(items: readonly CodexConversationItem[]): number {
+  return items.filter(
+    (item) =>
+      item.semanticKind === "automaticApprovalReview" &&
+      normalizeAutomaticApprovalReviewPayload(item.rawItem)?.status === "denied",
+  ).length;
+}
+
+/** A refusal lives on its standalone review or the execution that owns that review. */
+export function isDeniedAgentBodyUnit(unit: ThreadAgentRenderUnit): boolean {
+  if (unit.kind !== "entry") return false;
+  const { block } = unit;
+  if (block.type === "automaticApprovalReview")
+    return normalizeAutomaticApprovalReviewPayload(block.entry.rawItem)?.status === "denied";
+  if (block.type !== "exec" && block.type !== "fileChange") return false;
+  return wasToolExecutionDeclinedByAutomaticReview({
+    type: block.type,
+    entry: block.entry,
+    automaticApprovalReviews: block.automaticApprovalReviews,
+  });
 }

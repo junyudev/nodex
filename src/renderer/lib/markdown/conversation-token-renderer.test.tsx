@@ -39,6 +39,31 @@ const message = (content: string, streaming = true) => (
 );
 
 describe("the mounted conversation token document", () => {
+  test("keeps mixed media and its paragraph connected when streaming completes", async () => {
+    const source =
+      "Ordinary paragraph.\n\nBefore **the image** ![Inline image](data:image/png;base64,AA==) *after the image*.";
+    const view = render(message(source));
+    try {
+      const image = await view.findByAltText("Inline image");
+      const paragraph = image.closest("div");
+      expect(image.closest("p")).toBeNull();
+      expect(view.container.querySelector("p")?.textContent).toBe("Ordinary paragraph.");
+      view.rerender(message(`${source}\n\nCompleted.`, false));
+      expect(view.getByAltText("Inline image")).toBe(image);
+      expect(image.closest("div")).toBe(paragraph);
+      expect(
+        view.getByText("the image").compareDocumentPosition(image) &
+          Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy();
+      expect(
+        image.compareDocumentPosition(view.getByText("after the image")) &
+          Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy();
+    } finally {
+      view.unmount();
+    }
+  });
+
   test.each([
     ["needle and needle", "needle and needle"],
     ["needle [link](https://example.test) and needle", "needle link and needle"],

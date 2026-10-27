@@ -1,5 +1,6 @@
 import {
   createElement,
+  Fragment,
   memo,
   useId,
   useLayoutEffect,
@@ -23,6 +24,7 @@ import {
 import { markdownPublicLeafComponents } from "./markdown-public-leaves";
 import { useResolvedReducedMotion } from "../use-reduced-motion";
 import { findMarkdownOpenCodeFence } from "./markdown-prefix";
+import { classifyConversationMedia } from "../conversation-media/conversation-media-model";
 
 type Owner = ReturnType<typeof createConversationDocumentOwner>;
 interface RenderOptions {
@@ -57,6 +59,83 @@ function primitive(
 ) {
   const Component = components[tag] ?? markdownPublicLeafComponents[tag] ?? tag;
   return createElement(Component as ComponentType<Record<string, unknown>>, props, children);
+}
+
+function containsMediaNode(node: ConversationRenderNode): boolean {
+  return node.token.type === "image" || node.children.some(containsMediaNode);
+}
+
+function containsVideoNode(node: ConversationRenderNode): boolean {
+  return (
+    (node.token.type === "image" && classifyConversationMedia(node.token.href) === "video") ||
+    node.children.some(containsVideoNode)
+  );
+}
+
+function wrapInlineRun(
+  node: ConversationRenderNode,
+  options: RenderOptions,
+  children: ReactNode,
+  key: string,
+): ReactNode {
+  const token = node.token;
+  const identity = `${node.key}:${key}`;
+  if (token.type === "link" && !/^(?:javascript|vbscript|data):/iu.test(token.href))
+    return primitive("a", options.components, children, {
+      href: token.href,
+      title: token.title,
+      key: identity,
+    });
+  if (token.type === "strong" || token.type === "em" || token.type === "del")
+    return primitive(token.type, options.components, children, { key: identity });
+  return <Fragment key={identity}>{children}</Fragment>;
+}
+
+/** Keep native player controls outside phrasing wrappers while preserving their text runs. */
+function renderInlineMediaSiblings(
+  nodes: readonly ConversationRenderNode[],
+  options: RenderOptions,
+  wrap: (children: ReactNode, key: string) => ReactNode,
+): ReactNode {
+  const result: ReactNode[] = [];
+  let start = 0;
+  let precedingText = options.precedingText ?? "";
+  let runPrecedingText = precedingText;
+  const flush = (end: number) => {
+    if (start === end) return;
+    result.push(
+      wrap(
+        renderNodes(nodes.slice(start, end), { ...options, precedingText: runPrecedingText }),
+        nodes[start]!.key,
+      ),
+    );
+  };
+  for (const [index, node] of nodes.entries()) {
+    if (!containsVideoNode(node)) {
+      precedingText += node.token.raw;
+      continue;
+    }
+    flush(index);
+    const currentOptions = {
+      ...options,
+      precedingText,
+      decorate: node.token.type === "link" ? false : options.decorate,
+    };
+    result.push(
+      node.token.type === "image" ? (
+        <TokenNode key={node.key} node={node} options={currentOptions} />
+      ) : (
+        renderInlineMediaSiblings(node.children, currentOptions, (children, key) =>
+          wrap(wrapInlineRun(node, currentOptions, children, key), key),
+        )
+      ),
+    );
+    precedingText += node.token.raw;
+    start = index + 1;
+    runPrecedingText = precedingText;
+  }
+  flush(nodes.length);
+  return result;
 }
 
 function TokenText({
@@ -188,9 +267,22 @@ function TokenNode({
   readonly incomplete?: boolean;
   readonly inline?: ReactNode;
 }): ReactNode {
+  const token = node.token;
+  if (
+    options.components["nodex-media-paragraph"] &&
+    (token.type === "strong" ||
+      token.type === "em" ||
+      token.type === "del" ||
+      token.type === "link") &&
+    node.children.some(containsVideoNode)
+  )
+    return renderInlineMediaSiblings(
+      node.children,
+      token.type === "link" ? { ...options, decorate: false } : options,
+      (children, key) => wrapInlineRun(node, options, children, key),
+    );
   const owned = inline !== undefined ? inline : renderOwnedInline(node, options);
   if (owned !== undefined) return owned;
-  const token = node.token;
   const children = () => renderNodes(node.children, options);
   switch (token.type) {
     case "space":
@@ -219,7 +311,9 @@ function TokenNode({
         options.components["nodex-media-paragraph"] ? "nodex-media-paragraph" : "p",
         options.components,
         renderNodes(node.children, { ...options, precedingText: "" }),
-        options.components["nodex-media-paragraph"] ? { mediaSources } : {},
+        options.components["nodex-media-paragraph"]
+          ? { mediaSources, containsMedia: node.children.some(containsMediaNode) }
+          : {},
       );
     }
     case "heading":

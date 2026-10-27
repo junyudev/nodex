@@ -98,6 +98,14 @@ function renderThread(
   initial: VisibleConversationTurnEntry[],
   reducedMotion: boolean,
   initialRestoreSnapshot?: LocalConversationThreadRestoreSnapshot,
+  editing?: {
+    onHistoryBoundary: (
+      boundary:
+        | import("../../../../shared/codex-history-policy").CodexHistoryViewportBoundary
+        | null
+        | undefined,
+    ) => void;
+  },
 ) {
   localStorage.setItem(REDUCED_MOTION_STORAGE_KEY, reducedMotion ? "on" : "off");
   const store = createMaitaiStore();
@@ -126,7 +134,13 @@ function renderThread(
             }))}
             conversationId="viewport-thread"
             threadCwd={null}
-            editableTurnIds={new Set()}
+            editableTurnIds={
+              new Set(
+                editing ? initial.flatMap((value) => (value.turnId ? [value.turnId] : [])) : [],
+              )
+            }
+            onEditUserTurn={editing ? async () => {} : undefined}
+            onHistoryRetentionBoundaryChange={editing?.onHistoryBoundary}
             canForkFromTurn={false}
             initialScrollOffset={normalizeThreadRestoreDistanceFromBottomPx(
               initialRestoreSnapshot?.distanceFromBottomPx ?? 0,
@@ -806,4 +820,100 @@ describe("transcript viewport motion in Chromium", () => {
       view.dispose();
     }
   });
+});
+
+test("an earlier message editor keeps its DOM, focus and selection outside the virtual window, then releases on cancel", async () => {
+  let boundary:
+    | import("../../../../shared/codex-history-policy").CodexHistoryViewportBoundary
+    | null
+    | undefined;
+  const entries = Array.from({ length: 40 }, (_, index) => entry(index));
+  const view = renderThread(entries, true, undefined, {
+    onHistoryBoundary: (next) => {
+      boundary = next;
+    },
+  });
+  try {
+    await waitFor(() => expect(view.readController().getScrollElement()?.clientHeight).toBe(600));
+    await act(async () => {
+      await settleFrames(10);
+    });
+    const viewport = view.readController().getScrollElement()!;
+    const row = () =>
+      view.container.querySelector<HTMLElement>('[data-turn-key="viewport-turn-0"]');
+    expect(view.readController().getScrollDistanceFromBottomPx()).toBe(0);
+    expect(row()).toBeNull();
+    expect(view.container.querySelector('[data-turn-key="viewport-turn-39"]')).not.toBeNull();
+    await act(async () => {
+      view.readController().scrollToDistanceFromBottomPx(viewport.scrollHeight, "instant", "user");
+      await settleFrames(8);
+    });
+    await waitFor(() => expect(row()).not.toBeNull());
+    expect(view.container.querySelector('[data-turn-key="viewport-turn-39"]')).toBeNull();
+    const edit = row()!.querySelector<HTMLButtonElement>('button[aria-label="Edit message"]')!;
+    expect(edit).not.toBeNull();
+    await act(async () => {
+      fireEvent.click(edit);
+      await settleFrames();
+    });
+    const editor = view.getByRole("textbox", { name: "Edit message" }) as HTMLTextAreaElement;
+    await act(async () => {
+      fireEvent.change(editor, { target: { value: "Edited request with a preserved selection" } });
+      editor.setSelectionRange(7, 14, "backward");
+      await settleFrames();
+    });
+    expect(document.activeElement).toBe(editor);
+    await act(async () => {
+      view.readController().scrollToDistanceFromBottomPx(0, "auto", "user");
+      await settleFrames(8);
+    });
+    expect(editor.isConnected).toBe(true);
+    expect(document.activeElement).toBe(editor);
+    expect([editor.selectionStart, editor.selectionEnd, editor.selectionDirection]).toEqual([
+      7,
+      14,
+      "backward",
+    ]);
+    expect(editor.value).toBe("Edited request with a preserved selection");
+    expect(view.container.querySelectorAll("[data-turn-key]").length).toBeLessThan(12);
+    await waitFor(() => expect(boundary?.oldestRenderedTurnId).toBe("viewport-turn-0"));
+    await act(async () => {
+      view.readController().scrollToDistanceFromBottomPx(viewport.scrollHeight, "auto", "user");
+      await settleFrames(8);
+    });
+    expect(view.getByRole("textbox", { name: "Edit message" })).toBe(editor);
+    expect([editor.selectionStart, editor.selectionEnd, editor.selectionDirection]).toEqual([
+      7,
+      14,
+      "backward",
+    ]);
+    await act(async () => {
+      fireEvent.click(view.getByRole("button", { name: /^Cancel$/ }));
+      view.readController().scrollToDistanceFromBottomPx(0, "auto", "user");
+      await settleFrames(8);
+    });
+    await waitFor(() => expect(row()).toBeNull());
+    await waitFor(() => expect(boundary?.oldestRenderedTurnId).not.toBe("viewport-turn-0"));
+  } finally {
+    view.dispose();
+  }
+});
+
+test("a history replacement can remove the entire rendered window", async () => {
+  const entries = Array.from({ length: 40 }, (_, index) => entry(index));
+  const view = renderThread(entries, true);
+  try {
+    await act(async () => {
+      await settleFrames(8);
+    });
+    expect(view.container.querySelector('[data-turn-key="viewport-turn-39"]')).not.toBeNull();
+    await act(async () => {
+      view.update([]);
+      await settleFrames(8);
+    });
+    expect(view.container.querySelectorAll("[data-turn-key]")).toHaveLength(0);
+    expect(view.readController().getScrollDistanceFromBottomPx()).toBe(0);
+  } finally {
+    view.dispose();
+  }
 });

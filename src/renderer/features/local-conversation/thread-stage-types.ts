@@ -1065,6 +1065,8 @@ export interface ThreadTurnModel {
   agentBodyReplyBlockId: string | null;
   defaultAgentBodyCollapsed: boolean;
   collapsedMessageCount: number;
+  /** Historical automatic-review denials; a later approved retry does not erase them. */
+  deniedActionCount: number;
 }
 
 export interface ThreadSearchUnitModel {

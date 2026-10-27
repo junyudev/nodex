@@ -87,6 +87,7 @@ async function canvasVideo(canvas: HTMLCanvasElement) {
 }
 
 test("decodes captured file media, preserves grouped image identity through terminal text, and drives silent native audio/video", async () => {
+  const errors = vi.spyOn(console, "error");
   const canvas = document.createElement("canvas");
   canvas.width = 640;
   canvas.height = 400;
@@ -111,7 +112,7 @@ test("decodes captured file media, preserves grouped image identity through term
     },
   });
   const content =
-    "![One](/media/one.png)\n\n![Two](/media/two.png)\n\n## Playback\n\n![Silent](/media/silent.wav)\n\n![Synthetic video](/media/clip.webm)";
+    "Ordinary paragraph.\n\n![One](/media/one.png)\n\n![Two](/media/two.png)\n\n## Playback\n\n![Silent](/media/silent.wav)\n\n[**Before video *![Synthetic video](/media/clip.webm)* after video**](https://example.test/review)";
   const revokeSource = vi.spyOn(URL, "revokeObjectURL");
   const client = createTestQueryClient();
   const tree = (streaming: boolean, value = content) => (
@@ -205,6 +206,23 @@ test("decodes captured file media, preserves grouped image identity through term
     expect(audio.paused).toBe(true);
     const video = view.getByLabelText("Synthetic video") as HTMLVideoElement;
     expect(video).toBe(streamingVideo);
+    expect(video.closest("p, strong, em, del, a")).toBeNull();
+    expect(view.container.querySelector("p div, span > [data-slot='slider']")).toBeNull();
+    expect(view.getByText("Ordinary paragraph.").tagName).toBe("P");
+    expect(
+      view.getByText("Before video").compareDocumentPosition(video) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(
+      video.compareDocumentPosition(view.getByText("after video")) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(view.getByRole("link", { name: "Before video" }).getAttribute("href")).toBe(
+      "https://example.test/review",
+    );
+    expect(view.getByRole("link", { name: "after video" }).getAttribute("href")).toBe(
+      "https://example.test/review",
+    );
     await waitFor(() => expect(video.videoWidth).toBe(640));
     expect(video.videoHeight).toBe(400);
     expect(video.controls).toBe(false);
@@ -238,6 +256,13 @@ test("decodes captured file media, preserves grouped image identity through term
     expect(video.getAttribute("src")).toBeNull();
     expect(video.paused).toBe(true);
     expect(revokeSource.mock.calls.filter(([url]) => url === decodedVideoUrl)).toHaveLength(1);
+    expect(
+      errors.mock.calls.filter((args) =>
+        /cannot.*(?:descendant|nested|contain)|hydration error|validateDOMNesting/iu.test(
+          args.map(String).join(" "),
+        ),
+      ),
+    ).toEqual([]);
   } finally {
     view.unmount();
     vi.restoreAllMocks();

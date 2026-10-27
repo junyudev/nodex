@@ -169,7 +169,7 @@ export function ConversationVideoPlayer({
 }: ConversationVideoPlayerProps) {
   const [failed, setFailed] = useState<string | null>(null);
   const [element, setElement] = useState<HTMLVideoElement | null>(null);
-  const [container, setContainer] = useState<HTMLSpanElement | null>(null);
+  const [container, setContainer] = useState<HTMLDivElement | null>(null);
   const [playback, setPlayback] = useState({
     playing: false,
     time: 0,
@@ -254,7 +254,7 @@ export function ConversationVideoPlayer({
   const pictureInPictureEnabled = element?.ownerDocument.pictureInPictureEnabled === true;
   return (
     <NodexTooltip tooltipContent={title}>
-      <span
+      <div
         ref={setContainer}
         className={cn(
           "flex min-h-0 min-w-0 flex-col overflow-hidden bg-surface",
@@ -309,15 +309,15 @@ export function ConversationVideoPlayer({
           onRateChange={(event) => update({ rate: event.currentTarget.playbackRate })}
           onError={() => setFailed(resource.identity)}
         />
-        <span className="@container/video-controls shrink-0 border-t border-(--color-border-subtle) select-none">
-          <span className="flex h-10 flex-wrap items-center gap-x-2 px-2 @max-xs/video-controls:h-auto @max-xs/video-controls:py-1">
+        <div className="@container/video-controls shrink-0 border-t border-(--color-border-subtle) select-none">
+          <div className="flex h-10 flex-wrap items-center gap-x-2 px-2 @max-xs/video-controls:h-auto @max-xs/video-controls:py-1">
             <MediaControlButton
               label={playback.playing ? "Pause video" : "Play video"}
               onClick={toggle}
             >
               {playback.playing ? <MediaPauseIcon /> : <MediaPlayIcon />}
             </MediaControlButton>
-            <span className="flex min-w-0 flex-1 @max-xs/video-controls:order-first @max-xs/video-controls:basis-full">
+            <div className="flex min-w-0 flex-1 @max-xs/video-controls:order-first @max-xs/video-controls:basis-full">
               <MediaSlider
                 label="Seek in video"
                 valueText={progress}
@@ -345,11 +345,11 @@ export function ConversationVideoPlayer({
                   if (element && resource.isCurrent()) update({ time: seekMedia(element, time) });
                 }}
               />
-            </span>
+            </div>
             <span className="shrink-0 text-xs whitespace-nowrap semantic-text-secondary tabular-nums">
               {progress}
             </span>
-            <span className="ms-auto flex shrink-0 items-center gap-1.5">
+            <div className="ms-auto flex shrink-0 items-center gap-1.5">
               <NodexPopover>
                 <NodexPopoverTrigger>
                   <MediaControlButton label="Video volume">{volumeIcon}</MediaControlButton>
@@ -361,7 +361,7 @@ export function ConversationVideoPlayer({
                   aria-label="Video volume"
                   className="w-auto px-2"
                 >
-                  <span className="flex w-40 items-center gap-2">
+                  <div className="flex w-40 items-center gap-2">
                     <MediaControlButton
                       label={playback.muted ? "Unmute video" : "Mute video"}
                       aria-pressed={playback.muted}
@@ -382,7 +382,7 @@ export function ConversationVideoPlayer({
                         if (element && resource.isCurrent()) setMediaVolume(element, volume);
                       }}
                     />
-                  </span>
+                  </div>
                 </NodexPopoverContent>
               </NodexPopover>
               <NodexDropdownMenu
@@ -444,15 +444,15 @@ export function ConversationVideoPlayer({
                   {fullscreen ? <MediaExitFullscreenIcon /> : <MediaFullscreenIcon />}
                 </MediaControlButton>
               ) : null}
-            </span>
-          </span>
+            </div>
+          </div>
           {actionFailed || downloadFailed ? (
             <span role="status" className="block px-2 pb-2 text-xs semantic-text-secondary">
               Could not complete this video action. Try again
             </span>
           ) : null}
-        </span>
-      </span>
+        </div>
+      </div>
     </NodexTooltip>
   );
 }

@@ -3,6 +3,7 @@ import {
   appScope,
   scopedAtom,
   scopedAtomFamily,
+  scopedDerivedAtom,
   useScopeHandle,
   useScopedAtomValue,
   type ScopeHandle,
@@ -35,6 +36,7 @@ interface LatestTurnCollapseTransitionEntry {
 }
 
 const EMPTY_COLLAPSE_KEY_INDEX: Readonly<Record<string, readonly string[]>> = Object.freeze({});
+const EMPTY_EDITING_TURN_IDS: readonly string[] = Object.freeze([]);
 
 export const EMPTY_LOCAL_CONVERSATION_THREAD_RESTORE_SNAPSHOT: LocalConversationThreadRestoreSnapshot =
   Object.freeze({
@@ -79,6 +81,48 @@ export const localConversationUserTurnEditDraftFamily = scopedAtomFamily({
 const editDraftTurnIdsByConversationIdAtom = scopedAtom<
   Readonly<Record<string, readonly string[]>>
 >(appScope, EMPTY_COLLAPSE_KEY_INDEX, { debugLabel: "local-conversation-edit-draft-key-index" });
+
+const localConversationEditDraftTurnIdsFamily = scopedAtomFamily({
+  scope: appScope,
+  debugLabel: "local-conversation-edit-draft-turn-ids",
+  create: (conversationId: string) =>
+    scopedDerivedAtom(
+      appScope,
+      (get) => get(editDraftTurnIdsByConversationIdAtom)[conversationId] ?? EMPTY_EDITING_TURN_IDS,
+      { debugLabel: "turn-ids" },
+    ),
+});
+
+const localConversationUserTurnIsEditingFamily = scopedAtomFamily({
+  scope: appScope,
+  debugLabel: "local-conversation-user-turn-is-editing",
+  key: ({ conversationId, turnId }: UserTurnEditDraftKey) => ({ conversationId, turnId }),
+  create: (key: UserTurnEditDraftKey) =>
+    scopedDerivedAtom(
+      appScope,
+      (get) => get(localConversationUserTurnEditDraftFamily(key)) !== null,
+      {
+        debugLabel: "is-editing",
+      },
+    ),
+});
+
+const localConversationEditingTurnIdsFamily = scopedAtomFamily({
+  scope: appScope,
+  debugLabel: "local-conversation-editing-turn-ids",
+  create: (conversationId: string) =>
+    scopedDerivedAtom<readonly string[]>(
+      appScope,
+      (get) => {
+        const turnIds = get(localConversationEditDraftTurnIdsFamily(conversationId));
+        const editing = turnIds.filter((turnId) =>
+          get(localConversationUserTurnIsEditingFamily({ conversationId, turnId })),
+        );
+        return editing.length === 0 ? EMPTY_EDITING_TURN_IDS : editing;
+      },
+      { debugLabel: "turn-ids" },
+    ),
+});
 
 const deletedConversationIdsAtom = scopedAtom<Readonly<Record<string, true>>>(
   appScope,
@@ -212,10 +256,13 @@ export function removeLocalConversationViewState(
     conversationId,
   );
   for (const turnId of draftTurnIds) {
-    removed =
-      localConversationUserTurnEditDraftFamily.remove(handle, { conversationId, turnId }) ||
-      removed;
+    const key = { conversationId, turnId };
+    handle.set(localConversationUserTurnEditDraftFamily(key), null);
+    removed = localConversationUserTurnEditDraftFamily.remove(handle, key) || removed;
+    removed = localConversationUserTurnIsEditingFamily.remove(handle, key) || removed;
   }
+  removed = localConversationEditingTurnIdsFamily.remove(handle, conversationId) || removed;
+  removed = localConversationEditDraftTurnIdsFamily.remove(handle, conversationId) || removed;
   return removed || collapseKeys.length > 0 || draftTurnIds.length > 0;
 }
 
@@ -271,4 +318,9 @@ export function useLocalConversationUserTurnEditDraft(
   );
 
   return [turnId === null ? null : draft, setDraft] as const;
+}
+
+/** Open editors retain their Turn without publishing each draft keystroke to the transcript. */
+export function useLocalConversationEditingTurnIds(conversationId: string): readonly string[] {
+  return useScopedAtomValue(localConversationEditingTurnIdsFamily(conversationId));
 }

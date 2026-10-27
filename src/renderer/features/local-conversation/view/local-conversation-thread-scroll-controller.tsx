@@ -251,6 +251,7 @@ function LocalConversationThreadScrollControllerProvider({ children }: { childre
     (element: HTMLDivElement | null) => {
       if (scrollElementRef.current !== element) cancelNativeFindScroll();
       scrollElementRef.current = element;
+      roundedScrollRequestRef.current = null;
       setScrollElement(element);
     },
     [cancelNativeFindScroll],

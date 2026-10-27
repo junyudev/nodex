@@ -22,7 +22,7 @@ function getSharedResizeObserver(): ResizeObserver | null {
   sharedResizeObserver = new ResizeObserver((entries) => {
     for (const entry of entries) {
       lastResizeEntries.set(entry.target, entry);
-      for (const subscription of resizeSubscriptions.get(entry.target) ?? []) {
+      for (const subscription of Array.from(resizeSubscriptions.get(entry.target) ?? [])) {
         subscription(entry);
       }
     }

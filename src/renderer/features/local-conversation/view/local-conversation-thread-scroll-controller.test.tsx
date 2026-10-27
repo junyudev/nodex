@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from "vite-plus/test";
 import { act } from "@testing-library/react";
-import { useEffect, type ReactNode } from "react";
+import { useCallback, useEffect, type ReactNode } from "react";
 import { motionValue } from "motion/react";
 import { installAsyncRequestAnimationFrame } from "../../../test/browser-globals";
 import { render, settleAsyncRender } from "../../../test/dom";
@@ -830,6 +830,78 @@ describe("LocalConversationThreadScrollLayout", () => {
       ]);
     } finally {
       await fixture.dispose();
+    }
+  });
+
+  test("a replacement viewport does not inherit the previous viewport's rounded scroll request", async () => {
+    const controllers: LocalConversationThreadScrollControllerValue[] = [];
+    const replacementDistances: number[] = [];
+    function NativeViewport({ replacement }: { readonly replacement: boolean }) {
+      const {
+        registerScrollElement,
+        getScrollDistanceFromBottomPx,
+        getUnroundedScrollDistanceFromBottomPx,
+      } = useLocalConversationThreadScrollController();
+      const registerViewport = useCallback(
+        (viewport: HTMLDivElement | null) => {
+          if (viewport) {
+            Object.defineProperties(viewport, {
+              scrollHeight: { configurable: true, value: 2_000 },
+              clientHeight: { configurable: true, value: 500 },
+              scrollTo: {
+                configurable: true,
+                value: ({ top = 0 }: ScrollToOptions) => {
+                  viewport.scrollTop = Math.round(top);
+                },
+              },
+            });
+            viewport.scrollTop = 1_400;
+          }
+          registerScrollElement(viewport);
+          if (viewport && replacement)
+            replacementDistances.push(
+              getUnroundedScrollDistanceFromBottomPx(getScrollDistanceFromBottomPx()),
+            );
+        },
+        [
+          registerScrollElement,
+          getScrollDistanceFromBottomPx,
+          getUnroundedScrollDistanceFromBottomPx,
+          replacement,
+        ],
+      );
+      return <div ref={registerViewport} />;
+    }
+    const renderViewport = (key: string) => (
+      <EnsureLocalConversationThreadScrollController>
+        <ControllerProbe onController={(controller) => controllers.push(controller)} />
+        <NativeViewport key={key} replacement={key === "replacement"} />
+      </EnsureLocalConversationThreadScrollController>
+    );
+    const view = render(renderViewport("initial"));
+    try {
+      await settleAsyncRender();
+      const controller = controllers.at(-1);
+      if (!controller) throw new Error("Expected a mounted conversation controller.");
+      const previousViewport = controller.getScrollElement();
+      await act(async () => {
+        controller.compensateScrollToDistanceFromBottomPx(100.5);
+        await Promise.resolve();
+      });
+      expect(controller.getScrollDistanceFromBottomPx()).toBe(100);
+      expect(controller.getUnroundedScrollDistanceFromBottomPx(100)).toBe(100.5);
+
+      await act(async () => {
+        view.rerender(renderViewport("replacement"));
+        await Promise.resolve();
+      });
+      expect(controller.getScrollElement()).not.toBe(previousViewport);
+      expect(replacementDistances).toEqual([100]);
+    } finally {
+      await act(async () => {
+        view.unmount();
+        await Promise.resolve();
+      });
     }
   });
 

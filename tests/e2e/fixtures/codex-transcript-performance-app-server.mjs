@@ -46,6 +46,39 @@ const handle = (command, state) => {
     record(command);
     return true;
   }
+  if (command.type === "denied") {
+    const review = {
+      threadId,
+      turnId: turn.id,
+      reviewId: command.reviewId,
+      targetItemId: command.targetItemId ?? null,
+      startedAtMs: Date.now(),
+      action: {
+        type: "command",
+        source: "unifiedExec",
+        command: command.command,
+        cwd: command.cwd ?? process.cwd(),
+      },
+    };
+    writeState(state);
+    notify("item/autoApprovalReview/started", {
+      ...review,
+      review: { status: "inProgress", riskLevel: "high", userAuthorization: "low", rationale: null },
+    });
+    notify("item/autoApprovalReview/completed", {
+      ...review,
+      completedAtMs: Date.now(),
+      decisionSource: "agent",
+      review: {
+        status: "denied",
+        riskLevel: "high",
+        userAuthorization: "low",
+        rationale: command.rationale ?? "Changing the protected file was not requested.",
+      },
+    });
+    record(command);
+    return true;
+  }
   if (command.type === "start") {
     // A commentary sibling settles first; the final answer then streams like Codex streams it.
     const sibling = { ...message("stream-sibling", "commentary"), text: "Unchanged sibling" };

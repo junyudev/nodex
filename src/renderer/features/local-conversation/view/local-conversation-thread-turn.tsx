@@ -1,6 +1,7 @@
 import { AnimatePresence, motion } from "motion/react";
-import { Fragment, type ReactNode, type RefCallback } from "react";
-import { ChevronRightIcon } from "@/components/shared/icons";
+import { Fragment, useLayoutEffect, useRef, type ReactNode, type RefCallback } from "react";
+import { AutomaticApprovalReviewIcon, ChevronRightIcon } from "@/components/shared/icons";
+import { NodexTooltip } from "@/components/ui/tooltip";
 import { useResolvedReducedMotion } from "@/lib/use-reduced-motion";
 import type { CodexConversationChildMembership, ProtocolAppInfo } from "../../../lib/types";
 import type { ReviewOpenIntent } from "@/features/review/model/review-view-state";
@@ -17,7 +18,10 @@ import { useWorkedForLabelText } from "./shared/use-worked-for-label";
 import { CodexShimmerText } from "./shared/codex-shimmer-text";
 import { ThreadBlockRenderer } from "./blocks/local-conversation-block-renderer";
 import { ThreadMcpAppsProvider } from "./shared/tools/mcp-apps-context";
-import { projectAgentBodyCollapsePresentation } from "../projection/agent-body-collapse-presentation";
+import {
+  isDeniedAgentBodyUnit,
+  projectAgentBodyCollapsePresentation,
+} from "../projection/agent-body-collapse-presentation";
 import { CodexFirstResponseVisibilityMarker } from "../codex-turn-first-response-view";
 import { CodexTranscriptReasoningSummary } from "../normalized-transcript-hooks";
 import { LocalConversationEndResources } from "./local-conversation-end-resources";
@@ -101,14 +105,16 @@ function ThreadGap() {
 
 function AgentBodyToggleRow({
   collapsedMessageCount,
+  deniedActionCount,
   workedForLabel,
   collapsed,
   onToggle,
 }: {
   collapsedMessageCount: number;
+  deniedActionCount: number;
   workedForLabel: string | null;
   collapsed: boolean;
-  onToggle: () => void;
+  onToggle: (revealDeniedAction: boolean) => void;
 }) {
   const label =
     workedForLabel ??
@@ -116,12 +122,13 @@ function AgentBodyToggleRow({
 
   return (
     <div className="flex flex-col">
-      <div className="text-size-chat text-token-text-secondary">
+      <div className="flex items-center gap-2 text-size-chat text-token-text-secondary">
         <button
           type="button"
-          className="text-size-chat inline-flex items-center gap-1 rounded-md border border-transparent focus-visible:ring-2 focus-visible:ring-token-focus-border focus-visible:outline-none"
+          className="text-size-chat inline-flex max-w-full items-center gap-1 rounded-md border border-transparent text-left focus-visible:ring-2 focus-visible:ring-token-focus-border focus-visible:outline-none"
           aria-expanded={!collapsed}
-          onClick={onToggle}
+          data-agent-body-toggle="true"
+          onClick={() => onToggle(false)}
         >
           <span>
             <span className="text-token-foreground/60">{label}</span>
@@ -133,6 +140,20 @@ function AgentBodyToggleRow({
             )}
           />
         </button>
+        {deniedActionCount > 0 ? (
+          <NodexTooltip tooltipContent="View denied actions">
+            <button
+              type="button"
+              aria-label={`View ${deniedActionCount} denied ${deniedActionCount === 1 ? "action" : "actions"}`}
+              className="ms-auto inline-flex shrink-0 items-center gap-1 rounded-md border border-transparent text-token-text-secondary focus-visible:ring-2 focus-visible:ring-token-focus-border focus-visible:outline-none"
+              data-denied-action-count="true"
+              onClick={() => onToggle(true)}
+            >
+              <AutomaticApprovalReviewIcon aria-hidden className="icon-xs" />
+              {deniedActionCount} denied {deniedActionCount === 1 ? "action" : "actions"}
+            </button>
+          </NodexTooltip>
+        ) : null}
       </div>
       <div className="text-size-chat pt-1 text-token-text-secondary">
         <div className="w-full border-t border-token-border-light" />
@@ -180,6 +201,7 @@ function AgentBodyUnitFrame({
       )}
       tabIndex={hasTargets ? -1 : undefined}
       {...unit.targetAttributes}
+      data-auto-review-denied={isDeniedAgentBodyUnit(unit) || undefined}
     >
       {children}
     </div>
@@ -257,6 +279,17 @@ function ThreadTurnBody({
     agentBodyCollapsePresentation.canCollapse;
   const effectiveAgentBodyCollapsed = shouldAllowAgentBodyCollapse ? agentBodyCollapsed : false;
   const { bodyUnits } = agentBodyCollapsePresentation;
+  const agentBodyRef = useRef<HTMLDivElement>(null);
+  const pendingDeniedActionRef = useRef<{ turnKey: string; blockKey: string } | null>(null);
+  const deniedActionFrameRef = useRef<number | null>(null);
+  useLayoutEffect(() => {
+    const turnKey = turn.turnKey;
+    return () => {
+      if (pendingDeniedActionRef.current?.turnKey !== turnKey) return;
+      pendingDeniedActionRef.current = null;
+      if (deniedActionFrameRef.current !== null) cancelAnimationFrame(deniedActionFrameRef.current);
+    };
+  }, [turn.turnKey]);
   const firstVisibleBodyUnitIndex = effectiveAgentBodyCollapsed
     ? bodyUnits.findIndex(({ persistent }) => persistent)
     : 0;
@@ -266,6 +299,45 @@ function ThreadTurnBody({
   )?.unit;
   const reducedMotion = useResolvedReducedMotion();
   const agentBodyMotion = resolveCodexThreadAgentBodyMotion(reducedMotion);
+  const toggleAgentBody = (revealDeniedAction: boolean) => {
+    const target = revealDeniedAction
+      ? bodyUnits.find(({ unit }) => isDeniedAgentBodyUnit(unit))?.unit
+      : undefined;
+    pendingDeniedActionRef.current = target
+      ? { turnKey: turn.turnKey, blockKey: resolveThreadBlockRenderKey(target.block) }
+      : null;
+    if (deniedActionFrameRef.current !== null) {
+      cancelAnimationFrame(deniedActionFrameRef.current);
+      deniedActionFrameRef.current = null;
+    }
+    if (revealDeniedAction && !effectiveAgentBodyCollapsed) {
+      if (target) revealDeniedActionAfterExpansion(target);
+      return;
+    }
+    onAgentBodyCollapsedChange(
+      turn.turnKey,
+      revealDeniedAction ? false : !effectiveAgentBodyCollapsed,
+    );
+  };
+  const revealDeniedActionAfterExpansion = (unit: ThreadAgentRenderUnit) => {
+    const targetKey = resolveThreadBlockRenderKey(unit.block);
+    const request = pendingDeniedActionRef.current;
+    if (
+      effectiveAgentBodyCollapsed ||
+      request?.turnKey !== turn.turnKey ||
+      request.blockKey !== targetKey ||
+      deniedActionFrameRef.current !== null
+    )
+      return;
+    deniedActionFrameRef.current = requestAnimationFrame(() => {
+      deniedActionFrameRef.current = null;
+      if (pendingDeniedActionRef.current !== request) return;
+      pendingDeniedActionRef.current = null;
+      agentBodyRef.current
+        ?.querySelector<HTMLElement>("[data-auto-review-denied]")
+        ?.scrollIntoView({ block: "center", behavior: reducedMotion ? "instant" : "smooth" });
+    });
+  };
   const workedForItem = turn.workedForItem ?? agentBodyCollapsePresentation.workedForItem;
   const workedForLabel = useWorkedForLabelText({
     timing: workedForItem
@@ -364,14 +436,13 @@ function ThreadTurnBody({
               {shouldAllowAgentBodyCollapse ? (
                 <AgentBodyToggleRow
                   collapsedMessageCount={turn.collapsedMessageCount}
+                  deniedActionCount={turn.deniedActionCount}
                   workedForLabel={workedForLabel}
                   collapsed={effectiveAgentBodyCollapsed}
-                  onToggle={() =>
-                    onAgentBodyCollapsedChange(turn.turnKey, !effectiveAgentBodyCollapsed)
-                  }
+                  onToggle={toggleAgentBody}
                 />
               ) : null}
-              <div className="flex flex-col">
+              <div ref={agentBodyRef} className="flex flex-col">
                 {bodyUnits.map(({ unit, persistent }, index) => (
                   // A keyed slot per unit: work folds in place, and what stays visible never moves.
                   <AnimatePresence key={resolveThreadBlockRenderKey(unit.block)} initial={false}>
@@ -383,6 +454,7 @@ function ThreadTurnBody({
                         animate={agentBodyMotion.animate}
                         exit={agentBodyMotion.exit}
                         transition={agentBodyMotion.transition}
+                        onAnimationComplete={() => revealDeniedActionAfterExpansion(unit)}
                       >
                         <AgentBodyUnitFrame
                           unit={unit}

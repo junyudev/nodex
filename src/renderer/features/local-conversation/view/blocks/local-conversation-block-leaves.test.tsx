@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vite-plus/test";
 import { act, fireEvent, waitFor, within } from "@testing-library/react";
+import { useLayoutEffect } from "react";
 import type { AgentTurnItem } from "@nodex/agent-runtime/contracts";
 import type { CodexConversationItem } from "../../../../lib/types";
 import { NodexTooltipProvider as TooltipProvider } from "../../../../components/ui/tooltip";
@@ -36,6 +37,7 @@ import {
 import { ThreadBlockRenderer } from "./local-conversation-block-renderer";
 import { ConversationRecoveryActionsProvider } from "../conversation-recovery-actions";
 import { HookFeedbackSettingsNavigationProvider } from "../hook-feedback-settings-navigation";
+import { useLocalConversationEditingTurnIds } from "../local-conversation-thread-view-state";
 import type {
   ThreadAgentActivityGroupBlockModel,
   ThreadOpenThreadContext,
@@ -47,6 +49,14 @@ const scrollHeightDescriptor = Object.getOwnPropertyDescriptor(
   "scrollHeight",
 );
 const originalGetComputedStyle = window.getComputedStyle;
+
+function EditingTurnIdsProbe({ onChange }: { onChange: (turnIds: readonly string[]) => void }) {
+  const turnIds = useLocalConversationEditingTurnIds("thread-1");
+  useLayoutEffect(() => {
+    onChange(turnIds);
+  }, [onChange, turnIds]);
+  return null;
+}
 
 function buildCommandEntry(
   itemId: string,
@@ -511,8 +521,10 @@ describe("UserMessageBubble collapse", () => {
       completeRetry = resolve;
     });
     const onEditUserTurn = vi.fn().mockReturnValueOnce(first).mockReturnValueOnce(retry);
+    const editingTurnIds: Array<readonly string[]> = [];
     const { getByRole, queryByRole } = render(
       <TooltipProvider>
+        <EditingTurnIdsProbe onChange={(ids) => editingTurnIds.push(ids)} />
         <UserMessageBubble
           block={block}
           isLatestTurn
@@ -524,6 +536,7 @@ describe("UserMessageBubble collapse", () => {
     await act(async () => {
       fireEvent.click(getByRole("button", { name: "Edit message" }));
     });
+    expect(editingTurnIds.at(-1)).toEqual(["turn-1"]);
     const input = getByRole("textbox", { name: "Edit message" }) as HTMLTextAreaElement;
     await act(async () => {
       fireEvent.change(input, { target: { value: "  Revised request  " } });
@@ -549,6 +562,7 @@ describe("UserMessageBubble collapse", () => {
     expect((getByRole("textbox", { name: "Edit message" }) as HTMLTextAreaElement).value).toBe(
       "  Revised request  ",
     );
+    expect(editingTurnIds.at(-1)).toEqual(["turn-1"]);
     await act(async () => {
       fireEvent.submit(input.form!);
       await Promise.resolve();
@@ -560,14 +574,17 @@ describe("UserMessageBubble collapse", () => {
       await Promise.resolve();
     });
     await waitFor(() => expect(queryByRole("textbox", { name: "Edit message" })).toBeNull());
+    expect(editingTurnIds.at(-1)).toEqual([]);
   });
 
   test("edits with the Composer's keys and keeps the draft while the message scrolls away", async () => {
     const block = buildUserMessageBlock("Original request");
     block.userMessageActions = { canEdit: true, sentAtMs: null };
     const onEditUserTurn = vi.fn().mockResolvedValue(undefined);
+    const editingTurnIds: Array<readonly string[]> = [];
     const bubble = (visible: boolean) => (
       <TooltipProvider>
+        <EditingTurnIdsProbe onChange={(ids) => editingTurnIds.push(ids)} />
         {visible ? (
           <UserMessageBubble
             block={block}
@@ -603,6 +620,7 @@ describe("UserMessageBubble collapse", () => {
       await Promise.resolve();
     });
     expect(queryByRole("textbox", { name: "Edit message" })).toBeNull();
+    expect(editingTurnIds.at(-1)).toEqual([]);
     await act(async () => {
       fireEvent.click(getByRole("button", { name: "Edit message" }));
       await Promise.resolve();
@@ -620,6 +638,7 @@ describe("UserMessageBubble collapse", () => {
       message: "Rewritten request",
     });
     await waitFor(() => expect(queryByRole("textbox", { name: "Edit message" })).toBeNull());
+    expect(editingTurnIds.at(-1)).toEqual([]);
   });
 
   test("sends a multi-line edit with Cmd+Enter when the Composer reserves Enter for new lines", async () => {
