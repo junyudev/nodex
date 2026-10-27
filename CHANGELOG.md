@@ -6,7 +6,7 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 
-- Unsent answers to Agent questions survive reopening and restart. Optional questions remain answerable after work stops, let you answer a batch in parts, and keep later replies readable in chat history.
+- Agent questions keep unfinished answers across reopening and restart, support partial replies after work stops, and show readable answer history. Private responses stay hidden in copied and exported text.
 
 - macOS Appearance settings offer app-wide Font smoothing, enabled by default and synchronized across windows.
 - `/fast` and `/ultracode` toggle Fast and Ultracode from a Claude chat's composer, and Claude chats highlight the words Claude Code reacts to in a message, `ultrathink` and `ultracode`, with what each does for that turn.

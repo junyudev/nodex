@@ -1,4 +1,5 @@
 import { QuestionDictationButton } from "../../composer/question-dictation-button";
+import { visibleCodexUserInputAnswerValues as resolveTranscriptAnswers } from "../../../../../../shared/codex-user-input-answer-values";
 import {
   QUESTION_NAVIGATION_CONTROL,
   QUESTION_OUTLINE_ACTION_COLORS,
@@ -24,7 +25,7 @@ import {
 } from "@/components/shared/icons";
 import { resolveFormErrorMessage } from "../../../../../lib/forms";
 import { cn } from "../../../../../lib/utils";
-import type { CodexTranscriptEntry, CodexUserInputRequest } from "../../../../../lib/types";
+import type { CodexTranscriptEntry } from "../../../../../lib/types";
 import { buildCodexCanonicalRequestIdentityKey } from "../../../../../../shared/codex-conversation-state/codex-conversation-state";
 import { resolvePromptTextareaSize } from "../prompt-textarea-size";
 import { CODEX_THREAD_ACCORDION_TRANSITION } from "../thread-motion";
@@ -52,7 +53,6 @@ import {
   type UserInputFocusTarget,
 } from "./request-card-focus";
 
-type CodexUserInputQuestion = CodexUserInputRequest["questions"][number];
 const USER_INPUT_TEXTAREA_MAX_HEIGHT_PX = 160;
 
 const USER_INPUT_FOCUS_TARGET_ATTRIBUTE = "data-user-input-focus-target";
@@ -73,13 +73,6 @@ export type {
   RequestQuestionnaireDraft,
   RequestQuestionnairePolicy,
 } from "./request-card-questionnaire-state";
-
-function resolveTranscriptAnswers(question: CodexUserInputQuestion, values: string[]): string[] {
-  const normalizedValues = values.map((value) => value.trim()).filter((value) => value.length > 0);
-  if (normalizedValues.length === 0) return [];
-  if (!question.isSecret) return normalizedValues;
-  return ["Hidden response"];
-}
 
 type UserInputTranscriptItem = Pick<
   CodexTranscriptEntry,

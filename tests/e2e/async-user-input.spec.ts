@@ -232,7 +232,7 @@ test("preserves private questions and custom-answer restrictions through Agent e
     page = await startQuestionScenario(harness);
     const secret = page.locator('input[type="password"]');
     await expect(secret).toBeVisible({ timeout: 30_000 });
-    await expect(page.getByRole("button", { name: "Dictate", exact: true })).toBeDisabled();
+    await expect(page.getByRole("button", { name: "Dictate", exact: true })).toHaveCount(0);
     await secret.fill("synthetic-private-token");
     await secret.press("Enter");
     await expect(page.getByRole("radio", { name: "Project", exact: true })).toBeVisible();

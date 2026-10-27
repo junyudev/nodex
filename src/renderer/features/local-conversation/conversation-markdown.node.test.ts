@@ -36,6 +36,46 @@ function entry(items: CodexConversationItem[], diff?: string): VisibleConversati
 }
 
 describe("renderConversationMarkdown", () => {
+  test("copies visible answers while hiding private answers from exported Markdown", () => {
+    const markdown = renderConversationMarkdown({
+      turns: [
+        entry([
+          item("answers", {
+            type: "userInputResponse",
+            kind: "userInputResponse",
+            semanticKind: "userInputResponse",
+            status: "completed",
+            userInputQuestions: [
+              {
+                id: "private",
+                header: "Private",
+                question: "Token?",
+                isOther: true,
+                isSecret: true,
+                options: [],
+              },
+              { id: "scope", header: "Scope", question: "Where?", isOther: false, options: [] },
+              {
+                id: "blank",
+                header: "Blank",
+                question: "Anything else?",
+                isOther: true,
+                isSecret: true,
+                options: [],
+              },
+            ],
+            userInputAnswers: { private: ["private-token"], scope: [" Project "], blank: [" "] },
+          }),
+        ]),
+      ],
+    });
+
+    expect(markdown).toContain("> - Token?\n>   - Hidden response");
+    expect(markdown).toContain("> - Where?\n>   - Project");
+    expect(markdown).not.toContain("private-token");
+    expect(markdown.match(/Hidden response/g)).toHaveLength(1);
+  });
+
   test("frames the canonical transcript with a normalized title and final LF", () => {
     const markdown = renderConversationMarkdown({
       cwd: "/Users/asc/project",

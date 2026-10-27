@@ -1,4 +1,5 @@
 import type { CodexConversationItem } from "@/lib/types";
+import { visibleCodexUserInputAnswerValues } from "../../../shared/codex-user-input-answer-values";
 import type { VisibleConversationTurnEntry } from "./selectors";
 import { delegatedTaskMarkdownLines } from "./delegated-task-presentation";
 import {
@@ -363,7 +364,10 @@ function renderSystemEvent(item: CodexConversationItem, cwd: string | null): str
         "User input response",
         questions.flatMap((question) => [
           `- ${question.question}`,
-          ...(item.userInputAnswers?.[question.id] ?? []).map((answer) => `  - ${answer}`),
+          ...visibleCodexUserInputAnswerValues(
+            question,
+            item.userInputAnswers?.[question.id] ?? [],
+          ).map((answer) => `  - ${answer}`),
         ]),
       );
     }

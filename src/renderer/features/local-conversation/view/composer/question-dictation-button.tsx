@@ -61,6 +61,8 @@ export function QuestionDictationButton({
       toast.danger("Dictation is unavailable");
     },
   });
+  if (isSecret) return null;
+
   return (
     <button
       ref={button}

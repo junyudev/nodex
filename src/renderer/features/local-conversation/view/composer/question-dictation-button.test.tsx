@@ -49,16 +49,12 @@ test("dictation preserves the existing answer, records interaction and never sub
   expect(state.stop).not.toHaveBeenCalled();
 });
 
-test("secret answers cannot acquire dictation", async () => {
+test("secret answers omit dictation and cannot acquire its lease", () => {
   state.start.mockClear();
   const view = render(
     <QuestionDictationButton id="secret" value="Private" onChange={() => {}} isSecret />,
   );
-  const button = view.getByRole("button", { name: "Dictate" });
-  expect((button as HTMLButtonElement).disabled).toBe(true);
+  expect(view.queryByRole("button", { name: "Dictate" })).toBeNull();
   expect(state.input?.enabled).toBe(false);
-  await act(async () => {
-    fireEvent.click(button);
-  });
   expect(state.start).not.toHaveBeenCalled();
 });

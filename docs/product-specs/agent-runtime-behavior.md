@@ -528,7 +528,7 @@ Answer admission records cumulative per-question answers and a separate message 
 
 Synchronous question projection preserves custom-answer eligibility, private intent, initial answers, required questions and native blocking policy. A nonblocking synchronous question in a focused presented chat waits for 60 seconds of inactivity before a 90-second countdown; a background question starts that countdown immediately. Card interaction snoozes it, and timeout returns an empty response without choosing a default option. One host-owned deadline follows the exact request and process generation across windows; equal Thread and request IDs on different hosts remain independent.
 
-Answered synchronous questionnaires appear as a collapsed question-and-answer history item. Expanding it shows the submitted choices and text, with private answers replaced by `Hidden response`. The source response record retains its metadata and attachments independently of that private presentation.
+Answered synchronous questionnaires appear as a collapsed question-and-answer history item. Expanding it shows the submitted choices and text, with private answers replaced by `Hidden response`. Copied and exported Markdown uses the same private-answer presentation. The source response record retains its metadata and attachments independently of that private presentation.
 
 ## Execution location and worktree handoff
 

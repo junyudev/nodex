@@ -169,7 +169,7 @@ export function AsyncQuestionActions({
         }}
         className={cn(
           QUESTION_OUTLINE_ACTION_COLORS,
-          "gap-1 rounded-full px-2 text-sm leading-[18px] disabled:opacity-40",
+          "gap-1 rounded-full px-2 text-sm leading-[18px] disabled:opacity-40 data-disabled:opacity-40",
           seconds !== null &&
             "pe-[calc((var(--spacing-token-button-composer)-var(--spacing)*5)/2-1px)]",
         )}
@@ -194,7 +194,7 @@ export function AsyncQuestionActions({
         }}
         className={cn(
           QUESTION_PRIMARY_ACTION_COLORS,
-          "gap-1 rounded-full px-2 text-sm leading-[18px] disabled:opacity-40",
+          "gap-1 rounded-full px-2 text-sm leading-[18px] disabled:opacity-40 data-disabled:opacity-40",
         )}
       >
         {submitting ? <ActivitySpinnerIcon className="icon-xxs" /> : null}
