@@ -6,6 +6,8 @@ third_party/blocknote/packages/react/package.json
   s_cb8bbfdb133e81::t_07510c55a95329 64-67,70-71
 src/renderer/components/workbench/app-shell-tabs.test.tsx
   s_cb8bbfdb133e81::t_64b70f171c06be 12,103
+  s_cb8bbfdb133e81::t_cd93a0335060f6 12
+  s_cb8bbfdb133e81::t_d476914d85775f 103
 docs/development.md
   s_cb8bbfdb133e81::t_07510c55a95329 797-809
 pnpm-workspace.yaml
@@ -14,6 +16,8 @@ third_party/blocknote/packages/shadcn/package.json
   s_cb8bbfdb133e81::t_07510c55a95329 59,64-65
 src/renderer/components/workbench/workbench-shell.library-shell-navigation.test.tsx
   s_cb8bbfdb133e81::t_64b70f171c06be 3,1039,1280
+  s_cb8bbfdb133e81::t_cd93a0335060f6 3
+  s_cb8bbfdb133e81::t_d476914d85775f 1039,1280
 patches/yjs@13.6.33.patch
   s_cb8bbfdb133e81::t_07510c55a95329 1-423
 third_party/blocknote/packages/math-block/package.json
@@ -22,6 +26,7 @@ package.json
   s_cb8bbfdb133e81::t_07510c55a95329 224,229,274-276,314,317,327-328,341
 src/renderer/test/dom.tsx
   s_cb8bbfdb133e81::t_64b70f171c06be 82-95
+  s_cb8bbfdb133e81::t_6f92cd0ced3a29 82-95
 third_party/blocknote/packages/diagram-block/package.json
   s_cb8bbfdb133e81::t_07510c55a95329 64
 third_party/blocknote/packages/core/package.json
