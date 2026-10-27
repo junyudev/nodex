@@ -1,0 +1,26 @@
+scripts/release/cli.ts
+  s_6c9891f66c664a::t_0f7f645882e359 319
+  s_6c9891f66c664a::t_72cfa71ccd3523 320-322
+docs/release-macos.md
+  s_6c9891f66c664a::t_0f7f645882e359 645-652
+scripts/release/github-release.test.ts
+  s_6c9891f66c664a::t_0f7f645882e359 1-11,58-163
+scripts/release/github-release.ts
+  s_6c9891f66c664a::t_0f7f645882e359 76-79,84,92-125,468,472,500
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "9bbe53fb738c58fb0b45dce25e8534b8dba39409",
+  "prompts": {},
+  "sessions": {
+    "s_6c9891f66c664a": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17c10-a298-7620-9e1b-e48b054fb0cc",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
