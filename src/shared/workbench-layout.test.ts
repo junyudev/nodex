@@ -33,7 +33,7 @@ describe("getWorkbenchActiveSessionId", () => {
     expect(getWorkbenchActiveSessionId(layoutWithLocation({ kind: "empty" }))).toBeNull();
   });
 
-  test.each(["settings", "automations"] as const)(
+  test.each(["settings", "automations", "plugins"] as const)(
     "uses the canonical return location while %s is presented",
     (kind) => {
       expect(
@@ -61,6 +61,15 @@ describe("getWorkbenchPrimaryDestination", () => {
     [{ kind: "session", sessionId: "session-a", projectContextId: null }, "home"],
     [{ kind: "inbox" }, "home"],
     [{ kind: "automations", path: "/automations/new", returnTo: { kind: "library" } }, "scheduled"],
+    [{ kind: "plugins", path: "/plugins", returnTo: { kind: "library" } }, "plugins"],
+    [
+      {
+        kind: "settings",
+        path: "/settings/general",
+        returnTo: { kind: "plugins", path: "/skills", returnTo: { kind: "empty" } },
+      },
+      "plugins",
+    ],
     [
       { kind: "pending-worktree", clientThreadId: "pending-a", returnTo: { kind: "library" } },
       "home",

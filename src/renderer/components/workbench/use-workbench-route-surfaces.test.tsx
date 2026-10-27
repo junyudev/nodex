@@ -22,6 +22,15 @@ vi.mock("@/features/scheduled/scheduled-route", () => {
   };
 });
 
+vi.mock("@/features/plugins/view/plugins-route", () => {
+  loadedRoutes.push("plugins");
+  return {
+    PluginsRoute: ({ path }: { path: string }) => (
+      <output aria-label="Plugins route">{path}</output>
+    ),
+  };
+});
+
 vi.mock("./pending-worktree-route", () => {
   loadedRoutes.push("pending-worktree");
   return {
@@ -63,6 +72,19 @@ const input: Parameters<typeof useWorkbenchRouteSurfaces>[0] = {
       onReplyAboutTask: vi.fn(async () => undefined),
     },
   },
+  plugins: {
+    path: null,
+    props: {
+      navigation: {
+        path: null,
+        projectId: null,
+        onNavigate: vi.fn(),
+        onStartChat: vi.fn(),
+        onOpenSettings: vi.fn(),
+        onOpenHooksSettings: vi.fn(),
+      },
+    },
+  },
   pendingWorktree: {
     clientThreadId: null,
     props: { onClose: vi.fn(), onOpenThread: vi.fn(async () => undefined) },
@@ -70,12 +92,17 @@ const input: Parameters<typeof useWorkbenchRouteSurfaces>[0] = {
 };
 
 function Routes(props: Parameters<typeof useWorkbenchRouteSurfaces>[0]) {
-  const { settingsRouteShell, automationsRouteShell, pendingWorktreeRouteShell } =
-    useWorkbenchRouteSurfaces(props);
+  const {
+    settingsRouteShell,
+    automationsRouteShell,
+    pluginsRouteShell,
+    pendingWorktreeRouteShell,
+  } = useWorkbenchRouteSurfaces(props);
   return (
     <>
       {settingsRouteShell}
       {automationsRouteShell}
+      {pluginsRouteShell}
       {pendingWorktreeRouteShell}
     </>
   );
@@ -109,6 +136,14 @@ test("keeps Settings navigation ready and loads other auxiliary routes when pres
   expect(loadedRoutes).toEqual(["settings", "automations"]);
 
   await act(async () => {
+    view.rerender(<Routes {...input} plugins={{ ...input.plugins, path: "/plugins" }} />);
+    await vi.dynamicImportSettled();
+  });
+  expect((await view.findByRole("status", { name: "Plugins route" })).textContent).toBe("/plugins");
+  expect(view.queryByRole("status", { name: "Automations route" })).toBeNull();
+  expect(loadedRoutes).toEqual(["settings", "automations", "plugins"]);
+
+  await act(async () => {
     view.rerender(
       <Routes
         {...input}
@@ -121,5 +156,5 @@ test("keeps Settings navigation ready and loads other auxiliary routes when pres
     "pending-1",
   );
   expect(view.queryByRole("status", { name: "Automations route" })).toBeNull();
-  expect(loadedRoutes).toEqual(["settings", "automations", "pending-worktree"]);
+  expect(loadedRoutes).toEqual(["settings", "automations", "plugins", "pending-worktree"]);
 });

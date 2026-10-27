@@ -276,6 +276,12 @@ export type WorkbenchStableLocation =
       readonly kind: "automations";
       readonly path: string;
       readonly returnTo: WorkbenchSceneLocation;
+    }
+  | {
+      /** Customize: the plugin directory, plugin details, and Skills. */
+      readonly kind: "plugins";
+      readonly path: string;
+      readonly returnTo: WorkbenchSceneLocation;
     };
 
 export type WorkbenchLocationV9 =
@@ -292,14 +298,14 @@ export type WorkbenchLocationV9 =
       readonly returnTo: WorkbenchSceneLocation;
     };
 
-/** Home remembers its own routes; Space and Scheduled restore their own state. */
+/** Home remembers its own routes; Space, Scheduled, and Customize restore their own state. */
 export type WorkbenchHomeLocation = Exclude<
   WorkbenchStableLocation,
-  { readonly kind: "library" | "automations" }
+  { readonly kind: "library" | "automations" | "plugins" }
 >;
 
 /** Rail destinations that own a contextual sidebar. */
-export type WorkbenchPrimaryDestination = "home" | "space" | "scheduled";
+export type WorkbenchPrimaryDestination = "home" | "space" | "scheduled" | "plugins";
 
 export interface WorkbenchLayoutSnapshotV9 {
   readonly version: 9;
@@ -421,6 +427,7 @@ export function getWorkbenchPrimaryDestination(
 ): WorkbenchPrimaryDestination {
   if (location.kind === "settings") return getWorkbenchPrimaryDestination(location.returnTo);
   if (location.kind === "library") return "space";
+  if (location.kind === "plugins") return "plugins";
   return location.kind === "automations" ? "scheduled" : "home";
 }
 
@@ -432,6 +439,7 @@ export function getWorkbenchHomeLocation(
   if (
     location.kind === "library" ||
     location.kind === "automations" ||
+    location.kind === "plugins" ||
     location.kind === "pending-worktree"
   ) {
     return null;

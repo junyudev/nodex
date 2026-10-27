@@ -138,7 +138,8 @@ export function WorkbenchSidebarHeader({
   scrolledContentUnderHeader: boolean;
   onSearch: () => void;
   inlineSearch?: WorkbenchSidebarInlineSearch;
-  children: ReactNode;
+  /** Primary rows pinned under the title; destinations without them scroll from the title. */
+  children?: ReactNode;
 }) {
   const searchLabel = inlineSearch?.label ?? "Search";
   return (
@@ -146,7 +147,8 @@ export function WorkbenchSidebarHeader({
       data-app-action-sidebar-scroll-header=""
       data-scrolled-content-under-header={scrolledContentUnderHeader}
       className={cn(
-        "relative z-10 flex shrink-0 flex-col px-row-x pb-2",
+        "relative z-10 flex shrink-0 flex-col px-row-x",
+        (children != null || inlineSearch?.expanded) && "pb-2",
         scrolledContentUnderHeader &&
           "after:pointer-events-none after:absolute after:inset-x-0 after:bottom-0 after:h-[0.5px] after:bg-token-foreground/10 after:content-['']",
       )}
@@ -183,7 +185,7 @@ export function WorkbenchSidebarHeader({
         </div>
       </div>
       {inlineSearch?.expanded ? <div className="mb-1">{inlineSearch.field}</div> : null}
-      <div className="flex flex-col gap-px">{children}</div>
+      {children == null ? null : <div className="flex flex-col gap-px">{children}</div>}
     </div>
   );
 }

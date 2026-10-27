@@ -9,6 +9,8 @@ import {
   ScheduledSidebar,
   type ScheduledSidebarNavigation,
 } from "@/features/scheduled/scheduled-sidebar";
+import { CustomizeSidebar } from "@/features/plugins/view/customize-sidebar";
+import type { CustomizeNavigation } from "@/features/plugins/customize-navigation";
 import type { WorkbenchPrimaryDestination } from "../../../shared/workbench-layout";
 import type { SidebarPagesSectionProps } from "./sidebar-pages-section";
 import { WORKBENCH_SURFACE_GUTTER_PX } from "@/lib/workbench-shell-geometry";
@@ -59,6 +61,7 @@ interface WorkbenchSidebarProps {
   readonly destination: WorkbenchPrimaryDestination;
   readonly body: WorkbenchSidebarBodyProps;
   readonly scheduled: ScheduledSidebarNavigation;
+  readonly customize: CustomizeNavigation;
   readonly inline: WorkbenchInlineSidebarPlacement;
   readonly floating: WorkbenchFloatingSidebarPlacement;
 }
@@ -71,6 +74,7 @@ export function WorkbenchSidebar({
   destination,
   body,
   scheduled,
+  customize,
   inline,
   floating,
 }: WorkbenchSidebarProps) {
@@ -87,6 +91,16 @@ export function WorkbenchSidebar({
       return (
         <ScheduledSidebar
           navigation={scheduled}
+          width={placedBody.width}
+          getWindowZoom={placedBody.getWindowZoom}
+          onResizeWidth={placedBody.onResizeWidth}
+          {...placement}
+        />
+      );
+    if (sidebarDestination === "plugins")
+      return (
+        <CustomizeSidebar
+          navigation={customize}
           width={placedBody.width}
           getWindowZoom={placedBody.getWindowZoom}
           onResizeWidth={placedBody.onResizeWidth}

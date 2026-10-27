@@ -29,10 +29,9 @@ export interface WorkbenchAppRailProps {
 }
 
 interface WorkbenchRailEntry {
-  readonly id: WorkbenchPrimaryDestination | "plugins";
+  readonly id: WorkbenchPrimaryDestination;
   readonly label: string;
-  /** Only destinations that own a contextual sidebar can preview it on hover. */
-  readonly peekArea: WorkbenchSidebarPeekArea | null;
+  readonly peekArea: WorkbenchSidebarPeekArea;
   readonly icon: (active: boolean) => ReactNode;
   readonly onSelect: () => void;
 }
@@ -70,7 +69,7 @@ export function WorkbenchAppRail({
     {
       id: "plugins",
       label: "Plugins",
-      peekArea: null,
+      peekArea: "plugins",
       icon: () => <PluginsIcon className="size-5" />,
       onSelect: onPlugins,
     },
@@ -90,7 +89,7 @@ export function WorkbenchAppRail({
               aria-label={label}
               aria-current={active ? "page" : undefined}
               data-workbench-destination={id}
-              {...(peekArea ? { [WORKBENCH_SIDEBAR_PEEK_AREA_ATTRIBUTE]: peekArea } : {})}
+              {...{ [WORKBENCH_SIDEBAR_PEEK_AREA_ATTRIBUTE]: peekArea }}
               variant="ghostSecondary"
               size="icon"
               className={cn(

@@ -115,6 +115,34 @@ describe("WorkbenchWindowState", () => {
     expect(selectWorkbenchHome(reopened).location).toEqual(session.location);
   });
 
+  test("Customize is its own destination and switching to Scheduled keeps its Scene", () => {
+    const session = selectWorkbenchSession(
+      createWorkbenchWindowState(createDefaultWorkbenchLayoutSnapshot()),
+      { id: "session-a", projectId: "alpha" },
+    );
+    const plugins = openWorkbenchRoute(session, { kind: "plugins", path: "/plugins" });
+    expect(plugins.location).toEqual({
+      kind: "plugins",
+      path: "/plugins",
+      returnTo: session.location,
+    });
+    expect(getWorkbenchPrimaryDestination(plugins.location)).toBe("plugins");
+    expect(plugins.homeLocation).toEqual(session.location);
+
+    const scheduled = openWorkbenchRoute(plugins, { kind: "automations", path: "/automations" });
+    expect(scheduled.location).toEqual({
+      kind: "automations",
+      path: "/automations",
+      returnTo: session.location,
+    });
+    expect(navigateBackInWorkbenchWindow(scheduled).location).toEqual(plugins.location);
+    expect(selectWorkbenchHome(plugins).location).toEqual(session.location);
+
+    const reopened = createWorkbenchWindowState(snapshotWorkbenchWindowState(plugins));
+    expect(reopened.location).toEqual(plugins.location);
+    expect(reopened.homeLocation).toEqual(session.location);
+  });
+
   test("removing a Session leaves the Inbox and Settings over it in place", () => {
     const session = selectWorkbenchSession(
       createWorkbenchWindowState(createDefaultWorkbenchLayoutSnapshot()),

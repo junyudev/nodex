@@ -42,7 +42,7 @@ interface SidebarMotion {
 
 interface WorkbenchChromeLayoutInput {
   readonly activeSessionId: string | null;
-  readonly automationsRouteOpen: boolean;
+  readonly destinationRouteOpen: boolean;
   readonly bottomPanelOpen: boolean;
   readonly bottomPanelRequestedHeight: number | null;
   readonly headerLeftWidth: number;
@@ -83,7 +83,7 @@ function readRootFontSize(): number {
  */
 export function useWorkbenchChromeLayout({
   activeSessionId,
-  automationsRouteOpen,
+  destinationRouteOpen,
   bottomPanelOpen,
   bottomPanelRequestedHeight: persistedBottomPanelHeight,
   headerLeftWidth,
@@ -203,9 +203,9 @@ export function useWorkbenchChromeLayout({
         ? 0
         : resolveCodexAnimatedPanelSize(Number(latestProgress), Number(latestTargetSize)),
   );
-  const automationsRouteHeaderSlotSuppressed = useSyncedMotionValue(automationsRouteOpen ? 1 : 0);
+  const destinationRouteHeaderSlotSuppressed = useSyncedMotionValue(destinationRouteOpen ? 1 : 0);
   const rightHeaderShellSlotWidth = useTransform(
-    [rightPanelAnimatedWidth, automationsRouteHeaderSlotSuppressed],
+    [rightPanelAnimatedWidth, destinationRouteHeaderSlotSuppressed],
     ([latestRightPanelWidth, latestSuppressed]) =>
       Number(latestSuppressed) > 0 ? 0 : Number(latestRightPanelWidth),
   );

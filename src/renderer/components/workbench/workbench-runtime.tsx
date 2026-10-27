@@ -117,6 +117,12 @@ import {
 } from "@/lib/pending-worktree-runtime";
 import { useScheduledTasks } from "@/features/scheduled/use-scheduled-tasks";
 import type { ScheduledSidebarNavigation } from "@/features/scheduled/scheduled-sidebar";
+import type { CustomizeNavigation } from "@/features/plugins/customize-navigation";
+import {
+  buildPluginDirectoryPath,
+  buildPluginSettingsPath,
+  PLUGINS_SETTINGS_PATH,
+} from "@/features/plugins/plugins-routes";
 import type { ScheduledTaskChatOption } from "@/features/scheduled/scheduled-task-fields";
 import { buildScheduledTaskReplyPrompt } from "@/features/scheduled/scheduled-task-model";
 import { useBoard } from "@/lib/use-board";
@@ -528,6 +534,8 @@ export function WorkbenchRuntime({
     workbenchWindow.location.kind === "settings" ? workbenchWindow.location.path : null;
   const automationsPath =
     workbenchWindow.location.kind === "automations" ? workbenchWindow.location.path : null;
+  const pluginsPath =
+    workbenchWindow.location.kind === "plugins" ? workbenchWindow.location.path : null;
   const pendingWorktreeClientThreadId =
     workbenchWindow.location.kind === "pending-worktree"
       ? workbenchWindow.location.clientThreadId
@@ -555,27 +563,34 @@ export function WorkbenchRuntime({
     },
     [settingsPath, workbenchWindow],
   );
-  const setAutomationsPath = useCallback(
-    (path: string | null) => {
+  /**
+   * Scheduled and Customize are path routes over the current Scene. Closing either one
+   * returns to that Scene before another destination opens.
+   */
+  const setDestinationRoute = useCallback(
+    (kind: "automations" | "plugins", path: string | null) => {
+      const location = workbenchWindow.location;
       if (path === null) {
-        if (workbenchWindow.location.kind === "automations") {
+        if (location.kind === "automations" || location.kind === "plugins") {
           workbenchWindow.closeRoute();
         }
         return;
       }
-      if (workbenchWindow.location.kind === "automations") {
-        workbenchWindow.navigate(
-          {
-            ...workbenchWindow.location,
-            path,
-          },
-          { record: false },
-        );
+      if (location.kind === kind) {
+        workbenchWindow.navigate({ ...location, path }, { record: false });
         return;
       }
-      workbenchWindow.openRoute({ kind: "automations", path });
+      workbenchWindow.openRoute({ kind, path });
     },
     [workbenchWindow],
+  );
+  const setAutomationsPath = useCallback(
+    (path: string | null) => setDestinationRoute("automations", path),
+    [setDestinationRoute],
+  );
+  const setPluginsPath = useCallback(
+    (path: string | null) => setDestinationRoute("plugins", path),
+    [setDestinationRoute],
   );
   const setPendingWorktreeClientThreadId = useCallback(
     (clientThreadId: string | null, expectedHostId?: string) => {
@@ -1665,7 +1680,7 @@ export function WorkbenchRuntime({
     threadSummaryPanelLayoutMode,
   } = useWorkbenchChromeLayout({
     activeSessionId: activeSession?.id ?? null,
-    automationsRouteOpen: Boolean(automationsPath),
+    destinationRouteOpen: Boolean(automationsPath ?? pluginsPath),
     bottomPanelOpen,
     bottomPanelRequestedHeight: bottomPanel?.size.heightPx ?? null,
     headerLeftWidth,
@@ -1745,18 +1760,24 @@ export function WorkbenchRuntime({
     [closePendingWorktreeRoute, setAutomationsPath, setSettingsPath],
   );
 
-  const openSettingsAt = useCallback(
-    (sectionId: Parameters<typeof buildSettingsPath>[0], anchor?: string) => {
+  const openSettingsPath = useCallback(
+    (path: string) => {
       closePendingWorktreeRoute();
       setAutomationsPath(null);
       setReopenStableWorktreeAfterSettingsId(null);
       setReopenPendingWorktreeAfterSettingsClientThreadId(null);
       setLocalEnvironmentSettingsInitial(null);
-      setSettingsPath(
-        anchor ? buildSettingsAnchorPath(sectionId, anchor) : buildSettingsPath(sectionId),
-      );
+      setSettingsPath(path);
     },
     [closePendingWorktreeRoute, setAutomationsPath, setSettingsPath],
+  );
+
+  const openSettingsAt = useCallback(
+    (sectionId: Parameters<typeof buildSettingsPath>[0], anchor?: string) =>
+      openSettingsPath(
+        anchor ? buildSettingsAnchorPath(sectionId, anchor) : buildSettingsPath(sectionId),
+      ),
+    [openSettingsPath],
   );
 
   const openAgentSettings = useCallback(
@@ -1980,6 +2001,17 @@ export function WorkbenchRuntime({
       setAutomationsPath(path);
     },
     [closePendingWorktreeRoute, setAutomationsPath, setSettingsPath],
+  );
+
+  const openPlugins = useCallback(
+    (path = buildPluginDirectoryPath()) => {
+      closePendingWorktreeRoute();
+      setSettingsPath(null);
+      setReopenStableWorktreeAfterSettingsId(null);
+      setReopenPendingWorktreeAfterSettingsClientThreadId(null);
+      setPluginsPath(path);
+    },
+    [closePendingWorktreeRoute, setPluginsPath, setSettingsPath],
   );
 
   const presentExistingDatabaseView = useCallback(
@@ -2502,6 +2534,28 @@ export function WorkbenchRuntime({
         projectName: session.projectId ? (projectNames.get(session.projectId) ?? null) : null,
       }));
   }, [knownSessions, projects]);
+  const navigatePlugins = useCallback(
+    (path: string, options?: { readonly replace?: boolean }) => {
+      if (workbenchWindow.location.kind !== "plugins") {
+        openPlugins(path);
+        return;
+      }
+      workbenchWindow.navigate(
+        { ...workbenchWindow.location, path },
+        { record: options?.replace !== true },
+      );
+    },
+    [openPlugins, workbenchWindow],
+  );
+  const customizeNavigation: CustomizeNavigation = {
+    path: pluginsPath,
+    projectId: activeProjectId,
+    onNavigate: navigatePlugins,
+    onStartChat: (prompt) => void startNewChatWithPrompt({ projectId: activeProjectId, prompt }),
+    onOpenSettings: (target) =>
+      openSettingsPath(target == null ? PLUGINS_SETTINGS_PATH : buildPluginSettingsPath(target)),
+    onOpenHooksSettings: () => openSettingsAt("hooks-settings"),
+  };
   const scheduledSidebarNavigation: ScheduledSidebarNavigation = {
     tasks: scheduledTasks,
     selectedTaskId: scheduledRouteState?.automationId ?? null,
@@ -3385,92 +3439,102 @@ export function WorkbenchRuntime({
     },
     [ensureDefaultDraftSessionForProject, projects, setAutomationsPath, setSettingsPath],
   );
-  const { automationsRouteShell, pendingWorktreeRouteShell, settingsRouteShell } =
-    useWorkbenchRouteSurfaces({
-      settings: {
-        path: settingsPath,
-        props: {
-          onPathChange: setSettingsPath,
-          onBackToApp: closeSettings,
-          onRequestProjectPickerOpen,
-          onOpenThread: openSettingsThreadSessionById,
-          projects,
-          activeProjectId: activeProject?.id ?? activeProjectId,
-          initialLocalEnvironmentProjectId: localEnvironmentSettingsInitial?.projectId ?? null,
-          initialLocalEnvironmentConfigPath: localEnvironmentSettingsInitial?.configPath ?? null,
-          threadQueueFollowUpsEnabled,
-          onThreadQueueFollowUpsEnabledChange: handleThreadQueueFollowUpsEnabledChange,
-          composerEnterBehavior,
-          onComposerEnterBehaviorChange: handleComposerEnterBehaviorChange,
-          worktreeStartMode,
-          onWorktreeStartModeChange: handleWorktreeStartModeChange,
-          worktreeAutoBranchPrefix,
-          onWorktreeAutoBranchPrefixChange: handleWorktreeAutoBranchPrefixChange,
-          taskShorthandPagePromotionEnabled,
-          onTaskShorthandPagePromotionEnabledChange: handleTaskShorthandPagePromotionEnabledChange,
-        },
+  const {
+    automationsRouteShell,
+    pluginsRouteShell,
+    pendingWorktreeRouteShell,
+    settingsRouteShell,
+  } = useWorkbenchRouteSurfaces({
+    settings: {
+      path: settingsPath,
+      props: {
+        onPathChange: setSettingsPath,
+        onBackToApp: closeSettings,
+        onRequestProjectPickerOpen,
+        onOpenThread: openSettingsThreadSessionById,
+        projects,
+        activeProjectId: activeProject?.id ?? activeProjectId,
+        initialLocalEnvironmentProjectId: localEnvironmentSettingsInitial?.projectId ?? null,
+        initialLocalEnvironmentConfigPath: localEnvironmentSettingsInitial?.configPath ?? null,
+        threadQueueFollowUpsEnabled,
+        onThreadQueueFollowUpsEnabledChange: handleThreadQueueFollowUpsEnabledChange,
+        composerEnterBehavior,
+        onComposerEnterBehaviorChange: handleComposerEnterBehaviorChange,
+        worktreeStartMode,
+        onWorktreeStartModeChange: handleWorktreeStartModeChange,
+        worktreeAutoBranchPrefix,
+        onWorktreeAutoBranchPrefixChange: handleWorktreeAutoBranchPrefixChange,
+        taskShorthandPagePromotionEnabled,
+        onTaskShorthandPagePromotionEnabledChange: handleTaskShorthandPagePromotionEnabledChange,
       },
-      automations: {
-        path: scheduledRunPresented ? null : automationsPath,
-        props: {
-          tasks: scheduledTasks,
-          projects,
-          chats: scheduledChatOptions,
-          onNavigate: navigateScheduled,
-          onOpenHeartbeatChat: openScheduledTaskChat,
-          onReplyAboutTask: replyAboutScheduledTaskInPlace,
-          onOpenLocalEnvironmentsSettings: openLocalEnvironmentsSettings,
-        },
+    },
+    automations: {
+      path: scheduledRunPresented ? null : automationsPath,
+      props: {
+        tasks: scheduledTasks,
+        projects,
+        chats: scheduledChatOptions,
+        onNavigate: navigateScheduled,
+        onOpenHeartbeatChat: openScheduledTaskChat,
+        onReplyAboutTask: replyAboutScheduledTaskInPlace,
+        onOpenLocalEnvironmentsSettings: openLocalEnvironmentsSettings,
       },
-      pendingWorktree: {
-        clientThreadId: pendingWorktreeClientThreadId,
-        props: {
-          expectedHostId:
+    },
+    plugins: {
+      path: pluginsPath,
+      props: { navigation: customizeNavigation },
+    },
+    pendingWorktree: {
+      clientThreadId: pendingWorktreeClientThreadId,
+      props: {
+        expectedHostId:
+          workbenchWindow.location.kind === "pending-worktree"
+            ? workbenchWindow.location.expectedHostId
+            : undefined,
+        externalHeader: true,
+        onClose: closePendingWorktreeRoute,
+        onOpenThread: async (threadId) => {
+          if (!pendingWorktreeClientThreadId) return;
+          return await openResolvedPendingThreadSession(
+            pendingWorktreeClientThreadId,
+            threadId,
             workbenchWindow.location.kind === "pending-worktree"
               ? workbenchWindow.location.expectedHostId
               : undefined,
-          externalHeader: true,
-          onClose: closePendingWorktreeRoute,
-          onOpenThread: async (threadId) => {
-            if (!pendingWorktreeClientThreadId) return;
-            return await openResolvedPendingThreadSession(
-              pendingWorktreeClientThreadId,
-              threadId,
-              workbenchWindow.location.kind === "pending-worktree"
-                ? workbenchWindow.location.expectedHostId
-                : undefined,
-            );
-          },
-          onOpenPendingWorktree: setPendingWorktreeClientThreadId,
-          onCancelToSource: handOffCancelledPendingWorktree,
-          onEditEnvironment: (entry) => {
-            void openLocalEnvironmentsSettings({
-              projectId:
-                entry.launchMode === "start-conversation"
-                  ? (entry.startConversationParamsInput.projectAssignment?.projectId ?? null)
-                  : entry.launchMode === "fork-conversation"
-                    ? (entry.projectAssignment?.projectId ?? null)
-                    : null,
-              configPath: entry.localEnvironmentConfigPath ?? null,
-              reopenPendingWorktreeClientThreadId: pendingWorktreeClientThreadId,
-            });
-          },
+          );
+        },
+        onOpenPendingWorktree: setPendingWorktreeClientThreadId,
+        onCancelToSource: handOffCancelledPendingWorktree,
+        onEditEnvironment: (entry) => {
+          void openLocalEnvironmentsSettings({
+            projectId:
+              entry.launchMode === "start-conversation"
+                ? (entry.startConversationParamsInput.projectAssignment?.projectId ?? null)
+                : entry.launchMode === "fork-conversation"
+                  ? (entry.projectAssignment?.projectId ?? null)
+                  : null,
+            configPath: entry.localEnvironmentConfigPath ?? null,
+            reopenPendingWorktreeClientThreadId: pendingWorktreeClientThreadId,
+          });
         },
       },
-    });
+    },
+  });
+  // Scheduled and Customize are page routes over the Scene; they own the title row.
+  const destinationRouteShell = automationsRouteShell ?? pluginsRouteShell;
   // A full-width Scene panel covers the title row only while its Scene is showing,
   // never under a route such as Automations opened over it.
-  const appShellHeaderCoveredByScene = rightPanelFullWidth && automationsRouteShell == null;
+  const appShellHeaderCoveredByScene = rightPanelFullWidth && destinationRouteShell == null;
   const appShellHeaderCenterVisible =
     settingsRouteShell == null &&
     (activePanelOwnerKey != null ||
-      automationsRouteShell != null ||
+      destinationRouteShell != null ||
       pendingWorktreeRouteShell != null);
   const appShellHeaderActions = settingsPath
     ? null
     : pendingWorktreeRouteShell
       ? null
-      : automationsRouteShell || librarySceneOwner
+      : destinationRouteShell || librarySceneOwner
         ? sidebarHeaderActions
         : headerActions;
 
@@ -4958,7 +5022,7 @@ export function WorkbenchRuntime({
                             <SelectedAppShellHeaderContent />
                           )}
                         </div>
-                        {!automationsRouteShell ? (
+                        {!destinationRouteShell ? (
                           <HeaderInlineActionRail
                             slotPosition="center"
                             data-testid="thread-stage-header-summary-actions"
@@ -4970,12 +5034,12 @@ export function WorkbenchRuntime({
                     <HeaderShellSlot
                       side="right"
                       slotWidth={rightHeaderShellSlotWidth}
-                      minWidth={automationsRouteShell ? 0 : headerRightWidth}
+                      minWidth={destinationRouteShell ? 0 : headerRightWidth}
                       fallbackWidth={
-                        automationsRouteShell ? 0 : RIGHT_PANEL_HEADER_FALLBACK_SPACER_WIDTH_PX
+                        destinationRouteShell ? 0 : RIGHT_PANEL_HEADER_FALLBACK_SPACER_WIDTH_PX
                       }
                       fallbackRailWidth={
-                        automationsRouteShell ? 0 : RIGHT_PANEL_HEADER_FALLBACK_RAIL_WIDTH_PX
+                        destinationRouteShell ? 0 : RIGHT_PANEL_HEADER_FALLBACK_RAIL_WIDTH_PX
                       }
                       onMeasuredWidthChange={setHeaderRightWidth}
                       onMeasuredRailWidthChange={setHeaderRightRailWidth}
@@ -4997,7 +5061,7 @@ export function WorkbenchRuntime({
                         onHome={workbenchWindow.selectHome}
                         onSpace={workbenchWindow.selectLibrary}
                         onScheduled={() => openAutomations()}
-                        onPlugins={() => showUnavailableProduct("Plugins")}
+                        onPlugins={() => openPlugins()}
                         footer={
                           <WorkbenchRailFoot
                             onOpenSettings={openSettings}
@@ -5037,6 +5101,7 @@ export function WorkbenchRuntime({
                               destination={getWorkbenchPrimaryDestination(workbenchWindow.location)}
                               body={sidebarBody}
                               scheduled={scheduledSidebarNavigation}
+                              customize={customizeNavigation}
                               inline={{
                                 visible: showInlineSidebar,
                                 animatedWidth: realSidebarMotion.animatedWidth,
@@ -5090,6 +5155,17 @@ export function WorkbenchRuntime({
                                   {automationsRouteShell}
                                 </WorkbenchSessionScopePath>
                               ),
+                          }}
+                          plugins={{
+                            content: () => (
+                              <WorkbenchSessionScopePath
+                                thread={APP_SHELL_ROUTE_THREAD_SCOPE_DESCRIPTOR}
+                                route={{ routeKey: pluginsPath!, kind: "plugins" }}
+                                selected
+                              >
+                                {pluginsRouteShell}
+                              </WorkbenchSessionScopePath>
+                            ),
                           }}
                           session={{
                             content: () =>

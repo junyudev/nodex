@@ -28,7 +28,10 @@ test("rail entries remain keyboard reachable and reflect the selected destinatio
           onScheduled();
           setDestination("scheduled");
         }}
-        onPlugins={onPlugins}
+        onPlugins={() => {
+          onPlugins();
+          setDestination("plugins");
+        }}
       />
     );
   }
@@ -66,14 +69,13 @@ test("rail entries remain keyboard reachable and reflect the selected destinatio
   expect(onScheduled).toHaveBeenCalledOnce();
   expect(current()).toEqual(["Scheduled"]);
 
-  // Plugins is an entry point, not a destination: it never takes the current marker.
   await act(async () => {
     await userEvent.tab();
     await userEvent.keyboard("{Enter}");
   });
   expect(document.activeElement).toBe(plugins);
   expect(onPlugins).toHaveBeenCalledOnce();
-  expect(current()).toEqual(["Scheduled"]);
+  expect(current()).toEqual(["Plugins"]);
 
   await act(async () => {
     await userEvent.tab({ shift: true });

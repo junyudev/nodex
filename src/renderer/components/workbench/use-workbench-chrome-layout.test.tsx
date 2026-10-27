@@ -10,7 +10,7 @@ function ChromeGeometryFixture() {
   const targetWidth = useMotionValue(300);
   const { safeHeaderLeftWidth } = useWorkbenchChromeLayout({
     activeSessionId: null,
-    automationsRouteOpen: false,
+    destinationRouteOpen: false,
     bottomPanelOpen: false,
     bottomPanelRequestedHeight: null,
     headerLeftWidth: 0,
