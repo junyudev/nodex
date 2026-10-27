@@ -1,0 +1,23 @@
+CHANGELOG.md
+  s_1f621c9737ee85::t_8bd5b47d5dbd51 9
+docs/product-specs/plugins-behavior.md
+  s_1f621c9737ee85::t_8bd5b47d5dbd51 7-69
+docs/product-specs/workbench-shell.md
+  s_1f621c9737ee85::t_8bd5b47d5dbd51 5,12
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "57e8526266975fb21b7bd50b205f9dc758ea64bb",
+  "prompts": {},
+  "sessions": {
+    "s_1f621c9737ee85": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "dec682ee-8dcb-4974-b7cd-a9bfde733cc3",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
