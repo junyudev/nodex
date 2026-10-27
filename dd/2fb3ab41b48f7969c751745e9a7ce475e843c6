@@ -1,0 +1,80 @@
+third_party/blocknote/packages/diagram-block/src/helpers/initializeMermaid.ts
+  s_da642bbf5f98db::t_30e254b8553fae 17-19,21
+src/renderer/features/workspace-files/workspace-pdf-preview.test.tsx
+  s_da642bbf5f98db::t_93afcbc7dba4b7 119-143
+  s_da642bbf5f98db::t_6ed2b432fe250f 25
+src/renderer/lib/markdown/conversation-token-renderer.tsx
+  s_da642bbf5f98db::t_c61fa686571d0e 359-367,373-376
+src/renderer/lib/maitai/maitai-external-store.test.tsx
+  s_da642bbf5f98db::t_cb12d3924a841b 21-46
+docs/adr/0022-renderer-view-state-kernel.md
+  s_da642bbf5f98db::t_e1211709eb1e97 34
+  s_da642bbf5f98db::t_a656f68a70c1bb 36-37
+src/renderer/components/shared/readonly-code-block.tsx
+  s_da642bbf5f98db::t_cb12d3924a841b 16-20,32-37,44,71
+src/renderer/lib/markdown/conversation-token-renderer.test.tsx
+  s_da642bbf5f98db::t_cb12d3924a841b 42-65
+src/renderer/features/workspace-files/workspace-pdf-preview.browser.test.tsx
+  s_da642bbf5f98db::t_bf13841bde3364 29-34
+  s_da642bbf5f98db::t_15611191bb4a36 51-60,84-85,89-90
+src/renderer/features/workspace-files/workspace-pdf-preview.css
+  s_da642bbf5f98db::t_bf13841bde3364 8-10,33-37,40-41
+docs/product-specs/nfm-editor-equation-and-mermaid-preview-behavior.md
+  s_da642bbf5f98db::t_9b970b5bf85483 68
+package.json
+  s_da642bbf5f98db::t_54f8a5b57469df 206,209,215,227,260,309,318,320
+pnpm-lock.yaml
+  s_da642bbf5f98db::t_915f4ac9b0a2c9 121,217-218,226-227,244-245,275-276,374-375,521-522,548-549,554-555,570,1478-1479,1685-1686,1827-1829,1833-1835,1839-1841,1845-1846,1851-1853,2578-2580,2592-2593,2598-2599,2604-2605,2610-2611,2616-2617,2623-2624,2630-2631,2637-2638,2644-2645,2651-2652,2657-2658,2663-2664,4071-4074,4083-4086,4103-4106,4215-4217,5584-5587,6070-6072,6345-6346,6734-6736,6738-6739,7059-7060,7161-7163,7349-7350,7352-7353,7355-7356,7625-7627,8213-8216,8991,9059,9227-9231,9237-9240,9243-9244,9247,9251-9252,9723,9907,9909,9933,9936,9939,9942,9945,9948,9951,9954,9957,9960,9963,9966,9968-9978,11041,11043,11046,11048,11060-11063,11085-11088,11212,11215,11489,12483-12490,13017-13018,13373,13375-13376,13837,14120,14361,14365,14368,14377,14680,14682,14684,14686,14688,15078,15080,15218,15224,15745-15755,15909
+pnpm-workspace.yaml
+  s_da642bbf5f98db::t_a7dff52df21a13 36
+src/renderer/components/board/editor/block-transfer-drop.jsdom.test.ts
+  s_da642bbf5f98db::t_38ba721de4254b 2,38
+src/renderer/components/board/editor/block-transfer-drop.ts
+  s_da642bbf5f98db::t_ba9616cc3e9f33 1
+src/renderer/components/board/use-board-element-drag-monitor.test.tsx
+  s_da642bbf5f98db::t_5b5a56cbb199f2 4,15
+src/renderer/components/board/use-board-element-drag-monitor.ts
+  s_da642bbf5f98db::t_2001f6cc12070d 2
+src/renderer/components/workbench/app-shell-tabs.tsx
+  s_da642bbf5f98db::t_55ded286c4c650 4-6
+src/renderer/components/workbench/database-view-page-drag.jsdom.test.ts
+  s_da642bbf5f98db::t_dc9ba7a1f06598 4,20
+src/renderer/components/workbench/database-view-page-drag.ts
+  s_da642bbf5f98db::t_b4f4a9ba60fa48 1-4
+src/renderer/components/workbench/panel-group-tree.tsx
+  s_da642bbf5f98db::t_e36676254e5e01 4
+src/renderer/features/workspace-files/workspace-pdf-link-service.ts
+  s_da642bbf5f98db::t_d80b1b070f55ba 1-122
+src/renderer/features/workspace-files/workspace-pdf-preview.tsx
+  s_da642bbf5f98db::t_084bd5d7a1b5c9 8,97,99,106,276,340,754,756-762
+src/renderer/features/workspace-files/workspace-pdf-runtime.ts
+  s_da642bbf5f98db::t_cfffcdcd0baf79 3-4,12-16
+src/renderer/lib/markdown/conversation-tokens.ts
+  s_da642bbf5f98db::t_858fbcb18b4e8f 246-249
+src/renderer/lib/mermaid-runtime.ts
+  s_da642bbf5f98db::t_e6bbe41601c1a7 36-38
+src/shared/codex-markdown-text.test.ts
+  s_da642bbf5f98db::t_f0d26072c4eac7 32
+src/shared/codex-markdown-text.ts
+  s_da642bbf5f98db::t_a472e778dd359b 87-101,123,152
+third_party/blocknote/packages/diagram-block/package.json
+  s_da642bbf5f98db::t_81f7bf092979af 63
+vitest.browser.config.ts
+  s_da642bbf5f98db::t_324417311e4699 36
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "dd2fb3ab41b48f7969c751745e9a7ce475e843c6",
+  "prompts": {},
+  "sessions": {
+    "s_da642bbf5f98db": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17de2-fe35-7183-a447-e7dc22e73a92",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
