@@ -1,0 +1,88 @@
+packages/agent-runtime/vendor/shared/package.json
+  s_5cd527886c6c64::t_d67482d8d0fb3d 528
+pnpm-lock.yaml
+  s_5cd527886c6c64::t_7b296b40e07c46 1132-1133
+  s_cb8bbfdb133e81::t_30c342dd8061cf 180,272-273,281-282,299-300,330-331,432-433,576-577,603-604,609-610,1548-1549,1755-1756,1897-1899,1903-1905,1909-1911,1915-1916,1921-1923,2497-2499,2511-2512,2517-2518,2523-2524,2529-2530,2535-2536,2542-2543,2549-2550,2556-2557,2563-2564,2570-2571,2576-2577,2582-2583,4060-4063,4072-4075,4088-4090,4192-4194,5561-5564,6043-6045,6313-6314,6702-6704,6706-6707,7027-7028,7126-7128,7314-7315,7317-7318,7320-7321,7577-7579,8166-8169,8947,9015,9183-9187,9193-9196,9199-9200,9203,9207-9208,9604,9783,9785,9809,9812,9815,9818,9821,9824,9827,9830,9833,9836,9839,9842,9844-9854,10944,10946,10949,10951,10963-10966,10983,10985,11099,11102,12370-12377,12894-12895,13221,13223-13224,13678,13934,14158,14162,14165,14174,14423,14477,14479,14481,14483,14485,14801,14803,15477-15487,15643
+docs/adr/0022-renderer-view-state-kernel.md
+  s_cb8bbfdb133e81::t_316a9484800178 34,36-37
+docs/product-specs/nfm-editor-equation-and-mermaid-preview-behavior.md
+  s_cb8bbfdb133e81::t_985964c911fe77 68
+package.json
+  s_cb8bbfdb133e81::t_e52742a945f5f7 206,209,215,227,261,309,318,320
+pnpm-workspace.yaml
+  s_cb8bbfdb133e81::t_a95ab22d2eaab7 36
+src/renderer/components/board/editor/block-transfer-drop.jsdom.test.ts
+  s_cb8bbfdb133e81::t_9e33292eedbca4 2,38
+src/renderer/components/board/editor/block-transfer-drop.ts
+  s_cb8bbfdb133e81::t_99aadbf84790a2 1
+src/renderer/components/board/use-board-element-drag-monitor.test.tsx
+  s_cb8bbfdb133e81::t_755604e7cd8f33 4,15
+src/renderer/components/board/use-board-element-drag-monitor.ts
+  s_cb8bbfdb133e81::t_a64c6422050a32 2
+src/renderer/components/shared/readonly-code-block.tsx
+  s_cb8bbfdb133e81::t_1de5f9a8e886a3 16-20,32-37,44,71
+src/renderer/components/workbench/app-shell-tabs.tsx
+  s_cb8bbfdb133e81::t_645961dadb6ebc 4-6
+src/renderer/components/workbench/database-view-page-drag.jsdom.test.ts
+  s_cb8bbfdb133e81::t_3ad081daacedae 4,20
+src/renderer/components/workbench/database-view-page-drag.ts
+  s_cb8bbfdb133e81::t_05b43a49373411 1-4
+src/renderer/components/workbench/panel-group-tree.tsx
+  s_cb8bbfdb133e81::t_921707480b1350 4
+src/renderer/features/workspace-files/workspace-pdf-link-service.ts
+  s_cb8bbfdb133e81::t_4cc6432389337d 1-122
+src/renderer/features/workspace-files/workspace-pdf-preview.browser.test.tsx
+  s_cb8bbfdb133e81::t_3328af29f8a191 29-34,51-60,84-85,89-90
+src/renderer/features/workspace-files/workspace-pdf-preview.css
+  s_cb8bbfdb133e81::t_f1c720cdcde589 8-10,33-37,40-41
+src/renderer/features/workspace-files/workspace-pdf-preview.test.tsx
+  s_cb8bbfdb133e81::t_170a3da03c9d6d 25,119-143
+src/renderer/features/workspace-files/workspace-pdf-preview.tsx
+  s_cb8bbfdb133e81::t_591f1afb000e6b 8,97,99,106,276,340,754,756-762
+src/renderer/features/workspace-files/workspace-pdf-runtime.ts
+  s_cb8bbfdb133e81::t_9ca4efb43a9128 3-4,12-16
+src/renderer/lib/maitai/maitai-external-store.test.tsx
+  s_cb8bbfdb133e81::t_940dd7d8bf2291 21-46
+src/renderer/lib/markdown/conversation-token-renderer.test.tsx
+  s_cb8bbfdb133e81::t_4cf9ede6b83856 42-65
+src/renderer/lib/markdown/conversation-token-renderer.tsx
+  s_cb8bbfdb133e81::t_1b45e16ec536af 359-367,373-376
+src/renderer/lib/markdown/conversation-tokens.ts
+  s_cb8bbfdb133e81::t_23e503cdae36ec 246-249
+src/renderer/lib/mermaid-runtime.ts
+  s_cb8bbfdb133e81::t_61f88a15bdb84f 36-38
+src/shared/codex-markdown-text.test.ts
+  s_cb8bbfdb133e81::t_47bf5728d7f228 32
+src/shared/codex-markdown-text.ts
+  s_cb8bbfdb133e81::t_a0b0011e275292 87-101,123,152
+third_party/blocknote/packages/diagram-block/package.json
+  s_cb8bbfdb133e81::t_3e37964d586653 63
+third_party/blocknote/packages/diagram-block/src/helpers/initializeMermaid.ts
+  s_cb8bbfdb133e81::t_2a5d4bed993fe0 17-19,21
+vitest.browser.config.ts
+  s_cb8bbfdb133e81::t_1a6d0ccb1ddf62 36
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "ccee99929b0725474f98b06ebd2f1e64ec1f9283",
+  "prompts": {},
+  "sessions": {
+    "s_5cd527886c6c64": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a133d3-2428-7f03-89e7-aa68fbea7e5c",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_cb8bbfdb133e81": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "41a56adb-99ed-4c91-82f7-3190cbd4476f",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
