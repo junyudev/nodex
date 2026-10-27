@@ -1,0 +1,29 @@
+src/renderer/components/workbench/workbench-shell.routes-threads.test.tsx
+  s_b83c78f1774995::t_c24c6193a686ac 659
+src/renderer/styles/theme-surface.css
+  s_b83c78f1774995::t_11f4f12e02283e 37-47
+docs/product-specs/workbench-shell.md
+  s_b83c78f1774995::t_11f4f12e02283e 231
+src/renderer/components/workbench/workbench-scene-frame.tsx
+  s_b83c78f1774995::t_11f4f12e02283e 78-81
+src/renderer/components/workbench/workbench-scene-frame.browser.test.tsx
+  s_b83c78f1774995::t_c22ca4d57a32a8 12-18,78,84,88,92
+  s_b83c78f1774995::t_c24c6193a686ac 6,22,27,37,45,79-80,95-114,116,119-121
+  s_b83c78f1774995::t_25746f2e944c71 1-5,7-11,19-21,23-26,28-36,38-44,46-77,81-83,85-87,89-91,93-94,115,117-118,122-125
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "a9493c7374dfd864364160227d0466b3ee396399",
+  "prompts": {},
+  "sessions": {
+    "s_b83c78f1774995": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17c87-b6a8-7552-b76d-ec7cad431a52",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
