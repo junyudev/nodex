@@ -1,0 +1,50 @@
+scripts/ci/verify-tooling-contracts.ts
+  s_6c9891f66c664a::t_75fb58c253fd05 240
+  s_6c9891f66c664a::t_185ab7646f0ecb 238-239,241-242,253
+scripts/fixtures/tooling/nodex/testing-library-wait-in-act-valid.test.tsx
+  s_6c9891f66c664a::t_185ab7646f0ecb 1,4-36,52
+  s_6c9891f66c664a::t_e5890dde5bba24 3,44-50
+  s_6c9891f66c664a::t_f098dd5e62354d 2,37-43,51
+scripts/fixtures/tooling/nodex/testing-library-wait-in-act-invalid.test.tsx
+  s_6c9891f66c664a::t_185ab7646f0ecb 1-2,4-17,26,31
+  s_6c9891f66c664a::t_051f88c7a95688 3,18-25
+  s_6c9891f66c664a::t_75fb58c253fd05 27-30
+oxlint-plugin-nodex/index.ts
+  s_6c9891f66c664a::t_9e2d9dd041e9a0 6,17
+vite.config.ts
+  s_6c9891f66c664a::t_9e2d9dd041e9a0 215
+oxlint-plugin-nodex/rules/no-testing-library-wait-in-act.ts
+  s_6c9891f66c664a::t_051f88c7a95688 11-12,18,27,30-39,41-43,53-58,60-63,65-68,116
+  s_6c9891f66c664a::t_185ab7646f0ecb 1,20,118,120
+  s_6c9891f66c664a::t_9e2d9dd041e9a0 2-10,13-14,19,21-26,28-29,69-71,74-109,111-112,114-115,117,121-131
+  s_6c9891f66c664a::t_71cbaa0eeafd36 15-17,113
+  s_6c9891f66c664a::t_75fb58c253fd05 40,44-52,59,64,72-73,110,119
+src/renderer/components/board/editor/selected-block-decorations.browser.test.tsx
+  s_6c9891f66c664a::t_8f585bb2dac10b 545,547
+src/renderer/components/workbench/database-view-page-context-menu-host.test.tsx
+  s_6c9891f66c664a::t_5eb36c9c021260 65,67
+src/renderer/components/workbench/file-tree-context-menu.browser.test.tsx
+  s_6c9891f66c664a::t_34b85f1e5236b4 63-64
+src/renderer/components/workbench/space-home.test.tsx
+  s_6c9891f66c664a::t_5089351a37ee99 144,146
+src/renderer/features/local-conversation/view/local-conversation-selected-text-actions.browser.test.tsx
+  s_6c9891f66c664a::t_715713c606d823 146,148,172,174,176,178,190,192
+src/renderer/features/user-attachment-image-editor/view/single-image-editor.test.tsx
+  s_6c9891f66c664a::t_3555fde122c876 77
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "065bfcf5a95c352e524f1b1ed19c3afad4c69f30",
+  "prompts": {},
+  "sessions": {
+    "s_6c9891f66c664a": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17c10-a298-7620-9e1b-e48b054fb0cc",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
