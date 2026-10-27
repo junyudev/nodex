@@ -1,0 +1,125 @@
+src/renderer/features/workspace-files/workspace-pierre-editor.test.tsx
+  s_cb8bbfdb133e81::t_5531d4a3840630 4-5,14,16-17,55,58-61,72,92,105,162
+src/renderer/components/workbench/review-diff-panel.test.tsx
+  s_cb8bbfdb133e81::t_5531d4a3840630 44,486,489,522
+src/renderer/features/workspace-files/workspace-pierre-editor.tsx
+  s_cb8bbfdb133e81::t_5531d4a3840630 1-8,100,114,117-121,123-124,129-135,153,156,180,194,211,272,293,323-324,349,446,493,537
+docs/product-specs/workspace-file-git-data.md
+  s_cb8bbfdb133e81::t_5531d4a3840630 54-55
+src/renderer/features/local-conversation/view/shared/tools/file-change-tool-call.test.tsx
+  s_cb8bbfdb133e81::t_5531d4a3840630 58
+src/renderer/lib/code-block-syntax-theme.ts
+  s_cb8bbfdb133e81::t_5531d4a3840630 12,14
+patches/@pierre__diffs@1.6.1.patch
+  s_cb8bbfdb133e81::t_5531d4a3840630 1-59
+src/renderer/components/workbench/review-diff-panel.tsx
+  s_cb8bbfdb133e81::t_5531d4a3840630 2055
+src/renderer/lib/diff-presentation.ts
+  s_cb8bbfdb133e81::t_5531d4a3840630 7-8
+src/renderer/features/local-conversation/view/shared/tools/inline-file-diff.tsx
+  s_cb8bbfdb133e81::t_5531d4a3840630 4
+docs/development.md
+  s_cb8bbfdb133e81::t_bdec7aa9306b8d 33-35
+  s_cb8bbfdb133e81::t_e458e1d807d864 547-549
+src/renderer/features/local-conversation/view/shared/tools/tool-call-inspection.browser.test.tsx
+  s_cb8bbfdb133e81::t_5531d4a3840630 57-60,62-64
+package.json
+  s_cb8bbfdb133e81::t_5531d4a3840630 254
+  s_cb8bbfdb133e81::t_29fc81e11bf8da 240
+  s_cb8bbfdb133e81::t_e458e1d807d864 196-197,202,241
+pnpm-workspace.yaml
+  s_cb8bbfdb133e81::t_5531d4a3840630 7
+  s_cb8bbfdb133e81::t_bdec7aa9306b8d 22-23
+  s_cb8bbfdb133e81::t_29fc81e11bf8da 20-21,106
+  s_cb8bbfdb133e81::t_e458e1d807d864 9,99
+src/renderer/components/ui/source-viewer.stress.browser.test.tsx
+  s_cb8bbfdb133e81::t_5531d4a3840630 27,29-33
+src/renderer/features/workspace-files/workspace-pierre-editor.browser.test.tsx
+  s_cb8bbfdb133e81::t_5531d4a3840630 107,130,138,147,154,175,185,198,200,202,253,280,337-386,459-462,464
+src/renderer/components/ui/source-viewer.tsx
+  s_cb8bbfdb133e81::t_5531d4a3840630 52,78
+src/renderer/components/workbench/open-source-licenses-settings-page.browser.test.tsx
+  s_cb8bbfdb133e81::t_5531d4a3840630 2,6,31,34-39
+src/renderer/features/workspace-files/workspace-file-change-blocks.ts
+  s_cb8bbfdb133e81::t_5531d4a3840630 26
+pnpm-lock.yaml
+  s_cb8bbfdb133e81::t_907c5e94b7d55f 111,169,354-355,3383-3384,3388-3395,3401-3402,3404,10501,10503,10505,10509-10510,10516-10517,10520,10530
+  s_cb8bbfdb133e81::t_0111ad1702f678 109-110,165,168,185-186,188-189,203-204,312-313,315-316,660-661,663-664,675-676,726-727,781-782,785-786,797-798,801-802,804-805,807-808,825-826,829-830,832-833,835-836,859-860,863-864,866-867,896-897,900-901,903-904,930-931,934-935,937-938,949-950,952-953,955-956,958-959,970-971,974-975,977-978,992-993,1004-1005,1008-1009,1029-1030,1069-1070,1072-1073,1099-1100,1103-1104,1106-1107,1133-1134,1137-1138,1155-1156,1159-1160,1183-1184,1187-1188,1214-1215,1218-1219,1245-1246,1249-1250,1252-1253,1276-1277,1280-1281,1304-1305,1330-1331,1334-1335,1337-1338,1340-1341,1936-1937,1940-1941,1943-1944,1947,1949-1950,1953,1956-1957,1961-1962,1966-1967,1971-1972,1976-1977,1981-1982,1986-1987,1991-1992,1995-1996,1998,2689-2690,2692-2693,2695,2703-2704,2706-2707,6129-6130,9428,9430-9431,9436,9439,9445,9447-9448,9455,9458,9461,9464,9467,9470,9473,9476,9478-9484,9486,9488,9492,9494,10101,10105,10107-10108,10110,10113,10115-10116,10118,10121,13095
+tsconfig.effect.json
+  s_cb8bbfdb133e81::t_e458e1d807d864 41,43,49,93-97,99,115-116,180,182,188,227-231,233,248-249
+docs/LINTING.md
+  s_cb8bbfdb133e81::t_e458e1d807d864 44-45,226-230,245-247
+packages/effect-codex-app-server/package.json
+  s_cb8bbfdb133e81::t_e458e1d807d864 19,22-24
+packages/agent-runtime/src/orchestration-v2/OpenCode2OrchestratorV2.integration.test.ts
+  s_cb8bbfdb133e81::t_e458e1d807d864 69-75,271-304
+packages/agent-runtime/package.json
+  s_cb8bbfdb133e81::t_e458e1d807d864 29-30,34,51
+packages/agent-runtime/src/nodex/Ingress.test.ts
+  s_cb8bbfdb133e81::t_e458e1d807d864 117-123,338-344,454-460,830-836,953-959
+packages/agent-runtime/src/nodex/Ingress.ts
+  s_cb8bbfdb133e81::t_e458e1d807d864 302
+src/main/platform/node/NodeChildProcessSpawner.node.test.ts
+  s_cb8bbfdb133e81::t_e458e1d807d864 3,5,7,20-53
+  s_cb8bbfdb133e81::t_d1fec2d6f63c23 54-55
+patches/@effect__vitest@4.0.6.patch
+  s_cb8bbfdb133e81::t_e458e1d807d864 1-127
+packages/agent-runtime/src/provider/OpenCode2Client.test.ts
+  s_cb8bbfdb133e81::t_e458e1d807d864 1-49
+packages/agent-runtime/vendor/contracts/package.json
+  s_cb8bbfdb133e81::t_8f7ef1ae00ed27 28,31
+packages/agent-runtime/vendor/effect-acp/package.json
+  s_cb8bbfdb133e81::t_d56341d8e93843 44,47-49
+packages/agent-runtime/vendor/effect-codex-app-server/package.json
+  s_cb8bbfdb133e81::t_5bc9e4a6bfef9c 37,40-42
+packages/agent-runtime/vendor/provider-acp-registry/package.json
+  s_cb8bbfdb133e81::t_38b6ddabba04d5 40,43-44
+packages/agent-runtime/vendor/provider-acp/package.json
+  s_cb8bbfdb133e81::t_188a00ca8b42cc 51,54-55
+packages/agent-runtime/vendor/provider-core/package.json
+  s_cb8bbfdb133e81::t_ecdbceb791ad8a 206,209-210
+packages/agent-runtime/vendor/provider-opencode/package.json
+  s_cb8bbfdb133e81::t_39702af2827bf0 51-54,58,61-62
+packages/agent-runtime/vendor/provider-opencode/src/server/v2/OpenCode2Client.live.test.ts
+  s_cb8bbfdb133e81::t_729cbcb25953a8 94
+packages/agent-runtime/vendor/provider-opencode/src/server/v2/OpenCode2Client.ts
+  s_cb8bbfdb133e81::t_6ec5be0095f25d 9,191
+packages/agent-runtime/vendor/provider-testing/package.json
+  s_cb8bbfdb133e81::t_fce2051d7cd4b8 31,35,38
+packages/agent-runtime/vendor/shared/package.json
+  s_cb8bbfdb133e81::t_5a1be43bdbb36b 510,525-526
+packages/agent-runtime/vendor/shared/src/nodeSqliteClient.ts
+  s_cb8bbfdb133e81::t_1a8c20572c1b11 641
+packages/agent-runtime/vendor/source-control-azure-devops/package.json
+  s_cb8bbfdb133e81::t_5d20e89880db8c 51,54-55
+packages/agent-runtime/vendor/source-control-bitbucket/package.json
+  s_cb8bbfdb133e81::t_7cee8b992b00b0 47,50
+packages/agent-runtime/vendor/source-control-core/package.json
+  s_cb8bbfdb133e81::t_dd486a5c55655b 53,56
+packages/agent-runtime/vendor/source-control-forgejo/package.json
+  s_cb8bbfdb133e81::t_062abaa1f14d2b 43,46
+packages/agent-runtime/vendor/source-control-gitcafe/package.json
+  s_cb8bbfdb133e81::t_86222f56f2d48d 47,50
+packages/agent-runtime/vendor/source-control-github/package.json
+  s_cb8bbfdb133e81::t_f78fa99b4afcda 83,86-87
+packages/agent-runtime/vendor/source-control-gitlab/package.json
+  s_cb8bbfdb133e81::t_a74a3f1bef0105 50,53
+packages/agent-runtime/vendor/source-control-testing/package.json
+  s_cb8bbfdb133e81::t_2d90e855efa9e3 18
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "2b406b86383914422a7573ba866e5c802d403401",
+  "prompts": {},
+  "sessions": {
+    "s_cb8bbfdb133e81": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "41a56adb-99ed-4c91-82f7-3190cbd4476f",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}

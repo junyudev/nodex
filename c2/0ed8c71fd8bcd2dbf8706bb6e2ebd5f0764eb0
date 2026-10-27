@@ -1,0 +1,55 @@
+packages/agent-runtime/vendor/provider-acp-registry/src/server/AcpRegistrySupport.ts
+  s_cb8bbfdb133e81::t_09e56d7505523d 39
+  s_fa8d75732255a5::t_2942ef53c725d3 39
+scripts/scenarios/runtime/scripted-acp-agent.ts
+  s_cb8bbfdb133e81::t_44e4862882c322 9
+  s_fa8d75732255a5::t_62f72218ef41a7 9
+scripts/scenarios/runtime/scripted-acp-registry-fixture.test.ts
+  s_cb8bbfdb133e81::t_9a872b63487df4 7
+  s_fa8d75732255a5::t_586a5d6e1de10d 7
+package.json
+  s_fa8d75732255a5::t_5d3614adff01ed 194-195,245-246,318
+docs/development.md
+  s_fa8d75732255a5::t_c68c2c3e3c0f5f 475-480
+  s_fa8d75732255a5::t_5d3614adff01ed 63-66
+packages/agent-runtime/package.json
+  s_fa8d75732255a5::t_aec8e8bd670d20 28,32,54-55,58,61
+packages/agent-runtime/vendor/provider-acp-registry/package.json
+  s_fa8d75732255a5::t_4fcfb8130bc265 35
+packages/agent-runtime/vendor/provider-acp/package.json
+  s_fa8d75732255a5::t_a6ffcf7d52ae4e 50
+packages/agent-runtime/vendor/shared/package.json
+  s_fa8d75732255a5::t_23d27e443910c4 507-508,511,522
+packages/agent-runtime/vendor/source-control-azure-devops/package.json
+  s_fa8d75732255a5::t_d4034d3679101a 50
+packages/nodex-app-tools-mcp/package.json
+  s_fa8d75732255a5::t_af611a0419cffc 11
+pnpm-lock.yaml
+  s_fa8d75732255a5::t_68e794de8b669e 141-144,179,182,327,330-331,532,546-547,650-652,660,672,738-739,741-742,750-751,759-760,859-860,884-885,1023-1024,1026-1027,1035-1036,1068-1069,1099-1100,1364,1616-1617,1619,1628-1629,1633-1634,1638-1639,1644-1645,1650-1651,1656-1657,1662-1663,1667-1668,1672-1673,1677,2512-2513,2516,2591-2592,2676-2678,2684-2685,5094,6630-6631,6809-6810,7180-7181,8448-8450,9030-9031,9102,9105,9108,9111,9114,9117,9120,9123,9132-9139,9823,9825,9903,9905,10003,10013,10071,10073,10077,12151,12399,12938,12941,13395,13789,13795,13797,13941,13970,13976,13978,13980,13991,14226,14242,14271,14280,14290,14299,14306,14322,14334,14347,14362,14878,14885,14899,15544,15860,15930-15931,16020,16423,16470,16472,16543
+pnpm-workspace.yaml
+  s_fa8d75732255a5::t_01f3bfc79adb14 54-57
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "c20ed8c71fd8bcd2dbf8706bb6e2ebd5f0764eb0",
+  "prompts": {},
+  "sessions": {
+    "s_cb8bbfdb133e81": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "41a56adb-99ed-4c91-82f7-3190cbd4476f",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_fa8d75732255a5": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17dc2-a65a-73f3-bbd2-b4f8e69b8676",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}

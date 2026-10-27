@@ -1,0 +1,27 @@
+patches/@pierre__diffs@1.3.0-rc.1.patch
+  s_cb8bbfdb133e81::t_35bf7fd78c0908 43
+src/renderer/features/workspace-files/workspace-file-editor-diff.test.ts
+  s_cb8bbfdb133e81::t_35bf7fd78c0908 6-25
+src/renderer/features/workspace-files/workspace-file-editor-diff.ts
+  s_cb8bbfdb133e81::t_35bf7fd78c0908 16-18
+src/renderer/features/workspace-files/workspace-pierre-editor.browser.test.tsx
+  s_cb8bbfdb133e81::t_35bf7fd78c0908 289,291,294,298,313-317,330
+pnpm-lock.yaml
+  s_cb8bbfdb133e81::t_dcecc37456208e 171,354,10255
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "b1fd252dbbe4163a3f8b85c38a158645d8e50838",
+  "prompts": {},
+  "sessions": {
+    "s_cb8bbfdb133e81": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "41a56adb-99ed-4c91-82f7-3190cbd4476f",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
