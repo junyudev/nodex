@@ -1,0 +1,89 @@
+.node-version
+  s_59e7ff6e7dee19::t_51679ed4d08050 1
+AGENTS.md
+  s_59e7ff6e7dee19::t_00ab3584a898cb 69
+docs/development.md
+  s_59e7ff6e7dee19::t_7c6c0db8616b55 14,231-234
+package.json
+  s_59e7ff6e7dee19::t_69190f0606abad 242,282,303-306,323,357,359
+packages/agent-runtime/package.json
+  s_59e7ff6e7dee19::t_f8cccb19acea7f 46
+packages/agent-runtime/vendor/effect-acp/package.json
+  s_59e7ff6e7dee19::t_82d542c877f887 50
+packages/agent-runtime/vendor/effect-codex-app-server/package.json
+  s_59e7ff6e7dee19::t_e1765039c58a65 43
+packages/agent-runtime/vendor/provider-acp-registry/package.json
+  s_59e7ff6e7dee19::t_7cdcdf5581cc9f 46
+packages/agent-runtime/vendor/provider-acp/package.json
+  s_59e7ff6e7dee19::t_75992717106317 56
+packages/agent-runtime/vendor/provider-core/package.json
+  s_59e7ff6e7dee19::t_f9bb4a43f81494 211
+packages/agent-runtime/vendor/provider-opencode/package.json
+  s_59e7ff6e7dee19::t_b9c6e3d24fb1b7 64
+packages/agent-runtime/vendor/provider-testing/package.json
+  s_59e7ff6e7dee19::t_c65eefb49f9604 39
+packages/agent-runtime/vendor/shared/package.json
+  s_59e7ff6e7dee19::t_9086bc1956e6c0 523
+packages/agent-runtime/vendor/source-control-azure-devops/package.json
+  s_59e7ff6e7dee19::t_6b3c7d8bd0d955 57
+packages/agent-runtime/vendor/source-control-bitbucket/package.json
+  s_59e7ff6e7dee19::t_03cb2dc3d62bd4 51
+packages/agent-runtime/vendor/source-control-core/package.json
+  s_59e7ff6e7dee19::t_2e4de927e9a883 57
+packages/agent-runtime/vendor/source-control-forgejo/package.json
+  s_59e7ff6e7dee19::t_07d593a266e411 48
+packages/agent-runtime/vendor/source-control-gitcafe/package.json
+  s_59e7ff6e7dee19::t_2aba51efd3106b 52
+packages/agent-runtime/vendor/source-control-github/package.json
+  s_59e7ff6e7dee19::t_069992c5bdfca3 89
+packages/agent-runtime/vendor/source-control-gitlab/package.json
+  s_59e7ff6e7dee19::t_8a024547c90cb1 55
+packages/agent-runtime/vendor/source-control-testing/package.json
+  s_59e7ff6e7dee19::t_0ae3da639a29e6 21
+packages/effect-codex-app-server/package.json
+  s_59e7ff6e7dee19::t_8b5c8d515aa93d 25
+packages/nodex-app-tools-mcp/package.json
+  s_59e7ff6e7dee19::t_2119c75fbb0d79 15
+pnpm-lock.yaml
+  s_fa8d75732255a5::t_e0c22874799123 10-11,15-26,30-31,35-41,46-47,52-71,76-77,82-83,87-88,92-94,99-111,114,117,120,123,126,129,132,135-141,143-156,169,180,373-374,493-494,556-557,559-560,562-563,565,616-617,781-782,868-869,896-897,927-928,967-968,998-999,1041-1042,1069-1070,1133-1134,1170-1171,1198-1199,1220-1221,1251-1252,1282-1283,1316-1317,1344-1345,1366-1367,1401-1402,1426-1427,2078-2084,2773-2775,3565-3660,3664-3666,4608-4609,4875,5302-5303,5306-5307,5410-5411,5884-5885,5932-5933,5935-5936,5940-5941,5946-5947,5961-5962,7287-7288,7315-7316,7958-7962,8478-8479,8631,9327-9336,9340,9720,9920-9921,10161,10524-10568,10571-10572,11364,11505,11519,11530,11540,11542,11558,11577,11581,11806,12031-12032,12059,12066,12069,12075,12080,12084-12085,12208,12681,12683-12684,12739,12741-12742,12748,12750-12751,12755,12764,12768,12785,12787,12804,12808,13249,14434,14436,14442,14459,14465,15214-15234,15237,15245,15837,16047
+pnpm-workspace.yaml
+  s_59e7ff6e7dee19::t_3bdbd3e6b270ea 23,34
+scripts/ci/verify-semantic-tooling.ts
+  s_59e7ff6e7dee19::t_46242132b4eb57 31
+scripts/ci/verify-source-type-ownership.test.ts
+  s_59e7ff6e7dee19::t_3d610ee8dcfd80 28
+scripts/ci/verify-source-type-ownership.ts
+  s_59e7ff6e7dee19::t_3b7e0227d7bc7c 98
+scripts/sign-macos-runtime.d.mts
+  s_59e7ff6e7dee19::t_ae89b0b19a3892 1,5
+scripts/sign-macos-runtime.mjs
+  s_59e7ff6e7dee19::t_13a5dc68a5a389 17,416,442-443,473-474
+scripts/sign-macos-runtime.test.ts
+  s_59e7ff6e7dee19::t_634a7d2f53d431 23,93,102,112-138,153,156,170
+src/main/electron-test-runtime.test.ts
+  s_59e7ff6e7dee19::t_c0417d19a0b4da 8
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "546a8c16a0cfd9a42f1643f7353f13be7ae115f3",
+  "prompts": {},
+  "sessions": {
+    "s_59e7ff6e7dee19": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17dc2-81ce-72c2-84a2-18d1f10f50ae",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_fa8d75732255a5": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17dc2-a65a-73f3-bbd2-b4f8e69b8676",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}

@@ -1,0 +1,87 @@
+src/main/platform/node/NodeChildProcessSpawner.node.test.ts
+  s_cccffb6f11aa23::t_6728e6eb90627c 5,7,20-54
+  s_cccffb6f11aa23::t_10e5fc9e34c943 3,55
+packages/agent-runtime/src/orchestration-v2/OpenCode2OrchestratorV2.integration.test.ts
+  s_cccffb6f11aa23::t_4a452026a540d6 69-75
+  s_cccffb6f11aa23::t_44c2c16c790339 271-304
+docs/LINTING.md
+  s_cccffb6f11aa23::t_5ae389e3ac49e8 44-45,226-230,245-247
+docs/development.md
+  s_cccffb6f11aa23::t_b08048778dd980 523-525
+package.json
+  s_cccffb6f11aa23::t_27fdbcb285b7c0 196-197,202,240-241
+packages/agent-runtime/package.json
+  s_cccffb6f11aa23::t_9c361f1de3506c 25-26,30,47
+packages/agent-runtime/src/nodex/Ingress.test.ts
+  s_cccffb6f11aa23::t_a1c5ba3aecee89 105-111,326-332,442-448,818-824,941-947
+packages/agent-runtime/src/nodex/Ingress.ts
+  s_cccffb6f11aa23::t_c7b8ce9afc9621 263
+packages/agent-runtime/src/provider/OpenCode2Client.test.ts
+  s_cccffb6f11aa23::t_c5eedc0311f226 9,11
+packages/agent-runtime/vendor/contracts/package.json
+  s_cccffb6f11aa23::t_23a2b4d3254db6 28,31
+packages/agent-runtime/vendor/effect-acp/package.json
+  s_cccffb6f11aa23::t_47641e0765bbf4 44,47-49
+packages/agent-runtime/vendor/effect-codex-app-server/package.json
+  s_cccffb6f11aa23::t_afffc72d1f0e72 37,40-42
+packages/agent-runtime/vendor/provider-acp-registry/package.json
+  s_cccffb6f11aa23::t_0148f8661fef7a 40,43-44
+packages/agent-runtime/vendor/provider-acp/package.json
+  s_cccffb6f11aa23::t_034a1e8ff1bdcd 51,54-55
+packages/agent-runtime/vendor/provider-core/package.json
+  s_cccffb6f11aa23::t_5d322678a93a73 209-210
+packages/agent-runtime/vendor/provider-opencode/package.json
+  s_cccffb6f11aa23::t_90eb036a9cd2ff 51-54,58,61-62
+packages/agent-runtime/vendor/provider-opencode/src/server/v2/OpenCode2Client.live.test.ts
+  s_cccffb6f11aa23::t_04599a9f60b6e1 94
+packages/agent-runtime/vendor/provider-opencode/src/server/v2/OpenCode2Client.ts
+  s_cccffb6f11aa23::t_a065110abe4eb0 9,191
+packages/agent-runtime/vendor/provider-testing/package.json
+  s_cccffb6f11aa23::t_9a9651b740ad30 31,35,38
+packages/agent-runtime/vendor/shared/package.json
+  s_cccffb6f11aa23::t_96d1aa416f5460 506,521-522
+packages/agent-runtime/vendor/shared/src/nodeSqliteClient.ts
+  s_cccffb6f11aa23::t_89632d3637ed1d 276
+packages/agent-runtime/vendor/source-control-azure-devops/package.json
+  s_cccffb6f11aa23::t_8dfaf186411119 51,54-55
+packages/agent-runtime/vendor/source-control-bitbucket/package.json
+  s_cccffb6f11aa23::t_89a4e96456620e 47,50
+packages/agent-runtime/vendor/source-control-core/package.json
+  s_cccffb6f11aa23::t_8654592b422b85 53,56
+packages/agent-runtime/vendor/source-control-forgejo/package.json
+  s_cccffb6f11aa23::t_9432cde049b365 43,46
+packages/agent-runtime/vendor/source-control-gitcafe/package.json
+  s_cccffb6f11aa23::t_cec6923292a302 47,50
+packages/agent-runtime/vendor/source-control-github/package.json
+  s_cccffb6f11aa23::t_f66df0a9485d28 83,86-87
+packages/agent-runtime/vendor/source-control-gitlab/package.json
+  s_cccffb6f11aa23::t_38b8a158b66d72 50,53
+packages/agent-runtime/vendor/source-control-testing/package.json
+  s_cccffb6f11aa23::t_a3bc0d91606702 18
+packages/effect-codex-app-server/package.json
+  s_cccffb6f11aa23::t_e0b0cba736042f 19,22-24
+patches/@effect__vitest@4.0.6.patch
+  s_cccffb6f11aa23::t_70695d5840b6fe 2,23,36,39,49,62,70,73-79,81,103,106,116
+pnpm-lock.yaml
+  s_cccffb6f11aa23::t_097a0dca41e8f9 109-110,163,166,183-184,186-187,201-202,310-311,313,658-659,661,673-674,724-725,779-780,783,795-796,799-800,802-803,805,823-824,827-828,830-831,833,857-858,861-862,864,894-895,898-899,901,928-929,932-933,935,947-948,950,953-954,956-957,968-969,972-973,975,990-991,1002-1003,1006,1027-1028,1067-1068,1070,1097-1098,1101-1102,1104,1131-1132,1135,1153-1154,1157,1181-1182,1185,1212-1213,1216,1243-1244,1247-1248,1250,1274-1275,1278,1302-1303,1328-1329,1332-1333,1335-1336,1338,1922-1923,1926-1927,1929-1930,1933,1935-1936,1939,1942-1943,1947-1948,1952-1953,1957-1958,1962-1963,1967-1968,1972-1973,1977-1978,1981-1982,1984,2675-2676,2678-2679,2681,2689-2690,2692-2693,6050-6051,9346,9348-9349,9354,9357,9363,9365-9366,9373,9376,9379,9382,9385,9388,9391,9394,9396-9402,9406,9412,10019,10025-10026,10028,10031,10033-10034,10036,10039,12987
+pnpm-workspace.yaml
+  s_cccffb6f11aa23::t_54619767b01ce5 9,20-21,95,97
+tsconfig.effect.json
+  s_cccffb6f11aa23::t_d23c155f17bd46 41,43,49,93-97,99,115-116,180,182,188,227-231,233,248-249
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "8a2e7b2506557e0540c24d193362230c4f385bf7",
+  "prompts": {},
+  "sessions": {
+    "s_cccffb6f11aa23": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17dc2-2dbb-77b2-af6a-b89b6f429152",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}

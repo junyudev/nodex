@@ -1,0 +1,53 @@
+package.json
+  s_fa8d75732255a5::t_5d3614adff01ed 194-195,245-246,318
+  s_cb8bbfdb133e81::t_f58fd079cd8624 353-354
+docs/development.md
+  s_fa8d75732255a5::t_c68c2c3e3c0f5f 449-454
+  s_fa8d75732255a5::t_5d3614adff01ed 37-40
+packages/agent-runtime/package.json
+  s_fa8d75732255a5::t_aec8e8bd670d20 24,28,50-51,54,57
+packages/agent-runtime/vendor/provider-acp-registry/package.json
+  s_fa8d75732255a5::t_4fcfb8130bc265 35
+packages/agent-runtime/vendor/provider-acp-registry/src/server/AcpRegistrySupport.ts
+  s_fa8d75732255a5::t_2942ef53c725d3 39
+packages/agent-runtime/vendor/provider-acp/package.json
+  s_fa8d75732255a5::t_a6ffcf7d52ae4e 50
+packages/agent-runtime/vendor/shared/package.json
+  s_fa8d75732255a5::t_23d27e443910c4 503-504,507,518
+packages/agent-runtime/vendor/source-control-azure-devops/package.json
+  s_fa8d75732255a5::t_d4034d3679101a 50
+packages/nodex-app-tools-mcp/package.json
+  s_fa8d75732255a5::t_af611a0419cffc 11
+pnpm-lock.yaml
+  s_fa8d75732255a5::t_68e794de8b669e 139-142,177,180,325,328-329,530,544-545,648-650,658,670,736-737,739-740,748-749,757-758,857-858,882-883,1021-1022,1024-1025,1033-1034,1066-1067,1097-1098,1362,1602-1603,1605,1614-1615,1619-1620,1624-1625,1630-1631,1636-1637,1642-1643,1648-1649,1653-1654,1658-1659,1663,2498-2499,2502,2577-2578,2662-2664,2670-2671,5015,6551-6552,6730-6731,7101-7102,8366-8368,8948-8949,9020,9023,9026,9029,9032,9035,9038,9041,9050-9057,9741,9743,9821,9823,9921,9931,9989,9991,9995,12043,12291,12830,12833,13287,13681,13687,13689,13833,13862,13868,13870,13872,13883,14118,14134,14163,14172,14182,14191,14198,14214,14226,14239,14254,14768,14775,14789,15434,15750,15820-15821,15910,16313,16360,16362,16433
+pnpm-workspace.yaml
+  s_fa8d75732255a5::t_01f3bfc79adb14 50-53
+scripts/scenarios/runtime/scripted-acp-agent.ts
+  s_fa8d75732255a5::t_62f72218ef41a7 9
+scripts/scenarios/runtime/scripted-acp-registry-fixture.test.ts
+  s_fa8d75732255a5::t_586a5d6e1de10d 7
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "19b05842ea5dc83f754e5a35178424410c43e980",
+  "prompts": {},
+  "sessions": {
+    "s_cb8bbfdb133e81": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "41a56adb-99ed-4c91-82f7-3190cbd4476f",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_fa8d75732255a5": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17dc2-a65a-73f3-bbd2-b4f8e69b8676",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
