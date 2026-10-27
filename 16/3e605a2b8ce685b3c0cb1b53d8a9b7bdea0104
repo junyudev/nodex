@@ -1,0 +1,22 @@
+src/renderer/components/workbench/command-palette.test.tsx
+  s_6c9891f66c664a::t_7d24561209bafd 47,50-55,59,1521-1539
+  s_6c9891f66c664a::t_fb16c736b899ea 2086,2088,2111,2113
+docs/product-specs/command-palette-behavior.md
+  s_6c9891f66c664a::t_fb16c736b899ea 306
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "163e605a2b8ce685b3c0cb1b53d8a9b7bdea0104",
+  "prompts": {},
+  "sessions": {
+    "s_6c9891f66c664a": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17c10-a298-7620-9e1b-e48b054fb0cc",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
