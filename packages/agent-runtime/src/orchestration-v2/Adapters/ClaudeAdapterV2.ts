@@ -1336,18 +1336,6 @@ function normalizeClaudeResultText(text: string): string {
   return text.replace(/\s+/g, " ").trim();
 }
 
-function assistantTextFromSdkMessage(
-  message: SDKMessage,
-): { readonly nativeItemId: string; readonly text: string } | null {
-  if (message.type !== "assistant") {
-    return null;
-  }
-  return {
-    nativeItemId: message.uuid,
-    text: textFromClaudeContent(message.message.content),
-  };
-}
-
 function resultTextFromSdkMessage(
   message: SDKMessage,
 ): { readonly nativeItemId: string; readonly text: string } | null {
@@ -6567,6 +6555,185 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
           return subagent?.task.status === "running" ? settled : null;
         });
 
+        const projectRootAssistantThinking = Effect.fnUntraced(function* (
+          context: ActiveClaudeTurnContext,
+          message: SDKAssistantMessage,
+          block: SDKAssistantMessage["message"]["content"][number],
+        ) {
+          if (block.type !== "thinking") {
+            const update = context.reasoning.lastThinking;
+            context.reasoning.lastThinking = null;
+            if (
+              block.type === "tool_use" &&
+              update !== null &&
+              update.messageId === message.message.id &&
+              update.followsThinking &&
+              claudeWritesUpdatesAsThinking(message.message.model)
+            ) {
+              // Same item ID, so the update replaces the Thought in place.
+              yield* emitAssistantTextArtifacts({
+                context,
+                nativeItemId: update.itemId,
+                text: update.text,
+              });
+            }
+            return;
+          }
+          const index = context.reasoning.snapshotBlockIndex.get(message.message.id) ?? 0;
+          context.reasoning.snapshotBlockIndex.set(message.message.id, index + 1);
+          const itemId = `${message.message.id}:thinking:${index}`;
+          yield* ensureReasoningBlock(context, itemId);
+          const finalText = block.thinking || context.reasoning.blocks.get(itemId)?.text;
+          const completedText = yield* reasoningDeltas.complete({
+            turnId: context.nativeTurnId,
+            itemId,
+            ...(finalText ? { finalText } : {}),
+            emitEmpty: false,
+          });
+          const previous = context.reasoning.lastThinking;
+          context.reasoning.lastThinking = completedText.trim()
+            ? {
+                messageId: message.message.id,
+                itemId,
+                text: completedText,
+                followsThinking: previous !== null && previous.messageId === message.message.id,
+              }
+            : null;
+        });
+
+        const projectAssistantToolUse = Effect.fnUntraced(function* (
+          context: ActiveClaudeTurnContext,
+          message: SDKAssistantMessage,
+          toolUse: ClaudeToolUseContentBlock,
+        ) {
+          const nativeToolInput = claudeNativeToolInputFromUnknown(toolUse.input);
+          if (toolUse.name === "Agent") {
+            rememberClaudeSubagentLaunch(
+              subagentModelCatalog,
+              context,
+              pendingSubagentLaunchesByToolUseId,
+              toolUse.id,
+              nativeToolInput,
+              parentToolUseIdFromSdkMessage(message),
+            );
+            return;
+          }
+          if (toolUse.name === "TodoWrite" && parentToolUseIdFromSdkMessage(message) === null) {
+            yield* emitClaudePlanProjection({
+              context,
+              nativeItemId: toolUse.id,
+              kind: "todo_list",
+              steps: claudeTodoSteps(nativeToolInput),
+            }).pipe(Effect.orDie);
+          }
+          yield* ensureToolCallStarted({
+            context,
+            nativeItemId: toolUse.id,
+            toolName: toolUse.name,
+            toolInput: nativeToolInput,
+            parentToolUseId: parentToolUseIdFromSdkMessage(message),
+            presentation:
+              claudeToolPresentationsFromAssistantMessage(message).get(toolUse.id) ??
+              mcpToolPresentation({
+                toolName: toolUse.name.replace(/^mcp__claude_ai_/u, "mcp__"),
+              }),
+          });
+          const heldPlan = heldProposedPlansByToolUseId.get(toolUse.id);
+          if (heldPlan !== undefined) {
+            heldProposedPlansByToolUseId.delete(toolUse.id);
+            yield* emitClaudePlanProjection({
+              context,
+              nativeItemId: toolUse.id,
+              kind: "proposed_plan",
+              markdown: heldPlan,
+            }).pipe(Effect.orDie);
+          }
+        });
+
+        /** SDK block snapshots and full assistant frames share the same transcript order. */
+        const projectAssistantBlocks = Effect.fnUntraced(function* (
+          context: ActiveClaudeTurnContext,
+          message: SDKAssistantMessage,
+        ) {
+          const parentToolUseId = parentToolUseIdFromSdkMessage(message);
+          const subagent =
+            parentToolUseId === null
+              ? undefined
+              : yield* resolveSubagentByToolUseId(context, parentToolUseId);
+          if (parentToolUseId !== null && subagent === undefined) return;
+          const projectThinking = !context.reasoning.snapshots.has(message.uuid);
+          context.reasoning.snapshots.add(message.uuid);
+          let thinkingIndex = 0;
+          for (const [index, block] of message.message.content.entries()) {
+            if (subagent === undefined && projectThinking)
+              yield* projectRootAssistantThinking(context, message, block);
+            if (isClaudeToolUseContentBlock(block)) {
+              yield* projectAssistantToolUse(context, message, block);
+              continue;
+            }
+            if (block.type === "thinking" && subagent !== undefined) {
+              const nativeItemId = `${message.uuid}:thinking:${thinkingIndex++}`;
+              if (!block.thinking.trim()) continue;
+              const now = yield* DateTime.now;
+              yield* emitProviderEvent({
+                type: "turn_item.updated",
+                driver: CLAUDE_PROVIDER,
+                turnItem: {
+                  id: idAllocator.derive.turnItemFromProviderItem({
+                    driver: CLAUDE_PROVIDER,
+                    nativeItemId,
+                  }),
+                  threadId: subagent.childThreadId,
+                  runId: null,
+                  nodeId: subagent.childRootNodeId,
+                  providerThreadId: null,
+                  providerTurnId: null,
+                  nativeItemRef: {
+                    driver: CLAUDE_PROVIDER,
+                    nativeId: nativeItemId,
+                    strength: "strong",
+                  },
+                  parentItemId: null,
+                  ordinal: ++subagent.nextChildItemOrdinal,
+                  type: "reasoning",
+                  title: "Thinking",
+                  text: block.thinking,
+                  streaming: false,
+                  status: "completed",
+                  startedAt: now,
+                  completedAt: now,
+                  updatedAt: now,
+                },
+              });
+              continue;
+            }
+            if (block.type !== "text" || !block.text.length) continue;
+            // Native cursors stay on the SDK frame; text separated by work needs separate items.
+            const nativeItemId =
+              message.message.content.length === 1 ? message.uuid : `${message.uuid}:text:${index}`;
+            if (subagent === undefined) {
+              yield* emitAssistantTextArtifacts({ context, nativeItemId, text: block.text });
+              continue;
+            }
+            const nativeMessageId =
+              typeof message.message.id === "string" ? message.message.id : null;
+            subagent.lastAssistantText =
+              nativeMessageId !== null && nativeMessageId === subagent.lastAssistantMessageId
+                ? `${subagent.lastAssistantText ?? ""}\n${block.text}`
+                : block.text;
+            subagent.lastAssistantMessageId = nativeMessageId;
+            yield* emitSubagentConversationMessage({
+              nativeItemId,
+              threadId: subagent.childThreadId,
+              rootNodeId: subagent.childRootNodeId,
+              role: "assistant",
+              text: block.text,
+              ordinal: ++subagent.nextChildItemOrdinal,
+              now: yield* DateTime.now,
+            });
+          }
+        });
+
         const handleSdkMessageFrame = Effect.fnUntraced(function* (input: {
           readonly query: ClaudeAgentSdkQuerySession;
           readonly message: SDKMessage;
@@ -6768,56 +6935,6 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
               }
             }
             return;
-          }
-          if (
-            message.type === "assistant" &&
-            !message.parent_tool_use_id &&
-            !context.reasoning.snapshots.has(message.uuid)
-          ) {
-            context.reasoning.snapshots.add(message.uuid);
-            // The SDK emits one assistant snapshot per completed content block.
-            // Count thinking blocks separately so snapshots share the streamed ID.
-            for (const block of message.message.content) {
-              if (block.type !== "thinking") {
-                const update = context.reasoning.lastThinking;
-                context.reasoning.lastThinking = null;
-                if (
-                  block.type === "tool_use" &&
-                  update !== null &&
-                  update.messageId === message.message.id &&
-                  update.followsThinking &&
-                  claudeWritesUpdatesAsThinking(message.message.model)
-                ) {
-                  // Same item ID, so the update replaces the Thought in place.
-                  yield* emitAssistantTextArtifacts({
-                    context,
-                    nativeItemId: update.itemId,
-                    text: update.text,
-                  });
-                }
-                continue;
-              }
-              const index = context.reasoning.snapshotBlockIndex.get(message.message.id) ?? 0;
-              context.reasoning.snapshotBlockIndex.set(message.message.id, index + 1);
-              const itemId = `${message.message.id}:thinking:${index}`;
-              yield* ensureReasoningBlock(context, itemId);
-              const finalText = block.thinking || context.reasoning.blocks.get(itemId)?.text;
-              const completedText = yield* reasoningDeltas.complete({
-                turnId: context.nativeTurnId,
-                itemId,
-                ...(finalText ? { finalText } : {}),
-                emitEmpty: false,
-              });
-              const previous = context.reasoning.lastThinking;
-              context.reasoning.lastThinking = completedText.trim()
-                ? {
-                    messageId: message.message.id,
-                    itemId,
-                    text: completedText,
-                    followsThinking: previous !== null && previous.messageId === message.message.id,
-                  }
-                : null;
-            }
           }
 
           if (message.type === "assistant" && input.replayed !== true) {
@@ -7273,50 +7390,8 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
             }
           }
 
-          const toolPresentations = claudeToolPresentationsFromAssistantMessage(message);
-          for (const toolUse of claudeToolUseBlocksFromAssistantMessage(message)) {
-            const nativeToolInput = claudeNativeToolInputFromUnknown(toolUse.input);
-            if (toolUse.name === "Agent") {
-              rememberClaudeSubagentLaunch(
-                subagentModelCatalog,
-                context,
-                pendingSubagentLaunchesByToolUseId,
-                toolUse.id,
-                nativeToolInput,
-                parentToolUseIdFromSdkMessage(message),
-              );
-              continue;
-            }
-            if (toolUse.name === "TodoWrite" && parentToolUseIdFromSdkMessage(message) === null) {
-              yield* emitClaudePlanProjection({
-                context,
-                nativeItemId: toolUse.id,
-                kind: "todo_list",
-                steps: claudeTodoSteps(nativeToolInput),
-              }).pipe(Effect.orDie);
-            }
-            yield* ensureToolCallStarted({
-              context,
-              nativeItemId: toolUse.id,
-              toolName: toolUse.name,
-              toolInput: nativeToolInput,
-              parentToolUseId: parentToolUseIdFromSdkMessage(message),
-              presentation:
-                toolPresentations.get(toolUse.id) ??
-                mcpToolPresentation({
-                  toolName: toolUse.name.replace(/^mcp__claude_ai_/u, "mcp__"),
-                }),
-            });
-            const heldPlan = heldProposedPlansByToolUseId.get(toolUse.id);
-            if (heldPlan !== undefined) {
-              heldProposedPlansByToolUseId.delete(toolUse.id);
-              yield* emitClaudePlanProjection({
-                context,
-                nativeItemId: toolUse.id,
-                kind: "proposed_plan",
-                markdown: heldPlan,
-              }).pipe(Effect.orDie);
-            }
+          if (message.type === "assistant") {
+            yield* projectAssistantBlocks(context, message);
           }
 
           for (const { toolResult, output } of claudeToolResultEntriesFromMessage(message)) {
@@ -7432,96 +7507,7 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
             }
           }
 
-          const assistantParentToolUseId = parentToolUseIdFromSdkMessage(message);
-          if (message.type === "assistant" && assistantParentToolUseId !== null) {
-            // Claude never streams subagent output, so each thinking block
-            // arrives whole in its own snapshot and lands in the child thread.
-            const thinking = message.message.content.flatMap((block) =>
-              block.type === "thinking" && block.thinking.trim().length > 0 ? [block.thinking] : [],
-            );
-            const subagent =
-              thinking.length === 0
-                ? undefined
-                : yield* resolveSubagentByToolUseId(context, assistantParentToolUseId);
-            if (subagent !== undefined) {
-              const now = yield* DateTime.now;
-              for (const [index, text] of thinking.entries()) {
-                const nativeItemId = `${message.uuid}:thinking:${index}`;
-                yield* emitProviderEvent({
-                  type: "turn_item.updated",
-                  driver: CLAUDE_PROVIDER,
-                  turnItem: {
-                    id: idAllocator.derive.turnItemFromProviderItem({
-                      driver: CLAUDE_PROVIDER,
-                      nativeItemId,
-                    }),
-                    threadId: subagent.childThreadId,
-                    runId: null,
-                    nodeId: subagent.childRootNodeId,
-                    providerThreadId: null,
-                    providerTurnId: null,
-                    nativeItemRef: {
-                      driver: CLAUDE_PROVIDER,
-                      nativeId: nativeItemId,
-                      strength: "strong",
-                    },
-                    parentItemId: null,
-                    ordinal: ++subagent.nextChildItemOrdinal,
-                    type: "reasoning",
-                    title: "Thinking",
-                    text,
-                    streaming: false,
-                    status: "completed",
-                    startedAt: now,
-                    completedAt: now,
-                    updatedAt: now,
-                  },
-                });
-              }
-            }
-          }
-          const assistantText = assistantTextFromSdkMessage(message);
-          if (
-            assistantText !== null &&
-            assistantText.text.length > 0 &&
-            assistantParentToolUseId !== null
-          ) {
-            // Subagent text belongs to the subagent's child thread, never the
-            // parent transcript. Unowned frames were already held above.
-            const subagent = yield* resolveSubagentByToolUseId(context, assistantParentToolUseId);
-            if (subagent === undefined) {
-              return;
-            }
-            const now = yield* DateTime.now;
-            // One native message arrives as one snapshot per content block.
-            const nativeMessageId =
-              message.type === "assistant" && typeof message.message.id === "string"
-                ? message.message.id
-                : null;
-            subagent.lastAssistantText =
-              nativeMessageId !== null && nativeMessageId === subagent.lastAssistantMessageId
-                ? `${subagent.lastAssistantText ?? ""}\n${assistantText.text}`
-                : assistantText.text;
-            subagent.lastAssistantMessageId = nativeMessageId;
-            yield* emitSubagentConversationMessage({
-              nativeItemId: assistantText.nativeItemId,
-              threadId: subagent.childThreadId,
-              rootNodeId: subagent.childRootNodeId,
-              role: "assistant",
-              text: assistantText.text,
-              ordinal: ++subagent.nextChildItemOrdinal,
-              now,
-            });
-            return;
-          }
-          if (assistantText !== null && assistantText.text.length > 0) {
-            yield* emitAssistantTextArtifacts({
-              context,
-              nativeItemId: assistantText.nativeItemId,
-              text: assistantText.text,
-            });
-            return;
-          }
+          if (message.type === "assistant") return;
 
           // A zero-turn task-notification-origin result is almost always
           // lifecycle debris, so it must not finalize a normal turn or supply

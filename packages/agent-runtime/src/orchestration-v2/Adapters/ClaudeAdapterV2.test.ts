@@ -2485,6 +2485,101 @@ describe("ClaudeAdapterV2 background wake turns", () => {
       ),
   );
 
+  it.effect.each(["streamed blocks", "full assistant frame"] as const)(
+    "preserves content-block order for %s",
+    (shape) =>
+      Effect.gen(function* () {
+        const harness = yield* makeWakeHarness;
+        yield* harness.runtime.startTurn(
+          makeClaudeTestTurnInput({
+            threadId: harness.threadId,
+            providerThread: harness.providerThread,
+            now: yield* DateTime.now,
+            attemptId: RunAttemptId.make("content-order-attempt"),
+            text: "Inspect the fixture before replying",
+            attachments: [],
+          }),
+        );
+        const blocks = [
+          { type: "thinking", thinking: "Choose a command", signature: "sig" },
+          { type: "text", text: "I will inspect the fixture." },
+          {
+            type: "tool_use",
+            id: "ordered-tool",
+            name: "Bash",
+            input: { command: "echo checked" },
+          },
+          { type: "text", text: "The fixture is ready." },
+          { type: "text", text: "The check is complete." },
+        ] as const;
+        const snapshot = (uuid: string, content: readonly unknown[]) =>
+          claudeSdkFrame({
+            type: "assistant",
+            uuid,
+            session_id: WAKE_NATIVE_SESSION,
+            parent_tool_use_id: null,
+            message: { id: "ordered-message", model: "claude-sonnet-4-6", content },
+          });
+        const stream = (event: unknown) =>
+          claudeSdkFrame({
+            type: "stream_event",
+            uuid: "order-stream",
+            session_id: WAKE_NATIVE_SESSION,
+            parent_tool_use_id: null,
+            event,
+          });
+        const frames =
+          shape === "full assistant frame"
+            ? [snapshot("ordered-full-message", blocks)]
+            : [
+                stream({ type: "message_start", message: { id: "ordered-message" } }),
+                ...blocks.flatMap((block, index) => [
+                  stream({ type: "content_block_start", index, content_block: block }),
+                  stream({ type: "content_block_stop", index }),
+                  snapshot(`ordered-block-${index}`, [block]),
+                ]),
+              ];
+        for (const frame of frames) yield* Queue.offer(harness.sdkMessages, frame);
+        yield* Queue.offer(
+          harness.sdkMessages,
+          makeResultFrame({ uuid: "order-result", result: "" }),
+        );
+        yield* Queue.take(harness.terminalReceipts);
+        const latest = new Map(
+          harness.events.flatMap((event) =>
+            event.type === "turn_item.updated"
+              ? [[event.turnItem.id, event.turnItem] as const]
+              : [],
+          ),
+        );
+        const items = [...latest.values()];
+        assert.deepEqual(
+          items.map((item) => item.type),
+          [
+            "reasoning",
+            "assistant_message",
+            "command_execution",
+            "assistant_message",
+            "assistant_message",
+          ],
+        );
+        assert.deepEqual(
+          items.map((item) => item.ordinal),
+          [...items.map((item) => item.ordinal)].sort((a, b) => a - b),
+        );
+        assert.equal(new Set(items.map((item) => item.ordinal)).size, items.length);
+        assert.deepEqual(
+          items.flatMap((item) => (item.type === "assistant_message" ? [item.text] : [])),
+          ["I will inspect the fixture.", "The fixture is ready.", "The check is complete."],
+        );
+      }).pipe(
+        Effect.scoped,
+        Effect.provide(
+          Layer.mergeAll(IdAllocator.layer, McpProviderSessions.layer, NodeServices.layer),
+        ),
+      ),
+  );
+
   const PLANNING = { type: "thinking", thinking: "Planning the check", signature: "sig" } as const;
   const UPDATE = {
     type: "thinking",
