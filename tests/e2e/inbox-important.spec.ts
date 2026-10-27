@@ -59,7 +59,10 @@ test("keeps important messages within reach while newer ones bury them", async (
       await page.screencast.start({
         path: path.join(artifacts, "review.webm"),
         size: { width: 1280, height: 800 },
-        annotate: { position: "bottom", fontSize: 14 },
+      });
+      await page.screencast.showActions({
+        position: "bottom",
+        style: { title: "font-size: 14px" },
       });
       try {
         const message = (text: string) =>

@@ -668,7 +668,10 @@ test("reads a long Session exactly through native MCP without losing typed activ
             await page.screencast.start({
               path: path.join(artifacts, "review.webm"),
               size: { width: 1440, height: 960 },
-              annotate: { position: "bottom", fontSize: 14 },
+            });
+            await page.screencast.showActions({
+              position: "bottom",
+              style: { title: "font-size: 14px" },
             });
             recording = page;
           }

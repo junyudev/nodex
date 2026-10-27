@@ -263,8 +263,11 @@ test("structural gestures preserve Files and hand off source and target independ
             await page.screencast.start({
               path: testInfo.outputPath("review.webm"),
               size: { width: 1440, height: 960 },
-              annotate: { position: "bottom", fontSize: 14 },
             });
+          await page.screencast.showActions({
+            position: "bottom",
+            style: { title: "font-size: 14px" },
+          });
           try {
             await observeGesture(page, fixture.paragraphRootId, "drop", "[data-board-uuid-v7]");
             await dragBlockFromEditorWithMouse({

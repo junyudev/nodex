@@ -620,7 +620,10 @@ test("keeps Home and Space navigation, tabs and chrome across Settings and resta
           await page.screencast.start({
             path: path.join(artifacts, "review.webm"),
             size: { width: 1280, height: 800 },
-            annotate: { position: "bottom", fontSize: 14 },
+          });
+          await page.screencast.showActions({
+            position: "bottom",
+            style: { title: "font-size: 14px" },
           });
           recording = page;
           await capture("home");

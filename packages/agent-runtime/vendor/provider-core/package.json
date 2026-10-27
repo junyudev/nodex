@@ -200,15 +200,15 @@
     "typecheck": "tsc-rs --noEmit"
   },
   "dependencies": {
+    "@nodex/codex-app-server-protocol": "workspace:*",
     "@t3tools/contracts": "workspace:*",
     "@t3tools/shared": "workspace:*",
-    "effect": "4.0.3",
-    "@nodex/codex-app-server-protocol": "workspace:*"
+    "effect": "4.0.3"
   },
   "devDependencies": {
     "@effect/platform-node": "4.0.3",
     "@effect/vitest": "4.0.3",
     "@types/node": "24.13.3",
-    "vite-plus": "1.3.0"
+    "vite-plus": "1.4.0"
   }
 }

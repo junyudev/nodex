@@ -97,7 +97,10 @@ test("searches file contents, filters file types and opens the exact matching ca
       await page.screencast.start({
         path: path.join(artifacts, "review.webm"),
         size: { width: 1280, height: 800 },
-        annotate: { position: "bottom", fontSize: 14 },
+      });
+      await page.screencast.showActions({
+        position: "bottom",
+        style: { title: "font-size: 14px" },
       });
       try {
         await page.keyboard.press(primaryShortcut("K"));

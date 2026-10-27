@@ -10,7 +10,7 @@
   "dependencies": {
     "@modelcontextprotocol/sdk": "1.32.1",
     "@t3tools/shared": "workspace:*",
-    "zod": "4.6.6"
+    "zod": "4.6.7"
   },
   "devDependencies": {
     "@types/node": "24.13.3"

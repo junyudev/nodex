@@ -265,8 +265,8 @@ test("persists typography across real conversation, Page, settings and Electron 
     await page.screencast.start({
       path: path.join(artifacts, "review.webm"),
       size: { width: 1440, height: 960 },
-      annotate: { position: "bottom", fontSize: 14 },
     });
+    await page.screencast.showActions({ position: "bottom", style: { title: "font-size: 14px" } });
     recording = page;
     const defaultChat = await readChatTypography(page);
     claim(

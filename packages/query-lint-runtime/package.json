@@ -6,7 +6,7 @@
   "type": "module",
   "exports": "./index.mjs",
   "dependencies": {
-    "@tanstack/eslint-plugin-query": "5.101.2",
+    "@tanstack/eslint-plugin-query": "5.105.0",
     "typescript": "5.9.3"
   }
 }

@@ -166,8 +166,8 @@ test("signs in with real Clerk and preserves local work after sign out", async (
     await page.screencast.start({
       path: path.join(artifacts, "review.webm"),
       size: { width: 1280, height: 800 },
-      annotate: { position: "bottom", fontSize: 14 },
     });
+    await page.screencast.showActions({ position: "bottom", style: { title: "font-size: 14px" } });
     recording = page;
     claim("Account starts signed out", "signed-out", (await readNodexAccount(page)).status);
     await holdReviewFrame(page);

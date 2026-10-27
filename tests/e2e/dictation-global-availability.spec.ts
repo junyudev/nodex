@@ -121,8 +121,8 @@ test("keeps Voice configuration available when dictation capture is disabled", a
     await page.screencast.start({
       path: path.join(artifactDirectory, "review.webm"),
       size: { width: 1280, height: 800 },
-      annotate: { position: "bottom", fontSize: 14 },
     });
+    await page.screencast.showActions({ position: "bottom", style: { title: "font-size: 14px" } });
     recordingPage = page;
     // Keep each verified state visible long enough for the native screencast to capture it.
     await page.waitForTimeout(300);

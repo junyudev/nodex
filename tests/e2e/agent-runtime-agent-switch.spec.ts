@@ -270,8 +270,8 @@ test("clears a chat's context so its next message starts fresh on any Agent, kee
     await page.screencast.start({
       path: path.join(evidence, "clear-context.webm"),
       size: { width: 1440, height: 900 },
-      annotate: { position: "bottom", fontSize: 14 },
     });
+    await page.screencast.showActions({ position: "bottom", style: { title: "font-size: 14px" } });
     try {
       await send("Remember the codeword ORCHID", "Codex child report", 1);
       const earlier = prompts("codex").at(-1);

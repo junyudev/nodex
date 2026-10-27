@@ -315,7 +315,10 @@ test("keeps delegated work compact while hover and direct navigation expose each
       await page.screencast.start({
         path: path.join(artifacts, "review.webm"),
         size: { width: 1440, height: 960 },
-        annotate: { position: "bottom", fontSize: 14 },
+      });
+      await page.screencast.showActions({
+        position: "bottom",
+        style: { title: "font-size: 14px" },
       });
       recording = true;
     }
