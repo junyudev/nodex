@@ -1,0 +1,73 @@
+src/renderer/features/browser-sidebar/browser-sidebar-panel.tsx
+  s_881bde2b2ec57a::t_2e1e7a952c6c80 72-76,253,266-267,852,1096,1285-1286,1329
+  s_881bde2b2ec57a::t_9d4906b6ccf554 2566-2582,2584-2596,2641-2652,2654,2669-2687,2690-2691,2693,2695-2699,2701,2703-2709,2711-2738,2741-2767,2809-2810,2817,2825-2828,2842,2857,2859,2863-2864,2873-2880,2884,2887,2891,2894
+  s_881bde2b2ec57a::t_212559dfc510ca 150,2583,2834
+  s_881bde2b2ec57a::t_93ab5a34b03013 2860,2883
+src/shared/workbench-scene.ts
+  s_881bde2b2ec57a::t_54f6123d9c6984 1,1446
+src/renderer/lib/workbench-new-tab-port.tsx
+  s_881bde2b2ec57a::t_cf95d4320c2aab 1-181
+src/renderer/components/workbench/space-home.test.tsx
+  s_881bde2b2ec57a::t_27bbdc41ef1fd2 63,65-68
+src/renderer/components/workbench/workbench-runtime.tsx
+  s_881bde2b2ec57a::t_7b7eb404076ba0 313-317,2398-2440,4530
+  s_881bde2b2ec57a::t_c519fbacdb17ee 321-326,3134-3181,3225-3232,3237-3239,5379
+  s_881bde2b2ec57a::t_0a580679fdd34c 319
+  s_881bde2b2ec57a::t_0d0f6b9208ee73 2441,3182-3224,3233-3236
+  s_881bde2b2ec57a::t_50d48710773122 2442-2470,4533
+  s_881bde2b2ec57a::t_c6ff98d75dda4d 320,4205-4213
+  s_881bde2b2ec57a::t_2e0cfc5a36a66d 318,2132-2150,2714-2717
+  s_881bde2b2ec57a::t_a82efb757af103 3240
+src/renderer/lib/workbench-panel-preview.ts
+  s_881bde2b2ec57a::t_54f6123d9c6984 7
+  s_881bde2b2ec57a::t_6f76f9d84b5338 73
+src/shared/browser-url.ts
+  s_881bde2b2ec57a::t_212559dfc510ca 20-30
+src/renderer/components/block-documents/collaborative-page-title.tsx
+  s_881bde2b2ec57a::t_af21ca8716da44 343-344
+  s_881bde2b2ec57a::t_47531fcea9ba15 176,336-342,345
+  s_881bde2b2ec57a::t_546d7f45ff74a9 346
+src/renderer/components/workbench/command-palette.test.tsx
+  s_881bde2b2ec57a::t_0c009999639559 91,262,312
+src/renderer/components/workbench/command-palette-scope.test.tsx
+  s_881bde2b2ec57a::t_0c009999639559 107
+src/renderer/lib/use-workbench-panel-command-router.ts
+  s_881bde2b2ec57a::t_dc8bb9b3fd3b2a 80,182,563
+  s_881bde2b2ec57a::t_54f6123d9c6984 37,213-214
+  s_881bde2b2ec57a::t_abea1c35267c98 107-111,167,540-542,572
+src/renderer/components/library/library-new-menu.tsx
+  s_881bde2b2ec57a::t_14733e32d6f6f5 48,54-55,58,67-69,72,86
+src/renderer/components/workbench/workbench-panel-new-tab-button.tsx
+  s_881bde2b2ec57a::t_558d3758262f1d 42-44,59-61,66-70,75-80,86-100
+src/renderer/components/workbench/pages-tab-picker.test.tsx
+  s_881bde2b2ec57a::t_0c009999639559 46
+src/renderer/components/workbench/workbench-panel-surface.tsx
+  s_881bde2b2ec57a::t_c6ff98d75dda4d 28,384-392
+src/renderer/components/workbench/command-palette.browser.test.tsx
+  s_881bde2b2ec57a::t_0c009999639559 116
+src/renderer/lib/workbench-scene-navigator.ts
+  s_881bde2b2ec57a::t_54f6123d9c6984 1,315-316
+src/renderer/components/workbench/workbench-new-tab-page.tsx
+  s_881bde2b2ec57a::t_1a4536498ea792 363,373-374,377,383-384,392-393,398,442,451
+  s_881bde2b2ec57a::t_87b7135db6e4e0 1,9-26,33-40,42,47,49-203,205,216-362,364-372,375-376,378-382,385-391,394-397,399-441,443-450,452-457,459-487,489-492,521-537,598
+  s_881bde2b2ec57a::t_5bbca2faa15f93 27-32,41,43-46,48,538-597
+  s_881bde2b2ec57a::t_4dbaba43fa6fce 2-8,204,206-215,458,488,493-520
+src/renderer/lib/workbench-new-tab-model.ts
+  s_881bde2b2ec57a::t_1a4536498ea792 110
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "ddc7bd36c701c408789f7751ce26626fa0016df4",
+  "prompts": {},
+  "sessions": {
+    "s_881bde2b2ec57a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "49cbb4a9-e94e-4e20-9ebc-d47c9a27d1f1",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
