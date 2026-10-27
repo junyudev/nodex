@@ -84,7 +84,7 @@ export function AsyncQuestionChoices({
               onPointerEnter={() => onHover(index)}
               onClick={() => onChoose(index)}
               className={cn(
-                "group flex min-h-8 w-full cursor-interaction items-start gap-2 rounded-xl px-2 py-1.5 text-start text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-token-focus-border disabled:cursor-default disabled:opacity-40",
+                "group flex min-h-8 w-full cursor-interaction items-center gap-2 rounded-xl px-2 py-1.5 text-start text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-token-focus-border disabled:cursor-default disabled:opacity-40",
                 highlighted ? "bg-text/5" : "hover:bg-text/5",
               )}
             >
@@ -169,12 +169,12 @@ export function AsyncQuestionActions({
         }}
         className={cn(
           QUESTION_OUTLINE_ACTION_COLORS,
-          "gap-1 rounded-full px-2 text-sm leading-[18px] font-medium disabled:opacity-40",
+          "gap-1 rounded-full px-2 text-sm leading-[18px] disabled:opacity-40",
           seconds !== null &&
             "pe-[calc((var(--spacing-token-button-composer)-var(--spacing)*5)/2-1px)]",
         )}
       >
-        Skip
+        <span className="text-sm font-medium">Skip</span>
         {seconds !== null ? (
           <span
             aria-hidden="true"
@@ -194,11 +194,11 @@ export function AsyncQuestionActions({
         }}
         className={cn(
           QUESTION_PRIMARY_ACTION_COLORS,
-          "gap-1 rounded-full px-2 text-sm leading-[18px] font-medium disabled:opacity-40",
+          "gap-1 rounded-full px-2 text-sm leading-[18px] disabled:opacity-40",
         )}
       >
         {submitting ? <ActivitySpinnerIcon className="icon-xxs" /> : null}
-        {label}
+        <span className="text-sm font-medium">{label}</span>
       </NodexButton>
     </div>
   );

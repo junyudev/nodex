@@ -1659,7 +1659,7 @@ export const ComposerPromptEditor = forwardRef<
       data-nodex-keyboard-context={dataComposerPromptFrame ? "composer" : undefined}
       data-single-line={singleLine ? "true" : "false"}
       className={[
-        "font-sans text-size-chat leading-5 [&_.ProseMirror]:focus-visible:outline-none text-token-foreground h-auto [&_.ProseMirror]:h-auto [&_.ProseMirror]:resize-none [&_.ProseMirror_p]:m-0 [&_.ProseMirror]:leading-5",
+        "font-sans text-size-chat leading-(--composer-prompt-line-height,1.25rem) [&_.ProseMirror]:focus-visible:outline-none text-token-foreground h-auto [&_.ProseMirror]:h-auto [&_.ProseMirror]:resize-none [&_.ProseMirror_p]:m-0 [&_.ProseMirror]:leading-(--composer-prompt-line-height,1.25rem)",
         singleLine
           ? "max-h-5 overflow-hidden [&_.ProseMirror]:min-h-5"
           : "max-h-[25dvh] overflow-y-auto [&_.ProseMirror]:min-h-[2rem]",

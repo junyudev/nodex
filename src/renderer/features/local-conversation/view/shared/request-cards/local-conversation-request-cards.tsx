@@ -1,5 +1,8 @@
 import { QuestionDictationButton } from "../../composer/question-dictation-button";
-import { QUESTION_OUTLINE_ACTION_COLORS } from "../../composer/question-action-colors";
+import {
+  QUESTION_NAVIGATION_CONTROL,
+  QUESTION_OUTLINE_ACTION_COLORS,
+} from "../../composer/question-action-colors";
 import {
   useCallback,
   useEffect,
@@ -419,7 +422,7 @@ function UserInputQuestionSection({
                     aria-describedby={descriptionId}
                     data-request-option-label={option.label}
                     className={cn(
-                      "group flex min-h-8 w-full items-start gap-2 rounded-xl px-2 py-1.5 text-left text-sm focus:outline-none focus-visible:ring-1 focus-visible:ring-token-focus-border",
+                      "group flex min-h-8 w-full items-center gap-2 rounded-xl px-2 py-1.5 text-left text-sm focus:outline-none focus-visible:ring-1 focus-visible:ring-token-focus-border",
 
                       isSelected || isAdvancing ? "bg-text/5" : "bg-transparent hover:bg-text/5",
                     )}
@@ -490,18 +493,18 @@ function UserInputQuestionSection({
 
             <div
               className={cn(
-                "flex items-center gap-2",
+                "flex items-center gap-2 pe-2",
                 showInlineOtherComposer ? "justify-between" : "justify-end",
               )}
             >
               {showInlineOtherComposer ? (
-                <div className="group flex min-w-0 flex-1 items-center gap-2 rounded-xl px-2 py-1 text-sm focus-within:outline-none">
+                <div className="group flex min-w-0 flex-1 items-start gap-2 rounded-xl ps-2 text-sm focus-within:outline-none">
                   <span className="flex size-5 shrink-0 items-center justify-center text-token-description-foreground">
                     <EditIcon className="icon-xs" />
                   </span>
-                  <span className="relative min-w-0 flex-1 py-0.5">
+                  <span className="relative min-w-0 flex-1">
                     {!answer.freeformText ? (
-                      <span className="pointer-events-none absolute inset-x-0 top-0.5 truncate text-base leading-[1.35] text-token-input-placeholder-foreground opacity-50">
+                      <span className="pointer-events-none absolute inset-x-0 top-0 truncate text-base leading-[1.35] text-token-input-placeholder-foreground opacity-50">
                         {otherLabel}
                       </span>
                     ) : null}
@@ -518,7 +521,7 @@ function UserInputQuestionSection({
                       onKeyDown={handleOtherTextareaKeyDown}
                       placeholder={otherLabel}
                       data-user-input-focus-target="other"
-                      className="request-input-panel__inline-freeform w-full min-w-0 flex-1 resize-none overflow-hidden bg-transparent text-base leading-[1.35] text-token-foreground shadow-none outline-none placeholder:text-transparent"
+                      className="request-input-panel__inline-freeform block w-full min-w-0 flex-1 resize-none overflow-hidden bg-transparent text-base leading-[1.35] text-token-foreground shadow-none outline-none placeholder:text-transparent"
                     />
                   </span>
                 </div>
@@ -1125,19 +1128,21 @@ function RequestComposerViewInstance({
       onClick={handleInlineAction}
       disabled={isBusy || Boolean(question.required && !inlineHasAnswer)}
       className={cn(
-        "inline-flex h-7 shrink-0 items-center justify-center rounded-full border px-2 text-sm leading-none font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-token-focus-border disabled:opacity-40",
+        "inline-flex h-7 shrink-0 items-center justify-center rounded-full border px-2 text-sm leading-[18px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-token-focus-border disabled:opacity-40",
         inlineHasAnswer
           ? "border-transparent bg-token-foreground text-token-dropdown-background hover:bg-token-foreground/80"
           : QUESTION_OUTLINE_ACTION_COLORS,
       )}
     >
-      {question.multiSelect
-        ? primaryLabel
-        : inlineHasAnswer
-          ? isLastQuestion
-            ? "Send"
-            : "Next"
-          : "Skip"}
+      <span className="text-sm font-medium">
+        {question.multiSelect
+          ? primaryLabel
+          : inlineHasAnswer
+            ? isLastQuestion
+              ? "Send"
+              : "Next"
+            : "Skip"}
+      </span>
     </button>
   );
 
@@ -1161,7 +1166,7 @@ function RequestComposerViewInstance({
     >
       <div className="@container/request-card border-default bg-surface-elevated-secondary text-token-foreground flex flex-col overflow-hidden rounded-3xl border focus:outline-none">
         {(header || question.header || question.question) && (
-          <div className="flex items-center justify-between border-token-border/70 pt-4 pr-3 pb-2 pl-4">
+          <div className="flex items-start justify-between border-token-border/70 pt-4 pr-3 pb-2 pl-4">
             <div className="text-base leading-5 font-medium text-(--foreground)">
               {header ?? question.question ?? question.header}
             </div>
@@ -1171,19 +1176,19 @@ function RequestComposerViewInstance({
                 <>
                   <button
                     type="button"
-                    className="flex size-6 items-center justify-center rounded-full text-(--foreground-tertiary) transition-colors duration-100 hover:bg-foreground-5 focus:outline-none disabled:cursor-not-allowed disabled:opacity-40"
+                    className={cn(QUESTION_NAVIGATION_CONTROL, "size-6")}
                     disabled={currentIndex === 0}
                     onClick={() => navigateQuestion(currentIndex - 1)}
                     aria-label="Previous question"
                   >
                     <ChevronIcon direction="prev" />
                   </button>
-                  <span className="tabular-nums">
+                  <span>
                     {currentIndex + 1} of {request.questions.length}
                   </span>
                   <button
                     type="button"
-                    className="flex size-6 items-center justify-center rounded-full text-(--foreground-tertiary) transition-colors duration-100 hover:bg-foreground-5 focus:outline-none disabled:cursor-not-allowed disabled:opacity-40"
+                    className={cn(QUESTION_NAVIGATION_CONTROL, "size-6")}
                     disabled={currentIndex === request.questions.length - 1}
                     onClick={() => navigateQuestion(currentIndex + 1)}
                     aria-label="Next question"
@@ -1196,7 +1201,7 @@ function RequestComposerViewInstance({
                 <button
                   type="button"
                   data-request-input-dismiss
-                  className="flex size-6.5 items-center justify-center rounded-full text-(--foreground-tertiary) hover:bg-foreground-5 focus:outline-none disabled:cursor-not-allowed disabled:opacity-40"
+                  className={cn(QUESTION_NAVIGATION_CONTROL, "size-6.5")}
                   aria-label="Dismiss"
                   disabled={isBusy}
                   onClick={() => void handleEscapeDismiss()}

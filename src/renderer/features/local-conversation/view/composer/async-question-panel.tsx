@@ -1,4 +1,5 @@
 import { QuestionDictationButton } from "./question-dictation-button";
+import { QUESTION_NAVIGATION_CONTROL } from "./question-action-colors";
 import type { FileSearchScope } from "../../../../../shared/file-search";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { AnimatePresence, motion, type Variants } from "motion/react";
@@ -45,8 +46,6 @@ const QUESTION_STAGGER: Variants = {
   exit: { transition: { staggerChildren: 0.05 } },
 };
 const QUESTION_EXIT: Variants = { exit: { pointerEvents: "none" } };
-const QUESTION_CONTROL =
-  "flex shrink-0 items-center justify-center rounded-md border border-transparent p-1 text-token-description-foreground hover:bg-text/5 focus:outline-none focus-visible:ring-2 focus-visible:ring-token-focus-border disabled:cursor-default disabled:opacity-40";
 
 export function AsyncQuestionPanel({
   threadId,
@@ -198,6 +197,7 @@ export function AsyncQuestionPanel({
         placeholder={hasOptions ? "Or write your own response" : "Reply…"}
         disabled={state.submitting}
         compact
+        className="[--composer-prompt-line-height:1.35]"
         allowSlashCommands={false}
         onSuggestionStateChange={setSuggestion}
         onSuggestionAction={(action) => {
@@ -358,7 +358,7 @@ export function AsyncQuestionPanel({
                     <button
                       type="button"
                       aria-label="Previous question"
-                      className={cn(QUESTION_CONTROL, "size-6")}
+                      className={cn(QUESTION_NAVIGATION_CONTROL, "size-6")}
                       disabled={index === 0 || state.submitting}
                       onClick={() => navigate(-1)}
                       onKeyDown={(event) => {
@@ -373,7 +373,7 @@ export function AsyncQuestionPanel({
                     <button
                       type="button"
                       aria-label="Next question"
-                      className={cn(QUESTION_CONTROL, "size-6")}
+                      className={cn(QUESTION_NAVIGATION_CONTROL, "size-6")}
                       disabled={last || !canSend || state.submitting}
                       onClick={() => navigate(1)}
                       onKeyDown={(event) => {
@@ -388,7 +388,7 @@ export function AsyncQuestionPanel({
                   type="button"
                   aria-label="Close question"
                   data-async-question-dismiss="true"
-                  className={cn(QUESTION_CONTROL, "size-[26px]")}
+                  className={cn(QUESTION_NAVIGATION_CONTROL, "size-[26px]")}
                   onClick={close}
                 >
                   <AgentQuestionDismissIcon />
@@ -449,7 +449,7 @@ export function AsyncQuestionPanel({
                 }
               >
                 {hasOptions ? (
-                  <div className="group flex min-w-0 flex-1 cursor-interaction items-center gap-2 text-sm leading-5">
+                  <div className="group flex min-w-0 flex-1 cursor-interaction items-start gap-2 text-sm leading-5">
                     <AsyncQuestionChoiceMarker />
                     {replyField}
                   </div>
