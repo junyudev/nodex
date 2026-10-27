@@ -1,0 +1,27 @@
+crates/nodex-core/src/automation/firing.rs
+  s_e339d587d9e58a::t_ceca002ff22b4a 209-210,217
+crates/nodex-core/src/workspace/inbox.rs
+  s_e339d587d9e58a::t_c246472dc3a73c 1674-1677
+crates/nodex-core/src/workspace/inbox_read.rs
+  s_e339d587d9e58a::t_d2faf313a6a3aa 662-671,677-680,700-703
+crates/nodex-core/src/workspace/inbox_tests.rs
+  s_e339d587d9e58a::t_425e7bd08113ad 4227-4229,4269-4270,4381-4527,4561-4562,4564-4565,4571-4578,4587-4598,4626-4629,4733-4736
+docs/product-specs/scheduled-route-behavior.md
+  s_e339d587d9e58a::t_1dfec7a3b6b73f 69-71,73-75,77-78
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "6dad817d364c3fdaa4f49e2308145a34e7ca7b2e",
+  "prompts": {},
+  "sessions": {
+    "s_e339d587d9e58a": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17cf3-045c-7643-9bc8-3277dc8a186a",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
