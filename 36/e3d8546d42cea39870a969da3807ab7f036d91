@@ -1,0 +1,21 @@
+docs/development.md
+  s_f79dd9d0c7ac54::t_e04073d0c39b19 438-441
+electron-builder.yml
+  s_f79dd9d0c7ac54::t_715da6789caf56 9,33-37
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "36e3d8546d42cea39870a969da3807ab7f036d91",
+  "prompts": {},
+  "sessions": {
+    "s_f79dd9d0c7ac54": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a151d6-b92f-7f41-b4e5-4834cb7752bd",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
