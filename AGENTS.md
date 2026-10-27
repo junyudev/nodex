@@ -211,8 +211,7 @@ Treat `CHANGELOG.md` as a required deliverable only for **release-note-worthy** 
   - Run `vp run test:all` only for an explicit full release gate or when the changed release tooling itself requires it.
 - Treat a stronger real-world check as evidence, not as an automatic reason to stack every broader check on top of it. For example, a migration fix may be best covered by focused migration tests plus a disposable copy of a representative database.
 - Parallelize checks only when they are independent and resource contention is unlikely. Do not prefer parallel execution when it could make Electron or renderer suites flaky.
-- If a check fails, first determine whether the current change caused it. Fix caused failures and rerun the failed and related targeted checks. For an unrelated or plausibly flaky failure, isolate or rerun it and report the evidence; do not expand scope to fix it without a demonstrated connection to the task.
-- In the handoff, list the checks that ran and briefly explain any intentionally skipped broader check when its omission might otherwise be surprising.
+- In the handoff, summarize the checks run and their outcomes, including any unresolved failures. Briefly explain intentionally skipped broader checks when their omission might otherwise be surprising.
 
 ### Electron HTML5 DnD E2E
 
