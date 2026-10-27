@@ -1,0 +1,66 @@
+src/main/ipc/handlers/WorkspaceFileIpc.ts
+  s_c1554ea80ea21d::t_879554efaf3cf5 19,223
+  s_c1554ea80ea21d::t_e24e8809d9ae67 224-225
+src/main/workspace-media-protocol.integration.ts
+  s_c1554ea80ea21d::t_d6376dd878cb12 2-12,14-29,31-50,54-56,61-62,69-74,81-83,90-91,159-162,168-173,176-181
+  s_c1554ea80ea21d::t_bf391495ea049a 1,13,30,51-53,57-60,63-68,75-80,84-89,92-158,163-167,174-175
+  s_c1554ea80ea21d::t_db4cedf03f1296 182-203
+src/shared/ipc-api.ts
+  s_c1554ea80ea21d::t_879554efaf3cf5 455,1594
+tests/fixtures/app-renderer-protocol/electron-main.ts
+  s_c1554ea80ea21d::t_bf391495ea049a 2-4,38-47
+src/shared/schemas/workspace-files.test.ts
+  s_c1554ea80ea21d::t_22ad22739e6cdb 4,12,15-22
+  s_c1554ea80ea21d::t_35c3079987dc95 23-29
+src/main/workspace-file-content.ts
+  s_c1554ea80ea21d::t_2acb7508bea82f 1-39
+  s_c1554ea80ea21d::t_a813a181256fba 40-41
+src/shared/types.ts
+  s_c1554ea80ea21d::t_879554efaf3cf5 983-999,1011,1020
+tests/fixtures/workspace-media/README.md
+  s_c1554ea80ea21d::t_915b4af73deb39 1-14
+src/main/workspace-file-content.test.ts
+  s_c1554ea80ea21d::t_9615eaa5f0c123 1-30
+  s_c1554ea80ea21d::t_92a669896d233f 31-42
+src/main/host-runtime/workspace-file-read-command.test.ts
+  s_c1554ea80ea21d::t_22ad22739e6cdb 1-24
+  s_c1554ea80ea21d::t_8b32ec7deb13ca 25-27
+docs/product-specs/workbench-shell.md
+  s_c1554ea80ea21d::t_915b4af73deb39 249
+src/main/host-runtime/workspace-file-read-command.ts
+  s_c1554ea80ea21d::t_21ce35ec29c75c 1-25
+  s_c1554ea80ea21d::t_37c468b6a431e3 26-35
+src/shared/schemas/workspace-files.ts
+  s_c1554ea80ea21d::t_879554efaf3cf5 4,12,46-49,60
+  s_c1554ea80ea21d::t_1cf22107d7858b 61-65
+package.json
+  s_c1554ea80ea21d::t_45f53bff55b123 203
+pnpm-lock.yaml
+  s_c1554ea80ea21d::t_259b48bb050363 206-208,1819-1821,4409-4415,6223-6226,6501-6503,8259-8262,8373-8376,8467-8470,9109-9110,11275-11284,13105-13113,13514-13515,15690-15693,15799-15804,15913-15914
+src/main/host-runtime/WorkspaceFileQueries.node.test.ts
+  s_c1554ea80ea21d::t_58268d91105b18 3,19-20,24-27,62,69-93,198,202,210-211,213,215,221,339-378
+src/main/host-runtime/WorkspaceFileQueries.ts
+  s_c1554ea80ea21d::t_4a04212109bb94 16,34-40,59,78-82,127-172,174-175,250,319-329,346-354
+src/main/workspace-files-service.test.ts
+  s_c1554ea80ea21d::t_efb2d47f86dc62 2-13,179-185,209,212-213,293-353
+src/main/workspace-files-service.ts
+  s_c1554ea80ea21d::t_94fa22d666bf99 3,8,20-24,347-348,356,360,362,365-394
+src/renderer/features/workspace-files/workspace-file-model.ts
+  s_c1554ea80ea21d::t_bfda83f875ff9b 7-8,35
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "1094d6a177ba7925fe72f2b2b3792da0963baca8",
+  "prompts": {},
+  "sessions": {
+    "s_c1554ea80ea21d": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a17cf5-3973-7873-a573-3b8ed10c04f4",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
