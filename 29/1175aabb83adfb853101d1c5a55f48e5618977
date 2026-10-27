@@ -1,0 +1,52 @@
+src/renderer/features/local-conversation/agent-runtime-markdown-export.node.test.ts
+  s_64b8d727f83fb3::t_ff186a904aff17 2,60-64
+  s_53847b251ce95d::t_b01783ff6e9321 4
+oxlint-plugin-nodex/rules/no-cast-runtime-snapshot-fixtures.ts
+  s_53847b251ce95d::t_1671255758e786 1-32
+src/main/agent-runtime/AgentRuntimeApplication.node.test.ts
+  s_53847b251ce95d::t_e9dd05d871ba0d 28
+  s_53847b251ce95d::t_b1f8e8e0caf027 103-111,113
+vite.config.ts
+  s_53847b251ce95d::t_390eaaf6dfef7b 214
+src/renderer/features/local-conversation/agent-runtime-conversation-adapter.test.tsx
+  s_53847b251ce95d::t_b01783ff6e9321 14
+  s_64b8d727f83fb3::t_11055115e917fc 11-13,2115-2117,2310-2311,2314,2330,2333
+  s_64b8d727f83fb3::t_c65cd29d4994e5 72,155-156,158-165,167,173,176,737-746,749,864-866,929-937,940,946,949,955,958,1055,2027-2028,2031,2039,2042
+oxlint-plugin-nodex/index.ts
+  s_53847b251ce95d::t_390eaaf6dfef7b 5,13
+src/renderer/features/local-conversation/agent-runtime-conversation-owner.node.test.ts
+  s_53847b251ce95d::t_501e9a12793778 1986,1996,2173,2201
+  s_53847b251ce95d::t_190968b1625f20 1262-1267,1274,1373,1375-1376
+  s_53847b251ce95d::t_b01783ff6e9321 19
+  s_53847b251ce95d::t_bef55681201db3 1261
+  s_53847b251ce95d::t_d16146ab5215cb 18
+src/renderer/features/local-conversation/runtime-heartbeat-automation.test.tsx
+  s_64b8d727f83fb3::t_a25d5715c63505 19
+  s_53847b251ce95d::t_b01783ff6e9321 5
+src/shared/testing/agent-runtime-snapshot.ts
+  s_53847b251ce95d::t_6737e34703d6b6 1-92
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "291175aabb83adfb853101d1c5a55f48e5618977",
+  "prompts": {},
+  "sessions": {
+    "s_53847b251ce95d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "366e72a7-5963-4a44-8d73-0cb9b030138e",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    },
+    "s_64b8d727f83fb3": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c0c10103-201a-4840-9f29-e4a69eb67fda",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Jun Yu <junyu.dev@gmail.com>"
+    }
+  }
+}
