@@ -85,6 +85,7 @@ jobs:
   promote:
     needs: restore
     permissions:
+      attestations: read
       contents: write
     uses: ./.github/workflows/_promote-nightly.yml
     with:

@@ -51,7 +51,18 @@ const verifyPermissionCeiling = (
 ): void => {
   const callerLabel = `${path.relative(repositoryRoot, callerPath)}:${jobName}.permissions`;
   const callerPermissions = explicitPermissions(job.permissions ?? caller.permissions, callerLabel);
-  const requested = explicitPermissions(target.permissions, "called workflow permissions");
+  const requested = new Map(explicitPermissions(target.permissions, "called workflow permissions"));
+  const targetJobs = requireRecord(target.jobs, "called workflow jobs");
+  for (const [targetJobName, rawTargetJob] of Object.entries(targetJobs)) {
+    const targetJob = requireRecord(rawTargetJob, `${targetJobName} job`);
+    const permissions = explicitPermissions(
+      targetJob.permissions ?? target.permissions,
+      `called workflow ${targetJobName} permissions`,
+    );
+    for (const [name, level] of permissions) {
+      requested.set(name, Math.max(requested.get(name) ?? 0, level));
+    }
+  }
   const callerDefault = callerPermissions.get("*") ?? 0;
   const insufficient = [...requested.entries()]
     .filter(([name, level]) => level > (callerPermissions.get(name) ?? callerDefault))

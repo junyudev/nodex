@@ -280,6 +280,7 @@ jobs:
       && (needs.restore-bundle.outputs.restored == 'true' || needs.assemble.result == 'success')
     needs: [validate, certification, restore-bundle, assemble]
     permissions:
+      attestations: read
       contents: write
     uses: ./.github/workflows/_promote-release.yml
     with:

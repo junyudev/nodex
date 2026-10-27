@@ -172,6 +172,7 @@ jobs:
     if: needs.resolve.outputs.should_release == 'true'
     needs: [resolve, assemble]
     permissions:
+      attestations: read
       contents: write
     uses: ./.github/workflows/_promote-nightly.yml
     with:

@@ -181,6 +181,7 @@ jobs:
     if: needs.detect.outputs.should_release == 'true'
     needs: [detect, assemble]
     permissions:
+      attestations: read
       contents: write
     uses: ./.github/workflows/_promote-release.yml
     with:
